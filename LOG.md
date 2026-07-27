@@ -3,6 +3,24 @@
 
 # LOG
 
+## 2026-07-27 (pm-5) — LMSYS chat-quality: mild over-refusal tax
+
+60 lmsys-chat-1m prompts, base vs fine-tune, pairwise gemini judge (position-randomized). FT
+24W/32L/4T → **42.9% win-rate** (excl ties), NOT significant vs 50% (binomial p≈0.34). But real
+signal: **FT refused 15/60 vs base 5/60** (~3×), several on BENIGN prompts (company intro, chemistry
+article, "wrong answers only" joke, over-hedged business plan). The difficult-advice SFT (all about
+declining norm-violations) generalized into over-caution on benign requests — an over-refusal tax,
+not a knowledge/reasoning loss (MMLU flat, reasoning preserved). Mitigation: blend benign
+should-help examples. Instance destroyed. See output/lmsys/.
+
+## 2026-07-27 (pm-4) — Capability check: MMLU (no capability tax)
+
+`inspect_evals/mmlu_0_shot`, 300 paired Qs (seed 42), CoT/thinking mode, base vs fine-tune served
+via vLLM. Base **84.0%** (252/300, ±2.1) vs fine-tune **83.0%** (249/300, ±2.2) → **−1.0 pt, within
+noise**. The difficult-advice alignment SFT did not degrade general knowledge/reasoning. (Note: MMLU
+must run with `-T cot=True` + high `--max-tokens` for a thinking model; the default cot=False caps at
+16 tokens and truncates the `<think>` → 0% false negative.) Instance destroyed. See output/mmlu/.
+
 ## 2026-07-27 (pm-3) — Independent Inspect-harness cross-check (leaking)
 
 Re-provisioned an H100, served base+adapter (adapter from HF `matboz/qwen3-32b-difficult-advice-lora`),
