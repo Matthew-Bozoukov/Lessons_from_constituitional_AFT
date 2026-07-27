@@ -1,0 +1,22 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# Data / outputs (large)
+output/
+data/*.jsonl
+data/*.json
+!data/.gitkeep
+
+# Vendored eval repo
+third_party/
+
+# Misc
+.DS_Store
+wandb/
+*.log
