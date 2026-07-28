@@ -21,6 +21,8 @@ CONTROL_CONFIGS = Path(__file__).resolve().parent / "control" / "configs"
 # default explicit in one place rather than scattered through the code.
 DEFAULTS: dict[str, Any] = {
     "run_id": None,
+    "name": None,
+    "extends": None,
     "seed": 0,
     "max_workers": 16,
     "resume": True,
@@ -75,20 +77,116 @@ def timestamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
 
-def _resolve_path(path: str | Path) -> Path:
-    """Resolve a config path, falling back to control/configs/ for bare names."""
+def _resolve_path(path: str | Path, base_dir: Path | None = None) -> Path:
+    """Resolve a config path.
+
+    Tries, in order: the path as given, relative to the config that referenced it
+    (so `extends:` works between neighbouring files), then control/configs/ by
+    relative path, then by bare filename.
+
+    Args:
+        path: Config path or bare filename.
+        base_dir: Directory of the referencing config, for relative `extends:`.
+
+    Returns:
+        The resolved path.
+
+    Raises:
+        ConfigError: If no candidate exists.
+    """
     p = Path(path)
-    if p.exists():
-        return p
-    candidate = CONTROL_CONFIGS / p.name
-    if candidate.exists():
-        return candidate
-    available = sorted(x.name for x in CONTROL_CONFIGS.glob("*.yaml"))
+    candidates = [p]
+    if base_dir is not None and not p.is_absolute():
+        candidates.append(base_dir / p)
+    if not p.is_absolute():
+        candidates += [CONTROL_CONFIGS / p, CONTROL_CONFIGS / p.name]
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_file():
+            return candidate
+
+    available = sorted(
+        str(x.relative_to(CONTROL_CONFIGS)) for x in CONTROL_CONFIGS.rglob("*.yaml")
+    )
     raise ConfigError(f"Config not found: {path}. In control/configs/: {available}")
+
+
+def _merge(parent: dict[str, Any], child: dict[str, Any], path: str = "") -> dict[str, Any]:
+    """Deep-merge a child config over a parent, with mixture-aware semantics.
+
+    Mixtures REPLACE rather than merge. Merging `doc_type: {multiturn: 1.0}` into a
+    parent that declares six document types would leave the other five behind at their
+    old weights and quietly produce a corpus nobody asked for - the exact bug that makes
+    a "100% multiturn" corpus silently not be one.
+
+    Everything else deep-merges, and lists replace wholesale.
+
+    Args:
+        parent: The base config.
+        child: The overriding config.
+        path: Dotted path of the current node, used to spot recipe mixtures.
+
+    Returns:
+        A new merged dict.
+    """
+    out = dict(parent)
+    for key, value in child.items():
+        current = out.get(key)
+        here = f"{path}.{key}" if path else key
+        # recipe.<mixture> replaces; recipe.grouping_params is a real nested mapping.
+        is_mixture = path == "recipe" and key != "grouping_params"
+        if isinstance(value, dict) and isinstance(current, dict) and not is_mixture:
+            out[key] = _merge(current, value, here)
+        else:
+            out[key] = value
+    return out
+
+
+def _load_with_extends(
+    path: str | Path, seen: tuple[str, ...] = (), base_dir: Path | None = None
+) -> dict[str, Any]:
+    """Load a config file, resolving its `extends:` chain first.
+
+    Args:
+        path: Config path or bare filename in control/configs/.
+        seen: Already-visited paths, used to detect cycles.
+        base_dir: Directory of the referencing config, for relative `extends:`.
+
+    Returns:
+        The merged raw config (defaults are applied by the caller).
+
+    Raises:
+        ConfigError: If the extends chain contains a cycle.
+    """
+    resolved = _resolve_path(path, base_dir)
+    key = str(resolved.resolve())
+    if key in seen:
+        raise ConfigError(
+            f"extends cycle: {' -> '.join([*seen, key])}. A config may not extend itself."
+        )
+
+    raw = OmegaConf.to_container(OmegaConf.load(resolved), resolve=True)
+    if not isinstance(raw, dict):
+        raise ConfigError(f"Config {resolved} is not a mapping")
+
+    parents = raw.pop("extends", None)
+    if not parents:
+        return raw
+    if isinstance(parents, str):
+        parents = [parents]
+
+    merged: dict[str, Any] = {}
+    for parent in parents:
+        merged = _merge(
+            merged, _load_with_extends(parent, (*seen, key), base_dir=resolved.parent)
+        )
+    return _merge(merged, raw)
 
 
 def load_config(path: str | Path, overrides: dict[str, Any] | None = None) -> dict[str, Any]:
     """Load, merge, and validate a run config.
+
+    Supports `extends: <config>` for corpus variants: a config that differs from the
+    base in three lines should be three lines long, not a hundred-line copy that drifts.
 
     Args:
         path: Config file path, or a bare filename inside control/configs/.
@@ -100,9 +198,7 @@ def load_config(path: str | Path, overrides: dict[str, Any] | None = None) -> di
     Raises:
         ConfigError: If the config is invalid.
     """
-    cfg = OmegaConf.merge(
-        OmegaConf.create(DEFAULTS), OmegaConf.load(_resolve_path(path))
-    )
+    cfg = OmegaConf.create(_merge(DEFAULTS, _load_with_extends(path)))
     if overrides:
         for key, value in overrides.items():
             # merge=False: an override REPLACES. Merging would leave stale keys in
@@ -150,9 +246,15 @@ def make_run_id(cfg: dict[str, Any]) -> str:
     Returns:
         A run id. Note doc_id depends on it, so cross-arm joins use scenario_hash,
         which is run-id independent, while cross-stage joins use doc_id.
+
+        With `name:` set, the run id IS the name - stable, so the corpus lands in a
+        predictable directory and re-running resumes it rather than making a second
+        copy. Without a name, the id is timestamped and every run is distinct.
     """
     if cfg.get("run_id"):
         return str(cfg["run_id"])
+    if cfg.get("name"):
+        return str(cfg["name"])
     tag = cfg.get("tag") or cfg.get("spec", {}).get("id") or "run"
     return f"{tag}_{timestamp()}_{stable_hash(cfg, 6)}"
 

@@ -49,6 +49,9 @@ def build_schema(axis_names: Sequence[str], filter_fields: Sequence[str]) -> pa.
         [
             ("doc_id", pa.string()),
             ("scenario_hash", pa.string()),
+            # Joins sweep arms that differ on a recipe axis, where scenario_hash
+            # necessarily differs but example i is still example i.
+            ("sample_index", pa.int32()),
             ("stage_idx", pa.int32()),
             ("stage_name", pa.string()),
             ("input_doc_id", pa.string()),
@@ -92,6 +95,7 @@ def to_row(doc: Document, axis_names: Sequence[str], filter_fields: Sequence[str
     return {
         "doc_id": doc.doc_id,
         "scenario_hash": doc.scenario.scenario_hash,
+        "sample_index": doc.scenario.sample_index,
         "stage_idx": doc.stage_idx,
         "stage_name": doc.stage_name,
         "input_doc_id": doc.input_doc_id or doc.doc_id,
@@ -128,6 +132,9 @@ class SnapshotConfig:
         also_local: Always write local parquet (strongly recommended; it is the
             source of truth when a push fails).
         write_jsonl: Also write full-fidelity JSONL including lineage.
+        cleanup_local: Delete the local snapshot files once every push has been
+            verified, leaving HuggingFace as the only copy of the corpus. Never
+            deletes anything if a push failed, and never touches the call cache.
     """
 
     backend: str = "local"
@@ -137,6 +144,7 @@ class SnapshotConfig:
     push_every_stage: bool = True
     also_local: bool = True
     write_jsonl: bool = True
+    cleanup_local: bool = False
 
 
 class SnapshotWriter:
@@ -172,6 +180,7 @@ class SnapshotWriter:
         self.schema = build_schema(self.axis_names, self.filter_fields)
         self.stages: list[str] = []
         self._threads: list[threading.Thread] = []
+        self._pushed: list[Path] = []
         self.push_errors: list[str] = []
 
     @property
@@ -261,6 +270,18 @@ class SnapshotWriter:
         thread.start()
         self._threads.append(thread)
 
+    def push_file(self, local: Path | str, remote: str) -> None:
+        """Push an extra artifact (export shard, report, figure) to the run's repo.
+
+        Args:
+            local: Local file path.
+            remote: Path within the dataset repo.
+        """
+        local = Path(local)
+        if self.cfg.backend != "huggingface" or not local.exists():
+            return
+        self._push_async(local, remote)
+
     def _push(self, local: Path, remote: str) -> None:
         """Upload one file to the run's dataset repo."""
         try:
@@ -280,6 +301,7 @@ class SnapshotWriter:
                 repo_type="dataset",
                 commit_message=f"synthdoc {self.run_id}: {remote}",
             )
+            self._pushed.append(local)
         except Exception as e:
             msg = f"HF push failed for {remote}: {type(e).__name__}: {e}"
             self.push_errors.append(msg)
@@ -297,6 +319,49 @@ class SnapshotWriter:
         for thread in self._threads:
             thread.join(timeout=timeout)
         return list(self.push_errors)
+
+    def cleanup(self, extra: Sequence[Path | str] = ()) -> list[str]:
+        """Delete local corpus files, leaving HuggingFace as the only copy.
+
+        Deletes ONLY files that were verifiably uploaded, and refuses entirely if the
+        backend is not huggingface or if any push failed - losing a corpus to a silent
+        upload failure would be unrecoverable. The JSONL sidecars go too, so the run
+        can no longer be resumed locally; the call cache is untouched, so regenerating
+        from the Hub copy is still nearly free.
+
+        Args:
+            extra: Additional local files to remove (e.g. JSONL sidecars, which are
+                deliberately not uploaded).
+
+        Returns:
+            The paths removed.
+
+        Raises:
+            ValueError: If there is no remote copy to fall back on.
+        """
+        if self.cfg.backend != "huggingface":
+            raise ValueError(
+                "cleanup_local requires snapshots.backend: huggingface. Refusing to "
+                "delete local snapshots when there is no remote copy."
+            )
+        if self.push_errors:
+            warnings.warn(
+                f"Not cleaning up local files in {self.run_dir}: "
+                f"{len(self.push_errors)} push(es) failed, so local is still the only "
+                "complete copy."
+            )
+            return []
+
+        removed: list[str] = []
+        for path in [*self._pushed, *(Path(p) for p in extra)]:
+            if path.exists() and path.is_file():
+                path.unlink()
+                removed.append(str(path))
+        # Drop now-empty directories (e.g. export/) but never the run dir itself.
+        for child in sorted(self.run_dir.glob("**/*"), reverse=True):
+            if child.is_dir() and not any(child.iterdir()):
+                child.rmdir()
+        return sorted(removed)
 
 
 def load_snapshot(path: Path | str) -> list[Document]:

@@ -18,10 +18,10 @@ cache_dir: output/synthdoc_cache
 cache_enabled: true             # content-addressed on (stage, input, prompt, model, params)
 
 spec:
+  # Resolved by id: control/specs/<id>.md first, then control/specs/index.yaml, which
+  # points this one at the repo's existing docs/claude_constitution_principles.md
+  # without copying it. Keeping `path` unset is what lets `axis: spec.id` sweeps work.
   id: claude_constitution_principles
-  # Points at the repo's existing distilled constitution. Drop new specs into
-  # synthdoc/control/specs/<id>.md and delete this line to load them by id alone.
-  path: docs/claude_constitution_principles.md
   chunker:
     granularity: bullet         # bullet | trait | section
     min_words: 8
@@ -84,11 +84,16 @@ filters:
 snapshots:
   backend: huggingface          # set to "local" to keep everything on disk
   org: LASR-Callum
-  repo: "synthdoc-{run_id}"
+  repo: "synthdoc-{run_id}"     # -> LASR-Callum/synthdoc-<name>, one split per stage
   private: true
   push_every_stage: true
-  also_local: true
+  also_local: true              # written during the run; see cleanup_local below
   write_jsonl: true             # required for re-running a single stage in isolation
+  # HuggingFace is the durable home for corpora: once every stage, export, and report
+  # has been verifiably uploaded, the local copies are deleted. Nothing is removed if
+  # any push failed. Consequence: the run can no longer be resumed from disk - but the
+  # call cache is untouched, so regenerating costs almost nothing.
+  cleanup_local: true
 
 export:
   format: sft_chat

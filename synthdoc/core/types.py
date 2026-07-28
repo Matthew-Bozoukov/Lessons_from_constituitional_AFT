@@ -80,6 +80,11 @@ class ScenarioSpec:
             scenario in a run carries the same axis keys so the snapshot schema
             is stable and groupbys are total.
         seed: Per-example seed, derived from the run seed and the example index.
+        sample_index: Position in the sampler's sequence. Deliberately NOT part of
+            scenario_hash (the seed already encodes it). It is the join key for
+            sweeps over recipe axes: arm A's example i and arm B's example i differ
+            only in the swept axis, so they are paired even though their
+            scenario_hashes differ.
     """
 
     chunks: tuple[SpecChunk, ...]
@@ -87,6 +92,7 @@ class ScenarioSpec:
     doc_type: str
     axes: dict[str, Any] = field(default_factory=dict)
     seed: int = 0
+    sample_index: int = -1
 
     @property
     def spec_id(self) -> str:
@@ -125,6 +131,7 @@ class ScenarioSpec:
             "doc_type": self.doc_type,
             "axes": dict(self.axes),
             "seed": self.seed,
+            "sample_index": self.sample_index,
         }
 
     @classmethod
@@ -136,6 +143,7 @@ class ScenarioSpec:
             doc_type=d["doc_type"],
             axes=dict(d.get("axes") or {}),
             seed=int(d.get("seed", 0)),
+            sample_index=int(d.get("sample_index", -1)),
         )
 
 

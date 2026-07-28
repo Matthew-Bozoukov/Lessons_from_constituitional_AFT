@@ -312,6 +312,10 @@ def run_pipeline(
 
     # --- export, manifest, report ----------------------------------------------
     exports = export_corpus(kept, cfg.get("export") or {}, run_dir / "export")
+    # The exports are the corpus handoff, so they belong in the dataset repo too -
+    # otherwise "on HuggingFace" would only cover the stage snapshots.
+    for path in exports.values():
+        writer.push_file(path, f"export/{Path(path).name}")
 
     manifest: dict[str, Any] = {
         "run_id": run_id,
@@ -354,12 +358,30 @@ def run_pipeline(
 
         report_paths = coverage_report(corpus, cfg, run_dir, manifest)
         manifest["report"] = report_paths
+        for name, path in report_paths.items():
+            if path:
+                writer.push_file(path, Path(path).name)
+        del name
 
     writer.write_manifest(manifest)
     push_errors = writer.finish()
     if push_errors:
         manifest["push_errors"] = push_errors
         writer.write_manifest(manifest)
+
+    # Catalogue the finished corpus so `cli corpora` can find it later.
+    from .corpora import register as register_corpus
+
+    register_corpus(result)
+
+    # Optionally leave HuggingFace as the only copy. Runs last, and only once every
+    # push has been joined and verified. The JSONL sidecars are never uploaded (they
+    # duplicate the parquet plus lineage), so they are removed explicitly.
+    if snap_cfg.cleanup_local and snap_cfg.backend == "huggingface" and not push_errors:
+        sidecars = [run_dir / f"{stage}.jsonl" for stage in stages]
+        manifest["local_files_removed"] = writer.cleanup(extra=sidecars)
+        writer.write_manifest(manifest)
+
     return result
 
 

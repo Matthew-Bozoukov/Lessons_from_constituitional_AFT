@@ -1,0 +1,22 @@
+# ABOUTME: What does filtering actually buy, and what does it cost? The `none` arm keeps
+# ABOUTME: everything and is the reference point.
+#
+# Run: uv run python -m synthdoc.cli sweep --config filter_strength.yaml --n 300
+
+base: base.yaml
+axis: filters
+n: 300
+
+arms:
+  - name: none
+    value: []
+  - name: dedup_only
+    value: [{kind: embedding_dedup, threshold: 0.87}]
+  - name: rater_lenient
+    value: [{kind: embedding_dedup, threshold: 0.87},
+            {kind: autorater, rubric: v4, model: anthropic/claude-sonnet-4.5,
+             n_raters: 3, min_score: 2, report_agreement: true}]
+  - name: rater_strict
+    value: [{kind: embedding_dedup, threshold: 0.87},
+            {kind: autorater, rubric: v4, model: anthropic/claude-sonnet-4.5,
+             n_raters: 3, min_score: 4, report_agreement: true}]

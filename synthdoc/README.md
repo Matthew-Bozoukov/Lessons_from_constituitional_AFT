@@ -16,8 +16,11 @@ print(result.exports["main"])   # SFT chat JSONL, ready for training
 
 ```bash
 uv run python -m synthdoc.cli run --config base.yaml --smoke   # offline, 8 docs, free, no API key
-uv run python -m synthdoc.cli run --config base.yaml --n 2000
+uv run python -m synthdoc.cli run --config corpora/all_multiturn.yaml
 uv run python -m synthdoc.cli sweep --config revision_dose.yaml --n 300
+uv run python -m synthdoc.cli axes                             # every ablatable axis
+uv run python -m synthdoc.cli corpora                          # every saved corpus, from HF
+uv run python -m synthdoc.cli compare --a <corpus> --b <corpus>
 ```
 
 ---
@@ -59,9 +62,17 @@ spec text ──chunk──▶ SpecChunk[] ──group──▶ ScenarioSpec ─
 |---|---|---|---|
 | `scenario_hash` | hash of the condition: chunk ids + chunk text + grouping + doc_type + axes + per-example seed | **sweep arms** | one arm against another |
 | `doc_id` | `hash(scenario_hash, run_id)` | **stages** | one stage against the next |
+| `sample_index` | position in the sampler's sequence | **arms, even when the recipe changed** | recipe-axis ablations |
 
 So: *stage-over-stage is a join on `doc_id`; arm-over-arm is a join on `scenario_hash`.*
 `doc_id` deliberately includes `run_id`, which is why cross-arm joins use `scenario_hash`.
+
+`sample_index` covers the case `scenario_hash` cannot. When you ablate a recipe axis
+(`recipe.doc_type`, `recipe.explicitness`, …) the conditions themselves change, so **no**
+`scenario_hash` can match — but example *i* in arm A still differs from example *i* in arm
+B **only in the swept axis**. Joining on `sample_index` recovers a genuine paired
+comparison there instead of collapsing to marginals. `cli compare` picks the right key
+automatically and tells you which one it used.
 
 Per-example seed is part of `scenario_hash`, so two examples that happen to draw the same
 condition still get distinct ids rather than colliding.
@@ -208,6 +219,73 @@ never deleted. A filter you cannot inspect is a filter you cannot ablate.
 
 ---
 
+## Saving named corpora
+
+Give a config a `name:` and the corpus lands in a predictable place and is catalogued
+under that name. Use `extends:` so a variant is the few lines that actually differ:
+
+```yaml
+# control/configs/corpora/all_multiturn.yaml
+extends: base.yaml
+name: all_multiturn
+recipe:
+  doc_type: {multiturn_adversarial: 1.0}
+  turns:    {short: 0.35, long: 0.65}
+```
+
+**Recipe mixtures replace, they do not merge.** Merging `{multiturn_adversarial: 1.0}`
+into a parent declaring six document types would leave the other five at their old
+weights and quietly produce a corpus that is *not* all-multiturn. Everything outside
+`recipe` deep-merges normally, so `generation: {temperature: 0.4}` keeps the parent's
+model. `extends` resolves relative to the extending file and detects cycles.
+
+Shipped presets in `control/configs/corpora/`:
+
+| preset | what it is |
+|---|---|
+| `all_multiturn` | 100% multi-turn adversarial pressure |
+| `single_spec_constitution` | one spec, one chunk per document, maximum per-chunk coverage |
+| `agentic_tools` | model-as-actor with live tool calls throughout |
+| `embodied_only` | the principle is never named, only demonstrated |
+| `no_revision_control` | generation only, no revision, no filtering — the reference corpus |
+
+A corpus about a **different spec** is the same move: drop `<spec_id>.md` into
+`control/specs/`, or register a path in `control/specs/index.yaml`, then set `spec.id`.
+Specs resolve by id alone, which is what makes `axis: spec.id` sweeps work.
+
+```bash
+uv run python -m synthdoc.cli corpora            # what exists, on HuggingFace
+uv run python -m synthdoc.cli corpora --local    # what is still on this machine
+```
+
+```
+name                spec_id                 doc_type                        n_kept   rev  generator_model
+all_multiturn       claude_constitution...  multiturn_adversarial=1.00      4812/5000  2  anthropic/claude-sonnet-4.5
+raw_control         claude_constitution...  difficult_advice=0.30, mod...   5000/5000  0  anthropic/claude-sonnet-4.5
+```
+
+## Where corpora live
+
+**HuggingFace is the durable home. Nothing goes in git, and by default nothing is kept
+locally.** Each run becomes `LASR-Callum/synthdoc-<name>`, holding one split per stage,
+the exports, the coverage report, and `manifest.json`.
+
+`snapshots.cleanup_local: true` (on in `base.yaml`) deletes the local copies once every
+upload is verified. It deletes **only** files it confirmed were pushed, refuses entirely
+if any push failed, and never touches the call cache — so a corpus can be regenerated from
+cache for almost nothing, but it can never be lost to a silent upload failure. The
+trade-off it buys with: the run can no longer be resumed from disk.
+
+`--smoke` and `snapshots.backend: local` keep everything on disk for inspection.
+
+`cli compare` and `cli corpora` both accept Hub references, so the workflow is unchanged
+after cleanup:
+
+```bash
+uv run python -m synthdoc.cli compare --a LASR-Callum/synthdoc-raw_control \
+                                      --b LASR-Callum/synthdoc-all_multiturn
+```
+
 ## Running an ablation
 
 A sweep is a base config plus **one** varied axis plus a list of arms. Multi-axis sweeps
@@ -252,8 +330,44 @@ Dry-run a sweep to see the pairing without generating anything:
 uv run python -m synthdoc.cli sweep --config grouping_strategy.yaml --dry_run
 ```
 
-Shipped sweeps in `control/configs/sweeps/`: `generator_model`, `revision_dose`,
-`grouping_strategy` — the three questions the prior pipelines left open.
+The sweep report ends with the number the ablation exists to produce: the paired
+per-scenario delta of each arm against the first, plus a `cli compare` line for the full
+breakdown.
+
+### What you can ablate
+
+**Any dotted config key.** `uv run python -m synthdoc.cli axes` prints the curated
+catalogue — generated from the live registry and prompt packs, so it cannot go stale —
+with each axis's legal values and whether its arms pair exactly.
+
+| group | axes |
+|---|---|
+| Spec & chunking | `spec.id`, `spec.chunker.granularity` |
+| Sampling | `recipe.n`, `recipe.chunks_per_example`, `recipe.grouping`, `recipe.grouping_params`, `recipe.doc_type` |
+| Scenario axes | `recipe.tools`, `recipe.reasoning`, `recipe.explicitness`, `recipe.stakes_holder`, `recipe.turns`, `recipe.reasoning_location` |
+| Generation | `generation.model`, `generation.template`, `generation.temperature`, `generation.max_tokens` |
+| Revision | `revision` (dose), `revision[].kind`, `revision[].context`, `revision[].model` |
+| Filtering | `filters`, dedup `threshold`, autorater `rubric` / `n_raters` / `min_score` |
+| Infrastructure | `embedder`, `llm.provider`, `seed` |
+| Export | `export.format`, `export.mix` |
+
+Shipped sweeps in `control/configs/sweeps/`, one per question:
+
+| sweep | question |
+|---|---|
+| `seed_variance` | **Run this first.** What is the noise floor? An effect smaller than the seed-to-seed spread is not an effect. |
+| `generator_model` | Does the generator model dominate everything else? |
+| `revision_dose` | Does revision help, and how much per pass? |
+| `revision_kind` | Which single pass earns its cost? |
+| `revision_context` | Should the reviser see the original generation instructions? |
+| `grouping_strategy` | Does grouping related chunks beat treating them one at a time? |
+| `doc_type` | Does document type matter? (one single-type corpus per arm) |
+| `spec` | Which spec — also the template for one corpus per spec |
+| `chunk_granularity` | How finely should the spec be cut? |
+| `template` | How much comes from prompt engineering alone? |
+| `explicitness` | Does behaviour transfer when documents never name the principle? |
+| `data_scaling` | The scaling curve none of the prior work ran |
+| `filter_strength` | What does filtering buy, and what does it cost? |
 
 ---
 
@@ -297,27 +411,35 @@ Then import the module in `synthdoc/plugins/__init__.py` so it registers.
 
 ## Output layout
 
+On HuggingFace — `LASR-Callum/synthdoc-<name>`, the durable copy:
+
 ```
-output/synthdoc/<run_id>/
-  stage_00_generated.parquet     # snapshot: identical schema at every stage
-  stage_00_generated.jsonl       # full fidelity incl. lineage (needed to re-run a stage)
-  stage_01_revised.{parquet,jsonl}
-  stage_NN_filtered.{parquet,jsonl}
-  manifest.json                  # config, git sha, seeds, thresholds, agreement, cost
-  coverage_report.md             # greppable numbers, emitted every run
-  coverage_heatmap.png           # pink = zero coverage
-  coverage_index.parquet         # one row per (doc, chunk) for slicing
-  export/corpus_chat.jsonl       # SFT handoff
-  export/pretrain_shard_text.jsonl
-output/synthdoc_cache/           # cache 1 (calls) + cache 2 (embeddings)
+data/stage_00_generated.parquet   # one split per stage, identical schema across splits
+data/stage_01_revised.parquet
+data/stage_NN_filtered.parquet
+export/corpus_chat.jsonl          # SFT handoff
+export/pretrain_shard_text.jsonl
+coverage_report.md                # greppable numbers
+coverage_heatmap.png              # pink = zero coverage
+coverage_index.parquet            # one row per (doc, chunk) for slicing
+manifest.json                     # config, git sha, seeds, thresholds, agreement, cost
+README.md                         # dataset card declaring the per-stage splits
+```
+
+Locally, during the run (and permanently when `cleanup_local: false`):
+
+```
+output/synthdoc/<name>/           # same files, plus .jsonl sidecars carrying lineage
+output/synthdoc/corpora.json      # local catalogue; the Hub listing is authoritative
+output/synthdoc_cache/            # cache 1 (calls) + cache 2 (embeddings) — never deleted
 output/synthdoc_sweeps/<sweep_id>/sweep_report.md
 ```
 
-On HuggingFace: `LASR-Callum/synthdoc-<run_id>`, one split per stage, identical schema
-across splits, `manifest.json` at the repo root. Pushes are **asynchronous and
-non-blocking** — a failed push warns, leaves local parquet as the source of truth, and
-never kills a run. Re-running a stage writes a new repo revision rather than overwriting,
-so earlier comparisons stay reproducible.
+Everything under `output/` is git-ignored, so no corpus can reach the repo.
+
+Pushes are **asynchronous and non-blocking** — a failed push warns, leaves the local
+parquet as the source of truth, and never kills a run. Re-running a stage writes a new
+repo revision rather than overwriting, so earlier comparisons stay reproducible.
 
 ---
 
@@ -352,12 +474,15 @@ Emitted automatically at the end of every run, no separate invocation:
 ## Tests
 
 ```bash
-uv run pytest tests/test_synthdoc_*.py -q     # 103 tests, offline, ~3s
+uv run pytest tests/test_synthdoc_*.py -q     # 132 tests, offline, ~4s
 ```
 
 The load-bearing ones, if you change something and want to know what you broke:
 
 - `test_changing_one_axis_leaves_the_others_bit_identical` — the paired-sweep property.
+- `test_extends_replaces_mixtures_rather_than_merging` — an "all X" corpus really is all X.
+- `test_compare_pairs_on_sample_index_when_the_recipe_differs` — recipe ablations stay paired.
+- `test_cleanup_refuses_without_a_remote_copy` — no corpus is deleted without a Hub copy.
 - `test_schema_is_identical_across_stages` + `test_filter_columns_exist_before_the_filter_stage`
   — stage snapshots stay comparable.
 - `test_doc_id_joins_stages_row_for_row` — the identity rules.

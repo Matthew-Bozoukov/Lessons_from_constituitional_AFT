@@ -49,9 +49,45 @@ provider, so nothing is known yet about corpus quality or actual spend. HF pushe
 
 **Next steps:** (1) a paid smoke of ~200 documents against Sonnet 4.5 to sanity-check prompt quality
 and calibrate the autorater threshold before any large run; (2) confirm the HF push path and the
-dataset viewer's per-stage splits; (3) run the `revision_dose` sweep first — it is the cheapest of
-the three because of the cache-prefix property, and it answers the question the prior work is most
-silent on.
+dataset viewer's per-stage splits; (3) run `seed_variance` to establish the noise floor, then
+`revision_dose` — cheapest of the sweeps because of the cache-prefix property, and the question the
+prior work is most silent on.
+
+### Follow-up the same evening — named corpora, arbitrary-axis ablation, HF as the only home
+
+**Motivation:** the pipeline could already sweep any dotted config key, but three things were
+missing for actual research use: no way to *name and find* a saved corpus, no catalogue of what is
+ablatable, and corpora were kept locally.
+
+**Changes:**
+- **`extends:` config inheritance + `name:`.** A corpus variant is now the lines that differ
+  (`extends: base.yaml`, `name: all_multiturn`, three lines of recipe). Critically, **recipe
+  mixtures replace rather than merge** — merging would have left the parent's other five document
+  types at their old weights, so an "all multiturn" corpus would silently not have been one.
+  Shipped five presets: `all_multiturn`, `single_spec_constitution`, `agentic_tools`,
+  `embodied_only`, `no_revision_control`.
+- **Specs resolve by id alone** via `control/specs/index.yaml`, which points at the repo's existing
+  `docs/claude_constitution_principles.md` rather than copying it. Without this, `axis: spec.id`
+  sweeps silently kept loading whatever `spec.path` was pinned to in the base config.
+- **Axis catalogue** (`cli axes`), generated from the live registry and prompt packs so it cannot
+  go stale. Shipped 13 sweep configs, one per open question, up from 3.
+- **Corpus catalogue and comparison** (`cli corpora`, `cli compare`). Comparison reports paired
+  per-scenario deltas, and each sweep report now ends with the effect size of every arm against the
+  first — the number the ablation exists to produce.
+- **`sample_index` added to the schema.** This fixed a real reporting gap: ablating a *recipe* axis
+  changes the conditions themselves, so no `scenario_hash` can match and the old code fell back to
+  marginals, throwing away most of the signal. But example *i* in each arm differs only in the swept
+  axis, so joining on `sample_index` recovers a genuine paired comparison. `compare` picks the join
+  key automatically; `check_pairing` now distinguishes identical / nested / index-paired / unpaired.
+- **HuggingFace is the durable home.** `snapshots.cleanup_local: true` deletes local copies once
+  every upload is verified — only files confirmed pushed, refuses entirely if any push failed, and
+  never touches the call cache. Exports and the coverage report are pushed too, so the dataset repo
+  is the complete corpus. `compare` and `corpora` accept Hub references, so nothing in the workflow
+  changes after cleanup. `output/` was already git-ignored; explicit entries added.
+
+**Result:** 132 tests pass offline in ~4s. All 13 shipped sweeps validate on a dry run with the
+expected pairing verdicts. Still no paid run — everything remains verified only on the echo
+provider, and the HF path is still untested against the live Hub.
 
 ## 2026-07-28 (pm) — ODCV-Bench REPLICATED: 46.2% vs published 43.8%
 

@@ -16,7 +16,9 @@ and every string a model sees in `control/prompts/`. Extending the pipeline mean
 registering a plugin and adding a config line - see `register`.
 """
 
+from .ablations import catalog as ablation_catalog
 from .config import ConfigError, load_config, load_config_dict, validate
+from .corpora import compare, fetch_hf, list_hf, load_index, resolve_corpus
 from .core.registry import register, resolve
 from .core.recipe import MixtureSampler, Recipe
 from .core.types import Document, ScenarioSpec, SpecChunk, StageRecord, Turn
@@ -28,6 +30,12 @@ __all__ = [
     "BudgetExceeded",
     "ConfigError",
     "Document",
+    "ablation_catalog",
+    "compare",
+    "fetch_hf",
+    "list_hf",
+    "load_index",
+    "resolve_corpus",
     "MixtureSampler",
     "Recipe",
     "RunResult",

@@ -148,20 +148,49 @@ def check_pairing(base_cfg: dict[str, Any], axis: str, arms: list[Arm],
     sets = list(hashes.values())
     shared = set.intersection(*sets) if sets else set()
     union = set.union(*sets) if sets else set()
+    identical = bool(union) and len(shared) == len(union)
+
+    largest = max(sets, key=len) if sets else set()
+    nested = bool(sets) and not identical and all(s <= largest for s in sets)
+    counts = {name: len(h) for name, h in hashes.items()}
+    index_paired = len(set(counts.values())) == 1
+
+    if identical:
+        note = (
+            "paired: every arm sampled an identical scenario set, so arm differences "
+            "are attributable to the axis alone. Join arms on scenario_hash."
+        )
+    elif nested:
+        note = (
+            "nested: smaller arms are subsets of the largest, which is what a scaling "
+            "sweep should look like. The shared subset is exactly paired - join on "
+            "scenario_hash and compare within it."
+        )
+    elif index_paired:
+        note = (
+            "index-paired: this axis feeds the sampler, so no scenario_hash can match. "
+            "Example i still differs from its counterpart only in the swept axis, so "
+            "join arms on sample_index for a genuine paired comparison. `cli compare` "
+            "does this automatically."
+        )
+    else:
+        note = (
+            "unpaired: the arms differ in both the scenarios sampled and their count. "
+            "Only marginal comparisons are meaningful. Consider equalising recipe.n."
+        )
+
     return {
         "axis": axis,
-        "per_arm": {name: len(h) for name, h in hashes.items()},
+        "per_arm": counts,
         "n_shared_scenarios": len(shared),
         "shared_fraction": round(len(shared) / max(1, len(union)), 4),
-        "paired": len(shared) == len(union) and len(union) > 0,
-        "note": (
-            "paired: every arm sampled an identical scenario set, so arm differences "
-            "are attributable to the axis alone"
-            if len(shared) == len(union)
-            else "partially paired: this axis feeds the sampler, so the scenario sets "
-            "differ by construction. Compare marginals, and join on scenario_hash for "
-            "the shared subset."
+        "paired": identical,
+        "nested": nested,
+        "index_paired": index_paired,
+        "join_key": "scenario_hash" if (identical or nested) else (
+            "sample_index" if index_paired else None
         ),
+        "note": note,
     }
 
 
@@ -252,7 +281,10 @@ def write_sweep_report(result: SweepResult, sweep_cfg: dict[str, Any]) -> str:
         "",
         f"- shared scenarios: **{result.pairing['n_shared_scenarios']}** "
         f"({result.pairing['shared_fraction']:.1%} of the union)",
-        f"- fully paired: **{result.pairing['paired']}**",
+        f"- fully paired: **{result.pairing['paired']}**"
+        + (", nested" if result.pairing.get("nested") else "")
+        + (", index-paired" if result.pairing.get("index_paired") else ""),
+        f"- join arms on: **`{result.pairing.get('join_key') or 'n/a (marginals only)'}`**",
         "",
         f"> {result.pairing['note']}",
         "",
@@ -284,19 +316,63 @@ def write_sweep_report(result: SweepResult, sweep_cfg: dict[str, Any]) -> str:
                 f"{n_keep / max(1, n_total):.1%} | {counts.get('mean_words', 0)} | "
                 f"{rater_mean} | {run.manifest.get('cost_usd_total', 0):.2f} |"
             )
+        baseline = result.arms[0]
+        base_run = result.runs.get(baseline.name)
+        if base_run is not None and len(result.arms) > 1:
+            lines += [
+                "",
+                f"## Effect size vs `{baseline.name}`",
+                "",
+                "Paired per-scenario deltas where the arms share scenarios; marginal",
+                "differences otherwise. This is the number the ablation exists to produce.",
+                "",
+            ]
+            for arm in result.arms[1:]:
+                run = result.runs.get(arm.name)
+                if run is None:
+                    continue
+                try:
+                    from .corpora import compare
+
+                    cmp = compare(base_run.run_dir, run.run_dir, baseline.name, arm.name)
+                except (FileNotFoundError, ImportError) as e:
+                    lines += [f"- `{arm.name}`: comparison unavailable ({e})", ""]
+                    continue
+                deltas = cmp.get("paired_deltas") or {}
+                if deltas:
+                    parts = ", ".join(
+                        f"{m} {s['mean_delta']:+g}" for m, s in sorted(deltas.items())
+                    )
+                    lines.append(
+                        f"- `{arm.name}` (paired, n={cmp['n_shared_scenarios']}): {parts}"
+                    )
+                else:
+                    d = cmp.get("delta", {})
+                    parts = ", ".join(
+                        f"{m} {d[m]:+g}" for m in sorted(d) if m.startswith(("mean_", "keep_"))
+                    )
+                    lines.append(f"- `{arm.name}` (marginal, no shared scenarios): {parts}")
+            lines.append("")
+            lines.append(
+                "Full breakdown: `uv run python -m synthdoc.cli compare "
+                f"--a <{baseline.name}_dir> --b <arm_dir>`"
+            )
+
         lines += [
             "",
             "## Joining arms",
             "",
-            "Join arms on `scenario_hash` (constant across arms). Join stages within an",
-            "arm on `doc_id` (constant across stages, but arm-specific because it hashes",
-            "the run id).",
+            "- Across arms: `scenario_hash` when the arms sample identical conditions,",
+            "  otherwise `sample_index` (example i differs only in the swept axis).",
+            "- Across stages within an arm: `doc_id` (constant across stages, but",
+            "  arm-specific because it hashes the run id).",
             "",
             "```python",
             "import pandas as pd",
             "a = pd.read_parquet('<arm_a_dir>/stage_NN_filtered.parquet')",
             "b = pd.read_parquet('<arm_b_dir>/stage_NN_filtered.parquet')",
-            "paired = a.merge(b, on='scenario_hash', suffixes=('_a', '_b'))",
+            f"paired = a.merge(b, on='{result.pairing.get('join_key') or 'scenario_hash'}',"
+            " suffixes=('_a', '_b'))",
             "```",
             "",
             "## Run directories",

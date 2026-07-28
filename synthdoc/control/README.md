@@ -9,6 +9,7 @@ anywhere else in the package; the Python only decides *which* entry to render an
 ```
 control/
   configs/            run configs (base.yaml, smoke.yaml)
+    corpora/          named corpus variants, each `extends: base.yaml`
     sweeps/           single-axis ablation configs
   prompts/
     generation.yaml   generation templates, one per version   -> generation.template
@@ -29,9 +30,32 @@ missing config field or a missing prompt entry. Add it here.
 `configs/base.yaml` is the annotated reference — read it once and you have seen every axis.
 `configs/smoke.yaml` is a 12-document offline run used by the tests.
 
-Load order is `DEFAULTS` (in `synthdoc/config.py`) → your file → CLI `--set` overrides.
-Overrides **replace** rather than merge, so `--set recipe.grouping='{"random":1.0}'` gives
-you exactly that mixture, not a merge with the base one.
+Load order is `DEFAULTS` (in `synthdoc/config.py`) → the `extends:` chain → your file →
+CLI `--set` overrides. Overrides **replace** rather than merge, so
+`--set recipe.grouping='{"random":1.0}'` gives you exactly that mixture, not a merge with
+the base one.
+
+### `extends:` and named corpora
+
+A corpus variant should be the lines that differ, not a copy that drifts:
+
+```yaml
+extends: base.yaml
+name: all_multiturn
+recipe:
+  doc_type: {multiturn_adversarial: 1.0}
+```
+
+- `name:` makes the run id stable, so the corpus lands in a predictable directory, is
+  catalogued under that name, and re-running resumes it instead of making a second copy.
+- **Inside `recipe:`, mixtures replace.** Merging would leave the parent's other document
+  types at their old weights, and an "all multiturn" corpus would silently not be one.
+  `grouping_params` is the exception and merges per strategy.
+- Outside `recipe:`, blocks deep-merge — `generation: {temperature: 0.4}` keeps the
+  parent's model.
+- Paths resolve relative to the extending file first; cycles are rejected.
+
+See `configs/corpora/` for the shipped variants.
 
 Validation runs before anything is generated and rejects: unknown plugin names, doc types
 and axes not declared in the prompt packs, malformed mixtures, a bad revision `context`,
@@ -131,9 +155,17 @@ failure mode you actually care about rather than a blend of all three.
 
 ## Specs
 
-Drop `<spec_id>.md` into `specs/` and reference it as `spec.id`. To use a spec that lives
-elsewhere in the repo, set `spec.path` instead — `base.yaml` does this to point at
-`docs/claude_constitution_principles.md` without copying it.
+Drop `<spec_id>.md` into `specs/` and reference it as `spec.id`. For a spec that lives
+elsewhere in the repo, add it to `specs/index.yaml`:
+
+```yaml
+specs:
+  claude_constitution_principles: docs/claude_constitution_principles.md
+```
+
+Prefer the index over setting `spec.path` in a config. Resolution by id alone is what
+lets `axis: spec.id` sweeps work — with `spec.path` pinned in the base config, changing
+only the id would keep loading the wrong file.
 
 The spec's content hash is recorded in every run manifest, and chunk text is part of
 `scenario_hash`, so editing a spec invalidates scenarios rather than silently reusing

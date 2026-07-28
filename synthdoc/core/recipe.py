@@ -205,4 +205,5 @@ class MixtureSampler:
                 doc_type=doc_type,
                 axes=axes,
                 seed=stream_rng(self.seed, i, "seed").randrange(2**31),
+                sample_index=i,
             )

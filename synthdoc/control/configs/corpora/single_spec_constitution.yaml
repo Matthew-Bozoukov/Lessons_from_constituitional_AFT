@@ -1,0 +1,19 @@
+# ABOUTME: A corpus about one specific model spec, at fine granularity for coverage.
+# ABOUTME: Run: uv run python -m synthdoc.cli run --config corpora/single_spec_constitution.yaml
+#
+# The template for "a corpus about a given model spec": set spec.id and give it a name.
+# Register new specs in control/specs/index.yaml or drop them in control/specs/.
+
+extends: base.yaml
+name: constitution_only
+
+spec:
+  id: claude_constitution_principles
+  chunker:
+    granularity: bullet
+    min_words: 8
+
+recipe:
+  # One chunk per document maximises per-chunk coverage of this one spec.
+  chunks_per_example:
+    1: 1.0

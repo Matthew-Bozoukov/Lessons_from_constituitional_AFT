@@ -3,12 +3,28 @@
 
 from __future__ import annotations
 
+import functools
 from dataclasses import dataclass
 from pathlib import Path
+
+import yaml
 
 from .hashing import text_hash
 
 SPECS_DIR = Path(__file__).resolve().parents[1] / "control" / "specs"
+# Maps spec_id -> path for specs that live outside control/specs/. Lets `spec.id`
+# alone identify a spec, which is what makes `axis: spec.id` sweeps clean.
+SPECS_INDEX = SPECS_DIR / "index.yaml"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+@functools.lru_cache(maxsize=1)
+def _index() -> dict[str, str]:
+    """Load the spec id -> path index, if present."""
+    if not SPECS_INDEX.exists():
+        return {}
+    data = yaml.safe_load(SPECS_INDEX.read_text()) or {}
+    return {str(k): str(v) for k, v in (data.get("specs") or {}).items()}
 
 
 @dataclass(frozen=True)
@@ -35,10 +51,11 @@ def load_spec(spec_id: str, path: str | None = None) -> SpecSource:
     """Load a spec by id, or from an explicit path.
 
     Args:
-        spec_id: Spec identifier. Without `path`, resolves to
-            control/specs/<spec_id>.md (or .txt).
-        path: Optional explicit file path, which lets a spec living elsewhere in
-            the repo be used without copying it in.
+        spec_id: Spec identifier. Without `path`, resolves against
+            control/specs/<spec_id>.md (or .txt), then control/specs/index.yaml.
+        path: Optional explicit file path. Prefer registering the spec in
+            index.yaml instead, so that `spec.id` alone identifies it and
+            `axis: spec.id` sweeps work without also overriding spec.path.
 
     Returns:
         A SpecSource.
@@ -48,8 +65,10 @@ def load_spec(spec_id: str, path: str | None = None) -> SpecSource:
     """
     if path:
         p = Path(path)
+        if not p.is_absolute() and not p.exists():
+            p = REPO_ROOT / p
         if not p.exists():
-            raise FileNotFoundError(f"spec.path does not exist: {p}")
+            raise FileNotFoundError(f"spec.path does not exist: {path}")
         return SpecSource(spec_id=spec_id, text=p.read_text(), path=str(p))
 
     for ext in (".md", ".txt"):
@@ -57,15 +76,26 @@ def load_spec(spec_id: str, path: str | None = None) -> SpecSource:
         if p.exists():
             return SpecSource(spec_id=spec_id, text=p.read_text(), path=str(p))
 
-    available = sorted(p.stem for p in SPECS_DIR.glob("*.*")) if SPECS_DIR.exists() else []
+    indexed = _index().get(spec_id)
+    if indexed:
+        p = Path(indexed)
+        if not p.is_absolute():
+            p = REPO_ROOT / p
+        if not p.exists():
+            raise FileNotFoundError(
+                f"control/specs/index.yaml maps {spec_id!r} to {indexed}, which does not exist"
+            )
+        return SpecSource(spec_id=spec_id, text=p.read_text(), path=str(p))
+
     raise FileNotFoundError(
-        f"No spec {spec_id!r} in {SPECS_DIR} (available: {available}). "
-        "Either add the file there or set spec.path in the config."
+        f"No spec {spec_id!r}. Available: {available_specs()}. Add the file to "
+        f"{SPECS_DIR}, register it in control/specs/index.yaml, or set spec.path."
     )
 
 
 def available_specs() -> list[str]:
-    """Return the spec ids present in control/specs/."""
-    if not SPECS_DIR.exists():
-        return []
-    return sorted({p.stem for p in SPECS_DIR.glob("*.*") if p.suffix in (".md", ".txt")})
+    """Return every spec id resolvable by id alone (files plus index entries)."""
+    ids = set(_index())
+    if SPECS_DIR.exists():
+        ids |= {p.stem for p in SPECS_DIR.glob("*.*") if p.suffix in (".md", ".txt")}
+    return sorted(ids)

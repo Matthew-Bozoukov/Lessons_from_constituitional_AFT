@@ -67,6 +67,8 @@ class CLI:
         if smoke:
             overrides.setdefault("llm.provider", "echo")
             overrides.setdefault("snapshots.backend", "local")
+            # A smoke run stays on disk so it can be inspected.
+            overrides.setdefault("snapshots.cleanup_local", False)
             n = n or 8
         cfg = config_mod.load_config(config, overrides)
         result = run_pipeline(cfg, n=n, run_id=run_id)
@@ -198,6 +200,72 @@ class CLI:
             + "-" * 72
         )
         return head + "\n" + render_document(doc.turns)
+
+    def corpora(
+        self,
+        org: str | None = None,
+        output_dir: str = "output/synthdoc",
+        local: bool = False,
+    ) -> str:
+        """List saved corpora, from HuggingFace by default.
+
+        HuggingFace is the durable home for corpora; the local listing only shows
+        runs that still have a working directory on this machine.
+
+        Args:
+            org: HF namespace to list. Defaults to the org in control/configs/base.yaml.
+            output_dir: Local run directory, used with --local.
+            local: List the local catalogue instead of the Hub.
+
+        Returns:
+            An aligned table of saved corpora.
+        """
+        from .corpora import format_index, list_hf, load_index
+
+        if local:
+            return format_index(load_index(output_dir))
+        if org is None:
+            try:
+                org = (config_mod.load_config("base.yaml").get("snapshots") or {}).get("org")
+            except Exception:
+                org = None
+        if not org:
+            return (
+                "No HF org configured. Pass --org <namespace>, set snapshots.org in "
+                "base.yaml, or use --local to list this machine's run directories."
+            )
+        return format_index(list_hf(org))
+
+    def compare(self, a: str, b: str, out: str | None = None) -> str:
+        """Compare two saved corpora and report the effect size.
+
+        Reports paired per-scenario deltas where the corpora share scenarios, which
+        removes the variance from which scenarios were sampled.
+
+        Args:
+            a: Baseline corpus: a local run directory, `hf://org/repo`, or `org/repo`.
+            b: Corpus to compare against it, in the same forms.
+            out: Optional path to write the markdown report to.
+
+        Returns:
+            The comparison as markdown.
+        """
+        from pathlib import Path as _Path
+
+        from .corpora import compare as compare_corpora
+        from .corpora import format_comparison
+
+        result = compare_corpora(a, b, _Path(a).name, _Path(b).name)
+        text = format_comparison(result)
+        if out:
+            _Path(out).write_text(text)
+        return text
+
+    def axes(self) -> str:
+        """List every ablatable axis with the exact sweep key to vary it."""
+        from .ablations import catalog_text
+
+        return catalog_text()
 
     def registry(self) -> str:
         """List every registered plugin and every declared prompt entry."""

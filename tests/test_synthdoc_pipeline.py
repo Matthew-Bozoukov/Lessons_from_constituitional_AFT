@@ -218,7 +218,7 @@ def test_sweep_over_a_post_sampling_axis_is_fully_paired(tmp_path):
     assert Path(result.report_path).exists()
 
 
-def test_sweep_over_a_sampler_axis_reports_partial_pairing(tmp_path):
+def test_sweep_over_a_sampler_axis_falls_back_to_index_pairing(tmp_path):
     sweep_cfg = {
         "base": "smoke.yaml",
         "axis": "recipe.grouping",
@@ -230,8 +230,26 @@ def test_sweep_over_a_sampler_axis_reports_partial_pairing(tmp_path):
         ],
     }
     result = run_sweep(sweep_cfg, n=6, output_dir=tmp_path / "sweeps", dry_run=True)
+    # No scenario_hash can match when the recipe itself changed, but example i still
+    # differs from its counterpart only in the swept axis.
     assert result.pairing["paired"] is False
-    assert "partially paired" in result.pairing["note"]
+    assert result.pairing["index_paired"] is True
+    assert result.pairing["join_key"] == "sample_index"
+    assert "index-paired" in result.pairing["note"]
+
+
+def test_scaling_sweep_is_reported_as_nested(tmp_path):
+    """Smaller arms are subsets of the largest, which is not the same as unpaired."""
+    sweep_cfg = {
+        "base": "smoke.yaml",
+        "axis": "recipe.n",
+        "id": "nested_sweep",
+        "arms": [{"name": "small", "value": 4}, {"name": "large", "value": 12}],
+    }
+    result = run_sweep(sweep_cfg, output_dir=tmp_path / "sweeps", dry_run=True)
+    assert result.pairing["nested"] is True
+    assert result.pairing["join_key"] == "scenario_hash"
+    assert result.pairing["n_shared_scenarios"] == 4
 
 
 def test_sweep_runs_every_arm_and_writes_a_report(tmp_path):

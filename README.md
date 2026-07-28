@@ -243,15 +243,22 @@ diff against the next one.
 
 ```bash
 uv run python -m synthdoc.cli run --config base.yaml --smoke   # offline, free, no API key
-uv run python -m synthdoc.cli run --config base.yaml --n 2000
+uv run python -m synthdoc.cli run --config corpora/all_multiturn.yaml
 uv run python -m synthdoc.cli sweep --config revision_dose.yaml --n 300
-uv run python -m synthdoc.cli registry                          # what's registered/declared
-uv run pytest tests/test_synthdoc_*.py -q                       # 103 tests, offline, ~3s
+uv run python -m synthdoc.cli axes                              # every ablatable axis
+uv run python -m synthdoc.cli corpora                           # every saved corpus, from HF
+uv run python -m synthdoc.cli compare --a <corpus> --b <corpus> # paired effect size
+uv run pytest tests/test_synthdoc_*.py -q                       # 132 tests, offline, ~4s
 ```
 
-Everything you tune lives in `synthdoc/control/`: run configs in `control/configs/`, and every
+Everything you tune lives in `synthdoc/control/`: run configs in `control/configs/`, named corpus
+variants in `control/configs/corpora/`, ablation sweeps in `control/configs/sweeps/`, and every
 string a model ever sees in `control/prompts/`. Adding a document type, revision strategy, or axis
 value is a YAML entry plus a config line — not a Python change.
+
+**Corpora live on HuggingFace** (`LASR-Callum/synthdoc-<name>`, one split per stage), never in git.
+With `snapshots.cleanup_local: true` the local copies are deleted once every upload is verified —
+only files confirmed pushed, and never if a push failed.
 
 ## Repo layout
 - `synthdoc/` self-contained synthetic-document pipeline (see above); `synthdoc/control/` its config + prompts.
