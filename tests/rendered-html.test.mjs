@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 async function render(pathname = "/") {
@@ -47,6 +48,24 @@ test("server-renders the JSONL dialogue inspector", async () => {
   assert.match(html, /Reasons-rich constitutional dialogue mixture/);
   assert.match(html, /Conversation preview/);
   assert.match(html, /generated-datasets/);
+});
+
+test("sample JSONL includes genuine multi-turn conversations", async () => {
+  const chunkUrl = new URL(
+    "../public/generated-datasets/reasons-rich-aft-v1/chunk-000.json",
+    import.meta.url,
+  );
+  const records = JSON.parse(await readFile(chunkUrl, "utf8"));
+  const multiTurnRecords = records.filter(
+    (record) =>
+      record.messages.filter((message) => message.role === "user").length >= 2 &&
+      record.messages.filter((message) => message.role === "assistant").length >= 2,
+  );
+
+  assert.ok(
+    multiTurnRecords.length >= 3,
+    `expected at least 3 multi-turn records, found ${multiTurnRecords.length}`,
+  );
 });
 
 test("server-renders the Petri audit dossier", async () => {

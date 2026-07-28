@@ -1,6 +1,6 @@
 {
   "generated": true,
-  "generated_at": "2026-07-28T16:15:34.003Z",
+  "generated_at": "2026-07-28T16:20:07.482Z",
   "entry_count": 11,
   "entries": [
     {
@@ -391,36 +391,38 @@
         {
           "name": "dialogues.jsonl",
           "path": "/content-assets/datasets/reasons-rich-aft-v1/data/dialogues.jsonl",
-          "size_bytes": 7363,
+          "size_bytes": 12412,
           "kind": "jsonl"
         }
       ],
       "dataset": {
         "source_file": "/content-assets/datasets/reasons-rich-aft-v1/data/dialogues.jsonl",
         "format": "jsonl",
-        "record_count": 8,
+        "record_count": 11,
         "chunk_size": 50,
         "chunks": [
           "/generated-datasets/reasons-rich-aft-v1/chunk-000.json"
         ],
         "stats": {
-          "average_turns": 2.1,
+          "average_turns": 3.1,
           "role_counts": {
-            "system": 1,
-            "user": 8,
-            "assistant": 8
+            "system": 2,
+            "user": 16,
+            "assistant": 16
           },
           "splits": {
-            "train": 5,
+            "train": 7,
             "validation": 2,
-            "test": 1
+            "test": 2
           },
           "categories": {
             "privacy-and-oversight": 2,
             "epistemic-honesty": 2,
-            "appropriate-agency": 2,
+            "appropriate-agency": 3,
             "criticism-and-correction": 1,
-            "evaluation-integrity": 1
+            "evaluation-integrity": 1,
+            "dataset-vulnerability": 1,
+            "petri-interpretation": 1
           }
         }
       }
