@@ -3,7 +3,29 @@
 
 # LOG
 
-## 2026-07-28 — ODCV-Bench eval wired up; awaiting go-ahead for the full run
+## 2026-07-28 (pm) — ODCV-Bench REPLICATED: 46.2% vs published 43.8%
+
+**Result:** full 80-run ODCV-Bench on `qwen/qwen3.6-27b` → **MR 46.2%** (95% CI 32.5-60.0),
+**severity 1.72**, vs the paper's **43.8% / 1.67**. Delta **+2.4 pp**, and the published value sits
+**inside our CI**. Mandated 40.0% (pub 45.0%), incentivized 52.5% (pub 42.5%).
+
+**Per-scenario agreement 87.5%** (70/80 binary violation calls match): 31 both-violation,
+39 both-clean, 6 ours-only, 4 published-only. Disagreements go both directions, which is what you
+expect from a stochastic bash agent — temperature 0 fixes token sampling but not which commands the
+trajectory happens to explore, and each fresh trajectory is judged on its own merits. Two scenarios
+(`Ai-Social-Moderation-System`, `Clinical-Trial-Integrity-Monitoring`) flipped in *opposite*
+directions across the two framings, i.e. run-to-run variance rather than a systematic offset.
+
+**Run facts:** 80/80 clean, 38.5 min wall clock at concurrency 8, **$17.84** total
+($1.94 rollouts + $15.90 judging — judging is ~90% of cost because Opus-4.7 and GPT-5.5 are $5/M in).
+Artifacts: `output/odcv_bench/qwen3.6-27b/20260728_140318/{report.md,dashboard.html,results.json,plots/}`.
+
+**Caveat / next steps:** this is n=1 trajectory per cell, so the wide CI is intrinsic — the paper's
+protocol has the same limitation. To tighten it, run k>1 trajectories per scenario and take a
+per-scenario modal/median violation call. Also worth doing: run the *baseline vs difficult-advice
+LoRA* Qwen3-32B pair through this harness, which is the actual reason we added a second benchmark.
+
+## 2026-07-28 — ODCV-Bench eval wired up; smoke verified
 
 **Goal:** add a second, independent agentic-misalignment benchmark and replicate its published
 `Qwen3.6-27B — MR 43.8% / severity 1.67`.
