@@ -1,0 +1,3 @@
+{"event":"run_started","run_id":"sft-reasons-seed-1","sample":true}
+{"event":"checkpoint_saved","checkpoint_id":"post-sft-reasons-v1","step":800}
+{"event":"run_completed","runtime_minutes":38,"cost_usd":12.4}

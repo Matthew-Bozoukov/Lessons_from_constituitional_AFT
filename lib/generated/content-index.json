@@ -1,0 +1,457 @@
+{
+  "generated": true,
+  "generated_at": "2026-07-28T15:16:23.889Z",
+  "entry_count": 9,
+  "entries": [
+    {
+      "title": "Knowledge uplift is not yet behavioral internalization",
+      "date": "2026-07-25",
+      "summary": "Provisional interpretation separating recall, behavior, and OOD robustness.",
+      "status": "provisional",
+      "models": [
+        "qwen3-32b"
+      ],
+      "related": [
+        "evals:2026-07-20-sft-reasons-seed-1",
+        "logs:2026-07-22-pattern-audit"
+      ],
+      "tags": [
+        "finding",
+        "generalization",
+        "ood",
+        "vulnerability-check",
+        "demo-data"
+      ],
+      "id": "findings:2026-07-25-knowledge-is-not-internalization",
+      "slug": "2026-07-25-knowledge-is-not-internalization",
+      "type": "findings",
+      "metrics": {},
+      "body": "\n# Knowledge uplift is not yet behavioral internalization\n\n> [!NOTE]\n> Fictional demonstration finding. It shows how the log should express a\n> qualified conclusion with linked evidence and counterevidence.\n\n## Claim\n\nThe reasons-rich SFT branch shows a consistent improvement on the compatible\nconstitution-knowledge metric. The OOD behavioral battery also improves, but\nthe evidence is not yet sufficient to attribute that improvement specifically\nto learning the underlying constitutional reasons.\n\n![Synthetic corpus composition used in the demonstration](/content-assets/findings/2026-07-25-knowledge-is-not-internalization/assets/corpus-composition.png)\n\n## Why the distinction matters\n\nLet $K$ denote stated knowledge of the constitution and $B$ denote aligned\nbehavior under distribution shift. The research target is not merely\n$P(K)$; it is evidence that\n\n$$\nP(B \\mid K,\\, \\text{OOD pressure}) >\nP(B \\mid \\neg K,\\, \\text{OOD pressure}).\n$$\n\nEven that inequality would not establish a causal mechanism without an\nappropriate ablation.\n\n## Supporting observations\n\n1. All three SFT seeds improve the compatible agentic-misalignment metric.\n2. Capability retention is approximately flat in the demonstration.\n3. The behavioral evaluation differs from training in turn structure, agency,\n   and tool use.\n\n## Counterevidence and vulnerabilities\n\n- The synthetic corpus contains detectable rhetorical regularities.\n- The action-only ablation has not run.\n- The bounded-DPO branch has only one seed.\n- Eval-awareness and grader sensitivity remain unmeasured.\n- The “why” content is confounded with an additional critique/rewrite pass.\n\nThis remains a **provisional** finding.\n\n## Related work\n\nThe structure follows the distinction between constitutional knowledge and\ndownstream behavior discussed in [Teaching Claude why](https://alignment.anthropic.com/2026/teaching-claude-why/), and the focus on OOD behavioral testing and synthetic-data patterns in [Synthetic document finetuning for instilling positive traits](https://www.alignmentforum.org/posts/GTYJRLhqztxKF2v5R/synthetic-document-finetuning-for-instilling-positive-traits).[^msm]\n\n[^msm]: [Model Spec Midtraining](https://arxiv.org/abs/2605.02087) motivates recording the specificity of guidance and whether examples explain the values underlying behavioral rules.\n",
+      "source_path": "content/findings/2026-07-25-knowledge-is-not-internalization/index.md",
+      "assets": [
+        {
+          "name": "corpus-composition.png",
+          "path": "/content-assets/findings/2026-07-25-knowledge-is-not-internalization/assets/corpus-composition.png",
+          "size_bytes": 78011,
+          "kind": "png"
+        }
+      ]
+    },
+    {
+      "title": "Bounded-DPO extension safety battery — seed 1",
+      "date": "2026-07-24",
+      "summary": "Exploratory bounded-DPO branch following reasons-rich SFT.",
+      "model_id": "qwen3-32b",
+      "models": [
+        "qwen3-32b"
+      ],
+      "checkpoint_id": "post-bdpo-reasons-v1",
+      "parent_checkpoint_id": "post-sft-reasons-v1",
+      "training_stage": "bounded-dpo",
+      "training_method": "bdpo",
+      "run_id": "bdpo-reasons-seed-1",
+      "seed": 1,
+      "eval_suite": "sfc-safety-battery",
+      "eval_version": "v1",
+      "dataset_version": "reasons-v1",
+      "status": "needs-review",
+      "tags": [
+        "bounded-dpo",
+        "constitution",
+        "agentic-misalignment",
+        "ood",
+        "demo-data"
+      ],
+      "metrics": {
+        "agentic_misalignment_rate": {
+          "value": 0.09,
+          "unit": "proportion",
+          "lower_is_better": true
+        },
+        "constitution_adherence": {
+          "value": 0.77,
+          "unit": "proportion",
+          "lower_is_better": false
+        },
+        "capability_retention": {
+          "value": 0.8,
+          "unit": "proportion",
+          "lower_is_better": false
+        },
+        "cost_usd": {
+          "value": 18.2,
+          "unit": "USD"
+        },
+        "runtime_minutes": {
+          "value": 57,
+          "unit": "minutes"
+        }
+      },
+      "id": "evals:2026-07-24-bdpo-seed-1",
+      "slug": "2026-07-24-bdpo-seed-1",
+      "type": "evals",
+      "body": "\n# Bounded-DPO extension safety battery — seed 1\n\n> [!WARNING]\n> One fictional seed is insufficient to distinguish an intervention effect from\n> noise. Status remains `needs-review`.\n\nThe exploratory branch is directionally favorable on the alignment metrics but\nslightly worse on capability retention and materially more expensive than SFT.\nNo recommendation should be made until the missing seeds and stability checks\nare complete.\n\n",
+      "source_path": "content/evals/2026-07-24-bdpo-seed-1/index.md",
+      "assets": []
+    },
+    {
+      "title": "Synthetic corpus superficial-pattern audit",
+      "date": "2026-07-22",
+      "summary": "Scan–cluster–autorate notebook for rhetorical artifacts in the reasons-rich corpus.",
+      "model_id": "qwen3-32b",
+      "checkpoint_id": "post-sft-reasons-v1",
+      "training_stage": "sft",
+      "run_id": "pattern-audit-reasons-v1",
+      "dataset_version": "reasons-rich-v1",
+      "status": "needs-review",
+      "tags": [
+        "vulnerability-check",
+        "data-quality",
+        "pattern-audit",
+        "ood"
+      ],
+      "id": "logs:2026-07-22-pattern-audit",
+      "slug": "2026-07-22-pattern-audit",
+      "type": "logs",
+      "models": [
+        "qwen3-32b"
+      ],
+      "metrics": {},
+      "body": "\n# Synthetic corpus superficial-pattern audit\n\n> [!WARNING]\n> Fictional demonstration data. Frequencies below exist only to test the UI.\n\nWe used a three-pass **scan → cluster → autorate** procedure to look for\nstructural patterns that individual examples made hard to notice.\n\n| Candidate pattern | Broad frequency | Strict frequency | Disposition |\n| --- | ---: | ---: | --- |\n| “Key consideration” opener | 18% | 11% | Filter and regenerate |\n| Symmetrical three-part rationale | 24% | 9% | Monitor |\n| Unnecessary emotional validation | 7% | 2% | Accept |\n| Conversion-arc narrative | 5% | 4% | Exclude |\n\n## Working interpretation\n\nThe corpus may teach stylistic regularities independently of the target\nconstitutional behavior. A stable downstream safety score therefore does not\nrule out an unintended learned pattern. This needs separate auditing.\n\n> [!CAUTION]\n> Do not interpret low pattern frequency as proof that the training signal is\n> clean. The autoraters themselves need calibration.\n\n",
+      "source_path": "content/logs/2026-07-22-pattern-audit/index.md",
+      "assets": []
+    },
+    {
+      "title": "Reasons-rich SFT safety battery — seed 1",
+      "date": "2026-07-20",
+      "summary": "First compatible evaluation of the constitution-reasons SFT checkpoint.",
+      "model_id": "qwen3-32b",
+      "models": [
+        "qwen3-32b"
+      ],
+      "checkpoint_id": "post-sft-reasons-v1",
+      "parent_checkpoint_id": "qwen3-32b-base",
+      "training_stage": "sft",
+      "training_method": "lora",
+      "run_id": "sft-reasons-seed-1",
+      "seed": 1,
+      "eval_suite": "sfc-safety-battery",
+      "eval_version": "v1",
+      "dataset_version": "reasons-v1",
+      "git_commit": "abc123",
+      "status": "complete",
+      "tags": [
+        "reasons-rich",
+        "constitution",
+        "agentic-misalignment",
+        "ood",
+        "demo-data"
+      ],
+      "metrics": {
+        "agentic_misalignment_rate": {
+          "value": 0.13,
+          "unit": "proportion",
+          "lower_is_better": true
+        },
+        "constitution_adherence": {
+          "value": 0.72,
+          "unit": "proportion",
+          "lower_is_better": false
+        },
+        "capability_retention": {
+          "value": 0.82,
+          "unit": "proportion",
+          "lower_is_better": false
+        },
+        "cost_usd": {
+          "value": 12.4,
+          "unit": "USD"
+        },
+        "runtime_minutes": {
+          "value": 38,
+          "unit": "minutes"
+        }
+      },
+      "id": "evals:2026-07-20-sft-reasons-seed-1",
+      "slug": "2026-07-20-sft-reasons-seed-1",
+      "type": "evals",
+      "body": "\n# Reasons-rich SFT safety battery — seed 1\n\n> [!NOTE]\n> Fictional demonstration result. It illustrates the intended evidence\n> structure; it is not a claim about Qwen3-32B.\n\n## Summary\n\nThe SFT checkpoint improved both the held-out agentic-misalignment rate and\nconstitution adherence relative to the synthetic baseline. Capability retention\nremained within the demo run’s tolerance.\n\n![Comparison of synthetic demo metrics across training stages](/content-assets/evals/2026-07-20-sft-reasons-seed-1/assets/alignment-stage-comparison.png)\n\n## Evaluation shifts\n\n| Axis | Training distribution | Evaluation distribution |\n| --- | --- | --- |\n| Turn structure | Single-turn | Multi-turn |\n| Actor | User seeks advice | Model has direct agency |\n| Pressure | Moderate ambiguity | Goal conflict and oversight pressure |\n| Tools | No tool calls | Email and file tools |\n\n## Interpretation\n\nThe directional result is consistent with generalization, but does not isolate\nwhether the improvement comes from the stated reasons, dataset quality, or the\nbaseline-chat mixture. The next ablation removes explicit rationales while\nholding scenarios fixed.\n\nThe aggregate misalignment estimate is\n\n$$\n\\hat{p} = \\frac{1}{N}\\sum_{i=1}^{N}\\mathbb{1}\n\\left[\\text{misaligned action}_i\\right].\n$$\n\nSee the [training log](/entry/2026-07-18-qwen3-sft-reasons-seed-1) and the\n[pattern audit](/entry/2026-07-22-pattern-audit).\n\n",
+      "source_path": "content/evals/2026-07-20-sft-reasons-seed-1/index.md",
+      "assets": [
+        {
+          "name": "alignment-stage-comparison.png",
+          "path": "/content-assets/evals/2026-07-20-sft-reasons-seed-1/assets/alignment-stage-comparison.png",
+          "size_bytes": 76401,
+          "kind": "png"
+        }
+      ]
+    },
+    {
+      "title": "Reasons-rich SFT safety battery — seed 2",
+      "date": "2026-07-20",
+      "summary": "Second seed for the reasons-rich LoRA checkpoint.",
+      "model_id": "qwen3-32b",
+      "models": [
+        "qwen3-32b"
+      ],
+      "checkpoint_id": "post-sft-reasons-v1-seed-2",
+      "parent_checkpoint_id": "qwen3-32b-base",
+      "training_stage": "sft",
+      "run_id": "sft-reasons-seed-2",
+      "seed": 2,
+      "eval_suite": "sfc-safety-battery",
+      "eval_version": "v1",
+      "dataset_version": "reasons-v1",
+      "status": "complete",
+      "tags": [
+        "reasons-rich",
+        "constitution",
+        "agentic-misalignment",
+        "ood",
+        "demo-data"
+      ],
+      "metrics": {
+        "agentic_misalignment_rate": {
+          "value": 0.1,
+          "unit": "proportion",
+          "lower_is_better": true
+        },
+        "constitution_adherence": {
+          "value": 0.75,
+          "unit": "proportion",
+          "lower_is_better": false
+        },
+        "capability_retention": {
+          "value": 0.81,
+          "unit": "proportion",
+          "lower_is_better": false
+        },
+        "cost_usd": {
+          "value": 12.1,
+          "unit": "USD"
+        },
+        "runtime_minutes": {
+          "value": 37,
+          "unit": "minutes"
+        }
+      },
+      "id": "evals:2026-07-20-sft-reasons-seed-2",
+      "slug": "2026-07-20-sft-reasons-seed-2",
+      "type": "evals",
+      "body": "\n# Reasons-rich SFT safety battery — seed 2\n\nFictional compatible replicate. The multi-turn evaluator used the same frozen\nscenario set and grader version as seed 1.\n\n",
+      "source_path": "content/evals/2026-07-20-sft-reasons-seed-2/index.md",
+      "assets": []
+    },
+    {
+      "title": "Reasons-rich SFT safety battery — seed 3",
+      "date": "2026-07-20",
+      "summary": "Third seed for stage-level uncertainty.",
+      "model_id": "qwen3-32b",
+      "models": [
+        "qwen3-32b"
+      ],
+      "checkpoint_id": "post-sft-reasons-v1-seed-3",
+      "parent_checkpoint_id": "qwen3-32b-base",
+      "training_stage": "sft",
+      "run_id": "sft-reasons-seed-3",
+      "seed": 3,
+      "eval_suite": "sfc-safety-battery",
+      "eval_version": "v1",
+      "dataset_version": "reasons-v1",
+      "status": "complete",
+      "tags": [
+        "reasons-rich",
+        "constitution",
+        "agentic-misalignment",
+        "ood",
+        "demo-data"
+      ],
+      "metrics": {
+        "agentic_misalignment_rate": {
+          "value": 0.14,
+          "unit": "proportion",
+          "lower_is_better": true
+        },
+        "constitution_adherence": {
+          "value": 0.73,
+          "unit": "proportion",
+          "lower_is_better": false
+        },
+        "capability_retention": {
+          "value": 0.82,
+          "unit": "proportion",
+          "lower_is_better": false
+        },
+        "cost_usd": {
+          "value": 12.5,
+          "unit": "USD"
+        },
+        "runtime_minutes": {
+          "value": 39,
+          "unit": "minutes"
+        }
+      },
+      "id": "evals:2026-07-20-sft-reasons-seed-3",
+      "slug": "2026-07-20-sft-reasons-seed-3",
+      "type": "evals",
+      "body": "\n# Reasons-rich SFT safety battery — seed 3\n\nFictional compatible replicate. This seed is intentionally less favorable than\nseed 2 so the interface does not imply false precision.\n\n",
+      "source_path": "content/evals/2026-07-20-sft-reasons-seed-3/index.md",
+      "assets": []
+    },
+    {
+      "title": "Baseline safety battery — Qwen3-32B seed 1",
+      "date": "2026-07-19",
+      "summary": "Baseline for compatible stage comparisons.",
+      "model_id": "qwen3-32b",
+      "models": [
+        "qwen3-32b"
+      ],
+      "checkpoint_id": "qwen3-32b-base",
+      "training_stage": "base",
+      "run_id": "baseline-seed-1",
+      "seed": 1,
+      "eval_suite": "sfc-safety-battery",
+      "eval_version": "v1",
+      "dataset_version": "reasons-v1",
+      "git_commit": "abc123",
+      "status": "complete",
+      "tags": [
+        "baseline",
+        "agentic-misalignment",
+        "constitution",
+        "ood",
+        "demo-data"
+      ],
+      "metrics": {
+        "agentic_misalignment_rate": {
+          "value": 0.31,
+          "unit": "proportion",
+          "lower_is_better": true
+        },
+        "constitution_adherence": {
+          "value": 0.49,
+          "unit": "proportion",
+          "lower_is_better": false
+        },
+        "capability_retention": {
+          "value": 0.83,
+          "unit": "proportion",
+          "lower_is_better": false
+        },
+        "cost_usd": {
+          "value": 8.6,
+          "unit": "USD"
+        },
+        "runtime_minutes": {
+          "value": 24,
+          "unit": "minutes"
+        }
+      },
+      "id": "evals:2026-07-19-base-seed-1",
+      "slug": "2026-07-19-base-seed-1",
+      "type": "evals",
+      "body": "\n# Baseline safety battery — Qwen3-32B seed 1\n\n> [!NOTE]\n> Fictional demonstration result. All metrics are synthetic.\n\nThis is the base-checkpoint reference for the compatible `v1 / reasons-v1`\ncomparison group. No training intervention was applied.\n\n",
+      "source_path": "content/evals/2026-07-19-base-seed-1/index.md",
+      "assets": []
+    },
+    {
+      "title": "Baseline safety battery — Qwen3-32B seed 2",
+      "date": "2026-07-19",
+      "summary": "Second baseline sample for uncertainty display.",
+      "model_id": "qwen3-32b",
+      "models": [
+        "qwen3-32b"
+      ],
+      "checkpoint_id": "qwen3-32b-base",
+      "training_stage": "base",
+      "run_id": "baseline-seed-2",
+      "seed": 2,
+      "eval_suite": "sfc-safety-battery",
+      "eval_version": "v1",
+      "dataset_version": "reasons-v1",
+      "status": "complete",
+      "tags": [
+        "baseline",
+        "agentic-misalignment",
+        "constitution",
+        "ood",
+        "demo-data"
+      ],
+      "metrics": {
+        "agentic_misalignment_rate": {
+          "value": 0.29,
+          "unit": "proportion",
+          "lower_is_better": true
+        },
+        "constitution_adherence": {
+          "value": 0.51,
+          "unit": "proportion",
+          "lower_is_better": false
+        },
+        "capability_retention": {
+          "value": 0.84,
+          "unit": "proportion",
+          "lower_is_better": false
+        },
+        "cost_usd": {
+          "value": 8.4,
+          "unit": "USD"
+        },
+        "runtime_minutes": {
+          "value": 23,
+          "unit": "minutes"
+        }
+      },
+      "id": "evals:2026-07-19-base-seed-2",
+      "slug": "2026-07-19-base-seed-2",
+      "type": "evals",
+      "body": "\n# Baseline safety battery — Qwen3-32B seed 2\n\nFictional demonstration result used to show individual-seed points and stage\naggregation.\n\n",
+      "source_path": "content/evals/2026-07-19-base-seed-2/index.md",
+      "assets": []
+    },
+    {
+      "title": "Qwen3-32B reasons-rich LoRA SFT — seed 1",
+      "date": "2026-07-18",
+      "summary": "Readable training notebook for the first constitution-reasons LoRA run.",
+      "model_id": "qwen3-32b",
+      "checkpoint_id": "post-sft-reasons-v1",
+      "parent_checkpoint_id": "qwen3-32b-base",
+      "training_stage": "sft",
+      "training_method": "lora",
+      "run_id": "sft-reasons-seed-1",
+      "seed": 1,
+      "dataset_version": "reasons-rich-v1",
+      "git_commit": "abc123",
+      "status": "complete",
+      "tags": [
+        "reasons-rich",
+        "constitution",
+        "lora",
+        "demonstration-data"
+      ],
+      "id": "logs:2026-07-18-qwen3-sft-reasons-seed-1",
+      "slug": "2026-07-18-qwen3-sft-reasons-seed-1",
+      "type": "logs",
+      "models": [
+        "qwen3-32b"
+      ],
+      "metrics": {},
+      "body": "\n# Qwen3-32B reasons-rich LoRA SFT — seed 1\n\n> [!NOTE]\n> **Demonstration record.** This page is fictional sample data used to exercise\n> the research-log interface. It is not an empirical claim.\n\n## Aim\n\nTest whether SFT examples that include a concise, user-visible explanation of\nthe constitutional reason for an action generalize better than action-only\ndemonstrations.\n\nThe working distinction is:\n\n$$\n\\text{desired action} \\neq \\text{internalized decision rule}\n$$\n\nWe therefore track both direct constitution adherence and performance on\nheld-out agentic scenarios.\n\n## Recipe\n\n| Parameter | Value |\n| --- | --- |\n| Base checkpoint | `qwen3-32b-base` |\n| Adapter | LoRA, rank 64 |\n| Synthetic / baseline mix | 35% / 65% |\n| Train tokens | 3.2M |\n| Learning rate | $1.5 \\times 10^{-5}$ |\n| Seed | `1` |\n\nThe synthetic data was generated from small constitution slices. Each candidate\nresponse was independently critiqued and rewritten for naturalness, explicit\ntrade-offs, and non-performative reasoning.\n\n## Observations\n\n- Loss was stable after the warmup.\n- The first generation batch overused “the key consideration is…”.\n- A pattern scan flagged that phrase in 18% of synthetic responses.\n- We filtered the affected examples before the final epoch.\n- Tool-use spot checks did not show an obvious regression.\n\n## Artifacts\n\n- [Trainer tail (small readable sample)](/content-assets/logs/2026-07-18-qwen3-sft-reasons-seed-1/artifacts/trainer-tail.log)\n- [Machine event stream](/content-assets/logs/2026-07-18-qwen3-sft-reasons-seed-1/artifacts/run-events.jsonl)\n- [Related eval result](/entry/2026-07-20-sft-reasons-seed-1)\n\n## Next\n\nRun two additional seeds and add adversarial multi-turn evaluation. The\nsingle-turn constitution score is not sufficient evidence of OOD\ninternalization.[^why]\n\n[^why]: See [Teaching Claude why](https://alignment.anthropic.com/2026/teaching-claude-why/) for the motivating distinction between demonstrating desired actions and teaching the underlying principles.\n\n",
+      "source_path": "content/logs/2026-07-18-qwen3-sft-reasons-seed-1/index.md",
+      "assets": [
+        {
+          "name": "run-events.jsonl",
+          "path": "/content-assets/logs/2026-07-18-qwen3-sft-reasons-seed-1/artifacts/run-events.jsonl",
+          "size_bytes": 209,
+          "kind": "jsonl"
+        },
+        {
+          "name": "trainer-tail.log",
+          "path": "/content-assets/logs/2026-07-18-qwen3-sft-reasons-seed-1/artifacts/trainer-tail.log",
+          "size_bytes": 302,
+          "kind": "log"
+        }
+      ]
+    }
+  ]
+}

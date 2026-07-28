@@ -1,0 +1,46 @@
+import Link from "next/link";
+import { ArrowUpRight, Beaker, FileText, FlaskConical } from "lucide-react";
+import { ResearchEntry, humanize } from "@/lib/content";
+
+const icons = {
+  logs: FlaskConical,
+  evals: Beaker,
+  findings: FileText,
+};
+
+export function EntryCard({
+  entry,
+  compact = false,
+}: {
+  entry: ResearchEntry;
+  compact?: boolean;
+}) {
+  const Icon = icons[entry.type];
+  return (
+    <Link
+      className={compact ? "entry-card compact" : "entry-card"}
+      href={`/entry/${entry.slug}`}
+    >
+      <div className="entry-card-top">
+        <span className={`type-chip ${entry.type}`}>
+          <Icon size={13} />
+          {humanize(entry.type)}
+        </span>
+        <span className={`status status-${entry.status}`}>{humanize(entry.status)}</span>
+      </div>
+      <div>
+        <h3>{entry.title}</h3>
+        {entry.summary && <p>{entry.summary}</p>}
+      </div>
+      <div className="entry-card-bottom">
+        <div className="entry-meta">
+          <time dateTime={entry.date}>{entry.date}</time>
+          {entry.model_id && <code>{entry.model_id}</code>}
+          {entry.training_stage && <code>{entry.training_stage}</code>}
+        </div>
+        <ArrowUpRight size={16} aria-hidden="true" />
+      </div>
+    </Link>
+  );
+}
+
