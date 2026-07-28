@@ -131,3 +131,56 @@ credentials): GPU spend $40.00, wall clock 36 h, idle shutdown 30 min,
 Anthropic spend $120.00.
 
 ---
+
+## Phase 2 - SSH key, provider comparison, provider selection
+
+**Status:** complete
+**Date:** 2026-07-28
+
+### SSH key resolved
+
+The user was asked about the missing `MSM_SSH_PRIVATE_KEY` file and approved
+generating a keypair at the configured path. `scripts/remote/New-AuditSshKey.ps1`
+created an ed25519 keypair there (no passphrase, required for unattended tunnel
+reconnection), hardened file permissions with `icacls`, and registered **only
+the public key** with the RunPod account. The account previously held zero
+public keys, so nothing was displaced; the script appends rather than replaces
+in any case, and refuses to overwrite an existing private key.
+
+Fingerprint `SHA256:xeIHO4TG7/ZrXPhYXSoRCbxIQPiDsXNeX62mAnP5AJI`. Evidence:
+`evidence/credentials/ssh-key-provisioning.md`.
+
+Two PowerShell 5.1 issues were fixed along the way: `$using:` is invalid in a
+scriptblock invoked with `&`, and 5.1 strips empty-string arguments to native
+executables, so `ssh-keygen -N ""` is routed through `cmd.exe`. `Set-Acl` with
+inheritance protection needs `SeSecurityPrivilege`; `icacls` does not.
+
+### Provider decision
+
+Full analysis: `docs/01-provider-comparison.md`. Raw API responses:
+`evidence/provider/`.
+
+The decision was constrained by account state before price mattered. The
+**Vast.ai account holds $0.00** with `has_billing: false` and `can_pay: false`,
+so no Vast offer is rentable at any price. **RunPod holds $108.11**, well above
+the $40 cap, with 0 active pods.
+
+**Selected: RunPod Secure Cloud, NVIDIA A100 80GB PCIe, $1.19/h on-demand.**
+Estimated ~14.9 h for ~$17.75 against the $40 cap.
+
+The user offered mid-run to fund Vast.ai. Quantified and advised against it: the
+single qualifying Vast A100 SXM at $1.0427/h is 14.1% cheaper, worth about
+**$2.21** across the expected run, against a non-refundable deposit and exposure
+to a single host. Two queries eight minutes apart both returned exactly one
+qualifying A100; the next cheapest qualifying Vast offer is $1.7363/h, 46% more
+expensive than the selected RunPod option. This is precisely the case the stated
+decision rule covers: use RunPod Secure Cloud when the saving is too small to
+justify host variance.
+
+Also considered and rejected: MI300X at $0.50/h (ROCm vLLM + LoRA toolchain risk
+against a 36 h wall clock, when budget is not the binding constraint), and
+H100 PCIe at $1.99/h (1.67x the hourly price would need >1.67x end-to-end
+speedup, which cannot be established in advance, and part of the run is fixed
+cost that does not scale with GPU speed).
+
+---
