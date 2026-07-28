@@ -4,7 +4,7 @@
 [NO GPU] runpod | NVIDIA A100 80GB PCIe | $1.19/h | provider balance $108.113 | experiment GPU budget $40 remaining | elapsed 00:00 | vLLM unreachable
 ```
 
-Generated: 2026-07-28T21:30:48Z  (refresh reason: periodic)
+Generated: 2026-07-28T22:52:41Z  (refresh reason: periodic)
 
 Every figure below is labelled with its basis: **exact-provider-reported**,
 **locally-calculated**, **estimated**, or **unavailable**. Nothing is invented;
@@ -27,7 +27,7 @@ an unavailable figure is reported as unavailable.
 | Hard deadline | not set (no instance) |
 | Model-server health | unreachable |
 | SSH-tunnel health | down |
-| Last successful API refresh | 2026-07-28T21:30:48Z |
+| Last successful API refresh | 2026-07-28T22:52:42Z |
 | Cleanup-watchdog state | armed (deadline ) |
 | Anthropic spend | 0 USD _(locally-calculated)_ |
 | Anthropic budget remaining | unavailable _(nothing invented)_ |

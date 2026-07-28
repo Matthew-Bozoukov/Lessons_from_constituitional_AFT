@@ -1,5 +1,5 @@
 ﻿{
-    "generated_at":  "2026-07-28T21:30:48Z",
+    "generated_at":  "2026-07-28T22:52:41Z",
     "refresh_reason":  "periodic",
     "run_id":  "msm-audit-20260728-212645",
     "provider":  "runpod",
@@ -50,7 +50,7 @@
     "hard_deadline_utc":  null,
     "model_server_health":  "unreachable",
     "ssh_tunnel_health":  "down",
-    "last_successful_api_refresh":  "2026-07-28T21:30:48Z",
+    "last_successful_api_refresh":  "2026-07-28T22:52:42Z",
     "api_refresh_ok_this_cycle":  true,
     "cleanup_watchdog_state":  "armed (deadline )",
     "anthropic_spent_usd":  {
