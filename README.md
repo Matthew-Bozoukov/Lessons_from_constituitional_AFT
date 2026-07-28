@@ -286,6 +286,9 @@ Each transcript should contain `id`, `scenario_id`, `category`, `outcome`,
 qualitative transcript even when aggregate scores are available: the interface
 is designed to show both.
 
+For a standalone contract that can be copied into an external Petri repository,
+see [Claude Code Petri export guide](docs/CLAUDE_CODE_PETRI_EXPORT_GUIDE.md).
+
 ## Agent output contract
 
 Research agents working in this repository should follow this contract:
