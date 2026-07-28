@@ -1,11 +1,20 @@
 import Link from "next/link";
-import { ArrowUpRight, Beaker, FileText, FlaskConical } from "lucide-react";
+import {
+  ArrowUpRight,
+  Beaker,
+  Database,
+  FileText,
+  FlaskConical,
+  ScanSearch,
+} from "lucide-react";
 import { ResearchEntry, humanize } from "@/lib/content";
 
 const icons = {
   logs: FlaskConical,
   evals: Beaker,
   findings: FileText,
+  datasets: Database,
+  "petri-runs": ScanSearch,
 };
 
 export function EntryCard({
@@ -43,4 +52,3 @@ export function EntryCard({
     </Link>
   );
 }
-

@@ -23,6 +23,23 @@ for (const file of files) {
       if (!parsed.data[field]) report("WARN", file, `missing ${field}`);
     }
   }
+  if (type === "datasets") {
+    for (const field of ["dataset_id", "dataset_version", "format", "training_objective"]) {
+      if (!parsed.data[field]) report("WARN", file, `missing ${field}`);
+    }
+  }
+  if (type === "petri-runs") {
+    for (const field of [
+      "petri_run_id",
+      "petri_version",
+      "target_checkpoint_id",
+      "auditor_model_id",
+      "judge_model_id",
+      "seed_set",
+    ]) {
+      if (!parsed.data[field]) report("WARN", file, `missing ${field}`);
+    }
+  }
   if (parsed.data.metrics && typeof parsed.data.metrics === "object") {
     for (const [name, metric] of Object.entries(parsed.data.metrics)) {
       if (!metric || typeof metric !== "object" || typeof metric.value !== "number") {
@@ -34,4 +51,3 @@ for (const file of files) {
 
 console.log(`\nValidated ${files.length} files: ${errors} error(s), ${warnings} warning(s).`);
 process.exitCode = errors ? 1 : 0;
-

@@ -12,6 +12,8 @@ content/
   logs/       # readable experiment notebooks and linked machine artifacts
   evals/      # evaluation results with optional structured metrics
   findings/   # curated claims, uncertainty, and counterevidence
+  datasets/   # JSONL SFT/AFT dialogues with Markdown dataset cards
+  petri-runs/ # Petri scenarios, transcripts, scores, and research notes
 ```
 
 Each research record lives in its own directory as `index.md`. Images and small
@@ -51,6 +53,15 @@ metrics:
 Comparative plots group only identical `eval_suite`, `eval_version`, and
 `dataset_version` values. Unknown training stages and metrics remain visible.
 
+Dataset JSONL is chunked into generated browser previews at index time while the
+source file remains available for download. Records may use `messages`,
+`conversation`, `turns`, or prompt/response fields; unknown metadata remains
+visible without requiring a registry.
+
+Petri run folders may contain `data/scenarios.jsonl`,
+`results/transcripts.jsonl`, and `results/scores.json`. The Petri page preserves
+the auditor, target, realism, and judge roles; outcome charts; transcript-level
+scores; the generated scenario dataset; and the Markdown research note.
+
 See [docs/RESEARCH_PROGRAM_STRUCTURE.md](docs/RESEARCH_PROGRAM_STRUCTURE.md)
 for the research-specific assumptions behind the data model.
-

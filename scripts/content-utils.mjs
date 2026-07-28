@@ -3,7 +3,13 @@ import path from "node:path";
 
 export const projectRoot = path.resolve(import.meta.dirname, "..");
 export const contentRoot = path.join(projectRoot, "content");
-export const supportedTypes = ["logs", "evals", "findings"];
+export const supportedTypes = [
+  "logs",
+  "evals",
+  "findings",
+  "datasets",
+  "petri-runs",
+];
 
 export async function walk(directory) {
   const results = [];
@@ -46,4 +52,3 @@ export function titleFromMarkdown(markdown, fallback) {
 export function toPosix(value) {
   return value.split(path.sep).join("/");
 }
-

@@ -6,17 +6,21 @@ import {
   Activity,
   Beaker,
   BrainCircuit,
+  Database,
   FlaskConical,
   Lightbulb,
   Menu,
+  ScanSearch,
   X,
 } from "lucide-react";
 import { useState } from "react";
 
 const nav = [
   { href: "/", label: "Overview", icon: Activity },
-  { href: "/logs", label: "Experiment logs", icon: FlaskConical },
+  { href: "/logs", label: "Logs", icon: FlaskConical },
   { href: "/evals", label: "Evals", icon: Beaker },
+  { href: "/datasets", label: "Datasets", icon: Database },
+  { href: "/petri", label: "Petri", icon: ScanSearch },
   { href: "/models", label: "Models", icon: BrainCircuit },
   { href: "/findings", label: "Findings", icon: Lightbulb },
 ];
@@ -76,4 +80,3 @@ export function SiteHeader() {
     </header>
   );
 }
-

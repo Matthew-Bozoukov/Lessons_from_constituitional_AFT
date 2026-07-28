@@ -14,6 +14,7 @@ import {
 const outputDirectory = path.join(projectRoot, "lib", "generated");
 const outputFile = path.join(outputDirectory, "content-index.json");
 const publicAssetRoot = path.join(projectRoot, "public", "content-assets");
+const publicDatasetRoot = path.join(projectRoot, "public", "generated-datasets");
 
 function normalize(value) {
   return JSON.parse(JSON.stringify(value));
@@ -47,6 +48,107 @@ async function copyEntryAssets(entryDirectory, type, slug) {
   return copied;
 }
 
+async function readJsonl(file) {
+  const raw = await fs.readFile(file, "utf8");
+  return raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line, index) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        throw new Error(`Invalid JSONL at ${file}:${index + 1}`);
+      }
+    });
+}
+
+function messagesFor(record) {
+  const candidate =
+    record.messages || record.conversation || record.turns || record.dialogue;
+  if (Array.isArray(candidate)) return candidate;
+  if (record.prompt !== undefined || record.response !== undefined) {
+    return [
+      { role: "user", content: String(record.prompt || "") },
+      { role: "assistant", content: String(record.response || "") },
+    ];
+  }
+  return [];
+}
+
+async function buildDatasetManifest(entryDirectory, slug) {
+  const files = await walk(entryDirectory);
+  const dataFile = files.find(
+    (file) => file.endsWith(".jsonl") && file.includes(`${path.sep}data${path.sep}`),
+  );
+  if (!dataFile) return null;
+
+  const records = await readJsonl(dataFile);
+  const chunkSize = 50;
+  const chunks = [];
+  const destinationRoot = path.join(publicDatasetRoot, slug);
+  await fs.mkdir(destinationRoot, { recursive: true });
+
+  for (let index = 0; index < records.length; index += chunkSize) {
+    const chunkNumber = Math.floor(index / chunkSize);
+    const name = `chunk-${String(chunkNumber).padStart(3, "0")}.json`;
+    await fs.writeFile(
+      path.join(destinationRoot, name),
+      `${JSON.stringify(records.slice(index, index + chunkSize))}\n`,
+      "utf8",
+    );
+    chunks.push(`/generated-datasets/${slug}/${name}`);
+  }
+
+  const turns = records.map((record) => messagesFor(record).length);
+  const roleCounts = {};
+  const splits = {};
+  const categories = {};
+  for (const record of records) {
+    for (const message of messagesFor(record)) {
+      const role = String(message.role || "unknown");
+      roleCounts[role] = (roleCounts[role] || 0) + 1;
+    }
+    const metadata = record.metadata || {};
+    const split = String(metadata.split || record.split || "unspecified");
+    const category = String(metadata.category || record.category || "uncategorized");
+    splits[split] = (splits[split] || 0) + 1;
+    categories[category] = (categories[category] || 0) + 1;
+  }
+
+  return {
+    source_file: `/content-assets/datasets/${slug}/${toPosix(path.relative(entryDirectory, dataFile))}`,
+    format: "jsonl",
+    record_count: records.length,
+    chunk_size: chunkSize,
+    chunks,
+    stats: {
+      average_turns:
+        turns.length > 0
+          ? Number((turns.reduce((sum, value) => sum + value, 0) / turns.length).toFixed(1))
+          : 0,
+      role_counts: roleCounts,
+      splits,
+      categories,
+    },
+  };
+}
+
+async function buildPetriManifest(entryDirectory) {
+  const files = await walk(entryDirectory);
+  const scenarioFile = files.find((file) => file.endsWith("scenarios.jsonl"));
+  const transcriptFile = files.find((file) => file.endsWith("transcripts.jsonl"));
+  const scoreFile = files.find((file) => file.endsWith("scores.json"));
+  if (!scenarioFile && !transcriptFile && !scoreFile) return null;
+  return {
+    scenarios: scenarioFile ? await readJsonl(scenarioFile) : [],
+    transcripts: transcriptFile ? await readJsonl(transcriptFile) : [],
+    scores: scoreFile
+      ? JSON.parse(await fs.readFile(scoreFile, "utf8"))
+      : {},
+  };
+}
+
 const markdownFiles = (await walk(contentRoot)).filter((file) =>
   file.endsWith(".md"),
 );
@@ -68,6 +170,14 @@ for (const file of markdownFiles) {
 
   const stat = await fs.stat(file);
   const assets = await copyEntryAssets(entryDirectory, type, slug);
+  const dataset =
+    type === "datasets"
+      ? await buildDatasetManifest(entryDirectory, slug)
+      : undefined;
+  const petri =
+    type === "petri-runs"
+      ? await buildPetriManifest(entryDirectory)
+      : undefined;
   const rawDate = parsed.data.date || stat.mtime;
   const date =
     rawDate instanceof Date
@@ -100,6 +210,8 @@ for (const file of markdownFiles) {
     body: rewriteAssetLinks(parsed.content, type, slug),
     source_path: toPosix(path.relative(projectRoot, file)),
     assets,
+    ...(dataset ? { dataset } : {}),
+    ...(petri ? { petri } : {}),
   });
 }
 

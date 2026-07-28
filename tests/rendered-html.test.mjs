@@ -23,7 +23,9 @@ test("server-renders the research overview", async () => {
   assert.match(html, /Synthetic Finetuning/);
   assert.match(html, /for Constitution/);
   assert.match(html, /Research Log/);
-  assert.match(html, /Metric explorer/);
+  assert.match(html, /Research surfaces/);
+  assert.match(html, /Synthetic datasets/);
+  assert.match(html, /Petri audits/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/);
 });
 
@@ -35,4 +37,24 @@ test("server-renders a Markdown research entry", async () => {
   assert.match(html, /Structured metrics/);
   assert.match(html, /Evaluation shifts/);
   assert.match(html, /content-assets/);
+});
+
+test("server-renders the JSONL dialogue inspector", async () => {
+  const response = await render("/datasets");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /Synthetic datasets/);
+  assert.match(html, /Reasons-rich constitutional dialogue mixture/);
+  assert.match(html, /Conversation preview/);
+  assert.match(html, /generated-datasets/);
+});
+
+test("server-renders the Petri audit dossier", async () => {
+  const response = await render("/petri");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /Petri audit/);
+  assert.match(html, /Findings by hypothesis/);
+  assert.match(html, /Transcript explorer/);
+  assert.match(html, /Scenario seeds/);
 });

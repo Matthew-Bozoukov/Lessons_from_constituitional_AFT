@@ -35,6 +35,8 @@ export default async function EntryPage({
   const { slug } = await params;
   const entry = entryBySlug(slug);
   if (!entry) notFound();
+  const collectionHref =
+    entry.type === "petri-runs" ? "/petri" : `/${entry.type}`;
 
   const metadata = [
     ["Model", entry.model_id],
@@ -52,7 +54,7 @@ export default async function EntryPage({
 
   return (
     <main className="page-container document-page">
-      <Link href={`/${entry.type}`} className="back-link">
+      <Link href={collectionHref} className="back-link">
         <ArrowLeft size={15} /> Back to {humanize(entry.type)}
       </Link>
 
@@ -117,4 +119,3 @@ export default async function EntryPage({
     </main>
   );
 }
-

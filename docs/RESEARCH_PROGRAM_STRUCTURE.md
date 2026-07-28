@@ -45,6 +45,31 @@ The sources motivate keeping these layers visibly distinct:
 7. **Findings** — interpreted claims linked back to compatible runs and evals,
    with explicit uncertainty and counterevidence.
 
+## Synthetic training datasets
+
+SFT/AFT datasets are stored separately from eval results and experiment logs.
+Each dataset has a Markdown card plus immutable JSONL source data. The viewer
+must preserve the complete user-assistant dialogue, system and tool messages,
+split, generation recipe, critique passes, quality signals, detected patterns,
+and any unknown record metadata.
+
+Dataset inspection is part of the evidence chain: repeated rhetorical or
+behavioral patterns can be learned even when individual examples look
+reasonable in isolation.
+
+## Petri audit runs
+
+Petri is represented as a versioned audit run, not as an ordinary eval row. A
+run records the target checkpoint and the models filling the auditor, realism,
+and judge roles; its seed set and thresholds; generated scenarios; retained
+multi-turn transcripts; transcript-level scores and judge rationales; filtered
+scenarios; aggregate outcomes; costs; and the human research note.
+
+This matches Petri's role as a rapid alignment-auditing agent that constructs
+realistic multi-turn environments, probes a target model, optionally filters
+for realism to reduce eval-awareness confounds, and has a judge score the
+resulting transcripts.
+
 The UI must not collapse knowledge into internalization, or alignment uplift
 into overall success when capability regressions or artifact vulnerabilities
 remain.
@@ -74,3 +99,5 @@ comparison must be an explicit user action.
 - [Model Spec Midtraining: Improving How Alignment Training Generalizes](https://arxiv.org/abs/2605.02087)
 - [Teaching Claude why](https://alignment.anthropic.com/2026/teaching-claude-why/)
 - [Synthetic document finetuning for instilling positive traits](https://www.alignmentforum.org/posts/GTYJRLhqztxKF2v5R/synthetic-document-finetuning-for-instilling-positive-traits)
+- [Petri: Parallel Exploration Tool for Risky Interactions](https://github.com/safety-research/petri)
+- [Petri 2.0: New Scenarios, New Model Comparisons, and Improved Eval-Awareness Mitigations](https://alignment.anthropic.com/2026/petri-v2/)

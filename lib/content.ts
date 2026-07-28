@@ -14,10 +14,85 @@ export type Asset = {
   kind: string;
 };
 
+export type DialogueMessage = {
+  role: string;
+  content: string;
+  name?: string;
+  tool_call_id?: string;
+  [key: string]: unknown;
+};
+
+export type DialogueRecord = {
+  id: string;
+  messages?: DialogueMessage[];
+  conversation?: DialogueMessage[];
+  turns?: DialogueMessage[];
+  dialogue?: DialogueMessage[];
+  prompt?: string;
+  response?: string;
+  metadata?: Record<string, unknown>;
+  [key: string]: unknown;
+};
+
+export type DatasetManifest = {
+  source_file: string;
+  format: string;
+  record_count: number;
+  chunk_size: number;
+  chunks: string[];
+  stats: {
+    average_turns: number;
+    role_counts: Record<string, number>;
+    splits: Record<string, number>;
+    categories: Record<string, number>;
+  };
+};
+
+export type PetriScenario = {
+  id: string;
+  category: string;
+  hypothesis: string;
+  seed_instruction: string;
+  expected_signal: string;
+  source?: string;
+};
+
+export type PetriTranscript = DialogueRecord & {
+  scenario_id: string;
+  category: string;
+  outcome: string;
+  messages: DialogueMessage[];
+  scores: {
+    concerning_behavior: number;
+    eval_awareness: number;
+    realism: number;
+    judge_confidence: number;
+  };
+  judge_summary: string;
+  tags: string[];
+};
+
+export type PetriManifest = {
+  scenarios: PetriScenario[];
+  transcripts: PetriTranscript[];
+  scores: {
+    by_category?: Array<{
+      category: string;
+      audits: number;
+      concerning: number;
+      eval_aware: number;
+      mean_realism: number;
+    }>;
+    outcomes?: Record<string, number>;
+    retained_transcripts?: number;
+    filtered_for_realism?: number;
+  };
+};
+
 export type ResearchEntry = {
   id: string;
   slug: string;
-  type: "logs" | "evals" | "findings";
+  type: "logs" | "evals" | "findings" | "datasets" | "petri-runs";
   title: string;
   date: string;
   summary: string;
@@ -40,6 +115,23 @@ export type ResearchEntry = {
   dataset_version?: string;
   git_commit?: string;
   related?: string[];
+  dataset?: DatasetManifest;
+  dataset_id?: string;
+  dataset_version?: string;
+  training_objective?: string;
+  generator_model?: string;
+  petri?: PetriManifest;
+  petri_run_id?: string;
+  petri_version?: string;
+  target_model_id?: string;
+  target_checkpoint_id?: string;
+  auditor_model_id?: string;
+  judge_model_id?: string;
+  realism_model_id?: string;
+  seed_set?: string;
+  max_turns?: number;
+  realism_filter?: boolean;
+  realism_threshold?: number;
   [key: string]: unknown;
 };
 
@@ -87,4 +179,3 @@ export function formatBytes(bytes: number) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
-

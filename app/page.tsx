@@ -3,156 +3,179 @@ import {
   ArrowRight,
   Beaker,
   BrainCircuit,
-  CircleDollarSign,
+  Database,
+  FileText,
   FlaskConical,
-  Gauge,
-  ShieldCheck,
+  ScanSearch,
 } from "lucide-react";
-import { EntryCard } from "./components/EntryCard";
-import { MetricExplorer } from "./components/MetricExplorer";
-import { entries, entriesOfType, modelsInCorpus } from "@/lib/content";
+import { MetricTiles } from "./components/MetricTiles";
+import { entries, entriesOfType, humanize } from "@/lib/content";
+
+const surfaces = [
+  {
+    href: "/logs",
+    title: "Experiment logs",
+    description: "Training notes, runtime, cost, failures, and linked artifacts.",
+    icon: FlaskConical,
+    accent: "cyan",
+  },
+  {
+    href: "/evals",
+    title: "Evaluation results",
+    description: "Compatible metrics, seeded runs, and checkpoint comparisons.",
+    icon: Beaker,
+    accent: "violet",
+  },
+  {
+    href: "/datasets",
+    title: "Synthetic datasets",
+    description: "Inspect JSONL training records as readable conversations.",
+    icon: Database,
+    accent: "cyan",
+  },
+  {
+    href: "/petri",
+    title: "Petri audits",
+    description: "Scenarios, transcripts, judge scores, and qualitative findings.",
+    icon: ScanSearch,
+    accent: "amber",
+  },
+  {
+    href: "/models",
+    title: "Model lineages",
+    description: "Generated dossiers across base, SFT, DPO, and future stages.",
+    icon: BrainCircuit,
+    accent: "lime",
+  },
+  {
+    href: "/findings",
+    title: "Findings",
+    description: "Claims with supporting evidence, caveats, and counterevidence.",
+    icon: FileText,
+    accent: "lime",
+  },
+];
 
 export default function Home() {
   const evals = entriesOfType("evals");
   const logs = entriesOfType("logs");
   const findings = entriesOfType("findings");
-  const recent = entries.slice(0, 4);
-  const totalCost = evals.reduce(
-    (sum, entry) => sum + (entry.metrics.cost_usd?.value || 0),
-    0,
-  );
-  const completed = entries.filter((entry) => entry.status === "complete").length;
+  const datasets = entriesOfType("datasets");
+  const petriRuns = entriesOfType("petri-runs");
+  const latestFinding = findings[0];
+  const latestCompleteEval =
+    evals.find((entry) => entry.training_stage === "sft" && entry.status === "complete") ||
+    evals.find((entry) => entry.status === "complete");
+  const recent = entries.slice(0, 6);
 
   return (
     <main>
-      <section className="hero">
-        <div className="hero-grid" aria-hidden="true" />
-        <div className="page-container hero-inner">
-          <div className="hero-copy">
+      <section className="compact-hero">
+        <div className="compact-hero-grid" aria-hidden="true" />
+        <div className="page-container compact-hero-inner">
+          <div>
             <div className="hero-eyebrow">
               <span className="pulse-dot" />
-              Local research corpus · demonstration data
+              Local research corpus
             </div>
-            <h1>
-              Synthetic Finetuning
-              <span>for Constitution</span>
-            </h1>
+            <h1>Synthetic Finetuning <span>for Constitution</span></h1>
             <p>
-              A living record of training interventions, behavioral evaluations,
-              generalization checks, and the evidence between them.
+              Training interventions, datasets, evaluations, audits, and
+              findings—connected by model and checkpoint provenance.
             </p>
             <div className="hero-actions">
               <Link href="/evals" className="button primary">
-                Explore evals <ArrowRight size={16} />
+                View results <ArrowRight size={16} />
               </Link>
-              <Link href="/logs" className="button secondary">
-                Open experiment logs
+              <Link href="/datasets" className="button secondary">
+                Inspect datasets
               </Link>
             </div>
           </div>
-
-          <div className="hero-signal">
-            <div className="signal-header">
-              <span>Program surface</span>
-              <code>demo/v1</code>
+          <div className="corpus-glance">
+            <span className="eyebrow">Corpus at a glance</span>
+            <div>
+              <Link href="/evals"><strong>{evals.length}</strong><span>Evals</span></Link>
+              <Link href="/logs"><strong>{logs.length}</strong><span>Logs</span></Link>
+              <Link href="/datasets"><strong>{datasets.length}</strong><span>Datasets</span></Link>
+              <Link href="/petri"><strong>{petriRuns.length}</strong><span>Petri runs</span></Link>
             </div>
-            <div className="signal-lineage">
-              {["base", "sft", "bounded-dpo"].map((stage, index) => (
-                <div className="lineage-stage" key={stage}>
-                  <span className={`stage-node stage-${index}`} />
-                  <div>
-                    <small>Stage {String(index + 1).padStart(2, "0")}</small>
-                    <strong>{stage}</strong>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="signal-footer">
-              <span><ShieldCheck size={15} /> OOD checks</span>
-              <span><Gauge size={15} /> Capability guardrails</span>
-            </div>
+            <small>Sample records are clearly marked demonstration data.</small>
           </div>
         </div>
       </section>
 
-      <div className="page-container overview-content">
-        <section className="stat-grid" aria-label="Corpus summary">
-          <div className="stat-card cyan">
-            <Beaker size={20} />
-            <div><strong>{evals.length}</strong><span>Eval results</span></div>
+      <div className="page-container dashboard-home">
+        <section className="current-state">
+          <div className="state-heading">
+            <span className="eyebrow">Current state</span>
+            <h2>What the corpus says now</h2>
           </div>
-          <div className="stat-card violet">
-            <FlaskConical size={20} />
-            <div><strong>{logs.length}</strong><span>Experiment logs</span></div>
-          </div>
-          <div className="stat-card lime">
-            <BrainCircuit size={20} />
-            <div><strong>{modelsInCorpus().length}</strong><span>Model families</span></div>
-          </div>
-          <div className="stat-card amber">
-            <CircleDollarSign size={20} />
-            <div><strong>${totalCost.toFixed(0)}</strong><span>Recorded eval cost</span></div>
-          </div>
-          <div className="stat-card neutral">
-            <ShieldCheck size={20} />
-            <div><strong>{completed}/{entries.length}</strong><span>Complete records</span></div>
-          </div>
+          {latestFinding && (
+            <Link className="latest-finding-card" href={`/entry/${latestFinding.slug}`}>
+              <div>
+                <span className={`status status-${latestFinding.status}`}>
+                  {humanize(latestFinding.status)}
+                </span>
+                <small>Latest finding · {latestFinding.date}</small>
+              </div>
+              <h3>{latestFinding.title}</h3>
+              <p>{latestFinding.summary}</p>
+              <span className="text-link">Read evidence and caveats <ArrowRight size={14} /></span>
+            </Link>
+          )}
+          {latestCompleteEval && (
+            <div className="latest-metrics-card">
+              <div className="latest-metrics-heading">
+                <div>
+                  <span className="eyebrow">Latest compatible signal</span>
+                  <h3>{latestCompleteEval.checkpoint_id}</h3>
+                </div>
+                <Link href={`/entry/${latestCompleteEval.slug}`}>Open run <ArrowRight size={14} /></Link>
+              </div>
+              <MetricTiles metrics={latestCompleteEval.metrics} limit={3} />
+              <div className="compatibility-line">
+                <code>{latestCompleteEval.eval_suite}</code>
+                <span>{latestCompleteEval.eval_version}</span>
+                <span>{latestCompleteEval.dataset_version}</span>
+                <span>seed {latestCompleteEval.seed}</span>
+              </div>
+            </div>
+          )}
         </section>
 
-        <section className="program-grid">
-          <div className="section-heading">
-            <span className="eyebrow">Research program</span>
-            <h2>Evidence, not just outcomes</h2>
-            <p>
-              Each result stays connected to its intervention, data recipe,
-              compatible eval group, and known vulnerabilities.
-            </p>
+        <section className="surface-section">
+          <div className="section-heading row">
+            <div><span className="eyebrow">Research surfaces</span><h2>Go straight to the evidence</h2></div>
           </div>
-          <div className="thread-grid">
-            {[
-              ["01", "Replications", "Reproduce published SDF and model-spec interventions across open checkpoints."],
-              ["02", "Extensions", "Test reasons-rich LoRA SFT and bounded preference optimization branches."],
-              ["03", "Generalization", "Separate knowledge recall from behavior under held-out distribution shifts."],
-              ["04", "Vulnerability checks", "Track synthetic artifacts, adaptive pressure, eval awareness, and regressions."],
-            ].map(([number, title, description]) => (
-              <div className="thread-card" key={number}>
-                <code>{number}</code>
-                <h3>{title}</h3>
-                <p>{description}</p>
-              </div>
+          <div className="surface-grid">
+            {surfaces.map(({ href, title, description, icon: Icon, accent }) => (
+              <Link className={`surface-card ${accent}`} href={href} key={href}>
+                <span className="surface-icon"><Icon size={18} /></span>
+                <div><h3>{title}</h3><p>{description}</p></div>
+                <ArrowRight size={16} />
+              </Link>
             ))}
           </div>
         </section>
 
-        <section className="explorer-section">
-          <MetricExplorer entries={evals} />
-        </section>
-
-        <section className="recent-section">
+        <section className="activity-section">
           <div className="section-heading row">
-            <div>
-              <span className="eyebrow">Latest from the corpus</span>
-              <h2>Recent research records</h2>
-            </div>
-            <Link href="/findings" className="text-link">
-              View findings <ArrowRight size={15} />
-            </Link>
+            <div><span className="eyebrow">Recent activity</span><h2>Latest records</h2></div>
+            <span className="table-note">{entries.length} indexed records</span>
           </div>
-          <div className="entry-grid">
-            {recent.map((entry) => <EntryCard entry={entry} key={entry.id} />)}
+          <div className="activity-list">
+            {recent.map((entry) => (
+              <Link href={`/entry/${entry.slug}`} key={entry.id}>
+                <time dateTime={entry.date}>{entry.date}</time>
+                <span className={`type-chip ${entry.type}`}>{humanize(entry.type)}</span>
+                <strong>{entry.title}</strong>
+                <span className={`status status-${entry.status}`}>{humanize(entry.status)}</span>
+                <ArrowRight size={15} />
+              </Link>
+            ))}
           </div>
         </section>
-
-        {findings[0] && (
-          <section className="finding-callout">
-            <span className="eyebrow">Current provisional finding</span>
-            <h2>{findings[0].title}</h2>
-            <p>{findings[0].summary}</p>
-            <Link href={`/entry/${findings[0].slug}`}>
-              Read evidence and counterevidence <ArrowRight size={16} />
-            </Link>
-          </section>
-        )}
       </div>
     </main>
   );
