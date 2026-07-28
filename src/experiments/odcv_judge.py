@@ -155,10 +155,17 @@ def main(
         medians[variant][scenario] = median_score(scores)
 
     ours = summarise(medians)
-    published = summarise(load_published_medians(
-        bench_dir / "existing_results/current/evaluations/judge_all/scores_final_median.csv",
-        cfg.model_key,
-    ))
+    # Comparison baseline. For a paper model, use its published medians. For a model
+    # not in the paper (e.g. our DPO'd model), compare against a prior run's results.json
+    # (config `baseline_results`), which carries the same "ours" summary schema.
+    baseline_results = cfg.get("baseline_results", None)
+    if baseline_results:
+        published = json.loads(Path(baseline_results).read_text())["ours"]
+    else:
+        published = summarise(load_published_medians(
+            bench_dir / "existing_results/current/evaluations/judge_all/scores_final_median.csv",
+            cfg.model_key,
+        ))
 
     results = {
         "model": cfg.model,

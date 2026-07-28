@@ -53,6 +53,9 @@ services:
       orchestrator:
         condition: service_healthy
     restart: "no"
+    # Reach a model served on the host (e.g. tunneled vLLM) at host.docker.internal.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - default
       - internal_net

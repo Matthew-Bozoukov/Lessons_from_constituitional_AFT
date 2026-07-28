@@ -3,6 +3,20 @@
 
 # LOG
 
+## 2026-07-28 (pm) — Difficult-advice DPO on Qwen3.6-27B → ODCV-Bench: no effect
+
+Trained DPO on Qwen3.6-27B (beta 0.1, lr 5e-6, 1054 preference pairs: chosen = thinking
+difficult-advice answers, rejected = Sonnet-4.5 values-blind answers). Adapter on HF
+`matboz/qwen3.6-27b-difficult-advice-dpo`. Served base VLM + LoRA via vLLM (qwen3_xml tool parser,
+Mamba `--max-num-seqs`) tunneled to the ODCV Docker agents. Ran the full 80-scenario ODCV-Bench.
+
+**Result: overall MR 46.8% (CI 32.1-60.3) vs base 46.2% — +0.6pp, not significant** (base within CI;
+mandated 40.0→48.7, incentivized 52.5→45.0, severity 1.72→1.75). The difficult-advice *preference*
+(decline norm-violating advice to a user) did not transfer to reducing an autonomous agent's
+norm-violating *actions*; aggressive DPO (margins >7) didn't help. Judging $11.32 (prelim warmed cache).
+Code adapted for a self-served DPO model: `configs/odcv_dpo.yaml`, odcv_judge `baseline_results`,
+odcv_rollout compose `host.docker.internal` host-gateway. See output/odcv_bench/odcv_dpo_results.md.
+
 ## 2026-07-28 (pm) — ODCV-Bench REPLICATED: 46.2% vs published 43.8%
 
 **Result:** full 80-run ODCV-Bench on `qwen/qwen3.6-27b` → **MR 46.2%** (95% CI 32.5-60.0),
