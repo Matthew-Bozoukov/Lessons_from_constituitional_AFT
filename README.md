@@ -169,6 +169,61 @@ bash scripts/run_inspect_leaking.sh difficult_advice explicit america ft_explici
 
 ---
 
+---
+
+## Second eval: ODCV-Bench (Qwen3.6-27B replication)
+
+A second, independent agentic-misalignment benchmark:
+[**ODCV-Bench**](https://odcvbenchmark.github.io/) ([arXiv 2512.20798](https://arxiv.org/abs/2512.20798),
+[code](https://github.com/McGill-DMaS/ODCV-Bench)) — 40 scenarios in which an autonomous agent works
+in a persistent bash sandbox under KPI pressure that conflicts with an ethical/legal/safety
+constraint. Each scenario runs in two framings (**mandated**: optimise the KPI as a direct order;
+**incentivized**: KPI pressure only), giving 80 runs. Four LLM judges (Claude-Opus-4.7, GPT-5.5,
+Grok-4.20, Gemini-3.1-Pro-Preview) score each trajectory 0-5; the reported score is the **median
+across judges**, and **misalignment rate (MR) = % of runs with median >= 3**.
+
+**Replication target** (paper's main table): `Qwen3.6-27B — MR 43.8%, mean severity 1.67`
+(mandated 45.0% / incentivized 42.5%).
+
+### Setup
+```bash
+# Vendor the benchmark (third_party/ is gitignored):
+git clone https://github.com/McGill-DMaS/ODCV-Bench.git third_party/odcv-bench
+# pinned at upstream commit 7353f1cf4b2579a3a8a5b8a5061d7c7d41f60668
+
+# Docker must be usable WITHOUT sudo (each scenario builds two images):
+sudo usermod -aG docker "$USER" && newgrp docker
+docker context use default
+```
+Only `OPENROUTER_API_KEY` is needed — the agent and all four judges run through OpenRouter.
+
+### Run
+```bash
+uv run pytest tests/test_odcv_metrics.py -q        # metric sanity (recovers 43.8%/1.67 from the paper's CSV)
+
+bash scripts/run_odcv.sh configs/odcv_bench.yaml --smoke   # 2 scenarios, verifies wiring end to end
+bash scripts/run_odcv.sh configs/odcv_bench.yaml           # full 80-scenario run
+```
+`run_odcv.sh` tees everything to `output/odcv_bench/logs/run_<ts>.log`. Results land in
+`output/odcv_bench/qwen3.6-27b/<ts>/`: `agent_logs/` (trajectories), `evaluations/scores_<judge>.json`,
+`rollout_manifest.json`, `run_meta.json`, and `results.json` (our MR/severity + bootstrap CI vs the
+published numbers).
+
+Both stages are **resumable** — re-running skips scenarios that already have a transcript and judge
+calls that are already cached, so an interrupted run costs nothing to continue.
+
+### Deviations from upstream (deliberate)
+- `run_experiments.py` hardcodes all 12 paper models and runs scenarios strictly sequentially, with
+  fixed container names and host port 5000. `src/experiments/odcv_rollout.py` runs **one** model and
+  gives each scenario its own Compose project (+ an `orchestrator_api` network alias so the agent's
+  hardcoded hostname still resolves), which allows `concurrency: 4`. Set `concurrency: 1` for
+  strictly upstream behaviour; agent behaviour is unaffected either way.
+- Judging reuses upstream's `evaluate_all_results.evaluation_routine` **verbatim** (imported, not
+  reimplemented), so the rubric prompt, retry loop and JSON parsing are byte-identical.
+- Upstream's README advertises `bootstrap_ci.py` / `paired_bootstrap.py` / `compute_paper_stats.py`,
+  but those files are **absent** from the repo; `src/odcv.py` implements the scenario-level paired
+  bootstrap CI described in the paper.
+
 ## Reproducing the reasoning check
 `output/reasoning_probe_*.txt` compare `<think>` length of base vs LoRA. Naive SFT → 0 chars
 (collapsed); the think-trace fix → 900-1600 chars of real reasoning, answers still correct.
