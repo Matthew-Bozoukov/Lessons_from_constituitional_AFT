@@ -3,6 +3,45 @@
 
 # LOG
 
+## 2026-07-28 (pm-2) — Qwen3.6-27B LoRA trained + published; ODCV eval deferred
+
+**Goal:** fine-tune Qwen3.6-27B on 300k tokens of difficult-advice + 1.2M tokens of TULU3 replay,
+then measure the effect on ODCV-Bench.
+
+**Mixture** (`src/experiments/build_mixture.py`, `configs/mixture_qwen36.yaml`):
+291 difficult-advice examples (299,455 tok, **with** `<think>` traces) + 1,878 TULU3 examples
+(1,194,548 tok, **no** think block) = **1,489,959 tok**, TULU3 share exactly 80.0%.
+
+*Key design point:* Qwen3.6's template renders `<think>{reasoning}</think>` for any assistant turn
+that is final, so trace-free TULU3 would render an **empty** `<think></think>` — the documented
+collapse that trains the model to stop reasoning, and 80% of our tokens. Fix: append a throwaway
+user turn so the template takes its no-think branch, then strip it. Asserted on the written
+artifact: 0 empty think blocks, think blocks in exactly the 291 difficult-advice rows.
+
+**Training:** 1×H100 80GB, bf16 LoRA (QLoRA rejected — bitsandbytes doesn't reliably cover the
+hybrid linear-attention/SSM layers). r=32, 1 epoch, 136 steps, batch 1×16, lr 1e-4 cosine→0,
+seq 2048, **packing off**, 1h38m. Loss **2.93 → ~1.00 by step 15**, then flat (0.89–1.13);
+final token accuracy 0.728, grad_norm 0.31, `num_tokens` 1,489,959 (= whole mixture).
+
+**Published:** [`matboz/qwen3.6-27b-difficult-advice-tulu-lora`](https://huggingface.co/matboz/qwen3.6-27b-difficult-advice-tulu-lora)
+(637.6 MB, verified by sha256 against the box before it was destroyed).
+
+**VERIFIED:** arch loads as `Qwen3_5ForConditionalGeneration` (1345 modules); LoRA regex hits
+`model.language_model.*.q_proj` and leaves `model.visual` untouched (confirmed in adapter_config).
+**Gotchas:** (1) TRL packs samples under `sdpa` with a cross-contamination warning — packing
+disabled. (2) `causal-conv1d`/`flash-linear-attention` fast path fails to build → torch fallback,
+44 s/step. (3) `WANDB_DISABLED` does not stop the callback; needs wandb installed + `WANDB_MODE=offline`.
+(4) `pkill -f train_lora.py` matches its own ssh command line and kills the shell.
+
+**Caveats for interpretation:** 1 epoch = half the gradient steps of the Qwen3-32B run; the
+difficult-advice signal is only 20% of tokens and most of the loss drop is early format adaptation.
+A null ODCV result would be confounded with undertraining.
+
+**Cost:** $8.10 GPU (2.58 h @ $3.13/hr). Instance destroyed.
+**Next:** ODCV eval on hold at user's request — needs a fresh GPU box (~1h re-setup: 52GB weights,
+deps, merge via `src/experiments/merge_lora.py`), then serve on vLLM 0.26 + SSH tunnel, 80 rollouts
+locally, 4-judge scoring (~$16). Baseline to compare against: **46.2%** (this repo, OpenRouter).
+
 ## 2026-07-28 (pm) — ODCV-Bench REPLICATED: 46.2% vs published 43.8%
 
 **Result:** full 80-run ODCV-Bench on `qwen/qwen3.6-27b` → **MR 46.2%** (95% CI 32.5-60.0),
