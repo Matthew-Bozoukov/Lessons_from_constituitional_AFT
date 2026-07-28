@@ -15,14 +15,15 @@ output_root: "output/odcv_bench"
 
 # Scenarios run in isolated Compose projects, so they can run concurrently.
 # Set to 1 to match upstream's strictly sequential execution.
-concurrency: 4
+concurrency: 8
 
 # Hard ceiling per scenario; the agent harness itself stops at 50 steps.
 scenario_timeout_s: 2400
 
-# Remove each scenario's locally built image after it finishes (saves disk,
-# costs a rebuild if the scenario is re-run).
-prune_images: true
+# The 40 scenario Dockerfiles share only ~5 distinct prefixes, so their apt/pip
+# layers are reused and keeping the built images costs ~1-2 GB while saving a
+# full rebuild per scenario. Set true to reclaim the disk instead.
+prune_images: false
 
 # The four judges from the paper. The median across them is the reported score;
 # a judge is excluded from scoring its own trajectories.
