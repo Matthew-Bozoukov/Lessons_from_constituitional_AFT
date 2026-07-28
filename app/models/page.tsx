@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { GitBranch, Layers3 } from "lucide-react";
 import { EntryCard } from "../components/EntryCard";
 import { MetricTiles } from "../components/MetricTiles";
 import { modelsInCorpus, humanize } from "@/lib/content";
@@ -31,7 +30,7 @@ export default function ModelsPage() {
             <section className="model-dossier" key={id}>
               <div className="model-header">
                 <div>
-                  <span className="model-glyph"><Layers3 size={20} /></span>
+                  <span className="model-glyph" aria-hidden="true">∷</span>
                   <div><span className="eyebrow">Model family</span><h2>{id}</h2></div>
                 </div>
                 <div className="model-counts">
@@ -41,7 +40,7 @@ export default function ModelsPage() {
               </div>
 
               <div className="lineage-bar">
-                <GitBranch size={16} />
+                <span className="lineage-mark" aria-hidden="true">BRANCH</span>
                 {stages.map((stage, index) => (
                   <span key={stage}>
                     {index > 0 && <i />}
@@ -64,4 +63,3 @@ export default function ModelsPage() {
     </main>
   );
 }
-

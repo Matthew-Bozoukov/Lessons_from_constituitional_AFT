@@ -77,3 +77,13 @@ test("server-renders the Petri audit dossier", async () => {
   assert.match(html, /Transcript explorer/);
   assert.match(html, /Scenario seeds/);
 });
+
+test("server-renders the model lineage index", async () => {
+  const response = await render("/models");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /Model lineages/);
+  assert.match(html, /qwen3-32b/);
+  assert.match(html, /linked records/);
+  assert.match(html, /Sft/);
+});
