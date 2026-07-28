@@ -3,6 +3,56 @@
 
 # LOG
 
+## 2026-07-28 (eve) — Built `synthdoc/`: config-driven synthetic document generation pipeline
+
+**Motivation:** the three prior pipelines (Model Spec Midtraining, Teaching Claude Why, GDM's
+synthetic document finetuning) share a three-step shape — take a spec, expand it structurally,
+generate and refine documents — but nearly every design choice in all three was made on intuition
+and never ablated. GDM says outright that their takeaways are post-hoc pattern-matching over a few
+runs. Across all three: the generator model is never ablated, "diversity" means embedding dedup and
+nothing else, and there are no data-scaling curves. So the basic questions are open: does document
+type matter, does revision help and how much per pass, does the generator model dominate, does
+grouping related spec chunks beat treating them one at a time?
+
+**Method:** built a new, **fully self-contained** package at `synthdoc/` (no imports to or from
+`src/`; the rest of the repo can use it plug-and-play via `from synthdoc import run_pipeline`).
+Design centred on making ablations cheap rather than on shipping one corpus:
+
+- **Every varying choice is a config field.** `ScenarioSpec` is the load-bearing abstraction — the
+  sampler emits experimental conditions, generators only render them. 1-chunk and many-chunk are
+  the same code path. Doc types, revision strategies, axes, and rubrics are prompt-pack entries, so
+  adding one needs no Python.
+- **Paired seeds via per-axis RNG streams** keyed on `(seed, example_idx, decision)`. Changing one
+  mixture perturbs only that axis's draws; every other field of example *i* stays bit-identical
+  across arms. This is the highest-leverage detail for getting signal out of small runs, and it has
+  a dedicated test.
+- **Three caches** (documented with a diagram in `synthdoc/README.md`): the content-addressed LLM
+  call cache on `(stage_idx, input_hash, prompt_hash, model, params)`, a per-`spec_id` embedding
+  index, and stage-snapshot resume. Consequence: a revision dose-response sweep is nearly free —
+  the 0/1/2-pass arms are prefixes of the 3-pass arm and replay from cache.
+- **Every stage writes a complete corpus snapshot** with an identical schema, so any stage re-runs
+  alone and any two stages diff as corpora. `doc_id` joins stages; `scenario_hash` joins sweep arms.
+  Filtered-out documents are retained with a verdict rather than dropped.
+- **Multi-axis sweeps are rejected at validation**, and the sweep runner checks pairing *before*
+  spending anything (100% for post-sampler axes; it reports the shared fraction honestly for recipe
+  axes, which cannot be fully paired by construction).
+
+**Result:** end-to-end verified offline on the `echo` provider — 3 stages, schema identical across
+all splits, `doc_id` stable, cache hits 0 on first run and 100% on the second, coverage report +
+heatmap + parquet slicing index emitted automatically. **103 tests pass in ~3s**, none touching the
+network. Three ablation configs ship ready to run: `generator_model`, `revision_dose`,
+`grouping_strategy`.
+
+**Not yet done:** no real generation run has been made — every result above is on the offline echo
+provider, so nothing is known yet about corpus quality or actual spend. HF pushes to
+`LASR-Callum/synthdoc-<run_id>` are wired but untested against the live Hub.
+
+**Next steps:** (1) a paid smoke of ~200 documents against Sonnet 4.5 to sanity-check prompt quality
+and calibrate the autorater threshold before any large run; (2) confirm the HF push path and the
+dataset viewer's per-stage splits; (3) run the `revision_dose` sweep first — it is the cheapest of
+the three because of the cache-prefix property, and it answers the question the prior work is most
+silent on.
+
 ## 2026-07-28 (pm) — ODCV-Bench REPLICATED: 46.2% vs published 43.8%
 
 **Result:** full 80-run ODCV-Bench on `qwen/qwen3.6-27b` → **MR 46.2%** (95% CI 32.5-60.0),

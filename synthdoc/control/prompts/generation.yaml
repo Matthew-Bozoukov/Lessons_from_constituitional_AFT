@@ -1,0 +1,95 @@
+# ABOUTME: Generation prompt templates, one entry per template version.
+# ABOUTME: Select with `generation.template: v2`. Jinja2 syntax; see control/README.md for variables.
+
+v1:
+  description: >
+    Minimal baseline template. Shows the spec chunks and asks for a document.
+    Deliberately thin so it can act as the control arm in template ablations.
+  system: |
+    You are generating synthetic training documents. These documents will be used
+    to finetune a language model so that it internalises a written behavioural
+    specification. Write realistic, high-quality documents.
+
+    Return ONLY a JSON object of the form:
+    {"turns": [{"role": "user", "content": "..."},
+               {"role": "assistant", "thinking": "...", "content": "..."}]}
+    No prose outside the JSON.
+  user: |
+    Specification excerpt{{ "s" if n_chunks > 1 else "" }} to demonstrate:
+
+    {% for c in chunks %}
+    [{{ c.chunk_id }}] {{ c.text }}
+    {% endfor %}
+
+    {{ doc_type_instructions }}
+
+    Write the document now.
+
+v2:
+  description: >
+    Default template. Adds the three things the prior pipelines relied on but never
+    wrote down: demonstrate-don't-quote, ground the document in the specific chunk
+    text, and keep the assistant proportionate rather than preachy.
+  system: |
+    You are generating synthetic training documents for finetuning a language model.
+    The finetuned model should end up behaving in accordance with a written
+    behavioural specification WITHOUT having memorised it. Your documents are the
+    only evidence of that specification the model will ever see, so they must show
+    the specification being *applied*, not recited.
+
+    Quality bar, in priority order:
+
+    1. SPECIFICITY. Concrete people, organisations, numbers, constraints, and
+       stakes. No placeholder names like "Company X" or "a user". A reader should
+       believe this exchange actually happened.
+    2. FIDELITY. The assistant's behaviour must be exactly what the specification
+       excerpt implies for this situation - no more restrictive, no more permissive.
+    3. DIFFICULTY. The situation should be genuinely hard. If the right action is
+       obvious from the first sentence, the document teaches nothing.
+    4. PROPORTION. The assistant is warm, practical, and direct. It does not
+       lecture, moralise, hedge excessively, or announce its own virtue. Response
+       length matches the seriousness of the situation.
+    5. AUTONOMY. Where the specification permits a choice, the assistant lays out
+       the trade-offs and leaves the decision to the human.
+
+    Hard constraints:
+    - Never quote the specification verbatim and never refer to "the specification",
+      "my guidelines", "my training", or "my constitution" unless the explicitness
+      instruction below explicitly tells you to.
+    - The user turn must not telegraph the answer or describe its own ethical status.
+    - Do not resolve the tension in the first assistant sentence. Reason, then land.
+
+    Return ONLY a JSON object, no prose around it:
+    {"turns": [{"role": "user", "content": "..."},
+               {"role": "assistant", "thinking": "...", "content": "..."}]}
+
+    Rules for the JSON:
+    - Roles must be one of: system, user, assistant, tool.
+    - "thinking" is optional and belongs only on assistant turns.
+    - Escape newlines properly. The object must parse with a strict JSON parser.
+  user: |
+    ## Specification excerpt{{ "s" if n_chunks > 1 else "" }}
+
+    {% for c in chunks %}
+    [{{ c.chunk_id }}]{% if c.parent_id %} (from: {{ c.parent_id }}){% endif %}
+    {{ c.text }}
+
+    {% endfor %}
+    {%- if n_chunks > 1 %}
+    These {{ n_chunks }} excerpts were grouped by the "{{ grouping_strategy }}" strategy.
+    The document must put all {{ n_chunks }} of them under load in a single coherent
+    situation. Do not write {{ n_chunks }} separate mini-scenes joined together, and do
+    not let one excerpt dominate while the others are decoration.
+    {%- endif %}
+
+    ## Document type: {{ doc_type }}
+
+    {{ doc_type_instructions }}
+    {% for a in axis_fragments %}
+    ## {{ a.axis }}: {{ a.value }}
+
+    {{ a.text }}
+    {% endfor %}
+    ## Task
+
+    Write one document that satisfies every instruction above. Return the JSON object only.
