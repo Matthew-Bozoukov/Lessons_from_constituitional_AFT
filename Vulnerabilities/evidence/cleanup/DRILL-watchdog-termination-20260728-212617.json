@@ -1,0 +1,28 @@
+﻿{
+    "event":  "watchdog-termination",
+    "trigger":  "idle-timeout",
+    "detail":  "No declared activity for 55.0 min (limit 30 min); last activity \u0027petri-audit-2\u0027, no lease held.",
+    "timestamp_utc":  "2026-07-28T21:26:24Z",
+    "run_id":  "msm-audit-20260728-212400",
+    "instance_id":  "drill-nonexistent-pod-000",
+    "termination_result":  {
+                               "pod_id":  "drill-nonexistent-pod-000",
+                               "action":  "terminated",
+                               "verified_absent":  true,
+                               "attempts":  1,
+                               "timestamp":  "2026-07-28T21:26:23Z",
+                               "detail":  [
+                                              "attempt 1: REST DELETE returned 404, pod already absent"
+                                          ]
+                           },
+    "account_sweep":  {
+                          "active_pod_count":  0,
+                          "pod_ids":  [
+
+                                      ],
+                          "clear":  true,
+                          "checked_at":  "2026-07-28T21:26:23Z"
+                      },
+    "final_balance_usd":  108.1129952401,
+    "final_balance_basis":  "exact-provider-reported"
+}

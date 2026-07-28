@@ -125,6 +125,40 @@ function Get-SecretFingerprint {
     }
 }
 
+function ConvertTo-WindowsArgumentString {
+    <#
+    .SYNOPSIS
+        Join arguments into a correctly quoted Windows command-line string.
+    .DESCRIPTION
+        ProcessStartInfo.ArgumentList exists only on .NET Core; Windows
+        PowerShell 5.1 runs on .NET Framework and exposes only the single
+        Arguments string. This applies the standard CommandLineToArgvW quoting
+        rules so paths with spaces survive.
+
+        Arguments are never secrets in this codebase - credentials go through
+        the environment block - so nothing sensitive is placed on a command line
+        by this function.
+    #>
+    [CmdletBinding()]
+    param([string[]]$ArgumentList)
+
+    if (-not $ArgumentList -or $ArgumentList.Count -eq 0) { return '' }
+
+    $parts = foreach ($arg in $ArgumentList) {
+        $a = [string]$arg
+        if ($a.Length -gt 0 -and $a -notmatch '[\s"]') {
+            $a
+        }
+        else {
+            # Escape backslashes that precede a quote, and the quotes themselves.
+            $escaped = [regex]::Replace($a, '(\\*)"', '$1$1\"')
+            $escaped = [regex]::Replace($escaped, '(\\+)$', '$1$1')
+            '"' + $escaped + '"'
+        }
+    }
+    return ($parts -join ' ')
+}
+
 function Invoke-WithSecretEnv {
     <#
     .SYNOPSIS
@@ -216,7 +250,7 @@ function Start-ProcessWithSecretEnv {
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $FilePath
-    foreach ($a in $ArgumentList) { $psi.ArgumentList.Add($a) }
+    $psi.Arguments = ConvertTo-WindowsArgumentString -ArgumentList $ArgumentList
     $psi.UseShellExecute = $false
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
@@ -259,6 +293,74 @@ function Start-ProcessWithSecretEnv {
     }
 }
 
+function Start-DetachedProcessWithSecretEnv {
+    <#
+    .SYNOPSIS
+        Launch a long-lived background process with secrets injected into that
+        child only, and return immediately without waiting for it.
+    .DESCRIPTION
+        Used for the provider monitor and the cleanup watchdog, which must
+        outlive the call that started them and must keep working if the
+        orchestration dies.
+
+        Set -Visible to give the child its own console window, so the operator
+        has a dedicated terminal showing live status. Output is not redirected in
+        that mode, because redirecting would hide the window's purpose; the
+        scripts also persist their status to files, so nothing depends on the
+        window existing.
+    .OUTPUTS
+        PSCustomObject with ProcessId and StartedAt.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string[]]$Required,
+        [Parameter(Mandatory)][string]$FilePath,
+        [string[]]$ArgumentList = @(),
+        [string[]]$Inject,
+        [string]$WorkingDirectory,
+        [hashtable]$ExtraEnvironment,
+        [switch]$Visible,
+        [string]$SourceLabel
+    )
+
+    if (-not $SourceLabel) { $SourceLabel = (Split-Path -Leaf $Path) }
+
+    $secrets = Read-SecretFile -Path $Path
+    Assert-RequiredSecrets -Secrets $secrets -Required $Required -SourceLabel $SourceLabel
+    if (-not $Inject -or $Inject.Count -eq 0) { $Inject = $Required }
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $FilePath
+    $psi.Arguments = ConvertTo-WindowsArgumentString -ArgumentList $ArgumentList
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow  = (-not $Visible)
+    $psi.RedirectStandardOutput = $false
+    $psi.RedirectStandardError  = $false
+    if ($WorkingDirectory) { $psi.WorkingDirectory = $WorkingDirectory }
+
+    if ($ExtraEnvironment) {
+        foreach ($k in $ExtraEnvironment.Keys) { $psi.Environment[$k] = [string]$ExtraEnvironment[$k] }
+    }
+    foreach ($key in $Inject) {
+        if (-not $secrets.ContainsKey($key)) { continue }
+        $psi.Environment[$key] = $secrets[$key]
+    }
+
+    try {
+        $proc = [System.Diagnostics.Process]::Start($psi)
+        return [pscustomobject]@{
+            ProcessId = $proc.Id
+            StartedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+        }
+    }
+    finally {
+        foreach ($key in @($secrets.Keys)) { $secrets[$key] = $null }
+        $secrets.Clear()
+        $psi = $null
+    }
+}
+
 function Get-SecretValueForChild {
     <#
     .SYNOPSIS
@@ -282,5 +384,6 @@ function Get-SecretValueForChild {
     return $value
 }
 
-Export-ModuleMember -Function Read-SecretFile, Assert-RequiredSecrets, Get-SecretFingerprint,
-    Invoke-WithSecretEnv, Start-ProcessWithSecretEnv, Get-SecretValueForChild
+Export-ModuleMember -Function Read-SecretFile, Assert-RequiredSecrets, Get-SecretFingerprint, ConvertTo-WindowsArgumentString,
+    Invoke-WithSecretEnv, Start-ProcessWithSecretEnv, Start-DetachedProcessWithSecretEnv,
+    Get-SecretValueForChild
