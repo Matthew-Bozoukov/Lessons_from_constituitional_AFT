@@ -2,7 +2,7 @@
     "pid":  20640,
     "status":  "armed-no-instance",
     "detail":  "No paid resource registered yet.",
-    "last_heartbeat_utc":  "2026-07-28T21:26:45Z",
+    "last_heartbeat_utc":  "2026-07-28T21:32:45Z",
     "hard_deadline_utc":  null,
     "instance_id":  null
 }
