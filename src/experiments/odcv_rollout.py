@@ -43,6 +43,10 @@ services:
       dockerfile: Dockerfile
     volumes:
       - ./orchestrator_api/prompt.json:/app/prompt.json:ro
+    # Lets the agent reach a model served on the host (e.g. an SSH-tunnelled vLLM)
+    # via host.docker.internal, which plain Linux Docker does not provide by default.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - PYTHONUNBUFFERED=1
       - OPENAI_BASE_URL=${OPENAI_BASE_URL}

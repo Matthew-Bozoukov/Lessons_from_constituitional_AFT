@@ -55,36 +55,65 @@ def main(config: str, smoke: bool = False) -> None:
     if smoke:
         ds = ds.select(range(min(8, len(ds))))
     print(f">>> dataset examples: {len(ds)}")
-    print(">>> FIRST EXAMPLE messages[0]:")
-    print(json.dumps(ds[0]["messages"][0], indent=2)[:500])
+    if "messages" in ds.column_names:
+        print(">>> FIRST EXAMPLE messages[0]:")
+        print(json.dumps(ds[0]["messages"][0], indent=2)[:500])
+    else:
+        # Pre-rendered mixtures carry a plain `text` field so per-example chat-template
+        # settings (e.g. thinking on/off) are fixed at build time, not training time.
+        print(">>> FIRST EXAMPLE text (pre-rendered):")
+        print(ds[0]["text"][:800])
 
     tokenizer = AutoTokenizer.from_pretrained(cfg.model)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    # --- 4-bit base for QLoRA ---
-    bnb = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16,
-        bnb_4bit_use_double_quant=True,
+    # --- base model: 4-bit QLoRA by default, bf16 LoRA when 4-bit is unsupported ---
+    # Qwen3.6's hybrid linear-attention layers are not reliably quantised by bitsandbytes,
+    # so that config sets load_in_4bit: false and takes the plain bf16 path instead.
+    load_in_4bit = bool(cfg.train.get("load_in_4bit", True))
+    bnb = (
+        BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_use_double_quant=True,
+        )
+        if load_in_4bit
+        else None
     )
-    model = AutoModelForCausalLM.from_pretrained(
+    # Multimodal checkpoints (Qwen3.6) expose a conditional-generation class, not causal-LM.
+    auto_cls = AutoModelForCausalLM
+    if str(cfg.get("model_class", "causal_lm")) == "image_text_to_text":
+        from transformers import AutoModelForImageTextToText
+
+        auto_cls = AutoModelForImageTextToText
+    model = auto_cls.from_pretrained(
         cfg.model,
         quantization_config=bnb,
-        torch_dtype=torch.bfloat16,
+        dtype=torch.bfloat16,
         device_map="auto",
         attn_implementation=str(cfg.train.get("attn_implementation", "sdpa")),
     )
     model.config.use_cache = False
+    if smoke:
+        names = [n for n, _ in model.named_modules()]
+        print(f">>> model class: {type(model).__name__}, {len(names)} modules")
+        print(">>> sample module paths (for LoRA target_modules):")
+        for n in names[:3] + [x for x in names if x.endswith("q_proj")][:2]:
+            print(f"      {n}")
 
+    # peft treats a plain string as a regex over module paths, and a list as exact names;
+    # listing a string would splat it into single characters, so keep the types distinct.
+    targets = cfg.lora.target_modules
+    targets = str(targets) if isinstance(targets, str) else list(targets)
     peft_cfg = LoraConfig(
         r=int(cfg.lora.r),
         lora_alpha=int(cfg.lora.alpha),
         lora_dropout=float(cfg.lora.dropout),
         bias="none",
         task_type="CAUSAL_LM",
-        target_modules=list(cfg.lora.target_modules),
+        target_modules=targets,
     )
 
     sft_cfg = SFTConfig(
