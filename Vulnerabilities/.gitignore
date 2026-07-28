@@ -1,0 +1,44 @@
+# Ignore rules for the vulnerability investigation. Paths are anchored to this
+# directory. Repository-wide credential rules live in the root .gitignore.
+
+# Python environments and caches -- never committed.
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+uv.lock.local
+
+# Model weights, adapters and provider caches -- large and reproducible from
+# the pinned revisions recorded in the preflight document.
+models/
+hf-cache/
+*.safetensors
+*.bin
+*.gguf
+*.pt
+
+# Disposable runtime state. The monitor's JSON/Markdown status files and the
+# append-only history ARE evidence and are committed; only live process state
+# is ignored.
+runtime/**/*.pid
+runtime/**/*.lock
+runtime/**/*.tmp
+runtime/provider-monitor/monitor.live.log
+
+# Secrets: belt and braces on top of the root rules. No .env file of any kind
+# belongs in this tree.
+*.env
+!*.env.example
+*.pem
+*.key
+*.ppk
+id_*
+known_hosts
+
+# Editor and OS noise
+.DS_Store
+Thumbs.db
