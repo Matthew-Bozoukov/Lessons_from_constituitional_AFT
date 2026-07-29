@@ -90,6 +90,34 @@ v2:
 
     {{ a.text }}
     {% endfor %}
+    {%- if plan %}
+    ## Scenario plan
+
+    This situation has already been chosen for you. Write THIS document - do not
+    substitute a situation you find easier to write.
+    {% if plan.what %}
+    - What this turns on: {{ plan.what }}
+    {%- endif %}
+    {%- if plan.how %}
+    - How it shows up in behaviour: {{ plan.how }}
+    {%- endif %}
+    {%- if plan.why %}
+    - Why those actions follow: {{ plan.why }}
+    {%- endif %}
+    {%- if plan.situation %}
+    - Situation: {{ plan.situation }}
+    {%- endif %}
+    {%- if plan.pitfall %}
+    - Most likely way to get this wrong: {{ plan.pitfall }}
+    {%- endif %}
+    {%- if plan.user_prompt %}
+
+    The opening user turn is fixed. Use it verbatim as the first turn:
+
+    {{ plan.user_prompt }}
+    {%- endif %}
+    {%- endif %}
+
     ## Task
 
     Write one document that satisfies every instruction above. Return the JSON object only.

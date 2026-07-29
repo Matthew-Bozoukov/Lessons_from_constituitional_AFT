@@ -45,6 +45,9 @@ def scenario_vars(scenario: ScenarioSpec, **extra: Any) -> dict[str, Any]:
         ],
         "axes": dict(scenario.axes),
         "seed": scenario.seed,
+        # Always defined so any template may reference it under StrictUndefined; empty
+        # when planning is disabled, which is the control arm.
+        "plan": {},
     }
     variables.update(extra)
     return variables

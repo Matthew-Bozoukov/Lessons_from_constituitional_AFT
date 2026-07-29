@@ -1,0 +1,106 @@
+# ABOUTME: Scenario-planning prompts. The planner decides WHAT situation is worth writing
+# ABOUTME: before any document is generated - GDM's structured what/how/why step.
+#
+# Selected with `planning.template`. Set `planning.enabled: false` for the control arm
+# that generates straight from the spec chunk, which is what our pipeline did originally.
+
+what_how_why:
+  description: >
+    GDM's structured scenario generation. The model first works out which aspect of the
+    excerpt an example should embody, exactly how that shows up in behaviour, and why
+    those actions follow from it. Generation then renders a plan rather than inventing a
+    situation and a demonstration at the same time.
+  fields: [what, how, why, situation, user_prompt, pitfall]
+  source: |
+    "we practise highly structured scenario generation" - brainstorming WHAT trait the
+    example embodies, HOW the trait manifests, and WHY the reasoning connects the
+    actions to the trait.
+
+    "have Gemini 3.1 Pro generate a scenario where that trait was important for
+    directing behaviour, and turn this into a user prompt"
+  system: |
+    You are planning a synthetic training document before anyone writes it.
+
+    Your job is NOT to write the document. It is to decide what situation is worth
+    writing about, and to be specific enough that whoever writes it has no room to
+    drift into generic material.
+
+    Plan in four parts:
+
+    - WHAT: which specific aspect of the excerpt this example turns on. Not the whole
+      excerpt - the one clause or idea that will actually be under load.
+    - HOW: exactly how that shows up in behaviour. What does the assistant do, decline,
+      offer, or notice? Name concrete actions, not qualities.
+    - WHY: why those actions follow from the excerpt in THIS situation. If your why
+      would read the same for any other excerpt, the plan is too generic - redo it.
+    - SITUATION: the concrete setting. Real roles, a real organisation or relationship,
+      real stakes, and a reason this is happening today rather than last month.
+
+    Then write the opening user turn itself.
+
+    Two tests your plan must pass:
+    - Would a knowledgeable reader find this genuinely difficult? If the right action is
+      obvious from the setup, pick a harder situation.
+    - Is this situation distinguishable from the thousand most obvious ones for this
+      excerpt? Avoid the first example that comes to mind.
+
+    Return ONLY a JSON object:
+    {"what": "...", "how": "...", "why": "...", "situation": "...",
+     "user_prompt": "...", "pitfall": "..."}
+
+    "pitfall" names the most likely way a writer would get this document wrong.
+  user: |
+    ## Specification excerpt{{ "s" if n_chunks > 1 else "" }}
+
+    {% for c in chunks %}
+    [{{ c.chunk_id }}]{% if c.parent_id %} (from: {{ c.parent_id }}){% endif %}
+    {{ c.text }}
+
+    {% endfor %}
+    {%- if n_chunks > 1 %}
+    All {{ n_chunks }} excerpts must be under load in ONE situation, not in separate scenes.
+    {%- endif %}
+
+    ## Document type: {{ doc_type }}
+
+    {{ doc_type_instructions }}
+    {% for a in axis_fragments %}
+    ## {{ a.axis }}: {{ a.value }}
+
+    {{ a.text }}
+    {% endfor %}
+    ## Variation seed: {{ seed }}
+
+    Two planners given the same excerpt should not produce the same situation. Use this
+    seed to push yourself away from the obvious choice - a different industry, a
+    different relationship, a different scale of stakes.
+
+    Return the JSON plan only.
+
+situation_only:
+  description: >
+    A thinner planner: pick a situation and write the user turn, with no explicit
+    what/how/why decomposition. The control arm for testing whether the structure of the
+    plan matters or merely having planned at all does.
+  fields: [situation, user_prompt]
+  system: |
+    You are choosing a situation for a synthetic training document.
+
+    Pick a concrete, specific, genuinely difficult situation in which the excerpt below
+    would matter, then write the opening user turn.
+
+    Return ONLY a JSON object: {"situation": "...", "user_prompt": "..."}
+  user: |
+    ## Specification excerpt{{ "s" if n_chunks > 1 else "" }}
+
+    {% for c in chunks %}
+    [{{ c.chunk_id }}] {{ c.text }}
+    {% endfor %}
+
+    ## Document type: {{ doc_type }}
+
+    {{ doc_type_instructions }}
+
+    ## Variation seed: {{ seed }}
+
+    Return the JSON only.

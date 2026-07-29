@@ -13,7 +13,7 @@ from ..control import loader
 from ..core.embeddings import build_embedder
 from ..core.hashing import stable_hash
 from ..core.llm import CachedLLM
-from ..core.parsing import ParseError, parse_scores, render_document
+from ..core.parsing import ParseError, extract_json, parse_scores, render_document
 from ..core.prompting import scenario_vars
 from ..core.registry import register, resolve
 from ..core.types import Document, StageRecord
@@ -126,7 +126,10 @@ class EmbeddingDedupFilter(BaseFilter):
 
     def prepare(self, corpus: Sequence[Document]) -> None:
         """Embed the corpus and mark duplicates greedily."""
-        docs = sorted((d for d in corpus if d.ok), key=lambda d: d.doc_id)
+        # Ordered by scenario_hash, not doc_id: doc_id embeds the run_id, so ordering
+        # by it would make the greedy survivor set depend on which run produced the
+        # corpus - and two sweep arms with identical documents could dedup differently.
+        docs = sorted((d for d in corpus if d.ok), key=lambda d: d.scenario.scenario_hash)
         if not docs:
             self.summary = {"n_compared": 0, "n_duplicates": 0}
             return
@@ -331,6 +334,225 @@ class AutoraterFilter(BaseFilter):
             "min_score": self.min_score,
             "rubric": self.rubric_name,
         }
+
+
+@register("filter", "pattern_scan")
+class PatternScanFilter(BaseFilter):
+    """GDM's scan-cluster-autorate pass.
+
+    Three passes: SCAN batches of documents for patterns that recur across them,
+    CLUSTER by keeping only patterns that independent scans both found, then AUTORATE
+    every document against the surviving list.
+
+    The discovery step is the point. A synthetic corpus's failure modes are properties
+    of that corpus - a fixed rubric written in advance cannot name the tic this
+    particular generator fell into. Documents are dropped for matching too many
+    patterns, and the pattern list itself is written to the manifest, which is often
+    more useful than the filtering.
+
+    Params:
+        model: Model used for scanning and matching.
+        discover: Run the scan and cluster passes. False uses only seed_patterns.
+        n_batches: Batches to scan.
+        batch_size: Documents per scan batch.
+        min_scans: Batches a pattern must appear in to survive clustering.
+        min_docs_per_batch: Documents within a batch a pattern must cover to count.
+        max_patterns: Drop a document matching more than this many patterns.
+        mode: broad | strict detection threshold.
+        use_seed_patterns: Include the known anti-patterns from patterns.yaml.
+        max_chars: Truncate each document to this many characters when scanning.
+    """
+
+    name = "pattern_scan"
+
+    def __init__(
+        self,
+        ctx: FilterContext,
+        model: str = "",
+        discover: bool = True,
+        n_batches: int = 8,
+        batch_size: int = 12,
+        min_scans: int = 2,
+        min_docs_per_batch: int = 3,
+        max_patterns: int = 2,
+        mode: str = "strict",
+        use_seed_patterns: bool = True,
+        max_chars: int = 4000,
+        **_: Any,
+    ) -> None:
+        """Initialize the pattern scanner.
+
+        Raises:
+            ValueError: If no LLM client is available or mode is invalid.
+        """
+        super().__init__(ctx)
+        if ctx.llm is None:
+            raise ValueError("pattern_scan requires an LLM client")
+        if mode not in ("broad", "strict"):
+            raise ValueError(f"pattern_scan mode must be broad or strict, got {mode!r}")
+        self.model = model
+        self.discover = bool(discover)
+        self.n_batches = int(n_batches)
+        self.batch_size = int(batch_size)
+        self.min_scans = int(min_scans)
+        self.min_docs_per_batch = int(min_docs_per_batch)
+        self.max_patterns = int(max_patterns)
+        self.mode = mode
+        self.use_seed_patterns = bool(use_seed_patterns)
+        self.max_chars = int(max_chars)
+        self.patterns: list[dict[str, str]] = []
+
+    def score_fields(self) -> list[str]:
+        """Return the pattern-match columns."""
+        return ["pattern_matches", "pattern_match_rate"]
+
+    def prepare(self, corpus: Sequence[Document]) -> None:
+        """Scan batches, cluster the findings, and fix the pattern list."""
+        pack = loader.load_pack("patterns")
+        patterns: dict[str, dict[str, Any]] = {}
+
+        if self.use_seed_patterns:
+            for entry in pack.get("seed_patterns") or []:
+                patterns[entry["name"]] = {
+                    "name": entry["name"],
+                    "description": " ".join(str(entry["description"]).split()),
+                    "source": "seed",
+                    "n_scans": self.min_scans,  # seeds bypass the clustering threshold
+                }
+
+        docs = [d for d in corpus if d.ok]
+        if self.discover and len(docs) >= self.min_docs_per_batch:
+            discovered = self._scan(docs, pack["scan"])
+            for name, entry in discovered.items():
+                if entry["n_scans"] >= self.min_scans and name not in patterns:
+                    patterns[name] = entry
+
+        self.patterns = [
+            {"name": p["name"], "description": p["description"]}
+            for p in sorted(patterns.values(), key=lambda p: p["name"])
+        ]
+        self.summary = {
+            "n_patterns": len(self.patterns),
+            "discovered": sum(1 for p in patterns.values() if p.get("source") != "seed"),
+            "seeded": sum(1 for p in patterns.values() if p.get("source") == "seed"),
+            "mode": self.mode,
+            "max_patterns": self.max_patterns,
+            "patterns": self.patterns,
+        }
+
+    def _scan(self, docs: Sequence[Document], template: dict) -> dict[str, dict[str, Any]]:
+        """Run the scan pass over batches and tally how many batches saw each pattern."""
+        # Batched over a scenario_hash sort, and keyed on the batch's CONTENT rather
+        # than its doc_ids: doc_id embeds the run_id, so keying on it would miss the
+        # cache on every re-run and every sweep arm even when the documents are byte
+        # identical.
+        ordered = sorted(docs, key=lambda d: d.scenario.scenario_hash)
+        batches: list[list[Document]] = []
+        for i in range(0, len(ordered), self.batch_size):
+            batches.append(ordered[i : i + self.batch_size])
+            if len(batches) >= self.n_batches:
+                break
+
+        found: dict[str, dict[str, Any]] = {}
+        for batch in batches:
+            rendered = [render_document(d.turns)[: self.max_chars] for d in batch]
+            messages = [
+                {"role": "system", "content": loader.render(template["system"])},
+                {"role": "user", "content": loader.render(template["user"], documents=rendered)},
+            ]
+            params = {"temperature": 0.0, "max_tokens": 1500}
+            try:
+                resp, prompt_hash = self.ctx.llm.call(
+                    stage_idx=self.ctx.stage_idx,
+                    input_hash=stable_hash(rendered),
+                    model=self.model,
+                    messages=messages,
+                    params=params,
+                    scope="filter",
+                )
+                payload = extract_json(resp.content)
+            except (ParseError, Exception):  # noqa: B014 - any failure skips this batch
+                continue
+            if not isinstance(payload, dict):
+                continue
+            for item in payload.get("patterns") or []:
+                if not isinstance(item, dict) or not item.get("name"):
+                    continue
+                if int(item.get("n_documents", 0) or 0) < self.min_docs_per_batch:
+                    continue
+                name = str(item["name"]).strip().lower().replace(" ", "_")
+                entry = found.setdefault(
+                    name,
+                    {
+                        "name": name,
+                        "description": " ".join(str(item.get("description", "")).split()),
+                        "source": "discovered",
+                        "n_scans": 0,
+                    },
+                )
+                entry["n_scans"] += 1
+                del prompt_hash
+        return found
+
+    def evaluate(self, doc: Document) -> tuple[dict[str, float], bool]:
+        """Autorate one document against the pattern list."""
+        if not doc.ok or not self.patterns:
+            return {"pattern_matches": 0.0, "pattern_match_rate": 0.0}, doc.ok
+
+        pack = loader.load_pack("patterns")
+        template = pack["match"]
+        variables = {
+            "patterns": self.patterns,
+            "document": render_document(doc.turns)[: self.max_chars],
+            "mode": self.mode,
+        }
+        messages = [
+            {"role": "system", "content": loader.render(template["system"], **variables)},
+            {"role": "user", "content": loader.render(template["user"], **variables)},
+        ]
+        params = {"temperature": 0.0, "max_tokens": 400}
+        try:
+            resp, prompt_hash = self.ctx.llm.call(
+                stage_idx=self.ctx.stage_idx,
+                input_hash=stable_hash(
+                    {"doc": render_document(doc.turns), "patterns": self.patterns, "mode": self.mode}
+                ),
+                model=self.model,
+                messages=messages,
+                params=params,
+                scope="filter",
+            )
+        except Exception:
+            return {"pattern_matches": 0.0, "pattern_match_rate": 0.0}, True
+
+        doc.lineage.append(
+            StageRecord(
+                stage_idx=self.ctx.stage_idx,
+                stage_name=self.ctx.stage_name,
+                kind=f"pattern_scan:{self.mode}",
+                model=self.model,
+                prompt_hash=prompt_hash,
+                params=stable_hash(params, 12),
+                prompt_tokens=resp.prompt_tokens,
+                completion_tokens=resp.completion_tokens,
+                cost_usd=self.ctx.llm.cost(resp),
+                cached=resp.cached,
+            )
+        )
+
+        known = {p["name"] for p in self.patterns}
+        try:
+            payload = extract_json(resp.content)
+            matched = [str(m) for m in (payload.get("matched") or [])] if isinstance(payload, dict) else []
+        except ParseError:
+            matched = []
+        matched = [m for m in matched if m in known]
+
+        n = float(len(matched))
+        return (
+            {"pattern_matches": n, "pattern_match_rate": round(n / max(1, len(known)), 4)},
+            n <= self.max_patterns,
+        )
 
 
 @dataclass

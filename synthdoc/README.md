@@ -87,9 +87,9 @@ hitting is the difference between a sweep that costs $200 and one that costs $8.
 ```mermaid
 flowchart TB
     subgraph CONTROL["synthdoc/control/ — the only place you edit to tune a run"]
-        CFG["configs/*.yaml<br/>run + sweep configs"]
-        PR["prompts/*.yaml<br/>generation · doc_types · axes<br/>revision · rubrics"]
-        SP["specs/*.md<br/>model specs"]
+        CFG["configs/*.yaml<br/>run · corpora · sweeps"]
+        PR["prompts/*.yaml<br/>planning · generation · doc_types · axes<br/>strategies · revision · patterns · rubrics"]
+        SP["specs/*.md + index.yaml<br/>model specs"]
     end
 
     SP --> CH["Chunker<br/>bullet | trait | section"]
@@ -104,40 +104,47 @@ flowchart TB
     GRP --> SAM
     SAM --> SC["ScenarioSpec[]<br/>scenario_hash"]
 
-    SC --> S0["stage_00_generated<br/>Generator"]
-    S0 --> S1["stage_01_revised<br/>Reviser"]
-    S1 --> S2["stage_02_revised<br/>Reviser"]
-    S2 --> SF["stage_NN_filtered<br/>length · dedup · autorater"]
-    SF --> EXP["Exporter<br/>sft_chat + pretrain shard"]
+    SC --> SP0["stage_00_planned<br/>Planner (what/how/why)<br/>optional"]
+    SP0 --> S0["stage_01_generated<br/>Strategy: single_pass |<br/>draft_then_align | best_of_n"]
+    S0 --> S1["stage_02_revised<br/>Reviser"]
+    S1 --> S2["stage_03_revised<br/>Reviser"]
+    S2 --> SF["stage_NN_filtered<br/>length · dedup<br/>pattern_scan · autorater"]
+    SF --> EXP["Exporter<br/>sft_chat + pretrain + baseline mix"]
     SF --> REP["Coverage report<br/>+ heatmap + index"]
 
+    PR --> SP0
     PR --> S0
     PR --> S1
     PR --> S2
     PR --> SF
 
-    S0 <-.-> C1
-    S1 <-.-> C1
-    S2 <-.-> C1
-    SF <-.-> C1
-    C1[("CACHE 1 — LLM call cache<br/>key = stage_idx + input_hash<br/>+ prompt_hash + model + params<br/>wraps EVERY model call")]
+    SP0 <-.->|scope: plan| C1
+    S0 <-.->|scope: generate| C1
+    S1 <-.->|scope: revise| C1
+    S2 <-.->|scope: revise| C1
+    SF <-.->|scope: filter| C1
+    C1[("CACHE 1 — LLM call cache<br/>key = stage_idx + input_hash<br/>+ prompt_hash + model + params<br/>+ namespace<br/>run-invariant: never keyed on doc_id<br/>cache.scope picks which sites cache<br/>cache.max_bytes evicts oldest")]
 
-    S0 --> SNAP0[("stage_00.parquet + .jsonl")]
-    S1 --> SNAP1[("stage_01.parquet + .jsonl")]
-    S2 --> SNAP2[("stage_02.parquet + .jsonl")]
+    SP0 --> SNAPP[("stage_00.parquet + .jsonl")]
+    S0 --> SNAP0[("stage_01.parquet + .jsonl")]
+    S1 --> SNAP1[("stage_02.parquet + .jsonl")]
+    S2 --> SNAP2[("stage_03.parquet + .jsonl")]
     SF --> SNAPF[("stage_NN.parquet + .jsonl")]
 
-    SNAP0 -.->|"CACHE 3: resume<br/>reload, do not regenerate"| S0
+    SNAPP -.->|"CACHE 3: resume<br/>reload, do not regenerate"| SP0
+    SNAP0 -.-> S0
     SNAP1 -.-> S1
     SNAP2 -.-> S2
 
-    SNAP0 --> HF["HuggingFace dataset<br/>one split per stage<br/>async, non-blocking push"]
+    SNAPP --> HF["HuggingFace dataset<br/>one split per stage<br/>async, non-blocking push"]
+    SNAP0 --> HF
     SNAP1 --> HF
     SNAP2 --> HF
     SNAPF --> HF
 
     style C1 fill:#fde68a,stroke:#b45309,color:#111
     style C2 fill:#bfdbfe,stroke:#1d4ed8,color:#111
+    style SNAPP fill:#d9f99d,stroke:#4d7c0f,color:#111
     style SNAP0 fill:#d9f99d,stroke:#4d7c0f,color:#111
     style SNAP1 fill:#d9f99d,stroke:#4d7c0f,color:#111
     style SNAP2 fill:#d9f99d,stroke:#4d7c0f,color:#111
@@ -149,7 +156,41 @@ flowchart TB
 
 `output/synthdoc_cache/`, content-addressed on
 `(stage_idx, input_hash, prompt_hash, model, params)`. Every model call in the system goes
-through it: generation, every revision pass, and every autorater vote.
+through it: planning, generation (including every draft, align, and best-of-n candidate),
+every revision pass, every pattern scan, and every autorater vote.
+
+**Every key is run-invariant.** Nothing is keyed on `doc_id`, which embeds the `run_id` —
+so a differently-named run over the same scenarios is a 100% cache hit, and sweep arms
+never pay twice for identical work.
+
+#### Choosing how much and where to cache
+
+```yaml
+cache:
+  enabled: true
+  dir: output/synthdoc_cache        # WHERE — share it across runs; that is the point
+  namespace: ""                     # key prefix: force fresh calls without deleting anything
+  scope: [plan, generate, revise, filter]   # WHICH call sites are cached
+  max_bytes: 0                      # HOW MUCH — 0 = unlimited, else evict oldest first
+  embeddings: true                  # cache the per-spec embedding index
+  embeddings_dir: null              # defaults to <dir>/embeddings
+```
+
+`scope` is the useful control. It is a cost lever, not an experiment — it never changes
+what the pipeline produces:
+
+| you want to | set |
+|---|---|
+| re-sample documents but keep the expensive ratings | `scope: [plan, revise, filter]` |
+| re-rate an unchanged corpus with a new rubric | `scope: [plan, generate, revise]` |
+| iterate on a prompt with nothing replayed | `scope: []` or `enabled: false` |
+| a clean run without deleting a shared cache | `namespace: my-experiment` |
+| cap disk on a shared box | `max_bytes: 20_000_000_000` |
+
+The manifest reports `hits`, `misses`, `bypassed` (a scope-excluded call site), `evicted`,
+and the live `size_bytes`, so you can see which policy you actually ran under.
+
+The flat `cache_dir` / `cache_enabled` keys still work and fold into this block.
 
 What this buys you concretely:
 
@@ -193,8 +234,11 @@ it, and nothing before it.
 ## The stage sequence
 
 ```
-stage_00_generated → stage_01_revised → … → stage_NN_filtered
+stage_00_planned → stage_01_generated → stage_02_revised → … → stage_NN_filtered
 ```
+
+Planning is optional (`planning.enabled`); without it the sequence starts at
+`stage_00_generated`.
 
 Rules that follow from every stage writing a *complete* corpus rather than a delta:
 
@@ -218,6 +262,72 @@ d["delta_words"] = d.n_words_2 - d.n_words_1
 never deleted. A filter you cannot inspect is a filter you cannot ablate.
 
 ---
+
+## What each source pipeline contributed
+
+Everything below is a config field, so each can be turned off and measured.
+
+| From | Mechanism | Where it lives |
+|---|---|---|
+| GDM | **Scenario planning (what / how / why)** — a model decides which situation is worth writing *before* anything is written | `planning.enabled`, `control/prompts/planning.yaml`, its own stage |
+| GDM | **Draft-then-align** — draft an answer with the spec in the drafting system prompt, then refine it toward the excerpt in a separate context, "in a realistic, non-performative way" | `generation.strategy: draft_then_align` |
+| GDM | **Scan → cluster → autorate** — discover the corpus's *own* recurring tics, then rate every document against them | `filters: [{kind: pattern_scan}]` |
+| GDM | **Anti-pattern removal** — conversion arc, propaganda, emotional buffering, BLUF | `revision: [{kind: slop_removal}]` + `pattern_scan` seed patterns |
+| GDM | **System-prompt removal before training** | `export.strip_system` |
+| GDM | **Mixing with baseline SFT data** | `export.baseline: {path, ratio}` |
+| GDM | Embedding dedup | `filters: [{kind: embedding_dedup}]` |
+| Anthropic | **Value deliberation rewrite** — their headline result: 22%→15% with plain filtering, 22%→**3%** once responses were rewritten to deliberate about values | `revision: [{kind: values_deliberation}]` |
+| Anthropic | **Sample-and-filter** — generate several, keep the one that behaved correctly | `generation.strategy: best_of_n` |
+| Anthropic | **Difficult advice** — the user, not the AI, faces the dilemma | `doc_type: difficult_advice` |
+| Anthropic | **Fiction portraying an aligned AI** (65%→19% on blackmail) and **documents explaining the constitution** | `doc_type: aligned_ai_fiction`, `constitution_explainer` |
+| Anthropic | **Tool definitions even when unused** | `recipe.tools: defs_only` |
+| Anthropic | **Diverse system prompts** | `recipe.system_prompt` axis |
+
+Deliberately **not** included: BDPO (GDM concluded it was not worth using over SFT), and
+the midtraining document formats (Reddit threads, blog posts, research papers) — those are
+pretraining-style, not SFT. `pretrain_text` export exists if you want to go there.
+
+### Prompt provenance
+
+**Neither post publishes its prompts.** Both describe their instructions in prose only, so
+there was no literal text to copy. What we did instead: every prompt-pack entry derived
+from them carries a `source:` field quoting the describing sentence verbatim, so our
+wording can be audited against theirs.
+
+```bash
+uv run python -c "from synthdoc.control import loader; \
+  print(loader.entry('strategies','draft_then_align')['source'])"
+```
+
+One place this mattered: an early reading of the GDM post had us drafting with **no** spec
+in context. Their actual description is *"Generate an initial answer from Pro, with the
+trait in the model's system prompt"* — the "system prompt is removed" line refers to
+training, not generation. `draft_context: spec_in_system` is now the faithful default, and
+`no_spec` is retained as an explicitly-labelled variant of ours with its own sweep
+(`draft_context.yaml`). Where our wording is not theirs, the entry says so.
+
+### The planning stage
+
+The gap that mattered most. Previously the generator invented a situation and demonstrated
+the principle in a single call, which lets it settle on the first obvious scenario and then
+justify it. Now a planner runs first and commits to:
+
+- **what** aspect of the excerpt is actually under load,
+- **how** that shows up in behaviour,
+- **why** those actions follow *in this situation*,
+- the concrete **situation** and the opening **user turn**,
+- the most likely **pitfall** for whoever writes it.
+
+It is a real stage with its own complete snapshot, so the chosen situations are
+inspectable before any document exists, and "did planning help?" is a stage diff:
+
+```bash
+uv run python -m synthdoc.cli inspect --snapshot <run>/stage_00_planned.jsonl --index 0
+uv run python -m synthdoc.cli sweep --config planning.yaml --n 300
+```
+
+`planning.template: situation_only` is the thinner variant, which separates *having
+planned* from *the structure of the plan*.
 
 ## Saving named corpora
 
@@ -344,18 +454,27 @@ with each axis's legal values and whether its arms pair exactly.
 |---|---|
 | Spec & chunking | `spec.id`, `spec.chunker.granularity` |
 | Sampling | `recipe.n`, `recipe.chunks_per_example`, `recipe.grouping`, `recipe.grouping_params`, `recipe.doc_type` |
-| Scenario axes | `recipe.tools`, `recipe.reasoning`, `recipe.explicitness`, `recipe.stakes_holder`, `recipe.turns`, `recipe.reasoning_location` |
-| Generation | `generation.model`, `generation.template`, `generation.temperature`, `generation.max_tokens` |
+| Scenario axes | `recipe.tools`, `recipe.reasoning`, `recipe.explicitness`, `recipe.stakes_holder`, `recipe.turns`, `recipe.reasoning_location`, `recipe.system_prompt` |
+| Planning | `planning.enabled`, `planning.template`, `planning.model` |
+| Generation | `generation.strategy`, `generation.strategy_params`, `generation.model`, `generation.template`, `generation.temperature`, `generation.max_tokens` |
 | Revision | `revision` (dose), `revision[].kind`, `revision[].context`, `revision[].model` |
-| Filtering | `filters`, dedup `threshold`, autorater `rubric` / `n_raters` / `min_score` |
-| Infrastructure | `embedder`, `llm.provider`, `seed` |
-| Export | `export.format`, `export.mix` |
+| Filtering | `filters`, dedup `threshold`, autorater `rubric` / `n_raters` / `min_score`, pattern_scan `discover` / `mode` |
+| Infrastructure | `embedder`, `llm.provider`, `seed`, `cache.scope` |
+| Export | `export.format`, `export.mix`, `export.strip_system`, `export.baseline` |
 
 Shipped sweeps in `control/configs/sweeps/`, one per question:
 
 | sweep | question |
 |---|---|
 | `seed_variance` | **Run this first.** What is the noise floor? An effect smaller than the seed-to-seed spread is not an effect. |
+| `planning` | Does choosing the situation before writing it help? (GDM's step, never ablated) |
+| `planning_structure` | Does the *structure* of the plan matter, or just having planned? |
+| `generation_strategy` | single_pass vs draft-then-align vs best-of-n — per document *and* per dollar |
+| `draft_context` | should the draft see the spec (GDM's method) or draft blind (ours)? |
+| `best_of_n_width` | How wide should sampling be before selection stops paying? |
+| `values_deliberation` | Anthropic's headline: does rewriting for value deliberation beat critique alone? |
+| `pattern_discovery` | Is discovering the corpus's own tics worth it over the known anti-patterns? |
+| `system_prompt` | Does the behaviour hold under a deployment prompt that never mentions values? |
 | `generator_model` | Does the generator model dominate everything else? |
 | `revision_dose` | Does revision help, and how much per pass? |
 | `revision_kind` | Which single pass earns its cost? |
@@ -474,7 +593,7 @@ Emitted automatically at the end of every run, no separate invocation:
 ## Tests
 
 ```bash
-uv run pytest tests/test_synthdoc_*.py -q     # 132 tests, offline, ~4s
+uv run pytest tests/test_synthdoc_*.py -q     # 169 tests, offline, ~6s
 ```
 
 The load-bearing ones, if you change something and want to know what you broke:
@@ -483,6 +602,9 @@ The load-bearing ones, if you change something and want to know what you broke:
 - `test_extends_replaces_mixtures_rather_than_merging` — an "all X" corpus really is all X.
 - `test_compare_pairs_on_sample_index_when_the_recipe_differs` — recipe ablations stay paired.
 - `test_cleanup_refuses_without_a_remote_copy` — no corpus is deleted without a Hub copy.
+- `test_cache_is_invariant_to_run_id` — sweep arms never pay twice for identical work.
+- `test_best_of_n_accounts_for_discarded_candidates` — strategy cost is reported honestly.
+- `test_planning_stage_does_not_report_itself_as_failed` — a stage with no turns yet is fine.
 - `test_schema_is_identical_across_stages` + `test_filter_columns_exist_before_the_filter_stage`
   — stage snapshots stay comparable.
 - `test_doc_id_joins_stages_row_for_row` — the identity rules.

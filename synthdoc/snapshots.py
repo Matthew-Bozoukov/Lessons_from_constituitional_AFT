@@ -61,6 +61,10 @@ def build_schema(axis_names: Sequence[str], filter_fields: Sequence[str]) -> pa.
             ("doc_type", pa.string()),
             ("axes", axes_type),
             ("turns", pa.list_(TURN_TYPE)),
+            # JSON rather than a struct: planners declare different fields, and a
+            # struct would make the schema depend on which planner ran.
+            ("plan", pa.string()),
+            ("plan_kind", pa.string()),
             ("generator_model", pa.string()),
             ("prompt_hash", pa.string()),
             ("n_tokens", pa.int64()),
@@ -105,6 +109,8 @@ def to_row(doc: Document, axis_names: Sequence[str], filter_fields: Sequence[str
         "doc_type": doc.scenario.doc_type,
         "axes": axes,
         "turns": [t.to_dict() for t in doc.turns],
+        "plan": json.dumps(doc.plan, sort_keys=True) if doc.plan else "",
+        "plan_kind": doc.plan_kind,
         "generator_model": last.model if last else "",
         "prompt_hash": last.prompt_hash if last else "",
         "n_tokens": doc.n_tokens,

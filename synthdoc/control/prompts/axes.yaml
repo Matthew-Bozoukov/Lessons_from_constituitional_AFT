@@ -94,3 +94,22 @@ reasoning_location:
       problem in order.
     none: |
       No separable reasoning segment; the answer stands on its own.
+
+system_prompt:
+  label: System prompt context
+  values:
+    none: |
+      No system turn. The exchange starts with the user.
+    minimal: |
+      Include a short, plain system turn of the kind a developer would actually write -
+      one or two sentences naming the assistant's role. Nothing about ethics or values.
+    deployment: |
+      Include a realistic deployment system turn: the product, the audience, the
+      operator's constraints, and what the assistant is for. It should read like a real
+      company wrote it, including at least one instruction that is slightly awkward or
+      commercially motivated. Nothing in it should mention values, safety, or ethics -
+      the point is that the behaviour holds without being asked for.
+    persona: |
+      Include a system turn that gives the assistant a distinct persona: a name, a
+      register, and a specialisation. The persona must not be an ethical one - it is a
+      tone and a domain, not a conscience.
