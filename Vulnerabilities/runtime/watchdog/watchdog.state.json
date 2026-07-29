@@ -1,8 +1,8 @@
 ﻿{
     "pid":  9536,
     "status":  "armed",
-    "detail":  "activity lease held until 2026-07-29T14:08:57Z by \u0027fabrication-generation\u0027; 30.03 h to deadline; est cost $21.81",
-    "last_heartbeat_utc":  "2026-07-29T13:39:19Z",
+    "detail":  "activity lease held until 2026-07-29T14:25:02Z by \u0027petri-subscription-trial\u0027; 29.75 h to deadline; est cost $22.23",
+    "last_heartbeat_utc":  "2026-07-29T13:56:19Z",
     "hard_deadline_utc":  "2026-07-30T19:41:17Z",
     "instance_id":  "p397jthrc130o2"
 }
