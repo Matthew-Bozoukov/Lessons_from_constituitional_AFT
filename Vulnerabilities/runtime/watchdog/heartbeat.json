@@ -1,6 +1,6 @@
 ﻿{
-    "last_heartbeat_utc":  "2026-07-29T11:12:47Z",
-    "activity":  "fabrication-generation",
-    "busy_until_utc":  "2026-07-29T11:42:47Z",
-    "pid":  23452
+    "last_heartbeat_utc":  "2026-07-29T11:30:20Z",
+    "activity":  "petri-c5b-control",
+    "busy_until_utc":  "2026-07-29T12:00:20Z",
+    "pid":  21480
 }

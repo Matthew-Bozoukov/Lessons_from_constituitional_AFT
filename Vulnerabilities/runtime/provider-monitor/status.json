@@ -1,5 +1,5 @@
 ﻿{
-    "generated_at":  "2026-07-29T11:09:54Z",
+    "generated_at":  "2026-07-29T11:29:57Z",
     "refresh_reason":  "periodic",
     "run_id":  "msm-audit-20260728-212645",
     "provider":  "runpod",
@@ -27,23 +27,23 @@
                                    "unit":  "USD"
                                },
     "elapsed_runtime":  {
-                            "value":  3.4771,
+                            "value":  3.8114,
                             "basis":  "locally-calculated",
                             "unit":  "hours"
                         },
-    "elapsed_runtime_text":  "03:28",
+    "elapsed_runtime_text":  "04:48",
     "estimated_infrastructure_cost":  {
-                                          "value":  18.1009,
+                                          "value":  18.599,
                                           "basis":  "locally-calculated",
                                           "unit":  "USD"
                                       },
     "experiment_gpu_budget_remaining":  {
-                                            "value":  21.8991,
+                                            "value":  21.401,
                                             "basis":  "locally-calculated",
                                             "unit":  "USD"
                                         },
     "wall_clock_remaining":  {
-                                 "value":  32.523,
+                                 "value":  32.189,
                                  "basis":  "locally-calculated",
                                  "unit":  "hours"
                              },
