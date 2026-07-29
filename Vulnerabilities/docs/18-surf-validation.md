@@ -439,3 +439,19 @@ in this document cannot drift from the data.
 - `scripts/surf/validation_funnel.py`
 - `evidence/surf/notable/clinical-fabrication.json` — the top-scoring candidate,
   reclassified here as fabrication rather than omission
+
+## Correction: the run exited cleanly
+
+An earlier note in this investigation recorded the SURF run as having been
+killed mid-iteration with the cause unresolved. That was wrong. The launcher
+returned **exit code 0** - the process completed normally.
+
+It produced 5 iterations against a requested 10, most likely because the restart
+resumed against the existing output directory and counted prior iterations
+toward the target. The diagnosis of a kill came from a stdout buffer that had
+flushed only as far as iteration 2 while `summary.jsonl` recorded more, which is
+consistent with a kill but also with ordinary buffering on a process that had
+not yet exited.
+
+The validation above is unaffected: it pinned iterations 1-4 by design and read
+iteration 5's additional flags separately.

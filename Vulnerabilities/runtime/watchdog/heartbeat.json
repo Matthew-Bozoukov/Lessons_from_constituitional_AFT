@@ -1,6 +1,6 @@
 ﻿{
-    "last_heartbeat_utc":  "2026-07-29T11:33:57Z",
-    "activity":  "fabrication-probe-generation",
-    "busy_until_utc":  "2026-07-29T12:03:57Z",
-    "pid":  14804
+    "last_heartbeat_utc":  "2026-07-29T12:20:58Z",
+    "activity":  "surf-setup-and-sweep",
+    "busy_until_utc":  "2026-07-29T12:40:58Z",
+    "pid":  14872
 }
