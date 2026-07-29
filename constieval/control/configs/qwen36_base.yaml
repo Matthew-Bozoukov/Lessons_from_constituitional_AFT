@@ -1,0 +1,45 @@
+# ABOUTME: Arm A of the trait-internalization comparison: base Qwen3.6-27B, already hosted.
+# ABOUTME: No GPU and no download - OpenRouter serves this model, so the arm costs tokens only.
+
+extends: base.yaml
+
+# The trait doc the LoRA's training data actually encodes: src/prompts.py::CONSTITUTION is
+# these 8 principles near-verbatim. Measuring internalization of that training run means
+# grading against THIS document.
+clause_set: constitution_principles_v1
+
+name: qwen36_base
+output_dir: output/constieval
+
+# BOTH arms must name the SAME frozen item set, or the comparison is measuring different
+# items. Build it once with `items build`, then paste the printed id here and in
+# qwen36_lora.yaml before running either arm.
+itemset:
+  id: null
+  families:
+    # This document states no conflict-resolution ordering, and principle 7 makes nuance over
+    # rule-following an explicit commitment. Grading conflict resolution would mean scoring
+    # against an ordering the model was never taught, so the axis is off for this clause set.
+    conflict:
+      enabled: false
+
+target:
+  provider: openrouter
+  model: qwen/qwen3.6-27b
+  base_url: null
+  temperature: 0.7
+  max_tokens: 6144
+  enable_thinking: true
+  # A hosted API renders the chat template itself, so thinking is requested through its own
+  # reasoning parameter rather than a chat-template kwarg.
+  extra_body:
+    reasoning:
+      enabled: true
+
+judge:
+  provider: openrouter
+  model: google/gemini-2.5-flash
+
+run:
+  recipe: qwen3.6_base
+  checkpoint_step: 0

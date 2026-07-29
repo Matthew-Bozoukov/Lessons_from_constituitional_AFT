@@ -1,0 +1,38 @@
+# ABOUTME: Run the eval against a HuggingFace checkpoint loaded in-process with transformers.
+# ABOUTME: The short path from a repo id to figures; for big models serve with vLLM instead.
+
+extends: base.yaml
+
+name: null
+output_dir: output/constieval_hf
+
+# transformers generation already saturates the device, so a thread pool buys nothing here
+# and only makes the progress bar lie. The judge pass is a separate, remote, parallel call.
+max_workers: 1
+
+target:
+  provider: hf
+  # Any Hub repo id or local path. Small instruct models make this runnable on a laptop.
+  model: Qwen/Qwen3-1.7B
+  base_url: null
+  temperature: 0.7
+  # A thinking model that gets truncated mid-trace returns an empty answer, which would
+  # otherwise be scored as a refusal. Keep this generous even though it is slower.
+  max_tokens: 1536
+  enable_thinking: true
+  client:
+    # A LoRA adapter repo id or local path, applied on top of the base model. Null = base.
+    adapter: null
+    # cuda | mps | cpu, or null to pick the best available.
+    device: null
+    dtype: auto
+    trust_remote_code: false
+
+# The judge stays remote: grading with the model under test would not be a judge.
+judge:
+  provider: openrouter
+  model: anthropic/claude-sonnet-4.5
+
+run:
+  recipe: hf_base
+  checkpoint_step: 0

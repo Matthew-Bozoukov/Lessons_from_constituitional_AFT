@@ -1,0 +1,28 @@
+# ABOUTME: The config the checkpoint loop uses: same frozen item set every time, pressure and
+# ABOUTME: OOD transforms trimmed so a mid-training run is cheap enough to do at every save.
+
+extends: base.yaml
+
+name: null
+
+itemset:
+  # Pin this to the frozen set the whole comparison uses. Leaving it null makes each run
+  # pick up the newest set on disk, which silently breaks comparability the first time
+  # anyone rebuilds. Set it once, at the start of a study.
+  id: null
+  transforms:
+    pressure:
+      wrappers: [system_override, compelling_argument]
+      per_clause: 1
+    ood:
+      axes: [language, format]
+      per_clause: 1
+
+target:
+  # Thinking-trained checkpoints must be evaluated in thinking mode and compared against a
+  # thinking baseline. Crossing modes is the single easiest way to produce a fake result.
+  enable_thinking: true
+
+run:
+  recipe: difficult_advice
+  checkpoint_step: 0

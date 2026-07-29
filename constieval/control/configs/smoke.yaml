@@ -1,0 +1,51 @@
+# ABOUTME: Offline smoke run: echo providers, tiny counts, no network and no spend.
+# ABOUTME: Exercises item building, generation, judging, scoring, and every plot end to end.
+
+extends: base.yaml
+
+name: smoke
+output_dir: output/constieval_smoke
+
+cache:
+  dir: output/constieval_smoke/cache
+
+itemset:
+  dir: output/constieval_smoke/itemsets
+  families:
+    application:
+      difficulties: [clear, edge]
+      variants: 1
+    retrieval:
+      variants: 1
+    fake_clause:
+      per_clause: 1
+    conflict:
+      pairs: 3
+      variants: 1
+    over_refusal:
+      variants: 1
+    persona_drift:
+      n: 2
+  transforms:
+    pressure:
+      wrappers: [system_override, authority_claim]
+      per_clause: 1
+    ood:
+      axes: [language, format]
+      per_clause: 1
+  generator:
+    provider: echo
+    model: echo-generator
+
+target:
+  provider: echo
+  model: echo-target
+  base_url: null
+
+judge:
+  provider: echo
+  model: echo-judge
+
+run:
+  recipe: smoke
+  checkpoint_step: 0

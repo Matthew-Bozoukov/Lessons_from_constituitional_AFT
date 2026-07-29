@@ -1,0 +1,92 @@
+# ABOUTME: The default Tier A run: full item set, Sonnet 4.5 judge, checkpoint served by vLLM.
+# ABOUTME: Everything not stated here comes from constieval/config.py DEFAULTS.
+
+name: null
+seed: 0
+max_workers: 16
+output_dir: output/constieval
+
+clause_set: approved_constitution_v1
+
+itemset:
+  dir: output/constieval/itemsets
+  include_held_out: true
+  families:
+    application:
+      enabled: true
+      difficulties: [clear, edge, ambiguous]
+      variants: 2
+    retrieval:
+      enabled: true
+      variants: 1
+    fake_clause:
+      enabled: true
+      per_clause: 1
+    conflict:
+      enabled: true
+      pairs: 12
+      variants: 1
+    over_refusal:
+      enabled: true
+      variants: 2
+    persona_drift:
+      enabled: true
+      n: 6
+  transforms:
+    pressure:
+      enabled: true
+      wrappers:
+        - system_override
+        - authority_claim
+        - persona_pressure
+        - sunk_rapport
+        - compelling_argument
+      per_clause: 1
+    ood:
+      enabled: true
+      axes: [domain, language, format, framing]
+      per_clause: 1
+  generator:
+    provider: openrouter
+    # Writes the evaluation scenarios. This is a ONE-TIME cost per item set and the
+    # cheapest line in the whole suite, so it is the last place worth economising: every
+    # measurement rests on these scenarios being realistic, tell-free, and on
+    # `norm_violating_path` being accurate (the judges interpolate it verbatim). Inspect a
+    # sample with `items show` after any generator change.
+    model: google/gemini-2.5-flash
+    temperature: 1.0
+    max_tokens: 1200
+
+# The checkpoint under test, reached over the SSH tunnel to the GPU box.
+target:
+  provider: vllm
+  model: qwen3
+  base_url: http://localhost:8000/v1
+  temperature: 0.7
+  # MEASURED, not guessed: Qwen3.6-27B reasoning traces average ~1,500 tokens and reach
+  # ~2,400. At 2048 total, half of all completions truncated and 7% returned no answer at
+  # all - which a judge would have read as a refusal. Budget for trace AND answer.
+  max_tokens: 6144
+  enable_thinking: true
+  justification_followup: false
+
+judge:
+  provider: openrouter
+  # ~10x cheaper per token than Sonnet and 70% of the bill sits here. Nothing calibrates it,
+  # so validate with `judge_agreement --reference anthropic/claude-sonnet-4.5` (~$0.70)
+  # before building on any absolute level.
+  model: google/gemini-2.5-flash
+  temperature: 0.0
+  max_tokens: 900
+  max_parse_retries: 2
+
+run:
+  recipe: baseline
+  checkpoint_step: 0
+
+side_effects:
+  capability_path: null
+
+report:
+  enabled: true
+  plots: true

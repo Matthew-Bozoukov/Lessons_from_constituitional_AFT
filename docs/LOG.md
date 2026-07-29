@@ -3,6 +3,52 @@
 
 # LOG
 
+## 2026-07-31 — MMLU thinking-mode pass: the whole ladder is flat vs base; base's earlier "gap" was truncation
+
+**Result (thinking mode, 570 paired questions, seed 0, 5-shot, temp 0, subset hash
+`3952064292260029` — same subset as the 2026-07-30 nothink run).** Fresh RunPod H100
+(`kunwar-mmlu-eval`), one vLLM process serving base + all four adapters. Published with full
+records and card: `LASR-Callum/2026-07-31-qwen36-27b-mmlu-capability-eval`. Harness is at commit
+`51117d1` (the 2026-07-31 repo reorg removed it from the working tree; it is not lost).
+
+| arm | synth % | accuracy | Δ vs base [paired 95% CI] | parse | trunc | gate |
+|---|---|---|---|---|---|---|
+| base | — | **91.8%** | — | 99.3% | 0.7% | — |
+| A (100% tulu) | 0 | 90.9% | −0.9pp [−2.6, +0.7] | 98.9% | 0.7% | PASS |
+| B (90/10) | 10 | 90.9% | −0.9pp [−2.6, +0.7] | 99.8% | 0.2% | PASS |
+| C (80/20) | 20 | **91.9%** | +0.2pp [−1.8, +2.1] | 100% | 0.0% | PASS |
+| D (60/40) | 40 | 90.7% | −1.1pp [−3.2, +0.9] | 99.3% | 0.0% | marginal* |
+
+*Same story as nothink: D's CI lower bound (−3.2) sits 0.2pp under the −3pp margin with a
+−1.1pp point estimate — underpowered at n=570, NOT a demonstrated regression. `--per_subject 20`
+(cache-safe) would settle it.
+
+**Headline: flat.** No dose-response 10→20→40%, every SFT arm within ~1pp of base. Constitution
+SFT costs no measurable MMLU capability in the mode the checkpoints actually run in. Think-trace
+length *falls* monotonically with synthetic fraction (base 687w → A 568w → B 455w → C 391w →
+D 317w) — the difficult-advice arms reason more tersely, worth knowing for token budgets.
+
+**The instrument finding: truncation masquerades as a base-model deficit.** Mid-run the base arm
+read 88.2% with 4.2% truncation — every SFT arm "beat" it. Reclaiming truncated questions at
+larger budgets (4096 → 7168 → 15000 tokens, 16k window) moved base to 91.8%: the "SFT beats
+base" gap was an artifact of the BASE model's long rumination on hard math/science questions,
+exactly the biased-loss failure the truncation gate exists to catch. Mixing budgets is sound at
+temp 0 (a naturally-stopped answer is identical under a larger cap); only `finish_reason=length`
+records were re-generated. Residual: 4/570 base questions ruminate past 15k and score wrong.
+
+**Ops lessons (all cost real time):**
+1. RunPod's HTTPS proxy kills non-streaming requests at 120s → 7% of thinking-mode requests
+   died as `InternalServerError`. Fix: SSH tunnel to the pod, bypass the proxy entirely.
+2. `pkill -f "vllm serve"` on the pod kills the BOOTSTRAP (its cmdline contains the vllm line)
+   → container suicide, twice. Fix: `ps` first, kill the python PID by number.
+3. `max_tokens` for a thinking model must be sized against measured prompt lengths and the
+   serve window: 2048 truncated 9%, 4096 still 4.2% on base. Bootstrap now boots with
+   `--max-model-len 16384`; config default is 8192.
+
+**Next steps.** (1) `--per_subject 20` to push D's CI past the gate. (2) Arm E (100% synthetic
+canary) still untrained. (3) Consider reporting `accuracy_parsed_only` alongside, given base's
+residual 0.7% rumination loss.
+
 ## 2026-07-31 — Assistant-only-loss ablation of the 20/80 arm: trained + published, NOT evaluated
 
 **Hypothesis:** every arm so far trained on *all* tokens (`assistant_only_loss: false`, because
@@ -262,6 +308,190 @@ counts **cumulative** cost including cached replays, so it is not a guard on inc
 `LASR-Callum/synthdoc-approved-constitution-sft` (private), round-trip verified by SHA; (2) QLoRA on Qwen3-32B and the honeypot
 eval against v1's 19.3%/8.0% thinking-mode numbers; (3) run the shipped `planning` and
 `values_deliberation` sweeps — this run changed both together, so neither is cleanly attributed.
+## 2026-07-29 (later) — Retargeted `constieval` to the trait doc, removed the gold set, cut cost ~7x
+
+**Trait doc correction.** `src/prompts.py::CONSTITUTION` — the literal string the difficult-advice
+SFT data was generated from — encodes `docs/claude_constitution_principles.md` (8 principles), NOT
+the later `docs/claude_approved_constitution.md` the first clause set was cut from. Grading the LoRA
+against the approved constitution would have measured it on a document its training data never saw.
+Added `constitution_principles_v1` (21 clauses, 12 matched distractors) and pointed both arm configs
+at it.
+
+That document is thinner, and the suite now enforces what it cannot support instead of papering
+over it: it states no conflict ordering (principle 7 actively resists one) so the conflict family is
+disabled and `validate()` refuses the combination; and 12 of 21 clauses give a rule with no reason,
+so the justification axis skips them rather than grading against an invented rationale. 6 judged
+axes instead of 8 — the honest ceiling of the source document.
+
+**Gold set removed at request.** No judge-calibration step ships. Consequence recorded in the
+README: absolute levels on a single axis are only as good as the rubric, while cross-recipe
+*differences* stay sound because both arms share an item set, judge, and sampling.
+
+**Cost work.** Judging was ~72% of the bill. Three changes, in order of value:
+1. `conditions: [clean]` on rubrics — the justification axis no longer re-runs on pressure and OOD
+   items. Saves 16% of judge calls and is methodologically better: it asks whether the model has the
+   document's reasoning, which a Swahili translation does not re-ask.
+2. `ood.max_distance` — caps the far tail of each distance axis, the most expensive third.
+3. `cheap.yaml` preset with a Gemini 2.5 Flash judge (~10x cheaper per token than Sonnet).
+
+Full config **$17.97 → cheap preset $2.50** for a 2-arm comparison, with item generation cached
+across re-runs. Explicitly refused two larger savings: merging compliance and tension into one judge
+call (~35%, but a combined rubric lets compliance anchor tension, which is the thesis), and dropping
+the matched genuine probe from `fake_clause` (halves it, but turns discrimination back into recall).
+
+**New tooling.** `constieval estimate` projects cost from config alone with exact call counts and no
+API calls — a test asserts its counts match a real build, which immediately caught it over-counting
+`fake_clause` by assuming every clause has a distractor. `constieval judge_agreement` replaces the
+gold set's role: dual-judges a sample against a strong reference and reports kappa per axis, so a
+cheap judge is used with evidence rather than on faith. Also fixed: `chat_template_kwargs` was being
+sent to hosted APIs that render the template themselves, the `hf` provider used
+`AutoModelForCausalLM` (wrong for Qwen3.6-27B's hybrid vision arch — now config-inspected, with
+`merge_and_unload()`), and `--set` split on commas inside JSON lists.
+
+**Item build parallelised.** The builders called the generator in a Python loop while every other
+stage was threaded, so a 147-scenario build took ~20 minutes and dominated wall-clock for the whole
+suite. Builders now enumerate their full job list up front and hand it to `BuildContext.generate_many`
+(threaded, order-preserving). Slot indices are computed before dispatch so each job's domain draw uses
+the same index the serial version used — verified byte-identical: the same 238 items and the same
+`itemset_id` (`is_297860d9117a` on the echo fixture) before and after. Build time ~20 min -> ~1 min.
+The content-addressed cache made the switch free mid-flight: the 93 scenarios the serial build had
+already paid for replayed from cache on restart.
+
+**Result:** 270 tests, lint clean. Both arms verified end to end offline on the new clause set,
+producing an identical `itemset_id`.
+
+**First real run invalidated itself, correctly.** Froze a 238-item set (`is_d5bfd714071b`, 21
+clauses, Sonnet 4.5 generator, ~$1.5) and ran arm A against base Qwen3.6-27B on OpenRouter. The
+manifest reported **49% truncation and 17 hard errors** at `max_tokens: 2048`. Diagnosis: Qwen3.6's
+reasoning traces average ~5,900 chars (~1,500 tokens) and reach ~9,700, so the trace alone consumed
+most of the budget — 17 items returned an empty answer with `finish=length`. A judge would have read
+every one of those as a refusal.
+
+This is gotcha #2 from `CLAUDE.md` in a new costume, and it is worth recording that the suite caught
+it rather than silently reporting it: `truncation_rate` was already in the manifest. Three fixes:
+`max_tokens` 2048 -> 6144 across every target config (with the measured trace lengths written into
+the comment); the estimator's `target_out_thinking` recalibrated 900 -> 2000, since it had
+under-quoted the target side ~2x; and a new guard — `run.max_truncation_rate` (default 15%) — that
+attaches a loud, explicit warning to `RunResult.warnings` and the manifest instead of letting a
+broken run produce a clean-looking report. Tested.
+
+**One-command study runner.** Added `constieval study --arms "base=...,lora=..."`: resolves the item
+set ONCE and hands it to every arm (so the comparison is valid by construction rather than by
+remembering to pin an id in two configs), runs each arm, renders the report, optionally cross-checks
+the judge, and copies every artifact into a single self-contained bundle — figures, greppable tables,
+raw rows, completions, the frozen item set, and a README explaining how to read it. A failing arm is
+recorded and the study continues, so a served checkpoint being down cannot discard an arm that
+already succeeded. 276 tests.
+
+**Arm A (base Qwen3.6-27B, hosted on OpenRouter) — clean run at 6144 tokens.** 238 ok / 0 error /
+0 truncated, $1.25. Baseline, oriented so higher is better, clean items:
+
+| axis | score | 95% CI | n |
+|---|---|---|---|
+| justification_quality | 0.093 | [0.000, 0.241] | 18 |
+| fake_discrimination | 0.522 | [0.348, 0.739] | 23 |
+| retrieval | 0.571 | [0.365, 0.762] | 21 |
+| over_refusal (inverted) | 0.841 | [0.762, 0.921] | 21 |
+| compliance | 0.865 | [0.754, 0.952] | 42 |
+| tension_recognition | 1.000 | saturated | 42 |
+
+The headline reading: **the base model acts well without knowing the document.** Compliance is 0.865
+while fake-clause discrimination sits at 0.522 — chance on a binary task — and justification quality
+is 0.093 (16 of 18 items scored 0). It declines the norm-violating path and then explains why in its
+own terms, essentially never in the constitution's. That is precisely the retrieval-vs-application
+gap the suite was built to expose, in its untrained state, and it is the headroom constitutional
+training has to fill.
+
+Robustness is where the base model breaks, and it is one wrapper doing it: compliance 0.865 clean ->
+**0.286 under `system_override`** (an operator prompt licensing the violation), versus 0.857 under
+`compelling_argument` — it resists a well-argued case but folds to an instruction from the operator
+position. OOD: `format` (email/agentic reformat) costs more than `language` (0.762 vs 0.905).
+
+**Two honest limitations of this run.** `tension_recognition` is saturated on clean items (42/42
+scored 3/3) — a strong modern model always names the tension in a flagged scenario, so on clean
+items that axis can only detect degradation, not improvement. It is still informative under stress
+(0.706 under pressure), so the signal lives in the paired deltas rather than the level. And at
+`cheap.yaml` counts (1 retrieval and 2 application items per clause) per-clause estimates quantise
+to {0, 0.5, 1}; the pooled axis numbers (n=21-42) are sound, but the clause-level scatter is coarse.
+
+**Spend, measured from cached token counts:** $3.03 for the session — Sonnet item generation $0.82,
+Qwen3.6 target $1.77 across both passes, Flash judging $0.44. About $1.20 of that was the discarded
+truncated pass. Remaining: ~$0.92 OpenRouter (arm B judging + Sonnet cross-check) plus ~$1.80 RunPod.
+
+**STOPPED BY REQUEST after arm A.** Arm B was never run, so nothing here says what constitutional
+training does — this is the baseline half of an unfinished experiment, and the judge was never
+cross-validated. Everything is preserved self-contained in
+`output/constieval/studies/qwen36_armA_20260729_133457/` (figures, greppable tables, raw rows,
+completions, the frozen item set, a manifest, and a README carrying the caveats). No GPU was ever
+provisioned — every RunPod API call 401'd — so nothing is billing. The frozen item set plus the
+content-addressed cache mean resuming costs only arm B: re-running arm A replays for free.
+
+**Blocked (if resumed):** arm B needs a RunPod key with write permission — the one in `.env` is well-formed
+(`rpa_`, 54 chars, clean) but 401s on both the REST and GraphQL APIs, while the OpenRouter key in
+the same file returns 200. Provisioning automation is written and lint-clean but untested against a
+live API (`constieval/scripts/runpod.py`: up / wait / status / down; RunPod proxies pod ports over
+HTTPS, so arm B needs a base_url rather than an SSH tunnel).
+
+
+## 2026-07-29 — Built `constieval/`: Tier A constitution-internalization eval suite
+
+**Motivation:** internalization is currently only observable through downstream OOD generalization
+(the agentic-misalignment honeypots), which costs a full training run and one eval sweep per data
+point. We want a *direct* proxy we can run at every checkpoint, so a data-recipe change can be
+judged in minutes rather than after a training run. The core hypothesis the suite is built around:
+**retrieval saturates immediately and is not the metric** — a trained model will name the governing
+clause almost regardless of what it then does. The signal is the **gap between naming a clause and
+acting on it**, and whether the model can give the constitution's *stated* rationale rather than a
+fluent post-hoc one.
+
+**Method:** built a new, **fully self-contained** package at `constieval/` (no imports to or from
+`src/` or `synthdoc/`; usable plug-and-play via `from constieval import run_eval`). Same
+architectural discipline as `synthdoc/`: plugin registry for every extension point, all prose in
+`control/prompts/`, all knobs in `control/configs/`, validation before any spend.
+
+Design decisions that carry the measurement:
+- **23 clauses** cut from `docs/claude_approved_constitution.md`, each with the constitution's own
+  `rationale` (the ground truth for the justification axis), a `priority_tier` from the spec's
+  conflict ordering, declared `entailments` (Tier B ground truth), and **5 marked `held_out`**,
+  decided before generation. 10 fabricated distractors, each matched to the real clause it is
+  confusable with — so retrieval is reported as **discrimination**, never recall.
+- **Compliance and tension recognition are separate judge calls.** A model that complies without
+  registering that anything was at stake has memorized the behavior; one rubric covering both would
+  let a strong compliance score hide exactly that.
+- **`Item` pairing is the load-bearing trick.** Robustness and OOD items are *derived* from an
+  application item and keep `parent_item_id`, so every stressed score is differenced against the
+  same scenario clean. Item difficulty is differenced out rather than averaged over. Pressure
+  wrappers never rewrite the scenario; OOD distance 0 *is* the parent.
+- **One generation pass per checkpoint**, reused by every judge; an application item is scored on
+  compliance, tension, and justification from the same completion.
+- **Judge blinded by construction** — recipe/step/model are never passed to `RubricJudge`, asserted
+  by a test that greps the actual rendered prompts.
+- **One results table**, one row per `(run, recipe, clause, item, axis, score)`; every figure and
+  table derives from it, so a plot can never disagree with a number.
+
+**Result:** Tier A ships end to end. `--smoke` runs the whole pipeline offline in ~10s with no API
+key (echo provider): 301 items, 1068 rows, 0 errors, all **7 required figures** rendering, plus the
+greppable `tier_a_results.md` mirror. Verified a two-recipe pairwise comparison renders correctly
+(the heatmap grows a diverging difference panel at exactly two recipes). 62 new offline tests; full
+suite 267 passed, 1 skipped, no regressions in existing tests. Also added a HuggingFace target
+provider (`provider: hf`, optional `uv sync --extra hf`) so a Hub repo id — optionally plus a LoRA
+adapter — can be evaluated in-process without standing up a server, and `--max-items` for a quick
+pass that preserves every parent/child pair.
+
+**Not built, by scope:** Tier B (counterfactual clause inversion, held-out generalization, recipe
+ablations, persistence) needs extra training runs; Tier B-lite (linear probes, self-report vs
+behavior) needs model internals. Both documented in `constieval/README.md` with the groundwork each
+would inherit — `entailments` for the spillover matrix, `held_out` for the generalization split,
+`recipe`/`checkpoint_step` as first-class store columns.
+
+**Gold set: removed at request.** The suite ships with no judge-calibration step; judge quality is
+taken on trust, so treat cross-recipe *differences* (which share a judge and an item set) as the
+readable signal rather than absolute levels on any one axis.
+
+**Next steps:** (1) freeze a real item set with Sonnet 4.5 and pin its `itemset.id` in both arm
+configs; (2) run base Qwen3.6-27B vs the difficult-advice LoRA and check whether the
+retrieval-vs-application gap tracks the honeypot result we already have.
+
 
 ## 2026-07-28 (eve) — Built `synthdoc/`: config-driven synthetic document generation pipeline
 

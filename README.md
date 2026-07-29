@@ -54,6 +54,20 @@ transformers downgrade.
 | `src/eval/vulnerabilities/` | Generalized Petri + SURF audit tooling from the completed MSM audit. Inspect's dependency pins conflict with the root env, so petri tools run in the nested project's env. | `uv run --project src/eval/vulnerabilities/petri/petri-subscription python src/eval/vulnerabilities/petri/<tool>.py --help` |
 | [`dashboard/`](dashboard/README.md) | The research-log web app: datasets, eval runs, Petri results, findings. Self-contained Node project. | `cd dashboard && npm ci && npm run dev` |
 
+## Repo layout
+- `synthdoc/` self-contained synthetic-document pipeline (see above); `synthdoc/control/` its config + prompts.
+- `constieval/` self-contained constitution-internalization eval suite (Tier A). Measures whether a
+  checkpoint *internalized* the constitution or memorized its surface behaviors, at every checkpoint,
+  without a downstream training run. `uv run python -m constieval.cli run --config smoke.yaml --smoke`
+  runs it offline in ~10s with no API key. See `constieval/README.md`.
+- `src/` reusable code (`llm.py`, `prompts.py`, `utils.py`); `src/experiments/` scripts.
+- `configs/` OmegaConf YAML for every step.
+- `scripts/` remote drivers (`run_eval.sh`, `serve_lora.sh`, `run_inspect_leaking.sh`).
+- `third_party/agentic-misalignment/` vendored eval harness (patched: `vllm/` provider, judge routing).
+- `docs/claude_constitution_principles.md` the alignment target.
+- `output/` all run artifacts; `LOG.md` append-only research log.
+- Trained adapter: `matboz/qwen3-32b-difficult-advice-lora` on the HF Hub.
+
 ## The MSM audit record
 
 The completed Petri + SURF audit of the Model Spec Midtraining checkpoints —
