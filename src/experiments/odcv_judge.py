@@ -155,9 +155,12 @@ def main(
         medians[variant][scenario] = median_score(scores)
 
     ours = summarise(medians)
+    # A fine-tune has no row in the paper's table, so it points published_key at the
+    # base model it was trained from.
+    published_key = str(cfg.get("published_key", cfg.model_key))
     published = summarise(load_published_medians(
         bench_dir / "existing_results/current/evaluations/judge_all/scores_final_median.csv",
-        cfg.model_key,
+        published_key,
     ))
 
     results = {

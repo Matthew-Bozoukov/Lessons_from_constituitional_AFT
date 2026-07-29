@@ -3,6 +3,71 @@
 
 # LOG
 
+## 2026-07-29 — FP8 matched-pair ODCV eval (fine-tune vs base). GOTCHAS FOR FUTURE AGENTS.
+
+**Design:** serve BOTH the fine-tune and the unmodified base at FP8 on the same vLLM build,
+same flags, same tunnel, temperature 0 — so the arms differ only by the LoRA. This replaces
+comparing an FP8/vLLM fine-tune against yesterday's bf16/OpenRouter baseline, which would have
+confounded precision and serving stack with the fine-tune effect. Judges: Grok-4.20 +
+Gemini-3.1-Pro (median-of-2, ~$3.80/arm); the baseline's other judges are cached and can be
+added later for only their incremental cost.
+
+### Serving Qwen3.6-27B (hybrid Mamba/linear-attention + vision tower) on vLLM 0.26
+
+1. **`max_num_seqs` must be lowered.** Default 1024 fails at startup: *"max_num_seqs (1024)
+   exceeds available Mamba cache blocks (345). Each decode sequence requires one Mamba cache
+   block."* Use `--max-num-seqs 32`.
+2. **`--max-model-len` must be LARGE.** At 40960, **7/80 scenarios died** with HTTP 400
+   (context exceeded) and produced **no transcript at all** — `agent_main.py` catches the API
+   error and `return traj` *without* calling `_archive_trail`. The agent loop resends its whole
+   growing conversation and upstream never truncates bash output (that line is commented out).
+   OpenRouter serves this model at its native 262144, which is why the 2026-07-28 run had zero
+   failures. **Use ≥131072.** All 7 re-ran clean afterwards.
+3. **Tool parser must be `qwen3_xml`**, not `hermes`. The chat template emits
+   `<tool_call><function=NAME><parameter=arg>` (XML), not Hermes JSON. Without the right parser
+   the agent gets no tool calls and the loop stalls immediately.
+4. **`--quantization fp8` works** and gives **70.6 tok/s vs 49.0 bf16 (1.44×)**, KV cache
+   252k → 678k tokens. Less than the 2× the weight math suggests because only linear layers
+   quantise; the Mamba/GDN state stays higher precision.
+5. **causal-conv1d / flash-linear-attention are irrelevant to vLLM serving.** vLLM uses its own
+   kernels (`FlashInfer GDN prefill`, `vllm::mamba_mixer2`, `vllm::qwen_gdn_attention_core`).
+   Those libs only matter for the **transformers** path (training/merge), where their absence
+   cost ~44 s/step. They fail to build because causal-conv1d's setup.py guesses a wheel URL for
+   the wrong tags (`cu13torch2.13` when the box has cu12.8/torch 2.8) → 404 → source build that
+   dies in pip's isolated env (no numpy). Fix: `pip install --no-build-isolation` with
+   `CAUSAL_CONV1D_FORCE_BUILD=TRUE CUDA_HOME=/usr/local/cuda TORCH_CUDA_ARCH_LIST=9.0`.
+6. **Prefix caching is unavailable** for this arch (vLLM forces `enable_prefix_caching=False`;
+   Mamba state pages can't be reused like attention KV). That hurts: this workload is ~10:1
+   prompt:output because the agent resends its conversation each cycle.
+7. **The merge drops the MTP head.** Base has 15 `mtp.*` tensors, merged has 0 (1199 → 1184) —
+   `AutoModelForImageTextToText` doesn't load it, so `save_pretrained` never writes it. Costs
+   the option of MTP speculative decoding. Recoverable by grafting the base tensors in (safe:
+   spec-decode is verified, so a mismatched drafter only lowers acceptance, never correctness).
+8. **Decode is memory-bandwidth-bound, not kernel-bound.** 49 tok/s bf16 ≈ 75% of the H100
+   roofline for 51GB of weights. Throughput comes from **batching**: 8 concurrent requests give
+   ~375-425 tok/s aggregate. Raising concurrency is the only free speed lever.
+
+### Excluded scenarios (applies to BOTH arms)
+
+`incentivized/Academic-Research-Integrity-Finding` and
+`incentivized/Ai-Moderator-Content-Censorship-Backdoor` ran >20 min without terminating and were
+dropped, leaving **78 cells per arm**. They are the long-trajectory tail (the first to overflow
+the old context limit). **Not a random exclusion:** the paper scores the base 4.0 and 3.5 on
+these, i.e. both are known-violation cells, so dropping them lowers absolute MR for both arms.
+The comparison stays valid only because the exclusion is applied identically — enforced via
+`exclude_scenarios` in the config, not by hand.
+
+### Other harness notes
+
+- `odcv_rollout.py` gained `--resume <dir>`; without it every invocation mints a fresh
+  timestamped dir and silently re-runs all 80 instead of just the failures.
+- `pkill -f <pattern>` over ssh **matches its own command line** and kills the shell (exit 255).
+  Bit us three times. Use a bracket trick (`vllmen[v]/bin/vllm`) AND keep the launch command in
+  a separate ssh call, since the launch path also matches.
+- The SSH tunnel must bind the **docker bridge** (`-L 172.17.0.1:8000:...`), not localhost —
+  containers reach the host via the bridge gateway, not loopback. Binding 0.0.0.0 also works but
+  exposes the endpoint to the LAN.
+
 ## 2026-07-28 (pm-2) — Qwen3.6-27B LoRA trained + published; ODCV eval deferred
 
 **Goal:** fine-tune Qwen3.6-27B on 300k tokens of difficult-advice + 1.2M tokens of TULU3 replay,

@@ -228,12 +228,20 @@ def _run_scenario(cfg, bench_dir: Path, out_dir: Path, variant: str, scenario: s
     }
 
 
-def main(config: str = "configs/odcv_bench.yaml", smoke: bool = False, **overrides) -> None:
+def main(
+    config: str = "configs/odcv_bench.yaml",
+    smoke: bool = False,
+    resume: str = "",
+    **overrides,
+) -> None:
     """Run ODCV-Bench agent rollouts for one model.
 
     Args:
         config: Path to the OmegaConf YAML config.
         smoke: Run only the first scenario of each variant, to verify wiring.
+        resume: Existing run directory to continue into. Scenarios that already have a
+            transcript there are skipped, so only the missing ones re-run. Without this
+            every invocation starts a fresh timestamped directory and redoes everything.
         **overrides: Dotted config overrides, e.g. --concurrency=2.
     """
     cfg = OmegaConf.load(config)
@@ -242,13 +250,25 @@ def main(config: str = "configs/odcv_bench.yaml", smoke: bool = False, **overrid
     bench_dir = Path(cfg.bench_dir).resolve()
     assert bench_dir.is_dir(), f"vendored benchmark not found: {bench_dir}"
 
+    # Scenarios excluded here are dropped from the run entirely. Comparing two models
+    # requires the SAME exclusions on both arms, so this lives in config rather than
+    # being applied by hand per run.
+    excluded = {tuple(e.split("/", 1)) for e in cfg.get("exclude_scenarios", [])}
     jobs: list[tuple[str, str]] = []
     for variant in VARIANTS:
         names = scenario_names(bench_dir, variant)
-        jobs += [(variant, s) for s in (names[:1] if smoke else names)]
+        jobs += [(variant, s) for s in (names[:1] if smoke else names)
+                 if (variant, s) not in excluded]
+    if excluded:
+        print(f">>> excluding {len(excluded)} scenario(s): "
+              f"{', '.join('/'.join(e) for e in sorted(excluded))}")
 
-    tag = f"smoke_{timestamp()}" if smoke else timestamp()
-    out_dir = Path(cfg.output_root) / cfg.model_key / tag
+    if resume:
+        out_dir = Path(resume).resolve()
+        assert out_dir.is_dir(), f"resume directory does not exist: {out_dir}"
+    else:
+        tag = f"smoke_{timestamp()}" if smoke else timestamp()
+        out_dir = Path(cfg.output_root) / cfg.model_key / tag
     out_dir.mkdir(parents=True, exist_ok=True)
 
     usage_before = openrouter_usage()
