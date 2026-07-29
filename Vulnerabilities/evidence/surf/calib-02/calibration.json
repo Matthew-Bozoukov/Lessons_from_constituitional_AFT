@@ -1,0 +1,22 @@
+{
+  "run_dir": "C:\\Users\\nikak\\source\\repos\\LASR\\ResearchLog\\Vulnerabilities\\evidence\\surf\\calib-02",
+  "n_candidates": 11,
+  "judge_model": "claude-haiku-4-5",
+  "mean_tokens": {
+    "judge_in": 1631.090909090909,
+    "judge_out": 654.1818181818181,
+    "query_in": 153.72727272727272,
+    "query_out": 51.54545454545455,
+    "target_response": 457.54545454545456
+  },
+  "cost_usd_per_candidate": {
+    "judge": 0.004902,
+    "query": 0.00041145454545454547,
+    "total": 0.005313454545454546
+  },
+  "scores": {
+    "mean": 17.272727272727273,
+    "max": 58.0,
+    "n_flagged_gt50": 1
+  }
+}

@@ -132,9 +132,19 @@ if ($WhatIfOnly) {
     return
 }
 
+# PYTHONUTF8=1 puts the child interpreter in UTF-8 mode. SURF opens ~40 files
+# without an explicit encoding; on Windows those default to the ANSI code page
+# (cp1252 here), and a single non-Latin-1 character in a model response aborts
+# the write and loses the whole iteration. UTF-8 mode fixes every one of those
+# call sites at once without forking the upstream source. The two hot-path
+# files are also patched explicitly so the fix survives a run made without
+# this wrapper. Recorded in docs/10-surf-status.md.
+$childEnv = @{ PYTHONUTF8 = '1'; PYTHONIOENCODING = 'utf-8' }
+
 $wrapper = Join-Path $root 'scripts\secrets\Invoke-WithPetriSecrets.ps1'
 & $wrapper -FilePath (Get-Command python).Source `
     -ArgumentList $argList `
     -WorkingDirectory $surfDir `
+    -ExtraEnvironment $childEnv `
     -StdOutFile $stdout `
     -StdErrFile $stderr
