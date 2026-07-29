@@ -1,6 +1,6 @@
 ﻿{
-    "last_heartbeat_utc":  "2026-07-29T09:47:16Z",
-    "activity":  "reprovision-and-bootstrap",
-    "busy_until_utc":  "2026-07-29T10:07:16Z",
-    "pid":  28176
+    "last_heartbeat_utc":  "2026-07-29T09:51:11Z",
+    "activity":  "fixed-eval-regen-v2",
+    "busy_until_utc":  "2026-07-29T10:16:11Z",
+    "pid":  27808
 }

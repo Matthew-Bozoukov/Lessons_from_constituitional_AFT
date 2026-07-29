@@ -33,6 +33,25 @@ live calls.
 
 ## 2. The sequencing decision was wrong, and is now corrected
 
+### SURF's role has changed since `docs/04` was written
+
+`docs/04` framed SURF as convergent evidence - a second method that might
+independently surface the mechanism Petri's family C predicts, with agreement
+between the two being the high-value outcome.
+
+That framing no longer fits the evidence. `docs/12` reports **no replicated
+candidate** across the 30 focused-discovery audits, and `docs/13` reports that
+**no MSM-attributable effect survives correction** across seven matched
+checkpoints and 245 blind-judged responses. There is no Petri finding left for
+SURF to converge with.
+
+So SURF is not a confirmatory second pass. It is the remaining instrument, and
+its value now rests on reaching failure classes the other two structurally
+cannot - which is the argument for the `fabrication` rubric in section 10. This
+also lowers the prior: two instruments have now returned null on this
+checkpoint, and the honest expectation for SURF is that it may do the same.
+A null from SURF would be a real result and will be reported as one.
+
 `docs/03` and `docs/04` both say SURF starts only after the Petri compute
 finishes. That was right when written and is wrong now: focused discovery is
 complete at 30/30, and the only Petri work left is one short control run
@@ -68,7 +87,10 @@ This is also why SURF's `sweep` mode is **not** used (see below): it hard-codes
 `target_concurrency=50` *per run*, so three parallel runs would aim 150
 concurrent requests at an 8-slot engine.
 
-## 3. Three defects found and fixed
+## 3. Four defects found and fixed
+
+Three were engineering (3.1-3.3). The fourth (3.4) was a validity defect that
+would have produced false findings, and is the one worth reading.
 
 ### 3.1 No OpenRouter key - SURF's default query model was unusable
 
@@ -166,6 +188,15 @@ Two changes, both in `surf/em_loop/loop.py`:
    unclosed `<think>`, is discarded exactly like a failed target call - dropped
    before scoring, never entering the replay buffer, and counted per iteration
    as `truncated_responses` so the discard rate stays visible.
+
+   The gate is deliberately **conservative**: it also rejects a response whose
+   `<think>` block is complete but unstripped. If a think tag is visible at all,
+   the reasoning parser did not do its job and the response is not in the form
+   the rubric expects, so it is not a clean observation. That case should not
+   arise while `--reasoning-parser qwen3` is working, and rejecting errs toward
+   discarding data rather than admitting artefacts. Verified against five
+   hand-written cases including "the word think appearing in ordinary prose",
+   which is correctly not rejected.
 2. **`--target-max-tokens`, raised from 2,048 to 6,144.** The gate alone would
    bias the search: it systematically discards prompts that induce long
    reasoning, which is a legitimate region of prompt space. Giving the chain of
@@ -176,6 +207,28 @@ review.** 6,144 is a judgement call - high enough that most reasoning completes,
 low enough to bound GPU cost. It is written into every iteration's summary as
 `target_max_tokens`, so results can never be compared across different values by
 accident.
+
+### This is the second instance of the same defect class
+
+`docs/11-fixed-eval-defects.md` records that the fixed evaluation shipped with a
+700-token generation cap which "truncated a third of all responses in a way that
+correlated with checkpoint", confounding the attribution step and forcing a
+re-run.
+
+That is the same failure mode as 3.4, on a different instrument, found
+independently: **a generation cap set for a non-reasoning model, applied to a
+chain-of-thought checkpoint, silently converting "the model was cut off" into
+"the model declined to answer".** Two of the three instruments in this
+investigation have now been bitten by it.
+
+The generalisable lesson, worth carrying to anything else pointed at this
+target: a token cap is not a neutral performance knob when the target thinks
+before it answers. It is a measurement parameter, and truncation is
+systematically correlated with exactly the prompt features that make a
+scenario hard - which is to say, with the cases the evaluation most cares about.
+Any future component that generates from `msm-aft-cot` should record its cap and
+its truncation rate, as SURF now does via `target_max_tokens` and
+`truncated_responses`.
 
 ## 4. Cost: measured, not estimated
 
@@ -299,8 +352,19 @@ through a manual validation pass, and then runs a further false-positive
 re-check over the confirmed set - because confirmation rates vary enough between
 models that raw flags cannot be trusted as findings.
 
-That is adopted here. **No raw flag count will be reported as a finding.**
-The pipeline is:
+That is adopted here - and this investigation already has the machinery. Since
+this document was started, `docs/12-validation-funnel.md` established a
+**two-round validation funnel with asymmetric finality** for the Petri flags,
+and measured the flagging rule's false-positive rate at **57% (95% CI 29-82%)**.
+Six of fourteen flags survived it.
+
+SURF flags go through that same funnel rather than a parallel invention of one.
+The 57% figure is a direct warning for this phase: a raw SURF flag count should
+be assumed to be roughly half artefact before anyone looks at it - and section
+3.4 shows SURF's own first run was worse than that, at 50% artefact from a
+single mechanical cause.
+
+**No raw flag count will be reported as a finding.** The pipeline is:
 
 1. SURF flags candidates at > 50 (with denominators recorded, per 3.3).
 2. Manual validation of every flag - is this actually a harmful omission, or a
