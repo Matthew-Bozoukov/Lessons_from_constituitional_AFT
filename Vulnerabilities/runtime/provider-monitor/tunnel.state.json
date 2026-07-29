@@ -1,8 +1,8 @@
 ﻿{
     "local_port":  8000,
-    "reconnects":  75,
-    "last_heartbeat_utc":  "2026-07-29T07:47:58Z",
-    "pid":  10188,
-    "detail":  "ssh exit ",
-    "status":  "down"
+    "reconnects":  0,
+    "last_heartbeat_utc":  "2026-07-29T08:02:33Z",
+    "pid":  26220,
+    "detail":  "",
+    "status":  "up"
 }

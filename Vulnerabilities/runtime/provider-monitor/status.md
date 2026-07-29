@@ -1,10 +1,10 @@
 ﻿# Provider status
 
 ```text
-[GPU ACTIVE] runpod | NVIDIA A100-SXM4-80GB | $1.49/h | provider balance $94.8405 | experiment GPU budget $39.8435 remaining | elapsed 00:06 | vLLM unreachable
+[GPU ACTIVE] runpod | NVIDIA A100-SXM4-80GB | $1.49/h | provider balance $92.6871 | experiment GPU budget $37.6429 remaining | elapsed 02:34 | vLLM healthy
 ```
 
-Generated: 2026-07-29T07:47:35Z  (refresh reason: periodic)
+Generated: 2026-07-29T09:16:12Z  (refresh reason: periodic)
 
 Every figure below is labelled with its basis: **exact-provider-reported**,
 **locally-calculated**, **estimated**, or **unavailable**. Nothing is invented;
@@ -17,17 +17,17 @@ an unavailable figure is reported as unavailable.
 | Hourly price | 1.49 USD/h _(exact-provider-reported)_ |
 | Instance ID | `p397jthrc130o2` |
 | Instance state | RUNNING |
-| Provider balance | 94.8405 USD _(exact-provider-reported)_ |
+| Provider balance | 92.6871 USD _(exact-provider-reported)_ |
 | Starting provider balance | 108.1129952401 USD _(exact-provider-reported)_ |
-| Provider balance delta | 13.2725 USD _(locally-calculated)_ |
-| Elapsed runtime | 00:06 (0.1051 hours _(locally-calculated)_) |
-| Estimated infrastructure cost | 0.1565 USD _(locally-calculated)_ |
-| Experiment GPU budget remaining | 39.8435 USD _(locally-calculated)_ |
-| Wall-clock remaining | 35.895 hours _(locally-calculated)_ |
+| Provider balance delta | 15.4259 USD _(locally-calculated)_ |
+| Elapsed runtime | 02:34 (1.582 hours _(locally-calculated)_) |
+| Estimated infrastructure cost | 2.3571 USD _(locally-calculated)_ |
+| Experiment GPU budget remaining | 37.6429 USD _(locally-calculated)_ |
+| Wall-clock remaining | 34.418 hours _(locally-calculated)_ |
 | Hard deadline | 2026-07-30T19:41:17Z |
-| Model-server health | unreachable |
-| SSH-tunnel health | down |
-| Last successful API refresh | 2026-07-29T07:47:35Z |
+| Model-server health | healthy |
+| SSH-tunnel health | listening |
+| Last successful API refresh | 2026-07-29T09:16:12Z |
 | Cleanup-watchdog state | armed (deadline 2026-07-30T19:41:17Z) |
 | Anthropic spend | 0 USD _(locally-calculated)_ |
 | Anthropic budget remaining | unavailable _(nothing invented)_ |

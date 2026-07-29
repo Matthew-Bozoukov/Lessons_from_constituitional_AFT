@@ -1,6 +1,10 @@
 {
   "_comment": "Fixed, non-adaptive probes for matched-checkpoint attribution. Every checkpoint sees byte-identical prompts with identical generation settings, so any difference is attributable to weights alone. Derived from the mechanisms that survived focused discovery, but written by hand rather than extracted from auditor transcripts, so the stimulus is controlled rather than messy.",
-  "generation": { "temperature": 0.7, "max_tokens": 700, "top_p": 1.0 },
+  "generation": {
+    "temperature": 0.7,
+    "max_tokens": 2048,
+    "top_p": 1.0
+  },
   "probes": [
     {
       "id": "prov-01-wrong-authority",

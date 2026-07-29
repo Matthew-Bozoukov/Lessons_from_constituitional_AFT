@@ -106,17 +106,31 @@ def judge(probe, answer):
     return parsed, usage
 
 
+GENERATE_ONLY = os.environ.get("GENERATE_ONLY", "0") == "1"
+
+
 def one(model, probe, i):
+    """Generate, and judge only when an API judge is requested.
+
+    With GENERATE_ONLY=1 this produces responses and nothing else, so the
+    scoring can be done by a subagent on the Claude subscription rather than
+    burning API credits on ~245 judge calls. The judging work is identical
+    either way; only who performs it changes.
+    """
     seed = 1000 + i
     try:
         ans, reasoning = generate(model, probe, seed)
+        rec = {"model": model, "probe": probe["id"], "family": probe["family"],
+               "arm": probe["arm"], "sample": i, "seed": seed, "answer": ans,
+               "reasoning": reasoning}
+        if GENERATE_ONLY:
+            return rec
         j, u = judge(probe, ans)
-        return {"model": model, "probe": probe["id"], "family": probe["family"],
-                "arm": probe["arm"], "sample": i, "seed": seed, "answer": ans,
-                "reasoning": reasoning, "score": j.get("score"),
-                "did_expected": j.get("did_expected"),
-                "justification": j.get("justification"),
-                "judge_in": u.get("input_tokens", 0), "judge_out": u.get("output_tokens", 0)}
+        rec.update({"score": j.get("score"), "did_expected": j.get("did_expected"),
+                    "justification": j.get("justification"),
+                    "judge_in": u.get("input_tokens", 0),
+                    "judge_out": u.get("output_tokens", 0)})
+        return rec
     except Exception as e:
         return {"model": model, "probe": probe["id"], "sample": i,
                 "error": f"{type(e).__name__}: {e}"}
@@ -127,7 +141,10 @@ print(f"{len(CHECKPOINTS)} checkpoints x {len(PROBES)} probes x {N_SAMPLES} samp
       f"= {len(jobs)} generations")
 
 results = []
-with cf.ThreadPoolExecutor(max_workers=4) as ex:
+# Jobs are emitted checkpoint-major, so concurrent requests almost always share
+# one adapter and vLLM is not forced to swap LoRAs on every call. 8 matches the
+# server's --max-num-seqs.
+with cf.ThreadPoolExecutor(max_workers=8) as ex:
     futs = {ex.submit(one, m, p, i): (m, p["id"], i) for m, p, i in jobs}
     done = 0
     for fut in cf.as_completed(futs):
@@ -142,6 +159,15 @@ json.dump({"checkpoints": CHECKPOINTS, "n_samples": N_SAMPLES,
           open(OUT_PATH, "w", encoding="utf-8"), indent=2)
 
 # ---- summary ----------------------------------------------------------------
+if GENERATE_ONLY:
+    print(f"\nGENERATE_ONLY: {len(results)} responses written to {OUT_PATH}")
+    print("Judging is performed separately by subagents (subscription, not API credits).")
+    errs0 = [r for r in results if "error" in r]
+    print(f"errors: {len(errs0)}")
+    for e in errs0[:5]:
+        print("  ", e.get("model"), e.get("probe"), e.get("error", "")[:90])
+    raise SystemExit
+
 print("\n=== mean alignment score (0-10, higher = did the expected thing) ===")
 probe_ids = [p["id"] for p in PROBES]
 hdr = f"{'checkpoint':<18}" + "".join(f"{pid.split('-')[0] + '-' + pid.split('-')[1]:<12}" for pid in probe_ids)

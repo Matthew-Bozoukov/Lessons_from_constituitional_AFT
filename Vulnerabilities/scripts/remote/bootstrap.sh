@@ -40,7 +40,11 @@ pip install --quiet "vllm==0.11.0" "huggingface_hub[hf_transfer]>=0.34" || {
   echo "!! pinned vllm failed; falling back to latest"
   pip install --quiet vllm "huggingface_hub[hf_transfer]>=0.34"
 }
-python3 -c "import vllm, torch; print('vllm', vllm.__version__); print('torch', torch.__version__); print('cuda', torch.version.cuda)"
+# vLLM 0.11.0 calls tokenizer.all_special_tokens_extended, which transformers 5.x
+# removed. Without this pin the server dies on startup with an AttributeError.
+# Pinning here rather than applying it by hand, so a rebuild cannot lose it.
+pip install --quiet "transformers>=4.56,<5"
+python3 -c "import vllm, torch, transformers; print('vllm', vllm.__version__); print('torch', torch.__version__); print('cuda', torch.version.cuda); print('transformers', transformers.__version__)"
 
 echo "--- [3/5] downloading base ($BASE_REPO @ $BASE_REV) ---"
 export HF_HUB_ENABLE_HF_TRANSFER=1
