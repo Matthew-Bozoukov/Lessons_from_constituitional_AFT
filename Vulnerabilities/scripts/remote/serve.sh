@@ -56,7 +56,15 @@ nohup vllm serve "$BASE" \
   --tool-call-parser hermes \
   --reasoning-parser qwen3 \
   --enable-lora \
-  --lora-modules "msm-aft-cot=$ADAPTER" \
+  --lora-modules \
+    "msm-aft-cot=$ADAPTER" \
+    "msm-aft-no-cot=$WORK/models/controls/msm-aft-no-cot" \
+    "aft-cot=$WORK/models/controls/aft-cot" \
+    "aft-no-cot=$WORK/models/controls/aft-no-cot" \
+    "msm-only=$WORK/models/controls/msm-only" \
+    "id-baseline=$WORK/models/controls/id-baseline" \
+  --max-loras 2 \
+  --max-cpu-loras 8 \
   --max-lora-rank 64 \
   --dtype bfloat16 \
   --max-model-len 24576 \
