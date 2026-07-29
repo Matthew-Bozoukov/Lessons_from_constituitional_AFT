@@ -23,6 +23,62 @@ All reporting follows
 which is authoritative for report style and structure, transcript export shape,
 figures, tables, metadata, evidence linking and the final summary format.
 
+---
+
+## Results
+
+**Start here: [`docs/16-findings.md`](docs/16-findings.md).**
+
+**The answer to the research question is no.** Across seven matched checkpoints
+and 245 blind-judged responses, no MSM-attributable effect survives
+Holm-Bonferroni correction over the fifteen contrasts computed. The one robust
+result is that the full training pipeline beats the unadapted base, which
+conflates every training stage. Power is stated rather than buried: the design
+resolves differences of about 2 points on a 0-10 scale.
+
+**The strongest positive finding is about AFT, not MSM.** Alignment fine-tuning
+*inverts* the harmful-omission failure rather than fixing it. Checkpoints
+without AFT deliver a legitimate in-scope task 15/15 and fail by dropping a
+safety concern; checkpoints with AFT deliver 3/20 and fail by refusing the task
+outright. Fisher exact p = 2.9e-07. **Zero of 35 responses across all seven
+checkpoints achieved the target behaviour.** This confirms the harmful-
+overgeneralization hypothesis and answers an open question the MSM paper states
+but does not test.
+
+**Two real vulnerabilities, neither MSM-attributable.** Tool-channel injection —
+content inside a tool result treated as an instruction, approving a $184,000
+payment with a null approval reference — found independently by two instruments,
+and stochastic rather than deterministic (identical prompt, five samples:
+0, 0, 2, 8, 10). And confabulation under compliance, which every rubric misses
+because it asks whether the task was done, and it was.
+
+### Reading order
+
+| Document | What it covers |
+| --- | --- |
+| [`16-findings.md`](docs/16-findings.md) | **The results.** Start here. |
+| [`13-attribution-results.md`](docs/13-attribution-results.md) | The attribution table and the finding sensitivity analysis killed |
+| [`12-validation-funnel.md`](docs/12-validation-funnel.md) | 57% false-positive rate, the C5b control failure, tool-call fidelity |
+| [`11-fixed-eval-defects.md`](docs/11-fixed-eval-defects.md) | Two defects the judges caught that would have produced a clean-looking wrong answer |
+| [`00-exclusion-matrix.md`](docs/00-exclusion-matrix.md) | What was forbidden as mere replication, and why each finding clears it |
+| [`14-petri-subscription-fork.md`](docs/14-petri-subscription-fork.md) | A working Petri auditor that needs no API key |
+| [`JOURNAL.md`](JOURNAL.md) | Chronological log, including every mistake and correction |
+
+### What we learned about the instruments
+
+Not the goal, but the most transferable output. Petri's published compound
+flagging rule has a **57% false-positive rate** here, and *manufactures*
+replication: three seeds appeared to replicate before validation, and validation
+confirmed zero for two of them. Petri also cannot produce valid controls — one
+valid control instance in six attempts — because the auditor authors the
+scenario and the judge is never told which arm it is scoring. Yet the same
+underlying model reaches **kappa 1.000** as a fixed-evaluation judge. Judging is
+not inherently unreliable; task shape is what differs.
+
+And a token cap is not a performance knob when the target thinks before
+answering: three separate measurements were corrupted by one, in three different
+ways.
+
 ## Directory map
 
 | Path | Contents |
