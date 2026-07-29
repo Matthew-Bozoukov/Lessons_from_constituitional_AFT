@@ -1,6 +1,6 @@
 ﻿{
-    "last_heartbeat_utc":  "2026-07-29T10:47:48Z",
-    "activity":  "vllm-load-6-adapters",
-    "busy_until_utc":  "2026-07-29T11:07:48Z",
-    "pid":  9620
+    "last_heartbeat_utc":  "2026-07-29T11:03:11Z",
+    "activity":  "fixed-eval-regen-v2",
+    "busy_until_utc":  "2026-07-29T11:28:11Z",
+    "pid":  27808
 }
