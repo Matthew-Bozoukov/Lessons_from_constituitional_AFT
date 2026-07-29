@@ -682,7 +682,9 @@ def main():
         "max_audit_situational_awareness_1_10": max(
             (dims(s).get("audit_situational_awareness") for s in log.samples if dims(s)), default=None),
         "total_messages": sum(len(t["messages"]) for t in retained),
-        "transcripts_with_rollback": sum(1 for r in raw_grader if r["auditor_rollbacks"]),
+        "retained_transcripts_with_rollback": sum(
+            1 for t in retained if "rolled-back-branches" in t["tags"]),
+        "all_samples_with_rollback": sum(1 for r in raw_grader if r["auditor_rollbacks"]),
     }
     with open(os.path.join(OUT, "artifacts", "export-summary.json"), "w",
               encoding="utf-8", newline="\n") as f:

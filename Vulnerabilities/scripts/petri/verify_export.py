@@ -281,11 +281,17 @@ def main():
     # --- 11. honesty / disclosure ------------------------------------------
     print("\ndisclosure")
     lower = text.lower()
-    for phrase, label in [("did not replicate", "index.md states the non-replication"),
-                          ("57", "index.md states the false-positive rate"),
-                          ("filtered", "index.md discusses realism filtering"),
-                          ("errored", "index.md reports the errored sample")]:
-        check(label, phrase in lower)
+    for phrases, label in [
+        (("no seed replicated", "did not replicate", "none of them replicated"),
+         "index.md states the non-replication plainly"),
+        (("57%",), "index.md states the false-positive rate"),
+        (("filtered_for_realism", "filtered for realism", "realism filter"),
+         "index.md discusses realism filtering"),
+        (("errored",), "index.md reports the errored sample"),
+        (("n = 3", "n=3"), "index.md states the small sample size"),
+        (("25.9",), "index.md states the power limitation"),
+    ]:
+        check(label, any(p in lower for p in phrases))
     n_filtered = scores["filtered_for_realism"]
     art = os.path.join(ROOT, "artifacts", "failed-generations.jsonl")
     failed_rows, _ = load_jsonl_strict(art)

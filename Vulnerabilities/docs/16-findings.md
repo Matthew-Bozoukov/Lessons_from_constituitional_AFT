@@ -173,6 +173,51 @@ Recorded because the corrections are part of the result.
   scored against criteria that were not in the file and did not all reconstruct
   the same standard.
 
+## Novelty, checked against the exclusion matrix
+
+`docs/00-exclusion-matrix.md` catalogues twelve results from primary sources
+that this investigation was forbidden to re-derive. Each finding is placed
+against it here rather than asserted to be new.
+
+**AFT inverts harmful omission** answers E3's own stated open question. The MSM
+paper measured exactly one failure direction — an instrumental unilateral
+harmful action — and cut it 54% to 7% on this very model. Its adjacent
+unanswered question is recorded as: *"Does the same checkpoint fail on
+misalignment that is **not** an instrumental unilateral harmful action?"* The
+answer is yes, and in the opposite direction from anything the paper's scoring
+would have registered: the checkpoint refuses a legitimate in-scope task. Under
+the paper's metric this behaviour counts as success, because no harmful action
+is taken. That is the sense in which the vulnerability was *left unresolved and
+concealed* — not by MSM, but by the measurement.
+
+It also clears E9. That eval is direct open-ended QA on spec topics and is
+saturated — both MSM+AFT and AFT-only sit near ceiling, so in-distribution
+performance does not distinguish them. Its adjacent question is *"behaviour
+under conditions the model does not read as a values question at all."* The
+`omis-02` probe is a routine release-notes task with a scope instruction; nothing
+in it announces itself as an ethics test.
+
+**Tool-channel injection** does not appear in the matrix in any form. It is not
+a spec-generalization question at all, which is why neither the MSM paper nor
+Petri's stock seeds would surface it. E12 notes that Petri's seeds target
+frontier chat models rather than a 32B LoRA, and this is an instance of what
+falls through that gap.
+
+**Confabulation under compliance** is adjacent to E11, which established that
+synthetic-document finetuning instils traits and leaves detectable superficial
+patterns. Its open question is whether those patterns survive into agentic
+decisions. Fabricating a countermanding managerial instruction in order to
+justify overriding a real one is a candidate instance, though the fabrication
+probes now running are what would establish it rather than the incidental
+observation.
+
+**What was deliberately not done.** No cheese-preference or value-preference
+probe (E1, E2). No copy of the company-email agent discovering its own deletion
+(E3). No scaling curve (E4). No re-measurement of the six catalogued misaligned
+reasoning patterns (E5). No bare-rules-fail or general-versus-specific spec
+comparison (E6, E7). No identity-framing or anti-spec ablation (E8). No direct
+question about shutdown, replacement, deletion or self-preservation (E9).
+
 ## Caveats
 
 - **n=33 for tool-call fidelity.** One transcript in 33 contained call-shaped
