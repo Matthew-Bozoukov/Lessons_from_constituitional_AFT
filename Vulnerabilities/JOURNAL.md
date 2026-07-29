@@ -363,3 +363,63 @@ Watchdog: `armed`, instance `p397jthrc130o2`, 35.90 h to deadline, estimated
 cost **$13.06** - i.e. correctly including the $12.92 carried forward.
 
 ---
+
+## Phase 9 - Attribution step: two confounds found by the judges
+
+Focused discovery finished 30/30 with no seed replicating, so the weight of the
+investigation moved to the fixed evaluation - the step that re-tests candidate
+behaviours on byte-identical prompts across seven matched checkpoints. That is
+where MSM can actually be attributed, or ruled out.
+
+Generation was split from judging (`GENERATE_ONLY=1`) so the 245 responses come
+off the GPU we already pay for and the scoring runs on the subscription rather
+than on API credits. Seven judges scored seven blinded slices independently,
+with the slice-to-checkpoint mapping withheld.
+
+Both defects below were surfaced by the judges, not by any check I had written.
+
+**1. The blind slices carried no judging criteria.** They were built from the
+rows in `generations.json`, which hold the response but not the rubric. Every
+record shipped with `expected_aligned`, `situation_system` and `situation_user`
+set to null. Three judges recovered the criteria from `probes.json`, three
+inferred them from the probe name and response text, one did not say. Slice
+letter maps one-to-one onto checkpoint, so a difference between two slices could
+have been a difference between two checkpoints or between two judges'
+reconstructions of the question - indistinguishable after the fact.
+
+**2. A third of all responses were truncated, and unevenly.** `max_tokens` was
+700; the target is a reasoning model, so its think block and its answer shared
+that budget. 82 of 245 responses hit the cap mid-sentence, several consisting of
+nothing but an unclosed `<think>` block. The rate ran 7/35 on `msm-aft-cot` up
+to 18/35 on `qwen3-32b-base`, tracking reasoning length - which is precisely
+what the CoT-versus-no-CoT contrast is about. The apparent ordering was partly
+an artifact of who got cut off least.
+
+Fixed: `make_blind_slices.py` joins the rubric into every record and asserts no
+null criteria; `max_tokens` raised to 2048 and all 245 responses regenerated.
+Both superseded rounds kept as evidence, the second doubling as a sensitivity
+check on whether truncation changed any conclusion. Written up in
+`docs/11-fixed-eval-defects.md`.
+
+**What this says about method.** Seven independent judges cost nothing extra on
+the subscription, and asking them to report anomalies rather than only emit
+scores is what caught both defects. One judge would have returned the same
+numbers with no complaint attached, and the attribution table would have looked
+clean and plausible.
+
+## Phase 9b - Petri authentication: assessed and rejected
+
+Assessed whether Petri could run on the Claude subscription instead of API
+credits. It cannot, for a structural reason: the auditor reads `tool_calls` off
+the model response and executes those tools itself, and no subscription-backed
+surface returns a tool call it has not already executed in its own loop. The
+OAuth-token route would plumb through - Inspect does read `ANTHROPIC_AUTH_TOKEN`
+- but subscription limits are documented as reserved for interactive use, so
+that is a bypass and was not built. There is also little to gain: Agent SDK
+usage flows to standard API rates after a monthly credit.
+
+Petri stays on the API. `docs/09-petri-auth-feasibility.md`.
+
+One free lever found: Inspect's on-disk response cache (`-T cache=True`) is
+supported, trajectory-scoped so rollback branches do not collide, and currently
+unused.

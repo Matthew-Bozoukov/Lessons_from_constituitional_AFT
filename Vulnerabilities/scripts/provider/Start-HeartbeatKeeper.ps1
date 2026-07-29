@@ -17,6 +17,13 @@
     ACTUAL duration rather than a prediction of it. Use it around anything whose
     runtime is uncertain: model downloads, vLLM startup, long evaluations.
 
+    Each keeper watches its OWN stop file, named after its activity. The first
+    version used one shared stop file, which was safe only while a single
+    operation ran at a time. Once two workstreams overlapped, stopping either
+    one killed every keeper and could release a lease that another still-running
+    operation depended on - reintroducing the exact failure this script exists
+    to prevent.
+
 .EXAMPLE
     $k = .\Start-HeartbeatKeeper.ps1 -Activity 'vllm-restart'
     # ... long operation ...
@@ -34,7 +41,10 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$stopFile = Join-Path $root "runtime\watchdog\keeper.stop"
+
+# One stop file per activity, so stopping one keeper cannot stop another.
+$slug = ($Activity -replace '[^A-Za-z0-9\-]', '-')
+$stopFile = Join-Path $root "runtime\watchdog\keeper-$slug.stop"
 Remove-Item -LiteralPath $stopFile -Force -ErrorAction SilentlyContinue
 
 $inner = @"
