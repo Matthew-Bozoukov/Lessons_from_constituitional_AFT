@@ -19,6 +19,7 @@ export type DialogueMessage = {
   content: string;
   name?: string;
   tool_call_id?: string;
+  reasoning_content?: string;
   [key: string]: unknown;
 };
 

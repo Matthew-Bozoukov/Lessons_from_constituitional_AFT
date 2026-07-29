@@ -1,6 +1,7 @@
 import {
   Bot,
   Braces,
+  Brain,
   MessageSquare,
   Settings2,
   UserRound,
@@ -35,12 +36,22 @@ export function DialogueTranscript({
           className: "unknown",
         };
         const Icon = config.icon;
+        const reasoning =
+          typeof message.reasoning_content === "string"
+            ? message.reasoning_content.trim()
+            : "";
         return (
           <article className={`dialogue-turn ${config.className}`} key={`${message.role}-${index}`}>
             <header>
               <span><Icon size={14} /> {config.label}</span>
               <code>{String(index + 1).padStart(2, "0")}</code>
             </header>
+            {reasoning && (
+              <details className="dialogue-think">
+                <summary><Brain size={13} /> Reasoning trace</summary>
+                <div className="dialogue-think-content">{reasoning}</div>
+              </details>
+            )}
             <div className="dialogue-content">{message.content}</div>
           </article>
         );

@@ -1889,6 +1889,54 @@ pre,
   white-space: pre-wrap;
 }
 
+.dialogue-think {
+  border-bottom: 1px solid var(--border);
+  background: #0e1215;
+}
+
+.dialogue-think summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 0 12px;
+  color: var(--muted);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 9px;
+  text-transform: uppercase;
+  cursor: pointer;
+  user-select: none;
+}
+
+.dialogue-think summary::marker,
+.dialogue-think summary::-webkit-details-marker {
+  content: "";
+  display: none;
+}
+
+.dialogue-think summary::after {
+  content: "expand";
+  margin-left: auto;
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+.dialogue-think[open] summary::after {
+  content: "collapse";
+}
+
+.dialogue-think summary:hover { color: var(--violet); }
+
+.dialogue-think-content {
+  padding: 12px 15px;
+  border-top: 1px dashed var(--border);
+  color: #9aa7b1;
+  font-size: 12.5px;
+  font-style: italic;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
 .dialogue.compact {
   padding: 17px 0;
 }
