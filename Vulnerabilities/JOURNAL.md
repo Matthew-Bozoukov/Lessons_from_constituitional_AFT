@@ -304,3 +304,62 @@ Audit quality will be re-checked early in the new run, since heavier queueing
 could in principle time an auditor out mid-scenario.
 
 ---
+
+---
+
+## Phase 8 - INCIDENT: watchdog terminated a healthy pod; three defects fixed
+
+**Status:** resolved
+**Date:** 2026-07-29 07:38 UTC
+
+### What happened
+
+The watchdog terminated pod `0vqb1gixqkqh5h` mid-work on an **idle-timeout**
+trigger, while vLLM was still loading six LoRA adapters.
+
+**The watchdog was right and the fault was mine.** I issued a 25-minute activity
+lease (`-BusyMinutes 25`) for an operation that takes over 30 minutes - vLLM
+loads LoRA adapters serially at roughly 2m15s each on top of model load and CUDA
+graph capture. The lease expired at 07:32:23; the last heartbeat was 07:07:23;
+the idle limit is 30 minutes; the watchdog fired at 07:38:10, 30.7 minutes after
+the last declared activity.
+
+Termination evidence is clean: `verified_absent: true`, account sweep
+`active_pod_count: 0`, final balance recorded. No runaway spend - the pod ran
+8.67 h for **$12.92** and billing stopped immediately.
+
+### Cost of the incident
+
+The remote environment was lost (65 GB base model, 6 adapters, vLLM install).
+All **local** artifacts were unaffected: every eval log, transcript, document and
+script is in git. Rebuild cost is one bootstrap cycle, roughly $1.
+
+### Three defects, all fixed
+
+**1. Fixed-duration leases require predicting runtime, and any underestimate
+silently arms the idle timer.** Replaced guessing with
+`Start-HeartbeatKeeper.ps1` / `Stop-HeartbeatKeeper.ps1`: a background
+process refreshes the heartbeat every few minutes for as long as an operation
+actually runs, so declared activity tracks real duration instead of a prediction.
+This removes the entire class of error rather than the instance.
+
+**2. The $40 GPU cap was being enforced per-pod, not cumulatively.** After
+re-provisioning, the monitor reported "$40 remaining" despite $12.92 already
+spent - a re-provision silently reset the budget. Added `prior_spend_usd` to
+run-state, carried into both `Write-ProviderStatus` and the watchdog's budget
+trigger. The cap is now cumulative across pods, which is what a hard spend limit
+has to mean.
+
+**3. `Register-Instance` did not clear `terminated_at`.** Registering the new
+pod left the previous pod's termination timestamp in run-state, so the restarted
+watchdog read it, concluded the instance was already gone, and **stood down
+without guarding the new pod**. That is the most dangerous of the three: it would
+have left a paid resource entirely unwatched. Fixed so registering an instance
+clears any prior termination record, and verified the watchdog re-arms.
+
+### Verification after the fixes
+
+Watchdog: `armed`, instance `p397jthrc130o2`, 35.90 h to deadline, estimated
+cost **$13.06** - i.e. correctly including the $12.92 carried forward.
+
+---

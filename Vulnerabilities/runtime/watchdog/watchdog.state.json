@@ -1,8 +1,8 @@
 ﻿{
-    "pid":  20640,
+    "pid":  9536,
     "status":  "armed",
-    "detail":  "activity lease held until 2026-07-29T07:32:23Z by \u0027vllm-restart-6-adapters\u0027; 27.48 h to deadline; est cost $12.7",
-    "last_heartbeat_utc":  "2026-07-29T07:29:03Z",
-    "hard_deadline_utc":  "2026-07-30T10:57:46Z",
-    "instance_id":  "0vqb1gixqkqh5h"
+    "detail":  "activity lease held until 2026-07-29T08:04:15Z by \u0027reprovision-and-bootstrap\u0027; 35.90 h to deadline; est cost $13.06",
+    "last_heartbeat_utc":  "2026-07-29T07:47:06Z",
+    "hard_deadline_utc":  "2026-07-30T19:41:17Z",
+    "instance_id":  "p397jthrc130o2"
 }

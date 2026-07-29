@@ -106,6 +106,10 @@ function Register-Instance {
     $state.instance_id         = $InstanceId
     $state.instance_created_at = $CreatedAtUtc
     $state.instance_state      = 'provisioned'
+    # Registering a NEW instance must clear any termination recorded for the
+    # previous one, or the watchdog reads a stale terminated_at and stands
+    # down instead of guarding the new pod.
+    $state.terminated_at       = $null
     $state.hard_deadline_utc   = ([datetime]::Parse($CreatedAtUtc).ToUniversalTime().AddHours($state.budget.max_wall_clock_hours)).ToString('yyyy-MM-ddTHH:mm:ssZ')
     Set-RunState -State $state
     return $state
@@ -211,7 +215,12 @@ function Write-ProviderStatus {
     }
 
     $hourlyTotal = [double]$state.hourly_usd + [double]$state.storage_hourly_usd
-    $infraCost   = [math]::Round($elapsedHours * $hourlyTotal, 4)
+    # Cumulative across pods: a re-provision must not reset the spend cap.
+    $priorSpend  = 0.0
+    if ($state.PSObject.Properties.Match('prior_spend_usd').Count -gt 0 -and $state.prior_spend_usd) {
+        $priorSpend = [double]$state.prior_spend_usd
+    }
+    $infraCost   = [math]::Round($elapsedHours * $hourlyTotal + $priorSpend, 4)
     $costField   = New-Field -Value $infraCost -Basis 'locally-calculated' -Unit 'USD'
 
     $gpuRemaining = [math]::Round([double]$state.budget.max_gpu_spend_usd - $infraCost, 4)

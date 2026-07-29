@@ -68,6 +68,34 @@ p = snapshot_download(
 print("ADAPTER_PATH", p)
 PY
 
+echo "--- [4b/5] downloading matched control adapters ---"
+python3 - <<'PY'
+import os, json, hashlib
+from huggingface_hub import snapshot_download
+CONTROLS = {
+ "msm-aft-no-cot": ("chloeli/qwen-3-32b-philosophy-spec-msm-aft-no-cot","1385a422577fac66b7c34d6fd6d3d3c3fa24f60d"),
+ "aft-cot":        ("chloeli/qwen-3-32b-philosophy-spec-aft-cot","264efa3ed44a8eb131825cf53740d17e2fc3c33f"),
+ "aft-no-cot":     ("chloeli/qwen-3-32b-philosophy-spec-aft-no-cot","548c8fb05d4e6ffe936a8ae4bc934dc206e81e6e"),
+ "msm-only":       ("chloeli/qwen-3-32b-philosophy-spec-msm","17a315f4620f09da6bfb852c53191966d8a1f66f"),
+ "id-baseline":    ("chloeli/qwen-3-32b-id-baseline","fee84084ebbc41d7670b115581db762451e0220e"),
+}
+out={}
+for name,(repo,rev) in CONTROLS.items():
+    p = snapshot_download(repo_id=repo, revision=rev,
+                          local_dir=f"/workspace/models/controls/{name}",
+                          max_workers=4, token=os.environ.get("HF_TOKEN"))
+    w = os.path.join(p,"adapter_model.safetensors")
+    h = hashlib.sha256()
+    with open(w,"rb") as fh:
+        for c in iter(lambda: fh.read(1<<20), b""): h.update(c)
+    cfg = json.load(open(os.path.join(p,"adapter_config.json")))
+    out[name] = {"repo":repo,"revision":rev,"sha256":h.hexdigest(),
+                 "r":cfg.get("r"),"alpha":cfg.get("lora_alpha"),
+                 "base":cfg.get("base_model_name_or_path")}
+    print(name,"OK",out[name]["sha256"][:16],"r=",cfg.get("r"),"alpha=",cfg.get("lora_alpha"))
+open("/workspace/logs/control-adapters.json","w").write(json.dumps(out,indent=2))
+PY
+
 echo "--- token no longer needed; shredding ---"
 if [ -f "$WORK/.hfenv" ]; then
   shred -u "$WORK/.hfenv" 2>/dev/null || rm -f "$WORK/.hfenv"

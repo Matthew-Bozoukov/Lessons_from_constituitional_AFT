@@ -154,7 +154,11 @@ try {
             if ($elapsedHours -lt 0) { $elapsedHours = 0 }
         }
         $hourly = [double]$runState.hourly_usd + [double]$runState.storage_hourly_usd
-        $cost   = $elapsedHours * $hourly
+        $priorSpend = 0.0
+        if ($runState.PSObject.Properties.Match('prior_spend_usd').Count -gt 0 -and $runState.prior_spend_usd) {
+            $priorSpend = [double]$runState.prior_spend_usd
+        }
+        $cost   = $elapsedHours * $hourly + $priorSpend
         if ($cost -ge [double]$runState.budget.max_gpu_spend_usd) {
             Invoke-WatchdogTermination -Trigger 'gpu-budget-exhausted' `
                 -Detail ("Estimated cost {0:N2} USD reached cap {1:N2} USD." -f $cost, $runState.budget.max_gpu_spend_usd) -RunState $runState

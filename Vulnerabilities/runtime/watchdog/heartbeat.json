@@ -1,6 +1,6 @@
 ﻿{
-    "last_heartbeat_utc":  "2026-07-29T07:07:23Z",
-    "activity":  "vllm-restart-6-adapters",
-    "busy_until_utc":  "2026-07-29T07:32:23Z",
-    "pid":  23536
+    "last_heartbeat_utc":  "2026-07-29T07:47:15Z",
+    "activity":  "reprovision-and-bootstrap",
+    "busy_until_utc":  "2026-07-29T08:07:15Z",
+    "pid":  28176
 }
