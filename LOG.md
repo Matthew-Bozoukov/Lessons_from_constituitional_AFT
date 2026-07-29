@@ -204,8 +204,8 @@ documents. Snapshots survived, so recovery re-paid only the missing stages (~$40
 replayed for **$0.00** and A's export rebuild for **$0.38**. Also learned that `budget_usd`
 counts **cumulative** cost including cached replays, so it is not a guard on incremental spend.
 
-**Next steps:** (1) push the corpus to HF — **blocked**, the current `HF_TOKEN` is a fine-grained
-read-only token (`repo.content.read`), needs write scope; (2) QLoRA on Qwen3-32B and the honeypot
+**Next steps:** (1) ~~push the corpus to HF~~ **done** —
+`LASR-G3S-S26/synthdoc-approved-constitution-sft` (private), round-trip verified by SHA; (2) QLoRA on Qwen3-32B and the honeypot
 eval against v1's 19.3%/8.0% thinking-mode numbers; (3) run the shipped `planning` and
 `values_deliberation` sweeps — this run changed both together, so neither is cleanly attributed.
 

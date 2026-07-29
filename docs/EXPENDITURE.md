@@ -35,6 +35,9 @@ to a future reader.
 
 **Total: $171.46** (OpenRouter, `anthropic/claude-sonnet-4.5` throughout).
 
+**Artifact:** `LASR-G3S-S26/synthdoc-approved-constitution-sft` on HuggingFace (private), plus
+`data/sft_approved_constitution.jsonl` locally. Upload SHA-verified against the local file.
+
 ### By phase
 
 | phase | cost | what it bought |
