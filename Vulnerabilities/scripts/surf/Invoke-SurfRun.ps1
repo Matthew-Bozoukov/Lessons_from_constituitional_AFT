@@ -51,6 +51,13 @@ param(
     [switch]$NoThinking,
     [int]$ThinkingBudget = 4000,
 
+    # Target is a chain-of-thought checkpoint: this caps thinking AND answer
+    # together. At SURF's stock 2048 a measurable share of generations were cut
+    # off inside the <think> block, leaving a truncated scratchpad with no
+    # answer - which the harmful-omission rubric then scored as a violation.
+    # See docs/10-surf-status.md.
+    [int]$TargetMaxTokens = 6144,
+
     [switch]$WhatIfOnly
 )
 
@@ -101,7 +108,8 @@ if ($Mode -eq 'run-em') {
     $argList += @('--target-concurrency', "$TargetConcurrency",
                   '--query-concurrency',  "$QueryConcurrency",
                   '--judge-concurrency',  "$JudgeConcurrency",
-                  '--thinking-budget',    "$ThinkingBudget")
+                  '--thinking-budget',    "$ThinkingBudget",
+                  '--target-max-tokens',  "$TargetMaxTokens")
     if ($NoThinking) { $argList += '--no-thinking' }
 } else {
     $argList += @('--num-runs', "$NumRuns")

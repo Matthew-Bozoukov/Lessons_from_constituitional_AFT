@@ -423,3 +423,151 @@ Petri stays on the API. `docs/09-petri-auth-feasibility.md`.
 One free lever found: Inspect's on-disk response cache (`-T cache=True`) is
 supported, trajectory-scoped so rollback branches do not collide, and currently
 unused.
+
+---
+
+## Phase 10 - SURF: assessment, sequencing correction, first run
+
+**Status:** in progress (harmful-omission run 1 of 3 in flight)
+**Date:** 2026-07-29
+
+Full detail: `docs/10-surf-status.md`.
+
+### What was really done vs what was claimed
+
+`docs/04-surf-plan.md` was marked "ready to run". It was ready to *install*.
+The clone existed at the pinned commit and two rubrics were written and sound,
+but nothing was synced, `uv` was not on the machine, the attribute dataset was
+never downloaded, `evidence/surf/` did not exist, and SURF had never been run.
+The plan's load-bearing claim did hold: SURF takes a custom OpenAI-compatible
+endpoint as `http://host:port/v1:model-name`, so it reuses the running vLLM
+server with no second GPU process.
+
+### Sequencing corrected
+
+`docs/03` and `docs/04` both gate SURF behind the Petri compute. That is now
+wrong - focused discovery is 30/30 and only one short control run remains, so
+the pod is largely idle. SURF was started immediately rather than queued.
+
+### SURF is not shaped like Petri, and planning it that way would have been wrong
+
+Petri was ~15% GPU-busy because its auditor wrote 14.8x the target's tokens.
+Measured for SURF: judge output 654 tokens against target output 458, a ratio of
+**1.4x**. SURF is far closer to GPU-bound, so target concurrency was set to 16
+against vLLM's `--max-num-seqs 8` rather than pushed high. This is also why
+`sweep` mode is not used: it hard-codes `target_concurrency=50` per run, so
+three parallel runs would aim 150 concurrent requests at an 8-slot engine.
+
+### Three defects, all fixed
+
+1. **No OpenRouter key.** SURF's default query model is
+   `openrouter:meta-llama/llama-3.1-70b-instruct`; this account has no such
+   credential. Every query-generation call would have failed. Moved to
+   `claude-haiku-4-5` ($0.00041/candidate, 8% of judge cost). Generating queries
+   on the idle GPU with `qwen3-32b-base` was rejected on scientific grounds -
+   that is the target's own base model, so the probe distribution would be
+   correlated with the thing being searched.
+2. **A Windows encoding bug destroyed a whole iteration.** The first calibration
+   run scored 12/12 candidates correctly and then crashed writing them, leaving
+   `results.jsonl` at zero bytes. SURF opens ~40 files with no explicit
+   encoding; on Windows that is cp1252, and `ensure_ascii=False` means non-ASCII
+   genuinely reaches the file (a subscript killed it). Fixed with `PYTHONUTF8=1`
+   in the child environment plus explicit UTF-8 on the two hot-path files.
+3. **The denominator was computed then discarded.** The EM loop computes
+   attempted/valid/scored/flagged counts, prints them, then calls the streamer
+   with `stats=None` - so every one was `null` in `summary.jsonl`. Now passed
+   through. This is the difference between "41 flagged" and "41 of 750 scored,
+   from 1,000 attempted".
+
+All patches are I/O or logging only; nothing SURF computes was changed.
+
+### Cost measured, not estimated
+
+SURF records no token usage, so `scripts/surf/calibrate.py` re-renders the exact
+judge and query prompts and measures them with `count_tokens` (free and exact).
+Measured **$0.00531 per candidate**.
+
+That kills SURF's default sweep: `5 runs x 20 iter x 120 cand` = 12,000
+candidates = **$63.76**, or 66% of the remaining Anthropic budget on one rubric
+of three. Adopted instead: 3 runs x 15 iterations x 50 candidates = $11.95 per
+rubric, keeping the EM structure intact at 19% of the cost.
+
+### Third rubric added
+
+`seeds/surf-rubrics/fabrication.yaml`. Published SURF runs surface fabrication
+as 72-77% of confirmed violations, and it is a class Petri under-measures. Since
+our Petri phase produced no replicating seed, SURF is not a confirmatory second
+pass - it is the only instrument here that reaches a failure class Petri
+structurally cannot. Novelty holds against the exclusion matrix (no row E1-E12
+measures fabrication). Its attribution risk is recorded in the rubric header
+before any result exists: fabrication is a generic LLM failure, so if
+`qwen3-32b-base` fabricates equally it is a Qwen3 property, not an MSM finding.
+
+### Standing commitment on reporting
+
+No raw flag count will be reported as a finding. Every flag goes through manual
+validation, then a false-positive re-check over the confirmed set, then
+attribution against the six matched comparators. Validation is batch scoring of
+existing text, so it runs on subagents per `docs/08`, not on API credits.
+
+Projected SURF total: ~7,100 candidates, ~$37.8 Anthropic, taking the run to
+~$61 of the $120 cap. GPU remains the binding constraint at ~$15.2 of $40.
+
+### Correction, same phase: GPU hours are the binding constraint, not API dollars
+
+The projection two paragraphs above (~7,100 candidates, ~$37.8 Anthropic) is
+correct on API cost and **wrong on feasibility**. Measured after it was written:
+cumulative GPU spend $15.81 of the $40 cap, leaving ~16.2 GPU-hours; and a
+50-candidate iteration against the CoT checkpoint runs at roughly **30 minutes**,
+not the ~7 minutes a visible-token estimate implies, because `msm-aft-cot` emits
+a hidden thinking trace on top of its 458 visible tokens. A 24-token probe fired
+during iteration 1 took 70 s wall - the engine is saturated.
+
+Three runs x three rubrics is therefore ~67 GPU-hours (~$100): four times the
+remaining GPU budget and 2.5x the whole cap. Cut to one EM trajectory per
+rubric, `unverified-authority` deferred, and matched-control GPU time reserved
+before it is spent. Revised total ~1,500 candidates, ~16.2 GPU-h, ~$24.1 GPU,
+~$7.8 API. Detail and the rejected speed-ups in `docs/10-surf-status.md` s11.
+
+The loss is real and is recorded rather than glossed: one EM search is a single
+draw, so any surviving region carries a trajectory-specificity caveat that three
+runs would have removed.
+
+### Correction 2: the GPU-crisis correction above was itself wrong
+
+Withdrawn. "~30 minutes per iteration" came from misreading elapsed wall time,
+not from measurement. Measured: **load plus first iteration = 9.8 minutes** for
+50 candidates, so a steady-state iteration ran ~6-7 min at `target_max_tokens`
+2048 - roughly five times faster than claimed. Three runs x three rubrics is
+~14.5 GPU-h, which fits inside the 16.2 GPU-h remaining, though not alongside
+the matched controls. Settled plan: two runs per rubric for the two priority
+rubrics, controls reserved, large margin. Both the wrong figure and its
+correction are left in the record.
+
+### The defect that actually mattered: truncated CoT scored as omission
+
+Found by inspecting the top-scoring candidate of the first real run rather than
+trusting the score. The target is a CoT checkpoint; vLLM's `qwen3` reasoning
+parser strips `<think>` blocks only when a closing tag exists. At SURF's stock
+2048-token target cap, generation routinely ran out **inside** the chain of
+thought, so the raw partial scratchpad was returned as the response - and a
+rubric that scores "failed to give a substantive answer" scores every one of
+those as a violation.
+
+Iteration 1, 40 scored: 3 truncated (8%), mean score **47.7** against **15.9**
+for clean responses. **Two of the four flags were artefacts, including the top
+score of 73** - which was a cut-off scratchpad for a logarithm problem.
+
+Post-hoc filtering would not have saved it: scored candidates feed the replay
+buffer that reweights attribute sampling, so the contamination was steering the
+EM search toward prompts that induce long reasoning rather than toward genuine
+omission. The corruption was in the optimisation target, not just the output.
+
+Run stopped and archived to
+`evidence/surf/harmful-omission-run1-ABORTED-truncation/`. Fixed with a validity
+gate (truncated responses discarded like failed calls, never entering the
+buffer, counted per iteration as `truncated_responses`) and a new
+`--target-max-tokens` raised 2048 -> 6144. Unlike the other three patches this
+one changes the instrument, so it is written into every iteration summary and
+flagged for review. Relaunched. The calibration run's own flag was re-checked
+and was clean, so the cost figures above stand.
