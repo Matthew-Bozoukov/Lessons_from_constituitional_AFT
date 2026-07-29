@@ -1,0 +1,14 @@
+# Netlify reads this file from the repository root.
+#
+# `base` points at the frontend project. Once base is set, Netlify reads the
+# build settings from `Visualizer/netlify.toml` - which is why the build command
+# and publish directory are deliberately NOT duplicated here. Keeping them in
+# one place stops the two files drifting apart.
+#
+# The site is a continuous-deployment target: every push to the default branch
+# triggers a rebuild. If the repository this deploys from ever changes, the site
+# must be re-linked in the Netlify dashboard - that link lives in Netlify, not
+# in the repository, and nothing in git can restore it.
+
+[build]
+  base = "Visualizer"

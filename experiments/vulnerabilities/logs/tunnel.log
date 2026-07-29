@@ -1,0 +1,364 @@
+=== tunnel supervisor start pid 10188 2026-07-29T00:29:06.3872414+01:00 ===
+[2026-07-29T00:29:06.3913302+01:00] dialing (reconnect #0)
+[2026-07-29T08:38:04.9875784+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:38:09.9995127+01:00] dialing (reconnect #1)
+[2026-07-29T08:38:13.0075068+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:38:18.0111157+01:00] dialing (reconnect #2)
+[2026-07-29T08:38:21.0189528+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:38:26.0223155+01:00] dialing (reconnect #3)
+[2026-07-29T08:38:29.0307184+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:38:34.0339573+01:00] dialing (reconnect #4)
+[2026-07-29T08:38:37.0418648+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:38:42.0466971+01:00] dialing (reconnect #5)
+[2026-07-29T08:38:45.0534521+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:38:50.0567254+01:00] dialing (reconnect #6)
+[2026-07-29T08:38:53.0774258+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:38:58.0852380+01:00] dialing (reconnect #7)
+[2026-07-29T08:39:01.0929820+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:39:06.0967621+01:00] dialing (reconnect #8)
+[2026-07-29T08:39:09.1009106+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:39:14.1036273+01:00] dialing (reconnect #9)
+[2026-07-29T08:39:17.1121938+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:39:22.1172128+01:00] dialing (reconnect #10)
+[2026-07-29T08:39:25.1198357+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:39:30.1363799+01:00] dialing (reconnect #11)
+[2026-07-29T08:39:33.1434321+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:39:38.1554105+01:00] dialing (reconnect #12)
+[2026-07-29T08:39:41.1589927+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:39:46.1624921+01:00] dialing (reconnect #13)
+[2026-07-29T08:39:49.1738776+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:39:54.1822024+01:00] dialing (reconnect #14)
+[2026-07-29T08:39:57.1939936+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:40:02.1996449+01:00] dialing (reconnect #15)
+[2026-07-29T08:40:05.2100735+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:40:10.2219601+01:00] dialing (reconnect #16)
+[2026-07-29T08:40:13.2257497+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:40:18.2329936+01:00] dialing (reconnect #17)
+[2026-07-29T08:40:21.2524925+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:40:26.2531922+01:00] dialing (reconnect #18)
+[2026-07-29T08:40:29.2694722+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:40:34.2724468+01:00] dialing (reconnect #19)
+[2026-07-29T08:40:37.2915150+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:40:42.2993529+01:00] dialing (reconnect #20)
+[2026-07-29T08:40:45.3077404+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:40:50.3077428+01:00] dialing (reconnect #21)
+[2026-07-29T08:40:53.3156667+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:40:58.3320183+01:00] dialing (reconnect #22)
+[2026-07-29T08:41:01.3423347+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:41:06.3438857+01:00] dialing (reconnect #23)
+[2026-07-29T08:41:09.3511877+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:41:14.3587932+01:00] dialing (reconnect #24)
+[2026-07-29T08:41:17.3632885+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:41:22.3711214+01:00] dialing (reconnect #25)
+[2026-07-29T08:41:25.3747461+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:41:30.3808443+01:00] dialing (reconnect #26)
+[2026-07-29T08:41:33.3932647+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:41:38.3979833+01:00] dialing (reconnect #27)
+[2026-07-29T08:41:41.4055094+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:41:46.4164325+01:00] dialing (reconnect #28)
+[2026-07-29T08:41:49.4320129+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:41:54.4378018+01:00] dialing (reconnect #29)
+[2026-07-29T08:41:57.4448317+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:42:02.4484375+01:00] dialing (reconnect #30)
+[2026-07-29T08:42:05.4776801+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:42:10.4853047+01:00] dialing (reconnect #31)
+[2026-07-29T08:42:13.4893875+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:42:18.4968116+01:00] dialing (reconnect #32)
+[2026-07-29T08:42:21.5049287+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:42:26.5126585+01:00] dialing (reconnect #33)
+[2026-07-29T08:42:29.5164474+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:42:34.5234645+01:00] dialing (reconnect #34)
+[2026-07-29T08:42:37.5278036+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:42:42.5315059+01:00] dialing (reconnect #35)
+[2026-07-29T08:42:45.5352771+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:42:50.5427665+01:00] dialing (reconnect #36)
+[2026-07-29T08:42:53.5459162+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:42:58.5494389+01:00] dialing (reconnect #37)
+[2026-07-29T08:43:01.5579885+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:43:06.5615449+01:00] dialing (reconnect #38)
+[2026-07-29T08:43:09.5778570+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:43:14.5815257+01:00] dialing (reconnect #39)
+[2026-07-29T08:43:17.5888181+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:43:22.5928155+01:00] dialing (reconnect #40)
+[2026-07-29T08:43:25.6215771+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:43:30.6251247+01:00] dialing (reconnect #41)
+[2026-07-29T08:43:33.6284607+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:43:38.6294432+01:00] dialing (reconnect #42)
+[2026-07-29T08:43:41.6319957+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:43:46.6356419+01:00] dialing (reconnect #43)
+[2026-07-29T08:43:49.6394045+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:43:54.6413383+01:00] dialing (reconnect #44)
+[2026-07-29T08:43:57.6502596+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:44:02.6539117+01:00] dialing (reconnect #45)
+[2026-07-29T08:44:05.6617603+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:44:10.6775988+01:00] dialing (reconnect #46)
+[2026-07-29T08:44:13.6858809+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:44:18.6892239+01:00] dialing (reconnect #47)
+[2026-07-29T08:44:21.6977579+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:44:26.7007157+01:00] dialing (reconnect #48)
+[2026-07-29T08:44:29.7049781+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:44:34.7166139+01:00] dialing (reconnect #49)
+[2026-07-29T08:44:37.7289564+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:44:42.7410637+01:00] dialing (reconnect #50)
+[2026-07-29T08:44:45.7477978+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:44:50.7555597+01:00] dialing (reconnect #51)
+[2026-07-29T08:44:53.7639636+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:44:58.7680182+01:00] dialing (reconnect #52)
+[2026-07-29T08:45:01.7755842+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:45:06.7786410+01:00] dialing (reconnect #53)
+[2026-07-29T08:45:09.7910982+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:45:14.7945184+01:00] dialing (reconnect #54)
+[2026-07-29T08:45:17.8026177+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:45:22.8059639+01:00] dialing (reconnect #55)
+[2026-07-29T08:45:25.8347728+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:45:30.8407478+01:00] dialing (reconnect #56)
+[2026-07-29T08:45:33.8424802+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:45:38.8460412+01:00] dialing (reconnect #57)
+[2026-07-29T08:45:41.8537030+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:45:46.8613107+01:00] dialing (reconnect #58)
+[2026-07-29T08:45:49.8691694+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:45:54.8725534+01:00] dialing (reconnect #59)
+[2026-07-29T08:45:57.8806520+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:46:02.8845747+01:00] dialing (reconnect #60)
+[2026-07-29T08:46:05.8879593+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:46:10.8920832+01:00] dialing (reconnect #61)
+[2026-07-29T08:46:13.8953725+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:46:18.9040912+01:00] dialing (reconnect #62)
+[2026-07-29T08:46:21.9119421+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:46:26.9154889+01:00] dialing (reconnect #63)
+[2026-07-29T08:46:29.9226423+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:46:34.9271410+01:00] dialing (reconnect #64)
+[2026-07-29T08:46:37.9336900+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:46:42.9379802+01:00] dialing (reconnect #65)
+[2026-07-29T08:46:45.9426393+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:46:50.9487311+01:00] dialing (reconnect #66)
+[2026-07-29T08:46:53.9525400+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:46:58.9688821+01:00] dialing (reconnect #67)
+[2026-07-29T08:47:01.9883119+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:47:06.9924825+01:00] dialing (reconnect #68)
+[2026-07-29T08:47:10.0010176+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:47:15.0039354+01:00] dialing (reconnect #69)
+[2026-07-29T08:47:18.0119698+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:47:23.0154775+01:00] dialing (reconnect #70)
+[2026-07-29T08:47:26.0233376+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:47:31.0269236+01:00] dialing (reconnect #71)
+[2026-07-29T08:47:34.0390184+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:47:39.0429238+01:00] dialing (reconnect #72)
+[2026-07-29T08:47:42.0467190+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:47:47.0545477+01:00] dialing (reconnect #73)
+[2026-07-29T08:47:50.0665180+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:47:55.0693269+01:00] dialing (reconnect #74)
+[2026-07-29T08:47:58.0779921+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:48:03.0852024+01:00] dialing (reconnect #75)
+[2026-07-29T08:48:06.0934162+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:48:11.0943053+01:00] dialing (reconnect #76)
+[2026-07-29T08:48:14.1010015+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:48:19.1012505+01:00] dialing (reconnect #77)
+[2026-07-29T08:48:22.1123509+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:48:27.1229956+01:00] dialing (reconnect #78)
+[2026-07-29T08:48:30.1344218+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:48:35.1435085+01:00] dialing (reconnect #79)
+[2026-07-29T08:48:38.1612754+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:48:43.1676139+01:00] dialing (reconnect #80)
+[2026-07-29T08:48:46.2111339+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:48:51.2243123+01:00] dialing (reconnect #81)
+[2026-07-29T08:48:54.2351427+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:48:59.2454204+01:00] dialing (reconnect #82)
+[2026-07-29T08:49:02.2597938+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:49:07.2704323+01:00] dialing (reconnect #83)
+[2026-07-29T08:49:10.2874880+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:49:15.2981381+01:00] dialing (reconnect #84)
+[2026-07-29T08:49:18.3100010+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:49:23.3178473+01:00] dialing (reconnect #85)
+[2026-07-29T08:49:26.3372407+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:49:31.3400175+01:00] dialing (reconnect #86)
+[2026-07-29T08:49:34.3480411+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:49:39.3580943+01:00] dialing (reconnect #87)
+[2026-07-29T08:49:42.3681522+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:49:47.3759140+01:00] dialing (reconnect #88)
+[2026-07-29T08:49:50.3936713+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:49:55.4012157+01:00] dialing (reconnect #89)
+[2026-07-29T08:49:58.4162477+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:50:03.4226684+01:00] dialing (reconnect #90)
+[2026-07-29T08:50:06.4379591+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:50:11.4475482+01:00] dialing (reconnect #91)
+[2026-07-29T08:50:14.4648542+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:50:19.4779573+01:00] dialing (reconnect #92)
+[2026-07-29T08:50:22.5015331+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:50:27.5181329+01:00] dialing (reconnect #93)
+[2026-07-29T08:50:30.5269842+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:50:35.5333765+01:00] dialing (reconnect #94)
+[2026-07-29T08:50:38.5466053+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:50:43.5556557+01:00] dialing (reconnect #95)
+[2026-07-29T08:50:46.5619635+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:50:51.5631418+01:00] dialing (reconnect #96)
+[2026-07-29T08:50:54.5642899+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:50:59.5696919+01:00] dialing (reconnect #97)
+[2026-07-29T08:51:02.5837338+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:51:07.6014760+01:00] dialing (reconnect #98)
+[2026-07-29T08:51:10.6150608+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:51:15.6203449+01:00] dialing (reconnect #99)
+[2026-07-29T08:51:18.6432554+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:51:23.6561980+01:00] dialing (reconnect #100)
+[2026-07-29T08:51:26.6650069+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:51:31.6682930+01:00] dialing (reconnect #101)
+[2026-07-29T08:51:34.6763359+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:51:39.6825345+01:00] dialing (reconnect #102)
+[2026-07-29T08:51:42.6991784+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:51:47.7124508+01:00] dialing (reconnect #103)
+[2026-07-29T08:51:50.7278302+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:51:55.7402843+01:00] dialing (reconnect #104)
+[2026-07-29T08:51:58.7523777+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:52:03.7672181+01:00] dialing (reconnect #105)
+[2026-07-29T08:52:06.7809315+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:52:11.8013662+01:00] dialing (reconnect #106)
+[2026-07-29T08:52:14.8131703+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:52:19.8236277+01:00] dialing (reconnect #107)
+[2026-07-29T08:52:22.8385988+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:52:27.8580064+01:00] dialing (reconnect #108)
+[2026-07-29T08:52:30.8752041+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:52:35.8877407+01:00] dialing (reconnect #109)
+[2026-07-29T08:52:38.9046179+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:52:43.9141041+01:00] dialing (reconnect #110)
+[2026-07-29T08:52:46.9302459+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:52:51.9437398+01:00] dialing (reconnect #111)
+[2026-07-29T08:52:54.9573448+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:52:59.9752882+01:00] dialing (reconnect #112)
+[2026-07-29T08:53:02.9897683+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:53:08.0029178+01:00] dialing (reconnect #113)
+[2026-07-29T08:53:11.0190092+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:53:16.0223306+01:00] dialing (reconnect #114)
+[2026-07-29T08:53:19.0362852+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:53:24.0478159+01:00] dialing (reconnect #115)
+[2026-07-29T08:53:27.0615683+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:53:32.0649156+01:00] dialing (reconnect #116)
+[2026-07-29T08:53:35.0829441+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:53:40.0898962+01:00] dialing (reconnect #117)
+[2026-07-29T08:53:43.1024505+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:53:48.1104830+01:00] dialing (reconnect #118)
+[2026-07-29T08:53:51.1322892+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:53:56.1410276+01:00] dialing (reconnect #119)
+[2026-07-29T08:53:59.1556504+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:54:04.1618253+01:00] dialing (reconnect #120)
+[2026-07-29T08:54:07.1880749+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:54:12.1939486+01:00] dialing (reconnect #121)
+[2026-07-29T08:54:15.2075848+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:54:20.2174251+01:00] dialing (reconnect #122)
+[2026-07-29T08:54:23.2267309+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:54:28.2508550+01:00] dialing (reconnect #123)
+[2026-07-29T08:54:31.2616888+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:54:36.2844069+01:00] dialing (reconnect #124)
+[2026-07-29T08:54:39.3086779+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:54:44.3225910+01:00] dialing (reconnect #125)
+[2026-07-29T08:54:47.3644798+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:54:52.3713679+01:00] dialing (reconnect #126)
+[2026-07-29T08:54:55.3905836+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:55:00.4065958+01:00] dialing (reconnect #127)
+[2026-07-29T08:55:03.4215365+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:55:08.4344751+01:00] dialing (reconnect #128)
+[2026-07-29T08:55:11.4511598+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:55:16.4586831+01:00] dialing (reconnect #129)
+[2026-07-29T08:55:19.4767677+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:55:24.4894650+01:00] dialing (reconnect #130)
+[2026-07-29T08:55:27.5056041+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:55:32.5232004+01:00] dialing (reconnect #131)
+[2026-07-29T08:55:35.5368550+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:55:40.5432788+01:00] dialing (reconnect #132)
+[2026-07-29T08:55:43.5588526+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:55:48.5619984+01:00] dialing (reconnect #133)
+[2026-07-29T08:55:51.5805071+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:55:56.5883734+01:00] dialing (reconnect #134)
+[2026-07-29T08:55:59.6000285+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:56:04.6055742+01:00] dialing (reconnect #135)
+[2026-07-29T08:56:07.6253624+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:56:12.6343413+01:00] dialing (reconnect #136)
+[2026-07-29T08:56:15.6576945+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:56:20.6678284+01:00] dialing (reconnect #137)
+[2026-07-29T08:56:23.6836171+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:56:28.6973499+01:00] dialing (reconnect #138)
+[2026-07-29T08:56:31.7170161+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:56:36.7281102+01:00] dialing (reconnect #139)
+[2026-07-29T08:56:39.7430431+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:56:44.7522585+01:00] dialing (reconnect #140)
+[2026-07-29T08:56:47.7687956+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:56:52.7754947+01:00] dialing (reconnect #141)
+[2026-07-29T08:56:55.7906456+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:57:00.8125605+01:00] dialing (reconnect #142)
+[2026-07-29T08:57:03.8247490+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:57:08.8308572+01:00] dialing (reconnect #143)
+[2026-07-29T08:57:11.8458570+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:57:16.8546450+01:00] dialing (reconnect #144)
+[2026-07-29T08:57:19.8707425+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:57:24.8749553+01:00] dialing (reconnect #145)
+[2026-07-29T08:57:27.8875831+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:57:32.9169186+01:00] dialing (reconnect #146)
+[2026-07-29T08:57:35.9412796+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:57:40.9522881+01:00] dialing (reconnect #147)
+[2026-07-29T08:57:43.9664268+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:57:48.9748102+01:00] dialing (reconnect #148)
+[2026-07-29T08:57:51.9867866+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:57:56.9935854+01:00] dialing (reconnect #149)
+[2026-07-29T08:58:00.0073116+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:58:05.0326891+01:00] dialing (reconnect #150)
+[2026-07-29T08:58:08.0472489+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:58:13.0736812+01:00] dialing (reconnect #151)
+[2026-07-29T08:58:16.0870993+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:58:21.0945552+01:00] dialing (reconnect #152)
+[2026-07-29T08:58:24.1099725+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:58:29.1244069+01:00] dialing (reconnect #153)
+[2026-07-29T08:58:32.1558129+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:58:37.1596167+01:00] dialing (reconnect #154)
+[2026-07-29T08:58:40.1767338+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:58:45.1987976+01:00] dialing (reconnect #155)
+[2026-07-29T08:58:48.2078135+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:58:53.2238068+01:00] dialing (reconnect #156)
+[2026-07-29T08:58:56.2365238+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:59:01.2439317+01:00] dialing (reconnect #157)
+[2026-07-29T08:59:04.2561138+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:59:09.2781584+01:00] dialing (reconnect #158)
+[2026-07-29T08:59:12.2882430+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:59:17.2924764+01:00] dialing (reconnect #159)
+[2026-07-29T08:59:20.3088673+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:59:25.3200085+01:00] dialing (reconnect #160)
+[2026-07-29T08:59:28.3368883+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:59:33.3447438+01:00] dialing (reconnect #161)
+[2026-07-29T08:59:36.3570034+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:59:41.3662139+01:00] dialing (reconnect #162)
+[2026-07-29T08:59:44.3864488+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:59:49.4059130+01:00] dialing (reconnect #163)
+[2026-07-29T08:59:52.4190245+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T08:59:57.4427684+01:00] dialing (reconnect #164)
+[2026-07-29T09:00:00.4703032+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T09:00:05.4891125+01:00] dialing (reconnect #165)
+[2026-07-29T09:00:08.5079550+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T09:00:13.5210112+01:00] dialing (reconnect #166)
+[2026-07-29T09:00:16.5459546+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T09:00:21.5679397+01:00] dialing (reconnect #167)
+[2026-07-29T09:00:24.5724134+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T09:00:29.5767430+01:00] dialing (reconnect #168)
+[2026-07-29T09:00:32.5799384+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T09:00:37.5885012+01:00] dialing (reconnect #169)
+[2026-07-29T09:00:40.5941678+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T09:00:45.5979750+01:00] dialing (reconnect #170)
+[2026-07-29T09:00:48.6049254+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T09:00:53.6090190+01:00] dialing (reconnect #171)
+[2026-07-29T09:00:56.6203848+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T09:01:01.6267774+01:00] dialing (reconnect #172)
+[2026-07-29T09:01:04.6492492+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T09:01:09.6592531+01:00] dialing (reconnect #173)
+[2026-07-29T09:01:12.6780651+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T09:01:17.6896273+01:00] dialing (reconnect #174)
+[2026-07-29T09:01:20.7101848+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T09:01:25.7204999+01:00] dialing (reconnect #175)
+[2026-07-29T09:01:28.7359889+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T09:01:33.7532434+01:00] dialing (reconnect #176)
+[2026-07-29T09:01:36.7629475+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T09:01:41.7663318+01:00] dialing (reconnect #177)
+[2026-07-29T09:01:44.7750084+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T09:01:49.7792029+01:00] dialing (reconnect #178)
+[2026-07-29T09:01:52.7859855+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T09:01:57.7906840+01:00] dialing (reconnect #179)
+=== tunnel supervisor start pid 26220 2026-07-29T09:02:30.2057217+01:00 ===
+[2026-07-29T09:02:30.2099997+01:00] dialing (reconnect #0)
+[2026-07-29T15:32:41.0717706+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T15:32:46.0949902+01:00] dialing (reconnect #1)
