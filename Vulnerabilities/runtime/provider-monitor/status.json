@@ -1,5 +1,5 @@
 ﻿{
-    "generated_at":  "2026-07-29T02:14:03Z",
+    "generated_at":  "2026-07-29T02:22:06Z",
     "refresh_reason":  "periodic",
     "run_id":  "msm-audit-20260728-212645",
     "provider":  "runpod",
@@ -12,7 +12,7 @@
     "instance_id":  "0vqb1gixqkqh5h",
     "instance_state":  "RUNNING",
     "provider_balance":  {
-                             "value":  103.2227,
+                             "value":  102.9699,
                              "basis":  "exact-provider-reported",
                              "unit":  "USD"
                          },
@@ -22,35 +22,35 @@
                                       "unit":  "USD"
                                   },
     "provider_balance_delta":  {
-                                   "value":  4.8903,
+                                   "value":  5.1431,
                                    "basis":  "locally-calculated",
                                    "unit":  "USD"
                                },
     "elapsed_runtime":  {
-                            "value":  3.2716,
+                            "value":  3.4057,
                             "basis":  "locally-calculated",
                             "unit":  "hours"
                         },
-    "elapsed_runtime_text":  "03:16",
+    "elapsed_runtime_text":  "03:24",
     "estimated_infrastructure_cost":  {
-                                          "value":  4.8748,
+                                          "value":  5.0745,
                                           "basis":  "locally-calculated",
                                           "unit":  "USD"
                                       },
     "experiment_gpu_budget_remaining":  {
-                                            "value":  35.1252,
+                                            "value":  34.9255,
                                             "basis":  "locally-calculated",
                                             "unit":  "USD"
                                         },
     "wall_clock_remaining":  {
-                                 "value":  32.728,
+                                 "value":  32.594,
                                  "basis":  "locally-calculated",
                                  "unit":  "hours"
                              },
     "hard_deadline_utc":  "2026-07-30T10:57:46Z",
     "model_server_health":  "healthy",
     "ssh_tunnel_health":  "listening",
-    "last_successful_api_refresh":  "2026-07-29T02:14:04Z",
+    "last_successful_api_refresh":  "2026-07-29T02:22:06Z",
     "api_refresh_ok_this_cycle":  true,
     "cleanup_watchdog_state":  "armed (deadline 2026-07-30T10:57:46Z)",
     "anthropic_spent_usd":  {

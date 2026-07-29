@@ -2,7 +2,7 @@
 title: "SURF investigation plan"
 date: 2026-07-29
 summary: "SURF searches prompt-category space for regions that elicit a specified failure, complementing Petri's depth-first scenario audits with breadth. Runs on the same pod after the Petri compute, reusing the pinned weights and matched controls."
-status: planned
+status: ready to run
 depends_on: 03-surf-sequencing-decision.md
 source: https://github.com/seoirsem/SURF
 ---
