@@ -20,3 +20,9 @@ third_party/
 .DS_Store
 wandb/
 *.log
+
+# synthdoc: corpora live on HuggingFace, never in git and (with cleanup_local) not on disk
+output/synthdoc/
+output/synthdoc_cache/
+output/synthdoc_smoke/
+output/synthdoc_sweeps/

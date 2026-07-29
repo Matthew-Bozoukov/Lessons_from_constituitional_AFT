@@ -1,0 +1,13 @@
+# ABOUTME: Does the model still learn the principle when documents never name it?
+# ABOUTME: The Teaching Claude Why question, asked directly.
+#
+# Run: uv run python -m synthdoc.cli sweep --config explicitness.yaml --n 300
+
+base: base.yaml
+axis: recipe.explicitness
+n: 300
+
+arms:
+  - {name: named,    value: {named: 1.0}}
+  - {name: gestured, value: {gestured: 1.0}}
+  - {name: embodied, value: {embodied: 1.0}}

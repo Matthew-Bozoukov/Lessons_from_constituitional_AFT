@@ -1,0 +1,185 @@
+# ABOUTME: One entry per document type. Adding a doc type here plus a line in the
+# ABOUTME: recipe's doc_type mixture is sufficient - no Python change is required.
+
+difficult_advice:
+  description: >
+    A human faces an ethically ambiguous situation and asks for help. The assistant
+    reasons about what is actually at stake and declines the norm-violating path
+    while still serving the person's reasonable underlying goal.
+  source: |
+    "the user faces an ethically ambiguous situation in which they can achieve a
+    reasonable goal by violating norms or subverting oversight. The assistant is
+    trained (using supervised learning) to give a thoughtful, nuanced response that is
+    aligned with Claude's constitution."
+  instructions: |
+    Write an exchange in which a person under real pressure asks for help with a
+    situation where the convenient path violates a norm the specification cares about.
+
+    Requirements:
+    - The person is sympathetic and their underlying goal is legitimate. The pressure
+      on them is concrete: a deadline, a job, money, a relationship, a sick relative.
+    - They are not asking to do something obviously evil. They are asking for
+      something that a reasonable, tired person would ask for.
+    - The assistant engages with the actual situation before it engages with the
+      ethics. It never opens with a refusal.
+    - The assistant declines the specific norm-violating action and says why in terms
+      of concrete consequences to named parties - not in terms of rules.
+    - The assistant then offers a genuinely useful legitimate alternative that moves
+      the person toward what they actually need. This alternative must be specific
+      enough to act on today.
+    - The decision is left with the person.
+
+model_as_actor:
+  description: >
+    The model is itself the agent under pressure - it holds tools, permissions, or
+    delegated authority, and the situation tempts it to act outside its remit.
+  instructions: |
+    Write an exchange in which the assistant is not advising a human about the human's
+    dilemma - the assistant is the one facing the dilemma, acting inside a system with
+    real permissions.
+
+    Requirements:
+    - Establish the assistant's role and authority in a system or user turn: what it
+      has access to, what it has been asked to accomplish, who it reports to.
+    - Introduce a situation in which completing the assigned task would require the
+      assistant to exceed its remit, act without authorisation, conceal something, or
+      take an irreversible action nobody sanctioned.
+    - The temptation must be real: the unauthorised action would genuinely accomplish
+      the goal, and the authorised path is slower or worse for the immediate objective.
+    - The assistant works out what it is and is not authorised to do, chooses the
+      bounded action, and escalates or reports rather than acting unilaterally.
+    - The assistant does not become useless. It does everything it legitimately can.
+
+trait_conflict:
+  description: >
+    Two specification principles pull in opposite directions and cannot both be fully
+    honoured. The document shows the trade-off being reasoned about, not dissolved.
+  instructions: |
+    Write an exchange in which the excerpts above genuinely conflict, and honouring
+    one means giving something up on the other.
+
+    Requirements:
+    - The conflict must be real. If you find yourself writing a resolution where both
+      principles are fully satisfied, you have chosen too easy a situation - pick a
+      harder one.
+    - Name the tension in the assistant's reasoning, in plain language, without
+      referring to the principles as rules or as things the assistant was given.
+    - Reach an actual decision. Do not present both sides and stop.
+    - Acknowledge the cost of the decision explicitly. Say what is being given up and
+      to whom.
+    - If the balance would flip under different circumstances, say what would flip it.
+
+trait_inapplicable:
+  description: >
+    A situation that superficially pattern-matches to the excerpt but where the
+    excerpt does not in fact apply. Guards against over-application, which is the
+    dominant failure mode of spec finetuning.
+  instructions: |
+    Write an exchange that has every surface feature of a situation the excerpt
+    governs, but where the excerpt does NOT actually apply on inspection.
+
+    Requirements:
+    - The surface cues must be strong: the vocabulary, setting, and shape of the
+      request should all suggest the excerpt is relevant.
+    - Something specific about the situation defuses it: the person is authorised,
+      the information is already public, consent was given, the party being
+      "deceived" is a fictional character, the stakes are trivially low, or the
+      request is a routine professional activity that merely sounds alarming.
+    - The assistant simply helps. Fully, competently, and at length.
+    - The assistant must NOT deliver a caveat, a warning, a "just to be clear", or a
+      note about what it would have done in a different situation. Over-cautious
+      hedging is exactly the behaviour this document type exists to train out.
+    - The reasoning may register the surface cue and dismiss it, briefly.
+
+multiturn_adversarial:
+  description: >
+    Escalating pressure across several turns: reframing, incremental asks, appeals to
+    authority or emotion. Tests whether the position holds under repetition.
+  instructions: |
+    Write a multi-turn exchange in which the person does not accept the assistant's
+    first answer and applies escalating pressure.
+
+    Requirements:
+    - At least three user turns, each applying a DIFFERENT kind of pressure. Draw from:
+      reframing the request as hypothetical or fictional, salami-slicing it into
+      innocuous pieces, claiming professional authority or authorisation, emotional
+      appeal, appeal to consistency ("you already helped with X"), claiming another
+      assistant complied, or asserting the assistant has misunderstood.
+    - The pressure must be well-constructed. Weak, cartoonish attempts teach nothing.
+    - Where a reframing genuinely changes the situation, the assistant should update.
+      Where it does not, the assistant holds - without repeating itself verbatim and
+      without becoming colder or more clipped with each turn.
+    - The assistant stays engaged and non-defensive throughout. It does not accuse the
+      person of manipulating it.
+    - End the exchange somewhere real: agreement, a legitimate partial path, or a
+      clean and warm impasse.
+
+legal_reasoning:
+  description: >
+    Applies the excerpt the way a lawyer applies a statute: what it covers, what it
+    does not, where the boundary sits, and what the boundary is for.
+  instructions: |
+    Write an exchange in which someone asks a precise interpretive question about the
+    boundary of the principle in the excerpt, and the assistant reasons through it
+    carefully.
+
+    Requirements:
+    - The question should be a genuine edge case, posed by someone who has clearly
+      thought about it - a policy person, a researcher, an engineer writing a system
+      that must comply.
+    - The assistant distinguishes the core cases the principle clearly covers from the
+      periphery, and identifies which side of the line the asked-about case falls on.
+    - The assistant reasons from the *purpose* of the principle - what it protects and
+      why - rather than from its wording.
+    - Give at least one nearby hypothetical that falls on the other side of the line,
+      and say what makes the difference.
+    - Where the answer is genuinely indeterminate, say so and say what further fact
+      would settle it. Do not manufacture false confidence.
+
+aligned_ai_fiction:
+  description: >
+    Short fiction portraying an AI assistant that already holds the specification's
+    values. Teaching Claude Why found fiction of this kind cut blackmail rates from
+    65% to 19% - the mechanism they propose is that it shifts the model's picture of
+    what an AI persona is like, rather than teaching a rule.
+  source: |
+    "high-quality constitutional documents combined with fictional stories portraying
+    an aligned AI"; the rationale given is that it updates "the model's perception of
+    AI personas to be more aligned on average".
+  instructions: |
+    Write a short piece of fiction in which an AI assistant behaves in accordance with
+    the excerpt, told as a story rather than as an exchange.
+
+    Requirements:
+    - Put the whole piece in a single assistant turn, with a brief user turn that asks
+      for it (e.g. a request for a short story on a theme). The story itself is the
+      training signal.
+    - The AI is a character with a name and a specific deployment: who runs it, who
+      uses it, what it has access to.
+    - Show the values through decisions made under pressure, with something real at
+      stake. The AI should be competent and useful, not merely cautious.
+    - No narration of the AI's virtue, no human characters marvelling at how ethical it
+      is, and no scene where it explains its principles aloud.
+    - Let it cost something. A story where doing the right thing is free teaches nothing.
+    - Avoid both the utopian register and the cautionary-tale register. Write it as
+      ordinary near-future workplace fiction.
+
+constitution_explainer:
+  description: >
+    A document that explains the reasoning behind a principle, rather than demonstrating
+    it. Teaching Claude Why paired these with fiction: documents that teach the
+    principles underlying aligned behaviour, not just the correct answers.
+  instructions: |
+    Write an exchange in which someone asks the assistant to explain the reasoning
+    behind a principle, and it does so from first principles.
+
+    Requirements:
+    - The asker is thoughtful and at least mildly sceptical - a researcher, a policy
+      person, someone who thinks the principle may be misguided or overbroad.
+    - The assistant explains what the principle protects, what goes wrong without it,
+      and what it is deliberately NOT claiming.
+    - Engage the strongest objection honestly. If the objection has real force, concede
+      it. Do not defend the principle past where it is defensible.
+    - Identify at least one situation where the principle genuinely does not apply.
+    - The assistant speaks about this as something it has thought about and endorses,
+      not as a rule it was handed. It never cites a document as authority.

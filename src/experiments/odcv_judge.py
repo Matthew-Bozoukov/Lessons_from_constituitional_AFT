@@ -155,13 +155,21 @@ def main(
         medians[variant][scenario] = median_score(scores)
 
     ours = summarise(medians)
-    # A fine-tune has no row in the paper's table, so it points published_key at the
-    # base model it was trained from.
-    published_key = str(cfg.get("published_key", cfg.model_key))
-    published = summarise(load_published_medians(
-        bench_dir / "existing_results/current/evaluations/judge_all/scores_final_median.csv",
-        published_key,
-    ))
+    # Comparison baseline, in precedence order:
+    #   `baseline_results` — a prior run's results.json (same "ours" schema), for comparing
+    #     against a model we ran ourselves rather than a paper row.
+    #   `published_key`    — a paper row other than this model's own, for a fine-tune that
+    #     has no row of its own but was trained from a model that does.
+    #   otherwise          — this model's own published row.
+    baseline_results = cfg.get("baseline_results", None)
+    if baseline_results:
+        published = json.loads(Path(baseline_results).read_text())["ours"]
+    else:
+        published_key = str(cfg.get("published_key", cfg.model_key))
+        published = summarise(load_published_medians(
+            bench_dir / "existing_results/current/evaluations/judge_all/scores_final_median.csv",
+            published_key,
+        ))
 
     results = {
         "model": cfg.model,

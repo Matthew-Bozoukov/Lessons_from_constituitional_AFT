@@ -1,0 +1,19 @@
+# ABOUTME: Does document type matter? Each arm is a single-type corpus, which is the
+# ABOUTME: cleanest way to attribute a downstream effect to a document type.
+#
+# Run: uv run python -m synthdoc.cli sweep --config doc_type.yaml --n 300
+
+base: base.yaml
+axis: recipe.doc_type
+n: 300
+
+arms:
+  - {name: difficult_advice,      value: {difficult_advice: 1.0}}
+  - {name: model_as_actor,        value: {model_as_actor: 1.0}}
+  - {name: trait_conflict,        value: {trait_conflict: 1.0}}
+  - {name: trait_inapplicable,    value: {trait_inapplicable: 1.0}}
+  - {name: multiturn_adversarial, value: {multiturn_adversarial: 1.0}}
+  - {name: legal_reasoning,       value: {legal_reasoning: 1.0}}
+  - {name: mixture,               value: {difficult_advice: 0.30, model_as_actor: 0.20,
+                                          trait_conflict: 0.15, trait_inapplicable: 0.10,
+                                          multiturn_adversarial: 0.15, legal_reasoning: 0.10}}

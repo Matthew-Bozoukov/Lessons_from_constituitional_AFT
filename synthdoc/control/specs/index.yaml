@@ -1,0 +1,10 @@
+# ABOUTME: Maps spec_id -> file path for specs that live outside control/specs/.
+# ABOUTME: Registering a spec here lets `spec.id` alone identify it, which is what makes
+# ABOUTME: `axis: spec.id` sweeps work without also having to override spec.path.
+#
+# Paths are relative to the repo root. Specs dropped directly into control/specs/ as
+# <spec_id>.md resolve automatically and do not need an entry here.
+
+specs:
+  # The repo's distilled constitution, referenced in place rather than copied.
+  claude_constitution_principles: docs/claude_constitution_principles.md

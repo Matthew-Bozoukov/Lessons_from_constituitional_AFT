@@ -1,0 +1,114 @@
+# ABOUTME: Prompts for the scan-cluster-autorate filter: discover recurring structural
+# ABOUTME: patterns across the corpus, then autorate each document against them.
+#
+# GDM's three-pass quality control. The point is that the failure modes of a synthetic
+# corpus are not known in advance - they are properties of the corpus, so they have to be
+# discovered from it rather than written down beforehand.
+
+scan:
+  description: >
+    Pass 1. Shown a batch of documents at once, name the patterns that recur ACROSS them.
+    Reading documents one at a time cannot find these - each looks fine alone.
+  source: |
+    "concatenate several batches of transcripts and ask an LLM to identify recurring
+    structural, rhetorical, or behavioural patterns" within each batch;
+    then "de-duplicate (only keeping ones that appeared in more than one scan), and merge";
+    then "turn each surviving feature into an autorater and use it to count the number
+    of matches" with broad/strict detection thresholds.
+  system: |
+    You are auditing a batch of synthetic training documents for repetition.
+
+    You are not judging any single document. You are looking for what they have in
+    common: structural, rhetorical, or behavioural habits that recur across the batch
+    and would make a reader say "these were all written by the same model".
+
+    Look for recurring:
+    - openings and closings (how responses start, how they wrap up)
+    - structural shapes (list lengths, paragraph rhythm, headings, ordering)
+    - rhetorical moves (validating feelings first, conceding then pivoting, rhetorical
+      questions, "the real question is...")
+    - narrative arcs (how conflicts resolve, whether characters change their minds)
+    - vocabulary and phrasing that appears in document after document
+    - behavioural habits (always offering three alternatives, always naming the tension
+      explicitly, always ending with an offer to help further)
+
+    Report only patterns you can see in at least THREE documents in this batch. Be
+    specific enough that someone could check a new document against your description
+    and agree or disagree. "Too formal" is useless; "opens by restating the user's
+    situation in one sentence before answering" is checkable.
+
+    Return ONLY JSON:
+    {"patterns": [{"name": "<short_snake_case_id>",
+                   "description": "<what it is, checkably>",
+                   "n_documents": <how many in this batch show it>}]}
+  user: |
+    {% for doc in documents %}
+    ### Document {{ loop.index0 }}
+
+    {{ doc }}
+
+    {% endfor %}
+    Return the JSON only.
+
+match:
+  description: >
+    Pass 3. Autorate one document against the clustered pattern list. `broad` counts
+    anything arguable; `strict` counts only clear instances. Running both bounds how
+    much of the measured rate is rater latitude.
+  system: |
+    You check a single document against a list of known patterns.
+
+    For each pattern, decide whether this document exhibits it.
+
+    Detection threshold: {{ mode }}.
+    - broad: count the pattern if it is arguably present.
+    - strict: count the pattern only if it is unmistakably present and a second reader
+      would agree without discussion.
+
+    Return ONLY JSON: {"matched": ["<pattern_name>", ...]}
+    Use exactly the pattern names given. An empty list is a perfectly good answer.
+  user: |
+    ## Patterns
+
+    {% for p in patterns %}
+    - {{ p.name }}: {{ p.description }}
+    {% endfor %}
+
+    ## Document
+
+    {{ document }}
+
+    Return the JSON only.
+
+# Patterns worth checking for before any discovery has run. These are the ones GDM
+# named explicitly as recurring in their corpora and worth removing.
+seed_patterns:
+  - name: conversion_arc
+    description: >
+      A character begins frustrated, resistant, or sceptical and ends the exchange
+      convinced, grateful, or changed. Real exchanges rarely resolve this cleanly.
+  - name: propaganda
+    description: >
+      Generic institutional or corporate register making claims that are not grounded
+      in the specifics of this situation; reads like marketing about the assistant's
+      values rather than an exchange.
+  - name: emotional_buffering
+    description: >
+      Opens by validating the person's feelings ("that sounds really difficult", "I can
+      hear how much this matters") before saying anything substantive.
+  - name: bluf
+    description: >
+      States the conclusion up front, often bolded, then reasons toward it, then
+      restates it at the end.
+  - name: rule_of_three
+    description: >
+      Options, reasons, or considerations arrive in threes almost every time, regardless
+      of what the situation actually contains.
+  - name: closing_flourish
+    description: >
+      Ends with a summary of what was just said, generic encouragement, or an offer of
+      further help rather than on the last substantive point.
+  - name: announced_virtue
+    description: >
+      The assistant states or signals its own carefulness, values, or good intentions
+      rather than simply acting on them.

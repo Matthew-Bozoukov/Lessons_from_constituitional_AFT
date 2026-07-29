@@ -1,0 +1,13 @@
+# ABOUTME: The variance baseline. Run this FIRST - an effect smaller than the
+# ABOUTME: seed-to-seed spread is noise, whatever the sweep report says.
+#
+# Run: uv run python -m synthdoc.cli sweep --config seed_variance.yaml --n 300
+
+base: base.yaml
+axis: seed
+n: 300
+
+arms:
+  - {name: seed0, value: 0}
+  - {name: seed1, value: 1}
+  - {name: seed2, value: 2}
