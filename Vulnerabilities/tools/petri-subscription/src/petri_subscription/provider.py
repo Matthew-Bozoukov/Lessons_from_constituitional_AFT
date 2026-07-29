@@ -100,7 +100,12 @@ class ClaudeCodeAPI(ModelAPI):
             config=config,
         )
         self.cli_path = cli_path or os.environ.get("PETRI_CLAUDE_CLI_PATH")
-        self.allow_api_key = allow_api_key
+        # Escape hatch for the architecture test: --model-role cannot pass
+        # model_args in its plain form, so allow the same switch via env.
+        # Default is False -- the API key is blanked unless explicitly allowed.
+        self.allow_api_key = allow_api_key or (
+            os.environ.get("PETRI_CC_ALLOW_API_KEY") == "1"
+        )
         self._max_connections = int(max_connections)
         self.capture_stderr = capture_stderr
         self.model_args = model_args
@@ -281,16 +286,22 @@ class ClaudeCodeAPI(ModelAPI):
                 elif isinstance(message, ResultMessage):
                     result = message
         except Exception as ex:  # noqa: BLE001 - surface loudly, never silently
+            cli_result = getattr(result, "result", None)
+            cli_subtype = getattr(result, "subtype", None)
             call = ModelCall.create(
                 request=call_request,
                 response={
                     "error": f"{type(ex).__name__}: {ex}",
+                    "cli_result_text": cli_result,
+                    "cli_subtype": cli_subtype,
+                    "message_types": raw_messages,
                     "stderr": stderr_lines[-40:],
                 },
             )
             return (
                 ClaudeCodeError(
                     f"Claude Code CLI failed: {type(ex).__name__}: {ex}\n"
+                    f"cli result text: {cli_result!r} (subtype={cli_subtype})\n"
                     f"stderr tail: {' | '.join(stderr_lines[-10:])}"
                 ),
                 call,
