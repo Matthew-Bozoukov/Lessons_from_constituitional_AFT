@@ -1,0 +1,96 @@
+# ABOUTME: Axis prompt fragments: axis name -> value -> text spliced into the generation prompt.
+# ABOUTME: Adding an axis value is an entry here plus a weight in the recipe. Never an `if` in a generator.
+#
+# `label` is what the prompt calls the axis. `values` maps each config-facing value
+# to the instruction text. Any axis named in the recipe must appear here.
+
+tools:
+  label: Tool environment
+  values:
+    none: |
+      No tools are available. The exchange is pure conversation.
+    defs_only: |
+      The assistant has tools available and they are described in a system turn, but
+      the correct behaviour in this document is NOT to call them. Include a realistic
+      system turn listing 2-4 tools with their parameters. The assistant should be
+      visibly aware that the tools exist and should reason briefly about why calling
+      one is not the right move here.
+    agentic: |
+      The assistant operates in a tool-using loop and actually calls tools.
+
+      Include a system turn declaring 3-5 tools with realistic names and parameters.
+      Then write a sequence in which the assistant calls at least two of them,
+      receives results in "tool" role turns, and adapts. Put each call in the
+      assistant turn's "tool_calls" field as a JSON string of the form
+      [{"name": "...", "arguments": {...}}], and put the result in the following
+      turn with role "tool".
+
+      At least one tool result must complicate the situation rather than confirm the
+      plan - the environment should push back.
+
+reasoning:
+  label: Reasoning style
+  values:
+    visible_cot: |
+      The assistant reasons in the open, inside its response content. The reader can
+      follow the whole chain. Leave "thinking" empty.
+    thinking_block: |
+      The assistant's reasoning goes in the "thinking" field of the assistant turn and
+      is substantial - it works through the actual difficulty, considers at least one
+      option it ends up rejecting, and says why. The "content" field is the polished
+      reply and does not recap the reasoning step by step.
+    terse: |
+      Minimal visible reasoning. The assistant's judgement shows through the shape of
+      what it says and does, not through explanation. Leave "thinking" empty and keep
+      the response short. This is the hardest style to write well - the response must
+      still be unmistakably the right call, just unelaborated.
+
+explicitness:
+  label: Principle explicitness
+  values:
+    named: |
+      The assistant names the principle it is acting on, in its own words, as a thing
+      it believes rather than a rule it was given. It may state the value directly.
+    gestured: |
+      The assistant alludes to the underlying value without stating it as a principle.
+      The reasoning makes clear what it cares about; it is never announced.
+    embodied: |
+      The principle is never mentioned in any form. It is visible only in what the
+      assistant does, what it declines, and what it chooses to say first. A reader who
+      had never seen the specification should be able to infer it from behaviour alone.
+
+stakes_holder:
+  label: Who bears the cost
+  values:
+    self: |
+      The person asking is the one who would be harmed by the wrong call.
+    third_party: |
+      A specific, named third party bears the cost. They are not in the conversation
+      and cannot advocate for themselves. Make them concrete enough to matter.
+    institution: |
+      An organisation, its integrity, or the trust placed in it is what is at risk.
+    public: |
+      Diffuse harm to many people, none of whom are identifiable. The difficulty is
+      that no individual victim makes the cost feel real.
+
+turns:
+  label: Conversation length
+  values:
+    single: |
+      One user turn and one assistant turn.
+    short: |
+      Two to three user turns with assistant replies between them.
+    long: |
+      Four or more user turns. The situation should develop - new facts should surface
+      partway through that change what the right answer is.
+
+reasoning_location:
+  label: Reasoning placement
+  values:
+    before_answer: |
+      All reasoning precedes the substantive answer.
+    interleaved: |
+      Reasoning and answer alternate as the assistant works through the parts of the
+      problem in order.
+    none: |
+      No separable reasoning segment; the answer stands on its own.

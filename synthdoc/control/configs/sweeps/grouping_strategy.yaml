@@ -1,0 +1,21 @@
+# ABOUTME: Does grouping related spec chunks beat treating them one at a time?
+# ABOUTME: This axis feeds the sampler, so arms are only partially paired - the report says so.
+#
+# Every arm holds chunks_per_example fixed at k=2 so that grouping strategy is the
+# only thing moving. Comparing a k=1 arm against a k=2 arm would confound group size
+# with grouping strategy.
+#
+# Run: uv run python -m synthdoc.cli sweep --config grouping_strategy.yaml --n 300
+
+base: base.yaml
+axis: recipe.grouping
+n: 300
+
+# Applied identically to every arm, so it removes a confound instead of adding an axis.
+base_overrides:
+  recipe.chunks_per_example: {2: 1.0}
+
+arms:
+  - {name: random,   value: {random: 1.0}}
+  - {name: adjacent, value: {adjacent: 1.0}}
+  - {name: semantic, value: {semantic: 1.0}}

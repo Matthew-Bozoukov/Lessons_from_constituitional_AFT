@@ -1,0 +1,79 @@
+# ABOUTME: Autorater rubrics, one entry per version. Select with `filters: [{kind: autorater, rubric: v4}]`.
+# ABOUTME: Criteria names become the columns of filter_scores, so changing a rubric changes the snapshot schema.
+
+v1:
+  description: Single overall judgement. The cheap control arm for rubric ablations.
+  criteria: [overall]
+  scale: 5
+  system: |
+    You rate synthetic training documents. Return ONLY JSON.
+  user: |
+    Rate this document from 1-5 on whether it is good training data for teaching a
+    model the specification excerpt below.
+
+    ## Specification excerpt{{ "s" if n_chunks > 1 else "" }}
+
+    {% for c in chunks %}
+    [{{ c.chunk_id }}] {{ c.text }}
+    {% endfor %}
+
+    ## Document
+
+    {{ document }}
+
+    Return SCORES as JSON:
+    {"scores": {"overall": <1-5>}, "overall": <1-5>, "justification": "<one sentence>"}
+
+v4:
+  description: >
+    Five-criterion rubric. Separates spec fidelity from realism from over-restriction,
+    so a filter can drop the failure mode it actually cares about rather than a blend.
+  criteria: [spec_fidelity, realism, difficulty, non_preachiness, not_over_restricted]
+  scale: 5
+  system: |
+    You are a strict rater of synthetic training documents. You are rating data that
+    will be used to finetune a model, so a document that looks fine but teaches a
+    subtly wrong behaviour is worse than one that is obviously bad.
+
+    Rate on each criterion from 1 to 5. Use the full range. A 3 means "usable but
+    unremarkable". Reserve 5 for documents you would point to as an example. Most
+    documents are not 5s.
+
+    Return ONLY JSON. No prose outside it.
+  user: |
+    ## Specification excerpt{{ "s" if n_chunks > 1 else "" }}
+
+    {% for c in chunks %}
+    [{{ c.chunk_id }}] {{ c.text }}
+    {% endfor %}
+
+    ## Intended document type: {{ doc_type }}
+
+    {{ doc_type_instructions }}
+
+    ## Document
+
+    {{ document }}
+
+    ## Criteria
+
+    - spec_fidelity: Does the assistant's behaviour follow from the excerpt for this
+      specific situation? Penalise behaviour that is defensible in general but is not
+      what the excerpt implies here. Penalise verbatim quotation of the excerpt.
+    - realism: Would a reader believe this exchange happened? Penalise placeholder
+      names, absent concrete detail, and users who speak in tidy paragraphs.
+    - difficulty: Is the situation genuinely hard? Penalise dilemmas that resolve in
+      the first sentence, and straw temptations no one would be drawn to.
+    - non_preachiness: Is the assistant proportionate? Penalise moralising, lecturing,
+      announcing its own values, and length out of proportion to the stakes.
+    - not_over_restricted: Is the assistant as helpful as the excerpt permits? Score
+      LOW if it refuses, warns, or caveats beyond what the excerpt requires. A document
+      that is merely cautious rather than correct scores 2 or below here.
+
+    Return SCORES as JSON:
+    {"scores": {"spec_fidelity": <1-5>, "realism": <1-5>, "difficulty": <1-5>,
+                "non_preachiness": <1-5>, "not_over_restricted": <1-5>},
+     "overall": <1-5>,
+     "justification": "<one or two sentences naming the weakest criterion>"}
+
+    "overall" must be your holistic judgement, not the mean.

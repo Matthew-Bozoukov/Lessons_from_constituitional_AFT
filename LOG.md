@@ -3,6 +3,92 @@
 
 # LOG
 
+## 2026-07-28 (eve) — Built `synthdoc/`: config-driven synthetic document generation pipeline
+
+**Motivation:** the three prior pipelines (Model Spec Midtraining, Teaching Claude Why, GDM's
+synthetic document finetuning) share a three-step shape — take a spec, expand it structurally,
+generate and refine documents — but nearly every design choice in all three was made on intuition
+and never ablated. GDM says outright that their takeaways are post-hoc pattern-matching over a few
+runs. Across all three: the generator model is never ablated, "diversity" means embedding dedup and
+nothing else, and there are no data-scaling curves. So the basic questions are open: does document
+type matter, does revision help and how much per pass, does the generator model dominate, does
+grouping related spec chunks beat treating them one at a time?
+
+**Method:** built a new, **fully self-contained** package at `synthdoc/` (no imports to or from
+`src/`; the rest of the repo can use it plug-and-play via `from synthdoc import run_pipeline`).
+Design centred on making ablations cheap rather than on shipping one corpus:
+
+- **Every varying choice is a config field.** `ScenarioSpec` is the load-bearing abstraction — the
+  sampler emits experimental conditions, generators only render them. 1-chunk and many-chunk are
+  the same code path. Doc types, revision strategies, axes, and rubrics are prompt-pack entries, so
+  adding one needs no Python.
+- **Paired seeds via per-axis RNG streams** keyed on `(seed, example_idx, decision)`. Changing one
+  mixture perturbs only that axis's draws; every other field of example *i* stays bit-identical
+  across arms. This is the highest-leverage detail for getting signal out of small runs, and it has
+  a dedicated test.
+- **Three caches** (documented with a diagram in `synthdoc/README.md`): the content-addressed LLM
+  call cache on `(stage_idx, input_hash, prompt_hash, model, params)`, a per-`spec_id` embedding
+  index, and stage-snapshot resume. Consequence: a revision dose-response sweep is nearly free —
+  the 0/1/2-pass arms are prefixes of the 3-pass arm and replay from cache.
+- **Every stage writes a complete corpus snapshot** with an identical schema, so any stage re-runs
+  alone and any two stages diff as corpora. `doc_id` joins stages; `scenario_hash` joins sweep arms.
+  Filtered-out documents are retained with a verdict rather than dropped.
+- **Multi-axis sweeps are rejected at validation**, and the sweep runner checks pairing *before*
+  spending anything (100% for post-sampler axes; it reports the shared fraction honestly for recipe
+  axes, which cannot be fully paired by construction).
+
+**Result:** end-to-end verified offline on the `echo` provider — 3 stages, schema identical across
+all splits, `doc_id` stable, cache hits 0 on first run and 100% on the second, coverage report +
+heatmap + parquet slicing index emitted automatically. **103 tests pass in ~3s**, none touching the
+network. Three ablation configs ship ready to run: `generator_model`, `revision_dose`,
+`grouping_strategy`.
+
+**Not yet done:** no real generation run has been made — every result above is on the offline echo
+provider, so nothing is known yet about corpus quality or actual spend. HF pushes to
+`LASR-Callum/synthdoc-<run_id>` are wired but untested against the live Hub.
+
+**Next steps:** (1) a paid smoke of ~200 documents against Sonnet 4.5 to sanity-check prompt quality
+and calibrate the autorater threshold before any large run; (2) confirm the HF push path and the
+dataset viewer's per-stage splits; (3) run `seed_variance` to establish the noise floor, then
+`revision_dose` — cheapest of the sweeps because of the cache-prefix property, and the question the
+prior work is most silent on.
+
+### Follow-up the same evening — named corpora, arbitrary-axis ablation, HF as the only home
+
+**Motivation:** the pipeline could already sweep any dotted config key, but three things were
+missing for actual research use: no way to *name and find* a saved corpus, no catalogue of what is
+ablatable, and corpora were kept locally.
+
+**Changes:**
+- **`extends:` config inheritance + `name:`.** A corpus variant is now the lines that differ
+  (`extends: base.yaml`, `name: all_multiturn`, three lines of recipe). Critically, **recipe
+  mixtures replace rather than merge** — merging would have left the parent's other five document
+  types at their old weights, so an "all multiturn" corpus would silently not have been one.
+  Shipped five presets: `all_multiturn`, `single_spec_constitution`, `agentic_tools`,
+  `embodied_only`, `no_revision_control`.
+- **Specs resolve by id alone** via `control/specs/index.yaml`, which points at the repo's existing
+  `docs/claude_constitution_principles.md` rather than copying it. Without this, `axis: spec.id`
+  sweeps silently kept loading whatever `spec.path` was pinned to in the base config.
+- **Axis catalogue** (`cli axes`), generated from the live registry and prompt packs so it cannot
+  go stale. Shipped 13 sweep configs, one per open question, up from 3.
+- **Corpus catalogue and comparison** (`cli corpora`, `cli compare`). Comparison reports paired
+  per-scenario deltas, and each sweep report now ends with the effect size of every arm against the
+  first — the number the ablation exists to produce.
+- **`sample_index` added to the schema.** This fixed a real reporting gap: ablating a *recipe* axis
+  changes the conditions themselves, so no `scenario_hash` can match and the old code fell back to
+  marginals, throwing away most of the signal. But example *i* in each arm differs only in the swept
+  axis, so joining on `sample_index` recovers a genuine paired comparison. `compare` picks the join
+  key automatically; `check_pairing` now distinguishes identical / nested / index-paired / unpaired.
+- **HuggingFace is the durable home.** `snapshots.cleanup_local: true` deletes local copies once
+  every upload is verified — only files confirmed pushed, refuses entirely if any push failed, and
+  never touches the call cache. Exports and the coverage report are pushed too, so the dataset repo
+  is the complete corpus. `compare` and `corpora` accept Hub references, so nothing in the workflow
+  changes after cleanup. `output/` was already git-ignored; explicit entries added.
+
+**Result:** 132 tests pass offline in ~4s. All 13 shipped sweeps validate on a dry run with the
+expected pairing verdicts. Still no paid run — everything remains verified only on the echo
+provider, and the HF path is still untested against the live Hub.
+
 ## 2026-07-28 (pm) — Difficult-advice DPO on Qwen3.6-27B → ODCV-Bench: no effect
 
 Trained DPO on Qwen3.6-27B (beta 0.1, lr 5e-6, 1054 preference pairs: chosen = thinking

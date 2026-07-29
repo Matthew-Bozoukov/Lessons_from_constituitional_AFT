@@ -228,7 +228,40 @@ calls that are already cached, so an interrupted run costs nothing to continue.
 `output/reasoning_probe_*.txt` compare `<think>` length of base vs LoRA. Naive SFT → 0 chars
 (collapsed); the think-trace fix → 900-1600 chars of real reasoning, answers still correct.
 
+## `synthdoc/` — synthetic document generation pipeline (separate, plug-and-play)
+
+A **self-contained** package for the data-generation layer: model spec in, training corpus out.
+It shares nothing with the code above — no imports either way — and hands off a finished corpus
+in SFT chat format that the training step can read directly. Full guide:
+[`synthdoc/README.md`](synthdoc/README.md) (architecture + caching diagram),
+[`synthdoc/control/README.md`](synthdoc/control/README.md) (config and prompt reference).
+
+Built for **controlled comparisons** rather than for shipping one corpus: every design choice that
+varies across Model Spec Midtraining / Teaching Claude Why / GDM is a config field, arms of a sweep
+share seeds so comparisons are paired, and every stage writes a complete corpus snapshot you can
+diff against the next one.
+
+```bash
+uv run python -m synthdoc.cli run --config base.yaml --smoke   # offline, free, no API key
+uv run python -m synthdoc.cli run --config corpora/all_multiturn.yaml
+uv run python -m synthdoc.cli sweep --config revision_dose.yaml --n 300
+uv run python -m synthdoc.cli axes                              # every ablatable axis
+uv run python -m synthdoc.cli corpora                           # every saved corpus, from HF
+uv run python -m synthdoc.cli compare --a <corpus> --b <corpus> # paired effect size
+uv run pytest tests/test_synthdoc_*.py -q                       # 132 tests, offline, ~4s
+```
+
+Everything you tune lives in `synthdoc/control/`: run configs in `control/configs/`, named corpus
+variants in `control/configs/corpora/`, ablation sweeps in `control/configs/sweeps/`, and every
+string a model ever sees in `control/prompts/`. Adding a document type, revision strategy, or axis
+value is a YAML entry plus a config line — not a Python change.
+
+**Corpora live on HuggingFace** (`LASR-Callum/synthdoc-<name>`, one split per stage), never in git.
+With `snapshots.cleanup_local: true` the local copies are deleted once every upload is verified —
+only files confirmed pushed, and never if a push failed.
+
 ## Repo layout
+- `synthdoc/` self-contained synthetic-document pipeline (see above); `synthdoc/control/` its config + prompts.
 - `src/` reusable code (`llm.py`, `prompts.py`, `utils.py`); `src/experiments/` scripts.
 - `configs/` OmegaConf YAML for every step.
 - `scripts/` remote drivers (`run_eval.sh`, `serve_lora.sh`, `run_inspect_leaking.sh`).

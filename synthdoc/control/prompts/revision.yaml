@@ -1,0 +1,116 @@
+# ABOUTME: Revision prompt templates, one entry per reviser kind.
+# ABOUTME: The revision list in the config is the dose; each entry names a kind here.
+#
+# Every reviser sees `document` (the rendered current document) and the same scenario
+# context the generator saw. `context: fresh` hides the original generation prompt from
+# the reviser; `context: same` includes it. That is itself an ablation axis.
+
+critique_rewrite:
+  description: >
+    Two-part pass: criticise the document against the specification excerpt, then
+    rewrite it addressing the criticism. The workhorse revision in all three prior
+    pipelines, none of which measured its per-pass effect.
+  system: |
+    You are improving a synthetic training document. You will be shown a document and
+    the specification excerpt it is meant to demonstrate.
+
+    Work in two steps, internally:
+    1. Criticise the document honestly. Where is it generic, preachy, evasive, or
+       unrealistic? Does the assistant's behaviour actually follow from the excerpt, or
+       has it drifted into being more restrictive or more permissive than the excerpt
+       implies? Is the situation genuinely difficult, or does it resolve too easily?
+    2. Rewrite it, fixing what you found.
+
+    The rewrite must preserve the document's identity: same participants, same
+    situation, same document type, same conversational shape, same number of turns and
+    the same roles in the same order. You are improving this document, not replacing it.
+
+    If the document is already good, make small targeted edits. Do not rewrite for the
+    sake of appearing to work - unnecessary churn is itself a failure.
+
+    Return ONLY the revised JSON object in the same schema:
+    {"turns": [{"role": "...", "content": "...", "thinking": "...", "tool_calls": "..."}]}
+  user: |
+    ## Specification excerpt{{ "s" if n_chunks > 1 else "" }}
+
+    {% for c in chunks %}
+    [{{ c.chunk_id }}] {{ c.text }}
+    {% endfor %}
+
+    ## Document type: {{ doc_type }}
+
+    {{ doc_type_instructions }}
+    {% for a in axis_fragments %}
+    ## {{ a.axis }}: {{ a.value }}
+
+    {{ a.text }}
+    {% endfor %}
+    ## Current document
+
+    {{ document }}
+
+    Critique it, then return the revised JSON object only.
+
+realism_pass:
+  description: >
+    Narrow pass that only attacks the tells of synthetic text. Deliberately does not
+    touch the assistant's judgement, so its effect is separable from critique_rewrite.
+  system: |
+    You are editing a synthetic training document so that it reads as a real exchange
+    rather than a generated one.
+
+    Fix only these things:
+    - Placeholder or stock names and organisations. Replace with specific ones.
+    - Missing concrete detail: numbers, dates, job titles, systems, prior context that
+      a real person would have referenced in passing.
+    - Over-tidy user turns. Real people write with mess: incomplete context, a detail
+      that only becomes relevant later, mild frustration, an aside.
+    - Assistant prose that sounds like a press release or a policy document. Contract
+      it. Cut throat-clearing openers and summary closers.
+    - Symmetry that never occurs naturally: perfectly balanced paragraphs, three-item
+      lists everywhere, every turn the same length.
+
+    Do NOT change what the assistant decides, what it declines, what it offers, or
+    the order and roles of turns. The judgement in this document is correct as it
+    stands and is not yours to revise.
+
+    Return ONLY the edited JSON object in the same schema.
+  user: |
+    ## Current document
+
+    {{ document }}
+
+    Return the edited JSON object only.
+
+spec_grounding_pass:
+  description: >
+    Checks the document against the excerpt in one direction only: has the assistant
+    become MORE restrictive than the excerpt requires? Targets the over-refusal drift
+    that spec finetuning is known to induce.
+  system: |
+    You are auditing a synthetic training document for over-restriction.
+
+    Read the specification excerpt, then the document. Ask one question: is the
+    assistant refusing, hedging, warning, or caveating anything the excerpt does not
+    actually require it to refuse, hedge, warn, or caveat?
+
+    If yes, edit it out. The assistant should be exactly as helpful as the excerpt
+    permits and no less. Remove unearned caveats, "I want to be transparent that"
+    preambles, safety notes on requests that carry no risk, and offers to help with
+    "something else instead" when it could simply have helped with this.
+
+    If the document is not over-restricted, return it unchanged.
+
+    Return ONLY the JSON object in the same schema.
+  user: |
+    ## Specification excerpt{{ "s" if n_chunks > 1 else "" }}
+
+    {% for c in chunks %}
+    [{{ c.chunk_id }}] {{ c.text }}
+    {% endfor %}
+
+    ## Current document
+
+    {{ document }}
+
+    Return the JSON object only.
