@@ -1,6 +1,6 @@
 ﻿{
-    "last_heartbeat_utc":  "2026-07-29T10:04:33Z",
-    "activity":  "fixed-eval-regeneration-2048",
-    "busy_until_utc":  "2026-07-29T10:29:33Z",
-    "pid":  20744
+    "last_heartbeat_utc":  "2026-07-29T10:08:16Z",
+    "activity":  "reprovision-and-bootstrap",
+    "busy_until_utc":  "2026-07-29T10:28:16Z",
+    "pid":  28176
 }
