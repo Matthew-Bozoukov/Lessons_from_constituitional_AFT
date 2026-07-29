@@ -10,10 +10,23 @@
 # Bound to 127.0.0.1 only - the model is reached exclusively through the SSH
 # tunnel, so there is no unauthenticated public model endpoint.
 #
-# The tokenizer is taken from the ADAPTER directory, not the base. Their
-# tokenizer.json files are byte-identical (verified by sha256), but the adapter
-# ships its own tokenizer_config.json and a separate chat_template.jinja, and
-# the released MSM chat template is the one the checkpoint was trained with.
+# CHAT TEMPLATE: the base template is used, not the adapter's own, and this is a
+# deliberate, verified decision rather than an oversight.
+#
+# The adapter ships a 1559-byte chat_template.jinja with NO tool support (zero
+# references to 'tools'; the base template has six). vLLM therefore rejects any
+# request carrying tools with HTTP 400 - which silently broke every agentic Petri
+# audit, since the auditor's whole method is giving the target tools.
+#
+# Substituting the base template is fidelity-preserving for this workload. The
+# adapter template's ONLY substantive difference is that it injects a default
+# system prompt when the caller supplies none. Petri always sets a system
+# message, so that branch never fires. Verified directly: with a system message
+# present, the two templates render TOKEN-FOR-TOKEN IDENTICALLY (text and token
+# IDs both equal, checked on single-turn and multi-turn conversations).
+#
+# The tokenizer still comes from the ADAPTER directory; base and adapter
+# tokenizer.json are byte-identical by sha256.
 set -uo pipefail
 
 WORK=/workspace
@@ -22,13 +35,26 @@ mkdir -p "$WORK/logs"
 BASE="$WORK/models/base"
 ADAPTER="$WORK/models/adapter"
 
+# Extract the base chat template (it lives inside base tokenizer_config.json).
+python3 - <<'PY'
+import json
+d = json.load(open("/workspace/models/base/tokenizer_config.json"))
+t = d.get("chat_template")
+assert t, "base tokenizer_config.json has no chat_template"
+open("/workspace/models/base_chat_template.jinja", "w").write(t)
+print("base chat template extracted:", len(t), "chars, tool refs:", t.count("tools"))
+PY
+
 pkill -f "vllm serve" 2>/dev/null
 sleep 3
 
 nohup vllm serve "$BASE" \
   --served-model-name qwen3-32b-base \
   --tokenizer "$ADAPTER" \
-  --chat-template "$ADAPTER/chat_template.jinja" \
+  --chat-template "$WORK/models/base_chat_template.jinja" \
+  --enable-auto-tool-choice \
+  --tool-call-parser hermes \
+  --reasoning-parser qwen3 \
   --enable-lora \
   --lora-modules "msm-aft-cot=$ADAPTER" \
   --max-lora-rank 64 \

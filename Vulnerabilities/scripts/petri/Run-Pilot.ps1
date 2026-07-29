@@ -20,13 +20,14 @@
 [CmdletBinding()]
 param(
     [string]$SeedDir = 'seeds\pilot',
-    [int]$MaxTurns = 15,
+    [int]$MaxTurns = 30,
     [int]$Epochs = 1,
     [double]$RealismFilter = 0.6,
     [int]$MaxConnections = 1,
     [string]$LogDir = 'logs\petri-pilot',
     [string]$Auditor = 'anthropic/claude-sonnet-5',
     [string]$Judge = 'anthropic/claude-opus-5',
+    [string]$Realism = 'anthropic/claude-haiku-4-5',
     [string]$Target = 'openai-api/vllm/msm-aft-cot'
 )
 
@@ -60,6 +61,7 @@ $argList = @(
     '-T', 'target_tools=synthetic',
     '--model-role', "auditor=$Auditor",
     '--model-role', "judge=$Judge",
+    '--model-role', "realism=$Realism",
     '--model-role', "target=$Target",
     '--model', $Target,
     '--epochs', "$Epochs",
