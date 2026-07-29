@@ -110,7 +110,7 @@ discovery and the matched-control runs are done, per
 | --- | --- | --- |
 | 1 | `uv sync` SURF into its own environment; pin and record versions | none |
 | 2 | **Use a pre-built HuggingFace attribute dataset** rather than running `prepare-dataset` | **Avoids loading Qwen3-Embedding-8B entirely.** This matters: the 32B target already occupies 75 GB of the 80 GB card, so an 8B embedding model would not co-reside. Skipping preparation removes the only GPU contention in the plan. |
-| 3 | Point SURF's target at the already-served checkpoint | Read `surf/` to determine whether the `vllm:` provider can address an existing OpenAI-compatible base URL. If it insists on managing its own vLLM, stop the audit server first and let SURF own the GPU — a ~6 min reload, not a re-provision. |
+| 3 | Point SURF's target at the already-served checkpoint | **Resolved by reading `surf/core/models.py`: SURF accepts a custom OpenAI-compatible endpoint directly, as `http://host:port/v1:model-name`.** The target is therefore `http://127.0.0.1:8000/v1:msm-aft-cot` — the existing tunnel. No second vLLM, no GPU contention, no restart; matched controls are reachable by swapping the model name. |
 | 4 | `sweep` on rubric 1 (`harmful-omission`), default 5 runs x 20 iterations | target inference only |
 | 5 | If budget allows, sweep rubrics 2 and 3 | target inference only |
 | 6 | Matched controls: re-run the strongest region against the five verified comparators | LoRA hot-swap, same pod |
