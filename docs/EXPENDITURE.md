@@ -36,7 +36,14 @@ to a future reader.
 **Total: $171.46** (OpenRouter, `anthropic/claude-sonnet-4.5` throughout).
 
 **Artifact:** `LASR-Callum/synthdoc-approved-constitution-sft` on HuggingFace (private), plus
-`data/sft_approved_constitution.jsonl` locally. Upload SHA-verified against the local file.
+`data/sft_approved_constitution.jsonl` locally. All uploads SHA-verified against local copies.
+
+The repo also carries the **full lineage** (`runs/<name>/`, per-stage snapshots with the 607
+dropped documents retained and their verdicts) and the **LLM call cache**
+(`cache/synthdoc_cache.tar.gz`, 9,470 entries / 13 MB compressed). The cache is this $171.46
+made replayable: extract it to `output/synthdoc_cache/` and re-filtering, re-exporting, or
+diffing stages costs **$0**. Only genuinely new work hits the API. Push the cache alongside any
+future corpus for the same reason.
 
 ### By phase
 
