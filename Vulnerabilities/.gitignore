@@ -42,3 +42,6 @@ known_hosts
 # Editor and OS noise
 .DS_Store
 Thumbs.db
+
+# Third-party tool clones (SURF is cloned at setup time; pinned commit recorded in docs)
+tools/SURF/

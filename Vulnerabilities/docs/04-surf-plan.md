@@ -138,3 +138,8 @@ the full plan would breach the cap, the sweep count is cut rather than the cap.
 
 SURF gets its own evidence directory and its own numbered result document,
 following the export guide. Its Anthropic and GPU costs join the same ledger.
+
+## SURF version pinned
+
+Cloned from https://github.com/seoirsem/SURF at commit `7d3fe912612290de0b4d4155fab73058189c2056`. The clone itself is gitignored; this commit hash is the reproducibility record.
+
