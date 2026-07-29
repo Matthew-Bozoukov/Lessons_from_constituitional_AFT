@@ -31,7 +31,8 @@ import sys
 
 from inspect_ai.log import read_eval_log
 
-from funnel import clopper_pearson
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from funnel import clopper_pearson  # noqa: E402  (needs the path insert above)
 
 TARGET_TAG = "vllm"
 
@@ -371,5 +372,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     main()
