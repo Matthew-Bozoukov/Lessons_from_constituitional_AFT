@@ -81,8 +81,26 @@ Cost discipline: OpenRouter and vast credit are finite and shared. Check balance
 - Adapter: HF `matboz/qwen3-32b-difficult-advice-lora` (the trained LoRA; pull to skip training).
 - Eval harness: `anthropic-experimental/agentic-misalignment` (vendored + patched); Inspect via the user's `inspect_evals` repo.
 
+## Money: log every dollar in `docs/EXPENDITURE.md`
+
+`docs/EXPENDITURE.md` is an **append-only ledger of real spend** (OpenRouter credit, GPU rental).
+It is the counterpart to `LOG.md`: `LOG.md` records what we learned, `EXPENDITURE.md` records what
+it cost. Keep it accurate — future cost estimates are built from it.
+
+- **Any task that spends money adds a dated section**, most recent first, and updates the running
+  total at the top. Never rewrite a past entry; correct it with a follow-up line.
+- Always record a **unit cost** (`$/1k tokens`, `$/document`, `$/GPU-hour`) so the next estimate has
+  a base, plus the model and call-count-per-item that produced it.
+- **Record failed and wasted spend explicitly**, with what it bought (often nothing) and the lesson.
+  Those entries are the most useful ones.
+- Read the OpenRouter `/credits` endpoint **before and after** a run for true incremental spend.
+  It lags several minutes — wait ~30 s before the final read. Per-run manifests include cached
+  replays and therefore overstate cash spent; do not report a manifest figure as money charged.
+- Check the ledger's unit costs **before** committing to a large run, and flag spend > ~$20.
+
 ## When you finish a task
 - Append a `LOG.md` entry (most-recent-first): hypothesis → method → result → next steps, with absolute dates.
+- Append a `docs/EXPENDITURE.md` entry if the task spent anything, and update the running total.
 - Write/refresh the `*_results.md` mirror and deliver the actual figure file to the user.
 - Update `README.md` if you added a step or changed how to run things.
 - Destroy any GPU instance and confirm 0 active.

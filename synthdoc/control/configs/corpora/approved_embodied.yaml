@@ -1,0 +1,135 @@
+# ABOUTME: Corpus C for claude_approved_constitution - the principle is never named,
+# ABOUTME: only demonstrated. Owned by this agent; do not edit alongside corpora A/B.
+#
+# Run:   uv run python -m synthdoc.cli run --config corpora/approved_embodied.yaml
+# Smoke: uv run python -m synthdoc.cli run --config corpora/approved_embodied.yaml --smoke
+#
+# Tests the sharpest open question in the replication: does behaviour transfer when the
+# training documents never state the rule? Modelled on control/configs/corpora/embodied_only.yaml
+# but tuned for the new spec after inspecting its actual chunk contents (see below) rather than
+# copying that preset's granularity/size/budget unchanged.
+
+extends: base.yaml
+name: approved_embodied
+
+spec:
+  id: claude_approved_constitution
+  chunker:
+    # GRANULARITY: `trait` (29 chunks), not `section` (9) or `bullet` (35). Inspected all
+    # three by running the chunkers directly (synthdoc/plugins/chunkers.py) over this spec:
+    #   - `section` (9): each chunk is a whole principle, ~120-200 words bundling the
+    #     directive, its "*Why:*" rationale, AND its 3-4 sub-bullets together. That is too
+    #     much for one document to embody at once - the generator has enough material to
+    #     write a scene that checklists through every sub-point, which is exactly the
+    #     "principle-shaped" failure mode this corpus exists to avoid.
+    #   - `bullet` (35): the finest cut, but it fragments badly on this spec. Several bullet
+    #     chunks are bare list items with no context to demonstrate anything, e.g.
+    #     "2. Do not help subvert legitimate oversight or accountability." (9 words, just the
+    #     priority-order enumeration) or "3. Weigh the remaining harms against the benefits."
+    #     (8 words). The bullet chunker also splits a directive from its own rationale into
+    #     separate chunks (e.g. the principle-3 "legitimacy test" bullet, the "illegitimate
+    #     control is not the same thing" bullet, and the "say what the check is for" bullet
+    #     land as 3 separate chunks instead of the one connected consideration the trait
+    #     chunker keeps together). A single-chunk embodied document drawn from one of these
+    #     has nothing to dramatize.
+    #   - `trait` (29): each chunk is one self-contained consideration - directive plus
+    #     enough of its own rationale/test to write a concrete scene around (e.g. "*Why:*
+    #     oversight mechanisms exist because individual judgement... can be wrong... That is
+    #     the whole function of the check." as its own 46-word chunk). Fine enough that a doc
+    #     demonstrates one specific thing, coarse enough that there is something to
+    #     demonstrate. Best fit for "embodied" specifically.
+    granularity: trait
+
+recipe:
+  # Only explicitness differs from base; doc_type/tools/reasoning/stakes_holder/turns/
+  # chunks_per_example/grouping are inherited unchanged (recipe mixtures replace per-key,
+  # not per-recipe-block - see synthdoc/README.md).
+  explicitness:
+    embodied: 1.0
+
+  # N: base.yaml's 20000 is sized for a corpus already validated on this spec; this is the
+  # first paid run of `claude_approved_constitution` through this pipeline at all, and the
+  # first real test of "embodied" against it specifically. 300 gives ~10 documents per trait
+  # chunk on average (300 / 29) - enough to read coverage and rater agreement per chunk
+  # without committing real spend to a config nobody has seen real output from yet. Scale up
+  # only after inspecting this run's coverage report and inter-rater agreement.
+  n: 700
+
+# BUDGET: base.yaml ships 0 (no limit), which is unsafe for any paid run. Point-estimate
+# cost is ~$20 (range ~$13-$35, see cost projection in the task report); 40 gives roughly
+# 1.5-2x headroom for longer completions/retries without being an effectively-no-op ceiling.
+budget_usd: 55                      # CUMULATIVE incl. ~$27 cached replay; ~$20 new
+
+# FILTERS: left as base.yaml's v4 autorater (min_score 3, n_raters 3, report_agreement true)
+# after reading control/prompts/rubrics.yaml. v4's five criteria do not reward naming
+# the principle - if anything they pull the other way: spec_fidelity explicitly penalises
+# "verbatim quotation of the excerpt", non_preachiness penalises "announcing its own values",
+# and not_over_restricted penalises caveats/warnings beyond what the excerpt requires. None of
+# that requires the document to say what it's doing. The genuine residual risk is that
+# spec_fidelity asks the rater to judge whether unstated behaviour follows from the excerpt,
+# which is a harder inference than checking a stated principle against the text - but that is
+# precisely what n_raters: 1 + report_agreement: false already exist to surface. Leaving the
+# rubric unchanged and reading the agreement numbers off the first real run's coverage report,
+# rather than guessing a rubric edit or loosening min_score blind, before this has ever
+# produced one real document.
+
+snapshots:
+  # TEMPORARY: HF push is wired but unverified against the live Hub (see LOG.md, 2026-07-28),
+  # and this machine has no HF_TOKEN. Keep everything local and inspectable until that path
+  # has been confirmed; switch back to backend: huggingface once it has.
+  backend: local
+  cleanup_local: false
+
+# ---------------------------------------------------------------------------
+# OPENROUTER PATH - RE-CALIBRATION AGAINST THE NEW PIPELINE (2026-07-29)
+# Settings below are driven by MEASURED results from the first paid runs in this
+# project's history (15 docs/corpus, $4.82 total). See LOG.md.
+#
+#  * n_raters: 1, not base's 3. Measured autorater_std = 0.0 on EVERY document in
+#    all three corpora - the three raters returned identical scores, so raters 2
+#    and 3 were pure cost. autorater_overall was 5.0 almost everywhere and the
+#    filter rejected nothing, so the rubric is saturated at this quality level.
+#  * dedup threshold 0.92, not 0.87. Every single drop across all three corpora
+#    was embedding_dedup; there were zero quality drops. Diversity, not quality,
+#    is the binding constraint.
+#  * revision is values_deliberation ONLY. It is Anthropic's headline mechanism
+#    (22% -> 3%, vs 15% for plain filtering) and this project's whole thesis.
+#    critique_rewrite and realism_pass are dropped for budget: measured revision
+#    cost was $0.030/doc/pass against $0.026 for generation itself.
+#  * NO generation.max_tokens cap. Capping it at 2600 truncated the JSON
+#    mid-object, so documents failed to parse and arrived EMPTY (median 0 words,
+#    10/15 length-dropped) rather than merely shorter. Measured regression.
+#  * planning stays ENABLED (new upstream default). It targets exactly the
+#    failure we measured: the generator settling on the first obvious scenario,
+#    which showed up as 0.91 self-similarity in the agentic corpus.
+# ---------------------------------------------------------------------------
+
+llm:
+  provider: openrouter
+
+revision:
+  - {kind: values_deliberation, model: anthropic/claude-sonnet-4.5, context: fresh}
+
+filters:
+  - {kind: length, min_words: 80, max_words: 6000}
+  - {kind: embedding_dedup, threshold: 0.92}
+  - {kind: autorater, rubric: v4, model: anthropic/claude-sonnet-4.5,
+     n_raters: 1, min_score: 3, report_agreement: false}
+
+export:
+  format: sft_chat
+  # Target is a ~1.5M-token SFT corpus (v1 was 1.52M), so every kept document goes
+  # to the chat export; base.yaml diverts 0.4 to a pretrain shard, which is a
+  # different training format and would not count toward the SFT budget.
+  mix: {pretrain_shard: 0.0}
+
+# Haiku 4.5 ($1/$5) for the two MECHANICAL calls: planning emits a short structured
+# what/how/why object, the autorater emits a rubric score. Document AUTHORING stays on
+# Sonnet 4.5 ($3/$15), which is where model quality actually shows. Measured split had
+# planning+rating at 32% of spend. There is a shipped generator_model sweep to verify
+# this rather than assume it.
+planning:
+  model: anthropic/claude-sonnet-4.5
+
+cache:
+  scope: [plan, generate]   # bypass cache for stages that must actually run

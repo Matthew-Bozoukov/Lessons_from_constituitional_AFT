@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from llm import OpenRouterClient, map_threaded  # noqa: E402
 from prompts import (  # noqa: E402
+    CONSTITUTIONS,
     DOMAINS,
     grade_messages,
     response_gen_messages,
@@ -83,14 +84,16 @@ def _generate_scenarios(client: OpenRouterClient, cfg, domains: dict) -> list[di
     return scenarios
 
 
-def _generate_responses(client: OpenRouterClient, cfg, scenarios: list[dict]) -> None:
+def _generate_responses(
+    client: OpenRouterClient, cfg, scenarios: list[dict], constitution: str
+) -> None:
     """Generate an aligned response for each scenario in place (adds response/*_tokens)."""
 
     def work(i: int) -> dict:
         sc = scenarios[i]
         if "error" in sc:
             return sc
-        msgs = response_gen_messages(sc["user_message"])
+        msgs = response_gen_messages(sc["user_message"], constitution)
         try:
             res = client.chat(
                 cfg.gen_model,
@@ -108,7 +111,7 @@ def _generate_responses(client: OpenRouterClient, cfg, scenarios: list[dict]) ->
     map_threaded(work, len(scenarios), int(cfg.max_workers), "responses")
 
 
-def _grade(client: OpenRouterClient, cfg, scenarios: list[dict]) -> None:
+def _grade(client: OpenRouterClient, cfg, scenarios: list[dict], constitution: str) -> None:
     """Grade each response in place (adds grade dict and accepted bool)."""
     min_score = int(cfg.grading.min_score)
 
@@ -117,7 +120,7 @@ def _grade(client: OpenRouterClient, cfg, scenarios: list[dict]) -> None:
         if "error" in sc or "response" not in sc:
             sc["accepted"] = False
             return sc
-        msgs = grade_messages(sc["user_message"], sc["response"])
+        msgs = grade_messages(sc["user_message"], sc["response"], constitution)
         try:
             res = client.chat(
                 cfg.grade_model,
@@ -127,6 +130,8 @@ def _grade(client: OpenRouterClient, cfg, scenarios: list[dict]) -> None:
             )
             g = extract_json(res.content)
             sc["grade"] = g
+            # Accept gate held fixed for the v1-vs-v2 comparison: same four booleans +
+            # min_score regardless of which constitution generated/graded the response.
             sc["accepted"] = bool(
                 g.get("declines_violation")
                 and g.get("deliberates_values")
@@ -246,13 +251,20 @@ def main(
         domains = dict(list(DOMAINS.items())[:2])
         print(">>> SMOKE MODE: 2 domains x 2 scenarios")
 
+    constitution_key = str(cfg.get("constitution", "v1"))
+    if constitution_key not in CONSTITUTIONS:
+        raise ValueError(
+            f"Unknown constitution {constitution_key!r}; choose one of {sorted(CONSTITUTIONS)}"
+        )
+    constitution = CONSTITUTIONS[constitution_key]
+
     ts = timestamp()
     suffix = f"smoke_{ts}" if smoke else (f"{tag}_{ts}" if tag else ts)
     out_dir = Path(cfg.output_dir) / suffix
     resolved = OmegaConf.to_container(cfg, resolve=True)
     write_run_meta(out_dir, resolved, {"smoke": smoke, "n_domains": len(domains)})
     print(f">>> output dir: {out_dir}")
-    print(f">>> gen_model={cfg.gen_model}  grade_model={cfg.grade_model}")
+    print(f">>> gen_model={cfg.gen_model}  grade_model={cfg.grade_model}  constitution={constitution_key}")
 
     client = OpenRouterClient()
 
@@ -266,14 +278,14 @@ def main(
     print(good[0]["user_message"][:800])
 
     print("\n=== [2/3] generating aligned responses ===")
-    _generate_responses(client, cfg, scenarios)
+    _generate_responses(client, cfg, scenarios, constitution)
     with_resp = [s for s in scenarios if "response" in s]
     assert with_resp, "No responses were generated successfully."
     print("\n--- FIRST RESPONSE ---")
     print(with_resp[0]["response"][:1200])
 
     print("\n=== [3/3] grading ===")
-    _grade(client, cfg, scenarios)
+    _grade(client, cfg, scenarios, constitution)
     graded = [s for s in scenarios if "grade" in s]
     if graded:
         print("\n--- FIRST GRADE ---")

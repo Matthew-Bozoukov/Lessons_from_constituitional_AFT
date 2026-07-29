@@ -3,6 +3,9 @@
 
 seed: 0
 
+# Which constitution (src/prompts.py::CONSTITUTIONS) steers response generation + grading.
+constitution: v1
+
 # Models (OpenRouter ids). Sonnet 4.5 generates and grades the data.
 gen_model: "anthropic/claude-sonnet-4.5"
 grade_model: "anthropic/claude-sonnet-4.5"

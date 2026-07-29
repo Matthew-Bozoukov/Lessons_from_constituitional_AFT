@@ -60,7 +60,7 @@ def main(config: str, sft_path: str, smoke: bool = False) -> None:
     out = map_threaded(work, len(rows), int(cfg.max_workers), "think-traces")
 
     ts = timestamp()
-    out_dir = Path("output/difficult_advice_gen") / (f"think_smoke_{ts}" if smoke else f"think_{ts}")
+    out_dir = Path(cfg.output_dir) / (f"think_smoke_{ts}" if smoke else f"think_{ts}")
     out_dir.mkdir(parents=True, exist_ok=True)
     sft_out = out_dir / "sft_dataset_thinking.jsonl"
     with sft_out.open("w") as f:

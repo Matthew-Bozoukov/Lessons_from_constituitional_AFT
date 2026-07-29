@@ -12,6 +12,26 @@ from ..core.registry import register, resolve
 from ..core.types import Document
 
 
+def _parse_tool_calls(raw: str) -> Any:
+    """Parse a Turn's JSON tool_calls string into objects for chat-template rendering.
+
+    Chat templates iterate `message.tool_calls` and read `.name` / `.arguments` off each
+    element, so the value must be a list of objects rather than the JSON string we store
+    on Turn. Malformed content is passed through unchanged rather than dropped, so a bad
+    row fails loudly at training time instead of silently losing its tool calls.
+
+    Args:
+        raw: JSON string of tool calls.
+
+    Returns:
+        The parsed value, or the original string if it does not parse.
+    """
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return raw
+
+
 def _assignment(doc_id: str, shard: str) -> float:
     """Deterministic [0, 1) draw for shard assignment, stable across runs."""
     return int(stable_hash(f"{doc_id}|{shard}", 12), 16) / float(16**12)
@@ -67,7 +87,12 @@ class SFTChatExporter:
                     if turn.thinking and not self.drop_thinking:
                         msg["reasoning_content"] = turn.thinking
                     if turn.tool_calls:
-                        msg["tool_calls"] = turn.tool_calls
+                        # Turn.tool_calls is a JSON *string* (stable for parquet), but
+                        # chat templates iterate tool_calls as a list. Qwen3's template
+                        # loops it and reads .name/.arguments, so a string yields single
+                        # characters -> Undefined -> "Object of type Undefined is not
+                        # JSON serializable" at render time. Emit parsed objects here.
+                        msg["tool_calls"] = _parse_tool_calls(turn.tool_calls)
                     messages.append(msg)
                 fh.write(
                     json.dumps(

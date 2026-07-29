@@ -147,6 +147,68 @@ A null ODCV result would be confounded with undertraining.
 **Next:** ODCV eval on hold at user's request — needs a fresh GPU box (~1h re-setup: 52GB weights,
 deps, merge via `src/experiments/merge_lora.py`), then serve on vLLM 0.26 + SSH tunnel, 80 rollouts
 locally, 4-judge scoring (~$16). Baseline to compare against: **46.2%** (this repo, OpenRouter).
+## 2026-07-29 (pm) — Approved-constitution SFT corpus: 1.53M tokens via synthdoc
+
+**Goal:** regenerate the difficult-advice SFT data against a revised constitution
+(`docs/claude_approved_constitution.md`), at v1-comparable scale, so the constitution is the
+intended difference between the two datasets.
+
+**Constitution work first.** Audited `docs/claude_constitution_principles.md` against Claude's
+Constitution (Jan 2026), Model Spec Midtraining (arXiv 2605.02087), "How Well Do Models Follow
+Their Constitutions?" (2605.24229), C3AI, Kundu et al. 2023, and GDM's synthetic-document post.
+Result: `claude_approved_constitution.md` (7 principles + priority order) and
+`claude_approved_constitution_rationale.md` (changelog, evidence, rejected alternatives, scope
+limits). Main substantive change: added a principle against ends-justify-means reasoning
+("distrust the argument for crossing the line, especially a good one") — absent from v1, and the
+failure mode the agentic honeypots actually measure. Its best citation is the constitution itself,
+not MSM. Rejected: first-person rewrites (MSM S5.3 ablated framing and got a near-null; our own
+19.3%->8.0% shows second-person data already transfers) and positive-framing rebalancing (C3AI's
+positive-framing win is a *human*-preference result; their models did better on negatively framed
+principles).
+
+**Method:** three corpora via `synthdoc`, all `anthropic/claude-sonnet-4.5`:
+`approved_difficult_advice` (human faces the dilemma), `approved_embodied` (principle never
+named), `approved_agentic` (model is the actor with live tools — targets the ODCV transfer
+failure). Pipeline: plan(what_how_why) -> draft_then_align -> values_deliberation -> length +
+embedding_dedup + autorater.
+
+**Result: 1,443 documents / 1,531,369 Qwen3 tokens**, matching v1's 1.52M.
+`values_deliberation` rewrote 83-85% of documents in every corpus. All rows verified to render
+under Qwen3's chat template. `data/sft_approved_constitution.jsonl`. **Cost $171.46** — see
+`docs/EXPENDITURE.md` (new, now the required ledger for all spend).
+
+**Measured findings the pipeline did not have before (first paid runs it has ever had):**
+1. `n_raters: 3` buys nothing — `autorater_std = 0.0` on **every** document. Dropped to 1.
+2. **Haiku 4.5 is a net loss** at both cheap call sites. Rating on Haiku cut corpus C 11/12 -> 5/12;
+   Haiku *planning* cut it to 7/12 with **Sonnet** scoring those documents 2.0 where it had scored
+   5.0. The cheaper model degraded the scenarios, not merely the grades. Corollary: the v4 rubric
+   was never saturated — it had nothing bad to reject, and discriminated correctly when quality fell.
+3. **Output tokens are 79% of spend** (corpus A: 1.99M in / 1.48M out = $5.96 vs $22.16). Writing
+   each document three times is the cost driver; prompt caching only touches the 21% input share,
+   and both remaining stages' system prompts sit below Anthropic's 1024-token cache floor anyway.
+4. **Keep rates at n=12 do not extrapolate** — 92% at n=12, ~75% at n=700.
+
+**Three real bugs:**
+1. `generation.max_tokens: 4096` truncates agentic documents mid-JSON, so they arrive **empty**,
+   not shorter (6/12 at n=12). Raised to 9000 for that corpus; capping it *lower* made it far worse.
+2. `export.mix: {}` **deep-merges** — only `recipe` mixtures replace — so base's
+   `pretrain_shard: 0.4` stayed in force and 40% of kept documents never reached the SFT export.
+3. `Turn.tool_calls` is a JSON **string**, but chat templates iterate it as a list; Qwen3 then
+   reads `.name` off single characters and dies with "Object of type Undefined is not JSON
+   serializable". Fixed in `synthdoc/plugins/exporters.py`. Affected 181 rows — would have
+   crashed training.
+
+**Incident:** the OpenRouter key was disabled mid-run. Generation had completed, but
+`values_deliberation` and rating 401'd, scoring `autorater_overall = 0.0` and dropping 1,266
+documents. Snapshots survived, so recovery re-paid only the missing stages (~$40); corpus B
+replayed for **$0.00** and A's export rebuild for **$0.38**. Also learned that `budget_usd`
+counts **cumulative** cost including cached replays, so it is not a guard on incremental spend.
+
+**Next steps:** (1) push the corpus to HF — **blocked**, the current `HF_TOKEN` is a fine-grained
+read-only token (`repo.content.read`), needs write scope; (2) QLoRA on Qwen3-32B and the honeypot
+eval against v1's 19.3%/8.0% thinking-mode numbers; (3) run the shipped `planning` and
+`values_deliberation` sweeps — this run changed both together, so neither is cleanly attributed.
+
 ## 2026-07-28 (eve) — Built `synthdoc/`: config-driven synthetic document generation pipeline
 
 **Motivation:** the three prior pipelines (Model Spec Midtraining, Teaching Claude Why, GDM's

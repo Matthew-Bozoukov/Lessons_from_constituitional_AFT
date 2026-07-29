@@ -1,0 +1,35 @@
+# ABOUTME: Config for difficult-advice SFT data generation under the v2 (approved) constitution.
+# ABOUTME: Run: uv run src/experiments/generate_difficult_advice.py --config configs/difficult_advice_gen_v2.yaml
+
+seed: 0
+
+# v2 diff #1: use the approved constitution (docs/claude_approved_constitution.md) instead of v1.
+constitution: v2
+
+# Models (OpenRouter ids). Sonnet 4.5 generates and grades the data.
+gen_model: "anthropic/claude-sonnet-4.5"
+grade_model: "anthropic/claude-sonnet-4.5"
+
+# v2 diff #2: match the v1 RUN (README step 1: --scenarios_per_domain 120 --target_tokens
+# 1500000 --tag run1p5m), not the v1 config's own defaults (220 / 3000000). v2 must match
+# what v1 actually did, not what v1's config says.
+scenarios_per_domain: 120
+target_tokens: 1500000
+
+scenario:
+  batch_size: 5        # scenarios requested per generation call
+  temperature: 1.0
+  max_tokens: 4000
+
+response:
+  temperature: 1.0
+  max_tokens: 2048
+
+grading:
+  temperature: 0.0
+  min_score: 7         # keep responses with overall_score >= this (and passing gates)
+
+max_workers: 24
+tokenizer: "Qwen/Qwen3-32B"
+# v2 diff #3: separate output directory so v1 and v2 artifacts never mix.
+output_dir: "output/difficult_advice_gen_v2"

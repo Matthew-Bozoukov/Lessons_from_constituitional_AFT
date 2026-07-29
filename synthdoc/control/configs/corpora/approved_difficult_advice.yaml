@@ -1,0 +1,127 @@
+# ABOUTME: Corpus A - apples-to-apples successor to the v1 difficult-advice SFT set, now
+# ABOUTME: sourced from the claude_approved_constitution spec via the synthdoc pipeline.
+#
+# Run:   uv run python -m synthdoc.cli run --config corpora/approved_difficult_advice.yaml
+# Smoke: uv run python -m synthdoc.cli run --config corpora/approved_difficult_advice.yaml --smoke
+
+extends: base.yaml
+name: approved_difficult_advice
+
+spec:
+  id: claude_approved_constitution
+  # Default granularity. The spec chunks to 9 clean section chunks (priority block +
+  # 7 principles + response-shape), one per principle with no metadata contamination -
+  # exactly the unit v1's hand-written constitution was organised around, and coarse
+  # enough that a 1-chunk document still reads as "one principle, one dilemma", the
+  # shape the v1 generator produced. bullet (35 chunks) or trait (29 chunks) would
+  # fragment a principle across documents with no corresponding benefit here.
+  chunker:
+    granularity: trait
+
+recipe:
+  # v1's kept corpus was 2,119 examples (18 domains x 120 scenarios, ~$46 gen + ~$28
+  # thinking-augmentation). This pipeline adds 2 revision passes and a 3-vote
+  # autorater on top of generation - calls per doc go from ~2-3 in v1 to 6 here - so
+  # matching v1's n at first touch would be an unbudgeted multiple of v1's spend on a
+  # path that has never taken a real dollar. 500 is a pilot: enough to read the
+  # coverage report and the autorater agreement stats and learn the real $/doc before
+  # committing to a v1-comparable ~2,000-2,500 run in a follow-up. base.yaml's 20000
+  # would be ~40x this and is not appropriate for a first paid run of an unproven
+  # pipeline.
+  n: 700
+
+  # Mixture replaces base.yaml's six-way split entirely (recipe mixtures do not
+  # merge) - list every type actually wanted.
+  # difficult_advice dominates, matching v1's "user faces the dilemma, assistant
+  # advises" shape with the user as the actor. model_as_actor is excluded outright:
+  # it makes the *model* the actor, which is the opposite of what this corpus is for.
+  # multiturn_adversarial is also excluded to stay close to v1, which was single
+  # user-turn / single assistant-turn throughout - the sibling corpora are better
+  # placed to cover multi-turn pressure. The remaining quarter is trait_conflict,
+  # trait_inapplicable and legal_reasoning: all still user-facing, single-exchange,
+  # advice-shaped document types that stress-test the same spec without diluting the
+  # dominant type below "dominated by".
+  doc_type:
+    difficult_advice: 0.75
+    trait_conflict: 0.10
+    trait_inapplicable: 0.10
+    legal_reasoning: 0.05
+
+  # Required, not stylistic: at section granularity every section IS exactly one
+  # chunk, so base.yaml's adjacent grouping_params (same_section_only: true) can
+  # never find a 2nd chunk in the same section and raises GroupingError on any
+  # k>1 draw (confirmed via --smoke below). Disabling it lets "adjacent" mean
+  # "adjacent principles in spec order" instead, which is also the only way a
+  # trait_conflict document (needs 2+ chunks from different principles) can be
+  # built at this granularity at all.
+  grouping_params:
+    adjacent: {same_section_only: false}
+
+# Real ceiling for the pilot above. Projected spend for n=500 at 6 calls/doc is
+# roughly $55-$135 (see cost projection in the report); $150 covers that with headroom
+# for parse retries without being a rubber stamp. This exceeds CLAUDE.md's ~$20
+# flag-worthy-spend guideline, which is called out explicitly rather than raised
+# quietly - confirm before running for real.
+budget_usd: 60                      # cumulative; stages already complete, this run only rebuilds the export
+
+snapshots:
+  # TEMPORARY: base.yaml's "huggingface" backend has never been exercised against the
+  # live Hub (LOG.md: "wired but untested") and this machine has no HF_TOKEN. Stay
+  # local until that path is verified on a throwaway run, then flip back to
+  # "huggingface" so this corpus gets a durable home off this machine.
+  backend: local
+  cleanup_local: false
+
+# ---------------------------------------------------------------------------
+# OPENROUTER PATH - RE-CALIBRATION AGAINST THE NEW PIPELINE (2026-07-29)
+# Settings below are driven by MEASURED results from the first paid runs in this
+# project's history (15 docs/corpus, $4.82 total). See LOG.md.
+#
+#  * n_raters: 1, not base's 3. Measured autorater_std = 0.0 on EVERY document in
+#    all three corpora - the three raters returned identical scores, so raters 2
+#    and 3 were pure cost. autorater_overall was 5.0 almost everywhere and the
+#    filter rejected nothing, so the rubric is saturated at this quality level.
+#  * dedup threshold 0.92, not 0.87. Every single drop across all three corpora
+#    was embedding_dedup; there were zero quality drops. Diversity, not quality,
+#    is the binding constraint.
+#  * revision is values_deliberation ONLY. It is Anthropic's headline mechanism
+#    (22% -> 3%, vs 15% for plain filtering) and this project's whole thesis.
+#    critique_rewrite and realism_pass are dropped for budget: measured revision
+#    cost was $0.030/doc/pass against $0.026 for generation itself.
+#  * NO generation.max_tokens cap. Capping it at 2600 truncated the JSON
+#    mid-object, so documents failed to parse and arrived EMPTY (median 0 words,
+#    10/15 length-dropped) rather than merely shorter. Measured regression.
+#  * planning stays ENABLED (new upstream default). It targets exactly the
+#    failure we measured: the generator settling on the first obvious scenario,
+#    which showed up as 0.91 self-similarity in the agentic corpus.
+# ---------------------------------------------------------------------------
+
+llm:
+  provider: openrouter
+
+revision:
+  - {kind: values_deliberation, model: anthropic/claude-sonnet-4.5, context: fresh}
+
+filters:
+  - {kind: length, min_words: 80, max_words: 6000}
+  - {kind: embedding_dedup, threshold: 0.92}
+  - {kind: autorater, rubric: v4, model: anthropic/claude-sonnet-4.5,
+     n_raters: 1, min_score: 3, report_agreement: false}
+
+export:
+  format: sft_chat
+  # Target is a ~1.5M-token SFT corpus (v1 was 1.52M), so every kept document goes
+  # to the chat export; base.yaml diverts 0.4 to a pretrain shard, which is a
+  # different training format and would not count toward the SFT budget.
+  mix: {pretrain_shard: 0.0}
+
+# Haiku 4.5 ($1/$5) for the two MECHANICAL calls: planning emits a short structured
+# what/how/why object, the autorater emits a rubric score. Document AUTHORING stays on
+# Sonnet 4.5 ($3/$15), which is where model quality actually shows. Measured split had
+# planning+rating at 32% of spend. There is a shipped generator_model sweep to verify
+# this rather than assume it.
+planning:
+  model: anthropic/claude-sonnet-4.5
+
+cache:
+  scope: [plan, generate]   # bypass cache for stages that must actually run
