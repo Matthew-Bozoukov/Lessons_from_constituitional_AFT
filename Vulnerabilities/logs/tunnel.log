@@ -360,3 +360,5 @@
 [2026-07-29T09:01:57.7906840+01:00] dialing (reconnect #179)
 === tunnel supervisor start pid 26220 2026-07-29T09:02:30.2057217+01:00 ===
 [2026-07-29T09:02:30.2099997+01:00] dialing (reconnect #0)
+[2026-07-29T15:32:41.0717706+01:00] ssh exited code ; redialing in 5s
+[2026-07-29T15:32:46.0949902+01:00] dialing (reconnect #1)

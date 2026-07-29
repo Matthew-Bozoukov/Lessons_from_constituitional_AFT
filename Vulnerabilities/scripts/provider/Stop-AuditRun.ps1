@@ -22,6 +22,18 @@
 
     Safe to re-run. Every step tolerates having already been done.
 
+.NOTES
+    MUST be invoked through the infra secrets wrapper - it calls the provider API
+    directly and RUNPOD_API_KEY is deliberately absent from the parent process:
+
+        .\scripts\secrets\Invoke-WithInfraSecrets.ps1 -ScriptBlock {
+            & .\scripts\provider\Stop-AuditRun.ps1
+        }
+
+    Run bare, it terminates nothing, fails at the account sweep and balance
+    steps, and - correctly - refuses to stand the watchdog down. That refusal is
+    the design working: an unverified teardown must never remove the safety net.
+
 .PARAMETER KeepWatchdog
     Leave the watchdog running even after successful termination. Use when
     winding down one pod while intending to provision another.
