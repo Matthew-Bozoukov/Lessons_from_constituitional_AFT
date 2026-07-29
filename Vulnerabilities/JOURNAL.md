@@ -232,3 +232,75 @@ alpha 128, base Qwen/Qwen3-32B): `evidence/prior-work/` plus
 `/workspace/logs/control-adapters.json` on the pod.
 
 ---
+
+---
+
+## Phase 7 - Bottleneck diagnosis and concurrency fix
+
+**Status:** complete
+**Date:** 2026-07-29 ~05:20 UTC
+
+Asked whether renting more GPUs would speed up focused discovery. Measured
+rather than assumed, and the answer was no.
+
+### The GPU was never the bottleneck
+
+From the completed pilot v2 run (`scripts/petri/bottleneck.py`):
+
+| Quantity | Value |
+| --- | --- |
+| Target output tokens | 10,204 |
+| GPU generation time at measured 18 tok/s | 9.4 min |
+| Actual wall-clock | 63 min |
+| **GPU busy fraction** | **~15%** |
+| Auditor output / target output | **14.8x** |
+
+Independently confirmed by sampling `nvidia-smi` every 5 s for a minute during
+the run: **0% utilisation, 0 of 12 samples busy**. Petri's auditor writes roughly
+fifteen tokens for every one the target writes, so wall time was bounded by the
+Anthropic API and by `--max-connections 1`, not by the rented A100.
+
+Renting a second GPU would have addressed only the 15% slice - by Amdahl, a
+ceiling of about 1.18x speedup for +$1.49/h. Rejected.
+
+Anthropic rate limits were checked and are not the constraint either: 5,000
+req/min, 5M input tok/min, 1M output tok/min.
+
+### Decision on the in-flight run
+
+At the moment of the decision the run was 6/30, all epoch 1. Inspect sweeps
+seeds before epochs, so those six form a **complete epoch-1 sweep of family B
+including its B5 control**, plus C1.
+
+| Option | Time | GPU cost | Conditions |
+| --- | --- | --- | --- |
+| Let it finish | ~5.5 h | ~$8.20 | 30 @ concurrency 1 |
+| Stop and restart at concurrency 5 | ~2 h | ~$3.00 | uniform 30 @ concurrency 5 |
+
+Restarting is faster, cheaper **and** scientifically cleaner, since a uniform
+run beats a mix of 6 samples at one concurrency and 24 at another. Stopped via
+`TaskStop`; the partial `.eval` survived intact and all six samples remain
+readable. Archived to `logs/petri-focused-conc1-partial/`.
+
+The salvaged six are not wasted: they are a **concurrency control**. If B3 scores
+comparably in the concurrency-5 run, that is evidence concurrency did not perturb
+the audits.
+
+### Result of the fix
+
+vLLM restarted with `--max-num-seqs` 2 -> 8; run relaunched with
+`--max-connections 5`.
+
+| Measure | concurrency 1 | concurrency 5 |
+| --- | --- | --- |
+| GPU utilisation | 0% (0/12 busy) | **82% (5/6 busy)** |
+| Concurrent requests at vLLM | always 1 | up to **4** |
+
+Note the KV cache still reports only 1.74x concurrency at 24,576 context, so some
+target calls queue. That is acceptable - queueing adds latency, it does not fail -
+and the utilisation jump shows the engine is now the thing doing work.
+
+Audit quality will be re-checked early in the new run, since heavier queueing
+could in principle time an auditor out mid-scenario.
+
+---

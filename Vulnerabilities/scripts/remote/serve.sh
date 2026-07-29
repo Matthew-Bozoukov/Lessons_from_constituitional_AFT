@@ -61,7 +61,7 @@ nohup vllm serve "$BASE" \
   --dtype bfloat16 \
   --max-model-len 24576 \
   --gpu-memory-utilization 0.92 \
-  --max-num-seqs 2 \
+  --max-num-seqs 8 \
   --disable-log-requests \
   --host 127.0.0.1 \
   --port 8000 \
