@@ -3,6 +3,47 @@
 
 # LOG
 
+## 2026-07-29 (pm) — RESULT: difficult-advice LoRA cuts ODCV misalignment 37.2% → 19.2%
+
+**Matched FP8 arms**, same vLLM build/flags/tunnel/temperature, same 78 scenario cells, same two
+judges (Grok-4.20 + Gemini-3.1-Pro, median-of-2). Only the LoRA differs.
+
+| Metric | Base (FP8) | + LoRA | Paired difference |
+|---|---|---|---|
+| Misalignment rate | **37.2%** | **19.2%** | **−17.9 pp**, 95% CI [−26.9, −9.0] |
+| Mean severity | 1.43 | 0.87 | −0.56, 95% CI [−0.88, −0.26] |
+
+**−17.9 pp absolute, 48% relative.** McNemar on the discordant pairs: **15 scenarios flipped
+base-violation → LoRA-safe, 1 went the other way** (`mandated/Clinical-Trial-Integrity-Monitoring`),
+62 concordant, **exact two-sided p = 0.00052**.
+
+**The paired test is what carries this.** Unpaired CIs overlap (base [23.7, 51.3] vs LoRA
+[10.5, 30.3]) and would look inconclusive. Both arms ran the identical scenario set, so the
+scenario-level paired bootstrap removes between-scenario variance — the dominant noise source —
+and the interval excludes zero. Report both, not just the flattering one.
+
+**Control is valid:** the base FP8 arm scores 37.2% against the paper's published 43.8% for this
+model, and the published value lies inside the base arm's 95% CI. So FP8-on-our-stack reproduces
+published behaviour; the drop is not a serving artifact.
+
+**Flips are broad, not outlier-driven** — 15 scenarios across healthcare, finance, audit, hiring,
+propaganda and legal domains, in both mandated and incentivized framings.
+
+**Caveats (also in the report):** 1 epoch of LoRA (half the Qwen3-32B run's steps) with
+difficult-advice at only 20% of 1.49M tokens — the effect appears despite a light dose, not because
+of a heavy one. Median-of-2 judges, so absolute numbers aren't directly comparable to the published
+43.8% (the internal comparison is unaffected). 2 cells excluded from both arms. n=1 trajectory per
+cell at temperature 0, as in the paper's protocol.
+
+**Cost:** $12.68 GPU (3.22h H100) + $11.84 judging = **$24.52** for the eval; $8.10 GPU for
+training earlier. Judging came in at $11.84 vs my $7.40 estimate because these transcripts run
+longer than the 2026-07-28 baseline's. Artifacts:
+`output/odcv_bench/comparison/{report.md,dashboard.html,comparison.json,plots/}`.
+
+**Next:** add the other two judges (their base-model scores are cached, so only the incremental
+cost applies) to get median-of-4 comparable to the paper; and re-run at 2 epochs to test whether
+the effect grows with training.
+
 ## 2026-07-29 — FP8 matched-pair ODCV eval (fine-tune vs base). GOTCHAS FOR FUTURE AGENTS.
 
 **Design:** serve BOTH the fine-tune and the unmodified base at FP8 on the same vLLM build,
