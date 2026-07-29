@@ -1,5 +1,5 @@
 ﻿{
-    "generated_at":  "2026-07-29T09:49:41Z",
+    "generated_at":  "2026-07-29T10:01:43Z",
     "refresh_reason":  "periodic",
     "run_id":  "msm-audit-20260728-212645",
     "provider":  "runpod",
@@ -27,30 +27,30 @@
                                    "unit":  "USD"
                                },
     "elapsed_runtime":  {
-                            "value":  2.1402,
+                            "value":  2.3406,
                             "basis":  "locally-calculated",
                             "unit":  "hours"
                         },
-    "elapsed_runtime_text":  "02:08",
+    "elapsed_runtime_text":  "02:20",
     "estimated_infrastructure_cost":  {
-                                          "value":  16.1088,
+                                          "value":  16.4075,
                                           "basis":  "locally-calculated",
                                           "unit":  "USD"
                                       },
     "experiment_gpu_budget_remaining":  {
-                                            "value":  23.8912,
+                                            "value":  23.5925,
                                             "basis":  "locally-calculated",
                                             "unit":  "USD"
                                         },
     "wall_clock_remaining":  {
-                                 "value":  33.86,
+                                 "value":  33.659,
                                  "basis":  "locally-calculated",
                                  "unit":  "hours"
                              },
     "hard_deadline_utc":  "2026-07-30T19:41:17Z",
     "model_server_health":  "healthy",
     "ssh_tunnel_health":  "listening",
-    "last_successful_api_refresh":  "2026-07-29T09:20:14Z",
+    "last_successful_api_refresh":  "2026-07-29T09:58:47Z",
     "api_refresh_ok_this_cycle":  false,
     "cleanup_watchdog_state":  "armed (deadline 2026-07-30T19:41:17Z)",
     "anthropic_spent_usd":  {
