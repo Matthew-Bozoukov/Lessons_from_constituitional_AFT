@@ -1,11 +1,32 @@
 ---
 title: "Infrastructure provider comparison and selection"
 date: 2026-07-28
-summary: "RunPod Secure Cloud A100 80GB PCIe at $1.19/h selected; Vast.ai is unusable because the account holds $0.00 and has no billing method, and the price gap does not justify funding it."
+summary: "RunPod Secure Cloud A100 80GB selected; Vast.ai is unusable because the account holds $0.00 and has no billing method. Provisioned as A100-SXM4-80GB at $1.49/h after the cheaper PCIe variant proved out of stock."
 status: complete
+corrected: 2026-07-29
 ---
 
 # Infrastructure provider comparison and selection
+
+> [!IMPORTANT]
+> **Correction applied at provisioning time.** The RunPod prices first recorded
+> here came from an unfiltered `lowestPrice(input: {gpuCount: 1})` query, which
+> returns the cheapest offer across **both** Community and Secure Cloud. Re-queried
+> with `secureCloud: true`, the real Secure Cloud rates are higher, and the
+> cheapest qualifying option was out of stock:
+>
+> | GPU | First recorded | Actual Secure Cloud | Stock |
+> | --- | --- | --- | --- |
+> | A100 PCIe 80GB | $1.19/h | **$1.39/h** | Low |
+> | A100 SXM 80GB | $1.39/h | **$1.49/h** | Medium |
+> | H100 PCIe 80GB | $1.99/h | $2.89/h | Low |
+>
+> Provisioning passed both A100 variants as a priority list; RunPod allocated the
+> **A100-SXM4-80GB at $1.49/h**, confirming the PCIe variant was unavailable. The
+> selection conclusion is unchanged — an 80 GB A100 on Secure Cloud — but the
+> hourly rate is **$1.49**, not $1.19, and the revised estimate is
+> **~$22 for ~14.9 h** against the $40 cap. The Vast.ai comparison below is
+> unaffected: that account still cannot rent anything at any price.
 
 Queried programmatically through each provider's official authenticated API on
 2026-07-28. No provider website was scraped.

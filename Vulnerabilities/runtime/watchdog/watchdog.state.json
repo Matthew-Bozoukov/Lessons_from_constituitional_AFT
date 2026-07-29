@@ -1,8 +1,8 @@
 ﻿{
     "pid":  20640,
-    "status":  "armed-no-instance",
-    "detail":  "No paid resource registered yet.",
-    "last_heartbeat_utc":  "2026-07-28T22:56:03Z",
-    "hard_deadline_utc":  null,
-    "instance_id":  null
+    "status":  "armed",
+    "detail":  "activity lease held until 2026-07-29T00:46:04Z by \u0027eval-checksum\u0027; 34.93 h to deadline; est cost $1.6",
+    "last_heartbeat_utc":  "2026-07-29T00:02:04Z",
+    "hard_deadline_utc":  "2026-07-30T10:57:46Z",
+    "instance_id":  "0vqb1gixqkqh5h"
 }

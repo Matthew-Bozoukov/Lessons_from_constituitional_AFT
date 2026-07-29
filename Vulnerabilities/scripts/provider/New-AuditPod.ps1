@@ -12,12 +12,16 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$GpuTypeId = 'NVIDIA A100 80GB PCIe',
+    # Priority order. RunPod allocates the first available, which matters because
+    # A100 PCIe (the cheapest qualifying option) shows Low stock on Secure Cloud.
+    # Both entries are 80 GB A100s; the SXM variant costs $0.10/h more.
+    [string[]]$GpuTypeIds = @('NVIDIA A100 80GB PCIe', 'NVIDIA A100-SXM4-80GB'),
     [string]$ImageName = 'runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04',
     [int]$ContainerDiskInGb = 60,
     [int]$VolumeInGb = 120,
     [string]$Name = 'msm-audit',
-    [double]$HourlyUsd = 1.19
+    # Fallback only. The real rate is read back from the created pod.
+    [double]$HourlyUsd = 1.49
 )
 
 Set-StrictMode -Version Latest
@@ -34,7 +38,7 @@ $intentFile = Join-Path $root 'runtime\provider-monitor\provision-intent.json'
 @{
     intent_at   = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
     provider    = 'runpod'
-    gpu_type_id = $GpuTypeId
+    gpu_type_ids = $GpuTypeIds
     image       = $ImageName
     note        = 'A pod may exist from this moment. If run-state.instance_id is null and this file is recent, sweep the account manually.'
 } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $intentFile -Encoding utf8
@@ -46,7 +50,7 @@ $result = & "$secretsDir\Invoke-WithInfraSecrets.ps1" -Inject @('RUNPOD_API_KEY'
     $body = @{
         name              = $Name
         imageName         = $ImageName
-        gpuTypeIds        = @($GpuTypeId)
+        gpuTypeIds        = @($GpuTypeIds)
         gpuCount          = 1
         cloudType         = 'SECURE'
         computeType       = 'GPU'
@@ -91,6 +95,16 @@ if (-not $result.Ok) {
 $pod = $result.Pod
 Write-Host "pod created: $($pod.id)"
 
+# Read back what RunPod actually allocated. gpuTypeIds is a priority list, so the
+# GPU and rate are not known until the pod exists.
+$actualGpu = if ($pod.PSObject.Properties.Match('machine').Count -gt 0 -and $pod.machine -and $pod.machine.PSObject.Properties.Match('gpuTypeId').Count -gt 0) { $pod.machine.gpuTypeId } else { ($GpuTypeIds)[0] }
+$actualHourly = if ($pod.PSObject.Properties.Match('costPerHr').Count -gt 0 -and $pod.costPerHr) { [double]$pod.costPerHr } else { $HourlyUsd }
+Write-Host "allocated GPU: $actualGpu at `$$actualHourly/h"
+
+# Correct run-state before the watchdog does any budget arithmetic with it.
+$rs = Get-RunState
+if ($rs) { $rs.gpu = $actualGpu; $rs.hourly_usd = $actualHourly; Set-RunState -State $rs }
+
 # --- Register with monitor + watchdog immediately -----------------------------
 try {
     $state = Register-Instance -InstanceId $pod.id
@@ -114,9 +128,9 @@ Remove-Item -LiteralPath $intentFile -Force -ErrorAction SilentlyContinue
 @{
     created_at = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
     pod_id     = $pod.id
-    gpu        = $GpuTypeId
+    gpu        = $actualGpu
     image      = $ImageName
-    hourly_usd = $HourlyUsd
+    hourly_usd = $actualHourly
     volume_gb  = $VolumeInGb
     disk_gb    = $ContainerDiskInGb
 } | ConvertTo-Json -Depth 5 |
