@@ -1,8 +1,8 @@
 ﻿{
     "pid":  9536,
     "status":  "armed",
-    "detail":  "activity lease held until 2026-07-29T10:43:57Z by \u0027surf-setup-and-sweep\u0027; 33.29 h to deadline; est cost $16.96",
-    "last_heartbeat_utc":  "2026-07-29T10:24:07Z",
+    "detail":  "activity lease held until 2026-07-29T10:49:33Z by \u0027fixed-eval-regeneration-2048\u0027; 33.27 h to deadline; est cost $16.99",
+    "last_heartbeat_utc":  "2026-07-29T10:25:07Z",
     "hard_deadline_utc":  "2026-07-30T19:41:17Z",
     "instance_id":  "p397jthrc130o2"
 }
