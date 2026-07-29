@@ -1,3 +1,21 @@
+// Builds lib/generated/content-index.json - the only content the static build
+// bakes in - plus the lazily-fetched sidecars that everything heavy lives in.
+//
+// The rule this script enforces:
+//
+//   Anything a LISTING needs is baked. Anything a single opened ITEM needs is
+//   deferred to a sidecar the browser fetches on demand.
+//
+// So the index carries titles, dates, models, metrics, scenario seeds and a
+// per-transcript summary row, but never a transcript's `messages`. On the
+// corpus in this repo that is the difference between a 781 KB index and a
+// 55 KB one, almost all of it one Petri run.
+//
+// An entry's payload can come from disk (`content/<type>/<slug>/`) or from a
+// Hugging Face dataset declared as `hf_source` in frontmatter. Both produce the
+// same index shape. HF is consulted for METADATA ONLY; bulk files are linked,
+// never downloaded, so build time does not scale with corpus size.
+
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
@@ -10,18 +28,46 @@ import {
   toPosix,
   walk,
 } from "./content-utils.mjs";
+import {
+  fetchRepoJson,
+  fetchRepoListing,
+  offline,
+  redact,
+  repoUrl,
+  resolveUrl,
+  tokenPresent,
+} from "./hf-source.mjs";
 
 const outputDirectory = path.join(projectRoot, "lib", "generated");
 const outputFile = path.join(outputDirectory, "content-index.json");
 const publicAssetRoot = path.join(projectRoot, "public", "content-assets");
 const publicDatasetRoot = path.join(projectRoot, "public", "generated-datasets");
+const publicTranscriptRoot = path.join(projectRoot, "public", "generated-transcripts");
+
+/** Collected for the build report; also surfaced in the index for the UI. */
+const notices = [];
+
+function warn(message) {
+  const text = redact(message);
+  notices.push(text);
+  console.warn(`  ! ${text}`);
+}
 
 function normalize(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-function rewriteAssetLinks(body, type, slug) {
-  const prefix = `/content-assets/${type}/${slug}/`;
+function bytes(value) {
+  return Buffer.byteLength(JSON.stringify(value ?? null));
+}
+
+/**
+ * Point `./assets/...` and `./artifacts/...` links in an entry's body at
+ * wherever its files actually ended up. For a local entry that is the copy
+ * under `public/content-assets/`; for an entry served entirely from the Hub it
+ * is the HF resolve URL, because nothing was copied locally to link to.
+ */
+function rewriteAssetLinks(body, prefix) {
   return body
     .replace(/(\]\()\.\/(assets|artifacts)\//g, `$1${prefix}$2/`)
     .replace(/(<img[^>]+src=["'])\.\/(assets|artifacts)\//g, `$1${prefix}$2/`);
@@ -50,6 +96,10 @@ async function copyEntryAssets(entryDirectory, type, slug) {
 
 async function readJsonl(file) {
   const raw = await fs.readFile(file, "utf8");
+  return parseJsonl(raw, file);
+}
+
+function parseJsonl(raw, label) {
   return raw
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -58,7 +108,7 @@ async function readJsonl(file) {
       try {
         return JSON.parse(line);
       } catch {
-        throw new Error(`Invalid JSONL at ${file}:${index + 1}`);
+        throw new Error(`Invalid JSONL at ${label}:${index + 1}`);
       }
     });
 }
@@ -76,30 +126,190 @@ function messagesFor(record) {
   return [];
 }
 
-async function buildDatasetManifest(entryDirectory, slug) {
-  const files = await walk(entryDirectory);
-  const dataFile = files.find(
-    (file) => file.endsWith(".jsonl") && file.includes(`${path.sep}data${path.sep}`),
-  );
-  if (!dataFile) return null;
+// ---------------------------------------------------------------------------
+// Hugging Face sources
+// ---------------------------------------------------------------------------
 
-  const records = await readJsonl(dataFile);
-  const chunkSize = 50;
-  const chunks = [];
-  const destinationRoot = path.join(publicDatasetRoot, slug);
-  await fs.mkdir(destinationRoot, { recursive: true });
+/**
+ * Normalize the `hf_source` frontmatter block.
+ *
+ * ```yaml
+ * hf_source:
+ *   repo_id: LASR-Callum/2026-07-29-msm-philosophy-spec-focused-discovery
+ *   revision: 9a00c85c            # optional; a pinned sha skips revalidation
+ *   manifest: manifest.json       # optional
+ * ```
+ * A bare string is accepted as shorthand for `repo_id`.
+ */
+function normalizeHfSource(raw) {
+  if (!raw) return null;
+  const source = typeof raw === "string" ? { repo_id: raw } : raw;
+  const repoId = String(source.repo_id || source.repo || "")
+    .replace(/^hf:\/\//, "")
+    .replace(/^\/+|\/+$/g, "");
+  if (!repoId) return null;
+  return {
+    repo_id: repoId,
+    revision: String(source.revision || source.rev || "main"),
+    manifest: String(source.manifest || "manifest.json"),
+  };
+}
 
-  for (let index = 0; index < records.length; index += chunkSize) {
-    const chunkNumber = Math.floor(index / chunkSize);
-    const name = `chunk-${String(chunkNumber).padStart(3, "0")}.json`;
-    await fs.writeFile(
-      path.join(destinationRoot, name),
-      `${JSON.stringify(records.slice(index, index + chunkSize))}\n`,
-      "utf8",
-    );
-    chunks.push(`/generated-datasets/${slug}/${name}`);
+/**
+ * Pull the small manifest for an HF-backed entry.
+ *
+ * Returns `{ ok, manifest, commit }` or `{ ok: false, error }`. Callers must
+ * treat a failure as "render what frontmatter already gives us", never as a
+ * build error - a missing dataset must not break a Netlify deploy.
+ */
+async function loadHfManifest(source, label) {
+  const result = await fetchRepoJson(source.repo_id, source.revision, source.manifest);
+  if (!result.ok) {
+    warn(`${label}: ${result.error}`);
+    return { ok: false, error: result.error };
   }
+  if (!result.json || typeof result.json !== "object") {
+    warn(`${label}: ${source.manifest} is not a JSON object`);
+    return { ok: false, error: "manifest is not a JSON object" };
+  }
+  return {
+    ok: true,
+    manifest: result.json,
+    commit: result.commit || "",
+    cached: Boolean(result.cached),
+    stale: Boolean(result.stale),
+  };
+}
 
+/** Turn an HF file listing into the entry's downloadable-artifact list. */
+async function hfAssets(source, label) {
+  const listing = await fetchRepoListing(source.repo_id, source.revision);
+  if (!listing.ok) {
+    warn(`${label}: could not list files (${listing.error})`);
+    return [];
+  }
+  return listing.files
+    .filter((file) => !/^(README\.md|\.gitattributes|manifest\.json)$/.test(file.path))
+    // Per-transcript shards are an implementation detail of lazy loading, not
+    // artifacts a reader downloads one by one.
+    .filter((file) => !file.path.startsWith("transcripts/"))
+    .map((file) => ({
+      name: path.posix.basename(file.path),
+      path: resolveUrl(source.repo_id, source.revision, file.path),
+      size_bytes: file.size,
+      kind: path.posix.extname(file.path).slice(1).toLowerCase() || "file",
+      remote: true,
+    }));
+}
+
+// ---------------------------------------------------------------------------
+// Petri runs
+// ---------------------------------------------------------------------------
+
+/**
+ * The summary row for one transcript: everything the explorer's list and
+ * filters need, and nothing else. `messages` and `judge_summary` are the bulk
+ * and both ride along in the sidecar instead.
+ */
+function transcriptSummary(record, file, sizeBytes) {
+  return {
+    id: String(record.id),
+    file,
+    scenario_id: String(record.scenario_id || ""),
+    category: String(record.category || "uncategorized"),
+    outcome: String(record.outcome || "unknown"),
+    scores: record.scores && typeof record.scores === "object" ? normalize(record.scores) : {},
+    tags: Array.isArray(record.tags) ? record.tags.map(String) : [],
+    message_count: Number(record.message_count ?? messagesFor(record).length),
+    size_bytes: Number(sizeBytes || 0),
+  };
+}
+
+/** File name a transcript's sidecar is stored under, in both backends. */
+function transcriptFile(id) {
+  return `${slugify(String(id))}.json`;
+}
+
+/**
+ * Write one JSON sidecar per transcript, so opening a transcript costs one
+ * small request instead of shipping the whole run.
+ */
+async function shardTranscripts(slug, records) {
+  const destination = path.join(publicTranscriptRoot, slug);
+  await fs.rm(destination, { recursive: true, force: true });
+  await fs.mkdir(destination, { recursive: true });
+  const sizes = new Map();
+  let total = 0;
+  for (const record of records) {
+    const name = transcriptFile(record.id);
+    const payload = `${JSON.stringify(record)}\n`;
+    await fs.writeFile(path.join(destination, name), payload, "utf8");
+    sizes.set(String(record.id), Buffer.byteLength(payload));
+    total += Buffer.byteLength(payload);
+  }
+  return { base: `/generated-transcripts/${slug}`, sizes, total };
+}
+
+/** Build a Petri manifest from files on disk. */
+async function localPetriManifest(entryDirectory, slug) {
+  const files = await walk(entryDirectory);
+  const scenarioFile = files.find((file) => file.endsWith("scenarios.jsonl"));
+  const transcriptSource = files.find((file) => file.endsWith("transcripts.jsonl"));
+  const scoreFile = files.find((file) => file.endsWith("scores.json"));
+  if (!scenarioFile && !transcriptSource && !scoreFile) return null;
+
+  const transcripts = transcriptSource ? await readJsonl(transcriptSource) : [];
+  const { base, sizes, total } = await shardTranscripts(slug, transcripts);
+
+  return {
+    source: { kind: "local" },
+    scenarios: scenarioFile ? await readJsonl(scenarioFile) : [],
+    scores: scoreFile ? JSON.parse(await fs.readFile(scoreFile, "utf8")) : {},
+    transcript_index: transcripts.map((record) =>
+      transcriptSummary(record, transcriptFile(record.id), sizes.get(String(record.id))),
+    ),
+    transcript_base: base,
+    transcript_count: transcripts.length,
+    deferred_bytes: total,
+  };
+}
+
+/**
+ * Build a Petri manifest from a published HF dataset, using only the small
+ * manifest file. Transcript bodies stay on the Hub and are fetched by the
+ * browser from `transcripts/<id>.json` when a reader opens one.
+ */
+function hfPetriManifest(source, manifest, commit) {
+  const transcripts = Array.isArray(manifest.transcripts) ? manifest.transcripts : [];
+  return {
+    source: {
+      kind: "hf",
+      repo_id: source.repo_id,
+      revision: source.revision,
+      commit,
+      url: repoUrl(source.repo_id),
+    },
+    scenarios: Array.isArray(manifest.scenarios) ? normalize(manifest.scenarios) : [],
+    scores:
+      manifest.scores && typeof manifest.scores === "object" ? normalize(manifest.scores) : {},
+    transcript_index: transcripts.map((record) =>
+      transcriptSummary(
+        record,
+        String(record.file || transcriptFile(record.id)),
+        record.size_bytes,
+      ),
+    ),
+    transcript_base: resolveUrl(source.repo_id, source.revision, "transcripts"),
+    transcript_count: transcripts.length,
+    deferred_bytes: transcripts.reduce((sum, item) => sum + Number(item.size_bytes || 0), 0),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Dialogue datasets
+// ---------------------------------------------------------------------------
+
+function datasetStats(records) {
   const turns = records.map((record) => messagesFor(record).length);
   const roleCounts = {};
   const splits = {};
@@ -115,45 +325,98 @@ async function buildDatasetManifest(entryDirectory, slug) {
     splits[split] = (splits[split] || 0) + 1;
     categories[category] = (categories[category] || 0) + 1;
   }
+  return {
+    average_turns:
+      turns.length > 0
+        ? Number((turns.reduce((sum, value) => sum + value, 0) / turns.length).toFixed(1))
+        : 0,
+    role_counts: roleCounts,
+    splits,
+    categories,
+  };
+}
+
+async function localDatasetManifest(entryDirectory, slug) {
+  const files = await walk(entryDirectory);
+  const dataFile = files.find(
+    (file) => file.endsWith(".jsonl") && file.includes(`${path.sep}data${path.sep}`),
+  );
+  if (!dataFile) return null;
+
+  const records = await readJsonl(dataFile);
+  const chunkSize = 50;
+  const chunks = [];
+  const destinationRoot = path.join(publicDatasetRoot, slug);
+  await fs.mkdir(destinationRoot, { recursive: true });
+
+  let deferred = 0;
+  for (let index = 0; index < records.length; index += chunkSize) {
+    const chunkNumber = Math.floor(index / chunkSize);
+    const name = `chunk-${String(chunkNumber).padStart(3, "0")}.json`;
+    const payload = `${JSON.stringify(records.slice(index, index + chunkSize))}\n`;
+    await fs.writeFile(path.join(destinationRoot, name), payload, "utf8");
+    deferred += Buffer.byteLength(payload);
+    chunks.push(`/generated-datasets/${slug}/${name}`);
+  }
 
   return {
+    source: { kind: "local" },
     source_file: `/content-assets/datasets/${slug}/${toPosix(path.relative(entryDirectory, dataFile))}`,
     format: "jsonl",
     record_count: records.length,
     chunk_size: chunkSize,
     chunks,
-    stats: {
-      average_turns:
-        turns.length > 0
-          ? Number((turns.reduce((sum, value) => sum + value, 0) / turns.length).toFixed(1))
-          : 0,
-      role_counts: roleCounts,
-      splits,
-      categories,
-    },
+    stats: datasetStats(records),
+    deferred_bytes: deferred,
   };
 }
 
-async function buildPetriManifest(entryDirectory) {
-  const files = await walk(entryDirectory);
-  const scenarioFile = files.find((file) => file.endsWith("scenarios.jsonl"));
-  const transcriptFile = files.find((file) => file.endsWith("transcripts.jsonl"));
-  const scoreFile = files.find((file) => file.endsWith("scores.json"));
-  if (!scenarioFile && !transcriptFile && !scoreFile) return null;
+/**
+ * Dataset manifest from a published HF dataset. The publisher pre-chunks the
+ * records into `chunks/chunk-NNN.json`, so the build only reads the summary and
+ * the browser pages through chunks exactly as it does for local datasets.
+ */
+function hfDatasetManifest(source, manifest, commit) {
+  const dataset =
+    manifest.dataset && typeof manifest.dataset === "object" ? manifest.dataset : manifest;
+  const chunks = Array.isArray(dataset.chunks) ? dataset.chunks : [];
   return {
-    scenarios: scenarioFile ? await readJsonl(scenarioFile) : [],
-    transcripts: transcriptFile ? await readJsonl(transcriptFile) : [],
-    scores: scoreFile
-      ? JSON.parse(await fs.readFile(scoreFile, "utf8"))
-      : {},
+    source: {
+      kind: "hf",
+      repo_id: source.repo_id,
+      revision: source.revision,
+      commit,
+      url: repoUrl(source.repo_id),
+    },
+    source_file: resolveUrl(
+      source.repo_id,
+      source.revision,
+      String(dataset.source_file || "data/dialogues.jsonl"),
+    ),
+    format: String(dataset.format || "jsonl"),
+    record_count: Number(dataset.record_count || 0),
+    chunk_size: Number(dataset.chunk_size || 50),
+    chunks: chunks.map((chunk) =>
+      /^https?:\/\//.test(chunk) ? chunk : resolveUrl(source.repo_id, source.revision, chunk),
+    ),
+    stats:
+      dataset.stats && typeof dataset.stats === "object"
+        ? normalize(dataset.stats)
+        : { average_turns: 0, role_counts: {}, splits: {}, categories: {} },
+    deferred_bytes: Number(dataset.total_bytes || 0),
   };
 }
 
-const markdownFiles = (await walk(contentRoot)).filter((file) =>
-  file.endsWith(".md"),
-);
+// ---------------------------------------------------------------------------
+// Index
+// ---------------------------------------------------------------------------
+
+const markdownFiles = (await walk(contentRoot)).filter((file) => file.endsWith(".md"));
 const entries = [];
 const seenIds = new Set();
+let deferredTotal = 0;
+
+if (offline()) console.log("HF_OFFLINE is set: using only cached Hugging Face metadata.");
 
 for (const file of markdownFiles) {
   const type = contentTypeFor(file);
@@ -168,24 +431,82 @@ for (const file of markdownFiles) {
   if (seenIds.has(id)) throw new Error(`Duplicate content id: ${id}`);
   seenIds.add(id);
 
+  const source = normalizeHfSource(parsed.data.hf_source);
+  const label = `${type}/${slug}`;
+
+  // Fetch the small manifest first: it can also supply entry-level fields for
+  // entries whose dataset card is the system of record.
+  let hf = null;
+  let hfStatus;
+  if (source) {
+    const loaded = await loadHfManifest(source, label);
+    if (loaded.ok) {
+      hf = loaded;
+      hfStatus = {
+        state: loaded.stale ? "stale" : "ok",
+        repo_id: source.repo_id,
+        revision: source.revision,
+        commit: loaded.commit,
+        url: repoUrl(source.repo_id),
+        cached: loaded.cached,
+      };
+    } else {
+      hfStatus = {
+        state: "unavailable",
+        repo_id: source.repo_id,
+        revision: source.revision,
+        url: repoUrl(source.repo_id),
+        message: loaded.error,
+      };
+    }
+  }
+
   const stat = await fs.stat(file);
-  const assets = await copyEntryAssets(entryDirectory, type, slug);
-  const dataset =
-    type === "datasets"
-      ? await buildDatasetManifest(entryDirectory, slug)
-      : undefined;
-  const petri =
-    type === "petri-runs"
-      ? await buildPetriManifest(entryDirectory)
-      : undefined;
-  const rawDate = parsed.data.date || stat.mtime;
+
+  // Assets: remote when HF answered and nothing is on disk, local otherwise.
+  // Falling back to local files is what makes the migration additive - an entry
+  // that has both keeps rendering when the Hub is unreachable.
+  const localFiles = (await walk(entryDirectory)).filter((f) => !f.endsWith(".md"));
+  const remoteAssets = Boolean(hf) && localFiles.length === 0;
+  const assets = remoteAssets
+    ? await hfAssets(source, label)
+    : await copyEntryAssets(entryDirectory, type, slug);
+  const assetPrefix = remoteAssets
+    ? `${resolveUrl(source.repo_id, source.revision, "")}`
+    : `/content-assets/${type}/${slug}/`;
+
+  let dataset;
+  let petri;
+  if (type === "datasets") {
+    dataset = hf
+      ? hfDatasetManifest(source, hf.manifest, hf.commit)
+      : (await localDatasetManifest(entryDirectory, slug)) || undefined;
+    if (!dataset && source) {
+      warn(`${label}: no dataset records available from ${source.repo_id} or on disk`);
+    }
+  }
+  if (type === "petri-runs") {
+    petri = hf ? hfPetriManifest(source, hf.manifest, hf.commit) : undefined;
+    if (!petri) {
+      // Either no HF source, or HF was declared but unreachable. Fall back to
+      // whatever is on disk so the page still renders, and say so.
+      petri = (await localPetriManifest(entryDirectory, slug)) || undefined;
+      if (petri && source) {
+        petri.source = { ...petri.source, fallback_from: source.repo_id };
+        warn(`${label}: using on-disk copy because ${source.repo_id} is unavailable`);
+      }
+    }
+  }
+  deferredTotal += Number(dataset?.deferred_bytes || 0) + Number(petri?.deferred_bytes || 0);
+
+  const card = hf?.manifest || {};
+  const rawDate = parsed.data.date || card.date_generated || stat.mtime;
   const date =
     rawDate instanceof Date
       ? rawDate.toISOString().slice(0, 10)
       : String(rawDate).slice(0, 10);
   const title = String(
-    parsed.data.title ||
-      titleFromMarkdown(parsed.content, path.basename(file, ".md")),
+    parsed.data.title || titleFromMarkdown(parsed.content, path.basename(file, ".md")),
   );
 
   entries.push({
@@ -195,7 +516,7 @@ for (const file of markdownFiles) {
     type,
     title,
     date,
-    summary: String(parsed.data.summary || ""),
+    summary: String(parsed.data.summary || card.experiment || ""),
     status: String(parsed.data.status || "unknown"),
     tags: Array.isArray(parsed.data.tags) ? parsed.data.tags.map(String) : [],
     models: Array.isArray(parsed.data.models)
@@ -207,9 +528,10 @@ for (const file of markdownFiles) {
       parsed.data.metrics && typeof parsed.data.metrics === "object"
         ? normalize(parsed.data.metrics)
         : {},
-    body: rewriteAssetLinks(parsed.content, type, slug),
+    body: rewriteAssetLinks(parsed.content, assetPrefix),
     source_path: toPosix(path.relative(projectRoot, file)),
     assets,
+    ...(hfStatus ? { hf: hfStatus } : {}),
     ...(dataset ? { dataset } : {}),
     ...(petri ? { petri } : {}),
   });
@@ -218,19 +540,29 @@ for (const file of markdownFiles) {
 entries.sort((a, b) => b.date.localeCompare(a.date) || a.title.localeCompare(b.title));
 
 await fs.mkdir(outputDirectory, { recursive: true });
-await fs.writeFile(
-  outputFile,
-  `${JSON.stringify(
-    {
-      generated: true,
-      generated_at: new Date().toISOString(),
-      entry_count: entries.length,
-      entries,
-    },
-    null,
-    2,
-  )}\n`,
-  "utf8",
-);
+const index = {
+  generated: true,
+  generated_at: new Date().toISOString(),
+  entry_count: entries.length,
+  hf: {
+    endpoint: process.env.HF_ENDPOINT || "https://huggingface.co",
+    token_present: tokenPresent(),
+    offline: offline(),
+    notices,
+  },
+  entries,
+};
+await fs.writeFile(outputFile, `${JSON.stringify(index, null, 2)}\n`, "utf8");
 
-console.log(`Indexed ${entries.length} research entries.`);
+const bakedBytes = bytes(index);
+console.log(
+  `Indexed ${entries.length} research entries. ` +
+    `Baked ${(bakedBytes / 1024).toFixed(1)} KB; ` +
+    `deferred ${(deferredTotal / 1024).toFixed(1)} KB to lazy sidecars.`,
+);
+if (notices.length > 0) {
+  console.log(
+    `${notices.length} Hugging Face notice(s); the build continued with the ` +
+      "content that was reachable.",
+  );
+}

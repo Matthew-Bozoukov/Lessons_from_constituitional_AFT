@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -16,28 +16,45 @@ import {
   Bot,
   CheckCircle2,
   CircleDot,
+  Cloud,
   Download,
   Eye,
   Filter,
+  LoaderCircle,
   ScanSearch,
   ShieldCheck,
 } from "lucide-react";
-import { PetriManifest, ResearchEntry, humanize } from "@/lib/content";
+import {
+  PetriManifest,
+  PetriTranscript,
+  ResearchEntry,
+  formatBytes,
+  humanize,
+} from "@/lib/content";
+import { describeLoadError, loadTranscript } from "@/lib/lazy";
 import { DialogueTranscript } from "./DialogueTranscript";
 
 export function PetriRunViewer({ run }: { run: ResearchEntry }) {
   const manifest = run.petri as PetriManifest;
+  const index = useMemo(() => manifest.transcript_index || [], [manifest]);
   const [selectedTranscriptId, setSelectedTranscriptId] = useState(
-    manifest.transcripts[0]?.id || "",
+    index[0]?.id || "",
   );
   const [outcomeFilter, setOutcomeFilter] = useState("all");
+
+  // The transcript body is NOT in the page. It arrives from its sidecar when a
+  // reader selects it - one request of roughly 23 KB rather than 707 KB up
+  // front for the whole run.
+  const [fetched, setFetched] = useState<PetriTranscript | null>(null);
+  const [failure, setFailure] = useState<{ id: string; message: string } | null>(null);
+
   const filtered = useMemo(
     () =>
-      manifest.transcripts.filter(
+      index.filter(
         (transcript) =>
           outcomeFilter === "all" || transcript.outcome === outcomeFilter,
       ),
-    [manifest.transcripts, outcomeFilter],
+    [index, outcomeFilter],
   );
   const selected =
     filtered.find((transcript) => transcript.id === selectedTranscriptId) ||
@@ -45,6 +62,36 @@ export function PetriRunViewer({ run }: { run: ResearchEntry }) {
   const scenario = manifest.scenarios.find(
     (candidate) => candidate.id === selected?.scenario_id,
   );
+
+  const remote = manifest.source?.kind === "hf";
+  const sourceLabel = remote
+    ? `Hugging Face (${manifest.source.repo_id})`
+    : "this site";
+  const transcriptBase = manifest.transcript_base;
+
+  useEffect(() => {
+    if (!selected) return;
+    let cancelled = false;
+    loadTranscript(transcriptBase, selected.file).then(
+      (record) => {
+        if (!cancelled) setFetched(record);
+      },
+      (error) => {
+        if (!cancelled) {
+          setFailure({ id: selected.id, message: describeLoadError(error, sourceLabel) });
+        }
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [selected, transcriptBase, sourceLabel]);
+
+  // Derive the three view states rather than storing them, so nothing has to be
+  // written back into state while an effect is running.
+  const body = fetched && fetched.id === selected?.id ? fetched : null;
+  const bodyError = failure && failure.id === selected?.id ? failure.message : "";
+  const bodyLoading = Boolean(selected) && !body && !bodyError;
   const chartData = (manifest.scores.by_category || []).map((item) => ({
     ...item,
     pass: Math.max(0, item.audits - item.concerning - item.eval_aware),
@@ -69,6 +116,26 @@ export function PetriRunViewer({ run }: { run: ResearchEntry }) {
           </div>
           <h1>{run.title}</h1>
           <p>{run.summary}</p>
+          {remote && manifest.source.url && (
+            <a
+              className="hf-source-badge"
+              href={manifest.source.url}
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              <Cloud size={13} /> Data:{" "}
+              <code>
+                {manifest.source.repo_id}
+                {manifest.source.commit ? `@${manifest.source.commit.slice(0, 8)}` : ""}
+              </code>
+            </a>
+          )}
+          {manifest.source?.fallback_from && (
+            <span className="hf-source-badge">
+              <AlertTriangle size={13} /> {manifest.source.fallback_from} was
+              unreachable at build time; showing the on-disk copy.
+            </span>
+          )}
         </div>
         <div className="petri-run-id">
           <span>Run ID</span>
@@ -160,6 +227,16 @@ export function PetriRunViewer({ run }: { run: ResearchEntry }) {
           </label>
         </div>
 
+        <p className="transcript-source-note">
+          {remote ? <Cloud size={13} /> : <Download size={13} />}
+          {manifest.transcript_count} transcripts indexed. Bodies load on demand
+          from {sourceLabel}
+          {manifest.deferred_bytes
+            ? ` (${formatBytes(manifest.deferred_bytes)} kept out of this page)`
+            : ""}
+          .
+        </p>
+
         <div className="petri-transcript-browser">
           <aside className="petri-transcript-index">
             {filtered.map((transcript) => (
@@ -186,11 +263,25 @@ export function PetriRunViewer({ run }: { run: ResearchEntry }) {
                   <div><span>Hypothesis</span><p>{scenario?.hypothesis}</p></div>
                   <div><span>Expected signal</span><p>{scenario?.expected_signal}</p></div>
                 </div>
-                <DialogueTranscript messages={selected.messages} compact />
-                <div className="judge-finding">
-                  <div><ShieldCheck size={16} /><span>Judge finding</span></div>
-                  <p>{selected.judge_summary}</p>
-                </div>
+                {bodyError ? (
+                  <div className="empty-state transcript-error">
+                    <AlertTriangle size={16} /> {bodyError}
+                  </div>
+                ) : body ? (
+                  <>
+                    <DialogueTranscript messages={body.messages} compact />
+                    <div className="judge-finding">
+                      <div><ShieldCheck size={16} /><span>Judge finding</span></div>
+                      <p>{body.judge_summary}</p>
+                    </div>
+                  </>
+                ) : (
+                  <div className="empty-state transcript-loading">
+                    {bodyLoading && <LoaderCircle size={15} className="spin" />}
+                    Loading {selected.message_count} messages
+                    {selected.size_bytes ? ` (${formatBytes(selected.size_bytes)})` : ""}…
+                  </div>
+                )}
               </>
             )}
           </div>

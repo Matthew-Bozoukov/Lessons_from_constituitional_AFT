@@ -41,3 +41,12 @@ next-env.d.ts
 /artifacts/
 /.codex-dev.*
 tsconfig.tsbuildinfo
+
+# Hugging Face build-time metadata cache. Safe to delete; the next build
+# refetches. Keeping it out of git is what stops dataset metadata drifting
+# between a developer's checkout and a Netlify build.
+/.hf-cache/
+
+# Per-transcript sidecars, regenerated from content/ or fetched from HF on
+# every build. Bulk data does not belong in git (see root AGENTS.md).
+/public/generated-transcripts/

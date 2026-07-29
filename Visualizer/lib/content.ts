@@ -35,7 +35,35 @@ export type DialogueRecord = {
   [key: string]: unknown;
 };
 
+/**
+ * Where an entry's bulk payload comes from. `local` means the build sharded
+ * files that live in `content/`; `hf` means the shards live in a published
+ * Hugging Face dataset and the browser fetches them from the Hub directly.
+ */
+export type PayloadSource = {
+  kind: "local" | "hf";
+  repo_id?: string;
+  revision?: string;
+  commit?: string;
+  url?: string;
+  /** Set when an HF source was declared but the build fell back to disk. */
+  fallback_from?: string;
+};
+
+/** Build-time outcome of resolving an entry's `hf_source`. */
+export type HfStatus = {
+  state: "ok" | "stale" | "unavailable";
+  repo_id: string;
+  revision: string;
+  commit?: string;
+  url: string;
+  cached?: boolean;
+  /** Present when `state` is `unavailable`; safe to show to a reader. */
+  message?: string;
+};
+
 export type DatasetManifest = {
+  source: PayloadSource;
   source_file: string;
   format: string;
   record_count: number;
@@ -47,6 +75,7 @@ export type DatasetManifest = {
     splits: Record<string, number>;
     categories: Record<string, number>;
   };
+  deferred_bytes?: number;
 };
 
 export type PetriScenario = {
@@ -58,24 +87,47 @@ export type PetriScenario = {
   source?: string;
 };
 
+/**
+ * The full transcript, as exported. Lives in a per-transcript sidecar and is
+ * fetched only when a reader opens it - never baked into the page.
+ */
 export type PetriTranscript = DialogueRecord & {
   scenario_id: string;
   category: string;
   outcome: string;
   messages: DialogueMessage[];
-  scores: {
-    concerning_behavior: number;
-    eval_awareness: number;
-    realism: number;
-    judge_confidence: number;
-  };
+  scores: Record<string, number>;
   judge_summary: string;
   tags: string[];
 };
 
+/**
+ * The baked-in row for one transcript: enough to list, filter and sort the
+ * whole run without loading a single message body.
+ */
+export type PetriTranscriptSummary = {
+  id: string;
+  /** Sidecar file name, relative to `PetriManifest.transcript_base`. */
+  file: string;
+  scenario_id: string;
+  category: string;
+  outcome: string;
+  scores: Record<string, number>;
+  tags: string[];
+  message_count: number;
+  size_bytes: number;
+};
+
 export type PetriManifest = {
+  source: PayloadSource;
   scenarios: PetriScenario[];
-  transcripts: PetriTranscript[];
+  /** Summaries only. Bodies come from `transcript_base` on demand. */
+  transcript_index: PetriTranscriptSummary[];
+  /** URL prefix the sidecars hang off: a site path, or an HF resolve URL. */
+  transcript_base: string;
+  transcript_count: number;
+  /** Bytes kept out of the initial payload by deferring transcript bodies. */
+  deferred_bytes?: number;
   scores: {
     by_category?: Array<{
       category: string;
@@ -132,10 +184,22 @@ export type ResearchEntry = {
   max_turns?: number;
   realism_filter?: boolean;
   realism_threshold?: number;
+  /** Resolution status of this entry's `hf_source`, when it declares one. */
+  hf?: HfStatus;
   [key: string]: unknown;
 };
 
 export const entries = contentIndex.entries as ResearchEntry[];
+
+/** Build-time Hugging Face status, including any degradation notices. */
+export const hfBuildInfo = (contentIndex as { hf?: unknown }).hf as
+  | {
+      endpoint: string;
+      token_present: boolean;
+      offline: boolean;
+      notices: string[];
+    }
+  | undefined;
 
 export function entriesOfType(type: ResearchEntry["type"]) {
   return entries.filter((entry) => entry.type === type);

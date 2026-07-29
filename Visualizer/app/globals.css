@@ -2107,6 +2107,40 @@ pre,
   color: var(--muted);
 }
 
+/* Says where a transcript body comes from and how much the page saved by not
+   shipping it. Deliberately visible: the loading strategy is part of the
+   provenance story, not an implementation detail to hide. */
+.transcript-source-note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.transcript-loading,
+.transcript-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 168px;
+  text-align: center;
+}
+
+.transcript-error { color: var(--warn, #ffbd6d); }
+
+.hf-source-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.hf-source-badge code { font-size: 10px; }
+
 .petri-transcript-browser {
   display: grid;
   grid-template-columns: 205px minmax(0, 1fr) 225px;

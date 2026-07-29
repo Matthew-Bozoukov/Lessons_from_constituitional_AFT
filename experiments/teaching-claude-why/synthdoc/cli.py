@@ -1,5 +1,5 @@
 # ABOUTME: Command line entry point. Run with `uv run python -m synthdoc.cli <command>`.
-# ABOUTME: Commands: run, sweep, validate, chunks, scenarios, inspect, registry.
+# ABOUTME: Commands: run, sweep, validate, chunks, scenarios, inspect, publish, registry.
 
 from __future__ import annotations
 
@@ -260,6 +260,54 @@ class CLI:
         if out:
             _Path(out).write_text(text)
         return text
+
+    def publish(
+        self,
+        export: str,
+        repo: str,
+        card: str,
+        kind: str = "petri",
+        private: bool = False,
+        dry_run: bool = True,
+        chunk_size: int = 50,
+    ) -> str:
+        """Publish a dataset to HuggingFace in the shape the visualizer reads.
+
+        Writes the AGENTS.md dataset card, the small `manifest.json` the static
+        site bakes in, and the per-item shards the browser fetches lazily.
+
+        Defaults to a dry run: uploading is a side effect on a shared namespace,
+        so it must be asked for explicitly with `--dry_run=False`.
+
+        Args:
+            export: Petri export bundle directory, or a dialogue `.jsonl` file.
+            repo: Target dataset repo, `org/<YYYY-MM-DD>-<short-description>`.
+            card: JSON or YAML file holding the required dataset-card fields.
+            kind: `petri` for an audit export, `dialogues` for a dialogue JSONL.
+            private: Create the repo private. Public repos need no reader token.
+            dry_run: Stage and report without contacting the Hub.
+            chunk_size: Records per lazily-fetched chunk (`dialogues` only).
+
+        Returns:
+            A human-readable result line.
+        """
+        from .publish import card_from_file, publish_dialogue_dataset, publish_petri_run
+
+        fields = card_from_file(card)
+        if kind == "petri":
+            return publish_petri_run(
+                export, repo, fields, private=private, dry_run=dry_run
+            )
+        if kind == "dialogues":
+            return publish_dialogue_dataset(
+                export,
+                repo,
+                fields,
+                chunk_size=chunk_size,
+                private=private,
+                dry_run=dry_run,
+            )
+        raise ValueError(f"Unknown kind {kind!r}; expected 'petri' or 'dialogues'")
 
     def axes(self) -> str:
         """List every ablatable axis with the exact sweep key to vary it."""

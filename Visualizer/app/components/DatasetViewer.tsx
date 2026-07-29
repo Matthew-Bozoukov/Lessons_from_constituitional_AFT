@@ -17,6 +17,7 @@ import {
   ResearchEntry,
   humanize,
 } from "@/lib/content";
+import { describeLoadError, loadChunk } from "@/lib/lazy";
 import { DialogueTranscript } from "./DialogueTranscript";
 
 function messagesFor(record: DialogueRecord): DialogueMessage[] {
@@ -59,31 +60,44 @@ export function DatasetViewer({ datasets }: { datasets: DatasetViewerEntry[] }) 
   const [selectedRecordId, setSelectedRecordId] = useState("");
   const [loadedChunks, setLoadedChunks] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
   const [split, setSplit] = useState("all");
 
+  const chunkSource =
+    manifest?.source?.kind === "hf"
+      ? `Hugging Face (${manifest.source.repo_id})`
+      : "this site";
+
+  // Records are never baked into the page: the first chunk arrives after mount
+  // and further chunks only when the reader asks for them.
   useEffect(() => {
     let cancelled = false;
     async function loadInitialChunk() {
       if (!manifest?.chunks[0]) return;
       setLoading(true);
+      setLoadError("");
       setRecords([]);
       setLoadedChunks(0);
-      const response = await fetch(manifest.chunks[0]);
-      const nextRecords = (await response.json()) as DialogueRecord[];
-      if (!cancelled) {
-        setRecords(nextRecords);
-        setSelectedRecordId(nextRecords[0]?.id || "");
-        setLoadedChunks(1);
-        setLoading(false);
+      try {
+        const nextRecords = await loadChunk<DialogueRecord>(manifest.chunks[0]);
+        if (!cancelled) {
+          setRecords(nextRecords);
+          setSelectedRecordId(nextRecords[0]?.id || "");
+          setLoadedChunks(1);
+        }
+      } catch (error) {
+        if (!cancelled) setLoadError(describeLoadError(error, chunkSource));
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     }
     loadInitialChunk();
     return () => {
       cancelled = true;
     };
-  }, [manifest?.chunks]);
+  }, [manifest?.chunks, chunkSource]);
 
   const categories = Object.keys(manifest?.stats.categories || {});
   const splits = Object.keys(manifest?.stats.splits || {});
@@ -113,11 +127,16 @@ export function DatasetViewer({ datasets }: { datasets: DatasetViewerEntry[] }) 
   async function loadMore() {
     if (!manifest || loadedChunks >= manifest.chunks.length) return;
     setLoading(true);
-    const response = await fetch(manifest.chunks[loadedChunks]);
-    const nextRecords = (await response.json()) as DialogueRecord[];
-    setRecords((existing) => [...existing, ...nextRecords]);
-    setLoadedChunks((value) => value + 1);
-    setLoading(false);
+    setLoadError("");
+    try {
+      const nextRecords = await loadChunk<DialogueRecord>(manifest.chunks[loadedChunks]);
+      setRecords((existing) => [...existing, ...nextRecords]);
+      setLoadedChunks((value) => value + 1);
+    } catch (error) {
+      setLoadError(describeLoadError(error, chunkSource));
+    } finally {
+      setLoading(false);
+    }
   }
 
   if (!selectedDataset || !manifest) {
@@ -187,7 +206,9 @@ export function DatasetViewer({ datasets }: { datasets: DatasetViewerEntry[] }) 
         </label>
         <span className="loaded-status">
           {loading && <LoaderCircle size={13} className="spin" />}
-          {records.length} loaded · {filteredRecords.length} shown
+          {loadError
+            ? loadError
+            : `${records.length} loaded · ${filteredRecords.length} shown`}
         </span>
       </section>
 

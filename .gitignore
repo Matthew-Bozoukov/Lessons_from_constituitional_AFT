@@ -34,18 +34,20 @@ dist/
 # Datasets, corpora, caches and evaluation outputs are published to Hugging
 # Face, not committed here. See AGENTS.md.
 output/
-data/*.jsonl
-data/*.json
-!data/.gitkeep
+# Anchored patterns would only match the repo root, but the experiment projects
+# now live one level down - so these use ** to match at any depth.
+**/data/*.jsonl
+**/data/*.json
+!**/data/.gitkeep
 *.safetensors
 wandb/
 
 # synthdoc corpora live on HuggingFace, never in git and - with cleanup_local -
 # not on disk either.
-output/synthdoc/
-output/synthdoc_cache/
-output/synthdoc_smoke/
-output/synthdoc_sweeps/
+**/output/synthdoc/
+**/output/synthdoc_cache/
+**/output/synthdoc_smoke/
+**/output/synthdoc_sweeps/
 
 # ---- Vendored / third-party trees --------------------------------------------
 third_party/

@@ -402,3 +402,8 @@ Checks:
 
 See [docs/RESEARCH_PROGRAM_STRUCTURE.md](docs/RESEARCH_PROGRAM_STRUCTURE.md)
 for the research assumptions behind the data model.
+
+See [docs/HUGGINGFACE_DATA_SOURCE.md](docs/HUGGINGFACE_DATA_SOURCE.md) for how
+bulk data is read from Hugging Face: what the build bakes in, what the browser
+fetches lazily, how to publish a dataset the visualizer picks up, and how a Hub
+outage degrades without failing a deploy.
