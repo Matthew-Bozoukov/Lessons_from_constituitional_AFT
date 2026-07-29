@@ -1,10 +1,10 @@
 ﻿# Provider status
 
 ```text
-[GPU ACTIVE] runpod | NVIDIA A100-SXM4-80GB | $1.49/h | provider balance unavailable | experiment GPU budget $23.3934 remaining | elapsed 02:28 | vLLM healthy
+[GPU ACTIVE] runpod | NVIDIA A100-SXM4-80GB | $1.49/h | provider balance unavailable | experiment GPU budget $23.2937 remaining | elapsed 03:32 | vLLM healthy
 ```
 
-Generated: 2026-07-29T10:09:44Z  (refresh reason: periodic)
+Generated: 2026-07-29T10:13:44Z  (refresh reason: periodic)
 
 Every figure below is labelled with its basis: **exact-provider-reported**,
 **locally-calculated**, **estimated**, or **unavailable**. Nothing is invented;
@@ -20,10 +20,10 @@ an unavailable figure is reported as unavailable.
 | Provider balance | unavailable _(nothing invented)_ |
 | Starting provider balance | 108.1129952401 USD _(exact-provider-reported)_ |
 | Provider balance delta | unavailable _(nothing invented)_ |
-| Elapsed runtime | 02:28 (2.4743 hours _(locally-calculated)_) |
-| Estimated infrastructure cost | 16.6066 USD _(locally-calculated)_ |
-| Experiment GPU budget remaining | 23.3934 USD _(locally-calculated)_ |
-| Wall-clock remaining | 33.526 hours _(locally-calculated)_ |
+| Elapsed runtime | 03:32 (2.5411 hours _(locally-calculated)_) |
+| Estimated infrastructure cost | 16.7063 USD _(locally-calculated)_ |
+| Experiment GPU budget remaining | 23.2937 USD _(locally-calculated)_ |
+| Wall-clock remaining | 33.459 hours _(locally-calculated)_ |
 | Hard deadline | 2026-07-30T19:41:17Z |
 | Model-server health | healthy |
 | SSH-tunnel health | listening |
