@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "build": "node scripts/build-site.mjs",
+    "build:netlify": "node scripts/index-content.mjs && next build",
     "start": "node scripts/run-vinext.mjs start",
     "content:index": "node scripts/index-content.mjs",
     "new:content": "node scripts/new-content.mjs",

@@ -118,7 +118,6 @@ export type ResearchEntry = {
   related?: string[];
   dataset?: DatasetManifest;
   dataset_id?: string;
-  dataset_version?: string;
   training_objective?: string;
   generator_model?: string;
   petri?: PetriManifest;

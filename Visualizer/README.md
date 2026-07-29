@@ -49,6 +49,28 @@ npm test
 
 `npm test` creates a production build and runs the rendered-route tests.
 
+## Netlify deployment
+
+The project-local [`netlify.toml`](netlify.toml) lives inside `Visualizer/`.
+Configure Netlify's package directory as `Visualizer`; Netlify then installs and
+builds only this package, and the sibling `Vulnerabilities/` research workspace
+is not part of the deployed application.
+
+The Netlify build runs:
+
+```powershell
+npm run build:netlify
+```
+
+This first regenerates the content index and copies every colocated visual and
+downloadable artifact into `public/`, then creates a fully static Next.js export
+in `out/`. Netlify publishes that export directly to its CDN. Do not point
+Netlify at an existing `dist/` or `.next/` directory: the indexing step is
+required for new research content and visuals to appear.
+
+The production site is connected to the repository's `main` branch. A push to
+`main` triggers a new production build; pull requests receive deploy previews.
+
 ## How content reaches the app
 
 ```text

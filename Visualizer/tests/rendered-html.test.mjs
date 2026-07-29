@@ -6,15 +6,26 @@ async function render(pathname = "/") {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
-  return worker.fetch(
-    new Request(`http://localhost${pathname}`, {
-      headers: { accept: "text/html" },
-    }),
-    {
+  const env = {
       ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) },
-    },
-    { waitUntil() {}, passThroughOnException() {} },
-  );
+  };
+  const context = { waitUntil() {}, passThroughOnException() {} };
+  let url = new URL(pathname, "http://localhost");
+
+  for (let redirects = 0; redirects < 3; redirects += 1) {
+    const response = await worker.fetch(
+      new Request(url, { headers: { accept: "text/html" } }),
+      env,
+      context,
+    );
+    const location = response.headers.get("location");
+    if (response.status < 300 || response.status >= 400 || !location) {
+      return response;
+    }
+    url = new URL(location, url);
+  }
+
+  throw new Error(`Too many redirects while rendering ${pathname}`);
 }
 
 test("server-renders the research overview", async () => {

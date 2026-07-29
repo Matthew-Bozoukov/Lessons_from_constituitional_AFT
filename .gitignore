@@ -17,3 +17,7 @@
 # OS noise
 .DS_Store
 Thumbs.db
+
+# Netlify local state and generated upload archives
+**/.netlify/
+/deploy-*.zip
