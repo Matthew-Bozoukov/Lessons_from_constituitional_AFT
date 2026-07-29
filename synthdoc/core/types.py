@@ -254,6 +254,10 @@ class Document:
         stage_name: Name of that stage.
         input_doc_id: doc_id of the input row (equal to doc_id; kept explicit so
             snapshot joins are self-describing and future fan-out stages can differ).
+        plan: The scenario plan produced by the planning stage, if enabled - what the
+            document should demonstrate, how it manifests, and why. Empty when
+            planning is off, which is the control arm.
+        plan_kind: Which planner produced the plan.
         filter_scores: Filter name -> score. Empty until the filter stage.
         filter_verdict: keep | drop | None. None until the filter stage.
         dropped_by: Name of the first filter that voted drop, else "".
@@ -263,6 +267,8 @@ class Document:
     doc_id: str
     scenario: ScenarioSpec
     turns: list[Turn] = field(default_factory=list)
+    plan: dict[str, Any] = field(default_factory=dict)
+    plan_kind: str = ""
     lineage: list[StageRecord] = field(default_factory=list)
     stage_idx: int = 0
     stage_name: str = "stage_00_generated"
@@ -308,6 +314,7 @@ class Document:
             input_doc_id=self.doc_id,
             turns=list(self.turns),
             lineage=list(self.lineage),
+            plan=dict(self.plan),
             filter_scores=dict(self.filter_scores),
         )
 
@@ -317,6 +324,8 @@ class Document:
             "doc_id": self.doc_id,
             "scenario": self.scenario.to_dict(),
             "turns": [t.to_dict() for t in self.turns],
+            "plan": dict(self.plan),
+            "plan_kind": self.plan_kind,
             "lineage": [r.to_dict() for r in self.lineage],
             "stage_idx": self.stage_idx,
             "stage_name": self.stage_name,
@@ -334,6 +343,8 @@ class Document:
             doc_id=d["doc_id"],
             scenario=ScenarioSpec.from_dict(d["scenario"]),
             turns=[Turn.from_dict(t) for t in d.get("turns") or []],
+            plan=dict(d.get("plan") or {}),
+            plan_kind=d.get("plan_kind") or "",
             lineage=[StageRecord.from_dict(r) for r in d.get("lineage") or []],
             stage_idx=int(d.get("stage_idx", 0)),
             stage_name=d.get("stage_name", "stage_00_generated"),

@@ -12,6 +12,7 @@ from omegaconf import DictConfig, OmegaConf
 
 from .control import loader
 from .core import registry
+from .core.cache import SCOPES, CacheConfig
 from .core.hashing import stable_hash
 from .core.recipe import Recipe, RecipeError
 
@@ -27,17 +28,33 @@ DEFAULTS: dict[str, Any] = {
     "max_workers": 16,
     "resume": True,
     "output_dir": "output/synthdoc",
-    "cache_dir": "output/synthdoc_cache",
-    "cache_enabled": True,
+    "cache": {
+        "enabled": True,
+        "dir": "output/synthdoc_cache",
+        "namespace": "",
+        "scope": list(SCOPES),
+        "max_bytes": 0,
+        "embeddings": True,
+        "embeddings_dir": None,
+    },
     "spec": {"id": "", "path": None, "chunker": {"granularity": "bullet"}},
     "llm": {"provider": "openrouter"},
     "embedder": {"name": "hashing"},
     "pricing": {},
+    "planning": {
+        "enabled": False,
+        "model": None,
+        "template": "what_how_why",
+        "temperature": 1.0,
+        "max_tokens": 1200,
+    },
     "generation": {
         "model": "anthropic/claude-sonnet-4.5",
         "temperature": 1.0,
         "max_tokens": 4096,
         "template": "v2",
+        "strategy": "single_pass",
+        "strategy_params": {},
         "max_parse_retries": 1,
     },
     "revision": [],
@@ -168,6 +185,7 @@ def _load_with_extends(
     if not isinstance(raw, dict):
         raise ConfigError(f"Config {resolved} is not a mapping")
 
+    _migrate_legacy_cache_keys(raw)
     parents = raw.pop("extends", None)
     if not parents:
         return raw
@@ -180,6 +198,39 @@ def _load_with_extends(
             merged, _load_with_extends(parent, (*seen, key), base_dir=resolved.parent)
         )
     return _merge(merged, raw)
+
+
+# Flat keys kept working from before the `cache:` block existed.
+LEGACY_CACHE_KEYS = {"cache_dir": "dir", "cache_enabled": "enabled"}
+
+
+def _migrate_legacy_cache_keys(raw: dict[str, Any]) -> dict[str, Any]:
+    """Fold flat `cache_dir` / `cache_enabled` keys into one config's `cache:` block.
+
+    Applied to each raw config BEFORE merging, so precedence works the ordinary way:
+    a `cache.dir` written in the same file (or passed as an override) wins over a
+    `cache_dir` inherited from a parent. Migrating after the merge instead would let
+    a parent's flat key clobber the child's explicit setting.
+
+    Args:
+        raw: One config's raw contents, modified in place.
+
+    Returns:
+        The same mapping.
+    """
+    for flat, field_name in LEGACY_CACHE_KEYS.items():
+        if flat in raw:
+            block = raw.setdefault("cache", {})
+            block.setdefault(field_name, raw.pop(flat))
+    return raw
+
+
+def _migrate_override_keys(overrides: dict[str, Any] | None) -> dict[str, Any]:
+    """Rewrite legacy dotted override keys onto the `cache:` block."""
+    out: dict[str, Any] = {}
+    for key, value in (overrides or {}).items():
+        out[f"cache.{LEGACY_CACHE_KEYS[key]}" if key in LEGACY_CACHE_KEYS else key] = value
+    return out
 
 
 def load_config(path: str | Path, overrides: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -199,11 +250,10 @@ def load_config(path: str | Path, overrides: dict[str, Any] | None = None) -> di
         ConfigError: If the config is invalid.
     """
     cfg = OmegaConf.create(_merge(DEFAULTS, _load_with_extends(path)))
-    if overrides:
-        for key, value in overrides.items():
-            # merge=False: an override REPLACES. Merging would leave stale keys in
-            # a mixture dict, silently producing a recipe nobody wrote.
-            OmegaConf.update(cfg, key, value, merge=False)
+    # merge=False: an override REPLACES. Merging would leave stale keys in a mixture
+    # dict, silently producing a recipe nobody wrote.
+    for key, value in _migrate_override_keys(overrides).items():
+        OmegaConf.update(cfg, key, value, merge=False)
     resolved = OmegaConf.to_container(cfg, resolve=True)
     assert isinstance(resolved, dict)
     validate(resolved)
@@ -227,7 +277,7 @@ def load_config_dict(base: dict[str, Any], overrides: dict[str, Any]) -> dict[st
         ConfigError: If the resulting config is invalid.
     """
     cfg = OmegaConf.create(base)
-    for key, value in (overrides or {}).items():
+    for key, value in _migrate_override_keys(overrides).items():
         OmegaConf.update(cfg, key, value, merge=False)
     resolved = OmegaConf.to_container(cfg, resolve=True)
     assert isinstance(resolved, dict)
@@ -327,11 +377,35 @@ def validate(cfg: dict[str, Any]) -> None:
                 f"got {entry.get('context')!r}"
             )
 
+    planning = cfg.get("planning") or {}
+    if planning.get("enabled"):
+        template = planning.get("template", "what_how_why")
+        if not registry.has("planner", template):
+            loader.entry("planning", template)  # raises PromptError if undeclared
+
+    strategy = (cfg.get("generation") or {}).get("strategy", "single_pass")
+    if not registry.has("strategy", strategy):
+        raise ConfigError(
+            f"Unknown generation.strategy {strategy!r}; "
+            f"registered: {registry.names('strategy')}"
+        )
+    if strategy == "draft_then_align" and not planning.get("enabled"):
+        raise ConfigError(
+            "generation.strategy: draft_then_align needs a user prompt to draft "
+            "against, which comes from the planning stage. Set planning.enabled: true, "
+            "or use single_pass."
+        )
+
     provider = (cfg.get("llm") or {}).get("provider", "openrouter")
     if not registry.has("llm", provider):
         raise ConfigError(
             f"Unknown llm.provider {provider!r}; registered: {registry.names('llm')}"
         )
+
+    try:
+        CacheConfig.from_config(cfg)
+    except ValueError as e:
+        raise ConfigError(str(e)) from e
 
     for i, entry in enumerate(cfg.get("filters") or []):
         kind = entry.get("kind")
@@ -379,6 +453,8 @@ def filter_score_fields(cfg: dict[str, Any]) -> list[str]:
             fields.add("dedup_max_sim")
         elif kind == "length":
             fields.add("length_words")
+        elif kind == "pattern_scan":
+            fields.update(["pattern_matches", "pattern_match_rate"])
     return sorted(fields)
 
 

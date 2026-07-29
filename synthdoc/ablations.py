@@ -122,6 +122,49 @@ def catalog() -> list[Axis]:
 
     out += [
         Axis(
+            "planning.enabled",
+            "Planning",
+            "whether a model chooses the situation before anything is written",
+            ["true", "false"],
+            note="GDM's structured scenario step. false is the control arm: generate "
+            "straight from the chunk. Adds its own stage, so the effect is a stage diff.",
+        ),
+        Axis(
+            "planning.template",
+            "Planning",
+            "how structured the plan is",
+            sorted(loader.load_pack("planning")),
+            note="what_how_why decomposes the plan; situation_only just picks a "
+            "situation. Isolates whether structure matters or merely planning at all.",
+        ),
+        Axis(
+            "planning.model",
+            "Planning",
+            "planner model, independent of the generator's",
+            ["anthropic/claude-sonnet-4.5", "anthropic/claude-haiku-4.5"],
+            note="A cheap planner with an expensive writer, or the reverse.",
+        ),
+        Axis(
+            "generation.strategy",
+            "Generation",
+            "how many calls make one document, and in what order",
+            registry.names("strategy"),
+            note="draft_then_align answers with no spec then aligns (GDM); best_of_n "
+            "samples and selects (Anthropic). draft_then_align requires planning.",
+        ),
+        Axis(
+            "generation.strategy_params",
+            "Generation",
+            "strategy settings: best-of-n width, or what the draft phase sees",
+            [
+                "{n: 4, selector: judge}",
+                "{draft_context: spec_in_system}",
+                "{draft_context: no_spec}",
+            ],
+            note="draft_context spec_in_system is faithful to GDM's description; "
+            "no_spec drafts blind and is our variant. See sweeps/draft_context.yaml.",
+        ),
+        Axis(
             "generation.model",
             "Generation",
             "the generator model - never ablated in any prior pipeline",
@@ -190,6 +233,21 @@ def catalog() -> list[Axis]:
         Axis("filters[].n_raters", "Filtering", "raters per document", ["1", "3", "5"]),
         Axis("filters[].min_score", "Filtering", "keep threshold", ["2", "3", "4"]),
         Axis(
+            "filters[].discover",
+            "Filtering",
+            "pattern_scan: discover the corpus's own tics, or only check seeded ones",
+            ["true", "false"],
+            note="The discovered pattern list is written to the manifest and is often "
+            "more informative than the filtering it drives.",
+        ),
+        Axis(
+            "filters[].mode",
+            "Filtering",
+            "pattern_scan detection threshold",
+            ["broad", "strict"],
+            note="Running both bounds how much of the measured rate is rater latitude.",
+        ),
+        Axis(
             "embedder",
             "Infrastructure",
             "embedding backend for semantic grouping and dedup",
@@ -198,6 +256,14 @@ def catalog() -> list[Axis]:
             "Affects semantic grouping, hence the sampler.",
         ),
         Axis("llm.provider", "Infrastructure", "API backend", registry.names("llm")),
+        Axis(
+            "cache.scope",
+            "Infrastructure",
+            "which call sites are cached - not an experiment, a cost control",
+            ["[plan, generate, revise, filter]", "[generate]", "[]"],
+            note="Drop 'generate' to re-sample documents while replaying rating calls; "
+            "drop 'filter' to re-rate an unchanged corpus. Does not change outputs.",
+        ),
         Axis("seed", "Infrastructure", "resample everything - the variance baseline",
              ["0", "1", "2"], SAMPLER,
              "Run this first. An effect smaller than the seed-to-seed spread is noise."),
@@ -212,6 +278,22 @@ def catalog() -> list[Axis]:
             "Export",
             "fraction routed to a pretrain-style shard",
             ["{}", "{pretrain_shard: 0.4}"],
+        ),
+        Axis(
+            "export.strip_system",
+            "Export",
+            "keep or drop in-document system turns in the training data",
+            ["true", "false"],
+            note="GDM removed generation system prompts before training. Ours never "
+            "enter a document, so this is about tool-definition and persona turns.",
+        ),
+        Axis(
+            "export.baseline",
+            "Export",
+            "how much existing SFT data to mix in",
+            ["{path: null}", "{path: data/sft.jsonl, ratio: 1.0}"],
+            note="GDM: mixing with baseline SFT data helped a lot against capability "
+            "regressions. Ratio is baseline rows per corpus row.",
         ),
     ]
     return out

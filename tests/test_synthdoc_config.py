@@ -24,14 +24,25 @@ def test_smoke_config_loads_and_defaults_are_applied():
     cfg = load_config(SMOKE)
     assert cfg["spec"]["id"] == "demo_spec"
     assert cfg["report"]["enabled"] is True
-    assert cfg["cache_enabled"] is True
+    assert cfg["cache"]["enabled"] is True
+
+
+def test_legacy_flat_cache_keys_still_apply(tmp_path):
+    """Silently ignoring cache_dir would send writes somewhere the user did not ask for."""
+    from synthdoc.core.cache import CacheConfig
+
+    cfg = load_config(SMOKE, {"cache_dir": str(tmp_path / "legacy"), "cache_enabled": False})
+    assert cfg["cache"]["dir"] == str(tmp_path / "legacy")
+    assert cfg["cache"]["enabled"] is False
+    assert CacheConfig.from_config(cfg).dir == str(tmp_path / "legacy")
 
 
 def test_base_config_is_valid():
     """The reference config must stay runnable as prompts and plugins evolve."""
     cfg = load_config("base.yaml")
     assert cfg["recipe"]["n"] > 0
-    assert len(cfg["revision"]) == 2
+    assert len(cfg["revision"]) >= 2
+    assert cfg["planning"]["enabled"] is True
 
 
 def test_overrides_replace_rather_than_merge():

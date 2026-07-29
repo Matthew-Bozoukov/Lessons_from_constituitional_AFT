@@ -209,16 +209,41 @@ class EchoLLM:
         self.calls = 0
 
     def complete(self, model: str, messages: list[dict], **params: Any) -> LLMResponse:
-        """Return a deterministic fake completion shaped like a real one."""
+        """Return a deterministic fake completion shaped like a real one.
+
+        The response schema is inferred from a marker in the prompt, so every call
+        site - planning, generation, rating, pattern scanning, selection - exercises
+        its real parsing path offline.
+        """
         with self._lock:
             self.calls += 1
         prompt = "\n".join(m.get("content", "") for m in messages)
         h = text_hash(prompt, 8)
-        if "SCORES" in prompt or "rubric" in prompt.lower():
+        seed = int(h[:4], 16)
+
+        if '"what"' in prompt or '"situation"' in prompt:
+            body = (
+                f'{{"what": "echo-what-{h}", "how": "echo-how-{h}", "why": "echo-why-{h}",'
+                f' "situation": "echo-situation-{h}",'
+                f' "user_prompt": "echo user prompt {h}", "pitfall": "echo-pitfall-{h}"}}'
+            )
+        elif '"patterns"' in prompt and '"matched"' not in prompt:
+            body = (
+                f'{{"patterns": [{{"name": "echo_pattern_{seed % 3}",'
+                f' "description": "echo pattern {h}", "n_documents": 5}}]}}'
+            )
+        elif '"matched"' in prompt:
+            body = '{"matched": []}'
+        elif '"choice"' in prompt:
+            body = f'{{"choice": 0, "why": "echo-{h}"}}'
+        elif "SCORES" in prompt or "rubric" in prompt.lower():
             body = (
                 '{"scores": {"spec_fidelity": 4, "realism": 4, "non_preachiness": 4},'
                 f' "overall": 4, "justification": "echo-{h}"}}'
             )
+        elif '"turns"' not in prompt:
+            # A plain-prose call site, e.g. the draft phase of draft_then_align.
+            body = f"echo draft response {h}"
         else:
             body = (
                 '{"turns": [{"role": "user", "content": "echo user turn '
@@ -257,6 +282,7 @@ class CachedLLM:
         model: str,
         messages: list[dict],
         params: dict[str, Any],
+        scope: str = "generate",
     ) -> tuple[LLMResponse, str]:
         """Run a completion through the cache.
 
@@ -266,19 +292,21 @@ class CachedLLM:
             model: Model id.
             messages: Rendered prompt.
             params: Sampling params.
+            scope: Call site (plan | generate | revise | filter). The run's
+                cache.scope decides which of these are cached.
 
         Returns:
             Tuple of (response, prompt_hash). response.cached indicates a cache hit.
         """
         prompt_hash = stable_hash(messages)
         key = self.cache.key(stage_idx, input_hash, prompt_hash, model, params)
-        hit = self.cache.get(key)
+        hit = self.cache.get(key, scope=scope)
         if hit is not None:
             resp = LLMResponse.from_dict(hit)
             resp.cached = True
             return resp, prompt_hash
         resp = self.inner.complete(model, messages, **params)
-        self.cache.put(key, resp.to_dict())
+        self.cache.put(key, resp.to_dict(), scope=scope)
         return resp, prompt_hash
 
     def cost(self, resp: LLMResponse) -> float:

@@ -12,12 +12,15 @@ control/
     corpora/          named corpus variants, each `extends: base.yaml`
     sweeps/           single-axis ablation configs
   prompts/
+    planning.yaml     scenario planners, one per template     -> planning.template
     generation.yaml   generation templates, one per version   -> generation.template
+    strategies.yaml   multi-call generation strategies        -> generation.strategy
     doc_types.yaml    one entry per document type             -> recipe.doc_type
     axes.yaml         axis -> value -> prompt fragment        -> recipe.<axis>
     revision.yaml     one entry per revision strategy         -> revision[].kind
+    patterns.yaml     scan/match prompts + seed anti-patterns -> filters[].kind: pattern_scan
     rubrics.yaml      autorater rubrics, one per version      -> filters[].rubric
-  specs/              model specs, loaded by `spec.id`
+  specs/              model specs + index.yaml, loaded by `spec.id`
 ```
 
 If you want to try something and it seems to need a Python change, that is usually a
@@ -34,6 +37,27 @@ Load order is `DEFAULTS` (in `synthdoc/config.py`) → the `extends:` chain → 
 CLI `--set` overrides. Overrides **replace** rather than merge, so
 `--set recipe.grouping='{"random":1.0}'` gives you exactly that mixture, not a merge with
 the base one.
+
+### Caching: how much, and where
+
+```yaml
+cache:
+  enabled: true
+  dir: output/synthdoc_cache        # WHERE
+  namespace: ""                     # key prefix — a clean run without deleting anything
+  scope: [plan, generate, revise, filter]   # WHICH call sites are cached
+  max_bytes: 0                      # HOW MUCH — 0 = unlimited, else evict oldest first
+  embeddings: true
+  embeddings_dir: null              # defaults to <dir>/embeddings
+```
+
+`scope` is a cost lever, not an experiment — it never changes what the pipeline produces.
+Drop `generate` to re-sample documents while replaying expensive ratings; drop `filter` to
+re-rate an unchanged corpus. The manifest reports hits, misses, `bypassed` (a
+scope-excluded site), evictions, and live size.
+
+The older flat `cache_dir` / `cache_enabled` keys still work and fold into this block, with
+an explicit `cache.dir` taking precedence.
 
 ### `extends:` and named corpora
 
@@ -98,7 +122,20 @@ passed fails at render time rather than silently emitting an empty section.
 | `axis_fragments` | list | each has `axis` (label), `value`, `text` |
 | `axes` | dict | raw axis name → value |
 | `spec_id`, `seed` | str, int | |
-| `document` | str | **revision and rubric templates only** — the rendered current document |
+| `plan` | dict | the scenario plan; empty `{}` when planning is off, so it is always safe to reference |
+| `document` | str | **revision, strategy, and rubric templates only** — the rendered current document |
+| `draft`, `user_prompt` | str | **draft_then_align templates only** |
+| `candidates` | list | **best_of_n selector only** — rendered candidate documents |
+| `patterns`, `documents`, `mode` | — | **patterns.yaml only** |
+
+### planning.yaml
+
+Entries are scenario planners, selected with `planning.template`. The planner decides
+*which* situation is worth writing before any document exists — GDM's structured
+what/how/why step. `fields` declares which keys the plan must contain; they become the
+`plan` object every generation template can reference.
+
+`planning.enabled: false` is the control arm: generate straight from the spec chunk.
 
 ### generation.yaml
 
@@ -141,6 +178,28 @@ axis, which is why it is a config field.
 `realism_pass` deliberately does *not* touch the assistant's judgement, so its effect is
 separable from `critique_rewrite`. `spec_grounding_pass` only looks for over-restriction.
 
+### strategies.yaml
+
+Prompts for the multi-call generation strategies, selected with `generation.strategy`.
+`single_pass` needs no prompts and is the control arm.
+
+- `draft_then_align` — answer with **no spec in context** (so the draft carries the
+  model's natural voice), then align that draft to the excerpt in a fresh context.
+  Requires `planning.enabled`, since the draft needs a user turn to answer.
+- `best_of_n` — sample `strategy_params.n` documents and select. The selector prompt picks
+  on spec fidelity, deliberately **not** polish.
+
+### patterns.yaml
+
+Drives the `pattern_scan` filter — GDM's scan → cluster → autorate pass. `scan` looks at a
+batch of documents at once and names what recurs *across* them; `match` autorates one
+document against the surviving list. `seed_patterns` are the anti-patterns GDM named
+explicitly (conversion arc, propaganda, emotional buffering, BLUF, …) and are checked even
+with `discover: false`.
+
+The discovered pattern list is written to the run manifest, and is often more useful than
+the filtering it drives.
+
 ### rubrics.yaml
 
 One entry per rubric version, with `criteria`, `scale`, `system`, `user`. **The criteria
@@ -171,3 +230,21 @@ The spec's content hash is recorded in every run manifest, and chunk text is par
 `scenario_hash`, so editing a spec invalidates scenarios rather than silently reusing
 stale ones. `chunk_id` itself is structural (`<spec>/<granularity>/<section>/<idx>`), so
 coverage joins survive a wording edit.
+
+---
+
+## Prompt provenance
+
+Neither the GDM post nor Teaching Claude Why publishes literal prompt text — both describe
+their instructions in prose only. Every prompt-pack entry derived from them therefore
+carries a `source:` field quoting the describing sentence verbatim, so our wording can be
+checked against theirs and adjusted if you read them differently.
+
+```bash
+uv run python -c "from synthdoc.control import loader; \
+  print(loader.entry('planning','what_how_why')['source'])"
+```
+
+Entries without a `source:` are ours. Where a variant deliberately departs from the source
+method — `draft_context: no_spec`, for instance — the entry says so explicitly rather than
+implying provenance it does not have.

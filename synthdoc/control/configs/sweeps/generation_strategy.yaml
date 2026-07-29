@@ -1,0 +1,16 @@
+# ABOUTME: How many calls should make one document? single_pass vs GDM's draft-then-align
+# ABOUTME: vs Anthropic's sample-and-select.
+#
+# Run: uv run python -m synthdoc.cli sweep --config generation_strategy.yaml --n 300
+#
+# Costs differ sharply per arm: single_pass is 1 call, draft_then_align 2, best_of_n
+# n+1. Compare quality per document AND per dollar - the manifest records both.
+
+base: base.yaml
+axis: generation.strategy
+n: 300
+
+arms:
+  - {name: single_pass,      value: single_pass}
+  - {name: draft_then_align, value: draft_then_align}
+  - {name: best_of_n,        value: best_of_n}

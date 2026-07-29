@@ -10,6 +10,11 @@ critique_rewrite:
     Two-part pass: criticise the document against the specification excerpt, then
     rewrite it addressing the criticism. The workhorse revision in all three prior
     pipelines, none of which measured its per-pass effect.
+  source: |
+    "in a separate conversation context, ask Pro to refine this answer to be more
+    closely aligned with the chunk (but in a realistic, non-performative way)"
+
+    Also: ensure "the scenario is realistic and would naturally test/elicit the trait".
   system: |
     You are improving a synthetic training document. You will be shown a document and
     the specification excerpt it is meant to demonstrate.
@@ -109,6 +114,97 @@ spec_grounding_pass:
     [{{ c.chunk_id }}] {{ c.text }}
     {% endfor %}
 
+    ## Current document
+
+    {{ document }}
+
+    Return the JSON object only.
+
+values_deliberation:
+  description: >
+    Rewrites the assistant's reasoning so it deliberates about its values and ethics
+    rather than only acting well. Anthropic found this was the difference between a
+    modest effect and a large one: filtering sampled responses moved misalignment
+    22% -> 15%, while rewriting those same responses to include value deliberation
+    moved it 22% -> 3%. Training on admirable reasoning beats training on admirable
+    behaviour.
+  source: |
+    "Rewriting responses to include deliberation of the model's values and ethics"
+
+    "training on aligned behaviors helps, but training on examples where the assistant
+    displays admirable reasoning for its aligned behavior works better"
+  system: |
+    You are rewriting a synthetic training document so that the assistant's reasoning
+    shows it working out what it values, not merely arriving at the right answer.
+
+    Add or deepen reasoning that:
+    - Names what is actually at stake, and for whom, in this specific situation.
+    - Weighs at least one consideration that pulls the other way, and says why it
+      loses here. If nothing pulls the other way, the situation is too easy - say so
+      in the reasoning rather than manufacturing a fake tension.
+    - Explains the decision in terms of what the assistant cares about and what
+      follows from it, not in terms of permission, rules, or what it is "able" to do.
+    - Owns the decision in the first person. It is the assistant's judgement, not a
+      constraint it is reporting.
+
+    Do NOT:
+    - Change what the assistant ultimately decides or offers.
+    - Refer to guidelines, training, policies, a specification, or a constitution.
+    - Move the deliberation into the visible response if the document keeps its
+      reasoning in the "thinking" field. Respect the document's existing structure.
+    - Make the assistant sound anxious, self-congratulatory, or pleased with its own
+      ethics. It is thinking, not performing.
+
+    Return ONLY the revised JSON object in the same schema, with the same turns in the
+    same order and the same roles.
+  user: |
+    ## Specification excerpt{{ "s" if n_chunks > 1 else "" }}
+
+    {% for c in chunks %}
+    [{{ c.chunk_id }}] {{ c.text }}
+    {% endfor %}
+
+    ## Current document
+
+    {{ document }}
+
+    Return the revised JSON object only.
+
+slop_removal:
+  description: >
+    Removes the specific structural tells GDM's scan-cluster-autorate pass surfaced in
+    their synthetic corpora. Narrow by design: it edits shape, never judgement, so its
+    effect is separable from the substantive revision passes.
+  source: |
+    Anti-patterns GDM name explicitly: the "conversion arc" (a character initially
+    frustrated, then has an epiphany), "propaganda" (generic corporate-speak without
+    grounding), emotional validation buffering, and BLUF (bottom line up front).
+  system: |
+    You are removing the recurring structural patterns that make synthetic training
+    documents recognisable as synthetic. Fix only these:
+
+    - CONVERSION ARC: a character who starts frustrated, resistant, or hostile and then
+      has an epiphany and thanks the assistant. Real exchanges rarely resolve this
+      cleanly. Let the person stay partly unconvinced, or end without a verdict.
+    - PROPAGANDA: generic institutional or corporate register, ungrounded in the
+      specifics of the situation. Every claim should be traceable to something concrete
+      in this exchange.
+    - EMOTIONAL BUFFERING: opening by validating the person's feelings before saying
+      anything of substance ("That sounds really difficult", "I can hear how much this
+      matters to you"). Cut it and start with the substance.
+    - BLUF: a bolded conclusion or summary line up front, then the reasoning, then a
+      restatement of the conclusion. Say it once.
+    - MECHANICAL SYMMETRY: every list with three items, every paragraph the same
+      length, every turn the same shape. Break it up.
+    - CLOSING FLOURISH: a final paragraph that summarises what was just said or offers
+      generic encouragement. End on the last substantive point.
+
+    Do NOT change what the assistant decides, declines, or offers, and do not change
+    the order or roles of turns. If the document has none of these patterns, return it
+    unchanged rather than editing for the sake of it.
+
+    Return ONLY the JSON object in the same schema.
+  user: |
     ## Current document
 
     {{ document }}

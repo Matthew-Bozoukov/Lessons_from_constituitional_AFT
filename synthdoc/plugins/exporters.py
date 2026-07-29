@@ -33,9 +33,16 @@ class SFTChatExporter:
         """Initialize.
 
         Args:
-            **params: `drop_thinking` to omit reasoning traces entirely.
+            **params: `drop_thinking` omits reasoning traces entirely.
+                `strip_system` removes system turns from the exported messages.
         """
         self.drop_thinking = bool(params.get("drop_thinking", False))
+        # GDM called removing the generating system prompt a critical step. Our
+        # generation instructions never enter a document's turns, so this is about the
+        # in-document system turns some axes create (tool definitions, personas):
+        # keep them to train the behaviour in context, strip them to train it
+        # unconditionally.
+        self.strip_system = bool(params.get("strip_system", False))
 
     def write(self, corpus: Sequence[Document], out_dir: Path, name: str = "sft") -> Path:
         """Write the corpus as chat JSONL.
@@ -54,6 +61,8 @@ class SFTChatExporter:
             for doc in corpus:
                 messages = []
                 for turn in doc.turns:
+                    if self.strip_system and turn.role == "system":
+                        continue
                     msg: dict[str, Any] = {"role": turn.role, "content": turn.content}
                     if turn.thinking and not self.drop_thinking:
                         msg["reasoning_content"] = turn.thinking
@@ -142,7 +151,8 @@ def export_corpus(
     cfg = dict(cfg or {})
     fmt = cfg.get("format", "sft_chat")
     mix = {k: float(v) for k, v in (cfg.get("mix") or {}).items()}
-    params = {k: v for k, v in cfg.items() if k not in ("format", "mix")}
+    baseline = cfg.get("baseline") or {}
+    params = {k: v for k, v in cfg.items() if k not in ("format", "mix", "baseline")}
 
     written: dict[str, str] = {}
     remaining = list(corpus)
@@ -159,4 +169,58 @@ def export_corpus(
 
     exporter = resolve("exporter", fmt)(**params)
     written["main"] = str(exporter.write(remaining, out_dir, name="corpus"))
+
+    if baseline.get("path"):
+        written["mixed"] = str(mix_baseline(Path(written["main"]), baseline, out_dir))
     return written
+
+
+def mix_baseline(corpus_path: Path, cfg: dict[str, Any], out_dir: Path) -> Path:
+    """Interleave an existing SFT dataset with the generated corpus.
+
+    GDM reported that mixing synthetic data with baseline SFT data "helped a lot" with
+    capability regressions and behavioural collapse. The ratio is a config field so the
+    mixture is itself ablatable rather than a fixed recipe.
+
+    Args:
+        corpus_path: The generated chat JSONL.
+        cfg: `export.baseline` block: `path`, `ratio` (baseline rows per corpus row),
+            `shuffle_seed`, and optional `limit`.
+        out_dir: Destination directory.
+
+    Returns:
+        Path to the mixed JSONL.
+
+    Raises:
+        FileNotFoundError: If the baseline dataset does not exist.
+    """
+    import random
+
+    source = Path(cfg["path"])
+    if not source.exists():
+        raise FileNotFoundError(
+            f"export.baseline.path does not exist: {source}. Point it at an existing "
+            "SFT JSONL, or remove the baseline block."
+        )
+
+    ours = [line for line in corpus_path.read_text().splitlines() if line.strip()]
+    ratio = float(cfg.get("ratio", 1.0))
+    wanted = int(len(ours) * ratio)
+
+    theirs: list[str] = []
+    with source.open() as fh:
+        for line in fh:
+            if line.strip():
+                theirs.append(line.rstrip("\n"))
+            if cfg.get("limit") and len(theirs) >= int(cfg["limit"]):
+                break
+
+    rng = random.Random(int(cfg.get("shuffle_seed", 0)))
+    if len(theirs) > wanted:
+        theirs = rng.sample(theirs, wanted)
+
+    merged = ours + theirs
+    rng.shuffle(merged)
+    path = out_dir / "mixed_chat.jsonl"
+    path.write_text("\n".join(merged) + "\n")
+    return path

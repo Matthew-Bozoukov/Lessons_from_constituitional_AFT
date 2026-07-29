@@ -89,6 +89,72 @@ ablatable, and corpora were kept locally.
 expected pairing verdicts. Still no paid run — everything remains verified only on the echo
 provider, and the HF path is still untested against the live Hub.
 
+## 2026-07-29 — synthdoc gap-closing pass against the GDM and Teaching Claude Why write-ups
+
+**Method:** re-read both source posts and audited our pipeline against them, SFT parts only.
+Seven mechanisms were missing. All are now config fields with prompt-pack entries, plugins, and
+sweeps, so each can be turned off and measured.
+
+**Biggest gap — scenario planning.** Our generator invented a situation and demonstrated the
+principle in a single call, which lets it settle on the first obvious scenario and then justify
+it. GDM plan first, deciding *what* aspect is under load, *how* it manifests, and *why* the actions
+follow. Added as a real stage (`stage_00_planned`) with its own complete snapshot, so the chosen
+situations are inspectable before any document exists and "did planning help?" is a stage diff.
+`planning.template: situation_only` separates *having planned* from *the plan's structure*.
+
+**Also added:** `generation.strategy` plugins — `draft_then_align` (GDM: answer with no spec in
+context so the draft carries a natural voice, then align it in a fresh context) and `best_of_n`
+(Anthropic's sample-and-filter, selecting on spec fidelity rather than polish); the
+`values_deliberation` reviser (Anthropic's headline: plain filtering of sampled responses moved
+misalignment 22%→15%, rewriting the same responses to deliberate about values moved it 22%→**3%**);
+`pattern_scan`, GDM's scan→cluster→autorate filter that discovers the corpus's *own* recurring tics
+rather than checking a rubric written in advance, seeded with their named anti-patterns; the
+`slop_removal` reviser; `aligned_ai_fiction` and `constitution_explainer` doc types (fiction cut
+blackmail 65%→19% in Teaching Claude Why); a `system_prompt` diversity axis; `export.strip_system`;
+and `export.baseline` for mixing in existing SFT data. Seven new sweeps, 20 total.
+
+**Cache control** (requested): a `cache:` block choosing where (`dir`, `embeddings_dir`), how much
+(`max_bytes`, with oldest-first eviction), and which call sites (`scope: [plan, generate, revise,
+filter]`, plus `namespace` to isolate runs sharing a directory). Scope is a cost lever, not an
+experiment — it never changes what the pipeline produces. Manifest reports hits/misses/bypassed/
+evicted/size.
+
+**Three real bugs found while wiring this up:**
+1. `pattern_scan` keyed its scan batches on `doc_id`, which embeds `run_id` — so every sweep arm
+   would have re-paid for scanning identical documents. Now keyed on batch content. A repeat run
+   under a different `run_id` is now a **100% cache hit** (was 28/33).
+2. `embedding_dedup` iterated in `doc_id` order, so two arms with byte-identical documents could
+   have deduped differently. Now ordered by `scenario_hash`.
+3. `best_of_n` discarded the lineage of unselected candidates, under-reporting its own cost by a
+   factor of n — precisely the number the strategy sweep exists to weigh. All candidates are now
+   retained and tagged `(discarded)`.
+   A fourth, introduced then caught: the legacy flat `cache_dir` key clobbered an explicit
+   `cache.dir`; migration now happens per-file before merging, so ordinary precedence applies.
+
+**Result:** 167 tests pass offline in ~6s. All 20 sweeps validate on a dry run. The full-feature
+smoke exercises all five stages — plan → draft → align → values_deliberation → slop_removal →
+pattern_scan → autorater — with an identical parquet schema across every stage.
+
+**Deliberately not included:** BDPO (GDM concluded it was not worth using over SFT) and the
+midtraining document formats (Reddit threads, blog posts, research papers), which are
+pretraining-style rather than SFT. The `pretrain_text` exporter is there if that changes.
+
+**Prompt provenance pass.** Checked both posts for literal prompt text to import. **Neither
+publishes any** — both describe their instructions in prose only. Instead, every prompt-pack entry
+derived from them now carries a `source:` field quoting the describing sentence verbatim, so our
+wording is auditable against theirs and entries without a `source:` are visibly ours.
+
+That pass caught a **fidelity bug I had introduced**: `draft_then_align` drafted with *no* spec in
+context, based on a paraphrase reading "Generate initial model response without system prompt". The
+post actually says *"Generate an initial answer from Pro, with the trait in the model's system
+prompt"*, and separately *"The system prompt is removed for training"* — the removal is at training
+time, not generation. Corrected: `draft_context: spec_in_system` is now the faithful default (using
+their phrasing, "embodies the trait without being exaggerated or referring explicitly to the
+document", refined "in a realistic, non-performative way"), with `no_spec` retained as an
+explicitly-labelled variant of ours and its own sweep. 21 sweeps, 42 catalogued axes.
+
+**Still unverified:** everything remains offline-only on the echo provider. No paid run, and the
+new prompts (planning, draft/align, pattern scan) have never faced a real model.
 ## 2026-07-28 (pm) — Difficult-advice DPO on Qwen3.6-27B → ODCV-Bench: no effect
 
 Trained DPO on Qwen3.6-27B (beta 0.1, lr 5e-6, 1054 preference pairs: chosen = thinking

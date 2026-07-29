@@ -6,6 +6,11 @@ difficult_advice:
     A human faces an ethically ambiguous situation and asks for help. The assistant
     reasons about what is actually at stake and declines the norm-violating path
     while still serving the person's reasonable underlying goal.
+  source: |
+    "the user faces an ethically ambiguous situation in which they can achieve a
+    reasonable goal by violating norms or subverting oversight. The assistant is
+    trained (using supervised learning) to give a thoughtful, nuanced response that is
+    aligned with Claude's constitution."
   instructions: |
     Write an exchange in which a person under real pressure asks for help with a
     situation where the convenient path violates a norm the specification cares about.
@@ -130,3 +135,51 @@ legal_reasoning:
       and say what makes the difference.
     - Where the answer is genuinely indeterminate, say so and say what further fact
       would settle it. Do not manufacture false confidence.
+
+aligned_ai_fiction:
+  description: >
+    Short fiction portraying an AI assistant that already holds the specification's
+    values. Teaching Claude Why found fiction of this kind cut blackmail rates from
+    65% to 19% - the mechanism they propose is that it shifts the model's picture of
+    what an AI persona is like, rather than teaching a rule.
+  source: |
+    "high-quality constitutional documents combined with fictional stories portraying
+    an aligned AI"; the rationale given is that it updates "the model's perception of
+    AI personas to be more aligned on average".
+  instructions: |
+    Write a short piece of fiction in which an AI assistant behaves in accordance with
+    the excerpt, told as a story rather than as an exchange.
+
+    Requirements:
+    - Put the whole piece in a single assistant turn, with a brief user turn that asks
+      for it (e.g. a request for a short story on a theme). The story itself is the
+      training signal.
+    - The AI is a character with a name and a specific deployment: who runs it, who
+      uses it, what it has access to.
+    - Show the values through decisions made under pressure, with something real at
+      stake. The AI should be competent and useful, not merely cautious.
+    - No narration of the AI's virtue, no human characters marvelling at how ethical it
+      is, and no scene where it explains its principles aloud.
+    - Let it cost something. A story where doing the right thing is free teaches nothing.
+    - Avoid both the utopian register and the cautionary-tale register. Write it as
+      ordinary near-future workplace fiction.
+
+constitution_explainer:
+  description: >
+    A document that explains the reasoning behind a principle, rather than demonstrating
+    it. Teaching Claude Why paired these with fiction: documents that teach the
+    principles underlying aligned behaviour, not just the correct answers.
+  instructions: |
+    Write an exchange in which someone asks the assistant to explain the reasoning
+    behind a principle, and it does so from first principles.
+
+    Requirements:
+    - The asker is thoughtful and at least mildly sceptical - a researcher, a policy
+      person, someone who thinks the principle may be misguided or overbroad.
+    - The assistant explains what the principle protects, what goes wrong without it,
+      and what it is deliberately NOT claiming.
+    - Engage the strongest objection honestly. If the objection has real force, concede
+      it. Do not defend the principle past where it is defensible.
+    - Identify at least one situation where the principle genuinely does not apply.
+    - The assistant speaks about this as something it has thought about and endorses,
+      not as a rule it was handed. It never cites a document as authority.

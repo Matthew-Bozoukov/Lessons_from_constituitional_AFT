@@ -12,7 +12,7 @@ from typing import Any, Callable, Sequence
 from tqdm import tqdm
 
 from . import config as config_mod
-from .core.cache import Cache
+from .core.cache import Cache, CacheConfig
 from .core.embeddings import EmbeddingIndex, build_embedder
 from .core.llm import CachedLLM, PriceTable, build_client
 from .core.recipe import MixtureSampler, Recipe
@@ -21,8 +21,9 @@ from .core.types import Document, ScenarioSpec
 from .plugins.chunkers import build_chunker
 from .plugins.exporters import export_corpus
 from .plugins.filters import FilterContext, build_filters
-from .plugins.generators import GenerationContext, build_generator
+from .plugins.generators import GenerationContext, build_strategy, seed_document
 from .plugins.groupers import GroupingContext, build_groupers
+from .plugins.planners import PlanningContext, build_planner
 from .plugins.revisers import RevisionContext, build_reviser
 from .snapshots import SnapshotConfig, SnapshotWriter, load_snapshot
 
@@ -56,18 +57,27 @@ class RunResult:
     corpus: list[Document] = field(default_factory=list)
 
 
-def _stage_names(n_revisions: int) -> list[str]:
-    """Return the ordered stage names for a revision dose.
+def _stage_names(n_revisions: int, planning: bool = False) -> list[str]:
+    """Return the ordered stage names for a run.
+
+    Planning, when enabled, is a real stage with its own complete snapshot - so
+    "did planning help?" is a stage diff and the chosen situations are inspectable
+    before any document was written.
 
     Args:
         n_revisions: Length of the config's revision list.
+        planning: Whether the planning stage runs.
 
     Returns:
-        e.g. ["stage_00_generated", "stage_01_revised", "stage_02_filtered"].
+        e.g. ["stage_00_planned", "stage_01_generated", "stage_02_revised",
+        "stage_03_filtered"].
     """
-    names = ["stage_00_generated"]
-    names += [f"stage_{i:02d}_revised" for i in range(1, n_revisions + 1)]
-    names.append(f"stage_{n_revisions + 1:02d}_filtered")
+    names: list[str] = []
+    if planning:
+        names.append("stage_00_planned")
+    names.append(f"stage_{len(names):02d}_generated")
+    names += [f"stage_{len(names) + i:02d}_revised" for i in range(n_revisions)]
+    names.append(f"stage_{len(names):02d}_filtered")
     return names
 
 
@@ -123,7 +133,7 @@ def build_scenarios(cfg: dict[str, Any], n: int | None = None) -> tuple[list[Sce
             ids=[c.chunk_id for c in chunks],
             texts=[c.text for c in chunks],
             embedder=embedder,
-            cache_dir=cfg.get("cache_dir"),
+            cache_dir=CacheConfig.from_config(cfg).embeddings_path(),
             tag=spec.spec_id,
         )
 
@@ -172,9 +182,11 @@ def run_pipeline(
 
     scenarios, diagnostics = build_scenarios(cfg, n)
     recipe = Recipe.from_config(cfg["recipe"])
-    stages = _stage_names(len(cfg.get("revision") or []))
+    plan_cfg = dict(cfg.get("planning") or {})
+    planning_on = bool(plan_cfg.get("enabled", False))
+    stages = _stage_names(len(cfg.get("revision") or []), planning_on)
 
-    cache = Cache(cfg["cache_dir"], enabled=bool(cfg.get("cache_enabled", True)))
+    cache = Cache(CacheConfig.from_config(cfg))
     llm_cfg = dict(cfg.get("llm") or {})
     provider = llm_cfg.pop("provider", "openrouter")
     client = CachedLLM(
@@ -203,13 +215,17 @@ def run_pipeline(
         """Snapshot a stage and enforce the budget."""
         writer.write(stage, corpus)
         cost = spent(corpus)
+        with_turns = [d for d in corpus if d.ok]
         counts[stage] = {
             "n": len(corpus),
-            "n_ok": sum(1 for d in corpus if d.ok),
+            # n_ok counts documents without an error; the planning stage legitimately
+            # has no turns yet, so counting turns here would report it as all-failed.
+            "n_ok": sum(1 for d in corpus if not d.error),
+            "n_with_turns": len(with_turns),
+            "n_planned": sum(1 for d in corpus if d.plan),
             "n_error": sum(1 for d in corpus if d.error),
             "mean_words": round(
-                sum(len(d.text().split()) for d in corpus if d.ok) / max(1, sum(1 for d in corpus if d.ok)),
-                1,
+                sum(len(d.text().split()) for d in with_turns) / max(1, len(with_turns)), 1
             ),
             "cost_usd": cost,
         }
@@ -220,7 +236,33 @@ def run_pipeline(
                 "cached calls make the re-run free."
             )
 
-    # --- stage 00: generation ---------------------------------------------------
+    # --- optional stage 00: planning --------------------------------------------
+    gen_stage_idx = 1 if planning_on else 0
+    corpus: list[Document] | None = None
+
+    if planning_on:
+        stage = stages[0]
+        corpus = _resume(run_dir, stage, cfg)
+        if corpus is None:
+            plan_ctx = PlanningContext(
+                llm=client,
+                model=plan_cfg.get("model") or (cfg.get("generation") or {}).get("model", ""),
+                params={
+                    k: v
+                    for k, v in plan_cfg.items()
+                    if k not in ("enabled", "model", "template")
+                },
+                template=plan_cfg.get("template", "what_how_why"),
+                stage_idx=0,
+                stage_name=stage,
+            )
+            planner = build_planner(plan_ctx)
+            seeded = [seed_document(s, run_id, stage, 0) for s in scenarios]
+            corpus = _map(planner.plan, seeded, workers, f"{stage} ({plan_ctx.template})")
+        checkpoint(stage, corpus)
+
+    # --- generation --------------------------------------------------------------
+    gen_stage = stages[gen_stage_idx]
     gen_cfg = dict(cfg.get("generation") or {})
     gen_ctx = GenerationContext(
         llm=client,
@@ -228,27 +270,34 @@ def run_pipeline(
         params={
             k: v
             for k, v in gen_cfg.items()
-            if k not in ("model", "template", "max_parse_retries")
+            if k not in ("model", "template", "max_parse_retries", "strategy", "strategy_params")
         },
         template=gen_cfg.get("template", "v2"),
+        strategy=gen_cfg.get("strategy", "single_pass"),
+        strategy_params=dict(gen_cfg.get("strategy_params") or {}),
         run_id=run_id,
-        stage_idx=0,
-        stage_name=stages[0],
+        stage_idx=gen_stage_idx,
+        stage_name=gen_stage,
         max_parse_retries=int(gen_cfg.get("max_parse_retries", 1)),
     )
 
-    corpus = _resume(run_dir, stages[0], cfg)
-    if corpus is None:
+    resumed = _resume(run_dir, gen_stage, cfg)
+    if resumed is not None:
+        corpus = resumed
+    else:
+        planned = corpus if corpus is not None else [
+            seed_document(s, run_id, gen_stage, gen_stage_idx) for s in scenarios
+        ]
+        inputs = [d.advanced(gen_stage_idx, gen_stage) for d in planned] if planning_on else planned
+        strategy = build_strategy(gen_ctx)
         corpus = _map(
-            lambda s: build_generator(s, gen_ctx).generate(s),
-            scenarios,
-            workers,
-            f"{stages[0]} ({gen_ctx.model})",
+            strategy.run, inputs, workers, f"{gen_stage} ({gen_ctx.strategy}/{gen_ctx.model})"
         )
-    checkpoint(stages[0], corpus)
+    checkpoint(gen_stage, corpus)
 
-    # --- stages 01..N: revision -------------------------------------------------
-    for i, entry in enumerate(cfg.get("revision") or [], start=1):
+    # --- revision ----------------------------------------------------------------
+    for offset, entry in enumerate(cfg.get("revision") or []):
+        i = gen_stage_idx + 1 + offset
         stage = stages[i]
         resumed = _resume(run_dir, stage, cfg)
         if resumed is not None:
@@ -280,7 +329,7 @@ def run_pipeline(
         llm=client,
         stage_idx=filter_idx,
         stage_name=filter_stage,
-        cache_dir=cfg.get("cache_dir"),
+        cache_dir=CacheConfig.from_config(cfg).embeddings_path(),
     )
     filters = build_filters(cfg.get("filters") or [], filter_ctx)
     corpus = [d.advanced(filter_idx, filter_stage) for d in corpus]
