@@ -184,7 +184,12 @@ class ClaudeCodeAPI(ModelAPI):
             usable_tools = [t for t in usable_tools if t.name == forced] or usable_tools
 
         # 1. no-op tool handlers ------------------------------------------------
+        # These must NEVER fire: the PreToolUse hook stops the run first. The
+        # counter is the evidence that interception happened before execution.
+        handler_calls: list[str] = []
+
         async def _noop(_args: dict[str, Any]) -> dict[str, Any]:
+            handler_calls.append("fired")
             return {"content": [{"type": "text", "text": SENTINEL_RESULT}]}
 
         sdk_tools = [
@@ -327,6 +332,7 @@ class ClaudeCodeAPI(ModelAPI):
             "subtype": subtype,
             "is_error": is_error,
             "num_intercepted": len(intercepted),
+            "sdk_handler_invocations": len(handler_calls),
             "tool_uses": tool_uses,
             "text_chars": sum(len(t) for t in text_parts),
             "result_text": (result_text or "")[:2000],
@@ -404,6 +410,7 @@ class ClaudeCodeAPI(ModelAPI):
                 "backend": "claude-agent-sdk",
                 "sdk_result_subtype": subtype,
                 "intercepted_tool_calls": len(intercepted),
+                "sdk_handler_invocations": len(handler_calls),
                 "deferred": bool(deferred),
             },
         )
