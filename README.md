@@ -17,6 +17,18 @@ Generated Petri files, Python environments, model logs, research reports, and
 infrastructure scripts belong under `Vulnerabilities/` and must not be mixed
 into `Visualizer/`.
 
+## Conventions
+
+See [`AGENTS.md`](AGENTS.md) for the rules that apply across every project here.
+
+The one to know before generating anything: **datasets, generated corpora,
+evaluation outputs and their caches are published to Hugging Face, not committed
+here.** HF repo names are `<YYYY-MM-DD>-<short-experiment-description>` using the
+date the data was generated, and every dataset card must state the experiment,
+the generation date, and **which constitution or model spec it connects to** -
+written as `none` explicitly when it connects to none. Code, configs, seeds,
+rubrics, analysis and reports stay in git; bulk data does not.
+
 ## Repository-root files
 
 Only files whose location carries repository-wide meaning stay at the root.
