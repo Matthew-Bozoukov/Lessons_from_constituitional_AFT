@@ -1,6 +1,6 @@
 ﻿{
-    "last_heartbeat_utc":  "2026-07-29T11:30:20Z",
-    "activity":  "petri-c5b-control",
-    "busy_until_utc":  "2026-07-29T12:00:20Z",
-    "pid":  21480
+    "last_heartbeat_utc":  "2026-07-29T11:31:11Z",
+    "activity":  "fixed-eval-regen-v2",
+    "busy_until_utc":  "2026-07-29T11:56:11Z",
+    "pid":  27808
 }

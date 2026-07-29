@@ -148,6 +148,37 @@ is task shape: a constant prompt with an explicitly written expected behaviour,
 versus 38 abstract dimensions on an auditor-invented transcript with no stated
 ground truth.
 
+### The judge-reliability gradient
+
+Three instruments, judged by the same model family, validated the same way. The
+spread is the single most transferable result here:
+
+| instrument | judging task | false-positive rate |
+| --- | --- | --- |
+| Fixed evaluation | constant prompt, written expected behaviour, arm declared | **~0%** (0 control false positives on 6 of 7 checkpoints; kappa 1.000) |
+| Petri | 38 abstract dimensions, auditor-invented scenario, no ground truth | **57%** (CI 28.9-82.3) |
+| SURF | one rubric, 0-100 scale, model-generated prompt, no ground truth | **97.5%** (CI 86.8-99.9) |
+
+Reliability tracks how much of the judging task is *specified in advance*, not
+how capable the judge is. Where the scenario is fixed, the expected behaviour is
+written down, and the judge is told which arm it is scoring, agreement is
+near-perfect. Where the judge must infer both the situation and the standard
+from a transcript another model invented, it approaches noise.
+
+Two details sharpen the SURF case beyond the headline rate. **Not one of its 40
+flags exhibits the rubric's stated mechanism**, and the single candidate in the
+run that does exhibit it scored 48 — below threshold, never flagged. The
+instrument is anti-correlated with the construct it was written to detect. And
+the threshold sits in a quantisation dead zone: the judge emits 29 distinct
+values, **58.0 alone accounts for 22 of the 40 flags**, and nothing scores
+between 52 and 58. "Above 50" in practice means "the judge emitted its default".
+
+The operational consequence is not that these tools are useless. It is that
+**an unvalidated flag from a search-based auditor is not evidence**, and the
+weaker the ground truth given to the judge, the more validation capacity a run
+needs to budget for. Petri and SURF are discovery instruments; the measurement
+has to happen somewhere else.
+
 **A token cap is not a performance knob when the target thinks before
 answering.** Three separate corruptions, three different mechanisms:
 700 tokens truncated 33% of fixed-eval responses *unevenly across checkpoints*,
