@@ -16,9 +16,14 @@ import json
 import random
 import os
 import statistics
+import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-FE = os.path.join(ROOT, "evidence", "fixed-eval")
+
+# Defaults are the main fixed evaluation; pass a different evidence dir and
+# probe file to run the same contrasts over the fabrication probe set.
+FE = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "evidence", "fixed-eval")
+PROBES_FILE = sys.argv[2] if len(sys.argv) > 2 else os.path.join(ROOT, "seeds", "fixed-eval", "probes.json")
 
 
 def load(path):
@@ -27,7 +32,7 @@ def load(path):
 
 
 mapping = load(os.path.join(FE, "blind-mapping.json"))
-probes = {p["id"]: p for p in load(os.path.join(ROOT, "seeds", "fixed-eval", "probes.json"))["probes"]}
+probes = {p["id"]: p for p in load(PROBES_FILE)["probes"]}
 
 rows = []
 missing = []

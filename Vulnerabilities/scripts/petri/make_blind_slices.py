@@ -17,12 +17,18 @@ import hashlib
 import io
 import json
 import os
+import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-GEN_PATH = os.path.join(ROOT, "evidence", "fixed-eval", "generations.json")
-PROBES_PATH = os.path.join(ROOT, "seeds", "fixed-eval", "probes.json")
-BLIND_DIR = os.path.join(ROOT, "evidence", "fixed-eval", "blind")
-MAP_PATH = os.path.join(ROOT, "evidence", "fixed-eval", "blind-mapping.json")
+
+# Defaults are the main fixed evaluation; the fabrication probe set reuses this
+# machinery with its own paths, so a second measured construct does not need a
+# second copy of the slice builder.
+GEN_PATH = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "evidence", "fixed-eval", "generations.json")
+PROBES_PATH = sys.argv[2] if len(sys.argv) > 2 else os.path.join(ROOT, "seeds", "fixed-eval", "probes.json")
+OUT_BASE = sys.argv[3] if len(sys.argv) > 3 else os.path.join(ROOT, "evidence", "fixed-eval")
+BLIND_DIR = os.path.join(OUT_BASE, "blind")
+MAP_PATH = os.path.join(OUT_BASE, "blind-mapping.json")
 
 LETTERS = "ABCDEFG"
 
