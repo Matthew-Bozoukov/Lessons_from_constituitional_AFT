@@ -1,6 +1,6 @@
 ﻿{
-    "last_heartbeat_utc":  "2026-07-29T00:01:04Z",
-    "activity":  "eval-checksum",
-    "busy_until_utc":  "2026-07-29T00:46:04Z",
-    "pid":  21544
+    "last_heartbeat_utc":  "2026-07-29T00:06:00Z",
+    "activity":  "petri-pilot",
+    "busy_until_utc":  "2026-07-29T03:06:00Z",
+    "pid":  13052
 }

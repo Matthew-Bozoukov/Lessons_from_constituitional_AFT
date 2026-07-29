@@ -1,10 +1,10 @@
 ﻿# Provider status
 
 ```text
-[GPU ACTIVE] runpod | NVIDIA A100-SXM4-80GB | $1.49/h | provider balance $106.5048 | experiment GPU budget $38.3208 remaining | elapsed 01:07 | vLLM healthy
+[GPU ACTIVE] runpod | NVIDIA A100-SXM4-80GB | $1.49/h | provider balance $106.126 | experiment GPU budget $38.0213 remaining | elapsed 01:19 | vLLM healthy
 ```
 
-Generated: 2026-07-29T00:05:23Z  (refresh reason: periodic)
+Generated: 2026-07-29T00:17:26Z  (refresh reason: periodic)
 
 Every figure below is labelled with its basis: **exact-provider-reported**,
 **locally-calculated**, **estimated**, or **unavailable**. Nothing is invented;
@@ -17,17 +17,17 @@ an unavailable figure is reported as unavailable.
 | Hourly price | 1.49 USD/h _(exact-provider-reported)_ |
 | Instance ID | `0vqb1gixqkqh5h` |
 | Instance state | RUNNING |
-| Provider balance | 106.5048 USD _(exact-provider-reported)_ |
+| Provider balance | 106.126 USD _(exact-provider-reported)_ |
 | Starting provider balance | 108.1129952401 USD _(exact-provider-reported)_ |
-| Provider balance delta | 1.6082 USD _(locally-calculated)_ |
-| Elapsed runtime | 01:07 (1.127 hours _(locally-calculated)_) |
-| Estimated infrastructure cost | 1.6792 USD _(locally-calculated)_ |
-| Experiment GPU budget remaining | 38.3208 USD _(locally-calculated)_ |
-| Wall-clock remaining | 34.873 hours _(locally-calculated)_ |
+| Provider balance delta | 1.987 USD _(locally-calculated)_ |
+| Elapsed runtime | 01:19 (1.328 hours _(locally-calculated)_) |
+| Estimated infrastructure cost | 1.9787 USD _(locally-calculated)_ |
+| Experiment GPU budget remaining | 38.0213 USD _(locally-calculated)_ |
+| Wall-clock remaining | 34.672 hours _(locally-calculated)_ |
 | Hard deadline | 2026-07-30T10:57:46Z |
 | Model-server health | healthy |
 | SSH-tunnel health | listening |
-| Last successful API refresh | 2026-07-29T00:05:23Z |
+| Last successful API refresh | 2026-07-29T00:17:27Z |
 | Cleanup-watchdog state | armed (deadline 2026-07-30T10:57:46Z) |
 | Anthropic spend | 0 USD _(locally-calculated)_ |
 | Anthropic budget remaining | unavailable _(nothing invented)_ |

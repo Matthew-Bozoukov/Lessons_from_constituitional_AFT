@@ -60,6 +60,7 @@ $argList = @(
     '-T', 'target_tools=synthetic',
     '--model-role', "auditor=$Auditor",
     '--model-role', "judge=$Judge",
+    '--model-role', "target=$Target",
     '--model', $Target,
     '--epochs', "$Epochs",
     '--max-connections', "$MaxConnections",
