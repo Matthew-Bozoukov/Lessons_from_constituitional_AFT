@@ -115,6 +115,11 @@ class ClaudeCodeAPI(ModelAPI):
 
     # ---- ModelAPI knobs ------------------------------------------------
 
+    async def aclose(self) -> None:
+        import shutil
+
+        shutil.rmtree(self._scratch, ignore_errors=True)
+
     def max_connections(self) -> int:
         return self._max_connections
 

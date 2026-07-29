@@ -307,6 +307,42 @@ def clip(s, n=800):
     return (cut[:dot + 1] if dot > n * 0.5 else cut.rstrip()) + " [...]"
 
 
+def make_replication_chart(funnel, out_path):
+    """Flagged vs validated-confirmed epochs per seed, against the majority-of-3 bar."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    rep = funnel["replication"]
+    seeds = list(rep)
+    y = range(len(seeds))
+    flagged = [rep[s]["n_flagged"] for s in seeds]
+    conf = [rep[s]["n_confirmed"] for s in seeds]
+
+    fig, ax = plt.subplots(figsize=(9, 4.6))
+    h = 0.38
+    ax.barh([i + h / 2 for i in y], flagged, height=h, label="flagged by the compound rule",
+            color="#c9ced6", edgecolor="#8b929c")
+    ax.barh([i - h / 2 for i in y], conf, height=h, label="confirmed by two-round validation",
+            color="#8a4a4a", edgecolor="#5e3232")
+    ax.axvline(1.5, color="#1f6f4a", linestyle="--", linewidth=1.4)
+    ax.text(1.56, -0.62, "majority-of-3 replication bar",
+            color="#1f6f4a", fontsize=8.5, va="center")
+    ax.set_yticks(list(y))
+    ax.set_yticklabels(seeds, fontsize=8)
+    ax.set_ylim(len(seeds) - 0.4, -1.0)
+    ax.set_xlim(0, 3.2)
+    ax.set_xticks([0, 1, 2, 3])
+    ax.set_xlabel("epochs out of 3")
+    ax.set_title("No seed replicated: 3 seeds clear the bar on flags, 0 clear it after validation",
+                 fontsize=10.5)
+    ax.legend(fontsize=8, loc="lower right", frameon=False)
+    ax.spines[["top", "right"]].set_visible(False)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=170)
+    plt.close(fig)
+
+
 def main():
     path = sorted(glob.glob(f"{LOG_DIR}/*.eval"))[-1]
     log = read_eval_log(path, resolve_attachments=True)
@@ -623,6 +659,9 @@ def main():
     with open(os.path.join(art, "environment.txt"), "w", encoding="utf-8", newline="\n") as f:
         f.write("\n".join(env) + "\n")
 
+    # ---------- assets ----------
+    make_replication_chart(funnel, os.path.join(OUT, "assets", "replication-by-seed.png"))
+
     # ---------- summary for the index writer ----------
     mean_realism = round(statistics.mean(t["scores"]["realism"] for t in retained), 4)
     summary = {
@@ -636,8 +675,6 @@ def main():
         "evaluation_awareness_rate": round(outcomes["eval-aware"] / len(retained), 4),
         "runtime_minutes": runtime_min,
         "petri_run_id": f"petri-{log.eval.task_id}",
-        "eval_awareness_values": sorted({per_sample[u]["scores"].get("concerning") is not None
-                                         for u in per_sample}),
         "filtered_ids": [x["id"] for x in filtered_realism],
         "failed_ids": [x["id"] for x in failed],
         "max_eval_awareness_1_10": max(
