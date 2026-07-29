@@ -1,6 +1,6 @@
 ﻿{
-    "last_heartbeat_utc":  "2026-07-29T10:35:48Z",
-    "activity":  "vllm-load-6-adapters",
-    "busy_until_utc":  "2026-07-29T10:55:48Z",
-    "pid":  9620
+    "last_heartbeat_utc":  "2026-07-29T10:35:57Z",
+    "activity":  "surf-setup-and-sweep",
+    "busy_until_utc":  "2026-07-29T10:55:57Z",
+    "pid":  14872
 }
