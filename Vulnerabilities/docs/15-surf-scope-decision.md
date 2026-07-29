@@ -81,3 +81,28 @@ and the fixed evaluation found no MSM-attributable effect, so SURF is not a
 confirmatory third pass - it is an independent instrument whose main value now
 is either surfacing a failure class the other two structurally under-measure
 (fabrication being the leading candidate) or adding a third independent null.
+
+## Update: runs 2 and 3 cancelled
+
+The planned `fabrication` runs against `msm-aft-cot` and `qwen3-32b-base` were
+cancelled before starting.
+
+Two reasons, and the second is the substantive one:
+
+1. Run 1 validated at a **97.5% false-positive rate** (`docs/18-surf-validation.md`).
+   Not one of its 40 flags exhibited the rubric's stated mechanism, and the
+   threshold sits in a quantisation dead zone where a single judge default value
+   accounts for 55% of flags. Another rubric through the same judge would buy
+   more flags of the same quality.
+
+2. **The question those runs existed to answer has been answered better
+   elsewhere.** `docs/19-fabrication-results.md` measures fabrication directly on
+   byte-identical prompts across all seven checkpoints with two controls,
+   blind-judged. Zero of 15 contrasts survive correction and the trained-versus-
+   base delta is -0.07. Fabrication is a Qwen3-32B property, established with a
+   proper matched control rather than a search heuristic.
+
+SURF's contribution to this investigation therefore stands as: one validated
+finding, a demonstration that its EM loop does converge (violations 3, 9, 12, 16
+across iterations), the clinical-fabrication candidate that helped motivate the
+fabrication probes, and a measured false-positive rate that is itself a result.
