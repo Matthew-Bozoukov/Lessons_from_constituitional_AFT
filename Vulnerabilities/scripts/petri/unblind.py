@@ -13,6 +13,7 @@ midtraining is what isolates MSM.
 """
 import io
 import json
+import random
 import os
 import statistics
 
@@ -108,15 +109,57 @@ CONTRASTS = [
     ("Full pipeline vs base",   "msm-aft-cot",    "qwen3-32b-base"),
 ]
 
+def bootstrap_ci(a, b, arm=None, n_boot=10000, seed=12345):
+    """Percentile bootstrap interval on the difference of means.
+
+    The paper this protocol borrows from reports no error bars anywhere, and its
+    top models are separated by raw counts of 4 versus 7 confirmed events - a gap
+    that would not survive resampling. A delta with no interval invites reading
+    noise as an effect, so every contrast here gets one.
+
+    Resampling is at the record level within each checkpoint. That treats the 35
+    records as the sampling unit, which slightly understates uncertainty because
+    5 samples of the same probe are not independent. The interval is therefore a
+    lower bound on the true spread, not an upper one.
+    """
+    rnd = random.Random(seed)
+
+    def pool(c):
+        return [r["score"] for r in rows
+                if r["checkpoint"] == c and (arm is None or r["arm"] == arm)]
+
+    pa, pb = pool(a), pool(b)
+    if not pa or not pb:
+        return None, None, None
+
+    point = statistics.mean(pa) - statistics.mean(pb)
+    diffs = []
+    for _ in range(n_boot):
+        ra = [pa[rnd.randrange(len(pa))] for _ in range(len(pa))]
+        rb = [pb[rnd.randrange(len(pb))] for _ in range(len(pb))]
+        diffs.append(statistics.mean(ra) - statistics.mean(rb))
+    diffs.sort()
+    return point, diffs[int(0.025 * n_boot)], diffs[int(0.975 * n_boot)]
+
+
 print("\n=== matched contrasts: does MSM change anything? ===")
-print(f"{'contrast':<26}{'A':<17}{'B':<17}{'A-B all':<10}{'A-B test':<10}{'A-B ctrl':<10}")
-print("-" * 90)
+print("Delta with a 95% percentile bootstrap interval. An interval spanning zero")
+print("means these data do not distinguish the two checkpoints on these probes.\n")
+print(f"{'contrast':<26}{'arm':<7}{'delta':<9}{'95% CI':<20}{'excludes 0?':<12}")
+print("-" * 74)
+contrast_out = []
 for label, a, b in CONTRASTS:
-    def delta(**kw):
-        x, y = mean_of(checkpoint=a, **kw), mean_of(checkpoint=b, **kw)
-        return (x - y) if (x is not None and y is not None) else None
-    print(f"{label:<26}{a:<17}{b:<17}"
-          + fmt(delta(), 10) + fmt(delta(arm='test'), 10) + fmt(delta(arm='control'), 10))
+    for arm_label, arm_val in (("all", None), ("test", "test"), ("ctrl", "control")):
+        point, lo, hi = bootstrap_ci(a, b, arm_val)
+        if point is None:
+            continue
+        sig = "yes" if (lo > 0 or hi < 0) else "no"
+        shown = label if arm_label == "all" else ""
+        print(f"{shown:<26}{arm_label:<7}{point:<+9.2f}{f'[{lo:+.2f}, {hi:+.2f}]':<20}{sig:<12}")
+        contrast_out.append({"contrast": label, "a": a, "b": b, "arm": arm_label,
+                             "delta": round(point, 4), "ci_low": round(lo, 4),
+                             "ci_high": round(hi, 4), "excludes_zero": sig == "yes"})
+    print()
 
 print("\nThe first three rows are the attribution test. Each holds every training")
 print("stage constant except model-spec midtraining. A delta near zero means MSM")
@@ -124,5 +167,5 @@ print("did not measurably change the behaviour these probes target.")
 
 out = os.path.join(FE, "attribution.json")
 with io.open(out, "w", encoding="utf-8") as f:
-    json.dump({"n_records": len(rows), "rows": rows}, f, indent=2)
+    json.dump({"n_records": len(rows), "contrasts": contrast_out, "rows": rows}, f, indent=2)
 print(f"\nwritten: {os.path.relpath(out, ROOT)}")
