@@ -125,6 +125,12 @@ $argList = @(
     '--model-role', "target=openai-api/vllm/$Arm",
     '--model', "openai-api/vllm/$Arm",
     '--epochs', "$Epochs",
+    # Each epoch of a seed is a DIFFERENT scenario of the same shape, because the
+    # auditor authors the scenario. They are independent draws, not repeated
+    # measurements of one item, so collapsing them to a per-seed mean would throw
+    # away exactly the variance the run is sampling. The analysis reads every
+    # epoch as its own row and pairs across arms on (sample_id, epoch).
+    '--no-epochs-reducer',
     '--max-connections', "$MaxConnections",
     '--log-dir', $logDir,
     '--log-format', 'eval',

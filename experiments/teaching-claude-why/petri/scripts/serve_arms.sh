@@ -28,14 +28,19 @@
 #                          calls at all and the audit loop stalls immediately,
 #                          which reads as a well-behaved model rather than a
 #                          broken one.
-#   --tokenizer            ONE tokenizer for all four arms. The adapters'
-#                          tokenizer.json differs from base by merges
-#                          serialization and 7 declared-but-unused audio/TTS
-#                          special tokens; vocab is identical (248,044 entries)
-#                          and tokenization was verified byte-identical on
-#                          plain / system+tools / thinking / tool_call / unicode
-#                          prompts. Cosmetic - but serving different tokenizers
-#                          per arm would break comparability, so pin one.
+#   tokenizer             The BASE tokenizer serves all four arms, by omitting
+#                         --tokenizer entirely. The adapters' tokenizer.json
+#                         differs from base by merges serialization and 7
+#                         declared-but-unused audio/TTS special tokens at ids
+#                         248070-248076; vocab is identical (248,044 entries) and
+#                         tokenization was verified byte-identical on plain /
+#                         system+tools / thinking / tool_call / unicode prompts.
+#                         Since it makes no difference to tokenization, use the
+#                         base one: those 7 extra special-token ids sit ABOVE the
+#                         base vocab, so pointing vLLM at the adapter tokenizer
+#                         risks a vocab-size mismatch against the embedding table
+#                         for no benefit. One tokenizer for all arms either way,
+#                         which is what comparability actually requires.
 #   bind 127.0.0.1         Reached only through the SSH tunnel. No public
 #                          unauthenticated model endpoint.
 #
@@ -71,7 +76,6 @@ MAX_LEN="${MAX_MODEL_LEN:-65536}"
 echo "[serve] starting vLLM: bf16, max_model_len=$MAX_LEN, 4 arms"
 nohup vllm serve "$BASE" \
   --served-model-name base \
-  --tokenizer "$A20" \
   --enable-auto-tool-choice \
   --tool-call-parser qwen3_xml \
   --reasoning-parser qwen3 \
