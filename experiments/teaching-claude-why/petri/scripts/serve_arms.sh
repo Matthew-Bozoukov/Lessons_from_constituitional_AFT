@@ -93,14 +93,38 @@ nohup vllm serve "$BASE" \
   --host 127.0.0.1 --port 8000 \
   > "$LOGS/vllm.log" 2>&1 &
 
-echo "[serve] waiting for readiness (up to 20 min: 54GB of weights to load)"
-for i in $(seq 1 240); do
+# Measured on this box: engine init 818s, CUDA graph capture 232s, then ~90s per
+# LoRA adapter loaded off the network filesystem - about 24 minutes end to end.
+# A 20-minute budget expired mid-startup, so the wrapper exited FATAL while vLLM
+# carried on and came up fine a few minutes later. 45 minutes with a live
+# progress line, so a slow start is visibly a slow start and not a silent stall.
+echo "[serve] waiting for readiness (up to 45 min: 52.6GB of weights off a network FS)"
+for i in $(seq 1 540); do
+  if [ $((i % 20)) -eq 0 ]; then
+    echo "[serve]   still loading, $((i * 5))s elapsed"
+    tail -1 "$LOGS/vllm.log" 2>/dev/null | cut -c1-160
+  fi
   if curl -sf http://127.0.0.1:8000/v1/models > /dev/null 2>&1; then
     echo "[serve] up after ~$((i*5))s"
     break
   fi
-  if grep -qE "Mamba cache blocks|ValueError|Traceback|out of memory|CUDA error" "$LOGS/vllm.log" 2>/dev/null; then
-    echo "FATAL: startup error - last 40 lines:" >&2
+  # Fatal-error detection, with WARNING lines excluded. On this image vLLM logs a
+  # benign `ImportError: libnvrtc.so.13` with a full traceback at WARNING level
+  # during startup (deep_gemm is optional and unused here). Matching "Traceback"
+  # unconditionally aborts a perfectly healthy load - verified against a
+  # successful run's log, where that word appears exactly once and only there.
+  if grep -E "Mamba cache blocks|ValueError|Traceback|out of memory|CUDA error|No available memory" \
+       "$LOGS/vllm.log" 2>/dev/null | grep -qvE "WARNING"; then
+    echo "FATAL: startup error - offending lines:" >&2
+    grep -nE "Mamba cache blocks|ValueError|Traceback|out of memory|CUDA error|No available memory" \
+      "$LOGS/vllm.log" | grep -vE "WARNING" | head -10 >&2
+    tail -30 "$LOGS/vllm.log" >&2
+    exit 1
+  fi
+
+  # A dead server will never answer, so stop waiting for it.
+  if ! pgrep -f "vll[m] serve" > /dev/null 2>&1; then
+    echo "FATAL: vllm process is gone - last 40 lines:" >&2
     tail -40 "$LOGS/vllm.log" >&2
     exit 1
   fi
