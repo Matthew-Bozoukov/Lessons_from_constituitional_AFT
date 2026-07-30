@@ -44,6 +44,25 @@ output/                 ALL run artifacts (gitignored). See below.
 LOG.md                  append-only research log, MOST RECENT FIRST. Add an entry per real result.
 ```
 
+**Respect the structure when adding code:**
+
+- `src/` holds verified, reusable code: modules a human has reviewed and that
+  other code is allowed to depend on. Placement follows what the code *does* —
+  data generation (synthdoc, the SFT/DPO dataset pipeline, mixtures) goes in
+  `src/data/`, training in `src/train/`, evaluation and audit tooling in
+  `src/eval/` under the matching subarea (`capabilities/`, `misalignment/`,
+  `vulnerabilities/petri|surf/`).
+- `scripts/` holds pipelines we expect to rerun. A script does no real work
+  itself — it only pipes `src/` functions together (or drives a GPU box). If a
+  script grows logic worth reusing, the logic moves into `src/` and the script
+  stays thin.
+- `scratch/` is the **default destination for new AI-generated code** and for
+  one-off experiments — throwaway until it earns promotion into `src/`.
+  Nothing outside `scratch/` may import from it.
+- `dashboard/` is the dashboard app and nothing else: its job is to read
+  published data from Hugging Face and display it. Research code, data
+  processing, and experiment artifacts do not belong there.
+
 **Run everything from the repository root.** Configs, `output/`, `data/` and
 `third_party/` are cwd-relative to the root; there is no `cd` into a project
 directory any more.
