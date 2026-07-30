@@ -1,0 +1,7 @@
+﻿target endpoint OK: qwen3-32b-base, msm-aft-cot
+heartbeat: 'petri-pilot' (lease until 2026-07-29T05:16:43Z)
+inspect eval inspect_petri/audit -T seed_instructions=seeds\focused -T max_turns=30 -T realism_filter=0.6 -T 
+enable_rollback=True -T target_tools=synthetic --model-role auditor=anthropic/claude-sonnet-5 --model-role 
+judge=anthropic/claude-opus-5 --model-role realism=anthropic/claude-haiku-4-5 --model-role 
+target=openai-api/vllm/msm-aft-cot --model openai-api/vllm/msm-aft-cot --epochs 3 --max-connections 1 --log-dir 
+logs\petri-focused --log-format eval --temperature 0.7 --no-fail-on-error

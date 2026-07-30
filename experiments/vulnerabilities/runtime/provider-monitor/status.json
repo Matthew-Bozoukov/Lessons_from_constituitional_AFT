@@ -1,0 +1,66 @@
+﻿{
+    "generated_at":  "2026-07-29T14:32:43Z",
+    "refresh_reason":  "periodic",
+    "run_id":  "msm-audit-20260728-212645",
+    "provider":  "runpod",
+    "gpu":  "NVIDIA A100-SXM4-80GB",
+    "hourly_price_usd":  {
+                             "value":  1.49,
+                             "basis":  "exact-provider-reported",
+                             "unit":  "USD/h"
+                         },
+    "instance_id":  "p397jthrc130o2",
+    "instance_state":  "query-failed",
+    "provider_balance":  {
+                             "value":  null,
+                             "basis":  "unavailable",
+                             "unit":  "USD"
+                         },
+    "starting_provider_balance":  {
+                                      "value":  108.1129952401,
+                                      "basis":  "exact-provider-reported",
+                                      "unit":  "USD"
+                                  },
+    "provider_balance_delta":  {
+                                   "value":  null,
+                                   "basis":  "unavailable",
+                                   "unit":  "USD"
+                               },
+    "elapsed_runtime":  {
+                            "value":  6.8574,
+                            "basis":  "locally-calculated",
+                            "unit":  "hours"
+                        },
+    "elapsed_runtime_text":  "07:51",
+    "estimated_infrastructure_cost":  {
+                                          "value":  23.1376,
+                                          "basis":  "locally-calculated",
+                                          "unit":  "USD"
+                                      },
+    "experiment_gpu_budget_remaining":  {
+                                            "value":  16.8624,
+                                            "basis":  "locally-calculated",
+                                            "unit":  "USD"
+                                        },
+    "wall_clock_remaining":  {
+                                 "value":  29.143,
+                                 "basis":  "locally-calculated",
+                                 "unit":  "hours"
+                             },
+    "hard_deadline_utc":  "2026-07-30T19:41:17Z",
+    "model_server_health":  "unreachable",
+    "ssh_tunnel_health":  "down",
+    "last_successful_api_refresh":  "2026-07-29T09:58:47Z",
+    "api_refresh_ok_this_cycle":  false,
+    "cleanup_watchdog_state":  "armed (deadline 2026-07-30T19:41:17Z)",
+    "anthropic_spent_usd":  {
+                                "value":  0,
+                                "basis":  "locally-calculated",
+                                "unit":  "USD"
+                            },
+    "anthropic_budget_remaining":  {
+                                       "value":  null,
+                                       "basis":  "unavailable",
+                                       "unit":  "USD"
+                                   }
+}

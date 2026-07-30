@@ -1,0 +1,8 @@
+﻿{
+    "local_port":  8000,
+    "reconnects":  1,
+    "last_heartbeat_utc":  "2026-07-29T14:32:46Z",
+    "pid":  26220,
+    "detail":  "",
+    "status":  "connecting"
+}

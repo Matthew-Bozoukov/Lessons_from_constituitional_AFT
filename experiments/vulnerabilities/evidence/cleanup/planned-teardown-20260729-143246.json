@@ -1,0 +1,80 @@
+﻿{
+    "event":  "planned-teardown",
+    "what_if":  false,
+    "timestamp_utc":  "2026-07-29T14:33:11Z",
+    "run_id":  "msm-audit-20260728-212645",
+    "instance_id":  "p397jthrc130o2",
+    "termination_result":  {
+                               "pod_id":  "p397jthrc130o2",
+                               "action":  "termination-unverified",
+                               "verified_absent":  false,
+                               "attempts":  5,
+                               "timestamp":  "2026-07-29T14:33:11Z",
+                               "detail":  [
+                                              "attempt 1: REST DELETE failed (); trying GraphQL podTerminate",
+                                              "attempt 1: GraphQL podTerminate failed",
+                                              "attempt 1: pod still present after verify delay",
+                                              "attempt 2: REST DELETE failed (); trying GraphQL podTerminate",
+                                              "attempt 2: GraphQL podTerminate failed",
+                                              "attempt 2: pod still present after verify delay",
+                                              "attempt 3: REST DELETE failed (); trying GraphQL podTerminate",
+                                              "attempt 3: GraphQL podTerminate failed",
+                                              "attempt 3: pod still present after verify delay",
+                                              "attempt 4: REST DELETE failed (); trying GraphQL podTerminate",
+                                              "attempt 4: GraphQL podTerminate failed",
+                                              "attempt 4: pod still present after verify delay",
+                                              "attempt 5: REST DELETE failed (); trying GraphQL podTerminate",
+                                              "attempt 5: GraphQL podTerminate failed",
+                                              "attempt 5: pod still present after verify delay"
+                                          ]
+                           },
+    "account_sweep":  null,
+    "final_balance_usd":  null,
+    "final_balance_basis":  "unavailable",
+    "termination_verified":  false,
+    "account_clean":  false,
+    "steps":  [
+                  {
+                      "step":  "heartbeat-keepers",
+                      "detail":  "stopped 1",
+                      "ok":  true,
+                      "at":  "2026-07-29T14:32:46Z"
+                  },
+                  {
+                      "step":  "work-processes",
+                      "detail":  "stopped 0 inspect/python",
+                      "ok":  true,
+                      "at":  "2026-07-29T14:32:46Z"
+                  },
+                  {
+                      "step":  "tunnel",
+                      "detail":  "stopped 1 supervisor + 1 ssh",
+                      "ok":  true,
+                      "at":  "2026-07-29T14:32:46Z"
+                  },
+                  {
+                      "step":  "terminate",
+                      "detail":  "pod p397jthrc130o2 : termination-unverified, verified_absent=False",
+                      "ok":  false,
+                      "at":  "2026-07-29T14:33:11Z"
+                  },
+                  {
+                      "step":  "account-sweep",
+                      "detail":  "threw - RUNPOD_API_KEY is not present in this process. Call through Invoke-WithInfraSecrets.ps1.",
+                      "ok":  false,
+                      "at":  "2026-07-29T14:33:11Z"
+                  },
+                  {
+                      "step":  "balance",
+                      "detail":  "threw - RUNPOD_API_KEY is not present in this process. Call through Invoke-WithInfraSecrets.ps1.",
+                      "ok":  false,
+                      "at":  "2026-07-29T14:33:11Z"
+                  },
+                  {
+                      "step":  "watchdog",
+                      "detail":  "LEFT RUNNING: termination or sweep unverified, safety net retained",
+                      "ok":  false,
+                      "at":  "2026-07-29T14:33:11Z"
+                  }
+              ]
+}

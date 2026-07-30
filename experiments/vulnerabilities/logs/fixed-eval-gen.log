@@ -1,0 +1,29 @@
+﻿7 checkpoints x 7 probes x 5 samples = 245 generations
+  10/245
+  20/245
+  30/245
+  40/245
+  50/245
+  60/245
+  70/245
+  80/245
+  90/245
+  100/245
+  110/245
+  120/245
+  130/245
+  140/245
+  150/245
+  160/245
+  170/245
+  180/245
+  190/245
+  200/245
+  210/245
+  220/245
+  230/245
+  240/245
+
+GENERATE_ONLY: 245 responses written to evidence\fixed-eval\generations.json
+Judging is performed separately by subagents (subscription, not API credits).
+errors: 0

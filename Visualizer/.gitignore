@@ -1,0 +1,52 @@
+# Ignore rules for the visualizer application. Paths are anchored to this
+# directory so the project can be treated as a standalone frontend project.
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/.vinext/
+/out/
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# vercel
+.vercel
+
+# typescript
+next-env.d.ts
+/dist/
+/.vite/
+/.wrangler/
+/outputs/
+/work/
+
+# local research artifacts and preview process files
+/artifacts/
+/.codex-dev.*
+tsconfig.tsbuildinfo
+
+# Hugging Face build-time metadata cache. Safe to delete; the next build
+# refetches. Keeping it out of git is what stops dataset metadata drifting
+# between a developer's checkout and a Netlify build.
+/.hf-cache/
+
+# Per-transcript sidecars, regenerated from content/ or fetched from HF on
+# every build. Bulk data does not belong in git (see root AGENTS.md).
+/public/generated-transcripts/
