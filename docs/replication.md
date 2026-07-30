@@ -140,7 +140,8 @@ The eval harness (vendored `third_party/agentic-misalignment/`) is patched with 
 To train it yourself:
 ```bash
 # thinking-format (recommended): reasoning preserved
-python scripts/train_lora.py --config configs/train_lora_thinking.yaml
+# (on the GPU box; uv workflow — see the root README's "Remote GPU boxes")
+uv run --no-sync scripts/train_lora.py --config configs/train_lora_thinking.yaml
 # (non-thinking baseline arm: configs/train_lora.yaml)
 ```
 Key config: r=32, 2 epochs, batch 4 × grad-accum 4, max_seq_len 2048, `assistant_only_loss: false`

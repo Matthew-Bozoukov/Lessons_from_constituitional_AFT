@@ -24,7 +24,28 @@ its behaviour, plus a web frontend that presents the results.
 
 **Run everything from the repository root.** `configs/`, `data/`, `output/` and
 `third_party/` are resolved against the current directory, and `uv sync`
-installs `src/` editable so `import src.*` works from anywhere.
+installs `src/` editable so `import src.*` works from anywhere — locally and on
+remote boxes alike; there are no `sys.path` tricks.
+
+### Remote GPU boxes
+
+Remote machines use uv exactly like local ones — install it, clone, sync, run:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+git clone <this-repo> /root/work && cd /root/work
+uv sync                          # base deps + src/ installed editable
+uv pip install vllm==0.8.5 "transformers==4.51.3" trl==0.19.1 \
+    peft bitsandbytes accelerate wandb          # pinned GPU stack (CLAUDE.md gotcha 1)
+uv run --no-sync scripts/train_lora.py --config configs/train_lora.yaml
+```
+
+The GPU stack is layered in with `uv pip` rather than declared in
+`pyproject.toml` because its pins conflict with the lockfile (vLLM 0.8.5
+requires `transformers==4.51.3`, and vLLM has no macOS wheels), so the box venv
+intentionally diverges from `uv.lock`. **Always use `uv run --no-sync` on the
+box** — a plain `uv run` re-syncs the venv to the lock and silently undoes the
+transformers downgrade.
 
 | Area | What it is | How to work in it |
 | --- | --- | --- |

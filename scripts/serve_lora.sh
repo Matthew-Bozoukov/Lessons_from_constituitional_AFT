@@ -6,7 +6,7 @@ ADAPTER="${1:?usage: serve_lora.sh <adapter_dir>}"
 cd /root
 set -a; source /root/work/.env; set +a
 export HF_TOKEN="$HF_TOKEN"
-exec python -m vllm.entrypoints.openai.api_server \
+exec uv run --project /root/work --no-sync python -m vllm.entrypoints.openai.api_server \
   --model Qwen/Qwen3-32B --served-model-name qwen3 \
   --enable-lora --max-lora-rank 32 \
   --lora-modules "difficult_advice=${ADAPTER}" \
