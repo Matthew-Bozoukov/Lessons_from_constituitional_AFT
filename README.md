@@ -8,7 +8,7 @@ its behaviour, plus a web frontend that presents the results.
 
 ```text
 .
-├── Visualizer/                      # research-log frontend (Next/vinext), deployed on Netlify
+├── dashboard/                      # research-log frontend (Next/vinext), deployed on Netlify
 └── experiments/
     ├── teaching-claude-why/         # difficult-advice replication on Qwen3-32B
     └── vulnerabilities/             # Petri + SURF audits of Model Spec Midtraining checkpoints
@@ -16,12 +16,12 @@ its behaviour, plus a web frontend that presents the results.
 
 The two experiment directories sit together because they are the same kind of
 thing: Python projects that run LLM experiments, generate data, and publish it.
-`Visualizer/` is top-level because it is a separate application with its own
+`dashboard/` is top-level because it is a separate application with its own
 toolchain and its own deployment.
 
 | Directory | What it is | How to work in it |
 | --- | --- | --- |
-| [`Visualizer/`](Visualizer/README.md) | The research-log web app: datasets, eval runs, Petri results, findings. Self-contained Node project. | `cd Visualizer && npm ci && npm run dev` |
+| [`dashboard/`](dashboard/README.md) | The research-log web app: datasets, eval runs, Petri results, findings. Self-contained Node project. | `cd dashboard && npm ci && npm run dev` |
 | [`experiments/teaching-claude-why/`](experiments/teaching-claude-why/README.md) | Replicates the *difficult advice* result from Anthropic's [Teaching Claude Why](https://www.anthropic.com/research/teaching-claude-why): SFT on out-of-distribution difficult-advice data reduces agentic misalignment on held-out honeypots. Headline: **19.3% to 8.0%** with thinking-format training. | `cd experiments/teaching-claude-why && uv sync && uv run pytest` |
 | [`experiments/vulnerabilities/`](experiments/vulnerabilities/README.md) | Petri and SURF audits asking whether model-spec midtraining introduced out-of-distribution alignment vulnerabilities. Answer: no MSM-attributable effect survives correction. | Start at `experiments/vulnerabilities/docs/16-findings.md` |
 
@@ -62,9 +62,9 @@ applies to every nested project.
 
 ## Deployment
 
-`Visualizer/` deploys to Netlify on every push to the default branch. The root
+`dashboard/` deploys to Netlify on every push to the default branch. The root
 [`netlify.toml`](netlify.toml) sets the base directory; the build command and
-publish directory live in `Visualizer/netlify.toml`, so the two do not drift.
+publish directory live in `dashboard/netlify.toml`, so the two do not drift.
 
 The repository-to-site link lives in the Netlify dashboard, not in git. If the
 deploying repository changes, the site must be re-linked there - nothing in the
@@ -73,7 +73,7 @@ repository can restore it.
 ## History
 
 This repository is the merge of two previously separate repositories. The
-`Visualizer/` and `experiments/vulnerabilities/` trees were brought in with
+`dashboard/` and `experiments/vulnerabilities/` trees were brought in with
 their full commit history rather than copied, so the record of how each finding
 was reached - including the ones that did not survive scrutiny - is preserved in
 `git log`.

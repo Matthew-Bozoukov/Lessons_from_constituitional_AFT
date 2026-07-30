@@ -324,7 +324,7 @@ def publish_petri_run(
     """Publish a Petri export bundle in the shape the visualizer reads.
 
     The input is the export directory described in
-    ``Visualizer/docs/CLAUDE_CODE_PETRI_EXPORT_GUIDE.md``: ``index.md``,
+    ``dashboard/docs/CLAUDE_CODE_PETRI_EXPORT_GUIDE.md``: ``index.md``,
     ``data/scenarios.jsonl``, ``results/transcripts.jsonl``,
     ``results/scores.json`` and optional ``artifacts/`` and ``assets/``. Those
     files are uploaded unchanged; the shards and the manifest are derived.
@@ -353,7 +353,7 @@ def publish_petri_run(
     if not transcripts_path.exists():
         raise FileNotFoundError(
             f"{transcripts_path} not found. publish_petri_run expects the export "
-            "layout from Visualizer/docs/CLAUDE_CODE_PETRI_EXPORT_GUIDE.md."
+            "layout from dashboard/docs/CLAUDE_CODE_PETRI_EXPORT_GUIDE.md."
         )
 
     owned_temp = staging_dir is None

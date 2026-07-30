@@ -8,7 +8,7 @@ The browser is deliberately read-only. Research is authored as Markdown, JSON,
 JSONL, images, and other artifacts on disk; the app indexes those sources into
 an explorable research console.
 
-This application is a standalone project rooted at `Visualizer/`. It is one of
+This application is a standalone project rooted at `dashboard/`. It is one of
 two top-level directories in the repository; the vulnerability investigation
 lives separately under `Vulnerabilities/` and shares no build tooling with the
 visualizer.
@@ -20,7 +20,7 @@ visualizer.
 - Node.js `22.13.0` or newer
 - npm, included with Node.js
 
-From the `Visualizer` directory (`cd Visualizer` from the repository root):
+From the `dashboard` directory (`cd dashboard` from the repository root):
 
 ```powershell
 npm ci
@@ -51,8 +51,8 @@ npm test
 
 ## Netlify deployment
 
-The project-local [`netlify.toml`](netlify.toml) lives inside `Visualizer/`.
-Configure Netlify's package directory as `Visualizer`; Netlify then installs and
+The project-local [`netlify.toml`](netlify.toml) lives inside `dashboard/`.
+Configure Netlify's package directory as `dashboard`; Netlify then installs and
 builds only this package, and the sibling `Vulnerabilities/` research workspace
 is not part of the deployed application.
 
@@ -119,7 +119,7 @@ content/
 
 Every visible research record is a directory containing `index.md`. Small
 images and raw artifacts may be colocated in `assets/` or `artifacts/`; the
-indexer copies them into the read-only browser preview. The `Visualizer/artifacts/`
+indexer copies them into the read-only browser preview. The `dashboard/artifacts/`
 directory is ignored and is intended for large local machine outputs that should
 not be committed.
 

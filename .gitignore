@@ -4,7 +4,7 @@
 # below must apply to every directory in the tree, including nested projects, so
 # it deliberately lives here rather than in any one project. Project-local rules
 # belong in that project's own .gitignore with paths anchored to itself
-# (Visualizer/.gitignore, experiments/*/.gitignore).
+# (dashboard/.gitignore, experiments/*/.gitignore).
 
 # ---- credentials: never commit, anywhere in the tree -------------------------
 .env
