@@ -43,6 +43,9 @@ const files = new Map([
   ["acme/2026-07-29-demo-run/not-json.json", "{ this is not json"],
 ]);
 
+/** A repo the stand-in serves across two tree pages. */
+const deepTreeRepo = "acme/2026-07-30-deep-tree";
+
 before(async () => {
   server = createServer((request, response) => {
     requests.push(request.url);
@@ -51,6 +54,36 @@ before(async () => {
     const tree = url.pathname.match(/^\/api\/datasets\/(.+?)\/tree\/(.+)$/);
     if (tree) {
       const repo = tree[1];
+
+      // A repo whose tree does not fit one page. Page 1 is nothing but
+      // directory entries, which is exactly how the Hub answers a deeply
+      // nested repo and exactly what a single-request client gets wrong.
+      if (repo === deepTreeRepo) {
+        const cursor = url.searchParams.get("cursor");
+        if (!cursor) {
+          const directories = Array.from({ length: 3 }, (_, index) => ({
+            type: "directory",
+            path: `group-${index}`,
+            size: 0,
+          }));
+          response.writeHead(200, {
+            "content-type": "application/json",
+            "x-repo-commit": "deadbeefcafe",
+            link: `<${endpoint}${url.pathname}?recursive=true&cursor=page2>; rel="next"`,
+          });
+          response.end(JSON.stringify(directories));
+          return;
+        }
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify([
+            { type: "file", path: "group-0/results.jsonl", size: 4096 },
+            { type: "file", path: "group-1/results.jsonl", size: 2048 },
+          ]),
+        );
+        return;
+      }
+
       const listing = [...files.keys()]
         .filter((key) => key.startsWith(`${repo}/`))
         .map((key) => ({ type: "file", path: key.slice(repo.length + 1), size: 10 }));
@@ -225,6 +258,48 @@ test("listing a repo returns file paths and sizes", async () => {
   assert.ok(listing.files.some((file) => file.path === "manifest.json"));
 });
 
+test("a tree spanning several pages is followed to the end", async () => {
+  const hf = await freshModule();
+  const listing = await hf.fetchRepoListing(deepTreeRepo, "main");
+  assert.equal(listing.ok, true);
+  assert.equal(listing.truncated, false);
+  assert.equal(listing.pages, 2);
+  // Page 1 held only directories. A client that stopped there would report a
+  // repo full of files as having none.
+  assert.deepEqual(
+    listing.files.map((file) => file.path),
+    ["group-0/results.jsonl", "group-1/results.jsonl"],
+  );
+  assert.equal(listing.commit, "deadbeefcafe");
+});
+
+test("paging stops at the page cap and reports the listing as truncated", async () => {
+  const previous = process.env.HF_TREE_MAX_PAGES;
+  process.env.HF_TREE_MAX_PAGES = "1";
+  try {
+    const hf = await freshModule();
+    const listing = await hf.fetchRepoListing(deepTreeRepo, "main");
+    assert.equal(listing.ok, true);
+    assert.equal(listing.pages, 1);
+    assert.equal(listing.truncated, true);
+    assert.equal(listing.files.length, 0);
+  } finally {
+    if (previous === undefined) delete process.env.HF_TREE_MAX_PAGES;
+    else process.env.HF_TREE_MAX_PAGES = previous;
+  }
+});
+
+test("a next link pointing off-endpoint is not followed", async () => {
+  const hf = await freshModule();
+  const response = {
+    headers: {
+      get: (name) =>
+        name === "link" ? '<http://elsewhere.invalid/api/next>; rel="next"' : null,
+    },
+  };
+  assert.equal(hf.nextPageUrl(response), null);
+});
+
 // ---------------------------------------------------------------------------
 // The payload guarantee
 // ---------------------------------------------------------------------------
@@ -267,6 +342,42 @@ test("the baked index carries transcript summaries but no message bodies", async
   );
 });
 
+test("the baked index carries no entry prose, only a sidecar per entry", async () => {
+  const indexUrl = new URL("../lib/generated/content-index.json", import.meta.url);
+  const index = JSON.parse(await fs.readFile(indexUrl, "utf8"));
+  const bodyRoot = new URL("../lib/generated/bodies/", import.meta.url);
+  assert.ok(index.entries.length > 0, "expected a non-empty corpus");
+
+  for (const entry of index.entries) {
+    // `lib/content.ts` is imported by every page, so a body here is a body on
+    // every page. The real write-ups run to hundreds of lines; inlining them
+    // took the index to 96% of its budget before this split.
+    assert.equal(
+      entry.body,
+      undefined,
+      `${entry.slug} leaked its Markdown body into the baked index`,
+    );
+    assert.equal(
+      typeof entry.body_bytes,
+      "number",
+      `${entry.slug} must record its body size`,
+    );
+
+    // A summary is what listings render, so it must survive the split.
+    assert.equal(typeof entry.summary, "string");
+
+    if (entry.body_bytes > 0) {
+      const sidecar = new URL(`${entry.slug}.md`, bodyRoot);
+      const text = await fs.readFile(sidecar, "utf8");
+      assert.equal(
+        Buffer.byteLength(text),
+        entry.body_bytes,
+        `${entry.slug}: sidecar size disagrees with the index`,
+      );
+    }
+  }
+});
+
 test("every locally sharded transcript is fetchable and complete", async () => {
   const indexUrl = new URL("../lib/generated/content-index.json", import.meta.url);
   const index = JSON.parse(await fs.readFile(indexUrl, "utf8"));
@@ -289,12 +400,31 @@ test("every locally sharded transcript is fetchable and complete", async () => {
 });
 
 test("the cache directory stays inside the project and holds no token", async () => {
-  const hf = await freshModule();
-  assert.ok(hf.cacheRoot.includes(".hf-cache"));
-  assert.ok(!hf.cacheRoot.startsWith(os.tmpdir()));
-  const entries = await fs.readdir(hf.cacheRoot).catch(() => []);
-  for (const name of entries) {
-    const body = await fs.readFile(path.join(hf.cacheRoot, name), "utf8");
-    assert.doesNotMatch(body, /authorization|bearer|hf_[A-Za-z0-9]{8}/i);
+  const previous = process.env.HF_TOKEN;
+  // A distinctive value, so its absence from the cache is a real assertion
+  // rather than a coincidence of the fixture's wording.
+  process.env.HF_TOKEN = "hf_TESTONLYtoken1234567890";
+  try {
+    const hf = await freshModule();
+    assert.ok(hf.cacheRoot.includes(".hf-cache"));
+    assert.ok(!hf.cacheRoot.startsWith(os.tmpdir()));
+    await hf.fetchRepoJson("acme/2026-07-29-demo-run", "main", "manifest.json");
+
+    const entries = await fs.readdir(hf.cacheRoot).catch(() => []);
+    assert.ok(entries.length > 0, "expected the fetch above to write a cache entry");
+    for (const name of entries) {
+      const body = await fs.readFile(path.join(hf.cacheRoot, name), "utf8");
+      // The token itself, in any form.
+      assert.ok(!body.includes(process.env.HF_TOKEN), `${name} contains the token`);
+      // Credential SHAPES, not the bare words: cached payloads are research
+      // prose that legitimately discusses authorization, so matching the word
+      // would fail on content rather than on a leak.
+      assert.doesNotMatch(body, /hf_[A-Za-z0-9]{8}/);
+      assert.doesNotMatch(body, /"authorization"\s*:/i);
+      assert.doesNotMatch(body, /bearer\s+\S/i);
+    }
+  } finally {
+    if (previous === undefined) delete process.env.HF_TOKEN;
+    else process.env.HF_TOKEN = previous;
   }
 });

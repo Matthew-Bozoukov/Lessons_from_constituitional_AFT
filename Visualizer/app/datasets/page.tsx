@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Database, FileJson2, MessagesSquare } from "lucide-react";
 import { DatasetViewer, DatasetViewerEntry } from "../components/DatasetViewer";
 import { entriesOfType } from "@/lib/content";
+import { MockDataBanner } from "../components/MockDataBanner";
+import { allMock, anyMock } from "@/lib/content";
 
 export const metadata: Metadata = { title: "Synthetic datasets" };
 
@@ -18,6 +20,7 @@ export default function DatasetsPage() {
     dataset_version: entry.dataset_version,
     training_objective: entry.training_objective,
     generator_model: entry.generator_model,
+    mock: entry.mock,
   }));
   const records = datasets.reduce(
     (sum, entry) => sum + (entry.dataset?.record_count || 0),
@@ -26,6 +29,9 @@ export default function DatasetsPage() {
 
   return (
     <main className="page-container inner-page datasets-page">
+      {anyMock(datasets) && (
+        <MockDataBanner scope={allMock(datasets) ? "all" : "some"} />
+      )}
       <header className="page-heading compact-heading">
         <div>
           <span className="eyebrow">Training-data inspection</span>

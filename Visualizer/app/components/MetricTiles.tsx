@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, Minus } from "lucide-react";
-import { Metric, formatMetric, humanize } from "@/lib/content";
+import { Metric, formatMetricValue, humanize } from "@/lib/content";
 
 export function MetricTiles({
   metrics,
@@ -25,7 +25,9 @@ export function MetricTiles({
               <Minus size={13} aria-label="No preferred direction set" />
             )}
           </div>
-          <strong>{formatMetric(metric)}</strong>
+          {/* Value and unit are separate here, so the unit must not also be
+              folded into the value - see formatMetricValue. */}
+          <strong>{formatMetricValue(metric)}</strong>
           <small>{metric.unit || "unitless"}</small>
         </div>
       ))}

@@ -1,4 +1,11 @@
 ---
+# Fabricated interface fixture, not a research result. Drives the mock-data banner.
+mock: true
+# The fixture payload is published as a mock dataset, so this entry exercises
+# the same Hugging Face path the real runs use.
+hf_source:
+  repo_id: LASR-Callum/2026-07-30-visualizer-mock-dialogues
+  revision: 869eb6f47597e66fbef44c2166968e74d308b64c
 title: "Reasons-rich constitutional dialogue mixture"
 date: 2026-07-26
 summary: "Synthetic AFT/SFT dialogues that demonstrate an action together with the constitutional reason behind it."

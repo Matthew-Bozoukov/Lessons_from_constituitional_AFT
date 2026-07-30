@@ -42,13 +42,16 @@ test("server-renders the research overview", async () => {
 });
 
 test("server-renders a Markdown research entry", async () => {
-  const response = await render("/entry/2026-07-20-sft-reasons-seed-1");
+  const response = await render("/entry/2026-07-29-msm-ood-vulnerability-findings");
   assert.equal(response.status, 200);
   const html = await response.text();
-  assert.match(html, /Reasons-rich SFT safety battery/);
+  assert.match(html, /does model-spec midtraining introduce/i);
   assert.match(html, /Structured metrics/);
-  assert.match(html, /Evaluation shifts/);
-  assert.match(html, /content-assets/);
+  // Prose from the body sidecar, which is no longer in the baked index: this is
+  // what catches a broken body read at prerender time.
+  assert.match(html, /Holm-Bonferroni/);
+  // A real entry must not be labelled as a fixture.
+  assert.doesNotMatch(html, /mock-banner/);
 });
 
 test("server-renders the JSONL dialogue inspector", async () => {
@@ -58,15 +61,23 @@ test("server-renders the JSONL dialogue inspector", async () => {
   assert.match(html, /Synthetic datasets/);
   assert.match(html, /Reasons-rich constitutional dialogue mixture/);
   assert.match(html, /Conversation preview/);
-  assert.match(html, /generated-datasets/);
+  // The page must name a lazily-fetched chunk source, but not care which
+  // backend it is: a locally sharded path or a Hugging Face resolve URL.
+  assert.match(html, /generated-datasets|huggingface\.co\/datasets\/[^/]+\/[^/]+\/resolve\//);
 });
 
 test("sample JSONL includes genuine multi-turn conversations", async () => {
-  const chunkUrl = new URL(
-    "../public/generated-datasets/reasons-rich-aft-v1/chunk-000.json",
+  // The fixture's source JSONL in `content/`, not a build artifact under
+  // `public/`: now that this dataset is served from the Hub, no local chunk is
+  // regenerated, and asserting against a stale one would test nothing.
+  const sourceUrl = new URL(
+    "../content/datasets/reasons-rich-aft-v1/data/dialogues.jsonl",
     import.meta.url,
   );
-  const records = JSON.parse(await readFile(chunkUrl, "utf8"));
+  const records = (await readFile(sourceUrl, "utf8"))
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
   const multiTurnRecords = records.filter(
     (record) =>
       record.messages.filter((message) => message.role === "user").length >= 2 &&
@@ -94,7 +105,11 @@ test("server-renders the model lineage index", async () => {
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /Model lineages/);
-  assert.match(html, /qwen3-32b/);
   assert.match(html, /linked records/);
-  assert.match(html, /Sft/);
+  // The real target checkpoint, not the fixture's placeholder id.
+  assert.match(html, /chloeli\/qwen-3-32b-philosophy-spec-msm-aft-cot/);
+  // The corpus mixes a real model family with fixture-only ones, so the page
+  // must both warn and mark which dossiers are fixtures.
+  assert.match(html, /mock-banner/);
+  assert.match(html, /mock-badge/);
 });

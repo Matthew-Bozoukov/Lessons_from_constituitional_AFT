@@ -25,7 +25,10 @@ constitution: >-
   on). Target adapter chloeli/qwen-3-32b-philosophy-spec-msm-aft-cot; the spec
   text tracked in experiments/teaching-claude-why/docs/.
 
-source_repo: https://github.com/nikakogho/ResearchLog
+# The generating code lived in the ResearchLog repository, which has since been
+# merged into this one; f8dd135 is an ancestor of the merged history, so the
+# commit still resolves here.
+source_repo: https://github.com/Matthew-Bozoukov/teaching_claude_why_replication
 source_commit: f8dd135
 
 models:

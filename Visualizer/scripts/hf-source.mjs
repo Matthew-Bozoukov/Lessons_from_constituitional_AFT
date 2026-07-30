@@ -213,8 +213,38 @@ export async function fetchRepoJson(repoId, revision, filePath) {
 }
 
 /**
+ * Pages the tree API will follow before giving up. The Hub caps a page at 1000
+ * entries, so this bounds a listing at 20k. A repo deeper than that gets a
+ * truncated list and says so - a build must not walk an unbounded tree.
+ */
+const MAX_TREE_PAGES = Number(process.env.HF_TREE_MAX_PAGES || 20);
+
+/**
+ * The `rel="next"` target of a `Link` header, or `null`.
+ *
+ * Only a URL on the configured endpoint is followed. The header is server-
+ * controlled, and a listing loop is not the place to chase an arbitrary host.
+ */
+export function nextPageUrl(response) {
+  const header = response.headers.get("link");
+  if (!header) return null;
+  for (const part of header.split(",")) {
+    const match = /^\s*<([^>]+)>\s*;\s*rel="?next"?/.exec(part);
+    if (!match) continue;
+    return match[1].startsWith(`${HF_ENDPOINT}/`) ? match[1] : null;
+  }
+  return null;
+}
+
+/**
  * Describe a dataset repo without downloading it: file list with sizes, and the
- * commit the revision currently points at. One small API call.
+ * commit the revision currently points at.
+ *
+ * The tree API caps a response at 1000 entries and hands back the rest through
+ * a `Link: rel="next"` header, so this follows that chain. Directories count
+ * against the cap: a repo with a deep tree can fill an entire page with nothing
+ * but directory entries, which is how a single-request version of this returned
+ * an empty file list for a repo that was full of files.
  */
 export async function fetchRepoListing(repoId, revision) {
   const rev = revision || "main";
@@ -228,24 +258,44 @@ export async function fetchRepoListing(repoId, revision) {
     return { ok: false, error: `HF_OFFLINE is set and ${repoId} tree is not cached` };
   }
 
-  const url = `${HF_ENDPOINT}/api/datasets/${repoId}/tree/${encodeURIComponent(rev)}?recursive=1`;
+  let url = `${HF_ENDPOINT}/api/datasets/${repoId}/tree/${encodeURIComponent(rev)}?recursive=1`;
   try {
-    const response = await request(url);
-    if (!response.ok) {
-      if (cached?.ok) return { ...cached, cached: true, stale: true };
-      return { ok: false, error: `HTTP ${response.status} listing ${repoId}` };
-    }
-    const entries = await response.json();
-    const payload = {
-      ok: true,
-      files: (Array.isArray(entries) ? entries : [])
-        .filter((entry) => entry.type === "file")
-        .map((entry) => ({
+    const files = [];
+    let commit = "";
+    let pages = 0;
+    let truncated = false;
+
+    while (url) {
+      const response = await request(url);
+      if (!response.ok) {
+        if (cached?.ok) return { ...cached, cached: true, stale: true };
+        return { ok: false, error: `HTTP ${response.status} listing ${repoId}` };
+      }
+      if (!commit) commit = response.headers.get("x-repo-commit") || "";
+      const entries = await response.json();
+      for (const entry of Array.isArray(entries) ? entries : []) {
+        if (entry.type !== "file") continue;
+        files.push({
           path: entry.path,
           size: Number(entry.size ?? entry?.lfs?.size ?? 0),
-        })),
-      commit: response.headers.get("x-repo-commit") || "",
+        });
+      }
+      pages += 1;
+      const next = nextPageUrl(response);
+      if (next && pages >= MAX_TREE_PAGES) {
+        truncated = true;
+        break;
+      }
+      url = next;
+    }
+
+    const payload = {
+      ok: true,
+      files,
+      commit,
       revision: rev,
+      pages,
+      truncated,
       fetched_at: Date.now(),
     };
     await writeCache(file, payload);

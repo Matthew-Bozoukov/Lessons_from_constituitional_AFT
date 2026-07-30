@@ -17,6 +17,7 @@ import {
   ResearchEntry,
   humanize,
 } from "@/lib/content";
+import { MockBadge } from "./MockDataBanner";
 import { describeLoadError, loadChunk } from "@/lib/lazy";
 import { DialogueTranscript } from "./DialogueTranscript";
 
@@ -49,6 +50,7 @@ export type DatasetViewerEntry = Pick<
   | "dataset_version"
   | "training_objective"
   | "generator_model"
+  | "mock"
 >;
 
 export function DatasetViewer({ datasets }: { datasets: DatasetViewerEntry[] }) {
@@ -171,6 +173,9 @@ export function DatasetViewer({ datasets }: { datasets: DatasetViewerEntry[] }) 
       <section className="dataset-description">
         <div>
           <span className="status status-draft">{humanize(selectedDataset.status)}</span>
+          {/* Tied to the selected dataset, so switching between a fixture and a
+              real corpus moves the marker with it. */}
+          {selectedDataset.mock && <MockBadge />}
           <h1>{selectedDataset.title}</h1>
           <p>{selectedDataset.summary}</p>
         </div>

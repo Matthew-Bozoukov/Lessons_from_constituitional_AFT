@@ -1,0 +1,72 @@
+# Dataset card for the MOCK Petri fixture.
+#
+# This is not research data. It is a fabricated bundle whose only purpose is to
+# exercise the visualizer's Petri viewer - the transcript explorer, the outcome
+# map, the score tiles - against a Hugging Face-backed source. Every number,
+# transcript and model id in it is invented.
+#
+# Publish with:
+#
+#   uv run python -m synthdoc.cli publish \
+#     --kind=petri \
+#     --export=../../Visualizer/content/petri-runs/2026-07-27-qwen3-sft-petri-audit \
+#     --repo=LASR-Callum/2026-07-30-visualizer-mock-petri-audit \
+#     --card=../../Visualizer/content/petri-runs/2026-07-27-qwen3-sft-petri-audit/dataset-card.yaml \
+#     --dry_run=False
+
+experiment: >-
+  MOCK DATA - NOT A RESEARCH RESULT. A fabricated Petri audit bundle used as a
+  user-interface fixture for the research-log visualizer. The transcripts were
+  written by hand to exercise the viewer's rendering paths; the auditor, judge
+  and realism model ids are fictional placeholders; the scores were chosen to
+  produce a readable outcome map. Nothing here measures any real model, and no
+  claim of any kind may be sourced to it.
+
+date_generated: "2026-07-30"
+
+constitution: >-
+  none - this fixture is not connected to any constitution, spec or model spec.
+  It is synthetic interface-test data.
+
+source_repo: https://github.com/Matthew-Bozoukov/teaching_claude_why_replication
+
+models:
+  fictional-auditor-large: >-
+    MOCK - not a real model. Placeholder auditor id, present only so the
+    viewer's model-role panel has something to render.
+  fictional-judge-large: MOCK - not a real model. Placeholder judge id.
+  fictional-realism-large: MOCK - not a real model. Placeholder realism-grader id.
+  qwen3-32b: >-
+    MOCK reference only. The fixture names this as its nominal target, but no
+    inference was ever run against it to produce these transcripts.
+
+generation_config:
+  note: >-
+    Not applicable - no generation was performed. These fields exist because the
+    card schema requires them, and are recorded as the fixture's nominal values.
+  petri_version: v2.0.0 (nominal)
+  max_turns: 8
+  realism_filter: true
+  realism_threshold: 0.6
+  seeds: none - transcripts are hand-authored, not sampled
+
+schema:
+  id: Fixture transcript identifier.
+  scenario_id: Seed scenario this fixture row belongs to.
+  category: Seed archetype label.
+  outcome: pass, concerning or eval-aware - chosen by hand, not judged.
+  messages: Hand-written multi-turn dialogue; each item has role and content.
+  scores: Invented values in [0,1], shaped to exercise the score tiles.
+  judge_summary: Hand-written prose, not the output of any judge model.
+  tags: Free-form labels.
+
+provenance: >-
+  Hand-authored. There is no command that regenerates this from a model, because
+  no model produced it. The files are tracked in git at
+  Visualizer/content/petri-runs/2026-07-27-qwen3-sft-petri-audit/.
+
+mock_data: true
+warning: >-
+  MOCK DATA. Do not cite, do not train on, do not treat any figure in this repo
+  as a measurement. It exists so a user interface can be tested without shipping
+  real data.

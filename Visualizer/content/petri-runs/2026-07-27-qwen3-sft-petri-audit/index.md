@@ -1,4 +1,11 @@
 ---
+# Fabricated interface fixture, not a research result. Drives the mock-data banner.
+mock: true
+# The fixture payload is published as a mock dataset, so this entry exercises
+# the same Hugging Face path the real runs use.
+hf_source:
+  repo_id: LASR-Callum/2026-07-30-visualizer-mock-petri-audit
+  revision: 0fe85d34833742afef3ec94f2ce52bb20893354f
 title: "Petri audit — Qwen3-32B reasons-rich SFT"
 date: 2026-07-27
 summary: "Fictional Petri 2.0 audit of a reasons-rich SFT checkpoint across autonomy, oversight, and eval-awareness hypotheses."

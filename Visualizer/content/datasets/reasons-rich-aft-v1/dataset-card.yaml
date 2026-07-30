@@ -1,0 +1,62 @@
+# Dataset card for the MOCK dialogue fixture.
+#
+# This is not a training corpus. It is eleven hand-written dialogues whose only
+# purpose is to exercise the visualizer's dataset browser - record paging, role
+# rendering, reasoning-trace collapsing, metadata display - against a Hugging
+# Face-backed source.
+#
+# Publish with:
+#
+#   uv run python -m synthdoc.cli publish \
+#     --kind=dialogues \
+#     --export=../../Visualizer/content/datasets/reasons-rich-aft-v1/data/dialogues.jsonl \
+#     --repo=LASR-Callum/2026-07-30-visualizer-mock-dialogues \
+#     --card=../../Visualizer/content/datasets/reasons-rich-aft-v1/dataset-card.yaml \
+#     --dry_run=False
+
+experiment: >-
+  MOCK DATA - NOT A TRAINING CORPUS. Eleven hand-written constitutional
+  dialogues used as a user-interface fixture for the research-log visualizer.
+  They demonstrate the intended shape of a reasons-rich AFT/SFT record - an
+  action together with the reason behind it - so the dataset browser can be
+  developed and reviewed. They are not suitable for training, they were not
+  filtered or rated by any model, and they support no empirical claim.
+
+date_generated: "2026-07-30"
+
+constitution: >-
+  none - the dialogues gesture at a constitutional style but are not derived
+  from any actual constitution, spec or model spec. They are synthetic
+  interface-test data.
+
+source_repo: https://github.com/Matthew-Bozoukov/teaching_claude_why_replication
+
+models:
+  fictional-teacher-1: >-
+    MOCK - not a real model. The frontmatter names this as the nominal generator
+    so the lineage panel has something to render. No model generated these
+    records; a person wrote them.
+
+generation_config:
+  note: >-
+    Not applicable - no sampling was performed. Recorded because the card schema
+    requires the field.
+  temperature: none
+  seeds: none - records are hand-authored
+
+schema:
+  id: Fixture record identifier.
+  messages: Hand-written dialogue; each item has role and content.
+  metadata: >-
+    Open-ended object. Unknown keys are displayed verbatim by the viewer, which
+    is one of the behaviours this fixture exists to exercise.
+
+provenance: >-
+  Hand-authored. No command regenerates this from a model. The file is tracked in
+  git at Visualizer/content/datasets/reasons-rich-aft-v1/data/dialogues.jsonl.
+
+mock_data: true
+warning: >-
+  MOCK DATA. Do not cite, do not train on, do not treat any record here as
+  evidence of anything. It exists so a user interface can be tested without
+  shipping real data.

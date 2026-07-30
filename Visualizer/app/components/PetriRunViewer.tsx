@@ -32,6 +32,7 @@ import {
   humanize,
 } from "@/lib/content";
 import { describeLoadError, loadTranscript } from "@/lib/lazy";
+import { MockBadge } from "./MockDataBanner";
 import { DialogueTranscript } from "./DialogueTranscript";
 
 export function PetriRunViewer({ run }: { run: ResearchEntry }) {
@@ -113,6 +114,7 @@ export function PetriRunViewer({ run }: { run: ResearchEntry }) {
             <span className="type-chip petri-runs"><ScanSearch size={13} /> Petri run</span>
             <span className={`status status-${run.status}`}>{humanize(run.status)}</span>
             <time dateTime={run.date}>{run.date}</time>
+            {run.mock === true && <MockBadge />}
           </div>
           <h1>{run.title}</h1>
           <p>{run.summary}</p>
