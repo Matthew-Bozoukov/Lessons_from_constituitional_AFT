@@ -1,7 +1,7 @@
 # ABOUTME: Does the generator model dominate everything else? Never ablated in MSM,
 # ABOUTME: Teaching Claude Why, or GDM. Fully paired: this axis does not touch the sampler.
 #
-# Run: uv run python -m synthdoc.cli sweep --config generator_model.yaml --n 300
+# Run: uv run synthdoc sweep --config generator_model.yaml --n 300
 
 base: base.yaml
 axis: generation.model

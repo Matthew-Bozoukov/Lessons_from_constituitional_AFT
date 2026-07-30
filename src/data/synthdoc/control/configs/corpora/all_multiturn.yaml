@@ -1,5 +1,5 @@
 # ABOUTME: A corpus that is entirely multi-turn adversarial pressure.
-# ABOUTME: Run: uv run python -m synthdoc.cli run --config corpora/all_multiturn.yaml
+# ABOUTME: Run: uv run synthdoc run --config corpora/all_multiturn.yaml
 #
 # `extends` inherits everything from base.yaml; only the fields below differ. Recipe
 # mixtures REPLACE rather than merge, so doc_type here really is 100% multiturn.

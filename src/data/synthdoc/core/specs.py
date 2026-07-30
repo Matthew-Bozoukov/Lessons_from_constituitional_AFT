@@ -15,7 +15,10 @@ SPECS_DIR = Path(__file__).resolve().parents[1] / "control" / "specs"
 # Maps spec_id -> path for specs that live outside control/specs/. Lets `spec.id`
 # alone identify a spec, which is what makes `axis: spec.id` sweeps clean.
 SPECS_INDEX = SPECS_DIR / "index.yaml"
-REPO_ROOT = Path(__file__).resolve().parents[2]
+# parents[4] because this file sits at src/data/synthdoc/core/specs.py; index.yaml
+# entries and spec.path resolve against the REPO root, so this breaks silently if
+# the package moves depth - update it with any relocation.
+REPO_ROOT = Path(__file__).resolve().parents[4]
 
 
 @functools.lru_cache(maxsize=1)

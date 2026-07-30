@@ -9,8 +9,8 @@ from pathlib import Path
 import pyarrow.parquet as pq
 import pytest
 
-from synthdoc import load_config, load_snapshot, run_pipeline, run_sweep
-from synthdoc.pipeline import BudgetExceeded
+from src.data.synthdoc import load_config, load_snapshot, run_pipeline, run_sweep
+from src.data.synthdoc.pipeline import BudgetExceeded
 
 
 @pytest.fixture
@@ -121,7 +121,7 @@ def test_exports_are_written(shared):
 
 def test_shard_assignment_is_uniform_and_deterministic():
     """Shard routing is a pure function of doc_id, so two runs shard identically."""
-    from synthdoc.plugins.exporters import _assignment
+    from src.data.synthdoc.plugins.exporters import _assignment
 
     ids = [f"doc{i:05d}" for i in range(4000)]
     picked = [i for i in ids if _assignment(i, "pretrain_shard") < 0.4]

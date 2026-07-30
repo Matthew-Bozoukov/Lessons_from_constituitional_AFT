@@ -8,13 +8,13 @@ from pathlib import Path
 import pytest
 import yaml
 
-from synthdoc import load_config, run_pipeline
-from synthdoc.ablations import catalog
-from synthdoc.config import CONTROL_CONFIGS, ConfigError
-from synthdoc.control import loader
-from synthdoc.core.specs import available_specs, load_spec
-from synthdoc.corpora import compare, format_index, load_index, summarize
-from synthdoc.snapshots import SnapshotConfig, SnapshotWriter
+from src.data.synthdoc import load_config, run_pipeline
+from src.data.synthdoc.ablations import catalog
+from src.data.synthdoc.config import CONTROL_CONFIGS, ConfigError
+from src.data.synthdoc.control import loader
+from src.data.synthdoc.core.specs import available_specs, load_spec
+from src.data.synthdoc.corpora import compare, format_index, load_index, summarize
+from src.data.synthdoc.snapshots import SnapshotConfig, SnapshotWriter
 
 CORPORA_DIR = CONTROL_CONFIGS / "corpora"
 
@@ -105,7 +105,7 @@ def test_extends_cycle_is_rejected(tmp_path):
 
 
 def test_name_becomes_a_stable_run_id(tmp_path):
-    from synthdoc.config import make_run_id
+    from src.data.synthdoc.config import make_run_id
 
     cfg = load_config(write(tmp_path, "c.yaml", {"extends": "smoke.yaml", "name": "my_corpus"}))
     assert make_run_id(cfg) == "my_corpus"
@@ -113,7 +113,7 @@ def test_name_becomes_a_stable_run_id(tmp_path):
 
 
 def test_unnamed_runs_get_distinct_ids():
-    from synthdoc.config import make_run_id
+    from src.data.synthdoc.config import make_run_id
 
     cfg = load_config("smoke.yaml")
     assert make_run_id(cfg) != "demo_spec"
@@ -249,7 +249,7 @@ def test_compare_reports_paired_deltas(two_corpora):
 
 
 def test_comparison_renders_as_markdown(two_corpora):
-    from synthdoc.corpora import format_comparison
+    from src.data.synthdoc.corpora import format_comparison
 
     text = format_comparison(
         compare(two_corpora["baseline"].run_dir, two_corpora["variant"].run_dir, "a", "b")

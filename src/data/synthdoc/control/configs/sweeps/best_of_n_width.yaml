@@ -1,7 +1,7 @@
 # ABOUTME: How wide should sampling be before selection stops paying? Anthropic's
 # ABOUTME: sample-and-filter, as a dose-response curve.
 #
-# Run: uv run python -m synthdoc.cli sweep --config best_of_n_width.yaml --n 300
+# Run: uv run synthdoc sweep --config best_of_n_width.yaml --n 300
 
 base: base.yaml
 axis: generation.strategy_params

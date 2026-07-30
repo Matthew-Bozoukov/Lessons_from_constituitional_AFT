@@ -171,9 +171,9 @@ step, and an entry with no `hf_source` behaves exactly as before.
 ## Publishing a dataset the visualizer can read
 
 The publisher lives with the other HF code, in
-`experiments/teaching-claude-why/synthdoc/publish.py`, and is exposed as
-`synthdoc.cli publish`. It reuses `huggingface_hub` the same way
-`synthdoc/snapshots.py` does.
+`src/data/synthdoc/publish.py`, and is exposed as `uv run synthdoc publish`
+(run from the repository root). It reuses `huggingface_hub` the same way
+`src/data/synthdoc/snapshots.py` does.
 
 ### 1. Write the dataset card
 
@@ -206,12 +206,12 @@ under "Additional detail".
 ### 2. Publish
 
 ```bash
-cd experiments/teaching-claude-why
-uv run python -m synthdoc.cli publish \
+# from the repository root
+uv run synthdoc publish \
   --kind=petri \
-  --export=../vulnerabilities/exports/2026-07-29-msm-philosophy-spec-focused-discovery \
+  --export=experiments/vulnerabilities/exports/2026-07-29-msm-philosophy-spec-focused-discovery \
   --repo=<org>/2026-07-29-msm-philosophy-spec-focused-discovery \
-  --card=../vulnerabilities/exports/2026-07-29-msm-philosophy-spec-focused-discovery/dataset-card.yaml
+  --card=experiments/vulnerabilities/exports/2026-07-29-msm-philosophy-spec-focused-discovery/dataset-card.yaml
 ```
 
 It **dry-runs by default** and lists every file with its size; pass

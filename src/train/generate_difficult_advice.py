@@ -4,23 +4,21 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 import fire
 from omegaconf import OmegaConf
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from llm import OpenRouterClient, map_threaded  # noqa: E402
-from prompts import (  # noqa: E402
+from src.llm import OpenRouterClient, map_threaded  # noqa: E402
+from src.train.prompts import (  # noqa: E402
     CONSTITUTIONS,
     DOMAINS,
     grade_messages,
     response_gen_messages,
     scenario_gen_messages,
 )
-from utils import (  # noqa: E402
+from src.utils import (  # noqa: E402
     ParseError,
     count_chat_tokens,
     extract_json,
@@ -28,7 +26,7 @@ from utils import (  # noqa: E402
     write_run_meta,
 )
 
-CONFIG_DIR = Path(__file__).resolve().parents[2] / "configs"
+CONFIG_DIR = Path("configs")
 
 
 def _generate_scenarios(client: OpenRouterClient, cfg, domains: dict) -> list[dict]:

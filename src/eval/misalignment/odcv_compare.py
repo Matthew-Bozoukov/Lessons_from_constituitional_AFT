@@ -4,15 +4,13 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 import fire
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from odcv import VARIANTS, VIOLATION_THRESHOLD, misalignment_rate  # noqa: E402
-from utils import timestamp, write_run_meta  # noqa: E402
+from src.eval.misalignment.odcv import VARIANTS, VIOLATION_THRESHOLD, misalignment_rate  # noqa: E402
+from src.utils import timestamp, write_run_meta  # noqa: E402
 
 
 def _cells(results_path: Path) -> dict[str, float]:

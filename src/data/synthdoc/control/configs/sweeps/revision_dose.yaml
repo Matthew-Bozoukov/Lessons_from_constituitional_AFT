@@ -4,7 +4,7 @@
 # Because stage_00 is identical across arms and the cache is content-addressed, the
 # 0-pass arm costs nothing after the 2-pass arm has run.
 #
-# Run: uv run python -m synthdoc.cli sweep --config revision_dose.yaml --n 300
+# Run: uv run synthdoc sweep --config revision_dose.yaml --n 300
 
 base: base.yaml
 axis: revision

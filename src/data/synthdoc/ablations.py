@@ -305,7 +305,7 @@ def catalog_text() -> str:
     lines = [
         "Ablatable axes — put `key` in a sweep's `axis:` field.",
         "",
-        "  uv run python -m synthdoc.cli sweep --config <sweep>.yaml --dry_run",
+        "  uv run synthdoc sweep --config <sweep>.yaml --dry_run",
         "",
         "pairing=paired    arms sample identical scenarios; deltas are exactly paired.",
         "pairing=unpaired  the axis feeds the sampler, so scenario sets differ by design;",

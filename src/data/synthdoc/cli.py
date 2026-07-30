@@ -1,4 +1,4 @@
-# ABOUTME: Command line entry point. Run with `uv run python -m synthdoc.cli <command>`.
+# ABOUTME: Command line entry point. Run with `uv run synthdoc <command>`.
 # ABOUTME: Commands: run, sweep, validate, chunks, scenarios, inspect, publish, registry.
 
 from __future__ import annotations
@@ -54,7 +54,7 @@ class CLI:
         """Run the pipeline end to end.
 
         Args:
-            config: Config path, or a filename in synthdoc/control/configs/.
+            config: Config path, or a filename in src/data/synthdoc/control/configs/.
             n: Override recipe.n.
             run_id: Override the generated run id.
             set: Comma-separated dotted overrides, e.g. "generation.model=gen-b".
@@ -320,7 +320,7 @@ class CLI:
         from .control import loader
         from .core import registry as reg
 
-        import synthdoc.plugins  # noqa: F401
+        from . import plugins  # noqa: F401
 
         lines = ["# Registered plugins", ""]
         for kind in reg.kinds():

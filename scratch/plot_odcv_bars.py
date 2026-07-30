@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 import fire
@@ -14,8 +13,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from odcv import VARIANTS, VIOLATION_THRESHOLD, misalignment_rate  # noqa: E402
+from src.eval.misalignment.odcv import VARIANTS, VIOLATION_THRESHOLD, misalignment_rate  # noqa: E402
 
 BASE_C, FT_C = "#F58518", "#4C78A8"
 PUBLISHED_MR = 43.8

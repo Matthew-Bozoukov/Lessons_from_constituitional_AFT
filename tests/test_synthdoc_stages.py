@@ -9,11 +9,11 @@ from pathlib import Path
 import pyarrow.parquet as pq
 import pytest
 
-from synthdoc import load_config, load_snapshot, run_pipeline
-from synthdoc.config import ConfigError
-from synthdoc.control import loader
-from synthdoc.core.cache import SCOPES, Cache, CacheConfig
-from synthdoc.pipeline import _stage_names
+from src.data.synthdoc import load_config, load_snapshot, run_pipeline
+from src.data.synthdoc.config import ConfigError
+from src.data.synthdoc.control import loader
+from src.data.synthdoc.core.cache import SCOPES, Cache, CacheConfig
+from src.data.synthdoc.pipeline import _stage_names
 
 FULL = "smoke_full.yaml"
 
@@ -145,9 +145,9 @@ def test_draft_then_align_makes_both_calls(planned):
 
 def test_draft_context_puts_the_spec_in_the_drafting_system_prompt(tmp_path):
     """GDM draft with the trait in the system prompt; drafting blind is our variant."""
-    from synthdoc.plugins.generators import GenerationContext, seed_document
-    from synthdoc.plugins.strategies import DraftThenAlign
-    from synthdoc.pipeline import build_scenarios
+    from src.data.synthdoc.plugins.generators import GenerationContext, seed_document
+    from src.data.synthdoc.plugins.strategies import DraftThenAlign
+    from src.data.synthdoc.pipeline import build_scenarios
 
     cfg = cfg_for(tmp_path)
     scenario = build_scenarios(cfg, 1)[0][0]
@@ -157,7 +157,7 @@ def test_draft_context_puts_the_spec_in_the_drafting_system_prompt(tmp_path):
     def system_for(context):
         ctx = GenerationContext(llm=None, model="m", strategy_params={"draft_context": context})
         strategy = DraftThenAlign(ctx)
-        entry = __import__("synthdoc.control", fromlist=["loader"]).loader.entry(
+        entry = __import__("src.data.synthdoc.control", fromlist=["loader"]).loader.entry(
             "strategies", "draft_then_align"
         )
         return entry[strategy.DRAFT_CONTEXTS[context]]["system"]

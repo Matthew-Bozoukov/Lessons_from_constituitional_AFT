@@ -1,7 +1,7 @@
 # ABOUTME: Offline smoke exercising EVERY stage: planning, a multi-call generation
 # ABOUTME: strategy, all revisers, and all filters including pattern discovery.
 #
-# Run: uv run python -m synthdoc.cli run --config smoke_full.yaml
+# Run: uv run synthdoc run --config smoke_full.yaml
 
 extends: smoke.yaml
 name: null

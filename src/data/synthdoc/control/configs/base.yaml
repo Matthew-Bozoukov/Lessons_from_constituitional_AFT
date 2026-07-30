@@ -1,8 +1,8 @@
 # ABOUTME: Reference run config for the synthetic document pipeline. Copy and edit
 # ABOUTME: for a new corpus; change ONE field and use a sweep for an ablation.
 #
-# Run:   uv run python -m synthdoc.cli run --config base.yaml
-# Smoke: uv run python -m synthdoc.cli run --config base.yaml --smoke   (offline, 8 docs, free)
+# Run:   uv run synthdoc run --config base.yaml
+# Smoke: uv run synthdoc run --config base.yaml --smoke   (offline, 8 docs, free)
 #
 # Every field here is an experimental axis. If you find yourself wanting to edit
 # Python to try something, that is a missing config field - add it rather than

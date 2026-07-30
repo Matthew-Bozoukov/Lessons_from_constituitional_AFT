@@ -8,7 +8,8 @@ LIMIT="${2:-500}"
 TAG="${3:?output tag}"
 
 INSPECT_DIR="$HOME/git repos/inspect_evals"
-LOGDIR="$HOME/git repos/teaching_claude_why_replication/output/mmlu/${TAG}"
+# Absolute because we cd into the external inspect_evals checkout below.
+LOGDIR="$(pwd)/output/mmlu/${TAG}"
 mkdir -p "$LOGDIR"
 
 cd "$INSPECT_DIR"

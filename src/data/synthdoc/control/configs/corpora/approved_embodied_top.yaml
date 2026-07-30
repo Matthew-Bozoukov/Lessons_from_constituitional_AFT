@@ -1,5 +1,5 @@
 # ABOUTME: Top-up run for approved_embodied: extra documents to reach the ~1.5M-token target.
-# ABOUTME: Run: uv run python -m synthdoc.cli run --config corpora/approved_embodied_top.yaml
+# ABOUTME: Run: uv run synthdoc run --config corpora/approved_embodied_top.yaml
 
 extends: approved_embodied.yaml
 name: approved_embodied_top

@@ -18,19 +18,17 @@ before trusting the numbers.
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 import fire
 from omegaconf import OmegaConf
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from llm import OpenRouterClient, map_threaded  # noqa: E402
-from prompts import CONSTITUTION_V1, CONSTITUTION_V2, DOMAINS, response_gen_messages, scenario_gen_messages  # noqa: E402
-from utils import ParseError, count_chat_tokens, extract_json, timestamp, write_run_meta  # noqa: E402
+from src.llm import OpenRouterClient, map_threaded  # noqa: E402
+from src.train.prompts import CONSTITUTION_V1, CONSTITUTION_V2, DOMAINS, response_gen_messages, scenario_gen_messages  # noqa: E402
+from src.utils import ParseError, count_chat_tokens, extract_json, timestamp, write_run_meta  # noqa: E402
 
-CONFIG_DIR = Path(__file__).resolve().parents[2] / "configs"
+CONFIG_DIR = Path("configs")
 
 
 def _generate_scenarios(client: OpenRouterClient, cfg, n: int) -> list[dict]:

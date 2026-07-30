@@ -354,7 +354,7 @@ def write_sweep_report(result: SweepResult, sweep_cfg: dict[str, Any]) -> str:
                     lines.append(f"- `{arm.name}` (marginal, no shared scenarios): {parts}")
             lines.append("")
             lines.append(
-                "Full breakdown: `uv run python -m synthdoc.cli compare "
+                "Full breakdown: `uv run synthdoc compare "
                 f"--a <{baseline.name}_dir> --b <arm_dir>`"
             )
 

@@ -7,11 +7,11 @@ import random
 
 import pytest
 
-from synthdoc.core.embeddings import EmbeddingIndex, HashingEmbedder
-from synthdoc.core.recipe import MixtureSampler, Recipe
-from synthdoc.core.specs import load_spec
-from synthdoc.plugins.chunkers import build_chunker
-from synthdoc.plugins.groupers import (
+from src.data.synthdoc.core.embeddings import EmbeddingIndex, HashingEmbedder
+from src.data.synthdoc.core.recipe import MixtureSampler, Recipe
+from src.data.synthdoc.core.specs import load_spec
+from src.data.synthdoc.plugins.chunkers import build_chunker
+from src.data.synthdoc.plugins.groupers import (
     GroupingContext,
     GroupingError,
     build_groupers,

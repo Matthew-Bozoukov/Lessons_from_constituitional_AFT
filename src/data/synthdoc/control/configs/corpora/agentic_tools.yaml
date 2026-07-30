@@ -1,5 +1,5 @@
 # ABOUTME: A corpus where the model is always the actor and always holds live tools.
-# ABOUTME: Run: uv run python -m synthdoc.cli run --config corpora/agentic_tools.yaml
+# ABOUTME: Run: uv run synthdoc run --config corpora/agentic_tools.yaml
 
 extends: base.yaml
 name: agentic_tools

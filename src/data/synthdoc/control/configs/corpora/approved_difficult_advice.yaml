@@ -1,8 +1,8 @@
 # ABOUTME: Corpus A - apples-to-apples successor to the v1 difficult-advice SFT set, now
 # ABOUTME: sourced from the claude_approved_constitution spec via the synthdoc pipeline.
 #
-# Run:   uv run python -m synthdoc.cli run --config corpora/approved_difficult_advice.yaml
-# Smoke: uv run python -m synthdoc.cli run --config corpora/approved_difficult_advice.yaml --smoke
+# Run:   uv run synthdoc run --config corpora/approved_difficult_advice.yaml
+# Smoke: uv run synthdoc run --config corpora/approved_difficult_advice.yaml --smoke
 
 extends: base.yaml
 name: approved_difficult_advice

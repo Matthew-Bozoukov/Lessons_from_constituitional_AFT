@@ -1,7 +1,7 @@
 # ABOUTME: What does filtering actually buy, and what does it cost? The `none` arm keeps
 # ABOUTME: everything and is the reference point.
 #
-# Run: uv run python -m synthdoc.cli sweep --config filter_strength.yaml --n 300
+# Run: uv run synthdoc sweep --config filter_strength.yaml --n 300
 
 base: base.yaml
 axis: filters

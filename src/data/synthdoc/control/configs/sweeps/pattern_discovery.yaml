@@ -1,7 +1,7 @@
 # ABOUTME: Is GDM's scan-cluster-autorate discovery worth it, or do the known
 # ABOUTME: anti-patterns catch the same documents?
 #
-# Run: uv run python -m synthdoc.cli sweep --config pattern_discovery.yaml --n 300
+# Run: uv run synthdoc sweep --config pattern_discovery.yaml --n 300
 
 base: base.yaml
 axis: filters

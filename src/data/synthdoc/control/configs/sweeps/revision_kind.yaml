@@ -1,7 +1,7 @@
 # ABOUTME: Which single revision pass earns its cost? Dose is held at one so this measures
 # ABOUTME: the strategy, not the number of passes.
 #
-# Run: uv run python -m synthdoc.cli sweep --config revision_kind.yaml --n 300
+# Run: uv run synthdoc sweep --config revision_kind.yaml --n 300
 
 base: base.yaml
 axis: revision

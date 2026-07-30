@@ -7,7 +7,7 @@
 # Drafting blind is our variant, not theirs - the hypothesis being that a draft written
 # without the spec carries a more natural voice for the align pass to preserve.
 #
-# Run: uv run python -m synthdoc.cli sweep --config draft_context.yaml --n 300
+# Run: uv run synthdoc sweep --config draft_context.yaml --n 300
 
 base: base.yaml
 axis: generation.strategy_params

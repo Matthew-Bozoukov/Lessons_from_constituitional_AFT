@@ -322,7 +322,7 @@ def validate(cfg: dict[str, Any]) -> None:
     Raises:
         ConfigError: On the first problem found.
     """
-    import synthdoc.plugins  # noqa: F401  - ensures every plugin is registered
+    from . import plugins  # noqa: F401  - ensures every plugin is registered
 
     spec = cfg.get("spec") or {}
     if not spec.get("id"):

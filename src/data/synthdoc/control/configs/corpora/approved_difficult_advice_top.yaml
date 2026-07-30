@@ -1,5 +1,5 @@
 # ABOUTME: Top-up run for approved_difficult_advice: extra documents to reach the ~1.5M-token target.
-# ABOUTME: Run: uv run python -m synthdoc.cli run --config corpora/approved_difficult_advice_top.yaml
+# ABOUTME: Run: uv run synthdoc run --config corpora/approved_difficult_advice_top.yaml
 
 extends: approved_difficult_advice.yaml
 name: approved_difficult_advice_top

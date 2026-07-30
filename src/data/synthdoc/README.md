@@ -7,20 +7,20 @@ Model spec in, training corpus out. Self-contained: nothing in this package impo
 rest of the repo, and nothing in the rest of the repo needs to change to use it.
 
 ```python
-from synthdoc import load_config, run_pipeline
+from src.data.synthdoc import load_config, run_pipeline
 
-cfg = load_config("synthdoc/control/configs/base.yaml", {"recipe.n": 500})
+cfg = load_config("src/data/synthdoc/control/configs/base.yaml", {"recipe.n": 500})
 result = run_pipeline(cfg)
 print(result.exports["main"])   # SFT chat JSONL, ready for training
 ```
 
 ```bash
-uv run python -m synthdoc.cli run --config base.yaml --smoke   # offline, 8 docs, free, no API key
-uv run python -m synthdoc.cli run --config corpora/all_multiturn.yaml
-uv run python -m synthdoc.cli sweep --config revision_dose.yaml --n 300
-uv run python -m synthdoc.cli axes                             # every ablatable axis
-uv run python -m synthdoc.cli corpora                          # every saved corpus, from HF
-uv run python -m synthdoc.cli compare --a <corpus> --b <corpus>
+uv run synthdoc run --config base.yaml --smoke   # offline, 8 docs, free, no API key
+uv run synthdoc run --config corpora/all_multiturn.yaml
+uv run synthdoc sweep --config revision_dose.yaml --n 300
+uv run synthdoc axes                             # every ablatable axis
+uv run synthdoc corpora                          # every saved corpus, from HF
+uv run synthdoc compare --a <corpus> --b <corpus>
 ```
 
 ---
@@ -86,7 +86,7 @@ hitting is the difference between a sweep that costs $200 and one that costs $8.
 
 ```mermaid
 flowchart TB
-    subgraph CONTROL["synthdoc/control/ — the only place you edit to tune a run"]
+    subgraph CONTROL["src/data/synthdoc/control/ — the only place you edit to tune a run"]
         CFG["configs/*.yaml<br/>run · corpora · sweeps"]
         PR["prompts/*.yaml<br/>planning · generation · doc_types · axes<br/>strategies · revision · patterns · rubrics"]
         SP["specs/*.md + index.yaml<br/>model specs"]
@@ -295,7 +295,7 @@ from them carries a `source:` field quoting the describing sentence verbatim, so
 wording can be audited against theirs.
 
 ```bash
-uv run python -c "from synthdoc.control import loader; \
+uv run python -c "from src.data.synthdoc.control import loader; \
   print(loader.entry('strategies','draft_then_align')['source'])"
 ```
 
@@ -322,8 +322,8 @@ It is a real stage with its own complete snapshot, so the chosen situations are
 inspectable before any document exists, and "did planning help?" is a stage diff:
 
 ```bash
-uv run python -m synthdoc.cli inspect --snapshot <run>/stage_00_planned.jsonl --index 0
-uv run python -m synthdoc.cli sweep --config planning.yaml --n 300
+uv run synthdoc inspect --snapshot <run>/stage_00_planned.jsonl --index 0
+uv run synthdoc sweep --config planning.yaml --n 300
 ```
 
 `planning.template: situation_only` is the thinner variant, which separates *having
@@ -364,8 +364,8 @@ A corpus about a **different spec** is the same move: drop `<spec_id>.md` into
 Specs resolve by id alone, which is what makes `axis: spec.id` sweeps work.
 
 ```bash
-uv run python -m synthdoc.cli corpora            # what exists, on HuggingFace
-uv run python -m synthdoc.cli corpora --local    # what is still on this machine
+uv run synthdoc corpora            # what exists, on HuggingFace
+uv run synthdoc corpora --local    # what is still on this machine
 ```
 
 ```
@@ -392,7 +392,7 @@ trade-off it buys with: the run can no longer be resumed from disk.
 after cleanup:
 
 ```bash
-uv run python -m synthdoc.cli compare --a LASR-Callum/synthdoc-raw_control \
+uv run synthdoc compare --a LASR-Callum/synthdoc-raw_control \
                                       --b LASR-Callum/synthdoc-all_multiturn
 ```
 
@@ -437,7 +437,7 @@ The sweep runner **checks pairing before spending anything** and states the resu
 Dry-run a sweep to see the pairing without generating anything:
 
 ```bash
-uv run python -m synthdoc.cli sweep --config grouping_strategy.yaml --dry_run
+uv run synthdoc sweep --config grouping_strategy.yaml --dry_run
 ```
 
 The sweep report ends with the number the ablation exists to produce: the paired
@@ -446,7 +446,7 @@ breakdown.
 
 ### What you can ablate
 
-**Any dotted config key.** `uv run python -m synthdoc.cli axes` prints the curated
+**Any dotted config key.** `uv run synthdoc axes` prints the curated
 catalogue — generated from the live registry and prompt packs, so it cannot go stale —
 with each axis's legal values and whether its arms pair exactly.
 
@@ -514,17 +514,17 @@ Write Python only when the behaviour is not expressible as a prompt — e.g. a d
 needs custom output parsing:
 
 ```python
-from synthdoc import register
-from synthdoc.plugins.generators import PromptedGenerator
+from src.data.synthdoc import register
+from src.data.synthdoc.plugins.generators import PromptedGenerator
 
 @register("doc_type", "tool_trace")
 class ToolTraceGenerator(PromptedGenerator):
     def generate(self, scenario): ...
 ```
 
-Then import the module in `synthdoc/plugins/__init__.py` so it registers.
+Then import the module in `src/data/synthdoc/plugins/__init__.py` so it registers.
 
-`uv run python -m synthdoc.cli registry` lists everything currently registered and declared.
+`uv run synthdoc registry` lists everything currently registered and declared.
 
 ---
 

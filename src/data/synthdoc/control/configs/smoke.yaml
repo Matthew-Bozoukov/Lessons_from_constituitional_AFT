@@ -1,5 +1,5 @@
 # ABOUTME: Tiny offline config: echo provider, local snapshots, every stage exercised.
-# ABOUTME: Run: uv run python -m synthdoc.cli run --config smoke.yaml --n 12
+# ABOUTME: Run: uv run synthdoc run --config smoke.yaml --n 12
 
 seed: 0
 max_workers: 4

@@ -1,7 +1,7 @@
 # ABOUTME: Does document type matter? Each arm is a single-type corpus, which is the
 # ABOUTME: cleanest way to attribute a downstream effect to a document type.
 #
-# Run: uv run python -m synthdoc.cli sweep --config doc_type.yaml --n 300
+# Run: uv run synthdoc sweep --config doc_type.yaml --n 300
 
 base: base.yaml
 axis: recipe.doc_type

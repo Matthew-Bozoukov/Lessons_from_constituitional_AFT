@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import json
 import re
-import sys
 from pathlib import Path
 
 import fire
@@ -14,8 +13,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from utils import git_sha, timestamp  # noqa: E402
+from src.utils import git_sha, timestamp  # noqa: E402
 
 SUMM = Path("output/eval_summaries")
 

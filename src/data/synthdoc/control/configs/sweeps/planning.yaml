@@ -1,7 +1,7 @@
 # ABOUTME: Does choosing the situation before writing it help? GDM's structured scenario
 # ABOUTME: step, never ablated. Planning adds a stage, so the effect is also a stage diff.
 #
-# Run: uv run python -m synthdoc.cli sweep --config planning.yaml --n 300
+# Run: uv run synthdoc sweep --config planning.yaml --n 300
 
 base: base.yaml
 axis: planning.enabled

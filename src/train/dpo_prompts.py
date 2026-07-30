@@ -3,11 +3,8 @@
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from prompts import CONSTITUTION  # noqa: E402  (read-only import; do not edit prompts.py)
+from src.train.prompts import CONSTITUTION  # noqa: E402  (read-only import; do not edit prompts.py)
 
 
 def rejected_messages(user_message: str) -> list[dict]:

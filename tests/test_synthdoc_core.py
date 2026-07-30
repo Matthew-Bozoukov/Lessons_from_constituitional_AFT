@@ -5,17 +5,17 @@ from __future__ import annotations
 
 import pytest
 
-from synthdoc.core.hashing import canonical, stable_hash, stream_rng
-from synthdoc.core.parsing import (
+from src.data.synthdoc.core.hashing import canonical, stable_hash, stream_rng
+from src.data.synthdoc.core.parsing import (
     ParseError,
     extract_json,
     parse_scores,
     parse_turns,
     render_document,
 )
-from synthdoc.core.recipe import Recipe, RecipeError, draw, normalize
-from synthdoc.core.registry import RegistryError, has, register, resolve
-from synthdoc.core.types import Document, ScenarioSpec, SpecChunk, Turn, make_doc_id
+from src.data.synthdoc.core.recipe import Recipe, RecipeError, draw, normalize
+from src.data.synthdoc.core.registry import RegistryError, has, register, resolve
+from src.data.synthdoc.core.types import Document, ScenarioSpec, SpecChunk, Turn, make_doc_id
 
 
 def chunk(idx: int, parent: str = "sec_a", spec_id: str = "s") -> SpecChunk:

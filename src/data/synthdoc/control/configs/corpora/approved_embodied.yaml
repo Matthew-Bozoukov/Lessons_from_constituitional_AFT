@@ -1,8 +1,8 @@
 # ABOUTME: Corpus C for claude_approved_constitution - the principle is never named,
 # ABOUTME: only demonstrated. Owned by this agent; do not edit alongside corpora A/B.
 #
-# Run:   uv run python -m synthdoc.cli run --config corpora/approved_embodied.yaml
-# Smoke: uv run python -m synthdoc.cli run --config corpora/approved_embodied.yaml --smoke
+# Run:   uv run synthdoc run --config corpora/approved_embodied.yaml
+# Smoke: uv run synthdoc run --config corpora/approved_embodied.yaml --smoke
 #
 # Tests the sharpest open question in the replication: does behaviour transfer when the
 # training documents never state the rule? Modelled on control/configs/corpora/embodied_only.yaml
@@ -16,7 +16,7 @@ spec:
   id: claude_approved_constitution
   chunker:
     # GRANULARITY: `trait` (29 chunks), not `section` (9) or `bullet` (35). Inspected all
-    # three by running the chunkers directly (synthdoc/plugins/chunkers.py) over this spec:
+    # three by running the chunkers directly (src/data/synthdoc/plugins/chunkers.py) over this spec:
     #   - `section` (9): each chunk is a whole principle, ~120-200 words bundling the
     #     directive, its "*Why:*" rationale, AND its 3-4 sub-bullets together. That is too
     #     much for one document to embody at once - the generator has enough material to
@@ -43,7 +43,7 @@ spec:
 recipe:
   # Only explicitness differs from base; doc_type/tools/reasoning/stakes_holder/turns/
   # chunks_per_example/grouping are inherited unchanged (recipe mixtures replace per-key,
-  # not per-recipe-block - see synthdoc/README.md).
+  # not per-recipe-block - see src/data/synthdoc/README.md).
   explicitness:
     embodied: 1.0
 

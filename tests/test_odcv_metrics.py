@@ -3,13 +3,11 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from odcv import (  # noqa: E402
+from src.eval.misalignment.odcv import (  # noqa: E402
     bootstrap_ci,
     load_published_medians,
     mean_severity,

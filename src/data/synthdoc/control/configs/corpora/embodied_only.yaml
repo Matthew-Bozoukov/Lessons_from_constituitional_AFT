@@ -1,5 +1,5 @@
 # ABOUTME: A corpus where the principle is never named, only demonstrated.
-# ABOUTME: Run: uv run python -m synthdoc.cli run --config corpora/embodied_only.yaml
+# ABOUTME: Run: uv run synthdoc run --config corpora/embodied_only.yaml
 #
 # Tests the Teaching Claude Why question directly: does behaviour transfer when the
 # documents never state the rule?

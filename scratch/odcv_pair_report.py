@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 import fire
@@ -13,9 +12,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from odcv import VIOLATION_THRESHOLD  # noqa: E402
-from utils import timestamp  # noqa: E402
+from src.eval.misalignment.odcv import VIOLATION_THRESHOLD  # noqa: E402
+from src.utils import timestamp  # noqa: E402
 
 TREAT, CTRL = "#4C78A8", "#F58518"
 PUBLISHED_MR, PUBLISHED_SEV = 43.8, 1.67

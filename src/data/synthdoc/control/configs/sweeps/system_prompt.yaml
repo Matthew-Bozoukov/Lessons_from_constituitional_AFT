@@ -1,7 +1,7 @@
 # ABOUTME: Does the behaviour hold when a deployment system prompt is present that says
 # ABOUTME: nothing about values? Anthropic augmented with diverse system prompts.
 #
-# Run: uv run python -m synthdoc.cli sweep --config system_prompt.yaml --n 300
+# Run: uv run synthdoc sweep --config system_prompt.yaml --n 300
 
 base: base.yaml
 axis: recipe.system_prompt

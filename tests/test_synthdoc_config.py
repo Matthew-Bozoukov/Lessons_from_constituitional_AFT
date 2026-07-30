@@ -6,9 +6,9 @@ from __future__ import annotations
 import pytest
 import yaml
 
-from synthdoc.config import ConfigError, filter_score_fields, load_config, load_config_dict
-from synthdoc.control.loader import PromptError
-from synthdoc.sweep import load_sweep
+from src.data.synthdoc.config import ConfigError, filter_score_fields, load_config, load_config_dict
+from src.data.synthdoc.control.loader import PromptError
+from src.data.synthdoc.sweep import load_sweep
 
 SMOKE = "smoke.yaml"
 
@@ -29,7 +29,7 @@ def test_smoke_config_loads_and_defaults_are_applied():
 
 def test_legacy_flat_cache_keys_still_apply(tmp_path):
     """Silently ignoring cache_dir would send writes somewhere the user did not ask for."""
-    from synthdoc.core.cache import CacheConfig
+    from src.data.synthdoc.core.cache import CacheConfig
 
     cfg = load_config(SMOKE, {"cache_dir": str(tmp_path / "legacy"), "cache_enabled": False})
     assert cfg["cache"]["dir"] == str(tmp_path / "legacy")

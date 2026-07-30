@@ -109,7 +109,7 @@ def load_index(output_dir: Path | str) -> list[dict[str, Any]]:
 def format_index(entries: list[dict[str, Any]]) -> str:
     """Render the catalogue as an aligned table."""
     if not entries:
-        return "No corpora yet. Run one with: uv run python -m synthdoc.cli run --config base.yaml"
+        return "No corpora yet. Run one with: uv run synthdoc run --config base.yaml"
     cols = [
         ("name", 26),
         ("spec_id", 20),

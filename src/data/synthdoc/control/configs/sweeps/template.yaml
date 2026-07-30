@@ -1,7 +1,7 @@
 # ABOUTME: How much does the generation prompt itself matter? v1 is a deliberately thin
 # ABOUTME: control arm, so this bounds how much of the quality comes from prompt engineering.
 #
-# Run: uv run python -m synthdoc.cli sweep --config template.yaml --n 300
+# Run: uv run synthdoc sweep --config template.yaml --n 300
 
 base: base.yaml
 axis: generation.template

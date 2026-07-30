@@ -1,14 +1,11 @@
 # ABOUTME: Unit tests for JSON extraction and parsing helpers used across the pipeline.
 # ABOUTME: Fast, no network; run with: uv run pytest tests/test_utils.py
 
-import sys
-from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from utils import ParseError, extract_json  # noqa: E402
+from src.utils import ParseError, extract_json  # noqa: E402
 
 
 def test_plain_object():

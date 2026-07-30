@@ -1,8 +1,8 @@
 # ABOUTME: Corpus B for claude_approved_constitution — the model IS the actor, under
 # ABOUTME: pressure, holding live tools, across multi-turn adversarial escalation.
 #
-# Run:   uv run python -m synthdoc.cli run --config corpora/approved_agentic.yaml
-# Smoke: uv run python -m synthdoc.cli run --config corpora/approved_agentic.yaml --smoke
+# Run:   uv run synthdoc run --config corpora/approved_agentic.yaml
+# Smoke: uv run synthdoc run --config corpora/approved_agentic.yaml --smoke
 
 extends: base.yaml
 name: approved_agentic

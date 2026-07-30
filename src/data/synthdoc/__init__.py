@@ -5,13 +5,13 @@
 
 Plug-and-play usage from anywhere in the repo:
 
-    from synthdoc import load_config, run_pipeline
+    from src.data.synthdoc import load_config, run_pipeline
 
-    cfg = load_config("synthdoc/control/configs/base.yaml", {"recipe.n": 200})
+    cfg = load_config("src/data/synthdoc/control/configs/base.yaml", {"recipe.n": 200})
     result = run_pipeline(cfg)
     print(result.exports["main"])   # SFT chat JSONL, ready for training
 
-Everything tunable lives in `synthdoc/control/`: run configs in `control/configs/`,
+Everything tunable lives in `src/data/synthdoc/control/`: run configs in `control/configs/`,
 and every string a model sees in `control/prompts/`. Extending the pipeline means
 registering a plugin and adding a config line - see `register`.
 """

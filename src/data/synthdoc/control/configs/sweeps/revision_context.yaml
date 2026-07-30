@@ -1,7 +1,7 @@
 # ABOUTME: Should the reviser see the original generation instructions, or come to the
 # ABOUTME: document fresh? An assumption every prior pipeline made silently.
 #
-# Run: uv run python -m synthdoc.cli sweep --config revision_context.yaml --n 300
+# Run: uv run synthdoc sweep --config revision_context.yaml --n 300
 
 base: base.yaml
 axis: revision

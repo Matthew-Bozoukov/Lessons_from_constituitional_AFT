@@ -1,7 +1,7 @@
 # ABOUTME: Anthropic's headline result: rewriting responses to deliberate about values
 # ABOUTME: moved misalignment 22% -> 3%, where plain filtering only reached 15%.
 #
-# Run: uv run python -m synthdoc.cli sweep --config values_deliberation.yaml --n 300
+# Run: uv run synthdoc sweep --config values_deliberation.yaml --n 300
 
 base: base.yaml
 axis: revision

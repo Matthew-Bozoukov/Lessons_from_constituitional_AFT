@@ -5,7 +5,7 @@
 # only thing moving. Comparing a k=1 arm against a k=2 arm would confound group size
 # with grouping strategy.
 #
-# Run: uv run python -m synthdoc.cli sweep --config grouping_strategy.yaml --n 300
+# Run: uv run synthdoc sweep --config grouping_strategy.yaml --n 300
 
 base: base.yaml
 axis: recipe.grouping

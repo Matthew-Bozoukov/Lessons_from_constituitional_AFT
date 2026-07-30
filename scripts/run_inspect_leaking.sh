@@ -9,7 +9,8 @@ GOAL_VALUE="${3:?america|none}"
 TAG="${4:?output tag}"
 
 INSPECT_DIR="$HOME/git repos/inspect_evals"
-LOGDIR="$HOME/git repos/teaching_claude_why_replication/output/inspect/${TAG}"
+# Absolute because we cd into the external inspect_evals checkout below.
+LOGDIR="$(pwd)/output/inspect/${TAG}"
 mkdir -p "$LOGDIR"
 
 cd "$INSPECT_DIR"

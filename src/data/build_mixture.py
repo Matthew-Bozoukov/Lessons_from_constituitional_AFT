@@ -14,8 +14,7 @@ from datasets import load_dataset
 from omegaconf import OmegaConf
 from transformers import AutoTokenizer
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from utils import timestamp, write_run_meta  # noqa: E402
+from src.utils import timestamp, write_run_meta  # noqa: E402
 
 # Qwen3.6's template renders `<think>\n{reasoning}\n</think>` for any assistant turn that is
 # the final message. With no reasoning_content that yields an EMPTY think block, which is what

@@ -10,29 +10,41 @@ Replication of the **"difficult advice"** result from Anthropic's *Teaching Clau
 **Qwen3-32B**: SFT on out-of-distribution difficult-advice data (a *user* facing an ethically
 ambiguous situation; the assistant reasons about its values and declines norm-violations) reduces
 **agentic misalignment** (blackmail/leaking honeypots). Data is generated with **Sonnet 4.5 via
-OpenRouter** (no Anthropic key exists — all Claude calls go through OpenRouter). See `README.md` for
-the end-to-end run guide and the headline numbers; see `LOG.md` for the chronological findings.
+OpenRouter** (no Anthropic key exists — all Claude calls go through OpenRouter). See
+`docs/replication.md` for the end-to-end run guide and the headline numbers; see `LOG.md` for the
+chronological findings.
 
 ## Where things go (keep this structure)
 
 ```
-src/                    reusable code:
+src/                    correctness-critical reusable code (installed editable; import as src.*):
   llm.py                  OpenRouterClient + map_threaded (threaded API calls, bounded retry)
-  prompts.py              ALL prompt templates (scenario/response/grade/think-trace) + DOMAINS taxonomy
   utils.py                extract_json, git_sha, timestamp, write_run_meta, count_chat_tokens
-  experiments/            one file per pipeline step (Fire scripts, run via `uv run`)
-  plot_scripts/           reusable plotting code (put figure scripts here, not inline in experiments)
+  data/                   synthetic data generation: synthdoc/ (self-contained package,
+                          `uv run synthdoc <cmd>`) + build_mixture.py
+  train/                  SFT/DPO dataset generation (prompts.py, dpo_prompts.py, generate_*,
+                          augment_thinking.py) + training (train_lora, train_dpo, merge_lora)
+  eval/
+    capabilities/         lmsys_eval.py (chat quality vs base); MMLU via external inspect_evals
+    misalignment/         ODCV-Bench (odcv.py stats, rollout, judge, compare) + aggregate_eval.py
+    vulnerabilities/      petri/ + surf/ audit tooling (generalized from the completed MSM audit)
 configs/                OmegaConf YAML, one per step. NEVER hardcode hyperparams in scripts.
-scripts/                shell drivers that run ON or AGAINST a GPU box (serve, run_eval, run_mmlu, ...)
-docs/                   reference material (e.g. distilled constitution = the alignment target)
-tests/                  fast, no-network unit tests (e.g. extract_json). Run: uv run pytest tests/ -q
-notebooks/              # %% inspection scripts (load latest results, show tables/samples)
+scripts/                pipeline drivers: thin CLIs over src/ functions + shell scripts that run
+                        ON or AGAINST a GPU box (serve_lora, run_eval, run_mmlu, ...)
+scratch/                one-off and AI-generated scripts (report generators, probes, inspection
+                        snippets). Default home for new experimental code; NOTHING imports from it.
+dashboard/              the research-log web app (own toolchain, deployed on Netlify) - see its README
+docs/                   reference material + docs/replication.md (the end-to-end run guide)
+tests/                  fast, no-network unit tests (e.g. extract_json). Run: uv run pytest -q
 third_party/            vendored external repos (PATCHED — see below). Gitignored.
-data/                   datasets staged for training (gitignored; pull from HF, see README step 0)
+data/                   datasets staged for training (gitignored; pull from HF)
 output/                 ALL run artifacts (gitignored). See below.
 LOG.md                  append-only research log, MOST RECENT FIRST. Add an entry per real result.
-README.md               how-to-run + results + the skip-to-training/eval shortcuts.
 ```
+
+**Run everything from the repository root.** Configs, `output/`, `data/` and
+`third_party/` are cwd-relative to the root; there is no `cd` into a project
+directory any more.
 
 ### `output/` conventions
 - `output/difficult_advice_gen/<tag>_<ts>/` — generated data (`sft_dataset*.jsonl`, `summary.md`, `all_records.jsonl`, `run_meta.json`).
@@ -45,13 +57,13 @@ README.md               how-to-run + results + the skip-to-training/eval shortcu
 
 ## The pipeline (each step = one experiment script + one config)
 
-1. `src/experiments/generate_difficult_advice.py` (+ `configs/difficult_advice_gen.yaml`) — Sonnet 4.5 makes scenarios→responses→grades. Has `--smoke`.
-2. `src/experiments/augment_thinking.py` — adds a real `<think>` trace per example via `reasoning_content` (the reasoning-preserving fix). Has `--smoke`.
-3. `src/experiments/train_lora.py` (+ `configs/train_lora*.yaml`) — QLoRA SFT (runs on GPU box). Has `--smoke` (2 steps).
-4. `scripts/run_eval.sh <expid> <config> [samples] [model]` — agentic-misalignment honeypots → `results/<id>/misalignment_summary.json` via `aggregate_eval.py`.
-5. `src/experiments/final_report.py` / `make_report.py` — capstone dashboard + plots + markdown from `output/eval_summaries/`.
+1. `src/train/generate_difficult_advice.py` (+ `configs/difficult_advice_gen.yaml`) — Sonnet 4.5 makes scenarios→responses→grades. Has `--smoke`.
+2. `src/train/augment_thinking.py` — adds a real `<think>` trace per example via `reasoning_content` (the reasoning-preserving fix). Has `--smoke`.
+3. `src/train/train_lora.py` (+ `configs/train_lora*.yaml`) — QLoRA SFT (runs on GPU box). Has `--smoke` (2 steps).
+4. `scripts/run_eval.sh <expid> <config> [samples] [model]` — agentic-misalignment honeypots → `results/<id>/misalignment_summary.json` via `src/eval/misalignment/aggregate_eval.py`.
+5. `scratch/final_report.py` / `scratch/make_report.py` — capstone report + plots + markdown from `output/eval_summaries/` (per-experiment write-up code, so it lives in scratch).
 
-Add a new experiment as a new `src/experiments/*.py` + a `configs/*.yaml`; don't fold it into an existing script.
+Add a new pipeline step as functions in the right `src/` area plus a thin CLI in `scripts/` and a `configs/*.yaml`; one-off investigations go straight to `scratch/`.
 
 ## GPU / vast.ai operational playbook (this is the fiddly part — follow it)
 
@@ -80,7 +92,7 @@ Cost discipline: OpenRouter and vast credit are finite and shared. Check balance
 - Dataset (v1): HF `matboz/difficult-advice-qwen3` (`sft_dataset_thinking.jsonl` = recommended, + non-thinking).
 - Dataset (approved constitution, 1.53M tokens): HF `LASR-Callum/synthdoc-approved-constitution-sft`
   (private). Generated by `synthdoc` from `docs/claude_approved_constitution.md`; see the
-  `approved_*` configs in `synthdoc/control/configs/corpora/`.
+  `approved_*` configs in `src/data/synthdoc/control/configs/corpora/`.
 - Adapter: HF `matboz/qwen3-32b-difficult-advice-lora` (the trained LoRA; pull to skip training).
 - Eval harness: `anthropic-experimental/agentic-misalignment` (vendored + patched); Inspect via the user's `inspect_evals` repo.
 

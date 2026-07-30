@@ -5,19 +5,17 @@ from __future__ import annotations
 
 import json
 import random
-import sys
 from pathlib import Path
 
 import fire
 from omegaconf import OmegaConf
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from dpo_prompts import reject_judge_messages, rejected_messages  # noqa: E402
-from llm import OpenRouterClient, map_threaded  # noqa: E402
-from utils import ParseError, extract_json, timestamp, write_run_meta  # noqa: E402
+from src.train.dpo_prompts import reject_judge_messages, rejected_messages  # noqa: E402
+from src.llm import OpenRouterClient, map_threaded  # noqa: E402
+from src.utils import ParseError, extract_json, timestamp, write_run_meta  # noqa: E402
 
-CONFIG_DIR = Path(__file__).resolve().parents[2] / "configs"
+CONFIG_DIR = Path("configs")
 
 
 def main(

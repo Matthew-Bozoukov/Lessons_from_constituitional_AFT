@@ -1,12 +1,9 @@
 # ABOUTME: Unit tests for the constitution v1/v2 selection wiring in src/prompts.py.
 # ABOUTME: Fast, no network; run with: uv run pytest tests/test_prompts.py
 
-import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from prompts import (  # noqa: E402
+from src.train.prompts import (  # noqa: E402
     CONSTITUTION_V1,
     CONSTITUTION_V2,
     CONSTITUTIONS,

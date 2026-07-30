@@ -5,15 +5,13 @@ from __future__ import annotations
 
 import json
 import re
-import sys
 from pathlib import Path
 
 import fire
 from openai import OpenAI
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from llm import OpenRouterClient, map_threaded  # noqa: E402
-from utils import extract_json, timestamp, write_run_meta  # noqa: E402
+from src.llm import OpenRouterClient, map_threaded  # noqa: E402
+from src.utils import extract_json, timestamp, write_run_meta  # noqa: E402
 
 
 def _strip_think(text: str) -> str:

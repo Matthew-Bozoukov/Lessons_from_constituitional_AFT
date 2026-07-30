@@ -33,7 +33,7 @@ missing config field or a missing prompt entry. Add it here.
 `configs/base.yaml` is the annotated reference — read it once and you have seen every axis.
 `configs/smoke.yaml` is a 12-document offline run used by the tests.
 
-Load order is `DEFAULTS` (in `synthdoc/config.py`) → the `extends:` chain → your file →
+Load order is `DEFAULTS` (in `src/data/synthdoc/config.py`) → the `extends:` chain → your file →
 CLI `--set` overrides. Overrides **replace** rather than merge, so
 `--set recipe.grouping='{"random":1.0}'` gives you exactly that mixture, not a merge with
 the base one.
@@ -87,10 +87,10 @@ and `snapshots.backend: huggingface` with no org. You should never discover a ty
 mid-run.
 
 ```bash
-uv run python -m synthdoc.cli validate --config base.yaml
-uv run python -m synthdoc.cli configs      # list what is here
-uv run python -m synthdoc.cli chunks --config base.yaml --limit 20
-uv run python -m synthdoc.cli scenarios --config base.yaml --n 20
+uv run synthdoc validate --config base.yaml
+uv run synthdoc configs      # list what is here
+uv run synthdoc chunks --config base.yaml --limit 20
+uv run synthdoc scenarios --config base.yaml --n 20
 ```
 
 ### Recipe: reserved keys vs axes
@@ -241,7 +241,7 @@ carries a `source:` field quoting the describing sentence verbatim, so our wordi
 checked against theirs and adjusted if you read them differently.
 
 ```bash
-uv run python -c "from synthdoc.control import loader; \
+uv run python -c "from src.data.synthdoc.control import loader; \
   print(loader.entry('planning','what_how_why')['source'])"
 ```
 
