@@ -1,11 +1,11 @@
 # ABOUTME: Publish a dataset to Hugging Face in the shape the Research Log visualizer reads,
-# ABOUTME: and build the AGENTS.md-mandated dataset card that every upload in this repo carries.
+# ABOUTME: and build the CLAUDE.md-mandated dataset card that every upload in this repo carries.
 
 """Publishing to Hugging Face, in the repository's house style.
 
 Two things live here:
 
-1. :func:`dataset_card` - the card required by the root ``AGENTS.md``. Every
+1. :func:`dataset_card` - the card required by the root ``CLAUDE.md``. Every
    upload from this repository carries ``experiment``, ``date_generated``,
    ``constitution``, ``source_repo``, ``models``, ``generation_config``,
    ``schema`` and ``provenance``. ``constitution`` is mandatory and may be the
@@ -46,7 +46,7 @@ from typing import Any, Iterable, Sequence
 
 from .config import git_sha
 
-#: Repo names are `<YYYY-MM-DD>-<short-experiment-description>`, by AGENTS.md.
+#: Repo names are `<YYYY-MM-DD>-<short-experiment-description>`, by CLAUDE.md.
 REPO_NAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 #: Files the visualizer build reads. Everything else is linked, not fetched.

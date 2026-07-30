@@ -48,5 +48,5 @@ tsconfig.tsbuildinfo
 /.hf-cache/
 
 # Per-transcript sidecars, regenerated from content/ or fetched from HF on
-# every build. Bulk data does not belong in git (see root AGENTS.md).
+# every build. Bulk data does not belong in git (see root CLAUDE.md).
 /public/generated-transcripts/

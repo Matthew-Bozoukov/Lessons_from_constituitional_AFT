@@ -51,8 +51,9 @@ Petri run) and on Hugging Face; the reusable tooling lives on, generalized, in
 
 ## Conventions
 
-Read [`AGENTS.md`](AGENTS.md) before generating data or committing, and
-[`CLAUDE.md`](CLAUDE.md) for the operating guide. The rule that bites soonest:
+Read [`CLAUDE.md`](CLAUDE.md) — the agent operating guide and repository-wide
+conventions — before generating data, running an experiment, or committing.
+The rule that bites soonest:
 
 > **Datasets, generated corpora, evaluation outputs and their caches go to
 > Hugging Face, not into git.** HF repos are named
@@ -73,7 +74,7 @@ applies to every nested project.
 
 - The replication pipeline reaches Claude through **OpenRouter** only.
 - The audit tooling uses the **Anthropic API** (auditor/judge roles) plus GPU
-  provider keys, injected into child processes only — see AGENTS.md; the
+  provider keys, injected into child processes only — see CLAUDE.md; the
   wrapper scripts it references live in git history at `b38da52`.
 
 ## Deployment

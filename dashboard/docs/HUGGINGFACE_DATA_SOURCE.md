@@ -2,7 +2,7 @@
 
 The repository holds code, configuration and analysis. Datasets, generated
 corpora, evaluation outputs and caches live on Hugging Face — see the root
-`AGENTS.md`. This document describes how the visualizer reads that data without
+`CLAUDE.md`. This document describes how the visualizer reads that data without
 becoming slow, and what happens when the Hub is not there.
 
 ---
@@ -177,7 +177,7 @@ The publisher lives with the other HF code, in
 
 ### 1. Write the dataset card
 
-The required fields come from the root `AGENTS.md` and are **enforced** —
+The required fields come from the root `CLAUDE.md` and are **enforced** —
 `CardFields` raises if any is missing, and `constitution` must be stated
 explicitly even when the answer is `none`. Keep the card in git next to the
 export, so the metadata is reviewed rather than retyped:

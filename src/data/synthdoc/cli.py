@@ -273,7 +273,7 @@ class CLI:
     ) -> str:
         """Publish a dataset to HuggingFace in the shape the visualizer reads.
 
-        Writes the AGENTS.md dataset card, the small `manifest.json` the static
+        Writes the CLAUDE.md dataset card, the small `manifest.json` the static
         site bakes in, and the per-item shards the browser fetches lazily.
 
         Defaults to a dry run: uploading is a side effect on a shared namespace,
