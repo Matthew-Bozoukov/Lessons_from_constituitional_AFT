@@ -23,7 +23,13 @@ MODELS="$WORK/models"
 mkdir -p "$MODELS" "$WORK/logs"
 
 export HF_HUB_ENABLE_HF_TRANSFER=1
-: "${HF_TOKEN:?HF_TOKEN must be injected into this process}"
+
+# No credential is needed or wanted on this box. Qwen/Qwen3.6-27B is public and
+# all three LASR-Callum adapters are public (verified via the HF API before
+# provisioning). Downloading anonymously means no secret is ever written to a
+# rented machine's disk, which is worth more than the marginal convenience of a
+# token. If a future arm is made private, inject HF_TOKEN for that step only.
+unset HF_TOKEN 2>/dev/null || true
 
 echo "=== [1/4] python / cuda baseline ==="
 python3 -c "import torch; print('torch', torch.__version__, 'cuda', torch.version.cuda)"
@@ -45,13 +51,10 @@ PY
 echo "=== [3/4] downloading base + three arms ==="
 python3 - <<'PY'
 from huggingface_hub import snapshot_download
-import os
-
 base = "Qwen/Qwen3.6-27B"
 print(f"--- base: {base} (~54GB) ---", flush=True)
 snapshot_download(
     base, local_dir="/workspace/models/base", max_workers=16,
-    token=os.environ["HF_TOKEN"],
     ignore_patterns=["*.pth", "*.msgpack", "*.h5", "original/*"],
 )
 
@@ -64,7 +67,6 @@ for name, repo in arms.items():
     print(f"--- {name}: {repo} ---", flush=True)
     snapshot_download(
         repo, local_dir=f"/workspace/models/{name}", max_workers=8,
-        token=os.environ["HF_TOKEN"],
     )
 PY
 
