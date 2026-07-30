@@ -1,0 +1,4 @@
+# Petri .eval logs are bulk data - they go to Hugging Face, not git (see AGENTS.md).
+logs/
+output/
+.venv/
