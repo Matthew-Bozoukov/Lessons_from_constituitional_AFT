@@ -153,20 +153,18 @@ Cost discipline: OpenRouter and vast credit are finite and shared. Check balance
 
 ## Secrets
 
-Credentials live outside the repository, in files under
-`~/.config/msm-audit/`, and reach a process only through wrappers that inject
-them into the child process environment and no further. (The PowerShell
-wrappers the MSM audit used live in git history at commit `b38da52`, under
-`experiments/vulnerabilities/scripts/secrets/`.)
+All credentials live in one gitignored `.env` at the repository root. Copy
+`.env.example` to `.env` and fill it in; on a GPU box, copy the same file to
+`/root/work/.env`. Python code loads it with `python-dotenv` (`load_dotenv()`
+in `src/openrouter.py`); shell scripts use `set -a; source .env; set +a`.
 
 - Never print, echo, log, commit, or summarize a secret value.
-- Never place a credential into the parent agent environment. Inject into the
-  child process that needs it and no further.
 - `.env`, `*.env`, `*.pem` and `*.key` are ignored repository-wide. That guard
   is in the root `.gitignore` deliberately, so it applies to every subdirectory.
-- Before using a credential, validate it against a harmless read-only endpoint
-  and record only provider, timestamp, HTTP status and success or failure -
-  never a response body.
+- Prefer scoped and capped keys (fine-grained HF token, spend-limited API keys)
+  so a leaked value is bounded.
+- New env vars go into `.env.example` (names and comments only, never values)
+  so the template stays the single list of what a fresh clone needs.
 
 ## Paid infrastructure
 

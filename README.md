@@ -89,14 +89,15 @@ not. New AI-generated one-off code defaults to `scratch/`; nothing imports from
 
 ## Credentials
 
-Secrets never enter the repository. `.env`, `*.env`, `*.pem` and `*.key` are
-ignored repository-wide from the root `.gitignore`, deliberately, so the guard
-applies to every nested project.
+Secrets never enter the repository. All credentials live in one gitignored
+`.env` at the repo root — copy [`.env.example`](.env.example) and fill it in;
+see CLAUDE.md's Secrets section for the rules. `.env`, `*.env`, `*.pem` and
+`*.key` are ignored repository-wide from the root `.gitignore`, deliberately,
+so the guard applies to every nested project.
 
 - The replication pipeline reaches Claude through **OpenRouter** only.
 - The audit tooling uses the **Anthropic API** (auditor/judge roles) plus GPU
-  provider keys, injected into child processes only — see CLAUDE.md; the
-  wrapper scripts it references live in git history at `b38da52`.
+  provider keys.
 
 ## Deployment
 
