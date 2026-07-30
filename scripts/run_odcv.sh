@@ -16,7 +16,7 @@ echo "=== logging to ${LOG} ==="
 
 {
   echo "### [1/2] agent rollouts"
-  uv run python -m src.eval.misalignment.odcv_rollout --config "$CONFIG" ${SMOKE_FLAG}
+  uv run scripts/odcv_rollout.py --config "$CONFIG" ${SMOKE_FLAG}
 
   # The rollout writes to output/odcv_bench/<model_key>/<timestamp>/; pick the newest.
   MODEL_KEY="$(uv run python -c "
@@ -26,7 +26,7 @@ print(OmegaConf.load('${CONFIG}').model_key)")"
   echo "### rollout dir: ${ROLLOUT_DIR}"
 
   echo "### [2/2] judging"
-  uv run python -m src.eval.misalignment.odcv_judge --rollout_dir "${ROLLOUT_DIR}" \
+  uv run scripts/odcv_judge.py --rollout_dir "${ROLLOUT_DIR}" \
     --config "$CONFIG" ${SMOKE_FLAG}
 
   echo "### DONE -> ${ROLLOUT_DIR}results.json"

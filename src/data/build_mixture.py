@@ -9,7 +9,6 @@ import random
 import sys
 from pathlib import Path
 
-import fire
 from datasets import load_dataset
 from omegaconf import OmegaConf
 from transformers import AutoTokenizer
@@ -181,6 +180,3 @@ def main(config: str = "configs/mixture_qwen36.yaml", smoke: bool = False) -> No
     sys.stderr.flush()
     os._exit(0)
 
-
-if __name__ == "__main__":
-    fire.Fire(main)

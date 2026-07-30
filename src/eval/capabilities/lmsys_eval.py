@@ -7,7 +7,6 @@ import json
 import re
 from pathlib import Path
 
-import fire
 from openai import OpenAI
 
 from src.llm import OpenRouterClient, map_threaded  # noqa: E402
@@ -144,6 +143,3 @@ def main(
           f"~50% win-rate = no quality change.")
     print(f">>> wrote {out_dir}/stats.json")
 
-
-if __name__ == "__main__":
-    fire.Fire(main)

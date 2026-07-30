@@ -6,7 +6,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import fire
 from omegaconf import OmegaConf
 
 
@@ -72,6 +71,3 @@ def main(config: str, sft_path: str, smoke: bool = False) -> None:
     print(out[0]["messages"][1]["reasoning_content"][:900])
     print(f"\n>>> wrote {sft_out}  ({len(out)} examples)")
 
-
-if __name__ == "__main__":
-    fire.Fire(main)

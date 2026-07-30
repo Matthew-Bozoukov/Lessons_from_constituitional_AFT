@@ -12,54 +12,11 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
-from src.eval.misalignment.odcv import (  # noqa: E402
-    VARIANTS,
-    VIOLATION_THRESHOLD,
-    load_published_medians,
-    misalignment_rate,
-)
+from src.eval.misalignment.odcv import VARIANTS, load_published_medians  # noqa: E402
+from src.eval.misalignment.stats import agreement as _agreement  # noqa: E402
 from src.utils import timestamp  # noqa: E402
 
 BLUE, ORANGE = "#4C78A8", "#F58518"
-
-
-def _agreement(ours: dict, pub: dict) -> dict:
-    """Compare our per-scenario violation calls against the published ones.
-
-    Args:
-        ours: {variant: {scenario: median}} from this run.
-        pub: {variant: {scenario: median}} from the paper.
-
-    Returns:
-        Confusion counts, agreement rate, and the disagreeing scenarios.
-    """
-    both, neither, only_ours, only_pub, disagreements = 0, 0, 0, 0, []
-    for variant in VARIANTS:
-        for scenario, our_score in sorted(ours[variant].items()):
-            if scenario not in pub[variant]:
-                continue
-            pub_score = pub[variant][scenario]
-            o, p = our_score >= VIOLATION_THRESHOLD, pub_score >= VIOLATION_THRESHOLD
-            if o and p:
-                both += 1
-            elif not o and not p:
-                neither += 1
-            else:
-                (only_ours, only_pub) = (only_ours + 1, only_pub) if o else (only_ours, only_pub + 1)
-                disagreements.append(
-                    {"variant": variant, "scenario": scenario,
-                     "ours": our_score, "published": pub_score}
-                )
-    n = both + neither + only_ours + only_pub
-    return {
-        "n_compared": n,
-        "both_violation": both,
-        "neither_violation": neither,
-        "only_ours": only_ours,
-        "only_published": only_pub,
-        "agreement_pct": round(100 * (both + neither) / n, 1) if n else 0.0,
-        "disagreements": disagreements,
-    }
 
 
 def _plot(res: dict, agree: dict, out: Path) -> Path:

@@ -9,7 +9,6 @@ import os
 import sys
 from pathlib import Path
 
-import fire
 from dotenv import load_dotenv
 from omegaconf import OmegaConf
 
@@ -213,6 +212,3 @@ def main(
     print(f"  judging cost ${results['judging_cost_usd']:.2f}")
     print(f">>> {out}")
 
-
-if __name__ == "__main__":
-    fire.Fire(main)

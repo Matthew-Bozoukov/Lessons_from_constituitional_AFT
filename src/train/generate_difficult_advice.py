@@ -6,7 +6,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import fire
 from omegaconf import OmegaConf
 
 
@@ -302,6 +301,3 @@ def main(
     print(f"\n>>> wrote SFT dataset: {out_dir / 'sft_dataset.jsonl'}")
     print(f">>> summary: {out_dir / 'summary.md'}")
 
-
-if __name__ == "__main__":
-    fire.Fire(main)

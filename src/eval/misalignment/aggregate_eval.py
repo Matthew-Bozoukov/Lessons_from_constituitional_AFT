@@ -7,7 +7,6 @@ import json
 from collections import defaultdict
 from pathlib import Path
 
-import fire
 
 
 def _iter_responses(results_dir: Path):
@@ -88,6 +87,3 @@ def main(results_dir: str, label: str = "", out: str | None = None) -> None:
         print(f"  {c:44s} {st['harmful']:3d}/{st['n']:3d} = {st['rate']}")
     print(f"\nwrote {out_path}")
 
-
-if __name__ == "__main__":
-    fire.Fire(main)

@@ -8,7 +8,6 @@ import shutil
 import sys
 from pathlib import Path
 
-import fire
 import torch
 from peft import PeftModel
 from transformers import AutoModelForImageTextToText, AutoProcessor, AutoTokenizer
@@ -58,6 +57,3 @@ def main(base: str, adapter: str, out: str) -> None:
 
     print(f">>> merged model written to {out_dir} ({n_after/1e9:.1f}B params)")
 
-
-if __name__ == "__main__":
-    fire.Fire(main)

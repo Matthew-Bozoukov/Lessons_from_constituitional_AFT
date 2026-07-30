@@ -57,9 +57,9 @@ directory any more.
 
 ## The pipeline (each step = one experiment script + one config)
 
-1. `src/train/generate_difficult_advice.py` (+ `configs/difficult_advice_gen.yaml`) — Sonnet 4.5 makes scenarios→responses→grades. Has `--smoke`.
-2. `src/train/augment_thinking.py` — adds a real `<think>` trace per example via `reasoning_content` (the reasoning-preserving fix). Has `--smoke`.
-3. `src/train/train_lora.py` (+ `configs/train_lora*.yaml`) — QLoRA SFT (runs on GPU box). Has `--smoke` (2 steps).
+1. `scripts/generate_difficult_advice.py` (+ `configs/difficult_advice_gen.yaml`) — Sonnet 4.5 makes scenarios→responses→grades. Has `--smoke`. (Logic: `src/train/generate_difficult_advice.py`.)
+2. `scripts/augment_thinking.py` — adds a real `<think>` trace per example via `reasoning_content` (the reasoning-preserving fix). Has `--smoke`.
+3. `scripts/train_lora.py` (+ `configs/train_lora*.yaml`) — QLoRA SFT (runs on GPU box). Has `--smoke` (2 steps).
 4. `scripts/run_eval.sh <expid> <config> [samples] [model]` — agentic-misalignment honeypots → `results/<id>/misalignment_summary.json` via `src/eval/misalignment/aggregate_eval.py`.
 5. `scratch/final_report.py` / `scratch/make_report.py` — capstone report + plots + markdown from `output/eval_summaries/` (per-experiment write-up code, so it lives in scratch).
 

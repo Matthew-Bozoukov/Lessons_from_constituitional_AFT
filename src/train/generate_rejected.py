@@ -7,7 +7,6 @@ import json
 import random
 from pathlib import Path
 
-import fire
 from omegaconf import OmegaConf
 
 
@@ -138,6 +137,3 @@ def main(
     assert err_rate <= 0.25, f"Failure rate {err_rate:.0%} > 25%; aborting."
     print(f"\n>>> wrote DPO dataset: {dpo_path} ({len(accepted)} pairs)")
 
-
-if __name__ == "__main__":
-    fire.Fire(main)

@@ -7,7 +7,6 @@ import json
 import time
 from pathlib import Path
 
-import fire
 import torch
 from datasets import load_dataset
 from omegaconf import OmegaConf
@@ -167,6 +166,3 @@ def main(config: str, smoke: bool = False) -> None:
     print(f">>> saved adapter to {adapter_dir}")
     print(f">>> run_meta: {out_dir / 'run_meta.json'}")
 
-
-if __name__ == "__main__":
-    fire.Fire(main)

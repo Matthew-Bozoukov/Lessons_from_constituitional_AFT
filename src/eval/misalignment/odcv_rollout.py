@@ -13,7 +13,6 @@ import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-import fire
 import requests
 from dotenv import load_dotenv
 from omegaconf import OmegaConf
@@ -333,6 +332,3 @@ def main(
     print(f">>> {out_dir}")
     shutil.rmtree(out_dir / "workspaces", ignore_errors=True)
 
-
-if __name__ == "__main__":
-    fire.Fire(main)
