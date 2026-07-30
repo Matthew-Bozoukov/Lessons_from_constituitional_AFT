@@ -40,9 +40,15 @@ param(
     # Seed subset for a pilot: comma-separated sample ids. Empty = all 10.
     [string]$SampleId = '',
 
+    # Role split, decided 2026-07-30 after measuring ~55s per subscription CLI
+    # call: auditor and judge stay on the subscription (the auditor is ~$1/audit
+    # on the API; the judge is one call per audit either way), while the realism
+    # grader - half of all calls, each small - runs on Haiku via the API. This
+    # is the sibling run's proven realism configuration, and it halves both
+    # wall-clock and subscription-quota use for ~$22 across the grid.
     [string]$Auditor = 'claude-code/claude-sonnet-4-5',
     [string]$Judge   = 'claude-code/claude-sonnet-4-5',
-    [string]$Realism = 'claude-code/claude-sonnet-4-5',
+    [string]$Realism = 'anthropic/claude-haiku-4-5',
 
     [string]$TargetBaseUrl = 'http://127.0.0.1:8000/v1',
     [string]$Tag = 'run'
@@ -150,18 +156,53 @@ $argList = @(
 )
 if ($SampleId) { $argList += @('--sample-id', $SampleId) }
 
-$env:VLLM_BASE_URL = $TargetBaseUrl
-$env:VLLM_API_KEY  = 'local-tunnel-no-auth-required'
-$env:INSPECT_LOG_LEVEL = 'info'
-
 Write-Host "[run] arm=$Arm epochs=$Epochs max_turns=$MaxTurns conc=$MaxConnections"
 Write-Host "[run] inspect $($argList -join ' ')"
 
+# --- Heartbeat keeper: the fix for the 2026-07-30 loss ----------------------
+# The provisioning lease is fixed-duration; the watchdog terminated a healthy
+# pod one minute after it lapsed, 14 minutes into the first pilot, because
+# nothing renewed it. The keeper refreshes the lease until told to stop, so
+# declared activity tracks the run's ACTUAL duration. Stopping it is in
+# `finally` - an audit that throws must still stand its keeper down.
+$vuln = (Resolve-Path (Join-Path $root '..\..\vulnerabilities')).Path
+$keeper = & (Join-Path $vuln 'scripts\provider\Start-HeartbeatKeeper.ps1') `
+    -Activity "petri-$Tag-$Arm" -MaxHours 12
+Write-Host "[keeper] heartbeat keeper up for 'petri-$Tag-$Arm'"
+
 $started = Get-Date
-& (Join-Path $root '.venv\Scripts\inspect.exe') @argList
-$exit = $LASTEXITCODE
+try {
+    # ANTHROPIC_API_KEY (realism role, Haiku) is injected into the inspect
+    # process ONLY, via the petri secrets wrapper - it never becomes a variable
+    # in this shell. The claude-code provider independently blanks it in every
+    # CLI subprocess it spawns, so the key cannot silently serve the auditor or
+    # judge roles and bill API rates for what should be subscription calls.
+    $res = & (Join-Path $vuln 'scripts\secrets\Invoke-WithPetriSecrets.ps1') `
+        -FilePath (Join-Path $root '.venv\Scripts\inspect.exe') `
+        -ArgumentList $argList `
+        -WorkingDirectory $root `
+        -ExtraEnvironment @{
+            VLLM_BASE_URL           = $TargetBaseUrl
+            VLLM_API_KEY            = 'local-tunnel-no-auth-required'
+            INSPECT_LOG_LEVEL       = 'info'
+            CLAUDE_CODE_OAUTH_TOKEN = $env:CLAUDE_CODE_OAUTH_TOKEN
+        } `
+        -StdOutFile (Join-Path $logDir 'inspect-stdout.log') `
+        -StdErrFile (Join-Path $logDir 'inspect-stderr.log')
+    $exit = $res.ExitCode
+}
+finally {
+    & (Join-Path $vuln 'scripts\provider\Stop-HeartbeatKeeper.ps1') -Keeper $keeper
+    Write-Host "[keeper] heartbeat keeper stopped"
+}
 $elapsed = (Get-Date) - $started
 
 Write-Host "[done] arm=$Arm exit=$exit elapsed=$([math]::Round($elapsed.TotalMinutes,1))min"
 Write-Host "[done] log dir: $logDir"
-if ($exit -ne 0) { throw "inspect eval failed for arm '$Arm' with exit code $exit" }
+Write-Host '--- inspect stdout (tail) ---'
+Get-Content (Join-Path $logDir 'inspect-stdout.log') -Tail 25 -ErrorAction SilentlyContinue
+if ($exit -ne 0) {
+    Write-Host '--- inspect stderr (tail) ---'
+    Get-Content (Join-Path $logDir 'inspect-stderr.log') -Tail 25 -ErrorAction SilentlyContinue
+    throw "inspect eval failed for arm '$Arm' with exit code $exit"
+}
