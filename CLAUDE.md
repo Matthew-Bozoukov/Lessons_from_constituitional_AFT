@@ -180,7 +180,7 @@ Never terminate a resource this repository did not provision. Report it instead.
 ## Gotchas (these WILL bite you — all learned the hard way)
 
 1. **Version pins**: vLLM 0.8.5 requires `transformers==4.51.3`. Newer transformers → `Qwen2Tokenizer has no attribute all_special_tokens_extended`.
-2. **Empty-`<think>` collapse**: Qwen3's chat template injects an empty `<think></think>` around plain assistant text, so naive SFT trains the model to STOP reasoning. Fix = train with `reasoning_content` traces (`augment_thinking.py`). Always probe `<think>` length after training.
+2. Empty-<think> collapse: Qwen3's chat template wraps plain assistant text in an empty <think></think>, so SFT on data without reasoning traces trains the model to STOP reasoning. Every SFT corpus must carry reasoning_content per example unless deliberately asked for: synthdoc's chat exporter does this natively (never set drop_thinking for an SFT corpus); the v1 pipeline needed the post-hoc augment_thinking.py step.
 3. **QLoRA OOM** at batch 8 × 2048 on 80GB → use batch 4, `max_seq_len` ~1536–2048, and launch with `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`.
 4. **`assistant_only_loss: false`** — Qwen3's template lacks `{% generation %}` markers, so assistant-only masking is all-zero. Train full-sequence.
 5. **Eval mode must match training**: the thinking-trained model is evaluated in thinking mode (`VLLM_ENABLE_THINKING=1` for `run_eval.sh`, compared vs the *thinking* baseline). Don't cross modes.
@@ -213,28 +213,8 @@ it cost. Keep it accurate — future cost estimates are built from it.
   replays and therefore overstate cash spent; do not report a manifest figure as money charged.
 - Check the ledger's unit costs **before** committing to a large run, and flag spend > ~$20.
 
-## Reporting standards
-
-These are house rules earned by mistakes; the reasoning is in the MSM audit's
-`JOURNAL.md`, in git history at commit `b38da52` under
-`experiments/vulnerabilities/`.
-
-- **Correct for multiple comparisons.** If you compute fifteen contrasts, say so
-  and apply a correction. A point estimate without an interval is not a result.
-- **Controls are not optional.** An uncontrolled number cannot be attributed to
-  anything. If the control fails as a control, that is a finding about the
-  design, not something to work around.
-- **Validate before claiming.** Search-based auditors here have measured
-  false-positive rates of 57% and 97.5%. An unvalidated flag is a lead.
-- **State power.** "No effect" and "no effect of the size this design can
-  detect" are different claims.
-- **Keep corrections.** When a finding dies under scrutiny, record why rather
-  than deleting it. Several of the most useful entries in this repository are
-  results that did not survive.
-
 ## When you finish a task
 - Append a `LOG.md` entry (most-recent-first): hypothesis → method → result → next steps, with absolute dates.
 - Append a `docs/EXPENDITURE.md` entry if the task spent anything, and update the running total.
-- Write/refresh the `*_results.md` mirror and deliver the actual figure file to the user.
 - Update `docs/replication.md` if you added a step or changed how to run things.
 - Destroy any GPU instance and confirm 0 active.
