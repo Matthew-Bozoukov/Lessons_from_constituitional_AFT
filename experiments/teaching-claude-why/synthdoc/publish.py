@@ -456,12 +456,17 @@ def publish_dialogue_dataset(
     private: bool = False,
     dry_run: bool = False,
     staging_dir: Path | str | None = None,
+    source_file: str | None = None,
+    id_field: str | None = None,
+    category_field: str | None = None,
+    split_field: str | None = None,
 ) -> str:
     """Publish a dialogue JSONL as a visualizer-readable dataset.
 
-    Records are uploaded whole (``data/dialogues.jsonl``) and also pre-chunked
-    into ``chunks/chunk-NNN.json``, which is what the dataset browser pages
-    through without ever loading the whole corpus.
+    Records are pre-chunked into ``chunks/chunk-NNN.json``, which is what the
+    dataset browser pages through without ever loading the whole corpus. The
+    whole JSONL is uploaded as ``data/dialogues.jsonl`` unless ``source_file``
+    says a copy is already in the repo.
 
     Args:
         jsonl_path: Source JSONL, one dialogue record per line.
@@ -471,6 +476,16 @@ def publish_dialogue_dataset(
         private: Create the repo private.
         dry_run: Stage and report without touching the Hub.
         staging_dir: Where to assemble the upload.
+        source_file: Repo-relative path of an ALREADY-PUBLISHED copy of this
+            JSONL. When given, the file is not uploaded again and the manifest
+            points at the existing path. Use this to make a corpus that is
+            already on the Hub readable by the visualizer without duplicating
+            it - the derived chunks are small, the corpus is not.
+        id_field: Record field holding a stable identifier. Defaults to trying
+            ``id`` then ``doc_id``, falling back to the row index. The viewer
+            selects records by ``id``, so a corpus without one is unbrowsable.
+        category_field: Record field to expose as the viewer's category filter.
+        split_field: Record field to expose as the viewer's split filter.
 
     Returns:
         A human-readable result line.
@@ -482,24 +497,47 @@ def publish_dialogue_dataset(
     source = Path(jsonl_path)
     records = _read_jsonl(source)
 
+    def _derive(record: dict[str, Any], index: int) -> dict[str, Any]:
+        """Add the three fields the browser needs, without touching the rest.
+
+        Real corpora name these things whatever their generator called them -
+        ``doc_id``, ``corpus``, ``doc_type``. The chunks are a derived view, so
+        normalising here keeps the canonical JSONL byte-identical while making
+        the browser's selection and filters work. The mapping is recorded in
+        the manifest so a reader can see exactly what was renamed.
+        """
+        derived = dict(record)
+        if id_field:
+            derived["id"] = str(record.get(id_field, index))
+        elif "id" not in derived:
+            derived["id"] = str(record.get("doc_id", index))
+        if category_field and category_field in record:
+            derived["category"] = str(record[category_field])
+        if split_field and split_field in record:
+            derived["split"] = str(record[split_field])
+        return derived
+
+    prepared = [_derive(record, index) for index, record in enumerate(records)]
+
     owned_temp = staging_dir is None
     staging = Path(staging_dir or tempfile.mkdtemp(prefix="dataset-publish-"))
     try:
         staging.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, _ensure_parent(staging / "data" / "dialogues.jsonl"))
+        if source_file is None:
+            shutil.copy2(source, _ensure_parent(staging / "data" / "dialogues.jsonl"))
 
         chunks: list[str] = []
         total = 0
-        for start in range(0, len(records), chunk_size):
+        for start in range(0, len(prepared), chunk_size):
             name = f"chunks/chunk-{start // chunk_size:03d}.json"
-            total += _stage(staging, name, records[start : start + chunk_size])
+            total += _stage(staging, name, prepared[start : start + chunk_size])
             chunks.append(name)
 
-        turns = [len(_messages_for(r)) for r in records]
+        turns = [len(_messages_for(r)) for r in prepared]
         roles: dict[str, int] = {}
         splits: dict[str, int] = {}
         categories: dict[str, int] = {}
-        for record in records:
+        for record in prepared:
             for message in _messages_for(record):
                 role = str(message.get("role", "unknown"))
                 roles[role] = roles.get(role, 0) + 1
@@ -520,12 +558,19 @@ def publish_dialogue_dataset(
             "generation_config": card.generation_config,
             "provenance": card.provenance,
             "dataset": {
-                "source_file": "data/dialogues.jsonl",
+                "source_file": source_file or "data/dialogues.jsonl",
                 "format": "jsonl",
                 "record_count": len(records),
                 "chunk_size": chunk_size,
                 "chunks": chunks,
                 "total_bytes": total,
+                # What the chunks renamed, so the derived view is auditable
+                # against the canonical file rather than being a silent edit.
+                "field_mapping": {
+                    "id": id_field or "id, else doc_id, else row index",
+                    "category": category_field,
+                    "split": split_field,
+                },
                 "stats": {
                     "average_turns": round(sum(turns) / len(turns), 1) if turns else 0,
                     "role_counts": roles,
@@ -541,7 +586,7 @@ def publish_dialogue_dataset(
             dataset_card(
                 card,
                 title=f"Dialogue dataset: {card.experiment}",
-                data_files=(("train", "data/dialogues.jsonl"),),
+                data_files=(("train", source_file or "data/dialogues.jsonl"),),
             ),
         )
         return _upload(staging, repo_id, private, f"Publish dataset {repo_id}", dry_run)

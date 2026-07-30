@@ -270,6 +270,10 @@ class CLI:
         private: bool = False,
         dry_run: bool = True,
         chunk_size: int = 50,
+        source_file: str | None = None,
+        id_field: str | None = None,
+        category_field: str | None = None,
+        split_field: str | None = None,
     ) -> str:
         """Publish a dataset to HuggingFace in the shape the visualizer reads.
 
@@ -287,6 +291,14 @@ class CLI:
             private: Create the repo private. Public repos need no reader token.
             dry_run: Stage and report without contacting the Hub.
             chunk_size: Records per lazily-fetched chunk (`dialogues` only).
+            source_file: `dialogues` only. Repo-relative path of a copy of this
+                JSONL that is already published. Skips re-uploading it and
+                points the manifest at the existing file, so an on-Hub corpus
+                becomes browsable without being duplicated.
+            id_field: `dialogues` only. Field holding a stable record id.
+                Defaults to `id`, then `doc_id`, then the row index.
+            category_field: `dialogues` only. Field to expose as the category filter.
+            split_field: `dialogues` only. Field to expose as the split filter.
 
         Returns:
             A human-readable result line.
@@ -306,6 +318,10 @@ class CLI:
                 chunk_size=chunk_size,
                 private=private,
                 dry_run=dry_run,
+                source_file=source_file,
+                id_field=id_field,
+                category_field=category_field,
+                split_field=split_field,
             )
         raise ValueError(f"Unknown kind {kind!r}; expected 'petri' or 'dialogues'")
 

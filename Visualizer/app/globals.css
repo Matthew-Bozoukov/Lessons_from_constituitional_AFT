@@ -1715,25 +1715,6 @@ pre,
   color: var(--muted);
 }
 
-.search-control {
-  flex: 1;
-  min-width: 220px;
-  height: 36px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--panel);
-}
-
-.search-control input {
-  width: 100%;
-  border: 0;
-  outline: none;
-  background: transparent;
-  color: var(--text);
-  font-size: 11px;
-}
-
 .loaded-status {
   display: flex;
   align-items: center;
@@ -2341,7 +2322,6 @@ pre,
   .dataset-selector select { width: 100%; min-width: 0; }
   .dataset-description dl { min-width: 0; }
   .dataset-filters { align-items: stretch; flex-wrap: wrap; }
-  .search-control { flex-basis: 100%; }
   .loaded-status { margin-left: 0; }
   .dataset-browser { grid-template-columns: 1fr; }
   .record-index { max-height: 250px; border-right: 0; border-bottom: 1px solid var(--border); }
@@ -2520,4 +2500,23 @@ pre,
   color: var(--text);
   font-size: 11.5px;
   font-variant-numeric: tabular-nums;
+}
+
+/* Shown when a filter matches nothing in the records fetched so far. A large
+   corpus is paged, so an empty result usually means "not fetched yet" rather
+   than "not present" - the copy distinguishes them, this just makes it read as
+   an explanation rather than as a row. */
+.record-empty {
+  margin: 0;
+  padding: 12px 13px;
+  border: 1px dashed var(--border);
+  border-radius: 7px;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.loaded-status em {
+  color: var(--muted);
+  font-style: normal;
 }

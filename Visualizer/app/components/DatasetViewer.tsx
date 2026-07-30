@@ -8,7 +8,6 @@ import {
   Download,
   Filter,
   LoaderCircle,
-  Search,
 } from "lucide-react";
 import {
   DatasetManifest,
@@ -38,6 +37,26 @@ function metadataFor(record: DialogueRecord) {
   return (record.metadata || {}) as Record<string, unknown>;
 }
 
+/**
+ * A corpus labels its records either under `metadata` or at the top level, so
+ * both are checked, nested first.
+ *
+ * These exist because the filter logic and the record list used to read
+ * different paths - the filter fell back to the top level, the list did not.
+ * That was invisible against a fixture carrying `metadata.category`, and showed
+ * up the moment a real corpus put its labels at the top level: the filters
+ * worked while every row read "Uncategorized". One source of truth now.
+ */
+function categoryOf(record: DialogueRecord) {
+  const metadata = metadataFor(record);
+  return String(metadata.category || record.category || "uncategorized");
+}
+
+function splitOf(record: DialogueRecord) {
+  const metadata = metadataFor(record);
+  return String(metadata.split || record.split || "unspecified");
+}
+
 export type DatasetViewerEntry = Pick<
   ResearchEntry,
   | "id"
@@ -63,7 +82,6 @@ export function DatasetViewer({ datasets }: { datasets: DatasetViewerEntry[] }) 
   const [loadedChunks, setLoadedChunks] = useState(0);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
-  const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
   const [split, setSplit] = useState("all");
 
@@ -105,19 +123,16 @@ export function DatasetViewer({ datasets }: { datasets: DatasetViewerEntry[] }) 
   const splits = Object.keys(manifest?.stats.splits || {});
   const filteredRecords = useMemo(
     () =>
-      records.filter((record) => {
-        const metadata = metadataFor(record);
-        const recordCategory = String(metadata.category || record.category || "uncategorized");
-        const recordSplit = String(metadata.split || record.split || "unspecified");
-        const searchable = `${record.id} ${recordCategory} ${JSON.stringify(messagesFor(record))}`.toLowerCase();
-        return (
-          (category === "all" || recordCategory === category) &&
-          (split === "all" || recordSplit === split) &&
-          (!query || searchable.includes(query.toLowerCase()))
-        );
-      }),
-    [records, category, split, query],
+      records.filter(
+        (record) =>
+          (category === "all" || categoryOf(record) === category) &&
+          (split === "all" || splitOf(record) === split),
+      ),
+    [records, category, split],
   );
+
+  const filtered = category !== "all" || split !== "all";
+  const unloadedRecords = Math.max(0, (manifest?.record_count || 0) - records.length);
 
   const selectedRecord =
     filteredRecords.find((record) => record.id === selectedRecordId) ||
@@ -186,34 +201,56 @@ export function DatasetViewer({ datasets }: { datasets: DatasetViewerEntry[] }) 
         </dl>
       </section>
 
+      {/*
+        There is no free-text search here, deliberately.
+
+        Records are fetched a chunk at a time, so a search box can only ever
+        search what has already been loaded - 25 of 1,443 on arrival. It would
+        return "no results" for terms that occur hundreds of times in the
+        corpus, which is worse than offering nothing: a silent false negative
+        reads as an answer. Restoring it needs a real index (per-chunk term or
+        label indexes in the manifest, so the viewer can fetch only the chunks
+        that can match), not a bigger first page.
+
+        The two dropdowns have the same scope limit but are honest about it:
+        they are labelled as filtering loaded records, and the status line and
+        empty state below both state how many records have not been fetched.
+      */}
       <section className="dataset-filters" aria-label="Dataset filters">
-        <label className="search-control">
-          <Search size={15} />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search loaded conversations"
-            aria-label="Search conversations"
-          />
-        </label>
         <label>
           <Filter size={14} />
-          <select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Filter by category">
+          <select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Filter loaded records by category">
             <option value="all">All categories</option>
             {categories.map((value) => <option value={value} key={value}>{humanize(value)}</option>)}
           </select>
         </label>
         <label>
-          <select value={split} onChange={(event) => setSplit(event.target.value)} aria-label="Filter by split">
+          <select value={split} onChange={(event) => setSplit(event.target.value)} aria-label="Filter loaded records by split">
             <option value="all">All splits</option>
             {splits.map((value) => <option value={value} key={value}>{humanize(value)}</option>)}
           </select>
         </label>
         <span className="loaded-status">
           {loading && <LoaderCircle size={13} className="spin" />}
-          {loadError
-            ? loadError
-            : `${records.length} loaded · ${filteredRecords.length} shown`}
+          {loadError ? (
+            loadError
+          ) : (
+            <>
+              {records.length} loaded · {filteredRecords.length} shown
+              {/* Filters apply to what has been fetched, not to the corpus.
+                  With one chunk of 25 out of 1,443 records, a filter can read
+                  "0 shown" while the corpus holds hundreds of matches - so the
+                  count of records not yet searched is stated rather than left
+                  for the reader to infer. */}
+              {filtered && unloadedRecords > 0 && (
+                <em>
+                  {" "}
+                  — filtering {records.length} fetched of {manifest.record_count};{" "}
+                  {unloadedRecords.toLocaleString()} not yet searched
+                </em>
+              )}
+            </>
+          )}
         </span>
       </section>
 
@@ -222,7 +259,6 @@ export function DatasetViewer({ datasets }: { datasets: DatasetViewerEntry[] }) 
           <div className="pane-heading"><Database size={14} /> Records</div>
           <div className="record-list">
             {filteredRecords.map((record) => {
-              const recordMetadata = metadataFor(record);
               const active = record.id === selectedRecord?.id;
               return (
                 <button
@@ -231,12 +267,21 @@ export function DatasetViewer({ datasets }: { datasets: DatasetViewerEntry[] }) 
                   onClick={() => setSelectedRecordId(record.id)}
                   key={record.id}
                 >
-                  <span><code>{record.id}</code><small>{String(recordMetadata.split || "unspecified")}</small></span>
-                  <strong>{humanize(String(recordMetadata.category || "uncategorized"))}</strong>
+                  <span><code>{record.id}</code><small>{splitOf(record)}</small></span>
+                  <strong>{humanize(categoryOf(record))}</strong>
                   <small>{messagesFor(record).length} messages</small>
                 </button>
               );
             })}
+            {/* A filter that matches nothing in the fetched page is not the
+                same as a corpus that contains nothing. Say which one it is. */}
+            {filteredRecords.length === 0 && (
+              <p className="record-empty">
+                {unloadedRecords > 0
+                  ? `No match in the ${records.length} records fetched so far. ${unloadedRecords.toLocaleString()} remain unfetched — keep loading to search them.`
+                  : "No record in this corpus matches the current filters."}
+              </p>
+            )}
             {loadedChunks < manifest.chunks.length && (
               <button className="load-more" type="button" onClick={loadMore} disabled={loading}>
                 Load next {manifest.chunk_size}

@@ -334,6 +334,29 @@ exceeds a 300 KB budget.
 Public datasets need no token; the build works anonymously and that is the
 default path.
 
+**Every dataset this site reads is public, and that is a requirement, not a
+coincidence.** The browser fetches transcript shards and dataset chunks
+*directly* from the Hub with no credentials, so a non-public dataset would 404
+for every visitor no matter what the build could see. Anything the site displays
+must therefore be anonymously readable.
+
+Verified 2026-07-30 against the live Hub, with `--no-netrc` and no auth header:
+all nine `LASR-Callum` datasets report `private=false`, `gated=false`,
+`disabled=false`; manifests, transcript shards, dataset chunks, raw artifacts
+and the full 8.2 MB corpus all return `200` anonymously; and every response
+carries `access-control-allow-origin` echoing the request origin, which is what
+lets a deployed page fetch them. A build with `HF_TOKEN`,
+`HUGGING_FACE_HUB_TOKEN`, `HUGGINGFACEHUB_API_TOKEN` and `HF_HOME` all unset
+reports `token_present: false`, emits zero notices, and resolves every
+HF-backed entry to `ok`.
+
+To re-check after publishing something new:
+
+```bash
+curl -s --no-netrc -o /dev/null -w '%{http_code}\n' \
+  https://huggingface.co/datasets/<repo>/resolve/main/manifest.json
+```
+
 For a private dataset, `scripts/hf-source.mjs` reads `HF_TOKEN`,
 `HUGGING_FACE_HUB_TOKEN` or `HUGGINGFACEHUB_API_TOKEN` from the environment and
 sends it as a bearer header. On Netlify, set it as an environment variable in the

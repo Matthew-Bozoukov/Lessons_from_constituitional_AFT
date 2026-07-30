@@ -59,35 +59,44 @@ test("server-renders the JSONL dialogue inspector", async () => {
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /Synthetic datasets/);
-  assert.match(html, /Reasons-rich constitutional dialogue mixture/);
+  assert.match(html, /Approved-constitution SFT corpus/);
   assert.match(html, /Conversation preview/);
   // The page must name a lazily-fetched chunk source, but not care which
   // backend it is: a locally sharded path or a Hugging Face resolve URL.
   assert.match(html, /generated-datasets|huggingface\.co\/datasets\/[^/]+\/[^/]+\/resolve\//);
+  // The corpus is real, so the page must not be carrying a fixture warning.
+  assert.doesNotMatch(html, /mock-banner/);
 });
 
-test("sample JSONL includes genuine multi-turn conversations", async () => {
-  // The fixture's source JSONL in `content/`, not a build artifact under
-  // `public/`: now that this dataset is served from the Hub, no local chunk is
-  // regenerated, and asserting against a stale one would test nothing.
-  const sourceUrl = new URL(
-    "../content/datasets/reasons-rich-aft-v1/data/dialogues.jsonl",
-    import.meta.url,
-  );
-  const records = (await readFile(sourceUrl, "utf8"))
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .map((line) => JSON.parse(line));
-  const multiTurnRecords = records.filter(
-    (record) =>
-      record.messages.filter((message) => message.role === "user").length >= 2 &&
-      record.messages.filter((message) => message.role === "assistant").length >= 2,
-  );
+test("the dialogue corpus is genuinely multi-turn and filterable", async () => {
+  // Asserted from the baked manifest rather than by reading records: the corpus
+  // lives on the Hub now, and a test must not depend on the network. These are
+  // the stats the build computed from the real records at publish time.
+  const indexUrl = new URL("../lib/generated/content-index.json", import.meta.url);
+  const index = JSON.parse(await readFile(indexUrl, "utf8"));
+  const datasets = index.entries.filter((entry) => entry.type === "datasets");
+  assert.ok(datasets.length > 0, "expected at least one dataset in the corpus");
 
-  assert.ok(
-    multiTurnRecords.length >= 3,
-    `expected at least 3 multi-turn records, found ${multiTurnRecords.length}`,
-  );
+  for (const entry of datasets) {
+    const { stats, record_count, chunks } = entry.dataset;
+    assert.ok(record_count > 0, `${entry.slug} has no records`);
+    assert.ok(chunks.length > 0, `${entry.slug} has no chunks to page through`);
+
+    // Genuine dialogue, not prompt/response pairs flattened into two turns.
+    assert.ok(
+      stats.average_turns > 2,
+      `${entry.slug} averages ${stats.average_turns} turns; expected real multi-turn dialogue`,
+    );
+    assert.ok(stats.role_counts.user > 0, `${entry.slug} has no user turns`);
+    assert.ok(stats.role_counts.assistant > 0, `${entry.slug} has no assistant turns`);
+
+    // The browser's filters are only useful if the corpus actually varies along
+    // them. An all-"uncategorized" corpus means the field mapping was not set.
+    assert.ok(
+      Object.keys(stats.categories).length > 1,
+      `${entry.slug} has one category; the publisher's category_field is unset`,
+    );
+  }
 });
 
 test("server-renders the Petri audit dossier", async () => {
