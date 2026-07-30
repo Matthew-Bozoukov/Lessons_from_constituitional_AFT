@@ -154,7 +154,7 @@ reader needs, and it is the field most easily lost.
 2. `scripts/augment_thinking.py` — adds a real `<think>` trace per example via `reasoning_content` (the reasoning-preserving fix). Has `--smoke`.
 3. `scripts/train_lora.py` (+ `configs/train_lora*.yaml`) — QLoRA SFT (runs on GPU box). Has `--smoke` (2 steps).
 4. `scripts/run_eval.sh <expid> <config> [samples] [model]` — agentic-misalignment honeypots → `results/<id>/misalignment_summary.json` via `src/eval/misalignment/aggregate_eval.py`.
-5. `scratch/final_report.py` / `scratch/make_report.py` — capstone report + plots + markdown from `output/eval_summaries/` (per-experiment write-up code, so it lives in scratch).
+5. `scratch/reports/final_report.py` / `scratch/reports/make_report.py` — capstone report + plots + markdown from `output/eval_summaries/` (per-experiment write-up code, so it lives in scratch).
 
 Add a new pipeline step as functions in the right `src/` area plus a thin CLI in `scripts/` and a `configs/*.yaml`; one-off investigations go straight to `scratch/`.
 

@@ -161,7 +161,7 @@ bash scripts/serve_lora.sh /path/to/output/train_lora_thinking/<ts>/adapter
 VLLM_ENABLE_THINKING=1 bash scripts/run_eval.sh qwen3_difficult_advice_thinking \
   configs/eval_agentic.yaml "" vllm/difficult_advice
 # build the capstone dashboard (local, after pulling the 4 summaries into output/eval_summaries/):
-uv run scratch/final_report.py
+uv run scratch/reports/final_report.py
 ```
 `final_report.py` writes `output/report/final_*/{report.md, dashboard.html, plots/}`.
 
