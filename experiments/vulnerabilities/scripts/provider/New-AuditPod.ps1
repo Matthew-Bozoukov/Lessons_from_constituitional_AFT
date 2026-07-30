@@ -20,6 +20,16 @@ param(
     [int]$ContainerDiskInGb = 60,
     [int]$VolumeInGb = 120,
     [string]$Name = 'msm-audit',
+
+    # Optional CUDA-version filter, e.g. @('13.0'). RunPod allocates whatever
+    # machine is free, and the host driver varies between them: on 2026-07-30 one
+    # A100 pod came up with driver 580 (CUDA 13.0) and served fine, while the next
+    # drew driver 570 (CUDA 12.8) and vLLM 0.26 died at engine init with "The
+    # NVIDIA driver on your system is too old (found version 12080)" - its PyPI
+    # wheel is built against CUDA 13 and no cu128 wheel is published. Pinning the
+    # CUDA version turns that lottery into a constraint. Empty = unrestricted,
+    # which is the previous behaviour.
+    [string[]]$AllowedCudaVersions = @(),
     # Fallback only. The real rate is read back from the created pod.
     [double]$HourlyUsd = 1.49
 )
@@ -60,7 +70,11 @@ $result = & "$secretsDir\Invoke-WithInfraSecrets.ps1" -Inject @('RUNPOD_API_KEY'
         ports             = @('22/tcp')
         supportPublicIp   = $true
         interruptible     = $false
-    } | ConvertTo-Json -Depth 6
+    }
+    if ($AllowedCudaVersions -and $AllowedCudaVersions.Count -gt 0) {
+        $body['allowedCudaVersions'] = @($AllowedCudaVersions)
+    }
+    $body = $body | ConvertTo-Json -Depth 6
 
     try {
         $pod = Invoke-RestMethod -Uri 'https://rest.runpod.io/v1/pods' -Method Post `

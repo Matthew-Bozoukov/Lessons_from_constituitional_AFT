@@ -49,11 +49,39 @@ Write-Host "[tunnel] target pod endpoint: port $($ep.ssh_port) (host not printed
 
 # Don't stack tunnels on the same local port - a second one silently fails to
 # bind and the first keeps serving, which looks like success against a stale pod.
+#
+# But "a tunnel is running" is NOT the same as "the RIGHT tunnel is running".
+# On 2026-07-30 this guard found the tunnel to an already-terminated pod,
+# declined to start a new one, and left the endpoint pointing at a dead machine -
+# precisely the stale-pod failure it exists to prevent, just from the other
+# direction. So compare the live tunnel's recorded endpoint against the current
+# one and replace it when they disagree.
 $existing = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue |
     Where-Object { $_.CommandLine -and $_.CommandLine -match 'Start-Tunnel' })
+
 if ($existing.Count -gt 0) {
-    Write-Host "[tunnel] already running (PID $($existing[0].ProcessId)); not starting a second one"
-} else {
+    $stateFile = Join-Path $vuln 'runtime\provider-monitor\tunnel.state.json'
+    $servesCurrentPod = $false
+    if (Test-Path $stateFile) {
+        try {
+            $ts = Get-Content -LiteralPath $stateFile -Raw | ConvertFrom-Json
+            # The tunnel records the port it dialled; a mismatch means it belongs
+            # to a previous pod.
+            $servesCurrentPod = ($ts.PSObject.Properties.Match('remote_port').Count -gt 0 -and
+                                 "$($ts.remote_port)" -eq "$($ep.ssh_port)")
+        } catch { $servesCurrentPod = $false }
+    }
+    if ($servesCurrentPod) {
+        Write-Host "[tunnel] already running for THIS pod (PID $($existing[0].ProcessId))"
+    } else {
+        Write-Host "[tunnel] found a tunnel for a DIFFERENT pod - terminating PID(s) $($existing.ProcessId -join ', ')"
+        foreach ($e in $existing) { Stop-Process -Id $e.ProcessId -Force -ErrorAction SilentlyContinue }
+        Start-Sleep -Seconds 3
+        $existing = @()
+    }
+}
+
+if ($existing.Count -gt 0) { } else {
     Import-Module (Join-Path $vuln 'scripts\secrets\SecretEnv.psm1') -Force -DisableNameChecking
     $proc = Start-DetachedProcessWithSecretEnv `
         -Path $infraEnv `
