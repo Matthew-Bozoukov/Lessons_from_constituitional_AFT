@@ -17,4 +17,5 @@ items as they come up; delete each item once it is resolved.
 5. We were previously using gitignored `third_party/` to run stuff like ODCV direct from a third party cloned repo. This seems like an unstable way to do things but I am guessing we kinda have to because no proper package exists. Perhaps we should fully incorporate the relevant code into our codebase? Idk what best practices are here. 
 6. We are missing HF code to upload output from some stages in the pipeline (e.g. eval results/sample transcripts like from ODCV). Once we have done that we need to adjust the dashboard to read in *all* data from HF by default.
 7. I have no idea what's going on in `synthdoc/`. Kunwar says trust me bro.
-8. I haven't reviewed Nika's petri and surf code. I am keen to do this next.
+8. I haven't ran anything with this refactored repo yet so the there is definitely gonna be some issues I haven't found. We should test it tomorrow.
+9. I haven't reviewed Nika's petri and surf code. I am keen to do this next.
