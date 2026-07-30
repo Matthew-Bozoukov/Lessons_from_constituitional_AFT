@@ -34,6 +34,10 @@ synthdoc = "src.data.synthdoc.cli:main"
 dev = [
     "pytest>=9.1.1",
 ]
+# Petri/Inspect audit tooling is NOT a dependency group here: inspect-ai pins
+# click<8.2.2 while this project's huggingface-hub needs click>=8.4.2, so the
+# audit runs in its own environment. Use the nested project's env for all
+# petri tools:  uv run --project src/eval/vulnerabilities/petri/petri-subscription ...
 
 [build-system]
 requires = ["hatchling"]
@@ -44,6 +48,8 @@ build-backend = "hatchling.build"
 # not the repo root, is what lands on sys.path.
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
+# The nested petri-subscription workspace member ships as its own distribution.
+exclude = ["src/eval/vulnerabilities/petri/petri-subscription"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

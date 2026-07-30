@@ -198,20 +198,22 @@ schema:
 provenance: The exact command that regenerates this.
 ```
 
-See
-`experiments/vulnerabilities/exports/2026-07-29-msm-philosophy-spec-focused-discovery/dataset-card.yaml`
-for a filled-in example. Anything not in the required set is preserved verbatim
-under "Additional detail".
+For a filled-in example see the MSM audit's `dataset-card.yaml`, in git history
+at commit `b38da52` under
+`experiments/vulnerabilities/exports/2026-07-29-msm-philosophy-spec-focused-discovery/`.
+Anything not in the required set is preserved verbatim under "Additional
+detail".
 
 ### 2. Publish
 
 ```bash
-# from the repository root
+# from the repository root; the export bundle is produced by
+# src/eval/vulnerabilities/petri/build_export.py and verified by verify_export.py
 uv run synthdoc publish \
   --kind=petri \
-  --export=experiments/vulnerabilities/exports/2026-07-29-msm-philosophy-spec-focused-discovery \
-  --repo=<org>/2026-07-29-msm-philosophy-spec-focused-discovery \
-  --card=experiments/vulnerabilities/exports/2026-07-29-msm-philosophy-spec-focused-discovery/dataset-card.yaml
+  --export=output/petri-exports/<yyyy-mm-dd>-<slug> \
+  --repo=<org>/<yyyy-mm-dd>-<slug> \
+  --card=output/petri-exports/<yyyy-mm-dd>-<slug>/dataset-card.yaml
 ```
 
 It **dry-runs by default** and lists every file with its size; pass

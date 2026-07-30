@@ -84,8 +84,10 @@ New work follows the convention.
 ## Secrets
 
 Credentials live outside the repository, in files under
-`~/.config/msm-audit/`, and reach a process only through the wrappers in
-`Vulnerabilities/scripts/secrets/`.
+`~/.config/msm-audit/`, and reach a process only through wrappers that inject
+them into the child process environment and no further. (The PowerShell
+wrappers the MSM audit used live in git history at commit `b38da52`, under
+`experiments/vulnerabilities/scripts/secrets/`.)
 
 - Never print, echo, log, commit, or summarize a secret value.
 - Never place a credential into the parent agent environment. Inject into the
@@ -102,14 +104,16 @@ Any run that provisions a GPU must register it with the watchdog before doing
 work, and must not rely on the orchestration process surviving to clean it up.
 Teardown terminates the instance, then sweeps the whole account for orphans,
 then records the provider-reported balance, and only then stands the watchdog
-down. See `Vulnerabilities/scripts/provider/Stop-AuditRun.ps1`.
+down. (The reference implementation, `Stop-AuditRun.ps1`, lives in git history
+at commit `b38da52` under `experiments/vulnerabilities/scripts/provider/`.)
 
 Never terminate a resource this repository did not provision. Report it instead.
 
 ## Reporting standards
 
-These are house rules earned by mistakes; the reasoning is in
-`Vulnerabilities/JOURNAL.md`.
+These are house rules earned by mistakes; the reasoning is in the MSM audit's
+`JOURNAL.md`, in git history at commit `b38da52` under
+`experiments/vulnerabilities/`.
 
 - **Correct for multiple comparisons.** If you compute fifteen contrasts, say so
   and apply a correction. A point estimate without an interval is not a result.
