@@ -58,6 +58,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$vuln = (Resolve-Path (Join-Path $root '..\..\vulnerabilities')).Path
 Set-Location $root
 
 $logDir = Join-Path $root "logs\$Tag\$Arm"
@@ -113,6 +114,25 @@ Write-Host "[preflight] claude auth: loggedIn=true, authMethod=$authMethod"
 # PETRI_CC_ALLOW_API_KEY=1, so refuse to run if that override is set.
 if ($env:PETRI_CC_ALLOW_API_KEY -eq '1') {
     throw "PETRI_CC_ALLOW_API_KEY=1 is set. That bills at API rates and does not test subscription auth. Unset it."
+}
+
+# --- Preflight: a role on the API needs CREDIT, not just a valid key --------
+# Learned 2026-07-30: Test-Credentials validates the key against a read-only
+# endpoint, which succeeds with a zero balance. The realism role then failed at
+# the first paid call and every audit in that arm aborted before the target ever
+# spoke - producing 12 complete-looking transcripts with no target participation.
+# A key check is not a billing check, so make one real paid call first.
+if ($Realism -like 'anthropic/*' -or $Auditor -like 'anthropic/*' -or $Judge -like 'anthropic/*') {
+    $billing = & (Join-Path $vuln 'scripts\secrets\Invoke-WithPetriSecrets.ps1') -ScriptBlock {
+        $h = @{ 'x-api-key' = $env:ANTHROPIC_API_KEY; 'anthropic-version' = '2023-06-01'; 'content-type' = 'application/json' }
+        $b = '{"model":"claude-haiku-4-5","max_tokens":8,"messages":[{"role":"user","content":"ok"}]}'
+        try   { Invoke-RestMethod -Uri 'https://api.anthropic.com/v1/messages' -Method Post -Headers $h -Body $b -TimeoutSec 30 | Out-Null; 'ok' }
+        catch { "FAILED: $($_.Exception.Message)" }
+    }
+    if ($billing -ne 'ok') {
+        throw "Anthropic API is not usable (a role is routed to it): $billing"
+    }
+    Write-Host "[preflight] Anthropic API billing OK (real paid call)"
 }
 
 $argList = @(
