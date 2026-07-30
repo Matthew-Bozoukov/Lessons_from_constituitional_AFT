@@ -10,8 +10,8 @@ its behaviour, plus a web frontend that presents the results.
 .
 ├── src/                  # correctness-critical reusable code (human-verified; import as src.*)
 │   ├── openrouter.py, utils.py  #   shared OpenRouter client + utilities
-│   ├── data/             #   synthetic data generation: synthdoc/ + build_mixture.py
-│   ├── train/            #   SFT/DPO dataset generation + QLoRA/DPO training
+│   ├── data/             #   data generation: synthdoc/, the SFT/DPO dataset pipeline, mixtures
+│   ├── train/            #   QLoRA SFT, DPO training, adapter merging
 │   └── eval/             #   capabilities/ · misalignment/ (ODCV) · vulnerabilities/ (petri, surf)
 ├── scripts/              # pipelines: thin CLIs over src/ functions + GPU-box shell drivers
 ├── scratch/              # one-off and AI-generated scripts (default home for new code)

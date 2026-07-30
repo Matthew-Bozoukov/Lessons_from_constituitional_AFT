@@ -10,7 +10,7 @@ from pathlib import Path
 from omegaconf import OmegaConf
 
 
-from src.train.dpo_prompts import reject_judge_messages, rejected_messages  # noqa: E402
+from src.data.dpo_prompts import reject_judge_messages, rejected_messages  # noqa: E402
 from src.openrouter import OpenRouterClient, map_threaded  # noqa: E402
 from src.utils import ParseError, extract_json, timestamp, write_run_meta  # noqa: E402
 

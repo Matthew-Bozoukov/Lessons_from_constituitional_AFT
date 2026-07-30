@@ -23,9 +23,9 @@ src/                    correctness-critical reusable code (installed editable; 
   openrouter.py           OpenRouterClient + map_threaded (threaded API calls, bounded retry)
   utils.py                extract_json, git_sha, timestamp, write_run_meta, count_chat_tokens
   data/                   synthetic data generation: synthdoc/ (self-contained package,
-                          `uv run synthdoc <cmd>`) + build_mixture.py
-  train/                  SFT/DPO dataset generation (prompts.py, dpo_prompts.py, generate_*,
-                          augment_thinking.py) + training (train_lora, train_dpo, merge_lora)
+                          `uv run synthdoc <cmd>`), the SFT/DPO dataset pipeline (prompts.py,
+                          dpo_prompts.py, generate_*, augment_thinking.py) + build_mixture.py
+  train/                  training: train_lora.py, train_dpo.py, merge_lora.py
   eval/
     capabilities/         lmsys_eval.py (chat quality vs base); MMLU via external inspect_evals
     misalignment/         ODCV-Bench (odcv.py stats, rollout, judge, compare) + aggregate_eval.py
@@ -131,7 +131,7 @@ reader needs, and it is the field most easily lost.
 
 ## The pipeline (each step = one experiment script + one config)
 
-1. `scripts/generate_difficult_advice.py` (+ `configs/difficult_advice_gen.yaml`) — Sonnet 4.5 makes scenarios→responses→grades. Has `--smoke`. (Logic: `src/train/generate_difficult_advice.py`.)
+1. `scripts/generate_difficult_advice.py` (+ `configs/difficult_advice_gen.yaml`) — Sonnet 4.5 makes scenarios→responses→grades. Has `--smoke`. (Logic: `src/data/generate_difficult_advice.py`.)
 2. `scripts/augment_thinking.py` — adds a real `<think>` trace per example via `reasoning_content` (the reasoning-preserving fix). Has `--smoke`.
 3. `scripts/train_lora.py` (+ `configs/train_lora*.yaml`) — QLoRA SFT (runs on GPU box). Has `--smoke` (2 steps).
 4. `scripts/run_eval.sh <expid> <config> [samples] [model]` — agentic-misalignment honeypots → `results/<id>/misalignment_summary.json` via `src/eval/misalignment/aggregate_eval.py`.

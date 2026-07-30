@@ -10,7 +10,7 @@ from omegaconf import OmegaConf
 
 
 from src.openrouter import OpenRouterClient, map_threaded  # noqa: E402
-from src.train.prompts import (  # noqa: E402
+from src.data.prompts import (  # noqa: E402
     CONSTITUTIONS,
     DOMAINS,
     grade_messages,

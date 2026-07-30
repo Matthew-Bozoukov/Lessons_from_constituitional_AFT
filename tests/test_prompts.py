@@ -3,7 +3,7 @@
 
 
 
-from src.train.prompts import (  # noqa: E402
+from src.data.prompts import (  # noqa: E402
     CONSTITUTION_V1,
     CONSTITUTION_V2,
     CONSTITUTIONS,

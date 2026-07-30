@@ -1,2 +1,2 @@
-# ABOUTME: SFT/DPO dataset generation (difficult-advice pipeline, prompts) and training
-# ABOUTME: (QLoRA SFT, DPO, adapter merging). Dataset generation lives here by design.
+# ABOUTME: Training: QLoRA SFT (train_lora), DPO (train_dpo), and adapter merging for
+# ABOUTME: serving (merge_lora). Dataset generation lives in src/data/.

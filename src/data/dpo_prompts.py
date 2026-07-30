@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 
-from src.train.prompts import CONSTITUTION  # noqa: E402  (read-only import; do not edit prompts.py)
+from src.data.prompts import CONSTITUTION  # noqa: E402  (read-only import; do not edit prompts.py)
 
 
 def rejected_messages(user_message: str) -> list[dict]:
