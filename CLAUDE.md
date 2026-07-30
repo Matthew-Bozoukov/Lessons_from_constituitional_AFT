@@ -9,7 +9,7 @@ It is the single agent guide: the repository-wide conventions that used to live 
 ## What this project is
 
 Replication of the **"difficult advice"** result from Anthropic's *Teaching Claude Why* on
-**Qwen3-32B**: SFT on out-of-distribution difficult-advice data (a *user* facing an ethically
+**Qwen3-32B** using only only synthetic chat data (no midtraining): SFT on out-of-distribution difficult-advice data (a *user* facing an ethically
 ambiguous situation; the assistant reasons about its values and declines norm-violations) reduces
 **agentic misalignment** (blackmail/leaking honeypots). Data is generated with **Sonnet 4.5 via
 OpenRouter** (no Anthropic key exists — all Claude calls go through OpenRouter). See
@@ -79,7 +79,7 @@ directory any more.
 ## Datasets, caches and artifacts go to Hugging Face
 
 **From 2026-07-29 onward, any dataset, generated corpus, evaluation output or
-associated cache produced by work in this repository is published to Hugging
+associated cache produced by work in this repository should be published to Hugging
 Face.** The repository holds code, configuration, analysis and reports. It does
 not hold bulk data.
 
