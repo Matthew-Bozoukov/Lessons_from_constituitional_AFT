@@ -135,6 +135,17 @@ $argList = @(
     '--log-dir', $logDir,
     '--log-format', 'eval',
     '--temperature', '0.7',
+    # A token cap is not a performance knob when the target thinks before
+    # answering. Measured on this box at max_tokens=700: the BASE arm spent its
+    # whole budget reasoning and returned finish=length with ZERO content, while
+    # dose-10-90 and dose-20-80 answered comfortably. Scoring that would have
+    # read as p6_unhelpful_refusal and manufactured a dose-response out of a
+    # serving artifact - the same defect corrupted three measurements in the
+    # sibling experiment. At 4096 all four arms finish=stop, peak completion
+    # 1493 tokens (base), so this is ~2.7x headroom on the worst arm.
+    # The claude-code provider cannot express max_tokens, so this binds the
+    # target only - which is exactly what we want.
+    '--max-tokens', '4096',
     '--no-fail-on-error'
 )
 if ($SampleId) { $argList += @('--sample-id', $SampleId) }
