@@ -106,19 +106,24 @@ uv run scripts/augment_thinking.py \
 ### 3. Provision + prepare the GPU box
 ```bash
 # vast.ai example (any 80GB GPU works):
-uv run vastai create instance <OFFER_ID> \
+uvx vastai create instance <OFFER_ID> \
   --image pytorch/pytorch:2.6.0-cuda12.4-cudnn9-devel --disk 200 --ssh --direct
-# On the instance (CRITICAL version pins — vLLM 0.8.5 needs transformers 4.51.3):
-pip install --no-cache-dir vllm==0.8.5 "transformers==4.51.3" \
-    trl==0.19.1 peft bitsandbytes datasets accelerate omegaconf fire wandb huggingface_hub
-hf download Qwen/Qwen3-32B
-# Copy this repo + the thinking dataset to /root/work on the instance.
+# On the instance — uv workflow, see the root README "Remote GPU boxes":
+curl -LsSf https://astral.sh/uv/install.sh | sh
+git clone <this-repo> /root/work && cd /root/work
+uv sync
+# CRITICAL version pins — vLLM 0.8.5 needs transformers 4.51.3:
+uv pip install vllm==0.8.5 "transformers==4.51.3" trl==0.19.1 \
+    peft bitsandbytes accelerate wandb
+uv run --no-sync hf download Qwen/Qwen3-32B
+# Copy your .env + the thinking dataset to /root/work, then invoke everything
+# with `uv run --no-sync` (plain `uv run` undoes the transformers pin).
 ```
 
 ### 4. Baseline eval (serve base, then run the honeypots)
 ```bash
 # serve:
-python -m vllm.entrypoints.openai.api_server --model Qwen/Qwen3-32B \
+uv run --no-sync python -m vllm.entrypoints.openai.api_server --model Qwen/Qwen3-32B \
   --served-model-name qwen3 --dtype bfloat16 --max-model-len 13312 \
   --gpu-memory-utilization 0.94 --port 8000
 # eval (from /root/work): blackmail+leaking honeypots, Sonnet-4.5 judge
@@ -222,8 +227,9 @@ calls that are already cached, so an interrupted run costs nothing to continue.
 - Judging reuses upstream's `evaluate_all_results.evaluation_routine` **verbatim** (imported, not
   reimplemented), so the rubric prompt, retry loop and JSON parsing are byte-identical.
 - Upstream's README advertises `bootstrap_ci.py` / `paired_bootstrap.py` / `compute_paper_stats.py`,
-  but those files are **absent** from the repo; `src/odcv.py` implements the scenario-level paired
-  bootstrap CI described in the paper.
+  but those files are **absent** from the repo; `src/eval/misalignment/odcv.py` (metrics) and
+  `src/eval/misalignment/stats.py` (the scenario-level paired bootstrap CI) implement what the
+  paper describes.
 
 ## Reproducing the reasoning check
 `output/reasoning_probe_*.txt` compare `<think>` length of base vs LoRA. Naive SFT → 0 chars
@@ -249,7 +255,7 @@ uv run synthdoc sweep --config revision_dose.yaml --n 300
 uv run synthdoc axes                              # every ablatable axis
 uv run synthdoc corpora                           # every saved corpus, from HF
 uv run synthdoc compare --a <corpus> --b <corpus> # paired effect size
-uv run pytest tests/test_synthdoc_*.py -q                       # 132 tests, offline, ~4s
+uv run pytest tests/test_synthdoc_*.py -q                       # 157 tests, offline, ~6s
 ```
 
 Everything you tune lives in `src/data/synthdoc/control/`: run configs in `control/configs/`, named corpus

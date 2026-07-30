@@ -142,12 +142,12 @@ Add a new pipeline step as functions in the right `src/` area plus a thin CLI in
 ## GPU / vast.ai operational playbook (this is the fiddly part — follow it)
 
 Serving/training/eval all need one 80GB GPU; the local machine has none. Standard loop:
-1. **Provision**: `uv run vastai search offers 'gpu_name=H100_SXM num_gpus=1 rentable=true disk_space>=200 inet_down>=2000 reliability>=0.98' -o dph+`; create with image `pytorch/pytorch:2.6.0-cuda12.4-cudnn9-devel`, `--disk 200 --ssh --direct`.
+1. **Provision**: `uvx vastai search offers 'gpu_name=H100_SXM num_gpus=1 rentable=true disk_space>=200 inet_down>=2000 reliability>=0.98' -o dph+`; create with image `pytorch/pytorch:2.6.0-cuda12.4-cudnn9-devel`, `--disk 200 --ssh --direct`.
 2. **Setup** (uv, same as local — see the root README "Remote GPU boxes"): install uv, clone the repo to `/root/work`, `uv sync`, then layer the pinned GPU stack: `uv pip install vllm==0.8.5 "transformers==4.51.3" trl==0.19.1 peft bitsandbytes accelerate wandb` (pins — see gotchas). Then `hf download Qwen/Qwen3-32B` and the adapter. On the box always invoke with `uv run --no-sync ...` — plain `uv run` re-syncs to the lock and undoes the transformers pin.
 3. **Serve**: `scripts/serve_lora.sh <adapter_dir>` (base `qwen3` + LoRA `difficult_advice`) or plain base for baseline.
 4. **Reach it from the PC**: SSH tunnel `localhost:8000 → instance:8000`. IMPORTANT: launch the tunnel with the **background Bash tool** (`run_in_background: true`) — a tunnel started inside a normal tool call is killed when the call returns.
 5. **Run**: eval/train on the box (localhost) or Inspect from the PC via the tunnel (`--model openai/<name> --model-base-url http://localhost:8000/v1`, `OPENAI_API_KEY=EMPTY`).
-6. **Save then DESTROY**: pull results into `output/`, push adapters to HF, then `vastai destroy instance <id>` (pipe `y`). Verify `show instances` == 0. **Never leave an instance running** — confirm teardown before ending.
+6. **Save then DESTROY**: pull results into `output/`, push adapters to HF, then `uvx vastai destroy instance <id>` (pipe `y`). Verify `show instances` == 0. **Never leave an instance running** — confirm teardown before ending.
 
 Cost discipline: OpenRouter and vast credit are finite and shared. Check balances before big runs; flag spend > ~$20; ask before re-provisioning for a new follow-up.
 

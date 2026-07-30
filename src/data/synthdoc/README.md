@@ -593,7 +593,7 @@ Emitted automatically at the end of every run, no separate invocation:
 ## Tests
 
 ```bash
-uv run pytest tests/test_synthdoc_*.py -q     # 169 tests, offline, ~6s
+uv run pytest tests/test_synthdoc_*.py -q     # 157 tests, offline, ~6s
 ```
 
 The load-bearing ones, if you change something and want to know what you broke:

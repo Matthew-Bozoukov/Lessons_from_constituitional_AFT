@@ -109,7 +109,7 @@ not the headings.
 `response_gen_messages` (the system prompt Sonnet 4.5 uses to write the SFT targets) and
 `grade_messages` (the accept/reject rubric). The trained Qwen3-32B never sees this text — it sees
 `user → <think> → answer` pairs. It also does **not** appear in `think_trace_messages`
-([`src/prompts.py:135`](../src/prompts.py:135)), which generates the `<think>` traces post hoc from
+([`src/data/prompts.py`](../src/data/prompts.py)), which generates the `<think>` traces post hoc from
 an already-written reply under a hard-coded four-bullet skeleton and a 120-250-word cap. Since this
 repo's own result is that the `<think>` content is where the effect lives (19.3% → 8.0% thinking vs
 15.0% → 12.7% non-thinking, `LOG.md` 2026-07-27), **editing this document cannot reach the
@@ -275,7 +275,7 @@ rationalisation of the answer rather than its cause.
 ### 6.2 The grader gate is narrower than it looks
 
 `grade_messages` returns six booleans, but
-[`generate_difficult_advice.py`](../src/train/generate_difficult_advice.py) gates on
+[`generate_difficult_advice.py`](../src/data/generate_difficult_advice.py) gates on
 only four — `declines_violation`, `deliberates_values`, `engages`, `not preachy`, plus
 `overall_score >= 7`. **`offers_alternative` and `respects_autonomy` are computed and then
 discarded.** Any new principle without a paired boolean *in the gate* changes zero accept/reject

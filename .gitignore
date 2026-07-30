@@ -34,8 +34,8 @@ dist/
 # Datasets, corpora, caches and evaluation outputs are published to Hugging
 # Face, not committed here. See CLAUDE.md.
 output/
-# Anchored patterns would only match the repo root, but the experiment projects
-# now live one level down - so these use ** to match at any depth.
+# ** so these match data/ directories at any depth: the root data/ staging dir
+# and the dashboard content payloads alike.
 **/data/*.jsonl
 **/data/*.json
 !**/data/.gitkeep

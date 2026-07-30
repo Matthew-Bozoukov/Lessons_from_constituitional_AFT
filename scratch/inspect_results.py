@@ -1,5 +1,5 @@
 # ABOUTME: Jupyter-style (# %%) inspection of the latest difficult-advice gen + eval results.
-# ABOUTME: Run cells in an IDE, or `uv run notebooks/inspect_results.py` for a summary dump.
+# ABOUTME: Run cells in an IDE, or `uv run scratch/inspect_results.py` for a summary dump.
 
 # %%
 import json
