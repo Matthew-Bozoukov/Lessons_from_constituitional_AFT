@@ -117,5 +117,5 @@ it cost. Keep it accurate — future cost estimates are built from it.
 - Append a `LOG.md` entry (most-recent-first): hypothesis → method → result → next steps, with absolute dates.
 - Append a `docs/EXPENDITURE.md` entry if the task spent anything, and update the running total.
 - Write/refresh the `*_results.md` mirror and deliver the actual figure file to the user.
-- Update `README.md` if you added a step or changed how to run things.
+- Update `docs/replication.md` if you added a step or changed how to run things.
 - Destroy any GPU instance and confirm 0 active.

@@ -275,7 +275,7 @@ rationalisation of the answer rather than its cause.
 ### 6.2 The grader gate is narrower than it looks
 
 `grade_messages` returns six booleans, but
-[`generate_difficult_advice.py:130`](../src/experiments/generate_difficult_advice.py:130) gates on
+[`generate_difficult_advice.py`](../src/train/generate_difficult_advice.py) gates on
 only four — `declines_violation`, `deliberates_values`, `engages`, `not preachy`, plus
 `overall_score >= 7`. **`offers_alternative` and `respects_autonomy` are computed and then
 discarded.** Any new principle without a paired boolean *in the gate* changes zero accept/reject

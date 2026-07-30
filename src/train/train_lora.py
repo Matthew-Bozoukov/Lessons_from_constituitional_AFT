@@ -1,5 +1,5 @@
 # ABOUTME: QLoRA SFT of Qwen3-32B on the difficult-advice dataset via TRL SFTTrainer.
-# ABOUTME: Runs on a GPU instance: python src/experiments/train_lora.py --config configs/train_lora.yaml
+# ABOUTME: Runs on a GPU instance: python scripts/train_lora.py --config configs/train_lora.yaml
 
 from __future__ import annotations
 

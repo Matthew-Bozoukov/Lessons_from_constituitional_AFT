@@ -1,5 +1,5 @@
 # ABOUTME: Config for difficult-advice SFT data generation via Sonnet 4.5 (OpenRouter).
-# ABOUTME: Run: uv run src/experiments/generate_difficult_advice.py --config configs/difficult_advice_gen.yaml
+# ABOUTME: Run: uv run scripts/generate_difficult_advice.py --config configs/difficult_advice_gen.yaml
 
 seed: 0
 

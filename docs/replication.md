@@ -80,11 +80,11 @@ Steps 1-2 below are only needed if you want to regenerate the data from scratch.
 ### 1. Generate the difficult-advice SFT data (local, OpenRouter → Sonnet 4.5)
 ```bash
 # Smoke (2 domains × 2 scenarios, seconds):
-uv run src/experiments/generate_difficult_advice.py \
+uv run scripts/generate_difficult_advice.py \
   --config configs/difficult_advice_gen.yaml --smoke
 
 # Full ~1.5M-token run (18 domains × 120 scenarios ≈ 2.1k accepted examples, ~$46, ~15 min):
-uv run src/experiments/generate_difficult_advice.py \
+uv run scripts/generate_difficult_advice.py \
   --config configs/difficult_advice_gen.yaml \
   --scenarios_per_domain 120 --target_tokens 1500000 --tag run1p5m
 ```
@@ -97,7 +97,7 @@ Naive SFT on single-blob answers makes Qwen3's chat template emit an **empty `<t
 which trains the model to *stop reasoning*. Fix: give each example a real first-person reasoning
 trace via the `reasoning_content` field (renders as a real `<think>` block).
 ```bash
-uv run src/experiments/augment_thinking.py \
+uv run scripts/augment_thinking.py \
   --config configs/difficult_advice_gen.yaml \
   --sft_path output/difficult_advice_gen/run1p5m_*/sft_dataset.jsonl
 # → output/difficult_advice_gen/think_*/sft_dataset_thinking.jsonl   (~$28, ~15 min)
@@ -140,7 +140,7 @@ The eval harness (vendored `third_party/agentic-misalignment/`) is patched with 
 To train it yourself:
 ```bash
 # thinking-format (recommended): reasoning preserved
-python src/experiments/train_lora.py --config configs/train_lora_thinking.yaml
+python scripts/train_lora.py --config configs/train_lora_thinking.yaml
 # (non-thinking baseline arm: configs/train_lora.yaml)
 ```
 Key config: r=32, 2 epochs, batch 4 × grad-accum 4, max_seq_len 2048, `assistant_only_loss: false`
@@ -155,7 +155,7 @@ bash scripts/serve_lora.sh /path/to/output/train_lora_thinking/<ts>/adapter
 VLLM_ENABLE_THINKING=1 bash scripts/run_eval.sh qwen3_difficult_advice_thinking \
   configs/eval_agentic.yaml "" vllm/difficult_advice
 # build the capstone dashboard (local, after pulling the 4 summaries into output/eval_summaries/):
-uv run src/experiments/final_report.py
+uv run scratch/final_report.py
 ```
 `final_report.py` writes `output/report/final_*/{report.md, dashboard.html, plots/}`.
 
@@ -214,7 +214,7 @@ calls that are already cached, so an interrupted run costs nothing to continue.
 
 ### Deviations from upstream (deliberate)
 - `run_experiments.py` hardcodes all 12 paper models and runs scenarios strictly sequentially, with
-  fixed container names and host port 5000. `src/experiments/odcv_rollout.py` runs **one** model and
+  fixed container names and host port 5000. `scripts/odcv_rollout.py` runs **one** model and
   gives each scenario its own Compose project (+ an `orchestrator_api` network alias so the agent's
   hardcoded hostname still resolves), which allows `concurrency: 4`. Set `concurrency: 1` for
   strictly upstream behaviour; agent behaviour is unaffected either way.
@@ -262,7 +262,7 @@ only files confirmed pushed, and never if a push failed.
 
 ## Repo layout
 - `src/data/synthdoc/` self-contained synthetic-document pipeline (see above); `src/data/synthdoc/control/` its config + prompts.
-- `src/` reusable code (`llm.py`, `prompts.py`, `utils.py`); `src/experiments/` scripts.
+- `src/` reusable code (`llm.py`, `utils.py`, `data/`, `train/`, `eval/`); `scripts/` thin pipeline CLIs; `scratch/` one-offs.
 - `configs/` OmegaConf YAML for every step.
 - `scripts/` remote drivers (`run_eval.sh`, `serve_lora.sh`, `run_inspect_leaking.sh`).
 - `third_party/agentic-misalignment/` vendored eval harness (patched: `vllm/` provider, judge routing).

@@ -1,5 +1,5 @@
 # ABOUTME: QLoRA SFT config for the thinking-format difficult-advice data (reasoning_content).
-# ABOUTME: Run on GPU: python src/experiments/train_lora.py --config configs/train_lora_thinking.yaml
+# ABOUTME: Run on GPU: python scripts/train_lora.py --config configs/train_lora_thinking.yaml
 
 seed: 0
 model: "Qwen/Qwen3-32B"

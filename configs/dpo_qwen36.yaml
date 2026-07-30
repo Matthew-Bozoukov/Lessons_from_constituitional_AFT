@@ -1,5 +1,5 @@
 # ABOUTME: QLoRA DPO config for Qwen3.6-27B on the difficult-advice preference data.
-# ABOUTME: Run on GPU: python src/experiments/train_dpo.py --config configs/dpo_qwen36.yaml
+# ABOUTME: Run on GPU: python scripts/train_dpo.py --config configs/dpo_qwen36.yaml
 
 seed: 0
 model: "Qwen/Qwen3.6-27B"

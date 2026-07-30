@@ -1,5 +1,5 @@
 # ABOUTME: QLoRA DPO of Qwen3.6-27B on the difficult-advice preference data via TRL DPOTrainer.
-# ABOUTME: Runs on a GPU instance: python src/experiments/train_dpo.py --config configs/dpo_qwen36.yaml
+# ABOUTME: Runs on a GPU instance: python scripts/train_dpo.py --config configs/dpo_qwen36.yaml
 
 from __future__ import annotations
 

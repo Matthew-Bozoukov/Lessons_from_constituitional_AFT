@@ -37,7 +37,7 @@ echo "=== [3/4] classify_results (judge=sonnet-4.5 via OpenRouter) ==="
 python scripts/classify_results.py --results-dir "results/${EXPID}" \
   --classifier-model anthropic/claude-sonnet-4.5
 echo "=== [4/4] aggregate misalignment rates ==="
-python /root/work/src/experiments/aggregate_eval.py \
+python /root/work/scripts/aggregate_eval.py \
   --results_dir "results/${EXPID}" --label "${EXPID}" \
   --out "results/${EXPID}/misalignment_summary.json"
 

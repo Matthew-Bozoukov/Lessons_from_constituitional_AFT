@@ -8,10 +8,10 @@ The browser is deliberately read-only. Research is authored as Markdown, JSON,
 JSONL, images, and other artifacts on disk; the app indexes those sources into
 an explorable research console.
 
-This application is a standalone project rooted at `dashboard/`. It is one of
-two top-level directories in the repository; the vulnerability investigation
-lives separately under `Vulnerabilities/` and shares no build tooling with the
-visualizer.
+This application is a standalone project rooted at `dashboard/`. It shares no
+build tooling with the Python research code at the repository root; the
+completed vulnerability audit it presents lives in git history (see the root
+README).
 
 ## Quick start
 
@@ -53,7 +53,7 @@ npm test
 
 The project-local [`netlify.toml`](netlify.toml) lives inside `dashboard/`.
 Configure Netlify's package directory as `dashboard`; Netlify then installs and
-builds only this package, and the sibling `Vulnerabilities/` research workspace
+builds only this package, and the Python research code at the repository root
 is not part of the deployed application.
 
 The Netlify build runs:
