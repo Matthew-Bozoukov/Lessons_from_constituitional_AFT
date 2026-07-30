@@ -262,7 +262,7 @@ only files confirmed pushed, and never if a push failed.
 
 ## Repo layout
 - `src/data/synthdoc/` self-contained synthetic-document pipeline (see above); `src/data/synthdoc/control/` its config + prompts.
-- `src/` reusable code (`llm.py`, `utils.py`, `data/`, `train/`, `eval/`); `scripts/` thin pipeline CLIs; `scratch/` one-offs.
+- `src/` reusable code (`openrouter.py`, `utils.py`, `data/`, `train/`, `eval/`); `scripts/` thin pipeline CLIs; `scratch/` one-offs.
 - `configs/` OmegaConf YAML for every step.
 - `scripts/` remote drivers (`run_eval.sh`, `serve_lora.sh`, `run_inspect_leaking.sh`).
 - `third_party/agentic-misalignment/` vendored eval harness (patched: `vllm/` provider, judge routing).

@@ -9,7 +9,7 @@ from pathlib import Path
 from omegaconf import OmegaConf
 
 
-from src.llm import OpenRouterClient, map_threaded  # noqa: E402
+from src.openrouter import OpenRouterClient, map_threaded  # noqa: E402
 from src.train.prompts import think_trace_messages  # noqa: E402
 from src.utils import timestamp, write_run_meta  # noqa: E402
 

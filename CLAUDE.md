@@ -18,7 +18,7 @@ chronological findings.
 
 ```
 src/                    correctness-critical reusable code (installed editable; import as src.*):
-  llm.py                  OpenRouterClient + map_threaded (threaded API calls, bounded retry)
+  openrouter.py           OpenRouterClient + map_threaded (threaded API calls, bounded retry)
   utils.py                extract_json, git_sha, timestamp, write_run_meta, count_chat_tokens
   data/                   synthetic data generation: synthdoc/ (self-contained package,
                           `uv run synthdoc <cmd>`) + build_mixture.py

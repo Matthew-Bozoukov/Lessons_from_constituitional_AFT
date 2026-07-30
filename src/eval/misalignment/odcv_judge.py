@@ -12,7 +12,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from omegaconf import OmegaConf
 
-from src.llm import map_threaded  # noqa: E402
+from src.openrouter import map_threaded  # noqa: E402
 from src.eval.misalignment.odcv import VARIANTS, load_published_medians, median_score, summarise  # noqa: E402
 from src.eval.misalignment.odcv_rollout import openrouter_usage  # noqa: E402
 from src.utils import timestamp, write_run_meta  # noqa: E402

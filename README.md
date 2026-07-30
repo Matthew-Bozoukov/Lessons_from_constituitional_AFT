@@ -9,7 +9,7 @@ its behaviour, plus a web frontend that presents the results.
 ```text
 .
 ├── src/                  # correctness-critical reusable code (human-verified; import as src.*)
-│   ├── llm.py, utils.py  #   shared OpenRouter client + utilities
+│   ├── openrouter.py, utils.py  #   shared OpenRouter client + utilities
 │   ├── data/             #   synthetic data generation: synthdoc/ + build_mixture.py
 │   ├── train/            #   SFT/DPO dataset generation + QLoRA/DPO training
 │   └── eval/             #   capabilities/ · misalignment/ (ODCV) · vulnerabilities/ (petri, surf)
