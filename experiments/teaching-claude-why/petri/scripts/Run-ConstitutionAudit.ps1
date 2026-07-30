@@ -74,8 +74,19 @@ catch {
 }
 
 # --- Preflight: the CLI must hold its own credential ------------------------
+# `claude setup-token` stores the credential as a User-scope environment
+# variable. A process started before that variable existed inherits a stale
+# environment block, so read it from the registry rather than trusting
+# inheritance. Never echo the value.
+if (-not $env:CLAUDE_CODE_OAUTH_TOKEN) {
+    $userToken = [Environment]::GetEnvironmentVariable('CLAUDE_CODE_OAUTH_TOKEN', 'User')
+    if ($userToken) {
+        $env:CLAUDE_CODE_OAUTH_TOKEN = $userToken
+        Write-Host "[preflight] OAuth token loaded from User-scope environment"
+    }
+}
+
 $authRaw = & claude auth status 2>$null | Out-String
-Write-Host "[preflight] claude auth status: $($authRaw.Trim())"
 if ($authRaw -notmatch '"loggedIn"\s*:\s*true') {
     throw @'
 Claude Code CLI is not logged in, so the auditor/judge/realism roles cannot run
@@ -84,8 +95,18 @@ on the subscription. The account holder must run once:
     claude setup-token
 
 This cannot be automated and must not be worked around by pointing subscription
-OAuth credentials at the raw Messages API.
+OAuth credentials at the raw Messages API - that is a terms circumvention.
 '@
+}
+$authMethod = if ($authRaw -match '"authMethod"\s*:\s*"([^"]+)"') { $Matches[1] } else { 'unknown' }
+Write-Host "[preflight] claude auth: loggedIn=true, authMethod=$authMethod"
+
+# An Anthropic API key must not be able to serve these roles by accident: the
+# whole point is that this run costs no API credit. The provider blanks
+# ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN in the CLI subprocess unless
+# PETRI_CC_ALLOW_API_KEY=1, so refuse to run if that override is set.
+if ($env:PETRI_CC_ALLOW_API_KEY -eq '1') {
+    throw "PETRI_CC_ALLOW_API_KEY=1 is set. That bills at API rates and does not test subscription auth. Unset it."
 }
 
 $argList = @(
