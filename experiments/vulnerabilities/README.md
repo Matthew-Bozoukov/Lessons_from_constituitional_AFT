@@ -61,6 +61,7 @@ because it asks whether the task was done, and it was.
 | [`12-validation-funnel.md`](docs/12-validation-funnel.md) | 57% false-positive rate, the C5b control failure, tool-call fidelity |
 | [`11-fixed-eval-defects.md`](docs/11-fixed-eval-defects.md) | Two defects the judges caught that would have produced a clean-looking wrong answer |
 | [`00-exclusion-matrix.md`](docs/00-exclusion-matrix.md) | What was forbidden as mere replication, and why each finding clears it |
+| [`22-petri-run-mechanics.md`](docs/22-petri-run-mechanics.md) | How the Petri runs were configured: seeding, turn counts, synthetic toolsets, the 38 judge dimensions and which 8 decided anything |
 | [`14-petri-subscription-fork.md`](docs/14-petri-subscription-fork.md) | A working Petri auditor that needs no API key |
 | [`JOURNAL.md`](JOURNAL.md) | Chronological log, including every mistake and correction |
 
