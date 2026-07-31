@@ -219,7 +219,7 @@ elsewhere in the repo, add it to `specs/index.yaml`:
 
 ```yaml
 specs:
-  claude_constitution_principles: docs/claude_constitution_principles.md
+  claude_constitution_principles: constitutions/claude_constitution_principles.md
 ```
 
 Prefer the index over setting `spec.path` in a config. Resolution by id alone is what

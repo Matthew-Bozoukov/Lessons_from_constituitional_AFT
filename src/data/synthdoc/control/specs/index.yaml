@@ -7,4 +7,4 @@
 
 specs:
   # The repo's distilled constitution, referenced in place rather than copied.
-  claude_constitution_principles: docs/claude_constitution_principles.md
+  claude_constitution_principles: constitutions/claude_constitution_principles.md

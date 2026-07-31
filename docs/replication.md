@@ -273,8 +273,8 @@ only files confirmed pushed, and never if a push failed.
 - `configs/` OmegaConf YAML for every step.
 - `scripts/` remote drivers (`run_eval.sh`, `serve_lora.sh`, `run_inspect_leaking.sh`).
 - `third_party/agentic-misalignment/` vendored eval harness (patched: `vllm/` provider, judge routing).
-- `docs/claude_constitution_principles.md` the alignment target.
-- `output/` all run artifacts; `LOG.md` append-only research log.
+- `constitutions/claude_constitution_principles.md` the alignment target.
+- `output/` all run artifacts; `docs/LOG.md` append-only research log.
 - Trained adapter: `matboz/qwen3-32b-difficult-advice-lora` on the HF Hub.
 
 ## Gotchas (things that will bite you)

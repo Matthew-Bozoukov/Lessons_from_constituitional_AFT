@@ -40,7 +40,7 @@ def test_specs_resolve_by_id_alone():
 
 def test_indexed_spec_loads_from_outside_the_control_dir():
     spec = load_spec("claude_constitution_principles")
-    assert "docs/claude_constitution_principles.md" in spec.path
+    assert "constitutions/claude_constitution_principles.md" in spec.path
     assert spec.sha
 
 

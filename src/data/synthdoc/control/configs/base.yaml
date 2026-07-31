@@ -28,7 +28,7 @@ cache:
 
 spec:
   # Resolved by id: control/specs/<id>.md first, then control/specs/index.yaml, which
-  # points this one at the repo's existing docs/claude_constitution_principles.md
+  # points this one at the repo's existing constitutions/claude_constitution_principles.md
   # without copying it. Keeping `path` unset is what lets `axis: spec.id` sweeps work.
   id: claude_constitution_principles
   chunker:

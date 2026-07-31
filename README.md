@@ -17,9 +17,9 @@ its behaviour, plus a web frontend that presents the results.
 ├── scratch/              # one-off and AI-generated scripts (default home for new code)
 ├── configs/              # OmegaConf YAML, one per pipeline step
 ├── tests/                # fast offline unit tests
-├── docs/                 # reference material + docs/replication.md (the run guide)
-├── dashboard/            # research-log frontend (Next/vinext), deployed on Netlify
-└── LOG.md                # append-only research log
+├── constitutions/        # constitution / trait documents the specs point at
+├── docs/                 # reference material + docs/replication.md (the run guide) + docs/LOG.md (research log)
+└── dashboard/            # research-log frontend (Next/vinext), deployed on Netlify
 ```
 
 **Run everything from the repository root.** `configs/`, `data/`, `output/` and
