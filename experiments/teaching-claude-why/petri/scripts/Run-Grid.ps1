@@ -30,7 +30,12 @@ param(
     [int]$MaxConnections = 4,
     [string]$Tag = 'grid',
     [string[]]$Arms = @('base', 'dose-10-90', 'dose-20-80', 'dose-40-60'),
-    [double]$GpuCapUsd = 40,
+    [double]$GpuCapUsd = 80,
+
+    # Must match the battery the runner actually uses, or the expected-sample
+    # count - and therefore check_arm.py's integrity gate - is measured against
+    # the wrong directory.
+    [string]$SeedDir = 'seeds-v2',
     [string]$TargetBaseUrl = 'http://127.0.0.1:8000/v1'
 )
 
@@ -41,7 +46,7 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $vuln = (Resolve-Path (Join-Path $root '..\..\vulnerabilities')).Path
 Set-Location $root
 
-$seedCount = @(Get-ChildItem (Join-Path $root 'seeds') -Filter *.md).Count
+$seedCount = @(Get-ChildItem (Join-Path $root $SeedDir) -Filter *.md).Count
 $expected  = $seedCount * $Epochs
 Write-Host "[grid] $($Arms.Count) arms x $seedCount seeds x $Epochs epochs = $($Arms.Count * $expected) audits"
 Write-Host "[grid] expecting $expected completed samples per arm"
@@ -90,7 +95,7 @@ foreach ($arm in $Arms) {
 
     $started = Get-Date
     & (Join-Path $root 'scripts\Run-ConstitutionAudit.ps1') `
-        -Arm $arm -Epochs $Epochs -MaxConnections $MaxConnections -Tag $Tag
+        -Arm $arm -Epochs $Epochs -MaxConnections $MaxConnections -Tag $Tag -SeedDir $SeedDir
     $mins = [math]::Round(((Get-Date) - $started).TotalMinutes, 1)
 
     # --- integrity check: did the arm really produce audits? ---------------

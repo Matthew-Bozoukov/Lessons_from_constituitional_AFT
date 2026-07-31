@@ -51,7 +51,10 @@ param(
     [string]$Realism = 'anthropic/claude-haiku-4-5',
 
     [string]$TargetBaseUrl = 'http://127.0.0.1:8000/v1',
-    [string]$Tag = 'run'
+    [string]$Tag = 'run',
+
+    # v2 uses the expanded 28-seed battery with frozen scaffolds.
+    [string]$SeedDir = 'seeds-v2'
 )
 
 Set-StrictMode -Version Latest
@@ -137,7 +140,7 @@ if ($Realism -like 'anthropic/*' -or $Auditor -like 'anthropic/*' -or $Judge -li
 
 $argList = @(
     'eval', 'inspect_petri/audit',
-    '-T', 'seed_instructions=seeds',
+    '-T', "seed_instructions=$SeedDir",
     '-T', "max_turns=$MaxTurns",
     '-T', "realism_filter=$RealismFilter",
     '-T', 'enable_rollback=True',
