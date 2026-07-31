@@ -21,6 +21,10 @@ per arm no arm differs from base (McNemar exact p = 1, 0.625, 1).
 
 ![dose response](./assets/violation_dose_response.png)
 
+Violation families and the paired comparison against base:
+
+![decomposition](./assets/violation_decomposition.png)
+
 | field | value |
 | --- | --- |
 | `experiment` | Adaptive Petri audit measuring how often four Qwen3.6-27B arms violate the constitution their SFT data was written against, as a function of SFT dose |

@@ -1,7 +1,7 @@
 ---
 hf_source:
   repo_id: LASR-Callum/2026-07-31-petri-constitution-dose-sweep
-  revision: 19dbc1e710964738f34400a4786fa448f0d583f3
+  revision: 258608f548c4c6e959b5725223bdb2e71e4f8455
 title: "Petri audit — Qwen3.6-27B difficult-advice SFT dose sweep"
 date: 2026-07-31
 summary: "Four arms (0/10/20/40% difficult-advice SFT) audited against the constitution they were trained on: 20%, 20%, 40%, 30% violation frequency — no dose-response, and at n=10 test audits per arm the design cannot resolve effects smaller than about 30 points."
@@ -135,4 +135,5 @@ than any plausible effect. Nothing about the seeds, rubric or harness needs to c
 - `results/scores.json` — per-arm aggregates
 - `artifacts/raw-judge-dimensions.jsonl` — raw 1–10 judge integers before rescaling
 - `artifacts/report.md`, `artifacts/results.json` — full analysis with intervals and McNemar
-- `assets/violation_dose_response.png` — the three-panel figure
+- `assets/violation_dose_response.png` — the dose-response curve
+- `assets/violation_decomposition.png` — violation families and the paired comparison

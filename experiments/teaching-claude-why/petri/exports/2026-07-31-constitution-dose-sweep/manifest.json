@@ -6,7 +6,7 @@
  "constitution": "experiments/teaching-claude-why/docs/claude_constitution_principles.md - 'Distilled Constitutional Principles (alignment target)', v1. This is the SAME document the three LoRA adapters' SFT data was generated against; deliberately not the later claude_approved_constitution.md, which postdates the training data.",
  "source_repo": {
   "url": "https://github.com/Matthew-Bozoukov/teaching_claude_why_replication",
-  "commit": "a6e1b75",
+  "commit": "0be0428",
   "branch": "petri-constitution-audit"
  },
  "models": {
