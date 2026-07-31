@@ -1,6 +1,8 @@
-# ABOUTME: bf16 LoRA SFT config for Qwen3.6-27B on the difficult-advice + TULU3 mixture.
-# ABOUTME: Run on an 80GB GPU: python scripts/train_lora.py --config configs/train_lora_qwen36.yaml
+# ABOUTME: Assistant-only-loss ablation of the 20/80 arm: identical mixture and hyperparameters,
+# ABOUTME: with loss masked to the tokens the model would itself generate.
 
+# Byte-for-byte the same as configs/train_lora_qwen36.yaml apart from assistant_only_loss
+# and output_dir, so any difference in the eval is attributable to the loss mask alone.
 seed: 0
 model: "Qwen/Qwen3.6-27B"
 
@@ -8,9 +10,11 @@ model: "Qwen/Qwen3.6-27B"
 # so it must be loaded through the image-text-to-text auto class.
 model_class: "image_text_to_text"
 
-# Pre-rendered mixture: difficult-advice WITH <think> traces, TULU3 with no think block.
+# The SAME rendered mixture the 20/80 arm trained on, reused verbatim:
+# output/mixture_qwen36/20260728_152610/mixture.jsonl -- 2,169 examples, 1,494,003 tokens,
+# 20% difficult-advice (with <think> traces) / 80% TULU3 replay (no think block).
 data_path: "data/mixture.jsonl"
-output_dir: "output/train_lora_qwen36"
+output_dir: "output/train_lora_qwen36_assistant_only"
 
 lora:
   r: 32
@@ -32,7 +36,10 @@ train:
   # TRL only guarantees packed-sequence isolation under Flash Attention variants; under
   # sdpa it warns of cross-contamination between samples, so packing stays off.
   packing: false
-  assistant_only_loss: false
+  # Mask every token outside an assistant turn. Qwen3.6's chat template has no
+  # `{% generation %}` markers, so src/masking.py derives the spans from the rendered
+  # text via offset mapping instead. 79.5% of tokens end up supervised.
+  assistant_only_loss: true
   attn_implementation: sdpa
   # bitsandbytes 4-bit does not reliably cover this model's linear-attention/SSM
   # layers; 54GB of bf16 weights + LoRA + checkpointing fits an 80GB card.

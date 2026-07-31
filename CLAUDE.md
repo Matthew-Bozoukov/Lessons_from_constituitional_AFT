@@ -67,6 +67,25 @@ LOG.md                  append-only research log, MOST RECENT FIRST. Add an entr
 `third_party/` are cwd-relative to the root; there is no `cd` into a project
 directory any more.
 
+### Terminology: "logs" means ROLLOUTS
+
+When the user says **"save the logs"**, they mean the **agent rollouts** — the model actually
+solving the task: its reasoning plus the actions it took. They do **not** mean stdout, stderr,
+harness progress logs, or `docker_output.log`. Default to saving rollouts.
+
+A rollout must be **self-contained and readable end to end**: the task the agent was given AND
+what it did. Saving only the response half is not enough — the prompt is part of the rollout.
+
+Where the rollout actually lives, per harness:
+
+| Harness | Rollout | Trap |
+|---|---|---|
+| ODCV-Bench | `agent_logs/.../<Scenario>/messages_record.txt` | `docker_output.log` beside it is container stdout, **not** the rollout |
+| agentic-misalignment | `models/<m>/<condition>/sample_NNN/response.json` -> `raw_response` | the prompt lives once per *condition* in `prompts/<condition>/`, not per sample — join them or the rollout is unreadable alone |
+
+`src/eval/misalignment/build_rollouts.py` stitches agentic-misalignment prompts + responses into
+self-contained per-sample transcripts. Run it after any agentic-misalignment eval.
+
 ### `output/` conventions
 - `output/difficult_advice_gen/<tag>_<ts>/` — generated data (`sft_dataset*.jsonl`, `summary.md`, `all_records.jsonl`, `run_meta.json`).
 - `output/eval_summaries/*.json` — **the canonical eval numbers** (baseline/post × thinking/nothink). Reports read from here; pull instance results into here.

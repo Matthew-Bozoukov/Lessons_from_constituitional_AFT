@@ -18,6 +18,36 @@ from transformers import (
 )
 from trl import SFTConfig, SFTTrainer
 
+from src.train.masking import build_labels  # noqa: E402
+
+
+def _collate_padded(features: list[dict], pad_token_id: int) -> dict[str, torch.Tensor]:
+    """Right-pad pre-tokenized examples, padding labels with -100 so they carry no loss.
+
+    `attention_mask` is rebuilt here rather than read from the dataset: SFTTrainer fixes
+    its signature columns to input_ids/labels/completion_mask/assistant_masks, so any
+    attention_mask column is stripped before the collator runs.
+
+    Args:
+        features: Examples with `input_ids` and `labels`.
+        pad_token_id: Token used to pad `input_ids`.
+
+    Returns:
+        A batch of stacked tensors: `input_ids`, `attention_mask`, `labels`.
+    """
+    width = max(len(f["input_ids"]) for f in features)
+    pad_to = lambda seq, fill: seq + [fill] * (width - len(seq))  # noqa: E731
+    batch = {
+        "input_ids": torch.tensor([pad_to(f["input_ids"], pad_token_id) for f in features]),
+        "attention_mask": torch.tensor(
+            [pad_to([1] * len(f["input_ids"]), 0) for f in features]
+        ),
+        "labels": torch.tensor([pad_to(f["labels"], -100) for f in features]),
+    }
+    assert batch["input_ids"].shape == batch["labels"].shape == (len(features), width)
+    assert (batch["labels"] != -100).any(), "batch has no supervised token; loss would be NaN"
+    return batch
+
 
 def _git_sha() -> str:
     """Return the current git SHA if available, else 'nogit'."""
@@ -66,6 +96,33 @@ def main(config: str, smoke: bool = False) -> None:
     tokenizer = AutoTokenizer.from_pretrained(cfg.model)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+
+    # TRL's own assistant_only_loss needs `{% generation %}` markers, which Qwen3.6's chat
+    # template lacks, and it re-renders from `messages` -- which would discard the think
+    # settings baked into a pre-rendered mixture. So mask here instead, off the exact same
+    # strings the full-token run trained on, and hand the trainer a ready-made batch.
+    assistant_only = bool(cfg.train.assistant_only_loss)
+    pre_tokenized = assistant_only and "text" in ds.column_names
+    if pre_tokenized:
+        max_len = int(cfg.train.max_seq_len)
+        ds = ds.map(
+            lambda r: build_labels(r["text"], tokenizer, max_len),
+            remove_columns=ds.column_names,
+            desc="masking non-assistant tokens",
+        )
+        n_tok = sum(len(r) for r in ds["input_ids"])
+        n_sup = sum(sum(1 for v in r if v != -100) for r in ds["labels"])
+        print(f">>> assistant-only loss: {n_sup:,}/{n_tok:,} tokens supervised "
+              f"({100 * n_sup / n_tok:.1f}%)")
+        first = ds[0]
+        kept = [v for v in first["labels"] if v != -100]
+        print(">>> FIRST EXAMPLE masked (no loss):")
+        print("   ", repr(tokenizer.decode(
+            [i for i, v in zip(first["input_ids"], first["labels"]) if v == -100])[:300]))
+        print(">>> FIRST EXAMPLE supervised (loss):")
+        print("   ", repr(tokenizer.decode(kept)[:300]))
+    elif assistant_only:
+        raise ValueError("assistant_only_loss needs a pre-rendered `text` column")
 
     # --- base model: 4-bit QLoRA by default, bf16 LoRA when 4-bit is unsupported ---
     # Qwen3.6's hybrid linear-attention layers are not reliably quantised by bitsandbytes,
@@ -134,8 +191,10 @@ def main(config: str, smoke: bool = False) -> None:
         report_to=[] if smoke else ["wandb"],
         run_name=f"difficult-advice-{ts}",
         seed=int(cfg.seed),
-        # Train only on the assistant completion, not the user prompt.
-        assistant_only_loss=bool(cfg.train.assistant_only_loss),
+        # Train only on the assistant completion, not the user prompt. When the dataset is
+        # pre-tokenized above the masking is already in `labels`, so TRL must not redo it.
+        assistant_only_loss=assistant_only and not pre_tokenized,
+        dataset_kwargs={"skip_prepare_dataset": True} if pre_tokenized else {},
     )
 
     trainer = SFTTrainer(
@@ -144,6 +203,9 @@ def main(config: str, smoke: bool = False) -> None:
         train_dataset=ds,
         processing_class=tokenizer,
         peft_config=peft_cfg,
+        data_collator=(
+            (lambda f: _collate_padded(f, tokenizer.pad_token_id)) if pre_tokenized else None
+        ),
     )
 
     print(">>> starting training")
@@ -165,4 +227,3 @@ def main(config: str, smoke: bool = False) -> None:
     (out_dir / "run_meta.json").write_text(json.dumps(meta, indent=2))
     print(f">>> saved adapter to {adapter_dir}")
     print(f">>> run_meta: {out_dir / 'run_meta.json'}")
-
