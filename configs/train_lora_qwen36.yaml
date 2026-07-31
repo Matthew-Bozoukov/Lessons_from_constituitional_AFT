@@ -33,5 +33,5 @@ train:
   packing: true
   # Qwen3's chat template has no {% generation %} markers, so assistant-only masking
   # yields all-zero masks; use standard full-sequence SFT loss. (CLAUDE.md gotcha 4)
-  assistant_only_loss: false
+  assistant_only_loss: true
   attn_implementation: sdpa
