@@ -4,12 +4,12 @@
 name: null
 seed: 0
 max_workers: 16
-output_dir: output/constieval
+output_dir: output/internalization
 
 clause_set: principles_v2
 
 itemset:
-  dir: output/src/eval/constieval/itemsets
+  dir: output/internalization/itemsets
   id: is_4ffc1cf9a0b9
   include_held_out: true
   domains:

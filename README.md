@@ -56,10 +56,11 @@ transformers downgrade.
 
 ## Repo layout
 - `synthdoc/` self-contained synthetic-document pipeline (see above); `synthdoc/control/` its config + prompts.
-- `constieval/` self-contained constitution-internalization eval suite (Tier A). Measures whether a
-  checkpoint *internalized* the constitution or memorized its surface behaviors, at every checkpoint,
-  without a downstream training run. `uv run python -m src.eval.constieval.cli run --config smoke.yaml --smoke`
-  runs it offline in ~10s with no API key. See `src/eval/constieval/README.md`.
+- `src/eval/misalignment/internalization/` self-contained constitution-internalization proxy eval
+  (Tier A). Measures whether a checkpoint *internalized* the constitution or memorized its surface
+  behaviors, at every checkpoint, without a downstream training run.
+  `scripts/run_internalization.sh smoke` runs it offline in ~10s with no API key. See
+  `src/eval/misalignment/internalization/README.md`.
 - `src/` reusable code (`llm.py`, `prompts.py`, `utils.py`); `src/experiments/` scripts.
 - `configs/` OmegaConf YAML for every step.
 - `scripts/` remote drivers (`run_eval.sh`, `serve_lora.sh`, `run_inspect_leaking.sh`,

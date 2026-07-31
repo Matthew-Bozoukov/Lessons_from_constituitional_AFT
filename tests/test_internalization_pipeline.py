@@ -7,22 +7,22 @@ import json
 
 import pytest
 
-from src.eval.constieval import analysis, plots
-from src.eval.constieval.config import load_config
-from src.eval.constieval.core.cache import CacheConfig, CallCache
-from src.eval.constieval.core.llm import CachedLLM, EchoLLM
-from src.eval.constieval.core.store import ResultsStore, RunContext
-from src.eval.constieval.items.itemset import build_itemset, resolve_clause_set
-from src.eval.constieval.judges.base import JudgeConfig
-from src.eval.constieval.pipeline.generate import TargetConfig, generate
-from src.eval.constieval.pipeline.judging import judge_all
-from src.eval.constieval.pipeline.run import run_eval
+from src.eval.misalignment.internalization import analysis, plots
+from src.eval.misalignment.internalization.config import load_config
+from src.eval.misalignment.internalization.core.cache import CacheConfig, CallCache
+from src.eval.misalignment.internalization.core.llm import CachedLLM, EchoLLM
+from src.eval.misalignment.internalization.core.store import ResultsStore, RunContext
+from src.eval.misalignment.internalization.items.itemset import build_itemset, resolve_clause_set
+from src.eval.misalignment.internalization.judges.base import JudgeConfig
+from src.eval.misalignment.internalization.pipeline.generate import TargetConfig, generate
+from src.eval.misalignment.internalization.pipeline.judging import judge_all
+from src.eval.misalignment.internalization.pipeline.run import run_eval
 
 
 @pytest.fixture(scope="module")
 def cfg(tmp_path_factory):
     """A tiny offline config writing into a temp directory."""
-    root = tmp_path_factory.mktemp("constieval")
+    root = tmp_path_factory.mktemp("internalization")
     return load_config(
         "smoke.yaml",
         {
@@ -127,7 +127,7 @@ class TestJudging:
             assert clause.title in blob, f"{clause.title} missing from the knows prompt"
 
     def test_failed_generation_is_errored_not_zero(self, cfg, itemset, echo):
-        from src.eval.constieval.core.types import Completion
+        from src.eval.misalignment.internalization.core.types import Completion
 
         item = next(i for i in itemset if i.family == "application")
         broken = {item.item_id: Completion(item_id=item.item_id, text="", error="timeout")}
@@ -137,8 +137,8 @@ class TestJudging:
         assert rows and all(r.error and not r.passed for r in rows)
 
     def test_graded_rubric_is_refused(self, cfg):
-        from src.eval.constieval.control import loader
-        from src.eval.constieval.judges.base import RubricJudge
+        from src.eval.misalignment.internalization.control import loader
+        from src.eval.misalignment.internalization.judges.base import RubricJudge
 
         clauses = resolve_clause_set(cfg)
         real = loader.rubric
@@ -258,7 +258,7 @@ class TestPlots:
             assert (tmp_path / f"{name}.png").stat().st_size > 10_000
 
     def test_report_writes_mirror_and_warnings(self, frame, tmp_path):
-        from src.eval.constieval.report import build_report
+        from src.eval.misalignment.internalization.report import build_report
 
         written = build_report(frame, tmp_path)
         body = open(written["markdown"]).read()

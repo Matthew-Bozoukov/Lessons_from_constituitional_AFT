@@ -73,7 +73,7 @@ def prepare_itemset(cfg: dict[str, Any], rebuild: bool = False) -> ItemSet:
         The ItemSet.
     """
     itemset_cfg = dict(cfg.get("itemset") or {})
-    root = Path(itemset_cfg.get("dir") or "output/src/eval/constieval/itemsets")
+    root = Path(itemset_cfg.get("dir") or "output/internalization/itemsets")
     wanted = itemset_cfg.get("id")
 
     if not rebuild:
@@ -166,7 +166,7 @@ def run_eval(
     # hardcoded wrong - silently misattributing a third of every groupby on `condition`.
     store.extend(capability_rows(cfg, ctx))
 
-    run_dir = Path(cfg.get("output_dir") or "output/constieval") / "runs" / resolved_run_id
+    run_dir = Path(cfg.get("output_dir") or "output/internalization") / "runs" / resolved_run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     results_path = store.write(run_dir / "results.jsonl")
 

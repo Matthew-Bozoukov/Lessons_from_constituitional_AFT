@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ABOUTME: Serve a merged checkpoint with vLLM for constieval's `vllm` target provider.
+# ABOUTME: Serve a merged checkpoint with vLLM for internalization's `vllm` target provider.
 # ABOUTME: Plain model, no --enable-lora: the adapter was already merged into the weights.
 set -euo pipefail
 
@@ -8,7 +8,7 @@ SERVED_NAME="${2:-qwen36-difficult-advice}"
 PORT="${3:-8000}"
 
 # --reasoning-parser is what makes vLLM split the trace into `reasoning_content` instead of
-# leaving it inline. constieval handles both, but the split form keeps the answer clean for
+# leaving it inline. internalization handles both, but the split form keeps the answer clean for
 # the judge without relying on tag parsing.
 exec vllm serve "$MODEL_DIR" \
   --served-model-name "$SERVED_NAME" \

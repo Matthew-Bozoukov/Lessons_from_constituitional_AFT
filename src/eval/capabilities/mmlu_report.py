@@ -51,8 +51,8 @@ from src.utils import read_jsonl, timestamp, write_run_meta  # noqa: E402
 
 # One data series per panel, so colour carries no categorical load and no legend box is
 # needed — the title names the series and points are directly labelled. These are the
-# repo's validated palette slots (see src/eval/constieval/plots_theme.py); duplicated rather than
-# imported to keep src/ independent of constieval/, matching capability_report.py.
+# repo's validated palette slots (see src/eval/misalignment/internalization/plots_theme.py); duplicated rather than
+# imported to keep src/ independent of internalization/, matching capability_report.py.
 _SERIES = "#2a78d6"
 _INK = "#0b0b0b"
 _INK_MUTED = "#52514e"

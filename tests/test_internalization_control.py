@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import pytest
 
-from src.eval.constieval.config import ConfigError, load_config, validate
-from src.eval.constieval.control import loader
+from src.eval.misalignment.internalization.config import ConfigError, load_config, validate
+from src.eval.misalignment.internalization.control import loader
 
 
 @pytest.fixture(scope="module")
