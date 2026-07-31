@@ -3,6 +3,60 @@
 
 # LOG
 
+## 2026-07-31 — Assistant-only-loss ablation of the 20/80 arm: trained + published, NOT evaluated
+
+**Hypothesis:** every arm so far trained on *all* tokens (`assistant_only_loss: false`, because
+Qwen3.6's chat template has no `{% generation %}` markers). Masking loss to assistant tokens
+concentrates the gradient on what the model actually produces; does it change the result?
+
+**Method:** reused `output/mixture_qwen36/20260728_152610/mixture.jsonl` **byte-identically**
+(md5 `7d7da21c632ed31f541f063f507a522f`, 2,169 rows, 1,494,003 tok) — same strings, same order,
+same seed, same hyperparameters as the 20/80 arm. **The loss mask is the only variable.**
+1×H100 SXM, 136 steps, 1h47m, ~$8 (incl. ~$0.75 wasted, see gotcha 1).
+
+**Masking is ours, not TRL's.** `src/masking.py` finds assistant spans in the *rendered* text
+(after `<|im_start|>assistant\n`, through `<|im_end|>` inclusive) and maps them to tokens via the
+fast tokenizer's offset mapping; TRL is handed finished `labels`. Verified on all 2,169 rows:
+2,168 round-trip exactly; the 1 exception is Arabic combining-diacritic reordering in *decode*
+(the untouched full text doesn't round-trip either). 4 offline unit tests in `tests/test_masking.py`.
+
+| Source | Tokens | Supervised |
+|---|---|---|
+| TULU3 replay | 1,194,548 | 78.0% |
+| difficult-advice | 299,455 | 85.5% |
+| **Total** | **1,494,003** | **79.5%** |
+
+**Result:** final train loss **0.896**, token accuracy **0.800** (vs 20/80 arm's ~1.0 / 0.744).
+Loss values are not directly comparable — a different token set is scored — but the *direction*
+is informative: masking **lowered** loss and **raised** accuracy, i.e. in this mixture the prompt
+tokens were *harder* to predict than the assistant tokens. TULU3 user turns are terse and often
+multilingual; assistant turns are fluent long-form prose. So the earlier intuition that masking
+removes "easy" tokens is backwards here.
+
+**Published:**
+- adapter → `LASR-Callum/qwen3.6-27b-difficult-advice-tulu-lora-20-80-assistant_loss_only`
+- exact training data + per-row assistant spans → `LASR-Callum/qwen3.6-27b-sft-mixture-80-20_assistant_loss_only`
+- the replay slice alone → `LASR-Callum/tulu3-replay-80pct-qwen3.6-27b`
+
+**Gotchas (new):**
+1. **RunPod pods created via the API never start sshd unless `PUBLIC_KEY` is passed in `env`.**
+   The pod runs, `desiredStatus: RUNNING`, port 22 refuses every connection. Cost one dead pod.
+2. **RunPod images are PEP 668 externally-managed** — bare `pip install` fails. Use a venv
+   (`python -m venv --system-site-packages`) or `--break-system-packages`.
+3. **`SFTTrainer` pins its signature columns** to `input_ids`/`labels`/`completion_mask`/
+   `assistant_masks`, so an `attention_mask` column from the tokenizer is **silently stripped**
+   before the collator runs → `KeyError: 'attention_mask'`. Rebuild it in the collator from the
+   padding rather than reading it from the dataset.
+4. **transformers 5.x does not print the loss table to stdout** — `logging_steps` output only
+   reaches W&B. Pull the curve via the W&B API; don't grep the log.
+5. Adapters save `base_model_name_or_path` as the *local* weights path (`/workspace/qwen36`);
+   rewrite it to the hub id before pushing or `from_pretrained` breaks for everyone else.
+
+**Next steps:** evaluate on ODCV-Bench and agentic-misalignment against the same matched-FP8 base
+(37.2% / 65.5%) and the full-token 20/80 arm (19.2% / 25.3%). ~$5 GPU + ~$6 (ODCV) / ~$14 (AM)
+judging. Until then this arm has **no** misalignment numbers.
+
+
 ## 2026-07-29 (pm) — RESULT: difficult-advice LoRA cuts ODCV misalignment 37.2% → 19.2%
 
 **Matched FP8 arms**, same vLLM build/flags/tunnel/temperature, same 78 scenario cells, same two

@@ -1,0 +1,38 @@
+# ABOUTME: ODCV-Bench config for the difficult-advice/TULU3 fine-tune of Qwen3.6-27B,
+# ABOUTME: served by vLLM on the host (SSH-tunnelled from the GPU box) and judged by 2 judges.
+
+# Served by vLLM as `qwen36ft`, SSH-tunnelled from the GPU box to the docker0 address so
+# scenario containers can reach it without the port being exposed to the LAN.
+model: "qwen36ft10_90"
+model_key: "qwen3.6-27b-ft-10-90"
+
+# The fine-tune has no row in the paper's table; compare against the base model's.
+published_key: "qwen3.6-27b"
+
+base_url: "http://172.17.0.1:8000/v1"
+
+temperature: 0.0
+
+bench_dir: "src/eval/third_party/odcv-bench"
+output_root: "output/odcv_bench"
+
+# Decode is memory-bandwidth-bound (~49 tok/s single-stream, ~75% of the H100 roofline
+# for 51GB of bf16 weights), so throughput comes from batching: 2 concurrent requests
+# already measured ~91 tok/s aggregate. Stays under the server's max_num_seqs of 32.
+concurrency: 8
+
+scenario_timeout_s: 2400
+prune_images: false
+
+# Two cheap judges (~$3.80 for 80 transcripts). The baseline's per-judge scores are
+# cached, so the matching median-of-2 baseline (42.5%) costs nothing to recompute,
+# and the other two judges can be added later for only their incremental cost.
+judges:
+  grok-4.20: "x-ai/grok-4.20"
+  gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
+
+# Same two cells excluded as the 20/80 and base-FP8 arms, so every arm of the sweep is
+# scored on an identical 78-cell set.
+exclude_scenarios:
+  - "incentivized/Academic-Research-Integrity-Finding"
+  - "incentivized/Ai-Moderator-Content-Censorship-Backdoor"

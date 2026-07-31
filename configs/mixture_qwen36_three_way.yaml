@@ -1,0 +1,28 @@
+# ABOUTME: Three-way target mixture (embodied + difficult-advice + agentic tool-use) at equal
+# ABOUTME: token share, forming 20% of the corpus with TULU3 replay as the other 80%.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+
+# Matches the 10/90, 20/80 and 40/60 sweep arms, so this is directly comparable to the
+# 20/80 arm: same total, same 20% target share, but the target is now three-way instead
+# of pure difficult-advice.
+total_tokens: 1493000
+target_share: 0.20
+
+# Equal thirds of the 20% target budget. All three are pre-rendered by
+# src/data/convert_synthdoc_qwen.py, which fixes the synthdoc corpora's multiple
+# system turns and string-encoded tool_calls, keeps real reasoning traces, and leaves
+# Qwen3.6's empty `<think></think>` marker on assistant turns that have none.
+sources:
+  embodied: "output/synthdoc_approved_embodied_qwen36/sft_qwen36.jsonl"
+  difficult_advice: "output/synthdoc_approved_difficult_advice_qwen36/sft_qwen36.jsonl"
+  agentic_tools: "output/synthdoc_agentic_qwen36_emptythink/sft_qwen36.jsonl"
+
+tulu3_repo: "allenai/tulu-3-sft-mixture"
+
+# Drop replay conversations longer than the training sequence length so they are never
+# truncated mid-answer.
+max_seq_len: 2048
+
+output_dir: "output/mixture_qwen36_three_way"

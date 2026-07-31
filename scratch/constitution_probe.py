@@ -1,6 +1,6 @@
 # ABOUTME: Cheap A/B probe of CONSTITUTION_V1 vs CONSTITUTION_V2: same fixed scenario set,
 # ABOUTME: two response arms, heuristic refusal-rate + concept-mention-rate comparison.
-"""Run BEFORE any v2 regeneration (see docs/claude_approved_constitution_rationale.md §3).
+"""Run BEFORE any v2 regeneration (see constitutions/claude_approved_constitution_rationale.md §3).
 
 Generates a fixed, seeded set of scenarios spread across src/prompts.py::DOMAINS, then
 generates a response to each scenario twice -- once under CONSTITUTION_V1, once under

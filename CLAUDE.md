@@ -13,7 +13,7 @@ Replication of the **"difficult advice"** result from Anthropic's *Teaching Clau
 ambiguous situation; the assistant reasons about its values and declines norm-violations) reduces
 **agentic misalignment** (blackmail/leaking honeypots). Data is generated with **Sonnet 4.5 via
 OpenRouter** (no Anthropic key exists — all Claude calls go through OpenRouter). See
-`docs/replication.md` for the end-to-end run guide and the headline numbers; see `LOG.md` for the
+`docs/replication.md` for the end-to-end run guide and the headline numbers; see `docs/LOG.md` for the
 chronological findings.
 
 ## Where things go (keep this structure)
@@ -36,12 +36,13 @@ scripts/                pipeline drivers: thin CLIs over src/ functions + shell 
 scratch/                one-off and AI-generated scripts (report generators, probes, inspection
                         snippets). Default home for new experimental code; NOTHING imports from it.
 dashboard/              the research-log web app (own toolchain, deployed on Netlify) - see its README
+constitutions/          constitution / trait documents (the specs data generation points at)
 docs/                   reference material + docs/replication.md (the end-to-end run guide)
 tests/                  fast, no-network unit tests (e.g. extract_json). Run: uv run pytest -q
 third_party/            vendored external repos (PATCHED — see below). Gitignored.
 data/                   datasets staged for training (gitignored; pull from HF)
 output/                 ALL run artifacts (gitignored). See below.
-LOG.md                  append-only research log, MOST RECENT FIRST. Add an entry per real result.
+docs/LOG.md             append-only research log, MOST RECENT FIRST. Add an entry per real result.
 ```
 
 **Respect the structure when adding code:**
@@ -62,10 +63,34 @@ LOG.md                  append-only research log, MOST RECENT FIRST. Add an entr
 - `dashboard/` is the dashboard app and nothing else: its job is to read
   published data from Hugging Face and display it. Research code, data
   processing, and experiment artifacts do not belong there.
+- **Integrate, don't tack on.** New functionality that is conceptually an
+  extension of an existing module belongs *in* that module — generalize the
+  existing code rather than adding a sibling file (`build_mixture_multi.py`
+  next to `build_mixture.py`, `foo_v2.py`, `foo_new.py`). Split-off variants
+  duplicate logic and make both copies harder to read and maintain.
 
 **Run everything from the repository root.** Configs, `output/`, `data/` and
 `third_party/` are cwd-relative to the root; there is no `cd` into a project
 directory any more.
+
+### Terminology: "logs" means ROLLOUTS
+
+When the user says **"save the logs"**, they mean the **agent rollouts** — the model actually
+solving the task: its reasoning plus the actions it took. They do **not** mean stdout, stderr,
+harness progress logs, or `docker_output.log`. Default to saving rollouts.
+
+A rollout must be **self-contained and readable end to end**: the task the agent was given AND
+what it did. Saving only the response half is not enough — the prompt is part of the rollout.
+
+Where the rollout actually lives, per harness:
+
+| Harness | Rollout | Trap |
+|---|---|---|
+| ODCV-Bench | `agent_logs/.../<Scenario>/messages_record.txt` | `docker_output.log` beside it is container stdout, **not** the rollout |
+| agentic-misalignment | `models/<m>/<condition>/sample_NNN/response.json` -> `raw_response` | the prompt lives once per *condition* in `prompts/<condition>/`, not per sample — join them or the rollout is unreadable alone |
+
+`src/eval/misalignment/build_rollouts.py` stitches agentic-misalignment prompts + responses into
+self-contained per-sample transcripts. Run it after any agentic-misalignment eval.
 
 ### `output/` conventions
 - `output/difficult_advice_gen/<tag>_<ts>/` — generated data (`sft_dataset*.jsonl`, `summary.md`, `all_records.jsonl`, `run_meta.json`).
@@ -80,8 +105,8 @@ directory any more.
 
 **From 2026-07-29 onward, any dataset, generated corpus, evaluation output or
 associated cache produced by work in this repository should be published to Hugging
-Face.** The repository holds code, configuration, analysis and reports. It does
-not hold bulk data.
+Face.** The repository holds code and configuration. It does
+not hold bulk data. There will be gitignored output in `output/` but this is for fast experiment iteration and plots. The canonical location for artefacts and results is Hugging Face.
 
 This applies to synthetic document corpora, generated response sets, evaluation
 transcripts, judge outputs, embeddings, activation caches, and any intermediate
@@ -135,9 +160,9 @@ reader needs, and it is the field most easily lost.
 - Code that generates or consumes the data
 - Configs, seeds, rubrics, probe definitions - the *inputs*, which are small and
   are the scientific record
-- Analysis scripts and their outputs where those are small (tables, summaries,
-  figures)
-- Reports and documentation
+- Analysis/report scripts and their outputs where those are small (tables, summaries,
+  figures). These live in `output/`.
+- Documentation and trait documents (`docs/`)
 - A pointer to the HF repo, so the link is never only in someone's memory
 
 ### What does not stay in git
@@ -210,7 +235,7 @@ Never terminate a resource this repository did not provision. Report it instead.
 ## External artifacts
 - Dataset (v1): HF `matboz/difficult-advice-qwen3` (`sft_dataset_thinking.jsonl` = recommended, + non-thinking).
 - Dataset (approved constitution, 1.53M tokens): HF `LASR-Callum/synthdoc-approved-constitution-sft`
-  (private). Generated by `synthdoc` from `docs/claude_approved_constitution.md`; see the
+  (private). Generated by `synthdoc` from `constitutions/claude_approved_constitution.md`; see the
   `approved_*` configs in `src/data/synthdoc/control/configs/corpora/`.
 - Adapter: HF `matboz/qwen3-32b-difficult-advice-lora` (the trained LoRA; pull to skip training).
 - Eval harness: `anthropic-experimental/agentic-misalignment` (vendored + patched); Inspect via the user's `inspect_evals` repo.
@@ -218,7 +243,7 @@ Never terminate a resource this repository did not provision. Report it instead.
 ## Money: log every dollar in `docs/EXPENDITURE.md`
 
 `docs/EXPENDITURE.md` is an **append-only ledger of real spend** (OpenRouter credit, GPU rental).
-It is the counterpart to `LOG.md`: `LOG.md` records what we learned, `EXPENDITURE.md` records what
+It is the counterpart to `docs/LOG.md`: `LOG.md` records what we learned, `EXPENDITURE.md` records what
 it cost. Keep it accurate — future cost estimates are built from it.
 
 - **Any task that spends money adds a dated section**, most recent first, and updates the running
@@ -233,7 +258,7 @@ it cost. Keep it accurate — future cost estimates are built from it.
 - Check the ledger's unit costs **before** committing to a large run, and flag spend > ~$20.
 
 ## When you finish a task
-- Append a `LOG.md` entry (most-recent-first): hypothesis → method → result → next steps, with absolute dates.
+- Append a `docs/LOG.md` entry (most-recent-first): hypothesis → method → result → next steps, with absolute dates.
 - Append a `docs/EXPENDITURE.md` entry if the task spent anything, and update the running total.
 - Update `docs/replication.md` if you added a step or changed how to run things.
 - Destroy any GPU instance and confirm 0 active.

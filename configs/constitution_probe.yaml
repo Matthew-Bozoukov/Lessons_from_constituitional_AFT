@@ -1,4 +1,4 @@
-# ABOUTME: Config for the cheap constitution v1-vs-v2 A/B probe (see docs/claude_approved_constitution_rationale.md §3).
+# ABOUTME: Config for the cheap constitution v1-vs-v2 A/B probe (see constitutions/claude_approved_constitution_rationale.md §3).
 # ABOUTME: Run: uv run scratch/constitution_probe.py --config configs/constitution_probe.yaml
 
 seed: 0
