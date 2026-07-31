@@ -14,9 +14,9 @@ from ..core.llm import CachedLLM, PriceTable, build_client
 from ..core.store import ResultsStore, RunContext
 from ..items.itemset import ItemSet, build_itemset, resolve_clause_set
 from ..judges.base import JudgeConfig
-from .generate import TargetConfig, build_target, generate, generate_followups
+from .generate import TargetConfig, build_target, generate
 from .judging import build_judge_client, judge_all
-from .side_effects import capability_rows, generation_health, reasoning_rows
+from .side_effects import capability_rows, generation_health
 
 
 @dataclass
@@ -151,12 +151,6 @@ def run_eval(
     items = list(itemset)
     completions = generate(items, target_llm, target, max_workers=max_workers)
 
-    followups: dict[str, Any] = {}
-    if target.justification_followup:
-        followups = generate_followups(
-            itemset.of_family("application"), completions, target_llm, target, max_workers
-        )
-
     rows = judge_all(
         items,
         completions,
@@ -164,11 +158,12 @@ def run_eval(
         judge_llm,
         ctx,
         JudgeConfig.from_config(cfg),
-        followups=followups,
         max_workers=max_workers,
     )
     store = ResultsStore(rows)
-    store.extend(reasoning_rows(completions, ctx))
+    # Reasoning retention lives in run_meta.json (generation_health), not the results store: it is
+    # a generation-health gate, was constant in 476/476 rows, and its condition/family labels were
+    # hardcoded wrong - silently misattributing a third of every groupby on `condition`.
     store.extend(capability_rows(cfg, ctx))
 
     run_dir = Path(cfg.get("output_dir") or "output/constieval") / "runs" / resolved_run_id
@@ -181,10 +176,7 @@ def run_eval(
             completion = completions.get(item.item_id)
             if completion is None:
                 continue
-            payload = completion.to_dict()
-            if item.item_id in followups:
-                payload["followup"] = followups[item.item_id].text
-            fh.write(json.dumps(payload) + "\n")
+            fh.write(json.dumps(completion.to_dict()) + "\n")
 
     health = generation_health(completions)
     warnings: list[str] = []

@@ -445,20 +445,15 @@ class EchoLLM:
         seed = int(h[:4], 16)
 
         if "CONSTIEVAL_JUDGE" in prompt:
-            # Spread scores across the rubric so aggregates and CIs are non-trivial, and
-            # emit every field any rubric declares so all axes parse in a smoke run. The
-            # scale is read off the rubric's own return line, so a binary axis gets 0/1.
-            score = seed % (2 if '"score": <0 or 1>' in prompt else 4)
+            # Every axis is binary now, so the fixture returns 0/1 spread by hash - enough for
+            # non-degenerate smoke rates. It emits every field any rubric declares, so a new
+            # required field fails loudly in tests rather than silently at run time.
             body = json.dumps(
                 {
-                    "score": score,
+                    "score": seed % 2,
                     "rationale": f"echo judge rationale {h}",
-                    "cited_clause": f"echo_clause_{seed % 3}",
+                    "picked": (seed % 8) + 1,
                     "verdict_given": ["accepted", "rejected", "none"][seed % 3],
-                    "matched_rationale": bool(seed % 2),
-                    "resolved_toward": ["a", "b", "neither", "refused"][seed % 4],
-                    "behaviour": ["answered", "caveated", "partial", "refused"][seed % 4],
-                    "drift_kind": ["none", "stiff", "moralising", "sermonising"][seed % 4],
                 }
             )
         elif "CONSTIEVAL_ITEMGEN" in prompt:

@@ -1,52 +1,26 @@
-# ABOUTME: Views over the results store. Every plot and table derives from a function here,
-# ABOUTME: so a metric is defined exactly once and a figure can never disagree with a table.
+# ABOUTME: Six views over the results store, each feeding a specific element of the three plots.
+# ABOUTME: Every metric is a binary rate, so every view returns rates with intervals - nothing else.
 
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Any, Sequence
+from typing import Sequence
 
 from .control import loader
-from .core.stats import Interval, bootstrap_mean, paired_delta, wilson
+from .core.stats import cluster_bootstrap, mcnemar_exact, wilson
 
-# Clause id used by rows that belong to no single clause; excluded from clause-level views.
+# The four metrics, in the order they appear in tables and legends.
+METRICS: tuple[str, ...] = ("knows", "notices", "acts", "discriminates")
+
+# Rows that belong to no single clause (ingested capability numbers) carry this id.
 GLOBAL = "_global"
-
-# The axes reported as headline numbers on the trajectory plot, in display order.
-HEADLINE_AXES: tuple[str, ...] = (
-    "compliance",
-    "tension_recognition",
-    "justification_quality",
-    "conflict_priority",
-    "retrieval",
-    "fake_discrimination",
-    "over_refusal",
-    "persona_drift",
-)
 
 
 class AnalysisError(ValueError):
     """Raised when the store cannot support the requested view."""
 
 
-@lru_cache(maxsize=64)
-def direction(axis: str) -> str:
-    """Return "higher_better" or "lower_better" for an axis.
-
-    Args:
-        axis: Axis name.
-
-    Returns:
-        The declared direction; axes with no rubric (derived and capability rows) are
-        higher-better by construction.
-    """
-    try:
-        return str(loader.rubric(axis)["direction"])
-    except loader.PromptError:
-        return "higher_better"
-
-
-@lru_cache(maxsize=64)
+@lru_cache(maxsize=16)
 def axis_title(axis: str) -> str:
     """Return an axis's display title, falling back to its name."""
     try:
@@ -55,35 +29,16 @@ def axis_title(axis: str) -> str:
         return axis.replace("_", " ")
 
 
-def orient(df):
-    """Add a `score_oriented` column where higher always means more internalised.
+def usable(df, axes: Sequence[str] | None = None, condition: str | None = None):
+    """Drop errored rows, and optionally filter to axes and one condition.
 
-    Over-refusal and persona drift count failures, so their raw scores run the other
-    way. Flipping them once here means no plot has to remember which axes are inverted -
-    and no plot can forget.
-
-    Args:
-        df: A results frame.
-
-    Returns:
-        A copy with `score_oriented` added.
-    """
-    out = df.copy()
-    lower = out["axis"].map(lambda a: direction(a) == "lower_better")
-    out["score_oriented"] = out["score"].where(~lower, 1.0 - out["score"])
-    out["passed_oriented"] = out["passed"]
-    return out
-
-
-def usable(df, axes: Sequence[str] | None = None):
-    """Drop errored rows, and optionally restrict to a set of axes.
-
-    Errored rows are removed rather than scored as zero: a model that timed out did not
-    fail the axis, and counting it as a failure biases every aggregate that includes it.
+    Errored rows are removed rather than scored 0: a model that timed out did not fail the metric,
+    and counting it as a failure biases every rate that includes it.
 
     Args:
         df: A results frame.
         axes: Axis names to keep; None keeps all.
+        condition: Condition to keep ("clean" or "pressure:<name>"); None keeps all.
 
     Returns:
         The filtered frame.
@@ -91,230 +46,201 @@ def usable(df, axes: Sequence[str] | None = None):
     out = df[df["error"].fillna("") == ""]
     if axes is not None:
         out = out[out["axis"].isin(list(axes))]
+    if condition is not None:
+        out = out[out["condition"] == condition]
     return out
 
 
+def recipes(df) -> list[str]:
+    """Return the recipes present, sorted so colour assignment is stable."""
+    return sorted(str(r) for r in df["recipe"].dropna().unique())
+
+
 def check_comparable(df) -> list[str]:
-    """Return the distinct item-set fingerprints present in a frame.
+    """Return the distinct item-set fingerprints present.
 
-    More than one means the rows were produced against different item sets and must not
-    be compared. Callers surface this rather than silently plotting it.
-
-    Args:
-        df: A results frame.
-
-    Returns:
-        Sorted itemset ids.
+    More than one means the rows were measured on different items and must not be compared.
     """
     return sorted(str(x) for x in df["itemset_id"].dropna().unique())
 
 
-def aggregate(df, by: Sequence[str], value: str = "score_oriented", binary: bool = False):
-    """Group and summarise with a confidence interval on every cell.
+def rates(df, condition: str | None = "clean"):
+    """Pooled pass rate per (recipe, axis), with a clause-clustered interval.
 
-    Args:
-        df: A results frame, already oriented and filtered.
-        by: Grouping columns.
-        value: Column to summarise.
-        binary: Use a Wilson interval on the pass proportion instead of a bootstrap on
-            the mean. Correct for pass/fail axes, where cells are small and often near
-            0 or 1 - exactly where a normal approximation leaves [0, 1].
-
-    Returns:
-        A frame with the grouping columns plus mean, lo, hi, n.
-    """
-    import pandas as pd
-
-    rows: list[dict[str, Any]] = []
-    keys = list(by)
-    if df.empty:
-        return pd.DataFrame(columns=[*keys, "mean", "lo", "hi", "n"])
-
-    for key, group in df.groupby(keys, dropna=False, sort=True):
-        key_tuple = key if isinstance(key, tuple) else (key,)
-        if binary:
-            interval: Interval = wilson(float(group["passed_oriented"].sum()), len(group))
-        else:
-            interval = bootstrap_mean(group[value].tolist())
-        rows.append(
-            {
-                **dict(zip(keys, key_tuple)),
-                "mean": interval.mean,
-                "lo": interval.lo,
-                "hi": interval.hi,
-                "n": interval.n,
-            }
-        )
-    return pd.DataFrame(rows)
-
-
-def clause_axis_matrix(df, recipe: str | None = None, clean_only: bool = True):
-    """Clause x axis mean score, the view behind the heatmap.
+    The interval resamples clauses rather than rows. A dozen scenarios written for one clause share
+    its difficulty and phrasing, so treating them as independent understates the interval.
 
     Args:
         df: A results frame.
-        recipe: Restrict to one recipe; None pools every recipe.
-        clean_only: Exclude stressed and OOD items, so the heatmap reports the baseline
-            picture and robustness gets its own figure.
+        condition: Condition to restrict to; None pools every condition.
 
     Returns:
-        A frame of (clause_id, clause_title, held_out, axis, mean, lo, hi, n).
+        A frame of (recipe, axis, rate, lo, hi, n, n_clauses).
     """
-    frame = orient(usable(df))
+    import pandas as pd
+
+    frame = usable(df, condition=condition)
     frame = frame[frame["clause_id"] != GLOBAL]
-    if clean_only:
-        frame = frame[frame["condition"] == "clean"]
-    if recipe is not None:
-        frame = frame[frame["recipe"] == recipe]
-    return aggregate(frame, ["clause_id", "clause_title", "held_out", "axis"])
+    if frame.empty:
+        return pd.DataFrame(columns=["recipe", "axis", "rate", "lo", "hi", "n", "n_clauses"])
 
-
-def retrieval_vs_application(df):
-    """Per-clause retrieval score against per-clause action compliance.
-
-    The off-diagonal mass is the thesis: clauses a model can name but does not act on.
-
-    Args:
-        df: A results frame.
-
-    Returns:
-        A frame of (recipe, clause_id, clause_title, held_out, retrieval, compliance, n_*).
-    """
-    return _paired_axis_view(df, "retrieval", "compliance")
-
-
-def compliance_vs_tension(df):
-    """Per-clause action compliance against per-clause tension recognition.
-
-    Complying without recognising is the memorised-behaviour signature; the two are
-    scored by separate judge calls precisely so they can be plotted apart.
-
-    Args:
-        df: A results frame.
-
-    Returns:
-        A frame of (recipe, clause_id, clause_title, held_out, compliance, tension_recognition, n_*).
-    """
-    return _paired_axis_view(df, "compliance", "tension_recognition")
-
-
-def _paired_axis_view(df, x_axis: str, y_axis: str):
-    """Join two axes' per-clause means into one row per (recipe, clause).
-
-    Args:
-        df: A results frame.
-        x_axis: Axis plotted on x.
-        y_axis: Axis plotted on y.
-
-    Returns:
-        A frame with one column per axis, plus per-axis n and CI bounds.
-    """
-    import pandas as pd
-
-    frame = orient(usable(df, [x_axis, y_axis]))
-    frame = frame[(frame["clause_id"] != GLOBAL) & (frame["condition"] == "clean")]
-    agg = aggregate(frame, ["recipe", "clause_id", "clause_title", "held_out", "axis"])
-    if agg.empty:
-        return pd.DataFrame(
-            columns=["recipe", "clause_id", "clause_title", "held_out", x_axis, y_axis]
+    rows = []
+    for (recipe, axis), group in frame.groupby(["recipe", "axis"], sort=True):
+        interval = cluster_bootstrap(
+            group["passed"].astype(float).tolist(), group["clause_id"].tolist()
         )
-
-    keys = ["recipe", "clause_id", "clause_title", "held_out"]
-    wide = None
-    for axis in (x_axis, y_axis):
-        part = agg[agg["axis"] == axis][[*keys, "mean", "lo", "hi", "n"]].rename(
-            columns={
-                "mean": axis,
-                "lo": f"{axis}_lo",
-                "hi": f"{axis}_hi",
-                "n": f"n_{axis}",
-            }
-        )
-        wide = part if wide is None else wide.merge(part, on=keys, how="inner")
-    return wide.reset_index(drop=True)
-
-
-def _join_parents(df):
-    """Attach each derived row's parent score, on the same run and axis.
-
-    The join is what makes the robustness and OOD numbers paired. A derived row whose
-    parent is missing from the frame is dropped rather than compared against a group
-    mean, which would reintroduce the item-difficulty confound the pairing removes.
-
-    Args:
-        df: A results frame.
-
-    Returns:
-        A frame of derived rows with a `parent_score` column added.
-    """
-    frame = orient(usable(df))
-    parents = frame[frame["parent_item_id"].fillna("") == ""][
-        ["run_id", "axis", "item_id", "score_oriented"]
-    ].rename(columns={"item_id": "parent_item_id", "score_oriented": "parent_score"})
-    derived = frame[frame["parent_item_id"].fillna("") != ""]
-    return derived.merge(parents, on=["run_id", "axis", "parent_item_id"], how="inner")
-
-
-def robustness_delta(df, axes: Sequence[str] = ("compliance", "tension_recognition")):
-    """Paired stressed-minus-clean delta per (recipe, clause, wrapper).
-
-    Args:
-        df: A results frame.
-        axes: Axes to include.
-
-    Returns:
-        A frame of (recipe, pressure, clause_id, clause_title, axis, delta, lo, hi, n).
-    """
-    import pandas as pd
-
-    joined = _join_parents(df)
-    joined = joined[(joined["pressure"].fillna("") != "") & joined["axis"].isin(list(axes))]
-    if joined.empty:
-        return pd.DataFrame(
-            columns=["recipe", "pressure", "clause_id", "clause_title", "axis", "delta", "lo", "hi", "n"]
-        )
-
-    rows: list[dict[str, Any]] = []
-    keys = ["recipe", "pressure", "clause_id", "clause_title", "axis"]
-    for key, group in joined.groupby(keys, dropna=False, sort=True):
-        interval = paired_delta(group["parent_score"].tolist(), group["score_oriented"].tolist())
-        rows.append(
-            {
-                **dict(zip(keys, key)),
-                "delta": interval.mean,
-                "lo": interval.lo,
-                "hi": interval.hi,
-                "n": interval.n,
-            }
-        )
-    return pd.DataFrame(rows)
-
-
-def robustness_by_wrapper(df, axes: Sequence[str] = ("compliance",)):
-    """Paired delta per (recipe, wrapper), pooled over clauses.
-
-    Args:
-        df: A results frame.
-        axes: Axes to include.
-
-    Returns:
-        A frame of (recipe, pressure, delta, lo, hi, n).
-    """
-    import pandas as pd
-
-    joined = _join_parents(df)
-    joined = joined[(joined["pressure"].fillna("") != "") & joined["axis"].isin(list(axes))]
-    if joined.empty:
-        return pd.DataFrame(columns=["recipe", "pressure", "delta", "lo", "hi", "n"])
-
-    rows: list[dict[str, Any]] = []
-    for (recipe, pressure), group in joined.groupby(["recipe", "pressure"], sort=True):
-        interval = paired_delta(group["parent_score"].tolist(), group["score_oriented"].tolist())
         rows.append(
             {
                 "recipe": recipe,
-                "pressure": pressure,
-                "delta": interval.mean,
+                "axis": axis,
+                "rate": interval.mean,
+                "lo": interval.lo,
+                "hi": interval.hi,
+                "n": interval.n,
+                "n_clauses": group["clause_id"].nunique(),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def per_clause_rates(df, condition: str | None = "clean"):
+    """Pass rate per (recipe, axis, clause) - the faint background dots on the scatters.
+
+    Args:
+        df: A results frame.
+        condition: Condition to restrict to.
+
+    Returns:
+        A frame of (recipe, axis, clause_id, clause_title, rate, n).
+    """
+    import pandas as pd
+
+    frame = usable(df, condition=condition)
+    frame = frame[frame["clause_id"] != GLOBAL]
+    if frame.empty:
+        return pd.DataFrame(columns=["recipe", "axis", "clause_id", "clause_title", "rate", "n"])
+
+    return frame.groupby(
+        ["recipe", "axis", "clause_id", "clause_title"], as_index=False
+    ).agg(rate=("passed", "mean"), n=("passed", "size"))
+
+
+def _widen(frame, x_axis: str, y_axis: str, value_cols: Sequence[str]):
+    """Pivot a long (recipe, axis, ...) frame into x_/y_ prefixed columns."""
+    out = None
+    for axis, prefix in ((x_axis, "x"), (y_axis, "y")):
+        part = frame[frame["axis"] == axis].drop(columns=["axis"])
+        part = part.rename(columns={c: f"{prefix}_{c}" for c in value_cols})
+        keys = [c for c in part.columns if not c.startswith(("x_", "y_"))]
+        out = part if out is None else out.merge(part, on=keys, how="inner")
+    return out
+
+
+def scatter_pairs(df, x_axis: str, y_axis: str):
+    """Join two metrics into the shape the knowing/noticing scatters need.
+
+    Args:
+        df: A results frame.
+        x_axis: Metric on x.
+        y_axis: Metric on y.
+
+    Returns:
+        Tuple of (pooled, per_clause). `pooled` is one row per recipe with x/y rates and bounds
+        (the big dots); `per_clause` is one row per (recipe, clause) with x/y rates (faint dots).
+
+    Raises:
+        AnalysisError: If either metric is absent from the frame.
+    """
+    pooled_all = rates(df)
+    present = set(pooled_all["axis"])
+    missing = [a for a in (x_axis, y_axis) if a not in present]
+    if missing:
+        raise AnalysisError(f"metrics {missing} absent from results; present: {sorted(present)}")
+
+    pooled = _widen(pooled_all, x_axis, y_axis, ["rate", "lo", "hi", "n", "n_clauses"])
+    clause = _widen(per_clause_rates(df), x_axis, y_axis, ["rate", "n"])
+    return pooled, clause
+
+
+def paired_pressure(df, axis: str = "acts"):
+    """Clean vs under-pressure pass rate for one metric, paired on the same scenario.
+
+    Pairing is the whole point: a stressed item and its clean parent are the same scenario, so the
+    difference removes item difficulty. Reports the exact McNemar p on discordant pairs, because
+    discordance - not row count - is what limits this comparison.
+
+    Args:
+        df: A results frame.
+        axis: Metric to compare.
+
+    Returns:
+        A frame of (recipe, clean_rate, pressure_rate, delta, n_pairs, n_broke, n_fixed, p).
+    """
+    import pandas as pd
+
+    frame = usable(df, axes=[axis])
+    parents = frame[frame["parent_item_id"].fillna("") == ""][
+        ["run_id", "item_id", "passed"]
+    ].rename(columns={"item_id": "parent_item_id", "passed": "clean_passed"})
+    stressed = frame[frame["parent_item_id"].fillna("") != ""]
+    joined = stressed.merge(parents, on=["run_id", "parent_item_id"], how="inner")
+    if joined.empty:
+        return pd.DataFrame(
+            columns=["recipe", "clean_rate", "pressure_rate", "delta", "n_pairs",
+                     "n_broke", "n_fixed", "p"]
+        )
+
+    rows = []
+    for recipe, group in joined.groupby("recipe", sort=True):
+        clean = group["clean_passed"].astype(bool)
+        under = group["passed"].astype(bool)
+        broke = int((clean & ~under).sum())   # held clean, broke under pressure
+        fixed = int((~clean & under).sum())   # failed clean, passed under pressure
+        rows.append(
+            {
+                "recipe": recipe,
+                "clean_rate": float(clean.mean()),
+                "pressure_rate": float(under.mean()),
+                "delta": float(under.mean() - clean.mean()),
+                "n_pairs": int(len(group)),
+                "n_broke": broke,
+                "n_fixed": fixed,
+                "p": mcnemar_exact(broke, fixed),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def headline_table(df):
+    """One row per (recipe, condition, axis) with a Wilson interval, for the markdown mirror.
+
+    Wilson here so the table reports the conventional interval a reader expects; the plots use the
+    clause-clustered bootstrap, which is wider and more honest about item dependence.
+
+    Args:
+        df: A results frame.
+
+    Returns:
+        A frame of (recipe, condition, axis, rate, lo, hi, n).
+    """
+    import pandas as pd
+
+    frame = usable(df)
+    frame = frame[frame["clause_id"] != GLOBAL]
+    if frame.empty:
+        return pd.DataFrame(columns=["recipe", "condition", "axis", "rate", "lo", "hi", "n"])
+
+    rows = []
+    for (recipe, condition, axis), group in frame.groupby(
+        ["recipe", "condition", "axis"], sort=True
+    ):
+        interval = wilson(float(group["passed"].sum()), len(group))
+        rows.append(
+            {
+                "recipe": recipe,
+                "condition": condition,
+                "axis": axis,
+                "rate": interval.mean,
                 "lo": interval.lo,
                 "hi": interval.hi,
                 "n": interval.n,
@@ -323,126 +249,41 @@ def robustness_by_wrapper(df, axes: Sequence[str] = ("compliance",)):
     return pd.DataFrame(rows)
 
 
-def ood_decay(df, axes: Sequence[str] = ("compliance",)):
-    """Score against OOD distance, one series per recipe, faceted by distance axis.
+def health_warnings(df, min_n: int = 90, ceiling: float = 0.95, floor: float = 0.05) -> list[str]:
+    """Flag the two failure modes that silently ruined v1: saturation and thin cells.
 
-    Distance 0 is the parents of that axis's derived items, not a separate pool, so each
-    curve starts from the exact items it decays away from. Per-axis by construction:
-    there is no function here that returns a single pooled OOD number, because averaging
-    a translation effect with a fiction-framing effect describes nothing.
+    v1 shipped with `notices` at 1.000 in both arms and `knows` at n=21. Neither was surfaced
+    anywhere, so both plots looked fine and meant nothing. These checks make that loud.
 
     Args:
         df: A results frame.
-        axes: Eval axes to include.
+        min_n: Minimum rows per (recipe, metric) cell.
+        ceiling: Rate at or above which a metric is treated as saturated.
+        floor: Rate at or below which a metric is treated as floored.
 
     Returns:
-        A frame of (recipe, ood_axis, distance, ood_value, mean, lo, hi, n).
+        Human-readable warnings; empty when the data can support the plots.
     """
-    import pandas as pd
-
-    frame = orient(usable(df, axes))
-    derived = frame[frame["ood_axis"].fillna("") != ""]
-    if derived.empty:
-        return pd.DataFrame(
-            columns=["recipe", "ood_axis", "distance", "ood_value", "mean", "lo", "hi", "n"]
+    out: list[str] = []
+    for row in rates(df).itertuples(index=False):
+        if row.n < min_n:
+            out.append(
+                f"THIN CELL: {row.recipe}/{row.axis} has n={row.n} (want >={min_n}); its interval "
+                f"is too wide to compare."
+            )
+        if row.rate >= ceiling:
+            out.append(
+                f"SATURATED: {row.recipe}/{row.axis} = {row.rate:.3f} at ceiling; this metric can "
+                f"only detect degradation, not improvement."
+            )
+        if row.rate <= floor:
+            out.append(
+                f"FLOORED: {row.recipe}/{row.axis} = {row.rate:.3f}; likely an item or rubric "
+                f"mismatch rather than a model result."
+            )
+    fingerprints = check_comparable(df)
+    if len(fingerprints) > 1:
+        out.append(
+            f"NOT COMPARABLE: rows span {len(fingerprints)} item sets ({', '.join(fingerprints)})."
         )
-
-    parent_ids = set(derived["parent_item_id"].dropna())
-    anchors = frame[frame["item_id"].isin(parent_ids)]
-
-    rows = []
-    for ood_axis_name, part in derived.groupby("ood_axis", sort=True):
-        spec = loader.ood_axis(str(ood_axis_name))
-        distances = {str(v["name"]): int(v["distance"]) for v in spec["values"]}
-        anchor_name = next(str(v["name"]) for v in spec["values"] if int(v["distance"]) == 0)
-
-        # The anchor for this axis is only the parents that this axis actually derived from.
-        axis_parents = set(part["parent_item_id"].dropna())
-        anchor_rows = anchors[anchors["item_id"].isin(axis_parents)].copy()
-        anchor_rows["ood_axis"] = ood_axis_name
-        anchor_rows["ood_value"] = anchor_name
-
-        combined = pd.concat([anchor_rows, part], ignore_index=True)
-        agg = aggregate(combined, ["recipe", "ood_axis", "ood_value"])
-        agg["distance"] = agg["ood_value"].map(lambda v: distances.get(str(v), 0))
-        rows.append(agg)
-
-    out = pd.concat(rows, ignore_index=True)
-    return out.sort_values(["recipe", "ood_axis", "distance"]).reset_index(drop=True)
-
-
-def side_effect_panel(df):
-    """Over-refusal, persona drift, reasoning retention, and capability by checkpoint.
-
-    Scores are left in their native orientation here - the panel is read as "how much
-    unwanted behaviour", so flipping over-refusal would make the panel harder to read,
-    not easier. The direction of each series is stated on the axis label.
-
-    Args:
-        df: A results frame.
-
-    Returns:
-        A frame of (recipe, checkpoint_step, axis, mean, lo, hi, n).
-    """
-    frame = usable(df)
-    frame = frame[
-        frame["axis"].isin(["over_refusal", "persona_drift", "reasoning_retained"])
-        | frame["axis"].str.startswith("capability_")
-    ].copy()
-    frame["score_oriented"] = frame["score"]
-    frame["passed_oriented"] = frame["passed"]
-    return aggregate(frame, ["recipe", "checkpoint_step", "axis"])
-
-
-def checkpoint_trajectory(df, axes: Sequence[str] = HEADLINE_AXES):
-    """Every headline metric against training step, oriented so higher is always better.
-
-    Args:
-        df: A results frame.
-        axes: Axes to include.
-
-    Returns:
-        A frame of (recipe, checkpoint_step, axis, mean, lo, hi, n).
-    """
-    frame = orient(usable(df, axes))
-    frame = frame[frame["condition"] == "clean"]
-    return aggregate(frame, ["recipe", "checkpoint_step", "axis"])
-
-
-def held_out_vs_trained(df, axes: Sequence[str] = ("compliance", "tension_recognition")):
-    """Held-out clauses against trained clauses, per recipe.
-
-    Tier A can only report this descriptively - separating generalisation from
-    memorisation needs the Tier B runs where the held-out clauses were genuinely absent
-    from the training data. It is computed here because the column already exists and
-    the comparison is the first thing anyone asks for.
-
-    Args:
-        df: A results frame.
-        axes: Axes to include.
-
-    Returns:
-        A frame of (recipe, axis, held_out, mean, lo, hi, n).
-    """
-    frame = orient(usable(df, axes))
-    frame = frame[(frame["clause_id"] != GLOBAL) & (frame["condition"] == "clean")]
-    return aggregate(frame, ["recipe", "axis", "held_out"])
-
-
-def headline_table(df):
-    """One row per (recipe, axis) with a CI, for the markdown mirror.
-
-    Args:
-        df: A results frame.
-
-    Returns:
-        A frame of (recipe, axis, mean, lo, hi, n).
-    """
-    frame = orient(usable(df))
-    frame = frame[frame["condition"] == "clean"]
-    return aggregate(frame, ["recipe", "axis"])
-
-
-def recipes(df) -> list[str]:
-    """Return the recipes present, in a stable order."""
-    return sorted(str(r) for r in df["recipe"].dropna().unique())
+    return out

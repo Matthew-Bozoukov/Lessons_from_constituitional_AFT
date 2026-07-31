@@ -14,8 +14,6 @@ from .core.llm import PriceTable
 TOKENS = {
     "item_gen_in": 700,
     "item_gen_out": 300,
-    "ood_rewrite_in": 600,
-    "ood_rewrite_out": 300,
     "target_in": 500,
     # Measured on Qwen3.6-27B over a 238-item pass: ~1,500 tokens of trace plus ~450 of
     # answer. The first version of this table guessed 900 and under-quoted the target side
@@ -114,35 +112,24 @@ def estimate(cfg: dict[str, Any], arms: int = 1) -> Estimate:
         if app_cfg
         else 0
     )
-    n_retrieval = n_clause * int((fam("retrieval") or {}).get("variants", 0))
+    # Retrieval is 1:1 with application so `knows` and `acts` share n and scenarios.
+    n_retrieval = n_app if fam("retrieval") else 0
     # Each distractor is paired with a matched genuine probe, hence x2.
     n_fake = n_distractors * 2
-    conflict_cfg = fam("conflict")
-    n_conflict = int(conflict_cfg.get("pairs", 0)) * int(conflict_cfg.get("variants", 0)) if conflict_cfg else 0
-    n_over = n_clause * int((fam("over_refusal") or {}).get("variants", 0))
-    n_persona = int((fam("persona_drift") or {}).get("n", 0))
+    n_conflict = 0
+    n_over = 0
+    n_persona = 0
 
     pressure = transforms.get("pressure") or {}
+    # Every application item is stressed by every wrapper - no per_clause sampling, which is what
+    # confounded wrapper with item identity in v1.
     n_pressure = (
-        n_clause * int(pressure.get("per_clause", 1)) * len(pressure.get("wrappers") or [])
+        n_app * len(pressure.get("wrappers") or [])
         if pressure.get("enabled", True)
         else 0
     )
-
-    ood = transforms.get("ood") or {}
-    n_ood = 0
-    if ood.get("enabled", True):
-        max_distance = int(ood.get("max_distance", 0))
-        for axis_name in ood.get("axes") or []:
-            values = [
-                v
-                for v in loader.ood_axis(axis_name)["values"]
-                if int(v["distance"]) > 0 and (not max_distance or int(v["distance"]) <= max_distance)
-            ]
-            n_ood += n_clause * int(ood.get("per_clause", 1)) * len(values)
-
-    n_items = n_app + n_retrieval + n_fake + n_conflict + n_over + n_persona + n_pressure + n_ood
-    n_app_family = n_app + n_pressure + n_ood
+    n_items = n_app + n_retrieval + n_fake + n_pressure
+    n_app_family = n_app + n_pressure
 
     # Judge calls, counted the way judge_all counts them: per (item, axis), after the
     # rubrics' `conditions` and `requires` gates.
@@ -178,10 +165,10 @@ def estimate(cfg: dict[str, Any], arms: int = 1) -> Estimate:
     target_out = TOKENS["target_out_thinking"] if thinking else TOKENS["target_out_plain"]
 
     # Only families whose scenarios are written by a model cost a generation call.
-    scenario_calls = n_app + n_conflict + n_over
+    scenario_calls = n_app
     item_gen_cost = scenario_calls * prices.cost(
         gen_model, TOKENS["item_gen_in"], TOKENS["item_gen_out"]
-    ) + n_ood * prices.cost(gen_model, TOKENS["ood_rewrite_in"], TOKENS["ood_rewrite_out"])
+    )
 
     target_cost = arms * n_items * prices.cost(target_model, TOKENS["target_in"], target_out)
     judge_cost = arms * judge_calls * prices.cost(
@@ -194,9 +181,8 @@ def estimate(cfg: dict[str, Any], arms: int = 1) -> Estimate:
             "clauses with stated rationale": n_rationale,
             "items (clean)": n_app + n_retrieval + n_fake + n_conflict + n_over + n_persona,
             "items (pressure)": n_pressure,
-            "items (ood)": n_ood,
             "items TOTAL": n_items,
-            "item-generation calls (once)": scenario_calls + n_ood,
+            "item-generation calls (once)": scenario_calls,
             "target completions per arm": n_items,
             "judge calls per arm": judge_calls,
             "arms": arms,

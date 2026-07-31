@@ -80,10 +80,19 @@ def split_thinking(text: str, tag: str = "think") -> tuple[str, str]:
         Tuple of (thinking, answer). Thinking is "" when no tag is present.
     """
     open_tag, close_tag = f"<{tag}>", f"</{tag}>"
-    start = text.find(open_tag)
     end = text.find(close_tag)
-    if start == -1 or end == -1 or end < start:
+    if end == -1:
         return "", text.strip()
+
+    start = text.find(open_tag)
+    if start == -1 or start > end:
+        # Many chat templates PRE-FILL the opening tag in the prompt, so the completion
+        # contains only the closing one. Requiring both tags here silently returned
+        # reasoning+answer as the answer, which would hand a judge one arm's private
+        # reasoning and not the other's - manufacturing a difference between recipes that
+        # is really a difference in serving stack.
+        return text[:end].strip(), text[end + len(close_tag) :].strip()
+
     thinking = text[start + len(open_tag) : end].strip()
     answer = (text[:start] + text[end + len(close_tag) :]).strip()
     return thinking, answer

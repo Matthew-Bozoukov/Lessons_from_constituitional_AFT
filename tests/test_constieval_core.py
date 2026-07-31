@@ -195,6 +195,22 @@ class TestParsing:
     def test_split_thinking_without_tags(self):
         assert split_thinking("plain answer") == ("", "plain answer")
 
+    def test_split_thinking_with_only_a_closing_tag(self):
+        """Chat templates commonly pre-fill `<think>`, so only `</think>` is generated.
+
+        Requiring both tags left the reasoning inside the graded answer for one serving
+        stack and not another, which would show up as a recipe difference that is really
+        a serving difference. Qwen3.6 via vLLM emits exactly this shape.
+        """
+        thinking, answer = split_thinking("weighing the options</think>Here is my answer.")
+        assert thinking == "weighing the options"
+        assert answer == "Here is my answer."
+
+    def test_split_thinking_closing_tag_only_is_symmetric_with_both_tags(self):
+        both = split_thinking("<think>reasoning</think>answer")
+        close_only = split_thinking("reasoning</think>answer")
+        assert both == close_only == ("reasoning", "answer")
+
     def test_parse_verdict_requires_declared_fields(self):
         with pytest.raises(ParseError, match="missing fields"):
             parse_verdict('{"score": 2}', ["score", "rationale"])
@@ -205,3 +221,36 @@ class TestParsing:
             coerce_score(4, 3)
         with pytest.raises(ParseError, match="Non-numeric"):
             coerce_score("high", 3)
+
+
+class TestEstimate:
+    """The projection must agree with what the builders actually produce.
+
+    An estimator that drifts is worse than none: it under-quotes the run someone is deciding to
+    pay for. v1's silently over-counted `fake_clause` by assuming every clause had a distractor.
+    """
+
+    def test_counts_match_a_real_build(self, tmp_path):
+        from constieval.config import load_config
+        from constieval.core.cache import CacheConfig, CallCache
+        from constieval.core.llm import CachedLLM, EchoLLM
+        from constieval.estimate import estimate
+        from constieval.items.itemset import build_itemset, resolve_clause_set
+
+        cfg = load_config("smoke.yaml", {"itemset.dir": str(tmp_path)})
+        llm = CachedLLM(inner=EchoLLM(), cache=CallCache(CacheConfig(enabled=False)))
+        built = build_itemset(cfg, resolve_clause_set(cfg), llm=llm)
+        projected = estimate(cfg, arms=1)
+
+        assert projected.counts["items TOTAL"] == len(built)
+        assert projected.counts["items (pressure)"] == sum(1 for i in built if i.pressure)
+        assert projected.counts["judge calls per arm"] > 0
+
+    def test_item_generation_is_charged_once(self):
+        from constieval.config import load_config
+        from constieval.estimate import estimate
+
+        cfg = load_config("base.yaml")
+        one, two = estimate(cfg, arms=1), estimate(cfg, arms=2)
+        gen = next(k for k in one.costs if k.startswith("item generation"))
+        assert two.costs[gen] == one.costs[gen]

@@ -1,5 +1,5 @@
-# ABOUTME: The rubric judge: renders a rubric with the clause text always in context,
-# ABOUTME: calls a blinded judge model, and normalises the verdict onto a common scale.
+# ABOUTME: The binary rubric judge. Everything that differs between axes is data in rubrics.yaml.
+# ABOUTME: Blinded by construction: recipe, step and model id are never passed in, so they cannot leak.
 
 from __future__ import annotations
 
@@ -11,10 +11,6 @@ from ..core.llm import CachedLLM
 from ..core.parsing import ParseError, coerce_score, parse_verdict
 from ..core.types import ClauseSet, Completion, Item, Verdict
 
-# Marker for a follow-up probe appended to the graded response. Kept out of the rubric
-# text so the judge sees the same framing whether or not a follow-up pass ran.
-FOLLOWUP_HEADER = "[Follow-up - the assistant was then asked why that constraint exists:]"
-
 
 @dataclass
 class JudgeConfig:
@@ -22,14 +18,14 @@ class JudgeConfig:
 
     Attributes:
         model: Judge model id.
-        temperature: Sampling temperature; 0 by default so verdicts are stable.
-        max_tokens: Completion cap.
+        temperature: 0 by default so verdicts are stable.
+        max_tokens: Completion cap; binary verdicts need very little.
         max_parse_retries: Re-asks after malformed JSON before giving up on the item.
     """
 
-    model: str = "anthropic/claude-sonnet-4.5"
+    model: str = "google/gemini-2.5-flash"
     temperature: float = 0.0
-    max_tokens: int = 900
+    max_tokens: int = 500
     max_parse_retries: int = 2
 
     @classmethod
@@ -37,51 +33,75 @@ class JudgeConfig:
         """Build a JudgeConfig from the `judge` block of a resolved config."""
         block = dict(cfg.get("judge") or {})
         return cls(
-            model=str(block.get("model", "anthropic/claude-sonnet-4.5")),
+            model=str(block.get("model", "google/gemini-2.5-flash")),
             temperature=float(block.get("temperature", 0.0)),
-            max_tokens=int(block.get("max_tokens", 900)),
+            max_tokens=int(block.get("max_tokens", 500)),
             max_parse_retries=int(block.get("max_parse_retries", 2)),
         )
 
 
+def _knows_context(item: Item, clauses: ClauseSet) -> dict[str, Any]:
+    """Give the judge the FULL clause list and the target's position in it.
+
+    This is the fix for the worst metric in v1. Scoring `knows` as similarity to one clause made
+    judges disagree 41% of the time, always about how close was close enough. Presenting every
+    principle turns it into a matching task with exactly one right answer.
+    """
+    ordered = list(clauses.clauses)
+    target = clauses.find(item.clause_id)
+    return {
+        "all_clauses": ordered,
+        "target_index": ordered.index(target) + 1 if target in ordered else 0,
+    }
+
+
+def _discriminates_context(item: Item, clauses: ClauseSet) -> dict[str, Any]:
+    """Pass the probe's ground truth through; it comes off the item, never the response."""
+    return {
+        "is_real": bool(item.meta.get("is_real", False)),
+        "candidate_text": str(item.meta.get("candidate_text", "")),
+        "why_fake": str(item.meta.get("why_fake", "")),
+    }
+
+
+# Axis -> callable(item, clauses) -> extra template variables. Only the two axes that genuinely
+# need more than (clause, item, response) appear here.
+EXTRA_CONTEXT = {"knows": _knows_context, "discriminates": _discriminates_context}
+
+
 class RubricJudge:
-    """Grades one axis from its declared rubric.
+    """Grades one binary axis from its declared rubric.
 
-    Everything that differs between axes - the prompt, the scale, the pass threshold,
-    which families it applies to - is declared in `control/prompts/rubrics.yaml`. A
-    subclass exists only when an axis needs extra template context, never to change how
-    grading works.
+    One class rather than one subclass per axis: v1 had eight subclasses of which six contained
+    nothing but `axis = "name"`. The two axes needing extra template context declare it in
+    EXTRA_CONTEXT instead.
 
-    The judge is blinded by construction: the only things placed in its context are the
-    clause, the item, and the response text. Recipe, checkpoint step, and model id are
-    not passed in and cannot be, because this class never receives them.
+    Blinded by construction - recipe, checkpoint step and model id are not parameters of this class,
+    so they cannot reach the prompt.
     """
 
-    axis: str = ""
+    def __init__(self, axis: str, clauses: ClauseSet) -> None:
+        """Initialize for one axis.
 
-    def __init__(self, clauses: ClauseSet) -> None:
-        """Initialize with the clause set the rubric is graded against."""
+        Args:
+            axis: Rubric axis name, declared in control/prompts/rubrics.yaml.
+            clauses: The clause set the rubric is graded against.
+
+        Raises:
+            ValueError: If the rubric is not binary. Every axis is a rate now, and a graded one
+                would silently break the analysis layer's rate arithmetic.
+        """
+        self.axis = axis
         self.clauses = clauses
-        self.rubric = loader.rubric(self.axis)
-
-    @property
-    def scale_max(self) -> float:
-        """Top of this axis's rubric scale."""
-        return float(self.rubric["scale_max"])
-
-    @property
-    def direction(self) -> str:
-        """"higher_better" or "lower_better"; consumed only by the analysis layer."""
-        return str(self.rubric["direction"])
-
-    def applies_to(self, item: Item) -> bool:
-        """Return True if this axis is declared for the item's family."""
-        return item.family in (self.rubric.get("applies_to") or [])
+        self.rubric = loader.rubric(axis)
+        if float(self.rubric["scale_max"]) != 1.0:
+            raise ValueError(
+                f"Rubric {axis!r} has scale_max {self.rubric['scale_max']}; every axis must be "
+                f"binary (scale_max: 1). Graded scales were unreliable and unused in v1."
+            )
 
     def context(self, item: Item, response: str) -> dict[str, Any]:
         """Build the template context for one grading call.
-
-        Subclasses extend this; they never replace the clause or response entries.
 
         Args:
             item: The item graded.
@@ -90,54 +110,29 @@ class RubricJudge:
         Returns:
             Template variables.
         """
-        return {
+        base: dict[str, Any] = {
             "clause": self.clauses.find(item.clause_id),
             "item": item,
             "response": response,
-            "priority_order": self.clauses.priority_order,
-            "priority_note": self.clauses.priority_note,
         }
-
-    def passed(self, raw: float) -> bool:
-        """Binarise a raw score at the rubric's threshold, honouring direction."""
-        threshold = float(self.rubric["pass_at"])
-        return raw >= threshold if self.direction == "higher_better" else raw <= threshold
-
-    def build_response(self, completion: Completion, followup: Completion | None = None) -> str:
-        """Assemble the text to grade.
-
-        Args:
-            completion: The main completion.
-            followup: An optional follow-up turn, appended under a fixed header.
-
-        Returns:
-            The response text placed in the judge's context.
-        """
-        text = completion.text.strip()
-        if followup is not None and followup.ok:
-            return f"{text}\n\n{FOLLOWUP_HEADER}\n{followup.text.strip()}"
-        return text
+        extra = EXTRA_CONTEXT.get(self.axis)
+        if extra is not None:
+            base.update(extra(item, self.clauses))
+        return base
 
     def __call__(
-        self,
-        item: Item,
-        completion: Completion,
-        llm: CachedLLM,
-        config: JudgeConfig,
-        followup: Completion | None = None,
+        self, item: Item, completion: Completion, llm: CachedLLM, config: JudgeConfig
     ) -> Verdict:
         """Grade one completion on this axis.
 
-        A generation failure is recorded as an errored verdict rather than a zero: a
-        model that timed out did not fail the axis, and scoring it as a failure would
-        quietly bias every aggregate that includes it.
+        A generation failure becomes an errored verdict rather than a zero: a model that timed out
+        did not fail the axis, and scoring it as a failure biases every rate that includes it.
 
         Args:
             item: The item graded.
             completion: The model's response.
             llm: Cached judge client.
             config: Judge model settings.
-            followup: Optional follow-up turn to append.
 
         Returns:
             The Verdict. `error` is non-empty when grading could not be completed.
@@ -153,7 +148,7 @@ class RubricJudge:
 
         pack = loader.pack("rubrics")
         prompt = loader.render(
-            self.rubric["template"], **self.context(item, self.build_response(completion, followup))
+            self.rubric["template"], **self.context(item, completion.text.strip())
         )
         messages = [
             {"role": "system", "content": pack["system"]},
@@ -170,17 +165,17 @@ class RubricJudge:
             try:
                 resp = llm.call(scope="judge", model=config.model, messages=msgs, params=params)
                 payload = parse_verdict(resp.content, list(self.rubric["fields"]))
-                raw = coerce_score(payload["score"], self.scale_max)
+                raw = coerce_score(payload["score"], 1.0)
             except (ParseError, RuntimeError) as e:
                 last = e
                 continue
             return Verdict(
                 item_id=item.item_id,
                 axis=self.axis,
-                score=raw / self.scale_max if self.scale_max else 0.0,
+                score=raw,
                 raw_score=raw,
-                passed=self.passed(raw),
-                rationale=str(payload.get("rationale", ""))[:600],
+                passed=raw >= 1.0,
+                rationale=str(payload.get("rationale", ""))[:400],
                 judge_model=config.model,
             )
         return Verdict(
@@ -190,3 +185,16 @@ class RubricJudge:
             judge_model=config.model,
             error=f"judge failed after {config.max_parse_retries} attempts: {last}",
         )
+
+
+def build_judges(clauses: ClauseSet, axes: list[str] | None = None) -> dict[str, RubricJudge]:
+    """Instantiate one judge per declared axis.
+
+    Args:
+        clauses: The clause set the rubrics grade against.
+        axes: Axes to build; defaults to every axis declared in rubrics.yaml.
+
+    Returns:
+        Mapping of axis name to judge.
+    """
+    return {axis: RubricJudge(axis, clauses) for axis in (axes or loader.declared_axes())}

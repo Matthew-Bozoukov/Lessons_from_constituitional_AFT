@@ -1,0 +1,27 @@
+# ABOUTME: Knowledge-base settings — title, node colours per category, and the summariser model.
+# ABOUTME: Edit freely; `kb.py build` re-reads this every time. Adding a category = adding a line.
+
+title: constitution-sft KB
+
+# Model used by `kb.py add` to write summaries and propose links (OpenRouter).
+model: anthropic/claude-sonnet-4.5
+
+# One line of project context. The summariser reads this to write the "What we take from it"
+# line, pick a category, and judge relevance. Keep it current — it drives summary quality.
+project: >
+  We replicate and extend Anthropic's "Teaching Claude Why" difficult-advice result on
+  Qwen3-32B: SFT on out-of-distribution data where the assistant reasons about its values
+  reduces agentic misalignment (blackmail / leaking honeypots). Extensions we care about:
+  alternative synthetic-data recipes for constitution following, OOD generalization under
+  agentic and adversarial pressure, inoculation training via SFT/midtraining, and evals of
+  constitution adherence.
+
+# Categories = WHAT THE PAPER GIVES US, not what it is about (topic lives in `tags`).
+# Node colour comes from here; anything unlisted renders grey.
+categories:
+  foundation:  {color: "#e8734a", desc: "result we are directly replicating or extending"}
+  eval-setup:  {color: "#6fa8c7", desc: "eval / harness / benchmark we want to reproduce or run"}
+  data-recipe: {color: "#f2a65a", desc: "a way of generating training data we could borrow"}
+  threat-model: {color: "#c0504d", desc: "the failure mode we are trying to reduce"}
+  contrast:    {color: "#9b7fc4", desc: "complicates or challenges our approach; negative results"}
+  ours:        {color: "#d9d0c1", desc: "our own runs, writeups and results"}

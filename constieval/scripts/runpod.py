@@ -68,17 +68,24 @@ def _call(method: str, path: str, **kwargs: Any) -> Any:
     return resp.json() if resp.content else {}
 
 
-def _bootstrap(base: str, adapter: str, served_name: str, hf_token: str) -> str:
+def _bootstrap(base: str, adapter: str, served_name: str) -> str:
     """Return the pod's startup script.
 
     Everything is logged to /workspace/boot.log and the server is started detached, so
     `status` can distinguish "still merging" from "died during merge" - a pod that failed
     silently would otherwise bill until someone noticed.
     """
-    token_line = f"export HF_TOKEN={hf_token}" if hf_token else "true"
+    # NO credentials are placed on the pod. The base model and the adapter are both public
+    # HF repos, so no token is needed - and a pod that holds no secret cannot leak one.
+    # Overriding dockerStartCmd REPLACES the image entrypoint, which is what normally
+    # installs PUBLIC_KEY and starts sshd. Without re-doing it here the pod has no SSH and
+    # a failed boot is undiagnosable - which is exactly how the first two attempts were lost.
     return f"""set -euxo pipefail
 exec > >(tee -a /workspace/boot.log) 2>&1
-{token_line}
+mkdir -p ~/.ssh && [ -n "${{PUBLIC_KEY:-}}" ] && echo "$PUBLIC_KEY" >> ~/.ssh/authorized_keys
+chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys 2>/dev/null || true
+(apt-get update -qq && apt-get install -y -qq openssh-server >/dev/null 2>&1; \
+ mkdir -p /run/sshd && /usr/sbin/sshd -D &) || echo "sshd unavailable"
 export HF_HOME=/workspace/hf
 pip install --no-cache-dir -q "vllm>=0.8.5" "transformers>=4.51.3" peft accelerate fire huggingface_hub
 python - <<'PY'
@@ -132,7 +139,6 @@ def up(
     Returns:
         The pod id and the base_url to point arm B at.
     """
-    hf_token = os.environ.get("HF_TOKEN", "")
     payload = {
         "name": name,
         "imageName": image,
@@ -142,7 +148,7 @@ def up(
         "volumeInGb": 0,
         "ports": ["8000/http"],
         "cloudType": cloud,
-        "dockerStartCmd": ["bash", "-lc", _bootstrap(base, adapter, served_name, hf_token)],
+        "dockerStartCmd": ["bash", "-lc", _bootstrap(base, adapter, served_name)],
         "env": {"HF_HUB_ENABLE_HF_TRANSFER": "1"},
     }
     pod = _call("POST", "/pods", data=json.dumps(payload))
@@ -159,6 +165,87 @@ def up(
         f"    --base-url {url} --model {served_name}\n\n"
         f"THEN TEAR IT DOWN - it bills by the second:\n"
         f"  uv run python -m constieval.scripts.runpod down --pod {pod_id}"
+    )
+
+
+def train_up(
+    gpu: str = "NVIDIA H100 80GB HBM3",
+    name: str = "tulu-control-sft",
+    disk_gb: int = 200,
+    image: str = DEFAULT_IMAGE,
+    cloud: str = "SECURE",
+    pubkey_path: str = "~/.ssh/id_ed25519.pub",
+) -> str:
+    """Create an SSH-enabled pod for a QLoRA training run.
+
+    Deliberately does NOT set `dockerStartCmd`. RunPod's official images start sshd from
+    their own entrypoint when `PUBLIC_KEY` is set and then idle; overriding the entrypoint
+    replaces that, so the container brings up no sshd and exits as soon as the override
+    finishes. Dependencies are installed over SSH instead (see `train_setup`), which also
+    means a bad install command costs a re-run rather than a re-provision.
+
+    Args:
+        gpu: GPU type id.
+        name: Pod name.
+        disk_gb: Container disk; must hold the base model plus checkpoints.
+        image: Container image.
+        cloud: SECURE or COMMUNITY.
+        pubkey_path: Public key authorised for SSH on the pod.
+
+    Returns:
+        The pod id and how to reach it.
+    """
+    key_file = os.path.expanduser(pubkey_path)
+    if not os.path.exists(key_file):
+        raise RuntimeError(f"No public key at {key_file}. Pass --pubkey-path.")
+    with open(key_file) as fh:
+        pubkey = fh.read().strip()
+
+    payload = {
+        "name": name,
+        "imageName": image,
+        "gpuTypeIds": [gpu],
+        "gpuCount": 1,
+        "containerDiskInGb": disk_gb,
+        "volumeInGb": 0,
+        "ports": ["22/tcp"],
+        "cloudType": cloud,
+        "env": {"HF_HUB_ENABLE_HF_TRANSFER": "1", "PUBLIC_KEY": pubkey},
+    }
+    pod = _call("POST", "/pods", data=json.dumps(payload))
+    pod_id = pod.get("id") or pod.get("podId", "")
+    return (
+        f"pod: {pod_id}\n\n"
+        f"Wait for SSH, then rsync the repo to /root/work:\n"
+        f"  uv run python -m constieval.scripts.runpod ssh_addr --pod {pod_id}\n\n"
+        f"TEAR IT DOWN when the adapter is pulled - it bills by the second:\n"
+        f"  uv run python -m constieval.scripts.runpod down --pod {pod_id}"
+    )
+
+
+def ssh_addr(pod: str) -> str:
+    """Print the SSH host/port for a pod, and a ready-to-paste ssh command.
+
+    Args:
+        pod: Pod id.
+
+    Returns:
+        The ssh connection details, or a note that SSH is not mapped yet.
+    """
+    info = _call("GET", f"/pods/{pod}")
+    for m in info.get("portMappings") or []:
+        # portMappings is either a list of dicts or a {privatePort: publicPort} map.
+        if isinstance(m, dict) and str(m.get("privatePort")) == "22":
+            host, port = info.get("publicIp", ""), m.get("publicPort")
+            return f"host: {host}\nport: {port}\nssh:  ssh -p {port} root@{host}"
+    mappings = info.get("portMappings")
+    if isinstance(mappings, dict) and "22" in mappings:
+        host, port = info.get("publicIp", ""), mappings["22"]
+        return f"host: {host}\nport: {port}\nssh:  ssh -p {port} root@{host}"
+    return (
+        f"status: {info.get('desiredStatus', '?')}\n"
+        f"SSH not mapped yet. Poll again in ~30s.\n"
+        f"raw portMappings: {json.dumps(mappings)}"
     )
 
 
@@ -257,5 +344,14 @@ def list_pods() -> str:
 
 if __name__ == "__main__":
     fire.Fire(
-        {"up": up, "status": status, "wait": wait, "down": down, "gpus": gpus, "list": list_pods}
+        {
+            "up": up,
+            "train_up": train_up,
+            "ssh_addr": ssh_addr,
+            "status": status,
+            "wait": wait,
+            "down": down,
+            "gpus": gpus,
+            "list": list_pods,
+        }
     )

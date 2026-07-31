@@ -25,22 +25,21 @@ here; they need extra training runs or model internals. See `constieval/README.m
 """
 
 from .analysis import (
-    HEADLINE_AXES,
-    checkpoint_trajectory,
-    clause_axis_matrix,
-    compliance_vs_tension,
-    held_out_vs_trained,
-    ood_decay,
-    retrieval_vs_application,
-    robustness_delta,
-    side_effect_panel,
+    METRICS,
+    check_comparable,
+    headline_table,
+    health_warnings,
+    paired_pressure,
+    per_clause_rates,
+    rates,
+    scatter_pairs,
 )
 from .config import ConfigError, load_config, load_config_dict, validate
 from .core.registry import register, resolve
 from .core.store import ResultsStore, RunContext, ScoreRow
 from .core.types import Clause, ClauseSet, Completion, FakeClause, Item, Verdict
 from .items import ItemSet, build_itemset
-from .judges import JudgeConfig, RubricJudge
+from .judges import JudgeConfig, RubricJudge, build_judges
 from .pipeline import RunResult, prepare_itemset, run_eval
 from .plots import render, render_all
 from .report import build_report
@@ -51,7 +50,7 @@ __all__ = [
     "Completion",
     "ConfigError",
     "FakeClause",
-    "HEADLINE_AXES",
+    "METRICS",
     "Item",
     "ItemSet",
     "JudgeConfig",
@@ -62,22 +61,22 @@ __all__ = [
     "ScoreRow",
     "Verdict",
     "build_itemset",
+    "build_judges",
     "build_report",
-    "checkpoint_trajectory",
-    "clause_axis_matrix",
-    "compliance_vs_tension",
-    "held_out_vs_trained",
     "load_config",
     "load_config_dict",
-    "ood_decay",
     "prepare_itemset",
     "register",
     "render",
     "render_all",
     "resolve",
-    "retrieval_vs_application",
-    "robustness_delta",
     "run_eval",
-    "side_effect_panel",
+    "check_comparable",
+    "headline_table",
+    "health_warnings",
+    "paired_pressure",
+    "per_clause_rates",
+    "rates",
+    "scatter_pairs",
     "validate",
 ]

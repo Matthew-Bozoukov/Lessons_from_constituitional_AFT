@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Any, Sequence
 
 from .hashing import stream_rng
 
@@ -141,6 +141,83 @@ def agreement(a: Sequence[int], b: Sequence[int]) -> dict[str, float]:
     n = len(a)
     raw = sum(1 for x, y in zip(a, b) if x == y) / n if n else 0.0
     return {"raw": raw, "kappa": cohens_kappa(a, b), "n": float(n)}
+
+
+def mcnemar_exact(b: int, c: int) -> float:
+    """Two-sided exact McNemar p-value for a paired binary comparison.
+
+    Only DISCORDANT pairs carry information: pairs where both conditions agree tell you nothing
+    about the difference. v1's real constraint was discordance, not n - 662 rows collapsed to 12
+    discordant pairs in the best cell and 0-3 in most, which no amount of extra rows would fix if
+    the effect is small.
+
+    Args:
+        b: Pairs where the first condition passed and the second failed.
+        c: Pairs where the second passed and the first failed.
+
+    Returns:
+        Two-sided p-value from the exact binomial test on b vs b+c. Returns 1.0 when there are no
+        discordant pairs (nothing to distinguish).
+    """
+    n = b + c
+    if n == 0:
+        return 1.0
+    from math import comb
+
+    # Two-sided: sum the probabilities of every outcome at least as extreme as min(b, c).
+    k = min(b, c)
+    tail = sum(comb(n, i) for i in range(0, k + 1)) / (2**n)
+    return min(1.0, 2.0 * tail)
+
+
+def cluster_bootstrap(
+    values: Sequence[float],
+    clusters: Sequence[Any],
+    n_boot: int = 4000,
+    seed: int = 0,
+) -> Interval:
+    """Bootstrap CI for a mean, resampling CLUSTERS rather than rows.
+
+    Items are not independent: a dozen scenarios written for one clause share that clause's
+    difficulty and phrasing. Resampling rows treats them as independent and understates the
+    interval - the effective sample size is closer to the number of clauses than the number of
+    rows. v1's naive intervals were inflated by roughly sqrt(4) this way.
+
+    Args:
+        values: Per-row observations.
+        clusters: Cluster label per row (the clause id).
+        n_boot: Bootstrap resamples.
+        seed: RNG seed.
+
+    Returns:
+        The interval over the mean.
+
+    Raises:
+        ValueError: If values and clusters differ in length.
+    """
+    if len(values) != len(clusters):
+        raise ValueError(f"values/clusters length mismatch: {len(values)} vs {len(clusters)}")
+    if not values:
+        return Interval(0.0, 0.0, 1.0, 0)
+
+    grouped: dict[Any, list[float]] = {}
+    for v, c in zip(values, clusters):
+        grouped.setdefault(c, []).append(float(v))
+    keys = sorted(grouped, key=str)
+    mean = sum(values) / len(values)
+    if len(keys) < 2:
+        return Interval(mean, mean, mean, len(values))
+
+    rng = stream_rng(seed, len(keys), "cluster_bootstrap")
+    means = []
+    for _ in range(n_boot):
+        drawn = [grouped[keys[rng.randrange(len(keys))]] for _ in keys]
+        flat = [x for g in drawn for x in g]
+        means.append(sum(flat) / len(flat))
+    means.sort()
+    return Interval(
+        mean, means[int(0.025 * n_boot)], means[min(n_boot - 1, int(0.975 * n_boot))], len(values)
+    )
 
 
 def paired_delta(

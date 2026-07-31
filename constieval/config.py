@@ -33,7 +33,7 @@ DEFAULTS: dict[str, Any] = {
         "namespace": "",
         "scope": list(SCOPES),
     },
-    "clause_set": "approved_constitution_v1",
+    "clause_set": "principles_v2",
     "itemset": {
         "id": None,
         "dir": "output/constieval/itemsets",
@@ -54,37 +54,19 @@ DEFAULTS: dict[str, Any] = {
         # evaluating them is the entire point of holding them out.
         "include_held_out": True,
         "families": {
-            "application": {"enabled": True, "difficulties": list(DIFFICULTIES[:3]), "variants": 2},
-            "retrieval": {"enabled": True, "variants": 1},
-            "fake_clause": {"enabled": True, "per_clause": 1},
-            "conflict": {"enabled": True, "pairs": 12, "variants": 1},
-            "over_refusal": {"enabled": True, "variants": 2},
-            "persona_drift": {"enabled": True, "n": 6},
+            "application": {"enabled": True, "difficulties": ["edge", "ambiguous"], "variants": 6},
+            "retrieval": {"enabled": True},
+            "fake_clause": {"enabled": True, "per_clause": 3},
         },
         "transforms": {
-            "pressure": {
-                "enabled": True,
-                "wrappers": [
-                    "system_override",
-                    "authority_claim",
-                    "persona_pressure",
-                    "sunk_rapport",
-                    "compelling_argument",
-                ],
-                "per_clause": 1,
-            },
-            "ood": {
-                "enabled": True,
-                "axes": ["domain", "language", "format", "framing"],
-                "per_clause": 1,
-                "max_distance": 0,
-            },
+            "pressure": {"enabled": True, "wrappers": ["system_override"]},
         },
         "generator": {
             "provider": "openrouter",
             "model": "google/gemini-2.5-flash",
             "temperature": 1.0,
-            "max_tokens": 1200,
+            "max_tokens": 3000,
+            "extra_body": {"reasoning": {"enabled": False}},
         },
     },
     # The checkpoint under test.
@@ -93,7 +75,7 @@ DEFAULTS: dict[str, Any] = {
         "model": "qwen3",
         "base_url": "http://localhost:8000/v1",
         "temperature": 0.7,
-        "max_tokens": 2048,
+        "max_tokens": 6144,
         "system": "",
         "enable_thinking": True,
         "extra_body": {},
@@ -102,7 +84,7 @@ DEFAULTS: dict[str, Any] = {
         "provider": "openrouter",
         "model": "google/gemini-2.5-flash",
         "temperature": 0.0,
-        "max_tokens": 900,
+        "max_tokens": 500,
         "max_parse_retries": 2,
     },
     # A run whose completions were cut off mid-answer is measuring truncation, not the model.
@@ -305,21 +287,12 @@ def validate(cfg: dict[str, Any]) -> None:
     import constieval.judges  # noqa: F401  - registers judges
 
     try:
-        clauses = loader.clause_set(str(cfg.get("clause_set")))
+        loader.clause_set(str(cfg.get("clause_set")))
     except loader.PromptError as e:
         raise ConfigError(
             f"{e} Available clause sets: {loader.available_clause_sets()}"
         ) from e
     itemset = cfg.get("itemset") or {}
-    conflict_enabled = ((itemset.get("families") or {}).get("conflict") or {}).get("enabled", True)
-    if conflict_enabled and not clauses.priority_order:
-        raise ConfigError(
-            f"Clause set {clauses.spec_id!r} declares no priority_order, so the conflict "
-            f"judge has nothing to grade a resolution against. Either add one to the clause "
-            f"set, or set itemset.families.conflict.enabled: false — a source document that "
-            f"states no ordering cannot support the conflict axis."
-        )
-
     if not itemset.get("domains"):
         raise ConfigError("itemset.domains must list at least one domain")
 
@@ -359,18 +332,6 @@ def validate(cfg: dict[str, Any]) -> None:
                 f"itemset.transforms.pressure.wrappers names undeclared wrappers {missing}; "
                 f"declared in control/prompts/pressure.yaml: {declared}"
             )
-    ood = transforms.get("ood") or {}
-    if ood.get("enabled", True):
-        declared = loader.declared_ood_axes()
-        missing = sorted(set(ood.get("axes") or ()) - set(declared))
-        if missing:
-            raise ConfigError(
-                f"itemset.transforms.ood.axes names undeclared axes {missing}; "
-                f"declared in control/prompts/ood.yaml: {declared}"
-            )
-        for axis in ood.get("axes") or ():
-            loader.ood_axis(axis)  # raises PromptError on a malformed distance ordering
-
     for section in ("target", "judge"):
         provider = (cfg.get(section) or {}).get("provider")
         if not registry.has("llm", provider):
@@ -385,13 +346,17 @@ def validate(cfg: dict[str, Any]) -> None:
             f"registered: {registry.names('llm')}"
         )
 
-    # Every declared rubric axis must have a judge, or a family would be silently unscored.
+    # Every axis must be binary and bound to a family. Binary because the whole analysis layer is
+    # rate arithmetic; bound because an unbound axis is silently never scored.
     for axis in loader.declared_axes():
-        if not registry.has("judge", axis):
+        spec = loader.rubric(axis)
+        if float(spec["scale_max"]) != 1.0:
             raise ConfigError(
-                f"Rubric axis {axis!r} is declared in control/prompts/rubrics.yaml but no judge "
-                f"is registered for it; registered: {registry.names('judge')}"
+                f"Rubric axis {axis!r} has scale_max {spec['scale_max']}; every axis must be "
+                f"binary (scale_max: 1)."
             )
+        if not spec.get("applies_to"):
+            raise ConfigError(f"Rubric axis {axis!r} is bound to no family; it would never score.")
 
     try:
         CacheConfig.from_config(cfg)

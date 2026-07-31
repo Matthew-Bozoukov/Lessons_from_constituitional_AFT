@@ -73,6 +73,16 @@ class BuildContext:
         """Return the config block for one family, or {} if absent."""
         return dict((self.cfg.get("families") or {}).get(family) or {})
 
+    def clauses_in_scope(self) -> list[Any]:
+        """Return the clauses to build items for.
+
+        Held-out clauses are excluded from *training data* generation, never from evaluation -
+        evaluating them is the whole reason they were held out.
+        """
+        if self.cfg.get("include_held_out", True):
+            return list(self.clauses.clauses)
+        return list(self.clauses.trained)
+
     def generate_many(
         self,
         template: str,
@@ -152,22 +162,38 @@ class BuildContext:
             {"role": "system", "content": system},
             {"role": "user", "content": loader.render(template, **context)},
         ]
-        params = {
+        params: dict[str, Any] = {
             "temperature": float(gen.get("temperature", 1.0)),
-            "max_tokens": int(gen.get("max_tokens", 1200)),
+            "max_tokens": int(gen.get("max_tokens", 3000)),
         }
-        model = str(gen.get("model", "anthropic/claude-sonnet-4.5"))
+        if gen.get("extra_body"):
+            params["extra_body"] = dict(gen["extra_body"])
+        model = str(gen.get("model", "google/gemini-2.5-flash"))
 
         last: Exception | None = None
-        for attempt in range(2):
-            # A retry must not replay the cached bad response, so the second attempt
-            # carries a nudge that changes the cache key as well as the instruction.
-            msgs = messages if attempt == 0 else [
+        for attempt in range(3):
+            # A retry must not replay the cached bad response, so each later attempt carries a
+            # different nudge - which changes the cache key as well as the instruction.
+            nudges = [
+                None,
+                "Return only the JSON object, nothing else.",
+                "Return only the JSON object, and keep `scenario` under 130 words.",
+            ]
+            msgs = messages if nudges[attempt] is None else [
                 *messages,
-                {"role": "user", "content": "Return only the JSON object, nothing else."},
+                {"role": "user", "content": nudges[attempt]},
             ]
             resp = self.llm.call(scope=scope, model=model, messages=msgs, params=params)
             try:
+                # A truncated response is a budget problem, not a formatting one. Saying so
+                # directly saves the next person from debugging the JSON parser.
+                if resp.finish_reason == "length":
+                    raise ParseError(
+                        f"generator hit max_tokens={params['max_tokens']} and was cut off "
+                        f"mid-object. Raise itemset.generator.max_tokens, or disable the "
+                        f"generator's reasoning - on a thinking model the trace is billed against "
+                        f"the same budget as the answer."
+                    )
                 parsed = extract_json(resp.content)
                 if not isinstance(parsed, dict):
                     raise ParseError(f"Generator returned {type(parsed).__name__}, expected object")
@@ -177,7 +203,7 @@ class BuildContext:
                 return parsed
             except ParseError as e:
                 last = e
-        raise ItemBuildError(f"Generator produced unusable output after 2 attempts: {last}")
+        raise ItemBuildError(f"Generator produced unusable output after 3 attempts: {last}")
 
 
 @runtime_checkable

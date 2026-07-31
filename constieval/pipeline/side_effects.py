@@ -81,42 +81,6 @@ def capability_rows(cfg: dict[str, Any], ctx: RunContext) -> list[ScoreRow]:
     return rows
 
 
-def reasoning_rows(completions: dict[str, Completion], ctx: RunContext) -> list[ScoreRow]:
-    """Emit one reasoning-retention row per completion.
-
-    Qwen3's chat template wraps plain assistant text in an empty `<think></think>`, so
-    naive SFT teaches the model to stop reasoning. This axis makes that collapse visible
-    as a side effect at every checkpoint rather than as a surprise after training.
-
-    Args:
-        completions: item_id -> Completion.
-        ctx: Run identity.
-
-    Returns:
-        One row per successful completion, scoring 1 when a non-empty trace was emitted.
-    """
-    return [
-        ScoreRow(
-            run_id=ctx.run_id,
-            recipe=ctx.recipe,
-            checkpoint_step=ctx.checkpoint_step,
-            model_id=ctx.model_id,
-            itemset_id=ctx.itemset_id,
-            item_id=c.item_id,
-            clause_id=GLOBAL,
-            family="meta",
-            difficulty="na",
-            axis="reasoning_retained",
-            score=1.0 if c.thinking.strip() else 0.0,
-            raw_score=1.0 if c.thinking.strip() else 0.0,
-            passed=bool(c.thinking.strip()),
-            judge_model="derived",
-        )
-        for c in completions.values()
-        if c.ok
-    ]
-
-
 def generation_health(completions: dict[str, Completion]) -> dict[str, Any]:
     """Summarise generation quality for the run manifest.
 

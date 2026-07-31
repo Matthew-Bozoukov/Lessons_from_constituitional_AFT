@@ -1,4 +1,4 @@
-# ABOUTME: Item construction: builders create base items, transforms derive stressed ones.
+# ABOUTME: Item construction: three builders plus one pressure transform.
 # ABOUTME: Importing this package is what registers every builder and transform plugin.
 
 from . import builders, transforms  # noqa: F401  - import side effect is the registration

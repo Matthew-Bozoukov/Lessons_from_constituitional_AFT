@@ -15,7 +15,7 @@ PROMPTS_DIR = CONTROL / "prompts"
 CONFIGS_DIR = CONTROL / "configs"
 
 # Prompt packs available to `pack()`.
-PACKS = ("items", "rubrics", "pressure", "ood")
+PACKS = ("items", "rubrics", "pressure")
 
 
 class PromptError(KeyError):
@@ -209,43 +209,6 @@ def wrapper(name: str) -> dict[str, Any]:
 def declared_wrappers() -> list[str]:
     """Return every declared robustness wrapper."""
     return sorted((pack("pressure").get("wrappers") or {}))
-
-
-def ood_axis(name: str) -> dict[str, Any]:
-    """Return one OOD distance axis with its values in increasing-distance order.
-
-    Args:
-        name: Axis name.
-
-    Returns:
-        The axis mapping.
-
-    Raises:
-        PromptError: If the axis is undeclared, has no distance-0 anchor, or lists
-            its values out of distance order.
-    """
-    axes = pack("ood").get("axes") or {}
-    if name not in axes:
-        raise PromptError(f"Unknown OOD axis {name!r}. Declared: {sorted(axes)}")
-    entry = dict(axes[name])
-    values = list(entry.get("values") or [])
-    if not values:
-        raise PromptError(f"OOD axis {name!r} declares no values")
-    distances = [int(v.get("distance", 0)) for v in values]
-    if distances[0] != 0:
-        raise PromptError(
-            f"OOD axis {name!r} has no distance-0 anchor; the decay curve has nothing to start from"
-        )
-    if distances != sorted(distances):
-        raise PromptError(f"OOD axis {name!r} lists values out of distance order: {distances}")
-    entry["name"] = name
-    entry["values"] = values
-    return entry
-
-
-def declared_ood_axes() -> list[str]:
-    """Return every declared OOD distance axis."""
-    return sorted((pack("ood").get("axes") or {}))
 
 
 def render(template: str, **context: Any) -> str:
