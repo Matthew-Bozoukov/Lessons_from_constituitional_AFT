@@ -1,0 +1,23 @@
+# ABOUTME: Is GDM's scan-cluster-autorate discovery worth it, or do the known
+# ABOUTME: anti-patterns catch the same documents?
+#
+# Run: uv run synthdoc sweep --config pattern_discovery.yaml --n 300
+
+base: base.yaml
+axis: filters
+n: 300
+
+arms:
+  - name: no_pattern_filter
+    value: [{kind: length, min_words: 80, max_words: 6000},
+            {kind: embedding_dedup, threshold: 0.87}]
+  - name: seeded_only
+    value: [{kind: length, min_words: 80, max_words: 6000},
+            {kind: embedding_dedup, threshold: 0.87},
+            {kind: pattern_scan, model: anthropic/claude-sonnet-4.5,
+             discover: false, use_seed_patterns: true, max_patterns: 2, mode: strict}]
+  - name: discovered
+    value: [{kind: length, min_words: 80, max_words: 6000},
+            {kind: embedding_dedup, threshold: 0.87},
+            {kind: pattern_scan, model: anthropic/claude-sonnet-4.5,
+             discover: true, use_seed_patterns: true, max_patterns: 2, mode: strict}]

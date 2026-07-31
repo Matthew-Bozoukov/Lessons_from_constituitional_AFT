@@ -1,0 +1,21 @@
+# ABOUTME: When drafting, should the model see the spec in its system prompt (GDM's
+# ABOUTME: described method) or draft blind and let the align pass do the work?
+#
+# GDM describe putting the trait in the drafting model's system prompt and telling it to
+# answer "in a way that embodies the trait without being exaggerated or referring
+# explicitly to the document", then refining "in a realistic, non-performative way".
+# Drafting blind is our variant, not theirs - the hypothesis being that a draft written
+# without the spec carries a more natural voice for the align pass to preserve.
+#
+# Run: uv run synthdoc sweep --config draft_context.yaml --n 300
+
+base: base.yaml
+axis: generation.strategy_params
+n: 300
+
+base_overrides:
+  generation.strategy: draft_then_align
+
+arms:
+  - {name: spec_in_system, value: {draft_context: spec_in_system}}
+  - {name: no_spec,        value: {draft_context: no_spec}}

@@ -1,0 +1,37 @@
+# ABOUTME: bf16 LoRA SFT config for Qwen3.6-27B on the difficult-advice + TULU3 mixture.
+# ABOUTME: Run on an 80GB GPU: python scripts/train_lora.py --config configs/train_lora_qwen36.yaml
+
+seed: 0
+model: "Qwen/Qwen3.6-27B"
+
+# Qwen3.6-27B ships as a vision-language checkpoint (Qwen3_5ForConditionalGeneration),
+# so it must be loaded through the image-text-to-text auto class.
+model_class: "image_text_to_text"
+
+# Pre-rendered mixture: difficult-advice WITH <think> traces, TULU3 with no think block.
+data_path: "data/mixture.jsonl"
+output_dir: "output/train_lora_qwen36"
+
+lora:
+  r: 32
+  alpha: 64
+  dropout: 0.05
+  # Regex restricted to the language model so the vision tower's identically-named
+  # projections are left untouched. Verified against real module paths in --smoke.
+  target_modules: "model\\.language_model\\..*\\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$"
+
+train:
+  epochs: 2
+  batch_size: 1
+  grad_accum: 16
+  lr: 1.0e-4
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.03
+  logging_steps: 5
+  max_seq_len: 2048
+  packing: true
+  assistant_only_loss: false
+  attn_implementation: sdpa
+  # bitsandbytes 4-bit does not reliably cover this model's linear-attention/SSM
+  # layers; 54GB of bf16 weights + LoRA + checkpointing fits an 80GB card.
+  load_in_4bit: false

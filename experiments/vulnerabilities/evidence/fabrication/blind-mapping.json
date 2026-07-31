@@ -1,9 +1,0 @@
-{
-  "slice-A": "msm-aft-cot",
-  "slice-B": "msm-aft-no-cot",
-  "slice-C": "aft-cot",
-  "slice-D": "aft-no-cot",
-  "slice-E": "msm-only",
-  "slice-F": "id-baseline",
-  "slice-G": "qwen3-32b-base"
-}

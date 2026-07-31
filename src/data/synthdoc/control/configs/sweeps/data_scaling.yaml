@@ -1,0 +1,12 @@
+# ABOUTME: The data-scaling curve none of the three prior pipelines ran.
+# ABOUTME: Smaller arms are cache prefixes of larger ones, so the sweep costs ~the largest arm.
+#
+# Run: uv run synthdoc sweep --config data_scaling.yaml
+
+base: base.yaml
+axis: recipe.n
+
+arms:
+  - {name: n1k,  value: 1000}
+  - {name: n5k,  value: 5000}
+  - {name: n20k, value: 20000}

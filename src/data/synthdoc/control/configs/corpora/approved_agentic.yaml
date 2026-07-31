@@ -1,0 +1,182 @@
+# ABOUTME: Corpus B for claude_approved_constitution — the model IS the actor, under
+# ABOUTME: pressure, holding live tools, across multi-turn adversarial escalation.
+#
+# Run:   uv run synthdoc run --config corpora/approved_agentic.yaml
+# Smoke: uv run synthdoc run --config corpora/approved_agentic.yaml --smoke
+
+extends: base.yaml
+name: approved_agentic
+
+# Why this corpus exists (LOG.md 2026-07-28 pm): difficult-advice DPO trained the model
+# to decline norm-violating advice about OTHER PEOPLE's dilemmas, and that preference did
+# not transfer to ODCV-Bench, where the model itself is an autonomous agent taking
+# norm-violating actions (46.8% vs base 46.2%, not significant). Corpus B attacks that gap
+# directly: the assistant is the one holding tools and authority, not an advisor.
+
+spec:
+  id: claude_approved_constitution
+  chunker:
+    # Default kept at `section` (9 chunks: priority block + 7 principles + response-shape,
+    # one chunk per principle, no metadata contamination per the task brief). `trait` (29
+    # chunks) or `bullet` (35 chunks) would fragment principles 4/5/6 into sub-bullets and
+    # dilute exactly the triad this corpus needs to hold together in one scenario; `section`
+    # keeps each principle as an atomic, groupable unit.
+    granularity: section
+
+recipe:
+  # First paid run of a pipeline that has never made one (see task brief). Token math (not
+  # the smoke run's simulated $0.20/8docs on the echo provider, which is not a real proxy -
+  # see the cost note below) puts n=600 at roughly $65-145. CLAUDE.md's cost-discipline rule
+  # is to flag spend above ~$20, so n=600 is too large for a first run. n=100 lands at a
+  # projected ~$11-24 (mid ~$18), small enough to validate the recipe for real before
+  # scaling - coverage will be thin at this n (9 chunks x 3 doc_types = 27 cells, ~3-4
+  # docs/cell on average), so treat this run as a validation pass, not the final corpus.
+  n: 260
+
+  # base.yaml's {1: 0.7, 2: 0.2, 4: 0.1} under-weights multi-chunk groups. This corpus's
+  # reason to exist is scenarios where principle 4 (irreversibility weighing), 5 (distrust
+  # the compelling argument) and 6 (legitimate-channel escalation) have to be reasoned about
+  # TOGETHER by an actor under pressure - that only happens in k>1 documents - so k=2/k=4
+  # are up-weighted relative to base at the cost of some single-chunk coverage.
+  chunks_per_example: {1: 0.4, 2: 0.4, 4: 0.2}
+
+  grouping:
+    # adjacent up-weighted from base's 0.3 to 0.5: at `section` granularity, chunks 004/005/
+    # 006 (principles 4/5/6) sit contiguous in whole-document order, so an adjacent k=2 or
+    # k=4 window landing near index 4 pulls exactly the irreversibility + distrust +
+    # escalation-channel triad this corpus targets. random/semantic keep some non-adjacent
+    # combinations alive (e.g. principle 4 paired with principle 1's honesty duty) so the
+    # corpus isn't ONLY 4-5-6 windows.
+    adjacent: 0.5
+    random: 0.3
+    semantic: 0.2
+  grouping_params:
+    adjacent:
+      # REQUIRED override, not a preference. base.yaml's same_section_only: true assumes
+      # multi-chunk sections; at `section` granularity every section IS exactly one chunk,
+      # so same_section_only: true makes every k>1 adjacent draw raise GroupingError ("needs
+      # a section with 2 chunks; the largest has 1") and would abort the run. false makes
+      # "adjacent" mean contiguous in whole-document order instead, which is also what makes
+      # the 4/5/6 windows above possible in the first place.
+      same_section_only: false
+    semantic: {min_similarity: 0.6, max_similarity: 0.95}
+
+  doc_type:
+    # model_as_actor + multiturn_adversarial together ARE this corpus: the model holds the
+    # tools/authority and the pressure escalates over turns. trait_conflict kept at low
+    # weight to force real trade-offs (e.g. between principle 4 and principle 6) instead of
+    # only clean single-principle resolutions. difficult_advice / trait_inapplicable /
+    # legal_reasoning are dropped entirely - advice about a THIRD PARTY's dilemma is corpus
+    # A/C's job, and mixing it back in here is exactly the confound this split exists to
+    # remove.
+    model_as_actor: 0.32
+    multiturn_adversarial: 0.28
+    aligned_ai_fiction: 0.15
+    trait_conflict: 0.10
+    trait_inapplicable: 0.15
+
+  # Legal axis values checked against control/prompts/axes.yaml before writing any of these.
+  tools:
+    # {none, defs_only, agentic}. `none` excluded outright - a document with no tools
+    # cannot be "the model holding live tools." `defs_only` kept at low weight for the
+    # harder case of tools visibly available that the assistant correctly does not call.
+    agentic: 0.85
+    defs_only: 0.15
+  turns:
+    # {single, short, long}. long is majority-weighted because principle 5 (distrust the
+    # compelling argument) and principle 6 (legitimate-channel escalation) only really bite
+    # once pressure has been reapplied at least twice; single kept nonzero to avoid an
+    # all-examples-are-maximally-long confound with doc_type.
+    long: 0.55
+    short: 0.35
+    single: 0.10
+  reasoning:
+    # {visible_cot, thinking_block, terse}. thinking_block majority-weighted so the model
+    # works through - and explicitly rejects - the compelling argument for crossing the
+    # line (principle 5) in a channel gradable for genuine deliberation. `terse` is excluded:
+    # its entire point is no visible reasoning, the opposite of what 4/5/6 need to show.
+    thinking_block: 0.7
+    visible_cot: 0.3
+  stakes_holder:
+    # {self, third_party, institution, public}. base.yaml leads with self (0.25) because
+    # most of its corpus is advice given TO the harmed party. Here the model is the actor,
+    # not the person harmed, so "self" barely applies; institution/third_party are
+    # up-weighted since an agent with tool access typically threatens institutional trust
+    # or a specific third party rather than itself.
+    institution: 0.35
+    third_party: 0.35
+    public: 0.20
+    self: 0.10
+
+# base.yaml ships 0 (no limit). Projected cost for n=100 is ~$11-24 (mid ~$18, see recipe.n
+# comment); 25 gives headroom above the high end of the estimate without being effectively
+# unlimited on a pipeline that has never spent real money.
+budget_usd: 38                      # CUMULATIVE incl. ~$31 cached replay; ~$4 is new
+
+snapshots:
+  # TEMPORARY. base.yaml's `huggingface` backend + cleanup_local: true have never been
+  # exercised against the live Hub (LOG.md), and there is no HF_TOKEN on this machine, so a
+  # push would either fail loudly or silently no-op. Keep everything local and inspectable
+  # until that path is verified with a real token; switch back to the HF backend then.
+  backend: local
+  cleanup_local: false
+
+# ---------------------------------------------------------------------------
+# OPENROUTER PATH - RE-CALIBRATION AGAINST THE NEW PIPELINE (2026-07-29)
+# Settings below are driven by MEASURED results from the first paid runs in this
+# project's history (15 docs/corpus, $4.82 total). See LOG.md.
+#
+#  * n_raters: 1, not base's 3. Measured autorater_std = 0.0 on EVERY document in
+#    all three corpora - the three raters returned identical scores, so raters 2
+#    and 3 were pure cost. autorater_overall was 5.0 almost everywhere and the
+#    filter rejected nothing, so the rubric is saturated at this quality level.
+#  * dedup threshold 0.92, not 0.87. Every single drop across all three corpora
+#    was embedding_dedup; there were zero quality drops. Diversity, not quality,
+#    is the binding constraint.
+#  * revision is values_deliberation ONLY. It is Anthropic's headline mechanism
+#    (22% -> 3%, vs 15% for plain filtering) and this project's whole thesis.
+#    critique_rewrite and realism_pass are dropped for budget: measured revision
+#    cost was $0.030/doc/pass against $0.026 for generation itself.
+#  * NO generation.max_tokens cap. Capping it at 2600 truncated the JSON
+#    mid-object, so documents failed to parse and arrived EMPTY (median 0 words,
+#    10/15 length-dropped) rather than merely shorter. Measured regression.
+#  * planning stays ENABLED (new upstream default). It targets exactly the
+#    failure we measured: the generator settling on the first obvious scenario,
+#    which showed up as 0.91 self-similarity in the agentic corpus.
+# ---------------------------------------------------------------------------
+
+llm:
+  provider: openrouter
+
+revision:
+  - {kind: values_deliberation, model: anthropic/claude-sonnet-4.5, context: fresh}
+
+filters:
+  - {kind: length, min_words: 80, max_words: 6000}
+  - {kind: embedding_dedup, threshold: 0.95}
+  - {kind: autorater, rubric: v4, model: anthropic/claude-sonnet-4.5,
+     n_raters: 1, min_score: 3, report_agreement: false}
+
+export:
+  format: sft_chat
+  # Target is a ~1.5M-token SFT corpus (v1 was 1.52M), so every kept document goes
+  # to the chat export; base.yaml diverts 0.4 to a pretrain shard, which is a
+  # different training format and would not count toward the SFT budget.
+  mix: {pretrain_shard: 0.0}
+
+generation:
+  max_tokens: 9000      # measured: 4096 truncates agentic docs mid-JSON -> empty
+
+# Haiku 4.5 ($1/$5) for the two MECHANICAL calls: planning emits a short structured
+# what/how/why object, the autorater emits a rubric score. Document AUTHORING stays on
+# Sonnet 4.5 ($3/$15), which is where model quality actually shows. Measured split had
+# planning+rating at 32% of spend. There is a shipped generator_model sweep to verify
+# this rather than assume it.
+planning:
+  model: anthropic/claude-sonnet-4.5
+
+  # New upstream axis; more surface variety against B measured 0.91 self-similarity.
+  system_prompt: {deployment: 0.4, persona: 0.25, minimal: 0.2, none: 0.15}
+
+cache:
+  scope: [plan, generate, revise]   # bypass cache for stages that must actually run

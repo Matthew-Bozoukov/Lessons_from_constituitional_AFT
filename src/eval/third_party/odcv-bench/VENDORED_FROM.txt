@@ -1,0 +1,2 @@
+UPSTREAM_COMMIT=7353f1cf4b2579a3a8a5b8a5061d7c7d41f60668
+SOURCE=https://github.com/McGill-DMaS/ODCV-Bench

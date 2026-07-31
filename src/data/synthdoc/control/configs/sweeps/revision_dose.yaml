@@ -1,0 +1,27 @@
+# ABOUTME: Does revision help, and how much per pass? The stage snapshots make the
+# ABOUTME: per-pass delta a join on doc_id, so this measures dose-response, not just 0-vs-N.
+#
+# Because stage_00 is identical across arms and the cache is content-addressed, the
+# 0-pass arm costs nothing after the 2-pass arm has run.
+#
+# Run: uv run synthdoc sweep --config revision_dose.yaml --n 300
+
+base: base.yaml
+axis: revision
+n: 300
+
+arms:
+  - name: dose0
+    value: []
+  - name: dose1
+    value:
+      - {kind: critique_rewrite, model: anthropic/claude-sonnet-4.5, context: fresh}
+  - name: dose2
+    value:
+      - {kind: critique_rewrite, model: anthropic/claude-sonnet-4.5, context: fresh}
+      - {kind: realism_pass,     model: anthropic/claude-sonnet-4.5, context: same}
+  - name: dose3
+    value:
+      - {kind: critique_rewrite,    model: anthropic/claude-sonnet-4.5, context: fresh}
+      - {kind: realism_pass,        model: anthropic/claude-sonnet-4.5, context: same}
+      - {kind: spec_grounding_pass, model: anthropic/claude-sonnet-4.5, context: fresh}

@@ -1,0 +1,13 @@
+# ABOUTME: Does the generator model dominate everything else? Never ablated in MSM,
+# ABOUTME: Teaching Claude Why, or GDM. Fully paired: this axis does not touch the sampler.
+#
+# Run: uv run synthdoc sweep --config generator_model.yaml --n 300
+
+base: base.yaml
+axis: generation.model
+n: 300
+
+arms:
+  - {name: sonnet45, value: anthropic/claude-sonnet-4.5}
+  - {name: haiku45,  value: anthropic/claude-haiku-4.5}
+  - {name: gpt41,    value: openai/gpt-4.1}

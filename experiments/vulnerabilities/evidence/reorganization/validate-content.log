@@ -1,6 +1,0 @@
-﻿
-> synthetic-finetuning-constitution-research-log@0.1.0 validate:content
-> node scripts/validate-content.mjs
-
-
-Validated 11 files: 0 error(s), 0 warning(s).

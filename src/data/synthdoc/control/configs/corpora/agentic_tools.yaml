@@ -1,0 +1,15 @@
+# ABOUTME: A corpus where the model is always the actor and always holds live tools.
+# ABOUTME: Run: uv run synthdoc run --config corpora/agentic_tools.yaml
+
+extends: base.yaml
+name: agentic_tools
+
+recipe:
+  doc_type:
+    model_as_actor: 0.7
+    multiturn_adversarial: 0.3
+  tools:
+    agentic: 1.0
+  reasoning:
+    thinking_block: 0.6
+    visible_cot: 0.4

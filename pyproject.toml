@@ -1,0 +1,55 @@
+[project]
+name = "teaching-claude-why-replication"
+version = "0.1.0"
+description = "Difficult-advice replication on Qwen3-32B: synthdoc data generation, SFT/DPO training, and misalignment/capability/vulnerability evals"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "datasets>=5.0.0",
+    "fire>=0.7.1",
+    "huggingface-hub>=1.25.1",
+    "jinja2>=3.1.6",
+    "matplotlib>=3.11.1",
+    "numpy>=2.5.1",
+    "omegaconf>=2.3.1",
+    "openai>=2.48.0",
+    "pandas>=3.0.5",
+    "plotly>=6.9.0",
+    "pyarrow>=25.0.0",
+    "python-dotenv>=1.2.2",
+    "pyyaml>=6.0.3",
+    "requests>=2.34.2",
+    "tenacity>=9.1.4",
+    "tqdm>=4.69.1",
+    "transformers>=5.14.1",
+]
+# torch/trl/peft/bitsandbytes/vllm are intentionally absent: training runs on a
+# rented GPU box with exact pip pins (see CLAUDE.md gotchas); vllm has no darwin
+# wheels, so locking them here would break local `uv sync` without helping the box.
+
+[project.scripts]
+synthdoc = "src.data.synthdoc.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+# Petri/Inspect audit tooling is NOT a dependency group here: inspect-ai pins
+# click<8.2.2 while this project's huggingface-hub needs click>=8.4.2, so the
+# audit runs in its own environment. Use the nested project's env for all
+# petri tools:  uv run --project src/eval/vulnerabilities/petri/petri-subscription ...
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# The project installs editable via `uv sync`, so `import src.*` works from any
+# cwd - including `uv run scripts/<step>.py`, where the script's own directory,
+# not the repo root, is what lands on sys.path.
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+# The nested petri-subscription workspace member ships as its own distribution.
+exclude = ["src/eval/vulnerabilities/petri/petri-subscription"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
