@@ -51,7 +51,7 @@ def parse_args():
     )
     parser.add_argument(
         "--surf-checkout",
-        default="third_party/SURF",
+        default="src/eval/third_party/SURF",
         help="Path to a SURF checkout; inserted on sys.path (default: %(default)s).",
     )
     parser.add_argument(
