@@ -1,5 +1,6 @@
 # ABOUTME: ODCV-Bench config for the assistant-loss-only 20:80 difficult-advice/TULU LoRA.
 # ABOUTME: Uses two deterministic rollout shards served by identical pinned adapter copies.
+# Run: bash scripts/eval/run_odcv.sh configs/eval/odcv_bench_20_80_assistant_loss_only.yaml [--smoke]
 
 model: "qwen36_20_80_assistant_loss_only"
 model_key: "qwen3.6-27b-20-80-assistant-loss-only"

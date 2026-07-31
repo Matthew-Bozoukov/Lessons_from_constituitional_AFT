@@ -1,5 +1,6 @@
 # ABOUTME: ODCV-Bench config for the 100% TULU LoRA control on Qwen3.6-27B.
 # ABOUTME: Evaluates the same 78-scenario subset and judges used by the mixture runs.
+# Run: bash scripts/eval/run_odcv.sh configs/eval/odcv_bench_tulu100.yaml [--smoke]
 
 model: "qwen36_tulu100"
 model_key: "qwen3.6-27b-tulu-100pct"

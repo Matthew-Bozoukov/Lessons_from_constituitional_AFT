@@ -1,5 +1,6 @@
 # ABOUTME: ODCV-Bench config for the three-way constitution LoRA on Qwen3.6-27B.
 # ABOUTME: Evaluates the same controlled 78-scenario subset used by the mixture sweep.
+# Run: bash scripts/eval/run_odcv.sh configs/eval/odcv_bench_threeway_constitution.yaml [--smoke]
 
 model: "qwen36_threeway_constitution"
 model_key: "qwen3.6-27b-threeway-constitution"

@@ -1,5 +1,6 @@
 # ABOUTME: Training-mixture config for Qwen3.6-27B: 300k tokens of difficult-advice (with
 # ABOUTME: <think> traces) + 1.2M tokens of TULU3 replay (rendered with no think block).
+# Run: uv run scripts/data/build_mixture.py --config configs/data/mixture_qwen36_20_80.yaml
 
 seed: 0
 tokenizer: "Qwen/Qwen3.6-27B"
