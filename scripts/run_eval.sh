@@ -33,9 +33,10 @@ echo "=== [1/4] generate_prompts ==="
 python scripts/generate_prompts.py --config "$CFG"
 echo "=== [2/4] run_experiments (classification deferred to OpenRouter judge) ==="
 python scripts/run_experiments.py --config "$CFG" --no-classification
-echo "=== [3/4] classify_results (judge=sonnet-4.5 via OpenRouter) ==="
+CLASSIFIER_MODEL="${CLASSIFIER_MODEL:-anthropic/claude-sonnet-4.5}"
+echo "=== [3/4] classify_results (judge=${CLASSIFIER_MODEL} via OpenRouter) ==="
 python scripts/classify_results.py --results-dir "results/${EXPID}" \
-  --classifier-model anthropic/claude-sonnet-4.5
+  --classifier-model "${CLASSIFIER_MODEL}"
 echo "=== [4/4] aggregate misalignment rates ==="
 uv run --project /root/work --no-sync /root/work/scripts/aggregate_eval.py \
   --results_dir "results/${EXPID}" --label "${EXPID}" \

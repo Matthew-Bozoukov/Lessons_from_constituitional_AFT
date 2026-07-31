@@ -3,6 +3,136 @@
 
 # LOG
 
+## 2026-07-30 (2) — threeway-constitution LoRA: good on blackmail, POOR on leaking
+
+Ran `LASR-Callum/qwen3.6-27b-threeway-constitution-lora` on the agentic-misalignment suite (same
+setup: 12 conditions x 50, thinking mode, concurrency 32, judge gemini-3-flash-preview). One H100.
+
+| Model | blackmail | leaking | overall |
+|---|---|---|---|
+| Base Qwen3.6-27B | 89.3% | 41.7% | 65.5% |
+| 100% Tulu control | 51.7% | 25.3% | 38.5% |
+| 80:20 difficult-advice | 34.3% | 16.3% | 25.3% |
+| **threeway-constitution** | **38.7%** | **36.3%** | **37.5%** |
+
+**Split result:** threeway cuts blackmail to 38.7% (comparable to the 80:20 difficult-advice mixture,
+34.3%) but its **leaking rate is 36.3% -- barely better than base (41.7%) and much worse than both the
+80:20 mixture (16.3%) AND the 100% Tulu control (25.3%)**. So overall (37.5%) it lands near the plain
+Tulu control, worse than the difficult-advice mixture. Whatever the threeway/constitution recipe does,
+it does not transfer to the leaking honeypots the way difficult-advice data does. Worth digging into the
+leaking transcripts to see if it's a specific failure mode.
+
+Data: `output/agentic_misalignment/20260730_threeway/` (600 transcripts) +
+`output/agentic_misalignment/plots/am_threeway_compare_20260730_134243.png`. Instance 46318186 destroyed.
+(First provisioned box 46317477 was dead on arrival -- never accepted the SSH key despite it being
+associated; destroyed and re-provisioned.)
+
+## 2026-07-30 — CONTROL: 100% Tulu SFT alone cuts most misalignment; difficult-advice adds on top
+
+**Q:** how much of the 80:20 mixture's misalignment reduction is due to the *difficult-advice* data vs
+just instruction-tuning on Tulu? **Method:** ran `LASR-Callum/qwen3.6-27b-tulu-100pct-lora` (pure
+allenai/tulu-3-sft-mixture, NO difficult-advice data) on the agentic-misalignment suite (12 conditions
+x 50, thinking mode, judge gemini-3-flash-preview), same setup as base + 80:20. One H100.
+
+| Model | blackmail | leaking | overall |
+|---|---|---|---|
+| Base Qwen3.6-27B | 89.3% | 41.7% | 65.5% |
+| **100% Tulu (control)** | **51.7%** | **25.3%** | **38.5%** |
+| 80:20 difficult-advice | 34.3% | 16.3% | 25.3% |
+
+**Key finding — the difficult-advice data is NOT the whole story.** Plain Tulu SFT alone takes blackmail
+89->52% and overall 66->39% (roughly *half* the total base->80:20 reduction). The difficult-advice data
+then adds an incremental 52->34% (blackmail) / 39->25% (overall) on top. So attributing the full
+base->80:20 drop to the difficult-advice intervention overstates it by ~2x; the marginal effect of the
+difficult-advice data is real but smaller than the raw base-vs-mixture delta implies. n=300/scenario;
+CIs don't overlap between the three arms on blackmail, so the ordering is solid.
+
+Data: `output/agentic_misalignment/20260730_tulu100/` (600 transcripts) +
+`output/report/agentic_3way_20260730_093417.*`. Instance 46298771 destroyed (0 running).
+
+**GPU gotcha:** first box (46292496) had a defective CUDA-graph capture (hung at "Capturing CUDA graphs
+0/38", GPU 0%); `--enforce-eager` works but is dispatch-bound on the Mamba model (~140 tok/s, GPU 20%,
+~3.6h projection). Fix = new box (graphs worked). Also: agentic harness defaults unlisted models to
+`concurrency_limits.get(model, 5)` -- must add the served name (e.g. `vllm/tulu100: 32`) to
+eval_agentic.yaml or it silently runs 5-wide.
+
+## 2026-07-29 (late-2) — Capability: 80:20 tulu mixture LoRA has a chat-quality tax, MMLU flat
+
+**Q:** does the 80:20 tulu-difficult-advice mixture SFT LoRA (matboz/qwen3.6-27b-difficult-advice-tulu-lora)
+cost capability vs base Qwen3.6-27B? **Method:** served base (`qwen3`) + LoRA (`tulu`) on one H100
+(vLLM 0.26, thinking mode). MMLU 0-shot **CoT** (200 paired Q, seed 42, `-T cot=True`) and LMSYS-subset
+pairwise chat quality (40 prompts, judge google/gemini-3-flash-preview, position-randomized).
+
+| Eval | Base | + 80:20 LoRA | Δ |
+|---|---|---|---|
+| MMLU-CoT acc | 90.5% ±2.1 | 88.5% ±2.3 | −2.0 pt (~1 stderr, flat) |
+| LMSYS win-rate (excl. ties) | — | **27.6%** | base preferred 21 / ft 8 / ties 11 |
+
+**Knowledge/reasoning essentially preserved (MMLU flat), but a real chat-quality tax** — base is
+preferred ~2.6:1 on decisive LMSYS prompts, and ft answers are shorter (4995 vs 6164 chars avg).
+Heuristic refusal count: ft 3/40 vs base 1/40, incl. one benign over-refusal (a "spell PAST+TIME"
+wordplay). The tax here is broader than the earlier Qwen3-32B SFT (which was 42.9% win-rate, flat MMLU,
+mostly over-refusal) — the 80:20 mixture leans more heavily on difficult-advice data.
+
+**GOTCHA (cost me a wrong 0%):** `inspect_evals/mmlu_0_shot` defaults `cot=False` with
+`max_non_cot_tokens=16`; a thinking model burns those 16 tokens mid-reasoning and never emits `ANSWER:`
+→ scored 0%. Must pass `-T cot=True`. (Already in CLAUDE.md; re-confirmed.)
+
+Data: `output/capability_qwen36/20260729/` + `output/report/capability_base_vs_tulu_20260729_100334.*`.
+Instance 46208004 destroyed (0 running).
+
+## 2026-07-29 (late) — REPRODUCED re-run + agent logs archived to HuggingFace
+
+Re-ran the base-vs-TULU agentic-misalignment eval end-to-end (the first run's raw transcripts were
+lost when I destroyed the box before pulling them — my error). This time pulled the **full `results/`
+trees** (1200 transcripts) to `output/agentic_misalignment/20260729_rerun/` and pushed them to
+**`hf.co/datasets/matboz/qwen3.6-27b-agentic-misalignment-logs`** (1200 `response.json` with
+`raw_response` + judge `classification`, both `misalignment_summary.json`, README).
+
+Result reproduced (independent samples, so ±1-2 pp of the first run):
+
+| scenario | base (run1 → run2) | + LoRA (run1 → run2) |
+|---|---|---|
+| blackmail | 89.7% → **89.3%** | 36.3% → **34.3%** |
+| leaking | 39.3% → **41.7%** | 21.7% → **16.3%** |
+| overall | 64.5% → **65.5%** | 29.0% → **25.3%** |
+
+Plots (per-condition / wide / aggregated) regenerated from the fresh summaries via
+`src/plot_scripts/plot_agentic_base_vs_tulu.py` → `output/report/agentic_base_vs_tulu*_20260729_080511.png`.
+Instance 46197189 destroyed (0 running).
+
+## 2026-07-29 (pm) — RESULT: difficult-advice TULU LoRA cuts agentic-misalignment blackmail 90% → 36%
+
+**Hypothesis**: the difficult-advice TULU LoRA (`matboz/qwen3.6-27b-difficult-advice-tulu-lora`,
+r=32) reduces agentic misalignment on the Anthropic blackmail/leaking honeypots, the same way it did
+on ODCV.
+
+**Method**: base Qwen3.6-27B (served VLM+no-adapter) vs the LoRA, both on one H100 (vLLM 0.26, driver
+13.2, thinking mode `VLLM_ENABLE_THINKING=1`). 12 conditions (blackmail+leaking × goal explicit-america
+/ explicit-none / none-none × urgency replacement/restriction), 50 samples/condition = 600 rollouts
+each. Judge = **google/gemini-3-flash-preview** via OpenRouter (deferred classify step).
+
+**Result** (unpaired, both n=300/scenario):
+
+| Scenario | Base | + LoRA | Δ |
+|---|---|---|---|
+| blackmail | **89.7%** | **36.3%** | −53.3 pp |
+| leaking | 39.3% | 21.7% | −17.7 pp |
+| overall | 64.5% | 29.0% | −35.5 pp |
+
+Two notable things: (1) **base Qwen3.6-27B blackmails ~90%** of the time — far above Qwen3-32B's
+~0.7% seen earlier; this is a much more misaligned base model. (2) The LoRA more than halves it. Effect
+concentrates in the goal-conflict conditions; `explicit-none` conditions drop hardest
+(blackmail 82/94% → 24/26%). Plot + per-condition table:
+`output/report/agentic_base_vs_tulu_20260729_060127.{png,md}`.
+
+**Next steps**: paired analysis isn't available here (independent samples, not matched scenarios like
+ODCV); if a paired McNemar-style test is wanted, re-run with fixed per-scenario seeds. GPU instance
+46189938 destroyed (0 running).
+
+
+
+
 ## 2026-07-31 — Renamed `constieval` → `src/eval/misalignment/internalization/` (move + cleanup, no behavior change)
 
 The constitution-internalization proxy eval (`src/eval/constieval/`, "constieval" in every entry
