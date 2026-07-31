@@ -9,7 +9,7 @@ refusal/decline rate, mean response length (chars + Qwen tokens), and per-arm me
 rate for the four v2-specific concepts.
 
 The refusal/decline rate and concept-mention rates are a HEURISTIC: a case-insensitive
-substring match against keyword lists in configs/constitution_probe.yaml, plus a raw
+substring match against keyword lists in configs/eval/constitution_probe.yaml, plus a raw
 length cutoff for refusals. This is a cheap proxy for "did the response decline / does it
 touch this concept", not a semantic judgment -- eyeball output/constitution_probe/<ts>/pairs.jsonl
 before trusting the numbers.
@@ -28,7 +28,7 @@ from src.openrouter import OpenRouterClient, map_threaded  # noqa: E402
 from src.data.prompts import CONSTITUTION_V1, CONSTITUTION_V2, DOMAINS, response_gen_messages, scenario_gen_messages  # noqa: E402
 from src.utils import ParseError, count_chat_tokens, extract_json, timestamp, write_run_meta  # noqa: E402
 
-CONFIG_DIR = Path("configs")
+CONFIG_DIR = Path("configs/eval")
 
 
 def _generate_scenarios(client: OpenRouterClient, cfg, n: int) -> list[dict]:
@@ -133,7 +133,7 @@ def main(config: str, smoke: bool = False) -> None:
     """Run the v1-vs-v2 constitution probe.
 
     Args:
-        config: Path to a YAML config (absolute, or relative to configs/).
+        config: Path to a YAML config (absolute, or relative to configs/eval/).
         smoke: If True, only 4 scenarios.
     """
     cfg_path = Path(config)

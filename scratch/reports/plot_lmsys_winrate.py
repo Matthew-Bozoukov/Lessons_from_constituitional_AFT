@@ -62,7 +62,7 @@ def main(
             arm,
         )
         # Arm A's recipe (2 epochs, packing) differs from B/C/D; it is not on the
-        # dose-response line. See configs/capability_eval.yaml arm_a note.
+        # dose-response line. See configs/eval/capability.yaml arm_a note.
         (detached if arm == "arm_a_synth00" else line).append(point)
 
     line.sort()

@@ -64,7 +64,7 @@ def _write_endpoint_config(cfg: DictConfig, vendor: Path, judge_model: str) -> P
     """Emit the vendored harness's api_config entry for our judge.
 
     Generated rather than hand-edited so the pinned judge ID, reasoning effort and
-    concurrency all trace back to `configs/capability_eval.yaml` — one source of truth,
+    concurrency all trace back to `configs/eval/capability.yaml` — one source of truth,
     and a `third_party/` wipe cannot take the settings with it.
 
     Args:
@@ -351,7 +351,7 @@ def validate_judge(cfg: DictConfig) -> dict[str, Any]:
 
 
 def main(
-    config: str = "configs/capability_eval.yaml",
+    config: str = "configs/eval/capability.yaml",
     mode: str = "judge",
     arm: str = "",
     stage: int = 0,
@@ -371,13 +371,13 @@ def main(
     if not (vendor / "gen_judgment.py").exists():
         raise SystemExit(
             f"No vendored harness at {vendor}. Clone it, then run "
-            f"`uv run python scripts/patch_arena_hard.py`."
+            f"`uv run python scripts/eval/patch_arena_hard.py`."
         )
     # A missing patch means the judge would silently compare against upstream's packaged
     # baseline instead of arm A, producing a number that looks fine and means nothing.
     if "_ARENA_HARD_BASELINE" not in (vendor / "utils" / "judge_utils.py").read_text():
         raise SystemExit(
-            "Vendored harness is unpatched. Run: uv run python scripts/patch_arena_hard.py"
+            "Vendored harness is unpatched. Run: uv run python scripts/eval/patch_arena_hard.py"
         )
 
     out_dir = Path(cfg.output_dir) / "judging" / timestamp()

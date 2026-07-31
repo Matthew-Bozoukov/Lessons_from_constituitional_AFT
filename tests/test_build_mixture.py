@@ -42,7 +42,7 @@ def test_take_rendered_labels_source_and_respects_budget(tmp_path):
 def test_mixture_configs_share_one_schema():
     for name in ("mixture_qwen36", "mixture_qwen36_10_90",
                  "mixture_qwen36_40_60", "mixture_qwen36_three_way"):
-        cfg = OmegaConf.load(f"configs/{name}.yaml")
+        cfg = OmegaConf.load(f"configs/data/{name}.yaml")
         sources = OmegaConf.to_container(cfg.sources, resolve=True)
         assert sources, name
         for spec in sources.values():

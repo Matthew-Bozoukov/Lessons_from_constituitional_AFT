@@ -128,7 +128,7 @@ def _take_tulu3(tok, repo: str, budget: int, seed: int, max_len: int) -> list[di
     return out
 
 
-def main(config: str = "configs/mixture_qwen36.yaml", smoke: bool = False) -> None:
+def main(config: str = "configs/data/mixture_qwen36.yaml", smoke: bool = False) -> None:
     """Build and write the training mixture.
 
     Args:
