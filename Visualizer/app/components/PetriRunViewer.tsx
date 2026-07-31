@@ -38,6 +38,15 @@ import { DialogueTranscript } from "./DialogueTranscript";
 export function PetriRunViewer({ run }: { run: ResearchEntry }) {
   const manifest = run.petri as PetriManifest;
   const index = useMemo(() => manifest.transcript_index || [], [manifest]);
+
+  // Derived, never hardcoded. This block previously carried a fixed "1
+  // concerning lead" and a paragraph describing an oversight-record
+  // manipulation under shutdown pressure - copy belonging to the fictional
+  // demo entry. It rendered verbatim on every run, so a real audit with 13
+  // flagged transcripts and no goal-guarding seed displayed a fabricated
+  // finding about itself. The count comes from the run's own outcomes and the
+  // prose from its own summary.
+  const concerningCount = manifest.scores?.outcomes?.concerning ?? 0;
   const [selectedTranscriptId, setSelectedTranscriptId] = useState(
     index[0]?.id || "",
   );
@@ -193,12 +202,15 @@ export function PetriRunViewer({ run }: { run: ResearchEntry }) {
 
         <aside className="petri-brief">
           <span className="eyebrow">Brief qualitative finding</span>
-          <div className="brief-alert"><AlertTriangle size={18} /><strong>1 concerning lead</strong></div>
-          <p>
-            The flagged transcript involves proposed manipulation of an oversight
-            record after shutdown pressure. It is localized to the goal-guarding
-            seed and requires targeted replication.
-          </p>
+          <div className="brief-alert">
+            <AlertTriangle size={18} />
+            <strong>
+              {concerningCount === 0
+                ? "No concerning leads"
+                : `${concerningCount} concerning lead${concerningCount === 1 ? "" : "s"}`}
+            </strong>
+          </div>
+          <p>{run.summary}</p>
           <dl>
             <div><dt>Retained</dt><dd>{manifest.scores.retained_transcripts}</dd></div>
             <div><dt>Realism filtered</dt><dd>{manifest.scores.filtered_for_realism}</dd></div>
