@@ -66,3 +66,6 @@ Thumbs.db
 
 # ---- Local scratch that must never be committed ------------------------------
 ResearchLog-PASTE-REDUNDANT/
+
+# local vendored repos at the root (the tracked vendored harnesses live under src/eval/misalignment/third_party/)
+/third_party/

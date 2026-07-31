@@ -15,6 +15,27 @@ class ParseError(ValueError):
     """Raised when a model response cannot be parsed as the expected JSON."""
 
 
+def read_jsonl(path: str | Path) -> list[Any]:
+    """Read a JSONL file into a list of parsed records.
+
+    Splits on "\\n" only. This is not pedantry: `str.splitlines()` also breaks on the
+    Unicode line separators U+2028 and U+2029, which occur inside real prompt and
+    response text (Arena-Hard's question set contains them). Since JSON encodes those
+    characters literally rather than escaping them, `splitlines()` tears a single record
+    in half and the parse dies with "Unterminated string" — a confusing failure that
+    looks like file corruption. Iterating a file handle does not have this behaviour,
+    which is why the bug hides until someone switches to `read_text()`.
+
+    Args:
+        path: Path to a `.jsonl` file.
+
+    Returns:
+        Parsed records, skipping blank lines.
+    """
+    text = Path(path).read_text(encoding="utf-8")
+    return [json.loads(line) for line in text.split("\n") if line.strip()]
+
+
 def extract_json(text: str) -> Any:
     """Extract the first top-level JSON array or object from model text.
 

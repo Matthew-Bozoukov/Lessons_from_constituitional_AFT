@@ -27,7 +27,12 @@ src/                    correctness-critical reusable code (installed editable; 
                           dpo_prompts.py, generate_*, augment_thinking.py) + build_mixture.py
   train/                  training: train_lora.py, train_dpo.py, merge_lora.py
   eval/
-    capabilities/         lmsys_eval.py (chat quality vs base); MMLU via external inspect_evals
+    capabilities/         lmsys_eval.py + capability_{gen,judge,report,metrics,stats}.py (Arena-Hard
+                          SxS vs base); mmlu.py + mmlu_{eval,report}.py (MMLU arm ladder); MMLU also
+                          via external inspect_evals
+    constieval/           self-contained constitution-internalization eval suite (Tier A).
+                          `uv run python -m src.eval.constieval.cli run --config smoke.yaml --smoke`
+                          runs offline in ~10s; see its README.md
     misalignment/         ODCV-Bench (odcv.py stats, rollout, judge, compare) + aggregate_eval.py
       third_party/          vendored eval harnesses (agentic-misalignment, odcv-bench), PATCHED — see gotchas
     vulnerabilities/      petri/ + surf/ audit tooling (generalized from the completed MSM audit)
@@ -51,8 +56,8 @@ docs/LOG.md             append-only research log, MOST RECENT FIRST. Add an entr
   other code is allowed to depend on. Placement follows what the code *does* —
   data generation (synthdoc, the SFT/DPO dataset pipeline, mixtures) goes in
   `src/data/`, training in `src/train/`, evaluation and audit tooling in
-  `src/eval/` under the matching subarea (`capabilities/`, `misalignment/`,
-  `vulnerabilities/petri|surf/`).
+  `src/eval/` under the matching subarea (`capabilities/`, `constieval/`,
+  `misalignment/`, `vulnerabilities/petri|surf/`).
 - `scripts/` holds pipelines we expect to rerun. A script does no real work
   itself — it only pipes `src/` functions together (or drives a GPU box). If a
   script grows logic worth reusing, the logic moves into `src/` and the script

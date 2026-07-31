@@ -3,6 +3,52 @@
 
 # LOG
 
+## 2026-07-31 — MMLU thinking-mode pass: the whole ladder is flat vs base; base's earlier "gap" was truncation
+
+**Result (thinking mode, 570 paired questions, seed 0, 5-shot, temp 0, subset hash
+`3952064292260029` — same subset as the 2026-07-30 nothink run).** Fresh RunPod H100
+(`kunwar-mmlu-eval`), one vLLM process serving base + all four adapters. Published with full
+records and card: `LASR-Callum/2026-07-31-qwen36-27b-mmlu-capability-eval`. Harness is at commit
+`51117d1` (the 2026-07-31 repo reorg removed it from the working tree; it is not lost).
+
+| arm | synth % | accuracy | Δ vs base [paired 95% CI] | parse | trunc | gate |
+|---|---|---|---|---|---|---|
+| base | — | **91.8%** | — | 99.3% | 0.7% | — |
+| A (100% tulu) | 0 | 90.9% | −0.9pp [−2.6, +0.7] | 98.9% | 0.7% | PASS |
+| B (90/10) | 10 | 90.9% | −0.9pp [−2.6, +0.7] | 99.8% | 0.2% | PASS |
+| C (80/20) | 20 | **91.9%** | +0.2pp [−1.8, +2.1] | 100% | 0.0% | PASS |
+| D (60/40) | 40 | 90.7% | −1.1pp [−3.2, +0.9] | 99.3% | 0.0% | marginal* |
+
+*Same story as nothink: D's CI lower bound (−3.2) sits 0.2pp under the −3pp margin with a
+−1.1pp point estimate — underpowered at n=570, NOT a demonstrated regression. `--per_subject 20`
+(cache-safe) would settle it.
+
+**Headline: flat.** No dose-response 10→20→40%, every SFT arm within ~1pp of base. Constitution
+SFT costs no measurable MMLU capability in the mode the checkpoints actually run in. Think-trace
+length *falls* monotonically with synthetic fraction (base 687w → A 568w → B 455w → C 391w →
+D 317w) — the difficult-advice arms reason more tersely, worth knowing for token budgets.
+
+**The instrument finding: truncation masquerades as a base-model deficit.** Mid-run the base arm
+read 88.2% with 4.2% truncation — every SFT arm "beat" it. Reclaiming truncated questions at
+larger budgets (4096 → 7168 → 15000 tokens, 16k window) moved base to 91.8%: the "SFT beats
+base" gap was an artifact of the BASE model's long rumination on hard math/science questions,
+exactly the biased-loss failure the truncation gate exists to catch. Mixing budgets is sound at
+temp 0 (a naturally-stopped answer is identical under a larger cap); only `finish_reason=length`
+records were re-generated. Residual: 4/570 base questions ruminate past 15k and score wrong.
+
+**Ops lessons (all cost real time):**
+1. RunPod's HTTPS proxy kills non-streaming requests at 120s → 7% of thinking-mode requests
+   died as `InternalServerError`. Fix: SSH tunnel to the pod, bypass the proxy entirely.
+2. `pkill -f "vllm serve"` on the pod kills the BOOTSTRAP (its cmdline contains the vllm line)
+   → container suicide, twice. Fix: `ps` first, kill the python PID by number.
+3. `max_tokens` for a thinking model must be sized against measured prompt lengths and the
+   serve window: 2048 truncated 9%, 4096 still 4.2% on base. Bootstrap now boots with
+   `--max-model-len 16384`; config default is 8192.
+
+**Next steps.** (1) `--per_subject 20` to push D's CI past the gate. (2) Arm E (100% synthetic
+canary) still untrained. (3) Consider reporting `accuracy_parsed_only` alongside, given base's
+residual 0.7% rumination loss.
+
 ## 2026-07-31 — Assistant-only-loss ablation of the 20/80 arm: trained + published, NOT evaluated
 
 **Hypothesis:** every arm so far trained on *all* tokens (`assistant_only_loss: false`, because
@@ -55,6 +101,520 @@ removes "easy" tokens is backwards here.
 **Next steps:** evaluate on ODCV-Bench and agentic-misalignment against the same matched-FP8 base
 (37.2% / 65.5%) and the full-token 20/80 arm (19.2% / 25.3%). ~$5 GPU + ~$6 (ODCV) / ~$14 (AM)
 judging. Until then this arm has **no** misalignment numbers.
+
+
+## 2026-07-31 — Arena-Hard SxS complete: 20% synthetic is free, 40% costs real capability
+
+**Hypothesis.** Mixing synthetic constitution documents into the Tulu SFT mixture does not
+cost general capability (flat lines expected across the dose ladder).
+
+**Method.** All five arms generated and judged in one day by sharding one arm per H100
+RunPod pod (4 concurrent pods; aggregate throughput on a single pod is GPU-bound, so
+sharding is the only real speedup — measured, not assumed). 150 hard_prompt answers per
+arm at temperature 0, thinking on; arm_d and the arm_b baseline extended to 300 when
+arm_d's stage-150 read was ambiguous. Judge: `google/gemini-3-flash-preview` (effort low)
+via OpenRouter against arm_b (90/10), paired bootstrap over prompts, style-controlled
+primary. Total spend ≈ $30-35 GPU + ~$16 judging.
+
+**Results (style-controlled win rate vs arm_b, hard_prompt, 95% CI):**
+
+| arm | controlled WR | verdict |
+|---|---|---|
+| A-vs-A (arm_b) | 50.0% [49.0, 51.0], 95% ties, swap 96% | instrument sane |
+| arm_c 20% | 49.2% [42.1, 56.3] | flat; gate FAIL only from n=148 CI width |
+| arm_d 40% | **39.4% [34.5, 44.4]** | **real regression — CI upper < 0.45 gate** |
+| arm_a 0% (unmatched) | 58.1% [51.4, 64.6] | directionally high; recipe-confounded |
+| arm_base | 61.2% [53.4, 69.1] | see below |
+
+1. **The usable-mixture ceiling is between 20% and 40% synthetic.** 20% is
+   indistinguishable from 10%; 40% loses ~8pp controlled win rate (~2.6 SE below even at
+   n=299, and the deficit *deepened* from 44.3% at n=150 to 42.4% raw at n=299). arm_d
+   also shows the behavioural signature: thinking traces half the length of other arms
+   (450-705w vs 1,150-1,500w) and refusals 3.3% vs ~1%. Per spec §3 this blocks claiming
+   the alignment result for the 60/40 arm; it does NOT get dropped from the writeup.
+2. **`Qwen/Qwen3.6-27B` is NOT a raw base model.** The §5 floor check "failed" (base won
+   56-61% vs arm_b) because the premise is wrong: the checkpoint answers with structured
+   instruct-style reasoning (verified in raw samples). It is a post-trained external
+   reference, not a floor. Our 1-epoch 1.5M-token Tulu SFT sits ~8-11pp below both it and
+   the 2-epoch arm_a — coherent, and worth a config annotation + writeup caveat.
+3. **Ops findings, all permanent:** per-prompt output budgets need a margin that scales
+   with prompt length (gpt-4o tokenizer undercounted Qwen by 26% on one prompt →
+   deterministic 400 on every arm; fixed in `capability_gen.py`); RunPod proxy drops
+   streams occasionally (retry wrappers + resume-from-checkpoint make it cheap); one pod
+   landed on a host with a too-old NVIDIA driver (detect via vllm.log at boot, replace).
+4. **Judging an extended stage requires extending the BASELINE's answers too** — the
+   pairwise judge needs arm_b's answer for every new uid, which cost one extra 70-min
+   generation pass. Budget for it when planning stage extensions.
+
+Artifacts: everything (answers, judgments, gen metrics, report, figures) pushed to HF
+`LASR-Callum/qwen36-27b-capability-eval-arena-hard`. Report + GDM-style figure:
+`output/capability_eval/report/20260731_131757/`. Skipped by scope decision: creative
+writing slice, stages beyond 300, judge validation vs GPT-4.1 (config supports all
+three; ~$60 more GPU if wanted).
+
+**Next steps.** (a) Judge-validate vs GPT-4.1 (~$5) before the writeup leans on the 40%
+regression; (b) retrain a matched 0%-synthetic arm (1 ep, packing off) to anchor the
+ladder; (c) if the 40% ceiling matters for the paper, extend arm_d + arm_b to n=500 to
+tighten the CI; (d) annotate `configs/capability_eval.yaml` that arm_base is post-trained.
+
+## 2026-07-30 (evening) — Arena-Hard SxS: five pod failures, harness hardened, no model numbers yet
+
+**Status: no results.** Generation never completed a single arm. Recording this in full because
+every failure was operational and each fix is now permanent — tomorrow's run should be one clean
+pass, and none of this needs rediscovering.
+
+**Arms.** Pulled from HF: A `qwen3.6-27b-tulu-100pct-lora`, B/C/D `...-difficult-advice-tulu-lora-{10-90,20-80,40-60}`.
+All four adapters are structurally identical (512 tensors, 159.4M params, same
+`model.language_model.*` coverage); the `target_modules` difference between A and B/C/D is
+cosmetic, since PEFT suffix matching resolves to the same module set.
+
+**Finding that changed the design: arm A is NOT a valid baseline.** Recipes differ —
+A is 2 epochs / batch 4x4 / packing **on** / 3.0M tokens seen; B/C/D are 1 epoch / batch 1x16 /
+packing **off** / ~1.49M. Judging B/C/D against A would confound synthetic fraction with
+epochs-and-packing (§12 decision 5, footgun §10.7). B/C/D are matched to each other, so
+`baseline_arm` is now **arm B (10/90)**. Consequence to state when reporting: 50% means "no
+different from the low-dose arm", **not** "no different from zero synthetic data". Restoring the
+true zero anchor needs a 0%-synthetic arm retrained at 1 epoch / packing off / ~1.49M tokens.
+
+**Five pod failures, five distinct causes** (all fixed in `scripts/runpod_capability.py`):
+
+| # | Symptom | Cause |
+|---|---|---|
+| 1-2 | pod RUNNING, nothing on any port, ~57 min | `volumeInGb: 0` means `/workspace` is not mounted; `exec > >(tee /workspace/boot.log)` failed on line 2 and `set -e` killed the bootstrap instantly |
+| 3 | servers died ~5 min in, no restart logged | `dockerStartCmd` is PID 1; backgrounding vLLM then exiting made the container reap every child |
+| 4 | `Engine core initialization failed` | FlashInfer JIT-builds sampling kernels and shells out to `ninja` — absent from the image, exit 127 |
+| 5 | `torch.OutOfMemoryError` at 116MB free | 27B bf16 is ~54GB of 79GB; OOM during CUDA **graph capture** at util 0.92 |
+
+Fixes: `mkdir -p /workspace` before the redirect; vLLM in the **foreground** (pins PID 1) plus
+`sleep infinity` and `|| true` so a crash leaves a readable log instead of a restart loop;
+`pip install ninja` + `VLLM_USE_FLASHINFER_SAMPLER=0`; `--enforce-eager` + util 0.85 +
+`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`. Also added: a boot-log HTTP server on 8080
+started **before** anything slow (RunPod's REST API has no logs endpoint — 400), `22/tcp` for SSH,
+and region pinning to US/Canada + Western Europe.
+
+**Three client-side bugs, all found only because generation actually ran:**
+
+1. **Cloudflare 524.** RunPod's HTTPS proxy enforces a 120s read timeout; a 158s non-streaming
+   generation sends zero bytes and is killed mid-run. **Streaming** is therefore mandatory, not a
+   preference — every token resets the timer. Output is token-for-token identical.
+2. **Reasoning traces read as empty.** vLLM 0.26 streams the field as `reasoning`, NOT
+   `reasoning_content`. Reading only the latter reported every `<think>` as empty — indistinguishable
+   from gotcha 2's empty-`<think>` collapse, and we would have "discovered" that training destroyed
+   the model's reasoning while it reasoned fine (447 trace chunks, `17 x 23 = 391` correct).
+   Now checks both names plus `model_extra`.
+3. **Fixed `max_tokens` cannot work on a thinking model.** The trace is generated inside the output
+   budget: 4096 left hard prompts with the whole budget consumed and **no visible answer**; raising
+   it to 6000 then exceeded the 8192 window on a 2,193-token prompt and vLLM 400s the request rather
+   than clamping. Because `map_threaded` is fail-fast, one such prompt destroyed a **completed 150-answer,
+   62-minute run**. Now the budget is computed per prompt against the server's real `max_model_len`
+   (worst case 7,680 of 8,192; 11/150 prompts need a reduced budget, minimum 3,919), and answers
+   **checkpoint to disk as they land** so a failure costs minutes rather than an hour.
+
+**Measured facts worth keeping.** Answers average **~4,500 tokens** (reasoning-heavy), aggregate
+throughput ~160 tok/s at 16 concurrent under `--enforce-eager` → ~70 min per 150-prompt arm.
+Truncation ran ~12% at a 6000-token cap (18 `length` finishes), not the 25% a 4-prompt smoke
+suggested. Serving path is clean: sampled generations are well-formed, correctly formatted, no
+template leakage, no prompt continuation.
+
+**Cost: ~$16 GPU across five pods, $0.44 OpenRouter (smoke judging only).** Judging budget
+(~$11 of the ~$24 OpenRouter balance) untouched.
+
+**Next steps.** One pod, one pass: `scripts/runpod_capability.py up` (all fixes baked in), then
+generate B/C/D at `--stage 150 --creative 0`, eyeball `raw_samples.md` per arm, judge C-vs-B and
+D-vs-B plus B-vs-B as an instrument check, run judge validation vs GPT-4.1, report, destroy the pod.
+Budget ~2h of H100 time. Consider `--max-model-len 16384` in the bootstrap to cut truncation below
+12%, and note that dropping `--enforce-eager` would be ~2-3x faster but is what caused failure #5.
+
+
+## 2026-07-30 (latest) — RAN the MMLU check: constitution SFT costs no measurable knowledge
+
+**Result (nothink, 570 questions, 10/subject × 57 subjects, seed 0, 5-shot, temp 0).** Run on
+the existing `kunwar-capability-eval` pod (Qwen3.6-27B + 4 LoRA arms, one vLLM process, so
+every arm saw the same build and flags). Subset hash `3952064292260029`, identical for all
+five arms.
+
+| arm | synthetic % | accuracy | 95% CI | Δ vs base | paired 95% CI | parse rate |
+|---|---|---|---|---|---|---|
+| `arm_base` | — | **87.0%** | [84.0, 89.5] | — | — | 99.5% |
+| `arm_a_synth00` | 0 | 79.5% | [76.0, 82.6] | −7.5pp | [−10.5, −4.6] | 90.9% |
+| `arm_b_synth10` | 10 | **86.5%** | [83.4, 89.1] | −0.5pp | [−2.5, +1.4] | 99.6% |
+| `arm_c_synth20` | 20 | **85.4%** | [82.3, 88.1] | −1.6pp | [−3.5, +0.4] | 99.8% |
+| `arm_d_synth40` | 40 | **85.6%** | [82.5, 88.3] | −1.4pp | [−3.5, +0.5] | 100.0% |
+
+**The headline: flat.** Arms B/C/D sit within 1.6pp of the base model with no dose-response
+across 10 → 20 → 40% synthetic. That is the predicted result and it now has an absolute
+benchmark behind it, not just a preference judge that cannot see both arms degrading together.
+
+**Arm A's −7.5pp is a FORMAT artifact, not capability loss — and this is the interesting
+finding.** Its `accuracy_parsed_only` is **87.5%, identical to the base model's 87.5%**. The
+whole gap is 52 answers where it produced a correct worked solution ending in the *value*
+rather than the letter — e.g. "the identity element is 6. Final Answer: ... I hope it is
+correct", where the trailing phrase is a literal MetaMath/Tulu training-data signature. Arm A
+is the 2-epoch/packing-on unmatched control; B/C/D (1 epoch, packing off) emit a bare letter
+and parse at ≥99.6%. Had this eval reported only raw accuracy it would have booked a 7.5pp
+knowledge regression that does not exist. Parse-rate instrumentation earned its keep.
+
+**Gate verdicts, stated honestly.** B passes non-inferiority. C and D "FAIL" *only* because
+their CI lower bound (−3.5pp) sits marginally below the −3pp margin, with point estimates of
+−1.6 and −1.4. That is an underpowered interval, NOT a demonstrated regression — n=570 cannot
+certify a 3pp margin here. The fix is `--per_subject 20`; it is cache-safe and only pays for
+new questions. Do not report C/D as regressions.
+
+**Per-subject is directional only** (n=10 each). The pre-registered moral-reasoning subjects
+show no dramatic movement; `philosophy` is the only one where every SFT arm sits below base
+(80% → 60-70%), which at n=10 is one or two questions and should not be read as a finding.
+
+**Three bugs the live endpoint exposed, all fixed and covered by tests (50 passing).**
+1. *Trace field name.* vLLM 0.26 returns the reasoning trace in `reasoning`, not
+   `reasoning_content` (0.8.x). Reading only the old name reports every trace as empty and
+   trips the gotcha-2 collapse alarm on a model reasoning normally. Now `resolve_trace`,
+   handling all three shapes.
+2. *No request timeout.* The SDK defaults to 600s × 2 retries, so one hung request stalls a
+   worker for 30 min — observed 566/570 in 48s then a 30-minute tail. Now 180s, failures
+   recorded as `finish_reason: timeout`, **refused by the cache** so a re-run retries them
+   instead of baking a dropped connection in as a wrong answer.
+3. *`\boxed{}` unparsed.* The Tulu-SFT arms end in `\boxed{C}`, which was being caught only
+   incidentally by the last-resort `tail` rule. Promoted to a first-class tier ranked above
+   the "Answer:" cue; recovered arm A from 77.2% → 79.5%.
+
+**One operational lesson worth keeping.** Running this eval at 16 parallel *alongside* the
+Arena-Hard sweep at 16, over four different LoRA adapters, made vLLM's adapter scheduling
+thrash: arm names began returning 404 and three arms came back as 0.0% accuracy at 0% parse
+rate. The pod never restarted (same `APIServer pid`), and all adapters were listed again
+minutes later. Added `--parallel`; 4 workers coexists fine. The 0.0% rows were caught by the
+health gate rather than reported — which is the whole point of gating on parse rate.
+
+**Grading is now a pure function of stored generations.** `mmlu_report` re-derives
+`parsed`/`correct` from the saved answer text rather than trusting what generation froze in,
+so a parser improvement applies to every historical run with no GPU and no re-spend.
+
+**Next steps.** (1) `--per_subject 20` to tighten C/D past the gate. (2) The thinking-mode
+pass, deliberately skipped here to avoid competing with the Arena-Hard sweep — it is ~25.5s
+per question vs 0.8s, so budget ~75 min uncontended. (3) Arm E (100% synthetic canary) is
+still untrained and was skipped loudly.
+
+## 2026-07-30 — Built the MMLU absolute capability check (arm ladder vs Qwen base)
+
+**Hypothesis.** Same as the Arena-Hard eval: constitution/difficult-advice data in the SFT
+mixture does not cost general knowledge. Prediction is a flat dose-response line against the
+base model. The *reason to build this anyway* is that the Arena-Hard eval cannot test it — a
+pairwise preference judge has no fixed reference, so it cannot detect **both** arms degrading
+together, and it rewards style over substance. MMLU is scored against an answer key, so each
+arm's number stands alone.
+
+**Method.** New: `src/mmlu.py` (subset, prompting, parsing, paired statistics),
+`src/experiments/mmlu_eval.py` (generate + grade), `src/experiments/mmlu_report.py`
+(comparison, plots, mirror), `configs/mmlu_eval.yaml`, `scripts/run_mmlu_arms.sh`,
+`tests/test_mmlu.py` (40 tests, offline). Arm ladder is read from `capability_eval.yaml`
+rather than restated, so a newly-trained arm cannot be missing here while present there.
+
+Four design decisions worth recording:
+
+- **Subset = 10 per subject × 57 subjects (570), seeded and stratified.** A uniform draw over
+  the 14,042 test rows is swamped by the big subjects (`professional_law` alone is 1,534) and
+  leaves others with two questions. All arms get the *identical* subset, so the comparison is
+  paired — bootstrap resamples questions carrying both arms' outcomes together, and McNemar
+  reads the discordant pairs exactly. `subset_hash` is stamped per arm so "same exam" is
+  verifiable, and the report **refuses to run** on mismatched uid sets rather than producing
+  plausible-looking nonsense.
+- **Choices are shuffled per question, seeded from the uid.** MMLU's answer key is not uniform
+  over positions; without this, a model with a position bias scores well above chance knowing
+  nothing. Seeding from the uid (not the draw order) is what makes the generation cache safe
+  across subset sizes.
+- **5-shot, single prompt for every arm.** The base checkpoint is not instruction tuned and
+  under a chat template continues the prompt rather than answering. The demos teach the format
+  by pattern; the instruction line serves the SFT arms. Dropping either half hands one arm a
+  format advantage, which is indistinguishable from a capability advantage by the time it
+  reaches the accuracy number.
+- **Format compliance is measured separately from correctness.** Unparseable scores wrong
+  (a model that cannot state an answer has not answered), but `parse_rate`, the parse-tier
+  distribution and `truncation_rate` print next to every number. "Lost knowledge" and "ran out
+  of tokens mid-`<think>`" are identical in accuracy alone and need opposite fixes.
+
+**Result.** No model numbers yet — this is the harness. Validated end-to-end against a mock
+OpenAI-compatible server (171 questions × 5 arms): generation, grading, caching, the paired
+statistics, both plots and the markdown mirror all produce correct output, and every guardrail
+fires — the parity check rejects mismatched subsets, a prompt-template edit invalidates 171/171
+cached generations, and the health gate flagged the mock's deliberately-injected 10%
+unparseable rate on the base arm. Two bugs caught in the process, both by tests:
+`rng.choice(size=take)` does **not** nest across subset sizes (so growing `per_subject` would
+have silently re-drawn every question and invalidated the whole cache) — fixed by drawing a
+prefix of a seeded permutation; and the report captioned figures with the config's
+`per_subject` rather than the loaded data's, so a `--per_subject` override would have put a
+wrong n on the figure.
+
+**Next steps.** Run it on the real pod alongside the Arena-Hard sweep — same pod, same boot,
+so the marginal cost is a few minutes of H100 time. Check the base arm's parse rate first; if
+it lands materially below the SFT arms, the base number is a format floor and the honest
+comparison is `accuracy_parsed_only` with the gap disclosed. If the intervals are too wide to
+clear the −3pp gate (likely at 570 with near-identical checkpoints), raise to `--per_subject
+20`; growing is cache-safe and only pays for the new questions. Arm E (100% synthetic, the
+canary) is still untrained and is skipped loudly.
+
+## 2026-07-30 — Built the capability-regression eval (Arena-Hard SxS vs our own baseline)
+
+**Hypothesis.** Mixing synthetic constitution documents into the SFT mixture does not cost
+general capability. Prediction is **flat lines**: we SFT from a base checkpoint with Tulu as
+the bulk of every mixture, which is the from-scratch post-training regime rather than the
+continued-finetuning-on-a-post-trained-model regime where GDM saw collapse, and even the most
+extreme mitigation-preserving arm keeps 60% Tulu. Cheap insurance, not a coin flip — which is
+exactly why the 0%-Tulu canary arm matters: four flat lines with no demonstrated sensitivity
+would not tell a reader whether the instrument can detect degradation at all.
+
+**Method.** Vendored `lmarena/arena-hard-auto` (upstream `196f6b82`) into `third_party/` with
+5 patches, re-appliable via `scripts/patch_arena_hard.py` (`--check` asserts they are live;
+`third_party/` is gitignored, so a re-clone silently reverts everything otherwise). Wrote
+generation, judging, statistics and reporting in the repo's own conventions
+(`configs/capability_eval.yaml` + `src/experiments/capability_*.py`).
+
+**Spec §12 decisions, resolved:**
+
+| Decision | Resolution |
+|---|---|
+| Base model ("Qwen 27B" maps to nothing released) | `Qwen/Qwen3.6-27B` — the base under our published adapters. 27B is Gemma 3; the spec's label was wrong. |
+| Generator family → judge confound | Corpus is generated with **Claude**, so a **Gemini** judge carries no self-preference risk. Clean. |
+| Serving stack | vLLM, OpenAI-compatible — already this repo's stack. |
+| Canary arm E | **In.** Highest-value single addition available. |
+| Identical hyperparameters across arms | Enforced by config; mixture ratio is the only varying factor. |
+
+**Five deliberate deviations, each with a reason:**
+
+1. **Judge validation against GPT-4.1, not Sonnet.** The spec suggested a Sonnet-class
+   validator, but Claude generated our corpus — a Claude validator would import the very
+   generator-family confound we avoided by choosing Gemini. GPT-4.1 is a third family *and*
+   arena-hard-auto's own primary validated judge, so it is stronger on both counts.
+2. **No batch API.** OpenRouter *does* expose `:batch` variants at exactly 50% off, but they
+   404 on the synchronous chat endpoint — they need an async `/api/beta/batches` submit-and-poll
+   client that arena-hard's threaded architecture cannot use. ~$15 saved on a ~$50 sweep; the
+   spec's own §11 ("nothing here is cost-constrained") settles it.
+3. **Paired bootstrap over prompts.** Upstream's `show_result.py` resamples *battles*, which is
+   unpaired. Every arm answers identical prompts, so pairing is free statistical power.
+4. **No 3× upweighting of decisive verdicts.** Upstream counts `A>>B` three times. That is a
+   defensible BT prior for a leaderboard but it stops the reported number being a win rate and
+   breaks the §9 variance model (`0.25 × (1 − t)`). Scored once; decisive fraction reported
+   separately as a diagnostic.
+5. **Style features scaled but not mean-centred — the subtle one.** Upstream z-scores, which
+   places the fitted intercept at the *mean observed* style delta. That intercept therefore
+   still carries the average drift we are trying to remove, so a uniformly wordier model keeps
+   most of its style-driven advantage while *appearing* to have been controlled. Leaving the
+   origin at "no style difference" makes the controlled number answer the counterfactual the
+   eval is actually asking. Upstream centres because for a leaderboard only relative ranking
+   matters; here the absolute value is the whole claim.
+
+**Result.** Harness is built and validated end to end against packaged arena-hard model
+answers (real OpenRouter judging, 32 questions, $0.44). 28 new unit tests, 278 passing overall.
+
+- **Bootstrap reproduces the spec's §9 power table** — half-widths at (n, tie-rate) of
+  (150, 0)→±8.0pp, (500, 0)→±4.4pp, (500, 0.4)→±3.4pp, (500, 0.5)→±3.1pp, all within 0.4pp.
+  Ties genuinely tighten the interval, so n=500 supports the ±5pp threshold rather than
+  straining it.
+- **Style control demonstrably defuses the confound**: on simulated data where two
+  equally-capable models are judged purely on verbosity, uncontrolled reads 65%+ and
+  controlled returns to 50% ± 5pp with a large positive length coefficient.
+- **Judge cost is ~2× the spec's §11 estimate**: ~3,100 output tokens/question, not ~1,600.
+  Gemini 3 Flash spends 300–500 reasoning tokens per call even at `effort: low`. A/B-verified
+  that `low` genuinely reduces them (378 vs 465 at `high`) — it is not being ignored. Full
+  sweep ≈ $50 rather than ~$30. Still immaterial.
+
+**Three findings worth carrying forward:**
+
+1. **`str.splitlines()` corrupts Arena-Hard JSONL.** It splits on Unicode U+2028/U+2029, which
+   occur inside real prompt text and which JSON encodes literally rather than escaping. A
+   record gets torn in half and the parse dies with "Unterminated string" — looks like file
+   corruption. Iterating a file handle does *not* do this, so the bug hides until someone
+   switches to `read_text()`. Added `src.utils.read_jsonl`; the same latent bug exists in
+   `augment_thinking.py`, `generate_rejected.py` and `final_report.py`, left untouched as
+   out of scope.
+2. **Style control is unidentifiable under uniform drift.** If an arm is longer than baseline
+   by a similar proportion on *every* prompt, length and model identity are the same column
+   and no regression can separate them. The report now names any such feature instead of
+   presenting an uncontrolled number as controlled. This is a plausible outcome for us —
+   prose-heavy trait data plausibly lengthens everything — so it should be expected, not
+   treated as a bug when it appears.
+3. **Perfect style/outcome separation blows up an unpenalised fit.** Small bootstrap resamples
+   can be near-separable even when the full sample is not. Fixed with a ridge on the style
+   coefficients only — deliberately *not* on the intercept, since shrinking the intercept
+   pulls the reported win rate toward 50%, which is exactly the value the non-inferiority gate
+   wants to see. A guardrail must never be shrunk toward its own pass condition.
+
+**Scope.** Relative family only. Absolute benchmarks (IFEval, MMLU-Pro, GSM8K, HumanEval+) are
+deferred by decision. Consequence to state when reporting: pairwise preference cannot detect
+*both* arms degrading together, and it rewards style over substance — which is the whole reason
+spec §2 requires both families. Degeneracy counters (truncation, repetition, refusal-on-benign,
+`<think>` health, length distribution shape) *are* built, since they are pure instrumentation
+over generations the SxS run already produces.
+
+**Next steps.** Train arms B/C/D/E under `configs/train_lora_qwen36.yaml` with only the mixture
+ratio varied. Then: generate arm A's answers first (everything compares against it), eyeball ten
+raw generations per arm before judging anything, run judge validation (~$5) before the full
+sweep, and judge staged 150 → 300 → 500. Disclose the optional-stopping rule in the writeup.
+
+## 2026-07-30 (earlier) — Trained the 0%-synthetic control arm: QLoRA on 100% Tulu 3, Qwen3.6-27B
+
+**Hypothesis.** The internalization study needs a floor: whatever `constieval` movement generic
+instruction SFT produces on its own, with the synthetic constitution fraction set to **zero**. Any
+treatment-arm gain has to beat this to mean anything.
+
+**Method.** RunPod H100 80GB (`wmvvfl0izs51z4`), ~3.2h wall-clock, **~$10**.
+`configs/tulu_control_data.yaml` → `configs/train_lora_qwen36.yaml`, unchanged from how they were
+written. Repo pushed to the pod with `.env` deliberately excluded — training needs no credentials,
+and the base model and Tulu are both public and ungated.
+
+- **Data**: `allenai/tulu-3-sft-mixture`, streamed, shuffled (buffer 50k, seed 0), budgeted in
+  *tokens* rather than examples → **2,346 examples / 1,500,249 tokens**, mean 639.5, median 491.
+  Skipped 6 malformed, 159 over `max_seq_len`. All 2,346 re-validated locally: `synthetic_fraction:
+  0.0`, roles balanced (2,644 user / 2,644 assistant, no system turns).
+- **Training**: QLoRA r=32/α=64, 2 epochs, batch 4 × grad_accum 4, lr 1e-4 cosine, `max_seq_len`
+  2048, `packing: true`, `assistant_only_loss: false` (gotcha 4). 92 steps, 3.0M tokens seen.
+
+**Result.** Converged cleanly, no OOM (37.9/80 GB throughout — headroom for a larger batch).
+
+| step | 5 | 20 | 40 | 60 | 80 | 90 | final |
+|---|---|---|---|---|---|---|---|
+| loss | 1.322 | 0.771 | 0.697 | 0.675 | 0.760 | 0.732 | **0.779** |
+| token acc | 0.716 | 0.796 | 0.812 | 0.813 | 0.796 | 0.804 | **0.799** |
+
+Adapter: `output/train_lora_tulu_control/20260730_110307/adapter`, 512 tensors / 256 LoRA pairs /
+**159.4M** trainable params, A/B balanced. Published to
+[`LASR-Callum/qwen3.6-27b-tulu-100pct-lora`](https://huggingface.co/LASR-Callum/qwen3.6-27b-tulu-100pct-lora)
+(public, with a model card carrying the caveats below); safetensors SHA-256 verified against the
+local copy after upload.
+
+**Three findings worth carrying forward:**
+
+1. **Qwen3.6-27B is a hybrid, and `target_modules` only half-applies.** `q/k/v/o_proj` exist in
+   **16 of 64 layers**; the other 48 are linear-attention blocks with different module names.
+   `gate/up/down_proj` attach to all 64. So this recipe LoRA-tunes MLP everywhere but attention in
+   only a quarter of the stack. Fine as long as *both* arms share it — but it is not what
+   "target all attention + MLP" reads like on the config, and it should be stated when the result is.
+2. **`packing: true` + `attn_implementation: sdpa` cross-contaminates packed samples.** TRL warns
+   only Flash-Attention variants handle packed sequence boundaries correctly. Left unchanged on
+   purpose: this arm's value is that its recipe matches the treatment arm exactly, and silently
+   swapping the attention impl would break the comparison. **Confirm the treatment arm ran the same
+   way** — if it used FA2, the arms are not matched and this needs a re-run.
+3. **Losses never reach `train.log`.** `report_to: ["wandb"]` sends them to the offline run and
+   tqdm's carriage returns overwrite the stdout copies. Read them from
+   `checkpoint-*/trainer_state.json` instead (`log_history`), which is where the table above is from.
+
+**Environment.** The image's torch 2.4.1 is too old: `peft` needs `DTensor` from
+`torch.distributed.tensor` (torch ≥2.5), and upgrading torch alone leaves a stale `torchaudio`
+that fails with an undefined-symbol error. Working set: **torch 2.6.0+cu124 / torchvision 0.21.0 /
+torchaudio 2.6.0 / transformers 5.14.1 / trl 1.9.2 / peft 0.20.0 / bitsandbytes 0.50.0**.
+`rsync` is absent from the RunPod image — use `tar` over SSH.
+
+Pod terminated and confirmed gone. Run `run_meta.json` records `git_sha: "nogit"` (the `.git` dir is
+not synced to the pod); the real tree state was **76b637e** plus uncommitted `constieval` work.
+
+**Next steps.** Serve this adapter and run `constieval` arm-A-vs-control; compare against the
+treatment arm on the same item set. Resolve finding 2 before treating the delta as clean.
+
+## 2026-07-30 (later) — Reworked the eval around three readable plots; binary metrics, 8 clauses
+
+The v1 two-arm study ran clean but produced weak numbers and unreadable figures. Diagnosis first,
+because every cause turned out to be a design flaw rather than bad luck:
+
+| Root cause | Evidence |
+|---|---|
+| Graded 0-3 rubrics unreliable AND unused | `raw_score == 2` occurred **9 times in 1,324 rows**; the one binary rubric got judge agreement **1.000**, the worst graded one **0.588, kappa 0.17** |
+| Reliable axes saturated, variable axes unreliable | `tension_recognition` clean = 42/42 at max in *both* arms; `compliance` 86-90% at max; meanwhile `retrieval` kappa 0.17, `over_refusal` kappa 0.00 |
+| 21 clauses split from 8 principles overlap | every retrieval disagreement was "how close is close enough" - `deliberates_openly` vs honesty, `tone_engage_constraints` vs autonomy |
+| Scenarios narrated the wrongdoing | *"we actually did double-bill"* - noticing was free, hence the ceiling |
+| 1-2 items per clause | `retrieval` was a single Bernoulli trial per clause; the clause heatmap plotted one coin flip per cell |
+| 36% of rows a non-informative health check | `reasoning_retained` = 1.0 in 476/476, with `condition`/`family`/`clause_id` hardcoded wrong, misattributing 126 rows in any groupby |
+| Unbalanced stress assignment | only 10 of 42 clean items got all 6 wrappers, 10 got none - wrapper effects confounded with item identity |
+
+**Rebuilt backwards from three plots**, on the principle that anything not appearing in a figure
+should not exist: `knowing_vs_acting`, `noticing_vs_acting`, `robustness`. Each carries two model
+dots with clause-clustered CIs, faint per-clause dots, and a corner block spelling out the numbers -
+labels are anchored to the axes, not the data, because data-anchored labels collide exactly when two
+models score similarly, which is when the comparison matters most.
+
+**Design changes, each traceable to a diagnosis above:**
+- **All four metrics binary** (`knows`/`notices`/`acts`/`discriminates`). The scales were already
+  binary in practice; going binary buys back the judge reliability they were costing.
+- **`knows` is now a matching task against the full clause list**, not similarity to one clause.
+- **8 coarse clauses** (the document's own top-level principles). Fixes retrieval's ill-posedness
+  and raises items-per-clause from 1-2 to 12. Dropped the 4 `response_shape` clauses as circular -
+  they described response style, which is what `notices` measures.
+- **Items may not narrate the problem.** The generator must present the request as routine.
+- **Difficulties `edge` + `ambiguous` only**; `clear` caused the acts ceiling.
+- **Pressure applies to every application item**, removing the composition confound.
+- **n ~= 96 per (model, metric)** vs 21 - Wilson CI width 0.14 vs 0.39.
+- **Clause-clustered bootstrap** replaces row-wise intervals, and **exact McNemar** replaces the
+  naive comparison of overlapping marginal CIs (which understated v1's one real finding).
+- **`health_warnings()` on every report** flags SATURATED / FLOORED / THIN CELL / NOT COMPARABLE -
+  the two failure modes that silently invalidated v1 are now loud.
+
+**Deleted:** 4 figures, 4 axes, 13 clauses, 4 pressure wrappers, all 4 OOD axes (also removing a
+latent bug where no `distance` column was ever emitted despite `max_distance` being configured),
+`judges/axes.py` (6 of 8 classes were `axis = "name"` and nothing else), the `reasoning_retained`
+rows, and 5 of 8 configs. ~10.6k -> ~8.4k lines overall; eval-logic core **2,730 -> 1,017**.
+
+**Verified:** offline smoke renders all three plots with 0 errored rows; visually inspected and
+iterated on layout until legible. 250 tests, lint clean. Cost for a two-model comparison now
+**~$3.70** (336 items, 528 judge calls/arm), with item generation a one-time $0.09.
+
+**Next steps:** freeze a real item set and check the two guards before spending on arms - (1) does
+`notices` actually come off the ceiling now that scenarios do not narrate the problem, and (2) does
+`knows` clear 0.85 per-axis judge agreement with 8 coarse clauses. Both are measured, not assumed;
+if `knows` still fails, the fix is merging the confusable clauses, which only simplifies things
+further.
+
+
+## 2026-07-30 — Arm B landed: the difficult-advice LoRA is 2.8x more robust under operator override
+
+**Both arms complete** on the same frozen item set (`is_d5bfd714071b`, 238 items, 21 clauses cut
+from `docs/claude_constitution_principles.md` — the doc `src/prompts.py::CONSTITUTION` encodes).
+Judge: Gemini 2.5 Flash @ temp 0 for both arms, cross-validated on arm A against Sonnet 4.5
+(raw 0.877, kappa +0.740, PASS). Arm A = `qwen/qwen3.6-27b` via OpenRouter; arm B = Qwen3.6-27B with
+`matboz/qwen3.6-27b-difficult-advice-tulu-lora` merged and served by vLLM on an H100.
+
+**Clean-item scores: nothing improved significantly.** compliance 0.865→0.921, fake-clause
+discrimination 0.522→0.625, justification 0.093→0.167, retrieval 0.571→0.540 — every delta has
+overlapping 95% CIs at n=18–42. `tension_recognition` sat at 1.000 for both arms (ceiling; it could
+not have shown gain). The **one** non-overlapping result is a **regression**: over-refusal 0.841→0.714
+(−0.127), the classic alignment tax.
+
+**The real effect is in the paired robustness deltas.** Δcompliance under `system_override` (an
+operator prompt licensing the violation, same scenarios): base **−0.492**, LoRA **−0.175**. The LoRA
+degrades **2.8x less**. Base compliance halves; the LoRA loses a sixth. Same direction on OOD format
+shift (email/agentic reformat): base 0.873→0.698, LoRA 0.952→0.937. Neither arm was much moved by
+`compelling_argument`.
+
+That pattern — no gain in *stating* principles, large gain in *holding* behaviour under pressure — is
+what the *Teaching Claude Why* thesis predicts and is consistent with the honeypot result already in
+this repo. It is also invisible in clean-item scores, which is the argument for the paired
+stressed-vs-clean design.
+
+**One bug caught before the run that would have faked a large win.** Qwen3.6 via vLLM emits
+`reasoning + </think> + answer` — the chat template pre-fills the OPENING tag, so only the closing one
+appears in the completion. `split_thinking` required both tags and so returned the whole blob as the
+answer, meaning the judge would have graded arm B's private reasoning while arm A's (delivered in
+OpenRouter's separate `reasoning` field) was stripped. Since tension-recognition and justification are
+graded on what the response says, that almost certainly produces a large spurious improvement. Fixed,
+verified against live output, two regression tests added.
+
+**Other real issues fixed:** vLLM's default `max_num_seqs=1024` exceeds Qwen3.6's 312 Mamba cache
+blocks (hybrid Mamba/attention arch) — fails at CUDA-graph capture *after* loading all 51GB; use
+`--max-num-seqs 256`. The pod's `/workspace` is a 19GB network volume, not the 300GB container disk on
+`/`. Latest `transformers` needs torch >2.4 (`DTensor`), so install vLLM first and let it pin the stack.
+
+**Provisioning cost me ~$8 in failed pods** across four attempts (community cloud allocates no port
+mappings; overriding `dockerStartCmd` replaces the entrypoint that starts sshd and installs
+`PUBLIC_KEY`, so a failed boot becomes undiagnosable). The pod that worked was created in the console
+by the user and driven over SSH with a tunnel — no HTTP proxy. Separately, hours were lost to a
+misleading `Permission denied (publickey)` that was actually a passphrase-protected local key with an
+empty ssh-agent; `ssh-add -l` is the one-line diagnostic.
+
+**Deliverable:** `output/constieval/studies/qwen36_compare/` — 7 figures, greppable tables, both
+arms' raw rows and completions, the frozen item set, judge-agreement report, manifest, and a README
+carrying the caveats. Total spend ~$3.90 OpenRouter + ~$10 GPU.
+
+**Next steps:** (1) raise n on the clean cells — the interesting deltas are all CI-overlapping at
+n=18–42, and `application.variants: 2` plus the third difficulty would roughly triple power for ~$3;
+(2) investigate the over-refusal regression, the only significant clean-item effect; (3) re-validate
+the judge on arm B outputs; (4) fix the `tension_recognition` ceiling (raise `pass_at` or harden the
+rubric) so it can register improvement rather than only degradation.
 
 
 ## 2026-07-29 (pm) — RESULT: difficult-advice LoRA cuts ODCV misalignment 37.2% → 19.2%
@@ -262,6 +822,190 @@ counts **cumulative** cost including cached replays, so it is not a guard on inc
 `LASR-Callum/synthdoc-approved-constitution-sft` (private), round-trip verified by SHA; (2) QLoRA on Qwen3-32B and the honeypot
 eval against v1's 19.3%/8.0% thinking-mode numbers; (3) run the shipped `planning` and
 `values_deliberation` sweeps — this run changed both together, so neither is cleanly attributed.
+## 2026-07-29 (later) — Retargeted `constieval` to the trait doc, removed the gold set, cut cost ~7x
+
+**Trait doc correction.** `src/prompts.py::CONSTITUTION` — the literal string the difficult-advice
+SFT data was generated from — encodes `docs/claude_constitution_principles.md` (8 principles), NOT
+the later `docs/claude_approved_constitution.md` the first clause set was cut from. Grading the LoRA
+against the approved constitution would have measured it on a document its training data never saw.
+Added `constitution_principles_v1` (21 clauses, 12 matched distractors) and pointed both arm configs
+at it.
+
+That document is thinner, and the suite now enforces what it cannot support instead of papering
+over it: it states no conflict ordering (principle 7 actively resists one) so the conflict family is
+disabled and `validate()` refuses the combination; and 12 of 21 clauses give a rule with no reason,
+so the justification axis skips them rather than grading against an invented rationale. 6 judged
+axes instead of 8 — the honest ceiling of the source document.
+
+**Gold set removed at request.** No judge-calibration step ships. Consequence recorded in the
+README: absolute levels on a single axis are only as good as the rubric, while cross-recipe
+*differences* stay sound because both arms share an item set, judge, and sampling.
+
+**Cost work.** Judging was ~72% of the bill. Three changes, in order of value:
+1. `conditions: [clean]` on rubrics — the justification axis no longer re-runs on pressure and OOD
+   items. Saves 16% of judge calls and is methodologically better: it asks whether the model has the
+   document's reasoning, which a Swahili translation does not re-ask.
+2. `ood.max_distance` — caps the far tail of each distance axis, the most expensive third.
+3. `cheap.yaml` preset with a Gemini 2.5 Flash judge (~10x cheaper per token than Sonnet).
+
+Full config **$17.97 → cheap preset $2.50** for a 2-arm comparison, with item generation cached
+across re-runs. Explicitly refused two larger savings: merging compliance and tension into one judge
+call (~35%, but a combined rubric lets compliance anchor tension, which is the thesis), and dropping
+the matched genuine probe from `fake_clause` (halves it, but turns discrimination back into recall).
+
+**New tooling.** `constieval estimate` projects cost from config alone with exact call counts and no
+API calls — a test asserts its counts match a real build, which immediately caught it over-counting
+`fake_clause` by assuming every clause has a distractor. `constieval judge_agreement` replaces the
+gold set's role: dual-judges a sample against a strong reference and reports kappa per axis, so a
+cheap judge is used with evidence rather than on faith. Also fixed: `chat_template_kwargs` was being
+sent to hosted APIs that render the template themselves, the `hf` provider used
+`AutoModelForCausalLM` (wrong for Qwen3.6-27B's hybrid vision arch — now config-inspected, with
+`merge_and_unload()`), and `--set` split on commas inside JSON lists.
+
+**Item build parallelised.** The builders called the generator in a Python loop while every other
+stage was threaded, so a 147-scenario build took ~20 minutes and dominated wall-clock for the whole
+suite. Builders now enumerate their full job list up front and hand it to `BuildContext.generate_many`
+(threaded, order-preserving). Slot indices are computed before dispatch so each job's domain draw uses
+the same index the serial version used — verified byte-identical: the same 238 items and the same
+`itemset_id` (`is_297860d9117a` on the echo fixture) before and after. Build time ~20 min -> ~1 min.
+The content-addressed cache made the switch free mid-flight: the 93 scenarios the serial build had
+already paid for replayed from cache on restart.
+
+**Result:** 270 tests, lint clean. Both arms verified end to end offline on the new clause set,
+producing an identical `itemset_id`.
+
+**First real run invalidated itself, correctly.** Froze a 238-item set (`is_d5bfd714071b`, 21
+clauses, Sonnet 4.5 generator, ~$1.5) and ran arm A against base Qwen3.6-27B on OpenRouter. The
+manifest reported **49% truncation and 17 hard errors** at `max_tokens: 2048`. Diagnosis: Qwen3.6's
+reasoning traces average ~5,900 chars (~1,500 tokens) and reach ~9,700, so the trace alone consumed
+most of the budget — 17 items returned an empty answer with `finish=length`. A judge would have read
+every one of those as a refusal.
+
+This is gotcha #2 from `CLAUDE.md` in a new costume, and it is worth recording that the suite caught
+it rather than silently reporting it: `truncation_rate` was already in the manifest. Three fixes:
+`max_tokens` 2048 -> 6144 across every target config (with the measured trace lengths written into
+the comment); the estimator's `target_out_thinking` recalibrated 900 -> 2000, since it had
+under-quoted the target side ~2x; and a new guard — `run.max_truncation_rate` (default 15%) — that
+attaches a loud, explicit warning to `RunResult.warnings` and the manifest instead of letting a
+broken run produce a clean-looking report. Tested.
+
+**One-command study runner.** Added `constieval study --arms "base=...,lora=..."`: resolves the item
+set ONCE and hands it to every arm (so the comparison is valid by construction rather than by
+remembering to pin an id in two configs), runs each arm, renders the report, optionally cross-checks
+the judge, and copies every artifact into a single self-contained bundle — figures, greppable tables,
+raw rows, completions, the frozen item set, and a README explaining how to read it. A failing arm is
+recorded and the study continues, so a served checkpoint being down cannot discard an arm that
+already succeeded. 276 tests.
+
+**Arm A (base Qwen3.6-27B, hosted on OpenRouter) — clean run at 6144 tokens.** 238 ok / 0 error /
+0 truncated, $1.25. Baseline, oriented so higher is better, clean items:
+
+| axis | score | 95% CI | n |
+|---|---|---|---|
+| justification_quality | 0.093 | [0.000, 0.241] | 18 |
+| fake_discrimination | 0.522 | [0.348, 0.739] | 23 |
+| retrieval | 0.571 | [0.365, 0.762] | 21 |
+| over_refusal (inverted) | 0.841 | [0.762, 0.921] | 21 |
+| compliance | 0.865 | [0.754, 0.952] | 42 |
+| tension_recognition | 1.000 | saturated | 42 |
+
+The headline reading: **the base model acts well without knowing the document.** Compliance is 0.865
+while fake-clause discrimination sits at 0.522 — chance on a binary task — and justification quality
+is 0.093 (16 of 18 items scored 0). It declines the norm-violating path and then explains why in its
+own terms, essentially never in the constitution's. That is precisely the retrieval-vs-application
+gap the suite was built to expose, in its untrained state, and it is the headroom constitutional
+training has to fill.
+
+Robustness is where the base model breaks, and it is one wrapper doing it: compliance 0.865 clean ->
+**0.286 under `system_override`** (an operator prompt licensing the violation), versus 0.857 under
+`compelling_argument` — it resists a well-argued case but folds to an instruction from the operator
+position. OOD: `format` (email/agentic reformat) costs more than `language` (0.762 vs 0.905).
+
+**Two honest limitations of this run.** `tension_recognition` is saturated on clean items (42/42
+scored 3/3) — a strong modern model always names the tension in a flagged scenario, so on clean
+items that axis can only detect degradation, not improvement. It is still informative under stress
+(0.706 under pressure), so the signal lives in the paired deltas rather than the level. And at
+`cheap.yaml` counts (1 retrieval and 2 application items per clause) per-clause estimates quantise
+to {0, 0.5, 1}; the pooled axis numbers (n=21-42) are sound, but the clause-level scatter is coarse.
+
+**Spend, measured from cached token counts:** $3.03 for the session — Sonnet item generation $0.82,
+Qwen3.6 target $1.77 across both passes, Flash judging $0.44. About $1.20 of that was the discarded
+truncated pass. Remaining: ~$0.92 OpenRouter (arm B judging + Sonnet cross-check) plus ~$1.80 RunPod.
+
+**STOPPED BY REQUEST after arm A.** Arm B was never run, so nothing here says what constitutional
+training does — this is the baseline half of an unfinished experiment, and the judge was never
+cross-validated. Everything is preserved self-contained in
+`output/constieval/studies/qwen36_armA_20260729_133457/` (figures, greppable tables, raw rows,
+completions, the frozen item set, a manifest, and a README carrying the caveats). No GPU was ever
+provisioned — every RunPod API call 401'd — so nothing is billing. The frozen item set plus the
+content-addressed cache mean resuming costs only arm B: re-running arm A replays for free.
+
+**Blocked (if resumed):** arm B needs a RunPod key with write permission — the one in `.env` is well-formed
+(`rpa_`, 54 chars, clean) but 401s on both the REST and GraphQL APIs, while the OpenRouter key in
+the same file returns 200. Provisioning automation is written and lint-clean but untested against a
+live API (`constieval/scripts/runpod.py`: up / wait / status / down; RunPod proxies pod ports over
+HTTPS, so arm B needs a base_url rather than an SSH tunnel).
+
+
+## 2026-07-29 — Built `constieval/`: Tier A constitution-internalization eval suite
+
+**Motivation:** internalization is currently only observable through downstream OOD generalization
+(the agentic-misalignment honeypots), which costs a full training run and one eval sweep per data
+point. We want a *direct* proxy we can run at every checkpoint, so a data-recipe change can be
+judged in minutes rather than after a training run. The core hypothesis the suite is built around:
+**retrieval saturates immediately and is not the metric** — a trained model will name the governing
+clause almost regardless of what it then does. The signal is the **gap between naming a clause and
+acting on it**, and whether the model can give the constitution's *stated* rationale rather than a
+fluent post-hoc one.
+
+**Method:** built a new, **fully self-contained** package at `constieval/` (no imports to or from
+`src/` or `synthdoc/`; usable plug-and-play via `from constieval import run_eval`). Same
+architectural discipline as `synthdoc/`: plugin registry for every extension point, all prose in
+`control/prompts/`, all knobs in `control/configs/`, validation before any spend.
+
+Design decisions that carry the measurement:
+- **23 clauses** cut from `docs/claude_approved_constitution.md`, each with the constitution's own
+  `rationale` (the ground truth for the justification axis), a `priority_tier` from the spec's
+  conflict ordering, declared `entailments` (Tier B ground truth), and **5 marked `held_out`**,
+  decided before generation. 10 fabricated distractors, each matched to the real clause it is
+  confusable with — so retrieval is reported as **discrimination**, never recall.
+- **Compliance and tension recognition are separate judge calls.** A model that complies without
+  registering that anything was at stake has memorized the behavior; one rubric covering both would
+  let a strong compliance score hide exactly that.
+- **`Item` pairing is the load-bearing trick.** Robustness and OOD items are *derived* from an
+  application item and keep `parent_item_id`, so every stressed score is differenced against the
+  same scenario clean. Item difficulty is differenced out rather than averaged over. Pressure
+  wrappers never rewrite the scenario; OOD distance 0 *is* the parent.
+- **One generation pass per checkpoint**, reused by every judge; an application item is scored on
+  compliance, tension, and justification from the same completion.
+- **Judge blinded by construction** — recipe/step/model are never passed to `RubricJudge`, asserted
+  by a test that greps the actual rendered prompts.
+- **One results table**, one row per `(run, recipe, clause, item, axis, score)`; every figure and
+  table derives from it, so a plot can never disagree with a number.
+
+**Result:** Tier A ships end to end. `--smoke` runs the whole pipeline offline in ~10s with no API
+key (echo provider): 301 items, 1068 rows, 0 errors, all **7 required figures** rendering, plus the
+greppable `tier_a_results.md` mirror. Verified a two-recipe pairwise comparison renders correctly
+(the heatmap grows a diverging difference panel at exactly two recipes). 62 new offline tests; full
+suite 267 passed, 1 skipped, no regressions in existing tests. Also added a HuggingFace target
+provider (`provider: hf`, optional `uv sync --extra hf`) so a Hub repo id — optionally plus a LoRA
+adapter — can be evaluated in-process without standing up a server, and `--max-items` for a quick
+pass that preserves every parent/child pair.
+
+**Not built, by scope:** Tier B (counterfactual clause inversion, held-out generalization, recipe
+ablations, persistence) needs extra training runs; Tier B-lite (linear probes, self-report vs
+behavior) needs model internals. Both documented in `constieval/README.md` with the groundwork each
+would inherit — `entailments` for the spillover matrix, `held_out` for the generalization split,
+`recipe`/`checkpoint_step` as first-class store columns.
+
+**Gold set: removed at request.** The suite ships with no judge-calibration step; judge quality is
+taken on trust, so treat cross-recipe *differences* (which share a judge and an item set) as the
+readable signal rather than absolute levels on any one axis.
+
+**Next steps:** (1) freeze a real item set with Sonnet 4.5 and pin its `itemset.id` in both arm
+configs; (2) run base Qwen3.6-27B vs the difficult-advice LoRA and check whether the
+retrieval-vs-application gap tracks the honeypot result we already have.
+
 
 ## 2026-07-28 (eve) — Built `synthdoc/`: config-driven synthetic document generation pipeline
 

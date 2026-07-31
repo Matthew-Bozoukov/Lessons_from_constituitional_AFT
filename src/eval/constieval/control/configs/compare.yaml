@@ -1,0 +1,25 @@
+# ABOUTME: Arm B: a checkpoint served locally by vLLM, compared against base.yaml's hosted model.
+# ABOUTME: Inherits the item set, judge and sampling from base.yaml - ONLY the weights differ.
+
+extends: base.yaml
+
+name: null
+
+itemset:
+  # Pin this to the frozen set arm A used. Leaving it null lets each arm pick up whatever is newest
+  # on disk, which silently breaks comparability the first time anyone rebuilds.
+  id: is_4ffc1cf9a0b9
+
+target:
+  provider: vllm
+  model: qwen36-difficult-advice
+  base_url: http://localhost:8000/v1
+  # Held identical to base.yaml on purpose: the only thing that may differ between arms is weights.
+  temperature: 0.7
+  max_tokens: 6144
+  enable_thinking: true
+  extra_body: {}
+
+run:
+  recipe: finetuned
+  checkpoint_step: 1
