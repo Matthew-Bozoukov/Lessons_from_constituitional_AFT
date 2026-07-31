@@ -1,4 +1,4 @@
-# ABOUTME: Command line entry point. Run with `uv run python -m src.eval.constieval.cli <command>`.
+# ABOUTME: Command line entry point. Run with `uv run python -m src.eval.misalignment.internalization.cli <command>`.
 # ABOUTME: Commands: items, run, report, plot, validate, clauses, registry.
 
 from __future__ import annotations
@@ -249,9 +249,9 @@ class CLI:
 
     def study(
         self,
-        arms: str = "base=qwen36_base.yaml,lora=qwen36_lora.yaml",
+        arms: str = "base=base.yaml,finetuned=compare.yaml",
         name: str = "study",
-        out: str = "output/constieval/studies",
+        out: str = "output/internalization/studies",
         max_items: int = 0,
         cross_check: str = "",
         cross_check_n: int = 120,
@@ -295,7 +295,7 @@ class CLI:
     def report(
         self,
         results: str,
-        out: str = "output/src/eval/constieval/report",
+        out: str = "output/internalization/report",
         recipes: str | None = None,
         plots: bool = True,
     ) -> str:
@@ -324,7 +324,7 @@ class CLI:
         self,
         name: str,
         results: str,
-        out: str = "output/src/eval/constieval/report/figures",
+        out: str = "output/internalization/report/figures",
         recipes: str | None = None,
         axis: str = "compliance",
     ) -> str:
@@ -365,7 +365,7 @@ class CLI:
     def judge_agreement(
         self,
         run_dir: str,
-        config: str = "cheap.yaml",
+        config: str = "base.yaml",
         reference: str = "anthropic/claude-sonnet-4.5",
         n: int = 120,
         set: str | None = None,
@@ -450,9 +450,9 @@ class CLI:
 
     def registry(self) -> str:
         """List every registered plugin, by extension point."""
-        import src.eval.constieval.items  # noqa: F401
-        import src.eval.constieval.judges  # noqa: F401
-        import src.eval.constieval.plots  # noqa: F401
+        import src.eval.misalignment.internalization.items  # noqa: F401
+        import src.eval.misalignment.internalization.judges  # noqa: F401
+        import src.eval.misalignment.internalization.plots  # noqa: F401
 
         return "\n".join(
             f"{kind}:\n" + "\n".join(f"  {n}" for n in registry.names(kind))
@@ -472,7 +472,7 @@ class CLI:
 
 
 def main() -> None:
-    """Entry point for `python -m src.eval.constieval.cli`."""
+    """Entry point for `python -m src.eval.misalignment.internalization.cli`."""
     fire.Fire(CLI)
 
 

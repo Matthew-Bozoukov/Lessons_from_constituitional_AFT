@@ -9,19 +9,19 @@ knowing a clause and acting on it, and whether the model can articulate the clau
 
 Plug-and-play usage from anywhere in the repo:
 
-    from src.eval.constieval import load_config, run_eval, build_report
+    from src.eval.misalignment.internalization import load_config, run_eval, build_report
 
-    cfg = load_config("src/eval/constieval/control/configs/base.yaml", {"run.recipe": "difficult_advice"})
+    cfg = load_config("src/eval/misalignment/internalization/control/configs/base.yaml", {"run.recipe": "difficult_advice"})
     result = run_eval(cfg)
-    build_report(result.store, "output/src/eval/constieval/report")
+    build_report(result.store, "output/internalization/report")
 
-Everything tunable lives in `src/eval/constieval/control/`: run configs in `control/configs/`, the
+Everything tunable lives in `src/eval/misalignment/internalization/control/`: run configs in `control/configs/`, the
 frozen clause set in `control/clauses/`, and every string a model sees in `control/prompts/`.
 Extending the suite means registering a plugin and adding a config line — see `register`.
 
 Tier B (counterfactual clause inversion, held-out generalization, recipe ablations,
 persistence) and Tier B-lite (linear probes, self-report vs behavior) are NOT implemented
-here; they need extra training runs or model internals. See `src/eval/constieval/README.md`.
+here; they need extra training runs or model internals. See `src/eval/misalignment/internalization/README.md`.
 """
 
 from .analysis import (

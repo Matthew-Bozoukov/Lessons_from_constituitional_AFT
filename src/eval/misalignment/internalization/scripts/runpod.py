@@ -4,12 +4,12 @@
 """Stand up arm B's serving endpoint on RunPod.
 
     export RUNPOD_API_KEY=rpa_...            # or put it in .env
-    uv run python -m src.eval.constieval.scripts.runpod up --gpu "NVIDIA H100 80GB HBM3"
-    uv run python -m src.eval.constieval.scripts.runpod status --pod <id>
-    uv run python -m src.eval.constieval.scripts.runpod down --pod <id>      # ALWAYS do this
+    uv run python -m src.eval.misalignment.internalization.scripts.runpod up --gpu "NVIDIA H100 80GB HBM3"
+    uv run python -m src.eval.misalignment.internalization.scripts.runpod status --pod <id>
+    uv run python -m src.eval.misalignment.internalization.scripts.runpod down --pod <id>      # ALWAYS do this
 
 The pod boots, installs vLLM + peft, merges `adapter` into `base` with
-`src.eval.constieval.scripts.merge_lora`, and serves the merged weights on port 8000. Merging rather
+`src.eval.misalignment.internalization.scripts.merge_lora`, and serves the merged weights on port 8000. Merging rather
 than serving the adapter at runtime is deliberate: vLLM's LoRA path is unproven for Qwen3.6's
 hybrid vision-language architecture, and a merged checkpoint is just an ordinary model.
 
@@ -48,7 +48,7 @@ def _key() -> str:
     return key
 
 
-def _call(method: str, path: str, **kwargs: Any) -> Any:
+def call(method: str, path: str, **kwargs: Any) -> Any:
     """Call the RunPod REST API, turning an auth failure into an actionable message."""
     resp = requests.request(
         method,
@@ -119,7 +119,7 @@ def up(
     base: str = "Qwen/Qwen3.6-27B",
     adapter: str = "matboz/qwen3.6-27b-difficult-advice-tulu-lora",
     served_name: str = "qwen36-difficult-advice",
-    name: str = "constieval-arm-b",
+    name: str = "internalization-arm-b",
     disk_gb: int = DEFAULT_DISK_GB,
     image: str = DEFAULT_IMAGE,
     cloud: str = "SECURE",
@@ -151,7 +151,7 @@ def up(
         "dockerStartCmd": ["bash", "-lc", _bootstrap(base, adapter, served_name)],
         "env": {"HF_HUB_ENABLE_HF_TRANSFER": "1"},
     }
-    pod = _call("POST", "/pods", data=json.dumps(payload))
+    pod = call("POST", "/pods", data=json.dumps(payload))
     pod_id = pod.get("id") or pod.get("podId", "")
     url = f"https://{pod_id}-8000.proxy.runpod.net/v1"
     return (
@@ -159,12 +159,12 @@ def up(
         f"base_url: {url}\n"
         f"model:    {served_name}\n\n"
         f"Boot takes ~25 min (download ~55GB, merge, load). Poll with:\n"
-        f"  uv run python -m src.eval.constieval.scripts.runpod status --pod {pod_id}\n\n"
+        f"  uv run python -m src.eval.misalignment.internalization.scripts.runpod status --pod {pod_id}\n\n"
         f"Then run arm B:\n"
-        f"  uv run python -m src.eval.constieval.cli run --config qwen36_lora.yaml \\\n"
+        f"  uv run python -m src.eval.misalignment.internalization.cli run --config qwen36_lora.yaml \\\n"
         f"    --base-url {url} --model {served_name}\n\n"
         f"THEN TEAR IT DOWN - it bills by the second:\n"
-        f"  uv run python -m src.eval.constieval.scripts.runpod down --pod {pod_id}"
+        f"  uv run python -m src.eval.misalignment.internalization.scripts.runpod down --pod {pod_id}"
     )
 
 
@@ -212,14 +212,14 @@ def train_up(
         "cloudType": cloud,
         "env": {"HF_HUB_ENABLE_HF_TRANSFER": "1", "PUBLIC_KEY": pubkey},
     }
-    pod = _call("POST", "/pods", data=json.dumps(payload))
+    pod = call("POST", "/pods", data=json.dumps(payload))
     pod_id = pod.get("id") or pod.get("podId", "")
     return (
         f"pod: {pod_id}\n\n"
         f"Wait for SSH, then rsync the repo to /root/work:\n"
-        f"  uv run python -m src.eval.constieval.scripts.runpod ssh_addr --pod {pod_id}\n\n"
+        f"  uv run python -m src.eval.misalignment.internalization.scripts.runpod ssh_addr --pod {pod_id}\n\n"
         f"TEAR IT DOWN when the adapter is pulled - it bills by the second:\n"
-        f"  uv run python -m src.eval.constieval.scripts.runpod down --pod {pod_id}"
+        f"  uv run python -m src.eval.misalignment.internalization.scripts.runpod down --pod {pod_id}"
     )
 
 
@@ -232,7 +232,7 @@ def ssh_addr(pod: str) -> str:
     Returns:
         The ssh connection details, or a note that SSH is not mapped yet.
     """
-    info = _call("GET", f"/pods/{pod}")
+    info = call("GET", f"/pods/{pod}")
     for m in info.get("portMappings") or []:
         # portMappings is either a list of dicts or a {privatePort: publicPort} map.
         if isinstance(m, dict) and str(m.get("privatePort")) == "22":
@@ -258,7 +258,7 @@ def status(pod: str) -> str:
     Returns:
         A status line, including whether the model endpoint is live.
     """
-    info = _call("GET", f"/pods/{pod}")
+    info = call("GET", f"/pods/{pod}")
     url = f"https://{pod}-8000.proxy.runpod.net/v1"
     ready, detail = False, "not answering yet (still downloading, merging, or loading)"
     try:
@@ -303,7 +303,7 @@ def wait(pod: str, timeout_min: int = 45, interval_s: int = 60) -> str:
 
 def gpus(min_gb: int = 80) -> str:
     """List GPU types with at least `min_gb` of memory, with prices."""
-    rows = _call("GET", "/gputypes")
+    rows = call("GET", "/gputypes")
     rows = rows if isinstance(rows, list) else rows.get("data", [])
     out = []
     for g in rows:
@@ -326,13 +326,13 @@ def down(pod: str) -> str:
     Returns:
         Confirmation.
     """
-    _call("DELETE", f"/pods/{pod}")
+    call("DELETE", f"/pods/{pod}")
     return f"terminated {pod}. Confirm with `list` that nothing is still running."
 
 
 def list_pods() -> str:
     """List every pod on the account, so nothing is left billing unnoticed."""
-    rows = _call("GET", "/pods")
+    rows = call("GET", "/pods")
     rows = rows if isinstance(rows, list) else rows.get("data", [])
     if not rows:
         return "no pods running"

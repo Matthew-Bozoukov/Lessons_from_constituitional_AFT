@@ -1,20 +1,25 @@
 <!-- ABOUTME: Guide to the constitution-internalization eval: three plots, four binary metrics. -->
 <!-- ABOUTME: Designed backwards from the figures - if it does not appear in a plot, it is not here. -->
 
-# constieval — three plots that say whether a model internalized a constitution
+# internalization — three plots that say whether a model internalized a constitution
 
-A cheap, fast proxy for **internalization vs memorization**. One command, ~$3.70 for a two-model
-comparison, three figures you can read at a glance.
+A cheap, fast proxy for **internalization vs memorization** — the misalignment suite's
+internalization proxy eval. One command, ~$3.70 for a two-model comparison, three figures you can
+read at a glance.
 
 Self-contained: nothing here imports the rest of the repo, and nothing in the repo needs to change.
 
 ```bash
 # offline: no API key, no spend, ~15s - builds items, generates, judges, renders all 3 plots
-uv run python -m src.eval.constieval.cli run --config smoke.yaml
+scripts/run_internalization.sh smoke
 
 # the real thing: two models, one frozen item set, one bundle
-uv run python -m src.eval.constieval.cli study --arms "base=base.yaml,finetuned=compare.yaml" --name qwen36
+scripts/run_internalization.sh study --arms "base=base.yaml,finetuned=compare.yaml" --name qwen36
 ```
+
+`scripts/run_internalization.sh <command> [args...]` is a thin wrapper over
+`uv run python -m src.eval.misalignment.internalization.cli <command> [args...]`; every command
+below works through either.
 
 ---
 
@@ -104,7 +109,7 @@ scenarios written for one clause are not twelve independent observations.
 There is **no gold set**. A cheap judge earns trust by cross-check instead:
 
 ```bash
-uv run python -m src.eval.constieval.cli judge_agreement --run-dir <run> \
+scripts/run_internalization.sh judge_agreement --run-dir <run> \
   --reference anthropic/claude-sonnet-4.5 --n 120
 ```
 
@@ -116,7 +121,7 @@ axes while `knows` sat at 0.59.
 ## Layout
 
 ```
-constieval/
+internalization/
   control/          EVERYTHING TUNABLE - no prose in Python
     clauses/        principles_v2.yaml (8 clauses + 24 distractors)
     prompts/        items · rubrics · pressure
@@ -136,7 +141,7 @@ constieval/
 ## Cost
 
 ```bash
-uv run python -m src.eval.constieval.cli estimate --config base.yaml --arms 2
+scripts/run_internalization.sh estimate --config base.yaml --arms 2
 ```
 
 **~$3.70** for two models: $0.09 item generation (once, cached), $2.79 target tokens, $0.78

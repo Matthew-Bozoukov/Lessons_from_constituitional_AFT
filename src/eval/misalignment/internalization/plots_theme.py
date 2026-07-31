@@ -54,14 +54,14 @@ class PaletteError(ValueError):
 
 def sequential_cmap():
     """Return the one-hue sequential colormap, with a distinct colour for missing cells."""
-    cmap = LinearSegmentedColormap.from_list("constieval_seq", list(SEQUENTIAL))
+    cmap = LinearSegmentedColormap.from_list("internalization_seq", list(SEQUENTIAL))
     return cmap.with_extremes(bad=MISSING)
 
 
 def diverging_cmap():
     """Return the two-hue diverging colormap with a neutral midpoint."""
     return LinearSegmentedColormap.from_list(
-        "constieval_div", [DIVERGING_LOW, DIVERGING_MID, DIVERGING_HIGH]
+        "internalization_div", [DIVERGING_LOW, DIVERGING_MID, DIVERGING_HIGH]
     )
 
 

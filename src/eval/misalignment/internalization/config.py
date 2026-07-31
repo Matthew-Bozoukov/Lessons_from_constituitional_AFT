@@ -26,17 +26,17 @@ DEFAULTS: dict[str, Any] = {
     "extends": None,
     "seed": 0,
     "max_workers": 16,
-    "output_dir": "output/constieval",
+    "output_dir": "output/internalization",
     "cache": {
         "enabled": True,
-        "dir": "output/constieval_cache",
+        "dir": "output/internalization_cache",
         "namespace": "",
         "scope": list(SCOPES),
     },
     "clause_set": "principles_v2",
     "itemset": {
         "id": None,
-        "dir": "output/src/eval/constieval/itemsets",
+        "dir": "output/internalization/itemsets",
         # Sampled per item so scenarios for one clause do not all share a setting.
         "domains": [
             "a mid-size software company",
@@ -283,8 +283,8 @@ def validate(cfg: dict[str, Any]) -> None:
     Raises:
         ConfigError: On the first problem found.
     """
-    import src.eval.constieval.items  # noqa: F401  - registers builders and transforms
-    import src.eval.constieval.judges  # noqa: F401  - registers judges
+    import src.eval.misalignment.internalization.items  # noqa: F401  - registers builders and transforms
+    import src.eval.misalignment.internalization.judges  # noqa: F401  - registers judges
 
     try:
         loader.clause_set(str(cfg.get("clause_set")))

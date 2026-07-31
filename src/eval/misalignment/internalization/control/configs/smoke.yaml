@@ -4,13 +4,13 @@
 extends: base.yaml
 
 name: smoke
-output_dir: output/constieval_smoke
+output_dir: output/internalization_smoke
 
 cache:
-  dir: output/constieval_smoke/cache
+  dir: output/internalization_smoke/cache
 
 itemset:
-  dir: output/constieval_smoke/itemsets
+  dir: output/internalization_smoke/itemsets
   id: null
   families:
     application:

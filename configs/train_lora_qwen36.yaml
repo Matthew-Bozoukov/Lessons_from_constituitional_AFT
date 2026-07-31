@@ -4,7 +4,7 @@
 # This is the zero-dose end of the internalization study. The treatment arm trains on
 # synthdoc's constitution corpus mixed into a Tulu baseline; this arm holds the recipe,
 # base model, token budget, and seed fixed and sets the synthetic fraction to ZERO. Any
-# constieval movement it shows is what generic instruction SFT does on its own, and is
+# internalization movement it shows is what generic instruction SFT does on its own, and is
 # the floor the treatment arm has to beat.
 
 seed: 0

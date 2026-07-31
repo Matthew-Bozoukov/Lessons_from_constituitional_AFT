@@ -29,7 +29,7 @@ class CacheConfig:
     """
 
     enabled: bool = True
-    dir: str = "output/constieval_cache"
+    dir: str = "output/internalization_cache"
     namespace: str = ""
     scope: tuple[str, ...] = SCOPES
 
@@ -56,7 +56,7 @@ class CacheConfig:
             raise ValueError(f"cache.scope has unknown call sites {unknown}; valid: {list(SCOPES)}")
         return cls(
             enabled=bool(block.get("enabled", True)),
-            dir=str(block.get("dir", "output/constieval_cache")),
+            dir=str(block.get("dir", "output/internalization_cache")),
             namespace=str(block.get("namespace", "")),
             scope=scope,
         )

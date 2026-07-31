@@ -27,7 +27,7 @@ def _model_class(model_id: str, trust_remote_code: bool = False):
 
     Qwen3.6-27B is a hybrid vision-language model: loading it with
     `AutoModelForCausalLM` silently drops the vision tower and mismatches the
-    checkpoint. The same inspection is used by `src.eval.constieval.scripts.merge_lora`, so a
+    checkpoint. The same inspection is used by `src.eval.misalignment.internalization.scripts.merge_lora`, so a
     checkpoint trained here merges back with the identical class.
 
     Args:

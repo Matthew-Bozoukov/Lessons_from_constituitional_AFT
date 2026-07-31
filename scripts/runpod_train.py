@@ -27,7 +27,7 @@ import fire
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.eval.constieval.scripts.runpod import _call  # noqa: E402
+from src.eval.misalignment.internalization.scripts.runpod import call  # noqa: E402
 
 DEFAULT_IMAGE = "runpod/pytorch:0.7.0-dev-cu1281-torch271-ubuntu2204"
 DEFAULT_GPU = "NVIDIA H100 80GB HBM3"
@@ -101,7 +101,7 @@ def up(
     codes = [c.strip().upper() for c in countries.split(",") if c.strip()]
     if codes:
         payload["countryCodes"] = codes
-    pod = _call("POST", "/pods", data=json.dumps(payload))
+    pod = call("POST", "/pods", data=json.dumps(payload))
     pod_id = pod.get("id") or pod.get("podId", "")
     return (
         f"pod:       {pod_id}\n"
@@ -117,7 +117,7 @@ def status(pod: str) -> str:
     """Report pod state and the last boot/train log lines."""
     import requests
 
-    info = _call("GET", f"/pods/{pod}")
+    info = call("GET", f"/pods/{pod}")
     line = f"status: {info.get('desiredStatus')}"
     for log in ("train.log", "boot.log"):
         try:
@@ -132,7 +132,7 @@ def status(pod: str) -> str:
 
 def down(pod: str) -> str:
     """Terminate the pod. Always run this; the pod bills by the second."""
-    _call("DELETE", f"/pods/{pod}")
+    call("DELETE", f"/pods/{pod}")
     return f"terminated {pod}"
 
 

@@ -3,6 +3,27 @@
 
 # LOG
 
+## 2026-07-31 — Renamed `constieval` → `src/eval/misalignment/internalization/` (move + cleanup, no behavior change)
+
+The constitution-internalization proxy eval (`src/eval/constieval/`, "constieval" in every entry
+below) now lives at `src/eval/misalignment/internalization/` — it is an internalization *proxy* for
+the misalignment result, so it belongs under `misalignment/`. Changes beyond the move:
+
+- **Standard runner**: `scripts/run_internalization.sh` (`smoke` = offline check; everything else
+  passes through to `python -m src.eval.misalignment.internalization.cli`).
+- **Fixed a latent path bug**: configs pointed `itemset.dir` at `output/src/eval/constieval/itemsets`
+  (mangled by an earlier move) while the frozen sets lived in `output/constieval/itemsets/`. All
+  output now under `output/internalization*`; on-disk artifacts moved, so the pinned itemset
+  `is_4ffc1cf9a0b9` and the call cache still resolve.
+- **Fixed broken CLI defaults**: `judge_agreement` defaulted to a nonexistent `cheap.yaml` (now
+  `base.yaml`); `study` defaulted to nonexistent `qwen36_base/qwen36_lora.yaml` (now
+  `base=base.yaml,finetuned=compare.yaml`).
+- Made the RunPod REST helper public (`_call` → `call`) for its importers
+  `scripts/runpod_{capability,train}.py`; renamed the test files to `test_internalization_*`.
+
+Verified: 351 unit tests pass; offline smoke, `validate`, `estimate`, `clauses`, `axes`, `registry`
+all run through the new entry point. Entries below this one use the old names/paths.
+
 ## 2026-07-31 — MMLU thinking-mode pass: the whole ladder is flat vs base; base's earlier "gap" was truncation
 
 **Result (thinking mode, 570 paired questions, seed 0, 5-shot, temp 0, subset hash

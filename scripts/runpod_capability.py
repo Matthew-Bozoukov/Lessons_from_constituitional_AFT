@@ -3,7 +3,7 @@
 
 """One pod, every arm, served concurrently as vLLM LoRA modules.
 
-The existing `src.eval.constieval.scripts.runpod` helper merges a *single* adapter into the base
+The existing `src.eval.misalignment.internalization.scripts.runpod` helper merges a *single* adapter into the base
 and serves the merged copy. That is the right shape for a one-arm eval and the wrong
 shape here: three arms would mean either three pods (three ~55GB downloads, three boots,
 three times the bill) or three sequential merges on one pod, which needs ~216GB of disk
@@ -34,7 +34,7 @@ from omegaconf import OmegaConf
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.eval.constieval.scripts.runpod import _call  # noqa: E402
+from src.eval.misalignment.internalization.scripts.runpod import call  # noqa: E402
 
 DEFAULT_IMAGE = "runpod/pytorch:0.7.0-dev-cu1281-torch271-ubuntu2204"
 DEFAULT_GPU = "NVIDIA H100 80GB HBM3"
@@ -170,7 +170,7 @@ def up(
     codes = [c.strip().upper() for c in countries.split(",") if c.strip()]
     if codes:
         payload["countryCodes"] = codes
-    pod = _call("POST", "/pods", data=json.dumps(payload))
+    pod = call("POST", "/pods", data=json.dumps(payload))
     pod_id = pod.get("id") or pod.get("podId", "")
     url = f"https://{pod_id}-8000.proxy.runpod.net/v1"
     served = "\n".join(f"    {n:16} <- {r}" for n, r in modules.items())
@@ -192,7 +192,7 @@ def status(pod: str) -> str:
     """Report pod state and whether the OpenAI endpoint is answering yet."""
     import requests
 
-    info = _call("GET", f"/pods/{pod}")
+    info = call("GET", f"/pods/{pod}")
     url = f"https://{pod}-8000.proxy.runpod.net/v1/models"
     line = f"status: {info.get('desiredStatus')}  machine: {info.get('machine', {}).get('gpuTypeId')}"
     try:
@@ -207,13 +207,13 @@ def status(pod: str) -> str:
 
 def down(pod: str) -> str:
     """Terminate the pod. Always run this; the pod bills by the second."""
-    _call("DELETE", f"/pods/{pod}")
+    call("DELETE", f"/pods/{pod}")
     return f"terminated {pod}"
 
 
 def list_pods() -> str:
     """List active pods, so a forgotten one cannot bill quietly."""
-    pods = _call("GET", "/pods")
+    pods = call("GET", "/pods")
     rows = pods if isinstance(pods, list) else pods.get("data", [])
     if not rows:
         return "no active pods"

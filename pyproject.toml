@@ -38,7 +38,7 @@ dependencies = [
 synthdoc = "src.data.synthdoc.cli:main"
 
 [project.optional-dependencies]
-# Optional extras for constieval's in-process HuggingFace target provider (`provider: hf`).
+# Optional extras for internalization's in-process HuggingFace target provider (`provider: hf`).
 # Not needed for the OpenRouter/vLLM paths or for any pre-existing pipeline in this repo.
 hf = [
     "torch>=2.6.0",

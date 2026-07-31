@@ -23,7 +23,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
-BLUE = "#2a78d6"   # categorical slot 1 (src/eval/constieval/plots_theme.py)
+BLUE = "#2a78d6"   # categorical slot 1 (src/eval/misalignment/internalization/plots_theme.py)
 INK = "#3a3a3a"
 MUTED = "#8a8a8a"
 

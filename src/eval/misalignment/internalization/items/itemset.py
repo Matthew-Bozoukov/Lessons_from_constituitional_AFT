@@ -191,7 +191,8 @@ class ItemSet:
         )
         if not candidates:
             raise FileNotFoundError(
-                f"No frozen item set under {root}. Build one with `constieval items build`."
+                f"No frozen item set under {root}. Build one with "
+                f"`scripts/run_internalization.sh items build`."
             )
         return cls.load(candidates[0].parent)
 
