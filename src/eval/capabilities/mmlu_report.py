@@ -19,7 +19,7 @@ If two arms were run against different subset sizes or a different seed, the pai
 silently wrong and the intervals are nonsense while still looking reasonable. So the
 uid sets are compared explicitly and a mismatch is fatal.
 
-    uv run python src/experiments/mmlu_report.py --config configs/mmlu_eval.yaml
+    uv run python src/eval/capabilities/mmlu_report.py --config configs/mmlu_eval.yaml
 """
 
 from __future__ import annotations
@@ -38,8 +38,8 @@ from omegaconf import DictConfig, OmegaConf  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.experiments.mmlu_eval import resolve_arms  # noqa: E402
-from src.mmlu import (  # noqa: E402
+from src.eval.capabilities.mmlu_eval import resolve_arms  # noqa: E402
+from src.eval.capabilities.mmlu import (  # noqa: E402
     CATEGORIES,
     LETTERS,
     mcnemar,
@@ -51,7 +51,7 @@ from src.utils import read_jsonl, timestamp, write_run_meta  # noqa: E402
 
 # One data series per panel, so colour carries no categorical load and no legend box is
 # needed — the title names the series and points are directly labelled. These are the
-# repo's validated palette slots (see constieval/plots_theme.py); duplicated rather than
+# repo's validated palette slots (see src/eval/constieval/plots_theme.py); duplicated rather than
 # imported to keep src/ independent of constieval/, matching capability_report.py.
 _SERIES = "#2a78d6"
 _INK = "#0b0b0b"
@@ -101,7 +101,7 @@ def _load_arm_records(cfg: DictConfig, arms: list[dict], mode: str) -> dict[str,
     if not loaded:
         raise SystemExit(
             f"No records under {root}. Run the eval first:\n"
-            f"  uv run python src/experiments/mmlu_eval.py --arms all"
+            f"  uv run python src/eval/capabilities/mmlu_eval.py --arms all"
             + (" --nothink" if mode == "nothink" else "")
         )
 
@@ -554,7 +554,7 @@ def main(
         raise SystemExit(
             f"Baseline arm {baseline_arm!r} has no records under "
             f"{Path(str(cfg.output_dir)) / mode}. Every comparison is against it, so run "
-            f"it first:\n  uv run python src/experiments/mmlu_eval.py --arms {baseline_arm}"
+            f"it first:\n  uv run python src/eval/capabilities/mmlu_eval.py --arms {baseline_arm}"
             + (" --nothink" if nothink else "")
         )
 

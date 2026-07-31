@@ -58,7 +58,7 @@ subset:
   # cache-safe: the subset is a seeded superset, so existing generations still hit.
   per_subject: 10
   subjects: null          # null = all 57
-  # See src/mmlu.py: MMLU's answer key is not uniform over positions, so an unshuffled run
+  # See src/eval/capabilities/mmlu.py: MMLU's answer key is not uniform over positions, so an unshuffled run
   # rewards a model that always picks C. Seeded from the uid, so it is identical across
   # arms and stable when per_subject changes.
   shuffle_choices: true

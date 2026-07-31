@@ -10,10 +10,10 @@ Self-contained: nothing here imports the rest of the repo, and nothing in the re
 
 ```bash
 # offline: no API key, no spend, ~15s - builds items, generates, judges, renders all 3 plots
-uv run python -m constieval.cli run --config smoke.yaml
+uv run python -m src.eval.constieval.cli run --config smoke.yaml
 
 # the real thing: two models, one frozen item set, one bundle
-uv run python -m constieval.cli study --arms "base=base.yaml,finetuned=compare.yaml" --name qwen36
+uv run python -m src.eval.constieval.cli study --arms "base=base.yaml,finetuned=compare.yaml" --name qwen36
 ```
 
 ---
@@ -104,7 +104,7 @@ scenarios written for one clause are not twelve independent observations.
 There is **no gold set**. A cheap judge earns trust by cross-check instead:
 
 ```bash
-uv run python -m constieval.cli judge_agreement --run-dir <run> \
+uv run python -m src.eval.constieval.cli judge_agreement --run-dir <run> \
   --reference anthropic/claude-sonnet-4.5 --n 120
 ```
 
@@ -136,7 +136,7 @@ constieval/
 ## Cost
 
 ```bash
-uv run python -m constieval.cli estimate --config base.yaml --arms 2
+uv run python -m src.eval.constieval.cli estimate --config base.yaml --arms 2
 ```
 
 **~$3.70** for two models: $0.09 item generation (once, cached), $2.79 target tokens, $0.78

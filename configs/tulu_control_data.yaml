@@ -1,5 +1,5 @@
 # ABOUTME: Data config for the 0%-synthetic control arm: a 1.5M-token sample of Tulu 3.
-# ABOUTME: Run: uv run python src/experiments/prepare_tulu.py --config configs/tulu_control_data.yaml
+# ABOUTME: Run: uv run python src/data/prepare_tulu.py --config configs/tulu_control_data.yaml
 
 seed: 0
 dataset: "allenai/tulu-3-sft-mixture"

@@ -58,8 +58,8 @@ transformers downgrade.
 - `synthdoc/` self-contained synthetic-document pipeline (see above); `synthdoc/control/` its config + prompts.
 - `constieval/` self-contained constitution-internalization eval suite (Tier A). Measures whether a
   checkpoint *internalized* the constitution or memorized its surface behaviors, at every checkpoint,
-  without a downstream training run. `uv run python -m constieval.cli run --config smoke.yaml --smoke`
-  runs it offline in ~10s with no API key. See `constieval/README.md`.
+  without a downstream training run. `uv run python -m src.eval.constieval.cli run --config smoke.yaml --smoke`
+  runs it offline in ~10s with no API key. See `src/eval/constieval/README.md`.
 - `src/` reusable code (`llm.py`, `prompts.py`, `utils.py`); `src/experiments/` scripts.
 - `configs/` OmegaConf YAML for every step.
 - `scripts/` remote drivers (`run_eval.sh`, `serve_lora.sh`, `run_inspect_leaking.sh`,
@@ -224,7 +224,7 @@ The eval harness (vendored `third_party/agentic-misalignment/`) is patched with 
 To train it yourself:
 ```bash
 # thinking-format (recommended): reasoning preserved
-python src/experiments/train_lora.py --config configs/train_lora_thinking.yaml
+python scripts/train_lora.py --config configs/train_lora_thinking.yaml
 # (non-thinking baseline arm: configs/train_lora.yaml)
 ```
 Key config: r=32, 2 epochs, batch 4 × grad-accum 4, max_seq_len 2048, `assistant_only_loss: false`
@@ -341,7 +341,7 @@ the public Arena leaderboard — no submission, no Elo.
 
 Full artifacts (answers, judgments, metrics, report, figures) on HF:
 [`LASR-Callum/qwen36-27b-capability-eval-arena-hard`](https://huggingface.co/datasets/LASR-Callum/qwen36-27b-capability-eval-arena-hard).
-GDM-style figure: `src/plot_scripts/plot_lmsys_winrate.py` (reads the latest report).
+GDM-style figure: `scratch/reports/plot_lmsys_winrate.py` (reads the latest report).
 Full detail in `LOG.md` (2026-07-31 entry).
 
 ### Setup
@@ -360,12 +360,12 @@ gotcha, judging order, publishing layout, cost model). Short version:
 
 ```bash
 uv run python scripts/runpod_capability.py up      # one pod PER ARM is the fast layout
-uv run python src/experiments/capability_gen.py --arm <arm> --stage 150 --creative 0 \
+uv run python src/eval/capabilities/capability_gen.py --arm <arm> --stage 150 --creative 0 \
     --endpoint https://<pod>-8000.proxy.runpod.net/v1   # wrap in retries; eyeball samples
-uv run python src/experiments/capability_judge.py --arm arm_b_synth10 --stage 150  # baseline/A-vs-A FIRST
-uv run python src/experiments/capability_judge.py --arm <arm> --stage 150          # serialized, not parallel
-uv run python src/experiments/capability_report.py                  # CIs + figures + md mirror
-uv run python src/plot_scripts/plot_lmsys_winrate.py                # GDM-style dose-response figure
+uv run python src/eval/capabilities/capability_judge.py --arm arm_b_synth10 --stage 150  # baseline/A-vs-A FIRST
+uv run python src/eval/capabilities/capability_judge.py --arm <arm> --stage 150          # serialized, not parallel
+uv run python src/eval/capabilities/capability_report.py                  # CIs + figures + md mirror
+uv run python scratch/reports/plot_lmsys_winrate.py                # GDM-style dose-response figure
 uv run python scripts/runpod_capability.py down --pod <id>          # the moment each arm finishes
 ```
 
@@ -438,8 +438,8 @@ uv run python scripts/runpod_capability.py status --pod <id>
 scripts/run_mmlu_arms.sh https://<pod>-8000.proxy.runpod.net/v1
 
 # ... or drive the steps yourself
-uv run python src/experiments/mmlu_eval.py --arms all --endpoint <url>
-uv run python src/experiments/mmlu_report.py
+uv run python src/eval/capabilities/mmlu_eval.py --arms all --endpoint <url>
+uv run python src/eval/capabilities/mmlu_report.py
 
 # 3. ALWAYS tear the pod down
 uv run python scripts/runpod_capability.py down --pod <id>

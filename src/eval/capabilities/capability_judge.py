@@ -1,5 +1,5 @@
 # ABOUTME: Drive Arena-Hard pairwise judging of one capability-eval arm against arm A,
-# ABOUTME: with staged sampling. Run: uv run python src/experiments/capability_judge.py --arm arm_d_synth40
+# ABOUTME: with staged sampling. Run: uv run python src/eval/capabilities/capability_judge.py --arm arm_d_synth40
 
 """Pairwise judging for the capability regression eval.
 
@@ -22,8 +22,8 @@ that well, the reference answer is weak and every comparison degrades. Our candi
 ~27B models, so the judge has to be clearly stronger than what it is judging. This
 dual-judges 100 questions and reports agreement, win-rate gap and swap consistency.
 
-    uv run python src/experiments/capability_judge.py --arm arm_b_synth10 --stage 150
-    uv run python src/experiments/capability_judge.py --mode validate
+    uv run python src/eval/capabilities/capability_judge.py --arm arm_b_synth10 --stage 150
+    uv run python src/eval/capabilities/capability_judge.py --mode validate
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ from omegaconf import DictConfig, OmegaConf
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.capability_stats import (  # noqa: E402
+from src.eval.capabilities.capability_stats import (  # noqa: E402
     battles_from_judgments,
     per_prompt_scores,
     win_tie_loss,

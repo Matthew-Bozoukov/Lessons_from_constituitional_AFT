@@ -27,7 +27,7 @@ import fire
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from constieval.scripts.runpod import _call  # noqa: E402
+from src.eval.constieval.scripts.runpod import _call  # noqa: E402
 
 DEFAULT_IMAGE = "runpod/pytorch:0.7.0-dev-cu1281-torch271-ubuntu2204"
 DEFAULT_GPU = "NVIDIA H100 80GB HBM3"

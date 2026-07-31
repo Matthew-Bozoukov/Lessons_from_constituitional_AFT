@@ -45,7 +45,7 @@ from typing import Any, Iterable, Sequence
 
 import numpy as np
 
-from src.capability_metrics import split_think
+from src.eval.capabilities.capability_metrics import split_think
 
 LETTERS = "ABCD"
 

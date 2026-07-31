@@ -1,5 +1,5 @@
 # ABOUTME: QLoRA SFT of Qwen3-32B on the difficult-advice dataset via TRL SFTTrainer.
-# ABOUTME: Runs on a GPU instance: python src/experiments/train_lora.py --config configs/train_lora.yaml
+# ABOUTME: Runs on a GPU instance: python scripts/train_lora.py --config configs/train_lora.yaml
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def _model_class(model_id: str, trust_remote_code: bool = False):
 
     Qwen3.6-27B is a hybrid vision-language model: loading it with
     `AutoModelForCausalLM` silently drops the vision tower and mismatches the
-    checkpoint. The same inspection is used by `constieval.scripts.merge_lora`, so a
+    checkpoint. The same inspection is used by `src.eval.constieval.scripts.merge_lora`, so a
     checkpoint trained here merges back with the identical class.
 
     Args:

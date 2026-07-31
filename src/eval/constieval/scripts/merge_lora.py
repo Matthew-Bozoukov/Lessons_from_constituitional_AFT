@@ -8,7 +8,7 @@ Qwen3.6-27B is an image-text-to-text architecture, so it loads through
 at runtime through vLLM's LoRA path is not something to rely on. Merging sidesteps both:
 the output is an ordinary checkpoint that vLLM serves with no adapter flags at all.
 
-    uv run python -m constieval.scripts.merge_lora \\
+    uv run python -m src.eval.constieval.scripts.merge_lora \\
         --base Qwen/Qwen3.6-27B \\
         --adapter matboz/qwen3.6-27b-difficult-advice-tulu-lora \\
         --out ./merged-qwen36-difficult-advice

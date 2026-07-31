@@ -1,5 +1,5 @@
 # ABOUTME: Run the MMLU subset against one or more served arms and grade the answers.
-# ABOUTME: Run: uv run python src/experiments/mmlu_eval.py --arms all --endpoint <url>
+# ABOUTME: Run: uv run python src/eval/capabilities/mmlu_eval.py --arms all --endpoint <url>
 
 """MMLU generation + grading for the capability regression eval.
 
@@ -25,11 +25,11 @@ models under test are thinking models:
   silently mixing two prompt formats into one accuracy number.
 
     # every trained arm, against a RunPod-served endpoint
-    uv run python src/experiments/mmlu_eval.py --arms all \
+    uv run python src/eval/capabilities/mmlu_eval.py --arms all \
         --endpoint https://<pod>-8000.proxy.runpod.net/v1
 
     # one arm, quick wiring check (2 questions per subject)
-    uv run python src/experiments/mmlu_eval.py --arms arm_base --smoke
+    uv run python src/eval/capabilities/mmlu_eval.py --arms arm_base --smoke
 """
 
 from __future__ import annotations
@@ -45,8 +45,8 @@ from openai import OpenAI
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.llm import map_threaded  # noqa: E402
-from src.mmlu import (  # noqa: E402
+from src.openrouter import map_threaded  # noqa: E402
+from src.eval.capabilities.mmlu import (  # noqa: E402
     build_prompt,
     build_subset,
     load_split,
@@ -407,7 +407,7 @@ def main(
             f"parse {r['parse_rate']:.1%}  trunc {r['truncation_rate']:.1%}"
         )
     print("\nBuild the comparison report with:")
-    print(f"  uv run python src/experiments/mmlu_report.py --config {config}"
+    print(f"  uv run python src/eval/capabilities/mmlu_report.py --config {config}"
           + (" --nothink" if nothink else ""))
 
 

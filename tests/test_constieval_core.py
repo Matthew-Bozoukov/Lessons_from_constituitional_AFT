@@ -5,11 +5,11 @@ from __future__ import annotations
 
 import pytest
 
-from constieval.core.hashing import canonical, stable_hash, stream_rng
-from constieval.core.parsing import ParseError, coerce_score, extract_json, parse_verdict, split_thinking
-from constieval.core.stats import agreement, bootstrap_mean, cohens_kappa, paired_delta, wilson
-from constieval.core.store import COLUMNS, ResultsStore, RunContext, ScoreRow, build_rows
-from constieval.core.types import Item, Verdict, condition_label, make_item_id
+from src.eval.constieval.core.hashing import canonical, stable_hash, stream_rng
+from src.eval.constieval.core.parsing import ParseError, coerce_score, extract_json, parse_verdict, split_thinking
+from src.eval.constieval.core.stats import agreement, bootstrap_mean, cohens_kappa, paired_delta, wilson
+from src.eval.constieval.core.store import COLUMNS, ResultsStore, RunContext, ScoreRow, build_rows
+from src.eval.constieval.core.types import Item, Verdict, condition_label, make_item_id
 
 
 def item(**kwargs) -> Item:
@@ -106,7 +106,7 @@ class TestStore:
         assert all(r.recipe == "baseline" and r.itemset_id == "is_x" for r in rows)
 
     def test_generation_error_propagates_to_rows(self):
-        from constieval.core.types import Completion
+        from src.eval.constieval.core.types import Completion
 
         ctx = RunContext(run_id="r1", recipe="baseline")
         rows = build_rows(
@@ -231,11 +231,11 @@ class TestEstimate:
     """
 
     def test_counts_match_a_real_build(self, tmp_path):
-        from constieval.config import load_config
-        from constieval.core.cache import CacheConfig, CallCache
-        from constieval.core.llm import CachedLLM, EchoLLM
-        from constieval.estimate import estimate
-        from constieval.items.itemset import build_itemset, resolve_clause_set
+        from src.eval.constieval.config import load_config
+        from src.eval.constieval.core.cache import CacheConfig, CallCache
+        from src.eval.constieval.core.llm import CachedLLM, EchoLLM
+        from src.eval.constieval.estimate import estimate
+        from src.eval.constieval.items.itemset import build_itemset, resolve_clause_set
 
         cfg = load_config("smoke.yaml", {"itemset.dir": str(tmp_path)})
         llm = CachedLLM(inner=EchoLLM(), cache=CallCache(CacheConfig(enabled=False)))
@@ -247,8 +247,8 @@ class TestEstimate:
         assert projected.counts["judge calls per arm"] > 0
 
     def test_item_generation_is_charged_once(self):
-        from constieval.config import load_config
-        from constieval.estimate import estimate
+        from src.eval.constieval.config import load_config
+        from src.eval.constieval.estimate import estimate
 
         cfg = load_config("base.yaml")
         one, two = estimate(cfg, arms=1), estimate(cfg, arms=2)

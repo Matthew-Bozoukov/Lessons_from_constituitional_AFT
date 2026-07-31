@@ -8,7 +8,7 @@ import math
 import numpy as np
 import pytest
 
-from src.capability_metrics import (
+from src.eval.capabilities.capability_metrics import (
     degeneracy_metrics,
     is_refusal,
     pattern_frequencies,
@@ -16,7 +16,7 @@ from src.capability_metrics import (
     split_think,
     style_features,
 )
-from src.capability_stats import (
+from src.eval.capabilities.capability_stats import (
     battles_from_judgments,
     evaluate_arm,
     fit_logistic,

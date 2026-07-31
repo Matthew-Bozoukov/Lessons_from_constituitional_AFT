@@ -59,7 +59,7 @@ Boot failure modes seen in practice:
 ### 2. Generate — with retry wrapper, always
 
 ```bash
-uv run python src/experiments/capability_gen.py --config configs/capability_eval.yaml \
+uv run python src/eval/capabilities/capability_gen.py --config configs/capability_eval.yaml \
   --arm arm_c_synth20 --stage 150 --creative 0 \
   --endpoint https://<pod>-8000.proxy.runpod.net/v1
 ```
@@ -88,7 +88,7 @@ loss and judging it wastes money on a serving artifact.
 ### 4. Judge — serialized, baseline first
 
 ```bash
-uv run python src/experiments/capability_judge.py --config configs/capability_eval.yaml \
+uv run python src/eval/capabilities/capability_judge.py --config configs/capability_eval.yaml \
   --arm <arm> --stage 150
 ```
 
@@ -118,8 +118,8 @@ model", not the formal non-inferiority claim. Say which one you're claiming.
 ### 6. Report + figures
 
 ```bash
-uv run python src/experiments/capability_report.py    # CIs, style control, md mirror
-uv run python src/plot_scripts/plot_lmsys_winrate.py  # GDM-style single-line figure
+uv run python src/eval/capabilities/capability_report.py    # CIs, style control, md mirror
+uv run python scratch/reports/plot_lmsys_winrate.py  # GDM-style single-line figure
 ```
 
 Report dir (`output/capability_eval/report/<ts>/`) contains:

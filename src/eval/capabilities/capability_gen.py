@@ -1,5 +1,5 @@
 # ABOUTME: Generate Arena-Hard answers for one capability-eval arm from a served vLLM
-# ABOUTME: endpoint. Run: uv run python src/experiments/capability_gen.py --arm arm_a_synth00
+# ABOUTME: endpoint. Run: uv run python src/eval/capabilities/capability_gen.py --arm arm_a_synth00
 
 """Candidate answer generation for the capability regression eval.
 
@@ -25,7 +25,7 @@ Answers are written to the vendored tree (where the judge looks) *and* mirrored 
 
 Run one arm at a time, against whatever that arm's adapter is currently served as:
 
-    uv run python src/experiments/capability_gen.py \
+    uv run python src/eval/capabilities/capability_gen.py \
         --config configs/capability_eval.yaml --arm arm_a_synth00 --served_model arm_a_synth00
 """
 
@@ -47,13 +47,13 @@ from openai import OpenAI
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.capability_metrics import (  # noqa: E402
+from src.eval.capabilities.capability_metrics import (  # noqa: E402
     degeneracy_metrics,
     pattern_frequencies,
     split_think,
     style_features,
 )
-from src.llm import map_threaded  # noqa: E402
+from src.openrouter import map_threaded  # noqa: E402
 from src.utils import read_jsonl, timestamp, write_run_meta  # noqa: E402
 
 

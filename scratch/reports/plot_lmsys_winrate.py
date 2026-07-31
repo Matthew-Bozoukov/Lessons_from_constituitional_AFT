@@ -9,7 +9,7 @@ The matched arms (B 10% -> C 20% -> D 40%) form the line; arm A (0%) is drawn as
 detached open marker because its training recipe differs (2 epochs, packing on) and
 connecting it would draw a dose-response claim the design cannot support.
 
-    uv run python src/plot_scripts/plot_lmsys_winrate.py
+    uv run python scratch/reports/plot_lmsys_winrate.py
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
-BLUE = "#2a78d6"   # categorical slot 1 (constieval/plots_theme.py)
+BLUE = "#2a78d6"   # categorical slot 1 (src/eval/constieval/plots_theme.py)
 INK = "#3a3a3a"
 MUTED = "#8a8a8a"
 

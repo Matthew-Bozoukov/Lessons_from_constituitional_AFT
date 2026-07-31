@@ -9,7 +9,7 @@ output_dir: output/constieval
 clause_set: principles_v2
 
 itemset:
-  dir: output/constieval/itemsets
+  dir: output/src/eval/constieval/itemsets
   id: is_4ffc1cf9a0b9
   include_held_out: true
   domains:

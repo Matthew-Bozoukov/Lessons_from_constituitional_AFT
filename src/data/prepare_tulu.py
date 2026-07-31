@@ -1,5 +1,5 @@
 # ABOUTME: Build a token-budgeted SFT dataset from Tulu 3 for the 0%-synthetic control arm.
-# ABOUTME: Run: uv run python src/experiments/prepare_tulu.py --config configs/tulu_control_data.yaml
+# ABOUTME: Run: uv run python src/data/prepare_tulu.py --config configs/tulu_control_data.yaml
 
 """Sample Tulu 3 down to an exact *token* budget.
 

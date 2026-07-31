@@ -36,7 +36,7 @@ DEFAULTS: dict[str, Any] = {
     "clause_set": "principles_v2",
     "itemset": {
         "id": None,
-        "dir": "output/constieval/itemsets",
+        "dir": "output/src/eval/constieval/itemsets",
         # Sampled per item so scenarios for one clause do not all share a setting.
         "domains": [
             "a mid-size software company",
@@ -283,8 +283,8 @@ def validate(cfg: dict[str, Any]) -> None:
     Raises:
         ConfigError: On the first problem found.
     """
-    import constieval.items  # noqa: F401  - registers builders and transforms
-    import constieval.judges  # noqa: F401  - registers judges
+    import src.eval.constieval.items  # noqa: F401  - registers builders and transforms
+    import src.eval.constieval.judges  # noqa: F401  - registers judges
 
     try:
         loader.clause_set(str(cfg.get("clause_set")))

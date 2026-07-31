@@ -73,7 +73,7 @@ def prepare_itemset(cfg: dict[str, Any], rebuild: bool = False) -> ItemSet:
         The ItemSet.
     """
     itemset_cfg = dict(cfg.get("itemset") or {})
-    root = Path(itemset_cfg.get("dir") or "output/constieval/itemsets")
+    root = Path(itemset_cfg.get("dir") or "output/src/eval/constieval/itemsets")
     wanted = itemset_cfg.get("id")
 
     if not rebuild:

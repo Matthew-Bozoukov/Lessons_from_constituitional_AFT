@@ -1,4 +1,4 @@
-# ABOUTME: Command line entry point. Run with `uv run python -m constieval.cli <command>`.
+# ABOUTME: Command line entry point. Run with `uv run python -m src.eval.constieval.cli <command>`.
 # ABOUTME: Commands: items, run, report, plot, validate, clauses, registry.
 
 from __future__ import annotations
@@ -295,7 +295,7 @@ class CLI:
     def report(
         self,
         results: str,
-        out: str = "output/constieval/report",
+        out: str = "output/src/eval/constieval/report",
         recipes: str | None = None,
         plots: bool = True,
     ) -> str:
@@ -324,7 +324,7 @@ class CLI:
         self,
         name: str,
         results: str,
-        out: str = "output/constieval/report/figures",
+        out: str = "output/src/eval/constieval/report/figures",
         recipes: str | None = None,
         axis: str = "compliance",
     ) -> str:
@@ -450,9 +450,9 @@ class CLI:
 
     def registry(self) -> str:
         """List every registered plugin, by extension point."""
-        import constieval.items  # noqa: F401
-        import constieval.judges  # noqa: F401
-        import constieval.plots  # noqa: F401
+        import src.eval.constieval.items  # noqa: F401
+        import src.eval.constieval.judges  # noqa: F401
+        import src.eval.constieval.plots  # noqa: F401
 
         return "\n".join(
             f"{kind}:\n" + "\n".join(f"  {n}" for n in registry.names(kind))
@@ -472,7 +472,7 @@ class CLI:
 
 
 def main() -> None:
-    """Entry point for `python -m constieval.cli`."""
+    """Entry point for `python -m src.eval.constieval.cli`."""
     fire.Fire(CLI)
 
 

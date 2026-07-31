@@ -28,7 +28,7 @@ echo "=== 1/3 generate: ${ARM} ==="
 # Assumes vLLM is already serving this arm under this name (scripts/serve_lora.sh) and,
 # when running from the PC, that the SSH tunnel to :8000 is up in a BACKGROUND shell —
 # a tunnel started inside a foreground call dies when that call returns.
-uv run python src/experiments/capability_gen.py --config "$CONFIG" --arm "$ARM"
+uv run python src/eval/capabilities/capability_gen.py --config "$CONFIG" --arm "$ARM"
 
 cat <<'EOF'
 
@@ -49,9 +49,9 @@ if [[ "$ARM" == "$BASELINE" ]]; then
 fi
 
 echo "=== 3/3 judge: ${ARM} vs ${BASELINE} (stage=${STAGE:-full}) ==="
-uv run python src/experiments/capability_judge.py \
+uv run python src/eval/capabilities/capability_judge.py \
   --config "$CONFIG" --arm "$ARM" --stage "$STAGE"
 
 echo
 echo "=== DONE ${ARM}. Rebuild the report with: ==="
-echo "  uv run python src/experiments/capability_report.py --config ${CONFIG}"
+echo "  uv run python src/eval/capabilities/capability_report.py --config ${CONFIG}"

@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import pytest
 
-from constieval.config import ConfigError, load_config, validate
-from constieval.control import loader
+from src.eval.constieval.config import ConfigError, load_config, validate
+from src.eval.constieval.control import loader
 
 
 @pytest.fixture(scope="module")

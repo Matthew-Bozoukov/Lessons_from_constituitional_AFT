@@ -3,7 +3,7 @@
 
 """One pod, every arm, served concurrently as vLLM LoRA modules.
 
-The existing `constieval.scripts.runpod` helper merges a *single* adapter into the base
+The existing `src.eval.constieval.scripts.runpod` helper merges a *single* adapter into the base
 and serves the merged copy. That is the right shape for a one-arm eval and the wrong
 shape here: three arms would mean either three pods (three ~55GB downloads, three boots,
 three times the bill) or three sequential merges on one pod, which needs ~216GB of disk
@@ -34,7 +34,7 @@ from omegaconf import OmegaConf
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from constieval.scripts.runpod import _call  # noqa: E402
+from src.eval.constieval.scripts.runpod import _call  # noqa: E402
 
 DEFAULT_IMAGE = "runpod/pytorch:0.7.0-dev-cu1281-torch271-ubuntu2204"
 DEFAULT_GPU = "NVIDIA H100 80GB HBM3"

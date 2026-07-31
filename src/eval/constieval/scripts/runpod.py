@@ -4,12 +4,12 @@
 """Stand up arm B's serving endpoint on RunPod.
 
     export RUNPOD_API_KEY=rpa_...            # or put it in .env
-    uv run python -m constieval.scripts.runpod up --gpu "NVIDIA H100 80GB HBM3"
-    uv run python -m constieval.scripts.runpod status --pod <id>
-    uv run python -m constieval.scripts.runpod down --pod <id>      # ALWAYS do this
+    uv run python -m src.eval.constieval.scripts.runpod up --gpu "NVIDIA H100 80GB HBM3"
+    uv run python -m src.eval.constieval.scripts.runpod status --pod <id>
+    uv run python -m src.eval.constieval.scripts.runpod down --pod <id>      # ALWAYS do this
 
 The pod boots, installs vLLM + peft, merges `adapter` into `base` with
-`constieval.scripts.merge_lora`, and serves the merged weights on port 8000. Merging rather
+`src.eval.constieval.scripts.merge_lora`, and serves the merged weights on port 8000. Merging rather
 than serving the adapter at runtime is deliberate: vLLM's LoRA path is unproven for Qwen3.6's
 hybrid vision-language architecture, and a merged checkpoint is just an ordinary model.
 
@@ -159,12 +159,12 @@ def up(
         f"base_url: {url}\n"
         f"model:    {served_name}\n\n"
         f"Boot takes ~25 min (download ~55GB, merge, load). Poll with:\n"
-        f"  uv run python -m constieval.scripts.runpod status --pod {pod_id}\n\n"
+        f"  uv run python -m src.eval.constieval.scripts.runpod status --pod {pod_id}\n\n"
         f"Then run arm B:\n"
-        f"  uv run python -m constieval.cli run --config qwen36_lora.yaml \\\n"
+        f"  uv run python -m src.eval.constieval.cli run --config qwen36_lora.yaml \\\n"
         f"    --base-url {url} --model {served_name}\n\n"
         f"THEN TEAR IT DOWN - it bills by the second:\n"
-        f"  uv run python -m constieval.scripts.runpod down --pod {pod_id}"
+        f"  uv run python -m src.eval.constieval.scripts.runpod down --pod {pod_id}"
     )
 
 
@@ -217,9 +217,9 @@ def train_up(
     return (
         f"pod: {pod_id}\n\n"
         f"Wait for SSH, then rsync the repo to /root/work:\n"
-        f"  uv run python -m constieval.scripts.runpod ssh_addr --pod {pod_id}\n\n"
+        f"  uv run python -m src.eval.constieval.scripts.runpod ssh_addr --pod {pod_id}\n\n"
         f"TEAR IT DOWN when the adapter is pulled - it bills by the second:\n"
-        f"  uv run python -m constieval.scripts.runpod down --pod {pod_id}"
+        f"  uv run python -m src.eval.constieval.scripts.runpod down --pod {pod_id}"
     )
 
 

@@ -28,7 +28,7 @@ print('  serving:', [m['id'] for m in json.load(sys.stdin)['data']])
 echo
 echo "=== 2/3 generate + grade: ${ARMS} ==="
 # shellcheck disable=SC2086
-uv run python src/experiments/mmlu_eval.py \
+uv run python src/eval/capabilities/mmlu_eval.py \
   --config "$CONFIG" --arms "$ARMS" --endpoint "$ENDPOINT" $EXTRA
 
 cat <<'EOF'
@@ -44,4 +44,4 @@ EOF
 echo
 echo "=== 3/3 report ==="
 # shellcheck disable=SC2086
-uv run python src/experiments/mmlu_report.py --config "$CONFIG" $EXTRA
+uv run python src/eval/capabilities/mmlu_report.py --config "$CONFIG" $EXTRA
