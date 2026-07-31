@@ -9,6 +9,7 @@ import {
   ScanSearch,
 } from "lucide-react";
 import { MetricTiles } from "./components/MetricTiles";
+import { MockBadge, MockDataBanner } from "./components/MockDataBanner";
 import { entries, entriesOfType, humanize } from "@/lib/content";
 
 const surfaces = [
@@ -67,9 +68,20 @@ export default function Home() {
     evals.find((entry) => entry.training_stage === "sft" && entry.status === "complete") ||
     evals.find((entry) => entry.status === "complete");
   const recent = entries.slice(0, 6);
+  // The featured finding and the headline eval tiles are the most dangerous
+  // place a fixture can hide: a reader sees a number before any context.
+  const featuredMock = [latestFinding, latestCompleteEval, ...recent].some(
+    (entry) => entry?.mock === true,
+  );
+  const mockCount = entries.filter((entry) => entry.mock === true).length;
 
   return (
     <main>
+      {featuredMock && (
+        <div className="page-container mock-banner-wrap">
+          <MockDataBanner scope="some" />
+        </div>
+      )}
       <section className="compact-hero">
         <div className="compact-hero-grid" aria-hidden="true" />
         <div className="page-container compact-hero-inner">
@@ -100,7 +112,14 @@ export default function Home() {
               <Link href="/datasets"><strong>{datasets.length}</strong><span>Datasets</span></Link>
               <Link href="/petri"><strong>{petriRuns.length}</strong><span>Petri runs</span></Link>
             </div>
-            <small>Sample records are clearly marked demonstration data.</small>
+            {/* State the real/fixture split in the counts themselves, rather
+                than a blanket reassurance that fixtures are "clearly marked" -
+                the counts above include them either way. */}
+            <small>
+              {mockCount === 0
+                ? "Every record is a real research result."
+                : `${entries.length - mockCount} of ${entries.length} records are real research results; ${mockCount} are interface fixtures, marked MOCK.`}
+            </small>
           </div>
         </div>
       </section>
@@ -118,6 +137,7 @@ export default function Home() {
                   {humanize(latestFinding.status)}
                 </span>
                 <small>Latest finding · {latestFinding.date}</small>
+                {latestFinding.mock && <MockBadge />}
               </div>
               <h3>{latestFinding.title}</h3>
               <p>{latestFinding.summary}</p>
@@ -130,15 +150,31 @@ export default function Home() {
                 <div>
                   <span className="eyebrow">Latest compatible signal</span>
                   <h3>{latestCompleteEval.checkpoint_id}</h3>
+                  {latestCompleteEval.mock && <MockBadge />}
                 </div>
                 <Link href={`/entry/${latestCompleteEval.slug}`}>Open run <ArrowRight size={14} /></Link>
               </div>
               <MetricTiles metrics={latestCompleteEval.metrics} limit={3} />
+              {/* Only the fields this run actually declares. Real runs mostly
+                  do not carry a suite/version/seed triple, and rendering the
+                  labels regardless produced a bare "seed" with nothing after
+                  it, which reads as missing data rather than as inapplicable. */}
               <div className="compatibility-line">
-                <code>{latestCompleteEval.eval_suite}</code>
-                <span>{latestCompleteEval.eval_version}</span>
-                <span>{latestCompleteEval.dataset_version}</span>
-                <span>seed {latestCompleteEval.seed}</span>
+                {latestCompleteEval.eval_suite && (
+                  <code>{latestCompleteEval.eval_suite}</code>
+                )}
+                {latestCompleteEval.eval_version && (
+                  <span>{latestCompleteEval.eval_version}</span>
+                )}
+                {latestCompleteEval.dataset_version && (
+                  <span>{latestCompleteEval.dataset_version}</span>
+                )}
+                {latestCompleteEval.seed !== undefined && (
+                  <span>seed {latestCompleteEval.seed}</span>
+                )}
+                {latestCompleteEval.git_commit && (
+                  <span>@{String(latestCompleteEval.git_commit).slice(0, 7)}</span>
+                )}
               </div>
             </div>
           )}

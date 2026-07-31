@@ -1,5 +1,0 @@
-[2026-07-18 14:22:11] step=760 loss=0.884 grad_norm=0.91 lr=1.10e-05
-[2026-07-18 14:23:02] step=780 loss=0.861 grad_norm=0.87 lr=1.04e-05
-[2026-07-18 14:23:53] step=800 loss=0.854 grad_norm=0.89 lr=9.80e-06
-[2026-07-18 14:24:44] checkpoint saved: post-sft-reasons-v1
-[2026-07-18 14:24:45] run complete

@@ -2,7 +2,7 @@
 
 The repository holds code, configuration and analysis. Datasets, generated
 corpora, evaluation outputs and caches live on Hugging Face — see the root
-`CLAUDE.md`. This document describes how the visualizer reads that data without
+`AGENTS.md`. This document describes how the visualizer reads that data without
 becoming slow, and what happens when the Hub is not there.
 
 ---
@@ -34,7 +34,6 @@ transfers less than the old page cost before it rendered.
 **Baked into the static build** — everything a *listing* needs:
 
 - entry frontmatter: title, date, status, tags, models, metrics, summary
-- the rendered Markdown body of each entry
 - Petri scenario seeds and run-level scores
 - one summary row per transcript (`transcript_index`)
 - dataset statistics: record count, splits, categories, average turns
@@ -42,6 +41,22 @@ transfers less than the old page cost before it rendered.
 
 Listing pages are fully static. `/`, `/logs`, `/evals`, `/models`, `/findings`
 and the `/petri` overview render from the baked index with no client-side fetch.
+
+**Read at prerender time from a per-entry sidecar** — content only one page shows:
+
+- the rendered Markdown body of each entry, in `lib/generated/bodies/<slug>.md`
+
+`lib/content.ts` is imported by every page, so anything in the index ships with
+every page. Only `/entry/[slug]` and `/petri` render a body, one at a time, so
+bodies live in sidecars that `entryBody()` in `lib/body.ts` reads during
+prerender. The body still ends up inlined in that page's static HTML; it just
+stops riding along on the other twenty-three.
+
+This mattered as soon as the corpus became real: the investigation write-ups run
+to several hundred lines each, and inlining them put **215.6 KB of prose** into
+the shared index, taking it to 290.6 KB against a 300 KB budget. Splitting them
+out brought the index back to **67.1 KB**. `lib/body.ts` must never be imported
+from a `"use client"` file — it uses `node:fs`.
 
 **Deferred to a runtime fetch** — everything a *single opened item* needs:
 
@@ -91,11 +106,26 @@ prevent.
 ### Why the build does not download bulk files
 
 The build fetches **only `manifest.json`** (39 KB for the run in this repo) and,
-when it needs an artifact listing, one tree API call. It never downloads
+when it needs an artifact listing, the tree API. It never downloads
 `transcripts.jsonl`. Transcript shards are published alongside the bulk export,
 so the browser fetches `transcripts/<id>.json` straight from the Hub's CDN.
 HF sets `access-control-allow-origin` on `resolve` URLs — verified against the
 live Hub and exercised in `tests/hf-source.test.mjs` — so no proxy is needed.
+
+The tree API caps a response at 1000 entries and continues through a
+`Link: rel="next"` header, so the listing follows that chain up to
+`HF_TREE_MAX_PAGES` pages and sets `truncated` when it stops early.
+**Directories count against that cap**: a repo with a deep tree can return a
+full page containing nothing but directory entries, so reading only the first
+page reports a repo full of files as having none. Measured against
+`LASR-Callum/agentic-misalignment-qwen3.6-27b-transcripts`: 6 pages, 2618 files,
+100.5 MB — one page returns 0 files. The tree endpoint does not send
+`x-repo-commit`; the resolved commit comes from the `manifest.json` fetch.
+
+Note that an artifact list is baked into the index, so a repo with thousands of
+files will not fit the 300 KB index budget as a flat asset list. Such a repo
+needs a `manifest.json` that names the handful of files worth linking, not a
+full tree listing.
 
 ---
 
@@ -116,10 +146,13 @@ scripts/index-content.mjs               build time
                                         public/generated-transcripts/<slug>/
                                         transcript_base = /generated-transcripts/<slug>
         │
-        ▼
-lib/generated/content-index.json        ~56 KB, baked into every page
-        │
-        ▼
+        ├──────────────────────────────▶ lib/generated/bodies/<slug>.md
+        │                                one Markdown sidecar per entry
+        ▼                                       │
+lib/generated/content-index.json                │  lib/body.ts, at prerender
+metadata only, baked into every page            ▼
+        │                                app/entry/[slug]/page.tsx
+        ▼                                app/petri/page.tsx
 app/components/PetriRunViewer.tsx       lib/lazy.ts fetches
 app/components/DatasetViewer.tsx        `${transcript_base}/${file}` on demand
 ```
@@ -135,8 +168,10 @@ URL differs.
 | `scripts/hf-source.mjs` | Build-time Hub client: cached fetch, token handling, graceful failure |
 | `scripts/index-content.mjs` | Builds the baked index and the lazy sidecars |
 | `lib/lazy.ts` | Client-side loader with an in-memory cache |
+| `lib/body.ts` | Prerender-time body reader. Server only — uses `node:fs` |
 | `lib/content.ts` | Types, including `PayloadSource` and `HfStatus` |
 | `.hf-cache/` | Build cache, gitignored |
+| `lib/generated/bodies/` | Per-entry Markdown sidecars, gitignored |
 | `public/generated-transcripts/` | Locally sharded transcripts, gitignored |
 
 ---
@@ -168,16 +203,62 @@ step, and an entry with no `hf_source` behaves exactly as before.
 
 ---
 
+## Mock data must declare itself
+
+Some entries are fabricated interface fixtures: they exist so the viewers can be
+built and reviewed without real data. A fixture that reads as a research result
+is the worst failure this site can have, so every fixture entry carries an
+explicit frontmatter flag:
+
+```yaml
+---
+mock: true
+---
+```
+
+`mock: true` renders an unmissable yellow banner above the content, a `MOCK`
+badge on the entry's listing card, and a tint on that card. Absent means real.
+
+The flag is **explicit on purpose**. It is not inferred from a `demo-data` tag,
+a `fictional-` model id, or a slug pattern, because every one of those can be
+forgotten or changed while the entry still contains invented numbers. A new
+fixture that omits the flag renders as real, so the flag is part of adding one.
+
+Two rules the code holds, both about not discrediting real evidence:
+
+- A page that shows **one** item scopes the warning to that item, not the
+  collection. Warning about a real run because a fixture exists elsewhere in the
+  corpus would undermine the evidence the banner exists to protect.
+- `/petri` picks a **non-mock** run explicitly rather than taking the first in
+  index order, so a fixture cannot become the flagship result the day one
+  happens to sort first.
+
+Fixtures are published to the Hub like anything else, so they exercise the same
+loading path as real data. Their dataset cards state `constitution: none`, mark
+`mock_data: true`, and say in the `experiment` field that nothing in them
+measures any model:
+
+| repo | what it backs |
+| --- | --- |
+| `LASR-Callum/2026-07-30-visualizer-mock-petri-audit` | the Petri viewer fixture |
+| `LASR-Callum/2026-07-30-visualizer-mock-dialogues` | the dataset browser fixture |
+
+Entries with no bulk payload at all - the fictional evals, logs and findings -
+are markdown only. There is nothing to fetch for them, so they carry the `mock`
+flag and no `hf_source`.
+
+---
+
 ## Publishing a dataset the visualizer can read
 
 The publisher lives with the other HF code, in
-`src/data/synthdoc/publish.py`, and is exposed as `uv run synthdoc publish`
-(run from the repository root). It reuses `huggingface_hub` the same way
-`src/data/synthdoc/snapshots.py` does.
+`experiments/teaching-claude-why/synthdoc/publish.py`, and is exposed as
+`synthdoc.cli publish`. It reuses `huggingface_hub` the same way
+`synthdoc/snapshots.py` does.
 
 ### 1. Write the dataset card
 
-The required fields come from the root `CLAUDE.md` and are **enforced** —
+The required fields come from the root `AGENTS.md` and are **enforced** —
 `CardFields` raises if any is missing, and `constitution` must be stated
 explicitly even when the answer is `none`. Keep the card in git next to the
 export, so the metadata is reviewed rather than retyped:
@@ -198,22 +279,20 @@ schema:
 provenance: The exact command that regenerates this.
 ```
 
-For a filled-in example see the MSM audit's `dataset-card.yaml`, in git history
-at commit `b38da52` under
-`experiments/vulnerabilities/exports/2026-07-29-msm-philosophy-spec-focused-discovery/`.
-Anything not in the required set is preserved verbatim under "Additional
-detail".
+See
+`experiments/vulnerabilities/exports/2026-07-29-msm-philosophy-spec-focused-discovery/dataset-card.yaml`
+for a filled-in example. Anything not in the required set is preserved verbatim
+under "Additional detail".
 
 ### 2. Publish
 
 ```bash
-# from the repository root; the export bundle is produced by
-# src/eval/vulnerabilities/petri/build_export.py and verified by verify_export.py
-uv run synthdoc publish \
+cd experiments/teaching-claude-why
+uv run python -m synthdoc.cli publish \
   --kind=petri \
-  --export=output/petri-exports/<yyyy-mm-dd>-<slug> \
-  --repo=<org>/<yyyy-mm-dd>-<slug> \
-  --card=output/petri-exports/<yyyy-mm-dd>-<slug>/dataset-card.yaml
+  --export=../vulnerabilities/exports/2026-07-29-msm-philosophy-spec-focused-discovery \
+  --repo=<org>/2026-07-29-msm-philosophy-spec-focused-discovery \
+  --card=../vulnerabilities/exports/2026-07-29-msm-philosophy-spec-focused-discovery/dataset-card.yaml
 ```
 
 It **dry-runs by default** and lists every file with its size; pass
@@ -255,6 +334,29 @@ exceeds a 300 KB budget.
 Public datasets need no token; the build works anonymously and that is the
 default path.
 
+**Every dataset this site reads is public, and that is a requirement, not a
+coincidence.** The browser fetches transcript shards and dataset chunks
+*directly* from the Hub with no credentials, so a non-public dataset would 404
+for every visitor no matter what the build could see. Anything the site displays
+must therefore be anonymously readable.
+
+Verified 2026-07-30 against the live Hub, with `--no-netrc` and no auth header:
+all nine `LASR-Callum` datasets report `private=false`, `gated=false`,
+`disabled=false`; manifests, transcript shards, dataset chunks, raw artifacts
+and the full 8.2 MB corpus all return `200` anonymously; and every response
+carries `access-control-allow-origin` echoing the request origin, which is what
+lets a deployed page fetch them. A build with `HF_TOKEN`,
+`HUGGING_FACE_HUB_TOKEN`, `HUGGINGFACEHUB_API_TOKEN` and `HF_HOME` all unset
+reports `token_present: false`, emits zero notices, and resolves every
+HF-backed entry to `ok`.
+
+To re-check after publishing something new:
+
+```bash
+curl -s --no-netrc -o /dev/null -w '%{http_code}\n' \
+  https://huggingface.co/datasets/<repo>/resolve/main/manifest.json
+```
+
 For a private dataset, `scripts/hf-source.mjs` reads `HF_TOKEN`,
 `HUGGING_FACE_HUB_TOKEN` or `HUGGINGFACEHUB_API_TOKEN` from the environment and
 sends it as a bearer header. On Netlify, set it as an environment variable in the
@@ -284,7 +386,9 @@ a SHA-256 of that tuple, containing the body, the `ETag` and the resolved commit
   the timestamp without re-downloading.
 - `HF_OFFLINE=1` uses cache only and never opens a socket.
 - Requests time out after `HF_TIMEOUT_MS` (default 20000), so a slow Hub cannot
-  hang a deploy.
+  hang a deploy. The timeout is **per request**, so a paginated listing is bounded
+  by `HF_TREE_MAX_PAGES × HF_TIMEOUT_MS` in the worst case; lower either if a
+  deploy needs a tighter ceiling.
 
 The directory is gitignored, so a developer's cache never leaks into a Netlify
 build and the two cannot disagree about what a floating revision means.
@@ -295,6 +399,7 @@ build and the two cannot disagree about what a floating revision means.
 | `HF_TOKEN` | unset | bearer token for private datasets |
 | `HF_CACHE_TTL_SECONDS` | `3600` | freshness window for floating revisions |
 | `HF_TIMEOUT_MS` | `20000` | per-request timeout |
+| `HF_TREE_MAX_PAGES` | `20` | tree pages to follow before reporting a truncated listing |
 | `HF_OFFLINE` | unset | cache-only, no network |
 
 ---
@@ -329,8 +434,10 @@ unreachable repo.
 
 `tests/hf-source.test.mjs` covers the client against a local stand-in for the
 Hub — URL construction, manifest fetch, pinned-revision cache short-circuit,
-`304` revalidation, offline mode, token redaction, and the four failure modes —
-plus two guarantees about the corpus itself:
+`304` revalidation, offline mode, token redaction, tree pagination (including a
+first page of directories only, the page cap, and refusing a `rel="next"` that
+points off-endpoint), and the four failure modes — plus two guarantees about the
+corpus itself:
 
 - no transcript body or judge summary may appear in the baked index
 - the baked index must stay under 300 KB

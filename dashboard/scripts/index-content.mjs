@@ -40,6 +40,8 @@ import {
 
 const outputDirectory = path.join(projectRoot, "lib", "generated");
 const outputFile = path.join(outputDirectory, "content-index.json");
+/** Per-entry Markdown sidecars, kept out of the shared index. */
+const bodyRoot = path.join(outputDirectory, "bodies");
 const publicAssetRoot = path.join(projectRoot, "public", "content-assets");
 const publicDatasetRoot = path.join(projectRoot, "public", "generated-datasets");
 const publicTranscriptRoot = path.join(projectRoot, "public", "generated-transcripts");
@@ -73,11 +75,34 @@ function rewriteAssetLinks(body, prefix) {
     .replace(/(<img[^>]+src=["'])\.\/(assets|artifacts)\//g, `$1${prefix}$2/`);
 }
 
+/**
+ * Write one entry's rendered Markdown to its own sidecar.
+ *
+ * The body used to live in `content-index.json`, which `lib/content.ts` imports
+ * and therefore every page in the site carries. With the fabricated fixtures
+ * replaced by the real investigation write-ups - several of them 400-800 lines -
+ * that meant every page shipped ~216 KB of prose it would never render, and the
+ * index came within 3% of its 300 KB budget.
+ *
+ * Only `/entry/[slug]` and `/petri` render a body, one at a time, and both are
+ * server components that prerender. So a body is a per-item payload in exactly
+ * the sense the Hugging Face split already established, and it belongs in a
+ * sidecar for the same reason.
+ */
+async function writeBody(slug, body) {
+  await fs.mkdir(bodyRoot, { recursive: true });
+  await fs.writeFile(path.join(bodyRoot, `${slug}.md`), body, "utf8");
+}
+
 async function copyEntryAssets(entryDirectory, type, slug) {
   const files = await walk(entryDirectory);
   const copied = [];
   for (const file of files) {
     if (file.endsWith(".md")) continue;
+    // The publish card describes the entry; it is not evidence a reader
+    // downloads. Excluded here for the same reason `hfAssets` excludes it, so
+    // both backends produce the same artifact list.
+    if (/^dataset-card\.(ya?ml|json)$/.test(path.basename(file))) continue;
     const relative = path.relative(entryDirectory, file);
     if (relative.startsWith("..")) continue;
     const destination = path.join(publicAssetRoot, type, slug, relative);
@@ -188,11 +213,30 @@ async function hfAssets(source, label) {
     warn(`${label}: could not list files (${listing.error})`);
     return [];
   }
+  if (listing.truncated) {
+    // Say so rather than presenting a partial list as complete: a reader has no
+    // way to tell a short artifact list from an exhaustive one.
+    warn(
+      `${label}: file listing truncated at ${listing.pages} pages ` +
+        `(${listing.files.length} files); raise HF_TREE_MAX_PAGES to list the rest`,
+    );
+  }
+  if (listing.files.length === 0) {
+    warn(`${label}: ${source.repo_id} listed no files at revision ${source.revision}`);
+  }
   return listing.files
-    .filter((file) => !/^(README\.md|\.gitattributes|manifest\.json)$/.test(file.path))
+    // The card, the card's source and the entry body are all already rendered on
+    // the page. Offering them again as downloads is noise, not evidence.
+    .filter(
+      (file) =>
+        !/^(README\.md|\.gitattributes|manifest\.json|index\.md|dataset-card\.(ya?ml|json))$/.test(
+          file.path,
+        ),
+    )
     // Per-transcript shards are an implementation detail of lazy loading, not
     // artifacts a reader downloads one by one.
     .filter((file) => !file.path.startsWith("transcripts/"))
+    .filter((file) => !file.path.startsWith("chunks/"))
     .map((file) => ({
       name: path.posix.basename(file.path),
       path: resolveUrl(source.repo_id, source.revision, file.path),
@@ -509,6 +553,8 @@ for (const file of markdownFiles) {
     parsed.data.title || titleFromMarkdown(parsed.content, path.basename(file, ".md")),
   );
 
+  await writeBody(slug, rewriteAssetLinks(parsed.content, assetPrefix));
+
   entries.push({
     ...normalize(parsed.data),
     id,
@@ -528,7 +574,10 @@ for (const file of markdownFiles) {
       parsed.data.metrics && typeof parsed.data.metrics === "object"
         ? normalize(parsed.data.metrics)
         : {},
-    body: rewriteAssetLinks(parsed.content, assetPrefix),
+    // `body` is deliberately NOT here. It lives in a per-slug sidecar under
+    // lib/generated/bodies/, because the index is imported by every page and
+    // only two server components ever render a body. See writeBody below.
+    body_bytes: Buffer.byteLength(rewriteAssetLinks(parsed.content, assetPrefix)),
     source_path: toPosix(path.relative(projectRoot, file)),
     assets,
     ...(hfStatus ? { hf: hfStatus } : {}),

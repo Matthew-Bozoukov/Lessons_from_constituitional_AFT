@@ -8,6 +8,7 @@ import {
   ScanSearch,
 } from "lucide-react";
 import { ResearchEntry, humanize } from "@/lib/content";
+import { MockBadge } from "./MockDataBanner";
 
 const icons = {
   logs: FlaskConical,
@@ -25,16 +26,17 @@ export function EntryCard({
   compact?: boolean;
 }) {
   const Icon = icons[entry.type];
+  const className = [compact ? "entry-card compact" : "entry-card", entry.mock && "is-mock"]
+    .filter(Boolean)
+    .join(" ");
   return (
-    <Link
-      className={compact ? "entry-card compact" : "entry-card"}
-      href={`/entry/${entry.slug}`}
-    >
+    <Link className={className} href={`/entry/${entry.slug}`}>
       <div className="entry-card-top">
         <span className={`type-chip ${entry.type}`}>
           <Icon size={13} />
           {humanize(entry.type)}
         </span>
+        {entry.mock && <MockBadge />}
         <span className={`status status-${entry.status}`}>{humanize(entry.status)}</span>
       </div>
       <div>

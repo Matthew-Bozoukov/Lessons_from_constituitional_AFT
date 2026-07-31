@@ -98,7 +98,19 @@ export function MetricExplorer({ entries }: { entries: ResearchEntry[] }) {
     }>;
 
   if (!compatibleGroups.length) {
-    return <div className="empty-state">No compatible structured eval group yet.</div>;
+    // Not a gap to be filled in: a stage comparison is only safe between runs
+    // that share an eval suite, version and dataset, and saying so is more
+    // useful than an empty chart implying the comparison exists.
+    return (
+      <div className="empty-state">
+        <strong>No stage comparison is available.</strong> This chart plots a
+        metric across training stages, which is only a valid comparison between
+        runs that declare the same <code>eval_suite</code>,{" "}
+        <code>eval_version</code> and <code>dataset_version</code>. No two runs
+        in this corpus do. Each run below reports its own instrument&rsquo;s
+        metrics; read them per run rather than against each other.
+      </div>
+    );
   }
 
   const [suite, version, dataset] = groupKey.split("|");

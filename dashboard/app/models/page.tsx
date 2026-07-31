@@ -1,14 +1,19 @@
 import type { Metadata } from "next";
 import { EntryCard } from "../components/EntryCard";
 import { MetricTiles } from "../components/MetricTiles";
-import { modelsInCorpus, humanize } from "@/lib/content";
+import { allMock, anyMock, modelsInCorpus, humanize } from "@/lib/content";
+import { MockBadge, MockDataBanner } from "../components/MockDataBanner";
 
 export const metadata: Metadata = { title: "Models" };
 
 export default function ModelsPage() {
   const models = modelsInCorpus();
+  // A dossier is a projection of its linked entries, so a model whose entire
+  // record set is fabricated is itself a fixture - including its model id.
+  const someMock = models.some(({ entries }) => anyMock(entries));
   return (
     <main className="page-container inner-page">
+      {someMock && <MockDataBanner scope="some" />}
       <header className="page-heading">
         <div>
           <span className="eyebrow">Generated dossiers</span>
@@ -31,7 +36,11 @@ export default function ModelsPage() {
               <div className="model-header">
                 <div>
                   <span className="model-glyph" aria-hidden="true">∷</span>
-                  <div><span className="eyebrow">Model family</span><h2>{id}</h2></div>
+                  <div>
+                    <span className="eyebrow">Model family</span>
+                    <h2>{id}</h2>
+                    {allMock(entries) && <MockBadge />}
+                  </div>
                 </div>
                 <div className="model-counts">
                   <span><strong>{entries.length}</strong> linked records</span>

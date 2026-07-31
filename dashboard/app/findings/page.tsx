@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { AlertTriangle, CheckCircle2, Lightbulb } from "lucide-react";
 import { EntryCard } from "../components/EntryCard";
 import { entriesOfType } from "@/lib/content";
+import { MockDataBanner } from "../components/MockDataBanner";
+import { allMock, anyMock } from "@/lib/content";
 
 export const metadata: Metadata = { title: "Findings" };
 
@@ -9,6 +11,9 @@ export default function FindingsPage() {
   const findings = entriesOfType("findings");
   return (
     <main className="page-container inner-page">
+      {anyMock(findings) && (
+        <MockDataBanner scope={allMock(findings) ? "all" : "some"} />
+      )}
       <header className="page-heading">
         <div>
           <span className="eyebrow">Interpretation layer</span>

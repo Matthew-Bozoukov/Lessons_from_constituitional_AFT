@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Download, FileText } from "lucide-react";
 import { MarkdownRenderer } from "@/app/components/MarkdownRenderer";
 import { MetricTiles } from "@/app/components/MetricTiles";
+import { MockDataBanner } from "@/app/components/MockDataBanner";
+import { entryBody } from "@/lib/body";
 import {
   entries,
   entryBySlug,
@@ -58,6 +60,9 @@ export default async function EntryPage({
         <ArrowLeft size={15} /> Back to {humanize(entry.type)}
       </Link>
 
+      {/* Above the title, before any number is read. */}
+      {entry.mock && <MockDataBanner />}
+
       <header className="document-header">
         <div className="document-title">
           <div className="document-kicker">
@@ -82,7 +87,7 @@ export default async function EntryPage({
 
       <div className="document-layout">
         <article>
-          <MarkdownRenderer markdown={entry.body} />
+          <MarkdownRenderer markdown={await entryBody(entry.slug)} />
         </article>
         <aside className="metadata-sidebar">
           <div className="sidebar-panel">

@@ -1,6 +1,12 @@
 ---
 title: "Petri audit — qwen-3-32b-philosophy-spec-msm-aft-cot @ 9a00c85c"
 date: 2026-07-29
+# The published dataset is the system of record for this run's bulk payload. The
+# revision is pinned to the publishing commit, so the build never revalidates it
+# and a redeploy is reproducible.
+hf_source:
+  repo_id: LASR-Callum/2026-07-29-msm-philosophy-spec-focused-discovery
+  revision: 9920e75f0374059fa70905f18a2a4daeef6f61ce
 summary: "30 adaptive audits over 10 seed archetypes x 3 epochs against the MSM philosophy-spec checkpoint. The headline result is negative: no seed produced a validated finding in a majority of its 3 epochs, and the compound flagging rule that produced the candidates had a measured 57% false-positive rate (8 of 14 flags overturned). Six transcripts survive two-round adversarial validation as behavioural existence proofs; none of them replicated."
 petri_run_id: petri-V39EgWv4gqdNYP34768wzj
 petri_version: inspect-petri-3.0.11+inspect-ai-0.3.250

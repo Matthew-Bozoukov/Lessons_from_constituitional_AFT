@@ -1715,25 +1715,6 @@ pre,
   color: var(--muted);
 }
 
-.search-control {
-  flex: 1;
-  min-width: 220px;
-  height: 36px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--panel);
-}
-
-.search-control input {
-  width: 100%;
-  border: 0;
-  outline: none;
-  background: transparent;
-  color: var(--text);
-  font-size: 11px;
-}
-
 .loaded-status {
   display: flex;
   align-items: center;
@@ -2341,7 +2322,6 @@ pre,
   .dataset-selector select { width: 100%; min-width: 0; }
   .dataset-description dl { min-width: 0; }
   .dataset-filters { align-items: stretch; flex-wrap: wrap; }
-  .search-control { flex-basis: 100%; }
   .loaded-status { margin-left: 0; }
   .dataset-browser { grid-template-columns: 1fr; }
   .record-index { max-height: 250px; border-right: 0; border-bottom: 1px solid var(--border); }
@@ -2381,4 +2361,162 @@ pre,
     scroll-behavior: auto !important;
     transition-duration: .01ms !important;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   Mock-data warning
+
+   A fabricated fixture that reads as a research result is this site's worst
+   failure mode, so the warning is loud on purpose: saturated yellow, dark text
+   for maximum contrast, hazard stripes, and type large enough to register
+   before the reader starts on the content. It deliberately breaks the calm of
+   the surrounding design - that break IS the signal.
+   --------------------------------------------------------------------------- */
+
+:root {
+  --mock: #ffe14d;
+  --mock-ink: #1a1400;
+}
+
+.mock-banner {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  width: 100%;
+  margin: 0 0 26px;
+  padding: 18px 22px;
+  border: 2px solid #fff08a;
+  border-radius: 10px;
+  background:
+    repeating-linear-gradient(
+      135deg,
+      rgba(0, 0, 0, .09) 0 14px,
+      transparent 14px 28px
+    ),
+    var(--mock);
+  color: var(--mock-ink);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .55), 0 10px 30px rgba(255, 225, 77, .13);
+}
+
+.mock-banner-icon {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  stroke-width: 2.4;
+}
+
+.mock-banner-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.mock-banner-copy strong {
+  font-size: 21px;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.mock-banner-copy span {
+  font-size: 13.5px;
+  font-weight: 550;
+  line-height: 1.5;
+  color: #2c2300;
+}
+
+/* The listing-card and inline marker. Same palette, sized to sit in a row. */
+.mock-badge {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  flex: none;
+  padding: 3px 8px;
+  border: 1px solid #fff08a;
+  border-radius: 999px;
+  background: var(--mock);
+  color: var(--mock-ink);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+/* A card for a fixture is tinted too, so a mock entry is identifiable in a
+   grid without reading any text. */
+.entry-card.is-mock {
+  border-color: rgba(255, 225, 77, .5);
+  background-image: linear-gradient(180deg, rgba(255, 225, 77, .07), transparent 120px);
+}
+
+.entry-card.is-mock:hover {
+  border-color: var(--mock);
+}
+
+@media (max-width: 620px) {
+  .mock-banner {
+    gap: 12px;
+    padding: 14px 16px;
+  }
+  .mock-banner-icon { width: 26px; height: 26px; }
+  .mock-banner-copy strong { font-size: 17px; }
+  .mock-banner-copy span { font-size: 12.5px; }
+}
+
+/* Per-run metrics in the evaluation index. These runs use different
+   instruments, so their numbers get listed against their own names rather than
+   spread across shared columns that most rows cannot fill. */
+.metric-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-width: 320px;
+}
+
+.metric-chips li {
+  display: inline-flex;
+  gap: 5px;
+  align-items: baseline;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--panel-2);
+  white-space: nowrap;
+}
+
+.metric-chips span {
+  color: var(--muted);
+  font-size: 9.5px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.metric-chips strong {
+  color: var(--text);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Shown when a filter matches nothing in the records fetched so far. A large
+   corpus is paged, so an empty result usually means "not fetched yet" rather
+   than "not present" - the copy distinguishes them, this just makes it read as
+   an explanation rather than as a row. */
+.record-empty {
+  margin: 0;
+  padding: 12px 13px;
+  border: 1px dashed var(--border);
+  border-radius: 7px;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.loaded-status em {
+  color: var(--muted);
+  font-style: normal;
 }
