@@ -180,10 +180,25 @@ function Test-RunPodNoActivePods {
     [CmdletBinding()]
     param()
     $pods = Get-RunPodPods
+    # Both naming conventions are emitted deliberately. Stop-AuditRun.ps1 reads
+    # `no_active_pods` / `active_pod_ids`, this function originally returned only
+    # `clear` / `pod_ids`, and the whole module runs under
+    # Set-StrictMode -Version Latest, where reading a missing property THROWS.
+    #
+    # On 2026-07-31 that mismatch aborted a teardown at the account-sweep step,
+    # so it never reached the final step that stands the monitor and watchdog
+    # down. Two provider-monitor loops then polled the API every 240s for ~19h
+    # against a pod terminated hours earlier. The pod itself was correctly
+    # terminated first, so nothing was billed - but a teardown that throws
+    # halfway is exactly the failure this script exists to prevent.
+    $count = @($pods).Count
+    $ids   = @($pods | ForEach-Object { $_.id })
     [pscustomobject]@{
-        active_pod_count = @($pods).Count
-        pod_ids          = @($pods | ForEach-Object { $_.id })
-        clear            = (@($pods).Count -eq 0)
+        active_pod_count = $count
+        pod_ids          = $ids
+        active_pod_ids   = $ids
+        clear            = ($count -eq 0)
+        no_active_pods   = ($count -eq 0)
         checked_at       = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
     }
 }
