@@ -11,7 +11,7 @@ base_url: "http://host.docker.internal:8000/v1"
 # Greedy, matching the base run's protocol.
 temperature: 0.0
 
-bench_dir: "src/eval/third_party/odcv-bench"
+bench_dir: "src/eval/misalignment/third_party/odcv-bench"
 output_root: "output/odcv_bench"
 
 concurrency: 8

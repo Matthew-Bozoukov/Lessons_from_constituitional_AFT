@@ -29,6 +29,7 @@ src/                    correctness-critical reusable code (installed editable; 
   eval/
     capabilities/         lmsys_eval.py (chat quality vs base); MMLU via external inspect_evals
     misalignment/         ODCV-Bench (odcv.py stats, rollout, judge, compare) + aggregate_eval.py
+      third_party/          vendored eval harnesses (agentic-misalignment, odcv-bench), PATCHED — see gotchas
     vulnerabilities/      petri/ + surf/ audit tooling (generalized from the completed MSM audit)
 configs/                OmegaConf YAML, one per step. NEVER hardcode hyperparams in scripts.
 scripts/                pipeline drivers: thin CLIs over src/ functions + shell scripts that run
@@ -39,7 +40,6 @@ dashboard/              the research-log web app (own toolchain, deployed on Net
 constitutions/          constitution / trait documents (the specs data generation points at)
 docs/                   reference material + docs/replication.md (the end-to-end run guide)
 tests/                  fast, no-network unit tests (e.g. extract_json). Run: uv run pytest -q
-third_party/            vendored external repos (PATCHED — see below). Gitignored.
 data/                   datasets staged for training (gitignored; pull from HF)
 output/                 ALL run artifacts (gitignored). See below.
 docs/LOG.md             append-only research log, MOST RECENT FIRST. Add an entry per real result.
@@ -69,9 +69,8 @@ docs/LOG.md             append-only research log, MOST RECENT FIRST. Add an entr
   next to `build_mixture.py`, `foo_v2.py`, `foo_new.py`). Split-off variants
   duplicate logic and make both copies harder to read and maintain.
 
-**Run everything from the repository root.** Configs, `output/`, `data/` and
-`third_party/` are cwd-relative to the root; there is no `cd` into a project
-directory any more.
+**Run everything from the repository root.** Configs, `output/` and `data/` are
+cwd-relative to the root; there is no `cd` into a project directory any more.
 
 ### Terminology: "logs" means ROLLOUTS
 
@@ -229,7 +228,7 @@ Never terminate a resource this repository did not provision. Report it instead.
 4. **Train only on assistant tokens for the loss.** Qwen3's chat template lacks `{% generation %}` markers, so TRL's `assistant_only_loss` produces an all-zero mask (nothing trains). Build the label mask yourself in a custom collator — set the prompt/user tokens to `-100` and keep the assistant-completion tokens — so the loss is computed on assistant completions only. Do NOT fall back to full-sequence training (it dilutes the signal with prompt tokens).
 5. **Eval mode must match training**: the thinking-trained model is evaluated in thinking mode (`VLLM_ENABLE_THINKING=1` for `run_eval.sh`, compared vs the *thinking* baseline). Don't cross modes.
 6. **MMLU on a thinking model**: use `-T cot=True` + high `--max-tokens`; the default `cot=False` caps generation at 16 tokens and truncates the `<think>` → false 0%.
-7. **Judge routing** in the vendored harness: `_detect_provider` matched substring "claude" → Anthropic before the `/`-prefix rule. The vendored copy is PATCHED so `anthropic/claude-sonnet-4.5` routes to OpenRouter; if you re-clone the harness, re-apply the `vllm/` provider + routing + `enable_thinking` patches in `third_party/agentic-misalignment/api_client/model_client.py`.
+7. **Judge routing** in the vendored harness: `_detect_provider` matched substring "claude" → Anthropic before the `/`-prefix rule. The vendored copy is PATCHED so `anthropic/claude-sonnet-4.5` routes to OpenRouter; if you re-clone the harness, re-apply the `vllm/` provider + routing + `enable_thinking` patches in `src/eval/misalignment/third_party/agentic-misalignment/api_client/model_client.py`.
 8. **SSH command hangs**: launches that background a process (`nohup … &`) can keep the SSH channel open; wrap long remote work in `nohup … </dev/null &` and poll the log rather than waiting on the call.
 
 ## External artifacts

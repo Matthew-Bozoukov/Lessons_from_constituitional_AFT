@@ -8,7 +8,7 @@ CONFIG_SRC="${2:?usage: run_eval.sh <experiment_id> <config.yaml> [samples] [mod
 SAMPLES_OVERRIDE="${3:-}"
 MODEL_OVERRIDE="${4:-}"
 
-cd /root/work/third_party/agentic-misalignment
+cd /root/work/src/eval/misalignment/third_party/agentic-misalignment
 ln -sf /root/work/.env .env   # so load_environment() finds the keys
 set -a; source /root/work/.env; set +a
 export VLLM_BASE_URL="${VLLM_BASE_URL:-http://localhost:8000/v1}"
