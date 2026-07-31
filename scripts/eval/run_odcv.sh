@@ -3,7 +3,7 @@
 # ABOUTME: teeing all output to a timestamped log under output/odcv_bench/.
 set -euo pipefail
 
-CONFIG="${1:-configs/eval/odcv_bench.yaml}"
+CONFIG="${1:-configs/eval/odcv_bench_base_openrouter.yaml}"
 SMOKE_FLAG="${2:-}"   # pass "--smoke" for the 2-scenario wiring check
 
 TS="$(date -u +%Y%m%d_%H%M%S)"

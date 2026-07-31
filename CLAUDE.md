@@ -38,8 +38,8 @@ src/                    correctness-critical reusable code (installed editable; 
     vulnerabilities/      petri/ + surf/ audit tooling (generalized from the completed MSM audit)
 configs/                OmegaConf YAML, one per step, foldered by pipeline stage.
                         NEVER hardcode hyperparams in scripts.
-  data/                   data generation + mixtures (difficult_advice_gen, mixture_*, tulu_control)
-  train/                  SFT/DPO training (lora*, dpo_qwen36)
+  data/                   data generation + mixtures (difficult_advice_gen_v*, mixture_qwen36_*, tulu_control)
+  train/                  SFT/DPO training (lora_<model>_<arm>*, dpo_qwen36_difficult_advice)
   eval/                   evals (capability, mmlu, agentic_misalignment, odcv_*, constitution_probe)
 scripts/                pipeline drivers, foldered to mirror src/ stages + gpu/ for infra
   data/                   thin CLIs over src/data/ (generate_difficult_advice, build_mixture, ...)
@@ -79,9 +79,20 @@ docs/LOG.md             append-only research log, MOST RECENT FIRST. Add an entr
 - **Naming conventions** (follow these for every new file):
   - Config: `configs/<stage>/<subject>[_<variant>].yaml`. The filename never
     repeats the stage folder's name (`configs/eval/capability.yaml`, not
-    `configs/eval/capability_eval.yaml`; `configs/train/lora_qwen36.yaml`, not
-    `configs/train/train_lora_qwen36.yaml`). Variants are appended with
-    underscores only — `odcv_bench_ft_10_90.yaml`, never hyphens like `10-90`.
+    `configs/eval/capability_eval.yaml`; `configs/train/lora_qwen36_tulu100.yaml`,
+    not `configs/train/train_lora_qwen36_tulu100.yaml`). Variants are appended
+    with underscores only — `odcv_bench_ft_10_90.yaml`, never hyphens like `10-90`.
+  - **Names are self-describing**: a config name carries model + data/arm +
+    variant, so nobody has to open the file to know what run it belongs to
+    (`lora_qwen3_difficult_advice_thinking.yaml`, `odcv_bench_ft_20_80.yaml` —
+    never a bare `lora.yaml` or `odcv_bench_ft.yaml`). Shared vocabulary:
+    `qwen3` = Qwen3-32B (original replication), `qwen36` = Qwen3.6-27B (the
+    mixture sweep); mixture ratios read `<synth>_<tulu>` (`20_80` = 20%
+    difficult-advice / 80% Tulu); eval arms are `base_*` (untrained),
+    `ft_<ratio>[_<ablation>]` (difficult-advice fine-tunes), `tulu100`
+    (0%-synthetic control), `dpo`. When two scripts share a subject, a
+    harness qualifier disambiguates: `run_mmlu_arms.sh` (arm ladder) vs
+    `run_mmlu_inspect.sh` (inspect_evals single endpoint).
   - Python thin CLI: named **exactly** after the `src/` module it wraps —
     `scripts/train/train_lora.py` wraps `src/train/train_lora.py`. If there is
     no matching `src/` module, the logic probably belongs in `src/` first.
@@ -209,7 +220,7 @@ deleted with that package on 2026-08-03 — see git history — so enforce them 
 
 ## The pipeline (each step = one experiment script + one config)
 
-1. `scripts/data/generate_difficult_advice.py` (+ `configs/data/difficult_advice_gen.yaml`) — Sonnet 4.5 makes scenarios→responses→grades. Has `--smoke`. (Logic: `src/data/generate_difficult_advice.py`.)
+1. `scripts/data/generate_difficult_advice.py` (+ `configs/data/difficult_advice_gen_v1.yaml`) — Sonnet 4.5 makes scenarios→responses→grades. Has `--smoke`. (Logic: `src/data/generate_difficult_advice.py`.)
 2. `scripts/data/augment_thinking.py` — adds a real `<think>` trace per example via `reasoning_content` (the reasoning-preserving fix). Has `--smoke`.
 3. `scripts/train/train_lora.py` (+ `configs/train/lora*.yaml`) — QLoRA SFT (runs on GPU box). Has `--smoke` (2 steps).
 4. `scripts/eval/run_agentic_misalignment.sh <expid> <config> [samples] [model]` — agentic-misalignment honeypots → `results/<id>/misalignment_summary.json` via `src/eval/misalignment/aggregate_eval.py`.

@@ -1,6 +1,6 @@
 # ABOUTME: ODCV-Bench config for the difficult-advice/TULU3 fine-tune of Qwen3.6-27B,
 # ABOUTME: served by vLLM on the host (SSH-tunnelled from the GPU box) and judged by 2 judges.
-# Run: bash scripts/eval/run_odcv.sh configs/eval/odcv_bench_ft.yaml [--smoke]
+# Run: bash scripts/eval/run_odcv.sh configs/eval/odcv_bench_ft_20_80.yaml [--smoke]
 
 # Served by vLLM as `qwen36ft`, SSH-tunnelled from the GPU box to the docker0 address so
 # scenario containers can reach it without the port being exposed to the LAN.

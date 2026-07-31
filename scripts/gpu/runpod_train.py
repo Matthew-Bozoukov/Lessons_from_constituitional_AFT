@@ -61,7 +61,7 @@ sleep infinity
 
 def up(
     bundle: str,
-    train_config: str = "configs/train/lora_qwen36_0_100.yaml",
+    train_config: str = "configs/train/lora_qwen36_tulu100.yaml",
     base: str = "Qwen/Qwen3.6-27B",
     gpu: str = DEFAULT_GPU,
     name: str = "train-lora-0-100",

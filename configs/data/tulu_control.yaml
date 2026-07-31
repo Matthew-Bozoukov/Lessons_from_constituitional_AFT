@@ -10,7 +10,7 @@ split: "train"
 # is only a fair control if both arms see the same amount of text.
 token_budget: 1_500_000
 
-# Must match train.max_seq_len in configs/train/lora_qwen36.yaml. Examples longer than
+# Must match train.max_seq_len in configs/train/lora_qwen36_tulu100.yaml. Examples longer than
 # this are skipped rather than truncated, so budgeted tokens are tokens actually trained on.
 max_seq_len: 2048
 

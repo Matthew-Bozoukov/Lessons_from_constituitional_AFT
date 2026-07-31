@@ -1,5 +1,5 @@
 # ABOUTME: CONTROL ARM: QLoRA SFT of Qwen3.6-27B on 100% Tulu 3, 0% synthetic constitution docs.
-# ABOUTME: Run on GPU: python scripts/train/train_lora.py --config configs/train/lora_qwen36.yaml
+# ABOUTME: Run on GPU: python scripts/train/train_lora.py --config configs/train/lora_qwen36_tulu100.yaml
 
 # This is the zero-dose end of the internalization study. The treatment arm trains on
 # synthdoc's constitution corpus mixed into a Tulu baseline; this arm holds the recipe,

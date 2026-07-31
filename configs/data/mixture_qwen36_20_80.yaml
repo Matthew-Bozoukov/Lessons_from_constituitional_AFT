@@ -5,8 +5,14 @@
 seed: 0
 tokenizer: "Qwen/Qwen3.6-27B"
 
-difficult_advice_path: "data/sft_dataset_thinking.jsonl"
-difficult_advice_tokens: 300000
+# Each source: a jsonl path, a token budget, and a format — `messages` is raw chat jsonl
+# rendered at build time (keeping <think> traces); `rendered` is pre-rendered rows
+# (fields: text, n_tokens).
+sources:
+  difficult_advice:
+    path: "data/sft_dataset_thinking.jsonl"
+    format: messages
+    tokens: 300000
 
 tulu3_repo: "allenai/tulu-3-sft-mixture"
 tulu3_tokens: 1200000

@@ -1,6 +1,6 @@
 # ABOUTME: ODCV-Bench replication config — Qwen3.6-27B agent rollouts + 4-judge scoring.
 # ABOUTME: Target: reproduce the paper's 43.8% misalignment rate / 1.67 mean severity.
-# Run: bash scripts/eval/run_odcv.sh configs/eval/odcv_bench.yaml [--smoke]
+# Run: bash scripts/eval/run_odcv.sh configs/eval/odcv_bench_base_openrouter.yaml [--smoke]
 
 # Model under test (OpenRouter id) and the result-folder key used by the benchmark.
 model: "qwen/qwen3.6-27b"

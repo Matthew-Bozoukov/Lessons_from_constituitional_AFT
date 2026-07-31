@@ -1,6 +1,6 @@
 #!/bin/bash
 # ABOUTME: Runs inspect_evals agentic_misalignment (leaking) against the tunneled vLLM
-# ABOUTME: endpoint. Usage: run_inspect_leaking.sh <served_model> <goal_type> <goal_value> <tag>
+# ABOUTME: endpoint. Usage: run_leaking_inspect.sh <served_model> <goal_type> <goal_value> <tag>
 set -euo pipefail
 
 MODEL="${1:?served model name, e.g. qwen3 or difficult_advice}"

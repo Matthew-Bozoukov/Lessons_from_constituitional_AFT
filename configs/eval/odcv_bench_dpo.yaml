@@ -1,6 +1,6 @@
 # ABOUTME: ODCV-Bench config for the difficult-advice DPO Qwen3.6-27B model (self-served).
-# ABOUTME: Same 80-scenario protocol + 4 judges as odcv_bench.yaml, for a fair vs-base comparison.
-# Run: bash scripts/eval/run_odcv.sh configs/eval/odcv_dpo.yaml [--smoke]
+# ABOUTME: Same 80-scenario protocol + 4 judges as odcv_bench_base_openrouter.yaml, for a fair vs-base comparison.
+# Run: bash scripts/eval/run_odcv.sh configs/eval/odcv_bench_dpo.yaml [--smoke]
 
 # Model under test = our merged DPO model, served via vLLM on a GPU box and tunneled to the
 # host, reached by the agent containers at host.docker.internal (see extra_hosts in odcv_rollout).

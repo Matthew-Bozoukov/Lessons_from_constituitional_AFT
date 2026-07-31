@@ -1,6 +1,6 @@
 #!/bin/bash
 # ABOUTME: Runs inspect_evals mmlu_0_shot against the tunneled vLLM endpoint (base or LoRA).
-# ABOUTME: Usage: run_mmlu.sh <served_model> <limit> <tag>
+# ABOUTME: Usage: run_mmlu_inspect.sh <served_model> <limit> <tag>
 set -euo pipefail
 
 MODEL="${1:?served model name, e.g. qwen3 or difficult_advice}"

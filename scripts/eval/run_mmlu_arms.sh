@@ -3,7 +3,7 @@
 # ABOUTME: Usage: run_mmlu_arms.sh [endpoint] [arms]   (vLLM must serve base + all arms)
 set -euo pipefail
 
-# NOTE: this is NOT scripts/eval/run_mmlu.sh. That one drives inspect_evals against a single
+# NOTE: this is NOT scripts/eval/run_mmlu_inspect.sh. That one drives inspect_evals against a single
 # tunnelled Qwen3-32B endpoint and belongs to the original difficult-advice pipeline.
 # This one evaluates the whole capability-eval arm ladder in a single pass against one
 # vLLM process serving the base model plus every adapter as a LoRA module, which is what

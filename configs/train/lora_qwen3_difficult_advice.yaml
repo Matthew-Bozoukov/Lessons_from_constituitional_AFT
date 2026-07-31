@@ -1,5 +1,5 @@
 # ABOUTME: QLoRA SFT config for Qwen3-32B on the difficult-advice dataset.
-# ABOUTME: Run on GPU instance: python scripts/train/train_lora.py --config configs/train/lora.yaml
+# ABOUTME: Run on GPU instance: python scripts/train/train_lora.py --config configs/train/lora_qwen3_difficult_advice.yaml
 
 seed: 0
 model: "Qwen/Qwen3-32B"

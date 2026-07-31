@@ -26,7 +26,7 @@ base_model: "Qwen/Qwen3.6-27B"
 
 # --- Arms -------------------------------------------------------------------------
 # Every arm SFTs from `base_model` under identical hyperparameters (see
-# configs/train/lora_qwen36.yaml); mixture ratio is the only varying factor. That is
+# configs/train/lora_qwen36_tulu100.yaml); mixture ratio is the only varying factor. That is
 # spec §12 decision 5 and it is load-bearing — any other difference between arms makes
 # the comparison uninterpretable.
 #
@@ -255,7 +255,7 @@ thresholds:
 # required and a relative-only result has a known blind spot: pairwise preference cannot
 # detect both arms degrading together, and it rewards style over substance.
 #
-# When this is picked up, the pattern already exists in scripts/eval/run_mmlu.sh — inspect_evals
+# When this is picked up, the pattern already exists in scripts/eval/run_mmlu_inspect.sh — inspect_evals
 # against the tunnelled vLLM endpoint — and CLAUDE.md gotcha 6 applies: on a thinking model
 # the default cot=False caps generation at 16 tokens, truncates the <think> block and
 # reports a false 0%.

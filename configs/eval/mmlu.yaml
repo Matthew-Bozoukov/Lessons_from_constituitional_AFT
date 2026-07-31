@@ -20,7 +20,7 @@ seed: 0
 # --- Arms ---------------------------------------------------------------------------
 # Deliberately NOT restated here. The arm ladder — which checkpoints exist, which are
 # matched on training recipe, and the long note explaining why arm A is not a usable
-# baseline — lives in capability_eval.yaml, and duplicating it is how a ladder silently
+# baseline — lives in capability.yaml, and duplicating it is how a ladder silently
 # goes stale: somebody trains arm E, updates one config, and this eval keeps reporting a
 # four-arm result as though it were complete.
 arms_from: configs/eval/capability.yaml
@@ -78,7 +78,7 @@ prompt:
   cue: "Answer:"
 
 # --- Generation ---------------------------------------------------------------------
-# Decoding parity is the same requirement as capability_eval.yaml §4: identical settings
+# Decoding parity is the same requirement as capability.yaml §4: identical settings
 # across all arms, temperature 0, one sample. Stamped into each arm's run_meta.json.
 generation:
   endpoint: "http://localhost:8000/v1"   # override with --endpoint for a RunPod proxy
