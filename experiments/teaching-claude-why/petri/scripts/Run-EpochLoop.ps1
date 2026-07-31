@@ -44,6 +44,12 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $vuln = (Resolve-Path (Join-Path $root '..\..\vulnerabilities')).Path
 Set-Location $root
 
+# `claude setup-token` stores the credential at User scope. A detached process
+# can inherit a stale environment block, so read it from the registry.
+if (-not $env:CLAUDE_CODE_OAUTH_TOKEN) {
+    $env:CLAUDE_CODE_OAUTH_TOKEN = [Environment]::GetEnvironmentVariable('CLAUDE_CODE_OAUTH_TOKEN', 'User')
+}
+
 $progress = Join-Path $root 'logs\epoch-loop.log'
 function Log([string]$m) {
     $line = "[{0}] {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $m
@@ -58,20 +64,34 @@ $keeper = & (Join-Path $vuln 'scripts\provider\Start-HeartbeatKeeper.ps1') `
 Log "epoch loop started: $Epochs epochs from index $StartIndex (keeper pid $($keeper.ProcessId))"
 
 function Test-QuotaAvailable {
-    # One trivial generate. Cheaper and more honest than parsing the CLI's
-    # error text, which reports a session limit as a turn limit.
-    $probe = & (Join-Path $root '.venv\Scripts\python.exe') -c @'
-import asyncio
-from inspect_ai.model import get_model
-async def main():
-    try:
-        r = await get_model("claude-code/claude-sonnet-4-5").generate("Reply with OK")
-        print("OK" if (r.completion or "").strip() else "EMPTY")
-    except Exception as e:
-        print("BLOCKED: " + str(e)[:120])
-asyncio.run(main())
-'@ 2>&1
-    return (($probe -join ' ') -match '\bOK\b')
+    # Two-stage probe, deliberately cheap.
+    #
+    # Stage 1 polls with HAIKU: the 5-hour cap is plan-wide, so Haiku recovering
+    # is a good proxy for the window having rolled, and a Haiku probe costs a
+    # negligible slice of the quota the auditor needs. Polling with Sonnet every
+    # 15 minutes would spend the very budget we are waiting to accumulate.
+    #
+    # Stage 2 confirms with ONE Sonnet call before committing an epoch, since
+    # Haiku could in principle recover first. One call per launch attempt is
+    # nothing; a wrongly-launched epoch costs 28 audits.
+    #
+    # Both call a SCRIPT FILE, never `python -c`: PowerShell strips embedded
+    # quotes before python sees them, and the -c version failed every probe with
+    # a SyntaxError that the loop then read as "quota exhausted" forever.
+    $py = Join-Path $root '.venv\Scripts\python.exe'
+    $probe = Join-Path $root 'scripts\probe_quota.py'
+
+    $haiku = & $py $probe 'claude-code/claude-haiku-4-5' 2>&1
+    if (($haiku -join ' ') -notmatch '^\s*OK') {
+        Log "  probe(haiku): $($haiku -join ' ')"
+        return $false
+    }
+    $sonnet = & $py $probe 'claude-code/claude-sonnet-4-5' 2>&1
+    if (($sonnet -join ' ') -notmatch '^\s*OK') {
+        Log "  probe(sonnet): $($sonnet -join ' ')"
+        return $false
+    }
+    return $true
 }
 
 try {
