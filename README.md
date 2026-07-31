@@ -22,8 +22,8 @@ its behaviour, plus a web frontend that presents the results.
 └── dashboard/            # research-log frontend (Next/vinext), deployed on Netlify
 ```
 
-**Run everything from the repository root.** `configs/`, `data/`, `output/` and
-`third_party/` are resolved against the current directory, and `uv sync`
+**Run everything from the repository root.** `configs/`, `data/` and `output/`
+are resolved against the current directory, and `uv sync`
 installs `src/` editable so `import src.*` works from anywhere — locally and on
 remote boxes alike; there are no `sys.path` tricks.
 

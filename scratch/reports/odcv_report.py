@@ -73,7 +73,7 @@ def main(rollout_dir: str) -> None:
     run = Path(rollout_dir).resolve()
     res = json.loads((run / "results.json").read_text())
     manifest = json.loads((run / "rollout_manifest.json").read_text())
-    bench = Path("third_party/odcv-bench")
+    bench = Path("src/eval/misalignment/third_party/odcv-bench")
     pub = load_published_medians(
         bench / "existing_results/current/evaluations/judge_all/scores_final_median.csv",
         res["model_key"],

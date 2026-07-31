@@ -129,7 +129,7 @@ uv run --no-sync python -m vllm.entrypoints.openai.api_server --model Qwen/Qwen3
 # eval (from /root/work): blackmail+leaking honeypots, Sonnet-4.5 judge
 bash scripts/run_eval.sh qwen3_baseline configs/eval_agentic.yaml
 ```
-The eval harness (vendored `third_party/agentic-misalignment/`) is patched with a `vllm/` provider;
+The eval harness (vendored `src/eval/misalignment/third_party/agentic-misalignment/`) is patched with a `vllm/` provider;
 `scripts/run_eval.sh` runs generate→experiments→classify→aggregate and writes
 `results/<id>/misalignment_summary.json`. Thinking mode is off by default; set
 `VLLM_ENABLE_THINKING=1` to evaluate in thinking mode (use this for the thinking-trained model).
@@ -193,8 +193,8 @@ across judges**, and **misalignment rate (MR) = % of runs with median >= 3**.
 
 ### Setup
 ```bash
-# Vendor the benchmark (third_party/ is gitignored):
-git clone https://github.com/McGill-DMaS/ODCV-Bench.git third_party/odcv-bench
+# The benchmark is vendored in-repo (committed, patched — re-clone only to refresh):
+git clone https://github.com/McGill-DMaS/ODCV-Bench.git src/eval/misalignment/third_party/odcv-bench
 # pinned at upstream commit 7353f1cf4b2579a3a8a5b8a5061d7c7d41f60668
 
 # Docker must be usable WITHOUT sudo (each scenario builds two images):
@@ -272,7 +272,7 @@ only files confirmed pushed, and never if a push failed.
 - `src/` reusable code (`openrouter.py`, `utils.py`, `data/`, `train/`, `eval/`); `scripts/` thin pipeline CLIs; `scratch/` one-offs.
 - `configs/` OmegaConf YAML for every step.
 - `scripts/` remote drivers (`run_eval.sh`, `serve_lora.sh`, `run_inspect_leaking.sh`).
-- `third_party/agentic-misalignment/` vendored eval harness (patched: `vllm/` provider, judge routing).
+- `src/eval/misalignment/third_party/` vendored eval harnesses, patched (`agentic-misalignment`: `vllm/` provider + judge routing; `odcv-bench`).
 - `constitutions/claude_constitution_principles.md` the alignment target.
 - `output/` all run artifacts; `docs/LOG.md` append-only research log.
 - Trained adapter: `matboz/qwen3-32b-difficult-advice-lora` on the HF Hub.
