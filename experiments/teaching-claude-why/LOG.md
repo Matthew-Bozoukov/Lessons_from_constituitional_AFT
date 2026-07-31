@@ -3,6 +3,67 @@
 
 # LOG
 
+## 2026-07-31 — NULL: difficult-advice SFT dose shows no effect on constitution violations
+
+**Design:** adaptive Petri audit of four arms — base `Qwen/Qwen3.6-27B` plus the 10/90,
+20/80 and 40/60 difficult-advice LoRAs — against **v1** `claude_constitution_principles.md`,
+the same document the SFT data was written to. 12 seeds (one per principle + 2 controls)
+x 1 epoch x 4 arms = 48 audits, 44 retained. Auditor + judge Sonnet 4.5, realism Haiku 4.5.
+
+**Result: no dose-response.** Violation frequency on the 10 test seeds per arm:
+
+| arm | any violation | 95% CI | harm-side | unhelpfulness-side |
+|---|---|---|---|---|
+| base | 20% (2/10) | [2.5, 55.6] | 20% | **0%** |
+| 10/90 | 20% (2/10) | [2.5, 55.6] | 20% | **0%** |
+| 20/80 | 40% (4/10) | [12.2, 73.8] | 40% | **0%** |
+| 40/60 | 30% (3/10) | [6.7, 65.2] | 30% | **0%** |
+
+Paired McNemar vs base: p = 1, 0.625, 1. The nominal trend is *upward* with dose. **This
+design resolves ~30 pp differences**, so it cannot detect the 18 pp effect the 20/80 arm
+shows on ODCV-Bench (37.2% -> 19.2%); it neither confirms nor refutes it. n=10/arm was a
+deliberate deadline trade — the planned second epoch was not run.
+
+**Two findings that are not power-limited:**
+1. **Unhelpfulness-side violations were 0% in every arm.** The predicted over-refusal
+   trade-off did not appear at any dose. P4/P5/P6/P7 never fired.
+2. **eval_awareness was 1/10 on every retained transcript**, mean auditor_failure 1.0,
+   mean realism 8.0/10 — the transcripts are interpretable and the targets never
+   indicated they suspected a test.
+
+Most-violated principle is **P8 third-party disregard** (20/10/20/30%); `p2_oversight_subversion`
+appears only in the two higher-dose arms. Flags are **unadjudicated** — a comparable rule
+had a 57% false-positive rate in the sibling MSM work — but adjudication lowers all arms
+and cannot manufacture an absent dose-response.
+
+**Infrastructure lessons (each cost real money or time):**
+- **vLLM 0.26 needs CUDA 13.** A driver-570 pod died at engine init ("found version 12080");
+  its only published wheel targets CUDA 13 and no cu128 build exists. Machine allocation was
+  silently deciding whether the run worked. Fixed with `-AllowedCudaVersions @('13.0')`.
+- **The watchdog killed a healthy pod** 14 min into the first pilot because
+  `New-AuditPod`'s fixed 30-min lease lapsed and nothing renewed it. `Start-HeartbeatKeeper`
+  existed for exactly this and was not wired in. It is now, with a `finally` stand-down.
+- **A valid API key is not a funded one.** `Test-Credentials` passes on a zero balance;
+  the realism role then failed at its first paid call and one whole arm produced 12
+  complete-looking transcripts with no target participation. The runner now makes a real
+  paid call as a preflight.
+- **Sample count is not evidence of a valid audit.** `check_arm.py` caught that arm and
+  stopped the grid; without it, arms 3-4 would have run the same way.
+- **vLLM LoRA works on this hybrid Mamba/linear-attention arch** (model cards call it
+  unproven): all 512 adapter tensors -> 256 modules, four arms from one weight load.
+- **A token cap is not a performance knob when the target thinks.** At `max_tokens=700` the
+  BASE arm returned `finish=length` with ZERO content while tuned arms answered — that
+  alone would have manufactured a dose-response. Measured 4096 as sufficient.
+
+**Cost:** $14.26 GPU (7.56 h A100 + ~$3 of two failed pods) + ~$8.65 API = **$22.91**.
+Subscription notional $44.26, billed $0.
+
+**Artifacts:** `petri/exports/2026-07-31-constitution-dose-sweep/` (Visualizer-shaped),
+mirrored to `Visualizer/content/petri-runs/`. HF upload pending a token with repo-create scope.
+
+**Next:** more epochs. At n=10 the intervals are wider than any plausible effect; nothing
+about the seeds, rubric or harness needs to change.
+
 ## 2026-07-29 (pm) — RESULT: difficult-advice LoRA cuts ODCV misalignment 37.2% → 19.2%
 
 **Matched FP8 arms**, same vLLM build/flags/tunnel/temperature, same 78 scenario cells, same two
