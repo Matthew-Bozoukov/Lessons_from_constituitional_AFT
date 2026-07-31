@@ -50,7 +50,9 @@ wandb/
 **/output/synthdoc_sweeps/
 
 # ---- Vendored / third-party trees --------------------------------------------
-third_party/
+# Vendored eval harnesses are committed; their run outputs are not.
+third_party/agentic-misalignment/results/
+third_party/**/__pycache__/
 
 # ---- OS and runtime noise ----------------------------------------------------
 .DS_Store

@@ -1,0 +1,281 @@
+#!/usr/bin/env python3
+"""
+Automated experiment runner that executes benchmarks for multiple model configurations.
+For each configuration, it runs both mandated and incentivized scenarios and organizes results.
+"""
+import os
+import sys
+import shutil
+import subprocess
+from pathlib import Path
+import time
+
+
+WORKSPACE = Path(__file__).resolve().parent
+SCENARIOS_DIR = WORKSPACE / "scenarios"
+MANDATED_SCENARIOS_DIR = WORKSPACE / "mandated_scenarios"
+INCENTIVIZED_SCENARIOS_DIR = WORKSPACE / "incentivized_scenarios"
+EXPERIMENTS_DIR = WORKSPACE / "experiments"
+RESULTS_DIR = WORKSPACE / "results"
+RUN_BENCHMARKS_PY = WORKSPACE / "run_benchmarks.py"
+
+
+# List of experiment settings: (base_url, model_name, result_folder_name)
+OR = 'https://openrouter.ai/api/v1'
+# Complete reproduction manifest for the 12 models reported in the paper.
+# Running this script as-is executes all 12 models sequentially on a single
+# host; comment out entries to shard across multiple hosts if needed.
+EXPERIMENT_SETTINGS = [
+    # Judges (also evaluated as agents):
+    (OR, 'anthropic/claude-opus-4.7',       'claude-opus-4.7'),
+    (OR, 'openai/gpt-5.5',                  'gpt-5.5'),
+    (OR, 'x-ai/grok-4.20',                  'grok-4.20'),
+    (OR, 'google/gemini-3.1-pro-preview',   'gemini-3.1-pro-preview'),
+    # Other proprietary / large models:
+    (OR, 'qwen/qwen3.6-max-preview',        'qwen3.6-max-preview'),
+    (OR, 'moonshotai/kimi-k2.6',            'kimi-k2.6'),
+    # Open-weight models:
+    (OR, 'meta-llama/llama-4-maverick',     'llama-4-maverick'),
+    (OR, 'openai/gpt-oss-20b',              'gpt-oss-20b'),
+    (OR, 'openai/gpt-oss-120b',             'gpt-oss-120b'),
+    (OR, 'z-ai/glm-5.1',                    'glm-5.1'),
+    (OR, 'minimax/minimax-m2.7',            'minimax-m2.7'),
+    (OR, 'qwen/qwen3.6-27b',                'qwen3.6-27b'),
+]
+
+# Previous-generation models used for the Safety Across Model Generations
+# analysis (paper Section: Safety Across Model Generations). These are the
+# direct predecessors of 9 of the 12 current models; the remaining 3
+# (Llama-4-Maverick, gpt-oss-20b, gpt-oss-120b) had no successor at
+# evaluation time and reuse their current entries above.
+#
+# Disabled by default. To regenerate the previous-generation trajectories
+# from scratch, append PREVIOUS_EXPERIMENT_SETTINGS to EXPERIMENT_SETTINGS
+# above, or run this script twice with the two lists swapped in.
+PREVIOUS_EXPERIMENT_SETTINGS = [
+    (OR, 'anthropic/claude-opus-4.5',        'claude-opus-4.5'),
+    (OR, 'openai/gpt-5.1-chat',              'gpt-5.1-chat'),
+    (OR, 'x-ai/grok-4.1-fast',               'grok-4.1-fast'),
+    (OR, 'google/gemini-3-pro-preview',      'gemini-3-pro-preview'),
+    (OR, 'qwen/qwen3-max',                   'qwen3-max'),
+    (OR, 'moonshotai/kimi-k2-0905',          'kimi-k2-0905'),
+    (OR, 'z-ai/glm-4.6',                     'glm-4.6'),
+    (OR, 'minimax/minimax-m2',               'minimax-m2'),
+    (OR, 'qwen/qwen3-30b-a3b-instruct-2507', 'qwen3-30b-a3b-2507'),
+]
+
+
+def ensure_directories():
+    """Ensure required directories exist."""
+    if not MANDATED_SCENARIOS_DIR.is_dir():
+        raise FileNotFoundError(
+            f"Missing mandated_scenarios directory: {MANDATED_SCENARIOS_DIR}\n"
+            "Please extract or create the mandated_scenarios directory."
+        )
+    if not INCENTIVIZED_SCENARIOS_DIR.is_dir():
+        raise FileNotFoundError(
+            f"Missing incentivized_scenarios directory: {INCENTIVIZED_SCENARIOS_DIR}\n"
+            "Please extract or create the incentivized_scenarios directory."
+        )
+    if not RUN_BENCHMARKS_PY.is_file():
+        raise FileNotFoundError(f"Missing run_benchmarks.py: {RUN_BENCHMARKS_PY}")
+
+
+def copy_scenarios(source_dir: Path, target_dir: Path):
+    """Copy scenarios from source to target directory."""
+    if target_dir.exists():
+        print(f"  Removing existing {target_dir.name} directory...")
+        shutil.rmtree(target_dir)
+    
+    print(f"  Copying {source_dir.name} to {target_dir.name}...")
+    shutil.copytree(source_dir, target_dir)
+    print(f"  Successfully copied {source_dir.name} to {target_dir.name}")
+
+
+def run_benchmarks(openai_base_url: str, openai_model: str):
+    """Run the benchmark script with given parameters."""
+    print(f"  Running benchmarks with model: {openai_model}")
+    print(f"  API base URL: {openai_base_url}")
+    
+    cmd = [
+        sys.executable,
+        str(RUN_BENCHMARKS_PY),
+        "--openai-base-url", openai_base_url,
+        "--openai-model", openai_model,
+    ]
+    
+    try:
+        completed = subprocess.run(
+            cmd,
+            cwd=str(WORKSPACE),
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+            check=False,
+        )
+        if completed.returncode != 0:
+            print(f"  [WARN] run_benchmarks.py exited with code {completed.returncode}")
+        else:
+            print(f"  Benchmarks completed successfully")
+        return completed.returncode == 0
+    except Exception as e:
+        print(f"  [ERROR] Failed to run benchmarks: {e}")
+        return False
+
+
+def move_experiments_to_results(result_folder_name: str, scenario_type: str):
+    """Move experiments directory to results folder."""
+    if not EXPERIMENTS_DIR.exists():
+        print(f"  [WARN] Experiments directory does not exist: {EXPERIMENTS_DIR}")
+        return False
+    
+    if not EXPERIMENTS_DIR.is_dir():
+        print(f"  [WARN] Experiments path is not a directory: {EXPERIMENTS_DIR}")
+        return False
+    
+    # Check if experiments directory is empty
+    if not any(EXPERIMENTS_DIR.iterdir()):
+        print(f"  [WARN] Experiments directory is empty")
+        return False
+    
+    target_dir = RESULTS_DIR / f"{result_folder_name}-{scenario_type}"
+    target_experiments_dir = target_dir / "experiments"
+    
+    # Create parent directory if it doesn't exist
+    target_dir.mkdir(parents=True, exist_ok=True)
+    
+    # If target experiments directory already exists, remove it
+    if target_experiments_dir.exists():
+        print(f"  Removing existing results directory: {target_experiments_dir}")
+        shutil.rmtree(target_experiments_dir)
+    
+    print(f"  Moving experiments to {target_experiments_dir}...")
+    shutil.move(str(EXPERIMENTS_DIR), str(target_experiments_dir))
+    print(f"  Successfully moved experiments to {target_experiments_dir}")
+    
+    # Recreate empty experiments directory for next run
+    EXPERIMENTS_DIR.mkdir(exist_ok=True)
+    
+    return True
+
+
+def run_experiment_config(base_url: str, model_name: str, result_folder_name: str):
+    """Run a single experiment configuration for both mandated and incentivized scenarios."""
+    print(f"\n{'='*80}")
+    print(f"Running experiment configuration: {result_folder_name}")
+    print(f"Model: {model_name}")
+    print(f"Base URL: {base_url}")
+    print(f"{'='*80}\n")
+    
+    # === MANDATED SCENARIOS ===
+    print(f"\n--- Running MANDATED scenarios for {result_folder_name} ---")
+    t1 = time.time()
+    
+    try:
+        # Copy mandated_scenarios to scenarios
+        copy_scenarios(MANDATED_SCENARIOS_DIR, SCENARIOS_DIR)
+        
+        # Run benchmarks
+        success = run_benchmarks(base_url, model_name)
+        
+        # Move experiments to results
+        if success or EXPERIMENTS_DIR.exists():
+            move_experiments_to_results(result_folder_name, "mandated")
+        
+        elapsed = (time.time() - t1) / 60
+        print(f"  Explicit scenarios completed in {elapsed:.1f} minutes")
+        
+    except Exception as e:
+        print(f"  [ERROR] Failed to run mandated scenarios: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    # Clean up scenarios directory
+    if SCENARIOS_DIR.exists():
+        print(f"  Cleaning up scenarios directory...")
+        shutil.rmtree(SCENARIOS_DIR)
+    
+    # === INCENTIVIZED SCENARIOS ===
+    print(f"\n--- Running INCENTIVIZED scenarios for {result_folder_name} ---")
+    t2 = time.time()
+    
+    try:
+        # Copy incentivized_scenarios to scenarios
+        copy_scenarios(INCENTIVIZED_SCENARIOS_DIR, SCENARIOS_DIR)
+        
+        # Run benchmarks
+        success = run_benchmarks(base_url, model_name)
+        
+        # Move experiments to results
+        if success or EXPERIMENTS_DIR.exists():
+            move_experiments_to_results(result_folder_name, "incentivized")
+        
+        elapsed = (time.time() - t2) / 60
+        print(f"  Implicit scenarios completed in {elapsed:.1f} minutes")
+        
+    except Exception as e:
+        print(f"  [ERROR] Failed to run incentivized scenarios: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    # Clean up scenarios directory
+    if SCENARIOS_DIR.exists():
+        print(f"  Cleaning up scenarios directory...")
+        shutil.rmtree(SCENARIOS_DIR)
+    
+    total_elapsed = (time.time() - t1) / 60
+    print(f"\n  Total time for {result_folder_name}: {total_elapsed:.1f} minutes")
+
+
+def main():
+    """Main entry point."""
+    print("="*80)
+    print("Automated Experiment Runner")
+    print("="*80)
+    
+    # Validate setup
+    try:
+        ensure_directories()
+    except FileNotFoundError as e:
+        print(f"[ERROR] {e}")
+        return 1
+    
+    if not EXPERIMENT_SETTINGS:
+        print("[ERROR] No experiment settings configured. Please add settings to EXPERIMENT_SETTINGS list.")
+        return 1
+    
+    print(f"\nFound {len(EXPERIMENT_SETTINGS)} experiment configuration(s) to run.\n")
+    
+    # Ensure results directory exists
+    RESULTS_DIR.mkdir(exist_ok=True)
+    
+    # Run each experiment configuration
+    start_time = time.time()
+    for i, (base_url, model_name, result_folder_name) in enumerate(EXPERIMENT_SETTINGS, 1):
+        print(f"\n\n{'#'*80}")
+        print(f"Experiment {i}/{len(EXPERIMENT_SETTINGS)}: {result_folder_name}")
+        print(f"{'#'*80}")
+        
+        try:
+            run_experiment_config(base_url, model_name, result_folder_name)
+        except KeyboardInterrupt:
+            print("\n\n[INFO] Experiment interrupted by user")
+            return 1
+        except Exception as e:
+            print(f"\n[ERROR] Experiment {result_folder_name} failed: {e}")
+            import traceback
+            traceback.print_exc()
+            continue
+    
+    total_time = (time.time() - start_time) / 60
+    print(f"\n\n{'='*80}")
+    print(f"All experiments completed!")
+    print(f"Total time: {total_time:.1f} minutes ({total_time/60:.1f} hours)")
+    print(f"Results are stored in: {RESULTS_DIR}")
+    print(f"{'='*80}\n")
+    
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+
