@@ -258,7 +258,7 @@ it cost. Keep it accurate — future cost estimates are built from it.
 - Check the ledger's unit costs **before** committing to a large run, and flag spend > ~$20.
 
 ## When you finish a task
-- Append a `docs/LOG.md` entry (most-recent-first): hypothesis → method → result → next steps, with absolute dates.
+- Append a `docs/LOG.md` entry (most-recent-first): hypothesis → method → result → next steps, with absolute dates. LOG.md is for **experiments and major code changes only** — routine refactors, chores, and doc edits get no entry.
 - Append a `docs/EXPENDITURE.md` entry if the task spent anything, and update the running total.
 - Update `docs/replication.md` if you added a step or changed how to run things.
 - Destroy any GPU instance and confirm 0 active.
