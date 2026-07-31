@@ -120,13 +120,21 @@ async def run(logs: Path, out: Path, model: str, concurrency: int) -> None:
     out.mkdir(parents=True, exist_ok=True)
     sem = asyncio.Semaphore(concurrency)
 
+    # Epoch numbers restart at 1 in every run, so a top-up batch collides with
+    # the first batch on the (sample_id, epoch) key the analysis pairs on.
+    # Offsetting per source log keeps every audit a distinct row.
     for arm_dir in sorted(p for p in logs.iterdir() if p.is_dir()):
         evals = sorted(arm_dir.glob("*.eval"))
         if not evals:
             continue
         samples = []
+        epoch_offset = 0
         for f in evals:
-            samples.extend(read_eval_log(str(f), resolve_attachments=True).samples or [])
+            batch = read_eval_log(str(f), resolve_attachments=True).samples or []
+            for s in batch:
+                s.epoch = (s.epoch or 1) + epoch_offset
+            epoch_offset += max((s.epoch for s in batch), default=0) - epoch_offset
+            samples.extend(batch)
         print(f"[{arm_dir.name}] judging {len(samples)} transcripts...", flush=True)
 
         results = await asyncio.gather(
