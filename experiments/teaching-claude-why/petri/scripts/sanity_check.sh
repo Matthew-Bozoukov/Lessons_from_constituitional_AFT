@@ -53,13 +53,16 @@ print(int((datetime.datetime.now(datetime.timezone.utc)-t).total_seconds()/60))
 fi
 
 # ---- vLLM: reachable and serving all four arms ------------------------------
+# Parse the JSON rather than grepping for `"id":`. Each model entry carries a
+# nested id, so four served arms grep as EIGHT - the check cried wolf on a
+# perfectly healthy endpoint on its first real run.
 if [ -f "$EP" ] && [ -n "$KEY" ]; then
   SSHKEY=$(grep -oP '(?<=^MSM_SSH_PRIVATE_KEY=).*' "$KEYFILE" 2>/dev/null | tr -d '\r')
   HOST=$(python -c "import json;print(json.load(open('$EP',encoding='utf-8-sig'))['ssh_host'])" 2>/dev/null || echo "")
   PORT=$(python -c "import json;print(json.load(open('$EP',encoding='utf-8-sig'))['ssh_port'])" 2>/dev/null || echo "")
   if [ -n "$HOST" ] && [ "${MINE:-0}" -ge 1 ]; then
     ARMS=$(ssh -i "$SSHKEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 -p "$PORT" "root@$HOST" \
-      'curl -s -m 10 http://127.0.0.1:8000/v1/models 2>/dev/null | grep -o "\"id\":" | wc -l' 2>/dev/null || echo 0)
+      'curl -s -m 10 http://127.0.0.1:8000/v1/models 2>/dev/null | python3 -c "import sys,json;print(len(json.load(sys.stdin).get(chr(100)+chr(97)+chr(116)+chr(97),[])))"' 2>/dev/null || echo 0)
     if [ "${ARMS:-0}" -eq 0 ]; then
       SERVING=$(ssh -i "$SSHKEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 -p "$PORT" "root@$HOST" \
         'pgrep -f "vll[m] serve" >/dev/null && echo loading || echo dead' 2>/dev/null || echo unknown)
