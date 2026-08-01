@@ -46,19 +46,27 @@ def _model_cfg(cfg: dict, key: str) -> dict[str, Any]:
     }
 
 
-def run(cfg: dict, smoke: bool = False) -> dict:
+def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
     """Run the full pipeline, caching every stage.
 
     Args:
         cfg: Run config (see configs/synthdoc_v2.yaml).
         smoke: Restrict to 2 traits x 1 scenario and shrink the budget, to validate wiring.
+        resume: Existing run directory to continue. Completed stage snapshots are reused
+            and partially-completed stages pick up from their checkpoint, so a crash or
+            an interrupt only costs the items that were in flight.
 
     Returns:
         A manifest dict describing the run.
     """
     started = time.time()
     ts = timestamp()
-    run_dir = Path(cfg["output_dir"]) / (f"smoke_{ts}" if smoke else ts)
+    if resume:
+        run_dir = Path(resume)
+        assert run_dir.exists(), f"resume dir does not exist: {run_dir}"
+        print(f">>> resuming into {run_dir}")
+    else:
+        run_dir = Path(cfg["output_dir"]) / (f"smoke_{ts}" if smoke else ts)
     repo = cfg.get("hf_repo")
     if smoke:
         repo = cfg.get("hf_repo_smoke")  # never pollute the real dataset from a smoke run
@@ -131,6 +139,7 @@ def run(cfg: dict, smoke: bool = False) -> dict:
     else:
         refined = timed("refine", lambda: stages.refine_prompts(
             drafts, client, usage, constitution=constitution, workers=workers,
+            ckpt=stages.Checkpoint(run_dir / "stage_4_refined_prompts.partial.jsonl"),
             **_model_cfg(cfg, "refine")))
         cache.save(4, "refined_prompts", refined)
     print(f"    FIRST REFINED USER: {refined[0]['user'][:220]}")
@@ -143,6 +152,7 @@ def run(cfg: dict, smoke: bool = False) -> dict:
     else:
         drafted = timed("respond", lambda: stages.generate_responses(
             refined, client, usage, style_guidance=style_guidance, workers=workers,
+            ckpt=stages.Checkpoint(run_dir / "stage_5_draft_responses.partial.jsonl"),
             **_model_cfg(cfg, "respond")))
         cache.save(5, "draft_responses", drafted)
     print(f"    FIRST REASONING: {drafted[0]['draft_reasoning'][:220]}")
@@ -155,6 +165,7 @@ def run(cfg: dict, smoke: bool = False) -> dict:
     else:
         final = timed("rewrite", lambda: stages.rewrite_responses(
             drafted, client, usage, constitution=constitution, workers=workers,
+            ckpt=stages.Checkpoint(run_dir / "stage_6_final.partial.jsonl"),
             **_model_cfg(cfg, "rewrite")))
         cache.save(6, "final", final)
     print(f"    FIRST FINAL RESPONSE: {final[0]['response'][:220]}")
@@ -186,10 +197,9 @@ def run(cfg: dict, smoke: bool = False) -> dict:
     }
     cache.save_json("manifest.json", manifest)
 
-    assert len(sft) == len(final) == len(scenarios), (
-        f"records were lost between stages: scenarios={len(scenarios)} final={len(final)} "
-        f"sft={len(sft)}"
-    )
+    assert len(sft) == len(final), f"sft={len(sft)} != final={len(final)}"
+    kept = 100 * len(final) / max(len(scenarios), 1)
+    print(f">>> {len(final)}/{len(scenarios)} scenarios survived all stages ({kept:.1f}%)")
     print(f"\n>>> {len(sft)} training records in {run_dir}")
     print(f">>> spend ${usage.usd:.2f} | {manifest['wall_clock_s']}s")
     if repo:

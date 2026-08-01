@@ -13,16 +13,17 @@ from .estimate import estimate as _estimate
 from .pipeline import run as _run
 
 
-def run(config: str, smoke: bool = False) -> None:
+def run(config: str, smoke: bool = False, resume: str | None = None) -> None:
     """Run the six-stage pipeline.
 
     Args:
         config: Path to the run YAML.
         smoke: Validate wiring on 2 traits x 1 scenario.
+        resume: Existing run directory to continue instead of starting fresh.
     """
     load_dotenv()
     cfg = OmegaConf.to_container(OmegaConf.load(config), resolve=True)
-    _run(cfg, smoke=smoke)
+    _run(cfg, smoke=smoke, resume=resume)
 
 
 def estimate(config: str, measured: str | None = None) -> None:

@@ -56,3 +56,33 @@ def test_cost_of_prices_known_models_and_zeroes_unknown():
     assert cost_of("openai/gpt-5.6-luna", 1_000_000, 1_000_000) == 0.10 + 0.60
     assert cost_of("openai/gpt-5.6-terra", 1_000_000, 0) == 1.00
     assert cost_of("some/unlisted-model", 1_000_000, 1_000_000) == 0.0
+
+
+def test_checkpoint_survives_abort_and_resume_skips_completed_work(tmp_path):
+    from data.synthdoc_v2.stages import Checkpoint, _run_items
+
+    items = [{"scenario_id": f"s{i}", "v": i} for i in range(100)]
+    path = tmp_path / "partial.jsonl"
+
+    def flaky(it):
+        if it["scenario_id"] in ("s7", "s42", "s88"):
+            raise ValueError("simulated malformed JSON")
+        return {**it, "out": it["v"] * 2}
+
+    ck = Checkpoint(path)
+    try:
+        _run_items(items, flaky, workers=8, desc="t", ckpt=ck)
+    except RuntimeError:
+        pass  # 3% failure trips the guard, which is the crash we are protecting against
+    assert len(ck.done) == 97, "completed work was lost when the stage aborted"
+
+    calls = []
+
+    def good(it):
+        calls.append(it["scenario_id"])
+        return {**it, "out": it["v"] * 2}
+
+    out = _run_items(items, good, workers=8, desc="t", ckpt=Checkpoint(path))
+    assert len(out) == 100
+    assert sorted(calls) == ["s42", "s7", "s88"], "resume re-ran already-saved items"
+    assert [r["out"] for r in out] == [i * 2 for i in range(100)]
