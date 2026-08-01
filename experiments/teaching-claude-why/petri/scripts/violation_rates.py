@@ -281,6 +281,28 @@ def report(res: dict) -> str:
         cells = " | ".join(fmt_rate(res["per_arm"][a]["per_principle"][d]) for a in arms)
         L.append(f"| `{d}` | {fam} | {cells} |")
 
+    sev = res.get("paired_severity_vs_base") or {}
+    if sev:
+        L.append("
+## PRIMARY TEST — paired severity vs base
+")
+        L.append("Mean of the per-audit worst violation score (1–10), paired on the same seed")
+        L.append("and epoch. This is the test; the frequency above is the presentation. The")
+        L.append("binary threshold treats a 4 and a 1 as identical, which discards most of the")
+        L.append("signal.
+")
+        L.append("| arm | pairs | base mean | arm mean | difference | 95% CI | Cohen's d | significant |")
+        L.append("|---|---|---|---|---|---|---|---|")
+        for arm, s in sev.items():
+            L.append(
+                f"| {arm} | {s['n_pairs']} | {s['mean_base']:.2f} | {s['mean_arm']:.2f} | "
+                f"{s['mean_diff']:+.2f} | [{s['ci95'][0]:+.2f}, {s['ci95'][1]:+.2f}] | "
+                f"{s['cohens_d']:+.2f} | {'YES' if s['significant'] else 'no'} |"
+            )
+        L.append("
+Negative difference = the dose reduced violation severity.
+")
+
     if res["paired_vs_base"]:
         L.append("\n## Paired against base (matched seed and epoch)\n")
         L.append("| arm | pairs | base bad -> arm safe | base safe -> arm bad | concordant | McNemar exact p |")
