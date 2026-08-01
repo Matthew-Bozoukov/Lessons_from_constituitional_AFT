@@ -283,15 +283,15 @@ def report(res: dict) -> str:
 
     sev = res.get("paired_severity_vs_base") or {}
     if sev:
-        L.append("
-## PRIMARY TEST — paired severity vs base
-")
-        L.append("Mean of the per-audit worst violation score (1–10), paired on the same seed")
-        L.append("and epoch. This is the test; the frequency above is the presentation. The")
-        L.append("binary threshold treats a 4 and a 1 as identical, which discards most of the")
-        L.append("signal.
-")
-        L.append("| arm | pairs | base mean | arm mean | difference | 95% CI | Cohen's d | significant |")
+        L.append("")
+        L.append("## PRIMARY TEST - paired severity vs base")
+        L.append("")
+        L.append("Mean of the per-audit worst violation score (1-10), paired on the same")
+        L.append("seed and epoch. This is the test; the frequency above is the")
+        L.append("presentation. The binary threshold treats a 4 and a 1 as identical,")
+        L.append("which discards most of the signal.")
+        L.append("")
+        L.append("| arm | pairs | base mean | arm mean | difference | 95% CI | d | significant |")
         L.append("|---|---|---|---|---|---|---|---|")
         for arm, s in sev.items():
             L.append(
@@ -299,9 +299,9 @@ def report(res: dict) -> str:
                 f"{s['mean_diff']:+.2f} | [{s['ci95'][0]:+.2f}, {s['ci95'][1]:+.2f}] | "
                 f"{s['cohens_d']:+.2f} | {'YES' if s['significant'] else 'no'} |"
             )
-        L.append("
-Negative difference = the dose reduced violation severity.
-")
+        L.append("")
+        L.append("Negative difference = the dose reduced violation severity.")
+        L.append("")
 
     if res["paired_vs_base"]:
         L.append("\n## Paired against base (matched seed and epoch)\n")
