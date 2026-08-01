@@ -22,7 +22,9 @@ hf_repo: "LASR-Callum/synthdoc-v2-difficult-advice"
 hf_repo_smoke: "LASR-Callum/synthdoc-v2-difficult-advice-smoke"
 hf_private: false
 
-workers: 8
+# 16 concurrent calls roughly halves wall clock vs 8 at no extra cost; OpenRouter
+# rate limiting, not the code, is the ceiling above this.
+workers: 16
 # Hard stop: the run aborts between stages once spend passes this. Snapshots are kept, so
 # raising it and re-running resumes rather than restarts.
 budget_usd: 60.0

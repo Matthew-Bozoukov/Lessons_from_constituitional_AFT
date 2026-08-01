@@ -68,6 +68,16 @@ def run(cfg: dict, smoke: bool = False) -> dict:
     budget = float(cfg.get("budget_usd", 0)) or None
     client = OpenRouterClient()
     usage = stages.Usage()
+    # Per-stage wall clock, so a later run can be scheduled from real numbers rather
+    # than from a guess about per-call latency.
+    durations: dict[str, float] = {}
+
+    def timed(name: str, fn):
+        """Run a stage, recording its wall clock."""
+        t0 = time.time()
+        out = fn()
+        durations[name] = round(time.time() - t0, 1)
+        return out
 
     def guard(stage: str) -> None:
         """Stop before the next stage if the budget is already spent."""
@@ -95,8 +105,9 @@ def run(cfg: dict, smoke: bool = False) -> dict:
         print(f">>> stage 2: reused {len(scenarios)} cached scenarios")
     else:
         m = _model_cfg(cfg, "scenarios")
-        scenarios = stages.generate_scenarios(traits, client, usage, per_trait=per_trait,
-                                              per_call=per_call, workers=workers, **m)
+        scenarios = timed("scenarios", lambda: stages.generate_scenarios(
+            traits, client, usage, per_trait=per_trait, per_call=per_call,
+            workers=workers, **m))
         cache.save(2, "scenarios", scenarios)
     print(f">>> stage 2: {len(scenarios)} scenarios")
     print(f"    FIRST: [{scenarios[0]['trait_name']}] {scenarios[0]['situation'][:220]}")
@@ -107,8 +118,8 @@ def run(cfg: dict, smoke: bool = False) -> dict:
         drafts = cache.load(3, "draft_prompts")
         print(f">>> stage 3: reused {len(drafts)} cached drafts")
     else:
-        drafts = stages.draft_prompts(scenarios, client, usage, workers=workers,
-                                      **_model_cfg(cfg, "draft"))
+        drafts = timed("draft", lambda: stages.draft_prompts(
+            scenarios, client, usage, workers=workers, **_model_cfg(cfg, "draft")))
         cache.save(3, "draft_prompts", drafts)
     print(f"    FIRST DRAFT USER: {drafts[0]['draft_user'][:220]}")
     guard("stage 3")
@@ -118,8 +129,9 @@ def run(cfg: dict, smoke: bool = False) -> dict:
         refined = cache.load(4, "refined_prompts")
         print(f">>> stage 4: reused {len(refined)} cached refinements")
     else:
-        refined = stages.refine_prompts(drafts, client, usage, constitution=constitution,
-                                        workers=workers, **_model_cfg(cfg, "refine"))
+        refined = timed("refine", lambda: stages.refine_prompts(
+            drafts, client, usage, constitution=constitution, workers=workers,
+            **_model_cfg(cfg, "refine")))
         cache.save(4, "refined_prompts", refined)
     print(f"    FIRST REFINED USER: {refined[0]['user'][:220]}")
     guard("stage 4")
@@ -129,9 +141,9 @@ def run(cfg: dict, smoke: bool = False) -> dict:
         drafted = cache.load(5, "draft_responses")
         print(f">>> stage 5: reused {len(drafted)} cached responses")
     else:
-        drafted = stages.generate_responses(refined, client, usage,
-                                            style_guidance=style_guidance, workers=workers,
-                                            **_model_cfg(cfg, "respond"))
+        drafted = timed("respond", lambda: stages.generate_responses(
+            refined, client, usage, style_guidance=style_guidance, workers=workers,
+            **_model_cfg(cfg, "respond")))
         cache.save(5, "draft_responses", drafted)
     print(f"    FIRST REASONING: {drafted[0]['draft_reasoning'][:220]}")
     guard("stage 5")
@@ -141,8 +153,9 @@ def run(cfg: dict, smoke: bool = False) -> dict:
         final = cache.load(6, "final")
         print(f">>> stage 6: reused {len(final)} cached rewrites")
     else:
-        final = stages.rewrite_responses(drafted, client, usage, constitution=constitution,
-                                         workers=workers, **_model_cfg(cfg, "rewrite"))
+        final = timed("rewrite", lambda: stages.rewrite_responses(
+            drafted, client, usage, constitution=constitution, workers=workers,
+            **_model_cfg(cfg, "rewrite")))
         cache.save(6, "final", final)
     print(f"    FIRST FINAL RESPONSE: {final[0]['response'][:220]}")
 
@@ -166,6 +179,8 @@ def run(cfg: dict, smoke: bool = False) -> dict:
         },
         "usage": usage.as_dict(),
         "wall_clock_s": round(time.time() - started, 1),
+        "stage_seconds": durations,
+        "workers": workers,
         "hf_repo": repo,
         "run_dir": str(run_dir),
     }

@@ -19,6 +19,10 @@ PRICES: dict[str, dict[str, float]] = {
     "openai/gpt-5.6-luna": {"in": 0.10, "out": 0.60},
     "openai/gpt-5.6-terra": {"in": 1.00, "out": 6.00},
     "openai/gpt-5.6-sol": {"in": 5.00, "out": 30.00},
+    "anthropic/claude-sonnet-5": {"in": 2.00, "out": 10.00},
+    "anthropic/claude-sonnet-4.5": {"in": 3.00, "out": 15.00},
+    "anthropic/claude-opus-5": {"in": 5.00, "out": 25.00},
+    "anthropic/claude-haiku-4.5": {"in": 1.00, "out": 5.00},
 }
 
 
