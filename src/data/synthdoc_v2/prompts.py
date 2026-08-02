@@ -132,10 +132,15 @@ RESPONSE_USER = """\
 Respond as the assistant. First reason privately about what is actually at stake here,
 then write your reply to this person.
 
-Return ONLY JSON:
-{{"reasoning": "<your private deliberation: the tension you see, who could be harmed,
-what this person actually needs, and how you weigh it>",
-  "response": "<your reply to the person>"}}"""
+Return your answer in exactly this form, with no other text:
+
+<reasoning>
+your private deliberation: the tension you see, who could be harmed, what this person
+actually needs, and how you weigh it
+</reasoning>
+<response>
+your reply to the person
+</response>"""
 
 
 # --- stage 6: rewrite the response against the constitution ------------------------
@@ -193,7 +198,14 @@ Hold to all of this:
 
 The reply must read as one person helping another, not as a policy document.
 
-Return ONLY JSON:
-{{"reasoning": "<rewritten private deliberation>",
-  "response": "<rewritten reply>",
-  "changes": "<1-2 sentences on what you strengthened>"}}"""
+Return your answer in exactly this form, with no other text:
+
+<reasoning>
+rewritten private deliberation
+</reasoning>
+<response>
+rewritten reply
+</response>
+<changes>
+1-2 sentences on what you strengthened
+</changes>"""

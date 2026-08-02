@@ -11,6 +11,7 @@ from omegaconf import OmegaConf
 
 from .estimate import estimate as _estimate
 from .pipeline import run as _run
+from .pipeline import topup as _topup
 
 
 def run(config: str, smoke: bool = False, resume: str | None = None) -> None:
@@ -24,6 +25,23 @@ def run(config: str, smoke: bool = False, resume: str | None = None) -> None:
     load_dotenv()
     cfg = OmegaConf.to_container(OmegaConf.load(config), resolve=True)
     _run(cfg, smoke=smoke, resume=resume)
+
+
+def topup(config: str, resume: str, traits, n: int = 25) -> None:
+    """Bring specific traits up to a target number of stage-6 rewrites.
+
+    Args:
+        config: Path to the run YAML.
+        resume: Run directory holding the stage snapshots.
+        traits: Trait ids -- Fire hands this over as a tuple when it contains commas,
+            so both "t5,t6" and a tuple are accepted.
+        n: Target completed rewrites per trait.
+    """
+    load_dotenv()
+    cfg = OmegaConf.to_container(OmegaConf.load(config), resolve=True)
+    ids = list(traits) if isinstance(traits, (list, tuple)) else \
+        [x.strip() for x in str(traits).split(",")]
+    _topup(cfg, resume, [x for x in ids if x], n)
 
 
 def estimate(config: str, measured: str | None = None) -> None:
@@ -54,4 +72,4 @@ def segment(constitution: str = "constitutions/claude_constitution_principles.md
 
 
 if __name__ == "__main__":
-    fire.Fire({"run": run, "estimate": estimate, "segment": segment})
+    fire.Fire({"run": run, "topup": topup, "estimate": estimate, "segment": segment})

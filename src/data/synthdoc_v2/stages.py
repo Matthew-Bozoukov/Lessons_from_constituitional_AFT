@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 import threading
 from pathlib import Path
@@ -98,6 +99,58 @@ def _parse_json(text: str) -> Any:
         end = max(candidate.rfind("}"), candidate.rfind("]"))
         candidate = candidate[start : end + 1]
     return json.loads(candidate, strict=False)
+
+
+def _parse_tagged(text: str, keys: tuple[str, ...]) -> dict[str, str]:
+    """Pull <key>...</key> blocks out of a completion.
+
+    Long prose in JSON is fragile: an unescaped quote inside a string value ends it early
+    and the whole object fails to parse. Every stage-6 failure was exactly that. Tags carry
+    arbitrary text -- quotes, apostrophes, newlines -- with nothing to escape.
+
+    Args:
+        text: Raw completion.
+        keys: Required tag names.
+
+    Returns:
+        Mapping tag name to its stripped contents.
+
+    Raises:
+        ValueError: If a required tag is missing or unclosed.
+    """
+    out: dict[str, str] = {}
+    for k in keys:
+        m = re.search(rf"<{k}>(.*?)</{k}>", text, re.DOTALL)
+        if not m:
+            raise ValueError(f"missing <{k}> block")
+        out[k] = m.group(1).strip()
+    return out
+
+
+def _call_tagged(client: OpenRouterClient, usage: Usage, model: str, system: str, user: str,
+                 temperature: float, max_tokens: int, stage: str, keys: tuple[str, ...],
+                 attempts: int = 3) -> dict[str, str]:
+    """Run a completion expecting tagged blocks, retrying if a tag is missing."""
+    last = ""
+    for attempt in range(attempts):
+        nudge = "" if attempt == 0 else (
+            f"\n\nYour previous reply was missing a required block. Return ONLY the "
+            f"{' and '.join('<' + k + '>...</' + k + '>' for k in keys)} blocks."
+        )
+        res = client.chat(
+            model=model,
+            messages=[{"role": "system", "content": system},
+                      {"role": "user", "content": user + nudge}],
+            temperature=temperature, max_tokens=max_tokens,
+        )
+        usage.add(model, res, stage)
+        assert res.finish_reason != "length", (
+            f"{stage}: {model} hit max_tokens={max_tokens} and truncated. Raise max_tokens.")
+        try:
+            return _parse_tagged(res.content, keys)
+        except ValueError as exc:
+            last = f"{exc} | content[:200]={res.content[:200]!r}"
+    raise ValueError(f"{stage}: no valid tagged output after {attempts} attempts. {last}")
 
 
 def _call(client: OpenRouterClient, usage: Usage, model: str, system: str, user: str,
@@ -382,14 +435,14 @@ def generate_responses(refined: list[dict], client: OpenRouterClient, usage: Usa
                        workers: int, ckpt: Checkpoint | None = None) -> list[dict]:
     """Answer each refined prompt with explicit reasoning, steered by the target trait."""
     def one(r: dict) -> dict:
-        parsed, _ = _call(
+        parsed = _call_tagged(
             client, usage, model,
             prompts.RESPONSE_SYSTEM.format(
                 system=r["system"], trait_name=r["trait_name"], trait_text=r["trait_text"],
                 style_guidance=style_guidance,
             ),
             prompts.RESPONSE_USER.format(user=r["user"]),
-            temperature, max_tokens, stage="respond",
+            temperature, max_tokens, "respond", ("reasoning", "response"),
         )
         return {**r, "draft_reasoning": parsed["reasoning"], "draft_response": parsed["response"]}
 
@@ -408,7 +461,7 @@ def rewrite_responses(responses: list[dict], client: OpenRouterClient, usage: Us
     relevant constitution section in context, then rewrites rather than scores.
     """
     def one(r: dict) -> dict:
-        parsed, _ = _call(
+        parsed = _call_tagged(
             client, usage, model,
             prompts.REWRITE_SYSTEM,
             prompts.REWRITE_USER.format(
@@ -416,7 +469,7 @@ def rewrite_responses(responses: list[dict], client: OpenRouterClient, usage: Us
                 trait_text=r["trait_text"], system=r["system"], user=r["user"],
                 reasoning=r["draft_reasoning"], response=r["draft_response"],
             ),
-            temperature, max_tokens, stage="rewrite",
+            temperature, max_tokens, "rewrite", ("reasoning", "response", "changes"),
         )
         return {**r, "reasoning": parsed["reasoning"], "response": parsed["response"],
                 "rewrite_changes": parsed.get("changes", "")}

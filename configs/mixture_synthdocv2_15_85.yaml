@@ -1,0 +1,25 @@
+# ABOUTME: 1M-token mixture: 15% synthdoc_v2 difficult-advice (with <think> traces)
+# ABOUTME: + 85% TULU3 replay (rendered with no think block).
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+
+# Same construction as the 10/90 and 20/80 arms: sampled to a token budget from the same
+# 200-example pool (25 per trait), so the three arms differ only in the difficult-advice
+# share and stay directly comparable as a dose-response sweep.
+sources:
+  difficult_advice:
+    path: "data/synthdoc_v2_balanced.jsonl"
+    format: "messages"
+    tokens: 150000
+
+tulu3_repo: "allenai/tulu-3-sft-mixture"
+tulu3_tokens: 850000
+
+# Drop TULU3 conversations longer than the training sequence length so replay
+# examples are never truncated mid-answer.
+# Must match the training config: this drops TULU3 rows longer than the training
+# sequence length so replay examples are never truncated mid-answer.
+max_seq_len: 3072
+
+output_dir: "output/mixture_synthdocv2_15_85"

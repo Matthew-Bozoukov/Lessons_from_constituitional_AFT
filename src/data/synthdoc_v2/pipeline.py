@@ -205,3 +205,61 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
     if repo:
         print(f">>> https://huggingface.co/datasets/{repo}")
     return manifest
+
+
+def topup(cfg: dict, resume: str, traits: list[str], n_per_trait: int) -> dict:
+    """Run stage 6 for specific traits only, until each has `n_per_trait` rewrites.
+
+    A run stopped early covers only the traits its scenarios happened to reach, since
+    scenarios are ordered by trait. This rewrites just enough additional stage-5 responses
+    to bring the named traits up to a target count, reusing the stage-6 checkpoint so
+    nothing already paid for is repeated.
+
+    Args:
+        cfg: Run config.
+        resume: Run directory holding the stage snapshots.
+        traits: Trait ids to top up, e.g. ["t5", "t6"].
+        n_per_trait: Target completed rewrites per trait.
+
+    Returns:
+        A dict of per-trait counts after the top-up.
+    """
+    run_dir = Path(resume)
+    assert run_dir.exists(), f"run dir does not exist: {run_dir}"
+    constitution = full_text(cfg["constitution"])
+    client = OpenRouterClient()
+    usage = stages.Usage()
+
+    drafted = [__import__("json").loads(line)
+               for line in (run_dir / "stage_5_draft_responses.jsonl").open()]
+    ckpt = stages.Checkpoint(run_dir / "stage_6_final.partial.jsonl")
+
+    have: dict[str, int] = {}
+    for r in ckpt.done.values():
+        have[r["trait_id"]] = have.get(r["trait_id"], 0) + 1
+    print(">>> current per-trait counts:", {t: have.get(t, 0) for t in traits})
+
+    todo = []
+    for t in traits:
+        need = n_per_trait - have.get(t, 0)
+        if need <= 0:
+            continue
+        pool = [d for d in drafted
+                if d["trait_id"] == t and d["scenario_id"] not in ckpt.done]
+        todo += pool[:need]
+        print(f"    {t}: need {need}, taking {len(pool[:need])}")
+    if not todo:
+        print(">>> nothing to do; every named trait already meets the target")
+        return have
+
+    print(f">>> rewriting {len(todo)} responses")
+    stages.rewrite_responses(todo, client, usage, constitution=constitution,
+                             workers=int(cfg.get("workers", 8)), ckpt=ckpt,
+                             **_model_cfg(cfg, "rewrite"))
+
+    after: dict[str, int] = {}
+    for r in ckpt.done.values():
+        after[r["trait_id"]] = after.get(r["trait_id"], 0) + 1
+    print(f">>> per-trait counts now: {dict(sorted(after.items()))}")
+    print(f">>> top-up spend ${usage.usd:.2f}")
+    return after
