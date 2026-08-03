@@ -3,6 +3,19 @@
 
 # LOG
 
+## 2026-08-03 — Deleted original synthdoc; synthdoc_v2 renamed to synthdoc
+
+The original config-driven `synthdoc` package (ablation sweeps, corpus snapshots, `control/`
+prompt registry, ~40 files + 6 test modules) is deleted; `synthdoc_v2` — the simpler, stage-for-stage
+replication of the Teaching Claude Why difficult-advice pipeline that superseded it — is renamed to
+`src/data/synthdoc/`. Nothing outside the old package imported it (verified: its only importers were
+its own tests). The `uv run synthdoc` entry point now drives the six-stage pipeline (a `main()` was
+added to its Fire CLI); `configs/synthdoc_v2.yaml` became `configs/synthdoc.yaml`. Output dirs and HF
+cache repos keep their `synthdoc_v2`/`synthdoc-v2` names so existing run snapshots stay resumable.
+The old package's published corpora remain on HF (`LASR-Callum/synthdoc-<name>`); its code, including
+`publish.py` (dataset-card enforcement, no v2 equivalent) and the `approved_*` corpus configs, lives
+in git history before this date. 200 tests pass.
+
 ## 2026-07-30 (2) — threeway-constitution LoRA: good on blackmail, POOR on leaking
 
 Ran `LASR-Callum/qwen3.6-27b-threeway-constitution-lora` on the agentic-misalignment suite (same

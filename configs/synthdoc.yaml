@@ -1,5 +1,5 @@
-# ABOUTME: Run config for synthdoc_v2, the six-stage Teaching Claude Why difficult-advice pipeline.
-# ABOUTME: uv run python -m src.data.synthdoc_v2.cli run --config configs/synthdoc_v2.yaml [--smoke]
+# ABOUTME: Run config for synthdoc, the six-stage Teaching Claude Why difficult-advice pipeline.
+# ABOUTME: uv run synthdoc run --config configs/synthdoc.yaml [--smoke]
 
 seed: 0
 
@@ -15,6 +15,8 @@ scenarios_per_trait: 116
 # its JSON; batching also keeps each call's "vary the domain" instruction achievable.
 scenarios_per_call: 8
 
+# Keeps its historical synthdoc_v2 name (as do the HF repos below) so existing run
+# snapshots stay resumable.
 output_dir: "output/synthdoc_v2"
 
 # Every stage's complete output is mirrored here as stage_<n>_<name>.jsonl, so a run can

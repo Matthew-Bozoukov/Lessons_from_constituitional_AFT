@@ -1,4 +1,4 @@
-# ABOUTME: Cost model for a full synthdoc_v2 run, priced per stage from OpenRouter rates.
+# ABOUTME: Cost model for a full synthdoc run, priced per stage from OpenRouter rates.
 # ABOUTME: Uses a smoke run's measured per-stage token counts when one is supplied.
 
 from __future__ import annotations

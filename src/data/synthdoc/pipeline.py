@@ -1,461 +1,265 @@
-# ABOUTME: The stage runner. A linear sequence of stages, each writing a COMPLETE
-# ABOUTME: corpus snapshot, so any stage can be re-run alone and any two can be diffed.
+# ABOUTME: The six-stage runner replicating the Teaching Claude Why difficult-advice pipeline.
+# ABOUTME: Each stage writes a complete snapshot and mirrors it to HF before the next begins.
 
 from __future__ import annotations
 
+import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any
 
-from tqdm import tqdm
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from openrouter import OpenRouterClient  # noqa: E402
+from utils import git_sha, timestamp  # noqa: E402
 
-from . import config as config_mod
-from .core.cache import Cache, CacheConfig
-from .core.embeddings import EmbeddingIndex, build_embedder
-from .core.llm import CachedLLM, PriceTable, build_client
-from .core.recipe import MixtureSampler, Recipe
-from .core.specs import load_spec
-from .core.types import Document, ScenarioSpec
-from .plugins.chunkers import build_chunker
-from .plugins.exporters import export_corpus
-from .plugins.filters import FilterContext, build_filters
-from .plugins.generators import GenerationContext, build_strategy, seed_document
-from .plugins.groupers import GroupingContext, build_groupers
-from .plugins.planners import PlanningContext, build_planner
-from .plugins.revisers import RevisionContext, build_reviser
-from .snapshots import SnapshotConfig, SnapshotWriter, load_snapshot
+from . import stages  # noqa: E402
+from .constitution import full_text, segment  # noqa: E402
+from .hf_cache import StageCache  # noqa: E402
 
-
-class BudgetExceeded(RuntimeError):
-    """Raised when a run passes its configured USD budget."""
+# (index, name, which config block supplies the model) in execution order.
+STAGES = [
+    (1, "traits", None),
+    (2, "scenarios", "scenarios"),
+    (3, "draft_prompts", "draft"),
+    (4, "refined_prompts", "refine"),
+    (5, "draft_responses", "respond"),
+    (6, "final", "rewrite"),
+]
 
 
-@dataclass
-class RunResult:
-    """Everything a caller needs after a run.
-
-    Attributes:
-        run_id: Run identifier.
-        run_dir: Local directory holding snapshots, manifest, exports, and report.
-        config: The resolved config.
-        stages: Stage names in order.
-        counts: Per-stage document counts and verdict tallies.
-        exports: Shard name -> written path.
-        manifest: The run manifest.
-        corpus: The final surviving documents.
-    """
-
-    run_id: str
-    run_dir: Path
-    config: dict[str, Any]
-    stages: list[str] = field(default_factory=list)
-    counts: dict[str, Any] = field(default_factory=dict)
-    exports: dict[str, str] = field(default_factory=dict)
-    manifest: dict[str, Any] = field(default_factory=dict)
-    corpus: list[Document] = field(default_factory=list)
-
-
-def _stage_names(n_revisions: int, planning: bool = False) -> list[str]:
-    """Return the ordered stage names for a run.
-
-    Planning, when enabled, is a real stage with its own complete snapshot - so
-    "did planning help?" is a stage diff and the chosen situations are inspectable
-    before any document was written.
+def _model_cfg(cfg: dict, key: str) -> dict[str, Any]:
+    """Return the merged model settings for one stage.
 
     Args:
-        n_revisions: Length of the config's revision list.
-        planning: Whether the planning stage runs.
+        cfg: Full run config.
+        key: Stage key under `models`.
 
     Returns:
-        e.g. ["stage_00_planned", "stage_01_generated", "stage_02_revised",
-        "stage_03_filtered"].
+        Dict with model, temperature and max_tokens.
     """
-    names: list[str] = []
-    if planning:
-        names.append("stage_00_planned")
-    names.append(f"stage_{len(names):02d}_generated")
-    names += [f"stage_{len(names) + i:02d}_revised" for i in range(n_revisions)]
-    names.append(f"stage_{len(names):02d}_filtered")
-    return names
-
-
-def _map(fn: Callable[[Any], Any], items: Sequence[Any], workers: int, desc: str) -> list[Any]:
-    """Thread-map preserving input order, with a progress bar.
-
-    Args:
-        fn: Callable applied to each item.
-        items: Input sequence.
-        workers: Thread pool size.
-        desc: Progress description.
-
-    Returns:
-        Results in input order.
-    """
-    if not items:
-        return []
-    if workers <= 1:
-        return [fn(x) for x in tqdm(items, desc=desc)]
-    with ThreadPoolExecutor(max_workers=workers) as ex:
-        return list(tqdm(ex.map(fn, items), total=len(items), desc=desc))
-
-
-def build_scenarios(cfg: dict[str, Any], n: int | None = None) -> tuple[list[ScenarioSpec], dict[str, Any]]:
-    """Chunk the spec and sample the run's experimental conditions.
-
-    Exposed separately from run_pipeline so a sweep runner can confirm that arms
-    are paired before spending anything on generation.
-
-    Args:
-        cfg: Resolved config.
-        n: Override for recipe.n.
-
-    Returns:
-        Tuple of (scenarios, diagnostics) where diagnostics records the spec sha,
-        chunk count, and any grouper fallbacks.
-    """
-    spec_cfg = cfg.get("spec") or {}
-    spec = load_spec(spec_cfg["id"], spec_cfg.get("path"))
-    chunker = build_chunker(spec_cfg.get("chunker") or {})
-    chunks = chunker.chunk(spec)
-    if not chunks:
-        raise ValueError(
-            f"Chunker produced no chunks from {spec.path}. Check the granularity "
-            "and the spec's heading structure."
-        )
-
-    recipe = Recipe.from_config(cfg.get("recipe") or {})
-    context = GroupingContext()
-    if recipe.grouping.get("semantic", 0.0) > 0:
-        embedder = build_embedder(cfg.get("embedder"))
-        context.index = EmbeddingIndex.build(
-            ids=[c.chunk_id for c in chunks],
-            texts=[c.text for c in chunks],
-            embedder=embedder,
-            cache_dir=CacheConfig.from_config(cfg).embeddings_path(),
-            tag=spec.spec_id,
-        )
-
-    groupers = build_groupers(recipe.strategies, chunks, recipe.grouping_params, context)
-    sampler = MixtureSampler(groupers, seed=int(cfg.get("seed", 0)))
-    scenarios = list(sampler.sample(chunks, recipe, n))
-
-    diagnostics = {
-        "spec_path": spec.path,
-        "spec_sha": spec.sha,
-        "n_chunks": len(chunks),
-        "chunker": (spec_cfg.get("chunker") or {}).get("granularity", "bullet"),
-        "grouper_stats": {name: dict(g.stats) for name, g in groupers.items() if g.stats},
-        "n_scenarios": len(scenarios),
-        "n_unique_scenario_hashes": len({s.scenario_hash for s in scenarios}),
+    defaults = cfg.get("defaults", {})
+    block = cfg["models"][key]
+    return {
+        "model": block["model"],
+        "temperature": float(block.get("temperature", defaults.get("temperature", 1.0))),
+        "max_tokens": int(block.get("max_tokens", defaults.get("max_tokens", 4096))),
     }
-    return scenarios, diagnostics
 
 
-def run_pipeline(
-    cfg: dict[str, Any],
-    n: int | None = None,
-    run_id: str | None = None,
-    progress: bool = True,
-) -> RunResult:
-    """Run the full generation pipeline.
+def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
+    """Run the full pipeline, caching every stage.
 
     Args:
-        cfg: Resolved config (from config.load_config).
-        n: Override for recipe.n, e.g. for a smoke run.
-        run_id: Override for the generated run id.
-        progress: Show progress bars.
+        cfg: Run config (see configs/synthdoc.yaml).
+        smoke: Restrict to 2 traits x 1 scenario and shrink the budget, to validate wiring.
+        resume: Existing run directory to continue. Completed stage snapshots are reused
+            and partially-completed stages pick up from their checkpoint, so a crash or
+            an interrupt only costs the items that were in flight.
 
     Returns:
-        A RunResult.
-
-    Raises:
-        BudgetExceeded: If cumulative cost passes cfg["budget_usd"].
+        A manifest dict describing the run.
     """
     started = time.time()
-    cfg = config_mod.to_dict(cfg)
-    run_id = run_id or config_mod.make_run_id(cfg)
-    run_dir = Path(cfg["output_dir"]) / run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
-    workers = int(cfg.get("max_workers", 16)) if progress else 1
-
-    scenarios, diagnostics = build_scenarios(cfg, n)
-    recipe = Recipe.from_config(cfg["recipe"])
-    plan_cfg = dict(cfg.get("planning") or {})
-    planning_on = bool(plan_cfg.get("enabled", False))
-    stages = _stage_names(len(cfg.get("revision") or []), planning_on)
-
-    cache = Cache(CacheConfig.from_config(cfg))
-    llm_cfg = dict(cfg.get("llm") or {})
-    provider = llm_cfg.pop("provider", "openrouter")
-    client = CachedLLM(
-        inner=build_client(provider, **llm_cfg),
-        cache=cache,
-        prices=PriceTable(cfg.get("pricing")),
-    )
-
-    snap_cfg = SnapshotConfig(**(cfg.get("snapshots") or {}))
-    writer = SnapshotWriter(
-        run_dir=run_dir,
-        cfg=snap_cfg,
-        run_id=run_id,
-        axis_names=recipe.axis_names,
-        filter_fields=config_mod.filter_score_fields(cfg),
-    )
-
-    budget = float(cfg.get("budget_usd", 0) or 0)
-    counts: dict[str, Any] = {}
-
-    def spent(corpus: Sequence[Document]) -> float:
-        """Cumulative USD across the corpus."""
-        return round(sum(d.cost_usd_total for d in corpus), 4)
-
-    def checkpoint(stage: str, corpus: list[Document]) -> None:
-        """Snapshot a stage and enforce the budget."""
-        writer.write(stage, corpus)
-        cost = spent(corpus)
-        with_turns = [d for d in corpus if d.ok]
-        counts[stage] = {
-            "n": len(corpus),
-            # n_ok counts documents without an error; the planning stage legitimately
-            # has no turns yet, so counting turns here would report it as all-failed.
-            "n_ok": sum(1 for d in corpus if not d.error),
-            "n_with_turns": len(with_turns),
-            "n_planned": sum(1 for d in corpus if d.plan),
-            "n_error": sum(1 for d in corpus if d.error),
-            "mean_words": round(
-                sum(len(d.text().split()) for d in with_turns) / max(1, len(with_turns)), 1
-            ),
-            "cost_usd": cost,
-        }
-        if budget and cost > budget:
-            raise BudgetExceeded(
-                f"Run cost ${cost:.2f} passed budget_usd=${budget:.2f} after {stage}. "
-                f"Snapshots up to this stage are in {run_dir}. Raise budget_usd to continue; "
-                "cached calls make the re-run free."
-            )
-
-    # --- optional stage 00: planning --------------------------------------------
-    gen_stage_idx = 1 if planning_on else 0
-    corpus: list[Document] | None = None
-
-    if planning_on:
-        stage = stages[0]
-        corpus = _resume(run_dir, stage, cfg)
-        if corpus is None:
-            plan_ctx = PlanningContext(
-                llm=client,
-                model=plan_cfg.get("model") or (cfg.get("generation") or {}).get("model", ""),
-                params={
-                    k: v
-                    for k, v in plan_cfg.items()
-                    if k not in ("enabled", "model", "template")
-                },
-                template=plan_cfg.get("template", "what_how_why"),
-                stage_idx=0,
-                stage_name=stage,
-            )
-            planner = build_planner(plan_ctx)
-            seeded = [seed_document(s, run_id, stage, 0) for s in scenarios]
-            corpus = _map(planner.plan, seeded, workers, f"{stage} ({plan_ctx.template})")
-        checkpoint(stage, corpus)
-
-    # --- generation --------------------------------------------------------------
-    gen_stage = stages[gen_stage_idx]
-    gen_cfg = dict(cfg.get("generation") or {})
-    gen_ctx = GenerationContext(
-        llm=client,
-        model=gen_cfg.get("model", ""),
-        params={
-            k: v
-            for k, v in gen_cfg.items()
-            if k not in ("model", "template", "max_parse_retries", "strategy", "strategy_params")
-        },
-        template=gen_cfg.get("template", "v2"),
-        strategy=gen_cfg.get("strategy", "single_pass"),
-        strategy_params=dict(gen_cfg.get("strategy_params") or {}),
-        run_id=run_id,
-        stage_idx=gen_stage_idx,
-        stage_name=gen_stage,
-        max_parse_retries=int(gen_cfg.get("max_parse_retries", 1)),
-    )
-
-    resumed = _resume(run_dir, gen_stage, cfg)
-    if resumed is not None:
-        corpus = resumed
+    ts = timestamp()
+    if resume:
+        run_dir = Path(resume)
+        assert run_dir.exists(), f"resume dir does not exist: {run_dir}"
+        print(f">>> resuming into {run_dir}")
     else:
-        planned = corpus if corpus is not None else [
-            seed_document(s, run_id, gen_stage, gen_stage_idx) for s in scenarios
-        ]
-        inputs = [d.advanced(gen_stage_idx, gen_stage) for d in planned] if planning_on else planned
-        strategy = build_strategy(gen_ctx)
-        corpus = _map(
-            strategy.run, inputs, workers, f"{gen_stage} ({gen_ctx.strategy}/{gen_ctx.model})"
-        )
-    checkpoint(gen_stage, corpus)
+        run_dir = Path(cfg["output_dir"]) / (f"smoke_{ts}" if smoke else ts)
+    repo = cfg.get("hf_repo")
+    if smoke:
+        repo = cfg.get("hf_repo_smoke")  # never pollute the real dataset from a smoke run
+    cache = StageCache(run_dir, repo, private=bool(cfg.get("hf_private", False)))
 
-    # --- revision ----------------------------------------------------------------
-    for offset, entry in enumerate(cfg.get("revision") or []):
-        i = gen_stage_idx + 1 + offset
-        stage = stages[i]
-        resumed = _resume(run_dir, stage, cfg)
-        if resumed is not None:
-            corpus = resumed
-            checkpoint(stage, corpus)
-            continue
+    workers = int(cfg.get("workers", 8))
+    budget = float(cfg.get("budget_usd", 0)) or None
+    client = OpenRouterClient()
+    usage = stages.Usage()
+    # Per-stage wall clock, so a later run can be scheduled from real numbers rather
+    # than from a guess about per-call latency.
+    durations: dict[str, float] = {}
 
-        entry = dict(entry)
-        rev_ctx = RevisionContext(
-            llm=client,
-            kind=entry.pop("kind"),
-            model=entry.pop("model", gen_ctx.model),
-            context=entry.pop("context", "fresh"),
-            gen_template=gen_ctx.template,
-            stage_idx=i,
-            stage_name=stage,
-            keep_on_failure=bool(entry.pop("keep_on_failure", True)),
-            params=entry,
-        )
-        reviser = build_reviser(rev_ctx)
-        advanced = [d.advanced(i, stage) for d in corpus]
-        corpus = _map(reviser.revise, advanced, workers, f"{stage} ({rev_ctx.kind})")
-        checkpoint(stage, corpus)
+    def timed(name: str, fn):
+        """Run a stage, recording its wall clock."""
+        t0 = time.time()
+        out = fn()
+        durations[name] = round(time.time() - t0, 1)
+        return out
 
-    # --- final stage: filtering -------------------------------------------------
-    filter_stage = stages[-1]
-    filter_idx = len(stages) - 1
-    filter_ctx = FilterContext(
-        llm=client,
-        stage_idx=filter_idx,
-        stage_name=filter_stage,
-        cache_dir=CacheConfig.from_config(cfg).embeddings_path(),
-    )
-    filters = build_filters(cfg.get("filters") or [], filter_ctx)
-    corpus = [d.advanced(filter_idx, filter_stage) for d in corpus]
+    def guard(stage: str) -> None:
+        """Stop before the next stage if the budget is already spent."""
+        if budget is not None and usage.usd > budget:
+            raise RuntimeError(
+                f"budget_usd=${budget:.2f} exceeded (${usage.usd:.2f}) after {stage}. "
+                f"Snapshots up to this stage are in {run_dir}; raise budget_usd and re-run "
+                f"to resume."
+            )
 
-    for f in filters:
-        # A filter's model defaults to the generator's only if it declared none, so
-        # a judge-model ablation is still an explicit config line.
-        if getattr(f, "model", None) == "":
-            f.model = gen_ctx.model
-        f.prepare(corpus)
-        results = _map(f.evaluate, corpus, workers, f"{filter_stage} ({f.name})")
-        for doc, (scores, keep) in zip(corpus, results):
-            doc.filter_scores.update(scores)
-            if not keep and not doc.dropped_by:
-                doc.dropped_by = f.name
+    # --- stage 1: segment the constitution (deterministic) --------------------------
+    traits, style_guidance = segment(cfg["constitution"])
+    constitution = full_text(cfg["constitution"])
+    if smoke:
+        traits = traits[:2]
+    print(f">>> stage 1: {len(traits)} traits -> {[t.trait_id for t in traits]}")
+    cache.save(1, "traits", [t.as_dict() for t in traits])
 
-    for doc in corpus:
-        if not doc.ok:
-            doc.filter_verdict = "drop"
-            doc.dropped_by = doc.dropped_by or "error"
-        else:
-            doc.filter_verdict = "drop" if doc.dropped_by else "keep"
+    per_trait = 1 if smoke else int(cfg["scenarios_per_trait"])
+    per_call = 1 if smoke else int(cfg.get("scenarios_per_call", per_trait))
 
-    checkpoint(filter_stage, corpus)
-    counts[filter_stage]["n_keep"] = sum(1 for d in corpus if d.filter_verdict == "keep")
-    counts[filter_stage]["dropped_by"] = _tally(d.dropped_by for d in corpus if d.dropped_by)
+    # --- stage 2: scenarios ---------------------------------------------------------
+    if cache.has(2, "scenarios"):
+        scenarios = cache.load(2, "scenarios")
+        print(f">>> stage 2: reused {len(scenarios)} cached scenarios")
+    else:
+        m = _model_cfg(cfg, "scenarios")
+        scenarios = timed("scenarios", lambda: stages.generate_scenarios(
+            traits, client, usage, per_trait=per_trait, per_call=per_call,
+            workers=workers, **m))
+        cache.save(2, "scenarios", scenarios)
+    print(f">>> stage 2: {len(scenarios)} scenarios")
+    print(f"    FIRST: [{scenarios[0]['trait_name']}] {scenarios[0]['situation'][:220]}")
+    guard("stage 2")
 
-    kept = [d for d in corpus if d.filter_verdict == "keep"]
+    # --- stage 3: draft the prompt --------------------------------------------------
+    if cache.has(3, "draft_prompts"):
+        drafts = cache.load(3, "draft_prompts")
+        print(f">>> stage 3: reused {len(drafts)} cached drafts")
+    else:
+        drafts = timed("draft", lambda: stages.draft_prompts(
+            scenarios, client, usage, workers=workers, **_model_cfg(cfg, "draft")))
+        cache.save(3, "draft_prompts", drafts)
+    print(f"    FIRST DRAFT USER: {drafts[0]['draft_user'][:220]}")
+    guard("stage 3")
 
-    # --- export, manifest, report ----------------------------------------------
-    exports = export_corpus(kept, cfg.get("export") or {}, run_dir / "export")
-    # The exports are the corpus handoff, so they belong in the dataset repo too -
-    # otherwise "on HuggingFace" would only cover the stage snapshots.
-    for path in exports.values():
-        writer.push_file(path, f"export/{Path(path).name}")
+    # --- stage 4: refine the prompt -------------------------------------------------
+    if cache.has(4, "refined_prompts"):
+        refined = cache.load(4, "refined_prompts")
+        print(f">>> stage 4: reused {len(refined)} cached refinements")
+    else:
+        refined = timed("refine", lambda: stages.refine_prompts(
+            drafts, client, usage, constitution=constitution, workers=workers,
+            ckpt=stages.Checkpoint(run_dir / "stage_4_refined_prompts.partial.jsonl"),
+            **_model_cfg(cfg, "refine")))
+        cache.save(4, "refined_prompts", refined)
+    print(f"    FIRST REFINED USER: {refined[0]['user'][:220]}")
+    guard("stage 4")
 
-    manifest: dict[str, Any] = {
-        "run_id": run_id,
-        "git_sha": config_mod.git_sha(),
-        "timestamp_utc": config_mod.timestamp(),
-        "elapsed_s": round(time.time() - started, 1),
-        "seed": cfg.get("seed", 0),
+    # --- stage 5: generate the response ---------------------------------------------
+    if cache.has(5, "draft_responses"):
+        drafted = cache.load(5, "draft_responses")
+        print(f">>> stage 5: reused {len(drafted)} cached responses")
+    else:
+        drafted = timed("respond", lambda: stages.generate_responses(
+            refined, client, usage, style_guidance=style_guidance, workers=workers,
+            ckpt=stages.Checkpoint(run_dir / "stage_5_draft_responses.partial.jsonl"),
+            **_model_cfg(cfg, "respond")))
+        cache.save(5, "draft_responses", drafted)
+    print(f"    FIRST REASONING: {drafted[0]['draft_reasoning'][:220]}")
+    guard("stage 5")
+
+    # --- stage 6: rewrite against the constitution ----------------------------------
+    if cache.has(6, "final"):
+        final = cache.load(6, "final")
+        print(f">>> stage 6: reused {len(final)} cached rewrites")
+    else:
+        final = timed("rewrite", lambda: stages.rewrite_responses(
+            drafted, client, usage, constitution=constitution, workers=workers,
+            ckpt=stages.Checkpoint(run_dir / "stage_6_final.partial.jsonl"),
+            **_model_cfg(cfg, "rewrite")))
+        cache.save(6, "final", final)
+    print(f"    FIRST FINAL RESPONSE: {final[0]['response'][:220]}")
+
+    # --- training-ready export ------------------------------------------------------
+    sft = stages.to_sft(final)
+    cache.save(7, "sft", sft)
+
+    manifest = {
+        "run_id": ts,
+        "git_sha": git_sha(),
+        "smoke": smoke,
         "config": cfg,
-        "spec": diagnostics,
-        "stages": stages,
-        "counts": counts,
-        "cache": cache.stats(),
-        "cost_usd_total": spent(corpus),
-        "unpriced_models": sorted(client.prices.unpriced),
-        "exports": exports,
-        "thresholds": {
-            entry.get("kind"): {k: v for k, v in entry.items() if k != "kind"}
-            for entry in (cfg.get("filters") or [])
+        # What this run ACTUALLY used, which differs from cfg under --smoke. The cost
+        # estimator rescales the scenario stage by these, so they must be the real values.
+        "effective": {"n_traits": len(traits), "scenarios_per_trait": per_trait,
+                      "scenarios_per_call": per_call},
+        "counts": {
+            "traits": len(traits), "scenarios": len(scenarios), "drafts": len(drafts),
+            "refined": len(refined), "responses": len(drafted), "final": len(final),
+            "sft": len(sft),
         },
-        "filter_summaries": {f.name: f.summary for f in filters if f.summary},
-        "agreement": {
-            f.name: f.agreement() for f in filters if hasattr(f, "agreement")
-        },
-        "hf_repo": writer.repo_id if snap_cfg.backend == "huggingface" else None,
+        "usage": usage.as_dict(),
+        "wall_clock_s": round(time.time() - started, 1),
+        "stage_seconds": durations,
+        "workers": workers,
+        "hf_repo": repo,
+        "run_dir": str(run_dir),
     }
+    cache.save_json("manifest.json", manifest)
 
-    result = RunResult(
-        run_id=run_id,
-        run_dir=run_dir,
-        config=cfg,
-        stages=stages,
-        counts=counts,
-        exports=exports,
-        manifest=manifest,
-        corpus=kept,
-    )
-
-    if (cfg.get("report") or {}).get("enabled", True):
-        from .report import coverage_report
-
-        report_paths = coverage_report(corpus, cfg, run_dir, manifest)
-        manifest["report"] = report_paths
-        for name, path in report_paths.items():
-            if path:
-                writer.push_file(path, Path(path).name)
-        del name
-
-    writer.write_manifest(manifest)
-    push_errors = writer.finish()
-    if push_errors:
-        manifest["push_errors"] = push_errors
-        writer.write_manifest(manifest)
-
-    # Catalogue the finished corpus so `cli corpora` can find it later.
-    from .corpora import register as register_corpus
-
-    register_corpus(result)
-
-    # Optionally leave HuggingFace as the only copy. Runs last, and only once every
-    # push has been joined and verified. The JSONL sidecars are never uploaded (they
-    # duplicate the parquet plus lineage), so they are removed explicitly.
-    if snap_cfg.cleanup_local and snap_cfg.backend == "huggingface" and not push_errors:
-        sidecars = [run_dir / f"{stage}.jsonl" for stage in stages]
-        manifest["local_files_removed"] = writer.cleanup(extra=sidecars)
-        writer.write_manifest(manifest)
-
-    return result
+    assert len(sft) == len(final), f"sft={len(sft)} != final={len(final)}"
+    kept = 100 * len(final) / max(len(scenarios), 1)
+    print(f">>> {len(final)}/{len(scenarios)} scenarios survived all stages ({kept:.1f}%)")
+    print(f"\n>>> {len(sft)} training records in {run_dir}")
+    print(f">>> spend ${usage.usd:.2f} | {manifest['wall_clock_s']}s")
+    if repo:
+        print(f">>> https://huggingface.co/datasets/{repo}")
+    return manifest
 
 
-def _tally(values) -> dict[str, int]:
-    """Count occurrences of each value."""
-    out: dict[str, int] = {}
-    for v in values:
-        out[v] = out.get(v, 0) + 1
-    return dict(sorted(out.items(), key=lambda kv: -kv[1]))
+def topup(cfg: dict, resume: str, traits: list[str], n_per_trait: int) -> dict:
+    """Run stage 6 for specific traits only, until each has `n_per_trait` rewrites.
 
-
-def _resume(run_dir: Path, stage: str, cfg: dict[str, Any]) -> list[Document] | None:
-    """Load an existing stage snapshot when resuming.
+    A run stopped early covers only the traits its scenarios happened to reach, since
+    scenarios are ordered by trait. This rewrites just enough additional stage-5 responses
+    to bring the named traits up to a target count, reusing the stage-6 checkpoint so
+    nothing already paid for is repeated.
 
     Args:
-        run_dir: Run directory.
-        stage: Stage name.
-        cfg: Resolved config.
+        cfg: Run config.
+        resume: Run directory holding the stage snapshots.
+        traits: Trait ids to top up, e.g. ["t5", "t6"].
+        n_per_trait: Target completed rewrites per trait.
 
     Returns:
-        The snapshot's documents, or None if not resuming or not present.
+        A dict of per-trait counts after the top-up.
     """
-    if not cfg.get("resume", True):
-        return None
-    path = run_dir / f"{stage}.jsonl"
-    if not path.exists():
-        return None
-    return load_snapshot(path)
+    run_dir = Path(resume)
+    assert run_dir.exists(), f"run dir does not exist: {run_dir}"
+    constitution = full_text(cfg["constitution"])
+    client = OpenRouterClient()
+    usage = stages.Usage()
+
+    drafted = [__import__("json").loads(line)
+               for line in (run_dir / "stage_5_draft_responses.jsonl").open()]
+    ckpt = stages.Checkpoint(run_dir / "stage_6_final.partial.jsonl")
+
+    have: dict[str, int] = {}
+    for r in ckpt.done.values():
+        have[r["trait_id"]] = have.get(r["trait_id"], 0) + 1
+    print(">>> current per-trait counts:", {t: have.get(t, 0) for t in traits})
+
+    todo = []
+    for t in traits:
+        need = n_per_trait - have.get(t, 0)
+        if need <= 0:
+            continue
+        pool = [d for d in drafted
+                if d["trait_id"] == t and d["scenario_id"] not in ckpt.done]
+        todo += pool[:need]
+        print(f"    {t}: need {need}, taking {len(pool[:need])}")
+    if not todo:
+        print(">>> nothing to do; every named trait already meets the target")
+        return have
+
+    print(f">>> rewriting {len(todo)} responses")
+    stages.rewrite_responses(todo, client, usage, constitution=constitution,
+                             workers=int(cfg.get("workers", 8)), ckpt=ckpt,
+                             **_model_cfg(cfg, "rewrite"))
+
+    after: dict[str, int] = {}
+    for r in ckpt.done.values():
+        after[r["trait_id"]] = after.get(r["trait_id"], 0) + 1
+    print(f">>> per-trait counts now: {dict(sorted(after.items()))}")
+    print(f">>> top-up spend ${usage.usd:.2f}")
+    return after
