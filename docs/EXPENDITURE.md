@@ -22,8 +22,32 @@ to a future reader.
 | category | spent to date |
 |---|---|
 | OpenRouter (data generation) | **$171.46** |
-| GPU rental | $0.00 |
-| **total** | **$171.46** |
+| OpenRouter (eval judging) | $0.02 |
+| GPU rental | $0.00 (+ ~4 RunPod A100-h on 2026-08-03, $ TBD from dashboard) |
+| **total** | **$171.48** (+ GPU TBD) |
+
+---
+
+## 2026-08-03 — Eval-framework pod validation (RunPod A100-80GB + OpenRouter)
+
+**What was bought:** the full validation matrix for the new eval framework — Option A
+(pod-driven) and Option B (Mac-driven, `--server`) internalization smokes against
+`LASR-Callum/qwen3.6-27b-synthdocv2-lora-20_80`, a 2-step training smoke (TRL under
+transformers 5.14), Qwen3.6-27B serving proven on vLLM 0.26, plus four bugs caught live
+(inline-nohup SSH hang, smoke-slice thinking validation, remote `.env` sourcing, RunPod
+docker verdict).
+
+- **GPU:** ~4 A100-80GB pod-hours across three pod incarnations on Jamie's RunPod account
+  (two pods died/restarted mid-session). Rate not visible from this machine — **estimate
+  ~$2/GPU-h ≈ $8; correct this line from the RunPod dashboard.** Unit cost worth recording:
+  cold engine boot for Qwen3.6 on vLLM 0.26 is ~14 min of billed GPU doing no eval work
+  (mostly kernel compile + CUDA-graph capture); warm boots are several times faster —
+  batch evals per pod session, don't boot per eval.
+- **OpenRouter (judging):** $0.01 + $0.00 self-reported by the two 4-item internalization
+  smokes (gemini-flash judge). The before/after `/credits` discipline was skipped for these
+  micro-runs; resume it for real runs.
+- **Wasted spend:** one engine boot (~14 min GPU) lost to the inline-nohup SSH hang, and
+  one to the first training-smoke validation misfire — both bought the bug fixes above.
 
 ---
 

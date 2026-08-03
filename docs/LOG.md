@@ -48,6 +48,21 @@ address (`172.17.0.1` linux / `host.docker.internal` Docker Desktop). `.env` rec
 (HF token from the CLI cache + user-supplied OpenRouter key); one adapter stamped
 (`qwen3.6-27b-synthdocv2-lora-20_80`). Remote-topology smoke still pending pod availability.
 
+**Addendum 2 (same day, evening): full validation matrix GREEN.** On a fresh RunPod A100
+(bootstrap_pod.sh first try): **Option B** (Mac driver, `--server`) internalization smoke passed
+end-to-end — HF-token-only push, remote Qwen3.6-27B on vLLM 0.26 (`max_num_seqs` fix held; cold
+init 842s), tunnel, 5 items, $0.01 judge spend, clean teardown both ends. **Option A**
+(pod driver) same eval: 4/4 items healthy, 0 truncated. **Training smoke** passed:
+`Qwen3_5ForConditionalGeneration` trained 2 steps under transformers 5.14 + TRL 0.19.1
+(the stack-bump risk cleared), 66.1% tokens supervised, `training_meta.json` stamped and
+verified. HF surfaces all live-tested: org model+dataset reads from both machines, write
+round-trip via personal namespace (self-deleting, zero org residue). Bugs caught live and
+fixed: inline-nohup SSH hang (script-launch pattern), thinking validation running on the
+smoke slice instead of the full dataset, SshExec not sourcing the remote `.env`, and the
+credential boundary demonstrating itself (Option A needs the pod's own OpenRouter key —
+by design). Confirmed empirically + via docs: RunPod pods can never run ODCV's docker
+(bridgeless daemon only, no network creation) — ODCV stays on vast.ai or a docker laptop.
+
 ## 2026-08-03 (2) — Deleted v1 difficult-advice generator + DPO pipeline; unified mixture builder
 
 Removed the v1 data pipeline (`generate_difficult_advice.py`, `augment_thinking.py`, `prompts.py`)
