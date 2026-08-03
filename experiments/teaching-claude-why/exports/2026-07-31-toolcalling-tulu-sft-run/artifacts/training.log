@@ -1,0 +1,264 @@
+[INFO] Running in WANDB offline mode
+>>> output dir: output/train_lora_toolcalling/20260731_114158
+>>> base model: Qwen/Qwen3.6-27B
+
+>>> dataset examples: 2002
+>>> FIRST EXAMPLE text (pre-rendered):
+<|im_start|>user
+When it comes to developing games using the Unreal Engine, is ForSource or Git a better version control system?<|im_end|>
+<|im_start|>assistant
+Both ForSource and Git are version control systems that can be used with Unreal Engine, but Git is generally considered the more popular and versatile option. Git is an open-source system that is widely used in the software development industry and has a large community of users who contribute to its ongoing development and support. It provides powerful features for managing source code, including branching and merging, which can be especially helpful when developing complex games with multiple developers. Additionally, Git integrates seamlessly with many popular code hosting platforms, such as GitHub and Bitbucket, making it easy 
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[transformers] The fast path is not available because one of the required library is not installed. Falling back to torch implementation. To install follow https://github.com/fla-org/flash-linear-attention#installation and https://github.com/Dao-AILab/causal-conv1d
+
+[transformers] warmup_ratio is deprecated and will be removed in v5.2. Use `warmup_steps` instead.
+
+
+
+
+
+>>> starting training
+[transformers] The tokenizer has new PAD/BOS/EOS tokens that differ from the model config and generation config. The model config and generation config were aligned accordingly, being updated with the tokenizer's values. Updated tokens: {'eos_token_id': 248046, 'bos_token_id': None, 'pad_token_id': 248044}.
+wandb: Tracking run with wandb version 0.28.1
+wandb: W&B syncing is set to `offline` in this directory. Run `wandb online` or set WANDB_MODE=online to enable cloud syncing.
+wandb: Run data is saved locally in /workspace/logs/wandb/offline-run-20260731_114232-j10v76xr
+wandb: View this run in the terminal with `wandb leet`
+
+  1%|          | 1/126 [01:00<2:05:05, 60.04s/it]
+  2%|▏         | 2/126 [01:48<1:49:50, 53.15s/it]
+  2%|▏         | 3/126 [02:32<1:40:23, 48.97s/it]
+  3%|▎         | 4/126 [03:12<1:32:46, 45.63s/it]
+  4%|▍         | 5/126 [04:00<1:33:29, 46.36s/it]
+                                                 
+{'loss': '2.753', 'grad_norm': '2.262', 'learning_rate': '0.0001', 'entropy': '0.6685', 'num_tokens': '6.016e+04', 'mean_token_accuracy': '0.4875', 'epoch': '0.03996'}
+
+  4%|▍         | 5/126 [04:00<1:33:29, 46.36s/it]
+  5%|▍         | 6/126 [04:48<1:34:03, 47.03s/it]
+  6%|▌         | 7/126 [05:31<1:30:25, 45.60s/it]
+  6%|▋         | 8/126 [06:18<1:30:36, 46.08s/it]
+  7%|▋         | 9/126 [07:06<1:30:58, 46.65s/it]
+  8%|▊         | 10/126 [07:56<1:32:15, 47.72s/it]
+                                                  
+{'loss': '1.218', 'grad_norm': '0.4942', 'learning_rate': '9.959e-05', 'entropy': '0.882', 'num_tokens': '1.204e+05', 'mean_token_accuracy': '0.7166', 'epoch': '0.07992'}
+
+  8%|▊         | 10/126 [07:56<1:32:15, 47.72s/it]
+  9%|▊         | 11/126 [08:41<1:29:48, 46.85s/it]
+ 10%|▉         | 12/126 [09:33<1:31:48, 48.32s/it]
+ 10%|█         | 13/126 [10:19<1:30:06, 47.85s/it]
+ 11%|█         | 14/126 [11:02<1:26:34, 46.38s/it]
+ 12%|█▏        | 15/126 [11:56<1:29:52, 48.58s/it]
+                                                  
+{'loss': '0.9724', 'grad_norm': '0.2353', 'learning_rate': '9.835e-05', 'entropy': '0.9293', 'num_tokens': '1.831e+05', 'mean_token_accuracy': '0.7494', 'epoch': '0.1199'}
+
+ 12%|█▏        | 15/126 [11:56<1:29:52, 48.58s/it]
+ 13%|█▎        | 16/126 [12:35<1:23:36, 45.60s/it]
+ 13%|█▎        | 17/126 [13:26<1:26:00, 47.34s/it]
+ 14%|█▍        | 18/126 [14:28<1:32:49, 51.57s/it]
+ 15%|█▌        | 19/126 [15:12<1:28:05, 49.40s/it]
+ 16%|█▌        | 20/126 [15:59<1:26:12, 48.80s/it]
+                                                  
+{'loss': '1.111', 'grad_norm': '0.1921', 'learning_rate': '9.632e-05', 'entropy': '1.148', 'num_tokens': '2.473e+05', 'mean_token_accuracy': '0.7166', 'epoch': '0.1598'}
+
+ 16%|█▌        | 20/126 [15:59<1:26:12, 48.80s/it]
+ 17%|█▋        | 21/126 [16:44<1:22:58, 47.41s/it]
+ 17%|█▋        | 22/126 [17:35<1:24:16, 48.62s/it]
+ 18%|█▊        | 23/126 [18:16<1:19:48, 46.49s/it]
+ 19%|█▉        | 24/126 [19:01<1:17:59, 45.87s/it]
+ 20%|█▉        | 25/126 [19:45<1:16:05, 45.20s/it]
+                                                  
+{'loss': '1.017', 'grad_norm': '0.2603', 'learning_rate': '9.351e-05', 'entropy': '1.029', 'num_tokens': '3.013e+05', 'mean_token_accuracy': '0.7375', 'epoch': '0.1998'}
+
+ 20%|█▉        | 25/126 [19:45<1:16:05, 45.20s/it]
+ 21%|██        | 26/126 [20:33<1:17:04, 46.24s/it]
+ 21%|██▏       | 27/126 [21:26<1:19:42, 48.31s/it]
+ 22%|██▏       | 28/126 [22:09<1:16:14, 46.68s/it]
+ 23%|██▎       | 29/126 [22:58<1:16:32, 47.35s/it]
+ 24%|██▍       | 30/126 [23:45<1:15:25, 47.14s/it]
+                                                  
+{'loss': '0.9244', 'grad_norm': '0.2153', 'learning_rate': '8.999e-05', 'entropy': '0.9143', 'num_tokens': '3.625e+05', 'mean_token_accuracy': '0.7599', 'epoch': '0.2398'}
+
+ 24%|██▍       | 30/126 [23:45<1:15:25, 47.14s/it]
+ 25%|██▍       | 31/126 [24:40<1:18:34, 49.63s/it]
+ 25%|██▌       | 32/126 [25:41<1:22:47, 52.85s/it]
+ 26%|██▌       | 33/126 [26:23<1:17:10, 49.79s/it]
+ 27%|██▋       | 34/126 [27:12<1:15:42, 49.38s/it]
+ 28%|██▊       | 35/126 [27:54<1:11:29, 47.14s/it]
+                                                  
+{'loss': '0.9366', 'grad_norm': '0.243', 'learning_rate': '8.581e-05', 'entropy': '0.9203', 'num_tokens': '4.288e+05', 'mean_token_accuracy': '0.7515', 'epoch': '0.2797'}
+
+ 28%|██▊       | 35/126 [27:54<1:11:29, 47.14s/it]
+ 29%|██▊       | 36/126 [28:47<1:13:22, 48.91s/it]
+ 29%|██▉       | 37/126 [29:46<1:17:03, 51.95s/it]
+ 30%|███       | 38/126 [30:30<1:13:02, 49.80s/it]
+ 31%|███       | 39/126 [31:17<1:10:41, 48.75s/it]
+ 32%|███▏      | 40/126 [32:09<1:11:27, 49.85s/it]
+                                                  
+{'loss': '0.899', 'grad_norm': '0.2083', 'learning_rate': '8.103e-05', 'entropy': '0.8725', 'num_tokens': '5.017e+05', 'mean_token_accuracy': '0.7694', 'epoch': '0.3197'}
+
+ 32%|███▏      | 40/126 [32:09<1:11:27, 49.85s/it]
+ 33%|███▎      | 41/126 [33:01<1:11:32, 50.50s/it]
+ 33%|███▎      | 42/126 [33:50<1:10:01, 50.02s/it]
+ 34%|███▍      | 43/126 [34:32<1:05:43, 47.51s/it]
+ 35%|███▍      | 44/126 [35:17<1:03:48, 46.69s/it]
+ 36%|███▌      | 45/126 [35:56<1:00:11, 44.58s/it]
+                                                  
+{'loss': '1.023', 'grad_norm': '0.2784', 'learning_rate': '7.574e-05', 'entropy': '1.009', 'num_tokens': '5.571e+05', 'mean_token_accuracy': '0.7382', 'epoch': '0.3596'}
+
+ 36%|███▌      | 45/126 [35:56<1:00:11, 44.58s/it]
+ 37%|███▋      | 46/126 [36:36<57:43, 43.29s/it]  
+ 37%|███▋      | 47/126 [37:20<56:59, 43.29s/it]
+ 38%|███▊      | 48/126 [38:08<58:09, 44.74s/it]
+ 39%|███▉      | 49/126 [38:49<55:55, 43.58s/it]
+ 40%|███▉      | 50/126 [39:32<54:54, 43.35s/it]
+                                                
+{'loss': '0.9623', 'grad_norm': '0.2', 'learning_rate': '7.002e-05', 'entropy': '0.9711', 'num_tokens': '6.065e+05', 'mean_token_accuracy': '0.743', 'epoch': '0.3996'}
+
+ 40%|███▉      | 50/126 [39:32<54:54, 43.35s/it]
+ 40%|████      | 51/126 [40:15<54:06, 43.29s/it]
+ 41%|████▏     | 52/126 [40:59<53:50, 43.65s/it]
+ 42%|████▏     | 53/126 [41:39<51:41, 42.49s/it]
+ 43%|████▎     | 54/126 [42:21<50:39, 42.21s/it]
+ 44%|████▎     | 55/126 [43:04<50:29, 42.67s/it]
+                                                
+{'loss': '0.9995', 'grad_norm': '0.2526', 'learning_rate': '6.397e-05', 'entropy': '1.012', 'num_tokens': '6.544e+05', 'mean_token_accuracy': '0.7433', 'epoch': '0.4396'}
+
+ 44%|████▎     | 55/126 [43:04<50:29, 42.67s/it]
+ 44%|████▍     | 56/126 [43:42<48:03, 41.19s/it]
+ 45%|████▌     | 57/126 [44:24<47:43, 41.50s/it]
+ 46%|████▌     | 58/126 [45:11<48:50, 43.09s/it]
+ 47%|████▋     | 59/126 [45:54<48:14, 43.19s/it]
+ 48%|████▊     | 60/126 [46:48<50:51, 46.23s/it]
+                                                
+{'loss': '1.029', 'grad_norm': '0.163', 'learning_rate': '5.769e-05', 'entropy': '1.031', 'num_tokens': '7.072e+05', 'mean_token_accuracy': '0.7307', 'epoch': '0.4795'}
+
+ 48%|████▊     | 60/126 [46:48<50:51, 46.23s/it]
+ 48%|████▊     | 61/126 [47:36<50:38, 46.74s/it]
+ 49%|████▉     | 62/126 [48:24<50:24, 47.27s/it]
+ 50%|█████     | 63/126 [49:09<48:51, 46.53s/it]
+ 51%|█████     | 64/126 [50:04<50:37, 49.00s/it]
+ 52%|█████▏    | 65/126 [50:48<48:23, 47.59s/it]
+                                                
+{'loss': '1.026', 'grad_norm': '0.2169', 'learning_rate': '5.129e-05', 'entropy': '0.9939', 'num_tokens': '7.704e+05', 'mean_token_accuracy': '0.7344', 'epoch': '0.5195'}
+
+ 52%|█████▏    | 65/126 [50:48<48:23, 47.59s/it]
+ 52%|█████▏    | 66/126 [51:29<45:36, 45.60s/it]
+ 53%|█████▎    | 67/126 [52:14<44:42, 45.46s/it]
+ 54%|█████▍    | 68/126 [52:55<42:29, 43.96s/it]
+ 55%|█████▍    | 69/126 [53:42<42:40, 44.91s/it]
+ 56%|█████▌    | 70/126 [54:31<43:00, 46.08s/it]
+                                                
+{'loss': '1.003', 'grad_norm': '0.2402', 'learning_rate': '4.486e-05', 'entropy': '0.9951', 'num_tokens': '8.239e+05', 'mean_token_accuracy': '0.7416', 'epoch': '0.5594'}
+
+ 56%|█████▌    | 70/126 [54:31<43:00, 46.08s/it]
+ 56%|█████▋    | 71/126 [55:16<42:01, 45.84s/it]
+ 57%|█████▋    | 72/126 [56:07<42:34, 47.30s/it]
+ 58%|█████▊    | 73/126 [56:49<40:22, 45.70s/it]
+ 59%|█████▊    | 74/126 [57:37<40:23, 46.61s/it]
+ 60%|█████▉    | 75/126 [58:19<38:15, 45.01s/it]
+                                                
+{'loss': '0.9065', 'grad_norm': '0.3338', 'learning_rate': '3.852e-05', 'entropy': '0.9039', 'num_tokens': '8.799e+05', 'mean_token_accuracy': '0.764', 'epoch': '0.5994'}
+
+ 60%|█████▉    | 75/126 [58:19<38:15, 45.01s/it]
+ 60%|██████    | 76/126 [58:58<36:05, 43.31s/it]
+ 61%|██████    | 77/126 [59:48<37:07, 45.45s/it]
+ 62%|██████▏   | 78/126 [1:00:26<34:24, 43.02s/it]
+ 63%|██████▎   | 79/126 [1:01:17<35:41, 45.56s/it]
+ 63%|██████▎   | 80/126 [1:02:04<35:13, 45.94s/it]
+                                                  
+{'loss': '0.9966', 'grad_norm': '0.2849', 'learning_rate': '3.236e-05', 'entropy': '0.9837', 'num_tokens': '9.339e+05', 'mean_token_accuracy': '0.7378', 'epoch': '0.6394'}
+
+ 63%|██████▎   | 80/126 [1:02:04<35:13, 45.94s/it]
+ 64%|██████▍   | 81/126 [1:02:45<33:17, 44.38s/it]
+ 65%|██████▌   | 82/126 [1:03:37<34:16, 46.74s/it]
+ 66%|██████▌   | 83/126 [1:04:27<34:18, 47.86s/it]
+ 67%|██████▋   | 84/126 [1:05:13<32:58, 47.11s/it]
+ 67%|██████▋   | 85/126 [1:05:54<30:56, 45.28s/it]
+                                                  
+{'loss': '0.9243', 'grad_norm': '0.2296', 'learning_rate': '2.65e-05', 'entropy': '0.9434', 'num_tokens': '9.908e+05', 'mean_token_accuracy': '0.7548', 'epoch': '0.6793'}
+
+ 67%|██████▋   | 85/126 [1:05:54<30:56, 45.28s/it]
+ 68%|██████▊   | 86/126 [1:06:41<30:28, 45.71s/it]
+ 69%|██████▉   | 87/126 [1:07:23<28:59, 44.61s/it]
+ 70%|██████▉   | 88/126 [1:08:09<28:38, 45.22s/it]
+ 71%|███████   | 89/126 [1:09:01<29:06, 47.21s/it]
+ 71%|███████▏  | 90/126 [1:09:49<28:30, 47.52s/it]
+                                                  
+{'loss': '0.9859', 'grad_norm': '0.236', 'learning_rate': '2.103e-05', 'entropy': '0.9818', 'num_tokens': '1.05e+06', 'mean_token_accuracy': '0.7439', 'epoch': '0.7193'}
+
+ 71%|███████▏  | 90/126 [1:09:49<28:30, 47.52s/it]
+ 72%|███████▏  | 91/126 [1:10:46<29:19, 50.27s/it]
+ 73%|███████▎  | 92/126 [1:11:31<27:35, 48.68s/it]
+ 74%|███████▍  | 93/126 [1:12:15<25:56, 47.17s/it]
+ 75%|███████▍  | 94/126 [1:12:53<23:42, 44.45s/it]
+ 75%|███████▌  | 95/126 [1:13:36<22:45, 44.04s/it]
+                                                  
+{'loss': '1.017', 'grad_norm': '0.3005', 'learning_rate': '1.604e-05', 'entropy': '1.014', 'num_tokens': '1.106e+06', 'mean_token_accuracy': '0.7365', 'epoch': '0.7592'}
+
+ 75%|███████▌  | 95/126 [1:13:36<22:45, 44.04s/it]
+ 76%|███████▌  | 96/126 [1:14:26<22:59, 45.98s/it]
+ 77%|███████▋  | 97/126 [1:15:14<22:27, 46.46s/it]
+ 78%|███████▊  | 98/126 [1:16:08<22:46, 48.79s/it]
+ 79%|███████▊  | 99/126 [1:16:56<21:51, 48.57s/it]
+ 79%|███████▉  | 100/126 [1:17:43<20:51, 48.15s/it]
+                                                   
+{'loss': '0.9057', 'grad_norm': '0.2375', 'learning_rate': '1.161e-05', 'entropy': '0.8838', 'num_tokens': '1.173e+06', 'mean_token_accuracy': '0.7653', 'epoch': '0.7992'}
+
+ 79%|███████▉  | 100/126 [1:17:43<20:51, 48.15s/it]
+ 80%|████████  | 101/126 [1:18:29<19:43, 47.36s/it]
+ 81%|████████  | 102/126 [1:19:11<18:17, 45.71s/it]
+ 82%|████████▏ | 103/126 [1:19:58<17:41, 46.15s/it]
+ 83%|████████▎ | 104/126 [1:20:56<18:11, 49.61s/it]
+ 83%|████████▎ | 105/126 [1:21:44<17:12, 49.16s/it]
+                                                   
+{'loss': '0.9065', 'grad_norm': '0.1884', 'learning_rate': '7.811e-06', 'entropy': '0.8864', 'num_tokens': '1.237e+06', 'mean_token_accuracy': '0.7603', 'epoch': '0.8392'}
+
+ 83%|████████▎ | 105/126 [1:21:44<17:12, 49.16s/it]
+ 84%|████████▍ | 106/126 [1:22:29<15:57, 47.89s/it]
+ 85%|████████▍ | 107/126 [1:23:25<15:59, 50.52s/it]
+ 86%|████████▌ | 108/126 [1:24:06<14:17, 47.63s/it]
+ 87%|████████▋ | 109/126 [1:24:52<13:19, 47.02s/it]
+ 87%|████████▋ | 110/126 [1:25:33<12:06, 45.40s/it]
+                                                   
+{'loss': '1.005', 'grad_norm': '0.291', 'learning_rate': '4.715e-06', 'entropy': '1.002', 'num_tokens': '1.294e+06', 'mean_token_accuracy': '0.734', 'epoch': '0.8791'}
+
+ 87%|████████▋ | 110/126 [1:25:33<12:06, 45.40s/it]
+ 88%|████████▊ | 111/126 [1:26:25<11:47, 47.17s/it]
+ 89%|████████▉ | 112/126 [1:27:11<10:57, 46.96s/it]
+ 90%|████████▉ | 113/126 [1:27:59<10:13, 47.15s/it]
+ 90%|█████████ | 114/126 [1:28:48<09:33, 47.81s/it]
+ 91%|█████████▏| 115/126 [1:29:33<08:35, 46.90s/it]
+                                                   
+{'loss': '0.9236', 'grad_norm': '0.2418', 'learning_rate': '2.368e-06', 'entropy': '0.9221', 'num_tokens': '1.357e+06', 'mean_token_accuracy': '0.7548', 'epoch': '0.9191'}
+
+ 91%|█████████▏| 115/126 [1:29:33<08:35, 46.90s/it]
+ 92%|█████████▏| 116/126 [1:30:30<08:21, 50.10s/it]
+ 93%|█████████▎| 117/126 [1:31:14<07:12, 48.08s/it]
+ 94%|█████████▎| 118/126 [1:32:12<06:49, 51.19s/it]
+ 94%|█████████▍| 119/126 [1:33:02<05:56, 50.87s/it]
+ 95%|█████████▌| 120/126 [1:33:53<05:05, 50.87s/it]
+                                                   
+{'loss': '0.9514', 'grad_norm': '0.211', 'learning_rate': '8.101e-07', 'entropy': '0.9512', 'num_tokens': '1.429e+06', 'mean_token_accuracy': '0.7531', 'epoch': '0.959'}
+
+ 95%|█████████▌| 120/126 [1:33:53<05:05, 50.87s/it]
+ 96%|█████████▌| 121/126 [1:34:42<04:10, 50.16s/it]
+ 97%|█████████▋| 122/126 [1:35:33<03:22, 50.61s/it]
+ 98%|█████████▊| 123/126 [1:36:21<02:28, 49.63s/it]
+ 98%|█████████▊| 124/126 [1:37:14<01:41, 50.83s/it]
+ 99%|█████████▉| 125/126 [1:37:56<00:48, 48.11s/it]
+                                                   
+{'loss': '1.02', 'grad_norm': '0.3573', 'learning_rate': '6.63e-08', 'entropy': '1.034', 'num_tokens': '1.492e+06', 'mean_token_accuracy': '0.733', 'epoch': '0.999'}
+
+ 99%|█████████▉| 125/126 [1:37:56<00:48, 48.11s/it]
+100%|██████████| 126/126 [1:38:03<00:00, 35.72s/it]wandb: WARNING URL not available in offline run
+
+                                                   
+{'train_runtime': '5889', 'train_samples_per_second': '0.34', 'train_steps_per_second': '0.021', 'train_loss': '1.057', 'entropy': '1.047', 'num_tokens': '1.494e+06', 'mean_token_accuracy': '0.7071', 'epoch': '1'}
+
+100%|██████████| 126/126 [1:38:08<00:00, 35.72s/it]
+100%|██████████| 126/126 [1:38:08<00:00, 46.73s/it]
+>>> saved adapter to output/train_lora_toolcalling/20260731_114158/adapter
+>>> run_meta: output/train_lora_toolcalling/20260731_114158/run_meta.json
+[1;34mwandb[0m: 
+[1;34mwandb[0m: You can sync this run to the cloud by running:
+[1;34mwandb[0m: [1mwandb sync /workspace/logs/wandb/offline-run-20260731_114232-j10v76xr[0m
+[1;34mwandb[0m: Find logs at: [1;35mlogs/wandb/offline-run-20260731_114232-j10v76xr/logs[0m
