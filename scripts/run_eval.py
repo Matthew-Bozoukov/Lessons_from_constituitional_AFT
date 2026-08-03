@@ -72,6 +72,10 @@ def main(argv: list[str] | None = None) -> None:
                         help="local tunnel bind address with --server. Default: 127.0.0.1, or "
                              "the docker bridge (172.17.0.1) for docker evals on linux so "
                              "scenario containers can reach the tunnelled endpoint.")
+    parser.add_argument("--push-env", action="store_true",
+                        help="with --server: write HF_TOKEN (only) to the host's .env if it "
+                             "has none. Deliberate per-host action; the rest of your .env "
+                             "never leaves this machine.")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--hf-org", default="LASR-Callum")
     parser.add_argument("--no-push", action="store_true",
@@ -94,7 +98,13 @@ def main(argv: list[str] | None = None) -> None:
             "172.17.0.1" if EVALS[args.name].needs_docker and sys.platform != "darwin"
             else "127.0.0.1")
         executor = SshExec(args.server, port=args.port, bind=bind)
-        executor.ensure_env(Path(".env"))
+        executor.check_ready()
+        if args.push_env:
+            executor.push_hf_token(Path(".env"))
+        elif not executor.has_env():
+            print(f"!!! {args.server} has no .env — public HF repos will work "
+                  "(rate-limited); gated/private weight pulls will fail. Provision "
+                  "deliberately with --push-env (HF_TOKEN only) or scp your own.")
         print(f">>> serving on {args.server} (tunnel bound to {bind}:{args.port})")
     server = VllmServer(work_dir=Path("output") / args.name / "server", port=args.port,
                         executor=executor)

@@ -143,26 +143,45 @@ def test_sshexec_remote_commands_source_the_hosts_own_env():
     assert wrapped.endswith("uv run python -c x")
 
 
-def test_sshexec_ensure_env_respects_existing_remote(monkeypatch, tmp_path):
-    from src.endpoints import vllm_server
+def test_sshexec_push_hf_token_is_optin_minimal_and_never_overwrites(monkeypatch, tmp_path):
     from src.endpoints.vllm_server import SshExec
 
-    copies = []
-    monkeypatch.setattr(vllm_server.subprocess, "run",
-                        lambda argv, **kw: copies.append(argv))
     local = tmp_path / ".env"
-    local.write_text("HF_TOKEN=x\n")
+    local.write_text("OPENROUTER_API_KEY=secret-or\nHF_TOKEN=hf_abc\nVAST_API_KEY=v\n")
+    ex = SshExec("host", port=8000)
+    sent = []
+
+    # Remote already has a .env: refuse to touch it.
+    monkeypatch.setattr(ex, "_ssh", lambda cmd, **kw: "yes\n")
+    with pytest.raises(AssertionError, match="already has"):
+        ex.push_hf_token(local)
+
+    # Remote has none: exactly HF_TOKEN crosses, nothing else from the .env.
+    def fake_ssh(cmd, **kw):
+        sent.append(cmd)
+        return "no\n"
+
+    monkeypatch.setattr(ex, "_ssh", fake_ssh)
+    ex.push_hf_token(local)
+    written = sent[-1]
+    assert "hf_abc" in written and "secret-or" not in written and "VAST" not in written
+    assert "umask 077" in written
+
+
+def test_sshexec_check_ready_errors_name_the_bootstrap_script(monkeypatch):
+    from src.endpoints.vllm_server import SshExec
 
     ex = SshExec("host", port=8000)
-    # Remote already has one: never overwritten, nothing copied.
-    monkeypatch.setattr(ex, "_ssh", lambda cmd, **kw: "yes\n")
-    ex.ensure_env(local)
-    assert copies == []
-    # Remote has none: the local file is pushed via scp.
-    monkeypatch.setattr(ex, "_ssh", lambda cmd, **kw: "no\n")
-    ex.ensure_env(local)
-    assert copies and copies[0][0] == "scp" and copies[0][-1] == "host:/root/work/.env"
-    # Neither exists: no copy, no crash (public-only mode with a warning).
-    copies.clear()
-    ex.ensure_env(tmp_path / "missing.env")
-    assert copies == []
+    monkeypatch.setattr(ex, "_ssh", lambda cmd, **kw: "NOUV\nNOREPO\n")
+    with pytest.raises(SystemExit, match="bootstrap_pod.sh"):
+        ex.check_ready()
+    monkeypatch.setattr(ex, "_ssh", lambda cmd, **kw: (_ for _ in ()).throw(RuntimeError("boom")))
+    with pytest.raises(SystemExit, match="RunPod remaps ports"):
+        ex.check_ready()
+
+
+def test_sshexec_remote_commands_get_uv_on_path():
+    from src.endpoints.vllm_server import SshExec
+
+    wrapped = SshExec("host", port=8000)._with_env("uv run x")
+    assert wrapped.startswith('export PATH="$HOME/.local/bin:$PATH"; ')

@@ -190,34 +190,62 @@ class SshExec:
                                f"{cmd[:120]} ...\n{r.stderr[-500:]}")
         return r.stdout
 
-    def ensure_env(self, local_env: Path) -> None:
-        """Provision the host's .env from the driver's, only when the host has none.
+    def has_env(self) -> bool:
+        return self._ssh(f"[ -f {self.workdir}/.env ] && echo yes || echo no").strip() == "yes"
 
-        An existing remote .env always wins (the pod may hold its own distinct keys).
-        This is the playbook's manual `scp .env` step, automated — an explicit,
-        SSH-encrypted copy at provisioning time, not run-time secret forwarding.
+    def push_hf_token(self, local_env: Path) -> None:
+        """OPT-IN provisioning (--push-env): write ONLY HF_TOKEN to the host's .env.
+
+        The server needs exactly one credential — HF_TOKEN, for gated/private weight
+        pulls — so that is all that ever leaves this machine. The full .env (OpenRouter,
+        provider API keys) stays local: a rented GPU host is the least-trusted machine in
+        the loop, and CLAUDE.md's secrets policy says leaked values must be bounded.
+        Never overwrites an existing remote .env.
         """
-        has_remote = self._ssh(
-            f"[ -f {self.workdir}/.env ] && echo yes || echo no").strip() == "yes"
-        if has_remote:
-            return
-        if not local_env.exists():
-            print(f"!!! neither {self.host}:{self.workdir}/.env nor local {local_env} exists "
-                  "— private HF repos and gated models will fail on the server")
-            return
-        subprocess.run(["scp", "-q", str(local_env), f"{self.host}:{self.workdir}/.env"],
-                       check=True)
-        print(f">>> provisioned {self.host}:{self.workdir}/.env from local {local_env}")
+        assert not self.has_env(), f"{self.host} already has a .env; not touching it"
+        token = next((line.split("=", 1)[1].strip()
+                      for line in local_env.read_text().splitlines()
+                      if line.startswith("HF_TOKEN=")), "")
+        assert token, f"no HF_TOKEN in {local_env}; nothing to push"
+        self._ssh(f"umask 077 && mkdir -p {self.workdir} && "
+                  f"echo {shlex.quote('HF_TOKEN=' + token)} > {self.workdir}/.env")
+        print(f">>> pushed HF_TOKEN (and nothing else) to {self.host}:{self.workdir}/.env")
 
     def _with_env(self, cmd: str) -> str:
-        """Prefix a remote command with the host's own .env (never the driver's).
+        """Prefix a remote command with uv's PATH and the host's own .env (never the driver's).
 
-        A fresh SSH shell sources nothing, so without this a remote snapshot_download or
-        vLLM launch has no HF_TOKEN even when the pod is fully provisioned. Secrets stay
-        machine-local by design: the driver's credentials are never transmitted.
+        A fresh SSH shell sources nothing: without this, `uv` (installed to ~/.local/bin)
+        is not on PATH and a remote snapshot_download or vLLM launch has no HF_TOKEN even
+        when the pod is fully provisioned. Secrets stay machine-local by design.
         """
-        return (f"set -a; [ -f {self.workdir}/.env ] && . {self.workdir}/.env; set +a; "
+        return ('export PATH="$HOME/.local/bin:$PATH"; '
+                f"set -a; [ -f {self.workdir}/.env ] && . {self.workdir}/.env; set +a; "
                 + cmd)
+
+    def check_ready(self) -> None:
+        """Fast fail-with-remedy preflight: is this host prepared to serve?
+
+        Checks reachability, uv, and the repo clone — the three ways a fresh instance
+        fails confusingly later. Bootstrap a fresh host with
+        `bash scripts/gpu/bootstrap_pod.sh <ssh-alias>`.
+        """
+        try:
+            state = self._ssh(self._with_env(
+                f"command -v uv >/dev/null && echo UV || echo NOUV; "
+                f"[ -d {self.workdir}/.git ] && echo REPO || echo NOREPO"), timeout=20)
+        except (RuntimeError, subprocess.TimeoutExpired) as e:
+            raise SystemExit(
+                f"\n--server preflight: cannot reach {self.host} over SSH ({e}).\n"
+                "  Check the host is up and the address/port in ~/.ssh/config is current\n"
+                "  (RunPod remaps ports across restarts).") from e
+        if "NOUV" in state or "NOREPO" in state:
+            missing = ("uv is not installed" if "NOUV" in state
+                       else f"no repo clone at {self.workdir}")
+            raise SystemExit(
+                f"\n--server preflight: {self.host} is not prepared ({missing}).\n"
+                f"  Bootstrap a fresh instance with:\n"
+                f"    bash scripts/gpu/bootstrap_pod.sh {self.host}\n"
+                "  (installs uv, clones this repo at your current branch, uv sync)")
 
     def write_file(self, name: str, text: str) -> str:
         payload = base64.b64encode(text.encode()).decode()
