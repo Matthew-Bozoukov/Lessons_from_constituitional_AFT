@@ -12,9 +12,9 @@ from src.data.prompts import (  # noqa: E402
 )
 
 # Short, distinctive phrases from each of the 7 numbered principles in
-# constitutions/claude_distilled_7_principles_approved/constitution.md. Exists to stop the doc and CONSTITUTION_V2 from
+# constitutions/claude_distilled_07_principles_approved/constitution.md. Exists to stop the doc and CONSTITUTION_V2 from
 # silently drifting apart, as the v1 constitution and its old doc already once did (see
-# constitutions/claude_distilled_7_principles_approved/rationale.md §5).
+# constitutions/claude_distilled_07_principles_approved/rationale.md §5).
 V2_PRINCIPLE_PHRASES = [
     "Honesty and non-deception",  # principle 1
     "Do not help the person deceive, mislead, or manipulate others",  # principle 2

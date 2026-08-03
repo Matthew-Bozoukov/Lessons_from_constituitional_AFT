@@ -4,7 +4,7 @@
 # Distilled Constitutional Principles (v1 alignment target, archived)
 
 > **Archived 2026-08-03.** Superseded as the alignment target by
-> [`constitutions/claude_distilled_7_principles_approved/constitution.md`](../../claude_distilled_7_principles_approved/constitution.md) on
+> [`constitutions/claude_distilled_07_principles_approved/constitution.md`](../../claude_distilled_07_principles_approved/constitution.md) on
 > 2026-07-29, and replaced as the synthdoc pipeline's default by
 > [`constitutions/claude_distilled_12_principles_mid/constitution.md`](../../claude_distilled_12_principles_mid/constitution.md)
 > on 2026-08-03. Kept so pre-2026-08-03 synthdoc corpora (built from its 8 numbered

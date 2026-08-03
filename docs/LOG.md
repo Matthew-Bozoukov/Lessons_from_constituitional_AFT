@@ -19,7 +19,7 @@ closing byte-identical. Known caveats (in each folder's rationale.md): modality 
 with coarseness (0.79→0.58, intrinsic to the axis); mid/fine each spend a unit duplicating the
 preamble's priority ordering; mid/fine sit 9%/15% above their re-baselined bands (length reported
 as covariate); spread 2.62× vs the 2.5× target. Promoted seed-0 docs to
-`constitutions/claude_distilled_{4,12,24}_principles_{coarse,mid,fine}/` per the standard —
+`constitutions/claude_distilled_{04,12,24}_principles_{coarse,mid,fine}/` per the standard —
 single-seed pilot, no cross-seed ARI/selection yet. Next: seeds 1–4 + selection if the comparison
 is to be published, then synthdoc data generation per arm.
 

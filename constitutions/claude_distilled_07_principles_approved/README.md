@@ -1,7 +1,7 @@
 <!-- ABOUTME: Metadata card for the approved constitution: status, dates, principle count, source. -->
 <!-- ABOUTME: The constitution itself is constitution.md; why it says what it says is rationale.md. -->
 
-# claude_distilled_7_principles_approved
+# claude_distilled_07_principles_approved
 
 | field | value |
 |---|---|

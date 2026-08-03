@@ -3,7 +3,7 @@
 
 seed: 0
 
-# v2 diff #1: use the approved constitution (constitutions/claude_distilled_7_principles_approved/constitution.md) instead of v1.
+# v2 diff #1: use the approved constitution (constitutions/claude_distilled_07_principles_approved/constitution.md) instead of v1.
 constitution: v2
 
 # Models (OpenRouter ids). Sonnet 4.5 generates and grades the data.

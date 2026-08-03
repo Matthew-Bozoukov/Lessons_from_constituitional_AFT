@@ -1,5 +1,5 @@
 <!-- ABOUTME: Layout and conventions for constitutions/ — one folder per constitution, constitution.md + rationale.md. -->
-<!-- ABOUTME: The current alignment target is claude_distilled_7_principles_approved/; superseded constitutions move to archive/. -->
+<!-- ABOUTME: The current alignment target is claude_distilled_07_principles_approved/; superseded constitutions move to archive/. -->
 
 # Constitutions
 
@@ -11,7 +11,7 @@ The alignment targets this repository trains toward and grades against. Data gen
 ```
 constitutions/
   <descriptive_name>/       snake_case; states source, derivation, principle count and
-                            status/version, e.g. claude_distilled_7_principles_approved
+                            status/version, e.g. claude_distilled_07_principles_approved
     constitution.md         the document itself (what generators and graders consume)
     rationale.md            why it says what it says: changelog, evidence, rejected
                             alternatives, scope limits
@@ -23,8 +23,9 @@ constitutions/
 
 - **Folder names are self-describing**: a reader should learn the source material, how it
   was derived, how many principles/traits it carries, and its status without opening the
-  folder (`claude_distilled_7_principles_approved`, `claude_distilled_8_principles_v1` —
-  never a bare `claude_approved` or `v2`).
+  folder (`claude_distilled_07_principles_approved`, `claude_distilled_24_principles_fine` —
+  never a bare `claude_approved` or `v2`). Zero-pad the principle count to two digits so
+  folders sort lexicographically by granularity.
 - **`constitution.md` is the artifact; `rationale.md` is its justification.** Every new
   constitution gets both — a constitution without a written rationale is not reviewable.
   `README.md` is the at-a-glance metadata card (keep it to one table).
@@ -51,8 +52,8 @@ folders here following the layout above.
 
 | folder | status | used by |
 |---|---|---|
-| `claude_distilled_7_principles_approved/` | **current alignment target** (7 principles, distilled from Anthropic's *Claude's Constitution*, Jan 2026) | `configs/data/difficult_advice_gen_v2.yaml`, `src/data/prompts.py::CONSTITUTION_V2` |
-| `claude_distilled_4_principles_coarse/` | experiment arm (granularity study, machine-distilled by specgen, 2026-08-03) | nothing yet — spec-variation experiment |
+| `claude_distilled_07_principles_approved/` | **current alignment target** (7 principles, distilled from Anthropic's *Claude's Constitution*, Jan 2026) | `configs/data/difficult_advice_gen_v2.yaml`, `src/data/prompts.py::CONSTITUTION_V2` |
+| `claude_distilled_04_principles_coarse/` | experiment arm (granularity study, machine-distilled by specgen, 2026-08-03) | nothing yet — spec-variation experiment |
 | `claude_distilled_12_principles_mid/` | experiment arm; **default constitution for synthdoc data generation since 2026-08-03** | `configs/data/synthdoc.yaml` (12 traits) |
 | `claude_distilled_24_principles_fine/` | experiment arm (granularity study, machine-distilled by specgen, 2026-08-03) | nothing yet — spec-variation experiment |
 | `archive/claude_distilled_8_principles_v1/` | v1, superseded 2026-07-29; synthdoc default until 2026-08-03 | `src/data/prompts.py::CONSTITUTION_V1`; pre-2026-08-03 synthdoc corpora |

@@ -5,7 +5,7 @@
 
 | field | value |
 |---|---|
-| status | archived — superseded 2026-07-29 by [`claude_distilled_7_principles_approved/`](../../claude_distilled_7_principles_approved/) |
+| status | archived — superseded 2026-07-29 by [`claude_distilled_07_principles_approved/`](../../claude_distilled_07_principles_approved/) |
 | principles / traits | 8 (these are the 8 traits the synthdoc corpus segments into) |
 | source material | Anthropic, *Claude's Constitution* (anthropic.com/news/claudes-constitution) — distilled, not verbatim |
 | date generated | mid-July 2026 (with the original difficult-advice pipeline; exact day predates this repo's history) |

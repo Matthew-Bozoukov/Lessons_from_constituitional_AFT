@@ -1,7 +1,7 @@
 <!-- ABOUTME: Metadata card for the coarse specgen arm: status, dates, principle count, source. -->
 <!-- ABOUTME: The constitution itself is constitution.md; provenance and caveats are rationale.md. -->
 
-# claude_distilled_4_principles_coarse
+# claude_distilled_04_principles_coarse
 
 | field | value |
 |---|---|
