@@ -24,7 +24,7 @@ import fire
 from omegaconf import OmegaConf
 
 
-from src.openrouter import OpenRouterClient, map_threaded  # noqa: E402
+from src.endpoints.openrouter import OpenRouterClient, map_threaded  # noqa: E402
 from src.data.prompts import CONSTITUTION_V1, CONSTITUTION_V2, DOMAINS, response_gen_messages, scenario_gen_messages  # noqa: E402
 from src.utils import ParseError, count_chat_tokens, extract_json, timestamp, write_run_meta  # noqa: E402
 

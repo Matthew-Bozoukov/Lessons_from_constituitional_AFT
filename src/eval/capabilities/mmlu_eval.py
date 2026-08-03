@@ -45,7 +45,7 @@ from openai import OpenAI
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.openrouter import map_threaded  # noqa: E402
+from src.endpoints.openrouter import map_threaded  # noqa: E402
 from src.eval.capabilities.mmlu import (  # noqa: E402
     build_prompt,
     build_subset,

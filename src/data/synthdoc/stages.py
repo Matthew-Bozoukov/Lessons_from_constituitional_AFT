@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from openrouter import ChatResult, OpenRouterClient, map_threaded  # noqa: E402
+from src.endpoints.openrouter import ChatResult, OpenRouterClient, map_threaded  # noqa: E402
 from utils import extract_json  # noqa: E402
 
 from . import prompts  # noqa: E402
