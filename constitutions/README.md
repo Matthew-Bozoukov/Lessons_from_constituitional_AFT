@@ -40,6 +40,13 @@ constitutions/
   `src/data/prompts.py::CONSTITUTION_V2`, HF dataset cards) names the source folder, and a
   test guards against drift where feasible (see `tests/test_prompts.py`).
 
+## Generating new constitutions
+
+New constitutions are produced by the `specgen` pipeline (`src/data/specgen/`,
+`uv run specgen --config configs/data/specgen.yaml`), which distills the published
+Claude constitution into specs at controlled granularities with claim-level coverage
+accounting. Selected outputs are promoted into folders here following the layout above.
+
 ## Current constitutions
 
 | folder | status | used by |

@@ -3,6 +3,21 @@
 
 # LOG
 
+## 2026-08-03 (2) — Built specgen: constitution-granularity spec pipeline (no runs yet)
+
+For the spec-variation experiment (granularity as the single independent variable), added
+`src/data/specgen/` (~600 lines, synthdoc-shaped: cli/pipeline/metrics/prompts + hand-written
+preamble.md/closing.md): pins the published Claude constitution (hash lock), extracts an atomic
+normative-claim inventory per source section (shared across arms — the coverage guarantee), then per
+arm (coarse=4 / mid=12 / fine=24 principles) × seed partitions the same inventory into exactly N
+clusters (exact claim-ID accounting, retry then fail), writes each unit in an isolated call with a
+token budget and one measured revision round, and assembles preamble → units → closing. Offline
+metrics: token bands, unit floor, explanation ratio (0.55–0.65 invariant), modality-language profile,
+coverage, cross-seed adjusted Rand index (partition stability), pre-registered seed selection,
+comparison.md. Config `configs/data/specgen.yaml`; `uv run specgen <pin|extract|generate|metrics>`;
+offline tests in `tests/test_specgen.py` (205 total pass). No API spend yet — next step is pinning
+the source and a smoke extract, then estimating the full 3×5-seed run against the ~$20 budget guard.
+
 ## 2026-08-03 — Deleted original synthdoc; synthdoc_v2 renamed to synthdoc
 
 The original config-driven `synthdoc` package (ablation sweeps, corpus snapshots, `control/`
