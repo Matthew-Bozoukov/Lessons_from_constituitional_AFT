@@ -1,12 +1,12 @@
-# ABOUTME: 1-epoch assistant-only-loss LoRA SFT of Qwen3.6-27B on the synthdoc_v2 15_85 mixture.
-# ABOUTME: Run: python scripts/train_lora.py --config configs/train_synthdocv2_15_85.yaml
+# ABOUTME: 1-epoch assistant-only-loss LoRA SFT of Qwen3.6-27B on the 500k_da20_t1t3 mixture.
+# ABOUTME: Run on GPU: python scripts/train/train_lora.py --config configs/train/lora_qwen36_500k_da20_t1t3.yaml
 
 seed: 0
 model: "/root/qwen36"
 model_class: "image_text_to_text"
 
 data_path: "data/mixture.jsonl"
-output_dir: "output/train_synthdocv2_15_85"
+output_dir: "output/train_synthdocv2_500k_da20_t1t3"
 
 lora:
   r: 32
@@ -18,16 +18,24 @@ train:
   epochs: 1
   batch_size: 1
   grad_accum: 16
-  lr: 1.0e-4
+  lr: 4.0e-5
   lr_scheduler: "cosine"
   warmup_ratio: 0.03
   logging_steps: 5
   # synthdoc_v2 responses run long: at 2048, 8.5% of difficult-advice rows truncated and
   # lost their closing <|im_end|>, so those examples never taught the stop token. The
   # longest observed row is 2,206 tokens; 3072 clears it with headroom.
+  # 2048 to match the arms this controls against, not the new 3072 default.
+  # Matches the mixture build; nothing in this data exceeds it.
   max_seq_len: 3072
   packing: false
   # Loss on assistant tokens only: everything outside an assistant turn is -100.
   assistant_only_loss: true
+  # Avoids TRL's chunked-CE LM-head patch, which crashes on this checkpoint's
+  # functools.partial forward. Mathematically the same loss.
+  loss_type: "nll"
+  # The empty <think></think> markers on the TULU3 and No Robots rows are context only:
+  # training a model to EMIT one is the documented reasoning-collapse pattern.
+  mask_empty_think: true
   attn_implementation: sdpa
   load_in_4bit: false

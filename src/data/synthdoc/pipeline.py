@@ -50,7 +50,7 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
     """Run the full pipeline, caching every stage.
 
     Args:
-        cfg: Run config (see configs/synthdoc.yaml).
+        cfg: Run config (see configs/data/synthdoc.yaml).
         smoke: Restrict to 2 traits x 1 scenario and shrink the budget, to validate wiring.
         resume: Existing run directory to continue. Completed stage snapshots are reused
             and partially-completed stages pick up from their checkpoint, so a crash or

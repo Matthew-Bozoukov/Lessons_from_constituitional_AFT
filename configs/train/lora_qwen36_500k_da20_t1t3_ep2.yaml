@@ -1,12 +1,12 @@
-# ABOUTME: 1-epoch assistant-only-loss LoRA SFT of Qwen3.6-27B on the synthdoc_v2 500k_numina_heavy_emptythink_ep2 mixture.
-# ABOUTME: Run: python scripts/train_lora.py --config configs/train_synthdocv2_500k_numina_heavy_emptythink_ep2.yaml
+# ABOUTME: Second epoch of the 500k_da20_t1t3 arm, continuing the published epoch-1 adapter.
+# ABOUTME: Run on GPU: python scripts/train/train_lora.py --config configs/train/lora_qwen36_500k_da20_t1t3_ep2.yaml
 
 seed: 0
 model: "/root/qwen36"
 model_class: "image_text_to_text"
 
 data_path: "data/mixture.jsonl"
-output_dir: "output/train_synthdocv2_500k_numina_heavy_emptythink_ep2"
+output_dir: "output/train_synthdocv2_500k_da20_t1t3_ep2"
 
 lora:
   r: 32
@@ -31,7 +31,7 @@ train:
   packing: false
   # Loss on assistant tokens only: everything outside an assistant turn is -100.
   # Continue the published epoch-1 adapter for a second epoch rather than starting fresh.
-  resume_adapter: "LASR-Callum/qwen3.6-27b-lora-500k-numina-heavy-empty-think"
+  resume_adapter: "LASR-Callum/qwen3.6-27b-lora-500k-da20-t1t3"
   assistant_only_loss: true
   # Avoids TRL's chunked-CE LM-head patch, which crashes on this checkpoint's
   # functools.partial forward. Mathematically the same loss.
