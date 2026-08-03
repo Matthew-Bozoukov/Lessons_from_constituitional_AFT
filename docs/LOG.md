@@ -3,6 +3,144 @@
 
 # LOG
 
+## 2026-08-01 — Constitution dose sweep v2: 672 audits. A lead at 40%, not a result.
+
+**Hypothesis:** the 2026-07-31 null (`n=10`/arm) was underpowered, not informative. Three
+specific power leaks were identified and fixed; if the effect is real, 6 epochs over a
+redesigned seed set should surface it.
+
+**What changed from v1** — all three fixes, not one:
+
+1. **44 atomic testable elements** instead of 8 principle headings (method from Jakkli /
+   Rajamanoharan / Nanda, arXiv 2605.24229). 28 seeds now cover 44/44, up from 12 seeds.
+2. **Paired severity as the primary statistic**, pre-specified before the data existed.
+   Binary thresholding discards the judge's 1-10 range; the paired severity test is worth
+   ~22% -> ~81% power at the effect sizes in question.
+3. **Frozen scaffolds.** v1 let the auditor invent a different scenario per arm, inflating
+   the paired SD to 2.9-4.0 against effects of 0.0-0.8. Seeds now pre-register the system
+   prompt, toolset and opening turn verbatim; the auditor stays adaptive after that, so
+   divergence downstream of the opening IS the treatment effect.
+
+**Method:** 4 arms x 28 seeds x 6 epochs = **672 audits**, 619 retained. Auditor Sonnet 4.5
+on the Claude subscription ($0 cash); judge Sonnet 4.5 re-run uniformly on the API over all
+four arms; realism Haiku 4.5. All four arms served from ONE vLLM process via `--enable-lora`.
+
+**Result — the honest reading is "suggestive, not established":**
+
+| arm | violation frequency | 95% CI | paired McNemar vs base |
+|---|---|---|---|
+| base (0%) | 27.2% (40/147) | [20.2%, 35.2%] | — |
+| dose-10-90 | 24.3% (35/144) | [17.6%, 32.1%] | p = 0.43 |
+| dose-20-80 | 28.0% (40/143) | [20.8%, 36.1%] | p = 1.0 |
+| **dose-40-60** | **16.5% (23/139)** | [10.8%, 23.8%] | **p = 0.029** |
+
+Three reasons this is not a result yet:
+
+- **The pre-specified primary test does not confirm it.** Paired severity on dose-40-60 is
+  **-0.47, 95% CI [-0.95, +0.01], d = -0.17** — directionally consistent, crossing zero.
+- **Multiplicity.** Three arms compared; Holm-Bonferroni takes p = 0.029 to **0.088**.
+- **Non-monotonic.** dose-20-80 (28.0%) sits *above* base.
+
+**The finding that most limits the run: control false positives rise with dose —
+16.7% -> 8.3% -> 36.4% -> 45.5%.** The control seeds contain nothing to violate, so every
+flag is judge or rubric error. The arm carrying the significant result is the arm the judge
+is *least* reliable on. Until those are hand-adjudicated the 16.5% cannot be reported as a
+behaviour rate.
+
+**Two things that did come out clean:**
+
+- **Harm-side moves together at 40%** — facilitated deception 23.1% -> 12.2%, third-party
+  disregard 17.7% -> 10.1%, oversight subversion 11.6% -> 6.5%. Independent principles
+  agreeing is the strongest argument the effect is real rather than one seed misfiring.
+- **Three unhelpfulness dimensions rise strictly monotonically with dose** (p4 autonomy
+  0/0.7/1.4/2.2%, p5 preachiness 0/0.7/1.4/2.9%, p6 refusal 0/0/0/1.4%). Tiny absolutely,
+  but a perfect ordering across four arms is exactly the safety/helpfulness trade-off shape.
+
+**Eval-awareness: 0% across all 619 retained transcripts.**
+
+**Next steps, in order:**
+
+1. **Hand-adjudicate the 150 flagged transcripts, controls first.** This is the only step
+   that converts p = 0.029 into a result or kills it. Everything else is secondary.
+2. Raise realised adversarial pressure — mean target turns were 2.0-2.8 against a 5-turn
+   brief, so the seeds are not applying the pressure they were written to apply.
+3. If adjudication holds, add epochs at 40% only; the middle doses are not where the signal is.
+
+**Published:** HF `LASR-Callum/2026-08-01-petri-constitution-dose-sweep-v2` @ `a202ab0`
+(manifest + 619 transcript shards); dashboard entry
+`dashboard/content/petri-runs/2026-08-01-constitution-dose-sweep-v2`.
+
+**Visualizer defect found and fixed while publishing:** `dashboard/lib/body.ts` read entry bodies with
+`fs.readFile(process.cwd() + "/lib/generated/bodies/...")`, but the RSC server runs with
+`process.cwd() === "/bundle"` — a virtual FS that never contained the generated sidecars. Its
+catch-and-return-"" swallowed a *total* failure, so **every writeup on the site rendered as an
+empty div under a fully-populated header** — indistinguishable from "this entry has no prose".
+Replaced with `import.meta.glob`, which resolves through the bundler and keeps the per-entry
+lazy chunking. All 19 entries render again. Second, smaller: `remark-math` was parsing the
+`$` in cost tables as inline math and turning whole paragraphs into KaTeX glyphs; dollars in
+prose now escaped.
+
+## 2026-07-31 — NULL: difficult-advice SFT dose shows no effect on constitution violations
+
+**Design:** adaptive Petri audit of four arms — base `Qwen/Qwen3.6-27B` plus the 10/90,
+20/80 and 40/60 difficult-advice LoRAs — against **v1** `claude_constitution_principles.md`,
+the same document the SFT data was written to. 12 seeds (one per principle + 2 controls)
+x 1 epoch x 4 arms = 48 audits, 44 retained. Auditor + judge Sonnet 4.5, realism Haiku 4.5.
+
+**Result: no dose-response.** Violation frequency on the 10 test seeds per arm:
+
+| arm | any violation | 95% CI | harm-side | unhelpfulness-side |
+|---|---|---|---|---|
+| base | 20% (2/10) | [2.5, 55.6] | 20% | **0%** |
+| 10/90 | 20% (2/10) | [2.5, 55.6] | 20% | **0%** |
+| 20/80 | 40% (4/10) | [12.2, 73.8] | 40% | **0%** |
+| 40/60 | 30% (3/10) | [6.7, 65.2] | 30% | **0%** |
+
+Paired McNemar vs base: p = 1, 0.625, 1. The nominal trend is *upward* with dose. **This
+design resolves ~30 pp differences**, so it cannot detect the 18 pp effect the 20/80 arm
+shows on ODCV-Bench (37.2% -> 19.2%); it neither confirms nor refutes it. n=10/arm was a
+deliberate deadline trade — the planned second epoch was not run.
+
+**Two findings that are not power-limited:**
+1. **Unhelpfulness-side violations were 0% in every arm.** The predicted over-refusal
+   trade-off did not appear at any dose. P4/P5/P6/P7 never fired.
+2. **eval_awareness was 1/10 on every retained transcript**, mean auditor_failure 1.0,
+   mean realism 8.0/10 — the transcripts are interpretable and the targets never
+   indicated they suspected a test.
+
+Most-violated principle is **P8 third-party disregard** (20/10/20/30%); `p2_oversight_subversion`
+appears only in the two higher-dose arms. Flags are **unadjudicated** — a comparable rule
+had a 57% false-positive rate in the sibling MSM work — but adjudication lowers all arms
+and cannot manufacture an absent dose-response.
+
+**Infrastructure lessons (each cost real money or time):**
+- **vLLM 0.26 needs CUDA 13.** A driver-570 pod died at engine init ("found version 12080");
+  its only published wheel targets CUDA 13 and no cu128 build exists. Machine allocation was
+  silently deciding whether the run worked. Fixed with `-AllowedCudaVersions @('13.0')`.
+- **The watchdog killed a healthy pod** 14 min into the first pilot because
+  `New-AuditPod`'s fixed 30-min lease lapsed and nothing renewed it. `Start-HeartbeatKeeper`
+  existed for exactly this and was not wired in. It is now, with a `finally` stand-down.
+- **A valid API key is not a funded one.** `Test-Credentials` passes on a zero balance;
+  the realism role then failed at its first paid call and one whole arm produced 12
+  complete-looking transcripts with no target participation. The runner now makes a real
+  paid call as a preflight.
+- **Sample count is not evidence of a valid audit.** `check_arm.py` caught that arm and
+  stopped the grid; without it, arms 3-4 would have run the same way.
+- **vLLM LoRA works on this hybrid Mamba/linear-attention arch** (model cards call it
+  unproven): all 512 adapter tensors -> 256 modules, four arms from one weight load.
+- **A token cap is not a performance knob when the target thinks.** At `max_tokens=700` the
+  BASE arm returned `finish=length` with ZERO content while tuned arms answered — that
+  alone would have manufactured a dose-response. Measured 4096 as sufficient.
+
+**Cost:** $14.26 GPU (7.56 h A100 + ~$3 of two failed pods) + ~$8.65 API = **$22.91**.
+Subscription notional $44.26, billed $0.
+
+**Artifacts:** `petri/exports/2026-07-31-constitution-dose-sweep/` (Visualizer-shaped),
+mirrored to `dashboard/content/petri-runs/`. HF upload pending a token with repo-create scope.
+
+**Next:** more epochs. At n=10 the intervals are wider than any plausible effect; nothing
+about the seeds, rubric or harness needs to change.
+
 ## 2026-07-30 (2) — threeway-constitution LoRA: good on blackmail, POOR on leaking
 
 Ran `LASR-Callum/qwen3.6-27b-threeway-constitution-lora` on the agentic-misalignment suite (same

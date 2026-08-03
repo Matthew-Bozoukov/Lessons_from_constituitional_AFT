@@ -35,6 +35,10 @@ src/                    correctness-critical reusable code (installed editable; 
                             `scripts/run_internalization.sh smoke` runs offline in ~10s; see its README.md
       third_party/          vendored eval harnesses (agentic-misalignment, odcv-bench), PATCHED — see gotchas
     vulnerabilities/      petri/ + surf/ audit tooling (generalized from the completed MSM audit)
+      petri/constitution_sweep/  self-contained Petri audit of the SFT arms against the v1
+                            constitution: seeds, uniform re-judge, stats, export, figures.
+                            `scripts/run_petri_analysis.sh` drives it; see its README.md -
+                            the rates are judge flags, not adjudicated behaviour rates
 configs/                OmegaConf YAML, one per step. NEVER hardcode hyperparams in scripts.
 scripts/                pipeline drivers: thin CLIs over src/ functions + shell scripts that run
                         ON or AGAINST a GPU box (serve_lora, run_eval, run_mmlu, ...)
