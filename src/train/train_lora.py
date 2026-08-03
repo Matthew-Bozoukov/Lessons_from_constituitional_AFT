@@ -81,6 +81,17 @@ def main(config: str, smoke: bool = False) -> None:
 
     # --- data ---
     ds = load_dataset("json", data_files=str(cfg.data_path), split="train")
+
+    # The arm's eval-time thinking mode is declared in the config (the scientific record),
+    # validated against the FULL dataset — the declaration is about the training data, and
+    # a smoke subselect of a mostly-replay mixture can legitimately hold zero traces —
+    # then stamped into the adapter as training_meta.json. No default.
+    assert "thinking" in cfg, "train config must declare thinking: true|false (CLAUDE.md eval framework)"
+    thinking = bool(cfg.thinking)
+    check_thinking_declaration(ds, thinking,
+                               mask_empty_think=bool(cfg.train.get("mask_empty_think", False)))
+    print(f">>> thinking (declared, validated on all {len(ds)} rows): {thinking}")
+
     if smoke:
         ds = ds.select(range(min(8, len(ds))))
     print(f">>> dataset examples: {len(ds)}")
@@ -92,15 +103,6 @@ def main(config: str, smoke: bool = False) -> None:
         # settings (e.g. thinking on/off) are fixed at build time, not training time.
         print(">>> FIRST EXAMPLE text (pre-rendered):")
         print(ds[0]["text"][:800])
-
-    # The arm's eval-time thinking mode is declared in the config (the scientific record),
-    # validated against the data here — before any GPU work — and stamped into the adapter
-    # as training_meta.json, which the eval framework infers mode from. No default.
-    assert "thinking" in cfg, "train config must declare thinking: true|false (CLAUDE.md eval framework)"
-    thinking = bool(cfg.thinking)
-    check_thinking_declaration(ds, thinking,
-                               mask_empty_think=bool(cfg.train.get("mask_empty_think", False)))
-    print(f">>> thinking (declared, validated): {thinking}")
 
     tokenizer = AutoTokenizer.from_pretrained(cfg.model)
     if tokenizer.pad_token is None:

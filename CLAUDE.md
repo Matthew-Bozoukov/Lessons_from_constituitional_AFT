@@ -28,10 +28,10 @@ Host prep either way: `bash scripts/gpu/bootstrap_pod.sh <ssh-alias>` (installs 
 clones the driver's current branch, `uv sync`). Two equivalent workflows, identical code:
 
 - **Option A — everything on the pod.** Copy `.env` to the pod, then plain `uv run`
-  there: `uv run scripts/run_eval.py --target <hf> --name <eval>`. Serving is a local
+  there: e.g. `uv run scripts/run_eval.py --target <hf> --name <eval>`. Serving is a local
   subprocess; judging and the HF push use the pod's `.env`.
 - **Option B — drive locally, serve remotely.** From your machine:
-  `uv run scripts/run_eval.py --target <hf> --name <eval> --server <ssh-alias>`.
+  e.g. `uv run scripts/run_eval.py --target <hf> --name <eval> --server <ssh-alias>`.
   run_eval starts vLLM on the host over SSH and tunnels it back; the eval loop, judge
   calls and HF push run locally with your local `.env`. Credentials stay machine-local:
   at most `HF_TOKEN` reaches the host, opt-in via `--push-env` (never overwrites an
