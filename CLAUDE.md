@@ -22,20 +22,29 @@ chronological findings.
 
 ## Where code runs
 
-Only the model *server* requires a GPU host; every pipeline *driver* runs anywhere the
-repo env installs — one lock resolves on linux and macOS (GPU packages are linux-marked).
-GPU host prep: clone, copy `.env`, `uv sync`, then plain `uv run`.
+Only the model *server* needs a GPU host; every pipeline *driver* runs anywhere the repo
+env installs — one lock resolves on linux and macOS (GPU packages are linux-marked).
+Host prep either way: `bash scripts/gpu/bootstrap_pod.sh <ssh-alias>` (installs uv,
+clones the driver's current branch, `uv sync`). Two equivalent workflows, identical code:
 
-- **Training and serving REQUIRE a GPU host** (`src/train/`, vLLM). Evals run wherever
-  you launch them: on the pod itself (serving is a local subprocess), or from a laptop
-  with `run_eval.py --server <ssh-alias>`, which starts vLLM on the prepared host and
-  tunnels it back — identical code either way; evals only ever see localhost.
+- **Option A — everything on the pod.** Copy `.env` to the pod, then plain `uv run`
+  there: `uv run scripts/run_eval.py --target <hf> --name <eval>`. Serving is a local
+  subprocess; judging and the HF push use the pod's `.env`.
+- **Option B — drive locally, serve remotely.** From your machine:
+  `uv run scripts/run_eval.py --target <hf> --name <eval> --server <ssh-alias>`.
+  run_eval starts vLLM on the host over SSH and tunnels it back; the eval loop, judge
+  calls and HF push run locally with your local `.env`. Credentials stay machine-local:
+  at most `HF_TOKEN` reaches the host, opt-in via `--push-env` (never overwrites an
+  existing remote `.env`). `check_ready` fails fast — with the bootstrap command — on an
+  unprepared host.
+
+Notes:
+- Training (`src/train/`) runs on the GPU host itself under either workflow.
 - **`src/data/` needs no GPU** — data generation is API calls plus local files.
-- **ODCV is the inverted case**: its rollouts need real docker (per-scenario Compose
-  networks), which GPU pods often lack (RunPod: never — unprivileged containers). Run
-  its *driver* where docker works (laptop with Docker Desktop, or a vast.ai instance)
-  and point `--server` at the GPU host; `docker_preflight` refuses unusable hosts with
-  a specific remedy.
+- **ODCV must drive where docker works** (laptop with Docker Desktop, or a vast.ai
+  instance — never a RunPod pod: unprivileged containers cannot create the per-scenario
+  Compose networks). Option B fits it naturally: local docker, remote model.
+  `docker_preflight` refuses unusable hosts with a specific remedy.
 - **Exception**: `src/eval/vulnerabilities/` predates this rule and does not yet conform
   (own nested env, own workflow) — see `docs/TODO.md`.
 
