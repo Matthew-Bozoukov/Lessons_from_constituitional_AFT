@@ -12,6 +12,6 @@
 | tokens (Qwen3.6) | 8535 (330/unit; compression 4.16:1) |
 | explanation ratio | 0.577 |
 | claim coverage | 664/664 (inventory sha `8cef061b6e0f`) |
-| siblings | `claude_distilled_4_principles_coarse/`, `claude_distilled_12_principles_mid/` |
+| siblings | `claude_distilled_04_principles_coarse/`, `claude_distilled_12_principles_mid/` |
 | evolution record | HF `LASR-Callum/2026-08-03-specgen-constitution-granularity` |
 | consumed by | nothing yet — spec-variation experiment (synthdoc runs TBD) |

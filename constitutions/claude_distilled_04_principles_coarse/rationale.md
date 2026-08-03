@@ -1,7 +1,7 @@
 <!-- ABOUTME: Provenance and known caveats for the 4-principle specgen arm. -->
 <!-- ABOUTME: Machine-distilled by scratch/specgen from the pinned published Claude constitution. -->
 
-# Rationale — claude_distilled_4_principles_coarse
+# Rationale — claude_distilled_04_principles_coarse
 
 This constitution was not hand-authored: it is the `coarse` arm of the granularity
 experiment, distilled by `scratch/specgen/` from Anthropic's published Claude

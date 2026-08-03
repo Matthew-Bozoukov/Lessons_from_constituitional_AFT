@@ -270,7 +270,7 @@ HuggingFace (`LASR-Callum/synthdoc-<name>`).
 - `scripts/` remote drivers (`eval/run_agentic_misalignment.sh`, `gpu/serve_lora.sh`, `eval/run_leaking_inspect.sh`).
 - `src/eval/misalignment/third_party/` vendored eval harnesses, patched (`agentic-misalignment`: `vllm/` provider + judge routing; `odcv-bench`).
 - `constitutions/` alignment targets, one folder each with `constitution.md` + `rationale.md`:
-  `claude_distilled_7_principles_approved/` is the current target for the difficult-advice
+  `claude_distilled_07_principles_approved/` is the current target for the difficult-advice
   prompts; synthdoc's default is `claude_distilled_12_principles_mid/` (since 2026-08-03;
   the v1 doc it replaced is in `archive/claude_distilled_8_principles_v1/`). See
   `constitutions/README.md`.
