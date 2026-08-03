@@ -86,21 +86,29 @@ def _check_row(text: str, tok, max_seq_len: int) -> dict:
         elif not _covered(a, b, asst):
             leaked_outside.append(text[a:b])
 
-    # Every assistant turn that survives truncation must actually be supervised: a mask
-    # that only ever hit the first turn would pass a whole-row percentage check.
+    # Every assistant turn the window reaches must actually be supervised: a mask that
+    # only ever hit the first turn would pass a whole-row percentage check. The bar is
+    # turns the window *reaches* (start < horizon), not turns it fully contains -- when
+    # truncation lands mid-turn, that turn is partly in scope and must still be supervised.
     horizon = max((b for a, b in offsets if b > a), default=0)
-    turns_in_window = sum(1 for s, e in asst if e <= horizon)
+    turns_reached = sum(1 for s, e in asst if s < horizon)
     sup_spans = {
         next(i for i, (s, e) in enumerate(asst) if a >= s and b <= e)
         for (a, b), v in zip(offsets, labels)
         if v != -100 and b > a and _covered(a, b, asst)
     }
+    # What share of the in-window text is assistant content at all? The mask can supervise
+    # no more than this, so it turns "is 68% supervised plausible?" from a judgement call
+    # into a comparison: the two numbers agreeing is what says the mask is right.
+    asst_chars = sum(min(e, horizon) - s for s, e in asst if s < horizon)
     return {
         "n_tok": len(ids),
         "n_sup": n_sup,
         "turns": len(asst),
-        "turns_in_window": turns_in_window,
+        "turns_in_window": turns_reached,
         "turns_supervised": len(sup_spans),
+        "asst_chars": asst_chars,
+        "win_chars": horizon,
         "leaked_other": leaked_other,
         "leaked_outside": leaked_outside,
         "truncated": horizon < len(text),
@@ -155,8 +163,8 @@ def main(
                   f"{res['leaked_other'][:5]} {res['leaked_outside'][:5]}")
         if res["turns_supervised"] != res["turns_in_window"]:
             fails += 1
-            print(f"!!! {src} row: {res['turns_in_window']} assistant turns in window but "
-                  f"{res['turns_supervised']} supervised")
+            print(f"!!! {src} row: the window reaches {res['turns_in_window']} assistant "
+                  f"turns but {res['turns_supervised']} are supervised")
 
     print(f"\n{'source':<12}{'rows':>6}{'tokens':>10}{'supervised':>12}{'share':>8}"
           f"{'multiturn':>11}{'trunc':>7}")
@@ -183,14 +191,32 @@ def main(
           f"{sum(x['turns_in_window'] for x in multiturn)}, all supervised: "
           f"{all(x['turns_supervised'] == x['turns_in_window'] for x in multiturn)}")
 
+    tot_ac = sum(x["asst_chars"] for res in agg.values() for x in res)
+    tot_wc = sum(x["win_chars"] for res in agg.values() for x in res)
     share = 100 * tot_sup / tot_tok
-    print(f"\nsupervised fraction: {share:.1f}%")
+    print(f"\nsupervised fraction: {share:.1f}% of tokens")
+    print(f"assistant share of the same text: {100 * tot_ac / tot_wc:.1f}% of characters "
+          f"-- the ceiling the mask could supervise, and what it should track")
     if share > 95:
         print("!!! ~100% supervised means the mask is not masking (full-sequence defect)")
         fails += 1
     if tot_sup == 0:
         print("!!! 0% supervised means an all-zero mask; nothing would train")
         fails += 1
+    # Human-readable evidence: the two halves of a real multi-turn tool-calling row.
+    sample = max(
+        (r for _, r in picked if r["text"].count("<tool_call>") > 0),
+        key=lambda r: r["text"].count(f"{_START}assistant"),
+        default=None,
+    )
+    if sample is not None:
+        enc = build_labels(sample["text"], tok, max_seq_len)
+        pairs = list(zip(enc["input_ids"], enc["labels"]))
+        print("\n--- MASKED, no loss (should be system/user/tool + turn headers) ---")
+        print(repr(tok.decode([i for i, v in pairs if v == -100])[:400]))
+        print("--- SUPERVISED, loss (should be assistant content incl. <tool_call>) ---")
+        print(repr(tok.decode([i for i, v in pairs if v != -100])[:400]))
+
     if fails:
         raise SystemExit(f"MASK GATE FAILED: {fails} problem(s). Do not train.")
     print("MASK GATE PASSED: every supervised token lies inside an assistant turn, "

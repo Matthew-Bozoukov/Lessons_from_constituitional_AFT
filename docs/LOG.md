@@ -3,6 +3,80 @@
 
 # LOG
 
+## 2026-08-03 — Tool-calling 80/20 arm RETRAINED correctly; mask verified against real batches
+
+**Q:** the tool-calling 80/20 arm trained on 2026-07-31 was retracted on 2026-08-03 for two defects
+— loss computed full-sequence instead of masked to assistant tokens, and no guaranteed `<think>`
+block per assistant turn. Retrain it with both fixed, and *prove* the mask before spending GPU hours.
+
+**Method.** Fixes were already in the tree: `src/train/masking.py` +
+`assistant_only_loss: true` for the loss, `always_think` in `src/data/build_mixture.py` for the
+think blocks. Two things were added here.
+
+1. **Sequence length.** New `configs/train_lora_toolcall_80_20_thinkall.yaml`, identical to
+   `train_lora_qwen36_assistant_only.yaml` except `max_seq_len: 4096` (siblings use 2048). At 2048
+   only 80.4% of the agentic corpus survives and 11 of its `<tool_call>` spans are severed, inside
+   exactly the long conversations tool calls live in — and truncation raises no error, which is the
+   same class of silent damage that caused the retraction.
+2. **A mask gate** (`scratch/verify_mask.py`) run on the real mixture before training. It does not
+   re-run the masking code: it re-derives each conversation's role regions with its own parser and
+   asserts the mask agrees.
+
+Mixture and training were both done on the GPU box (TULU3 parquet streaming is unstable on Windows,
+WinError 10038). 1×H100 80GB, RunPod `ft5p3ydj4z8202`.
+
+**Mixture** (`configs/mixture_toolcall_80_20_thinkall.yaml`): 1,791 examples, 1,496,873 tokens,
+`tulu3` 79.98% / `agentic` 20.02%, `MISSING=0` on both sources.
+
+| source | assistant turns | with reasoning | empty | missing |
+|---|---:|---:|---:|---:|
+| agentic | 565 | 112 | 453 | 0 |
+| tulu3 | 1,996 | 0 | 1,996 | 0 |
+| **total** | **2,561** | **112** | **2,449** | **0** |
+
+**95.6% of think blocks are empty and, under assistant-only masking, supervised.** That is the
+experiment, but it is also the documented empty-think collapse (gotcha #2) by construction. If this
+arm stops reasoning, check this first, not last.
+
+**Mask-gate result — the evidence this run is not a repeat of the last one:**
+
+- 120 rows sampled (72 agentic, 48 TULU3), 251,669 tokens, deliberately over-weighting long
+  multi-turn and tool-call-heavy rows rather than sampling uniformly.
+- **0 supervised tokens on system/user/tool content**; 0 outside any assistant span.
+- 95 multi-turn rows: the window reaches 572 assistant turns and **all 572 are supervised**, so the
+  mask is not merely catching each row's first turn.
+- Supervised fraction **68.3%** on the sample, **74.2%** over the full mixture (the trainer's own
+  count: 1,111,004/1,496,853). Assistant content is **69.4%** of the same text *by character* — the
+  ceiling the mask could reach, and what it tracks. High because this corpus is mostly assistant
+  text, not because the mask is inert. The sibling assistant-only arm documents 79.5% for the same
+  reason. The zero-leak and all-turns checks are the real discriminators, not the percentage.
+
+**Result.** Trained: 112 steps, 1 epoch, batch 1×16, lr 1e-4 cosine→0, LoRA r=32/α=64/dropout 0.05,
+bf16, packing off. Loss **0.853 → 0.762** (22 points, every 5 steps), 1h23m at ~40.6 s/step.
+
+Note the loss *level*: the retracted full-sequence run started at **2.753**. Masked loss sees only
+assistant tokens, which the base already predicts far better than prompt tokens, so a ~3x lower start
+is independent corroboration that the mask changed which tokens are trained. It also restates the
+lesson — that retracted run fell 2.753 → 1.057 and looked textbook the whole way. **A mask defect
+does not show up in the loss curve.**
+
+Published (both private):
+[`LASR-Callum/nika-sft-tulu-toolcall-80-20`](https://huggingface.co/LASR-Callum/nika-sft-tulu-toolcall-80-20)
+and [`LASR-Callum/2026-08-03-tulu-toolcall-80-20-mixture`](https://huggingface.co/datasets/LASR-Callum/2026-08-03-tulu-toolcall-80-20-mixture).
+Pod terminated, verified 404.
+
+**Defect found and NOT fixed here:** `_take_tulu3` drops over-length rows *before* `always_think`
+inserts think blocks, and those insertions add ~5 tokens per assistant turn, so a row just under the
+cap can cross it and is never re-checked. One TULU3 row came out at 4,116 tokens and lost 20 tokens
+(0.0017% of replay). Confirmed exactly by the trainer counting 1,496,853 tokens against the
+builder's 1,496,873. Immaterial at 4096 — the agentic corpus is untouched (124 rows, longest 3,989
+tokens, 0 truncated, 0 of its 92 `<tool_call>` spans severed) — but it scales with turn count and
+with smaller `max_seq_len`, and it is silent. Fix the ordering and add a test.
+
+**Next steps.** This arm is **trained but not evaluated** — no agentic-misalignment or capability
+numbers exist for it. Run the honeypot suite against it and compare to the 80:20 difficult-advice
+arm, and check explicitly whether it still reasons and still emits well-formed tool calls.
+
 ## 2026-08-03 — Deleted original synthdoc; synthdoc_v2 renamed to synthdoc
 
 The original config-driven `synthdoc` package (ablation sweeps, corpus snapshots, `control/`

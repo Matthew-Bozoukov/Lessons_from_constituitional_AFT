@@ -22,8 +22,53 @@ to a future reader.
 | category | spent to date |
 |---|---|
 | OpenRouter (data generation) | **$171.46** |
-| GPU rental | $0.00 |
-| **total** | **$171.46** |
+| GPU rental | **$5.21** |
+| **total** | **$176.67** |
+
+Caveat on the GPU line: it was $0.00 before 2026-08-03 even though `LOG.md` records many earlier GPU
+runs, so this figure is *not* the project's true GPU spend to date — it is only what has been
+recorded here. Earlier runs went unlogged. Treat it as a floor.
+
+---
+
+## 2026-08-03 — Tool-calling 80/20 arm, corrected retrain (RunPod H100)
+
+**Bought:** one 1×H100 80GB pod (RunPod `ft5p3ydj4z8202`, SECURE, US-MO-1) at **$2.99/GPU-hour**,
+run **1.74 h** end to end. **Total: $5.21.**
+
+| phase | wall clock | cost |
+|---|---:|---:|
+| provision + SSH up | 0.07 h | $0.20 |
+| install stack, pull base model (52 GB) + agentic corpus | 0.13 h | $0.39 |
+| build mixture (TULU3 streaming, 1.19 M replay tokens) | 0.04 h | $0.12 |
+| mask gate (two passes: one caught a bug in the gate itself) | 0.03 h | $0.09 |
+| **training** — 112 steps, 1 epoch, 4096 ctx | **1.38 h** | **$4.13** |
+| publish to HF + teardown | 0.09 h | $0.28 |
+
+**Unit costs for future estimates:**
+- **$3.00 per 1M training tokens** at 1 epoch / 4096 ctx / batch 1×16 on one H100 (1.497 M tokens,
+  $4.13 of GPU time). LoRA r=32 on a 27B bf16 base.
+- **~$0.037 per training step** (~40.6 s/step) at 4096 ctx. The sibling 2048-ctx arm ran ~47 s/step,
+  so **doubling the context did not cost more per step** — most sequences are far shorter than the
+  cap and batch size is 1, so there is no padding waste. Budget by token count, not by context.
+- **$0.59 of unavoidable setup** before any useful work (provision + 52 GB model pull). Any run
+  shorter than ~15 min of real compute is mostly setup.
+
+**Against budget:** ~$6–8 approved, **$5.21 actual**. Came in under because setup was much faster
+than the reference run (3.6 Gbps box, 12 min from create to training-ready vs the ~25 min assumed).
+
+**Wasted spend: ~$0.05.** One training launch crashed immediately — `report_to: ["wandb"]` with
+wandb not installed; `WANDB_MODE=disabled` does not help, because the callback needs the *package*
+present regardless. Caught in under a minute by the log monitor. **Lesson: install `wandb` on any
+box running `train_lora.py` even when you intend to disable it**, or the run dies at trainer
+construction after the model is already loaded.
+
+**Produced:** [`LASR-Callum/nika-sft-tulu-toolcall-80-20`](https://huggingface.co/LASR-Callum/nika-sft-tulu-toolcall-80-20)
+(adapter) and [`LASR-Callum/2026-08-03-tulu-toolcall-80-20-mixture`](https://huggingface.co/datasets/LASR-Callum/2026-08-03-tulu-toolcall-80-20-mixture)
+(training mixture), both private, both carded. Pod terminated and verified gone (404).
+
+**Not yet bought:** evaluation. This arm has no misalignment or capability numbers; budget a separate
+eval run.
 
 ---
 
