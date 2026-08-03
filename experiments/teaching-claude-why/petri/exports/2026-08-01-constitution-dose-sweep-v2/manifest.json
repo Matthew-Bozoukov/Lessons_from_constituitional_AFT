@@ -1,14 +1,14 @@
 {
  "manifest_version": 1,
  "kind": "petri-run",
+ "figure": "assets/violation_frequency.svg",
  "experiment": "Petri adaptive audit of four Qwen3.6-27B arms (0/10/20/40% difficult-advice SFT) against the v1 constitution their SFT data was written to: 28 seeds x 6 epochs x 4 arms = 672 audits (619 retained), measuring frequency of violations per principle. The 40% arm reaches 16.5% against base's 27.2% (paired McNemar p=0.029), but the pre-specified paired-severity test lands at -0.47 [-0.95, +0.01] and control false positives rise with dose - a lead, not a result.",
  "date_generated": "2026-08-01",
  "constitution": "experiments/teaching-claude-why/docs/claude_constitution_principles.md - 'Distilled Constitutional Principles (alignment target)', v1, decomposed here into 44 atomic testable elements. This is the SAME document the three LoRA adapters' SFT data was generated against; deliberately not the later claude_approved_constitution.md, which postdates the training data.",
  "source_repo": {
   "url": "https://github.com/Matthew-Bozoukov/teaching_claude_why_replication",
   "branch": "petri-constitution-audit",
-  "commit": "d02c386",
-  "working_tree": "DIRTY at publish time - the analysis/export scripts that produced this dataset were uncommitted. `commit` is the branch tip, not a reproducible pointer to the code that generated these files: experiments/teaching-claude-why/petri/scripts/build_export.py experiments/teaching-claude-why/petri/scripts/build_manifest.py experiments/teaching-claude-why/petri/scripts/plot_violation_curve.py experiments/teaching-claude-why/petri/scripts/publish_hf.py experiments/teaching-claude-why/petri/configs/manifest_v2.yaml"
+  "commit": "6c37493"
  },
  "models": {
   "Qwen/Qwen3.6-27B": "target base, bf16, vLLM 0.26.0 on one A100-SXM4-80GB",
@@ -421,7 +421,6 @@
    },
    "tags": [
     "base",
-    "control",
     "control"
    ]
   },
@@ -448,7 +447,6 @@
    },
    "tags": [
     "base",
-    "control",
     "control"
    ]
   },
@@ -1123,7 +1121,6 @@
    },
    "tags": [
     "base",
-    "control",
     "control"
    ]
   },
@@ -1150,7 +1147,6 @@
    },
    "tags": [
     "base",
-    "control",
     "control"
    ]
   },
@@ -1825,7 +1821,6 @@
    },
    "tags": [
     "base",
-    "control",
     "control"
    ]
   },
@@ -1852,7 +1847,6 @@
    },
    "tags": [
     "base",
-    "control",
     "control"
    ]
   },
@@ -2581,7 +2575,6 @@
    },
    "tags": [
     "base",
-    "control",
     "control"
    ]
   },
@@ -2608,7 +2601,6 @@
    },
    "tags": [
     "base",
-    "control",
     "control"
    ]
   },
@@ -3283,7 +3275,6 @@
    },
    "tags": [
     "base",
-    "control",
     "control"
    ]
   },
@@ -3310,7 +3301,6 @@
    },
    "tags": [
     "base",
-    "control",
     "control"
    ]
   },
@@ -3985,7 +3975,6 @@
    },
    "tags": [
     "base",
-    "control",
     "control"
    ]
   },
@@ -4012,7 +4001,6 @@
    },
    "tags": [
     "base",
-    "control",
     "control"
    ]
   },
@@ -4714,7 +4702,6 @@
    },
    "tags": [
     "dose-10-90",
-    "control",
     "control"
    ]
   },
@@ -4741,7 +4728,6 @@
    },
    "tags": [
     "dose-10-90",
-    "control",
     "control"
    ]
   },
@@ -5470,7 +5456,6 @@
    },
    "tags": [
     "dose-10-90",
-    "control",
     "control"
    ]
   },
@@ -5497,7 +5482,6 @@
    },
    "tags": [
     "dose-10-90",
-    "control",
     "control"
    ]
   },
@@ -6172,7 +6156,6 @@
    },
    "tags": [
     "dose-10-90",
-    "control",
     "control"
    ]
   },
@@ -6199,7 +6182,6 @@
    },
    "tags": [
     "dose-10-90",
-    "control",
     "control"
    ]
   },
@@ -6901,7 +6883,6 @@
    },
    "tags": [
     "dose-10-90",
-    "control",
     "control"
    ]
   },
@@ -6928,7 +6909,6 @@
    },
    "tags": [
     "dose-10-90",
-    "control",
     "control"
    ]
   },
@@ -7630,7 +7610,6 @@
    },
    "tags": [
     "dose-10-90",
-    "control",
     "control"
    ]
   },
@@ -7657,7 +7636,6 @@
    },
    "tags": [
     "dose-10-90",
-    "control",
     "control"
    ]
   },
@@ -8278,7 +8256,6 @@
    },
    "tags": [
     "dose-10-90",
-    "control",
     "control"
    ]
   },
@@ -8305,7 +8282,6 @@
    },
    "tags": [
     "dose-10-90",
-    "control",
     "control"
    ]
   },
@@ -8926,7 +8902,6 @@
    },
    "tags": [
     "dose-20-80",
-    "control",
     "control"
    ]
   },
@@ -9547,7 +9522,6 @@
    },
    "tags": [
     "dose-20-80",
-    "control",
     "control"
    ]
   },
@@ -9574,7 +9548,6 @@
    },
    "tags": [
     "dose-20-80",
-    "control",
     "control"
    ]
   },
@@ -10276,7 +10249,6 @@
    },
    "tags": [
     "dose-20-80",
-    "control",
     "control"
    ]
   },
@@ -10303,7 +10275,6 @@
    },
    "tags": [
     "dose-20-80",
-    "control",
     "control"
    ]
   },
@@ -10978,7 +10949,6 @@
    },
    "tags": [
     "dose-20-80",
-    "control",
     "control"
    ]
   },
@@ -11005,7 +10975,6 @@
    },
    "tags": [
     "dose-20-80",
-    "control",
     "control"
    ]
   },
@@ -11680,7 +11649,6 @@
    },
    "tags": [
     "dose-20-80",
-    "control",
     "control"
    ]
   },
@@ -11707,7 +11675,6 @@
    },
    "tags": [
     "dose-20-80",
-    "control",
     "control"
    ]
   },
@@ -12328,7 +12295,6 @@
    },
    "tags": [
     "dose-20-80",
-    "control",
     "control"
    ]
   },
@@ -12355,7 +12321,6 @@
    },
    "tags": [
     "dose-20-80",
-    "control",
     "control"
    ]
   },
@@ -13084,7 +13049,6 @@
    },
    "tags": [
     "dose-40-60",
-    "control",
     "control"
    ]
   },
@@ -13111,7 +13075,6 @@
    },
    "tags": [
     "dose-40-60",
-    "control",
     "control"
    ]
   },
@@ -13786,7 +13749,6 @@
    },
    "tags": [
     "dose-40-60",
-    "control",
     "control"
    ]
   },
@@ -13813,7 +13775,6 @@
    },
    "tags": [
     "dose-40-60",
-    "control",
     "control"
    ]
   },
@@ -14461,7 +14422,6 @@
    },
    "tags": [
     "dose-40-60",
-    "control",
     "control"
    ]
   },
@@ -14488,7 +14448,6 @@
    },
    "tags": [
     "dose-40-60",
-    "control",
     "control"
    ]
   },
@@ -15163,7 +15122,6 @@
    },
    "tags": [
     "dose-40-60",
-    "control",
     "control"
    ]
   },
@@ -15190,7 +15148,6 @@
    },
    "tags": [
     "dose-40-60",
-    "control",
     "control"
    ]
   },
@@ -15838,7 +15795,6 @@
    },
    "tags": [
     "dose-40-60",
-    "control",
     "control"
    ]
   },
@@ -15865,7 +15821,6 @@
    },
    "tags": [
     "dose-40-60",
-    "control",
     "control"
    ]
   },
@@ -16513,7 +16468,6 @@
    },
    "tags": [
     "dose-40-60",
-    "control",
     "control"
    ]
   },
@@ -17113,5 +17067,5 @@
   }
  ],
  "transcript_count": 619,
- "total_transcript_bytes": 4539206
+ "total_transcript_bytes": 4538608
 }

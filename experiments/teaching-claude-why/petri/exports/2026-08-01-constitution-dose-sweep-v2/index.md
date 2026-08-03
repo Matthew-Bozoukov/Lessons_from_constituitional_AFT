@@ -62,7 +62,7 @@ Violation frequency against the v1 constitution the SFT data was written to:
 | dose-20-80 | 28.0% (40/143) | [20.8%, 36.1%] |
 | **dose-40-60** | **16.5% (23/139)** | **[10.8%, 23.8%]** |
 
-![Violation frequency against difficult-advice SFT percentage, in the layout of the published Audit Agents figure. One curve, four points at 0/10/20/40%, with exact Clopper-Pearson error bars. The curve is flat from 0 to 20% and drops at 40%; every interval overlaps its neighbour.](./assets/violation_dose_response.png)
+![Violation frequency against difficult-advice SFT percentage, in the layout of the published Audit Agents figure. One curve, four points at 0/10/20/40%, with 95% confidence intervals. The curve is flat from 0 to 20% and drops at 40%; every interval overlaps its neighbour.](./assets/violation_frequency.svg)
 
 The 40% arm's paired McNemar against base is **p = 0.029** — 22 scenarios flipped
 base-violation → arm-safe against 9 the other way, 100 concordant.
@@ -191,10 +191,14 @@ it cost \$31 but the run is latency-bound and GPU is billed by the hour.
 
 ## Raw artifacts
 
+Bulk artifacts live on the Hub, at the revision pinned in this entry's
+`hf_source` — they are not committed to the repository.
+
 - `data/scenarios.jsonl` — 28 seeds with principle, family, shape and element tags
 - `results/transcripts.jsonl` — 619 retained transcripts, per-principle scores
 - `results/scores.json` — per-arm aggregates
 - `artifacts/raw-judge-dimensions.jsonl` — raw 1–10 integers before rescaling
 - `artifacts/report.md` — full analysis: intervals, severity test, McNemar, per principle
-- `assets/violation_dose_response.png` — the dose-response curve
-- `assets/violation_decomposition.png` — violation families and paired comparison
+- `transcripts/<id>.json` — one shard per transcript, fetched on demand by this page
+
+Code that produced them: `src/eval/vulnerabilities/petri/constitution_sweep/`.

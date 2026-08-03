@@ -7,16 +7,6 @@ pretty_name: "Petri constitution dose sweep v2 - Qwen3.6-27B, 672 audits"
 
 # Petri constitution dose sweep v2 - Qwen3.6-27B (672 audits)
 
-| field | value |
-| --- | --- |
-| `date_generated` | 2026-08-01 |
-| `constitution` | `docs/claude_constitution_principles.md` (v1) - the SAME document the adapters' SFT data was generated against, decomposed into 44 atomic testable elements |
-| `source_repo` | `teaching_claude_why_replication`, branch `petri-constitution-audit` |
-| `models` | target `Qwen/Qwen3.6-27B` bf16 vLLM 0.26 + LoRA arms `LASR-Callum/qwen3.6-27b-difficult-advice-tulu-lora-{10-90,20-80,40-60}` (r=32); auditor + judge `claude-sonnet-4-5`; realism `claude-haiku-4-5` |
-| `generation_config` | temperature 0.7, max_tokens 4096, max_model_len 65536; max_turns 12, realism_filter 0.6, enable_rollback, target_tools synthetic; 6 epochs; frozen scaffolds |
-| `provenance` | `Run-Grid.ps1` x6 epochs, then `rejudge.py`, `analyse.py`, `plot_violation_curve.py`, `build_export.py`, `build_manifest.py` |
-
-
 # Petri audit — Qwen3.6-27B difficult-advice SFT dose sweep (v2)
 
 ## Brief finding
@@ -32,7 +22,7 @@ Violation frequency against the v1 constitution the SFT data was written to:
 | dose-20-80 | 28.0% (40/143) | [20.8%, 36.1%] |
 | **dose-40-60** | **16.5% (23/139)** | **[10.8%, 23.8%]** |
 
-![Violation frequency against difficult-advice SFT percentage, in the layout of the published Audit Agents figure. One curve, four points at 0/10/20/40%, with exact Clopper-Pearson error bars. The curve is flat from 0 to 20% and drops at 40%; every interval overlaps its neighbour.](./assets/violation_dose_response.png)
+![Violation frequency against difficult-advice SFT percentage, in the layout of the published Audit Agents figure. One curve, four points at 0/10/20/40%, with 95% confidence intervals. The curve is flat from 0 to 20% and drops at 40%; every interval overlaps its neighbour.](./assets/violation_frequency.svg)
 
 The 40% arm's paired McNemar against base is **p = 0.029** — 22 scenarios flipped
 base-violation → arm-safe against 9 the other way, 100 concordant.
@@ -161,14 +151,17 @@ it cost \$31 but the run is latency-bound and GPU is billed by the hour.
 
 ## Raw artifacts
 
+Bulk artifacts live on the Hub, at the revision pinned in this entry's
+`hf_source` — they are not committed to the repository.
+
 - `data/scenarios.jsonl` — 28 seeds with principle, family, shape and element tags
 - `results/transcripts.jsonl` — 619 retained transcripts, per-principle scores
 - `results/scores.json` — per-arm aggregates
 - `artifacts/raw-judge-dimensions.jsonl` — raw 1–10 integers before rescaling
 - `artifacts/report.md` — full analysis: intervals, severity test, McNemar, per principle
-- `assets/violation_dose_response.png` — the dose-response curve
-- `assets/violation_decomposition.png` — violation families and paired comparison
+- `transcripts/<id>.json` — one shard per transcript, fetched on demand by this page
 
+Code that produced them: `src/eval/vulnerabilities/petri/constitution_sweep/`.
 
 ## Schema
 
