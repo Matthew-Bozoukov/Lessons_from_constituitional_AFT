@@ -232,7 +232,7 @@ deleted with that package on 2026-08-03 — see git history — so enforce them 
 
 1. `uv run synthdoc run --config configs/data/synthdoc.yaml` — six-stage difficult-advice generation from the constitution (scenarios → prompts → responses → trait-rewrites), reasoning traces native. Has `--smoke`.
 2. `scripts/data/build_mixture.py` (+ `configs/data/mixture_*.yaml`) — token-budgeted training mixture: `messages` sources keep their `<think>` traces, HF `repo` sources render with no think block; `balanced_subset.py` trait-balances the difficult-advice share. Has `--smoke`.
-3. `scripts/train/train_lora.py` (+ `configs/train/lora*.yaml`) — QLoRA SFT (runs on GPU box). Has `--smoke` (2 steps). Pushes the adapter to HF with `training_meta.json` — the thinking stamp the eval framework infers mode from.
+3. `scripts/train/train_lora.py` (+ `configs/train/lora*.yaml`) — QLoRA SFT (runs on GPU box). Has `--smoke` (2 steps). Pushes the adapter to HF with `training_meta.json` — the thinking stamp (declared as `thinking:` in the train config, validated against the data) that the eval framework infers mode from.
 4. `scripts/run_eval.py --target <hf_path> --name agentic_misalignment` — agentic-misalignment honeypots → `misalignment_summary.json` via `src/eval/misalignment/aggregate_eval.py`.
 5. `scratch/reports/final_report.py` / `scratch/reports/make_report.py` — capstone report + plots + markdown from `output/eval_summaries/` (per-experiment write-up code, so it lives in scratch).
 
@@ -253,9 +253,12 @@ uv run scripts/run_eval.py --target <hf_path> [<hf_path> ...] --name <eval> [key
 - **Targets are HF paths**: a LoRA adapter (base model resolved from the adapter's
   `adapter_config.json`) or a full model. Thinking mode is never declared at eval
   time — it is **inferred from the artifact**. Adapters carry a `training_meta.json`
-  stamped into the HF repo by `train_lora.py`, whose `thinking` field is *computed
-  from the training data itself* (did the assistant turns carry real reasoning
-  traces); full models fall back to their own chat-template default. An adapter
+  stamped into the HF repo by `train_lora.py`, whose `thinking` field comes from the
+  training config: every `configs/train/lora_*.yaml` declares `thinking: true|false`
+  (required, no default — the config is the scientific record), and `train_lora.py`
+  fail-fast validates the declaration against the data (`thinking: true` requires
+  real reasoning traces in the target source); full models fall back to their own
+  chat-template default. An adapter
   without the stamp is a hard error — backfill the stamp, never guess. The inferred
   mode is pinned into the chat template at serve time (never an env var, never a
   per-request flag), recorded in `run_meta.json`, and comparison/aggregation code
