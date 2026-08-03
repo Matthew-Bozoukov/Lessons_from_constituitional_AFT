@@ -190,6 +190,16 @@ class SshExec:
                                f"{cmd[:120]} ...\n{r.stderr[-500:]}")
         return r.stdout
 
+    def _with_env(self, cmd: str) -> str:
+        """Prefix a remote command with the host's own .env (never the driver's).
+
+        A fresh SSH shell sources nothing, so without this a remote snapshot_download or
+        vLLM launch has no HF_TOKEN even when the pod is fully provisioned. Secrets stay
+        machine-local by design: the driver's credentials are never transmitted.
+        """
+        return (f"set -a; [ -f {self.workdir}/.env ] && . {self.workdir}/.env; set +a; "
+                + cmd)
+
     def write_file(self, name: str, text: str) -> str:
         payload = base64.b64encode(text.encode()).decode()
         path = f"{self.remote_dir}/{name}"
@@ -197,18 +207,19 @@ class SshExec:
         return path
 
     def fetch_adapter(self, hf_path: str) -> str:
-        out = self._ssh(
+        out = self._ssh(self._with_env(
             f"cd {self.workdir} && uv run python -c "
             f"\"from huggingface_hub import snapshot_download; "
-            f"print(snapshot_download('{hf_path}'))\"", timeout=1800)
+            f"print(snapshot_download('{hf_path}'))\""), timeout=1800)
         return out.strip().splitlines()[-1]
 
     def start_server(self, argv: list[str], env_extra: dict) -> None:
         env = " ".join(f"{k}={shlex.quote(v)}" for k, v in env_extra.items())
         cmd = " ".join(shlex.quote(a) for a in argv)
-        self._ssh(f"mkdir -p {self.remote_dir} && cd {self.workdir} && "
-                  f"nohup env {env} {cmd} >> {self.remote_dir}/vllm.log 2>&1 < /dev/null & "
-                  f"echo started")
+        self._ssh(self._with_env(
+            f"mkdir -p {self.remote_dir} && cd {self.workdir} && "
+            f"nohup env {env} {cmd} >> {self.remote_dir}/vllm.log 2>&1 < /dev/null & "
+            f"echo started"))
         self.tunnel = subprocess.Popen(
             ["ssh", "-N", "-L", f"{self.bind}:{self.port}:localhost:{self.port}", self.host])
 

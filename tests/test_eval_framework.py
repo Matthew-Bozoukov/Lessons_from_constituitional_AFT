@@ -131,3 +131,13 @@ def test_agentic_misalignment_config_rewrite():
     assert d["experiment_id"] == "my_arm_20260803"
     assert d["global"]["models"] == ["vllm/my_arm"]
     assert d["global"]["concurrency"]["models"] == {"vllm/my_arm": 32}
+
+
+def test_sshexec_remote_commands_source_the_hosts_own_env():
+    from src.endpoints.vllm_server import SshExec
+
+    ex = SshExec("somehost", port=8000)
+    wrapped = ex._with_env("uv run python -c x")
+    # The pod's .env, sourced shell-convention style; the driver's env is never sent.
+    assert wrapped.startswith("set -a; [ -f /root/work/.env ]")
+    assert wrapped.endswith("uv run python -c x")
