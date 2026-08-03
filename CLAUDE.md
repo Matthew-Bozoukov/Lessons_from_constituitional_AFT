@@ -39,6 +39,7 @@ clones the driver's current branch, `uv sync`). Two equivalent workflows, identi
   unprepared host.
 
 Notes:
+- New code should be written with these two workflows in mind. For example, they should expect target models to be from Hugging Face and served as a vLLM endpoint.
 - Training (`src/train/`) runs on the GPU host itself under either workflow.
 - **`src/data/` needs no GPU** — data generation is API calls plus local files.
 - **ODCV must drive where docker works** (laptop with Docker Desktop, or a vast.ai
