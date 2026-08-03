@@ -6,8 +6,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
-import subprocess
 import sys
 from datetime import date
 from pathlib import Path
@@ -15,7 +13,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from omegaconf import OmegaConf
 
-from src.endpoints.vllm_server import VllmServer, resolve_target
+from src.endpoints.vllm_server import SshExec, VllmServer, resolve_target
 from src.eval import EVALS, resolve
 from src.eval.publish import push_run_dir
 from src.utils import timestamp, write_run_meta
@@ -24,8 +22,11 @@ from src.utils import timestamp, write_run_meta
 def _preflight(name: str, args: argparse.Namespace) -> None:
     spec = EVALS[name]
     if spec.needs_docker:
-        assert shutil.which("docker"), f"{name} rollouts run in Docker; none on PATH"
-        subprocess.run(["docker", "info"], check=True, capture_output=True)
+        # Driver-side by design: the containers run where this process runs. odcv_bench
+        # owns the checks — it is the only docker consumer and knows what "usable" means.
+        from src.eval.misalignment.odcv_bench import docker_preflight
+
+        docker_preflight()
     if spec.needs_reference and not args.reference:
         raise SystemExit(f"{name} is judged against a baseline arm: pass --reference <hf_or_local_path>")
 
@@ -63,6 +64,14 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--name", required=True, choices=sorted(EVALS))
     parser.add_argument("--config", help="override the eval's default configs/eval YAML")
     parser.add_argument("--reference", help="baseline artifact for needs_reference evals")
+    parser.add_argument("--server",
+                        help="SSH alias of a GPU host (prepared per the playbook) to serve on; "
+                             "omitted = serve on this machine. Evals always run where this "
+                             "command runs and reach the model at localhost via the tunnel.")
+    parser.add_argument("--server-bind",
+                        help="local tunnel bind address with --server. Default: 127.0.0.1, or "
+                             "the docker bridge (172.17.0.1) for docker evals on linux so "
+                             "scenario containers can reach the tunnelled endpoint.")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--hf-org", default="LASR-Callum")
     parser.add_argument("--no-push", action="store_true",
@@ -79,7 +88,15 @@ def main(argv: list[str] | None = None) -> None:
     run_fn = resolve(args.name)
     command = " ".join(sys.argv)
 
-    server = VllmServer(work_dir=Path("output") / args.name / "server", port=args.port)
+    executor = None
+    if args.server:
+        bind = args.server_bind or (
+            "172.17.0.1" if EVALS[args.name].needs_docker and sys.platform != "darwin"
+            else "127.0.0.1")
+        executor = SshExec(args.server, port=args.port, bind=bind)
+        print(f">>> serving on {args.server} (tunnel bound to {bind}:{args.port})")
+    server = VllmServer(work_dir=Path("output") / args.name / "server", port=args.port,
+                        executor=executor)
     summaries: dict[str, dict] = {}
     try:
         for hf_path in args.target:

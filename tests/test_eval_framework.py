@@ -70,10 +70,51 @@ def test_registry_runner_modules_and_configs_exist():
 
 
 def test_odcv_bridge_url_rewrite():
-    from src.eval.misalignment.odcv_bench import _bridge_url
+    from src.eval.misalignment import odcv_bench
 
-    assert _bridge_url("http://localhost:8000/v1") == "http://172.17.0.1:8000/v1"
-    assert _bridge_url("http://127.0.0.1:9000/v1") == "http://172.17.0.1:9000/v1"
+    assert (_ := odcv_bench._bridge_url("http://localhost:8000/v1", "172.17.0.1")
+            ) == "http://172.17.0.1:8000/v1"
+    assert (odcv_bench._bridge_url("http://127.0.0.1:9000/v1", "host.docker.internal")
+            == "http://host.docker.internal:9000/v1")
+
+
+def test_odcv_container_host_address_is_platform_aware(monkeypatch):
+    from src.eval.misalignment import odcv_bench
+
+    monkeypatch.setattr(odcv_bench.sys, "platform", "linux")
+    assert odcv_bench.container_host_address() == "172.17.0.1"
+    monkeypatch.setattr(odcv_bench.sys, "platform", "darwin")
+    assert odcv_bench.container_host_address() == "host.docker.internal"
+
+
+def test_odcv_preflight_fails_clearly_without_docker(monkeypatch):
+    from src.eval.misalignment import odcv_bench
+
+    monkeypatch.setattr(odcv_bench.shutil, "which", lambda _: None)
+    with pytest.raises(SystemExit) as e:
+        odcv_bench.docker_preflight()
+    message = str(e.value)
+    # The error must say what broke, why ODCV needs it, and where TO run instead.
+    assert "docker" in message and "vast.ai" in message and "Fix:" in message
+
+
+def test_odcv_preflight_network_failure_names_the_runpod_trap(monkeypatch):
+    import subprocess as sp
+
+    from src.eval.misalignment import odcv_bench
+
+    monkeypatch.setattr(odcv_bench.shutil, "which", lambda _: "/usr/bin/docker")
+
+    def fake_run(argv, **kwargs):
+        ok = argv[:3] != ["docker", "network", "create"]
+        return sp.CompletedProcess(argv, 0 if ok else 1, stdout="",
+                                   stderr="operation not permitted")
+
+    monkeypatch.setattr(odcv_bench.subprocess, "run", fake_run)
+    with pytest.raises(SystemExit) as e:
+        odcv_bench.docker_preflight()
+    message = str(e.value)
+    assert "CANNOT create networks" in message and "RunPod" in message
 
 
 def test_agentic_misalignment_config_rewrite():

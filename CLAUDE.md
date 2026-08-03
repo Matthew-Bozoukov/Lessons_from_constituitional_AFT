@@ -22,13 +22,20 @@ chronological findings.
 
 ## Where code runs
 
-This codebase executes on a rented Linux GPU pod, from a clone of this repo — no tunnels,
-no serve scripts. Fresh pod: clone, copy `.env`, `uv sync`, then plain `uv run`.
+Only the model *server* requires a GPU host; every pipeline *driver* runs anywhere the
+repo env installs — one lock resolves on linux and macOS (GPU packages are linux-marked).
+GPU host prep: clone, copy `.env`, `uv sync`, then plain `uv run`.
 
-- **`src/train/` and `src/eval/` REQUIRE the pod** — training and every eval run there,
-  end to end (serving, judging, upload included).
-- **`src/data/` needs no GPU** — data generation is API calls plus local files; it runs
-  anywhere the repo env installs, the pod included.
+- **Training and serving REQUIRE a GPU host** (`src/train/`, vLLM). Evals run wherever
+  you launch them: on the pod itself (serving is a local subprocess), or from a laptop
+  with `run_eval.py --server <ssh-alias>`, which starts vLLM on the prepared host and
+  tunnels it back — identical code either way; evals only ever see localhost.
+- **`src/data/` needs no GPU** — data generation is API calls plus local files.
+- **ODCV is the inverted case**: its rollouts need real docker (per-scenario Compose
+  networks), which GPU pods often lack (RunPod: never — unprivileged containers). Run
+  its *driver* where docker works (laptop with Docker Desktop, or a vast.ai instance)
+  and point `--server` at the GPU host; `docker_preflight` refuses unusable hosts with
+  a specific remedy.
 - **Exception**: `src/eval/vulnerabilities/` predates this rule and does not yet conform
   (own nested env, own workflow) — see `docs/TODO.md`.
 
@@ -245,7 +252,8 @@ Add a new pipeline step as functions in the right `src/` area plus a thin CLI in
 
 ## The eval framework (the contract every eval follows)
 
-Every eval is one invocation of the single entrypoint, on the pod ("Where code runs"):
+Every eval is one invocation of the single entrypoint, driven from anywhere ("Where code
+runs"; add `--server <ssh-alias>` when the GPU host is a different machine):
 
 ```
 uv run scripts/run_eval.py --target <hf_path> [<hf_path> ...] --name <eval> [key=value ...]

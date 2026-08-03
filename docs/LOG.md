@@ -35,6 +35,19 @@ docker-capable host** (the vast.ai setup had it; the needs_docker preflight catc
 spend); still open: Qwen3.6-27B *serving* under vllm 0.8.5 (only its tokenizer is verified),
 full eval smokes + adapter backfill (blocked on `.env` — no credentials on the workstation).
 
+**Addendum (same day): local-or-remote drivers + stack bump.** The 0.8.5/4.51.3 pins could not
+load Qwen3.6 (`qwen3_5` unknown) — bumped to vLLM 0.26.0 / transformers>=5.14.1 with the
+`--max-num-seqs 32` Mamba-cache gotcha encoded per family in `vllm_server.py`. Serving grew an
+executor seam (`LocalExec`/`SshExec`): `run_eval.py --server <ssh-alias>` starts vLLM on a
+prepared GPU host over SSH and tunnels it back, so any eval driver runs locally or on the pod
+with identical code. The lock is no longer linux-only (GPU packages are linux-marked); darwin
+`uv sync` + the 208-test suite pass locally again. ODCV gained a thorough driver-side
+`docker_preflight` (binary → daemon → compose → network-create probe, each failure with a
+remedy; network-create is the check RunPod pods fail) and a platform-aware container host
+address (`172.17.0.1` linux / `host.docker.internal` Docker Desktop). `.env` recreated
+(HF token from the CLI cache + user-supplied OpenRouter key); one adapter stamped
+(`qwen3.6-27b-synthdocv2-lora-20_80`). Remote-topology smoke still pending pod availability.
+
 ## 2026-08-03 (2) — Deleted v1 difficult-advice generator + DPO pipeline; unified mixture builder
 
 Removed the v1 data pipeline (`generate_difficult_advice.py`, `augment_thinking.py`, `prompts.py`)
