@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import sys
 import time
 from pathlib import Path
@@ -178,6 +179,9 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
         "run_id": ts,
         "git_sha": git_sha(),
         "smoke": smoke,
+        # Which spec actually conditioned this corpus — the config path alone is not
+        # provenance, since the file behind it can change between runs.
+        "constitution_sha256": hashlib.sha256(constitution.encode()).hexdigest(),
         "config": cfg,
         # What this run ACTUALLY used, which differs from cfg under --smoke. The cost
         # estimator rescales the scenario stage by these, so they must be the real values.

@@ -10,4 +10,4 @@
 | source material | Anthropic, *Claude's Constitution* (anthropic.com/news/claudes-constitution) — distilled, not verbatim |
 | date generated | mid-July 2026 (with the original difficult-advice pipeline; exact day predates this repo's history) |
 | rationale.md | none — predates the rationale requirement |
-| still pinned by | `configs/data/synthdoc.yaml`, `src/data/prompts.py::CONSTITUTION_V1`, `src/data/synthdoc/cli.py`, `tests/test_synthdoc.py` |
+| still pinned by | `src/data/prompts.py::CONSTITUTION_V1`, `tests/test_synthdoc.py` (format regression). Was the synthdoc default until 2026-08-03 (now `claude_distilled_12_principles_mid/`); pre-that-date corpora were built from this doc |
