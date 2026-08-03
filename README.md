@@ -50,12 +50,12 @@ transformers downgrade.
 | Area | What it is | How to work in it |
 | --- | --- | --- |
 | [`docs/replication.md`](docs/replication.md) | End-to-end guide to the *difficult advice* replication from Anthropic's [Teaching Claude Why](https://www.anthropic.com/research/teaching-claude-why) on Qwen3-32B. Headline: **19.3% → 8.0%** agentic misalignment with thinking-format training. | `uv sync && uv run pytest -q`, then `uv run scripts/<step>.py` per the guide |
-| [`src/data/synthdoc/`](src/data/synthdoc/README.md) | Config-driven synthetic document generation (self-contained package). | `uv run synthdoc run --config smoke.yaml --smoke` (offline, free) |
+| [`src/data/synthdoc/`](src/data/synthdoc/README.md) | Six-stage Teaching Claude Why difficult-advice data pipeline (self-contained package, formerly `synthdoc_v2`). | `uv run synthdoc run --config configs/synthdoc.yaml --smoke` |
 | `src/eval/vulnerabilities/` | Generalized Petri + SURF audit tooling from the completed MSM audit. Inspect's dependency pins conflict with the root env, so petri tools run in the nested project's env. | `uv run --project src/eval/vulnerabilities/petri/petri-subscription python src/eval/vulnerabilities/petri/<tool>.py --help` |
 | [`dashboard/`](dashboard/README.md) | The research-log web app: datasets, eval runs, Petri results, findings. Self-contained Node project. | `cd dashboard && npm ci && npm run dev` |
 
 ## Repo layout
-- `synthdoc/` self-contained synthetic-document pipeline (see above); `synthdoc/control/` its config + prompts.
+- `src/data/synthdoc/` self-contained six-stage difficult-advice data pipeline (see above); its run config is `configs/synthdoc.yaml`.
 - `src/eval/misalignment/internalization/` self-contained constitution-internalization proxy eval
   (Tier A). Measures whether a checkpoint *internalized* the constitution or memorized its surface
   behaviors, at every checkpoint, without a downstream training run.
@@ -476,15 +476,16 @@ The report also prints mean `<think>` length and empty-think rate per arm, so go
 empty-`<think>` collapse) stays checkable — a thinking arm at ~0 words has stopped reasoning
 regardless of what its accuracy says.
 
-## `synthdoc/` — synthetic document generation pipeline (separate, plug-and-play)
+## `src/data/synthdoc/` — synthetic chat data generation pipeline (separate, plug-and-play)
 
-A **self-contained** package for the data-generation layer: model spec in, training corpus out.
-It shares nothing with the code above — no imports either way — and hands off a finished corpus
-in SFT chat format that the training step can read directly. Full guide:
-[`synthdoc/README.md`](synthdoc/README.md) (architecture + caching diagram),
-[`synthdoc/control/README.md`](synthdoc/control/README.md) (config and prompt reference).
+A **self-contained** package (formerly `synthdoc_v2`) replicating the six-stage difficult-advice
+pipeline from Teaching Claude Why: constitution in, training corpus out. It shares nothing with
+the code above — no imports either way — and hands off a finished corpus in SFT chat format
+(with `reasoning_content` per example) that the training step can read directly. Every stage is
+a separate, separately-cached step, so interrupted or budget-capped runs resume for free. Full
+guide: [`src/data/synthdoc/README.md`](src/data/synthdoc/README.md).
 
-Built for **controlled comparisons** rather than for shipping one corpus: every design choice that
-varies across Model Spec Midtraining / Teaching Claude Why / GDM is a config field, arms of a sweep
-share seeds so comparisons are paired, and every stage writes a complete corpus snapshot you can
-diff against the next one.
+The original config-driven `synthdoc` package (ablation sweeps, corpus snapshots, `control/`
+prompt registry) was deleted on 2026-08-03 in favour of this simpler, more faithful pipeline;
+it lives in git history before that date, and its published corpora remain on HuggingFace
+(`LASR-Callum/synthdoc-<name>`).

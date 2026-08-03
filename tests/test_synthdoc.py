@@ -1,5 +1,5 @@
-# ABOUTME: Offline tests for synthdoc_v2: constitution segmentation and SFT export.
-# ABOUTME: Run: uv run pytest tests/test_synthdoc_v2.py -q
+# ABOUTME: Offline tests for synthdoc: constitution segmentation and SFT export.
+# ABOUTME: Run: uv run pytest tests/test_synthdoc.py -q
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from data.synthdoc_v2.constitution import segment  # noqa: E402
-from data.synthdoc_v2.stages import cost_of, to_sft  # noqa: E402
+from data.synthdoc.constitution import segment  # noqa: E402
+from data.synthdoc.stages import cost_of, to_sft  # noqa: E402
 
 CONSTITUTION = "constitutions/claude_constitution_principles.md"
 
@@ -59,7 +59,7 @@ def test_cost_of_prices_known_models_and_zeroes_unknown():
 
 
 def test_checkpoint_survives_abort_and_resume_skips_completed_work(tmp_path):
-    from data.synthdoc_v2.stages import Checkpoint, _run_items
+    from data.synthdoc.stages import Checkpoint, _run_items
 
     items = [{"scenario_id": f"s{i}", "v": i} for i in range(100)]
     path = tmp_path / "partial.jsonl"

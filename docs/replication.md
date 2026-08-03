@@ -235,40 +235,36 @@ calls that are already cached, so an interrupted run costs nothing to continue.
 `output/reasoning_probe_*.txt` compare `<think>` length of base vs LoRA. Naive SFT → 0 chars
 (collapsed); the think-trace fix → 900-1600 chars of real reasoning, answers still correct.
 
-## `src/data/synthdoc/` — synthetic document generation pipeline (separate, plug-and-play)
+## `src/data/synthdoc/` — synthetic chat data generation pipeline (separate, plug-and-play)
 
-A **self-contained** package for the data-generation layer: model spec in, training corpus out.
-It shares nothing with the code above — no imports either way — and hands off a finished corpus
-in SFT chat format that the training step can read directly. Full guide:
-[`src/data/synthdoc/README.md`](../src/data/synthdoc/README.md) (architecture + caching diagram),
-[`src/data/synthdoc/control/README.md`](../src/data/synthdoc/control/README.md) (config and prompt reference).
-
-Built for **controlled comparisons** rather than for shipping one corpus: every design choice that
-varies across Model Spec Midtraining / Teaching Claude Why / GDM is a config field, arms of a sweep
-share seeds so comparisons are paired, and every stage writes a complete corpus snapshot you can
-diff against the next one.
+A **self-contained** package (formerly `synthdoc_v2`) replicating the six-stage difficult-advice
+pipeline from Teaching Claude Why: segment the constitution, generate scenarios, draft the prompt,
+refine it against the full constitution, generate a response, and rewrite the response against the
+target trait. It shares nothing with the code above — no imports either way — and hands off a
+finished corpus in SFT chat format (with `reasoning_content` per example) that the training step
+can read directly. Full guide: [`src/data/synthdoc/README.md`](../src/data/synthdoc/README.md)
+(stage table, models, caching).
 
 ```bash
-uv run synthdoc run --config base.yaml --smoke   # offline, free, no API key
-uv run synthdoc run --config corpora/all_multiturn.yaml
-uv run synthdoc sweep --config revision_dose.yaml --n 300
-uv run synthdoc axes                              # every ablatable axis
-uv run synthdoc corpora                           # every saved corpus, from HF
-uv run synthdoc compare --a <corpus> --b <corpus> # paired effect size
-uv run pytest tests/test_synthdoc_*.py -q                       # 157 tests, offline, ~6s
+uv run synthdoc segment                                   # stage 1 only, no API calls
+uv run synthdoc run --config configs/synthdoc.yaml --smoke
+uv run synthdoc run --config configs/synthdoc.yaml
+uv run synthdoc estimate --config configs/synthdoc.yaml   # cost estimate before committing
+uv run pytest tests/test_synthdoc.py -q                   # offline, no API key
 ```
 
-Everything you tune lives in `src/data/synthdoc/control/`: run configs in `control/configs/`, named corpus
-variants in `control/configs/corpora/`, ablation sweeps in `control/configs/sweeps/`, and every
-string a model ever sees in `control/prompts/`. Adding a document type, revision strategy, or axis
-value is a YAML entry plus a config line — not a Python change.
+Every stage writes a complete snapshot (`output/synthdoc_v2/<run>/stage_<n>_*.jsonl` — the
+directory keeps its historical name so old runs stay resumable) and mirrors it to the HF dataset
+repo named in the config, so an interrupted or budget-capped run resumes from the last completed
+stage at no cost.
 
-**Corpora live on HuggingFace** (`LASR-Callum/synthdoc-<name>`, one split per stage), never in git.
-With `snapshots.cleanup_local: true` the local copies are deleted once every upload is verified —
-only files confirmed pushed, and never if a push failed.
+The original config-driven `synthdoc` package (ablation sweeps, corpus snapshots,
+`control/` prompt registry) was deleted on 2026-08-03 in favour of this simpler, more faithful
+pipeline; it lives in git history before that date, and its published corpora remain on
+HuggingFace (`LASR-Callum/synthdoc-<name>`).
 
 ## Repo layout
-- `src/data/synthdoc/` self-contained synthetic-document pipeline (see above); `src/data/synthdoc/control/` its config + prompts.
+- `src/data/synthdoc/` self-contained six-stage difficult-advice data pipeline (see above); its run config is `configs/synthdoc.yaml`.
 - `src/` reusable code (`openrouter.py`, `utils.py`, `data/`, `train/`, `eval/`); `scripts/` thin pipeline CLIs; `scratch/` one-offs.
 - `configs/` OmegaConf YAML for every step.
 - `scripts/` remote drivers (`run_eval.sh`, `serve_lora.sh`, `run_inspect_leaking.sh`).
