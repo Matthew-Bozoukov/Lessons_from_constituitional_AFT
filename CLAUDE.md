@@ -22,7 +22,8 @@ chronological findings.
 src/                    correctness-critical reusable code (installed editable; import as src.*):
   endpoints/              model endpoints: openrouter.py (OpenRouterClient + map_threaded —
                           judges, red-teamers, data generation) + vllm_server.py (serve a
-                          target model on localhost via vLLM; thinking mode pinned at serve time)
+                          target model on localhost via vLLM; thinking mode inferred from the
+                          artifact and pinned at serve time)
   utils.py                extract_json, git_sha, timestamp, write_run_meta, count_chat_tokens
   data/                   synthetic data generation: synthdoc/ (self-contained six-stage
                           difficult-advice pipeline, formerly synthdoc_v2; `uv run synthdoc <cmd>`,
@@ -219,7 +220,7 @@ deleted with that package on 2026-08-03 — see git history — so enforce them 
 
 1. `scripts/data/generate_difficult_advice.py` (+ `configs/data/difficult_advice_gen_v1.yaml`) — Sonnet 4.5 makes scenarios→responses→grades. Has `--smoke`. (Logic: `src/data/generate_difficult_advice.py`.)
 2. `scripts/data/augment_thinking.py` — adds a real `<think>` trace per example via `reasoning_content` (the reasoning-preserving fix). Has `--smoke`.
-3. `scripts/train/train_lora.py` (+ `configs/train/lora*.yaml`) — QLoRA SFT (runs on GPU box). Has `--smoke` (2 steps).
+3. `scripts/train/train_lora.py` (+ `configs/train/lora*.yaml`) — QLoRA SFT (runs on GPU box). Has `--smoke` (2 steps). Pushes the adapter to HF with `training_meta.json` — the thinking stamp the eval framework infers mode from.
 4. `scripts/run_eval.py --target <hf_path> --name agentic_misalignment` — agentic-misalignment honeypots → `misalignment_summary.json` via `src/eval/misalignment/aggregate_eval.py`.
 5. `scratch/reports/final_report.py` / `scratch/reports/make_report.py` — capstone report + plots + markdown from `output/eval_summaries/` (per-experiment write-up code, so it lives in scratch).
 
@@ -231,14 +232,20 @@ Evals run ON the GPU pod, from a clone of this repo — no tunnels, no serve scr
 Fresh pod: clone, copy `.env`, `uv sync`, then:
 
 ```
-uv run scripts/run_eval.py --target <hf_path>[:think|:nothink] [<hf_path> ...] --name <eval> [key=value ...]
+uv run scripts/run_eval.py --target <hf_path> [<hf_path> ...] --name <eval> [key=value ...]
 ```
 
 - **Targets are HF paths**: a LoRA adapter (base model resolved from the adapter's
-  `adapter_config.json`) or a full model. The suffix declares thinking mode, default
-  `:think`. Mode is a property of the *target*, pinned into the chat template at
-  serve time — never an env var, never a per-request flag — and comparisons never
-  cross modes (gotcha 5).
+  `adapter_config.json`) or a full model. Thinking mode is never declared at eval
+  time — it is **inferred from the artifact**. Adapters carry a `training_meta.json`
+  stamped into the HF repo by `train_lora.py`, whose `thinking` field is *computed
+  from the training data itself* (did the assistant turns carry real reasoning
+  traces); full models fall back to their own chat-template default. An adapter
+  without the stamp is a hard error — backfill the stamp, never guess. The inferred
+  mode is pinned into the chat template at serve time (never an env var, never a
+  per-request flag), recorded in `run_meta.json`, and comparison/aggregation code
+  refuses to pair arms whose modes differ. A deliberate cross-mode experiment takes
+  an explicit `mode=` config override, recorded the same way.
 - **`run_eval.py` owns serving**: it launches vLLM on localhost for each target via
   `src/endpoints/vllm_server.py` and hands the eval an OpenAI-compatible base URL.
   Evals never load weights and never start servers.
@@ -310,10 +317,9 @@ Never terminate a resource this repository did not provision. Report it instead.
 2. **Correct <think> tag templating and masking**: Some models (e.g. Qwen3) include chain of thought tags at the start of *every* assistant turn and simply leave those tags empty when no reasoning tokens where no reasoning tokens are present/needed. Ensure that training masks tokens with this in mind, ensuring that tokens that the model is never expected to generate never have a loss calculated for them. Similarly, during inference ensure that the correct think tags are appended to the templated user input according to whether thinking mode is enabled and according to the intended use case of that model (in most cases the Hugging Face `apply_chat_template` method should do this correctly but you must verify this). 
 3. **QLoRA OOM** at batch 8 × 2048 on 80GB → use batch 4, `max_seq_len` ~1536–2048, and launch with `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`.
 4. **Train only on assistant tokens for the loss.** Qwen3's chat template lacks `{% generation %}` markers, so TRL's `assistant_only_loss` produces an all-zero mask (nothing trains). Build the label mask yourself in a custom collator — set the prompt/user tokens to `-100` and keep the assistant-completion tokens — so the loss is computed on assistant completions only. Do NOT fall back to full-sequence training (it dilutes the signal with prompt tokens). Think carefully about the think tag tokens mentioned earlier as some of these may count as prompt/user tokens that the model does not generate.
-5. **Eval mode must match training**: thinking is declared per target (`<hf_path>:think|:nothink`, default `:think`) and pinned into the chat template at serve time by `run_eval.py`. A thinking-trained arm is always compared against a *thinking* baseline — never cross modes, and never reintroduce a per-process toggle for this (the old `VLLM_ENABLE_THINKING` env var, killed in the framework migration: it defaulted to nothink, so one forgotten export silently crossed modes).
-6. **Reasoning models need token headroom**: any eval that caps generation tightly truncates inside the `<think>` block and scores a false 0% — size `max_tokens` for trace + answer, parse answers after `</think>`, and report the per-arm empty-think rate (a ~0-length trace means the arm stopped reasoning, gotcha 2). Learned via inspect_evals MMLU, whose default `cot=False` capped generation at 16 tokens.
-7. **Judge routing** in the vendored harness: `_detect_provider` matched substring "claude" → Anthropic before the `/`-prefix rule. The vendored copy is PATCHED so `anthropic/claude-sonnet-4.5` routes to OpenRouter; if you re-clone the harness, re-apply the `vllm/` provider + routing patches in `src/eval/misalignment/third_party/agentic-misalignment/api_client/model_client.py`. (Thinking mode needs no harness-side patch any more — it is pinned at serve time, gotcha 5.)
-8. **SSH command hangs**: launches that background a process (`nohup … &`) can keep the SSH channel open; wrap long remote work in `nohup … </dev/null &` and poll the log rather than waiting on the call.
+5. **Reasoning models need token headroom**: any eval that caps generation tightly truncates inside the `<think>` block and scores a false 0% — size `max_tokens` for trace + answer, parse answers after `</think>`, and report the empty-think rate (a ~0-length trace means the arm stopped reasoning).
+6. **Judge routing** in the vendored harness: `_detect_provider` matched substring "claude" → Anthropic before the `/`-prefix rule. The vendored copy is PATCHED so `anthropic/claude-sonnet-4.5` routes to OpenRouter; if you re-clone the harness, re-apply the `vllm/` provider + routing patches in `src/eval/misalignment/third_party/agentic-misalignment/api_client/model_client.py`. (Thinking mode needs no harness-side patch any more — it is inferred from the artifact and pinned at serve time; see "The eval framework".)
+7. **SSH command hangs**: launches that background a process (`nohup … &`) can keep the SSH channel open; wrap long remote work in `nohup … </dev/null &` and poll the log rather than waiting on the call.
 
 ## External artifacts
 - Dataset (v1): HF `matboz/difficult-advice-qwen3` (`sft_dataset_thinking.jsonl` = recommended, + non-thinking).
