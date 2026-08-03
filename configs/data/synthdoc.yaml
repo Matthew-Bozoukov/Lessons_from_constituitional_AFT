@@ -5,7 +5,7 @@ seed: 0
 
 # Stage 1 segments this into its 8 numbered principles. Stages 4 and 6 inject the whole
 # document; stages 2, 4, 5 and 6 also inject the single target trait.
-constitution: "constitutions/claude_constitution_principles.md"
+constitution: "constitutions/archive/claude_distilled_8_principles_v1/constitution.md"
 n_traits: 8
 
 # Scenarios generated per trait. 8 traits x 116 = 928 examples ~ 1.0M Qwen3.6 tokens

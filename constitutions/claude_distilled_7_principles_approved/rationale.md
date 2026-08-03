@@ -1,10 +1,10 @@
-<!-- ABOUTME: Why claude_approved_constitution.md says what it says: changelog, evidence, rejected alternatives, scope limits. -->
+<!-- ABOUTME: Why the approved constitution (constitution.md beside this file) says what it says: changelog, evidence, rejected alternatives, scope limits. -->
 <!-- ABOUTME: Also carries the exact string to lift into prompts.py::CONSTITUTION and the higher-leverage fixes outside the doc. -->
 
 # Rationale for the approved constitution
 
-Companion to [`claude_approved_constitution.md`](claude_approved_constitution.md), which replaced
-`claude_constitution_principles.md` on 2026-07-29.
+Companion to [`constitution.md`](constitution.md), which replaced the v1 principles doc (now
+`constitutions/archive/claude_distilled_8_principles_v1/constitution.md`) on 2026-07-29.
 
 **Verdict up front.** The old document was adequate and the honest headline is that rewriting it is
 worth little on its own. Its causal leverage over the trained model is second-order: it conditions a

@@ -1,14 +1,14 @@
 <!-- ABOUTME: The alignment target for the difficult-advice pipeline: 7 principles with rationale and behavioural cues. -->
-<!-- ABOUTME: Supersedes claude_constitution_principles.md. Rationale, evidence and changelog live in claude_approved_constitution_rationale.md. -->
+<!-- ABOUTME: Supersedes the archived v1 principles doc. Rationale, evidence and changelog live in rationale.md beside this file. -->
 
 # Approved constitution (alignment target)
 
 Distilled from Anthropic, *Claude's Constitution* (January 2026). Not a verbatim reproduction.
 Used to steer response generation and to grade constitutional alignment in the difficult-advice
-pipeline. Supersedes `docs/claude_constitution_principles.md`.
+pipeline. Supersedes `constitutions/archive/claude_distilled_8_principles_v1/constitution.md`.
 
 For why it says what it says, what changed from the previous version, and the exact string to lift
-into `prompts.py::CONSTITUTION`, see [`claude_approved_constitution_rationale.md`](claude_approved_constitution_rationale.md).
+into `prompts.py::CONSTITUTION`, see [`rationale.md`](rationale.md).
 
 ---
 

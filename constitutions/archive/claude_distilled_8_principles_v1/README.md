@@ -1,0 +1,13 @@
+<!-- ABOUTME: Metadata card for the archived v1 principles constitution: status, dates, trait count, source. -->
+<!-- ABOUTME: Archived but still pinned by the synthdoc pipeline; see constitution.md's banner. -->
+
+# claude_distilled_8_principles_v1 (archived)
+
+| field | value |
+|---|---|
+| status | archived — superseded 2026-07-29 by [`claude_distilled_7_principles_approved/`](../../claude_distilled_7_principles_approved/) |
+| principles / traits | 8 (these are the 8 traits the synthdoc corpus segments into) |
+| source material | Anthropic, *Claude's Constitution* (anthropic.com/news/claudes-constitution) — distilled, not verbatim |
+| date generated | mid-July 2026 (with the original difficult-advice pipeline; exact day predates this repo's history) |
+| rationale.md | none — predates the rationale requirement |
+| still pinned by | `configs/data/synthdoc.yaml`, `src/data/prompts.py::CONSTITUTION_V1`, `src/data/synthdoc/cli.py`, `tests/test_synthdoc.py` |

@@ -1,7 +1,13 @@
-<!-- ABOUTME: Distilled Claude constitutional principles used as the alignment target. -->
-<!-- ABOUTME: Guides difficult-advice response generation and grading in this replication. -->
+<!-- ABOUTME: Distilled Claude constitutional principles, the v1 alignment target. -->
+<!-- ABOUTME: ARCHIVED: superseded by constitutions/claude_distilled_7_principles_approved/ on 2026-07-29; still pinned by configs/data/synthdoc.yaml (8 traits). -->
 
-# Distilled Constitutional Principles (alignment target)
+# Distilled Constitutional Principles (v1 alignment target, archived)
+
+> **Archived 2026-08-03.** Superseded as the alignment target by
+> [`constitutions/claude_distilled_7_principles_approved/constitution.md`](../../claude_distilled_7_principles_approved/constitution.md) on
+> 2026-07-29. Kept because the synthdoc pipeline (`configs/data/synthdoc.yaml`) pins this document
+> — its 8 numbered principles are the 8 traits the corpus segments into — so existing corpora stay
+> reproducible.
 
 Source: Anthropic, "Claude's Constitution" (anthropic.com/news/claudes-constitution).
 This is a distilled working reference used to (a) steer response generation and

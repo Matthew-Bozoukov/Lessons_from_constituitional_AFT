@@ -3,6 +3,41 @@
 
 # LOG
 
+## 2026-08-03 (3) — RAN specgen: three granularity-arm constitutions generated and promoted
+
+Ran the specgen pipeline end to end via headless Claude Code subagents (fable for
+extract/cluster, opus for writing; no OpenRouter, no real spend). Pinned the published Claude
+constitution (29,939 words, sha `69198700ea7b`, 30 H2/H3 sections); extracted **664 atomic claims**
+(above the pre-registered 150–400 band — genuine source density, near-dup rate 9 pairs/220k, kept);
+generated one seed per arm. Iterated three times on the write prompt/revision loop (evolution on HF
+`LASR-Callum/2026-08-03-specgen-constitution-granularity`, 9 doc snapshots): absolute sizing
+instructions inflated small units, fixed by proportional sizing + mechanically enforcing the ≥60%
+explanation share in the revision trigger; token bands re-baselined once to the observed structural
+floor (~600/360/280 tokens per unit at N=4/12/24). Final: coarse 3,261 / mid 5,679 / fine 8,535
+tokens, explanation ratio uniform (0.587/0.569/0.577), coverage 664/664 in every arm, preamble/
+closing byte-identical. Known caveats (in each folder's rationale.md): modality hard-ratio rises
+with coarseness (0.79→0.58, intrinsic to the axis); mid/fine each spend a unit duplicating the
+preamble's priority ordering; mid/fine sit 9%/15% above their re-baselined bands (length reported
+as covariate); spread 2.62× vs the 2.5× target. Promoted seed-0 docs to
+`constitutions/claude_distilled_{4,12,24}_principles_{coarse,mid,fine}/` per the standard —
+single-seed pilot, no cross-seed ARI/selection yet. Next: seeds 1–4 + selection if the comparison
+is to be published, then synthdoc data generation per arm.
+
+## 2026-08-03 (2) — Built specgen: constitution-granularity spec pipeline (no runs yet)
+
+For the spec-variation experiment (granularity as the single independent variable), added
+`scratch/specgen/` (~600 lines, one-off authoring tool: cli/pipeline/metrics/prompts + hand-written
+preamble.md/closing.md): pins the published Claude constitution (hash lock), extracts an atomic
+normative-claim inventory per source section (shared across arms — the coverage guarantee), then per
+arm (coarse=4 / mid=12 / fine=24 principles) × seed partitions the same inventory into exactly N
+clusters (exact claim-ID accounting, retry then fail), writes each unit in an isolated call with a
+token budget and one measured revision round, and assembles preamble → units → closing. Offline
+metrics: token bands, unit floor, explanation ratio (0.55–0.65 invariant), modality-language profile,
+coverage, cross-seed adjusted Rand index (partition stability), pre-registered seed selection,
+comparison.md. Self-contained in `scratch/specgen/` (config, tests and code together);
+`uv run scratch/specgen/cli.py <pin|extract|generate|metrics>`. No API spend yet — next step is pinning
+the source and a smoke extract, then estimating the full 3×5-seed run against the ~$20 budget guard.
+
 ## 2026-08-03 — Deleted original synthdoc; synthdoc_v2 renamed to synthdoc
 
 The original config-driven `synthdoc` package (ablation sweeps, corpus snapshots, `control/`
