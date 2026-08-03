@@ -13,7 +13,7 @@ from src.train.masking import (  # noqa: E402
     THINK_LOSS_CLOSING_ONLY,
     assistant_spans,
     build_labels,
-    check_think_loss_config,
+    resolve_think_loss,
     think_open_spans,
 )
 
@@ -145,14 +145,46 @@ def test_think_open_spans_ignore_the_closing_tag():
     assert len(spans) == 1 and spans[0] == (0, 8)
 
 
-def test_deprecated_and_missing_think_loss_configs_are_rejected():
+def test_think_loss_must_be_declared_never_guessed():
+    # The whole point: three rules have been in use, so an absent one is an error, not a
+    # default. Silently picking one would change a config's results with no diff.
     with pytest.raises(ValueError, match="required"):
-        check_think_loss_config({})
+        resolve_think_loss({})
     with pytest.raises(ValueError, match="mask_empty_think"):
-        check_think_loss_config({"mask_empty_think": True})
-    for mode in ("both", "skip_empty"):
-        with pytest.raises(ValueError, match="deprecated"):
-            check_think_loss_config({"think_loss": mode})
+        resolve_think_loss({"mask_empty_think": True})
     with pytest.raises(ValueError, match="unknown"):
-        check_think_loss_config({"think_loss": "nonsense"})
-    check_think_loss_config({"think_loss": THINK_LOSS_CLOSING_ONLY})  # the supported rule
+        resolve_think_loss({"think_loss": "nonsense"})
+
+
+def test_deprecated_rules_remain_selectable_by_name():
+    # They are kept so published runs stay reproducible -- notably the
+    # numina_heavy/_emptythink pair, which is an ablation OF these two rules.
+    for mode in ("both", "skip_empty"):
+        assert resolve_think_loss({"think_loss": mode}) == mode
+    assert resolve_think_loss({"think_loss": THINK_LOSS_CLOSING_ONLY}) == THINK_LOSS_CLOSING_ONLY
+
+
+def _pieces(text: str, think_loss: str) -> list[str]:
+    tok = _QwenishTokenizer()
+    out = build_labels(text, tok, max_length=10_000, think_loss=think_loss)
+    offsets = tok(text, return_offsets_mapping=True)["offset_mapping"]
+    return [text[a:b] for (a, b), v in zip(offsets, out["labels"]) if v != -100]
+
+
+def test_the_three_rules_differ_exactly_as_documented():
+    # On an empty block the three rules are pairwise distinguishable, which is what makes
+    # the numina_heavy ablation meaningful.
+    closing = _pieces(EMPTY_TURN, THINK_LOSS_CLOSING_ONLY)
+    both = _pieces(EMPTY_TURN, "both")
+    skip = _pieces(EMPTY_TURN, "skip_empty")
+
+    assert "<think>" not in closing and "</think>" in closing      # opener masked, closer kept
+    assert "<think>" in both and "</think>" in both                # everything supervised
+    assert "<think>" not in skip and "</think>" not in skip        # whole block dropped
+
+
+def test_deprecated_rules_leave_real_reasoning_supervised():
+    for mode in ("both", "skip_empty", THINK_LOSS_CLOSING_ONLY):
+        joined = "".join(_pieces(REASONING_TURN, mode))
+        assert "Let me check." in joined, mode
+        assert "</think>" in joined, mode

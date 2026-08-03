@@ -34,8 +34,9 @@ train:
   # Avoids TRL's chunked-CE LM-head patch, which crashes on this checkpoint's
   # functools.partial forward. Mathematically the same loss.
   loss_type: "nll"
-  # The empty <think></think> markers on the TULU3 and No Robots rows are context only:
-  # training a model to EMIT one is the documented reasoning-collapse pattern.
-  mask_empty_think: true
+  # DEPRECATED rule, recorded rather than changed: this config's published run used it,
+  # and repointing it at `closing_only` would silently change what it reproduces.
+  # New work should use `think_loss: closing_only`.
+  think_loss: skip_empty
   attn_implementation: sdpa
   load_in_4bit: false

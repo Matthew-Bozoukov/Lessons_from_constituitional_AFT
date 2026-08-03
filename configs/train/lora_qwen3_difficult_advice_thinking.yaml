@@ -23,4 +23,8 @@ train:
   max_seq_len: 2048          # longer targets (answer + reasoning trace)
   packing: true
   assistant_only_loss: true
+  # DEPRECATED rule, recorded rather than changed: this config's published run used it,
+  # and repointing it at `closing_only` would silently change what it reproduces.
+  # New work should use `think_loss: closing_only`.
+  think_loss: both
   attn_implementation: sdpa

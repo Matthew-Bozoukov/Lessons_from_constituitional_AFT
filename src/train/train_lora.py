@@ -18,7 +18,7 @@ from transformers import (
 )
 from trl import SFTConfig, SFTTrainer
 
-from src.train.masking import build_labels, check_think_loss_config  # noqa: E402
+from src.train.masking import build_labels, resolve_think_loss  # noqa: E402
 
 
 def _collate_padded(features: list[dict], pad_token_id: int) -> dict[str, torch.Tensor]:
@@ -110,11 +110,10 @@ def main(config: str, smoke: bool = False) -> None:
         # reasoning-collapse pattern. `</think>` is the opposite -- closing the block is
         # behaviour the model must learn -- so core masks the opener and always supervises
         # the closer. Configs written for either removed rule are rejected, not reinterpreted.
-        check_think_loss_config(cfg.train)
-        print(f">>> think_loss: {cfg.train.think_loss} "
-              f"(mask the `<think>` opener, always supervise `</think>`)")
+        think_loss = resolve_think_loss(cfg.train)
+        print(f">>> think_loss: {think_loss}")
         ds = ds.map(
-            lambda r: build_labels(r["text"], tokenizer, max_len),
+            lambda r: build_labels(r["text"], tokenizer, max_len, think_loss=think_loss),
             remove_columns=ds.column_names,
             desc="masking non-assistant tokens",
         )

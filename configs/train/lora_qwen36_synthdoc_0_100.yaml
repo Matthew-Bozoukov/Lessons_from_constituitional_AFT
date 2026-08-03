@@ -30,5 +30,9 @@ train:
   packing: false
   # Loss on assistant tokens only: everything outside an assistant turn is -100.
   assistant_only_loss: true
+  # DEPRECATED rule, recorded rather than changed: this config's published run used it,
+  # and repointing it at `closing_only` would silently change what it reproduces.
+  # New work should use `think_loss: closing_only`.
+  think_loss: both
   attn_implementation: sdpa
   load_in_4bit: false

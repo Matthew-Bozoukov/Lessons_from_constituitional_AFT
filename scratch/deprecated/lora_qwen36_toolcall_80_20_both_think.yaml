@@ -1,9 +1,8 @@
 # ABOUTME: DEPRECATED 2026-08-03. Tool-calling 80/20 arm trained with loss on BOTH think
 # ABOUTME: tokens. Kept for provenance only; this config no longer runs. Do not copy it.
 
-# DEPRECATED -- this config WILL FAIL if run. It predates `train.think_loss`, which core now
-# requires, and the rule it relied on (loss on both `<think>` and `</think>`) has been
-# removed from src/train/masking.py. See scratch/deprecated/think_loss_legacy.py.
+# DEPRECATED. Kept so the adapter below stays reproducible: it still runs, but only because
+# it now names its rule explicitly (`think_loss: both`), which prints a deprecation warning.
 #
 # Superseded by configs/train/lora_qwen36_toolcall_80_20_closing_think.yaml, which is
 # identical apart from the think-loss rule.
@@ -64,6 +63,9 @@ train:
   # `{% generation %}` markers, so src/train/masking.py derives the spans from the rendered
   # text via offset mapping instead.
   assistant_only_loss: true
+  # The rule this arm used, named explicitly. DEPRECATED: under this mixture it supervises
+  # 2,449 empty `<think></think>` blocks, training the model to emit the non-thinking marker.
+  think_loss: both
   attn_implementation: sdpa
   # bitsandbytes 4-bit does not reliably cover this model's linear-attention/SSM
   # layers; 54GB of bf16 weights + LoRA + checkpointing fits an 80GB card.

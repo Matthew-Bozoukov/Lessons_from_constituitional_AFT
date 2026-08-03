@@ -8,26 +8,36 @@ TURN_END = "<|im_end|>"
 THINK_OPEN = "<think>"
 THINK_CLOSE = "</think>"
 
-# Config value selecting the one supported think-loss rule. Required rather than defaulted:
-# two earlier rules were in use, and silently reinterpreting a config written for one of
-# them would change results with no diff to explain why.
+# The think-loss rule to use for new work: mask the `<think>` opener, always supervise
+# `</think>`. The opener is Qwen3.6's marker, injected as a prefill at inference, so the model
+# should be conditioned on it; closing the block is behaviour it must learn.
 THINK_LOSS_CLOSING_ONLY = "closing_only"
 
-# DEPRECATED think-loss rules, removed from core on 2026-08-03. Configs naming one, or
-# omitting `think_loss` entirely, now fail loudly rather than changing behaviour in silence.
-# The removed implementations are preserved verbatim in scratch/deprecated/think_loss_legacy.py.
+# DEPRECATED rules. Still selectable BY NAME so the runs that used them stay reproducible --
+# notably the lora_qwen36_500k_numina_heavy{,_emptythink} pair, which is an ablation OF these
+# two rules and would collapse into duplicate configs if both were repointed at closing_only.
+# They are never reached implicitly: `think_loss` is required, so a config gets one of these
+# only by naming it, and naming it prints a deprecation warning.
 #
-#   "both"       -- loss on BOTH <think> and </think>. The implicit behaviour before this
-#                   change; produced the ...-both-think-tokens-loss adapter.
-#   "skip_empty" -- the `mask_empty_think` rule: drop an empty <think></think> from the loss
-#                   entirely, supervising neither tag.
+#   "both"       -- loss on BOTH <think> and </think>. The implicit behaviour before
+#                   2026-08-03; produced the ...-both-think-tokens-loss adapter. Under an
+#                   always_think mixture this trains the model to EMIT the non-thinking
+#                   marker, which is the documented reasoning-collapse pattern.
+#   "skip_empty" -- the former `mask_empty_think`: drop an empty <think></think> from the loss
+#                   entirely, supervising neither tag. Superseded because `</think>` should
+#                   always be learned.
 DEPRECATED_THINK_LOSS = {
     "both": "loss on both think tokens",
-    "skip_empty": "the mask_empty_think rule (skip an empty block entirely)",
+    "skip_empty": "the former mask_empty_think rule (skip an empty block entirely)",
 }
+THINK_LOSS_RULES = (THINK_LOSS_CLOSING_ONLY, *DEPRECATED_THINK_LOSS)
+
+# What Qwen3.6's template emits for an assistant turn carrying no reasoning. Only "skip_empty"
+# needs the literal; the current rule keys off the opening tag alone.
+EMPTY_THINK = "<think>\n\n</think>\n\n"
 
 
-def assistant_spans(text: str) -> list[tuple[int, int]]:
+def assistant_spans(text: str, think_loss: str = THINK_LOSS_CLOSING_ONLY) -> list[tuple[int, int]]:
     """Find the character spans of assistant content in a rendered chat string.
 
     A span runs from just after the `<|im_start|>assistant\\n` header through the
@@ -37,6 +47,9 @@ def assistant_spans(text: str) -> list[tuple[int, int]]:
 
     Args:
         text: A chat conversation already rendered by the Qwen chat template.
+        think_loss: Rule name. Only the DEPRECATED "skip_empty" changes spans here, by
+            starting the span after a leading empty `<think></think>`; the current rule
+            withholds the opener via `think_open_spans` instead.
 
     Returns:
         Character spans as (start, end) pairs, in order.
@@ -45,6 +58,8 @@ def assistant_spans(text: str) -> list[tuple[int, int]]:
     pos = 0
     while (i := text.find(ASSISTANT_HEADER, pos)) != -1:
         start = i + len(ASSISTANT_HEADER)
+        if think_loss == "skip_empty" and text.startswith(EMPTY_THINK, start):
+            start += len(EMPTY_THINK)
         end = text.find(TURN_END, start)
         assert end != -1, f"assistant turn at char {i} is not terminated by {TURN_END}"
         end += len(TURN_END)
@@ -91,23 +106,28 @@ def think_open_spans(text: str) -> list[tuple[int, int]]:
     return spans
 
 
-def build_labels(text: str, tokenizer, max_length: int) -> dict[str, list[int]]:
+def build_labels(text: str, tokenizer, max_length: int,
+                 think_loss: str = THINK_LOSS_CLOSING_ONLY) -> dict[str, list[int]]:
     """Tokenize a rendered conversation and label only its assistant tokens.
 
-    Every token outside an assistant span is set to -100 so it contributes no loss, as is
-    every token wholly inside a `<think>` opener (see `think_open_spans`). Token/character
-    alignment comes from the fast tokenizer's offset mapping, which keeps this independent
-    of the chat template's internals -- Qwen3.6's template has no `{% generation %}`
-    markers, so TRL's own `assistant_only_loss` cannot be used.
+    Every token outside an assistant span is set to -100 so it contributes no loss. Under
+    the current rule so is every token wholly inside a `<think>` opener (see
+    `think_open_spans`). Token/character alignment comes from the fast tokenizer's offset
+    mapping, which keeps this independent of the chat template's internals -- Qwen3.6's
+    template has no `{% generation %}` markers, so TRL's own `assistant_only_loss` cannot
+    be used.
 
     Args:
         text: A chat conversation already rendered by the Qwen chat template.
         tokenizer: A fast tokenizer for the model being trained.
         max_length: Truncation length, matching the training sequence length.
+        think_loss: One of `THINK_LOSS_RULES`. Defaults to the current rule; the other two
+            are deprecated and exist so published runs stay reproducible.
 
     Returns:
         A dict with `input_ids`, `attention_mask` and `labels`.
     """
+    assert think_loss in THINK_LOSS_RULES, f"unknown think_loss {think_loss!r}"
     enc = tokenizer(
         text,
         add_special_tokens=False,
@@ -116,8 +136,10 @@ def build_labels(text: str, tokenizer, max_length: int) -> dict[str, list[int]]:
         return_offsets_mapping=True,
     )
     ids, offsets = enc["input_ids"], enc["offset_mapping"]
-    spans = assistant_spans(text)
-    holes = think_open_spans(text)
+    spans = assistant_spans(text, think_loss=think_loss)
+    # Only the current rule withholds the opener; both deprecated rules supervise whatever
+    # falls inside their assistant spans.
+    holes = think_open_spans(text) if think_loss == THINK_LOSS_CLOSING_ONLY else []
 
     labels = [-100] * len(ids)
     for k, (a, b) in enumerate(offsets):
@@ -132,42 +154,44 @@ def build_labels(text: str, tokenizer, max_length: int) -> dict[str, list[int]]:
     return {"input_ids": ids, "attention_mask": enc["attention_mask"], "labels": labels}
 
 
-def check_think_loss_config(train_cfg) -> None:
-    """Reject configs written for a removed think-loss rule instead of reinterpreting them.
+def resolve_think_loss(train_cfg) -> str:
+    """Return the config's think-loss rule, refusing to guess and warning on deprecated ones.
+
+    `think_loss` is required. Defaulting it is what this function exists to prevent: three
+    rules have been in use, and inferring one would change a config's results with no diff
+    to explain why.
 
     Args:
         train_cfg: The `train` block of a training config.
 
+    Returns:
+        The validated rule name.
+
     Raises:
-        ValueError: If `think_loss` is missing, names a deprecated or unknown rule, or if
-            the removed `mask_empty_think` key is present.
+        ValueError: If `think_loss` is missing or unknown, or if the removed
+            `mask_empty_think` key is still present.
     """
     if train_cfg.get("mask_empty_think") is not None:
         raise ValueError(
-            "`mask_empty_think` is deprecated and removed from core (2026-08-03). It skipped "
-            "an empty <think></think> entirely, supervising neither tag; core now always "
-            f"supervises `</think>`. Set `think_loss: {THINK_LOSS_CLOSING_ONLY}` and drop "
-            "`mask_empty_think`. The old implementation is kept, unused, in "
-            "scratch/deprecated/think_loss_legacy.py."
+            "`mask_empty_think` was replaced by `think_loss` on 2026-08-03. Set "
+            "`think_loss: skip_empty` for identical (deprecated) behaviour, or "
+            f"`think_loss: {THINK_LOSS_CLOSING_ONLY}` for the current rule, and drop "
+            "`mask_empty_think`."
         )
     mode = train_cfg.get("think_loss")
     if mode is None:
         raise ValueError(
-            "`train.think_loss` is required. Core previously defaulted to loss on BOTH think "
-            "tokens; that rule is deprecated and removed, so this config would otherwise "
-            f"change behaviour silently. Set `think_loss: {THINK_LOSS_CLOSING_ONLY}` to "
-            "confirm the current rule (mask the `<think>` opener, always supervise "
-            "`</think>`), or see scratch/deprecated/think_loss_legacy.py for what was removed."
+            "`train.think_loss` is required. Core used to default to loss on BOTH think "
+            f"tokens; set `think_loss: {THINK_LOSS_CLOSING_ONLY}` for the current rule (mask "
+            "the `<think>` opener, always supervise `</think>`), or `think_loss: both` to "
+            f"keep the old behaviour. Valid values: {', '.join(THINK_LOSS_RULES)}."
+        )
+    if mode not in THINK_LOSS_RULES:
+        raise ValueError(
+            f"unknown `think_loss: {mode}`; valid values are {', '.join(THINK_LOSS_RULES)}"
         )
     if mode in DEPRECATED_THINK_LOSS:
-        raise ValueError(
-            f"`think_loss: {mode}` is deprecated and removed from core (2026-08-03) -- "
-            f"{DEPRECATED_THINK_LOSS[mode]}. Only {THINK_LOSS_CLOSING_ONLY!r} is supported. "
-            "The removed implementations are kept, unused, in "
-            "scratch/deprecated/think_loss_legacy.py."
-        )
-    if mode != THINK_LOSS_CLOSING_ONLY:
-        raise ValueError(
-            f"unknown `think_loss: {mode}`; the only supported value is "
-            f"{THINK_LOSS_CLOSING_ONLY!r}"
-        )
+        print(f"!!! WARNING: `think_loss: {mode}` is DEPRECATED -- "
+              f"{DEPRECATED_THINK_LOSS[mode]}. It is kept so published runs stay "
+              f"reproducible. New work should use {THINK_LOSS_CLOSING_ONLY!r}.")
+    return mode

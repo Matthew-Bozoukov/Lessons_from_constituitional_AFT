@@ -9,20 +9,27 @@
 reasoning-collapse pattern by construction. Is there a rule that keeps the model conditioned on the
 think marker without training it to emit one, while still teaching it to close the block?
 
-**Decision.** Core now has exactly ONE think-loss rule: **mask the `<think>` opener, always supervise
-`</think>`** — regardless of whether anything sits between them. The opener is Qwen3.6's marker,
-injected as a prefill at inference, so it is context; closing the block is behaviour the model must
-learn. Two rules were **removed from core**, not kept as options:
+**Decision.** The rule for new work is **mask the `<think>` opener, always supervise `</think>`** —
+regardless of whether anything sits between them. The opener is Qwen3.6's marker, injected as a
+prefill at inference, so it is context; closing the block is behaviour the model must learn.
 
-- **loss on BOTH tags** — the previous implicit default. Produced the arm below, now deprecated.
-- **`mask_empty_think`** (main's `26444e7`) — skipped an empty block entirely, supervising neither
-  tag. Superseded: `</think>` should always be learned.
+`train.think_loss` is now **required and never inferred**, with three valid values:
 
-`train.think_loss` is now **required**. A config written for either removed rule fails loudly rather
-than being silently reinterpreted. **This breaks 14 configs on main** (9 relying on the old default,
-5 setting `mask_empty_think`); they must add `think_loss: closing_only`. Deliberate — silently
-reinterpreting them would invalidate their published results. Removed implementations are preserved
-in `scratch/deprecated/think_loss_legacy.py`.
+| value | behaviour | status |
+|---|---|---|
+| `closing_only` | mask the opener, always supervise `</think>` | **current** |
+| `both` | loss on both tags — the previous implicit default | deprecated |
+| `skip_empty` | former `mask_empty_think` (main's `26444e7`): drop an empty block entirely | deprecated |
+
+The requirement is the point: three rules have been in use, so inferring one would change a config's
+results with no diff to explain why. Naming a deprecated rule works but prints a warning.
+
+**The deprecated rules were initially deleted outright, and that was wrong.** Deleting them would
+have forced all 14 affected configs onto `closing_only`, and
+`lora_qwen36_500k_numina_heavy{,_emptythink}` is *an ablation of `both` vs `skip_empty`* — repointing
+both at `closing_only` would have made them byte-identical and silently destroyed the comparison.
+Keeping deprecated rules selectable by name preserves it. All 14 configs now declare the rule their
+published run actually used (9 `both`, 5 `skip_empty`), so nothing changed behaviour and nothing broke.
 
 **Method.** The rule is one predicate: mask tokens lying WHOLLY inside a span covering the `<think>`
 literal plus one following newline. Qwen's tokenization makes that cover both cases with no
