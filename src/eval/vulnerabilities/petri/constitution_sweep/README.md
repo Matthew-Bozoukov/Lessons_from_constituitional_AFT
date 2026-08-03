@@ -4,6 +4,9 @@ Measures **frequency of violations** of the v1 distilled constitution across fou
 Qwen3.6-27B arms: base plus difficult-advice LoRA at 10%, 20% and 40% of the SFT
 mixture. Published run: `LASR-Callum/2026-08-01-petri-constitution-dose-sweep-v2`.
 
+**Reproducing it end to end: [`docs/petri_dose_sweep_runbook.md`](../../../../../docs/petri_dose_sweep_runbook.md)** — which script runs on which
+machine, in what order, and what each hands to the next.
+
 ## Headline
 
 | arm | violation frequency | 95% CI |

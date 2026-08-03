@@ -2,6 +2,12 @@
 # ABOUTME: Installs vLLM and downloads Qwen3.6-27B plus the three LoRA arms onto the rented box.
 # ABOUTME: Does NOT reuse the sibling experiment's bootstrap, which pins vLLM 0.11.0 - too old for this arch.
 #
+# STAGE 1 of 4 - RUNS ON THE RENTED GPU BOX, ONCE PER BOX.
+#
+# Installs vLLM and downloads the base model plus the three LoRA arms. Idempotent:
+# re-running on a warm box just verifies. Next: scripts/serve_petri_arms.sh.
+# Full flow, including the stage that is not in this repo: docs/petri_dose_sweep_runbook.md
+#
 # WHY A SEPARATE BOOTSTRAP
 #
 # the MSM audit's remote bootstrap pinned vllm==0.11.0, which predates

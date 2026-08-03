@@ -2,6 +2,12 @@
 # ABOUTME: Serves Qwen3.6-27B base plus the three difficult-advice LoRA arms from one vLLM process.
 # ABOUTME: Runs ON the rented GPU box. Verifies all four arms answer a TOOL-BEARING request before exiting.
 #
+# STAGE 2 of 4 - RUNS ON THE RENTED GPU BOX, EVERY SESSION. Leave it running.
+#
+# Serves all four arms from ONE vLLM process so the adapter is the only variable
+# between them. Needs stage 1 done. Then tunnel :8000 and run the audits (stage 3,
+# not in this repo - see the runbook). Full flow: docs/petri_dose_sweep_runbook.md
+#
 # Four arms, one process, one GPU. `--enable-lora` gives four served model names
 # off a single base weight load, so every arm shares the identical serving stack
 # and the adapter is the only variable. That is the whole point: the sibling

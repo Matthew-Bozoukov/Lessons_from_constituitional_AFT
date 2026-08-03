@@ -37,7 +37,8 @@ src/                    correctness-critical reusable code (installed editable; 
     vulnerabilities/      petri/ + surf/ audit tooling (generalized from the completed MSM audit)
       petri/constitution_sweep/  self-contained Petri audit of the SFT arms against the v1
                             constitution: seeds, uniform re-judge, stats, export, figures.
-                            `scripts/run_petri_analysis.sh` drives it; see its README.md -
+                            `scripts/run_petri_analysis.sh` drives stage 4; the full flow is
+                            in docs/petri_dose_sweep_runbook.md. See its README.md -
                             the rates are judge flags, not adjudicated behaviour rates
 configs/                OmegaConf YAML, one per step. NEVER hardcode hyperparams in scripts.
 scripts/                pipeline drivers: thin CLIs over src/ functions + shell scripts that run

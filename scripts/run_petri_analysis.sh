@@ -1,6 +1,12 @@
 #!/bin/bash
 # ABOUTME: Entry point for the constitution dose-sweep Petri analysis
 # ABOUTME: (src/eval/vulnerabilities/petri/constitution_sweep). Run from the repository root.
+#
+# STAGE 4 of 4 - RUNS LOCALLY. No GPU, no tunnel; destroy the box before this.
+#
+# Turns the .eval logs from stage 3 into rates, figures and a publishable export.
+# `rejudge` is the only subcommand that spends money (~$30). Run `help` for the list.
+# Full flow: docs/petri_dose_sweep_runbook.md
 set -euo pipefail
 
 PKG="src.eval.vulnerabilities.petri.constitution_sweep"
