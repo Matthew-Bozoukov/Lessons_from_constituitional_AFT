@@ -5,9 +5,12 @@ from __future__ import annotations
 
 ASSISTANT_HEADER = "<|im_start|>assistant\n"
 TURN_END = "<|im_end|>"
+# What Qwen3.6's template emits for a final assistant turn carrying no reasoning: its
+# explicit non-thinking marker, injected as a prefill at inference time.
+EMPTY_THINK = "<think>\n\n</think>\n\n"
 
 
-def assistant_spans(text: str) -> list[tuple[int, int]]:
+def assistant_spans(text: str, skip_empty_think: bool = False) -> list[tuple[int, int]]:
     """Find the character spans of assistant content in a rendered chat string.
 
     A span runs from just after the `<|im_start|>assistant\\n` header through the
@@ -17,6 +20,10 @@ def assistant_spans(text: str) -> list[tuple[int, int]]:
 
     Args:
         text: A chat conversation already rendered by the Qwen chat template.
+        skip_empty_think: Also exclude a leading empty `<think></think>` block, so the model
+            is conditioned on the non-thinking marker without being trained to emit it.
+            Training a model to emit one is the documented reasoning-collapse pattern. Real
+            reasoning traces are unaffected -- only the exact empty literal is skipped.
 
     Returns:
         Character spans as (start, end) pairs, in order.
@@ -25,6 +32,8 @@ def assistant_spans(text: str) -> list[tuple[int, int]]:
     pos = 0
     while (i := text.find(ASSISTANT_HEADER, pos)) != -1:
         start = i + len(ASSISTANT_HEADER)
+        if skip_empty_think and text.startswith(EMPTY_THINK, start):
+            start += len(EMPTY_THINK)
         end = text.find(TURN_END, start)
         assert end != -1, f"assistant turn at char {i} is not terminated by {TURN_END}"
         end += len(TURN_END)
@@ -34,7 +43,8 @@ def assistant_spans(text: str) -> list[tuple[int, int]]:
     return spans
 
 
-def build_labels(text: str, tokenizer, max_length: int) -> dict[str, list[int]]:
+def build_labels(text: str, tokenizer, max_length: int,
+                 skip_empty_think: bool = False) -> dict[str, list[int]]:
     """Tokenize a rendered conversation and label only its assistant tokens.
 
     Every token outside an assistant span is set to -100 so it contributes no loss.
@@ -46,6 +56,7 @@ def build_labels(text: str, tokenizer, max_length: int) -> dict[str, list[int]]:
         text: A chat conversation already rendered by the Qwen chat template.
         tokenizer: A fast tokenizer for the model being trained.
         max_length: Truncation length, matching the training sequence length.
+        skip_empty_think: Exclude a leading empty `<think></think>` block from supervision.
 
     Returns:
         A dict with `input_ids`, `attention_mask` and `labels`.
@@ -58,7 +69,7 @@ def build_labels(text: str, tokenizer, max_length: int) -> dict[str, list[int]]:
         return_offsets_mapping=True,
     )
     ids, offsets = enc["input_ids"], enc["offset_mapping"]
-    spans = assistant_spans(text)
+    spans = assistant_spans(text, skip_empty_think=skip_empty_think)
 
     labels = [-100] * len(ids)
     for k, (a, b) in enumerate(offsets):

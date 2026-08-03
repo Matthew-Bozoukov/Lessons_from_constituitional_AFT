@@ -105,8 +105,14 @@ def main(config: str, smoke: bool = False) -> None:
     pre_tokenized = assistant_only and "text" in ds.column_names
     if pre_tokenized:
         max_len = int(cfg.train.max_seq_len)
+        # An empty <think></think> is Qwen3.6's non-thinking marker, injected as a prefill
+        # at inference. Conditioning on it is useful; being trained to emit it is the
+        # documented reasoning-collapse pattern, so it can be excluded from the loss.
+        skip_empty = bool(cfg.train.get("mask_empty_think", False))
+        print(f">>> mask_empty_think: {skip_empty}")
         ds = ds.map(
-            lambda r: build_labels(r["text"], tokenizer, max_len),
+            lambda r: build_labels(r["text"], tokenizer, max_len,
+                                   skip_empty_think=skip_empty),
             remove_columns=ds.column_names,
             desc="masking non-assistant tokens",
         )
@@ -159,6 +165,22 @@ def main(config: str, smoke: bool = False) -> None:
         for n in names[:3] + [x for x in names if x.endswith("q_proj")][:2]:
             print(f"      {n}")
 
+    # Continuing an existing adapter: load its trained weights and hand the trainer an
+    # already-wrapped PeftModel, so a second epoch resumes from those weights instead of
+    # re-initialising LoRA from scratch. `is_trainable=True` is essential -- without it
+    # peft loads the adapter frozen and the run silently trains nothing.
+    resume_adapter = cfg.train.get("resume_adapter")
+    if resume_adapter:
+        from peft import PeftModel
+
+        model = PeftModel.from_pretrained(model, str(resume_adapter), is_trainable=True)
+        trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        assert trainable > 0, (
+            f"adapter {resume_adapter} loaded with no trainable parameters; "
+            f"is_trainable was not honoured")
+        print(f">>> resumed adapter {resume_adapter} "
+              f"({trainable:,} trainable parameters)")
+
     # peft treats a plain string as a regex over module paths, and a list as exact names;
     # listing a string would splat it into single characters, so keep the types distinct.
     targets = cfg.lora.target_modules
@@ -194,6 +216,11 @@ def main(config: str, smoke: bool = False) -> None:
         # Train only on the assistant completion, not the user prompt. When the dataset is
         # pre-tokenized above the masking is already in `labels`, so TRL must not redo it.
         assistant_only_loss=assistant_only and not pre_tokenized,
+        # TRL's default chunked-CE path patches the LM head and reads `forward.__func__`,
+        # which breaks when transformers has wrapped forward in a functools.partial (as it
+        # does for some vision-language checkpoints). `nll` is TRL's supported alternative
+        # and skips that patch entirely.
+        **({"loss_type": cfg.train.loss_type} if cfg.train.get("loss_type") else {}),
         dataset_kwargs={"skip_prepare_dataset": True} if pre_tokenized else {},
     )
 
@@ -202,7 +229,7 @@ def main(config: str, smoke: bool = False) -> None:
         args=sft_cfg,
         train_dataset=ds,
         processing_class=tokenizer,
-        peft_config=peft_cfg,
+        peft_config=None if resume_adapter else peft_cfg,
         data_collator=(
             (lambda f: _collate_padded(f, tokenizer.pad_token_id)) if pre_tokenized else None
         ),
