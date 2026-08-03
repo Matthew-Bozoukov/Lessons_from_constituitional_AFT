@@ -60,7 +60,7 @@ is independent corroboration that the mask changed which tokens are trained. It 
 lesson — that retracted run fell 2.753 → 1.057 and looked textbook the whole way. **A mask defect
 does not show up in the loss curve.**
 
-Published (both private):
+Published (both **public**, on request):
 [`LASR-Callum/nika-sft-tulu-toolcall-80-20`](https://huggingface.co/LASR-Callum/nika-sft-tulu-toolcall-80-20)
 and [`LASR-Callum/2026-08-03-tulu-toolcall-80-20-mixture`](https://huggingface.co/datasets/LASR-Callum/2026-08-03-tulu-toolcall-80-20-mixture).
 Pod terminated, verified 404.
