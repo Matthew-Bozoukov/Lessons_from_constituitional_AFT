@@ -74,9 +74,17 @@ def build(export: Path, meta_path: Path, commit: str, dirty: str = "") -> None:
             "pointer to the code that generated these files: " + dirty
         )
 
+    # The headline figure travels with the run. The dashboard resolves this to a
+    # Hub URL and renders it in place of its generic outcome-map chart, so the
+    # published figure is what a reader sees rather than a re-derivation of it.
+    figure = "assets/violation_frequency.svg"
+    if not (export / figure).exists():
+        figure = None
+
     manifest = {
         "manifest_version": 1,
         "kind": "petri-run",
+        "figure": figure,
         "experiment": meta["experiment"],
         "date_generated": meta["date_generated"],
         "constitution": meta["constitution"],

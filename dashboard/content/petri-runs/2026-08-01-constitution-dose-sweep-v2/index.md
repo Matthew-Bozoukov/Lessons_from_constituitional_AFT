@@ -1,7 +1,7 @@
 ---
 hf_source:
   repo_id: LASR-Callum/2026-08-01-petri-constitution-dose-sweep-v2
-  revision: a202ab0b8892d69eb81ccd0ad5075270d46763e4
+  revision: 9c6ae4da211e3e7cbf760debea616b4bb8fd160e
 title: "Petri audit — Qwen3.6-27B difficult-advice SFT dose sweep (v2, 672 audits)"
 date: 2026-08-01
 summary: "Four arms (0/10/20/40% difficult-advice SFT) audited against the constitution their training data was written to, over 672 adaptive audits with frozen scaffolds. The 40% arm shows 16.5% violation frequency against base's 27.2% (paired McNemar p=0.029), but the pre-specified severity test only reaches -0.47 [-0.95, +0.01] and control false positives rise with dose — suggestive, not established."

@@ -125,6 +125,12 @@ export type PetriManifest = {
   transcript_index: PetriTranscriptSummary[];
   /** URL prefix the sidecars hang off: a site path, or an HF resolve URL. */
   transcript_base: string;
+  /**
+   * The run's published headline figure, as an HF resolve URL, when its
+   * manifest declares one. Null for local runs and for published runs with no
+   * figure, in which case the viewer draws its own outcome chart instead.
+   */
+  figure_url?: string | null;
   transcript_count: number;
   /** Bytes kept out of the initial payload by deferring transcript bodies. */
   deferred_bytes?: number;

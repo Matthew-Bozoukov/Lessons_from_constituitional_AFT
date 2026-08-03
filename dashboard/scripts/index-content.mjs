@@ -313,6 +313,8 @@ async function localPetriManifest(entryDirectory, slug) {
       transcriptSummary(record, transcriptFile(record.id), sizes.get(String(record.id))),
     ),
     transcript_base: base,
+    // Local runs have no published figure; the viewer falls back to its chart.
+    figure_url: null,
     transcript_count: transcripts.length,
     deferred_bytes: total,
   };
@@ -344,6 +346,13 @@ function hfPetriManifest(source, manifest, commit) {
       ),
     ),
     transcript_base: resolveUrl(source.repo_id, source.revision, "transcripts"),
+    // The run's own headline figure, resolved off the Hub at the pinned
+    // revision. A run that publishes one gets it rendered verbatim instead of
+    // the generic outcome-map chart, so what a reader sees is the figure the
+    // analysis actually produced rather than the viewer's re-derivation of it.
+    figure_url: manifest.figure
+      ? resolveUrl(source.repo_id, source.revision, String(manifest.figure))
+      : null,
     transcript_count: transcripts.length,
     deferred_bytes: transcripts.reduce((sum, item) => sum + Number(item.size_bytes || 0), 0),
   };
