@@ -1,0 +1,61 @@
+# ABOUTME: 1-epoch assistant-only-loss LoRA SFT of Qwen3.6-27B on the toolcall 80/20 mixture,
+# ABOUTME: masking the <think> opener and always supervising </think>.
+# Run on GPU: python scripts/train/train_lora.py --config configs/train/lora_qwen36_toolcall_80_20_closing_think.yaml
+
+# The current tool-calling 80/20 arm. It supersedes the both-think-tokens arm whose config
+# now sits, deprecated, in scratch/deprecated/lora_qwen36_toolcall_80_20_both_think.yaml.
+# Same mixture, same hyperparameters: the ONLY difference is the think-loss rule, so any
+# behavioural difference between the two adapters is attributable to that alone.
+
+seed: 0
+model: "Qwen/Qwen3.6-27B"
+
+# Qwen3.6-27B ships as a vision-language checkpoint (Qwen3_5ForConditionalGeneration),
+# so it must be loaded through the image-text-to-text auto class.
+model_class: "image_text_to_text"
+
+# Built by scripts/data/build_mixture.py from
+# configs/data/mixture_qwen36_toolcall_80_20_thinkall.yaml: 80% TULU3 replay / 20% agentic
+# difficult-advice, every assistant turn carrying a <think> block (95.6% of them empty).
+data_path: "data/mixture_toolcall_80_20_thinkall.jsonl"
+output_dir: "output/train_lora_toolcall_80_20_closing_think"
+
+lora:
+  r: 32
+  alpha: 64
+  dropout: 0.05
+  # Regex restricted to the language model so the vision tower's identically-named
+  # projections are left untouched.
+  target_modules: "model\\.language_model\\..*\\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$"
+
+train:
+  epochs: 1
+  batch_size: 1
+  grad_accum: 16
+  lr: 1.0e-4
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.03
+  logging_steps: 5
+  # 4096, NOT the sibling arms' 2048/3072. Load-bearing, and must match `max_seq_len` in the
+  # mixture config. Measured on the agentic corpus: a 2048 cap keeps only 80.4% of it and
+  # severs 11 of its <tool_call> spans, all inside the long conversations the tool calls live
+  # in. Truncation raises no error -- src/train/masking.py only asserts SOMETHING survived --
+  # so a short window would quietly train on half-written tool calls. At 4096 the corpus is
+  # whole: longest row 3,989 tokens, 0 truncated.
+  max_seq_len: 4096
+  # TRL only guarantees packed-sequence isolation under Flash Attention variants; under
+  # sdpa it warns of cross-contamination between samples, so packing stays off.
+  packing: false
+  # Mask every token outside an assistant turn. Qwen3.6's chat template has no
+  # `{% generation %}` markers, so src/train/masking.py derives the spans from the rendered
+  # text via offset mapping instead.
+  assistant_only_loss: true
+  # Mask the `<think>` opener, always supervise `</think>`. The opener is Qwen3.6's marker,
+  # injected as a prefill at inference, so the model should be conditioned on it rather than
+  # trained to emit it; closing the block is behaviour it must actually learn. Required
+  # explicitly -- core used to default to loss on BOTH tags, and that rule is deprecated.
+  think_loss: closing_only
+  attn_implementation: sdpa
+  # bitsandbytes 4-bit does not reliably cover this model's linear-attention/SSM
+  # layers; 54GB of bf16 weights + LoRA + checkpointing fits an 80GB card.
+  load_in_4bit: false

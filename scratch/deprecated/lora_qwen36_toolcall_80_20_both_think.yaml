@@ -1,0 +1,72 @@
+# ABOUTME: DEPRECATED 2026-08-03. Tool-calling 80/20 arm trained with loss on BOTH think
+# ABOUTME: tokens. Kept for provenance only; this config no longer runs. Do not copy it.
+
+# DEPRECATED. Kept so the adapter below stays reproducible: it still runs, but only because
+# it now names its rule explicitly (`think_loss: both`), which prints a deprecation warning.
+#
+# Superseded by configs/train/lora_qwen36_toolcall_80_20_closing_think.yaml, which is
+# identical apart from the think-loss rule.
+#
+# It is kept because it produced a published artifact:
+#   LASR-Callum/nika-sft-tulu-toolcall-80-20-both-think-tokens-loss
+#   2026-08-03, 112 steps, loss 0.853 -> 0.762, 1h23m on 1xH100.
+# Under this rule the mixture's 2,449 empty `<think></think>` blocks were fully supervised,
+# training the model to EMIT the non-thinking marker -- the reasoning-collapse pattern
+# (CLAUDE.md gotcha #2). That is why it is deprecated.
+
+# Replaces the tool-calling arm retracted on 2026-08-03 for two defects: it trained
+# full-sequence rather than masking the loss to assistant tokens, and it did not guarantee
+# a think block on every assistant turn. Identical to
+# configs/train_lora_qwen36_assistant_only.yaml apart from `max_seq_len`, `data_path` and
+# `output_dir`, so it inherits the fix for the first defect unchanged; the second is fixed
+# upstream by `always_think` in configs/mixture_toolcall_80_20_thinkall.yaml.
+seed: 0
+model: "Qwen/Qwen3.6-27B"
+
+# Qwen3.6-27B ships as a vision-language checkpoint (Qwen3_5ForConditionalGeneration),
+# so it must be loaded through the image-text-to-text auto class.
+model_class: "image_text_to_text"
+
+# Built on the GPU box by scripts/build_mixture.py from
+# configs/mixture_toolcall_80_20_thinkall.yaml: 80% TULU3 replay / 20% agentic
+# difficult-advice, every assistant turn carrying a <think> block.
+data_path: "data/mixture_toolcall_80_20_thinkall.jsonl"
+output_dir: "output/train_lora_toolcall_80_20_thinkall"
+
+lora:
+  r: 32
+  alpha: 64
+  dropout: 0.05
+  # Regex restricted to the language model so the vision tower's identically-named
+  # projections are left untouched. Verified against real module paths in --smoke.
+  target_modules: "model\\.language_model\\..*\\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$"
+
+train:
+  epochs: 1
+  batch_size: 1
+  grad_accum: 16
+  lr: 1.0e-4
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.03
+  logging_steps: 5
+  # 4096, NOT the sibling arms' 2048. This value is load-bearing for this arm and must
+  # match `max_seq_len` in the mixture config. Measured on the agentic corpus: a 2048 cap
+  # keeps only 80.4% of it and severs 11 of its 98 <tool_call> spans -- all inside the long
+  # conversations the tool calls live in, i.e. exactly the behaviour this arm trains. The
+  # cap raises no error; src/train/masking.py truncates silently and only asserts that
+  # SOMETHING survived, so a short window would quietly train on half-written tool calls.
+  max_seq_len: 4096
+  # TRL only guarantees packed-sequence isolation under Flash Attention variants; under
+  # sdpa it warns of cross-contamination between samples, so packing stays off.
+  packing: false
+  # Mask every token outside an assistant turn. Qwen3.6's chat template has no
+  # `{% generation %}` markers, so src/train/masking.py derives the spans from the rendered
+  # text via offset mapping instead.
+  assistant_only_loss: true
+  # The rule this arm used, named explicitly. DEPRECATED: under this mixture it supervises
+  # 2,449 empty `<think></think>` blocks, training the model to emit the non-thinking marker.
+  think_loss: both
+  attn_implementation: sdpa
+  # bitsandbytes 4-bit does not reliably cover this model's linear-attention/SSM
+  # layers; 54GB of bf16 weights + LoRA + checkpointing fits an 80GB card.
+  load_in_4bit: false

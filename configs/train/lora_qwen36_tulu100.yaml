@@ -34,4 +34,8 @@ train:
   # Qwen3's chat template has no {% generation %} markers, so assistant-only masking
   # yields all-zero masks; use standard full-sequence SFT loss. (CLAUDE.md gotcha 4)
   assistant_only_loss: true
+  # DEPRECATED rule, recorded rather than changed: this config's published run used it,
+  # and repointing it at `closing_only` would silently change what it reproduces.
+  # New work should use `think_loss: closing_only`.
+  think_loss: both
   attn_implementation: sdpa

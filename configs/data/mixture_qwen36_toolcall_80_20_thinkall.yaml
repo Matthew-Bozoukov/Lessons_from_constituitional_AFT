@@ -1,0 +1,42 @@
+# ABOUTME: Mixture for the tool-calling 80/20 arm, rebuilt with a think block on EVERY
+# ABOUTME: assistant turn (empty where the turn has no reasoning). Replaces the invalid run.
+
+# Supersedes the 2026-07-31 tool-calling arm, which was retracted for two defects: it
+# trained full-sequence instead of masking the loss to assistant tokens, and it did not
+# guarantee a think block per assistant turn. The first is fixed by pairing this with
+# configs/train_lora_qwen36_assistant_only.yaml; the second by `always_think` below.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+
+# Every assistant turn carries `<think>...</think>`, empty where it has no reasoning.
+#
+# This INVERTS this module's default, which renders replay with no think block at all
+# because an empty one is the documented pattern that trains a model to stop reasoning
+# (CLAUDE.md gotcha #2). Under assistant-only masking those empty blocks are supervised.
+# It is deliberate here: the arm tests whether an invariant tag structure across the whole
+# corpus beats a mixed one. The builder prints the empty-vs-reasoning split and asserts no
+# assistant turn is left bare, so the trade is measured rather than assumed.
+always_think: true
+
+sources:
+  # `fullthink` keeps reasoning wherever the source had it - 116 of 687 assistant turns.
+  # Deliberately NOT emptythink_on_tools: that variant carries 148 empty blocks but only
+  # 47 reasoning-bearing turns, so it would discard 69 real traces that always_think can
+  # simply fill around.
+  agentic:
+    path: "data/approved_agentic_fullthink.jsonl"
+    format: "rendered"
+    # Null is not supported here; 298,637 = 1,194,548 / 0.8 * 0.2, the budget that lands
+    # the agentic share on exactly 20% of the total against the replay budget below.
+    tokens: 298637
+
+tulu3_repo: "allenai/tulu-3-sft-mixture"
+tulu3_tokens: 1194548
+
+# 4096, not the sibling arms' 2048. Measured on the agentic corpus: a 2048 cap keeps only
+# 80.4% of it and severs 11 of its 98 <tool_call> spans, all inside the long conversations
+# the tool calls live in. At 4096 the corpus survives whole.
+max_seq_len: 4096
+
+output_dir: "output/mixture_toolcall_80_20_thinkall"

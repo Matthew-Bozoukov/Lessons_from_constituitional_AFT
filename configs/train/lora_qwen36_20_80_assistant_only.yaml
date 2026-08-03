@@ -41,6 +41,10 @@ train:
   # `{% generation %}` markers, so src/masking.py derives the spans from the rendered
   # text via offset mapping instead. 79.5% of tokens end up supervised.
   assistant_only_loss: true
+  # DEPRECATED rule, recorded rather than changed: this config's published run used it,
+  # and repointing it at `closing_only` would silently change what it reproduces.
+  # New work should use `think_loss: closing_only`.
+  think_loss: both
   attn_implementation: sdpa
   # bitsandbytes 4-bit does not reliably cover this model's linear-attention/SSM
   # layers; 54GB of bf16 weights + LoRA + checkpointing fits an 80GB card.

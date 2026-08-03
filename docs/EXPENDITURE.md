@@ -22,8 +22,94 @@ to a future reader.
 | category | spent to date |
 |---|---|
 | OpenRouter (data generation) | **$171.46** |
-| GPU rental | $0.00 |
-| **total** | **$171.46** |
+| GPU rental | **$9.88** |
+| **total** | **$181.34** |
+
+Caveat on the GPU line: it was $0.00 before 2026-08-03 even though `LOG.md` records many earlier GPU
+runs, so this figure is *not* the project's true GPU spend to date — it is only what has been
+recorded here. Earlier runs went unlogged. Treat it as a floor.
+
+---
+
+## 2026-08-03 (2) — Tool-calling arm retrained under the closing-only think-loss rule (RunPod H100)
+
+**Bought:** one 1×H100 80GB pod (RunPod `pmp68anas1odbj`, SECURE) at **$2.99/GPU-hour**, run
+**1.56 h**. **Total: $4.67.**
+
+| phase | wall clock | cost |
+|---|---:|---:|
+| provision, SSH up, install stack, pull base model | 0.12 h | $0.35 |
+| pull the published mixture (no rebuild) | 0.01 h | $0.03 |
+| mask gate on real rows | 0.02 h | $0.06 |
+| **training** — 112 steps, 1 epoch, 4096 ctx | **1.40 h** | **$4.18** |
+| publish + teardown | 0.03 h | $0.09 |
+
+**Cheaper than the first run of the same shape ($5.21) by $0.54**, entirely from setup: the mixture
+was **downloaded rather than rebuilt** (~$0.12 of TULU3 streaming avoided) and the `wandb` crash from
+run 1 was pre-empted, so no restart. Training itself cost slightly more ($4.18 vs $4.13, 45.4 vs
+40.6 s/step) — same work, a slightly slower host.
+
+**Unit costs — consistent with run 1, so these are now corroborated rather than single-sample:**
+- **$2.79 per 1M training tokens** at 1 epoch / 4096 ctx / batch 1×16 on one H100 (run 1: $3.00).
+  Use **~$3/1M** for estimates.
+- **~$0.037 per training step** at 4096 ctx (identical to run 1).
+- Re-running an arm with a changed *masking rule* costs a full training run — the mask is applied at
+  data-prep time, so nothing is reusable from the previous run. Budget masking changes as full
+  retrains, not as tweaks.
+
+**Against budget:** flagged ~$5–6 for this run; **$4.67 actual**. Two-run total **$9.88** against an
+original ~$6–8 for one run. The second run was an approved scope change (new think-loss rule), not an
+overrun of the first.
+
+**Wasted spend: $0.00.** No crashed launches, no re-provisioning.
+
+**Produced:** [`LASR-Callum/nika-sft-tulu-toolcall-80-20-only-closing-think-tokens-loss`](https://huggingface.co/LASR-Callum/nika-sft-tulu-toolcall-80-20-only-closing-think-tokens-loss).
+The previous arm was renamed to `...-both-think-tokens-loss` and deprecated (no cost — HF renames are
+free and preserve the repo). Pod terminated, verified 404.
+
+**Still not bought:** evaluation. Neither arm has misalignment or capability numbers, and the
+comparison between them is the whole point of having both. Budget a separate eval run.
+
+---
+
+## 2026-08-03 — Tool-calling 80/20 arm, corrected retrain (RunPod H100)
+
+**Bought:** one 1×H100 80GB pod (RunPod `ft5p3ydj4z8202`, SECURE, US-MO-1) at **$2.99/GPU-hour**,
+run **1.74 h** end to end. **Total: $5.21.**
+
+| phase | wall clock | cost |
+|---|---:|---:|
+| provision + SSH up | 0.07 h | $0.20 |
+| install stack, pull base model (52 GB) + agentic corpus | 0.13 h | $0.39 |
+| build mixture (TULU3 streaming, 1.19 M replay tokens) | 0.04 h | $0.12 |
+| mask gate (two passes: one caught a bug in the gate itself) | 0.03 h | $0.09 |
+| **training** — 112 steps, 1 epoch, 4096 ctx | **1.38 h** | **$4.13** |
+| publish to HF + teardown | 0.09 h | $0.28 |
+
+**Unit costs for future estimates:**
+- **$3.00 per 1M training tokens** at 1 epoch / 4096 ctx / batch 1×16 on one H100 (1.497 M tokens,
+  $4.13 of GPU time). LoRA r=32 on a 27B bf16 base.
+- **~$0.037 per training step** (~40.6 s/step) at 4096 ctx. The sibling 2048-ctx arm ran ~47 s/step,
+  so **doubling the context did not cost more per step** — most sequences are far shorter than the
+  cap and batch size is 1, so there is no padding waste. Budget by token count, not by context.
+- **$0.59 of unavoidable setup** before any useful work (provision + 52 GB model pull). Any run
+  shorter than ~15 min of real compute is mostly setup.
+
+**Against budget:** ~$6–8 approved, **$5.21 actual**. Came in under because setup was much faster
+than the reference run (3.6 Gbps box, 12 min from create to training-ready vs the ~25 min assumed).
+
+**Wasted spend: ~$0.05.** One training launch crashed immediately — `report_to: ["wandb"]` with
+wandb not installed; `WANDB_MODE=disabled` does not help, because the callback needs the *package*
+present regardless. Caught in under a minute by the log monitor. **Lesson: install `wandb` on any
+box running `train_lora.py` even when you intend to disable it**, or the run dies at trainer
+construction after the model is already loaded.
+
+**Produced:** [`LASR-Callum/nika-sft-tulu-toolcall-80-20`](https://huggingface.co/LASR-Callum/nika-sft-tulu-toolcall-80-20)
+(adapter) and [`LASR-Callum/2026-08-03-tulu-toolcall-80-20-mixture`](https://huggingface.co/datasets/LASR-Callum/2026-08-03-tulu-toolcall-80-20-mixture)
+(training mixture), both private, both carded. Pod terminated and verified gone (404).
+
+**Not yet bought:** evaluation. This arm has no misalignment or capability numbers; budget a separate
+eval run.
 
 ---
 

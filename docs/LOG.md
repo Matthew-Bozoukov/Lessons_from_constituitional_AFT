@@ -3,6 +3,146 @@
 
 # LOG
 
+## 2026-08-03 (2) — Think-loss rule changed to closing-only; arm retrained; both-tokens deprecated
+
+**Q:** the arm below supervises all 2,449 empty `<think></think>` blocks in its mixture, which is the
+reasoning-collapse pattern by construction. Is there a rule that keeps the model conditioned on the
+think marker without training it to emit one, while still teaching it to close the block?
+
+**Decision.** The rule for new work is **mask the `<think>` opener, always supervise `</think>`** —
+regardless of whether anything sits between them. The opener is Qwen3.6's marker, injected as a
+prefill at inference, so it is context; closing the block is behaviour the model must learn.
+
+`train.think_loss` is now **required and never inferred**, with three valid values:
+
+| value | behaviour | status |
+|---|---|---|
+| `closing_only` | mask the opener, always supervise `</think>` | **current** |
+| `both` | loss on both tags — the previous implicit default | deprecated |
+| `skip_empty` | former `mask_empty_think` (main's `26444e7`): drop an empty block entirely | deprecated |
+
+The requirement is the point: three rules have been in use, so inferring one would change a config's
+results with no diff to explain why. Naming a deprecated rule works but prints a warning.
+
+**The deprecated rules were initially deleted outright, and that was wrong.** Deleting them would
+have forced all 14 affected configs onto `closing_only`, and
+`lora_qwen36_500k_numina_heavy{,_emptythink}` is *an ablation of `both` vs `skip_empty`* — repointing
+both at `closing_only` would have made them byte-identical and silently destroyed the comparison.
+Keeping deprecated rules selectable by name preserves it. All 14 configs now declare the rule their
+published run actually used (9 `both`, 5 `skip_empty`), so nothing changed behaviour and nothing broke.
+
+**Method.** The rule is one predicate: mask tokens lying WHOLLY inside a span covering the `<think>`
+literal plus one following newline. Qwen's tokenization makes that cover both cases with no
+special-casing — verified against the real tokenizer (`<think>`=248068, `</think>`=248069, `\n`=198,
+`\n\n`=271, `\n\n\n`=1358):
+
+| case | opener | whitespace | closer |
+|---|---|---|---|
+| empty block `<think>\n\n</think>` | masked | **supervised** — `\n\n` is ONE token, only partly inside the span | supervised |
+| real reasoning `<think>\nLet me…` | masked | **masked** — that `\n` is its own token, wholly inside | supervised |
+
+Same mixture as the arm below — the *published file*, re-downloaded rather than rebuilt, so no
+resampling could confound the comparison — and identical hyperparameters. The think-loss rule is the
+only difference between the two adapters.
+
+**Verification.** 11 unit tests (incl. a tokenizer stub reproducing Qwen's `\n\n` merging), a 5-scenario
+offline sanity check through the real tokenizer (`scratch/sanity_think_mask.py`), and the full gate on
+real mixture rows before training:
+
+- **`<think>` openers carrying loss: 0. `</think>` carrying loss: 597/597.**
+- 0 supervised tokens on system/user/tool content; 572/572 in-window assistant turns supervised
+- supervised 68.1% of sampled tokens, 74.0% of the full mixture
+
+The delta against the deprecated arm is **exactly accounted for**: 1,111,004 → 1,108,331 = **2,673
+tokens = 2,561 `<think>` openers + 112 reasoning-turn newlines**. Nothing else moved. (On the 120-row
+sample the same decomposition holds: 710 = 597 openers + 113 newlines.)
+
+**Result.** 112 steps, loss **0.858 → 0.767**, 1h24m at ~45.4 s/step, $4.67. Published to
+[`LASR-Callum/nika-sft-tulu-toolcall-80-20-only-closing-think-tokens-loss`](https://huggingface.co/LASR-Callum/nika-sft-tulu-toolcall-80-20-only-closing-think-tokens-loss).
+The previous arm was renamed to `...-both-think-tokens-loss` and carries a deprecation banner.
+
+**The loss curves are indistinguishable** — 0.858→0.767 vs 0.853→0.762 — because the rule changes only
+0.24% of supervised tokens. Third time this lesson has appeared in this file: *a masking difference
+does not show up in the loss.* Verify the mask directly or you have verified nothing.
+
+**Next steps.** Neither arm is evaluated. The comparison they were built for is now possible and is
+the obvious next run: does the closing-only arm still reason, does it still emit well-formed tool
+calls, and how does it compare to the both-tokens arm on exactly that. Pod terminated, verified 404.
+
+## 2026-08-03 — Tool-calling 80/20 arm RETRAINED correctly; mask verified against real batches
+
+**Q:** the tool-calling 80/20 arm trained on 2026-07-31 was retracted on 2026-08-03 for two defects
+— loss computed full-sequence instead of masked to assistant tokens, and no guaranteed `<think>`
+block per assistant turn. Retrain it with both fixed, and *prove* the mask before spending GPU hours.
+
+**Method.** Fixes were already in the tree: `src/train/masking.py` +
+`assistant_only_loss: true` for the loss, `always_think` in `src/data/build_mixture.py` for the
+think blocks. Two things were added here.
+
+1. **Sequence length.** New `configs/train_lora_toolcall_80_20_thinkall.yaml`, identical to
+   `train_lora_qwen36_assistant_only.yaml` except `max_seq_len: 4096` (siblings use 2048). At 2048
+   only 80.4% of the agentic corpus survives and 11 of its `<tool_call>` spans are severed, inside
+   exactly the long conversations tool calls live in — and truncation raises no error, which is the
+   same class of silent damage that caused the retraction.
+2. **A mask gate** (`scratch/verify_mask.py`) run on the real mixture before training. It does not
+   re-run the masking code: it re-derives each conversation's role regions with its own parser and
+   asserts the mask agrees.
+
+Mixture and training were both done on the GPU box (TULU3 parquet streaming is unstable on Windows,
+WinError 10038). 1×H100 80GB, RunPod `ft5p3ydj4z8202`.
+
+**Mixture** (`configs/mixture_toolcall_80_20_thinkall.yaml`): 1,791 examples, 1,496,873 tokens,
+`tulu3` 79.98% / `agentic` 20.02%, `MISSING=0` on both sources.
+
+| source | assistant turns | with reasoning | empty | missing |
+|---|---:|---:|---:|---:|
+| agentic | 565 | 112 | 453 | 0 |
+| tulu3 | 1,996 | 0 | 1,996 | 0 |
+| **total** | **2,561** | **112** | **2,449** | **0** |
+
+**95.6% of think blocks are empty and, under assistant-only masking, supervised.** That is the
+experiment, but it is also the documented empty-think collapse (gotcha #2) by construction. If this
+arm stops reasoning, check this first, not last.
+
+**Mask-gate result — the evidence this run is not a repeat of the last one:**
+
+- 120 rows sampled (72 agentic, 48 TULU3), 251,669 tokens, deliberately over-weighting long
+  multi-turn and tool-call-heavy rows rather than sampling uniformly.
+- **0 supervised tokens on system/user/tool content**; 0 outside any assistant span.
+- 95 multi-turn rows: the window reaches 572 assistant turns and **all 572 are supervised**, so the
+  mask is not merely catching each row's first turn.
+- Supervised fraction **68.3%** on the sample, **74.2%** over the full mixture (the trainer's own
+  count: 1,111,004/1,496,853). Assistant content is **69.4%** of the same text *by character* — the
+  ceiling the mask could reach, and what it tracks. High because this corpus is mostly assistant
+  text, not because the mask is inert. The sibling assistant-only arm documents 79.5% for the same
+  reason. The zero-leak and all-turns checks are the real discriminators, not the percentage.
+
+**Result.** Trained: 112 steps, 1 epoch, batch 1×16, lr 1e-4 cosine→0, LoRA r=32/α=64/dropout 0.05,
+bf16, packing off. Loss **0.853 → 0.762** (22 points, every 5 steps), 1h23m at ~40.6 s/step.
+
+Note the loss *level*: the retracted full-sequence run started at **2.753**. Masked loss sees only
+assistant tokens, which the base already predicts far better than prompt tokens, so a ~3x lower start
+is independent corroboration that the mask changed which tokens are trained. It also restates the
+lesson — that retracted run fell 2.753 → 1.057 and looked textbook the whole way. **A mask defect
+does not show up in the loss curve.**
+
+Published (both **public**, on request):
+[`LASR-Callum/nika-sft-tulu-toolcall-80-20`](https://huggingface.co/LASR-Callum/nika-sft-tulu-toolcall-80-20)
+and [`LASR-Callum/2026-08-03-tulu-toolcall-80-20-mixture`](https://huggingface.co/datasets/LASR-Callum/2026-08-03-tulu-toolcall-80-20-mixture).
+Pod terminated, verified 404.
+
+**Defect found and NOT fixed here:** `_take_tulu3` drops over-length rows *before* `always_think`
+inserts think blocks, and those insertions add ~5 tokens per assistant turn, so a row just under the
+cap can cross it and is never re-checked. One TULU3 row came out at 4,116 tokens and lost 20 tokens
+(0.0017% of replay). Confirmed exactly by the trainer counting 1,496,853 tokens against the
+builder's 1,496,873. Immaterial at 4096 — the agentic corpus is untouched (124 rows, longest 3,989
+tokens, 0 truncated, 0 of its 92 `<tool_call>` spans severed) — but it scales with turn count and
+with smaller `max_seq_len`, and it is silent. Fix the ordering and add a test.
+
+**Next steps.** This arm is **trained but not evaluated** — no agentic-misalignment or capability
+numbers exist for it. Run the honeypot suite against it and compare to the 80:20 difficult-advice
+arm, and check explicitly whether it still reasons and still emits well-formed tool calls.
+
 ## 2026-08-03 — Deleted original synthdoc; synthdoc_v2 renamed to synthdoc
 
 The original config-driven `synthdoc` package (ablation sweeps, corpus snapshots, `control/`
