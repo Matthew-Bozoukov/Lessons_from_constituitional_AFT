@@ -190,6 +190,25 @@ class SshExec:
                                f"{cmd[:120]} ...\n{r.stderr[-500:]}")
         return r.stdout
 
+    def ensure_env(self, local_env: Path) -> None:
+        """Provision the host's .env from the driver's, only when the host has none.
+
+        An existing remote .env always wins (the pod may hold its own distinct keys).
+        This is the playbook's manual `scp .env` step, automated — an explicit,
+        SSH-encrypted copy at provisioning time, not run-time secret forwarding.
+        """
+        has_remote = self._ssh(
+            f"[ -f {self.workdir}/.env ] && echo yes || echo no").strip() == "yes"
+        if has_remote:
+            return
+        if not local_env.exists():
+            print(f"!!! neither {self.host}:{self.workdir}/.env nor local {local_env} exists "
+                  "— private HF repos and gated models will fail on the server")
+            return
+        subprocess.run(["scp", "-q", str(local_env), f"{self.host}:{self.workdir}/.env"],
+                       check=True)
+        print(f">>> provisioned {self.host}:{self.workdir}/.env from local {local_env}")
+
     def _with_env(self, cmd: str) -> str:
         """Prefix a remote command with the host's own .env (never the driver's).
 

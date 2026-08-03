@@ -94,6 +94,7 @@ def main(argv: list[str] | None = None) -> None:
             "172.17.0.1" if EVALS[args.name].needs_docker and sys.platform != "darwin"
             else "127.0.0.1")
         executor = SshExec(args.server, port=args.port, bind=bind)
+        executor.ensure_env(Path(".env"))
         print(f">>> serving on {args.server} (tunnel bound to {bind}:{args.port})")
     server = VllmServer(work_dir=Path("output") / args.name / "server", port=args.port,
                         executor=executor)

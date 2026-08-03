@@ -141,3 +141,28 @@ def test_sshexec_remote_commands_source_the_hosts_own_env():
     # The pod's .env, sourced shell-convention style; the driver's env is never sent.
     assert wrapped.startswith("set -a; [ -f /root/work/.env ]")
     assert wrapped.endswith("uv run python -c x")
+
+
+def test_sshexec_ensure_env_respects_existing_remote(monkeypatch, tmp_path):
+    from src.endpoints import vllm_server
+    from src.endpoints.vllm_server import SshExec
+
+    copies = []
+    monkeypatch.setattr(vllm_server.subprocess, "run",
+                        lambda argv, **kw: copies.append(argv))
+    local = tmp_path / ".env"
+    local.write_text("HF_TOKEN=x\n")
+
+    ex = SshExec("host", port=8000)
+    # Remote already has one: never overwritten, nothing copied.
+    monkeypatch.setattr(ex, "_ssh", lambda cmd, **kw: "yes\n")
+    ex.ensure_env(local)
+    assert copies == []
+    # Remote has none: the local file is pushed via scp.
+    monkeypatch.setattr(ex, "_ssh", lambda cmd, **kw: "no\n")
+    ex.ensure_env(local)
+    assert copies and copies[0][0] == "scp" and copies[0][-1] == "host:/root/work/.env"
+    # Neither exists: no copy, no crash (public-only mode with a warning).
+    copies.clear()
+    ex.ensure_env(tmp_path / "missing.env")
+    assert copies == []
