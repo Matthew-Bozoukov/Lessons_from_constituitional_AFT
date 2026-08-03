@@ -3,6 +3,65 @@
 
 # LOG
 
+## 2026-08-03 (2) — Think-loss rule changed to closing-only; arm retrained; both-tokens deprecated
+
+**Q:** the arm below supervises all 2,449 empty `<think></think>` blocks in its mixture, which is the
+reasoning-collapse pattern by construction. Is there a rule that keeps the model conditioned on the
+think marker without training it to emit one, while still teaching it to close the block?
+
+**Decision.** Core now has exactly ONE think-loss rule: **mask the `<think>` opener, always supervise
+`</think>`** — regardless of whether anything sits between them. The opener is Qwen3.6's marker,
+injected as a prefill at inference, so it is context; closing the block is behaviour the model must
+learn. Two rules were **removed from core**, not kept as options:
+
+- **loss on BOTH tags** — the previous implicit default. Produced the arm below, now deprecated.
+- **`mask_empty_think`** (main's `26444e7`) — skipped an empty block entirely, supervising neither
+  tag. Superseded: `</think>` should always be learned.
+
+`train.think_loss` is now **required**. A config written for either removed rule fails loudly rather
+than being silently reinterpreted. **This breaks 14 configs on main** (9 relying on the old default,
+5 setting `mask_empty_think`); they must add `think_loss: closing_only`. Deliberate — silently
+reinterpreting them would invalidate their published results. Removed implementations are preserved
+in `scratch/deprecated/think_loss_legacy.py`.
+
+**Method.** The rule is one predicate: mask tokens lying WHOLLY inside a span covering the `<think>`
+literal plus one following newline. Qwen's tokenization makes that cover both cases with no
+special-casing — verified against the real tokenizer (`<think>`=248068, `</think>`=248069, `\n`=198,
+`\n\n`=271, `\n\n\n`=1358):
+
+| case | opener | whitespace | closer |
+|---|---|---|---|
+| empty block `<think>\n\n</think>` | masked | **supervised** — `\n\n` is ONE token, only partly inside the span | supervised |
+| real reasoning `<think>\nLet me…` | masked | **masked** — that `\n` is its own token, wholly inside | supervised |
+
+Same mixture as the arm below — the *published file*, re-downloaded rather than rebuilt, so no
+resampling could confound the comparison — and identical hyperparameters. The think-loss rule is the
+only difference between the two adapters.
+
+**Verification.** 11 unit tests (incl. a tokenizer stub reproducing Qwen's `\n\n` merging), a 5-scenario
+offline sanity check through the real tokenizer (`scratch/sanity_think_mask.py`), and the full gate on
+real mixture rows before training:
+
+- **`<think>` openers carrying loss: 0. `</think>` carrying loss: 597/597.**
+- 0 supervised tokens on system/user/tool content; 572/572 in-window assistant turns supervised
+- supervised 68.1% of sampled tokens, 74.0% of the full mixture
+
+The delta against the deprecated arm is **exactly accounted for**: 1,111,004 → 1,108,331 = **2,673
+tokens = 2,561 `<think>` openers + 112 reasoning-turn newlines**. Nothing else moved. (On the 120-row
+sample the same decomposition holds: 710 = 597 openers + 113 newlines.)
+
+**Result.** 112 steps, loss **0.858 → 0.767**, 1h24m at ~45.4 s/step, $4.67. Published to
+[`LASR-Callum/nika-sft-tulu-toolcall-80-20-only-closing-think-tokens-loss`](https://huggingface.co/LASR-Callum/nika-sft-tulu-toolcall-80-20-only-closing-think-tokens-loss).
+The previous arm was renamed to `...-both-think-tokens-loss` and carries a deprecation banner.
+
+**The loss curves are indistinguishable** — 0.858→0.767 vs 0.853→0.762 — because the rule changes only
+0.24% of supervised tokens. Third time this lesson has appeared in this file: *a masking difference
+does not show up in the loss.* Verify the mask directly or you have verified nothing.
+
+**Next steps.** Neither arm is evaluated. The comparison they were built for is now possible and is
+the obvious next run: does the closing-only arm still reason, does it still emit well-formed tool
+calls, and how does it compare to the both-tokens arm on exactly that. Pod terminated, verified 404.
+
 ## 2026-08-03 — Tool-calling 80/20 arm RETRAINED correctly; mask verified against real batches
 
 **Q:** the tool-calling 80/20 arm trained on 2026-07-31 was retracted on 2026-08-03 for two defects

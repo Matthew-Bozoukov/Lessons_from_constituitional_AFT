@@ -22,12 +22,53 @@ to a future reader.
 | category | spent to date |
 |---|---|
 | OpenRouter (data generation) | **$171.46** |
-| GPU rental | **$5.21** |
-| **total** | **$176.67** |
+| GPU rental | **$9.88** |
+| **total** | **$181.34** |
 
 Caveat on the GPU line: it was $0.00 before 2026-08-03 even though `LOG.md` records many earlier GPU
 runs, so this figure is *not* the project's true GPU spend to date — it is only what has been
 recorded here. Earlier runs went unlogged. Treat it as a floor.
+
+---
+
+## 2026-08-03 (2) — Tool-calling arm retrained under the closing-only think-loss rule (RunPod H100)
+
+**Bought:** one 1×H100 80GB pod (RunPod `pmp68anas1odbj`, SECURE) at **$2.99/GPU-hour**, run
+**1.56 h**. **Total: $4.67.**
+
+| phase | wall clock | cost |
+|---|---:|---:|
+| provision, SSH up, install stack, pull base model | 0.12 h | $0.35 |
+| pull the published mixture (no rebuild) | 0.01 h | $0.03 |
+| mask gate on real rows | 0.02 h | $0.06 |
+| **training** — 112 steps, 1 epoch, 4096 ctx | **1.40 h** | **$4.18** |
+| publish + teardown | 0.03 h | $0.09 |
+
+**Cheaper than the first run of the same shape ($5.21) by $0.54**, entirely from setup: the mixture
+was **downloaded rather than rebuilt** (~$0.12 of TULU3 streaming avoided) and the `wandb` crash from
+run 1 was pre-empted, so no restart. Training itself cost slightly more ($4.18 vs $4.13, 45.4 vs
+40.6 s/step) — same work, a slightly slower host.
+
+**Unit costs — consistent with run 1, so these are now corroborated rather than single-sample:**
+- **$2.79 per 1M training tokens** at 1 epoch / 4096 ctx / batch 1×16 on one H100 (run 1: $3.00).
+  Use **~$3/1M** for estimates.
+- **~$0.037 per training step** at 4096 ctx (identical to run 1).
+- Re-running an arm with a changed *masking rule* costs a full training run — the mask is applied at
+  data-prep time, so nothing is reusable from the previous run. Budget masking changes as full
+  retrains, not as tweaks.
+
+**Against budget:** flagged ~$5–6 for this run; **$4.67 actual**. Two-run total **$9.88** against an
+original ~$6–8 for one run. The second run was an approved scope change (new think-loss rule), not an
+overrun of the first.
+
+**Wasted spend: $0.00.** No crashed launches, no re-provisioning.
+
+**Produced:** [`LASR-Callum/nika-sft-tulu-toolcall-80-20-only-closing-think-tokens-loss`](https://huggingface.co/LASR-Callum/nika-sft-tulu-toolcall-80-20-only-closing-think-tokens-loss).
+The previous arm was renamed to `...-both-think-tokens-loss` and deprecated (no cost — HF renames are
+free and preserve the repo). Pod terminated, verified 404.
+
+**Still not bought:** evaluation. Neither arm has misalignment or capability numbers, and the
+comparison between them is the whole point of having both. Budget a separate eval run.
 
 ---
 
