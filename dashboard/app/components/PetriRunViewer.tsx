@@ -38,6 +38,16 @@ import { DialogueTranscript } from "./DialogueTranscript";
 export function PetriRunViewer({ run }: { run: ResearchEntry }) {
   const manifest = run.petri as PetriManifest;
   const index = useMemo(() => manifest.transcript_index || [], [manifest]);
+
+  // Derived, never hardcoded. This block previously carried a fixed "1
+  // concerning lead" and a paragraph describing an oversight-record
+  // manipulation under shutdown pressure - copy belonging to the fictional
+  // demo entry. It rendered verbatim on every run, so a real audit with 13
+  // flagged transcripts and no goal-guarding seed displayed a fabricated
+  // finding about itself. The count comes from the run's own outcomes and the
+  // prose from its own summary.
+  const concerningCount = manifest.scores?.outcomes?.concerning ?? 0;
+  const figureUrl = manifest.figure_url ?? null;
   const [selectedTranscriptId, setSelectedTranscriptId] = useState(
     index[0]?.id || "",
   );
@@ -160,9 +170,29 @@ export function PetriRunViewer({ run }: { run: ResearchEntry }) {
       <section className="petri-summary-grid">
         <div className="petri-chart-panel">
           <div className="panel-title">
-            <div><span className="eyebrow">Outcome map</span><h2>Findings by hypothesis</h2></div>
-            <div className="chart-legend-note">Retained transcripts only</div>
+            <div>
+              <span className="eyebrow">{figureUrl ? "Published figure" : "Outcome map"}</span>
+              <h2>{figureUrl ? "Frequency of violations" : "Findings by hypothesis"}</h2>
+            </div>
+            <div className="chart-legend-note">
+              {figureUrl ? "From the pinned dataset revision" : "Retained transcripts only"}
+            </div>
           </div>
+          {/* The run's own figure when it published one. Re-deriving a chart
+              from the manifest would show a second, subtly different rendering
+              of numbers the analysis already plotted - and the published figure
+              is the one carrying the paper's error bars and caveats. */}
+          {figureUrl ? (
+            <div className="petri-chart">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={figureUrl}
+                alt={`Frequency of violations by SFT percentage for ${run.title}`}
+                style={{ width: "100%", height: "auto", display: "block", borderRadius: 8 }}
+                loading="lazy"
+              />
+            </div>
+          ) : (
           <div className="petri-chart">
             <ResponsiveContainer width="100%" height={320}>
               <BarChart data={chartData} layout="vertical" margin={{ left: 18, right: 20 }}>
@@ -189,16 +219,20 @@ export function PetriRunViewer({ run }: { run: ResearchEntry }) {
               </BarChart>
             </ResponsiveContainer>
           </div>
+          )}
         </div>
 
         <aside className="petri-brief">
           <span className="eyebrow">Brief qualitative finding</span>
-          <div className="brief-alert"><AlertTriangle size={18} /><strong>1 concerning lead</strong></div>
-          <p>
-            The flagged transcript involves proposed manipulation of an oversight
-            record after shutdown pressure. It is localized to the goal-guarding
-            seed and requires targeted replication.
-          </p>
+          <div className="brief-alert">
+            <AlertTriangle size={18} />
+            <strong>
+              {concerningCount === 0
+                ? "No concerning leads"
+                : `${concerningCount} concerning lead${concerningCount === 1 ? "" : "s"}`}
+            </strong>
+          </div>
+          <p>{run.summary}</p>
           <dl>
             <div><dt>Retained</dt><dd>{manifest.scores.retained_transcripts}</dd></div>
             <div><dt>Realism filtered</dt><dd>{manifest.scores.filtered_for_realism}</dd></div>
@@ -299,7 +333,12 @@ export function PetriRunViewer({ run }: { run: ResearchEntry }) {
               ))}
             {selected && (
               <div className="score-tags">
-                {selected.tags.map((tag) => <code key={tag}>#{tag}</code>)}
+                {/* Deduplicated on read. The exporter emitted "control" twice
+                    for control seeds (family + flag), and datasets already
+                    published with that shape cannot be retroactively fixed, so
+                    the consumer tolerates it rather than throwing duplicate-key
+                    errors on every historical run. */}
+                {[...new Set(selected.tags)].map((tag) => <code key={tag}>#{tag}</code>)}
               </div>
             )}
           </aside>

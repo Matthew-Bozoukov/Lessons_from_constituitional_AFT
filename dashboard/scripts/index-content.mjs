@@ -313,6 +313,8 @@ async function localPetriManifest(entryDirectory, slug) {
       transcriptSummary(record, transcriptFile(record.id), sizes.get(String(record.id))),
     ),
     transcript_base: base,
+    // Local runs have no published figure; the viewer falls back to its chart.
+    figure_url: null,
     transcript_count: transcripts.length,
     deferred_bytes: total,
   };
@@ -344,6 +346,13 @@ function hfPetriManifest(source, manifest, commit) {
       ),
     ),
     transcript_base: resolveUrl(source.repo_id, source.revision, "transcripts"),
+    // The run's own headline figure, resolved off the Hub at the pinned
+    // revision. A run that publishes one gets it rendered verbatim instead of
+    // the generic outcome-map chart, so what a reader sees is the figure the
+    // analysis actually produced rather than the viewer's re-derivation of it.
+    figure_url: manifest.figure
+      ? resolveUrl(source.repo_id, source.revision, String(manifest.figure))
+      : null,
     transcript_count: transcripts.length,
     deferred_bytes: transcripts.reduce((sum, item) => sum + Number(item.size_bytes || 0), 0),
   };
@@ -455,7 +464,20 @@ function hfDatasetManifest(source, manifest, commit) {
 // Index
 // ---------------------------------------------------------------------------
 
-const markdownFiles = (await walk(contentRoot)).filter((file) => file.endsWith(".md"));
+// Only `index.md` defines an entry. Every other markdown file under an entry
+// directory is payload, not a second entry.
+//
+// The Petri export guide explicitly allows reports under `artifacts/`, and
+// those are naturally markdown. Globbing all `.md` made each one its own entry
+// keyed on its parent directory, so a run shipping both
+// `artifacts/report.md` and `artifacts/violation_dose_response.md` aborted the
+// whole index with `Duplicate content id: petri-runs:artifacts` - and a run
+// shipping exactly one would have silently indexed a phantom entry called
+// "artifacts". Every existing entry already uses `index.md`, so this narrows
+// the rule to what the content tree was always doing.
+const markdownFiles = (await walk(contentRoot)).filter(
+  (file) => path.basename(file) === "index.md",
+);
 const entries = [];
 const seenIds = new Set();
 let deferredTotal = 0;

@@ -69,3 +69,20 @@ ResearchLog-PASTE-REDUNDANT/
 
 # local vendored repos at the root (the tracked vendored harnesses live under src/eval/misalignment/third_party/)
 /third_party/
+
+# ---- Petri audit run artifacts ------------------------------------------------
+# The .eval logs, per-transcript shards and bulk JSONL for a constitution dose
+# sweep run to roughly 12 MB. They are published to Hugging Face and the
+# dashboard entry pins the revision, so the Hub copy is canonical - the repo
+# keeps the code, the config and the writeup. See
+# src/eval/vulnerabilities/petri/constitution_sweep/README.md.
+output/petri/
+**/petri/logs/
+**/petri/.venv/
+
+# Published export bundles: the card, report and figures are the record and are
+# committed with the dashboard entry; the payload beside them is not.
+**/exports/*/transcripts/
+**/exports/*/results/transcripts.jsonl
+**/exports/*/manifest.json
+**/exports/*/artifacts/raw-judge-dimensions.jsonl

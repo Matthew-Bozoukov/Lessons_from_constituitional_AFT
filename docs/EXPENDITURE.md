@@ -22,10 +22,132 @@ to a future reader.
 | category | spent to date |
 |---|---|
 | OpenRouter (data generation) | **$171.46** |
-| GPU rental | $0.00 |
-| **total** | **$171.46** |
+| GPU rental | **$63.20** |
+| Anthropic API (Petri realism + judge) | **$68.89** |
+| **total** | **$303.55** |
 
 ---
+
+## 2026-08-01 — Petri constitution dose sweep v2: 672 audits across 4 arms
+
+**Bought:** the powered rerun of the 2026-07-31 null — 28 seeds x 6 epochs x 4 arms,
+619 transcripts retained, uniformly re-judged, published to HF with a Visualizer entry.
+**Result is a lead, not a result** (dose-40-60 at 16.5% vs base 27.2%, McNemar p = 0.029,
+but the pre-specified severity test crosses zero and control false positives rise with
+dose). See `LOG.md`.
+
+**Total: $103.45.**
+
+| item | cost | notes |
+|---|---|---|
+| GPU — A100-SXM4-80GB, ~29 h @ $1.49/h | ~$43.21 | **reconstructed, not metered** — see below |
+| Anthropic API — Haiku 4.5 realism grader | $30.95 | **exact**: 0.13M in / 3.66M out / 38.5M cache-read / 6.9M cache-write, read from the eval logs |
+| Anthropic API — Sonnet 4.5 uniform re-judge | ~$29.29 | estimated: 619 calls x ~12.3k in / ~700 out, transcript sizes measured |
+| Claude subscription — auditor (Sonnet 4.5) | **$0.00** | 45.1M cache-read + 36.6M cache-write + 4.6M output; quota only |
+
+### Unit economics
+
+| metric | value | vs v1 |
+|---|---|---|
+| $ / audit (all-in) | **$0.154** | $0.48 — 3.1x cheaper |
+| $ / audit (API only) | $0.090 | $0.18 |
+| Haiku realism $ / audit | $0.046 | $0.093 |
+| Sonnet re-judge $ / call | $0.047 | $0.093 |
+| GPU-hours / audit | 0.043 | 0.157 |
+| compute wall-clock | 568 min for 672 audits | 454 min for 48 |
+
+Both API unit costs halved against v1 for the same models and rubric. That is not a
+discount — v2's transcripts are **shorter** (mean 2.0-2.8 target turns vs 3.2), so every
+per-transcript call had less to read. Cheaper here is a symptom of *less adversarial
+pressure applied*, which is a measurement problem, not a saving. Recorded as such.
+
+### Two caveats on these numbers
+
+1. **The GPU line is reconstructed.** No pod-lifecycle record was written, and RunPod's
+   GraphQL API exposes no per-pod historical billing (`billing`, `transactions` and
+   `pods(input:)` were all tried; none returns spend for a terminated pod). 29 h is inferred
+   from the audit window (2026-07-31 11:58 -> 2026-08-01 16:22 = 28.4 h) at v1's measured
+   $1.49/h. **Lesson: write the pod's create/terminate timestamps and rate to disk at
+   provision time.** Everything else in this table is measured; this one is arithmetic.
+2. **~19 of the 29 GPU hours were idle**, including a ~14 h overnight gap, while the run
+   waited on subscription quota windows. Compute was 9.5 h. Idle cost **~$28 — more than
+   the compute itself**, and more than the whole v1 run.
+
+### What it bought, and the one call worth revisiting
+
+Keeping the pod warm across quota windows was a deliberate choice (reprovisioning means
+re-downloading 55 GB and re-clearing the CUDA-13 machine filter that bit us on 2026-07-30).
+For the 1.6 h and 3.3 h gaps that was right. For the **14 h overnight gap it was not**:
+~$21 of idle against ~25 min of rebuild (~$0.62) plus the risk of a machine that fails the
+CUDA filter. **Rule for next time: tear down above a ~2 h expected gap; hold below it.**
+
+**The subscription remains the dominant lever.** The auditor consumed 4.6M output tokens
+against 45.1M cache-reads. On the API that is roughly $70-200 depending on cache behaviour,
+against $60.24 of API spend actually incurred — so the subscription carried more than half
+the run's notional cost, at 672 audits versus v1's 48.
+
+---
+
+## 2026-07-31 — Petri constitution dose sweep: 48 audits across 4 arms
+
+**Bought:** an adaptive Petri audit of four Qwen3.6-27B arms against the v1 constitution —
+48 audits, 44 retained, a three-panel dose-response figure, and a published-shaped export.
+**Result was null** (no dose-response; see `LOG.md`), which is what the money bought and is
+worth recording as such.
+
+**Total: $22.91.**
+
+| item | cost | notes |
+|---|---|---|
+| GPU — A100-SXM4-80GB, 7.56 h @ $1.49/h | $11.26 | the successful pod |
+| GPU — two failed pods | ~$3.00 | see incidents |
+| Anthropic API — Haiku realism (grid) | $4.47 | 7.15M tokens, measured |
+| Anthropic API — Sonnet uniform re-judge | ~$4.18 | 45 judge calls, ~22k in / 1.8k out each |
+| Claude subscription (auditor + judge in-run) | **$0.00** | notional $44.26 — this is the saving |
+
+### Unit economics
+
+| metric | value |
+|---|---|
+| $ / audit (all-in) | **$0.48** |
+| $ / audit (API only) | $0.18 |
+| GPU-hours / audit | 0.157 |
+| wall-clock / audit | 26.5 min at concurrency 1; **~7.3 min at concurrency 4** |
+| subscription tokens / audit | ~212k (notional $0.92) |
+
+**The subscription is the dominant lever.** Running auditor+judge on the API would have
+cost ~$44 more for the same 48 audits — roughly tripling the bill. Conversely, moving the
+*realism* role off the subscription to Haiku roughly halved wall-clock for $4.47, which
+was worth it: GPU time is billed by the hour and the run is latency-bound, so $4.47 of API
+bought back more than that in GPU.
+
+### What went wrong, and what it cost
+
+| incident | cost | lesson |
+|---|---|---|
+| **Watchdog reaped a healthy pod** mid-pilot | ~$2.30 + 90 min | `New-AuditPod` issues a fixed 30-min lease; nothing renewed it. `Start-HeartbeatKeeper` existed for exactly this and was never wired in. Worse, I misdiagnosed the symptom as a slow harness for an hour before checking whether the machine was alive. **Check the resource before theorising about the software.** |
+| **vLLM 0.26 on a CUDA 12.8 pod** | ~$0.75 | Its only published wheel targets CUDA 13; no cu128 build exists. RunPod's machine allocation was silently deciding whether the run worked. Fixed with an `-AllowedCudaVersions` filter — and verified the driver *before* paying for a 55GB download. |
+| **Anthropic API at zero balance** | 26 min + 12 wasted audits | `Test-Credentials` hits a read-only endpoint and passes on an empty account. The realism role then failed at its first paid call and the whole arm produced complete-looking transcripts with no target participation. The runner now makes a real paid call as a preflight. |
+| **A 200GB volume that would not attach** | $0.25 | Pod sat `RUNNING` with `runtime: null` for 16 min. 120GB attached immediately. Ample for 56GB of weights. |
+| **Missing `openai` / `anthropic` packages** | $0 | Both caught in <10 s by the runner's stdout capture, before any GPU work. Cheap because the preflights fail loudly. |
+
+### Things that saved money
+
+- **`check_arm.py`** stopped the grid the moment an arm produced empty transcripts. Without
+  it, arms 3 and 4 would each have burned ~an hour against a dead credential — ~$3 of GPU
+  and, far worse, a published chart built on nothing.
+- **Serving all four arms from one vLLM process** via `--enable-lora`: one 55GB load instead
+  of four, saving ~75 min of GPU (~$1.90) *and* removing serving-stack variance between arms.
+- **Concurrency 4**: 26.5 min/audit -> ~7.3 min. The GPU was idle at 0% between calls, so
+  this was free.
+
+### Traps worth knowing
+
+- **A token cap is not a performance knob when the target thinks before answering.** At
+  `max_tokens=700` the base arm spent its whole budget reasoning and returned **zero
+  content**, while tuned arms answered fine. Scoring that would have produced a clean
+  dose-response curve made entirely of truncation. Measured 4096 as sufficient (peak 1493).
+- **A valid credential is not a funded one**, and **a completed sample is not a valid audit**.
 
 ## 2026-07-29 — Approved-constitution SFT corpus (synthdoc)
 
