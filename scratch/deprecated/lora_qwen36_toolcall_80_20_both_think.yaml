@@ -1,5 +1,19 @@
-# ABOUTME: SFT of the tool-calling 80/20 arm on the always_think mixture, with the loss
-# ABOUTME: masked to assistant tokens and a 4096-token window that fits the tool calls.
+# ABOUTME: DEPRECATED 2026-08-03. Tool-calling 80/20 arm trained with loss on BOTH think
+# ABOUTME: tokens. Kept for provenance only; this config no longer runs. Do not copy it.
+
+# DEPRECATED -- this config WILL FAIL if run. It predates `train.think_loss`, which core now
+# requires, and the rule it relied on (loss on both `<think>` and `</think>`) has been
+# removed from src/train/masking.py. See scratch/deprecated/think_loss_legacy.py.
+#
+# Superseded by configs/train/lora_qwen36_toolcall_80_20_closing_think.yaml, which is
+# identical apart from the think-loss rule.
+#
+# It is kept because it produced a published artifact:
+#   LASR-Callum/nika-sft-tulu-toolcall-80-20-both-think-tokens-loss
+#   2026-08-03, 112 steps, loss 0.853 -> 0.762, 1h23m on 1xH100.
+# Under this rule the mixture's 2,449 empty `<think></think>` blocks were fully supervised,
+# training the model to EMIT the non-thinking marker -- the reasoning-collapse pattern
+# (CLAUDE.md gotcha #2). That is why it is deprecated.
 
 # Replaces the tool-calling arm retracted on 2026-08-03 for two defects: it trained
 # full-sequence rather than masking the loss to assistant tokens, and it did not guarantee

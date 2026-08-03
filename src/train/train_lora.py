@@ -18,7 +18,7 @@ from transformers import (
 )
 from trl import SFTConfig, SFTTrainer
 
-from src.train.masking import build_labels  # noqa: E402
+from src.train.masking import build_labels, check_think_loss_config  # noqa: E402
 
 
 def _collate_padded(features: list[dict], pad_token_id: int) -> dict[str, torch.Tensor]:
@@ -105,14 +105,16 @@ def main(config: str, smoke: bool = False) -> None:
     pre_tokenized = assistant_only and "text" in ds.column_names
     if pre_tokenized:
         max_len = int(cfg.train.max_seq_len)
-        # An empty <think></think> is Qwen3.6's non-thinking marker, injected as a prefill
-        # at inference. Conditioning on it is useful; being trained to emit it is the
-        # documented reasoning-collapse pattern, so it can be excluded from the loss.
-        skip_empty = bool(cfg.train.get("mask_empty_think", False))
-        print(f">>> mask_empty_think: {skip_empty}")
+        # The `<think>` opener is Qwen3.6's marker, injected as a prefill at inference:
+        # conditioning on it is useful, being trained to emit it is the documented
+        # reasoning-collapse pattern. `</think>` is the opposite -- closing the block is
+        # behaviour the model must learn -- so core masks the opener and always supervises
+        # the closer. Configs written for either removed rule are rejected, not reinterpreted.
+        check_think_loss_config(cfg.train)
+        print(f">>> think_loss: {cfg.train.think_loss} "
+              f"(mask the `<think>` opener, always supervise `</think>`)")
         ds = ds.map(
-            lambda r: build_labels(r["text"], tokenizer, max_len,
-                                   skip_empty_think=skip_empty),
+            lambda r: build_labels(r["text"], tokenizer, max_len),
             remove_columns=ds.column_names,
             desc="masking non-assistant tokens",
         )

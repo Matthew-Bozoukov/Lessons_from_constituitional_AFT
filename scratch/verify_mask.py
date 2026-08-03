@@ -57,7 +57,7 @@ def _covered(a: int, b: int, spans: list[tuple[int, int]]) -> bool:
     return any(a >= s and b <= e for s, e in spans)
 
 
-def _check_row(text: str, tok, max_seq_len: int) -> dict:
+def _check_row(text: str, tok, max_seq_len: int, open_id=None, close_id=None) -> dict:
     """Mask one row and cross-check every supervised token against the role parse."""
     enc = build_labels(text, tok, max_seq_len)
     ids, labels = enc["input_ids"], enc["labels"]
@@ -101,9 +101,18 @@ def _check_row(text: str, tok, max_seq_len: int) -> dict:
     # no more than this, so it turns "is 68% supervised plausible?" from a judgement call
     # into a comparison: the two numbers agreeing is what says the mask is right.
     asst_chars = sum(min(e, horizon) - s for s, e in asst if s < horizon)
+    # The think-loss rule, checked on real data rather than only in the unit tests: the
+    # `<think>` opener must never carry loss, and every `</think>` must.
+    open_sup = sum(1 for t, v in zip(ids, labels) if t == open_id and v != -100)
+    close_tot = sum(1 for t in ids if t == close_id)
+    close_sup = sum(1 for t, v in zip(ids, labels) if t == close_id and v != -100)
+
     return {
         "n_tok": len(ids),
         "n_sup": n_sup,
+        "open_sup": open_sup,
+        "close_tot": close_tot,
+        "close_sup": close_sup,
         "turns": len(asst),
         "turns_in_window": turns_reached,
         "turns_supervised": len(sup_spans),
@@ -152,11 +161,19 @@ def main(
     tooly = sorted(rows, key=lambda r: -r["text"].count("<tool_call>"))[:n]
     picked += [(r.get("source", "?"), r) for r in tooly]
 
+    open_id, close_id = tok.convert_tokens_to_ids(["<think>", "</think>"])
     agg: dict[str, list[dict]] = {}
     fails = 0
     for src, r in picked:
-        res = _check_row(r["text"], tok, max_seq_len)
+        res = _check_row(r["text"], tok, max_seq_len, open_id, close_id)
         agg.setdefault(src, []).append(res)
+        if res["open_sup"]:
+            fails += 1
+            print(f"!!! {src} row: {res['open_sup']} `<think>` opener token(s) carried loss")
+        if res["close_sup"] != res["close_tot"]:
+            fails += 1
+            print(f"!!! {src} row: only {res['close_sup']}/{res['close_tot']} `</think>` "
+                  f"tokens carried loss; every one must")
         if res["leaked_other"] or res["leaked_outside"]:
             fails += 1
             print(f"!!! LEAK in a {src} row: "
@@ -185,6 +202,12 @@ def main(
     print(f"\n<tool_call> spans in sampled agentic rows: {tc} total, {tc_in} inside the "
           f"{max_seq_len}-token window, {tc_closed} of those closed "
           f"({tc_in - tc_closed} severed by truncation)")
+
+    tot_open = sum(x["open_sup"] for res in agg.values() for x in res)
+    tot_ct = sum(x["close_tot"] for res in agg.values() for x in res)
+    tot_cs = sum(x["close_sup"] for res in agg.values() for x in res)
+    print(f"\nthink-loss rule: `<think>` openers carrying loss = {tot_open} (must be 0); "
+          f"`</think>` carrying loss = {tot_cs}/{tot_ct} (must be all)")
 
     multiturn = [x for res in agg.values() for x in res if x["turns"] > 1]
     print(f"multi-turn rows checked: {len(multiturn)}; assistant turns in window "
@@ -220,8 +243,8 @@ def main(
     if fails:
         raise SystemExit(f"MASK GATE FAILED: {fails} problem(s). Do not train.")
     print("MASK GATE PASSED: every supervised token lies inside an assistant turn, "
-          "no system/user/tool token is supervised, and every in-window assistant turn "
-          "is supervised.")
+          "no system/user/tool token is supervised, every in-window assistant turn "
+          "is supervised, no `<think>` opener carries loss, and every `</think>` does.")
 
 
 if __name__ == "__main__":
