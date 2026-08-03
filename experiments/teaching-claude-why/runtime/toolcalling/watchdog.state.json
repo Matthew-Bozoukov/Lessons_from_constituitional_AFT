@@ -1,9 +1,0 @@
-﻿{
-    "pid":  6912,
-    "status":  "stood-down",
-    "detail":  "pod terminated at 2026-07-31T13:27:07Z",
-    "last_check_utc":  "2026-07-31T13:27:13Z",
-    "hard_deadline_utc":  "2026-07-31T19:32:04Z",
-    "instance_id":  "mc0noebeht2a75",
-    "scope":  "this pod only; never sweeps the account"
-}
