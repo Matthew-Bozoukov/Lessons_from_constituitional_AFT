@@ -261,12 +261,16 @@ class SshExec:
         return out.strip().splitlines()[-1]
 
     def start_server(self, argv: list[str], env_extra: dict) -> None:
-        env = " ".join(f"{k}={shlex.quote(v)}" for k, v in env_extra.items())
+        # nohup-ing the command INLINE over ssh keeps the channel open until the ssh
+        # client times out (CLAUDE.md gotcha 8 — observed twice this migration). The
+        # pattern that returns instantly is nohup-ing a SCRIPT, so write one and launch it.
+        env = " ".join(f"export {k}={shlex.quote(v)};" for k, v in env_extra.items())
         cmd = " ".join(shlex.quote(a) for a in argv)
+        script = self.write_file("launch_vllm.sh",
+                                 f"#!/bin/bash\ncd {self.workdir}\n{env}\nexec {cmd}\n")
         self._ssh(self._with_env(
-            f"mkdir -p {self.remote_dir} && cd {self.workdir} && "
-            f"nohup env {env} {cmd} >> {self.remote_dir}/vllm.log 2>&1 < /dev/null & "
-            f"echo started"))
+            f"nohup bash {script} >> {self.remote_dir}/vllm.log 2>&1 < /dev/null & "
+            f"echo started"), timeout=60)
         self.tunnel = subprocess.Popen(
             ["ssh", "-N", "-L", f"{self.bind}:{self.port}:localhost:{self.port}", self.host])
 
