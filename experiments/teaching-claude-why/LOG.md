@@ -82,6 +82,31 @@ prose now escaped.
 
 ## 2026-07-31 (pm) — Tool-calling 20/80 arm trained; the composition sweep's missing cell
 
+> **RETRACTED 2026-08-03. The arm below is invalid and has been withdrawn — do not
+> use its numbers, its adapter, or its mixture without rebuilding both.** Two
+> defects in how it was trained, and this repository already documents both:
+>
+> 1. **The loss was not masked to assistant tokens.** The run set
+>    `assistant_only_loss: false` and trained full-sequence, so prompt and user
+>    tokens contributed to the loss instead of being conditioned on only. Qwen3's
+>    chat template lacks `{% generation %}` markers, so TRL's flag produces an
+>    all-zero mask and the correct fix is a custom collator that sets
+>    prompt/user tokens to `-100` — not falling back to full-sequence. This is
+>    now gotcha #4 in `CLAUDE.md`.
+> 2. **Thinking blocks were not guaranteed on every assistant turn.** Assistant
+>    turns must always carry one, including an empty `<think></think>` where
+>    there was no CoT. Where they do not, Qwen3's template injects empty think
+>    tags inconsistently and SFT teaches the model to stop reasoning — gotcha #2,
+>    the empty-`<think>` collapse.
+>
+> The $5.73 of GPU is recorded in `docs/EXPENDITURE.md` as spend that bought
+> nothing usable. The mixture builder, configs, pod tooling and export bundles
+> were removed from the working tree on 2026-08-03; they remain reachable at tag
+> `toolcalling-20-80-archive` if the arm is rebuilt. The published Hugging Face
+> copies are being withdrawn separately.
+>
+> Everything below is left verbatim as the record of what was actually run.
+
 **Hypothesis:** the constitution mixture family varies *what* the 20% target portion is
 made of while holding total tokens and the target share fixed. Two cells existed
 (difficult-advice only; equal three-way) plus a zero-dose control. The pure **agentic

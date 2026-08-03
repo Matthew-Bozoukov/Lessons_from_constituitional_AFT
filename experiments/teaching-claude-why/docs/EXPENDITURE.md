@@ -30,6 +30,19 @@ to a future reader.
 
 ## 2026-07-31 (pm) — Tool-calling 20/80 LoRA: one H100 epoch
 
+> **Correction, 2026-08-03: this $5.73 bought nothing usable.** The run trained
+> full-sequence instead of masking the loss to assistant tokens, and its mixture
+> did not guarantee a thinking block on every assistant turn (empty
+> `<think></think>` where there was no CoT). Both are documented gotchas in
+> `CLAUDE.md` — #4 and #2 — and both invalidate the resulting adapter. The arm is
+> withdrawn. The spend stays in the running total because it was really spent;
+> it is recorded here as waste so the next mixture run budgets for the rerun.
+>
+> **Lesson:** verify the label mask on a real batch before committing GPU hours —
+> count non-`-100` positions and confirm they fall only on assistant spans. A
+> mask defect is invisible in the loss curve, which fell 2.753 → 1.057 and looked
+> entirely healthy.
+
 **Bought:** the pure-tool-calling arm of the constitution mixture family — a trained LoRA
 adapter, its training mixture, and the run record, all published. The missing cell of a
 sweep whose other cells already exist.
