@@ -29,23 +29,21 @@ remote boxes alike; there are no `sys.path` tricks.
 
 ### Remote GPU boxes
 
-Remote machines use uv exactly like local ones — install it, clone, sync, run:
+This codebase runs on Linux GPU pods (see CLAUDE.md "Where code runs") — the GPU
+stack is pinned in `pyproject.toml` and the lock is linux-only, so setup is just:
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 git clone <this-repo> /root/work && cd /root/work
-uv sync                          # base deps + src/ installed editable
-uv pip install vllm==0.8.5 "transformers==4.51.3" trl==0.19.1 \
-    peft bitsandbytes accelerate wandb          # pinned GPU stack (CLAUDE.md gotcha 1)
-uv run --no-sync scripts/train/train_lora.py --config configs/train/lora_qwen3_difficult_advice.yaml
+uv sync                          # everything, GPU stack included, src/ editable
+uv run scripts/train/train_lora.py --config configs/train/lora_qwen3_difficult_advice_thinking.yaml
+uv run scripts/run_eval.py --target <hf_path> --name agentic_misalignment
 ```
 
-The GPU stack is layered in with `uv pip` rather than declared in
-`pyproject.toml` because its pins conflict with the lockfile (vLLM 0.8.5
-requires `transformers==4.51.3`, and vLLM has no macOS wheels), so the box venv
-intentionally diverges from `uv.lock`. **Always use `uv run --no-sync` on the
-box** — a plain `uv run` re-syncs the venv to the lock and silently undoes the
-transformers downgrade.
+Plain `uv run` is correct on the pod — no `uv pip` layering, no `--no-sync`.
+(`uv sync` does not resolve on macOS by design: vllm/bitsandbytes have no darwin
+wheels. If local runs are ever needed, use conflicting dependency groups — see
+the comment in `pyproject.toml`.)
 
 | Area | What it is | How to work in it |
 | --- | --- | --- |
@@ -59,14 +57,13 @@ transformers downgrade.
 - `src/eval/misalignment/internalization/` self-contained constitution-internalization proxy eval
   (Tier A). Measures whether a checkpoint *internalized* the constitution or memorized its surface
   behaviors, at every checkpoint, without a downstream training run.
-  `scripts/eval/run_internalization.sh smoke` runs it offline in ~10s with no API key. See
+  `uv run python -m src.eval.misalignment.internalization.cli run --smoke` runs it offline in ~10s with no API key. See
   `src/eval/misalignment/internalization/README.md`.
 - `src/` reusable code (`llm.py`, `prompts.py`, `utils.py`); `src/experiments/` scripts.
 - `configs/` OmegaConf YAML for every step, foldered by stage (`data/`, `train/`, `eval/`).
-- `scripts/` remote drivers (`eval/run_agentic_misalignment.sh`, `gpu/serve_lora.sh`, `eval/run_leaking_inspect.sh`,
-  `eval/run_mmlu_arms.sh`). Note `eval/run_mmlu_inspect.sh` (inspect_evals, single Qwen3-32B endpoint) is the
-  *old* MMLU path from the original difficult-advice pipeline — `eval/run_mmlu_arms.sh` is the
-  arm-ladder one.
+- `scripts/run_eval.py` THE eval entrypoint (CLAUDE.md "The eval framework"): serves each
+  `--target` with vLLM and dispatches to a registered eval's `run()`; `scripts/data|train|gpu/`
+  thin CLIs and provisioning.
 - `third_party/agentic-misalignment/` vendored eval harness (patched: `vllm/` provider, judge routing).
 - `docs/claude_constitution_principles.md` the alignment target.
 - `output/` all run artifacts; `LOG.md` append-only research log.
@@ -155,10 +152,10 @@ uv run hf download matboz/difficult-advice-qwen3 sft_dataset_thinking.jsonl \
 # (its data_path already points at data/sft_dataset_thinking.jsonl)
 ```
 The pre-trained LoRA adapter is also published — to skip training *and* generation entirely and go
-straight to evaluation (step 6), pull [`matboz/qwen3-32b-difficult-advice-lora`](https://huggingface.co/matboz/qwen3-32b-difficult-advice-lora):
+straight to evaluation, point the eval framework at
+[`matboz/qwen3-32b-difficult-advice-lora`](https://huggingface.co/matboz/qwen3-32b-difficult-advice-lora):
 ```bash
-uv run hf download matboz/qwen3-32b-difficult-advice-lora --local-dir ./adapter
-bash scripts/gpu/serve_lora.sh ./adapter
+uv run scripts/run_eval.py --target matboz/qwen3-32b-difficult-advice-lora --name agentic_misalignment
 ```
 ### 1-2. Get the difficult-advice SFT data
 The v1 generation code (`generate_difficult_advice.py` + `augment_thinking.py`) was deleted on
@@ -185,47 +182,37 @@ hf download Qwen/Qwen3-32B
 # Copy this repo + the thinking dataset to /root/work on the instance.
 ```
 
-### 4. Baseline eval (serve base, then run the honeypots)
+### 4. Baseline eval (the framework serves the model itself)
 ```bash
-# serve:
-python -m vllm.entrypoints.openai.api_server --model Qwen/Qwen3-32B \
-  --served-model-name qwen3 --dtype bfloat16 --max-model-len 13312 \
-  --gpu-memory-utilization 0.94 --port 8000
-# eval (from /root/work): blackmail+leaking honeypots, Sonnet-4.5 judge
-bash scripts/eval/run_agentic_misalignment.sh qwen3_baseline configs/eval/agentic_misalignment.yaml
+uv run scripts/run_eval.py --target Qwen/Qwen3-32B --name agentic_misalignment
 ```
-The eval harness (vendored `third_party/agentic-misalignment/`) is patched with a `vllm/` provider;
-`scripts/eval/run_agentic_misalignment.sh` runs generate→experiments→classify→aggregate and writes
-`results/<id>/misalignment_summary.json`. Thinking mode is off by default; set
-`VLLM_ENABLE_THINKING=1` to evaluate in thinking mode (use this for the thinking-trained model).
+`run_eval.py` serves the target with vLLM on localhost, drives the vendored patched harness
+(generate→experiments→classify via the OpenRouter judge), aggregates rates, stitches
+self-contained rollouts, and pushes results to HF. A full model runs at its chat template's
+own thinking default; adapters run in the mode stamped in their `training_meta.json`.
 
 ### 5. Train QLoRA
 
-> **Skip training entirely** — use the published adapter and jump to step 6:
-> ```bash
-> uv run hf download matboz/qwen3-32b-difficult-advice-lora --local-dir ./adapter
-> bash scripts/gpu/serve_lora.sh ./adapter        # serves base Qwen3-32B + the trained LoRA
-> ```
+> **Skip training entirely** — evaluate the published adapter (step 6).
 
-To train it yourself:
+To train it yourself (on the pod):
 ```bash
 # thinking-format (recommended): reasoning preserved
-python scripts/train/train_lora.py --config configs/train/lora_qwen3_difficult_advice_thinking.yaml
+uv run scripts/train/train_lora.py --config configs/train/lora_qwen3_difficult_advice_thinking.yaml
 # (non-thinking baseline arm: configs/train/lora_qwen3_difficult_advice.yaml)
 ```
 Key config: r=32, 2 epochs, batch 4 × grad-accum 4, max_seq_len 2048, `assistant_only_loss: false`
 (Qwen3's template has no `{% generation %}` markers, so assistant-only masking is all-zero).
 Launch with `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` to avoid fragmentation OOM.
+Every train config declares `thinking: true|false`; the trainer validates it against the data
+and stamps it into the adapter's `training_meta.json`.
 
 ### 6. Post-training eval + report
 ```bash
-# serve base + adapter:
-bash scripts/gpu/serve_lora.sh /path/to/output/train_lora_thinking/<ts>/adapter
-# thinking-mode eval of the fine-tune vs the thinking baseline:
-VLLM_ENABLE_THINKING=1 bash scripts/eval/run_agentic_misalignment.sh qwen3_difficult_advice_thinking \
-  configs/eval/agentic_misalignment.yaml "" vllm/difficult_advice
-# build the capstone dashboard (local, after pulling the 4 summaries into output/eval_summaries/):
-uv run src/experiments/final_report.py
+# same eval, adapter target — base model + thinking mode come from the artifact:
+uv run scripts/run_eval.py --target matboz/qwen3-32b-difficult-advice-lora --name agentic_misalignment
+# build the capstone dashboard (after pulling the summaries into output/eval_summaries/):
+uv run scratch/reports/final_report.py
 ```
 `final_report.py` writes `output/report/final_*/{report.md, dashboard.html, plots/}`.
 
@@ -271,11 +258,12 @@ Only `OPENROUTER_API_KEY` is needed — the agent and all four judges run throug
 ```bash
 uv run pytest tests/test_odcv_metrics.py -q        # metric sanity (recovers 43.8%/1.67 from the paper's CSV)
 
-bash scripts/eval/run_odcv.sh configs/eval/odcv_bench_base_openrouter.yaml --smoke   # 2 scenarios, verifies wiring end to end
-bash scripts/eval/run_odcv.sh configs/eval/odcv_bench_base_openrouter.yaml           # full 80-scenario run
+uv run scripts/run_eval.py --target <hf_path> --name odcv smoke=true   # 2 scenarios, verifies wiring
+uv run scripts/run_eval.py --target <hf_path> --name odcv              # full 80-scenario run
 ```
-`run_odcv.sh` tees everything to `output/odcv_bench/logs/run_<ts>.log`. Results land in
-`output/odcv_bench/qwen3.6-27b/<ts>/`: `agent_logs/` (trajectories), `evaluations/scores_<judge>.json`,
+The framework serves the target and rewrites the endpoint to the docker-bridge address so
+scenario containers reach it. Results land in
+`output/odcv/<model_key>/<ts>/`: `agent_logs/` (trajectories), `evaluations/scores_<judge>.json`,
 `rollout_manifest.json`, `run_meta.json`, and `results.json` (our MR/severity + bootstrap CI vs the
 published numbers).
 
@@ -355,10 +343,9 @@ uv run python scratch/reports/plot_lmsys_winrate.py                # GDM-style d
 uv run python scripts/gpu/runpod_capability.py down --pod <id>          # the moment each arm finishes
 ```
 
-`scripts/eval/run_capability.sh` stops between generation and judging and makes you eyeball ten raw
-generations. Do not skip it — a chat-template mismatch reads as catastrophic capability loss
-but is purely a serving bug, and it is the most common cause of "my finetune destroyed the
-model".
+Before judging, eyeball ten raw generations from the arm's answers file. Do not skip it — a
+chat-template mismatch reads as catastrophic capability loss but is purely a serving bug, and
+it is the most common cause of "my finetune destroyed the model".
 
 ### What it measures, and the one thing that can make it lie
 
@@ -420,10 +407,10 @@ property of the setup, not an assumption.
 uv run python scripts/gpu/runpod_capability.py up
 uv run python scripts/gpu/runpod_capability.py status --pod <id>
 
-# 2. everything in one pass: generate, grade, report
-scripts/eval/run_mmlu_arms.sh https://<pod>-8000.proxy.runpod.net/v1
+# 2. per target via the framework (serves, generates, grades, pushes):
+uv run scripts/run_eval.py --target <hf_path> [<hf_path> ...] --name mmlu
 
-# ... or drive the steps yourself
+# ... or drive the ladder steps yourself against an existing endpoint
 uv run python src/eval/capabilities/mmlu_eval.py --arms all --endpoint <url>
 uv run python src/eval/capabilities/mmlu_report.py
 

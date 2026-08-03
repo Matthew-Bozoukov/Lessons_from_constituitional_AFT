@@ -3,6 +3,26 @@
 
 # LOG
 
+## 2026-08-03 (3) — Eval framework: one entrypoint, artifact-inferred thinking, pod-only env
+
+Implemented the CLAUDE.md eval-framework contract end to end on `jamie/eval-framework`:
+`scripts/run_eval.py --target <hf> [...] --name <eval>` serves each target via
+`src/endpoints/vllm_server.py` (base resolved from `adapter_config.json`, thinking mode from the
+`training_meta.json` stamp — declared as `thinking:` in every train config, validated against the
+data by `train_lora.py`, pinned into the chat template at serve time by a top-level Jinja `set`),
+dispatches to a lazy registry (`src/eval/__init__.py`), and owns the epilogue (rollouts,
+results.json + md mirror, run_meta, HF push with enforced card fields, eval_summaries row).
+Consecutive targets sharing base+mode reuse the server via runtime LoRA load. All five evals
+(mmlu, capability, internalization, agentic_misalignment, odcv) expose `run(target, cfg,
+out_dir)`; their shell drivers, `serve_lora.sh`, the `VLLM_ENABLE_THINKING` env patch and the
+inspect-MMLU path are deleted. `src/openrouter.py` moved to `src/endpoints/openrouter.py`.
+pyproject now pins the GPU stack (vllm 0.8.5 / transformers 4.51.3, hf-hub<1, datasets<4) with a
+linux-only lock: plain `uv run` on the pod, no `--no-sync`; local darwin `uv sync` is gone by
+design. 205 offline tests pass (pre-pin venv). **Not yet pod-validated**: end-to-end serve+eval
+smoke, the pinned-template behaviour under vLLM 0.8.5, Qwen3.6-27B under transformers 4.51.3,
+legacy-adapter backfill (`scratch/backfill_training_meta.py`). Next: provision one H100, smoke
+each eval against base + one LoRA, backfill stamps, adjust pins if Qwen3.6 requires.
+
 ## 2026-08-03 (2) — Deleted v1 difficult-advice generator + DPO pipeline; unified mixture builder
 
 Removed the v1 data pipeline (`generate_difficult_advice.py`, `augment_thinking.py`, `prompts.py`)

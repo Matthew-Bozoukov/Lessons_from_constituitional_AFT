@@ -106,8 +106,8 @@ docs/LOG.md             append-only research log, MOST RECENT FIRST. Add an entr
     difficult-advice / 80% Tulu); eval arms are `base_*` (untrained),
     `ft_<ratio>[_<ablation>]` (difficult-advice fine-tunes), `tulu100`
     (0%-synthetic control). When two scripts share a subject, a
-    harness qualifier disambiguates: `run_mmlu_arms.sh` (arm ladder) vs
-    `run_mmlu_inspect.sh` (inspect_evals single endpoint).
+    harness qualifier disambiguates (e.g. `mmlu_eval.py` arm ladder vs the deleted
+    `run_mmlu_inspect.sh` inspect_evals path).
   - Python thin CLI: some files in `src/` contain code that can both be ran as part of a pipeline or as a standalone job/entrypoint. It is therefore important to provide a script in `scripts/` that runs that standalone function and it should be named **exactly** after the `src/` module it wraps —
     `scripts/train/train_lora.py` wraps `src/train/train_lora.py`. Only add these mirrors when we add new code to `src/` that you think will require running as a standalone script.
   - Every config's header states the exact command that consumes it — in the
@@ -347,7 +347,7 @@ Never terminate a resource this repository did not provision. Report it instead.
   `constitutions/claude_approved_constitution.md`; its `approved_*` corpus configs live in git
   history before that date.
 - Adapter: HF `matboz/qwen3-32b-difficult-advice-lora` (the trained LoRA; pull to skip training).
-- Eval harness: `anthropic-experimental/agentic-misalignment` (vendored + patched); Inspect via the user's `inspect_evals` repo.
+- Eval harness: `anthropic-experimental/agentic-misalignment` (vendored + patched).
 
 ## Money: log every dollar in `docs/EXPENDITURE.md`
 
