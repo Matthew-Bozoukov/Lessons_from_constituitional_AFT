@@ -241,10 +241,6 @@ deleted with that package on 2026-08-03 — see git history — so enforce them 
 4. `scripts/run_eval.py --target <hf_path> --name agentic_misalignment` — agentic-misalignment honeypots → `misalignment_summary.json` via `src/eval/misalignment/aggregate_eval.py`.
 5. `scratch/reports/final_report.py` / `scratch/reports/make_report.py` — capstone report + plots + markdown from `output/eval_summaries/` (per-experiment write-up code, so it lives in scratch).
 
-(The v1 generator — `generate_difficult_advice.py`, `augment_thinking.py`, `prompts.py` — and the
-DPO pipeline — `dpo_prompts.py`, `generate_rejected.py`, `train_dpo.py` — were deleted 2026-08-03;
-git history is the archive. The v1 dataset lives on at HF `matboz/difficult-advice-qwen3`.)
-
 Add a new pipeline step as functions in the right `src/` area plus a thin CLI in the matching `scripts/<stage>/` folder and a `configs/<stage>/*.yaml` (naming rules above); one-off investigations go straight to `scratch/`.
 
 ## The eval framework (the contract every eval follows)

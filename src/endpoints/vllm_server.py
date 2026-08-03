@@ -17,11 +17,13 @@ from huggingface_hub.errors import EntryNotFoundError
 
 # Serving parameters per base-model family. Matched by prefix against the base model id;
 # the first hit wins, `None` is the fallback. max_model_len values are the ones the evals
-# were tuned at (13312 = the original Qwen3-32B serving setup).
+# were tuned at (13312 = the original Qwen3-32B serving setup). Qwen3.6's hybrid
+# Mamba/linear-attention arch requires a low max_num_seqs: the vLLM default (1024) exceeds
+# the available Mamba cache blocks and fails at startup (docs/LOG.md 2026-07-29).
 _FAMILIES: dict[str | None, dict] = {
-    "Qwen/Qwen3-32B": {"max_model_len": 13312},
-    "Qwen/Qwen3.6-27B": {"max_model_len": 16384},
-    None: {"max_model_len": 13312},
+    "Qwen/Qwen3-32B": {"max_model_len": 13312, "max_num_seqs": None},
+    "Qwen/Qwen3.6-27B": {"max_model_len": 16384, "max_num_seqs": 32},
+    None: {"max_model_len": 13312, "max_num_seqs": None},
 }
 
 _HEALTH_TIMEOUT_S = 1800  # first start downloads weights; a 32B pull can take a while
@@ -168,6 +170,8 @@ class VllmServer:
                 "--max-model-len", str(params["max_model_len"]),
                 "--gpu-memory-utilization", "0.94",
                 "--port", str(self.port)]
+        if params.get("max_num_seqs"):
+            args += ["--max-num-seqs", str(params["max_num_seqs"])]
         template = _write_pinned_template(spec.base_model, spec.mode, self.work_dir)
         if template:
             args += ["--chat-template", str(template)]
