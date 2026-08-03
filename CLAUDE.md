@@ -16,6 +16,18 @@ OpenRouter** (no Anthropic key exists — all Claude calls go through OpenRouter
 `docs/replication.md` for the end-to-end run guide and the headline numbers; see `docs/LOG.md` for the
 chronological findings.
 
+## Where code runs
+
+This codebase executes on a rented Linux GPU pod, from a clone of this repo — no tunnels,
+no serve scripts. Fresh pod: clone, copy `.env`, `uv sync`, then plain `uv run`.
+
+- **`src/train/` and `src/eval/` REQUIRE the pod** — training and every eval run there,
+  end to end (serving, judging, upload included).
+- **`src/data/` needs no GPU** — data generation is API calls plus local files; it runs
+  anywhere the repo env installs, the pod included.
+- **Exception**: `src/eval/vulnerabilities/` predates this rule and does not yet conform
+  (own nested env, own workflow) — see `docs/TODO.md`.
+
 ## Where things go (keep this structure)
 
 ```
@@ -228,8 +240,7 @@ Add a new pipeline step as functions in the right `src/` area plus a thin CLI in
 
 ## The eval framework (the contract every eval follows)
 
-Evals run ON the GPU pod, from a clone of this repo — no tunnels, no serve scripts.
-Fresh pod: clone, copy `.env`, `uv sync`, then:
+Every eval is one invocation of the single entrypoint, on the pod ("Where code runs"):
 
 ```
 uv run scripts/run_eval.py --target <hf_path> [<hf_path> ...] --name <eval> [key=value ...]

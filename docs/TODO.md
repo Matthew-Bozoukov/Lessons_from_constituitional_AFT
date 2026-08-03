@@ -8,3 +8,4 @@
 5. Review and understand code in `synthdoc/`.
 6. Review and understand code in `eval/vulnerabilities/`.
 7. Centralise all configs into `configs/` (e.g. there should be no configs in `src/` but there currently are loads in `src/data/synthdoc/`).
+8. Make `src/eval/vulnerabilities/` conform to the "Where code runs" model in `CLAUDE.md` (runs on the GPU pod from a clone of this repo, plain `uv run`): it currently has its own nested environment and workflow that predate the rule.
