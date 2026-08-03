@@ -75,17 +75,23 @@ Rules:
 - Second-person prescriptive voice throughout. British spelling.
 - Preserve each claim's modality: hard constraints stay absolute ("never", "do not");
   defaults and weighings stay hedged ("prefer", "weigh", "generally").
-- Roughly 60% of the unit's tokens should be explanation (the *Why:* paragraph plus
-  the *When this does NOT apply:* block).
-- Target length: about {token_budget} tokens for the whole unit.
+- Keep the statement COMPACT: it compresses many claims, so state the principle they
+  share rather than enumerating them. Spend the saved tokens on explanation.
+- The *Why:* paragraph plus the *When this does NOT apply:* block must together be
+  LONGER than the statement and cues combined — at least 60% of the unit's tokens.
+- HARD LIMIT: the whole unit must be about {token_budget} tokens — scale every block
+  to that budget (at a small budget the statement is 1-2 sentences, the *Why:* a few
+  tight sentences, the *When this does NOT apply:* 1-2 sentences). Do not run long.
 - Output the unit markdown only — no numbering, no commentary.
 """
 
-# Follow-up turn when a unit lands outside its token band.
+# Follow-up turn when a unit lands outside its token band or explanation ratio.
 REVISE = """\
-Your unit measured {measured} tokens against a budget of {token_budget}. Rewrite it to
-approximately {token_budget} tokens. Keep the same structure, claim coverage, modality,
-and cue count — only compress or expand the prose. Output the unit markdown only.
+Your unit measured {measured} tokens against a budget of {token_budget}, with {expl_pct}%
+of its tokens in the *Why:* + *When this does NOT apply:* blocks (need at least 60%).
+Rewrite it to approximately {token_budget} tokens with at least 60% of them in those two
+blocks. Keep the same structure, claim coverage, modality, and cue count — only rebalance
+and compress or expand the prose. Output the unit markdown only.
 """
 
 

@@ -10,10 +10,10 @@ from collections import Counter
 from math import comb
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+from pipeline import PKG, _counter, out_dir  # noqa: E402
 from utils import read_jsonl  # noqa: E402
-
-from .pipeline import PKG, _counter, out_dir  # noqa: E402
 
 HARD = re.compile(r"\b(never|always|must not|must|do not|no exception\w*)\b", re.I)
 SOFT = re.compile(r"\b(prefer|weigh|generally|usually|consider|balance|in most cases)\b", re.I)

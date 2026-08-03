@@ -42,14 +42,17 @@ constitutions/
 
 ## Generating new constitutions
 
-New constitutions are produced by the `specgen` pipeline (`src/data/specgen/`,
-`uv run specgen --config configs/data/specgen.yaml`), which distills the published
-Claude constitution into specs at controlled granularities with claim-level coverage
-accounting. Selected outputs are promoted into folders here following the layout above.
+New constitutions are produced by the one-off `specgen` tool (`scratch/specgen/`, see
+its README), which distills the published Claude constitution into specs at controlled
+granularities with claim-level coverage accounting. Selected outputs are promoted into
+folders here following the layout above.
 
 ## Current constitutions
 
 | folder | status | used by |
 |---|---|---|
 | `claude_distilled_7_principles_approved/` | **current alignment target** (7 principles, distilled from Anthropic's *Claude's Constitution*, Jan 2026) | `configs/data/difficult_advice_gen_v2.yaml`, `src/data/prompts.py::CONSTITUTION_V2` |
+| `claude_distilled_4_principles_coarse/` | experiment arm (granularity study, machine-distilled by specgen, 2026-08-03) | nothing yet — spec-variation experiment |
+| `claude_distilled_12_principles_mid/` | experiment arm (granularity study, machine-distilled by specgen, 2026-08-03) | nothing yet — spec-variation experiment |
+| `claude_distilled_24_principles_fine/` | experiment arm (granularity study, machine-distilled by specgen, 2026-08-03) | nothing yet — spec-variation experiment |
 | `archive/claude_distilled_8_principles_v1/` | v1, superseded 2026-07-29 | still pinned by `configs/data/synthdoc.yaml` (its 8 principles = the 8 synthdoc traits) and `src/data/prompts.py::CONSTITUTION_V1` |

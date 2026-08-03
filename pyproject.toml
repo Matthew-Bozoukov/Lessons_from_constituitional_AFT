@@ -36,7 +36,6 @@ dependencies = [
 
 [project.scripts]
 synthdoc = "src.data.synthdoc.cli:main"
-specgen = "src.data.specgen.cli:main"
 
 [project.optional-dependencies]
 # Optional extras for internalization's in-process HuggingFace target provider (`provider: hf`).

@@ -4,11 +4,12 @@
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from data.specgen import prompts  # noqa: E402
-from data.specgen.metrics import ari, doc_metrics, parse_units  # noqa: E402
-from data.specgen.pipeline import PKG, sections  # noqa: E402
+import prompts  # noqa: E402
+from metrics import ari, doc_metrics, parse_units  # noqa: E402
+from pipeline import PKG, _assemble, sections  # noqa: E402
 
 WORDS = lambda text: len(text.split())  # noqa: E731 - injectable token counter
 
@@ -41,10 +42,8 @@ which is the core reason this constraint exists at all in the source document.
 
 
 def _doc(units):
-    preamble = (PKG / "preamble.md").read_text()
-    closing = (PKG / "closing.md").read_text()
-    numbered = [u.replace("## ", f"## {i + 1}. ", 1) for i, u in enumerate(units)]
-    return preamble + "\n---\n\n" + "\n\n".join(numbered) + "\n\n---\n\n" + closing
+    return _assemble(units, (PKG / "preamble.md").read_text(),
+                     (PKG / "closing.md").read_text())
 
 
 def test_sections_split_on_h2_with_unique_slugs():

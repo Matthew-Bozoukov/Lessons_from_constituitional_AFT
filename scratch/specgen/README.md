@@ -6,14 +6,21 @@
 Produces the three spec documents for the spec-variation experiment. The single
 independent variable is **granularity** — how finely the same source content is carved
 into principles (`coarse`=4, `mid`=12, `fine`=24). Everything else is held constant or
-measured. Config: [`configs/data/specgen.yaml`](../../../configs/data/specgen.yaml).
+measured. One-off authoring tool (run once, refine until the docs are right — not a rerunnable pipeline stage, hence `scratch/`). Config: `specgen.yaml` beside this file.
+
+All generation runs through **headless Claude Code subagents** (`claude -p --model
+fable|opus`, subscription auth, tools disabled) — no OpenRouter, no API keys, no real
+dollar spend. Trade-off: no temperature/seed control, so "seeds" are run indices and
+variation comes from natural sampling; the budget guard tallies the CLI-reported
+nominal cost. Requires a logged-in `claude` CLI.
 
 ```bash
-uv run specgen pin      --config configs/data/specgen.yaml --file <saved-constitution.md>
-uv run specgen extract  --config configs/data/specgen.yaml [--smoke]   # once, shared
-uv run specgen generate --config configs/data/specgen.yaml [--arm fine] [--smoke]
-uv run specgen metrics  --config configs/data/specgen.yaml             # offline
-uv run pytest tests/test_specgen.py -q                                 # offline
+CFG=scratch/specgen/specgen.yaml
+uv run scratch/specgen/cli.py pin      --config $CFG --file <saved-constitution.md>
+uv run scratch/specgen/cli.py extract  --config $CFG [--smoke]   # once, shared
+uv run scratch/specgen/cli.py generate --config $CFG [--arm fine] [--smoke]
+uv run scratch/specgen/cli.py metrics  --config $CFG             # offline
+uv run pytest scratch/specgen/test_specgen.py -q                 # offline
 ```
 
 ## How parity is enforced
@@ -33,6 +40,13 @@ uv run pytest tests/test_specgen.py -q                                 # offline
 4. **metrics** — offline: token bands, unit floor, explanation ratio, modality-language
    profile, coverage, cross-seed partition stability (adjusted Rand index), the
    pre-registered seed selection, and `comparison.md`.
+
+Every checkpoint of each doc is mirrored to the HF dataset repo in the config
+(`hf_repo`): the claim inventory per extraction, and per arm/seed both
+`constitution.draft.md` (first-pass units, pre-revision) and `constitution.md` (after
+the token-band revision), under a fresh `<arm>/seed<k>/<run-timestamp>/` prefix each
+run — successive refinement runs accumulate as history instead of overwriting, which
+is the record of how the distilled docs evolved.
 
 Invariant across arms: every unit is statement + `*Why:*` + `*When this does NOT
 apply:*`; explanation ratio 0.55–0.65; preamble/closing byte-identical (asserted).
@@ -55,6 +69,6 @@ count (3/2/1 — that is what the granularity axis means).
 - Publish `claims/inventory.jsonl` to HF per the repo's data policy — it is what makes
   the granularity manipulation auditable rather than editorial.
 - Selected specs are promoted by hand into `constitutions/<name>/` following
-  [`constitutions/README.md`](../../../constitutions/README.md) (e.g.
+  [`constitutions/README.md`](../../constitutions/README.md) (e.g.
   `claude_distilled_24_principles_fine/`), with `rationale.md` pointing at the run's
   `meta.json` and `selection.json`.

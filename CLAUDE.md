@@ -24,10 +24,8 @@ src/                    correctness-critical reusable code (installed editable; 
   utils.py                extract_json, git_sha, timestamp, write_run_meta, count_chat_tokens
   data/                   synthetic data generation: synthdoc/ (self-contained six-stage
                           difficult-advice pipeline, formerly synthdoc_v2; `uv run synthdoc <cmd>`,
-                          config configs/data/synthdoc.yaml), specgen/ (constitution-granularity
-                          spec generation; `uv run specgen <cmd>`, config configs/data/specgen.yaml),
-                          the SFT/DPO dataset pipeline (prompts.py, dpo_prompts.py, generate_*,
-                          augment_thinking.py) + build_mixture.py
+                          config configs/data/synthdoc.yaml), the SFT/DPO dataset pipeline (prompts.py,
+                          dpo_prompts.py, generate_*, augment_thinking.py) + build_mixture.py
   train/                  training: train_lora.py, train_dpo.py, merge_lora.py
   eval/
     capabilities/         lmsys_eval.py + capability_{gen,judge,report,metrics,stats}.py (Arena-Hard
