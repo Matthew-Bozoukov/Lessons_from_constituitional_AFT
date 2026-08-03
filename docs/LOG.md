@@ -23,6 +23,18 @@ smoke, the pinned-template behaviour under vLLM 0.8.5, Qwen3.6-27B under transfo
 legacy-adapter backfill (`scratch/backfill_training_meta.py`). Next: provision one H100, smoke
 each eval against base + one LoRA, backfill stamps, adjust pins if Qwen3.6 requires.
 
+**Pod validation, same day (RunPod A100-80GB):** `uv sync` of the linux lock clean; **205/205
+tests pass under transformers 4.51.3**; Qwen3.6-27B tokenizer + chat template render under the
+pin; start-smokes pass for all five registered evals (CLI, runner imports, vllm entrypoint,
+harness `generate_prompts --help`, internalization offline smoke, synthdoc segment);
+`resolve_target` on `LASR-Callum/qwen3.6-27b-synthdocv2-lora-20_80` fires the designed
+missing-stamp hard error. **Template-pin mechanism PROVEN under vLLM 0.8.5** via Qwen3-0.6B:
+nothink-pinned server + a request forcing `enable_thinking: true` → zero reasoning tokens (the
+pin shadows client kwargs). Findings: this RunPod container has **no usable docker → ODCV needs a
+docker-capable host** (the vast.ai setup had it; the needs_docker preflight catches this before
+spend); still open: Qwen3.6-27B *serving* under vllm 0.8.5 (only its tokenizer is verified),
+full eval smokes + adapter backfill (blocked on `.env` — no credentials on the workstation).
+
 ## 2026-08-03 (2) — Deleted v1 difficult-advice generator + DPO pipeline; unified mixture builder
 
 Removed the v1 data pipeline (`generate_difficult_advice.py`, `augment_thinking.py`, `prompts.py`)
