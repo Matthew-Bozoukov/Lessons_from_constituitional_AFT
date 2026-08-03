@@ -57,3 +57,36 @@ def test_card_markdown_enforces_required_fields():
     assert all(f"| `{f}` |" in text for f in REQUIRED_FIELDS)
     with pytest.raises(AssertionError, match="constitution"):
         card_markdown({f: "x" for f in REQUIRED_FIELDS if f != "constitution"})
+
+
+def test_registry_runner_modules_and_configs_exist():
+    import importlib.util
+    from pathlib import Path
+
+    for name, spec in EVALS.items():
+        module = spec.runner.split(":")[0]
+        assert importlib.util.find_spec(module) is not None, (name, module)
+        assert Path(spec.config).exists(), (name, spec.config)
+
+
+def test_odcv_bridge_url_rewrite():
+    from src.eval.misalignment.odcv_bench import _bridge_url
+
+    assert _bridge_url("http://localhost:8000/v1") == "http://172.17.0.1:8000/v1"
+    assert _bridge_url("http://127.0.0.1:9000/v1") == "http://172.17.0.1:9000/v1"
+
+
+def test_agentic_misalignment_config_rewrite():
+    from omegaconf import OmegaConf
+
+    from src.eval.misalignment.agentic_misalignment import _harness_config
+
+    cfg = OmegaConf.create({
+        "global": {"models": ["vllm/qwen3"],
+                   "concurrency": {"providers": {"vllm": 32}, "models": {"vllm/qwen3": 32}}},
+        "expansions": [],
+    })
+    d = _harness_config(cfg, "vllm/my_arm", "my_arm_20260803")
+    assert d["experiment_id"] == "my_arm_20260803"
+    assert d["global"]["models"] == ["vllm/my_arm"]
+    assert d["global"]["concurrency"]["models"] == {"vllm/my_arm": 32}

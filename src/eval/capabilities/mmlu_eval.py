@@ -413,3 +413,36 @@ def main(
 
 if __name__ == "__main__":
     fire.Fire(main)
+
+
+def run(target, cfg: DictConfig, out_dir: Path) -> dict:
+    """Eval-framework entrypoint (CLAUDE.md contract): evaluate one served target.
+
+    The server pins thinking mode into the chat template, so the per-request
+    `enable_thinking` kwarg is decorative there — this still mirrors the target's mode
+    into the config so token budgets and the think/nothink output tree stay honest.
+
+    Args:
+        target: A ServedTarget from src/endpoints/vllm_server.py.
+        cfg: The mmlu eval config (configs/eval/mmlu.yaml + CLI overrides).
+        out_dir: Per-target run directory owned by run_eval.py.
+
+    Returns:
+        The arm score block from `score_records` (accuracy, CI, parse/truncation rates).
+    """
+    cfg = OmegaConf.merge(cfg)  # private copy; run() must not mutate the caller's config
+    cfg.generation.enable_thinking = target.spec.mode != "nothink"
+    rows = load_split(str(cfg.subset.split), str(cfg.subset.dataset), str(cfg.subset.name))
+    raw_subjects = cfg.subset.get("subjects")
+    questions = build_subset(
+        rows,
+        per_subject=int(cfg.subset.per_subject),
+        seed=int(cfg.seed),
+        subjects=OmegaConf.to_container(raw_subjects, resolve=True) if raw_subjects else None,
+        shuffle_choices=bool(cfg.subset.shuffle_choices),
+    )
+    shots = _shots_by_subject(cfg, int(cfg.seed))
+    arm = {"name": target.spec.model_key, "served": target.model_name,
+           "adapter": target.spec.hf_path if target.spec.adapter else None,
+           "synthetic_fraction": None, "role": "target", "trained": True}
+    return run_arm(arm, questions, shots, cfg, target.base_url, out_dir)

@@ -1,0 +1,12 @@
+# ABOUTME: Framework config for the constitution-internalization proxy eval.
+# Run: uv run scripts/run_eval.py --target <hf_path> --name internalization [max_items=20]
+
+# Which self-contained config (src/eval/misalignment/internalization/control/configs/)
+# drives the pipeline; the framework overrides its target block with the served endpoint.
+internal_config: base.yaml
+
+# Cap base items for a quick pass (0 = full set); pairing is preserved.
+max_items: 0
+
+# Offline smoke with echo providers and a tiny item set.
+smoke: false

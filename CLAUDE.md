@@ -48,7 +48,8 @@ src/                    correctness-critical reusable code (installed editable; 
                           SxS vs base); mmlu.py + mmlu_{eval,report}.py (MMLU arm ladder)
     misalignment/         ODCV-Bench (odcv.py stats, rollout, judge, compare) + aggregate_eval.py
       internalization/      self-contained constitution-internalization proxy eval (Tier A).
-                            `scripts/eval/run_internalization.sh smoke` runs offline in ~10s; see its README.md
+                            `python -m src.eval.misalignment.internalization.cli run --smoke`
+                            runs offline in ~10s; see its README.md
       third_party/          vendored eval harnesses (agentic-misalignment, odcv-bench), PATCHED — see gotchas
     vulnerabilities/      petri/ + surf/ audit tooling (generalized from the completed MSM audit)
 configs/                OmegaConf YAML, one per step, foldered by pipeline stage.

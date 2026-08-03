@@ -11,15 +11,18 @@ Self-contained: nothing here imports the rest of the repo, and nothing in the re
 
 ```bash
 # offline: no API key, no spend, ~15s - builds items, generates, judges, renders all 3 plots
-scripts/eval/run_internalization.sh smoke
+uv run python -m src.eval.misalignment.internalization.cli run --smoke
 
-# the real thing: two models, one frozen item set, one bundle
-scripts/eval/run_internalization.sh study --arms "base=base.yaml,finetuned=compare.yaml" --name qwen36
+# via the eval framework (serves the target, pushes results to HF):
+uv run scripts/run_eval.py --target <hf_path> --name internalization
+
+# the real thing standalone: two models, one frozen item set, one bundle
+uv run python -m src.eval.misalignment.internalization.cli study \
+  --arms "base=base.yaml,finetuned=compare.yaml" --name qwen36
 ```
 
-`scripts/eval/run_internalization.sh <command> [args...]` is a thin wrapper over
-`uv run python -m src.eval.misalignment.internalization.cli <command> [args...]`; every command
-below works through either.
+Every command below runs as `uv run python -m src.eval.misalignment.internalization.cli
+<command> [args...]`.
 
 ---
 
