@@ -1,5 +1,6 @@
 # ABOUTME: Assistant-only-loss ablation of the 20/80 arm: identical mixture and hyperparameters,
 # ABOUTME: with loss masked to the tokens the model would itself generate.
+# Run on GPU: python scripts/train/train_lora.py --config configs/train/lora_qwen36_20_80_assistant_only.yaml
 
 # Byte-for-byte the same as configs/train/lora_qwen36_tulu100.yaml apart from assistant_only_loss
 # and output_dir, so any difference in the eval is attributable to the loss mask alone.

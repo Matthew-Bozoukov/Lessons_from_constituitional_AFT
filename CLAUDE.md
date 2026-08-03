@@ -24,7 +24,7 @@ src/                    correctness-critical reusable code (installed editable; 
   utils.py                extract_json, git_sha, timestamp, write_run_meta, count_chat_tokens
   data/                   synthetic data generation: synthdoc/ (self-contained six-stage
                           difficult-advice pipeline, formerly synthdoc_v2; `uv run synthdoc <cmd>`,
-                          config configs/synthdoc.yaml), the SFT/DPO dataset pipeline (prompts.py,
+                          config configs/data/synthdoc.yaml), the SFT/DPO dataset pipeline (prompts.py,
                           dpo_prompts.py, generate_*, augment_thinking.py) + build_mixture.py
   train/                  training: train_lora.py, train_dpo.py, merge_lora.py
   eval/
@@ -38,7 +38,7 @@ src/                    correctness-critical reusable code (installed editable; 
     vulnerabilities/      petri/ + surf/ audit tooling (generalized from the completed MSM audit)
 configs/                OmegaConf YAML, one per step, foldered by pipeline stage.
                         NEVER hardcode hyperparams in scripts.
-  data/                   data generation + mixtures (difficult_advice_gen_v*, mixture_qwen36_*, tulu_control)
+  data/                   data generation + mixtures (synthdoc, difficult_advice_gen_v*, mixture_qwen36_*, tulu_control)
   train/                  SFT/DPO training (lora_<model>_<arm>*, dpo_qwen36_difficult_advice)
   eval/                   evals (capability, mmlu, agentic_misalignment, odcv_*, constitution_probe)
 scripts/                pipeline drivers, foldered to mirror src/ stages + gpu/ for infra

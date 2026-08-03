@@ -9,9 +9,9 @@ of the six stages a separate, separately-cached step.
 
 ```
 uv run synthdoc segment                                  # stage 1 only, no API calls
-uv run synthdoc run --config configs/synthdoc.yaml --smoke
-uv run synthdoc run --config configs/synthdoc.yaml
-uv run synthdoc estimate --config configs/synthdoc.yaml \
+uv run synthdoc run --config configs/data/synthdoc.yaml --smoke
+uv run synthdoc run --config configs/data/synthdoc.yaml
+uv run synthdoc estimate --config configs/data/synthdoc.yaml \
     --measured output/synthdoc_v2/<run>/manifest.json
 ```
 

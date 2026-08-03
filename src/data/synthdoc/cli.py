@@ -1,5 +1,5 @@
 # ABOUTME: Fire entrypoint for the synthdoc difficult-advice pipeline.
-# ABOUTME: uv run synthdoc run --config configs/synthdoc.yaml [--smoke]
+# ABOUTME: uv run synthdoc run --config configs/data/synthdoc.yaml [--smoke]
 
 from __future__ import annotations
 

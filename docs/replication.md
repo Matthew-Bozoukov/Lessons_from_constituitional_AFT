@@ -247,9 +247,9 @@ can read directly. Full guide: [`src/data/synthdoc/README.md`](../src/data/synth
 
 ```bash
 uv run synthdoc segment                                   # stage 1 only, no API calls
-uv run synthdoc run --config configs/synthdoc.yaml --smoke
-uv run synthdoc run --config configs/synthdoc.yaml
-uv run synthdoc estimate --config configs/synthdoc.yaml   # cost estimate before committing
+uv run synthdoc run --config configs/data/synthdoc.yaml --smoke
+uv run synthdoc run --config configs/data/synthdoc.yaml
+uv run synthdoc estimate --config configs/data/synthdoc.yaml   # cost estimate before committing
 uv run pytest tests/test_synthdoc.py -q                   # offline, no API key
 ```
 
@@ -264,7 +264,7 @@ pipeline; it lives in git history before that date, and its published corpora re
 HuggingFace (`LASR-Callum/synthdoc-<name>`).
 
 ## Repo layout
-- `src/data/synthdoc/` self-contained six-stage difficult-advice data pipeline (see above); its run config is `configs/synthdoc.yaml`.
+- `src/data/synthdoc/` self-contained six-stage difficult-advice data pipeline (see above); its run config is `configs/data/synthdoc.yaml`.
 - `src/` reusable code (`openrouter.py`, `utils.py`, `data/`, `train/`, `eval/`); `scripts/` thin pipeline CLIs foldered by stage (`data/`, `train/`, `eval/`, `gpu/`); `scratch/` one-offs.
 - `configs/` OmegaConf YAML for every step, foldered by stage (`data/`, `train/`, `eval/`).
 - `scripts/` remote drivers (`eval/run_agentic_misalignment.sh`, `gpu/serve_lora.sh`, `eval/run_leaking_inspect.sh`).

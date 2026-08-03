@@ -1,5 +1,5 @@
-# ABOUTME: 1-epoch assistant-only-loss LoRA SFT of Qwen3.6-27B on the synthdoc_v2 500k_da20_numina mixture.
-# ABOUTME: Run: python scripts/train_lora.py --config configs/train_synthdocv2_500k_da20_numina.yaml
+# ABOUTME: 1-epoch assistant-only-loss LoRA SFT of Qwen3.6-27B on the 500k_da20_numina mixture.
+# ABOUTME: Run on GPU: python scripts/train/train_lora.py --config configs/train/lora_qwen36_500k_da20_numina.yaml
 
 seed: 0
 model: "/root/qwen36"
