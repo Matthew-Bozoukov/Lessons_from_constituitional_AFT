@@ -27,9 +27,12 @@ sources:
     path: "output/synthdoc_agentic_qwen36_emptythink/sft_qwen36.jsonl"
     format: rendered
     tokens: 99533
-
-tulu3_repo: "allenai/tulu-3-sft-mixture"
-tulu3_tokens: 1194400
+  tulu3:
+    repo: "allenai/tulu-3-sft-mixture"
+    tokens: 1194400
+    # The old dedicated tulu3 code path used this buffer; kept so regeneration
+    # samples identically.
+    shuffle_buffer: 10000
 
 # Drop replay conversations longer than the training sequence length so they are never
 # truncated mid-answer.

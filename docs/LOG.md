@@ -3,6 +3,20 @@
 
 # LOG
 
+## 2026-08-03 (2) — Deleted v1 difficult-advice generator + DPO pipeline; unified mixture builder
+
+Removed the v1 data pipeline (`generate_difficult_advice.py`, `augment_thinking.py`, `prompts.py`)
+and the DPO pipeline (`dpo_prompts.py`, `generate_rejected.py`, `train_dpo.py`) with their scripts,
+configs and tests. Rationale: current mixtures source trait-balanced synthdoc data; the v1
+approved-constitution config was authored but never run (no LOG/EXPENDITURE trace); DPO is off the
+roadmap. The v1 dataset remains at HF `matboz/difficult-advice-qwen3`; nothing outside the deleted
+files imported them (verified; one scratch probe, `constitution_probe.py`, now needs git history to
+run). Also folded `build_hf_mixture.py` into `build_mixture.py`: one source-spec schema — local
+`{path, format}` (messages keeps `<think>`, rendered exempt) or HF `{repo, split?}` (streamed,
+rendered no-think) — with per-kind think validation; the legacy top-level `tulu3_repo/tulu3_tokens`
+keys became a `tulu3` sources entry in all 8 configs, pinning `shuffle_buffer: 10000` (the old code
+path's buffer) so regeneration samples identically. 194 tests pass.
+
 ## 2026-08-03 — Deleted original synthdoc; synthdoc_v2 renamed to synthdoc
 
 The original config-driven `synthdoc` package (ablation sweeps, corpus snapshots, `control/`
