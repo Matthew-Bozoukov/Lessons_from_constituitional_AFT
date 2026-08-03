@@ -37,7 +37,7 @@ git clone <this-repo> /root/work && cd /root/work
 uv sync                          # base deps + src/ installed editable
 uv pip install vllm==0.8.5 "transformers==4.51.3" trl==0.19.1 \
     peft bitsandbytes accelerate wandb          # pinned GPU stack (CLAUDE.md gotcha 1)
-uv run --no-sync scripts/train_lora.py --config configs/train_lora.yaml
+uv run --no-sync scripts/train/train_lora.py --config configs/train/lora_qwen3_difficult_advice.yaml
 ```
 
 The GPU stack is layered in with `uv pip` rather than declared in
@@ -59,13 +59,13 @@ transformers downgrade.
 - `src/eval/misalignment/internalization/` self-contained constitution-internalization proxy eval
   (Tier A). Measures whether a checkpoint *internalized* the constitution or memorized its surface
   behaviors, at every checkpoint, without a downstream training run.
-  `scripts/run_internalization.sh smoke` runs it offline in ~10s with no API key. See
+  `scripts/eval/run_internalization.sh smoke` runs it offline in ~10s with no API key. See
   `src/eval/misalignment/internalization/README.md`.
 - `src/` reusable code (`llm.py`, `prompts.py`, `utils.py`); `src/experiments/` scripts.
-- `configs/` OmegaConf YAML for every step.
-- `scripts/` remote drivers (`run_eval.sh`, `serve_lora.sh`, `run_inspect_leaking.sh`,
-  `run_mmlu_arms.sh`). Note `run_mmlu.sh` (inspect_evals, single Qwen3-32B endpoint) is the
-  *old* MMLU path from the original difficult-advice pipeline — `run_mmlu_arms.sh` is the
+- `configs/` OmegaConf YAML for every step, foldered by stage (`data/`, `train/`, `eval/`).
+- `scripts/` remote drivers (`eval/run_agentic_misalignment.sh`, `gpu/serve_lora.sh`, `eval/run_leaking_inspect.sh`,
+  `eval/run_mmlu_arms.sh`). Note `eval/run_mmlu_inspect.sh` (inspect_evals, single Qwen3-32B endpoint) is the
+  *old* MMLU path from the original difficult-advice pipeline — `eval/run_mmlu_arms.sh` is the
   arm-ladder one.
 - `third_party/agentic-misalignment/` vendored eval harness (patched: `vllm/` provider, judge routing).
 - `docs/claude_constitution_principles.md` the alignment target.
@@ -151,14 +151,14 @@ spending ~$74 on Sonnet 4.5. Two files in [`matboz/difficult-advice-qwen3`](http
 mkdir -p data
 uv run hf download matboz/difficult-advice-qwen3 sft_dataset_thinking.jsonl \
   --repo-type dataset --local-dir data
-# then go straight to step 5 with configs/train_lora_thinking.yaml
+# then go straight to step 5 with configs/train/lora_qwen3_difficult_advice_thinking.yaml
 # (its data_path already points at data/sft_dataset_thinking.jsonl)
 ```
 The pre-trained LoRA adapter is also published — to skip training *and* generation entirely and go
 straight to evaluation (step 6), pull [`matboz/qwen3-32b-difficult-advice-lora`](https://huggingface.co/matboz/qwen3-32b-difficult-advice-lora):
 ```bash
 uv run hf download matboz/qwen3-32b-difficult-advice-lora --local-dir ./adapter
-bash scripts/serve_lora.sh ./adapter
+bash scripts/gpu/serve_lora.sh ./adapter
 ```
 Steps 1-2 below are only needed if you want to regenerate the data from scratch.
 
@@ -166,11 +166,11 @@ Steps 1-2 below are only needed if you want to regenerate the data from scratch.
 ```bash
 # Smoke (2 domains × 2 scenarios, seconds):
 uv run src/experiments/generate_difficult_advice.py \
-  --config configs/difficult_advice_gen.yaml --smoke
+  --config configs/data/difficult_advice_gen_v1.yaml --smoke
 
 # Full ~1.5M-token run (18 domains × 120 scenarios ≈ 2.1k accepted examples, ~$46, ~15 min):
 uv run src/experiments/generate_difficult_advice.py \
-  --config configs/difficult_advice_gen.yaml \
+  --config configs/data/difficult_advice_gen_v1.yaml \
   --scenarios_per_domain 120 --target_tokens 1500000 --tag run1p5m
 ```
 Sonnet 4.5 (a) generates diverse *user-in-a-dilemma* scenarios across 18 domains, (b) writes a
@@ -183,7 +183,7 @@ which trains the model to *stop reasoning*. Fix: give each example a real first-
 trace via the `reasoning_content` field (renders as a real `<think>` block).
 ```bash
 uv run src/experiments/augment_thinking.py \
-  --config configs/difficult_advice_gen.yaml \
+  --config configs/data/difficult_advice_gen_v1.yaml \
   --sft_path output/difficult_advice_gen/run1p5m_*/sft_dataset.jsonl
 # → output/difficult_advice_gen/think_*/sft_dataset_thinking.jsonl   (~$28, ~15 min)
 ```
@@ -207,10 +207,10 @@ python -m vllm.entrypoints.openai.api_server --model Qwen/Qwen3-32B \
   --served-model-name qwen3 --dtype bfloat16 --max-model-len 13312 \
   --gpu-memory-utilization 0.94 --port 8000
 # eval (from /root/work): blackmail+leaking honeypots, Sonnet-4.5 judge
-bash scripts/run_eval.sh qwen3_baseline configs/eval_agentic.yaml
+bash scripts/eval/run_agentic_misalignment.sh qwen3_baseline configs/eval/agentic_misalignment.yaml
 ```
 The eval harness (vendored `third_party/agentic-misalignment/`) is patched with a `vllm/` provider;
-`scripts/run_eval.sh` runs generate→experiments→classify→aggregate and writes
+`scripts/eval/run_agentic_misalignment.sh` runs generate→experiments→classify→aggregate and writes
 `results/<id>/misalignment_summary.json`. Thinking mode is off by default; set
 `VLLM_ENABLE_THINKING=1` to evaluate in thinking mode (use this for the thinking-trained model).
 
@@ -219,14 +219,14 @@ The eval harness (vendored `third_party/agentic-misalignment/`) is patched with 
 > **Skip training entirely** — use the published adapter and jump to step 6:
 > ```bash
 > uv run hf download matboz/qwen3-32b-difficult-advice-lora --local-dir ./adapter
-> bash scripts/serve_lora.sh ./adapter        # serves base Qwen3-32B + the trained LoRA
+> bash scripts/gpu/serve_lora.sh ./adapter        # serves base Qwen3-32B + the trained LoRA
 > ```
 
 To train it yourself:
 ```bash
 # thinking-format (recommended): reasoning preserved
-python scripts/train_lora.py --config configs/train_lora_thinking.yaml
-# (non-thinking baseline arm: configs/train_lora.yaml)
+python scripts/train/train_lora.py --config configs/train/lora_qwen3_difficult_advice_thinking.yaml
+# (non-thinking baseline arm: configs/train/lora_qwen3_difficult_advice.yaml)
 ```
 Key config: r=32, 2 epochs, batch 4 × grad-accum 4, max_seq_len 2048, `assistant_only_loss: false`
 (Qwen3's template has no `{% generation %}` markers, so assistant-only masking is all-zero).
@@ -235,10 +235,10 @@ Launch with `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` to avoid fragment
 ### 6. Post-training eval + report
 ```bash
 # serve base + adapter:
-bash scripts/serve_lora.sh /path/to/output/train_lora_thinking/<ts>/adapter
+bash scripts/gpu/serve_lora.sh /path/to/output/train_lora_thinking/<ts>/adapter
 # thinking-mode eval of the fine-tune vs the thinking baseline:
-VLLM_ENABLE_THINKING=1 bash scripts/run_eval.sh qwen3_difficult_advice_thinking \
-  configs/eval_agentic.yaml "" vllm/difficult_advice
+VLLM_ENABLE_THINKING=1 bash scripts/eval/run_agentic_misalignment.sh qwen3_difficult_advice_thinking \
+  configs/eval/agentic_misalignment.yaml "" vllm/difficult_advice
 # build the capstone dashboard (local, after pulling the 4 summaries into output/eval_summaries/):
 uv run src/experiments/final_report.py
 ```
@@ -248,7 +248,7 @@ uv run src/experiments/final_report.py
 Serve base+adapter, SSH-tunnel port 8000 to the machine that has
 [`inspect_evals`](https://github.com/UKGovernmentBEIS/inspect_evals), then:
 ```bash
-bash scripts/run_inspect_leaking.sh difficult_advice explicit america ft_explicit_america
+bash scripts/eval/run_leaking_inspect.sh difficult_advice explicit america ft_explicit_america
 ```
 (runs `inspect_evals/agentic_misalignment`, leaking scenario, gemini-flash grader).
 
@@ -286,8 +286,8 @@ Only `OPENROUTER_API_KEY` is needed — the agent and all four judges run throug
 ```bash
 uv run pytest tests/test_odcv_metrics.py -q        # metric sanity (recovers 43.8%/1.67 from the paper's CSV)
 
-bash scripts/run_odcv.sh configs/odcv_bench.yaml --smoke   # 2 scenarios, verifies wiring end to end
-bash scripts/run_odcv.sh configs/odcv_bench.yaml           # full 80-scenario run
+bash scripts/eval/run_odcv.sh configs/eval/odcv_bench_base_openrouter.yaml --smoke   # 2 scenarios, verifies wiring end to end
+bash scripts/eval/run_odcv.sh configs/eval/odcv_bench_base_openrouter.yaml           # full 80-scenario run
 ```
 `run_odcv.sh` tees everything to `output/odcv_bench/logs/run_<ts>.log`. Results land in
 `output/odcv_bench/qwen3.6-27b/<ts>/`: `agent_logs/` (trajectories), `evaluations/scores_<judge>.json`,
@@ -317,7 +317,7 @@ calls that are already cached, so an interrupted run costs nothing to continue.
 
 The guardrail underneath the alignment results. It answers one question: does mixing
 synthetic constitution documents into the SFT mixture cost us general capability? Data lives
-in `configs/capability_eval.yaml`, which is the single source of truth for arms, judge,
+in `configs/eval/capability.yaml`, which is the single source of truth for arms, judge,
 thresholds and decoding.
 
 **50% is the target, not 100%.** This is a treated checkpoint measured against a sibling
@@ -327,7 +327,7 @@ the public Arena leaderboard — no submission, no Elo.
 
 **The baseline is `arm_b_synth10` (90/10), not arm A** — arm A's training recipe differs
 (2 epochs, packing on, 2x tokens), so 50% means "no different from the low-dose arm", not
-"no different from zero synthetic data". See the arm_a note in `configs/capability_eval.yaml`.
+"no different from zero synthetic data". See the arm_a note in `configs/eval/capability.yaml`.
 
 ### Results (2026-07-31, style-controlled win rate vs arm_b, hard_prompt, 95% CI)
 
@@ -350,7 +350,7 @@ Full detail in `LOG.md` (2026-07-31 entry).
 ```bash
 # Vendor the harness (third_party/ is gitignored) — pinned at upstream 196f6b82
 git clone https://github.com/lmarena/arena-hard-auto.git third_party/arena-hard-auto
-uv run python scripts/patch_arena_hard.py          # 5 patches; --check to verify
+uv run python scripts/eval/patch_arena_hard.py          # 5 patches; --check to verify
 ```
 
 ### Run
@@ -360,17 +360,17 @@ from the first full run (pod-per-arm topology, retry wrappers, the baseline-exte
 gotcha, judging order, publishing layout, cost model). Short version:
 
 ```bash
-uv run python scripts/runpod_capability.py up      # one pod PER ARM is the fast layout
+uv run python scripts/gpu/runpod_capability.py up      # one pod PER ARM is the fast layout
 uv run python src/eval/capabilities/capability_gen.py --arm <arm> --stage 150 --creative 0 \
     --endpoint https://<pod>-8000.proxy.runpod.net/v1   # wrap in retries; eyeball samples
 uv run python src/eval/capabilities/capability_judge.py --arm arm_b_synth10 --stage 150  # baseline/A-vs-A FIRST
 uv run python src/eval/capabilities/capability_judge.py --arm <arm> --stage 150          # serialized, not parallel
 uv run python src/eval/capabilities/capability_report.py                  # CIs + figures + md mirror
 uv run python scratch/reports/plot_lmsys_winrate.py                # GDM-style dose-response figure
-uv run python scripts/runpod_capability.py down --pod <id>          # the moment each arm finishes
+uv run python scripts/gpu/runpod_capability.py down --pod <id>          # the moment each arm finishes
 ```
 
-`run_capability_eval.sh` stops between generation and judging and makes you eyeball ten raw
+`scripts/eval/run_capability.sh` stops between generation and judging and makes you eyeball ten raw
 generations. Do not skip it — a chat-template mismatch reads as catastrophic capability loss
 but is purely a serving bug, and it is the most common cause of "my finetune destroyed the
 model".
@@ -417,7 +417,7 @@ A/B that `low` genuinely reduces them — it is not being ignored. Full sweep �
 The Arena-Hard eval above is *relative* — it can only say an arm is as good as another arm.
 MMLU is scored against a fixed answer key, so every arm's number stands on its own and the
 untuned Qwen base is a real anchor. This is the `absolute_benchmarks` block that
-`configs/capability_eval.yaml` defers.
+`configs/eval/capability.yaml` defers.
 
 **Runs a subset, not all 14,042 questions.** 10 questions × 57 subjects = **570**, drawn by a
 seeded stratified sample. Every arm answers *literally the same questions*, which makes the
@@ -432,18 +432,18 @@ property of the setup, not an assumption.
 
 ```bash
 # 1. bring up the pod (same one the Arena-Hard eval uses; ~20-30 min to boot)
-uv run python scripts/runpod_capability.py up
-uv run python scripts/runpod_capability.py status --pod <id>
+uv run python scripts/gpu/runpod_capability.py up
+uv run python scripts/gpu/runpod_capability.py status --pod <id>
 
 # 2. everything in one pass: generate, grade, report
-scripts/run_mmlu_arms.sh https://<pod>-8000.proxy.runpod.net/v1
+scripts/eval/run_mmlu_arms.sh https://<pod>-8000.proxy.runpod.net/v1
 
 # ... or drive the steps yourself
 uv run python src/eval/capabilities/mmlu_eval.py --arms all --endpoint <url>
 uv run python src/eval/capabilities/mmlu_report.py
 
 # 3. ALWAYS tear the pod down
-uv run python scripts/runpod_capability.py down --pod <id>
+uv run python scripts/gpu/runpod_capability.py down --pod <id>
 ```
 
 Useful flags: `--smoke` (2 questions/subject, wiring check), `--per_subject 20` (tighter

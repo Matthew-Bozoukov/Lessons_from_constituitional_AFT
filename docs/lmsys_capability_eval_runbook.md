@@ -15,7 +15,7 @@ arena-hard-v2.0 prompts are judged side-by-side against the **baseline arm's** a
 50% = no capability difference. It is a *relative* guardrail — it cannot detect all arms
 degrading together (that's what the MMLU eval is for).
 
-- Config (single source of truth): `configs/capability_eval.yaml` — arms, judge pin,
+- Config (single source of truth): `configs/eval/capability.yaml` — arms, judge pin,
   decoding, staging, thresholds. Never hardcode any of these in scripts.
 - Baseline is **arm_b (90/10)**, not arm_a — arm_a's recipe differs (2 ep, packing on).
   Every win rate means "vs the low-dose arm", and the writeup must say so.
@@ -40,7 +40,7 @@ runpod_capability.py up  (1 pod PER ARM)          ~25 min boot each
 
 ### 1. Provision — one pod per arm, destroy as each finishes
 
-`scripts/runpod_capability.py up --name capability-eval-N` serves the base + ALL LoRA
+`scripts/gpu/runpod_capability.py up --name capability-eval-N` serves the base + ALL LoRA
 arms from one vLLM process per pod. Sharding arms across pods is the **only** real
 speedup: a single H100 is saturated by one arm's 32-way client parallelism (measured —
 adding a second arm to a pod added ~0 aggregate throughput). Pods bill per second, so
@@ -54,12 +54,12 @@ Boot failure modes seen in practice:
 - Host with too-old NVIDIA driver → vLLM dies at init. Detect: `vllm.log` on port 8080
   contains "driver on your system is too old". Fix: destroy, re-provision (new host).
 - All other boot failures and their fixes are documented inline in
-  `scripts/runpod_capability.py` (PID-1, /workspace, ninja, OOM-at-graph-capture).
+  `scripts/gpu/runpod_capability.py` (PID-1, /workspace, ninja, OOM-at-graph-capture).
 
 ### 2. Generate — with retry wrapper, always
 
 ```bash
-uv run python src/eval/capabilities/capability_gen.py --config configs/capability_eval.yaml \
+uv run python src/eval/capabilities/capability_gen.py --config configs/eval/capability.yaml \
   --arm arm_c_synth20 --stage 150 --creative 0 \
   --endpoint https://<pod>-8000.proxy.runpod.net/v1
 ```
@@ -88,7 +88,7 @@ loss and judging it wastes money on a serving artifact.
 ### 4. Judge — serialized, baseline first
 
 ```bash
-uv run python src/eval/capabilities/capability_judge.py --config configs/capability_eval.yaml \
+uv run python src/eval/capabilities/capability_judge.py --config configs/eval/capability.yaml \
   --arm <arm> --stage 150
 ```
 
@@ -156,7 +156,7 @@ arm_base is post-trained) in the README — they change how every number reads.
 ### 8. Tear down and log
 
 - Destroy each pod THE MOMENT its arm finishes; verify with
-  `uv run python scripts/runpod_capability.py list` (other people's pods share the
+  `uv run python scripts/gpu/runpod_capability.py list` (other people's pods share the
   account — touch only your own).
 - Append the LOG.md entry (most-recent-first): hypothesis → method → results table →
   ops findings → next steps, absolute dates.

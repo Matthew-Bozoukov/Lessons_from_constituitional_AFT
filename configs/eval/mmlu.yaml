@@ -1,0 +1,141 @@
+# ABOUTME: MMLU absolute-benchmark eval for the constitution-SFT arms: subset sampling,
+# ABOUTME: prompting, decoding parity, and the non-inferiority gate vs the Qwen base model.
+# Run: bash scripts/eval/run_mmlu_arms.sh [endpoint] [arms]   (this file is the default CONFIG)
+
+# This is the `absolute_benchmarks` block that configs/eval/capability.yaml scopes out and
+# defers. It exists because the preference eval has a blind spot it names itself: a
+# pairwise judge cannot detect BOTH arms degrading together, and it rewards style over
+# substance. MMLU is scored against a fixed answer key, so each arm's number stands alone
+# and the base model is a genuine anchor rather than one more thing being compared.
+#
+# The question this answers: does SFT on constitution/difficult-advice data cost the model
+# general knowledge, relative to the Qwen base it was trained from? Prediction is a flat
+# line — the arms are LoRA fine-tunes over a mostly-Tulu mixture, not continued pretraining
+# — so the interesting outcomes are (a) a monotone drop with synthetic fraction, which
+# would locate a ceiling on usable mixture ratio, or (b) a drop concentrated in the moral
+# reasoning subjects, which would be a different and more interesting finding than damage.
+
+seed: 0
+
+# --- Arms ---------------------------------------------------------------------------
+# Deliberately NOT restated here. The arm ladder — which checkpoints exist, which are
+# matched on training recipe, and the long note explaining why arm A is not a usable
+# baseline — lives in capability.yaml, and duplicating it is how a ladder silently
+# goes stale: somebody trains arm E, updates one config, and this eval keeps reporting a
+# four-arm result as though it were complete.
+arms_from: configs/eval/capability.yaml
+
+# vLLM serves the base model under `base` and every adapter under its arm name (see
+# scripts/gpu/runpod_capability.py). Only the exception needs stating.
+served_names:
+  arm_base: base
+
+# The reference every arm is compared against. The base model, per the ask: this is an
+# absolute benchmark, so unlike the preference eval there is no methodological obstacle
+# to using the untuned base as the anchor.
+#
+# READ THIS BEFORE INTERPRETING THE BASE NUMBER. Qwen3.6-27B base is not instruction
+# tuned. Under a chat template it continues the prompt rather than answering it, and the
+# standard fix is exactly the few-shot demonstrations configured below — the demos teach
+# the answer format by pattern, which is why `n_shot: 5` is the default rather than 0.
+# Watch `parse_rate` on this arm specifically. If it comes in materially below the SFT
+# arms, the base number is a FORMAT floor, not a knowledge measurement, and the honest
+# comparison is `accuracy_parsed_only` with the gap disclosed.
+baseline_arm: arm_base
+
+# --- Subset -------------------------------------------------------------------------
+# Stratified by subject rather than sampled uniformly. A uniform draw over the 14,042
+# test rows would be swamped by the large subjects (professional_law alone is 1,534) and
+# would leave some subjects with two questions, making the per-subject breakdown noise.
+subset:
+  dataset: "cais/mmlu"
+  name: "all"
+  split: "test"
+  # 10 x 57 subjects = 570 questions. At ~80% accuracy that is a +/-3.3pp Wilson interval
+  # per arm, and — because arms are paired on identical questions — roughly +/-2pp on the
+  # DIFFERENCE, which is the number the gate below actually reads. Enough to rule out the
+  # 3pp regression we care about; not enough for a confident per-subject claim at n=10.
+  # Raise to 20 (1,140 questions) if a per-subject story matters. Growing it is cheap and
+  # cache-safe: the subset is a seeded superset, so existing generations still hit.
+  per_subject: 10
+  subjects: null          # null = all 57
+  # See src/eval/capabilities/mmlu.py: MMLU's answer key is not uniform over positions, so an unshuffled run
+  # rewards a model that always picks C. Seeded from the uid, so it is identical across
+  # arms and stable when per_subject changes.
+  shuffle_choices: true
+
+# --- Prompt -------------------------------------------------------------------------
+# One prompt for every arm, without exception. A format advantage is indistinguishable
+# from a capability advantage by the time it reaches the accuracy number.
+prompt:
+  # 5-shot from the same subject's dev split — MMLU's canonical protocol, and the thing
+  # that makes the base-model comparison fair (see baseline_arm note).
+  n_shot: 5
+  shot_split: "dev"
+  instruction: |
+    The following are multiple choice questions (with answers) about {subject}.
+    Answer with the single letter of the correct option.
+  cue: "Answer:"
+
+# --- Generation ---------------------------------------------------------------------
+# Decoding parity is the same requirement as capability.yaml §4: identical settings
+# across all arms, temperature 0, one sample. Stamped into each arm's run_meta.json.
+generation:
+  endpoint: "http://localhost:8000/v1"   # override with --endpoint for a RunPod proxy
+  api_key: "EMPTY"
+  temperature: 0.0
+  top_p: 1.0
+  # CLAUDE.md gotcha 6, and the single most common way this eval reports a false 0%.
+  # A thinking model spends most of its budget inside <think>; if generation runs out
+  # before the trace closes there is no visible answer at all, every question scores
+  # wrong, and it reads as catastrophic capability loss. 2048 was comfortable in
+  # nothink mode but truncated ~9% of THINKING generations (concentrated in hard
+  # math/science, observed live 2026-07-31) — a biased loss, not noise; 4096 still
+  # truncated 4.2% of the BASE arm, whose traces ruminate longest. 8192 requires the
+  # 16384 --max-model-len the capability pod now boots with: the longest prompt in
+  # the per_subject=20 superset measures 3069 tokens with the real tokenizer, and
+  # vLLM 400s an overflowing request rather than clamping it. Safe to mix with
+  # earlier 4096-budget generations at temp 0 — an answer that stopped naturally is
+  # identical under a larger cap, so only length-truncated records need re-running.
+  # `truncation_rate` in the output is the check — if it is not ~0, raise this
+  # before believing any number in the report.
+  max_tokens: 8192
+  parallel: 16
+  # Per-request deadline, in seconds. NOT optional on a long run: the OpenAI SDK
+  # defaults to 600s with 2 retries, so a single request that never returns — a dropped
+  # connection through the RunPod proxy, or a generation that grinds toward the token
+  # cap — stalls a worker for up to 30 minutes while the other 15 sit idle. Observed
+  # exactly this on the first live run: 566/570 finished in 48s and the last 4 hung for
+  # longer than the whole rest of the arm. Sized for the max_tokens above: a full
+  # 4096-token thinking generation at the ~8 tok/s this endpoint sustains under load
+  # runs ~9 min, so 600s is the floor that does not kill legitimate hard-question
+  # generations. (180s was right for 2048 tokens in nothink mode.)
+  request_timeout: 600
+  max_retries: 2
+  # Thinking ON matches how these checkpoints are trained and evaluated elsewhere in the
+  # repo (CLAUDE.md gotcha 5: do not cross modes). Set false for a fast, cheap sanity
+  # pass — but then compare only against a nothink baseline run, never a thinking one.
+  enable_thinking: true
+  raw_sample_dump: 10
+
+# --- Statistics ---------------------------------------------------------------------
+statistics:
+  # Every arm answers identical questions, so the comparison is paired: bootstrap
+  # resamples questions and carries both arms' outcomes together, and McNemar reads the
+  # discordant pairs exactly. Both are materially tighter than treating the arms as
+  # independent samples.
+  bootstrap_rounds: 5000
+  alpha: 0.05
+
+# --- Pass thresholds — fix these BEFORE looking at results ---------------------------
+thresholds:
+  # Non-inferiority margin. The gate is on the upper bound of the paired CI for the DROP
+  # (baseline - arm): if we cannot rule out a drop larger than this, the arm does not
+  # pass. A point estimate near zero is not sufficient on its own.
+  max_accuracy_drop_pp: 3.0
+  # Instrument-health gates, checked before any accuracy number is trusted. A breach here
+  # means the harness is broken, not the model — fix and re-run rather than reporting.
+  min_parse_rate: 0.95
+  max_truncation_rate: 0.02
+
+output_dir: "output/mmlu_eval"

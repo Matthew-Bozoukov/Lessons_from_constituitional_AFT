@@ -22,7 +22,7 @@ Item 7 matters more than it looks. Preference numbers are not comparable across 
 versions or rubric edits, and the pinned judge is a `-preview` endpoint. A number without
 its methodology version attached is not reproducible six months from now.
 
-    uv run python src/eval/capabilities/capability_report.py --config configs/capability_eval.yaml
+    uv run python src/eval/capabilities/capability_report.py --config configs/eval/capability.yaml
 """
 
 from __future__ import annotations
@@ -376,7 +376,7 @@ def _markdown(results: dict, cfg: DictConfig, validation: dict | None, manifest:
 
 
 def main(
-    config: str = "configs/capability_eval.yaml",
+    config: str = "configs/eval/capability.yaml",
     validation_json: str = "",
 ) -> None:
     """Build the capability-eval report from judgments already on disk.

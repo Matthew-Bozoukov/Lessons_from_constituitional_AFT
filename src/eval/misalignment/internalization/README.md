@@ -11,13 +11,13 @@ Self-contained: nothing here imports the rest of the repo, and nothing in the re
 
 ```bash
 # offline: no API key, no spend, ~15s - builds items, generates, judges, renders all 3 plots
-scripts/run_internalization.sh smoke
+scripts/eval/run_internalization.sh smoke
 
 # the real thing: two models, one frozen item set, one bundle
-scripts/run_internalization.sh study --arms "base=base.yaml,finetuned=compare.yaml" --name qwen36
+scripts/eval/run_internalization.sh study --arms "base=base.yaml,finetuned=compare.yaml" --name qwen36
 ```
 
-`scripts/run_internalization.sh <command> [args...]` is a thin wrapper over
+`scripts/eval/run_internalization.sh <command> [args...]` is a thin wrapper over
 `uv run python -m src.eval.misalignment.internalization.cli <command> [args...]`; every command
 below works through either.
 
@@ -109,7 +109,7 @@ scenarios written for one clause are not twelve independent observations.
 There is **no gold set**. A cheap judge earns trust by cross-check instead:
 
 ```bash
-scripts/run_internalization.sh judge_agreement --run-dir <run> \
+scripts/eval/run_internalization.sh judge_agreement --run-dir <run> \
   --reference anthropic/claude-sonnet-4.5 --n 120
 ```
 
@@ -141,7 +141,7 @@ internalization/
 ## Cost
 
 ```bash
-scripts/run_internalization.sh estimate --config base.yaml --arms 2
+scripts/eval/run_internalization.sh estimate --config base.yaml --arms 2
 ```
 
 **~$3.70** for two models: $0.09 item generation (once, cached), $2.79 target tokens, $0.78

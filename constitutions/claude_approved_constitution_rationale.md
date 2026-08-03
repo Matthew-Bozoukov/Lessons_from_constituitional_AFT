@@ -284,7 +284,7 @@ decisions. If principles 5 and 6 matter, they need `scrutinizes_rationalization`
 the gate or be removed.
 
 Separately, `gen_model` and `grade_model` are both `anthropic/claude-sonnet-4.5`
-(`configs/difficult_advice_gen.yaml`) — Sonnet grading its own output, which is a more likely
+(`configs/data/difficult_advice_gen_v1.yaml`) — Sonnet grading its own output, which is a more likely
 explanation of the high acceptance rate than any property of the rubric. Use a different grader; the
 repo already uses Gemini elsewhere.
 

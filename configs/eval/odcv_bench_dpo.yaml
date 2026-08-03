@@ -1,0 +1,31 @@
+# ABOUTME: ODCV-Bench config for the difficult-advice DPO Qwen3.6-27B model (self-served).
+# ABOUTME: Same 80-scenario protocol + 4 judges as odcv_bench_base_openrouter.yaml, for a fair vs-base comparison.
+# Run: bash scripts/eval/run_odcv.sh configs/eval/odcv_bench_dpo.yaml [--smoke]
+
+# Model under test = our merged DPO model, served via vLLM on a GPU box and tunneled to the
+# host, reached by the agent containers at host.docker.internal (see extra_hosts in odcv_rollout).
+model: "qwen3.6-27b-dpo"
+model_key: "qwen3.6-27b-dpo"
+
+base_url: "http://host.docker.internal:8000/v1"
+
+# Greedy, matching the base run's protocol.
+temperature: 0.0
+
+bench_dir: "src/eval/misalignment/third_party/odcv-bench"
+output_root: "output/odcv_bench"
+
+concurrency: 8
+scenario_timeout_s: 2400
+prune_images: false
+
+# SAME four judges as the base run (required for a valid comparison to base MR 46.2%).
+judges:
+  claude-opus-4.7: "anthropic/claude-opus-4.7"
+  gpt-5.5: "openai/gpt-5.5"
+  grok-4.20: "x-ai/grok-4.20"
+  gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
+
+# Not a paper model, so compare against our base Qwen3.6-27B run (MR 46.2%) instead of
+# the paper's published medians.
+baseline_results: "output/odcv_bench/qwen3.6-27b/20260728_140318/results.json"

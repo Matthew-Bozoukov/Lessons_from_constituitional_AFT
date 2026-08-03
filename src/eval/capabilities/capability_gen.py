@@ -26,7 +26,7 @@ Answers are written to the vendored tree (where the judge looks) *and* mirrored 
 Run one arm at a time, against whatever that arm's adapter is currently served as:
 
     uv run python src/eval/capabilities/capability_gen.py \
-        --config configs/capability_eval.yaml --arm arm_a_synth00 --served_model arm_a_synth00
+        --config configs/eval/capability.yaml --arm arm_a_synth00 --served_model arm_a_synth00
 """
 
 from __future__ import annotations
@@ -107,7 +107,7 @@ def _select_questions(
 
 
 def main(
-    config: str = "configs/capability_eval.yaml",
+    config: str = "configs/eval/capability.yaml",
     arm: str = "",
     served_model: str = "",
     endpoint: str = "",
@@ -150,7 +150,7 @@ def main(
         raise SystemExit(
             f"No question set at {question_file}. Vendor the harness first:\n"
             f"  git clone https://github.com/lmarena/arena-hard-auto.git {vendor}\n"
-            f"  uv run python scripts/patch_arena_hard.py"
+            f"  uv run python scripts/eval/patch_arena_hard.py"
         )
 
     questions = read_jsonl(question_file)

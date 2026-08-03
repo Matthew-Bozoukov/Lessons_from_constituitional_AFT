@@ -1,0 +1,24 @@
+# ABOUTME: Training-mixture config for Qwen3.6-27B: 300k tokens of difficult-advice (with
+# ABOUTME: <think> traces) + 1.2M tokens of TULU3 replay (rendered with no think block).
+# Run: uv run scripts/data/build_mixture.py --config configs/data/mixture_qwen36_20_80.yaml
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+
+# Each source: a jsonl path, a token budget, and a format — `messages` is raw chat jsonl
+# rendered at build time (keeping <think> traces); `rendered` is pre-rendered rows
+# (fields: text, n_tokens).
+sources:
+  difficult_advice:
+    path: "data/sft_dataset_thinking.jsonl"
+    format: messages
+    tokens: 300000
+
+tulu3_repo: "allenai/tulu-3-sft-mixture"
+tulu3_tokens: 1200000
+
+# Drop TULU3 conversations longer than the training sequence length so replay
+# examples are never truncated mid-answer.
+max_seq_len: 2048
+
+output_dir: "output/mixture_qwen36"

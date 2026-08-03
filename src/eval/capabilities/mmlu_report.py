@@ -19,7 +19,7 @@ If two arms were run against different subset sizes or a different seed, the pai
 silently wrong and the intervals are nonsense while still looking reasonable. So the
 uid sets are compared explicitly and a mismatch is fatal.
 
-    uv run python src/eval/capabilities/mmlu_report.py --config configs/mmlu_eval.yaml
+    uv run python src/eval/capabilities/mmlu_report.py --config configs/eval/mmlu.yaml
 """
 
 from __future__ import annotations
@@ -422,7 +422,7 @@ def _markdown(
         f"Generated {timestamp()} · baseline = `{baseline_arm}` · {subset_note}",
         "",
         "Absolute benchmark complementing the pairwise preference eval in "
-        "`configs/capability_eval.yaml`, which by construction cannot detect both arms "
+        "`configs/eval/capability.yaml`, which by construction cannot detect both arms "
         "degrading together.",
         "",
         "## Headline",
@@ -523,7 +523,7 @@ def _markdown(
 
 
 def main(
-    config: str = "configs/mmlu_eval.yaml",
+    config: str = "configs/eval/mmlu.yaml",
     nothink: bool = False,
 ) -> None:
     """Build the MMLU comparison report from graded records.

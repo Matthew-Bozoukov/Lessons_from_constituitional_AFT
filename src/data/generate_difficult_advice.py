@@ -25,7 +25,7 @@ from src.utils import (  # noqa: E402
     write_run_meta,
 )
 
-CONFIG_DIR = Path("configs")
+CONFIG_DIR = Path("configs/data")
 
 
 def _generate_scenarios(client: OpenRouterClient, cfg, domains: dict) -> list[dict]:
@@ -225,7 +225,7 @@ def main(
     """Run the difficult-advice data generation pipeline.
 
     Args:
-        config: Path to a YAML config (absolute, or relative to configs/).
+        config: Path to a YAML config (absolute, or relative to configs/data/).
         smoke: If True, run a tiny end-to-end pass (2 domains, small batch).
         target_tokens: Optional override of the SFT token target.
         scenarios_per_domain: Optional override of scenarios generated per domain.

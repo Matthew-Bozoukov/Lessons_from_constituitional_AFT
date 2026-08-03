@@ -33,12 +33,21 @@ src/                    correctness-critical reusable code (installed editable; 
                           via external inspect_evals
     misalignment/         ODCV-Bench (odcv.py stats, rollout, judge, compare) + aggregate_eval.py
       internalization/      self-contained constitution-internalization proxy eval (Tier A).
-                            `scripts/run_internalization.sh smoke` runs offline in ~10s; see its README.md
+                            `scripts/eval/run_internalization.sh smoke` runs offline in ~10s; see its README.md
       third_party/          vendored eval harnesses (agentic-misalignment, odcv-bench), PATCHED — see gotchas
     vulnerabilities/      petri/ + surf/ audit tooling (generalized from the completed MSM audit)
-configs/                OmegaConf YAML, one per step. NEVER hardcode hyperparams in scripts.
-scripts/                pipeline drivers: thin CLIs over src/ functions + shell scripts that run
-                        ON or AGAINST a GPU box (serve_lora, run_eval, run_mmlu, ...)
+configs/                OmegaConf YAML, one per step, foldered by pipeline stage.
+                        NEVER hardcode hyperparams in scripts.
+  data/                   data generation + mixtures (difficult_advice_gen_v*, mixture_qwen36_*, tulu_control)
+  train/                  SFT/DPO training (lora_<model>_<arm>*, dpo_qwen36_difficult_advice)
+  eval/                   evals (capability, mmlu, agentic_misalignment, odcv_*, constitution_probe)
+scripts/                pipeline drivers, foldered to mirror src/ stages + gpu/ for infra
+  data/                   thin CLIs over src/data/ (generate_difficult_advice, build_mixture, ...)
+  train/                  thin CLIs over src/train/ (train_lora, train_dpo, merge_lora)
+  eval/                   eval drivers: run_*.sh shell pipelines (run_agentic_misalignment,
+                          run_capability, run_mmlu_arms, run_odcv, run_internalization, ...)
+                          + thin CLIs (odcv_*, aggregate_eval, lmsys_eval, patch_arena_hard)
+  gpu/                    provision/serve infra: serve_lora.sh, runpod_capability.py, runpod_train.py
 scratch/                one-off and AI-generated scripts (report generators, probes, inspection
                         snippets). Default home for new experimental code; NOTHING imports from it.
 dashboard/              the research-log web app (own toolchain, deployed on Netlify) - see its README
@@ -63,6 +72,36 @@ docs/LOG.md             append-only research log, MOST RECENT FIRST. Add an entr
   itself — it only pipes `src/` functions together (or drives a GPU box). If a
   script grows logic worth reusing, the logic moves into `src/` and the script
   stays thin.
+- **`configs/` and `scripts/` are foldered by pipeline stage** (`data/`,
+  `train/`, `eval/`, plus `scripts/gpu/` for provisioning/serving infra). A new
+  config or script goes in the folder for the stage it belongs to — never at
+  the top level of `configs/` or `scripts/`.
+- **Naming conventions** (follow these for every new file):
+  - Config: `configs/<stage>/<subject>[_<variant>].yaml`. The filename never
+    repeats the stage folder's name (`configs/eval/capability.yaml`, not
+    `configs/eval/capability_eval.yaml`; `configs/train/lora_qwen36_tulu100.yaml`,
+    not `configs/train/train_lora_qwen36_tulu100.yaml`). Variants are appended
+    with underscores only — `odcv_bench_ft_10_90.yaml`, never hyphens like `10-90`.
+  - **Names are self-describing**: a config name carries model + data/arm +
+    variant, so nobody has to open the file to know what run it belongs to
+    (`lora_qwen3_difficult_advice_thinking.yaml`, `odcv_bench_ft_20_80.yaml` —
+    never a bare `lora.yaml` or `odcv_bench_ft.yaml`). Shared vocabulary:
+    `qwen3` = Qwen3-32B (original replication), `qwen36` = Qwen3.6-27B (the
+    mixture sweep); mixture ratios read `<synth>_<tulu>` (`20_80` = 20%
+    difficult-advice / 80% Tulu); eval arms are `base_*` (untrained),
+    `ft_<ratio>[_<ablation>]` (difficult-advice fine-tunes), `tulu100`
+    (0%-synthetic control), `dpo`. When two scripts share a subject, a
+    harness qualifier disambiguates: `run_mmlu_arms.sh` (arm ladder) vs
+    `run_mmlu_inspect.sh` (inspect_evals single endpoint).
+  - Python thin CLI: named **exactly** after the `src/` module it wraps —
+    `scripts/train/train_lora.py` wraps `src/train/train_lora.py`. If there is
+    no matching `src/` module, the logic probably belongs in `src/` first.
+  - Shell driver: verb-prefixed — `run_<subject>.sh` for pipelines,
+    `serve_*.sh` for serving. `<subject>` names what it runs
+    (`run_agentic_misalignment.sh`), not a generic word like `run_eval.sh`.
+  - Every config's header states the exact command that consumes it — in the
+    ABOUTME block or a `# Run: ...` line directly under it — so the
+    config↔script pairing is greppable from either side.
 - `scratch/` is the **default destination for new AI-generated code** and for
   one-off experiments — throwaway until it earns promotion into `src/`.
   Nothing outside `scratch/` may import from it.
@@ -181,20 +220,20 @@ deleted with that package on 2026-08-03 — see git history — so enforce them 
 
 ## The pipeline (each step = one experiment script + one config)
 
-1. `scripts/generate_difficult_advice.py` (+ `configs/difficult_advice_gen.yaml`) — Sonnet 4.5 makes scenarios→responses→grades. Has `--smoke`. (Logic: `src/data/generate_difficult_advice.py`.)
-2. `scripts/augment_thinking.py` — adds a real `<think>` trace per example via `reasoning_content` (the reasoning-preserving fix). Has `--smoke`.
-3. `scripts/train_lora.py` (+ `configs/train_lora*.yaml`) — QLoRA SFT (runs on GPU box). Has `--smoke` (2 steps).
-4. `scripts/run_eval.sh <expid> <config> [samples] [model]` — agentic-misalignment honeypots → `results/<id>/misalignment_summary.json` via `src/eval/misalignment/aggregate_eval.py`.
+1. `scripts/data/generate_difficult_advice.py` (+ `configs/data/difficult_advice_gen_v1.yaml`) — Sonnet 4.5 makes scenarios→responses→grades. Has `--smoke`. (Logic: `src/data/generate_difficult_advice.py`.)
+2. `scripts/data/augment_thinking.py` — adds a real `<think>` trace per example via `reasoning_content` (the reasoning-preserving fix). Has `--smoke`.
+3. `scripts/train/train_lora.py` (+ `configs/train/lora*.yaml`) — QLoRA SFT (runs on GPU box). Has `--smoke` (2 steps).
+4. `scripts/eval/run_agentic_misalignment.sh <expid> <config> [samples] [model]` — agentic-misalignment honeypots → `results/<id>/misalignment_summary.json` via `src/eval/misalignment/aggregate_eval.py`.
 5. `scratch/reports/final_report.py` / `scratch/reports/make_report.py` — capstone report + plots + markdown from `output/eval_summaries/` (per-experiment write-up code, so it lives in scratch).
 
-Add a new pipeline step as functions in the right `src/` area plus a thin CLI in `scripts/` and a `configs/*.yaml`; one-off investigations go straight to `scratch/`.
+Add a new pipeline step as functions in the right `src/` area plus a thin CLI in the matching `scripts/<stage>/` folder and a `configs/<stage>/*.yaml` (naming rules above); one-off investigations go straight to `scratch/`.
 
 ## GPU / vast.ai operational playbook (this is the fiddly part — follow it)
 
 Serving/training/eval all need one 80GB GPU; the local machine has none. Standard loop:
 1. **Provision**: `uvx vastai search offers 'gpu_name=H100_SXM num_gpus=1 rentable=true disk_space>=200 inet_down>=2000 reliability>=0.98' -o dph+`; create with image `pytorch/pytorch:2.6.0-cuda12.4-cudnn9-devel`, `--disk 200 --ssh --direct`.
 2. **Setup** (uv, same as local — see the root README "Remote GPU boxes"): install uv, clone the repo to `/root/work`, `uv sync`, then layer the pinned GPU stack: `uv pip install vllm==0.8.5 "transformers==4.51.3" trl==0.19.1 peft bitsandbytes accelerate wandb` (pins — see gotchas). Then `hf download Qwen/Qwen3-32B` and the adapter. On the box always invoke with `uv run --no-sync ...` — plain `uv run` re-syncs to the lock and undoes the transformers pin.
-3. **Serve**: `scripts/serve_lora.sh <adapter_dir>` (base `qwen3` + LoRA `difficult_advice`) or plain base for baseline.
+3. **Serve**: `scripts/gpu/serve_lora.sh <adapter_dir>` (base `qwen3` + LoRA `difficult_advice`) or plain base for baseline.
 4. **Reach it from the PC**: SSH tunnel `localhost:8000 → instance:8000`. IMPORTANT: launch the tunnel with the **background Bash tool** (`run_in_background: true`) — a tunnel started inside a normal tool call is killed when the call returns.
 5. **Run**: eval/train on the box (localhost) or Inspect from the PC via the tunnel (`--model openai/<name> --model-base-url http://localhost:8000/v1`, `OPENAI_API_KEY=EMPTY`).
 6. **Save then DESTROY**: pull results into `output/`, push adapters to HF, then `uvx vastai destroy instance <id>` (pipe `y`). Verify `show instances` == 0. **Never leave an instance running** — confirm teardown before ending.
@@ -233,7 +272,7 @@ Never terminate a resource this repository did not provision. Report it instead.
 2. Empty-<think> collapse: Qwen3's chat template wraps plain assistant text in an empty <think></think>, so SFT on data without reasoning traces trains the model to STOP reasoning. Every SFT corpus must carry reasoning_content per example unless deliberately asked for: synthdoc's SFT export does this natively; the original difficult-advice pipeline needed the post-hoc augment_thinking.py step.
 3. **QLoRA OOM** at batch 8 × 2048 on 80GB → use batch 4, `max_seq_len` ~1536–2048, and launch with `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`.
 4. **Train only on assistant tokens for the loss.** Qwen3's chat template lacks `{% generation %}` markers, so TRL's `assistant_only_loss` produces an all-zero mask (nothing trains). Build the label mask yourself in a custom collator — set the prompt/user tokens to `-100` and keep the assistant-completion tokens — so the loss is computed on assistant completions only. Do NOT fall back to full-sequence training (it dilutes the signal with prompt tokens).
-5. **Eval mode must match training**: the thinking-trained model is evaluated in thinking mode (`VLLM_ENABLE_THINKING=1` for `run_eval.sh`, compared vs the *thinking* baseline). Don't cross modes.
+5. **Eval mode must match training**: the thinking-trained model is evaluated in thinking mode (`VLLM_ENABLE_THINKING=1` for `run_agentic_misalignment.sh`, compared vs the *thinking* baseline). Don't cross modes.
 6. **MMLU on a thinking model**: use `-T cot=True` + high `--max-tokens`; the default `cot=False` caps generation at 16 tokens and truncates the `<think>` → false 0%.
 7. **Judge routing** in the vendored harness: `_detect_provider` matched substring "claude" → Anthropic before the `/`-prefix rule. The vendored copy is PATCHED so `anthropic/claude-sonnet-4.5` routes to OpenRouter; if you re-clone the harness, re-apply the `vllm/` provider + routing + `enable_thinking` patches in `src/eval/misalignment/third_party/agentic-misalignment/api_client/model_client.py`.
 8. **SSH command hangs**: launches that background a process (`nohup … &`) can keep the SSH channel open; wrap long remote work in `nohup … </dev/null &` and poll the log rather than waiting on the call.

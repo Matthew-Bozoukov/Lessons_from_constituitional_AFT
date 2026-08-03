@@ -66,26 +66,26 @@ spending ~$74 on Sonnet 4.5. Two files in [`matboz/difficult-advice-qwen3`](http
 mkdir -p data
 uv run hf download matboz/difficult-advice-qwen3 sft_dataset_thinking.jsonl \
   --repo-type dataset --local-dir data
-# then go straight to step 5 with configs/train_lora_thinking.yaml
+# then go straight to step 5 with configs/train/lora_qwen3_difficult_advice_thinking.yaml
 # (its data_path already points at data/sft_dataset_thinking.jsonl)
 ```
 The pre-trained LoRA adapter is also published — to skip training *and* generation entirely and go
 straight to evaluation (step 6), pull [`matboz/qwen3-32b-difficult-advice-lora`](https://huggingface.co/matboz/qwen3-32b-difficult-advice-lora):
 ```bash
 uv run hf download matboz/qwen3-32b-difficult-advice-lora --local-dir ./adapter
-bash scripts/serve_lora.sh ./adapter
+bash scripts/gpu/serve_lora.sh ./adapter
 ```
 Steps 1-2 below are only needed if you want to regenerate the data from scratch.
 
 ### 1. Generate the difficult-advice SFT data (local, OpenRouter → Sonnet 4.5)
 ```bash
 # Smoke (2 domains × 2 scenarios, seconds):
-uv run scripts/generate_difficult_advice.py \
-  --config configs/difficult_advice_gen.yaml --smoke
+uv run scripts/data/generate_difficult_advice.py \
+  --config configs/data/difficult_advice_gen_v1.yaml --smoke
 
 # Full ~1.5M-token run (18 domains × 120 scenarios ≈ 2.1k accepted examples, ~$46, ~15 min):
-uv run scripts/generate_difficult_advice.py \
-  --config configs/difficult_advice_gen.yaml \
+uv run scripts/data/generate_difficult_advice.py \
+  --config configs/data/difficult_advice_gen_v1.yaml \
   --scenarios_per_domain 120 --target_tokens 1500000 --tag run1p5m
 ```
 Sonnet 4.5 (a) generates diverse *user-in-a-dilemma* scenarios across 18 domains, (b) writes a
@@ -97,8 +97,8 @@ Naive SFT on single-blob answers makes Qwen3's chat template emit an **empty `<t
 which trains the model to *stop reasoning*. Fix: give each example a real first-person reasoning
 trace via the `reasoning_content` field (renders as a real `<think>` block).
 ```bash
-uv run scripts/augment_thinking.py \
-  --config configs/difficult_advice_gen.yaml \
+uv run scripts/data/augment_thinking.py \
+  --config configs/data/difficult_advice_gen_v1.yaml \
   --sft_path output/difficult_advice_gen/run1p5m_*/sft_dataset.jsonl
 # → output/difficult_advice_gen/think_*/sft_dataset_thinking.jsonl   (~$28, ~15 min)
 ```
@@ -127,10 +127,10 @@ uv run --no-sync python -m vllm.entrypoints.openai.api_server --model Qwen/Qwen3
   --served-model-name qwen3 --dtype bfloat16 --max-model-len 13312 \
   --gpu-memory-utilization 0.94 --port 8000
 # eval (from /root/work): blackmail+leaking honeypots, Sonnet-4.5 judge
-bash scripts/run_eval.sh qwen3_baseline configs/eval_agentic.yaml
+bash scripts/eval/run_agentic_misalignment.sh qwen3_baseline configs/eval/agentic_misalignment.yaml
 ```
 The eval harness (vendored `src/eval/misalignment/third_party/agentic-misalignment/`) is patched with a `vllm/` provider;
-`scripts/run_eval.sh` runs generate→experiments→classify→aggregate and writes
+`scripts/eval/run_agentic_misalignment.sh` runs generate→experiments→classify→aggregate and writes
 `results/<id>/misalignment_summary.json`. Thinking mode is off by default; set
 `VLLM_ENABLE_THINKING=1` to evaluate in thinking mode (use this for the thinking-trained model).
 
@@ -139,15 +139,15 @@ The eval harness (vendored `src/eval/misalignment/third_party/agentic-misalignme
 > **Skip training entirely** — use the published adapter and jump to step 6:
 > ```bash
 > uv run hf download matboz/qwen3-32b-difficult-advice-lora --local-dir ./adapter
-> bash scripts/serve_lora.sh ./adapter        # serves base Qwen3-32B + the trained LoRA
+> bash scripts/gpu/serve_lora.sh ./adapter        # serves base Qwen3-32B + the trained LoRA
 > ```
 
 To train it yourself:
 ```bash
 # thinking-format (recommended): reasoning preserved
 # (on the GPU box; uv workflow — see the root README's "Remote GPU boxes")
-uv run --no-sync scripts/train_lora.py --config configs/train_lora_thinking.yaml
-# (non-thinking baseline arm: configs/train_lora.yaml)
+uv run --no-sync scripts/train/train_lora.py --config configs/train/lora_qwen3_difficult_advice_thinking.yaml
+# (non-thinking baseline arm: configs/train/lora_qwen3_difficult_advice.yaml)
 ```
 Key config: r=32, 2 epochs, batch 4 × grad-accum 4, max_seq_len 2048, `assistant_only_loss: false`
 (Qwen3's template has no `{% generation %}` markers, so assistant-only masking is all-zero).
@@ -156,10 +156,10 @@ Launch with `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` to avoid fragment
 ### 6. Post-training eval + report
 ```bash
 # serve base + adapter:
-bash scripts/serve_lora.sh /path/to/output/train_lora_thinking/<ts>/adapter
+bash scripts/gpu/serve_lora.sh /path/to/output/train_lora_thinking/<ts>/adapter
 # thinking-mode eval of the fine-tune vs the thinking baseline:
-VLLM_ENABLE_THINKING=1 bash scripts/run_eval.sh qwen3_difficult_advice_thinking \
-  configs/eval_agentic.yaml "" vllm/difficult_advice
+VLLM_ENABLE_THINKING=1 bash scripts/eval/run_agentic_misalignment.sh qwen3_difficult_advice_thinking \
+  configs/eval/agentic_misalignment.yaml "" vllm/difficult_advice
 # build the capstone dashboard (local, after pulling the 4 summaries into output/eval_summaries/):
 uv run scratch/reports/final_report.py
 ```
@@ -169,7 +169,7 @@ uv run scratch/reports/final_report.py
 Serve base+adapter, SSH-tunnel port 8000 to the machine that has
 [`inspect_evals`](https://github.com/UKGovernmentBEIS/inspect_evals), then:
 ```bash
-bash scripts/run_inspect_leaking.sh difficult_advice explicit america ft_explicit_america
+bash scripts/eval/run_leaking_inspect.sh difficult_advice explicit america ft_explicit_america
 ```
 (runs `inspect_evals/agentic_misalignment`, leaking scenario, gemini-flash grader).
 
@@ -207,8 +207,8 @@ Only `OPENROUTER_API_KEY` is needed — the agent and all four judges run throug
 ```bash
 uv run pytest tests/test_odcv_metrics.py -q        # metric sanity (recovers 43.8%/1.67 from the paper's CSV)
 
-bash scripts/run_odcv.sh configs/odcv_bench.yaml --smoke   # 2 scenarios, verifies wiring end to end
-bash scripts/run_odcv.sh configs/odcv_bench.yaml           # full 80-scenario run
+bash scripts/eval/run_odcv.sh configs/eval/odcv_bench_base_openrouter.yaml --smoke   # 2 scenarios, verifies wiring end to end
+bash scripts/eval/run_odcv.sh configs/eval/odcv_bench_base_openrouter.yaml           # full 80-scenario run
 ```
 `run_odcv.sh` tees everything to `output/odcv_bench/logs/run_<ts>.log`. Results land in
 `output/odcv_bench/qwen3.6-27b/<ts>/`: `agent_logs/` (trajectories), `evaluations/scores_<judge>.json`,
@@ -220,7 +220,7 @@ calls that are already cached, so an interrupted run costs nothing to continue.
 
 ### Deviations from upstream (deliberate)
 - `run_experiments.py` hardcodes all 12 paper models and runs scenarios strictly sequentially, with
-  fixed container names and host port 5000. `scripts/odcv_rollout.py` runs **one** model and
+  fixed container names and host port 5000. `scripts/eval/odcv_rollout.py` runs **one** model and
   gives each scenario its own Compose project (+ an `orchestrator_api` network alias so the agent's
   hardcoded hostname still resolves), which allows `concurrency: 4`. Set `concurrency: 1` for
   strictly upstream behaviour; agent behaviour is unaffected either way.
@@ -265,9 +265,9 @@ HuggingFace (`LASR-Callum/synthdoc-<name>`).
 
 ## Repo layout
 - `src/data/synthdoc/` self-contained six-stage difficult-advice data pipeline (see above); its run config is `configs/synthdoc.yaml`.
-- `src/` reusable code (`openrouter.py`, `utils.py`, `data/`, `train/`, `eval/`); `scripts/` thin pipeline CLIs; `scratch/` one-offs.
-- `configs/` OmegaConf YAML for every step.
-- `scripts/` remote drivers (`run_eval.sh`, `serve_lora.sh`, `run_inspect_leaking.sh`).
+- `src/` reusable code (`openrouter.py`, `utils.py`, `data/`, `train/`, `eval/`); `scripts/` thin pipeline CLIs foldered by stage (`data/`, `train/`, `eval/`, `gpu/`); `scratch/` one-offs.
+- `configs/` OmegaConf YAML for every step, foldered by stage (`data/`, `train/`, `eval/`).
+- `scripts/` remote drivers (`eval/run_agentic_misalignment.sh`, `gpu/serve_lora.sh`, `eval/run_leaking_inspect.sh`).
 - `src/eval/misalignment/third_party/` vendored eval harnesses, patched (`agentic-misalignment`: `vllm/` provider + judge routing; `odcv-bench`).
 - `constitutions/claude_constitution_principles.md` the alignment target.
 - `output/` all run artifacts; `docs/LOG.md` append-only research log.
