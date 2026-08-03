@@ -56,3 +56,39 @@ def test_supervised_fraction_is_a_minority_of_a_prompt_heavy_example():
     supervised = sum(1 for v in out["labels"] if v != -100)
     assert supervised == len("ok<|im_end|>")
     assert supervised < 0.1 * len(out["labels"])
+
+
+def test_check_thinking_declaration():
+    import pytest
+
+    from src.train.masking import EMPTY_THINK, check_thinking_declaration
+
+    real = {"text": f"<|im_start|>assistant\n<think>\nreal trace\n</think>\nanswer<|im_end|>"}
+    empty = {"text": f"<|im_start|>assistant\n{EMPTY_THINK}answer<|im_end|>"}
+    plain = {"text": "<|im_start|>assistant\nanswer<|im_end|>"}
+    msgs_think = {"messages": [{"role": "assistant", "content": "a", "reasoning_content": "hm"}]}
+    msgs_plain = {"messages": [{"role": "assistant", "content": "a"}]}
+
+    check_thinking_declaration([real, plain], thinking=True)
+    check_thinking_declaration([real, empty], thinking=True, mask_empty_think=True)
+    check_thinking_declaration([msgs_think], thinking=True)
+    check_thinking_declaration([plain, msgs_plain], thinking=False)
+
+    with pytest.raises(AssertionError, match="no row carries a real reasoning trace"):
+        check_thinking_declaration([plain], thinking=True)
+    with pytest.raises(AssertionError, match="mask_empty_think"):
+        check_thinking_declaration([real, empty], thinking=True, mask_empty_think=False)
+    with pytest.raises(AssertionError, match="mislabels"):
+        check_thinking_declaration([real], thinking=False)
+
+
+def test_every_train_config_declares_thinking():
+    from pathlib import Path
+
+    from omegaconf import OmegaConf
+
+    configs = sorted(Path("configs/train").glob("lora_*.yaml"))
+    assert configs
+    for path in configs:
+        cfg = OmegaConf.load(path)
+        assert "thinking" in cfg and isinstance(cfg.thinking, bool), path.name

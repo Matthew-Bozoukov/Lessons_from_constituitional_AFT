@@ -45,3 +45,7 @@ train:
   # bitsandbytes 4-bit does not reliably cover this model's linear-attention/SSM
   # layers; 54GB of bf16 weights + LoRA + checkpointing fits an 80GB card.
   load_in_4bit: false
+
+# Eval-time thinking mode of this arm (CLAUDE.md eval framework): stamped into the
+# adapter's training_meta.json and validated against the data before training.
+thinking: true

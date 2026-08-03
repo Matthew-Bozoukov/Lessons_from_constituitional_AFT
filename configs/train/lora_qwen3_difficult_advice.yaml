@@ -26,3 +26,7 @@ train:
   # masking yields all-zero masks; use standard full-sequence SFT loss.
   assistant_only_loss: false
   attn_implementation: sdpa
+
+# Eval-time thinking mode of this arm (CLAUDE.md eval framework): stamped into the
+# adapter's training_meta.json and validated against the data before training.
+thinking: false
