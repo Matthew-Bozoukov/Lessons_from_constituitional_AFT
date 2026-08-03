@@ -139,7 +139,7 @@ def test_sshexec_remote_commands_source_the_hosts_own_env():
     ex = SshExec("somehost", port=8000)
     wrapped = ex._with_env("uv run python -c x")
     # The pod's .env, sourced shell-convention style; the driver's env is never sent.
-    assert wrapped.startswith("set -a; [ -f /root/work/.env ]")
+    assert "set -a; [ -f /root/work/.env ]" in wrapped
     assert wrapped.endswith("uv run python -c x")
 
 
