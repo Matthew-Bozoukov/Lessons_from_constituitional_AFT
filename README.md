@@ -160,33 +160,18 @@ straight to evaluation (step 6), pull [`matboz/qwen3-32b-difficult-advice-lora`]
 uv run hf download matboz/qwen3-32b-difficult-advice-lora --local-dir ./adapter
 bash scripts/gpu/serve_lora.sh ./adapter
 ```
-Steps 1-2 below are only needed if you want to regenerate the data from scratch.
-
-### 1. Generate the difficult-advice SFT data (local, OpenRouter → Sonnet 4.5)
+### 1-2. Get the difficult-advice SFT data
+The v1 generation code (`generate_difficult_advice.py` + `augment_thinking.py`) was deleted on
+2026-08-03 — git history before that date has it, and its dataset card records the exact
+provenance. Pull the finished dataset instead:
 ```bash
-# Smoke (2 domains × 2 scenarios, seconds):
-uv run src/experiments/generate_difficult_advice.py \
-  --config configs/data/difficult_advice_gen_v1.yaml --smoke
-
-# Full ~1.5M-token run (18 domains × 120 scenarios ≈ 2.1k accepted examples, ~$46, ~15 min):
-uv run src/experiments/generate_difficult_advice.py \
-  --config configs/data/difficult_advice_gen_v1.yaml \
-  --scenarios_per_domain 120 --target_tokens 1500000 --tag run1p5m
+uv run hf download matboz/difficult-advice-qwen3 sft_dataset_thinking.jsonl \
+  --repo-type dataset --local-dir data/
 ```
-Sonnet 4.5 (a) generates diverse *user-in-a-dilemma* scenarios across 18 domains, (b) writes a
-constitution-aligned response with open value deliberation, (c) grades/filters each pair. Output:
-`output/difficult_advice_gen/<run>/sft_dataset.jsonl` (+ `summary.md`, `all_records.jsonl`).
-
-### 2. Add `<think>` reasoning traces (the reasoning-preserving fix — recommended)
-Naive SFT on single-blob answers makes Qwen3's chat template emit an **empty `<think></think>`**,
-which trains the model to *stop reasoning*. Fix: give each example a real first-person reasoning
-trace via the `reasoning_content` field (renders as a real `<think>` block).
-```bash
-uv run src/experiments/augment_thinking.py \
-  --config configs/data/difficult_advice_gen_v1.yaml \
-  --sft_path output/difficult_advice_gen/run1p5m_*/sft_dataset.jsonl
-# → output/difficult_advice_gen/think_*/sft_dataset_thinking.jsonl   (~$28, ~15 min)
-```
+`sft_dataset_thinking.jsonl` carries a real first-person `<think>` trace per example — the
+reasoning-preserving fix; naive SFT on single-blob answers makes Qwen3's chat template emit an
+empty `<think></think>`, which trains the model to *stop reasoning*. New difficult-advice data
+is generated with `synthdoc` (see the synthdoc section), which carries reasoning natively.
 
 ### 3. Provision + prepare the GPU box
 ```bash

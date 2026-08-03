@@ -39,9 +39,9 @@ src/                    correctness-critical reusable code (installed editable; 
   utils.py                extract_json, git_sha, timestamp, write_run_meta, count_chat_tokens
   data/                   synthetic data generation: synthdoc/ (self-contained six-stage
                           difficult-advice pipeline, formerly synthdoc_v2; `uv run synthdoc <cmd>`,
-                          config configs/data/synthdoc.yaml), the SFT/DPO dataset pipeline (prompts.py,
-                          dpo_prompts.py, generate_*, augment_thinking.py) + build_mixture.py
-  train/                  training: train_lora.py, train_dpo.py, merge_lora.py
+                          config configs/data/synthdoc.yaml) + mixture tooling (build_mixture.py,
+                          balanced_subset.py, convert_synthdoc_qwen.py, prepare_tulu.py, ...)
+  train/                  training: train_lora.py, merge_lora.py
   eval/                   eval registry in __init__.py (name -> EvalSpec, lazy runner) — every
                           eval follows the run() contract in "The eval framework" below
     capabilities/         lmsys_eval.py + capability_{gen,judge,report,metrics,stats}.py (Arena-Hard
@@ -53,14 +53,14 @@ src/                    correctness-critical reusable code (installed editable; 
     vulnerabilities/      petri/ + surf/ audit tooling (generalized from the completed MSM audit)
 configs/                OmegaConf YAML, one per step, foldered by pipeline stage.
                         NEVER hardcode hyperparams in scripts.
-  data/                   data generation + mixtures (synthdoc, difficult_advice_gen_v*, mixture_qwen36_*, tulu_control)
-  train/                  SFT/DPO training (lora_<model>_<arm>*, dpo_qwen36_difficult_advice)
+  data/                   data generation + mixtures (synthdoc, mixture_qwen36_*, tulu_control)
+  train/                  SFT training (lora_<model>_<arm>*)
   eval/                   evals (capability, mmlu, agentic_misalignment, odcv_*, constitution_probe)
 scripts/                pipeline drivers, foldered to mirror src/ stages + gpu/ for infra
   run_eval.py             THE eval entrypoint: serves each --target and dispatches to a
                           registered eval's run() — see "The eval framework" below
-  data/                   thin CLIs over src/data/ (generate_difficult_advice, build_mixture, ...)
-  train/                  thin CLIs over src/train/ (train_lora, train_dpo, merge_lora)
+  data/                   thin CLIs over src/data/ (build_mixture, ...)
+  train/                  thin CLIs over src/train/ (train_lora, merge_lora)
   gpu/                    provision infra: runpod_capability.py, runpod_train.py
 scratch/                one-off and AI-generated scripts (report generators, probes, inspection
                         snippets). Default home for new experimental code; NOTHING imports from it.
@@ -77,7 +77,7 @@ docs/LOG.md             append-only research log, MOST RECENT FIRST. Add an entr
 
 - `src/` holds verified, reusable code: modules a human has reviewed and that
   other code is allowed to depend on. Placement follows what the code *does* —
-  data generation (synthdoc, the SFT/DPO dataset pipeline, mixtures) goes in
+  data generation (synthdoc, mixtures) goes in
   `src/data/`, training in `src/train/`, evaluation and audit tooling in
   `src/eval/` under the matching subarea (`capabilities/`,
   `misalignment/` — including its `internalization/` proxy eval — or
@@ -104,7 +104,7 @@ docs/LOG.md             append-only research log, MOST RECENT FIRST. Add an entr
     mixture sweep); mixture ratios read `<synth>_<tulu>` (`20_80` = 20%
     difficult-advice / 80% Tulu); eval arms are `base_*` (untrained),
     `ft_<ratio>[_<ablation>]` (difficult-advice fine-tunes), `tulu100`
-    (0%-synthetic control), `dpo`. When two scripts share a subject, a
+    (0%-synthetic control). When two scripts share a subject, a
     harness qualifier disambiguates: `run_mmlu_arms.sh` (arm ladder) vs
     `run_mmlu_inspect.sh` (inspect_evals single endpoint).
   - Python thin CLI: some files in `src/` contain code that can both be ran as part of a pipeline or as a standalone job/entrypoint. It is therefore important to provide a script in `scripts/` that runs that standalone function and it should be named **exactly** after the `src/` module it wraps —
@@ -230,11 +230,15 @@ deleted with that package on 2026-08-03 — see git history — so enforce them 
 
 ## The pipeline (each step = one experiment script + one config)
 
-1. `scripts/data/generate_difficult_advice.py` (+ `configs/data/difficult_advice_gen_v1.yaml`) — Sonnet 4.5 makes scenarios→responses→grades. Has `--smoke`. (Logic: `src/data/generate_difficult_advice.py`.)
-2. `scripts/data/augment_thinking.py` — adds a real `<think>` trace per example via `reasoning_content` (the reasoning-preserving fix). Has `--smoke`.
+1. `uv run synthdoc run --config configs/data/synthdoc.yaml` — six-stage difficult-advice generation from the constitution (scenarios → prompts → responses → trait-rewrites), reasoning traces native. Has `--smoke`.
+2. `scripts/data/build_mixture.py` (+ `configs/data/mixture_*.yaml`) — token-budgeted training mixture: `messages` sources keep their `<think>` traces, HF `repo` sources render with no think block; `balanced_subset.py` trait-balances the difficult-advice share. Has `--smoke`.
 3. `scripts/train/train_lora.py` (+ `configs/train/lora*.yaml`) — QLoRA SFT (runs on GPU box). Has `--smoke` (2 steps). Pushes the adapter to HF with `training_meta.json` — the thinking stamp the eval framework infers mode from.
 4. `scripts/run_eval.py --target <hf_path> --name agentic_misalignment` — agentic-misalignment honeypots → `misalignment_summary.json` via `src/eval/misalignment/aggregate_eval.py`.
 5. `scratch/reports/final_report.py` / `scratch/reports/make_report.py` — capstone report + plots + markdown from `output/eval_summaries/` (per-experiment write-up code, so it lives in scratch).
+
+(The v1 generator — `generate_difficult_advice.py`, `augment_thinking.py`, `prompts.py` — and the
+DPO pipeline — `dpo_prompts.py`, `generate_rejected.py`, `train_dpo.py` — were deleted 2026-08-03;
+git history is the archive. The v1 dataset lives on at HF `matboz/difficult-advice-qwen3`.)
 
 Add a new pipeline step as functions in the right `src/` area plus a thin CLI in the matching `scripts/<stage>/` folder and a `configs/<stage>/*.yaml` (naming rules above); one-off investigations go straight to `scratch/`.
 
