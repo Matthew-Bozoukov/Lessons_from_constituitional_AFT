@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import re
 import sys
 from pathlib import Path
 
@@ -26,6 +27,61 @@ _EMPTY_THINK = "<think>\n\n</think>"
 # Every token budget is divided by this under --smoke, so a smoke run exercises the full
 # wiring (rendering, streaming, validation, stats) in seconds.
 _SMOKE_SCALE = 20
+
+
+_ASSISTANT_HEADER = "<|im_start|>assistant\n"
+_TURN_END = "<|im_end|>"
+
+
+def _assistant_bodies(text: str):
+    """Yield (insert_at, body) for every assistant turn in a rendered conversation."""
+    i = 0
+    while True:
+        j = text.find(_ASSISTANT_HEADER, i)
+        if j == -1:
+            return
+        s = j + len(_ASSISTANT_HEADER)
+        e = text.find(_TURN_END, s)
+        yield s, text[s:e if e != -1 else len(text)]
+        i = e + len(_TURN_END) if e != -1 else len(text)
+
+
+def _think_census(text: str) -> tuple[int, int, int]:
+    """Count assistant turns by think content: (non-empty, empty, absent)."""
+    nonempty = empty = absent = 0
+    for _, body in _assistant_bodies(text):
+        m = re.search(r"<think>(.*?)</think>", body, re.S)
+        if not m:
+            absent += 1
+        elif m.group(1).strip():
+            nonempty += 1
+        else:
+            empty += 1
+    return nonempty, empty, absent
+
+
+def _ensure_think_everywhere(text: str) -> str:
+    """Give every assistant turn a think block, empty where it has no reasoning.
+
+    Qwen3.6's template emits `<think>` only for the FINAL assistant message, so a
+    multi-turn conversation renders its earlier turns bare however the template is
+    invoked. Rather than coax each source's renderer separately, this enforces the
+    invariant on the rendered string, so no source's own decisions can leave a hole.
+    `_think_census` verifies the result and the caller asserts on it.
+
+    NOTE: an empty think block is the documented empty-think collapse (CLAUDE.md
+    gotcha #2), and with the loss masked to assistant tokens it IS supervised. Enable
+    only through `always_think`, and only when that is the intended experiment.
+    """
+    out, prev = [], 0
+    for at, body in list(_assistant_bodies(text)):
+        if re.search(r"<think>.*?</think>", body, re.S):
+            continue
+        out.append(text[prev:at])
+        out.append(_EMPTY_THINK + "\n\n")
+        prev = at
+    out.append(text[prev:])
+    return "".join(out)
 
 
 def _render_with_think(tok, messages: list[dict]) -> str:
@@ -77,7 +133,7 @@ def _fill(rows: list[dict], budget: int, seed: int) -> list[dict]:
 def _take_messages(tok, path: Path, budget: int, seed: int, source: str) -> list[dict]:
     """Sample a raw chat jsonl up to a token budget, rendering with reasoning traces kept."""
     rows = []
-    for line in path.open():
+    for line in path.open(encoding="utf-8"):
         text = _render_with_think(tok, json.loads(line)["messages"])
         rows.append({"text": text, "source": source, "n_tokens": _ntok(tok, text)})
     assert rows, f"no rows in {path}"
@@ -88,7 +144,7 @@ def _take_rendered(path: Path, budget: int, seed: int, source: str) -> list[dict
     """Sample an already-rendered jsonl (fields: text, n_tokens) up to a token budget."""
     rows = [
         {"text": r["text"], "source": source, "n_tokens": r["n_tokens"]}
-        for r in map(json.loads, path.open())
+        for r in map(json.loads, path.open(encoding="utf-8"))
     ]
     assert rows, f"no rows in {path}"
     return _fill(rows, budget, seed)
@@ -163,12 +219,28 @@ def main(config: str = "configs/data/mixture_qwen36_20_80.yaml", smoke: bool = F
     tulu = _take_tulu3(tok, cfg.tulu3_repo, tulu_budget, seed, int(cfg.max_seq_len))
     print(f"  {'tulu3':<24} {len(tulu):>5} docs  {sum(r['n_tokens'] for r in tulu):>9,} tok")
     rows += tulu
+
+    # `always_think` is the opposite of this module's default. By default replay renders
+    # with no think block at all, because an EMPTY one is the documented pattern that
+    # trains a model to stop reasoning. Under `always_think` every assistant turn gets a
+    # block instead, empty where the turn carries no reasoning - so the tag structure is
+    # invariant across the corpus. Applied here, after every source has rendered, so one
+    # rule covers all of them and the census below can prove it held.
+    always_think = bool(cfg.get("always_think", False))
+    if always_think:
+        print("\n>>> always_think: giving every assistant turn a think block")
+        for r in rows:
+            fixed = _ensure_think_everywhere(r["text"])
+            if fixed != r["text"]:
+                r["text"] = fixed
+                r["n_tokens"] = _ntok(tok, fixed)
+
     random.Random(seed).shuffle(rows)
 
     out_dir = Path(cfg.output_dir) / (f"smoke_{timestamp()}" if smoke else timestamp())
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "mixture.jsonl"
-    with out_path.open("w") as f:
+    with out_path.open("w", encoding="utf-8") as f:
         for r in rows:
             f.write(json.dumps({"text": r["text"], "source": r["source"]}, ensure_ascii=False) + "\n")
 
@@ -182,7 +254,7 @@ def main(config: str = "configs/data/mixture_qwen36_20_80.yaml", smoke: bool = F
         b["share_pct"] = round(100 * b["tokens"] / grand, 2)
     stats = {"total": {"examples": len(rows), "tokens": grand},
              "by_source": by_source, "mixture_path": str(out_path)}
-    (out_dir / "mixture_stats.json").write_text(json.dumps(stats, indent=2))
+    (out_dir / "mixture_stats.json").write_text(json.dumps(stats, indent=2), encoding="utf-8")
     write_run_meta(out_dir, OmegaConf.to_container(cfg, resolve=True),
                    extra={"command": " ".join(sys.argv), "smoke": smoke, "stats": stats})
 
@@ -201,22 +273,49 @@ def main(config: str = "configs/data/mixture_qwen36_20_80.yaml", smoke: bool = F
     # Validate what actually landed on disk, not just the in-memory rows. Rendered sources
     # are exempt from the think checks: convert_synthdoc_qwen.py validated them at render
     # time, and the agentic corpus deliberately keeps empty-think markers on some turns.
-    written = [json.loads(line) for line in out_path.open()]
+    written = [json.loads(line) for line in out_path.open(encoding="utf-8")]
     assert len(written) == len(rows), "mixture file is truncated"
-    for name, spec in sources.items():
-        if spec["format"] != "messages":
-            continue
-        got = [r["text"] for r in written if r["source"] == name]
-        n_empty = sum(_EMPTY_THINK in t for t in got)
-        n_think = sum("<think>" in t for t in got)
-        print(f"{name}: {n_think}/{len(got)} rows with <think> (must be all), "
-              f"{n_empty} EMPTY think blocks (MUST be 0)")
-        assert n_think == len(got), f"{name}: every rendered row must keep its think block"
-        assert n_empty == 0, "empty think blocks would train the model to stop reasoning"
-    tulu_with_think = sum(r["source"] == "tulu3" and "<think>" in r["text"] for r in written)
+    if always_think:
+        # The invariant is per assistant TURN, not per row: a multi-turn conversation with
+        # a think block only on its last turn would pass any row-level check while leaving
+        # most turns bare. Census every turn in the written artifact and require zero holes.
+        per_source: dict[str, list[int]] = {}
+        for r in written:
+            c = _think_census(r["text"])
+            acc = per_source.setdefault(r["source"], [0, 0, 0])
+            for i in range(3):
+                acc[i] += c[i]
+        print("\nassistant turns by think content (always_think):")
+        tot = [0, 0, 0]
+        for name, (ne, em, ab) in sorted(per_source.items()):
+            turns = ne + em + ab
+            print(f"  {name:<24} turns={turns:>6,}  reasoning={ne:>5,}  "
+                  f"empty={em:>6,}  MISSING={ab}")
+            tot = [tot[i] + (ne, em, ab)[i] for i in range(3)]
+        ne, em, ab = tot
+        print(f"  {'TOTAL':<24} turns={ne+em+ab:>6,}  reasoning={ne:>5,}  "
+              f"empty={em:>6,}  MISSING={ab}")
+        assert ab == 0, f"{ab} assistant turns have no think block; always_think not honoured"
+        share = em / max(1, ne + em)
+        print(f"\n  >>> {share:.1%} of think blocks are EMPTY and, with assistant-only "
+              f"masking, supervised.\n      That is the empty-think collapse "
+              f"(CLAUDE.md gotcha #2) by construction - intended here, but it is the\n"
+              f"      single thing to check first if the trained arm stops reasoning.")
+    else:
+        for name, spec in sources.items():
+            if spec["format"] != "messages":
+                continue
+            got = [r["text"] for r in written if r["source"] == name]
+            n_empty = sum(_EMPTY_THINK in t for t in got)
+            n_think = sum("<think>" in t for t in got)
+            print(f"{name}: {n_think}/{len(got)} rows with <think> (must be all), "
+                  f"{n_empty} EMPTY think blocks (MUST be 0)")
+            assert n_think == len(got), f"{name}: every rendered row must keep its think block"
+            assert n_empty == 0, "empty think blocks would train the model to stop reasoning"
+        tulu_with_think = sum(r["source"] == "tulu3" and "<think>" in r["text"] for r in written)
+        print(f"TULU3 rows containing any <think>: {tulu_with_think} (MUST be 0)")
+        assert tulu_with_think == 0, "no TULU3 replay example may carry a think block"
     print("\n" + json.dumps(stats, indent=2))
-    print(f"TULU3 rows containing any <think>: {tulu_with_think} (MUST be 0)")
-    assert tulu_with_think == 0, "no TULU3 replay example may carry a think block"
     print(f">>> wrote {out_path}")
 
     # Breaking out of a streaming dataset mid-shard leaves HF's parquet reader threads to
