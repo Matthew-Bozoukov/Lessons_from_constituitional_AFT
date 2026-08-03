@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from data.synthdoc.constitution import segment  # noqa: E402
 from data.synthdoc.stages import cost_of, to_sft  # noqa: E402
 
-CONSTITUTION = "constitutions/claude_constitution_principles.md"
+CONSTITUTION = "constitutions/archive/claude_distilled_8_principles_v1/constitution.md"
 
 
 def test_segments_into_eight_traits():

@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 # Distilled constitutional principles injected into generation/grading prompts.
-# Mirrors constitutions/claude_constitution_principles.md (kept inline for prompt use).
+# Mirrors constitutions/archive/claude_distilled_8_principles_v1/constitution.md (kept inline for prompt use).
 # v1: the original constitution used for the run1p5m data generation. Kept byte-for-byte
 # unchanged so that run is reproducible; CONSTITUTION is a backward-compat alias to it.
 CONSTITUTION_V1 = """\
@@ -29,8 +29,8 @@ and what a wise, caring, honest advisor would actually say.
 
 CONSTITUTION = CONSTITUTION_V1  # backward-compat alias; existing callers keep working unchanged.
 
-# v2: the "approved constitution" (constitutions/claude_approved_constitution.md), lifted verbatim
-# from the fenced code block in §5 of constitutions/claude_approved_constitution_rationale.md.
+# v2: the "approved constitution" (constitutions/claude_distilled_7_principles_approved/constitution.md), lifted verbatim
+# from the fenced code block in §5 of constitutions/claude_distilled_7_principles_approved/rationale.md.
 CONSTITUTION_V2 = """\
 Constitutional principles (the alignment target). Weigh these holistically, in this priority
 order when they conflict: (1) never deceive or manipulate, and never give operational help with
@@ -210,7 +210,7 @@ def think_trace_messages(user_message: str, response: str) -> list[dict]:
 
     Held fixed for the v1-vs-v2 comparison: it does not take a constitution argument,
     so think-augmentation is identical regardless of which constitution generated the
-    underlying response (see constitutions/claude_approved_constitution_rationale.md §3/§6.1).
+    underlying response (see constitutions/claude_distilled_7_principles_approved/rationale.md §3/§6.1).
 
     Args:
         user_message: The user's difficult-advice message.
