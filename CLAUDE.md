@@ -20,17 +20,19 @@ chronological findings.
 
 ```
 src/                    correctness-critical reusable code (installed editable; import as src.*):
-  openrouter.py           OpenRouterClient + map_threaded (threaded API calls, bounded retry)
+  endpoints/              model endpoints: openrouter.py (OpenRouterClient + map_threaded —
+                          judges, red-teamers, data generation) + vllm_server.py (serve a
+                          target model on localhost via vLLM; thinking mode pinned at serve time)
   utils.py                extract_json, git_sha, timestamp, write_run_meta, count_chat_tokens
   data/                   synthetic data generation: synthdoc/ (self-contained six-stage
                           difficult-advice pipeline, formerly synthdoc_v2; `uv run synthdoc <cmd>`,
                           config configs/data/synthdoc.yaml), the SFT/DPO dataset pipeline (prompts.py,
                           dpo_prompts.py, generate_*, augment_thinking.py) + build_mixture.py
   train/                  training: train_lora.py, train_dpo.py, merge_lora.py
-  eval/
+  eval/                   eval registry in __init__.py (name -> EvalSpec, lazy runner) — every
+                          eval follows the run() contract in "The eval framework" below
     capabilities/         lmsys_eval.py + capability_{gen,judge,report,metrics,stats}.py (Arena-Hard
-                          SxS vs base); mmlu.py + mmlu_{eval,report}.py (MMLU arm ladder); MMLU also
-                          via external inspect_evals
+                          SxS vs base); mmlu.py + mmlu_{eval,report}.py (MMLU arm ladder)
     misalignment/         ODCV-Bench (odcv.py stats, rollout, judge, compare) + aggregate_eval.py
       internalization/      self-contained constitution-internalization proxy eval (Tier A).
                             `scripts/eval/run_internalization.sh smoke` runs offline in ~10s; see its README.md
@@ -42,12 +44,11 @@ configs/                OmegaConf YAML, one per step, foldered by pipeline stage
   train/                  SFT/DPO training (lora_<model>_<arm>*, dpo_qwen36_difficult_advice)
   eval/                   evals (capability, mmlu, agentic_misalignment, odcv_*, constitution_probe)
 scripts/                pipeline drivers, foldered to mirror src/ stages + gpu/ for infra
+  run_eval.py             THE eval entrypoint: serves each --target and dispatches to a
+                          registered eval's run() — see "The eval framework" below
   data/                   thin CLIs over src/data/ (generate_difficult_advice, build_mixture, ...)
   train/                  thin CLIs over src/train/ (train_lora, train_dpo, merge_lora)
-  eval/                   eval drivers: run_*.sh shell pipelines (run_agentic_misalignment,
-                          run_capability, run_mmlu_arms, run_odcv, run_internalization, ...)
-                          + thin CLIs (odcv_*, aggregate_eval, lmsys_eval, patch_arena_hard)
-  gpu/                    provision/serve infra: serve_lora.sh, runpod_capability.py, runpod_train.py
+  gpu/                    provision infra: runpod_capability.py, runpod_train.py
 scratch/                one-off and AI-generated scripts (report generators, probes, inspection
                         snippets). Default home for new experimental code; NOTHING imports from it.
 dashboard/              the research-log web app (own toolchain, deployed on Netlify) - see its README
@@ -68,14 +69,14 @@ docs/LOG.md             append-only research log, MOST RECENT FIRST. Add an entr
   `src/eval/` under the matching subarea (`capabilities/`,
   `misalignment/` — including its `internalization/` proxy eval — or
   `vulnerabilities/petri|surf/`).
-- `scripts/` holds pipelines we expect to rerun. A script does no real work
+- `scripts/` holds core pipelines we expect to rerun. A script does no real work
   itself — it only pipes `src/` functions together (or drives a GPU box). If a
   script grows logic worth reusing, the logic moves into `src/` and the script
-  stays thin.
+  stays thin. It is very rare that a script written by AI should go in `scripts/` without human consulation: you should default to writing your scripts in `scratch/`. 
 - **`configs/` and `scripts/` are foldered by pipeline stage** (`data/`,
   `train/`, `eval/`, plus `scripts/gpu/` for provisioning/serving infra). A new
   config or script goes in the folder for the stage it belongs to — never at
-  the top level of `configs/` or `scripts/`.
+  the top level of `configs/` or `scripts/` unless it is a script that pipes multiple stages together.
 - **Naming conventions** (follow these for every new file):
   - Config: `configs/<stage>/<subject>[_<variant>].yaml`. The filename never
     repeats the stage folder's name (`configs/eval/capability.yaml`, not
@@ -93,12 +94,8 @@ docs/LOG.md             append-only research log, MOST RECENT FIRST. Add an entr
     (0%-synthetic control), `dpo`. When two scripts share a subject, a
     harness qualifier disambiguates: `run_mmlu_arms.sh` (arm ladder) vs
     `run_mmlu_inspect.sh` (inspect_evals single endpoint).
-  - Python thin CLI: named **exactly** after the `src/` module it wraps —
-    `scripts/train/train_lora.py` wraps `src/train/train_lora.py`. If there is
-    no matching `src/` module, the logic probably belongs in `src/` first.
-  - Shell driver: verb-prefixed — `run_<subject>.sh` for pipelines,
-    `serve_*.sh` for serving. `<subject>` names what it runs
-    (`run_agentic_misalignment.sh`), not a generic word like `run_eval.sh`.
+  - Python thin CLI: some files in `src/` contain code that can both be ran as part of a pipeline or as a standalone job/entrypoint. It is therefore important to provide a script in `scripts/` that runs that standalone function and it should be named **exactly** after the `src/` module it wraps —
+    `scripts/train/train_lora.py` wraps `src/train/train_lora.py`. Only add these mirrors when we add new code to `src/` that you think will require running as a standalone script.
   - Every config's header states the exact command that consumes it — in the
     ABOUTME block or a `# Run: ...` line directly under it — so the
     config↔script pairing is greppable from either side.
@@ -223,20 +220,61 @@ deleted with that package on 2026-08-03 — see git history — so enforce them 
 1. `scripts/data/generate_difficult_advice.py` (+ `configs/data/difficult_advice_gen_v1.yaml`) — Sonnet 4.5 makes scenarios→responses→grades. Has `--smoke`. (Logic: `src/data/generate_difficult_advice.py`.)
 2. `scripts/data/augment_thinking.py` — adds a real `<think>` trace per example via `reasoning_content` (the reasoning-preserving fix). Has `--smoke`.
 3. `scripts/train/train_lora.py` (+ `configs/train/lora*.yaml`) — QLoRA SFT (runs on GPU box). Has `--smoke` (2 steps).
-4. `scripts/eval/run_agentic_misalignment.sh <expid> <config> [samples] [model]` — agentic-misalignment honeypots → `results/<id>/misalignment_summary.json` via `src/eval/misalignment/aggregate_eval.py`.
+4. `scripts/run_eval.py --target <hf_path> --name agentic_misalignment` — agentic-misalignment honeypots → `misalignment_summary.json` via `src/eval/misalignment/aggregate_eval.py`.
 5. `scratch/reports/final_report.py` / `scratch/reports/make_report.py` — capstone report + plots + markdown from `output/eval_summaries/` (per-experiment write-up code, so it lives in scratch).
 
 Add a new pipeline step as functions in the right `src/` area plus a thin CLI in the matching `scripts/<stage>/` folder and a `configs/<stage>/*.yaml` (naming rules above); one-off investigations go straight to `scratch/`.
+
+## The eval framework (the contract every eval follows)
+
+Evals run ON the GPU pod, from a clone of this repo — no tunnels, no serve scripts.
+Fresh pod: clone, copy `.env`, `uv sync`, then:
+
+```
+uv run scripts/run_eval.py --target <hf_path>[:think|:nothink] [<hf_path> ...] --name <eval> [key=value ...]
+```
+
+- **Targets are HF paths**: a LoRA adapter (base model resolved from the adapter's
+  `adapter_config.json`) or a full model. The suffix declares thinking mode, default
+  `:think`. Mode is a property of the *target*, pinned into the chat template at
+  serve time — never an env var, never a per-request flag — and comparisons never
+  cross modes (gotcha 5).
+- **`run_eval.py` owns serving**: it launches vLLM on localhost for each target via
+  `src/endpoints/vllm_server.py` and hands the eval an OpenAI-compatible base URL.
+  Evals never load weights and never start servers.
+- **Each eval is a registry entry** in `src/eval/__init__.py`: name → `EvalSpec`
+  holding a lazy `"module:function"` runner (imported only when selected, so
+  importing `src.eval` stays light) plus static metadata (`needs_docker`,
+  `needs_reference`, default config). The runner implements
+  `run(target, cfg, out_dir) -> summary`.
+- **A target list runs sequentially, reusing whatever is shareable**: downloaded
+  weights, a live server when consecutive targets share base model + mode (LoRA
+  swap only), judge-side artifacts. `run()` must therefore be re-entrant — no
+  process-global state, all output strictly under the `out_dir` it was given.
+- **Hyperparameters live in `configs/eval/<name>.yaml`**; CLI `key=value` pairs
+  merge as OmegaConf dotlist overrides. Judge/red-team models are config fields;
+  those calls go through `src/endpoints/openrouter.py`.
+- **The epilogue is `run_eval.py`'s job, not the eval's**: a per-target out_dir with
+  self-contained rollouts, `results.json`, a markdown mirror, and `run_meta.json`
+  (git SHA, config, target, mode); results push to HF with the required dataset-card
+  fields *as they are produced* (a dead pod loses nothing); a summary row lands in
+  `output/eval_summaries/`.
+- The audit tooling in `src/eval/vulnerabilities/` is exempt from this contract for now.
 
 ## GPU / vast.ai operational playbook (this is the fiddly part — follow it)
 
 Serving/training/eval all need one 80GB GPU; the local machine has none. Standard loop:
 1. **Provision**: `uvx vastai search offers 'gpu_name=H100_SXM num_gpus=1 rentable=true disk_space>=200 inet_down>=2000 reliability>=0.98' -o dph+`; create with image `pytorch/pytorch:2.6.0-cuda12.4-cudnn9-devel`, `--disk 200 --ssh --direct`.
-2. **Setup** (uv, same as local — see the root README "Remote GPU boxes"): install uv, clone the repo to `/root/work`, `uv sync`, then layer the pinned GPU stack: `uv pip install vllm==0.8.5 "transformers==4.51.3" trl==0.19.1 peft bitsandbytes accelerate wandb` (pins — see gotchas). Then `hf download Qwen/Qwen3-32B` and the adapter. On the box always invoke with `uv run --no-sync ...` — plain `uv run` re-syncs to the lock and undoes the transformers pin.
-3. **Serve**: `scripts/gpu/serve_lora.sh <adapter_dir>` (base `qwen3` + LoRA `difficult_advice`) or plain base for baseline.
-4. **Reach it from the PC**: SSH tunnel `localhost:8000 → instance:8000`. IMPORTANT: launch the tunnel with the **background Bash tool** (`run_in_background: true`) — a tunnel started inside a normal tool call is killed when the call returns.
-5. **Run**: eval/train on the box (localhost) or Inspect from the PC via the tunnel (`--model openai/<name> --model-base-url http://localhost:8000/v1`, `OPENAI_API_KEY=EMPTY`).
-6. **Save then DESTROY**: pull results into `output/`, push adapters to HF, then `uvx vastai destroy instance <id>` (pipe `y`). Verify `show instances` == 0. **Never leave an instance running** — confirm teardown before ending.
+2. **Setup**: install uv, clone the repo to `/root/work`, copy `.env`, `uv sync`. The GPU stack
+   (vllm/transformers/trl/peft/bitsandbytes) is pinned in `pyproject.toml` and the lock is
+   linux-only, so plain `uv run` is correct on the pod — no `uv pip` layering, no `--no-sync`.
+3. **Run**: evals via `uv run scripts/run_eval.py --target ... --name ...` (serving is internal —
+   see "The eval framework"); training via `uv run scripts/train/train_lora.py --config ...`.
+   Wrap long runs in `nohup … </dev/null &` and poll the log (gotcha 8).
+4. **Save then DESTROY**: `run_eval.py` pushes results to HF as they are produced; pull summaries
+   into `output/eval_summaries/`, push any trained adapter to HF, then
+   `uvx vastai destroy instance <id>` (pipe `y`). Verify `show instances` == 0. **Never leave an
+   instance running** — confirm teardown before ending.
 
 Cost discipline: OpenRouter and vast credit are finite and shared. Check balances before big runs; flag spend > ~$20; ask before re-provisioning for a new follow-up.
 
@@ -245,7 +283,7 @@ Cost discipline: OpenRouter and vast credit are finite and shared. Check balance
 All credentials live in one gitignored `.env` at the repository root. Copy
 `.env.example` to `.env` and fill it in; on a GPU box, copy the same file to
 `/root/work/.env`. Python code loads it with `python-dotenv` (`load_dotenv()`
-in `src/openrouter.py`); shell scripts use `set -a; source .env; set +a`.
+in `src/endpoints/openrouter.py`); shell scripts use `set -a; source .env; set +a`.
 
 - Never print, echo, log, commit, or summarize a secret value.
 - `.env`, `*.env`, `*.pem` and `*.key` are ignored repository-wide. That guard
@@ -269,12 +307,12 @@ Never terminate a resource this repository did not provision. Report it instead.
 ## Gotchas (these WILL bite you — all learned the hard way)
 
 1. **Version pins**: vLLM 0.8.5 requires `transformers==4.51.3`. Newer transformers → `Qwen2Tokenizer has no attribute all_special_tokens_extended`.
-2. Empty-<think> collapse: Qwen3's chat template wraps plain assistant text in an empty <think></think>, so SFT on data without reasoning traces trains the model to STOP reasoning. Every SFT corpus must carry reasoning_content per example unless deliberately asked for: synthdoc's SFT export does this natively; the original difficult-advice pipeline needed the post-hoc augment_thinking.py step.
+2. **Correct <think> tag templating and masking**: Some models (e.g. Qwen3) include chain of thought tags at the start of *every* assistant turn and simply leave those tags empty when no reasoning tokens where no reasoning tokens are present/needed. Ensure that training masks tokens with this in mind, ensuring that tokens that the model is never expected to generate never have a loss calculated for them. Similarly, during inference ensure that the correct think tags are appended to the templated user input according to whether thinking mode is enabled and according to the intended use case of that model (in most cases the Hugging Face `apply_chat_template` method should do this correctly but you must verify this). 
 3. **QLoRA OOM** at batch 8 × 2048 on 80GB → use batch 4, `max_seq_len` ~1536–2048, and launch with `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`.
-4. **Train only on assistant tokens for the loss.** Qwen3's chat template lacks `{% generation %}` markers, so TRL's `assistant_only_loss` produces an all-zero mask (nothing trains). Build the label mask yourself in a custom collator — set the prompt/user tokens to `-100` and keep the assistant-completion tokens — so the loss is computed on assistant completions only. Do NOT fall back to full-sequence training (it dilutes the signal with prompt tokens).
-5. **Eval mode must match training**: the thinking-trained model is evaluated in thinking mode (`VLLM_ENABLE_THINKING=1` for `run_agentic_misalignment.sh`, compared vs the *thinking* baseline). Don't cross modes.
-6. **MMLU on a thinking model**: use `-T cot=True` + high `--max-tokens`; the default `cot=False` caps generation at 16 tokens and truncates the `<think>` → false 0%.
-7. **Judge routing** in the vendored harness: `_detect_provider` matched substring "claude" → Anthropic before the `/`-prefix rule. The vendored copy is PATCHED so `anthropic/claude-sonnet-4.5` routes to OpenRouter; if you re-clone the harness, re-apply the `vllm/` provider + routing + `enable_thinking` patches in `src/eval/misalignment/third_party/agentic-misalignment/api_client/model_client.py`.
+4. **Train only on assistant tokens for the loss.** Qwen3's chat template lacks `{% generation %}` markers, so TRL's `assistant_only_loss` produces an all-zero mask (nothing trains). Build the label mask yourself in a custom collator — set the prompt/user tokens to `-100` and keep the assistant-completion tokens — so the loss is computed on assistant completions only. Do NOT fall back to full-sequence training (it dilutes the signal with prompt tokens). Think carefully about the think tag tokens mentioned earlier as some of these may count as prompt/user tokens that the model does not generate.
+5. **Eval mode must match training**: thinking is declared per target (`<hf_path>:think|:nothink`, default `:think`) and pinned into the chat template at serve time by `run_eval.py`. A thinking-trained arm is always compared against a *thinking* baseline — never cross modes, and never reintroduce a per-process toggle for this (the old `VLLM_ENABLE_THINKING` env var, killed in the framework migration: it defaulted to nothink, so one forgotten export silently crossed modes).
+6. **Reasoning models need token headroom**: any eval that caps generation tightly truncates inside the `<think>` block and scores a false 0% — size `max_tokens` for trace + answer, parse answers after `</think>`, and report the per-arm empty-think rate (a ~0-length trace means the arm stopped reasoning, gotcha 2). Learned via inspect_evals MMLU, whose default `cot=False` capped generation at 16 tokens.
+7. **Judge routing** in the vendored harness: `_detect_provider` matched substring "claude" → Anthropic before the `/`-prefix rule. The vendored copy is PATCHED so `anthropic/claude-sonnet-4.5` routes to OpenRouter; if you re-clone the harness, re-apply the `vllm/` provider + routing patches in `src/eval/misalignment/third_party/agentic-misalignment/api_client/model_client.py`. (Thinking mode needs no harness-side patch any more — it is pinned at serve time, gotcha 5.)
 8. **SSH command hangs**: launches that background a process (`nohup … &`) can keep the SSH channel open; wrap long remote work in `nohup … </dev/null &` and poll the log rather than waiting on the call.
 
 ## External artifacts
