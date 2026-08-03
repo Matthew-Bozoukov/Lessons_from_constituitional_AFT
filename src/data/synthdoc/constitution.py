@@ -7,9 +7,12 @@ import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-# A principle is a numbered item whose title is bolded, e.g.
+# A principle is either a numbered item whose title is bolded (the v1 format), e.g.
 #   1. **Honesty and non-deception.** Do not help the user deceive...
+# or a numbered H2 unit (the specgen format), e.g.
+#   ## 4. Be scrupulously honest and non-deceptive, in word, framing, and action
 _PRINCIPLE = re.compile(r"^(\d+)\.\s+\*\*(.+?)\*\*\s*(.*)$")
+_UNIT_HEADING = re.compile(r"^##\s+(\d+)\.\s+(.+?)\s*$")
 _HEADING = re.compile(r"^##\s+(.*)$")
 
 
@@ -72,11 +75,19 @@ def segment(path: str | Path) -> tuple[list[Trait], str]:
         traits.append(Trait(trait_id=f"t{idx}", index=idx, name=name.rstrip("."), text=text))
 
     for line in lines:
+        unit = _UNIT_HEADING.match(line)
+        if unit:  # specgen format: each numbered H2 opens a trait
+            flush()
+            current = (int(unit.group(1)), unit.group(2), [])
+            in_style = False
+            continue
         heading = _HEADING.match(line)
         if heading:
             flush()
             current = None
-            # Everything after the principles list is tone/style guidance.
+            # Everything after the principles list is tone/style guidance. Un-numbered
+            # headings before them (title, preamble) start no trait; the preamble still
+            # reaches the model via full_text() in the stages that inject the whole doc.
             in_style = "look" in heading.group(1).lower()
             continue
         if in_style:

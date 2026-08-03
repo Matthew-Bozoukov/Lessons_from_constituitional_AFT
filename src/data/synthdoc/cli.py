@@ -56,7 +56,7 @@ def estimate(config: str, measured: str | None = None) -> None:
     print(json.dumps(_estimate(cfg, measured), indent=2))
 
 
-def segment(constitution: str = "constitutions/archive/claude_distilled_8_principles_v1/constitution.md") -> None:
+def segment(constitution: str = "constitutions/claude_distilled_12_principles_mid/constitution.md") -> None:
     """Print the traits the constitution segments into, without calling any model.
 
     Args:

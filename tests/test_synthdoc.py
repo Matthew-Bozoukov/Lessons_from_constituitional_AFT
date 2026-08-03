@@ -35,6 +35,21 @@ def test_style_guidance_is_separate_from_traits():
     assert all("Deliberates openly" not in t.text for t in traits)
 
 
+def test_segments_specgen_heading_format():
+    # The default constitution since 2026-08-03: specgen's mid arm, whose units are
+    # numbered H2 headings rather than v1's bolded list items.
+    traits, style = segment("constitutions/claude_distilled_12_principles_mid/constitution.md")
+    assert len(traits) == 12
+    assert [t.trait_id for t in traits] == [f"t{i}" for i in range(1, 13)]
+    for t in traits:
+        assert t.name and len(t.text) > 60, f"{t.trait_id} looks truncated"
+        assert "*Why:*" in t.text, f"{t.trait_id} lost its rationale block"
+    # The closing aligned-response section is style guidance, not a trait; the
+    # un-numbered preamble heading must not become a trait either.
+    assert "Engages with the pressure" in style
+    assert all("holistic, not strict" not in t.text for t in traits)
+
+
 def test_sft_export_carries_reasoning_and_trait_metadata():
     rec = {
         "scenario_id": "t1_s000", "trait_id": "t1", "trait_name": "Honesty",
