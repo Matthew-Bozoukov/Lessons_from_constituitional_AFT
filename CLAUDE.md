@@ -1,5 +1,9 @@
 # CLAUDE.md — repo guide for agents
 
+**AI agents: do NOT write to this file unless specifically asked to — and even when asked,
+encourage human review of the exact diff. This file only stays useful if it stays curated;
+unsupervised agent edits turn it to slop.**
+
 Orientation + operating rules for this repo. Read this before touching anything. The global
 `~/.claude/CLAUDE.md` rules (uv, ABOUTME headers, YAML+OmegaConf configs, timestamped outputs,
 fail-fast, deliver actual figure files) all apply here too — this file adds the repo-specific parts.
