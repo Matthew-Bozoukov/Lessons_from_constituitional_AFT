@@ -1,0 +1,67 @@
+# ABOUTME: Run config for synthdoc_v2, the six-stage Teaching Claude Why difficult-advice pipeline.
+# ABOUTME: uv run python -m src.data.synthdoc_v2.cli run --config configs/synthdoc_v2.yaml [--smoke]
+
+seed: 0
+
+# Stage 1 segments this into its 8 numbered principles. Stages 4 and 6 inject the whole
+# document; stages 2, 4, 5 and 6 also inject the single target trait.
+constitution: "constitutions/claude_constitution_principles.md"
+n_traits: 8
+
+# Scenarios generated per trait. 8 traits x 116 = 928 examples ~ 1.0M Qwen3.6 tokens
+# at the measured ~1,082 tokens per rendered example.
+scenarios_per_trait: 116
+# Requested per API call. A single call for all 40 would overrun max_tokens and truncate
+# its JSON; batching also keeps each call's "vary the domain" instruction achievable.
+scenarios_per_call: 8
+
+output_dir: "output/synthdoc_v2"
+
+# Every stage's complete output is mirrored here as stage_<n>_<name>.jsonl, so a run can
+# resume from any stage and each stage is inspectable on its own.
+hf_repo: "LASR-Callum/synthdoc-v2-difficult-advice"
+hf_repo_smoke: "LASR-Callum/synthdoc-v2-difficult-advice-smoke"
+hf_private: false
+
+# 16 concurrent calls roughly halves wall clock vs 8 at no extra cost; OpenRouter
+# rate limiting, not the code, is the ceiling above this.
+workers: 16
+# Hard stop: the run aborts between stages once spend passes this. Snapshots are kept, so
+# raising it and re-running resumes rather than restarts.
+budget_usd: 45.0
+
+defaults:
+  temperature: 1.0
+  max_tokens: 4096
+
+# Model per stage. Haiku 4.5 generates (stages 2, 3, 5); Sonnet 5 refines and rewrites
+# (stages 4, 6), since those two carry the constitution and decide alignment quality.
+models:
+  # Stage 2 -- generate difficult scenarios per trait.
+  scenarios:
+    model: "anthropic/claude-haiku-4.5"
+    temperature: 1.1          # diversity matters most here
+    max_tokens: 8192          # returns scenarios_per_trait objects in one call
+  # Stage 3 -- draft the system + user prompt.
+  draft:
+    model: "anthropic/claude-haiku-4.5"
+    temperature: 1.0
+    max_tokens: 2048
+  # Stage 4 -- refine the prompt against the full constitution + target trait.
+  refine:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.7
+    # Sonnet 5 writes far longer than the Terra run this was sized from: at 2048, 30% of
+    # refinements truncated mid-JSON and were discarded.
+    max_tokens: 6144
+  # Stage 5 -- generate the response with explicit reasoning.
+  respond:
+    model: "anthropic/claude-haiku-4.5"
+    temperature: 1.0
+    max_tokens: 4096
+  # Stage 6 -- CRITICAL. Rewrite the response to maximally exhibit the target trait.
+  rewrite:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.7
+    # Stage 6 emits reasoning AND a full response, so it needs more headroom than stage 4.
+    max_tokens: 12288
