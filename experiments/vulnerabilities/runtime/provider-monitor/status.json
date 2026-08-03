@@ -1,7 +1,7 @@
 ﻿{
-    "generated_at":  "2026-07-29T14:32:43Z",
+    "generated_at":  "2026-08-01T12:41:11Z",
     "refresh_reason":  "periodic",
-    "run_id":  "msm-audit-20260728-212645",
+    "run_id":  "msm-audit-20260801-112406",
     "provider":  "runpod",
     "gpu":  "NVIDIA A100-SXM4-80GB",
     "hourly_price_usd":  {
@@ -9,50 +9,50 @@
                              "basis":  "exact-provider-reported",
                              "unit":  "USD/h"
                          },
-    "instance_id":  "p397jthrc130o2",
-    "instance_state":  "query-failed",
+    "instance_id":  "avq7oc22a2izxx",
+    "instance_state":  "RUNNING",
     "provider_balance":  {
-                             "value":  null,
-                             "basis":  "unavailable",
+                             "value":  221.0447,
+                             "basis":  "exact-provider-reported",
                              "unit":  "USD"
                          },
     "starting_provider_balance":  {
-                                      "value":  108.1129952401,
+                                      "value":  230.4385407536,
                                       "basis":  "exact-provider-reported",
                                       "unit":  "USD"
                                   },
     "provider_balance_delta":  {
-                                   "value":  null,
-                                   "basis":  "unavailable",
+                                   "value":  9.3938,
+                                   "basis":  "locally-calculated",
                                    "unit":  "USD"
                                },
     "elapsed_runtime":  {
-                            "value":  6.8574,
+                            "value":  1.2842,
                             "basis":  "locally-calculated",
                             "unit":  "hours"
                         },
-    "elapsed_runtime_text":  "07:51",
+    "elapsed_runtime_text":  "01:17",
     "estimated_infrastructure_cost":  {
-                                          "value":  23.1376,
+                                          "value":  1.9134,
                                           "basis":  "locally-calculated",
                                           "unit":  "USD"
                                       },
     "experiment_gpu_budget_remaining":  {
-                                            "value":  16.8624,
+                                            "value":  78.0866,
                                             "basis":  "locally-calculated",
                                             "unit":  "USD"
                                         },
     "wall_clock_remaining":  {
-                                 "value":  29.143,
+                                 "value":  48.716,
                                  "basis":  "locally-calculated",
                                  "unit":  "hours"
                              },
-    "hard_deadline_utc":  "2026-07-30T19:41:17Z",
+    "hard_deadline_utc":  "2026-08-03T13:24:08Z",
     "model_server_health":  "unreachable",
     "ssh_tunnel_health":  "down",
-    "last_successful_api_refresh":  "2026-07-29T09:58:47Z",
-    "api_refresh_ok_this_cycle":  false,
-    "cleanup_watchdog_state":  "armed (deadline 2026-07-30T19:41:17Z)",
+    "last_successful_api_refresh":  "2026-08-01T12:41:11Z",
+    "api_refresh_ok_this_cycle":  true,
+    "cleanup_watchdog_state":  "armed (deadline 2026-08-03T13:24:08Z)",
     "anthropic_spent_usd":  {
                                 "value":  0,
                                 "basis":  "locally-calculated",

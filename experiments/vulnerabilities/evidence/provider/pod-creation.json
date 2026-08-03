@@ -1,8 +1,8 @@
 ﻿{
     "gpu":  "NVIDIA A100-SXM4-80GB",
-    "pod_id":  "p397jthrc130o2",
+    "pod_id":  "avq7oc22a2izxx",
     "disk_gb":  60,
-    "created_at":  "2026-07-29T07:41:17Z",
+    "created_at":  "2026-08-01T11:24:08Z",
     "image":  "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
     "volume_gb":  120,
     "hourly_usd":  1.49

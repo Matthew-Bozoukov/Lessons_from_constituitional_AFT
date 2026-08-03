@@ -1,0 +1,29 @@
+﻿{
+    "event":  "watchdog-termination",
+    "trigger":  "idle-timeout",
+    "detail":  "No declared activity for 90.9 min (limit 30 min); last activity \u0027provisioning\u0027, no lease held.",
+    "timestamp_utc":  "2026-07-30T16:50:54Z",
+    "run_id":  "msm-audit-20260730-151145",
+    "instance_id":  "mqa1xobevb1xi7",
+    "termination_result":  {
+                               "pod_id":  "mqa1xobevb1xi7",
+                               "action":  "terminated",
+                               "verified_absent":  true,
+                               "attempts":  1,
+                               "timestamp":  "2026-07-30T16:50:53Z",
+                               "detail":  [
+                                              "attempt 1: REST DELETE issued"
+                                          ]
+                           },
+    "account_sweep":  {
+                          "active_pod_count":  2,
+                          "pod_ids":  [
+                                          "hxqu8p1s5j0sa2",
+                                          "9lcniv74ccoc26"
+                                      ],
+                          "clear":  false,
+                          "checked_at":  "2026-07-30T16:50:54Z"
+                      },
+    "final_balance_usd":  97.9519895868,
+    "final_balance_basis":  "exact-provider-reported"
+}

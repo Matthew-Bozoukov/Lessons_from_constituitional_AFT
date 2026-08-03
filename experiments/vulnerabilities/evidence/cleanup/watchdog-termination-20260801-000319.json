@@ -1,0 +1,32 @@
+﻿{
+    "event":  "watchdog-termination",
+    "trigger":  "idle-timeout",
+    "detail":  "No declared activity for 30.2 min (limit 30 min); last activity \u0027petri-v2-umbrella\u0027, no lease held.",
+    "timestamp_utc":  "2026-08-01T00:03:26Z",
+    "run_id":  "msm-audit-20260731-113509",
+    "instance_id":  "9kpzrtc4wkwsfj",
+    "termination_result":  {
+                               "pod_id":  "9kpzrtc4wkwsfj",
+                               "action":  "terminated",
+                               "verified_absent":  true,
+                               "attempts":  1,
+                               "timestamp":  "2026-08-01T00:03:25Z",
+                               "detail":  [
+                                              "attempt 1: REST DELETE issued"
+                                          ]
+                           },
+    "account_sweep":  {
+                          "active_pod_count":  0,
+                          "pod_ids":  [
+
+                                      ],
+                          "active_pod_ids":  [
+
+                                             ],
+                          "clear":  true,
+                          "no_active_pods":  true,
+                          "checked_at":  "2026-08-01T00:03:26Z"
+                      },
+    "final_balance_usd":  237.8212149174,
+    "final_balance_basis":  "exact-provider-reported"
+}
