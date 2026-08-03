@@ -93,13 +93,18 @@ def build(logs: Path, rejudged: Path, analysis: Path, out: Path, seeds: Path) ->
             f.write(json.dumps(s, ensure_ascii=False) + "\n")
 
     # ---- transcripts.jsonl -------------------------------------------------
-    dims_by_key: dict[tuple[str, str], dict] = {}
+    # Key on (arm, sample_id, EPOCH). Without epoch, a multi-epoch run collapses
+    # every repeat of a seed onto one score - so all six epochs of a scenario
+    # inherit whichever row happened to be last, and the per-arm totals stop
+    # reconciling with the judged counts. Caught exactly that way: the export
+    # claimed 168 transcripts for an arm where only 154 were judged.
+    dims_by_key: dict[tuple[str, str, int], dict] = {}
     for arm in ARMS:
         p = rejudged / f"{arm}.json"
         if not p.exists():
             continue
         for r in json.loads(p.read_text(encoding="utf-8")):
-            dims_by_key[(arm, r["sample_id"])] = r
+            dims_by_key[(arm, r["sample_id"], int(r.get("epoch") or 1))] = r
 
     transcripts = []
     by_cat: dict[str, dict] = {}
@@ -111,10 +116,19 @@ def build(logs: Path, rejudged: Path, analysis: Path, out: Path, seeds: Path) ->
         evals = sorted((logs / arm).glob("*.eval"))
         if not evals:
             continue
+        # rejudge.py renumbers epochs cumulatively across the batch files, because
+        # each inspect run restarts epochs at 1 and the batches would otherwise
+        # collide. The same offset must be applied here, over the SAME sorted file
+        # order, or the join silently mismatches - it produced an arm with more
+        # exported transcripts than were ever judged.
+        epoch_offset = 0
         for f in evals:
             log = read_eval_log(str(f), resolve_attachments=True)
-            for s in log.samples or []:
-                rec = dims_by_key.get((arm, str(s.id)))
+            batch = log.samples or []
+            batch_max = max((int(s.epoch or 1) for s in batch), default=0)
+            for s in batch:
+                eff_epoch = int(s.epoch or 1) + epoch_offset
+                rec = dims_by_key.get((arm, str(s.id), eff_epoch))
                 if not rec or not rec.get("dims"):
                     filtered += 1
                     continue
@@ -172,7 +186,7 @@ def build(logs: Path, rejudged: Path, analysis: Path, out: Path, seeds: Path) ->
 
                 meta = rec.get("metadata") or {}
                 transcripts.append({
-                    "id": f"{arm}__{s.id}",
+                    "id": f"{arm}__{s.id}__e{eff_epoch}",
                     "scenario_id": str(s.id),
                     "category": cat,
                     "outcome": outcome,
@@ -188,8 +202,9 @@ def build(logs: Path, rejudged: Path, analysis: Path, out: Path, seeds: Path) ->
                             + ([f"principle-{meta['principle']}"] if meta.get("principle") not in (None, "None") else [])
                             + (["control"] if meta.get("control") else []),
                 })
-                raw_rows.append({"arm": arm, "sample_id": str(s.id), "epoch": rec.get("epoch"),
+                raw_rows.append({"arm": arm, "sample_id": str(s.id), "epoch": eff_epoch,
                                  "raw_dimensions_1_to_10": d, "metadata": meta})
+            epoch_offset += batch_max
 
     with (out / "results" / "transcripts.jsonl").open("w", encoding="utf-8") as f:
         for t in transcripts:
@@ -216,9 +231,10 @@ def build(logs: Path, rejudged: Path, analysis: Path, out: Path, seeds: Path) ->
         src = analysis / name
         if src.exists():
             shutil.copy2(src, out / "artifacts" / name)
-    png = analysis / "violation_dose_response.png"
-    if png.exists():
-        shutil.copy2(png, out / "assets" / "violation_dose_response.png")
+    for png in ("violation_dose_response.png", "violation_decomposition.png"):
+        src = analysis / png
+        if src.exists():
+            shutil.copy2(src, out / "assets" / png)
 
     print(f"scenarios          : {len(scenarios)}")
     print(f"transcripts        : {len(transcripts)}")

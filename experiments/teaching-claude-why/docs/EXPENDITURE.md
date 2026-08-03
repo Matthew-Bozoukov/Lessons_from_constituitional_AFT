@@ -22,9 +22,114 @@ to a future reader.
 | category | spent to date |
 |---|---|
 | OpenRouter (data generation) | **$171.46** |
-| GPU rental | **$14.26** |
-| Anthropic API (Petri realism + judge) | **$8.65** |
-| **total** | **$194.37** |
+| GPU rental | **$63.20** |
+| Anthropic API (Petri realism + judge) | **$68.89** |
+| **total** | **$303.55** |
+
+---
+
+## 2026-07-31 (pm) — Tool-calling 20/80 LoRA: one H100 epoch
+
+**Bought:** the pure-tool-calling arm of the constitution mixture family — a trained LoRA
+adapter, its training mixture, and the run record, all published. The missing cell of a
+sweep whose other cells already exist.
+
+**Total: $5.73.** No API spend: both source corpora were already generated and published,
+so nothing was sampled from any model.
+
+| item | cost | notes |
+|---|---|---|
+| GPU — NVIDIA H100 80GB HBM3, 1.918 h @ $2.99/h | $5.73 | RunPod Secure Cloud, one pod, no failures |
+| OpenRouter / Anthropic | $0.00 | mixture assembled from published data only |
+
+### Unit economics
+
+| metric | value |
+|---|---|
+| $/GPU-hour | **$2.99** (H100 SXM 80GB, Secure Cloud, High stock) |
+| training throughput | **254 tok/s** (1,492,498 tok in 5,889 s) |
+| $/1M training tokens | **$3.84** |
+| $/optimizer step | $0.045 (126 steps) |
+| overhead vs training | 0.28 h of 1.92 h (15%) — bootstrap, 52 GB model download, smoke test |
+
+Useful for the next estimate: **a 1.5M-token, 1-epoch bf16 LoRA on this 27B model costs
+about $6 and takes about 2 hours end to end on one H100**, of which 1h38m is training.
+The earlier Qwen3.6 run recorded 1h38m for the same token count at seq 2048 on an H100 at
+$3.13/h ($8.10) — so the rate is reproducible and the saving here is the cheaper card.
+
+### What was estimated vs what it cost
+
+Estimated **~$10.50** for ~3.5 h; actual **$5.73** for 1.92 h. The estimate padded
+bootstrap at 0.75–1.0 h and it took ~0.4 h, and padded 25% contingency that was not
+needed. Bootstrap is faster than assumed because the 52 GB download saturates RunPod's
+network, not because anything was skipped.
+
+### Notes
+
+- No idle time was bought: the pod was torn down 7 minutes after the adapter was saved,
+  once artifacts were verified locally. Publishing happened after teardown, off the clock.
+- Teardown verified absence twice (direct 404 + absence from the account listing) and
+  reported the two unrelated pods on the shared account as untouched.
+
+---
+
+## 2026-08-01 — Petri constitution dose sweep v2: 672 audits across 4 arms
+
+**Bought:** the powered rerun of the 2026-07-31 null — 28 seeds x 6 epochs x 4 arms,
+619 transcripts retained, uniformly re-judged, published to HF with a Visualizer entry.
+**Result is a lead, not a result** (dose-40-60 at 16.5% vs base 27.2%, McNemar p = 0.029,
+but the pre-specified severity test crosses zero and control false positives rise with
+dose). See `LOG.md`.
+
+**Total: $103.45.**
+
+| item | cost | notes |
+|---|---|---|
+| GPU — A100-SXM4-80GB, ~29 h @ $1.49/h | ~$43.21 | **reconstructed, not metered** — see below |
+| Anthropic API — Haiku 4.5 realism grader | $30.95 | **exact**: 0.13M in / 3.66M out / 38.5M cache-read / 6.9M cache-write, read from the eval logs |
+| Anthropic API — Sonnet 4.5 uniform re-judge | ~$29.29 | estimated: 619 calls x ~12.3k in / ~700 out, transcript sizes measured |
+| Claude subscription — auditor (Sonnet 4.5) | **$0.00** | 45.1M cache-read + 36.6M cache-write + 4.6M output; quota only |
+
+### Unit economics
+
+| metric | value | vs v1 |
+|---|---|---|
+| $ / audit (all-in) | **$0.154** | $0.48 — 3.1x cheaper |
+| $ / audit (API only) | $0.090 | $0.18 |
+| Haiku realism $ / audit | $0.046 | $0.093 |
+| Sonnet re-judge $ / call | $0.047 | $0.093 |
+| GPU-hours / audit | 0.043 | 0.157 |
+| compute wall-clock | 568 min for 672 audits | 454 min for 48 |
+
+Both API unit costs halved against v1 for the same models and rubric. That is not a
+discount — v2's transcripts are **shorter** (mean 2.0-2.8 target turns vs 3.2), so every
+per-transcript call had less to read. Cheaper here is a symptom of *less adversarial
+pressure applied*, which is a measurement problem, not a saving. Recorded as such.
+
+### Two caveats on these numbers
+
+1. **The GPU line is reconstructed.** No pod-lifecycle record was written, and RunPod's
+   GraphQL API exposes no per-pod historical billing (`billing`, `transactions` and
+   `pods(input:)` were all tried; none returns spend for a terminated pod). 29 h is inferred
+   from the audit window (2026-07-31 11:58 -> 2026-08-01 16:22 = 28.4 h) at v1's measured
+   $1.49/h. **Lesson: write the pod's create/terminate timestamps and rate to disk at
+   provision time.** Everything else in this table is measured; this one is arithmetic.
+2. **~19 of the 29 GPU hours were idle**, including a ~14 h overnight gap, while the run
+   waited on subscription quota windows. Compute was 9.5 h. Idle cost **~$28 — more than
+   the compute itself**, and more than the whole v1 run.
+
+### What it bought, and the one call worth revisiting
+
+Keeping the pod warm across quota windows was a deliberate choice (reprovisioning means
+re-downloading 55 GB and re-clearing the CUDA-13 machine filter that bit us on 2026-07-30).
+For the 1.6 h and 3.3 h gaps that was right. For the **14 h overnight gap it was not**:
+~$21 of idle against ~25 min of rebuild (~$0.62) plus the risk of a machine that fails the
+CUDA filter. **Rule for next time: tear down above a ~2 h expected gap; hold below it.**
+
+**The subscription remains the dominant lever.** The auditor consumed 4.6M output tokens
+against 45.1M cache-reads. On the API that is roughly $70-200 depending on cache behaviour,
+against $60.24 of API spend actually incurred — so the subscription carried more than half
+the run's notional cost, at 672 audits versus v1's 48.
 
 ---
 

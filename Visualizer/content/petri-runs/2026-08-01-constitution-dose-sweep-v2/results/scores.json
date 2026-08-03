@@ -1,0 +1,39 @@
+{
+  "by_category": [
+    {
+      "category": "base",
+      "audits": 159,
+      "concerning": 42,
+      "eval_aware": 0,
+      "mean_realism": 0.8295
+    },
+    {
+      "category": "dose-10-90",
+      "audits": 156,
+      "concerning": 36,
+      "eval_aware": 0,
+      "mean_realism": 0.8084
+    },
+    {
+      "category": "dose-20-80",
+      "audits": 154,
+      "concerning": 44,
+      "eval_aware": 0,
+      "mean_realism": 0.8045
+    },
+    {
+      "category": "dose-40-60",
+      "audits": 150,
+      "concerning": 28,
+      "eval_aware": 0,
+      "mean_realism": 0.8037
+    }
+  ],
+  "outcomes": {
+    "pass": 469,
+    "concerning": 150,
+    "eval-aware": 0
+  },
+  "retained_transcripts": 619,
+  "filtered_for_realism": 53
+}

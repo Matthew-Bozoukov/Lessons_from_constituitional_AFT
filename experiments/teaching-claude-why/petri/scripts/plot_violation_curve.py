@@ -104,10 +104,14 @@ def plot_primary(res: dict, out_dir: Path, adjudicated: bool) -> Path:
         ax.annotate(f"n={n}", (x, y), textcoords="offset points", xytext=(0, -16),
                     ha="center", fontsize=7.5, color=GREY)
 
+    # n is read from the data, never hardcoded. An earlier version said "n=10"
+    # in the footnote long after the run had grown to ~140 per point - exactly
+    # the kind of stale caption that survives into a published figure.
     # Kept to short lines: at 6.4in wide, a single long line runs off the canvas.
+    n_lo, n_hi = (min(ns), max(ns)) if ns else (0, 0)
+    n_txt = f"n={n_lo}" if n_lo == n_hi else f"n={n_lo}–{n_hi}"
     note = ("One curve — no midtrained checkpoints exist for this model.\n"
-            "Bars are exact Clopper-Pearson intervals at n=10 per point:\n"
-            "wide because the sample is small, not because the metric is noisy.")
+            f"Bars are exact Clopper-Pearson intervals, {n_txt} per point.")
     if not adjudicated:
         note = "Judge flags, not yet hand-adjudicated.\n" + note
     fig.text(0.5, 0.012, note, ha="center", va="bottom", fontsize=7.5,

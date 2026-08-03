@@ -11,8 +11,14 @@ defeats the point of publishing.
 Schema copied from the live 2026-07-29 focused-discovery manifest rather than
 from prose, so the field names are what the loader actually reads.
 
+The run's own description (experiment, caveats, model roles, generation config)
+comes from a YAML file, NOT from literals in here. It used to be literals, which
+meant the only way to publish a second run was to overwrite the prose describing
+the first - and a caveat like "n = 10" outlives by months the run it was true for.
+
 Usage:
-    python scripts/build_manifest.py --export exports/2026-07-31-constitution-dose-sweep
+    python scripts/build_manifest.py --export exports/2026-08-01-constitution-dose-sweep-v2 \
+        --meta configs/manifest_v2.yaml --commit <sha>
 """
 
 from __future__ import annotations
@@ -22,13 +28,18 @@ import json
 import re
 from pathlib import Path
 
+import yaml
+
 
 def slugify(value: str) -> str:
     s = re.sub(r"[^a-zA-Z0-9]+", "-", value).strip("-").lower()
     return re.sub(r"-{2,}", "-", s)
 
 
-def build(export: Path, commit: str) -> None:
+def build(export: Path, meta_path: Path, commit: str, dirty: str = "") -> None:
+    # Plain pyyaml, not OmegaConf: this is flat publication metadata with no
+    # interpolation, and the petri venv already has pyyaml.
+    meta = yaml.safe_load(meta_path.read_text(encoding="utf-8"))
     scenarios = [json.loads(l) for l in (export / "data" / "scenarios.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()]
     transcripts = [json.loads(l) for l in (export / "results" / "transcripts.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()]
     scores = json.loads((export / "results" / "scores.json").read_text(encoding="utf-8"))
@@ -52,71 +63,28 @@ def build(export: Path, commit: str) -> None:
             "tags": t["tags"],
         })
 
+    repo = dict(meta["source_repo"])
+    repo["commit"] = commit
+    if dirty:
+        # Publishing from a dirty tree means `commit` does NOT reproduce this export.
+        # Say so in the artifact rather than letting a reader assume it does.
+        repo["working_tree"] = (
+            "DIRTY at publish time - the analysis/export scripts that produced this "
+            "dataset were uncommitted. `commit` is the branch tip, not a reproducible "
+            "pointer to the code that generated these files: " + dirty
+        )
+
     manifest = {
         "manifest_version": 1,
         "kind": "petri-run",
-        "experiment": (
-            "Petri adaptive audit of four Qwen3.6-27B arms (0/10/20/40% difficult-advice SFT) "
-            "against the v1 constitution their SFT data was written to: 12 seeds x 1 epoch x 4 arms "
-            "= 48 audits, measuring frequency of violations per principle. Result is null - no "
-            "dose-response, and the design resolves only ~30-point differences."
-        ),
-        "date_generated": "2026-07-31",
-        "constitution": (
-            "experiments/teaching-claude-why/docs/claude_constitution_principles.md - "
-            "'Distilled Constitutional Principles (alignment target)', v1. This is the SAME "
-            "document the three LoRA adapters' SFT data was generated against; deliberately not "
-            "the later claude_approved_constitution.md, which postdates the training data."
-        ),
-        "source_repo": {
-            "url": "https://github.com/Matthew-Bozoukov/teaching_claude_why_replication",
-            "commit": commit,
-            "branch": "petri-constitution-audit",
-        },
-        "models": {
-            "Qwen/Qwen3.6-27B": "target base, bf16, vLLM 0.26.0 on one A100-SXM4-80GB",
-            "LASR-Callum/qwen3.6-27b-difficult-advice-tulu-lora-10-90": "target arm, r=32 LoRA, 10% difficult-advice by tokens",
-            "LASR-Callum/qwen3.6-27b-difficult-advice-tulu-lora-20-80": "target arm, r=32 LoRA, 20% (the arm with a published ODCV result)",
-            "LASR-Callum/qwen3.6-27b-difficult-advice-tulu-lora-40-60": "target arm, r=32 LoRA, 40%",
-            "claude-sonnet-4-5": "auditor (Claude Agent SDK / subscription) and judge (Anthropic API, uniform re-judge of all arms)",
-            "claude-haiku-4-5": "realism grader",
-        },
-        "generation_config": {
-            "petri_version": "inspect-petri-3.0.11",
-            "inspect_ai_version": "0.3.251",
-            "seed_set": "constitution-v1-seeds",
-            "epochs": 1,
-            "max_turns": 12,
-            "measured_mean_target_turns": 3.2,
-            "target_temperature": 0.7,
-            "target_max_tokens": 4096,
-            "max_model_len": 65536,
-            "realism_filter": True,
-            "realism_threshold": 0.6,
-            "compaction": True,
-            "enable_prefill": False,
-            "enable_rollback": True,
-            "target_tools": "synthetic",
-            "arms_served_from_one_process": True,
-        },
-        "provenance": (
-            "scripts/Run-Grid.ps1 -Epochs 1 -MaxConnections 4 -Tag grid-e1 ; then "
-            "scripts/rejudge.py (uniform judging of all arms on the API, after 11 of 48 in-run "
-            "judge calls died to a Claude Code CLI turn limit unevenly across arms) ; then "
-            "scripts/analyse.py, scripts/plot_violation_curve.py, scripts/build_export.py, "
-            "scripts/build_manifest.py"
-        ),
-        "caveats": [
-            "Judge flags are NOT adjudicated. A comparable flagging rule had a 57% false-positive "
-            "rate in the sibling MSM investigation, so these rates are upper bounds. Adjudication "
-            "lowers all arms and cannot create an absent dose-response.",
-            "n = 10 test audits per arm (one epoch). Base is 20% with a 95% CI of [2.5%, 55.6%]; "
-            "the design cannot detect the 18-point effect the 20/80 arm shows on ODCV-Bench.",
-            "Controls are n = 1-2 per arm after retention, too few to estimate the rubric's own "
-            "false-positive rate as intended.",
-            "Runtime LoRA, not merged weights: module coverage verified (256/256), numerics not "
-            "compared against a merged checkpoint.",
-        ],
+        "experiment": meta["experiment"],
+        "date_generated": meta["date_generated"],
+        "constitution": meta["constitution"],
+        "source_repo": repo,
+        "models": meta["models"],
+        "generation_config": meta["generation_config"],
+        "provenance": meta["provenance"],
+        "caveats": meta["caveats"],
         "scenarios": scenarios,
         "scores": scores,
         "transcripts": entries,
@@ -136,9 +104,11 @@ def build(export: Path, commit: str) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--export", required=True)
-    ap.add_argument("--commit", default="a6e1b75")
+    ap.add_argument("--meta", required=True, help="YAML run metadata, e.g. configs/manifest_v2.yaml")
+    ap.add_argument("--commit", required=True, help="git SHA the export was built from")
+    ap.add_argument("--dirty", default="", help="uncommitted paths, recorded in the manifest if set")
     a = ap.parse_args()
-    build(Path(a.export), a.commit)
+    build(Path(a.export), Path(a.meta), a.commit, a.dirty)
 
 
 if __name__ == "__main__":

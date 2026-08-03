@@ -3,12 +3,23 @@
 import os, sys
 from huggingface_hub import HfApi
 
-repo = sys.argv[1] if len(sys.argv) > 1 else "LASR-Callum/2026-07-31-petri-constitution-dose-sweep"
-folder = sys.argv[2] if len(sys.argv) > 2 else "exports/2026-07-31-constitution-dose-sweep"
+if len(sys.argv) < 4:
+    sys.exit("usage: publish_hf.py <repo_id> <folder> <commit_message>")
+repo, folder, message = sys.argv[1], sys.argv[2], sys.argv[3]
+
 api = HfApi(token=os.environ["HF_TOKEN"])
 api.create_repo(repo, repo_type="dataset", private=False, exist_ok=True)
-api.upload_folder(folder_path=folder, repo_id=repo, repo_type="dataset",
-                  commit_message="Petri constitution dose sweep: 4 arms, 48 audits, null dose-response")
+info = api.upload_folder(folder_path=folder, repo_id=repo, repo_type="dataset",
+                         commit_message=message)
+
+# The Visualizer pins a revision so a later re-upload cannot silently change the
+# numbers under a published writeup. Print it; it is not recoverable afterwards
+# without going back to the Hub.
 print("uploaded:", f"https://huggingface.co/datasets/{repo}")
-for f in sorted(api.list_repo_files(repo, repo_type="dataset")):
-    print("  ", f)
+print("revision:", getattr(info, "oid", None) or api.list_repo_commits(repo, repo_type="dataset")[0].commit_id)
+files = sorted(api.list_repo_files(repo, repo_type="dataset"))
+print(f"files   : {len(files)}")
+for f in files:
+    if not f.startswith("transcripts/"):
+        print("  ", f)
+print(f"   transcripts/*.json  x{sum(1 for f in files if f.startswith('transcripts/'))}")

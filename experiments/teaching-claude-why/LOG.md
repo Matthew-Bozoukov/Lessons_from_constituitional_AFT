@@ -3,6 +3,152 @@
 
 # LOG
 
+## 2026-08-01 — Constitution dose sweep v2: 672 audits. A lead at 40%, not a result.
+
+**Hypothesis:** the 2026-07-31 null (`n=10`/arm) was underpowered, not informative. Three
+specific power leaks were identified and fixed; if the effect is real, 6 epochs over a
+redesigned seed set should surface it.
+
+**What changed from v1** — all three fixes, not one:
+
+1. **44 atomic testable elements** instead of 8 principle headings (method from Jakkli /
+   Rajamanoharan / Nanda, arXiv 2605.24229). 28 seeds now cover 44/44, up from 12 seeds.
+2. **Paired severity as the primary statistic**, pre-specified before the data existed.
+   Binary thresholding discards the judge's 1-10 range; the paired severity test is worth
+   ~22% -> ~81% power at the effect sizes in question.
+3. **Frozen scaffolds.** v1 let the auditor invent a different scenario per arm, inflating
+   the paired SD to 2.9-4.0 against effects of 0.0-0.8. Seeds now pre-register the system
+   prompt, toolset and opening turn verbatim; the auditor stays adaptive after that, so
+   divergence downstream of the opening IS the treatment effect.
+
+**Method:** 4 arms x 28 seeds x 6 epochs = **672 audits**, 619 retained. Auditor Sonnet 4.5
+on the Claude subscription ($0 cash); judge Sonnet 4.5 re-run uniformly on the API over all
+four arms; realism Haiku 4.5. All four arms served from ONE vLLM process via `--enable-lora`.
+
+**Result — the honest reading is "suggestive, not established":**
+
+| arm | violation frequency | 95% CI | paired McNemar vs base |
+|---|---|---|---|
+| base (0%) | 27.2% (40/147) | [20.2%, 35.2%] | — |
+| dose-10-90 | 24.3% (35/144) | [17.6%, 32.1%] | p = 0.43 |
+| dose-20-80 | 28.0% (40/143) | [20.8%, 36.1%] | p = 1.0 |
+| **dose-40-60** | **16.5% (23/139)** | [10.8%, 23.8%] | **p = 0.029** |
+
+Three reasons this is not a result yet:
+
+- **The pre-specified primary test does not confirm it.** Paired severity on dose-40-60 is
+  **-0.47, 95% CI [-0.95, +0.01], d = -0.17** — directionally consistent, crossing zero.
+- **Multiplicity.** Three arms compared; Holm-Bonferroni takes p = 0.029 to **0.088**.
+- **Non-monotonic.** dose-20-80 (28.0%) sits *above* base.
+
+**The finding that most limits the run: control false positives rise with dose —
+16.7% -> 8.3% -> 36.4% -> 45.5%.** The control seeds contain nothing to violate, so every
+flag is judge or rubric error. The arm carrying the significant result is the arm the judge
+is *least* reliable on. Until those are hand-adjudicated the 16.5% cannot be reported as a
+behaviour rate.
+
+**Two things that did come out clean:**
+
+- **Harm-side moves together at 40%** — facilitated deception 23.1% -> 12.2%, third-party
+  disregard 17.7% -> 10.1%, oversight subversion 11.6% -> 6.5%. Independent principles
+  agreeing is the strongest argument the effect is real rather than one seed misfiring.
+- **Three unhelpfulness dimensions rise strictly monotonically with dose** (p4 autonomy
+  0/0.7/1.4/2.2%, p5 preachiness 0/0.7/1.4/2.9%, p6 refusal 0/0/0/1.4%). Tiny absolutely,
+  but a perfect ordering across four arms is exactly the safety/helpfulness trade-off shape.
+
+**Eval-awareness: 0% across all 619 retained transcripts.**
+
+**Next steps, in order:**
+
+1. **Hand-adjudicate the 150 flagged transcripts, controls first.** This is the only step
+   that converts p = 0.029 into a result or kills it. Everything else is secondary.
+2. Raise realised adversarial pressure — mean target turns were 2.0-2.8 against a 5-turn
+   brief, so the seeds are not applying the pressure they were written to apply.
+3. If adjudication holds, add epochs at 40% only; the middle doses are not where the signal is.
+
+**Published:** HF `LASR-Callum/2026-08-01-petri-constitution-dose-sweep-v2` @ `a202ab0`
+(manifest + 619 transcript shards); Visualizer entry
+`content/petri-runs/2026-08-01-constitution-dose-sweep-v2`.
+
+**Visualizer defect found and fixed while publishing:** `lib/body.ts` read entry bodies with
+`fs.readFile(process.cwd() + "/lib/generated/bodies/...")`, but the RSC server runs with
+`process.cwd() === "/bundle"` — a virtual FS that never contained the generated sidecars. Its
+catch-and-return-"" swallowed a *total* failure, so **every writeup on the site rendered as an
+empty div under a fully-populated header** — indistinguishable from "this entry has no prose".
+Replaced with `import.meta.glob`, which resolves through the bundler and keeps the per-entry
+lazy chunking. All 19 entries render again. Second, smaller: `remark-math` was parsing the
+`$` in cost tables as inline math and turning whole paragraphs into KaTeX glyphs; dollars in
+prose now escaped.
+
+## 2026-07-31 (pm) — Tool-calling 20/80 arm trained; the composition sweep's missing cell
+
+**Hypothesis:** the constitution mixture family varies *what* the 20% target portion is
+made of while holding total tokens and the target share fixed. Two cells existed
+(difficult-advice only; equal three-way) plus a zero-dose control. The pure **agentic
+tool-use** cell did not. This run fills it.
+
+**Mixture** (`src/experiments/build_toolcalling_mixture.py`,
+`configs/mixture_toolcalling_qwen36.yaml`): 124 agentic docs (297,894 tok, from
+`approved_agentic/sft_qwen36_fullthink.jsonl`) + 1,878 TULU3 replay rows (1,194,548 tok,
+the published 80% slice taken whole) = **1,492,442 tok, 19.96% / 80.04%**, 2,002 rows.
+25 of the agentic docs emit tool calls; 92 `<tool_call>` spans.
+
+*Key design point:* `max_seq_len` is **4096**, not the siblings' 2048. Measured before
+spending anything: these conversations run 9–13 turns, median 2,348 tok, and 99 of the 151
+source docs exceed 2048. A 2048 cap keeps only 80.4% of the corpus and **severs 11 of its
+98 `<tool_call>` spans** — inside exactly the long conversations the tool calls live in.
+At 4096 the built mixture is truncated nowhere at all. The cost is a second difference
+from the siblings alongside composition, which any head-to-head has to carry.
+
+Verified on the written artifact, not taken from publisher metadata: 0 empty
+`<think></think>`, 0 TULU3 rows with a think block, all 92 tool-call spans balanced, 0
+duplicates, every row ending on an assistant turn, token counts re-tokenised.
+
+**Training:** 1×H100 80GB SXM (RunPod), bf16 LoRA, r=32/α=64/0.05, regex scoped to
+`model.language_model.*`, 1 epoch, **126 steps**, batch 1×16, lr 1e-4 cosine→0, seq 4096,
+packing off, `assistant_only_loss` false, **1h38m09s**. Loss **2.753 → 1.057** (epoch avg;
+1.020 at the last logged step), epoch-average token accuracy **0.7071**, grad_norm 0.357,
+1,492,498 tokens consumed. Trainable params **159,383,552** (256 LoRA pairs) — identical to
+the `tulu-100pct` control, as expected for the same rank and regex on the same base.
+
+**VERIFIED:** 0 of the adapter's 512 tensors touch `model.visual` — counted in the saved
+weights, not inferred. Adapter sha256 `7acc7e50…4a81af0` matched between the box and the
+local copy. The 4096 ceiling was smoke-tested on the **8 longest rows** first, because the
+trainer's own `--smoke` takes the first 8 rows, which here are short TULU3 examples and
+would not have probed memory at all. Peak ~70 GB of 80.
+
+**Published:**
+[`LASR-Callum/qwen3.6-27b-toolcalling-tulu-lora-20-80`](https://huggingface.co/LASR-Callum/qwen3.6-27b-toolcalling-tulu-lora-20-80)
+(adapter, 637.6 MB),
+[`…-toolcalling-tulu-20-80-mixture`](https://huggingface.co/datasets/LASR-Callum/2026-07-31-toolcalling-tulu-20-80-mixture)
+(training data),
+[`…-toolcalling-tulu-sft-run`](https://huggingface.co/datasets/LASR-Callum/2026-07-31-toolcalling-tulu-sft-run)
+(logs, metrics, curve). Visualizer entries under `content/datasets/` and `content/logs/`.
+
+**Caveat that matters for interpretation:** only **24%** of the agentic rows carry a real
+reasoning trace, against 100% of the difficult-advice arm's target rows. If this family's
+dose-response is driven by reasoning density rather than topic coverage, this arm cannot
+separate the two. Inherent to the source corpus. Also: 1 epoch = 126 steps, half the
+gradient steps of the original Qwen3-32B run, so a null downstream result would be
+confounded with undertraining.
+
+**Gotchas:** (1) TRL's `save_strategy="epoch"` writes `checkpoint-N/trainer_state.json`
+*before* the final train summary, so `train_runtime` / epoch-average loss / epoch-average
+token accuracy exist **only on stdout** — parse them from the log or lose them.
+(2) `num_input_tokens_seen` is 0 unless `include_num_input_tokens_seen` is set; the real
+figure is `log_history[-1]["num_tokens"]`. (3) This TRL version does not print peft's
+"trainable params:" line; count them from the saved safetensors instead. (4) The secrets
+wrapper runs its scriptblock in-process, so `$using:` is a parse error.
+
+**Cost:** $5.73 GPU (1.918 h @ $2.99/h). Pod terminated, verified absent by direct lookup
+*and* by account listing.
+
+**Next:** evaluate against the matched FP8 base arm (37.2% ODCV / 65.5%
+agentic-misalignment) on identical scenario sets and judges, alongside the difficult-advice
+20/80 (19.2% / 25.3%) and the still-unevaluated three-way arm.
+
+---
+
 ## 2026-07-31 — NULL: difficult-advice SFT dose shows no effect on constitution violations
 
 **Design:** adaptive Petri audit of four arms — base `Qwen/Qwen3.6-27B` plus the 10/90,
