@@ -62,6 +62,10 @@ smoke slice instead of the full dataset, SshExec not sourcing the remote `.env`,
 credential boundary demonstrating itself (Option A needs the pod's own OpenRouter key —
 by design). Confirmed empirically + via docs: RunPod pods can never run ODCV's docker
 (bridgeless daemon only, no network creation) — ODCV stays on vast.ai or a docker laptop.
+Also folded the empty-think-marker variant into `build_mixture` as a per-source
+`think_marker: true` option (plain `apply_chat_template`, no sentinel), byte-equivalence
+with the old post-hoc surgery verified across structural cases (single/multi-turn, system,
+unicode, angle-bracket content) before deleting `add_empty_think_multi.py`.
 
 ## 2026-08-03 (2) — Deleted v1 difficult-advice generator + DPO pipeline; unified mixture builder
 

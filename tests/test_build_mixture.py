@@ -74,7 +74,8 @@ def test_mixture_configs_share_one_schema():
         assert sources, name
         for sname, spec in sources.items():
             if "repo" in spec:
-                assert set(spec) <= {"repo", "split", "tokens", "shuffle_buffer"}, (name, sname)
+                assert set(spec) <= {"repo", "split", "tokens", "shuffle_buffer",
+                                     "think_marker"}, (name, sname)
             else:
                 assert set(spec) == {"path", "format", "tokens"}, (name, sname)
                 assert spec["format"] in ("messages", "rendered"), (name, sname)

@@ -22,6 +22,9 @@ from src.utils import timestamp, write_run_meta  # noqa: E402
 _SENTINEL = "__MIXTURE_SENTINEL__"
 
 _EMPTY_THINK = "<think>\n\n</think>"
+# The full literal Qwen3.6's template emits on a final assistant turn with no reasoning —
+# the non-thinking marker the model is prefilled with at nothink inference.
+_EMPTY_THINK_MARKER = "<think>\n\n</think>\n\n"
 
 # Every token budget is divided by this under --smoke, so a smoke run exercises the full
 # wiring (rendering, streaming, validation, stats) in seconds.
@@ -51,6 +54,22 @@ def _render_without_think(tok, messages: list[dict]) -> str:
     text = text[: text.rindex("<|im_start|>user")]
     assert _SENTINEL not in text, "failed to strip the throwaway turn"
     assert "<think>" not in text, "replay rendering must contain no think block"
+    return text
+
+
+def _render_with_marker(tok, messages: list[dict]) -> str:
+    """Render with the template's own defaults: the empty think marker stays in.
+
+    This is plain `apply_chat_template` — no sentinel, no post-hoc surgery. For a final
+    assistant turn with no reasoning_content, Qwen3.6's template emits exactly the empty
+    `<think></think>` marker. Sources rendered this way MUST be trained with the marker
+    masked from the loss (train.mask_empty_think), or the model learns to emit the
+    collapse pattern; check_thinking_declaration enforces that pairing.
+    """
+    assert messages[-1]["role"] == "assistant", "conversation must end with an assistant turn"
+    text = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
+    assert text.count("<think>") == 1 and _EMPTY_THINK_MARKER in text, \
+        "expected exactly the template's empty think marker on the final assistant turn"
     return text
 
 
@@ -103,8 +122,11 @@ def _take_rendered(path: Path, budget: int, seed: int, source: str) -> list[dict
 
 
 def _take_hf(tok, repo: str, split: str, budget: int, seed: int, max_len: int,
-             source: str, shuffle_buffer: int) -> list[dict]:
-    """Stream an HF chat dataset and sample up to a token budget, with no think blocks.
+             source: str, shuffle_buffer: int, think_marker: bool = False) -> list[dict]:
+    """Stream an HF chat dataset and sample up to a token budget.
+
+    Rendering is the sentinel no-think strip by default; `think_marker` renders with the
+    template's own defaults instead, keeping the empty marker.
 
     Args:
         tok: Tokenizer.
@@ -130,7 +152,8 @@ def _take_hf(tok, repo: str, split: str, budget: int, seed: int, max_len: int,
             skipped += 1
             continue
         try:
-            text = _render_without_think(tok, msgs)
+            render = _render_with_marker if think_marker else _render_without_think
+            text = render(tok, msgs)
         except (AssertionError, ValueError):
             skipped += 1
             continue
@@ -153,13 +176,17 @@ def _load_source(tok, cfg, name: str, spec: dict, budget: int, seed: int) -> tup
 
     Returns:
         (rows, kind) where kind is `think` (local messages jsonl, traces kept), `nothink`
-        (HF-streamed, no think block) or `rendered` (pre-rendered, validated upstream).
+        (HF-streamed, sentinel-stripped), `marker` (HF-streamed, template's own empty-think
+        marker kept — pair with train.mask_empty_think) or `rendered` (pre-rendered,
+        validated upstream).
     """
     if "repo" in spec:
+        marker = bool(spec.get("think_marker", False))
         rows = _take_hf(tok, spec["repo"], spec.get("split", "train"), budget, seed,
                         int(cfg.max_seq_len), name,
-                        int(spec.get("shuffle_buffer", cfg.get("shuffle_buffer", 1000))))
-        return rows, "nothink"
+                        int(spec.get("shuffle_buffer", cfg.get("shuffle_buffer", 1000))),
+                        think_marker=marker)
+        return rows, ("marker" if marker else "nothink")
     fmt = spec["format"]
     if fmt == "messages":
         return _take_messages(tok, Path(spec["path"]), budget, seed, name), "think"
@@ -175,8 +202,9 @@ def main(config: str, smoke: bool = False) -> None:
         config: OmegaConf YAML. `sources` maps name -> spec, where a spec is either a local
             file — {path, format, tokens}, format `messages` (raw chat jsonl rendered here,
             reasoning traces kept) or `rendered` (pre-rendered rows: text, n_tokens) — or an
-            HF stream — {repo, split?, tokens, shuffle_buffer?}, rendered with NO think block
-            and length-capped at `max_seq_len`.
+            HF stream — {repo, split?, tokens, shuffle_buffer?, think_marker?}, length-capped
+            at `max_seq_len` and rendered with NO think block by default; `think_marker: true`
+            keeps the template's own empty marker instead (pair with train.mask_empty_think).
         smoke: Divide every token budget by 20 to validate wiring in seconds.
     """
     cfg = OmegaConf.load(config)
@@ -222,7 +250,8 @@ def main(config: str, smoke: bool = False) -> None:
 
     # Loud sanity output: the actual strings the model will train on.
     for wanted, header in (("think", "must contain a NON-EMPTY <think>"),
-                           ("nothink", "must contain NO <think> at all")):
+                           ("nothink", "must contain NO <think> at all"),
+                           ("marker", "must carry exactly the EMPTY <think></think> marker")):
         name = next((n for n, k in kinds.items() if k == wanted), None)
         if name:
             print("\n" + "=" * 72)
@@ -248,6 +277,11 @@ def main(config: str, smoke: bool = False) -> None:
             n_think = sum("<think>" in t for t in got)
             print(f"{name}: {n_think}/{len(got)} rows with <think> (MUST be 0)")
             assert n_think == 0, f"no {name} replay example may carry a think block"
+        elif kind == "marker":
+            n_marked = sum(t.count("<think>") == 1 and _EMPTY_THINK_MARKER in t for t in got)
+            print(f"{name}: {n_marked}/{len(got)} rows with exactly the empty marker (must be all)")
+            assert n_marked == len(got), \
+                f"every {name} row must carry exactly the template's empty think marker"
     print("\n" + json.dumps(stats, indent=2))
     print(f">>> wrote {out_path}")
 
