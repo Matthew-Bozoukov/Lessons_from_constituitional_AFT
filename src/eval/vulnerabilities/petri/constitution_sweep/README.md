@@ -58,8 +58,14 @@ They remain readable at tag **`petri-audit-backup-20260801`** (paths under
   `finish=length` with empty content while the tuned arms answered normally,
   which would have manufactured a dose-response out of a truncation bug
 
+`scripts/serve_petri_arms.sh` and `scripts/bootstrap_petri_arms.sh` did come
+across: they are plain bash that runs on the box, they carry the non-negotiable
+vLLM settings, and they have no dependency on the removed tree.
+
 Everything downstream of the `.eval` logs runs locally with no GPU and no
-provisioning — see `scripts/run_petri_analysis.sh`.
+provisioning — see `scripts/run_petri_analysis.sh`. One-off probes used while
+building the rubric (dumping the exact judge prompt, smoke-testing the answer
+schema) live in `scratch/petri/`.
 
 ## Layout
 
@@ -68,7 +74,8 @@ provisioning — see `scripts/run_petri_analysis.sh`.
 | `seeds/` | the 28-seed battery, covering 44/44 atomic elements, 5 agentic, 2 controls |
 | `seeds.py` | regenerates `seeds/` from `configs/petri/seed_specs.yaml` so every seed carries a byte-identical hard-constraints block |
 | `rejudge.py` | one judge, one transport, every arm — removes judge variance between arms |
-| `analyse.py` | rates, Clopper-Pearson intervals, McNemar, paired severity, per principle |
+| `stats.py` | the statistics: Clopper-Pearson, exact McNemar, retention gates, dimension groups, report rendering |
+| `analyse.py` | thin layer over `stats.py` that reads the re-judged sidecars and writes `results.json` |
 | `plots.py` | the headline SVG (no plotting dependency) + decomposition + markdown mirror |
 | `export.py` | the publishable bundle (scenarios / transcripts / scores) |
 | `manifest.py` | Hub manifest + per-transcript shards; run metadata comes from `configs/petri/manifest.yaml` |

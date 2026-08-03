@@ -18,20 +18,21 @@ import argparse
 import json
 from pathlib import Path
 
-import importlib.util as _u
-
-_spec = _u.spec_from_file_location("vr", str(Path(__file__).with_name("violation_rates.py")))
-_vr = _u.module_from_spec(_spec)
-_spec.loader.exec_module(_vr)  # type: ignore[union-attr]
-
-VIOLATION_DIMS = _vr.VIOLATION_DIMS
-HARM_SIDE = _vr.HARM_SIDE
-UNHELPFULNESS_SIDE = _vr.UNHELPFULNESS_SIDE
-THRESH = _vr.VIOLATION_THRESHOLD
-clopper_pearson = _vr.clopper_pearson
-mcnemar_exact = _vr.mcnemar_exact
-REALISM_GATE = _vr.REALISM_GATE
-AUDITOR_FAILURE_GATE = _vr.AUDITOR_FAILURE_GATE
+# These live in `stats.py` because both entry points need them. Loose scripts
+# had to load each other by file path; as a package this is an ordinary import,
+# and it is what makes the module work from anywhere rather than only from the
+# directory the two files happened to share.
+from .stats import (  # noqa: F401
+    AUDITOR_FAILURE_GATE,
+    HARM_SIDE,
+    REALISM_GATE,
+    UNHELPFULNESS_SIDE,
+    VIOLATION_DIMS,
+    VIOLATION_THRESHOLD as THRESH,
+    clopper_pearson,
+    mcnemar_exact,
+)
+from . import stats as _vr
 
 
 def rate(rows: list[dict], dims: list[str]) -> dict:

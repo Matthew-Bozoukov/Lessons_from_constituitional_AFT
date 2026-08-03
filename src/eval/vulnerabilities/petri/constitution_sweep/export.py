@@ -1,5 +1,5 @@
 # ABOUTME: Builds the Visualizer-shaped export (scenarios/transcripts/scores) from the run logs.
-# ABOUTME: One export per arm-aware run; conforms to Visualizer/docs/CLAUDE_CODE_PETRI_EXPORT_GUIDE.md.
+# ABOUTME: One export per arm-aware run; conforms to dashboard/docs/CLAUDE_CODE_PETRI_EXPORT_GUIDE.md.
 """Assemble the publishable export for the constitution dose sweep.
 
 Shape required by the Visualizer:
