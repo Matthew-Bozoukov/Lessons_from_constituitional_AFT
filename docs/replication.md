@@ -231,7 +231,7 @@ multi-turn numbers.
 ## The preserve-thinking policy (2026-08-04)
 
 Repo-wide default for training data and serving, everything family-specific centralized in
-`ThinkingProfile` (`src/utils.py`; Qwen3.6 is the only verified profile — Qwen3's thinking
+`ModelProfile` (`src/utils.py`; Qwen3.6 is the only verified profile — Qwen3's thinking
 template prefills nothing, so it is deliberately refused until verified):
 
 - **Data**: `build_mixture.py` renders with the profile's kwargs (`preserve_thinking=True`),

@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from src.utils import QWEN36_PROFILE, thinking_profile  # noqa: F401  (re-exported gate)
+from src.utils import QWEN36_PROFILE, model_profile  # noqa: F401  (re-exported gate)
 
 ASSISTANT_HEADER = "<|im_start|>assistant\n"
 TURN_END = "<|im_end|>"
@@ -11,9 +11,9 @@ TURN_END = "<|im_end|>"
 # The generation-boundary rule (the ONE way think tokens are supervised — deliberately not
 # configurable; git history reproduces runs trained under older rules): mask exactly what
 # the serving template prefills, supervise exactly what the model generates. The prefill
-# literal is family-specific and comes from the ThinkingProfile registry in src/utils.py
+# literal is family-specific and comes from the ModelProfile registry in src/utils.py
 # (verified against the live template in tests/test_masking_tokenizer.py); callers gate on
-# `thinking_profile(model)` so an unverified family is refused, never guessed. Inside a
+# `model_profile(model)` so an unverified family is refused, never guessed. Inside a
 # rendered assistant turn the prefill is conditioning, and everything after it — including
 # the `\n</think>` that closes an empty block — is behaviour the model must learn to emit.
 THINK_PREFILL = QWEN36_PROFILE.prefill

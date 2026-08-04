@@ -14,7 +14,7 @@ from datasets import load_dataset
 from omegaconf import OmegaConf
 from transformers import AutoTokenizer
 
-from src.utils import think_census, thinking_profile, timestamp, write_run_meta  # noqa: E402
+from src.utils import think_census, model_profile, timestamp, write_run_meta  # noqa: E402
 
 # The repo-wide default since 2026-08-04 is PRESERVED rendering: the profile's
 # render_kwargs (Qwen3.6: preserve_thinking=True) make the template emit a think block on
@@ -237,7 +237,7 @@ def main(config: str, smoke: bool = False) -> None:
     sources: dict[str, dict] = OmegaConf.to_container(cfg.sources, resolve=True)
 
     tok = AutoTokenizer.from_pretrained(cfg.tokenizer)
-    render_kwargs = thinking_profile(str(cfg.tokenizer)).render_kwargs
+    render_kwargs = model_profile(str(cfg.tokenizer)).render_kwargs
 
     rows: list[dict] = []
     kinds: dict[str, str] = {}

@@ -16,7 +16,7 @@ from src.train.masking import (  # noqa: E402
     build_labels,
     check_thinking_declaration,
     prefill_spans,
-    thinking_profile,
+    model_profile,
 )
 
 CHAT = (
@@ -159,9 +159,9 @@ def test_every_turn_of_a_multiturn_row_masks_its_own_prefill():
 
 
 def test_family_gate_refuses_unverified_prefills():
-    assert thinking_profile("Qwen/Qwen3.6-27B").prefill == THINK_PREFILL
+    assert model_profile("Qwen/Qwen3.6-27B").prefill == THINK_PREFILL
     with pytest.raises(ValueError, match="Qwen3 prefills nothing"):
-        thinking_profile("Qwen/Qwen3-32B")
+        model_profile("Qwen/Qwen3-32B")
 
 
 def test_check_thinking_declaration():

@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import re
 
-from src.utils import ThinkingProfile, think_census
+from src.utils import ModelProfile, think_census
 
 _TURN = re.compile(r"<\|im_start\|>assistant\n(.*?<\|im_end\|>)", re.DOTALL)
 
@@ -46,7 +46,7 @@ def expected_supervised_text(text: str, prefill: str) -> str:
 
 
 def gate_generation_boundary(texts, tokenizer, max_length: int,
-                             profile: ThinkingProfile, thinking: bool) -> dict:
+                             profile: ModelProfile, thinking: bool) -> dict:
     """Refuse to train when the mask or the data violates the policy. Returns the census.
 
     Args:

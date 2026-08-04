@@ -22,7 +22,7 @@ from src.train.mask_gate import gate_generation_boundary  # noqa: E402
 from src.train.masking import (  # noqa: E402
     build_labels,
     check_thinking_declaration,
-    thinking_profile,
+    model_profile,
 )
 
 
@@ -132,7 +132,7 @@ def main(config: str, smoke: bool = False) -> None:
                     "to reproduce an old run, check out the commit in its adapter's "
                     "training_meta."
                 )
-        profile = thinking_profile(str(cfg.model))
+        profile = model_profile(str(cfg.model))
         gate_generation_boundary(ds["text"], tokenizer, max_len, profile, thinking)
         ds = ds.map(
             lambda r: build_labels(r["text"], tokenizer, max_len, prefill=profile.prefill),

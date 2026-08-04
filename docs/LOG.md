@@ -16,7 +16,7 @@ generation-boundary rule: mask the prefill, supervise everything generated (`\n<
 included), rows tokenized in SEGMENTS cut at the prefill edge so Qwen's `\n\n` merge cannot
 weld the prefilled newline to the generated one. Verified for every turn of multi-turn rows
 (offline merging-stub tests + real-tokenizer tests under a new `tokenizer` pytest marker).
-(3) Family specifics centralized in `ThinkingProfile` (`src/utils.py`); unverified families
+(3) Family specifics centralized in `ModelProfile` (`src/utils.py`); unverified families
 refused, not guessed (Qwen3 deliberately has no profile yet). (4) `build_mixture` flipped to
 preserved rendering by default; HF sources must declare `reasoning: native|none|strip`
 (11 configs annotated `strip` for historical accuracy; `think_marker` and `mask_empty_think`

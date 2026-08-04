@@ -178,7 +178,7 @@ def count_chat_tokens(messages: list[dict], tokenizer_name: str) -> int:
 
 
 @dataclass(frozen=True)
-class ThinkingProfile:
+class ModelProfile:
     """How one model family renders, prefills and preserves reasoning.
 
     Attributes:
@@ -196,7 +196,7 @@ class ThinkingProfile:
     render_kwargs: dict
 
 
-QWEN36_PROFILE = ThinkingProfile(
+QWEN36_PROFILE = ModelProfile(
     family="Qwen3.6",
     prefill="<think>\n",
     empty_think="<think>\n\n</think>\n\n",
@@ -205,10 +205,10 @@ QWEN36_PROFILE = ThinkingProfile(
 # Qwen3 deliberately has NO profile yet: its thinking-mode template prefills nothing (the
 # model generates <think> itself — verified live 2026-08-04), so the generation-boundary
 # mask as written would under-train it. Add a verified profile before training Qwen3.
-THINKING_PROFILES = (QWEN36_PROFILE,)
+MODEL_PROFILES = (QWEN36_PROFILE,)
 
 
-def thinking_profile(model_name: str) -> ThinkingProfile:
+def model_profile(model_name: str) -> ModelProfile:
     """Look up the thinking profile for a base model, refusing unknown families.
 
     Args:
@@ -217,15 +217,15 @@ def thinking_profile(model_name: str) -> ThinkingProfile:
     Raises:
         ValueError: No verified profile covers this family.
     """
-    for profile in THINKING_PROFILES:
+    for profile in MODEL_PROFILES:
         if profile.family in model_name:
             return profile
-    known = ", ".join(p.family for p in THINKING_PROFILES)
+    known = ", ".join(p.family for p in MODEL_PROFILES)
     raise ValueError(
         f"no verified thinking profile for model {model_name!r} (known: {known}). "
         "Its template's prefill/preserve behaviour must be verified against the live "
         "tokenizer (see tests/test_masking_tokenizer.py) and added to "
-        "src/utils.py THINKING_PROFILES before this family can be trained or mixed. "
+        "src/utils.py MODEL_PROFILES before this family can be trained or mixed. "
         "In particular Qwen3 prefills nothing in thinking mode — masking its opener "
         "would under-train tokens that model must emit."
     )
