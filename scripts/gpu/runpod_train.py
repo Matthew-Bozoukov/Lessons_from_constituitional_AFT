@@ -33,7 +33,7 @@ DEFAULT_IMAGE = "runpod/pytorch:0.7.0-dev-cu1281-torch271-ubuntu2204"
 DEFAULT_GPU = "NVIDIA H100 80GB HBM3"
 
 
-def _bootstrap(base: str, bundle: str, train_config: str) -> str:
+def _bootstrap(base: str, bundle: str, train_config: str, mixture: str) -> str:
     """Pod startup script: fetch bundle, train, expose the adapter over :8080."""
     return f"""mkdir -p /workspace
 exec > >(tee -a /workspace/boot.log) 2>&1
@@ -48,7 +48,7 @@ python3 -m pip install --no-cache-dir -q "transformers>=5.14" "trl>=0.27" "peft=
 hf download {base} >/dev/null
 hf download {bundle} --repo-type dataset --local-dir /workspace/bundle
 mkdir -p /workspace/repo && tar -xzf /workspace/bundle/code.tar.gz -C /workspace/repo
-mkdir -p /workspace/repo/data && cp /workspace/bundle/mixture_0_100.jsonl /workspace/repo/data/
+mkdir -p /workspace/repo/data && cp /workspace/bundle/{mixture} /workspace/repo/data/mixture.jsonl
 cd /workspace/repo
 echo TRAINING_STARTING
 (python3 scripts/train/train_lora.py --config {train_config} 2>&1 | tee /workspace/train.log) || true
@@ -65,6 +65,7 @@ def up(
     base: str = "Qwen/Qwen3.6-27B",
     gpu: str = DEFAULT_GPU,
     name: str = "train-lora-0-100",
+    mixture: str = "mixture.jsonl",
     disk_gb: int = 150,
     image: str = DEFAULT_IMAGE,
     cloud: str = "SECURE",
@@ -73,11 +74,13 @@ def up(
     """Create a training pod.
 
     Args:
-        bundle: Public HF dataset repo holding code.tar.gz + mixture_0_100.jsonl.
+        bundle: Public HF dataset repo holding code.tar.gz + the mixture jsonl.
         train_config: Config path inside the code tarball.
         base: Base model to download on the pod.
         gpu: RunPod GPU type id.
-        name: Pod name.
+        name: Pod name. Prefix it so it is distinguishable on the shared account.
+        mixture: Mixture filename inside the bundle; copied to data/mixture.jsonl
+            on the pod, which is what every train config points at.
         disk_gb: Container disk (base model ~55GB + HF cache + outputs).
         image: Container image.
         cloud: SECURE or COMMUNITY.
@@ -95,7 +98,7 @@ def up(
         "volumeInGb": 0,
         "ports": ["8080/http", "22/tcp"],
         "cloudType": cloud,
-        "dockerStartCmd": ["bash", "-lc", _bootstrap(base, bundle, train_config)],
+        "dockerStartCmd": ["bash", "-lc", _bootstrap(base, bundle, train_config, mixture)],
         "env": {"HF_HUB_ENABLE_HF_TRANSFER": "1"},
     }
     codes = [c.strip().upper() for c in countries.split(",") if c.strip()]

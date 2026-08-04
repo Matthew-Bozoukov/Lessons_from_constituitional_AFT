@@ -1,21 +1,16 @@
-# ABOUTME: The five LLM stages of the difficult-advice pipeline, one function each.
-# ABOUTME: Every stage takes the previous stage's records and returns the next stage's.
+# ABOUTME: Pipeline-agnostic machinery every synthdoc generation pipeline builds on:
+# ABOUTME: priced usage tallies, parse-retrying LLM calls, resilient fan-out, checkpoints.
 
 from __future__ import annotations
 
 import json
 import re
-import sys
 import threading
 from pathlib import Path
 from typing import Any
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from src.endpoints.openrouter import ChatResult, OpenRouterClient, map_threaded  # noqa: E402
-from utils import extract_json  # noqa: E402
-
-from . import prompts  # noqa: E402
-from .constitution import Trait  # noqa: E402
+from src.endpoints.openrouter import ChatResult, OpenRouterClient, map_threaded
+from src.utils import extract_json
 
 # USD per 1M tokens, OpenRouter list prices.
 PRICES: dict[str, dict[str, float]] = {
@@ -105,8 +100,8 @@ def _parse_tagged(text: str, keys: tuple[str, ...]) -> dict[str, str]:
     """Pull <key>...</key> blocks out of a completion.
 
     Long prose in JSON is fragile: an unescaped quote inside a string value ends it early
-    and the whole object fails to parse. Every stage-6 failure was exactly that. Tags carry
-    arbitrary text -- quotes, apostrophes, newlines -- with nothing to escape.
+    and the whole object fails to parse. Tags carry arbitrary text -- quotes, apostrophes,
+    newlines -- with nothing to escape.
 
     Args:
         text: Raw completion.
@@ -127,21 +122,30 @@ def _parse_tagged(text: str, keys: tuple[str, ...]) -> dict[str, str]:
     return out
 
 
-def _call_tagged(client: OpenRouterClient, usage: Usage, model: str, system: str, user: str,
-                 temperature: float, max_tokens: int, stage: str, keys: tuple[str, ...],
-                 attempts: int = 3) -> dict[str, str]:
-    """Run a completion expecting tagged blocks, retrying if a tag is missing."""
+def call_tagged(client: OpenRouterClient, usage: Usage, model: str,
+                messages: list[dict], temperature: float, max_tokens: int, stage: str,
+                keys: tuple[str, ...], attempts: int = 3,
+                extra: dict | None = None) -> dict[str, str]:
+    """Run a completion expecting tagged blocks, retrying if a tag is missing.
+
+    Takes a full message list rather than (system, user) so callers can present real
+    chat history -- model-eval-model's self-reflection cells put the response under evaluation in a
+    genuine assistant turn. The retry nudge is appended to the last message, which must
+    be the user turn.
+    """
+    assert messages[-1]["role"] == "user", "the last message must be the user turn"
     last = ""
     for attempt in range(attempts):
         nudge = "" if attempt == 0 else (
             f"\n\nYour previous reply was missing a required block. Return ONLY the "
             f"{' and '.join('<' + k + '>...</' + k + '>' for k in keys)} blocks."
         )
+        msgs = [dict(m) for m in messages]
+        msgs[-1]["content"] += nudge
         res = client.chat(
-            model=model,
-            messages=[{"role": "system", "content": system},
-                      {"role": "user", "content": user + nudge}],
+            model=model, messages=msgs,
             temperature=temperature, max_tokens=max_tokens,
+            **({"extra_body": extra} if extra else {}),
         )
         usage.add(model, res, stage)
         assert res.finish_reason != "length", (
@@ -153,8 +157,9 @@ def _call_tagged(client: OpenRouterClient, usage: Usage, model: str, system: str
     raise ValueError(f"{stage}: no valid tagged output after {attempts} attempts. {last}")
 
 
-def _call(client: OpenRouterClient, usage: Usage, model: str, system: str, user: str,
-          temperature: float, max_tokens: int, stage: str, attempts: int = 3) -> tuple[Any, ChatResult]:
+def call_json(client: OpenRouterClient, usage: Usage, model: str, system: str, user: str,
+              temperature: float, max_tokens: int, stage: str, attempts: int = 3,
+              extra: dict | None = None) -> tuple[Any, ChatResult]:
     """Run one chat completion and parse its JSON body, retrying a malformed reply.
 
     A model occasionally returns prose or truncated JSON. Retrying that single call is far
@@ -191,11 +196,12 @@ def _call(client: OpenRouterClient, usage: Usage, model: str, system: str, user:
                       {"role": "user", "content": user + nudge}],
             temperature=temperature,
             max_tokens=max_tokens,
+            **({"extra_body": extra} if extra else {}),
         )
         usage.add(model, res, stage)
         assert res.finish_reason != "length", (
             f"{stage}: {model} hit max_tokens={max_tokens} and truncated its JSON. "
-            f"Raise max_tokens for this stage, or lower scenarios_per_call."
+            f"Raise max_tokens for this stage, or lower the per-call batch size."
         )
         try:
             return _parse_json(res.content), res
@@ -204,7 +210,8 @@ def _call(client: OpenRouterClient, usage: Usage, model: str, system: str, user:
     raise ValueError(f"{stage}: unparseable JSON after {attempts} attempts. {last}")
 
 
-def _resilient(fn, n: int, workers: int, desc: str, max_fail_pct: float = 2.0) -> list:
+def resilient(fn, n: int, workers: int, desc: str, max_fail_pct: float = 2.0,
+              total: int | None = None) -> list:
     """Map `fn` over indices, keeping successes when individual items fail.
 
     A single malformed reply must not discard a stage's other results -- those cost real
@@ -218,6 +225,9 @@ def _resilient(fn, n: int, workers: int, desc: str, max_fail_pct: float = 2.0) -
         workers: Thread pool size.
         desc: Progress label.
         max_fail_pct: Abort above this failure percentage.
+        total: Denominator for the rate -- the WHOLE stage's item count. On a resume the
+            still-outstanding items are precisely the ones that already failed once, so
+            measuring against `n` alone would make any resume look catastrophic.
 
     Returns:
         Successful results, in order, with failures dropped.
@@ -237,7 +247,7 @@ def _resilient(fn, n: int, workers: int, desc: str, max_fail_pct: float = 2.0) -
     out = map_threaded(guarded, n, max_workers=workers, desc=desc)
     ok = [r for r in out if r is not None]
     if errors:
-        pct = 100 * len(errors) / max(n, 1)
+        pct = 100 * len(errors) / max(total or n, 1)
         print(f"!!! {desc}: {len(errors)}/{n} items failed ({pct:.1f}%). First 3:")
         for e in errors[:3]:
             print("   ", e)
@@ -269,7 +279,7 @@ class Checkpoint:
         self._lock = threading.Lock()
         self.done: dict[str, dict] = {}
         if self.path.exists():
-            for line in self.path.open():
+            for line in self.path.open(encoding="utf-8"):
                 line = line.strip()
                 if not line:
                     continue
@@ -283,13 +293,13 @@ class Checkpoint:
         """Append one completed record and flush it to disk immediately."""
         with self._lock:
             self.done[r[self.key]] = r
-            with self.path.open("a") as f:
+            with self.path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(r, ensure_ascii=False) + "\n")
                 f.flush()
 
 
-def _run_items(items: list[dict], fn, workers: int, desc: str,
-               ckpt: Checkpoint | None = None) -> list[dict]:
+def run_items(items: list[dict], fn, workers: int, desc: str,
+              ckpt: Checkpoint | None = None, max_fail_pct: float = 2.0) -> list[dict]:
     """Process items concurrently, skipping and recording via a checkpoint when given.
 
     Args:
@@ -303,7 +313,8 @@ def _run_items(items: list[dict], fn, workers: int, desc: str,
         Output records in input order, with failures dropped.
     """
     if ckpt is None:
-        return _resilient(lambda i: fn(items[i]), len(items), workers, desc)
+        return resilient(lambda i: fn(items[i]), len(items), workers, desc,
+                         max_fail_pct=max_fail_pct)
 
     todo = [it for it in items if it[ckpt.key] not in ckpt.done]
     if len(todo) < len(items):
@@ -315,194 +326,113 @@ def _run_items(items: list[dict], fn, workers: int, desc: str,
             ckpt.record(r)
             return r
 
-        _resilient(one, len(todo), workers, desc)
+        resilient(one, len(todo), workers, desc, max_fail_pct=max_fail_pct,
+                  total=len(items))
     return [ckpt.done[it[ckpt.key]] for it in items if it[ckpt.key] in ckpt.done]
 
 
-# --- stage 2 -----------------------------------------------------------------------
+from dataclasses import dataclass, field
 
 
-def generate_scenarios(traits: list[Trait], client: OpenRouterClient, usage: Usage,
-                       model: str, per_trait: int, per_call: int, temperature: float,
-                       max_tokens: int, workers: int) -> list[dict]:
-    """Generate difficult situations for each trait.
+@dataclass
+class Ctx:
+    """Everything a stage function may need, one argument.
 
-    Scenarios are requested in batches rather than all at once: a single call asking for
-    40 situations would exceed any sane `max_tokens` and truncate its JSON. Batching also
-    improves diversity, since each call is told to vary domains only within its own batch.
+    `vars` holds template variables shared across stages (constitution, style guidance,
+    ...); `manifest_extra` collects run-level metadata a stage wants in the manifest.
+    The OpenRouter client is created lazily, so deterministic-only runs (and offline
+    tests) never touch credentials.
+    """
+
+    cfg: dict
+    usage: Usage
+    workers: int
+    run_dir: Path
+    smoke: bool
+    vars: dict = field(default_factory=dict)
+    manifest_extra: dict = field(default_factory=dict)
+    _client: Any = None
+
+    @property
+    def client(self):
+        """The shared OpenRouter client, created on first paid call."""
+        if self._client is None:
+            self._client = OpenRouterClient()
+        return self._client
+
+    @property
+    def constitution(self) -> str:
+        return self.vars["constitution"]
+
+
+@dataclass(frozen=True)
+class Stage:
+    """One executable step, built from a config stage entry by its operator.
+
+    Attributes:
+        name: Snapshot name (`stage_<position>_<name>.jsonl`) and the ablation handle.
+        fn: (ctx, records, ckpt) -> records. The whole stage.
+        paid: Whether the stage spends money -- the budget guard runs before paid stages.
+        checkpoint_key: Record field for per-item resume; None = stage-level cache only.
+        ablate_fn: Null-operation (records -> records), built by the engine from the
+            stage entry's `ablate_with` field-copy map. Absent = not ablatable.
+        skip: (ctx, records) -> bool for structurally inapplicable stages.
+        on_cached: Called when the snapshot is reused, to restore ctx.vars /
+            manifest_extra a cache hit would otherwise lose.
+        preview: Render one line of the first output record for the run log.
+    """
+
+    name: str
+    fn: Any
+    paid: bool = False
+    checkpoint_key: str | None = None
+    ablate_fn: Any = None
+    skip: Any = None
+    on_cached: Any = None
+    preview: Any = None
+
+
+def model_cfg(cfg: dict, key: str) -> dict[str, Any]:
+    """Return the merged model settings for one stage.
 
     Args:
-        traits: The segmented constitution.
-        client: OpenRouter client.
-        usage: Tally.
-        model: Model id.
-        per_trait: Scenarios requested per trait, in total.
-        per_call: Scenarios requested per API call.
-        temperature: Sampling temperature.
-        max_tokens: Completion cap.
-        workers: Thread pool size.
+        cfg: Full run config.
+        key: Stage key under `models`.
 
     Returns:
-        One record per scenario.
+        Dict with model, temperature and max_tokens.
     """
-    # (trait index, batch index, how many this batch asks for)
-    batches: list[tuple[int, int, int]] = []
-    for ti in range(len(traits)):
-        remaining = per_trait
-        bi = 0
-        while remaining > 0:
-            n = min(per_call, remaining)
-            batches.append((ti, bi, n))
-            remaining -= n
-            bi += 1
-
-    def one(k: int) -> list[dict]:
-        ti, bi, n = batches[k]
-        t = traits[ti]
-        parsed, _ = _call(
-            client, usage, model,
-            prompts.SCENARIO_SYSTEM,
-            prompts.SCENARIO_USER.format(trait_name=t.name, trait_text=t.text, n=n),
-            temperature, max_tokens, stage="scenarios",
-        )
-        assert isinstance(parsed, list), f"{t.trait_id}: expected a JSON array, got {type(parsed)}"
-        return [{
-            "scenario_id": f"{t.trait_id}_b{bi:02d}_s{j:03d}",
-            "trait_id": t.trait_id,
-            "trait_name": t.name,
-            "trait_text": t.text,
-            "domain": s.get("domain", ""),
-            "situation": s["situation"],
-            "shortcut": s.get("shortcut", ""),
-        } for j, s in enumerate(parsed)]
-
-    nested = _resilient(one, len(batches), workers, "stage2:scenarios")
-    return [r for group in nested for r in group]
-
-
-# --- stage 3 -----------------------------------------------------------------------
-
-
-def draft_prompts(scenarios: list[dict], client: OpenRouterClient, usage: Usage, model: str,
-                  temperature: float, max_tokens: int, workers: int) -> list[dict]:
-    """Write a first-attempt system and user prompt for each scenario."""
-    def one(i: int) -> dict:
-        s = scenarios[i]
-        parsed, _ = _call(
-            client, usage, model,
-            prompts.DRAFT_SYSTEM,
-            prompts.DRAFT_USER.format(situation=s["situation"], shortcut=s["shortcut"]),
-            temperature, max_tokens, stage="draft",
-        )
-        return {**s, "draft_system": parsed["system"], "draft_user": parsed["user"]}
-
-    return _resilient(one, len(scenarios), workers, "stage3:draft")
-
-
-# --- stage 4 -----------------------------------------------------------------------
-
-
-def refine_prompts(drafts: list[dict], client: OpenRouterClient, usage: Usage, model: str,
-                   constitution: str, temperature: float, max_tokens: int,
-                   workers: int, ckpt: Checkpoint | None = None) -> list[dict]:
-    """Rewrite each draft prompt into a sharper test of its target trait.
-
-    The full constitution and the specific target trait are both injected, so the model
-    can tell which principle the prompt is supposed to stress.
-    """
-    def one(d: dict) -> dict:
-        parsed, _ = _call(
-            client, usage, model,
-            prompts.REFINE_SYSTEM,
-            prompts.REFINE_USER.format(
-                constitution=constitution, trait_name=d["trait_name"],
-                trait_text=d["trait_text"], draft_system=d["draft_system"],
-                draft_user=d["draft_user"],
-            ),
-            temperature, max_tokens, stage="refine",
-        )
-        return {**d, "system": parsed["system"], "user": parsed["user"],
-                "refine_changes": parsed.get("changes", "")}
-
-    return _run_items(drafts, one, workers, "stage4:refine", ckpt)
-
-
-# --- stage 5 -----------------------------------------------------------------------
-
-
-def generate_responses(refined: list[dict], client: OpenRouterClient, usage: Usage, model: str,
-                       style_guidance: str, temperature: float, max_tokens: int,
-                       workers: int, ckpt: Checkpoint | None = None) -> list[dict]:
-    """Answer each refined prompt with explicit reasoning, steered by the target trait."""
-    def one(r: dict) -> dict:
-        parsed = _call_tagged(
-            client, usage, model,
-            prompts.RESPONSE_SYSTEM.format(
-                system=r["system"], trait_name=r["trait_name"], trait_text=r["trait_text"],
-                style_guidance=style_guidance,
-            ),
-            prompts.RESPONSE_USER.format(user=r["user"]),
-            temperature, max_tokens, "respond", ("reasoning", "response"),
-        )
-        return {**r, "draft_reasoning": parsed["reasoning"], "draft_response": parsed["response"]}
-
-    return _run_items(refined, one, workers, "stage5:respond", ckpt)
-
-
-# --- stage 6 -----------------------------------------------------------------------
-
-
-def rewrite_responses(responses: list[dict], client: OpenRouterClient, usage: Usage, model: str,
-                      constitution: str, temperature: float, max_tokens: int,
-                      workers: int, ckpt: Checkpoint | None = None) -> list[dict]:
-    """Rewrite each response to maximally exhibit its target trait.
-
-    The blog calls this the critical step: the reviewer sees the whole transcript with the
-    relevant constitution section in context, then rewrites rather than scores.
-    """
-    def one(r: dict) -> dict:
-        parsed = _call_tagged(
-            client, usage, model,
-            prompts.REWRITE_SYSTEM,
-            prompts.REWRITE_USER.format(
-                constitution=constitution, trait_name=r["trait_name"],
-                trait_text=r["trait_text"], system=r["system"], user=r["user"],
-                reasoning=r["draft_reasoning"], response=r["draft_response"],
-            ),
-            temperature, max_tokens, "rewrite", ("reasoning", "response", "changes"),
-        )
-        return {**r, "reasoning": parsed["reasoning"], "response": parsed["response"],
-                "rewrite_changes": parsed.get("changes", "")}
-
-    return _run_items(responses, one, workers, "stage6:rewrite", ckpt)
-
-
-def to_sft(records: list[dict]) -> list[dict]:
-    """Convert final records into chat form with the trait carried in metadata.
-
-    Args:
-        records: Stage-6 output.
-
-    Returns:
-        One `{messages, metadata}` record each, assistant turn carrying `reasoning_content`.
-    """
-    out = []
-    for r in records:
-        out.append({
-            "messages": [
-                {"role": "system", "content": r["system"]},
-                {"role": "user", "content": r["user"]},
-                {"role": "assistant", "content": r["response"],
-                 "reasoning_content": r["reasoning"]},
-            ],
-            "metadata": {
-                "scenario_id": r["scenario_id"],
-                "trait_id": r["trait_id"],
-                "trait_name": r["trait_name"],
-                "trait_text": r["trait_text"],
-                "domain": r.get("domain", ""),
-                "shortcut": r.get("shortcut", ""),
-                "situation": r["situation"],
-            },
-        })
+    defaults = cfg.get("defaults", {})
+    block = cfg["models"][key]
+    out = {
+        "model": block["model"],
+        "temperature": float(block.get("temperature", defaults.get("temperature", 1.0))),
+        "max_tokens": int(block.get("max_tokens", defaults.get("max_tokens", 4096))),
+    }
+    # OpenRouter's unified reasoning control. Extended thinking is billed as completion
+    # tokens, so a stage that only assembles text rather than judging it can cost several
+    # times its visible output. `reasoning: {enabled: false}` on such a stage is pure
+    # saving; the stages that weigh the constitution keep it. (Measured: $81 off one run.)
+    reasoning = block.get("reasoning", defaults.get("reasoning"))
+    if reasoning is not None:
+        out["extra_body"] = {"reasoning": dict(reasoning)}
     return out
+
+
+def measured_per_stage(manifest_path: str) -> tuple[dict[str, dict[str, float]], dict]:
+    """Return per-stage per-call token averages from a completed run's manifest.
+
+    Args:
+        manifest_path: Path to manifest.json.
+
+    Returns:
+        (mapping stage -> {in_per_call, out_per_call}, the manifest itself).
+    """
+    m = json.loads(Path(manifest_path).read_text())
+    by_stage = m["usage"].get("by_stage", {})
+    out = {}
+    for stage, b in by_stage.items():
+        calls = max(b["calls"], 1)
+        out[stage] = {"in_per_call": b["prompt_tokens"] / calls,
+                      "out_per_call": b["completion_tokens"] / calls}
+    return out, m

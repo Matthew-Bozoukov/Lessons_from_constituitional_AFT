@@ -60,6 +60,23 @@ def test_labels_unmask_exactly_the_assistant_characters():
     assert kept == "hello<|im_end|>farewell<|im_end|>"
 
 
+def test_supervise_final_trains_only_the_last_assistant_turn():
+    # The model-eval-model self-reflection shape: the first assistant turn (the response under
+    # evaluation) is context, not a target.
+    spans = assistant_spans(CHAT, supervise="final")
+    assert [CHAT[s:e] for s, e in spans] == ["farewell<|im_end|>"]
+    out = build_labels(CHAT, _CharTokenizer(), max_length=len(CHAT), supervise="final")
+    kept = "".join(chr(v) for v in out["labels"] if v != -100)
+    assert kept == "farewell<|im_end|>"
+
+
+def test_supervise_rejects_unknown_modes():
+    import pytest
+
+    with pytest.raises(AssertionError, match="unknown supervise mode"):
+        assistant_spans(CHAT, supervise="first")
+
+
 def test_supervised_fraction_is_a_minority_of_a_prompt_heavy_example():
     long_prompt = "<|im_start|>user\n" + ("x" * 500) + "<|im_end|>\n" \
                   "<|im_start|>assistant\nok<|im_end|>\n"

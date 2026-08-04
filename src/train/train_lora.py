@@ -135,8 +135,16 @@ def main(config: str, smoke: bool = False) -> None:
                 )
         profile = model_profile(str(cfg.model))
         gate_generation_boundary(ds["text"], tokenizer, max_len, profile, thinking)
+        # A row's optional `supervise` field ("final" = train only the last assistant
+        # turn -- model-eval-model's self-reflection records) must be consumed here:
+        # remove_columns discards it right after. Absent or null trains every turn.
+        if "supervise" in ds.column_names:
+            n_final = sum(1 for s in ds["supervise"] if s == "final")
+            print(f">>> supervise=final rows (only last assistant turn trains): "
+                  f"{n_final}/{len(ds)}")
         ds = ds.map(
             lambda r: build_labels(r["text"], tokenizer, max_len,
+                                   supervise=r.get("supervise") or "all",
                                    prefill=profile.prefill,
                                    empty_think=profile.empty_think),
             remove_columns=ds.column_names,

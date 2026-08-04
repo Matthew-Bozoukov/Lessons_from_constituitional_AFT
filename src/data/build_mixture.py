@@ -117,9 +117,15 @@ def _take_messages(tok, path: Path, budget: int, seed: int, source: str,
 
 
 def _take_rendered(path: Path, budget: int, seed: int, source: str) -> list[dict]:
-    """Sample an already-rendered jsonl (fields: text, n_tokens) up to a token budget."""
+    """Sample an already-rendered jsonl (fields: text, n_tokens) up to a token budget.
+
+    An optional per-row `supervise` field ("all" | "final") rides through into the
+    mixture so the trainer can mask non-final assistant turns (the model-eval-model self-reflection
+    records); rows without it train every assistant turn as before.
+    """
     rows = [
-        {"text": r["text"], "source": source, "n_tokens": r["n_tokens"]}
+        {"text": r["text"], "source": source, "n_tokens": r["n_tokens"],
+         **({"supervise": r["supervise"]} if r.get("supervise") else {})}
         for r in map(json.loads, path.open())
     ]
     assert rows, f"no rows in {path}"
@@ -255,7 +261,10 @@ def main(config: str, smoke: bool = False) -> None:
     out_path = out_dir / "mixture.jsonl"
     with out_path.open("w") as f:
         for r in rows:
-            f.write(json.dumps({"text": r["text"], "source": r["source"]}, ensure_ascii=False) + "\n")
+            rec = {"text": r["text"], "source": r["source"]}
+            if r.get("supervise"):
+                rec["supervise"] = r["supervise"]
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
     grand = sum(r["n_tokens"] for r in rows)
     by_source: dict[str, dict] = {}

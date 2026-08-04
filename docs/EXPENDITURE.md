@@ -15,30 +15,55 @@ to a future reader.
   therefore overstate cash spent.
 - Record failures and their cost explicitly.
 
+## Running total
+
+| category | spent to date |
+|---|---|
+| OpenRouter (data generation) | **$255.96** |
+| OpenRouter (eval judging) | $0.02 |
+| GPU rental | $0.17 (+ ~4 RunPod A100-h on 2026-08-03, $ TBD from dashboard) |
+| **total** | **$256.15** (+ GPU TBD) |
+
 ---
 
 ## Running total
 
 | category | spent to date |
 |---|---|
-| OpenRouter (data generation) | **$171.46** |
+| OpenRouter (data generation) | **$172.76** |
 | OpenRouter (eval judging) | $0.02 |
-| GPU rental | $0.17 (+ ~4 RunPod A100-h on 2026-08-03, $ TBD from dashboard) |
-| **total** | **$171.65** (+ GPU TBD) |
+| GPU rental | $0.00 (+ ~4 RunPod A100-h on 2026-08-03, $ TBD from dashboard) |
+| **total** | **$172.78** (+ GPU TBD) |
 
 ---
 
-## 2026-08-04 — Qwen3.6-27B think-token probe (RunPod A100-80GB)
+---
 
-**What was bought:** ground truth on Qwen3.6-27B's token-level think-tag behavior, for eval
-metric design: greedy token-by-token dump on a trivial question, thinking on and off
-(`scratch/qwen3_empty_think_tokens.py` launched by `scratch/launch_qwen36_probe.sh`; output in
-`output/logs/qwen36_think_probe_20260804_154008.txt`, findings in LOG.md 2026-08-04).
+## 2026-08-04 — MEM pipeline smoke validation (OpenRouter, Sonnet 5)
 
-- **GPU:** A100-80GB PCIe secure-cloud pod `80noxz67x08net`, 15:32–15:40 (~7 min) at
-  $1.39/GPU-h ≈ **$0.17**. Unit cost: one single-question 27B transformers probe (55GB Xet
-  download ~3 min + shard load + 2 greedy generations) ≈ **$0.20/probe-pod**; the marginal
-  question is nearly free, so batch questions into one pod.
+**What was bought:** end-to-end validation of the new `synthdoc mem` pipeline — one MEM smoke
+(2 control + 2 m4 documents, $0.22), one `synthdoc check` pass with real judge calls (~$0.06),
+and two failed `synthdoc run --smoke` attempts (~$0.17, bought a finding: trait t1 generates
+CBRN-adjacent scenarios that Bedrock content-filters at stage 4, so the 2-item smoke cannot pass —
+see LOG 2026-08-04).
+
+**Cost:** $0.45 by `/credits` delta (578.457 → 578.907 of $600). Waited 30 s before the final read.
+
+**Unit costs (measured, the numbers that matter):** MEM control $0.046/doc (11,968 in / 2,184 out
+tokens per call), MEM critique $0.064/doc (12,062 in / 3,958 out) at Sonnet 5 $2/$10 per 1M.
+Prompts are ~12k tokens because the full constitution + a whole transcript are injected — 70%
+above the pre-smoke assumption. Pilot at 300+300 = **$32.84** (`synthdoc estimate --measured`);
+**remaining credit $21.09 cannot cover it** — flag raised, top-up needed before the pilot.
+
+**Follow-up, same day (self-reflection pass):** five-cell smoke (10 docs incl. 4 perturbations,
+$0.82) + full checks with flaw-ID judge (~$0.06): **$0.85** by `/credits` delta (578.907 → 579.755).
+New measured unit costs: reflect $0.059/doc (12,282 in / 3,470 out), critique re-measured
+$0.074/doc (12,104 in / 4,937 out — m3 critiques run longer than m4's), perturb $0.018/doc
+(2,571 in / 1,325 out). **Full 5×300 matrix = $104.84** ($0.070/doc all-in). Account topped up to
+$800 → **$220.25 remaining**; the matrix is affordable but >$20, flagged for sign-off before
+running.
+
+---
 
 ## 2026-08-03 — Eval-framework pod validation (RunPod A100-80GB + OpenRouter)
 
@@ -60,6 +85,8 @@ docker verdict).
   micro-runs; resume it for real runs.
 - **Wasted spend:** one engine boot (~14 min GPU) lost to the inline-nohup SSH hang, and
   one to the first training-smoke validation misfire — both bought the bug fixes above.
+
+---
 
 ---
 
@@ -150,6 +177,8 @@ GPU rental for QLoRA (~$10–20) and the honeypot eval judge (~$15–25) are sti
 
 ---
 
+---
+
 ## Prior work (pre-ledger, from README/LOG)
 
 Recorded for comparison; these predate this ledger and are taken from `README.md` and `LOG.md`.
@@ -160,3 +189,58 @@ Recorded for comparison; these predate this ledger and are taken from `README.md
 | v1 think-trace augmentation | ~$28 |
 | ODCV-Bench replication (80 runs, 4 judges) | $17.84 |
 | ODCV-Bench on the DPO adapter | $11.32 |
+
+---
+
+## 2026-08-04 — synthdoc self_reflection corpus: 592 records, 1.56M tokens (~$83.20)
+
+**Bought:** the `self_reflection` SFT corpus — **592 records, 1,555,017 Qwen3.6 tokens** — on HF
+`LASR-Callum/2026-08-03-synthdoc-self-reflection`. Unit cost **$0.141 per record**, **$0.0535 per 1k
+tokens**.
+
+| leg | outcome | cost |
+|---|---|---|
+| smoke runs (4) | pipeline validation + measured per-stage tokens | ~$1.80 |
+| base run, attempt 1 | stages 2-3 complete, stage 4 aborted on the failure guard | ~$27.54 (reconstructed) |
+| base run, resume 1 | aborted immediately — guard bug, below | ~$0.94 (reconstructed) |
+| base run, resume 2 | completed: 451 records | **$35.25** (manifest) |
+| top-up (`total_scenarios=144,id_prefix=b`) | completed: 141 records | **$19.47** (manifest) |
+
+$54.72 is exact from manifests; ~$28.48 is reconstructed from measured per-call costs for the leg
+whose manifest was overwritten on resume. Against the pre-run estimate of $0.1226/record the
+completed legs landed within 1% — the estimator is trustworthy; the aborts were the cost.
+
+**Wasted: ~$28.50.** Both aborts were the failure guard, not the pipeline. Sonnet 5 on Bedrock
+returns `finish_reason=content_filter` on a small fraction of these environments outright — a
+per-scenario refusal, not a fault — which tripped the 2.0% default at 2.8%. Raising it exposed a
+worse bug: on resume the rate was measured against the *remaining* items, precisely the ones that
+had already failed, so 12/13 read as 92.3% and aborted again. Per-item checkpointing meant the spend
+still bought records, so the genuine waste is only the ~$1.95 of re-attempted refusals.
+
+**Biggest saving, reusable anywhere:** extended-thinking tokens bill as completion tokens. With
+thinking on, the refine stage burned ~8,800 completion tokens to emit a ~1,200-token environment —
+7x its visible output. Setting `reasoning: {enabled: false}` on the two stages that assemble text
+rather than judge it cut the projected full run from $198.73 to $117.67 at the original sizing: an
+**$81 saving for a two-line config change**. Check this on any pipeline that puts a reasoning model
+on a mechanical stage.
+
+**Balance note:** OpenRouter `/credits` read `total_usage` $410.92 of $600 at the time. That figure
+covers the whole shared account, not this repository, so it cannot be used to derive per-task spend
+— it is recorded only as a runway check. Take a `/credits` reading **before and after** a run when a
+true incremental figure is wanted; none was taken here, which is why one leg had to be reconstructed.
+
+---
+
+---
+
+## 2026-08-04 — Qwen3.6-27B think-token probe (RunPod A100-80GB)
+
+**What was bought:** ground truth on Qwen3.6-27B's token-level think-tag behavior, for eval
+metric design: greedy token-by-token dump on a trivial question, thinking on and off
+(`scratch/qwen3_empty_think_tokens.py` launched by `scratch/launch_qwen36_probe.sh`; output in
+`output/logs/qwen36_think_probe_20260804_154008.txt`, findings in LOG.md 2026-08-04).
+
+- **GPU:** A100-80GB PCIe secure-cloud pod `80noxz67x08net`, 15:32–15:40 (~7 min) at
+  $1.39/GPU-h ≈ **$0.17**. Unit cost: one single-question 27B transformers probe (55GB Xet
+  download ~3 min + shard load + 2 greedy generations) ≈ **$0.20/probe-pod**; the marginal
+  question is nearly free, so batch questions into one pod.

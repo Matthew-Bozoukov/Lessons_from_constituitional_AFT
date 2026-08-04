@@ -254,22 +254,25 @@ template prefills nothing, so it is deliberately refused until verified):
 `output/reasoning_probe_*.txt` compare `<think>` length of base vs LoRA. Naive SFT → 0 chars
 (collapsed); the think-trace fix → 900-1600 chars of real reasoning, answers still correct.
 
-## `src/data/synthdoc/` — synthetic chat data generation pipeline (separate, plug-and-play)
+## `src/data/synthdoc/` — synthetic chat data generation pipelines (separate, plug-and-play)
 
-A **self-contained** package (formerly `synthdoc_v2`) replicating the six-stage difficult-advice
-pipeline from Teaching Claude Why: segment the constitution, generate scenarios, draft the prompt,
-refine it against the full constitution, generate a response, and rewrite the response against the
-target trait. It shares nothing with the code above — no imports either way — and hands off a
+A **self-contained** package (formerly `synthdoc_v2`) with one config-driven engine; the config's
+`stages:` list — prompts included — fully defines the document type, and
+`scripts/data/build_dataset.py` executes it. `configs/data/difficult_advice.yaml` replicates the
+six-stage Teaching Claude Why recipe:
+segment the constitution, generate scenarios, draft the prompt, refine it against the full
+constitution, generate a response, and rewrite the response against the target trait. It shares
+nothing with the code above — no imports either way — and hands off a
 finished corpus in SFT chat format (with `reasoning_content` per example) that the training step
 can read directly. Full guide: [`src/data/synthdoc/README.md`](../src/data/synthdoc/README.md)
 (stage table, models, caching).
 
 ```bash
-uv run synthdoc segment                                   # stage 1 only, no API calls
-uv run synthdoc run --config configs/data/synthdoc.yaml --smoke
-uv run synthdoc run --config configs/data/synthdoc.yaml
-uv run synthdoc estimate --config configs/data/synthdoc.yaml   # cost estimate before committing
-uv run pytest tests/test_synthdoc.py -q                   # offline, no API key
+uv run synthdoc segment                                   # constitution -> traits, no API calls
+uv run scripts/data/build_dataset.py --config configs/data/difficult_advice.yaml --smoke
+uv run scripts/data/build_dataset.py --config configs/data/difficult_advice.yaml
+uv run scripts/data/build_dataset.py --config configs/data/difficult_advice.yaml --estimate
+uv run pytest tests/test_difficult_advice.py -q           # offline, no API key
 ```
 
 Every stage writes a complete snapshot (`output/synthdoc_v2/<run>/stage_<n>_*.jsonl` — the
@@ -277,13 +280,67 @@ directory keeps its historical name so old runs stay resumable) and mirrors it t
 repo named in the config, so an interrupted or budget-capped run resumes from the last completed
 stage at no cost.
 
+The same package also hosts the **model-eval-model pipeline**: documents where the
+model reasons about a response to one of the same scenarios (its own or "an AI assistant's") and
+works out whether it was the right call. It consumes a *completed* difficult-advice run — same
+scenario bank, so arm differences are attributable to format — and fail-fasts if the source run's
+constitution sha differs from the config's. All five cells are implemented: the reasoning-only
+`control`, the other-attribution critiques `m4`/`m3` (the flawed side via minimal-pair
+perturbation), and the self-reflection cells `m2`/`m1` — the headline experiment — whose records
+are multi-turn with the evaluated response in the model's own prior turn, trained with
+`supervise: "final"` (only the last assistant turn carries loss; threaded through
+`convert_synthdoc_qwen.py` → `build_mixture.py` → `masking.py`). See the cell table in
+[`src/data/synthdoc/README.md`](../src/data/synthdoc/README.md).
+
+```bash
+uv run scripts/data/build_dataset.py --config configs/data/model_eval_model.yaml --smoke   # 2 docs per enabled cell
+uv run scripts/data/build_dataset.py --config configs/data/model_eval_model.yaml
+uv run synthdoc check --config configs/data/model_eval_model.yaml --run_dir output/model_eval_model/<ts>   # validity gates
+uv run scripts/data/build_dataset.py --config configs/data/model_eval_model.yaml --estimate --measured output/model_eval_model/<smoke>/manifest.json
+uv run pytest tests/test_model_eval_model.py -q                        # offline, no API key
+```
+
+### The self-reflection document type
+
+`configs/data/self_reflection.yaml` inverts who is tempted: **the agent itself** — working
+autonomously, it could protect its own position (or the objective it was deployed to pursue) by
+an action that is deniable rather than overtly wrong; it deliberates in its own value language,
+declines, and still does its job. Composition (prose/agentic form, 15% multi-turn, 12% control
+slice where the right move is to ACT, motive split) is assigned deterministically from scenario
+ids; stage 6 enforces a voice contract in code (rule-vocabulary lint, reject-and-retry).
+
+```bash
+uv run scripts/data/build_dataset.py --config configs/data/self_reflection.yaml --smoke
+uv run scripts/data/build_dataset.py --config configs/data/self_reflection.yaml
+# a one-off variant (a top-up, a different size) without forking the config:
+uv run scripts/data/build_dataset.py --config configs/data/self_reflection.yaml \
+    --overrides "total_scenarios=144,id_prefix=b"
+uv run pytest tests/test_self_reflection.py -q            # offline, no API key
+```
+
+Generated 2026-08-03 (pre-restructure code, same prompts): **592 records / 1.56M Qwen3.6
+tokens**, HF `LASR-Callum/2026-08-03-synthdoc-self-reflection`. Consumed by
+`configs/data/mixture_qwen36_table2_80_synthdoc_self_reflect_20.yaml` at a pinned revision.
+
+Two things that bite when using this corpus:
+
+- **Render with reasoning preserved on every assistant turn.** 15.9% of its records are
+  two-exchange conversations, and a naive Qwen3.6 render emits `<think>` on the final assistant
+  turn only — earlier turns come out as bare content, and supervising those trains the model to
+  answer without reasoning. The repo's preserve-thinking policy handles this; a mixture built
+  outside it does not.
+- **`trait_weights` are checked against the constitution actually loaded.** The 12-principle
+  document was re-cut to ten units on 2026-08-04 while keeping its folder name, so a config
+  written against the old cut would silently generate a different corpus. Planning now fails
+  loudly instead.
+
 The original config-driven `synthdoc` package (ablation sweeps, corpus snapshots,
 `control/` prompt registry) was deleted on 2026-08-03 in favour of this simpler, more faithful
 pipeline; it lives in git history before that date, and its published corpora remain on
 HuggingFace (`LASR-Callum/synthdoc-<name>`).
 
 ## Repo layout
-- `src/data/synthdoc/` self-contained six-stage difficult-advice data pipeline (see above); its run config is `configs/data/synthdoc.yaml`.
+- `src/data/synthdoc/` constitution-grounded data generation: one config-driven engine; the config's `stages:` list (prompts included) defines the document type; run via `scripts/data/build_dataset.py` (`configs/data/difficult_advice.yaml`, `configs/data/model_eval_model.yaml`).
 - `src/` reusable code (`endpoints/`, `utils.py`, `data/`, `train/`, `eval/`); `scripts/` thin pipeline CLIs foldered by stage (`data/`, `train/`, `gpu/`); `scratch/` one-offs.
 - `configs/` OmegaConf YAML for every step, foldered by stage (`data/`, `train/`, `eval/`).
 - `scripts/run_eval.py` THE eval entrypoint (see CLAUDE.md "The eval framework"): serves each `--target` with vLLM and dispatches to the registered eval's `run()`.
