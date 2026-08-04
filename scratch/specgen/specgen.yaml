@@ -1,0 +1,52 @@
+# ABOUTME: Run config for specgen: distill the published Claude constitution into specs
+# ABOUTME: at three granularities (the single independent variable of the spec experiment).
+# Run: uv run scratch/specgen/cli.py <pin|extract|generate|metrics> --config scratch/specgen/specgen.yaml
+
+seed: 0
+source_url: "https://www.anthropic.com/constitution"
+output_dir: "output/specgen"
+# Token counts use the downstream training tokenizer, so bands mean what training sees.
+tokenizer: "Qwen/Qwen3.6-27B"
+
+# Every claim inventory and every generated spec (draft AND post-revision final) is
+# mirrored here under a per-run timestamp, so the distilled docs' evolution across
+# refinement runs stays on the record. Set null for local-only. Smoke runs never push.
+hf_repo: "LASR-Callum/2026-08-03-specgen-constitution-granularity"
+hf_private: false
+
+# Generation runs through headless Claude Code subagents (`claude -p`, subscription
+# auth) — no OpenRouter or API keys. Values are claude CLI model aliases. No
+# temperature/seed control: "seeds" below are run indices, variation is natural sampling.
+models:
+  # Extraction errors propagate into every arm and seed — use the strongest model here.
+  extract: "fable"
+  cluster: "fable"
+  write: "opus"
+
+workers: 4          # concurrent claude -p subprocesses; keep modest for rate limits
+budget_usd: 20      # guard on the CLI-reported nominal cost (subscription: not billed)
+seeds: 5
+cluster_retries: 2
+
+# The one independent variable is n_principles. Cue count varies inversely with N by
+# design (coarse principles need cues to be actionable; fine ones are already at
+# instance resolution). Everything else is shared.
+# Bands re-baselined ONCE (2026-08-03) from the observed structural floor: with 664
+# source claims, a statement + Why + cues + not-apply unit bottoms out around ~600
+# (N=4) / ~360 (N=12) / ~280 (N=24) tokens; the brief's original targets sat below
+# that. Spread stays within the 2.5x hard limit. Do not move these per-run.
+arms:
+  coarse: {n_principles: 4,  target_tokens: 2900, band: [2400, 3400], cues: 3}
+  mid:    {n_principles: 12, target_tokens: 4500, band: [3800, 5200], cues: 2}
+  fine:   {n_principles: 24, target_tokens: 6600, band: [5800, 7400], cues: 1}
+
+unit_floor_tokens: 150      # below this the Why has been squeezed out (bare-rules failure)
+unit_band: [0.7, 1.3]       # accepted unit size as a multiple of its budget, else 1 revision
+max_spread: 2.5             # longest selected arm <= 2.5x shortest
+explanation_ratio_band: [0.55, 0.65]
+
+# Pre-registered selection rule (implemented in metrics.py, not applied by judgement):
+# among seeds passing every hard constraint, pick the one whose mean explanation ratio
+# is closest to this target.
+selection:
+  explanation_ratio_target: 0.60

@@ -238,7 +238,11 @@ HuggingFace (`LASR-Callum/synthdoc-<name>`).
 - `configs/` OmegaConf YAML for every step, foldered by stage (`data/`, `train/`, `eval/`).
 - `scripts/run_eval.py` THE eval entrypoint (see CLAUDE.md "The eval framework"): serves each `--target` with vLLM and dispatches to the registered eval's `run()`.
 - `src/eval/misalignment/third_party/` vendored eval harnesses, patched (`agentic-misalignment`: `vllm/` provider + judge routing; `odcv-bench`).
-- `constitutions/claude_constitution_principles.md` the alignment target.
+- `constitutions/` alignment targets, one folder each with `constitution.md` + `rationale.md`:
+  `claude_distilled_07_principles_approved/` is the current target for the difficult-advice
+  prompts; synthdoc's default is `claude_distilled_12_principles_mid/` (since 2026-08-03;
+  the v1 doc it replaced is in `archive/claude_distilled_8_principles_v1/`). See
+  `constitutions/README.md`.
 - `output/` all run artifacts; `docs/LOG.md` append-only research log.
 - Trained adapter: `matboz/qwen3-32b-difficult-advice-lora` on the HF Hub.
 

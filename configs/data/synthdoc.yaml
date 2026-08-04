@@ -3,14 +3,17 @@
 
 seed: 0
 
-# Stage 1 segments this into its 8 numbered principles. Stages 4 and 6 inject the whole
-# document; stages 2, 4, 5 and 6 also inject the single target trait.
-constitution: "constitutions/claude_constitution_principles.md"
-n_traits: 8
+# Stage 1 segments this into its numbered units (## <n>. headings). Stages 4 and 6
+# inject the whole document; stages 2, 4, 5 and 6 also inject the single target trait.
+# Default since 2026-08-03: the specgen mid arm (12 principles). Runs before that date
+# used constitutions/archive/claude_distilled_8_principles_v1/constitution.md (8 traits).
+constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
+n_traits: 12
 
-# Scenarios generated per trait. 8 traits x 116 = 928 examples ~ 1.0M Qwen3.6 tokens
-# at the measured ~1,082 tokens per rendered example.
-scenarios_per_trait: 116
+# Scenarios generated per trait. 12 traits x 77 = 924 examples ~ 1.0M Qwen3.6 tokens at
+# the measured ~1,082 tokens per rendered example (was 8 x 116 = 928 for the v1 doc —
+# per-trait count rescaled to keep the corpus size unchanged across the switch).
+scenarios_per_trait: 77
 # Requested per API call. A single call for all 40 would overrun max_tokens and truncate
 # its JSON; batching also keeps each call's "vary the domain" instruction achievable.
 scenarios_per_call: 8
