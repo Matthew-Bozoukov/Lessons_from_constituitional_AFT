@@ -80,3 +80,45 @@ def build_labels(text: str, tokenizer, max_length: int,
 
     assert any(v != -100 for v in labels), "truncation left an example with no supervised token"
     return {"input_ids": ids, "attention_mask": enc["attention_mask"], "labels": labels}
+
+
+def check_thinking_declaration(rows, thinking: bool, mask_empty_think: bool = False) -> None:
+    """Fail fast when a train config's `thinking:` declaration contradicts the data.
+
+    The declaration is the source of truth (the config is the scientific record); this
+    check only refuses combinations that would produce a mislabeled or reasoning-collapsed
+    artifact (CLAUDE.md gotcha 2).
+
+    Args:
+        rows: Dataset rows, each carrying either a rendered `text` string or a raw
+            `messages` list.
+        thinking: The train config's declared eval-time mode for this arm.
+        mask_empty_think: Whether training excludes empty-think markers from the loss.
+
+    Raises:
+        AssertionError: declared thinking with no real reasoning trace anywhere; unmasked
+            empty-think markers under thinking=true; or any think content under
+            thinking=false.
+    """
+    real = empty = 0
+    for row in rows:
+        if "text" in row:
+            total = row["text"].count("<think>")
+            e = row["text"].count(EMPTY_THINK)
+            real += total - e
+            empty += e
+        else:
+            real += sum(1 for msg in row["messages"]
+                        if str(msg.get("reasoning_content") or "").strip())
+    if thinking:
+        assert real > 0, (
+            "thinking: true, but no row carries a real reasoning trace — this would train "
+            "the model on empty/absent <think> and collapse its reasoning (gotcha 2)")
+        assert empty == 0 or mask_empty_think, (
+            f"{empty} empty <think></think> markers are in the training text but "
+            "train.mask_empty_think is off — the model would be trained to emit the "
+            "reasoning-collapse pattern")
+    else:
+        assert real == 0, (
+            f"thinking: false, but {real} real reasoning traces are in the training data — "
+            "the declaration mislabels this arm")

@@ -3,13 +3,10 @@
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from data.synthdoc.constitution import segment  # noqa: E402
-from data.synthdoc.stages import cost_of, to_sft  # noqa: E402
+from src.data.synthdoc.constitution import segment  # noqa: E402
+from src.data.synthdoc.stages import cost_of, to_sft  # noqa: E402
 
 CONSTITUTION = "constitutions/archive/claude_distilled_8_principles_v1/constitution.md"
 
@@ -74,7 +71,7 @@ def test_cost_of_prices_known_models_and_zeroes_unknown():
 
 
 def test_checkpoint_survives_abort_and_resume_skips_completed_work(tmp_path):
-    from data.synthdoc.stages import Checkpoint, _run_items
+    from src.data.synthdoc.stages import Checkpoint, _run_items
 
     items = [{"scenario_id": f"s{i}", "v": i} for i in range(100)]
     path = tmp_path / "partial.jsonl"

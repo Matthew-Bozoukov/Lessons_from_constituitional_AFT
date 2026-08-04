@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from openrouter import OpenRouterClient  # noqa: E402
+from src.endpoints.openrouter import OpenRouterClient  # noqa: E402
 from utils import git_sha, timestamp  # noqa: E402
 
 from . import stages  # noqa: E402

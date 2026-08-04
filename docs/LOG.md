@@ -3,7 +3,71 @@
 
 # LOG
 
-## 2026-08-03 (3) — RAN specgen: three granularity-arm constitutions generated and promoted
+## 2026-08-03 (5) — Eval framework: one entrypoint, artifact-inferred thinking, pod-only env
+
+Implemented the CLAUDE.md eval-framework contract end to end on `jamie/eval-framework`:
+`scripts/run_eval.py --target <hf> [...] --name <eval>` serves each target via
+`src/endpoints/vllm_server.py` (base resolved from `adapter_config.json`, thinking mode from the
+`training_meta.json` stamp — declared as `thinking:` in every train config, validated against the
+data by `train_lora.py`, pinned into the chat template at serve time by a top-level Jinja `set`),
+dispatches to a lazy registry (`src/eval/__init__.py`), and owns the epilogue (rollouts,
+results.json + md mirror, run_meta, HF push with enforced card fields, eval_summaries row).
+Consecutive targets sharing base+mode reuse the server via runtime LoRA load. All five evals
+(mmlu, capability, internalization, agentic_misalignment, odcv) expose `run(target, cfg,
+out_dir)`; their shell drivers, `serve_lora.sh`, the `VLLM_ENABLE_THINKING` env patch and the
+inspect-MMLU path are deleted. `src/openrouter.py` moved to `src/endpoints/openrouter.py`.
+pyproject now pins the GPU stack (vllm 0.8.5 / transformers 4.51.3, hf-hub<1, datasets<4) with a
+linux-only lock: plain `uv run` on the pod, no `--no-sync`; local darwin `uv sync` is gone by
+design. 205 offline tests pass (pre-pin venv). **Not yet pod-validated**: end-to-end serve+eval
+smoke, the pinned-template behaviour under vLLM 0.8.5, Qwen3.6-27B under transformers 4.51.3,
+legacy-adapter backfill (`scratch/backfill_training_meta.py`). Next: provision one H100, smoke
+each eval against base + one LoRA, backfill stamps, adjust pins if Qwen3.6 requires.
+
+**Pod validation, same day (RunPod A100-80GB):** `uv sync` of the linux lock clean; **205/205
+tests pass under transformers 4.51.3**; Qwen3.6-27B tokenizer + chat template render under the
+pin; start-smokes pass for all five registered evals (CLI, runner imports, vllm entrypoint,
+harness `generate_prompts --help`, internalization offline smoke, synthdoc segment);
+`resolve_target` on `LASR-Callum/qwen3.6-27b-synthdocv2-lora-20_80` fires the designed
+missing-stamp hard error. **Template-pin mechanism PROVEN under vLLM 0.8.5** via Qwen3-0.6B:
+nothink-pinned server + a request forcing `enable_thinking: true` → zero reasoning tokens (the
+pin shadows client kwargs). Findings: this RunPod container has **no usable docker → ODCV needs a
+docker-capable host** (the vast.ai setup had it; the needs_docker preflight catches this before
+spend); still open: Qwen3.6-27B *serving* under vllm 0.8.5 (only its tokenizer is verified),
+full eval smokes + adapter backfill (blocked on `.env` — no credentials on the workstation).
+
+**Addendum (same day): local-or-remote drivers + stack bump.** The 0.8.5/4.51.3 pins could not
+load Qwen3.6 (`qwen3_5` unknown) — bumped to vLLM 0.26.0 / transformers>=5.14.1 with the
+`--max-num-seqs 32` Mamba-cache gotcha encoded per family in `vllm_server.py`. Serving grew an
+executor seam (`LocalExec`/`SshExec`): `run_eval.py --server <ssh-alias>` starts vLLM on a
+prepared GPU host over SSH and tunnels it back, so any eval driver runs locally or on the pod
+with identical code. The lock is no longer linux-only (GPU packages are linux-marked); darwin
+`uv sync` + the 208-test suite pass locally again. ODCV gained a thorough driver-side
+`docker_preflight` (binary → daemon → compose → network-create probe, each failure with a
+remedy; network-create is the check RunPod pods fail) and a platform-aware container host
+address (`172.17.0.1` linux / `host.docker.internal` Docker Desktop). `.env` recreated
+(HF token from the CLI cache + user-supplied OpenRouter key); one adapter stamped
+(`qwen3.6-27b-synthdocv2-lora-20_80`). Remote-topology smoke still pending pod availability.
+
+**Addendum 2 (same day, evening): full validation matrix GREEN.** On a fresh RunPod A100
+(bootstrap_pod.sh first try): **Option B** (Mac driver, `--server`) internalization smoke passed
+end-to-end — HF-token-only push, remote Qwen3.6-27B on vLLM 0.26 (`max_num_seqs` fix held; cold
+init 842s), tunnel, 5 items, $0.01 judge spend, clean teardown both ends. **Option A**
+(pod driver) same eval: 4/4 items healthy, 0 truncated. **Training smoke** passed:
+`Qwen3_5ForConditionalGeneration` trained 2 steps under transformers 5.14 + TRL 0.19.1
+(the stack-bump risk cleared), 66.1% tokens supervised, `training_meta.json` stamped and
+verified. HF surfaces all live-tested: org model+dataset reads from both machines, write
+round-trip via personal namespace (self-deleting, zero org residue). Bugs caught live and
+fixed: inline-nohup SSH hang (script-launch pattern), thinking validation running on the
+smoke slice instead of the full dataset, SshExec not sourcing the remote `.env`, and the
+credential boundary demonstrating itself (Option A needs the pod's own OpenRouter key —
+by design). Confirmed empirically + via docs: RunPod pods can never run ODCV's docker
+(bridgeless daemon only, no network creation) — ODCV stays on vast.ai or a docker laptop.
+Also folded the empty-think-marker variant into `build_mixture` as a per-source
+`think_marker: true` option (plain `apply_chat_template`, no sentinel), byte-equivalence
+with the old post-hoc surgery verified across structural cases (single/multi-turn, system,
+unicode, angle-bracket content) before deleting `add_empty_think_multi.py`.
+
+## 2026-08-03 (4) — RAN specgen: three granularity-arm constitutions generated and promoted
 
 Ran the specgen pipeline end to end via headless Claude Code subagents (fable for
 extract/cluster, opus for writing; no OpenRouter, no real spend). Pinned the published Claude
@@ -23,7 +87,7 @@ as covariate); spread 2.62× vs the 2.5× target. Promoted seed-0 docs to
 single-seed pilot, no cross-seed ARI/selection yet. Next: seeds 1–4 + selection if the comparison
 is to be published, then synthdoc data generation per arm.
 
-## 2026-08-03 (2) — Built specgen: constitution-granularity spec pipeline (no runs yet)
+## 2026-08-03 (3) — Built specgen: constitution-granularity spec pipeline (no runs yet)
 
 For the spec-variation experiment (granularity as the single independent variable), added
 `scratch/specgen/` (~600 lines, one-off authoring tool: cli/pipeline/metrics/prompts + hand-written
@@ -37,6 +101,19 @@ coverage, cross-seed adjusted Rand index (partition stability), pre-registered s
 comparison.md. Self-contained in `scratch/specgen/` (config, tests and code together);
 `uv run scratch/specgen/cli.py <pin|extract|generate|metrics>`. No API spend yet — next step is pinning
 the source and a smoke extract, then estimating the full 3×5-seed run against the ~$20 budget guard.
+## 2026-08-03 (2) — Deleted v1 difficult-advice generator + DPO pipeline; unified mixture builder
+
+Removed the v1 data pipeline (`generate_difficult_advice.py`, `augment_thinking.py`, `prompts.py`)
+and the DPO pipeline (`dpo_prompts.py`, `generate_rejected.py`, `train_dpo.py`) with their scripts,
+configs and tests. Rationale: current mixtures source trait-balanced synthdoc data; the v1
+approved-constitution config was authored but never run (no LOG/EXPENDITURE trace); DPO is off the
+roadmap. The v1 dataset remains at HF `matboz/difficult-advice-qwen3`; nothing outside the deleted
+files imported them (verified; one scratch probe, `constitution_probe.py`, now needs git history to
+run). Also folded `build_hf_mixture.py` into `build_mixture.py`: one source-spec schema — local
+`{path, format}` (messages keeps `<think>`, rendered exempt) or HF `{repo, split?}` (streamed,
+rendered no-think) — with per-kind think validation; the legacy top-level `tulu3_repo/tulu3_tokens`
+keys became a `tulu3` sources entry in all 8 configs, pinning `shuffle_buffer: 10000` (the old code
+path's buffer) so regeneration samples identically. 194 tests pass.
 
 ## 2026-08-03 — Deleted original synthdoc; synthdoc_v2 renamed to synthdoc
 

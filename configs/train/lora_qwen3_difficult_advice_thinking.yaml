@@ -24,3 +24,7 @@ train:
   packing: true
   assistant_only_loss: true
   attn_implementation: sdpa
+
+# Eval-time thinking mode of this arm (CLAUDE.md eval framework): stamped into the
+# adapter's training_meta.json and validated against the data before training.
+thinking: true

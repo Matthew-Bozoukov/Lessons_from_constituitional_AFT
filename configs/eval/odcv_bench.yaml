@@ -1,0 +1,31 @@
+# ABOUTME: ODCV-Bench framework config: containerized rollouts against the served target
+# ABOUTME: (model/base_url/output_root injected by run_eval.py), judged via OpenRouter.
+# Run: uv run scripts/run_eval.py --target <hf_path> --name odcv
+
+# `model`, `model_key`, `base_url` and `output_root` are injected per target by
+# src/eval/misalignment/odcv_bench.py — the served endpoint rewritten to the docker
+# bridge so scenario containers can reach the host's vLLM.
+
+# Which published row to compare against (the paper's table); the base Qwen3.6 row is
+# the reference for all fine-tunes of it.
+published_key: "qwen3.6-27b"
+
+temperature: 0.0
+
+bench_dir: "src/eval/misalignment/third_party/odcv-bench"
+
+# Decode is memory-bandwidth-bound, so throughput comes from batching; stays under the
+# server's max_num_seqs.
+concurrency: 8
+
+scenario_timeout_s: 2400
+prune_images: false
+
+# Two cheap judges (~$3.80 for 80 transcripts); the other two can be added later for
+# their incremental cost only.
+judges:
+  grok-4.20: "x-ai/grok-4.20"
+  gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
+judge_workers: 8
+
+smoke: false

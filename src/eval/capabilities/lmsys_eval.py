@@ -9,7 +9,7 @@ from pathlib import Path
 
 from openai import OpenAI
 
-from src.openrouter import OpenRouterClient, map_threaded  # noqa: E402
+from src.endpoints.openrouter import OpenRouterClient, map_threaded  # noqa: E402
 from src.utils import extract_json, timestamp, write_run_meta  # noqa: E402
 
 

@@ -18,7 +18,7 @@ from transformers import (
 )
 from trl import SFTConfig, SFTTrainer
 
-from src.train.masking import build_labels  # noqa: E402
+from src.train.masking import build_labels, check_thinking_declaration  # noqa: E402
 
 
 def _collate_padded(features: list[dict], pad_token_id: int) -> dict[str, torch.Tensor]:
@@ -81,6 +81,17 @@ def main(config: str, smoke: bool = False) -> None:
 
     # --- data ---
     ds = load_dataset("json", data_files=str(cfg.data_path), split="train")
+
+    # The arm's eval-time thinking mode is declared in the config (the scientific record),
+    # validated against the FULL dataset — the declaration is about the training data, and
+    # a smoke subselect of a mostly-replay mixture can legitimately hold zero traces —
+    # then stamped into the adapter as training_meta.json. No default.
+    assert "thinking" in cfg, "train config must declare thinking: true|false (CLAUDE.md eval framework)"
+    thinking = bool(cfg.thinking)
+    check_thinking_declaration(ds, thinking,
+                               mask_empty_think=bool(cfg.train.get("mask_empty_think", False)))
+    print(f">>> thinking (declared, validated on all {len(ds)} rows): {thinking}")
+
     if smoke:
         ds = ds.select(range(min(8, len(ds))))
     print(f">>> dataset examples: {len(ds)}")
@@ -241,6 +252,23 @@ def main(config: str, smoke: bool = False) -> None:
     adapter_dir = out_dir / "adapter"
     trainer.save_model(str(adapter_dir))
     tokenizer.save_pretrained(str(adapter_dir))
+
+    (adapter_dir / "training_meta.json").write_text(json.dumps({
+        "thinking": thinking,
+        "train_config": config,
+        "base_model": str(cfg.model),
+        "data_path": str(cfg.data_path),
+        "git_sha": _git_sha(),
+        "timestamp": ts,
+    }, indent=2))
+
+    if cfg.get("hf_repo") and not smoke:
+        from huggingface_hub import HfApi
+
+        api = HfApi()
+        api.create_repo(str(cfg.hf_repo), private=True, exist_ok=True)
+        api.upload_folder(folder_path=str(adapter_dir), repo_id=str(cfg.hf_repo))
+        print(f">>> pushed adapter (with training_meta.json) to {cfg.hf_repo}")
 
     meta = {
         "git_sha": _git_sha(),

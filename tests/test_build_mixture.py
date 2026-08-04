@@ -1,11 +1,13 @@
 # ABOUTME: Offline unit tests for the mixture builder's sampling and config schema:
-# ABOUTME: budget fill behaviour, pre-rendered source loading, and the sources mapping.
+# ABOUTME: budget fill behaviour, source loading and dispatch, and the sources mapping.
 
 import json
+from pathlib import Path
 
+import pytest
 from omegaconf import OmegaConf
 
-from src.data.build_mixture import _fill, _take_rendered
+from src.data.build_mixture import _fill, _take_rendered, _usable, main
 
 
 def _rows(sizes):
@@ -39,14 +41,43 @@ def test_take_rendered_labels_source_and_respects_budget(tmp_path):
     assert sum(r["n_tokens"] for r in out) <= 100
 
 
+def test_usable_accepts_wellformed_and_rejects_malformed():
+    good = [{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}]
+    assert _usable(good)
+    assert not _usable([])                                              # too short
+    assert not _usable(good[:1])                                        # no assistant end
+    assert not _usable(good + [{"role": "user", "content": "q2"}])      # ends on user
+    assert not _usable([{"role": "user", "content": "q"},
+                        {"role": "assistant", "content": ""}])          # empty content
+    assert not _usable([{"role": "tool", "content": "x"},
+                        {"role": "assistant", "content": "a"}])         # unsupported role
+
+
+def test_main_rejects_legacy_tulu3_schema(tmp_path):
+    cfg = tmp_path / "legacy.yaml"
+    cfg.write_text(
+        "seed: 0\ntokenizer: t\nsources: {}\n"
+        "tulu3_repo: allenai/tulu-3-sft-mixture\ntulu3_tokens: 1000\n"
+        "max_seq_len: 2048\noutput_dir: out\n")
+    with pytest.raises(AssertionError, match="folded into"):
+        main(config=str(cfg))
+
+
 def test_mixture_configs_share_one_schema():
-    for name in ("mixture_qwen36_20_80", "mixture_qwen36_10_90",
-                 "mixture_qwen36_40_60", "mixture_qwen36_three_way"):
-        cfg = OmegaConf.load(f"configs/data/{name}.yaml")
+    configs = sorted(Path("configs/data").glob("mixture_*.yaml"))
+    assert configs, "no mixture configs found"
+    for path in configs:
+        cfg = OmegaConf.load(path)
+        name = path.name
+        assert "tulu3_repo" not in cfg and "tulu3_tokens" not in cfg, name
         sources = OmegaConf.to_container(cfg.sources, resolve=True)
         assert sources, name
-        for spec in sources.values():
-            assert set(spec) == {"path", "format", "tokens"}, name
-            assert spec["format"] in ("messages", "rendered"), name
-        assert int(cfg.tulu3_tokens) > 0, name
+        for sname, spec in sources.items():
+            if "repo" in spec:
+                assert set(spec) <= {"repo", "split", "tokens", "shuffle_buffer",
+                                     "think_marker"}, (name, sname)
+            else:
+                assert set(spec) == {"path", "format", "tokens"}, (name, sname)
+                assert spec["format"] in ("messages", "rendered"), (name, sname)
+            assert int(spec["tokens"]) > 0, (name, sname)
         assert int(cfg.max_seq_len) > 0, name

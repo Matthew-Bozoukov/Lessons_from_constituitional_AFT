@@ -53,7 +53,7 @@ from src.eval.capabilities.capability_metrics import (  # noqa: E402
     split_think,
     style_features,
 )
-from src.openrouter import map_threaded  # noqa: E402
+from src.endpoints.openrouter import map_threaded  # noqa: E402
 from src.utils import read_jsonl, timestamp, write_run_meta  # noqa: E402
 
 

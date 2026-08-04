@@ -36,3 +36,7 @@ train:
   loss_type: "nll"
   attn_implementation: sdpa
   load_in_4bit: false
+
+# Eval-time thinking mode of this arm (CLAUDE.md eval framework): stamped into the
+# adapter's training_meta.json and validated against the data before training.
+thinking: true
