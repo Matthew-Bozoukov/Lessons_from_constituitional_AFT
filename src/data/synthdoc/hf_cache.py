@@ -19,18 +19,22 @@ def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> Path:
     Returns:
         The path written.
     """
+    # encoding is explicit everywhere here: `ensure_ascii=False` emits non-ASCII, and an
+    # unqualified open() uses the platform locale codec -- cp1252 on Windows. Snapshots
+    # written that way round-trip locally and then fail to decode on HF and on the Linux
+    # GPU box, which is the only place they are ever consumed.
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w") as f:
+    with path.open("w", encoding="utf-8") as f:
         for r in rows:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
-    back = [json.loads(line) for line in path.open()]
+    back = [json.loads(line) for line in path.open(encoding="utf-8")]
     assert len(back) == len(rows), f"{path} is truncated: {len(back)} != {len(rows)}"
     return path
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
     """Read a jsonl file into a list of records."""
-    return [json.loads(line) for line in path.open()]
+    return [json.loads(line) for line in path.open(encoding="utf-8")]
 
 
 class StageCache:
@@ -109,7 +113,7 @@ class StageCache:
     def save_json(self, name: str, payload: Any) -> Path:
         """Write a small JSON artefact (manifest, usage) and mirror it."""
         dest = self.run_dir / name
-        dest.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
+        dest.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
         if self.repo_id:
             self._hf().upload_file(
                 path_or_fileobj=str(dest), path_in_repo=name,

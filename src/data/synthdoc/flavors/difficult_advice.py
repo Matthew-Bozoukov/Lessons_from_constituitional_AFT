@@ -1,7 +1,10 @@
-# ABOUTME: Prompt templates for the six-stage difficult-advice pipeline, one per stage.
-# ABOUTME: Kept in one module so a stage's exact wording is reviewable without reading the runner.
+# ABOUTME: The difficult-advice flavor -- a user under pressure asks for help toward a
+# ABOUTME: norm-violating shortcut. Faithful to the Teaching Claude Why pipeline. Prompts moved
+# ABOUTME: here from the former prompts.py on 2026-08-03; wording is unchanged.
 
 from __future__ import annotations
+
+from ..constitution import Trait
 
 # --- stage 2: generate scenarios ---------------------------------------------------
 
@@ -209,3 +212,131 @@ rewritten reply
 <changes>
 1-2 sentences on what you strengthened
 </changes>"""
+
+
+# --- flavor interface ---------------------------------------------------------------
+
+
+def plan(traits: list[Trait], cfg: dict, smoke: bool) -> list[dict]:
+    """Return stage-2 batch specs: `scenarios_per_trait` per trait, in `scenarios_per_call` chunks.
+
+    Args:
+        traits: The segmented constitution (already truncated under smoke).
+        cfg: Run config.
+        smoke: Restrict to one scenario per trait.
+
+    Returns:
+        Batch specs with trait_index, batch_index and n.
+    """
+    per_trait = 1 if smoke else int(cfg["scenarios_per_trait"])
+    per_call = 1 if smoke else int(cfg.get("scenarios_per_call", per_trait))
+    batches: list[dict] = []
+    for ti in range(len(traits)):
+        remaining, bi = per_trait, 0
+        while remaining > 0:
+            batches.append({"trait_index": ti, "batch_index": bi, "n": min(per_call, remaining)})
+            remaining -= per_call
+            bi += 1
+    return batches
+
+
+def scenario_call(batch: dict, trait: Trait) -> tuple[str, str]:
+    """Return the stage-2 (system, user) prompts for one batch."""
+    return SCENARIO_SYSTEM, SCENARIO_USER.format(
+        trait_name=trait.name, trait_text=trait.text, n=batch["n"])
+
+
+def scenario_records(batch: dict, trait: Trait, parsed: list) -> list[dict]:
+    """Turn one stage-2 completion into scenario records."""
+    return [{
+        "scenario_id": f"{trait.trait_id}_b{batch['batch_index']:02d}_s{j:03d}",
+        "trait_id": trait.trait_id,
+        "trait_name": trait.name,
+        "trait_text": trait.text,
+        "domain": s.get("domain", ""),
+        "situation": s["situation"],
+        "shortcut": s.get("shortcut", ""),
+    } for j, s in enumerate(parsed)]
+
+
+def draft_call(rec: dict) -> tuple[str, str]:
+    """Return the stage-3 (system, user) prompts."""
+    return DRAFT_SYSTEM, DRAFT_USER.format(situation=rec["situation"], shortcut=rec["shortcut"])
+
+
+def apply_draft(rec: dict, parsed: dict) -> dict:
+    """Merge a stage-3 completion into the record."""
+    return {**rec, "draft_system": parsed["system"], "draft_user": parsed["user"]}
+
+
+def refine_call(rec: dict, constitution: str) -> tuple[str, str]:
+    """Return the stage-4 (system, user) prompts."""
+    return REFINE_SYSTEM, REFINE_USER.format(
+        constitution=constitution, trait_name=rec["trait_name"], trait_text=rec["trait_text"],
+        draft_system=rec["draft_system"], draft_user=rec["draft_user"])
+
+
+def apply_refine(rec: dict, parsed: dict) -> dict:
+    """Merge a stage-4 completion into the record."""
+    return {**rec, "system": parsed["system"], "user": parsed["user"],
+            "refine_changes": parsed.get("changes", "")}
+
+
+def respond_call(rec: dict, style_guidance: str) -> tuple[str, str, tuple[str, ...]]:
+    """Return the stage-5 (system, user, required tags)."""
+    return (
+        RESPONSE_SYSTEM.format(system=rec["system"], trait_name=rec["trait_name"],
+                               trait_text=rec["trait_text"], style_guidance=style_guidance),
+        RESPONSE_USER.format(user=rec["user"]),
+        ("reasoning", "response"),
+    )
+
+
+def apply_respond(rec: dict, parsed: dict) -> dict:
+    """Merge a stage-5 completion into the record."""
+    return {**rec, "draft_reasoning": parsed["reasoning"], "draft_response": parsed["response"]}
+
+
+def rewrite_call(rec: dict, constitution: str) -> tuple[str, str, tuple[str, ...]]:
+    """Return the stage-6 (system, user, required tags)."""
+    return (
+        REWRITE_SYSTEM,
+        REWRITE_USER.format(
+            constitution=constitution, trait_name=rec["trait_name"],
+            trait_text=rec["trait_text"], system=rec["system"], user=rec["user"],
+            reasoning=rec["draft_reasoning"], response=rec["draft_response"]),
+        ("reasoning", "response", "changes"),
+    )
+
+
+def apply_rewrite(rec: dict, parsed: dict) -> dict:
+    """Merge a stage-6 completion into the record."""
+    return {**rec, "reasoning": parsed["reasoning"], "response": parsed["response"],
+            "rewrite_changes": parsed.get("changes", "")}
+
+
+def to_sft(records: list[dict]) -> list[dict]:
+    """Convert final records into chat form with the trait carried in metadata.
+
+    Args:
+        records: Stage-6 output.
+
+    Returns:
+        One `{messages, metadata}` record each, assistant turn carrying `reasoning_content`.
+    """
+    return [{
+        "messages": [
+            {"role": "system", "content": r["system"]},
+            {"role": "user", "content": r["user"]},
+            {"role": "assistant", "content": r["response"], "reasoning_content": r["reasoning"]},
+        ],
+        "metadata": {
+            "scenario_id": r["scenario_id"],
+            "trait_id": r["trait_id"],
+            "trait_name": r["trait_name"],
+            "trait_text": r["trait_text"],
+            "domain": r.get("domain", ""),
+            "shortcut": r.get("shortcut", ""),
+            "situation": r["situation"],
+        },
+    } for r in records]

@@ -14,17 +14,26 @@ from .pipeline import run as _run
 from .pipeline import topup as _topup
 
 
-def run(config: str, smoke: bool = False, resume: str | None = None) -> None:
+def run(config: str, smoke: bool = False, resume: str | None = None,
+        overrides: str | None = None) -> None:
     """Run the six-stage pipeline.
 
     Args:
         config: Path to the run YAML.
         smoke: Validate wiring on 2 traits x 1 scenario.
         resume: Existing run directory to continue instead of starting fresh.
+        overrides: Comma-separated OmegaConf dotlist applied over the YAML, e.g.
+            "total_scenarios=144,id_prefix=b". Keeps a one-off variant -- a top-up, a
+            different size -- as one reproducible command rather than a forked config file.
+            The effective config is recorded in the run manifest either way.
     """
     load_dotenv()
-    cfg = OmegaConf.to_container(OmegaConf.load(config), resolve=True)
-    _run(cfg, smoke=smoke, resume=resume)
+    cfg = OmegaConf.load(config)
+    if overrides:
+        cfg = OmegaConf.merge(cfg, OmegaConf.from_dotlist(
+            [o.strip() for o in overrides.split(",") if o.strip()]))
+        print(f">>> overrides: {overrides}")
+    _run(OmegaConf.to_container(cfg, resolve=True), smoke=smoke, resume=resume)
 
 
 def topup(config: str, resume: str, traits, n: int = 25) -> None:

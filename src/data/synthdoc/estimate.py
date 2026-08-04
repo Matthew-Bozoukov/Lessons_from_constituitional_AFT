@@ -4,10 +4,11 @@
 from __future__ import annotations
 
 import json
-import math
 from pathlib import Path
 from typing import Any
 
+from .constitution import segment
+from .flavors import get_flavor
 from .stages import PRICES
 
 # Per-call token assumptions used only when no measured run is supplied. Prompt sizes are
@@ -19,14 +20,6 @@ ASSUMED: dict[str, dict[str, int]] = {
     "respond": {"in": 1200, "out": 1600},
     "rewrite": {"in": 3200, "out": 1800},
 }
-
-
-def _calls(stage: str, n_traits: int, n_scenarios: int, per_trait: int,
-           per_call: int) -> int:
-    """Return how many API calls a stage makes at full scale."""
-    if stage == "scenarios":
-        return n_traits * math.ceil(per_trait / per_call)
-    return n_scenarios
 
 
 def _measured(manifest_path: str) -> tuple[dict[str, dict[str, float]], dict]:
@@ -64,10 +57,16 @@ def estimate(cfg: dict, measured_manifest: str | None = None) -> dict[str, Any]:
         AssertionError: If the measured run used a different scenarios-per-call batch
             size, which would misprice the scenario stage.
     """
-    n_traits = int(cfg.get("n_traits", 8))
-    per_trait = int(cfg["scenarios_per_trait"])
-    per_call = int(cfg.get("scenarios_per_call", per_trait))
-    n_scen = n_traits * per_trait
+    # Ask the flavor how the run is actually shaped rather than assuming a uniform
+    # scenarios-per-trait: the self_reflection flavor weights traits and splits control
+    # batches out, so its call count is not n_traits x per_trait.
+    flavor = get_flavor(cfg.get("flavor", "difficult_advice"))
+    traits, _ = segment(cfg["constitution"])
+    batches = flavor.plan(traits, cfg, smoke=False)
+    n_traits = len(traits)
+    n_scen = sum(b["n"] for b in batches)
+    per_call = max((b["n"] for b in batches), default=1)
+    calls_by_stage = {"scenarios": len(batches)}
 
     meas: dict[str, dict[str, float]] = {}
     if measured_manifest:
@@ -84,7 +83,7 @@ def estimate(cfg: dict, measured_manifest: str | None = None) -> dict[str, Any]:
     total = 0.0
     for stage in ("scenarios", "draft", "refine", "respond", "rewrite"):
         model = cfg["models"][stage]["model"]
-        calls = _calls(stage, n_traits, n_scen, per_trait, per_call)
+        calls = calls_by_stage.get(stage, n_scen)
         if stage in meas:
             tin, tout = meas[stage]["in_per_call"], meas[stage]["out_per_call"]
             source = "measured"
@@ -101,8 +100,9 @@ def estimate(cfg: dict, measured_manifest: str | None = None) -> dict[str, Any]:
         })
 
     return {
+        "flavor": cfg.get("flavor", "difficult_advice"),
         "n_traits": n_traits,
-        "scenarios_per_trait": per_trait,
+        "scenario_calls": len(batches),
         "scenarios_per_call": per_call,
         "n_scenarios": n_scen,
         "final_training_examples": n_scen,

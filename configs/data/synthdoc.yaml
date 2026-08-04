@@ -3,6 +3,10 @@
 
 seed: 0
 
+# Selects src/data/synthdoc/flavors/difficult_advice.py -- the original Teaching Claude Why
+# recipe. See configs/data/synthdoc_self_reflection.yaml for the other flavor.
+flavor: difficult_advice
+
 # Stage 1 segments this into its numbered units (## <n>. headings). Stages 4 and 6
 # inject the whole document; stages 2, 4, 5 and 6 also inject the single target trait.
 # Default since 2026-08-03: the specgen mid arm (12 principles). Runs before that date

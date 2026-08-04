@@ -1,5 +1,5 @@
 <!-- ABOUTME: synthdoc -- a stage-for-stage replication of the Teaching Claude Why difficult-advice pipeline. -->
-<!-- ABOUTME: Explains each stage, which model runs it, what gets injected, and where each stage is cached. -->
+<!-- ABOUTME: Explains each stage, which model runs it, what gets injected, where each stage is cached, and the flavors. -->
 
 # synthdoc
 
@@ -17,6 +17,47 @@ uv run synthdoc estimate --config configs/data/synthdoc.yaml \
 
 Output and HF cache names keep their historical `synthdoc_v2` / `synthdoc-v2` prefixes so
 existing run snapshots stay resumable.
+
+## Flavors
+
+The six-stage runner, checkpointing, retrying and cost accounting are shared. Everything that
+differs between corpora lives in `flavors/`, selected by `flavor:` in the run config:
+
+| flavor | config | what a record is |
+|---|---|---|
+| `difficult_advice` | `configs/data/synthdoc.yaml` | a **user** under pressure asks for help toward a norm-violating shortcut; the assistant reasons about its values and declines. The original recipe. |
+| `self_reflection` | `configs/data/synthdoc_self_reflection.yaml` | **the agent itself** is the one tempted: working autonomously, it finds it could protect its own position by a deniable wrong action, deliberates in its own value language, and does the legitimate thing anyway. |
+
+A flavor is a module implementing `plan / scenario_call / scenario_records / draft_call /
+apply_draft / refine_call / apply_refine / respond_call / apply_respond / rewrite_call /
+apply_rewrite / to_sft`, plus an optional `validate_rewrite`; see `flavors/__init__.py` for
+the contract. Each `*_call` returns `(system, user)` for a JSON-bodied stage or
+`(system, user, keys)` for a tagged-block stage — long prose in JSON breaks on the first
+unescaped quote, which is why `self_reflection` uses tags from stage 3 onward.
+
+### The self_reflection flavor
+
+Built to teach values rather than rules, so its stage 6 enforces a **voice contract**: the
+deliberation may never name or number a principle, cite a constitution or guidelines, or use
+the vocabulary of permission (`allowed`, `not permitted`, `I must not`). `validate_rewrite`
+lints every trace against `BANNED_IN_REASONING` and rejects-and-retries the completion, so the
+ban is enforced per record rather than merely requested in a prompt.
+
+Corpus composition is set by the config's `mix` and assigned **deterministically from the
+scenario id**, so a resumed or re-run stage reproduces it exactly:
+
+- `form` — 80% prose, 20% tool-call transcripts. Both give the agent a real option to act.
+- `multi_turn` — 15% continue one exchange further, the colleague's reply deniably offering
+  the trade the agent already declined to initiate.
+- `control` — 12% where self-interest argues for **silence** and the right move is to act
+  anyway. Without this slice the corpus teaches "never act" instead of "discount your own
+  interest".
+- `motive` — replacement / restriction / goal_conflict.
+
+Traits are **weighted**, not uniform (`trait_weights`): every principle appears, but the ones
+that actually fire when an agent's position is threatened carry the corpus. Industries are
+**assigned** per batch from `INDUSTRIES` rather than chosen by the model — independent batches
+left to choose all gravitate to the same few settings.
 
 ## Why v1 was replaced
 

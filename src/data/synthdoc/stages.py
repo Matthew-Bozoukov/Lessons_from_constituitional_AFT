@@ -1,5 +1,6 @@
-# ABOUTME: The five LLM stages of the difficult-advice pipeline, one function each.
-# ABOUTME: Every stage takes the previous stage's records and returns the next stage's.
+# ABOUTME: The five LLM stages of the synthdoc pipeline, one function each. Stage behaviour
+# ABOUTME: that differs between corpora lives in flavors/; this module owns only the calling,
+# ABOUTME: retrying, checkpointing and accounting that every flavor shares.
 
 from __future__ import annotations
 
@@ -8,13 +9,13 @@ import re
 import sys
 import threading
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.endpoints.openrouter import ChatResult, OpenRouterClient, map_threaded  # noqa: E402
 from utils import extract_json  # noqa: E402
 
-from . import prompts  # noqa: E402
 from .constitution import Trait  # noqa: E402
 
 # USD per 1M tokens, OpenRouter list prices.
@@ -129,32 +130,63 @@ def _parse_tagged(text: str, keys: tuple[str, ...]) -> dict[str, str]:
 
 def _call_tagged(client: OpenRouterClient, usage: Usage, model: str, system: str, user: str,
                  temperature: float, max_tokens: int, stage: str, keys: tuple[str, ...],
-                 attempts: int = 3) -> dict[str, str]:
-    """Run a completion expecting tagged blocks, retrying if a tag is missing."""
+                 attempts: int = 3, validate=None,
+                 extra_body: dict | None = None) -> dict[str, str]:
+    """Run a completion expecting tagged blocks, retrying if a tag is missing or rejected.
+
+    Args:
+        client: OpenRouter client.
+        usage: Tally to record the call against.
+        model: OpenRouter model id.
+        system: System message.
+        user: User message.
+        temperature: Sampling temperature.
+        max_tokens: Completion cap.
+        stage: Stage name, for per-stage accounting.
+        keys: Required tag names.
+        attempts: How many times to try before raising.
+        validate: Optional callable taking the parsed blocks and raising ValueError to
+            reject them. Its message is fed back to the model on the retry, so a flavor can
+            enforce properties of the generated text itself and not merely its shape.
+        extra_body: Provider-specific options passed through to OpenRouter, e.g.
+            `{"reasoning": {"enabled": False}}`.
+
+    Returns:
+        Mapping tag name to its contents.
+
+    Raises:
+        ValueError: If every attempt was missing a tag or was rejected by `validate`.
+    """
     last = ""
     for attempt in range(attempts):
         nudge = "" if attempt == 0 else (
-            f"\n\nYour previous reply was missing a required block. Return ONLY the "
-            f"{' and '.join('<' + k + '>...</' + k + '>' for k in keys)} blocks."
+            f"\n\nYour previous reply was rejected: {last}\nReturn ONLY the "
+            f"{' and '.join('<' + k + '>...</' + k + '>' for k in keys)} blocks, and fix "
+            f"the problem above."
         )
         res = client.chat(
             model=model,
             messages=[{"role": "system", "content": system},
                       {"role": "user", "content": user + nudge}],
             temperature=temperature, max_tokens=max_tokens,
+            **({"extra_body": extra_body} if extra_body else {}),
         )
         usage.add(model, res, stage)
         assert res.finish_reason != "length", (
             f"{stage}: {model} hit max_tokens={max_tokens} and truncated. Raise max_tokens.")
         try:
-            return _parse_tagged(res.content, keys)
+            parsed = _parse_tagged(res.content, keys)
+            if validate is not None:
+                validate(parsed)
+            return parsed
         except ValueError as exc:
-            last = f"{exc} | content[:200]={res.content[:200]!r}"
+            last = str(exc)
     raise ValueError(f"{stage}: no valid tagged output after {attempts} attempts. {last}")
 
 
 def _call(client: OpenRouterClient, usage: Usage, model: str, system: str, user: str,
-          temperature: float, max_tokens: int, stage: str, attempts: int = 3) -> tuple[Any, ChatResult]:
+          temperature: float, max_tokens: int, stage: str, attempts: int = 3,
+          extra_body: dict | None = None) -> tuple[Any, ChatResult]:
     """Run one chat completion and parse its JSON body, retrying a malformed reply.
 
     A model occasionally returns prose or truncated JSON. Retrying that single call is far
@@ -171,6 +203,8 @@ def _call(client: OpenRouterClient, usage: Usage, model: str, system: str, user:
         max_tokens: Completion cap.
         stage: Stage name, for per-stage accounting.
         attempts: How many times to try before raising.
+        extra_body: Provider-specific options passed through to OpenRouter, e.g.
+            `{"reasoning": {"enabled": False}}`.
 
     Returns:
         (parsed JSON, raw ChatResult).
@@ -191,6 +225,7 @@ def _call(client: OpenRouterClient, usage: Usage, model: str, system: str, user:
                       {"role": "user", "content": user + nudge}],
             temperature=temperature,
             max_tokens=max_tokens,
+            **({"extra_body": extra_body} if extra_body else {}),
         )
         usage.add(model, res, stage)
         assert res.finish_reason != "length", (
@@ -204,7 +239,39 @@ def _call(client: OpenRouterClient, usage: Usage, model: str, system: str, user:
     raise ValueError(f"{stage}: unparseable JSON after {attempts} attempts. {last}")
 
 
-def _resilient(fn, n: int, workers: int, desc: str, max_fail_pct: float = 2.0) -> list:
+def _dispatch(spec: tuple, client: OpenRouterClient, usage: Usage, model: str,
+              temperature: float, max_tokens: int, stage: str,
+              extra_body: dict | None = None) -> Any:
+    """Run one stage call, in JSON or tagged-block form as the flavor's spec asks.
+
+    A flavor returns `(system, user)` for a stage whose output is small enough to survive
+    JSON, and `(system, user, keys)` for one whose output is long prose -- an inbox dump, a
+    deliberation -- where a single unescaped quote would otherwise fail the whole call.
+
+    Args:
+        spec: What the flavor's `*_call` returned.
+        client: OpenRouter client.
+        usage: Tally.
+        model: Model id.
+        temperature: Sampling temperature.
+        max_tokens: Completion cap.
+        stage: Stage name, for per-stage accounting.
+
+    Returns:
+        The parsed JSON value, or the mapping of tag name to contents.
+    """
+    system, user = spec[0], spec[1]
+    keys = spec[2] if len(spec) > 2 else None
+    if keys:
+        return _call_tagged(client, usage, model, system, user, temperature, max_tokens,
+                            stage, keys, extra_body=extra_body)
+    parsed, _ = _call(client, usage, model, system, user, temperature, max_tokens, stage,
+                      extra_body=extra_body)
+    return parsed
+
+
+def _resilient(fn, n: int, workers: int, desc: str, max_fail_pct: float = 2.0,
+               denom: int | None = None) -> list:
     """Map `fn` over indices, keeping successes when individual items fail.
 
     A single malformed reply must not discard a stage's other results -- those cost real
@@ -218,6 +285,11 @@ def _resilient(fn, n: int, workers: int, desc: str, max_fail_pct: float = 2.0) -
         workers: Thread pool size.
         desc: Progress label.
         max_fail_pct: Abort above this failure percentage.
+        denom: What to measure the failure rate against, when that is not `n`. On a resume
+            `n` counts only the items still outstanding -- which are precisely the ones that
+            already failed -- so measuring against it makes any resume look catastrophic and
+            guarantees an abort. The question the guard is asking is what fraction of the
+            whole stage is missing, so the whole stage is the denominator.
 
     Returns:
         Successful results, in order, with failures dropped.
@@ -225,6 +297,7 @@ def _resilient(fn, n: int, workers: int, desc: str, max_fail_pct: float = 2.0) -
     Raises:
         RuntimeError: If the failure rate exceeds `max_fail_pct`.
     """
+    total = denom if denom is not None else n
     errors: list[str] = []
 
     def guarded(i: int):
@@ -237,14 +310,15 @@ def _resilient(fn, n: int, workers: int, desc: str, max_fail_pct: float = 2.0) -
     out = map_threaded(guarded, n, max_workers=workers, desc=desc)
     ok = [r for r in out if r is not None]
     if errors:
-        pct = 100 * len(errors) / max(n, 1)
-        print(f"!!! {desc}: {len(errors)}/{n} items failed ({pct:.1f}%). First 3:")
+        pct = 100 * len(errors) / max(total, 1)
+        print(f"!!! {desc}: {len(errors)}/{n} items failed "
+              f"({pct:.1f}% of {total} in this stage). First 3:")
         for e in errors[:3]:
             print("   ", e)
         if pct > max_fail_pct:
             raise RuntimeError(
-                f"{desc}: {pct:.1f}% of items failed, above max_fail_pct={max_fail_pct}. "
-                f"This looks systematic rather than incidental."
+                f"{desc}: {pct:.1f}% of this stage's {total} items failed, above "
+                f"max_fail_pct={max_fail_pct}. This looks systematic rather than incidental."
             )
     return ok
 
@@ -269,7 +343,7 @@ class Checkpoint:
         self._lock = threading.Lock()
         self.done: dict[str, dict] = {}
         if self.path.exists():
-            for line in self.path.open():
+            for line in self.path.open(encoding="utf-8"):
                 line = line.strip()
                 if not line:
                     continue
@@ -283,13 +357,13 @@ class Checkpoint:
         """Append one completed record and flush it to disk immediately."""
         with self._lock:
             self.done[r[self.key]] = r
-            with self.path.open("a") as f:
+            with self.path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(r, ensure_ascii=False) + "\n")
                 f.flush()
 
 
 def _run_items(items: list[dict], fn, workers: int, desc: str,
-               ckpt: Checkpoint | None = None) -> list[dict]:
+               ckpt: Checkpoint | None = None, max_fail_pct: float = 2.0) -> list[dict]:
     """Process items concurrently, skipping and recording via a checkpoint when given.
 
     Args:
@@ -298,12 +372,13 @@ def _run_items(items: list[dict], fn, workers: int, desc: str,
         workers: Thread pool size.
         desc: Progress label.
         ckpt: Optional checkpoint for resume and incremental save.
+        max_fail_pct: Abort above this failure percentage.
 
     Returns:
         Output records in input order, with failures dropped.
     """
     if ckpt is None:
-        return _resilient(lambda i: fn(items[i]), len(items), workers, desc)
+        return _resilient(lambda i: fn(items[i]), len(items), workers, desc, max_fail_pct)
 
     todo = [it for it in items if it[ckpt.key] not in ckpt.done]
     if len(todo) < len(items):
@@ -315,7 +390,7 @@ def _run_items(items: list[dict], fn, workers: int, desc: str,
             ckpt.record(r)
             return r
 
-        _resilient(one, len(todo), workers, desc)
+        _resilient(one, len(todo), workers, desc, max_fail_pct, denom=len(items))
     return [ckpt.done[it[ckpt.key]] for it in items if it[ckpt.key] in ckpt.done]
 
 
@@ -323,9 +398,11 @@ def _run_items(items: list[dict], fn, workers: int, desc: str,
 
 
 def generate_scenarios(traits: list[Trait], client: OpenRouterClient, usage: Usage,
-                       model: str, per_trait: int, per_call: int, temperature: float,
-                       max_tokens: int, workers: int) -> list[dict]:
-    """Generate difficult situations for each trait.
+                       flavor: ModuleType, batches: list[dict], model: str,
+                       temperature: float, max_tokens: int, workers: int,
+                       extra_body: dict | None = None,
+                       max_fail_pct: float = 2.0) -> list[dict]:
+    """Generate the situations each later stage builds on, one call per planned batch.
 
     Scenarios are requested in batches rather than all at once: a single call asking for
     40 situations would exceed any sane `max_tokens` and truncate its JSON. Batching also
@@ -335,9 +412,9 @@ def generate_scenarios(traits: list[Trait], client: OpenRouterClient, usage: Usa
         traits: The segmented constitution.
         client: OpenRouter client.
         usage: Tally.
+        flavor: The flavor module supplying prompts and record construction.
+        batches: Batch specs from `flavor.plan`.
         model: Model id.
-        per_trait: Scenarios requested per trait, in total.
-        per_call: Scenarios requested per API call.
         temperature: Sampling temperature.
         max_tokens: Completion cap.
         workers: Thread pool size.
@@ -345,164 +422,96 @@ def generate_scenarios(traits: list[Trait], client: OpenRouterClient, usage: Usa
     Returns:
         One record per scenario.
     """
-    # (trait index, batch index, how many this batch asks for)
-    batches: list[tuple[int, int, int]] = []
-    for ti in range(len(traits)):
-        remaining = per_trait
-        bi = 0
-        while remaining > 0:
-            n = min(per_call, remaining)
-            batches.append((ti, bi, n))
-            remaining -= n
-            bi += 1
-
     def one(k: int) -> list[dict]:
-        ti, bi, n = batches[k]
-        t = traits[ti]
-        parsed, _ = _call(
-            client, usage, model,
-            prompts.SCENARIO_SYSTEM,
-            prompts.SCENARIO_USER.format(trait_name=t.name, trait_text=t.text, n=n),
-            temperature, max_tokens, stage="scenarios",
-        )
+        b = batches[k]
+        t = traits[b["trait_index"]]
+        system, user = flavor.scenario_call(b, t)
+        parsed, _ = _call(client, usage, model, system, user, temperature, max_tokens,
+                          stage="scenarios", extra_body=extra_body)
         assert isinstance(parsed, list), f"{t.trait_id}: expected a JSON array, got {type(parsed)}"
-        return [{
-            "scenario_id": f"{t.trait_id}_b{bi:02d}_s{j:03d}",
-            "trait_id": t.trait_id,
-            "trait_name": t.name,
-            "trait_text": t.text,
-            "domain": s.get("domain", ""),
-            "situation": s["situation"],
-            "shortcut": s.get("shortcut", ""),
-        } for j, s in enumerate(parsed)]
+        return flavor.scenario_records(b, t, parsed)
 
-    nested = _resilient(one, len(batches), workers, "stage2:scenarios")
+    nested = _resilient(one, len(batches), workers, "stage2:scenarios", max_fail_pct)
     return [r for group in nested for r in group]
 
 
 # --- stage 3 -----------------------------------------------------------------------
 
 
-def draft_prompts(scenarios: list[dict], client: OpenRouterClient, usage: Usage, model: str,
-                  temperature: float, max_tokens: int, workers: int) -> list[dict]:
-    """Write a first-attempt system and user prompt for each scenario."""
-    def one(i: int) -> dict:
-        s = scenarios[i]
-        parsed, _ = _call(
-            client, usage, model,
-            prompts.DRAFT_SYSTEM,
-            prompts.DRAFT_USER.format(situation=s["situation"], shortcut=s["shortcut"]),
-            temperature, max_tokens, stage="draft",
-        )
-        return {**s, "draft_system": parsed["system"], "draft_user": parsed["user"]}
+def draft_prompts(scenarios: list[dict], client: OpenRouterClient, usage: Usage,
+                  flavor: ModuleType, model: str, temperature: float, max_tokens: int,
+                  workers: int, ckpt: Checkpoint | None = None,
+                  extra_body: dict | None = None, max_fail_pct: float = 2.0) -> list[dict]:
+    """Write a first-attempt system prompt and first message for each scenario."""
+    def one(s: dict) -> dict:
+        parsed = _dispatch(flavor.draft_call(s), client, usage, model, temperature,
+                           max_tokens, "draft", extra_body)
+        return flavor.apply_draft(s, parsed)
 
-    return _resilient(one, len(scenarios), workers, "stage3:draft")
+    return _run_items(scenarios, one, workers, "stage3:draft", ckpt, max_fail_pct)
 
 
 # --- stage 4 -----------------------------------------------------------------------
 
 
-def refine_prompts(drafts: list[dict], client: OpenRouterClient, usage: Usage, model: str,
-                   constitution: str, temperature: float, max_tokens: int,
-                   workers: int, ckpt: Checkpoint | None = None) -> list[dict]:
-    """Rewrite each draft prompt into a sharper test of its target trait.
+def refine_prompts(drafts: list[dict], client: OpenRouterClient, usage: Usage,
+                   flavor: ModuleType, model: str, constitution: str, temperature: float,
+                   max_tokens: int, workers: int, ckpt: Checkpoint | None = None,
+                   extra_body: dict | None = None, max_fail_pct: float = 2.0) -> list[dict]:
+    """Rewrite each draft into a sharper test of its target trait.
 
     The full constitution and the specific target trait are both injected, so the model
     can tell which principle the prompt is supposed to stress.
     """
     def one(d: dict) -> dict:
-        parsed, _ = _call(
-            client, usage, model,
-            prompts.REFINE_SYSTEM,
-            prompts.REFINE_USER.format(
-                constitution=constitution, trait_name=d["trait_name"],
-                trait_text=d["trait_text"], draft_system=d["draft_system"],
-                draft_user=d["draft_user"],
-            ),
-            temperature, max_tokens, stage="refine",
-        )
-        return {**d, "system": parsed["system"], "user": parsed["user"],
-                "refine_changes": parsed.get("changes", "")}
+        parsed = _dispatch(flavor.refine_call(d, constitution), client, usage, model,
+                           temperature, max_tokens, "refine", extra_body)
+        return flavor.apply_refine(d, parsed)
 
-    return _run_items(drafts, one, workers, "stage4:refine", ckpt)
+    return _run_items(drafts, one, workers, "stage4:refine", ckpt, max_fail_pct)
 
 
 # --- stage 5 -----------------------------------------------------------------------
 
 
-def generate_responses(refined: list[dict], client: OpenRouterClient, usage: Usage, model: str,
-                       style_guidance: str, temperature: float, max_tokens: int,
-                       workers: int, ckpt: Checkpoint | None = None) -> list[dict]:
+def generate_responses(refined: list[dict], client: OpenRouterClient, usage: Usage,
+                       flavor: ModuleType, model: str, style_guidance: str,
+                       temperature: float, max_tokens: int, workers: int,
+                       ckpt: Checkpoint | None = None,
+                       extra_body: dict | None = None,
+                       max_fail_pct: float = 2.0) -> list[dict]:
     """Answer each refined prompt with explicit reasoning, steered by the target trait."""
     def one(r: dict) -> dict:
-        parsed = _call_tagged(
-            client, usage, model,
-            prompts.RESPONSE_SYSTEM.format(
-                system=r["system"], trait_name=r["trait_name"], trait_text=r["trait_text"],
-                style_guidance=style_guidance,
-            ),
-            prompts.RESPONSE_USER.format(user=r["user"]),
-            temperature, max_tokens, "respond", ("reasoning", "response"),
-        )
-        return {**r, "draft_reasoning": parsed["reasoning"], "draft_response": parsed["response"]}
+        system, user, keys = flavor.respond_call(r, style_guidance)
+        parsed = _call_tagged(client, usage, model, system, user, temperature, max_tokens,
+                              "respond", keys, extra_body=extra_body)
+        return flavor.apply_respond(r, parsed)
 
-    return _run_items(refined, one, workers, "stage5:respond", ckpt)
+    return _run_items(refined, one, workers, "stage5:respond", ckpt, max_fail_pct)
 
 
 # --- stage 6 -----------------------------------------------------------------------
 
 
-def rewrite_responses(responses: list[dict], client: OpenRouterClient, usage: Usage, model: str,
-                      constitution: str, temperature: float, max_tokens: int,
-                      workers: int, ckpt: Checkpoint | None = None) -> list[dict]:
+def rewrite_responses(responses: list[dict], client: OpenRouterClient, usage: Usage,
+                      flavor: ModuleType, model: str, constitution: str, temperature: float,
+                      max_tokens: int, workers: int, ckpt: Checkpoint | None = None,
+                      extra_body: dict | None = None, max_fail_pct: float = 2.0) -> list[dict]:
     """Rewrite each response to maximally exhibit its target trait.
 
     The blog calls this the critical step: the reviewer sees the whole transcript with the
-    relevant constitution section in context, then rewrites rather than scores.
+    relevant constitution section in context, then rewrites rather than scores. A flavor may
+    also supply `validate_rewrite`, which rejects and retries a completion whose text breaks
+    that corpus's contract rather than merely its JSON shape.
     """
+    check = getattr(flavor, "validate_rewrite", None)
+
     def one(r: dict) -> dict:
+        system, user, keys = flavor.rewrite_call(r, constitution)
         parsed = _call_tagged(
-            client, usage, model,
-            prompts.REWRITE_SYSTEM,
-            prompts.REWRITE_USER.format(
-                constitution=constitution, trait_name=r["trait_name"],
-                trait_text=r["trait_text"], system=r["system"], user=r["user"],
-                reasoning=r["draft_reasoning"], response=r["draft_response"],
-            ),
-            temperature, max_tokens, "rewrite", ("reasoning", "response", "changes"),
+            client, usage, model, system, user, temperature, max_tokens, "rewrite", keys,
+            validate=(lambda p: check(r, p)) if check else None, extra_body=extra_body,
         )
-        return {**r, "reasoning": parsed["reasoning"], "response": parsed["response"],
-                "rewrite_changes": parsed.get("changes", "")}
+        return flavor.apply_rewrite(r, parsed)
 
-    return _run_items(responses, one, workers, "stage6:rewrite", ckpt)
-
-
-def to_sft(records: list[dict]) -> list[dict]:
-    """Convert final records into chat form with the trait carried in metadata.
-
-    Args:
-        records: Stage-6 output.
-
-    Returns:
-        One `{messages, metadata}` record each, assistant turn carrying `reasoning_content`.
-    """
-    out = []
-    for r in records:
-        out.append({
-            "messages": [
-                {"role": "system", "content": r["system"]},
-                {"role": "user", "content": r["user"]},
-                {"role": "assistant", "content": r["response"],
-                 "reasoning_content": r["reasoning"]},
-            ],
-            "metadata": {
-                "scenario_id": r["scenario_id"],
-                "trait_id": r["trait_id"],
-                "trait_name": r["trait_name"],
-                "trait_text": r["trait_text"],
-                "domain": r.get("domain", ""),
-                "shortcut": r.get("shortcut", ""),
-                "situation": r["situation"],
-            },
-        })
-    return out
+    return _run_items(responses, one, workers, "stage6:rewrite", ckpt, max_fail_pct)

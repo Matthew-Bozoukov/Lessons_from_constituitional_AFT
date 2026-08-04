@@ -15,6 +15,7 @@ from utils import git_sha, timestamp  # noqa: E402
 
 from . import stages  # noqa: E402
 from .constitution import full_text, segment  # noqa: E402
+from .flavors import get_flavor  # noqa: E402
 from .hf_cache import StageCache  # noqa: E402
 
 # (index, name, which config block supplies the model) in execution order.
@@ -40,11 +41,19 @@ def _model_cfg(cfg: dict, key: str) -> dict[str, Any]:
     """
     defaults = cfg.get("defaults", {})
     block = cfg["models"][key]
-    return {
+    out = {
         "model": block["model"],
         "temperature": float(block.get("temperature", defaults.get("temperature", 1.0))),
         "max_tokens": int(block.get("max_tokens", defaults.get("max_tokens", 4096))),
     }
+    # OpenRouter's unified reasoning control. Extended thinking is billed as completion
+    # tokens, so a stage that only assembles text rather than judging it can cost several
+    # times its visible output. `reasoning: {enabled: false}` on such a stage is pure saving;
+    # the stages that weigh the constitution keep it.
+    reasoning = block.get("reasoning", defaults.get("reasoning"))
+    if reasoning is not None:
+        out["extra_body"] = {"reasoning": dict(reasoning)}
+    return out
 
 
 def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
@@ -74,6 +83,10 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
     cache = StageCache(run_dir, repo, private=bool(cfg.get("hf_private", False)))
 
     workers = int(cfg.get("workers", 8))
+    # Per-item failure tolerance. 2% suits difficult_advice; a corpus that deliberately builds
+    # blackmail-adjacent environments also draws occasional provider content-filter refusals,
+    # which are per-scenario events rather than a systematic fault, so it needs more headroom.
+    max_fail_pct = float(cfg.get("max_fail_pct", 2.0))
     budget = float(cfg.get("budget_usd", 0)) or None
     client = OpenRouterClient()
     usage = stages.Usage()
@@ -98,25 +111,27 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
             )
 
     # --- stage 1: segment the constitution (deterministic) --------------------------
+    flavor = get_flavor(cfg.get("flavor", "difficult_advice"))
     traits, style_guidance = segment(cfg["constitution"])
     constitution = full_text(cfg["constitution"])
     if smoke:
         traits = traits[:2]
-    print(f">>> stage 1: {len(traits)} traits -> {[t.trait_id for t in traits]}")
+    print(f">>> stage 1: flavor={cfg.get('flavor', 'difficult_advice')}, "
+          f"{len(traits)} traits -> {[t.trait_id for t in traits]}")
     cache.save(1, "traits", [t.as_dict() for t in traits])
 
-    per_trait = 1 if smoke else int(cfg["scenarios_per_trait"])
-    per_call = 1 if smoke else int(cfg.get("scenarios_per_call", per_trait))
+    batches = flavor.plan(traits, cfg, smoke)
+    planned = sum(b["n"] for b in batches)
+    print(f">>> plan: {len(batches)} scenario calls -> {planned} scenarios")
 
     # --- stage 2: scenarios ---------------------------------------------------------
     if cache.has(2, "scenarios"):
         scenarios = cache.load(2, "scenarios")
         print(f">>> stage 2: reused {len(scenarios)} cached scenarios")
     else:
-        m = _model_cfg(cfg, "scenarios")
         scenarios = timed("scenarios", lambda: stages.generate_scenarios(
-            traits, client, usage, per_trait=per_trait, per_call=per_call,
-            workers=workers, **m))
+            traits, client, usage, flavor, batches, workers=workers, max_fail_pct=max_fail_pct,
+            **_model_cfg(cfg, "scenarios")))
         cache.save(2, "scenarios", scenarios)
     print(f">>> stage 2: {len(scenarios)} scenarios")
     print(f"    FIRST: [{scenarios[0]['trait_name']}] {scenarios[0]['situation'][:220]}")
@@ -128,7 +143,9 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
         print(f">>> stage 3: reused {len(drafts)} cached drafts")
     else:
         drafts = timed("draft", lambda: stages.draft_prompts(
-            scenarios, client, usage, workers=workers, **_model_cfg(cfg, "draft")))
+            scenarios, client, usage, flavor, workers=workers, max_fail_pct=max_fail_pct,
+            ckpt=stages.Checkpoint(run_dir / "stage_3_draft_prompts.partial.jsonl"),
+            **_model_cfg(cfg, "draft")))
         cache.save(3, "draft_prompts", drafts)
     print(f"    FIRST DRAFT USER: {drafts[0]['draft_user'][:220]}")
     guard("stage 3")
@@ -139,7 +156,8 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
         print(f">>> stage 4: reused {len(refined)} cached refinements")
     else:
         refined = timed("refine", lambda: stages.refine_prompts(
-            drafts, client, usage, constitution=constitution, workers=workers,
+            drafts, client, usage, flavor, constitution=constitution, workers=workers,
+            max_fail_pct=max_fail_pct,
             ckpt=stages.Checkpoint(run_dir / "stage_4_refined_prompts.partial.jsonl"),
             **_model_cfg(cfg, "refine")))
         cache.save(4, "refined_prompts", refined)
@@ -152,7 +170,8 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
         print(f">>> stage 5: reused {len(drafted)} cached responses")
     else:
         drafted = timed("respond", lambda: stages.generate_responses(
-            refined, client, usage, style_guidance=style_guidance, workers=workers,
+            refined, client, usage, flavor, style_guidance=style_guidance, workers=workers,
+            max_fail_pct=max_fail_pct,
             ckpt=stages.Checkpoint(run_dir / "stage_5_draft_responses.partial.jsonl"),
             **_model_cfg(cfg, "respond")))
         cache.save(5, "draft_responses", drafted)
@@ -165,14 +184,15 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
         print(f">>> stage 6: reused {len(final)} cached rewrites")
     else:
         final = timed("rewrite", lambda: stages.rewrite_responses(
-            drafted, client, usage, constitution=constitution, workers=workers,
+            drafted, client, usage, flavor, constitution=constitution, workers=workers,
+            max_fail_pct=max_fail_pct,
             ckpt=stages.Checkpoint(run_dir / "stage_6_final.partial.jsonl"),
             **_model_cfg(cfg, "rewrite")))
         cache.save(6, "final", final)
     print(f"    FIRST FINAL RESPONSE: {final[0]['response'][:220]}")
 
     # --- training-ready export ------------------------------------------------------
-    sft = stages.to_sft(final)
+    sft = flavor.to_sft(final)
     cache.save(7, "sft", sft)
 
     manifest = {
@@ -185,8 +205,13 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
         "config": cfg,
         # What this run ACTUALLY used, which differs from cfg under --smoke. The cost
         # estimator rescales the scenario stage by these, so they must be the real values.
-        "effective": {"n_traits": len(traits), "scenarios_per_trait": per_trait,
-                      "scenarios_per_call": per_call},
+        "effective": {
+            "flavor": cfg.get("flavor", "difficult_advice"),
+            "n_traits": len(traits),
+            "scenario_calls": len(batches),
+            "scenarios_planned": planned,
+            "scenarios_per_call": max((b["n"] for b in batches), default=0),
+        },
         "counts": {
             "traits": len(traits), "scenarios": len(scenarios), "drafts": len(drafts),
             "refined": len(refined), "responses": len(drafted), "final": len(final),
@@ -230,12 +255,13 @@ def topup(cfg: dict, resume: str, traits: list[str], n_per_trait: int) -> dict:
     """
     run_dir = Path(resume)
     assert run_dir.exists(), f"run dir does not exist: {run_dir}"
+    flavor = get_flavor(cfg.get("flavor", "difficult_advice"))
     constitution = full_text(cfg["constitution"])
     client = OpenRouterClient()
     usage = stages.Usage()
 
     drafted = [__import__("json").loads(line)
-               for line in (run_dir / "stage_5_draft_responses.jsonl").open()]
+               for line in (run_dir / "stage_5_draft_responses.jsonl").open(encoding="utf-8")]
     ckpt = stages.Checkpoint(run_dir / "stage_6_final.partial.jsonl")
 
     have: dict[str, int] = {}
@@ -257,7 +283,7 @@ def topup(cfg: dict, resume: str, traits: list[str], n_per_trait: int) -> dict:
         return have
 
     print(f">>> rewriting {len(todo)} responses")
-    stages.rewrite_responses(todo, client, usage, constitution=constitution,
+    stages.rewrite_responses(todo, client, usage, flavor, constitution=constitution,
                              workers=int(cfg.get("workers", 8)), ckpt=ckpt,
                              **_model_cfg(cfg, "rewrite"))
 

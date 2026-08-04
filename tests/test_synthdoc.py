@@ -3,10 +3,15 @@
 
 from __future__ import annotations
 
+import re
+import sys
+from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from src.data.synthdoc.constitution import segment  # noqa: E402
-from src.data.synthdoc.stages import cost_of, to_sft  # noqa: E402
+from data.synthdoc.constitution import segment  # noqa: E402
+from data.synthdoc.flavors.difficult_advice import to_sft  # noqa: E402
+from data.synthdoc.stages import cost_of  # noqa: E402
 
 CONSTITUTION = "constitutions/archive/claude_distilled_8_principles_v1/constitution.md"
 
@@ -35,9 +40,15 @@ def test_style_guidance_is_separate_from_traits():
 def test_segments_specgen_heading_format():
     # The default constitution since 2026-08-03: specgen's mid arm, whose units are
     # numbered H2 headings rather than v1's bolded list items.
-    traits, style = segment("constitutions/claude_distilled_12_principles_mid/constitution.md")
-    assert len(traits) == 12
-    assert [t.trait_id for t in traits] == [f"t{i}" for i in range(1, 13)]
+    path = "constitutions/claude_distilled_12_principles_mid/constitution.md"
+    # Counted from the document rather than hardcoded: this file has been re-cut once
+    # already (twelve units -> ten on 2026-08-04, while keeping its folder name), and a
+    # literal here just goes red without telling anyone whether segmentation still works.
+    expected = sum(1 for line in Path(path).read_text(encoding="utf-8").splitlines()
+                   if re.match(r"^##\s+\d+\.", line))
+    traits, style = segment(path)
+    assert len(traits) == expected
+    assert [t.trait_id for t in traits] == [f"t{i}" for i in range(1, expected + 1)]
     for t in traits:
         assert t.name and len(t.text) > 60, f"{t.trait_id} looks truncated"
         assert "*Why:*" in t.text, f"{t.trait_id} lost its rationale block"
@@ -71,7 +82,7 @@ def test_cost_of_prices_known_models_and_zeroes_unknown():
 
 
 def test_checkpoint_survives_abort_and_resume_skips_completed_work(tmp_path):
-    from src.data.synthdoc.stages import Checkpoint, _run_items
+    from data.synthdoc.stages import Checkpoint, _run_items
 
     items = [{"scenario_id": f"s{i}", "v": i} for i in range(100)]
     path = tmp_path / "partial.jsonl"
