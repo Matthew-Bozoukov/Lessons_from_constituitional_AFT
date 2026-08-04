@@ -1,0 +1,48 @@
+# ABOUTME: LMSYS chat-quality eval — the served target's answers to a seeded lmsys-chat-1m
+# ABOUTME: prompt subset, judged pairwise against a reference arm's answers.jsonl artifact.
+# Run: uv run scripts/run_eval.py --target <hf_path> --name lmsys --reference <answers.jsonl | run dir>
+#      (first arm of a ladder: --reference bootstrap — generates the answers artifact, no judging)
+#
+# The reference is a prior lmsys run's answers.jsonl (or the run directory holding it) for
+# the SAME subset block and thinking mode — the run refuses hash or mode mismatches before
+# generating anything. ~50% win-rate = no quality change vs the reference arm.
+
+subset:
+  # GATED dataset: pulling lmsys/lmsys-chat-1m needs an HF_TOKEN whose account has accepted
+  # the dataset's terms. The subset is a pure function of this block (streaming + seeded
+  # shuffle, first-user-turn of each sampled conversation), so every arm answers identical
+  # prompts without a checked-in prompt file; the run records the resolved list and its
+  # subset_hash in out_dir.
+  repo: lmsys/lmsys-chat-1m
+  split: train
+  n: 60
+  seed: 0
+  language: English      # lmsys-chat-1m's per-conversation language tag
+  min_chars: 20          # drop one-word prompts — nothing to judge
+  max_chars: 2000        # drop pasted-document prompts that crowd out the answer budget
+  shuffle_buffer: 10000  # part of the subset's identity (changes the draw) — do not tune per run
+
+# Optional local override: JSON list of {id, prompt} with unique INTEGER ids (parity drives
+# judge position randomization). For smoke and offline work; the HF sample is the default.
+prompts_path: null
+
+generation:              # target sampling — identical across arms, parity is load-bearing
+  api_key: EMPTY
+  temperature: 0.7
+  top_p: 0.95
+  max_tokens: 4096       # headroom for the <think> trace + a full chat reply (CLAUDE.md gotcha 5)
+  parallel: 8
+  request_timeout: 600   # seconds; a full thinking generation under load runs minutes
+  max_retries: 2
+
+judge:                   # pairwise judge, called via src/endpoints/openrouter.py
+  # Same pick as capability.yaml, same reason: the difficult-advice corpus is generated
+  # with Claude, so a Gemini judge carries no self-preference confound.
+  model: google/gemini-3-flash-preview
+  temperature: 0.0
+  max_tokens: 512        # the verdict is one JSON line
+  parallel: 8
+  # Gemini 3.x Flash bills reasoning tokens as output (capability.yaml's judge block);
+  # the A/B rubric needs no hidden thinking.
+  extra_body:
+    reasoning: {effort: low}

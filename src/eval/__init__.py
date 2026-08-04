@@ -29,6 +29,10 @@ EVALS: dict[str, EvalSpec] = {
         runner="src.eval.capabilities.capability_eval:run",
         config="configs/eval/capability.yaml",
         needs_reference=True),
+    "lmsys": EvalSpec(
+        runner="src.eval.capabilities.lmsys_eval:run",
+        config="configs/eval/lmsys.yaml",
+        needs_reference=True),
     "internalization": EvalSpec(
         runner="src.eval.misalignment.internalization.runner:run",
         config="configs/eval/internalization.yaml"),
