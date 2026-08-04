@@ -3,6 +3,28 @@
 
 # LOG
 
+## 2026-08-04 — Psychosis eval: native reimplementation of tim-hua-01/ai-psychosis
+
+**Hypothesis-to-test (later):** difficult-advice SFT should also reduce multi-turn delusion
+validation, not just agentic misalignment — this adds the instrument. **Method:** added
+`psychosis` to the eval registry on `jamie/psychosis`, conforming to the run() contract. Rather
+than vendoring (upstream is one inspect-ai script + R analysis), only the scientific inputs are
+copied verbatim — 9 persona files + red-teamer/grader prompts, MIT, SHA-pinned in
+`src/eval/misalignment/psychosis/assets/README.md` — and the harness is ~4 small native modules
+(`conversation`/`judge`/`metrics`/`runner`) on `OpenRouterClient` + the served-target OpenAI
+client, with models injected as callables so the loop and judging test offline. Upstream
+mechanics reproduced exactly (opening turn-count sentence, `<message>` extraction with one
+refusal retry, `<target_model_response>` wrapping, per-turn cumulative-context grading with the
+last-response marker, flat 14-key JSON rubric). Deliberate deviations, documented in
+`docs/replication.md`: judge after conversation completion (equivalent + parallel), judge temp 0,
+sentinel grades (−1 delusion / 0 therapy-n/a) excluded from means, `<think>` kept out of context
+but in rollouts and the judge transcript. Red-teamer `x-ai/grok-3` (Grok-4 refuses per upstream),
+judge `google/gemini-2.5-pro`. **Result:** 227/227 offline tests (14 new); registry wellformedness
+tests cover the new entry; not yet run against a served model (needs GPU + OpenRouter spend,
+est. ~$9/arm from upstream's ~$100/11-model figure). **Next:** smoke `--name psychosis smoke=true`
+on base Qwen3-32B, spot-check judge fidelity by re-grading a few upstream published transcripts,
+then baseline vs difficult-advice arms.
+
 ## 2026-08-03 (5) — Eval framework: one entrypoint, artifact-inferred thinking, pod-only env
 
 Implemented the CLAUDE.md eval-framework contract end to end on `jamie/eval-framework`:
