@@ -29,8 +29,6 @@ from typing import Any, Iterable
 # Fenced code blocks are removed before counting markdown, matching arena-hard-auto.
 # Counting them would let a correct, code-dense answer look like heavy formatting.
 _CODE_FENCE = re.compile(r"```([^`]*)```", re.DOTALL)
-_THINK = re.compile(r"<think>(.*?)</think>", re.DOTALL)
-_OPEN_THINK = re.compile(r"<think>(.*)", re.DOTALL)
 
 # Refusal cues. Deliberately narrow: these fire on an assistant declining the task, not
 # on ordinary hedging. A broad pattern would count every "it depends" as a refusal and
@@ -56,31 +54,6 @@ def _encoder() -> Any:
 
         _TOKENIZER = tiktoken.encoding_for_model("gpt-4o")
     return _TOKENIZER
-
-
-def split_think(text: str) -> tuple[str, str]:
-    """Separate a Qwen3 reasoning trace from the user-visible answer.
-
-    An unterminated `<think>` is treated as all-trace with an empty answer rather than
-    being silently kept as prose: that shape means the generation was cut off mid-trace,
-    and folding it into the answer would feed the judge a truncated ramble while hiding
-    the truncation from the degeneracy counters.
-
-    Args:
-        text: Raw completion text.
-
-    Returns:
-        `(think, answer)`, both stripped. `think` is "" when no trace is present.
-    """
-    if not text:
-        return "", ""
-    match = _THINK.search(text)
-    if match:
-        return match.group(1).strip(), _THINK.sub("", text, count=1).strip()
-    open_match = _OPEN_THINK.search(text)
-    if open_match:
-        return open_match.group(1).strip(), ""
-    return "", text.strip()
 
 
 def count_markdown_elements(text: str) -> dict[str, dict[str, int]]:

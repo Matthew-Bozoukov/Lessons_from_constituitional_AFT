@@ -150,10 +150,12 @@ def test_real_configs_keep_historical_snapshot_names():
 def test_estimate_prices_real_configs_and_ablation_out():
     da = _real("difficult_advice")
     full = estimate(da)
-    assert full["total_usd"] == 47.68, "estimate must match the pre-refactor number"
+    # $47.68 pre-refactor at n_traits=12; the constitution was re-cut to ten units on
+    # 2026-08-04, so the same per-call priors now price 770 records.
+    assert full["total_usd"] == 39.73
     ablated = estimate({**da, "ablate": ["final"]})
     calls = {r["stage"]: r["calls"] for r in full["per_stage"]}
-    assert calls["rewrite"] == 924
+    assert calls["rewrite"] == 770
     assert "rewrite" not in {r["stage"] for r in ablated["per_stage"]}
     assert ablated["total_usd"] < full["total_usd"]
 

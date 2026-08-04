@@ -1,11 +1,12 @@
-# ABOUTME: Builds an N-source SFT mixture at per-source token budgets. Local `messages`
-# ABOUTME: sources keep their <think> traces; HF `repo` sources render with NO think block.
+# ABOUTME: Builds an N-source SFT mixture at per-source token budgets, rendered under the
+# ABOUTME: preserve-thinking policy: every assistant turn keeps a think block (real or empty).
 
 from __future__ import annotations
 
 import json
 import os
 import random
+import re
 import sys
 from pathlib import Path
 
@@ -13,36 +14,55 @@ from datasets import load_dataset
 from omegaconf import OmegaConf
 from transformers import AutoTokenizer
 
-from src.utils import timestamp, write_run_meta  # noqa: E402
+from src.utils import think_census, model_profile, timestamp, write_run_meta  # noqa: E402
 
-# Qwen3.6's template renders `<think>\n{reasoning}\n</think>` for any assistant turn that is
-# the final message. With no reasoning_content that yields an EMPTY think block, which is what
-# trains the model to stop reasoning. Appending a throwaway user turn pushes the assistant off
-# the end so the template takes its no-think branch instead; we then cut the throwaway turn.
+# The repo-wide default since 2026-08-04 is PRESERVED rendering: the profile's
+# render_kwargs (Qwen3.6: preserve_thinking=True) make the template emit a think block on
+# EVERY assistant turn — reasoning_content where the row has it, the empty marker where it
+# does not. The generation-boundary mask (src/train/masking.py) wholly masks empty markers
+# (forced context — the model never generates an empty close) and supervises real traces
+# with their close, so empty markers are safe by construction.
+# Each `repo` source declares what its DATA is via `reasoning:`:
+#   native — rows carry reasoning_content (validated: every row keeps a real trace)
+#   none   — rows have no reasoning (like Tulu; validated: empty markers on every turn)
+#   strip  — DELIBERATE pre-policy rendering with no think blocks at all, for nothink
+#            control arms and for rebuilding pre-policy artifacts. Never a default.
+_REASONING_KINDS = ("native", "none", "strip")
+
+# The sentinel trick behind `strip`: the template only thinks on the FINAL assistant turn,
+# so appending a throwaway user turn pushes the assistant off the end and takes the
+# no-think branch; the throwaway turn is then cut.
 _SENTINEL = "__MIXTURE_SENTINEL__"
 
-_EMPTY_THINK = "<think>\n\n</think>"
-# The full literal Qwen3.6's template emits on a final assistant turn with no reasoning —
-# the non-thinking marker the model is prefilled with at nothink inference.
-_EMPTY_THINK_MARKER = "<think>\n\n</think>\n\n"
+_THINK_BLOCK = re.compile(r"<think>(.*?)</think>", re.DOTALL)
 
 # Every token budget is divided by this under --smoke, so a smoke run exercises the full
 # wiring (rendering, streaming, validation, stats) in seconds.
 _SMOKE_SCALE = 20
 
 
-def _render_with_think(tok, messages: list[dict]) -> str:
-    """Render a conversation keeping the assistant's <think> reasoning trace."""
-    text = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
-    assert "<think>" in text, "expected a think block in a messages-format source"
+def _render_preserved(tok, messages: list[dict], render_kwargs: dict) -> str:
+    """Render under the preserve-thinking policy: a think block on every assistant turn.
+
+    Plain `apply_chat_template` with the family profile's render kwargs — no sentinel, no
+    post-hoc surgery. Verified live (2026-08-04): with preserve_thinking=True Qwen3.6
+    renders each turn's reasoning_content, and the empty marker where a turn has none.
+    """
+    assert messages[-1]["role"] == "assistant", "conversation must end with an assistant turn"
+    text = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=False,
+                                   **render_kwargs)
+    n_turns = sum(1 for m in messages if m["role"] == "assistant")
+    assert text.count("<think>") == n_turns, (
+        f"expected a think block on every assistant turn ({n_turns}), got "
+        f"{text.count('<think>')} — template drift from the verified preserve behaviour?")
     return text
 
 
 def _render_without_think(tok, messages: list[dict]) -> str:
-    """Render a conversation with no <think> block at all.
+    """Render with no <think> block at all (`reasoning: strip` — deliberate, non-default).
 
     Args:
-        tok: The Qwen3.6 tokenizer.
+        tok: The tokenizer.
         messages: Conversation ending in an assistant turn.
 
     Returns:
@@ -53,23 +73,7 @@ def _render_without_think(tok, messages: list[dict]) -> str:
     text = tok.apply_chat_template(padded, tokenize=False, add_generation_prompt=False)
     text = text[: text.rindex("<|im_start|>user")]
     assert _SENTINEL not in text, "failed to strip the throwaway turn"
-    assert "<think>" not in text, "replay rendering must contain no think block"
-    return text
-
-
-def _render_with_marker(tok, messages: list[dict]) -> str:
-    """Render with the template's own defaults: the empty think marker stays in.
-
-    This is plain `apply_chat_template` — no sentinel, no post-hoc surgery. For a final
-    assistant turn with no reasoning_content, Qwen3.6's template emits exactly the empty
-    `<think></think>` marker. Sources rendered this way MUST be trained with the marker
-    masked from the loss (train.mask_empty_think), or the model learns to emit the
-    collapse pattern; check_thinking_declaration enforces that pairing.
-    """
-    assert messages[-1]["role"] == "assistant", "conversation must end with an assistant turn"
-    text = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
-    assert text.count("<think>") == 1 and _EMPTY_THINK_MARKER in text, \
-        "expected exactly the template's empty think marker on the final assistant turn"
+    assert "<think>" not in text, "strip rendering must contain no think block"
     return text
 
 
@@ -101,11 +105,12 @@ def _fill(rows: list[dict], budget: int, seed: int) -> list[dict]:
     return out
 
 
-def _take_messages(tok, path: Path, budget: int, seed: int, source: str) -> list[dict]:
-    """Sample a raw chat jsonl up to a token budget, rendering with reasoning traces kept."""
+def _take_messages(tok, path: Path, budget: int, seed: int, source: str,
+                   render_kwargs: dict) -> list[dict]:
+    """Sample a raw chat jsonl up to a token budget, reasoning preserved on every turn."""
     rows = []
     for line in path.open():
-        text = _render_with_think(tok, json.loads(line)["messages"])
+        text = _render_preserved(tok, json.loads(line)["messages"], render_kwargs)
         rows.append({"text": text, "source": source, "n_tokens": _ntok(tok, text)})
     assert rows, f"no rows in {path}"
     return _fill(rows, budget, seed)
@@ -128,11 +133,12 @@ def _take_rendered(path: Path, budget: int, seed: int, source: str) -> list[dict
 
 
 def _take_hf(tok, repo: str, split: str, budget: int, seed: int, max_len: int,
-             source: str, shuffle_buffer: int, think_marker: bool = False) -> list[dict]:
+             source: str, shuffle_buffer: int, renderer) -> list[dict]:
     """Stream an HF chat dataset and sample up to a token budget.
 
-    Rendering is the sentinel no-think strip by default; `think_marker` renders with the
-    template's own defaults instead, keeping the empty marker.
+    Rows are RENDERED FIRST and length-capped after, so the cap counts the think tokens
+    the renderer added (the ordering defect PR #16 recorded in its always_think surgery
+    cannot occur here).
 
     Args:
         tok: Tokenizer.
@@ -145,6 +151,7 @@ def _take_hf(tok, repo: str, split: str, budget: int, seed: int, max_len: int,
         shuffle_buffer: Streaming shuffle buffer. Kept modest by default because a large
             buffer over a corpus of long rows (NuminaMath) exhausts memory and the process
             is OOM-killed.
+        renderer: messages -> rendered text for this source's `reasoning:` kind.
 
     Returns:
         Sampled rows with `text`, `source` and `n_tokens`.
@@ -158,8 +165,7 @@ def _take_hf(tok, repo: str, split: str, budget: int, seed: int, max_len: int,
             skipped += 1
             continue
         try:
-            render = _render_with_marker if think_marker else _render_without_think
-            text = render(tok, msgs)
+            text = renderer(msgs)
         except (AssertionError, ValueError):
             skipped += 1
             continue
@@ -177,25 +183,39 @@ def _take_hf(tok, repo: str, split: str, budget: int, seed: int, max_len: int,
     return out
 
 
-def _load_source(tok, cfg, name: str, spec: dict, budget: int, seed: int) -> tuple[list[dict], str]:
+def _load_source(tok, cfg, name: str, spec: dict, budget: int, seed: int,
+                 render_kwargs: dict) -> tuple[list[dict], str]:
     """Load one source and classify it for validation.
 
     Returns:
-        (rows, kind) where kind is `think` (local messages jsonl, traces kept), `nothink`
-        (HF-streamed, sentinel-stripped), `marker` (HF-streamed, template's own empty-think
-        marker kept — pair with train.mask_empty_think) or `rendered` (pre-rendered,
-        validated upstream).
+        (rows, kind) where kind is the spec's `reasoning:` declaration for HF sources
+        (`native` | `none` | `strip`), `think` for local messages jsonl (traces
+        preserved on every turn), or `rendered` (pre-rendered, validated upstream).
     """
     if "repo" in spec:
-        marker = bool(spec.get("think_marker", False))
+        if "think_marker" in spec:
+            raise ValueError(
+                f"source {name!r}: `think_marker` was replaced on 2026-08-04 by the "
+                "required `reasoning:` declaration (native|none|strip); preserved "
+                "rendering with empty markers is now the default for `reasoning: none`.")
+        kind = spec.get("reasoning")
+        if kind not in _REASONING_KINDS:
+            raise ValueError(
+                f"source {name!r}: HF sources must declare `reasoning: "
+                f"{'|'.join(_REASONING_KINDS)}` — what the DATA carries is part of the "
+                "scientific record (like `thinking:` in train configs) and is validated "
+                "against the rendered rows, never guessed.")
+        renderer = (lambda msgs: _render_without_think(tok, msgs)) if kind == "strip" \
+            else (lambda msgs: _render_preserved(tok, msgs, render_kwargs))
         rows = _take_hf(tok, spec["repo"], spec.get("split", "train"), budget, seed,
                         int(cfg.max_seq_len), name,
                         int(spec.get("shuffle_buffer", cfg.get("shuffle_buffer", 1000))),
-                        think_marker=marker)
-        return rows, ("marker" if marker else "nothink")
+                        renderer)
+        return rows, kind
     fmt = spec["format"]
     if fmt == "messages":
-        return _take_messages(tok, Path(spec["path"]), budget, seed, name), "think"
+        return _take_messages(tok, Path(spec["path"]), budget, seed, name,
+                              render_kwargs), "think"
     if fmt == "rendered":
         return _take_rendered(Path(spec["path"]), budget, seed, name), "rendered"
     raise ValueError(f"source {name!r}: unknown format {fmt!r} (messages|rendered)")
@@ -206,11 +226,13 @@ def main(config: str, smoke: bool = False) -> None:
 
     Args:
         config: OmegaConf YAML. `sources` maps name -> spec, where a spec is either a local
-            file — {path, format, tokens}, format `messages` (raw chat jsonl rendered here,
-            reasoning traces kept) or `rendered` (pre-rendered rows: text, n_tokens) — or an
-            HF stream — {repo, split?, tokens, shuffle_buffer?, think_marker?}, length-capped
-            at `max_seq_len` and rendered with NO think block by default; `think_marker: true`
-            keeps the template's own empty marker instead (pair with train.mask_empty_think).
+            file — {path, format, tokens}, format `messages` (raw chat jsonl, reasoning
+            preserved on every turn) or `rendered` (pre-rendered rows: text, n_tokens) — or
+            an HF stream — {repo, split?, tokens, shuffle_buffer?, reasoning}, length-capped
+            at `max_seq_len` AFTER rendering. `reasoning:` is required for HF sources:
+            `native` (rows carry reasoning_content), `none` (no reasoning — every turn gets
+            the template's empty marker; the generation-boundary mask handles it), or
+            `strip` (deliberate pre-policy no-think rendering for nothink control arms).
         smoke: Divide every token budget by 20 to validate wiring in seconds.
     """
     cfg = OmegaConf.load(config)
@@ -222,12 +244,13 @@ def main(config: str, smoke: bool = False) -> None:
     sources: dict[str, dict] = OmegaConf.to_container(cfg.sources, resolve=True)
 
     tok = AutoTokenizer.from_pretrained(cfg.tokenizer)
+    render_kwargs = model_profile(str(cfg.tokenizer)).render_kwargs
 
     rows: list[dict] = []
     kinds: dict[str, str] = {}
     for name, spec in sources.items():
         budget = int(spec["tokens"]) // scale
-        got, kinds[name] = _load_source(tok, cfg, name, spec, budget, seed)
+        got, kinds[name] = _load_source(tok, cfg, name, spec, budget, seed, render_kwargs)
         print(f"  {name:<24} {len(got):>5} docs  {sum(r['n_tokens'] for r in got):>9,} tok "
               f"(budget {budget:,}, {kinds[name]})")
         rows += got
@@ -258,9 +281,10 @@ def main(config: str, smoke: bool = False) -> None:
                    extra={"command": " ".join(sys.argv), "smoke": smoke, "stats": stats})
 
     # Loud sanity output: the actual strings the model will train on.
-    for wanted, header in (("think", "must contain a NON-EMPTY <think>"),
-                           ("nothink", "must contain NO <think> at all"),
-                           ("marker", "must carry exactly the EMPTY <think></think> marker")):
+    for wanted, header in (("think", "reasoning preserved on every turn"),
+                           ("native", "reasoning_content rendered on every turn"),
+                           ("none", "the EMPTY marker on every turn"),
+                           ("strip", "NO <think> at all (deliberate pre-policy render)")):
         name = next((n for n, k in kinds.items() if k == wanted), None)
         if name:
             print("\n" + "=" * 72)
@@ -268,29 +292,29 @@ def main(config: str, smoke: bool = False) -> None:
             print("=" * 72)
             print(next(r for r in rows if r["source"] == name)["text"][:1200])
 
-    # Validate what actually landed on disk, not just the in-memory rows. Rendered sources
-    # are exempt from the think checks: convert_synthdoc_qwen.py validated them at render
-    # time, and the agentic corpus deliberately keeps empty-think markers on some turns.
+    # Validate what actually landed on disk, not just the in-memory rows, with the shared
+    # per-turn census (src/utils.py) — the same yardstick train_lora's mask gate applies.
+    # Rendered sources are exempt: convert_synthdoc_qwen.py validated them at render time.
     written = [json.loads(line) for line in out_path.open()]
     assert len(written) == len(rows), "mixture file is truncated"
     for name, kind in kinds.items():
         got = [r["text"] for r in written if r["source"] == name]
-        if kind == "think":
-            n_empty = sum(_EMPTY_THINK in t for t in got)
-            n_think = sum("<think>" in t for t in got)
-            print(f"{name}: {n_think}/{len(got)} rows with <think> (must be all), "
-                  f"{n_empty} EMPTY think blocks (MUST be 0)")
-            assert n_think == len(got), f"{name}: every rendered row must keep its think block"
-            assert n_empty == 0, "empty think blocks would train the model to stop reasoning"
-        elif kind == "nothink":
-            n_think = sum("<think>" in t for t in got)
-            print(f"{name}: {n_think}/{len(got)} rows with <think> (MUST be 0)")
-            assert n_think == 0, f"no {name} replay example may carry a think block"
-        elif kind == "marker":
-            n_marked = sum(t.count("<think>") == 1 and _EMPTY_THINK_MARKER in t for t in got)
-            print(f"{name}: {n_marked}/{len(got)} rows with exactly the empty marker (must be all)")
-            assert n_marked == len(got), \
-                f"every {name} row must carry exactly the template's empty think marker"
+        census = think_census(got)
+        print(f"{name}: {kind} — {census['real']} real / {census['empty']} empty / "
+              f"{census['absent']} absent think blocks over {census['turns']} turns")
+        if kind in ("think", "native"):
+            assert census["absent"] == 0, \
+                f"{name}: every assistant turn must carry a think block (preserve-thinking)"
+            n_traceless = sum(1 for t in got
+                              if not any(b.strip() for b in _THINK_BLOCK.findall(t)))
+            assert n_traceless == 0, \
+                f"{name}: {n_traceless} rows carry no real reasoning trace at all"
+        elif kind == "none":
+            assert census["absent"] == 0 and census["real"] == 0, \
+                f"{name}: reasoning:none rows must carry exactly the empty marker per turn"
+        elif kind == "strip":
+            assert census["turns"] > 0 and census["real"] + census["empty"] == 0, \
+                f"{name}: strip rows must contain no think block"
     print("\n" + json.dumps(stats, indent=2))
     print(f">>> wrote {out_path}")
 

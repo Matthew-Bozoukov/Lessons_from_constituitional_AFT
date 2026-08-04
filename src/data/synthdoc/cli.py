@@ -21,18 +21,27 @@ def _load(config: str) -> dict:
 
 
 def run(config: str, smoke: bool = False, resume: str | None = None,
-        ablate: str | None = None) -> None:
+        ablate: str | None = None, overrides: str | None = None) -> None:
     """Run the pipeline the config declares (its `stages:` list).
 
     Args:
         config: Path to the run YAML (configs/data/<document_type>.yaml).
         smoke: Merge the config's `smoke:` overrides -- tiny slice, full wiring.
         resume: Existing run directory to continue instead of starting fresh.
+        overrides: Comma-separated OmegaConf dotlist applied over the YAML, e.g.
+            "total_scenarios=144,id_prefix=b" -- keeps a one-off variant (a top-up, a
+            different size) as one reproducible command rather than a forked config.
+            Recorded in the run manifest either way.
         ablate: Comma-separated stage names to ablate, merged over the config's
             `ablate:` list and recorded in the manifest.
     """
     load_dotenv()
-    cfg = _load(config)
+    loaded = OmegaConf.load(config)
+    if overrides:
+        loaded = OmegaConf.merge(loaded, OmegaConf.from_dotlist(
+            [o.strip() for o in overrides.split(",") if o.strip()]))
+        print(f">>> overrides: {overrides}")
+    cfg = OmegaConf.to_container(loaded, resolve=True)
     if ablate:
         cfg["ablate"] = sorted(set(cfg.get("ablate") or [])
                                | {a.strip() for a in str(ablate).split(",") if a.strip()})

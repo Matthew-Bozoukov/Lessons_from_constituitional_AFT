@@ -18,7 +18,12 @@ from transformers import (
 )
 from trl import SFTConfig, SFTTrainer
 
-from src.train.masking import build_labels, check_thinking_declaration  # noqa: E402
+from src.train.mask_gate import gate_generation_boundary  # noqa: E402
+from src.train.masking import (  # noqa: E402
+    build_labels,
+    check_thinking_declaration,
+    model_profile,
+)
 
 
 def _collate_padded(features: list[dict], pad_token_id: int) -> dict[str, torch.Tensor]:
@@ -88,8 +93,7 @@ def main(config: str, smoke: bool = False) -> None:
     # then stamped into the adapter as training_meta.json. No default.
     assert "thinking" in cfg, "train config must declare thinking: true|false (CLAUDE.md eval framework)"
     thinking = bool(cfg.thinking)
-    check_thinking_declaration(ds, thinking,
-                               mask_empty_think=bool(cfg.train.get("mask_empty_think", False)))
+    check_thinking_declaration(ds, thinking)
     print(f">>> thinking (declared, validated on all {len(ds)} rows): {thinking}")
 
     if smoke:
@@ -116,24 +120,35 @@ def main(config: str, smoke: bool = False) -> None:
     pre_tokenized = assistant_only and "text" in ds.column_names
     if pre_tokenized:
         max_len = int(cfg.train.max_seq_len)
-        # An empty <think></think> is Qwen3.6's non-thinking marker, injected as a prefill
-        # at inference. Conditioning on it is useful; being trained to emit it is the
-        # documented reasoning-collapse pattern, so it can be excluded from the loss.
-        skip_empty = bool(cfg.train.get("mask_empty_think", False))
-        print(f">>> mask_empty_think: {skip_empty}")
+        # Think supervision is NOT configurable: the generation-boundary rule in
+        # src/train/masking.py is the one way — mask what the model never generates (the
+        # `<think>\n` prefill; a WHOLE empty marker, since a healthy model never closes
+        # an empty block), supervise what it does (reasoning + `\n</think>` + answer).
+        # Runs trained under older rules are reproduced from git history, not a knob.
+        for stale_key in ("mask_empty_think", "think_loss"):
+            if cfg.train.get(stale_key) is not None:
+                raise ValueError(
+                    f"`train.{stale_key}` is not a knob: think supervision always uses "
+                    "the generation-boundary rule (src/train/masking.py). Delete the key; "
+                    "to reproduce an old run, check out the commit in its adapter's "
+                    "training_meta."
+                )
+        profile = model_profile(str(cfg.model))
+        gate_generation_boundary(ds["text"], tokenizer, max_len, profile, thinking)
         # A row's optional `supervise` field ("final" = train only the last assistant
-        # turn -- the model-eval-model self-reflection records) must be consumed here: remove_columns
-        # discards it right after. Absent or null means every assistant turn trains.
+        # turn -- model-eval-model's self-reflection records) must be consumed here:
+        # remove_columns discards it right after. Absent or null trains every turn.
         if "supervise" in ds.column_names:
             n_final = sum(1 for s in ds["supervise"] if s == "final")
             print(f">>> supervise=final rows (only last assistant turn trains): "
                   f"{n_final}/{len(ds)}")
         ds = ds.map(
             lambda r: build_labels(r["text"], tokenizer, max_len,
-                                   skip_empty_think=skip_empty,
-                                   supervise=r.get("supervise") or "all"),
+                                   supervise=r.get("supervise") or "all",
+                                   prefill=profile.prefill,
+                                   empty_think=profile.empty_think),
             remove_columns=ds.column_names,
-            desc="masking non-assistant tokens",
+            desc="masking non-assistant and prefill tokens",
         )
         n_tok = sum(len(r) for r in ds["input_ids"])
         n_sup = sum(sum(1 for v in r if v != -100) for r in ds["labels"])

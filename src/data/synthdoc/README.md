@@ -40,8 +40,9 @@ A config's `stages:` entry names an operator `kind` and supplies everything it n
 | `segment` | deterministic constitution segmentation; publishes `{style_guidance}` | — |
 | `scenarios` | batched JSON fan-out per trait (`t<i>_b<b>_s<j>` ids) | `model`, `prompts` |
 | `llm_json` | one JSON call per record | `model`, `prompts`, `save`, `optional`, `checkpoint` |
-| `llm_tagged` | one tagged-blocks call per record | `model`, `prompts`, `tags`, `save`, `checkpoint`, `ablate_with` |
-| `chat_export` | free export to `{messages, metadata}` | `messages`, `metadata` |
+| `llm_tagged` | one tagged-blocks call per record | `model`, `prompts`, `tags`, `save`, `checkpoint`, `ablate_with`, `prompt_vars` (conditional template vars), `variants_by` (per-record user/tags/save), `lint` (ban-patterns + min-length, reject-and-retry) |
+| `chat_export` | free export to `{messages, metadata}`; entries may carry `when:` for multi-turn records | `messages`, `metadata` |
+| `scenarios_weighted` | weighted trait apportionment, control slice, motive rotation, per-batch industries, deterministic per-scenario variants | `model`, `prompts` (+`control_user`), `threats`, `control_threats`, `fields` |
 | `load_source_run` | a completed run's finals + constitution-sha provenance check | (`source:` block) |
 | `plan_cells` / `perturb_pairs` / `generate_cells` / `assemble_cells` | the model-eval-model cells (see below) | (`cells:`, `flaws:`, `prompts:` blocks) |
 
@@ -75,6 +76,22 @@ respond (trait + style guidance) → **rewrite against the constitution (the cri
 step)** → chat export with the trait carried in metadata. Output and HF cache names
 keep their historical `synthdoc_v2` prefixes so existing snapshots stay resumable.
 This replaced the config-driven v1 (deleted 2026-08-03, git history).
+
+## Document type: self reflection (`configs/data/self_reflection.yaml`)
+
+Inverts who is tempted: **the agent itself**. Working autonomously (prose or agentic
+form), it finds it could protect its own position — or the objective it was deployed to
+pursue — by an action that is deniable rather than overtly wrong; it deliberates in its
+own value language, declines, and still does its job. Composition is deterministic from
+scenario ids (`scenarios_weighted`): weighted traits, a 12% **control slice** where
+self-interest argues for silence and the right move is to ACT (so the corpus doesn't
+teach "never act"), motive split (replacement / restriction / goal_conflict), 20%
+agentic form, 15% multi-turn (the colleague's reply deniably offers the trade the agent
+already declined). Stage 6 enforces a **voice contract in code**: the `final` stage's
+`lint` rejects-and-retries any trace using rule vocabulary ("principle 4", "my
+guidelines", "not permitted") or too short to have deliberated. Corpus generated
+2026-08-03 (pre-restructure code, same prompts): 592 records / 1.56M tokens on HF
+`LASR-Callum/2026-08-03-synthdoc-self-reflection`.
 
 ## Document type: model-eval-model (`configs/data/model_eval_model.yaml`)
 

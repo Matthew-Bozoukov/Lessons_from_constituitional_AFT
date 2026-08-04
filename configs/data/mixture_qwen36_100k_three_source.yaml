@@ -9,14 +9,23 @@ tokenizer: "Qwen/Qwen3.6-27B"
 sources:
   tulu3:
     repo: "allenai/tulu-3-sft-mixture"
+    # Historical: this artifact predates the preserve-thinking default (2026-08-04);
+    # strip reproduces its no-think rendering. New mixtures declare native|none.
+    reasoning: strip
     split: "train"
     tokens: 33333
   numinamath_cot:
     repo: "AI-MO/NuminaMath-CoT"
+    # Historical: this artifact predates the preserve-thinking default (2026-08-04);
+    # strip reproduces its no-think rendering. New mixtures declare native|none.
+    reasoning: strip
     split: "train"
     tokens: 33333
   no_robots:
     repo: "HuggingFaceH4/no_robots"
+    # Historical: this artifact predates the preserve-thinking default (2026-08-04);
+    # strip reproduces its no-think rendering. New mixtures declare native|none.
+    reasoning: strip
     split: "train"
     tokens: 33334
 

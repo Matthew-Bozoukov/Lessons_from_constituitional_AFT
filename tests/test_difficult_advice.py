@@ -35,9 +35,18 @@ def test_style_guidance_is_separate_from_traits():
 def test_segments_specgen_heading_format():
     # The default constitution since 2026-08-03: specgen's mid arm, whose units are
     # numbered H2 headings rather than v1's bolded list items.
-    traits, style = segment("constitutions/claude_distilled_12_principles_mid/constitution.md")
-    assert len(traits) == 12
-    assert [t.trait_id for t in traits] == [f"t{i}" for i in range(1, 13)]
+    import re
+    from pathlib import Path
+
+    path = "constitutions/claude_distilled_12_principles_mid/constitution.md"
+    # Counted from the document rather than hardcoded: this file has been re-cut once
+    # already (twelve units -> ten on 2026-08-04, while keeping its folder name), and a
+    # literal here just goes red without telling anyone whether segmentation still works.
+    expected = sum(1 for line in Path(path).read_text(encoding="utf-8").splitlines()
+                   if re.match(r"^##\s+\d+\.", line))
+    traits, style = segment(path)
+    assert len(traits) == expected
+    assert [t.trait_id for t in traits] == [f"t{i}" for i in range(1, expected + 1)]
     for t in traits:
         assert t.name and len(t.text) > 60, f"{t.trait_id} looks truncated"
         assert "*Why:*" in t.text, f"{t.trait_id} lost its rationale block"

@@ -45,8 +45,6 @@ from typing import Any, Iterable, Sequence
 
 import numpy as np
 
-from src.eval.capabilities.capability_metrics import split_think
-
 LETTERS = "ABCD"
 
 # The standard 4-way MMLU grouping. Reported alongside the headline number because a
@@ -363,40 +361,6 @@ def parse_answer(text: str, n_choices: int = 4) -> tuple[str | None, str]:
         if tail:
             return tail[-1], "tail"
     return None, "none"
-
-
-def resolve_trace(content: str, reasoning: str | None) -> tuple[str, str]:
-    """Split a completion into `(think, answer)` across every shape vLLM returns.
-
-    Three shapes exist in the wild and the eval has to handle all of them, because
-    getting this wrong reports a normally-reasoning model as having a collapsed
-    `<think>` block (CLAUDE.md gotcha 2) — a false alarm on the exact failure mode this
-    eval is supposed to detect:
-
-    - **No reasoning parser configured.** The trace arrives inline in `content`, wrapped
-      in `<think>` tags.
-    - **Parser configured** (`--reasoning-parser qwen3`). The trace arrives out of band
-      and `content` holds only the visible answer. The out-of-band field is named
-      `reasoning_content` on vLLM 0.8.x and `reasoning` on 0.26 — the caller passes
-      whichever it found.
-    - **Thinking disabled.** No trace at all; `content` is the bare answer.
-
-    Args:
-        content: The `message.content` field, possibly `None`/empty.
-        reasoning: The out-of-band trace, from whichever field carried it.
-
-    Returns:
-        `(think, answer)`, both stripped.
-    """
-    raw = content or ""
-    think, answer = split_think(raw)
-    if reasoning and not think:
-        # An out-of-band trace means `content` was never a container for it, so the
-        # whole of `content` is the answer — including the case where content is empty
-        # because generation was cut off mid-trace, which must stay an empty answer so
-        # it scores as unparseable rather than silently borrowing the trace text.
-        return str(reasoning).strip(), raw.strip()
-    return think, answer
 
 
 def wilson_ci(k: int, n: int, alpha: float = 0.05) -> dict[str, float]:

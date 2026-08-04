@@ -18,8 +18,8 @@ from src.data.synthdoc import pipeline
 
 
 def main(config: str, smoke: bool = False, resume: str | None = None,
-         ablate: str | None = None, estimate: bool = False,
-         measured: str | None = None) -> None:
+         ablate: str | None = None, overrides: str | None = None,
+         estimate: bool = False, measured: str | None = None) -> None:
     """Build a synthetic dataset from a pipeline config.
 
     Args:
@@ -27,6 +27,10 @@ def main(config: str, smoke: bool = False, resume: str | None = None,
             the document type; `pipeline:` is the label recorded in the manifest.
         smoke: Merge the config's `smoke:` overrides -- tiny slice, full wiring.
         resume: Existing run directory to continue instead of starting fresh.
+        overrides: Comma-separated OmegaConf dotlist applied over the YAML, e.g.
+            "total_scenarios=144,id_prefix=b" -- keeps a one-off variant (a top-up, a
+            different size) as one reproducible command rather than a forked config.
+            Recorded in the run manifest either way.
         ablate: Comma-separated stage names to ablate (each must declare
             `ablate_with`); merged over the config's `ablate:` list.
         estimate: Print the cost estimate and exit without generating.
@@ -34,7 +38,12 @@ def main(config: str, smoke: bool = False, resume: str | None = None,
             per-call token counts.
     """
     load_dotenv()
-    cfg = OmegaConf.to_container(OmegaConf.load(config), resolve=True)
+    loaded = OmegaConf.load(config)
+    if overrides:
+        loaded = OmegaConf.merge(loaded, OmegaConf.from_dotlist(
+            [o.strip() for o in overrides.split(",") if o.strip()]))
+        print(f">>> overrides: {overrides}")
+    cfg = OmegaConf.to_container(loaded, resolve=True)
     if ablate:
         cfg["ablate"] = sorted(set(cfg.get("ablate") or [])
                                | {a.strip() for a in str(ablate).split(",") if a.strip()})

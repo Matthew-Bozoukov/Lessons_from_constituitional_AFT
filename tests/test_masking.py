@@ -6,7 +6,18 @@ from __future__ import annotations
 from pathlib import Path
 
 
-from src.train.masking import ASSISTANT_HEADER, assistant_spans, build_labels  # noqa: E402
+import pytest
+
+from src.train.masking import (  # noqa: E402
+    ASSISTANT_HEADER,
+    EMPTY_THINK,
+    THINK_PREFILL,
+    assistant_spans,
+    build_labels,
+    check_thinking_declaration,
+    forced_spans,
+    model_profile,
+)
 
 CHAT = (
     "<|im_start|>user\nhi<|im_end|>\n"
@@ -75,26 +86,127 @@ def test_supervised_fraction_is_a_minority_of_a_prompt_heavy_example():
     assert supervised < 0.1 * len(out["labels"])
 
 
+class _MergingTokenizer(_CharTokenizer):
+    """Char tokenizer that merges `\\n\\n` into one token, reproducing Qwen's hazard.
+
+    In the real tokenizer the empty block's two newlines weld into a single token, and
+    the generation boundary runs through the middle of it. Segment cutting is what makes
+    the rule expressible at all, so the offline suite must include a tokenizer that
+    would merge if the cut were missing.
+    """
+
+    NL2 = 0x110000  # sentinel above any ord(); decodes as "\n\n" in _kept below
+
+    def __call__(self, text, add_special_tokens=False, truncation=False, max_length=None,
+                 return_offsets_mapping=False):
+        ids, offsets = [], []
+        i = 0
+        while i < len(text):
+            if text.startswith("\n\n", i):
+                ids.append(self.NL2)
+                offsets.append((i, i + 2))
+                i += 2
+            else:
+                ids.append(ord(text[i]))
+                offsets.append((i, i + 1))
+                i += 1
+        out = {"input_ids": ids, "attention_mask": [1] * len(ids)}
+        if return_offsets_mapping:
+            out["offset_mapping"] = offsets
+        return out
+
+
+def _kept(out) -> str:
+    """Reconstruct the supervised text from labels (NL2 sentinel -> its two newlines)."""
+    return "".join("\n\n" if v == _MergingTokenizer.NL2 else chr(v)
+                   for v in out["labels"] if v != -100)
+
+
+THINK_ROW = (
+    "<|im_start|>user\nq<|im_end|>\n"
+    f"<|im_start|>assistant\n{THINK_PREFILL}reasoning\n</think>\n\nanswer<|im_end|>\n"
+)
+EMPTY_ROW = (
+    "<|im_start|>user\nq<|im_end|>\n"
+    f"<|im_start|>assistant\n{EMPTY_THINK}answer<|im_end|>\n"
+)
+
+
+def test_prefill_is_masked_and_reasoning_and_closer_are_supervised():
+    out = build_labels(THINK_ROW, _MergingTokenizer(), max_length=len(THINK_ROW))
+    assert _kept(out) == "reasoning\n</think>\n\nanswer<|im_end|>"
+
+
+def test_empty_marker_is_wholly_masked():
+    # A healthy model never generates an empty close (probe, LOG 2026-08-04): the whole
+    # marker is forced context in every serving configuration, so none of it — opener,
+    # newlines, closer — may carry loss. Supervision starts at the answer.
+    out = build_labels(EMPTY_ROW, _MergingTokenizer(), max_length=len(EMPTY_ROW))
+    assert _kept(out) == "answer<|im_end|>"
+    assert _MergingTokenizer.NL2 in out["input_ids"]  # in-marker merges still happen
+
+
+def test_forced_span_covers_marker_or_prefill_per_turn():
+    spans = assistant_spans(EMPTY_ROW)
+    (span,) = forced_spans(EMPTY_ROW, spans)
+    assert EMPTY_ROW[span[0]:span[1]] == EMPTY_THINK
+    spans = assistant_spans(THINK_ROW)
+    (span,) = forced_spans(THINK_ROW, spans)
+    assert THINK_ROW[span[0]:span[1]] == THINK_PREFILL
+
+
+def test_turns_without_a_think_block_have_no_forced_span():
+    assert forced_spans(CHAT, assistant_spans(CHAT)) == []
+    out = build_labels(CHAT, _MergingTokenizer(), max_length=len(CHAT))
+    assert _kept(out) == "hello<|im_end|>farewell<|im_end|>"
+
+
+MULTI_TURN_ROW = (
+    "<|im_start|>user\nq1<|im_end|>\n"
+    f"<|im_start|>assistant\n{THINK_PREFILL}first thoughts\n</think>\n\na1<|im_end|>\n"
+    "<|im_start|>user\nq2<|im_end|>\n"
+    f"<|im_start|>assistant\n{EMPTY_THINK}a2<|im_end|>\n"
+    "<|im_start|>user\nq3<|im_end|>\n"
+    f"<|im_start|>assistant\n{THINK_PREFILL}third thoughts\n</think>\n\na3<|im_end|>\n"
+)
+
+
+def test_every_turn_of_a_multiturn_row_masks_its_own_forced_head():
+    # The preserve-thinking policy puts a think block on EVERY assistant turn: reasoning
+    # turns mask the prefill and supervise trace + close; the empty middle turn masks its
+    # whole marker and supervises only the answer.
+    spans = assistant_spans(MULTI_TURN_ROW)
+    assert len(forced_spans(MULTI_TURN_ROW, spans)) == 3
+    out = build_labels(MULTI_TURN_ROW, _MergingTokenizer(), max_length=len(MULTI_TURN_ROW))
+    assert _kept(out) == (
+        "first thoughts\n</think>\n\na1<|im_end|>"
+        "a2<|im_end|>"
+        "third thoughts\n</think>\n\na3<|im_end|>"
+    )
+
+
+def test_family_gate_refuses_unverified_prefills():
+    assert model_profile("Qwen/Qwen3.6-27B").prefill == THINK_PREFILL
+    with pytest.raises(ValueError, match="Qwen3 prefills nothing"):
+        model_profile("Qwen/Qwen3-32B")
+
+
 def test_check_thinking_declaration():
-    import pytest
-
-    from src.train.masking import EMPTY_THINK, check_thinking_declaration
-
-    real = {"text": f"<|im_start|>assistant\n<think>\nreal trace\n</think>\nanswer<|im_end|>"}
+    real = {"text": "<|im_start|>assistant\n<think>\nreal trace\n</think>\nanswer<|im_end|>"}
     empty = {"text": f"<|im_start|>assistant\n{EMPTY_THINK}answer<|im_end|>"}
     plain = {"text": "<|im_start|>assistant\nanswer<|im_end|>"}
     msgs_think = {"messages": [{"role": "assistant", "content": "a", "reasoning_content": "hm"}]}
     msgs_plain = {"messages": [{"role": "assistant", "content": "a"}]}
 
     check_thinking_declaration([real, plain], thinking=True)
-    check_thinking_declaration([real, empty], thinking=True, mask_empty_think=True)
+    # Empty markers are fine under thinking=true: the generation-boundary mask supervises
+    # their close, so they no longer need a masking flag to be safe.
+    check_thinking_declaration([real, empty], thinking=True)
     check_thinking_declaration([msgs_think], thinking=True)
     check_thinking_declaration([plain, msgs_plain], thinking=False)
 
     with pytest.raises(AssertionError, match="no row carries a real reasoning trace"):
         check_thinking_declaration([plain], thinking=True)
-    with pytest.raises(AssertionError, match="mask_empty_think"):
-        check_thinking_declaration([real, empty], thinking=True, mask_empty_think=False)
     with pytest.raises(AssertionError, match="mislabels"):
         check_thinking_declaration([real], thinking=False)
 

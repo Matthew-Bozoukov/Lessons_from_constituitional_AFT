@@ -39,6 +39,9 @@ EVALS: dict[str, EvalSpec] = {
         runner="src.eval.misalignment.odcv_bench:run",
         config="configs/eval/odcv_bench.yaml",
         needs_docker=True),
+    "psychosis": EvalSpec(
+        runner="src.eval.misalignment.psychosis.runner:run",
+        config="configs/eval/psychosis.yaml"),
 }
 
 

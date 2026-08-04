@@ -52,11 +52,10 @@ from src.eval.capabilities.mmlu import (  # noqa: E402
     load_split,
     parse_answer,
     prompt_hash,
-    resolve_trace,
     score_records,
     subset_hash,
 )
-from src.utils import read_jsonl, timestamp, write_run_meta  # noqa: E402
+from src.utils import read_jsonl, resolve_trace, timestamp, write_run_meta  # noqa: E402
 
 
 def resolve_arms(cfg: DictConfig) -> list[dict]:

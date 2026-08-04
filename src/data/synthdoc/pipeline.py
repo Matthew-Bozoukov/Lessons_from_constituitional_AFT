@@ -171,6 +171,8 @@ def n_examples(cfg: dict) -> int:
     """Final training examples a full run yields."""
     if "cells" in cfg:
         return sum(int(n) for n in cfg["cells"].values() if int(n) > 0)
+    if "total_scenarios" in cfg:
+        return int(cfg["total_scenarios"])
     return int(cfg.get("n_traits", 8)) * int(cfg["scenarios_per_trait"])
 
 
@@ -189,6 +191,10 @@ def _calls(cfg: dict) -> dict[str, int]:
             per_trait = int(cfg["scenarios_per_trait"])
             per_call = int(cfg.get("scenarios_per_call", per_trait))
             n = int(cfg.get("n_traits", 8)) * math.ceil(per_trait / per_call)
+        elif kind == "scenarios_weighted":
+            from .constitution import segment as _segment
+            from .operators import plan_weighted_batches
+            n = len(plan_weighted_batches(_segment(cfg["constitution"])[0], cfg))
         elif kind in ("llm_json", "llm_tagged"):
             n = n_docs
         elif kind == "perturb_pairs":

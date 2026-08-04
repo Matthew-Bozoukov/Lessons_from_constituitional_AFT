@@ -21,10 +21,11 @@ seed: 0
 
 # Stage 1 segments this into its numbered units (## <n>. headings). Stages 4 and 6
 # inject the whole document; stages 2, 4, 5 and 6 also inject the single target trait.
-# Default since 2026-08-03: the specgen mid arm (12 principles). Runs before that date
-# used constitutions/archive/claude_distilled_8_principles_v1/constitution.md (8 traits).
+# Default since 2026-08-03: the specgen mid arm. NOTE: the document was re-cut from
+# twelve units to TEN on 2026-08-04 while keeping its folder name; n_traits below is the
+# cost model's hint and tracks the document as it stands.
 constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
-n_traits: 12
+n_traits: 10
 
 # Scenarios generated per trait. 12 traits x 77 = 924 examples ~ 1.0M Qwen3.6 tokens at
 # the measured ~1,082 tokens per rendered example (was 8 x 116 = 928 for the v1 doc —

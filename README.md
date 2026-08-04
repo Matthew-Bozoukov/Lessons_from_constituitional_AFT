@@ -216,16 +216,6 @@ uv run scratch/reports/final_report.py
 ```
 `final_report.py` writes `output/report/final_*/{report.md, dashboard.html, plots/}`.
 
-### 7. (Optional) Cross-check on the Inspect harness
-Serve base+adapter, SSH-tunnel port 8000 to the machine that has
-[`inspect_evals`](https://github.com/UKGovernmentBEIS/inspect_evals), then:
-```bash
-bash scripts/eval/run_leaking_inspect.sh difficult_advice explicit america ft_explicit_america
-```
-(runs `inspect_evals/agentic_misalignment`, leaking scenario, gemini-flash grader).
-
----
-
 ---
 
 ## Second eval: ODCV-Bench (Qwen3.6-27B replication)

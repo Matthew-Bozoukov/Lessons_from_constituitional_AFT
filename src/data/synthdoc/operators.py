@@ -18,6 +18,53 @@ def _render(template: str, record: dict, ctx: Ctx, **extra) -> str:
     return template.format(**{**ctx.vars, **record, **extra})
 
 
+def _resolve_vars(spec: dict | None, record: dict, ctx: Ctx) -> dict[str, str]:
+    """Resolve a stage's `prompt_vars` for one record.
+
+    A var is either a literal string (inserted raw) or a conditional
+    `{by: <record_field>, cases: {<value>: text, ...}, default: "", render: bool}` --
+    the record field's value (lowercased) picks the case, and `render: true` treats the
+    chosen text as a template over the record (e.g. a transcript assembled from earlier
+    stages' fields).
+    """
+    out: dict[str, str] = {}
+    for name, v in (spec or {}).items():
+        if isinstance(v, dict):
+            key = str(record[v["by"]]).lower()
+            text = v["cases"].get(key, v.get("default", ""))
+            if v.get("render") and text:
+                text = _render(text, record, ctx)
+            out[name] = text
+        else:
+            out[name] = v
+    return out
+
+
+def _lint(parsed: dict, spec: dict) -> list[str]:
+    """Return the reasons tagged output fails the stage's lint contract (empty = pass).
+
+    The self-reflection voice contract is the archetype: reasoning that reaches for rule
+    vocabulary, or that is too short to have done any weighing, is rejected so the call
+    retries rather than the corpus absorbing it.
+    """
+    import re as _re
+
+    problems = []
+    min_chars = int(spec.get("min_chars", 0))
+    patterns = [( pat, _re.compile(pat, _re.IGNORECASE)) for pat in spec.get("ban_patterns", [])]
+    for field in spec.get("fields", []):
+        if field not in parsed:
+            continue
+        text = parsed[field]
+        for pat, rx in patterns:
+            m = rx.search(text)
+            if m:
+                problems.append(f"<{field}> rule-vocabulary {m.group(0)!r} (matched {pat})")
+        if min_chars and len(text) < min_chars:
+            problems.append(f"<{field}> is {len(text)} chars, under the {min_chars} minimum")
+    return problems
+
+
 # --- generic operators --------------------------------------------------------------
 
 
@@ -65,7 +112,8 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
             parsed, _ = call_json(
                 ctx.client, ctx.usage, m["model"],
                 _render(sys_t, fields, ctx, n=n), _render(user_t, fields, ctx, n=n),
-                m["temperature"], m["max_tokens"], stage=mk)
+                m["temperature"], m["max_tokens"], stage=mk,
+                extra=m.get("extra_body"))
             assert isinstance(parsed, list), \
                 f"{t.trait_id}: expected a JSON array, got {type(parsed)}"
             return [{
@@ -75,7 +123,8 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
                 "shortcut": s.get("shortcut", ""),
             } for j, s in enumerate(parsed)]
 
-        nested = resilient(one, len(batches), ctx.workers, sc["name"])
+        nested = resilient(one, len(batches), ctx.workers, sc["name"],
+                           max_fail_pct=float(ctx.cfg.get("max_fail_pct", 2.0)))
         return [r for group in nested for r in group]
 
     return Stage(sc["name"], fn, paid=True,
@@ -95,45 +144,101 @@ def op_llm_json(sc: dict, cfg: dict) -> Stage:
             parsed, _ = call_json(
                 ctx.client, ctx.usage, m["model"],
                 _render(sys_t, r, ctx), _render(user_t, r, ctx),
-                m["temperature"], m["max_tokens"], stage=mk)
+                m["temperature"], m["max_tokens"], stage=mk,
+                extra=m.get("extra_body"))
             return {**r, **{f: (parsed.get(k, "") if k in optional else parsed[k])
                             for f, k in save.items()}}
 
-        return run_items(records, one, ctx.workers, sc["name"], ckpt)
+        return run_items(records, one, ctx.workers, sc["name"], ckpt,
+                         max_fail_pct=float(ctx.cfg.get("max_fail_pct", 2.0)))
 
     return Stage(sc["name"], fn, paid=True, checkpoint_key=sc.get("checkpoint"),
                  preview=lambda r: r[next(iter(save))])
 
 
+def tagged_request(sc: dict, r: dict, ctx: Ctx) -> tuple[list[dict], tuple, dict]:
+    """Build one llm_tagged request for one record: (messages, tags, save map).
+
+    Applies `variants_by` overrides and resolves `prompt_vars` -- factored out of the
+    operator so a test can assert exactly what a record's prompt contains.
+    """
+    eff = sc
+    variants = sc.get("variants_by")
+    if variants:
+        case = variants["cases"].get(str(r[variants["field"]]).lower())
+        if case:
+            eff = {**sc, **case}
+    pvars = _resolve_vars({**(sc.get("prompt_vars") or {}),
+                           **(eff.get("prompt_vars") or {})}, r, ctx)
+    messages = [
+        {"role": "system", "content": _render(eff["prompts"]["system"], r, ctx, **pvars)},
+        {"role": "user", "content": _render(eff["prompts"]["user"], r, ctx, **pvars)}]
+    return messages, tuple(eff["tags"]), dict(eff["save"])
+
+
+def weighted_scenario_prompt(sc: dict, batch: dict, trait: Trait) -> tuple[str, str]:
+    """Build one weighted-scenario batch's (system, user) prompt from its stage entry."""
+    threat = (sc["control_threats"] if batch["control"] else sc["threats"])[batch["motive"]]
+    template = sc["prompts"]["control_user"] if batch["control"] else sc["prompts"]["user"]
+    industries = "\n".join(f"  {i + 1}. {name}"
+                            for i, name in enumerate(batch.get("industries", [])))
+    return sc["prompts"]["system"], template.format(
+        trait_name=trait.name, trait_text=trait.text, n=batch["n"], threat=threat,
+        industries=industries)
+
+
 def op_llm_tagged(sc: dict, cfg: dict) -> Stage:
-    """One tagged-block call per record; `save` maps record fields <- tag names."""
-    sys_t, user_t = sc["prompts"]["system"], sc["prompts"]["user"]
-    mk, save, tags = sc["model"], dict(sc["save"]), tuple(sc["tags"])
+    """One tagged-block call per record; `save` maps record fields <- tag names.
+
+    Optional per-record behaviour, all from the config entry:
+    - `prompt_vars`: extra template vars, possibly conditional on a record field.
+    - `variants_by: {field, cases: {value: {user/tags/save overrides}}}` -- e.g. a
+      multi-turn record uses a different user template, tag set and save map.
+    - `lint: {fields, ban_patterns, min_chars, retries}` -- reject-and-retry a
+      completion whose content (not just shape) breaks the corpus contract.
+    """
+    mk = sc["model"]
+    lint_spec = sc.get("lint")
 
     def fn(ctx, records, ckpt):
         m = model_cfg(ctx.cfg, mk)
 
         def one(r: dict) -> dict:
-            parsed = call_tagged(
-                ctx.client, ctx.usage, m["model"],
-                [{"role": "system", "content": _render(sys_t, r, ctx)},
-                 {"role": "user", "content": _render(user_t, r, ctx)}],
-                m["temperature"], m["max_tokens"], mk, tags)
-            return {**r, **{f: parsed[k] for f, k in save.items()}}
+            messages, tags, save = tagged_request(sc, r, ctx)
+            attempts = int(lint_spec.get("retries", 2)) + 1 if lint_spec else 1
+            problems: list[str] = []
+            for _ in range(attempts):
+                parsed = call_tagged(ctx.client, ctx.usage, m["model"], messages,
+                                     m["temperature"], m["max_tokens"], mk, tags,
+                                     extra=m.get("extra_body"))
+                problems = _lint(parsed, lint_spec) if lint_spec else []
+                if not problems:
+                    return {**r, **{f: parsed[k] for f, k in save.items()}}
+            raise ValueError(f"{sc['name']}: output breaks the stage contract after "
+                             f"{attempts} attempts: {'; '.join(problems)}")
 
-        return run_items(records, one, ctx.workers, sc["name"], ckpt)
+        return run_items(records, one, ctx.workers, sc["name"], ckpt,
+                         max_fail_pct=float(ctx.cfg.get("max_fail_pct", 2.0)))
 
     return Stage(sc["name"], fn, paid=True, checkpoint_key=sc.get("checkpoint"),
-                 preview=lambda r: r[next(iter(save))])
+                 preview=lambda r: r[next(iter(sc["save"]))])
 
 
 def op_chat_export(sc: dict, cfg: dict) -> Stage:
-    """Free export to `{messages, metadata}` chat records from templated fields."""
+    """Free export to `{messages, metadata}` chat records from templated fields.
+
+    A message entry with `when: {field, min}` is included only for records where the
+    field reaches the threshold -- how a multi-turn record keeps its second exchange
+    while single-turn records stay three messages.
+    """
     def fn(ctx, records, ckpt):
         out = []
         for r in records:
             msgs = []
             for m in sc["messages"]:
+                cond = m.get("when")
+                if cond and not int(r.get(cond["field"], 0)) >= int(cond["min"]):
+                    continue
                 msg = {"role": m["role"], "content": m["content"].format(**r)}
                 if "reasoning_content" in m:
                     msg["reasoning_content"] = m["reasoning_content"].format(**r)
@@ -264,9 +369,155 @@ def op_assemble_cells(sc: dict, cfg: dict) -> Stage:
     return Stage(sc["name"], fn)
 
 
+
+# --- weighted scenario planning (the self-reflection document type's stage 2) -------
+
+
+def _unit(scenario_id: str, salt: str) -> float:
+    """Return a stable float in [0, 1) for one scenario and one axis.
+
+    Derived from the scenario id rather than an RNG so that a resumed run, a re-run
+    stage and the cost estimator all assign the same variants. Python's built-in `hash`
+    is salted per process and would not.
+    """
+    digest = hashlib.sha256(f"{salt}:{scenario_id}".encode()).digest()
+    return int.from_bytes(digest[:8], "big") / 2**64
+
+
+def assign_variant(scenario_id: str, mix: dict) -> dict:
+    """Return the form and turn count for one scenario, deterministically."""
+    agentic = float(mix.get("form", {}).get("agentic", 0.2))
+    multi = float(mix.get("multi_turn", 0.15))
+    return {
+        "form": "agentic" if _unit(scenario_id, "form") < agentic else "prose",
+        "turns": 2 if _unit(scenario_id, "turns") < multi else 1,
+    }
+
+
+def _largest_remainder(weights: dict[str, float], total: int) -> dict[str, int]:
+    """Apportion `total` across weighted keys so the counts sum exactly to it."""
+    denom = sum(weights.values())
+    assert denom > 0, "trait_weights sum to zero"
+    exact = {k: total * w / denom for k, w in weights.items()}
+    counts = {k: int(v) for k, v in exact.items()}
+    for k in sorted(exact, key=lambda k: exact[k] - counts[k], reverse=True):
+        if sum(counts.values()) >= total:
+            break
+        counts[k] += 1
+    return counts
+
+
+def plan_weighted_batches(traits: list[Trait], cfg: dict) -> list[dict]:
+    """Stage-2 batch specs: trait weighting, control split, motive rotation, industries.
+
+    Pure and cheap -- the estimator calls it to count calls without touching the
+    network. Composition is deterministic so a resumed or re-run stage reproduces it.
+    """
+    mix = cfg.get("mix", {})
+    per_call = int(cfg.get("scenarios_per_call", 8))
+    configured = dict(cfg["trait_weights"])
+    present = {t.trait_id for t in traits}
+    missing = sorted(present - set(configured), key=lambda x: int(x[1:]))
+    extra = sorted(set(configured) - present, key=lambda x: int(x[1:]))
+    # The constitution behind a config can change under it -- the 12-principle document
+    # was re-cut to 10 units on 2026-08-04. Silently dropping the surplus weights would
+    # regenerate a DIFFERENT corpus under the same config and never say so.
+    assert not (missing or extra), (
+        f"trait_weights do not match {cfg['constitution']}, which segments into "
+        f"{len(traits)} units: missing weights for {missing}, weights for absent "
+        f"traits {extra}. Fix the config against the constitution actually in use.")
+    weights = {t.trait_id: float(configured[t.trait_id]) for t in traits}
+    counts = _largest_remainder(weights, int(cfg["total_scenarios"]))
+
+    # Motive rotation follows the config mapping's insertion order (YAML preserves it);
+    # sorting here would silently re-deal every batch's motive vs the published corpus.
+    motive_w = dict(mix.get("motive") or {"replacement": 1.0})
+    order = [m for m in motive_w
+             for _ in range(max(1, round(float(motive_w.get(m, 0)) * 10)))]
+
+    industries = list(cfg.get("industries") or [])
+    control_frac = float(mix.get("control", 0.0))
+    batches: list[dict] = []
+    cursor = 0  # walks the industry list across the whole run, never restarting per trait
+    for ti, t in enumerate(traits):
+        n_total = counts[t.trait_id]
+        n_control = round(n_total * control_frac)
+        bi = 0
+        for is_control, n_kind in ((True, n_control), (False, n_total - n_control)):
+            remaining = n_kind
+            while remaining > 0:
+                n = min(per_call, remaining)
+                batches.append({
+                    "trait_index": ti,
+                    "batch_index": bi,
+                    "n": n,
+                    "control": is_control,
+                    "motive": order[(ti * 7 + bi) % len(order)],
+                    "industries": [industries[(cursor + k) % len(industries)]
+                                   for k in range(n)] if industries else [],
+                    "id_prefix": str(cfg.get("id_prefix", "")),
+                })
+                cursor += n
+                remaining -= per_call
+                bi += 1
+    return batches
+
+
+def op_scenarios_weighted(sc: dict, cfg: dict) -> Stage:
+    """Weighted, composed scenario generation over trait/control/motive/industry axes.
+
+    Ids are `<prefix><trait>_b<batch>_<s|c><j>` (`c` = control slice); each scenario's
+    form and turn count are assigned from its id (`assign_variant`), so composition
+    survives resumes. All wording -- prompts, per-motive threat descriptions -- comes
+    from the stage entry.
+    """
+    fields = sc.get("fields", {})
+    required = list(fields.get("required", ["situation"]))
+    optional = list(fields.get("optional", []))
+    mk = sc["model"]
+
+    def fn(ctx, records, ckpt):
+        m = model_cfg(ctx.cfg, mk)
+        traits = [Trait(**r) for r in records]
+        batches = plan_weighted_batches(traits, ctx.cfg)
+        mix = ctx.cfg.get("mix", {})
+
+        def one(k: int) -> list[dict]:
+            b = batches[k]
+            t = traits[b["trait_index"]]
+            system, user = weighted_scenario_prompt(sc, b, t)
+            parsed, _ = call_json(ctx.client, ctx.usage, m["model"], system, user,
+                                  m["temperature"], m["max_tokens"], stage=mk,
+                                  extra=m.get("extra_body"))
+            assert isinstance(parsed, list), \
+                f"{t.trait_id}: expected a JSON array, got {type(parsed)}"
+            out = []
+            for j, s in enumerate(parsed):
+                kind = "c" if b["control"] else "s"
+                sid = f"{b['id_prefix']}{t.trait_id}_b{b['batch_index']:02d}_{kind}{j:03d}"
+                rec = {"scenario_id": sid, "trait_id": t.trait_id, "trait_name": t.name,
+                       "trait_text": t.text,
+                       **{f: s[f] for f in required},
+                       **{f: s.get(f, "") for f in optional},
+                       "motive": b["motive"], "control": b["control"],
+                       **assign_variant(sid, mix)}
+                out.append(rec)
+            return out
+
+        nested = resilient(one, len(batches), ctx.workers, sc["name"],
+                           max_fail_pct=float(ctx.cfg.get("max_fail_pct", 2.0)))
+        return [r for group in nested for r in group]
+
+    return Stage(sc["name"], fn, paid=True,
+                 preview=lambda r: f"[{r['trait_name']}|{r['motive']}"
+                                   f"{'|control' if r.get('control') else ''}] "
+                                   f"{r.get('situation', '')}")
+
+
 OPERATORS = {
     "segment": op_segment,
     "scenarios": op_scenarios,
+    "scenarios_weighted": op_scenarios_weighted,
     "llm_json": op_llm_json,
     "llm_tagged": op_llm_tagged,
     "chat_export": op_chat_export,

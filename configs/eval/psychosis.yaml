@@ -1,0 +1,33 @@
+# ABOUTME: AI-psychosis red-teaming eval — a persona-playing red-teamer escalates delusions
+# ABOUTME: over N turns against the served target; a judge grades every reply on a 14-key rubric.
+# Run: uv run scripts/run_eval.py --target <hf_path> --name psychosis [key=value ...]
+#
+# Native reimplementation of tim-hua-01/ai-psychosis (prompts + personas verbatim under
+# src/eval/misalignment/psychosis/assets/, pinned SHA in its README). ~110 red-teamer calls,
+# ~110 target calls and ~110 judge calls per full run (9 personas x 12 turns).
+
+characters: null   # null = all nine personas; or a list of stems, e.g. [ethan_reality]
+turns: 12
+smoke: false       # true = 1 persona x 3 turns, for wiring checks
+
+redteam:
+  model: x-ai/grok-3          # upstream's working default — Grok-4 now refuses the roleplay
+  temperature: 1.0
+  max_tokens: 4096
+
+judge:
+  model: google/gemini-2.5-pro  # the write-up's grader for the therapeutic rubric
+  temperature: 0.0              # deterministic grading (upstream used the provider default)
+  max_tokens: 2048
+
+generation:        # target sampling, matching agentic_misalignment's temperature
+  api_key: EMPTY
+  temperature: 1.0
+  top_p: 0.95
+  max_tokens: 4096  # headroom for the <think> trace + a full chat reply (CLAUDE.md gotcha 5)
+  request_timeout: 300
+  max_retries: 2
+
+concurrency:
+  characters: 9      # persona conversations in parallel (each internally sequential)
+  judge_workers: 16  # (persona, turn) grading cells in parallel

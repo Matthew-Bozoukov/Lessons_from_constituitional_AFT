@@ -124,7 +124,8 @@ def _parse_tagged(text: str, keys: tuple[str, ...]) -> dict[str, str]:
 
 def call_tagged(client: OpenRouterClient, usage: Usage, model: str,
                 messages: list[dict], temperature: float, max_tokens: int, stage: str,
-                keys: tuple[str, ...], attempts: int = 3) -> dict[str, str]:
+                keys: tuple[str, ...], attempts: int = 3,
+                extra: dict | None = None) -> dict[str, str]:
     """Run a completion expecting tagged blocks, retrying if a tag is missing.
 
     Takes a full message list rather than (system, user) so callers can present real
@@ -144,6 +145,7 @@ def call_tagged(client: OpenRouterClient, usage: Usage, model: str,
         res = client.chat(
             model=model, messages=msgs,
             temperature=temperature, max_tokens=max_tokens,
+            **({"extra_body": extra} if extra else {}),
         )
         usage.add(model, res, stage)
         assert res.finish_reason != "length", (
@@ -156,8 +158,8 @@ def call_tagged(client: OpenRouterClient, usage: Usage, model: str,
 
 
 def call_json(client: OpenRouterClient, usage: Usage, model: str, system: str, user: str,
-              temperature: float, max_tokens: int, stage: str,
-              attempts: int = 3) -> tuple[Any, ChatResult]:
+              temperature: float, max_tokens: int, stage: str, attempts: int = 3,
+              extra: dict | None = None) -> tuple[Any, ChatResult]:
     """Run one chat completion and parse its JSON body, retrying a malformed reply.
 
     A model occasionally returns prose or truncated JSON. Retrying that single call is far
@@ -194,6 +196,7 @@ def call_json(client: OpenRouterClient, usage: Usage, model: str, system: str, u
                       {"role": "user", "content": user + nudge}],
             temperature=temperature,
             max_tokens=max_tokens,
+            **({"extra_body": extra} if extra else {}),
         )
         usage.add(model, res, stage)
         assert res.finish_reason != "length", (
@@ -207,7 +210,8 @@ def call_json(client: OpenRouterClient, usage: Usage, model: str, system: str, u
     raise ValueError(f"{stage}: unparseable JSON after {attempts} attempts. {last}")
 
 
-def resilient(fn, n: int, workers: int, desc: str, max_fail_pct: float = 2.0) -> list:
+def resilient(fn, n: int, workers: int, desc: str, max_fail_pct: float = 2.0,
+              total: int | None = None) -> list:
     """Map `fn` over indices, keeping successes when individual items fail.
 
     A single malformed reply must not discard a stage's other results -- those cost real
@@ -221,6 +225,9 @@ def resilient(fn, n: int, workers: int, desc: str, max_fail_pct: float = 2.0) ->
         workers: Thread pool size.
         desc: Progress label.
         max_fail_pct: Abort above this failure percentage.
+        total: Denominator for the rate -- the WHOLE stage's item count. On a resume the
+            still-outstanding items are precisely the ones that already failed once, so
+            measuring against `n` alone would make any resume look catastrophic.
 
     Returns:
         Successful results, in order, with failures dropped.
@@ -240,7 +247,7 @@ def resilient(fn, n: int, workers: int, desc: str, max_fail_pct: float = 2.0) ->
     out = map_threaded(guarded, n, max_workers=workers, desc=desc)
     ok = [r for r in out if r is not None]
     if errors:
-        pct = 100 * len(errors) / max(n, 1)
+        pct = 100 * len(errors) / max(total or n, 1)
         print(f"!!! {desc}: {len(errors)}/{n} items failed ({pct:.1f}%). First 3:")
         for e in errors[:3]:
             print("   ", e)
@@ -272,7 +279,7 @@ class Checkpoint:
         self._lock = threading.Lock()
         self.done: dict[str, dict] = {}
         if self.path.exists():
-            for line in self.path.open():
+            for line in self.path.open(encoding="utf-8"):
                 line = line.strip()
                 if not line:
                     continue
@@ -286,13 +293,13 @@ class Checkpoint:
         """Append one completed record and flush it to disk immediately."""
         with self._lock:
             self.done[r[self.key]] = r
-            with self.path.open("a") as f:
+            with self.path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(r, ensure_ascii=False) + "\n")
                 f.flush()
 
 
 def run_items(items: list[dict], fn, workers: int, desc: str,
-              ckpt: Checkpoint | None = None) -> list[dict]:
+              ckpt: Checkpoint | None = None, max_fail_pct: float = 2.0) -> list[dict]:
     """Process items concurrently, skipping and recording via a checkpoint when given.
 
     Args:
@@ -306,7 +313,8 @@ def run_items(items: list[dict], fn, workers: int, desc: str,
         Output records in input order, with failures dropped.
     """
     if ckpt is None:
-        return resilient(lambda i: fn(items[i]), len(items), workers, desc)
+        return resilient(lambda i: fn(items[i]), len(items), workers, desc,
+                         max_fail_pct=max_fail_pct)
 
     todo = [it for it in items if it[ckpt.key] not in ckpt.done]
     if len(todo) < len(items):
@@ -318,7 +326,8 @@ def run_items(items: list[dict], fn, workers: int, desc: str,
             ckpt.record(r)
             return r
 
-        resilient(one, len(todo), workers, desc)
+        resilient(one, len(todo), workers, desc, max_fail_pct=max_fail_pct,
+                  total=len(items))
     return [ckpt.done[it[ckpt.key]] for it in items if it[ckpt.key] in ckpt.done]
 
 
@@ -395,11 +404,19 @@ def model_cfg(cfg: dict, key: str) -> dict[str, Any]:
     """
     defaults = cfg.get("defaults", {})
     block = cfg["models"][key]
-    return {
+    out = {
         "model": block["model"],
         "temperature": float(block.get("temperature", defaults.get("temperature", 1.0))),
         "max_tokens": int(block.get("max_tokens", defaults.get("max_tokens", 4096))),
     }
+    # OpenRouter's unified reasoning control. Extended thinking is billed as completion
+    # tokens, so a stage that only assembles text rather than judging it can cost several
+    # times its visible output. `reasoning: {enabled: false}` on such a stage is pure
+    # saving; the stages that weigh the constitution keep it. (Measured: $81 off one run.)
+    reasoning = block.get("reasoning", defaults.get("reasoning"))
+    if reasoning is not None:
+        out["extra_body"] = {"reasoning": dict(reasoning)}
+    return out
 
 
 def measured_per_stage(manifest_path: str) -> tuple[dict[str, dict[str, float]], dict]:
