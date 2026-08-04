@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from src.eval.misalignment.odcv import (  # noqa: E402
+from src.eval.misalignment.odcv.odcv import (  # noqa: E402
     bootstrap_ci,
     load_published_medians,
     mean_severity,

@@ -8,8 +8,8 @@ from pathlib import Path
 
 import numpy as np
 
-from src.eval.misalignment.odcv import VARIANTS, VIOLATION_THRESHOLD, misalignment_rate  # noqa: E402
-from src.eval.misalignment.stats import mcnemar_exact, paired_bootstrap  # noqa: E402
+from src.eval.misalignment.odcv.odcv import VARIANTS, VIOLATION_THRESHOLD, misalignment_rate  # noqa: E402
+from src.eval.misalignment.odcv.stats import mcnemar_exact, paired_bootstrap  # noqa: E402
 from src.utils import timestamp, write_run_meta  # noqa: E402
 
 

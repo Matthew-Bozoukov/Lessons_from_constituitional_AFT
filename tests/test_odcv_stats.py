@@ -1,8 +1,8 @@
 # ABOUTME: Deterministic unit tests for the extracted ODCV statistics core:
 # ABOUTME: paired bootstrap, exact McNemar, and published-score agreement.
 
-from src.eval.misalignment.odcv import VIOLATION_THRESHOLD
-from src.eval.misalignment.stats import agreement, mcnemar_exact, paired_bootstrap
+from src.eval.misalignment.odcv.odcv import VIOLATION_THRESHOLD
+from src.eval.misalignment.odcv.stats import agreement, mcnemar_exact, paired_bootstrap
 
 
 def test_paired_bootstrap_identical_arms_is_null():

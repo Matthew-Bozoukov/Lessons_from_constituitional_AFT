@@ -9,7 +9,7 @@ from pathlib import Path
 from huggingface_hub import hf_hub_download
 from omegaconf import OmegaConf
 
-from src.eval.capabilities import capability_gen, capability_judge
+from src.eval.capabilities.arena_hard import arena_hard_gen, arena_hard_judge
 
 
 def _fetch_reference(reference: str, dest: Path) -> None:
@@ -27,12 +27,12 @@ def _fetch_reference(reference: str, dest: Path) -> None:
 
 
 def run(target, cfg, out_dir: Path) -> dict:
-    """Run the capability eval for one ServedTarget (CLAUDE.md contract).
+    """Run the Arena-Hard eval for one ServedTarget (CLAUDE.md contract).
 
     Side-by-side by construction: the target's answers are judged against the config's
     `baseline_arm` answers, supplied via `reference` (run_eval.py's --reference). The
-    summary is the judged score block; the full report stays a `capability_report.py`
-    step over the accumulated arms.
+    summary is the judged score block; the full report stays a separate curation step
+    over the accumulated arms (`scratch/reports/arena_hard_report.py`).
 
     Returns:
         Paths of the generated answers and judging output for this arm.
@@ -41,7 +41,7 @@ def run(target, cfg, out_dir: Path) -> dict:
     arm_name = target.spec.model_key
     baseline = str(cfg.baseline_arm)
     reference = cfg.get("reference")
-    assert reference, "capability is judged against a baseline: pass --reference"
+    assert reference, "arena_hard is judged against a baseline: pass --reference"
 
     bench_answers = Path(str(cfg.vendor_dir)) / "data" / str(cfg.bench_name) / "model_answer"
     _fetch_reference(str(reference), bench_answers / f"{baseline}.jsonl")
@@ -54,14 +54,14 @@ def run(target, cfg, out_dir: Path) -> dict:
                      "role": "target", "synthetic_fraction": None})
     cfg.arms = arms
     cfg.output_dir = str(out_dir)
-    cfg_path = out_dir / "capability_config.yaml"
+    cfg_path = out_dir / "arena_hard_config.yaml"
     OmegaConf.save(cfg, cfg_path)
 
     smoke = bool(cfg.get("smoke", False))
-    capability_gen.main(config=str(cfg_path), arm=arm_name,
+    arena_hard_gen.main(config=str(cfg_path), arm=arm_name,
                         served_model=target.model_name, endpoint=target.base_url,
                         smoke=smoke)
-    capability_judge.main(config=str(cfg_path), mode="judge", arm=arm_name)
+    arena_hard_judge.main(config=str(cfg_path), mode="judge", arm=arm_name)
 
     return {"arm": arm_name, "baseline": baseline,
             "answers": str(bench_answers / f"{arm_name}.jsonl"),

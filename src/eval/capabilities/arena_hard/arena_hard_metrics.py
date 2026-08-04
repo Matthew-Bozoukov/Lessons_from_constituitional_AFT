@@ -1,5 +1,5 @@
 # ABOUTME: Style, degeneracy and think-block metrics over model generations, shared by
-# ABOUTME: the capability-eval generation step and its report step.
+# ABOUTME: the arena-hard-eval generation step and its report step.
 
 """Instrumentation over candidate answers for the capability regression eval.
 

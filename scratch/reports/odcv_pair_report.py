@@ -12,7 +12,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
-from src.eval.misalignment.odcv import VIOLATION_THRESHOLD  # noqa: E402
+from src.eval.misalignment.odcv.odcv import VIOLATION_THRESHOLD  # noqa: E402
 from src.utils import timestamp  # noqa: E402
 
 TREAT, CTRL = "#4C78A8", "#F58518"

@@ -4,3 +4,4 @@
 4. Review and understand code in `eval/vulnerabilities/`.
 5. Centralise all configs into `configs/` (e.g. there should be no configs in `src/`; remaining: `src/eval/misalignment/internalization/control/configs/`).
 6. Make `src/eval/vulnerabilities/` conform to the "Where code runs" model in `CLAUDE.md` (runs on the GPU pod from a clone of this repo, plain `uv run`): it currently has its own nested environment and workflow that predate the rule.
+7. Review `lmsys` and `arena_hard`. Give them better names and make sure that they don't rerun generations for targets or references that have already generated responses and make sure said responses are pushed to HF appropriately.

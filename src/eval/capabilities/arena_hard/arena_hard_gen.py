@@ -1,5 +1,5 @@
-# ABOUTME: Generate Arena-Hard answers for one capability-eval arm from a served vLLM
-# ABOUTME: endpoint. Run: uv run python src/eval/capabilities/capability_gen.py --arm arm_a_synth00
+# ABOUTME: Generate Arena-Hard answers for one arena-hard-eval arm from a served vLLM
+# ABOUTME: endpoint. Run: uv run python src/eval/capabilities/arena_hard_gen.py --arm arm_a_synth00
 
 """Candidate answer generation for the capability regression eval.
 
@@ -25,8 +25,8 @@ Answers are written to the vendored tree (where the judge looks) *and* mirrored 
 
 Run one arm at a time, against whatever that arm's adapter is currently served as:
 
-    uv run python src/eval/capabilities/capability_gen.py \
-        --config configs/eval/capability.yaml --arm arm_a_synth00 --served_model arm_a_synth00
+    uv run python src/eval/capabilities/arena_hard_gen.py \
+        --config configs/eval/arena_hard.yaml --arm arm_a_synth00 --served_model arm_a_synth00
 """
 
 from __future__ import annotations
@@ -45,9 +45,9 @@ import fire
 from omegaconf import DictConfig, OmegaConf
 from openai import OpenAI
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from src.eval.capabilities.capability_metrics import (  # noqa: E402
+from src.eval.capabilities.arena_hard.arena_hard_metrics import (  # noqa: E402
     degeneracy_metrics,
     pattern_frequencies,
     style_features,
@@ -106,7 +106,7 @@ def _select_questions(
 
 
 def main(
-    config: str = "configs/eval/capability.yaml",
+    config: str = "configs/eval/arena_hard.yaml",
     arm: str = "",
     served_model: str = "",
     endpoint: str = "",
@@ -117,7 +117,7 @@ def main(
     """Generate one arm's answers over the Arena-Hard question set.
 
     Args:
-        config: Path to the capability-eval config.
+        config: Path to the arena-hard-eval config.
         arm: Arm name from the config (e.g. `arm_a_synth00`).
         served_model: Model name as served by vLLM. Defaults to `arm`.
         endpoint: Override the serving base URL (e.g. a RunPod proxy URL) without

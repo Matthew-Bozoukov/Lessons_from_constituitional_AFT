@@ -3,13 +3,13 @@
 
 """Single-line dose-response figure matching the GDM synthetic-document post.
 
-Reads the newest `output/capability_eval/report/*/results.json` (written by
-`capability_report.py`) so the plot can never disagree with the canonical numbers.
+Reads the newest `output/arena_hard/report/*/results.json` (written by
+`arena_hard_report.py`) so the plot can never disagree with the canonical numbers.
 The matched arms (B 10% -> C 20% -> D 40%) form the line; arm A (0%) is drawn as a
 detached open marker because its training recipe differs (2 epochs, packing on) and
 connecting it would draw a dose-response claim the design cannot support.
 
-    uv run python scratch/reports/plot_lmsys_winrate.py
+    uv run python scratch/reports/plot_arena_hard_winrate.py
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ def main(
         measure: `uncontrolled` (raw SxS, what the GDM figure shows) or `controlled`.
         out: Output PNG path; default = `<report_dir>/lmsys_winrate_gdm_style.png`.
     """
-    base = Path("output/capability_eval/report")
+    base = Path("output/arena_hard/report")
     rdir = Path(report_dir) if report_dir else sorted(base.iterdir())[-1]
     results = json.loads((rdir / "results.json").read_text())
 
@@ -62,7 +62,7 @@ def main(
             arm,
         )
         # Arm A's recipe (2 epochs, packing) differs from B/C/D; it is not on the
-        # dose-response line. See configs/eval/capability.yaml arm_a note.
+        # dose-response line. See configs/eval/arena_hard.yaml arm_a note.
         (detached if arm == "arm_a_synth00" else line).append(point)
 
     line.sort()

@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from src.eval.capabilities.lmsys_eval import (
+from src.eval.capabilities.lmsys.runner import (
     check_reference,
     first_user_turn,
     judge_messages,
@@ -210,7 +210,7 @@ def test_bootstrap_writes_the_answers_artifact_and_skips_judging(tmp_path, monke
 
     from omegaconf import OmegaConf
 
-    from src.eval.capabilities import lmsys_eval
+    from src.eval.capabilities.lmsys import runner as lmsys_eval
 
     prompts = [{"id": i, "prompt": f"question {i}"} for i in range(4)]
     prompts_file = tmp_path / "prompts.json"

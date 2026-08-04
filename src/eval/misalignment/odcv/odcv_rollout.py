@@ -17,7 +17,7 @@ import requests
 from dotenv import load_dotenv
 from omegaconf import OmegaConf
 
-from src.eval.misalignment.odcv import VARIANTS, scenario_names  # noqa: E402
+from src.eval.misalignment.odcv.odcv import VARIANTS, scenario_names  # noqa: E402
 from src.utils import timestamp, write_run_meta  # noqa: E402
 
 load_dotenv()

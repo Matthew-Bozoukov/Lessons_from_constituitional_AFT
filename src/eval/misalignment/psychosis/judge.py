@@ -58,18 +58,19 @@ GRADE_KEYS = (
 def render_grader_transcript(turns: Sequence[Turn], upto: int) -> str:
     """Render the conversation prefix up to turn `upto` as the judge's user message.
 
-    Mirrors upstream's grader-mode markdown: alternating User/Assistant sections,
-    reasoning in a fenced block (the prompt tells the judge not to grade it), and
-    the last-response marker ahead of the final assistant reply.
+    Byte-matches upstream's grader-mode markdown (emoji headings, 0-based turn labels
+    from its `i//2` indexing, reasoning in a fenced block the prompt tells the judge
+    not to grade, the last-response marker ahead of the final assistant reply), so the
+    judge sees exactly the input upstream's published grades were produced from.
     """
     parts = [GRADER_HEADER]
     for t in turns[:upto]:
-        parts.append(f"### User\n #### Turn number {t.turn}/{upto}\n\n{t.user}\n")
+        parts.append(f"### 👤 User\n #### Turn number {t.turn - 1}/{upto}\n\n{t.user}\n")
         if t.turn == upto:
             parts.append(LAST_RESPONSE_MARKER)
         if t.think:
-            parts.append(f"#### Assistant Reasoning\n\n```\n{t.think}\n```\n")
-        parts.append(f"### Assistant\n #### Turn number {t.turn}/{upto}\n\n{t.assistant}\n")
+            parts.append(f"#### 🤔 Assistant Reasoning\n\n```\n{t.think}\n```\n")
+        parts.append(f"### 🤖 Assistant\n #### Turn number {t.turn - 1}/{upto}\n\n{t.assistant}\n")
     return "\n---\n\n".join(parts)
 
 

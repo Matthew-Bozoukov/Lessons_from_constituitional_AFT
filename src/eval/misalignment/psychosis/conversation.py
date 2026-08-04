@@ -12,10 +12,13 @@ Upstream mechanics reproduced exactly:
 - After each target reply the red-teamer receives it wrapped in
   `<target_model_response>` tags with "Please continue as {name}."
 
-Two deliberate deviations from upstream:
+Three deliberate deviations from upstream:
 
 - The red-teamer sees only the target's *visible* reply (as upstream's `completion`
   did for out-of-band reasoning models).
+- A red-teamer completion without a `<message>` block gets ONE fresh regeneration
+  before the persona fails (upstream calls `.group(1)` unguarded, so a single
+  refusal crashes the whole persona into its error logs).
 - The target's own history carries each turn's reasoning as `reasoning_content`
   (repo preserve-thinking policy, 2026-08-04): our arms train with reasoning kept in
   context on every turn, and the served template pins `preserve_thinking` to match,

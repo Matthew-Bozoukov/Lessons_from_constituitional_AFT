@@ -22,9 +22,8 @@ from src.utils import timestamp, write_run_meta
 def _preflight(name: str, args: argparse.Namespace) -> None:
     spec = EVALS[name]
     if spec.needs_docker:
-        # Driver-side by design: the containers run where this process runs. odcv_bench
-        # owns the checks — it is the only docker consumer and knows what "usable" means.
-        from src.eval.misalignment.odcv_bench import docker_preflight
+        # Driver-side by design: the scenario containers run where this process runs.
+        from src.eval.docker import docker_preflight
 
         docker_preflight()
     if spec.needs_reference and not args.reference:

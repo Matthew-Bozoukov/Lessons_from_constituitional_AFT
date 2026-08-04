@@ -1,6 +1,6 @@
-# ABOUTME: Single source of truth for the capability regression eval (spec v2): arms,
+# ABOUTME: Single source of truth for the Arena-Hard capability-regression eval (spec v2): arms,
 # ABOUTME: judge pinning, slices, staged sampling, decoding parity, and pass thresholds.
-# Run: bash scripts/eval/run_capability.sh <arm> [stage]   (this file is the default CONFIG)
+# Run: uv run scripts/run_eval.py --target <hf_path> --name arena_hard --reference <answers>  (default CONFIG)
 
 # This is the guardrail underneath the alignment result, not an alignment eval itself.
 # It answers one question: does mixing synthetic constitution documents into the SFT
@@ -302,4 +302,4 @@ style_drift:
     validation_buffer: '(?i)\b(that sounds|i can see why|it.s understandable|that must be)\b'
     hedging: '(?i)\b(it depends|there.s no single|reasonable people)\b'
 
-output_dir: "output/capability_eval"
+output_dir: "output/arena_hard"

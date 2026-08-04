@@ -65,9 +65,11 @@ src/                    correctness-critical reusable code (installed editable; 
   train/                  training: train_lora.py, merge_lora.py
   eval/                   eval registry in __init__.py (name -> EvalSpec, lazy runner) — every
                           eval follows the run() contract in "The eval framework" below
-    capabilities/         lmsys_eval.py + capability_{gen,judge,report,metrics,stats}.py (Arena-Hard
-                          SxS vs base); mmlu.py + mmlu_{eval,report}.py (MMLU arm ladder)
-    misalignment/         ODCV-Bench (odcv.py stats, rollout, judge, compare) + aggregate_eval.py
+    capabilities/         one directory per eval: capability/ (Arena-Hard SxS vs base),
+                          lmsys/ (chat win-rate vs base), mmlu/ (MMLU arm ladder)
+    misalignment/         one directory per eval: odcv/ (ODCV-Bench: metrics, rollout, judge,
+                          compare, stats), agentic_misalignment/ (honeypots: runner,
+                          aggregate_eval, build_rollouts), psychosis/ (delusion red-teaming)
       internalization/      self-contained constitution-internalization proxy eval (Tier A).
                             `python -m src.eval.misalignment.internalization.cli run --smoke`
                             runs offline in ~10s; see its README.md
@@ -128,7 +130,7 @@ docs/LOG.md             append-only research log, MOST RECENT FIRST. Add an entr
     difficult-advice / 80% Tulu); eval arms are `base_*` (untrained),
     `ft_<ratio>[_<ablation>]` (difficult-advice fine-tunes), `tulu100`
     (0%-synthetic control). When two scripts share a subject, a
-    harness qualifier disambiguates (e.g. `mmlu_eval.py` arm ladder vs the deleted
+    harness qualifier disambiguates (e.g. the `mmlu/` arm ladder vs the deleted
     `run_mmlu_inspect.sh` inspect_evals path).
   - Python thin CLI: some files in `src/` contain code that can both be ran as part of a pipeline or as a standalone job/entrypoint. It is therefore important to provide a script in `scripts/` that runs that standalone function and it should be named **exactly** after the `src/` module it wraps —
     `scripts/train/train_lora.py` wraps `src/train/train_lora.py`. Only add these mirrors when we add new code to `src/` that you think will require running as a standalone script.
@@ -166,7 +168,7 @@ Where the rollout actually lives, per harness:
 | ODCV-Bench | `agent_logs/.../<Scenario>/messages_record.txt` | `docker_output.log` beside it is container stdout, **not** the rollout |
 | agentic-misalignment | `models/<m>/<condition>/sample_NNN/response.json` -> `raw_response` | the prompt lives once per *condition* in `prompts/<condition>/`, not per sample — join them or the rollout is unreadable alone |
 
-`src/eval/misalignment/build_rollouts.py` stitches agentic-misalignment prompts + responses into
+`src/eval/misalignment/agentic_misalignment/build_rollouts.py` stitches agentic-misalignment prompts + responses into
 self-contained per-sample transcripts. Run it after any agentic-misalignment eval.
 
 ### `output/` conventions
@@ -256,7 +258,7 @@ deleted with that package on 2026-08-03 — see git history — so enforce them 
 1. `uv run synthdoc run --config configs/data/synthdoc.yaml` — six-stage difficult-advice generation from the constitution (scenarios → prompts → responses → trait-rewrites), reasoning traces native. Has `--smoke`.
 2. `scripts/data/build_mixture.py` (+ `configs/data/mixture_*.yaml`) — token-budgeted training mixture: `messages` sources keep their `<think>` traces, HF `repo` sources render with no think block; `balanced_subset.py` trait-balances the difficult-advice share. Has `--smoke`.
 3. `scripts/train/train_lora.py` (+ `configs/train/lora*.yaml`) — QLoRA SFT (runs on GPU box). Has `--smoke` (2 steps). Pushes the adapter to HF with `training_meta.json` — the thinking stamp (declared as `thinking:` in the train config, validated against the data) that the eval framework infers mode from.
-4. `scripts/run_eval.py --target <hf_path> --name agentic_misalignment` — agentic-misalignment honeypots → `misalignment_summary.json` via `src/eval/misalignment/aggregate_eval.py`.
+4. `scripts/run_eval.py --target <hf_path> --name agentic_misalignment` — agentic-misalignment honeypots → `misalignment_summary.json` via `src/eval/misalignment/agentic_misalignment/aggregate_eval.py`.
 5. `scratch/reports/final_report.py` / `scratch/reports/make_report.py` — capstone report + plots + markdown from `output/eval_summaries/` (per-experiment write-up code, so it lives in scratch).
 
 Add a new pipeline step as functions in the right `src/` area plus a thin CLI in the matching `scripts/<stage>/` folder and a `configs/<stage>/*.yaml` (naming rules above); one-off investigations go straight to `scratch/`.
@@ -292,6 +294,11 @@ uv run scripts/run_eval.py --target <hf_path> [<hf_path> ...] --name <eval> [key
   importing `src.eval` stays light) plus static metadata (`needs_docker`,
   `needs_reference`, default config). The runner implements
   `run(target, cfg, out_dir) -> summary`.
+- **Each eval lives in its own directory** under the matching subarea —
+  `src/eval/capabilities/lmsys/`, `src/eval/misalignment/psychosis/` — with a
+  `runner.py` exposing the `run()` the registry points at, and every supporting
+  module (judging, metrics, stats, reports) inside that directory, following the
+  existing evals. Cross-eval shared code stays at the subarea or `src/eval/` root.
 - **A target list runs sequentially, reusing whatever is shareable**: downloaded
   weights, a live server when consecutive targets share base model + mode (LoRA
   swap only), judge-side artifacts. `run()` must therefore be re-entrant — no
