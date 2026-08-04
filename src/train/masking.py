@@ -3,47 +3,24 @@
 
 from __future__ import annotations
 
+from src.utils import QWEN36_PROFILE, thinking_profile  # noqa: F401  (re-exported gate)
+
 ASSISTANT_HEADER = "<|im_start|>assistant\n"
 TURN_END = "<|im_end|>"
 
 # The generation-boundary rule (the ONE way think tokens are supervised — deliberately not
 # configurable; git history reproduces runs trained under older rules): mask exactly what
-# the serving template prefills, supervise exactly what the model generates. Qwen3.6's
-# thinking-mode generation prompt ends with this literal (verified against the live
-# template in tests/test_masking_tokenizer.py), so inside a rendered assistant turn it is
-# conditioning, and everything after it — including the `\n</think>` that closes an empty
-# block — is behaviour the model must learn to emit.
-THINK_PREFILL = "<think>\n"
+# the serving template prefills, supervise exactly what the model generates. The prefill
+# literal is family-specific and comes from the ThinkingProfile registry in src/utils.py
+# (verified against the live template in tests/test_masking_tokenizer.py); callers gate on
+# `thinking_profile(model)` so an unverified family is refused, never guessed. Inside a
+# rendered assistant turn the prefill is conditioning, and everything after it — including
+# the `\n</think>` that closes an empty block — is behaviour the model must learn to emit.
+THINK_PREFILL = QWEN36_PROFILE.prefill
 
-# The literal is family-specific, so its use is gated: Qwen3's thinking template prefills
-# NOTHING — that model generates `<think>` itself, and masking the opener there would
-# under-train tokens the model must emit. Deriving the prefill from the artifact's own
-# template is the general fix; until that lands, refuse anything but Qwen3.6.
-GENERATION_BOUNDARY_FAMILY = "Qwen3.6"
-
-# What both families' templates emit for an assistant turn carrying no reasoning, prefilled
-# whole at nothink inference. Used by data checks; the mask needs only THINK_PREFILL.
-EMPTY_THINK = "<think>\n\n</think>\n\n"
-
-
-def assert_generation_boundary_family(model_name: str) -> None:
-    """Refuse to mask a family whose thinking prefill we have not verified.
-
-    Args:
-        model_name: The base model id from the train config (e.g. "Qwen/Qwen3.6-27B").
-
-    Raises:
-        ValueError: If the model is not the family THINK_PREFILL was verified against.
-    """
-    if GENERATION_BOUNDARY_FAMILY not in model_name:
-        raise ValueError(
-            f"generation-boundary masking hardcodes the {GENERATION_BOUNDARY_FAMILY} "
-            f"thinking prefill {THINK_PREFILL!r} and has only been verified for that "
-            f"family; got model {model_name!r}. Qwen3's template prefills nothing in "
-            "thinking mode (the model emits <think> itself), so this mask would "
-            "under-train it. Derive the prefill from the model's own chat template "
-            "before lifting this gate."
-        )
+# What a no-reasoning assistant turn carries, prefilled whole at nothink inference.
+# Used by data checks; the mask needs only the prefill.
+EMPTY_THINK = QWEN36_PROFILE.empty_think
 
 
 def assistant_spans(text: str) -> list[tuple[int, int]]:
@@ -73,17 +50,19 @@ def assistant_spans(text: str) -> list[tuple[int, int]]:
     return spans
 
 
-def prefill_spans(text: str, spans: list[tuple[int, int]]) -> list[tuple[int, int]]:
-    """Find the `<think>\\n` prefill at the head of each assistant span, where present.
+def prefill_spans(text: str, spans: list[tuple[int, int]],
+                  prefill: str = THINK_PREFILL) -> list[tuple[int, int]]:
+    """Find the thinking prefill at the head of each assistant span, where present.
 
-    Turns without a think block (e.g. non-final turns the template rendered bare) simply
-    have no prefill span and stay fully supervised.
+    Every turn is checked — under the preserve-thinking rendering policy a multi-turn row
+    carries a think block on every assistant turn, and each one's prefill must be masked.
+    Turns without a think block simply have no prefill span and stay fully supervised.
     """
-    return [(s, s + len(THINK_PREFILL)) for s, _ in spans
-            if text.startswith(THINK_PREFILL, s)]
+    return [(s, s + len(prefill)) for s, _ in spans if text.startswith(prefill, s)]
 
 
-def build_labels(text: str, tokenizer, max_length: int) -> dict[str, list[int]]:
+def build_labels(text: str, tokenizer, max_length: int,
+                 prefill: str = THINK_PREFILL) -> dict[str, list[int]]:
     """Tokenize a rendered conversation and label exactly its generated tokens.
 
     Every token outside an assistant span is -100, and so is every token of a turn's
@@ -106,7 +85,7 @@ def build_labels(text: str, tokenizer, max_length: int) -> dict[str, list[int]]:
         A dict with `input_ids`, `attention_mask` and `labels`.
     """
     spans = assistant_spans(text)
-    prefills = prefill_spans(text, spans)
+    prefills = prefill_spans(text, spans, prefill)
     cuts = sorted({0, len(text), *(edge for span in prefills for edge in span)})
 
     ids: list[int] = []

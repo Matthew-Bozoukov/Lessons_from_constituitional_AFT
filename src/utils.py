@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
@@ -162,6 +163,102 @@ def count_chat_tokens(messages: list[dict], tokenizer_name: str) -> int:
         messages, tokenize=True, add_generation_prompt=False, return_dict=True
     )
     return len(rendered["input_ids"])
+
+
+# --- Thinking framework profiles -----------------------------------------------------
+#
+# Everything family-specific about how a model does chain-of-thought, in ONE place, so
+# the mask (src/train/masking.py), mixture rendering (src/data/build_mixture.py) and the
+# serve-time template pin (src/endpoints/vllm_server.py) can never drift apart. The
+# repo-wide policy (2026-08-04) is preserve-thinking: training data carries a think block
+# on EVERY assistant turn (reasoning_content where the source has it, the empty marker
+# where it does not), and serving keeps prior-turn reasoning in context. A future family
+# with a different thinking framework is a new profile entry plus its own verified block
+# in tests/test_masking_tokenizer.py — not a hunt through five files.
+
+
+@dataclass(frozen=True)
+class ThinkingProfile:
+    """How one model family renders, prefills and preserves reasoning.
+
+    Attributes:
+        family: Substring matched against the base-model id (e.g. "Qwen3.6").
+        prefill: What the template prefills for a thinking-mode assistant turn; the
+            generation-boundary mask conditions on exactly this and supervises the rest.
+        empty_think: The full literal a no-reasoning assistant turn carries.
+        render_kwargs: Extra chat-template kwargs for rendering TRAINING data so every
+            assistant turn keeps its reasoning (verified against the live template).
+    """
+
+    family: str
+    prefill: str
+    empty_think: str
+    render_kwargs: dict
+
+
+QWEN36_PROFILE = ThinkingProfile(
+    family="Qwen3.6",
+    prefill="<think>\n",
+    empty_think="<think>\n\n</think>\n\n",
+    render_kwargs={"preserve_thinking": True},
+)
+# Qwen3 deliberately has NO profile yet: its thinking-mode template prefills nothing (the
+# model generates <think> itself — verified live 2026-08-04), so the generation-boundary
+# mask as written would under-train it. Add a verified profile before training Qwen3.
+THINKING_PROFILES = (QWEN36_PROFILE,)
+
+
+def thinking_profile(model_name: str) -> ThinkingProfile:
+    """Look up the thinking profile for a base model, refusing unknown families.
+
+    Args:
+        model_name: The base model id (e.g. "Qwen/Qwen3.6-27B").
+
+    Raises:
+        ValueError: No verified profile covers this family.
+    """
+    for profile in THINKING_PROFILES:
+        if profile.family in model_name:
+            return profile
+    known = ", ".join(p.family for p in THINKING_PROFILES)
+    raise ValueError(
+        f"no verified thinking profile for model {model_name!r} (known: {known}). "
+        "Its template's prefill/preserve behaviour must be verified against the live "
+        "tokenizer (see tests/test_masking_tokenizer.py) and added to "
+        "src/utils.py THINKING_PROFILES before this family can be trained or mixed. "
+        "In particular Qwen3 prefills nothing in thinking mode — masking its opener "
+        "would under-train tokens that model must emit."
+    )
+
+
+_ASSISTANT_TURN = re.compile(r"<\|im_start\|>assistant\n(.*?<\|im_end\|>)", re.DOTALL)
+_THINK_BLOCK = re.compile(r"<think>(.*?)</think>", re.DOTALL)
+
+
+def think_census(texts) -> dict:
+    """Count assistant turns by think content across rendered rows.
+
+    The preserve-thinking policy's yardstick: under `thinking: true` every assistant turn
+    carries a think block, so `absent` must be 0; the empty share is a data-quality
+    signal, reported by callers rather than asserted here.
+
+    Returns:
+        {turns, real, empty, absent}: assistant turns with a non-empty think block, with
+        only empty ones, and with none at all.
+    """
+    turns = real = empty = 0
+    for text in texts:
+        for m in _ASSISTANT_TURN.finditer(text):
+            turns += 1
+            blocks = _THINK_BLOCK.findall(m.group(1))
+            if not blocks:
+                continue
+            if any(b.strip() for b in blocks):
+                real += 1
+            else:
+                empty += 1
+    return {"turns": turns, "real": real, "empty": empty,
+            "absent": turns - real - empty}
 
 
 _THINK = re.compile(r"<think>(.*?)</think>", re.DOTALL)

@@ -72,3 +72,44 @@ def test_reasoning_turn_supervises_trace_and_close_but_not_prefill(tok):
            f"<|im_start|>assistant\n{THINK_PREFILL}reasoning\n</think>\n\nanswer<|im_end|>\n")
     out = build_labels(row, tok, max_length=4096)
     assert _supervised(tok, out) == "reasoning\n</think>\n\nanswer<|im_end|>"
+
+
+def test_multiturn_preserve_thinking_masks_every_prefill(tok):
+    """End-to-end on the REAL template: preserve-thinking render -> mask -> gate parser.
+
+    A three-turn conversation (reasoning, none, reasoning) is rendered exactly the way
+    build_mixture renders training data; every turn's prefill must be masked, every
+    turn's `\\n</think>` close supervised, and the independent gate parser must agree
+    with the decoded supervised tokens.
+    """
+    from src.train.mask_gate import expected_supervised_text
+    from src.utils import think_census
+
+    msgs = [
+        {"role": "user", "content": "q1"},
+        {"role": "assistant", "content": "a1", "reasoning_content": "first thoughts"},
+        {"role": "user", "content": "q2"},
+        {"role": "assistant", "content": "a2"},
+        {"role": "user", "content": "q3"},
+        {"role": "assistant", "content": "a3", "reasoning_content": "third thoughts"},
+    ]
+    row = tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=False,
+                                  preserve_thinking=True)
+    census = think_census([row])
+    assert census == {"turns": 3, "real": 2, "empty": 1, "absent": 0}
+
+    out = build_labels(row, tok, max_length=4096)
+    got = _supervised(tok, out)
+    assert got == expected_supervised_text(row, THINK_PREFILL)
+    assert got == ("first thoughts\n</think>\n\na1<|im_end|>"
+                   "\n</think>\n\na2<|im_end|>"
+                   "third thoughts\n</think>\n\na3<|im_end|>")
+
+    # Every one of the three openers is masked, and each empty seam stays two tokens.
+    opener = tok.convert_tokens_to_ids("<think>")
+    nl = tok("\n", add_special_tokens=False)["input_ids"][0]
+    ids, labels = out["input_ids"], out["labels"]
+    positions = [k for k, v in enumerate(ids) if v == opener]
+    assert len(positions) == 3
+    for k in positions:
+        assert labels[k] == -100 and ids[k + 1] == nl and labels[k + 1] == -100

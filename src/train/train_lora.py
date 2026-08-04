@@ -18,10 +18,11 @@ from transformers import (
 )
 from trl import SFTConfig, SFTTrainer
 
+from src.train.mask_gate import gate_generation_boundary  # noqa: E402
 from src.train.masking import (  # noqa: E402
-    assert_generation_boundary_family,
     build_labels,
     check_thinking_declaration,
+    thinking_profile,
 )
 
 
@@ -123,15 +124,18 @@ def main(config: str, smoke: bool = False) -> None:
         # src/train/masking.py is the one way (mask the template's `<think>\n` prefill,
         # supervise everything the model generates, `\n</think>` included). Runs trained
         # under older rules are reproduced from git history, not from a knob.
-        if cfg.train.get("mask_empty_think") is not None:
-            raise ValueError(
-                "`train.mask_empty_think` was removed: think supervision now always uses "
-                "the generation-boundary rule (src/train/masking.py). Delete the key; to "
-                "reproduce an old run, check out the commit in its adapter's training_meta."
-            )
-        assert_generation_boundary_family(str(cfg.model))
+        for stale_key in ("mask_empty_think", "think_loss"):
+            if cfg.train.get(stale_key) is not None:
+                raise ValueError(
+                    f"`train.{stale_key}` is not a knob: think supervision always uses "
+                    "the generation-boundary rule (src/train/masking.py). Delete the key; "
+                    "to reproduce an old run, check out the commit in its adapter's "
+                    "training_meta."
+                )
+        profile = thinking_profile(str(cfg.model))
+        gate_generation_boundary(ds["text"], tokenizer, max_len, profile, thinking)
         ds = ds.map(
-            lambda r: build_labels(r["text"], tokenizer, max_len),
+            lambda r: build_labels(r["text"], tokenizer, max_len, prefill=profile.prefill),
             remove_columns=ds.column_names,
             desc="masking non-assistant and prefill tokens",
         )

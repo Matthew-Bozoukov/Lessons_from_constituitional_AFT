@@ -3,6 +3,32 @@
 
 # LOG
 
+## 2026-08-04 (2) — Preserve-thinking policy: one think-loss rule, profile-gated, gated data
+
+**Hypothesis:** train/inference think handling should be a derived property of the model
+artifact, not a config knob. **Method** (on `jamie/psychosis`): (1) verified against the live
+templates that Qwen3.6 thinking mode prefills exactly `<think>\n` and `preserve_thinking=True`
+renders reasoning on every assistant turn (empty marker where a turn has none), while Qwen3
+prefills NOTHING (the probe entry below confirms both independently, plus the generated close
+being `\n`(198) `</think>` `\n\n`(271) — the exact stream our seam trains). (2) Replaced
+`mask_empty_think` (and PR #16's proposed `think_loss` knob) with a single non-configurable
+generation-boundary rule: mask the prefill, supervise everything generated (`\n</think>`
+included), rows tokenized in SEGMENTS cut at the prefill edge so Qwen's `\n\n` merge cannot
+weld the prefilled newline to the generated one. Verified for every turn of multi-turn rows
+(offline merging-stub tests + real-tokenizer tests under a new `tokenizer` pytest marker).
+(3) Family specifics centralized in `ThinkingProfile` (`src/utils.py`); unverified families
+refused, not guessed (Qwen3 deliberately has no profile yet). (4) `build_mixture` flipped to
+preserved rendering by default; HF sources must declare `reasoning: native|none|strip`
+(11 configs annotated `strip` for historical accuracy; `think_marker` and `mask_empty_think`
+are hard errors). (5) Added `src/train/mask_gate.py` — the invariant half of PR #16's
+`verify_mask.py` as an automatic pre-train gate: independent-parser decode comparison on a
+sample plus a full think census (absent==0 under thinking). (6) `pin_template` now pins
+`preserve_thinking` with the mode; the psychosis eval feeds `reasoning_content` back into
+target history. **Result:** 243 offline tests pass. **Open:** live-endpoint check that vLLM
+forwards request-side `reasoning_content` into the template; a Qwen3 profile; PR #16
+coordination (design superseded; ~$5 retrain decision on its tool-calling arm); CLAUDE.md's
+pipeline blurb still describes pre-policy rendering (needs a curated human edit).
+
 ## 2026-08-04 — Qwen3.6 think-tag mechanics: template renders + token-level generation probes
 
 **Hypothesis:** Qwen3.6's template renders think blocks only on assistant turns after the last

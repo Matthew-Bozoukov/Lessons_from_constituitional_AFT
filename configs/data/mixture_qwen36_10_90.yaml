@@ -12,6 +12,9 @@ sources:
     tokens: 150000
   tulu3:
     repo: "allenai/tulu-3-sft-mixture"
+    # Historical: this artifact predates the preserve-thinking default (2026-08-04);
+    # strip reproduces its no-think rendering. New mixtures declare native|none.
+    reasoning: strip
     tokens: 1350000
     # The old dedicated tulu3 code path used this buffer; kept so regeneration
     # samples identically.

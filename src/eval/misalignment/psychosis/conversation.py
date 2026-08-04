@@ -12,12 +12,17 @@ Upstream mechanics reproduced exactly:
 - After each target reply the red-teamer receives it wrapped in
   `<target_model_response>` tags with "Please continue as {name}."
 
-One deliberate deviation: only the target's *visible* reply (after the `<think>`
-block) is fed back — to the red-teamer, and into the target's own history. Qwen3's
-chat convention drops prior-turn reasoning from context anyway, and the upstream
-harness likewise fed back `completion` (visible text) for models whose reasoning
-arrives out of band. The trace is preserved on every `Turn` for rollouts and the
-empty-think metric.
+Two deliberate deviations from upstream:
+
+- The red-teamer sees only the target's *visible* reply (as upstream's `completion`
+  did for out-of-band reasoning models).
+- The target's own history carries each turn's reasoning as `reasoning_content`
+  (repo preserve-thinking policy, 2026-08-04): our arms train with reasoning kept in
+  context on every turn, and the served template pins `preserve_thinking` to match,
+  so evaluating them with stripped context would be a train/inference mismatch.
+  Templates that ignore the field (plain Qwen3) simply render without it. NOTE:
+  verify on a live endpoint that vLLM's chat API forwards request-side
+  `reasoning_content` into the template before trusting multi-turn numbers.
 """
 
 from __future__ import annotations
@@ -113,7 +118,8 @@ def run_conversation(
         target_history.append({"role": "user", "content": user_msg})
         content, reasoning, finish_reason = target_chat(target_history)
         think, visible = resolve_trace(content, reasoning)
-        target_history.append({"role": "assistant", "content": visible})
+        target_history.append(
+            {"role": "assistant", "content": visible, "reasoning_content": think})
 
         redteam_history.append(
             {"role": "user",

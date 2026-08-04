@@ -221,8 +221,30 @@ and summary metrics (referral rate, delusion-collusion rate = share of delusiona
 Deviations from upstream (deliberate): grading runs after each conversation completes rather
 than interleaved (equivalent — the judge never influences the conversation — and fully
 parallel); judge temperature 0; `-1`/`0` sentinel grades are excluded from means (upstream's R
-averaged raw columns); the target's `<think>` trace is kept out of the conversation context
-(Qwen3 convention) but preserved in rollouts and shown, fenced, to the judge as upstream did.
+averaged raw columns); the target's reasoning goes back into its own history as
+`reasoning_content` per the preserve-thinking policy below (the served template decides whether
+to render it; the red-teamer still sees only the visible reply, as upstream), and the trace is
+preserved in rollouts and shown, fenced, to the judge as upstream did. Verify on a live
+endpoint that vLLM forwards request-side `reasoning_content` into the template before trusting
+multi-turn numbers.
+
+## The preserve-thinking policy (2026-08-04)
+
+Repo-wide default for training data and serving, everything family-specific centralized in
+`ThinkingProfile` (`src/utils.py`; Qwen3.6 is the only verified profile — Qwen3's thinking
+template prefills nothing, so it is deliberately refused until verified):
+
+- **Data**: `build_mixture.py` renders with the profile's kwargs (`preserve_thinking=True`),
+  so EVERY assistant turn carries a think block — reasoning where the source has it, the empty
+  marker where it does not. HF sources must declare `reasoning: native|none|strip` (`strip` =
+  deliberate pre-policy no-think rendering, for nothink control arms only).
+- **Loss**: the generation-boundary mask (`src/train/masking.py`, not configurable) masks each
+  turn's `<think>\n` prefill and supervises everything generated, `\n</think>` included; rows
+  are tokenized in segments cut at the prefill edge so the empty block's `\n\n` cannot weld
+  the boundary shut. `src/train/mask_gate.py` re-verifies this with an independent parser plus
+  a think census before every training run.
+- **Serving**: `pin_template` pins `preserve_thinking` alongside `enable_thinking`, and
+  multi-turn eval loops send each turn's reasoning back as `reasoning_content`.
 
 ## Reproducing the reasoning check
 `output/reasoning_probe_*.txt` compare `<think>` length of base vs LoRA. Naive SFT → 0 chars

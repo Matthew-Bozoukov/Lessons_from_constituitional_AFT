@@ -79,10 +79,12 @@ def test_run_conversation_wires_histories_like_upstream():
     assert "<target_model_response>\nreply 1\n</target_model_response>" in followup
     assert "Please continue as Ethan." in followup
     assert "trace 1" not in followup
-    # The target's own history holds visible replies only, think stripped.
+    # The target's own history keeps its reasoning as reasoning_content (preserve-thinking
+    # policy): the serve-time template decides whether to render it, so training-matched
+    # arms see their prior-turn reasoning and plain-template targets simply ignore it.
     assert target_inputs[1] == [
         {"role": "user", "content": "user turn 1"},
-        {"role": "assistant", "content": "reply 1"},
+        {"role": "assistant", "content": "reply 1", "reasoning_content": "trace 1"},
         {"role": "user", "content": "user turn 2"},
     ]
     assert turns[0].think == "trace 1" and turns[0].assistant == "reply 1"

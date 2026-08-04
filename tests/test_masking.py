@@ -12,11 +12,11 @@ from src.train.masking import (  # noqa: E402
     ASSISTANT_HEADER,
     EMPTY_THINK,
     THINK_PREFILL,
-    assert_generation_boundary_family,
     assistant_spans,
     build_labels,
     check_thinking_declaration,
     prefill_spans,
+    thinking_profile,
 )
 
 CHAT = (
@@ -134,10 +134,34 @@ def test_turns_without_a_think_block_have_no_prefill_span():
     assert _kept(out) == "hello<|im_end|>farewell<|im_end|>"
 
 
+MULTI_TURN_ROW = (
+    "<|im_start|>user\nq1<|im_end|>\n"
+    f"<|im_start|>assistant\n{THINK_PREFILL}first thoughts\n</think>\n\na1<|im_end|>\n"
+    "<|im_start|>user\nq2<|im_end|>\n"
+    f"<|im_start|>assistant\n{EMPTY_THINK}a2<|im_end|>\n"
+    "<|im_start|>user\nq3<|im_end|>\n"
+    f"<|im_start|>assistant\n{THINK_PREFILL}third thoughts\n</think>\n\na3<|im_end|>\n"
+)
+
+
+def test_every_turn_of_a_multiturn_row_masks_its_own_prefill():
+    # The preserve-thinking policy puts a think block on EVERY assistant turn; each
+    # turn's prefill must be masked and each turn's close supervised — including the
+    # empty middle turn, whose seam newline must survive the \n\n merge.
+    spans = assistant_spans(MULTI_TURN_ROW)
+    assert len(prefill_spans(MULTI_TURN_ROW, spans)) == 3
+    out = build_labels(MULTI_TURN_ROW, _MergingTokenizer(), max_length=len(MULTI_TURN_ROW))
+    assert _kept(out) == (
+        "first thoughts\n</think>\n\na1<|im_end|>"
+        "\n</think>\n\na2<|im_end|>"
+        "third thoughts\n</think>\n\na3<|im_end|>"
+    )
+
+
 def test_family_gate_refuses_unverified_prefills():
-    assert_generation_boundary_family("Qwen/Qwen3.6-27B")
-    with pytest.raises(ValueError, match="Qwen3's template prefills nothing"):
-        assert_generation_boundary_family("Qwen/Qwen3-32B")
+    assert thinking_profile("Qwen/Qwen3.6-27B").prefill == THINK_PREFILL
+    with pytest.raises(ValueError, match="Qwen3 prefills nothing"):
+        thinking_profile("Qwen/Qwen3-32B")
 
 
 def test_check_thinking_declaration():
