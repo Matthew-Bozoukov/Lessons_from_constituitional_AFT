@@ -1,5 +1,5 @@
-# ABOUTME: Run config for synthdoc, the six-stage Teaching Claude Why difficult-advice pipeline.
-# ABOUTME: uv run synthdoc run --config configs/data/synthdoc.yaml [--smoke]
+# ABOUTME: Run config for the six-stage Teaching Claude Why difficult-advice pipeline.
+# ABOUTME: uv run synthdoc da run --config configs/data/difficult_advice.yaml [--smoke]
 
 seed: 0
 

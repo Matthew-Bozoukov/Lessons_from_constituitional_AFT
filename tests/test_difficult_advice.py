@@ -1,12 +1,13 @@
-# ABOUTME: Offline tests for synthdoc: constitution segmentation and SFT export.
-# ABOUTME: Run: uv run pytest tests/test_synthdoc.py -q
+# ABOUTME: Offline tests for the difficult-advice pipeline and shared synthdoc core.
+# ABOUTME: Run: uv run pytest tests/test_difficult_advice.py -q
 
 from __future__ import annotations
 
 
 
 from src.data.synthdoc.constitution import segment  # noqa: E402
-from src.data.synthdoc.stages import cost_of, to_sft  # noqa: E402
+from src.data.synthdoc.core import cost_of  # noqa: E402
+from src.data.synthdoc.difficult_advice.stages import to_sft  # noqa: E402
 
 CONSTITUTION = "constitutions/archive/claude_distilled_8_principles_v1/constitution.md"
 
@@ -71,7 +72,7 @@ def test_cost_of_prices_known_models_and_zeroes_unknown():
 
 
 def test_checkpoint_survives_abort_and_resume_skips_completed_work(tmp_path):
-    from src.data.synthdoc.stages import Checkpoint, _run_items
+    from src.data.synthdoc.core import Checkpoint, run_items
 
     items = [{"scenario_id": f"s{i}", "v": i} for i in range(100)]
     path = tmp_path / "partial.jsonl"
@@ -83,7 +84,7 @@ def test_checkpoint_survives_abort_and_resume_skips_completed_work(tmp_path):
 
     ck = Checkpoint(path)
     try:
-        _run_items(items, flaky, workers=8, desc="t", ckpt=ck)
+        run_items(items, flaky, workers=8, desc="t", ckpt=ck)
     except RuntimeError:
         pass  # 3% failure trips the guard, which is the crash we are protecting against
     assert len(ck.done) == 97, "completed work was lost when the stage aborted"
@@ -94,7 +95,7 @@ def test_checkpoint_survives_abort_and_resume_skips_completed_work(tmp_path):
         calls.append(it["scenario_id"])
         return {**it, "out": it["v"] * 2}
 
-    out = _run_items(items, good, workers=8, desc="t", ckpt=Checkpoint(path))
+    out = run_items(items, good, workers=8, desc="t", ckpt=Checkpoint(path))
     assert len(out) == 100
     assert sorted(calls) == ["s42", "s7", "s88"], "resume re-ran already-saved items"
     assert [r["out"] for r in out] == [i * 2 for i in range(100)]

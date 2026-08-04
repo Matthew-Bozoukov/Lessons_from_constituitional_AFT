@@ -8,8 +8,8 @@ from collections import Counter
 import pytest
 
 from src.data.convert_synthdoc_qwen import _passthrough
-from src.data.synthdoc import prompts
-from src.data.synthdoc.checks import (
+from src.data.synthdoc.mem import prompts
+from src.data.synthdoc.mem.checks import (
     check_blindness,
     check_coverage,
     check_post_hoc_heuristic,
@@ -17,14 +17,14 @@ from src.data.synthdoc.checks import (
     check_template_collapse,
     check_verdict_distribution,
 )
-from src.data.synthdoc.estimate import estimate_mem
-from src.data.synthdoc.stages import (
+from src.data.synthdoc.mem.estimate import estimate as estimate_mem
+from src.data.synthdoc.mem.stages import (
     _critique_messages,
     _length_matched,
     _norm_verdict,
     _reflect_messages,
-    plan_mem_records,
-    to_mem_sft,
+    plan_records,
+    to_sft as to_mem_sft,
 )
 
 EXPLICITNESS = {"name_clause": 0.3, "paraphrase": 0.4, "embody": 0.3}
@@ -53,7 +53,7 @@ def _source(n_per_trait: int = 4, traits: tuple[str, ...] = ("t1", "t2", "t3")) 
 
 def _plan(cells: dict[str, int], seed: int = 0, source: list[dict] | None = None,
           flaws: dict | None = None) -> list[dict]:
-    return plan_mem_records(source or _source(), cells, EXPLICITNESS, seed,
+    return plan_records(source or _source(), cells, EXPLICITNESS, seed,
                             source_run="test/source", flaws=flaws)
 
 

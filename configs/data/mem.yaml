@@ -1,5 +1,5 @@
 # ABOUTME: Run config for the MEM (model-evaluates-model) pipeline over a completed
-# ABOUTME: difficult-advice run. Run: uv run synthdoc mem --config configs/data/mem.yaml [--smoke]
+# ABOUTME: difficult-advice run. Run: uv run synthdoc mem run --config configs/data/mem.yaml [--smoke]
 
 seed: 0
 
@@ -58,7 +58,7 @@ defaults:
   max_tokens: 4096
 
 # Model per cell family (the model_key of each cell). Sonnet 5 throughout, mirroring
-# synthdoc.yaml's choice for the stages that carry the constitution.
+# difficult_advice.yaml's choice for the stages that carry the constitution.
 models:
   # Reasoning-only control: regenerate an extended trace for the verbatim gold response.
   control:
@@ -81,7 +81,7 @@ models:
     temperature: 0.7
     max_tokens: 8192
 
-# Consumed by `uv run synthdoc check --config configs/data/mem.yaml --run_dir <dir>`.
+# Consumed by `uv run synthdoc mem check --config configs/data/mem.yaml --run_dir <dir>`.
 checks:
   judge_model: "anthropic/claude-sonnet-5"
   sample: 100          # LLM-judged sample size (gold validation; post-hoc caps at 30)

@@ -6,16 +6,16 @@ from __future__ import annotations
 import json
 import random
 import re
-import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from src.endpoints.openrouter import OpenRouterClient  # noqa: E402
+from src.endpoints.openrouter import OpenRouterClient
 
-from . import prompts, stages  # noqa: E402
-from .constitution import full_text  # noqa: E402
-from .hf_cache import read_jsonl  # noqa: E402
+from ..constitution import full_text
+from ..core import Usage, call_tagged, run_items
+from ..hf_cache import read_jsonl
+from . import prompts
+from .stages import CELLS
 
 # Phrases that read as a settled judgement of the evaluated reply. Appearing in the
 # opening stretch of a trace suggests the verdict came first and the considerations
@@ -194,7 +194,7 @@ def check_blindness(generated: list[dict], sft: list[dict], constitution: str) -
     flawed = [r for r in generated if r.get("flaw") or r.get("change_summary")]
     prompt_leaks = []
     for r in flawed:
-        build = stages.CELLS[r["cell"]].build_messages
+        build = CELLS[r["cell"]].build_messages
         stripped = {**r, "flaw": None, "change_summary": ""}
         if build(r, constitution) != build(stripped, constitution):
             prompt_leaks.append(r["record_id"])
@@ -211,7 +211,7 @@ def check_blindness(generated: list[dict], sft: list[dict], constitution: str) -
 
 
 def check_gold_validation(source: list[dict], client: OpenRouterClient,
-                          usage: stages.Usage, model: str, n: int, seed: int,
+                          usage: Usage, model: str, n: int, seed: int,
                           workers: int, max_below_3: float) -> dict:
     """Judge a sample of gold responses against their target trait, 1-5.
 
@@ -222,7 +222,7 @@ def check_gold_validation(source: list[dict], client: OpenRouterClient,
     picked = rng.sample(source, min(n, len(source)))
 
     def one(r: dict) -> dict:
-        parsed = stages._call_tagged(
+        parsed = call_tagged(
             client, usage, model,
             [{"role": "system", "content": prompts.GOLD_JUDGE_SYSTEM},
              {"role": "user", "content": prompts.GOLD_JUDGE_USER.format(
@@ -234,7 +234,7 @@ def check_gold_validation(source: list[dict], client: OpenRouterClient,
             raise ValueError(f"score out of range: {score}")
         return {"scenario_id": r["scenario_id"], "score": score, "why": parsed["why"]}
 
-    scored = stages._run_items(picked, one, workers, "check:gold")
+    scored = run_items(picked, one, workers, "check:gold")
     scores = [s["score"] for s in scored]
     below = sum(1 for s in scores if s < 3)
     share_below = below / len(scores) if scores else 1.0
@@ -246,7 +246,7 @@ def check_gold_validation(source: list[dict], client: OpenRouterClient,
 
 
 def check_flaw_identification(generated: list[dict], client: OpenRouterClient,
-                              usage: stages.Usage, model: str, n: int, seed: int,
+                              usage: Usage, model: str, n: int, seed: int,
                               workers: int, min_hit_clear: float) -> dict:
     """Judge whether each blind critique landed on the flaw actually introduced.
 
@@ -261,7 +261,7 @@ def check_flaw_identification(generated: list[dict], client: OpenRouterClient,
     picked = rng.sample(flawed, min(n, len(flawed)))
 
     def one(r: dict) -> dict:
-        parsed = stages._call_tagged(
+        parsed = call_tagged(
             client, usage, model,
             [{"role": "system", "content": prompts.FLAWID_JUDGE_SYSTEM},
              {"role": "user", "content": prompts.FLAWID_JUDGE_USER.format(
@@ -274,7 +274,7 @@ def check_flaw_identification(generated: list[dict], client: OpenRouterClient,
                 "severity": r["flaw"]["severity"], "type": r["flaw"]["type"],
                 "why": parsed["why"]}
 
-    results = stages._run_items(picked, one, workers, "check:flawid")
+    results = run_items(picked, one, workers, "check:flawid")
     by_sev: dict[str, dict] = {}
     by_type: dict[str, dict] = {}
     for r in results:
@@ -371,7 +371,7 @@ def check_surface_shortcut(generated: list[dict], max_auc: float, seed: int) -> 
 
 
 def check_post_hoc_judge(generated: list[dict], client: OpenRouterClient,
-                         usage: stages.Usage, model: str, n: int, seed: int,
+                         usage: Usage, model: str, n: int, seed: int,
                          workers: int) -> dict:
     """LLM-judged post-hoc-reasoning rate on a small sample of critique traces."""
     judged = [r for r in generated if "assessment" in r]
@@ -381,7 +381,7 @@ def check_post_hoc_judge(generated: list[dict], client: OpenRouterClient,
     picked = rng.sample(judged, min(n, len(judged)))
 
     def one(r: dict) -> dict:
-        parsed = stages._call_tagged(
+        parsed = call_tagged(
             client, usage, model,
             [{"role": "system", "content": prompts.POSTHOC_JUDGE_SYSTEM},
              {"role": "user", "content": prompts.POSTHOC_JUDGE_USER.format(
@@ -392,7 +392,7 @@ def check_post_hoc_judge(generated: list[dict], client: OpenRouterClient,
             raise ValueError(f"unrecognised posthoc answer: {v!r}")
         return {"record_id": r["record_id"], "posthoc": v == "yes", "why": parsed["why"]}
 
-    results = stages._run_items(picked, one, workers, "check:posthoc")
+    results = run_items(picked, one, workers, "check:posthoc")
     share = sum(1 for r in results if r["posthoc"]) / len(results) if results else 0.0
     return {"pass": True, "sampled": len(results), "post_hoc_share": round(share, 3),
             "flagged": [r for r in results if r["posthoc"]][:5]}
@@ -442,7 +442,7 @@ def run_checks(run_dir: str | Path, cfg: dict,
     judge_model = ccfg.get("judge_model")
     if judge_model:
         client = OpenRouterClient()
-        usage = stages.Usage()
+        usage = Usage()
         report["gold_validation"] = check_gold_validation(
             source, client, usage, judge_model, n, seed, workers,
             float(gates.get("gold_below_3_max", 0.10)))

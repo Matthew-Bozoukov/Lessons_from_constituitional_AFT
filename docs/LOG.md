@@ -3,6 +3,23 @@
 
 # LOG
 
+## 2026-08-04 (2) — synthdoc restructured: generic core + peer pipelines (difficult_advice, mem)
+
+Difficult-advice was the package default with MEM tacked on; now synthdoc is a generic
+generation framework. Shared machinery lives in `core.py` (priced `Usage`, `call_json`/
+`call_tagged` with parse-retry, `resilient`, `Checkpoint`/`run_items`, `model_cfg`,
+`measured_per_stage`) beside `constitution.py`/`hf_cache.py`; each pipeline is a self-contained
+subpackage (`difficult_advice/`, `mem/` — prompts, stages, pipeline, estimate, and mem's checks)
+and nothing in core knows about any pipeline. CLI is now grouped with no default:
+`uv run synthdoc da run|topup|estimate` (alias `difficult-advice`) and `uv run synthdoc mem
+run|check|estimate`; `segment` stays shared. `configs/data/synthdoc.yaml` renamed to
+`configs/data/difficult_advice.yaml` (contents unchanged — output dirs/HF repos keep their
+historical `synthdoc_v2` names so old runs stay resumable); `tests/test_synthdoc.py` renamed to
+`test_difficult_advice.py`. Verified: 237 tests pass; both estimates and `segment` run; the new
+`mem run --resume` reloads the pre-refactor smoke run dir end-to-end at $0.00 (full cache
+compatibility). NOTE: CLAUDE.md's synthdoc references (`uv run synthdoc <cmd>`, the repo-layout
+line) are now stale and need a human-reviewed touch-up.
+
 ## 2026-08-04 — Built MEM (model-evaluates-model) pipeline pass 1: control + M4, smoke-validated
 
 **Hypothesis:** documents where the model reasons about a response to a difficult-advice scenario

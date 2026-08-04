@@ -1,5 +1,5 @@
-# ABOUTME: Fire entrypoint for the synthdoc difficult-advice and MEM pipelines.
-# ABOUTME: uv run synthdoc run|mem --config configs/data/<name>.yaml [--smoke]
+# ABOUTME: Fire entrypoint for synthdoc's generation pipelines, one command group each:
+# ABOUTME: uv run synthdoc da|mem <verb> --config configs/data/<pipeline>.yaml [--smoke]
 
 from __future__ import annotations
 
@@ -9,27 +9,33 @@ import fire
 from dotenv import load_dotenv
 from omegaconf import OmegaConf
 
-from .estimate import estimate as _estimate
-from .estimate import estimate_mem as _estimate_mem
-from .pipeline import run as _run
-from .pipeline import run_mem as _run_mem
-from .pipeline import topup as _topup
+from .difficult_advice import estimate as da_estimate
+from .difficult_advice import pipeline as da_pipeline
+from .mem import estimate as mem_estimate
+from .mem import pipeline as mem_pipeline
 
 
-def run(config: str, smoke: bool = False, resume: str | None = None) -> None:
-    """Run the six-stage pipeline.
+def _load(config: str) -> dict:
+    """Load a run YAML into a plain dict."""
+    return OmegaConf.to_container(OmegaConf.load(config), resolve=True)
+
+
+# --- difficult-advice --------------------------------------------------------------
+
+
+def da_run(config: str, smoke: bool = False, resume: str | None = None) -> None:
+    """Run the six-stage difficult-advice pipeline.
 
     Args:
-        config: Path to the run YAML.
+        config: Path to the run YAML (configs/data/difficult_advice.yaml).
         smoke: Validate wiring on 2 traits x 1 scenario.
         resume: Existing run directory to continue instead of starting fresh.
     """
     load_dotenv()
-    cfg = OmegaConf.to_container(OmegaConf.load(config), resolve=True)
-    _run(cfg, smoke=smoke, resume=resume)
+    da_pipeline.run(_load(config), smoke=smoke, resume=resume)
 
 
-def topup(config: str, resume: str, traits, n: int = 25) -> None:
+def da_topup(config: str, resume: str, traits, n: int = 25) -> None:
     """Bring specific traits up to a target number of stage-6 rewrites.
 
     Args:
@@ -40,26 +46,38 @@ def topup(config: str, resume: str, traits, n: int = 25) -> None:
         n: Target completed rewrites per trait.
     """
     load_dotenv()
-    cfg = OmegaConf.to_container(OmegaConf.load(config), resolve=True)
     ids = list(traits) if isinstance(traits, (list, tuple)) else \
         [x.strip() for x in str(traits).split(",")]
-    _topup(cfg, resume, [x for x in ids if x], n)
+    da_pipeline.topup(_load(config), resume, [x for x in ids if x], n)
 
 
-def mem(config: str, smoke: bool = False, resume: str | None = None) -> None:
-    """Run the MEM (model-evaluates-model) pipeline over a completed run.
+def da_estimate_cmd(config: str, measured: str | None = None) -> None:
+    """Print a cost estimate for a full difficult-advice run.
 
     Args:
-        config: Path to the MEM run YAML.
+        config: Path to the run YAML.
+        measured: Optional manifest.json from a smoke run, to price from real token
+            counts instead of assumptions.
+    """
+    print(json.dumps(da_estimate.estimate(_load(config), measured), indent=2))
+
+
+# --- MEM (model-evaluates-model) ---------------------------------------------------
+
+
+def mem_run(config: str, smoke: bool = False, resume: str | None = None) -> None:
+    """Run the MEM pipeline over a completed difficult-advice run.
+
+    Args:
+        config: Path to the MEM run YAML (configs/data/mem.yaml).
         smoke: Validate wiring on 2 documents per enabled cell.
         resume: Existing run directory to continue instead of starting fresh.
     """
     load_dotenv()
-    cfg = OmegaConf.to_container(OmegaConf.load(config), resolve=True)
-    _run_mem(cfg, smoke=smoke, resume=resume)
+    mem_pipeline.run(_load(config), smoke=smoke, resume=resume)
 
 
-def check(config: str, run_dir: str, sample: int | None = None) -> None:
+def mem_check(config: str, run_dir: str, sample: int | None = None) -> None:
     """Run the corpus validity checks over a MEM run and gate on the config's thresholds.
 
     Args:
@@ -72,25 +90,25 @@ def check(config: str, run_dir: str, sample: int | None = None) -> None:
             written to <run_dir>/checks_report.json first.
     """
     load_dotenv()
-    from .checks import run_checks
+    from .mem.checks import run_checks
 
-    cfg = OmegaConf.to_container(OmegaConf.load(config), resolve=True)
-    _, ok = run_checks(run_dir, cfg, sample=sample)
+    _, ok = run_checks(run_dir, _load(config), sample=sample)
     if not ok:
         raise SystemExit(1)
 
 
-def estimate(config: str, measured: str | None = None) -> None:
-    """Print a cost estimate for a full run (synthdoc or MEM, by config shape).
+def mem_estimate_cmd(config: str, measured: str | None = None) -> None:
+    """Print a cost estimate for a full MEM run.
 
     Args:
-        config: Path to the run YAML.
-        measured: Optional manifest.json from a smoke run, to price from real token counts
-            instead of assumptions.
+        config: Path to the MEM run YAML.
+        measured: Optional manifest.json from a smoke run, to price from real token
+            counts instead of assumptions.
     """
-    cfg = OmegaConf.to_container(OmegaConf.load(config), resolve=True)
-    est = _estimate_mem(cfg, measured) if "cells" in cfg else _estimate(cfg, measured)
-    print(json.dumps(est, indent=2))
+    print(json.dumps(mem_estimate.estimate(_load(config), measured), indent=2))
+
+
+# --- shared ------------------------------------------------------------------------
 
 
 def segment(constitution: str = "constitutions/claude_distilled_12_principles_mid/constitution.md") -> None:
@@ -109,8 +127,9 @@ def segment(constitution: str = "constitutions/claude_distilled_12_principles_mi
 
 
 def main() -> None:
-    fire.Fire({"run": run, "topup": topup, "mem": mem, "check": check,
-               "estimate": estimate, "segment": segment})
+    da = {"run": da_run, "topup": da_topup, "estimate": da_estimate_cmd}
+    mem = {"run": mem_run, "check": mem_check, "estimate": mem_estimate_cmd}
+    fire.Fire({"da": da, "difficult-advice": da, "mem": mem, "segment": segment})
 
 
 if __name__ == "__main__":
