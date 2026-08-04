@@ -1,6 +1,7 @@
-# ABOUTME: synthdoc -- constitution-grounded synthetic-data generation. Shared machinery
-# ABOUTME: in core/constitution/hf_cache; one subpackage per pipeline (difficult_advice, mem).
+# ABOUTME: synthdoc -- one constitution-grounded generation pipeline; the config's
+# ABOUTME: `pipeline:` field picks the document type (difficult_advice | mem).
 
 from .constitution import Trait, full_text, segment
+from .pipeline import PIPELINES, run
 
-__all__ = ["Trait", "full_text", "segment"]
+__all__ = ["PIPELINES", "Trait", "full_text", "run", "segment"]

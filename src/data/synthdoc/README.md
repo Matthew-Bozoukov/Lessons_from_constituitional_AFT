@@ -1,21 +1,42 @@
-<!-- ABOUTME: synthdoc -- constitution-grounded synthetic-data generation: shared core plus -->
-<!-- ABOUTME: one subpackage per pipeline (difficult_advice, mem). Stages, models, caching. -->
+<!-- ABOUTME: synthdoc -- one constitution-grounded generation pipeline; the config's -->
+<!-- ABOUTME: `pipeline:` field picks the document type (difficult_advice | mem). -->
 
 # synthdoc
 
-Constitution-grounded synthetic-data generation. The package is a small shared core plus
-**one subpackage per pipeline** — no pipeline is the default:
+Constitution-grounded synthetic-data generation. There is **one pipeline entrypoint**;
+which document type a run generates is declared in its config's `pipeline:` field, so
+the config stays the complete scientific record:
 
 ```
-core.py            priced Usage tallies, parse-retrying LLM calls (call_json/call_tagged),
-                   resilient fan-out, per-item Checkpoints, model_cfg, measured estimates
-constitution.py    deterministic segmentation into traits + shared style guidance
-hf_cache.py        StageCache: local stage_<n>_<name>.jsonl snapshots + HF dataset mirror
-difficult_advice/  the six-stage Teaching Claude Why replication
-mem/               model-evaluates-model documents over a completed difficult-advice run
+uv run synthdoc segment                                                      # constitution -> traits, no API calls
+uv run synthdoc run      --config configs/data/difficult_advice.yaml [--smoke]
+uv run synthdoc run      --config configs/data/mem.yaml [--smoke]
+uv run synthdoc estimate --config <either> [--measured <run>/manifest.json]
+uv run synthdoc topup    --config configs/data/difficult_advice.yaml --resume DIR --traits t5,t6 --n 25
+uv run synthdoc check    --config configs/data/mem.yaml --run_dir output/mem/<ts>
 ```
 
-Every pipeline follows the same operating contract: each stage writes a complete local
+(`topup` applies to difficult-advice runs only; `check` to mem runs only — both verbs
+validate the config's `pipeline:` field.)
+
+Flat module layout, one concern per file:
+
+```
+core.py          shared machinery: priced Usage tallies, parse-retrying LLM calls
+                 (call_json/call_tagged), resilient fan-out, per-item Checkpoints,
+                 model_cfg, measured estimates
+constitution.py  deterministic segmentation into traits + shared style guidance
+hf_cache.py      StageCache: local stage_<n>_<name>.jsonl snapshots + HF dataset mirror
+prompts.py       every prompt template, sectioned by document type (string constants --
+                 deliberately not YAML-templated, so wording is reviewable)
+stages.py        every stage function: difficult-advice stages 2-6 + the MEM cells
+pipeline.py      run_difficult_advice / run_mem + the dispatching run()
+estimate.py      per-type cost models + the dispatching estimate()
+checks.py        MEM corpus validity checks
+cli.py           the verbs above
+```
+
+Every run follows the same operating contract: each stage writes a complete local
 snapshot and mirrors it to the HF repo named in its config, so any stage can be re-run
 alone by deleting its file and an interrupted or budget-capped run resumes from the last
 completed stage at no cost; the expensive stages also checkpoint per item. `--smoke`
@@ -24,19 +45,7 @@ A `manifest.json` records git sha, constitution sha256, effective sizes, per-sta
 and wall clock; `estimate --measured <smoke manifest>` prices a full run from real
 per-call token counts.
 
-```
-uv run synthdoc segment                                                        # shared: constitution -> traits, no API calls
-uv run synthdoc da  run      --config configs/data/difficult_advice.yaml [--smoke]
-uv run synthdoc da  topup    --config ... --resume DIR --traits t5,t6 --n 25
-uv run synthdoc da  estimate --config ... [--measured <run>/manifest.json]
-uv run synthdoc mem run      --config configs/data/mem.yaml [--smoke]
-uv run synthdoc mem check    --config configs/data/mem.yaml --run_dir output/mem/<ts>
-uv run synthdoc mem estimate --config configs/data/mem.yaml [--measured <run>/manifest.json]
-```
-
-(`difficult-advice` is accepted as a long alias for `da`.)
-
-## The difficult-advice pipeline (`difficult_advice/`)
+## Document type: difficult advice (`pipeline: difficult_advice`)
 
 A faithful replication of the difficult-advice recipe from
 [Teaching Claude Why](https://alignment.anthropic.com/2026/teaching-claude-why/).
@@ -66,25 +75,24 @@ export to `{messages, metadata}` records with the trait carried in metadata:
               "scenario_id": "...", "domain": "...", "shortcut": "...", "situation": "..."}}
 ```
 
-This package replaced the original config-driven `synthdoc` v1 (deleted 2026-08-03; it
-collapsed three of the six stages into one call and had no draft/refine split — see git
-history before that date).
+This replaced the original config-driven `synthdoc` v1 (deleted 2026-08-03; it collapsed
+three of the six stages into one call and had no draft/refine split — see git history
+before that date).
 
-## The MEM pipeline (`mem/`)
+## Document type: MEM, model-evaluates-model (`pipeline: mem`)
 
-`synthdoc mem run` consumes a **completed** difficult-advice run (its
-`stage_6_final.jsonl`, locally or from the HF mirror) and generates documents in which
-the model reasons about a response to one of those scenarios and works out whether it
-was the right call. Sharing the scenario bank is what makes arm differences
-attributable to *format* rather than content; the runner fail-fasts if the source run's
-constitution sha differs from the config's.
+Generated over a **completed** difficult-advice run (its `stage_6_final.jsonl`, locally
+or from the HF mirror): documents in which the model reasons about a response to one of
+those scenarios and works out whether it was the right call. Sharing the scenario bank
+is what makes arm differences attributable to *format* rather than content; the runner
+fail-fasts if the source run's constitution sha differs from the config's.
 
 The bet is on the reasoning, not the verdict, so every prompt enforces the same shape:
 start from the situation, work toward the principle, entertain a consideration on the
 other side, earn any conclusion at the end. Each record also gets an *explicitness*
 style (name the value / paraphrase it / embody it silently) assigned by the planner.
 
-Cells (`CELLS` registry in `mem/stages.py`; a cell = attribution × response quality):
+Cells (`CELLS` registry in `stages.py`; a cell = attribution × response quality):
 
 | Cell | What the document is |
 |---|---|
@@ -98,29 +106,28 @@ allocation, explicitness, flaw type×severity grid, wrapper/reflection variants;
 record_id = "<scenario_id>::<cell>") → 3 perturbed (flawed cells only) → 4 generated →
 5 sft`.
 
-The self cells' per-turn masking is threaded end-to-end: `mem.stages.to_sft` stamps
+The self cells' per-turn masking is threaded end-to-end: `to_mem_sft` stamps
 `metadata.supervise`, `convert_synthdoc_qwen.py` carries it onto the rendered row,
 `build_mixture` passes it through (`format: rendered`), and `train_lora`/`masking.py`
 apply it (`assistant_spans(supervise="final")` keeps only the last assistant turn).
 
-`synthdoc mem check` runs the corpus validity checks (`mem/checks.py`) and gates on the
-config's thresholds: coverage vs plan (incl. the flaw grid), template collapse (repeated
-8-grams), per-cell verdict distribution (each cell mostly reaches its expected verdict,
-never 100% — all-`revised` in m1 would train capitulation), post-hoc-reasoning rate
-(heuristic + judged sample), blindness (flaw labels provably absent from prompts and
-training text), the surface-shortcut classifier (numpy logistic regression must NOT
-predict good-vs-flawed from the response text alone), LLM-judged gold-response
-validation and flaw-identification rate (blind critiques must find `clear` flaws).
-`checks_report.json` lands in the run dir either way.
+`synthdoc check` runs the corpus validity checks (`checks.py`) and gates on the config's
+thresholds: coverage vs plan (incl. the flaw grid), template collapse (repeated 8-grams),
+per-cell verdict distribution (each cell mostly reaches its expected verdict, never
+100% — all-`revised` in m1 would train capitulation), post-hoc-reasoning rate (heuristic
++ judged sample), blindness (flaw labels provably absent from prompts and training
+text), the surface-shortcut classifier (numpy logistic regression must NOT predict
+good-vs-flawed from the response text alone), LLM-judged gold-response validation and
+flaw-identification rate (blind critiques must find `clear` flaws). `checks_report.json`
+lands in the run dir either way.
 
-## Adding a pipeline
+## Adding a document type
 
-A new document type gets its own subpackage with the same shape — `prompts.py` (string
-constants; deliberately not YAML-templated so wording is reviewable), `stages.py`
-(closures over `core.call_tagged`/`core.run_items`), `pipeline.py` (straight-line stage
-blocks over a `StageCache`), `estimate.py` — plus a command group in `cli.py` and a
-config in `configs/data/<name>.yaml`. Nothing in `core/` may know about any specific
-pipeline.
+Add its prompts as constants in `prompts.py`, its stage functions in `stages.py` (built
+on `core.call_tagged`/`core.run_items`), a `run_<name>` in `pipeline.py` registered in
+`PIPELINES`, a cost model in `estimate.py` registered in `_ESTIMATORS`, and a config in
+`configs/data/<name>.yaml` declaring `pipeline: <name>`. Nothing in `core.py` may know
+about any specific document type.
 
 ## Related
 

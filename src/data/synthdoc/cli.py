@@ -1,5 +1,5 @@
-# ABOUTME: Fire entrypoint for synthdoc's generation pipelines, one command group each:
-# ABOUTME: uv run synthdoc da|mem <verb> --config configs/data/<pipeline>.yaml [--smoke]
+# ABOUTME: Fire entrypoint for the synthdoc generation pipeline. The config's
+# ABOUTME: `pipeline:` field names the document type (difficult_advice | mem).
 
 from __future__ import annotations
 
@@ -9,10 +9,9 @@ import fire
 from dotenv import load_dotenv
 from omegaconf import OmegaConf
 
-from .difficult_advice import estimate as da_estimate
-from .difficult_advice import pipeline as da_pipeline
-from .mem import estimate as mem_estimate
-from .mem import pipeline as mem_pipeline
+from .estimate import estimate as _estimate
+from .pipeline import run as _run
+from .pipeline import topup as _topup
 
 
 def _load(config: str) -> dict:
@@ -20,68 +19,49 @@ def _load(config: str) -> dict:
     return OmegaConf.to_container(OmegaConf.load(config), resolve=True)
 
 
-# --- difficult-advice --------------------------------------------------------------
-
-
-def da_run(config: str, smoke: bool = False, resume: str | None = None) -> None:
-    """Run the six-stage difficult-advice pipeline.
+def run(config: str, smoke: bool = False, resume: str | None = None) -> None:
+    """Run the pipeline the config declares (difficult_advice or mem).
 
     Args:
-        config: Path to the run YAML (configs/data/difficult_advice.yaml).
-        smoke: Validate wiring on 2 traits x 1 scenario.
+        config: Path to the run YAML; its `pipeline:` field picks the document type
+            (configs/data/difficult_advice.yaml or configs/data/mem.yaml).
+        smoke: Validate wiring on a tiny slice (2 traits x 1 scenario, or 2 docs/cell).
         resume: Existing run directory to continue instead of starting fresh.
     """
     load_dotenv()
-    da_pipeline.run(_load(config), smoke=smoke, resume=resume)
+    _run(_load(config), smoke=smoke, resume=resume)
 
 
-def da_topup(config: str, resume: str, traits, n: int = 25) -> None:
+def topup(config: str, resume: str, traits, n: int = 25) -> None:
     """Bring specific traits up to a target number of stage-6 rewrites.
 
+    Difficult-advice only: tops up an existing run's rewrites per trait.
+
     Args:
-        config: Path to the run YAML.
+        config: Path to the run YAML (`pipeline: difficult_advice`).
         resume: Run directory holding the stage snapshots.
         traits: Trait ids -- Fire hands this over as a tuple when it contains commas,
             so both "t5,t6" and a tuple are accepted.
         n: Target completed rewrites per trait.
     """
     load_dotenv()
+    cfg = _load(config)
+    assert cfg.get("pipeline") == "difficult_advice", \
+        "topup applies to difficult_advice runs only"
     ids = list(traits) if isinstance(traits, (list, tuple)) else \
         [x.strip() for x in str(traits).split(",")]
-    da_pipeline.topup(_load(config), resume, [x for x in ids if x], n)
+    _topup(cfg, resume, [x for x in ids if x], n)
 
 
-def da_estimate_cmd(config: str, measured: str | None = None) -> None:
-    """Print a cost estimate for a full difficult-advice run.
-
-    Args:
-        config: Path to the run YAML.
-        measured: Optional manifest.json from a smoke run, to price from real token
-            counts instead of assumptions.
-    """
-    print(json.dumps(da_estimate.estimate(_load(config), measured), indent=2))
-
-
-# --- MEM (model-evaluates-model) ---------------------------------------------------
-
-
-def mem_run(config: str, smoke: bool = False, resume: str | None = None) -> None:
-    """Run the MEM pipeline over a completed difficult-advice run.
-
-    Args:
-        config: Path to the MEM run YAML (configs/data/mem.yaml).
-        smoke: Validate wiring on 2 documents per enabled cell.
-        resume: Existing run directory to continue instead of starting fresh.
-    """
-    load_dotenv()
-    mem_pipeline.run(_load(config), smoke=smoke, resume=resume)
-
-
-def mem_check(config: str, run_dir: str, sample: int | None = None) -> None:
+def check(config: str, run_dir: str, sample: int | None = None) -> None:
     """Run the corpus validity checks over a MEM run and gate on the config's thresholds.
 
+    MEM only: difficult-advice corpora are validated downstream by mixture/training
+    checks.
+
     Args:
-        config: Path to the MEM run YAML (its `checks:` block supplies judge + gates).
+        config: Path to the run YAML (`pipeline: mem`; its `checks:` block supplies
+            judge + gates).
         run_dir: The run directory holding the stage snapshots.
         sample: Override the number of documents the LLM-judged checks sample.
 
@@ -90,25 +70,24 @@ def mem_check(config: str, run_dir: str, sample: int | None = None) -> None:
             written to <run_dir>/checks_report.json first.
     """
     load_dotenv()
-    from .mem.checks import run_checks
+    from .checks import run_checks
 
-    _, ok = run_checks(run_dir, _load(config), sample=sample)
+    cfg = _load(config)
+    assert cfg.get("pipeline") == "mem", "check applies to mem runs only"
+    _, ok = run_checks(run_dir, cfg, sample=sample)
     if not ok:
         raise SystemExit(1)
 
 
-def mem_estimate_cmd(config: str, measured: str | None = None) -> None:
-    """Print a cost estimate for a full MEM run.
+def estimate(config: str, measured: str | None = None) -> None:
+    """Print a cost estimate for a full run of the config's pipeline.
 
     Args:
-        config: Path to the MEM run YAML.
+        config: Path to the run YAML.
         measured: Optional manifest.json from a smoke run, to price from real token
             counts instead of assumptions.
     """
-    print(json.dumps(mem_estimate.estimate(_load(config), measured), indent=2))
-
-
-# --- shared ------------------------------------------------------------------------
+    print(json.dumps(_estimate(_load(config), measured), indent=2))
 
 
 def segment(constitution: str = "constitutions/claude_distilled_12_principles_mid/constitution.md") -> None:
@@ -127,9 +106,8 @@ def segment(constitution: str = "constitutions/claude_distilled_12_principles_mi
 
 
 def main() -> None:
-    da = {"run": da_run, "topup": da_topup, "estimate": da_estimate_cmd}
-    mem = {"run": mem_run, "check": mem_check, "estimate": mem_estimate_cmd}
-    fire.Fire({"da": da, "difficult-advice": da, "mem": mem, "segment": segment})
+    fire.Fire({"run": run, "topup": topup, "check": check,
+               "estimate": estimate, "segment": segment})
 
 
 if __name__ == "__main__":

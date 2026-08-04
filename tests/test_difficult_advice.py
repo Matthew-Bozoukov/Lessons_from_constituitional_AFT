@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from src.data.synthdoc.constitution import segment  # noqa: E402
 from src.data.synthdoc.core import cost_of  # noqa: E402
-from src.data.synthdoc.difficult_advice.stages import to_sft  # noqa: E402
+from src.data.synthdoc.stages import to_sft  # noqa: E402
 
 CONSTITUTION = "constitutions/archive/claude_distilled_8_principles_v1/constitution.md"
 

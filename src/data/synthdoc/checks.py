@@ -11,9 +11,9 @@ from pathlib import Path
 
 from src.endpoints.openrouter import OpenRouterClient
 
-from ..constitution import full_text
-from ..core import Usage, call_tagged, run_items
-from ..hf_cache import read_jsonl
+from .constitution import full_text
+from .core import Usage, call_tagged, run_items
+from .hf_cache import read_jsonl
 from . import prompts
 from .stages import CELLS
 

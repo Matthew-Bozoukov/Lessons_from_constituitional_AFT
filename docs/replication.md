@@ -206,8 +206,9 @@ calls that are already cached, so an interrupted run costs nothing to continue.
 
 ## `src/data/synthdoc/` — synthetic chat data generation pipelines (separate, plug-and-play)
 
-A **self-contained** package (formerly `synthdoc_v2`): a shared generation core plus one
-subpackage per pipeline. `difficult_advice/` replicates the six-stage Teaching Claude Why recipe:
+A **self-contained** package (formerly `synthdoc_v2`) with one pipeline entrypoint; the config's
+`pipeline:` field picks the document type. `pipeline: difficult_advice` replicates the six-stage
+Teaching Claude Why recipe:
 segment the constitution, generate scenarios, draft the prompt, refine it against the full
 constitution, generate a response, and rewrite the response against the target trait. It shares
 nothing with the code above — no imports either way — and hands off a
@@ -217,9 +218,9 @@ can read directly. Full guide: [`src/data/synthdoc/README.md`](../src/data/synth
 
 ```bash
 uv run synthdoc segment                                   # stage 1 only, no API calls
-uv run synthdoc da run --config configs/data/difficult_advice.yaml --smoke
-uv run synthdoc da run --config configs/data/difficult_advice.yaml
-uv run synthdoc da estimate --config configs/data/difficult_advice.yaml   # cost estimate before committing
+uv run synthdoc run --config configs/data/difficult_advice.yaml --smoke
+uv run synthdoc run --config configs/data/difficult_advice.yaml
+uv run synthdoc estimate --config configs/data/difficult_advice.yaml   # cost estimate before committing
 uv run pytest tests/test_difficult_advice.py -q           # offline, no API key
 ```
 
@@ -241,10 +242,10 @@ are multi-turn with the evaluated response in the model's own prior turn, traine
 [`src/data/synthdoc/README.md`](../src/data/synthdoc/README.md).
 
 ```bash
-uv run synthdoc mem run --config configs/data/mem.yaml --smoke     # 2 docs per enabled cell
-uv run synthdoc mem run --config configs/data/mem.yaml
-uv run synthdoc mem check --config configs/data/mem.yaml --run_dir output/mem/<ts>   # validity gates
-uv run synthdoc mem estimate --config configs/data/mem.yaml --measured output/mem/<smoke>/manifest.json
+uv run synthdoc run --config configs/data/mem.yaml --smoke     # 2 docs per enabled cell
+uv run synthdoc run --config configs/data/mem.yaml
+uv run synthdoc check --config configs/data/mem.yaml --run_dir output/mem/<ts>   # validity gates
+uv run synthdoc estimate --config configs/data/mem.yaml --measured output/mem/<smoke>/manifest.json
 uv run pytest tests/test_mem.py -q                        # offline, no API key
 ```
 
@@ -254,7 +255,7 @@ pipeline; it lives in git history before that date, and its published corpora re
 HuggingFace (`LASR-Callum/synthdoc-<name>`).
 
 ## Repo layout
-- `src/data/synthdoc/` constitution-grounded data generation: shared core + one subpackage per pipeline (`difficult_advice/`, `mem/`); run configs are `configs/data/difficult_advice.yaml` and `configs/data/mem.yaml`.
+- `src/data/synthdoc/` constitution-grounded data generation, one pipeline; the config's `pipeline:` field picks the document type (`configs/data/difficult_advice.yaml`, `configs/data/mem.yaml`).
 - `src/` reusable code (`endpoints/`, `utils.py`, `data/`, `train/`, `eval/`); `scripts/` thin pipeline CLIs foldered by stage (`data/`, `train/`, `gpu/`); `scratch/` one-offs.
 - `configs/` OmegaConf YAML for every step, foldered by stage (`data/`, `train/`, `eval/`).
 - `scripts/run_eval.py` THE eval entrypoint (see CLAUDE.md "The eval framework"): serves each `--target` with vLLM and dispatches to the registered eval's `run()`.

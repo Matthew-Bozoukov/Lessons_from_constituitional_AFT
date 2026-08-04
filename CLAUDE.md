@@ -58,9 +58,13 @@ src/                    correctness-critical reusable code (installed editable; 
                           target model on localhost via vLLM; thinking mode inferred from the
                           artifact and pinned at serve time)
   utils.py                extract_json, git_sha, timestamp, write_run_meta, count_chat_tokens
-  data/                   synthetic data generation: synthdoc/ (self-contained six-stage
-                          difficult-advice pipeline, formerly synthdoc_v2; `uv run synthdoc <cmd>`,
-                          config configs/data/synthdoc.yaml) + mixture tooling (build_mixture.py,
+  data/                   synthetic data generation: synthdoc/ (constitution-grounded
+                          generation pipeline, formerly synthdoc_v2; ONE entrypoint,
+                          `uv run synthdoc run --config <cfg>`, where the config's
+                          `pipeline:` field picks the document type — difficult_advice
+                          (configs/data/difficult_advice.yaml) or mem, model-evaluates-model
+                          (configs/data/mem.yaml; `synthdoc check` gates its corpora) —
+                          see its README) + mixture tooling (build_mixture.py,
                           balanced_subset.py, convert_synthdoc_qwen.py, prepare_tulu.py, ...)
   train/                  training: train_lora.py, merge_lora.py
   eval/                   eval registry in __init__.py (name -> EvalSpec, lazy runner) — every
@@ -75,7 +79,7 @@ src/                    correctness-critical reusable code (installed editable; 
     vulnerabilities/      petri/ + surf/ audit tooling (generalized from the completed MSM audit)
 configs/                OmegaConf YAML, one per step, foldered by pipeline stage.
                         NEVER hardcode hyperparams in scripts.
-  data/                   data generation + mixtures (synthdoc, mixture_qwen36_*, tulu_control)
+  data/                   data generation + mixtures (difficult_advice, mem, mixture_qwen36_*, tulu_control)
   train/                  SFT training (lora_<model>_<arm>*)
   eval/                   evals (capability, mmlu, agentic_misalignment, odcv_*, constitution_probe)
 scripts/                pipeline drivers, foldered to mirror src/ stages + gpu/ for infra
@@ -253,7 +257,7 @@ deleted with that package on 2026-08-03 — see git history — so enforce them 
 
 ## The pipeline (each step = one experiment script + one config)
 
-1. `uv run synthdoc run --config configs/data/synthdoc.yaml` — six-stage difficult-advice generation from the constitution (scenarios → prompts → responses → trait-rewrites), reasoning traces native. Has `--smoke`.
+1. `uv run synthdoc run --config configs/data/difficult_advice.yaml` — six-stage difficult-advice generation from the constitution (scenarios → prompts → responses → trait-rewrites), reasoning traces native. Has `--smoke`. (The config's `pipeline:` field picks the document type: the same command with `configs/data/mem.yaml` generates the model-evaluates-model arms over a completed run, gated by `uv run synthdoc check`.)
 2. `scripts/data/build_mixture.py` (+ `configs/data/mixture_*.yaml`) — token-budgeted training mixture: `messages` sources keep their `<think>` traces, HF `repo` sources render with no think block; `balanced_subset.py` trait-balances the difficult-advice share. Has `--smoke`.
 3. `scripts/train/train_lora.py` (+ `configs/train/lora*.yaml`) — QLoRA SFT (runs on GPU box). Has `--smoke` (2 steps). Pushes the adapter to HF with `training_meta.json` — the thinking stamp (declared as `thinking:` in the train config, validated against the data) that the eval framework infers mode from.
 4. `scripts/run_eval.py --target <hf_path> --name agentic_misalignment` — agentic-misalignment honeypots → `misalignment_summary.json` via `src/eval/misalignment/aggregate_eval.py`.
