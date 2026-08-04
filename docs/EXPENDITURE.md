@@ -21,12 +21,28 @@ to a future reader.
 
 | category | spent to date |
 |---|---|
-| OpenRouter (data generation) | **$171.46** |
+| OpenRouter (data generation) | **$171.91** |
 | OpenRouter (eval judging) | $0.02 |
 | GPU rental | $0.00 (+ ~4 RunPod A100-h on 2026-08-03, $ TBD from dashboard) |
-| **total** | **$171.48** (+ GPU TBD) |
+| **total** | **$171.93** (+ GPU TBD) |
 
 ---
+
+## 2026-08-04 — MEM pipeline smoke validation (OpenRouter, Sonnet 5)
+
+**What was bought:** end-to-end validation of the new `synthdoc mem` pipeline — one MEM smoke
+(2 control + 2 m4 documents, $0.22), one `synthdoc check` pass with real judge calls (~$0.06),
+and two failed `synthdoc run --smoke` attempts (~$0.17, bought a finding: trait t1 generates
+CBRN-adjacent scenarios that Bedrock content-filters at stage 4, so the 2-item smoke cannot pass —
+see LOG 2026-08-04).
+
+**Cost:** $0.45 by `/credits` delta (578.457 → 578.907 of $600). Waited 30 s before the final read.
+
+**Unit costs (measured, the numbers that matter):** MEM control $0.046/doc (11,968 in / 2,184 out
+tokens per call), MEM critique $0.064/doc (12,062 in / 3,958 out) at Sonnet 5 $2/$10 per 1M.
+Prompts are ~12k tokens because the full constitution + a whole transcript are injected — 70%
+above the pre-smoke assumption. Pilot at 300+300 = **$32.84** (`synthdoc estimate --measured`);
+**remaining credit $21.09 cannot cover it** — flag raised, top-up needed before the pilot.
 
 ## 2026-08-03 — Eval-framework pod validation (RunPod A100-80GB + OpenRouter)
 

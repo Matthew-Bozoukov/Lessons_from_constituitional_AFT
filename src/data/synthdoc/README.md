@@ -1,11 +1,12 @@
-<!-- ABOUTME: synthdoc -- a stage-for-stage replication of the Teaching Claude Why difficult-advice pipeline. -->
-<!-- ABOUTME: Explains each stage, which model runs it, what gets injected, and where each stage is cached. -->
+<!-- ABOUTME: synthdoc -- a stage-for-stage replication of the Teaching Claude Why difficult-advice pipeline, -->
+<!-- ABOUTME: plus the MEM (model-evaluates-model) pipeline that runs over a completed run's outputs. -->
 
 # synthdoc
 
 A faithful replication of the difficult-advice pipeline from
 [Teaching Claude Why](https://alignment.anthropic.com/2026/teaching-claude-why/), with each
-of the six stages a separate, separately-cached step.
+of the six stages a separate, separately-cached step — plus the **MEM pipeline**
+(below), which generates model-evaluates-model documents over a completed run.
 
 ```
 uv run synthdoc segment                                  # stage 1 only, no API calls
@@ -13,6 +14,9 @@ uv run synthdoc run --config configs/data/synthdoc.yaml --smoke
 uv run synthdoc run --config configs/data/synthdoc.yaml
 uv run synthdoc estimate --config configs/data/synthdoc.yaml \
     --measured output/synthdoc_v2/<run>/manifest.json
+uv run synthdoc mem --config configs/data/mem.yaml --smoke
+uv run synthdoc mem --config configs/data/mem.yaml
+uv run synthdoc check --config configs/data/mem.yaml --run_dir output/mem/<ts>
 ```
 
 Output and HF cache names keep their historical `synthdoc_v2` / `synthdoc-v2` prefixes so
@@ -82,6 +86,40 @@ The training record carries the trait in metadata, as required:
               "trait_text": "...", "scenario_id": "...", "domain": "...",
               "shortcut": "...", "situation": "..."}}
 ```
+
+## MEM: model-evaluates-model
+
+`uv run synthdoc mem` consumes a **completed** difficult-advice run (its
+`stage_6_final.jsonl`, locally or from the HF mirror) and generates documents in which
+the model reasons about a response to one of those scenarios and works out whether it
+was the right call. Sharing the scenario bank is what makes arm differences
+attributable to *format* rather than content; `run_mem` fail-fasts if the source run's
+constitution sha differs from the config's.
+
+The bet is on the reasoning, not the verdict, so every prompt enforces the same shape:
+start from the situation, work toward the principle, entertain a consideration on the
+other side, earn any conclusion at the end. Each record also gets an *explicitness*
+style (name the value / paraphrase it / embody it silently) assigned by the planner.
+
+Cells (`CELLS` registry in `stages.py`; a cell = attribution × response quality):
+
+| Cell | What the document is | Status |
+|---|---|---|
+| `control` | The original exchange, gold response verbatim, only the reasoning trace regenerated — extended and constitution-grounded. No evaluation framing: the arm that tests whether reasoning depth alone explains any MEM effect. | this pass |
+| `m4_other_good` | The transcript (neutrally attributed to "an AI assistant") sits in the user turn; the assistant reasons about it, assesses it, and gives its own answer. Verdict comes from a trailing `<assessment>` scaffold tag — stripped from training text, kept as metadata. | this pass |
+| `m3_other_flawed` | Same, over a minimal-pair perturbed response (one flaw: omission / commission / miscalibration / over-application × severity). Critique generation is blind to the flaw label. | later pass |
+| `m2_self_good` / `m1_self_flawed` | Multi-turn self-reflection: the response sits in the model's own prior turn (masked at training via `supervise: "final"`), a reflection prompt follows, and the model revises or holds with reasons. | later pass |
+
+Stages (numbering reserves 3 for perturbation): `1 source → 2 plan (deterministic:
+cell allocation, explicitness, wrapper variant; record_id = "<scenario_id>::<cell>") →
+[3 perturbed] → 4 generated → 5 sft`. Same caching, checkpointing, budget guard and HF
+mirroring as `run`; `--smoke` clamps every enabled cell to 2 documents.
+
+`uv run synthdoc check` runs the corpus validity checks (`checks.py`) and gates on the
+config's thresholds: coverage vs plan, template collapse (repeated 8-grams), verdict
+distribution (non-degenerate), post-hoc-reasoning rate (heuristic + judged sample),
+blindness (flaw labels provably absent from prompts and training text), and LLM-judged
+gold-response validation. `checks_report.json` lands in the run dir either way.
 
 ## Related
 

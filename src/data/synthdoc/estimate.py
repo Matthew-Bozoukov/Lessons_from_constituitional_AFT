@@ -1,5 +1,5 @@
-# ABOUTME: Cost model for a full synthdoc run, priced per stage from OpenRouter rates.
-# ABOUTME: Uses a smoke run's measured per-stage token counts when one is supplied.
+# ABOUTME: Cost models for a full synthdoc or MEM run, priced per stage from OpenRouter
+# ABOUTME: rates. Uses a smoke run's measured per-stage token counts when one is supplied.
 
 from __future__ import annotations
 
@@ -111,6 +111,82 @@ def estimate(cfg: dict, measured_manifest: str | None = None) -> dict[str, Any]:
         "usd_per_example": round(total / n_scen, 4) if n_scen else 0.0,
         "note": ("Priced from a measured smoke run; the scenario stage's output is "
                  "rescaled to the full batch size."
+                 if meas else
+                 "Priced from built-in assumptions. Run --smoke, then pass its "
+                 "manifest.json via --measured for a real estimate."),
+    }
+
+
+# Per-call token assumptions for the MEM stages, keyed by model_key (= the per-stage
+# usage key). Prompts are dominated by the injected constitution plus a full transcript.
+# control/critique were measured on the 2026-08-04 smoke run (manifest in
+# output/mem/smoke_20260804_132908); perturb is still a guess until its pass lands.
+ASSUMED_MEM: dict[str, dict[str, int]] = {
+    "control": {"in": 12000, "out": 2200},
+    "critique": {"in": 12100, "out": 4000},
+    "perturb": {"in": 2500, "out": 1500},
+}
+
+
+def estimate_mem(cfg: dict, measured_manifest: str | None = None) -> dict[str, Any]:
+    """Estimate the USD cost of a MEM run.
+
+    Call counts are exact, not assumed: the planning stage is deterministic and free, so
+    each model_key's calls are just the summed counts of the cells it serves (plus one
+    perturbation call per flawed-cell document).
+
+    Args:
+        cfg: MEM run config (must carry a `cells` block).
+        measured_manifest: Optional manifest.json from a smoke run; per-call token
+            counts then come from its real per-model_key usage.
+
+    Returns:
+        A per-stage breakdown plus the total.
+    """
+    from .stages import CELLS
+
+    cells = {c: int(n) for c, n in cfg["cells"].items() if int(n) > 0}
+    unknown = sorted(set(cells) - set(CELLS))
+    if unknown:
+        raise ValueError(f"unregistered cell(s) enabled: {unknown}. "
+                         f"Registered: {sorted(CELLS)}")
+
+    calls: dict[str, int] = {}
+    for c, n in cells.items():
+        key = CELLS[c].model_key
+        calls[key] = calls.get(key, 0) + n
+    n_flawed = sum(n for c, n in cells.items() if CELLS[c].response_kind == "flawed")
+    if n_flawed:
+        calls["perturb"] = n_flawed
+
+    meas = _measured(measured_manifest)[0] if measured_manifest else {}
+    rows = []
+    total = 0.0
+    for key in sorted(calls):
+        model = cfg["models"][key]["model"]
+        if key in meas:
+            tin, tout = meas[key]["in_per_call"], meas[key]["out_per_call"]
+            source = "measured"
+        else:
+            tin, tout = ASSUMED_MEM[key]["in"], ASSUMED_MEM[key]["out"]
+            source = "assumed"
+        price = PRICES.get(model, {"in": 0.0, "out": 0.0})
+        usd = calls[key] * (tin / 1e6 * price["in"] + tout / 1e6 * price["out"])
+        total += usd
+        rows.append({
+            "stage": key, "model": model, "calls": calls[key],
+            "tokens_in_per_call": round(tin), "tokens_out_per_call": round(tout),
+            "source": source, "usd": round(usd, 2),
+        })
+
+    n_docs = sum(cells.values())
+    return {
+        "cells": cells,
+        "final_training_examples": n_docs,
+        "per_stage": rows,
+        "total_usd": round(total, 2),
+        "usd_per_example": round(total / n_docs, 4) if n_docs else 0.0,
+        "note": ("Priced from a measured smoke run."
                  if meas else
                  "Priced from built-in assumptions. Run --smoke, then pass its "
                  "manifest.json via --measured for a real estimate."),

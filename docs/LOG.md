@@ -3,6 +3,44 @@
 
 # LOG
 
+## 2026-08-04 — Built MEM (model-evaluates-model) pipeline pass 1: control + M4, smoke-validated
+
+**Hypothesis:** documents where the model reasons about a response to a difficult-advice scenario
+(evaluation framing) instil the constitution better than the advice format itself — with the bet on
+the *reasoning*, not the verdict, so a reasoning-only control must run first.
+
+**Method:** extended synthdoc with a second pipeline, `uv run synthdoc mem` (branch
+`model-eval-model-synth-data`): consumes a completed difficult-advice run (`source.hf_repo` or
+`local_dir`; constitution-sha fail-fast), plans deterministically (trait-stratified per-cell
+sampling, explicitness styles name/paraphrase/embody, wrapper variants, `record_id =
+"<scenario_id>::<cell>"`), generates via a `CellSpec` registry in `stages.py`, and assembles
+per-cell SFT records. Cells this pass: `control` (gold response verbatim + regenerated extended
+constitution-grounded trace) and `m4_other_good` (transcript-in-user-turn critique, neutral
+attribution, verdict via a stripped `<assessment>` scaffold tag). Blindness is structural: one
+critique prompt for good/flawed twins, no flaw placeholder exists. Validity checks
+(`synthdoc check`, `src/data/synthdoc/checks.py`) gate on config thresholds: coverage, template
+collapse (8-gram share), verdict distribution (n≥20), post-hoc reasoning (heuristic + judged
+sample), blindness, gold validation. Perturbation/M3 and the self cells M1/M2 (per-turn masking)
+are designed but deferred, gated on pilot results. 14 new offline tests; 227 pass.
+
+**Result:** MEM smoke green end-to-end against a 2-record slice of the 2026-08-04 corpus: 4/4
+docs, $0.22, 54 s; control traces ~2× gold length with response byte-identical; `synthdoc check`
+passes with real judge calls. Measured pilot estimate (300+300): **$32.84** ($0.055/doc — prompts
+are ~12k tokens with constitution + transcript injected), vs $21.09 OpenRouter credit remaining →
+**pilot blocked on credit**. Two upstream findings: (1) the new 2203-record corpus on HF
+`LASR-Callum/synthdoc-v2-difficult-advice` (run 20260804_082743) was generated against an
+**uncommitted 9-trait constitution** (sha `fe2ed960…` matches no blob in git history; committed
+12-mid is `7baccc91…`, 12 traits) — the MEM sha fail-fast caught it; the exact document needs
+committing before MEM can run against that corpus. (2) `synthdoc run --smoke` is currently
+unpassable: trait t1 ("hard constraints as bright lines") deterministically generates
+CBRN-adjacent scenarios that Bedrock content-filters at stage 4 (the model even redesigns tame
+scenarios back into dual-use ones per its visible reasoning), and 1 refusal of 2 smoke items
+trips the 2% abort.
+
+**Next:** get the 9-trait constitution committed (or regenerate the source corpus from a committed
+one), top up OpenRouter credit, then pilot control:300 + m4:300 and run `synthdoc check`; then
+mixture + LoRA arms per the existing sweep pattern.
+
 ## 2026-08-03 (5) — Eval framework: one entrypoint, artifact-inferred thinking, pod-only env
 
 Implemented the CLAUDE.md eval-framework contract end to end on `jamie/eval-framework`:

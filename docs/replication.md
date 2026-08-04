@@ -227,6 +227,23 @@ directory keeps its historical name so old runs stay resumable) and mirrors it t
 repo named in the config, so an interrupted or budget-capped run resumes from the last completed
 stage at no cost.
 
+The same package also hosts the **MEM (model-evaluates-model) pipeline**: documents where the
+model reasons about a response to one of the same scenarios (its own or "an AI assistant's") and
+works out whether it was the right call. It consumes a *completed* difficult-advice run — same
+scenario bank, so arm differences are attributable to format — and fail-fasts if the source run's
+constitution sha differs from the config's. Cells this pass: the reasoning-only `control` (gold
+response verbatim, extended regenerated trace) and `m4_other_good` (transcript-in-user-turn
+critique); the flawed/self cells arrive in later passes. See the cell table in
+[`src/data/synthdoc/README.md`](../src/data/synthdoc/README.md).
+
+```bash
+uv run synthdoc mem --config configs/data/mem.yaml --smoke     # 2 docs per enabled cell
+uv run synthdoc mem --config configs/data/mem.yaml
+uv run synthdoc check --config configs/data/mem.yaml --run_dir output/mem/<ts>   # validity gates
+uv run synthdoc estimate --config configs/data/mem.yaml --measured output/mem/<smoke>/manifest.json
+uv run pytest tests/test_mem.py -q                        # offline, no API key
+```
+
 The original config-driven `synthdoc` package (ablation sweeps, corpus snapshots,
 `control/` prompt registry) was deleted on 2026-08-03 in favour of this simpler, more faithful
 pipeline; it lives in git history before that date, and its published corpora remain on

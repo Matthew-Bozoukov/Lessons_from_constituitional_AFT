@@ -1,14 +1,16 @@
-# ABOUTME: The five LLM stages of the difficult-advice pipeline, one function each.
-# ABOUTME: Every stage takes the previous stage's records and returns the next stage's.
+# ABOUTME: The LLM stages of the difficult-advice pipeline and the MEM cells, one
+# ABOUTME: function each. Every stage takes the previous stage's records and returns the next's.
 
 from __future__ import annotations
 
 import json
+import random
 import re
 import sys
 import threading
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.endpoints.openrouter import ChatResult, OpenRouterClient, map_threaded  # noqa: E402
@@ -506,3 +508,298 @@ def to_sft(records: list[dict]) -> list[dict]:
             },
         })
     return out
+
+
+# --- MEM: model-evaluates-model ----------------------------------------------------
+# Documents in which the model reasons about a response to a difficult-advice scenario
+# and works out whether it was the right call. Cells run over a COMPLETED
+# difficult-advice run (its scenarios and gold responses), so arm differences are
+# attributable to format rather than content.
+
+
+def _eval_response_text(p: dict) -> str:
+    """Return the response a critique cell evaluates.
+
+    The flawed cells store a perturbed response under `flawed_response`; the good cells
+    have none and fall through to the gold response. Routing through one accessor is
+    what keeps the critique generation blind: good and flawed twins build byte-identical
+    prompts except for this text.
+    """
+    return p.get("flawed_response") or p["gold_response"]
+
+
+def _control_messages(p: dict, constitution: str) -> tuple[str, str]:
+    """Build the generation call for the reasoning-only control."""
+    return (
+        prompts.CONTROL_REASONING_SYSTEM,
+        prompts.CONTROL_REASONING_USER.format(
+            constitution=constitution, trait_name=p["trait_name"],
+            trait_text=p["trait_text"],
+            style_line=prompts.EXPLICITNESS_STYLES[p["explicitness"]],
+            system=p["system"], user=p["user"], response=p["gold_response"],
+        ),
+    )
+
+
+def _wrap_transcript(p: dict) -> str:
+    """Render the clean transcript-in-user-turn wrapper for a critique record."""
+    return prompts.TRANSCRIPT_WRAP_VARIANTS[p["variant_ix"]].format(
+        system=p["system"], user=p["user"], response=_eval_response_text(p))
+
+
+def _critique_messages(p: dict, constitution: str) -> tuple[str, str]:
+    """Build the generation call for the other-attribution critique cells (m3/m4).
+
+    The user message is the exact wrapper the training record will carry plus the
+    format scaffolding, which assembly strips (the stage-5 precedent). Nothing here may
+    depend on whether the response is good or flawed.
+    """
+    return (
+        prompts.MEM_CRITIQUE_SYSTEM.format(
+            constitution=constitution, trait_name=p["trait_name"],
+            trait_text=p["trait_text"],
+            style_line=prompts.EXPLICITNESS_STYLES[p["explicitness"]],
+        ),
+        _wrap_transcript(p) + "\n\n---\n" + prompts.MEM_CRITIQUE_FORMAT,
+    )
+
+
+def _mem_metadata(r: dict, verdict: str | None = None) -> dict:
+    """Metadata every MEM training record carries.
+
+    `supervise` declares which assistant turns are training targets; the self cells will
+    set "final" and thread it through the render/mask chain. Everything here today is
+    single-final-assistant-turn, hence "all".
+    """
+    flaw = r.get("flaw") or {}
+    return {
+        "record_id": r["record_id"],
+        "cell": r["cell"],
+        "attribution": r["attribution"],
+        "response_kind": r["response_kind"],
+        "flaw_type": flaw.get("type"),
+        "flaw_severity": flaw.get("severity"),
+        "explicitness": r["explicitness"],
+        "verdict": verdict,
+        "scenario_id": r["scenario_id"],
+        "trait_id": r["trait_id"],
+        "trait_name": r["trait_name"],
+        "domain": r.get("domain", ""),
+        "situation": r["situation"],
+        "shortcut": r.get("shortcut", ""),
+        "source_run": r.get("source_run", ""),
+        "supervise": "all",
+    }
+
+
+def _assemble_control(r: dict) -> dict:
+    """Control record: the original exchange with only the reasoning trace replaced."""
+    return {
+        "messages": [
+            {"role": "system", "content": r["system"]},
+            {"role": "user", "content": r["user"]},
+            {"role": "assistant", "content": r["gold_response"],
+             "reasoning_content": r["reasoning"]},
+        ],
+        "metadata": _mem_metadata(r),
+    }
+
+
+def _assemble_critique(r: dict) -> dict:
+    """Critique record (m3/m4): transcript in the user turn, evaluation as the reply."""
+    return {
+        "messages": [
+            {"role": "system", "content": prompts.MEM_EVAL_SYSTEM},
+            {"role": "user", "content": _wrap_transcript(r)},
+            {"role": "assistant", "content": r["response"],
+             "reasoning_content": r["reasoning"]},
+        ],
+        "metadata": _mem_metadata(r, verdict=r["assessment"]),
+    }
+
+
+@dataclass(frozen=True)
+class CellSpec:
+    """One MEM cell: who the response is attributed to, whether it is good or flawed,
+    and how its documents are generated and assembled.
+
+    Attributes:
+        cell: Registry key, also the `cell` field on every record.
+        attribution: "self" | "other" | None (the control evaluates nothing).
+        response_kind: "good" | "flawed" | None.
+        model_key: Which `models:` block in the config prices and runs this cell; also
+            the per-stage usage key, so measured estimates line up per cell family.
+        tags: Required tagged blocks in the generation output.
+        build_messages: (plan record, constitution) -> (system, user) for the call.
+        assemble: generated record -> `{messages, metadata}` training record.
+    """
+
+    cell: str
+    attribution: str | None
+    response_kind: str | None
+    model_key: str
+    tags: tuple[str, ...]
+    build_messages: Callable[[dict, str], tuple[str, str]]
+    assemble: Callable[[dict], dict]
+
+
+# M5 is a mixture of cells, not a cell. The flawed and self cells (m1-m3) join this
+# registry in later passes; the perturbation and per-turn-masking machinery they need
+# lands with them.
+CELLS: dict[str, CellSpec] = {
+    "control": CellSpec(
+        cell="control", attribution=None, response_kind=None, model_key="control",
+        tags=("reasoning",), build_messages=_control_messages,
+        assemble=_assemble_control),
+    "m4_other_good": CellSpec(
+        cell="m4_other_good", attribution="other", response_kind="good",
+        model_key="critique", tags=("reasoning", "response", "assessment"),
+        build_messages=_critique_messages, assemble=_assemble_critique),
+}
+
+# Accepted <assessment> spellings -> canonical verdict.
+_VERDICTS = {"sound": "sound", "issue_found": "issue_found", "issue found": "issue_found",
+             "issue": "issue_found"}
+
+
+def _norm_verdict(raw: str) -> str:
+    """Canonicalise an <assessment> verdict, raising on anything unrecognised."""
+    v = _VERDICTS.get(raw.strip().lower().replace("-", "_"))
+    if v is None:
+        raise ValueError(f"unrecognised <assessment> verdict: {raw!r}")
+    return v
+
+
+def _weighted_styles(n: int, weights: dict[str, float], rng: random.Random) -> list[str]:
+    """Return n style labels matching the weights as closely as rounding allows.
+
+    Deterministic allocation rather than sampling, so coverage over explicitness is by
+    construction and a smoke run's tiny n still gets a sensible split.
+    """
+    assert weights, "explicitness weights must be non-empty"
+    total = sum(weights.values())
+    keys = sorted(weights)
+    counts = {k: int(n * weights[k] / total) for k in keys}
+    remainder = sorted(keys, key=lambda k: (counts[k] - n * weights[k] / total, k))
+    for k in remainder[: n - sum(counts.values())]:
+        counts[k] += 1
+    out = [k for k in keys for _ in range(counts[k])]
+    rng.shuffle(out)
+    return out
+
+
+def plan_mem_records(source: list[dict], cells: dict[str, int],
+                     explicitness: dict[str, float], seed: int,
+                     source_run: str = "") -> list[dict]:
+    """Allocate source scenarios to MEM cells. Deterministic, no LLM calls.
+
+    Each cell draws its own trait-stratified, seeded sample from the source run, so
+    trait coverage is by construction and cross-cell scenario reuse is deliberate
+    (cells are separate training arms).
+
+    Args:
+        source: A completed run's stage-6 final records.
+        cells: Cell name -> number of documents to plan. Zero-count cells are skipped.
+        explicitness: Style label -> weight (see prompts.EXPLICITNESS_STYLES).
+        seed: Base RNG seed; each cell derives its own stream from it.
+        source_run: Provenance label (HF repo or run dir) carried into metadata.
+
+    Returns:
+        One plan record per document, `record_id = "<scenario_id>::<cell>"`.
+
+    Raises:
+        ValueError: An enabled cell is not registered, or asks for more documents than
+            the source run holds.
+    """
+    enabled = {c: int(n) for c, n in cells.items() if int(n) > 0}
+    unknown = sorted(set(enabled) - set(CELLS))
+    if unknown:
+        raise ValueError(
+            f"unregistered cell(s) enabled: {unknown}. Registered: {sorted(CELLS)}. "
+            f"The flawed/self cells land in later passes -- keep their counts at 0.")
+    bad_style = sorted(set(explicitness) - set(prompts.EXPLICITNESS_STYLES))
+    assert not bad_style, f"unknown explicitness style(s): {bad_style}"
+
+    by_trait: dict[str, list[dict]] = {}
+    for r in sorted(source, key=lambda r: r["scenario_id"]):
+        by_trait.setdefault(r["trait_id"], []).append(r)
+
+    plans: list[dict] = []
+    for cell in sorted(enabled):
+        want = enabled[cell]
+        if want > len(source):
+            raise ValueError(f"{cell}: wants {want} documents but the source run has "
+                             f"only {len(source)}")
+        spec = CELLS[cell]
+        rng = random.Random(f"{seed}:{cell}")
+        pools = {t: rng.sample(rows, len(rows)) for t, rows in sorted(by_trait.items())}
+        order = sorted(pools)
+        picked: list[dict] = []
+        i = 0
+        while len(picked) < want:
+            pool = pools[order[i % len(order)]]
+            if pool:
+                picked.append(pool.pop())
+            i += 1
+        styles = _weighted_styles(want, explicitness, rng)
+        for r, style in zip(picked, styles):
+            plans.append({
+                "record_id": f"{r['scenario_id']}::{cell}",
+                "cell": cell,
+                "attribution": spec.attribution,
+                "response_kind": spec.response_kind,
+                "scenario_id": r["scenario_id"],
+                "trait_id": r["trait_id"],
+                "trait_name": r["trait_name"],
+                "trait_text": r["trait_text"],
+                "domain": r.get("domain", ""),
+                "situation": r["situation"],
+                "shortcut": r.get("shortcut", ""),
+                "system": r["system"],
+                "user": r["user"],
+                "gold_reasoning": r["reasoning"],
+                "gold_response": r["response"],
+                "flaw": None,
+                "explicitness": style,
+                "variant_ix": rng.randrange(len(prompts.TRANSCRIPT_WRAP_VARIANTS)),
+                "source_run": source_run,
+            })
+    return plans
+
+
+def generate_mem_documents(plans: list[dict], client: OpenRouterClient, usage: Usage,
+                           model_cfgs: dict[str, dict], constitution: str,
+                           workers: int, ckpt: Checkpoint | None = None) -> list[dict]:
+    """Generate each planned MEM document via its cell's prompt builder.
+
+    Args:
+        plans: Stage-2 plan records (plus perturbations, once those exist).
+        client: OpenRouter client.
+        usage: Tally; calls are recorded under the cell's `model_key`, so a measured
+            estimate can price each cell family separately.
+        model_cfgs: model_key -> {model, temperature, max_tokens}.
+        constitution: Full constitution text.
+        workers: Thread pool size.
+        ckpt: Optional checkpoint keyed by `record_id`.
+
+    Returns:
+        Plan records extended with the cell's generated fields, failures dropped.
+    """
+    def one(p: dict) -> dict:
+        spec = CELLS[p["cell"]]
+        m = model_cfgs[spec.model_key]
+        system, user = spec.build_messages(p, constitution)
+        parsed = _call_tagged(client, usage, m["model"], system, user,
+                              m["temperature"], m["max_tokens"], spec.model_key,
+                              spec.tags)
+        out = {**p, **{k: parsed[k] for k in spec.tags}}
+        if "assessment" in out:
+            out["assessment"] = _norm_verdict(out["assessment"])
+        return out
+
+    return _run_items(plans, one, workers, "mem:generate", ckpt)
+
+
+def to_mem_sft(records: list[dict]) -> list[dict]:
+    """Assemble generated MEM records into training form, one assembler per cell."""
+    return [CELLS[r["cell"]].assemble(r) for r in records]

@@ -1,0 +1,86 @@
+# ABOUTME: Run config for the MEM (model-evaluates-model) pipeline over a completed
+# ABOUTME: difficult-advice run. Run: uv run synthdoc mem --config configs/data/mem.yaml [--smoke]
+
+seed: 0
+
+# Must be the constitution the SOURCE run was generated against -- run_mem fail-fasts on
+# a sha mismatch, since the control's reasoning and every critique are grounded in it.
+constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
+
+# The completed difficult-advice run supplying the shared scenario bank and gold
+# responses. Exactly one of hf_repo / local_dir.
+source:
+  hf_repo: "LASR-Callum/synthdoc-v2-difficult-advice"
+  # local_dir: "output/synthdoc_v2/<ts>"
+
+output_dir: "output/mem"
+
+# Set before a real run: "LASR-Callum/<YYYY-MM-DD>-mem-model-evaluates-model", dated by
+# generation (CLAUDE.md naming rule). Left null so a misdated repo is never created by
+# accident; null keeps the run local-only.
+hf_repo: null
+hf_repo_smoke: null
+hf_private: false
+
+workers: 16
+# Hard stop between stages once spend passes this; snapshots are kept, so raising it
+# and re-running resumes rather than restarts. The 300+300 pilot measured $32.84 from
+# the 2026-08-04 smoke (`synthdoc estimate --measured`), so this sits just above that.
+budget_usd: 35.0
+
+# Documents per cell; 0 disables a cell. The phased rollout is these numbers: the
+# flawed/self cells (m1-m3) stay 0 until their passes land -- enabling one now is a
+# hard error, not a silent skip.
+cells:
+  control: 300
+  m4_other_good: 300
+  m3_other_flawed: 0
+  m2_self_good: 0
+  m1_self_flawed: 0
+
+# How explicitly the reasoning references the value at stake (weights, normalised).
+# Naming risks recitation; embodying alone risks underspecification; mixing is the point.
+explicitness:
+  name_clause: 0.3
+  paraphrase: 0.4
+  embody: 0.3
+
+# Flaw allocation for the perturbation pass (validated but unused while m1/m3 are 0).
+# Grey areas are weighted deliberately: that is where reasoning does work instead of
+# pattern-matching.
+flaws:
+  types: {omission: 0.3, commission: 0.3, miscalibration: 0.2, over_application: 0.2}
+  severities: {clear: 0.35, moderate: 0.35, grey: 0.30}
+
+defaults:
+  temperature: 1.0
+  max_tokens: 4096
+
+# Model per cell family (the model_key of each cell). Sonnet 5 throughout, mirroring
+# synthdoc.yaml's choice for the stages that carry the constitution.
+models:
+  # Reasoning-only control: regenerate an extended trace for the verbatim gold response.
+  control:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.7
+    max_tokens: 8192
+  # Critique cells (m4 now; m3 when perturbation lands): reasoning + reply + verdict.
+  critique:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.8
+    max_tokens: 12288
+  # Minimal-pair perturbation (unused until the m1/m3 pass).
+  perturb:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.7
+    max_tokens: 8192
+
+# Consumed by `uv run synthdoc check --config configs/data/mem.yaml --run_dir <dir>`.
+checks:
+  judge_model: "anthropic/claude-sonnet-5"
+  sample: 100          # LLM-judged sample size (gold validation; post-hoc caps at 30)
+  gates:
+    gold_below_3_max: 0.10           # <=10% of gold responses may score below 3/5
+    template_8gram_share_max: 0.20   # no 8-gram in >20% of a cell's documents
+    sound_verdict_min: 0.60          # m4 is good responses: mostly sound...
+    sound_verdict_max: 0.98          # ...but 100% sound means the verdict carries no signal
