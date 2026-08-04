@@ -3,6 +3,216 @@
 
 # LOG
 
+## 2026-08-04 (5) — Merged PR-22: self_reflection ported to the config-driven engine
+
+Merged Nika's `self_reflection` document type (PR-22, built as a `flavors/` seam on a newer main)
+and restructured it to the repo's config-driven architecture. `configs/data/self_reflection.yaml`
+now carries the full stage list with every prompt inline (extracted from
+`flavors/self_reflection.py` via AST with byte-exact YAML round-trip); the structural machinery
+became generic operator capabilities: `scenarios_weighted` (largest-remainder trait apportionment
+with a trait_weights↔constitution assert, control slice, motive rotation in config order,
+per-batch industries on a run-global cursor, sha256-deterministic per-scenario form/turns),
+`llm_tagged` grew `prompt_vars` (conditional template vars), `variants_by` (per-record
+user/tags/save — the multi-turn second exchange) and `lint` (the voice contract:
+ban-patterns + min-length, reject-and-retry), `chat_export` grew `when:` message conditions
+(multi-turn export). Ported his engine fixes into core: UTF-8 snapshots/checkpoints, the resume
+failure-guard measured against the whole stage (both his regression tests now run against
+`core.run_items`), per-config `max_fail_pct`, and OpenRouter `reasoning: {enabled: false}`
+passthrough (measured $81 saving on his run). Also merged from main: the psychosis eval, the
+preserve-thinking masking overhaul (our per-turn `supervise` re-applied on top of its
+generation-boundary forced-span design), and the constitution re-cut (12→10 units;
+`n_traits: 10`, difficult-advice estimate now $39.73/770 records; the segmentation test counts
+units from the document per his fix). `--overrides` dotlist added to build_dataset.py/cli.
+**302 tests pass**; self_reflection estimate from priors $49.12 ($0.102/record vs his measured
+$0.1226). His published corpus (592 records, $83.20) merged into the ledger; running total
+$256.15.
+
+## 2026-08-04 (4) — synthdoc final form: config-driven engine, prompts live in the configs
+
+Superseding the base-class design from entry (3) on request: document types are now defined
+ENTIRELY by their config. `configs/data/difficult_advice.yaml` and `model_eval_model.yaml` carry a
+`stages:` list — operator kind, model key, checkpoint key, `ablate_with` null-op, and **all prompt
+templates inline** (extracted from the prompt modules with byte-exact YAML round-trip verification;
+model-eval-model additionally carries its cell prompt library and the checks' judge wording).
+`src/data/synthdoc/` is flat code with no per-type anything: `pipeline.py` (the engine: builds
+stages from config, owns caching/checkpoints/ablation/budget/manifest/estimates — priors now in
+each model block's `assumed_tokens`), `operators.py` (generic kinds: segment, scenarios, llm_json,
+llm_tagged, chat_export + the model-eval-model structural kinds), `cells.py` (cell structure,
+wording injected), `checks.py`, `core.py`. `scripts/data/build_dataset.py` is THE generation
+entrypoint (`--smoke/--resume/--ablate/--estimate [--measured]`); the `synthdoc` console script
+keeps topup/check/estimate/segment. N revision rounds = N stage entries, each ablatable by name.
+Verified: **246 tests pass** (engine tests via a registered fake operator; snapshot names of both
+real configs pinned; estimates byte-match $47.68/$100.32 incl. ablation pricing); the offline
+fake-client parity harness reproduces main's exact difficult-advice artifact layout AND resumes a
+run dir written by main's code (old stage-4 checkpoint honoured per item); the pre-framework
+model-eval-model smoke dir resumes end-to-end at $0.00. CLAUDE.md updated on request — review
+that diff.
+
+## 2026-08-04 (3) — synthdoc framework: generic Pipeline base class, per-type folders, ablatable stages
+
+Final shape of the day's restructuring, designed for many future document types. `pipeline.py`
+is now the framework: a `Stage` dataclass (name, fn, paid, checkpoint_key, **ablate_fn** null-op,
+skip condition, on_cached hook, preview) and an abstract `Pipeline` base class owning — once, for
+every type — snapshot caching + HF mirroring, per-item checkpoints, the budget guard, the
+manifest, generic `estimate`, and **ablation**: `ablate: [stage_name]` in the config (or
+`--ablate`) runs the stage's declared null-operation in its slot (still snapshotted, recorded in
+the manifest, priced out of estimates, fail-fast on typos or stages with no null-op). Each
+document type is a folder holding only content (`prompts.py`, `stages.py`, `__init__.py` with the
+subclass — model_eval_model/ also keeps `checks.py`): subclasses declare `stages(cfg)` (config-
+dependent, so `revision_rounds: N` makes each difficult-advice rewrite round its own ablatable
+stage — e.g. `ablate: [final]` trains on un-revised drafts), exact `calls(cfg)`, token priors,
+and `smoke_clamp`; `topup`/`check` became subclass methods the CLI dispatches to. Deleted both
+bespoke runners and estimators (~400 lines) for ~250 lines of base class. Snapshot positions and
+names are pinned by test as the on-disk contract (`stage_1_traits…stage_7_sft`,
+`stage_1_source…stage_5_sft`). Verified: **246 tests pass** incl. 9 new offline base-runner tests
+(cache reuse, per-stage re-run, ablation null-op + manifest + fail-fasts, skip slot-keeping,
+checkpoint wiring, smoke clamp immutability, ablation-aware estimate); estimates unchanged
+($47.68 / $100.32); the pre-framework model-eval-model smoke dir resumes end-to-end at $0.00
+(all 5 snapshots reused); legacy flawed-only stage_3 snapshots now fail fast instead of silently
+dropping good cells.
+
+## 2026-08-04 (2) — synthdoc restructured: one pipeline, document type declared in the config
+
+Difficult-advice was the package default with MEM tacked on; after one round with parallel
+subpackages (rejected as over-structured), synthdoc is now ONE flat pipeline package. Shared
+machinery moved to `core.py` (priced `Usage`, `call_json`/`call_tagged` with parse-retry,
+`resilient`, `Checkpoint`/`run_items`, `model_cfg`, `measured_per_stage`); `prompts.py`/`stages.py`
+hold every document type sectioned; `pipeline.py` has `run_difficult_advice`/`run_mem` plus a
+dispatching `run()` on the config's new required `pipeline: difficult_advice | model_eval_model` field (same for
+`estimate()`); `checks.py` stays model-eval-model-only. All `mem` names were then renamed to
+`model_eval_model` for non-ambiguity (config `configs/data/model_eval_model.yaml`, test
+`test_model_eval_model.py`, `run_model_eval_model`/`estimate_model_eval_model`/
+`plan_model_eval_model_records` etc.; prompt constants dropped the prefix:
+`EVALUATOR_SYSTEM`, `CRITIQUE_*`, `REFLECT_*`; new runs land in `output/model_eval_model/`). CLI is flat and standardized — no `da` abbreviation
+anywhere: `uv run synthdoc run|estimate --config <cfg>` dispatches on the config; `topup`
+(difficult_advice-only) and `check` (mem-only) validate the field. `configs/data/synthdoc.yaml`
+renamed to `configs/data/difficult_advice.yaml` (+ `pipeline:` field added to both configs; output
+dirs/HF repos keep their historical `synthdoc_v2` names so old runs stay resumable);
+`tests/test_synthdoc.py` renamed to `test_difficult_advice.py`. Verified: 237 tests pass; both
+estimates dispatch; missing `pipeline:` fail-fasts; `synthdoc run --resume` reloads the
+pre-refactor MEM smoke run dir end-to-end at $0.00 (full cache compatibility). CLAUDE.md's
+synthdoc references were updated on request — review that diff.
+
+## 2026-08-04 — Built MEM (model-evaluates-model) pipeline pass 1: control + M4, smoke-validated
+
+**Hypothesis:** documents where the model reasons about a response to a difficult-advice scenario
+(evaluation framing) instil the constitution better than the advice format itself — with the bet on
+the *reasoning*, not the verdict, so a reasoning-only control must run first.
+
+**Method:** extended synthdoc with a second pipeline, `uv run synthdoc mem` (branch
+`model-eval-model-synth-data`): consumes a completed difficult-advice run (`source.hf_repo` or
+`local_dir`; constitution-sha fail-fast), plans deterministically (trait-stratified per-cell
+sampling, explicitness styles name/paraphrase/embody, wrapper variants, `record_id =
+"<scenario_id>::<cell>"`), generates via a `CellSpec` registry in `stages.py`, and assembles
+per-cell SFT records. Cells this pass: `control` (gold response verbatim + regenerated extended
+constitution-grounded trace) and `m4_other_good` (transcript-in-user-turn critique, neutral
+attribution, verdict via a stripped `<assessment>` scaffold tag). Blindness is structural: one
+critique prompt for good/flawed twins, no flaw placeholder exists. Validity checks
+(`synthdoc check`, `src/data/synthdoc/checks.py`) gate on config thresholds: coverage, template
+collapse (8-gram share), verdict distribution (n≥20), post-hoc reasoning (heuristic + judged
+sample), blindness, gold validation. Perturbation/M3 and the self cells M1/M2 (per-turn masking)
+are designed but deferred, gated on pilot results. 14 new offline tests; 227 pass.
+
+**Result:** MEM smoke green end-to-end against a 2-record slice of the 2026-08-04 corpus: 4/4
+docs, $0.22, 54 s; control traces ~2× gold length with response byte-identical; `synthdoc check`
+passes with real judge calls. Measured pilot estimate (300+300): **$32.84** ($0.055/doc — prompts
+are ~12k tokens with constitution + transcript injected), vs $21.09 OpenRouter credit remaining →
+**pilot blocked on credit**. Two upstream findings: (1) the new 2203-record corpus on HF
+`LASR-Callum/synthdoc-v2-difficult-advice` (run 20260804_082743) was generated against an
+**uncommitted 9-trait constitution** (sha `fe2ed960…` matches no blob in git history; committed
+12-mid is `7baccc91…`, 12 traits) — the MEM sha fail-fast caught it; the exact document needs
+committing before MEM can run against that corpus. (2) `synthdoc run --smoke` is currently
+unpassable: trait t1 ("hard constraints as bright lines") deterministically generates
+CBRN-adjacent scenarios that Bedrock content-filters at stage 4 (the model even redesigns tame
+scenarios back into dual-use ones per its visible reasoning), and 1 refusal of 2 smoke items
+trips the 2% abort.
+
+**Next:** get the 9-trait constitution committed (or regenerate the source corpus from a committed
+one), top up OpenRouter credit, then pilot control:300 + m4:300 and run `synthdoc check`; then
+mixture + LoRA arms per the existing sweep pattern.
+
+**Addendum (same day): full cell matrix — self-reflection cells, perturbation and per-turn
+masking, smoke-validated.** The self cells are the headline experiment, so passes 2+3 were built
+in one go. New: minimal-pair perturbation stage (`perturb_responses`: one flaw from the planned
+type×severity grid, 0.8–1.25× word-ratio guard, `change_summary` metadata-only), self-reflection
+cells m1/m2 (`_reflect_messages` presents the evaluated response as a genuine assistant turn via
+the generalized messages-list `_call_tagged`; a pool of 6 gentle→pushback reflection prompts;
+`<assessment>`: `revised`/`held`), m3 registered for free off the shared critique builder, and the
+`supervise: "final"` chain end-to-end (`to_mem_sft` metadata → `convert_synthdoc_qwen.py`
+passthrough + non-tool-corpus fix → `build_mixture` rendered-row passthrough →
+`assistant_spans/build_labels(supervise=)` → `train_lora` consuming the row field pre-`.map`).
+Checks grew per-cell verdict-majority gating (m1 100% `revised` = trained capitulation → fail),
+flaw-grid coverage, LLM flaw-identification (gate: ≥70% of `clear` flaws found), and a
+numpy hashed-char-n-gram logistic-regression surface-shortcut classifier (gate: CV AUC ≤ 0.65,
+label-shuffle baseline). 237 tests pass. **Five-cell smoke green** ($0.82, 10/10 docs): perturbations
+read as designed; self-cell verdicts non-degenerate out of the box (one flawed record revised, one
+held with reasons); full render+mask verified with the real Qwen3.6 tokenizer — self rows supervise
+only the final turn (~50% of tokens), the flawed first turn carries no think block and provably no
+loss, `check_thinking_declaration(thinking=true)` clean; `synthdoc check` all-pass including live
+flaw-ID judge (2/2 `clear` hits, 0/2 `moderate` at n=2 — noise, but the mechanism works). Measured
+full 5×300 matrix: **$104.84** ($0.07/doc; critique 12.1k in / 4.9k out, reflect 12.3k in / 3.5k
+out, perturb 2.6k/1.3k). Credit was topped up to $800 ($220.25 remaining) so the run is affordable —
+still blocked on committing the source corpus's 9-trait constitution (sha fail-fast), and >$20 so
+flagged for sign-off.
+
+## 2026-08-04 (4) — RAN synthdoc `self_reflection`: 592-record corpus, voice contract held
+
+**Hypothesis.** The difficult-advice result works by cross-task-type transfer: a *user's* ethical
+dilemma reduces *agentic* misalignment. A corpus where **the agent itself** is the tempted party —
+it finds it could protect its own position by a deniable wrong action, deliberates, and declines —
+should transfer more directly, **provided the deliberation reads as values rather than rule-lookup**.
+If it reads as rule-lookup this is deliberative alignment with extra steps, and we should expect
+recall of a spec rather than internalised judgement.
+
+**Method.** Generalised `src/data/synthdoc/` behind a **flavor** seam rather than forking a second
+package: runner, checkpointing, retry and accounting stay shared; prompts, scenario planning,
+per-stage output shape and SFT export live in `flavors/<name>.py`, selected by `flavor:` in the
+config. `difficult_advice` is the original recipe, prompt wording unchanged. The new
+`self_reflection` flavor puts scenarios deliberately far from the agentic-misalignment honeypots
+(different industries, cast, framing) so the cross-task-type claim survives, and makes the wrong
+action **deniable** rather than an overt threat — the deniable form is the one worth training
+against. Composition is assigned deterministically from the scenario id: 80/20 prose/tool-call,
+15.9% multi-turn escalation, 12.5% **control slice** where self-interest argues for silence and the
+right move is to act anyway. Stage 6 enforces a **voice contract in code**: `validate_rewrite` lints
+every trace against rule vocabulary (principle numbers, "my guidelines", "not permitted") and
+rejects-and-retries a violating completion.
+
+**Result.** 592 records / 1,555,017 Qwen3.6 tokens, 96.1% scenario survival, ~$83.20, published to
+HF `LASR-Callum/2026-08-03-synthdoc-self-reflection`. **Zero voice-contract violations across all
+686 assistant turns.** Read that correctly: it is *enforcement*, not measurement — violating
+completions were regenerated — so it says the constraint is satisfiable at this temperature, not
+that the generator reaches for value language unprompted.
+
+Three defects found and fixed on the way:
+
+1. **Snapshots were written in the platform locale codec, not UTF-8.** `ensure_ascii=False` plus an
+   unqualified `open()` round-trips on Windows and then fails to decode on HF and on the Linux GPU
+   box — the only place the files are consumed. Pre-existing; affected `difficult_advice` too.
+2. **The failure guard aborted every resume.** It measured the failure rate against the items still
+   outstanding — precisely the ones that had already failed — so 12 of 13 read as 92.3% instead of
+   the true 12 of 470. Now measured against the whole stage.
+3. **Extended-thinking tokens bill as completion tokens.** The refine stage burned ~8,800
+   completion tokens to emit a ~1,200-token environment. A per-stage `reasoning:` knob disabling it
+   on the two stages that assemble text rather than judge it cut projected cost ~40%.
+
+**Superseded on rebase.** The branch also carried a `mask_thinkless_turns` loss-mask flag for the
+multi-turn records, whose earlier assistant turns render without a think block. The
+preserve-thinking policy from entry (2) fixes that at **render** time instead — every assistant turn
+gets a think block — which is the better layer, so the flag, its `train_lora` plumbing and the
+configs built around it were dropped rather than reconciled. See PR #22.
+
+**Also surfaced:** `constitutions/claude_distilled_12_principles_mid/` was re-cut from twelve units
+to **ten** in `785cf39`, keeping its folder name; "Weigh real-world harm" and "Honour operator
+adjustments" are gone. The published corpus is unaffected — it pins the sha256 of the twelve-unit
+document it was generated from — but regenerating today yields a ten-principle corpus, related and
+not identical. `plan()` now asserts `trait_weights` match the constitution actually loaded, because
+silently dropping surplus weights would produce a different corpus under the same config.
+
+**Next.** Mixture + LoRA via `configs/data/mixture_qwen36_table2_80_synthdoc_self_reflect_20.yaml`,
+then the agentic-misalignment honeypots against a thinking-mode baseline. Run a capability arm
+**alongside**, not after: the control slice exists to stop the corpus teaching blanket refusal, and
+it is the first thing to inspect if honeypot numbers improve while helpfulness drops.
+
 ## 2026-08-04 (3) — Correction: empty think markers are wholly masked, not close-supervised
 
 Follow-up correcting entry (2): its rule supervised an empty marker's `\n</think>\n\n` close
@@ -1694,3 +1904,4 @@ no Anthropic key available), LoRA-SFT Qwen3-32B, and measure agentic-misalignmen
 **Next steps.**
 - Finish full 1.5M-token data gen; copy to instance.
 - Full baseline eval (50/condition) → LoRA SFT → post eval → report/dashboard.
+

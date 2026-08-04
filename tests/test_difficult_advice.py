@@ -1,12 +1,12 @@
-# ABOUTME: Offline tests for synthdoc: constitution segmentation and SFT export.
-# ABOUTME: Run: uv run pytest tests/test_synthdoc.py -q
+# ABOUTME: Offline tests for the difficult-advice pipeline and shared synthdoc core.
+# ABOUTME: Run: uv run pytest tests/test_difficult_advice.py -q
 
 from __future__ import annotations
 
 
 
 from src.data.synthdoc.constitution import segment  # noqa: E402
-from src.data.synthdoc.stages import cost_of, to_sft  # noqa: E402
+from src.data.synthdoc.core import cost_of  # noqa: E402
 
 CONSTITUTION = "constitutions/archive/claude_distilled_8_principles_v1/constitution.md"
 
@@ -35,9 +35,18 @@ def test_style_guidance_is_separate_from_traits():
 def test_segments_specgen_heading_format():
     # The default constitution since 2026-08-03: specgen's mid arm, whose units are
     # numbered H2 headings rather than v1's bolded list items.
-    traits, style = segment("constitutions/claude_distilled_12_principles_mid/constitution.md")
-    assert len(traits) == 12
-    assert [t.trait_id for t in traits] == [f"t{i}" for i in range(1, 13)]
+    import re
+    from pathlib import Path
+
+    path = "constitutions/claude_distilled_12_principles_mid/constitution.md"
+    # Counted from the document rather than hardcoded: this file has been re-cut once
+    # already (twelve units -> ten on 2026-08-04, while keeping its folder name), and a
+    # literal here just goes red without telling anyone whether segmentation still works.
+    expected = sum(1 for line in Path(path).read_text(encoding="utf-8").splitlines()
+                   if re.match(r"^##\s+\d+\.", line))
+    traits, style = segment(path)
+    assert len(traits) == expected
+    assert [t.trait_id for t in traits] == [f"t{i}" for i in range(1, expected + 1)]
     for t in traits:
         assert t.name and len(t.text) > 60, f"{t.trait_id} looks truncated"
         assert "*Why:*" in t.text, f"{t.trait_id} lost its rationale block"
@@ -48,6 +57,13 @@ def test_segments_specgen_heading_format():
 
 
 def test_sft_export_carries_reasoning_and_trait_metadata():
+    # The export is now the real config's chat_export stage -- test through it.
+    import yaml
+
+    from src.data.synthdoc.operators import op_chat_export
+
+    sft_spec = next(s for s in yaml.safe_load(
+        open("configs/data/difficult_advice.yaml"))["stages"] if s["name"] == "sft")
     rec = {
         "scenario_id": "t1_s000", "trait_id": "t1", "trait_name": "Honesty",
         "trait_text": "**Honesty.** Do not deceive.", "domain": "work",
@@ -55,7 +71,7 @@ def test_sft_export_carries_reasoning_and_trait_metadata():
         "system": "You are a helpful assistant.", "user": "Should I lie?",
         "reasoning": "The tension is...", "response": "Here is what I'd consider...",
     }
-    out = to_sft([rec])
+    out = op_chat_export(sft_spec, {}).fn(None, [rec], None)
     assert len(out) == 1
     msgs = out[0]["messages"]
     assert [m["role"] for m in msgs] == ["system", "user", "assistant"]
@@ -71,7 +87,7 @@ def test_cost_of_prices_known_models_and_zeroes_unknown():
 
 
 def test_checkpoint_survives_abort_and_resume_skips_completed_work(tmp_path):
-    from src.data.synthdoc.stages import Checkpoint, _run_items
+    from src.data.synthdoc.core import Checkpoint, run_items
 
     items = [{"scenario_id": f"s{i}", "v": i} for i in range(100)]
     path = tmp_path / "partial.jsonl"
@@ -83,7 +99,7 @@ def test_checkpoint_survives_abort_and_resume_skips_completed_work(tmp_path):
 
     ck = Checkpoint(path)
     try:
-        _run_items(items, flaky, workers=8, desc="t", ckpt=ck)
+        run_items(items, flaky, workers=8, desc="t", ckpt=ck)
     except RuntimeError:
         pass  # 3% failure trips the guard, which is the crash we are protecting against
     assert len(ck.done) == 97, "completed work was lost when the stage aborted"
@@ -94,7 +110,7 @@ def test_checkpoint_survives_abort_and_resume_skips_completed_work(tmp_path):
         calls.append(it["scenario_id"])
         return {**it, "out": it["v"] * 2}
 
-    out = _run_items(items, good, workers=8, desc="t", ckpt=Checkpoint(path))
+    out = run_items(items, good, workers=8, desc="t", ckpt=Checkpoint(path))
     assert len(out) == 100
     assert sorted(calls) == ["s42", "s7", "s88"], "resume re-ran already-saved items"
     assert [r["out"] for r in out] == [i * 2 for i in range(100)]

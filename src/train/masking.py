@@ -28,7 +28,7 @@ THINK_PREFILL = QWEN36_PROFILE.prefill
 EMPTY_THINK = QWEN36_PROFILE.empty_think
 
 
-def assistant_spans(text: str) -> list[tuple[int, int]]:
+def assistant_spans(text: str, supervise: str = "all") -> list[tuple[int, int]]:
     """Find the character spans of assistant content in a rendered chat string.
 
     A span runs from just after the `<|im_start|>assistant\\n` header through the
@@ -38,10 +38,14 @@ def assistant_spans(text: str) -> list[tuple[int, int]]:
 
     Args:
         text: A chat conversation already rendered by the Qwen chat template.
+        supervise: "all" trains every assistant turn; "final" only the last one --
+            how model-eval-model's self-reflection records keep their first (possibly
+            flawed) response as context without making it a training target.
 
     Returns:
         Character spans as (start, end) pairs, in order.
     """
+    assert supervise in ("all", "final"), f"unknown supervise mode: {supervise!r}"
     spans: list[tuple[int, int]] = []
     pos = 0
     while (i := text.find(ASSISTANT_HEADER, pos)) != -1:
@@ -52,7 +56,7 @@ def assistant_spans(text: str) -> list[tuple[int, int]]:
         spans.append((start, end))
         pos = end
     assert spans, "no assistant turn found; nothing would be supervised"
-    return spans
+    return spans[-1:] if supervise == "final" else spans
 
 
 def forced_spans(text: str, spans: list[tuple[int, int]],
@@ -77,7 +81,8 @@ def forced_spans(text: str, spans: list[tuple[int, int]],
 
 def build_labels(text: str, tokenizer, max_length: int,
                  prefill: str = THINK_PREFILL,
-                 empty_think: str = EMPTY_THINK) -> dict[str, list[int]]:
+                 empty_think: str = EMPTY_THINK,
+                 supervise: str = "all") -> dict[str, list[int]]:
     """Tokenize a rendered conversation and label exactly its generated tokens.
 
     Every token outside an assistant span is -100, and so is every token of a turn's
@@ -99,8 +104,10 @@ def build_labels(text: str, tokenizer, max_length: int,
     Returns:
         A dict with `input_ids`, `attention_mask` and `labels`.
     """
-    spans = assistant_spans(text)
-    prefills = forced_spans(text, spans, prefill, empty_think)
+    spans = assistant_spans(text, supervise=supervise)
+    # Forced heads are masked on EVERY turn (supervised or not) -- an unsupervised
+    # first turn is wholly -100 already, so this only matters for the supervised ones.
+    prefills = forced_spans(text, assistant_spans(text), prefill, empty_think)
     cuts = sorted({0, len(text), *(edge for span in prefills for edge in span)})
 
     ids: list[int] = []

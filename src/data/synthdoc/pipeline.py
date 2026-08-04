@@ -1,269 +1,284 @@
-# ABOUTME: The six-stage runner replicating the Teaching Claude Why difficult-advice pipeline.
-# ABOUTME: Each stage writes a complete snapshot and mirrors it to HF before the next begins.
+# ABOUTME: The config-driven pipeline engine: builds Stage objects from the config's
+# ABOUTME: `stages:` list and owns caching, checkpoints, ablation, budget, manifest, estimates.
 
 from __future__ import annotations
 
 import hashlib
-import sys
+import json
+import math
 import time
 from pathlib import Path
 from typing import Any
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from src.endpoints.openrouter import OpenRouterClient  # noqa: E402
-from utils import git_sha, timestamp  # noqa: E402
+from src.utils import git_sha, timestamp
 
-from . import stages  # noqa: E402
-from .constitution import full_text, segment  # noqa: E402
-from .hf_cache import StageCache  # noqa: E402
-
-# (index, name, which config block supplies the model) in execution order.
-STAGES = [
-    (1, "traits", None),
-    (2, "scenarios", "scenarios"),
-    (3, "draft_prompts", "draft"),
-    (4, "refined_prompts", "refine"),
-    (5, "draft_responses", "respond"),
-    (6, "final", "rewrite"),
-]
+from .constitution import full_text
+from .core import PRICES, Checkpoint, Ctx, Stage, Usage, measured_per_stage
+from .hf_cache import StageCache
+from .operators import OPERATORS
 
 
-def _model_cfg(cfg: dict, key: str) -> dict[str, Any]:
-    """Return the merged model settings for one stage.
+def build_stages(cfg: dict) -> list[Stage]:
+    """Materialise the config's `stages:` list via the operator registry.
 
-    Args:
-        cfg: Full run config.
-        key: Stage key under `models`.
-
-    Returns:
-        Dict with model, temperature and max_tokens.
+    The engine attaches the generic ablation null-op here: a stage entry with
+    `ablate_with: {field: source_field}` gets a field-copy null-operation; entries
+    without it cannot be ablated.
     """
-    defaults = cfg.get("defaults", {})
-    block = cfg["models"][key]
-    return {
-        "model": block["model"],
-        "temperature": float(block.get("temperature", defaults.get("temperature", 1.0))),
-        "max_tokens": int(block.get("max_tokens", defaults.get("max_tokens", 4096))),
-    }
+    assert cfg.get("stages"), "config must declare a `stages:` list"
+    out = []
+    for sc in cfg["stages"]:
+        kind = sc.get("kind")
+        if kind not in OPERATORS:
+            raise ValueError(f"stage {sc.get('name')!r}: unknown kind {kind!r}. "
+                             f"Operators: {sorted(OPERATORS)}")
+        st = OPERATORS[kind](sc, cfg)
+        if "ablate_with" in sc:
+            copy_map = dict(sc["ablate_with"])
+            st = Stage(**{**st.__dict__,
+                          "ablate_fn": lambda rs, m=copy_map:
+                          [{**r, **{f: r[src] for f, src in m.items()}} for r in rs]})
+        out.append(st)
+    names = [s.name for s in out]
+    assert len(set(names)) == len(names), f"duplicate stage names: {names}"
+    return out
+
+
+def _validate_ablate(ablate: list[str], stage_list: list[Stage]) -> None:
+    """Fail fast on ablation typos or attempts to ablate a load-bearing stage."""
+    by_name = {s.name: s for s in stage_list}
+    unknown = [a for a in ablate if a not in by_name]
+    if unknown:
+        raise ValueError(f"ablate names not in this pipeline's stages: {unknown}. "
+                         f"Stages: {[s.name for s in stage_list]}")
+    fixed = [a for a in ablate if by_name[a].ablate_fn is None]
+    if fixed:
+        raise ValueError(f"stage(s) {fixed} declare no `ablate_with` null-operation "
+                         f"and cannot be ablated")
 
 
 def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
-    """Run the full pipeline, caching every stage.
+    """Run the config's pipeline, caching every stage snapshot and mirroring to HF.
 
     Args:
-        cfg: Run config (see configs/data/synthdoc.yaml).
-        smoke: Restrict to 2 traits x 1 scenario and shrink the budget, to validate wiring.
-        resume: Existing run directory to continue. Completed stage snapshots are reused
-            and partially-completed stages pick up from their checkpoint, so a crash or
-            an interrupt only costs the items that were in flight.
+        cfg: Run config: `pipeline:` (label), `stages:` (the pipeline itself),
+            `models:`, prompts, and the document-type knobs the stages read.
+        smoke: Merge the config's `smoke:` overrides and route to the smoke HF repo.
+        resume: Existing run directory to continue; completed snapshots are reused and
+            checkpointed stages pick up per item.
 
     Returns:
         A manifest dict describing the run.
     """
     started = time.time()
     ts = timestamp()
+    original_cfg = cfg
+    cfg = json.loads(json.dumps(cfg))  # stages must never mutate the caller's config
+    if smoke:
+        cfg.update(cfg.get("smoke") or {})
+
     if resume:
         run_dir = Path(resume)
         assert run_dir.exists(), f"resume dir does not exist: {run_dir}"
         print(f">>> resuming into {run_dir}")
     else:
         run_dir = Path(cfg["output_dir"]) / (f"smoke_{ts}" if smoke else ts)
-    repo = cfg.get("hf_repo")
-    if smoke:
-        repo = cfg.get("hf_repo_smoke")  # never pollute the real dataset from a smoke run
+    repo = cfg.get("hf_repo_smoke") if smoke else cfg.get("hf_repo")
     cache = StageCache(run_dir, repo, private=bool(cfg.get("hf_private", False)))
 
     workers = int(cfg.get("workers", 8))
     budget = float(cfg.get("budget_usd", 0)) or None
-    client = OpenRouterClient()
-    usage = stages.Usage()
-    # Per-stage wall clock, so a later run can be scheduled from real numbers rather
-    # than from a guess about per-call latency.
+    usage = Usage()
+    ctx = Ctx(cfg=cfg, usage=usage, workers=workers, run_dir=run_dir, smoke=smoke,
+              vars={"constitution": full_text(cfg["constitution"])})
+
+    stage_list = build_stages(cfg)
+    ablate = [str(a) for a in (cfg.get("ablate") or [])]
+    _validate_ablate(ablate, stage_list)
+
+    records: list[dict] = []
     durations: dict[str, float] = {}
-
-    def timed(name: str, fn):
-        """Run a stage, recording its wall clock."""
-        t0 = time.time()
-        out = fn()
-        durations[name] = round(time.time() - t0, 1)
-        return out
-
-    def guard(stage: str) -> None:
-        """Stop before the next stage if the budget is already spent."""
-        if budget is not None and usage.usd > budget:
-            raise RuntimeError(
-                f"budget_usd=${budget:.2f} exceeded (${usage.usd:.2f}) after {stage}. "
-                f"Snapshots up to this stage are in {run_dir}; raise budget_usd and re-run "
-                f"to resume."
-            )
-
-    # --- stage 1: segment the constitution (deterministic) --------------------------
-    traits, style_guidance = segment(cfg["constitution"])
-    constitution = full_text(cfg["constitution"])
-    if smoke:
-        traits = traits[:2]
-    print(f">>> stage 1: {len(traits)} traits -> {[t.trait_id for t in traits]}")
-    cache.save(1, "traits", [t.as_dict() for t in traits])
-
-    per_trait = 1 if smoke else int(cfg["scenarios_per_trait"])
-    per_call = 1 if smoke else int(cfg.get("scenarios_per_call", per_trait))
-
-    # --- stage 2: scenarios ---------------------------------------------------------
-    if cache.has(2, "scenarios"):
-        scenarios = cache.load(2, "scenarios")
-        print(f">>> stage 2: reused {len(scenarios)} cached scenarios")
-    else:
-        m = _model_cfg(cfg, "scenarios")
-        scenarios = timed("scenarios", lambda: stages.generate_scenarios(
-            traits, client, usage, per_trait=per_trait, per_call=per_call,
-            workers=workers, **m))
-        cache.save(2, "scenarios", scenarios)
-    print(f">>> stage 2: {len(scenarios)} scenarios")
-    print(f"    FIRST: [{scenarios[0]['trait_name']}] {scenarios[0]['situation'][:220]}")
-    guard("stage 2")
-
-    # --- stage 3: draft the prompt --------------------------------------------------
-    if cache.has(3, "draft_prompts"):
-        drafts = cache.load(3, "draft_prompts")
-        print(f">>> stage 3: reused {len(drafts)} cached drafts")
-    else:
-        drafts = timed("draft", lambda: stages.draft_prompts(
-            scenarios, client, usage, workers=workers, **_model_cfg(cfg, "draft")))
-        cache.save(3, "draft_prompts", drafts)
-    print(f"    FIRST DRAFT USER: {drafts[0]['draft_user'][:220]}")
-    guard("stage 3")
-
-    # --- stage 4: refine the prompt -------------------------------------------------
-    if cache.has(4, "refined_prompts"):
-        refined = cache.load(4, "refined_prompts")
-        print(f">>> stage 4: reused {len(refined)} cached refinements")
-    else:
-        refined = timed("refine", lambda: stages.refine_prompts(
-            drafts, client, usage, constitution=constitution, workers=workers,
-            ckpt=stages.Checkpoint(run_dir / "stage_4_refined_prompts.partial.jsonl"),
-            **_model_cfg(cfg, "refine")))
-        cache.save(4, "refined_prompts", refined)
-    print(f"    FIRST REFINED USER: {refined[0]['user'][:220]}")
-    guard("stage 4")
-
-    # --- stage 5: generate the response ---------------------------------------------
-    if cache.has(5, "draft_responses"):
-        drafted = cache.load(5, "draft_responses")
-        print(f">>> stage 5: reused {len(drafted)} cached responses")
-    else:
-        drafted = timed("respond", lambda: stages.generate_responses(
-            refined, client, usage, style_guidance=style_guidance, workers=workers,
-            ckpt=stages.Checkpoint(run_dir / "stage_5_draft_responses.partial.jsonl"),
-            **_model_cfg(cfg, "respond")))
-        cache.save(5, "draft_responses", drafted)
-    print(f"    FIRST REASONING: {drafted[0]['draft_reasoning'][:220]}")
-    guard("stage 5")
-
-    # --- stage 6: rewrite against the constitution ----------------------------------
-    if cache.has(6, "final"):
-        final = cache.load(6, "final")
-        print(f">>> stage 6: reused {len(final)} cached rewrites")
-    else:
-        final = timed("rewrite", lambda: stages.rewrite_responses(
-            drafted, client, usage, constitution=constitution, workers=workers,
-            ckpt=stages.Checkpoint(run_dir / "stage_6_final.partial.jsonl"),
-            **_model_cfg(cfg, "rewrite")))
-        cache.save(6, "final", final)
-    print(f"    FIRST FINAL RESPONSE: {final[0]['response'][:220]}")
-
-    # --- training-ready export ------------------------------------------------------
-    sft = stages.to_sft(final)
-    cache.save(7, "sft", sft)
+    counts: dict[str, int] = {}
+    for i, st in enumerate(stage_list, start=1):
+        label = f"stage {i} ({st.name})"
+        if st.skip and st.skip(ctx, records):
+            print(f">>> {label}: not applicable -- skipped")
+            continue
+        if cache.has(i, st.name):
+            records = cache.load(i, st.name)
+            if st.on_cached:
+                st.on_cached(ctx, records)
+            print(f">>> {label}: reused {len(records)} cached records")
+        else:
+            # Stop BEFORE starting to spend more, never after the money is gone -- a
+            # run that finishes its last paid stage over budget still completes and
+            # keeps everything it paid for.
+            if st.paid and budget is not None and usage.usd > budget:
+                raise RuntimeError(
+                    f"budget_usd=${budget:.2f} exceeded (${usage.usd:.2f}) before "
+                    f"{label}. Snapshots up to this stage are in {run_dir}; raise "
+                    f"budget_usd and re-run to resume.")
+            ckpt = Checkpoint(run_dir / f"stage_{i}_{st.name}.partial.jsonl",
+                              key=st.checkpoint_key) if st.checkpoint_key else None
+            t0 = time.time()
+            if st.name in ablate:
+                records = st.ablate_fn(records)
+                print(f">>> {label}: ABLATED -- null-operation applied to "
+                      f"{len(records)} records")
+            else:
+                records = st.fn(ctx, records, ckpt)
+            durations[st.name] = round(time.time() - t0, 1)
+            cache.save(i, st.name, records)
+            print(f">>> {label}: {len(records)} records")
+        counts[st.name] = len(records)
+        if st.preview and records:
+            print(f"    FIRST: {st.preview(records[0])[:220]}")
 
     manifest = {
         "run_id": ts,
+        "pipeline": cfg.get("pipeline", "unnamed"),
         "git_sha": git_sha(),
         "smoke": smoke,
         # Which spec actually conditioned this corpus — the config path alone is not
         # provenance, since the file behind it can change between runs.
-        "constitution_sha256": hashlib.sha256(constitution.encode()).hexdigest(),
-        "config": cfg,
-        # What this run ACTUALLY used, which differs from cfg under --smoke. The cost
-        # estimator rescales the scenario stage by these, so they must be the real values.
-        "effective": {"n_traits": len(traits), "scenarios_per_trait": per_trait,
-                      "scenarios_per_call": per_call},
-        "counts": {
-            "traits": len(traits), "scenarios": len(scenarios), "drafts": len(drafts),
-            "refined": len(refined), "responses": len(drafted), "final": len(final),
-            "sft": len(sft),
-        },
+        "constitution_sha256": hashlib.sha256(
+            ctx.vars["constitution"].encode()).hexdigest(),
+        "config": original_cfg,
+        "effective": (cfg.get("smoke") or {}) if smoke else {},
+        "ablated": ablate,
+        "counts": counts,
         "usage": usage.as_dict(),
         "wall_clock_s": round(time.time() - started, 1),
         "stage_seconds": durations,
         "workers": workers,
         "hf_repo": repo,
         "run_dir": str(run_dir),
+        **ctx.manifest_extra,
     }
     cache.save_json("manifest.json", manifest)
 
-    assert len(sft) == len(final), f"sft={len(sft)} != final={len(final)}"
-    kept = 100 * len(final) / max(len(scenarios), 1)
-    print(f">>> {len(final)}/{len(scenarios)} scenarios survived all stages ({kept:.1f}%)")
-    print(f"\n>>> {len(sft)} training records in {run_dir}")
+    print(f"\n>>> {counts.get(stage_list[-1].name, 0)} final records in {run_dir}")
     print(f">>> spend ${usage.usd:.2f} | {manifest['wall_clock_s']}s")
     if repo:
         print(f">>> https://huggingface.co/datasets/{repo}")
     return manifest
 
 
-def topup(cfg: dict, resume: str, traits: list[str], n_per_trait: int) -> dict:
-    """Run stage 6 for specific traits only, until each has `n_per_trait` rewrites.
+# --- the estimator ------------------------------------------------------------------
 
-    A run stopped early covers only the traits its scenarios happened to reach, since
-    scenarios are ordered by trait. This rewrites just enough additional stage-5 responses
-    to bring the named traits up to a target count, reusing the stage-6 checkpoint so
-    nothing already paid for is repeated.
+
+def n_examples(cfg: dict) -> int:
+    """Final training examples a full run yields."""
+    if "cells" in cfg:
+        return sum(int(n) for n in cfg["cells"].values() if int(n) > 0)
+    if "total_scenarios" in cfg:
+        return int(cfg["total_scenarios"])
+    return int(cfg.get("n_traits", 8)) * int(cfg["scenarios_per_trait"])
+
+
+def _calls(cfg: dict) -> dict[str, int]:
+    """Exact API-call counts per model key, derived from the stage kinds, ablation-aware."""
+    from .cells import CELLS
+
+    ablate = set(cfg.get("ablate") or [])
+    calls: dict[str, int] = {}
+    n_docs = n_examples(cfg)
+    for sc in cfg["stages"]:
+        kind, name = sc["kind"], sc["name"]
+        if name in ablate:
+            continue
+        if kind == "scenarios":
+            per_trait = int(cfg["scenarios_per_trait"])
+            per_call = int(cfg.get("scenarios_per_call", per_trait))
+            n = int(cfg.get("n_traits", 8)) * math.ceil(per_trait / per_call)
+        elif kind == "scenarios_weighted":
+            from .constitution import segment as _segment
+            from .operators import plan_weighted_batches
+            n = len(plan_weighted_batches(_segment(cfg["constitution"])[0], cfg))
+        elif kind in ("llm_json", "llm_tagged"):
+            n = n_docs
+        elif kind == "perturb_pairs":
+            enabled = {c: int(v) for c, v in cfg["cells"].items() if int(v) > 0}
+            unknown = sorted(set(enabled) - set(CELLS))
+            if unknown:
+                raise ValueError(f"unregistered cell(s) enabled: {unknown}. "
+                                 f"Registered: {sorted(CELLS)}")
+            n = sum(v for c, v in enabled.items()
+                    if CELLS[c].response_kind == "flawed")
+        elif kind == "generate_cells":
+            enabled = {c: int(v) for c, v in cfg["cells"].items() if int(v) > 0}
+            unknown = sorted(set(enabled) - set(CELLS))
+            if unknown:
+                raise ValueError(f"unregistered cell(s) enabled: {unknown}. "
+                                 f"Registered: {sorted(CELLS)}")
+            for c, v in enabled.items():
+                key = CELLS[c].model_key
+                calls[key] = calls.get(key, 0) + v
+            continue
+        else:  # deterministic/free kinds
+            continue
+        calls[sc["model"]] = calls.get(sc["model"], 0) + n
+    return calls
+
+
+def estimate(cfg: dict, measured_manifest: str | None = None) -> dict[str, Any]:
+    """Estimate the USD cost of a full run of the config's pipeline.
 
     Args:
-        cfg: Run config.
-        resume: Run directory holding the stage snapshots.
-        traits: Trait ids to top up, e.g. ["t5", "t6"].
-        n_per_trait: Target completed rewrites per trait.
+        cfg: Run config (its `ablate:` list, if any, is priced out). Token priors come
+            from each model block's `assumed_tokens`.
+        measured_manifest: Optional manifest.json from a smoke run; per-call token
+            counts then come from its real per-stage usage. The scenarios kind is
+            rescaled to the full batch size.
 
     Returns:
-        A dict of per-trait counts after the top-up.
+        A per-stage breakdown plus the total.
     """
-    run_dir = Path(resume)
-    assert run_dir.exists(), f"run dir does not exist: {run_dir}"
-    constitution = full_text(cfg["constitution"])
-    client = OpenRouterClient()
-    usage = stages.Usage()
+    meas: dict[str, dict[str, float]] = {}
+    if measured_manifest:
+        meas, manifest = measured_per_stage(measured_manifest)
+        if any(sc["kind"] == "scenarios" for sc in cfg["stages"]):
+            # A smoke run asks for 1 scenario per call; a full run asks for
+            # `per_call`. Output scales with the batch size, so rescale.
+            per_trait = int(cfg["scenarios_per_trait"])
+            per_call = int(cfg.get("scenarios_per_call", per_trait))
+            eff = manifest.get("effective", {})
+            smoke_pc = int(eff.get("scenarios_per_call",
+                                   manifest["config"].get("scenarios_per_call", 0)))
+            if "scenarios" in meas and smoke_pc and smoke_pc != per_call:
+                meas["scenarios"]["out_per_call"] *= per_call / smoke_pc
 
-    drafted = [__import__("json").loads(line)
-               for line in (run_dir / "stage_5_draft_responses.jsonl").open()]
-    ckpt = stages.Checkpoint(run_dir / "stage_6_final.partial.jsonl")
+    calls = _calls(cfg)
+    rows = []
+    total = 0.0
+    for key in sorted(k for k, n in calls.items() if n > 0):
+        block = cfg["models"][key]
+        model = block["model"]
+        if key in meas:
+            tin, tout = meas[key]["in_per_call"], meas[key]["out_per_call"]
+            source = "measured"
+        else:
+            tin, tout = block["assumed_tokens"]["in"], block["assumed_tokens"]["out"]
+            source = "assumed"
+        price = PRICES.get(model, {"in": 0.0, "out": 0.0})
+        usd = calls[key] * (tin / 1e6 * price["in"] + tout / 1e6 * price["out"])
+        total += usd
+        rows.append({
+            "stage": key, "model": model, "calls": calls[key],
+            "tokens_in_per_call": round(tin), "tokens_out_per_call": round(tout),
+            "source": source, "usd": round(usd, 2),
+        })
 
-    have: dict[str, int] = {}
-    for r in ckpt.done.values():
-        have[r["trait_id"]] = have.get(r["trait_id"], 0) + 1
-    print(">>> current per-trait counts:", {t: have.get(t, 0) for t in traits})
-
-    todo = []
-    for t in traits:
-        need = n_per_trait - have.get(t, 0)
-        if need <= 0:
-            continue
-        pool = [d for d in drafted
-                if d["trait_id"] == t and d["scenario_id"] not in ckpt.done]
-        todo += pool[:need]
-        print(f"    {t}: need {need}, taking {len(pool[:need])}")
-    if not todo:
-        print(">>> nothing to do; every named trait already meets the target")
-        return have
-
-    print(f">>> rewriting {len(todo)} responses")
-    stages.rewrite_responses(todo, client, usage, constitution=constitution,
-                             workers=int(cfg.get("workers", 8)), ckpt=ckpt,
-                             **_model_cfg(cfg, "rewrite"))
-
-    after: dict[str, int] = {}
-    for r in ckpt.done.values():
-        after[r["trait_id"]] = after.get(r["trait_id"], 0) + 1
-    print(f">>> per-trait counts now: {dict(sorted(after.items()))}")
-    print(f">>> top-up spend ${usage.usd:.2f}")
-    return after
+    n_docs = n_examples(cfg)
+    return {
+        "pipeline": cfg.get("pipeline", "unnamed"),
+        "ablated": list(cfg.get("ablate") or []),
+        "final_training_examples": n_docs,
+        "per_stage": rows,
+        "total_usd": round(total, 2),
+        "usd_per_example": round(total / n_docs, 4) if n_docs else 0.0,
+        "note": ("Priced from a measured smoke run."
+                 if meas else
+                 "Priced from built-in assumptions. Run --smoke, then pass its "
+                 "manifest.json via --measured for a real estimate."),
+    }
