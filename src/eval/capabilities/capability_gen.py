@@ -50,11 +50,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.eval.capabilities.capability_metrics import (  # noqa: E402
     degeneracy_metrics,
     pattern_frequencies,
-    split_think,
     style_features,
 )
 from src.endpoints.openrouter import map_threaded  # noqa: E402
-from src.utils import read_jsonl, timestamp, write_run_meta  # noqa: E402
+from src.utils import read_jsonl, split_think, timestamp, write_run_meta  # noqa: E402
 
 
 def _arm(cfg: DictConfig, name: str) -> DictConfig:

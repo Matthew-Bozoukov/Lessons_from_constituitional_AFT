@@ -1,9 +1,10 @@
-# ABOUTME: Shared utilities: robust JSON extraction, git SHA, run metadata, and
-# ABOUTME: Qwen token counting for the difficult-advice replication.
+# ABOUTME: Shared utilities: robust JSON extraction, think-trace splitting, git SHA,
+# ABOUTME: run metadata, and Qwen token counting for the difficult-advice replication.
 
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -161,3 +162,66 @@ def count_chat_tokens(messages: list[dict], tokenizer_name: str) -> int:
         messages, tokenize=True, add_generation_prompt=False, return_dict=True
     )
     return len(rendered["input_ids"])
+
+
+_THINK = re.compile(r"<think>(.*?)</think>", re.DOTALL)
+_OPEN_THINK = re.compile(r"<think>(.*)", re.DOTALL)
+
+
+def split_think(text: str) -> tuple[str, str]:
+    """Separate a Qwen3 reasoning trace from the user-visible answer.
+
+    An unterminated `<think>` is treated as all-trace with an empty answer rather than
+    being silently kept as prose: that shape means the generation was cut off mid-trace,
+    and folding it into the answer would feed the judge a truncated ramble while hiding
+    the truncation from the degeneracy counters.
+
+    Args:
+        text: Raw completion text.
+
+    Returns:
+        `(think, answer)`, both stripped. `think` is "" when no trace is present.
+    """
+    if not text:
+        return "", ""
+    match = _THINK.search(text)
+    if match:
+        return match.group(1).strip(), _THINK.sub("", text, count=1).strip()
+    open_match = _OPEN_THINK.search(text)
+    if open_match:
+        return open_match.group(1).strip(), ""
+    return "", text.strip()
+
+
+def resolve_trace(content: str | None, reasoning: str | None) -> tuple[str, str]:
+    """Split a completion into `(think, answer)` across every shape vLLM returns.
+
+    Three shapes exist in the wild and every eval on a served target has to handle all
+    of them, because getting this wrong reports a normally-reasoning model as having a
+    collapsed `<think>` block (CLAUDE.md gotcha 2) — a false alarm on the exact failure
+    mode the empty-think metric is supposed to detect:
+
+    - **No reasoning parser configured.** The trace arrives inline in `content`, wrapped
+      in `<think>` tags.
+    - **Parser configured** (`--reasoning-parser qwen3`). The trace arrives out of band
+      and `content` holds only the visible answer. The out-of-band field is named
+      `reasoning_content` on vLLM 0.8.x and `reasoning` on 0.26 — the caller passes
+      whichever it found.
+    - **Thinking disabled.** No trace at all; `content` is the bare answer.
+
+    Args:
+        content: The `message.content` field, possibly `None`/empty.
+        reasoning: The out-of-band trace, from whichever field carried it.
+
+    Returns:
+        `(think, answer)`, both stripped.
+    """
+    raw = content or ""
+    think, answer = split_think(raw)
+    if reasoning and not think:
+        # An out-of-band trace means `content` was never a container for it, so the
+        # whole of `content` is the answer — including the case where content is empty
+        # because generation was cut off mid-trace, which must stay an empty answer so
+        # it scores as unparseable rather than silently borrowing the trace text.
+        return str(reasoning).strip(), raw.strip()
+    return think, answer

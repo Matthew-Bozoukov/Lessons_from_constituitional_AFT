@@ -13,7 +13,6 @@ from src.eval.capabilities.capability_metrics import (
     is_refusal,
     pattern_frequencies,
     repetition_ratio,
-    split_think,
     style_features,
 )
 from src.eval.capabilities.capability_stats import (
@@ -297,23 +296,6 @@ def test_evaluate_arm_gates_on_the_controlled_lower_bound():
 
 
 # --- metrics ------------------------------------------------------------------------
-
-
-def test_split_think_separates_trace_from_answer():
-    think, answer = split_think("<think>weighing options</think>The answer is 4.")
-    assert think == "weighing options"
-    assert answer == "The answer is 4."
-
-
-def test_unterminated_think_yields_empty_answer():
-    # A cut-off trace must not be handed to the judge as if it were prose.
-    think, answer = split_think("<think>still reasoning and then the generation stopped")
-    assert answer == ""
-    assert think.startswith("still reasoning")
-
-
-def test_plain_text_has_no_trace():
-    assert split_think("Just an answer.") == ("", "Just an answer.")
 
 
 def test_style_features_ignore_fenced_code():

@@ -26,7 +26,7 @@ import re
 from dataclasses import dataclass
 from typing import Callable
 
-from src.eval.capabilities.mmlu import resolve_trace
+from src.utils import resolve_trace
 
 _MESSAGE_RE = re.compile(r"<message>(.*?)</message>", re.DOTALL)
 
