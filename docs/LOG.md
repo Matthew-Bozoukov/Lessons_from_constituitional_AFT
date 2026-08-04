@@ -3,6 +3,19 @@
 
 # LOG
 
+## 2026-08-04 (3) — Correction: empty think markers are wholly masked, not close-supervised
+
+Follow-up correcting entry (2): its rule supervised an empty marker's `\n</think>\n\n` close
+("what a thinking model emits when it declines to reason"). The (1) probe below shows that
+premise is wrong for Qwen3.6: in thinking mode a healthy model ALWAYS reasons (160/155 CoT
+tokens even on "2+2"), and in nothink mode the full marker is prefilled — so an empty close is
+never generated in any serving configuration, and supervising it would train the empty-think
+collapse (gotcha 2) on every `reasoning: none` row (e.g. Tulu). Rule now: a turn opening with
+the full empty marker masks the WHOLE marker (supervision starts at the answer); a reasoning
+turn masks only the `<think>\n` prefill and supervises trace + close. `forced_spans` replaces
+`prefill_spans`; segment cuts now fall at forced-span edges; gate parser and all tests updated
+(244 pass, incl. real-tokenizer multi-turn: closers supervised on reasoning turns only).
+
 ## 2026-08-04 (2) — Preserve-thinking policy: one think-loss rule, profile-gated, gated data
 
 **Hypothesis:** train/inference think handling should be a derived property of the model

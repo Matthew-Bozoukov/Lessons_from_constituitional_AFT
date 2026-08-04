@@ -121,9 +121,10 @@ def main(config: str, smoke: bool = False) -> None:
     if pre_tokenized:
         max_len = int(cfg.train.max_seq_len)
         # Think supervision is NOT configurable: the generation-boundary rule in
-        # src/train/masking.py is the one way (mask the template's `<think>\n` prefill,
-        # supervise everything the model generates, `\n</think>` included). Runs trained
-        # under older rules are reproduced from git history, not from a knob.
+        # src/train/masking.py is the one way — mask what the model never generates (the
+        # `<think>\n` prefill; a WHOLE empty marker, since a healthy model never closes
+        # an empty block), supervise what it does (reasoning + `\n</think>` + answer).
+        # Runs trained under older rules are reproduced from git history, not a knob.
         for stale_key in ("mask_empty_think", "think_loss"):
             if cfg.train.get(stale_key) is not None:
                 raise ValueError(
@@ -135,7 +136,9 @@ def main(config: str, smoke: bool = False) -> None:
         profile = model_profile(str(cfg.model))
         gate_generation_boundary(ds["text"], tokenizer, max_len, profile, thinking)
         ds = ds.map(
-            lambda r: build_labels(r["text"], tokenizer, max_len, prefill=profile.prefill),
+            lambda r: build_labels(r["text"], tokenizer, max_len,
+                                   prefill=profile.prefill,
+                                   empty_think=profile.empty_think),
             remove_columns=ds.column_names,
             desc="masking non-assistant and prefill tokens",
         )

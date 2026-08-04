@@ -15,7 +15,7 @@ from src.train.masking import (  # noqa: E402
     assistant_spans,
     build_labels,
     check_thinking_declaration,
-    prefill_spans,
+    forced_spans,
     model_profile,
 )
 
@@ -120,16 +120,26 @@ def test_prefill_is_masked_and_reasoning_and_closer_are_supervised():
     assert _kept(out) == "reasoning\n</think>\n\nanswer<|im_end|>"
 
 
-def test_empty_block_boundary_defeats_newline_merging():
+def test_empty_marker_is_wholly_masked():
+    # A healthy model never generates an empty close (probe, LOG 2026-08-04): the whole
+    # marker is forced context in every serving configuration, so none of it — opener,
+    # newlines, closer — may carry loss. Supervision starts at the answer.
     out = build_labels(EMPTY_ROW, _MergingTokenizer(), max_length=len(EMPTY_ROW))
-    # The generated side starts with the model's OWN newline before </think>: the segment
-    # cut keeps it a separate token instead of welding it to the prefill's newline.
-    assert _kept(out) == "\n</think>\n\nanswer<|im_end|>"
-    assert _MergingTokenizer.NL2 in out["input_ids"]  # in-segment merges still happen
+    assert _kept(out) == "answer<|im_end|>"
+    assert _MergingTokenizer.NL2 in out["input_ids"]  # in-marker merges still happen
 
 
-def test_turns_without_a_think_block_have_no_prefill_span():
-    assert prefill_spans(CHAT, assistant_spans(CHAT)) == []
+def test_forced_span_covers_marker_or_prefill_per_turn():
+    spans = assistant_spans(EMPTY_ROW)
+    (span,) = forced_spans(EMPTY_ROW, spans)
+    assert EMPTY_ROW[span[0]:span[1]] == EMPTY_THINK
+    spans = assistant_spans(THINK_ROW)
+    (span,) = forced_spans(THINK_ROW, spans)
+    assert THINK_ROW[span[0]:span[1]] == THINK_PREFILL
+
+
+def test_turns_without_a_think_block_have_no_forced_span():
+    assert forced_spans(CHAT, assistant_spans(CHAT)) == []
     out = build_labels(CHAT, _MergingTokenizer(), max_length=len(CHAT))
     assert _kept(out) == "hello<|im_end|>farewell<|im_end|>"
 
@@ -144,16 +154,16 @@ MULTI_TURN_ROW = (
 )
 
 
-def test_every_turn_of_a_multiturn_row_masks_its_own_prefill():
-    # The preserve-thinking policy puts a think block on EVERY assistant turn; each
-    # turn's prefill must be masked and each turn's close supervised — including the
-    # empty middle turn, whose seam newline must survive the \n\n merge.
+def test_every_turn_of_a_multiturn_row_masks_its_own_forced_head():
+    # The preserve-thinking policy puts a think block on EVERY assistant turn: reasoning
+    # turns mask the prefill and supervise trace + close; the empty middle turn masks its
+    # whole marker and supervises only the answer.
     spans = assistant_spans(MULTI_TURN_ROW)
-    assert len(prefill_spans(MULTI_TURN_ROW, spans)) == 3
+    assert len(forced_spans(MULTI_TURN_ROW, spans)) == 3
     out = build_labels(MULTI_TURN_ROW, _MergingTokenizer(), max_length=len(MULTI_TURN_ROW))
     assert _kept(out) == (
         "first thoughts\n</think>\n\na1<|im_end|>"
-        "\n</think>\n\na2<|im_end|>"
+        "a2<|im_end|>"
         "third thoughts\n</think>\n\na3<|im_end|>"
     )
 

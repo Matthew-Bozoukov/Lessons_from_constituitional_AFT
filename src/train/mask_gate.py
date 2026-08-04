@@ -32,16 +32,22 @@ _TURN = re.compile(r"<\|im_start\|>assistant\n(.*?<\|im_end\|>)", re.DOTALL)
 GATE_SAMPLE = 64  # decode-checked rows per run; the census always covers every row
 
 
-def expected_supervised_text(text: str, prefill: str) -> str:
+def expected_supervised_text(text: str, prefill: str, empty_think: str) -> str:
     """Independently derive the exact characters the mask should supervise.
 
     Assistant turns (content after the header through `<|im_end|>`), minus each turn's
-    leading thinking prefill, concatenated in order.
+    forced head — the WHOLE empty marker on a no-reasoning turn (the model never
+    generates an empty close), else the bare thinking prefill — concatenated in order.
     """
     parts = []
     for m in _TURN.finditer(text):
         body = m.group(1)
-        parts.append(body[len(prefill):] if body.startswith(prefill) else body)
+        if body.startswith(empty_think):
+            parts.append(body[len(empty_think):])
+        elif body.startswith(prefill):
+            parts.append(body[len(prefill):])
+        else:
+            parts.append(body)
     return "".join(parts)
 
 
@@ -73,12 +79,13 @@ def gate_generation_boundary(texts, tokenizer, max_length: int,
 
     checked = truncated = 0
     for text in texts[:GATE_SAMPLE]:
-        out = build_labels(text, tokenizer, max_length, prefill=profile.prefill)
+        out = build_labels(text, tokenizer, max_length,
+                           prefill=profile.prefill, empty_think=profile.empty_think)
         if len(out["input_ids"]) >= max_length:
             truncated += 1
             continue
         got = tokenizer.decode([v for v in out["labels"] if v != -100])
-        want = expected_supervised_text(text, profile.prefill)
+        want = expected_supervised_text(text, profile.prefill, profile.empty_think)
         assert got == want, (
             "mask/parser disagreement — supervised tokens decode to something other than "
             f"the independently derived supervised text.\n--- decoded ---\n{got[:400]!r}"

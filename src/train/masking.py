@@ -9,17 +9,22 @@ ASSISTANT_HEADER = "<|im_start|>assistant\n"
 TURN_END = "<|im_end|>"
 
 # The generation-boundary rule (the ONE way think tokens are supervised — deliberately not
-# configurable; git history reproduces runs trained under older rules): mask exactly what
-# the serving template prefills, supervise exactly what the model generates. The prefill
-# literal is family-specific and comes from the ModelProfile registry in src/utils.py
-# (verified against the live template in tests/test_masking_tokenizer.py); callers gate on
-# `model_profile(model)` so an unverified family is refused, never guessed. Inside a
-# rendered assistant turn the prefill is conditioning, and everything after it — including
-# the `\n</think>` that closes an empty block — is behaviour the model must learn to emit.
+# configurable; git history reproduces runs trained under older rules): mask exactly the
+# tokens the model never generates at inference, supervise exactly what it does generate.
+# Two forced shapes exist, both family-specific via the ModelProfile registry in
+# src/utils.py (verified against the live template in tests/test_masking_tokenizer.py;
+# callers gate on `model_profile(model)` so an unverified family is refused, never guessed):
+#
+# - The thinking prefill `<think>\n` — always forced, always masked.
+# - The WHOLE empty marker `<think>\n\n</think>\n\n` — a healthy Qwen3.6 never closes an
+#   empty think block itself (probe, LOG 2026-08-04: it reasons even on trivial questions
+#   in thinking mode, and in nothink mode the full marker is prefilled), so an empty
+#   marker in training data is forced in every serving configuration and is wholly
+#   masked. Supervising its close would TRAIN the empty-think collapse (gotcha 2).
+#
+# A real reasoning turn therefore supervises the trace and its `\n</think>` close (the
+# model does generate those); an empty turn supervises only the visible answer.
 THINK_PREFILL = QWEN36_PROFILE.prefill
-
-# What a no-reasoning assistant turn carries, prefilled whole at nothink inference.
-# Used by data checks; the mask needs only the prefill.
 EMPTY_THINK = QWEN36_PROFILE.empty_think
 
 
@@ -50,31 +55,41 @@ def assistant_spans(text: str) -> list[tuple[int, int]]:
     return spans
 
 
-def prefill_spans(text: str, spans: list[tuple[int, int]],
-                  prefill: str = THINK_PREFILL) -> list[tuple[int, int]]:
-    """Find the thinking prefill at the head of each assistant span, where present.
+def forced_spans(text: str, spans: list[tuple[int, int]],
+                 prefill: str = THINK_PREFILL,
+                 empty_think: str = EMPTY_THINK) -> list[tuple[int, int]]:
+    """Find the forced (never-generated) region at the head of each assistant span.
 
     Every turn is checked — under the preserve-thinking rendering policy a multi-turn row
-    carries a think block on every assistant turn, and each one's prefill must be masked.
-    Turns without a think block simply have no prefill span and stay fully supervised.
+    carries a think block on every assistant turn. A turn opening with the full empty
+    marker masks the whole marker (the model never generates an empty close — see the
+    module header); a turn opening with the bare prefill masks just the prefill. Turns
+    without a think block have no forced span and stay fully supervised.
     """
-    return [(s, s + len(prefill)) for s, _ in spans if text.startswith(prefill, s)]
+    out: list[tuple[int, int]] = []
+    for s, _ in spans:
+        if text.startswith(empty_think, s):
+            out.append((s, s + len(empty_think)))
+        elif text.startswith(prefill, s):
+            out.append((s, s + len(prefill)))
+    return out
 
 
 def build_labels(text: str, tokenizer, max_length: int,
-                 prefill: str = THINK_PREFILL) -> dict[str, list[int]]:
+                 prefill: str = THINK_PREFILL,
+                 empty_think: str = EMPTY_THINK) -> dict[str, list[int]]:
     """Tokenize a rendered conversation and label exactly its generated tokens.
 
     Every token outside an assistant span is -100, and so is every token of a turn's
-    `<think>\\n` prefill. The text is tokenized in SEGMENTS cut at each prefill boundary,
-    because the boundary must also be a token boundary: in an empty think block
-    `<think>\\n\\n</think>` the two newlines otherwise merge into ONE token, welding the
-    prefilled `\\n` (conditioning) to the generated `\\n` (supervised). Cutting forces the
-    same token stream the model sees at inference — context ending in the prefill's
-    `\\n`, generation starting with its own `\\n</think>` — which is the entire point of
-    masking at the generation boundary. Token/char alignment within a segment comes from
-    the fast tokenizer's offset mapping (Qwen's template has no `{% generation %}`
-    markers, so TRL's own assistant_only_loss cannot be used).
+    forced head (`<think>\\n`, or the whole empty marker — see `forced_spans`). The text
+    is tokenized in SEGMENTS cut at each forced-span boundary, because the boundary must
+    also be a token boundary: Qwen merges `\\n\\n` into ONE token, which would otherwise
+    weld a reasoning turn's forced newline to its first generated token, or an empty
+    marker's forced tail to the answer. Cutting reproduces the exact token stream the
+    model sees at inference: context ending with the forced text, generation starting
+    fresh after it. Token/char alignment within a segment comes from the fast tokenizer's
+    offset mapping (Qwen's template has no `{% generation %}` markers, so TRL's own
+    assistant_only_loss cannot be used).
 
     Args:
         text: A chat conversation already rendered by the Qwen chat template.
@@ -85,7 +100,7 @@ def build_labels(text: str, tokenizer, max_length: int,
         A dict with `input_ids`, `attention_mask` and `labels`.
     """
     spans = assistant_spans(text)
-    prefills = prefill_spans(text, spans, prefill)
+    prefills = forced_spans(text, spans, prefill, empty_think)
     cuts = sorted({0, len(text), *(edge for span in prefills for edge in span)})
 
     ids: list[int] = []
@@ -121,9 +136,9 @@ def check_thinking_declaration(rows, thinking: bool) -> None:
     The declaration is the source of truth (the config is the scientific record); this
     check only refuses combinations that would produce a mislabeled or reasoning-collapsed
     artifact (CLAUDE.md gotcha 2). Empty `<think></think>` markers are fine under
-    thinking=true: the generation-boundary mask conditions on their prefill and supervises
-    their `\\n</think>` close, which is exactly what a thinking-mode model emits when it
-    declines to reason.
+    thinking=true: the generation-boundary mask excludes the whole marker from the loss
+    (it is forced context in every serving configuration — the model never generates an
+    empty close), so it conditions without ever being trained.
 
     Args:
         rows: Dataset rows, each carrying either a rendered `text` string or a raw

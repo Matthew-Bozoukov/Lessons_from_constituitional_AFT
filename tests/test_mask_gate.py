@@ -47,10 +47,13 @@ NOTHINK_ROW = (
 )
 
 
-def test_expected_supervised_text_strips_each_turns_prefill():
-    assert expected_supervised_text(THINK_ROW, THINK_PREFILL) == (
-        "why\n</think>\n\na1<|im_end|>" "\n</think>\n\na2<|im_end|>")
-    assert expected_supervised_text(NOTHINK_ROW, THINK_PREFILL) == "answer<|im_end|>"
+def test_expected_supervised_text_strips_each_turns_forced_head():
+    # Turn 1 (real reasoning): only the prefill is forced. Turn 2 (empty): the WHOLE
+    # marker is forced — the model never generates an empty close.
+    assert expected_supervised_text(THINK_ROW, THINK_PREFILL, EMPTY_THINK) == (
+        "why\n</think>\n\na1<|im_end|>" "a2<|im_end|>")
+    assert expected_supervised_text(NOTHINK_ROW, THINK_PREFILL, EMPTY_THINK) == \
+        "answer<|im_end|>"
 
 
 def test_think_census_classifies_turns():
@@ -81,7 +84,7 @@ def test_gate_refuses_think_blocks_under_nothink():
 def test_gate_catches_a_corrupted_mask(monkeypatch):
     # The gate exists to catch build_labels regressions; simulate one (a mask that
     # supervises everything, prefills included) and the decode comparison must fire.
-    def broken(text, tokenizer, max_length, prefill):
+    def broken(text, tokenizer, max_length, prefill, empty_think):
         enc = tokenizer(text)
         return {"input_ids": enc["input_ids"], "attention_mask": enc["attention_mask"],
                 "labels": list(enc["input_ids"])}

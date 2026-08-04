@@ -52,19 +52,20 @@ def test_double_newline_merges_into_one_token(tok):
     assert len(tok("\n", add_special_tokens=False)["input_ids"]) == 1
 
 
-def test_empty_block_supervises_exactly_the_generated_close(tok):
+def test_empty_marker_is_wholly_masked_and_only_the_answer_supervised(tok):
+    # A healthy model never generates an empty close (LOG 2026-08-04 probe): the whole
+    # marker — opener, both newlines, closer, trailing whitespace — is forced context.
     row = ("<|im_start|>user\nq<|im_end|>\n"
            f"<|im_start|>assistant\n{EMPTY_THINK}answer<|im_end|>\n")
     out = build_labels(row, tok, max_length=4096)
-    assert _supervised(tok, out) == "\n</think>\n\nanswer<|im_end|>"
-    # The seam is two single-newline tokens (prefill's masked, model's supervised) — not
-    # the merged token whole-text tokenization would produce.
-    nl = tok("\n", add_special_tokens=False)["input_ids"][0]
+    assert _supervised(tok, out) == "answer<|im_end|>"
     opener = tok.convert_tokens_to_ids("<think>")
+    closer = tok.convert_tokens_to_ids("</think>")
     ids, labels = out["input_ids"], out["labels"]
-    k = ids.index(opener)
-    assert labels[k] == -100 and ids[k + 1] == nl and labels[k + 1] == -100
-    assert ids[k + 2] == nl and labels[k + 2] != -100
+    assert labels[ids.index(opener)] == -100 and labels[ids.index(closer)] == -100
+    # The marker/answer seam is a segment cut, so the answer tokenizes exactly as it
+    # would at nothink inference, where the full marker is the prefill.
+    assert labels[ids.index(closer) + 1] == -100  # the marker's trailing \n\n
 
 
 def test_reasoning_turn_supervises_trace_and_close_but_not_prefill(tok):
@@ -74,13 +75,14 @@ def test_reasoning_turn_supervises_trace_and_close_but_not_prefill(tok):
     assert _supervised(tok, out) == "reasoning\n</think>\n\nanswer<|im_end|>"
 
 
-def test_multiturn_preserve_thinking_masks_every_prefill(tok):
+def test_multiturn_preserve_thinking_masks_every_forced_head(tok):
     """End-to-end on the REAL template: preserve-thinking render -> mask -> gate parser.
 
     A three-turn conversation (reasoning, none, reasoning) is rendered exactly the way
-    build_mixture renders training data; every turn's prefill must be masked, every
-    turn's `\\n</think>` close supervised, and the independent gate parser must agree
-    with the decoded supervised tokens.
+    build_mixture renders training data. Reasoning turns mask the prefill and supervise
+    trace + `\\n</think>` close; the empty middle turn masks its WHOLE marker and
+    supervises only the answer; the independent gate parser must agree with the decoded
+    supervised tokens.
     """
     from src.train.mask_gate import expected_supervised_text
     from src.utils import think_census
@@ -100,16 +102,21 @@ def test_multiturn_preserve_thinking_masks_every_prefill(tok):
 
     out = build_labels(row, tok, max_length=4096)
     got = _supervised(tok, out)
-    assert got == expected_supervised_text(row, THINK_PREFILL)
+    assert got == expected_supervised_text(row, THINK_PREFILL, EMPTY_THINK)
     assert got == ("first thoughts\n</think>\n\na1<|im_end|>"
-                   "\n</think>\n\na2<|im_end|>"
+                   "a2<|im_end|>"
                    "third thoughts\n</think>\n\na3<|im_end|>")
 
-    # Every one of the three openers is masked, and each empty seam stays two tokens.
+    # Every one of the three openers is masked, with its following newline.
     opener = tok.convert_tokens_to_ids("<think>")
     nl = tok("\n", add_special_tokens=False)["input_ids"][0]
     ids, labels = out["input_ids"], out["labels"]
     positions = [k for k, v in enumerate(ids) if v == opener]
     assert len(positions) == 3
     for k in positions:
-        assert labels[k] == -100 and ids[k + 1] == nl and labels[k + 1] == -100
+        assert labels[k] == -100 and labels[k + 1] == -100
+    # The reasoning turns' closers ARE supervised; the empty turn's closer is not.
+    closer = tok.convert_tokens_to_ids("</think>")
+    closer_labels = [labels[k] for k, v in enumerate(ids) if v == closer]
+    assert [v != -100 for v in closer_labels] == [True, False, True]
+    assert nl in ids  # sanity: single-newline tokens exist at the reasoning seams

@@ -238,11 +238,15 @@ template prefills nothing, so it is deliberately refused until verified):
   so EVERY assistant turn carries a think block — reasoning where the source has it, the empty
   marker where it does not. HF sources must declare `reasoning: native|none|strip` (`strip` =
   deliberate pre-policy no-think rendering, for nothink control arms only).
-- **Loss**: the generation-boundary mask (`src/train/masking.py`, not configurable) masks each
-  turn's `<think>\n` prefill and supervises everything generated, `\n</think>` included; rows
-  are tokenized in segments cut at the prefill edge so the empty block's `\n\n` cannot weld
-  the boundary shut. `src/train/mask_gate.py` re-verifies this with an independent parser plus
-  a think census before every training run.
+- **Loss**: the generation-boundary mask (`src/train/masking.py`, not configurable) masks
+  exactly what the model never generates and supervises what it does. On a real reasoning
+  turn that means the `<think>\n` prefill is masked and the trace + `\n</think>` close carry
+  loss; on an empty turn the WHOLE marker is masked and only the answer carries loss — a
+  healthy Qwen3.6 never closes an empty think block itself (LOG 2026-08-04 probe: it reasons
+  even on trivial questions; in nothink mode the full marker is prefilled), so supervising
+  the empty close would train the collapse. Rows are tokenized in segments cut at each
+  forced-span edge so token merges cannot weld masked to supervised. `src/train/mask_gate.py`
+  re-verifies this with an independent parser plus a think census before every training run.
 - **Serving**: `pin_template` pins `preserve_thinking` alongside `enable_thinking`, and
   multi-turn eval loops send each turn's reasoning back as `reasoning_content`.
 

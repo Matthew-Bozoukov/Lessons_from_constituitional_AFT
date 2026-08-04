@@ -36,10 +36,11 @@ train:
   # Avoids TRL's chunked-CE LM-head patch, which crashes on this checkpoint's
   # functools.partial forward. Mathematically the same loss.
   loss_type: "nll"
-  # The empty <think></think> markers on the TULU3 and No Robots rows are handled by the
-  # generation-boundary mask (src/train/masking.py): their <think>\n prefill is context,
-  # their \n</think> close carries loss. Not configurable. (This run predates that rule —
-  # trained under mask_empty_think: true; reproduce from this file's git history.)
+  # The empty <think></think> markers on the TULU3 and No Robots rows are wholly masked
+  # by the generation-boundary rule (src/train/masking.py): a healthy model never
+  # generates an empty close, so the whole marker is forced context. Not configurable.
+  # (This run predates that rule — trained under mask_empty_think: true; reproduce from
+  # this file's git history.)
   attn_implementation: sdpa
   load_in_4bit: false
 

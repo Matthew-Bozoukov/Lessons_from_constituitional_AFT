@@ -19,8 +19,9 @@ from src.utils import think_census, model_profile, timestamp, write_run_meta  # 
 # The repo-wide default since 2026-08-04 is PRESERVED rendering: the profile's
 # render_kwargs (Qwen3.6: preserve_thinking=True) make the template emit a think block on
 # EVERY assistant turn — reasoning_content where the row has it, the empty marker where it
-# does not. The generation-boundary mask (src/train/masking.py) then conditions on each
-# turn's prefill and supervises its close, so empty markers are safe by construction.
+# does not. The generation-boundary mask (src/train/masking.py) wholly masks empty markers
+# (forced context — the model never generates an empty close) and supervises real traces
+# with their close, so empty markers are safe by construction.
 # Each `repo` source declares what its DATA is via `reasoning:`:
 #   native — rows carry reasoning_content (validated: every row keeps a real trace)
 #   none   — rows have no reasoning (like Tulu; validated: empty markers on every turn)
