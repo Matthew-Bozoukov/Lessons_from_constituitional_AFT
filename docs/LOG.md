@@ -3,6 +3,30 @@
 
 # LOG
 
+## 2026-08-04 — Qwen3.6 think-tag mechanics: template renders + token-level generation probes
+
+**Hypothesis:** Qwen3.6's template renders think blocks only on assistant turns after the last
+real user query (silently dropping earlier-turn reasoning), and a healthy Qwen does not
+empty-think even on trivial questions — the empty-think pattern is a trained collapse, not
+natural behavior. **Method:** `scratch/qwen36_template_probe.py` (the real cached Qwen3.6-27B
+tokenizer): multi-turn conversation with mixed `reasoning_content`, rendered with
+`preserve_thinking` off/on, an agentic tool-loop render, both generation-prompt prefills, and
+marker tokenization. `scratch/qwen3_empty_think_tokens.py`: greedy token-by-token dump on
+"What is 2+2? Answer with just the number.", thinking on/off — Qwen3-0.6B locally (fp32/MPS),
+then Qwen3.6-27B bf16 on a RunPod A100 ($0.17; output
+`output/logs/qwen36_think_probe_20260804_154008.txt`). **Result:** template behavior confirmed
+exactly: default renders think only after the last user query and silently drops earlier
+`reasoning_content` (even inline `<think>` text is parsed out); tool loops keep interleaved
+thinking without `preserve_thinking`; `preserve_thinking=true` adds an EMPTY
+`<think>\n\n</think>` on history turns that lack reasoning. Generation: neither model
+empty-thinks on 2+2 — 0.6B emitted 160 CoT tokens, 27B a 5-step structured plan (155 tokens)
+before closing; the close is always `'\n'(198) '</think>'(248069) '\n\n'(271) <answer>`, so an
+inference-time empty think from the `<think>\n` prefill is exactly those three tokens generated
+first — the signature gotcha 5's empty-think rate counts. Nothink prefill → zero think tokens
+generated. Anecdote: 0.6B answers 2+2 wrong ("2") in nothink, right ("4") thinking; 27B right in
+both. Qwen3↔Qwen3.6 think-token ids differ (151667/8 vs 248068/9) — vocabs not interchangeable.
+**Next:** none — reference result for empty-think detection and mask-boundary decisions.
+
 ## 2026-08-04 — Psychosis eval: native reimplementation of tim-hua-01/ai-psychosis
 
 **Hypothesis-to-test (later):** difficult-advice SFT should also reduce multi-turn delusion

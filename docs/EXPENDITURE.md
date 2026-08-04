@@ -23,10 +23,22 @@ to a future reader.
 |---|---|
 | OpenRouter (data generation) | **$171.46** |
 | OpenRouter (eval judging) | $0.02 |
-| GPU rental | $0.00 (+ ~4 RunPod A100-h on 2026-08-03, $ TBD from dashboard) |
-| **total** | **$171.48** (+ GPU TBD) |
+| GPU rental | $0.17 (+ ~4 RunPod A100-h on 2026-08-03, $ TBD from dashboard) |
+| **total** | **$171.65** (+ GPU TBD) |
 
 ---
+
+## 2026-08-04 — Qwen3.6-27B think-token probe (RunPod A100-80GB)
+
+**What was bought:** ground truth on Qwen3.6-27B's token-level think-tag behavior, for eval
+metric design: greedy token-by-token dump on a trivial question, thinking on and off
+(`scratch/qwen3_empty_think_tokens.py` launched by `scratch/launch_qwen36_probe.sh`; output in
+`output/logs/qwen36_think_probe_20260804_154008.txt`, findings in LOG.md 2026-08-04).
+
+- **GPU:** A100-80GB PCIe secure-cloud pod `80noxz67x08net`, 15:32–15:40 (~7 min) at
+  $1.39/GPU-h ≈ **$0.17**. Unit cost: one single-question 27B transformers probe (55GB Xet
+  download ~3 min + shard load + 2 greedy generations) ≈ **$0.20/probe-pod**; the marginal
+  question is nearly free, so batch questions into one pod.
 
 ## 2026-08-03 — Eval-framework pod validation (RunPod A100-80GB + OpenRouter)
 
