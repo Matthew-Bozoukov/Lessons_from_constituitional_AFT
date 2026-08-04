@@ -3,6 +3,64 @@
 
 # LOG
 
+## 2026-08-04 (4) — RAN synthdoc `self_reflection`: 592-record corpus, voice contract held
+
+**Hypothesis.** The difficult-advice result works by cross-task-type transfer: a *user's* ethical
+dilemma reduces *agentic* misalignment. A corpus where **the agent itself** is the tempted party —
+it finds it could protect its own position by a deniable wrong action, deliberates, and declines —
+should transfer more directly, **provided the deliberation reads as values rather than rule-lookup**.
+If it reads as rule-lookup this is deliberative alignment with extra steps, and we should expect
+recall of a spec rather than internalised judgement.
+
+**Method.** Generalised `src/data/synthdoc/` behind a **flavor** seam rather than forking a second
+package: runner, checkpointing, retry and accounting stay shared; prompts, scenario planning,
+per-stage output shape and SFT export live in `flavors/<name>.py`, selected by `flavor:` in the
+config. `difficult_advice` is the original recipe, prompt wording unchanged. The new
+`self_reflection` flavor puts scenarios deliberately far from the agentic-misalignment honeypots
+(different industries, cast, framing) so the cross-task-type claim survives, and makes the wrong
+action **deniable** rather than an overt threat — the deniable form is the one worth training
+against. Composition is assigned deterministically from the scenario id: 80/20 prose/tool-call,
+15.9% multi-turn escalation, 12.5% **control slice** where self-interest argues for silence and the
+right move is to act anyway. Stage 6 enforces a **voice contract in code**: `validate_rewrite` lints
+every trace against rule vocabulary (principle numbers, "my guidelines", "not permitted") and
+rejects-and-retries a violating completion.
+
+**Result.** 592 records / 1,555,017 Qwen3.6 tokens, 96.1% scenario survival, ~$83.20, published to
+HF `LASR-Callum/2026-08-03-synthdoc-self-reflection`. **Zero voice-contract violations across all
+686 assistant turns.** Read that correctly: it is *enforcement*, not measurement — violating
+completions were regenerated — so it says the constraint is satisfiable at this temperature, not
+that the generator reaches for value language unprompted.
+
+Three defects found and fixed on the way:
+
+1. **Snapshots were written in the platform locale codec, not UTF-8.** `ensure_ascii=False` plus an
+   unqualified `open()` round-trips on Windows and then fails to decode on HF and on the Linux GPU
+   box — the only place the files are consumed. Pre-existing; affected `difficult_advice` too.
+2. **The failure guard aborted every resume.** It measured the failure rate against the items still
+   outstanding — precisely the ones that had already failed — so 12 of 13 read as 92.3% instead of
+   the true 12 of 470. Now measured against the whole stage.
+3. **Extended-thinking tokens bill as completion tokens.** The refine stage burned ~8,800
+   completion tokens to emit a ~1,200-token environment. A per-stage `reasoning:` knob disabling it
+   on the two stages that assemble text rather than judge it cut projected cost ~40%.
+
+**Superseded on rebase.** The branch also carried a `mask_thinkless_turns` loss-mask flag for the
+multi-turn records, whose earlier assistant turns render without a think block. The
+preserve-thinking policy from entry (2) fixes that at **render** time instead — every assistant turn
+gets a think block — which is the better layer, so the flag, its `train_lora` plumbing and the
+configs built around it were dropped rather than reconciled. See PR #22.
+
+**Also surfaced:** `constitutions/claude_distilled_12_principles_mid/` was re-cut from twelve units
+to **ten** in `785cf39`, keeping its folder name; "Weigh real-world harm" and "Honour operator
+adjustments" are gone. The published corpus is unaffected — it pins the sha256 of the twelve-unit
+document it was generated from — but regenerating today yields a ten-principle corpus, related and
+not identical. `plan()` now asserts `trait_weights` match the constitution actually loaded, because
+silently dropping surplus weights would produce a different corpus under the same config.
+
+**Next.** Mixture + LoRA via `configs/data/mixture_qwen36_table2_80_synthdoc_self_reflect_20.yaml`,
+then the agentic-misalignment honeypots against a thinking-mode baseline. Run a capability arm
+**alongside**, not after: the control slice exists to stop the corpus teaching blanket refusal, and
+it is the first thing to inspect if honeypot numbers improve while helpfulness drops.
+
 ## 2026-08-04 (3) — Correction: empty think markers are wholly masked, not close-supervised
 
 Follow-up correcting entry (2): its rule supervised an empty marker's `\n</think>\n\n` close

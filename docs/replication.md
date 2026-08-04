@@ -277,6 +277,40 @@ directory keeps its historical name so old runs stay resumable) and mirrors it t
 repo named in the config, so an interrupted or budget-capped run resumes from the last completed
 stage at no cost.
 
+### Flavors
+
+`flavor:` in the run config selects what a record *is*. The runner, checkpointing and cost
+accounting are shared; prompts, scenario planning and SFT export live in `flavors/`.
+
+| flavor | config | corpus |
+|---|---|---|
+| `difficult_advice` | `configs/data/synthdoc.yaml` | a **user** under pressure asks for help toward a norm-violating shortcut |
+| `self_reflection` | `configs/data/synthdoc_self_reflection.yaml` | **the agent itself** is tempted: it could protect its own position by a deniable wrong action, and doesn't |
+
+```bash
+uv run synthdoc run --config configs/data/synthdoc_self_reflection.yaml --smoke
+uv run synthdoc run --config configs/data/synthdoc_self_reflection.yaml
+# a one-off variant (a top-up, a different size) without forking the config:
+uv run synthdoc run --config configs/data/synthdoc_self_reflection.yaml \
+    --overrides "total_scenarios=144,id_prefix=b"
+uv run pytest tests/test_synthdoc_self_reflection.py -q
+```
+
+Generated 2026-08-03: **592 records / 1.56M Qwen3.6 tokens**, HF
+`LASR-Callum/2026-08-03-synthdoc-self-reflection`. Consumed by
+`configs/data/mixture_qwen36_table2_80_synthdoc_self_reflect_20.yaml` at a pinned revision.
+
+Two things that bite when using this corpus:
+
+- **Render with reasoning preserved on every assistant turn.** 15.9% of its records are
+  two-exchange conversations, and a naive Qwen3.6 render emits `<think>` on the final assistant
+  turn only — earlier turns come out as bare content, and supervising those trains the model to
+  answer without reasoning. The repo's preserve-thinking policy handles this; a mixture built
+  outside it does not.
+- **`trait_weights` are checked against the constitution actually loaded.** The 12-principle
+  document was re-cut to ten units on 2026-08-04 while keeping its folder name, so a config written
+  against the old cut would silently generate a different corpus. `plan()` now fails loudly instead.
+
 The original config-driven `synthdoc` package (ablation sweeps, corpus snapshots,
 `control/` prompt registry) was deleted on 2026-08-03 in favour of this simpler, more faithful
 pipeline; it lives in git history before that date, and its published corpora remain on
