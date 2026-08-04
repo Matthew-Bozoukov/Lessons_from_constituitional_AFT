@@ -16,7 +16,7 @@ def _passthrough(row: dict) -> dict:
     """Identity/provenance fields carried from a source row into its rendered row.
 
     Works for both input shapes: the agentic corpora (top-level doc_id/doc_type/axes)
-    and MEM stage-5 records ({messages, metadata} -- record_id becomes the doc_id and
+    and model-eval-model stage-5 records ({messages, metadata} -- record_id becomes the doc_id and
     the metadata's `supervise` rides along for the trainer's per-turn masking).
     """
     md = row.get("metadata") or {}
@@ -200,7 +200,7 @@ def main(
               "(Qwen3.6 non-thinking marker) because empty_think_on_tool_docs is set.")
     else:
         assert empty_think == 0, "empty <think> blocks would train the model to stop reasoning"
-    # Only a corpus that HAD tool calls must render them; MEM records have none.
+    # Only a corpus that HAD tool calls must render them; model-eval-model records have none.
     assert n_tool_calls == 0 or with_calls > 0, "no tool calls rendered - conversion failed"
     print(f">>> {dest}")
 

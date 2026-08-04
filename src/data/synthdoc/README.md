@@ -1,133 +1,116 @@
-<!-- ABOUTME: synthdoc -- one constitution-grounded generation pipeline; the config's -->
-<!-- ABOUTME: `pipeline:` field picks the document type (difficult_advice | mem). -->
+<!-- ABOUTME: synthdoc -- one config-driven generation pipeline. The config's `stages:` list -->
+<!-- ABOUTME: (prompts included) defines the document type; code supplies generic operators. -->
 
 # synthdoc
 
-Constitution-grounded synthetic-data generation. There is **one pipeline entrypoint**;
-which document type a run generates is declared in its config's `pipeline:` field, so
-the config stays the complete scientific record:
+Constitution-grounded synthetic-data generation. There is **one engine and one
+entrypoint**; everything specific to a document type — its stage sequence, its prompts,
+its models, its knobs — lives in that type's config, so the config alone is the complete
+scientific record of what a run generated:
 
 ```
-uv run synthdoc segment                                                      # constitution -> traits, no API calls
-uv run synthdoc run      --config configs/data/difficult_advice.yaml [--smoke]
-uv run synthdoc run      --config configs/data/mem.yaml [--smoke]
-uv run synthdoc estimate --config <either> [--measured <run>/manifest.json]
-uv run synthdoc topup    --config configs/data/difficult_advice.yaml --resume DIR --traits t5,t6 --n 25
-uv run synthdoc check    --config configs/data/mem.yaml --run_dir output/mem/<ts>
+uv run scripts/data/build_dataset.py --config configs/data/difficult_advice.yaml [--smoke]
+uv run scripts/data/build_dataset.py --config configs/data/model_eval_model.yaml [--smoke]
+uv run scripts/data/build_dataset.py --config <cfg> --ablate final     # ablation arm
+uv run scripts/data/build_dataset.py --config <cfg> --estimate [--measured <smoke manifest>]
 ```
 
-(`topup` applies to difficult-advice runs only; `check` to mem runs only — both verbs
-validate the config's `pipeline:` field.)
+(`uv run synthdoc run|topup|check|estimate|segment` remains as the console script for
+the auxiliary verbs; `run`/`estimate` are the same functions `build_dataset.py` calls.)
 
-Flat module layout, one concern per file:
+## Architecture
 
 ```
-core.py          shared machinery: priced Usage tallies, parse-retrying LLM calls
-                 (call_json/call_tagged), resilient fan-out, per-item Checkpoints,
-                 model_cfg, measured estimates
-constitution.py  deterministic segmentation into traits + shared style guidance
-hf_cache.py      StageCache: local stage_<n>_<name>.jsonl snapshots + HF dataset mirror
-prompts.py       every prompt template, sectioned by document type (string constants --
-                 deliberately not YAML-templated, so wording is reviewable)
-stages.py        every stage function: difficult-advice stages 2-6 + the MEM cells
-pipeline.py      run_difficult_advice / run_mem + the dispatching run()
-estimate.py      per-type cost models + the dispatching estimate()
-checks.py        MEM corpus validity checks
-cli.py           the verbs above
+pipeline.py    the engine: builds Stage objects from the config's `stages:` list; owns
+               snapshot caching + HF mirroring, per-item checkpoints, ablation, the
+               budget guard, the manifest, and cost estimates
+operators.py   the operator library -- every stage `kind:` a config may use
+core.py        LLM machinery: priced Usage, call_json/call_tagged (parse-retry),
+               resilient fan-out, Checkpoint/run_items, Ctx + Stage dataclasses
+cells.py       model-eval-model cell STRUCTURE (registry, planning, perturbation,
+               assembly) -- all its wording comes from the config
+checks.py      corpus validity checks (judge wording from the config's checks.judges)
+constitution.py  hf_cache.py  cli.py
 ```
 
-Every run follows the same operating contract: each stage writes a complete local
-snapshot and mirrors it to the HF repo named in its config, so any stage can be re-run
-alone by deleting its file and an interrupted or budget-capped run resumes from the last
-completed stage at no cost; the expensive stages also checkpoint per item. `--smoke`
-runs the full wiring on a tiny slice into a separate `smoke_<ts>` dir and smoke HF repo.
-A `manifest.json` records git sha, constitution sha256, effective sizes, per-stage usage
-and wall clock; `estimate --measured <smoke manifest>` prices a full run from real
-per-call token counts.
+A config's `stages:` entry names an operator `kind` and supplies everything it needs:
 
-## Document type: difficult advice (`pipeline: difficult_advice`)
+| kind | what it does | key fields |
+|---|---|---|
+| `segment` | deterministic constitution segmentation; publishes `{style_guidance}` | — |
+| `scenarios` | batched JSON fan-out per trait (`t<i>_b<b>_s<j>` ids) | `model`, `prompts` |
+| `llm_json` | one JSON call per record | `model`, `prompts`, `save`, `optional`, `checkpoint` |
+| `llm_tagged` | one tagged-blocks call per record | `model`, `prompts`, `tags`, `save`, `checkpoint`, `ablate_with` |
+| `chat_export` | free export to `{messages, metadata}` | `messages`, `metadata` |
+| `load_source_run` | a completed run's finals + constitution-sha provenance check | (`source:` block) |
+| `plan_cells` / `perturb_pairs` / `generate_cells` / `assemble_cells` | the model-eval-model cells (see below) | (`cells:`, `flaws:`, `prompts:` blocks) |
+
+Prompt templates in configs are `str.format` templates over record fields plus shared
+vars (`{constitution}`, `{style_guidance}`). Literal JSON braces are escaped `{{ }}`.
+
+**Ablation.** A stage entry with `ablate_with: {field: source_field}` declares its
+null-operation as a field copy (e.g. the rewrite stage's `ablate_with` promotes the
+draft response to final). `ablate: [final]` in the config — or `--ablate final` — runs
+the null-op in that stage's slot (still snapshotted, so arms diff stage-by-stage), is
+recorded in the manifest, priced out of `--estimate`, and fail-fasts on typos or stages
+with no null-op. N revision rounds = N `llm_tagged` entries in `stages:`, each
+individually ablatable by name.
+
+**Operating contract** (every run, every type): each stage writes a complete local
+snapshot (`stage_<position>_<name>.jsonl` — positions and names are the on-disk
+contract, so existing run dirs stay resumable) and mirrors it to the HF repo named in
+the config; any stage re-runs alone by deleting its file; interrupted or budget-capped
+runs resume from the last completed stage at no cost, expensive stages also checkpoint
+per item. `--smoke` merges the config's `smoke:` overrides and routes to the smoke HF
+repo. `manifest.json` records git sha, constitution sha256, ablations, per-stage usage
+and wall clock; `--estimate --measured <smoke manifest>` prices a full run from real
+per-call token counts (priors live in each model block's `assumed_tokens`).
+
+## Document type: difficult advice (`configs/data/difficult_advice.yaml`)
 
 A faithful replication of the difficult-advice recipe from
-[Teaching Claude Why](https://alignment.anthropic.com/2026/teaching-claude-why/).
-Output and HF cache names keep their historical `synthdoc_v2` / `synthdoc-v2` prefixes so
-existing run snapshots stay resumable.
+[Teaching Claude Why](https://alignment.anthropic.com/2026/teaching-claude-why/), as a
+7-entry stage list: segment → scenarios → draft → refine (full constitution injected) →
+respond (trait + style guidance) → **rewrite against the constitution (the critical
+step)** → chat export with the trait carried in metadata. Output and HF cache names
+keep their historical `synthdoc_v2` prefixes so existing snapshots stay resumable.
+This replaced the config-driven v1 (deleted 2026-08-03, git history).
 
-| # | Stage | What is injected | Output |
-|---|---|---|---|
-| 1 | Segment the constitution | — (deterministic) | traits |
-| 2 | Generate scenarios | the one target trait | situation + tempting shortcut |
-| 3 | Draft the prompt | the scenario | `system` + `user` draft |
-| 4 | Refine the prompt | **full constitution + target trait** | refined `system` + `user` |
-| 5 | Generate response | target trait + style guidance | `reasoning` + `response` |
-| 6 | **Rewrite (critical)** | **full constitution + target trait + whole transcript** | final `reasoning` + `response` |
+## Document type: model-eval-model (`configs/data/model_eval_model.yaml`)
 
-Stage 1 is deterministic on purpose: the trait set must be identical across runs,
-otherwise per-trait comparisons are meaningless. It parses the numbered principles and
-keeps the "what an aligned response looks like" prose separately, as shared style
-guidance injected at stage 5. Stage 2 batches its requests (`scenarios_per_call`) so a
-call never overruns `max_tokens` and truncates its JSON. Stage 7 (`to_sft`) is a free
-export to `{messages, metadata}` records with the trait carried in metadata:
+Generated over a **completed** difficult-advice run (`source:` block; the engine
+fail-fasts if the source run's constitution sha differs): documents in which the model
+reasons about a response to one of those scenarios and works out whether it was the
+right call. The bet is on the reasoning, not the verdict: every prompt enforces
+situation→principle order, a consideration on the other side, and conclusions earned at
+the end; the planner assigns each record an explicitness style (name / paraphrase /
+embody). Stage list: source → plan (deterministic cell/explicitness/flaw-grid
+allocation, `record_id = "<scenario_id>::<cell>"`) → perturb (minimal pairs, one flaw =
+omission/commission/miscalibration/over-application × clear/moderate/grey, length held,
+flaw label metadata-only) → generate → assemble.
 
-```json
-{"messages": [{"role": "system", ...}, {"role": "user", ...},
-              {"role": "assistant", "content": "...", "reasoning_content": "..."}],
- "metadata": {"trait_id": "t1", "trait_name": "...", "trait_text": "...",
-              "scenario_id": "...", "domain": "...", "shortcut": "...", "situation": "..."}}
-```
+Cells (`CELLS` in `cells.py`; a cell = attribution × response quality): `control`
+(gold response verbatim, extended regenerated trace — the reasoning-depth control),
+`m4_other_good` / `m3_other_flawed` (transcript-in-user-turn critique, neutrally
+attributed, blind to the flaw label, verdict via a stripped `<assessment>` tag),
+`m2_self_good` / `m1_self_flawed` (multi-turn self-reflection — the headline cells: the
+response sits in the model's own prior turn with no think block, a reflection prompt
+follows, the model revises or holds with reasons; trained with `supervise: "final"`,
+threaded through `convert_synthdoc_qwen.py` → `build_mixture` → `masking.py`).
 
-This replaced the original config-driven `synthdoc` v1 (deleted 2026-08-03; it collapsed
-three of the six stages into one call and had no draft/refine split — see git history
-before that date).
-
-## Document type: MEM, model-evaluates-model (`pipeline: mem`)
-
-Generated over a **completed** difficult-advice run (its `stage_6_final.jsonl`, locally
-or from the HF mirror): documents in which the model reasons about a response to one of
-those scenarios and works out whether it was the right call. Sharing the scenario bank
-is what makes arm differences attributable to *format* rather than content; the runner
-fail-fasts if the source run's constitution sha differs from the config's.
-
-The bet is on the reasoning, not the verdict, so every prompt enforces the same shape:
-start from the situation, work toward the principle, entertain a consideration on the
-other side, earn any conclusion at the end. Each record also gets an *explicitness*
-style (name the value / paraphrase it / embody it silently) assigned by the planner.
-
-Cells (`CELLS` registry in `stages.py`; a cell = attribution × response quality):
-
-| Cell | What the document is |
-|---|---|
-| `control` | The original exchange, gold response verbatim, only the reasoning trace regenerated — extended and constitution-grounded. No evaluation framing: the arm that tests whether reasoning depth alone explains any MEM effect. |
-| `m4_other_good` | The transcript (neutrally attributed to "an AI assistant") sits in the user turn; the assistant reasons about it, assesses it, and gives its own answer. Verdict comes from a trailing `<assessment>` scaffold tag — stripped from training text, kept as metadata. |
-| `m3_other_flawed` | Same, over a minimal-pair perturbed response (stage 3: one flaw — omission / commission / miscalibration / over-application × clear/moderate/grey severity — length/register held, flaw label metadata-only). Critique generation is blind to the flaw label. |
-| `m2_self_good` / `m1_self_flawed` | Multi-turn self-reflection — the headline cells. The response sits in the model's own prior assistant turn (attribution is structural, and it carries **no** think block, matching inference-time history rendering), one of ~6 reflection prompts (gentle → pushback) follows, and the model revises or holds with reasons — both outcomes real (`<assessment>`: `revised`/`held`). Trained with `supervise: "final"`: only the last turn carries loss. |
-
-M5 is a mixture of cells, not a cell. Stages: `1 source → 2 plan (deterministic: cell
-allocation, explicitness, flaw type×severity grid, wrapper/reflection variants;
-record_id = "<scenario_id>::<cell>") → 3 perturbed (flawed cells only) → 4 generated →
-5 sft`.
-
-The self cells' per-turn masking is threaded end-to-end: `to_mem_sft` stamps
-`metadata.supervise`, `convert_synthdoc_qwen.py` carries it onto the rendered row,
-`build_mixture` passes it through (`format: rendered`), and `train_lora`/`masking.py`
-apply it (`assistant_spans(supervise="final")` keeps only the last assistant turn).
-
-`synthdoc check` runs the corpus validity checks (`checks.py`) and gates on the config's
-thresholds: coverage vs plan (incl. the flaw grid), template collapse (repeated 8-grams),
-per-cell verdict distribution (each cell mostly reaches its expected verdict, never
-100% — all-`revised` in m1 would train capitulation), post-hoc-reasoning rate (heuristic
-+ judged sample), blindness (flaw labels provably absent from prompts and training
-text), the surface-shortcut classifier (numpy logistic regression must NOT predict
-good-vs-flawed from the response text alone), LLM-judged gold-response validation and
-flaw-identification rate (blind critiques must find `clear` flaws). `checks_report.json`
-lands in the run dir either way.
+`uv run synthdoc check --config configs/data/model_eval_model.yaml --run_dir <dir>`
+runs the validity checks and gates on the config's thresholds: coverage (incl. the
+flaw grid), template collapse, per-cell verdict distribution (never 100% — all-`revised`
+in m1 would train capitulation), post-hoc-reasoning rate, blindness, the numpy
+surface-shortcut classifier, LLM-judged gold validation and flaw-identification rate.
 
 ## Adding a document type
 
-Add its prompts as constants in `prompts.py`, its stage functions in `stages.py` (built
-on `core.call_tagged`/`core.run_items`), a `run_<name>` in `pipeline.py` registered in
-`PIPELINES`, a cost model in `estimate.py` registered in `_ESTIMATORS`, and a config in
-`configs/data/<name>.yaml` declaring `pipeline: <name>`. Nothing in `core.py` may know
-about any specific document type.
+Write `configs/data/<name>.yaml`: a `stages:` list composed from the operator table
+(prompts inline), `models:` blocks with `assumed_tokens`, a `smoke:` override map, and
+whatever knobs your stages read. If the type needs structure no operator provides,
+add ONE generic operator to `operators.py` (register its `kind`) — operators may not
+hardcode wording, and the engine may not know about any specific document type.
 
 ## Related
 

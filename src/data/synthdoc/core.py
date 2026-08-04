@@ -128,7 +128,7 @@ def call_tagged(client: OpenRouterClient, usage: Usage, model: str,
     """Run a completion expecting tagged blocks, retrying if a tag is missing.
 
     Takes a full message list rather than (system, user) so callers can present real
-    chat history -- MEM's self-reflection cells put the response under evaluation in a
+    chat history -- model-eval-model's self-reflection cells put the response under evaluation in a
     genuine assistant turn. The retry nudge is appended to the last message, which must
     be the user turn.
     """
@@ -320,6 +320,67 @@ def run_items(items: list[dict], fn, workers: int, desc: str,
 
         resilient(one, len(todo), workers, desc)
     return [ckpt.done[it[ckpt.key]] for it in items if it[ckpt.key] in ckpt.done]
+
+
+from dataclasses import dataclass, field
+
+
+@dataclass
+class Ctx:
+    """Everything a stage function may need, one argument.
+
+    `vars` holds template variables shared across stages (constitution, style guidance,
+    ...); `manifest_extra` collects run-level metadata a stage wants in the manifest.
+    The OpenRouter client is created lazily, so deterministic-only runs (and offline
+    tests) never touch credentials.
+    """
+
+    cfg: dict
+    usage: Usage
+    workers: int
+    run_dir: Path
+    smoke: bool
+    vars: dict = field(default_factory=dict)
+    manifest_extra: dict = field(default_factory=dict)
+    _client: Any = None
+
+    @property
+    def client(self):
+        """The shared OpenRouter client, created on first paid call."""
+        if self._client is None:
+            self._client = OpenRouterClient()
+        return self._client
+
+    @property
+    def constitution(self) -> str:
+        return self.vars["constitution"]
+
+
+@dataclass(frozen=True)
+class Stage:
+    """One executable step, built from a config stage entry by its operator.
+
+    Attributes:
+        name: Snapshot name (`stage_<position>_<name>.jsonl`) and the ablation handle.
+        fn: (ctx, records, ckpt) -> records. The whole stage.
+        paid: Whether the stage spends money -- the budget guard runs before paid stages.
+        checkpoint_key: Record field for per-item resume; None = stage-level cache only.
+        ablate_fn: Null-operation (records -> records), built by the engine from the
+            stage entry's `ablate_with` field-copy map. Absent = not ablatable.
+        skip: (ctx, records) -> bool for structurally inapplicable stages.
+        on_cached: Called when the snapshot is reused, to restore ctx.vars /
+            manifest_extra a cache hit would otherwise lose.
+        preview: Render one line of the first output record for the run log.
+    """
+
+    name: str
+    fn: Any
+    paid: bool = False
+    checkpoint_key: str | None = None
+    ablate_fn: Any = None
+    skip: Any = None
+    on_cached: Any = None
+    preview: Any = None
 
 
 def model_cfg(cfg: dict, key: str) -> dict[str, Any]:

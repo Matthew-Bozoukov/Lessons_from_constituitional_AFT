@@ -206,9 +206,10 @@ calls that are already cached, so an interrupted run costs nothing to continue.
 
 ## `src/data/synthdoc/` — synthetic chat data generation pipelines (separate, plug-and-play)
 
-A **self-contained** package (formerly `synthdoc_v2`) with one pipeline entrypoint; the config's
-`pipeline:` field picks the document type. `pipeline: difficult_advice` replicates the six-stage
-Teaching Claude Why recipe:
+A **self-contained** package (formerly `synthdoc_v2`) with one config-driven engine; the config's
+`stages:` list — prompts included — fully defines the document type, and
+`scripts/data/build_dataset.py` executes it. `configs/data/difficult_advice.yaml` replicates the
+six-stage Teaching Claude Why recipe:
 segment the constitution, generate scenarios, draft the prompt, refine it against the full
 constitution, generate a response, and rewrite the response against the target trait. It shares
 nothing with the code above — no imports either way — and hands off a
@@ -217,10 +218,10 @@ can read directly. Full guide: [`src/data/synthdoc/README.md`](../src/data/synth
 (stage table, models, caching).
 
 ```bash
-uv run synthdoc segment                                   # stage 1 only, no API calls
-uv run synthdoc run --config configs/data/difficult_advice.yaml --smoke
-uv run synthdoc run --config configs/data/difficult_advice.yaml
-uv run synthdoc estimate --config configs/data/difficult_advice.yaml   # cost estimate before committing
+uv run synthdoc segment                                   # constitution -> traits, no API calls
+uv run scripts/data/build_dataset.py --config configs/data/difficult_advice.yaml --smoke
+uv run scripts/data/build_dataset.py --config configs/data/difficult_advice.yaml
+uv run scripts/data/build_dataset.py --config configs/data/difficult_advice.yaml --estimate
 uv run pytest tests/test_difficult_advice.py -q           # offline, no API key
 ```
 
@@ -229,7 +230,7 @@ directory keeps its historical name so old runs stay resumable) and mirrors it t
 repo named in the config, so an interrupted or budget-capped run resumes from the last completed
 stage at no cost.
 
-The same package also hosts the **MEM (model-evaluates-model) pipeline**: documents where the
+The same package also hosts the **model-eval-model pipeline**: documents where the
 model reasons about a response to one of the same scenarios (its own or "an AI assistant's") and
 works out whether it was the right call. It consumes a *completed* difficult-advice run — same
 scenario bank, so arm differences are attributable to format — and fail-fasts if the source run's
@@ -242,11 +243,11 @@ are multi-turn with the evaluated response in the model's own prior turn, traine
 [`src/data/synthdoc/README.md`](../src/data/synthdoc/README.md).
 
 ```bash
-uv run synthdoc run --config configs/data/mem.yaml --smoke     # 2 docs per enabled cell
-uv run synthdoc run --config configs/data/mem.yaml
-uv run synthdoc check --config configs/data/mem.yaml --run_dir output/mem/<ts>   # validity gates
-uv run synthdoc estimate --config configs/data/mem.yaml --measured output/mem/<smoke>/manifest.json
-uv run pytest tests/test_mem.py -q                        # offline, no API key
+uv run scripts/data/build_dataset.py --config configs/data/model_eval_model.yaml --smoke   # 2 docs per enabled cell
+uv run scripts/data/build_dataset.py --config configs/data/model_eval_model.yaml
+uv run synthdoc check --config configs/data/model_eval_model.yaml --run_dir output/model_eval_model/<ts>   # validity gates
+uv run scripts/data/build_dataset.py --config configs/data/model_eval_model.yaml --estimate --measured output/model_eval_model/<smoke>/manifest.json
+uv run pytest tests/test_model_eval_model.py -q                        # offline, no API key
 ```
 
 The original config-driven `synthdoc` package (ablation sweeps, corpus snapshots,
@@ -255,7 +256,7 @@ pipeline; it lives in git history before that date, and its published corpora re
 HuggingFace (`LASR-Callum/synthdoc-<name>`).
 
 ## Repo layout
-- `src/data/synthdoc/` constitution-grounded data generation, one pipeline; the config's `pipeline:` field picks the document type (`configs/data/difficult_advice.yaml`, `configs/data/mem.yaml`).
+- `src/data/synthdoc/` constitution-grounded data generation: one config-driven engine; the config's `stages:` list (prompts included) defines the document type; run via `scripts/data/build_dataset.py` (`configs/data/difficult_advice.yaml`, `configs/data/model_eval_model.yaml`).
 - `src/` reusable code (`endpoints/`, `utils.py`, `data/`, `train/`, `eval/`); `scripts/` thin pipeline CLIs foldered by stage (`data/`, `train/`, `gpu/`); `scratch/` one-offs.
 - `configs/` OmegaConf YAML for every step, foldered by stage (`data/`, `train/`, `eval/`).
 - `scripts/run_eval.py` THE eval entrypoint (see CLAUDE.md "The eval framework"): serves each `--target` with vLLM and dispatches to the registered eval's `run()`.

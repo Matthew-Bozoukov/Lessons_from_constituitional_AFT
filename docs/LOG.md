@@ -3,6 +3,50 @@
 
 # LOG
 
+## 2026-08-04 (4) — synthdoc final form: config-driven engine, prompts live in the configs
+
+Superseding the base-class design from entry (3) on request: document types are now defined
+ENTIRELY by their config. `configs/data/difficult_advice.yaml` and `model_eval_model.yaml` carry a
+`stages:` list — operator kind, model key, checkpoint key, `ablate_with` null-op, and **all prompt
+templates inline** (extracted from the prompt modules with byte-exact YAML round-trip verification;
+model-eval-model additionally carries its cell prompt library and the checks' judge wording).
+`src/data/synthdoc/` is flat code with no per-type anything: `pipeline.py` (the engine: builds
+stages from config, owns caching/checkpoints/ablation/budget/manifest/estimates — priors now in
+each model block's `assumed_tokens`), `operators.py` (generic kinds: segment, scenarios, llm_json,
+llm_tagged, chat_export + the model-eval-model structural kinds), `cells.py` (cell structure,
+wording injected), `checks.py`, `core.py`. `scripts/data/build_dataset.py` is THE generation
+entrypoint (`--smoke/--resume/--ablate/--estimate [--measured]`); the `synthdoc` console script
+keeps topup/check/estimate/segment. N revision rounds = N stage entries, each ablatable by name.
+Verified: **246 tests pass** (engine tests via a registered fake operator; snapshot names of both
+real configs pinned; estimates byte-match $47.68/$100.32 incl. ablation pricing); the offline
+fake-client parity harness reproduces main's exact difficult-advice artifact layout AND resumes a
+run dir written by main's code (old stage-4 checkpoint honoured per item); the pre-framework
+model-eval-model smoke dir resumes end-to-end at $0.00. CLAUDE.md updated on request — review
+that diff.
+
+## 2026-08-04 (3) — synthdoc framework: generic Pipeline base class, per-type folders, ablatable stages
+
+Final shape of the day's restructuring, designed for many future document types. `pipeline.py`
+is now the framework: a `Stage` dataclass (name, fn, paid, checkpoint_key, **ablate_fn** null-op,
+skip condition, on_cached hook, preview) and an abstract `Pipeline` base class owning — once, for
+every type — snapshot caching + HF mirroring, per-item checkpoints, the budget guard, the
+manifest, generic `estimate`, and **ablation**: `ablate: [stage_name]` in the config (or
+`--ablate`) runs the stage's declared null-operation in its slot (still snapshotted, recorded in
+the manifest, priced out of estimates, fail-fast on typos or stages with no null-op). Each
+document type is a folder holding only content (`prompts.py`, `stages.py`, `__init__.py` with the
+subclass — model_eval_model/ also keeps `checks.py`): subclasses declare `stages(cfg)` (config-
+dependent, so `revision_rounds: N` makes each difficult-advice rewrite round its own ablatable
+stage — e.g. `ablate: [final]` trains on un-revised drafts), exact `calls(cfg)`, token priors,
+and `smoke_clamp`; `topup`/`check` became subclass methods the CLI dispatches to. Deleted both
+bespoke runners and estimators (~400 lines) for ~250 lines of base class. Snapshot positions and
+names are pinned by test as the on-disk contract (`stage_1_traits…stage_7_sft`,
+`stage_1_source…stage_5_sft`). Verified: **246 tests pass** incl. 9 new offline base-runner tests
+(cache reuse, per-stage re-run, ablation null-op + manifest + fail-fasts, skip slot-keeping,
+checkpoint wiring, smoke clamp immutability, ablation-aware estimate); estimates unchanged
+($47.68 / $100.32); the pre-framework model-eval-model smoke dir resumes end-to-end at $0.00
+(all 5 snapshots reused); legacy flawed-only stage_3 snapshots now fail fast instead of silently
+dropping good cells.
+
 ## 2026-08-04 (2) — synthdoc restructured: one pipeline, document type declared in the config
 
 Difficult-advice was the package default with MEM tacked on; after one round with parallel
@@ -10,8 +54,12 @@ subpackages (rejected as over-structured), synthdoc is now ONE flat pipeline pac
 machinery moved to `core.py` (priced `Usage`, `call_json`/`call_tagged` with parse-retry,
 `resilient`, `Checkpoint`/`run_items`, `model_cfg`, `measured_per_stage`); `prompts.py`/`stages.py`
 hold every document type sectioned; `pipeline.py` has `run_difficult_advice`/`run_mem` plus a
-dispatching `run()` on the config's new required `pipeline: difficult_advice | mem` field (same for
-`estimate()`); `checks.py` stays MEM-only. CLI is flat and standardized — no `da` abbreviation
+dispatching `run()` on the config's new required `pipeline: difficult_advice | model_eval_model` field (same for
+`estimate()`); `checks.py` stays model-eval-model-only. All `mem` names were then renamed to
+`model_eval_model` for non-ambiguity (config `configs/data/model_eval_model.yaml`, test
+`test_model_eval_model.py`, `run_model_eval_model`/`estimate_model_eval_model`/
+`plan_model_eval_model_records` etc.; prompt constants dropped the prefix:
+`EVALUATOR_SYSTEM`, `CRITIQUE_*`, `REFLECT_*`; new runs land in `output/model_eval_model/`). CLI is flat and standardized — no `da` abbreviation
 anywhere: `uv run synthdoc run|estimate --config <cfg>` dispatches on the config; `topup`
 (difficult_advice-only) and `check` (mem-only) validate the field. `configs/data/synthdoc.yaml`
 renamed to `configs/data/difficult_advice.yaml` (+ `pipeline:` field added to both configs; output

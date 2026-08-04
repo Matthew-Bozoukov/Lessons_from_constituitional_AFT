@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from src.data.synthdoc.constitution import segment  # noqa: E402
 from src.data.synthdoc.core import cost_of  # noqa: E402
-from src.data.synthdoc.stages import to_sft  # noqa: E402
 
 CONSTITUTION = "constitutions/archive/claude_distilled_8_principles_v1/constitution.md"
 
@@ -49,6 +48,13 @@ def test_segments_specgen_heading_format():
 
 
 def test_sft_export_carries_reasoning_and_trait_metadata():
+    # The export is now the real config's chat_export stage -- test through it.
+    import yaml
+
+    from src.data.synthdoc.operators import op_chat_export
+
+    sft_spec = next(s for s in yaml.safe_load(
+        open("configs/data/difficult_advice.yaml"))["stages"] if s["name"] == "sft")
     rec = {
         "scenario_id": "t1_s000", "trait_id": "t1", "trait_name": "Honesty",
         "trait_text": "**Honesty.** Do not deceive.", "domain": "work",
@@ -56,7 +62,7 @@ def test_sft_export_carries_reasoning_and_trait_metadata():
         "system": "You are a helpful assistant.", "user": "Should I lie?",
         "reasoning": "The tension is...", "response": "Here is what I'd consider...",
     }
-    out = to_sft([rec])
+    out = op_chat_export(sft_spec, {}).fn(None, [rec], None)
     assert len(out) == 1
     msgs = out[0]["messages"]
     assert [m["role"] for m in msgs] == ["system", "user", "assistant"]

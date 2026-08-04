@@ -1,5 +1,5 @@
-# ABOUTME: Offline tests for the MEM pipeline: planning, perturbation guards, assembly,
-# ABOUTME: blindness, per-turn supervision and the validity checks. Run: uv run pytest tests/test_mem.py -q
+# ABOUTME: Offline tests for the model-eval-model pipeline: planning, perturbation guards, assembly,
+# ABOUTME: blindness, per-turn supervision and the validity checks. Run: uv run pytest tests/test_model_eval_model.py -q
 
 from __future__ import annotations
 
@@ -7,8 +7,9 @@ from collections import Counter
 
 import pytest
 
+import yaml
+
 from src.data.convert_synthdoc_qwen import _passthrough
-from src.data.synthdoc import prompts
 from src.data.synthdoc.checks import (
     check_blindness,
     check_coverage,
@@ -17,15 +18,17 @@ from src.data.synthdoc.checks import (
     check_template_collapse,
     check_verdict_distribution,
 )
-from src.data.synthdoc.estimate import estimate_mem
-from src.data.synthdoc.stages import (
+from src.data.synthdoc.cells import (
     _critique_messages,
     _length_matched,
     _norm_verdict,
     _reflect_messages,
-    plan_mem_records,
-    to_mem_sft,
+    plan_model_eval_model_records,
+    to_model_eval_model_sft,
 )
+
+CFG = yaml.safe_load(open("configs/data/model_eval_model.yaml"))
+P = CFG["prompts"]  # the config IS the wording -- tests validate against it
 
 EXPLICITNESS = {"name_clause": 0.3, "paraphrase": 0.4, "embody": 0.3}
 FLAWS = {"types": {"omission": 0.3, "commission": 0.3, "miscalibration": 0.2,
@@ -53,8 +56,9 @@ def _source(n_per_trait: int = 4, traits: tuple[str, ...] = ("t1", "t2", "t3")) 
 
 def _plan(cells: dict[str, int], seed: int = 0, source: list[dict] | None = None,
           flaws: dict | None = None) -> list[dict]:
-    return plan_mem_records(source or _source(), cells, EXPLICITNESS, seed,
-                            source_run="test/source", flaws=flaws)
+    return plan_model_eval_model_records(source or _source(), cells, EXPLICITNESS,
+                                         seed, P, source_run="test/source",
+                                         flaws=flaws)
 
 
 # --- planning ----------------------------------------------------------------------
@@ -79,8 +83,8 @@ def test_plan_stratifies_traits_and_carries_source_fields():
         assert p["gold_reasoning"] == "gold reasoning"
         assert p["flaw"] is None
         assert p["source_run"] == "test/source"
-        assert 0 <= p["variant_ix"] < len(prompts.TRANSCRIPT_WRAP_VARIANTS)
-        assert 0 <= p["reflect_ix"] < len(prompts.REFLECT_VARIANTS)
+        assert 0 <= p["variant_ix"] < len(P["transcript_wrappers"])
+        assert 0 <= p["reflect_ix"] < len(P["reflect_variants"])
 
 
 def test_plan_explicitness_matches_weights_within_rounding():
@@ -141,12 +145,12 @@ def test_critique_prompts_are_blind_to_the_flaw_label():
          "change_summary": "removed the safety caveat"}
     # The flaw label and change summary must not reach the generation prompt at all.
     stripped = {**p, "flaw": None, "change_summary": ""}
-    assert _critique_messages(p, "CONST") == _critique_messages(stripped, "CONST")
+    assert _critique_messages(p, "CONST", P) == _critique_messages(stripped, "CONST", P)
     # Against the good twin (m4), prompts differ ONLY in the evaluated response text.
     good = {**p, "cell": "m4_other_good", "response_kind": "good", "flaw": None,
             "flawed_response": "", "change_summary": ""}
-    msgs_flawed = _critique_messages(p, "CONST")
-    msgs_good = _critique_messages(good, "CONST")
+    msgs_flawed = _critique_messages(p, "CONST", P)
+    msgs_good = _critique_messages(good, "CONST", P)
     assert msgs_flawed[0] == msgs_good[0]
     assert msgs_good[1]["content"].replace(p["gold_response"], "FLAWED RESPONSE TEXT") \
         == msgs_flawed[1]["content"]
@@ -154,16 +158,16 @@ def test_critique_prompts_are_blind_to_the_flaw_label():
 
 def test_reflect_prompts_put_the_response_in_a_real_assistant_turn():
     p = _plan({"m2_self_good": 1})[0]
-    msgs = _reflect_messages(p, "CONST")
+    msgs = _reflect_messages(p, "CONST", P)
     assert [m["role"] for m in msgs] == ["system", "user", "assistant", "user"]
     assert msgs[2]["content"] == p["gold_response"]
     assert msgs[1]["content"] == p["user"]
-    assert prompts.REFLECT_VARIANTS[p["reflect_ix"]] in msgs[3]["content"]
+    assert P["reflect_variants"][p["reflect_ix"]] in msgs[3]["content"]
     # Blindness: identical template for the flawed twin, differing only in the turn text.
     flawed = {**p, "cell": "m1_self_flawed", "response_kind": "flawed",
               "flaw": {"type": "omission", "severity": "grey"},
               "flawed_response": "FLAWED TEXT", "change_summary": "cut the caveat"}
-    msgs_f = _reflect_messages(flawed, "CONST")
+    msgs_f = _reflect_messages(flawed, "CONST", P)
     assert msgs_f[0] == msgs[0] and msgs_f[3] == msgs[3]
     assert msgs_f[2]["content"] == "FLAWED TEXT"
 
@@ -171,7 +175,7 @@ def test_reflect_prompts_put_the_response_in_a_real_assistant_turn():
 def test_flawed_cells_never_fall_back_to_the_gold_response():
     p = _plan({"m1_self_flawed": 1}, flaws=FLAWS)[0]
     with pytest.raises(AssertionError, match="without a perturbed response"):
-        _reflect_messages(p, "CONST")
+        _reflect_messages(p, "CONST", P)
 
 
 # --- assembly ----------------------------------------------------------------------
@@ -180,7 +184,7 @@ def test_flawed_cells_never_fall_back_to_the_gold_response():
 def test_control_assembly_keeps_gold_response_verbatim():
     p = _plan({"control": 2})[0]
     generated = {**p, "reasoning": "NEW extended deliberation."}
-    rec = to_mem_sft([generated])[0]
+    rec = to_model_eval_model_sft([generated], P)[0]
     assert [m["role"] for m in rec["messages"]] == ["system", "user", "assistant"]
     assert rec["messages"][0]["content"] == p["system"]
     assert rec["messages"][2]["content"] == p["gold_response"]
@@ -196,8 +200,8 @@ def test_critique_assembly_wraps_transcript_without_scaffolding():
     generated = {**p, "reasoning": "Private deliberation.",
                  "response": "My honest assessment and my own answer.",
                  "assessment": "sound"}
-    rec = to_mem_sft([generated])[0]
-    assert rec["messages"][0]["content"] == prompts.MEM_EVAL_SYSTEM
+    rec = to_model_eval_model_sft([generated], P)[0]
+    assert rec["messages"][0]["content"] == P["evaluator_system"]
     user = rec["messages"][1]["content"]
     assert p["gold_response"] in user, "the evaluated response must sit in the user turn"
     assert p["user"] in user
@@ -217,7 +221,7 @@ def test_reflect_assembly_masks_the_first_turn_and_supervises_the_final():
                  "reasoning": "Re-examining what I wrote...",
                  "response": "You're right to push -- here is what I'd change.",
                  "assessment": "revised"}
-    rec = to_mem_sft([generated])[0]
+    rec = to_model_eval_model_sft([generated], P)[0]
     roles = [m["role"] for m in rec["messages"]]
     assert roles == ["system", "user", "assistant", "user", "assistant"]
     first, final = rec["messages"][2], rec["messages"][4]
@@ -225,7 +229,7 @@ def test_reflect_assembly_masks_the_first_turn_and_supervises_the_final():
     assert "reasoning_content" not in first, \
         "the evaluated turn must carry no trace (masked context, not a target)"
     assert final["reasoning_content"] == "Re-examining what I wrote..."
-    assert rec["messages"][3]["content"] in prompts.REFLECT_VARIANTS
+    assert rec["messages"][3]["content"] in P["reflect_variants"]
     assert "---" not in rec["messages"][3]["content"], "no format scaffolding in SFT"
     md = rec["metadata"]
     assert md["supervise"] == "final"
@@ -240,10 +244,10 @@ def test_reflect_assembly_masks_the_first_turn_and_supervises_the_final():
 
 
 def test_convert_passthrough_carries_mem_identity_and_supervise():
-    mem_row = {"messages": [], "metadata": {"record_id": "s::m1_self_flawed",
+    model_eval_model_row = {"messages": [], "metadata": {"record_id": "s::m1_self_flawed",
                                             "cell": "m1_self_flawed",
                                             "supervise": "final"}}
-    assert _passthrough(mem_row) == {"doc_id": "s::m1_self_flawed",
+    assert _passthrough(model_eval_model_row) == {"doc_id": "s::m1_self_flawed",
                                      "doc_type": "m1_self_flawed",
                                      "supervise": "final"}
     agentic_row = {"doc_id": "d1", "doc_type": "agentic", "axes": {"a": 1}}
@@ -330,13 +334,13 @@ def test_blindness_check_catches_change_summary_in_training_text():
     generated = [{**p, "reasoning": "r", "response": "resp", "assessment": "revised",
                   "change_summary": "removed the safety caveat entirely",
                   "flawed_response": "A response missing its caveat."}]
-    sft = to_mem_sft(generated)
-    assert check_blindness(generated, sft, "CONST")["pass"]
+    sft = to_model_eval_model_sft(generated, P)
+    assert check_blindness(generated, sft, "CONST", P)["pass"]
     leaked = [{**sft[0],
                "messages": sft[0]["messages"][:4] + [
                    {"role": "assistant",
                     "content": "I see they removed the safety caveat entirely."}]}]
-    out = check_blindness(generated, leaked, "CONST")
+    out = check_blindness(generated, leaked, "CONST", P)
     assert not out["pass"] and out["sft_leaks"] == [p["record_id"]]
 
 
@@ -367,18 +371,16 @@ def test_surface_shortcut_flags_a_tell_and_passes_indistinguishable_pairs():
 # --- estimate ----------------------------------------------------------------------
 
 
-def test_estimate_mem_uses_exact_call_counts():
-    cfg = {"cells": {"control": 5, "m4_other_good": 7, "m3_other_flawed": 3,
-                     "m2_self_good": 4, "m1_self_flawed": 2},
-           "models": {"control": {"model": "anthropic/claude-sonnet-5"},
-                      "critique": {"model": "anthropic/claude-sonnet-5"},
-                      "reflect": {"model": "anthropic/claude-sonnet-5"},
-                      "perturb": {"model": "anthropic/claude-sonnet-5"}}}
-    est = estimate_mem(cfg)
+def test_estimate_model_eval_model_uses_exact_call_counts():
+    from src.data.synthdoc.pipeline import estimate
+
+    cfg = {**CFG, "cells": {"control": 5, "m4_other_good": 7, "m3_other_flawed": 3,
+                            "m2_self_good": 4, "m1_self_flawed": 2}}
+    est = estimate(cfg)
     calls = {r["stage"]: r["calls"] for r in est["per_stage"]}
     assert calls == {"control": 5, "critique": 10, "reflect": 6, "perturb": 5}, \
         "perturb = one call per flawed document (m3 + m1)"
     assert est["final_training_examples"] == 21
     assert est["total_usd"] > 0
     with pytest.raises(ValueError, match="unregistered"):
-        estimate_mem({**cfg, "cells": {"m9_bogus": 3}})
+        estimate({**CFG, "cells": {"m9_bogus": 3}})

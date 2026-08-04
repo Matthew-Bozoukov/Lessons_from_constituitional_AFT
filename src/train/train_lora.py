@@ -122,7 +122,7 @@ def main(config: str, smoke: bool = False) -> None:
         skip_empty = bool(cfg.train.get("mask_empty_think", False))
         print(f">>> mask_empty_think: {skip_empty}")
         # A row's optional `supervise` field ("final" = train only the last assistant
-        # turn -- the MEM self-reflection records) must be consumed here: remove_columns
+        # turn -- the model-eval-model self-reflection records) must be consumed here: remove_columns
         # discards it right after. Absent or null means every assistant turn trains.
         if "supervise" in ds.column_names:
             n_final = sum(1 for s in ds["supervise"] if s == "final")

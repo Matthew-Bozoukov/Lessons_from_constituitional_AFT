@@ -26,7 +26,7 @@ def assistant_spans(text: str, skip_empty_think: bool = False,
             Training a model to emit one is the documented reasoning-collapse pattern. Real
             reasoning traces are unaffected -- only the exact empty literal is skipped.
         supervise: "all" trains every assistant turn; "final" only the last one. "final"
-            is how the MEM self-reflection records keep their first (possibly flawed)
+            is how the model-eval-model self-reflection records keep their first (possibly flawed)
             response as context without making it a training target.
 
     Returns:

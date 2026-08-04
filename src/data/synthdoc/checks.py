@@ -1,4 +1,4 @@
-# ABOUTME: Corpus validity checks for a MEM run: properties of the data, not the
+# ABOUTME: Corpus validity checks for a model-eval-model run: properties of the data, not the
 # ABOUTME: pipeline. Gated by config thresholds; report always written before gating.
 
 from __future__ import annotations
@@ -11,11 +11,10 @@ from pathlib import Path
 
 from src.endpoints.openrouter import OpenRouterClient
 
+from .cells import CELLS
 from .constitution import full_text
 from .core import Usage, call_tagged, run_items
 from .hf_cache import read_jsonl
-from . import prompts
-from .stages import CELLS
 
 # Phrases that read as a settled judgement of the evaluated reply. Appearing in the
 # opening stretch of a trace suggests the verdict came first and the considerations
@@ -183,7 +182,8 @@ def check_post_hoc_heuristic(generated: list[dict]) -> dict:
             "early_share": round(early / len(judged), 3) if judged else 0.0}
 
 
-def check_blindness(generated: list[dict], sft: list[dict], constitution: str) -> dict:
+def check_blindness(generated: list[dict], sft: list[dict], constitution: str,
+                    P: dict) -> dict:
     """Prove the flaw label never reaches a generation prompt or a training record.
 
     For every flawed document, the generation messages rebuilt with the flaw metadata
@@ -196,7 +196,7 @@ def check_blindness(generated: list[dict], sft: list[dict], constitution: str) -
     for r in flawed:
         build = CELLS[r["cell"]].build_messages
         stripped = {**r, "flaw": None, "change_summary": ""}
-        if build(r, constitution) != build(stripped, constitution):
+        if build(r, constitution, P) != build(stripped, constitution, P):
             prompt_leaks.append(r["record_id"])
 
     summaries = {r["record_id"]: r["change_summary"]
@@ -211,7 +211,7 @@ def check_blindness(generated: list[dict], sft: list[dict], constitution: str) -
 
 
 def check_gold_validation(source: list[dict], client: OpenRouterClient,
-                          usage: Usage, model: str, n: int, seed: int,
+                          usage: Usage, model: str, judges: dict, n: int, seed: int,
                           workers: int, max_below_3: float) -> dict:
     """Judge a sample of gold responses against their target trait, 1-5.
 
@@ -224,8 +224,8 @@ def check_gold_validation(source: list[dict], client: OpenRouterClient,
     def one(r: dict) -> dict:
         parsed = call_tagged(
             client, usage, model,
-            [{"role": "system", "content": prompts.GOLD_JUDGE_SYSTEM},
-             {"role": "user", "content": prompts.GOLD_JUDGE_USER.format(
+            [{"role": "system", "content": judges["gold_system"]},
+             {"role": "user", "content": judges["gold_user"].format(
                  trait_name=r["trait_name"], trait_text=r["trait_text"],
                  user=r["user"], response=r["response"])}],
             0.3, 800, "check:gold", ("score", "why"))
@@ -246,8 +246,8 @@ def check_gold_validation(source: list[dict], client: OpenRouterClient,
 
 
 def check_flaw_identification(generated: list[dict], client: OpenRouterClient,
-                              usage: Usage, model: str, n: int, seed: int,
-                              workers: int, min_hit_clear: float) -> dict:
+                              usage: Usage, model: str, judges: dict, n: int,
+                              seed: int, workers: int, min_hit_clear: float) -> dict:
     """Judge whether each blind critique landed on the flaw actually introduced.
 
     A low rate means the perturbations are too subtle or the critiques are confabulated
@@ -263,8 +263,8 @@ def check_flaw_identification(generated: list[dict], client: OpenRouterClient,
     def one(r: dict) -> dict:
         parsed = call_tagged(
             client, usage, model,
-            [{"role": "system", "content": prompts.FLAWID_JUDGE_SYSTEM},
-             {"role": "user", "content": prompts.FLAWID_JUDGE_USER.format(
+            [{"role": "system", "content": judges["flawid_system"]},
+             {"role": "user", "content": judges["flawid_user"].format(
                  change_summary=r["change_summary"], critique=_doc_text(r))}],
             0.3, 500, "check:flawid", ("hit", "why"))
         v = parsed["hit"].strip().lower()
@@ -371,7 +371,7 @@ def check_surface_shortcut(generated: list[dict], max_auc: float, seed: int) -> 
 
 
 def check_post_hoc_judge(generated: list[dict], client: OpenRouterClient,
-                         usage: Usage, model: str, n: int, seed: int,
+                         usage: Usage, model: str, judges: dict, n: int, seed: int,
                          workers: int) -> dict:
     """LLM-judged post-hoc-reasoning rate on a small sample of critique traces."""
     judged = [r for r in generated if "assessment" in r]
@@ -383,8 +383,8 @@ def check_post_hoc_judge(generated: list[dict], client: OpenRouterClient,
     def one(r: dict) -> dict:
         parsed = call_tagged(
             client, usage, model,
-            [{"role": "system", "content": prompts.POSTHOC_JUDGE_SYSTEM},
-             {"role": "user", "content": prompts.POSTHOC_JUDGE_USER.format(
+            [{"role": "system", "content": judges["posthoc_system"]},
+             {"role": "user", "content": judges["posthoc_user"].format(
                  reasoning=r["reasoning"])}],
             0.3, 500, "check:posthoc", ("posthoc", "why"))
         v = parsed["posthoc"].strip().lower()
@@ -400,15 +400,15 @@ def check_post_hoc_judge(generated: list[dict], client: OpenRouterClient,
 
 def run_checks(run_dir: str | Path, cfg: dict,
                sample: int | None = None) -> tuple[dict, bool]:
-    """Run every applicable validity check over a MEM run and write the report.
+    """Run every applicable validity check over a model-eval-model run and write the report.
 
     The report is always written in full before any gating, so a failed run is still
     inspectable. Checks marked report-only always pass; gated checks read their
     thresholds from `cfg["checks"]["gates"]`.
 
     Args:
-        run_dir: The MEM run directory (stage snapshots + manifest).
-        cfg: The MEM run config.
+        run_dir: The model-eval-model run directory (stage snapshots + manifest).
+        cfg: The model-eval-model run config.
         sample: Override for the LLM-judged sample size.
 
     Returns:
@@ -435,22 +435,24 @@ def run_checks(run_dir: str | Path, cfg: dict,
         generated, float(gates.get("verdict_majority_min", 0.6)),
         float(gates.get("verdict_majority_max", 0.98)))
     report["post_hoc_heuristic"] = check_post_hoc_heuristic(generated)
-    report["blindness"] = check_blindness(generated, sft, constitution)
+    report["blindness"] = check_blindness(generated, sft, constitution,
+                                          cfg["prompts"])
     report["surface_shortcut"] = check_surface_shortcut(
         generated, float(gates.get("surface_auc_max", 0.65)), seed)
 
     judge_model = ccfg.get("judge_model")
     if judge_model:
+        judges = ccfg["judges"]
         client = OpenRouterClient()
         usage = Usage()
         report["gold_validation"] = check_gold_validation(
-            source, client, usage, judge_model, n, seed, workers,
+            source, client, usage, judge_model, judges, n, seed, workers,
             float(gates.get("gold_below_3_max", 0.10)))
         report["flaw_identification"] = check_flaw_identification(
-            generated, client, usage, judge_model, n, seed, workers,
+            generated, client, usage, judge_model, judges, n, seed, workers,
             float(gates.get("flaw_id_clear_min", 0.70)))
         report["post_hoc_judge"] = check_post_hoc_judge(
-            generated, client, usage, judge_model, min(n, 30), seed, workers)
+            generated, client, usage, judge_model, judges, min(n, 30), seed, workers)
         report["judge_spend_usd"] = round(usage.usd, 4)
     else:
         print("!!! checks.judge_model not set -- skipping the LLM-judged checks")

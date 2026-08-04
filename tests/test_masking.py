@@ -50,7 +50,7 @@ def test_labels_unmask_exactly_the_assistant_characters():
 
 
 def test_supervise_final_trains_only_the_last_assistant_turn():
-    # The MEM self-reflection shape: the first assistant turn (the response under
+    # The model-eval-model self-reflection shape: the first assistant turn (the response under
     # evaluation) is context, not a target.
     spans = assistant_spans(CHAT, supervise="final")
     assert [CHAT[s:e] for s, e in spans] == ["farewell<|im_end|>"]

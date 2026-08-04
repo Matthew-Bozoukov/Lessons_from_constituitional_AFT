@@ -47,7 +47,7 @@ def test_take_rendered_passes_supervise_through(tmp_path):
         f.write(json.dumps({"text": "self-reflect", "n_tokens": 10,
                             "supervise": "final"}) + "\n")
         f.write(json.dumps({"text": "plain", "n_tokens": 10}) + "\n")
-    out = {r["text"]: r for r in _take_rendered(path, budget=100, seed=0, source="mem")}
+    out = {r["text"]: r for r in _take_rendered(path, budget=100, seed=0, source="model_eval_model")}
     assert out["self-reflect"]["supervise"] == "final"
     assert "supervise" not in out["plain"], "rows without the field stay unchanged"
 

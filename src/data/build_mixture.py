@@ -115,7 +115,7 @@ def _take_rendered(path: Path, budget: int, seed: int, source: str) -> list[dict
     """Sample an already-rendered jsonl (fields: text, n_tokens) up to a token budget.
 
     An optional per-row `supervise` field ("all" | "final") rides through into the
-    mixture so the trainer can mask non-final assistant turns (the MEM self-reflection
+    mixture so the trainer can mask non-final assistant turns (the model-eval-model self-reflection
     records); rows without it train every assistant turn as before.
     """
     rows = [
