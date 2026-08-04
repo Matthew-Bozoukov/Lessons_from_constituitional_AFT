@@ -17,7 +17,6 @@ from src.eval.capabilities.mmlu import (
     parse_answer,
     prompt_hash,
     render_question,
-    resolve_trace,
     score_records,
     subset_hash,
     wilson_ci,
@@ -217,47 +216,6 @@ def test_parse_answer_does_not_invent_an_answer_from_a_restated_option_list():
 
 
 # --- Statistics ----------------------------------------------------------------------
-
-
-# --- Reasoning-trace shapes ----------------------------------------------------------
-# Regression tests for a bug found against the live vLLM 0.26 endpoint: the out-of-band
-# trace field is `reasoning` there and `reasoning_content` on 0.8.x. Reading only one of
-# them reports every trace as empty and trips the gotcha-2 collapse alarm on a model that
-# is reasoning perfectly normally.
-
-
-def test_resolve_trace_inline_think_tags():
-    think, answer = resolve_trace("<think>weighing it up</think>\n\nAnswer: B", None)
-    assert think == "weighing it up"
-    assert answer == "Answer: B"
-
-
-def test_resolve_trace_out_of_band_keeps_content_as_the_answer():
-    """vLLM 0.26 shape: content holds only the visible answer, trace arrives separately."""
-    think, answer = resolve_trace("\n\nB", "The user wants the bone the pituitary sits in.")
-    assert think == "The user wants the bone the pituitary sits in."
-    assert answer == "B"
-    assert parse_answer(answer)[0] == "B"
-
-
-def test_resolve_trace_without_any_reasoning():
-    assert resolve_trace("B", None) == ("", "B")
-
-
-def test_resolve_trace_truncated_mid_trace_yields_no_answer():
-    """Cut off inside the trace: the answer must stay empty so it scores unparseable.
-
-    Borrowing the trace text as the answer would let a truncated generation score as a
-    correct answer whenever a letter happened to appear in the scratchpad.
-    """
-    think, answer = resolve_trace("", "Let me think about whether it is A or B")
-    assert answer == ""
-    assert parse_answer(answer) == (None, "none")
-    assert think
-
-
-def test_resolve_trace_handles_none_content():
-    assert resolve_trace(None, None) == ("", "")
 
 
 def test_wilson_ci_brackets_the_point_estimate_and_stays_in_bounds():

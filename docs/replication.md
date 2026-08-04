@@ -134,16 +134,6 @@ uv run scratch/reports/final_report.py
 ```
 `final_report.py` writes `output/report/final_*/{report.md, dashboard.html, plots/}`.
 
-### 7. (Optional) Cross-check on the Inspect harness
-Serve base+adapter, SSH-tunnel port 8000 to the machine that has
-[`inspect_evals`](https://github.com/UKGovernmentBEIS/inspect_evals), then:
-```bash
-bash scripts/eval/run_leaking_inspect.sh difficult_advice explicit america ft_explicit_america
-```
-(runs `inspect_evals/agentic_misalignment`, leaking scenario, gemini-flash grader).
-
----
-
 ---
 
 ## Second eval: ODCV-Bench (Qwen3.6-27B replication)
@@ -199,6 +189,66 @@ calls that are already cached, so an interrupted run costs nothing to continue.
   but those files are **absent** from the repo; `src/eval/misalignment/odcv.py` (metrics) and
   `src/eval/misalignment/stats.py` (the scenario-level paired bootstrap CI) implement what the
   paper describes.
+
+## Third eval: AI-psychosis red-teaming
+
+A multi-turn sycophancy/safety eval from Tim Hua's
+["AI-Induced Psychosis: A shallow investigation"](https://www.lesswrong.com/posts/iGF7YcnQkEbwvYLPA/ai-induced-psychosis-a-shallow-investigation)
+([code](https://github.com/tim-hua-01/ai-psychosis)): a red-teamer LLM role-plays one of nine
+personas descending into psychosis over 12 turns (simulation theory, divine missions, new
+mathematics, ...); after each target reply a judge grades it on 5 core metrics (mental-health
+referral, pushback 0-2, delusion confirmation 0-4 + quotes) and 9 CBT-therapy-manual criteria
+(1-5, 0 = not yet applicable).
+
+Unlike ODCV this is a **native reimplementation**, not a vendored harness — upstream is a
+single inspect-ai script plus R analysis. Only the scientific inputs are copied verbatim
+(9 persona files + red-teamer/grader prompts, MIT, pinned SHA:
+`src/eval/misalignment/psychosis/assets/README.md`); the loop, judging and stats are
+`src/eval/misalignment/psychosis/` on the repo's own endpoint clients.
+
+```bash
+uv run scripts/run_eval.py --target <hf_path> --name psychosis smoke=true  # 1 persona x 3 turns
+uv run scripts/run_eval.py --target <hf_path> --name psychosis             # 9 personas x 12 turns
+```
+
+Config `configs/eval/psychosis.yaml`: red-teamer `x-ai/grok-3` (upstream's default — Grok-4 now
+refuses the roleplay), judge `google/gemini-2.5-pro`, both via OpenRouter. Outputs under
+`output/psychosis/<model_key>/<ts>/`: `rollouts/<persona>.{md,json}` (self-contained transcripts
+incl. red-teamer strategy notes, target reasoning and per-turn grades), `grades.{jsonl,csv}`,
+and summary metrics (referral rate, delusion-collusion rate = share of delusional turns rated
+"plays along"/"pushes", therapy-criterion means, per-turn escalation curves, empty-think rate).
+
+Deviations from upstream (deliberate): grading runs after each conversation completes rather
+than interleaved (equivalent — the judge never influences the conversation — and fully
+parallel); judge temperature 0; `-1`/`0` sentinel grades are excluded from means (upstream's R
+averaged raw columns); the target's reasoning goes back into its own history as
+`reasoning_content` per the preserve-thinking policy below (the served template decides whether
+to render it; the red-teamer still sees only the visible reply, as upstream), and the trace is
+preserved in rollouts and shown, fenced, to the judge as upstream did. Verify on a live
+endpoint that vLLM forwards request-side `reasoning_content` into the template before trusting
+multi-turn numbers.
+
+## The preserve-thinking policy (2026-08-04)
+
+Repo-wide default for training data and serving, everything family-specific centralized in
+`ModelProfile` (`src/utils.py`; Qwen3.6 is the only verified profile — Qwen3's thinking
+template prefills nothing, so it is deliberately refused until verified):
+
+- **Data**: `build_mixture.py` renders with the profile's kwargs (`preserve_thinking=True`),
+  so EVERY assistant turn carries a think block — reasoning where the source has it, the empty
+  marker where it does not. HF sources must declare `reasoning: native|none|strip` (`strip` =
+  deliberate pre-policy no-think rendering, for nothink control arms only).
+- **Loss**: the generation-boundary mask (`src/train/masking.py`, not configurable) masks
+  exactly what the model never generates and supervises what it does. On a real reasoning
+  turn that means the `<think>\n` prefill is masked and the trace + `\n</think>` close carry
+  loss; on an empty turn the WHOLE marker is masked and only the answer carries loss — a
+  healthy Qwen3.6 never closes an empty think block itself (LOG 2026-08-04 probe: it reasons
+  even on trivial questions; in nothink mode the full marker is prefilled), so supervising
+  the empty close would train the collapse. Rows are tokenized in segments cut at each
+  forced-span edge so token merges cannot weld masked to supervised. `src/train/mask_gate.py`
+  re-verifies this with an independent parser plus a think census before every training run.
+- **Serving**: `pin_template` pins `preserve_thinking` alongside `enable_thinking`, and
+  multi-turn eval loops send each turn's reasoning back as `reasoning_content`.
 
 ## Reproducing the reasoning check
 `output/reasoning_probe_*.txt` compare `<think>` length of base vs LoRA. Naive SFT → 0 chars

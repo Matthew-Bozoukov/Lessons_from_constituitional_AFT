@@ -75,7 +75,9 @@ def test_mixture_configs_share_one_schema():
         for sname, spec in sources.items():
             if "repo" in spec:
                 assert set(spec) <= {"repo", "split", "tokens", "shuffle_buffer",
-                                     "think_marker"}, (name, sname)
+                                     "reasoning"}, (name, sname)
+                # What the data carries is part of the scientific record, never guessed.
+                assert spec.get("reasoning") in ("native", "none", "strip"), (name, sname)
             else:
                 assert set(spec) == {"path", "format", "tokens"}, (name, sname)
                 assert spec["format"] in ("messages", "rendered"), (name, sname)

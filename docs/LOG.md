@@ -3,6 +3,91 @@
 
 # LOG
 
+## 2026-08-04 (3) — Correction: empty think markers are wholly masked, not close-supervised
+
+Follow-up correcting entry (2): its rule supervised an empty marker's `\n</think>\n\n` close
+("what a thinking model emits when it declines to reason"). The (1) probe below shows that
+premise is wrong for Qwen3.6: in thinking mode a healthy model ALWAYS reasons (160/155 CoT
+tokens even on "2+2"), and in nothink mode the full marker is prefilled — so an empty close is
+never generated in any serving configuration, and supervising it would train the empty-think
+collapse (gotcha 2) on every `reasoning: none` row (e.g. Tulu). Rule now: a turn opening with
+the full empty marker masks the WHOLE marker (supervision starts at the answer); a reasoning
+turn masks only the `<think>\n` prefill and supervises trace + close. `forced_spans` replaces
+`prefill_spans`; segment cuts now fall at forced-span edges; gate parser and all tests updated
+(244 pass, incl. real-tokenizer multi-turn: closers supervised on reasoning turns only).
+
+## 2026-08-04 (2) — Preserve-thinking policy: one think-loss rule, profile-gated, gated data
+
+**Hypothesis:** train/inference think handling should be a derived property of the model
+artifact, not a config knob. **Method** (on `jamie/psychosis`): (1) verified against the live
+templates that Qwen3.6 thinking mode prefills exactly `<think>\n` and `preserve_thinking=True`
+renders reasoning on every assistant turn (empty marker where a turn has none), while Qwen3
+prefills NOTHING (the probe entry below confirms both independently, plus the generated close
+being `\n`(198) `</think>` `\n\n`(271) — the exact stream our seam trains). (2) Replaced
+`mask_empty_think` (and PR #16's proposed `think_loss` knob) with a single non-configurable
+generation-boundary rule: mask the prefill, supervise everything generated (`\n</think>`
+included), rows tokenized in SEGMENTS cut at the prefill edge so Qwen's `\n\n` merge cannot
+weld the prefilled newline to the generated one. Verified for every turn of multi-turn rows
+(offline merging-stub tests + real-tokenizer tests under a new `tokenizer` pytest marker).
+(3) Family specifics centralized in `ModelProfile` (`src/utils.py`); unverified families
+refused, not guessed (Qwen3 deliberately has no profile yet). (4) `build_mixture` flipped to
+preserved rendering by default; HF sources must declare `reasoning: native|none|strip`
+(11 configs annotated `strip` for historical accuracy; `think_marker` and `mask_empty_think`
+are hard errors). (5) Added `src/train/mask_gate.py` — the invariant half of PR #16's
+`verify_mask.py` as an automatic pre-train gate: independent-parser decode comparison on a
+sample plus a full think census (absent==0 under thinking). (6) `pin_template` now pins
+`preserve_thinking` with the mode; the psychosis eval feeds `reasoning_content` back into
+target history. **Result:** 243 offline tests pass. **Open:** live-endpoint check that vLLM
+forwards request-side `reasoning_content` into the template; a Qwen3 profile; PR #16
+coordination (design superseded; ~$5 retrain decision on its tool-calling arm); CLAUDE.md's
+pipeline blurb still describes pre-policy rendering (needs a curated human edit).
+
+## 2026-08-04 — Qwen3.6 think-tag mechanics: template renders + token-level generation probes
+
+**Hypothesis:** Qwen3.6's template renders think blocks only on assistant turns after the last
+real user query (silently dropping earlier-turn reasoning), and a healthy Qwen does not
+empty-think even on trivial questions — the empty-think pattern is a trained collapse, not
+natural behavior. **Method:** `scratch/qwen36_template_probe.py` (the real cached Qwen3.6-27B
+tokenizer): multi-turn conversation with mixed `reasoning_content`, rendered with
+`preserve_thinking` off/on, an agentic tool-loop render, both generation-prompt prefills, and
+marker tokenization. `scratch/qwen3_empty_think_tokens.py`: greedy token-by-token dump on
+"What is 2+2? Answer with just the number.", thinking on/off — Qwen3-0.6B locally (fp32/MPS),
+then Qwen3.6-27B bf16 on a RunPod A100 ($0.17; output
+`output/logs/qwen36_think_probe_20260804_154008.txt`). **Result:** template behavior confirmed
+exactly: default renders think only after the last user query and silently drops earlier
+`reasoning_content` (even inline `<think>` text is parsed out); tool loops keep interleaved
+thinking without `preserve_thinking`; `preserve_thinking=true` adds an EMPTY
+`<think>\n\n</think>` on history turns that lack reasoning. Generation: neither model
+empty-thinks on 2+2 — 0.6B emitted 160 CoT tokens, 27B a 5-step structured plan (155 tokens)
+before closing; the close is always `'\n'(198) '</think>'(248069) '\n\n'(271) <answer>`, so an
+inference-time empty think from the `<think>\n` prefill is exactly those three tokens generated
+first — the signature gotcha 5's empty-think rate counts. Nothink prefill → zero think tokens
+generated. Anecdote: 0.6B answers 2+2 wrong ("2") in nothink, right ("4") thinking; 27B right in
+both. Qwen3↔Qwen3.6 think-token ids differ (151667/8 vs 248068/9) — vocabs not interchangeable.
+**Next:** none — reference result for empty-think detection and mask-boundary decisions.
+
+## 2026-08-04 — Psychosis eval: native reimplementation of tim-hua-01/ai-psychosis
+
+**Hypothesis-to-test (later):** difficult-advice SFT should also reduce multi-turn delusion
+validation, not just agentic misalignment — this adds the instrument. **Method:** added
+`psychosis` to the eval registry on `jamie/psychosis`, conforming to the run() contract. Rather
+than vendoring (upstream is one inspect-ai script + R analysis), only the scientific inputs are
+copied verbatim — 9 persona files + red-teamer/grader prompts, MIT, SHA-pinned in
+`src/eval/misalignment/psychosis/assets/README.md` — and the harness is ~4 small native modules
+(`conversation`/`judge`/`metrics`/`runner`) on `OpenRouterClient` + the served-target OpenAI
+client, with models injected as callables so the loop and judging test offline. Upstream
+mechanics reproduced exactly (opening turn-count sentence, `<message>` extraction with one
+refusal retry, `<target_model_response>` wrapping, per-turn cumulative-context grading with the
+last-response marker, flat 14-key JSON rubric). Deliberate deviations, documented in
+`docs/replication.md`: judge after conversation completion (equivalent + parallel), judge temp 0,
+sentinel grades (−1 delusion / 0 therapy-n/a) excluded from means, `<think>` kept out of context
+but in rollouts and the judge transcript. Red-teamer `x-ai/grok-3` (Grok-4 refuses per upstream),
+judge `google/gemini-2.5-pro`. **Result:** 227/227 offline tests (14 new); registry wellformedness
+tests cover the new entry; not yet run against a served model (needs GPU + OpenRouter spend,
+est. ~$9/arm from upstream's ~$100/11-model figure). **Next:** smoke `--name psychosis smoke=true`
+on base Qwen3-32B, spot-check judge fidelity by re-grading a few upstream published transcripts,
+then baseline vs difficult-advice arms.
+
 ## 2026-08-03 (5) — Eval framework: one entrypoint, artifact-inferred thinking, pod-only env
 
 Implemented the CLAUDE.md eval-framework contract end to end on `jamie/eval-framework`:
