@@ -129,20 +129,27 @@ def _parse_tagged(text: str, keys: tuple[str, ...]) -> dict[str, str]:
     return out
 
 
-def _call_tagged(client: OpenRouterClient, usage: Usage, model: str, system: str, user: str,
-                 temperature: float, max_tokens: int, stage: str, keys: tuple[str, ...],
-                 attempts: int = 3) -> dict[str, str]:
-    """Run a completion expecting tagged blocks, retrying if a tag is missing."""
+def _call_tagged(client: OpenRouterClient, usage: Usage, model: str,
+                 messages: list[dict], temperature: float, max_tokens: int, stage: str,
+                 keys: tuple[str, ...], attempts: int = 3) -> dict[str, str]:
+    """Run a completion expecting tagged blocks, retrying if a tag is missing.
+
+    Takes a full message list rather than (system, user) so callers can present real
+    chat history -- the self-reflection cells put the response under evaluation in a
+    genuine assistant turn. The retry nudge is appended to the last message, which must
+    be the user turn.
+    """
+    assert messages[-1]["role"] == "user", "the last message must be the user turn"
     last = ""
     for attempt in range(attempts):
         nudge = "" if attempt == 0 else (
             f"\n\nYour previous reply was missing a required block. Return ONLY the "
             f"{' and '.join('<' + k + '>...</' + k + '>' for k in keys)} blocks."
         )
+        msgs = [dict(m) for m in messages]
+        msgs[-1]["content"] += nudge
         res = client.chat(
-            model=model,
-            messages=[{"role": "system", "content": system},
-                      {"role": "user", "content": user + nudge}],
+            model=model, messages=msgs,
             temperature=temperature, max_tokens=max_tokens,
         )
         usage.add(model, res, stage)
@@ -439,11 +446,10 @@ def generate_responses(refined: list[dict], client: OpenRouterClient, usage: Usa
     def one(r: dict) -> dict:
         parsed = _call_tagged(
             client, usage, model,
-            prompts.RESPONSE_SYSTEM.format(
+            [{"role": "system", "content": prompts.RESPONSE_SYSTEM.format(
                 system=r["system"], trait_name=r["trait_name"], trait_text=r["trait_text"],
-                style_guidance=style_guidance,
-            ),
-            prompts.RESPONSE_USER.format(user=r["user"]),
+                style_guidance=style_guidance)},
+             {"role": "user", "content": prompts.RESPONSE_USER.format(user=r["user"])}],
             temperature, max_tokens, "respond", ("reasoning", "response"),
         )
         return {**r, "draft_reasoning": parsed["reasoning"], "draft_response": parsed["response"]}
@@ -465,12 +471,11 @@ def rewrite_responses(responses: list[dict], client: OpenRouterClient, usage: Us
     def one(r: dict) -> dict:
         parsed = _call_tagged(
             client, usage, model,
-            prompts.REWRITE_SYSTEM,
-            prompts.REWRITE_USER.format(
-                constitution=constitution, trait_name=r["trait_name"],
-                trait_text=r["trait_text"], system=r["system"], user=r["user"],
-                reasoning=r["draft_reasoning"], response=r["draft_response"],
-            ),
+            [{"role": "system", "content": prompts.REWRITE_SYSTEM},
+             {"role": "user", "content": prompts.REWRITE_USER.format(
+                 constitution=constitution, trait_name=r["trait_name"],
+                 trait_text=r["trait_text"], system=r["system"], user=r["user"],
+                 reasoning=r["draft_reasoning"], response=r["draft_response"])}],
             temperature, max_tokens, "rewrite", ("reasoning", "response", "changes"),
         )
         return {**r, "reasoning": parsed["reasoning"], "response": parsed["response"],
@@ -518,27 +523,30 @@ def to_sft(records: list[dict]) -> list[dict]:
 
 
 def _eval_response_text(p: dict) -> str:
-    """Return the response a critique cell evaluates.
+    """Return the response a MEM cell evaluates.
 
-    The flawed cells store a perturbed response under `flawed_response`; the good cells
-    have none and fall through to the gold response. Routing through one accessor is
-    what keeps the critique generation blind: good and flawed twins build byte-identical
-    prompts except for this text.
+    The flawed cells read the perturbed response -- strictly, so a document whose
+    perturbation failed can never silently degrade into evaluating the gold response.
+    Routing every cell through one accessor is what keeps generation blind: good and
+    flawed twins build byte-identical prompts except for this text.
     """
-    return p.get("flawed_response") or p["gold_response"]
+    if p["response_kind"] == "flawed":
+        assert p.get("flawed_response"), \
+            f"{p['record_id']}: flawed cell reached generation without a perturbed response"
+        return p["flawed_response"]
+    return p["gold_response"]
 
 
-def _control_messages(p: dict, constitution: str) -> tuple[str, str]:
+def _control_messages(p: dict, constitution: str) -> list[dict]:
     """Build the generation call for the reasoning-only control."""
-    return (
-        prompts.CONTROL_REASONING_SYSTEM,
-        prompts.CONTROL_REASONING_USER.format(
+    return [
+        {"role": "system", "content": prompts.CONTROL_REASONING_SYSTEM},
+        {"role": "user", "content": prompts.CONTROL_REASONING_USER.format(
             constitution=constitution, trait_name=p["trait_name"],
             trait_text=p["trait_text"],
             style_line=prompts.EXPLICITNESS_STYLES[p["explicitness"]],
-            system=p["system"], user=p["user"], response=p["gold_response"],
-        ),
-    )
+            system=p["system"], user=p["user"], response=p["gold_response"])},
+    ]
 
 
 def _wrap_transcript(p: dict) -> str:
@@ -547,29 +555,48 @@ def _wrap_transcript(p: dict) -> str:
         system=p["system"], user=p["user"], response=_eval_response_text(p))
 
 
-def _critique_messages(p: dict, constitution: str) -> tuple[str, str]:
+def _critique_messages(p: dict, constitution: str) -> list[dict]:
     """Build the generation call for the other-attribution critique cells (m3/m4).
 
     The user message is the exact wrapper the training record will carry plus the
     format scaffolding, which assembly strips (the stage-5 precedent). Nothing here may
-    depend on whether the response is good or flawed.
+    depend on whether the response is good or flawed beyond the response text itself.
     """
-    return (
-        prompts.MEM_CRITIQUE_SYSTEM.format(
+    return [
+        {"role": "system", "content": prompts.MEM_CRITIQUE_SYSTEM.format(
             constitution=constitution, trait_name=p["trait_name"],
             trait_text=p["trait_text"],
-            style_line=prompts.EXPLICITNESS_STYLES[p["explicitness"]],
-        ),
-        _wrap_transcript(p) + "\n\n---\n" + prompts.MEM_CRITIQUE_FORMAT,
-    )
+            style_line=prompts.EXPLICITNESS_STYLES[p["explicitness"]])},
+        {"role": "user",
+         "content": _wrap_transcript(p) + "\n\n---\n" + prompts.MEM_CRITIQUE_FORMAT},
+    ]
+
+
+def _reflect_messages(p: dict, constitution: str) -> list[dict]:
+    """Build the generation call for the self-reflection cells (m1/m2).
+
+    The response under evaluation sits in a genuine assistant turn -- attribution is
+    structural, never verbal -- and the reflection prompt follows as real chat history.
+    Identical template for the good and flawed twins.
+    """
+    return [
+        {"role": "system", "content": prompts.MEM_REFLECT_SYSTEM.format(
+            system=p["system"], constitution=constitution, trait_name=p["trait_name"],
+            trait_text=p["trait_text"],
+            style_line=prompts.EXPLICITNESS_STYLES[p["explicitness"]])},
+        {"role": "user", "content": p["user"]},
+        {"role": "assistant", "content": _eval_response_text(p)},
+        {"role": "user", "content": prompts.REFLECT_VARIANTS[p["reflect_ix"]]
+         + "\n\n---\n" + prompts.MEM_REFLECT_FORMAT},
+    ]
 
 
 def _mem_metadata(r: dict, verdict: str | None = None) -> dict:
     """Metadata every MEM training record carries.
 
-    `supervise` declares which assistant turns are training targets; the self cells will
-    set "final" and thread it through the render/mask chain. Everything here today is
-    single-final-assistant-turn, hence "all".
+    `supervise` declares which assistant turns are training targets: "final" for the
+    self cells (the first response is context, not a target) and "all" otherwise. It is
+    threaded from here through the render/mixture/masking chain.
     """
     flaw = r.get("flaw") or {}
     return {
@@ -588,7 +615,7 @@ def _mem_metadata(r: dict, verdict: str | None = None) -> dict:
         "situation": r["situation"],
         "shortcut": r.get("shortcut", ""),
         "source_run": r.get("source_run", ""),
-        "supervise": "all",
+        "supervise": CELLS[r["cell"]].supervise,
     }
 
 
@@ -618,6 +645,23 @@ def _assemble_critique(r: dict) -> dict:
     }
 
 
+def _assemble_reflect(r: dict) -> dict:
+    """Self-reflection record (m1/m2): the evaluated response sits in the model's own
+    prior turn -- carrying NO reasoning trace, matching how Qwen renders history at
+    inference -- and only the final turn is a training target (`supervise: "final"`)."""
+    return {
+        "messages": [
+            {"role": "system", "content": r["system"]},
+            {"role": "user", "content": r["user"]},
+            {"role": "assistant", "content": _eval_response_text(r)},
+            {"role": "user", "content": prompts.REFLECT_VARIANTS[r["reflect_ix"]]},
+            {"role": "assistant", "content": r["response"],
+             "reasoning_content": r["reasoning"]},
+        ],
+        "metadata": _mem_metadata(r, verdict=r["assessment"]),
+    }
+
+
 @dataclass(frozen=True)
 class CellSpec:
     """One MEM cell: who the response is attributed to, whether it is good or flawed,
@@ -630,7 +674,9 @@ class CellSpec:
         model_key: Which `models:` block in the config prices and runs this cell; also
             the per-stage usage key, so measured estimates line up per cell family.
         tags: Required tagged blocks in the generation output.
-        build_messages: (plan record, constitution) -> (system, user) for the call.
+        verdicts: Verdicts the cell's <assessment> tag may carry (empty = no verdict).
+        supervise: Which assistant turns of the assembled record are training targets.
+        build_messages: (plan record, constitution) -> generation message list.
         assemble: generated record -> `{messages, metadata}` training record.
     """
 
@@ -639,44 +685,61 @@ class CellSpec:
     response_kind: str | None
     model_key: str
     tags: tuple[str, ...]
-    build_messages: Callable[[dict, str], tuple[str, str]]
+    verdicts: tuple[str, ...]
+    supervise: str
+    build_messages: Callable[[dict, str], list[dict]]
     assemble: Callable[[dict], dict]
 
 
-# M5 is a mixture of cells, not a cell. The flawed and self cells (m1-m3) join this
-# registry in later passes; the perturbation and per-turn-masking machinery they need
-# lands with them.
+# M5 is a mixture of cells, not a cell.
 CELLS: dict[str, CellSpec] = {
     "control": CellSpec(
         cell="control", attribution=None, response_kind=None, model_key="control",
-        tags=("reasoning",), build_messages=_control_messages,
-        assemble=_assemble_control),
+        tags=("reasoning",), verdicts=(), supervise="all",
+        build_messages=_control_messages, assemble=_assemble_control),
     "m4_other_good": CellSpec(
         cell="m4_other_good", attribution="other", response_kind="good",
         model_key="critique", tags=("reasoning", "response", "assessment"),
+        verdicts=("sound", "issue_found"), supervise="all",
         build_messages=_critique_messages, assemble=_assemble_critique),
+    "m3_other_flawed": CellSpec(
+        cell="m3_other_flawed", attribution="other", response_kind="flawed",
+        model_key="critique", tags=("reasoning", "response", "assessment"),
+        verdicts=("sound", "issue_found"), supervise="all",
+        build_messages=_critique_messages, assemble=_assemble_critique),
+    "m2_self_good": CellSpec(
+        cell="m2_self_good", attribution="self", response_kind="good",
+        model_key="reflect", tags=("reasoning", "response", "assessment"),
+        verdicts=("held", "revised"), supervise="final",
+        build_messages=_reflect_messages, assemble=_assemble_reflect),
+    "m1_self_flawed": CellSpec(
+        cell="m1_self_flawed", attribution="self", response_kind="flawed",
+        model_key="reflect", tags=("reasoning", "response", "assessment"),
+        verdicts=("held", "revised"), supervise="final",
+        build_messages=_reflect_messages, assemble=_assemble_reflect),
 }
 
 # Accepted <assessment> spellings -> canonical verdict.
 _VERDICTS = {"sound": "sound", "issue_found": "issue_found", "issue found": "issue_found",
-             "issue": "issue_found"}
+             "issue": "issue_found", "held": "held", "hold": "held", "revised": "revised"}
 
 
-def _norm_verdict(raw: str) -> str:
-    """Canonicalise an <assessment> verdict, raising on anything unrecognised."""
+def _norm_verdict(raw: str, allowed: tuple[str, ...]) -> str:
+    """Canonicalise an <assessment> verdict against the cell's allowed set."""
     v = _VERDICTS.get(raw.strip().lower().replace("-", "_"))
-    if v is None:
-        raise ValueError(f"unrecognised <assessment> verdict: {raw!r}")
+    if v is None or v not in allowed:
+        raise ValueError(f"unrecognised <assessment> verdict for this cell: {raw!r}")
     return v
 
 
-def _weighted_styles(n: int, weights: dict[str, float], rng: random.Random) -> list[str]:
-    """Return n style labels matching the weights as closely as rounding allows.
+def _weighted_labels(n: int, weights: dict[str, float], rng: random.Random) -> list[str]:
+    """Return n labels matching the weights as closely as rounding allows.
 
-    Deterministic allocation rather than sampling, so coverage over explicitness is by
-    construction and a smoke run's tiny n still gets a sensible split.
+    Deterministic allocation rather than sampling, so coverage (explicitness styles,
+    flaw type x severity) is by construction and a smoke run's tiny n still gets a
+    sensible split.
     """
-    assert weights, "explicitness weights must be non-empty"
+    assert weights, "weights must be non-empty"
     total = sum(weights.values())
     keys = sorted(weights)
     counts = {k: int(n * weights[k] / total) for k in keys}
@@ -688,14 +751,28 @@ def _weighted_styles(n: int, weights: dict[str, float], rng: random.Random) -> l
     return out
 
 
+def _weighted_flaws(n: int, flaws: dict, rng: random.Random) -> list[dict]:
+    """Allocate n (type, severity) flaw assignments from the config's weight tables."""
+    types, sevs = flaws["types"], flaws["severities"]
+    bad = sorted(set(types) - set(prompts.FLAW_TYPES)) + \
+        sorted(set(sevs) - set(prompts.FLAW_SEVERITIES))
+    assert not bad, f"unknown flaw type/severity in config: {bad}"
+    crossed = {f"{t}|{s}": tw * sw
+               for t, tw in types.items() for s, sw in sevs.items()}
+    return [{"type": k.split("|")[0], "severity": k.split("|")[1]}
+            for k in _weighted_labels(n, crossed, rng)]
+
+
 def plan_mem_records(source: list[dict], cells: dict[str, int],
                      explicitness: dict[str, float], seed: int,
-                     source_run: str = "") -> list[dict]:
+                     source_run: str = "", flaws: dict | None = None) -> list[dict]:
     """Allocate source scenarios to MEM cells. Deterministic, no LLM calls.
 
     Each cell draws its own trait-stratified, seeded sample from the source run, so
     trait coverage is by construction and cross-cell scenario reuse is deliberate
-    (cells are separate training arms).
+    (cells are separate training arms). Flawed cells additionally get a (type, severity)
+    flaw assignment from the config's weight tables -- coverage over the flaw grid is
+    likewise by construction, not sampling luck.
 
     Args:
         source: A completed run's stage-6 final records.
@@ -703,22 +780,25 @@ def plan_mem_records(source: list[dict], cells: dict[str, int],
         explicitness: Style label -> weight (see prompts.EXPLICITNESS_STYLES).
         seed: Base RNG seed; each cell derives its own stream from it.
         source_run: Provenance label (HF repo or run dir) carried into metadata.
+        flaws: The config's `flaws` block ({types: {..}, severities: {..}}). Required
+            when any flawed cell is enabled.
 
     Returns:
         One plan record per document, `record_id = "<scenario_id>::<cell>"`.
 
     Raises:
-        ValueError: An enabled cell is not registered, or asks for more documents than
-            the source run holds.
+        ValueError: An enabled cell is not registered, asks for more documents than the
+            source run holds, or is flawed while `flaws` is missing.
     """
     enabled = {c: int(n) for c, n in cells.items() if int(n) > 0}
     unknown = sorted(set(enabled) - set(CELLS))
     if unknown:
         raise ValueError(
-            f"unregistered cell(s) enabled: {unknown}. Registered: {sorted(CELLS)}. "
-            f"The flawed/self cells land in later passes -- keep their counts at 0.")
+            f"unregistered cell(s) enabled: {unknown}. Registered: {sorted(CELLS)}.")
     bad_style = sorted(set(explicitness) - set(prompts.EXPLICITNESS_STYLES))
     assert not bad_style, f"unknown explicitness style(s): {bad_style}"
+    if any(CELLS[c].response_kind == "flawed" for c in enabled) and not flaws:
+        raise ValueError("a flawed cell is enabled but the config has no `flaws` block")
 
     by_trait: dict[str, list[dict]] = {}
     for r in sorted(source, key=lambda r: r["scenario_id"]):
@@ -741,8 +821,10 @@ def plan_mem_records(source: list[dict], cells: dict[str, int],
             if pool:
                 picked.append(pool.pop())
             i += 1
-        styles = _weighted_styles(want, explicitness, rng)
-        for r, style in zip(picked, styles):
+        styles = _weighted_labels(want, explicitness, rng)
+        cell_flaws = _weighted_flaws(want, flaws, rng) \
+            if spec.response_kind == "flawed" else [None] * want
+        for r, style, flaw in zip(picked, styles, cell_flaws):
             plans.append({
                 "record_id": f"{r['scenario_id']}::{cell}",
                 "cell": cell,
@@ -759,12 +841,67 @@ def plan_mem_records(source: list[dict], cells: dict[str, int],
                 "user": r["user"],
                 "gold_reasoning": r["reasoning"],
                 "gold_response": r["response"],
-                "flaw": None,
+                "flaw": flaw,
                 "explicitness": style,
                 "variant_ix": rng.randrange(len(prompts.TRANSCRIPT_WRAP_VARIANTS)),
+                "reflect_ix": rng.randrange(len(prompts.REFLECT_VARIANTS)),
                 "source_run": source_run,
             })
     return plans
+
+
+# Minimal-pair guard: a flawed response drifting far from the gold response's length is
+# a surface tell a classifier (or the trained model) can exploit instead of the flaw.
+_LENGTH_RATIO_BOUNDS = (0.8, 1.25)
+
+
+def _length_matched(gold: str, flawed: str) -> tuple[bool, float]:
+    """Return whether the pair's word-count ratio sits inside the allowed band."""
+    ratio = max(len(flawed.split()), 1) / max(len(gold.split()), 1)
+    lo, hi = _LENGTH_RATIO_BOUNDS
+    return lo <= ratio <= hi, ratio
+
+
+def perturb_responses(plans: list[dict], client: OpenRouterClient, usage: Usage,
+                      model: str, temperature: float, max_tokens: int, workers: int,
+                      ckpt: Checkpoint | None = None) -> list[dict]:
+    """Create the minimal-pair flawed response for every flawed-cell plan record.
+
+    One flaw per document, from the record's assigned (type, severity); length and
+    register held to the gold response (out-of-band pairs are resampled once, then the
+    item fails and is dropped by `_resilient` -- never silently passed through).
+
+    Returns:
+        The flawed plan records extended with `flawed_response` and `change_summary`
+        (metadata forever -- `checks.check_blindness` proves it never trains).
+    """
+    flawed = [p for p in plans if p["response_kind"] == "flawed"]
+
+    def one(p: dict) -> dict:
+        flaw = p["flaw"]
+        ratio = 0.0
+        for _ in range(2):
+            parsed = _call_tagged(
+                client, usage, model,
+                [{"role": "system", "content": prompts.PERTURB_SYSTEM},
+                 {"role": "user", "content": prompts.PERTURB_USER.format(
+                     trait_name=p["trait_name"], trait_text=p["trait_text"],
+                     user=p["user"], response=p["gold_response"],
+                     flaw_type=flaw["type"],
+                     flaw_definition=prompts.FLAW_TYPES[flaw["type"]],
+                     flaw_severity=flaw["severity"],
+                     severity_guidance=prompts.FLAW_SEVERITIES[flaw["severity"]])}],
+                temperature, max_tokens, "perturb",
+                ("flawed_response", "change_summary"))
+            ok, ratio = _length_matched(p["gold_response"], parsed["flawed_response"])
+            if ok:
+                return {**p, "flawed_response": parsed["flawed_response"],
+                        "change_summary": parsed["change_summary"],
+                        "length_ratio": round(ratio, 3)}
+        raise ValueError(f"{p['record_id']}: minimal pair length ratio {ratio:.2f} "
+                         f"outside {_LENGTH_RATIO_BOUNDS} after retry")
+
+    return _run_items(flawed, one, workers, "mem:perturb", ckpt)
 
 
 def generate_mem_documents(plans: list[dict], client: OpenRouterClient, usage: Usage,
@@ -788,13 +925,13 @@ def generate_mem_documents(plans: list[dict], client: OpenRouterClient, usage: U
     def one(p: dict) -> dict:
         spec = CELLS[p["cell"]]
         m = model_cfgs[spec.model_key]
-        system, user = spec.build_messages(p, constitution)
-        parsed = _call_tagged(client, usage, m["model"], system, user,
+        parsed = _call_tagged(client, usage, m["model"],
+                              spec.build_messages(p, constitution),
                               m["temperature"], m["max_tokens"], spec.model_key,
                               spec.tags)
         out = {**p, **{k: parsed[k] for k in spec.tags}}
         if "assessment" in out:
-            out["assessment"] = _norm_verdict(out["assessment"])
+            out["assessment"] = _norm_verdict(out["assessment"], spec.verdicts)
         return out
 
     return _run_items(plans, one, workers, "mem:generate", ckpt)

@@ -121,9 +121,17 @@ def main(config: str, smoke: bool = False) -> None:
         # documented reasoning-collapse pattern, so it can be excluded from the loss.
         skip_empty = bool(cfg.train.get("mask_empty_think", False))
         print(f">>> mask_empty_think: {skip_empty}")
+        # A row's optional `supervise` field ("final" = train only the last assistant
+        # turn -- the MEM self-reflection records) must be consumed here: remove_columns
+        # discards it right after. Absent or null means every assistant turn trains.
+        if "supervise" in ds.column_names:
+            n_final = sum(1 for s in ds["supervise"] if s == "final")
+            print(f">>> supervise=final rows (only last assistant turn trains): "
+                  f"{n_final}/{len(ds)}")
         ds = ds.map(
             lambda r: build_labels(r["text"], tokenizer, max_len,
-                                   skip_empty_think=skip_empty),
+                                   skip_empty_think=skip_empty,
+                                   supervise=r.get("supervise") or "all"),
             remove_columns=ds.column_names,
             desc="masking non-assistant tokens",
         )

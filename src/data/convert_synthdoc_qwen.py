@@ -12,6 +12,23 @@ from transformers import AutoTokenizer
 from src.utils import timestamp, write_run_meta  # noqa: E402
 
 
+def _passthrough(row: dict) -> dict:
+    """Identity/provenance fields carried from a source row into its rendered row.
+
+    Works for both input shapes: the agentic corpora (top-level doc_id/doc_type/axes)
+    and MEM stage-5 records ({messages, metadata} -- record_id becomes the doc_id and
+    the metadata's `supervise` rides along for the trainer's per-turn masking).
+    """
+    md = row.get("metadata") or {}
+    out = {
+        "doc_id": row.get("doc_id") or md.get("record_id"),
+        "doc_type": row.get("doc_type") or md.get("cell"),
+        "axes": row.get("axes"),
+        "supervise": md.get("supervise"),
+    }
+    return {k: v for k, v in out.items() if v is not None}
+
+
 def _normalise(messages: list[dict], drop_reasoning: bool = False) -> list[dict]:
     """Make one synthdoc conversation renderable by Qwen3.6's chat template.
 
@@ -134,9 +151,7 @@ def main(
         n_think += sum(1 for m in norm if m.get("reasoning_content"))
         kept.append({
             "text": text,
-            "doc_id": r.get("doc_id"),
-            "doc_type": r.get("doc_type"),
-            "axes": r.get("axes"),
+            **_passthrough(r),
             "n_tokens": len(tok(text)["input_ids"]),
         })
 
@@ -185,7 +200,8 @@ def main(
               "(Qwen3.6 non-thinking marker) because empty_think_on_tool_docs is set.")
     else:
         assert empty_think == 0, "empty <think> blocks would train the model to stop reasoning"
-    assert with_calls > 0, "no tool calls rendered - conversion failed"
+    # Only a corpus that HAD tool calls must render them; MEM records have none.
+    assert n_tool_calls == 0 or with_calls > 0, "no tool calls rendered - conversion failed"
     print(f">>> {dest}")
 
 

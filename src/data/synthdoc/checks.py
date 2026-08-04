@@ -31,6 +31,18 @@ _VERDICT_MARKERS = (
 # the statistics are binomial noise at smoke scale.
 _MIN_DOCS_FOR_COLLAPSE = 5
 _MIN_DOCS_FOR_VERDICT = 20
+_MIN_DOCS_PER_CLASS_FOR_SHORTCUT = 20
+_MIN_DOCS_FOR_FLAWID = 10
+
+# The verdict each cell should mostly (but never degenerately) reach: good responses
+# are mostly sound/held, flawed ones mostly caught. 100% either way means the verdict
+# carries no signal (or, in the self cells, trains reflexive capitulation/defensiveness).
+_EXPECTED_MAJORITY = {
+    "m4_other_good": "sound",
+    "m3_other_flawed": "issue_found",
+    "m2_self_good": "held",
+    "m1_self_flawed": "revised",
+}
 
 
 def _ngrams(words: list[str], n: int) -> set[tuple[str, ...]]:
@@ -49,25 +61,35 @@ def _doc_text(r: dict) -> str:
 
 
 def check_coverage(plan: list[dict], generated: list[dict]) -> dict:
-    """Compare generated counts against the plan over cell x trait and explicitness.
+    """Compare generated counts against the plan over cell x trait and, for flawed
+    cells, cell x flaw-type x severity.
 
-    A (cell, trait) bucket the plan filled but generation left empty means every one of
-    its documents failed -- systematic, so it gates.
+    A bucket the plan filled but generation left empty means every one of its documents
+    failed -- systematic, so it gates.
     """
-    def bucket(rows: list[dict]) -> dict[str, int]:
+    def buckets(r: dict) -> list[str]:
+        keys = [f"{r['cell']}/{r['trait_id']}"]
+        if r.get("flaw"):
+            keys.append(f"{r['cell']}/{r['flaw']['type']}/{r['flaw']['severity']}")
+        return keys
+
+    def count(rows: list[dict]) -> dict[str, int]:
         out: dict[str, int] = {}
         for r in rows:
-            out[f"{r['cell']}/{r['trait_id']}"] = out.get(f"{r['cell']}/{r['trait_id']}", 0) + 1
+            for k in buckets(r):
+                out[k] = out.get(k, 0) + 1
         return out
 
-    planned, got = bucket(plan), bucket(generated)
+    planned, got = count(plan), count(generated)
     empty = sorted(k for k in planned if got.get(k, 0) == 0)
     styles: dict[str, dict[str, int]] = {}
     for r in generated:
         c = styles.setdefault(r["cell"], {})
         c[r["explicitness"]] = c.get(r["explicitness"], 0) + 1
+    flaw_grid = {k: v for k, v in sorted(got.items()) if k.count("/") == 2}
     return {"pass": not empty, "planned": len(plan), "generated": len(generated),
-            "empty_buckets": empty, "explicitness_by_cell": styles}
+            "empty_buckets": empty, "explicitness_by_cell": styles,
+            "flaw_grid": flaw_grid}
 
 
 def check_template_collapse(generated: list[dict], max_8gram_share: float,
@@ -109,27 +131,36 @@ def check_template_collapse(generated: list[dict], max_8gram_share: float,
     return {"pass": ok, "max_8gram_share": max_8gram_share, "cells": cells_out}
 
 
-def check_verdict_distribution(generated: list[dict], sound_min: float,
-                               sound_max: float) -> dict:
-    """Gate on a non-degenerate verdict split among the critique cells.
+def check_verdict_distribution(generated: list[dict], majority_min: float,
+                               majority_max: float) -> dict:
+    """Gate each cell's verdicts on a non-degenerate split around its expected majority.
 
-    All-critical trains a critic reflex (downstream over-hedging); all-sound means the
-    assessment carries no signal at all.
+    m4/m2 evaluate good responses (mostly sound/held), m3/m1 flawed ones (mostly
+    caught/revised) -- but 100% either way is a failure: the verdict then carries no
+    signal, and in the self cells it trains reflexive capitulation (every pushback ->
+    revision) or defensiveness (every pushback -> hold).
     """
     judged = [r for r in generated if "assessment" in r]
     if not judged:
         return {"pass": True, "judged": 0,
-                "note": "no critique cells in this run; nothing to gate"}
-    by_cell: dict[str, dict[str, int]] = {}
-    for r in judged:
-        c = by_cell.setdefault(r["cell"], {})
-        c[r["assessment"]] = c.get(r["assessment"], 0) + 1
-    share_sound = sum(1 for r in judged if r["assessment"] == "sound") / len(judged)
-    gated = len(judged) >= _MIN_DOCS_FOR_VERDICT
-    return {"pass": (not gated) or sound_min <= share_sound <= sound_max,
-            "judged": len(judged), "gated": gated,
-            "share_sound": round(share_sound, 3),
-            "band": [sound_min, sound_max], "by_cell": by_cell}
+                "note": "no verdict-bearing cells in this run; nothing to gate"}
+    cells_out: dict[str, dict] = {}
+    ok = True
+    for cell in sorted({r["cell"] for r in judged}):
+        rows = [r for r in judged if r["cell"] == cell]
+        dist: dict[str, int] = {}
+        for r in rows:
+            dist[r["assessment"]] = dist.get(r["assessment"], 0) + 1
+        expected = _EXPECTED_MAJORITY.get(cell)
+        share = dist.get(expected, 0) / len(rows) if expected else None
+        gated = expected is not None and len(rows) >= _MIN_DOCS_FOR_VERDICT
+        cell_ok = (not gated) or majority_min <= share <= majority_max
+        ok = ok and cell_ok
+        cells_out[cell] = {"n": len(rows), "distribution": dist, "expected": expected,
+                           "expected_share": None if share is None else round(share, 3),
+                           "gated": gated, "pass": cell_ok}
+    return {"pass": ok, "judged": len(judged),
+            "band": [majority_min, majority_max], "cells": cells_out}
 
 
 def check_post_hoc_heuristic(generated: list[dict]) -> dict:
@@ -193,10 +224,10 @@ def check_gold_validation(source: list[dict], client: OpenRouterClient,
     def one(r: dict) -> dict:
         parsed = stages._call_tagged(
             client, usage, model,
-            prompts.GOLD_JUDGE_SYSTEM,
-            prompts.GOLD_JUDGE_USER.format(trait_name=r["trait_name"],
-                                           trait_text=r["trait_text"],
-                                           user=r["user"], response=r["response"]),
+            [{"role": "system", "content": prompts.GOLD_JUDGE_SYSTEM},
+             {"role": "user", "content": prompts.GOLD_JUDGE_USER.format(
+                 trait_name=r["trait_name"], trait_text=r["trait_text"],
+                 user=r["user"], response=r["response"])}],
             0.3, 800, "check:gold", ("score", "why"))
         score = int(parsed["score"])
         if not 1 <= score <= 5:
@@ -214,6 +245,131 @@ def check_gold_validation(source: list[dict], client: OpenRouterClient,
             "distribution": dist, "worst": worst}
 
 
+def check_flaw_identification(generated: list[dict], client: OpenRouterClient,
+                              usage: stages.Usage, model: str, n: int, seed: int,
+                              workers: int, min_hit_clear: float) -> dict:
+    """Judge whether each blind critique landed on the flaw actually introduced.
+
+    A low rate means the perturbations are too subtle or the critiques are confabulated
+    -- either way every flawed-response document is suspect. Gates on the `clear`
+    severity (grey flaws are legitimately arguable).
+    """
+    flawed = [r for r in generated if r.get("change_summary") and "reasoning" in r]
+    if not flawed:
+        return {"pass": True, "sampled": 0, "note": "no flawed cells in this run"}
+    rng = random.Random(seed)
+    picked = rng.sample(flawed, min(n, len(flawed)))
+
+    def one(r: dict) -> dict:
+        parsed = stages._call_tagged(
+            client, usage, model,
+            [{"role": "system", "content": prompts.FLAWID_JUDGE_SYSTEM},
+             {"role": "user", "content": prompts.FLAWID_JUDGE_USER.format(
+                 change_summary=r["change_summary"], critique=_doc_text(r))}],
+            0.3, 500, "check:flawid", ("hit", "why"))
+        v = parsed["hit"].strip().lower()
+        if v not in ("yes", "no"):
+            raise ValueError(f"unrecognised hit answer: {v!r}")
+        return {"record_id": r["record_id"], "hit": v == "yes",
+                "severity": r["flaw"]["severity"], "type": r["flaw"]["type"],
+                "why": parsed["why"]}
+
+    results = stages._run_items(picked, one, workers, "check:flawid")
+    by_sev: dict[str, dict] = {}
+    by_type: dict[str, dict] = {}
+    for r in results:
+        for key, bucket in ((r["severity"], by_sev), (r["type"], by_type)):
+            b = bucket.setdefault(key, {"n": 0, "hits": 0})
+            b["n"] += 1
+            b["hits"] += r["hit"]
+    for bucket in (by_sev, by_type):
+        for b in bucket.values():
+            b["rate"] = round(b["hits"] / b["n"], 3)
+    clear = by_sev.get("clear", {"n": 0})
+    gated = clear["n"] >= _MIN_DOCS_FOR_FLAWID
+    return {"pass": (not gated) or clear["rate"] >= min_hit_clear,
+            "sampled": len(results), "gated": gated, "min_hit_clear": min_hit_clear,
+            "by_severity": by_sev, "by_type": by_type,
+            "missed": [r for r in results if not r["hit"]][:5]}
+
+
+def _hashed_features(texts: list[str], dim: int = 4096):
+    """L2-normalised hashed char-3/4/5-gram count features (crc32, deterministic)."""
+    import zlib
+
+    import numpy as np
+
+    X = np.zeros((len(texts), dim), dtype=np.float32)
+    for i, t in enumerate(texts):
+        s = t.lower().encode()
+        for n in (3, 4, 5):
+            for j in range(len(s) - n + 1):
+                X[i, zlib.crc32(s[j:j + n]) % dim] += 1.0
+        X[i] /= np.linalg.norm(X[i]) or 1.0
+    return X
+
+
+def _auc(y, scores) -> float:
+    """Mann-Whitney AUC."""
+    pos, neg = scores[y == 1], scores[y == 0]
+    return float((pos[:, None] > neg[None, :]).mean()
+                 + 0.5 * (pos[:, None] == neg[None, :]).mean())
+
+
+def _cv_auc(X, y, seed: int, folds: int = 5, epochs: int = 300, lr: float = 0.5) -> float | None:
+    """K-fold cross-validated AUC of a plain logistic regression (numpy, no sklearn)."""
+    import numpy as np
+
+    rng = np.random.default_rng(seed)
+    idx = rng.permutation(len(y))
+    aucs = []
+    for f in range(folds):
+        test = idx[f::folds]
+        train = np.setdiff1d(idx, test)
+        if len(set(y[train].tolist())) < 2 or len(set(y[test].tolist())) < 2:
+            continue
+        w = np.zeros(X.shape[1], dtype=np.float32)
+        b = 0.0
+        Xt, yt = X[train], y[train].astype(np.float32)
+        for _ in range(epochs):
+            p = 1.0 / (1.0 + np.exp(-(Xt @ w + b)))
+            g = p - yt
+            w -= lr * (Xt.T @ g) / len(yt)
+            b -= lr * float(g.mean())
+        aucs.append(_auc(y[test], X[test] @ w + b))
+    return round(float(np.mean(aucs)), 4) if aucs else None
+
+
+def check_surface_shortcut(generated: list[dict], max_auc: float, seed: int) -> dict:
+    """Can a cheap classifier predict good vs flawed from the evaluated response alone?
+
+    If yes, the perturbations have a surface tell (length, phrasing, a stray hedge) and
+    the model will learn the tell instead of the reasoning. A label-shuffle baseline
+    anchors what "chance" looks like at this sample size.
+    """
+    import numpy as np
+
+    rows = [r for r in generated if r.get("response_kind") in ("good", "flawed")]
+    texts = [r["flawed_response"] if r["response_kind"] == "flawed" else r["gold_response"]
+             for r in rows]
+    y = np.array([1 if r["response_kind"] == "flawed" else 0 for r in rows])
+    n_pos, n_neg = int(y.sum()), int((1 - y).sum())
+    if min(n_pos, n_neg) < _MIN_DOCS_PER_CLASS_FOR_SHORTCUT:
+        return {"pass": True, "flawed": n_pos, "good": n_neg, "gated": False,
+                "note": f"needs >={_MIN_DOCS_PER_CLASS_FOR_SHORTCUT} docs per class"}
+
+    X = _hashed_features(texts)
+    auc = _cv_auc(X, y, seed)
+    rng = np.random.default_rng(seed)
+    auc_shuffled = _cv_auc(X, rng.permutation(y), seed)
+    words = np.array([len(t.split()) for t in texts], dtype=np.float32)
+    len_delta = float(words[y == 1].mean() - words[y == 0].mean())
+    return {"pass": auc is not None and auc <= max_auc, "gated": True,
+            "flawed": n_pos, "good": n_neg, "auc": auc, "max_auc": max_auc,
+            "auc_label_shuffled": auc_shuffled,
+            "mean_word_delta_flawed_minus_good": round(len_delta, 1)}
+
+
 def check_post_hoc_judge(generated: list[dict], client: OpenRouterClient,
                          usage: stages.Usage, model: str, n: int, seed: int,
                          workers: int) -> dict:
@@ -227,8 +383,9 @@ def check_post_hoc_judge(generated: list[dict], client: OpenRouterClient,
     def one(r: dict) -> dict:
         parsed = stages._call_tagged(
             client, usage, model,
-            prompts.POSTHOC_JUDGE_SYSTEM,
-            prompts.POSTHOC_JUDGE_USER.format(reasoning=r["reasoning"]),
+            [{"role": "system", "content": prompts.POSTHOC_JUDGE_SYSTEM},
+             {"role": "user", "content": prompts.POSTHOC_JUDGE_USER.format(
+                 reasoning=r["reasoning"])}],
             0.3, 500, "check:posthoc", ("posthoc", "why"))
         v = parsed["posthoc"].strip().lower()
         if v not in ("yes", "no"):
@@ -275,10 +432,12 @@ def run_checks(run_dir: str | Path, cfg: dict,
     report["template_collapse"] = check_template_collapse(
         generated, float(gates.get("template_8gram_share_max", 0.2)), seed)
     report["verdict_distribution"] = check_verdict_distribution(
-        generated, float(gates.get("sound_verdict_min", 0.0)),
-        float(gates.get("sound_verdict_max", 1.0)))
+        generated, float(gates.get("verdict_majority_min", 0.6)),
+        float(gates.get("verdict_majority_max", 0.98)))
     report["post_hoc_heuristic"] = check_post_hoc_heuristic(generated)
     report["blindness"] = check_blindness(generated, sft, constitution)
+    report["surface_shortcut"] = check_surface_shortcut(
+        generated, float(gates.get("surface_auc_max", 0.65)), seed)
 
     judge_model = ccfg.get("judge_model")
     if judge_model:
@@ -287,6 +446,9 @@ def run_checks(run_dir: str | Path, cfg: dict,
         report["gold_validation"] = check_gold_validation(
             source, client, usage, judge_model, n, seed, workers,
             float(gates.get("gold_below_3_max", 0.10)))
+        report["flaw_identification"] = check_flaw_identification(
+            generated, client, usage, judge_model, n, seed, workers,
+            float(gates.get("flaw_id_clear_min", 0.70)))
         report["post_hoc_judge"] = check_post_hoc_judge(
             generated, client, usage, judge_model, min(n, 30), seed, workers)
         report["judge_spend_usd"] = round(usage.usd, 4)

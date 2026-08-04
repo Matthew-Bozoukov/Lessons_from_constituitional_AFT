@@ -103,23 +103,33 @@ style (name the value / paraphrase it / embody it silently) assigned by the plan
 
 Cells (`CELLS` registry in `stages.py`; a cell = attribution × response quality):
 
-| Cell | What the document is | Status |
-|---|---|---|
-| `control` | The original exchange, gold response verbatim, only the reasoning trace regenerated — extended and constitution-grounded. No evaluation framing: the arm that tests whether reasoning depth alone explains any MEM effect. | this pass |
-| `m4_other_good` | The transcript (neutrally attributed to "an AI assistant") sits in the user turn; the assistant reasons about it, assesses it, and gives its own answer. Verdict comes from a trailing `<assessment>` scaffold tag — stripped from training text, kept as metadata. | this pass |
-| `m3_other_flawed` | Same, over a minimal-pair perturbed response (one flaw: omission / commission / miscalibration / over-application × severity). Critique generation is blind to the flaw label. | later pass |
-| `m2_self_good` / `m1_self_flawed` | Multi-turn self-reflection: the response sits in the model's own prior turn (masked at training via `supervise: "final"`), a reflection prompt follows, and the model revises or holds with reasons. | later pass |
+| Cell | What the document is |
+|---|---|
+| `control` | The original exchange, gold response verbatim, only the reasoning trace regenerated — extended and constitution-grounded. No evaluation framing: the arm that tests whether reasoning depth alone explains any MEM effect. |
+| `m4_other_good` | The transcript (neutrally attributed to "an AI assistant") sits in the user turn; the assistant reasons about it, assesses it, and gives its own answer. Verdict comes from a trailing `<assessment>` scaffold tag — stripped from training text, kept as metadata. |
+| `m3_other_flawed` | Same, over a minimal-pair perturbed response (stage 3: one flaw — omission / commission / miscalibration / over-application × clear/moderate/grey severity — length/register held, flaw label metadata-only). Critique generation is blind to the flaw label. |
+| `m2_self_good` / `m1_self_flawed` | Multi-turn self-reflection — the headline cells. The response sits in the model's own prior assistant turn (attribution is structural, and it carries **no** think block, matching inference-time history rendering), one of ~6 reflection prompts (gentle → pushback) follows, and the model revises or holds with reasons — both outcomes real (`<assessment>`: `revised`/`held`). Trained with `supervise: "final"`: only the last turn carries loss. |
 
-Stages (numbering reserves 3 for perturbation): `1 source → 2 plan (deterministic:
-cell allocation, explicitness, wrapper variant; record_id = "<scenario_id>::<cell>") →
-[3 perturbed] → 4 generated → 5 sft`. Same caching, checkpointing, budget guard and HF
-mirroring as `run`; `--smoke` clamps every enabled cell to 2 documents.
+Stages: `1 source → 2 plan (deterministic: cell allocation, explicitness, flaw
+type×severity grid, wrapper/reflection variants; record_id = "<scenario_id>::<cell>") →
+3 perturbed (flawed cells only) → 4 generated → 5 sft`. Same caching, checkpointing,
+budget guard and HF mirroring as `run`; `--smoke` clamps every enabled cell to 2
+documents.
+
+The self cells' per-turn masking is threaded end-to-end: `to_mem_sft` stamps
+`metadata.supervise`, `convert_synthdoc_qwen.py` carries it onto the rendered row,
+`build_mixture` passes it through (`format: rendered`), and `train_lora`/`masking.py`
+apply it (`assistant_spans(supervise="final")` keeps only the last assistant turn).
 
 `uv run synthdoc check` runs the corpus validity checks (`checks.py`) and gates on the
-config's thresholds: coverage vs plan, template collapse (repeated 8-grams), verdict
-distribution (non-degenerate), post-hoc-reasoning rate (heuristic + judged sample),
-blindness (flaw labels provably absent from prompts and training text), and LLM-judged
-gold-response validation. `checks_report.json` lands in the run dir either way.
+config's thresholds: coverage vs plan (incl. the flaw grid), template collapse (repeated
+8-grams), per-cell verdict distribution (each cell mostly reaches its expected verdict,
+never 100% — all-`revised` in m1 would train capitulation), post-hoc-reasoning rate
+(heuristic + judged sample), blindness (flaw labels provably absent from prompts and
+training text), the surface-shortcut classifier (numpy logistic regression must NOT
+predict good-vs-flawed from the response text alone), LLM-judged gold-response
+validation and flaw-identification rate (blind critiques must find `clear` flaws).
+`checks_report.json` lands in the run dir either way.
 
 ## Related
 

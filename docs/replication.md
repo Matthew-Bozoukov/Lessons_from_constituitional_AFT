@@ -231,9 +231,12 @@ The same package also hosts the **MEM (model-evaluates-model) pipeline**: docume
 model reasons about a response to one of the same scenarios (its own or "an AI assistant's") and
 works out whether it was the right call. It consumes a *completed* difficult-advice run — same
 scenario bank, so arm differences are attributable to format — and fail-fasts if the source run's
-constitution sha differs from the config's. Cells this pass: the reasoning-only `control` (gold
-response verbatim, extended regenerated trace) and `m4_other_good` (transcript-in-user-turn
-critique); the flawed/self cells arrive in later passes. See the cell table in
+constitution sha differs from the config's. All five cells are implemented: the reasoning-only
+`control`, the other-attribution critiques `m4`/`m3` (the flawed side via minimal-pair
+perturbation), and the self-reflection cells `m2`/`m1` — the headline experiment — whose records
+are multi-turn with the evaluated response in the model's own prior turn, trained with
+`supervise: "final"` (only the last assistant turn carries loss; threaded through
+`convert_synthdoc_qwen.py` → `build_mixture.py` → `masking.py`). See the cell table in
 [`src/data/synthdoc/README.md`](../src/data/synthdoc/README.md).
 
 ```bash

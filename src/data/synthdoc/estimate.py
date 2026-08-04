@@ -124,6 +124,7 @@ def estimate(cfg: dict, measured_manifest: str | None = None) -> dict[str, Any]:
 ASSUMED_MEM: dict[str, dict[str, int]] = {
     "control": {"in": 12000, "out": 2200},
     "critique": {"in": 12100, "out": 4000},
+    "reflect": {"in": 12500, "out": 3500},
     "perturb": {"in": 2500, "out": 1500},
 }
 

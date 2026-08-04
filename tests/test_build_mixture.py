@@ -41,6 +41,17 @@ def test_take_rendered_labels_source_and_respects_budget(tmp_path):
     assert sum(r["n_tokens"] for r in out) <= 100
 
 
+def test_take_rendered_passes_supervise_through(tmp_path):
+    path = tmp_path / "corpus.jsonl"
+    with path.open("w") as f:
+        f.write(json.dumps({"text": "self-reflect", "n_tokens": 10,
+                            "supervise": "final"}) + "\n")
+        f.write(json.dumps({"text": "plain", "n_tokens": 10}) + "\n")
+    out = {r["text"]: r for r in _take_rendered(path, budget=100, seed=0, source="mem")}
+    assert out["self-reflect"]["supervise"] == "final"
+    assert "supervise" not in out["plain"], "rows without the field stay unchanged"
+
+
 def test_usable_accepts_wellformed_and_rejects_malformed():
     good = [{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}]
     assert _usable(good)

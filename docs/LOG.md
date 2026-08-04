@@ -41,6 +41,30 @@ trips the 2% abort.
 one), top up OpenRouter credit, then pilot control:300 + m4:300 and run `synthdoc check`; then
 mixture + LoRA arms per the existing sweep pattern.
 
+**Addendum (same day): full cell matrix — self-reflection cells, perturbation and per-turn
+masking, smoke-validated.** The self cells are the headline experiment, so passes 2+3 were built
+in one go. New: minimal-pair perturbation stage (`perturb_responses`: one flaw from the planned
+type×severity grid, 0.8–1.25× word-ratio guard, `change_summary` metadata-only), self-reflection
+cells m1/m2 (`_reflect_messages` presents the evaluated response as a genuine assistant turn via
+the generalized messages-list `_call_tagged`; a pool of 6 gentle→pushback reflection prompts;
+`<assessment>`: `revised`/`held`), m3 registered for free off the shared critique builder, and the
+`supervise: "final"` chain end-to-end (`to_mem_sft` metadata → `convert_synthdoc_qwen.py`
+passthrough + non-tool-corpus fix → `build_mixture` rendered-row passthrough →
+`assistant_spans/build_labels(supervise=)` → `train_lora` consuming the row field pre-`.map`).
+Checks grew per-cell verdict-majority gating (m1 100% `revised` = trained capitulation → fail),
+flaw-grid coverage, LLM flaw-identification (gate: ≥70% of `clear` flaws found), and a
+numpy hashed-char-n-gram logistic-regression surface-shortcut classifier (gate: CV AUC ≤ 0.65,
+label-shuffle baseline). 237 tests pass. **Five-cell smoke green** ($0.82, 10/10 docs): perturbations
+read as designed; self-cell verdicts non-degenerate out of the box (one flawed record revised, one
+held with reasons); full render+mask verified with the real Qwen3.6 tokenizer — self rows supervise
+only the final turn (~50% of tokens), the flawed first turn carries no think block and provably no
+loss, `check_thinking_declaration(thinking=true)` clean; `synthdoc check` all-pass including live
+flaw-ID judge (2/2 `clear` hits, 0/2 `moderate` at n=2 — noise, but the mechanism works). Measured
+full 5×300 matrix: **$104.84** ($0.07/doc; critique 12.1k in / 4.9k out, reflect 12.3k in / 3.5k
+out, perturb 2.6k/1.3k). Credit was topped up to $800 ($220.25 remaining) so the run is affordable —
+still blocked on committing the source corpus's 9-trait constitution (sha fail-fast), and >$20 so
+flagged for sign-off.
+
 ## 2026-08-03 (5) — Eval framework: one entrypoint, artifact-inferred thinking, pod-only env
 
 Implemented the CLAUDE.md eval-framework contract end to end on `jamie/eval-framework`:

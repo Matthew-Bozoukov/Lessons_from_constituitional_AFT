@@ -21,10 +21,10 @@ to a future reader.
 
 | category | spent to date |
 |---|---|
-| OpenRouter (data generation) | **$171.91** |
+| OpenRouter (data generation) | **$172.76** |
 | OpenRouter (eval judging) | $0.02 |
 | GPU rental | $0.00 (+ ~4 RunPod A100-h on 2026-08-03, $ TBD from dashboard) |
-| **total** | **$171.93** (+ GPU TBD) |
+| **total** | **$172.78** (+ GPU TBD) |
 
 ---
 
@@ -43,6 +43,14 @@ tokens per call), MEM critique $0.064/doc (12,062 in / 3,958 out) at Sonnet 5 $2
 Prompts are ~12k tokens because the full constitution + a whole transcript are injected — 70%
 above the pre-smoke assumption. Pilot at 300+300 = **$32.84** (`synthdoc estimate --measured`);
 **remaining credit $21.09 cannot cover it** — flag raised, top-up needed before the pilot.
+
+**Follow-up, same day (self-reflection pass):** five-cell smoke (10 docs incl. 4 perturbations,
+$0.82) + full checks with flaw-ID judge (~$0.06): **$0.85** by `/credits` delta (578.907 → 579.755).
+New measured unit costs: reflect $0.059/doc (12,282 in / 3,470 out), critique re-measured
+$0.074/doc (12,104 in / 4,937 out — m3 critiques run longer than m4's), perturb $0.018/doc
+(2,571 in / 1,325 out). **Full 5×300 matrix = $104.84** ($0.070/doc all-in). Account topped up to
+$800 → **$220.25 remaining**; the matrix is affordable but >$20, flagged for sign-off before
+running.
 
 ## 2026-08-03 — Eval-framework pod validation (RunPod A100-80GB + OpenRouter)
 

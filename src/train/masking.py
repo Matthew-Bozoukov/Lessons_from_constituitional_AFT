@@ -10,7 +10,8 @@ TURN_END = "<|im_end|>"
 EMPTY_THINK = "<think>\n\n</think>\n\n"
 
 
-def assistant_spans(text: str, skip_empty_think: bool = False) -> list[tuple[int, int]]:
+def assistant_spans(text: str, skip_empty_think: bool = False,
+                    supervise: str = "all") -> list[tuple[int, int]]:
     """Find the character spans of assistant content in a rendered chat string.
 
     A span runs from just after the `<|im_start|>assistant\\n` header through the
@@ -24,10 +25,14 @@ def assistant_spans(text: str, skip_empty_think: bool = False) -> list[tuple[int
             is conditioned on the non-thinking marker without being trained to emit it.
             Training a model to emit one is the documented reasoning-collapse pattern. Real
             reasoning traces are unaffected -- only the exact empty literal is skipped.
+        supervise: "all" trains every assistant turn; "final" only the last one. "final"
+            is how the MEM self-reflection records keep their first (possibly flawed)
+            response as context without making it a training target.
 
     Returns:
         Character spans as (start, end) pairs, in order.
     """
+    assert supervise in ("all", "final"), f"unknown supervise mode: {supervise!r}"
     spans: list[tuple[int, int]] = []
     pos = 0
     while (i := text.find(ASSISTANT_HEADER, pos)) != -1:
@@ -40,11 +45,12 @@ def assistant_spans(text: str, skip_empty_think: bool = False) -> list[tuple[int
         spans.append((start, end))
         pos = end
     assert spans, "no assistant turn found; nothing would be supervised"
-    return spans
+    return spans[-1:] if supervise == "final" else spans
 
 
 def build_labels(text: str, tokenizer, max_length: int,
-                 skip_empty_think: bool = False) -> dict[str, list[int]]:
+                 skip_empty_think: bool = False,
+                 supervise: str = "all") -> dict[str, list[int]]:
     """Tokenize a rendered conversation and label only its assistant tokens.
 
     Every token outside an assistant span is set to -100 so it contributes no loss.
@@ -57,6 +63,8 @@ def build_labels(text: str, tokenizer, max_length: int,
         tokenizer: A fast tokenizer for the model being trained.
         max_length: Truncation length, matching the training sequence length.
         skip_empty_think: Exclude a leading empty `<think></think>` block from supervision.
+        supervise: "all" | "final" -- which assistant turns carry loss (see
+            `assistant_spans`).
 
     Returns:
         A dict with `input_ids`, `attention_mask` and `labels`.
@@ -69,7 +77,7 @@ def build_labels(text: str, tokenizer, max_length: int,
         return_offsets_mapping=True,
     )
     ids, offsets = enc["input_ids"], enc["offset_mapping"]
-    spans = assistant_spans(text, skip_empty_think=skip_empty_think)
+    spans = assistant_spans(text, skip_empty_think=skip_empty_think, supervise=supervise)
 
     labels = [-100] * len(ids)
     for k, (a, b) in enumerate(offsets):

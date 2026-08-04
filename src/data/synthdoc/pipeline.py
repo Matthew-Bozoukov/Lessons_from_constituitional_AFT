@@ -390,18 +390,39 @@ def run_mem(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
     else:
         plan = stages.plan_mem_records(
             source, enabled, cfg["explicitness"], int(cfg.get("seed", 0)),
-            source_run=source_meta.get("source_run", ""))
+            source_run=source_meta.get("source_run", ""), flaws=cfg.get("flaws"))
         cache.save(2, "plan", plan)
     per_cell_plan = {c: sum(1 for p in plan if p["cell"] == c) for c in sorted(enabled)}
     print(f">>> stage 2: {len(plan)} planned documents {per_cell_plan}")
 
-    # --- stage 3: perturbation (flawed cells only; lands in a later pass) -----------
-    flawed = [p for p in plan if p["response_kind"] == "flawed"]
-    if flawed:
-        raise NotImplementedError(
-            f"{len(flawed)} flawed-cell documents planned, but the perturbation stage "
-            f"is not implemented yet -- keep the m1/m3 cell counts at 0.")
-    print(">>> stage 3: no flawed cells enabled -- perturbation skipped")
+    # --- stage 3: minimal-pair perturbation (flawed cells only) ---------------------
+    flawed_planned = [p for p in plan if p["response_kind"] == "flawed"]
+    if flawed_planned:
+        if cache.has(3, "perturbed"):
+            perturbed = cache.load(3, "perturbed")
+            print(f">>> stage 3: reused {len(perturbed)} cached perturbations")
+        else:
+            perturbed = timed("perturb", lambda: stages.perturb_responses(
+                plan, client, usage, workers=workers,
+                ckpt=stages.Checkpoint(run_dir / "stage_3_perturbed.partial.jsonl",
+                                       key="record_id"),
+                **_model_cfg(cfg, "perturb")))
+            cache.save(3, "perturbed", perturbed)
+        print(f"    FIRST CHANGE: [{perturbed[0]['flaw']['type']}/"
+              f"{perturbed[0]['flaw']['severity']}] {perturbed[0]['change_summary'][:180]}")
+        guard("stage 3")
+        # A flawed document whose perturbation failed must be dropped, never generated:
+        # _eval_response_text would refuse it anyway, but dropping here keeps the stage-4
+        # checkpoint clean and the loss visible.
+        by_id = {p["record_id"]: p for p in perturbed}
+        lost = [p["record_id"] for p in flawed_planned if p["record_id"] not in by_id]
+        if lost:
+            print(f"!!! dropping {len(lost)} flawed documents without a perturbation "
+                  f"(first 3: {lost[:3]})")
+        plan = [by_id.get(p["record_id"], p) for p in plan
+                if p["response_kind"] != "flawed" or p["record_id"] in by_id]
+    else:
+        print(">>> stage 3: no flawed cells enabled -- perturbation skipped")
 
     # --- stage 4: generate ----------------------------------------------------------
     if cache.has(4, "generated"):
