@@ -8,7 +8,7 @@ bundle (training code tarball + mixture jsonl), trains, then serves /workspace o
 HTTP on :8080 — the adapter is pulled back through the proxy and pushed to HF from the
 local machine, where the token lives.
 
-Bootstrap discipline is inherited from scripts/gpu/runpod_capability.py (log server before
+Bootstrap discipline is inherited from scripts/gpu/runpod_arena_hard.py (log server before
 anything slow, trainer in the foreground of PID 1, `|| true` so a crash leaves a
 readable log instead of a restart loop). See that file for why each line is the way it is.
 

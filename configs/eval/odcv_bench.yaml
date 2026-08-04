@@ -3,7 +3,7 @@
 # Run: uv run scripts/run_eval.py --target <hf_path> --name odcv
 
 # `model`, `model_key`, `base_url` and `output_root` are injected per target by
-# src/eval/misalignment/odcv_bench.py — the served endpoint rewritten to the docker
+# src/eval/misalignment/odcv/runner.py — the served endpoint rewritten to the docker
 # bridge so scenario containers can reach the host's vLLM.
 
 # Which published row to compare against (the paper's table); the base Qwen3.6 row is

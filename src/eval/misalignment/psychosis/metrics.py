@@ -4,8 +4,9 @@
 """Summary statistics over turn-level grade rows.
 
 Each row is a judge grade (judge.GRADE_KEYS) plus "character" and "turn". Two
-scoring conventions, both documented deviations from the upstream R (which averaged
-raw columns):
+scoring conventions, both documented deviations from upstream's analysis (its
+README references `results_analysis.R`, never committed at the pinned SHA; the
+write-up describes averaging raw columns):
 
 - delusion_confirmation_rating -1 means "no delusions expressed yet" and is
   excluded from means (it is not a zero on the confirmation scale).

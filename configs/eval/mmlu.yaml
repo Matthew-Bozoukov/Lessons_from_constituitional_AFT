@@ -1,8 +1,8 @@
 # ABOUTME: MMLU absolute-benchmark eval for the constitution-SFT arms: subset sampling,
 # ABOUTME: prompting, decoding parity, and the non-inferiority gate vs the Qwen base model.
-# Run: bash scripts/eval/run_mmlu_arms.sh [endpoint] [arms]   (this file is the default CONFIG)
+# Run: uv run scripts/run_eval.py --target <hf_path> --name mmlu   (this file is the default CONFIG)
 
-# This is the `absolute_benchmarks` block that configs/eval/capability.yaml scopes out and
+# This is the `absolute_benchmarks` block that configs/eval/arena_hard.yaml scopes out and
 # defers. It exists because the preference eval has a blind spot it names itself: a
 # pairwise judge cannot detect BOTH arms degrading together, and it rewards style over
 # substance. MMLU is scored against a fixed answer key, so each arm's number stands alone
@@ -20,13 +20,13 @@ seed: 0
 # --- Arms ---------------------------------------------------------------------------
 # Deliberately NOT restated here. The arm ladder — which checkpoints exist, which are
 # matched on training recipe, and the long note explaining why arm A is not a usable
-# baseline — lives in capability.yaml, and duplicating it is how a ladder silently
+# baseline — lives in arena_hard.yaml, and duplicating it is how a ladder silently
 # goes stale: somebody trains arm E, updates one config, and this eval keeps reporting a
 # four-arm result as though it were complete.
-arms_from: configs/eval/capability.yaml
+arms_from: configs/eval/arena_hard.yaml
 
 # vLLM serves the base model under `base` and every adapter under its arm name (see
-# scripts/gpu/runpod_capability.py). Only the exception needs stating.
+# scripts/gpu/runpod_arena_hard.py). Only the exception needs stating.
 served_names:
   arm_base: base
 
@@ -59,7 +59,7 @@ subset:
   # cache-safe: the subset is a seeded superset, so existing generations still hit.
   per_subject: 10
   subjects: null          # null = all 57
-  # See src/eval/capabilities/mmlu.py: MMLU's answer key is not uniform over positions, so an unshuffled run
+  # See src/eval/capabilities/mmlu/mmlu.py: MMLU's answer key is not uniform over positions, so an unshuffled run
   # rewards a model that always picks C. Seeded from the uid, so it is identical across
   # arms and stable when per_subject changes.
   shuffle_choices: true
@@ -78,7 +78,7 @@ prompt:
   cue: "Answer:"
 
 # --- Generation ---------------------------------------------------------------------
-# Decoding parity is the same requirement as capability.yaml §4: identical settings
+# Decoding parity is the same requirement as arena_hard.yaml §4: identical settings
 # across all arms, temperature 0, one sample. Stamped into each arm's run_meta.json.
 generation:
   endpoint: "http://localhost:8000/v1"   # override with --endpoint for a RunPod proxy
@@ -92,7 +92,7 @@ generation:
   # nothink mode but truncated ~9% of THINKING generations (concentrated in hard
   # math/science, observed live 2026-07-31) — a biased loss, not noise; 4096 still
   # truncated 4.2% of the BASE arm, whose traces ruminate longest. 8192 requires the
-  # 16384 --max-model-len the capability pod now boots with: the longest prompt in
+  # 16384 --max-model-len the arena-hard pod now boots with: the longest prompt in
   # the per_subject=20 superset measures 3069 tokens with the real tokenizer, and
   # vLLM 400s an overflowing request rather than clamping it. Safe to mix with
   # earlier 4096-budget generations at temp 0 — an answer that stopped naturally is

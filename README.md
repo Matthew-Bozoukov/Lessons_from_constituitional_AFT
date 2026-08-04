@@ -280,7 +280,7 @@ calls that are already cached, so an interrupted run costs nothing to continue.
 
 The guardrail underneath the alignment results. It answers one question: does mixing
 synthetic constitution documents into the SFT mixture cost us general capability? Data lives
-in `configs/eval/capability.yaml`, which is the single source of truth for arms, judge,
+in `configs/eval/arena_hard.yaml`, which is the single source of truth for arms, judge,
 thresholds and decoding.
 
 **50% is the target, not 100%.** This is a treated checkpoint measured against a sibling
@@ -290,7 +290,7 @@ the public Arena leaderboard — no submission, no Elo.
 
 **The baseline is `arm_b_synth10` (90/10), not arm A** — arm A's training recipe differs
 (2 epochs, packing on, 2x tokens), so 50% means "no different from the low-dose arm", not
-"no different from zero synthetic data". See the arm_a note in `configs/eval/capability.yaml`.
+"no different from zero synthetic data". See the arm_a note in `configs/eval/arena_hard.yaml`.
 
 ### Results (2026-07-31, style-controlled win rate vs arm_b, hard_prompt, 95% CI)
 
@@ -305,7 +305,7 @@ the public Arena leaderboard — no submission, no Elo.
 
 Full artifacts (answers, judgments, metrics, report, figures) on HF:
 [`LASR-Callum/qwen36-27b-capability-eval-arena-hard`](https://huggingface.co/datasets/LASR-Callum/qwen36-27b-capability-eval-arena-hard).
-GDM-style figure: `scratch/reports/plot_lmsys_winrate.py` (reads the latest report).
+GDM-style figure: `scratch/reports/plot_arena_hard_winrate.py` (reads the latest report).
 Full detail in `LOG.md` (2026-07-31 entry).
 
 ### Setup
@@ -318,19 +318,19 @@ uv run python scripts/eval/patch_arena_hard.py          # 5 patches; --check to 
 
 ### Run
 
-**Follow `docs/lmsys_capability_eval_runbook.md`** — the complete operational runbook
+**Follow `docs/arena_hard_eval_runbook.md`** — the complete operational runbook
 from the first full run (pod-per-arm topology, retry wrappers, the baseline-extension
 gotcha, judging order, publishing layout, cost model). Short version:
 
 ```bash
-uv run python scripts/gpu/runpod_capability.py up      # one pod PER ARM is the fast layout
-uv run python src/eval/capabilities/capability_gen.py --arm <arm> --stage 150 --creative 0 \
+uv run python scripts/gpu/runpod_arena_hard.py up      # one pod PER ARM is the fast layout
+uv run python src/eval/capabilities/arena_hard/arena_hard_gen.py --arm <arm> --stage 150 --creative 0 \
     --endpoint https://<pod>-8000.proxy.runpod.net/v1   # wrap in retries; eyeball samples
-uv run python src/eval/capabilities/capability_judge.py --arm arm_b_synth10 --stage 150  # baseline/A-vs-A FIRST
-uv run python src/eval/capabilities/capability_judge.py --arm <arm> --stage 150          # serialized, not parallel
-uv run python src/eval/capabilities/capability_report.py                  # CIs + figures + md mirror
-uv run python scratch/reports/plot_lmsys_winrate.py                # GDM-style dose-response figure
-uv run python scripts/gpu/runpod_capability.py down --pod <id>          # the moment each arm finishes
+uv run python src/eval/capabilities/arena_hard/arena_hard_judge.py --arm arm_b_synth10 --stage 150  # baseline/A-vs-A FIRST
+uv run python src/eval/capabilities/arena_hard/arena_hard_judge.py --arm <arm> --stage 150          # serialized, not parallel
+uv run python scratch/reports/arena_hard_report.py                  # CIs + figures + md mirror
+uv run python scratch/reports/plot_arena_hard_winrate.py                # GDM-style dose-response figure
+uv run python scripts/gpu/runpod_arena_hard.py down --pod <id>          # the moment each arm finishes
 ```
 
 Before judging, eyeball ten raw generations from the arm's answers file. Do not skip it — a
@@ -379,7 +379,7 @@ A/B that `low` genuinely reduces them — it is not being ignored. Full sweep �
 The Arena-Hard eval above is *relative* — it can only say an arm is as good as another arm.
 MMLU is scored against a fixed answer key, so every arm's number stands on its own and the
 untuned Qwen base is a real anchor. This is the `absolute_benchmarks` block that
-`configs/eval/capability.yaml` defers.
+`configs/eval/arena_hard.yaml` defers.
 
 **Runs a subset, not all 14,042 questions.** 10 questions × 57 subjects = **570**, drawn by a
 seeded stratified sample. Every arm answers *literally the same questions*, which makes the
@@ -394,18 +394,18 @@ property of the setup, not an assumption.
 
 ```bash
 # 1. bring up the pod (same one the Arena-Hard eval uses; ~20-30 min to boot)
-uv run python scripts/gpu/runpod_capability.py up
-uv run python scripts/gpu/runpod_capability.py status --pod <id>
+uv run python scripts/gpu/runpod_arena_hard.py up
+uv run python scripts/gpu/runpod_arena_hard.py status --pod <id>
 
 # 2. per target via the framework (serves, generates, grades, pushes):
 uv run scripts/run_eval.py --target <hf_path> [<hf_path> ...] --name mmlu
 
 # ... or drive the ladder steps yourself against an existing endpoint
 uv run python src/eval/capabilities/mmlu_eval.py --arms all --endpoint <url>
-uv run python src/eval/capabilities/mmlu_report.py
+uv run python scratch/reports/mmlu_report.py
 
 # 3. ALWAYS tear the pod down
-uv run python scripts/gpu/runpod_capability.py down --pod <id>
+uv run python scripts/gpu/runpod_arena_hard.py down --pod <id>
 ```
 
 Useful flags: `--smoke` (2 questions/subject, wiring check), `--per_subject 20` (tighter

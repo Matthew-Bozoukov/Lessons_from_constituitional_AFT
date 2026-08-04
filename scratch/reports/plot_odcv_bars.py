@@ -13,7 +13,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
-from src.eval.misalignment.odcv import VARIANTS, VIOLATION_THRESHOLD, misalignment_rate  # noqa: E402
+from src.eval.misalignment.odcv.odcv import VARIANTS, VIOLATION_THRESHOLD, misalignment_rate  # noqa: E402
 
 BASE_C, FT_C = "#F58518", "#4C78A8"
 PUBLISHED_MR = 43.8

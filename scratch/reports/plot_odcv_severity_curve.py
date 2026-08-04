@@ -13,7 +13,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
-from src.eval.misalignment.odcv import VARIANTS, VIOLATION_THRESHOLD  # noqa: E402
+from src.eval.misalignment.odcv.odcv import VARIANTS, VIOLATION_THRESHOLD  # noqa: E402
 
 COLORS = {"mandated": "#377EB8", "incentivized": "#E4572E", "overall": "#4D4D4D"}
 LABELS = {

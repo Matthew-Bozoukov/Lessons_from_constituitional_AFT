@@ -1,4 +1,4 @@
-# ABOUTME: Unit tests for the capability-eval statistics: verdict orientation, tie
+# ABOUTME: Unit tests for the arena-hard-eval statistics: verdict orientation, tie
 # ABOUTME: handling, paired-bootstrap width, and style control. Fast and offline.
 
 from __future__ import annotations
@@ -8,14 +8,14 @@ import math
 import numpy as np
 import pytest
 
-from src.eval.capabilities.capability_metrics import (
+from src.eval.capabilities.arena_hard.arena_hard_metrics import (
     degeneracy_metrics,
     is_refusal,
     pattern_frequencies,
     repetition_ratio,
     style_features,
 )
-from src.eval.capabilities.capability_stats import (
+from src.eval.capabilities.arena_hard.arena_hard_stats import (
     battles_from_judgments,
     evaluate_arm,
     fit_logistic,

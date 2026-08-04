@@ -3,7 +3,7 @@
 
 """MMLU as an *absolute* capability check for the constitution-SFT arms.
 
-`configs/eval/capability.yaml` gates on a pairwise preference judge, which has a known
+`configs/eval/arena_hard.yaml` gates on a pairwise preference judge, which has a known
 blind spot the spec itself flags: a preference comparison cannot detect **both** arms
 degrading together, and it rewards style over substance. MMLU closes exactly that gap —
 it is scored against a fixed answer key, so every arm's number stands on its own and the
@@ -459,7 +459,7 @@ def paired_bootstrap_diff(
     Resamples question *indices* and carries both arms' outcomes for the drawn question
     together. Between-question difficulty variance is common to both arms and cancels in
     the difference, so this interval is materially tighter than differencing two
-    independent per-arm intervals — the same paired argument `capability_stats` makes
+    independent per-arm intervals — the same paired argument `arena_hard_stats` makes
     for the preference eval.
 
     Args:

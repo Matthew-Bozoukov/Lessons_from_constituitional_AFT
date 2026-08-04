@@ -1,5 +1,5 @@
-# ABOUTME: Drive Arena-Hard pairwise judging of one capability-eval arm against arm A,
-# ABOUTME: with staged sampling. Run: uv run python src/eval/capabilities/capability_judge.py --arm arm_d_synth40
+# ABOUTME: Drive Arena-Hard pairwise judging of one arena-hard-eval arm against arm A,
+# ABOUTME: with staged sampling. Run: uv run python src/eval/capabilities/arena_hard_judge.py --arm arm_d_synth40
 
 """Pairwise judging for the capability regression eval.
 
@@ -22,8 +22,8 @@ that well, the reference answer is weak and every comparison degrades. Our candi
 ~27B models, so the judge has to be clearly stronger than what it is judging. This
 dual-judges 100 questions and reports agreement, win-rate gap and swap consistency.
 
-    uv run python src/eval/capabilities/capability_judge.py --arm arm_b_synth10 --stage 150
-    uv run python src/eval/capabilities/capability_judge.py --mode validate
+    uv run python src/eval/capabilities/arena_hard_judge.py --arm arm_b_synth10 --stage 150
+    uv run python src/eval/capabilities/arena_hard_judge.py --mode validate
 """
 
 from __future__ import annotations
@@ -40,9 +40,9 @@ import yaml
 from dotenv import load_dotenv
 from omegaconf import DictConfig, OmegaConf
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from src.eval.capabilities.capability_stats import (  # noqa: E402
+from src.eval.capabilities.arena_hard.arena_hard_stats import (  # noqa: E402
     battles_from_judgments,
     per_prompt_scores,
     win_tie_loss,
@@ -64,11 +64,11 @@ def _write_endpoint_config(cfg: DictConfig, vendor: Path, judge_model: str) -> P
     """Emit the vendored harness's api_config entry for our judge.
 
     Generated rather than hand-edited so the pinned judge ID, reasoning effort and
-    concurrency all trace back to `configs/eval/capability.yaml` — one source of truth,
+    concurrency all trace back to `configs/eval/arena_hard.yaml` — one source of truth,
     and a `third_party/` wipe cannot take the settings with it.
 
     Args:
-        cfg: Loaded capability-eval config.
+        cfg: Loaded arena-hard-eval config.
         vendor: Path to the vendored harness.
         judge_model: OpenRouter model id to pin.
 
@@ -108,7 +108,7 @@ def _write_setting_config(
     """Emit the vendored harness's judging setting file.
 
     Args:
-        cfg: Loaded capability-eval config.
+        cfg: Loaded arena-hard-eval config.
         vendor: Path to the vendored harness.
         judge_model: OpenRouter model id to pin.
         models: Arms to judge (everything except the baseline).
@@ -351,7 +351,7 @@ def validate_judge(cfg: DictConfig) -> dict[str, Any]:
 
 
 def main(
-    config: str = "configs/eval/capability.yaml",
+    config: str = "configs/eval/arena_hard.yaml",
     mode: str = "judge",
     arm: str = "",
     stage: int = 0,
@@ -360,7 +360,7 @@ def main(
     """Judge an arm against the baseline, or validate the judge.
 
     Args:
-        config: Path to the capability-eval config.
+        config: Path to the arena-hard-eval config.
         mode: `judge` or `validate`.
         arm: Arm to judge (required in `judge` mode).
         stage: hard_prompt questions to judge this stage; 0 uses the arm's full count.

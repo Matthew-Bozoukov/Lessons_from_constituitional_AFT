@@ -12,8 +12,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
-from src.eval.misalignment.odcv import VARIANTS, load_published_medians  # noqa: E402
-from src.eval.misalignment.stats import agreement as _agreement  # noqa: E402
+from src.eval.misalignment.odcv.odcv import VARIANTS, load_published_medians  # noqa: E402
+from src.eval.misalignment.odcv.stats import agreement as _agreement  # noqa: E402
 from src.utils import timestamp  # noqa: E402
 
 BLUE, ORANGE = "#4C78A8", "#F58518"

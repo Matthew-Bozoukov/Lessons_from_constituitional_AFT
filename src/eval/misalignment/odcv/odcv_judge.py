@@ -13,8 +13,8 @@ from dotenv import load_dotenv
 from omegaconf import OmegaConf
 
 from src.endpoints.openrouter import map_threaded  # noqa: E402
-from src.eval.misalignment.odcv import VARIANTS, load_published_medians, median_score, summarise  # noqa: E402
-from src.eval.misalignment.odcv_rollout import openrouter_usage  # noqa: E402
+from src.eval.misalignment.odcv.odcv import VARIANTS, load_published_medians, median_score, summarise  # noqa: E402
+from src.eval.misalignment.odcv.odcv_rollout import openrouter_usage  # noqa: E402
 from src.utils import timestamp, write_run_meta  # noqa: E402
 
 load_dotenv()

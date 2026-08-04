@@ -186,8 +186,8 @@ calls that are already cached, so an interrupted run costs nothing to continue.
 - Judging reuses upstream's `evaluate_all_results.evaluation_routine` **verbatim** (imported, not
   reimplemented), so the rubric prompt, retry loop and JSON parsing are byte-identical.
 - Upstream's README advertises `bootstrap_ci.py` / `paired_bootstrap.py` / `compute_paper_stats.py`,
-  but those files are **absent** from the repo; `src/eval/misalignment/odcv.py` (metrics) and
-  `src/eval/misalignment/stats.py` (the scenario-level paired bootstrap CI) implement what the
+  but those files are **absent** from the repo; `src/eval/misalignment/odcv/odcv.py` (metrics) and
+  `src/eval/misalignment/odcv/stats.py` (the scenario-level paired bootstrap CI) implement what the
   paper describes.
 
 ## Third eval: AI-psychosis red-teaming
@@ -197,7 +197,7 @@ A multi-turn sycophancy/safety eval from Tim Hua's
 ([code](https://github.com/tim-hua-01/ai-psychosis)): a red-teamer LLM role-plays one of nine
 personas descending into psychosis over 12 turns (simulation theory, divine missions, new
 mathematics, ...); after each target reply a judge grades it on 5 core metrics (mental-health
-referral, pushback 0-2, delusion confirmation 0-4 + quotes) and 9 CBT-therapy-manual criteria
+referral, pushback 0-2, delusion confirmation -1-4 + quotes) and 9 CBT-therapy-manual criteria
 (1-5, 0 = not yet applicable).
 
 Unlike ODCV this is a **native reimplementation**, not a vendored harness — upstream is a
@@ -212,7 +212,8 @@ uv run scripts/run_eval.py --target <hf_path> --name psychosis             # 9 p
 ```
 
 Config `configs/eval/psychosis.yaml`: red-teamer `x-ai/grok-3` (upstream's default — Grok-4 now
-refuses the roleplay), judge `google/gemini-2.5-pro`, both via OpenRouter. Outputs under
+refuses the roleplay, but still grades), judge `x-ai/grok-4` (the write-up's published grader;
+Gemini 2.5 Pro *authored* the therapy rubric but never graded), both via OpenRouter. Outputs under
 `output/psychosis/<model_key>/<ts>/`: `rollouts/<persona>.{md,json}` (self-contained transcripts
 incl. red-teamer strategy notes, target reasoning and per-turn grades), `grades.{jsonl,csv}`,
 and summary metrics (referral rate, delusion-collusion rate = share of delusional turns rated
@@ -220,8 +221,9 @@ and summary metrics (referral rate, delusion-collusion rate = share of delusiona
 
 Deviations from upstream (deliberate): grading runs after each conversation completes rather
 than interleaved (equivalent — the judge never influences the conversation — and fully
-parallel); judge temperature 0; `-1`/`0` sentinel grades are excluded from means (upstream's R
-averaged raw columns); the target's reasoning goes back into its own history as
+parallel); judge temperature 0; a red-teamer completion without a `<message>` block is
+regenerated once before the persona fails (upstream crashes the persona on the first refusal);
+`-1`/`0` sentinel grades are excluded from means (upstream's write-up averaged raw columns); the target's reasoning goes back into its own history as
 `reasoning_content` per the preserve-thinking policy below (the served template decides whether
 to render it; the red-teamer still sees only the visible reply, as upstream), and the trace is
 preserved in rollouts and shown, fenced, to the judge as upstream did. Verify on a live

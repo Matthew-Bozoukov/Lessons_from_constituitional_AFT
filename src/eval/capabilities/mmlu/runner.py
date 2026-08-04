@@ -4,7 +4,7 @@
 """MMLU generation + grading for the capability regression eval.
 
 One command evaluates every arm, because all arms are served concurrently as LoRA modules
-off a single vLLM process (`scripts/gpu/runpod_capability.py`). That is not just convenient:
+off a single vLLM process (`scripts/gpu/runpod_arena_hard.py`). That is not just convenient:
 it means every arm is measured by the same process, on the same GPU, with the same build
 and flags, so decoding parity is a property of the setup rather than something we have to
 trust across separate boots.
@@ -43,10 +43,10 @@ import fire
 from omegaconf import DictConfig, OmegaConf
 from openai import OpenAI
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from src.endpoints.openrouter import map_threaded  # noqa: E402
-from src.eval.capabilities.mmlu import (  # noqa: E402
+from src.eval.capabilities.mmlu.mmlu import (  # noqa: E402
     build_prompt,
     build_subset,
     load_split,
@@ -59,7 +59,7 @@ from src.utils import read_jsonl, resolve_trace, timestamp, write_run_meta  # no
 
 
 def resolve_arms(cfg: DictConfig) -> list[dict]:
-    """Load the arm ladder from the capability-eval config and attach served names.
+    """Load the arm ladder from the arena-hard-eval config and attach served names.
 
     The ladder is not restated in the MMLU config on purpose (see the `arms_from` note
     there): one source of truth means a newly-trained arm cannot be missing from this
@@ -406,7 +406,7 @@ def main(
             f"parse {r['parse_rate']:.1%}  trunc {r['truncation_rate']:.1%}"
         )
     print("\nBuild the comparison report with:")
-    print(f"  uv run python src/eval/capabilities/mmlu_report.py --config {config}"
+    print(f"  uv run python scratch/reports/mmlu_report.py --config {config}"
           + (" --nothink" if nothink else ""))
 
 

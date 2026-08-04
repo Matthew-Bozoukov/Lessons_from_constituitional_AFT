@@ -13,7 +13,7 @@ from math import comb
 
 import numpy as np
 
-from src.eval.misalignment.odcv import VARIANTS, VIOLATION_THRESHOLD
+from src.eval.misalignment.odcv.odcv import VARIANTS, VIOLATION_THRESHOLD
 
 
 def paired_bootstrap(pairs: list[tuple[float, float]], n_boot: int, seed: int) -> dict:

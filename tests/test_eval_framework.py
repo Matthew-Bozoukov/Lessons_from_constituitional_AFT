@@ -46,8 +46,9 @@ def test_registry_specs_are_wellformed():
     assert EVALS, "registry is empty"
     for name, spec in EVALS.items():
         assert isinstance(spec, EvalSpec), name
-        module, _, func = spec.runner.partition(":")
-        assert module.startswith("src.eval.") and func, (name, spec.runner)
+        # package is relative to src.eval and names its subarea (vulnerabilities/ is exempt
+        # from the contract, so nothing may register under it).
+        assert spec.package.split(".")[0] in ("capabilities", "misalignment"), (name, spec.package)
         assert spec.config.startswith("configs/eval/"), (name, spec.config)
 
 
@@ -59,18 +60,20 @@ def test_card_markdown_enforces_required_fields():
         card_markdown({f: "x" for f in REQUIRED_FIELDS if f != "constitution"})
 
 
-def test_registry_runner_modules_and_configs_exist():
-    import importlib.util
+def test_registry_runners_fulfill_the_contract_and_configs_exist():
+    from inspect import signature
     from pathlib import Path
 
+    from src.eval import resolve
+
     for name, spec in EVALS.items():
-        module = spec.runner.split(":")[0]
-        assert importlib.util.find_spec(module) is not None, (name, module)
+        run = resolve(name)  # imports the runner: a missing module or run() fails right here
+        assert list(signature(run).parameters) == ["target", "cfg", "out_dir"], name
         assert Path(spec.config).exists(), (name, spec.config)
 
 
 def test_odcv_bridge_url_rewrite():
-    from src.eval.misalignment import odcv_bench
+    from src.eval.misalignment.odcv import runner as odcv_bench
 
     assert (_ := odcv_bench._bridge_url("http://localhost:8000/v1", "172.17.0.1")
             ) == "http://172.17.0.1:8000/v1"
@@ -79,7 +82,7 @@ def test_odcv_bridge_url_rewrite():
 
 
 def test_odcv_container_host_address_is_platform_aware(monkeypatch):
-    from src.eval.misalignment import odcv_bench
+    from src.eval.misalignment.odcv import runner as odcv_bench
 
     monkeypatch.setattr(odcv_bench.sys, "platform", "linux")
     assert odcv_bench.container_host_address() == "172.17.0.1"
@@ -87,32 +90,32 @@ def test_odcv_container_host_address_is_platform_aware(monkeypatch):
     assert odcv_bench.container_host_address() == "host.docker.internal"
 
 
-def test_odcv_preflight_fails_clearly_without_docker(monkeypatch):
-    from src.eval.misalignment import odcv_bench
+def test_docker_preflight_fails_clearly_without_docker(monkeypatch):
+    from src.eval import docker
 
-    monkeypatch.setattr(odcv_bench.shutil, "which", lambda _: None)
+    monkeypatch.setattr(docker.shutil, "which", lambda _: None)
     with pytest.raises(SystemExit) as e:
-        odcv_bench.docker_preflight()
+        docker.docker_preflight()
     message = str(e.value)
-    # The error must say what broke, why ODCV needs it, and where TO run instead.
+    # The error must say what broke, why docker evals need it, and where TO run instead.
     assert "docker" in message and "vast.ai" in message and "Fix:" in message
 
 
-def test_odcv_preflight_network_failure_names_the_runpod_trap(monkeypatch):
+def test_docker_preflight_network_failure_names_the_runpod_trap(monkeypatch):
     import subprocess as sp
 
-    from src.eval.misalignment import odcv_bench
+    from src.eval import docker
 
-    monkeypatch.setattr(odcv_bench.shutil, "which", lambda _: "/usr/bin/docker")
+    monkeypatch.setattr(docker.shutil, "which", lambda _: "/usr/bin/docker")
 
     def fake_run(argv, **kwargs):
         ok = argv[:3] != ["docker", "network", "create"]
         return sp.CompletedProcess(argv, 0 if ok else 1, stdout="",
                                    stderr="operation not permitted")
 
-    monkeypatch.setattr(odcv_bench.subprocess, "run", fake_run)
+    monkeypatch.setattr(docker.subprocess, "run", fake_run)
     with pytest.raises(SystemExit) as e:
-        odcv_bench.docker_preflight()
+        docker.docker_preflight()
     message = str(e.value)
     assert "CANNOT create networks" in message and "RunPod" in message
 
@@ -120,7 +123,7 @@ def test_odcv_preflight_network_failure_names_the_runpod_trap(monkeypatch):
 def test_agentic_misalignment_config_rewrite():
     from omegaconf import OmegaConf
 
-    from src.eval.misalignment.agentic_misalignment import _harness_config
+    from src.eval.misalignment.agentic_misalignment.runner import _harness_config
 
     cfg = OmegaConf.create({
         "global": {"models": ["vllm/qwen3"],

@@ -7,7 +7,7 @@ import math
 
 import pytest
 
-from src.eval.capabilities.mmlu import (
+from src.eval.capabilities.mmlu.mmlu import (
     LETTERS,
     SUBJECT_CATEGORY,
     build_prompt,
