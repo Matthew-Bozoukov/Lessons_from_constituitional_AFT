@@ -18,7 +18,11 @@ from transformers import (
 )
 from trl import SFTConfig, SFTTrainer
 
-from src.train.masking import build_labels, check_thinking_declaration  # noqa: E402
+from src.train.masking import (  # noqa: E402
+    assert_generation_boundary_family,
+    build_labels,
+    check_thinking_declaration,
+)
 
 
 def _collate_padded(features: list[dict], pad_token_id: int) -> dict[str, torch.Tensor]:
@@ -88,8 +92,7 @@ def main(config: str, smoke: bool = False) -> None:
     # then stamped into the adapter as training_meta.json. No default.
     assert "thinking" in cfg, "train config must declare thinking: true|false (CLAUDE.md eval framework)"
     thinking = bool(cfg.thinking)
-    check_thinking_declaration(ds, thinking,
-                               mask_empty_think=bool(cfg.train.get("mask_empty_think", False)))
+    check_thinking_declaration(ds, thinking)
     print(f">>> thinking (declared, validated on all {len(ds)} rows): {thinking}")
 
     if smoke:
@@ -116,16 +119,21 @@ def main(config: str, smoke: bool = False) -> None:
     pre_tokenized = assistant_only and "text" in ds.column_names
     if pre_tokenized:
         max_len = int(cfg.train.max_seq_len)
-        # An empty <think></think> is Qwen3.6's non-thinking marker, injected as a prefill
-        # at inference. Conditioning on it is useful; being trained to emit it is the
-        # documented reasoning-collapse pattern, so it can be excluded from the loss.
-        skip_empty = bool(cfg.train.get("mask_empty_think", False))
-        print(f">>> mask_empty_think: {skip_empty}")
+        # Think supervision is NOT configurable: the generation-boundary rule in
+        # src/train/masking.py is the one way (mask the template's `<think>\n` prefill,
+        # supervise everything the model generates, `\n</think>` included). Runs trained
+        # under older rules are reproduced from git history, not from a knob.
+        if cfg.train.get("mask_empty_think") is not None:
+            raise ValueError(
+                "`train.mask_empty_think` was removed: think supervision now always uses "
+                "the generation-boundary rule (src/train/masking.py). Delete the key; to "
+                "reproduce an old run, check out the commit in its adapter's training_meta."
+            )
+        assert_generation_boundary_family(str(cfg.model))
         ds = ds.map(
-            lambda r: build_labels(r["text"], tokenizer, max_len,
-                                   skip_empty_think=skip_empty),
+            lambda r: build_labels(r["text"], tokenizer, max_len),
             remove_columns=ds.column_names,
-            desc="masking non-assistant tokens",
+            desc="masking non-assistant and prefill tokens",
         )
         n_tok = sum(len(r) for r in ds["input_ids"])
         n_sup = sum(sum(1 for v in r if v != -100) for r in ds["labels"])

@@ -62,9 +62,9 @@ def _render_with_marker(tok, messages: list[dict]) -> str:
 
     This is plain `apply_chat_template` — no sentinel, no post-hoc surgery. For a final
     assistant turn with no reasoning_content, Qwen3.6's template emits exactly the empty
-    `<think></think>` marker. Sources rendered this way MUST be trained with the marker
-    masked from the loss (train.mask_empty_think), or the model learns to emit the
-    collapse pattern; check_thinking_declaration enforces that pairing.
+    `<think></think>` marker. The generation-boundary mask (src/train/masking.py) then
+    conditions on its `<think>\n` prefill and supervises its `\n</think>` close — the
+    exact behaviour a thinking-mode model emits when it declines to reason.
     """
     assert messages[-1]["role"] == "assistant", "conversation must end with an assistant turn"
     text = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
@@ -177,8 +177,8 @@ def _load_source(tok, cfg, name: str, spec: dict, budget: int, seed: int) -> tup
     Returns:
         (rows, kind) where kind is `think` (local messages jsonl, traces kept), `nothink`
         (HF-streamed, sentinel-stripped), `marker` (HF-streamed, template's own empty-think
-        marker kept — pair with train.mask_empty_think) or `rendered` (pre-rendered,
-        validated upstream).
+        marker kept; the generation-boundary mask handles its supervision) or `rendered`
+        (pre-rendered, validated upstream).
     """
     if "repo" in spec:
         marker = bool(spec.get("think_marker", False))
@@ -204,7 +204,8 @@ def main(config: str, smoke: bool = False) -> None:
             reasoning traces kept) or `rendered` (pre-rendered rows: text, n_tokens) — or an
             HF stream — {repo, split?, tokens, shuffle_buffer?, think_marker?}, length-capped
             at `max_seq_len` and rendered with NO think block by default; `think_marker: true`
-            keeps the template's own empty marker instead (pair with train.mask_empty_think).
+            keeps the template's own empty marker instead (its supervision is handled by
+            the generation-boundary mask in src/train/masking.py).
         smoke: Divide every token budget by 20 to validate wiring in seconds.
     """
     cfg = OmegaConf.load(config)

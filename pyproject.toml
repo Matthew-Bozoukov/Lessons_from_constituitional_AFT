@@ -77,3 +77,6 @@ exclude = ["src/eval/vulnerabilities/petri/petri-subscription"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "tokenizer: verifies against a real HF tokenizer from the local cache; skips when absent",
+]
