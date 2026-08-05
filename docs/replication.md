@@ -216,8 +216,9 @@ OpenRouter. Upstream used grok-3 (red-team) and grok-4 (judge, the write-up's pu
 Gemini 2.5 Pro *authored* the therapy rubric but never graded) — OpenRouter deprecated both by
 2026-08-05, and of the live xAI models only grok-4.5 plays the personas (4.3/4.20 refuse, as
 grok-4 did upstream), so absolute scores are not comparable to upstream's CSVs — only across arms
-run with the same pair. The config also pins a `serving:` override (max_model_len 40960): twelve
-preserved-reasoning turns overflow the Qwen3.6 family default window. Outputs under
+run with the same pair. The config also declares `serving.context_window: 40960` (required in
+every eval config; checked against the family's verified ceiling at serve time): twelve
+preserved-reasoning turns overflow a 16384 window. Outputs under
 `output/psychosis/<model_key>/<ts>/`: `rollouts/<persona>.{md,json}` (self-contained transcripts
 incl. red-teamer strategy notes, target reasoning and per-turn grades), `grades.{jsonl,csv}`,
 and summary metrics (referral rate, delusion-collusion rate = share of delusional turns rated

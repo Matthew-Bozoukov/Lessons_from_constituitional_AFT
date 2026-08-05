@@ -20,9 +20,9 @@ to a future reader.
 | category | spent to date |
 |---|---|
 | OpenRouter (data generation) | **$255.96** |
-| OpenRouter (eval judging) | $16.49 |
-| GPU rental | $17.28 (+ ~4 RunPod A100-h on 2026-08-03, $ TBD from dashboard) |
-| **total** | **$289.73** (+ GPU TBD) |
+| OpenRouter (eval judging) | $16.54 |
+| GPU rental | $19.78 (+ ~4 RunPod A100-h on 2026-08-03, $ TBD from dashboard) |
+| **total** | **$292.28** (+ GPU TBD) |
 
 ---
 
@@ -42,6 +42,11 @@ First live psychosis runs: `table2-synthdoc-r64` (20% DA / 80% benign) and `tabl
   trace-parse leak that invalidated one completed arm (rerun). Lessons: probe config-pinned
   API models for liveness AND task-compliance before booting GPUs; smoke one persona
   end-to-end before the full fan-out.
+- **Follow-up, same day: reasoning-parser verification pod: ≈$2.60.** One more H100
+  (~45 min @ $3.29/hr ≈ $2.50) + $0.05 OpenRouter (1-persona smoke) to verify vLLM 0.26's
+  `qwen3` parser splits Qwen3.6's prefilled think stream server-side (it does — trace
+  arrives out-of-band in `reasoning`, content clean). Included in the running totals
+  (GPU $17.28 → $19.78, A100 TBD unchanged; judging $16.49 → $16.54; total → $292.28).
 
 ## Running total
 

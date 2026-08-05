@@ -165,18 +165,6 @@ def count_chat_tokens(messages: list[dict], tokenizer_name: str) -> int:
     return len(rendered["input_ids"])
 
 
-# --- Thinking framework profiles -----------------------------------------------------
-#
-# Everything family-specific about how a model does chain-of-thought, in ONE place, so
-# the mask (src/train/masking.py), mixture rendering (src/data/mixture/build_mixture.py) and the
-# serve-time template pin (src/endpoints/vllm_server.py) can never drift apart. The
-# repo-wide policy (2026-08-04) is preserve-thinking: training data carries a think block
-# on EVERY assistant turn (reasoning_content where the source has it, the empty marker
-# where it does not), and serving keeps prior-turn reasoning in context. A future family
-# with a different thinking framework is a new profile entry plus its own verified block
-# in tests/test_masking_tokenizer.py — not a hunt through five files.
-
-
 @dataclass(frozen=True)
 class ModelProfile:
     """How one model family renders, prefills and preserves reasoning.
@@ -188,12 +176,23 @@ class ModelProfile:
         empty_think: The full literal a no-reasoning assistant turn carries.
         render_kwargs: Extra chat-template kwargs for rendering TRAINING data so every
             assistant turn keeps its reasoning (verified against the live template).
+        serving: Verified serving facts for this family, all three vLLM-facing:
+            `reasoning_parser` — which of vLLM's parsers understands its think stream
+            (intrinsic; enabled think-mode-only, see VllmServer._start);
+            `max_num_seqs` — architectural constraint (Qwen3.6's hybrid Mamba arch
+            fails at startup above a low cap, docs/LOG.md 2026-07-29);
+            `verified_context_window` — the largest window this family has been
+            VERIFIED to serve on the reference deployment (1x H100 80GB, at this
+            max_num_seqs). A dated fact, not a preference: bumping it requires a live
+            boot at the new window. The window an eval RUNS at is the eval config's
+            own required `serving.context_window`, checked against this ceiling.
     """
 
     family: str
     prefill: str
     empty_think: str
     render_kwargs: dict
+    serving: dict
 
 
 QWEN36_PROFILE = ModelProfile(
@@ -201,6 +200,10 @@ QWEN36_PROFILE = ModelProfile(
     prefill="<think>\n",
     empty_think="<think>\n\n</think>\n\n",
     render_kwargs={"preserve_thinking": True},
+    # verified_context_window: booted and served live at 40960 x 12 seqs (psychosis
+    # runs, 2026-08-05); max_num_seqs 32 is the sweep default at smaller windows.
+    serving={"verified_context_window": 40960, "max_num_seqs": 32,
+             "reasoning_parser": "qwen3"},
 )
 # Qwen3 deliberately has NO profile yet: its thinking-mode template prefills nothing (the
 # model generates <think> itself — verified live 2026-08-04), so the generation-boundary
@@ -229,6 +232,21 @@ def model_profile(model_name: str) -> ModelProfile:
         "In particular Qwen3 prefills nothing in thinking mode — masking its opener "
         "would under-train tokens that model must emit."
     )
+
+
+# Serving stays permissive where training refuses: an unprofiled family (Qwen3-32B,
+# deliberately profile-less until its masking is verified) can still be served ad hoc.
+# It has no verified ceiling, so the context-window fail-fast is skipped and vLLM's own
+# startup failure is the backstop. Training-side lookups keep using model_profile().
+DEFAULT_SERVING = {"max_num_seqs": None}
+
+
+def serving_params(model_name: str) -> dict:
+    """vLLM serving parameters for a base model: its profile's `serving`, else defaults."""
+    for profile in MODEL_PROFILES:
+        if profile.family in model_name:
+            return profile.serving
+    return DEFAULT_SERVING
 
 
 _ASSISTANT_TURN = re.compile(r"<\|im_start\|>assistant\n(.*?<\|im_end\|>)", re.DOTALL)

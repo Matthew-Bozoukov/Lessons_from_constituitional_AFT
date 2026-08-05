@@ -16,16 +16,14 @@ import requests
 from huggingface_hub import hf_hub_download
 from huggingface_hub.errors import EntryNotFoundError
 
-# Serving parameters per base-model family. Matched by prefix against the base model id;
-# the first hit wins, `None` is the fallback. max_model_len values are the ones the evals
-# were tuned at (13312 = the original Qwen3-32B serving setup). Qwen3.6's hybrid
-# Mamba/linear-attention arch requires a low max_num_seqs: the vLLM default (1024) exceeds
-# the available Mamba cache blocks and fails at startup (docs/LOG.md 2026-07-29).
-_FAMILIES: dict[str | None, dict] = {
-    "Qwen/Qwen3-32B": {"max_model_len": 13312, "max_num_seqs": None},
-    "Qwen/Qwen3.6-27B": {"max_model_len": 16384, "max_num_seqs": 32},
-    None: {"max_model_len": 13312, "max_num_seqs": None},
-}
+from src.utils import serving_params
+
+# Serving parameters come from two places with different epistemic status (merged in
+# _start): the FAMILY's verified facts (ModelProfile.serving, src/utils.py — reasoning
+# parser, max_num_seqs constraint, verified_context_window ceiling; unprofiled families
+# get utils.DEFAULT_SERVING) and the EVAL's own required `serving.context_window` (its
+# config's declaration of the window it runs at — the window decides truncation
+# behaviour, so it is part of the eval's scientific record, never a hidden default).
 
 _HEALTH_TIMEOUT_S = 1800  # first start downloads weights; a 32B pull can take a while
 
@@ -126,13 +124,6 @@ def pin_template(template_text: str, mode: str) -> str:
     flag = "true" if mode == "think" else "false"
     return (f"{{%- set enable_thinking = {flag} -%}}\n"
             f"{{%- set preserve_thinking = {flag} -%}}\n") + template_text
-
-
-def _serve_params(base_model: str) -> dict:
-    for prefix, params in _FAMILIES.items():
-        if prefix and base_model.startswith(prefix):
-            return params
-    return _FAMILIES[None]
 
 
 class LocalExec:
@@ -362,20 +353,36 @@ class VllmServer:
                                         pin_template(template, mode))
 
     def _start(self, spec: TargetSpec, adapter_dir: str | None) -> None:
-        # An eval config's `serving:` section overrides the family defaults — the
-        # family values are what the *other* evals were tuned at, so a long-context
-        # eval widens its own window in its config (the scientific record) instead
-        # of silently changing serving conditions for every eval of the family.
-        params = {**_serve_params(spec.base_model), **self.serve_overrides}
+        params = {**serving_params(spec.base_model), **self.serve_overrides}
+        window = params.get("context_window")
+        if not window:
+            raise SystemExit(
+                "\nthis eval's config declares no serving.context_window — every eval "
+                "states the window it runs at (required, no default: the window decides "
+                "truncation behaviour, so it is part of the eval's scientific record). "
+                "Add a `serving:` section to its configs/eval YAML.")
+        ceiling = params.get("verified_context_window")
+        if ceiling and int(window) > int(ceiling):
+            raise SystemExit(
+                f"\nserving.context_window={window} exceeds {spec.base_model}'s verified "
+                f"ceiling ({ceiling} — ModelProfile.serving, src/utils.py). Lower the "
+                "eval's window, or boot vLLM live at the larger window on the reference "
+                "H100 and bump verified_context_window with a dated comment.")
         argv = self.executor.python_argv + [
             "-m", "vllm.entrypoints.openai.api_server",
             "--model", spec.base_model, "--served-model-name", "base",
             "--dtype", "bfloat16",
-            "--max-model-len", str(params["max_model_len"]),
+            "--max-model-len", str(int(window)),
             "--gpu-memory-utilization", "0.94",
             "--port", str(self.port)]
         if params.get("max_num_seqs"):
             argv += ["--max-num-seqs", str(params["max_num_seqs"])]
+        if params.get("reasoning_parser") and spec.mode == "think":
+            # think-mode only, by construction: on a tagless (nothink) stream the
+            # parser's "reasoning is at the start" assumption would route the WHOLE
+            # answer into the reasoning field. mode=default (full models) also skips
+            # the parser and falls back to client-side splitting — see docs/TODO.md.
+            argv += ["--reasoning-parser", params["reasoning_parser"]]
         template = self._pinned_template_path(spec.base_model, spec.mode)
         if template:
             argv += ["--chat-template", template]

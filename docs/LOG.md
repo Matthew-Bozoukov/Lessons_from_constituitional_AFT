@@ -38,6 +38,19 @@ with arm (plausibly via the control's darker conversations) and surviving-person
 may understate the gap.
 **Next:** base-model reference arm; top-up runs for the missing personas; the pre-fix leak audit;
 consider a refusal-robust red-teamer or larger retry budget.
+**Follow-up (same day):** serving now enables vLLM's `reasoning_parser` for think-mode Qwen3.6
+arms, declared in `ModelProfile.serving` (which absorbed the old `_FAMILIES` table; unprofiled
+families serve with `DEFAULT_SERVING`, so training-side refusal semantics are unchanged).
+Verified live on a fresh H100: psychosis smoke clean (3/3 turns split, empty-think 0) and a raw
+request shows the trace out-of-band in `reasoning` with clean `content`. `split_think` remains
+the fallback for inline shapes. Parser is think-mode-only — nothink/default-mode caveat in
+docs/TODO.md item 8. The serving window was then redesigned out of the family table entirely:
+every eval config declares the required `serving.context_window` it RUNS at (16384 backfilled
+everywhere = the old implicit default; psychosis 40960), the profile carries only the family's
+`verified_context_window` ceiling (40960 for Qwen3.6, booted live today), and serve-time +
+test-time checks fail fast when an eval's window exceeds the ceiling or is missing — so a
+too-small window can never again be inherited silently (that inheritance is what truncated
+psychosis at turn 7 this morning).
 
 ## 2026-08-05 — HF answer cache + lazy serving: cached arms cost nothing
 

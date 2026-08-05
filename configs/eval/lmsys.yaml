@@ -61,3 +61,9 @@ judge:                   # pairwise judge, called via src/endpoints/openrouter.p
   # the A/B rubric needs no hidden thinking.
   extra_body:
     reasoning: {effort: low}
+
+serving:
+  # The window this eval runs at (required — see VllmServer._start; part of the eval's
+  # scientific record). 16384 = the window the Qwen3.6 sweep was tuned at, previously an
+  # implicit family default (moved here 2026-08-05).
+  context_window: 16384

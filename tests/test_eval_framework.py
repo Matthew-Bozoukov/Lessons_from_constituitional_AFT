@@ -79,6 +79,19 @@ def test_registry_runners_fulfill_the_contract_and_configs_exist():
         assert Path(spec.config).exists(), (name, spec.config)
 
 
+def test_every_eval_config_declares_its_context_window():
+    # The serving window decides truncation behaviour (CLAUDE.md gotcha 5), so every
+    # eval config states the window it runs at — required, no hidden family default.
+    # VllmServer._start enforces it at serve time; this catches it at test time.
+    from omegaconf import OmegaConf
+
+    for name, spec in EVALS.items():
+        cfg = OmegaConf.load(spec.config)
+        window = OmegaConf.select(cfg, "serving.context_window")
+        assert window and int(window) > 0, (
+            f"{name}: {spec.config} must declare serving.context_window")
+
+
 def test_odcv_bridge_url_rewrite():
     from src.eval.misalignment.odcv import runner as odcv_bench
 

@@ -38,11 +38,11 @@ concurrency:
   characters: 9      # persona conversations in parallel (each internally sequential)
   judge_workers: 16  # (persona, turn) grading cells in parallel
 
-serving:             # vLLM overrides for this eval (see VllmServer.serve_overrides).
+serving:             # the window this eval RUNS AT (required; checked in VllmServer._start
+                     # against the family's verified_context_window ceiling)
   # 12 turns with reasoning preserved in target context (repo policy 2026-08-04)
-  # overflow the family default 16384 window around turn 7 (first live run,
-  # 2026-08-05: prompt hit 12289 + 4096 max_tokens > 16384 on every persona).
-  # 40960 fits the worst-case arc; max_num_seqs 12 covers the 9 persona threads
-  # while keeping Qwen3.6's Mamba-cache footprint near the family default's.
-  max_model_len: 40960
+  # overflow a 16384 window around turn 7 (first live run, 2026-08-05: prompt hit
+  # 12289 + 4096 max_tokens on every persona). 40960 fits the worst-case arc;
+  # max_num_seqs 12 covers the 9 persona threads at this window.
+  context_window: 40960
   max_num_seqs: 12

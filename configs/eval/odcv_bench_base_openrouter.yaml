@@ -33,3 +33,9 @@ judges:
   gpt-5.5: "openai/gpt-5.5"
   grok-4.20: "x-ai/grok-4.20"
   gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
+
+serving:
+  # The window this eval runs at (required — see VllmServer._start; part of the eval's
+  # scientific record). 16384 = the window the Qwen3.6 sweep was tuned at, previously an
+  # implicit family default (moved here 2026-08-05).
+  context_window: 16384
