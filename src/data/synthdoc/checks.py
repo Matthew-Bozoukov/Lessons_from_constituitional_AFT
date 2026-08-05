@@ -28,6 +28,12 @@ _VERDICT_MARKERS = (
 
 # Below these document counts the corresponding gate is reported but not enforced --
 # the statistics are binomial noise at smoke scale.
+# Judges return a tag and one sentence inside tight max_tokens; Sonnet 5's hidden
+# extended thinking otherwise eats that budget and returns EMPTY content with
+# finish_reason=length (observed 2026-08-05: 500-token cap, 95+ reasoning tokens,
+# content=None). Same OpenRouter control the self_reflection stages use.
+_JUDGE_NO_REASONING = {"reasoning": {"enabled": False}}
+
 _MIN_DOCS_FOR_COLLAPSE = 5
 _MIN_DOCS_FOR_VERDICT = 20
 _MIN_DOCS_PER_CLASS_FOR_SHORTCUT = 20
@@ -228,7 +234,7 @@ def check_gold_validation(source: list[dict], client: OpenRouterClient,
              {"role": "user", "content": judges["gold_user"].format(
                  trait_name=r["trait_name"], trait_text=r["trait_text"],
                  user=r["user"], response=r["response"])}],
-            0.3, 800, "check:gold", ("score", "why"))
+            0.3, 800, "check:gold", ("score", "why"), extra=_JUDGE_NO_REASONING)
         score = int(parsed["score"])
         if not 1 <= score <= 5:
             raise ValueError(f"score out of range: {score}")
@@ -266,7 +272,7 @@ def check_flaw_identification(generated: list[dict], client: OpenRouterClient,
             [{"role": "system", "content": judges["flawid_system"]},
              {"role": "user", "content": judges["flawid_user"].format(
                  change_summary=r["change_summary"], critique=_doc_text(r))}],
-            0.3, 500, "check:flawid", ("hit", "why"))
+            0.3, 500, "check:flawid", ("hit", "why"), extra=_JUDGE_NO_REASONING)
         v = parsed["hit"].strip().lower()
         if v not in ("yes", "no"):
             raise ValueError(f"unrecognised hit answer: {v!r}")
@@ -386,7 +392,7 @@ def check_post_hoc_judge(generated: list[dict], client: OpenRouterClient,
             [{"role": "system", "content": judges["posthoc_system"]},
              {"role": "user", "content": judges["posthoc_user"].format(
                  reasoning=r["reasoning"])}],
-            0.3, 500, "check:posthoc", ("posthoc", "why"))
+            0.3, 500, "check:posthoc", ("posthoc", "why"), extra=_JUDGE_NO_REASONING)
         v = parsed["posthoc"].strip().lower()
         if v not in ("yes", "no"):
             raise ValueError(f"unrecognised posthoc answer: {v!r}")
