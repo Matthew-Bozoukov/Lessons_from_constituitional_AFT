@@ -9,7 +9,7 @@ published_key: "qwen3.6-27b"
 base_url: "http://172.17.0.1:8001/v1"
 temperature: 0.0
 
-bench_dir: "third_party/odcv-bench"
+bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
 output_root: "output/odcv_bench"
 
 concurrency: 4

@@ -12,7 +12,7 @@ published_key: "qwen3.6-27b"
 
 temperature: 0.0
 
-bench_dir: "src/eval/misalignment/third_party/odcv-bench"
+bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
 
 # Decode is memory-bandwidth-bound, so throughput comes from batching; stays under the
 # server's max_num_seqs.

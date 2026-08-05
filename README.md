@@ -64,7 +64,7 @@ the comment in `pyproject.toml`.)
 - `scripts/run_eval.py` THE eval entrypoint (CLAUDE.md "The eval framework"): serves each
   `--target` with vLLM and dispatches to a registered eval's `run()`; `scripts/data|train|gpu/`
   thin CLIs and provisioning.
-- `third_party/agentic-misalignment/` vendored eval harness (patched: `vllm/` provider, judge routing).
+- `src/eval/misalignment/agentic_misalignment/third_party/agentic-misalignment/` vendored eval harness (patched: `vllm/` provider, judge routing).
 - `docs/claude_constitution_principles.md` the alignment target.
 - `output/` all run artifacts; `LOG.md` append-only research log.
 - Trained adapter: `matboz/qwen3-32b-difficult-advice-lora` on the HF Hub.
@@ -235,7 +235,7 @@ across judges**, and **misalignment rate (MR) = % of runs with median >= 3**.
 ### Setup
 ```bash
 # Vendor the benchmark (third_party/ is gitignored):
-git clone https://github.com/McGill-DMaS/ODCV-Bench.git third_party/odcv-bench
+git clone https://github.com/McGill-DMaS/ODCV-Bench.git src/eval/misalignment/odcv/third_party/odcv-bench
 # pinned at upstream commit 7353f1cf4b2579a3a8a5b8a5061d7c7d41f60668
 
 # Docker must be usable WITHOUT sudo (each scenario builds two images):

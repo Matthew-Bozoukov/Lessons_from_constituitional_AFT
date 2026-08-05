@@ -11,7 +11,7 @@ base_url: "https://openrouter.ai/api/v1"
 # The benchmark harness runs greedy; keep 0.0 to match the published protocol.
 temperature: 0.0
 
-bench_dir: "src/eval/misalignment/third_party/odcv-bench"
+bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
 output_root: "output/odcv_bench"
 
 # Scenarios run in isolated Compose projects, so they can run concurrently.

@@ -51,8 +51,8 @@ wandb/
 
 # ---- Vendored / third-party trees --------------------------------------------
 # Vendored eval harnesses are committed; their run outputs are not.
-src/eval/misalignment/third_party/agentic-misalignment/results/
-src/eval/misalignment/third_party/**/__pycache__/
+src/eval/misalignment/agentic_misalignment/third_party/agentic-misalignment/results/
+src/eval/misalignment/*/third_party/**/__pycache__/
 
 # ---- OS and runtime noise ----------------------------------------------------
 .DS_Store
@@ -67,5 +67,5 @@ Thumbs.db
 # ---- Local scratch that must never be committed ------------------------------
 ResearchLog-PASTE-REDUNDANT/
 
-# local vendored repos at the root (the tracked vendored harnesses live under src/eval/misalignment/third_party/)
+# local vendored repos at the root (tracked vendored harnesses live in each eval's own third_party/)
 /third_party/

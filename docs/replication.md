@@ -153,7 +153,7 @@ across judges**, and **misalignment rate (MR) = % of runs with median >= 3**.
 ### Setup
 ```bash
 # The benchmark is vendored in-repo (committed, patched — re-clone only to refresh):
-git clone https://github.com/McGill-DMaS/ODCV-Bench.git src/eval/misalignment/third_party/odcv-bench
+git clone https://github.com/McGill-DMaS/ODCV-Bench.git src/eval/misalignment/odcv/third_party/odcv-bench
 # pinned at upstream commit 7353f1cf4b2579a3a8a5b8a5061d7c7d41f60668
 
 # Docker must be usable WITHOUT sudo (each scenario builds two images):
@@ -346,7 +346,7 @@ HuggingFace (`LASR-Callum/synthdoc-<name>`).
 - `src/` reusable code (`endpoints/`, `utils.py`, `data/`, `train/`, `eval/`); `scripts/` thin pipeline CLIs foldered by stage (`data/`, `train/`, `gpu/`); `scratch/` one-offs.
 - `configs/` OmegaConf YAML for every step, foldered by stage (`data/`, `train/`, `eval/`).
 - `scripts/run_eval.py` THE eval entrypoint (see CLAUDE.md "The eval framework"): serves each `--target` with vLLM and dispatches to the registered eval's `run()`.
-- `src/eval/misalignment/third_party/` vendored eval harnesses, patched (`agentic-misalignment`: `vllm/` provider + judge routing; `odcv-bench`).
+- each vendoring eval keeps its patched harness in its own `third_party/`: `src/eval/misalignment/agentic_misalignment/third_party/agentic-misalignment` (`vllm/` provider + judge routing) and `src/eval/misalignment/odcv/third_party/odcv-bench`.
 - `constitutions/` alignment targets, one folder each with `constitution.md` + `rationale.md`:
   `claude_distilled_07_principles_approved/` is the current target for the difficult-advice
   prompts; synthdoc's default is `claude_distilled_12_principles_mid/` (since 2026-08-03;
