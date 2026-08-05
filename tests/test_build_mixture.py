@@ -11,6 +11,7 @@ from src.data.mixture.build_mixture import (
     _budget,
     _fill,
     _fill_budget,
+    _source_stats,
     _take_rendered,
     _usable,
     main,
@@ -92,6 +93,19 @@ def test_take_rendered_example_budget_takes_exact_count(tmp_path):
             f.write(json.dumps({"text": f"doc{i}", "n_tokens": 30}) + "\n")
     out = _take_rendered(path, budget=("examples", 4), seed=0, source="model_eval_model")
     assert len(out) == 4
+
+
+def test_source_stats_reports_example_and_token_shares_separately():
+    # A 20/80-by-examples mixture whose synthetic rows are 4x longer: the example share
+    # must read 20/80 even though the token share reads 50/50 — both are recorded.
+    rows = ([{"source": "mem", "n_tokens": 400}] * 2
+            + [{"source": "replay", "n_tokens": 100}] * 8)
+    stats = _source_stats(rows)
+    assert stats["mem"]["share_pct_examples"] == 20.0
+    assert stats["replay"]["share_pct_examples"] == 80.0
+    assert stats["mem"]["share_pct_tokens"] == 50.0
+    assert stats["replay"]["share_pct_tokens"] == 50.0
+    assert stats["mem"]["examples"] == 2 and stats["mem"]["tokens"] == 800
 
 
 def test_usable_accepts_wellformed_and_rejects_malformed():

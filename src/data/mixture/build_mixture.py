@@ -1,5 +1,5 @@
-# ABOUTME: Builds an N-source SFT mixture at per-source token budgets, rendered under the
-# ABOUTME: preserve-thinking policy: every assistant turn keeps a think block (real or empty).
+# ABOUTME: Builds an N-source SFT mixture at per-source budgets — token-share (`tokens:`) or
+# ABOUTME: example-share (`examples:`) — rendered with a think block on every assistant turn.
 
 from __future__ import annotations
 
@@ -36,8 +36,8 @@ _SENTINEL = "__MIXTURE_SENTINEL__"
 
 _THINK_BLOCK = re.compile(r"<think>(.*?)</think>", re.DOTALL)
 
-# Every token budget is divided by this under --smoke, so a smoke run exercises the full
-# wiring (rendering, streaming, validation, stats) in seconds.
+# Every budget (tokens or examples) is divided by this under --smoke, so a smoke run
+# exercises the full wiring (rendering, streaming, validation, stats) in seconds.
 _SMOKE_SCALE = 20
 
 
@@ -231,6 +231,26 @@ def _take_hf(tok, repo: str, split: str, budget: tuple[str, int], seed: int, max
     return out
 
 
+def _source_stats(rows: list[dict]) -> dict[str, dict]:
+    """Per-source composition of the built mixture, with BOTH share definitions.
+
+    A mixture's split is declared in one unit but reads differently in the other
+    (model-eval-model docs run ~3.4× longer than replay rows, so 20% of examples is
+    ~46% of tokens): recording `share_pct_examples` and `share_pct_tokens` side by side
+    keeps the design share and its token-weight consequence both explicit in the stats.
+    """
+    grand_tok = sum(r["n_tokens"] for r in rows)
+    by_source: dict[str, dict] = {}
+    for r in rows:
+        b = by_source.setdefault(r["source"], {"examples": 0, "tokens": 0})
+        b["examples"] += 1
+        b["tokens"] += r["n_tokens"]
+    for b in by_source.values():
+        b["share_pct_examples"] = round(100 * b["examples"] / len(rows), 2)
+        b["share_pct_tokens"] = round(100 * b["tokens"] / grand_tok, 2)
+    return by_source
+
+
 def _load_source(tok, cfg, name: str, spec: dict, budget: tuple[str, int], seed: int,
                  render_kwargs: dict) -> tuple[list[dict], str]:
     """Load one source and classify it for validation.
@@ -317,15 +337,8 @@ def main(config: str, smoke: bool = False) -> None:
                 rec["supervise"] = r["supervise"]
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
-    grand = sum(r["n_tokens"] for r in rows)
-    by_source: dict[str, dict] = {}
-    for r in rows:
-        b = by_source.setdefault(r["source"], {"examples": 0, "tokens": 0})
-        b["examples"] += 1
-        b["tokens"] += r["n_tokens"]
-    for b in by_source.values():
-        b["share_pct"] = round(100 * b["tokens"] / grand, 2)
-    stats = {"total": {"examples": len(rows), "tokens": grand},
+    by_source = _source_stats(rows)
+    stats = {"total": {"examples": len(rows), "tokens": sum(r["n_tokens"] for r in rows)},
              "by_source": by_source, "mixture_path": str(out_path)}
     (out_dir / "mixture_stats.json").write_text(json.dumps(stats, indent=2))
     write_run_meta(out_dir, OmegaConf.to_container(cfg, resolve=True),
