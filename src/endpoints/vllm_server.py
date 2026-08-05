@@ -46,13 +46,23 @@ class TargetSpec:
     lora_rank: int | None
 
 
-@dataclass(frozen=True)
 class ServedTarget:
-    """Handle an eval's run() receives: an OpenAI-compatible endpoint plus identity."""
+    """Handle an eval's run() receives: identity now, an endpoint only on first use.
 
-    spec: TargetSpec
-    base_url: str         # http://localhost:<port>/v1 (tunnelled when serving remotely)
-    model_name: str       # the served model name to put in requests
+    Serving is LAZY: `spec` and `model_name` are plain attributes, but the vLLM server
+    boots (or LoRA-swaps) on first `base_url` access. An arm whose generation is fully
+    satisfied by the HF answer cache therefore never starts a server at all.
+    """
+
+    def __init__(self, spec: TargetSpec, server: "VllmServer"):
+        self.spec = spec
+        self.model_name = spec.model_key if spec.adapter else "base"
+        self._server = server
+
+    @property
+    def base_url(self) -> str:
+        """http://localhost:<port>/v1 (tunnelled when serving remotely). Boots on demand."""
+        return self._server.serve(self.spec)
 
 
 def _mode_from_training_meta(meta: dict) -> str:
@@ -323,7 +333,15 @@ class VllmServer:
         return f"http://localhost:{self.port}/v1"
 
     def ensure(self, spec: TargetSpec) -> ServedTarget:
-        """Serve `spec`, reusing the live server when base model + mode are unchanged."""
+        """Return a lazy handle for `spec`; nothing is served until base_url is touched."""
+        return ServedTarget(spec=spec, server=self)
+
+    def serve(self, spec: TargetSpec) -> str:
+        """Serve `spec` now, reusing the live server when base model + mode are unchanged.
+
+        Returns:
+            The OpenAI-compatible base URL.
+        """
         adapter_dir = self.executor.fetch_adapter(spec.hf_path) if spec.adapter else None
         if not self.running or self.base_model != spec.base_model or self.mode != spec.mode:
             self.stop()
@@ -331,8 +349,7 @@ class VllmServer:
         elif spec.adapter and spec.model_key not in self._loaded_loras:
             assert adapter_dir is not None
             self._load_lora(spec, adapter_dir)
-        model_name = spec.model_key if spec.adapter else "base"
-        return ServedTarget(spec=spec, base_url=self.base_url, model_name=model_name)
+        return self.base_url
 
     def _pinned_template_path(self, base_model: str, mode: str) -> str | None:
         if mode == "default":

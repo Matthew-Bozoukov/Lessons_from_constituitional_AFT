@@ -4,19 +4,21 @@
 """Pairwise chat-quality win-rate on a reproducible lmsys-chat-1m prompt subset.
 
 Framework shape (CLAUDE.md "The eval framework"): `run()` evaluates ONE served target per
-invocation. The target's answers are written to `answers.jsonl` under out_dir, and that
-artifact is exactly what a later run consumes as its `--reference` — so the baseline arm's
-answers are produced by the same code path that produces every other arm's, and decoding
-parity across arms is a property of the shared config rather than something to remember.
+invocation. Every arm's answers live in the HF answer cache (src/eval/answer_cache.py),
+keyed by (model, mode, subset hash, generation hash): a cached arm is fetched instead of
+generated — with lazy serving it never boots vLLM — and the reference is just the arm
+run_eval.py puts first, so its cache entry exists by the time the targets judge against
+it. Reference and target answers come from the same generation code under the same
+config, so decoding parity across arms is structural.
 
 Three things keep a comparison honest here:
 
 - **The prompt subset is a pure function of the config.** Prompts are drawn at runtime
   from HF (streaming + seeded shuffle, the `build_mixture` pattern) rather than read from
-  a gitignored file, and `subset_hash` is stamped into the answers sidecar. A reference
-  whose hash differs answered a different exam, and the run refuses it up front.
-- **Thinking modes must match.** The sidecar records the arm's serving mode; pairing a
-  think arm against a nothink reference is refused (CLAUDE.md: comparison code never
+  a gitignored file, and `subset_hash` is part of every cache key. A reference whose hash
+  differs answered a different exam and cannot even be looked up, let alone judged.
+- **Thinking modes must match.** Mode is part of the cache key, and a cross-mode
+  reference is refused explicitly before lookup (CLAUDE.md: comparison code never
   crosses modes).
 - **Position is randomized by prompt-id parity.** Even id → target is response A. That is
   deterministic per prompt, balanced across the subset, and identical across reruns, so
@@ -27,6 +29,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import date
 from pathlib import Path
 from typing import Iterable, Sequence
 
@@ -34,7 +37,26 @@ from omegaconf import OmegaConf
 from openai import OpenAI
 
 from src.endpoints.openrouter import OpenRouterClient, map_threaded
-from src.utils import extract_json, read_jsonl, resolve_trace
+from src.eval.answer_cache import ANSWERS, META, AnswerCache, CacheKey, gen_hash
+from src.utils import extract_json, git_sha, read_jsonl, resolve_trace
+
+
+def _cache_card(cfg) -> dict:
+    """Card fields for the cache repo, written once on creation (CLAUDE.md policy)."""
+    return {
+        "title": "lmsys answer cache",
+        "experiment": "Per-model answer cache for the lmsys chat-quality eval; one "
+                      "folder per (model, mode, subset, generation) entry",
+        "date_generated": date.today().isoformat(),
+        "constitution": str(cfg.get("constitution", "none")),
+        "source_repo": f"teaching_claude_why_replication @ {git_sha()}",
+        "models": "one entry per served arm — see each entry's answers_meta.json",
+        "generation_config": "per entry (answers_meta.json); entries are keyed by gen_hash",
+        "schema": "entry: answers.jsonl (id, prompt, think, answer, finish_reason) + "
+                  "answers_meta.json (mode, subset_hash, gen_hash, generation params)",
+        "provenance": "uv run scripts/run_eval.py --target <hf> --name lmsys "
+                      "(exact command in the producing run's run_meta.json)",
+    }
 
 
 # --- Prompt subset -------------------------------------------------------------------
@@ -136,45 +158,9 @@ def load_prompts(cfg) -> list[dict]:
 # --- Reference (a prior run's answers artifact) --------------------------------------
 
 
-def load_reference(reference: str) -> tuple[dict[int, dict], dict]:
-    """Load a prior run's answers.jsonl and its answers_meta.json sidecar.
-
-    Args:
-        reference: Path to an answers.jsonl, or the run directory containing it.
-
-    Returns:
-        `(records_by_id, meta)`.
-    """
-    path = Path(reference)
-    if path.is_dir():
-        path = path / "answers.jsonl"
-    if not path.exists():
-        raise FileNotFoundError(f"reference answers not found: {path}")
-    meta_path = path.parent / "answers_meta.json"
-    if not meta_path.exists():
-        raise FileNotFoundError(
-            f"{meta_path} is missing — the reference must carry the sidecar this eval "
-            "writes (subset_hash + thinking mode). Regenerate the reference arm with "
-            "run_eval.py rather than hand-building an answers file.")
-    return ({int(r["id"]): r for r in read_jsonl(path)},
-            json.loads(meta_path.read_text()))
-
-
-def check_reference(ref_meta: dict, current_hash: str, mode: str) -> None:
-    """Refuse a reference that answered a different exam or served in a different mode."""
-    ref_hash = ref_meta.get("subset_hash")
-    if ref_hash != current_hash:
-        raise RuntimeError(
-            f"reference subset_hash {ref_hash} != current {current_hash}: the reference "
-            "arm answered a different prompt set (subset config or dataset changed). "
-            "Judging across prompt sets is meaningless — regenerate the reference under "
-            "the current subset config.")
-    ref_mode = ref_meta.get("mode")
-    if ref_mode != mode:
-        raise RuntimeError(
-            f"reference was generated in mode={ref_mode!r} but the target serves "
-            f"mode={mode!r} — comparison code refuses cross-mode pairing (CLAUDE.md). "
-            "Use a reference arm in the same thinking mode.")
+def load_answers(entry_dir: Path) -> dict[int, dict]:
+    """Load a materialized cache entry's answers, keyed by prompt id."""
+    return {int(r["id"]): r for r in read_jsonl(entry_dir / ANSWERS)}
 
 
 # --- Judging -------------------------------------------------------------------------
@@ -280,17 +266,12 @@ def run(target, cfg, out_dir: Path) -> dict:
         Win-rate summary plus generation-health rates and the subset hash.
     """
     cfg = OmegaConf.merge(cfg)  # private copy; run() must not mutate the caller's config
-    reference = cfg.get("reference")
+    reference = str(cfg.get("reference") or "")
     if not reference:
-        raise RuntimeError("lmsys is judged against a baseline arm's answers artifact: "
-                           "pass --reference <answers.jsonl or its run dir>, or the "
-                           "literal --reference bootstrap to generate the FIRST arm's "
-                           "artifact (no judging)")
-    # The first arm of a ladder has no artifact to be judged against; `bootstrap` is the
-    # sanctioned way to produce one. Generation, artifacts and health metrics are the
-    # identical code path, so the baseline's answers.jsonl is bit-compatible with every
-    # later arm's --reference.
-    bootstrap = str(reference) == "bootstrap"
+        raise RuntimeError(
+            "lmsys is judged against a reference ARM: pass --reference <hf_path> or set "
+            "reference_model in configs/eval/lmsys.yaml — run_eval.py runs it first "
+            "automatically")
 
     prompts = load_prompts(cfg)
     current_hash = subset_hash(prompts)
@@ -299,63 +280,69 @@ def run(target, cfg, out_dir: Path) -> dict:
     (out_dir / "prompts.json").write_text(json.dumps(
         {"subset_hash": current_hash, "prompts": prompts}, ensure_ascii=False, indent=2))
 
-    ref_records: dict[int, dict] = {}
-    ref_meta: dict = {}
-    if not bootstrap:
-        ref_records, ref_meta = load_reference(str(reference))
-        check_reference(ref_meta, current_hash, target.spec.mode)
-        missing = [p["id"] for p in prompts if p["id"] not in ref_records]
-        if missing:
-            raise RuntimeError(f"reference answers.jsonl covers the right subset but is "
-                               f"missing ids {missing[:5]} — truncated artifact?")
-
-    # --- generate this arm's answers --------------------------------------------------
+    # --- this arm's answers: HF cache first, generation only on a miss ----------------
     gen = cfg.generation
-    client = OpenAI(base_url=target.base_url, api_key=str(gen.api_key),
-                    timeout=float(gen.request_timeout), max_retries=int(gen.max_retries))
+    ghash = gen_hash({"temperature": float(gen.temperature), "top_p": float(gen.top_p),
+                      "max_tokens": int(gen.max_tokens)})
+    cache = AnswerCache(str(cfg.cache.repo), mirror=Path(str(cfg.cache.mirror)))
+    refresh = bool(cfg.cache.get("refresh", False))
+    my_key = CacheKey(target.spec.model_key, target.spec.mode, current_hash, ghash)
 
-    def generate(i: int) -> dict:
-        p = prompts[i]
-        try:
-            resp = client.chat.completions.create(
-                model=target.model_name,
-                messages=[{"role": "user", "content": p["prompt"]}],
-                temperature=float(gen.temperature),
-                top_p=float(gen.top_p),
-                max_tokens=int(gen.max_tokens))
-        except Exception as exc:  # noqa: BLE001 — map_threaded is fail-fast; one dropped
-            # connection must not sink the arm's finished work (mmlu's rationale). The
-            # record is kept out of judging and reported as a generation failure.
-            print(f"    !! prompt {p['id']}: {type(exc).__name__} — recorded as error")
-            return {"id": p["id"], "prompt": p["prompt"], "think": "", "answer": "",
-                    "finish_reason": "error"}
-        choice = resp.choices[0]
-        # The out-of-band trace field is vLLM-version-dependent (mmlu_eval, same fix).
-        reasoning = getattr(choice.message, "reasoning_content", None) or getattr(
-            choice.message, "reasoning", None)
-        think, answer = resolve_trace(choice.message.content or "", reasoning)
-        return {"id": p["id"], "prompt": p["prompt"], "think": think, "answer": answer,
-                "finish_reason": choice.finish_reason or ""}
+    if cache.probe(my_key) and not refresh:
+        # With lazy serving, this arm never boots vLLM: the HF push policy IS the cache.
+        print(f">>> lmsys: answer-cache HIT {my_key.path} — no generation, no serving")
+        cache.fetch(my_key, out_dir)
+        answers = sorted(load_answers(out_dir).values(), key=lambda r: r["id"])
+    else:
+        client = OpenAI(base_url=target.base_url, api_key=str(gen.api_key),
+                        timeout=float(gen.request_timeout), max_retries=int(gen.max_retries))
 
-    print(f">>> lmsys: generating {len(prompts)} answers (subset {current_hash})")
-    answers = map_threaded(generate, len(prompts), max_workers=int(gen.parallel),
-                           desc="lmsys generate")
-    answers.sort(key=lambda r: r["id"])
+        def generate(i: int) -> dict:
+            p = prompts[i]
+            try:
+                resp = client.chat.completions.create(
+                    model=target.model_name,
+                    messages=[{"role": "user", "content": p["prompt"]}],
+                    temperature=float(gen.temperature),
+                    top_p=float(gen.top_p),
+                    max_tokens=int(gen.max_tokens))
+            except Exception as exc:  # noqa: BLE001 — map_threaded is fail-fast; one
+                # dropped connection must not sink the arm's finished work (mmlu's
+                # rationale). Kept out of judging, reported as a generation failure.
+                print(f"    !! prompt {p['id']}: {type(exc).__name__} — recorded as error")
+                return {"id": p["id"], "prompt": p["prompt"], "think": "", "answer": "",
+                        "finish_reason": "error"}
+            choice = resp.choices[0]
+            # The out-of-band trace field is vLLM-version-dependent (mmlu, same fix).
+            reasoning = getattr(choice.message, "reasoning_content", None) or getattr(
+                choice.message, "reasoning", None)
+            think, answer = resolve_trace(choice.message.content or "", reasoning)
+            return {"id": p["id"], "prompt": p["prompt"], "think": think, "answer": answer,
+                    "finish_reason": choice.finish_reason or ""}
 
-    # The artifact a later run consumes as --reference, plus the sidecar that makes it
-    # refusable: subset hash and serving mode travel with the answers.
-    with (out_dir / "answers.jsonl").open("w", encoding="utf-8") as fh:
-        for rec in answers:
-            fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
-    (out_dir / "answers_meta.json").write_text(json.dumps({
-        "target": target.spec.hf_path,
-        "model_key": target.spec.model_key,
-        "mode": target.spec.mode,
-        "subset_hash": current_hash,
-        "n": len(answers),
-        "generation": {"temperature": float(gen.temperature), "top_p": float(gen.top_p),
-                       "max_tokens": int(gen.max_tokens)},
-    }, indent=2))
+        print(f">>> lmsys: generating {len(prompts)} answers (subset {current_hash})")
+        answers = map_threaded(generate, len(prompts), max_workers=int(gen.parallel),
+                               desc="lmsys generate")
+        answers.sort(key=lambda r: r["id"])
+
+        with (out_dir / ANSWERS).open("w", encoding="utf-8") as fh:
+            for rec in answers:
+                fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        (out_dir / META).write_text(json.dumps({
+            "target": target.spec.hf_path,
+            "model_key": target.spec.model_key,
+            "mode": target.spec.mode,
+            "subset_hash": current_hash,
+            "gen_hash": ghash,
+            "n": len(answers),
+            "generation": {"temperature": float(gen.temperature),
+                           "top_p": float(gen.top_p),
+                           "max_tokens": int(gen.max_tokens)},
+        }, indent=2))
+        # Pushed BEFORE judging: a dead pod loses nothing, and this entry is what every
+        # other arm (and every future machine) reads instead of re-generating.
+        cache.push(my_key, out_dir, card_fields=_cache_card(cfg), refresh=refresh)
+        print(f">>> lmsys: pushed answers to cache as {my_key.path}")
 
     health = {
         "n_prompts": len(prompts),
@@ -363,21 +350,47 @@ def run(target, cfg, out_dir: Path) -> dict:
         "truncation_rate": round(sum(r["finish_reason"] == "length" for r in answers)
                                  / len(answers), 4),
         "subset_hash": current_hash,
+        "gen_hash": ghash,
     }
     if target.spec.mode != "nothink":
         # CLAUDE.md gotcha: a ~0-length trace means the arm stopped reasoning.
         health["empty_think_rate"] = round(
             sum(not r["think"].strip() for r in answers) / len(answers), 4)
 
-    if bootstrap:
-        print(">>> lmsys: bootstrap run — answers artifact written, no judging. Use "
-              f"{out_dir}/answers.jsonl as --reference for the other arms.")
-        return {"bootstrap": True, **health}
+    if target.spec.hf_path == reference:
+        # The reference arm's job ends at a filled cache entry — there is nothing to
+        # judge itself against.
+        return {"reference_arm": True, **health}
+
+    # --- reference answers come from the cache ----------------------------------------
+    from src.endpoints.vllm_server import resolve_target
+
+    ref_spec = resolve_target(reference)
+    if ref_spec.mode != target.spec.mode:
+        raise RuntimeError(
+            f"reference {reference} serves mode={ref_spec.mode!r} but the target serves "
+            f"mode={target.spec.mode!r} — comparison code refuses cross-mode pairing "
+            "(CLAUDE.md). Use a reference arm in the same thinking mode.")
+    ref_key = CacheKey(ref_spec.model_key, ref_spec.mode, current_hash, ghash)
+    try:
+        ref_dir = cache.fetch(ref_key, out_dir / "reference")
+    except Exception as exc:  # noqa: BLE001 — any backend's miss becomes one message
+        raise RuntimeError(
+            f"reference answers not in the cache ({ref_key.path}): {exc}. run_eval.py "
+            "runs the reference arm first and fills this entry — a miss here means the "
+            "orchestration was bypassed or subset/generation params changed between "
+            "arms.") from exc
+    ref_records = load_answers(ref_dir)
+    missing = [p["id"] for p in prompts if p["id"] not in ref_records]
+    if missing:
+        raise RuntimeError(f"reference cache entry covers the right subset but is "
+                           f"missing ids {missing[:5]} — truncated artifact?")
 
     # --- judge the visible answers against the reference arm's ------------------------
     judge_cfg = cfg.judge
     judge = OpenRouterClient()
-    extra = OmegaConf.to_container(judge_cfg.get("extra_body") or {}, resolve=True)
+    extra_raw = judge_cfg.get("extra_body")
+    extra = OmegaConf.to_container(extra_raw, resolve=True) if extra_raw is not None else {}
     # Infrastructure failures are excluded from judging: an empty answer loses every
     # pairwise comparison mechanically, which would charge a dropped connection to the
     # model. Truncated (finish_reason=length) answers ARE judged — that is model
@@ -417,6 +430,6 @@ def run(target, cfg, out_dir: Path) -> dict:
     return summarize(outcomes) | health | {
         "judge_model": str(judge_cfg.model),
         "judge_failures": len(judged) - len(outcomes),
-        "reference": str(reference),
-        "reference_target": ref_meta.get("target"),
+        "reference": reference,
+        "reference_model_key": ref_spec.model_key,
     }

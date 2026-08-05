@@ -26,8 +26,8 @@ def _preflight(name: str, args: argparse.Namespace) -> None:
         from src.eval.docker import docker_preflight
 
         docker_preflight()
-    if spec.needs_reference and not args.reference:
-        raise SystemExit(f"{name} is judged against a baseline arm: pass --reference <hf_or_local_path>")
+    # needs_reference is validated after the config loads (the reference may come from
+    # the eval config's `reference_model` with --reference as override) — see main().
 
 
 def _results_markdown(target: str, mode: str, summary: dict) -> str:
@@ -62,7 +62,10 @@ def main(argv: list[str] | None = None) -> None:
                         help="HF paths: LoRA adapter repos (base + thinking mode inferred) or full models")
     parser.add_argument("--name", required=True, choices=sorted(EVALS))
     parser.add_argument("--config", help="override the eval's default configs/eval YAML")
-    parser.add_argument("--reference", help="baseline artifact for needs_reference evals")
+    parser.add_argument("--reference",
+                        help="baseline arm for needs_reference evals: an HF MODEL path for "
+                             "cache-backed evals (lmsys — run as the first arm, answers "
+                             "cached on HF), or a legacy answers artifact (arena_hard)")
     parser.add_argument("--server",
                         help="SSH alias of a GPU host (prepared per the playbook) to serve on; "
                              "omitted = serve on this machine. Evals always run where this "
@@ -86,7 +89,28 @@ def main(argv: list[str] | None = None) -> None:
     _preflight(args.name, args)
     cfg = OmegaConf.merge(OmegaConf.load(args.config or EVALS[args.name].config),
                           OmegaConf.from_dotlist(args.overrides))
-    if args.reference:
+    targets = list(args.target)
+    spec_meta = EVALS[args.name]
+    if spec_meta.needs_reference and spec_meta.reference_is_model:
+        # The reference is a MODEL (flag overrides the config's recorded default), and it
+        # is simply the first arm of the run: its run() fills the answer cache (a no-op
+        # when already cached — lazy serving means it never even boots vLLM), and every
+        # later arm judges against that entry. No separate bootstrap step exists.
+        reference = str(args.reference or cfg.get("reference_model") or "")
+        if not reference:
+            raise SystemExit(f"{args.name} is judged against a reference arm: pass "
+                             "--reference <hf_path> (or set reference_model in the config)")
+        cfg.reference = reference
+        if reference in targets:
+            targets.remove(reference)
+        targets.insert(0, reference)
+    elif spec_meta.needs_reference:
+        # Legacy artifact-path reference (arena_hard, pending its cache migration).
+        if not args.reference:
+            raise SystemExit(f"{args.name} is judged against a baseline arm: pass "
+                             "--reference <answers artifact (local or repo::file)>")
+        cfg.reference = args.reference
+    elif args.reference:
         cfg.reference = args.reference
     run_fn = resolve(args.name)
     command = " ".join(sys.argv)
@@ -109,7 +133,7 @@ def main(argv: list[str] | None = None) -> None:
                         executor=executor)
     summaries: dict[str, dict] = {}
     try:
-        for hf_path in args.target:
+        for hf_path in targets:
             spec = resolve_target(hf_path)
             print(f">>> {args.name} | {hf_path} | base={spec.base_model} mode={spec.mode}")
             served = server.ensure(spec)

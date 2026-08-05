@@ -1,11 +1,26 @@
 # ABOUTME: LMSYS chat-quality eval — the served target's answers to a seeded lmsys-chat-1m
-# ABOUTME: prompt subset, judged pairwise against a reference arm's answers.jsonl artifact.
-# Run: uv run scripts/run_eval.py --target <hf_path> --name lmsys --reference <answers.jsonl | run dir>
-#      (first arm of a ladder: --reference bootstrap — generates the answers artifact, no judging)
+# ABOUTME: prompt subset, judged pairwise against a reference arm's via the HF answer cache.
+# Run: uv run scripts/run_eval.py --target <hf_path> [...] --name lmsys --reference <hf_path>
 #
-# The reference is a prior lmsys run's answers.jsonl (or the run directory holding it) for
-# the SAME subset block and thinking mode — the run refuses hash or mode mismatches before
-# generating anything. ~50% win-rate = no quality change vs the reference arm.
+# The reference is a MODEL (--reference overrides reference_model below). run_eval.py runs
+# it as the first arm: cache hit = fetched, no serving; miss = generated once, pushed, and
+# every later arm (on any machine, forever) judges against that entry. Cross-mode or
+# cross-subset pairing is structurally impossible — mode, subset hash and generation hash
+# are all part of the cache key. ~50% win-rate = no quality change vs the reference arm.
+
+# The baseline arm this eval compares against (scientific record; --reference overrides).
+reference_model: null
+
+cache:
+  # `hf:` prefix = HF dataset repo (the durable, cross-machine store per the CLAUDE.md
+  # artifact policy); a plain path = local directory (tests, smoke, air-gapped work).
+  repo: "hf:LASR-Callum/2026-08-05-lmsys-answer-cache"
+  # Per-invocation read-through: the reference arm's push lands here too, so target arms
+  # of the same invocation read it back without a network round-trip.
+  mirror: "output/lmsys/answer_cache"
+  # Overwrite an existing entry — a deliberate regeneration only; it invalidates every
+  # comparison already judged against the old entry.
+  refresh: false
 
 subset:
   # GATED dataset: pulling lmsys/lmsys-chat-1m needs an HF_TOKEN whose account has accepted

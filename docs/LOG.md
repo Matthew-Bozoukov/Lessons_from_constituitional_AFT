@@ -3,6 +3,26 @@
 
 # LOG
 
+## 2026-08-05 — HF answer cache + lazy serving: cached arms cost nothing
+
+**Hypothesis:** per-model answers pushed to HF can double as a cross-machine cache, so an
+arm that has ever been generated (reference or target) is never generated — or even
+served — again. **Method** (on `jamie/write-all-evals-to-hf`): (1) `src/eval/answer_cache.py`
+— content-addressed entries keyed by (model_key, mode, subset_hash, gen_hash of the
+sampling params), `hf:` repo or local-dir backends, per-invocation mirror for same-run
+handoff, meta validated on every read, overwrites refused unless `cache.refresh=true`.
+(2) `ServedTarget` is now LAZY: vLLM boots on first `base_url` access, so a fully cached
+arm never starts a server. (3) `--reference` names a MODEL for cache-backed evals
+(`EvalSpec.reference_is_model`); run_eval prepends it as the first arm — its run() fills
+the cache entry (no judging), later arms judge against it; no bootstrap step exists.
+lmsys is wired (arena_hard keeps the legacy artifact-path reference pending migration;
+mmlu's local records cache is next). Cross-mode/cross-subset pairing is structurally
+impossible — they're different cache keys, plus an explicit cross-mode refusal.
+**Result:** 328 offline tests pass, including an end-to-end stubbed flow (reference arm
+fills local cache → target judges → cache-hit rerun completes with an endpoint that
+raises on touch). Not yet exercised against a live pod or real HF repo. **Next:**
+arena_hard migration to the cache, mmlu, live smoke.
+
 ## 2026-08-04 (5) — Merged PR-22: self_reflection ported to the config-driven engine
 
 Merged Nika's `self_reflection` document type (PR-22, built as a `flavors/` seam on a newer main)

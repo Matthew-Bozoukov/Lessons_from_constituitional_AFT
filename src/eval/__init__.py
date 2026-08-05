@@ -18,7 +18,12 @@ class EvalSpec:
     package: str                   # eval package under src.eval; its runner.py defines run()
     config: str                    # default OmegaConf YAML under configs/eval/
     needs_docker: bool = False     # rollouts execute in containers where the driver runs
-    needs_reference: bool = False  # judged against a baseline arm's artifact (reference=...)
+    needs_reference: bool = False  # judged against a baseline arm (reference=...)
+    # True when --reference names a MODEL rather than an answers artifact: run_eval
+    # prepends it as the first arm, and the eval fills/reads the HF answer cache
+    # (src/eval/answer_cache.py) inside run(). False = legacy artifact-path reference
+    # (arena_hard, pending migration).
+    reference_is_model: bool = False
 
 
 EVALS: dict[str, EvalSpec] = {
@@ -34,7 +39,8 @@ EVALS: dict[str, EvalSpec] = {
     "lmsys": EvalSpec(
         "capabilities.lmsys",
         "configs/eval/lmsys.yaml",
-        needs_reference=True
+        needs_reference=True,
+        reference_is_model=True
     ),
     "internalization": EvalSpec(
         "misalignment.internalization",
