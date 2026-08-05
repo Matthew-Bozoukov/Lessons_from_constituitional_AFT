@@ -59,6 +59,27 @@ def local_size_gb(names: Iterable[str]) -> float:
     return round(total / 1e9, 2)
 
 
+def pull_all_background(instances: Iterable[dict], *, workers: int = 8,
+                        timeout: int = 3600):
+    """Start pull_all on a daemon thread and return it immediately.
+
+    Lets rollouts begin against the images that are already local while the rest download —
+    on a 250-instance run the pull is ~300GB and would otherwise block everything for hours.
+    Safe ONLY together with a raised `environment.pull_timeout` in the overlay: an instance
+    whose image has not arrived yet falls back to mini-SWE-agent's own on-demand pull, and
+    upstream's 120s default cannot cover a cold multi-GB image.
+    """
+    import threading
+
+    rows = list(instances)
+    result: dict = {}
+    thread = threading.Thread(
+        target=lambda: result.update(pull_all(rows, workers=workers, timeout=timeout)),
+        daemon=True, name="swebench-image-pull")
+    thread.start()
+    return thread, result
+
+
 def pull_all(instances: Iterable[dict], *, workers: int = 4,
              timeout: int = 3600) -> dict:
     """Pull every instance's image up front, in parallel.

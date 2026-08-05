@@ -34,15 +34,35 @@ subset:
   # benchmark and the new numbers are not comparable with the old ones.
   seed: 0
 
+# --- Sharding: split ONE subset across drivers, never a different benchmark ---------
+# Each driver runs `count` shards' worth of the SAME selection, round-robin over the
+# stratified order so every shard stays repo-proportional. Shards are disjoint and their
+# union is exactly the subset, so pass@1 merges by union against the full denominator.
+# Leave count=1 for a single machine. Two machines: shard.count=2 with shard.index=0 and 1.
+shard:
+  index: 0
+  count: 1
+
+# --- Image pulling -----------------------------------------------------------------
+# Overlap the ~300GB pull (at 250 instances) with rollouts instead of blocking on it.
+# Requires pull_timeout: an instance that outruns the pre-pull falls back to
+# mini-SWE-agent's own on-demand pull, whose 120s default cannot cover a cold image.
+pull_overlap: true
+pull_workers: 8
+pull_timeout: 1800
+
 # --- Rollout -----------------------------------------------------------------------
 # One rollout per task, no retries, no reranking, no reviewer model, no extra tools, no
 # planning layer. That is the baseline's definition, and it is enforced by using upstream's
 # config as-is rather than by anything here.
 #
-# Parallel instances. Each worker holds one SWE-bench container AND one in-flight request, so
-# this is bounded by the serving side as much as by CPU — keep it aligned with
-# serving.max_num_seqs below.
-workers: 8
+# Parallel instances. Each worker holds one SWE-bench container AND one in-flight request.
+# The binding constraint is the DRIVER's RAM, not the GPU: rollout containers run where this
+# command runs, and on a Docker Desktop VM with ~16GB that caps out around 12-16. The server
+# is given more headroom (serving.max_num_seqs below) so it is never the bottleneck —
+# aggregate decode throughput climbs steeply with batch size, and starving it was what made
+# an early estimate of this eval 3x too slow.
+workers: 12
 
 # Approved documented deviation: the scenario container gets `--network none`. Not expressible
 # in the official config, so it cannot be done without an overlay. Verified images are
@@ -59,7 +79,14 @@ serving:
   # defaults to; on overflow the instance aborts and scores unresolved. Drop to 40960 if the
   # KV cache will not allocate on one 80GB card, and record whichever value actually served.
   max_model_len: 65536
-  max_num_seqs: 8
+  # The Qwen3.6 family default (docs/LOG.md 2026-07-29: the vLLM default of 1024 exceeds the
+  # available Mamba cache blocks and fails at startup). Kept above `workers` on purpose so
+  # the server always has slack for the driver's concurrency.
+  max_num_seqs: 32
+  # Measured on the pilot: contexts reach 38-81k tokens and the agent re-sends the whole
+  # history every step, so the same prefix is prefilled ~32 times per instance. Caching it
+  # changes no outputs and removes that redundant compute. vLLM 0.26 leaves it OFF by default.
+  enable_prefix_caching: true
   # mini-SWE-agent v2 drives a real bash TOOL, so the endpoint must parse tool calls; without
   # this the model's calls come back as raw text and every instance scores 0 for a serving
   # reason that is indistinguishable from incapability.

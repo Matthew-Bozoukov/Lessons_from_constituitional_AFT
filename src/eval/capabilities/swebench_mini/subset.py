@@ -94,6 +94,38 @@ def select(instances: Iterable[dict], seed: int, *, fraction: float | None = Non
     return pool[:n]
 
 
+def shard(instances: list[dict], index: int, count: int) -> list[dict]:
+    """Split an already-selected subset across N drivers, round-robin.
+
+    Round-robin WITHIN each repo, not over the flat list. Two weaker schemes were rejected:
+    contiguous blocks hand one driver the front of every repo's ranking and the other the
+    back, so the halves are not exchangeable; and flat round-robin aliases against the
+    stratified order, because a repo's items sit at a near-constant stride and can beat
+    against the modulus (measured: 3-way split gave one shard 14 django instances where 16.7
+    were due). Counting per repo bounds the error at ±1 instance per repo per shard by
+    construction, for any number of shards.
+
+    Shards are disjoint and their union is exactly the input, so pass@1 over the merged
+    result is scored against the FULL subset — a shard is a division of labour, never a
+    different benchmark.
+
+    Args:
+        instances: The selected subset, in stratified order.
+        index: 0-based shard number.
+        count: Total shards.
+    """
+    if not 0 <= index < count:
+        raise ValueError(f"shard index {index} out of range for count {count}")
+    seen: dict[str, int] = {}
+    out = []
+    for row in instances:  # stratified order preserved in the output
+        rank = seen.get(row["repo"], 0)
+        seen[row["repo"]] = rank + 1
+        if rank % count == index:
+            out.append(row)
+    return out
+
+
 def subset_hash(instances: Iterable[dict], seed: int, dataset: str, revision: str) -> str:
     """Identity of a subset: which instances, drawn how, from which dataset revision.
 
@@ -154,17 +186,36 @@ def load_instances(dataset: str, split: str) -> tuple[list[dict], str]:
 
 
 def summarize_selection(selected: list[dict], total: int, seed: int, dataset: str,
-                        revision: str) -> dict[str, Any]:
-    """The selection block recorded in run_meta.json and echoed in the report line."""
-    return {
+                        revision: str, *, full: list[dict] | None = None,
+                        shard_index: int | None = None,
+                        shard_count: int | None = None) -> dict[str, Any]:
+    """The selection block recorded in run_meta.json and echoed in the report line.
+
+    When sharded, `full` is the whole selected subset and `selected` is this driver's slice.
+    Both hashes are recorded: `subset_hash` always identifies the FULL subset (the thing
+    pass@1 is scored against, and the thing two drivers must agree on), while `shard_hash`
+    identifies this driver's slice. Merging shards means checking `subset_hash` matches and
+    unioning the instance lists.
+    """
+    whole = full if full is not None else selected
+    block = {
         "dataset": dataset,
         "dataset_revision": revision,
         "split_size": total,
-        "n_selected": len(selected),
-        "fraction": len(selected) / total if total else 0.0,
+        "n_selected": len(whole),
+        "fraction": len(whole) / total if total else 0.0,
         "seed": seed,
-        "subset_hash": subset_hash(selected, seed, dataset, revision),
+        "subset_hash": subset_hash(whole, seed, dataset, revision),
         "sampling": "repo-stratified nested prefix (src/eval/capabilities/swebench_mini/subset.py)",
         "repo_breakdown": repo_breakdown(selected),
         "instance_ids": sorted(row["instance_id"] for row in selected),
     }
+    if shard_count and shard_count > 1:
+        block |= {
+            "shard_index": shard_index,
+            "shard_count": shard_count,
+            "n_in_shard": len(selected),
+            "shard_hash": subset_hash(selected, seed, dataset, revision),
+            "full_instance_ids": sorted(row["instance_id"] for row in whole),
+        }
+    return block

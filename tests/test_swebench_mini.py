@@ -151,6 +151,48 @@ def test_resolved_ids_outside_the_selection_are_surfaced():
     assert scores["pass_at_1"] == 0.0
 
 
+def test_shards_are_disjoint_and_cover_the_subset():
+    from src.eval.capabilities.swebench_mini.subset import shard
+
+    chosen = select(INSTANCES, seed=0, fraction=0.5)
+    a, b = shard(chosen, 0, 2), shard(chosen, 1, 2)
+    assert not (set(ids(a)) & set(ids(b))), "shards must be disjoint"
+    assert set(ids(a)) | set(ids(b)) == set(ids(chosen)), "shards must cover the subset"
+    assert abs(len(a) - len(b)) <= 1, "shards must be near-equal in size"
+    for kwargs in ((2, 2), (-1, 2)):
+        with pytest.raises(ValueError, match="out of range"):
+            shard(chosen, *kwargs)
+
+
+def test_each_shard_stays_repo_proportional():
+    # Round-robin, not contiguous blocks: a contiguous split would give one driver the front
+    # of every repo's ranking and the other the back, so the halves would not be exchangeable.
+    from src.eval.capabilities.swebench_mini.subset import shard
+
+    chosen = select(INSTANCES, seed=0, fraction=0.5)
+    whole = repo_breakdown(chosen)
+    for i in range(3):
+        part = repo_breakdown(shard(chosen, i, 3))
+        for repo, n in whole.items():
+            assert abs(part.get(repo, 0) - n / 3) <= 1, (i, repo, part)
+
+
+def test_sharded_summary_keeps_the_full_subset_as_the_identity():
+    from src.eval.capabilities.swebench_mini.subset import shard
+
+    chosen = select(INSTANCES, seed=0, fraction=0.5)
+    mine = shard(chosen, 1, 2)
+    s = summarize_selection(mine, len(INSTANCES), 0, "ds", "rev", full=chosen,
+                            shard_index=1, shard_count=2)
+    # pass@1 is scored against the FULL subset, so that hash — not the shard's — is the
+    # identity two drivers must agree on before their results are merged.
+    assert s["subset_hash"] == subset_hash(chosen, 0, "ds", "rev")
+    assert s["shard_hash"] == subset_hash(mine, 0, "ds", "rev")
+    assert s["n_selected"] == len(chosen) and s["n_in_shard"] == len(mine)
+    assert s["instance_ids"] == sorted(ids(mine))
+    assert s["full_instance_ids"] == sorted(ids(chosen))
+
+
 def test_image_name_matches_upstreams_derivation():
     # Must stay byte-identical to mini-swe-agent's get_swebench_docker_image_name: pre-pulling
     # a different name than it runs pays for the download AND still hits the 120s

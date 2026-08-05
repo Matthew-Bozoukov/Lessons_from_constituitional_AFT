@@ -94,8 +94,14 @@ def main(argv: list[str] | None = None) -> None:
 
     executor = None
     if args.server:
+        # The docker-bridge bind exists for evals whose SCENARIO CONTAINERS call the model
+        # (ODCV). It is a linux-only address: Docker Desktop — macOS *and* Windows — has no
+        # host-side bridge interface, so binding there fails with "Cannot assign requested
+        # address" (hit on Windows, 2026-08-05). Evals whose agent calls the model from the
+        # driver rather than from inside a container never need it at all.
         bind = args.server_bind or (
-            "172.17.0.1" if EVALS[args.name].needs_docker and sys.platform != "darwin"
+            "172.17.0.1" if EVALS[args.name].needs_docker
+            and sys.platform not in ("darwin", "win32")
             else "127.0.0.1")
         executor = SshExec(args.server, port=args.port, bind=bind)
         executor.check_ready()

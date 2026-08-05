@@ -84,13 +84,20 @@ def config_sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def build_overlay(base_url: str, out_dir: Path, *, disable_network: bool = True) -> Path:
+def build_overlay(base_url: str, out_dir: Path, *, disable_network: bool = True,
+                  pull_timeout: int | None = None) -> Path:
     """Write the minimal `-c` overlay layered on top of the untouched official config."""
     # `--rm` is upstream's own default run_args and is restated because a deep merge REPLACES
     # a list rather than extending it; dropping it would leak a container per instance.
     run_args = ["--rm"] + (["--network", "none"] if disable_network else [])
     overlay = {"model": {"model_kwargs": {"api_base": base_url}},
                "environment": {"run_args": run_args}}
+    if pull_timeout:
+        # Third documented deviation, and only meaningful when images are pulled in the
+        # background: upstream's 120s covers a warm start, not a cold multi-GB download, so
+        # an instance that races ahead of the pre-pull would die with TimeoutExpired and an
+        # empty patch. Raising the ceiling makes it wait instead of failing.
+        overlay["environment"]["pull_timeout"] = int(pull_timeout)
     path = out_dir / "mini_overlay.yaml"
     OmegaConf.save(OmegaConf.create(overlay), path)
     return path

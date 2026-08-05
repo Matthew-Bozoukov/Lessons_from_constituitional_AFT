@@ -200,9 +200,9 @@ class SshExec:
         self.remote_dir = f"{workdir}/output/serve"
         self.tunnel: subprocess.Popen | None = None
 
-    def _ssh(self, cmd: str, timeout: int = 240) -> str:
+    def _ssh(self, cmd: str, timeout: int = 240, stdin_text: str | None = None) -> str:
         r = subprocess.run(["ssh", self.host, cmd], capture_output=True, text=True,
-                           timeout=timeout)
+                           timeout=timeout, input=stdin_text)
         if r.returncode != 0:
             raise RuntimeError(f"ssh {self.host} failed ({r.returncode}): "
                                f"{cmd[:120]} ...\n{r.stderr[-500:]}")
@@ -266,9 +266,23 @@ class SshExec:
                 "  (installs uv, clones this repo at your current branch, uv sync)")
 
     def write_file(self, name: str, text: str) -> str:
+        """Write a file on the remote host, streaming the payload through STDIN.
+
+        The payload is NOT interpolated into the command line. Doing so silently produced an
+        empty file for the ~10KB base64 of a pinned chat template (observed 2026-08-05,
+        Windows driver): the ssh call returned 0, wrote nothing, and the failure surfaced
+        much later as vLLM refusing a chat-template path that "appears path-like, but doesn't
+        exist". The exact truncation point was never pinned down — which is the argument for
+        stdin regardless, since it removes command-line length and shell-quoting from the
+        picture entirely. The size assertion below turns any future silent write into a loud
+        one at the point of failure.
+        """
         payload = base64.b64encode(text.encode()).decode()
         path = f"{self.remote_dir}/{name}"
-        self._ssh(f"mkdir -p {self.remote_dir} && echo {payload} | base64 -d > {shlex.quote(path)}")
+        self._ssh(f"mkdir -p {self.remote_dir} && base64 -d > {shlex.quote(path)}",
+                  stdin_text=payload)
+        written = self._ssh(f"wc -c < {shlex.quote(path)} 2>/dev/null || echo 0").strip()
+        assert int(written or 0) > 0, f"remote write of {path} produced an empty file"
         return path
 
     def fetch_adapter(self, hf_path: str) -> str:
@@ -370,6 +384,12 @@ class VllmServer:
         # back as raw text and every task fails for a serving reason that looks exactly like
         # incapability. Reasoning parser too, so a thinking model's trace is split out of the
         # content instead of sitting inside it where the tool parser trips on it.
+        # Agent loops re-send their whole history every step, so without prefix caching the
+        # same 30-80k-token context is prefilled from scratch dozens of times per instance
+        # (measured on SWE-bench, 2026-08-05). Caching makes each step prefill only the new
+        # suffix; it changes no outputs, it removes redundant compute.
+        if params.get("enable_prefix_caching"):
+            argv += ["--enable-prefix-caching"]
         if params.get("enable_tool_calls"):
             argv += ["--enable-auto-tool-choice",
                      "--tool-call-parser", str(params["tool_call_parser"])]
