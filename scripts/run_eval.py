@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
@@ -105,12 +106,27 @@ def main(argv: list[str] | None = None) -> None:
                   "(rate-limited); gated/private weight pulls will fail. Provision "
                   "deliberately with --push-env (HF_TOKEN only) or scp your own.")
         print(f">>> serving on {args.server} (tunnel bound to {bind}:{args.port})")
+    # A `serving:` block in the eval's config layers over the base model's family defaults
+    # (context length, tool-call parsing). Empty for every eval that does not declare one, so
+    # behaviour is unchanged where it is absent.
     server = VllmServer(work_dir=Path("output") / args.name / "server", port=args.port,
-                        executor=executor)
+                        executor=executor,
+                        serve_overrides=OmegaConf.to_container(cfg.get("serving", {}),
+                                                               resolve=True))
     summaries: dict[str, dict] = {}
     try:
         for hf_path in args.target:
             spec = resolve_target(hf_path)
+            if cfg.get("mode"):
+                # The documented escape hatch (CLAUDE.md "The eval framework"): mode is
+                # normally INFERRED from the artifact and never declared at eval time. A full
+                # model has no training stamp, so it resolves to its template's own default —
+                # which cannot be compared against think-stamped adapters, because comparison
+                # code refuses to pair arms whose modes differ. Pinning it explicitly is how a
+                # base arm joins a think ladder, and the override lands in run_meta.json via
+                # both the config and the recorded mode below.
+                spec = replace(spec, mode=str(cfg.mode))
+                print(f">>> mode override: {hf_path} pinned to {spec.mode!r} (config `mode=`)")
             print(f">>> {args.name} | {hf_path} | base={spec.base_model} mode={spec.mode}")
             served = server.ensure(spec)
             out_dir = Path("output") / args.name / spec.model_key / timestamp()

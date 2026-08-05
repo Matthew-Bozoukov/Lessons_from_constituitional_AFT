@@ -363,50 +363,10 @@ def parse_answer(text: str, n_choices: int = 4) -> tuple[str | None, str]:
     return None, "none"
 
 
-def wilson_ci(k: int, n: int, alpha: float = 0.05) -> dict[str, float]:
-    """Wilson score interval for a binomial proportion.
-
-    Wilson rather than normal-approximation: at n≈500 and accuracy near 0.8 the two
-    barely differ, but Wilson stays inside [0, 1] and keeps behaving at the small n of
-    a single-subject breakdown, where the normal interval produces bounds above 1.
-
-    Args:
-        k: Successes.
-        n: Trials.
-        alpha: Two-sided level.
-
-    Returns:
-        `mean`, `ci_lower`, `ci_upper`, `n`.
-    """
-    if n <= 0:
-        return {"mean": float("nan"), "ci_lower": float("nan"), "ci_upper": float("nan"), "n": 0}
-    z = _z_for(alpha)
-    p = k / n
-    denom = 1.0 + z * z / n
-    centre = (p + z * z / (2 * n)) / denom
-    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
-    return {
-        "mean": p,
-        "ci_lower": max(0.0, centre - half),
-        "ci_upper": min(1.0, centre + half),
-        "n": n,
-    }
-
-
-def _z_for(alpha: float) -> float:
-    """Two-sided normal critical value, via the inverse error function."""
-    # math.erfinv does not exist; use the standard relation through erf's inverse by
-    # bisection on erf, which is exact enough for interval endpoints and avoids a scipy
-    # dependency the rest of the repo does not carry.
-    target = 1.0 - alpha
-    lo, hi = 0.0, 10.0
-    for _ in range(200):
-        mid = (lo + hi) / 2
-        if math.erf(mid / math.sqrt(2)) < target:
-            lo = mid
-        else:
-            hi = mid
-    return (lo + hi) / 2
+# wilson_ci/_z_for live in the capabilities subarea root now — the SWE-bench baseline
+# reports a binomial proportion too, and two copies of an interval estimator drift.
+# Re-imported here so this module's existing callers (and tests) are unaffected.
+from src.eval.capabilities.stats import _z_for, wilson_ci  # noqa: E402,F401
 
 
 def mcnemar(a_correct: Sequence[bool], b_correct: Sequence[bool]) -> dict[str, float]:

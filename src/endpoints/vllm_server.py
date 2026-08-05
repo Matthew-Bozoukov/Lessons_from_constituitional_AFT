@@ -118,11 +118,22 @@ def pin_template(template_text: str, mode: str) -> str:
             f"{{%- set preserve_thinking = {flag} -%}}\n") + template_text
 
 
-def _serve_params(base_model: str) -> dict:
-    for prefix, params in _FAMILIES.items():
+def _serve_params(base_model: str, overrides: dict | None = None) -> dict:
+    """Family defaults for a base model, with a per-eval `serving:` block layered on top.
+
+    Some evals cannot run at the family default — an agentic harness with a 250-step limit
+    needs far more context than a single-turn eval, and a tool-calling harness needs the
+    server to parse tool calls at all. Those are eval hyperparameters, so they live in
+    `configs/eval/<name>.yaml` (CLAUDE.md) rather than being hardcoded per family here.
+    Overrides are recorded in run_meta.json, because max_model_len in particular changes
+    results rather than just throughput.
+    """
+    params = _FAMILIES[None]
+    for prefix, family in _FAMILIES.items():
         if prefix and base_model.startswith(prefix):
-            return params
-    return _FAMILIES[None]
+            params = family
+            break
+    return params | {k: v for k, v in (overrides or {}).items() if v is not None}
 
 
 class LocalExec:
@@ -310,8 +321,10 @@ class VllmServer:
     server: a new adapter is attached with vLLM's runtime LoRA-load endpoint.
     """
 
-    def __init__(self, work_dir: Path, port: int = 8000, executor=None):
+    def __init__(self, work_dir: Path, port: int = 8000, executor=None,
+                 serve_overrides: dict | None = None):
         self.port = port
+        self.serve_overrides = serve_overrides or {}
         self.executor = executor if executor is not None else LocalExec(work_dir)
         self.base_model: str | None = None
         self.mode: str | None = None
@@ -343,7 +356,7 @@ class VllmServer:
                                         pin_template(template, mode))
 
     def _start(self, spec: TargetSpec, adapter_dir: str | None) -> None:
-        params = _serve_params(spec.base_model)
+        params = _serve_params(spec.base_model, self.serve_overrides)
         argv = self.executor.python_argv + [
             "-m", "vllm.entrypoints.openai.api_server",
             "--model", spec.base_model, "--served-model-name", "base",
@@ -353,6 +366,15 @@ class VllmServer:
             "--port", str(self.port)]
         if params.get("max_num_seqs"):
             argv += ["--max-num-seqs", str(params["max_num_seqs"])]
+        # Agentic harnesses drive a real tool; without a parser the model's tool calls come
+        # back as raw text and every task fails for a serving reason that looks exactly like
+        # incapability. Reasoning parser too, so a thinking model's trace is split out of the
+        # content instead of sitting inside it where the tool parser trips on it.
+        if params.get("enable_tool_calls"):
+            argv += ["--enable-auto-tool-choice",
+                     "--tool-call-parser", str(params["tool_call_parser"])]
+            if params.get("reasoning_parser") and spec.mode == "think":
+                argv += ["--reasoning-parser", str(params["reasoning_parser"])]
         template = self._pinned_template_path(spec.base_model, spec.mode)
         if template:
             argv += ["--chat-template", template]

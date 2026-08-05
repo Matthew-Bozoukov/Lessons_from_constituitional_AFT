@@ -73,7 +73,10 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
 # The nested petri-subscription workspace member ships as its own distribution.
-exclude = ["src/eval/vulnerabilities/petri/petri-subscription"]
+# swebench_mini/envs holds two pinned, independently-locked environments (mini-SWE-agent and
+# the official SWE-bench harness), invoked as subprocesses — never imported from this package.
+exclude = ["src/eval/vulnerabilities/petri/petri-subscription",
+           "src/eval/capabilities/swebench_mini/envs"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

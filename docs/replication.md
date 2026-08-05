@@ -230,6 +230,39 @@ preserved in rollouts and shown, fenced, to the judge as upstream did. Verify on
 endpoint that vLLM forwards request-side `reasoning_content` into the template before trusting
 multi-turn numbers.
 
+## Fourth eval: SWE-bench (standardized baseline, `swebench_mini`)
+
+Agentic coding capability under a scaffold that is deliberately **not ours**: upstream
+mini-SWE-agent v2.2.1, pinned by a committed lockfile, with its official `swebench.yaml`
+passed through unedited (config sha256
+`f90e7baa84c9e36e535cf4f37ee39e6e08c05964d55b5f56ed12cad7f817ffa8`). One rollout per task, no
+retries or reranking; grading by the pinned official SWE-bench harness (`swebench==4.1.0`).
+Full detail — deviations, provenance, what to verify before the first run — in
+[`src/eval/capabilities/swebench_mini/README.md`](../src/eval/capabilities/swebench_mini/README.md).
+
+Two phases, because only the first needs a GPU:
+
+```bash
+# 1. Rollouts: needs the served model AND docker (the agent works inside SWE-bench images)
+uv run scripts/run_eval.py --target Qwen/Qwen3.6-27B --name swebench_mini
+
+# depth: repo-stratified, nested (10% is a strict subset of 20%; extending reuses rollouts)
+uv run scripts/run_eval.py --target <hf> --name swebench_mini subset.fraction=0.2
+
+# 2. Grading: docker + CPU only — run it AFTER destroying the GPU box
+uv run scripts/eval/swebench_mini_grade.py --run-dir output/swebench_mini/<key>/<ts>
+```
+
+Disk is the constraint, on both hosts: the agent and the harness share the same per-instance
+images, and the harness wants ~120GB at its default `cache_level=env` for the full benchmark
+(a stratified 10% slice touches far fewer environment images). Provision the rollout box with
+~300GB.
+
+Report as `<model> + mini-SWE-agent <version> (config <sha>), <dataset>@<revision>
+[n/N instances, subset <hash>], pass@1` — and read `patch_rate`, `no_tool_call_rate` and
+`exit_statuses` before believing the score, since lost tool-call formatting and context
+overflow both masquerade as incapability.
+
 ## The preserve-thinking policy (2026-08-04)
 
 Repo-wide default for training data and serving, everything family-specific centralized in

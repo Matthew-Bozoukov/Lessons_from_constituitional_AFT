@@ -36,6 +36,13 @@ EVALS: dict[str, EvalSpec] = {
         "configs/eval/lmsys.yaml",
         needs_reference=True
     ),
+    # The STANDARDIZED baseline: upstream mini-SWE-agent, pinned, config untouched. A custom
+    # scaffold gets its own registry entry — never fold one into the other.
+    "swebench_mini": EvalSpec(
+        "capabilities.swebench_mini",
+        "configs/eval/swebench_mini_verified.yaml",
+        needs_docker=True
+    ),
     "internalization": EvalSpec(
         "misalignment.internalization",
         "configs/eval/internalization.yaml"

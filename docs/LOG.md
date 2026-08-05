@@ -3,6 +3,103 @@
 
 # LOG
 
+## 2026-08-05 (5) — SWE-bench grading PROVEN by gold patch; env check added; no model run yet
+
+**Hypothesis:** a grading environment can be proven correct with no model at all, and should be
+proven that way before any pass@1 from it is believed. **Method:** the official harness accepts
+`--predictions_path gold`, submitting each instance's own reference patch — a correct host
+resolves 100%, and a broken one (wrong images, docker misconfigured, tests not executing)
+produces low scores that look exactly like a weak model. Wrapped as
+`grade.verify_environment()` + `scripts/eval/swebench_mini_check_env.py`. Ran it against
+`django__django-11815` on swebench 4.1.0. **Result:** `resolved_instances: 1`,
+`error_instances: 0` — image pull, patch application, django's real test suite and log parsing
+all confirmed working end to end. Ran the harness inside a `python:3.12-slim` container with
+the Docker Desktop socket mounted, since the harness itself cannot run on Windows (2026-08-05
+(2)); that was a **one-off verification of the path**, not a supported route — it pip-installs
+`swebench==4.1.0` with unpinned transitive deps, where the supported host uses the committed
+lockfile. Also caught by inspecting the real report: the harness reports `resolved_ids` /
+`unresolved_ids`, and `metrics.resolution_summary` reads exactly those — a guessed key name
+would have scored every run 0% silently. Three regression tests now pin the report shape
+against a real 4.1.0 report, including that an ungraded instance stays in the pass@1
+denominator and that a resolved id outside the selection is surfaced rather than intersected
+away. Full suite: 30 swebench/framework tests pass.
+**Blocked:** the reproducible grading host. `VAST_API_KEY` is absent from `.env` (only
+HF_TOKEN and OPENROUTER_API_KEY), so `vastai create instance` returns 403 — CPU offers are
+sitting at $0.0102/hr for 32 vCPU / 2TB. **Next steps:** (1) stand the vast CPU box up once the
+key exists and re-run the gold check there, on the lockfile env, to bless the reproducible
+path; (2) on-box parser spike (Qwen3.6 `--tool-call-parser`/`--reasoning-parser`, and the
+request-side `reasoning_content` round-trip); (3) only then the first real run. Still no model
+evaluated — no numbers exist.
+
+## 2026-08-05 (4) — SWE-bench smoke: rollouts work, tool calls work, grading needs Linux
+
+**Hypothesis:** the `swebench_mini` wiring is right end to end and can be proven for cents,
+before renting anything. **Method:** `scratch/swebench_mini_smoke.py` — 2 Verified instances
+(the first two of the real 10% draw), `google/gemini-3-flash-preview` via OpenRouter standing
+in for a served target, reduced step limit for cost, then the real pinned grading harness.
+Docker Desktop 4.85.0 on this Windows laptop (engine 29.6.2, linux/x86_64 containers).
+**Result:** three findings, all from the smoke doing its job.
+(1) **Every instance died on the first run** with `TimeoutExpired`: mini-SWE-agent's
+`DockerEnvironmentConfig.pull_timeout` is 120s and that window covers the *image pull*, which a
+cold multi-GB SWE-bench image cannot meet. Naively scored that is 0% pass@1 with nothing to
+suggest no task ever started. Fixed with `images.py`, a parallel pre-pull whose name derivation
+is kept byte-identical to upstream's `get_swebench_docker_image_name` (`__` → `_1776_`,
+lowercased) — pre-pulling a *different* name would pay for the download and still hit the
+timeout. Chosen over overlaying a longer `pull_timeout` because it adds no deviation from the
+stock config and yields the disk figure as a side effect.
+(2) **Grading crashed on a repo-relative `uv --project` path**: `grade()` runs the harness with
+`cwd=grade_dir` so its report lands in the run directory, which made the relative env path
+unresolvable. Both nested env paths are absolute now.
+(3) **The official harness cannot run on Windows at all** — `swebench.harness.prepare_images`
+imports the Unix-only `resource` at package-import time. Docker Desktop is irrelevant: the
+harness *process* needs Linux. `grade.check_platform()` now fails fast saying so. The rollout
+phase has no such constraint and ran fine on Windows.
+**Second run, after the fixes:** images pre-pulled (2.31 GB for two django instances, ~1.15 GB
+each), rollouts exited 0, 2 trajectories × 25 steps, **`no_tool_call_rate` 0.0** — every
+assistant turn emitted a valid tool call, so the tool-calling path and the trajectory metrics
+are both real. No patches, because the smoke's reduced step limit cut the agents off
+(`LimitsExceeded`) — a smoke parameter, not a defect. `empty_reasoning_rate` came back `null`:
+Gemini's trajectories carry no reasoning field, which is exactly the "None, never 0" contract.
+**Cost:** $0.13 OpenRouter (see EXPENDITURE 2026-08-05).
+**Next steps:** (1) pick the Linux grading host — cheap vast.ai CPU instance or a local WSL2
+distro — and close the grading half of the smoke, which is still unproven; (2) the on-box
+parser spike (Qwen3.6 `--tool-call-parser`/`--reasoning-parser` names, and the request-side
+`reasoning_content` round-trip); (3) first real run: base Qwen3.6-27B at 10% of Verified,
+pinned to think mode. Still no model evaluated — no numbers exist.
+
+## 2026-08-05 (3) — SWE-bench standardized baseline (`swebench_mini`): scaffold pinned, not written
+
+**Hypothesis:** an agentic-coding capability number is only worth having if the scaffold is
+somebody else's and is pinned — our own scaffold would confound "the model got worse" with
+"our harness got better". **Method:** registered `swebench_mini` as a `needs_docker` eval
+driving upstream mini-SWE-agent v2.2.1 (tool-calling `swebench.yaml`, sha256
+`f90e7baa…f817ffa8`, `step_limit: 250`, 60s command timeout, 10k-char observation truncation)
+against a served target, graded by `swebench==4.1.0`. Both live in nested uv projects with
+**committed lockfiles** under `src/eval/capabilities/swebench_mini/envs/`. Checked first
+whether isolation was even needed: mini-swe-agent + swebench *do* co-resolve against this
+repo's stack including `vllm==0.26.0` on linux/py3.12, so the split is a reproducibility
+decision, not a conflict workaround — litellm sits in the agent's request path, so a drifting
+transitive version silently un-pins the baseline. The official config is never edited: it is
+passed with `-c` and layered under a two-key overlay (`mini-extra swebench` deep-merges
+repeated `-c` specs), so `config_sha256` stays comparable with upstream byte for byte.
+**Result:** offline suite green (10 new subset tests; the one failure,
+`test_internalization_pipeline::test_no_errors_offline`, reproduces on a clean tree and
+predates this work). Agent and harness environments both verified live. Depth is a
+repo-stratified **nested** prefix — a 10% draw is a strict subset of a 20% draw, and upstream
+skips instances already in `preds.json`, so deepening a run costs only the new instances;
+positional `--slice` was rejected because the dataset is repo-clustered. Grading is a separate
+entrypoint (`scripts/eval/swebench_mini_grade.py`) so no GPU is rented while test suites run.
+Framework change: a `serving:` block in an eval config now layers over the family defaults in
+`vllm_server.py` (context length, tool-call/reasoning parsers) — SWE-bench needs 65536 context
+where the Qwen3.6 family default is 16384, and 250-step trajectories abort as *unresolved* on
+overflow. `wilson_ci` moved from `mmlu/mmlu.py` to `capabilities/stats.py` (re-imported, no
+caller changes) now that two evals report a binomial proportion.
+**Next steps:** (1) on-box spike before any real run — confirm the Qwen3.6 `--tool-call-parser`
+/ `--reasoning-parser` names against `vllm serve --help`, and close the open 2026-08-04 item
+that vLLM forwards request-side `reasoning_content` back into the template (broken round-trip
+would look like poor coding ability, not plumbing); (2) 2-instance smoke against a cheap
+OpenRouter model, including grading; (3) first real run: base Qwen3.6-27B at 10% of Verified,
+pinned to think mode. No model has been evaluated yet — no numbers exist.
 ## 2026-08-05 (2) — Mid constitution set byte-identical to the 9-principle generation-time snapshot
 
 Follow-up to the recovery below, on request: `claude_distilled_12_principles_mid/constitution.md`

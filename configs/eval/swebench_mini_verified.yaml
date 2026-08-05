@@ -1,0 +1,93 @@
+# ABOUTME: Standardized SWE-bench Verified baseline: pinned mini-SWE-agent v2 rollouts against
+# ABOUTME: a served target, graded separately by the pinned official harness. pass@1, one try.
+# Run: uv run scripts/run_eval.py --target <hf_path> --name swebench_mini
+#      then, after destroying the GPU:
+#      uv run scripts/eval/swebench_mini_grade.py --run-dir output/swebench_mini/<key>/<ts>
+#
+# THIS IS THE STANDARDIZED BASELINE and is deliberately not ours to tune. The scaffold is
+# upstream's, pinned by a committed lockfile, and its config file is passed through untouched
+# (see src/eval/capabilities/swebench_mini/agent.py for the only two overlaid keys). Any
+# custom scaffold we build later gets its OWN eval name, config and output tree — results from
+# the two must never be pooled or compared as if they were the same measurement.
+#
+# Report as:
+#   <model> + mini-SWE-agent <version> (config <sha>), <dataset>@<revision>
+#   [n/N instances, subset <hash>], pass@1
+
+# --- Benchmark ---------------------------------------------------------------------
+# The resolved dataset path, NOT mini-swe-agent's `verified` alias. The rollout, the subset
+# draw and the grading harness must all name the same string, or "resolved" is measured
+# against tests the agent never saw. This is the exact path the alias resolves to in
+# mini-swe-agent 2.2.1; if a future version repoints the alias, this file does not move.
+dataset: "princeton-nlp/SWE-Bench_Verified"
+split: "test"
+
+# --- Depth -------------------------------------------------------------------------
+# Repo-stratified NESTED prefix: a 10% draw is a strict subset of a 20% draw, so extending a
+# run costs only the new instances (mini-swe-agent skips instances already in preds.json).
+# Positional slicing is not used on purpose — the dataset is clustered by repo, so `0:50`
+# samples whichever repos sort first rather than the benchmark.
+subset:
+  fraction: 0.1     # of the 500 Verified instances; set `n:` instead for an absolute count
+  n: null
+  # Part of the subset's IDENTITY, not a knob to tune per run: changing it redraws the
+  # benchmark and the new numbers are not comparable with the old ones.
+  seed: 0
+
+# --- Rollout -----------------------------------------------------------------------
+# One rollout per task, no retries, no reranking, no reviewer model, no extra tools, no
+# planning layer. That is the baseline's definition, and it is enforced by using upstream's
+# config as-is rather than by anything here.
+#
+# Parallel instances. Each worker holds one SWE-bench container AND one in-flight request, so
+# this is bounded by the serving side as much as by CPU — keep it aligned with
+# serving.max_num_seqs below.
+workers: 8
+
+# Approved documented deviation: the scenario container gets `--network none`. Not expressible
+# in the official config, so it cannot be done without an overlay. Verified images are
+# self-contained, so this should not change what a task can do; it removes the possibility of
+# a rollout fetching a fix from the internet.
+disable_network: true
+
+# --- Serving ------------------------------------------------------------------------
+# Applied by run_eval.py on top of the base model's family defaults in
+# src/endpoints/vllm_server.py, and recorded in run_meta.json.
+serving:
+  # OUTCOME-DETERMINING, not a performance knob. Upstream's step_limit is 250 and observations
+  # are truncated at 10k characters, so trajectories run far past the 16384 this family
+  # defaults to; on overflow the instance aborts and scores unresolved. Drop to 40960 if the
+  # KV cache will not allocate on one 80GB card, and record whichever value actually served.
+  max_model_len: 65536
+  max_num_seqs: 8
+  # mini-SWE-agent v2 drives a real bash TOOL, so the endpoint must parse tool calls; without
+  # this the model's calls come back as raw text and every instance scores 0 for a serving
+  # reason that is indistinguishable from incapability.
+  #
+  # NOT `hermes`, despite that being Qwen3's documented pair. Checked against Qwen3.6-27B's
+  # own chat template (2026-08-05): it instructs the model to emit XML-style calls —
+  # `<tool_call><function=name><parameter=key>value</parameter></function></tool_call>` —
+  # whereas the hermes parser expects JSON inside the tool_call tags. Hermes would have
+  # failed to parse every single call and scored a clean 0%. vLLM 0.26 offers `qwen3_xml`
+  # and `qwen3_coder` for this family; `qwen3_xml` is pinned here pending the live
+  # confirmation on a served endpoint.
+  enable_tool_calls: true
+  tool_call_parser: "qwen3_xml"
+  # Reasoning parser splits the <think> trace out of content so the tool parser does not
+  # trip on it. Name still to be confirmed against `vllm serve --help=Frontend` on the box.
+  reasoning_parser: "qwen3"
+
+# --- Grading ------------------------------------------------------------------------
+# Off by default: grading needs docker and CPU, not a GPU, so it runs after the pod is
+# destroyed. Set grade=true only to grade inline on the rollout host, where the images are
+# already warm, at the cost of an idle GPU for the duration.
+grade: false
+grading:
+  max_workers: 8
+  # `env` keeps base+environment images between runs (~100GB across the full benchmark) and
+  # rebuilds thin instance layers; `instance` is faster and wants ~2TB.
+  cache_level: "env"
+  # Pull prebuilt images rather than building environments from source (hours).
+  namespace: "swebench"
+
+constitution: none
