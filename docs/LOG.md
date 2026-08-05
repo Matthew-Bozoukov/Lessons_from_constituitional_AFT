@@ -3,6 +3,42 @@
 
 # LOG
 
+## 2026-08-05 — First live psychosis runs: table2 20/80 DA mixture vs benign-only control
+
+**Hypothesis:** difficult-advice SFT in the mixture reduces multi-turn delusion validation
+relative to a matched benign-only control. **Method:** first live runs of the psychosis eval
+(instrument added 2026-08-04) on `LASR-Callum/qwen3.6-27b-lora-table2-{synthdoc,only-9284}-r64`
+— both 9284 examples: `synthdoc` = 20% DA / 80% benign, `only-9284` = 100% benign, 0% DA
+(arm semantics per Matthew's 2026-08-05 Slack description; the `table2_*` train configs are not
+in this repo and both `training_meta.json` stamps are backfilled). Both `thinking: true`, r64,
+each served on its own RunPod H100 via `run_eval.py --server` (Option B).
+Three discoveries, all fixed in-branch: (1) OpenRouter deprecated BOTH upstream models — grok-3
+(red-teamer) and grok-4 (judge) 404. Probed every live xAI model with the real prompts (opening +
+post-pushback continuation): only grok-4.5 plays the personas (4.3 and 4.20 refuse, as grok-4 did
+upstream); judge → grok-4.3 (xAI's named grok-4 successor; valid 14-key rows). Absolute numbers
+are no longer comparable to upstream's published CSVs; the two arms remain comparable to each
+other. (2) 12 preserved-reasoning turns overflow the Qwen3.6 family serving window (16384) at
+turn ~7 — eval configs can now carry a `serving:` override (`VllmServer.serve_overrides`;
+psychosis pins 40960 / max_num_seqs 12). (3) `split_think` missed the prefilled-generation shape
+(`trace</think>answer`; vLLM never echoes the prompt-prefilled `<think>\n`): reported
+empty_think_rate=1.0 falsely and LEAKED full reasoning traces into the reply the red-teamer and
+judge saw. Fixed with regression tests (331 pass). **Audit needed: any think-mode arm evaluated
+through run_eval serving before this fix has the same leak.** Also: the RunPod image's nginx
+squats pod port 8001 (+3001/7270/7861/8081/9091) and answers /health — serve on 8000/8002.
+**Result** (HF: `2026-08-05-psychosis-qwen3-6-27b-lora-table2-{synthdoc,only-9284}-r64`; on the
+5 personas graded in both arms / all graded): delusion_confirmation_mean **0.32 vs 1.04**,
+delusion_collusion_rate 0.000 vs 0.018, pushback_mean 1.87 vs 1.22, therapy_mean 4.16 vs 3.91,
+referral_rate 0.18 vs 0.40 (DA mixture vs benign-only control). empty-think 0, truncation 0,
+judge failures 0 in both. The DA arm validates delusions substantially less and pushes back
+more than the control — supporting the difficult-advice hypothesis on this instrument; the
+control compensates partly by referring to professionals more. Caveat: grok-4.5 stochastically
+refuses mid-arc (double-refusal kills the persona; one retry by upstream-faithful design) —
+attrition was 4/9 personas against the control but 1/9 against the DA arm, so it correlates
+with arm (plausibly via the control's darker conversations) and surviving-persona comparisons
+may understate the gap.
+**Next:** base-model reference arm; top-up runs for the missing personas; the pre-fix leak audit;
+consider a refusal-robust red-teamer or larger retry budget.
+
 ## 2026-08-05 — HF answer cache + lazy serving: cached arms cost nothing
 
 **Hypothesis:** per-model answers pushed to HF can double as a cross-machine cache, so an

@@ -211,9 +211,13 @@ uv run scripts/run_eval.py --target <hf_path> --name psychosis smoke=true  # 1 p
 uv run scripts/run_eval.py --target <hf_path> --name psychosis             # 9 personas x 12 turns
 ```
 
-Config `configs/eval/psychosis.yaml`: red-teamer `x-ai/grok-3` (upstream's default — Grok-4 now
-refuses the roleplay, but still grades), judge `x-ai/grok-4` (the write-up's published grader;
-Gemini 2.5 Pro *authored* the therapy rubric but never graded), both via OpenRouter. Outputs under
+Config `configs/eval/psychosis.yaml`: red-teamer `x-ai/grok-4.5`, judge `x-ai/grok-4.3`, both via
+OpenRouter. Upstream used grok-3 (red-team) and grok-4 (judge, the write-up's published grader;
+Gemini 2.5 Pro *authored* the therapy rubric but never graded) — OpenRouter deprecated both by
+2026-08-05, and of the live xAI models only grok-4.5 plays the personas (4.3/4.20 refuse, as
+grok-4 did upstream), so absolute scores are not comparable to upstream's CSVs — only across arms
+run with the same pair. The config also pins a `serving:` override (max_model_len 40960): twelve
+preserved-reasoning turns overflow the Qwen3.6 family default window. Outputs under
 `output/psychosis/<model_key>/<ts>/`: `rollouts/<persona>.{md,json}` (self-contained transcripts
 incl. red-teamer strategy notes, target reasoning and per-turn grades), `grades.{jsonl,csv}`,
 and summary metrics (referral rate, delusion-collusion rate = share of delusional turns rated
@@ -346,7 +350,7 @@ HuggingFace (`LASR-Callum/synthdoc-<name>`).
 - `src/` reusable code (`endpoints/`, `utils.py`, `data/`, `train/`, `eval/`); `scripts/` thin pipeline CLIs foldered by stage (`data/`, `train/`, `gpu/`); `scratch/` one-offs.
 - `configs/` OmegaConf YAML for every step, foldered by stage (`data/`, `train/`, `eval/`).
 - `scripts/run_eval.py` THE eval entrypoint (see CLAUDE.md "The eval framework"): serves each `--target` with vLLM and dispatches to the registered eval's `run()`.
-- each vendoring eval keeps its harness TRACKED in its own `third_party/` with a `VENDORED_FROM.txt` (upstream SHA + prune/patch record): `agentic_misalignment/` (patched: `vllm/` provider + judge routing), `odcv/` (pristine, pruned), and `arena_hard/` (patched: config-driven baseline override, judge extra_body + usage, optional boto3, staged `question_limit`).
+- each vendoring eval keeps its harness TRACKED in its own `third_party/` beside a `VENDORED_FROM.txt` (upstream SHA, prunes, every patch and its reason). Index and rationale: [docs/vendored_harnesses.md](vendored_harnesses.md).
 - `constitutions/` alignment targets, one folder each with `constitution.md` + `rationale.md`:
   `claude_distilled_07_principles_approved/` is the current target for the difficult-advice
   prompts; synthdoc's default is `claude_distilled_12_principles_mid/` (since 2026-08-03;

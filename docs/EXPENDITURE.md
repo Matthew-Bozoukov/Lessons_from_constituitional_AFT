@@ -20,11 +20,28 @@ to a future reader.
 | category | spent to date |
 |---|---|
 | OpenRouter (data generation) | **$255.96** |
-| OpenRouter (eval judging) | $0.02 |
-| GPU rental | $0.17 (+ ~4 RunPod A100-h on 2026-08-03, $ TBD from dashboard) |
-| **total** | **$256.15** (+ GPU TBD) |
+| OpenRouter (eval judging) | $16.49 |
+| GPU rental | $17.28 (+ ~4 RunPod A100-h on 2026-08-03, $ TBD from dashboard) |
+| **total** | **$289.73** (+ GPU TBD) |
 
 ---
+
+## 2026-08-05 — psychosis eval, table2 arms (2× RunPod H100 + Grok via OpenRouter)
+
+First live psychosis runs: `table2-synthdoc-r64` (20% DA / 80% benign) and `table2-only-9284-r64`
+(benign-only control, 0% DA).
+
+- **GPU: ≈$17.11.** Two H100 80GB SECURE pods, ~2.47h + ~2.73h @ $3.29/hr (rate read off pod
+  B's listing; pod A assumed same class — confirm on the RunPod dashboard). ≈**$3.29/GPU-hour**.
+  Roughly half the wall-clock was consumed by two aborted rounds (below), not the science.
+- **OpenRouter: $16.47** (credits 614.32 → 630.79; final read taken >30s after the run). Of
+  this, ≈$10 bought the two clean runs — 13 persona arcs + 156 graded cells ≈ **$0.60 per
+  persona-arc** (grok-4.5 red-teamer + grok-4.3 judge, ~12+12 calls per arc) — and ≈$6.5 was
+  burned by aborted rounds: upstream's pinned grok-3/grok-4 discovered dead only at run time,
+  a context overflow at turn ~7 (16384 serving window vs preserved-reasoning turns), and a
+  trace-parse leak that invalidated one completed arm (rerun). Lessons: probe config-pinned
+  API models for liveness AND task-compliance before booting GPUs; smoke one persona
+  end-to-end before the full fan-out.
 
 ## Running total
 
