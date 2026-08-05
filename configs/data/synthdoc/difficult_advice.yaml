@@ -22,10 +22,13 @@ seed: 0
 # Stage 1 segments this into its numbered units (## <n>. headings). Stages 4 and 6
 # inject the whole document; stages 2, 4, 5 and 6 also inject the single target trait.
 # Default since 2026-08-03: the specgen mid arm. NOTE: the document was re-cut from
-# twelve units to TEN on 2026-08-04 while keeping its folder name; n_traits below is the
+# twelve units to ten on 2026-08-04, then on 2026-08-05 set byte-identical to the NINE-
+# principle state the 2026-08-04 source corpus was generated against (the frozen
+# claude_distilled_09_principles_mid_20260804 snapshot), so difficult-advice and
+# model-eval-model share one alignment target. Folder name kept; n_traits below is the
 # cost model's hint and tracks the document as it stands.
 constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
-n_traits: 10
+n_traits: 9
 
 # Scenarios generated per trait. 12 traits x 77 = 924 examples ~ 1.0M Qwen3.6 tokens at
 # the measured ~1,082 tokens per rendered example (was 8 x 116 = 928 for the v1 doc —

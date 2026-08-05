@@ -7,8 +7,10 @@ pipeline: model_eval_model
 seed: 0
 
 # Must be the constitution the SOURCE run was generated against -- run_model_eval_model fail-fasts on
-# a sha mismatch, since the control's reasoning and every critique are grounded in it.
-constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
+# a sha mismatch, since the control's reasoning and every critique are grounded in it. The source
+# corpus was generated against a never-committed 9-principle interim state of the mid re-cut,
+# reconstructed byte-exact (sha fe2ed960...) in this frozen snapshot folder -- see its README.
+constitution: "constitutions/claude_distilled_09_principles_mid_20260804/constitution.md"
 
 # The completed difficult-advice run supplying the shared scenario bank and gold
 # responses. Exactly one of hf_repo / local_dir.
@@ -27,25 +29,26 @@ hf_private: false
 
 workers: 16
 # Hard stop between stages once spend passes this; snapshots are kept, so raising it
-# and re-running resumes rather than restarts. The full 5x300 matrix measured $104.84
-# from the 2026-08-04 five-cell smoke (`synthdoc estimate --measured`); this sits just
-# above that.
-budget_usd: 115.0
+# and re-running resumes rather than restarts. The 5x420 matrix below prices ~$147 at
+# the measured $0.07/doc (2026-08-04 five-cell smoke, `synthdoc estimate --measured`);
+# this sits ~10% above that.
+budget_usd: 160.0
 
 # Documents per cell; 0 disables a cell. All five cells are implemented; the self
-# cells (m1/m2) are the headline experiment. The full matrix below measured $104.84
-# ($0.07/doc) -- check `synthdoc estimate --measured` and the credit balance before a
-# real run, and trim cells to fit.
+# cells (m1/m2) are the headline experiment. 420/cell sized for the 10k-example 20/80
+# SFT run (docs/plan_full_sft_20_80.md): 2,100 docs = 20% of the mixture by examples,
+# ~3.09M trainable tokens at the smoke-measured ~1,470/doc -- check
+# `synthdoc estimate --measured` and the credit balance before a real run.
 # Overrides merged onto this config under --smoke.
 smoke:
   cells: {control: 2, m4_other_good: 2, m3_other_flawed: 2, m2_self_good: 2, m1_self_flawed: 2}
 
 cells:
-  control: 300
-  m4_other_good: 300
-  m3_other_flawed: 300
-  m2_self_good: 300
-  m1_self_flawed: 300
+  control: 420
+  m4_other_good: 420
+  m3_other_flawed: 420
+  m2_self_good: 420
+  m1_self_flawed: 420
 
 # How explicitly the reasoning references the value at stake (weights, normalised).
 # Naming risks recitation; embodying alone risks underspecification; mixing is the point.

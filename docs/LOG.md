@@ -3,6 +3,50 @@
 
 # LOG
 
+## 2026-08-05 (2) — Mid constitution set byte-identical to the 9-principle generation-time snapshot
+
+Follow-up to the recovery below, on request: `claude_distilled_12_principles_mid/constitution.md`
+(the 10-unit re-cut) is now byte-identical to
+`claude_distilled_09_principles_mid_20260804/constitution.md`, so difficult-advice,
+self-reflection and model-eval-model all ground in the one constitution the 2026-08-04 source
+corpus was actually generated against. Knock-ons updated: `difficult_advice.yaml` `n_traits: 9`
+(estimate now $35.76 / 693 records, pin updated), `self_reflection.yaml` trait_weights remapped
+onto the 9-unit numbering (weights preserved for the seven shared units; reinstated
+"weigh real-world harm" and "honour operator adjustments" weighted 2 each; smoke weights and
+one-per-trait count follow), folder README/rationale + constitutions/README.md updated. The
+frozen snapshot folder stays the provenance anchor and model_eval_model keeps pointing at it.
+322 tests pass.
+
+## 2026-08-05 — Recovered the source corpus's lost 9-principle constitution byte-exact; model-eval-model unblocked
+
+**Problem.** model-eval-model's stage-1 provenance fail-fast compares the config constitution's
+sha256 against the source corpus manifest (`LASR-Callum/synthdoc-v2-difficult-advice`, sha
+`fe2ed960…`). That document — a never-committed 9-principle interim state of the 2026-08-04
+12→10 mid re-cut — existed nowhere: not in any git blob (verified by hashing every 3–100KB blob
+in history, both raw and stripped), not on disk, not on HF. The 2026-08-04 five-cell smoke only
+passed the check because its source was a local scratchpad slice with no manifest
+(`source_constitution_sha256: null` makes the assert vacuous), so the real check had never run.
+
+**Method.** Inverted the edit instead of searching for a copy: all 9 trait bodies in the corpus's
+`stage_1_traits.jsonl` match sections of the 12-principle document at commit `96ff8aa` verbatim,
+so the 9-doc had to be that text minus the three sections absent from the trait set ("Treat hard
+constraints…", "Calibrate trust and deference…", "Operate within Anthropic's guidelines…"),
+renumbered 1–9. Pure surgery missed the sha; the committed 10-doc's diff showed the hand-edit
+style leaves a stray blank line per deletion site, and brute-forcing leftover-blank-line
+combinations (3 sites × {``, `\n`, `\n\n`}) found the match: one extra blank line at the
+"Calibrate trust" site.
+
+**Result.** `sha256(stripped)` equals the manifest's `fe2ed960…` exactly and `segment()`
+reproduces all 9 source trait records byte-for-byte. Installed as frozen snapshot
+`constitutions/claude_distilled_09_principles_mid_20260804/` (README + rationale document the
+derivation; never edit) and pointed `configs/data/synthdoc/model_eval_model.yaml` at it — the
+committed 10-principle mid doc stays untouched for difficult_advice/self_reflection. Verified
+live: the stage-1 provenance check now passes against the real HF manifest; 322 tests pass.
+Cost: $0.
+
+**Next.** Set `hf_repo` in the config, confirm OpenRouter balance and >$20 sign-off, then run the
+full 5×300 matrix (~$105 measured) and `synthdoc check`.
+
 ## 2026-08-04 (5) — Merged PR-22: self_reflection ported to the config-driven engine
 
 Merged Nika's `self_reflection` document type (PR-22, built as a `flavors/` seam on a newer main)
