@@ -113,7 +113,7 @@ baseline_arm: arm_b_synth10
 
 # --- Benchmark ---------------------------------------------------------------------
 bench_name: "arena-hard-v2.0"
-vendor_dir: "third_party/arena-hard-auto"
+vendor_dir: "src/eval/capabilities/arena_hard/third_party/arena-hard-auto"
 
 # The two categories are reported SEPARATELY, never pooled (spec §9). The primary
 # capability number is therefore n=500, not n=750.

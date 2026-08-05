@@ -3,7 +3,7 @@
 
 """Patch the vendored arena-hard-auto harness.
 
-`third_party/` is gitignored (CLAUDE.md), so the vendored harness is not version
+The arena-hard checkout is gitignored, so the vendored harness is not version
 controlled and a re-clone silently reverts every local change. This script is the
 durable record of what we changed and why, and it is idempotent: run it after any
 re-clone, and run it with `--check` in CI-ish contexts to assert the patches are live.
@@ -47,7 +47,8 @@ from pathlib import Path
 import fire
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-VENDOR = REPO_ROOT / "third_party" / "arena-hard-auto"
+VENDOR = (REPO_ROOT / "src" / "eval" / "capabilities" / "arena_hard"
+          / "third_party" / "arena-hard-auto")
 
 # The upstream commit these patches were written against. If a patch stops applying,
 # diff against this SHA before rewriting the anchor.

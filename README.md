@@ -312,7 +312,7 @@ Full detail in `LOG.md` (2026-07-31 entry).
 
 ```bash
 # Vendor the harness (third_party/ is gitignored) — pinned at upstream 196f6b82
-git clone https://github.com/lmarena/arena-hard-auto.git third_party/arena-hard-auto
+git clone https://github.com/lmarena/arena-hard-auto.git src/eval/capabilities/arena_hard/third_party/arena-hard-auto
 uv run python scripts/eval/patch_arena_hard.py          # 5 patches; --check to verify
 ```
 
