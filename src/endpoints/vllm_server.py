@@ -201,7 +201,12 @@ class SshExec:
         self.tunnel: subprocess.Popen | None = None
 
     def _ssh(self, cmd: str, timeout: int = 240, stdin_text: str | None = None) -> str:
+        # encoding/errors pinned: remote logs carry non-ASCII (vLLM progress bars, box-drawing
+        # characters), and on a Windows driver the default cp1252 decode raises inside
+        # subprocess's reader THREAD — which does not fail the call, it just loses the output
+        # and prints an alarming traceback that looks like the run died. Observed 2026-08-05.
         r = subprocess.run(["ssh", self.host, cmd], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace",
                            timeout=timeout, input=stdin_text)
         if r.returncode != 0:
             raise RuntimeError(f"ssh {self.host} failed ({r.returncode}): "
@@ -220,7 +225,14 @@ class SshExec:
         the loop, and CLAUDE.md's secrets policy says leaked values must be bounded.
         Never overwrites an existing remote .env.
         """
-        assert not self.has_env(), f"{self.host} already has a .env; not touching it"
+        # Skip, don't abort. The host having a .env already is the NORMAL case on any
+        # relaunch against the same box (a crashed run, a config tweak), and failing the
+        # whole eval there — after the weights are already downloaded — is a papercut with
+        # no upside. The guarantee that matters is unchanged: an existing remote .env is
+        # never overwritten.
+        if self.has_env():
+            print(f">>> {self.host} already has a .env — leaving it untouched")
+            return
         token = next((line.split("=", 1)[1].strip()
                       for line in local_env.read_text().splitlines()
                       if line.startswith("HF_TOKEN=")), "")

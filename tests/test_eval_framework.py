@@ -154,10 +154,18 @@ def test_sshexec_push_hf_token_is_optin_minimal_and_never_overwrites(monkeypatch
     ex = SshExec("host", port=8000)
     sent = []
 
-    # Remote already has a .env: refuse to touch it.
-    monkeypatch.setattr(ex, "_ssh", lambda cmd, **kw: "yes\n")
-    with pytest.raises(AssertionError, match="already has"):
-        ex.push_hf_token(local)
+    # Remote already has a .env: leave it alone, and do NOT abort. Relaunching against a box
+    # that was already provisioned is the normal case (crashed run, config tweak), so this
+    # skips rather than failing an eval whose weights are already downloaded.
+    seen: list[str] = []
+
+    def already_has(cmd, **kw):
+        seen.append(cmd)
+        return "yes\n"
+
+    monkeypatch.setattr(ex, "_ssh", already_has)
+    ex.push_hf_token(local)
+    assert not any("hf_abc" in c for c in seen), "must not rewrite an existing remote .env"
 
     # Remote has none: exactly HF_TOKEN crosses, nothing else from the .env.
     def fake_ssh(cmd, **kw):

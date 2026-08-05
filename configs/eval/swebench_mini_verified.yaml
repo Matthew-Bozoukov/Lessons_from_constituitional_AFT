@@ -57,12 +57,19 @@ pull_timeout: 1800
 # config as-is rather than by anything here.
 #
 # Parallel instances. Each worker holds one SWE-bench container AND one in-flight request.
-# The binding constraint is the DRIVER's RAM, not the GPU: rollout containers run where this
-# command runs, and on a Docker Desktop VM with ~16GB that caps out around 12-16. The server
-# is given more headroom (serving.max_num_seqs below) so it is never the bottleneck —
-# aggregate decode throughput climbs steeply with batch size, and starving it was what made
-# an early estimate of this eval 3x too slow.
-workers: 14
+#
+# The binding constraint is the SERVER'S KV CACHE, not driver RAM and not compute. Measured
+# 2026-08-05: rollout containers are idle shells between short bash commands and cost ~20MB
+# each, so driver RAM is irrelevant; but trajectories reach 30-80k tokens, and a 27B model in
+# bf16 leaves only ~21GB of an 80GB card for KV (~300k tokens). At 14 workers that hit 96%
+# KV usage, the prefix cache had nowhere to live and collapsed from 52% hits to 0.7%, and the
+# completion rate fell from ~86/hr to ~17/hr.
+#
+# So size workers to leave KV HEADROOM, not to fill it: roughly
+#   workers ~= 0.7 * (KV tokens) / (typical context)
+# On a 93GB card (~40GB / ~570k tokens of KV) that is ~16. Raising this without checking
+# `GPU KV cache usage` in the server log makes the eval slower, not faster.
+workers: 12
 
 # Approved documented deviation: the scenario container gets `--network none`. Not expressible
 # in the official config, so it cannot be done without an overlay. Verified images are

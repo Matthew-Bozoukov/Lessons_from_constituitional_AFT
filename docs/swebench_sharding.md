@@ -45,6 +45,25 @@ Each machine needs its own GPU endpoint. Sharing one endpoint between two driver
 until the server saturates — past ~13–15 concurrent requests they queue and the second
 machine buys nothing.
 
+### Renting the serving box: filter on CUDA, not just VRAM
+
+Three hosts were burned learning this on 2026-08-05. vLLM 0.26's torch build **requires a
+host driver of CUDA ≥ 13.0**; anything older dies at engine init with *"The NVIDIA driver on
+your system is too old"* — observed at both `12040` and `12080`, so 12.8 is not enough.
+Search with **all** of these:
+
+```bash
+uvx vastai search offers 'num_gpus=1 rentable=true gpu_ram>=79 disk_space>=200 \
+  inet_down>=2000 reliability>=0.98 cuda_max_good>=13.0' -o dph+
+```
+
+- `gpu_ram>=79` is mandatory: the name `A100_SXM4` covers a **40 GB** variant that cannot
+  hold this model, and it will happily rent to you.
+- `cuda_max_good>=13.0` is mandatory for the reason above.
+- Hosts also sometimes hang in `loading` for 10+ minutes while pulling the ~9 GB PyTorch
+  image and never come up. Give a host ~4 minutes, then destroy and try the next offer —
+  a create that returns `'success': False` is a strong hint it will not start.
+
 Targets run **sequentially** on each machine, and all three arms share one vLLM process
 (same base model and mode, adapters hot-swap). Order LoRAs first so the server starts once
 with `--enable-lora` and never restarts.
