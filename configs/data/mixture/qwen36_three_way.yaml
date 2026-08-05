@@ -1,6 +1,6 @@
 # ABOUTME: Three-way target mixture (embodied + difficult-advice + agentic tool-use) at equal
 # ABOUTME: token share, forming 20% of the corpus with TULU3 replay as the other 80%.
-# Run: uv run scripts/data/build_mixture.py --config configs/data/mixture_qwen36_three_way.yaml
+# Run: uv run scripts/data/mixture/build_mixture.py --config configs/data/mixture/qwen36_three_way.yaml
 
 seed: 0
 tokenizer: "Qwen/Qwen3.6-27B"
@@ -10,7 +10,7 @@ tokenizer: "Qwen/Qwen3.6-27B"
 # difficult-advice. Budgets below are that arithmetic made explicit:
 # int(1493000 * 0.20) // 3 = 99533 per source, remainder 1194400 to TULU3.
 #
-# All three sources are pre-rendered by src/data/convert_synthdoc_qwen.py, which fixes the
+# All three sources are pre-rendered by src/data/mixture/convert_synthdoc_qwen.py, which fixes the
 # synthdoc corpora's multiple system turns and string-encoded tool_calls, keeps real
 # reasoning traces, and leaves Qwen3.6's empty `<think></think>` marker on assistant turns
 # that have none.

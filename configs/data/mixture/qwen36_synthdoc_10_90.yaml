@@ -1,24 +1,22 @@
-# ABOUTME: 1M-token mixture: 15% synthdoc difficult-advice (with <think> traces)
-# ABOUTME: + 85% TULU3 replay (rendered with no think block).
-# Run: uv run scripts/data/build_mixture.py --config configs/data/mixture_qwen36_synthdoc_15_85.yaml
+# ABOUTME: 1M-token mixture: 10% synthdoc difficult-advice (with <think> traces)
+# ABOUTME: + 90% TULU3 replay (rendered with no think block).
+# Run: uv run scripts/data/mixture/build_mixture.py --config configs/data/mixture/qwen36_synthdoc_10_90.yaml
 
 seed: 0
 tokenizer: "Qwen/Qwen3.6-27B"
 
-# Same construction as the 10/90 and 20/80 arms: sampled to a token budget from the same
-# 200-example pool (25 per trait), so the three arms differ only in the difficult-advice
-# share and stay directly comparable as a dose-response sweep.
+# Trait-balanced pool: 25 examples for each of the constitution's 8 principles.
 sources:
   difficult_advice:
     path: "data/synthdoc_v2_balanced.jsonl"
     format: "messages"
-    tokens: 150000
+    tokens: 100000
   tulu3:
     repo: "allenai/tulu-3-sft-mixture"
     # Historical: this artifact predates the preserve-thinking default (2026-08-04);
     # strip reproduces its no-think rendering. New mixtures declare native|none.
     reasoning: strip
-    tokens: 850000
+    tokens: 900000
     # The old dedicated tulu3 code path used this buffer; kept so regeneration
     # samples identically.
     shuffle_buffer: 10000
@@ -29,4 +27,4 @@ sources:
 # sequence length so replay examples are never truncated mid-answer.
 max_seq_len: 3072
 
-output_dir: "output/mixture_synthdocv2_15_85"
+output_dir: "output/mixture_synthdocv2_10_90"

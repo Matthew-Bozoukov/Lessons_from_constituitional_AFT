@@ -1,5 +1,5 @@
 # ABOUTME: Run config for the model-eval-model document type, generated over a
-# ABOUTME: completed difficult-advice run. Run: uv run scripts/data/build_dataset.py --config configs/data/model_eval_model.yaml [--smoke]
+# ABOUTME: completed difficult-advice run. Run: uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/model_eval_model.yaml [--smoke]
 
 # Label recorded in manifests; the `stages:` list below IS the document type.
 pipeline: model_eval_model
@@ -92,7 +92,7 @@ models:
     max_tokens: 8192
     assumed_tokens: {in: 2500, out: 1500}
 
-# Consumed by `uv run synthdoc check --config configs/data/model_eval_model.yaml --run_dir <dir>`.
+# Consumed by `uv run synthdoc check --config configs/data/synthdoc/model_eval_model.yaml --run_dir <dir>`.
 checks:
   judges:
       gold_system: You audit training data. You judge whether an assistant's reply exhibits a specific principle,

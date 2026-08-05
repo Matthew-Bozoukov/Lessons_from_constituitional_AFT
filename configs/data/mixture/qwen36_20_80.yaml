@@ -1,21 +1,24 @@
-# ABOUTME: Training-mixture config for Qwen3.6-27B, 10/90 sweep arm: 150k tokens of
-# ABOUTME: difficult-advice (with <think> traces) + 1.35M tokens of TULU3 replay (no think).
-# Run: uv run scripts/data/build_mixture.py --config configs/data/mixture_qwen36_10_90.yaml
+# ABOUTME: Training-mixture config for Qwen3.6-27B: 300k tokens of difficult-advice (with
+# ABOUTME: <think> traces) + 1.2M tokens of TULU3 replay (rendered with no think block).
+# Run: uv run scripts/data/mixture/build_mixture.py --config configs/data/mixture/qwen36_20_80.yaml
 
 seed: 0
 tokenizer: "Qwen/Qwen3.6-27B"
 
+# Each source: a jsonl path, a token budget, and a format — `messages` is raw chat jsonl
+# rendered at build time (keeping <think> traces); `rendered` is pre-rendered rows
+# (fields: text, n_tokens).
 sources:
   difficult_advice:
     path: "data/sft_dataset_thinking.jsonl"
     format: messages
-    tokens: 150000
+    tokens: 300000
   tulu3:
     repo: "allenai/tulu-3-sft-mixture"
     # Historical: this artifact predates the preserve-thinking default (2026-08-04);
     # strip reproduces its no-think rendering. New mixtures declare native|none.
     reasoning: strip
-    tokens: 1350000
+    tokens: 1200000
     # The old dedicated tulu3 code path used this buffer; kept so regeneration
     # samples identically.
     shuffle_buffer: 10000
@@ -24,4 +27,4 @@ sources:
 # examples are never truncated mid-answer.
 max_seq_len: 2048
 
-output_dir: "output/mixture_qwen36_10_90"
+output_dir: "output/mixture_qwen36"

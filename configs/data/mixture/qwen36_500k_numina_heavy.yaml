@@ -1,37 +1,39 @@
-# ABOUTME: 100k-token mixture in equal thirds from TULU3, NuminaMath-CoT and No Robots.
-# ABOUTME: Every conversation renders with NO think block, as replay data should.
-# Run: uv run scripts/data/build_mixture.py --config configs/data/mixture_qwen36_100k_three_source.yaml
+# ABOUTME: 500k-token mixture weighted toward maths: NuminaMath-CoT 67%, TULU3 and No Robots
+# ABOUTME: sharing the remaining 33%. Every conversation renders with NO think block.
+# Run: uv run scripts/data/mixture/build_mixture.py --config configs/data/mixture/qwen36_500k_numina_heavy.yaml
 
 seed: 0
 tokenizer: "Qwen/Qwen3.6-27B"
 
-# 100,000 tokens total, split evenly three ways.
+# 500,000 tokens total. The 33% non-maths share is split evenly between the two.
 sources:
-  tulu3:
-    repo: "allenai/tulu-3-sft-mixture"
-    # Historical: this artifact predates the preserve-thinking default (2026-08-04);
-    # strip reproduces its no-think rendering. New mixtures declare native|none.
-    reasoning: strip
-    split: "train"
-    tokens: 33333
   numinamath_cot:
     repo: "AI-MO/NuminaMath-CoT"
     # Historical: this artifact predates the preserve-thinking default (2026-08-04);
     # strip reproduces its no-think rendering. New mixtures declare native|none.
     reasoning: strip
     split: "train"
-    tokens: 33333
+    tokens: 335000
+  tulu3:
+    repo: "allenai/tulu-3-sft-mixture"
+    # Historical: this artifact predates the preserve-thinking default (2026-08-04);
+    # strip reproduces its no-think rendering. New mixtures declare native|none.
+    reasoning: strip
+    split: "train"
+    tokens: 82500
   no_robots:
     repo: "HuggingFaceH4/no_robots"
     # Historical: this artifact predates the preserve-thinking default (2026-08-04);
     # strip reproduces its no-think rendering. New mixtures declare native|none.
     reasoning: strip
     split: "train"
-    tokens: 33334
+    tokens: 82500
 
 # Drop conversations longer than the training sequence length rather than truncating
 # them mid-answer.
 max_seq_len: 3072
 
-output_dir: "output/mixture_100k_three_source"
+# Modest: a large buffer over NuminaMath's long rows exhausts memory.
 shuffle_buffer: 1000
+
+output_dir: "output/mixture_500k_numina_heavy"

@@ -1,5 +1,5 @@
 # ABOUTME: Build a token-budgeted SFT dataset from Tulu 3 for the 0%-synthetic control arm.
-# ABOUTME: Run: uv run python src/data/prepare_tulu.py --config configs/data/tulu_control.yaml
+# ABOUTME: Run: uv run python src/data/mixture/prepare_tulu.py --config configs/data/mixture/tulu_control.yaml
 
 """Sample Tulu 3 down to an exact *token* budget.
 
@@ -24,7 +24,7 @@ from pathlib import Path
 import fire
 from omegaconf import OmegaConf
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from src.utils import timestamp, write_run_meta  # noqa: E402
 
@@ -62,7 +62,7 @@ def main(config: str, smoke: bool = False) -> None:
     """Write a Tulu 3 subset hitting a target token budget.
 
     Args:
-        config: Path to a YAML config (see configs/data/tulu_control.yaml).
+        config: Path to a YAML config (see configs/data/mixture/tulu_control.yaml).
         smoke: If True, use a 20k-token budget to validate wiring cheaply.
     """
     cfg = OmegaConf.load(config)

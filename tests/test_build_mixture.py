@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from omegaconf import OmegaConf
 
-from src.data.build_mixture import _fill, _take_rendered, _usable, main
+from src.data.mixture.build_mixture import _fill, _take_rendered, _usable, main
 
 
 def _rows(sizes):
@@ -75,7 +75,9 @@ def test_main_rejects_legacy_tulu3_schema(tmp_path):
 
 
 def test_mixture_configs_share_one_schema():
-    configs = sorted(Path("configs/data").glob("mixture_*.yaml"))
+    # tulu_control.yaml is prepare_tulu's config, not a build_mixture config.
+    configs = [p for p in sorted(Path("configs/data/mixture").glob("*.yaml"))
+               if p.name != "tulu_control.yaml"]
     assert configs, "no mixture configs found"
     for path in configs:
         cfg = OmegaConf.load(path)

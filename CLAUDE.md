@@ -58,14 +58,15 @@ src/                    correctness-critical reusable code (installed editable; 
                           target model on localhost via vLLM; thinking mode inferred from the
                           artifact and pinned at serve time)
   utils.py                extract_json, git_sha, timestamp, write_run_meta, count_chat_tokens
-  data/                   synthetic data generation: synthdoc/ (constitution-grounded,
-                          config-driven generation engine, formerly synthdoc_v2; the
-                          config's `stages:` list — prompts included — defines the
-                          document type; run via scripts/data/build_dataset.py with
-                          configs/data/difficult_advice.yaml or model_eval_model.yaml,
-                          `synthdoc check` gates the latter's corpora — see its README)
-                          + mixture tooling (build_mixture.py, balanced_subset.py,
-                          convert_synthdoc_qwen.py, prepare_tulu.py, ...)
+  data/                   two subpackages, mirrored in scripts/data/ and configs/data/:
+    synthdoc/               synthetic data generation (constitution-grounded,
+                            config-driven engine, formerly synthdoc_v2; the config's
+                            `stages:` list — prompts included — defines the document
+                            type; run via scripts/data/synthdoc/build_dataset.py with
+                            configs/data/synthdoc/{difficult_advice,model_eval_model}.yaml,
+                            `synthdoc check` gates the latter's corpora — see its README)
+    mixture/                dataset building (build_mixture.py, balanced_subset.py,
+                            convert_synthdoc_qwen.py, prepare_tulu.py, ...)
   train/                  training: train_lora.py, merge_lora.py
   eval/                   eval registry in __init__.py (name -> EvalSpec, lazy runner) — every
                           eval follows the run() contract in "The eval framework" below
@@ -81,13 +82,15 @@ src/                    correctness-critical reusable code (installed editable; 
     vulnerabilities/      petri/ + surf/ audit tooling (generalized from the completed MSM audit)
 configs/                OmegaConf YAML, one per step, foldered by pipeline stage.
                         NEVER hardcode hyperparams in scripts.
-  data/                   data generation + mixtures (difficult_advice, model_eval_model, mixture_qwen36_*, tulu_control)
+  data/                   synthdoc/ generation configs (difficult_advice, model_eval_model, self_reflection)
+                          + mixture/ dataset-building configs (qwen36_*, tulu_control)
   train/                  SFT training (lora_<model>_<arm>*)
   eval/                   evals (capability, mmlu, agentic_misalignment, odcv_*, constitution_probe)
 scripts/                pipeline drivers, foldered to mirror src/ stages + gpu/ for infra
   run_eval.py             THE eval entrypoint: serves each --target and dispatches to a
                           registered eval's run() — see "The eval framework" below
-  data/                   thin CLIs over src/data/ (build_dataset — THE synthetic-data entrypoint —, build_mixture, ...)
+  data/                   thin CLIs over src/data/, mirrored: synthdoc/build_dataset.py — THE
+                          synthetic-data entrypoint — + mixture/build_mixture.py
   train/                  thin CLIs over src/train/ (train_lora, merge_lora)
   gpu/                    provision infra: runpod_capability.py, runpod_train.py
 scratch/                one-off and AI-generated scripts (report generators, probes, inspection
@@ -259,8 +262,8 @@ deleted with that package on 2026-08-03 — see git history — so enforce them 
 
 ## The pipeline (each step = one experiment script + one config)
 
-1. `uv run synthdoc run --config configs/data/difficult_advice.yaml` — six-stage difficult-advice generation from the constitution (scenarios → prompts → responses → trait-rewrites), reasoning traces native. Has `--smoke`. (The config's `pipeline:` field picks the document type: the same command with `configs/data/model_eval_model.yaml` generates the model-evaluates-model arms over a completed run, gated by `uv run synthdoc check`.)
-2. `scripts/data/build_mixture.py` (+ `configs/data/mixture_*.yaml`) — token-budgeted training mixture: `messages` sources keep their `<think>` traces, HF `repo` sources render with no think block; `balanced_subset.py` trait-balances the difficult-advice share. Has `--smoke`.
+1. `uv run synthdoc run --config configs/data/synthdoc/difficult_advice.yaml` — six-stage difficult-advice generation from the constitution (scenarios → prompts → responses → trait-rewrites), reasoning traces native. Has `--smoke`. (The config's `pipeline:` field picks the document type: the same command with `configs/data/synthdoc/model_eval_model.yaml` generates the model-evaluates-model arms over a completed run, gated by `uv run synthdoc check`.)
+2. `scripts/data/mixture/build_mixture.py` (+ `configs/data/mixture/*.yaml`) — token-budgeted training mixture: `messages` sources keep their `<think>` traces, HF `repo` sources render with no think block; `balanced_subset.py` trait-balances the difficult-advice share. Has `--smoke`.
 3. `scripts/train/train_lora.py` (+ `configs/train/lora*.yaml`) — QLoRA SFT (runs on GPU box). Has `--smoke` (2 steps). Pushes the adapter to HF with `training_meta.json` — the thinking stamp (declared as `thinking:` in the train config, validated against the data) that the eval framework infers mode from.
 4. `scripts/run_eval.py --target <hf_path> --name agentic_misalignment` — agentic-misalignment honeypots → `misalignment_summary.json` via `src/eval/misalignment/agentic_misalignment/aggregate_eval.py`.
 5. `scratch/reports/final_report.py` / `scratch/reports/make_report.py` — capstone report + plots + markdown from `output/eval_summaries/` (per-experiment write-up code, so it lives in scratch).

@@ -4,7 +4,7 @@
 # Constitutions
 
 The alignment targets this repository trains toward and grades against. Data generation
-(`configs/data/synthdoc.yaml`, `src/data/prompts.py`) points at these documents.
+(`configs/data/synthdoc/difficult_advice.yaml`, `src/data/prompts.py`) points at these documents.
 
 ## Layout — one folder per constitution
 
@@ -54,6 +54,6 @@ folders here following the layout above.
 |---|---|---|
 | `claude_distilled_07_principles_approved/` | **current alignment target** (7 principles, distilled from Anthropic's *Claude's Constitution*, Jan 2026) | `configs/data/difficult_advice_gen_v2.yaml`, `src/data/prompts.py::CONSTITUTION_V2` |
 | `claude_distilled_04_principles_coarse/` | experiment arm (granularity study, machine-distilled by specgen, 2026-08-03) | nothing yet — spec-variation experiment |
-| `claude_distilled_12_principles_mid/` | experiment arm; **default constitution for synthdoc data generation since 2026-08-03** | `configs/data/synthdoc.yaml` (12 traits) |
+| `claude_distilled_12_principles_mid/` | experiment arm; **default constitution for synthdoc data generation since 2026-08-03** | `configs/data/synthdoc/difficult_advice.yaml` (12 traits) |
 | `claude_distilled_24_principles_fine/` | experiment arm (granularity study, machine-distilled by specgen, 2026-08-03) | nothing yet — spec-variation experiment |
 | `archive/claude_distilled_8_principles_v1/` | v1, superseded 2026-07-29; synthdoc default until 2026-08-03 | `src/data/prompts.py::CONSTITUTION_V1`; pre-2026-08-03 synthdoc corpora |
