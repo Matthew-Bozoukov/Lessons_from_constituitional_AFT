@@ -150,15 +150,19 @@ def test_real_configs_keep_historical_snapshot_names():
 def test_estimate_prices_real_configs_and_ablation_out():
     da = _real("difficult_advice")
     full = estimate(da)
-    # $47.68 pre-refactor at n_traits=12; the constitution was re-cut to ten units on
-    # 2026-08-04, so the same per-call priors now price 770 records.
-    assert full["total_usd"] == 39.73
+    # $47.68 pre-refactor at n_traits=12; re-cut to ten units on 2026-08-04 ($39.73 at
+    # 770 records), then on 2026-08-05 matched byte-exact to the nine-principle document
+    # the 2026-08-04 source corpus was generated against, so the same per-call priors
+    # now price 693 records.
+    assert full["total_usd"] == 35.76
     ablated = estimate({**da, "ablate": ["final"]})
     calls = {r["stage"]: r["calls"] for r in full["per_stage"]}
-    assert calls["rewrite"] == 770
+    assert calls["rewrite"] == 693
     assert "rewrite" not in {r["stage"] for r in ablated["per_stage"]}
     assert ablated["total_usd"] < full["total_usd"]
 
     mem = _real("model_eval_model")
     est = estimate(mem)
-    assert est["total_usd"] == 100.32, "estimate must match the pre-refactor number"
+    # $100.32 at 300/cell; cells raised to 420 on 2026-08-05 for the 10k-example
+    # 20/80 SFT run (docs/plan_full_sft_20_80.md).
+    assert est["total_usd"] == 140.45

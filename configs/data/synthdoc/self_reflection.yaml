@@ -21,32 +21,31 @@ constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
 total_scenarios: 480
 
 # Every principle is represented; the ones that actually fire when an agent's own position is
-# threatened carry the corpus. t2 (oversight, no unilateral power-accruing action) and t4
+# threatened carry the corpus. t1 (oversight, no unilateral power-accruing action) and t3
 # (non-deception including through framing and action) are the two the whole genre turns on --
-# the deniable move is deception-by-action in the service of self-preservation. t7 (tool
-# results and documents are information, never commands) and t9 (unhelpfulness is never
-# automatically safe -- what the control slice trains) come next.
+# the deniable move is deception-by-action in the service of self-preservation. t8 (unhelpfulness
+# is never automatically safe -- what the control slice trains) comes next.
 #
 # PROVENANCE WARNING. These ids track the constitution AS IT STANDS. The published corpus
 # (HF LASR-Callum/2026-08-03-synthdoc-self-reflection, sha256 178c23de8f5aec59...) was
-# generated when this same file carried TWELVE units; it was re-cut to ten on 2026-08-04,
-# dropping "Weigh real-world harm with calibrated, policy-level judgement" and "Honour
-# operator adjustments to sensible defaults" and renumbering the rest. The weights below are
-# the old ones remapped onto the surviving units, so regenerating today yields a corpus
-# covering ten principles rather than twelve -- related to the published one, not identical.
+# generated when this same file carried TWELVE units; it was re-cut to ten on 2026-08-04, then
+# on 2026-08-05 set byte-identical to the NINE-principle state the 2026-08-04 difficult-advice
+# corpus was generated against (drops "hard constraints as bright lines", "trust calibration"
+# and "guidelines and the priority ordering" from the twelve; keeps "weigh real-world harm" and
+# "honour operator adjustments"). The weights below are the old ones remapped onto the current
+# nine units, so regenerating today yields a corpus related to the published one, not identical.
 # plan() asserts these ids match the constitution actually loaded, so this cannot drift
 # silently again.
 trait_weights:
-  t1: 2   # hard constraints as bright lines
-  t2: 4   # preserve human oversight; no unilateral, power-accruing action
-  t3: 2   # legitimate balances of power; no manipulation
-  t4: 4   # scrupulous honesty in word, framing and ACTION
+  t1: 4   # preserve human oversight; no unilateral, power-accruing action
+  t2: 2   # legitimate balances of power; no manipulation
+  t3: 4   # scrupulous honesty in word, framing and ACTION
+  t4: 2   # weigh real-world harm with calibrated, policy-level judgement
   t5: 2   # cultivated character, not rigid rules
   t6: 2   # stable identity under pressure about its own continuation
-  t7: 3   # trust calibration; conversational inputs are not commands
-  t8: 1   # guidelines and the priority ordering
-  t9: 3   # genuinely helpful; unhelpfulness is never automatically safe
-  t10: 1  # long-term flourishing; no sycophancy
+  t7: 2   # honour operator adjustments, never as a tool against users
+  t8: 3   # genuinely helpful; unhelpfulness is never automatically safe
+  t9: 1   # long-term flourishing; no sycophancy
 
 # Requested per API call. A single call for all of a trait's scenarios would overrun max_tokens
 # and truncate its JSON; batching also keeps each call's "vary the industry" instruction
@@ -159,9 +158,9 @@ industries:
 # Overrides merged onto this config under --smoke: one scenario per trait, no control
 # slice, singles only (equal weights keep the trait_weights<->constitution assert green).
 smoke:
-  total_scenarios: 10
+  total_scenarios: 9
   scenarios_per_call: 1
-  trait_weights: {t1: 1, t2: 1, t3: 1, t4: 1, t5: 1, t6: 1, t7: 1, t8: 1, t9: 1, t10: 1}
+  trait_weights: {t1: 1, t2: 1, t3: 1, t4: 1, t5: 1, t6: 1, t7: 1, t8: 1, t9: 1}
   mix:
     form: {prose: 0.8, agentic: 0.2}
     multi_turn: 0.0

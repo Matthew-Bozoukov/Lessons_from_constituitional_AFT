@@ -1,5 +1,5 @@
-# ABOUTME: Builds an N-source SFT mixture at per-source token budgets, rendered under the
-# ABOUTME: preserve-thinking policy: every assistant turn keeps a think block (real or empty).
+# ABOUTME: Builds an N-source SFT mixture at per-source budgets — token-share (`tokens:`) or
+# ABOUTME: example-share (`examples:`) — rendered with a think block on every assistant turn.
 
 from __future__ import annotations
 
@@ -36,8 +36,8 @@ _SENTINEL = "__MIXTURE_SENTINEL__"
 
 _THINK_BLOCK = re.compile(r"<think>(.*?)</think>", re.DOTALL)
 
-# Every token budget is divided by this under --smoke, so a smoke run exercises the full
-# wiring (rendering, streaming, validation, stats) in seconds.
+# Every budget (tokens or examples) is divided by this under --smoke, so a smoke run
+# exercises the full wiring (rendering, streaming, validation, stats) in seconds.
 _SMOKE_SCALE = 20
 
 
@@ -91,6 +91,25 @@ def _ntok(tok, text: str) -> int:
     return len(tok(text)["input_ids"])
 
 
+def _budget(name: str, spec: dict, scale: int) -> tuple[str, int]:
+    """Return one source's sampling budget as (kind, n), kind `tokens` | `examples`.
+
+    Exactly one of `tokens:` / `examples:` must be declared — token budgets build
+    token-share mixtures (the historical arms), example budgets build count-share
+    mixtures (e.g. the 20%-by-examples model-eval-model run). Both divide by the
+    smoke scale so `--smoke` exercises the same path.
+    """
+    declared = [k for k in ("tokens", "examples") if spec.get(k) is not None]
+    if len(declared) != 1:
+        raise ValueError(
+            f"source {name!r}: declare exactly one of `tokens` or `examples`, "
+            f"got {declared or 'neither'}")
+    kind = declared[0]
+    n = int(spec[kind])
+    assert n > 0, f"source {name!r}: {kind} must be positive, got {n}"
+    return kind, max(1, n // scale)
+
+
 def _fill(rows: list[dict], budget: int, seed: int) -> list[dict]:
     """Greedily take shuffled rows (fields: text, source, n_tokens) up to a token budget."""
     random.Random(seed).shuffle(rows)
@@ -105,19 +124,34 @@ def _fill(rows: list[dict], budget: int, seed: int) -> list[dict]:
     return out
 
 
-def _take_messages(tok, path: Path, budget: int, seed: int, source: str,
+def _fill_budget(rows: list[dict], budget: tuple[str, int], seed: int) -> list[dict]:
+    """Sample loaded rows to a (kind, n) budget: token-greedy or exactly-n examples.
+
+    An example budget is exact by contract — a source that cannot supply n rows fails
+    loudly rather than silently shrinking its share of the mixture.
+    """
+    kind, n = budget
+    if kind == "tokens":
+        return _fill(rows, n, seed)
+    assert len(rows) >= n, (
+        f"asked for {n} examples but the source holds only {len(rows)}")
+    random.Random(seed).shuffle(rows)
+    return rows[:n]
+
+
+def _take_messages(tok, path: Path, budget: tuple[str, int], seed: int, source: str,
                    render_kwargs: dict) -> list[dict]:
-    """Sample a raw chat jsonl up to a token budget, reasoning preserved on every turn."""
+    """Sample a raw chat jsonl to a budget, reasoning preserved on every turn."""
     rows = []
     for line in path.open():
         text = _render_preserved(tok, json.loads(line)["messages"], render_kwargs)
         rows.append({"text": text, "source": source, "n_tokens": _ntok(tok, text)})
     assert rows, f"no rows in {path}"
-    return _fill(rows, budget, seed)
+    return _fill_budget(rows, budget, seed)
 
 
-def _take_rendered(path: Path, budget: int, seed: int, source: str) -> list[dict]:
-    """Sample an already-rendered jsonl (fields: text, n_tokens) up to a token budget.
+def _take_rendered(path: Path, budget: tuple[str, int], seed: int, source: str) -> list[dict]:
+    """Sample an already-rendered jsonl (fields: text, n_tokens) to a budget.
 
     An optional per-row `supervise` field ("all" | "final") rides through into the
     mixture so the trainer can mask non-final assistant turns (the model-eval-model self-reflection
@@ -129,12 +163,12 @@ def _take_rendered(path: Path, budget: int, seed: int, source: str) -> list[dict
         for r in map(json.loads, path.open())
     ]
     assert rows, f"no rows in {path}"
-    return _fill(rows, budget, seed)
+    return _fill_budget(rows, budget, seed)
 
 
-def _take_hf(tok, repo: str, split: str, budget: int, seed: int, max_len: int,
+def _take_hf(tok, repo: str, split: str, budget: tuple[str, int], seed: int, max_len: int,
              source: str, shuffle_buffer: int, renderer) -> list[dict]:
-    """Stream an HF chat dataset and sample up to a token budget.
+    """Stream an HF chat dataset and sample to a (kind, n) budget.
 
     Rows are RENDERED FIRST and length-capped after, so the cap counts the think tokens
     the renderer added (the ordering defect PR #16 recorded in its always_think surgery
@@ -144,7 +178,7 @@ def _take_hf(tok, repo: str, split: str, budget: int, seed: int, max_len: int,
         tok: Tokenizer.
         repo: HF dataset id.
         split: Split name.
-        budget: Token budget for this source.
+        budget: (kind, n) — token budget (greedy fill) or exact example count.
         seed: Shuffle seed.
         max_len: Drop conversations longer than this, rather than truncating mid-answer.
         source: Label recorded on each row.
@@ -155,7 +189,12 @@ def _take_hf(tok, repo: str, split: str, budget: int, seed: int, max_len: int,
 
     Returns:
         Sampled rows with `text`, `source` and `n_tokens`.
+
+    Raises:
+        RuntimeError: An example budget the stream cannot fill — the mixture's shares
+            are the experiment, so a short source is an error, never a silent shrink.
     """
+    kind, want = budget
     ds = load_dataset(repo, split=split, streaming=True).shuffle(
         seed=seed, buffer_size=shuffle_buffer)
     out, total, skipped = [], 0, 0
@@ -173,17 +212,46 @@ def _take_hf(tok, repo: str, split: str, budget: int, seed: int, max_len: int,
         if n > max_len:
             skipped += 1
             continue
-        if total + n > budget:
-            continue
-        out.append({"text": text, "source": source, "n_tokens": n})
-        total += n
-        if total >= budget * 0.995:
-            break
+        if kind == "tokens":
+            if total + n > want:
+                continue
+            out.append({"text": text, "source": source, "n_tokens": n})
+            total += n
+            if total >= want * 0.995:
+                break
+        else:
+            out.append({"text": text, "source": source, "n_tokens": n})
+            if len(out) == want:
+                break
     print(f"  (skipped {skipped} {source} rows: wrong shape, unsupported role, or too long)")
+    if kind == "examples" and len(out) < want:
+        raise RuntimeError(
+            f"source {source!r}: stream exhausted at {len(out)}/{want} examples "
+            f"(after {skipped} skips) — the declared mixture share cannot be met")
     return out
 
 
-def _load_source(tok, cfg, name: str, spec: dict, budget: int, seed: int,
+def _source_stats(rows: list[dict]) -> dict[str, dict]:
+    """Per-source composition of the built mixture, with BOTH share definitions.
+
+    A mixture's split is declared in one unit but reads differently in the other
+    (model-eval-model docs run ~3.4× longer than replay rows, so 20% of examples is
+    ~46% of tokens): recording `share_pct_examples` and `share_pct_tokens` side by side
+    keeps the design share and its token-weight consequence both explicit in the stats.
+    """
+    grand_tok = sum(r["n_tokens"] for r in rows)
+    by_source: dict[str, dict] = {}
+    for r in rows:
+        b = by_source.setdefault(r["source"], {"examples": 0, "tokens": 0})
+        b["examples"] += 1
+        b["tokens"] += r["n_tokens"]
+    for b in by_source.values():
+        b["share_pct_examples"] = round(100 * b["examples"] / len(rows), 2)
+        b["share_pct_tokens"] = round(100 * b["tokens"] / grand_tok, 2)
+    return by_source
+
+
+def _load_source(tok, cfg, name: str, spec: dict, budget: tuple[str, int], seed: int,
                  render_kwargs: dict) -> tuple[list[dict], str]:
     """Load one source and classify it for validation.
 
@@ -226,14 +294,17 @@ def main(config: str, smoke: bool = False) -> None:
 
     Args:
         config: OmegaConf YAML. `sources` maps name -> spec, where a spec is either a local
-            file — {path, format, tokens}, format `messages` (raw chat jsonl, reasoning
+            file — {path, format}, format `messages` (raw chat jsonl, reasoning
             preserved on every turn) or `rendered` (pre-rendered rows: text, n_tokens) — or
-            an HF stream — {repo, split?, tokens, shuffle_buffer?, reasoning}, length-capped
-            at `max_seq_len` AFTER rendering. `reasoning:` is required for HF sources:
+            an HF stream — {repo, split?, shuffle_buffer?, reasoning}, length-capped
+            at `max_seq_len` AFTER rendering. Every spec additionally declares exactly one
+            of `tokens:` (greedy token-share fill, the historical arms) or `examples:`
+            (exact row count — count-share mixtures; short sources fail loudly).
+            `reasoning:` is required for HF sources:
             `native` (rows carry reasoning_content), `none` (no reasoning — every turn gets
             the template's empty marker; the generation-boundary mask handles it), or
             `strip` (deliberate pre-policy no-think rendering for nothink control arms).
-        smoke: Divide every token budget by 20 to validate wiring in seconds.
+        smoke: Divide every budget by 20 to validate wiring in seconds.
     """
     cfg = OmegaConf.load(config)
     assert "tulu3_repo" not in cfg, (
@@ -249,10 +320,10 @@ def main(config: str, smoke: bool = False) -> None:
     rows: list[dict] = []
     kinds: dict[str, str] = {}
     for name, spec in sources.items():
-        budget = int(spec["tokens"]) // scale
+        budget = _budget(name, spec, scale)
         got, kinds[name] = _load_source(tok, cfg, name, spec, budget, seed, render_kwargs)
         print(f"  {name:<24} {len(got):>5} docs  {sum(r['n_tokens'] for r in got):>9,} tok "
-              f"(budget {budget:,}, {kinds[name]})")
+              f"(budget {budget[1]:,} {budget[0]}, {kinds[name]})")
         rows += got
     random.Random(seed).shuffle(rows)
 
@@ -266,15 +337,8 @@ def main(config: str, smoke: bool = False) -> None:
                 rec["supervise"] = r["supervise"]
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
-    grand = sum(r["n_tokens"] for r in rows)
-    by_source: dict[str, dict] = {}
-    for r in rows:
-        b = by_source.setdefault(r["source"], {"examples": 0, "tokens": 0})
-        b["examples"] += 1
-        b["tokens"] += r["n_tokens"]
-    for b in by_source.values():
-        b["share_pct"] = round(100 * b["tokens"] / grand, 2)
-    stats = {"total": {"examples": len(rows), "tokens": grand},
+    by_source = _source_stats(rows)
+    stats = {"total": {"examples": len(rows), "tokens": sum(r["n_tokens"] for r in rows)},
              "by_source": by_source, "mixture_path": str(out_path)}
     (out_dir / "mixture_stats.json").write_text(json.dumps(stats, indent=2))
     write_run_meta(out_dir, OmegaConf.to_container(cfg, resolve=True),

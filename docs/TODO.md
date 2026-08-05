@@ -5,3 +5,4 @@
 5. Centralise all configs into `configs/` (e.g. there should be no configs in `src/`; remaining: `src/eval/misalignment/internalization/control/configs/`).
 6. Make `src/eval/vulnerabilities/` conform to the "Where code runs" model in `CLAUDE.md` (runs on the GPU pod from a clone of this repo, plain `uv run`): it currently has its own nested environment and workflow that predate the rule.
 7. Review `lmsys` and `arena_hard`. Give them better names and make sure that they don't rerun generations for targets or references that have already generated responses and make sure said responses are pushed to HF appropriately.
+8. Execute the full 20/80 model-eval-model SFT run (1 epoch, ~10.5k examples, 2,100 docs = 420/cell) — plan, sizing math and past-run specifics in `docs/plan_full_sft_20_80.md` (blocked on: `hf_repo` at launch, spend sign-off ~$147 gen + ~$30 GPU).
