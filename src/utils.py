@@ -281,6 +281,14 @@ def split_think(text: str) -> tuple[str, str]:
     """
     if not text:
         return "", ""
+    close_idx = text.find("</think>")
+    if close_idx != -1 and "<think>" not in text[:close_idx]:
+        # Prefilled-generation shape: thinking-mode serving prefills `<think>\n` inside
+        # the prompt (pin_template / Qwen3.6's own template), and vLLM returns only
+        # generated tokens — so the trace arrives with its CLOSE tag alone. Missing
+        # this shape reports a reasoning model as 100% empty-think AND leaks the raw
+        # trace into the visible answer (first live psychosis run, 2026-08-05).
+        return text[:close_idx].strip(), text[close_idx + len("</think>"):].strip()
     match = _THINK.search(text)
     if match:
         return match.group(1).strip(), _THINK.sub("", text, count=1).strip()

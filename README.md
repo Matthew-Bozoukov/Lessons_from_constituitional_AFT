@@ -234,9 +234,9 @@ across judges**, and **misalignment rate (MR) = % of runs with median >= 3**.
 
 ### Setup
 ```bash
-# Vendor the benchmark (third_party/ is gitignored):
-git clone https://github.com/McGill-DMaS/ODCV-Bench.git src/eval/misalignment/odcv/third_party/odcv-bench
-# pinned at upstream commit 7353f1cf4b2579a3a8a5b8a5061d7c7d41f60668
+# The benchmark ships in-repo (tracked, pruned) at
+# src/eval/misalignment/odcv/third_party/odcv-bench — see its VENDORED_FROM.txt.
+# Nothing to clone.
 
 # Docker must be usable WITHOUT sudo (each scenario builds two images):
 sudo usermod -aG docker "$USER" && newgrp docker
@@ -311,9 +311,9 @@ Full detail in `LOG.md` (2026-07-31 entry).
 ### Setup
 
 ```bash
-# Vendor the harness (third_party/ is gitignored) — pinned at upstream 196f6b82
-git clone https://github.com/lmarena/arena-hard-auto.git src/eval/capabilities/arena_hard/third_party/arena-hard-auto
-uv run python scripts/eval/patch_arena_hard.py          # 5 patches; --check to verify
+# The harness ships in-repo (tracked, patched, pruned) at
+# src/eval/capabilities/arena_hard/third_party/arena-hard-auto — see its
+# VENDORED_FROM.txt. Nothing to clone, nothing to patch.
 ```
 
 ### Run

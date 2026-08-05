@@ -67,8 +67,6 @@ Thumbs.db
 # ---- Local scratch that must never be committed ------------------------------
 ResearchLog-PASTE-REDUNDANT/
 
-# untracked vendored clones: arena-hard-auto is re-cloned per machine and re-patched by
-# scripts/eval/patch_arena_hard.py (the misalignment evals' third_party/ ARE tracked).
-# The root rule catches stray pre-reorg clones.
+# every eval's third_party/ tree is TRACKED (patched + pruned, see each
+# VENDORED_FROM.txt); the root rule catches stray pre-reorg local clones only.
 /third_party/
-src/eval/capabilities/arena_hard/third_party/

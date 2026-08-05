@@ -134,7 +134,9 @@ def main(argv: list[str] | None = None) -> None:
                   "deliberately with --push-env (HF_TOKEN only) or scp your own.")
         print(f">>> serving on {args.server} (tunnel bound to {bind}:{args.port})")
     server = VllmServer(work_dir=Path("output") / args.name / "server", port=args.port,
-                        executor=executor)
+                        executor=executor,
+                        serve_overrides=OmegaConf.to_container(cfg.get("serving") or {},
+                                                               resolve=True))
     summaries: dict[str, dict] = {}
     try:
         for hf_path in targets:

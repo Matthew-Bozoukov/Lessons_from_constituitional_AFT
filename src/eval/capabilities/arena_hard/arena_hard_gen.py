@@ -21,7 +21,7 @@ Why this is ours rather than the vendored `gen_answer.py`:
   auditable instead of assumed.
 
 Answers are written to the vendored tree (where the judge looks) *and* mirrored under
-`output/` (which survives, since `third_party/` is gitignored and disposable).
+`output/`. The tree is TRACKED in git (patched + pruned; see its VENDORED_FROM.txt).
 
 Run one arm at a time, against whatever that arm's adapter is currently served as:
 
@@ -147,9 +147,8 @@ def main(
     question_file = vendor / "data" / cfg.bench_name / "question.jsonl"
     if not question_file.exists():
         raise SystemExit(
-            f"No question set at {question_file}. Vendor the harness first:\n"
-            f"  git clone https://github.com/lmarena/arena-hard-auto.git {vendor}\n"
-            f"  uv run python scripts/eval/patch_arena_hard.py"
+            f"No question set at {question_file} — the vendored tree is TRACKED in "
+            f"git (patched, pruned). Restore it: git checkout -- {vendor}"
         )
 
     questions = read_jsonl(question_file)

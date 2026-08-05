@@ -320,8 +320,10 @@ class VllmServer:
     server: a new adapter is attached with vLLM's runtime LoRA-load endpoint.
     """
 
-    def __init__(self, work_dir: Path, port: int = 8000, executor=None):
+    def __init__(self, work_dir: Path, port: int = 8000, executor=None,
+                 serve_overrides: dict | None = None):
         self.port = port
+        self.serve_overrides = serve_overrides or {}
         self.executor = executor if executor is not None else LocalExec(work_dir)
         self.base_model: str | None = None
         self.mode: str | None = None
@@ -360,7 +362,11 @@ class VllmServer:
                                         pin_template(template, mode))
 
     def _start(self, spec: TargetSpec, adapter_dir: str | None) -> None:
-        params = _serve_params(spec.base_model)
+        # An eval config's `serving:` section overrides the family defaults — the
+        # family values are what the *other* evals were tuned at, so a long-context
+        # eval widens its own window in its config (the scientific record) instead
+        # of silently changing serving conditions for every eval of the family.
+        params = {**_serve_params(spec.base_model), **self.serve_overrides}
         argv = self.executor.python_argv + [
             "-m", "vllm.entrypoints.openai.api_server",
             "--model", spec.base_model, "--served-model-name", "base",

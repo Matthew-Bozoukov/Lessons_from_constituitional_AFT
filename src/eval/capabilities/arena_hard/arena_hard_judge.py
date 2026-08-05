@@ -130,6 +130,10 @@ def _write_setting_config(
         "prompt_template": upstream["prompt_template"],
         "model_list": models,
         "question_limit": limits,
+        # Read by the vendored gen_judgment.py's baseline patch: every category judges
+        # against this arm instead of upstream's packaged leaderboard baselines. Flows
+        # from run_eval.py's --target/--reference, never from an env var.
+        "baseline_override": str(cfg.baseline_arm),
     }
     path = vendor / "config" / "generated_judge_config.yaml"
     path.write_text(yaml.safe_dump(setting, sort_keys=False))
@@ -196,13 +200,14 @@ def _cost(records: list[dict], judge_model: str) -> dict[str, Any]:
     }
 
 
-def _run_vendor(vendor: Path, setting: Path, endpoint: Path, baseline: str) -> None:
-    """Invoke the vendored gen_judgment.py with our baseline override.
+def _run_vendor(vendor: Path, setting: Path, endpoint: Path) -> None:
+    """Invoke the vendored gen_judgment.py.
 
-    `ARENA_HARD_BASELINE` is read by the patch in `utils/judge_utils.py` — spec §4's
-    required deviation 1, which is what makes the self-comparison land near 50%.
+    The baseline override travels inside the setting file (`baseline_override`, spec
+    §4's required deviation 1 — what makes the self-comparison land near 50%), so the
+    written config is the complete record of the invocation.
     """
-    env = os.environ | {"ARENA_HARD_BASELINE": baseline, "PYTHONUNBUFFERED": "1"}
+    env = os.environ | {"PYTHONUNBUFFERED": "1"}
     subprocess.run(
         [
             sys.executable,
@@ -253,7 +258,7 @@ def judge_arm(cfg: DictConfig, arm: str, stage: int | None, judge_model: str) ->
     print(f">>> arm:      {arm}  vs baseline {baseline}")
     print(f">>> judge:    {judge_model}")
     print(f">>> stage:    {limits}")
-    _run_vendor(vendor, setting, endpoint, baseline)
+    _run_vendor(vendor, setting, endpoint)
 
     records = _load_judgments(vendor, cfg, judge_model, arm)
     return {"arm": arm, "limits": limits} | _summarise(records, baseline) | {
@@ -288,7 +293,7 @@ def validate_judge(cfg: DictConfig) -> dict[str, Any]:
         endpoint = _write_endpoint_config(cfg, vendor, judge_model)
         setting = _write_setting_config(cfg, vendor, judge_model, [arm], limits)
         print(f"\n>>> validating with {judge_model} on {val.n_questions} {val.slice} questions")
-        _run_vendor(vendor, setting, endpoint, baseline)
+        _run_vendor(vendor, setting, endpoint)
         results[judge_model] = _load_judgments(vendor, cfg, judge_model, arm)
 
     # Compare only questions both judges actually returned a parseable verdict on.
@@ -370,15 +375,16 @@ def main(
     vendor = Path(cfg.vendor_dir)
     if not (vendor / "gen_judgment.py").exists():
         raise SystemExit(
-            f"No vendored harness at {vendor}. Clone it, then run "
-            f"`uv run python scripts/eval/patch_arena_hard.py`."
-        )
+            f"No vendored harness at {vendor} — the tree is TRACKED in git (patched, "
+            "pruned; see its VENDORED_FROM.txt). Restore it: git checkout -- "
+            f"{vendor}")
     # A missing patch means the judge would silently compare against upstream's packaged
     # baseline instead of arm A, producing a number that looks fine and means nothing.
-    if "_ARENA_HARD_BASELINE" not in (vendor / "utils" / "judge_utils.py").read_text():
+    if "baseline_override" not in (vendor / "gen_judgment.py").read_text():
         raise SystemExit(
-            "Vendored harness is unpatched. Run: uv run python scripts/eval/patch_arena_hard.py"
-        )
+            f"Vendored gen_judgment.py has lost the baseline_override patch (upstream "
+            f"re-clone?). The tracked tree carries the patches as ordinary diffs — "
+            f"restore it: git checkout -- {vendor}")
 
     out_dir = Path(cfg.output_dir) / "judging" / timestamp()
     out_dir.mkdir(parents=True, exist_ok=True)

@@ -1,0 +1,9 @@
+UPSTREAM_COMMIT=196f6b826783b3da7310e361a805fa36f0be83f3
+SOURCE=https://github.com/lmarena/arena-hard-auto
+PRUNED=data/arena-hard-v0.1/, data/arena-hard-v2.0/model_{answer,judgment}/ (published
+  leaderboard artifacts; arms' answers are generated per run), misc/, BenchBuilder/,
+  leaderboard/, qa_browser.py
+PATCHED=utils/judge_utils.py (baseline override), utils/completion.py (extra_body +
+  usage passthrough, optional boto3/shortuuid), gen_judgment.py (question_limit staged
+  sampling). Applied by scripts/eval/patch_arena_hard.py before its deletion on
+  2026-08-05; the patches are ordinary tracked diffs now — see git log for this tree.

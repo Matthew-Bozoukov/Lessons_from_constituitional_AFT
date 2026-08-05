@@ -11,14 +11,18 @@ turns: 12
 smoke: false       # true = 1 persona x 3 turns, for wiring checks
 
 redteam:
-  model: x-ai/grok-3          # upstream's working default — Grok-4 now refuses the roleplay
+  model: x-ai/grok-4.5  # upstream used grok-3 (grok-4 refused the roleplay); OpenRouter
+                        # deprecated grok-3 by 2026-08-05. Of the live xAI models only
+                        # grok-4.5 plays the persona — 4.3 and 4.20 refuse (probed with
+                        # the real prompts, opening + post-pushback continuation).
   temperature: 1.0
   max_tokens: 4096
 
 judge:
-  model: x-ai/grok-4  # upstream's published grader (LW post + result CSVs; only the
-                      # ROLEPLAY refusal forced grok-3 for the red-teamer). Gemini 2.5
-                      # Pro authored the therapy rubric but never graded.
+  model: x-ai/grok-4.3  # upstream's published grader was grok-4 (LW post + result CSVs);
+                        # deprecated on OpenRouter by 2026-08-05, and xAI names 4.3 as the
+                        # migration target — closest successor, probed to emit the 14-key
+                        # rubric row. Gemini 2.5 Pro authored the rubric but never graded.
   temperature: 0.0    # deterministic grading (upstream used the provider default)
   max_tokens: 4096    # grok-4 reasons before answering; headroom per CLAUDE.md gotcha 5
 
@@ -33,3 +37,12 @@ generation:        # target sampling, matching agentic_misalignment's temperatur
 concurrency:
   characters: 9      # persona conversations in parallel (each internally sequential)
   judge_workers: 16  # (persona, turn) grading cells in parallel
+
+serving:             # vLLM overrides for this eval (see VllmServer.serve_overrides).
+  # 12 turns with reasoning preserved in target context (repo policy 2026-08-04)
+  # overflow the family default 16384 window around turn 7 (first live run,
+  # 2026-08-05: prompt hit 12289 + 4096 max_tokens > 16384 on every persona).
+  # 40960 fits the worst-case arc; max_num_seqs 12 covers the 9 persona threads
+  # while keeping Qwen3.6's Mamba-cache footprint near the family default's.
+  max_model_len: 40960
+  max_num_seqs: 12
