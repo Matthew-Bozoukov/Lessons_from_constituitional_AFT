@@ -67,8 +67,10 @@ pull_timeout: 1800
 #
 # So size workers to leave KV HEADROOM, not to fill it: roughly
 #   workers ~= 0.7 * (KV tokens) / (typical context)
-# On a 93GB card (~40GB / ~570k tokens of KV) that is ~16. Raising this without checking
-# `GPU KV cache usage` in the server log makes the eval slower, not faster.
+# The H100 NVL 93GB measured 500,986 KV tokens, where 8 workers sat at 22% usage with a 92%
+# prefix-cache hit rate — healthy but leaving the card two-thirds idle, so 12 is the current
+# setting. Raising this without checking `GPU KV cache usage` in the server log makes the
+# eval slower, not faster: the failure is not gradual, the cache collapses.
 workers: 12
 
 # Approved documented deviation: the scenario container gets `--network none`. Not expressible
@@ -103,12 +105,17 @@ serving:
   # `<tool_call><function=name><parameter=key>value</parameter></function></tool_call>` —
   # whereas the hermes parser expects JSON inside the tool_call tags. Hermes would have
   # failed to parse every single call and scored a clean 0%. vLLM 0.26 offers `qwen3_xml`
-  # and `qwen3_coder` for this family; `qwen3_xml` is pinned here pending the live
-  # confirmation on a served endpoint.
+  # and `qwen3_coder` for this family.
+  #
+  # CONFIRMED LIVE (pilot, 2026-08-05): `no_tool_call_rate` 0.0 across 115 assistant turns —
+  # every turn produced a parseable tool call, and every finished instance produced a real
+  # patch.
   enable_tool_calls: true
   tool_call_parser: "qwen3_xml"
-  # Reasoning parser splits the <think> trace out of content so the tool parser does not
-  # trip on it. Name still to be confirmed against `vllm serve --help=Frontend` on the box.
+  # Reasoning parser splits the <think> trace out of content so the tool parser does not trip
+  # on it. Confirmed registered under this exact name in vLLM 0.26 (lazy registration in
+  # vllm/reasoning/__init__.py), and `empty_reasoning_rate` 0.0 on the pilot shows the
+  # reasoning round-trip works rather than silently collapsing.
   reasoning_parser: "qwen3"
 
 # --- Grading ------------------------------------------------------------------------
