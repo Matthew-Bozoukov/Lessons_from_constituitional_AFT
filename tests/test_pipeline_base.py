@@ -134,7 +134,7 @@ def test_smoke_merges_overrides_and_never_mutates_the_input(tmp_path):
 
 
 def _real(name):
-    return yaml.safe_load(open(f"configs/data/{name}.yaml"))
+    return yaml.safe_load(open(f"configs/data/synthdoc/{name}.yaml"))
 
 
 def test_real_configs_keep_historical_snapshot_names():

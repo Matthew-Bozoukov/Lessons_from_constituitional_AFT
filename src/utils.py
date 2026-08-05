@@ -168,7 +168,7 @@ def count_chat_tokens(messages: list[dict], tokenizer_name: str) -> int:
 # --- Thinking framework profiles -----------------------------------------------------
 #
 # Everything family-specific about how a model does chain-of-thought, in ONE place, so
-# the mask (src/train/masking.py), mixture rendering (src/data/build_mixture.py) and the
+# the mask (src/train/masking.py), mixture rendering (src/data/mixture/build_mixture.py) and the
 # serve-time template pin (src/endpoints/vllm_server.py) can never drift apart. The
 # repo-wide policy (2026-08-04) is preserve-thinking: training data carries a think block
 # on EVERY assistant turn (reasoning_content where the source has it, the empty marker

@@ -1,8 +1,8 @@
 # ABOUTME: Thin CLI over src/data/synthdoc/pipeline.py -- THE entrypoint for synthetic
 # ABOUTME: dataset generation. The config (incl. prompts) fully defines the document type.
 #
-# Run: uv run scripts/data/build_dataset.py --config configs/data/difficult_advice.yaml [--smoke]
-#      uv run scripts/data/build_dataset.py --config configs/data/model_eval_model.yaml [--smoke]
+# Run: uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/difficult_advice.yaml [--smoke]
+#      uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/model_eval_model.yaml [--smoke]
 #      ... --ablate final          # ablation arm: run the stage's null-op instead
 #      ... --estimate              # print the cost estimate instead of running
 

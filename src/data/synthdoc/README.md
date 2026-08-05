@@ -9,10 +9,10 @@ its models, its knobs — lives in that type's config, so the config alone is th
 scientific record of what a run generated:
 
 ```
-uv run scripts/data/build_dataset.py --config configs/data/difficult_advice.yaml [--smoke]
-uv run scripts/data/build_dataset.py --config configs/data/model_eval_model.yaml [--smoke]
-uv run scripts/data/build_dataset.py --config <cfg> --ablate final     # ablation arm
-uv run scripts/data/build_dataset.py --config <cfg> --estimate [--measured <smoke manifest>]
+uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/difficult_advice.yaml [--smoke]
+uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/model_eval_model.yaml [--smoke]
+uv run scripts/data/synthdoc/build_dataset.py --config <cfg> --ablate final     # ablation arm
+uv run scripts/data/synthdoc/build_dataset.py --config <cfg> --estimate [--measured <smoke manifest>]
 ```
 
 (`uv run synthdoc run|topup|check|estimate|segment` remains as the console script for
@@ -67,7 +67,7 @@ repo. `manifest.json` records git sha, constitution sha256, ablations, per-stage
 and wall clock; `--estimate --measured <smoke manifest>` prices a full run from real
 per-call token counts (priors live in each model block's `assumed_tokens`).
 
-## Document type: difficult advice (`configs/data/difficult_advice.yaml`)
+## Document type: difficult advice (`configs/data/synthdoc/difficult_advice.yaml`)
 
 A faithful replication of the difficult-advice recipe from
 [Teaching Claude Why](https://alignment.anthropic.com/2026/teaching-claude-why/), as a
@@ -77,7 +77,7 @@ step)** → chat export with the trait carried in metadata. Output and HF cache 
 keep their historical `synthdoc_v2` prefixes so existing snapshots stay resumable.
 This replaced the config-driven v1 (deleted 2026-08-03, git history).
 
-## Document type: self reflection (`configs/data/self_reflection.yaml`)
+## Document type: self reflection (`configs/data/synthdoc/self_reflection.yaml`)
 
 Inverts who is tempted: **the agent itself**. Working autonomously (prose or agentic
 form), it finds it could protect its own position — or the objective it was deployed to
@@ -93,7 +93,7 @@ guidelines", "not permitted") or too short to have deliberated. Corpus generated
 2026-08-03 (pre-restructure code, same prompts): 592 records / 1.56M tokens on HF
 `LASR-Callum/2026-08-03-synthdoc-self-reflection`.
 
-## Document type: model-eval-model (`configs/data/model_eval_model.yaml`)
+## Document type: model-eval-model (`configs/data/synthdoc/model_eval_model.yaml`)
 
 Generated over a **completed** difficult-advice run (`source:` block; the engine
 fail-fasts if the source run's constitution sha differs): documents in which the model
@@ -115,7 +115,7 @@ response sits in the model's own prior turn with no think block, a reflection pr
 follows, the model revises or holds with reasons; trained with `supervise: "final"`,
 threaded through `convert_synthdoc_qwen.py` → `build_mixture` → `masking.py`).
 
-`uv run synthdoc check --config configs/data/model_eval_model.yaml --run_dir <dir>`
+`uv run synthdoc check --config configs/data/synthdoc/model_eval_model.yaml --run_dir <dir>`
 runs the validity checks and gates on the config's thresholds: coverage (incl. the
 flaw grid), template collapse, per-cell verdict distribution (never 100% — all-`revised`
 in m1 would train capitulation), post-hoc-reasoning rate, blindness, the numpy

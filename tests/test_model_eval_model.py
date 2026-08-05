@@ -9,7 +9,7 @@ import pytest
 
 import yaml
 
-from src.data.convert_synthdoc_qwen import _passthrough
+from src.data.mixture.convert_synthdoc_qwen import _passthrough
 from src.data.synthdoc.checks import (
     check_blindness,
     check_coverage,
@@ -27,7 +27,7 @@ from src.data.synthdoc.cells import (
     to_model_eval_model_sft,
 )
 
-CFG = yaml.safe_load(open("configs/data/model_eval_model.yaml"))
+CFG = yaml.safe_load(open("configs/data/synthdoc/model_eval_model.yaml"))
 P = CFG["prompts"]  # the config IS the wording -- tests validate against it
 
 EXPLICITNESS = {"name_clause": 0.3, "paraphrase": 0.4, "embody": 0.3}

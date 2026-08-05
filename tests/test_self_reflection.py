@@ -22,7 +22,7 @@ from src.data.synthdoc.operators import (
 )
 from src.data.synthdoc.pipeline import build_stages
 
-CONFIG = "configs/data/self_reflection.yaml"
+CONFIG = "configs/data/synthdoc/self_reflection.yaml"
 CFG = yaml.safe_load(open(CONFIG))
 STAGES = {s["name"]: s for s in CFG["stages"]}
 LINT = STAGES["final"]["lint"]

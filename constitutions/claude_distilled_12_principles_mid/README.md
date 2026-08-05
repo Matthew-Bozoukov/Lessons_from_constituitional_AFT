@@ -14,4 +14,4 @@
 | claim coverage | 664/664 (inventory sha `8cef061b6e0f`) |
 | siblings | `claude_distilled_04_principles_coarse/`, `claude_distilled_24_principles_fine/` |
 | evolution record | HF `LASR-Callum/2026-08-03-specgen-constitution-granularity` |
-| consumed by | `configs/data/synthdoc.yaml` (segments into 12 traits) |
+| consumed by | `configs/data/synthdoc/difficult_advice.yaml` (segments into 12 traits) |
