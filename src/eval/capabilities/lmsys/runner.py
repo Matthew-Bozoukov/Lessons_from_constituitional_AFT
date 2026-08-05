@@ -247,26 +247,24 @@ def summarize(outcomes: Sequence[str]) -> dict:
 # --- Framework entrypoint ------------------------------------------------------------
 
 
-def run(target, cfg, out_dir: Path) -> dict:
+def run(target, cfg, out_dir: Path, *, reference: str = "") -> dict:
     """Run the LMSYS chat-quality eval for one ServedTarget (CLAUDE.md contract).
 
-    Generates the target's answers against the served endpoint, writes the
-    `answers.jsonl` + `answers_meta.json` artifact a later run can take as its
-    reference, then judges this arm's visible answers pairwise against the reference
-    arm's. Reference compatibility (subset hash, thinking mode) is checked BEFORE any
-    generation is paid for.
+    Resolves this arm's answers cache-first (generating and pushing only on a miss),
+    then judges the visible answers pairwise against the reference arm's cache entry.
+    When the target IS the reference, the job ends at a filled cache entry.
 
     Args:
         target: A ServedTarget from src/endpoints/vllm_server.py.
-        cfg: The lmsys eval config (configs/eval/lmsys.yaml + CLI overrides), with
-            `reference` set by run_eval.py's --reference.
+        cfg: The lmsys eval config (configs/eval/lmsys.yaml + CLI overrides).
         out_dir: Per-target run directory owned by run_eval.py.
+        reference: HF path of the reference MODEL, passed by run_eval.py as a kwarg
+            (--reference, falling back to the config's reference_model).
 
     Returns:
         Win-rate summary plus generation-health rates and the subset hash.
     """
     cfg = OmegaConf.merge(cfg)  # private copy; run() must not mutate the caller's config
-    reference = str(cfg.get("reference") or "")
     if not reference:
         raise RuntimeError(
             "lmsys is judged against a reference ARM: pass --reference <hf_path> or set "

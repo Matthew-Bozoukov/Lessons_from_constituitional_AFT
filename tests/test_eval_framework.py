@@ -68,7 +68,14 @@ def test_registry_runners_fulfill_the_contract_and_configs_exist():
 
     for name, spec in EVALS.items():
         run = resolve(name)  # imports the runner: a missing module or run() fails right here
-        assert list(signature(run).parameters) == ["target", "cfg", "out_dir"], name
+        params = signature(run).parameters
+        assert list(params)[:3] == ["target", "cfg", "out_dir"], name
+        # Anything beyond the contract trio must be keyword-only WITH a default (the
+        # `reference` pattern): run_eval passes extras as kwargs only to evals that
+        # take them, and an eval without extras must be callable with exactly three.
+        for extra in list(params)[3:]:
+            p = params[extra]
+            assert p.kind is p.KEYWORD_ONLY and p.default is not p.empty, (name, extra)
         assert Path(spec.config).exists(), (name, spec.config)
 
 

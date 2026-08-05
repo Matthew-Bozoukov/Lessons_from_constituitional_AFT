@@ -26,13 +26,14 @@ def _fetch_reference(reference: str, dest: Path) -> None:
     shutil.copy(src, dest)
 
 
-def run(target, cfg, out_dir: Path) -> dict:
+def run(target, cfg, out_dir: Path, *, reference: str = "") -> dict:
     """Run the Arena-Hard eval for one ServedTarget (CLAUDE.md contract).
 
     Side-by-side by construction: the target's answers are judged against the config's
-    `baseline_arm` answers, supplied via `reference` (run_eval.py's --reference). The
-    summary is the judged score block; the full report stays a separate curation step
-    over the accumulated arms (`scratch/reports/arena_hard_report.py`).
+    `baseline_arm` answers, supplied via the `reference` kwarg (run_eval.py's
+    --reference; still an answers ARTIFACT here, pending the answer-cache migration).
+    The summary is the judged score block; the full report stays a separate curation
+    step over the accumulated arms (`scratch/reports/arena_hard_report.py`).
 
     Returns:
         Paths of the generated answers and judging output for this arm.
@@ -40,7 +41,6 @@ def run(target, cfg, out_dir: Path) -> dict:
     cfg = OmegaConf.merge(cfg)  # private copy
     arm_name = target.spec.model_key
     baseline = str(cfg.baseline_arm)
-    reference = cfg.get("reference")
     assert reference, "arena_hard is judged against a baseline: pass --reference"
 
     bench_answers = Path(str(cfg.vendor_dir)) / "data" / str(cfg.bench_name) / "model_answer"

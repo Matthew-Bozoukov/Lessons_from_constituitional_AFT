@@ -177,7 +177,7 @@ def _target(hf_path, model_key, mode="think", boots: list | None = None):
     return _T()
 
 
-def _cfg(tmp_path, reference):
+def _cfg(tmp_path):
     import json as _json
 
     prompts = [{"id": i, "prompt": f"question {i}"} for i in range(4)]
@@ -186,7 +186,6 @@ def _cfg(tmp_path, reference):
     from omegaconf import OmegaConf
 
     return OmegaConf.create({
-        "reference": reference,
         "prompts_path": str(prompts_file),
         "cache": {"repo": str(tmp_path / "cache"), "mirror": str(tmp_path / "mirror"),
                   "refresh": False},
@@ -205,27 +204,30 @@ def test_reference_then_target_flow_through_the_cache(tmp_path, monkeypatch):
     monkeypatch.setattr(runner, "OpenRouterClient", _StubJudge)
     monkeypatch.setattr("src.endpoints.vllm_server.resolve_target",
                         lambda hf: _target(hf, "ref_model").spec)
-    cfg = _cfg(tmp_path, reference="org/ref")
+    cfg = _cfg(tmp_path)
 
     # Arm 1: the reference (as run_eval orders it) — generates, pushes, no judging.
     boots: list = []
     ref_out = tmp_path / "run_ref"
     ref_out.mkdir()
-    summary = runner.run(_target("org/ref", "ref_model", boots=boots), cfg, ref_out)
+    summary = runner.run(_target("org/ref", "ref_model", boots=boots), cfg, ref_out,
+                         reference="org/ref")
     assert summary["reference_arm"] is True and boots == ["org/ref"]
     assert "target_wins" not in summary
 
     # Arm 2: a target — generates its own answers, judges against the cached reference.
     t_out = tmp_path / "run_t"
     t_out.mkdir()
-    summary = runner.run(_target("org/ft", "ft_model", boots=boots), cfg, t_out)
+    summary = runner.run(_target("org/ft", "ft_model", boots=boots), cfg, t_out,
+                         reference="org/ref")
     assert summary["ties"] == 4 and summary["reference"] == "org/ref"
 
     # Arm 2 again: fully cached — MUST complete without touching any endpoint
     # (boots=None makes base_url raise), proving the zero-vLLM cache-hit path.
     t2_out = tmp_path / "run_t2"
     t2_out.mkdir()
-    summary = runner.run(_target("org/ft", "ft_model", boots=None), cfg, t2_out)
+    summary = runner.run(_target("org/ft", "ft_model", boots=None), cfg, t2_out,
+                         reference="org/ref")
     assert summary["ties"] == 4
 
 
@@ -235,11 +237,12 @@ def test_cross_mode_reference_is_refused(tmp_path, monkeypatch):
     monkeypatch.setattr(runner, "OpenAI", _StubOpenAI)
     monkeypatch.setattr("src.endpoints.vllm_server.resolve_target",
                         lambda hf: _target(hf, "ref_model", mode="nothink").spec)
-    cfg = _cfg(tmp_path, reference="org/ref")
+    cfg = _cfg(tmp_path)
     out = tmp_path / "run"
     out.mkdir()
     with pytest.raises(RuntimeError, match="cross-mode"):
-        runner.run(_target("org/ft", "ft_model", mode="think", boots=[]), cfg, out)
+        runner.run(_target("org/ft", "ft_model", mode="think", boots=[]), cfg, out,
+                   reference="org/ref")
 
 
 # --- Summary arithmetic ---------------------------------------------------------------

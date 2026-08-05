@@ -89,7 +89,10 @@ def main(argv: list[str] | None = None) -> None:
     _preflight(args.name, args)
     cfg = OmegaConf.merge(OmegaConf.load(args.config or EVALS[args.name].config),
                           OmegaConf.from_dotlist(args.overrides))
+    # `reference` travels to run() as an explicit kwarg, never through the config: evals
+    # without one take no kwarg and nothing breaks; evals with one declare it.
     targets = list(args.target)
+    run_kwargs: dict = {}
     spec_meta = EVALS[args.name]
     if spec_meta.needs_reference and spec_meta.reference_is_model:
         # The reference is a MODEL (flag overrides the config's recorded default), and it
@@ -100,7 +103,7 @@ def main(argv: list[str] | None = None) -> None:
         if not reference:
             raise SystemExit(f"{args.name} is judged against a reference arm: pass "
                              "--reference <hf_path> (or set reference_model in the config)")
-        cfg.reference = reference
+        run_kwargs["reference"] = reference
         if reference in targets:
             targets.remove(reference)
         targets.insert(0, reference)
@@ -109,9 +112,9 @@ def main(argv: list[str] | None = None) -> None:
         if not args.reference:
             raise SystemExit(f"{args.name} is judged against a baseline arm: pass "
                              "--reference <answers artifact (local or repo::file)>")
-        cfg.reference = args.reference
+        run_kwargs["reference"] = args.reference
     elif args.reference:
-        cfg.reference = args.reference
+        raise SystemExit(f"{args.name} takes no --reference")
     run_fn = resolve(args.name)
     command = " ".join(sys.argv)
 
@@ -141,9 +144,10 @@ def main(argv: list[str] | None = None) -> None:
             out_dir.mkdir(parents=True, exist_ok=True)
             write_run_meta(out_dir, OmegaConf.to_container(cfg, resolve=True),
                            extra={"command": command, "target": hf_path,
-                                  "base_model": spec.base_model, "mode": spec.mode})
+                                  "base_model": spec.base_model, "mode": spec.mode,
+                                  **run_kwargs})
 
-            summary = run_fn(served, cfg, out_dir)
+            summary = run_fn(served, cfg, out_dir, **run_kwargs)
 
             summary = {"target": hf_path, "mode": spec.mode, **summary}
             (out_dir / "results.json").write_text(json.dumps(summary, indent=2))
