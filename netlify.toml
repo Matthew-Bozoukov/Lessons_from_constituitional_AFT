@@ -1,9 +1,17 @@
-# Netlify reads this file from the repository root.
+# Netlify build configuration. This is the ONLY netlify.toml in the repository.
 #
-# `base` points at the frontend project. Once base is set, Netlify reads the
-# build settings from `dashboard/netlify.toml` - which is why the build command
-# and publish directory are deliberately NOT duplicated here. Keeping them in
-# one place stops the two files drifting apart.
+# It used to be split in two - `base` here, build settings in the frontend's own
+# netlify.toml - on the reasoning that keeping the command in one place stops the
+# files drifting apart. That reasoning failed twice over. Resolving `base` from
+# the root file and then re-reading a second file from inside that base is
+# order-dependent, and which file wins for a given key is not obvious from
+# either of them. Worse, the rename of Visualizer/ to dashboard/ (6adee4d) moved
+# `base` but left the second file behind, so the root pointed at a build config
+# that no longer existed and the deploy had no command or publish directory at
+# all. One file, all keys, nothing to leave behind in a rename.
+#
+# Paths in `command` and `publish` are relative to `base`, so `publish = "out"`
+# means `dashboard/out`.
 #
 # The site is a continuous-deployment target: every push to the default branch
 # triggers a rebuild. If the repository this deploys from ever changes, the site
@@ -12,3 +20,31 @@
 
 [build]
   base = "dashboard"
+  command = "npm run build:netlify"
+  publish = "out"
+
+[build.environment]
+  # Matches the `engines.node` floor in dashboard/package.json. Raise both
+  # together or the build can pass locally and fail here.
+  NODE_VERSION = "22.13.0"
+  NEXT_TELEMETRY_DISABLED = "1"
+
+  # The build reads dataset manifests from Hugging Face. All of them are public,
+  # so NO token is needed and none should be set here - see
+  # dashboard/docs/HUGGINGFACE_DATA_SOURCE.md.
+  #
+  # A Hub failure must never fail a deploy; it degrades to a described gap on
+  # the affected entry. These two bound how long that degradation can take:
+  # 10s per request, at most 4 tree pages, so an unreachable Hub costs the build
+  # seconds rather than minutes.
+  HF_TIMEOUT_MS = "10000"
+  HF_TREE_MAX_PAGES = "4"
+
+# Deploy previews and branch builds are byte-identical to production here: the
+# site is static, reads only public data, and holds no environment-specific
+# configuration. Declared explicitly so a preview cannot silently diverge.
+[context.deploy-preview]
+  command = "npm run build:netlify"
+
+[context.branch-deploy]
+  command = "npm run build:netlify"

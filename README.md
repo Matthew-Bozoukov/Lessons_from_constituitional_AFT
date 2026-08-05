@@ -117,8 +117,12 @@ so the guard applies to every nested project.
 ## Deployment
 
 `dashboard/` deploys to Netlify on every push to the default branch. The root
-[`netlify.toml`](netlify.toml) sets the base directory; the build command and
-publish directory live in `dashboard/netlify.toml`, so the two do not drift.
+[`netlify.toml`](netlify.toml) is the only Netlify configuration in the
+repository: it sets the base directory, the build command and the publish
+directory together. There is deliberately no second netlify.toml inside
+`dashboard/` - the `Visualizer/` to `dashboard/` rename moved `base` and left
+the old one behind, which is how the deploy config came to point at a file that
+did not exist.
 
 The repository-to-site link lives in the Netlify dashboard, not in git. If the
 deploying repository changes, the site must be re-linked there - nothing in the
