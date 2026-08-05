@@ -17,14 +17,14 @@ trainable-token floor clears — see below).
 - **20% — model-eval-model** (all five cells pooled), rendered through
   `convert_synthdoc_qwen.py` (real `<think>` traces kept; `supervise` metadata rides
   through to the masking).
-- **80% — replay from the repo's established three-source set: TULU3
-  (`allenai/tulu-3-sft-mixture`) + NuminaMath-CoT (`AI-MO/NuminaMath-CoT`) + No Robots
-  (`HuggingFaceH4/no_robots`)**, all rendered with no think block. Two precedent splits
-  exist — equal thirds (`qwen36_100k_three_source.yaml`) and numina-heavy 67/16.5/16.5
-  (`qwen36_500k_da20_numina.yaml`); pick one when writing the mixture config.
-  (Checked 2026-08-05: Matthew's HF account has no additional replay datasets — his
-  uploads are the difficult-advice corpus and eval transcripts — so "Tulu + Numina +
-  other stuff on HF" resolves to this three-source set unless a new repo id is named.)
+- **80% — replay matching Matthew's 20%-difficult-advice run** (DECIDED 2026-08-05):
+  the `qwen36_500k_da20_numina.yaml` numina-heavy split — NuminaMath-CoT
+  (`AI-MO/NuminaMath-CoT`) 67% of the replay share, TULU3 (`allenai/tulu-3-sft-mixture`)
+  and No Robots (`HuggingFaceH4/no_robots`) 16.5% each — i.e. replay rows ≈ 5,628
+  numina + 1,386 tulu3 + 1,386 no_robots of the 8,400.
+- `build_mixture.py` now supports **`examples:` budgets** alongside `tokens:` (exactly
+  one per source; short sources fail loudly), so the mixture config declares the row
+  counts above directly — no token-budget guessing.
 
 ## What past runs actually did (the record to match)
 
@@ -90,9 +90,8 @@ Consequences:
 concentration than the historical token-based 20/80 arms. Cross-arm comparisons against
 those must account for this.
 
-**Replay budgeting**: `build_mixture.py` budgets sources by tokens, not rows — set the
-three replay `tokens:` budgets to hit ~8,400 rows at the chosen split (equal thirds:
-~1.93M tokens each at ~690 tok/row; verify row counts in the built manifest and adjust).
+**Replay budgeting**: superseded — `build_mixture.py` gained `examples:` budgets
+(2026-08-05), so the mixture config declares row counts exactly.
 
 ## Pipeline steps once scale is chosen
 
