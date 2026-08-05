@@ -19,17 +19,20 @@ to a future reader.
 
 | category | spent to date |
 |---|---|
-| OpenRouter (data generation) | **$255.96** |
+| OpenRouter (data generation) | **$269.68** |
 | OpenRouter (eval judging) | $16.54 |
 | OpenRouter (eval scaffolding/smoke) | $0.14 |
 | GPU rental | $19.78 (+ ~4 RunPod A100-h on 2026-08-03, $ TBD from dashboard) |
-| **total** | **$292.42** (+ GPU TBD) |
+| **total** | **$306.14** (+ GPU TBD) |
 
 <!-- Total recomputed once at the jamie/write-all-evals-to-hf <- main merge (2026-08-06),
      not carried over from either side: both branches advanced the same running total
      independently from $256.15 at the fork. This branch added $16.52 judging + $19.61 GPU
      (psychosis, table2 arms); main added the $0.13 scaffolding/smoke category (SWE-bench
      wiring). 255.96 + 16.54 + 0.13 + 19.78 = 292.41. Both source sections are kept below. -->
+<!-- Recomputed again at the model-eval-model-data-gen rebase onto main (2026-08-07): that
+     branch added $13.72 data generation (255.96 -> 269.68) from the same $256.15 fork
+     state; its 2026-08-05 section is below. 269.68 + 16.54 + 0.14 + 19.78 = 306.14. -->
 
 ---
 
@@ -110,6 +113,19 @@ First live psychosis runs: `table2-synthdoc-r64` (20% DA / 80% benign) and `tabl
 ---
 
 ---
+
+## 2026-08-05 — model-eval-model pre-generation validation batches (OpenRouter, Sonnet 5)
+
+Human-verification batches before the full 2,100-doc run, against the real HF source
+corpus with the recovered 9-principle constitution: one 10-doc smoke ($0.76), one 15-doc
+real-pipeline batch at 3/cell ($1.26, `output/model_eval_model/20260805_133015`), plus
+`synthdoc check` judge calls — including one aborted check run whose judges returned
+empty content (Sonnet 5 hidden reasoning ate the 500-token caps; fixed by
+`reasoning: {enabled: false}` on the three judges) and one green rerun.
+**Total $13.72 by `/credits` delta ($302.55 → $288.83)** — the judge runs dominate
+(~$11.7: gold validation samples 100 source responses per check run, and the aborted
+run's calls still billed). Unit costs confirmed: $0.07-0.08/doc generation.
+Lesson: check runs at sample=100 cost ~$5 each; budget them into pre-run validation.
 
 ## 2026-08-04 — MEM pipeline smoke validation (OpenRouter, Sonnet 5)
 
