@@ -18,12 +18,12 @@ class EvalSpec:
     package: str                   # eval package under src.eval; its runner.py defines run()
     config: str                    # default OmegaConf YAML under configs/eval/
     needs_docker: bool = False     # rollouts execute in containers where the driver runs
-    needs_reference: bool = False  # judged against a baseline arm (reference=...)
-    # True when --reference names a MODEL rather than an answers artifact: run_eval
-    # prepends it as the first arm, and the eval fills/reads the HF answer cache
-    # (src/eval/answer_cache.py) inside run(). False = legacy artifact-path reference
-    # (arena_hard, pending migration).
-    reference_is_model: bool = False
+    # run() kwargs (keyword-only params — each doubles as a --flag on run_eval.py) whose
+    # value names a MODEL that must also run, first, as an ordinary arm of the same
+    # invocation: e.g. lmsys's `reference` fills the HF answer cache the later arms are
+    # judged against. Config default: `<kwarg>_model`. run_eval prepends declaratively —
+    # it never learns what the kwarg means; required-ness is enforced by run() itself.
+    arm_kwargs: tuple[str, ...] = ()
 
 
 EVALS: dict[str, EvalSpec] = {
@@ -33,14 +33,14 @@ EVALS: dict[str, EvalSpec] = {
     ),
     "arena_hard": EvalSpec(
         "capabilities.arena_hard",
-        "configs/eval/arena_hard.yaml",
-        needs_reference=True
+        "configs/eval/arena_hard.yaml"
+        # takes --reference (an answers ARTIFACT, asserted in run()) — not an arm_kwarg
+        # until its answer-cache migration
     ),
     "lmsys": EvalSpec(
         "capabilities.lmsys",
         "configs/eval/lmsys.yaml",
-        needs_reference=True,
-        reference_is_model=True
+        arm_kwargs=("reference",)
     ),
     "internalization": EvalSpec(
         "misalignment.internalization",

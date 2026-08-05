@@ -12,9 +12,10 @@ served — again. **Method** (on `jamie/write-all-evals-to-hf`): (1) `src/eval/a
 sampling params), `hf:` repo or local-dir backends, per-invocation mirror for same-run
 handoff, meta validated on every read, overwrites refused unless `cache.refresh=true`.
 (2) `ServedTarget` is now LAZY: vLLM boots on first `base_url` access, so a fully cached
-arm never starts a server. (3) `--reference` names a MODEL for cache-backed evals
-(`EvalSpec.reference_is_model`); run_eval prepends it as the first arm — its run() fills
-the cache entry (no judging), later arms judge against it; no bootstrap step exists.
+arm never starts a server. (3) eval-specific CLI flags are derived from run()'s keyword-only params and piped
+through blind (`derive_run_kwargs`); `EvalSpec.arm_kwargs` declares which kwargs name a
+MODEL that also runs first as an ordinary arm — lmsys's `reference` fills the cache entry
+(no judging), later arms judge against it; no bootstrap step exists.
 lmsys is wired (arena_hard keeps the legacy artifact-path reference pending migration;
 mmlu's local records cache is next). Cross-mode/cross-subset pairing is structurally
 impossible — they're different cache keys, plus an explicit cross-mode refusal.

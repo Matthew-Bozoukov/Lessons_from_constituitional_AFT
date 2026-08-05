@@ -195,3 +195,23 @@ def test_sshexec_remote_commands_get_uv_on_path():
 
     wrapped = SshExec("host", port=8000)._with_env("uv run x")
     assert wrapped.startswith('export PATH="$HOME/.local/bin:$PATH"; ')
+
+
+def test_derive_run_kwargs_come_from_the_run_signature():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("run_eval_module", "scripts/run_eval.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    def fake_run(target, cfg, out_dir, *, reference="", judge_seed=""):
+        raise NotImplementedError
+
+    # Keyword-only params become --flags; underscores map to dashes; absent flags are
+    # simply not passed, so evals see their own defaults.
+    assert mod.derive_run_kwargs(fake_run, ["--reference", "org/x"]) == {"reference": "org/x"}
+    assert mod.derive_run_kwargs(fake_run, ["--judge-seed", "7"]) == {"judge_seed": "7"}
+    assert mod.derive_run_kwargs(fake_run, []) == {}
+    # A flag no eval declares is a hard error, never silently dropped.
+    with pytest.raises(SystemExit, match="unknown arguments"):
+        mod.derive_run_kwargs(fake_run, ["--bogus", "x"])

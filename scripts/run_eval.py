@@ -26,8 +26,25 @@ def _preflight(name: str, args: argparse.Namespace) -> None:
         from src.eval.docker import docker_preflight
 
         docker_preflight()
-    # needs_reference is validated after the config loads (the reference may come from
-    # the eval config's `reference_model` with --reference as override) — see main().
+
+
+def derive_run_kwargs(run_fn, unknown_argv: list[str]) -> dict:
+    """Parse eval-specific CLI flags derived from run()'s keyword-only parameters.
+
+    The signature IS the declaration: `run(..., *, reference="")` makes --reference a
+    valid flag for that eval and only that eval. Anything left over is a hard error, so
+    a typo'd or wrong-eval flag never disappears silently.
+    """
+    from inspect import signature
+
+    extra = argparse.ArgumentParser(add_help=False)
+    for param in signature(run_fn).parameters.values():
+        if param.kind is param.KEYWORD_ONLY:
+            extra.add_argument(f"--{param.name.replace('_', '-')}")
+    namespace, leftover = extra.parse_known_args(unknown_argv)
+    if leftover:
+        raise SystemExit(f"unknown arguments for this eval: {leftover}")
+    return {key: value for key, value in vars(namespace).items() if value is not None}
 
 
 def _results_markdown(target: str, mode: str, summary: dict) -> str:
@@ -62,10 +79,6 @@ def main(argv: list[str] | None = None) -> None:
                         help="HF paths: LoRA adapter repos (base + thinking mode inferred) or full models")
     parser.add_argument("--name", required=True, choices=sorted(EVALS))
     parser.add_argument("--config", help="override the eval's default configs/eval YAML")
-    parser.add_argument("--reference",
-                        help="baseline arm for needs_reference evals: an HF MODEL path for "
-                             "cache-backed evals (lmsys — run as the first arm, answers "
-                             "cached on HF), or a legacy answers artifact (arena_hard)")
     parser.add_argument("--server",
                         help="SSH alias of a GPU host (prepared per the playbook) to serve on; "
                              "omitted = serve on this machine. Evals always run where this "
@@ -83,39 +96,27 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--no-push", action="store_true",
                         help="skip the HF upload (smoke runs only — HF is the canonical store)")
     parser.add_argument("overrides", nargs="*", help="OmegaConf dotlist, e.g. judge.model=x samples=10")
-    args = parser.parse_args(argv)
+    args, unknown = parser.parse_known_args(argv)
     load_dotenv()
 
     _preflight(args.name, args)
     cfg = OmegaConf.merge(OmegaConf.load(args.config or EVALS[args.name].config),
                           OmegaConf.from_dotlist(args.overrides))
-    # `reference` travels to run() as an explicit kwarg, never through the config: evals
-    # without one take no kwarg and nothing breaks; evals with one declare it.
-    targets = list(args.target)
-    run_kwargs: dict = {}
-    spec_meta = EVALS[args.name]
-    if spec_meta.needs_reference and spec_meta.reference_is_model:
-        # The reference is a MODEL (flag overrides the config's recorded default), and it
-        # is simply the first arm of the run: its run() fills the answer cache (a no-op
-        # when already cached — lazy serving means it never even boots vLLM), and every
-        # later arm judges against that entry. No separate bootstrap step exists.
-        reference = str(args.reference or cfg.get("reference_model") or "")
-        if not reference:
-            raise SystemExit(f"{args.name} is judged against a reference arm: pass "
-                             "--reference <hf_path> (or set reference_model in the config)")
-        run_kwargs["reference"] = reference
-        if reference in targets:
-            targets.remove(reference)
-        targets.insert(0, reference)
-    elif spec_meta.needs_reference:
-        # Legacy artifact-path reference (arena_hard, pending its cache migration).
-        if not args.reference:
-            raise SystemExit(f"{args.name} is judged against a baseline arm: pass "
-                             "--reference <answers artifact (local or repo::file)>")
-        run_kwargs["reference"] = args.reference
-    elif args.reference:
-        raise SystemExit(f"{args.name} takes no --reference")
     run_fn = resolve(args.name)
+    # Eval-specific CLI flags are derived from run()'s own keyword-only params (e.g.
+    # lmsys's `reference` becomes --reference) and piped through blind — run_eval knows
+    # nothing about what any of them mean. A kwarg the registry declares in `arm_kwargs`
+    # names a MODEL that also runs, first, as an ordinary arm (config default:
+    # `<kwarg>_model`); required-ness is the eval's own run() to enforce.
+    run_kwargs = derive_run_kwargs(run_fn, unknown)
+    targets = list(args.target)
+    for kwarg in EVALS[args.name].arm_kwargs:
+        value = str(run_kwargs.get(kwarg) or cfg.get(f"{kwarg}_model") or "")
+        if value:
+            run_kwargs[kwarg] = value
+            if value in targets:
+                targets.remove(value)
+            targets.insert(0, value)
     command = " ".join(sys.argv)
 
     executor = None
