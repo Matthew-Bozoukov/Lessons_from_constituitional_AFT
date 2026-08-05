@@ -62,7 +62,7 @@ pull_timeout: 1800
 # is given more headroom (serving.max_num_seqs below) so it is never the bottleneck —
 # aggregate decode throughput climbs steeply with batch size, and starving it was what made
 # an early estimate of this eval 3x too slow.
-workers: 12
+workers: 14
 
 # Approved documented deviation: the scenario container gets `--network none`. Not expressible
 # in the official config, so it cannot be done without an overlay. Verified images are
