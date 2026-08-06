@@ -79,7 +79,7 @@ def main(run_dir: str, config: str = "configs/eval/swebench_mini_verified.yaml",
     row.write_text(json.dumps(summary, indent=2))
 
     if push:
-        from src.hf_publish import push_run_dir
+        from src.huggingface import push_run_dir
 
         repo_id = (f"{hf_org}/{date.today().isoformat()}-swebench-mini-"
                    f"{out_dir.parent.name.replace('_', '-')}")

@@ -16,10 +16,10 @@ import requests
 from huggingface_hub import hf_hub_download
 from huggingface_hub.errors import EntryNotFoundError
 
-from src.utils import serving_params
+from src.model_profile import serving_params
 
 # Serving parameters come from two places with different epistemic status (merged in
-# _start): the FAMILY's verified facts (ModelProfile.serving, src/utils.py — reasoning
+# _start): the FAMILY's verified facts (ModelProfile.serving, src/model_profile.py — reasoning
 # parser, max_num_seqs constraint, verified_context_window ceiling; unprofiled families
 # get utils.DEFAULT_SERVING) and the EVAL's own required `serving.context_window` (its
 # config's declaration of the window it runs at — the window decides truncation
@@ -128,7 +128,7 @@ def pin_template(template_text: str, mode: str) -> str:
 
 # The two serving namespaces are DISJOINT BY CONSTRUCTION — no key appears in both, so
 # "override" is not a concept this module can express. Family FACTS (ModelProfile.serving,
-# src/utils.py) say what a model family IS and what it has been measured to do; an eval's
+# src/model_profile.py) say what a model family IS and what it has been measured to do; an eval's
 # `serving:` block declares only what that eval NEEDS. Requirements are validated against
 # facts here, never merged over them: a merge lets a config forge the very ceiling it is
 # checked against, swallows typo'd keys in silence, and makes "what actually served?"
@@ -205,14 +205,14 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
             f"\nunknown key(s) in {base_model}'s ModelProfile.serving: "
             f"{sorted(unknown_facts)}. Family facts are a closed set "
             f"({sorted(_FAMILY_FACT_KEYS)}) — an eval's needs belong in its config's "
-            "serving: block, not in src/utils.py.")
+            "serving: block, not in src/model_profile.py.")
     unknown = set(requirements) - _EVAL_REQUIREMENT_KEYS
     if unknown:
         raise SystemExit(
             f"\nunknown key(s) in this eval's serving: block: {sorted(unknown)}. "
             f"Eval configs declare requirements only ({sorted(_EVAL_REQUIREMENT_KEYS)}); "
             "family facts (verified ceilings, parser names) live in "
-            "ModelProfile.serving, src/utils.py — an eval cannot set them.")
+            "ModelProfile.serving, src/model_profile.py — an eval cannot set them.")
     window = requirements.get("context_window")
     if not window:
         raise SystemExit(
@@ -231,7 +231,7 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
     if native and int(window) > int(native):
         raise SystemExit(
             f"\nserving.context_window={window} exceeds {base_model}'s native window "
-            f"({native} — ModelProfile.serving, src/utils.py): the weights have no "
+            f"({native} — ModelProfile.serving, src/model_profile.py): the weights have no "
             "trained positions beyond it, so serving there needs explicit rope scaling "
             "and is a deliberate experiment, not a config bump. Lower the eval's window.")
     # The family value is a boot-feasibility CAP (Mamba state slots are preallocated at
@@ -243,7 +243,7 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
     if seqs and cap and int(seqs) > int(cap):
         raise SystemExit(
             f"\nserving.concurrency={seqs} exceeds {base_model}'s verified cap "
-            f"({cap} — ModelProfile.serving, src/utils.py): Mamba state slots are "
+            f"({cap} — ModelProfile.serving, src/model_profile.py): Mamba state slots are "
             "preallocated at boot and the arena above the cap does not fit the "
             "reference H100. Request fewer, or verify a larger cap with a live boot.")
 
@@ -257,7 +257,7 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
         if not tool_call_parser:
             raise SystemExit(
                 f"\nthis eval declares serving.needs_tool_calls, but {base_model} has no "
-                "verified tool_call_parser (ModelProfile.serving, src/utils.py). Serving "
+                "verified tool_call_parser (ModelProfile.serving, src/model_profile.py). Serving "
                 "it anyway returns tool calls as raw text and every task scores 0 for a "
                 "reason indistinguishable from incapability. Verify which of vLLM's "
                 "parsers matches this family's chat template, then add it as a fact.")

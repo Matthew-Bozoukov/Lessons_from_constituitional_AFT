@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import re
 
-from src.utils import ModelProfile, think_census
+from src.model_profile import ModelProfile, think_census
 
 _TURN = re.compile(r"<\|im_start\|>assistant\n(.*?<\|im_end\|>)", re.DOTALL)
 

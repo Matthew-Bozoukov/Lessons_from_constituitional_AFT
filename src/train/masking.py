@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from src.utils import QWEN36_PROFILE, model_profile  # noqa: F401  (re-exported gate)
+from src.model_profile import QWEN36_PROFILE, model_profile  # noqa: F401  (re-exported gate)
 
 ASSISTANT_HEADER = "<|im_start|>assistant\n"
 TURN_END = "<|im_end|>"
@@ -12,7 +12,7 @@ TURN_END = "<|im_end|>"
 # configurable; git history reproduces runs trained under older rules): mask exactly the
 # tokens the model never generates at inference, supervise exactly what it does generate.
 # Two forced shapes exist, both family-specific via the ModelProfile registry in
-# src/utils.py (verified against the live template in tests/test_masking_tokenizer.py;
+# src/model_profile.py (verified against the live template in tests/test_masking_tokenizer.py;
 # callers gate on `model_profile(model)` so an unverified family is refused, never guessed):
 #
 # - The thinking prefill `<think>\n` — always forced, always masked.

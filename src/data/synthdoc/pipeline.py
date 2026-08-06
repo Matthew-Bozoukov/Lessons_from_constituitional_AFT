@@ -84,7 +84,7 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
     else:
         run_dir = Path(cfg["output_dir"]) / (f"smoke_{ts}" if smoke else ts)
     repo = cfg.get("hf_repo_smoke") if smoke else cfg.get("hf_repo")
-    from src.hf_publish import origin_url
+    from src.utils import origin_url
     cache = StageCache(run_dir, repo, private=bool(cfg.get("hf_private", False)),
                        card_fields={
                            "experiment": f"synthdoc `{cfg['pipeline']}` run — per-stage "

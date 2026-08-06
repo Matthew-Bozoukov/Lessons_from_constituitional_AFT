@@ -81,7 +81,7 @@ class StageCache:
                                   private=self.private)
             # Every upload carries a card (CLAUDE.md) — the cache repo included.
             if fresh and self.card_fields:
-                from src.hf_publish import card_markdown
+                from src.huggingface import card_markdown
 
                 self._api.upload_file(
                     path_or_fileobj=card_markdown(self.card_fields).encode(),

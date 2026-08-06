@@ -374,7 +374,8 @@ def main(config: str, smoke: bool = False) -> None:
     }, indent=2))
 
     if cfg.get("hf_repo") and not smoke:
-        from src.hf_publish import origin_url, push_run_dir
+        from src.huggingface import push_run_dir
+        from src.utils import origin_url
 
         # Same card contract as every other artifact (CLAUDE.md: every upload carries a
         # card), derived from the run's real metadata — the human-readable half beside

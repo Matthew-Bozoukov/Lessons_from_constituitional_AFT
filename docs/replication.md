@@ -291,7 +291,7 @@ overflow both masquerade as incapability.
 ## The preserve-thinking policy (2026-08-04)
 
 Repo-wide default for training data and serving, everything family-specific centralized in
-`ModelProfile` (`src/utils.py`; Qwen3.6 is the only verified profile — Qwen3's thinking
+`ModelProfile` (`src/model_profile.py`; Qwen3.6 is the only verified profile — Qwen3's thinking
 template prefills nothing, so it is deliberately refused until verified):
 
 - **Data**: since 2026-08-06 mixtures are stored MODEL-AGNOSTIC — interchange rows

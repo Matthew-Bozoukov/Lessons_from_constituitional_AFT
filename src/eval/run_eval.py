@@ -16,7 +16,7 @@ from omegaconf import OmegaConf
 
 from src.endpoints.vllm_server import SshExec, VllmServer, resolve_target
 from src.eval import EVALS, resolve
-from src.hf_publish import push_run_dir
+from src.huggingface import push_run_dir
 from src.utils import timestamp, write_run_meta
 
 

@@ -267,7 +267,7 @@ def test_train_time_render_matches_legacy_build_time_render():
     except OSError:
         pytest.skip("Qwen3.6 tokenizer not in the local HF cache")
     from src.train.masking import EMPTY_THINK, build_labels
-    from src.utils import model_profile, think_census
+    from src.model_profile import model_profile, think_census
 
     profile = model_profile("Qwen/Qwen3.6-27B")
     msgs = [{"role": "system", "content": "sys"},

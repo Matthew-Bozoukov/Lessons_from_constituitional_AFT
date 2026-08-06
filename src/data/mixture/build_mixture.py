@@ -36,8 +36,8 @@ from omegaconf import OmegaConf
 from transformers import AutoTokenizer
 
 from src.data.mixture.sources import SOURCES, clean_messages
-from src.hf_publish import origin_url
-from src.utils import git_sha, model_profile, timestamp, write_run_meta
+from src.model_profile import model_profile
+from src.utils import git_sha, origin_url, timestamp, write_run_meta
 
 # Each source declares what its DATA carries via `reasoning:` — part of the scientific
 # record, validated on the sampled rows, never guessed:
@@ -347,7 +347,7 @@ def _card_fields(cfg, config_path: str, stage_desc: str, files_desc: str,
     schema = (
         "jsonl rows {messages: [{role, content, reasoning_content?, tool_calls?}], "
         "source, supervise?} — model-agnostic interchange; rendered with the training "
-        "family's chat template at train time (src/utils.py ModelProfile)")
+        "family's chat template at train time (src/model_profile.py ModelProfile)")
     gen = {"seed": int(cfg.seed), "max_seq_len": int(cfg.max_seq_len),
            "budget_tokenizer": str(cfg.tokenizer)}
     if filter_cfg is not None:
@@ -375,7 +375,7 @@ def _push(paths: list[Path], repo: str, fields: dict, private: bool, smoke: bool
     if smoke:
         print(f">>> smoke: NOT pushing {[p.name for p in paths]} -> {repo}")
         return
-    from src.hf_publish import push_files
+    from src.huggingface import push_files
     url = push_files(paths, repo, fields, private=private)
     print(f">>> pushed {[p.name for p in paths]} -> {url}")
 

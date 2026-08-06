@@ -53,7 +53,8 @@ from src.eval.capabilities.arena_hard.arena_hard_metrics import (  # noqa: E402
     style_features,
 )
 from src.endpoints.openrouter import map_threaded  # noqa: E402
-from src.utils import read_jsonl, split_think, timestamp, write_run_meta  # noqa: E402
+from src.model_profile import split_think
+from src.utils import read_jsonl, timestamp, write_run_meta  # noqa: E402
 
 
 def _arm(cfg: DictConfig, name: str) -> DictConfig:

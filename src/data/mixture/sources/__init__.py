@@ -15,7 +15,7 @@ the ecosystem has settled on for reasoning models and tool use:
 
 No chat template is ever applied here — stored data carries semantics (who said what,
 what was reasoned, what was called), never a model family's syntax. Rendering happens at
-train time via `ModelProfile.render_kwargs` (src/utils.py), where the masking rules live.
+train time via `ModelProfile.render_kwargs` (src/model_profile.py), where the masking rules live.
 
 An adapter declares where its rows come from (`repo`/`hf_config`/`split`, or local-only)
 and how one raw row becomes messages (`to_messages`, returning None for unusable rows).

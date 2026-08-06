@@ -76,7 +76,7 @@ class AnswerCache:
     # --- internals -------------------------------------------------------------------
 
     def _api(self):
-        from src.hf_publish import hf_api
+        from src.huggingface import hf_api
 
         return hf_api()
 
@@ -157,7 +157,7 @@ class AnswerCache:
             for name in (ANSWERS, META):
                 shutil.copy2(src_dir / name, entry / name)
             return
-        from src.hf_publish import card_markdown
+        from src.huggingface import card_markdown
 
         api = self._api()
         if not api.repo_exists(self.hf_repo, repo_type="dataset"):

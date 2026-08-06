@@ -1,10 +1,9 @@
-# ABOUTME: THE HF-push module: one token resolution, one card contract (CLAUDE.md's
-# ABOUTME: required fields — datasets, adapters and caches alike), one upload mechanic.
+# ABOUTME: THE Hugging Face module: one token resolution (reads and pushes alike), one
+# ABOUTME: card contract (CLAUDE.md's fields — datasets, adapters, caches), one upload mechanic.
 
 from __future__ import annotations
 
 import os
-import subprocess
 from pathlib import Path
 
 from huggingface_hub import HfApi
@@ -23,14 +22,19 @@ def hf_api() -> HfApi:
     return HfApi(token=os.environ.get("HUGGINGFACE_API_KEY") or os.environ.get("HF_TOKEN"))
 
 
-def origin_url() -> str:
-    """This repo's origin URL, best-effort (provenance only)."""
-    try:
-        return subprocess.check_output(
-            ["git", "config", "--get", "remote.origin.url"],
-            stderr=subprocess.DEVNULL).decode().strip() or "this repository"
-    except Exception:  # noqa: BLE001 - provenance is best-effort
-        return "this repository"
+def hf_download(repo_id: str, filename: str, repo_type: str = "model", **kwargs) -> str:
+    """hf_hub_download with the shared token resolution.
+
+    The bare helper reads only HF_TOKEN/cached logins; this also honours
+    HUGGINGFACE_API_KEY, so private-repo READS (a private adapter's training_meta.json,
+    a private cache entry) work wherever pushes do.
+    """
+    from huggingface_hub import hf_hub_download
+
+    return hf_hub_download(
+        repo_id, filename, repo_type=repo_type,
+        token=os.environ.get("HUGGINGFACE_API_KEY") or os.environ.get("HF_TOKEN"),
+        **kwargs)
 
 
 def card_markdown(fields: dict) -> str:
