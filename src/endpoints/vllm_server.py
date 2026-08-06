@@ -51,7 +51,8 @@ class ServedTarget:
     """Handle an eval's run() receives: an OpenAI-compatible endpoint plus identity."""
 
     spec: TargetSpec
-    base_url: str         # http://localhost:<port>/v1 (tunnelled when serving remotely)
+    base_url: str         # http://<endpoint_host>:<port>/v1 — endpoint_host is the tunnel's
+                          # bind address when serving remotely, NOT always localhost
     model_name: str       # the served model name to put in requests
 
 
@@ -141,6 +142,9 @@ class LocalExec:
 
     python_argv = [sys.executable]
 
+    # Where the DRIVER reaches the endpoint. Local server listens on loopback.
+    endpoint_host = "127.0.0.1"
+
     def __init__(self, work_dir: Path):
         self.work_dir = work_dir
         self.proc: subprocess.Popen | None = None
@@ -196,6 +200,11 @@ class SshExec:
         self.host = host
         self.port = port
         self.bind = bind
+        # Where the DRIVER reaches the endpoint. The tunnel listens on `bind` and ONLY on
+        # `bind`, so this is not always loopback: a docker-bridge bind (172.17.0.1, used so
+        # scenario containers can reach the model) leaves 127.0.0.1 closed. Callers must use
+        # this rather than assuming localhost — see the health-check note in _wait_healthy.
+        self.endpoint_host = bind
         self.workdir = workdir
         self.remote_dir = f"{workdir}/output/serve"
         self.tunnel: subprocess.Popen | None = None
@@ -359,7 +368,7 @@ class VllmServer:
 
     @property
     def base_url(self) -> str:
-        return f"http://localhost:{self.port}/v1"
+        return f"http://{self.executor.endpoint_host}:{self.port}/v1"
 
     def ensure(self, spec: TargetSpec) -> ServedTarget:
         """Serve `spec`, reusing the live server when base model + mode are unchanged."""
@@ -419,8 +428,14 @@ class VllmServer:
         self._wait_healthy()
 
     def _wait_healthy(self) -> None:
+        # Probe the address the tunnel actually listens on, NOT localhost. With a
+        # docker-bridge bind (172.17.0.1 — set by run_eval for every needs_docker eval on
+        # linux) the tunnel never binds 127.0.0.1, so a hardcoded localhost probe can never
+        # succeed: the server comes up fine, serves the adapter, and the driver still sits
+        # here for the full _HEALTH_TIMEOUT_S before dying with a timeout that looks like a
+        # slow model load. Observed 2026-08-06 on the first remote-served swebench_mini run.
         deadline = time.time() + _HEALTH_TIMEOUT_S
-        url = f"http://localhost:{self.port}/health"
+        url = f"http://{self.executor.endpoint_host}:{self.port}/health"
         while time.time() < deadline:
             if not self.executor.alive():
                 raise RuntimeError(f"vLLM exited; last log lines:\n{self.executor.tail_log()}")
