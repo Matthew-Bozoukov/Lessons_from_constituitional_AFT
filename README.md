@@ -322,20 +322,18 @@ Full detail in `LOG.md` (2026-07-31 entry).
 
 ### Run
 
-**Follow `docs/arena_hard_eval_runbook.md`** — the complete operational runbook
-from the first full run (pod-per-arm topology, retry wrappers, the baseline-extension
-gotcha, judging order, publishing layout, cost model). Short version:
+Run it through the eval framework — `run_eval.py` owns serving; add `--server <ssh-alias>`
+to drive a remote GPU host (see CLAUDE.md "Where code runs"):
 
 ```bash
-uv run python scripts/gpu/runpod_arena_hard.py up      # one pod PER ARM is the fast layout
-uv run python src/eval/capabilities/arena_hard/arena_hard_gen.py --arm <arm> --stage 150 --creative 0 \
-    --endpoint https://<pod>-8000.proxy.runpod.net/v1   # wrap in retries; eyeball samples
-uv run python src/eval/capabilities/arena_hard/arena_hard_judge.py --arm arm_b_synth10 --stage 150  # baseline/A-vs-A FIRST
-uv run python src/eval/capabilities/arena_hard/arena_hard_judge.py --arm <arm> --stage 150          # serialized, not parallel
-uv run python scratch/reports/arena_hard_report.py                  # CIs + figures + md mirror
-uv run python scratch/reports/plot_arena_hard_winrate.py                # GDM-style dose-response figure
-uv run python scripts/gpu/runpod_arena_hard.py down --pod <id>          # the moment each arm finishes
+uv run scripts/run_eval.py --target <hf_adapter_or_model> --name arena_hard
+uv run python scratch/reports/arena_hard_report.py       # CIs + figures + md mirror
+uv run python scratch/reports/plot_arena_hard_winrate.py # GDM-style dose-response figure
 ```
+
+(The pre-framework pod-per-arm runbook — retry wrappers, judging order, cost model from the
+2026-07-31 first run — was `docs/arena_hard_eval_runbook.md`, deleted 2026-08-06; git
+history is the archive.)
 
 Before judging, eyeball ten raw generations from the arm's answers file. Do not skip it — a
 chat-template mismatch reads as catastrophic capability loss but is purely a serving bug, and
