@@ -21,8 +21,39 @@ to a future reader.
 |---|---|
 | OpenRouter (data generation) | **$255.96** |
 | OpenRouter (eval judging) | $16.54 |
+| OpenRouter (eval scaffolding/smoke) | $0.13 |
 | GPU rental | $19.78 (+ ~4 RunPod A100-h on 2026-08-03, $ TBD from dashboard) |
-| **total** | **$292.28** (+ GPU TBD) |
+| **total** | **$292.41** (+ GPU TBD) |
+
+<!-- Total recomputed once at the jamie/write-all-evals-to-hf <- main merge (2026-08-06),
+     not carried over from either side: both branches advanced the same running total
+     independently from $256.15 at the fork. This branch added $16.52 judging + $19.61 GPU
+     (psychosis, table2 arms); main added the $0.13 scaffolding/smoke category (SWE-bench
+     wiring). 255.96 + 16.54 + 0.13 + 19.78 = 292.41. Both source sections are kept below. -->
+
+---
+
+## 2026-08-05 — SWE-bench baseline wiring smoke (OpenRouter, Gemini 3 Flash)
+
+**What was bought:** end-to-end validation of the new `swebench_mini` eval on 2 SWE-bench
+Verified instances, with `google/gemini-3-flash-preview` standing in for a served target (no
+GPU). Two runs: the first bought two findings and no rollouts (every instance died on
+mini-SWE-agent's 120s container-start timeout, which cannot cover a cold multi-GB image pull —
+now fixed by a pre-pull step; and grading died on a repo-relative `--project` path resolved
+against a changed cwd). The second produced real rollouts: 2 trajectories, 25 steps each,
+**tool-call rate 100%**, no patches because the smoke's reduced step limit cut them off.
+
+**Cost:** $0.13 by `/credits` delta (601.161 → 601.292 of $900). Waited before the final read.
+
+**Unit cost:** ~$0.066 per instance at 25 steps, ~$0.0026 per step, for a Flash-class model on
+a django SWE-bench task. Useful only for scaffolding work — the real baseline runs against our
+own vLLM endpoint and costs GPU-hours, not API credit.
+
+**Also learned (free, but it shapes the budget):** SWE-bench images run ~1.15 GB each for
+django instances (2.31 GB for two). And the official grading harness **cannot run on Windows
+at all** — it imports the Unix-only `resource` module at import time — so grading must happen
+on Linux regardless of Docker Desktop. That makes a cheap vast.ai CPU box (~$0.01/hr) the
+grading host, which is a rounding error against GPU time.
 
 ---
 

@@ -176,13 +176,23 @@ class ModelProfile:
         empty_think: The full literal a no-reasoning assistant turn carries.
         render_kwargs: Extra chat-template kwargs for rendering TRAINING data so every
             assistant turn keeps its reasoning (verified against the live template).
-        serving: Verified serving facts for this family, all three vLLM-facing:
+        serving: Verified serving FACTS for this family — what it is and what it has
+            been measured to do, never what any eval wants. Eval configs cannot write
+            these (the two namespaces are disjoint; see plan_serving in
+            src/endpoints/vllm_server.py), so a config can neither forge a ceiling nor
+            silently pick a parser. All five are vLLM-facing:
             `reasoning_parser` — which of vLLM's parsers understands its think stream
-            (intrinsic; enabled think-mode-only, see VllmServer._start);
+            (intrinsic; emitted think-mode-only, decided in plan_serving);
+            `tool_call_parser` — which parser understands the tool-call syntax THIS
+            family's template emits; an eval asks for tool calls, the family says how
+            (docs/LOG.md 2026-07-29: Qwen3.6 emits XML, so `hermes` would parse none);
             `max_num_seqs` — architectural constraint (Qwen3.6's hybrid Mamba arch
             fails at startup above a low cap, docs/LOG.md 2026-07-29);
+            `supports_prefix_caching` — whether vLLM can reuse a shared prefix on this
+            arch at all. A capability, not a preference: an eval that would benefit
+            cannot turn it on where the arch forbids it;
             `verified_context_window` — the largest window this family has been
-            VERIFIED to serve on the reference deployment (1x H100 80GB, at this
+            VERIFIED to serve on the reference deployment (1x H100 80GB, bf16, at this
             max_num_seqs). A dated fact, not a preference: bumping it requires a live
             boot at the new window. The window an eval RUNS at is the eval config's
             own required `serving.context_window`, checked against this ceiling.
@@ -202,8 +212,23 @@ QWEN36_PROFILE = ModelProfile(
     render_kwargs={"preserve_thinking": True},
     # verified_context_window: booted and served live at 40960 x 12 seqs (psychosis
     # runs, 2026-08-05); max_num_seqs 32 is the sweep default at smaller windows.
+    # NB the 2026-07-29 ODCV entry recommending ">=131072" was measured at FP8, where
+    # the KV cache holds 252k -> 678k tokens; it does not transfer to the bf16 path
+    # this server serves on. Raising this needs a live bf16 boot at the new window.
+    #
+    # tool_call_parser: Qwen3.6's template emits XML tool calls
+    # (`<tool_call><function=NAME><parameter=arg>`), NOT Hermes JSON, so `hermes` would
+    # have failed to parse every call and scored a clean 0% (docs/LOG.md 2026-07-29).
+    # Confirmed live on the swebench pilot 2026-08-05: no_tool_call_rate 0.0 across 115
+    # assistant turns.
+    #
+    # supports_prefix_caching: FALSE, and not a tuning choice — vLLM forces
+    # enable_prefix_caching=False on this arch because Mamba state pages cannot be
+    # reused the way attention KV can (docs/LOG.md 2026-07-29). Passing the flag is a
+    # no-op, so plan_serving reports the unmet request rather than pretending.
     serving={"verified_context_window": 40960, "max_num_seqs": 32,
-             "reasoning_parser": "qwen3"},
+             "reasoning_parser": "qwen3", "tool_call_parser": "qwen3_xml",
+             "supports_prefix_caching": False},
 )
 # Qwen3 deliberately has NO profile yet: its thinking-mode template prefills nothing (the
 # model generates <think> itself — verified live 2026-08-04), so the generation-boundary
@@ -238,6 +263,9 @@ def model_profile(model_name: str) -> ModelProfile:
 # deliberately profile-less until its masking is verified) can still be served ad hoc.
 # It has no verified ceiling, so the context-window fail-fast is skipped and vLLM's own
 # startup failure is the backstop. Training-side lookups keep using model_profile().
+# The parser and prefix-caching facts are absent rather than guessed: an eval that
+# REQUIRES tool calls is refused on an unprofiled family instead of being served with a
+# parser nobody verified against its template.
 DEFAULT_SERVING = {"max_num_seqs": None}
 
 

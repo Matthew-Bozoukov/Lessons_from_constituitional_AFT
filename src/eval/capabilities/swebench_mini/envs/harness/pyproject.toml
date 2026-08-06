@@ -1,0 +1,24 @@
+# ABOUTME: Isolated environment for the PINNED official SWE-bench grading harness, kept
+# ABOUTME: separate from the agent env so grading reproduces without the agent's stack.
+# Run: uv run --project src/eval/capabilities/swebench_mini/envs/harness \
+#          python -m swebench.harness.run_evaluation ...
+#
+# Separate from envs/agent deliberately: grading runs on a different machine (a cheap
+# docker-capable CPU box, after the GPU is destroyed) and must stay reproducible on its own.
+# Regrading a saved preds.json a year from now should not drag litellm and the agent's
+# transitive closure along with it, and the harness commit is recorded independently of the
+# agent commit — which is exactly the provenance split the baseline reports.
+
+[project]
+name = "swebench-mini-harness-env"
+version = "0.1.0"
+description = "Pinned official SWE-bench evaluation harness for grading saved predictions"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # Pinned exactly: the harness defines what "resolved" MEANS (test selection, log
+    # parsing, patch application). A silent bump changes the metric itself.
+    "swebench==4.1.0",
+]
+
+[tool.uv]
+package = false

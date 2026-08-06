@@ -1,0 +1,139 @@
+# ABOUTME: Standardized SWE-bench Verified baseline: pinned mini-SWE-agent v2 rollouts against
+# ABOUTME: a served target, graded separately by the pinned official harness. pass@1, one try.
+# Run: uv run scripts/run_eval.py --target <hf_path> --name swebench_mini
+#      then, after destroying the GPU:
+#      uv run scripts/eval/swebench_mini_grade.py --run-dir output/swebench_mini/<key>/<ts>
+#
+# THIS IS THE STANDARDIZED BASELINE and is deliberately not ours to tune. The scaffold is
+# upstream's, pinned by a committed lockfile, and its config file is passed through untouched
+# (see src/eval/capabilities/swebench_mini/agent.py for the only two overlaid keys). Any
+# custom scaffold we build later gets its OWN eval name, config and output tree — results from
+# the two must never be pooled or compared as if they were the same measurement.
+#
+# Report as:
+#   <model> + mini-SWE-agent <version> (config <sha>), <dataset>@<revision>
+#   [n/N instances, subset <hash>], pass@1
+
+# --- Benchmark ---------------------------------------------------------------------
+# The resolved dataset path, NOT mini-swe-agent's `verified` alias. The rollout, the subset
+# draw and the grading harness must all name the same string, or "resolved" is measured
+# against tests the agent never saw. This is the exact path the alias resolves to in
+# mini-swe-agent 2.2.1; if a future version repoints the alias, this file does not move.
+dataset: "princeton-nlp/SWE-Bench_Verified"
+split: "test"
+
+# --- Depth -------------------------------------------------------------------------
+# Repo-stratified NESTED prefix: a 10% draw is a strict subset of a 20% draw, so extending a
+# run costs only the new instances (mini-swe-agent skips instances already in preds.json).
+# Positional slicing is not used on purpose — the dataset is clustered by repo, so `0:50`
+# samples whichever repos sort first rather than the benchmark.
+subset:
+  fraction: 0.1     # of the 500 Verified instances; set `n:` instead for an absolute count
+  n: null
+  # Part of the subset's IDENTITY, not a knob to tune per run: changing it redraws the
+  # benchmark and the new numbers are not comparable with the old ones.
+  seed: 0
+
+# --- Sharding: split ONE subset across drivers, never a different benchmark ---------
+# Each driver runs `count` shards' worth of the SAME selection, round-robin over the
+# stratified order so every shard stays repo-proportional. Shards are disjoint and their
+# union is exactly the subset, so pass@1 merges by union against the full denominator.
+# Leave count=1 for a single machine. Two machines: shard.count=2 with shard.index=0 and 1.
+shard:
+  index: 0
+  count: 1
+
+# --- Image pulling -----------------------------------------------------------------
+# Overlap the ~300GB pull (at 250 instances) with rollouts instead of blocking on it.
+# Requires pull_timeout: an instance that outruns the pre-pull falls back to
+# mini-SWE-agent's own on-demand pull, whose 120s default cannot cover a cold image.
+pull_overlap: true
+pull_workers: 8
+pull_timeout: 1800
+
+# --- Rollout -----------------------------------------------------------------------
+# One rollout per task, no retries, no reranking, no reviewer model, no extra tools, no
+# planning layer. That is the baseline's definition, and it is enforced by using upstream's
+# config as-is rather than by anything here.
+#
+# Parallel instances. Each worker holds one SWE-bench container AND one in-flight request.
+#
+# The binding constraint is the SERVER'S KV CACHE, not driver RAM and not compute. Measured
+# 2026-08-05: rollout containers are idle shells between short bash commands and cost ~20MB
+# each, so driver RAM is irrelevant; but trajectories reach 30-80k tokens, and a 27B model in
+# bf16 leaves only ~21GB of an 80GB card for KV (~300k tokens). At 14 workers that hit 96%
+# KV usage, the prefix cache had nowhere to live and collapsed from 52% hits to 0.7%, and the
+# completion rate fell from ~86/hr to ~17/hr.
+#
+# So size workers to leave KV HEADROOM, not to fill it: roughly
+#   workers ~= 0.7 * (KV tokens) / (typical context)
+# The H100 NVL 93GB measured 500,986 KV tokens, where 8 workers sat at 22% usage with a 92%
+# prefix-cache hit rate — healthy but leaving the card two-thirds idle, so 12 is the current
+# setting. Raising this without checking `GPU KV cache usage` in the server log makes the
+# eval slower, not faster: the failure is not gradual, the cache collapses.
+workers: 12
+
+# Approved documented deviation: the scenario container gets `--network none`. Not expressible
+# in the official config, so it cannot be done without an overlay. Verified images are
+# self-contained, so this should not change what a task can do; it removes the possibility of
+# a rollout fetching a fix from the internet.
+disable_network: true
+
+# --- Serving ------------------------------------------------------------------------
+# Applied by run_eval.py on top of the base model's family defaults in
+# src/endpoints/vllm_server.py, and recorded in run_meta.json.
+# --- Serving REQUIREMENTS ------------------------------------------------------------
+# What this eval needs, in its own terms. Which parser implements a need, and whether the
+# family can meet it at all, are FACTS that live in ModelProfile.serving (src/utils.py);
+# nothing here can set or override one. plan_serving validates this block against them.
+serving:
+  # OUTCOME-DETERMINING, not a performance knob. Upstream's step_limit is 250 and observations
+  # are truncated at 10k characters, so trajectories run far past the 16384 a single-turn eval
+  # uses; on overflow the instance aborts and scores unresolved.
+  #
+  # !!! THIS EXCEEDS Qwen3.6's verified_context_window (40960) AND WILL FAIL FAST at serve
+  # time, deliberately, until someone boots vLLM live at 65536 in bf16 on the reference
+  # 1xH100 80GB and bumps the fact with a dated comment. The 2026-07-29 ODCV entry
+  # recommending ">=131072" was measured at FP8 (KV 252k -> 678k tokens) and does not carry
+  # over to this bf16 path. The pilot that produced the parser measurements below ran on an
+  # H100 NVL 93GB, not the reference card, so it does not verify this either.
+  #
+  # Resolve it, do not paper over it: serving at 40960 to make the error go away would let
+  # long trajectories abort and score unresolved, which reads as incapability.
+  context_window: 65536
+  # No `concurrency:` on purpose — with none declared the server runs at the family's
+  # verified cap (32), which is already comfortably above `workers: 12` so the driver never
+  # queues behind itself. Declaring 32 here would state a requirement we do not actually
+  # have, and would silently drift if the cap were ever re-verified lower.
+  #
+  # mini-SWE-agent v2 drives a real bash TOOL, so the endpoint must parse tool calls; without
+  # a parser the model's calls come back as raw text and every instance scores 0 for a serving
+  # reason indistinguishable from incapability. WHICH parser is the family's business
+  # (Qwen3.6 emits XML, so `hermes` would parse none — src/utils.py); this eval only declares
+  # that it needs them. CONFIRMED LIVE (pilot, 2026-08-05): `no_tool_call_rate` 0.0 across 115
+  # assistant turns, and `empty_reasoning_rate` 0.0, so the reasoning round-trip works too.
+  needs_tool_calls: true
+  # Measured on the pilot: contexts reach 38-81k tokens and the agent re-sends its whole
+  # history every step, so the same prefix is prefilled ~32 times per instance.
+  #
+  # Qwen3.6 CANNOT honour this — vLLM forces prefix caching off on this arch (Mamba state
+  # pages are not reusable like attention KV, docs/LOG.md 2026-07-29). Declared anyway,
+  # because it is a true property of the workload: plan_serving prints the shortfall and
+  # serves without it rather than passing a flag vLLM ignores. Throughput only; no output
+  # changes. A future family that supports caching gets it for free.
+  reuses_long_prefixes: true
+
+# --- Grading ------------------------------------------------------------------------
+# Off by default: grading needs docker and CPU, not a GPU, so it runs after the pod is
+# destroyed. Set grade=true only to grade inline on the rollout host, where the images are
+# already warm, at the cost of an idle GPU for the duration.
+grade: false
+grading:
+  max_workers: 8
+  # `env` keeps base+environment images between runs (~100GB across the full benchmark) and
+  # rebuilds thin instance layers; `instance` is faster and wants ~2TB.
+  cache_level: "env"
+  # Pull prebuilt images rather than building environments from source (hours).
+  namespace: "swebench"
+
+constitution: none

@@ -3,6 +3,56 @@
 
 # LOG
 
+## 2026-08-06 — Merged main into `jamie/write-all-evals-to-hf`: serving is composed, not overridden
+
+**Hypothesis:** both branches had independently grown per-eval serving configuration, and both
+did it by merging one dict over another (`{**family_values, **eval_serving_block}`). That shape
+is not just untidy — it makes facts forgeable. The ceiling check read
+`verified_context_window` out of the *same* merged bag an eval config writes into, so a config
+could have set `999999` and disarmed the fail-fast; a typo'd key no-opped in silence; and
+"what actually served?" was a question about dict ordering.
+
+**Method:** resolved the merge by implementing the composition both branches were reaching for
+rather than porting either side's booleans. The two namespaces are now **disjoint by
+construction** — no key appears in both, so "override" is not a shape this module can express:
+
+- `ModelProfile.serving` (`src/utils.py`) holds family **facts**, unwritable from configs:
+  `verified_context_window`, `max_num_seqs` (a boot cap), `reasoning_parser`, and two absorbed
+  from main — `tool_call_parser`, `supports_prefix_caching`.
+- An eval's `serving:` block holds **requirements** in its own vocabulary, with no family
+  knowledge: `context_window` (required), `concurrency` (renamed from `max_num_seqs` precisely
+  so the cap cannot be shadowed), `needs_tool_calls`, `reuses_long_prefixes`.
+- One pure `plan_serving(facts, requirements, base_model, mode)` validates every requirement
+  against the facts and returns a launch plan. `mode` moved *into* it (previously a stray
+  `spec.mode == "think"` test at the argv site), so `_start` now makes no decisions at all —
+  it translates. Unknown keys are rejected on **both** sides.
+
+Shortfalls split by consequence: fatal where the measurement would be corrupted (tool calls
+required from a family with no verified parser — every task scores 0 in a way indistinguishable
+from incapability), reported-and-continue where only throughput suffers (prefix caching).
+
+**Result:** 359 tests pass (was 333). Two live bugs fell out of main's version on contact:
+
+1. Its swebench config sets `enable_prefix_caching: true`, but **this arch cannot cache
+   prefixes at all** — vLLM forces it off because Mamba state pages are not reusable like
+   attention KV (LOG 2026-07-29, item 6). The flag was a no-op dressed as a setting. Now the
+   eval states the true property of its workload (`reuses_long_prefixes`) and the family says
+   it cannot be honoured, printed once at serve time.
+2. Its `_start` nested the reasoning parser *inside* the tool-calls branch, so a thinking eval
+   that drives no tools would have served with no reasoning parser at all. Ours emits the two
+   independently.
+
+**Surfaced, not resolved:** `swebench_mini` requires a 65536 window; Qwen3.6's verified ceiling
+is 40960, so the eval now **fails fast at serve time by design**. The 2026-07-29 entry
+recommending ">=131072" was measured at FP8 (KV 252k -> 678k tokens) and does not transfer to
+the bf16 path this server uses; main's own pilot ran on an H100 NVL 93GB, not the reference
+80GB card, so it verifies nothing here either. Nothing regressed — swebench has never had a
+model run. Recorded as TODO 10.
+
+**Next steps:** (1) boot vLLM live at 65536 bf16 on the reference H100 and either bump
+`verified_context_window` with a dated comment or decide deliberately what window this
+benchmark runs at; (2) open the PR back to main.
+
 ## 2026-08-05 — First live psychosis runs: table2 20/80 DA mixture vs benign-only control
 
 **Hypothesis:** difficult-advice SFT in the mixture reduces multi-turn delusion validation
@@ -72,6 +122,146 @@ impossible — they're different cache keys, plus an explicit cross-mode refusal
 fills local cache → target judges → cache-hit rerun completes with an endpoint that
 raises on touch). Not yet exercised against a live pod or real HF repo. **Next:**
 arena_hard migration to the cache, mmlu, live smoke.
+## 2026-08-05 (5) — SWE-bench grading PROVEN by gold patch; env check added; no model run yet
+
+**Hypothesis:** a grading environment can be proven correct with no model at all, and should be
+proven that way before any pass@1 from it is believed. **Method:** the official harness accepts
+`--predictions_path gold`, submitting each instance's own reference patch — a correct host
+resolves 100%, and a broken one (wrong images, docker misconfigured, tests not executing)
+produces low scores that look exactly like a weak model. Wrapped as
+`grade.verify_environment()` + `scripts/eval/swebench_mini_check_env.py`. Ran it against
+`django__django-11815` on swebench 4.1.0. **Result:** `resolved_instances: 1`,
+`error_instances: 0` — image pull, patch application, django's real test suite and log parsing
+all confirmed working end to end. Ran the harness inside a `python:3.12-slim` container with
+the Docker Desktop socket mounted, since the harness itself cannot run on Windows (2026-08-05
+(2)); that was a **one-off verification of the path**, not a supported route — it pip-installs
+`swebench==4.1.0` with unpinned transitive deps, where the supported host uses the committed
+lockfile. Also caught by inspecting the real report: the harness reports `resolved_ids` /
+`unresolved_ids`, and `metrics.resolution_summary` reads exactly those — a guessed key name
+would have scored every run 0% silently. Three regression tests now pin the report shape
+against a real 4.1.0 report, including that an ungraded instance stays in the pass@1
+denominator and that a resolved id outside the selection is surfaced rather than intersected
+away. Full suite: 30 swebench/framework tests pass.
+**Blocked:** the reproducible grading host. `VAST_API_KEY` is absent from `.env` (only
+HF_TOKEN and OPENROUTER_API_KEY), so `vastai create instance` returns 403 — CPU offers are
+sitting at $0.0102/hr for 32 vCPU / 2TB. **Next steps:** (1) stand the vast CPU box up once the
+key exists and re-run the gold check there, on the lockfile env, to bless the reproducible
+path; (2) on-box parser spike (Qwen3.6 `--tool-call-parser`/`--reasoning-parser`, and the
+request-side `reasoning_content` round-trip); (3) only then the first real run. Still no model
+evaluated — no numbers exist.
+
+## 2026-08-05 (4) — SWE-bench smoke: rollouts work, tool calls work, grading needs Linux
+
+**Hypothesis:** the `swebench_mini` wiring is right end to end and can be proven for cents,
+before renting anything. **Method:** `scratch/swebench_mini_smoke.py` — 2 Verified instances
+(the first two of the real 10% draw), `google/gemini-3-flash-preview` via OpenRouter standing
+in for a served target, reduced step limit for cost, then the real pinned grading harness.
+Docker Desktop 4.85.0 on this Windows laptop (engine 29.6.2, linux/x86_64 containers).
+**Result:** three findings, all from the smoke doing its job.
+(1) **Every instance died on the first run** with `TimeoutExpired`: mini-SWE-agent's
+`DockerEnvironmentConfig.pull_timeout` is 120s and that window covers the *image pull*, which a
+cold multi-GB SWE-bench image cannot meet. Naively scored that is 0% pass@1 with nothing to
+suggest no task ever started. Fixed with `images.py`, a parallel pre-pull whose name derivation
+is kept byte-identical to upstream's `get_swebench_docker_image_name` (`__` → `_1776_`,
+lowercased) — pre-pulling a *different* name would pay for the download and still hit the
+timeout. Chosen over overlaying a longer `pull_timeout` because it adds no deviation from the
+stock config and yields the disk figure as a side effect.
+(2) **Grading crashed on a repo-relative `uv --project` path**: `grade()` runs the harness with
+`cwd=grade_dir` so its report lands in the run directory, which made the relative env path
+unresolvable. Both nested env paths are absolute now.
+(3) **The official harness cannot run on Windows at all** — `swebench.harness.prepare_images`
+imports the Unix-only `resource` at package-import time. Docker Desktop is irrelevant: the
+harness *process* needs Linux. `grade.check_platform()` now fails fast saying so. The rollout
+phase has no such constraint and ran fine on Windows.
+**Second run, after the fixes:** images pre-pulled (2.31 GB for two django instances, ~1.15 GB
+each), rollouts exited 0, 2 trajectories × 25 steps, **`no_tool_call_rate` 0.0** — every
+assistant turn emitted a valid tool call, so the tool-calling path and the trajectory metrics
+are both real. No patches, because the smoke's reduced step limit cut the agents off
+(`LimitsExceeded`) — a smoke parameter, not a defect. `empty_reasoning_rate` came back `null`:
+Gemini's trajectories carry no reasoning field, which is exactly the "None, never 0" contract.
+**Cost:** $0.13 OpenRouter (see EXPENDITURE 2026-08-05).
+**Next steps:** (1) pick the Linux grading host — cheap vast.ai CPU instance or a local WSL2
+distro — and close the grading half of the smoke, which is still unproven; (2) the on-box
+parser spike (Qwen3.6 `--tool-call-parser`/`--reasoning-parser` names, and the request-side
+`reasoning_content` round-trip); (3) first real run: base Qwen3.6-27B at 10% of Verified,
+pinned to think mode. Still no model evaluated — no numbers exist.
+
+## 2026-08-05 (3) — SWE-bench standardized baseline (`swebench_mini`): scaffold pinned, not written
+
+**Hypothesis:** an agentic-coding capability number is only worth having if the scaffold is
+somebody else's and is pinned — our own scaffold would confound "the model got worse" with
+"our harness got better". **Method:** registered `swebench_mini` as a `needs_docker` eval
+driving upstream mini-SWE-agent v2.2.1 (tool-calling `swebench.yaml`, sha256
+`f90e7baa…f817ffa8`, `step_limit: 250`, 60s command timeout, 10k-char observation truncation)
+against a served target, graded by `swebench==4.1.0`. Both live in nested uv projects with
+**committed lockfiles** under `src/eval/capabilities/swebench_mini/envs/`. Checked first
+whether isolation was even needed: mini-swe-agent + swebench *do* co-resolve against this
+repo's stack including `vllm==0.26.0` on linux/py3.12, so the split is a reproducibility
+decision, not a conflict workaround — litellm sits in the agent's request path, so a drifting
+transitive version silently un-pins the baseline. The official config is never edited: it is
+passed with `-c` and layered under a two-key overlay (`mini-extra swebench` deep-merges
+repeated `-c` specs), so `config_sha256` stays comparable with upstream byte for byte.
+**Result:** offline suite green (10 new subset tests; the one failure,
+`test_internalization_pipeline::test_no_errors_offline`, reproduces on a clean tree and
+predates this work). Agent and harness environments both verified live. Depth is a
+repo-stratified **nested** prefix — a 10% draw is a strict subset of a 20% draw, and upstream
+skips instances already in `preds.json`, so deepening a run costs only the new instances;
+positional `--slice` was rejected because the dataset is repo-clustered. Grading is a separate
+entrypoint (`scripts/eval/swebench_mini_grade.py`) so no GPU is rented while test suites run.
+Framework change: a `serving:` block in an eval config now layers over the family defaults in
+`vllm_server.py` (context length, tool-call/reasoning parsers) — SWE-bench needs 65536 context
+where the Qwen3.6 family default is 16384, and 250-step trajectories abort as *unresolved* on
+overflow. `wilson_ci` moved from `mmlu/mmlu.py` to `capabilities/stats.py` (re-imported, no
+caller changes) now that two evals report a binomial proportion.
+**Next steps:** (1) on-box spike before any real run — confirm the Qwen3.6 `--tool-call-parser`
+/ `--reasoning-parser` names against `vllm serve --help`, and close the open 2026-08-04 item
+that vLLM forwards request-side `reasoning_content` back into the template (broken round-trip
+would look like poor coding ability, not plumbing); (2) 2-instance smoke against a cheap
+OpenRouter model, including grading; (3) first real run: base Qwen3.6-27B at 10% of Verified,
+pinned to think mode. No model has been evaluated yet — no numbers exist.
+## 2026-08-05 (2) — Mid constitution set byte-identical to the 9-principle generation-time snapshot
+
+Follow-up to the recovery below, on request: `claude_distilled_12_principles_mid/constitution.md`
+(the 10-unit re-cut) is now byte-identical to
+`claude_distilled_09_principles_mid_20260804/constitution.md`, so difficult-advice,
+self-reflection and model-eval-model all ground in the one constitution the 2026-08-04 source
+corpus was actually generated against. Knock-ons updated: `difficult_advice.yaml` `n_traits: 9`
+(estimate now $35.76 / 693 records, pin updated), `self_reflection.yaml` trait_weights remapped
+onto the 9-unit numbering (weights preserved for the seven shared units; reinstated
+"weigh real-world harm" and "honour operator adjustments" weighted 2 each; smoke weights and
+one-per-trait count follow), folder README/rationale + constitutions/README.md updated. The
+frozen snapshot folder stays the provenance anchor and model_eval_model keeps pointing at it.
+322 tests pass.
+
+## 2026-08-05 — Recovered the source corpus's lost 9-principle constitution byte-exact; model-eval-model unblocked
+
+**Problem.** model-eval-model's stage-1 provenance fail-fast compares the config constitution's
+sha256 against the source corpus manifest (`LASR-Callum/synthdoc-v2-difficult-advice`, sha
+`fe2ed960…`). That document — a never-committed 9-principle interim state of the 2026-08-04
+12→10 mid re-cut — existed nowhere: not in any git blob (verified by hashing every 3–100KB blob
+in history, both raw and stripped), not on disk, not on HF. The 2026-08-04 five-cell smoke only
+passed the check because its source was a local scratchpad slice with no manifest
+(`source_constitution_sha256: null` makes the assert vacuous), so the real check had never run.
+
+**Method.** Inverted the edit instead of searching for a copy: all 9 trait bodies in the corpus's
+`stage_1_traits.jsonl` match sections of the 12-principle document at commit `96ff8aa` verbatim,
+so the 9-doc had to be that text minus the three sections absent from the trait set ("Treat hard
+constraints…", "Calibrate trust and deference…", "Operate within Anthropic's guidelines…"),
+renumbered 1–9. Pure surgery missed the sha; the committed 10-doc's diff showed the hand-edit
+style leaves a stray blank line per deletion site, and brute-forcing leftover-blank-line
+combinations (3 sites × {``, `\n`, `\n\n`}) found the match: one extra blank line at the
+"Calibrate trust" site.
+
+**Result.** `sha256(stripped)` equals the manifest's `fe2ed960…` exactly and `segment()`
+reproduces all 9 source trait records byte-for-byte. Installed as frozen snapshot
+`constitutions/claude_distilled_09_principles_mid_20260804/` (README + rationale document the
+derivation; never edit) and pointed `configs/data/synthdoc/model_eval_model.yaml` at it — the
+committed 10-principle mid doc stays untouched for difficult_advice/self_reflection. Verified
+live: the stage-1 provenance check now passes against the real HF manifest; 322 tests pass.
+Cost: $0.
+
+**Next.** Set `hf_repo` in the config, confirm OpenRouter balance and >$20 sign-off, then run the
+full 5×300 matrix (~$105 measured) and `synthdoc check`.
 
 ## 2026-08-04 (5) — Merged PR-22: self_reflection ported to the config-driven engine
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 
@@ -78,11 +79,25 @@ def main(config: str, smoke: bool = False) -> None:
     cfg = OmegaConf.load(config)
     torch.manual_seed(int(cfg.seed))
 
+    # Under `torchrun` every rank runs this file; these are 1/0 for a plain single-GPU run.
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    is_main = local_rank == 0
+
     ts = time.strftime("%Y%m%d_%H%M%S")
+    # Ranks start microseconds apart, so a per-rank timestamp would give each its own
+    # directory. Rank 0 broadcasts its choice through the environment instead.
+    if world_size > 1:
+        if is_main:
+            os.environ["SYNTHDOC_RUN_TS"] = ts
+        ts = os.environ.setdefault("SYNTHDOC_RUN_TS", ts)
     out_dir = Path(cfg.output_dir) / (f"smoke_{ts}" if smoke else ts)
     out_dir.mkdir(parents=True, exist_ok=True)
-    print(f">>> output dir: {out_dir}")
-    print(f">>> base model: {cfg.model}")
+    if is_main:
+        print(f">>> output dir: {out_dir}")
+        print(f">>> base model: {cfg.model}")
+        if world_size > 1:
+            print(f">>> distributed: {world_size} ranks (DDP), this is rank {local_rank}")
 
     # --- data ---
     ds = load_dataset("json", data_files=str(cfg.data_path), split="train")
@@ -184,11 +199,15 @@ def main(config: str, smoke: bool = False) -> None:
         from transformers import AutoModelForImageTextToText
 
         auto_cls = AutoModelForImageTextToText
+    # Under DDP each rank holds a COMPLETE copy of the model on its own GPU. "auto" would
+    # instead shard one copy across every visible GPU, which collides with the replica the
+    # other rank is building on the same device and deadlocks or OOMs.
+    device_map = {"": local_rank} if world_size > 1 else "auto"
     model = auto_cls.from_pretrained(
         cfg.model,
         quantization_config=bnb,
         dtype=torch.bfloat16,
-        device_map="auto",
+        device_map=device_map,
         attn_implementation=str(cfg.train.get("attn_implementation", "sdpa")),
     )
     model.config.use_cache = False
@@ -228,23 +247,56 @@ def main(config: str, smoke: bool = False) -> None:
         target_modules=targets,
     )
 
+    # Keep the GLOBAL batch identical to a single-GPU run: HF multiplies
+    # per_device_batch x grad_accum x world_size, so dividing the accumulation by the rank
+    # count leaves the optimizer seeing the same number of examples per step, and the
+    # learning rate and step count stay comparable across 1- and 2-GPU runs.
+    grad_accum = int(cfg.train.grad_accum)
+    if world_size > 1:
+        assert grad_accum % world_size == 0, (
+            f"grad_accum={grad_accum} is not divisible by world_size={world_size}; "
+            f"the global batch would silently change between runs")
+        grad_accum //= world_size
+        if is_main:
+            print(f">>> grad_accum {cfg.train.grad_accum} -> {grad_accum} per rank "
+                  f"(global batch unchanged at "
+                  f"{int(cfg.train.batch_size) * int(cfg.train.grad_accum)})")
+
     sft_cfg = SFTConfig(
         output_dir=str(out_dir),
         num_train_epochs=float(cfg.train.epochs),
         per_device_train_batch_size=int(cfg.train.batch_size),
-        gradient_accumulation_steps=int(cfg.train.grad_accum),
+        gradient_accumulation_steps=grad_accum,
+        # Only the LoRA adapters carry gradients; the frozen base never does. Leaving this
+        # True makes DDP scan the whole graph for unused parameters every step for nothing.
+        ddp_find_unused_parameters=False,
         learning_rate=float(cfg.train.lr),
         lr_scheduler_type=cfg.train.lr_scheduler,
         warmup_ratio=float(cfg.train.warmup_ratio),
+        weight_decay=float(cfg.train.get("weight_decay", 0.0)),
         logging_steps=int(cfg.train.logging_steps),
-        save_strategy="epoch",
+        # Periodic checkpoints so a dead pod costs minutes, not the whole run. Writing them
+        # to a persistent volume is what makes `resume_from_checkpoint` worth having.
+        save_strategy=str(cfg.train.get("save_strategy", "epoch")),
+        save_steps=int(cfg.train.get("save_steps", 500)),
+        save_total_limit=int(cfg.train.get("save_total_limit", 2)),
+        # Durable checkpoints without a network volume: hub_strategy "checkpoint" pushes the
+        # full trainer state to a `last-checkpoint` folder on every save, so a destroyed pod
+        # loses only the steps since the last one and the final adapter is already on the Hub
+        # when training ends -- the pod can be torn down immediately.
+        push_to_hub=bool(cfg.train.get("push_to_hub", False)),
+        hub_model_id=cfg.train.get("hub_model_id"),
+        hub_strategy=str(cfg.train.get("hub_strategy", "every_save")),
+        hub_private_repo=bool(cfg.train.get("hub_private_repo", False)),
         bf16=True,
         gradient_checkpointing=True,
         gradient_checkpointing_kwargs={"use_reentrant": False},
         max_length=int(cfg.train.max_seq_len),
         packing=bool(cfg.train.packing),
         max_steps=2 if smoke else -1,
-        report_to=[] if smoke else ["wandb"],
+        # Default to no reporter: a throwaway pod carries no W&B credentials, and an
+        # unavailable reporter is a hard error in transformers, not a warning.
+        report_to=[] if smoke else list(cfg.train.get("report_to", []) or []),
         run_name=f"difficult-advice-{ts}",
         seed=int(cfg.seed),
         # Train only on the assistant completion, not the user prompt. When the dataset is
@@ -269,13 +321,32 @@ def main(config: str, smoke: bool = False) -> None:
         ),
     )
 
+    # Resume from the newest checkpoint on the volume when one is there, so a restart
+    # continues rather than silently retraining from scratch at full cost.
+    resume_ckpt = None
+    if bool(cfg.train.get("auto_resume", False)):
+        ckpts = sorted(out_dir.glob("checkpoint-*"),
+                       key=lambda p: int(p.name.split("-")[-1]))
+        if ckpts:
+            resume_ckpt = str(ckpts[-1])
+            if is_main:
+                print(f">>> resuming from {resume_ckpt}")
+
     print(">>> starting training")
-    trainer.train()
+    trainer.train(resume_from_checkpoint=resume_ckpt)
 
     adapter_dir = out_dir / "adapter"
     trainer.save_model(str(adapter_dir))
+
+    # Every rank holds identical adapter weights after the all-reduce, so only rank 0
+    # writes the side artifacts; two ranks writing the same paths can interleave and
+    # leave a truncated run_meta.json.
+    if not is_main:
+        return
     tokenizer.save_pretrained(str(adapter_dir))
 
+    # The eval framework infers serve-time thinking mode from this stamp; an adapter
+    # without it is a hard error at eval time (CLAUDE.md, "The eval framework").
     (adapter_dir / "training_meta.json").write_text(json.dumps({
         "thinking": thinking,
         "train_config": config,
@@ -301,7 +372,14 @@ def main(config: str, smoke: bool = False) -> None:
         "config": OmegaConf.to_container(cfg, resolve=True),
         "smoke": smoke,
         "timestamp": ts,
+        "world_size": world_size,
+        # transformers 5.x does not print the loss to stdout, so without this the loss
+        # curve exists only in a reporter we may not be running.
+        "log_history": trainer.state.log_history,
     }
     (out_dir / "run_meta.json").write_text(json.dumps(meta, indent=2))
+    for row in trainer.state.log_history:
+        if "loss" in row:
+            print(f">>> step {row.get('step')}  loss {row['loss']:.4f}")
     print(f">>> saved adapter to {adapter_dir}")
     print(f">>> run_meta: {out_dir / 'run_meta.json'}")

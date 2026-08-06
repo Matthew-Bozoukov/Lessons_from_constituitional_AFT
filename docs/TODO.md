@@ -18,3 +18,5 @@ This costs nothing today: every arm we serve is a thinking arm. If `nothink` or 
 arms come back, decide per-mode behaviour deliberately and test it against a live endpoint.
 Until then those modes split the reasoning out client-side with `split_think`, which handles
 every response shape.
+9. Execute the full 20/80 model-eval-model SFT run (1 epoch, ~10.5k examples, 2,100 docs = 420/cell) — plan, sizing math and past-run specifics in `docs/plan_full_sft_20_80.md` (blocked on: `hf_repo` at launch, spend sign-off ~$147 gen + ~$30 GPU).
+10. `configs/eval/swebench_mini_verified.yaml` requires `serving.context_window: 65536`, above Qwen3.6's `verified_context_window` (40960), so the eval fails fast at serve time by design. Boot vLLM live at 65536 in bf16 on the reference 1×H100 80GB, then bump the fact in `src/utils.py` with a dated comment — or, if it will not allocate, decide deliberately what window this benchmark runs at and record why. Do NOT resolve it by lowering the eval's window silently: long trajectories then abort and score unresolved, which reads as incapability.

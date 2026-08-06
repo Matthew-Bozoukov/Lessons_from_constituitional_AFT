@@ -1,0 +1,30 @@
+# ABOUTME: Isolated environment for the PINNED mini-SWE-agent rollout phase; the committed
+# ABOUTME: uv.lock is the provenance record for the standardized SWE-bench baseline.
+# Run: uv run --project src/eval/capabilities/swebench_mini/envs/agent mini-extra swebench ...
+#
+# Why a separate environment rather than a main-project dependency: mini-swe-agent and the
+# grading harness DO co-resolve against this repo's stack (checked 2026-08-05, including
+# vllm==0.26.0 on linux/py3.12), so this is not a conflict workaround. It is a
+# reproducibility decision. litellm sits directly in the agent's request path — retries,
+# tool-call translation — so a drifting transitive version silently un-pins a baseline whose
+# entire value is being pinned. A committed lockfile freezes the whole transitive closure and
+# is diffable in review; `uv run --with` re-resolves per invocation and cannot do that.
+# Keeping it out of the main project also stops a future mini-swe-agent bump from holding
+# back the serving/training stack.
+
+[project]
+name = "swebench-mini-agent-env"
+version = "0.1.0"
+description = "Pinned mini-SWE-agent for the standardized SWE-bench baseline"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # Pinned exactly. Bumping this is a deliberate act that invalidates comparability with
+    # every baseline number produced before it — record the change in docs/LOG.md and treat
+    # old and new results as different benchmarks.
+    "mini-swe-agent==2.2.1",
+]
+
+# Environment-only project: nothing here is importable as a package, so uv needs no build
+# backend and the main wheel never sees it.
+[tool.uv]
+package = false

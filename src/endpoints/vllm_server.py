@@ -126,31 +126,63 @@ def pin_template(template_text: str, mode: str) -> str:
             f"{{%- set preserve_thinking = {flag} -%}}\n") + template_text
 
 
-# The two serving namespaces are DISJOINT by design: family facts come from
-# ModelProfile.serving and are not writable from eval configs; an eval's `serving:`
-# block may declare only its own requirements. Requirements are validated against
-# facts here — never merged over them (a merge would let a config forge the ceiling
-# and would swallow typo'd keys silently).
-_EVAL_SERVING_KEYS = {"context_window", "max_num_seqs"}
+# The two serving namespaces are DISJOINT BY CONSTRUCTION — no key appears in both, so
+# "override" is not a concept this module can express. Family FACTS (ModelProfile.serving,
+# src/utils.py) say what a model family IS and what it has been measured to do; an eval's
+# `serving:` block declares only what that eval NEEDS. Requirements are validated against
+# facts here, never merged over them: a merge lets a config forge the very ceiling it is
+# checked against, swallows typo'd keys in silence, and makes "what actually served?"
+# a question about dict ordering.
+_FAMILY_FACT_KEYS = {"verified_context_window", "max_num_seqs", "reasoning_parser",
+                     "tool_call_parser", "supports_prefix_caching"}
+_EVAL_REQUIREMENT_KEYS = {"context_window", "concurrency", "needs_tool_calls",
+                          "reuses_long_prefixes"}
 
 
-def plan_serving(facts: dict, requirements: dict, base_model: str) -> dict:
-    """Validate an eval's serving requirements against a family's verified facts.
+def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) -> dict:
+    """Compose a vLLM launch plan from family facts and one eval's requirements.
 
-    Pure (unit-tested offline). Returns the launch plan: the window and seq count to
-    serve at, plus pass-through facts (reasoning_parser).
+    Pure (unit-tested offline), and total: every argv decision is made here, so
+    VllmServer._start only translates the returned plan into flags. `mode` is an input
+    because it decides flags — the reasoning parser is emitted think-mode-only — even
+    though it is neither a fact nor a requirement: it is a property of the artifact
+    being served (CLAUDE.md, "The eval framework").
+
+    Requests that a family cannot satisfy split two ways. A shortfall that would corrupt
+    the measurement is fatal (an agentic eval served without a tool-call parser scores 0
+    for a serving reason indistinguishable from incapability). A shortfall that only
+    costs throughput is reported in `unmet` and the run proceeds.
+
+    Args:
+        facts: The family's verified serving facts (`ModelProfile.serving`).
+        requirements: The eval config's `serving:` block.
+        base_model: HF id, for error messages only.
+        mode: think | nothink | default — the artifact's inferred thinking mode.
+
+    Returns:
+        The launch plan: `context_window`, `max_num_seqs`, `reasoning_parser`,
+        `tool_call_parser` (each None when not to be emitted), `prefix_caching`, and
+        `unmet` — satisfiable-in-principle requests this family cannot honour.
 
     Raises:
-        SystemExit: Unknown requirement key, missing context_window, window above the
-            family's verified ceiling, or seq count above the family's verified cap.
+        SystemExit: Unknown key on either side, missing context_window, window above
+            the family's verified ceiling, concurrency above its verified cap, or tool
+            calls required from a family with no verified parser.
     """
-    unknown = set(requirements) - _EVAL_SERVING_KEYS
+    unknown_facts = set(facts) - _FAMILY_FACT_KEYS
+    if unknown_facts:
+        raise SystemExit(
+            f"\nunknown key(s) in {base_model}'s ModelProfile.serving: "
+            f"{sorted(unknown_facts)}. Family facts are a closed set "
+            f"({sorted(_FAMILY_FACT_KEYS)}) — an eval's needs belong in its config's "
+            "serving: block, not in src/utils.py.")
+    unknown = set(requirements) - _EVAL_REQUIREMENT_KEYS
     if unknown:
         raise SystemExit(
             f"\nunknown key(s) in this eval's serving: block: {sorted(unknown)}. "
-            f"Eval configs declare requirements only ({sorted(_EVAL_SERVING_KEYS)}); "
+            f"Eval configs declare requirements only ({sorted(_EVAL_REQUIREMENT_KEYS)}); "
             "family facts (verified ceilings, parser names) live in "
-            "ModelProfile.serving, src/utils.py.")
+            "ModelProfile.serving, src/utils.py — an eval cannot set them.")
     window = requirements.get("context_window")
     if not window:
         raise SystemExit(
@@ -165,20 +197,59 @@ def plan_serving(facts: dict, requirements: dict, base_model: str) -> dict:
             f"ceiling ({ceiling} — ModelProfile.serving, src/utils.py). Lower the "
             "eval's window, or boot vLLM live at the larger window on the reference "
             "H100 and bump verified_context_window with a dated comment.")
-    # The family value is a boot-feasibility CAP (Mamba state slots are preallocated
-    # at startup), not a default an eval may exceed. An eval may request fewer slots
-    # — psychosis trades slots for window headroom — never more.
+    # The family value is a boot-feasibility CAP (Mamba state slots are preallocated at
+    # startup), not a default an eval may exceed. An eval requests `concurrency` — a
+    # different key on purpose, so the cap cannot be shadowed even by accident — and may
+    # ask for fewer slots (psychosis trades slots for window headroom), never more.
     cap = facts.get("max_num_seqs")
-    seqs = requirements.get("max_num_seqs", cap)
+    seqs = requirements.get("concurrency", cap)
     if seqs and cap and int(seqs) > int(cap):
         raise SystemExit(
-            f"\nserving.max_num_seqs={seqs} exceeds {base_model}'s verified cap "
+            f"\nserving.concurrency={seqs} exceeds {base_model}'s verified cap "
             f"({cap} — ModelProfile.serving, src/utils.py): Mamba state slots are "
             "preallocated at boot and the arena above the cap does not fit the "
             "reference H100. Request fewer, or verify a larger cap with a live boot.")
+
+    # Tool calls: the EVAL knows it drives a tool, the FAMILY knows which parser reads
+    # the syntax its template emits. Neither half is guessable from the other, and the
+    # wrong parser is silent — Qwen3.6 emits XML, so `hermes` would have parsed nothing
+    # and scored a clean 0% (docs/LOG.md 2026-07-29). No verified parser, no run.
+    tool_call_parser = None
+    if requirements.get("needs_tool_calls"):
+        tool_call_parser = facts.get("tool_call_parser")
+        if not tool_call_parser:
+            raise SystemExit(
+                f"\nthis eval declares serving.needs_tool_calls, but {base_model} has no "
+                "verified tool_call_parser (ModelProfile.serving, src/utils.py). Serving "
+                "it anyway returns tool calls as raw text and every task scores 0 for a "
+                "reason indistinguishable from incapability. Verify which of vLLM's "
+                "parsers matches this family's chat template, then add it as a fact.")
+
+    # Prefix caching costs throughput, not correctness, so an impossible request is
+    # reported rather than fatal: on Qwen3.6 vLLM forces it off regardless (Mamba state
+    # pages cannot be reused like attention KV, docs/LOG.md 2026-07-29), so passing the
+    # flag would be a no-op dressed up as a setting.
+    unmet = []
+    prefix_caching = bool(requirements.get("reuses_long_prefixes"))
+    if prefix_caching and not facts.get("supports_prefix_caching"):
+        prefix_caching = False
+        unmet.append(
+            f"reuses_long_prefixes: {base_model} cannot cache prefixes "
+            "(supports_prefix_caching is false), so each step re-prefills its whole "
+            "context. Throughput only — outputs are unaffected.")
+
+    # Think-mode only, by construction: on a tagless (nothink) stream the parser's
+    # "reasoning is at the start" assumption would route the WHOLE answer into the
+    # reasoning field. mode=default (full models) also skips it and falls back to
+    # client-side splitting — see docs/TODO.md.
+    reasoning_parser = facts.get("reasoning_parser") if mode == "think" else None
+
     return {"context_window": int(window),
             "max_num_seqs": int(seqs) if seqs else None,
-            "reasoning_parser": facts.get("reasoning_parser")}
+            "reasoning_parser": reasoning_parser,
+            "tool_call_parser": tool_call_parser,
+            "prefix_caching": prefix_caching,
+            "unmet": tuple(unmet)}
 
 
 class LocalExec:
@@ -245,9 +316,14 @@ class SshExec:
         self.remote_dir = f"{workdir}/output/serve"
         self.tunnel: subprocess.Popen | None = None
 
-    def _ssh(self, cmd: str, timeout: int = 240) -> str:
+    def _ssh(self, cmd: str, timeout: int = 240, stdin_text: str | None = None) -> str:
+        # encoding/errors pinned: remote logs carry non-ASCII (vLLM progress bars, box-drawing
+        # characters), and on a Windows driver the default cp1252 decode raises inside
+        # subprocess's reader THREAD — which does not fail the call, it just loses the output
+        # and prints an alarming traceback that looks like the run died. Observed 2026-08-05.
         r = subprocess.run(["ssh", self.host, cmd], capture_output=True, text=True,
-                           timeout=timeout)
+                           encoding="utf-8", errors="replace",
+                           timeout=timeout, input=stdin_text)
         if r.returncode != 0:
             raise RuntimeError(f"ssh {self.host} failed ({r.returncode}): "
                                f"{cmd[:120]} ...\n{r.stderr[-500:]}")
@@ -265,7 +341,14 @@ class SshExec:
         the loop, and CLAUDE.md's secrets policy says leaked values must be bounded.
         Never overwrites an existing remote .env.
         """
-        assert not self.has_env(), f"{self.host} already has a .env; not touching it"
+        # Skip, don't abort. The host having a .env already is the NORMAL case on any
+        # relaunch against the same box (a crashed run, a config tweak), and failing the
+        # whole eval there — after the weights are already downloaded — is a papercut with
+        # no upside. The guarantee that matters is unchanged: an existing remote .env is
+        # never overwritten.
+        if self.has_env():
+            print(f">>> {self.host} already has a .env — leaving it untouched")
+            return
         token = next((line.split("=", 1)[1].strip()
                       for line in local_env.read_text().splitlines()
                       if line.startswith("HF_TOKEN=")), "")
@@ -311,9 +394,23 @@ class SshExec:
                 "  (installs uv, clones this repo at your current branch, uv sync)")
 
     def write_file(self, name: str, text: str) -> str:
+        """Write a file on the remote host, streaming the payload through STDIN.
+
+        The payload is NOT interpolated into the command line. Doing so silently produced an
+        empty file for the ~10KB base64 of a pinned chat template (observed 2026-08-05,
+        Windows driver): the ssh call returned 0, wrote nothing, and the failure surfaced
+        much later as vLLM refusing a chat-template path that "appears path-like, but doesn't
+        exist". The exact truncation point was never pinned down — which is the argument for
+        stdin regardless, since it removes command-line length and shell-quoting from the
+        picture entirely. The size assertion below turns any future silent write into a loud
+        one at the point of failure.
+        """
         payload = base64.b64encode(text.encode()).decode()
         path = f"{self.remote_dir}/{name}"
-        self._ssh(f"mkdir -p {self.remote_dir} && echo {payload} | base64 -d > {shlex.quote(path)}")
+        self._ssh(f"mkdir -p {self.remote_dir} && base64 -d > {shlex.quote(path)}",
+                  stdin_text=payload)
+        written = self._ssh(f"wc -c < {shlex.quote(path)} 2>/dev/null || echo 0").strip()
+        assert int(written or 0) > 0, f"remote write of {path} produced an empty file"
         return path
 
     def fetch_adapter(self, hf_path: str) -> str:
@@ -364,12 +461,16 @@ class VllmServer:
     """One vLLM OpenAI server — local subprocess or remote over SSH — restarted only when
     base model or mode changes. Consecutive targets sharing base+mode reuse the running
     server: a new adapter is attached with vLLM's runtime LoRA-load endpoint.
+
+    `serve_requirements` is the eval config's `serving:` block — what that eval NEEDS,
+    never what the family provides. It is validated against the family's facts by
+    plan_serving and layered over nothing; see that function for the split.
     """
 
     def __init__(self, work_dir: Path, port: int = 8000, executor=None,
-                 serve_overrides: dict | None = None):
+                 serve_requirements: dict | None = None):
         self.port = port
-        self.serve_overrides = serve_overrides or {}
+        self.serve_requirements = serve_requirements or {}
         self.executor = executor if executor is not None else LocalExec(work_dir)
         self.base_model: str | None = None
         self.mode: str | None = None
@@ -408,8 +509,10 @@ class VllmServer:
                                         pin_template(template, mode))
 
     def _start(self, spec: TargetSpec, adapter_dir: str | None) -> None:
-        plan = plan_serving(serving_params(spec.base_model), self.serve_overrides,
-                            spec.base_model)
+        plan = plan_serving(serving_params(spec.base_model), self.serve_requirements,
+                            spec.base_model, spec.mode)
+        for shortfall in plan["unmet"]:
+            print(f"!!! {shortfall}")
         argv = self.executor.python_argv + [
             "-m", "vllm.entrypoints.openai.api_server",
             "--model", spec.base_model, "--served-model-name", "base",
@@ -417,14 +520,18 @@ class VllmServer:
             "--max-model-len", str(plan["context_window"]),
             "--gpu-memory-utilization", "0.94",
             "--port", str(self.port)]
-        if plan.get("max_num_seqs"):
+        # Every decision below was made in plan_serving; this is translation only. Adding
+        # an `if` here would put a second decision-maker back in the loop — the thing the
+        # facts/requirements split exists to prevent.
+        if plan["max_num_seqs"]:
             argv += ["--max-num-seqs", str(plan["max_num_seqs"])]
-        if plan.get("reasoning_parser") and spec.mode == "think":
-            # think-mode only, by construction: on a tagless (nothink) stream the
-            # parser's "reasoning is at the start" assumption would route the WHOLE
-            # answer into the reasoning field. mode=default (full models) also skips
-            # the parser and falls back to client-side splitting — see docs/TODO.md.
+        if plan["reasoning_parser"]:
             argv += ["--reasoning-parser", plan["reasoning_parser"]]
+        if plan["tool_call_parser"]:
+            argv += ["--enable-auto-tool-choice",
+                     "--tool-call-parser", plan["tool_call_parser"]]
+        if plan["prefix_caching"]:
+            argv += ["--enable-prefix-caching"]
         template = self._pinned_template_path(spec.base_model, spec.mode)
         if template:
             argv += ["--chat-template", template]

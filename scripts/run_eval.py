@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
@@ -121,8 +122,14 @@ def main(argv: list[str] | None = None) -> None:
 
     executor = None
     if args.server:
+        # The docker-bridge bind exists for evals whose SCENARIO CONTAINERS call the model
+        # (ODCV). It is a linux-only address: Docker Desktop — macOS *and* Windows — has no
+        # host-side bridge interface, so binding there fails with "Cannot assign requested
+        # address" (hit on Windows, 2026-08-05). Evals whose agent calls the model from the
+        # driver rather than from inside a container never need it at all.
         bind = args.server_bind or (
-            "172.17.0.1" if EVALS[args.name].needs_docker and sys.platform != "darwin"
+            "172.17.0.1" if EVALS[args.name].needs_docker
+            and sys.platform not in ("darwin", "win32")
             else "127.0.0.1")
         executor = SshExec(args.server, port=args.port, bind=bind)
         executor.check_ready()
@@ -133,14 +140,28 @@ def main(argv: list[str] | None = None) -> None:
                   "(rate-limited); gated/private weight pulls will fail. Provision "
                   "deliberately with --push-env (HF_TOKEN only) or scp your own.")
         print(f">>> serving on {args.server} (tunnel bound to {bind}:{args.port})")
+    # The eval's `serving:` block states what this eval REQUIRES (window, concurrency,
+    # tool calls); the base model's verified facts live in ModelProfile.serving and are not
+    # writable from here. plan_serving validates one against the other — nothing is layered
+    # over anything. `or {}` not `.get(..., {})`: a bare `serving:` key parses as None.
     server = VllmServer(work_dir=Path("output") / args.name / "server", port=args.port,
                         executor=executor,
-                        serve_overrides=OmegaConf.to_container(cfg.get("serving") or {},
-                                                               resolve=True))
+                        serve_requirements=OmegaConf.to_container(cfg.get("serving") or {},
+                                                                  resolve=True))
     summaries: dict[str, dict] = {}
     try:
         for hf_path in targets:
             spec = resolve_target(hf_path)
+            if cfg.get("mode"):
+                # The documented escape hatch (CLAUDE.md "The eval framework"): mode is
+                # normally INFERRED from the artifact and never declared at eval time. A full
+                # model has no training stamp, so it resolves to its template's own default —
+                # which cannot be compared against think-stamped adapters, because comparison
+                # code refuses to pair arms whose modes differ. Pinning it explicitly is how a
+                # base arm joins a think ladder, and the override lands in run_meta.json via
+                # both the config and the recorded mode below.
+                spec = replace(spec, mode=str(cfg.mode))
+                print(f">>> mode override: {hf_path} pinned to {spec.mode!r} (config `mode=`)")
             print(f">>> {args.name} | {hf_path} | base={spec.base_model} mode={spec.mode}")
             served = server.ensure(spec)
             out_dir = Path("output") / args.name / spec.model_key / timestamp()

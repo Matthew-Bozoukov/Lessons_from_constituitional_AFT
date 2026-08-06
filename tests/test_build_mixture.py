@@ -7,7 +7,15 @@ from pathlib import Path
 import pytest
 from omegaconf import OmegaConf
 
-from src.data.mixture.build_mixture import _fill, _take_rendered, _usable, main
+from src.data.mixture.build_mixture import (
+    _budget,
+    _fill,
+    _fill_budget,
+    _source_stats,
+    _take_rendered,
+    _usable,
+    main,
+)
 
 
 def _rows(sizes):
@@ -36,7 +44,7 @@ def test_take_rendered_labels_source_and_respects_budget(tmp_path):
     with path.open("w") as f:
         for i in range(10):
             f.write(json.dumps({"text": f"doc{i}", "n_tokens": 30}) + "\n")
-    out = _take_rendered(path, budget=100, seed=0, source="embodied")
+    out = _take_rendered(path, budget=("tokens", 100), seed=0, source="embodied")
     assert out and all(r["source"] == "embodied" for r in out)
     assert sum(r["n_tokens"] for r in out) <= 100
 
@@ -47,9 +55,57 @@ def test_take_rendered_passes_supervise_through(tmp_path):
         f.write(json.dumps({"text": "self-reflect", "n_tokens": 10,
                             "supervise": "final"}) + "\n")
         f.write(json.dumps({"text": "plain", "n_tokens": 10}) + "\n")
-    out = {r["text"]: r for r in _take_rendered(path, budget=100, seed=0, source="model_eval_model")}
+    out = {r["text"]: r for r in _take_rendered(path, budget=("tokens", 100), seed=0,
+                                                source="model_eval_model")}
     assert out["self-reflect"]["supervise"] == "final"
     assert "supervise" not in out["plain"], "rows without the field stay unchanged"
+
+
+def test_budget_requires_exactly_one_of_tokens_or_examples():
+    assert _budget("s", {"tokens": 100}, scale=1) == ("tokens", 100)
+    assert _budget("s", {"examples": 40}, scale=1) == ("examples", 40)
+    with pytest.raises(ValueError, match="exactly one"):
+        _budget("s", {"tokens": 100, "examples": 40}, scale=1)
+    with pytest.raises(ValueError, match="exactly one"):
+        _budget("s", {}, scale=1)
+
+
+def test_budget_smoke_scale_divides_and_floors_at_one():
+    assert _budget("s", {"examples": 100}, scale=20) == ("examples", 5)
+    assert _budget("s", {"examples": 3}, scale=20) == ("examples", 1)
+
+
+def test_fill_budget_examples_takes_exactly_n_and_is_deterministic():
+    a = _fill_budget(_rows([10] * 8), ("examples", 5), seed=7)
+    b = _fill_budget(_rows([10] * 8), ("examples", 5), seed=7)
+    assert len(a) == 5 and a == b
+
+
+def test_fill_budget_examples_fails_loudly_when_source_is_short():
+    with pytest.raises(AssertionError, match="only 3"):
+        _fill_budget(_rows([10, 10, 10]), ("examples", 5), seed=0)
+
+
+def test_take_rendered_example_budget_takes_exact_count(tmp_path):
+    path = tmp_path / "corpus.jsonl"
+    with path.open("w") as f:
+        for i in range(10):
+            f.write(json.dumps({"text": f"doc{i}", "n_tokens": 30}) + "\n")
+    out = _take_rendered(path, budget=("examples", 4), seed=0, source="model_eval_model")
+    assert len(out) == 4
+
+
+def test_source_stats_reports_example_and_token_shares_separately():
+    # A 20/80-by-examples mixture whose synthetic rows are 4x longer: the example share
+    # must read 20/80 even though the token share reads 50/50 — both are recorded.
+    rows = ([{"source": "mem", "n_tokens": 400}] * 2
+            + [{"source": "replay", "n_tokens": 100}] * 8)
+    stats = _source_stats(rows)
+    assert stats["mem"]["share_pct_examples"] == 20.0
+    assert stats["replay"]["share_pct_examples"] == 80.0
+    assert stats["mem"]["share_pct_tokens"] == 50.0
+    assert stats["replay"]["share_pct_tokens"] == 50.0
+    assert stats["mem"]["examples"] == 2 and stats["mem"]["tokens"] == 800
 
 
 def test_usable_accepts_wellformed_and_rejects_malformed():
@@ -87,12 +143,15 @@ def test_mixture_configs_share_one_schema():
         assert sources, name
         for sname, spec in sources.items():
             if "repo" in spec:
-                assert set(spec) <= {"repo", "split", "tokens", "shuffle_buffer",
-                                     "reasoning"}, (name, sname)
+                assert set(spec) <= {"repo", "split", "tokens", "examples",
+                                     "shuffle_buffer", "reasoning"}, (name, sname)
                 # What the data carries is part of the scientific record, never guessed.
                 assert spec.get("reasoning") in ("native", "none", "strip"), (name, sname)
             else:
-                assert set(spec) == {"path", "format", "tokens"}, (name, sname)
+                assert set(spec) - {"tokens", "examples"} == {"path", "format"}, (name, sname)
                 assert spec["format"] in ("messages", "rendered"), (name, sname)
-            assert int(spec["tokens"]) > 0, (name, sname)
+            # Exactly one budget kind per source (the builder's _budget contract).
+            declared = [k for k in ("tokens", "examples") if spec.get(k) is not None]
+            assert len(declared) == 1, (name, sname, declared)
+            assert int(spec[declared[0]]) > 0, (name, sname)
         assert int(cfg.max_seq_len) > 0, name

@@ -8,6 +8,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test, { after, before } from "node:test";
+import { fileURLToPath } from "node:url";
 
 let server;
 let endpoint;
@@ -386,8 +387,13 @@ test("every locally sharded transcript is fetchable and complete", async () => {
   for (const run of index.entries.filter((entry) => entry.petri)) {
     if (run.petri.source.kind !== "local") continue;
     for (const row of run.petri.transcript_index) {
+      // fileURLToPath, not `.pathname`: the latter stays percent-encoded, so a
+      // checkout under a directory with a space in its name resolves to a path
+      // containing a literal "%20" and every read fails with ENOENT. It also
+      // handles the Windows drive-letter prefix that used to be stripped here
+      // by hand.
       const file = path.join(
-        publicRoot.pathname.replace(/^\/([A-Za-z]:)/, "$1"),
+        fileURLToPath(publicRoot),
         run.petri.transcript_base.replace(/^\//, ""),
         row.file,
       );

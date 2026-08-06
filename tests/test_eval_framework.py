@@ -6,6 +6,7 @@ import pytest
 from src.endpoints.vllm_server import TargetSpec, _spec_from_files, pin_template
 from src.eval import EVALS, EvalSpec
 from src.eval.publish import REQUIRED_FIELDS, card_markdown
+from src.utils import QWEN36_PROFILE
 
 ADAPTER_CONFIG = {"base_model_name_or_path": "Qwen/Qwen3-32B", "r": 16}
 
@@ -79,36 +80,89 @@ def test_registry_runners_fulfill_the_contract_and_configs_exist():
         assert Path(spec.config).exists(), (name, spec.config)
 
 
-QWEN36_FACTS = {"verified_context_window": 40960, "max_num_seqs": 32,
-                "reasoning_parser": "qwen3"}
+# The REAL facts, not a copy: if the profile changes, these tests are meant to notice.
+QWEN36_FACTS = QWEN36_PROFILE.serving
 
 
 def test_plan_serving_validates_requirements_against_facts():
     from src.endpoints.vllm_server import plan_serving
 
     # Happy path: psychosis-shaped request — big window, fewer slots than the cap.
-    plan = plan_serving(QWEN36_FACTS, {"context_window": 40960, "max_num_seqs": 12}, "m")
+    plan = plan_serving(QWEN36_FACTS, {"context_window": 40960, "concurrency": 12},
+                        "m", "think")
     assert plan == {"context_window": 40960, "max_num_seqs": 12,
-                    "reasoning_parser": "qwen3"}
-    # No seqs request: serve at the family cap.
-    assert plan_serving(QWEN36_FACTS, {"context_window": 16384}, "m")["max_num_seqs"] == 32
+                    "reasoning_parser": "qwen3", "tool_call_parser": None,
+                    "prefix_caching": False, "unmet": ()}
+    # No concurrency request: serve at the family cap.
+    assert plan_serving(QWEN36_FACTS, {"context_window": 16384}, "m",
+                        "think")["max_num_seqs"] == 32
     # Unprofiled family: no ceiling/cap to violate, no parser.
-    plan = plan_serving({"max_num_seqs": None}, {"context_window": 13312}, "m")
+    plan = plan_serving({"max_num_seqs": None}, {"context_window": 13312}, "m", "think")
     assert plan["max_num_seqs"] is None and plan["reasoning_parser"] is None
 
     with pytest.raises(SystemExit, match="declares no serving.context_window"):
-        plan_serving(QWEN36_FACTS, {}, "m")
+        plan_serving(QWEN36_FACTS, {}, "m", "think")
     with pytest.raises(SystemExit, match="exceeds .*verified ceiling"):
-        plan_serving(QWEN36_FACTS, {"context_window": 65536}, "m")
+        plan_serving(QWEN36_FACTS, {"context_window": 999999}, "m", "think")
     with pytest.raises(SystemExit, match="exceeds .*verified cap"):
-        plan_serving(QWEN36_FACTS, {"context_window": 16384, "max_num_seqs": 256}, "m")
+        plan_serving(QWEN36_FACTS, {"context_window": 16384, "concurrency": 256},
+                     "m", "think")
     # Facts are not writable from eval configs — a forged ceiling is an unknown key,
     # and a typo'd key errors instead of silently no-opping.
     with pytest.raises(SystemExit, match="unknown key"):
         plan_serving(QWEN36_FACTS, {"context_window": 16384,
-                                    "verified_context_window": 999999}, "m")
+                                    "verified_context_window": 999999}, "m", "think")
     with pytest.raises(SystemExit, match="unknown key"):
-        plan_serving(QWEN36_FACTS, {"context_windw": 16384}, "m")
+        plan_serving(QWEN36_FACTS, {"context_windw": 16384}, "m", "think")
+    # ...and the closed set runs both ways: an eval's need cannot be smuggled into a
+    # profile either.
+    with pytest.raises(SystemExit, match="unknown key"):
+        plan_serving({"max_num_seqs": 32, "needs_tool_calls": True},
+                     {"context_window": 16384}, "m", "think")
+
+
+def test_plan_serving_emits_reasoning_parser_in_think_mode_only():
+    # A nothink stream carries no tags, so the parser's "reasoning comes first"
+    # assumption would route the WHOLE answer into the reasoning field.
+    from src.endpoints.vllm_server import plan_serving
+
+    for mode, expected in (("think", "qwen3"), ("nothink", None), ("default", None)):
+        plan = plan_serving(QWEN36_FACTS, {"context_window": 16384}, "m", mode)
+        assert plan["reasoning_parser"] == expected, mode
+
+
+def test_plan_serving_matches_tool_call_needs_to_family_parsers():
+    # The eval declares the NEED; the family supplies which parser implements it.
+    from src.endpoints.vllm_server import plan_serving
+
+    plan = plan_serving(QWEN36_FACTS,
+                        {"context_window": 16384, "needs_tool_calls": True}, "m", "think")
+    assert plan["tool_call_parser"] == "qwen3_xml"
+    # Not requested: never emitted, even though the family has a parser.
+    assert plan_serving(QWEN36_FACTS, {"context_window": 16384}, "m",
+                        "think")["tool_call_parser"] is None
+    # Required but unverified for this family: fatal, because serving anyway scores 0
+    # in a way indistinguishable from incapability.
+    with pytest.raises(SystemExit, match="no verified tool_call_parser"):
+        plan_serving({"max_num_seqs": None},
+                     {"context_window": 13312, "needs_tool_calls": True}, "m", "think")
+
+
+def test_plan_serving_reports_impossible_prefix_caching_without_failing():
+    # Throughput-only shortfall: report it, serve without it. Qwen3.6 cannot cache
+    # prefixes (vLLM forces it off on this arch), so the flag would be a no-op.
+    from src.endpoints.vllm_server import plan_serving
+
+    plan = plan_serving(QWEN36_FACTS,
+                        {"context_window": 16384, "reuses_long_prefixes": True},
+                        "m", "think")
+    assert plan["prefix_caching"] is False
+    assert len(plan["unmet"]) == 1 and "reuses_long_prefixes" in plan["unmet"][0]
+    # A family that supports it gets it, silently.
+    supports = dict(QWEN36_FACTS, supports_prefix_caching=True)
+    plan = plan_serving(supports, {"context_window": 16384, "reuses_long_prefixes": True},
+                        "m", "think")
+    assert plan["prefix_caching"] is True and plan["unmet"] == ()
 
 
 def test_every_eval_config_declares_its_context_window():
@@ -117,11 +171,21 @@ def test_every_eval_config_declares_its_context_window():
     # VllmServer._start enforces it at serve time; this catches it at test time.
     from omegaconf import OmegaConf
 
+    from src.endpoints.vllm_server import _EVAL_REQUIREMENT_KEYS
+
     for name, spec in EVALS.items():
         cfg = OmegaConf.load(spec.config)
         window = OmegaConf.select(cfg, "serving.context_window")
         assert window and int(window) > 0, (
             f"{name}: {spec.config} must declare serving.context_window")
+        # Keys only, not a full plan_serving call: a config may legitimately declare a
+        # requirement no family has met yet (swebench_mini's 65536 window), and that is
+        # meant to fail loudly at serve time rather than silently here.
+        declared = set(OmegaConf.to_container(cfg.serving, resolve=True))
+        assert declared <= _EVAL_REQUIREMENT_KEYS, (
+            f"{name}: {spec.config} declares non-requirement serving key(s) "
+            f"{sorted(declared - _EVAL_REQUIREMENT_KEYS)} — family facts live in "
+            "ModelProfile.serving, src/utils.py")
 
 
 def test_odcv_bridge_url_rewrite():
@@ -206,10 +270,18 @@ def test_sshexec_push_hf_token_is_optin_minimal_and_never_overwrites(monkeypatch
     ex = SshExec("host", port=8000)
     sent = []
 
-    # Remote already has a .env: refuse to touch it.
-    monkeypatch.setattr(ex, "_ssh", lambda cmd, **kw: "yes\n")
-    with pytest.raises(AssertionError, match="already has"):
-        ex.push_hf_token(local)
+    # Remote already has a .env: leave it alone, and do NOT abort. Relaunching against a box
+    # that was already provisioned is the normal case (crashed run, config tweak), so this
+    # skips rather than failing an eval whose weights are already downloaded.
+    seen: list[str] = []
+
+    def already_has(cmd, **kw):
+        seen.append(cmd)
+        return "yes\n"
+
+    monkeypatch.setattr(ex, "_ssh", already_has)
+    ex.push_hf_token(local)
+    assert not any("hf_abc" in c for c in seen), "must not rewrite an existing remote .env"
 
     # Remote has none: exactly HF_TOKEN crosses, nothing else from the .env.
     def fake_ssh(cmd, **kw):
