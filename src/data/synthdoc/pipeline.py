@@ -84,7 +84,22 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
     else:
         run_dir = Path(cfg["output_dir"]) / (f"smoke_{ts}" if smoke else ts)
     repo = cfg.get("hf_repo_smoke") if smoke else cfg.get("hf_repo")
-    cache = StageCache(run_dir, repo, private=bool(cfg.get("hf_private", False)))
+    from src.hf_publish import origin_url
+    cache = StageCache(run_dir, repo, private=bool(cfg.get("hf_private", False)),
+                       card_fields={
+                           "experiment": f"synthdoc `{cfg['pipeline']}` run — per-stage "
+                                         "snapshots (resumable generation cache)",
+                           "date_generated": ts,
+                           "constitution": str(cfg["constitution"]),
+                           "source_repo": f"{origin_url()} @ {git_sha()}",
+                           "models": str(cfg.get("model")
+                                         or "per-stage models — see manifest.json"),
+                           "generation_config": "see manifest.json (full run config, "
+                                                "sampling settings, per-stage usage)",
+                           "schema": "stage_<n>_<name>.jsonl snapshots + manifest.json",
+                           "provenance": "uv run synth run --config "
+                                         f"configs/data/synthdoc/{cfg['pipeline']}.yaml",
+                       })
 
     workers = int(cfg.get("workers", 8))
     budget = float(cfg.get("budget_usd", 0)) or None

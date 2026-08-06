@@ -50,12 +50,14 @@ class StageCache:
     """
 
     def __init__(self, run_dir: Path, repo_id: str | None, private: bool = False,
-                 token: str | None = None) -> None:
+                 token: str | None = None, card_fields: dict | None = None) -> None:
         """Set up the cache.
 
         Args:
             run_dir: Local run directory.
             repo_id: HF dataset repo id, or None to skip publishing.
+            card_fields: CLAUDE.md card fields, uploaded as the repo README on first
+                creation (every upload carries a card, the cache repo included).
             private: Create the HF repo private.
             token: HF token; falls back to HF_TOKEN.
         """
@@ -63,17 +65,28 @@ class StageCache:
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self.repo_id = repo_id
         self.private = private
-        self.token = token or os.environ.get("HF_TOKEN")
+        self.token = (token or os.environ.get("HUGGINGFACE_API_KEY")
+                      or os.environ.get("HF_TOKEN"))
+        self.card_fields = card_fields
         self._api = None
 
     def _hf(self):
-        """Return a lazily-created HfApi, creating the repo on first use."""
+        """Return a lazily-created HfApi, creating the repo (with its card) on first use."""
         if self._api is None:
             from huggingface_hub import HfApi
 
             self._api = HfApi(token=self.token)
+            fresh = not self._api.repo_exists(self.repo_id, repo_type="dataset")
             self._api.create_repo(self.repo_id, repo_type="dataset", exist_ok=True,
                                   private=self.private)
+            # Every upload carries a card (CLAUDE.md) — the cache repo included.
+            if fresh and self.card_fields:
+                from src.hf_publish import card_markdown
+
+                self._api.upload_file(
+                    path_or_fileobj=card_markdown(self.card_fields).encode(),
+                    path_in_repo="README.md", repo_id=self.repo_id,
+                    repo_type="dataset")
         return self._api
 
     def path(self, index: int, name: str) -> Path:

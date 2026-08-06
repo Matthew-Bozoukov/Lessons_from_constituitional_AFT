@@ -374,12 +374,33 @@ def main(config: str, smoke: bool = False) -> None:
     }, indent=2))
 
     if cfg.get("hf_repo") and not smoke:
-        from huggingface_hub import HfApi
+        from src.hf_publish import origin_url, push_run_dir
 
-        api = HfApi()
-        api.create_repo(str(cfg.hf_repo), private=True, exist_ok=True)
-        api.upload_folder(folder_path=str(adapter_dir), repo_id=str(cfg.hf_repo))
-        print(f">>> pushed adapter (with training_meta.json) to {cfg.hf_repo}")
+        # Same card contract as every other artifact (CLAUDE.md: every upload carries a
+        # card), derived from the run's real metadata — the human-readable half beside
+        # the machine-readable training_meta.json the eval framework consumes.
+        url = push_run_dir(adapter_dir, str(cfg.hf_repo), {
+            "experiment": f"LoRA SFT adapter — {Path(config).stem}",
+            "date_generated": ts[:8],
+            "constitution": str(cfg.get("constitution") or
+                                f"inherited from the training data ({cfg.data_path}); "
+                                "not declared in this train config"),
+            "source_repo": f"{origin_url()} @ {_git_sha()}",
+            "models": f"base: {cfg.model}",
+            "generation_config": json.dumps({
+                "seed": int(cfg.seed), "thinking": thinking,
+                "epochs": float(cfg.train.epochs), "lr": float(cfg.train.lr),
+                "batch_size": int(cfg.train.batch_size),
+                "grad_accum": int(cfg.train.grad_accum),
+                "max_seq_len": int(cfg.train.max_seq_len),
+                "lora": {"r": int(cfg.lora.r), "alpha": int(cfg.lora.alpha),
+                         "dropout": float(cfg.lora.dropout)},
+            }),
+            "schema": "PEFT LoRA adapter (safetensors) + tokenizer + training_meta.json "
+                      "{thinking, train_config, base_model, data_path, git_sha, timestamp}",
+            "provenance": f"uv run train --config {config}",
+        }, private=True, repo_type="model")
+        print(f">>> pushed adapter (with training_meta.json + card) to {url}")
 
     meta = {
         "git_sha": _git_sha(),

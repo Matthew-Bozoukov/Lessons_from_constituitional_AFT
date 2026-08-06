@@ -28,7 +28,6 @@ from __future__ import annotations
 import json
 import os
 import random
-import subprocess
 import sys
 from pathlib import Path
 
@@ -37,6 +36,7 @@ from omegaconf import OmegaConf
 from transformers import AutoTokenizer
 
 from src.data.mixture.sources import SOURCES, clean_messages
+from src.hf_publish import origin_url
 from src.utils import git_sha, model_profile, timestamp, write_run_meta
 
 # Each source declares what its DATA carries via `reasoning:` — part of the scientific
@@ -338,16 +338,6 @@ def _write_rows(path: Path, rows: list[dict]) -> None:
     assert sum(1 for _ in path.open()) == len(rows), f"{path} is truncated"
 
 
-def _origin_url() -> str:
-    """This repo's origin URL, best-effort (provenance only)."""
-    try:
-        return subprocess.check_output(
-            ["git", "config", "--get", "remote.origin.url"],
-            stderr=subprocess.DEVNULL).decode().strip() or "this repository"
-    except Exception:  # noqa: BLE001 - provenance is best-effort
-        return "this repository"
-
-
 def _card_fields(cfg, config_path: str, stage_desc: str, files_desc: str,
                  filter_cfg, report: dict | None) -> dict:
     """Assemble the CLAUDE.md-required dataset-card fields for one push checkpoint."""
@@ -371,7 +361,7 @@ def _card_fields(cfg, config_path: str, stage_desc: str, files_desc: str,
         "title": str(cfg.hf.experiment),
         "date_generated": timestamp()[:8],
         "constitution": constitution,
-        "source_repo": f"{_origin_url()} @ {git_sha()}",
+        "source_repo": f"{origin_url()} @ {git_sha()}",
         "models": judge,
         "generation_config": json.dumps(gen),
         "schema": f"{files_desc}. {schema}",

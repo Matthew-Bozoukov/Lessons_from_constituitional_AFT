@@ -77,9 +77,9 @@ class AnswerCache:
     # --- internals -------------------------------------------------------------------
 
     def _api(self):
-        from huggingface_hub import HfApi
+        from src.hf_publish import hf_api
 
-        return HfApi(token=os.environ.get("HUGGINGFACE_API_KEY") or os.environ.get("HF_TOKEN"))
+        return hf_api()
 
     def _mirror_dir(self, key: CacheKey) -> Path | None:
         return self.mirror / key.path if self.mirror else None
