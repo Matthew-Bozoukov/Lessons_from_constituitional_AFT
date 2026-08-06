@@ -32,6 +32,12 @@ Second smoke verified: real token counts, LongAlign dropping 43/53 rows at the 8
 pushes. Superseded scratch scripts + configs/data/mixture_paper_table2.yaml deleted (git
 history is the archive). **Next:** the paid full run (~10k judge calls ≈ $4–5 — flag before
 launching); rename convert_synthdoc_qwen.py to a pure normaliser (docs/TODO.md).
+**Follow-up (same day):** convert_synthdoc_qwen.py deleted instead of renamed — interchange
+mode reads stage-5 chat exports directly (reasoning_content is native; `metadata.supervise`
+is lifted onto the mixture row, regression-tested), so nothing live routed through it. Its
+v1-corpus repairs (multi-system merge, string tool_calls) go to git history with it; the
+`format: rendered` configs it fed regenerate from a pre-deletion commit (notes updated in
+qwen36_three_way.yaml, replication.md, synthdoc README, TODO 9/10).
 
 ## 2026-08-06 — Merged main into `jamie/write-all-evals-to-hf`: serving is composed, not overridden
 

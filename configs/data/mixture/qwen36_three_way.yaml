@@ -10,10 +10,11 @@ tokenizer: "Qwen/Qwen3.6-27B"
 # difficult-advice. Budgets below are that arithmetic made explicit:
 # int(1493000 * 0.20) // 3 = 99533 per source, remainder 1194400 to TULU3.
 #
-# All three sources are pre-rendered by src/data/mixture/convert_synthdoc_qwen.py, which fixes the
-# synthdoc corpora's multiple system turns and string-encoded tool_calls, keeps real
-# reasoning traces, and leaves Qwen3.6's empty `<think></think>` marker on assistant turns
-# that have none.
+# All three sources were pre-rendered by convert_synthdoc_qwen.py (deleted 2026-08-06 —
+# git history is the archive; check out a pre-deletion commit to regenerate them), which
+# fixed the synthdoc corpora's multiple system turns and string-encoded tool_calls, kept
+# real reasoning traces, and left Qwen3.6's empty `<think></think>` marker on assistant
+# turns that have none.
 sources:
   embodied:
     path: "output/synthdoc_approved_embodied_qwen36/sft_qwen36.jsonl"

@@ -354,8 +354,10 @@ constitution sha differs from the config's. All five cells are implemented: the 
 `control`, the other-attribution critiques `m4`/`m3` (the flawed side via minimal-pair
 perturbation), and the self-reflection cells `m2`/`m1` — the headline experiment — whose records
 are multi-turn with the evaluated response in the model's own prior turn, trained with
-`supervise: "final"` (only the last assistant turn carries loss; threaded through
-`convert_synthdoc_qwen.py` → `build_mixture.py` → `masking.py`). See the cell table in
+`supervise: "final"` (only the last assistant turn carries loss; the stage-5 export's
+`metadata.supervise` is lifted onto the mixture row by `build_mixture.py` (interchange
+mode) and consumed by `masking.py` — `convert_synthdoc_qwen.py`, the old middle step,
+was deleted 2026-08-06; git history has it). See the cell table in
 [`src/data/synthdoc/README.md`](../src/data/synthdoc/README.md).
 
 ```bash
