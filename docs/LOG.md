@@ -3,6 +3,47 @@
 
 # LOG
 
+## 2026-08-06 — GCP is a viable Docker host for swebench_mini/ODCV (RunPod's blocker absent)
+
+**Hypothesis:** the grading/ODCV host blocker recorded on 2026-08-05 (5) — no machine that can
+both run Docker properly and be provisioned reproducibly — is solvable on GCP, whose VMs are
+full KVM guests rather than the unprivileged containers that make RunPod unusable for
+per-scenario Compose networks (CLAUDE.md "Where code runs"). A large CPU instance was refused
+by GCP pending account usage history, so the question was whether a *small* one demonstrates
+the capability at all.
+
+**Method:** drove the Compute Engine REST API directly with the `swebench-runner` service
+account (`api_keys/GCP_swebench_runner_key.json`, project `teak-brook-504614-v7`) — `gcloud` is
+not installed locally and was not needed. Created one `e2-small` (2 vCPU shared, 2GB RAM, 10GB
+pd-balanced, Debian 12) in `us-central1-a`, no service account attached. Boot health check
+published to guest attributes via a startup script; then installed `docker.io` and ran a
+workload chosen to probe the exact capabilities the harnesses need, not generic liveness:
+`docker run`, **user-defined bridge network creation** (the RunPod failure mode),
+container-to-container service-name DNS over that network, bind-mount write-back (how the
+harness reads patches off the host), and 4 concurrent containers.
+
+**Result:** **5/5 passed.** Docker 20.10.24, overlay2, cgroup v2. Bridge network created and
+service-name DNS resolved across it (HTTP 200) — the thing that fails on RunPod works here.
+Bind-mount round-trip and concurrent containers fine. Boot health: Debian 12, kernel 6.1.0-51,
+Python 3.11.2, egress 200 in 0.32s. Also measured, and worth recording because it contradicts
+the assumption behind the refusal: **`us-central1` quota is not restrictive — 32 CPUS, 8
+INSTANCES, 2048 GB disk, 0 used.** The large-instance refusal was therefore not a zero quota;
+whatever blocked it, headroom for a 32-vCPU grading box already exists in this region. Cloud
+Resource Manager API is disabled in the project (harmless — it only blocks IAM
+introspection; Compute API itself is enabled and working).
+
+**Caveat:** capability was proven, capacity was not. `e2-small` (2GB RAM, 10GB disk) is far too
+small for real grading — SWE-bench images alone run to ~300GB at 250 instances per
+`configs/eval/swebench_mini_verified.yaml`. This says the *platform* works, not that this
+*machine* can grade.
+
+**Next steps:** (1) retry the large CPU instance now that the project has usage history, or
+determine the real cause of the refusal given quota is 32 vCPU; (2) re-run
+`scripts/eval/swebench_mini_check_env.py`'s gold-patch verification on a properly sized GCP box
+to bless the reproducible grading path (still the open item from 2026-08-05 (5)); (3) if GCP
+becomes the standard host, promote the throwaway provisioning scripts into a real
+`scripts/gpu/`-style driver rather than leaving them in scratch.
+
 ## 2026-08-05 (5) — SWE-bench grading PROVEN by gold patch; env check added; no model run yet
 
 **Hypothesis:** a grading environment can be proven correct with no model at all, and should be

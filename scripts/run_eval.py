@@ -45,7 +45,13 @@ def _card_fields(name: str, cfg, served, command: str) -> dict:
         "constitution": str(cfg.get("constitution", "none")),
         "source_repo": f"teaching_claude_why_replication @ {_git_sha()}",
         "models": f"target={served.spec.hf_path} base={served.spec.base_model}",
-        "generation_config": json.dumps(OmegaConf.to_container(cfg.get("generation", {}), resolve=True)),
+        # `cfg.get("generation", {})` returns a PLAIN dict when the key is absent, and
+        # to_container rejects that — so an eval whose config has no `generation:` block
+        # (swebench_mini has none; its sampling is upstream's) crashed here AFTER a complete
+        # arm of rollouts, taking the remaining targets with it. Convert only a real node.
+        "generation_config": json.dumps(
+            OmegaConf.to_container(cfg.generation, resolve=True)
+            if "generation" in cfg else {}),
         "schema": "results.json: summary metrics; rollouts/: self-contained transcripts; run_meta.json: config + git state",
         "provenance": command,
     }

@@ -178,11 +178,23 @@ def resolution_summary(report: dict, selected_ids: list[str]) -> dict[str, Any]:
 
 
 def report_line(model: str, provenance: dict, selection: dict, scores: dict) -> str:
-    """The one-line result string, in the agreed reporting format."""
+    """The one-line result string, in the agreed reporting format.
+
+    A SHARDED run states its shard and scores over the instances it actually ran. Printing
+    the full subset size there would overstate coverage — the CI is computed over the shard,
+    so the line must say so or a reader will take it for the whole subset.
+    """
+    count = selection.get("shard_count") or 1
+    if count > 1:
+        scope = (f"[shard {selection['shard_index'] + 1}/{count}: "
+                 f"{scores['n_scored']} of {selection['n_selected']} instances "
+                 f"({selection['split_size']}-instance split), subset {selection['subset_hash']}, "
+                 f"shard {selection['shard_hash']}]")
+    else:
+        scope = (f"[{selection['n_selected']}/{selection['split_size']} instances, "
+                 f"subset {selection['subset_hash']}]")
     return (f"{model} + mini-SWE-agent {provenance['scaffold_version']} "
             f"(config {provenance['scaffold_config_sha256'][:12]}), "
             f"{selection['dataset']}@{selection['dataset_revision'][:12]} "
-            f"[{selection['n_selected']}/{selection['split_size']} instances, "
-            f"subset {selection['subset_hash']}], "
-            f"pass@1 = {scores['pass_at_1']:.1%} "
+            f"{scope}, pass@1 = {scores['pass_at_1']:.1%} "
             f"[{scores['pass_at_1_ci_lower']:.1%}, {scores['pass_at_1_ci_upper']:.1%}]")

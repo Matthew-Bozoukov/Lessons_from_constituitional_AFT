@@ -30,45 +30,93 @@ ENVS = (Path(__file__).resolve().parent / "envs")
 HARNESS_ENV = ENVS / "harness"
 
 
-def check_platform() -> None:
-    """Refuse Windows up front: the official harness cannot import there.
+# Official uv image: ships uv + CPython, so the bridge container needs no apt step.
+_BRIDGE_IMAGE = "ghcr.io/astral-sh/uv:python3.12-bookworm"
+# The bridge builds the harness venv INSIDE the container. The repo is bind-mounted, and its
+# envs/harness/.venv was created for the host OS — a Linux container cannot execute Windows
+# binaries, and uv would otherwise find and try to reuse it. Redirecting the environment keeps
+# the committed uv.lock as the source of truth (same pinned versions) while giving Linux its
+# own venv.
+_BRIDGE_VENV = "/tmp/harness-venv"
+
+
+def needs_bridge() -> bool:
+    """True when the harness cannot run natively and must go through a Linux container.
 
     `swebench.harness.prepare_images` imports `resource`, a Unix-only stdlib module, at
-    package-import time — so every entrypoint dies before it does anything, with a
-    `ModuleNotFoundError` buried in a subprocess log. Docker Desktop does not help: the
-    harness process itself is what needs to be on Linux, not just the containers.
+    package-import time, so on Windows every entrypoint dies before doing anything. Docker
+    Desktop does not fix that by itself — the harness PROCESS needs Linux, not just the
+    containers it launches. But the host daemon can run a Linux container that mounts the
+    docker socket and drives that same daemon, which is what this does.
 
     The rollout phase has no such constraint and runs fine on Windows.
     """
     import sys
 
-    if sys.platform == "win32":
-        raise SystemExit(
-            "\nSWE-bench grading cannot run on Windows.\n"
-            "  Why: the official harness imports `resource` (Unix-only) at import time;\n"
-            "       Docker Desktop does not change that — the harness itself must be on Linux.\n"
-            "  Fix: run this phase on Linux against the saved run directory. Either\n"
-            "       - a cheap vast.ai CPU instance (docker + ~$0.01/hr), or\n"
-            "       - a WSL2 distro with Docker Desktop's WSL integration enabled.\n"
-            "  Rollouts are unaffected: produce them anywhere, grade them on Linux.")
+    return sys.platform == "win32"
+
+
+def check_platform() -> None:
+    """Kept for callers that want a hard stop; the bridge means Windows is now supported."""
+    return None
+
+
+def _bridge_wrap(argv: list[str], repo_root: Path, cwd_in_repo: Path) -> list[str]:
+    """Wrap a harness invocation so it runs inside a Linux container on the host daemon.
+
+    The container gets three things: the docker socket (so the test containers it starts are
+    siblings on the SAME daemon, reusing images already pulled for the rollouts), the repo
+    (so the PINNED lockfile is what installs, not a loose `pip install swebench`), and a
+    writable venv path outside the mount.
+    """
+    rel = cwd_in_repo.resolve().relative_to(repo_root.resolve()).as_posix()
+    project = "/repo/src/eval/capabilities/swebench_mini/envs/harness"
+    # Sync explicitly: `uv run --project` does NOT auto-sync a non-package project (these env
+    # projects set `package = false`), and without it uv silently falls back to the system
+    # interpreter — which then fails with "No package metadata was found for swebench" rather
+    # than anything pointing at the real cause. Verified 2026-08-05.
+    inner = (f"uv sync -q --project {project} && "
+             + " ".join(shlex.quote(a) for a in argv))
+    return [
+        "docker", "run", "--rm",
+        "-v", "/var/run/docker.sock:/var/run/docker.sock",
+        "-v", f"{repo_root.resolve()}:/repo",
+        # Named volume, so the harness venv survives between bridge invocations instead of
+        # being rebuilt from the lockfile on every call (~1 min each time).
+        "-v", f"swebench-harness-venv:{_BRIDGE_VENV}",
+        "-e", f"UV_PROJECT_ENVIRONMENT={_BRIDGE_VENV}",
+        "-w", f"/repo/{rel}",
+        _BRIDGE_IMAGE,
+        "bash", "-lc", inner,
+    ]
 
 
 def harness_version() -> str:
-    out = subprocess.run(
-        ["uv", "run", "--project", str(HARNESS_ENV), "python", "-c",
-         "import importlib.metadata as m; print(m.version('swebench'))"],
-        capture_output=True, text=True, env=os.environ | {"PYTHONIOENCODING": "utf-8"})
+    """Version of the pinned harness, asked of the environment that will actually grade."""
+    inner = ["uv", "run", "--project", str(HARNESS_ENV), "python", "-c",
+             "import importlib.metadata as m; print(m.version('swebench'))"]
+    if needs_bridge():
+        repo_root = ENVS.parents[4]
+        inner = ["uv", "run", "--project",
+                 "/repo/src/eval/capabilities/swebench_mini/envs/harness", "python", "-c",
+                 "import importlib.metadata as m; print(m.version('swebench'))"]
+        cmd = _bridge_wrap(inner, repo_root, repo_root)
+    else:
+        cmd = inner
+    out = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+                         errors="replace", env=os.environ | {"PYTHONIOENCODING": "utf-8"})
     if out.returncode != 0:
-        raise RuntimeError(f"pinned harness env is not usable: {out.stderr[-600:]}")
+        raise RuntimeError(f"pinned harness env is not usable: {(out.stderr or '')[-600:]}")
     return out.stdout.strip().splitlines()[-1]
 
 
 def _harness_argv(*, dataset: str, predictions: str, run_id: str, max_workers: int,
                   cache_level: str, namespace: str, split: str = "test",
-                  instance_ids: list[str] | None = None) -> list[str]:
+                  instance_ids: list[str] | None = None,
+                  project: str | None = None) -> list[str]:
     """Build the harness invocation. `--report_dir .` with cwd set keeps every artifact
     (report, per-instance test logs) inside the run directory instead of the driver's cwd."""
-    argv = ["uv", "run", "--project", str(HARNESS_ENV),
+    argv = ["uv", "run", "--project", project or str(HARNESS_ENV),
             "python", "-m", "swebench.harness.run_evaluation",
             "--dataset_name", dataset, "--split", split,
             "--predictions_path", predictions,
@@ -99,16 +147,24 @@ def verify_environment(*, dataset: str, instance_ids: list[str], out_dir: Path,
     Returns:
         The gold report plus a `passed` flag (all requested instances resolved).
     """
-    check_platform()
     out_dir.mkdir(parents=True, exist_ok=True)
     run_id = f"gold_check_{len(instance_ids)}"
+    repo_root = ENVS.parents[4]
+    bridge = needs_bridge()
     argv = _harness_argv(dataset=dataset, predictions="gold", run_id=run_id,
                          max_workers=max_workers, cache_level=cache_level,
-                         namespace=namespace, split=split, instance_ids=instance_ids)
+                         namespace=namespace, split=split, instance_ids=instance_ids,
+                         project=("/repo/src/eval/capabilities/swebench_mini/envs/harness"
+                                  if bridge else None))
+    if bridge:
+        argv = _bridge_wrap(argv, repo_root, out_dir)
+        print(">>> gold check via Linux bridge container")
     print(">>> " + " ".join(shlex.quote(a) for a in argv))
     log = out_dir / "gold_check.log"
     with log.open("w", encoding="utf-8") as fh:
-        proc = subprocess.run(argv, cwd=out_dir, stdout=fh, stderr=subprocess.STDOUT,
+        # Under the bridge, -w already points at the mounted out_dir.
+        proc = subprocess.run(argv, cwd=None if bridge else out_dir,
+                              stdout=fh, stderr=subprocess.STDOUT,
                               text=True, env=os.environ | {"PYTHONIOENCODING": "utf-8"},
                               timeout=timeout)
     path = report_path(out_dir, run_id)
@@ -178,16 +234,28 @@ def grade(*, preds_path: Path, selected_ids: list[str], dataset: str, revision: 
         raise SystemExit(f"no predictions for the selected subset in {preds_path} — "
                          "nothing to grade (did the rollout phase produce anything?)")
 
-    argv = _harness_argv(dataset=dataset, predictions=str(jsonl), run_id=run_id,
-                         max_workers=max_workers, cache_level=cache_level,
-                         namespace=namespace)
+    repo_root = ENVS.parents[4]  # <repo>/src/eval/capabilities/swebench_mini/envs -> <repo>
+    bridge = needs_bridge()
+    argv = _harness_argv(
+        dataset=dataset,
+        # Inside the bridge the repo is mounted at /repo, so the predictions path and the
+        # harness project must be named in CONTAINER terms, not host terms.
+        predictions=(f"/repo/{jsonl.resolve().relative_to(repo_root.resolve()).as_posix()}"
+                     if bridge else str(jsonl)),
+        run_id=run_id, max_workers=max_workers, cache_level=cache_level, namespace=namespace,
+        project=("/repo/src/eval/capabilities/swebench_mini/envs/harness" if bridge else None))
+    if bridge:
+        argv = _bridge_wrap(argv, repo_root, grade_dir)
+        print(">>> grading via Linux bridge container (host harness cannot import on Windows)")
     print(">>> " + " ".join(shlex.quote(a) for a in argv))
     log = grade_dir / "harness.log"
     with log.open("w", encoding="utf-8") as fh:
         # cwd=grade_dir so the harness's report and run artifacts land inside the run
-        # directory rather than wherever the driver happened to be invoked from.
-        proc = subprocess.run(argv, cwd=grade_dir, stdout=fh, stderr=subprocess.STDOUT,
-                              text=True, env=os.environ | {"PYTHONIOENCODING": "utf-8"},
+        # directory rather than wherever the driver happened to be invoked from. Under the
+        # bridge the same is achieved with -w on the mounted path.
+        proc = subprocess.run(argv, cwd=None if bridge else grade_dir, stdout=fh,
+                              stderr=subprocess.STDOUT, text=True,
+                              env=os.environ | {"PYTHONIOENCODING": "utf-8"},
                               timeout=timeout)
 
     path = report_path(grade_dir, run_id)

@@ -23,7 +23,39 @@ to a future reader.
 | OpenRouter (eval judging) | $0.02 |
 | OpenRouter (eval scaffolding/smoke) | $0.13 |
 | GPU rental | $0.17 (+ ~4 RunPod A100-h on 2026-08-03, $ TBD from dashboard) |
-| **total** | **$256.28** (+ GPU TBD) |
+| GCP (CPU VM) | ~$0.01 so far — **ongoing, ~$0.023/hr while `nika-healthcheck-01` runs** |
+| **total** | **$256.29** (+ GPU TBD, + GCP accruing) |
+
+---
+
+## 2026-08-06 — GCP small CPU VM: Docker viability check for swebench_mini/ODCV
+
+**What was bought:** proof that GCP VMs can run the Docker workloads RunPod cannot — bridge
+network creation, container DNS, bind mounts, concurrent containers (5/5 passed; see
+`docs/LOG.md` 2026-08-06). Also bought the measurement that `us-central1` quota is 32 vCPU / 8
+instances / 2048 GB with 0 in use, so the earlier large-instance refusal was not a zero quota.
+
+**Cost:** ~$0.01 for the first ~30 minutes. **This is a list-price estimate, not a billed
+figure** — the GCP billing console is the authority and lags. Unit costs used
+(`us-central1`, on-demand list):
+
+| component | $/hr | note |
+|---|---|---|
+| `e2-small` (2 shared vCPU, 2GB) | ~$0.0168 | |
+| 10 GB pd-balanced | ~$0.0014 | $0.10/GB-month |
+| ephemeral external IPv4, in use | ~$0.005 | charged whenever attached to a running VM |
+| **total** | **~$0.023/hr** | ≈ $0.55/day ≈ $17/month |
+
+Image pulls are inbound and free; egress was negligible.
+
+**Still running.** The instance was deliberately left up to accrue the account usage history
+GCP wants before approving a larger CPU instance. It bills continuously at the rate above.
+Tear down with `instances.delete` on `nika-healthcheck-01` in `us-central1-a`, then confirm the
+aggregated instance list is empty.
+
+**Lesson:** an `e2-small` is enough to prove Docker *capability* for ~$0.02, which is a cheap
+way to qualify a provider before committing to a large box. It proves nothing about *capacity*
+— SWE-bench images run to ~300GB, so the real grading host is a separate purchase.
 
 ---
 
