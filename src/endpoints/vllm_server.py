@@ -133,8 +133,34 @@ def pin_template(template_text: str, mode: str) -> str:
 # facts here, never merged over them: a merge lets a config forge the very ceiling it is
 # checked against, swallows typo'd keys in silence, and makes "what actually served?"
 # a question about dict ordering.
-_FAMILY_FACT_KEYS = {"verified_context_window", "max_num_seqs", "reasoning_parser",
+_FAMILY_FACT_KEYS = {"native_context_window", "max_num_seqs", "reasoning_parser",
                      "tool_call_parser", "supports_prefix_caching"}
+
+
+def native_context_window(base_model: str) -> int | None:
+    """The window `base_model` was trained at, read from its own config.json.
+
+    `max_position_embeddings` is the number of positions the weights have embeddings
+    for — the one hard window limit, and a property of the model rather than of our
+    deployment. Read it rather than hand-copying it into a profile: a transcribed
+    constant is a fact nobody re-checks, and it is wrong for every family we have not
+    thought about yet. (This is also what vLLM derives its own default from, so a
+    request above it fails at startup anyway — catching it here just makes the error
+    legible before weights are pulled.)
+
+    Returns None when the field is absent or the config cannot be fetched, in which
+    case plan_serving imposes no window limit and vLLM's own startup check is the
+    backstop.
+    """
+    try:
+        with open(hf_hub_download(base_model, "config.json")) as f:
+            config = json.load(f)
+    except Exception:            # offline, gated repo, unusual layout — not fatal
+        return None
+    window = config.get("max_position_embeddings")
+    if window is None:           # some multimodal configs nest it under the text tower
+        window = (config.get("text_config") or {}).get("max_position_embeddings")
+    return int(window) if window else None
 _EVAL_REQUIREMENT_KEYS = {"context_window", "concurrency", "needs_tool_calls",
                           "reuses_long_prefixes"}
 
@@ -148,10 +174,14 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
     though it is neither a fact nor a requirement: it is a property of the artifact
     being served (CLAUDE.md, "The eval framework").
 
-    Requests that a family cannot satisfy split two ways. A shortfall that would corrupt
-    the measurement is fatal (an agentic eval served without a tool-call parser scores 0
-    for a serving reason indistinguishable from incapability). A shortfall that only
-    costs throughput is reported in `unmet` and the run proceeds.
+    Only a shortfall that would CORRUPT THE MEASUREMENT is fatal — an agentic eval served
+    without a tool-call parser scores 0 for a serving reason indistinguishable from
+    incapability. Everything else is reported in `warnings` and the run proceeds, in two
+    flavours: a request the family definitively cannot honour (prefix caching on an arch
+    vLLM forces it off for), and a request we simply have not verified yet (a window above
+    the high-water mark). The second is deliberately NOT fatal: refusing there would be
+    refusing on absence of evidence, which is the same forgery this split exists to
+    prevent, pointed the other way. vLLM's startup failure is the backstop.
 
     Args:
         facts: The family's verified serving facts (`ModelProfile.serving`).
@@ -162,12 +192,12 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
     Returns:
         The launch plan: `context_window`, `max_num_seqs`, `reasoning_parser`,
         `tool_call_parser` (each None when not to be emitted), `prefix_caching`, and
-        `unmet` — satisfiable-in-principle requests this family cannot honour.
+        `warnings` — operator-facing notes to print at serve time.
 
     Raises:
-        SystemExit: Unknown key on either side, missing context_window, window above
-            the family's verified ceiling, concurrency above its verified cap, or tool
-            calls required from a family with no verified parser.
+        SystemExit: Unknown key on either side, missing context_window, concurrency
+            above the family's verified cap (a real boot constraint — Mamba slots are
+            preallocated), or tool calls required from a family with no verified parser.
     """
     unknown_facts = set(facts) - _FAMILY_FACT_KEYS
     if unknown_facts:
@@ -190,13 +220,20 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
             "states the window it runs at (required, no default: the window decides "
             "truncation behaviour, so it is part of the eval's scientific record). "
             "Add a `serving:` section to its configs/eval YAML.")
-    ceiling = facts.get("verified_context_window")
-    if ceiling and int(window) > int(ceiling):
+    # The only hard window limit is the model's TRAINED window: past it there are no
+    # trained positions to attend to, and no amount of GPU fixes that. Everything
+    # between "what we have booted" and native is a KV-cache question about this
+    # particular card, which vLLM answers at startup far more reliably than a table
+    # here can — so it is not this function's to refuse. (This check previously used a
+    # high-water mark of the largest window we happened to have booted, which refused
+    # legitimate requests on absence of evidence.)
+    native = facts.get("native_context_window")
+    if native and int(window) > int(native):
         raise SystemExit(
-            f"\nserving.context_window={window} exceeds {base_model}'s verified "
-            f"ceiling ({ceiling} — ModelProfile.serving, src/utils.py). Lower the "
-            "eval's window, or boot vLLM live at the larger window on the reference "
-            "H100 and bump verified_context_window with a dated comment.")
+            f"\nserving.context_window={window} exceeds {base_model}'s native window "
+            f"({native} — ModelProfile.serving, src/utils.py): the weights have no "
+            "trained positions beyond it, so serving there needs explicit rope scaling "
+            "and is a deliberate experiment, not a config bump. Lower the eval's window.")
     # The family value is a boot-feasibility CAP (Mamba state slots are preallocated at
     # startup), not a default an eval may exceed. An eval requests `concurrency` — a
     # different key on purpose, so the cap cannot be shadowed even by accident — and may
@@ -229,11 +266,11 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
     # reported rather than fatal: on Qwen3.6 vLLM forces it off regardless (Mamba state
     # pages cannot be reused like attention KV, docs/LOG.md 2026-07-29), so passing the
     # flag would be a no-op dressed up as a setting.
-    unmet = []
+    warnings = []
     prefix_caching = bool(requirements.get("reuses_long_prefixes"))
     if prefix_caching and not facts.get("supports_prefix_caching"):
         prefix_caching = False
-        unmet.append(
+        warnings.append(
             f"reuses_long_prefixes: {base_model} cannot cache prefixes "
             "(supports_prefix_caching is false), so each step re-prefills its whole "
             "context. Throughput only — outputs are unaffected.")
@@ -249,7 +286,7 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
             "reasoning_parser": reasoning_parser,
             "tool_call_parser": tool_call_parser,
             "prefix_caching": prefix_caching,
-            "unmet": tuple(unmet)}
+            "warnings": tuple(warnings)}
 
 
 class LocalExec:
@@ -509,10 +546,13 @@ class VllmServer:
                                         pin_template(template, mode))
 
     def _start(self, spec: TargetSpec, adapter_dir: str | None) -> None:
-        plan = plan_serving(serving_params(spec.base_model), self.serve_requirements,
-                            spec.base_model, spec.mode)
-        for shortfall in plan["unmet"]:
-            print(f"!!! {shortfall}")
+        # Facts come from two places, both authoritative and neither overridable: the
+        # family's measured/architectural profile, and the model's own config.json.
+        facts = dict(serving_params(spec.base_model),
+                     native_context_window=native_context_window(spec.base_model))
+        plan = plan_serving(facts, self.serve_requirements, spec.base_model, spec.mode)
+        for warning in plan["warnings"]:
+            print(f"!!! {warning}")
         argv = self.executor.python_argv + [
             "-m", "vllm.entrypoints.openai.api_server",
             "--model", spec.base_model, "--served-model-name", "base",

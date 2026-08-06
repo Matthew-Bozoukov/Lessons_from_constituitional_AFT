@@ -92,7 +92,7 @@ def test_plan_serving_validates_requirements_against_facts():
                         "m", "think")
     assert plan == {"context_window": 40960, "max_num_seqs": 12,
                     "reasoning_parser": "qwen3", "tool_call_parser": None,
-                    "prefix_caching": False, "unmet": ()}
+                    "prefix_caching": False, "warnings": ()}
     # No concurrency request: serve at the family cap.
     assert plan_serving(QWEN36_FACTS, {"context_window": 16384}, "m",
                         "think")["max_num_seqs"] == 32
@@ -102,8 +102,6 @@ def test_plan_serving_validates_requirements_against_facts():
 
     with pytest.raises(SystemExit, match="declares no serving.context_window"):
         plan_serving(QWEN36_FACTS, {}, "m", "think")
-    with pytest.raises(SystemExit, match="exceeds .*verified ceiling"):
-        plan_serving(QWEN36_FACTS, {"context_window": 999999}, "m", "think")
     with pytest.raises(SystemExit, match="exceeds .*verified cap"):
         plan_serving(QWEN36_FACTS, {"context_window": 16384, "concurrency": 256},
                      "m", "think")
@@ -119,6 +117,26 @@ def test_plan_serving_validates_requirements_against_facts():
     with pytest.raises(SystemExit, match="unknown key"):
         plan_serving({"max_num_seqs": 32, "needs_tool_calls": True},
                      {"context_window": 16384}, "m", "think")
+
+
+def test_plan_serving_limits_the_window_only_at_the_trained_size():
+    # The one hard window limit is the model's trained window, read from its config.json
+    # (not transcribed into a profile). Anything below it is a KV-cache question about
+    # the specific card, which vLLM answers at startup — refusing here on a number we
+    # merely have not tried would refuse legitimate requests on absence of evidence.
+    from src.endpoints.vllm_server import plan_serving
+
+    facts = dict(QWEN36_FACTS, native_context_window=262144)
+    # Far above anything booted, far below native: served, silently.
+    plan = plan_serving(facts, {"context_window": 131072}, "m", "think")
+    assert plan["context_window"] == 131072 and plan["warnings"] == ()
+    # Past the trained positions: a real error no amount of GPU fixes.
+    with pytest.raises(SystemExit, match="exceeds .*native window"):
+        plan_serving(facts, {"context_window": 262145}, "m", "think")
+    # Config unreadable (offline, gated repo): no limit imposed, vLLM is the backstop.
+    plan = plan_serving(dict(QWEN36_FACTS, native_context_window=None),
+                        {"context_window": 999999}, "m", "think")
+    assert plan["context_window"] == 999999
 
 
 def test_plan_serving_emits_reasoning_parser_in_think_mode_only():
@@ -157,12 +175,12 @@ def test_plan_serving_reports_impossible_prefix_caching_without_failing():
                         {"context_window": 16384, "reuses_long_prefixes": True},
                         "m", "think")
     assert plan["prefix_caching"] is False
-    assert len(plan["unmet"]) == 1 and "reuses_long_prefixes" in plan["unmet"][0]
+    assert len(plan["warnings"]) == 1 and "reuses_long_prefixes" in plan["warnings"][0]
     # A family that supports it gets it, silently.
     supports = dict(QWEN36_FACTS, supports_prefix_caching=True)
     plan = plan_serving(supports, {"context_window": 16384, "reuses_long_prefixes": True},
                         "m", "think")
-    assert plan["prefix_caching"] is True and plan["unmet"] == ()
+    assert plan["prefix_caching"] is True and plan["warnings"] == ()
 
 
 def test_every_eval_config_declares_its_context_window():

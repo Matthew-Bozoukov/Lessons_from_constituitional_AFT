@@ -89,17 +89,13 @@ disable_network: true
 serving:
   # OUTCOME-DETERMINING, not a performance knob. Upstream's step_limit is 250 and observations
   # are truncated at 10k characters, so trajectories run far past the 16384 a single-turn eval
-  # uses; on overflow the instance aborts and scores unresolved.
+  # uses; on overflow the instance aborts and scores unresolved — which reads as incapability,
+  # not as a serving problem. Do not lower this to make a boot failure go away.
   #
-  # !!! THIS EXCEEDS Qwen3.6's verified_context_window (40960) AND WILL FAIL FAST at serve
-  # time, deliberately, until someone boots vLLM live at 65536 in bf16 on the reference
-  # 1xH100 80GB and bumps the fact with a dated comment. The 2026-07-29 ODCV entry
-  # recommending ">=131072" was measured at FP8 (KV 252k -> 678k tokens) and does not carry
-  # over to this bf16 path. The pilot that produced the parser measurements below ran on an
-  # H100 NVL 93GB, not the reference card, so it does not verify this either.
-  #
-  # Resolve it, do not paper over it: serving at 40960 to make the error go away would let
-  # long trajectories abort and score unresolved, which reads as incapability.
+  # Well inside the family's 262144 trained window, but larger than anything we have booted on
+  # one 80GB card in bf16, so the open question is purely whether the KV cache allocates. vLLM
+  # answers that at startup; if it will not fit, the lever is fp8 (KV 252k -> 678k tokens,
+  # docs/LOG.md 2026-07-29) or a bigger card, not a smaller window.
   context_window: 65536
   # No `concurrency:` on purpose — with none declared the server runs at the family's
   # verified cap (32), which is already comfortably above `workers: 12` so the driver never

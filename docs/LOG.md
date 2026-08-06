@@ -42,16 +42,30 @@ from incapability), reported-and-continue where only throughput suffers (prefix 
    that drives no tools would have served with no reasoning parser at all. Ours emits the two
    independently.
 
-**Surfaced, not resolved:** `swebench_mini` requires a 65536 window; Qwen3.6's verified ceiling
-is 40960, so the eval now **fails fast at serve time by design**. The 2026-07-29 entry
-recommending ">=131072" was measured at FP8 (KV 252k -> 678k tokens) and does not transfer to
-the bf16 path this server uses; main's own pilot ran on an H100 NVL 93GB, not the reference
-80GB card, so it verifies nothing here either. Nothing regressed — swebench has never had a
-model run. Recorded as TODO 10.
+**Correction, same session — the window ceiling was itself a forged fact.** The first cut of
+this work kept the branch's `verified_context_window: 40960` and made exceeding it fatal, which
+refused `swebench_mini`'s 65536. That number's entire provenance is "psychosis booted at it on
+2026-08-05" — chosen because 16384 overflowed its arcs at turn 7, not because anything failed
+above it. No boot failure above 40960 is on record anywhere; the 2026-07-29 entry in fact
+recommends **≥131072** for agentic work. So the check was refusing legitimate requests on
+absence of evidence, dressed as a measured limit — the same forgery this whole design exists to
+prevent, pointed the other way.
 
-**Next steps:** (1) boot vLLM live at 65536 bf16 on the reference H100 and either bump
-`verified_context_window` with a dated comment or decide deliberately what window this
-benchmark runs at; (2) open the PR back to main.
+Fixed by asking what the *real* limit is. The trained window (262144 here) is the only hard
+one, it is a property of the weights rather than of our deployment, and it is **readable**:
+`native_context_window()` pulls `max_position_embeddings` from the model's own `config.json`
+(verified live — returns 262144 for Qwen3.6-27B). So no context-window constant lives in
+`ModelProfile` at all; a transcribed number is a fact nobody re-checks and is wrong for every
+family we have not thought about yet. Above native is fatal (no trained positions to attend
+to); everything below it is a KV-cache question about one particular card, which vLLM answers
+at startup better than a table can predict. `plan_serving` stays pure — the fetch happens in
+`_start` and is passed in as a fact.
+
+`swebench_mini` therefore serves at 65536 rather than being refused. Whether the KV cache
+allocates on one 80GB card in bf16 is genuinely unknown and is now TODO 10; if it does not, the
+lever is fp8 or a bigger card, not a smaller window.
+
+**Next steps:** open the PR back to main.
 
 ## 2026-08-05 — First live psychosis runs: table2 20/80 DA mixture vs benign-only control
 
