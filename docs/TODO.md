@@ -7,7 +7,7 @@
 7. Serving assumes thinking mode on. vLLM's reasoning parser — the setting that splits a model's
 `<think>` reasoning from its visible answer into separate fields — is only switched on for
 `mode=think` arms. Each model family names its parser in `ModelProfile.serving`
-(`src/utils.py`).
+(`src/model_profile.py`).
 
 It stays off otherwise because model with thinking mode off never emits a closing `</think>` tag, and the
 *thinking* vLLM parser treats everything as reasoning until it sees one — so it would swallow the entire

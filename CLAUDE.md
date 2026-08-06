@@ -57,7 +57,12 @@ src/                    correctness-critical reusable code (installed editable; 
                           judges, red-teamers, data generation) + vllm_server.py (serve a
                           target model on localhost via vLLM; thinking mode inferred from the
                           artifact and pinned at serve time)
-  utils.py                extract_json, git_sha, timestamp, write_run_meta, count_chat_tokens
+  utils.py                io/json + provenance: extract_json, read_jsonl, git_sha,
+                          timestamp, write_run_meta, origin_url
+  model_profile.py        the ModelProfile registry (verified per-family facts for
+                          rendering/masking/serving) + think-stream parsers
+  huggingface.py          THE HF module: token resolution (reads + pushes), the
+                          dataset-card contract, push_run_dir/push_files/hf_download
   data/                   two subpackages, mirrored in scripts/data/ and configs/data/:
     synthdoc/               synthetic data generation (constitution-grounded,
                             config-driven engine, formerly synthdoc_v2; the config's
@@ -371,7 +376,7 @@ Never terminate a resource this repository did not provision. Report it instead.
 ## Gotchas (these WILL bite you — all learned the hard way)
 
 1. **Version pins**: vLLM 0.8.5 requires `transformers==4.51.3`. Newer transformers → `Qwen2Tokenizer has no attribute all_special_tokens_extended`.
-2. **Correct <think> tag templating and masking**: Qwen3.6 (the model under study) renders chain-of-thought tags on assistant turns and leaves them empty when no reasoning is present; its thinking-mode generation prompt prefills `<think>\n`, and nothink prefills the whole empty marker. Tokens the model is never expected to generate must never have a loss calculated for them — implemented as the non-configurable generation-boundary rule in `src/train/masking.py` (mask the prefill; mask a WHOLE empty marker; supervise real traces + their close), verified before every run by `src/train/mask_gate.py`. Family specifics live in `ModelProfile` (`src/utils.py`); unverified families are refused. At inference the serve-time template pin (`pin_template`) owns the tag behaviour — verify against the live template, never assume. 
+2. **Correct <think> tag templating and masking**: Qwen3.6 (the model under study) renders chain-of-thought tags on assistant turns and leaves them empty when no reasoning is present; its thinking-mode generation prompt prefills `<think>\n`, and nothink prefills the whole empty marker. Tokens the model is never expected to generate must never have a loss calculated for them — implemented as the non-configurable generation-boundary rule in `src/train/masking.py` (mask the prefill; mask a WHOLE empty marker; supervise real traces + their close), verified before every run by `src/train/mask_gate.py`. Family specifics live in `ModelProfile` (`src/model_profile.py`); unverified families are refused. At inference the serve-time template pin (`pin_template`) owns the tag behaviour — verify against the live template, never assume. 
 3. **QLoRA OOM** at batch 8 × 2048 on 80GB → use batch 4, `max_seq_len` ~1536–2048, and launch with `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`.
 4. **Train only on assistant tokens for the loss.** Qwen3.6's chat template lacks `{% generation %}` markers (verified live: `return_assistant_tokens_mask` flags 0 tokens), so TRL's `assistant_only_loss` produces an all-zero mask (nothing trains). The label mask is built in-repo instead — `build_labels` in `src/train/masking.py` sets prompt/user tokens to `-100` and supervises assistant completions, with think-tag handling per gotcha 2. Do NOT fall back to full-sequence training (it dilutes the signal with prompt tokens).
 5. **Reasoning models need token headroom**: any eval that caps generation tightly truncates inside the `<think>` block and scores a false 0% — size `max_tokens` for trace + answer, parse answers after `</think>`, and report the empty-think rate (a ~0-length trace means the arm stopped reasoning).
