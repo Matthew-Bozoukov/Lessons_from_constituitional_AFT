@@ -3,17 +3,13 @@
 
 """Build a training mixture: sample sources, optionally filter, optionally add synthetic.
 
-Two output modes, decided by the config (never per row — a mixture file is homogeneous):
-
-* **Interchange (the default for new configs)** — rows are model-agnostic chat
-  transcripts, `{"messages": [...], "source": ...}` with optional per-turn
-  `reasoning_content`/`tool_calls` (see src/data/mixture/sources/). No chat template is
-  applied at build time; train_lora renders with the training family's `ModelProfile`
-  and the tokenizer here is used only to *count* tokens for budgets and length caps.
-* **Legacy rendered** — any source declaring `reasoning: strip` or `format: rendered`
-  switches the whole build to the historical pre-rendered `{"text": ...}` form, exactly
-  as the pre-2026-08-06 builder produced it. Existing configs regenerate their artifacts
-  unchanged; new configs should not use these kinds.
+Rows are model-agnostic chat transcripts — `{"messages": [...], "source": ...}` with
+optional per-turn `reasoning_content`/`tool_calls` (see src/data/mixture/sources/). No
+chat template is applied at build time; train_lora renders with the training family's
+`ModelProfile`, and the tokenizer here only *counts* tokens for budgets and length caps.
+(The legacy pre-rendered `{"text"}` mode — `reasoning: strip` / `format: rendered` — was
+removed 2026-08-07: its published artifacts live on HF, and regenerating one byte-for-byte
+means checking out a pre-removal commit. Git history is the archive.)
 
 The optional stages, both config-driven (a config with neither behaves as a single pass):
 
@@ -32,7 +28,6 @@ from __future__ import annotations
 import json
 import os
 import random
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -42,26 +37,15 @@ from omegaconf import OmegaConf
 from transformers import AutoTokenizer
 
 from src.data.mixture.sources import SOURCES, clean_messages
-from src.utils import git_sha, think_census, model_profile, timestamp, write_run_meta
+from src.utils import git_sha, model_profile, timestamp, write_run_meta
 
-# Rendering policy for LEGACY rendered mode (the repo-wide default 2026-08-04 until the
-# interchange format replaced build-time rendering on 2026-08-06): the profile's
-# render_kwargs (Qwen3.6: preserve_thinking=True) make the template emit a think block on
-# EVERY assistant turn — reasoning_content where the row has it, the empty marker where it
-# does not. The generation-boundary mask (src/train/masking.py) wholly masks empty markers
-# and supervises real traces, so empty markers are safe by construction.
-# Each source declares what its DATA carries via `reasoning:`:
+# Each source declares what its DATA carries via `reasoning:` — part of the scientific
+# record, validated on the sampled rows, never guessed:
 #   native — rows carry reasoning_content (validated: every row keeps a real trace)
 #   none   — rows have no reasoning at all (validated)
-#   strip  — LEGACY: deliberate pre-policy no-think rendering; forces legacy mode.
-_REASONING_KINDS = ("native", "none", "strip")
-
-# The sentinel trick behind `strip`: the template only thinks on the FINAL assistant turn,
-# so appending a throwaway user turn pushes the assistant off the end and takes the
-# no-think branch; the throwaway turn is then cut.
-_SENTINEL = "__MIXTURE_SENTINEL__"
-
-_THINK_BLOCK = re.compile(r"<think>(.*?)</think>", re.DOTALL)
+# Think-tag syntax (markers, prefills) is a TRAIN-time concern: the profile's
+# render_kwargs put a think block on every assistant turn and the generation-boundary
+# mask (src/train/masking.py) keeps empty markers out of the loss.
 
 # Every budget (tokens or examples) is divided by this under --smoke, so a smoke run
 # exercises the full wiring (rendering, streaming, validation, stats) in seconds.
@@ -70,56 +54,6 @@ _SMOKE_SCALE = 20
 # Judge calls a --smoke run is allowed to spend (a fraction of a cent): enough to prove
 # the checkpoint/parse/report wiring, never enough to look like a completed filter.
 _SMOKE_JUDGE_LIMIT = 3
-
-
-def _render_preserved(tok, messages: list[dict], render_kwargs: dict) -> str:
-    """Render under the preserve-thinking policy: a think block on every assistant turn.
-
-    Plain `apply_chat_template` with the family profile's render kwargs — no sentinel, no
-    post-hoc surgery. Verified live (2026-08-04): with preserve_thinking=True Qwen3.6
-    renders each turn's reasoning_content, and the empty marker where a turn has none.
-    """
-    assert messages[-1]["role"] == "assistant", "conversation must end with an assistant turn"
-    text = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=False,
-                                   **render_kwargs)
-    n_turns = sum(1 for m in messages if m["role"] == "assistant")
-    assert text.count("<think>") == n_turns, (
-        f"expected a think block on every assistant turn ({n_turns}), got "
-        f"{text.count('<think>')} — template drift from the verified preserve behaviour?")
-    return text
-
-
-def _render_without_think(tok, messages: list[dict]) -> str:
-    """Render with no <think> block at all (`reasoning: strip` — legacy, non-default).
-
-    Args:
-        tok: The tokenizer.
-        messages: Conversation ending in an assistant turn.
-
-    Returns:
-        The rendered text, truncated before the appended throwaway user turn.
-    """
-    assert messages[-1]["role"] == "assistant", "conversation must end with an assistant turn"
-    padded = messages + [{"role": "user", "content": _SENTINEL}]
-    text = tok.apply_chat_template(padded, tokenize=False, add_generation_prompt=False)
-    text = text[: text.rindex("<|im_start|>user")]
-    assert _SENTINEL not in text, "failed to strip the throwaway turn"
-    assert "<think>" not in text, "strip rendering must contain no think block"
-    return text
-
-
-def _usable(msgs: list[dict]) -> bool:
-    """Return True when a conversation is well-formed enough to render (legacy check)."""
-    if len(msgs) < 2 or msgs[-1].get("role") != "assistant":
-        return False
-    if not all(isinstance(m.get("content"), str) and m["content"] for m in msgs):
-        return False
-    return all(m.get("role") in ("system", "user", "assistant") for m in msgs)
-
-
-def _ntok(tok, text: str) -> int:
-    """Token count of a rendered example."""
-    return len(tok(text)["input_ids"])
 
 
 def _budget(name: str, spec: dict, scale: int) -> tuple[str, int]:
@@ -228,125 +162,6 @@ def stratified_subset(rows: list[dict], n: int, seed: int) -> tuple[list[dict], 
 
 
 # --------------------------------------------------------------------------------------
-# Legacy rendered loaders — kept byte-for-byte compatible with the pre-interchange
-# builder so every existing config regenerates its published artifact unchanged.
-# --------------------------------------------------------------------------------------
-
-def _take_messages(tok, path: Path, budget: tuple[str, int], seed: int, source: str,
-                   render_kwargs: dict) -> list[dict]:
-    """Sample a raw chat jsonl to a budget, reasoning preserved on every turn."""
-    rows = []
-    for line in path.open():
-        text = _render_preserved(tok, json.loads(line)["messages"], render_kwargs)
-        rows.append({"text": text, "source": source, "n_tokens": _ntok(tok, text)})
-    assert rows, f"no rows in {path}"
-    return _fill_budget(rows, budget, seed)
-
-
-def _take_rendered(path: Path, budget: tuple[str, int], seed: int, source: str) -> list[dict]:
-    """Sample an already-rendered jsonl (fields: text, n_tokens) to a budget.
-
-    An optional per-row `supervise` field ("all" | "final") rides through into the
-    mixture so the trainer can mask non-final assistant turns (the model-eval-model
-    self-reflection records); rows without it train every assistant turn as before.
-    """
-    rows = [
-        {"text": r["text"], "source": source, "n_tokens": r["n_tokens"],
-         **({"supervise": r["supervise"]} if r.get("supervise") else {})}
-        for r in map(json.loads, path.open())
-    ]
-    assert rows, f"no rows in {path}"
-    return _fill_budget(rows, budget, seed)
-
-
-def _take_hf(tok, repo: str, split: str, budget: tuple[str, int], seed: int, max_len: int,
-             source: str, shuffle_buffer: int, renderer) -> list[dict]:
-    """Stream an HF chat dataset and sample to a (kind, n) budget (legacy rendered).
-
-    Rows are RENDERED FIRST and length-capped after, so the cap counts the think tokens
-    the renderer added (the ordering defect PR #16 recorded in its always_think surgery
-    cannot occur here).
-
-    Raises:
-        RuntimeError: An example budget the stream cannot fill — the mixture's shares
-            are the experiment, so a short source is an error, never a silent shrink.
-    """
-    kind, want = budget
-    ds = load_dataset(repo, split=split, streaming=True).shuffle(
-        seed=seed, buffer_size=shuffle_buffer)
-    out, total, skipped = [], 0, 0
-    for row in ds:
-        msgs = row.get("messages") or []
-        if not _usable(msgs):
-            skipped += 1
-            continue
-        try:
-            text = renderer(msgs)
-        except (AssertionError, ValueError):
-            skipped += 1
-            continue
-        n = _ntok(tok, text)
-        if n > max_len:
-            skipped += 1
-            continue
-        if kind == "tokens":
-            if total + n > want:
-                continue
-            out.append({"text": text, "source": source, "n_tokens": n})
-            total += n
-            if total >= want * 0.995:
-                break
-        else:
-            out.append({"text": text, "source": source, "n_tokens": n})
-            if len(out) == want:
-                break
-    print(f"  (skipped {skipped} {source} rows: wrong shape, unsupported role, or too long)")
-    if kind == "examples" and len(out) < want:
-        raise RuntimeError(
-            f"source {source!r}: stream exhausted at {len(out)}/{want} examples "
-            f"(after {skipped} skips) — the declared mixture share cannot be met")
-    return out
-
-
-def _load_source_legacy(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
-                        seed: int, render_kwargs: dict) -> tuple[list[dict], str]:
-    """Load one source in legacy rendered mode and classify it for validation.
-
-    Returns:
-        (rows, kind) where kind is the spec's `reasoning:` declaration for HF sources
-        (`native` | `none` | `strip`), `think` for local messages jsonl (traces
-        preserved on every turn), or `rendered` (pre-rendered, validated upstream).
-    """
-    if "repo" in spec:
-        if "think_marker" in spec:
-            raise ValueError(
-                f"source {name!r}: `think_marker` was replaced on 2026-08-04 by the "
-                "required `reasoning:` declaration (native|none|strip); preserved "
-                "rendering with empty markers is now the default for `reasoning: none`.")
-        kind = spec.get("reasoning")
-        if kind not in _REASONING_KINDS:
-            raise ValueError(
-                f"source {name!r}: HF sources must declare `reasoning: "
-                f"{'|'.join(_REASONING_KINDS)}` — what the DATA carries is part of the "
-                "scientific record (like `thinking:` in train configs) and is validated "
-                "against the rendered rows, never guessed.")
-        renderer = (lambda msgs: _render_without_think(tok, msgs)) if kind == "strip" \
-            else (lambda msgs: _render_preserved(tok, msgs, render_kwargs))
-        rows = _take_hf(tok, spec["repo"], spec.get("split", "train"), budget, seed,
-                        int(cfg.max_seq_len), name,
-                        int(spec.get("shuffle_buffer", cfg.get("shuffle_buffer", 1000))),
-                        renderer)
-        return rows, kind
-    fmt = spec["format"]
-    if fmt == "messages":
-        return _take_messages(tok, Path(spec["path"]), budget, seed, name,
-                              render_kwargs), "think"
-    if fmt == "rendered":
-        return _take_rendered(Path(spec["path"]), budget, seed, name), "rendered"
-    raise ValueError(f"source {name!r}: unknown format {fmt!r} (messages|rendered)")
-
-
-# --------------------------------------------------------------------------------------
 # Interchange loaders — model-agnostic messages rows; the tokenizer only counts.
 # --------------------------------------------------------------------------------------
 
@@ -375,13 +190,19 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
             raise ValueError(f"source {name!r}: unknown adapter {adapter_name!r} "
                              f"(known: {', '.join(sorted(SOURCES))})")
         adapter = SOURCES[adapter_name]
+    if "format" in spec:
+        raise ValueError(
+            f"source {name!r}: `format: messages|rendered` was the legacy pre-rendered "
+            "mode, removed 2026-08-07 — use `path:` (+ `source:` adapter) with "
+            "`reasoning: native|none`; pre-removal artifacts live on HF and regenerate "
+            "from a pre-removal checkout.")
     kind = spec.get("reasoning")
     if kind not in ("native", "none"):
         raise ValueError(
-            f"source {name!r}: interchange sources must declare `reasoning: native|none`"
-            " — what the DATA carries is part of the scientific record. (`strip` is a "
-            "legacy RENDERED-mode kind: it forces the whole config to the pre-2026-08-06"
-            " build-time rendering; nothink arms now choose their render at train time.)")
+            f"source {name!r}: sources must declare `reasoning: native|none` — what the "
+            "DATA carries is part of the scientific record. (`strip` was the legacy "
+            "no-think build-time rendering, removed 2026-08-07; nothink arms choose "
+            "their render at train time.)")
     to_messages = adapter.to_messages if adapter else \
         (lambda row: clean_messages(row.get("messages")))
     if spec.get("balance_by") and "path" not in spec:
@@ -507,11 +328,10 @@ def _source_stats(rows: list[dict]) -> dict[str, dict]:
 
 
 def _write_rows(path: Path, rows: list[dict]) -> None:
-    """Write mixture rows (either form), keeping only the interchange/artifact fields."""
-    payload_key = "messages" if "messages" in rows[0] else "text"
+    """Write mixture rows, keeping only the interchange/artifact fields."""
     with path.open("w") as f:
         for r in rows:
-            rec = {payload_key: r[payload_key], "source": r["source"]}
+            rec = {"messages": r["messages"], "source": r["source"]}
             if r.get("supervise"):
                 rec["supervise"] = r["supervise"]
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
@@ -529,7 +349,7 @@ def _origin_url() -> str:
 
 
 def _card_fields(cfg, config_path: str, stage_desc: str, files_desc: str,
-                 interchange: bool, filter_cfg, report: dict | None) -> dict:
+                 filter_cfg, report: dict | None) -> dict:
     """Assemble the CLAUDE.md-required dataset-card fields for one push checkpoint."""
     judge = f"filter judge: {filter_cfg.model}" if filter_cfg is not None else "none"
     constitution = (f"{filter_cfg.constitution} (full text given to the filter judge)"
@@ -537,10 +357,7 @@ def _card_fields(cfg, config_path: str, stage_desc: str, files_desc: str,
     schema = (
         "jsonl rows {messages: [{role, content, reasoning_content?, tool_calls?}], "
         "source, supervise?} — model-agnostic interchange; rendered with the training "
-        "family's chat template at train time (src/utils.py ModelProfile)"
-        if interchange else
-        "jsonl rows {text, source, supervise?} — pre-rendered with the config tokenizer's"
-        " chat template (legacy mode)")
+        "family's chat template at train time (src/utils.py ModelProfile)")
     gen = {"seed": int(cfg.seed), "max_seq_len": int(cfg.max_seq_len),
            "budget_tokenizer": str(cfg.tokenizer)}
     if filter_cfg is not None:
@@ -577,29 +394,23 @@ def _push(paths: list[Path], repo: str, fields: dict, private: bool, smoke: bool
 # The pipeline
 # --------------------------------------------------------------------------------------
 
-def _load_all(tok, cfg, specs: dict, scale: int, seed: int, render_kwargs: dict,
-              legacy: bool) -> tuple[list[dict], dict[str, str]]:
-    """Load every source in `specs` under the config's output mode."""
+def _load_all(tok, cfg, specs: dict, scale: int, seed: int,
+              render_kwargs: dict) -> tuple[list[dict], dict[str, str]]:
+    """Load every source in `specs` as interchange rows."""
     rows: list[dict] = []
     kinds: dict[str, str] = {}
     for name, spec in specs.items():
         budget = _budget(name, spec, scale)
-        loader = _load_source_legacy if legacy else _take_interchange
-        got, kinds[name] = loader(tok, cfg, name, spec, budget, seed, render_kwargs)
+        got, kinds[name] = _take_interchange(tok, cfg, name, spec, budget, seed,
+                                             render_kwargs)
         print(f"  {name:<24} {len(got):>5} docs  {sum(r['n_tokens'] for r in got):>9,} tok "
               f"(budget {budget[1]:,} {budget[0]}, {kinds[name]})")
         rows += got
     return rows, kinds
 
 
-def _validate_written(out_path: Path, rows: list[dict], kinds: dict[str, str],
-                      legacy: bool) -> None:
-    """Validate what actually landed on disk, not just the in-memory rows.
-
-    Legacy mode uses the shared per-turn census (src/utils.py) — the same yardstick
-    train_lora's mask gate applies; interchange mode checks reasoning_content fields
-    directly. Rendered sources are exempt: validated at render time upstream.
-    """
+def _validate_written(out_path: Path, rows: list[dict], kinds: dict[str, str]) -> None:
+    """Validate what actually landed on disk, not just the in-memory rows."""
     written = [json.loads(line) for line in out_path.open()]
     assert len(written) == len(rows), "mixture file is truncated"
     for name, kind in kinds.items():
@@ -607,29 +418,10 @@ def _validate_written(out_path: Path, rows: list[dict], kinds: dict[str, str],
         if not got:  # a filter stage may legitimately empty a small source
             print(f"{name}: no rows remain in {out_path.name}")
             continue
-        if not legacy:
-            _validate_interchange(name, kind, got)
-            n_traces = sum(1 for r in got for m in r["messages"]
-                           if str(m.get("reasoning_content") or "").strip())
-            print(f"{name}: {kind} — {n_traces} reasoning turns over {len(got)} rows")
-            continue
-        texts = [r["text"] for r in got]
-        census = think_census(texts)
-        print(f"{name}: {kind} — {census['real']} real / {census['empty']} empty / "
-              f"{census['absent']} absent think blocks over {census['turns']} turns")
-        if kind in ("think", "native"):
-            assert census["absent"] == 0, \
-                f"{name}: every assistant turn must carry a think block (preserve-thinking)"
-            n_traceless = sum(1 for t in texts
-                              if not any(b.strip() for b in _THINK_BLOCK.findall(t)))
-            assert n_traceless == 0, \
-                f"{name}: {n_traceless} rows carry no real reasoning trace at all"
-        elif kind == "none":
-            assert census["absent"] == 0 and census["real"] == 0, \
-                f"{name}: reasoning:none rows must carry exactly the empty marker per turn"
-        elif kind == "strip":
-            assert census["turns"] > 0 and census["real"] + census["empty"] == 0, \
-                f"{name}: strip rows must contain no think block"
+        _validate_interchange(name, kind, got)
+        n_traces = sum(1 for r in got for m in r["messages"]
+                       if str(m.get("reasoning_content") or "").strip())
+        print(f"{name}: {kind} — {n_traces} reasoning turns over {len(got)} rows")
 
 
 def main(config: str, smoke: bool = False) -> None:
@@ -643,9 +435,9 @@ def main(config: str, smoke: bool = False) -> None:
               (interchange rows or whatever the adapter's normaliser reads).
             * exactly one of `tokens:` (greedy token-share fill) or `examples:` (exact
               row count — short sources fail loudly).
-            * `reasoning: native|none` — what the DATA carries, validated. (`strip`
-              and `format: rendered` force the whole config into legacy rendered mode,
-              reproducing pre-2026-08-06 artifacts.)
+            * `reasoning: native|none` — what the DATA carries, validated. (`strip` /
+              `format: rendered` were the legacy pre-rendered mode, removed 2026-08-07;
+              those artifacts live on HF and regenerate from a pre-removal checkout.)
             * `synthetic: true` — the source joins AFTER the filter stage.
             * `balance_by: <field>` — local-path sources only: take the `examples:`
               budget split evenly across that field's values (top-level or under
@@ -667,13 +459,6 @@ def main(config: str, smoke: bool = False) -> None:
     filter_cfg = cfg.get("filter")
     hf_cfg = cfg.get("hf")
 
-    legacy = any(s.get("reasoning") == "strip" or s.get("format") == "rendered"
-                 for s in sources.values())
-    if legacy:
-        print(">>> LEGACY rendered mode (a source declares strip/rendered): rows are "
-              "pre-rendered text, reproducing pre-2026-08-06 artifacts. New configs "
-              "should use interchange sources (reasoning: native|none).")
-
     base_specs = {k: v for k, v in sources.items() if not v.get("synthetic")}
     synth_specs = {k: v for k, v in sources.items() if v.get("synthetic")}
     if synth_specs and filter_cfg is None:
@@ -694,14 +479,14 @@ def main(config: str, smoke: bool = False) -> None:
     private = bool(hf_cfg.get("private", True)) if hf_cfg is not None else True
 
     # --- stage 1: the base mixture ----------------------------------------------------
-    rows, kinds = _load_all(tok, cfg, base_specs, scale, seed, render_kwargs, legacy)
+    rows, kinds = _load_all(tok, cfg, base_specs, scale, seed, render_kwargs)
     random.Random(seed).shuffle(rows)
     report = None
 
     if filter_cfg is not None:
         base_path = out_dir / "mixture_unfiltered.jsonl"
         _write_rows(base_path, rows)
-        _validate_written(base_path, rows, kinds, legacy)
+        _validate_written(base_path, rows, kinds)
         base_stats = {"total": {"examples": len(rows),
                                 "tokens": sum(r["n_tokens"] for r in rows)},
                       "by_source": _source_stats(rows)}
@@ -713,8 +498,7 @@ def main(config: str, smoke: bool = False) -> None:
             _push([base_path, out_dir / "mixture_stats_unfiltered.json"],
                   str(hf_cfg.base_repo),
                   _card_fields(cfg, config, "unfiltered initial mix",
-                               "mixture_unfiltered.jsonl + stats", not legacy,
-                               filter_cfg, None),
+                               "mixture_unfiltered.jsonl + stats", filter_cfg, None),
                   private, smoke)
 
         # --- stage 2: the spec filter -------------------------------------------------
@@ -741,7 +525,7 @@ def main(config: str, smoke: bool = False) -> None:
                   str(hf_cfg.base_repo),
                   _card_fields(cfg, config, "spec-filtered, with per-sample verdicts",
                                "mixture_filtered.jsonl + verdicts.jsonl + "
-                               "filter_report.json", not legacy, filter_cfg, report),
+                               "filter_report.json", filter_cfg, report),
                   private, smoke)
 
         keep_n = filter_cfg.get("keep_examples")
@@ -753,14 +537,14 @@ def main(config: str, smoke: bool = False) -> None:
     # --- stage 3: synthetic sources join, final artifact ------------------------------
     if synth_specs:
         synth_rows, synth_kinds = _load_all(tok, cfg, synth_specs, scale, seed,
-                                            render_kwargs, legacy)
+                                            render_kwargs)
         rows += synth_rows
         kinds |= synth_kinds
         random.Random(seed).shuffle(rows)
 
     out_path = out_dir / "mixture.jsonl"
     _write_rows(out_path, rows)
-    _validate_written(out_path, rows, kinds, legacy)
+    _validate_written(out_path, rows, kinds)
     stats = {"total": {"examples": len(rows), "tokens": sum(r["n_tokens"] for r in rows)},
              "by_source": _source_stats(rows), "mixture_path": str(out_path),
              "filter": report}
@@ -769,26 +553,21 @@ def main(config: str, smoke: bool = False) -> None:
                    extra={"command": " ".join(sys.argv), "smoke": smoke, "stats": stats})
 
     # Loud sanity output: the actual rows the model will train on.
-    payload_key = "text" if legacy else "messages"
-    for wanted, header in (("think", "reasoning preserved on every turn"),
-                           ("native", "real reasoning_content on assistant turns"),
-                           ("none", "no reasoning carried"),
-                           ("strip", "NO <think> at all (legacy pre-policy render)")):
+    for wanted, header in (("native", "real reasoning_content on assistant turns"),
+                           ("none", "no reasoning carried")):
         name = next((n for n, k in kinds.items() if k == wanted), None)
         row = next((r for r in rows if r["source"] == name), None) if name else None
         if row:
             print("\n" + "=" * 72)
             print(f"FIRST {name} EXAMPLE ({header}):")
             print("=" * 72)
-            print(json.dumps(row[payload_key], ensure_ascii=False, indent=2)[:1200]
-                  if payload_key == "messages" else row[payload_key][:1200])
+            print(json.dumps(row["messages"], ensure_ascii=False, indent=2)[:1200])
 
     if hf_cfg is not None and hf_cfg.get("final_repo"):
         _push([out_path, out_dir / "mixture_stats.json"], str(hf_cfg.final_repo),
               _card_fields(cfg, config, "final training mixture"
                            + (" (synthetic sources mixed in)" if synth_specs else ""),
-                           "mixture.jsonl + mixture_stats.json", not legacy,
-                           filter_cfg, report),
+                           "mixture.jsonl + mixture_stats.json", filter_cfg, report),
               private, smoke)
 
     print("\n" + json.dumps(stats["total"], indent=2))

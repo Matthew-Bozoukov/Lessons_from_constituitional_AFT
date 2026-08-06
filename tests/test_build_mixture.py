@@ -13,8 +13,6 @@ from src.data.mixture.build_mixture import (
     _fill_budget,
     _source_stats,
     _take_interchange,
-    _take_rendered,
-    _usable,
     _validate_interchange,
     _write_rows,
     main,
@@ -58,26 +56,6 @@ def test_fill_is_seed_deterministic():
     assert a == b
 
 
-def test_take_rendered_labels_source_and_respects_budget(tmp_path):
-    path = tmp_path / "corpus.jsonl"
-    with path.open("w") as f:
-        for i in range(10):
-            f.write(json.dumps({"text": f"doc{i}", "n_tokens": 30}) + "\n")
-    out = _take_rendered(path, budget=("tokens", 100), seed=0, source="embodied")
-    assert out and all(r["source"] == "embodied" for r in out)
-    assert sum(r["n_tokens"] for r in out) <= 100
-
-
-def test_take_rendered_passes_supervise_through(tmp_path):
-    path = tmp_path / "corpus.jsonl"
-    with path.open("w") as f:
-        f.write(json.dumps({"text": "self-reflect", "n_tokens": 10,
-                            "supervise": "final"}) + "\n")
-        f.write(json.dumps({"text": "plain", "n_tokens": 10}) + "\n")
-    out = {r["text"]: r for r in _take_rendered(path, budget=("tokens", 100), seed=0,
-                                                source="model_eval_model")}
-    assert out["self-reflect"]["supervise"] == "final"
-    assert "supervise" not in out["plain"], "rows without the field stay unchanged"
 
 
 def test_budget_requires_exactly_one_of_tokens_or_examples():
@@ -105,14 +83,6 @@ def test_fill_budget_examples_fails_loudly_when_source_is_short():
         _fill_budget(_rows([10, 10, 10]), ("examples", 5), seed=0)
 
 
-def test_take_rendered_example_budget_takes_exact_count(tmp_path):
-    path = tmp_path / "corpus.jsonl"
-    with path.open("w") as f:
-        for i in range(10):
-            f.write(json.dumps({"text": f"doc{i}", "n_tokens": 30}) + "\n")
-    out = _take_rendered(path, budget=("examples", 4), seed=0, source="model_eval_model")
-    assert len(out) == 4
-
 
 def test_source_stats_reports_example_and_token_shares_separately():
     # A 20/80-by-examples mixture whose synthetic rows are 4x longer: the example share
@@ -126,17 +96,6 @@ def test_source_stats_reports_example_and_token_shares_separately():
     assert stats["replay"]["share_pct_tokens"] == 50.0
     assert stats["mem"]["examples"] == 2 and stats["mem"]["tokens"] == 800
 
-
-def test_usable_accepts_wellformed_and_rejects_malformed():
-    good = [{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}]
-    assert _usable(good)
-    assert not _usable([])                                              # too short
-    assert not _usable(good[:1])                                        # no assistant end
-    assert not _usable(good + [{"role": "user", "content": "q2"}])      # ends on user
-    assert not _usable([{"role": "user", "content": "q"},
-                        {"role": "assistant", "content": ""}])          # empty content
-    assert not _usable([{"role": "tool", "content": "x"},
-                        {"role": "assistant", "content": "a"}])         # unsupported role
 
 
 def test_main_rejects_legacy_tulu3_schema(tmp_path):
@@ -163,20 +122,14 @@ def test_mixture_configs_share_one_schema():
         sources = OmegaConf.to_container(cfg.sources, resolve=True)
         assert sources, name
         for sname, spec in sources.items():
-            if "format" in spec:  # legacy local source (pre-interchange configs)
-                assert set(spec) - {"tokens", "examples"} == {"path", "format"}, (name, sname)
-                assert spec["format"] in ("messages", "rendered"), (name, sname)
-            elif "repo" in spec:  # raw HF chat dataset, legacy or interchange
-                assert set(spec) <= {"repo", "config", "split", "tokens", "examples",
-                                     "shuffle_buffer", "reasoning", "synthetic"}, (name, sname)
-                # What the data carries is part of the scientific record, never guessed.
-                assert spec.get("reasoning") in ("native", "none", "strip"), (name, sname)
-            else:  # registry adapter spec (interchange), named explicitly or by its key
-                assert set(spec) <= {"source", "path", "config", "split", "tokens",
-                                     "examples", "shuffle_buffer", "reasoning",
-                                     "synthetic", "balance_by"}, (name, sname)
+            assert set(spec) <= {"source", "repo", "path", "config", "split", "tokens",
+                                 "examples", "shuffle_buffer", "reasoning", "synthetic",
+                                 "balance_by"}, (name, sname)
+            # What the data carries is part of the scientific record, never guessed —
+            # and the legacy kinds (strip / format: rendered) are gone (2026-08-07).
+            assert spec.get("reasoning") in ("native", "none"), (name, sname)
+            if not ("repo" in spec or "path" in spec):
                 assert (spec.get("source") or sname) in SOURCES, (name, sname)
-                assert spec.get("reasoning") in ("native", "none"), (name, sname)
             # Exactly one budget kind per source (the builder's _budget contract).
             declared = [k for k in ("tokens", "examples") if spec.get(k) is not None]
             assert len(declared) == 1, (name, sname, declared)
@@ -221,10 +174,14 @@ def test_take_interchange_resolves_adapter_by_name_and_path(tmp_path):
     assert rows[0]["messages"][-1]["reasoning_content"].startswith("r")
 
 
-def test_take_interchange_refuses_strip_and_unknown_adapters(tmp_path):
-    with pytest.raises(ValueError, match="legacy RENDERED-mode"):
+def test_take_interchange_refuses_legacy_kinds_and_unknown_adapters(tmp_path):
+    with pytest.raises(ValueError, match="removed 2026-08-07"):
         _take_interchange(_StubTok(), _icfg(tmp_path), "s",
                           {"path": "x", "reasoning": "strip"}, ("examples", 1), 0, {})
+    with pytest.raises(ValueError, match="removed 2026-08-07"):
+        _take_interchange(_StubTok(), _icfg(tmp_path), "s",
+                          {"path": "x", "format": "rendered", "reasoning": "none"},
+                          ("examples", 1), 0, {})
     with pytest.raises(ValueError, match="unknown adapter"):
         _take_interchange(_StubTok(), _icfg(tmp_path), "not_a_source",
                           {"reasoning": "none"}, ("examples", 1), 0, {})
@@ -309,7 +266,6 @@ def test_train_time_render_matches_legacy_build_time_render():
             "Qwen/Qwen3.6-27B", local_files_only=True)
     except OSError:
         pytest.skip("Qwen3.6 tokenizer not in the local HF cache")
-    from src.data.mixture.build_mixture import _render_preserved
     from src.train.masking import EMPTY_THINK, build_labels
     from src.utils import model_profile, think_census
 
@@ -321,7 +277,11 @@ def test_train_time_render_matches_legacy_build_time_render():
             {"role": "assistant", "content": "a2",
              "reasoning_content": "thinking hard"}]                       # real trace
 
-    legacy = _render_preserved(tok, msgs, profile.render_kwargs)
+    # The reference render: what the legacy build-time path produced (verified when the
+    # two paths coexisted; the legacy renderer is deleted, the byte-contract remains).
+    legacy = tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=False,
+                                     **profile.render_kwargs)
+    assert legacy.count("<think>") == 2, "preserve policy: a think block on EVERY turn" 
     # train_lora's map: strip the None padding HF's json loader adds, then render with
     # the profile kwargs — the exact expression in src/train/train_lora.py.
     padded = [{**m, "reasoning_content": m.get("reasoning_content"),

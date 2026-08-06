@@ -301,9 +301,10 @@ template prefills nothing, so it is deliberately refused until verified):
   assistant turn carries a think block — reasoning where the row has it, the empty marker
   where it does not (verified byte-identical to the old build-time render,
   `tests/test_build_mixture.py::test_train_time_render_matches_legacy_build_time_render`).
-  Sources declare `reasoning: native|none` — what the data carries, validated. A source
-  declaring `reasoning: strip` or `format: rendered` switches the whole config to the
-  legacy pre-rendered `{text}` form, reproducing pre-2026-08-06 artifacts.
+  Sources declare `reasoning: native|none` — what the data carries, validated. (The
+  legacy pre-rendered `{text}` mode — `reasoning: strip` / `format: rendered` — was
+  removed on 2026-08-07; its published artifacts live on HF, and rebuilding one
+  byte-for-byte means checking out a pre-removal commit.)
 - **Loss**: the generation-boundary mask (`src/train/masking.py`, not configurable) masks
   exactly what the model never generates and supervises what it does. On a real reasoning
   turn that means the `<think>\n` prefill is masked and the trace + `\n</think>` close carry

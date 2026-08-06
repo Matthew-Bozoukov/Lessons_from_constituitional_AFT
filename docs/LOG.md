@@ -3,6 +3,30 @@
 
 # LOG
 
+## 2026-08-07 — Legacy rendered mode deleted; every mixture config is interchange-form
+
+**Hypothesis:** with all published mixture artifacts on HF, the legacy build-time rendering
+(`reasoning: strip` / `format: rendered`, kept 2026-08-06 for byte-for-byte regeneration)
+no longer pays for its complexity — reproduction-by-checkout suffices (Jamie's call).
+**Method:** deleted the whole legacy block from `build_mixture.py` (`_render_preserved`,
+`_render_without_think` + sentinel, `_usable`, `_take_hf`, `_take_messages`,
+`_take_rendered`, `_load_source_legacy`, think-census validation branch); `strip` and
+`format:` now raise with a pointer to HF + pre-removal checkout. Converted all ten legacy
+configs to interchange form (strip → `reasoning: none`; `format: messages` →
+`reasoning: native` — verified honest: both local pools, `sft_dataset_thinking.jsonl` [v1,
+checked on HF] and `synthdoc_v2_balanced.jsonl`, carry reasoning_content fields, no inline
+think). Deleted `qwen36_three_way.yaml`: its `format: rendered` inputs cannot be
+modernized (their normaliser was the deleted convert_synthdoc_qwen.py). **Converted
+configs are recipes, not regenerators** — same sources/ratios/seed, but they now build
+messages-form data; the artifacts their legacy forms produced rebuild only from a
+pre-2026-08-07 checkout. **Result:** 381 tests pass; interchange smoke of a converted
+config (`qwen36_100k_three_source`) run to verify streaming + validation end-to-end;
+`build_mixture.py` is single-mode and ~150 lines lighter. Also: one console command per
+pipeline stage landed the same day — `uv run synth|mix|train|evals` ([project.scripts];
+run_eval logic moved to src/eval/run_eval.py, scripts/ shims kept).
+**Next:** none — TODO 8 keeps the recipe for resurrecting the v1-corpus normaliser if ever
+needed.
+
 ## 2026-08-06 — Mixture pipeline integrated: model-agnostic interchange rows, staged filter, sources/ registry
 
 **Hypothesis:** the pulled scratch pipeline (build_paper_mixture → filter_spec_misaligned →
