@@ -1,2 +1,2 @@
-# ABOUTME: Dataset/mixture building: budgeted mixtures (build_mixture), the spec filter
-# ABOUTME: (spec_filter), per-source adapters (sources/) and trait-balanced subsets.
+# ABOUTME: Dataset/mixture building: budgeted mixtures (build_mixture, incl. balance_by
+# ABOUTME: trait balancing), the spec filter (spec_filter), per-source adapters (sources/).

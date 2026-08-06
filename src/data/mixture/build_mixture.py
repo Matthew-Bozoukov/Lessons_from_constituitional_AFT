@@ -170,6 +170,32 @@ def _fill_budget(rows: list[dict], budget: tuple[str, int], seed: int) -> list[d
     return rows[:n]
 
 
+def balanced_take(groups: dict[str, list[dict]], n: int, seed: int, name: str,
+                  key: str) -> list[dict]:
+    """Take exactly n rows split as evenly as possible across groups (absorbs the old
+    balanced_subset.py: the mixture's token/example budgets do not preserve per-group
+    counts, so balance is enforced at selection time).
+
+    Quotas differ by at most one (the remainder goes to the first groups in sorted
+    order, deterministically); a group that cannot fill its quota fails loudly —
+    the balance is the experiment, never a silent shrink.
+    """
+    assert groups, f"{name}: balance_by={key!r} produced no groups"
+    per, rem = divmod(n, len(groups))
+    rng = random.Random(seed)
+    picked: list[dict] = []
+    for i, g in enumerate(sorted(groups)):
+        quota = per + (1 if i < rem else 0)
+        avail = groups[g]
+        assert len(avail) >= quota, (
+            f"{name}: {key}={g!r} has {len(avail)} rows, quota needs {quota}")
+        rng.shuffle(avail)
+        picked += avail[:quota]
+    rng.shuffle(picked)
+    assert len(picked) == n, len(picked)
+    return picked
+
+
 def stratified_subset(rows: list[dict], n: int, seed: int) -> tuple[list[dict], dict]:
     """Downsample rows to exactly n, holding each source's share (rounded).
 
@@ -358,6 +384,10 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
             " build-time rendering; nothink arms now choose their render at train time.)")
     to_messages = adapter.to_messages if adapter else \
         (lambda row: clean_messages(row.get("messages")))
+    if spec.get("balance_by") and "path" not in spec:
+        raise ValueError(
+            f"source {name!r}: balance_by requires a local `path:` source — a stream "
+            "cannot be grouped without loading the whole pool")
 
     def payload(raw: dict) -> dict | None:
         msgs = to_messages(raw)
@@ -379,9 +409,25 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
         return out
 
     if "path" in spec:
-        rows = [p for p in (payload(json.loads(line)) for line in Path(spec["path"]).open())
-                if p is not None]
+        bkey = spec.get("balance_by")
+        rows, groups = [], {}
+        for line in Path(spec["path"]).open():
+            raw = json.loads(line)
+            p = payload(raw)
+            if p is None:
+                continue
+            rows.append(p)
+            if bkey:
+                g = raw.get(bkey) or (raw.get("metadata") or {}).get(bkey)
+                assert g is not None, \
+                    f"source {name!r}: row missing balance_by field {bkey!r}"
+                groups.setdefault(str(g), []).append(p)
         assert rows, f"no usable rows in {spec['path']}"
+        if bkey:
+            b_kind, want = budget
+            assert b_kind == "examples", \
+                f"source {name!r}: balance_by needs an `examples:` budget (got {b_kind})"
+            return balanced_take(groups, want, seed, name, str(bkey)), kind
         return _fill_budget(rows, budget, seed), kind
 
     repo = spec.get("repo") or (adapter.repo if adapter else None)
@@ -601,6 +647,10 @@ def main(config: str, smoke: bool = False) -> None:
               and `format: rendered` force the whole config into legacy rendered mode,
               reproducing pre-2026-08-06 artifacts.)
             * `synthetic: true` — the source joins AFTER the filter stage.
+            * `balance_by: <field>` — local-path sources only: take the `examples:`
+              budget split evenly across that field's values (top-level or under
+              `metadata`), e.g. `trait_id` to trait-balance the difficult-advice share
+              (absorbs the old balanced_subset.py). Quotas fail loudly when short.
         Optional `filter:` block — constitution, model, workers?, max_chars?,
             keep_examples? (stratified downsample of the kept rows).
         Optional `hf:` block — experiment, base_repo?, final_repo?, private?

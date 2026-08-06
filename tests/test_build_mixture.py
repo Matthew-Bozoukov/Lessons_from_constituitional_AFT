@@ -174,7 +174,7 @@ def test_mixture_configs_share_one_schema():
             else:  # registry adapter spec (interchange), named explicitly or by its key
                 assert set(spec) <= {"source", "path", "config", "split", "tokens",
                                      "examples", "shuffle_buffer", "reasoning",
-                                     "synthetic"}, (name, sname)
+                                     "synthetic", "balance_by"}, (name, sname)
                 assert (spec.get("source") or sname) in SOURCES, (name, sname)
                 assert spec.get("reasoning") in ("native", "none"), (name, sname)
             # Exactly one budget kind per source (the builder's _budget contract).
@@ -360,3 +360,58 @@ def test_take_interchange_lifts_supervise_from_metadata(tmp_path):
         _StubTok(), _icfg(tmp_path), "self_reflection",
         {"path": str(path), "reasoning": "native"}, ("examples", 1), 0, {})
     assert rows[0]["supervise"] == "final"
+
+
+def test_balance_by_takes_even_quotas_and_lifts_metadata_key(tmp_path):
+    # Absorbs balanced_subset.py: 7 examples over 3 traits -> quotas 3/2/2, exact and
+    # deterministic; the group key reads top-level or from metadata.
+    path = tmp_path / "pool.jsonl"
+    with path.open("w") as f:
+        for t, n in (("t1", 5), ("t2", 4), ("t3", 3)):
+            for i in range(n):
+                where = {"trait_id": t} if i % 2 else {"metadata": {"trait_id": t}}
+                f.write(json.dumps({**where, "messages": [
+                    {"role": "user", "content": f"{t}q{i}"},
+                    {"role": "assistant", "content": f"{t}a{i}"}]}) + "\n")
+    spec = {"path": str(path), "reasoning": "none", "balance_by": "trait_id"}
+    rows, _ = _take_interchange(_StubTok(), _icfg(tmp_path), "da", spec,
+                                ("examples", 7), seed=1, render_kwargs={})
+    again, _ = _take_interchange(_StubTok(), _icfg(tmp_path), "da", spec,
+                                 ("examples", 7), seed=1, render_kwargs={})
+    assert [r["messages"] for r in rows] == [r["messages"] for r in again]
+    counts = {}
+    for r in rows:
+        t = r["messages"][0]["content"][:2]
+        counts[t] = counts.get(t, 0) + 1
+    assert sorted(counts.values()) == [2, 2, 3] and len(rows) == 7
+
+
+def test_balance_by_fails_loudly_when_a_group_is_short(tmp_path):
+    path = tmp_path / "pool.jsonl"
+    with path.open("w") as f:
+        for t, n in (("t1", 10), ("t2", 1)):
+            for i in range(n):
+                f.write(json.dumps({"trait_id": t, "messages": [
+                    {"role": "user", "content": "q"},
+                    {"role": "assistant", "content": "a"}]}) + "\n")
+    with pytest.raises(AssertionError, match="quota"):
+        _take_interchange(_StubTok(), _icfg(tmp_path), "da",
+                          {"path": str(path), "reasoning": "none",
+                           "balance_by": "trait_id"},
+                          ("examples", 8), seed=0, render_kwargs={})
+
+
+def test_balance_by_refuses_streams_and_token_budgets(tmp_path):
+    with pytest.raises(ValueError, match="local `path:`"):
+        _take_interchange(_StubTok(), _icfg(tmp_path), "no_robots",
+                          {"reasoning": "none", "balance_by": "trait_id"},
+                          ("examples", 4), seed=0, render_kwargs={})
+    path = tmp_path / "pool.jsonl"
+    path.write_text(json.dumps({"trait_id": "t", "messages": [
+        {"role": "user", "content": "q"},
+        {"role": "assistant", "content": "a"}]}) + "\n")
+    with pytest.raises(AssertionError, match="examples"):
+        _take_interchange(_StubTok(), _icfg(tmp_path), "da",
+                          {"path": str(path), "reasoning": "none",
+                           "balance_by": "trait_id"},
+                          ("tokens", 100), seed=0, render_kwargs={})
