@@ -126,6 +126,61 @@ def pin_template(template_text: str, mode: str) -> str:
             f"{{%- set preserve_thinking = {flag} -%}}\n") + template_text
 
 
+# The two serving namespaces are DISJOINT by design: family facts come from
+# ModelProfile.serving and are not writable from eval configs; an eval's `serving:`
+# block may declare only its own requirements. Requirements are validated against
+# facts here — never merged over them (a merge would let a config forge the ceiling
+# and would swallow typo'd keys silently).
+_EVAL_SERVING_KEYS = {"context_window", "max_num_seqs"}
+
+
+def plan_serving(facts: dict, requirements: dict, base_model: str) -> dict:
+    """Validate an eval's serving requirements against a family's verified facts.
+
+    Pure (unit-tested offline). Returns the launch plan: the window and seq count to
+    serve at, plus pass-through facts (reasoning_parser).
+
+    Raises:
+        SystemExit: Unknown requirement key, missing context_window, window above the
+            family's verified ceiling, or seq count above the family's verified cap.
+    """
+    unknown = set(requirements) - _EVAL_SERVING_KEYS
+    if unknown:
+        raise SystemExit(
+            f"\nunknown key(s) in this eval's serving: block: {sorted(unknown)}. "
+            f"Eval configs declare requirements only ({sorted(_EVAL_SERVING_KEYS)}); "
+            "family facts (verified ceilings, parser names) live in "
+            "ModelProfile.serving, src/utils.py.")
+    window = requirements.get("context_window")
+    if not window:
+        raise SystemExit(
+            "\nthis eval's config declares no serving.context_window — every eval "
+            "states the window it runs at (required, no default: the window decides "
+            "truncation behaviour, so it is part of the eval's scientific record). "
+            "Add a `serving:` section to its configs/eval YAML.")
+    ceiling = facts.get("verified_context_window")
+    if ceiling and int(window) > int(ceiling):
+        raise SystemExit(
+            f"\nserving.context_window={window} exceeds {base_model}'s verified "
+            f"ceiling ({ceiling} — ModelProfile.serving, src/utils.py). Lower the "
+            "eval's window, or boot vLLM live at the larger window on the reference "
+            "H100 and bump verified_context_window with a dated comment.")
+    # The family value is a boot-feasibility CAP (Mamba state slots are preallocated
+    # at startup), not a default an eval may exceed. An eval may request fewer slots
+    # — psychosis trades slots for window headroom — never more.
+    cap = facts.get("max_num_seqs")
+    seqs = requirements.get("max_num_seqs", cap)
+    if seqs and cap and int(seqs) > int(cap):
+        raise SystemExit(
+            f"\nserving.max_num_seqs={seqs} exceeds {base_model}'s verified cap "
+            f"({cap} — ModelProfile.serving, src/utils.py): Mamba state slots are "
+            "preallocated at boot and the arena above the cap does not fit the "
+            "reference H100. Request fewer, or verify a larger cap with a live boot.")
+    return {"context_window": int(window),
+            "max_num_seqs": int(seqs) if seqs else None,
+            "reasoning_parser": facts.get("reasoning_parser")}
+
+
 class LocalExec:
     """Run the vLLM server and its file operations on this machine."""
 
@@ -353,36 +408,23 @@ class VllmServer:
                                         pin_template(template, mode))
 
     def _start(self, spec: TargetSpec, adapter_dir: str | None) -> None:
-        params = {**serving_params(spec.base_model), **self.serve_overrides}
-        window = params.get("context_window")
-        if not window:
-            raise SystemExit(
-                "\nthis eval's config declares no serving.context_window — every eval "
-                "states the window it runs at (required, no default: the window decides "
-                "truncation behaviour, so it is part of the eval's scientific record). "
-                "Add a `serving:` section to its configs/eval YAML.")
-        ceiling = params.get("verified_context_window")
-        if ceiling and int(window) > int(ceiling):
-            raise SystemExit(
-                f"\nserving.context_window={window} exceeds {spec.base_model}'s verified "
-                f"ceiling ({ceiling} — ModelProfile.serving, src/utils.py). Lower the "
-                "eval's window, or boot vLLM live at the larger window on the reference "
-                "H100 and bump verified_context_window with a dated comment.")
+        plan = plan_serving(serving_params(spec.base_model), self.serve_overrides,
+                            spec.base_model)
         argv = self.executor.python_argv + [
             "-m", "vllm.entrypoints.openai.api_server",
             "--model", spec.base_model, "--served-model-name", "base",
             "--dtype", "bfloat16",
-            "--max-model-len", str(int(window)),
+            "--max-model-len", str(plan["context_window"]),
             "--gpu-memory-utilization", "0.94",
             "--port", str(self.port)]
-        if params.get("max_num_seqs"):
-            argv += ["--max-num-seqs", str(params["max_num_seqs"])]
-        if params.get("reasoning_parser") and spec.mode == "think":
+        if plan.get("max_num_seqs"):
+            argv += ["--max-num-seqs", str(plan["max_num_seqs"])]
+        if plan.get("reasoning_parser") and spec.mode == "think":
             # think-mode only, by construction: on a tagless (nothink) stream the
             # parser's "reasoning is at the start" assumption would route the WHOLE
             # answer into the reasoning field. mode=default (full models) also skips
             # the parser and falls back to client-side splitting — see docs/TODO.md.
-            argv += ["--reasoning-parser", params["reasoning_parser"]]
+            argv += ["--reasoning-parser", plan["reasoning_parser"]]
         template = self._pinned_template_path(spec.base_model, spec.mode)
         if template:
             argv += ["--chat-template", template]

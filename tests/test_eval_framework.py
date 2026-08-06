@@ -79,6 +79,38 @@ def test_registry_runners_fulfill_the_contract_and_configs_exist():
         assert Path(spec.config).exists(), (name, spec.config)
 
 
+QWEN36_FACTS = {"verified_context_window": 40960, "max_num_seqs": 32,
+                "reasoning_parser": "qwen3"}
+
+
+def test_plan_serving_validates_requirements_against_facts():
+    from src.endpoints.vllm_server import plan_serving
+
+    # Happy path: psychosis-shaped request — big window, fewer slots than the cap.
+    plan = plan_serving(QWEN36_FACTS, {"context_window": 40960, "max_num_seqs": 12}, "m")
+    assert plan == {"context_window": 40960, "max_num_seqs": 12,
+                    "reasoning_parser": "qwen3"}
+    # No seqs request: serve at the family cap.
+    assert plan_serving(QWEN36_FACTS, {"context_window": 16384}, "m")["max_num_seqs"] == 32
+    # Unprofiled family: no ceiling/cap to violate, no parser.
+    plan = plan_serving({"max_num_seqs": None}, {"context_window": 13312}, "m")
+    assert plan["max_num_seqs"] is None and plan["reasoning_parser"] is None
+
+    with pytest.raises(SystemExit, match="declares no serving.context_window"):
+        plan_serving(QWEN36_FACTS, {}, "m")
+    with pytest.raises(SystemExit, match="exceeds .*verified ceiling"):
+        plan_serving(QWEN36_FACTS, {"context_window": 65536}, "m")
+    with pytest.raises(SystemExit, match="exceeds .*verified cap"):
+        plan_serving(QWEN36_FACTS, {"context_window": 16384, "max_num_seqs": 256}, "m")
+    # Facts are not writable from eval configs — a forged ceiling is an unknown key,
+    # and a typo'd key errors instead of silently no-opping.
+    with pytest.raises(SystemExit, match="unknown key"):
+        plan_serving(QWEN36_FACTS, {"context_window": 16384,
+                                    "verified_context_window": 999999}, "m")
+    with pytest.raises(SystemExit, match="unknown key"):
+        plan_serving(QWEN36_FACTS, {"context_windw": 16384}, "m")
+
+
 def test_every_eval_config_declares_its_context_window():
     # The serving window decides truncation behaviour (CLAUDE.md gotcha 5), so every
     # eval config states the window it runs at — required, no hidden family default.
