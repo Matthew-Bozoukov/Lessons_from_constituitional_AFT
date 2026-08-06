@@ -92,11 +92,13 @@ serving:
   # uses; on overflow the instance aborts and scores unresolved — which reads as incapability,
   # not as a serving problem. Do not lower this to make a boot failure go away.
   #
-  # Well inside the family's 262144 trained window, but larger than anything we have booted on
-  # one 80GB card in bf16, so the open question is purely whether the KV cache allocates. vLLM
-  # answers that at startup; if it will not fit, the lever is fp8 (KV 252k -> 678k tokens,
-  # docs/LOG.md 2026-07-29) or a bigger card, not a smaller window.
-  context_window: 65536
+  # 131072 is what docs/LOG.md 2026-07-29 recommends for exactly this failure, and half the
+  # family's 262144 trained window. It is a CAP, not an allocation: vLLM pages KV, so raising
+  # it does not itself consume cache — measured trajectories run 30-80k, and only the long
+  # tail that would previously have aborted now keeps growing. One sequence at 131072 fits the
+  # ~300k-token bf16 KV pool, so it boots; if it ever does not, the lever is fp8 (KV 252k ->
+  # 678k) or a bigger card, not a smaller window.
+  context_window: 131072
   # No `concurrency:` on purpose — with none declared the server runs at the family's
   # verified cap (32), which is already comfortably above `workers: 12` so the driver never
   # queues behind itself. Declaring 32 here would state a requirement we do not actually
