@@ -65,8 +65,12 @@ src/                    correctness-critical reusable code (installed editable; 
                             type; run via scripts/data/synthdoc/build_dataset.py with
                             configs/data/synthdoc/{difficult_advice,model_eval_model}.yaml,
                             `synthdoc check` gates the latter's corpora — see its README)
-    mixture/                dataset building (build_mixture.py, balanced_subset.py,
-                            convert_synthdoc_qwen.py, prepare_tulu.py, ...)
+    mixture/                dataset building: build_mixture.py (staged base → spec-filter →
+                            synthetic pipeline with HF push checkpoints; rows are
+                            model-agnostic interchange messages, rendered at TRAIN time via
+                            ModelProfile), spec_filter.py (constitution judge),
+                            balanced_subset.py, sources/ (one adapter per data source,
+                            incl. the tulu3 sampler formerly prepare_tulu.py)
   train/                  training: train_lora.py, merge_lora.py
   eval/                   eval registry in __init__.py (name -> EvalSpec, lazy runner) — every
                           eval follows the run() contract in "The eval framework" below
