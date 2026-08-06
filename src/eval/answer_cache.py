@@ -158,7 +158,7 @@ class AnswerCache:
             for name in (ANSWERS, META):
                 shutil.copy2(src_dir / name, entry / name)
             return
-        from src.eval.publish import card_markdown
+        from src.hf_publish import card_markdown
 
         api = self._api()
         if not api.repo_exists(self.hf_repo, repo_type="dataset"):

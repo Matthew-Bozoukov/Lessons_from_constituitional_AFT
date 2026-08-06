@@ -5,7 +5,7 @@ import pytest
 
 from src.endpoints.vllm_server import TargetSpec, _spec_from_files, pin_template
 from src.eval import EVALS, EvalSpec
-from src.eval.publish import REQUIRED_FIELDS, card_markdown
+from src.hf_publish import REQUIRED_FIELDS, card_markdown
 from src.utils import QWEN36_PROFILE
 
 ADAPTER_CONFIG = {"base_model_name_or_path": "Qwen/Qwen3-32B", "r": 16}
