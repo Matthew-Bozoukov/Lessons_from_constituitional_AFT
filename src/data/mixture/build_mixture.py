@@ -371,8 +371,11 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
         if n > int(cfg.max_seq_len):
             return None
         out = {"messages": msgs, "source": name, "n_tokens": n}
-        if raw.get("supervise"):
-            out["supervise"] = raw["supervise"]
+        # supervise rides top-level or under metadata (synthdoc stage-5 exports put it
+        # there); losing it would silently train non-target turns (supervise: final).
+        supervise = raw.get("supervise") or (raw.get("metadata") or {}).get("supervise")
+        if supervise:
+            out["supervise"] = supervise
         return out
 
     if "path" in spec:

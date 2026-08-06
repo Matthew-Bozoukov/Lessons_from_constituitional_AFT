@@ -342,3 +342,21 @@ def test_train_time_render_matches_legacy_build_time_render():
                              if l != -100])
     assert EMPTY_THINK not in supervised and "thinking hard" in supervised
     assert "a1" in supervised and "a2" in supervised
+
+
+def test_take_interchange_lifts_supervise_from_metadata(tmp_path):
+    # Synthdoc stage-5 exports carry supervise under metadata; dropping it would
+    # silently train the flawed first response of self-reflection records.
+    path = tmp_path / "stage5.jsonl"
+    path.write_text(json.dumps({
+        "messages": [{"role": "user", "content": "q"},
+                     {"role": "assistant", "content": "flawed",
+                      "reasoning_content": "r1"},
+                     {"role": "user", "content": "reflect"},
+                     {"role": "assistant", "content": "better",
+                      "reasoning_content": "r2"}],
+        "metadata": {"supervise": "final", "record_id": "x"}}) + "\n")
+    rows, _ = _take_interchange(
+        _StubTok(), _icfg(tmp_path), "self_reflection",
+        {"path": str(path), "reasoning": "native"}, ("examples", 1), 0, {})
+    assert rows[0]["supervise"] == "final"
