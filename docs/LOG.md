@@ -3,6 +3,52 @@
 
 # LOG
 
+## 2026-08-06 (2) — vast.ai VM rental PASSES the gold check: first blessed rentable grading host
+
+**Hypothesis:** vast.ai can host the CPU/Docker half of `swebench_mini` (rollout driver + grading)
+against a GPU served elsewhere, closing the "no reproducible grading host" blocker open since
+2026-08-05 (5). **Method:** rented one vast **VM-rental** instance (template `vastai/kvm`,
+"Ubuntu 22.04 VM"), 5 vCPU / 49GB / 243GB disk, and ran three gates in order: the 5-check Docker
+capability suite, the repo's own `docker_preflight()`, and finally
+`scripts/eval/swebench_mini_check_env.py --n 1` (gold patches, no model).
+
+**Result — all three passed.** Docker 28.1.1, overlay2, cgroup v2, systemd `running`, full root.
+Capability suite **5/5** (bridge network creation, container-to-container service-name DNS,
+bind-mount write-back, 4 concurrent containers). `docker_preflight()` OK. Gold check:
+`{"passed": true, "n_resolved": 1, "unresolved_gold": [], "harness_version": "4.1.0",
+"dataset_revision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a"}`. **This is the first rentable
+host to pass the gold check** — grading correctness on vast is now proven, not assumed.
+
+**CORRECTION to 2026-08-06 (1): the $0.0102/hr CPU-only figure is NOT attainable.** vast lists
+CPU-only offers (`num_gpus=0`) at ~$0.010/hr with 32–384 vCPU, and this log previously quoted
+that as the cost of the CPU host. **They cannot be rented**: `create instance` returns
+`error 404/3603: no_such_ask ... is not available` for every one. Tested exhaustively — 10+
+distinct offer ids, freshly re-queried (so not staleness), with and without `--direct`, with the
+VM template and with a bare `--image`, using `bundle_id` instead of `id`, and with `--no-default`
+plus storage-matched search. Identical failure every time, while a **VM-capable offer that has a
+GPU rented on the first attempt**. So `create instance` works; CPU-only rental via the CLI does
+not. The cheapest rentable VM-capable box is therefore **~$0.067–0.087/hr** (the GPU is dead
+weight we pay for). Still trivial against the GPU bill, but ~7× the figure previously recorded.
+Unknown whether the web UI can rent CPU-only — worth a human check.
+
+**Gotcha:** for VM rentals the SSH port in the API's `ssh_port` field is WRONG — connecting there
+gives "Connection refused". `vastai ssh-url <id>` returns the correct `root@<public_ip>:<port>`.
+Also `vms_enabled=true` is required in the search: standard vast Docker instances are undocumented
+for nested containers, only **VM rentals** document systemd + nested containerization. CLAUDE.md's
+gotcha list says "a vast.ai instance" works for Docker — that is only true of VM rentals.
+
+**Two findings from the AWS/Azure comparison worth acting on regardless of provider:** (1) Epoch AI
+publishes an optimized SWE-bench image registry that cuts all 500 Verified images from ~600GB to
+**~30GiB** — that removes the disk and pull-time problem entirely and should be evaluated for our
+pipeline. (2) SWE-bench's own guidance caps useful grading parallelism at
+`min(0.75 × cpu_count, 24)` workers, so **32 vCPU is the sweet spot and more buys nothing** —
+which retroactively makes GCP's 12 vCPU cap less damaging than assessed, and makes the
+unrentable 384-vCPU offers irrelevant.
+
+**Next steps:** (1) end-to-end small rollout — driver on a vast VM against a served Qwen3.6-27B —
+which is the one leg still unproven; (2) evaluate Epoch's image registry before sizing disk for
+the full 500; (3) decide GPU count for the full run (cost is flat in count, wall clock is not).
+
 ## 2026-08-06 — GCP is a viable Docker host for swebench_mini/ODCV (RunPod's blocker absent)
 
 **Hypothesis:** the grading/ODCV host blocker recorded on 2026-08-05 (5) — no machine that can
@@ -25,20 +71,77 @@ harness reads patches off the host), and 4 concurrent containers.
 **Result:** **5/5 passed.** Docker 20.10.24, overlay2, cgroup v2. Bridge network created and
 service-name DNS resolved across it (HTTP 200) — the thing that fails on RunPod works here.
 Bind-mount round-trip and concurrent containers fine. Boot health: Debian 12, kernel 6.1.0-51,
-Python 3.11.2, egress 200 in 0.32s. Also measured, and worth recording because it contradicts
-the assumption behind the refusal: **`us-central1` quota is not restrictive — 32 CPUS, 8
-INSTANCES, 2048 GB disk, 0 used.** The large-instance refusal was therefore not a zero quota;
-whatever blocked it, headroom for a 32-vCPU grading box already exists in this region. Cloud
-Resource Manager API is disabled in the project (harmless — it only blocks IAM
-introspection; Compute API itself is enabled and working).
+Python 3.11.2, egress 200 in 0.32s. Cloud Resource Manager API is disabled in the project
+(harmless — it only blocks IAM introspection; Compute API itself is enabled and working).
+
+**Quota, and a correction.** The regional figure (`us-central1` CPUS = 32, 0 used) initially
+looked like there was headroom for a 32-vCPU grading box. **That reading was wrong.** The
+binding limit is the *project-global* `CPUS-ALL-REGIONS-per-project` = **12 vCPUs**, summed
+across every region — so no instance larger than 12 vCPU can be created anywhere, whatever the
+per-region number says. Regional CPUS is a red herring; always read the global quota too.
+The Cloud Quotas API (`cloudquotas.googleapis.com`, already enabled) gives the reason in
+Google's own words: **all 396 compute quotas report
+`quotaIncreaseEligibility.ineligibilityReason = NOT_ENOUGH_USAGE_HISTORY`, none eligible** —
+matching what the team was told. This is an account-maturity gate, not a permissions problem
+and not something a request can currently bypass.
+
+**GPUs on GCP are a hard no right now**, which matters because the serving path needs one 80GB
+card: `GPUS_ALL_REGIONS = 0` globally, and in `us-central1` `NVIDIA_A100_80GB_GPUS`,
+`NVIDIA_A100_GPUS`, `NVIDIA_L4_GPUS`, `NVIDIA_T4_GPUS` are all **0** (only legacy
+K80/P100/P4/V100 sit at 1, and the global cap of 0 makes even those unusable). Same
+`NOT_ENOUGH_USAGE_HISTORY` ineligibility. **vast.ai/RunPod remain required for serving**; GCP
+is a CPU-only option for now — which is fine, since the Docker grading host is CPU work.
+
+**The `swebench-runner` service account cannot change any of this**: it is compute-scoped and
+returns 403 on `serviceusage.services.enable` for even free APIs (cloudbilling,
+cloudresourcemanager). Quota/billing changes need a human with project-owner rights in the
+console.
+
+**What is actually buildable today:** ≤12 vCPU with up to 2048 GB disk (`DISKS_TOTAL_GB` = 2048,
+ample for the ~300GB of SWE-bench images). Largest standard shapes under the cap are the
+8-vCPU families (`c3d-standard-8`, `c2d-standard-8`, `n2-standard-8`) or a 12-vCPU custom type.
+
+**Is 12 vCPU enough for the intended role (CPU-only Docker host driving rollouts against a
+vast.ai/RunPod GPU)? Yes, with room to spare** — and the 12-vCPU cap is close to irrelevant for
+rollouts. `configs/eval/swebench_mini_verified.yaml` records the pilot's measurement directly:
+the binding constraint is the *server's KV cache*, not driver RAM or compute; rollout
+containers are idle shells costing ~20MB each. `workers: 12` is derived from GPU KV headroom
+(`workers ≈ 0.7 × KV_tokens / typical_context`), and pushing it to 14 collapsed the prefix
+cache 52% → 0.7% and throughput 86/hr → 17/hr. So 12 workers need ~240MB of driver RAM; extra
+CPU cannot buy a single additional worker. The two CPU jobs differ:
+
+| job | bound by | 8-vCPU box |
+|---|---|---|
+| rollouts (`workers: 12`) | GPU KV cache | vastly over-provisioned |
+| grading (`grading.max_workers: 8`) | real CPU — runs each repo's test suite | matches exactly |
+
+**Renting multiple boxes to parallelize buys little.** The cap is 12 vCPU across *all* regions,
+so it cannot be dodged by spreading. For rollouts, extra drivers contend for the same vLLM
+server and would split the same ~12 workers while hurting the prefix cache — no gain. For
+grading (GPU-free, embarrassingly parallel) more vCPU does help, but 12 total vs. the 8 already
+configured caps the gain at ~1.5×. `shard.index`/`shard.count` already support the split if
+wanted. **One 8-vCPU box is the right shape**; a 2-vCPU box (~$0.06/hr) would suffice if the
+host only ever drives rollouts.
+
+**The practical risk is capacity, not quota:** `e2-standard-8` and `n2-standard-8` were
+`ZONE_RESOURCE_POOL_EXHAUSTED` in all four `us-central1` zones; only the 6th attempt placed
+(`c3d-standard-8`, `us-central1-c`). Provisioning code should walk zones/shapes, not target one.
+
+**State at end of session: everything on GCP torn down** at the user's request — 0 instances,
+disks, addresses, snapshots, images, templates and managed instance groups across all zones;
+`CPUS_ALL_REGIONS` usage 0/12. The gold-patch grading check was **not** run (teardown came
+first), so **GCP is not yet a blessed grading host** — Docker capability is proven, grading
+correctness is not.
 
 **Caveat:** capability was proven, capacity was not. `e2-small` (2GB RAM, 10GB disk) is far too
 small for real grading — SWE-bench images alone run to ~300GB at 250 instances per
 `configs/eval/swebench_mini_verified.yaml`. This says the *platform* works, not that this
 *machine* can grade.
 
-**Next steps:** (1) retry the large CPU instance now that the project has usage history, or
-determine the real cause of the refusal given quota is 32 vCPU; (2) re-run
+**Next steps:** (1) **human action required in the console** — check whether billing is still a
+Free Trial account and upgrade it if so (the usual hard cap on `CPUS_ALL_REGIONS` and on
+increase eligibility), then request increases on "CPUs (all regions)" once usage history
+accrues; neither is doable with the current service account; (2) re-run
 `scripts/eval/swebench_mini_check_env.py`'s gold-patch verification on a properly sized GCP box
 to bless the reproducible grading path (still the open item from 2026-08-05 (5)); (3) if GCP
 becomes the standard host, promote the throwaway provisioning scripts into a real

@@ -23,8 +23,33 @@ to a future reader.
 | OpenRouter (eval judging) | $0.02 |
 | OpenRouter (eval scaffolding/smoke) | $0.13 |
 | GPU rental | $0.17 (+ ~4 RunPod A100-h on 2026-08-03, $ TBD from dashboard) |
-| GCP (CPU VM) | ~$0.01 so far — **ongoing, ~$0.023/hr while `nika-healthcheck-01` runs** |
-| **total** | **$256.29** (+ GPU TBD, + GCP accruing) |
+| GCP (CPU VM) | ~$0.29 (closed — all instances destroyed 2026-08-06, nothing accruing) |
+| vast.ai (CPU/VM verification) | ~$0.06 (closed — box destroyed 2026-08-06) |
+| **total** | **$256.63** (+ GPU TBD) |
+
+---
+
+## 2026-08-06 (2) — vast.ai VM rental: Docker + gold-check verification
+
+**What was bought:** proof that a vast.ai **VM rental** passes all three host gates — Docker
+capability 5/5, `docker_preflight()`, and the gold-patch grading check (1/1 resolved, harness
+4.1.0). First rentable host ever blessed for grading; see `docs/LOG.md` 2026-08-06 (2).
+
+**Cost:** one `nika-vast-vm-verify` box (VM-capable GTX 1660 S offer, 5 vCPU / 49GB / 243GB) at
+**$0.087/hr** for ~40 min ≈ **$0.06**. Destroyed; only the pre-existing `nika-swebench-arm2`
+H100 remains, untouched.
+
+**Unit-cost correction that matters for future estimates:** vast's advertised **CPU-only offers
+at ~$0.0102/hr are NOT rentable** (`no_such_ask` on every attempt — see LOG for the full test
+matrix). The cheapest *rentable* VM-capable box is **~$0.067–0.087/hr**, because it must carry a
+GPU we do not use. Any estimate built on $0.0102/hr for the CPU host is wrong by ~7×. In
+absolute terms this is still noise next to the GPU bill (~$2.55/hr), so it does not change the
+provider decision — but do not quote the CPU-only figure again.
+
+**Note on concurrent spend:** the `nika-swebench-arm2` H100 PCIE ($1.900/hr) from a separate
+workstream was running throughout, 3.1 h and ~$5.94 at first observation and still running at
+99.99% GPU utilisation. Not provisioned by this task and deliberately not touched; recorded here
+only so the ledger reflects that account-level burn was concurrent.
 
 ---
 
@@ -53,9 +78,33 @@ GCP wants before approving a larger CPU instance. It bills continuously at the r
 Tear down with `instances.delete` on `nika-healthcheck-01` in `us-central1-a`, then confirm the
 aggregated instance list is empty.
 
+**Correction (same day, 13:01 UTC): torn down.** `nika-healthcheck-01` was destroyed after a
+total lifetime of **1.33 h ≈ $0.031** at the rate above. Verified clean via the aggregated
+lists: 0 instances, 0 disks, 0 addresses, and region quota usage back to 0 CPUS / 0
+DISKS_TOTAL_GB / 0 IN_USE_ADDRESSES. The boot disk auto-deleted with the instance
+(`autoDelete: true`) and the external IP was ephemeral, so no orphaned billable resources
+remain. Nothing is accruing. Total GCP spend for this work item is closed at ~$0.03.
+
 **Lesson:** an `e2-small` is enough to prove Docker *capability* for ~$0.02, which is a cheap
 way to qualify a provider before committing to a large box. It proves nothing about *capacity*
 — SWE-bench images run to ~300GB, so the real grading host is a separate purchase.
+
+**Second instance, same day.** `nika-swebench-host-01` — `c3d-standard-8` (8 vCPU, 32GB, 200GB
+pd-balanced) in `us-central1-c`, stood up as a candidate Docker/grading host. Ran ~0.6 h before
+teardown at ~$0.43/hr (c3d-standard-8 ~$0.398 + 200GB pd-balanced ~$0.027 + external IP
+~$0.005) ≈ **$0.26**, again a list-price estimate. It reached "docker + uv installed, repo
+synced" but the gold-patch check **was not run** — teardown was requested first, so this spend
+bought provisioning knowledge, not a blessed grading host.
+
+**Both instances destroyed 2026-08-06.** Verified clean across every zone: 0 instances, 0
+disks, 0 addresses, 0 snapshots, 0 images, 0 instance templates, 0 managed instance groups
+(nothing that could recreate a VM), and `CPUS_ALL_REGIONS` usage back to 0/12. GCP spend for
+this work item is closed at **~$0.29**.
+
+**Capacity lesson worth the money:** `e2-standard-8` and `n2-standard-8` were
+`ZONE_RESOURCE_POOL_EXHAUSTED` in **all four** `us-central1` zones; placement succeeded only on
+the 6th attempt (`c3d-standard-8` in `us-central1-c`). Budget provisioning *attempts*, not just
+instance-hours, and prefer a zone/shape walk over a single hardcoded target.
 
 ---
 
