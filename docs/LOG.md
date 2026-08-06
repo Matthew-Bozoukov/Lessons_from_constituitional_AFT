@@ -3,6 +3,36 @@
 
 # LOG
 
+## 2026-08-06 — Mixture pipeline integrated: model-agnostic interchange rows, staged filter, sources/ registry
+
+**Hypothesis:** the pulled scratch pipeline (build_paper_mixture → filter_spec_misaligned →
+build_combined_mixture + two publish scripts) belongs in `src/data/mixture/` as one staged,
+config-driven run — and mixtures should be stored MODEL-AGNOSTIC (chat messages +
+`reasoning_content`/`tool_calls`), with the family template applied at train time, not build
+time. **Method:** new `src/data/mixture/sources/` registry (one adapter per source: 9 Table-2
+sources incl. 6 smoltalk configs, tulu3 — absorbing prepare_tulu.py — and difficult_advice
+mapping synthdoc stage-6 records); `spec_filter.py` (constitution judge, per-verdict
+checkpoint, unparseable-means-KEEP); `build_mixture.py` staged base → filter →
+stratified-downsample → synthetic with HF push checkpoints after every stage
+(`hf_publish.push_files`, card fields enforced; `src/eval/publish.py` now re-exports
+`src/hf_publish.py`). `train_lora.py` renders `messages` datasets at train time via
+`ModelProfile.render_kwargs`, then the unchanged gate/mask path. Legacy rendered mode
+(`reasoning: strip` / `format: rendered`) is preserved verbatim — every pre-existing config
+still routes there — and `synthetic:` flags without a `filter:` block are refused.
+**Result:** 35 new offline tests + a real-tokenizer bridge test proving the train-time render
+is byte-identical to the old build-time render and the generation-boundary mask still lands
+(empty markers fully masked, traces + closes supervised); 381 total pass. Two smoke runs of
+`configs/data/mixture/qwen36_msm_table2.yaml` (Table-2 counts verbatim, 12_principles_mid
+filter, keep 8000 + 2203 DA): the first exposed a real bug — `apply_chat_template(tokenize=
+True)` returns a BatchEncoding whose `len()` is its KEY COUNT (2), so every row counted 2
+"tokens" and the max_seq_len cap never fired; fixed with `return_dict=True + ["input_ids"]`,
+and the stub tokenizer in tests now mirrors that contract so it cannot mask the bug again.
+Second smoke verified: real token counts, LongAlign dropping 43/53 rows at the 8192 cap
+(~81%, matching the recovered config's ~80% note), 3 judge calls, partial-pass warning, no
+pushes. Superseded scratch scripts + configs/data/mixture_paper_table2.yaml deleted (git
+history is the archive). **Next:** the paid full run (~10k judge calls ≈ $4–5 — flag before
+launching); rename convert_synthdoc_qwen.py to a pure normaliser (docs/TODO.md).
+
 ## 2026-08-06 — Merged main into `jamie/write-all-evals-to-hf`: serving is composed, not overridden
 
 **Hypothesis:** both branches had independently grown per-eval serving configuration, and both

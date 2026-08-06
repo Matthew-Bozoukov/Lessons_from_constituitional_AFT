@@ -12,10 +12,29 @@ from src.data.mixture.build_mixture import (
     _fill,
     _fill_budget,
     _source_stats,
+    _take_interchange,
     _take_rendered,
     _usable,
+    _validate_interchange,
+    _write_rows,
     main,
+    stratified_subset,
 )
+
+
+class _StubTok:
+    """Counts tokens as words — enough to exercise budgets and caps offline.
+
+    Mirrors the real contract: tokenize=True returns a BatchEncoding-like MAPPING
+    (whose len() is its key count, not the token count — the bug the 2026-08-06 smoke
+    run caught), so callers must index ["input_ids"].
+    """
+
+    def apply_chat_template(self, messages, tokenize, add_generation_prompt,
+                            return_dict=False, **kw):
+        assert tokenize is True and return_dict is True
+        words = " ".join(m.get("content") or "" for m in messages).split()
+        return {"input_ids": words, "attention_mask": [1] * len(words)}
 
 
 def _rows(sizes):
@@ -131,7 +150,9 @@ def test_main_rejects_legacy_tulu3_schema(tmp_path):
 
 
 def test_mixture_configs_share_one_schema():
-    # tulu_control.yaml is prepare_tulu's config, not a build_mixture config.
+    from src.data.mixture.sources import SOURCES
+
+    # tulu_control.yaml is the tulu3 sampler's config (sources/tulu3.py), not a build_mixture config.
     configs = [p for p in sorted(Path("configs/data/mixture").glob("*.yaml"))
                if p.name != "tulu_control.yaml"]
     assert configs, "no mixture configs found"
@@ -142,16 +163,182 @@ def test_mixture_configs_share_one_schema():
         sources = OmegaConf.to_container(cfg.sources, resolve=True)
         assert sources, name
         for sname, spec in sources.items():
-            if "repo" in spec:
-                assert set(spec) <= {"repo", "split", "tokens", "examples",
-                                     "shuffle_buffer", "reasoning"}, (name, sname)
-                # What the data carries is part of the scientific record, never guessed.
-                assert spec.get("reasoning") in ("native", "none", "strip"), (name, sname)
-            else:
+            if "format" in spec:  # legacy local source (pre-interchange configs)
                 assert set(spec) - {"tokens", "examples"} == {"path", "format"}, (name, sname)
                 assert spec["format"] in ("messages", "rendered"), (name, sname)
+            elif "repo" in spec:  # raw HF chat dataset, legacy or interchange
+                assert set(spec) <= {"repo", "config", "split", "tokens", "examples",
+                                     "shuffle_buffer", "reasoning", "synthetic"}, (name, sname)
+                # What the data carries is part of the scientific record, never guessed.
+                assert spec.get("reasoning") in ("native", "none", "strip"), (name, sname)
+            else:  # registry adapter spec (interchange), named explicitly or by its key
+                assert set(spec) <= {"source", "path", "config", "split", "tokens",
+                                     "examples", "shuffle_buffer", "reasoning",
+                                     "synthetic"}, (name, sname)
+                assert (spec.get("source") or sname) in SOURCES, (name, sname)
+                assert spec.get("reasoning") in ("native", "none"), (name, sname)
             # Exactly one budget kind per source (the builder's _budget contract).
             declared = [k for k in ("tokens", "examples") if spec.get(k) is not None]
             assert len(declared) == 1, (name, sname, declared)
             assert int(spec[declared[0]]) > 0, (name, sname)
         assert int(cfg.max_seq_len) > 0, name
+
+
+# --------------------------------------------------------------------------------------
+# Interchange mode
+# --------------------------------------------------------------------------------------
+
+def _icfg(tmp_path, max_seq_len=100):
+    return OmegaConf.create({"max_seq_len": max_seq_len, "shuffle_buffer": 10})
+
+
+def test_take_interchange_local_messages_path(tmp_path):
+    path = tmp_path / "rows.jsonl"
+    with path.open("w") as f:
+        for i in range(6):
+            f.write(json.dumps({"messages": [
+                {"role": "user", "content": f"q{i}"},
+                {"role": "assistant", "content": f"a{i}"}]}) + "\n")
+    rows, kind = _take_interchange(
+        _StubTok(), _icfg(tmp_path), "plain", {"path": str(path), "reasoning": "none"},
+        ("examples", 4), seed=0, render_kwargs={})
+    assert kind == "none" and len(rows) == 4
+    assert all(r["source"] == "plain" and "messages" in r and "text" not in r for r in rows)
+
+
+def test_take_interchange_resolves_adapter_by_name_and_path(tmp_path):
+    # The difficult_advice adapter maps synthdoc stage-6 records to messages.
+    path = tmp_path / "stage6.jsonl"
+    with path.open("w") as f:
+        for i in range(3):
+            f.write(json.dumps({"system": "s", "user": f"u{i}", "reasoning": f"r{i}",
+                                "response": f"a{i}", "trait_id": "t"}) + "\n")
+    rows, kind = _take_interchange(
+        _StubTok(), _icfg(tmp_path), "difficult_advice",
+        {"source": "difficult_advice", "path": str(path), "reasoning": "native"},
+        ("examples", 3), seed=0, render_kwargs={})
+    assert kind == "native" and len(rows) == 3
+    assert rows[0]["messages"][-1]["reasoning_content"].startswith("r")
+
+
+def test_take_interchange_refuses_strip_and_unknown_adapters(tmp_path):
+    with pytest.raises(ValueError, match="legacy RENDERED-mode"):
+        _take_interchange(_StubTok(), _icfg(tmp_path), "s",
+                          {"path": "x", "reasoning": "strip"}, ("examples", 1), 0, {})
+    with pytest.raises(ValueError, match="unknown adapter"):
+        _take_interchange(_StubTok(), _icfg(tmp_path), "not_a_source",
+                          {"reasoning": "none"}, ("examples", 1), 0, {})
+
+
+def test_take_interchange_caps_on_rendered_length(tmp_path):
+    path = tmp_path / "rows.jsonl"
+    with path.open("w") as f:
+        f.write(json.dumps({"messages": [
+            {"role": "user", "content": "short"},
+            {"role": "assistant", "content": "ok"}]}) + "\n")
+        f.write(json.dumps({"messages": [
+            {"role": "user", "content": "w " * 300},
+            {"role": "assistant", "content": "ok"}]}) + "\n")
+    rows, _ = _take_interchange(
+        _StubTok(), _icfg(tmp_path, max_seq_len=50), "s",
+        {"path": str(path), "reasoning": "none"}, ("examples", 1), 0, {})
+    assert len(rows) == 1 and rows[0]["messages"][0]["content"] == "short"
+
+
+def test_validate_interchange_enforces_declarations():
+    native_ok = [{"messages": [{"role": "user", "content": "q"},
+                               {"role": "assistant", "content": "a",
+                                "reasoning_content": "because"}], "source": "s"}]
+    _validate_interchange("s", "native", native_ok)
+    with pytest.raises(AssertionError, match="no real"):
+        _validate_interchange("s", "native", [{"messages": [
+            {"role": "user", "content": "q"},
+            {"role": "assistant", "content": "a"}], "source": "s"}])
+    with pytest.raises(AssertionError, match="mislabels"):
+        _validate_interchange("s", "none", native_ok)
+
+
+def test_write_rows_messages_roundtrip_keeps_supervise(tmp_path):
+    rows = [{"messages": [{"role": "user", "content": "q"},
+                          {"role": "assistant", "content": "a"}],
+             "source": "s", "n_tokens": 5, "supervise": "final"},
+            {"messages": [{"role": "user", "content": "q2"},
+                          {"role": "assistant", "content": "a2"}],
+             "source": "s", "n_tokens": 5}]
+    path = tmp_path / "m.jsonl"
+    _write_rows(path, rows)
+    written = [json.loads(line) for line in path.open()]
+    assert written[0]["supervise"] == "final" and "supervise" not in written[1]
+    assert all("n_tokens" not in w for w in written), "counters must not leak into artifacts"
+
+
+def test_stratified_subset_holds_proportions_and_is_deterministic():
+    rows = ([{"source": "a", "n_tokens": 1}] * 60
+            + [{"source": "b", "n_tokens": 1}] * 30
+            + [{"source": "c", "n_tokens": 1}] * 10)
+    picked, quota = stratified_subset(list(rows), 50, seed=3)
+    again, _ = stratified_subset(list(rows), 50, seed=3)
+    assert len(picked) == 50 and [r["source"] for r in picked] == [r["source"] for r in again]
+    counts = {s: sum(1 for r in picked if r["source"] == s) for s in "abc"}
+    assert counts == {"a": 30, "b": 15, "c": 5}
+    assert quota == {"a": 30, "b": 15, "c": 5}
+    with pytest.raises(AssertionError):
+        stratified_subset(rows[:5], 10, seed=0)
+
+
+def test_main_requires_filter_for_synthetic_flags(tmp_path):
+    cfg = tmp_path / "cfg.yaml"
+    cfg.write_text(
+        "seed: 0\ntokenizer: t\nmax_seq_len: 100\noutput_dir: out\n"
+        "sources:\n  da:\n    path: x\n    reasoning: native\n    synthetic: true\n"
+        "    examples: 1\n")
+    with pytest.raises(ValueError, match="no `filter:` block"):
+        main(config=str(cfg))
+
+
+# --------------------------------------------------------------------------------------
+# The render bridge (real tokenizer, cached-only): moving rendering from build time to
+# train time must not change a byte of what the model trains on.
+# --------------------------------------------------------------------------------------
+
+@pytest.mark.tokenizer
+def test_train_time_render_matches_legacy_build_time_render():
+    transformers = pytest.importorskip("transformers")
+    try:
+        tok = transformers.AutoTokenizer.from_pretrained(
+            "Qwen/Qwen3.6-27B", local_files_only=True)
+    except OSError:
+        pytest.skip("Qwen3.6 tokenizer not in the local HF cache")
+    from src.data.mixture.build_mixture import _render_preserved
+    from src.train.masking import EMPTY_THINK, build_labels
+    from src.utils import model_profile, think_census
+
+    profile = model_profile("Qwen/Qwen3.6-27B")
+    msgs = [{"role": "system", "content": "sys"},
+            {"role": "user", "content": "q1"},
+            {"role": "assistant", "content": "a1"},                       # no reasoning
+            {"role": "user", "content": "q2"},
+            {"role": "assistant", "content": "a2",
+             "reasoning_content": "thinking hard"}]                       # real trace
+
+    legacy = _render_preserved(tok, msgs, profile.render_kwargs)
+    # train_lora's map: strip the None padding HF's json loader adds, then render with
+    # the profile kwargs — the exact expression in src/train/train_lora.py.
+    padded = [{**m, "reasoning_content": m.get("reasoning_content"),
+               "tool_calls": None} for m in msgs]
+    train_time = tok.apply_chat_template(
+        [{k: v for k, v in m.items() if v is not None} for m in padded],
+        tokenize=False, add_generation_prompt=False, **profile.render_kwargs)
+    assert train_time == legacy, "train-time render diverged from the legacy build-time render"
+
+    census = think_census([train_time])
+    assert census == {"turns": 2, "real": 1, "empty": 1, "absent": 0}
+
+    # The generation-boundary mask on the rendered row: the whole empty marker is
+    # forced context (never supervised); the real trace and its close are supervised.
+    out = build_labels(train_time, tok, max_length=100000,
+                       prefill=profile.prefill, empty_think=profile.empty_think)
+    supervised = tok.decode([i for i, l in zip(out["input_ids"], out["labels"])
+                             if l != -100])
+    assert EMPTY_THINK not in supervised and "thinking hard" in supervised
+    assert "a1" in supervised and "a2" in supervised

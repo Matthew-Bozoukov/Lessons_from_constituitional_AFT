@@ -86,6 +86,26 @@ reasoning-preserving fix; naive SFT on single-blob answers makes Qwen3's chat te
 empty `<think></think>`, which trains the model to *stop reasoning*. New difficult-advice data
 is generated with `synthdoc` (see below), which carries reasoning natively.
 
+### 2b. The MSM Table-2 mixture (one staged command)
+
+The paper's 10,000-sample instruction-tuning mixture + spec filter + difficult-advice share
+is one config-driven run (`--smoke` first — 1/20 budgets, ≤3 judge calls, no pushes):
+
+```bash
+# the difficult-advice stage-6 export the synthetic stage reads:
+uv run hf download LASR-Callum/2026-08-04-synthdoc-difficult-advice-9-principles \
+  stage_6_final.jsonl --repo-type dataset --local-dir data/  # -> rename to data/difficult_advice_stage6.jsonl
+uv run scripts/data/mixture/build_mixture.py --config configs/data/mixture/qwen36_msm_table2.yaml
+```
+
+Stages (each pushes its artifact to HF as produced, per the config's `hf:` block): the nine
+Table-2 sources at their verbatim counts (`mixture_unfiltered.jsonl`) → the constitution
+spec-filter, ~10k judge calls ≈ $4–5 (`mixture_filtered.jsonl` + per-sample `verdicts.jsonl`,
+re-cuttable without re-judging; this filtered file is itself the 0%-synthetic control arm) →
+stratified downsample to 8,000 + the 2,203 difficult-advice rows (`mixture.jsonl`). Rows are
+model-agnostic interchange messages; per-source schema quirks live in
+`src/data/mixture/sources/` (one adapter per source).
+
 ### 3. Provision + prepare the GPU pod
 ```bash
 # vast.ai example (any 80GB GPU works):
@@ -274,10 +294,16 @@ Repo-wide default for training data and serving, everything family-specific cent
 `ModelProfile` (`src/utils.py`; Qwen3.6 is the only verified profile — Qwen3's thinking
 template prefills nothing, so it is deliberately refused until verified):
 
-- **Data**: `build_mixture.py` renders with the profile's kwargs (`preserve_thinking=True`),
-  so EVERY assistant turn carries a think block — reasoning where the source has it, the empty
-  marker where it does not. HF sources must declare `reasoning: native|none|strip` (`strip` =
-  deliberate pre-policy no-think rendering, for nothink control arms only).
+- **Data**: since 2026-08-06 mixtures are stored MODEL-AGNOSTIC — interchange rows
+  `{messages: [{role, content, reasoning_content?, tool_calls?}], source}` (see
+  `src/data/mixture/sources/`), no chat template applied at build time. `train_lora.py`
+  renders them at train time with the profile's kwargs (`preserve_thinking=True`), so EVERY
+  assistant turn carries a think block — reasoning where the row has it, the empty marker
+  where it does not (verified byte-identical to the old build-time render,
+  `tests/test_build_mixture.py::test_train_time_render_matches_legacy_build_time_render`).
+  Sources declare `reasoning: native|none` — what the data carries, validated. A source
+  declaring `reasoning: strip` or `format: rendered` switches the whole config to the
+  legacy pre-rendered `{text}` form, reproducing pre-2026-08-06 artifacts.
 - **Loss**: the generation-boundary mask (`src/train/masking.py`, not configurable) masks
   exactly what the model never generates and supervises what it does. On a real reasoning
   turn that means the `<think>\n` prefill is masked and the trace + `\n</think>` close carry
