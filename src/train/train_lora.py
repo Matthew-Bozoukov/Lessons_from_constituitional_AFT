@@ -400,3 +400,10 @@ def main(config: str, smoke: bool = False) -> None:
             print(f">>> step {row.get('step')}  loss {row['loss']:.4f}")
     print(f">>> saved adapter to {adapter_dir}")
     print(f">>> run_meta: {out_dir / 'run_meta.json'}")
+
+
+def cli() -> None:
+    """Console entry (`uv run train_lora --config ...`, [project.scripts])."""
+    import fire
+
+    fire.Fire(main)

@@ -333,11 +333,9 @@ def test_sshexec_remote_commands_get_uv_on_path():
 
 
 def test_derive_run_kwargs_come_from_the_run_signature():
-    import importlib.util
+    import importlib
 
-    spec = importlib.util.spec_from_file_location("run_eval_module", "scripts/run_eval.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    mod = importlib.import_module("src.eval.run_eval")
 
     def fake_run(target, cfg, out_dir, *, reference="", judge_seed=""):
         raise NotImplementedError

@@ -800,3 +800,10 @@ def main(config: str, smoke: bool = False) -> None:
     sys.stdout.flush()
     sys.stderr.flush()
     os._exit(0)
+
+
+def cli() -> None:
+    """Console entry (`uv run build_mixture --config ...`, [project.scripts])."""
+    import fire
+
+    fire.Fire(main)
