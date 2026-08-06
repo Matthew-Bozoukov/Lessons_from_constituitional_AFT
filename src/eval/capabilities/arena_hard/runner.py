@@ -6,7 +6,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from huggingface_hub import hf_hub_download
+from src.huggingface import hf_download
 from omegaconf import OmegaConf
 
 from src.eval.capabilities.arena_hard import arena_hard_gen, arena_hard_judge
@@ -19,7 +19,7 @@ def _fetch_reference(reference: str, dest: Path) -> None:
         reference: A local answers jsonl, or `repo_id::path_in_repo` on HF.
         dest: `<vendor_dir>/data/<bench>/model_answer/<baseline_arm>.jsonl`.
     """
-    src = (Path(hf_hub_download(*reference.split("::", 1), repo_type="dataset"))
+    src = (Path(hf_download(*reference.split("::", 1), repo_type="dataset"))
            if "::" in reference else Path(reference))
     assert src.exists(), f"reference answers not found: {reference}"
     dest.parent.mkdir(parents=True, exist_ok=True)

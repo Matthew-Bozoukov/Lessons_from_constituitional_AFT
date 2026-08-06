@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import requests
-from huggingface_hub import hf_hub_download
+from src.huggingface import hf_download
 from huggingface_hub.errors import EntryNotFoundError
 
 from src.model_profile import serving_params
@@ -96,12 +96,12 @@ def resolve_target(hf_path: str) -> TargetSpec:
     `fetch_adapter` (adapter), on whichever machine serves.
     """
     try:
-        with open(hf_hub_download(hf_path, "adapter_config.json")) as f:
+        with open(hf_download(hf_path, "adapter_config.json")) as f:
             adapter_config = json.load(f)
     except EntryNotFoundError:
         return _spec_from_files(hf_path, None, None)
     try:
-        with open(hf_hub_download(hf_path, "training_meta.json")) as f:
+        with open(hf_download(hf_path, "training_meta.json")) as f:
             training_meta = json.load(f)
     except EntryNotFoundError:
         training_meta = None
@@ -153,7 +153,7 @@ def native_context_window(base_model: str) -> int | None:
     backstop.
     """
     try:
-        with open(hf_hub_download(base_model, "config.json")) as f:
+        with open(hf_download(base_model, "config.json")) as f:
             config = json.load(f)
     except Exception:            # offline, gated repo, unusual layout — not fatal
         return None
@@ -540,7 +540,7 @@ class VllmServer:
     def _pinned_template_path(self, base_model: str, mode: str) -> str | None:
         if mode == "default":
             return None
-        with open(hf_hub_download(base_model, "tokenizer_config.json")) as f:
+        with open(hf_download(base_model, "tokenizer_config.json")) as f:
             template = json.load(f)["chat_template"]
         return self.executor.write_file(f"chat_template_{mode}.jinja",
                                         pin_template(template, mode))

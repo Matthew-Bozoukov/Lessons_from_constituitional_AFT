@@ -116,11 +116,11 @@ class AnswerCache:
             if self.local is not None:
                 source = self.local / key.path
             else:
-                from huggingface_hub import hf_hub_download
+                from src.huggingface import hf_download
 
                 for name in (ANSWERS, META):
-                    hf_hub_download(self.hf_repo, f"{key.path}/{name}",
-                                    repo_type="dataset", local_dir=str(dest))
+                    hf_download(self.hf_repo, f"{key.path}/{name}",
+                                repo_type="dataset", local_dir=str(dest))
                 # hf_hub_download recreates the key path under local_dir.
                 source = dest / key.path
         for name in (ANSWERS, META):
