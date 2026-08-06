@@ -18,11 +18,26 @@ def _selection(cfg: DictConfig, out_dir: Path) -> tuple[dict, list[dict]]:
     image fields, which the pre-pull step needs and the summary deliberately does not hold.
     """
     instances, revision = subset.load_instances(str(cfg.dataset), str(cfg.split))
-    fraction = cfg.subset.get("fraction")
-    n = cfg.subset.get("n")
-    full = subset.select(instances, int(cfg.subset.seed),
-                         fraction=float(fraction) if fraction is not None else None,
-                         n=int(n) if n is not None else None)
+    explicit = cfg.subset.get("instance_ids_from")
+    if explicit:
+        # An EXPLICIT instance list, not a stratified draw. Used to re-run a fixed task set —
+        # e.g. only the instances another arm submitted. Such a set is chosen by some other
+        # run's behaviour, so it is NOT a benchmark sample: results over it are a paired
+        # comparison on those tasks and must never be reported as SWE-bench pass@1. The
+        # summary records `sampling: explicit` so the distinction survives into the artifacts.
+        wanted = subset.ids_from_preds(Path(str(explicit)))
+        by_id = {r["instance_id"]: r for r in instances}
+        missing = sorted(set(wanted) - set(by_id))
+        if missing:
+            raise SystemExit(f"{len(missing)} requested ids are not in {cfg.dataset}: {missing[:5]}")
+        full = [by_id[i] for i in wanted]
+        print(f">>> explicit instance list: {len(full)} instances from {explicit}")
+    else:
+        fraction = cfg.subset.get("fraction")
+        n = cfg.subset.get("n")
+        full = subset.select(instances, int(cfg.subset.seed),
+                             fraction=float(fraction) if fraction is not None else None,
+                             n=int(n) if n is not None else None)
     # Sharding splits the SAME subset across drivers; it never changes what is measured.
     count = int(cfg.get("shard", {}).get("count", 1) or 1)
     index = int(cfg.get("shard", {}).get("index", 0) or 0)
@@ -30,6 +45,12 @@ def _selection(cfg: DictConfig, out_dir: Path) -> tuple[dict, list[dict]]:
     selection = subset.summarize_selection(chosen, len(instances), int(cfg.subset.seed),
                                            str(cfg.dataset), revision, full=full,
                                            shard_index=index, shard_count=count)
+    if explicit:
+        selection |= {
+            "sampling": f"EXPLICIT task list from {explicit} (not a benchmark sample)",
+            "sampling_is_explicit": True,
+            "explicit_source": str(explicit),
+        }
     (out_dir / "selection.json").write_text(json.dumps(selection, indent=2))
     print(f">>> subset: {selection['n_selected']}/{selection['split_size']} instances "
           f"({selection['fraction']:.1%}), hash {selection['subset_hash']}")

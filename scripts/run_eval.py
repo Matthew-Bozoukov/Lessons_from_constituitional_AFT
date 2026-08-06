@@ -86,10 +86,18 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--hf-org", default="LASR-Callum")
     parser.add_argument("--no-push", action="store_true",
                         help="skip the HF upload (smoke runs only — HF is the canonical store)")
+    parser.add_argument("--resume", metavar="RUN_DIR",
+                        help="reuse an existing per-target run directory instead of creating a "
+                             "new timestamped one. Work already recorded there is preserved: "
+                             "an eval that tracks completed items (swebench_mini skips instances "
+                             "already in preds.json) restarts only what is missing. Single "
+                             "--target only, since a run directory belongs to one target.")
     parser.add_argument("overrides", nargs="*", help="OmegaConf dotlist, e.g. judge.model=x samples=10")
     args = parser.parse_args(argv)
     load_dotenv()
 
+    if args.resume and len(args.target) != 1:
+        raise SystemExit("--resume takes a single --target: a run directory belongs to one arm")
     _preflight(args.name, args)
     cfg = OmegaConf.merge(OmegaConf.load(args.config or EVALS[args.name].config),
                           OmegaConf.from_dotlist(args.overrides))
@@ -141,8 +149,11 @@ def main(argv: list[str] | None = None) -> None:
                 print(f">>> mode override: {hf_path} pinned to {spec.mode!r} (config `mode=`)")
             print(f">>> {args.name} | {hf_path} | base={spec.base_model} mode={spec.mode}")
             served = server.ensure(spec)
-            out_dir = Path("output") / args.name / spec.model_key / timestamp()
+            out_dir = (Path(args.resume) if args.resume
+                       else Path("output") / args.name / spec.model_key / timestamp())
             out_dir.mkdir(parents=True, exist_ok=True)
+            if args.resume:
+                print(f">>> resuming into {out_dir} — existing work there is preserved")
             write_run_meta(out_dir, OmegaConf.to_container(cfg, resolve=True),
                            extra={"command": command, "target": hf_path,
                                   "base_model": spec.base_model, "mode": spec.mode})

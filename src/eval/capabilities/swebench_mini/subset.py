@@ -28,7 +28,9 @@ deliberately separate so the selection logic is unit-testable offline.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
+from pathlib import Path
 from typing import Any, Iterable
 
 
@@ -126,6 +128,20 @@ def shard(instances: list[dict], index: int, count: int) -> list[dict]:
     return out
 
 
+def ids_from_preds(preds_path: Path) -> list[str]:
+    """Instance ids that produced a NON-EMPTY patch in a previous run's preds.json.
+
+    For re-running a fixed task set — "the instances that arm 1 actually submitted". Empty
+    patches are excluded because an instance the agent never finished is not part of the set
+    being compared.
+
+    The resulting set is defined by another run's behaviour, so it is a paired task list, not
+    a sample of the benchmark. Callers must label it as such.
+    """
+    preds = json.loads(Path(preds_path).read_text(encoding="utf-8"))
+    return sorted(i for i, v in preds.items() if (v.get("model_patch") or "").strip())
+
+
 def subset_hash(instances: Iterable[dict], seed: int, dataset: str, revision: str) -> str:
     """Identity of a subset: which instances, drawn how, from which dataset revision.
 
@@ -199,6 +215,7 @@ def summarize_selection(selected: list[dict], total: int, seed: int, dataset: st
     """
     whole = full if full is not None else selected
     block = {
+        "sampling_is_explicit": False,
         "dataset": dataset,
         "dataset_revision": revision,
         "split_size": total,
