@@ -165,18 +165,6 @@ def count_chat_tokens(messages: list[dict], tokenizer_name: str) -> int:
     return len(rendered["input_ids"])
 
 
-# --- Thinking framework profiles -----------------------------------------------------
-#
-# Everything family-specific about how a model does chain-of-thought, in ONE place, so
-# the mask (src/train/masking.py), mixture rendering (src/data/mixture/build_mixture.py) and the
-# serve-time template pin (src/endpoints/vllm_server.py) can never drift apart. The
-# repo-wide policy (2026-08-04) is preserve-thinking: training data carries a think block
-# on EVERY assistant turn (reasoning_content where the source has it, the empty marker
-# where it does not), and serving keeps prior-turn reasoning in context. A future family
-# with a different thinking framework is a new profile entry plus its own verified block
-# in tests/test_masking_tokenizer.py — not a hunt through five files.
-
-
 @dataclass(frozen=True)
 class ModelProfile:
     """How one model family renders, prefills and preserves reasoning.
@@ -188,12 +176,28 @@ class ModelProfile:
         empty_think: The full literal a no-reasoning assistant turn carries.
         render_kwargs: Extra chat-template kwargs for rendering TRAINING data so every
             assistant turn keeps its reasoning (verified against the live template).
+        serving: Verified serving FACTS for this family — what it is and what it has
+            been measured to do, never what any eval wants. Eval configs cannot write
+            these (the two namespaces are disjoint; see plan_serving in
+            src/endpoints/vllm_server.py), so a config can neither forge a limit nor
+            silently pick a parser. All vLLM-facing:
+            `reasoning_parser` — which of vLLM's parsers understands its think stream
+            (intrinsic; emitted think-mode-only, decided in plan_serving);
+            `tool_call_parser` — which parser understands the tool-call syntax THIS
+            family's template emits; an eval asks for tool calls, the family says how
+            (docs/LOG.md 2026-07-29: Qwen3.6 emits XML, so `hermes` would parse none);
+            `max_num_seqs` — architectural constraint (Qwen3.6's hybrid Mamba arch
+            fails at startup above a low cap, docs/LOG.md 2026-07-29);
+            `supports_prefix_caching` — whether vLLM can reuse a shared prefix on this
+            arch at all. A capability, not a preference: an eval that would benefit
+            cannot turn it on where the arch forbids it.
     """
 
     family: str
     prefill: str
     empty_think: str
     render_kwargs: dict
+    serving: dict
 
 
 QWEN36_PROFILE = ModelProfile(
@@ -201,6 +205,18 @@ QWEN36_PROFILE = ModelProfile(
     prefill="<think>\n",
     empty_think="<think>\n\n</think>\n\n",
     render_kwargs={"preserve_thinking": True},
+    # tool_call_parser: Qwen3.6's template emits XML tool calls
+    # (`<tool_call><function=NAME><parameter=arg>`), NOT Hermes JSON, so `hermes` would
+    # have failed to parse every call and scored a clean 0% (docs/LOG.md 2026-07-29).
+    # Confirmed live on the swebench pilot 2026-08-05: no_tool_call_rate 0.0 across 115
+    # assistant turns.
+    #
+    # supports_prefix_caching: FALSE, and not a tuning choice — vLLM forces
+    # enable_prefix_caching=False on this arch because Mamba state pages cannot be
+    # reused the way attention KV can (docs/LOG.md 2026-07-29). Passing the flag is a
+    # no-op, so plan_serving reports the unmet request rather than pretending.
+    serving={"max_num_seqs": 32, "reasoning_parser": "qwen3",
+             "tool_call_parser": "qwen3_xml", "supports_prefix_caching": False},
 )
 # Qwen3 deliberately has NO profile yet: its thinking-mode template prefills nothing (the
 # model generates <think> itself — verified live 2026-08-04), so the generation-boundary
@@ -229,6 +245,24 @@ def model_profile(model_name: str) -> ModelProfile:
         "In particular Qwen3 prefills nothing in thinking mode — masking its opener "
         "would under-train tokens that model must emit."
     )
+
+
+# Serving stays permissive where training refuses: an unprofiled family (Qwen3-32B,
+# deliberately profile-less until its masking is verified) can still be served ad hoc.
+# It has no verified ceiling, so the context-window fail-fast is skipped and vLLM's own
+# startup failure is the backstop. Training-side lookups keep using model_profile().
+# The parser and prefix-caching facts are absent rather than guessed: an eval that
+# REQUIRES tool calls is refused on an unprofiled family instead of being served with a
+# parser nobody verified against its template.
+DEFAULT_SERVING = {"max_num_seqs": None}
+
+
+def serving_params(model_name: str) -> dict:
+    """vLLM serving parameters for a base model: its profile's `serving`, else defaults."""
+    for profile in MODEL_PROFILES:
+        if profile.family in model_name:
+            return profile.serving
+    return DEFAULT_SERVING
 
 
 _ASSISTANT_TURN = re.compile(r"<\|im_start\|>assistant\n(.*?<\|im_end\|>)", re.DOTALL)
@@ -281,6 +315,14 @@ def split_think(text: str) -> tuple[str, str]:
     """
     if not text:
         return "", ""
+    close_idx = text.find("</think>")
+    if close_idx != -1 and "<think>" not in text[:close_idx]:
+        # Prefilled-generation shape: thinking-mode serving prefills `<think>\n` inside
+        # the prompt (pin_template / Qwen3.6's own template), and vLLM returns only
+        # generated tokens — so the trace arrives with its CLOSE tag alone. Missing
+        # this shape reports a reasoning model as 100% empty-think AND leaks the raw
+        # trace into the visible answer (first live psychosis run, 2026-08-05).
+        return text[:close_idx].strip(), text[close_idx + len("</think>"):].strip()
     match = _THINK.search(text)
     if match:
         return match.group(1).strip(), _THINK.sub("", text, count=1).strip()

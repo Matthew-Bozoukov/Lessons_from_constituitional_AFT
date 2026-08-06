@@ -27,8 +27,25 @@ def _preflight(name: str, args: argparse.Namespace) -> None:
         from src.eval.docker import docker_preflight
 
         docker_preflight()
-    if spec.needs_reference and not args.reference:
-        raise SystemExit(f"{name} is judged against a baseline arm: pass --reference <hf_or_local_path>")
+
+
+def derive_run_kwargs(run_fn, unknown_argv: list[str]) -> dict:
+    """Parse eval-specific CLI flags derived from run()'s keyword-only parameters.
+
+    The signature IS the declaration: `run(..., *, reference="")` makes --reference a
+    valid flag for that eval and only that eval. Anything left over is a hard error, so
+    a typo'd or wrong-eval flag never disappears silently.
+    """
+    from inspect import signature
+
+    extra = argparse.ArgumentParser(add_help=False)
+    for param in signature(run_fn).parameters.values():
+        if param.kind is param.KEYWORD_ONLY:
+            extra.add_argument(f"--{param.name.replace('_', '-')}")
+    namespace, leftover = extra.parse_known_args(unknown_argv)
+    if leftover:
+        raise SystemExit(f"unknown arguments for this eval: {leftover}")
+    return {key: value for key, value in vars(namespace).items() if value is not None}
 
 
 def _results_markdown(target: str, mode: str, summary: dict) -> str:
@@ -63,7 +80,6 @@ def main(argv: list[str] | None = None) -> None:
                         help="HF paths: LoRA adapter repos (base + thinking mode inferred) or full models")
     parser.add_argument("--name", required=True, choices=sorted(EVALS))
     parser.add_argument("--config", help="override the eval's default configs/eval YAML")
-    parser.add_argument("--reference", help="baseline artifact for needs_reference evals")
     parser.add_argument("--server",
                         help="SSH alias of a GPU host (prepared per the playbook) to serve on; "
                              "omitted = serve on this machine. Evals always run where this "
@@ -81,15 +97,27 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--no-push", action="store_true",
                         help="skip the HF upload (smoke runs only — HF is the canonical store)")
     parser.add_argument("overrides", nargs="*", help="OmegaConf dotlist, e.g. judge.model=x samples=10")
-    args = parser.parse_args(argv)
+    args, unknown = parser.parse_known_args(argv)
     load_dotenv()
 
     _preflight(args.name, args)
     cfg = OmegaConf.merge(OmegaConf.load(args.config or EVALS[args.name].config),
                           OmegaConf.from_dotlist(args.overrides))
-    if args.reference:
-        cfg.reference = args.reference
     run_fn = resolve(args.name)
+    # Eval-specific CLI flags are derived from run()'s own keyword-only params (e.g.
+    # lmsys's `reference` becomes --reference) and piped through blind — run_eval knows
+    # nothing about what any of them mean. A kwarg the registry declares in `arm_kwargs`
+    # names a MODEL that also runs, first, as an ordinary arm (config default:
+    # `<kwarg>_model`); required-ness is the eval's own run() to enforce.
+    run_kwargs = derive_run_kwargs(run_fn, unknown)
+    targets = list(args.target)
+    for kwarg in EVALS[args.name].arm_kwargs:
+        value = str(run_kwargs.get(kwarg) or cfg.get(f"{kwarg}_model") or "")
+        if value:
+            run_kwargs[kwarg] = value
+            if value in targets:
+                targets.remove(value)
+            targets.insert(0, value)
     command = " ".join(sys.argv)
 
     executor = None
@@ -112,16 +140,17 @@ def main(argv: list[str] | None = None) -> None:
                   "(rate-limited); gated/private weight pulls will fail. Provision "
                   "deliberately with --push-env (HF_TOKEN only) or scp your own.")
         print(f">>> serving on {args.server} (tunnel bound to {bind}:{args.port})")
-    # A `serving:` block in the eval's config layers over the base model's family defaults
-    # (context length, tool-call parsing). Empty for every eval that does not declare one, so
-    # behaviour is unchanged where it is absent.
+    # The eval's `serving:` block states what this eval REQUIRES (window, concurrency,
+    # tool calls); the base model's verified facts live in ModelProfile.serving and are not
+    # writable from here. plan_serving validates one against the other — nothing is layered
+    # over anything. `or {}` not `.get(..., {})`: a bare `serving:` key parses as None.
     server = VllmServer(work_dir=Path("output") / args.name / "server", port=args.port,
                         executor=executor,
-                        serve_overrides=OmegaConf.to_container(cfg.get("serving", {}),
-                                                               resolve=True))
+                        serve_requirements=OmegaConf.to_container(cfg.get("serving") or {},
+                                                                  resolve=True))
     summaries: dict[str, dict] = {}
     try:
-        for hf_path in args.target:
+        for hf_path in targets:
             spec = resolve_target(hf_path)
             if cfg.get("mode"):
                 # The documented escape hatch (CLAUDE.md "The eval framework"): mode is
@@ -139,9 +168,10 @@ def main(argv: list[str] | None = None) -> None:
             out_dir.mkdir(parents=True, exist_ok=True)
             write_run_meta(out_dir, OmegaConf.to_container(cfg, resolve=True),
                            extra={"command": command, "target": hf_path,
-                                  "base_model": spec.base_model, "mode": spec.mode})
+                                  "base_model": spec.base_model, "mode": spec.mode,
+                                  **run_kwargs})
 
-            summary = run_fn(served, cfg, out_dir)
+            summary = run_fn(served, cfg, out_dir, **run_kwargs)
 
             summary = {"target": hf_path, "mode": spec.mode, **summary}
             (out_dir / "results.json").write_text(json.dumps(summary, indent=2))

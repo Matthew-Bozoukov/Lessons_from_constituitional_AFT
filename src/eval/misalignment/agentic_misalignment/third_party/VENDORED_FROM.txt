@@ -1,0 +1,28 @@
+UPSTREAM_COMMIT=ea0630e1a3eaae7f9f9740fd2703229d3854ccda
+SOURCE=https://github.com/anthropic-experimental/agentic-misalignment
+VENDORED=2026-07-31 (commit 91925ff); verified against upstream HEAD 2026-08-05
+DRIVEN_BY=src/eval/misalignment/agentic_misalignment/runner.py — subprocesses
+  scripts/{generate_prompts,run_experiments,classify_results}.py with cwd=this tree.
+  Nothing here is imported.
+
+PRUNED
+  results/            our own rollout outputs (52M); runs now land under the eval's
+                      out_dir instead
+  .git/, __pycache__/
+
+PATCHED (1 file, verified by diff against upstream: nothing else differs)
+  api_client/model_client.py
+    1. vllm/ provider. `_detect_provider` maps a "vllm/<served-name>" model id to a new
+       "vllm" provider, and `_call_vllm` calls that OpenAI-compatible endpoint through
+       AsyncOpenAI, configured from VLLM_BASE_URL / VLLM_API_KEY. This is how the
+       harness reaches the model run_eval.py serves; upstream only knows hosted APIs.
+    2. Judge routing. Upstream matched the substring "claude" and sent it to Anthropic
+       before applying its `/`-prefix rule, so "anthropic/claude-sonnet-4.5" tried the
+       Anthropic API — for which this project has no key. Any provider-prefixed id now
+       routes to OpenRouter (CLAUDE.md gotcha 6).
+    3. VESTIGIAL, do not rely on: `_call_vllm` still reads VLLM_ENABLE_THINKING and
+       passes chat_template_kwargs.enable_thinking. Thinking mode is now inferred from
+       the artifact and PINNED into the chat template at serve time, which shadows any
+       per-request kwarg — so this flag no longer decides anything. Left in place only
+       because removing it is a behaviour-neutral edit to a tree we otherwise keep
+       byte-identical to upstream.

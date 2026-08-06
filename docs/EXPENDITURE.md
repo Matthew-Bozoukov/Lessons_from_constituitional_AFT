@@ -20,10 +20,16 @@ to a future reader.
 | category | spent to date |
 |---|---|
 | OpenRouter (data generation) | **$255.96** |
-| OpenRouter (eval judging) | $0.02 |
+| OpenRouter (eval judging) | $16.54 |
 | OpenRouter (eval scaffolding/smoke) | $0.13 |
-| GPU rental | $0.17 (+ ~4 RunPod A100-h on 2026-08-03, $ TBD from dashboard) |
-| **total** | **$256.28** (+ GPU TBD) |
+| GPU rental | $19.78 (+ ~4 RunPod A100-h on 2026-08-03, $ TBD from dashboard) |
+| **total** | **$292.41** (+ GPU TBD) |
+
+<!-- Total recomputed once at the jamie/write-all-evals-to-hf <- main merge (2026-08-06),
+     not carried over from either side: both branches advanced the same running total
+     independently from $256.15 at the fork. This branch added $16.52 judging + $19.61 GPU
+     (psychosis, table2 arms); main added the $0.13 scaffolding/smoke category (SWE-bench
+     wiring). 255.96 + 16.54 + 0.13 + 19.78 = 292.41. Both source sections are kept below. -->
 
 ---
 
@@ -50,6 +56,28 @@ on Linux regardless of Docker Desktop. That makes a cheap vast.ai CPU box (~$0.0
 grading host, which is a rounding error against GPU time.
 
 ---
+
+## 2026-08-05 — psychosis eval, table2 arms (2× RunPod H100 + Grok via OpenRouter)
+
+First live psychosis runs: `table2-synthdoc-r64` (20% DA / 80% benign) and `table2-only-9284-r64`
+(benign-only control, 0% DA).
+
+- **GPU: ≈$17.11.** Two H100 80GB SECURE pods, ~2.47h + ~2.73h @ $3.29/hr (rate read off pod
+  B's listing; pod A assumed same class — confirm on the RunPod dashboard). ≈**$3.29/GPU-hour**.
+  Roughly half the wall-clock was consumed by two aborted rounds (below), not the science.
+- **OpenRouter: $16.47** (credits 614.32 → 630.79; final read taken >30s after the run). Of
+  this, ≈$10 bought the two clean runs — 13 persona arcs + 156 graded cells ≈ **$0.60 per
+  persona-arc** (grok-4.5 red-teamer + grok-4.3 judge, ~12+12 calls per arc) — and ≈$6.5 was
+  burned by aborted rounds: upstream's pinned grok-3/grok-4 discovered dead only at run time,
+  a context overflow at turn ~7 (16384 serving window vs preserved-reasoning turns), and a
+  trace-parse leak that invalidated one completed arm (rerun). Lessons: probe config-pinned
+  API models for liveness AND task-compliance before booting GPUs; smoke one persona
+  end-to-end before the full fan-out.
+- **Follow-up, same day: reasoning-parser verification pod: ≈$2.60.** One more H100
+  (~45 min @ $3.29/hr ≈ $2.50) + $0.05 OpenRouter (1-persona smoke) to verify vLLM 0.26's
+  `qwen3` parser splits Qwen3.6's prefilled think stream server-side (it does — trace
+  arrives out-of-band in `reasoning`, content clean). Included in the running totals
+  (GPU $17.28 → $19.78, A100 TBD unchanged; judging $16.49 → $16.54; total → $292.28).
 
 ## Running total
 

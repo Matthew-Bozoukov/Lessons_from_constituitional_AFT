@@ -74,11 +74,12 @@ src/                    correctness-critical reusable code (installed editable; 
                           lmsys/ (chat win-rate vs base), mmlu/ (MMLU arm ladder)
     misalignment/         one directory per eval: odcv/ (ODCV-Bench: metrics, rollout, judge,
                           compare, stats), agentic_misalignment/ (honeypots: runner,
-                          aggregate_eval, build_rollouts), psychosis/ (delusion red-teaming)
+                          aggregate_eval, build_rollouts), psychosis/ (delusion red-teaming).
+                          agentic_misalignment/ and odcv/ each vendor their PATCHED harness
+                          in their own third_party/ — see gotchas
       internalization/      self-contained constitution-internalization proxy eval (Tier A).
                             `python -m src.eval.misalignment.internalization.cli run --smoke`
                             runs offline in ~10s; see its README.md
-      third_party/          vendored eval harnesses (agentic-misalignment, odcv-bench), PATCHED — see gotchas
     vulnerabilities/      petri/ + surf/ audit tooling (generalized from the completed MSM audit)
 configs/                OmegaConf YAML, one per step, foldered by pipeline stage.
                         NEVER hardcode hyperparams in scripts.
@@ -370,7 +371,7 @@ Never terminate a resource this repository did not provision. Report it instead.
 3. **QLoRA OOM** at batch 8 × 2048 on 80GB → use batch 4, `max_seq_len` ~1536–2048, and launch with `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`.
 4. **Train only on assistant tokens for the loss.** Qwen3.6's chat template lacks `{% generation %}` markers (verified live: `return_assistant_tokens_mask` flags 0 tokens), so TRL's `assistant_only_loss` produces an all-zero mask (nothing trains). The label mask is built in-repo instead — `build_labels` in `src/train/masking.py` sets prompt/user tokens to `-100` and supervises assistant completions, with think-tag handling per gotcha 2. Do NOT fall back to full-sequence training (it dilutes the signal with prompt tokens).
 5. **Reasoning models need token headroom**: any eval that caps generation tightly truncates inside the `<think>` block and scores a false 0% — size `max_tokens` for trace + answer, parse answers after `</think>`, and report the empty-think rate (a ~0-length trace means the arm stopped reasoning).
-6. **Judge routing** in the vendored harness: `_detect_provider` matched substring "claude" → Anthropic before the `/`-prefix rule. The vendored copy is PATCHED so `anthropic/claude-sonnet-4.5` routes to OpenRouter; if you re-clone the harness, re-apply the `vllm/` provider + routing patches in `src/eval/misalignment/third_party/agentic-misalignment/api_client/model_client.py`. (Thinking mode needs no harness-side patch any more — it is inferred from the artifact and pinned at serve time; see "The eval framework".)
+6. **Judge routing** in the vendored harness: `_detect_provider` matched substring "claude" → Anthropic before the `/`-prefix rule. The vendored copy is PATCHED so `anthropic/claude-sonnet-4.5` routes to OpenRouter; if you re-clone the harness, re-apply the `vllm/` provider + routing patches in `src/eval/misalignment/agentic_misalignment/third_party/agentic-misalignment/api_client/model_client.py`. (Thinking mode needs no harness-side patch any more — it is inferred from the artifact and pinned at serve time; see "The eval framework".)
 7. **SSH command hangs**: launches that background a process (`nohup … &`) can keep the SSH channel open; wrap long remote work in `nohup … </dev/null &` and poll the log rather than waiting on the call.
 
 ## External artifacts

@@ -82,41 +82,44 @@ disable_network: true
 # --- Serving ------------------------------------------------------------------------
 # Applied by run_eval.py on top of the base model's family defaults in
 # src/endpoints/vllm_server.py, and recorded in run_meta.json.
+# --- Serving REQUIREMENTS ------------------------------------------------------------
+# What this eval needs, in its own terms. Which parser implements a need, and whether the
+# family can meet it at all, are FACTS that live in ModelProfile.serving (src/utils.py);
+# nothing here can set or override one. plan_serving validates this block against them.
 serving:
   # OUTCOME-DETERMINING, not a performance knob. Upstream's step_limit is 250 and observations
-  # are truncated at 10k characters, so trajectories run far past the 16384 this family
-  # defaults to; on overflow the instance aborts and scores unresolved. Drop to 40960 if the
-  # KV cache will not allocate on one 80GB card, and record whichever value actually served.
-  max_model_len: 65536
-  # The Qwen3.6 family default (docs/LOG.md 2026-07-29: the vLLM default of 1024 exceeds the
-  # available Mamba cache blocks and fails at startup). Kept above `workers` on purpose so
-  # the server always has slack for the driver's concurrency.
-  max_num_seqs: 32
-  # Measured on the pilot: contexts reach 38-81k tokens and the agent re-sends the whole
-  # history every step, so the same prefix is prefilled ~32 times per instance. Caching it
-  # changes no outputs and removes that redundant compute. vLLM 0.26 leaves it OFF by default.
-  enable_prefix_caching: true
+  # are truncated at 10k characters, so trajectories run far past the 16384 a single-turn eval
+  # uses; on overflow the instance aborts and scores unresolved — which reads as incapability,
+  # not as a serving problem. Do not lower this to make a boot failure go away.
+  #
+  # 131072 is what docs/LOG.md 2026-07-29 recommends for exactly this failure, and half the
+  # family's 262144 trained window. It is a CAP, not an allocation: vLLM pages KV, so raising
+  # it does not itself consume cache — measured trajectories run 30-80k, and only the long
+  # tail that would previously have aborted now keeps growing. One sequence at 131072 fits the
+  # ~300k-token bf16 KV pool, so it boots; if it ever does not, the lever is fp8 (KV 252k ->
+  # 678k) or a bigger card, not a smaller window.
+  context_window: 131072
+  # No `concurrency:` on purpose — with none declared the server runs at the family's
+  # verified cap (32), which is already comfortably above `workers: 12` so the driver never
+  # queues behind itself. Declaring 32 here would state a requirement we do not actually
+  # have, and would silently drift if the cap were ever re-verified lower.
+  #
   # mini-SWE-agent v2 drives a real bash TOOL, so the endpoint must parse tool calls; without
-  # this the model's calls come back as raw text and every instance scores 0 for a serving
-  # reason that is indistinguishable from incapability.
+  # a parser the model's calls come back as raw text and every instance scores 0 for a serving
+  # reason indistinguishable from incapability. WHICH parser is the family's business
+  # (Qwen3.6 emits XML, so `hermes` would parse none — src/utils.py); this eval only declares
+  # that it needs them. CONFIRMED LIVE (pilot, 2026-08-05): `no_tool_call_rate` 0.0 across 115
+  # assistant turns, and `empty_reasoning_rate` 0.0, so the reasoning round-trip works too.
+  needs_tool_calls: true
+  # Measured on the pilot: contexts reach 38-81k tokens and the agent re-sends its whole
+  # history every step, so the same prefix is prefilled ~32 times per instance.
   #
-  # NOT `hermes`, despite that being Qwen3's documented pair. Checked against Qwen3.6-27B's
-  # own chat template (2026-08-05): it instructs the model to emit XML-style calls —
-  # `<tool_call><function=name><parameter=key>value</parameter></function></tool_call>` —
-  # whereas the hermes parser expects JSON inside the tool_call tags. Hermes would have
-  # failed to parse every single call and scored a clean 0%. vLLM 0.26 offers `qwen3_xml`
-  # and `qwen3_coder` for this family.
-  #
-  # CONFIRMED LIVE (pilot, 2026-08-05): `no_tool_call_rate` 0.0 across 115 assistant turns —
-  # every turn produced a parseable tool call, and every finished instance produced a real
-  # patch.
-  enable_tool_calls: true
-  tool_call_parser: "qwen3_xml"
-  # Reasoning parser splits the <think> trace out of content so the tool parser does not trip
-  # on it. Confirmed registered under this exact name in vLLM 0.26 (lazy registration in
-  # vllm/reasoning/__init__.py), and `empty_reasoning_rate` 0.0 on the pilot shows the
-  # reasoning round-trip works rather than silently collapsing.
-  reasoning_parser: "qwen3"
+  # Qwen3.6 CANNOT honour this — vLLM forces prefix caching off on this arch (Mamba state
+  # pages are not reusable like attention KV, docs/LOG.md 2026-07-29). Declared anyway,
+  # because it is a true property of the workload: plan_serving prints the shortfall and
+  # serves without it rather than passing a flag vLLM ignores. Throughput only; no output
+  # changes. A future family that supports caching gets it for free.
+  reuses_long_prefixes: true
 
 # --- Grading ------------------------------------------------------------------------
 # Off by default: grading needs docker and CPU, not a GPU, so it runs after the pod is

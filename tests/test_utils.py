@@ -61,6 +61,20 @@ def test_plain_text_has_no_trace():
     assert split_think("Just an answer.") == ("", "Just an answer.")
 
 
+def test_prefilled_open_tag_close_only_shape():
+    # Thinking-mode serving prefills `<think>\n` in the prompt, so vLLM's completion
+    # carries the trace with only the close tag. The trace must not leak into the answer.
+    think, answer = split_think("weighing options\n</think>\n\nThe answer is 4.")
+    assert think == "weighing options"
+    assert answer == "The answer is 4."
+
+
+def test_prefilled_empty_trace_is_empty_think():
+    think, answer = split_think("\n</think>\n\nJust the answer.")
+    assert think == ""
+    assert answer == "Just the answer."
+
+
 # --- Reasoning-trace shapes across vLLM versions -------------------------------------
 # Regression tests for a bug found against the live vLLM 0.26 endpoint: the out-of-band
 # trace field is `reasoning` there and `reasoning_content` on 0.8.x. Reading only one of

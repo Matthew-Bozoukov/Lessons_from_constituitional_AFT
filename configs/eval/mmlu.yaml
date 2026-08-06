@@ -139,3 +139,9 @@ thresholds:
   max_truncation_rate: 0.02
 
 output_dir: "output/mmlu_eval"
+
+serving:
+  # The window this eval runs at (required — see VllmServer._start; part of the eval's
+  # scientific record). 16384 = the window the Qwen3.6 sweep was tuned at, previously an
+  # implicit family default (moved here 2026-08-05).
+  context_window: 16384

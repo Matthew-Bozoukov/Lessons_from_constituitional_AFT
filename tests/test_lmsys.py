@@ -8,11 +8,9 @@ import json
 import pytest
 
 from src.eval.capabilities.lmsys.runner import (
-    check_reference,
     first_user_turn,
     judge_messages,
     judge_outcome,
-    load_reference,
     pair_for_judging,
     select_prompts,
     subset_hash,
@@ -125,44 +123,126 @@ def test_subset_hash_is_stable_and_detects_changed_prompts():
     assert subset_hash(changed_ids) != subset_hash(prompts)
 
 
-# --- Reference loading and refusal ----------------------------------------------------
+# --- The cached reference flow (local cache backend, stubbed clients) -----------------
 
 
-def write_reference(tmp_path, subset="abc123", mode="think"):
-    (tmp_path / "answers.jsonl").write_text(
-        json.dumps({"id": 0, "prompt": "p", "think": "t", "answer": "a",
-                    "finish_reason": "stop"}) + "\n")
-    (tmp_path / "answers_meta.json").write_text(
-        json.dumps({"target": "org/ref-arm", "mode": mode, "subset_hash": subset}))
+class _Choice:
+    def __init__(self, text):
+        self.message = type("M", (), {"content": text, "reasoning_content": None,
+                                      "reasoning": None})()
+        self.finish_reason = "stop"
 
 
-def test_load_reference_accepts_a_run_dir_or_the_answers_file_itself(tmp_path):
-    write_reference(tmp_path)
-    for ref in (tmp_path, tmp_path / "answers.jsonl"):
-        records, meta = load_reference(str(ref))
-        assert records[0]["answer"] == "a"
-        assert meta["mode"] == "think" and meta["subset_hash"] == "abc123"
+class _StubOpenAI:
+    """Offline endpoint stand-in: echoes a per-model canned reply."""
+
+    reply = "<think>hm</think>ok"
+
+    def __init__(self, **kwargs):
+        stub = self
+
+        class _Completions:
+            def create(self, **kw):
+                return type("R", (), {"choices": [_Choice(stub.reply)]})()
+
+        self.chat = type("C", (), {"completions": _Completions()})()
 
 
-def test_load_reference_requires_the_sidecar(tmp_path):
-    write_reference(tmp_path)
-    (tmp_path / "answers_meta.json").unlink()
-    with pytest.raises(FileNotFoundError, match="answers_meta.json"):
-        load_reference(str(tmp_path))
-    with pytest.raises(FileNotFoundError, match="answers not found"):
-        load_reference(str(tmp_path / "nope"))
+class _StubJudge:
+    """OpenRouterClient stand-in: reference (position-mapped B or A) always ties."""
+
+    def chat(self, model, messages, **kw):
+        return type("R", (), {"content": '{"winner": "tie", "reason": "same"}'})()
 
 
-def test_check_reference_refuses_a_different_prompt_subset():
-    with pytest.raises(RuntimeError, match="different prompt set"):
-        check_reference({"subset_hash": "aaaa", "mode": "think"}, "bbbb", "think")
+def _target(hf_path, model_key, mode="think", boots: list | None = None):
+    class _Spec:
+        pass
+
+    spec = _Spec()
+    spec.hf_path, spec.model_key, spec.mode = hf_path, model_key, mode
+
+    class _T:
+        def __init__(self):
+            self.spec = spec
+            self.model_name = model_key
+
+        @property
+        def base_url(self):
+            if boots is None:
+                raise AssertionError("cached arm must not touch the endpoint")
+            boots.append(hf_path)
+            return "http://localhost:0/v1"
+
+    return _T()
 
 
-def test_check_reference_refuses_cross_mode_pairing():
+def _cfg(tmp_path):
+    import json as _json
+
+    prompts = [{"id": i, "prompt": f"question {i}"} for i in range(4)]
+    prompts_file = tmp_path / "prompts.json"
+    prompts_file.write_text(_json.dumps(prompts))
+    from omegaconf import OmegaConf
+
+    return OmegaConf.create({
+        "prompts_path": str(prompts_file),
+        "cache": {"repo": str(tmp_path / "cache"), "mirror": str(tmp_path / "mirror"),
+                  "refresh": False},
+        "generation": {"api_key": "EMPTY", "temperature": 0.7, "top_p": 0.95,
+                       "max_tokens": 64, "parallel": 2, "request_timeout": 5,
+                       "max_retries": 0},
+        "judge": {"model": "stub/judge", "temperature": 0.0, "max_tokens": 8,
+                  "parallel": 1},
+    })
+
+
+def test_reference_then_target_flow_through_the_cache(tmp_path, monkeypatch):
+    from src.eval.capabilities.lmsys import runner
+
+    monkeypatch.setattr(runner, "OpenAI", _StubOpenAI)
+    monkeypatch.setattr(runner, "OpenRouterClient", _StubJudge)
+    monkeypatch.setattr("src.endpoints.vllm_server.resolve_target",
+                        lambda hf: _target(hf, "ref_model").spec)
+    cfg = _cfg(tmp_path)
+
+    # Arm 1: the reference (as run_eval orders it) — generates, pushes, no judging.
+    boots: list = []
+    ref_out = tmp_path / "run_ref"
+    ref_out.mkdir()
+    summary = runner.run(_target("org/ref", "ref_model", boots=boots), cfg, ref_out,
+                         reference="org/ref")
+    assert summary["reference_arm"] is True and boots == ["org/ref"]
+    assert "target_wins" not in summary
+
+    # Arm 2: a target — generates its own answers, judges against the cached reference.
+    t_out = tmp_path / "run_t"
+    t_out.mkdir()
+    summary = runner.run(_target("org/ft", "ft_model", boots=boots), cfg, t_out,
+                         reference="org/ref")
+    assert summary["ties"] == 4 and summary["reference"] == "org/ref"
+
+    # Arm 2 again: fully cached — MUST complete without touching any endpoint
+    # (boots=None makes base_url raise), proving the zero-vLLM cache-hit path.
+    t2_out = tmp_path / "run_t2"
+    t2_out.mkdir()
+    summary = runner.run(_target("org/ft", "ft_model", boots=None), cfg, t2_out,
+                         reference="org/ref")
+    assert summary["ties"] == 4
+
+
+def test_cross_mode_reference_is_refused(tmp_path, monkeypatch):
+    from src.eval.capabilities.lmsys import runner
+
+    monkeypatch.setattr(runner, "OpenAI", _StubOpenAI)
+    monkeypatch.setattr("src.endpoints.vllm_server.resolve_target",
+                        lambda hf: _target(hf, "ref_model", mode="nothink").spec)
+    cfg = _cfg(tmp_path)
+    out = tmp_path / "run"
+    out.mkdir()
     with pytest.raises(RuntimeError, match="cross-mode"):
-        check_reference({"subset_hash": "aaaa", "mode": "nothink"}, "aaaa", "think")
-    # Matching hash and mode passes silently.
-    check_reference({"subset_hash": "aaaa", "mode": "think"}, "aaaa", "think")
+        runner.run(_target("org/ft", "ft_model", mode="think", boots=[]), cfg, out,
+                   reference="org/ref")
 
 
 # --- Summary arithmetic ---------------------------------------------------------------
@@ -180,65 +260,3 @@ def test_summarize_with_no_decisive_judgments_reports_no_excl_ties_rate():
     summary = summarize(["tie"] * 4)
     assert summary["winrate_excl_ties_pct"] is None
     assert summary["winrate_ties_half_pct"] == 50.0
-
-
-# --- Bootstrap (first arm of a ladder) ------------------------------------------------
-
-
-class _Choice:
-    def __init__(self, text):
-        self.message = type("M", (), {"content": text, "reasoning_content": None,
-                                      "reasoning": None})()
-        self.finish_reason = "stop"
-
-
-class _StubOpenAI:
-    """Offline stand-in for the served endpoint: echoes a canned reply per prompt."""
-
-    def __init__(self, **kwargs):
-        outer = self
-
-        class _Completions:
-            def create(self, **kw):
-                return type("R", (), {"choices": [_Choice("<think>hm</think>ok")]})()
-
-        self.chat = type("C", (), {"completions": _Completions()})()
-
-
-def test_bootstrap_writes_the_answers_artifact_and_skips_judging(tmp_path, monkeypatch):
-    import json
-
-    from omegaconf import OmegaConf
-
-    from src.eval.capabilities.lmsys import runner as lmsys_eval
-
-    prompts = [{"id": i, "prompt": f"question {i}"} for i in range(4)]
-    prompts_file = tmp_path / "prompts.json"
-    prompts_file.write_text(json.dumps(prompts))
-
-    cfg = OmegaConf.create({
-        "reference": "bootstrap",
-        "prompts_path": str(prompts_file),
-        "generation": {"api_key": "EMPTY", "temperature": 0.7, "top_p": 0.95,
-                       "max_tokens": 64, "parallel": 2, "request_timeout": 5,
-                       "max_retries": 0},
-        "judge": {"model": "never/called", "temperature": 0.0, "max_tokens": 8,
-                  "parallel": 1},
-    })
-    target = type("T", (), {"base_url": "http://localhost:0/v1", "model_name": "stub",
-                            "spec": type("S", (), {"mode": "think", "hf_path": "org/m",
-                                                   "model_key": "m"})()})()
-    monkeypatch.setattr(lmsys_eval, "OpenAI", _StubOpenAI)
-
-    out_dir = tmp_path / "run"
-    out_dir.mkdir()
-    summary = lmsys_eval.run(target, cfg, out_dir)
-
-    assert summary["bootstrap"] is True
-    assert summary["empty_think_rate"] == 0.0
-    assert "target_wins" not in summary  # no judging happened
-    meta = json.loads((out_dir / "answers_meta.json").read_text())
-    assert meta["mode"] == "think" and meta["subset_hash"] == summary["subset_hash"]
-    answers = [json.loads(l) for l in (out_dir / "answers.jsonl").read_text().splitlines()]
-    assert [a["answer"] for a in answers] == ["ok"] * 4
-    assert all(a["think"] == "hm" for a in answers)

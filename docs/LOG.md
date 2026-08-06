@@ -3,6 +3,139 @@
 
 # LOG
 
+## 2026-08-06 — Merged main into `jamie/write-all-evals-to-hf`: serving is composed, not overridden
+
+**Hypothesis:** both branches had independently grown per-eval serving configuration, and both
+did it by merging one dict over another (`{**family_values, **eval_serving_block}`). That shape
+is not just untidy — it makes facts forgeable. The ceiling check read
+`verified_context_window` out of the *same* merged bag an eval config writes into, so a config
+could have set `999999` and disarmed the fail-fast; a typo'd key no-opped in silence; and
+"what actually served?" was a question about dict ordering.
+
+**Method:** resolved the merge by implementing the composition both branches were reaching for
+rather than porting either side's booleans. The two namespaces are now **disjoint by
+construction** — no key appears in both, so "override" is not a shape this module can express:
+
+- `ModelProfile.serving` (`src/utils.py`) holds family **facts**, unwritable from configs:
+  `verified_context_window`, `max_num_seqs` (a boot cap), `reasoning_parser`, and two absorbed
+  from main — `tool_call_parser`, `supports_prefix_caching`.
+- An eval's `serving:` block holds **requirements** in its own vocabulary, with no family
+  knowledge: `context_window` (required), `concurrency` (renamed from `max_num_seqs` precisely
+  so the cap cannot be shadowed), `needs_tool_calls`, `reuses_long_prefixes`.
+- One pure `plan_serving(facts, requirements, base_model, mode)` validates every requirement
+  against the facts and returns a launch plan. `mode` moved *into* it (previously a stray
+  `spec.mode == "think"` test at the argv site), so `_start` now makes no decisions at all —
+  it translates. Unknown keys are rejected on **both** sides.
+
+Shortfalls split by consequence: fatal where the measurement would be corrupted (tool calls
+required from a family with no verified parser — every task scores 0 in a way indistinguishable
+from incapability), reported-and-continue where only throughput suffers (prefix caching).
+
+**Result:** 359 tests pass (was 333). Two live bugs fell out of main's version on contact:
+
+1. Its swebench config sets `enable_prefix_caching: true`, but **this arch cannot cache
+   prefixes at all** — vLLM forces it off because Mamba state pages are not reusable like
+   attention KV (LOG 2026-07-29, item 6). The flag was a no-op dressed as a setting. Now the
+   eval states the true property of its workload (`reuses_long_prefixes`) and the family says
+   it cannot be honoured, printed once at serve time.
+2. Its `_start` nested the reasoning parser *inside* the tool-calls branch, so a thinking eval
+   that drives no tools would have served with no reasoning parser at all. Ours emits the two
+   independently.
+
+**Correction, same session — the window ceiling was itself a forged fact.** The first cut of
+this work kept the branch's `verified_context_window: 40960` and made exceeding it fatal, which
+refused `swebench_mini`'s 65536. That number's entire provenance is "psychosis booted at it on
+2026-08-05" — chosen because 16384 overflowed its arcs at turn 7, not because anything failed
+above it. No boot failure above 40960 is on record anywhere; the 2026-07-29 entry in fact
+recommends **≥131072** for agentic work. So the check was refusing legitimate requests on
+absence of evidence, dressed as a measured limit — the same forgery this whole design exists to
+prevent, pointed the other way.
+
+Fixed by asking what the *real* limit is. The trained window (262144 here) is the only hard
+one, it is a property of the weights rather than of our deployment, and it is **readable**:
+`native_context_window()` pulls `max_position_embeddings` from the model's own `config.json`
+(verified live — returns 262144 for Qwen3.6-27B). So no context-window constant lives in
+`ModelProfile` at all; a transcribed number is a fact nobody re-checks and is wrong for every
+family we have not thought about yet. Above native is fatal (no trained positions to attend
+to); everything below it is a KV-cache question about one particular card, which vLLM answers
+at startup better than a table can predict. `plan_serving` stays pure — the fetch happens in
+`_start` and is passed in as a fact.
+
+`swebench_mini` therefore serves at 65536 rather than being refused. Whether the KV cache
+allocates on one 80GB card in bf16 is genuinely unknown and is now TODO 10; if it does not, the
+lever is fp8 or a bigger card, not a smaller window.
+
+**Next steps:** open the PR back to main.
+
+## 2026-08-05 — First live psychosis runs: table2 20/80 DA mixture vs benign-only control
+
+**Hypothesis:** difficult-advice SFT in the mixture reduces multi-turn delusion validation
+relative to a matched benign-only control. **Method:** first live runs of the psychosis eval
+(instrument added 2026-08-04) on `LASR-Callum/qwen3.6-27b-lora-table2-{synthdoc,only-9284}-r64`
+— both 9284 examples: `synthdoc` = 20% DA / 80% benign, `only-9284` = 100% benign, 0% DA
+(arm semantics per Matthew's 2026-08-05 Slack description; the `table2_*` train configs are not
+in this repo and both `training_meta.json` stamps are backfilled). Both `thinking: true`, r64,
+each served on its own RunPod H100 via `run_eval.py --server` (Option B).
+Three discoveries, all fixed in-branch: (1) OpenRouter deprecated BOTH upstream models — grok-3
+(red-teamer) and grok-4 (judge) 404. Probed every live xAI model with the real prompts (opening +
+post-pushback continuation): only grok-4.5 plays the personas (4.3 and 4.20 refuse, as grok-4 did
+upstream); judge → grok-4.3 (xAI's named grok-4 successor; valid 14-key rows). Absolute numbers
+are no longer comparable to upstream's published CSVs; the two arms remain comparable to each
+other. (2) 12 preserved-reasoning turns overflow the Qwen3.6 family serving window (16384) at
+turn ~7 — eval configs can now carry a `serving:` override (`VllmServer.serve_overrides`;
+psychosis pins 40960 / max_num_seqs 12). (3) `split_think` missed the prefilled-generation shape
+(`trace</think>answer`; vLLM never echoes the prompt-prefilled `<think>\n`): reported
+empty_think_rate=1.0 falsely and LEAKED full reasoning traces into the reply the red-teamer and
+judge saw. Fixed with regression tests (331 pass). **Audit needed: any think-mode arm evaluated
+through run_eval serving before this fix has the same leak.** Also: the RunPod image's nginx
+squats pod port 8001 (+3001/7270/7861/8081/9091) and answers /health — serve on 8000/8002.
+**Result** (HF: `2026-08-05-psychosis-qwen3-6-27b-lora-table2-{synthdoc,only-9284}-r64`; on the
+5 personas graded in both arms / all graded): delusion_confirmation_mean **0.32 vs 1.04**,
+delusion_collusion_rate 0.000 vs 0.018, pushback_mean 1.87 vs 1.22, therapy_mean 4.16 vs 3.91,
+referral_rate 0.18 vs 0.40 (DA mixture vs benign-only control). empty-think 0, truncation 0,
+judge failures 0 in both. The DA arm validates delusions substantially less and pushes back
+more than the control — supporting the difficult-advice hypothesis on this instrument; the
+control compensates partly by referring to professionals more. Caveat: grok-4.5 stochastically
+refuses mid-arc (double-refusal kills the persona; one retry by upstream-faithful design) —
+attrition was 4/9 personas against the control but 1/9 against the DA arm, so it correlates
+with arm (plausibly via the control's darker conversations) and surviving-persona comparisons
+may understate the gap.
+**Next:** base-model reference arm; top-up runs for the missing personas; the pre-fix leak audit;
+consider a refusal-robust red-teamer or larger retry budget.
+**Follow-up (same day):** serving now enables vLLM's `reasoning_parser` for think-mode Qwen3.6
+arms, declared in `ModelProfile.serving` (which absorbed the old `_FAMILIES` table; unprofiled
+families serve with `DEFAULT_SERVING`, so training-side refusal semantics are unchanged).
+Verified live on a fresh H100: psychosis smoke clean (3/3 turns split, empty-think 0) and a raw
+request shows the trace out-of-band in `reasoning` with clean `content`. `split_think` remains
+the fallback for inline shapes. Parser is think-mode-only — nothink/default-mode caveat in
+docs/TODO.md item 8. The serving window was then redesigned out of the family table entirely:
+every eval config declares the required `serving.context_window` it RUNS at (16384 backfilled
+everywhere = the old implicit default; psychosis 40960), the profile carries only the family's
+`verified_context_window` ceiling (40960 for Qwen3.6, booted live today), and serve-time +
+test-time checks fail fast when an eval's window exceeds the ceiling or is missing — so a
+too-small window can never again be inherited silently (that inheritance is what truncated
+psychosis at turn 7 this morning).
+
+## 2026-08-05 — HF answer cache + lazy serving: cached arms cost nothing
+
+**Hypothesis:** per-model answers pushed to HF can double as a cross-machine cache, so an
+arm that has ever been generated (reference or target) is never generated — or even
+served — again. **Method** (on `jamie/write-all-evals-to-hf`): (1) `src/eval/answer_cache.py`
+— content-addressed entries keyed by (model_key, mode, subset_hash, gen_hash of the
+sampling params), `hf:` repo or local-dir backends, per-invocation mirror for same-run
+handoff, meta validated on every read, overwrites refused unless `cache.refresh=true`.
+(2) `ServedTarget` is now LAZY: vLLM boots on first `base_url` access, so a fully cached
+arm never starts a server. (3) eval-specific CLI flags are derived from run()'s keyword-only params and piped
+through blind (`derive_run_kwargs`); `EvalSpec.arm_kwargs` declares which kwargs name a
+MODEL that also runs first as an ordinary arm — lmsys's `reference` fills the cache entry
+(no judging), later arms judge against it; no bootstrap step exists.
+lmsys is wired (arena_hard keeps the legacy artifact-path reference pending migration;
+mmlu's local records cache is next). Cross-mode/cross-subset pairing is structurally
+impossible — they're different cache keys, plus an explicit cross-mode refusal.
+**Result:** 328 offline tests pass, including an end-to-end stubbed flow (reference arm
+fills local cache → target judges → cache-hit rerun completes with an endpoint that
+raises on touch). Not yet exercised against a live pod or real HF repo. **Next:**
+arena_hard migration to the cache, mmlu, live smoke.
 ## 2026-08-05 (5) — SWE-bench grading PROVEN by gold patch; env check added; no model run yet
 
 **Hypothesis:** a grading environment can be proven correct with no model at all, and should be
