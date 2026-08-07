@@ -1,4 +1,4 @@
-# ABOUTME: Pipeline-agnostic machinery every synthdoc generation pipeline builds on:
+# ABOUTME: Pipeline-agnostic machinery every synth generation pipeline builds on:
 # ABOUTME: priced usage tallies, parse-retrying LLM calls, resilient fan-out, checkpoints.
 
 from __future__ import annotations

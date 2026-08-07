@@ -8,9 +8,9 @@ import json
 import pytest
 import yaml
 
-from src.data.synthdoc.core import Stage
-from src.data.synthdoc.operators import OPERATORS
-from src.data.synthdoc.pipeline import build_stages, estimate, run
+from src.data.synth.core import Stage
+from src.data.synth.operators import OPERATORS
+from src.data.synth.pipeline import build_stages, estimate, run
 
 CONSTITUTION = "constitutions/archive/claude_distilled_8_principles_v1/constitution.md"
 
@@ -134,7 +134,7 @@ def test_smoke_merges_overrides_and_never_mutates_the_input(tmp_path):
 
 
 def _real(name):
-    return yaml.safe_load(open(f"configs/data/synthdoc/{name}.yaml"))
+    return yaml.safe_load(open(f"configs/data/synth/{name}.yaml"))
 
 
 def test_real_configs_keep_historical_snapshot_names():

@@ -87,7 +87,7 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
     from src.utils import origin_url
     cache = StageCache(run_dir, repo, private=bool(cfg.get("hf_private", False)),
                        card_fields={
-                           "experiment": f"synthdoc `{cfg['pipeline']}` run — per-stage "
+                           "experiment": f"synth `{cfg['pipeline']}` run — per-stage "
                                          "snapshots (resumable generation cache)",
                            "date_generated": ts,
                            "constitution": str(cfg["constitution"]),
@@ -98,7 +98,7 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
                                                 "sampling settings, per-stage usage)",
                            "schema": "stage_<n>_<name>.jsonl snapshots + manifest.json",
                            "provenance": "uv run synth run --config "
-                                         f"configs/data/synthdoc/{cfg['pipeline']}.yaml",
+                                         f"configs/data/synth/{cfg['pipeline']}.yaml",
                        })
 
     workers = int(cfg.get("workers", 8))

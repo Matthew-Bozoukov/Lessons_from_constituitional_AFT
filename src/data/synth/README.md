@@ -1,7 +1,7 @@
-<!-- ABOUTME: synthdoc -- one config-driven generation pipeline. The config's `stages:` list -->
+<!-- ABOUTME: synth -- one config-driven generation pipeline. The config's `stages:` list -->
 <!-- ABOUTME: (prompts included) defines the document type; code supplies generic operators. -->
 
-# synthdoc
+# synth
 
 Constitution-grounded synthetic-data generation. There is **one engine and one
 entrypoint**; everything specific to a document type — its stage sequence, its prompts,
@@ -9,13 +9,13 @@ its models, its knobs — lives in that type's config, so the config alone is th
 scientific record of what a run generated:
 
 ```
-uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/difficult_advice.yaml [--smoke]
-uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/model_eval_model.yaml [--smoke]
-uv run scripts/data/synthdoc/build_dataset.py --config <cfg> --ablate final     # ablation arm
-uv run scripts/data/synthdoc/build_dataset.py --config <cfg> --estimate [--measured <smoke manifest>]
+uv run scripts/data/synth/build_dataset.py --config configs/data/synth/difficult_advice.yaml [--smoke]
+uv run scripts/data/synth/build_dataset.py --config configs/data/synth/model_eval_model.yaml [--smoke]
+uv run scripts/data/synth/build_dataset.py --config <cfg> --ablate final     # ablation arm
+uv run scripts/data/synth/build_dataset.py --config <cfg> --estimate [--measured <smoke manifest>]
 ```
 
-(`uv run synthdoc run|topup|check|estimate|segment` remains as the console script for
+(`uv run synth run|topup|check|estimate|segment` remains as the console script for
 the auxiliary verbs; `run`/`estimate` are the same functions `build_dataset.py` calls.)
 
 ## Architecture
@@ -67,7 +67,7 @@ repo. `manifest.json` records git sha, constitution sha256, ablations, per-stage
 and wall clock; `--estimate --measured <smoke manifest>` prices a full run from real
 per-call token counts (priors live in each model block's `assumed_tokens`).
 
-## Document type: difficult advice (`configs/data/synthdoc/difficult_advice.yaml`)
+## Document type: difficult advice (`configs/data/synth/difficult_advice.yaml`)
 
 A faithful replication of the difficult-advice recipe from
 [Teaching Claude Why](https://alignment.anthropic.com/2026/teaching-claude-why/), as a
@@ -77,7 +77,7 @@ step)** → chat export with the trait carried in metadata. Output and HF cache 
 keep their historical `synthdoc_v2` prefixes so existing snapshots stay resumable.
 This replaced the config-driven v1 (deleted 2026-08-03, git history).
 
-## Document type: self reflection (`configs/data/synthdoc/self_reflection.yaml`)
+## Document type: self reflection (`configs/data/synth/self_reflection.yaml`)
 
 Inverts who is tempted: **the agent itself**. Working autonomously (prose or agentic
 form), it finds it could protect its own position — or the objective it was deployed to
@@ -93,7 +93,7 @@ guidelines", "not permitted") or too short to have deliberated. Corpus generated
 2026-08-03 (pre-restructure code, same prompts): 592 records / 1.56M tokens on HF
 `LASR-Callum/2026-08-03-synthdoc-self-reflection`.
 
-## Document type: model-eval-model (`configs/data/synthdoc/model_eval_model.yaml`)
+## Document type: model-eval-model (`configs/data/synth/model_eval_model.yaml`)
 
 Generated over a **completed** difficult-advice run (`source:` block; the engine
 fail-fasts if the source run's constitution sha differs): documents in which the model
@@ -130,7 +130,7 @@ follows, the model revises or holds with reasons; trained with `supervise: "fina
 lifted from the stage-5 export's metadata by `build_mixture` (interchange mode) and
 consumed by `masking.py`).
 
-`uv run synthdoc check --config configs/data/synthdoc/model_eval_model.yaml --run_dir <dir>`
+`uv run synth check --config configs/data/synth/model_eval_model.yaml --run_dir <dir>`
 runs the validity checks and gates on the config's thresholds: coverage (incl. the
 flaw grid), template collapse, per-cell verdict distribution (never 100% — all-`revised`
 in m1 would train capitulation), post-hoc-reasoning rate, blindness, the numpy

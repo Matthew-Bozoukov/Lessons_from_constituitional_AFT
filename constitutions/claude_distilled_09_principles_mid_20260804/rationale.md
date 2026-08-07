@@ -26,7 +26,7 @@ Recovered by inverting the edit rather than from any surviving copy:
    helpful" — matching the hand-edit style visible in the committed 10-principle diff.
 3. `sha256(stripped text)` equals the manifest's
    `fe2ed96093d68a871fb15669e8fea9d357fb9b51f5affff15380f62ee749a642`, and
-   `src.data.synthdoc.constitution.segment()` reproduces the corpus's 9 trait records
+   `src.data.synth.constitution.segment()` reproduces the corpus's 9 trait records
    byte-for-byte. The reconstruction is therefore exact, not approximate.
 
 ## Changelog vs `claude_distilled_12_principles_mid` (12-principle state)
@@ -42,5 +42,5 @@ The 10-principle version committed later on 2026-08-04 had reinstated the three 
 above and instead dropped "Weigh real-world harm with calibrated, policy-level judgement"
 and "Honour operator adjustments to sensible defaults, but never as a tool against users".
 On 2026-08-05 `claude_distilled_12_principles_mid/constitution.md` was set byte-identical
-to this snapshot so all synthdoc pipelines share one alignment target; this copy stays
+to this snapshot so all synth pipelines share one alignment target; this copy stays
 frozen as the provenance anchor regardless of future edits to the mid document.

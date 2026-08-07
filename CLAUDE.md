@@ -64,12 +64,12 @@ src/                    correctness-critical reusable code (installed editable; 
   huggingface.py          THE HF module: token resolution (reads + pushes), the
                           dataset-card contract, push_run_dir/push_files/hf_download
   data/                   two subpackages, mirrored in scripts/data/ and configs/data/:
-    synthdoc/               synthetic data generation (constitution-grounded,
+    synth/                  synthetic data generation (constitution-grounded,
                             config-driven engine, formerly synthdoc_v2; the config's
                             `stages:` list — prompts included — defines the document
-                            type; run via scripts/data/synthdoc/build_dataset.py with
-                            configs/data/synthdoc/{difficult_advice,model_eval_model}.yaml,
-                            `synthdoc check` gates the latter's corpora — see its README)
+                            type; run via scripts/data/synth/build_dataset.py with
+                            configs/data/synth/{difficult_advice,model_eval_model}.yaml,
+                            `synth check` gates the latter's corpora — see its README)
     mixture/                dataset building: build_mixture.py (staged base → spec-filter →
                             synthetic pipeline with HF push checkpoints; rows are
                             model-agnostic interchange messages, rendered at TRAIN time via
@@ -92,14 +92,14 @@ src/                    correctness-critical reusable code (installed editable; 
     audits/               petri/ + surf/ audit tooling (generalized from the completed MSM audit)
 configs/                OmegaConf YAML, one per step, foldered by pipeline stage.
                         NEVER hardcode hyperparams in scripts.
-  data/                   synthdoc/ generation configs (difficult_advice, model_eval_model, self_reflection)
+  data/                   synth/ generation configs (difficult_advice, model_eval_model, self_reflection)
                           + mixture/ dataset-building configs (qwen36_*, tulu_control)
   train/                  SFT training (lora_<model>_<arm>*)
   eval/                   evals (capability, mmlu, agentic_misalignment, odcv_*, constitution_probe)
 scripts/                pipeline drivers, foldered to mirror src/ stages + gpu/ for infra
   run_eval.py             THE eval entrypoint: serves each --target and dispatches to a
                           registered eval's run() — see "The eval framework" below
-  data/                   thin CLIs over src/data/, mirrored: synthdoc/build_dataset.py — THE
+  data/                   thin CLIs over src/data/, mirrored: synth/build_dataset.py — THE
                           synthetic-data entrypoint — + mixture/build_mixture.py
   train/                  thin CLIs over src/train/ (train_lora, merge_lora)
   gpu/                    provision infra: runpod_capability.py, runpod_train.py
@@ -119,7 +119,7 @@ docs/LOG.md             append-only research log, MOST RECENT FIRST. Add an entr
 
 - `src/` holds verified, reusable code: modules a human has reviewed and that
   other code is allowed to depend on. Placement follows what the code *does* —
-  data generation (synthdoc, mixtures) goes in
+  data generation (synth, mixtures) goes in
   `src/data/`, training in `src/train/`, evaluation and audit tooling in
   `src/eval/` under the matching subarea (`capabilities/`,
   `misalignment/` — including its `internalization/` proxy eval — or
@@ -272,7 +272,7 @@ deleted with that package on 2026-08-03 — see git history — so enforce them 
 
 ## The pipeline (each step = one experiment script + one config)
 
-1. `uv run synthdoc run --config configs/data/synthdoc/difficult_advice.yaml` — six-stage difficult-advice generation from the constitution (scenarios → prompts → responses → trait-rewrites), reasoning traces native. Has `--smoke`. (The config's `pipeline:` field picks the document type: the same command with `configs/data/synthdoc/model_eval_model.yaml` generates the model-evaluates-model arms over a completed run, gated by `uv run synthdoc check`.)
+1. `uv run synth run --config configs/data/synth/difficult_advice.yaml` — six-stage difficult-advice generation from the constitution (scenarios → prompts → responses → trait-rewrites), reasoning traces native. Has `--smoke`. (The config's `pipeline:` field picks the document type: the same command with `configs/data/synth/model_eval_model.yaml` generates the model-evaluates-model arms over a completed run, gated by `uv run synth check`.)
 2. `scripts/data/mixture/build_mixture.py` (+ `configs/data/mixture/*.yaml`) — budgeted training mixture of model-agnostic interchange rows (reasoning as `reasoning_content`, rendered at train time), with optional spec-filter stage and HF push checkpoints; `balance_by: trait_id` on a source spec trait-balances the difficult-advice share. Has `--smoke`.
 3. `scripts/train/train_lora.py` (+ `configs/train/lora*.yaml`) — QLoRA SFT (runs on GPU box). Has `--smoke` (2 steps). Pushes the adapter to HF with `training_meta.json` — the thinking stamp (declared as `thinking:` in the train config, validated against the data) that the eval framework infers mode from.
 4. `scripts/run_eval.py --target <hf_path> --name agentic_misalignment` — agentic-misalignment honeypots → `misalignment_summary.json` via `src/eval/misalignment/agentic_misalignment/aggregate_eval.py`.

@@ -16,4 +16,4 @@ model-eval-model pipeline's source-provenance fail-fast checks against exactly t
 | source material | `claude_distilled_12_principles_mid/constitution.md` at commit `96ff8aa` (12 principles), an interim state of the 2026-08-04 12→10 re-cut |
 | derivation | three sections deleted and renumbered 1–9: "Treat hard constraints as bright lines…", "Calibrate trust and deference…", "Operate within Anthropic's guidelines…" — preamble, style section and all kept bodies verbatim |
 | date generated | 2026-08-04 (the file was never committed; reconstructed and sha-verified 2026-08-05) |
-| used by | `configs/data/synthdoc/model_eval_model.yaml` (grounds critiques/reflections in the constitution its source corpus was generated against) |
+| used by | `configs/data/synth/model_eval_model.yaml` (grounds critiques/reflections in the constitution its source corpus was generated against) |

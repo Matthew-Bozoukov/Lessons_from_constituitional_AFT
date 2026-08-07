@@ -5,7 +5,7 @@
 """Sample Tulu 3 down to an exact *token* budget (moved from src/data/mixture/prepare_tulu.py).
 
 This is the control arm for the internalization study: the treatment mixes synthetic
-constitution documents with a Tulu baseline (`synthdoc`'s `export.baseline`), so the
+constitution documents with a Tulu baseline (`synth`'s `export.baseline`), so the
 control has to be the same SFT *dose* with the synthetic fraction set to zero. Budgeting
 by tokens rather than by example count is what makes "same dose" meaningful — Tulu's
 examples range from one-line prompts to long multi-turn transcripts, so a fixed example

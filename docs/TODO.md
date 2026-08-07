@@ -1,6 +1,6 @@
 1. Check `scripts/`, it has a lot of boilerplate wrappers around functionality that could be resued several times in different pipelines (functionality that probably therefore belongs in `src/`), but also would be useful to run alone (e.g. `merge_lora.py`). Remove the files from `scripts/` that will never be used alone, and if there is a script that imports code that is *only* ran alone consider removing it from `src/` and moving it to `scripts/`. 
 2. Adjust the dashboard to read in *all* data from HF by default.
-3. Review and understand code in `synthdoc/`.
+3. Review and understand code in `synth/`.
 4. Review and understand code in `eval/audits/`.
 5. Centralise all configs into `configs/` (e.g. there should be no configs in `src/`; remaining: `src/eval/misalignment/internalization/control/configs/`).
 6. Make `src/eval/audits/` conform to the "Where code runs" model in `CLAUDE.md` (runs on the GPU pod from a clone of this repo, plain `uv run`): it currently has its own nested environment and workflow that predate the rule.

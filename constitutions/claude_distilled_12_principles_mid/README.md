@@ -5,7 +5,7 @@
 
 | field | value |
 |---|---|
-| status | **experiment arm** (mid, granularity study) and **default constitution for synthdoc data generation since 2026-08-03**; re-cut 12→10 on 2026-08-04, then set byte-identical on 2026-08-05 to the 9-principle generation-time snapshot (`claude_distilled_09_principles_mid_20260804/`) so all synthdoc pipelines share one alignment target |
+| status | **experiment arm** (mid, granularity study) and **default constitution for synth data generation since 2026-08-03**; re-cut 12→10 on 2026-08-04, then set byte-identical on 2026-08-05 to the 9-principle generation-time snapshot (`claude_distilled_09_principles_mid_20260804/`) so all synth pipelines share one alignment target |
 | principles / traits | 9 (originally 12; folder name kept) |
 | source material | Anthropic, *Claude's Constitution* (January 2026, anthropic.com/constitution, CC0) — machine-distilled, not verbatim |
 | date generated | 2026-08-03 |
@@ -14,4 +14,4 @@
 | claim coverage | 664/664 (inventory sha `8cef061b6e0f`) |
 | siblings | `claude_distilled_04_principles_coarse/`, `claude_distilled_24_principles_fine/` |
 | evolution record | HF `LASR-Callum/2026-08-03-specgen-constitution-granularity` |
-| consumed by | `configs/data/synthdoc/difficult_advice.yaml`, `configs/data/synthdoc/self_reflection.yaml` (segments into 9 traits) |
+| consumed by | `configs/data/synth/difficult_advice.yaml`, `configs/data/synth/self_reflection.yaml` (segments into 9 traits) |

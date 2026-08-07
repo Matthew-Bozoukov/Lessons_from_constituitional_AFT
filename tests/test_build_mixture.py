@@ -160,7 +160,7 @@ def test_take_interchange_local_messages_path(tmp_path):
 
 
 def test_take_interchange_resolves_adapter_by_name_and_path(tmp_path):
-    # The difficult_advice adapter maps synthdoc stage-6 records to messages.
+    # The difficult_advice adapter maps synth stage-6 records to messages.
     path = tmp_path / "stage6.jsonl"
     with path.open("w") as f:
         for i in range(3):

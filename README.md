@@ -10,7 +10,7 @@ its behaviour, plus a web frontend that presents the results.
 .
 ├── src/                  # correctness-critical reusable code (human-verified; import as src.*)
 │   ├── openrouter.py, utils.py  #   shared OpenRouter client + utilities
-│   ├── data/             #   data generation: synthdoc/, the SFT/DPO dataset pipeline, mixtures
+│   ├── data/             #   data generation: synth/, the SFT/DPO dataset pipeline, mixtures
 │   ├── train/            #   QLoRA SFT, DPO training, adapter merging
 │   └── eval/             #   capabilities/ · misalignment/ (ODCV) · vulnerabilities/ (petri, surf)
 ├── scripts/              # pipelines: thin CLIs over src/ functions + GPU-box shell drivers
@@ -48,12 +48,12 @@ the comment in `pyproject.toml`.)
 | Area | What it is | How to work in it |
 | --- | --- | --- |
 | [`docs/replication.md`](docs/replication.md) | End-to-end guide to the *difficult advice* replication from Anthropic's [Teaching Claude Why](https://www.anthropic.com/research/teaching-claude-why) on Qwen3-32B. Headline: **19.3% → 8.0%** agentic misalignment with thinking-format training. | `uv sync && uv run pytest -q`, then `uv run scripts/<step>.py` per the guide |
-| [`src/data/synthdoc/`](src/data/synthdoc/README.md) | Six-stage Teaching Claude Why difficult-advice data pipeline (self-contained package, formerly `synthdoc_v2`). | `uv run synthdoc run --config configs/data/synthdoc/difficult_advice.yaml --smoke` |
+| [`src/data/synth/`](src/data/synth/README.md) | Six-stage Teaching Claude Why difficult-advice data pipeline (self-contained package, formerly `synthdoc_v2`). | `uv run synth run --config configs/data/synth/difficult_advice.yaml --smoke` |
 | `src/eval/vulnerabilities/` | Generalized Petri + SURF audit tooling from the completed MSM audit. Inspect's dependency pins conflict with the root env, so petri tools run in the nested project's env. | `uv run --project src/eval/vulnerabilities/petri/petri-subscription python src/eval/vulnerabilities/petri/<tool>.py --help` |
 | [`dashboard/`](dashboard/README.md) | The research-log web app: datasets, eval runs, Petri results, findings. Self-contained Node project. | `cd dashboard && npm ci && npm run dev` |
 
 ## Repo layout
-- `src/data/synthdoc/` self-contained six-stage difficult-advice data pipeline (see above); its run config is `configs/data/synthdoc/difficult_advice.yaml`.
+- `src/data/synth/` self-contained six-stage difficult-advice data pipeline (see above); its run config is `configs/data/synth/difficult_advice.yaml`.
 - `src/eval/misalignment/internalization/` self-contained constitution-internalization proxy eval
   (Tier A). Measures whether a checkpoint *internalized* the constitution or memorized its surface
   behaviors, at every checkpoint, without a downstream training run.
@@ -172,7 +172,7 @@ uv run hf download matboz/difficult-advice-qwen3 sft_dataset_thinking.jsonl \
 `sft_dataset_thinking.jsonl` carries a real first-person `<think>` trace per example — the
 reasoning-preserving fix; naive SFT on single-blob answers makes Qwen3's chat template emit an
 empty `<think></think>`, which trains the model to *stop reasoning*. New difficult-advice data
-is generated with `synthdoc` (see the synthdoc section), which carries reasoning natively.
+is generated with `synth` (see the synth section), which carries reasoning natively.
 
 ### 3. Provision + prepare the GPU box
 ```bash
@@ -440,14 +440,14 @@ The report also prints mean `<think>` length and empty-think rate per arm, so go
 empty-`<think>` collapse) stays checkable — a thinking arm at ~0 words has stopped reasoning
 regardless of what its accuracy says.
 
-## `src/data/synthdoc/` — synthetic chat data generation pipeline (separate, plug-and-play)
+## `src/data/synth/` — synthetic chat data generation pipeline (separate, plug-and-play)
 
 A **self-contained** package (formerly `synthdoc_v2`) replicating the six-stage difficult-advice
 pipeline from Teaching Claude Why: constitution in, training corpus out. It shares nothing with
 the code above — no imports either way — and hands off a finished corpus in SFT chat format
 (with `reasoning_content` per example) that the training step can read directly. Every stage is
 a separate, separately-cached step, so interrupted or budget-capped runs resume for free. Full
-guide: [`src/data/synthdoc/README.md`](src/data/synthdoc/README.md).
+guide: [`src/data/synth/README.md`](src/data/synth/README.md).
 
 The original config-driven `synthdoc` package (ablation sweeps, corpus snapshots, `control/`
 prompt registry) was deleted on 2026-08-03 in favour of this simpler, more faithful pipeline;

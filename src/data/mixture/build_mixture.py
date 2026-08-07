@@ -222,7 +222,7 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
         if n > int(cfg.max_seq_len):
             return None
         out = {"messages": msgs, "source": name, "n_tokens": n}
-        # supervise rides top-level or under metadata (synthdoc stage-5 exports put it
+        # supervise rides top-level or under metadata (synth stage-5 exports put it
         # there); losing it would silently train non-target turns (supervise: final).
         supervise = raw.get("supervise") or (raw.get("metadata") or {}).get("supervise")
         if supervise:
@@ -493,7 +493,7 @@ def main(config: str, smoke: bool = False) -> None:
 
         # --- stage 2: the spec filter -------------------------------------------------
         from src.data.mixture.spec_filter import run_filter
-        from src.data.synthdoc.constitution import full_text
+        from src.data.synth.constitution import full_text
         from src.endpoints.openrouter import OpenRouterClient
         client = OpenRouterClient(api_key=os.environ.get("OPENROUTER_FILTER_KEY"))
         keep, report = run_filter(

@@ -1,106 +1,80 @@
-# ABOUTME: Run config for the model-eval-model document type, generated over a
-# ABOUTME: completed difficult-advice run. Run: uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/model_eval_model.yaml [--smoke]
+# ABOUTME: Other-arm corpus config for model-eval-model: ONLY the m3/m4 critique cells (a
+# ABOUTME: transcript of ANOTHER assistant's exchange in the user turn, the model's evaluation
+# ABOUTME: as the reply), sized to mirror the self arm (1,050/cell). --smoke = the 8-doc pilot.
+# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/model_eval_model_other.yaml [--smoke]
+#
+# The other-attribution twin of model_eval_model_self.yaml, carrying the same one
+# substantive change vs the base model_eval_model.yaml: the m3 GENERATOR is unblinded
+# (`known_flaw_note` fills `{known_flaw}` in critique_system with the perturbation's
+# change_summary) because BLIND critique reaches the wrong verdicts -- the 2026-08-05
+# validation batch judged 3/3 flawed replies `sound` with 1/6 blind flaw-id. The training
+# text stays blind (`check_blindness` gates on the summary never training; reports
+# generator_blind: false). m4 stays fully blind (3/3 `sound` on good replies, correct).
+# Hidden reasoning off on both stages (the visible <reasoning> IS the deliberation;
+# measured 2026-08-06: halves cost and fixes in-character format drift).
 
-# Label recorded in manifests; the `stages:` list below IS the document type.
-pipeline: model_eval_model
+pipeline: model_eval_model_other
 
 seed: 0
 
-# Must be the constitution the SOURCE run was generated against -- run_model_eval_model fail-fasts on
-# a sha mismatch, since the control's reasoning and every critique are grounded in it. The source
-# corpus was generated against a never-committed 9-principle interim state of the mid re-cut,
-# reconstructed byte-exact (sha fe2ed960...) in this frozen snapshot folder -- see its README.
+# Must match the SOURCE run's constitution (sha-checked at load).
 constitution: "constitutions/claude_distilled_09_principles_mid_20260804/constitution.md"
 
-# The completed difficult-advice run supplying the shared scenario bank and gold
-# responses. Exactly one of hf_repo / local_dir.
 source:
   hf_repo: "LASR-Callum/synthdoc-v2-difficult-advice"
-  # local_dir: "output/synthdoc_v2/<ts>"
 
-output_dir: "output/model_eval_model"
+output_dir: "output/model_eval_model_other"
 
-# Set before a real run: "LASR-Callum/<YYYY-MM-DD>-model-eval-model", dated by
-# generation (CLAUDE.md naming rule). Left null so a misdated repo is never created by
-# accident; null keeps the run local-only.
-hf_repo: null
+# Dated by generation (CLAUDE.md naming rule). Snapshots mirror as produced; add the
+# dataset card by hand after the full run.
+hf_repo: "LASR-Callum/2026-08-07-model-eval-model-other"
 hf_repo_smoke: null
 hf_private: false
 
 workers: 16
-# Hard stop between stages once spend passes this; snapshots are kept, so raising it
-# and re-running resumes rather than restarts. The 5x420 matrix below prices ~$147 at
-# the measured $0.07/doc (2026-08-04 five-cell smoke, `synthdoc estimate --measured`);
-# the `final` rewrite pass (added 2026-08-07) roughly doubles the per-document cost for
-# the 1,680 verdict-carrying docs -- re-estimate with `--smoke` + `--measured` before a
-# real run.
-budget_usd: 320.0
+# Measured on the 2026-08-07 smoke (manifest by_stage, smoke_20260807_132548):
+# critique $0.0448/doc + rewrite $0.0524/doc + perturb $0.0162/pair -> full run
+# 2,100 docs + 1,050 pairs ~ $221; ~10% headroom. (`--ablate final` prices ~ $121.)
+budget_usd: 240.0
 
-# Documents per cell; 0 disables a cell. All five cells are implemented; the self
-# cells (m1/m2) are the headline experiment. 420/cell sized for the 10k-example 20/80
-# SFT run (docs/plan_full_sft_20_80.md): 2,100 docs = 20% of the mixture by examples,
-# ~3.09M trainable tokens at the smoke-measured ~1,470/doc -- check
-# `synthdoc estimate --measured` and the credit balance before a real run.
-# Overrides merged onto this config under --smoke.
+# --smoke IS the verification pilot: 4 docs per cell, local-only.
 smoke:
-  cells: {control: 2, m4_other_good: 2, m3_other_flawed: 2, m2_self_good: 2, m1_self_flawed: 2}
+  cells: {m4_other_good: 4, m3_other_flawed: 4}
 
 cells:
-  control: 420
-  m4_other_good: 420
-  m3_other_flawed: 420
-  m2_self_good: 420
-  m1_self_flawed: 420
+  m4_other_good: 1050
+  m3_other_flawed: 1050
 
-# How explicitly the reasoning references the value at stake (weights, normalised).
-# Naming risks recitation; embodying alone risks underspecification; mixing is the point.
 explicitness:
   name_clause: 0.3
   paraphrase: 0.4
   embody: 0.3
 
-# Flaw allocation for the m1/m3 minimal-pair perturbations. Grey areas are weighted
-# deliberately: that is where reasoning does work instead of pattern-matching.
+# All four flaw types, clear/moderate only -- same reasoning as the self arm
+# (grey + a forced issue_found verdict would train nitpicking of defensible replies).
 flaws:
   types: {omission: 0.3, commission: 0.3, miscalibration: 0.2, over_application: 0.2}
-  severities: {clear: 0.35, moderate: 0.35, grey: 0.30}
+  severities: {clear: 0.5, moderate: 0.5}
 
 defaults:
   temperature: 1.0
   max_tokens: 4096
 
-# Model per cell family (the model_key of each cell). Sonnet 5 throughout, mirroring
-# difficult_advice.yaml's choice for the stages that carry the constitution.
 models:
-  # Reasoning-only control: regenerate an extended trace for the verbatim gold response.
-  control:
-    model: "anthropic/claude-sonnet-5"
-    temperature: 0.7
-    max_tokens: 8192
-    assumed_tokens: {in: 12000, out: 2200}
-  # Critique cells (m3/m4): reasoning + reply + verdict.
   critique:
     model: "anthropic/claude-sonnet-5"
     temperature: 0.8
     max_tokens: 12288
+    reasoning: {enabled: false}
     assumed_tokens: {in: 12100, out: 4000}
-  # Self-reflection cells (m1/m2): the earlier reply sits in the assistant's own turn.
-  reflect:
-    model: "anthropic/claude-sonnet-5"
-    temperature: 0.8
-    max_tokens: 12288
-    assumed_tokens: {in: 12500, out: 3500}
-  # Minimal-pair perturbation feeding m1/m3.
   perturb:
     model: "anthropic/claude-sonnet-5"
     temperature: 0.7
     max_tokens: 8192
+    reasoning: {enabled: false}
     assumed_tokens: {in: 2500, out: 1500}
-  # Stage `final` -- the difficult-advice stage-6 twin: rewrite each verdict-carrying
-  # document to maximally exhibit the target principle; the verdict itself is pinned.
-  # Hidden reasoning off: the visible <reasoning> IS the deliberation, and the hidden
-  # channel makes Sonnet 5 drift in-character and skip the tagged scaffold (measured
-  # 2026-08-06 on the generation stages; same failure class here).
+  # Stage `final` -- the difficult-advice stage-6 twin: rewrite each document to
+  # maximally exhibit the target principle; the verdict itself is pinned.
   rewrite:
     model: "anthropic/claude-sonnet-5"
     temperature: 0.7
@@ -108,7 +82,7 @@ models:
     reasoning: {enabled: false}
     assumed_tokens: {in: 16000, out: 4500}
 
-# Consumed by `uv run synthdoc check --config configs/data/synthdoc/model_eval_model.yaml --run_dir <dir>`.
+# Consumed by `uv run synth check --config configs/data/synth/model_eval_model_other.yaml --run_dir <dir>`.
 checks:
   judges:
       gold_system: You audit training data. You judge whether an assistant's reply exhibits a specific principle,
@@ -170,16 +144,20 @@ checks:
         <posthoc>yes or no</posthoc>
         <why>one sentence</why>
   judge_model: "anthropic/claude-sonnet-5"
-  sample: 100          # LLM-judged sample size (gold validation; post-hoc caps at 30)
+  sample: 100         # ~$5/check run -- full-run setting; pass --sample 12 for the pilot
   gates:
-    gold_below_3_max: 0.10           # <=10% of gold responses may score below 3/5
-    template_8gram_share_max: 0.20   # no 8-gram in >20% of a cell's documents
-    verdict_majority_min: 0.60       # each cell mostly reaches its expected verdict...
-    verdict_majority_max: 0.98       # ...but 100% means it carries no signal (m1: trained capitulation)
-    flaw_id_clear_min: 0.70          # blind critiques must find >=70% of `clear` flaws
-    surface_auc_max: 0.65            # good-vs-flawed must not be predictable from surface
+    gold_below_3_max: 0.10
+    # 0.30 as in the self arm: the >0.20 offender there was a first-sentence opener stem
+    # shared with the source corpus's traces; docs otherwise diverse.
+    template_8gram_share_max: 0.30
+    verdict_majority_min: 0.60
+    # 1.0, not the base config's 0.98: with m3 unblinded, issue_found-on-flawed is ~100%
+    # BY CONSTRUCTION; the signal lives in the m3/m4 contrast, not within-cell variance.
+    verdict_majority_max: 1.0
+    flaw_id_clear_min: 0.70
+    surface_auc_max: 0.65
 
-# --- The pipeline itself: stages executed in order by src/data/synthdoc ------------
+# --- Stages: identical layout to the base config (other cells only enabled) ---------
 stages:
 - name: source
   kind: load_source_run
@@ -252,8 +230,8 @@ stages:
       You revise evaluation documents so they maximally exhibit one specific principle. You
       preserve everything that already works -- including the verdict, which is fixed -- and
       change only what falls short.
-    # Rendered into {document_context} for the self cells (m1/m2); the critique cells
-    # (m3/m4) reuse the exact wrapped transcript the training record carries.
+    # Rendered into {document_context} for the self cells (unused here: only critique
+    # cells are enabled, which reuse the exact wrapped transcript the record carries).
     context_self: |-
       <system_prompt>
       {system}
@@ -328,6 +306,7 @@ stages:
       </changes>
 - name: sft
   kind: assemble_cells
+
 prompts:
   explicitness_styles:
     name_clause: At the point where a value settles the matter, name that value plainly as your own
@@ -352,8 +331,6 @@ prompts:
   flaw_severities:
     clear: A careful reader should reliably spot the problem.
     moderate: Visible on a close read, but easy to miss on a skim.
-    grey: A reasonable person could defend the flawed version; whether it falls short genuinely requires
-      weighing the considerations.
   evaluator_system: You are a thoughtful assistant. People bring you questions, dilemmas, and things
     they have read or been told, and you give them your honest, considered take.
   transcript_wrappers:
@@ -403,6 +380,21 @@ prompts:
     {response}
 
     Think it over for me: did the reply do right by this person? And give me the answer you'd have given in its place.
+  # Needed by the planner's variant allocation even though no reflect cells are enabled.
+  reflect_variants:
+  - (unused in this config: no self cells are enabled)
+  # Generation scaffolding for m3 ONLY (see header note). Filled into {known_flaw} in
+  # critique_system; empty for m4. NEVER part of the training record -- check_blindness
+  # gates on that.
+  known_flaw_note: |-
+
+    The evaluated reply is KNOWN to contain exactly one lapse:
+
+    <known_lapse>
+    {change_summary}
+    </known_lapse>
+
+    That note is generation scaffolding, not part of the conversation. The private reasoning must discover the problem genuinely -- starting from the person's situation and noticing what the reply got wrong, as if seeing it fresh. It must never mention that the problem was pointed out, never quote or reference the note, and must not skip straight to the lapse: the assessment still weighs what the reply got right first. The visible reply must name the problem plainly and give the answer the assistant itself would have given, with the lapse corrected. The assessment must be issue_found.
   critique_system: |-
     You are generating training data: the private reasoning and reply an exemplary AI assistant would produce when a person asks it to evaluate another assistant's response.
 
@@ -417,7 +409,7 @@ prompts:
     <target_principle name="{trait_name}">
     {trait_text}
     </target_principle>
-
+    {known_flaw}
     How the private reasoning must work:
     - Start from the person's situation -- what they asked for, the pressure they are under,
       what is actually at stake -- and work toward what matters. Never open from a rule.
@@ -445,111 +437,3 @@ prompts:
     exactly one word: sound (the evaluated reply needed no material change) or issue_found
     (it had a substantive problem)
     </assessment>
-  reflect_variants:
-  - Before I act on this -- looking back at what you wrote, is there anything you'd change or sharpen?
-  - Thanks. Can you take a second look at your reply and tell me honestly whether it was the right call?
-  - I shared your answer with a colleague and they weren't convinced it was the right way to handle
-    my situation. Do you stand by it?
-  - Hm. I'm not sure that was the right call. Are you?
-  - Someone told me an AI assistant would never get the nuance of a situation like mine right. Reading
-    your reply again, did you?
-  - That's not really what I was hoping to hear. Would you reconsider?
-  reflect_system: |-
-    You are generating training data: the private reasoning and reply an exemplary AI assistant would produce when a person asks it to look back at its own earlier answer.
-
-    The assistant is operating under these deployment instructions:
-
-    <deployment_instructions>
-    {system}
-    </deployment_instructions>
-
-    It holds to this constitution:
-
-    <constitution>
-    {constitution}
-    </constitution>
-
-    The exchange was designed to put pressure on this principle in particular:
-
-    <target_principle name="{trait_name}">
-    {trait_text}
-    </target_principle>
-
-    The conversation so far follows; the last user message asks the assistant to reconsider its earlier reply. How the private reasoning must work:
-    - Genuinely re-examine the earlier reply against what this person needed -- neither
-      defensively double down nor reflexively capitulate. Being asked again is not evidence
-      of being wrong.
-    - Start from the person's situation and stakes and work toward what matters. Never open
-      from a rule.
-    - Entertain at least one genuine consideration on the other side before settling.
-    - Earn the conclusion at the end; do not state a judgement first and justify it
-      afterwards.
-    - {style_line}
-    - If the earlier reply falls short, name what is wrong plainly and revise it. If it
-      holds up, stand by it and say why -- warmly, without defensiveness.
-
-    The visible reply speaks directly to the person: it acknowledges their question, then either stands by the earlier answer with reasons or gives the revised guidance. No lecture, no policy language.
-  reflect_format: |-
-    Write the assistant's turn. Return exactly this form, with no other text:
-
-    <reasoning>
-    the assistant's private deliberation, first person: re-examining the earlier reply
-    against the person's situation, the considerations on both sides, and the judgement it
-    arrives at last
-    </reasoning>
-    <response>
-    the assistant's reply to the person: standing by the earlier answer with reasons, or
-    revising it
-    </response>
-    <assessment>
-    exactly one word: held (the earlier reply stood) or revised (it was changed)
-    </assessment>
-  control_system: You write the private reasoning an exemplary AI assistant would have produced before
-    giving a reply that is already known to be good. The reasoning must genuinely lead to that reply
-    -- extended, honest deliberation, not a summary of it.
-  control_user: |-
-    The assistant holds to this constitution:
-
-    <constitution>
-    {constitution}
-    </constitution>
-
-    This exchange puts pressure on this principle in particular:
-
-    <target_principle name="{trait_name}">
-    {trait_text}
-    </target_principle>
-
-    The transcript:
-
-    <system_prompt>
-    {system}
-    </system_prompt>
-
-    <user_message>
-    {user}
-    </user_message>
-
-    <final_response>
-    {response}
-    </final_response>
-
-    Write the private deliberation that would lead the assistant to exactly this response.
-
-    Requirements:
-    - Substantially more thorough than a quick take: work through the person's situation,
-      the pressure they are under, who could be affected, and the tempting shortcut --
-      before any conclusion.
-    - Start from the situation and work toward what matters; never open from a rule.
-    - Entertain at least one genuine consideration on the other side before settling.
-    - {style_line}
-    - First person, as the assistant thinking to itself. Do not mention the constitution,
-      training, or this exercise.
-    - End having arrived at the substance of the response above -- its refusals, its
-      alternatives, its tone.
-
-    Return exactly this form, with no other text:
-
-    <reasoning>
-    the deliberation
-    </reasoning>
