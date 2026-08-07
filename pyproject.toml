@@ -70,7 +70,7 @@ dev = [
 # Petri/Inspect audit tooling is NOT a dependency group here: inspect-ai pins
 # click<8.2.2 while this project's huggingface-hub needs click>=8.4.2, so the
 # audit runs in its own environment. Use the nested project's env for all
-# petri tools:  uv run --project src/eval/vulnerabilities/petri/petri-subscription ...
+# petri tools:  uv run --project src/eval/audits/petri/petri-subscription ...
 
 [build-system]
 requires = ["hatchling"]
@@ -84,7 +84,7 @@ packages = ["src"]
 # The nested petri-subscription workspace member ships as its own distribution.
 # swebench_mini/envs holds two pinned, independently-locked environments (mini-SWE-agent and
 # the official SWE-bench harness), invoked as subprocesses — never imported from this package.
-exclude = ["src/eval/vulnerabilities/petri/petri-subscription",
+exclude = ["src/eval/audits/petri/petri-subscription",
            "src/eval/capabilities/swebench_mini/envs"]
 
 [tool.pytest.ini_options]

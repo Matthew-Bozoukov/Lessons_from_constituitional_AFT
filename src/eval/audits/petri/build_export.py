@@ -18,7 +18,7 @@ Sources (all already on disk; no audits, no GPU, no API calls):
 Outcome mapping is deliberately NOT the raw judge score. See index.md.
 
 Usage:
-    python src/eval/vulnerabilities/petri/build_export.py \
+    python src/eval/audits/petri/build_export.py \
         --log-dir LOG_DIR --seed-dir SEED_DIR --funnel FUNNEL --out OUT_DIR \
         [--samples SAMPLES] [--fidelity FIDELITY] [--pipeline-log PIPELINE_LOG]
 """

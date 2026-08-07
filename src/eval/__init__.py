@@ -1,4 +1,4 @@
-# ABOUTME: Evaluation of trained models (capabilities/, misalignment/, vulnerabilities/) and
+# ABOUTME: Evaluation of trained models (capabilities/, misalignment/, audits/) and
 # ABOUTME: the eval registry: name -> EvalSpec with a lazy runner, resolved only when selected.
 
 from __future__ import annotations

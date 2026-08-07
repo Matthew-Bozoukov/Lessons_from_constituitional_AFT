@@ -47,7 +47,7 @@ def test_registry_specs_are_wellformed():
     assert EVALS, "registry is empty"
     for name, spec in EVALS.items():
         assert isinstance(spec, EvalSpec), name
-        # package is relative to src.eval and names its subarea (vulnerabilities/ is exempt
+        # package is relative to src.eval and names its subarea (audits/ is exempt
         # from the contract, so nothing may register under it).
         assert spec.package.split(".")[0] in ("capabilities", "misalignment"), (name, spec.package)
         assert spec.config.startswith("configs/eval/"), (name, spec.config)

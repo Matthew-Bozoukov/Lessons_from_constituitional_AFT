@@ -7,7 +7,7 @@ commit b38da52; the original run's inputs and outputs live in git history at
 that commit.
 
 Usage:
-    python src/eval/vulnerabilities/petri/verify_export.py --export EXPORT_DIR
+    python src/eval/audits/petri/verify_export.py --export EXPORT_DIR
 """
 import argparse
 import json

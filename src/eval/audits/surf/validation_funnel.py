@@ -40,7 +40,7 @@ import os
 import statistics
 from collections import Counter
 
-from src.eval.vulnerabilities.petri.funnel_stats import clopper_pearson
+from src.eval.audits.petri.funnel_stats import clopper_pearson
 
 
 def fingerprint(query):
@@ -145,7 +145,7 @@ def build_funnel(rows, spec, source="", rubric="", target="", judge=""):
             "final_false_positive": len(fps),
             "false_positive_rate": round(fp_rate, 4),
             "false_positive_rate_ci95": ci,
-            "ci_method": "Clopper-Pearson exact, via src/eval/vulnerabilities/petri/funnel_stats.py",
+            "ci_method": "Clopper-Pearson exact, via src/eval/audits/petri/funnel_stats.py",
         },
         "confirmed": {
             str(i): {

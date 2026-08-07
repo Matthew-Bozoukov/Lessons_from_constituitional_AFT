@@ -46,7 +46,7 @@ Notes:
   instance — never a RunPod pod: unprivileged containers cannot create the per-scenario
   Compose networks). Option B fits it naturally: local docker, remote model.
   `docker_preflight` refuses unusable hosts with a specific remedy.
-- **Exception**: `src/eval/vulnerabilities/` predates this rule and does not yet conform
+- **Exception**: `src/eval/audits/` predates this rule and does not yet conform
   (own nested env, own workflow) — see `docs/TODO.md`.
 
 ## Where things go (keep this structure)
@@ -89,7 +89,7 @@ src/                    correctness-critical reusable code (installed editable; 
       internalization/      self-contained constitution-internalization proxy eval (Tier A).
                             `python -m src.eval.misalignment.internalization.cli run --smoke`
                             runs offline in ~10s; see its README.md
-    vulnerabilities/      petri/ + surf/ audit tooling (generalized from the completed MSM audit)
+    audits/               petri/ + surf/ audit tooling (generalized from the completed MSM audit)
 configs/                OmegaConf YAML, one per step, foldered by pipeline stage.
                         NEVER hardcode hyperparams in scripts.
   data/                   synthdoc/ generation configs (difficult_advice, model_eval_model, self_reflection)
@@ -123,7 +123,7 @@ docs/LOG.md             append-only research log, MOST RECENT FIRST. Add an entr
   `src/data/`, training in `src/train/`, evaluation and audit tooling in
   `src/eval/` under the matching subarea (`capabilities/`,
   `misalignment/` — including its `internalization/` proxy eval — or
-  `vulnerabilities/petri|surf/`).
+  `audits/petri|surf/`).
 - `scripts/` holds core pipelines we expect to rerun. A script does no real work
   itself — it only pipes `src/` functions together (or drives a GPU box). If a
   script grows logic worth reusing, the logic moves into `src/` and the script
@@ -328,7 +328,7 @@ uv run scripts/run_eval.py --target <hf_path> [<hf_path> ...] --name <eval> [key
   (git SHA, config, target, mode); results push to HF with the required dataset-card
   fields *as they are produced* (a dead pod loses nothing); a summary row lands in
   `output/eval_summaries/`.
-- The audit tooling in `src/eval/vulnerabilities/` is exempt from this contract for now.
+- The audit tooling in `src/eval/audits/` is exempt from this contract for now.
 
 ## GPU / vast.ai operational playbook (this is the fiddly part — follow it)
 

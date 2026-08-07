@@ -7,7 +7,7 @@ commit b38da52; the original run's inputs and hand-adjudicated outputs live in
 git history at that commit.
 
 Usage:
-    python src/eval/vulnerabilities/petri/extract_funnel.py --log-dir LOG_DIR --out-dir OUT_DIR
+    python src/eval/audits/petri/extract_funnel.py --log-dir LOG_DIR --out-dir OUT_DIR
 """
 import argparse
 import glob
