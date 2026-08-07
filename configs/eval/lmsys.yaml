@@ -42,7 +42,6 @@ subset:
 prompts_path: null
 
 generation:              # target sampling — identical across arms, parity is load-bearing
-  api_key: EMPTY
   temperature: 0.7
   top_p: 0.95
   max_tokens: 4096       # headroom for the <think> trace + a full chat reply (CLAUDE.md gotcha 5)

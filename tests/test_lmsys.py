@@ -166,6 +166,7 @@ def _target(hf_path, model_key, mode="think", boots: list | None = None):
         def __init__(self):
             self.spec = spec
             self.model_name = model_key
+            self.api_key = "EMPTY"
 
         @property
         def base_url(self):

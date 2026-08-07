@@ -82,7 +82,6 @@ prompt:
 # across all arms, temperature 0, one sample. Stamped into each arm's run_meta.json.
 generation:
   endpoint: "http://localhost:8000/v1"   # override with --endpoint for a RunPod proxy
-  api_key: "EMPTY"
   temperature: 0.0
   top_p: 1.0
   # CLAUDE.md gotcha 6, and the single most common way this eval reports a false 0%.

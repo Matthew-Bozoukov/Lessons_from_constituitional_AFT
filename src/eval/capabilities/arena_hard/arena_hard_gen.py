@@ -110,6 +110,7 @@ def main(
     config: str = "configs/eval/arena_hard.yaml",
     arm: str = "",
     served_model: str = "",
+    api_key: str = "",
     endpoint: str = "",
     stage: int = 0,
     creative: int = -1,
@@ -186,7 +187,7 @@ def main(
     print(f">>> decoding:     temp={gen.temperature} top_p={gen.top_p} max_tokens={gen.max_tokens}")
 
     base_url = endpoint or str(gen.endpoint)
-    client = OpenAI(base_url=base_url, api_key=str(gen.api_key))
+    client = OpenAI(base_url=base_url, api_key=api_key or str(gen.api_key))
 
     # The output budget must be sized PER PROMPT against the server's context window.
     # A fixed max_tokens large enough for a hard reasoning prompt (the <think> trace is

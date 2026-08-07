@@ -293,7 +293,7 @@ def run(target, cfg, out_dir: Path, *, reference: str = "") -> dict:
         cache.fetch(my_key, out_dir)
         answers = sorted(load_answers(out_dir).values(), key=lambda r: r["id"])
     else:
-        client = OpenAI(base_url=target.base_url, api_key=str(gen.api_key),
+        client = OpenAI(base_url=target.base_url, api_key=target.api_key,
                         timeout=float(gen.request_timeout), max_retries=int(gen.max_retries))
 
         def generate(i: int) -> dict:

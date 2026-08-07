@@ -152,6 +152,13 @@ def main(argv: list[str] | None = None) -> None:
     try:
         for hf_path in targets:
             spec = resolve_target(hf_path)
+            if spec.api_base and not EVALS[args.name].supports_api_target:
+                raise SystemExit(
+                    f"!!! {args.name} does not support an API-endpoint target "
+                    f"({hf_path}): it relies on vLLM-served behaviour (a served-model "
+                    "prefix, LoRA swap, docker bridge, or a pinned chat template). Give "
+                    "it an HF path, or run an API-capable eval "
+                    f"({', '.join(n for n, s in EVALS.items() if s.supports_api_target)}).")
             if cfg.get("mode"):
                 # The documented escape hatch (CLAUDE.md "The eval framework"): mode is
                 # normally INFERRED from the artifact and never declared at eval time. A full

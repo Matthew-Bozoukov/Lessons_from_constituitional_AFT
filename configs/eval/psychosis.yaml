@@ -27,7 +27,6 @@ judge:
   max_tokens: 4096    # grok-4 reasons before answering; headroom per CLAUDE.md gotcha 5
 
 generation:        # target sampling, matching agentic_misalignment's temperature
-  api_key: EMPTY
   temperature: 1.0
   top_p: 0.95
   max_tokens: 4096  # headroom for the <think> trace + a full chat reply (CLAUDE.md gotcha 5)

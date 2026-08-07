@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import shlex
 import subprocess
 import sys
@@ -32,16 +33,34 @@ _HEALTH_TIMEOUT_S = 1800  # first start downloads weights; a 32B pull can take a
 _SERVER_PATTERN = "vllm.entrypoints.openai.api_serve[r]"
 
 
+# A --target may be an HF path (served locally by vLLM) OR an external API endpoint,
+# written `<provider>:<model-id>` on the CLI — e.g. `openrouter:moonshotai/kimi-k2`. HF
+# repo ids never contain a colon, so the scheme is unambiguous. Each provider maps to an
+# OpenAI-compatible base URL and the env var holding its key (loaded from .env, never a
+# config field — secrets stay out of the scientific record). Add a row to serve a new one.
+API_PROVIDERS: dict[str, tuple[str, str]] = {
+    "openrouter": ("https://openrouter.ai/api/v1", "OPENROUTER_API_KEY"),
+}
+
+
 @dataclass(frozen=True)
 class TargetSpec:
-    """A resolved --target: what to serve and in which thinking mode."""
+    """A resolved --target: what to serve and in which thinking mode.
 
-    hf_path: str          # as given on the CLI
-    base_model: str       # HF id vLLM loads
+    An API target (`api_base` set) is not served by vLLM — it names a public endpoint,
+    for comparing our models against off-the-shelf ones. Its `mode` is a comparison LABEL
+    only: we don't control the provider's template, so nothing is pinned (unlike a served
+    arm, whose mode is pinned into the chat template).
+    """
+
+    hf_path: str          # as given on the CLI (HF id, or `<provider>:<model-id>`)
+    base_model: str       # HF id vLLM loads; for an API target, the provider's model id
     adapter: bool         # True when hf_path is a LoRA adapter repo
     mode: str             # think | nothink | default (full model: template's own default)
     model_key: str        # filesystem/served-name-safe identifier
     lora_rank: int | None
+    api_base: str | None = None      # OpenAI-compatible base URL; None => served by vLLM
+    api_key_env: str | None = None   # env var holding the key for api_base
 
 
 class ServedTarget:
@@ -54,13 +73,37 @@ class ServedTarget:
 
     def __init__(self, spec: TargetSpec, server: "VllmServer"):
         self.spec = spec
-        self.model_name = spec.model_key if spec.adapter else "base"
+        # The id sent in the request body: the provider's model id for an API target,
+        # else vLLM's --served-model-name ("base", or the adapter's key after a LoRA swap).
+        self.model_name = spec.base_model if spec.api_base \
+            else (spec.model_key if spec.adapter else "base")
         self._server = server
 
     @property
+    def is_api(self) -> bool:
+        """True when this target is a public API endpoint, not served by vLLM."""
+        return self.spec.api_base is not None
+
+    @property
     def base_url(self) -> str:
-        """http://localhost:<port>/v1 (tunnelled when serving remotely). Boots on demand."""
+        """OpenAI-compatible base URL. For an API target, the provider's — no server
+        boots. For an HF target, http://localhost:<port>/v1 (tunnelled when remote),
+        booted on demand."""
+        if self.spec.api_base is not None:
+            return self.spec.api_base
         return self._server.serve(self.spec)
+
+    @property
+    def api_key(self) -> str:
+        """The key evals send with each request: the provider's key from the environment
+        for an API target, else "EMPTY" (local vLLM accepts any). Owned by the target,
+        never read from a config — secrets stay out of the scientific record."""
+        if not self.is_api:
+            return "EMPTY"
+        key = os.environ.get(self.spec.api_key_env or "")
+        assert key, (f"API target {self.spec.hf_path} needs {self.spec.api_key_env} in "
+                     "the environment (.env) — it is unset")
+        return key
 
 
 def _mode_from_training_meta(meta: dict) -> str:
@@ -89,12 +132,40 @@ def _spec_from_files(hf_path: str, adapter_config: dict | None, training_meta: d
     )
 
 
-def resolve_target(hf_path: str) -> TargetSpec:
-    """Resolve an HF path (adapter or full model) into a TargetSpec.
+def resolve_api_target(provider: str, model_id: str) -> TargetSpec:
+    """Build a TargetSpec for a `<provider>:<model-id>` API endpoint (pure; unit-tested).
 
-    Only metadata files are downloaded here; weights are pulled by vLLM (base) and
-    `fetch_adapter` (adapter), on whichever machine serves.
+    No metadata is fetched — a public model has no artifact. Mode defaults to "default"
+    (a label; the provider's template is not ours to pin) and takes the `mode=` override
+    like a full model. The key is disambiguated by provider so two providers serving the
+    same model id land in distinct output dirs.
     """
+    base, key_env = API_PROVIDERS[provider]
+    return TargetSpec(
+        hf_path=f"{provider}:{model_id}", base_model=model_id, adapter=False,
+        mode="default",
+        model_key=f"{provider}_{model_id.split('/')[-1]}".replace(".", "_"),
+        lora_rank=None, api_base=base, api_key_env=key_env)
+
+
+def resolve_target(hf_path: str) -> TargetSpec:
+    """Resolve a --target into a TargetSpec.
+
+    Two forms: `<provider>:<model-id>` (an API endpoint, see API_PROVIDERS) or an HF path
+    (adapter or full model). HF repo ids never contain a colon, so the scheme is
+    unambiguous. For HF paths only metadata files are downloaded here; weights are pulled
+    by vLLM (base) and `fetch_adapter` (adapter), on whichever machine serves.
+    """
+    scheme, sep, rest = hf_path.partition(":")
+    if sep and scheme in API_PROVIDERS:
+        assert rest, f"API target {hf_path!r} names no model (expected {scheme}:<model-id>)"
+        return resolve_api_target(scheme, rest)
+    if sep and "/" not in scheme:
+        # A colon with an unknown scheme is a typo'd provider, not an HF id — fail loud
+        # rather than trying to fetch "openroute:foo/bar" as a repo.
+        raise ValueError(
+            f"unknown API provider {scheme!r} in target {hf_path!r} "
+            f"(known: {', '.join(sorted(API_PROVIDERS))}); an HF path has no scheme.")
     try:
         with open(hf_download(hf_path, "adapter_config.json")) as f:
             adapter_config = json.load(f)

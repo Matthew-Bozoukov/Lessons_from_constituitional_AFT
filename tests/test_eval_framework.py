@@ -348,3 +348,57 @@ def test_derive_run_kwargs_come_from_the_run_signature():
     # A flag no eval declares is a hard error, never silently dropped.
     with pytest.raises(SystemExit, match="unknown arguments"):
         mod.derive_run_kwargs(fake_run, ["--bogus", "x"])
+
+
+def test_resolve_target_api_endpoint_scheme():
+    from src.endpoints.vllm_server import VllmServer, resolve_target
+
+    spec = resolve_target("openrouter:moonshotai/kimi-k2")
+    assert spec.api_base == "https://openrouter.ai/api/v1"
+    assert spec.api_key_env == "OPENROUTER_API_KEY"
+    assert spec.base_model == "moonshotai/kimi-k2"          # id sent to the API
+    assert spec.model_key == "openrouter_kimi-k2"           # provider-disambiguated
+    assert spec.mode == "default" and not spec.adapter
+
+    # ServedTarget exposes the OpenAI triple without booting vLLM.
+    from pathlib import Path
+    st = VllmServer(work_dir=Path("/tmp/_t"), port=8000).ensure(spec)
+    assert st.is_api and st.base_url == spec.api_base
+    assert st.model_name == "moonshotai/kimi-k2"
+
+    with pytest.raises(ValueError, match="unknown API provider"):
+        resolve_target("openroute:foo/bar")            # typo'd scheme, not an HF id
+    with pytest.raises(AssertionError, match="names no model"):
+        resolve_target("openrouter:")
+
+
+def test_api_target_key_from_env_not_config(monkeypatch):
+    from pathlib import Path
+
+    from src.endpoints.vllm_server import VllmServer, resolve_target
+
+    st = VllmServer(work_dir=Path("/tmp/_t2"), port=8000).ensure(
+        resolve_target("openrouter:openai/gpt-4o-mini"))
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-xyz")
+    assert st.api_key == "sk-xyz"
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    with pytest.raises(AssertionError, match="OPENROUTER_API_KEY"):
+        _ = st.api_key
+
+
+def test_local_target_api_key_is_empty_sentinel():
+    from pathlib import Path
+
+    from src.endpoints.vllm_server import TargetSpec, VllmServer
+
+    spec = TargetSpec(hf_path="Qwen/Qwen3-32B", base_model="Qwen/Qwen3-32B",
+                      adapter=False, mode="default", model_key="Qwen3-32B", lora_rank=None)
+    st = VllmServer(work_dir=Path("/tmp/_t3"), port=8000).ensure(spec)
+    assert not st.is_api and st.api_key == "EMPTY"
+
+
+def test_registry_marks_only_openai_client_evals_api_capable():
+    # The four chat/answers evals reach the target purely through base_url/model/key;
+    # docker + vendored-harness evals do not and must stay False.
+    assert {n for n, s in EVALS.items() if s.supports_api_target} == {
+        "mmlu", "arena_hard", "lmsys", "psychosis"}

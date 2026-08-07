@@ -139,6 +139,7 @@ def run_arm(
     cfg: DictConfig,
     endpoint: str,
     out_root: Path,
+    api_key: str = "EMPTY",
 ) -> dict[str, Any]:
     """Generate, grade and summarise one arm over the shared question subset.
 
@@ -187,7 +188,7 @@ def run_arm(
 
     client = OpenAI(
         base_url=endpoint,
-        api_key=str(gen.api_key),
+        api_key=api_key,
         timeout=float(gen.get("request_timeout", 180)),
         max_retries=int(gen.get("max_retries", 2)),
     )
@@ -445,4 +446,5 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     arm = {"name": target.spec.model_key, "served": target.model_name,
            "adapter": target.spec.hf_path if target.spec.adapter else None,
            "synthetic_fraction": None, "role": "target", "trained": True}
-    return run_arm(arm, questions, shots, cfg, target.base_url, out_dir)
+    return run_arm(arm, questions, shots, cfg, target.base_url, out_dir,
+                   api_key=target.api_key)

@@ -113,7 +113,7 @@ def run(target, cfg, out_dir: Path) -> dict:
     openrouter = OpenRouterClient()
     target_client = OpenAI(
         base_url=target.base_url,
-        api_key=str(cfg.generation.api_key),
+        api_key=target.api_key,
         timeout=float(cfg.generation.request_timeout),
         max_retries=int(cfg.generation.max_retries),
     )

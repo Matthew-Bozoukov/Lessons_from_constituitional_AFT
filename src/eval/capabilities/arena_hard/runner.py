@@ -60,7 +60,7 @@ def run(target, cfg, out_dir: Path, *, reference: str = "") -> dict:
     smoke = bool(cfg.get("smoke", False))
     arena_hard_gen.main(config=str(cfg_path), arm=arm_name,
                         served_model=target.model_name, endpoint=target.base_url,
-                        smoke=smoke)
+                        api_key=target.api_key, smoke=smoke)
     arena_hard_judge.main(config=str(cfg_path), mode="judge", arm=arm_name)
 
     return {"arm": arm_name, "baseline": baseline,

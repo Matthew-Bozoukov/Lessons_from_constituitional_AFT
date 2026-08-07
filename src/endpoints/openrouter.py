@@ -22,8 +22,21 @@ load_dotenv()
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
-# Only transient failures are retried; everything else fails fast and surfaces.
-_TRANSIENT = (RateLimitError, APIConnectionError, APITimeoutError)
+
+class EmptyCompletionError(RuntimeError):
+    """A completion came back with `content=None` despite finish_reason=stop.
+
+    OpenRouter load-balances a model across many upstream providers and re-routes on
+    every call; a provider intermittently returns a blank body (observed on
+    deepseek-chat-v3.1, 2026-08-07 — 4/20 concurrent calls, unreproducible minutes
+    later across 18 calls / 7 providers). Treating it as transient re-routes to
+    another provider instead of failing the whole item on one bad backend.
+    """
+
+
+# Only transient failures are retried; everything else fails fast and surfaces. An empty
+# completion is transient BY ROUTING: the retry lands on a different upstream provider.
+_TRANSIENT = (RateLimitError, APIConnectionError, APITimeoutError, EmptyCompletionError)
 
 
 @dataclass
@@ -91,7 +104,12 @@ class OpenRouterClient:
         choice = resp.choices[0]
         content = choice.message.content
         if content is None:
-            raise ValueError(f"Model {model} returned empty content: {resp}")
+            # Retryable: the decorator re-routes to another upstream provider. A model
+            # that blanks on EVERY provider (e.g. a hard content filter) exhausts the
+            # attempts and this surfaces — the caller still sees a clear failure.
+            raise EmptyCompletionError(
+                f"Model {model} returned empty content (provider "
+                f"{getattr(resp, 'provider', '?')}): {resp}")
         usage = resp.usage
         return ChatResult(
             content=content,
