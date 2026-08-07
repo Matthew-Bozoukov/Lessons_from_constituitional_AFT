@@ -220,6 +220,14 @@ def _calls(cfg: dict) -> dict[str, int]:
                                  f"Registered: {sorted(CELLS)}")
             n = sum(v for c, v in enabled.items()
                     if CELLS[c].response_kind == "flawed")
+        elif kind == "revise_cells":
+            enabled = {c: int(v) for c, v in cfg["cells"].items() if int(v) > 0}
+            unknown = sorted(set(enabled) - set(CELLS))
+            if unknown:
+                raise ValueError(f"unregistered cell(s) enabled: {unknown}. "
+                                 f"Registered: {sorted(CELLS)}")
+            # One rewrite per verdict-carrying document; control passes through free.
+            n = sum(v for c, v in enabled.items() if CELLS[c].verdicts)
         elif kind == "generate_cells":
             enabled = {c: int(v) for c, v in cfg["cells"].items() if int(v) > 0}
             unknown = sorted(set(enabled) - set(CELLS))

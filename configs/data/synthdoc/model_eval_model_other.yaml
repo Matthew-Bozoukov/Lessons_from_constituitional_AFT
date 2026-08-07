@@ -32,10 +32,10 @@ hf_repo_smoke: null
 hf_private: false
 
 workers: 16
-# 2,100 critique docs + 1,050 perturbations at the measured ~$0.030/doc reasoning-off
-# unit cost ~ $63; headroom to 75. Balance is low (~$59 on 2026-08-06) -- the full run
-# waits for a top-up; the --smoke pilot (~$0.5) fits.
-budget_usd: 75.0
+# Measured on the 2026-08-07 smoke (manifest by_stage, smoke_20260807_132548):
+# critique $0.0448/doc + rewrite $0.0524/doc + perturb $0.0162/pair -> full run
+# 2,100 docs + 1,050 pairs ~ $221; ~10% headroom. (`--ablate final` prices ~ $121.)
+budget_usd: 240.0
 
 # --smoke IS the verification pilot: 4 docs per cell, local-only.
 smoke:
@@ -73,6 +73,14 @@ models:
     max_tokens: 8192
     reasoning: {enabled: false}
     assumed_tokens: {in: 2500, out: 1500}
+  # Stage `final` -- the difficult-advice stage-6 twin: rewrite each document to
+  # maximally exhibit the target principle; the verdict itself is pinned.
+  rewrite:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.7
+    max_tokens: 12288
+    reasoning: {enabled: false}
+    assumed_tokens: {in: 16000, out: 4500}
 
 # Consumed by `uv run synthdoc check --config configs/data/synthdoc/model_eval_model_other.yaml --run_dir <dir>`.
 checks:
@@ -208,6 +216,94 @@ stages:
 - name: generated
   kind: generate_cells
   checkpoint: record_id
+- name: final
+  kind: revise_cells
+  model: rewrite
+  checkpoint: record_id
+  # Identity null-op: `--ablate final` trains on the un-revised stage-4 documents,
+  # mirroring the difficult-advice ablation of the same name.
+  ablate_with:
+    reasoning: reasoning
+    response: response
+  prompts:
+    system: |-
+      You revise evaluation documents so they maximally exhibit one specific principle. You
+      preserve everything that already works -- including the verdict, which is fixed -- and
+      change only what falls short.
+    # Rendered into {document_context} for the self cells (unused here: only critique
+    # cells are enabled, which reuse the exact wrapped transcript the record carries).
+    context_self: |-
+      <system_prompt>
+      {system}
+      </system_prompt>
+
+      <user_message>
+      {user}
+      </user_message>
+
+      <assistant_earlier_reply>
+      {evaluated_response}
+      </assistant_earlier_reply>
+
+      <user_followup>
+      {reconsider}
+      </user_followup>
+    user: |-
+      Full constitution the assistant is trained against:
+
+      <constitution>
+      {constitution}
+      </constitution>
+
+      The principle this document must maximally exhibit:
+
+      <target_principle name="{trait_name}">
+      {trait_text}
+      </target_principle>
+      {known_flaw}
+      The conversation the assistant's turn answers:
+
+      <conversation>
+      {document_context}
+      </conversation>
+
+      The assistant's draft turn, which reached the verdict "{assessment}":
+
+      <assistant_reasoning>
+      {reasoning}
+      </assistant_reasoning>
+
+      <assistant_response>
+      {response}
+      </assistant_response>
+
+      Rewrite the assistant's reasoning and response so they exhibit the target principle as
+      strongly as possible while staying true to the exchange under evaluation.
+
+      Hold to all of this:
+      - **Deliberate openly.** The reasoning starts from the person's situation, entertains
+        at least one genuine consideration on the other side, and earns its conclusion at
+        the end -- never a verdict first, justified afterwards. This is the ingredient that
+        matters most.
+      - **Keep the verdict.** The assessment stays exactly "{assessment}"; strengthen how it
+        is reached and expressed, never whether.
+      - {style_line}
+      - **Stay concrete.** Judge the evaluated reply on whether it served the person, in
+        terms of real stakes for real people -- no rule-citing, no policy language.
+      - **Stay proportionate.** Warm, practical, specific, not preachy; length and register
+        stay close to the draft's.
+
+      Return your answer in exactly this form, with no other text:
+
+      <reasoning>
+      rewritten private deliberation
+      </reasoning>
+      <response>
+      rewritten reply
+      </response>
+      <changes>
+      1-2 sentences on what you strengthened
+      </changes>
 - name: sft
   kind: assemble_cells
 

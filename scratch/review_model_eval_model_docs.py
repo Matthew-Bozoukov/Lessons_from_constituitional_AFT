@@ -17,7 +17,9 @@ def _read(path: Path) -> list[dict]:
 def main(run_dir: str) -> None:
     """Write <run_dir>/review.md: every SFT record, fully readable end to end."""
     d = Path(run_dir)
-    sft = _read(d / "stage_5_sft.jsonl")
+    # stage_6 since the `final` rewrite stage landed (2026-08-07); stage_5 on older runs.
+    sft = _read(next(p for p in (d / "stage_6_sft.jsonl", d / "stage_5_sft.jsonl")
+                     if p.exists()))
     perturbed = {r["record_id"]: r for r in _read(d / "stage_3_perturbed.jsonl")}
 
     out = ["# model-eval-model review\n",

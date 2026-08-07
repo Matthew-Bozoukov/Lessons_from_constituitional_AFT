@@ -19,11 +19,11 @@ to a future reader.
 
 | category | spent to date |
 |---|---|
-| OpenRouter (data generation) | **$517.67** |
+| OpenRouter (data generation) | **$518.51** |
 | OpenRouter (eval judging) | $28.19 |
 | OpenRouter (eval scaffolding/smoke) | $0.14 |
 | GPU rental | $26.88 (+ ~4 RunPod A100-h on 2026-08-03, $ TBD from dashboard) |
-| **total** | **$572.88** (+ GPU TBD; excludes ~$18.6 unattributed shared-key spend flagged 2026-08-06) |
+| **total** | **$573.72** (+ GPU TBD; excludes ~$18.6 unattributed shared-key spend flagged 2026-08-06) |
 
 <!-- Total recomputed once at the jamie/write-all-evals-to-hf <- main merge (2026-08-06),
      not carried over from either side: both branches advanced the same running total
@@ -39,6 +39,22 @@ to a future reader.
      517.67 + 28.19 + 0.14 + 26.88 = 572.88. -->
 
 ---
+
+## 2026-08-07 — mem-other smoke with the new `final` rewrite stage (OpenRouter, Sonnet 5)
+
+- **What**: 8-doc `--smoke` of `model_eval_model_other.yaml` after adding the `final`
+  rewrite stage (4 perturbations + 8 critiques + 8 rewrites), to eyeball draft-vs-revised
+  quality before greenlighting the full 2,100-doc run.
+- **Cost**: **$0.84** manifest tally (`output/model_eval_model_other/smoke_20260807_132548`).
+  `/credits` read $207.54 before → $207.48 shortly after (endpoint lags; manifest figure
+  is the honest per-run number here, no cached replays in a fresh run dir).
+- **Unit cost** (manifest by_stage): perturb $0.0162/call, critique $0.0448/doc,
+  rewrite **$0.0524/doc** (12.5k in / 2.7k out per rewrite call; within the ~$0.03–0.06
+  prediction). Full-run projection: 2,100×($0.0448+$0.0524) + 1,050×$0.0162 ≈ **$221** —
+  **over the $160 budget**; raise `budget_usd` to ~$240 (or run `--ablate final` at
+  ~$121) after `synth estimate --measured` on this smoke's manifest.
+- **Produced**: 8/8 docs with correct verdicts (4 `issue_found` on flawed, 4 `sound` on
+  good); local-only (smoke HF repo is null).
 
 ## 2026-08-06 (3) — self-reflection corpus expansion 592 → 2,008 (OpenRouter, Haiku 4.5 + Sonnet 5)
 
