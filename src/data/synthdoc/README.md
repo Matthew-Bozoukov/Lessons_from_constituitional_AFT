@@ -44,7 +44,7 @@ A config's `stages:` entry names an operator `kind` and supplies everything it n
 | `chat_export` | free export to `{messages, metadata}`; entries may carry `when:` for multi-turn records | `messages`, `metadata` |
 | `scenarios_weighted` | weighted trait apportionment, control slice, motive rotation, per-batch industries, deterministic per-scenario variants | `model`, `prompts` (+`control_user`), `threats`, `control_threats`, `fields` |
 | `load_source_run` | a completed run's finals + constitution-sha provenance check | (`source:` block) |
-| `plan_cells` / `perturb_pairs` / `generate_cells` / `assemble_cells` | the model-eval-model cells (see below) | (`cells:`, `flaws:`, `prompts:` blocks) |
+| `plan_cells` / `perturb_pairs` / `generate_cells` / `revise_cells` / `assemble_cells` | the model-eval-model cells (see below); `revise_cells` is the constitution-grounded rewrite pass (verdict pinned, control passes through) | (`cells:`, `flaws:`, `prompts:` blocks; `revise_cells` takes `model`, `prompts`, `checkpoint`, `ablate_with`) |
 
 Prompt templates in configs are `str.format` templates over record fields plus shared
 vars (`{constitution}`, `{style_guidance}`). Literal JSON braces are escaped `{{ }}`.
@@ -101,10 +101,24 @@ reasons about a response to one of those scenarios and works out whether it was 
 right call. The bet is on the reasoning, not the verdict: every prompt enforces
 situation→principle order, a consideration on the other side, and conclusions earned at
 the end; the planner assigns each record an explicitness style (name / paraphrase /
-embody). Stage list: source → plan (deterministic cell/explicitness/flaw-grid
-allocation, `record_id = "<scenario_id>::<cell>"`) → perturb (minimal pairs, one flaw =
+embody). Stage list (mirroring the difficult-advice layout since 2026-08-07): source →
+plan (deterministic cell/explicitness/flaw-grid allocation, `record_id =
+"<scenario_id>::<cell>"`) → perturb (minimal pairs, one flaw =
 omission/commission/miscalibration/over-application × clear/moderate/grey, length held,
-flaw label metadata-only) → generate → assemble.
+flaw label metadata-only) → generate → **final (rewrite against the constitution, the
+difficult-advice stage-6 twin: verdict pinned, drafts kept as
+`draft_reasoning`/`draft_response`, ablatable via `--ablate final`)** → assemble.
+
+The `final` stage lives in the base and `_other` configs; `_self` deliberately keeps the
+5-stage layout — its corpus was generated and human-verified before the stage existed
+(2026-08-06, `LASR-Callum/2026-08-06-model-eval-model-self`), and its config stays the
+record of that run. **A completed run can be revised post hoc instead of regenerated**:
+download its `stage_1..4` snapshots from the HF mirror into a local run dir, add the
+`final` stage entry + `rewrite` model block to a copy of its config, and
+`synth run --config <copy> --resume <dir>` — stages 1–4 cache-hit, so the run pays for
+the rewrite only (~$0.03–0.06/doc) and re-assembles sft for free. Until the self arm is
+revised the same way, keep comparisons matched: run `_other` with `--ablate final`, which
+reproduces the pre-rewrite pipeline exactly.
 
 Cells (`CELLS` in `cells.py`; a cell = attribution × response quality): `control`
 (gold response verbatim, extended regenerated trace — the reasoning-depth control),

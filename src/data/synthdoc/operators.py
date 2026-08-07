@@ -367,6 +367,22 @@ def op_generate_cells(sc: dict, cfg: dict) -> Stage:
                  preview=lambda r: r["reasoning"])
 
 
+def op_revise_cells(sc: dict, cfg: dict) -> Stage:
+    """Constitution-grounded rewrite of every verdict-carrying document -- the
+    difficult-advice `final` stage's twin. Control records pass through untouched;
+    the whole stage is skipped when no enabled cell carries a verdict."""
+    def fn(ctx, records, ckpt):
+        m = model_cfg(ctx.cfg, sc["model"])
+        return cells.revise_documents(
+            records, ctx.client, ctx.usage, workers=ctx.workers,
+            templates=sc["prompts"], P=ctx.cfg["prompts"],
+            constitution=ctx.constitution, stage_key=sc["model"], ckpt=ckpt, **m)
+
+    return Stage(sc["name"], fn, paid=True, checkpoint_key=sc.get("checkpoint"),
+                 skip=lambda ctx, rs: not any("assessment" in r for r in rs),
+                 preview=lambda r: r.get("rewrite_changes", r["record_id"]))
+
+
 def op_assemble_cells(sc: dict, cfg: dict) -> Stage:
     """Free export: one assembler per cell (masked-turn shapes, supervise metadata)."""
     def fn(ctx, records, ckpt):
@@ -531,5 +547,6 @@ OPERATORS = {
     "plan_cells": op_plan_cells,
     "perturb_pairs": op_perturb_pairs,
     "generate_cells": op_generate_cells,
+    "revise_cells": op_revise_cells,
     "assemble_cells": op_assemble_cells,
 }

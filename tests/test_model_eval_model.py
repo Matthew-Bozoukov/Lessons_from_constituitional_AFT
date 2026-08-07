@@ -239,6 +239,90 @@ def test_reflect_assembly_masks_the_first_turn_and_supervises_the_final():
     assert all("dropped the key caveat" not in m["content"] for m in rec["messages"])
 
 
+# --- the `final` rewrite stage -----------------------------------------------------
+
+REVISE = next(s for s in CFG["stages"] if s["kind"] == "revise_cells")
+
+
+def test_revise_messages_pin_the_verdict_and_render_context_per_attribution():
+    from src.data.synthdoc.cells import _revise_messages, _wrap_transcript
+
+    p = _plan({"m4_other_good": 1})[0]
+    gen = {**p, "reasoning": "DRAFT REASONING", "response": "DRAFT RESPONSE",
+           "assessment": "sound"}
+    user = _revise_messages(gen, "CONST", P, REVISE["prompts"])[1]["content"]
+    assert "DRAFT REASONING" in user and "DRAFT RESPONSE" in user
+    assert 'the verdict "sound"' in user and 'stays exactly "sound"' in user
+    # Critique context is byte-identical to the training record's user turn.
+    assert _wrap_transcript(gen, P) in user
+    # Self cells render the multi-turn context template instead.
+    ps = _plan({"m2_self_good": 1})[0]
+    gs = {**ps, "reasoning": "R", "response": "REPLY", "assessment": "held"}
+    us = _revise_messages(gs, "CONST", P, REVISE["prompts"])[1]["content"]
+    assert ps["user"] in us and ps["gold_response"] in us
+    assert P["reflect_variants"][ps["reflect_ix"]] in us
+
+
+def test_revise_messages_blind_unless_note_configured():
+    from src.data.synthdoc.cells import _revise_messages
+
+    p = _plan({"m3_other_flawed": 1}, flaws=FLAWS)[0]
+    gen = {**p, "flawed_response": "FLAWED", "change_summary": "cut the caveat",
+           "reasoning": "r", "response": "resp", "assessment": "issue_found"}
+    # The base config has no known_flaw_note: the summary must not reach the prompt.
+    stripped = {**gen, "flaw": None, "change_summary": ""}
+    assert _revise_messages(gen, "C", P, REVISE["prompts"]) == \
+        _revise_messages(stripped, "C", P, REVISE["prompts"])
+    # An unblinded config (the self/other arms) feeds it in as scaffolding.
+    P2 = {**P, "known_flaw_note": "\nKNOWN: {change_summary}\n"}
+    assert "cut the caveat" in \
+        _revise_messages(gen, "C", P2, REVISE["prompts"])[1]["content"]
+
+
+def test_revise_documents_pass_control_through_untouched():
+    from src.data.synthdoc.cells import revise_documents
+
+    p = _plan({"control": 2})[0]
+    gen = {**p, "reasoning": "trace"}
+    out = revise_documents([gen], client=None, usage=None, model="m",
+                           temperature=0.7, max_tokens=8, workers=1,
+                           templates=REVISE["prompts"], P=P, constitution="C")
+    assert out == [gen]
+
+
+def test_run_checks_resolves_snapshots_from_the_stage_list(tmp_path):
+    import json
+
+    from src.data.synthdoc.checks import run_checks
+
+    plan = _plan({"m4_other_good": 2})
+    final = [{**p, "reasoning": f"weighing the situation first {i}",
+              "response": "resp", "assessment": "sound"}
+             for i, p in enumerate(plan)]
+    sft = to_model_eval_model_sft(final, P)
+
+    def dump(name: str, rows: list[dict]) -> None:
+        (tmp_path / name).write_text(
+            "\n".join(json.dumps(r) for r in rows) + "\n")
+
+    dump("stage_1_source.jsonl", _source())
+    dump("stage_2_plan.jsonl", plan)
+    dump("stage_4_generated.jsonl", final[:1])   # the draft snapshot: 1 record only
+    dump("stage_5_final.jsonl", final)           # the revised snapshot: 2 records
+    dump("stage_6_sft.jsonl", sft)
+
+    cfg = {**CFG, "checks": {k: v for k, v in CFG["checks"].items()
+                             if k != "judge_model"}}  # offline: skip LLM-judged checks
+    report, _ = run_checks(tmp_path, cfg)
+    assert report["generated"] == 2, \
+        "checks must judge the revised snapshot, not the stage-4 draft"
+
+    # A run dir from the pre-rewrite layout fails loudly, pointing at the manifest.
+    (tmp_path / "stage_6_sft.jsonl").unlink()
+    with pytest.raises(AssertionError, match="older"):
+        run_checks(tmp_path, cfg)
+
+
 # --- converter passthrough ---------------------------------------------------------
 
 
@@ -399,8 +483,10 @@ def test_estimate_model_eval_model_uses_exact_call_counts():
                             "m2_self_good": 4, "m1_self_flawed": 2}}
     est = estimate(cfg)
     calls = {r["stage"]: r["calls"] for r in est["per_stage"]}
-    assert calls == {"control": 5, "critique": 10, "reflect": 6, "perturb": 5}, \
-        "perturb = one call per flawed document (m3 + m1)"
+    assert calls == {"control": 5, "critique": 10, "reflect": 6, "perturb": 5,
+                     "rewrite": 16}, \
+        "perturb = one call per flawed document (m3 + m1); rewrite = one per " \
+        "verdict-carrying document (control is free)"
     assert est["final_training_examples"] == 21
     assert est["total_usd"] > 0
     with pytest.raises(ValueError, match="unregistered"):

@@ -21,7 +21,10 @@ def _records(run_dir: Path) -> list[dict]:
     manifest under `field_mapping`); the planted flaw's `change_summary` is joined in
     from stage 3 so a reviewer sees what the blind critique was supposed to find.
     """
-    sft = [json.loads(l) for l in (run_dir / "stage_5_sft.jsonl").open()]
+    # stage_6 since the `final` rewrite stage landed (2026-08-07); stage_5 on older runs.
+    sft_path = next(p for p in (run_dir / "stage_6_sft.jsonl",
+                                run_dir / "stage_5_sft.jsonl") if p.exists())
+    sft = [json.loads(l) for l in sft_path.open()]
     summaries = {r["record_id"]: r.get("change_summary")
                  for r in map(json.loads, (run_dir / "stage_3_perturbed.jsonl").open())}
     out = []

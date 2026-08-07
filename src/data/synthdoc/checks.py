@@ -429,10 +429,34 @@ def run_checks(run_dir: str | Path, cfg: dict,
         (the report dict, whether every gated check passed).
     """
     run_dir = Path(run_dir)
-    source = read_jsonl(run_dir / "stage_1_source.jsonl")
-    plan = read_jsonl(run_dir / "stage_2_plan.jsonl")
-    generated = read_jsonl(run_dir / "stage_4_generated.jsonl")
-    sft = read_jsonl(run_dir / "stage_5_sft.jsonl")
+    # Snapshot positions and names come from the config's `stages:` list, so the
+    # checks stay correct when a stage is added (e.g. the `final` rewrite pass).
+    names = [s["name"] for s in cfg["stages"]]
+    kinds = {s["name"]: s["kind"] for s in cfg["stages"]}
+
+    def _snap_path(name: str) -> Path:
+        return run_dir / f"stage_{names.index(name) + 1}_{name}.jsonl"
+
+    def snap(name: str) -> list[dict]:
+        p = _snap_path(name)
+        assert p.exists(), (
+            f"{p.name} not found in {run_dir} -- was this run produced by an older "
+            f"stage layout? Check it with the config version recorded in its manifest.")
+        return read_jsonl(p)
+
+    def by_kind(kind: str) -> str:
+        return next(n for n in names if kinds[n] == kind)
+
+    source = snap(by_kind("load_source_run"))
+    plan = snap(by_kind("plan_cells"))
+    # Judge the documents that actually train: the LAST snapshot carrying them -- the
+    # rewrite stage's when the pipeline has one and it ran (a skipped stage writes no
+    # snapshot), else the generation stage's.
+    doc_stages = [n for n in names if kinds[n] in ("generate_cells", "revise_cells")
+                  and _snap_path(n).exists()]
+    assert doc_stages, f"no generated-document snapshot found in {run_dir}"
+    generated = snap(doc_stages[-1])
+    sft = snap(by_kind("assemble_cells"))
     constitution = full_text(cfg["constitution"])
 
     ccfg = cfg.get("checks", {})

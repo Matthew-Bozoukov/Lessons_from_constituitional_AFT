@@ -3,6 +3,60 @@
 
 # LOG
 
+## 2026-08-07 — MEM mixture configs converted to the interchange schema (the 2026-08-07 sweep missed them)
+
+**Hypothesis:** none — cleanup. The legacy-mode deletion (entry below) converted ten mixture
+configs, but `qwen36_table2_memself_20_80.yaml` and `qwen36_table2_selfreflect_20_80.yaml`
+landed via the model-eval-model branch merge still carrying `format: rendered/messages`
+(the one failing test in the suite). **Method:** both converted to `path:` +
+`reasoning: native|none`; new twin `qwen36_table2_memother_20_80.yaml` added for the
+other arm. The 20% sides are honest swaps: mem_self now consumes the interchange
+`stage_5_sft.jsonl` pulled from `LASR-Callum/2026-08-06-model-eval-model-self` (2,087
+rows, `supervise: final` verified riding through `_take_interchange`; staged as
+`data/model_eval_model_self_sft.jsonl`), self_reflection's pool was already interchange.
+The 80% Table-2 side has NO interchange original (every HF artifact and staged file is
+Qwen-rendered `{text}`), so all three configs now point at
+`data/msm_table2_filtered_8000.jsonl`, to be produced by `qwen36_msm_table2.yaml`
+stages 1-2 (~$4–5 filter — not yet run); like the sweep's conversions these are recipes,
+not byte-for-byte regenerators (rendered originals: HF + git history). Synthdoc
+GENERATION for both MEM arms needed no changes — its sft exports were already
+model-agnostic interchange. **Result:** full suite green (390 passed). **Next:** run the
+msm_table2 filter to stage the table2 pool; mem_other's 20% side lands with the full
+other-arm generation.
+
+## 2026-08-07 — Model-eval-model gains a `final` rewrite stage (difficult-advice stage-6 twin)
+
+**Hypothesis:** the difficult-advice result attributes most of its quality to stage 6 (the
+Sonnet rewrite against the full constitution); model-eval-model documents were single-shot
+and should get the same second pass so the arms differ in format, not in generation depth.
+**Method:** new `revise_cells` operator (`op_revise_cells` + `cells.revise_documents` /
+`_revise_messages`): one Sonnet 5 call per verdict-carrying document rewrites
+reasoning+response against the constitution with the verdict PINNED (never re-judged);
+drafts kept as `draft_reasoning`/`draft_response`; control cells pass through free; the
+flawed-cell unblinding scaffold (`known_flaw_note`) feeds the rewrite too; critique cells
+reuse the byte-identical wrapped transcript as context, self cells a `context_self`
+template. Stage named `final` with model block `rewrite`, mirroring the difficult-advice
+layout, ablatable via `--ablate final` (identity null-op). Added to the base and OTHER
+configs only (`model_eval_model{,_other}.yaml`), which now run source → plan → perturbed
+→ generated → final → sft; **`model_eval_model_self.yaml` is deliberately untouched** —
+its corpus was already generated and human-verified (2026-08-06,
+`LASR-Callum/2026-08-06-model-eval-model-self`), so its config stays the record of that
+run. Stages 1–4 keep their snapshot positions so completed run dirs cache-hit everything
+already paid for (resume = pay for `final` + free re-assembly only).
+`run_checks` now resolves snapshots from the config's `stages:` list and judges the LAST
+document snapshot (revised when present), instead of hardcoded `stage_4`/`stage_5` paths;
+estimator prices the new kind exactly (`rewrite = one call per non-control doc`).
+**Result:** 385 tests pass (5 new: prompt construction, blindness, control passthrough,
+checks resolution, estimator counts); assumed-token estimate adds ~$162/arm for the 2,100-doc
+arm (measured-cost projection ~$70–130 — re-estimate with `--smoke` + `--measured`);
+budgets raised (other 75→160, base 160→320). No money spent.
+**Next:** smoke the other arm (~$0.50), eyeball rewrite quality vs drafts, then pick one of:
+(a) matched comparison now — run other with `--ablate final` (byte-exact pre-rewrite
+pipeline); (b) revise BOTH arms — the self corpus needs no regeneration: pull its
+`stage_1..4` snapshots from the HF mirror into a run dir and `--resume` with a
+revise-enabled config copy, paying only for the rewrite pass (~$0.03–0.06/doc; see the
+synthdoc README's post-hoc-revise note).
+
 ## 2026-08-07 — Legacy rendered mode deleted; every mixture config is interchange-form
 
 **Hypothesis:** with all published mixture artifacts on HF, the legacy build-time rendering

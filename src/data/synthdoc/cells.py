@@ -455,6 +455,60 @@ def generate_model_eval_model_documents(plans: list[dict], client: OpenRouterCli
     return run_items(plans, one, workers, "model_eval_model:generate", ckpt)
 
 
+def _revise_messages(p: dict, constitution: str, P: dict, templates: dict) -> list[dict]:
+    """Build the rewrite call for one verdict-carrying document (the `final` stage).
+
+    The conversation context is rendered exactly as the training record will carry it:
+    critique cells reuse the wrapped transcript, self cells the stage's `context_self`
+    template. The draft's verdict is pinned into the prompt -- the rewrite strengthens
+    how the judgement is reached and expressed, it never re-judges.
+    """
+    if CELLS[p["cell"]].attribution == "self":
+        context = templates["context_self"].format(
+            system=p["system"], user=p["user"],
+            evaluated_response=_eval_response_text(p),
+            reconsider=P["reflect_variants"][p["reflect_ix"]])
+    else:
+        context = _wrap_transcript(p, P)
+    return [
+        {"role": "system", "content": templates["system"]},
+        {"role": "user", "content": templates["user"].format(
+            constitution=constitution, trait_name=p["trait_name"],
+            trait_text=p["trait_text"],
+            style_line=P["explicitness_styles"][p["explicitness"]],
+            known_flaw=_known_flaw(p, P), document_context=context,
+            reasoning=p["reasoning"], response=p["response"],
+            assessment=p["assessment"])},
+    ]
+
+
+def revise_documents(records: list[dict], client: OpenRouterClient, usage: Usage,
+                     model: str, temperature: float, max_tokens: int, workers: int,
+                     templates: dict, P: dict, constitution: str,
+                     stage_key: str = "rewrite", ckpt: Checkpoint | None = None,
+                     extra_body: dict | None = None) -> list[dict]:
+    """Rewrite every verdict-carrying document against the constitution -- the
+    model-eval-model twin of the difficult-advice `final` stage.
+
+    The stage-4 draft is kept as `draft_reasoning`/`draft_response` (so the pair stays
+    inspectable in one record, matching the difficult-advice field layout) and the
+    verdict is never changed. Control records carry no evaluation turn and pass
+    through untouched.
+    """
+    def one(p: dict) -> dict:
+        if "assessment" not in p:
+            return p  # control: reasoning-only, nothing to revise
+        parsed = call_tagged(client, usage, model,
+                             _revise_messages(p, constitution, P, templates),
+                             temperature, max_tokens, stage_key,
+                             ("reasoning", "response", "changes"), extra=extra_body)
+        return {**p, "draft_reasoning": p["reasoning"], "draft_response": p["response"],
+                "reasoning": parsed["reasoning"], "response": parsed["response"],
+                "rewrite_changes": parsed["changes"]}
+
+    return run_items(records, one, workers, "model_eval_model:rewrite", ckpt)
+
+
 def to_model_eval_model_sft(records: list[dict], P: dict) -> list[dict]:
     """Assemble generated model-eval-model records into training form, one assembler per cell."""
     return [CELLS[r["cell"]].assemble(r, P) for r in records]
