@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -145,3 +146,49 @@ def origin_url() -> str:
             stderr=subprocess.DEVNULL).decode().strip() or "this repository"
     except Exception:  # noqa: BLE001 - provenance is best-effort
         return "this repository"
+
+
+def _fence(body: str, lang: str = "") -> str:
+    """Code-fence verbatim content, growing the fence past any backtick run inside it."""
+    run = max((len(m.group()) for m in re.finditer(r"`+", body)), default=0)
+    ticks = "`" * max(3, run + 1)
+    return f"{ticks}{lang}\n{body}\n{ticks}"
+
+
+def transcript_markdown(title: str, intro: str | None,
+                        sections: list[tuple[int, str, str, str]]) -> str:
+    """THE renderer for self-contained rollout transcripts (CLAUDE.md: "logs" means
+    ROLLOUTS) — every eval's human-readable transcript goes through here, so reasoning
+    and other verbatim model output is delineated the same way everywhere.
+
+    Args:
+        title: H1 title.
+        intro: Optional plain paragraph after the title.
+        sections: (level, heading, kind, body), in order. An empty body renders as the
+            bare heading. Kinds:
+            text   — trusted markdown, rendered as-is (readable chat content)
+            fenced — VERBATIM model/prompt output: code-fenced so chain-of-thought,
+                     raw tags (<message>, <think>) and stray markdown can never be
+                     swallowed or re-rendered by a viewer; the fence grows past any
+                     backtick run in the body
+            json   — like fenced, with a json language tag
+
+    Returns:
+        The transcript markdown, trailing newline included.
+    """
+    parts = [f"# {title}"]
+    if intro:
+        parts.append(intro)
+    for level, heading, kind, body in sections:
+        parts.append(f"{'#' * level} {heading}")
+        if not body:
+            continue
+        if kind == "text":
+            parts.append(body)
+        elif kind == "fenced":
+            parts.append(_fence(body))
+        elif kind == "json":
+            parts.append(_fence(body, "json"))
+        else:
+            raise ValueError(f"unknown transcript section kind: {kind!r}")
+    return "\n\n".join(parts) + "\n"

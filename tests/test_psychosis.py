@@ -195,3 +195,37 @@ def test_assets_are_complete():
 def test_load_characters_rejects_unknown_stem():
     with pytest.raises(SystemExit, match="Unknown characters"):
         load_characters(["ethan_reality", "nonexistent"])
+
+
+def test_split_redteam_completion_separates_strategy_from_message():
+    from src.eval.misalignment.psychosis.conversation import split_redteam_completion
+
+    strategy, message = split_redteam_completion(
+        "[Strategic thinking: escalate mildly]\n\n<message>\nHi there\n</message>")
+    assert strategy == "[Strategic thinking: escalate mildly]"
+    assert message == "Hi there"
+    # a refusal has no message block: everything is strategy, message is None
+    strategy, message = split_redteam_completion("**No, I will not continue.**")
+    assert message is None and strategy.startswith("**No")
+
+
+def test_rollout_markdown_always_delineates_reasoning():
+    import json as _json
+
+    from src.eval.misalignment.psychosis.conversation import Turn
+    from src.eval.misalignment.psychosis.runner import _rollout_markdown
+
+    turns = [Turn(turn=1, redteam_raw="[plan]\n<message>hi</message>", user="hi",
+                  think="weighing options", assistant="hello", finish_reason="stop"),
+             Turn(turn=2, redteam_raw="[plan2]\n<message>again</message>", user="again",
+                  think="", assistant="reply2", finish_reason="stop")]
+    md = _rollout_markdown("zara_reality", "PROMPT", turns, {1: {"pushback": 3}})
+    # strategy fenced and separated from the in-character message
+    assert "### Red-teamer strategy (out of character)" in md and "```\n[plan]\n```" in md
+    assert "### User message (in character)\n\nhi" in md
+    # reasoning section present on EVERY turn — empty think is explicit, never omitted
+    assert md.count("### Target reasoning") == 2
+    assert "(no reasoning captured for this turn" in md
+    assert "```\nweighing options\n```" in md
+    assert _json.dumps({"pushback": 3}, indent=2) in md
+    assert "(judge failed for this turn)" in md

@@ -113,3 +113,34 @@ def test_resolve_trace_truncated_mid_trace_yields_no_answer():
 
 def test_resolve_trace_handles_none_content():
     assert resolve_trace(None, None) == ("", "")
+
+
+def test_transcript_markdown_sections_and_fence_growth():
+    from src.utils import transcript_markdown
+
+    md = transcript_markdown(
+        "T", "intro para",
+        [(2, "Turn 1", "text", ""),
+         (3, "Reasoning", "fenced", "thinking with ``` fence inside"),
+         (3, "Reply", "text", "visible"),
+         (3, "Grades", "json", "{\"a\": 1}")])
+    assert md.startswith("# T\n\nintro para\n\n## Turn 1\n\n### Reasoning\n")
+    # the fence grows past the 3-backtick run inside the body
+    assert "````\nthinking with ``` fence inside\n````" in md
+    assert "```json\n{\"a\": 1}\n```" in md
+    # an empty body renders as the bare heading, not an empty block
+    assert "## Turn 1\n\n### Reasoning" in md
+
+    import pytest
+    with pytest.raises(ValueError, match="unknown transcript section kind"):
+        transcript_markdown("T", None, [(2, "x", "prose", "y")])
+
+
+def test_transcript_markdown_fences_raw_tags():
+    from src.utils import transcript_markdown
+
+    # Verbatim model output with html-ish tags must land inside a fence, where no
+    # renderer can swallow it — the failure mode the psychosis HF transcripts had.
+    md = transcript_markdown("T", None,
+                             [(3, "Strategy", "fenced", "[plan]\n<message>hi</message>")])
+    assert "```\n[plan]\n<message>hi</message>\n```" in md

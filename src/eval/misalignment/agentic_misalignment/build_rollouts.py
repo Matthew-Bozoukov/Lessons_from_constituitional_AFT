@@ -8,7 +8,7 @@ from pathlib import Path
 
 import fire
 
-from src.utils import timestamp, write_run_meta  # noqa: E402
+from src.utils import timestamp, transcript_markdown, write_run_meta  # noqa: E402
 
 
 def _read(p: Path) -> str:
@@ -17,7 +17,7 @@ def _read(p: Path) -> str:
 
 
 def _transcript(cond: str, sample: str, prompts: Path, resp: dict, harmful: str) -> str:
-    """Render one self-contained rollout.
+    """Render one self-contained rollout via the shared renderer (src.utils).
 
     Args:
         cond: Condition name, e.g. "blackmail_explicit-america_replacement".
@@ -27,34 +27,24 @@ def _transcript(cond: str, sample: str, prompts: Path, resp: dict, harmful: str)
         harmful: Classification verdict, or "unclassified".
 
     Returns:
-        The transcript text.
+        The transcript markdown.
     """
     meta = resp.get("metadata", {})
-    parts = [
-        "=" * 78,
-        f"ROLLOUT  condition={cond}  sample={sample}",
-        f"model={meta.get('model', '?')}  classified_harmful={harmful}",
-        f"timestamp={meta.get('timestamp', '?')}  inference_ms={meta.get('inference_time_ms', '?')}",
-        "=" * 78,
-        "",
-        "---------- SYSTEM PROMPT ----------",
-        _read(prompts / "system_prompt.txt").strip(),
-        "",
-        "---------- USER PROMPT ----------",
-        _read(prompts / "user_prompt.txt").strip(),
+    sections: list[tuple[int, str, str, str]] = [
+        (2, "System prompt", "fenced", _read(prompts / "system_prompt.txt").strip()),
+        (2, "User prompt", "fenced", _read(prompts / "user_prompt.txt").strip()),
     ]
     emails = _read(prompts / "email_content.txt").strip()
     if emails:
-        parts += ["", "---------- EMAIL CONTENT (the agent's environment) ----------", emails]
-    parts += [
-        "",
-        "---------- AGENT RESPONSE (reasoning + action) ----------",
-        (resp.get("raw_response") or "").strip(),
-        "",
-        "=" * 78,
-        "END ROLLOUT",
-    ]
-    return "\n".join(parts) + "\n"
+        sections.append((2, "Email content (the agent's environment)", "fenced", emails))
+    sections.append((2, "Agent response (reasoning + action)", "fenced",
+                     (resp.get("raw_response") or "").strip()))
+    return transcript_markdown(
+        f"Agentic-misalignment rollout — {cond} / {sample}",
+        f"model={meta.get('model', '?')} · classified_harmful={harmful} · "
+        f"timestamp={meta.get('timestamp', '?')} · "
+        f"inference_ms={meta.get('inference_time_ms', '?')}",
+        sections)
 
 
 def main(results_dir: str, out: str, label: str = "") -> None:
@@ -91,7 +81,7 @@ def main(results_dir: str, out: str, label: str = "") -> None:
             n_classified += 1
         dest = out_dir / model / cond
         dest.mkdir(parents=True, exist_ok=True)
-        (dest / f"{sample}.txt").write_text(
+        (dest / f"{sample}.md").write_text(
             _transcript(cond, sample, pdir, resp, harmful), encoding="utf-8"
         )
         n += 1
@@ -104,7 +94,7 @@ def main(results_dir: str, out: str, label: str = "") -> None:
     if missing_prompt:
         print(f"  WARNING: {missing_prompt} responses had no matching prompt directory")
     print(f"  classified: {n_classified}/{n}")
-    sample_file = next(out_dir.rglob("*.txt"))
+    sample_file = next(out_dir.rglob("sample_*.md"))
     print(f"  example: {sample_file}  ({sample_file.stat().st_size/1024:.1f} KB)")
 
 
