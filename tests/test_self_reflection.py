@@ -9,10 +9,10 @@ from pathlib import Path
 import pytest
 import yaml
 
-from src.data.synthdoc.constitution import segment
-from src.data.synthdoc.core import Checkpoint, Ctx, run_items
-from src.data.synthdoc.hf_cache import read_jsonl, write_jsonl
-from src.data.synthdoc.operators import (
+from src.data.synth.constitution import segment
+from src.data.synth.core import Checkpoint, Ctx, run_items
+from src.data.synth.hf_cache import read_jsonl, write_jsonl
+from src.data.synth.operators import (
     _lint,
     assign_variant,
     op_chat_export,
@@ -20,9 +20,9 @@ from src.data.synthdoc.operators import (
     tagged_request,
     weighted_scenario_prompt,
 )
-from src.data.synthdoc.pipeline import build_stages
+from src.data.synth.pipeline import build_stages
 
-CONFIG = "configs/data/synthdoc/self_reflection.yaml"
+CONFIG = "configs/data/synth/self_reflection.yaml"
 CFG = yaml.safe_load(open(CONFIG))
 STAGES = {s["name"]: s for s in CFG["stages"]}
 LINT = STAGES["final"]["lint"]

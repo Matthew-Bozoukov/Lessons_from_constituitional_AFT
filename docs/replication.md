@@ -321,24 +321,24 @@ template prefills nothing, so it is deliberately refused until verified):
 `output/reasoning_probe_*.txt` compare `<think>` length of base vs LoRA. Naive SFT → 0 chars
 (collapsed); the think-trace fix → 900-1600 chars of real reasoning, answers still correct.
 
-## `src/data/synthdoc/` — synthetic chat data generation pipelines (separate, plug-and-play)
+## `src/data/synth/` — synthetic chat data generation pipelines (separate, plug-and-play)
 
 A **self-contained** package (formerly `synthdoc_v2`) with one config-driven engine; the config's
 `stages:` list — prompts included — fully defines the document type, and
-`scripts/data/synthdoc/build_dataset.py` executes it. `configs/data/synthdoc/difficult_advice.yaml` replicates the
+`scripts/data/synth/build_dataset.py` executes it. `configs/data/synth/difficult_advice.yaml` replicates the
 six-stage Teaching Claude Why recipe:
 segment the constitution, generate scenarios, draft the prompt, refine it against the full
 constitution, generate a response, and rewrite the response against the target trait. It shares
 nothing with the code above — no imports either way — and hands off a
 finished corpus in SFT chat format (with `reasoning_content` per example) that the training step
-can read directly. Full guide: [`src/data/synthdoc/README.md`](../src/data/synthdoc/README.md)
+can read directly. Full guide: [`src/data/synth/README.md`](../src/data/synth/README.md)
 (stage table, models, caching).
 
 ```bash
 uv run synth segment                                     # constitution -> traits, no API calls
-uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/difficult_advice.yaml --smoke
-uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/difficult_advice.yaml
-uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/difficult_advice.yaml --estimate
+uv run scripts/data/synth/build_dataset.py --config configs/data/synth/difficult_advice.yaml --smoke
+uv run scripts/data/synth/build_dataset.py --config configs/data/synth/difficult_advice.yaml
+uv run scripts/data/synth/build_dataset.py --config configs/data/synth/difficult_advice.yaml --estimate
 uv run pytest tests/test_difficult_advice.py -q           # offline, no API key
 ```
 
@@ -359,19 +359,19 @@ are multi-turn with the evaluated response in the model's own prior turn, traine
 `metadata.supervise` is lifted onto the mixture row by `build_mixture.py` (interchange
 mode) and consumed by `masking.py` — `convert_synthdoc_qwen.py`, the old middle step,
 was deleted 2026-08-06; git history has it). See the cell table in
-[`src/data/synthdoc/README.md`](../src/data/synthdoc/README.md).
+[`src/data/synth/README.md`](../src/data/synth/README.md).
 
 ```bash
-uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/model_eval_model.yaml --smoke   # 2 docs per enabled cell
-uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/model_eval_model.yaml
-uv run synth check --config configs/data/synthdoc/model_eval_model.yaml --run_dir output/model_eval_model/<ts>   # validity gates
-uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/model_eval_model.yaml --estimate --measured output/model_eval_model/<smoke>/manifest.json
+uv run scripts/data/synth/build_dataset.py --config configs/data/synth/model_eval_model.yaml --smoke   # 2 docs per enabled cell
+uv run scripts/data/synth/build_dataset.py --config configs/data/synth/model_eval_model.yaml
+uv run synth check --config configs/data/synth/model_eval_model.yaml --run_dir output/model_eval_model/<ts>   # validity gates
+uv run scripts/data/synth/build_dataset.py --config configs/data/synth/model_eval_model.yaml --estimate --measured output/model_eval_model/<smoke>/manifest.json
 uv run pytest tests/test_model_eval_model.py -q                        # offline, no API key
 ```
 
 ### The self-reflection document type
 
-`configs/data/synthdoc/self_reflection.yaml` inverts who is tempted: **the agent itself** — working
+`configs/data/synth/self_reflection.yaml` inverts who is tempted: **the agent itself** — working
 autonomously, it could protect its own position (or the objective it was deployed to pursue) by
 an action that is deniable rather than overtly wrong; it deliberates in its own value language,
 declines, and still does its job. Composition (prose/agentic form, 15% multi-turn, 12% control
@@ -379,10 +379,10 @@ slice where the right move is to ACT, motive split) is assigned deterministicall
 ids; stage 6 enforces a voice contract in code (rule-vocabulary lint, reject-and-retry).
 
 ```bash
-uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/self_reflection.yaml --smoke
-uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/self_reflection.yaml
+uv run scripts/data/synth/build_dataset.py --config configs/data/synth/self_reflection.yaml --smoke
+uv run scripts/data/synth/build_dataset.py --config configs/data/synth/self_reflection.yaml
 # a one-off variant (a top-up, a different size) without forking the config:
-uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/self_reflection.yaml \
+uv run scripts/data/synth/build_dataset.py --config configs/data/synth/self_reflection.yaml \
     --overrides "total_scenarios=144,id_prefix=b"
 uv run pytest tests/test_self_reflection.py -q            # offline, no API key
 ```
@@ -409,7 +409,7 @@ pipeline; it lives in git history before that date, and its published corpora re
 HuggingFace (`LASR-Callum/synthdoc-<name>`).
 
 ## Repo layout
-- `src/data/synthdoc/` constitution-grounded data generation: one config-driven engine; the config's `stages:` list (prompts included) defines the document type; run via `scripts/data/synthdoc/build_dataset.py` (`configs/data/synthdoc/difficult_advice.yaml`, `configs/data/synthdoc/model_eval_model.yaml`).
+- `src/data/synth/` constitution-grounded data generation: one config-driven engine; the config's `stages:` list (prompts included) defines the document type; run via `scripts/data/synth/build_dataset.py` (`configs/data/synth/difficult_advice.yaml`, `configs/data/synth/model_eval_model.yaml`).
 - `src/` reusable code (`endpoints/`, `utils.py`, `data/`, `train/`, `eval/`); `scripts/` thin pipeline CLIs foldered by stage (`data/`, `train/`, `gpu/`); `scratch/` one-offs.
 - `configs/` OmegaConf YAML for every step, foldered by stage (`data/`, `train/`, `eval/`).
 - `scripts/run_eval.py` THE eval entrypoint (see CLAUDE.md "The eval framework"): serves each `--target` with vLLM and dispatches to the registered eval's `run()`.

@@ -1,13 +1,13 @@
 <!-- ABOUTME: Distilled Claude constitutional principles, the v1 alignment target. -->
-<!-- ABOUTME: ARCHIVED: superseded 2026-07-29 (approved doc) and no longer the synthdoc default since 2026-08-03. -->
+<!-- ABOUTME: ARCHIVED: superseded 2026-07-29 (approved doc) and no longer the synth default since 2026-08-03. -->
 
 # Distilled Constitutional Principles (v1 alignment target, archived)
 
 > **Archived 2026-08-03.** Superseded as the alignment target by
 > [`constitutions/claude_distilled_07_principles_approved/constitution.md`](../../claude_distilled_07_principles_approved/constitution.md) on
-> 2026-07-29, and replaced as the synthdoc pipeline's default by
+> 2026-07-29, and replaced as the synth pipeline's default by
 > [`constitutions/claude_distilled_12_principles_mid/constitution.md`](../../claude_distilled_12_principles_mid/constitution.md)
-> on 2026-08-03. Kept so pre-2026-08-03 synthdoc corpora (built from its 8 numbered
+> on 2026-08-03. Kept so pre-2026-08-03 synth corpora (built from its 8 numbered
 > principles as traits) stay reproducible; also mirrored inline as
 > `src/data/prompts.py::CONSTITUTION_V1`.
 

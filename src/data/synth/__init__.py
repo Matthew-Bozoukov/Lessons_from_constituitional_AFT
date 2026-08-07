@@ -1,4 +1,4 @@
-# ABOUTME: synthdoc -- one config-driven generation pipeline. The config's `stages:` list
+# ABOUTME: synth -- one config-driven generation pipeline. The config's `stages:` list
 # ABOUTME: (incl. prompts) defines the document type; code supplies generic operators.
 
 from .constitution import Trait, full_text, segment

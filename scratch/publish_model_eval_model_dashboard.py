@@ -72,9 +72,9 @@ license: mit
 | `models` | `anthropic/claude-sonnet-5` (all four generation call sites: control / critique / reflect / perturb, via OpenRouter) |
 | `generation_config` | seed 0; control t=0.7 max_tokens=8192; critique/reflect t=0.8 max_tokens=12288; perturb t=0.7 max_tokens=8192; explicitness name/paraphrase/embody 0.3/0.4/0.3; flaw grid omission/commission/miscalibration/over_application × clear/moderate/grey. |
 | `schema` | `id` = record_id (`<scenario_id>::<cell>`); `messages` = the training conversation (assistant turns may carry `reasoning_content` — the private deliberation); `metadata` = cell, attribution, response_kind, flaw_type/severity, explicitness, verdict, trait, supervise, plus browser projections `split`=cell, `category`=trait_name and (flawed cells) `change_summary` = the planted flaw, metadata-only, never trains. |
-| `provenance` | `uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/model_eval_model.yaml --overrides "cells.control=3,cells.m4_other_good=3,cells.m3_other_flawed=3,cells.m2_self_good=3,cells.m1_self_flawed=3"` (source corpus `LASR-Callum/synthdoc-v2-difficult-advice`, run `{run_dir.name}`). |
+| `provenance` | `uv run scripts/data/synth/build_dataset.py --config configs/data/synth/model_eval_model.yaml --overrides "cells.control=3,cells.m4_other_good=3,cells.m3_other_flawed=3,cells.m2_self_good=3,cells.m1_self_flawed=3"` (source corpus `LASR-Callum/synthdoc-v2-difficult-advice`, run `{run_dir.name}`). |
 
-Cells: {', '.join(cells)}. Validity checks (`synthdoc check`) all pass; note the
+Cells: {', '.join(cells)}. Validity checks (`synth check`) all pass; note the
 flaw-identification probe at this n: 1/4 `clear` hits — the review question is whether
 perturbations are too subtle or critiques too charitable. `supervise` in metadata marks
 which assistant turns train (`final` for the self cells).

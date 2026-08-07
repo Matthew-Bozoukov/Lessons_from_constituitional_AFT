@@ -9,7 +9,7 @@
 #   configs/data/mixture/qwen36_msm_table2.yaml stages 1-2 and staging its
 #   mixture_filtered.jsonl here.
 # - mem_other: stage_6_sft.jsonl from the full mem-other run
-#   (configs/data/synthdoc/model_eval_model_other.yaml -> hf_repo
+#   (configs/data/synth/model_eval_model_other.yaml -> hf_repo
 #   LASR-Callum/2026-08-07-model-eval-model-other; not yet generated as of 2026-08-07 —
 #   the 8-doc smoke passed, full run awaits greenlight).
 

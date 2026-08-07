@@ -1,7 +1,7 @@
 # ABOUTME: Self-arm corpus config for model-eval-model: ONLY the m1/m2 self cells (the
 # ABOUTME: >2-turn format: user -> response -> "look back at it" -> evaluation), sized for
 # ABOUTME: the 20%-by-examples share of the ~10.5k-example SFT mixture (plan_full_sft_20_80).
-# Run: uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/model_eval_model_self.yaml [--smoke]
+# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/model_eval_model_self.yaml [--smoke]
 #
 # Differs from model_eval_model.yaml in one substantive way beyond cell selection: the
 # 2026-08-05 validation batch showed BLIND generation reaches the wrong verdicts (m1 held
@@ -84,7 +84,7 @@ models:
     reasoning: {enabled: false}
     assumed_tokens: {in: 2500, out: 1500}
 
-# Consumed by `uv run synth check --config configs/data/synthdoc/model_eval_model_self.yaml --run_dir <dir>`.
+# Consumed by `uv run synth check --config configs/data/synth/model_eval_model_self.yaml --run_dir <dir>`.
 checks:
   judges:
       gold_system: You audit training data. You judge whether an assistant's reply exhibits a specific principle,

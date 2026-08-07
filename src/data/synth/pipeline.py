@@ -98,7 +98,7 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
                                                 "sampling settings, per-stage usage)",
                            "schema": "stage_<n>_<name>.jsonl snapshots + manifest.json",
                            "provenance": "uv run synth run --config "
-                                         f"configs/data/synthdoc/{cfg['pipeline']}.yaml",
+                                         f"configs/data/synth/{cfg['pipeline']}.yaml",
                        })
 
     workers = int(cfg.get("workers", 8))

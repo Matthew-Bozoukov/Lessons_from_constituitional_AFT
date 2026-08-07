@@ -1,12 +1,12 @@
-# ABOUTME: Offline tests for the difficult-advice pipeline and shared synthdoc core.
+# ABOUTME: Offline tests for the difficult-advice pipeline and shared synth core.
 # ABOUTME: Run: uv run pytest tests/test_difficult_advice.py -q
 
 from __future__ import annotations
 
 
 
-from src.data.synthdoc.constitution import segment  # noqa: E402
-from src.data.synthdoc.core import cost_of  # noqa: E402
+from src.data.synth.constitution import segment  # noqa: E402
+from src.data.synth.core import cost_of  # noqa: E402
 
 CONSTITUTION = "constitutions/archive/claude_distilled_8_principles_v1/constitution.md"
 
@@ -60,10 +60,10 @@ def test_sft_export_carries_reasoning_and_trait_metadata():
     # The export is now the real config's chat_export stage -- test through it.
     import yaml
 
-    from src.data.synthdoc.operators import op_chat_export
+    from src.data.synth.operators import op_chat_export
 
     sft_spec = next(s for s in yaml.safe_load(
-        open("configs/data/synthdoc/difficult_advice.yaml"))["stages"] if s["name"] == "sft")
+        open("configs/data/synth/difficult_advice.yaml"))["stages"] if s["name"] == "sft")
     rec = {
         "scenario_id": "t1_s000", "trait_id": "t1", "trait_name": "Honesty",
         "trait_text": "**Honesty.** Do not deceive.", "domain": "work",
@@ -87,7 +87,7 @@ def test_cost_of_prices_known_models_and_zeroes_unknown():
 
 
 def test_checkpoint_survives_abort_and_resume_skips_completed_work(tmp_path):
-    from src.data.synthdoc.core import Checkpoint, run_items
+    from src.data.synth.core import Checkpoint, run_items
 
     items = [{"scenario_id": f"s{i}", "v": i} for i in range(100)]
     path = tmp_path / "partial.jsonl"

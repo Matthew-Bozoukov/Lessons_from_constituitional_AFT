@@ -70,7 +70,7 @@ JUDGE_USER = """\
 class Checkpoint:
     """Append-only verdicts, flushed after every completed item.
 
-    Mirrors synthdoc's checkpoint: without it a crash discards every judgement already
+    Mirrors synth's checkpoint: without it a crash discards every judgement already
     paid for. Records land on disk as they complete and are reloaded on the next run.
     """
 

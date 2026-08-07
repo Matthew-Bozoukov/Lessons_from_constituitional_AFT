@@ -1,4 +1,4 @@
-# ABOUTME: Fire entrypoint for the synthdoc pipeline (scripts/data/synthdoc/build_dataset.py is the
+# ABOUTME: Fire entrypoint for the synth pipeline (scripts/data/synth/build_dataset.py is the
 # ABOUTME: canonical runner; this console script adds topup/check/estimate/segment).
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ def run(config: str, smoke: bool = False, resume: str | None = None,
     """Run the pipeline the config declares (its `stages:` list).
 
     Args:
-        config: Path to the run YAML (configs/data/synthdoc/<document_type>.yaml).
+        config: Path to the run YAML (configs/data/synth/<document_type>.yaml).
         smoke: Merge the config's `smoke:` overrides -- tiny slice, full wiring.
         resume: Existing run directory to continue instead of starting fresh.
         overrides: Comma-separated OmegaConf dotlist applied over the YAML, e.g.

@@ -19,7 +19,7 @@ from src.data.mixture.sources.base import SourceAdapter, clean_messages
 
 
 def to_messages(row: dict) -> list[dict] | None:
-    """Map a synthdoc stage-6 record (or a {messages} row) to interchange messages."""
+    """Map a synth stage-6 record (or a {messages} row) to interchange messages."""
     if row.get("messages"):  # already-converted pools (e.g. balanced subsets)
         return clean_messages(row["messages"])
     if not (row.get("user") and row.get("response")):

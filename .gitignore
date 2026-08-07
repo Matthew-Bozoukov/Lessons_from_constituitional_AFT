@@ -42,12 +42,12 @@ output/
 *.safetensors
 wandb/
 
-# synthdoc corpora live on HuggingFace, never in git and - with cleanup_local -
+# synth corpora live on HuggingFace, never in git and - with cleanup_local -
 # not on disk either.
-**/output/synthdoc/
-**/output/synthdoc_cache/
-**/output/synthdoc_smoke/
-**/output/synthdoc_sweeps/
+**/output/synth/
+**/output/synth_cache/
+**/output/synth_smoke/
+**/output/synth_sweeps/
 
 # ---- Vendored / third-party trees --------------------------------------------
 # Vendored eval harnesses are committed; their run outputs are not.
