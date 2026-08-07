@@ -3,6 +3,66 @@
 
 # LOG
 
+## 2026-08-07 — Legacy rendered mode deleted; every mixture config is interchange-form
+
+**Hypothesis:** with all published mixture artifacts on HF, the legacy build-time rendering
+(`reasoning: strip` / `format: rendered`, kept 2026-08-06 for byte-for-byte regeneration)
+no longer pays for its complexity — reproduction-by-checkout suffices (Jamie's call).
+**Method:** deleted the whole legacy block from `build_mixture.py` (`_render_preserved`,
+`_render_without_think` + sentinel, `_usable`, `_take_hf`, `_take_messages`,
+`_take_rendered`, `_load_source_legacy`, think-census validation branch); `strip` and
+`format:` now raise with a pointer to HF + pre-removal checkout. Converted all ten legacy
+configs to interchange form (strip → `reasoning: none`; `format: messages` →
+`reasoning: native` — verified honest: both local pools, `sft_dataset_thinking.jsonl` [v1,
+checked on HF] and `synthdoc_v2_balanced.jsonl`, carry reasoning_content fields, no inline
+think). Deleted `qwen36_three_way.yaml`: its `format: rendered` inputs cannot be
+modernized (their normaliser was the deleted convert_synthdoc_qwen.py). **Converted
+configs are recipes, not regenerators** — same sources/ratios/seed, but they now build
+messages-form data; the artifacts their legacy forms produced rebuild only from a
+pre-2026-08-07 checkout. **Result:** 381 tests pass; interchange smoke of a converted
+config (`qwen36_100k_three_source`) run to verify streaming + validation end-to-end;
+`build_mixture.py` is single-mode and ~150 lines lighter. Also: one console command per
+pipeline stage landed the same day — `uv run synth|mix|train|evals` ([project.scripts];
+run_eval logic moved to src/eval/run_eval.py, scripts/ shims kept).
+**Next:** none — TODO 8 keeps the recipe for resurrecting the v1-corpus normaliser if ever
+needed.
+
+## 2026-08-06 — Mixture pipeline integrated: model-agnostic interchange rows, staged filter, sources/ registry
+
+**Hypothesis:** the pulled scratch pipeline (build_paper_mixture → filter_spec_misaligned →
+build_combined_mixture + two publish scripts) belongs in `src/data/mixture/` as one staged,
+config-driven run — and mixtures should be stored MODEL-AGNOSTIC (chat messages +
+`reasoning_content`/`tool_calls`), with the family template applied at train time, not build
+time. **Method:** new `src/data/mixture/sources/` registry (one adapter per source: 9 Table-2
+sources incl. 6 smoltalk configs, tulu3 — absorbing prepare_tulu.py — and difficult_advice
+mapping synthdoc stage-6 records); `spec_filter.py` (constitution judge, per-verdict
+checkpoint, unparseable-means-KEEP); `build_mixture.py` staged base → filter →
+stratified-downsample → synthetic with HF push checkpoints after every stage
+(`hf_publish.push_files`, card fields enforced; `src/eval/publish.py` now re-exports
+`src/hf_publish.py`). `train_lora.py` renders `messages` datasets at train time via
+`ModelProfile.render_kwargs`, then the unchanged gate/mask path. Legacy rendered mode
+(`reasoning: strip` / `format: rendered`) is preserved verbatim — every pre-existing config
+still routes there — and `synthetic:` flags without a `filter:` block are refused.
+**Result:** 35 new offline tests + a real-tokenizer bridge test proving the train-time render
+is byte-identical to the old build-time render and the generation-boundary mask still lands
+(empty markers fully masked, traces + closes supervised); 381 total pass. Two smoke runs of
+`configs/data/mixture/qwen36_msm_table2.yaml` (Table-2 counts verbatim, 12_principles_mid
+filter, keep 8000 + 2203 DA): the first exposed a real bug — `apply_chat_template(tokenize=
+True)` returns a BatchEncoding whose `len()` is its KEY COUNT (2), so every row counted 2
+"tokens" and the max_seq_len cap never fired; fixed with `return_dict=True + ["input_ids"]`,
+and the stub tokenizer in tests now mirrors that contract so it cannot mask the bug again.
+Second smoke verified: real token counts, LongAlign dropping 43/53 rows at the 8192 cap
+(~81%, matching the recovered config's ~80% note), 3 judge calls, partial-pass warning, no
+pushes. Superseded scratch scripts + configs/data/mixture_paper_table2.yaml deleted (git
+history is the archive). **Next:** the paid full run (~10k judge calls ≈ $4–5 — flag before
+launching); rename convert_synthdoc_qwen.py to a pure normaliser (docs/TODO.md).
+**Follow-up (same day):** convert_synthdoc_qwen.py deleted instead of renamed — interchange
+mode reads stage-5 chat exports directly (reasoning_content is native; `metadata.supervise`
+is lifted onto the mixture row, regression-tested), so nothing live routed through it. Its
+v1-corpus repairs (multi-system merge, string tool_calls) go to git history with it; the
+`format: rendered` configs it fed regenerate from a pre-deletion commit (notes updated in
+qwen36_three_way.yaml, replication.md, synthdoc README, TODO 9/10).
+
 ## 2026-08-06 — Merged main into `jamie/write-all-evals-to-hf`: serving is composed, not overridden
 
 **Hypothesis:** both branches had independently grown per-eval serving configuration, and both

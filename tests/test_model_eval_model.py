@@ -9,7 +9,6 @@ import pytest
 
 import yaml
 
-from src.data.mixture.convert_synthdoc_qwen import _passthrough
 from src.data.synthdoc.checks import (
     check_blindness,
     check_coverage,
@@ -243,16 +242,38 @@ def test_reflect_assembly_masks_the_first_turn_and_supervises_the_final():
 # --- converter passthrough ---------------------------------------------------------
 
 
-def test_convert_passthrough_carries_mem_identity_and_supervise():
-    model_eval_model_row = {"messages": [], "metadata": {"record_id": "s::m1_self_flawed",
-                                            "cell": "m1_self_flawed",
-                                            "supervise": "final"}}
-    assert _passthrough(model_eval_model_row) == {"doc_id": "s::m1_self_flawed",
-                                     "doc_type": "m1_self_flawed",
-                                     "supervise": "final"}
-    agentic_row = {"doc_id": "d1", "doc_type": "agentic", "axes": {"a": 1}}
-    assert _passthrough(agentic_row) == {"doc_id": "d1", "doc_type": "agentic",
-                                         "axes": {"a": 1}}
+def test_stage5_supervise_survives_into_the_mixture(tmp_path):
+    # The chain that used to run through convert_synthdoc_qwen.py (deleted 2026-08-06 —
+    # git history is the archive): a stage-5 export row's metadata.supervise must reach
+    # the mixture row, or the trainer supervises the deliberately-flawed first response.
+    import json
+
+    from omegaconf import OmegaConf
+
+    from src.data.mixture.build_mixture import _take_interchange
+
+    class _Tok:
+        def apply_chat_template(self, messages, tokenize, add_generation_prompt,
+                                return_dict=False, **kw):
+            words = " ".join(m.get("content") or "" for m in messages).split()
+            return {"input_ids": words}
+
+    path = tmp_path / "stage5.jsonl"
+    path.write_text(json.dumps({
+        "messages": [{"role": "system", "content": "s"},
+                     {"role": "user", "content": "u"},
+                     {"role": "assistant", "content": "flawed",
+                      "reasoning_content": "r1"},
+                     {"role": "user", "content": "reflect"},
+                     {"role": "assistant", "content": "better",
+                      "reasoning_content": "r2"}],
+        "metadata": {"record_id": "s::m1_self_flawed", "cell": "m1_self_flawed",
+                     "supervise": "final"}}) + "\n")
+    rows, kind = _take_interchange(
+        _Tok(), OmegaConf.create({"max_seq_len": 100}), "model_eval_model",
+        {"path": str(path), "reasoning": "native"}, ("examples", 1), 0, {})
+    assert kind == "native" and rows[0]["supervise"] == "final"
+    assert rows[0]["messages"][-1]["reasoning_content"] == "r2"
 
 
 # --- validity checks ---------------------------------------------------------------

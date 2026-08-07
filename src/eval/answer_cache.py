@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -77,9 +76,9 @@ class AnswerCache:
     # --- internals -------------------------------------------------------------------
 
     def _api(self):
-        from huggingface_hub import HfApi
+        from src.huggingface import hf_api
 
-        return HfApi(token=os.environ.get("HUGGINGFACE_API_KEY") or os.environ.get("HF_TOKEN"))
+        return hf_api()
 
     def _mirror_dir(self, key: CacheKey) -> Path | None:
         return self.mirror / key.path if self.mirror else None
@@ -117,11 +116,11 @@ class AnswerCache:
             if self.local is not None:
                 source = self.local / key.path
             else:
-                from huggingface_hub import hf_hub_download
+                from src.huggingface import hf_download
 
                 for name in (ANSWERS, META):
-                    hf_hub_download(self.hf_repo, f"{key.path}/{name}",
-                                    repo_type="dataset", local_dir=str(dest))
+                    hf_download(self.hf_repo, f"{key.path}/{name}",
+                                repo_type="dataset", local_dir=str(dest))
                 # hf_hub_download recreates the key path under local_dir.
                 source = dest / key.path
         for name in (ANSWERS, META):
@@ -158,7 +157,7 @@ class AnswerCache:
             for name in (ANSWERS, META):
                 shutil.copy2(src_dir / name, entry / name)
             return
-        from src.eval.publish import card_markdown
+        from src.huggingface import card_markdown
 
         api = self._api()
         if not api.repo_exists(self.hf_repo, repo_type="dataset"):

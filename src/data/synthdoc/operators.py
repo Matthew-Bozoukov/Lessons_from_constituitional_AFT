@@ -262,13 +262,14 @@ def op_load_source_run(sc: dict, cfg: dict) -> Stage:
             manifest = json.loads(mpath.read_text()) if mpath.exists() else {}
             return read_jsonl(d / "stage_6_final.jsonl"), manifest, str(d)
         repo = spec["hf_repo"]
-        from huggingface_hub import hf_hub_download
         from huggingface_hub.utils import EntryNotFoundError
 
-        records = read_jsonl(Path(hf_hub_download(
+        from src.huggingface import hf_download
+
+        records = read_jsonl(Path(hf_download(
             repo, "stage_6_final.jsonl", repo_type="dataset")))
         try:
-            manifest = json.loads(Path(hf_hub_download(
+            manifest = json.loads(Path(hf_download(
                 repo, "manifest.json", repo_type="dataset")).read_text())
         except EntryNotFoundError:
             manifest = {}

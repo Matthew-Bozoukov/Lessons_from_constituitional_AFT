@@ -1,8 +1,8 @@
 # CLAUDE.md — repo guide for agents
 
-**AI agents: do NOT write to this file unless specifically asked to — and even when asked,
-encourage human review of the exact diff. This file only stays useful if it stays curated;
-unsupervised agent edits turn it to slop.**
+**AI agents: do NOT write to this file OR to docs/TODO.md unless specifically asked to —
+and even when asked, encourage human review of the exact diff. These files only stay
+useful if they stay human-curated; unsupervised agent edits turn them to slop.**
 
 Orientation + operating rules for this repo. Read this before touching anything. The global
 `~/.claude/CLAUDE.md` rules (uv, ABOUTME headers, YAML+OmegaConf configs, timestamped outputs,
@@ -57,7 +57,12 @@ src/                    correctness-critical reusable code (installed editable; 
                           judges, red-teamers, data generation) + vllm_server.py (serve a
                           target model on localhost via vLLM; thinking mode inferred from the
                           artifact and pinned at serve time)
-  utils.py                extract_json, git_sha, timestamp, write_run_meta, count_chat_tokens
+  utils.py                io/json + provenance: extract_json, read_jsonl, git_sha,
+                          timestamp, write_run_meta, origin_url
+  model_profile.py        the ModelProfile registry (verified per-family facts for
+                          rendering/masking/serving) + think-stream parsers
+  huggingface.py          THE HF module: token resolution (reads + pushes), the
+                          dataset-card contract, push_run_dir/push_files/hf_download
   data/                   two subpackages, mirrored in scripts/data/ and configs/data/:
     synthdoc/               synthetic data generation (constitution-grounded,
                             config-driven engine, formerly synthdoc_v2; the config's
@@ -65,8 +70,12 @@ src/                    correctness-critical reusable code (installed editable; 
                             type; run via scripts/data/synthdoc/build_dataset.py with
                             configs/data/synthdoc/{difficult_advice,model_eval_model}.yaml,
                             `synthdoc check` gates the latter's corpora — see its README)
-    mixture/                dataset building (build_mixture.py, balanced_subset.py,
-                            convert_synthdoc_qwen.py, prepare_tulu.py, ...)
+    mixture/                dataset building: build_mixture.py (staged base → spec-filter →
+                            synthetic pipeline with HF push checkpoints; rows are
+                            model-agnostic interchange messages, rendered at TRAIN time via
+                            ModelProfile; `balance_by:` trait-balances a source), spec_filter.py
+                            (constitution judge), sources/ (one adapter per data source,
+                            incl. the tulu3 sampler formerly prepare_tulu.py)
   train/                  training: train_lora.py, merge_lora.py
   eval/                   eval registry in __init__.py (name -> EvalSpec, lazy runner) — every
                           eval follows the run() contract in "The eval framework" below
@@ -264,7 +273,7 @@ deleted with that package on 2026-08-03 — see git history — so enforce them 
 ## The pipeline (each step = one experiment script + one config)
 
 1. `uv run synthdoc run --config configs/data/synthdoc/difficult_advice.yaml` — six-stage difficult-advice generation from the constitution (scenarios → prompts → responses → trait-rewrites), reasoning traces native. Has `--smoke`. (The config's `pipeline:` field picks the document type: the same command with `configs/data/synthdoc/model_eval_model.yaml` generates the model-evaluates-model arms over a completed run, gated by `uv run synthdoc check`.)
-2. `scripts/data/mixture/build_mixture.py` (+ `configs/data/mixture/*.yaml`) — token-budgeted training mixture: `messages` sources keep their `<think>` traces, HF `repo` sources render with no think block; `balanced_subset.py` trait-balances the difficult-advice share. Has `--smoke`.
+2. `scripts/data/mixture/build_mixture.py` (+ `configs/data/mixture/*.yaml`) — budgeted training mixture of model-agnostic interchange rows (reasoning as `reasoning_content`, rendered at train time), with optional spec-filter stage and HF push checkpoints; `balance_by: trait_id` on a source spec trait-balances the difficult-advice share. Has `--smoke`.
 3. `scripts/train/train_lora.py` (+ `configs/train/lora*.yaml`) — QLoRA SFT (runs on GPU box). Has `--smoke` (2 steps). Pushes the adapter to HF with `training_meta.json` — the thinking stamp (declared as `thinking:` in the train config, validated against the data) that the eval framework infers mode from.
 4. `scripts/run_eval.py --target <hf_path> --name agentic_misalignment` — agentic-misalignment honeypots → `misalignment_summary.json` via `src/eval/misalignment/agentic_misalignment/aggregate_eval.py`.
 5. `scratch/reports/final_report.py` / `scratch/reports/make_report.py` — capstone report + plots + markdown from `output/eval_summaries/` (per-experiment write-up code, so it lives in scratch).
@@ -367,7 +376,7 @@ Never terminate a resource this repository did not provision. Report it instead.
 ## Gotchas (these WILL bite you — all learned the hard way)
 
 1. **Version pins**: vLLM 0.8.5 requires `transformers==4.51.3`. Newer transformers → `Qwen2Tokenizer has no attribute all_special_tokens_extended`.
-2. **Correct <think> tag templating and masking**: Qwen3.6 (the model under study) renders chain-of-thought tags on assistant turns and leaves them empty when no reasoning is present; its thinking-mode generation prompt prefills `<think>\n`, and nothink prefills the whole empty marker. Tokens the model is never expected to generate must never have a loss calculated for them — implemented as the non-configurable generation-boundary rule in `src/train/masking.py` (mask the prefill; mask a WHOLE empty marker; supervise real traces + their close), verified before every run by `src/train/mask_gate.py`. Family specifics live in `ModelProfile` (`src/utils.py`); unverified families are refused. At inference the serve-time template pin (`pin_template`) owns the tag behaviour — verify against the live template, never assume. 
+2. **Correct <think> tag templating and masking**: Qwen3.6 (the model under study) renders chain-of-thought tags on assistant turns and leaves them empty when no reasoning is present; its thinking-mode generation prompt prefills `<think>\n`, and nothink prefills the whole empty marker. Tokens the model is never expected to generate must never have a loss calculated for them — implemented as the non-configurable generation-boundary rule in `src/train/masking.py` (mask the prefill; mask a WHOLE empty marker; supervise real traces + their close), verified before every run by `src/train/mask_gate.py`. Family specifics live in `ModelProfile` (`src/model_profile.py`); unverified families are refused. At inference the serve-time template pin (`pin_template`) owns the tag behaviour — verify against the live template, never assume. 
 3. **QLoRA OOM** at batch 8 × 2048 on 80GB → use batch 4, `max_seq_len` ~1536–2048, and launch with `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`.
 4. **Train only on assistant tokens for the loss.** Qwen3.6's chat template lacks `{% generation %}` markers (verified live: `return_assistant_tokens_mask` flags 0 tokens), so TRL's `assistant_only_loss` produces an all-zero mask (nothing trains). The label mask is built in-repo instead — `build_labels` in `src/train/masking.py` sets prompt/user tokens to `-100` and supervises assistant completions, with think-tag handling per gotcha 2. Do NOT fall back to full-sequence training (it dilutes the signal with prompt tokens).
 5. **Reasoning models need token headroom**: any eval that caps generation tightly truncates inside the `<think>` block and scores a false 0% — size `max_tokens` for trace + answer, parse answers after `</think>`, and report the empty-think rate (a ~0-length trace means the arm stopped reasoning).

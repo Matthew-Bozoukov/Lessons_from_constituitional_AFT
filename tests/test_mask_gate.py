@@ -7,7 +7,7 @@ import pytest
 
 from src.train.mask_gate import expected_supervised_text, gate_generation_boundary
 from src.train.masking import EMPTY_THINK, THINK_PREFILL
-from src.utils import QWEN36_PROFILE, think_census
+from src.model_profile import QWEN36_PROFILE, think_census
 
 
 class _Tok:

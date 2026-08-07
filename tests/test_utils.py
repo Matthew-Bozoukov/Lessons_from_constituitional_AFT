@@ -5,7 +5,8 @@
 import pytest
 
 
-from src.utils import ParseError, extract_json, resolve_trace, split_think  # noqa: E402
+from src.model_profile import resolve_trace, split_think  # noqa: E402
+from src.utils import ParseError, extract_json  # noqa: E402
 
 
 def test_plain_object():

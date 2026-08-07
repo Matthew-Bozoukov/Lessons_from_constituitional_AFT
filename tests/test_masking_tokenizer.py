@@ -85,7 +85,7 @@ def test_multiturn_preserve_thinking_masks_every_forced_head(tok):
     supervised tokens.
     """
     from src.train.mask_gate import expected_supervised_text
-    from src.utils import think_census
+    from src.model_profile import think_census
 
     msgs = [
         {"role": "user", "content": "q1"},

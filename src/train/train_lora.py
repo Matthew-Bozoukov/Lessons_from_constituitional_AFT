@@ -128,10 +128,26 @@ def main(config: str, smoke: bool = False) -> None:
         tokenizer.pad_token = tokenizer.eos_token
 
     # TRL's own assistant_only_loss needs `{% generation %}` markers, which Qwen3.6's chat
-    # template lacks, and it re-renders from `messages` -- which would discard the think
-    # settings baked into a pre-rendered mixture. So mask here instead, off the exact same
-    # strings the full-token run trained on, and hand the trainer a ready-made batch.
+    # template lacks, and it re-renders from `messages` without the profile's preserve
+    # kwargs -- which would silently drop reasoning traces. So the template is applied
+    # HERE for interchange datasets, and the masking is built off the exact rendered
+    # strings, handing the trainer a ready-made batch.
     assistant_only = bool(cfg.train.assistant_only_loss)
+    if assistant_only and "text" not in ds.column_names and "messages" in ds.column_names:
+        # Model-agnostic interchange rows (see src/data/mixture/sources/): the stored
+        # data carries semantics only; the model family's syntax -- think blocks
+        # included -- is applied now, by the verified profile, where the mask gate
+        # can see it. HF's json loader pads message dicts to a shared schema with
+        # None for absent keys; those must not reach the template.
+        profile = model_profile(str(cfg.model))
+        ds = ds.map(
+            lambda r: {"text": tokenizer.apply_chat_template(
+                [{k: v for k, v in m.items() if v is not None} for m in r["messages"]],
+                tokenize=False, add_generation_prompt=False, **profile.render_kwargs)},
+            desc="rendering chat template (train-time, ModelProfile render_kwargs)",
+        )
+        print(f">>> interchange dataset rendered at train time with "
+              f"{profile.family} render_kwargs={profile.render_kwargs}")
     pre_tokenized = assistant_only and "text" in ds.column_names
     if pre_tokenized:
         max_len = int(cfg.train.max_seq_len)
@@ -177,7 +193,8 @@ def main(config: str, smoke: bool = False) -> None:
         print(">>> FIRST EXAMPLE supervised (loss):")
         print("   ", repr(tokenizer.decode(kept)[:300]))
     elif assistant_only:
-        raise ValueError("assistant_only_loss needs a pre-rendered `text` column")
+        raise ValueError("assistant_only_loss needs a `messages` (interchange) or "
+                         "pre-rendered `text` column")
 
     # --- base model: 4-bit QLoRA by default, bf16 LoRA when 4-bit is unsupported ---
     # Qwen3.6's hybrid linear-attention layers are not reliably quantised by bitsandbytes,
@@ -357,12 +374,34 @@ def main(config: str, smoke: bool = False) -> None:
     }, indent=2))
 
     if cfg.get("hf_repo") and not smoke:
-        from huggingface_hub import HfApi
+        from src.huggingface import push_run_dir
+        from src.utils import origin_url
 
-        api = HfApi()
-        api.create_repo(str(cfg.hf_repo), private=True, exist_ok=True)
-        api.upload_folder(folder_path=str(adapter_dir), repo_id=str(cfg.hf_repo))
-        print(f">>> pushed adapter (with training_meta.json) to {cfg.hf_repo}")
+        # Same card contract as every other artifact (CLAUDE.md: every upload carries a
+        # card), derived from the run's real metadata — the human-readable half beside
+        # the machine-readable training_meta.json the eval framework consumes.
+        url = push_run_dir(adapter_dir, str(cfg.hf_repo), {
+            "experiment": f"LoRA SFT adapter — {Path(config).stem}",
+            "date_generated": ts[:8],
+            "constitution": str(cfg.get("constitution") or
+                                f"inherited from the training data ({cfg.data_path}); "
+                                "not declared in this train config"),
+            "source_repo": f"{origin_url()} @ {_git_sha()}",
+            "models": f"base: {cfg.model}",
+            "generation_config": json.dumps({
+                "seed": int(cfg.seed), "thinking": thinking,
+                "epochs": float(cfg.train.epochs), "lr": float(cfg.train.lr),
+                "batch_size": int(cfg.train.batch_size),
+                "grad_accum": int(cfg.train.grad_accum),
+                "max_seq_len": int(cfg.train.max_seq_len),
+                "lora": {"r": int(cfg.lora.r), "alpha": int(cfg.lora.alpha),
+                         "dropout": float(cfg.lora.dropout)},
+            }),
+            "schema": "PEFT LoRA adapter (safetensors) + tokenizer + training_meta.json "
+                      "{thinking, train_config, base_model, data_path, git_sha, timestamp}",
+            "provenance": f"uv run train --config {config}",
+        }, private=True, repo_type="model")
+        print(f">>> pushed adapter (with training_meta.json + card) to {url}")
 
     meta = {
         "git_sha": _git_sha(),
@@ -383,3 +422,10 @@ def main(config: str, smoke: bool = False) -> None:
             print(f">>> step {row.get('step')}  loss {row['loss']:.4f}")
     print(f">>> saved adapter to {adapter_dir}")
     print(f">>> run_meta: {out_dir / 'run_meta.json'}")
+
+
+def cli() -> None:
+    """Console entry (`uv run train_lora --config ...`, [project.scripts])."""
+    import fire
+
+    fire.Fire(main)

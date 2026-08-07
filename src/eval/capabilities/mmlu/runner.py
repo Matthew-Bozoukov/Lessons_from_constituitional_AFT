@@ -55,7 +55,8 @@ from src.eval.capabilities.mmlu.mmlu import (  # noqa: E402
     score_records,
     subset_hash,
 )
-from src.utils import read_jsonl, resolve_trace, timestamp, write_run_meta  # noqa: E402
+from src.model_profile import resolve_trace  # noqa: E402
+from src.utils import read_jsonl, timestamp, write_run_meta  # noqa: E402
 
 
 def resolve_arms(cfg: DictConfig) -> list[dict]:

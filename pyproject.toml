@@ -51,8 +51,17 @@ dependencies = [
 ]
 
 
+# One console command per pipeline stage: `uv run synth` (generate) -> `uv run mix`
+# (mix/filter/push) -> `uv run train` (SFT; needs the GPU host's linux env for torch)
+# -> `uv run evals` (serve + evaluate; not `eval`, which is a shell builtin). The
+# scripts/ shims remain the path-invoked equivalents. `synthdoc` is kept as an alias
+# because docs and configs reference `uv run synthdoc run|check`.
 [project.scripts]
+synth = "src.data.synthdoc.cli:main"
 synthdoc = "src.data.synthdoc.cli:main"
+mix = "src.data.mixture.build_mixture:cli"
+train = "src.train.train_lora:cli"
+evals = "src.eval.run_eval:main"
 
 [dependency-groups]
 dev = [

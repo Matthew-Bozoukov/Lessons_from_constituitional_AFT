@@ -113,7 +113,8 @@ attributed, blind to the flaw label, verdict via a stripped `<assessment>` tag),
 `m2_self_good` / `m1_self_flawed` (multi-turn self-reflection — the headline cells: the
 response sits in the model's own prior turn with no think block, a reflection prompt
 follows, the model revises or holds with reasons; trained with `supervise: "final"`,
-threaded through `convert_synthdoc_qwen.py` → `build_mixture` → `masking.py`).
+lifted from the stage-5 export's metadata by `build_mixture` (interchange mode) and
+consumed by `masking.py`).
 
 `uv run synthdoc check --config configs/data/synthdoc/model_eval_model.yaml --run_dir <dir>`
 runs the validity checks and gates on the config's thresholds: coverage (incl. the

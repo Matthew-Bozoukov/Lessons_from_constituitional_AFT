@@ -26,7 +26,7 @@ from omegaconf import OmegaConf
 
 from src.endpoints.openrouter import OpenRouterClient, map_threaded  # noqa: E402
 from src.data.prompts import CONSTITUTION_V1, CONSTITUTION_V2, DOMAINS, response_gen_messages, scenario_gen_messages  # noqa: E402
-from src.utils import ParseError, count_chat_tokens, extract_json, timestamp, write_run_meta  # noqa: E402
+from src.utils import ParseError, extract_json, timestamp, write_run_meta  # noqa: E402
 
 CONFIG_DIR = Path("configs/eval")
 
@@ -83,12 +83,29 @@ def _mentions(text: str, phrases: list[str]) -> bool:
     return any(p in lowered for p in phrases)
 
 
+from functools import lru_cache
+
+
+@lru_cache(maxsize=2)
+def _tok(name: str):
+    from transformers import AutoTokenizer
+
+    return AutoTokenizer.from_pretrained(name)
+
+
+def _count_tokens(text: str, tokenizer_name: str) -> int:
+    """Chat-rendered token count (inlined from the deleted utils.count_chat_tokens)."""
+    return len(_tok(tokenizer_name).apply_chat_template(
+        [{"role": "assistant", "content": text}], tokenize=True,
+        add_generation_prompt=False, return_dict=True)["input_ids"])
+
+
 def _arm_stats(texts: list[str], cfg, markers: dict) -> dict:
     n = len(texts)
     refusals = sum(_is_refusal(t, markers["refusal"], int(cfg.refusal_short_chars)) for t in texts)
     mean_chars = sum(len(t) for t in texts) / n
     mean_tokens = sum(
-        count_chat_tokens([{"role": "assistant", "content": t}], cfg.tokenizer) for t in texts
+        _count_tokens(t, cfg.tokenizer) for t in texts
     ) / n
     concept_rates = {
         concept: round(sum(_mentions(t, phrases) for t in texts) / n, 3)

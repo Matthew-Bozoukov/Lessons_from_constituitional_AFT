@@ -174,9 +174,9 @@ def load_instances(dataset: str, split: str) -> tuple[list[dict], str]:
         (rows with `instance_id`/`repo`, dataset revision sha).
     """
     from datasets import load_dataset
-    from huggingface_hub import HfApi
+    from src.huggingface import hf_api
 
-    revision = HfApi().dataset_info(dataset).sha
+    revision = hf_api().dataset_info(dataset).sha
     rows = load_dataset(dataset, split=split, revision=revision)
     # `image_name`/`docker_image` are carried when the split declares them: the pre-pull step
     # must resolve the SAME image the agent will run, and the dataset's own field takes

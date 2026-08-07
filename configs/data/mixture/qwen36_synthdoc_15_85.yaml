@@ -1,6 +1,10 @@
-# ABOUTME: 1M-token mixture: 15% synthdoc difficult-advice (with <think> traces)
-# ABOUTME: + 85% TULU3 replay (rendered with no think block).
+# ABOUTME: 1M-token mixture: 15% synthdoc difficult-advice (with reasoning traces)
+# ABOUTME: + 85% TULU3 replay (no reasoning).
 # Run: uv run scripts/data/mixture/build_mixture.py --config configs/data/mixture/qwen36_synthdoc_15_85.yaml
+# Converted to interchange form 2026-08-07 (legacy strip/format rendering removed):
+# rows are now model-agnostic messages, rendered at train time via ModelProfile. The
+# published artifact the legacy form produced is on HF; rebuilding THAT byte-form needs
+# a pre-2026-08-07 checkout.
 
 seed: 0
 tokenizer: "Qwen/Qwen3.6-27B"
@@ -11,13 +15,11 @@ tokenizer: "Qwen/Qwen3.6-27B"
 sources:
   difficult_advice:
     path: "data/synthdoc_v2_balanced.jsonl"
-    format: "messages"
+    reasoning: native
     tokens: 150000
   tulu3:
     repo: "allenai/tulu-3-sft-mixture"
-    # Historical: this artifact predates the preserve-thinking default (2026-08-04);
-    # strip reproduces its no-think rendering. New mixtures declare native|none.
-    reasoning: strip
+    reasoning: none
     tokens: 850000
     # The old dedicated tulu3 code path used this buffer; kept so regeneration
     # samples identically.

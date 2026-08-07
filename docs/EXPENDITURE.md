@@ -21,15 +21,34 @@ to a future reader.
 |---|---|
 | OpenRouter (data generation) | **$255.96** |
 | OpenRouter (eval judging) | $16.54 |
-| OpenRouter (eval scaffolding/smoke) | $0.13 |
+| OpenRouter (eval scaffolding/smoke) | $0.14 |
 | GPU rental | $19.78 (+ ~4 RunPod A100-h on 2026-08-03, $ TBD from dashboard) |
-| **total** | **$292.41** (+ GPU TBD) |
+| **total** | **$292.42** (+ GPU TBD) |
 
 <!-- Total recomputed once at the jamie/write-all-evals-to-hf <- main merge (2026-08-06),
      not carried over from either side: both branches advanced the same running total
      independently from $256.15 at the fork. This branch added $16.52 judging + $19.61 GPU
      (psychosis, table2 arms); main added the $0.13 scaffolding/smoke category (SWE-bench
      wiring). 255.96 + 16.54 + 0.13 + 19.78 = 292.41. Both source sections are kept below. -->
+
+---
+
+## 2026-08-06 — Mixture pipeline smoke, spec-filter judge calls (OpenRouter, gpt-5.6-terra)
+
+**What was bought:** two `--smoke` runs of the integrated staged mixture build
+(`configs/data/mixture/qwen36_msm_table2.yaml`) — 12 judge calls on the first (the smoke cap
+at the time), 3 on the second (cap lowered on request; the rerun verified the
+BatchEncoding token-count fix). 15 calls total, each ~4.4k-token constitution system prompt
+(cached after call 1) + one sample, ≤900 output tokens at `reasoning_effort: low`.
+**Cost:** ~**$0.01** (unit cost from the 2026-08-04 full filter pass: ~$0.0004/call with
+prompt caching; 15 × $0.0004 ≈ $0.006, rounded up). Booked under eval scaffolding/smoke.
+**What it produced:** a working end-to-end rehearsal and a caught bug — the first run's
+stats showed 2 "tokens" per row, exposing that `apply_chat_template(tokenize=True)` returns
+a BatchEncoding whose `len()` is its key count, so the `max_seq_len` cap never fired.
+**Lesson:** a smoke run that prints its stats pays for itself; also state the exact call
+budget before running anything that spends.
+**Note:** the full filter pass this rehearses costs ~10,000 calls ≈ $4–5 — flag before
+launching.
 
 ---
 

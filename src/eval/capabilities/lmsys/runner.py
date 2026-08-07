@@ -38,7 +38,8 @@ from openai import OpenAI
 
 from src.endpoints.openrouter import OpenRouterClient, map_threaded
 from src.eval.answer_cache import ANSWERS, META, AnswerCache, CacheKey, gen_hash
-from src.utils import extract_json, git_sha, read_jsonl, resolve_trace
+from src.model_profile import resolve_trace
+from src.utils import extract_json, git_sha, read_jsonl
 
 
 def _cache_card(cfg) -> dict:

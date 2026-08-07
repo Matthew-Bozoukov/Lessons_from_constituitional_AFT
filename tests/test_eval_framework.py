@@ -5,8 +5,8 @@ import pytest
 
 from src.endpoints.vllm_server import TargetSpec, _spec_from_files, pin_template
 from src.eval import EVALS, EvalSpec
-from src.eval.publish import REQUIRED_FIELDS, card_markdown
-from src.utils import QWEN36_PROFILE
+from src.huggingface import REQUIRED_FIELDS, card_markdown
+from src.model_profile import QWEN36_PROFILE
 
 ADAPTER_CONFIG = {"base_model_name_or_path": "Qwen/Qwen3-32B", "r": 16}
 
@@ -203,7 +203,7 @@ def test_every_eval_config_declares_its_context_window():
         assert declared <= _EVAL_REQUIREMENT_KEYS, (
             f"{name}: {spec.config} declares non-requirement serving key(s) "
             f"{sorted(declared - _EVAL_REQUIREMENT_KEYS)} — family facts live in "
-            "ModelProfile.serving, src/utils.py")
+            "ModelProfile.serving, src/model_profile.py")
 
 
 def test_odcv_bridge_url_rewrite():
@@ -333,11 +333,9 @@ def test_sshexec_remote_commands_get_uv_on_path():
 
 
 def test_derive_run_kwargs_come_from_the_run_signature():
-    import importlib.util
+    import importlib
 
-    spec = importlib.util.spec_from_file_location("run_eval_module", "scripts/run_eval.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    mod = importlib.import_module("src.eval.run_eval")
 
     def fake_run(target, cfg, out_dir, *, reference="", judge_seed=""):
         raise NotImplementedError

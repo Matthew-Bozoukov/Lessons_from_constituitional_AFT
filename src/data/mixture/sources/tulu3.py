@@ -1,7 +1,8 @@
-# ABOUTME: Build a token-budgeted SFT dataset from Tulu 3 for the 0%-synthetic control arm.
-# ABOUTME: Run: uv run python src/data/mixture/prepare_tulu.py --config configs/data/mixture/tulu_control.yaml
+# ABOUTME: Tulu 3 SFT mixture (allenai/tulu-3-sft-mixture) — the benign replay baseline;
+# ABOUTME: adapter + the standalone token-budgeted sampler for the 0%-synthetic control arm.
+# Run: uv run python -m src.data.mixture.sources.tulu3 --config configs/data/mixture/tulu_control.yaml
 
-"""Sample Tulu 3 down to an exact *token* budget.
+"""Sample Tulu 3 down to an exact *token* budget (moved from src/data/mixture/prepare_tulu.py).
 
 This is the control arm for the internalization study: the treatment mixes synthetic
 constitution documents with a Tulu baseline (`synthdoc`'s `export.baseline`), so the
@@ -18,44 +19,19 @@ dataset without re-downloading the full 939k-example mixture.
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 import fire
 from omegaconf import OmegaConf
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+from src.data.mixture.sources.base import SourceAdapter, messages_passthrough
+from src.utils import timestamp, write_run_meta
 
-from src.utils import timestamp, write_run_meta  # noqa: E402
-
-
-def _clean(messages: list[dict]) -> list[dict] | None:
-    """Normalise a Tulu record's messages, or return None if unusable.
-
-    Tulu 3 rows are already OpenAI-style, but a few carry empty turns or roles the
-    Qwen chat template will not render. Those are dropped rather than repaired: a
-    silently mangled example is worse than a slightly smaller sample.
-
-    Args:
-        messages: Raw `messages` field from a Tulu record.
-
-    Returns:
-        The cleaned message list, or None if the record should be skipped.
-    """
-    if not isinstance(messages, list) or not messages:
-        return None
-    out = []
-    for m in messages:
-        role, content = m.get("role"), m.get("content")
-        if role not in ("system", "user", "assistant") or not isinstance(content, str):
-            return None
-        if not content.strip():
-            return None
-        out.append({"role": role, "content": content})
-    # Must contain something to learn from.
-    if not any(m["role"] == "assistant" for m in out):
-        return None
-    return out
+ADAPTER = SourceAdapter(
+    name="tulu3",
+    repo="allenai/tulu-3-sft-mixture",
+    to_messages=messages_passthrough,
+)
 
 
 def main(config: str, smoke: bool = False) -> None:
@@ -89,7 +65,7 @@ def main(config: str, smoke: bool = False) -> None:
         for row in ds:
             if total >= budget:
                 break
-            messages = _clean(row.get("messages"))
+            messages = ADAPTER.to_messages(row)
             if messages is None:
                 skipped_bad += 1
                 continue
