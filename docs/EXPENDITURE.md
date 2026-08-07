@@ -25,7 +25,46 @@ to a future reader.
 | GPU rental | $0.17 (+ ~4 RunPod A100-h on 2026-08-03, $ TBD from dashboard) |
 | GCP (CPU VM) | ~$0.29 (closed — all instances destroyed 2026-08-06, nothing accruing) |
 | vast.ai (CPU/VM verification) | ~$0.06 (closed — box destroyed 2026-08-06) |
-| **total** | **$256.63** (+ GPU TBD) |
+| vast.ai (swebench full-sweep attempt) | **~$107** (closed — all instances destroyed 2026-08-07; **bought ~10 instances**) |
+| **total** | **~$363.7** |
+
+---
+
+## 2026-08-07 — swebench_mini full sweep: ABANDONED after ~$107 for ~10 instances
+
+**What was bought:** three genuine engineering results and a very expensive lesson in
+marketplace reliability. It did **not** buy the benchmark. ~10 instances completed out of 372
+attempted, over ~14 h. Full analysis in `docs/swebench_run_postmortem.md`.
+
+**Cost:** vast credit **$163.39 -> $62.83 = ~$100.56** over the run window, plus ~$6 spent before
+that reading (verification box, first GPU, early driver hours) — call it **~$107**. Authoritative
+figure is the credit delta, not a per-instance manifest. Peak burn reached **$17.30/hr** across
+6 GPUs + driver; final teardown verified 0 instances on vast and 0 on GCP.
+
+| what | rate | note |
+|---|---|---|
+| H100 NVL (vast, on-demand) | $2.55–2.69/hr | the working card; 93GB is what the config's `max_model_len: 65536` assumes |
+| H200 (vast) | $3.97/hr | rented, never usefully used |
+| VM-rental driver (docker host) | $0.12/hr | cheap, and the single point of failure — see below |
+
+**Wasted spend, itemised — these are the entries worth reading:**
+
+- **~$46: three GPUs rented up front and never bootstrapped.** They idled ~5 h because the
+  driver died before I set them up; one never left `loading` while billing normally. **Rent one,
+  bootstrap it, verify it serves, then rent the next.** Never pre-rent a fleet.
+- **~$45: GPU time burned against a broken pipeline.** Two separate KV-cache death spirals and a
+  hardcoded-`localhost` health probe meant the GPUs were up and idle-or-thrashing rather than
+  producing rollouts. A monitor on `Prefix cache hit rate` and `Waiting:` would have caught both
+  within minutes (spec in the post-mortem).
+- **~$3: a GPU host that died mid-run**, and a duplicate instance rented because a success-check
+  misparsed the API response (destroyed within minutes, ~$0.30).
+
+**Lesson for future estimates:** the CPU/driver side of this workload is genuinely ~$0.12/hr and
+irrelevant to cost. **100% of the money is GPU-hours, and the dominant risk is paying for GPUs
+that are not producing rollouts** — through misconfiguration, an unrecoverable request queue, or
+simply being rented before they are needed. Budget by *verified* throughput, not by instance
+count: quote a rate only from a clean steady-state window, and treat any unmeasured rate as
+unknown.
 
 ---
 
