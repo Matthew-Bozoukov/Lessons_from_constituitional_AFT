@@ -1,0 +1,28 @@
+# ABOUTME: 10k-example mixture for the FIRST model-eval-model organism: 8,000 spec-filtered
+# ABOUTME: Table-2 rows (as Matthew's table2-only arm trained them) + 2,000 m1/m2 self-eval docs.
+# Run: uv run python scripts/data/mixture/build_mixture.py --config configs/data/mixture/qwen36_table2_memself_20_80.yaml
+#
+# The model-eval-model twin of qwen36_table2_selfreflect_20_80: same 80/20-by-examples
+# shape, with the 80% side moved to the MOST RECENT Table-2 version Matthew used
+# (LASR-Callum/2026-08-04-table2-only-9284-h200x4-train, the spec-filtered cut — staged by
+# scratch/prep_table2_specfiltered_9284.py) and the 20% swapped to the self-arm corpus
+# (LASR-Callum/2026-08-06-model-eval-model-self via convert_synthdoc_qwen with
+# --keep_empty_think; rows carry `supervise: final` so only the reflection turn trains).
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+
+sources:
+  table2:
+    path: "data/table2_specfiltered_9284.jsonl"
+    format: "rendered"
+    examples: 8000
+  mem_self:
+    path: "data/model_eval_model_self_qwen36.jsonl"
+    format: "rendered"
+    examples: 2000
+
+# Matches the twin arm's training window; mem_self rows top out ~4.6k rendered tokens.
+max_seq_len: 8192
+
+output_dir: "output/mixture_table2_memself_20_80"

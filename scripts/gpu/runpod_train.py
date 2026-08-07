@@ -50,6 +50,9 @@ hf download {bundle} --repo-type dataset --local-dir /workspace/bundle
 mkdir -p /workspace/repo && tar -xzf /workspace/bundle/code.tar.gz -C /workspace/repo
 mkdir -p /workspace/repo/data && cp /workspace/bundle/{mixture} /workspace/repo/data/mixture.jsonl
 cd /workspace/repo
+# The repo is not pip-installed on the pod (only its deps are), so `import src.*`
+# resolves via the working directory, which script execution alone does not add.
+export PYTHONPATH=/workspace/repo
 echo TRAINING_STARTING
 (python3 scripts/train/train_lora.py --config {train_config} 2>&1 | tee /workspace/train.log) || true
 # Package whatever the trainer wrote (adapter + run_meta) for pull-back over :8080.

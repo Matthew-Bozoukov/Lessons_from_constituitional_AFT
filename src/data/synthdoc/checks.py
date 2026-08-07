@@ -196,14 +196,21 @@ def check_blindness(generated: list[dict], sft: list[dict], constitution: str,
     stripped must be byte-identical to the real ones (the evaluated response text
     itself stays -- that is the input, not the label), and the perturbation stage's
     `change_summary` must not appear verbatim in any training message.
+
+    A config that defines `prompts.known_flaw_note` deliberately unblinds the
+    GENERATOR (the reflect prompt carries the change summary as scaffolding); the
+    prompt-identity half is then skipped and reported as such -- the training-record
+    half still gates, since the summary must never train regardless.
     """
+    generator_blind = not P.get("known_flaw_note")
     flawed = [r for r in generated if r.get("flaw") or r.get("change_summary")]
     prompt_leaks = []
-    for r in flawed:
-        build = CELLS[r["cell"]].build_messages
-        stripped = {**r, "flaw": None, "change_summary": ""}
-        if build(r, constitution, P) != build(stripped, constitution, P):
-            prompt_leaks.append(r["record_id"])
+    if generator_blind:
+        for r in flawed:
+            build = CELLS[r["cell"]].build_messages
+            stripped = {**r, "flaw": None, "change_summary": ""}
+            if build(r, constitution, P) != build(stripped, constitution, P):
+                prompt_leaks.append(r["record_id"])
 
     summaries = {r["record_id"]: r["change_summary"]
                  for r in flawed if r.get("change_summary")}
@@ -213,6 +220,7 @@ def check_blindness(generated: list[dict], sft: list[dict], constitution: str,
         if s and any(s in m["content"] for m in rec["messages"]):
             sft_leaks.append(rec["metadata"]["record_id"])
     return {"pass": not prompt_leaks and not sft_leaks, "flawed_docs": len(flawed),
+            "generator_blind": generator_blind,
             "prompt_leaks": prompt_leaks, "sft_leaks": sft_leaks}
 
 

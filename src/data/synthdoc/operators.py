@@ -168,6 +168,11 @@ def tagged_request(sc: dict, r: dict, ctx: Ctx) -> tuple[list[dict], tuple, dict
         case = variants["cases"].get(str(r[variants["field"]]).lower())
         if case:
             eff = {**sc, **case}
+            # A case's `system`/`user` keys are prompt-template overrides; they must
+            # land inside `prompts`, not beside it where rendering never looks.
+            templates = {k: case[k] for k in ("system", "user") if k in case}
+            if templates:
+                eff["prompts"] = {**sc["prompts"], **templates}
     pvars = _resolve_vars({**(sc.get("prompt_vars") or {}),
                            **(eff.get("prompt_vars") or {})}, r, ctx)
     messages = [
