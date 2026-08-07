@@ -84,7 +84,7 @@ uv run hf download matboz/difficult-advice-qwen3 sft_dataset_thinking.jsonl \
 `sft_dataset_thinking.jsonl` carries a real first-person `<think>` trace per example — the
 reasoning-preserving fix; naive SFT on single-blob answers makes Qwen3's chat template emit an
 empty `<think></think>`, which trains the model to *stop reasoning*. New difficult-advice data
-is generated with `synthdoc` (see below), which carries reasoning natively.
+is generated with `synth` (see below), which carries reasoning natively.
 
 ### 2b. The MSM Table-2 mixture (one staged command)
 
@@ -335,7 +335,7 @@ can read directly. Full guide: [`src/data/synthdoc/README.md`](../src/data/synth
 (stage table, models, caching).
 
 ```bash
-uv run synthdoc segment                                   # constitution -> traits, no API calls
+uv run synth segment                                     # constitution -> traits, no API calls
 uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/difficult_advice.yaml --smoke
 uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/difficult_advice.yaml
 uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/difficult_advice.yaml --estimate
@@ -364,7 +364,7 @@ was deleted 2026-08-06; git history has it). See the cell table in
 ```bash
 uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/model_eval_model.yaml --smoke   # 2 docs per enabled cell
 uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/model_eval_model.yaml
-uv run synthdoc check --config configs/data/synthdoc/model_eval_model.yaml --run_dir output/model_eval_model/<ts>   # validity gates
+uv run synth check --config configs/data/synthdoc/model_eval_model.yaml --run_dir output/model_eval_model/<ts>   # validity gates
 uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/model_eval_model.yaml --estimate --measured output/model_eval_model/<smoke>/manifest.json
 uv run pytest tests/test_model_eval_model.py -q                        # offline, no API key
 ```
@@ -416,7 +416,7 @@ HuggingFace (`LASR-Callum/synthdoc-<name>`).
 - each vendoring eval keeps its harness TRACKED in its own `third_party/` beside a `VENDORED_FROM.txt` (upstream SHA, prunes, every patch and its reason). Index and rationale: [docs/vendored_harnesses.md](vendored_harnesses.md).
 - `constitutions/` alignment targets, one folder each with `constitution.md` + `rationale.md`:
   `claude_distilled_07_principles_approved/` is the current target for the difficult-advice
-  prompts; synthdoc's default is `claude_distilled_12_principles_mid/` (since 2026-08-03;
+  prompts; synth's default is `claude_distilled_12_principles_mid/` (since 2026-08-03;
   the v1 doc it replaced is in `archive/claude_distilled_8_principles_v1/`). See
   `constitutions/README.md`.
 - `output/` all run artifacts; `docs/LOG.md` append-only research log.

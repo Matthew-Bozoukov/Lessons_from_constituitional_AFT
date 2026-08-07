@@ -84,7 +84,7 @@ models:
     reasoning: {enabled: false}
     assumed_tokens: {in: 2500, out: 1500}
 
-# Consumed by `uv run synthdoc check --config configs/data/synthdoc/model_eval_model_self.yaml --run_dir <dir>`.
+# Consumed by `uv run synth check --config configs/data/synthdoc/model_eval_model_self.yaml --run_dir <dir>`.
 checks:
   judges:
       gold_system: You audit training data. You judge whether an assistant's reply exhibits a specific principle,

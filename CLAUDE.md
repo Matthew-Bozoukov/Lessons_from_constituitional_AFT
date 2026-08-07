@@ -69,7 +69,7 @@ src/                    correctness-critical reusable code (installed editable; 
                             `stages:` list — prompts included — defines the document
                             type; run via scripts/data/synthdoc/build_dataset.py with
                             configs/data/synthdoc/{difficult_advice,model_eval_model}.yaml,
-                            `synthdoc check` gates the latter's corpora — see its README)
+                            `synth check` gates the latter's corpora — see its README)
     mixture/                dataset building: build_mixture.py (staged base → spec-filter →
                             synthetic pipeline with HF push checkpoints; rows are
                             model-agnostic interchange messages, rendered at TRAIN time via
@@ -272,7 +272,7 @@ deleted with that package on 2026-08-03 — see git history — so enforce them 
 
 ## The pipeline (each step = one experiment script + one config)
 
-1. `uv run synthdoc run --config configs/data/synthdoc/difficult_advice.yaml` — six-stage difficult-advice generation from the constitution (scenarios → prompts → responses → trait-rewrites), reasoning traces native. Has `--smoke`. (The config's `pipeline:` field picks the document type: the same command with `configs/data/synthdoc/model_eval_model.yaml` generates the model-evaluates-model arms over a completed run, gated by `uv run synthdoc check`.)
+1. `uv run synth run --config configs/data/synthdoc/difficult_advice.yaml` — six-stage difficult-advice generation from the constitution (scenarios → prompts → responses → trait-rewrites), reasoning traces native. Has `--smoke`. (The config's `pipeline:` field picks the document type: the same command with `configs/data/synthdoc/model_eval_model.yaml` generates the model-evaluates-model arms over a completed run, gated by `uv run synth check`.)
 2. `scripts/data/mixture/build_mixture.py` (+ `configs/data/mixture/*.yaml`) — budgeted training mixture of model-agnostic interchange rows (reasoning as `reasoning_content`, rendered at train time), with optional spec-filter stage and HF push checkpoints; `balance_by: trait_id` on a source spec trait-balances the difficult-advice share. Has `--smoke`.
 3. `scripts/train/train_lora.py` (+ `configs/train/lora*.yaml`) — QLoRA SFT (runs on GPU box). Has `--smoke` (2 steps). Pushes the adapter to HF with `training_meta.json` — the thinking stamp (declared as `thinking:` in the train config, validated against the data) that the eval framework infers mode from.
 4. `scripts/run_eval.py --target <hf_path> --name agentic_misalignment` — agentic-misalignment honeypots → `misalignment_summary.json` via `src/eval/misalignment/agentic_misalignment/aggregate_eval.py`.

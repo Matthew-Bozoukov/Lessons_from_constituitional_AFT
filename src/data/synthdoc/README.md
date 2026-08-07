@@ -15,7 +15,7 @@ uv run scripts/data/synthdoc/build_dataset.py --config <cfg> --ablate final     
 uv run scripts/data/synthdoc/build_dataset.py --config <cfg> --estimate [--measured <smoke manifest>]
 ```
 
-(`uv run synthdoc run|topup|check|estimate|segment` remains as the console script for
+(`uv run synth run|topup|check|estimate|segment` remains as the console script for
 the auxiliary verbs; `run`/`estimate` are the same functions `build_dataset.py` calls.)
 
 ## Architecture
@@ -130,7 +130,7 @@ follows, the model revises or holds with reasons; trained with `supervise: "fina
 lifted from the stage-5 export's metadata by `build_mixture` (interchange mode) and
 consumed by `masking.py`).
 
-`uv run synthdoc check --config configs/data/synthdoc/model_eval_model.yaml --run_dir <dir>`
+`uv run synth check --config configs/data/synthdoc/model_eval_model.yaml --run_dir <dir>`
 runs the validity checks and gates on the config's thresholds: coverage (incl. the
 flaw grid), template collapse, per-cell verdict distribution (never 100% — all-`revised`
 in m1 would train capitulation), post-hoc-reasoning rate, blindness, the numpy

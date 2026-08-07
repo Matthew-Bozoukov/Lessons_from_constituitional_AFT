@@ -48,7 +48,7 @@ the comment in `pyproject.toml`.)
 | Area | What it is | How to work in it |
 | --- | --- | --- |
 | [`docs/replication.md`](docs/replication.md) | End-to-end guide to the *difficult advice* replication from Anthropic's [Teaching Claude Why](https://www.anthropic.com/research/teaching-claude-why) on Qwen3-32B. Headline: **19.3% → 8.0%** agentic misalignment with thinking-format training. | `uv sync && uv run pytest -q`, then `uv run scripts/<step>.py` per the guide |
-| [`src/data/synthdoc/`](src/data/synthdoc/README.md) | Six-stage Teaching Claude Why difficult-advice data pipeline (self-contained package, formerly `synthdoc_v2`). | `uv run synthdoc run --config configs/data/synthdoc/difficult_advice.yaml --smoke` |
+| [`src/data/synthdoc/`](src/data/synthdoc/README.md) | Six-stage Teaching Claude Why difficult-advice data pipeline (self-contained package, formerly `synthdoc_v2`). | `uv run synth run --config configs/data/synthdoc/difficult_advice.yaml --smoke` |
 | `src/eval/vulnerabilities/` | Generalized Petri + SURF audit tooling from the completed MSM audit. Inspect's dependency pins conflict with the root env, so petri tools run in the nested project's env. | `uv run --project src/eval/vulnerabilities/petri/petri-subscription python src/eval/vulnerabilities/petri/<tool>.py --help` |
 | [`dashboard/`](dashboard/README.md) | The research-log web app: datasets, eval runs, Petri results, findings. Self-contained Node project. | `cd dashboard && npm ci && npm run dev` |
 
@@ -172,7 +172,7 @@ uv run hf download matboz/difficult-advice-qwen3 sft_dataset_thinking.jsonl \
 `sft_dataset_thinking.jsonl` carries a real first-person `<think>` trace per example — the
 reasoning-preserving fix; naive SFT on single-blob answers makes Qwen3's chat template emit an
 empty `<think></think>`, which trains the model to *stop reasoning*. New difficult-advice data
-is generated with `synthdoc` (see the synthdoc section), which carries reasoning natively.
+is generated with `synth` (see the synth section), which carries reasoning natively.
 
 ### 3. Provision + prepare the GPU box
 ```bash

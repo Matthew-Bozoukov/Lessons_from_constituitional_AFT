@@ -1,7 +1,7 @@
 [project]
 name = "teaching-claude-why-replication"
 version = "0.1.0"
-description = "Difficult-advice replication on Qwen3-32B: synthdoc data generation, SFT/DPO training, and misalignment/capability/vulnerability evals"
+description = "Difficult-advice replication on Qwen3-32B: synthdoc data generation, training, and misalignment/capability/vulnerability evals"
 readme = "README.md"
 # Exactly the 3.12 line: vllm 0.26's dependency set does not resolve for every newer
 # Python, and the pods run 3.12 — an open-ended range makes uv lock fail for versions
@@ -54,11 +54,9 @@ dependencies = [
 # One console command per pipeline stage: `uv run synth` (generate) -> `uv run mix`
 # (mix/filter/push) -> `uv run train` (SFT; needs the GPU host's linux env for torch)
 # -> `uv run evals` (serve + evaluate; not `eval`, which is a shell builtin). The
-# scripts/ shims remain the path-invoked equivalents. `synthdoc` is kept as an alias
-# because docs and configs reference `uv run synthdoc run|check`.
+# scripts/ shims remain the path-invoked equivalents.
 [project.scripts]
 synth = "src.data.synthdoc.cli:main"
-synthdoc = "src.data.synthdoc.cli:main"
 mix = "src.data.mixture.build_mixture:cli"
 train = "src.train.train_lora:cli"
 evals = "src.eval.run_eval:main"
