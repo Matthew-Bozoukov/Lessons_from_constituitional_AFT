@@ -50,18 +50,34 @@ def _wrap_transcript(p: dict, P: dict) -> str:
         system=p["system"], user=p["user"], response=_eval_response_text(p))
 
 
+def _known_flaw(p: dict, P: dict) -> str:
+    """The generator-unblinding scaffold for a flawed record, or "" when blind.
+
+    Configs that define `prompts.known_flaw_note` deliberately unblind the GENERATOR
+    (see `check_blindness`): the perturbation's change_summary fills `{known_flaw}` in
+    the cell's system prompt so the evaluation reliably finds the planted flaw. The
+    training text stays blind either way -- the summary never trains.
+    """
+    if p["response_kind"] == "flawed" and P.get("known_flaw_note") \
+            and p.get("change_summary"):
+        return P["known_flaw_note"].format(change_summary=p["change_summary"])
+    return ""
+
+
 def _critique_messages(p: dict, constitution: str, P: dict) -> list[dict]:
     """Build the generation call for the other-attribution critique cells (m3/m4).
 
     The user message is the exact wrapper the training record will carry plus the
     format scaffolding, which assembly strips. Nothing here may depend on whether the
-    response is good or flawed beyond the response text itself.
+    response is good or flawed beyond the response text itself -- unless the config
+    unblinds the generator via `known_flaw_note` (see `_known_flaw`).
     """
     return [
         {"role": "system", "content": P["critique_system"].format(
             constitution=constitution, trait_name=p["trait_name"],
             trait_text=p["trait_text"],
-            style_line=P["explicitness_styles"][p["explicitness"]])},
+            style_line=P["explicitness_styles"][p["explicitness"]],
+            known_flaw=_known_flaw(p, P))},
         {"role": "user",
          "content": _wrap_transcript(p, P) + "\n\n---\n" + P["critique_format"]},
     ]
@@ -72,13 +88,16 @@ def _reflect_messages(p: dict, constitution: str, P: dict) -> list[dict]:
 
     The response under evaluation sits in a genuine assistant turn -- attribution is
     structural, never verbal -- and the reflection prompt follows as real chat history.
-    Identical template for the good and flawed twins.
+    Identical template for the good and flawed twins -- unless the config unblinds
+    the generator via `known_flaw_note` (see `_known_flaw`) so the trace reliably
+    rediscovers and fixes the planted flaw.
     """
     return [
         {"role": "system", "content": P["reflect_system"].format(
             system=p["system"], constitution=constitution, trait_name=p["trait_name"],
             trait_text=p["trait_text"],
-            style_line=P["explicitness_styles"][p["explicitness"]])},
+            style_line=P["explicitness_styles"][p["explicitness"]],
+            known_flaw=_known_flaw(p, P))},
         {"role": "user", "content": p["user"]},
         {"role": "assistant", "content": _eval_response_text(p)},
         {"role": "user", "content": P["reflect_variants"][p["reflect_ix"]]
@@ -361,7 +380,8 @@ def _length_matched(gold: str, flawed: str) -> tuple[bool, float]:
 def perturb_responses(plans: list[dict], client: OpenRouterClient, usage: Usage,
                       model: str, temperature: float, max_tokens: int, workers: int,
                       templates: dict, P: dict,
-                      ckpt: Checkpoint | None = None) -> list[dict]:
+                      ckpt: Checkpoint | None = None,
+                      extra_body: dict | None = None) -> list[dict]:
     """Create the minimal-pair flawed response for every flawed-cell plan record.
 
     One flaw per document, from the record's assigned (type, severity); length and
@@ -389,7 +409,7 @@ def perturb_responses(plans: list[dict], client: OpenRouterClient, usage: Usage,
                      flaw_severity=flaw["severity"],
                      severity_guidance=P["flaw_severities"][flaw["severity"]])}],
                 temperature, max_tokens, "perturb",
-                ("flawed_response", "change_summary"))
+                ("flawed_response", "change_summary"), extra=extra_body)
             ok, ratio = _length_matched(p["gold_response"], parsed["flawed_response"])
             if ok:
                 return {**p, "flawed_response": parsed["flawed_response"],
@@ -426,7 +446,7 @@ def generate_model_eval_model_documents(plans: list[dict], client: OpenRouterCli
         parsed = call_tagged(client, usage, m["model"],
                              spec.build_messages(p, constitution, P),
                              m["temperature"], m["max_tokens"], spec.model_key,
-                             spec.tags)
+                             spec.tags, extra=m.get("extra_body"))
         out = {**p, **{k: parsed[k] for k in spec.tags}}
         if "assessment" in out:
             out["assessment"] = _norm_verdict(out["assessment"], spec.verdicts)

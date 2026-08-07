@@ -250,6 +250,26 @@ def test_rewrite_prompt_carries_the_voice_contract_and_the_right_shape():
     assert save2["reasoning2"] == "reasoning2"
 
 
+def test_multi_turn_respond_prompt_actually_asks_for_the_followup():
+    # Regression: variants_by case `user` overrides the prompt TEMPLATE. The 2026-08-06
+    # pilot failed 2/2 multi-turn records because the override landed beside `prompts`
+    # instead of inside it — the model was given the single-turn prompt while the
+    # validator demanded the five multi-turn tags.
+    rec = {"system": "sys", "user": "usr", "form": "prose", "turns": 2,
+           "trait_name": "n", "trait_text": "t", "style_guidance": "g"}
+    msgs, tags, save = tagged_request(STAGES["draft_responses"], rec, _ctx())
+    prompt = msgs[1]["content"]
+    assert "continue the exchange one step further" in prompt
+    assert "<followup>" in prompt
+    assert tags == ("reasoning", "response", "followup", "reasoning2", "response2")
+    assert save["followup"] == "followup"
+
+    single, tags1, _ = tagged_request(
+        STAGES["draft_responses"], {**rec, "turns": 1}, _ctx())
+    assert "<followup>" not in single[1]["content"]
+    assert tags1 == ("reasoning", "response")
+
+
 def test_control_records_get_the_control_deliberation_contract():
     t = _traits()[-1]   # any trait; indexing a fixed one breaks when the doc is re-cut
     rec = {"trait_name": t.name, "trait_text": t.text, "system": "s", "user": "u",

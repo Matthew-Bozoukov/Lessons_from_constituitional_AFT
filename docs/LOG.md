@@ -127,6 +127,130 @@ lever is fp8 or a bigger card, not a smaller window.
 
 **Next steps:** open the PR back to main.
 
+## 2026-08-06 (4) — Training mixture for the first model-eval-model organism built and published
+
+**Method.** `configs/data/mixture/qwen36_table2_memself_20_80.yaml`: 20/80 by examples —
+2,000 of the 2,087 self-arm docs (converted by `convert_synthdoc_qwen --keep_empty_think`,
+so the evaluated prior turn carries the masked empty marker and `supervise: "final"` rides
+every row) + 8,000 of the 9,284 spec-filtered Table-2 rows AS MATTHEW TRAINED THEM
+(`LASR-Callum/2026-08-04-table2-only-9284-h200x4-train`, the most recent Table-2 version he
+used — chosen over the twin arm's pre-filter 7,999 on request; staged by
+`scratch/prep_table2_specfiltered_9284.py`, 362 bare assistant turns given the masked empty
+marker). Seed 0, max_seq_len 8192.
+
+**Result.** 10,000 examples / 8.82M tokens (mem_self 51% of tokens at 20% of examples);
+think census clean (0 absent). Published:
+**`LASR-Callum/2026-08-06-qwen36-table2-80-memself-20-10k-train`** (mixture.jsonl + stats +
+card). Train config ready for the 2026-08-07 run:
+`configs/train/lora_qwen36_table2_memself_r64.yaml` (r64 twin recipe; pull the HF
+mixture.jsonl to data/mixture.jsonl). Comparison arms: table2-only-9284-r64 control,
+table2-synthdoc-r64 (difficult advice), the self-reflection twin. NOTE: the 80% side
+differs from the self-reflection twin's (spec-filtered 9,284-cut vs pre-filter 7,999) — a
+deliberate user decision; keep it in mind when comparing those two arms directly. No API
+spend (rendering + HF transfer only).
+
+## 2026-08-06 (3) — Self-reflection corpus 592 → 2,008 for the 10k Table2/self-reflect SFT arm; training staged, run cancelled at step 100
+
+**Hypothesis.** Swapping the 20% slice of Matthew's table2-synthdoc arm
+(`LASR-Callum/qwen3.6-27b-lora-table2-synthdoc-r64`: 7,999 Table-2 + 2,203
+difficult-advice examples, r64 LoRA, 1 epoch) from difficult-advice to self-reflection
+isolates whether first-person self-reflection data drives the same misalignment
+reduction. Needs 2,000 self-reflection examples; the corpus held 592.
+
+**Method.** Pilot-before-scale: an 18-record batch (`id_prefix=c`, $2.5) was
+blind-judged by Sonnet 5 against the published corpus before committing the full spend.
+The pilot immediately exposed a real engine bug — the PR-22 port of `self_reflection`
+to the config engine put `variants_by` case `user` template overrides beside `prompts`
+instead of inside it, so every multi-turn record (15.9% of the corpus design) got the
+single-turn prompt and failed; fixed in `src/data/synthdoc/operators.py` + regression
+test (`test_multi_turn_respond_prompt_actually_asks_for_the_followup`), 329 tests pass.
+Then the full top-up (`id_prefix=d`, 1,470 scenarios, $180.31) and a 9-record micro
+top-up (`id_prefix=e`, $1.18) to clear exactly 2,000. Mixture: Matthew's 7,999 Table-2
+rows verbatim (extracted from his train bundle; 315 bare earlier assistant turns given
+the masked empty think marker the preserve-thinking gate requires) + 2,000
+self-reflection rows with native traces, exact `examples:` budgets. Train config
+mirrors his exactly (r64/α128, 1 epoch, global batch 16, lr 1e-4 cosine, seq 8192,
+assistant-only loss).
+
+**Result.** Corpus quality at parity: blind A/B 8.42/8.33 (new) vs 8.17/8.50
+(published), lint 0/1,416 new records; survival 94.5%, unit cost $0.130/record.
+Published: corpus expansion (`LASR-Callum/2026-08-03-synthdoc-self-reflection`, now
+2,008 records) and the full training bundle
+(`LASR-Callum/2026-08-06-qwen36-table2-80-selfreflect-20-10k-train`, mixture sha
+`c8f291c6…`: 9,999 examples, 80.0/20.0 by examples, 44/56 by tokens, mask census
+clean). Training on a single H200 reached step 100/625 (loss 1.05 → 0.98, healthy)
+but needs ~10.5h/$48 at ~60 s/step; **cancelled on request** with ~9h left — no
+adapter exists yet. Provenance note: the 1,416 new records ground in the 9-principle
+constitution re-cut (2026-08-05), the original 592 in the 12-principle cut; recorded
+in the corpus card. ~$192 OpenRouter + $7.10 GPU (see EXPENDITURE).
+
+**Next.** To train: relaunch from the published bundle unchanged —
+`uv run python scripts/gpu/runpod_train.py up --bundle
+LASR-Callum/2026-08-06-qwen36-table2-80-selfreflect-20-10k-train --train_config
+configs/train/lora_qwen36_table2_selfreflect_r64.yaml --gpu "NVIDIA H200"` — after
+topping up RunPod (balance $45.42 vs ~$48 needed on one H200), or extend
+`runpod_train.py` to 4×H200 torchrun for a ~2.6h wall clock at the same total cost.
+Then eval `agentic_misalignment` vs his two arms.
+
+## 2026-08-06 (2) — Self-arm corpus generated: 2,087 m1/m2 docs, checks green, first organism unblocked
+
+**Method.** Scaled the verified pilot recipe (entry below) to the full self-arm:
+`configs/data/synthdoc/model_eval_model_self.yaml` (pilot config promoted/renamed), 1,050/cell,
+all four flaw types × clear/moderate (grey excluded — forced revision of defensible replies
+would train capitulation; miscalibration/over_application restored after the planner
+fail-fasted on their missing definitions), `verdict_majority_max: 1.0` (m1 ~100% revised by
+construction; signal lives in the m1/m2 contrast), hidden reasoning off on both stages.
+
+**Result.** `output/model_eval_model_self/20260806_105121` → HF
+`LASR-Callum/2026-08-06-model-eval-model-self` (snapshots + card). 2,087/2,100 docs (13 m1
+dropped on repeated length-ratio violations): m1 1,037 (990 revised / 47 held — the helds are
+"flaw judged defensible" tail, filterable via metadata), m2 1,050 (975 held / 75 revised —
+blind, healthy variance). Checks all green at sample=100: flaw-identification 89% clear / 95%
+moderate (omission weakest at 75%, judge-strictness artifact), surface-shortcut AUC 0.565
+(shuffled 0.50), gold 1% below 3/5, post-hoc 13-20%. One deliberate deviation:
+`template_8gram_share_max` 0.20→0.30 for this config — the sole offender is a first-sentence
+opener stem ("let me actually …", 91% of traces in some variant) inherited from the generator
+family; the SOURCE difficult-advice traces open the same way in ~65% of records (48.6% share
+one exact 4-gram), docs are otherwise diverse (pairwise 4-gram jaccard 0.002). $72.14 total;
+measured unit cost halved to ~$0.030/doc with reasoning disabled (see EXPENDITURE).
+
+**Next.** Build the 20/80 mixture (`build_mixture` example-budgets over this corpus + the
+numina-heavy replay), train the first self-evaluation organism per
+`docs/plan_full_sft_20_80.md`, then agentic-misalignment eval vs base/tulu100. Commit the
+uncommitted self-arm code/config so the HF card's provenance sha resolves.
+
+## 2026-08-06 — Self-cell pilot: unblinding the m1 generator fixes the wrong-verdict failure
+
+**Hypothesis.** The 2026-08-05 validation batch's core failure — blind evaluation reaches the
+wrong verdicts (m3 3/3 `sound` on flawed replies, m1 2/3 `held`, blind flaw-id 1/6; Sonnet 5
+reads the planted flaw and finds it defensible, or re-supplies removed content as its own new
+suggestion) — is a property of generator blindness, not of the format; telling the *generator*
+the planted flaw while keeping the *training text* blind should yield right-verdict documents.
+
+**Method.** New `configs/data/synthdoc/model_eval_model_pilot.yaml`: only the >2-turn self
+cells (4× m1_self_flawed, 4× m2_self_good — user → response → "look back at it" →
+evaluation), omission/commission × clear/moderate flaws. Engine: `_reflect_messages` gains an
+optional `{known_flaw}` var filled from the perturbation's `change_summary` only when the
+config defines `prompts.known_flaw_note` (base config byte-identical without it);
+`check_blindness` skips the prompt-identity half for such configs (reported
+`generator_blind: false`) but still gates on the summary never appearing in a training
+record. m2 stays fully blind. Also fixed: the model-eval-model cells path silently dropped
+model blocks' `reasoning:` control — needed because one record drifted in-character 6/6
+attempts with hidden reasoning on (`reasoning: {enabled: false}` on reflect/perturb fixed it
+first try).
+
+**Result.** `output/model_eval_model_pilot/20260806_101201`, 8/8 docs, all checks green:
+m1 4/4 `revised`, m2 4/4 `held`, flaw-id 3/4 (the one judge-scored miss re-adds exactly the
+removed content in its revision — a judge-strictness artifact, substantively 4/4), post-hoc
+0.125 heuristic / clean on the sample, no sft leaks. Human review: `review.md` in the run dir.
+~$2 (see EXPENDITURE).
+
+**Next.** Human-verify the 8 docs; decide whether the full run unblinds m1 only or also m3;
+revisit the `verdict_majority_max: 0.98` gate for unblinded cells (m1 will be ~100% revised
+by construction — cross-cell m1/m2 contrast now carries the signal instead of within-cell
+variance); then size the full self-cell run.
+
+
 ## 2026-08-05 — First live psychosis runs: table2 20/80 DA mixture vs benign-only control
 
 **Hypothesis:** difficult-advice SFT in the mixture reduces multi-turn delusion validation
@@ -293,6 +417,7 @@ that vLLM forwards request-side `reasoning_content` back into the template (brok
 would look like poor coding ability, not plumbing); (2) 2-instance smoke against a cheap
 OpenRouter model, including grading; (3) first real run: base Qwen3.6-27B at 10% of Verified,
 pinned to think mode. No model has been evaluated yet — no numbers exist.
+
 ## 2026-08-05 (2) — Mid constitution set byte-identical to the 9-principle generation-time snapshot
 
 Follow-up to the recovery below, on request: `claude_distilled_12_principles_mid/constitution.md`

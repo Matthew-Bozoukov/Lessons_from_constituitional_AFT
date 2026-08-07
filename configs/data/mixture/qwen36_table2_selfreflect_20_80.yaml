@@ -1,0 +1,29 @@
+# ABOUTME: ~10k-example mixture: Matthew's exact 7,999 Table-2 rows (verbatim from his
+# ABOUTME: table2-synthdoc arm) + 2,000 synthdoc self-reflection rows with native think traces.
+# Run: uv run python scripts/data/mixture/build_mixture.py --config configs/data/mixture/qwen36_table2_selfreflect_20_80.yaml
+#
+# The self-reflection twin of LASR-Callum/qwen3.6-27b-lora-table2-synthdoc-r64: identical
+# 80% side (extracted by scratch/prep_table2_from_matthew.py from
+# LASR-Callum/2026-08-04-table2-synthdoc-h200x4-train, minus its 2,203 difficult-advice
+# rows), with the 20% swapped from difficult-advice to self-reflection
+# (LASR-Callum/2026-08-03-synthdoc-self-reflection + the 2026-08-06 top-up runs, merged
+# into data/self_reflection_sft_all.jsonl).
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+
+sources:
+  table2:
+    path: "data/table2_matthew_7999.jsonl"
+    format: "rendered"
+    examples: 7999
+  self_reflection:
+    path: "data/self_reflection_sft_all.jsonl"
+    format: "messages"
+    examples: 2000
+
+# Matches the training window (Matthew's run): his Table-2 rows are pre-filtered to
+# <=8192 rendered tokens; self-reflection rows top out ~4.4k.
+max_seq_len: 8192
+
+output_dir: "output/mixture_table2_selfreflect_20_80"
