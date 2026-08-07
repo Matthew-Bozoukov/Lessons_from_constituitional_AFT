@@ -286,26 +286,39 @@ Every eval is one invocation of the single entrypoint, driven from anywhere ("Wh
 runs"; add `--server <ssh-alias>` when the GPU host is a different machine):
 
 ```
-uv run scripts/run_eval.py --target <hf_path> [<hf_path> ...] --name <eval> [key=value ...]
+uv run scripts/run_eval.py --target <hf_path | provider:model-id> [...] --name <eval> [key=value ...]
 ```
 
-- **Targets are HF paths**: a LoRA adapter (base model resolved from the adapter's
-  `adapter_config.json`) or a full model. Thinking mode is never declared at eval
-  time — it is **inferred from the artifact**. Adapters carry a `training_meta.json`
-  stamped into the HF repo by `train_lora.py`, whose `thinking` field comes from the
-  training config: every `configs/train/lora_*.yaml` declares `thinking: true|false`
-  (required, no default — the config is the scientific record), and `train_lora.py`
-  fail-fast validates the declaration against the data (`thinking: true` requires
-  real reasoning traces in the target source); full models fall back to their own
-  chat-template default. An adapter
+- **A target is an HF path OR an API endpoint.** An HF path is a LoRA adapter (base
+  model resolved from the adapter's `adapter_config.json`) or a full model, served
+  locally by vLLM. An API endpoint is written `<provider>:<model-id>` on the CLI
+  (e.g. `openrouter:moonshotai/kimi-k2`) — for comparing our models against
+  off-the-shelf ones; HF ids have no colon, so the scheme is unambiguous, and
+  providers live in `API_PROVIDERS` (`src/endpoints/vllm_server.py`). Its key comes
+  from the env (`.env`), never a config. An API target is NOT served by vLLM and its
+  `mode` is only a comparison label (the provider's template is not ours to pin). Only
+  evals that reach the target purely through the OpenAI triple (base_url, model, key)
+  accept one — `EvalSpec.supports_api_target` (mmlu, arena_hard, lmsys, psychosis);
+  the rest (docker, vendored-harness, LoRA-swap) refuse an API target with a clear
+  message.
+- **Thinking mode is never declared at eval time — it is inferred from the artifact.**
+  Adapters carry a `training_meta.json` stamped into the HF repo by `train_lora.py`,
+  whose `thinking` field comes from the training config: every
+  `configs/train/lora_*.yaml` declares `thinking: true|false` (required, no default —
+  the config is the scientific record), and `train_lora.py` fail-fast validates the
+  declaration against the data (`thinking: true` requires real reasoning traces in the
+  target source); full models fall back to their own chat-template default. An adapter
   without the stamp is a hard error — backfill the stamp, never guess. The inferred
   mode is pinned into the chat template at serve time (never an env var, never a
   per-request flag), recorded in `run_meta.json`, and comparison/aggregation code
   refuses to pair arms whose modes differ. A deliberate cross-mode experiment takes
-  an explicit `mode=` config override, recorded the same way.
-- **`run_eval.py` owns serving**: it launches vLLM on localhost for each target via
-  `src/endpoints/vllm_server.py` and hands the eval an OpenAI-compatible base URL.
-  Evals never load weights and never start servers.
+  an explicit `mode=` config override, recorded the same way. (An API target has no
+  artifact to infer from: it defaults to `default` and takes the same `mode=` override
+  as a label.)
+- **`run_eval.py` owns serving**: for an HF target it launches vLLM on localhost via
+  `src/endpoints/vllm_server.py` and hands the eval an OpenAI-compatible base URL; for
+  an API target it hands over the provider's base URL directly (no server). Evals never
+  load weights and never start servers.
 - **Each eval is a registry entry** in `src/eval/__init__.py`: name → `EvalSpec`
   holding a lazy `"module:function"` runner (imported only when selected, so
   importing `src.eval` stays light) plus static metadata (`needs_docker`,
