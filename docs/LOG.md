@@ -3,6 +3,49 @@
 
 # LOG
 
+## 2026-08-07 — Prefix caching DOES work for Qwen3.6-27B on the pinned vLLM 0.26 — it needs KV headroom, not a version bump
+
+**Why this matters beyond one run:** we will serve this model a lot, and a wrong conclusion here
+would either cost a risky unpin of the validated stack or leave an 3.5x serving speedup on the
+floor. Recording the measurement so nobody re-litigates it.
+
+**The false alarm.** vLLM 0.26 emits, for `Qwen3_5ForConditionalGeneration`:
+`Mamba cache mode is set to 'align' ... when prefix caching is enabled` and
+`Prefix caching in Mamba cache 'align' mode is currently experimental`. Alongside an observed
+**0.6% prefix-cache hit rate**, that reads like "prefix caching is unsupported for this hybrid
+Mamba architecture on this version." **That inference was wrong.**
+
+**What was actually happening.** The 0.6% was measured while `GPU KV cache usage` sat at
+**96%**. At that pressure there is no room to *retain* a prefix between agent steps, so every
+entry is evicted before it can ever be reused. The hit rate was a symptom of KV overload, not
+of version incompatibility. Because SWE-bench agents re-send their whole history every step, a
+0% hit rate means each step re-prefills the entire 30-80k context — which is itself what keeps
+KV pinned at 96%. Self-sustaining.
+
+**Measured A/B, same model, same commit, same vLLM 0.26.0, concurrently on two H100 NVLs:**
+
+| | caching ON, `workers=3`, `max_num_seqs=6` | caching OFF, `workers=2`, `max_num_seqs=4` |
+|---|---|---|
+| Prefix cache hit rate | **77.4% -> 78.2%** (stable, climbing) | 0.0% |
+| Generation throughput | **194-232 tok/s** | 57.7 tok/s |
+| Prompt (prefill) throughput | 722 tok/s | 3667 tok/s |
+| GPU KV cache usage | 9.6-11.4% | 16.9% |
+
+Caching ON is **~3.5x the generation throughput**. Its *lower* prefill number is the point:
+prefill collapses because the prefix is served from cache instead of recomputed.
+
+**Conclusion: keep `vllm==0.26.0` pinned.** No upgrade is warranted for prefix caching on this
+family. The `experimental` warning is accurate as a caveat but the feature functions. The
+operational rule is **give the cache room**: size concurrency so KV stays well under ~50%, and
+verify `Prefix cache hit rate` in the server log rather than assuming. A high `workers` value
+is actively self-defeating here — it drives KV to saturation, which destroys the cache, which
+forces full re-prefill, which drives KV higher.
+
+**Corollary for `configs/eval/swebench_mini_verified.yaml`:** the `workers: 12` note is sound in
+its reasoning (size to KV headroom) but its arithmetic assumed prefix caching would hold. On
+long-context agent workloads the binding limit is the *retained* prefix, not the live one:
+measured healthy at `workers=3` with 78% hits, while `workers=8-12` collapsed to <1%.
+
 ## 2026-08-06 (2) — vast.ai VM rental PASSES the gold check: first blessed rentable grading host
 
 **Hypothesis:** vast.ai can host the CPU/Docker half of `swebench_mini` (rollout driver + grading)
