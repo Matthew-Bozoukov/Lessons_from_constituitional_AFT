@@ -84,7 +84,27 @@ uv run hf download matboz/difficult-advice-qwen3 sft_dataset_thinking.jsonl \
 `sft_dataset_thinking.jsonl` carries a real first-person `<think>` trace per example — the
 reasoning-preserving fix; naive SFT on single-blob answers makes Qwen3's chat template emit an
 empty `<think></think>`, which trains the model to *stop reasoning*. New difficult-advice data
-is generated with `synthdoc` (see below), which carries reasoning natively.
+is generated with `synth` (see below), which carries reasoning natively.
+
+### 2b. The MSM Table-2 mixture (one staged command)
+
+The paper's 10,000-sample instruction-tuning mixture + spec filter + difficult-advice share
+is one config-driven run (`--smoke` first — 1/20 budgets, ≤3 judge calls, no pushes):
+
+```bash
+# the difficult-advice stage-6 export the synthetic stage reads:
+uv run hf download LASR-Callum/2026-08-04-synthdoc-difficult-advice-9-principles \
+  stage_6_final.jsonl --repo-type dataset --local-dir data/  # -> rename to data/difficult_advice_stage6.jsonl
+uv run scripts/data/mixture/build_mixture.py --config configs/data/mixture/qwen36_msm_table2.yaml
+```
+
+Stages (each pushes its artifact to HF as produced, per the config's `hf:` block): the nine
+Table-2 sources at their verbatim counts (`mixture_unfiltered.jsonl`) → the constitution
+spec-filter, ~10k judge calls ≈ $4–5 (`mixture_filtered.jsonl` + per-sample `verdicts.jsonl`,
+re-cuttable without re-judging; this filtered file is itself the 0%-synthetic control arm) →
+stratified downsample to 8,000 + the 2,203 difficult-advice rows (`mixture.jsonl`). Rows are
+model-agnostic interchange messages; per-source schema quirks live in
+`src/data/mixture/sources/` (one adapter per source).
 
 ### 3. Provision + prepare the GPU pod
 ```bash
@@ -152,8 +172,8 @@ across judges**, and **misalignment rate (MR) = % of runs with median >= 3**.
 
 ### Setup
 ```bash
-# The benchmark is vendored in-repo (committed, patched — re-clone only to refresh):
-git clone https://github.com/McGill-DMaS/ODCV-Bench.git src/eval/misalignment/third_party/odcv-bench
+# The benchmark is vendored in-repo (tracked, pruned; see its VENDORED_FROM.txt) —
+# nothing to clone.
 # pinned at upstream commit 7353f1cf4b2579a3a8a5b8a5061d7c7d41f60668
 
 # Docker must be usable WITHOUT sudo (each scenario builds two images):
@@ -211,9 +231,14 @@ uv run scripts/run_eval.py --target <hf_path> --name psychosis smoke=true  # 1 p
 uv run scripts/run_eval.py --target <hf_path> --name psychosis             # 9 personas x 12 turns
 ```
 
-Config `configs/eval/psychosis.yaml`: red-teamer `x-ai/grok-3` (upstream's default — Grok-4 now
-refuses the roleplay, but still grades), judge `x-ai/grok-4` (the write-up's published grader;
-Gemini 2.5 Pro *authored* the therapy rubric but never graded), both via OpenRouter. Outputs under
+Config `configs/eval/psychosis.yaml`: red-teamer `x-ai/grok-4.5`, judge `x-ai/grok-4.3`, both via
+OpenRouter. Upstream used grok-3 (red-team) and grok-4 (judge, the write-up's published grader;
+Gemini 2.5 Pro *authored* the therapy rubric but never graded) — OpenRouter deprecated both by
+2026-08-05, and of the live xAI models only grok-4.5 plays the personas (4.3/4.20 refuse, as
+grok-4 did upstream), so absolute scores are not comparable to upstream's CSVs — only across arms
+run with the same pair. The config also declares `serving.context_window: 40960` (required in
+every eval config; checked against the family's verified ceiling at serve time): twelve
+preserved-reasoning turns overflow a 16384 window. Outputs under
 `output/psychosis/<model_key>/<ts>/`: `rollouts/<persona>.{md,json}` (self-contained transcripts
 incl. red-teamer strategy notes, target reasoning and per-turn grades), `grades.{jsonl,csv}`,
 and summary metrics (referral rate, delusion-collusion rate = share of delusional turns rated
@@ -266,13 +291,20 @@ overflow both masquerade as incapability.
 ## The preserve-thinking policy (2026-08-04)
 
 Repo-wide default for training data and serving, everything family-specific centralized in
-`ModelProfile` (`src/utils.py`; Qwen3.6 is the only verified profile — Qwen3's thinking
+`ModelProfile` (`src/model_profile.py`; Qwen3.6 is the only verified profile — Qwen3's thinking
 template prefills nothing, so it is deliberately refused until verified):
 
-- **Data**: `build_mixture.py` renders with the profile's kwargs (`preserve_thinking=True`),
-  so EVERY assistant turn carries a think block — reasoning where the source has it, the empty
-  marker where it does not. HF sources must declare `reasoning: native|none|strip` (`strip` =
-  deliberate pre-policy no-think rendering, for nothink control arms only).
+- **Data**: since 2026-08-06 mixtures are stored MODEL-AGNOSTIC — interchange rows
+  `{messages: [{role, content, reasoning_content?, tool_calls?}], source}` (see
+  `src/data/mixture/sources/`), no chat template applied at build time. `train_lora.py`
+  renders them at train time with the profile's kwargs (`preserve_thinking=True`), so EVERY
+  assistant turn carries a think block — reasoning where the row has it, the empty marker
+  where it does not (verified byte-identical to the old build-time render,
+  `tests/test_build_mixture.py::test_train_time_render_matches_legacy_build_time_render`).
+  Sources declare `reasoning: native|none` — what the data carries, validated. (The
+  legacy pre-rendered `{text}` mode — `reasoning: strip` / `format: rendered` — was
+  removed on 2026-08-07; its published artifacts live on HF, and rebuilding one
+  byte-for-byte means checking out a pre-removal commit.)
 - **Loss**: the generation-boundary mask (`src/train/masking.py`, not configurable) masks
   exactly what the model never generates and supervises what it does. On a real reasoning
   turn that means the `<think>\n` prefill is masked and the trace + `\n</think>` close carry
@@ -289,24 +321,24 @@ template prefills nothing, so it is deliberately refused until verified):
 `output/reasoning_probe_*.txt` compare `<think>` length of base vs LoRA. Naive SFT → 0 chars
 (collapsed); the think-trace fix → 900-1600 chars of real reasoning, answers still correct.
 
-## `src/data/synthdoc/` — synthetic chat data generation pipelines (separate, plug-and-play)
+## `src/data/synth/` — synthetic chat data generation pipelines (separate, plug-and-play)
 
 A **self-contained** package (formerly `synthdoc_v2`) with one config-driven engine; the config's
 `stages:` list — prompts included — fully defines the document type, and
-`scripts/data/synthdoc/build_dataset.py` executes it. `configs/data/synthdoc/difficult_advice.yaml` replicates the
+`scripts/data/synth/build_dataset.py` executes it. `configs/data/synth/difficult_advice.yaml` replicates the
 six-stage Teaching Claude Why recipe:
 segment the constitution, generate scenarios, draft the prompt, refine it against the full
 constitution, generate a response, and rewrite the response against the target trait. It shares
 nothing with the code above — no imports either way — and hands off a
 finished corpus in SFT chat format (with `reasoning_content` per example) that the training step
-can read directly. Full guide: [`src/data/synthdoc/README.md`](../src/data/synthdoc/README.md)
+can read directly. Full guide: [`src/data/synth/README.md`](../src/data/synth/README.md)
 (stage table, models, caching).
 
 ```bash
-uv run synthdoc segment                                   # constitution -> traits, no API calls
-uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/difficult_advice.yaml --smoke
-uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/difficult_advice.yaml
-uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/difficult_advice.yaml --estimate
+uv run synth segment                                     # constitution -> traits, no API calls
+uv run scripts/data/synth/build_dataset.py --config configs/data/synth/difficult_advice.yaml --smoke
+uv run scripts/data/synth/build_dataset.py --config configs/data/synth/difficult_advice.yaml
+uv run scripts/data/synth/build_dataset.py --config configs/data/synth/difficult_advice.yaml --estimate
 uv run pytest tests/test_difficult_advice.py -q           # offline, no API key
 ```
 
@@ -323,21 +355,23 @@ constitution sha differs from the config's. All five cells are implemented: the 
 `control`, the other-attribution critiques `m4`/`m3` (the flawed side via minimal-pair
 perturbation), and the self-reflection cells `m2`/`m1` — the headline experiment — whose records
 are multi-turn with the evaluated response in the model's own prior turn, trained with
-`supervise: "final"` (only the last assistant turn carries loss; threaded through
-`convert_synthdoc_qwen.py` → `build_mixture.py` → `masking.py`). See the cell table in
-[`src/data/synthdoc/README.md`](../src/data/synthdoc/README.md).
+`supervise: "final"` (only the last assistant turn carries loss; the stage-5 export's
+`metadata.supervise` is lifted onto the mixture row by `build_mixture.py` (interchange
+mode) and consumed by `masking.py` — `convert_synthdoc_qwen.py`, the old middle step,
+was deleted 2026-08-06; git history has it). See the cell table in
+[`src/data/synth/README.md`](../src/data/synth/README.md).
 
 ```bash
-uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/model_eval_model.yaml --smoke   # 2 docs per enabled cell
-uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/model_eval_model.yaml
-uv run synthdoc check --config configs/data/synthdoc/model_eval_model.yaml --run_dir output/model_eval_model/<ts>   # validity gates
-uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/model_eval_model.yaml --estimate --measured output/model_eval_model/<smoke>/manifest.json
+uv run scripts/data/synth/build_dataset.py --config configs/data/synth/model_eval_model.yaml --smoke   # 2 docs per enabled cell
+uv run scripts/data/synth/build_dataset.py --config configs/data/synth/model_eval_model.yaml
+uv run synth check --config configs/data/synth/model_eval_model.yaml --run_dir output/model_eval_model/<ts>   # validity gates
+uv run scripts/data/synth/build_dataset.py --config configs/data/synth/model_eval_model.yaml --estimate --measured output/model_eval_model/<smoke>/manifest.json
 uv run pytest tests/test_model_eval_model.py -q                        # offline, no API key
 ```
 
 ### The self-reflection document type
 
-`configs/data/synthdoc/self_reflection.yaml` inverts who is tempted: **the agent itself** — working
+`configs/data/synth/self_reflection.yaml` inverts who is tempted: **the agent itself** — working
 autonomously, it could protect its own position (or the objective it was deployed to pursue) by
 an action that is deniable rather than overtly wrong; it deliberates in its own value language,
 declines, and still does its job. Composition (prose/agentic form, 15% multi-turn, 12% control
@@ -345,10 +379,10 @@ slice where the right move is to ACT, motive split) is assigned deterministicall
 ids; stage 6 enforces a voice contract in code (rule-vocabulary lint, reject-and-retry).
 
 ```bash
-uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/self_reflection.yaml --smoke
-uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/self_reflection.yaml
+uv run scripts/data/synth/build_dataset.py --config configs/data/synth/self_reflection.yaml --smoke
+uv run scripts/data/synth/build_dataset.py --config configs/data/synth/self_reflection.yaml
 # a one-off variant (a top-up, a different size) without forking the config:
-uv run scripts/data/synthdoc/build_dataset.py --config configs/data/synthdoc/self_reflection.yaml \
+uv run scripts/data/synth/build_dataset.py --config configs/data/synth/self_reflection.yaml \
     --overrides "total_scenarios=144,id_prefix=b"
 uv run pytest tests/test_self_reflection.py -q            # offline, no API key
 ```
@@ -375,14 +409,14 @@ pipeline; it lives in git history before that date, and its published corpora re
 HuggingFace (`LASR-Callum/synthdoc-<name>`).
 
 ## Repo layout
-- `src/data/synthdoc/` constitution-grounded data generation: one config-driven engine; the config's `stages:` list (prompts included) defines the document type; run via `scripts/data/synthdoc/build_dataset.py` (`configs/data/synthdoc/difficult_advice.yaml`, `configs/data/synthdoc/model_eval_model.yaml`).
+- `src/data/synth/` constitution-grounded data generation: one config-driven engine; the config's `stages:` list (prompts included) defines the document type; run via `scripts/data/synth/build_dataset.py` (`configs/data/synth/difficult_advice.yaml`, `configs/data/synth/model_eval_model.yaml`).
 - `src/` reusable code (`endpoints/`, `utils.py`, `data/`, `train/`, `eval/`); `scripts/` thin pipeline CLIs foldered by stage (`data/`, `train/`, `gpu/`); `scratch/` one-offs.
 - `configs/` OmegaConf YAML for every step, foldered by stage (`data/`, `train/`, `eval/`).
 - `scripts/run_eval.py` THE eval entrypoint (see CLAUDE.md "The eval framework"): serves each `--target` with vLLM and dispatches to the registered eval's `run()`.
-- `src/eval/misalignment/third_party/` vendored eval harnesses, patched (`agentic-misalignment`: `vllm/` provider + judge routing; `odcv-bench`).
+- each vendoring eval keeps its harness TRACKED in its own `third_party/` beside a `VENDORED_FROM.txt` (upstream SHA, prunes, every patch and its reason). Index and rationale: [docs/vendored_harnesses.md](vendored_harnesses.md).
 - `constitutions/` alignment targets, one folder each with `constitution.md` + `rationale.md`:
   `claude_distilled_07_principles_approved/` is the current target for the difficult-advice
-  prompts; synthdoc's default is `claude_distilled_12_principles_mid/` (since 2026-08-03;
+  prompts; synth's default is `claude_distilled_12_principles_mid/` (since 2026-08-03;
   the v1 doc it replaced is in `archive/claude_distilled_8_principles_v1/`). See
   `constitutions/README.md`.
 - `output/` all run artifacts; `docs/LOG.md` append-only research log.

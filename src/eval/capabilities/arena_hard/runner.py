@@ -6,7 +6,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from huggingface_hub import hf_hub_download
+from src.huggingface import hf_download
 from omegaconf import OmegaConf
 
 from src.eval.capabilities.arena_hard import arena_hard_gen, arena_hard_judge
@@ -19,20 +19,21 @@ def _fetch_reference(reference: str, dest: Path) -> None:
         reference: A local answers jsonl, or `repo_id::path_in_repo` on HF.
         dest: `<vendor_dir>/data/<bench>/model_answer/<baseline_arm>.jsonl`.
     """
-    src = (Path(hf_hub_download(*reference.split("::", 1), repo_type="dataset"))
+    src = (Path(hf_download(*reference.split("::", 1), repo_type="dataset"))
            if "::" in reference else Path(reference))
     assert src.exists(), f"reference answers not found: {reference}"
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(src, dest)
 
 
-def run(target, cfg, out_dir: Path) -> dict:
+def run(target, cfg, out_dir: Path, *, reference: str = "") -> dict:
     """Run the Arena-Hard eval for one ServedTarget (CLAUDE.md contract).
 
     Side-by-side by construction: the target's answers are judged against the config's
-    `baseline_arm` answers, supplied via `reference` (run_eval.py's --reference). The
-    summary is the judged score block; the full report stays a separate curation step
-    over the accumulated arms (`scratch/reports/arena_hard_report.py`).
+    `baseline_arm` answers, supplied via the `reference` kwarg (run_eval.py's
+    --reference; still an answers ARTIFACT here, pending the answer-cache migration).
+    The summary is the judged score block; the full report stays a separate curation
+    step over the accumulated arms (`scratch/reports/arena_hard_report.py`).
 
     Returns:
         Paths of the generated answers and judging output for this arm.
@@ -40,7 +41,6 @@ def run(target, cfg, out_dir: Path) -> dict:
     cfg = OmegaConf.merge(cfg)  # private copy
     arm_name = target.spec.model_key
     baseline = str(cfg.baseline_arm)
-    reference = cfg.get("reference")
     assert reference, "arena_hard is judged against a baseline: pass --reference"
 
     bench_answers = Path(str(cfg.vendor_dir)) / "data" / str(cfg.bench_name) / "model_answer"
@@ -60,7 +60,7 @@ def run(target, cfg, out_dir: Path) -> dict:
     smoke = bool(cfg.get("smoke", False))
     arena_hard_gen.main(config=str(cfg_path), arm=arm_name,
                         served_model=target.model_name, endpoint=target.base_url,
-                        smoke=smoke)
+                        api_key=target.api_key, smoke=smoke)
     arena_hard_judge.main(config=str(cfg_path), mode="judge", arm=arm_name)
 
     return {"arm": arm_name, "baseline": baseline,

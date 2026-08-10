@@ -2,7 +2,7 @@
 # ABOUTME: Run on GPU: python scripts/train/train_lora.py --config configs/train/lora_qwen36_tulu100.yaml
 
 # This is the zero-dose end of the internalization study. The treatment arm trains on
-# synthdoc's constitution corpus mixed into a Tulu baseline; this arm holds the recipe,
+# synth's constitution corpus mixed into a Tulu baseline; this arm holds the recipe,
 # base model, token budget, and seed fixed and sets the synthetic fraction to ZERO. Any
 # internalization movement it shows is what generic instruction SFT does on its own, and is
 # the floor the treatment arm has to beat.
@@ -10,7 +10,7 @@
 seed: 0
 model: "Qwen/Qwen3.6-27B"
 
-# Built by src/data/mixture/prepare_tulu.py --config configs/data/mixture/tulu_control.yaml
+# Built by src/data/mixture/sources/tulu3.py (formerly prepare_tulu.py) --config configs/data/mixture/tulu_control.yaml
 # (1.5M tokens, budgeted with this model's chat template). 0% synthetic documents.
 data_path: "data/tulu_control_1p5M.jsonl"
 output_dir: "output/train_lora_tulu_control"

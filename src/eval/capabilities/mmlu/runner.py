@@ -55,7 +55,8 @@ from src.eval.capabilities.mmlu.mmlu import (  # noqa: E402
     score_records,
     subset_hash,
 )
-from src.utils import read_jsonl, resolve_trace, timestamp, write_run_meta  # noqa: E402
+from src.model_profile import resolve_trace  # noqa: E402
+from src.utils import read_jsonl, timestamp, write_run_meta  # noqa: E402
 
 
 def resolve_arms(cfg: DictConfig) -> list[dict]:
@@ -138,6 +139,7 @@ def run_arm(
     cfg: DictConfig,
     endpoint: str,
     out_root: Path,
+    api_key: str = "EMPTY",
 ) -> dict[str, Any]:
     """Generate, grade and summarise one arm over the shared question subset.
 
@@ -186,7 +188,7 @@ def run_arm(
 
     client = OpenAI(
         base_url=endpoint,
-        api_key=str(gen.api_key),
+        api_key=api_key,
         timeout=float(gen.get("request_timeout", 180)),
         max_retries=int(gen.get("max_retries", 2)),
     )
@@ -444,4 +446,5 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     arm = {"name": target.spec.model_key, "served": target.model_name,
            "adapter": target.spec.hf_path if target.spec.adapter else None,
            "synthetic_fraction": None, "role": "target", "trained": True}
-    return run_arm(arm, questions, shots, cfg, target.base_url, out_dir)
+    return run_arm(arm, questions, shots, cfg, target.base_url, out_dir,
+                   api_key=target.api_key)

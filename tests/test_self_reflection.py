@@ -9,10 +9,10 @@ from pathlib import Path
 import pytest
 import yaml
 
-from src.data.synthdoc.constitution import segment
-from src.data.synthdoc.core import Checkpoint, Ctx, run_items
-from src.data.synthdoc.hf_cache import read_jsonl, write_jsonl
-from src.data.synthdoc.operators import (
+from src.data.synth.constitution import segment
+from src.data.synth.core import Checkpoint, Ctx, run_items
+from src.data.synth.hf_cache import read_jsonl, write_jsonl
+from src.data.synth.operators import (
     _lint,
     assign_variant,
     op_chat_export,
@@ -20,9 +20,9 @@ from src.data.synthdoc.operators import (
     tagged_request,
     weighted_scenario_prompt,
 )
-from src.data.synthdoc.pipeline import build_stages
+from src.data.synth.pipeline import build_stages
 
-CONFIG = "configs/data/synthdoc/self_reflection.yaml"
+CONFIG = "configs/data/synth/self_reflection.yaml"
 CFG = yaml.safe_load(open(CONFIG))
 STAGES = {s["name"]: s for s in CFG["stages"]}
 LINT = STAGES["final"]["lint"]
@@ -248,6 +248,26 @@ def test_rewrite_prompt_carries_the_voice_contract_and_the_right_shape():
     assert keys2 == ("reasoning", "response", "reasoning2", "response2", "changes")
     assert "<colleague_reply>" in multi and "The second turn." in multi
     assert save2["reasoning2"] == "reasoning2"
+
+
+def test_multi_turn_respond_prompt_actually_asks_for_the_followup():
+    # Regression: variants_by case `user` overrides the prompt TEMPLATE. The 2026-08-06
+    # pilot failed 2/2 multi-turn records because the override landed beside `prompts`
+    # instead of inside it — the model was given the single-turn prompt while the
+    # validator demanded the five multi-turn tags.
+    rec = {"system": "sys", "user": "usr", "form": "prose", "turns": 2,
+           "trait_name": "n", "trait_text": "t", "style_guidance": "g"}
+    msgs, tags, save = tagged_request(STAGES["draft_responses"], rec, _ctx())
+    prompt = msgs[1]["content"]
+    assert "continue the exchange one step further" in prompt
+    assert "<followup>" in prompt
+    assert tags == ("reasoning", "response", "followup", "reasoning2", "response2")
+    assert save["followup"] == "followup"
+
+    single, tags1, _ = tagged_request(
+        STAGES["draft_responses"], {**rec, "turns": 1}, _ctx())
+    assert "<followup>" not in single[1]["content"]
+    assert tags1 == ("reasoning", "response")
 
 
 def test_control_records_get_the_control_deliberation_contract():

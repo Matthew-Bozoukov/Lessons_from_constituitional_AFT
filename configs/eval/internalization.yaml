@@ -10,3 +10,9 @@ max_items: 0
 
 # Offline smoke with echo providers and a tiny item set.
 smoke: false
+
+serving:
+  # The window this eval runs at (required — see VllmServer._start; part of the eval's
+  # scientific record). 16384 = the window the Qwen3.6 sweep was tuned at, previously an
+  # implicit family default (moved here 2026-08-05).
+  context_window: 16384

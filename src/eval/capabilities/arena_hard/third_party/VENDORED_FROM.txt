@@ -1,0 +1,43 @@
+UPSTREAM_COMMIT=196f6b826783b3da7310e361a805fa36f0be83f3
+SOURCE=https://github.com/lmarena/arena-hard-auto
+VENDORED=2026-08-05 (commit 1bb23a6)
+DRIVEN_BY=src/eval/capabilities/arena_hard/ — arena_hard_gen.py writes each arm's
+  answers into data/<bench>/model_answer/ (upstream's layout: the harness IS the
+  working directory), arena_hard_judge.py writes generated config files and
+  subprocesses gen_judgment.py with cwd=this tree. Nothing here is imported.
+
+PRUNED (146M -> 1.1M)
+  data/arena-hard-v0.1/                    the superseded v0.1 bench; we run v2.0
+  data/arena-hard-v2.0/model_answer/       published leaderboard answers (35M) — our
+                                           arms generate their own
+  data/arena-hard-v2.0/model_judgment/     published leaderboard judgments (92M)
+  misc/, BenchBuilder/, leaderboard/, qa_browser.py    tooling for BUILDING a bench and
+                                           serving a leaderboard UI; we consume one
+  .git/, __pycache__/
+  Kept: data/arena-hard-v2.0/question.jsonl (the exam itself), config/, utils/,
+  gen_answer.py, gen_judgment.py, show_result.py.
+
+PATCHED (4, as ordinary tracked diffs — `git log` this tree to review them)
+  gen_judgment.py
+    1. baseline_override. Upstream hardcodes its packaged leaderboard baselines
+       (o3-mini for hard_prompt, gemini-2.0-flash for creative_writing). Our estimand
+       is a treated checkpoint vs its OWN untreated sibling, so every category's
+       baseline is overridden with the arm named in the generated setting file — which
+       comes from run_eval.py's --target/--reference flow. Deliberately config-borne,
+       not an env var (was ARENA_HARD_BASELINE until 2026-08-05): the written setting
+       file is then the complete record of what was judged against what.
+    2. question_limit. A {category: n} cap applied to the question list, for staged
+       sampling. Judgments cache on uid, so raising the cap later re-reads the judged
+       prefix from disk and pays only for the new questions — 150 -> 300 -> 500 costs
+       the same as going straight to 500.
+  utils/completion.py
+    3. extra_body + usage passthrough. Upstream's OpenAI path drops `extra_body`, which
+       is how OpenRouter takes `reasoning: {effort: low}` — needed because Gemini 3.x
+       Flash bills reasoning tokens as output and an unpinned judge runs several times
+       the cost estimate. Per-call token usage is also recorded so the projection is
+       checkable against reality rather than trusted.
+    4. Optional boto3/shortuuid imports. Both are imported at module top level for the
+       Bedrock provider and answer-id generation; we route everything through
+       OpenRouter and mint our own ids, so requiring the AWS SDK to judge a pairwise
+       comparison is a dependency we should not carry. Made optional, not deleted —
+       the Bedrock path still works if someone installs them.

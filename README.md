@@ -10,7 +10,7 @@ its behaviour, plus a web frontend that presents the results.
 .
 ├── src/                  # correctness-critical reusable code (human-verified; import as src.*)
 │   ├── openrouter.py, utils.py  #   shared OpenRouter client + utilities
-│   ├── data/             #   data generation: synthdoc/, the SFT/DPO dataset pipeline, mixtures
+│   ├── data/             #   data generation: synth/, the SFT/DPO dataset pipeline, mixtures
 │   ├── train/            #   QLoRA SFT, DPO training, adapter merging
 │   └── eval/             #   capabilities/ · misalignment/ (ODCV) · vulnerabilities/ (petri, surf)
 ├── scripts/              # pipelines: thin CLIs over src/ functions + GPU-box shell drivers
@@ -48,12 +48,12 @@ the comment in `pyproject.toml`.)
 | Area | What it is | How to work in it |
 | --- | --- | --- |
 | [`docs/replication.md`](docs/replication.md) | End-to-end guide to the *difficult advice* replication from Anthropic's [Teaching Claude Why](https://www.anthropic.com/research/teaching-claude-why) on Qwen3-32B. Headline: **19.3% → 8.0%** agentic misalignment with thinking-format training. | `uv sync && uv run pytest -q`, then `uv run scripts/<step>.py` per the guide |
-| [`src/data/synthdoc/`](src/data/synthdoc/README.md) | Six-stage Teaching Claude Why difficult-advice data pipeline (self-contained package, formerly `synthdoc_v2`). | `uv run synthdoc run --config configs/data/synthdoc/difficult_advice.yaml --smoke` |
+| [`src/data/synth/`](src/data/synth/README.md) | Six-stage Teaching Claude Why difficult-advice data pipeline (self-contained package, formerly `synthdoc_v2`). | `uv run synth run --config configs/data/synth/difficult_advice.yaml --smoke` |
 | `src/eval/vulnerabilities/` | Generalized Petri + SURF audit tooling from the completed MSM audit. Inspect's dependency pins conflict with the root env, so petri tools run in the nested project's env. | `uv run --project src/eval/vulnerabilities/petri/petri-subscription python src/eval/vulnerabilities/petri/<tool>.py --help` |
 | [`dashboard/`](dashboard/README.md) | The research-log web app: datasets, eval runs, Petri results, findings. Self-contained Node project. | `cd dashboard && npm ci && npm run dev` |
 
 ## Repo layout
-- `src/data/synthdoc/` self-contained six-stage difficult-advice data pipeline (see above); its run config is `configs/data/synthdoc/difficult_advice.yaml`.
+- `src/data/synth/` self-contained six-stage difficult-advice data pipeline (see above); its run config is `configs/data/synth/difficult_advice.yaml`.
 - `src/eval/misalignment/internalization/` self-contained constitution-internalization proxy eval
   (Tier A). Measures whether a checkpoint *internalized* the constitution or memorized its surface
   behaviors, at every checkpoint, without a downstream training run.
@@ -64,7 +64,7 @@ the comment in `pyproject.toml`.)
 - `scripts/run_eval.py` THE eval entrypoint (CLAUDE.md "The eval framework"): serves each
   `--target` with vLLM and dispatches to a registered eval's `run()`; `scripts/data|train|gpu/`
   thin CLIs and provisioning.
-- `third_party/agentic-misalignment/` vendored eval harness (patched: `vllm/` provider, judge routing).
+- `src/eval/misalignment/agentic_misalignment/third_party/agentic-misalignment/` vendored eval harness (patched: `vllm/` provider, judge routing).
 - `docs/claude_constitution_principles.md` the alignment target.
 - `output/` all run artifacts; `LOG.md` append-only research log.
 - Trained adapter: `matboz/qwen3-32b-difficult-advice-lora` on the HF Hub.
@@ -172,7 +172,7 @@ uv run hf download matboz/difficult-advice-qwen3 sft_dataset_thinking.jsonl \
 `sft_dataset_thinking.jsonl` carries a real first-person `<think>` trace per example — the
 reasoning-preserving fix; naive SFT on single-blob answers makes Qwen3's chat template emit an
 empty `<think></think>`, which trains the model to *stop reasoning*. New difficult-advice data
-is generated with `synthdoc` (see the synthdoc section), which carries reasoning natively.
+is generated with `synth` (see the synth section), which carries reasoning natively.
 
 ### 3. Provision + prepare the GPU box
 ```bash
@@ -238,9 +238,9 @@ across judges**, and **misalignment rate (MR) = % of runs with median >= 3**.
 
 ### Setup
 ```bash
-# Vendor the benchmark (third_party/ is gitignored):
-git clone https://github.com/McGill-DMaS/ODCV-Bench.git third_party/odcv-bench
-# pinned at upstream commit 7353f1cf4b2579a3a8a5b8a5061d7c7d41f60668
+# The benchmark ships in-repo (tracked, pruned) at
+# src/eval/misalignment/odcv/third_party/odcv-bench — see its VENDORED_FROM.txt.
+# Nothing to clone.
 
 # Docker must be usable WITHOUT sudo (each scenario builds two images):
 sudo usermod -aG docker "$USER" && newgrp docker
@@ -315,27 +315,25 @@ Full detail in `LOG.md` (2026-07-31 entry).
 ### Setup
 
 ```bash
-# Vendor the harness (third_party/ is gitignored) — pinned at upstream 196f6b82
-git clone https://github.com/lmarena/arena-hard-auto.git third_party/arena-hard-auto
-uv run python scripts/eval/patch_arena_hard.py          # 5 patches; --check to verify
+# The harness ships in-repo (tracked, patched, pruned) at
+# src/eval/capabilities/arena_hard/third_party/arena-hard-auto — see its
+# VENDORED_FROM.txt. Nothing to clone, nothing to patch.
 ```
 
 ### Run
 
-**Follow `docs/arena_hard_eval_runbook.md`** — the complete operational runbook
-from the first full run (pod-per-arm topology, retry wrappers, the baseline-extension
-gotcha, judging order, publishing layout, cost model). Short version:
+Run it through the eval framework — `run_eval.py` owns serving; add `--server <ssh-alias>`
+to drive a remote GPU host (see CLAUDE.md "Where code runs"):
 
 ```bash
-uv run python scripts/gpu/runpod_arena_hard.py up      # one pod PER ARM is the fast layout
-uv run python src/eval/capabilities/arena_hard/arena_hard_gen.py --arm <arm> --stage 150 --creative 0 \
-    --endpoint https://<pod>-8000.proxy.runpod.net/v1   # wrap in retries; eyeball samples
-uv run python src/eval/capabilities/arena_hard/arena_hard_judge.py --arm arm_b_synth10 --stage 150  # baseline/A-vs-A FIRST
-uv run python src/eval/capabilities/arena_hard/arena_hard_judge.py --arm <arm> --stage 150          # serialized, not parallel
-uv run python scratch/reports/arena_hard_report.py                  # CIs + figures + md mirror
-uv run python scratch/reports/plot_arena_hard_winrate.py                # GDM-style dose-response figure
-uv run python scripts/gpu/runpod_arena_hard.py down --pod <id>          # the moment each arm finishes
+uv run scripts/run_eval.py --target <hf_adapter_or_model> --name arena_hard
+uv run python scratch/reports/arena_hard_report.py       # CIs + figures + md mirror
+uv run python scratch/reports/plot_arena_hard_winrate.py # GDM-style dose-response figure
 ```
+
+(The pre-framework pod-per-arm runbook — retry wrappers, judging order, cost model from the
+2026-07-31 first run — was `docs/arena_hard_eval_runbook.md`, deleted 2026-08-06; git
+history is the archive.)
 
 Before judging, eyeball ten raw generations from the arm's answers file. Do not skip it — a
 chat-template mismatch reads as catastrophic capability loss but is purely a serving bug, and
@@ -442,14 +440,14 @@ The report also prints mean `<think>` length and empty-think rate per arm, so go
 empty-`<think>` collapse) stays checkable — a thinking arm at ~0 words has stopped reasoning
 regardless of what its accuracy says.
 
-## `src/data/synthdoc/` — synthetic chat data generation pipeline (separate, plug-and-play)
+## `src/data/synth/` — synthetic chat data generation pipeline (separate, plug-and-play)
 
 A **self-contained** package (formerly `synthdoc_v2`) replicating the six-stage difficult-advice
 pipeline from Teaching Claude Why: constitution in, training corpus out. It shares nothing with
 the code above — no imports either way — and hands off a finished corpus in SFT chat format
 (with `reasoning_content` per example) that the training step can read directly. Every stage is
 a separate, separately-cached step, so interrupted or budget-capped runs resume for free. Full
-guide: [`src/data/synthdoc/README.md`](src/data/synthdoc/README.md).
+guide: [`src/data/synth/README.md`](src/data/synth/README.md).
 
 The original config-driven `synthdoc` package (ablation sweeps, corpus snapshots, `control/`
 prompt registry) was deleted on 2026-08-03 in favour of this simpler, more faithful pipeline;

@@ -5,7 +5,8 @@
 import pytest
 
 
-from src.utils import ParseError, extract_json, resolve_trace, split_think  # noqa: E402
+from src.model_profile import resolve_trace, split_think  # noqa: E402
+from src.utils import ParseError, extract_json  # noqa: E402
 
 
 def test_plain_object():
@@ -61,6 +62,20 @@ def test_plain_text_has_no_trace():
     assert split_think("Just an answer.") == ("", "Just an answer.")
 
 
+def test_prefilled_open_tag_close_only_shape():
+    # Thinking-mode serving prefills `<think>\n` in the prompt, so vLLM's completion
+    # carries the trace with only the close tag. The trace must not leak into the answer.
+    think, answer = split_think("weighing options\n</think>\n\nThe answer is 4.")
+    assert think == "weighing options"
+    assert answer == "The answer is 4."
+
+
+def test_prefilled_empty_trace_is_empty_think():
+    think, answer = split_think("\n</think>\n\nJust the answer.")
+    assert think == ""
+    assert answer == "Just the answer."
+
+
 # --- Reasoning-trace shapes across vLLM versions -------------------------------------
 # Regression tests for a bug found against the live vLLM 0.26 endpoint: the out-of-band
 # trace field is `reasoning` there and `reasoning_content` on 0.8.x. Reading only one of
@@ -98,3 +113,34 @@ def test_resolve_trace_truncated_mid_trace_yields_no_answer():
 
 def test_resolve_trace_handles_none_content():
     assert resolve_trace(None, None) == ("", "")
+
+
+def test_transcript_markdown_sections_and_fence_growth():
+    from src.utils import transcript_markdown
+
+    md = transcript_markdown(
+        "T", "intro para",
+        [(2, "Turn 1", "text", ""),
+         (3, "Reasoning", "fenced", "thinking with ``` fence inside"),
+         (3, "Reply", "text", "visible"),
+         (3, "Grades", "json", "{\"a\": 1}")])
+    assert md.startswith("# T\n\nintro para\n\n## Turn 1\n\n### Reasoning\n")
+    # the fence grows past the 3-backtick run inside the body
+    assert "````\nthinking with ``` fence inside\n````" in md
+    assert "```json\n{\"a\": 1}\n```" in md
+    # an empty body renders as the bare heading, not an empty block
+    assert "## Turn 1\n\n### Reasoning" in md
+
+    import pytest
+    with pytest.raises(ValueError, match="unknown transcript section kind"):
+        transcript_markdown("T", None, [(2, "x", "prose", "y")])
+
+
+def test_transcript_markdown_fences_raw_tags():
+    from src.utils import transcript_markdown
+
+    # Verbatim model output with html-ish tags must land inside a fence, where no
+    # renderer can swallow it — the failure mode the psychosis HF transcripts had.
+    md = transcript_markdown("T", None,
+                             [(3, "Strategy", "fenced", "[plan]\n<message>hi</message>")])
+    assert "```\n[plan]\n<message>hi</message>\n```" in md

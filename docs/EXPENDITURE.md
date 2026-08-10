@@ -19,18 +19,55 @@ to a future reader.
 
 | category | spent to date |
 |---|---|
-| OpenRouter (data generation) | **$255.96** |
-| OpenRouter (eval judging) | $0.02 |
-| OpenRouter (eval scaffolding/smoke) | $0.13 |
-| GPU rental | $0.17 (+ ~4 RunPod A100-h on 2026-08-03, $ TBD from dashboard) |
-| GCP (CPU VM) | ~$0.29 (closed — all instances destroyed 2026-08-06, nothing accruing) |
-| vast.ai (CPU/VM verification) | ~$0.06 (closed — box destroyed 2026-08-06) |
+| OpenRouter (data generation) | **$518.51** |
+| OpenRouter (eval judging) | $28.19 |
+| OpenRouter (eval scaffolding/smoke) | $0.14 |
+| GPU rental | $26.88 (+ ~4 RunPod A100-h on 2026-08-03, $ TBD from dashboard) |
+| GCP (CPU VM) | ~$0.29 (closed - all instances destroyed 2026-08-06, nothing accruing) |
+| vast.ai (CPU/VM verification) | ~$0.06 (closed - box destroyed 2026-08-06) |
 | vast.ai (swebench full-sweep attempt) | ~$107 (closed 2026-08-07; bought ~10 instances) |
-| vast.ai (driver + grader, successful run) | ~$4 (closed — 0 instances) |
-| RunPod (7x H100 NVL rollouts) | **~$100** (closed — 0 pods, burn $0.00/hr) |
-| **total** | **~$468** |
+| vast.ai (driver + grader, successful run) | ~$4 (closed - 0 instances) |
+| RunPod (7x H100 NVL rollouts) | **~$100** (closed - 0 pods, burn $0.00/hr) |
+| **total** | **~$785** (+ GPU TBD; excludes ~$18.6 unattributed shared-key spend flagged 2026-08-06) |
+
+<!-- Recomputed at the 2026-08-10 merge, not carried over from either side - the same
+     situation, and the same fix, as the 2026-08-06 merge noted below. Both branches advanced
+     the running total independently from $256.28 at the fork. main added $262.55 generation,
+     $28.17 judging, $0.01 smoke and $26.71 GPU rental; this branch added no OpenRouter spend
+     and five infrastructure categories (GCP, vast.ai x3, RunPod) totalling ~$211.35. Neither
+     side's total was right for the union, so both were discarded and the categories summed:
+     518.51 + 28.19 + 0.14 + 26.88 + 0.29 + 0.06 + 107 + 4 + 100 = 785.07. -->
+
+<!-- Total recomputed once at the jamie/write-all-evals-to-hf <- main merge (2026-08-06),
+     not carried over from either side: both branches advanced the same running total
+     independently from $256.15 at the fork. This branch added $16.52 judging + $19.61 GPU
+     (psychosis, table2 arms); main added the $0.13 scaffolding/smoke category (SWE-bench
+     wiring). 255.96 + 16.54 + 0.13 + 19.78 = 292.41. Both source sections are kept below. -->
+<!-- Recomputed again at the model-eval-model-data-gen rebase onto main (2026-08-07): that
+     branch added $13.72 data generation (255.96 -> 269.68) from the same $256.15 fork
+     state; its 2026-08-05 section is below. 269.68 + 16.54 + 0.14 + 19.78 = 306.14. -->
+<!-- Recomputed a third time applying that branch's "all MEM generation" commit at the same
+     rebase (2026-08-07): +$247.99 data generation (self-reflection expansion + MEM corpora),
+     +$11.65 judging, +$7.10 GPU (H200 SFT attempt), on top of the $306.14 state.
+     517.67 + 28.19 + 0.14 + 26.88 = 572.88. -->
 
 ---
+
+## 2026-08-07 — mem-other smoke with the new `final` rewrite stage (OpenRouter, Sonnet 5)
+
+- **What**: 8-doc `--smoke` of `model_eval_model_other.yaml` after adding the `final`
+  rewrite stage (4 perturbations + 8 critiques + 8 rewrites), to eyeball draft-vs-revised
+  quality before greenlighting the full 2,100-doc run.
+- **Cost**: **$0.84** manifest tally (`output/model_eval_model_other/smoke_20260807_132548`).
+  `/credits` read $207.54 before → $207.48 shortly after (endpoint lags; manifest figure
+  is the honest per-run number here, no cached replays in a fresh run dir).
+- **Unit cost** (manifest by_stage): perturb $0.0162/call, critique $0.0448/doc,
+  rewrite **$0.0524/doc** (12.5k in / 2.7k out per rewrite call; within the ~$0.03–0.06
+  prediction). Full-run projection: 2,100×($0.0448+$0.0524) + 1,050×$0.0162 ≈ **$221** —
+  **over the $160 budget**; raise `budget_usd` to ~$240 (or run `--ablate final` at
+  ~$121) after `synth estimate --measured` on this smoke's manifest.
+- **Produced**: 8/8 docs with correct verdicts (4 `issue_found` on flawed, 4 `sound` on
+  good); local-only (smoke HF repo is null).
 
 ## 2026-08-07 (2) — swebench_mini COMPLETED: 372 rollouts, 250/500 instances, both LoRAs
 
@@ -107,6 +144,62 @@ that are not producing rollouts** — through misconfiguration, an unrecoverable
 simply being rented before they are needed. Budget by *verified* throughput, not by instance
 count: quote a rate only from a clean steady-state window, and treat any unmeasured rate as
 unknown.
+
+---
+
+## 2026-08-06 (3) — self-reflection corpus expansion 592 → 2,008 (OpenRouter, Haiku 4.5 + Sonnet 5)
+
+Grew `LASR-Callum/2026-08-03-synthdoc-self-reflection` for the 20%-by-examples slice of the
+10k-example Table2/self-reflection SFT arm (the self-reflection twin of the table2-synthdoc
+r64 run). Three runs of `configs/data/synthdoc/self_reflection.yaml`:
+
+- **Pilot, 18 records (`id_prefix=c`): ≈ $2.50** across two legs — the first leg died at
+  stage 5 because the PR-22 config-engine port dropped multi-turn records (case `user`
+  template override landed beside `prompts` instead of inside it; 2/2 multi-turn records
+  failed). Fixed in `src/data/synthdoc/operators.py` + regression test; the resume leg
+  ($1.12) reused all cached stages. The failure cost ~nothing and bought the bug fix —
+  and the pilot-before-scale discipline is what caught it before the $180 run.
+- **Full top-up, 1,389 records (`id_prefix=d`): $180.31 self-reported**, 3.0h wall.
+  Survival 1,470 → 1,389 (94.5%): stage-2/3 JSON attrition ~2.8%, 1 flaky multi-turn
+  respond, 8 Sonnet `content_filter` refusals at rewrite (0.6%, the known pattern).
+  **Unit cost $0.130/record** — matches the config's $0.1226 estimate within 6%.
+- **Micro top-up, 9 records (`id_prefix=e`): $1.18** — the merge landed at 1,999 and the
+  mixture needs exactly 2,000.
+- **Blind quality judging: ≈ $1.00** (two 24-record Sonnet-5 A/B rounds, no hidden
+  reasoning): new batches 8.42/8.33 vs published 8.17/8.50 — parity.
+
+`/credits` window 667.36 → 941.30 (Δ$273.94) also contains the concurrent
+model-eval-model self-arm run logged above ($72.14) plus its pilot; residual
+unattributed ≈ $15. **Balance after: $58.70 remaining** — flag before the next big run.
+
+**GPU (RunPod H200, $4.59/h secure): $7.10 by balance delta ($52.52 → $45.42), all on
+the SFT arm this data feeds.** Pod 1 (~30 min, ~$2.3) died at the pre-train mask gate —
+Matthew's pre-rendered Table-2 rows leave earlier multi-turn assistant turns with no
+think block; fixed by inserting the masked empty marker in the prep script. Pod 2
+trained to step ~100/625 (loss 1.05 → 0.98) at ~60 s/step — a single H200 needs ~10.5h
+for this 9.7M-token mixture (~$48), not the launcher's "~2h" — and **was cancelled on
+request** with ~9h remaining; no adapter salvaged. Unit cost worth keeping: ~16k
+supervised-batch tokens/step at 8192 max_seq_len ≈ 0.9 GPU-h per 1M rendered tokens on
+one H200.
+
+---
+
+## 2026-08-06 — Mixture pipeline smoke, spec-filter judge calls (OpenRouter, gpt-5.6-terra)
+
+**What was bought:** two `--smoke` runs of the integrated staged mixture build
+(`configs/data/mixture/qwen36_msm_table2.yaml`) — 12 judge calls on the first (the smoke cap
+at the time), 3 on the second (cap lowered on request; the rerun verified the
+BatchEncoding token-count fix). 15 calls total, each ~4.4k-token constitution system prompt
+(cached after call 1) + one sample, ≤900 output tokens at `reasoning_effort: low`.
+**Cost:** ~**$0.01** (unit cost from the 2026-08-04 full filter pass: ~$0.0004/call with
+prompt caching; 15 × $0.0004 ≈ $0.006, rounded up). Booked under eval scaffolding/smoke.
+**What it produced:** a working end-to-end rehearsal and a caught bug — the first run's
+stats showed 2 "tokens" per row, exposing that `apply_chat_template(tokenize=True)` returns
+a BatchEncoding whose `len()` is its key count, so the `max_seq_len` cap never fired.
+**Lesson:** a smoke run that prints its stats pays for itself; also state the exact call
+budget before running anything that spends.
+**Note:** the full filter pass this rehearses costs ~10,000 calls ≈ $4–5 — flag before
+launching.
 
 ---
 
@@ -213,6 +306,28 @@ grading host, which is a rounding error against GPU time.
 
 ---
 
+## 2026-08-05 — psychosis eval, table2 arms (2× RunPod H100 + Grok via OpenRouter)
+
+First live psychosis runs: `table2-synthdoc-r64` (20% DA / 80% benign) and `table2-only-9284-r64`
+(benign-only control, 0% DA).
+
+- **GPU: ≈$17.11.** Two H100 80GB SECURE pods, ~2.47h + ~2.73h @ $3.29/hr (rate read off pod
+  B's listing; pod A assumed same class — confirm on the RunPod dashboard). ≈**$3.29/GPU-hour**.
+  Roughly half the wall-clock was consumed by two aborted rounds (below), not the science.
+- **OpenRouter: $16.47** (credits 614.32 → 630.79; final read taken >30s after the run). Of
+  this, ≈$10 bought the two clean runs — 13 persona arcs + 156 graded cells ≈ **$0.60 per
+  persona-arc** (grok-4.5 red-teamer + grok-4.3 judge, ~12+12 calls per arc) — and ≈$6.5 was
+  burned by aborted rounds: upstream's pinned grok-3/grok-4 discovered dead only at run time,
+  a context overflow at turn ~7 (16384 serving window vs preserved-reasoning turns), and a
+  trace-parse leak that invalidated one completed arm (rerun). Lessons: probe config-pinned
+  API models for liveness AND task-compliance before booting GPUs; smoke one persona
+  end-to-end before the full fan-out.
+- **Follow-up, same day: reasoning-parser verification pod: ≈$2.60.** One more H100
+  (~45 min @ $3.29/hr ≈ $2.50) + $0.05 OpenRouter (1-persona smoke) to verify vLLM 0.26's
+  `qwen3` parser splits Qwen3.6's prefilled think stream server-side (it does — trace
+  arrives out-of-band in `reasoning`, content clean). Included in the running totals
+  (GPU $17.28 → $19.78, A100 TBD unchanged; judging $16.49 → $16.54; total → $292.28).
+
 ## Running total
 
 | category | spent to date |
@@ -225,6 +340,58 @@ grading host, which is a rounding error against GPU time.
 ---
 
 ---
+
+## 2026-08-07 — model-eval-model other-arm pilot: 8 m3/m4 docs (OpenRouter, Sonnet 5)
+
+`--smoke` pilot of `configs/data/synthdoc/model_eval_model_other.yaml` (the critique-cell
+twin of the self arm, m3 generator unblinded via the now-shared `_known_flaw` scaffold):
+4 perturbations + 8 critique docs $0.42, checks at --sample 12 $0.13. **~$0.55 total.**
+m3 4/4 issue_found (3 of the 4 scenarios are ones BLIND critique judged `sound` on
+2026-08-05), m4 4/4 sound, blind flaw-id 4/4, post-hoc 0/8. Full other-arm run (~$63 gen
++ ~$10 checks) waits on the credit top-up (balance ~$58 before this pilot).
+
+## 2026-08-06 (2) — model-eval-model self-arm corpus: 2,087 docs (OpenRouter, Sonnet 5)
+
+The full m1+m2 corpus (`configs/data/synthdoc/model_eval_model_self.yaml`, run dir
+`output/model_eval_model_self/20260806_105121`, HF
+`LASR-Callum/2026-08-06-model-eval-model-self`): 1,050 perturbations + 2,087 reflect
+docs (13 m1 records dropped on repeated minimal-pair length violations) + two full
+check runs at sample=100 (~$5.2 each; template gate failed once, re-run after the
+documented 0.20→0.30 gate adjustment).
+**Total $72.14 by `/credits` delta ($267.23 → $195.09, 30s settle)** — generation
+≈ $61.7, judging ≈ $10.4. **New measured unit cost: ~$0.030/doc all-in with
+`reasoning: {enabled: false}`** — half the 2026-08-04 $0.059-0.070/doc figure, because
+Sonnet 5's hidden thinking was billing ~as much as the visible output. Lesson: disable
+hidden reasoning on generation stages whose visible block IS the deliberation; the
+$147 estimate assumed thinking-on token counts.
+
+## 2026-08-06 — model-eval-model self-cell pilot, m1 generator unblinded (OpenRouter, Sonnet 5)
+
+8-doc pilot of the >2-turn self-evaluation format (4× m1_self_flawed + 4× m2_self_good,
+`configs/data/synthdoc/model_eval_model_pilot.yaml`, run dir
+`output/model_eval_model_pilot/20260806_101201`): 4 perturbations + 8 reflect docs across
+three attempts (first two runs tripped the 2% fail guard on one record that drifted
+in-character 6/6 attempts — fixed by `reasoning: {enabled: false}` on the generation
+stages, which the cells path had silently ignored until now) + one manual repro call +
+checks at sample=12 ($0.12 judges). **~$2 estimated from per-call pricing** — resumes
+overwrite `manifest.json` usage, so the manifest shows only the final $0.04 slice; lesson:
+manifests don't accumulate across resumes, use `/credits` deltas.
+**Balance now $268.19.** NOTE: that is $20.64 below the last recorded reading ($288.83,
+2026-08-05); this task accounts for ~$2 of it. The remaining ~$18.6 is unattributed spend
+on the shared key between the two readings — flagging rather than absorbing it here.
+
+## 2026-08-05 — model-eval-model pre-generation validation batches (OpenRouter, Sonnet 5)
+
+Human-verification batches before the full 2,100-doc run, against the real HF source
+corpus with the recovered 9-principle constitution: one 10-doc smoke ($0.76), one 15-doc
+real-pipeline batch at 3/cell ($1.26, `output/model_eval_model/20260805_133015`), plus
+`synthdoc check` judge calls — including one aborted check run whose judges returned
+empty content (Sonnet 5 hidden reasoning ate the 500-token caps; fixed by
+`reasoning: {enabled: false}` on the three judges) and one green rerun.
+**Total $13.72 by `/credits` delta ($302.55 → $288.83)** — the judge runs dominate
+(~$11.7: gold validation samples 100 source responses per check run, and the aborted
+run's calls still billed). Unit costs confirmed: $0.07-0.08/doc generation.
+Lesson: check runs at sample=100 cost ~$5 each; budget them into pre-run validation.
 
 ## 2026-08-04 — MEM pipeline smoke validation (OpenRouter, Sonnet 5)
 

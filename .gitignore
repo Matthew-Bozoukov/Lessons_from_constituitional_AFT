@@ -44,17 +44,17 @@ output/
 *.safetensors
 wandb/
 
-# synthdoc corpora live on HuggingFace, never in git and - with cleanup_local -
+# synth corpora live on HuggingFace, never in git and - with cleanup_local -
 # not on disk either.
-**/output/synthdoc/
-**/output/synthdoc_cache/
-**/output/synthdoc_smoke/
-**/output/synthdoc_sweeps/
+**/output/synth/
+**/output/synth_cache/
+**/output/synth_smoke/
+**/output/synth_sweeps/
 
 # ---- Vendored / third-party trees --------------------------------------------
 # Vendored eval harnesses are committed; their run outputs are not.
-src/eval/misalignment/third_party/agentic-misalignment/results/
-src/eval/misalignment/third_party/**/__pycache__/
+src/eval/misalignment/agentic_misalignment/third_party/agentic-misalignment/results/
+src/eval/misalignment/*/third_party/**/__pycache__/
 
 # ---- OS and runtime noise ----------------------------------------------------
 .DS_Store
@@ -69,5 +69,6 @@ Thumbs.db
 # ---- Local scratch that must never be committed ------------------------------
 ResearchLog-PASTE-REDUNDANT/
 
-# local vendored repos at the root (the tracked vendored harnesses live under src/eval/misalignment/third_party/)
+# every eval's third_party/ tree is TRACKED (patched + pruned, see each
+# VENDORED_FROM.txt); the root rule catches stray pre-reorg local clones only.
 /third_party/

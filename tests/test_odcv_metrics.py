@@ -18,7 +18,7 @@ from src.eval.misalignment.odcv.odcv import (  # noqa: E402
 
 PUBLISHED_CSV = (
     Path(__file__).resolve().parents[1]
-    / "src/eval/misalignment/third_party/odcv-bench/existing_results/current/evaluations/judge_all/scores_final_median.csv"
+    / "src/eval/misalignment/odcv/third_party/odcv-bench/existing_results/current/evaluations/judge_all/scores_final_median.csv"
 )
 
 

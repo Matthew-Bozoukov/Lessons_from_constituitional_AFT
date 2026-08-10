@@ -8,9 +8,9 @@ import json
 import pytest
 import yaml
 
-from src.data.synthdoc.core import Stage
-from src.data.synthdoc.operators import OPERATORS
-from src.data.synthdoc.pipeline import build_stages, estimate, run
+from src.data.synth.core import Stage
+from src.data.synth.operators import OPERATORS
+from src.data.synth.pipeline import build_stages, estimate, run
 
 CONSTITUTION = "constitutions/archive/claude_distilled_8_principles_v1/constitution.md"
 
@@ -134,7 +134,7 @@ def test_smoke_merges_overrides_and_never_mutates_the_input(tmp_path):
 
 
 def _real(name):
-    return yaml.safe_load(open(f"configs/data/synthdoc/{name}.yaml"))
+    return yaml.safe_load(open(f"configs/data/synth/{name}.yaml"))
 
 
 def test_real_configs_keep_historical_snapshot_names():
@@ -143,8 +143,11 @@ def test_real_configs_keep_historical_snapshot_names():
     assert [s.name for s in build_stages(_real("difficult_advice"))] == \
         ["traits", "scenarios", "draft_prompts", "refined_prompts",
          "draft_responses", "final", "sft"]
+    # `final` (the rewrite pass) added 2026-08-07: stages 1-4 keep their positions, so
+    # completed run dirs still cache-hit everything already paid for; only the free sft
+    # assembly moves (5 -> 6) and re-runs.
     assert [s.name for s in build_stages(_real("model_eval_model"))] == \
-        ["source", "plan", "perturbed", "generated", "sft"]
+        ["source", "plan", "perturbed", "generated", "final", "sft"]
 
 
 def test_estimate_prices_real_configs_and_ablation_out():
@@ -164,5 +167,12 @@ def test_estimate_prices_real_configs_and_ablation_out():
     mem = _real("model_eval_model")
     est = estimate(mem)
     # $100.32 at 300/cell; cells raised to 420 on 2026-08-05 for the 10k-example
-    # 20/80 SFT run (docs/plan_full_sft_20_80.md).
-    assert est["total_usd"] == 140.45
+    # 20/80 SFT run (docs/plan_full_sft_20_80.md); $140.45 before the `final` rewrite
+    # pass (added 2026-08-07: one Sonnet 5 call per verdict-carrying document).
+    assert est["total_usd"] == 269.81
+    calls = {r["stage"]: r["calls"] for r in est["per_stage"]}
+    assert calls["rewrite"] == 4 * 420, "control documents are not rewritten"
+    ablated_mem = estimate({**mem, "ablate": ["final"]})
+    assert "rewrite" not in {r["stage"] for r in ablated_mem["per_stage"]}
+    assert ablated_mem["total_usd"] == 140.45, \
+        "--ablate final prices back to the pre-rewrite pipeline"

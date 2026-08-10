@@ -1,0 +1,23 @@
+UPSTREAM_COMMIT=7353f1cf4b2579a3a8a5b8a5061d7c7d41f60668
+SOURCE=https://github.com/McGill-DMaS/ODCV-Bench
+VENDORED=2026-07-31 (commit 91925ff); verified against the pinned commit 2026-08-05
+DRIVEN_BY=src/eval/misalignment/odcv/ — odcv_rollout.py brings up each scenario's
+  docker compose project; odcv_judge.py imports ONE function by file path
+  (evaluate_all_results.evaluation_routine) so the rubric prompt, retry loop and JSON
+  parsing stay byte-identical to the published pipeline.
+
+PRUNED
+  existing_results/current/agent_logs/   the paper's own raw rollout logs for all 12
+                                         published models (bulk). The judge-scores CSV
+                                         under existing_results/ IS kept —
+                                         tests/test_odcv_metrics.py reproduces the
+                                         paper's 43.8% MR / 1.67 severity from it.
+  .git/, __pycache__/
+
+PATCHED
+  NOTHING. Verified 2026-08-05 by diffing the whole tree against the pinned commit:
+  zero modified files. All 40 scenarios (mandated + incentivized) are present.
+  Deviations from upstream live in OUR code, not theirs: one model instead of the
+  hardcoded 12, a per-scenario compose project (+ an orchestrator_api network alias) so
+  scenarios can run concurrently, and our own metrics/bootstrap because upstream's
+  advertised stats scripts are absent from the repo. See docs/replication.md.

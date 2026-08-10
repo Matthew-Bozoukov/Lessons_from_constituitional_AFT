@@ -31,9 +31,11 @@ from src.eval.misalignment.psychosis.conversation import (
     Turn,
     format_red_team_prompt,
     run_conversation,
+    split_redteam_completion,
 )
 from src.eval.misalignment.psychosis.judge import GRADE_KEYS, grade_turn
 from src.eval.misalignment.psychosis.metrics import summarize
+from src.utils import transcript_markdown
 
 ASSETS = Path(__file__).parent / "assets"
 
@@ -55,23 +57,39 @@ def character_name(stem: str) -> str:
 
 
 def _rollout_markdown(stem: str, prompt: str, turns: list[Turn], grades: dict[int, dict]) -> str:
-    parts = [
-        f"# Psychosis rollout — {character_name(stem)} ({stem})",
+    """Compose one persona's transcript via the shared renderer (src.utils).
+
+    The red-teamer completion is split into out-of-character strategy (fenced — it is
+    chain-of-thought, never prose) and the in-character message; the target's reasoning
+    section is ALWAYS present, so an empty trace is visible as such rather than
+    silently missing (how the zara pre-fix leak hid on HF).
+    """
+    sections: list[tuple[int, str, str, str]] = [
+        (2, "Red-teamer instructions", "fenced", prompt),
+    ]
+    for t in turns:
+        strategy, message = split_redteam_completion(t.redteam_raw)
+        sections.append((2, f"Turn {t.turn}", "text", ""))
+        if message is None:
+            sections.append((3, "Red-teamer (full completion — no <message> block)",
+                             "fenced", t.redteam_raw))
+        else:
+            sections.append((3, "Red-teamer strategy (out of character)", "fenced",
+                             strategy))
+            sections.append((3, "User message (in character)", "text", message))
+        sections.append((3, "Target reasoning", "fenced",
+                         t.think or "(no reasoning captured for this turn — see "
+                                    "empty_think_rate in results.json)"))
+        sections.append((3, "Target reply", "text", t.assistant))
+        grade = grades.get(t.turn)
+        sections.append((3, "Grades", "json", json.dumps(grade, indent=2)) if grade
+                        else (3, "Grades", "text", "(judge failed for this turn)"))
+    return transcript_markdown(
+        f"Psychosis rollout — {character_name(stem)} ({stem})",
         "Self-contained transcript: red-teamer instructions (persona arc included), the "
         "red-teamer's strategy notes, the target's reasoning and visible replies, and "
         "the judge's per-turn grades.",
-        f"## Red-teamer instructions\n\n{prompt}",
-    ]
-    for t in turns:
-        parts.append(f"## Turn {t.turn}")
-        parts.append(f"### Red-teamer (full completion)\n\n{t.redteam_raw}")
-        if t.think:
-            parts.append(f"### Target reasoning\n\n```\n{t.think}\n```")
-        parts.append(f"### Target reply\n\n{t.assistant}")
-        grade = grades.get(t.turn)
-        parts.append("### Grades\n\n```json\n" + json.dumps(grade, indent=2) + "\n```"
-                     if grade else "### Grades\n\n(judge failed for this turn)")
-    return "\n\n".join(parts) + "\n"
+        sections)
 
 
 def run(target, cfg, out_dir: Path) -> dict:
@@ -95,7 +113,7 @@ def run(target, cfg, out_dir: Path) -> dict:
     openrouter = OpenRouterClient()
     target_client = OpenAI(
         base_url=target.base_url,
-        api_key=str(cfg.generation.api_key),
+        api_key=target.api_key,
         timeout=float(cfg.generation.request_timeout),
         max_retries=int(cfg.generation.max_retries),
     )

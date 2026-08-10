@@ -16,7 +16,7 @@ from omegaconf import OmegaConf
 from src.eval.misalignment.agentic_misalignment import aggregate_eval, build_rollouts
 from src.utils import timestamp
 
-_HARNESS = Path(__file__).parents[1] / "third_party" / "agentic-misalignment"
+_HARNESS = Path(__file__).parent / "third_party" / "agentic-misalignment"
 
 
 def _harness_config(cfg, model_id: str, expid: str) -> dict:

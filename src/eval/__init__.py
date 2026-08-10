@@ -1,4 +1,4 @@
-# ABOUTME: Evaluation of trained models (capabilities/, misalignment/, vulnerabilities/) and
+# ABOUTME: Evaluation of trained models (capabilities/, misalignment/, audits/) and
 # ABOUTME: the eval registry: name -> EvalSpec with a lazy runner, resolved only when selected.
 
 from __future__ import annotations
@@ -18,23 +18,39 @@ class EvalSpec:
     package: str                   # eval package under src.eval; its runner.py defines run()
     config: str                    # default OmegaConf YAML under configs/eval/
     needs_docker: bool = False     # rollouts execute in containers where the driver runs
-    needs_reference: bool = False  # judged against a baseline arm's artifact (reference=...)
+    # True when run() reaches the target purely through the OpenAI-compatible triple
+    # (base_url, model_name, api_key) and so works against a public API endpoint target
+    # (`<provider>:<model-id>`) as well as a vLLM-served one. Left False for evals that
+    # hardcode vLLM assumptions — a served-model prefix (`vllm/`, `hosted_vllm/`), a LoRA
+    # swap, a docker bridge, or a controlled chat template — which an API target can't
+    # satisfy; run_eval refuses an API target for those with a clear message.
+    supports_api_target: bool = False
+    # run() kwargs (keyword-only params — each doubles as a --flag on run_eval.py) whose
+    # value names a MODEL that must also run, first, as an ordinary arm of the same
+    # invocation: e.g. lmsys's `reference` fills the HF answer cache the later arms are
+    # judged against. Config default: `<kwarg>_model`. run_eval prepends declaratively —
+    # it never learns what the kwarg means; required-ness is enforced by run() itself.
+    arm_kwargs: tuple[str, ...] = ()
 
 
 EVALS: dict[str, EvalSpec] = {
     "mmlu": EvalSpec(
         "capabilities.mmlu",
-        "configs/eval/mmlu.yaml"
+        "configs/eval/mmlu.yaml",
+        supports_api_target=True,
     ),
     "arena_hard": EvalSpec(
         "capabilities.arena_hard",
         "configs/eval/arena_hard.yaml",
-        needs_reference=True
+        supports_api_target=True,
+        # takes --reference (an answers ARTIFACT, asserted in run()) — not an arm_kwarg
+        # until its answer-cache migration
     ),
     "lmsys": EvalSpec(
         "capabilities.lmsys",
         "configs/eval/lmsys.yaml",
-        needs_reference=True
+        supports_api_target=True,
+        arm_kwargs=("reference",),
     ),
     # The STANDARDIZED baseline: upstream mini-SWE-agent, pinned, config untouched. A custom
     # scaffold gets its own registry entry — never fold one into the other.
@@ -58,7 +74,8 @@ EVALS: dict[str, EvalSpec] = {
     ),
     "psychosis": EvalSpec(
         "misalignment.psychosis",
-        "configs/eval/psychosis.yaml"
+        "configs/eval/psychosis.yaml",
+        supports_api_target=True,
     ),
 }
 

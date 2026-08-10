@@ -1,0 +1,36 @@
+# ABOUTME: ~10k-example mixture: 8,000 spec-filtered Table-2 interchange rows + 2,000
+# ABOUTME: synthdoc self-reflection rows with native think traces.
+# Run: uv run python scripts/data/mixture/build_mixture.py --config configs/data/mixture/qwen36_table2_selfreflect_20_80.yaml
+#
+# Originally the self-reflection twin of LASR-Callum/qwen3.6-27b-lora-table2-synthdoc-r64
+# with Matthew's exact 7,999 rendered Table-2 rows on the 80% side. Converted to the
+# interchange schema on 2026-08-07 (its `format: rendered/messages` inputs cannot run
+# since the legacy mode's removal): this is now a RECIPE, not a byte-for-byte
+# regenerator of that arm — the verbatim-rows original lives in this file's git history,
+# and its staged pool (data/table2_matthew_7999.jsonl, extracted by
+# scratch/prep_table2_from_matthew.py) has no interchange original. The table2 side now
+# uses the same spec-filtered interchange pool as the memself/memother twins (produce it
+# by running configs/data/mixture/qwen36_msm_table2.yaml stages 1-2 and staging its
+# mixture_filtered.jsonl); examples raised 7,999 -> 8,000 to match those twins.
+# The 20% side is unchanged in substance: data/self_reflection_sft_all.jsonl
+# (LASR-Callum/2026-08-03-synthdoc-self-reflection + the 2026-08-06 top-up runs) was
+# already interchange messages with reasoning_content.
+
+seed: 0
+# Budget/length counting only — the stored rows carry no model-specific rendering.
+tokenizer: "Qwen/Qwen3.6-27B"
+
+sources:
+  table2:
+    path: "data/msm_table2_filtered_8000.jsonl"
+    reasoning: none
+    examples: 8000
+  self_reflection:
+    path: "data/self_reflection_sft_all.jsonl"
+    reasoning: native
+    examples: 2000
+
+# Matches the training window of the earlier arms; self-reflection rows top out ~4.4k.
+max_seq_len: 8192
+
+output_dir: "output/mixture_table2_selfreflect_20_80"

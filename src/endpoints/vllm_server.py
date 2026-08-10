@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import shlex
 import subprocess
 import sys
@@ -13,19 +14,17 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import requests
-from huggingface_hub import hf_hub_download
+from src.huggingface import hf_download
 from huggingface_hub.errors import EntryNotFoundError
 
-# Serving parameters per base-model family. Matched by prefix against the base model id;
-# the first hit wins, `None` is the fallback. max_model_len values are the ones the evals
-# were tuned at (13312 = the original Qwen3-32B serving setup). Qwen3.6's hybrid
-# Mamba/linear-attention arch requires a low max_num_seqs: the vLLM default (1024) exceeds
-# the available Mamba cache blocks and fails at startup (docs/LOG.md 2026-07-29).
-_FAMILIES: dict[str | None, dict] = {
-    "Qwen/Qwen3-32B": {"max_model_len": 13312, "max_num_seqs": None},
-    "Qwen/Qwen3.6-27B": {"max_model_len": 16384, "max_num_seqs": 32},
-    None: {"max_model_len": 13312, "max_num_seqs": None},
-}
+from src.model_profile import serving_params
+
+# Serving parameters come from two places with different epistemic status (merged in
+# _start): the FAMILY's verified facts (ModelProfile.serving, src/model_profile.py — reasoning
+# parser, max_num_seqs constraint, verified_context_window ceiling; unprofiled families
+# get utils.DEFAULT_SERVING) and the EVAL's own required `serving.context_window` (its
+# config's declaration of the window it runs at — the window decides truncation
+# behaviour, so it is part of the eval's scientific record, never a hidden default).
 
 _HEALTH_TIMEOUT_S = 1800  # first start downloads weights; a 32B pull can take a while
 
@@ -34,26 +33,77 @@ _HEALTH_TIMEOUT_S = 1800  # first start downloads weights; a 32B pull can take a
 _SERVER_PATTERN = "vllm.entrypoints.openai.api_serve[r]"
 
 
+# A --target may be an HF path (served locally by vLLM) OR an external API endpoint,
+# written `<provider>:<model-id>` on the CLI — e.g. `openrouter:moonshotai/kimi-k2`. HF
+# repo ids never contain a colon, so the scheme is unambiguous. Each provider maps to an
+# OpenAI-compatible base URL and the env var holding its key (loaded from .env, never a
+# config field — secrets stay out of the scientific record). Add a row to serve a new one.
+API_PROVIDERS: dict[str, tuple[str, str]] = {
+    "openrouter": ("https://openrouter.ai/api/v1", "OPENROUTER_API_KEY"),
+}
+
+
 @dataclass(frozen=True)
 class TargetSpec:
-    """A resolved --target: what to serve and in which thinking mode."""
+    """A resolved --target: what to serve and in which thinking mode.
 
-    hf_path: str          # as given on the CLI
-    base_model: str       # HF id vLLM loads
+    An API target (`api_base` set) is not served by vLLM — it names a public endpoint,
+    for comparing our models against off-the-shelf ones. Its `mode` is a comparison LABEL
+    only: we don't control the provider's template, so nothing is pinned (unlike a served
+    arm, whose mode is pinned into the chat template).
+    """
+
+    hf_path: str          # as given on the CLI (HF id, or `<provider>:<model-id>`)
+    base_model: str       # HF id vLLM loads; for an API target, the provider's model id
     adapter: bool         # True when hf_path is a LoRA adapter repo
     mode: str             # think | nothink | default (full model: template's own default)
     model_key: str        # filesystem/served-name-safe identifier
     lora_rank: int | None
+    api_base: str | None = None      # OpenAI-compatible base URL; None => served by vLLM
+    api_key_env: str | None = None   # env var holding the key for api_base
 
 
-@dataclass(frozen=True)
 class ServedTarget:
-    """Handle an eval's run() receives: an OpenAI-compatible endpoint plus identity."""
+    """Handle an eval's run() receives: identity now, an endpoint only on first use.
 
-    spec: TargetSpec
-    base_url: str         # http://<endpoint_host>:<port>/v1 — endpoint_host is the tunnel's
-                          # bind address when serving remotely, NOT always localhost
-    model_name: str       # the served model name to put in requests
+    Serving is LAZY: `spec` and `model_name` are plain attributes, but the vLLM server
+    boots (or LoRA-swaps) on first `base_url` access. An arm whose generation is fully
+    satisfied by the HF answer cache therefore never starts a server at all.
+    """
+
+    def __init__(self, spec: TargetSpec, server: "VllmServer"):
+        self.spec = spec
+        # The id sent in the request body: the provider's model id for an API target,
+        # else vLLM's --served-model-name ("base", or the adapter's key after a LoRA swap).
+        self.model_name = spec.base_model if spec.api_base \
+            else (spec.model_key if spec.adapter else "base")
+        self._server = server
+
+    @property
+    def is_api(self) -> bool:
+        """True when this target is a public API endpoint, not served by vLLM."""
+        return self.spec.api_base is not None
+
+    @property
+    def base_url(self) -> str:
+        """OpenAI-compatible base URL. For an API target, the provider's — no server
+        boots. For an HF target, http://localhost:<port>/v1 (tunnelled when remote),
+        booted on demand."""
+        if self.spec.api_base is not None:
+            return self.spec.api_base
+        return self._server.serve(self.spec)
+
+    @property
+    def api_key(self) -> str:
+        """The key evals send with each request: the provider's key from the environment
+        for an API target, else "EMPTY" (local vLLM accepts any). Owned by the target,
+        never read from a config — secrets stay out of the scientific record."""
+        if not self.is_api:
+            return "EMPTY"
+        key = os.environ.get(self.spec.api_key_env or "")
+        assert key, (f"API target {self.spec.hf_path} needs {self.spec.api_key_env} in "
+                     "the environment (.env) — it is unset")
+        return key
 
 
 def _mode_from_training_meta(meta: dict) -> str:
@@ -82,19 +132,47 @@ def _spec_from_files(hf_path: str, adapter_config: dict | None, training_meta: d
     )
 
 
-def resolve_target(hf_path: str) -> TargetSpec:
-    """Resolve an HF path (adapter or full model) into a TargetSpec.
+def resolve_api_target(provider: str, model_id: str) -> TargetSpec:
+    """Build a TargetSpec for a `<provider>:<model-id>` API endpoint (pure; unit-tested).
 
-    Only metadata files are downloaded here; weights are pulled by vLLM (base) and
-    `fetch_adapter` (adapter), on whichever machine serves.
+    No metadata is fetched — a public model has no artifact. Mode defaults to "default"
+    (a label; the provider's template is not ours to pin) and takes the `mode=` override
+    like a full model. The key is disambiguated by provider so two providers serving the
+    same model id land in distinct output dirs.
     """
+    base, key_env = API_PROVIDERS[provider]
+    return TargetSpec(
+        hf_path=f"{provider}:{model_id}", base_model=model_id, adapter=False,
+        mode="default",
+        model_key=f"{provider}_{model_id.split('/')[-1]}".replace(".", "_"),
+        lora_rank=None, api_base=base, api_key_env=key_env)
+
+
+def resolve_target(hf_path: str) -> TargetSpec:
+    """Resolve a --target into a TargetSpec.
+
+    Two forms: `<provider>:<model-id>` (an API endpoint, see API_PROVIDERS) or an HF path
+    (adapter or full model). HF repo ids never contain a colon, so the scheme is
+    unambiguous. For HF paths only metadata files are downloaded here; weights are pulled
+    by vLLM (base) and `fetch_adapter` (adapter), on whichever machine serves.
+    """
+    scheme, sep, rest = hf_path.partition(":")
+    if sep and scheme in API_PROVIDERS:
+        assert rest, f"API target {hf_path!r} names no model (expected {scheme}:<model-id>)"
+        return resolve_api_target(scheme, rest)
+    if sep and "/" not in scheme:
+        # A colon with an unknown scheme is a typo'd provider, not an HF id — fail loud
+        # rather than trying to fetch "openroute:foo/bar" as a repo.
+        raise ValueError(
+            f"unknown API provider {scheme!r} in target {hf_path!r} "
+            f"(known: {', '.join(sorted(API_PROVIDERS))}); an HF path has no scheme.")
     try:
-        with open(hf_hub_download(hf_path, "adapter_config.json")) as f:
+        with open(hf_download(hf_path, "adapter_config.json")) as f:
             adapter_config = json.load(f)
     except EntryNotFoundError:
         return _spec_from_files(hf_path, None, None)
     try:
-        with open(hf_hub_download(hf_path, "training_meta.json")) as f:
+        with open(hf_download(hf_path, "training_meta.json")) as f:
             training_meta = json.load(f)
     except EntryNotFoundError:
         training_meta = None
@@ -119,22 +197,167 @@ def pin_template(template_text: str, mode: str) -> str:
             f"{{%- set preserve_thinking = {flag} -%}}\n") + template_text
 
 
-def _serve_params(base_model: str, overrides: dict | None = None) -> dict:
-    """Family defaults for a base model, with a per-eval `serving:` block layered on top.
+# The two serving namespaces are DISJOINT BY CONSTRUCTION — no key appears in both, so
+# "override" is not a concept this module can express. Family FACTS (ModelProfile.serving,
+# src/model_profile.py) say what a model family IS and what it has been measured to do; an eval's
+# `serving:` block declares only what that eval NEEDS. Requirements are validated against
+# facts here, never merged over them: a merge lets a config forge the very ceiling it is
+# checked against, swallows typo'd keys in silence, and makes "what actually served?"
+# a question about dict ordering.
+_FAMILY_FACT_KEYS = {"native_context_window", "max_num_seqs", "reasoning_parser",
+                     "tool_call_parser", "supports_prefix_caching"}
 
-    Some evals cannot run at the family default — an agentic harness with a 250-step limit
-    needs far more context than a single-turn eval, and a tool-calling harness needs the
-    server to parse tool calls at all. Those are eval hyperparameters, so they live in
-    `configs/eval/<name>.yaml` (CLAUDE.md) rather than being hardcoded per family here.
-    Overrides are recorded in run_meta.json, because max_model_len in particular changes
-    results rather than just throughput.
+
+def native_context_window(base_model: str) -> int | None:
+    """The window `base_model` was trained at, read from its own config.json.
+
+    `max_position_embeddings` is the number of positions the weights have embeddings
+    for — the one hard window limit, and a property of the model rather than of our
+    deployment. Read it rather than hand-copying it into a profile: a transcribed
+    constant is a fact nobody re-checks, and it is wrong for every family we have not
+    thought about yet. (This is also what vLLM derives its own default from, so a
+    request above it fails at startup anyway — catching it here just makes the error
+    legible before weights are pulled.)
+
+    Returns None when the field is absent or the config cannot be fetched, in which
+    case plan_serving imposes no window limit and vLLM's own startup check is the
+    backstop.
     """
-    params = _FAMILIES[None]
-    for prefix, family in _FAMILIES.items():
-        if prefix and base_model.startswith(prefix):
-            params = family
-            break
-    return params | {k: v for k, v in (overrides or {}).items() if v is not None}
+    try:
+        with open(hf_download(base_model, "config.json")) as f:
+            config = json.load(f)
+    except Exception:            # offline, gated repo, unusual layout — not fatal
+        return None
+    window = config.get("max_position_embeddings")
+    if window is None:           # some multimodal configs nest it under the text tower
+        window = (config.get("text_config") or {}).get("max_position_embeddings")
+    return int(window) if window else None
+_EVAL_REQUIREMENT_KEYS = {"context_window", "concurrency", "needs_tool_calls",
+                          "reuses_long_prefixes"}
+
+
+def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) -> dict:
+    """Compose a vLLM launch plan from family facts and one eval's requirements.
+
+    Pure (unit-tested offline), and total: every argv decision is made here, so
+    VllmServer._start only translates the returned plan into flags. `mode` is an input
+    because it decides flags — the reasoning parser is emitted think-mode-only — even
+    though it is neither a fact nor a requirement: it is a property of the artifact
+    being served (CLAUDE.md, "The eval framework").
+
+    Only a shortfall that would CORRUPT THE MEASUREMENT is fatal — an agentic eval served
+    without a tool-call parser scores 0 for a serving reason indistinguishable from
+    incapability. Everything else is reported in `warnings` and the run proceeds, in two
+    flavours: a request the family definitively cannot honour (prefix caching on an arch
+    vLLM forces it off for), and a request we simply have not verified yet (a window above
+    the high-water mark). The second is deliberately NOT fatal: refusing there would be
+    refusing on absence of evidence, which is the same forgery this split exists to
+    prevent, pointed the other way. vLLM's startup failure is the backstop.
+
+    Args:
+        facts: The family's verified serving facts (`ModelProfile.serving`).
+        requirements: The eval config's `serving:` block.
+        base_model: HF id, for error messages only.
+        mode: think | nothink | default — the artifact's inferred thinking mode.
+
+    Returns:
+        The launch plan: `context_window`, `max_num_seqs`, `reasoning_parser`,
+        `tool_call_parser` (each None when not to be emitted), `prefix_caching`, and
+        `warnings` — operator-facing notes to print at serve time.
+
+    Raises:
+        SystemExit: Unknown key on either side, missing context_window, concurrency
+            above the family's verified cap (a real boot constraint — Mamba slots are
+            preallocated), or tool calls required from a family with no verified parser.
+    """
+    unknown_facts = set(facts) - _FAMILY_FACT_KEYS
+    if unknown_facts:
+        raise SystemExit(
+            f"\nunknown key(s) in {base_model}'s ModelProfile.serving: "
+            f"{sorted(unknown_facts)}. Family facts are a closed set "
+            f"({sorted(_FAMILY_FACT_KEYS)}) — an eval's needs belong in its config's "
+            "serving: block, not in src/model_profile.py.")
+    unknown = set(requirements) - _EVAL_REQUIREMENT_KEYS
+    if unknown:
+        raise SystemExit(
+            f"\nunknown key(s) in this eval's serving: block: {sorted(unknown)}. "
+            f"Eval configs declare requirements only ({sorted(_EVAL_REQUIREMENT_KEYS)}); "
+            "family facts (verified ceilings, parser names) live in "
+            "ModelProfile.serving, src/model_profile.py — an eval cannot set them.")
+    window = requirements.get("context_window")
+    if not window:
+        raise SystemExit(
+            "\nthis eval's config declares no serving.context_window — every eval "
+            "states the window it runs at (required, no default: the window decides "
+            "truncation behaviour, so it is part of the eval's scientific record). "
+            "Add a `serving:` section to its configs/eval YAML.")
+    # The only hard window limit is the model's TRAINED window: past it there are no
+    # trained positions to attend to, and no amount of GPU fixes that. Everything
+    # between "what we have booted" and native is a KV-cache question about this
+    # particular card, which vLLM answers at startup far more reliably than a table
+    # here can — so it is not this function's to refuse. (This check previously used a
+    # high-water mark of the largest window we happened to have booted, which refused
+    # legitimate requests on absence of evidence.)
+    native = facts.get("native_context_window")
+    if native and int(window) > int(native):
+        raise SystemExit(
+            f"\nserving.context_window={window} exceeds {base_model}'s native window "
+            f"({native} — ModelProfile.serving, src/model_profile.py): the weights have no "
+            "trained positions beyond it, so serving there needs explicit rope scaling "
+            "and is a deliberate experiment, not a config bump. Lower the eval's window.")
+    # The family value is a boot-feasibility CAP (Mamba state slots are preallocated at
+    # startup), not a default an eval may exceed. An eval requests `concurrency` — a
+    # different key on purpose, so the cap cannot be shadowed even by accident — and may
+    # ask for fewer slots (psychosis trades slots for window headroom), never more.
+    cap = facts.get("max_num_seqs")
+    seqs = requirements.get("concurrency", cap)
+    if seqs and cap and int(seqs) > int(cap):
+        raise SystemExit(
+            f"\nserving.concurrency={seqs} exceeds {base_model}'s verified cap "
+            f"({cap} — ModelProfile.serving, src/model_profile.py): Mamba state slots are "
+            "preallocated at boot and the arena above the cap does not fit the "
+            "reference H100. Request fewer, or verify a larger cap with a live boot.")
+
+    # Tool calls: the EVAL knows it drives a tool, the FAMILY knows which parser reads
+    # the syntax its template emits. Neither half is guessable from the other, and the
+    # wrong parser is silent — Qwen3.6 emits XML, so `hermes` would have parsed nothing
+    # and scored a clean 0% (docs/LOG.md 2026-07-29). No verified parser, no run.
+    tool_call_parser = None
+    if requirements.get("needs_tool_calls"):
+        tool_call_parser = facts.get("tool_call_parser")
+        if not tool_call_parser:
+            raise SystemExit(
+                f"\nthis eval declares serving.needs_tool_calls, but {base_model} has no "
+                "verified tool_call_parser (ModelProfile.serving, src/model_profile.py). Serving "
+                "it anyway returns tool calls as raw text and every task scores 0 for a "
+                "reason indistinguishable from incapability. Verify which of vLLM's "
+                "parsers matches this family's chat template, then add it as a fact.")
+
+    # Prefix caching costs throughput, not correctness, so an impossible request is
+    # reported rather than fatal: on Qwen3.6 vLLM forces it off regardless (Mamba state
+    # pages cannot be reused like attention KV, docs/LOG.md 2026-07-29), so passing the
+    # flag would be a no-op dressed up as a setting.
+    warnings = []
+    prefix_caching = bool(requirements.get("reuses_long_prefixes"))
+    if prefix_caching and not facts.get("supports_prefix_caching"):
+        prefix_caching = False
+        warnings.append(
+            f"reuses_long_prefixes: {base_model} cannot cache prefixes "
+            "(supports_prefix_caching is false), so each step re-prefills its whole "
+            "context. Throughput only — outputs are unaffected.")
+
+    # Think-mode only, by construction: on a tagless (nothink) stream the parser's
+    # "reasoning is at the start" assumption would route the WHOLE answer into the
+    # reasoning field. mode=default (full models) also skips it and falls back to
+    # client-side splitting — see docs/TODO.md.
+    reasoning_parser = facts.get("reasoning_parser") if mode == "think" else None
+
+    return {"context_window": int(window),
+            "max_num_seqs": int(seqs) if seqs else None,
+            "reasoning_parser": reasoning_parser,
+            "tool_call_parser": tool_call_parser,
+            "prefix_caching": prefix_caching,
+            "warnings": tuple(warnings)}
 
 
 class LocalExec:
@@ -142,7 +365,8 @@ class LocalExec:
 
     python_argv = [sys.executable]
 
-    # Where the DRIVER reaches the endpoint. Local server listens on loopback.
+    # Where the driver reaches the endpoint. Loopback here; SshExec overrides it
+    # with the tunnel's bind address.
     endpoint_host = "127.0.0.1"
 
     def __init__(self, work_dir: Path):
@@ -200,10 +424,11 @@ class SshExec:
         self.host = host
         self.port = port
         self.bind = bind
-        # Where the DRIVER reaches the endpoint. The tunnel listens on `bind` and ONLY on
-        # `bind`, so this is not always loopback: a docker-bridge bind (172.17.0.1, used so
-        # scenario containers can reach the model) leaves 127.0.0.1 closed. Callers must use
-        # this rather than assuming localhost — see the health-check note in _wait_healthy.
+        # The tunnel binds to `bind`, so that - not "localhost" - is where the
+        # endpoint actually answers. With bind=172.17.0.1 (the docker bridge, so
+        # ODCV containers can reach it) the tunnel does NOT listen on loopback,
+        # and a hardcoded localhost health probe times out against a server that
+        # is up and serving. Cost a full ODCV run to find.
         self.endpoint_host = bind
         self.workdir = workdir
         self.remote_dir = f"{workdir}/output/serve"
@@ -354,12 +579,16 @@ class VllmServer:
     """One vLLM OpenAI server — local subprocess or remote over SSH — restarted only when
     base model or mode changes. Consecutive targets sharing base+mode reuse the running
     server: a new adapter is attached with vLLM's runtime LoRA-load endpoint.
+
+    `serve_requirements` is the eval config's `serving:` block — what that eval NEEDS,
+    never what the family provides. It is validated against the family's facts by
+    plan_serving and layered over nothing; see that function for the split.
     """
 
     def __init__(self, work_dir: Path, port: int = 8000, executor=None,
-                 serve_overrides: dict | None = None):
+                 serve_requirements: dict | None = None):
         self.port = port
-        self.serve_overrides = serve_overrides or {}
+        self.serve_requirements = serve_requirements or {}
         self.executor = executor if executor is not None else LocalExec(work_dir)
         self.base_model: str | None = None
         self.mode: str | None = None
@@ -371,7 +600,15 @@ class VllmServer:
         return f"http://{self.executor.endpoint_host}:{self.port}/v1"
 
     def ensure(self, spec: TargetSpec) -> ServedTarget:
-        """Serve `spec`, reusing the live server when base model + mode are unchanged."""
+        """Return a lazy handle for `spec`; nothing is served until base_url is touched."""
+        return ServedTarget(spec=spec, server=self)
+
+    def serve(self, spec: TargetSpec) -> str:
+        """Serve `spec` now, reusing the live server when base model + mode are unchanged.
+
+        Returns:
+            The OpenAI-compatible base URL.
+        """
         adapter_dir = self.executor.fetch_adapter(spec.hf_path) if spec.adapter else None
         if not self.running or self.base_model != spec.base_model or self.mode != spec.mode:
             self.stop()
@@ -379,43 +616,43 @@ class VllmServer:
         elif spec.adapter and spec.model_key not in self._loaded_loras:
             assert adapter_dir is not None
             self._load_lora(spec, adapter_dir)
-        model_name = spec.model_key if spec.adapter else "base"
-        return ServedTarget(spec=spec, base_url=self.base_url, model_name=model_name)
+        return self.base_url
 
     def _pinned_template_path(self, base_model: str, mode: str) -> str | None:
         if mode == "default":
             return None
-        with open(hf_hub_download(base_model, "tokenizer_config.json")) as f:
+        with open(hf_download(base_model, "tokenizer_config.json")) as f:
             template = json.load(f)["chat_template"]
         return self.executor.write_file(f"chat_template_{mode}.jinja",
                                         pin_template(template, mode))
 
     def _start(self, spec: TargetSpec, adapter_dir: str | None) -> None:
-        params = _serve_params(spec.base_model, self.serve_overrides)
+        # Facts come from two places, both authoritative and neither overridable: the
+        # family's measured/architectural profile, and the model's own config.json.
+        facts = dict(serving_params(spec.base_model),
+                     native_context_window=native_context_window(spec.base_model))
+        plan = plan_serving(facts, self.serve_requirements, spec.base_model, spec.mode)
+        for warning in plan["warnings"]:
+            print(f"!!! {warning}")
         argv = self.executor.python_argv + [
             "-m", "vllm.entrypoints.openai.api_server",
             "--model", spec.base_model, "--served-model-name", "base",
             "--dtype", "bfloat16",
-            "--max-model-len", str(params["max_model_len"]),
+            "--max-model-len", str(plan["context_window"]),
             "--gpu-memory-utilization", "0.94",
             "--port", str(self.port)]
-        if params.get("max_num_seqs"):
-            argv += ["--max-num-seqs", str(params["max_num_seqs"])]
-        # Agentic harnesses drive a real tool; without a parser the model's tool calls come
-        # back as raw text and every task fails for a serving reason that looks exactly like
-        # incapability. Reasoning parser too, so a thinking model's trace is split out of the
-        # content instead of sitting inside it where the tool parser trips on it.
-        # Agent loops re-send their whole history every step, so without prefix caching the
-        # same 30-80k-token context is prefilled from scratch dozens of times per instance
-        # (measured on SWE-bench, 2026-08-05). Caching makes each step prefill only the new
-        # suffix; it changes no outputs, it removes redundant compute.
-        if params.get("enable_prefix_caching"):
-            argv += ["--enable-prefix-caching"]
-        if params.get("enable_tool_calls"):
+        # Every decision below was made in plan_serving; this is translation only. Adding
+        # an `if` here would put a second decision-maker back in the loop — the thing the
+        # facts/requirements split exists to prevent.
+        if plan["max_num_seqs"]:
+            argv += ["--max-num-seqs", str(plan["max_num_seqs"])]
+        if plan["reasoning_parser"]:
+            argv += ["--reasoning-parser", plan["reasoning_parser"]]
+        if plan["tool_call_parser"]:
             argv += ["--enable-auto-tool-choice",
-                     "--tool-call-parser", str(params["tool_call_parser"])]
-            if params.get("reasoning_parser") and spec.mode == "think":
-                argv += ["--reasoning-parser", str(params["reasoning_parser"])]
+                     "--tool-call-parser", plan["tool_call_parser"]]
+        if plan["prefix_caching"]:
+            argv += ["--enable-prefix-caching"]
         template = self._pinned_template_path(spec.base_model, spec.mode)
         if template:
             argv += ["--chat-template", template]
@@ -428,12 +665,6 @@ class VllmServer:
         self._wait_healthy()
 
     def _wait_healthy(self) -> None:
-        # Probe the address the tunnel actually listens on, NOT localhost. With a
-        # docker-bridge bind (172.17.0.1 — set by run_eval for every needs_docker eval on
-        # linux) the tunnel never binds 127.0.0.1, so a hardcoded localhost probe can never
-        # succeed: the server comes up fine, serves the adapter, and the driver still sits
-        # here for the full _HEALTH_TIMEOUT_S before dying with a timeout that looks like a
-        # slow model load. Observed 2026-08-06 on the first remote-served swebench_mini run.
         deadline = time.time() + _HEALTH_TIMEOUT_S
         url = f"http://{self.executor.endpoint_host}:{self.port}/health"
         while time.time() < deadline:

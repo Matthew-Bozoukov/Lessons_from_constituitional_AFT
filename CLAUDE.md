@@ -1,8 +1,8 @@
 # CLAUDE.md — repo guide for agents
 
-**AI agents: do NOT write to this file unless specifically asked to — and even when asked,
-encourage human review of the exact diff. This file only stays useful if it stays curated;
-unsupervised agent edits turn it to slop.**
+**AI agents: do NOT write to this file OR to docs/TODO.md unless specifically asked to —
+and even when asked, encourage human review of the exact diff. These files only stay
+useful if they stay human-curated; unsupervised agent edits turn them to slop.**
 
 Orientation + operating rules for this repo. Read this before touching anything. The global
 `~/.claude/CLAUDE.md` rules (uv, ABOUTME headers, YAML+OmegaConf configs, timestamped outputs,
@@ -46,7 +46,7 @@ Notes:
   instance — never a RunPod pod: unprivileged containers cannot create the per-scenario
   Compose networks). Option B fits it naturally: local docker, remote model.
   `docker_preflight` refuses unusable hosts with a specific remedy.
-- **Exception**: `src/eval/vulnerabilities/` predates this rule and does not yet conform
+- **Exception**: `src/eval/audits/` predates this rule and does not yet conform
   (own nested env, own workflow) — see `docs/TODO.md`.
 
 ## Where things go (keep this structure)
@@ -57,16 +57,25 @@ src/                    correctness-critical reusable code (installed editable; 
                           judges, red-teamers, data generation) + vllm_server.py (serve a
                           target model on localhost via vLLM; thinking mode inferred from the
                           artifact and pinned at serve time)
-  utils.py                extract_json, git_sha, timestamp, write_run_meta, count_chat_tokens
+  utils.py                io/json + provenance: extract_json, read_jsonl, git_sha,
+                          timestamp, write_run_meta, origin_url
+  model_profile.py        the ModelProfile registry (verified per-family facts for
+                          rendering/masking/serving) + think-stream parsers
+  huggingface.py          THE HF module: token resolution (reads + pushes), the
+                          dataset-card contract, push_run_dir/push_files/hf_download
   data/                   two subpackages, mirrored in scripts/data/ and configs/data/:
-    synthdoc/               synthetic data generation (constitution-grounded,
+    synth/                  synthetic data generation (constitution-grounded,
                             config-driven engine, formerly synthdoc_v2; the config's
                             `stages:` list — prompts included — defines the document
-                            type; run via scripts/data/synthdoc/build_dataset.py with
-                            configs/data/synthdoc/{difficult_advice,model_eval_model}.yaml,
-                            `synthdoc check` gates the latter's corpora — see its README)
-    mixture/                dataset building (build_mixture.py, balanced_subset.py,
-                            convert_synthdoc_qwen.py, prepare_tulu.py, ...)
+                            type; run via scripts/data/synth/build_dataset.py with
+                            configs/data/synth/{difficult_advice,model_eval_model}.yaml,
+                            `synth check` gates the latter's corpora — see its README)
+    mixture/                dataset building: build_mixture.py (staged base → spec-filter →
+                            synthetic pipeline with HF push checkpoints; rows are
+                            model-agnostic interchange messages, rendered at TRAIN time via
+                            ModelProfile; `balance_by:` trait-balances a source), spec_filter.py
+                            (constitution judge), sources/ (one adapter per data source,
+                            incl. the tulu3 sampler formerly prepare_tulu.py)
   train/                  training: train_lora.py, merge_lora.py
   eval/                   eval registry in __init__.py (name -> EvalSpec, lazy runner) — every
                           eval follows the run() contract in "The eval framework" below
@@ -74,22 +83,23 @@ src/                    correctness-critical reusable code (installed editable; 
                           lmsys/ (chat win-rate vs base), mmlu/ (MMLU arm ladder)
     misalignment/         one directory per eval: odcv/ (ODCV-Bench: metrics, rollout, judge,
                           compare, stats), agentic_misalignment/ (honeypots: runner,
-                          aggregate_eval, build_rollouts), psychosis/ (delusion red-teaming)
+                          aggregate_eval, build_rollouts), psychosis/ (delusion red-teaming).
+                          agentic_misalignment/ and odcv/ each vendor their PATCHED harness
+                          in their own third_party/ — see gotchas
       internalization/      self-contained constitution-internalization proxy eval (Tier A).
                             `python -m src.eval.misalignment.internalization.cli run --smoke`
                             runs offline in ~10s; see its README.md
-      third_party/          vendored eval harnesses (agentic-misalignment, odcv-bench), PATCHED — see gotchas
-    vulnerabilities/      petri/ + surf/ audit tooling (generalized from the completed MSM audit)
+    audits/               petri/ + surf/ audit tooling (generalized from the completed MSM audit)
 configs/                OmegaConf YAML, one per step, foldered by pipeline stage.
                         NEVER hardcode hyperparams in scripts.
-  data/                   synthdoc/ generation configs (difficult_advice, model_eval_model, self_reflection)
+  data/                   synth/ generation configs (difficult_advice, model_eval_model, self_reflection)
                           + mixture/ dataset-building configs (qwen36_*, tulu_control)
   train/                  SFT training (lora_<model>_<arm>*)
   eval/                   evals (capability, mmlu, agentic_misalignment, odcv_*, constitution_probe)
 scripts/                pipeline drivers, foldered to mirror src/ stages + gpu/ for infra
   run_eval.py             THE eval entrypoint: serves each --target and dispatches to a
                           registered eval's run() — see "The eval framework" below
-  data/                   thin CLIs over src/data/, mirrored: synthdoc/build_dataset.py — THE
+  data/                   thin CLIs over src/data/, mirrored: synth/build_dataset.py — THE
                           synthetic-data entrypoint — + mixture/build_mixture.py
   train/                  thin CLIs over src/train/ (train_lora, merge_lora)
   gpu/                    provision infra: runpod_capability.py, runpod_train.py
@@ -109,11 +119,11 @@ docs/LOG.md             append-only research log, MOST RECENT FIRST. Add an entr
 
 - `src/` holds verified, reusable code: modules a human has reviewed and that
   other code is allowed to depend on. Placement follows what the code *does* —
-  data generation (synthdoc, mixtures) goes in
+  data generation (synth, mixtures) goes in
   `src/data/`, training in `src/train/`, evaluation and audit tooling in
   `src/eval/` under the matching subarea (`capabilities/`,
   `misalignment/` — including its `internalization/` proxy eval — or
-  `vulnerabilities/petri|surf/`).
+  `audits/petri|surf/`).
 - `scripts/` holds core pipelines we expect to rerun. A script does no real work
   itself — it only pipes `src/` functions together (or drives a GPU box). If a
   script grows logic worth reusing, the logic moves into `src/` and the script
@@ -262,8 +272,8 @@ deleted with that package on 2026-08-03 — see git history — so enforce them 
 
 ## The pipeline (each step = one experiment script + one config)
 
-1. `uv run synthdoc run --config configs/data/synthdoc/difficult_advice.yaml` — six-stage difficult-advice generation from the constitution (scenarios → prompts → responses → trait-rewrites), reasoning traces native. Has `--smoke`. (The config's `pipeline:` field picks the document type: the same command with `configs/data/synthdoc/model_eval_model.yaml` generates the model-evaluates-model arms over a completed run, gated by `uv run synthdoc check`.)
-2. `scripts/data/mixture/build_mixture.py` (+ `configs/data/mixture/*.yaml`) — token-budgeted training mixture: `messages` sources keep their `<think>` traces, HF `repo` sources render with no think block; `balanced_subset.py` trait-balances the difficult-advice share. Has `--smoke`.
+1. `uv run synth run --config configs/data/synth/difficult_advice.yaml` — six-stage difficult-advice generation from the constitution (scenarios → prompts → responses → trait-rewrites), reasoning traces native. Has `--smoke`. (The config's `pipeline:` field picks the document type: the same command with `configs/data/synth/model_eval_model.yaml` generates the model-evaluates-model arms over a completed run, gated by `uv run synth check`.)
+2. `scripts/data/mixture/build_mixture.py` (+ `configs/data/mixture/*.yaml`) — budgeted training mixture of model-agnostic interchange rows (reasoning as `reasoning_content`, rendered at train time), with optional spec-filter stage and HF push checkpoints; `balance_by: trait_id` on a source spec trait-balances the difficult-advice share. Has `--smoke`.
 3. `scripts/train/train_lora.py` (+ `configs/train/lora*.yaml`) — QLoRA SFT (runs on GPU box). Has `--smoke` (2 steps). Pushes the adapter to HF with `training_meta.json` — the thinking stamp (declared as `thinking:` in the train config, validated against the data) that the eval framework infers mode from.
 4. `scripts/run_eval.py --target <hf_path> --name agentic_misalignment` — agentic-misalignment honeypots → `misalignment_summary.json` via `src/eval/misalignment/agentic_misalignment/aggregate_eval.py`.
 5. `scratch/reports/final_report.py` / `scratch/reports/make_report.py` — capstone report + plots + markdown from `output/eval_summaries/` (per-experiment write-up code, so it lives in scratch).
@@ -276,26 +286,39 @@ Every eval is one invocation of the single entrypoint, driven from anywhere ("Wh
 runs"; add `--server <ssh-alias>` when the GPU host is a different machine):
 
 ```
-uv run scripts/run_eval.py --target <hf_path> [<hf_path> ...] --name <eval> [key=value ...]
+uv run scripts/run_eval.py --target <hf_path | provider:model-id> [...] --name <eval> [key=value ...]
 ```
 
-- **Targets are HF paths**: a LoRA adapter (base model resolved from the adapter's
-  `adapter_config.json`) or a full model. Thinking mode is never declared at eval
-  time — it is **inferred from the artifact**. Adapters carry a `training_meta.json`
-  stamped into the HF repo by `train_lora.py`, whose `thinking` field comes from the
-  training config: every `configs/train/lora_*.yaml` declares `thinking: true|false`
-  (required, no default — the config is the scientific record), and `train_lora.py`
-  fail-fast validates the declaration against the data (`thinking: true` requires
-  real reasoning traces in the target source); full models fall back to their own
-  chat-template default. An adapter
+- **A target is an HF path OR an API endpoint.** An HF path is a LoRA adapter (base
+  model resolved from the adapter's `adapter_config.json`) or a full model, served
+  locally by vLLM. An API endpoint is written `<provider>:<model-id>` on the CLI
+  (e.g. `openrouter:moonshotai/kimi-k2`) — for comparing our models against
+  off-the-shelf ones; HF ids have no colon, so the scheme is unambiguous, and
+  providers live in `API_PROVIDERS` (`src/endpoints/vllm_server.py`). Its key comes
+  from the env (`.env`), never a config. An API target is NOT served by vLLM and its
+  `mode` is only a comparison label (the provider's template is not ours to pin). Only
+  evals that reach the target purely through the OpenAI triple (base_url, model, key)
+  accept one — `EvalSpec.supports_api_target` (mmlu, arena_hard, lmsys, psychosis);
+  the rest (docker, vendored-harness, LoRA-swap) refuse an API target with a clear
+  message.
+- **Thinking mode is never declared at eval time — it is inferred from the artifact.**
+  Adapters carry a `training_meta.json` stamped into the HF repo by `train_lora.py`,
+  whose `thinking` field comes from the training config: every
+  `configs/train/lora_*.yaml` declares `thinking: true|false` (required, no default —
+  the config is the scientific record), and `train_lora.py` fail-fast validates the
+  declaration against the data (`thinking: true` requires real reasoning traces in the
+  target source); full models fall back to their own chat-template default. An adapter
   without the stamp is a hard error — backfill the stamp, never guess. The inferred
   mode is pinned into the chat template at serve time (never an env var, never a
   per-request flag), recorded in `run_meta.json`, and comparison/aggregation code
   refuses to pair arms whose modes differ. A deliberate cross-mode experiment takes
-  an explicit `mode=` config override, recorded the same way.
-- **`run_eval.py` owns serving**: it launches vLLM on localhost for each target via
-  `src/endpoints/vllm_server.py` and hands the eval an OpenAI-compatible base URL.
-  Evals never load weights and never start servers.
+  an explicit `mode=` config override, recorded the same way. (An API target has no
+  artifact to infer from: it defaults to `default` and takes the same `mode=` override
+  as a label.)
+- **`run_eval.py` owns serving**: for an HF target it launches vLLM on localhost via
+  `src/endpoints/vllm_server.py` and hands the eval an OpenAI-compatible base URL; for
+  an API target it hands over the provider's base URL directly (no server). Evals never
+  load weights and never start servers.
 - **Each eval is a registry entry** in `src/eval/__init__.py`: name → `EvalSpec`
   holding a lazy `"module:function"` runner (imported only when selected, so
   importing `src.eval` stays light) plus static metadata (`needs_docker`,
@@ -318,7 +341,7 @@ uv run scripts/run_eval.py --target <hf_path> [<hf_path> ...] --name <eval> [key
   (git SHA, config, target, mode); results push to HF with the required dataset-card
   fields *as they are produced* (a dead pod loses nothing); a summary row lands in
   `output/eval_summaries/`.
-- The audit tooling in `src/eval/vulnerabilities/` is exempt from this contract for now.
+- The audit tooling in `src/eval/audits/` is exempt from this contract for now.
 
 ## GPU / vast.ai operational playbook (this is the fiddly part — follow it)
 
@@ -366,11 +389,11 @@ Never terminate a resource this repository did not provision. Report it instead.
 ## Gotchas (these WILL bite you — all learned the hard way)
 
 1. **Version pins**: vLLM 0.8.5 requires `transformers==4.51.3`. Newer transformers → `Qwen2Tokenizer has no attribute all_special_tokens_extended`.
-2. **Correct <think> tag templating and masking**: Qwen3.6 (the model under study) renders chain-of-thought tags on assistant turns and leaves them empty when no reasoning is present; its thinking-mode generation prompt prefills `<think>\n`, and nothink prefills the whole empty marker. Tokens the model is never expected to generate must never have a loss calculated for them — implemented as the non-configurable generation-boundary rule in `src/train/masking.py` (mask the prefill; mask a WHOLE empty marker; supervise real traces + their close), verified before every run by `src/train/mask_gate.py`. Family specifics live in `ModelProfile` (`src/utils.py`); unverified families are refused. At inference the serve-time template pin (`pin_template`) owns the tag behaviour — verify against the live template, never assume. 
+2. **Correct <think> tag templating and masking**: Qwen3.6 (the model under study) renders chain-of-thought tags on assistant turns and leaves them empty when no reasoning is present; its thinking-mode generation prompt prefills `<think>\n`, and nothink prefills the whole empty marker. Tokens the model is never expected to generate must never have a loss calculated for them — implemented as the non-configurable generation-boundary rule in `src/train/masking.py` (mask the prefill; mask a WHOLE empty marker; supervise real traces + their close), verified before every run by `src/train/mask_gate.py`. Family specifics live in `ModelProfile` (`src/model_profile.py`); unverified families are refused. At inference the serve-time template pin (`pin_template`) owns the tag behaviour — verify against the live template, never assume. 
 3. **QLoRA OOM** at batch 8 × 2048 on 80GB → use batch 4, `max_seq_len` ~1536–2048, and launch with `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`.
 4. **Train only on assistant tokens for the loss.** Qwen3.6's chat template lacks `{% generation %}` markers (verified live: `return_assistant_tokens_mask` flags 0 tokens), so TRL's `assistant_only_loss` produces an all-zero mask (nothing trains). The label mask is built in-repo instead — `build_labels` in `src/train/masking.py` sets prompt/user tokens to `-100` and supervises assistant completions, with think-tag handling per gotcha 2. Do NOT fall back to full-sequence training (it dilutes the signal with prompt tokens).
 5. **Reasoning models need token headroom**: any eval that caps generation tightly truncates inside the `<think>` block and scores a false 0% — size `max_tokens` for trace + answer, parse answers after `</think>`, and report the empty-think rate (a ~0-length trace means the arm stopped reasoning).
-6. **Judge routing** in the vendored harness: `_detect_provider` matched substring "claude" → Anthropic before the `/`-prefix rule. The vendored copy is PATCHED so `anthropic/claude-sonnet-4.5` routes to OpenRouter; if you re-clone the harness, re-apply the `vllm/` provider + routing patches in `src/eval/misalignment/third_party/agentic-misalignment/api_client/model_client.py`. (Thinking mode needs no harness-side patch any more — it is inferred from the artifact and pinned at serve time; see "The eval framework".)
+6. **Judge routing** in the vendored harness: `_detect_provider` matched substring "claude" → Anthropic before the `/`-prefix rule. The vendored copy is PATCHED so `anthropic/claude-sonnet-4.5` routes to OpenRouter; if you re-clone the harness, re-apply the `vllm/` provider + routing patches in `src/eval/misalignment/agentic_misalignment/third_party/agentic-misalignment/api_client/model_client.py`. (Thinking mode needs no harness-side patch any more — it is inferred from the artifact and pinned at serve time; see "The eval framework".)
 7. **SSH command hangs**: launches that background a process (`nohup … &`) can keep the SSH channel open; wrap long remote work in `nohup … </dev/null &` and poll the log rather than waiting on the call.
 
 ## External artifacts

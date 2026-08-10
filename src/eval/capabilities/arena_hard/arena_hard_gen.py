@@ -21,7 +21,7 @@ Why this is ours rather than the vendored `gen_answer.py`:
   auditable instead of assumed.
 
 Answers are written to the vendored tree (where the judge looks) *and* mirrored under
-`output/` (which survives, since `third_party/` is gitignored and disposable).
+`output/`. The tree is TRACKED in git (patched + pruned; see its VENDORED_FROM.txt).
 
 Run one arm at a time, against whatever that arm's adapter is currently served as:
 
@@ -53,7 +53,8 @@ from src.eval.capabilities.arena_hard.arena_hard_metrics import (  # noqa: E402
     style_features,
 )
 from src.endpoints.openrouter import map_threaded  # noqa: E402
-from src.utils import read_jsonl, split_think, timestamp, write_run_meta  # noqa: E402
+from src.model_profile import split_think
+from src.utils import read_jsonl, timestamp, write_run_meta  # noqa: E402
 
 
 def _arm(cfg: DictConfig, name: str) -> DictConfig:
@@ -109,6 +110,7 @@ def main(
     config: str = "configs/eval/arena_hard.yaml",
     arm: str = "",
     served_model: str = "",
+    api_key: str = "",
     endpoint: str = "",
     stage: int = 0,
     creative: int = -1,
@@ -147,9 +149,8 @@ def main(
     question_file = vendor / "data" / cfg.bench_name / "question.jsonl"
     if not question_file.exists():
         raise SystemExit(
-            f"No question set at {question_file}. Vendor the harness first:\n"
-            f"  git clone https://github.com/lmarena/arena-hard-auto.git {vendor}\n"
-            f"  uv run python scripts/eval/patch_arena_hard.py"
+            f"No question set at {question_file} — the vendored tree is TRACKED in "
+            f"git (patched, pruned). Restore it: git checkout -- {vendor}"
         )
 
     questions = read_jsonl(question_file)
@@ -186,7 +187,7 @@ def main(
     print(f">>> decoding:     temp={gen.temperature} top_p={gen.top_p} max_tokens={gen.max_tokens}")
 
     base_url = endpoint or str(gen.endpoint)
-    client = OpenAI(base_url=base_url, api_key=str(gen.api_key))
+    client = OpenAI(base_url=base_url, api_key=api_key or str(gen.api_key))
 
     # The output budget must be sized PER PROMPT against the server's context window.
     # A fixed max_tokens large enough for a hard reasoning prompt (the <think> trace is

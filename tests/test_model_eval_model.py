@@ -9,8 +9,7 @@ import pytest
 
 import yaml
 
-from src.data.mixture.convert_synthdoc_qwen import _passthrough
-from src.data.synthdoc.checks import (
+from src.data.synth.checks import (
     check_blindness,
     check_coverage,
     check_post_hoc_heuristic,
@@ -18,7 +17,7 @@ from src.data.synthdoc.checks import (
     check_template_collapse,
     check_verdict_distribution,
 )
-from src.data.synthdoc.cells import (
+from src.data.synth.cells import (
     _critique_messages,
     _length_matched,
     _norm_verdict,
@@ -27,7 +26,7 @@ from src.data.synthdoc.cells import (
     to_model_eval_model_sft,
 )
 
-CFG = yaml.safe_load(open("configs/data/synthdoc/model_eval_model.yaml"))
+CFG = yaml.safe_load(open("configs/data/synth/model_eval_model.yaml"))
 P = CFG["prompts"]  # the config IS the wording -- tests validate against it
 
 EXPLICITNESS = {"name_clause": 0.3, "paraphrase": 0.4, "embody": 0.3}
@@ -240,19 +239,125 @@ def test_reflect_assembly_masks_the_first_turn_and_supervises_the_final():
     assert all("dropped the key caveat" not in m["content"] for m in rec["messages"])
 
 
+# --- the `final` rewrite stage -----------------------------------------------------
+
+REVISE = next(s for s in CFG["stages"] if s["kind"] == "revise_cells")
+
+
+def test_revise_messages_pin_the_verdict_and_render_context_per_attribution():
+    from src.data.synth.cells import _revise_messages, _wrap_transcript
+
+    p = _plan({"m4_other_good": 1})[0]
+    gen = {**p, "reasoning": "DRAFT REASONING", "response": "DRAFT RESPONSE",
+           "assessment": "sound"}
+    user = _revise_messages(gen, "CONST", P, REVISE["prompts"])[1]["content"]
+    assert "DRAFT REASONING" in user and "DRAFT RESPONSE" in user
+    assert 'the verdict "sound"' in user and 'stays exactly "sound"' in user
+    # Critique context is byte-identical to the training record's user turn.
+    assert _wrap_transcript(gen, P) in user
+    # Self cells render the multi-turn context template instead.
+    ps = _plan({"m2_self_good": 1})[0]
+    gs = {**ps, "reasoning": "R", "response": "REPLY", "assessment": "held"}
+    us = _revise_messages(gs, "CONST", P, REVISE["prompts"])[1]["content"]
+    assert ps["user"] in us and ps["gold_response"] in us
+    assert P["reflect_variants"][ps["reflect_ix"]] in us
+
+
+def test_revise_messages_blind_unless_note_configured():
+    from src.data.synth.cells import _revise_messages
+
+    p = _plan({"m3_other_flawed": 1}, flaws=FLAWS)[0]
+    gen = {**p, "flawed_response": "FLAWED", "change_summary": "cut the caveat",
+           "reasoning": "r", "response": "resp", "assessment": "issue_found"}
+    # The base config has no known_flaw_note: the summary must not reach the prompt.
+    stripped = {**gen, "flaw": None, "change_summary": ""}
+    assert _revise_messages(gen, "C", P, REVISE["prompts"]) == \
+        _revise_messages(stripped, "C", P, REVISE["prompts"])
+    # An unblinded config (the self/other arms) feeds it in as scaffolding.
+    P2 = {**P, "known_flaw_note": "\nKNOWN: {change_summary}\n"}
+    assert "cut the caveat" in \
+        _revise_messages(gen, "C", P2, REVISE["prompts"])[1]["content"]
+
+
+def test_revise_documents_pass_control_through_untouched():
+    from src.data.synth.cells import revise_documents
+
+    p = _plan({"control": 2})[0]
+    gen = {**p, "reasoning": "trace"}
+    out = revise_documents([gen], client=None, usage=None, model="m",
+                           temperature=0.7, max_tokens=8, workers=1,
+                           templates=REVISE["prompts"], P=P, constitution="C")
+    assert out == [gen]
+
+
+def test_run_checks_resolves_snapshots_from_the_stage_list(tmp_path):
+    import json
+
+    from src.data.synth.checks import run_checks
+
+    plan = _plan({"m4_other_good": 2})
+    final = [{**p, "reasoning": f"weighing the situation first {i}",
+              "response": "resp", "assessment": "sound"}
+             for i, p in enumerate(plan)]
+    sft = to_model_eval_model_sft(final, P)
+
+    def dump(name: str, rows: list[dict]) -> None:
+        (tmp_path / name).write_text(
+            "\n".join(json.dumps(r) for r in rows) + "\n")
+
+    dump("stage_1_source.jsonl", _source())
+    dump("stage_2_plan.jsonl", plan)
+    dump("stage_4_generated.jsonl", final[:1])   # the draft snapshot: 1 record only
+    dump("stage_5_final.jsonl", final)           # the revised snapshot: 2 records
+    dump("stage_6_sft.jsonl", sft)
+
+    cfg = {**CFG, "checks": {k: v for k, v in CFG["checks"].items()
+                             if k != "judge_model"}}  # offline: skip LLM-judged checks
+    report, _ = run_checks(tmp_path, cfg)
+    assert report["generated"] == 2, \
+        "checks must judge the revised snapshot, not the stage-4 draft"
+
+    # A run dir from the pre-rewrite layout fails loudly, pointing at the manifest.
+    (tmp_path / "stage_6_sft.jsonl").unlink()
+    with pytest.raises(AssertionError, match="older"):
+        run_checks(tmp_path, cfg)
+
+
 # --- converter passthrough ---------------------------------------------------------
 
 
-def test_convert_passthrough_carries_mem_identity_and_supervise():
-    model_eval_model_row = {"messages": [], "metadata": {"record_id": "s::m1_self_flawed",
-                                            "cell": "m1_self_flawed",
-                                            "supervise": "final"}}
-    assert _passthrough(model_eval_model_row) == {"doc_id": "s::m1_self_flawed",
-                                     "doc_type": "m1_self_flawed",
-                                     "supervise": "final"}
-    agentic_row = {"doc_id": "d1", "doc_type": "agentic", "axes": {"a": 1}}
-    assert _passthrough(agentic_row) == {"doc_id": "d1", "doc_type": "agentic",
-                                         "axes": {"a": 1}}
+def test_stage5_supervise_survives_into_the_mixture(tmp_path):
+    # The chain that used to run through convert_synthdoc_qwen.py (deleted 2026-08-06 —
+    # git history is the archive): a stage-5 export row's metadata.supervise must reach
+    # the mixture row, or the trainer supervises the deliberately-flawed first response.
+    import json
+
+    from omegaconf import OmegaConf
+
+    from src.data.mixture.build_mixture import _take_interchange
+
+    class _Tok:
+        def apply_chat_template(self, messages, tokenize, add_generation_prompt,
+                                return_dict=False, **kw):
+            words = " ".join(m.get("content") or "" for m in messages).split()
+            return {"input_ids": words}
+
+    path = tmp_path / "stage5.jsonl"
+    path.write_text(json.dumps({
+        "messages": [{"role": "system", "content": "s"},
+                     {"role": "user", "content": "u"},
+                     {"role": "assistant", "content": "flawed",
+                      "reasoning_content": "r1"},
+                     {"role": "user", "content": "reflect"},
+                     {"role": "assistant", "content": "better",
+                      "reasoning_content": "r2"}],
+        "metadata": {"record_id": "s::m1_self_flawed", "cell": "m1_self_flawed",
+                     "supervise": "final"}}) + "\n")
+    rows, kind = _take_interchange(
+        _Tok(), OmegaConf.create({"max_seq_len": 100}), "model_eval_model",
+        {"path": str(path), "reasoning": "native"}, ("examples", 1), 0, {})
+    assert kind == "native" and rows[0]["supervise"] == "final"
+    assert rows[0]["messages"][-1]["reasoning_content"] == "r2"
 
 
 # --- validity checks ---------------------------------------------------------------
@@ -372,14 +477,16 @@ def test_surface_shortcut_flags_a_tell_and_passes_indistinguishable_pairs():
 
 
 def test_estimate_model_eval_model_uses_exact_call_counts():
-    from src.data.synthdoc.pipeline import estimate
+    from src.data.synth.pipeline import estimate
 
     cfg = {**CFG, "cells": {"control": 5, "m4_other_good": 7, "m3_other_flawed": 3,
                             "m2_self_good": 4, "m1_self_flawed": 2}}
     est = estimate(cfg)
     calls = {r["stage"]: r["calls"] for r in est["per_stage"]}
-    assert calls == {"control": 5, "critique": 10, "reflect": 6, "perturb": 5}, \
-        "perturb = one call per flawed document (m3 + m1)"
+    assert calls == {"control": 5, "critique": 10, "reflect": 6, "perturb": 5,
+                     "rewrite": 16}, \
+        "perturb = one call per flawed document (m3 + m1); rewrite = one per " \
+        "verdict-carrying document (control is free)"
     assert est["final_training_examples"] == 21
     assert est["total_usd"] > 0
     with pytest.raises(ValueError, match="unregistered"):

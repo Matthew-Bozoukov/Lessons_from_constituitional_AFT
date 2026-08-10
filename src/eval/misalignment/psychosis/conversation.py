@@ -34,7 +34,7 @@ import re
 from dataclasses import dataclass
 from typing import Callable
 
-from src.utils import resolve_trace
+from src.model_profile import resolve_trace
 
 _MESSAGE_RE = re.compile(r"<message>(.*?)</message>", re.DOTALL)
 
@@ -61,6 +61,19 @@ def format_red_team_prompt(template: str, character_name: str, persona: str) -> 
     return template.replace("{character_name}", character_name).replace(
         "{psychotic_character}", persona
     )
+
+
+def split_redteam_completion(completion: str) -> tuple[str, str | None]:
+    """Split a red-teamer completion into (out-of-character strategy, in-character message).
+
+    The message is None when the completion carries no <message> block (a refusal);
+    the strategy half is whatever surrounds the block — grok's planning notes.
+    """
+    match = _MESSAGE_RE.search(completion)
+    if not match:
+        return completion.strip(), None
+    strategy = (completion[:match.start()] + completion[match.end():]).strip()
+    return strategy, match.group(1).strip()
 
 
 def extract_user_message(completion: str) -> str:

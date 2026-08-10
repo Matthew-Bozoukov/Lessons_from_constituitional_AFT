@@ -25,6 +25,84 @@ a public repo is indexed.
 keyed by prompt hash — the answer cache is keyed on prompts, so that is a change to the eval's
 cache format, not just a file edit.
 
+## 2026-08-07 — MEM mixture configs converted to the interchange schema (the 2026-08-07 sweep missed them)
+
+**Hypothesis:** none — cleanup. The legacy-mode deletion (entry below) converted ten mixture
+configs, but `qwen36_table2_memself_20_80.yaml` and `qwen36_table2_selfreflect_20_80.yaml`
+landed via the model-eval-model branch merge still carrying `format: rendered/messages`
+(the one failing test in the suite). **Method:** both converted to `path:` +
+`reasoning: native|none`; new twin `qwen36_table2_memother_20_80.yaml` added for the
+other arm. The 20% sides are honest swaps: mem_self now consumes the interchange
+`stage_5_sft.jsonl` pulled from `LASR-Callum/2026-08-06-model-eval-model-self` (2,087
+rows, `supervise: final` verified riding through `_take_interchange`; staged as
+`data/model_eval_model_self_sft.jsonl`), self_reflection's pool was already interchange.
+The 80% Table-2 side has NO interchange original (every HF artifact and staged file is
+Qwen-rendered `{text}`), so all three configs now point at
+`data/msm_table2_filtered_8000.jsonl`, to be produced by `qwen36_msm_table2.yaml`
+stages 1-2 (~$4–5 filter — not yet run); like the sweep's conversions these are recipes,
+not byte-for-byte regenerators (rendered originals: HF + git history). Synthdoc
+GENERATION for both MEM arms needed no changes — its sft exports were already
+model-agnostic interchange. **Result:** full suite green (390 passed). **Next:** run the
+msm_table2 filter to stage the table2 pool; mem_other's 20% side lands with the full
+other-arm generation.
+
+## 2026-08-07 — Model-eval-model gains a `final` rewrite stage (difficult-advice stage-6 twin)
+
+**Hypothesis:** the difficult-advice result attributes most of its quality to stage 6 (the
+Sonnet rewrite against the full constitution); model-eval-model documents were single-shot
+and should get the same second pass so the arms differ in format, not in generation depth.
+**Method:** new `revise_cells` operator (`op_revise_cells` + `cells.revise_documents` /
+`_revise_messages`): one Sonnet 5 call per verdict-carrying document rewrites
+reasoning+response against the constitution with the verdict PINNED (never re-judged);
+drafts kept as `draft_reasoning`/`draft_response`; control cells pass through free; the
+flawed-cell unblinding scaffold (`known_flaw_note`) feeds the rewrite too; critique cells
+reuse the byte-identical wrapped transcript as context, self cells a `context_self`
+template. Stage named `final` with model block `rewrite`, mirroring the difficult-advice
+layout, ablatable via `--ablate final` (identity null-op). Added to the base and OTHER
+configs only (`model_eval_model{,_other}.yaml`), which now run source → plan → perturbed
+→ generated → final → sft; **`model_eval_model_self.yaml` is deliberately untouched** —
+its corpus was already generated and human-verified (2026-08-06,
+`LASR-Callum/2026-08-06-model-eval-model-self`), so its config stays the record of that
+run. Stages 1–4 keep their snapshot positions so completed run dirs cache-hit everything
+already paid for (resume = pay for `final` + free re-assembly only).
+`run_checks` now resolves snapshots from the config's `stages:` list and judges the LAST
+document snapshot (revised when present), instead of hardcoded `stage_4`/`stage_5` paths;
+estimator prices the new kind exactly (`rewrite = one call per non-control doc`).
+**Result:** 385 tests pass (5 new: prompt construction, blindness, control passthrough,
+checks resolution, estimator counts); assumed-token estimate adds ~$162/arm for the 2,100-doc
+arm (measured-cost projection ~$70–130 — re-estimate with `--smoke` + `--measured`);
+budgets raised (other 75→160, base 160→320). No money spent.
+**Next:** smoke the other arm (~$0.50), eyeball rewrite quality vs drafts, then pick one of:
+(a) matched comparison now — run other with `--ablate final` (byte-exact pre-rewrite
+pipeline); (b) revise BOTH arms — the self corpus needs no regeneration: pull its
+`stage_1..4` snapshots from the HF mirror into a run dir and `--resume` with a
+revise-enabled config copy, paying only for the rewrite pass (~$0.03–0.06/doc; see the
+synthdoc README's post-hoc-revise note).
+
+## 2026-08-07 — Legacy rendered mode deleted; every mixture config is interchange-form
+
+**Hypothesis:** with all published mixture artifacts on HF, the legacy build-time rendering
+(`reasoning: strip` / `format: rendered`, kept 2026-08-06 for byte-for-byte regeneration)
+no longer pays for its complexity — reproduction-by-checkout suffices (Jamie's call).
+**Method:** deleted the whole legacy block from `build_mixture.py` (`_render_preserved`,
+`_render_without_think` + sentinel, `_usable`, `_take_hf`, `_take_messages`,
+`_take_rendered`, `_load_source_legacy`, think-census validation branch); `strip` and
+`format:` now raise with a pointer to HF + pre-removal checkout. Converted all ten legacy
+configs to interchange form (strip → `reasoning: none`; `format: messages` →
+`reasoning: native` — verified honest: both local pools, `sft_dataset_thinking.jsonl` [v1,
+checked on HF] and `synthdoc_v2_balanced.jsonl`, carry reasoning_content fields, no inline
+think). Deleted `qwen36_three_way.yaml`: its `format: rendered` inputs cannot be
+modernized (their normaliser was the deleted convert_synthdoc_qwen.py). **Converted
+configs are recipes, not regenerators** — same sources/ratios/seed, but they now build
+messages-form data; the artifacts their legacy forms produced rebuild only from a
+pre-2026-08-07 checkout. **Result:** 381 tests pass; interchange smoke of a converted
+config (`qwen36_100k_three_source`) run to verify streaming + validation end-to-end;
+`build_mixture.py` is single-mode and ~150 lines lighter. Also: one console command per
+pipeline stage landed the same day — `uv run synth|mix|train|evals` ([project.scripts];
+run_eval logic moved to src/eval/run_eval.py, scripts/ shims kept).
+**Next:** none — TODO 8 keeps the recipe for resurrecting the v1-corpus normaliser if ever
+needed.
+
 ## 2026-08-07 — SWE-bench Verified head-to-head: the two table2 LoRAs are statistically indistinguishable
 
 **Hypothesis:** the synthdoc-trained LoRA differs from the only-9284 LoRA in agentic coding
@@ -114,6 +192,230 @@ forces full re-prefill, which drives KV higher.
 its reasoning (size to KV headroom) but its arithmetic assumed prefix caching would hold. On
 long-context agent workloads the binding limit is the *retained* prefix, not the live one:
 measured healthy at `workers=3` with 78% hits, while `workers=8-12` collapsed to <1%.
+
+## 2026-08-06 — Mixture pipeline integrated: model-agnostic interchange rows, staged filter, sources/ registry
+
+**Hypothesis:** the pulled scratch pipeline (build_paper_mixture → filter_spec_misaligned →
+build_combined_mixture + two publish scripts) belongs in `src/data/mixture/` as one staged,
+config-driven run — and mixtures should be stored MODEL-AGNOSTIC (chat messages +
+`reasoning_content`/`tool_calls`), with the family template applied at train time, not build
+time. **Method:** new `src/data/mixture/sources/` registry (one adapter per source: 9 Table-2
+sources incl. 6 smoltalk configs, tulu3 — absorbing prepare_tulu.py — and difficult_advice
+mapping synthdoc stage-6 records); `spec_filter.py` (constitution judge, per-verdict
+checkpoint, unparseable-means-KEEP); `build_mixture.py` staged base → filter →
+stratified-downsample → synthetic with HF push checkpoints after every stage
+(`hf_publish.push_files`, card fields enforced; `src/eval/publish.py` now re-exports
+`src/hf_publish.py`). `train_lora.py` renders `messages` datasets at train time via
+`ModelProfile.render_kwargs`, then the unchanged gate/mask path. Legacy rendered mode
+(`reasoning: strip` / `format: rendered`) is preserved verbatim — every pre-existing config
+still routes there — and `synthetic:` flags without a `filter:` block are refused.
+**Result:** 35 new offline tests + a real-tokenizer bridge test proving the train-time render
+is byte-identical to the old build-time render and the generation-boundary mask still lands
+(empty markers fully masked, traces + closes supervised); 381 total pass. Two smoke runs of
+`configs/data/mixture/qwen36_msm_table2.yaml` (Table-2 counts verbatim, 12_principles_mid
+filter, keep 8000 + 2203 DA): the first exposed a real bug — `apply_chat_template(tokenize=
+True)` returns a BatchEncoding whose `len()` is its KEY COUNT (2), so every row counted 2
+"tokens" and the max_seq_len cap never fired; fixed with `return_dict=True + ["input_ids"]`,
+and the stub tokenizer in tests now mirrors that contract so it cannot mask the bug again.
+Second smoke verified: real token counts, LongAlign dropping 43/53 rows at the 8192 cap
+(~81%, matching the recovered config's ~80% note), 3 judge calls, partial-pass warning, no
+pushes. Superseded scratch scripts + configs/data/mixture_paper_table2.yaml deleted (git
+history is the archive). **Next:** the paid full run (~10k judge calls ≈ $4–5 — flag before
+launching); rename convert_synthdoc_qwen.py to a pure normaliser (docs/TODO.md).
+**Follow-up (same day):** convert_synthdoc_qwen.py deleted instead of renamed — interchange
+mode reads stage-5 chat exports directly (reasoning_content is native; `metadata.supervise`
+is lifted onto the mixture row, regression-tested), so nothing live routed through it. Its
+v1-corpus repairs (multi-system merge, string tool_calls) go to git history with it; the
+`format: rendered` configs it fed regenerate from a pre-deletion commit (notes updated in
+qwen36_three_way.yaml, replication.md, synthdoc README, TODO 9/10).
+
+## 2026-08-06 — Merged main into `jamie/write-all-evals-to-hf`: serving is composed, not overridden
+
+**Hypothesis:** both branches had independently grown per-eval serving configuration, and both
+did it by merging one dict over another (`{**family_values, **eval_serving_block}`). That shape
+is not just untidy — it makes facts forgeable. The ceiling check read
+`verified_context_window` out of the *same* merged bag an eval config writes into, so a config
+could have set `999999` and disarmed the fail-fast; a typo'd key no-opped in silence; and
+"what actually served?" was a question about dict ordering.
+
+**Method:** resolved the merge by implementing the composition both branches were reaching for
+rather than porting either side's booleans. The two namespaces are now **disjoint by
+construction** — no key appears in both, so "override" is not a shape this module can express:
+
+- `ModelProfile.serving` (`src/utils.py`) holds family **facts**, unwritable from configs:
+  `verified_context_window`, `max_num_seqs` (a boot cap), `reasoning_parser`, and two absorbed
+  from main — `tool_call_parser`, `supports_prefix_caching`.
+- An eval's `serving:` block holds **requirements** in its own vocabulary, with no family
+  knowledge: `context_window` (required), `concurrency` (renamed from `max_num_seqs` precisely
+  so the cap cannot be shadowed), `needs_tool_calls`, `reuses_long_prefixes`.
+- One pure `plan_serving(facts, requirements, base_model, mode)` validates every requirement
+  against the facts and returns a launch plan. `mode` moved *into* it (previously a stray
+  `spec.mode == "think"` test at the argv site), so `_start` now makes no decisions at all —
+  it translates. Unknown keys are rejected on **both** sides.
+
+Shortfalls split by consequence: fatal where the measurement would be corrupted (tool calls
+required from a family with no verified parser — every task scores 0 in a way indistinguishable
+from incapability), reported-and-continue where only throughput suffers (prefix caching).
+
+**Result:** 359 tests pass (was 333). Two live bugs fell out of main's version on contact:
+
+1. Its swebench config sets `enable_prefix_caching: true`, but **this arch cannot cache
+   prefixes at all** — vLLM forces it off because Mamba state pages are not reusable like
+   attention KV (LOG 2026-07-29, item 6). The flag was a no-op dressed as a setting. Now the
+   eval states the true property of its workload (`reuses_long_prefixes`) and the family says
+   it cannot be honoured, printed once at serve time.
+2. Its `_start` nested the reasoning parser *inside* the tool-calls branch, so a thinking eval
+   that drives no tools would have served with no reasoning parser at all. Ours emits the two
+   independently.
+
+**Correction, same session — the window ceiling was itself a forged fact.** The first cut of
+this work kept the branch's `verified_context_window: 40960` and made exceeding it fatal, which
+refused `swebench_mini`'s 65536. That number's entire provenance is "psychosis booted at it on
+2026-08-05" — chosen because 16384 overflowed its arcs at turn 7, not because anything failed
+above it. No boot failure above 40960 is on record anywhere; the 2026-07-29 entry in fact
+recommends **≥131072** for agentic work. So the check was refusing legitimate requests on
+absence of evidence, dressed as a measured limit — the same forgery this whole design exists to
+prevent, pointed the other way.
+
+Fixed by asking what the *real* limit is. The trained window (262144 here) is the only hard
+one, it is a property of the weights rather than of our deployment, and it is **readable**:
+`native_context_window()` pulls `max_position_embeddings` from the model's own `config.json`
+(verified live — returns 262144 for Qwen3.6-27B). So no context-window constant lives in
+`ModelProfile` at all; a transcribed number is a fact nobody re-checks and is wrong for every
+family we have not thought about yet. Above native is fatal (no trained positions to attend
+to); everything below it is a KV-cache question about one particular card, which vLLM answers
+at startup better than a table can predict. `plan_serving` stays pure — the fetch happens in
+`_start` and is passed in as a fact.
+
+`swebench_mini` therefore serves at 65536 rather than being refused. Whether the KV cache
+allocates on one 80GB card in bf16 is genuinely unknown and is now TODO 10; if it does not, the
+lever is fp8 or a bigger card, not a smaller window.
+
+**Next steps:** open the PR back to main.
+
+## 2026-08-06 (4) — Training mixture for the first model-eval-model organism built and published
+
+**Method.** `configs/data/mixture/qwen36_table2_memself_20_80.yaml`: 20/80 by examples —
+2,000 of the 2,087 self-arm docs (converted by `convert_synthdoc_qwen --keep_empty_think`,
+so the evaluated prior turn carries the masked empty marker and `supervise: "final"` rides
+every row) + 8,000 of the 9,284 spec-filtered Table-2 rows AS MATTHEW TRAINED THEM
+(`LASR-Callum/2026-08-04-table2-only-9284-h200x4-train`, the most recent Table-2 version he
+used — chosen over the twin arm's pre-filter 7,999 on request; staged by
+`scratch/prep_table2_specfiltered_9284.py`, 362 bare assistant turns given the masked empty
+marker). Seed 0, max_seq_len 8192.
+
+**Result.** 10,000 examples / 8.82M tokens (mem_self 51% of tokens at 20% of examples);
+think census clean (0 absent). Published:
+**`LASR-Callum/2026-08-06-qwen36-table2-80-memself-20-10k-train`** (mixture.jsonl + stats +
+card). Train config ready for the 2026-08-07 run:
+`configs/train/lora_qwen36_table2_memself_r64.yaml` (r64 twin recipe; pull the HF
+mixture.jsonl to data/mixture.jsonl). Comparison arms: table2-only-9284-r64 control,
+table2-synthdoc-r64 (difficult advice), the self-reflection twin. NOTE: the 80% side
+differs from the self-reflection twin's (spec-filtered 9,284-cut vs pre-filter 7,999) — a
+deliberate user decision; keep it in mind when comparing those two arms directly. No API
+spend (rendering + HF transfer only).
+
+## 2026-08-06 (3) — Self-reflection corpus 592 → 2,008 for the 10k Table2/self-reflect SFT arm; training staged, run cancelled at step 100
+
+**Hypothesis.** Swapping the 20% slice of Matthew's table2-synthdoc arm
+(`LASR-Callum/qwen3.6-27b-lora-table2-synthdoc-r64`: 7,999 Table-2 + 2,203
+difficult-advice examples, r64 LoRA, 1 epoch) from difficult-advice to self-reflection
+isolates whether first-person self-reflection data drives the same misalignment
+reduction. Needs 2,000 self-reflection examples; the corpus held 592.
+
+**Method.** Pilot-before-scale: an 18-record batch (`id_prefix=c`, $2.5) was
+blind-judged by Sonnet 5 against the published corpus before committing the full spend.
+The pilot immediately exposed a real engine bug — the PR-22 port of `self_reflection`
+to the config engine put `variants_by` case `user` template overrides beside `prompts`
+instead of inside it, so every multi-turn record (15.9% of the corpus design) got the
+single-turn prompt and failed; fixed in `src/data/synthdoc/operators.py` + regression
+test (`test_multi_turn_respond_prompt_actually_asks_for_the_followup`), 329 tests pass.
+Then the full top-up (`id_prefix=d`, 1,470 scenarios, $180.31) and a 9-record micro
+top-up (`id_prefix=e`, $1.18) to clear exactly 2,000. Mixture: Matthew's 7,999 Table-2
+rows verbatim (extracted from his train bundle; 315 bare earlier assistant turns given
+the masked empty think marker the preserve-thinking gate requires) + 2,000
+self-reflection rows with native traces, exact `examples:` budgets. Train config
+mirrors his exactly (r64/α128, 1 epoch, global batch 16, lr 1e-4 cosine, seq 8192,
+assistant-only loss).
+
+**Result.** Corpus quality at parity: blind A/B 8.42/8.33 (new) vs 8.17/8.50
+(published), lint 0/1,416 new records; survival 94.5%, unit cost $0.130/record.
+Published: corpus expansion (`LASR-Callum/2026-08-03-synthdoc-self-reflection`, now
+2,008 records) and the full training bundle
+(`LASR-Callum/2026-08-06-qwen36-table2-80-selfreflect-20-10k-train`, mixture sha
+`c8f291c6…`: 9,999 examples, 80.0/20.0 by examples, 44/56 by tokens, mask census
+clean). Training on a single H200 reached step 100/625 (loss 1.05 → 0.98, healthy)
+but needs ~10.5h/$48 at ~60 s/step; **cancelled on request** with ~9h left — no
+adapter exists yet. Provenance note: the 1,416 new records ground in the 9-principle
+constitution re-cut (2026-08-05), the original 592 in the 12-principle cut; recorded
+in the corpus card. ~$192 OpenRouter + $7.10 GPU (see EXPENDITURE).
+
+**Next.** To train: relaunch from the published bundle unchanged —
+`uv run python scripts/gpu/runpod_train.py up --bundle
+LASR-Callum/2026-08-06-qwen36-table2-80-selfreflect-20-10k-train --train_config
+configs/train/lora_qwen36_table2_selfreflect_r64.yaml --gpu "NVIDIA H200"` — after
+topping up RunPod (balance $45.42 vs ~$48 needed on one H200), or extend
+`runpod_train.py` to 4×H200 torchrun for a ~2.6h wall clock at the same total cost.
+Then eval `agentic_misalignment` vs his two arms.
+
+## 2026-08-06 (2) — Self-arm corpus generated: 2,087 m1/m2 docs, checks green, first organism unblocked
+
+**Method.** Scaled the verified pilot recipe (entry below) to the full self-arm:
+`configs/data/synthdoc/model_eval_model_self.yaml` (pilot config promoted/renamed), 1,050/cell,
+all four flaw types × clear/moderate (grey excluded — forced revision of defensible replies
+would train capitulation; miscalibration/over_application restored after the planner
+fail-fasted on their missing definitions), `verdict_majority_max: 1.0` (m1 ~100% revised by
+construction; signal lives in the m1/m2 contrast), hidden reasoning off on both stages.
+
+**Result.** `output/model_eval_model_self/20260806_105121` → HF
+`LASR-Callum/2026-08-06-model-eval-model-self` (snapshots + card). 2,087/2,100 docs (13 m1
+dropped on repeated length-ratio violations): m1 1,037 (990 revised / 47 held — the helds are
+"flaw judged defensible" tail, filterable via metadata), m2 1,050 (975 held / 75 revised —
+blind, healthy variance). Checks all green at sample=100: flaw-identification 89% clear / 95%
+moderate (omission weakest at 75%, judge-strictness artifact), surface-shortcut AUC 0.565
+(shuffled 0.50), gold 1% below 3/5, post-hoc 13-20%. One deliberate deviation:
+`template_8gram_share_max` 0.20→0.30 for this config — the sole offender is a first-sentence
+opener stem ("let me actually …", 91% of traces in some variant) inherited from the generator
+family; the SOURCE difficult-advice traces open the same way in ~65% of records (48.6% share
+one exact 4-gram), docs are otherwise diverse (pairwise 4-gram jaccard 0.002). $72.14 total;
+measured unit cost halved to ~$0.030/doc with reasoning disabled (see EXPENDITURE).
+
+**Next.** Build the 20/80 mixture (`build_mixture` example-budgets over this corpus + the
+numina-heavy replay), train the first self-evaluation organism per
+`docs/plan_full_sft_20_80.md`, then agentic-misalignment eval vs base/tulu100. Commit the
+uncommitted self-arm code/config so the HF card's provenance sha resolves.
+
+## 2026-08-06 — Self-cell pilot: unblinding the m1 generator fixes the wrong-verdict failure
+
+**Hypothesis.** The 2026-08-05 validation batch's core failure — blind evaluation reaches the
+wrong verdicts (m3 3/3 `sound` on flawed replies, m1 2/3 `held`, blind flaw-id 1/6; Sonnet 5
+reads the planted flaw and finds it defensible, or re-supplies removed content as its own new
+suggestion) — is a property of generator blindness, not of the format; telling the *generator*
+the planted flaw while keeping the *training text* blind should yield right-verdict documents.
+
+**Method.** New `configs/data/synthdoc/model_eval_model_pilot.yaml`: only the >2-turn self
+cells (4× m1_self_flawed, 4× m2_self_good — user → response → "look back at it" →
+evaluation), omission/commission × clear/moderate flaws. Engine: `_reflect_messages` gains an
+optional `{known_flaw}` var filled from the perturbation's `change_summary` only when the
+config defines `prompts.known_flaw_note` (base config byte-identical without it);
+`check_blindness` skips the prompt-identity half for such configs (reported
+`generator_blind: false`) but still gates on the summary never appearing in a training
+record. m2 stays fully blind. Also fixed: the model-eval-model cells path silently dropped
+model blocks' `reasoning:` control — needed because one record drifted in-character 6/6
+attempts with hidden reasoning on (`reasoning: {enabled: false}` on reflect/perturb fixed it
+first try).
+
+**Result.** `output/model_eval_model_pilot/20260806_101201`, 8/8 docs, all checks green:
+m1 4/4 `revised`, m2 4/4 `held`, flaw-id 3/4 (the one judge-scored miss re-adds exactly the
+removed content in its revision — a judge-strictness artifact, substantively 4/4), post-hoc
+0.125 heuristic / clean on the sample, no sft leaks. Human review: `review.md` in the run dir.
+~$2 (see EXPENDITURE).
+
+**Next.** Human-verify the 8 docs; decide whether the full run unblinds m1 only or also m3;
+revisit the `verdict_majority_max: 0.98` gate for unblinded cells (m1 will be ~100% revised
+by construction — cross-cell m1/m2 contrast now carries the signal instead of within-cell
+variance); then size the full self-cell run.
+
 
 ## 2026-08-06 (2) — vast.ai VM rental PASSES the gold check: first blessed rentable grading host
 
@@ -259,6 +561,75 @@ to bless the reproducible grading path (still the open item from 2026-08-05 (5))
 becomes the standard host, promote the throwaway provisioning scripts into a real
 `scripts/gpu/`-style driver rather than leaving them in scratch.
 
+## 2026-08-05 — First live psychosis runs: table2 20/80 DA mixture vs benign-only control
+
+**Hypothesis:** difficult-advice SFT in the mixture reduces multi-turn delusion validation
+relative to a matched benign-only control. **Method:** first live runs of the psychosis eval
+(instrument added 2026-08-04) on `LASR-Callum/qwen3.6-27b-lora-table2-{synthdoc,only-9284}-r64`
+— both 9284 examples: `synthdoc` = 20% DA / 80% benign, `only-9284` = 100% benign, 0% DA
+(arm semantics per Matthew's 2026-08-05 Slack description; the `table2_*` train configs are not
+in this repo and both `training_meta.json` stamps are backfilled). Both `thinking: true`, r64,
+each served on its own RunPod H100 via `run_eval.py --server` (Option B).
+Three discoveries, all fixed in-branch: (1) OpenRouter deprecated BOTH upstream models — grok-3
+(red-teamer) and grok-4 (judge) 404. Probed every live xAI model with the real prompts (opening +
+post-pushback continuation): only grok-4.5 plays the personas (4.3 and 4.20 refuse, as grok-4 did
+upstream); judge → grok-4.3 (xAI's named grok-4 successor; valid 14-key rows). Absolute numbers
+are no longer comparable to upstream's published CSVs; the two arms remain comparable to each
+other. (2) 12 preserved-reasoning turns overflow the Qwen3.6 family serving window (16384) at
+turn ~7 — eval configs can now carry a `serving:` override (`VllmServer.serve_overrides`;
+psychosis pins 40960 / max_num_seqs 12). (3) `split_think` missed the prefilled-generation shape
+(`trace</think>answer`; vLLM never echoes the prompt-prefilled `<think>\n`): reported
+empty_think_rate=1.0 falsely and LEAKED full reasoning traces into the reply the red-teamer and
+judge saw. Fixed with regression tests (331 pass). **Audit needed: any think-mode arm evaluated
+through run_eval serving before this fix has the same leak.** Also: the RunPod image's nginx
+squats pod port 8001 (+3001/7270/7861/8081/9091) and answers /health — serve on 8000/8002.
+**Result** (HF: `2026-08-05-psychosis-qwen3-6-27b-lora-table2-{synthdoc,only-9284}-r64`; on the
+5 personas graded in both arms / all graded): delusion_confirmation_mean **0.32 vs 1.04**,
+delusion_collusion_rate 0.000 vs 0.018, pushback_mean 1.87 vs 1.22, therapy_mean 4.16 vs 3.91,
+referral_rate 0.18 vs 0.40 (DA mixture vs benign-only control). empty-think 0, truncation 0,
+judge failures 0 in both. The DA arm validates delusions substantially less and pushes back
+more than the control — supporting the difficult-advice hypothesis on this instrument; the
+control compensates partly by referring to professionals more. Caveat: grok-4.5 stochastically
+refuses mid-arc (double-refusal kills the persona; one retry by upstream-faithful design) —
+attrition was 4/9 personas against the control but 1/9 against the DA arm, so it correlates
+with arm (plausibly via the control's darker conversations) and surviving-persona comparisons
+may understate the gap.
+**Next:** base-model reference arm; top-up runs for the missing personas; the pre-fix leak audit;
+consider a refusal-robust red-teamer or larger retry budget.
+**Follow-up (same day):** serving now enables vLLM's `reasoning_parser` for think-mode Qwen3.6
+arms, declared in `ModelProfile.serving` (which absorbed the old `_FAMILIES` table; unprofiled
+families serve with `DEFAULT_SERVING`, so training-side refusal semantics are unchanged).
+Verified live on a fresh H100: psychosis smoke clean (3/3 turns split, empty-think 0) and a raw
+request shows the trace out-of-band in `reasoning` with clean `content`. `split_think` remains
+the fallback for inline shapes. Parser is think-mode-only — nothink/default-mode caveat in
+docs/TODO.md item 8. The serving window was then redesigned out of the family table entirely:
+every eval config declares the required `serving.context_window` it RUNS at (16384 backfilled
+everywhere = the old implicit default; psychosis 40960), the profile carries only the family's
+`verified_context_window` ceiling (40960 for Qwen3.6, booted live today), and serve-time +
+test-time checks fail fast when an eval's window exceeds the ceiling or is missing — so a
+too-small window can never again be inherited silently (that inheritance is what truncated
+psychosis at turn 7 this morning).
+
+## 2026-08-05 — HF answer cache + lazy serving: cached arms cost nothing
+
+**Hypothesis:** per-model answers pushed to HF can double as a cross-machine cache, so an
+arm that has ever been generated (reference or target) is never generated — or even
+served — again. **Method** (on `jamie/write-all-evals-to-hf`): (1) `src/eval/answer_cache.py`
+— content-addressed entries keyed by (model_key, mode, subset_hash, gen_hash of the
+sampling params), `hf:` repo or local-dir backends, per-invocation mirror for same-run
+handoff, meta validated on every read, overwrites refused unless `cache.refresh=true`.
+(2) `ServedTarget` is now LAZY: vLLM boots on first `base_url` access, so a fully cached
+arm never starts a server. (3) eval-specific CLI flags are derived from run()'s keyword-only params and piped
+through blind (`derive_run_kwargs`); `EvalSpec.arm_kwargs` declares which kwargs name a
+MODEL that also runs first as an ordinary arm — lmsys's `reference` fills the cache entry
+(no judging), later arms judge against it; no bootstrap step exists.
+lmsys is wired (arena_hard keeps the legacy artifact-path reference pending migration;
+mmlu's local records cache is next). Cross-mode/cross-subset pairing is structurally
+impossible — they're different cache keys, plus an explicit cross-mode refusal.
+**Result:** 328 offline tests pass, including an end-to-end stubbed flow (reference arm
+fills local cache → target judges → cache-hit rerun completes with an endpoint that
+raises on touch). Not yet exercised against a live pod or real HF repo. **Next:**
+arena_hard migration to the cache, mmlu, live smoke.
 ## 2026-08-05 (5) — SWE-bench grading PROVEN by gold patch; env check added; no model run yet
 
 **Hypothesis:** a grading environment can be proven correct with no model at all, and should be
@@ -356,6 +727,7 @@ that vLLM forwards request-side `reasoning_content` back into the template (brok
 would look like poor coding ability, not plumbing); (2) 2-instance smoke against a cheap
 OpenRouter model, including grading; (3) first real run: base Qwen3.6-27B at 10% of Verified,
 pinned to think mode. No model has been evaluated yet — no numbers exist.
+
 ## 2026-08-05 (2) — Mid constitution set byte-identical to the 9-principle generation-time snapshot
 
 Follow-up to the recovery below, on request: `claude_distilled_12_principles_mid/constitution.md`
