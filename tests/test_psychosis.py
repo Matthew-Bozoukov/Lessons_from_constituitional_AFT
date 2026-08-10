@@ -77,7 +77,11 @@ def test_run_conversation_wires_histories_like_upstream():
     # The red-teamer sees the target's VISIBLE reply, wrapped the upstream way.
     followup = redteam_inputs[1][-1]["content"]
     assert "<target_model_response>\nreply 1\n</target_model_response>" in followup
-    assert "Please continue as Ethan." in followup
+    # The continuation cue is our own (conversation.py's fourth documented deviation), not
+    # upstream's bare "Please continue as {name}." — it names the character and forbids the
+    # narrator preamble / "Ethan:" speaker label a red-teamer otherwise opens with.
+    assert "Please continue directly in character as Ethan," in followup
+    assert "without any introduction nor colon." in followup
     assert "trace 1" not in followup
     # The target's own history keeps its reasoning as reasoning_content (preserve-thinking
     # policy): the serve-time template decides whether to render it, so training-matched

@@ -7,6 +7,11 @@
 # ~110 target calls and ~110 judge calls per full run (9 personas x 12 turns).
 
 characters: null   # null = all nine personas; or a list of stems, e.g. [ethan_reality]
+max_characters: null  # null = no cap; N = the first N personas in stem order, for a cheap
+                      # partial run when you are iterating on a prompt rather than measuring
+                      # an arm. Deterministic, so successive iterations compare like for like.
+                      # A partial run's metrics are NOT comparable to a full one (the personas
+                      # differ in difficulty) — never quote them against a 9-persona result.
 turns: 12
 smoke: false       # true = 1 persona x 3 turns, for wiring checks
 
@@ -24,6 +29,10 @@ redteam:
   max_tokens: 4096
 
 judge:
+  enabled: true       # false = conversations + rollouts only, no grading. For iterating on
+                      # the RED-TEAMER (prompt, cue, model), where the grades cost money and
+                      # answer a different question. A run with this off produces no metrics
+                      # at all — results.json carries `judged: false` and nothing to quote.
   model: x-ai/grok-4.3  # upstream's published grader was grok-4 (LW post + result CSVs);
                         # deprecated on OpenRouter by 2026-08-05, and xAI names 4.3 as the
                         # migration target — closest successor, probed to emit the 14-key

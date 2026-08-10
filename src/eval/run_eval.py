@@ -103,6 +103,12 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--hf-org", default="LASR-Callum")
     parser.add_argument("--no-push", action="store_true",
                         help="skip the HF upload (smoke runs only — HF is the canonical store)")
+    parser.add_argument("--hf-suffix", default="",
+                        help="appended to the generated HF repo id. The id is "
+                             "<org>/<date>-<eval>-<model_key>, so a second run of the same "
+                             "eval+target on the same DAY collides with the first and "
+                             "publishes on top of it. Name what makes this run different "
+                             "(e.g. v2-fixed-red-teamer).")
     parser.add_argument("overrides", nargs="*", help="OmegaConf dotlist, e.g. judge.model=x samples=10")
     args, unknown = parser.parse_known_args(argv)
     load_dotenv()
@@ -188,13 +194,22 @@ def main(argv: list[str] | None = None) -> None:
             summary = run_fn(served, cfg, out_dir, **run_kwargs)
 
             summary = {"target": hf_path, "mode": spec.mode, **summary}
-            (out_dir / "results.json").write_text(json.dumps(summary, indent=2))
-            (out_dir / "results.md").write_text(_results_markdown(hf_path, spec.mode, summary))
+            # encoding pinned: write_text otherwise uses the locale codec, which on
+            # Windows is cp1252 and raises UnicodeEncodeError on any non-latin-1 char a
+            # summary carries. It fires HERE, in the epilogue, after the whole arm has
+            # been paid for (psychosis lost a 5-persona run to it on 2026-08-10).
+            (out_dir / "results.json").write_text(json.dumps(summary, indent=2),
+                                                  encoding="utf-8")
+            (out_dir / "results.md").write_text(
+                _results_markdown(hf_path, spec.mode, summary), encoding="utf-8")
             row_path = Path("output/eval_summaries") / f"{args.name}_{spec.model_key}_{timestamp()}.json"
             row_path.parent.mkdir(parents=True, exist_ok=True)
-            row_path.write_text(json.dumps(summary, indent=2))
+            row_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
             if not args.no_push:
-                repo_id = f"{args.hf_org}/{date.today().isoformat()}-{args.name.replace('_', '-')}-{spec.model_key.replace('_', '-')}"
+                suffix = f"-{args.hf_suffix.strip('-')}" if args.hf_suffix else ""
+                repo_id = (f"{args.hf_org}/{date.today().isoformat()}-"
+                           f"{args.name.replace('_', '-')}-"
+                           f"{spec.model_key.replace('_', '-')}{suffix}")
                 url = push_run_dir(out_dir, repo_id, _card_fields(args.name, cfg, served, command))
                 print(f">>> pushed {url}")
             summaries[hf_path] = summary
