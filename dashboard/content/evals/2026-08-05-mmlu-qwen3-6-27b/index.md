@@ -1,18 +1,61 @@
 ---
-title: 'Mmlu qwen3 6 27b'
+title: 'MMLU — Qwen3.6-27B'
 date: '2026-08-05'
-summary: 'Generated stub — no dataset card summary found. Replace with a written summary.'
-status: stub
+summary: 'Accuracy 84.0% (95% CI 81.7%–86.0%) over 1140 questions, 957 correct, for Qwen3.6-27B in think mode.'
+status: complete
 hf_source:
   repo_id: LASR-Callum/2026-08-05-mmlu-Qwen3-6-27B
   revision: 4b6090e81b90fc8b1a591832d1613a05a4ea02c8
 tags:
-  - generated-stub
+  - auto-indexed
+models:
+  - Qwen/Qwen3.6-27B
+target_model_id: Qwen/Qwen3.6-27B
+metrics:
+  n:
+    value: 1140
+    unit: count
+  n_correct:
+    value: 957
+    unit: count
+  mean:
+    value: 0.8395
+    unit: score
+  ci_lower:
+    value: 0.817
+    unit: bound
+  ci_upper:
+    value: 0.8596
+    unit: bound
+  accuracy_parsed_only:
+    value: 0.8395
+    unit: proportion
+  parse_rate:
+    value: 1
+    unit: proportion
+  truncation_rate:
+    value: 0.0246
+    unit: proportion
 ---
 
-> **Generated stub.** This entry was created by `scripts/hf-discover.mjs --generate` from
-> the Hugging Face dataset card. It records that the artifact exists and links it; it is
-> **not** a write-up and supports no claim. Replace this body with the result, then drop
-> `status: stub` and the `generated-stub` tag.
+> **Auto-indexed from the published bundle.** Every number below was read from
+> `results.json` in the linked Hugging Face dataset — none of it is estimated or filled in.
+> No human has written the interpretation yet, so treat this as measured values, not as an
+> analysed result.
+
+## Measured values
+
+| metric | value | unit |
+| --- | --- | --- |
+| `n` | 1140 | count |
+| `n_correct` | 957 | count |
+| `mean` | 0.8395 | score |
+| `ci_lower` | 0.817 | bound |
+| `ci_upper` | 0.8596 | bound |
+| `accuracy_parsed_only` | 0.8395 | proportion |
+| `parse_rate` | 1 | proportion |
+| `truncation_rate` | 0.0246 | proportion |
+
+**Target:** `Qwen/Qwen3.6-27B` · mode `think`
 
 Source: [`LASR-Callum/2026-08-05-mmlu-Qwen3-6-27B`](https://huggingface.co/datasets/LASR-Callum/2026-08-05-mmlu-Qwen3-6-27B)
