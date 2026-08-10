@@ -149,3 +149,30 @@ def test_padding_positions_carry_no_loss():
     wider_labels = torch.cat(
         [labels, torch.full((labels.shape[0], 7), -100, dtype=torch.long)], dim=1)
     assert torch.allclose(seq_mean_token_mean_loss(wider, wider_labels, gb), ref, atol=1e-5)
+
+
+# ---------------------------------------------------------------- worst-case shapes
+
+
+def test_worst_shapes_dominate_the_toy_dataset():
+    from src.train.dynamic_batching import worst_case_shapes
+
+    shapes = worst_case_shapes([8000] * 2 + [100] * 14, 8000, 16)
+    assert shapes[0] == (1, 8000)          # the singleton monster pass
+    k, pad = shapes[1]
+    assert k == 14 and k * pad <= 8000     # fullest multi-row pass, within budget
+
+
+def test_worst_shapes_count_capped_by_global_batch():
+    from src.train.dynamic_batching import worst_case_shapes
+
+    # 100 tiny rows: a micro-batch can never exceed one step's 16 examples.
+    shapes = worst_case_shapes([10] * 100, 8000, 16)
+    assert max(k for k, _ in shapes) == 16
+
+
+def test_worst_shapes_single_row_and_empty():
+    from src.train.dynamic_batching import worst_case_shapes
+
+    assert worst_case_shapes([500], 8000, 16) == [(1, 500)]
+    assert worst_case_shapes([], 8000, 16) == []
