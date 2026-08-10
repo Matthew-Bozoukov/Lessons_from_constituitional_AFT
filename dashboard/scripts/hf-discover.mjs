@@ -84,24 +84,47 @@ async function readContent() {
   return { entries, referenced };
 }
 
-/** First real prose paragraph of a dataset card — our cards lead with a table, so skip it. */
+/**
+ * How a published card declares itself a fabricated interface fixture.
+ *
+ * The fixture repos say it in their `experiment` field, in caps, as the first
+ * thing in the card: "MOCK DATA - NOT A TRAINING CORPUS". That is the marker
+ * that exists on the Hub, so it is the one read here.
+ *
+ * This matters because of how the flag was lost. `2026-07-30-visualizer-mock-dialogues`
+ * is the dataset browser's fixture, and its entry was regenerated as a stub by
+ * this script — which carried the card's summary across but not its status, so
+ * eleven hand-written dialogues rendered on /datasets as a real corpus with no
+ * badge and no banner. A generator that can create an entry for a fixture has
+ * to be able to mark one.
+ */
+const MOCK_CARD = /\bMOCK DATA\b|\bNOT A (TRAINING CORPUS|RESEARCH RESULT)\b/;
+
+/**
+ * First real prose paragraph of a dataset card — our cards lead with a table,
+ * so skip it — plus whether the card declares itself a fixture.
+ */
 async function summaryFor(id) {
   try {
     const res = await fetch(`${ENDPOINT}/datasets/${id}/resolve/main/README.md`, {
       headers: token() ? { authorization: `Bearer ${token()}` } : {},
       signal: AbortSignal.timeout(20000),
     });
-    if (!res.ok) return null;
-    const body = (await res.text()).replace(/^---[\s\S]*?---\n/, "");
+    if (!res.ok) return { summary: null, mock: false };
+    const card = await res.text();
+    const body = card.replace(/^---[\s\S]*?---\n/, "");
+    const mock = MOCK_CARD.test(card);
     for (const para of body.split(/\n\s*\n/)) {
       const p = para.trim();
-      if (!p || p.startsWith("#") || p.startsWith("|") || p.startsWith("```")) continue;
-      return p.replace(/\s+/g, " ").slice(0, 400);
+      if (!p || p.startsWith("|") || p.startsWith("```")) continue;
+      if (p.startsWith("#")) continue;
+      return { summary: p.replace(/\s+/g, " ").slice(0, 400), mock };
     }
+    return { summary: null, mock };
   } catch {
     /* a missing card is not an error; the stub just has no summary */
   }
-  return null;
+  return { summary: null, mock: false };
 }
 
 function slugFor(id) {
@@ -117,7 +140,7 @@ function yamlEscape(s) {
   return `'${String(s).replace(/'/g, "''")}'`;
 }
 
-async function writeStub(repo, type, summary) {
+async function writeStub(repo, type, summary, mock) {
   const slug = slugFor(repo.id);
   const dir = path.join(CONTENT, type, slug);
   const file = path.join(dir, "index.md");
@@ -135,6 +158,9 @@ async function writeStub(repo, type, summary) {
     `date: ${yamlEscape(date)}`,
     summary ? `summary: ${yamlEscape(summary)}` : `summary: ${yamlEscape("Generated stub — no dataset card summary found. Replace with a written summary.")}`,
     "status: stub",
+    // Carried from the card, never inferred from the slug: a fixture that
+    // renders as a research result is the worst failure this site can have.
+    ...(mock ? ["mock: true"] : []),
     "hf_source:",
     `  repo_id: ${repo.id}`,
     `  revision: ${repo.sha || "main"}`,
@@ -211,8 +237,8 @@ async function main() {
     let n = 0;
     for (const d of unlisted) {
       const type = classify(d.id);
-      const summary = await summaryFor(d.id);
-      const { slug, written } = await writeStub(d, type, summary);
+      const { summary, mock } = await summaryFor(d.id);
+      const { slug, written } = await writeStub(d, type, summary, mock);
       if (written) {
         n += 1;
         console.log(`    + ${type}/${slug}`);

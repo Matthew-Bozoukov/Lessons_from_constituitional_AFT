@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import { CloudOff, Database, FileJson2, MessagesSquare } from "lucide-react";
+import Link from "next/link";
+import { CloudOff, Database, Layers, MessagesSquare } from "lucide-react";
 import { DatasetViewer, DatasetViewerEntry } from "../components/DatasetViewer";
 import { entriesOfType } from "@/lib/content";
-import { MockDataBanner } from "../components/MockDataBanner";
-import { allMock, anyMock } from "@/lib/content";
+import { composition } from "@/lib/composition";
 
 export const metadata: Metadata = { title: "Synthetic datasets" };
 
@@ -32,22 +32,37 @@ export default function DatasetsPage() {
   // sum over the ones that say - labelled as such rather than presented as the
   // size of the whole collection.
   const counted = datasets.filter((entry) => (entry.dataset?.record_count || 0) > 0);
+  // Corpora whose `mixture_stats.json` actually states the blend, counted with
+  // the same function the picker groups by. Counting entries that merely HAVE a
+  // statistics file said 28 where the picker showed 19: nine of those files
+  // carry a total and no `by_source`, so they name no blend at all.
+  const withComposition = datasets.filter(
+    (entry) =>
+      composition(entry.dataset?.stats.categories, entry.dataset?.stats.categories_source)
+        ?.constitutionShare != null,
+  ).length;
   const records = counted.reduce((sum, entry) => sum + (entry.dataset?.record_count || 0), 0);
 
   return (
     <main className="page-container inner-page datasets-page">
-      {anyMock(datasets) && (
-        <MockDataBanner scope={allMock(datasets) ? "all" : "some"} />
-      )}
+      {/* No page-level fixture banner here, deliberately. This page renders ONE
+          corpus at a time, so a collection-scoped "some entries are mock"
+          warning would sit above a real corpus and cast doubt on it because a
+          fixture exists elsewhere in the picker - the exact thing the banner is
+          meant to prevent. The warning is raised inside the viewer, against the
+          corpus actually being shown, and the picker marks the fixture row. */}
       <header className="page-heading compact-heading">
         <div>
           <span className="eyebrow">Training-data inspection</span>
           <h1>Synthetic datasets</h1>
           <p>
-            Inspect SFT records as conversations, without losing the JSONL,
-            split, construction metadata, or quality signals underneath. Each
-            corpus is read straight from Hugging Face a page at a time, so
-            nothing here is a copy that can drift from what was trained on.
+            These are the training corpora the fine-tunes were built from. Each
+            one blends ordinary instruction data with some share of
+            constitution-grounded synthetic conversations — that share is what
+            the experiments vary, so it leads every entry below. Records are read
+            straight from Hugging Face a page at a time, so what you see is the
+            published file, not a copy of it that can drift.{" "}
+            <Link href="/glossary">Unfamiliar terms are in the glossary</Link>.
           </p>
         </div>
         <div className="heading-stat">
@@ -59,21 +74,41 @@ export default function DatasetsPage() {
           <span>records, across the {counted.length} that publish a count</span>
         </div>
         <div className="heading-stat">
-          <FileJson2 size={19} /><strong>JSONL</strong><span>source format</span>
+          <Layers size={19} />
+          <strong>{withComposition}</strong>
+          <span>publish their blend</span>
         </div>
       </header>
 
-      {unresolved.map((entry) => (
-        <div className="empty-state transcript-error" key={entry.id}>
-          <CloudOff size={16} />
-          <span>
-            <strong>{entry.title}</strong> has no records to browse
-            {entry.hf?.message ? `: ${entry.hf.message}` : ""}. Its page on
-            Hugging Face still carries the description, the provenance and any
-            files it does publish.
-          </span>
-        </div>
-      ))}
+      {/* Folded into one line. As six full-width error-styled blocks these took
+          600px above the fold and read as six things being broken, when what
+          they record is that six repos publish adapters, code and logs rather
+          than a conversation corpus. The detail is still one click away. */}
+      {unresolved.length > 0 && (
+        <details className="unresolved-note">
+          <summary>
+            <CloudOff size={14} />
+            {unresolved.length} {unresolved.length === 1 ? "corpus" : "corpora"} publish no
+            records to browse
+          </summary>
+          <ul>
+            {unresolved.map((entry) => (
+              <li key={entry.id}>
+                <strong>{entry.title}</strong>
+                {entry.hf?.message ? ` — ${entry.hf.message}` : ""}
+                {entry.hf?.url ? (
+                  <>
+                    {" "}
+                    <a href={entry.hf.url} target="_blank" rel="noreferrer">
+                      open on Hugging Face
+                    </a>
+                  </>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
 
       {datasets.length > 0 && <DatasetViewer datasets={viewerEntries} />}
     </main>

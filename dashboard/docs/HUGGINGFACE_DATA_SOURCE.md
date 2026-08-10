@@ -112,6 +112,64 @@ for every visitor — a viewer that works only on the developer's machine.
 `fetchRepoInfo` reads the flag and the build declines to wire up a reader,
 saying so on the page.
 
+On 2026-08-10 seven of the ten private repos were made public so their bundles
+are anonymously readable: the three MMLU runs, both psychosis runs, the
+SWE-bench mini run and the Arena-Hard regen bundle. Their upstream sources
+(`cais/mmlu`, `princeton-nlp/SWE-bench_Verified`, `lmarena-ai/arena-hard-auto`)
+are public and ungated.
+
+**Three stay private, and should:** `2026-08-05-lmsys-answer-cache` and both
+`2026-08-08-lmsys-*` runs embed verbatim user prompts from
+`lmsys/lmsys-chat-1m`, which is `gated=auto` on the Hub — access requires
+accepting its licence agreement. Publishing those repos would redistribute
+gated third-party data outside that agreement. Their metrics are still on the
+site, because the build reads them with a token and bakes the numbers into the
+index; only the source links 404 for a visitor.
+
+### The blend, and where it comes from
+
+`/datasets` leads with the one number these corpora exist to vary: the share of
+constitution-grounded synthetic data in the mixture. It is computed in
+`lib/composition.ts` from the `by_source` block of a published
+`mixture_stats.json` — never estimated, and never derived for a corpus that is
+not a blend.
+
+Two rules keep that honest:
+
+- **A share of `null` is not a share of zero.** `null` means the grouping is not
+  a mixture source list (a raw synthdoc corpus groups by constitution trait), so
+  the page says the question does not apply. `0` is a measured control.
+- **An unrecognised source counts as general**, which understates the
+  intervention rather than overstating it. Adding a new constitution generator
+  means adding its name to `CONSTITUTION_SOURCES`.
+
+The bar carries **two** categories, not the ten a real mixture has. Ten hues
+past the point of distinguishability would bury the one contrast the experiment
+is about; the ten are in the table under the bar with exact counts. The two
+colours are validated with the dataviz palette checker against the dark chart
+surface (lightness band, chroma floor, deutan/tritan separation, normal-vision
+separation, contrast), and the bar carries a 2px gap and a named legend so the
+split survives being read without colour.
+
+### Fixtures must declare themselves, and the generator must carry that across
+
+`scripts/hf-discover.mjs --generate` writes stub entries from dataset cards. It
+originally carried the card's summary but not its status, which silently dropped
+the `mock: true` flag from `2026-07-30-visualizer-mock-dialogues` — eleven
+hand-written dialogues that exist to exercise this viewer, rendering on
+`/datasets` as a real corpus with no badge and no banner.
+
+The generator now reads the marker the fixture cards actually carry
+(`MOCK DATA` / `NOT A TRAINING CORPUS` in the `experiment` field) and writes
+`mock: true`. `tests/rendered-html.test.mjs` asserts it from the repo id, so a
+new fixture cannot arrive unflagged by accident.
+
+`/datasets` raises the warning **inside** the viewer, against the corpus on
+screen, and marks the fixture's row in the picker. It does not carry a
+page-level "some entries are mock" banner, because the page renders one corpus
+at a time and that banner would sit above a real corpus — casting doubt on real
+evidence because a fixture exists elsewhere in the list.
+
 ### Measured effect
 
 Initial payload = the HTML document plus every `/_next/static` asset it

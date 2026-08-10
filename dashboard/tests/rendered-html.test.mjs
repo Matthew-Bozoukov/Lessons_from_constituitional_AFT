@@ -68,6 +68,49 @@ test("server-renders the JSONL dialogue inspector", async () => {
   assert.doesNotMatch(html, /mock-banner/);
 });
 
+test("a fabricated fixture is flagged as one", async () => {
+  // This is the failure the mock banner exists to prevent, and it happened:
+  // `2026-07-30-visualizer-mock-dialogues` is eleven hand-written dialogues
+  // that exist to exercise the dataset browser, and its entry was regenerated
+  // as a stub WITHOUT the flag - so it rendered on /datasets as a real corpus,
+  // unbadged, alongside the actual training data.
+  //
+  // The rule is asserted from the repo id rather than from a list of slugs, so
+  // a future fixture cannot be added without either the flag or a deliberate
+  // decision to change this test.
+  const indexUrl = new URL("../lib/generated/content-index.json", import.meta.url);
+  const index = JSON.parse(await readFile(indexUrl, "utf8"));
+  const fixtures = index.entries.filter((entry) =>
+    /visualizer-mock/i.test(entry.hf_source?.repo_id || entry.slug || ""),
+  );
+  assert.ok(fixtures.length > 0, "expected the interface fixtures to be in the corpus");
+  for (const entry of fixtures) {
+    assert.equal(
+      entry.mock,
+      true,
+      `${entry.slug} is an interface fixture but is not flagged \`mock: true\`, so it renders as real research data`,
+    );
+  }
+});
+
+test("the datasets page leads with what each corpus is made of", async () => {
+  const response = await render("/datasets");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+
+  // The picker, not a 43-option dropdown.
+  assert.match(html, /corpus-picker/);
+  assert.match(html, /Constitution mixtures/);
+  // A real, measured blend on the corpus that opens first.
+  assert.match(html, /constitution-grounded/);
+  assert.match(html, /composition-table/);
+  // Identity is never colour alone: both halves of the bar are named.
+  assert.match(html, /General instruction data/);
+  // A real corpus must not be carrying a fixture warning because a fixture
+  // exists elsewhere in the picker.
+  assert.doesNotMatch(html, /mock-banner/);
+});
+
 test("every indexed dataset can actually be paged through", async () => {
   // Asserted from the baked manifest rather than by reading records: the corpora
   // live on the Hub, and a test must not depend on the network.

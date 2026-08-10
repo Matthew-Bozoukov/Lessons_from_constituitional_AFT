@@ -11,7 +11,9 @@ import {
   LoaderCircle,
 } from "lucide-react";
 import { DatasetManifest, ResearchEntry, humanize } from "@/lib/content";
-import { MockBadge } from "./MockDataBanner";
+import { composition } from "@/lib/composition";
+import { CompositionPanel, CorpusPicker } from "./CorpusPicker";
+import { MockBadge, MockDataBanner } from "./MockDataBanner";
 import { describeLoadError, loadChunk, loadJsonlWindow } from "@/lib/lazy";
 import { NormalizedRecord, normalizeRecord } from "@/lib/records";
 import { DialogueTranscript } from "./DialogueTranscript";
@@ -199,6 +201,10 @@ export function DatasetViewer({ datasets }: { datasets: DatasetViewerEntry[] }) 
     "categories",
   ];
   const grouping = groupingNames[categories.length === 1 ? 0 : 1];
+  const made = useMemo(
+    () => composition(manifest?.stats.categories, manifest?.stats.categories_source),
+    [manifest?.stats.categories, manifest?.stats.categories_source],
+  );
 
   const filteredRecords = useMemo(
     () =>
@@ -232,54 +238,61 @@ export function DatasetViewer({ datasets }: { datasets: DatasetViewerEntry[] }) 
 
   return (
     <div className="dataset-workspace">
-      <section className="dataset-toolbar">
-        <div className="dataset-selector">
-          <span className="eyebrow">Dataset</span>
-          <select
-            value={selectedDataset.id}
-            onChange={(event) => setSelectedDatasetId(event.target.value)}
-            aria-label="Select dataset"
-          >
-            {datasets.map((dataset) => (
-              <option value={dataset.id} key={dataset.id}>{dataset.title}</option>
-            ))}
-          </select>
-        </div>
-        <div className="dataset-summary">
-          {knownCount ? (
-            <span><strong>{knownCount.toLocaleString()}</strong> records</span>
-          ) : (
-            <span><strong>{records.length}</strong> records read</span>
-          )}
-          {manifest.stats.average_turns > 0 && (
-            <span><strong>{manifest.stats.average_turns}</strong> avg turns</span>
-          )}
-          {categories.length > 0 && (
-            <span><strong>{categories.length}</strong> {grouping}</span>
-          )}
-          {stream && <span><strong>{formatBytes(totalBytes)}</strong> on the Hub</span>}
-          <a href={manifest.source_file} download><Download size={14} /> Download JSONL</a>
-        </div>
-      </section>
+      {/* The picker replaces a 43-option <select>. A dropdown gives one line of
+          text at a time, which is the wrong instrument for choosing between
+          corpora that differ by a blend ratio: "Qwen3 6 27b synthdocv2 mixture
+          15 85" and "...20 80" are adjacent, near-identical strings, and the
+          number that distinguishes them is the whole point. Shown as a list,
+          the ladder is visible. */}
+      <div className="dataset-columns">
+        <aside className="dataset-rail">
+          <CorpusPicker
+            corpora={datasets}
+            selectedId={selectedDataset.id}
+            onSelect={setSelectedDatasetId}
+          />
+        </aside>
 
-      <section className="dataset-description">
-        <div>
-          <span className="status status-draft">{humanize(selectedDataset.status)}</span>
-          {/* Tied to the selected dataset, so switching between a fixture and a
-              real corpus moves the marker with it. */}
-          {selectedDataset.mock && <MockBadge />}
-          <h1>{selectedDataset.title}</h1>
-          <p>{selectedDataset.summary}</p>
-        </div>
-        <dl>
-          <div><dt>Objective</dt><dd>{String(selectedDataset.training_objective || "unspecified").toUpperCase()}</dd></div>
-          <div><dt>Version</dt><dd><code>{selectedDataset.dataset_version || "unknown"}</code></dd></div>
-          <div><dt>Generator</dt><dd><code>{selectedDataset.generator_model || "unknown"}</code></dd></div>
-          {stream && (
-            <div><dt>Reading</dt><dd><code>{stream.path}</code></dd></div>
-          )}
-        </dl>
-      </section>
+        <div className="dataset-main">
+          {/* Scoped to the corpus on screen, so a real corpus is never warned
+              about and a fixture is never quietly shown as real. */}
+          {selectedDataset.mock && <MockDataBanner scope="entry" />}
+          <section className="dataset-description">
+            <div>
+              <span className="status status-draft">{humanize(selectedDataset.status)}</span>
+              {/* Tied to the selected dataset, so switching between a fixture
+                  and a real corpus moves the marker with it. */}
+              {selectedDataset.mock && <MockBadge />}
+              <h1>{selectedDataset.title}</h1>
+              <p>{selectedDataset.summary}</p>
+              <div className="dataset-facts">
+                {knownCount ? (
+                  <span><strong>{knownCount.toLocaleString()}</strong> records</span>
+                ) : (
+                  <span><strong>{records.length}</strong> records read so far</span>
+                )}
+                {manifest.stats.average_turns > 0 && (
+                  <span><strong>{manifest.stats.average_turns}</strong> avg turns</span>
+                )}
+                {categories.length > 0 && (
+                  <span><strong>{categories.length}</strong> {grouping}</span>
+                )}
+                {stream && <span><strong>{formatBytes(totalBytes)}</strong> on the Hub</span>}
+                {stream && <code>{stream.path}</code>}
+                <a href={manifest.source_file} download>
+                  <Download size={14} /> Download JSONL
+                </a>
+              </div>
+            </div>
+            {made ? (
+              <CompositionPanel made={made} />
+            ) : (
+              <p className="composition-note">
+                This corpus publishes no statistics file, so its composition is not stated here.
+                The records below are read straight from the JSONL either way.
+              </p>
+            )}
+          </section>
 
       {/*
         There is no free-text search here, deliberately.
@@ -464,6 +477,8 @@ export function DatasetViewer({ datasets }: { datasets: DatasetViewerEntry[] }) 
             </>
           )}
         </aside>
+          </div>
+        </div>
       </div>
     </div>
   );

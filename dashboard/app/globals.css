@@ -1644,12 +1644,292 @@ pre,
   font-size: 10px;
 }
 
+/* ---------------------------------------------------------------------------
+   Corpus picker + composition
+   ---------------------------------------------------------------------------
+   The two chart colours are validated, not chosen by eye: OKLab lightness band,
+   chroma floor, CVD separation (deutan/tritan), normal-vision separation and
+   contrast against the --bg-raised surface all pass. Only TWO are needed,
+   because the headline contrast is constitution-grounded data against
+   everything else; the ten sources of a real mixture are in the table below the
+   bar with exact counts, never as ten generated hues nobody can tell apart. */
+:root {
+  --series-constitution: #2fa8a3;
+  --series-general: #9b6ef0;
+}
+
+.unresolved-note {
+  margin-bottom: 14px;
+  padding: 9px 13px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(11,14,17,.4);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.unresolved-note summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+}
+
+.unresolved-note ul {
+  margin: 9px 0 2px;
+  padding-left: 20px;
+  line-height: 1.6;
+}
+
+.unresolved-note strong { color: var(--text-soft); font-weight: 600; }
+.unresolved-note a { color: var(--cyan); }
+
+.dataset-columns {
+  display: grid;
+  grid-template-columns: 310px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.dataset-rail {
+  position: sticky;
+  top: 16px;
+  min-width: 0;
+  max-height: calc(100vh - 32px);
+  overflow: hidden auto;
+  border: 1px solid var(--border-bright);
+  border-radius: 10px;
+  background: var(--bg-raised);
+}
+
+.dataset-main { min-width: 0; }
+
+.corpus-search {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 13px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+  color: var(--muted);
+}
+
+.corpus-search input {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+}
+
+.corpus-groups { padding: 6px; }
+
+.corpus-groups section { margin-bottom: 14px; }
+
+.corpus-groups header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 8px 6px;
+}
+
+.corpus-groups header small {
+  color: var(--muted);
+  font-size: 9.5px;
+  line-height: 1.45;
+}
+
+.corpus-row {
+  display: block;
+  width: 100%;
+  margin-bottom: 3px;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.corpus-row:hover { background: rgba(255,255,255,.025); }
+
+.corpus-row.is-active {
+  border-color: var(--cyan-dim);
+  background: rgba(104,228,223,.05);
+}
+
+.corpus-row strong {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.corpus-row small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.corpus-share {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 6px;
+}
+
+.corpus-share em {
+  flex-shrink: 0;
+  color: var(--text-soft);
+  font-size: 9px;
+  font-style: normal;
+}
+
+/* Thin marks, and a 2px surface gap between the two fills so the split is
+   readable without relying on the colour difference alone. */
+.share-bar {
+  display: flex;
+  gap: 2px;
+  width: 100%;
+  height: 9px;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.share-bar.thin { height: 5px; }
+
+.share-bar > span { display: block; height: 100%; border-radius: 2px; }
+.share-constitution { background: var(--series-constitution); }
+.share-general { background: var(--series-general); }
+
+.composition-panel {
+  flex-shrink: 0;
+  width: 340px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: rgba(11,14,17,.48);
+}
+
+.composition-headline {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+
+.composition-headline strong {
+  color: var(--text);
+  font-size: 26px;
+  letter-spacing: -.035em;
+}
+
+.composition-headline span {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.composition-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 9px;
+  color: var(--text-soft);
+  font-size: 9.5px;
+}
+
+.composition-legend span { display: flex; align-items: center; gap: 5px; }
+
+.composition-legend .swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+
+.composition-legend .swatch.constitution { background: var(--series-constitution); }
+.composition-legend .swatch.general { background: var(--series-general); }
+
+.composition-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.55;
+}
+
+.composition-table {
+  width: 100%;
+  margin-top: 12px;
+  border-collapse: collapse;
+  font-size: 10px;
+}
+
+.composition-table th,
+.composition-table td {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+  font-weight: 400;
+}
+
+.composition-table thead th {
+  color: var(--muted);
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.composition-table th:first-child,
+.composition-table tbody th {
+  color: var(--text-soft);
+  text-align: left;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.composition-table tbody td { color: var(--text-soft); }
+
+/* A left rule rather than a colour swap: the row stays readable when the
+   distinguishing colour is not perceivable. */
+.composition-table tr.is-constitution th,
+.composition-table tr.is-constitution td { color: var(--text); }
+.composition-table tr.is-constitution th:first-child {
+  box-shadow: inset 2px 0 0 var(--series-constitution);
+  padding-left: 7px;
+}
+
+.dataset-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px 16px;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.dataset-facts strong { color: var(--text); font-size: 15px; }
+.dataset-facts code { color: var(--cyan); font-size: 9.5px; }
+
+.dataset-facts a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--cyan);
+}
+
 .dataset-description {
   display: flex;
   justify-content: space-between;
-  gap: 35px;
+  gap: 24px;
   padding: 22px;
-  border-inline: 1px solid var(--border-bright);
+  border: 1px solid var(--border-bright);
+  border-radius: 10px 10px 0 0;
   background: linear-gradient(110deg, rgba(104,228,223,.035), transparent 45%), var(--bg-raised);
 }
 
@@ -1731,7 +2011,7 @@ pre,
 .dataset-browser {
   display: grid;
   grid-template-columns: 215px minmax(0, 1fr) 250px;
-  min-height: 650px;
+  min-height: 620px;
   overflow: hidden;
   border: 1px solid var(--border-bright);
   border-top: 0;
