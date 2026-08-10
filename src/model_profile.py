@@ -91,10 +91,13 @@ QWEN36_PROFILE = ModelProfile(
             "provenance": "scratch/probe_batch_memory.py (commit 83343e7) on the "
                           "4xH200 pod; Slack #fellows-only-callum 2026-08-08",
         },
-        # H100 80GB: NO ENTRY YET — we have only served on H100, never probed
-        # training. Mint the entry with:
-        #   uv run python scratch/probe_batch_memory.py --data data/mixture.jsonl
-        # on an H100 pod, then record max_padded_tokens + provenance here.
+        # H100 80GB: NO ENTRY, and a measured NEGATIVE bound: a 1x~8k fwd+bwd
+        # (bf16 weights + LoRA r64 + the fp32-logits CE path) OOMs at 72.6/79.2 GiB
+        # used, 7.36 GiB short — RunPod pod ev392t1v29hhch, 2026-08-10,
+        # scratch/verify_dynamic_batching.py gate 1 LEGACY path. So the ceiling is
+        # strictly < 8192 padded tokens; this mixture's longalign rows cannot train
+        # on H100 under EITHER batching protocol. A positive entry needs a bisecting
+        # probe (scratch/probe_batch_memory.py) on a future H100 trip.
     },
 )
 # Qwen3 deliberately has NO profile yet: its thinking-mode template prefills nothing (the
