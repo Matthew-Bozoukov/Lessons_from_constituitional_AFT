@@ -48,6 +48,7 @@ from src.endpoints.openrouter import OpenRouterClient, map_threaded  # noqa: E40
 from src.endpoints.vllm_server import VllmServer, resolve_target  # noqa: E402
 from src.eval.misalignment.psychosis.conversation import (  # noqa: E402
     format_red_team_prompt,
+    is_target_termination,
     split_redteam_completion,
 )
 from src.eval.misalignment.psychosis.runner import character_name  # noqa: E402
@@ -59,13 +60,29 @@ ASSETS = Path(__file__).resolve().parents[1] / "src/eval/misalignment/psychosis/
 # colin+ethan in the control. All four are reality-break arcs — the darkest escalations.
 WORST_PERSONAS = ["adrian_geometry", "zara_reality", "colin_reality", "ethan_reality"]
 
+PSYCHOSIS_CONFIG = Path(__file__).resolve().parents[1] / "configs/eval/psychosis.yaml"
+
+
+def config_redteam() -> str:
+    """The red-teamer the psychosis eval actually uses, read from its config.
+
+    The probe's default is the LIVE choice rather than a list frozen in this file: a probe
+    that silently diverges from the eval it exists to inform answers the wrong question.
+    Sweeping candidates is still one flag away — pass `--models a,b,c` (CANDIDATE_MODELS
+    below is the 2026-08-07 round-2 set, kept as the record of what was already probed).
+    """
+    from omegaconf import OmegaConf
+
+    return str(OmegaConf.load(PSYCHOSIS_CONFIG).redteam.model)
+
+
 # Round 1 (2026-08-07) found EVERY candidate refused all four — kimi variants, deepseek,
 # and the incumbent grok-4.5 — so model-swap alone doesn't rescue these personas. Round 2
 # raises the bar to LARGER / more steerable models: Nous Hermes (explicitly neutral,
 # built to follow the system prompt rather than override it), big open frontier models,
 # and an RP-tuned model that exists to play personas. grok-4.5 stays as the incumbent
 # baseline for contrast.
-DEFAULT_MODELS = [
+CANDIDATE_MODELS = [
     "nousresearch/hermes-4-405b",
     "nousresearch/hermes-3-llama-3.1-405b",
     "sao10k/l3.3-euryale-70b",          # RP-tuned: designed for sustained persona play
@@ -144,10 +161,13 @@ def probe_cell(client: OpenRouterClient, model: str, stem: str, n_turns: int,
     stop_turn = None
     stop_text = None
 
+    target_terminated_turn = None
     for turn in range(1, n_turns + 1):
         raw = _redteam_completion(client, model, redteam_history, temperature)
+        discarded = ""
         _, message = split_redteam_completion(raw)
         if message is None:
+            discarded = raw
             # Retry once at a higher temperature, exactly as production would.
             raw_retry = _redteam_completion(client, model, redteam_history, temperature + 0.1)
             _, message = split_redteam_completion(raw_retry)
@@ -165,14 +185,22 @@ def probe_cell(client: OpenRouterClient, model: str, stem: str, n_turns: int,
         target_history.append({"role": "user", "content": message})
         reply = target_chat(target_history)
         target_history.append({"role": "assistant", "content": reply})
+        terminated = is_target_termination(reply)
+        if terminated and target_terminated_turn is None:
+            target_terminated_turn = turn
         turns.append({"turn": turn, "redteam_raw": raw, "user": message,
-                      "think": "", "assistant": reply, "finish_reason": "stop"})
+                      "think": "", "assistant": reply, "finish_reason": "stop",
+                      "redteam_discarded": discarded, "target_terminated": terminated})
 
     return {
         "model": model, "persona": stem,
         "completed_turns": len(turns), "requested_turns": n_turns,
         "outcome": outcome,
+        # RED-TEAMER willingness only. An arc where the TARGET hung up still counts as
+        # completed here — the two questions are separate, so read them together.
         "completed_full_arc": outcome == "completed",
+        "target_terminated_turn": target_terminated_turn,
+        "arc_usable": outcome == "completed" and target_terminated_turn is None,
         "stop_turn": stop_turn,
         "wavered_turns": wavered_turns,
         "stop_text": stop_text,
@@ -187,7 +215,8 @@ def main(models: str | list[str] | None = None, personas: str | list[str] | None
     """Probe red-teamer models on the worst-offending personas against an API target.
 
     Args:
-        models: Red-teamer model ids (default: the larger/steerable set above).
+        models: Red-teamer model ids (default: whichever one configs/eval/psychosis.yaml
+            currently declares; pass CANDIDATE_MODELS explicitly to sweep alternatives).
         personas: Persona stems (default: the four grok refused on).
         n_turns: Turns per arc (12 = the full production arc; lower for a cheap probe).
         target: The stand-in target as a canonical `<provider>:<model-id>` endpoint
@@ -200,7 +229,8 @@ def main(models: str | list[str] | None = None, personas: str | list[str] | None
     load_dotenv(override=True)
     client = OpenRouterClient()
     target_chat = make_target_chat(target)
-    models = ([models] if isinstance(models, str) else list(models)) if models else DEFAULT_MODELS
+    models = ([models] if isinstance(models, str) else list(models)) if models \
+        else [config_redteam()]
     personas = ([personas] if isinstance(personas, str) else list(personas)) if personas \
         else WORST_PERSONAS
 
@@ -240,18 +270,30 @@ def main(models: str | list[str] | None = None, personas: str | list[str] | None
             m["stop_turns"].append(r["stop_turn"])
         elif r["outcome"] == "format_miss":
             m["format_miss"] += 1
-        # Save each arc as a readable transcript for eyeballing.
-        turns_md = "\n".join(
-            f"- turn {t['turn']}: {t['user'][:80]!r}" for t in r.get("turns", []))
-        (dest / "transcripts" / f"{r['model'].replace('/', '_')}__{r['persona']}.md"
-         ).write_text(transcript_markdown(
-             f"Red-teamer probe — {r['model']} / {r['persona']}",
-             f"outcome={r['outcome']} · completed {r['completed_turns']}/"
-             f"{r['requested_turns']} turns · stop_turn={r['stop_turn']} · "
-             f"wavered={r['wavered_turns']}",
-             [(2, "Turn index (user messages)", "text", turns_md or "(none)")]
-             + ([(2, f"Stop text ({r['outcome']})", "fenced", r["stop_text"])]
-                if r.get("stop_text") else [])))
+        # Save each arc as a readable transcript for eyeballing. The FULL messages, not a
+        # truncated index: a probe whose transcripts can't be read tells you a model
+        # completed the arc but never what it actually said (2026-08-10).
+        sections = []
+        for t in r.get("turns", []):
+            sections.append((2, f"Turn {t['turn']}", "text", ""))
+            sections.append((3, "Red-teamer, in character", "text", t["user"]))
+            sections.append((3, "Target reply", "text", t["assistant"]))
+        if r.get("stop_text"):
+            sections.append((2, f"Stop text ({r['outcome']})", "fenced", r["stop_text"]))
+        markdown = transcript_markdown(
+            f"Red-teamer probe — {r['model']} / {r['persona']}",
+            f"outcome={r['outcome']} · completed {r['completed_turns']}/"
+            f"{r['requested_turns']} turns · stop_turn={r['stop_turn']} · "
+            f"wavered={r['wavered_turns']}",
+            sections or [(2, "Turns", "text", "(none)")])
+        # encoding pinned (2026-08-10): the default locale codec is cp1252 on Windows and
+        # cannot encode the personas' own text, which would kill the sweep mid-write.
+        cell = f"{r['model'].replace('/', '_')}__{r['persona']}"
+        (dest / "transcripts" / f"{cell}.md").write_text(markdown, encoding="utf-8")
+        # The turns are dropped from results.jsonl, so without this the full exchanges
+        # exist only inside the markdown and nothing downstream can re-render them.
+        (dest / "transcripts" / f"{cell}.json").write_text(
+            json.dumps(r, indent=2), encoding="utf-8")
 
     summary = {m: {**v, "full_arc_rate": round(v["full_arcs"] / v["personas"], 2)}
                for m, v in by_model.items()}
