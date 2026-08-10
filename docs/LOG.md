@@ -3,6 +3,28 @@
 
 # LOG
 
+## 2026-08-10 — Published artifacts made public, except three that carry gated LMSYS prompts
+
+**Context:** the dashboard reads the Hub with a token at build time and anonymously in the
+browser, so a private repo renders its numbers and 404s its source links for every visitor. Ten
+`LASR-Callum` dataset repos were private.
+
+**Result:** seven are now public and verified anonymously readable — the three MMLU runs, both
+psychosis runs, `2026-08-06-swebench-mini-...-synthdoc-r64`, and
+`2026-08-09-arena-hard-regen-bundle`. Their upstream sources are public and ungated (`cais/mmlu`
+MIT; `princeton-nlp/SWE-bench_Verified` ungated; the arena-hard bundle is a checkout of
+`lmarena-ai/arena-hard-auto`, Apache-2.0, confirmed by listing `bench.tar.gz`).
+
+**Three are deliberately still private.** `2026-08-05-lmsys-answer-cache` and both
+`2026-08-08-lmsys-*` runs store **verbatim user prompts from `lmsys/lmsys-chat-1m`**, which the
+Hub reports as `gated=auto` — access requires accepting its licence agreement. Publishing them
+would redistribute gated third-party data outside that agreement, and there is no real undo once
+a public repo is indexed.
+
+**Next steps:** if these need to be public, strip the prompt text and republish the model answers
+keyed by prompt hash — the answer cache is keyed on prompts, so that is a change to the eval's
+cache format, not just a file edit.
+
 ## 2026-08-07 — SWE-bench Verified head-to-head: the two table2 LoRAs are statistically indistinguishable
 
 **Hypothesis:** the synthdoc-trained LoRA differs from the only-9284 LoRA in agentic coding
