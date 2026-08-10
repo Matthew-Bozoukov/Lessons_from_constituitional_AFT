@@ -102,7 +102,7 @@ constitution it is supposed to teach.
 
 ## Cost
 
-$171.46, itemised in `docs/EXPENDITURE.md`. Two findings from the run are worth
+$171.46. Two findings from the run are worth
 carrying forward: `n_raters: 3` bought nothing (`autorater_std = 0.0` on every
 document, since dropped to 1), and Haiku 4.5 was a net loss at both cheap call
 sites.

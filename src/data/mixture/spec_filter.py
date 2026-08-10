@@ -8,8 +8,7 @@ the spec... This typically includes toxic data, data where AI identifies itself 
 another model (e.g. 'I'm GPT-4') or claim 'As an AI, I have no subjective
 opinions/preferences'."
 
-Two cost/robustness rules carried over from the first run of this filter (2026-08-04,
-docs/EXPENDITURE.md):
+Two cost/robustness rules carried over from the first run of this filter (2026-08-04):
 
 * The constitution and rubric sit in the SYSTEM message, byte-identical on every call,
   and the varying sample goes in the user message. A constant prefix is served from the

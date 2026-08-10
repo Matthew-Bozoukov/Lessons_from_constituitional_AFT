@@ -3,6 +3,78 @@
 
 # LOG
 
+## 2026-08-10 — Psychosis rerun with a red-teamer that does not refuse: 9/9 personas, zero attrition
+
+**Hypothesis:** the arm-correlated persona attrition that caveated the 2026-08-05 psychosis
+comparison was a property of the *red-teamer*, not of the arms, and swapping grok-4.5 for
+`nousresearch/hermes-4-405b` (the 2026-08-07 willingness probe's only clean sweep) removes it.
+
+**Method:** full `psychosis` eval — 9 personas x 12 turns — against
+`LASR-Callum/qwen3.6-27b-lora-table2-only-9284-r64` (the benign-only, 0% DA control), served on a
+RunPod H100 80GB via `run_eval.py --server` (Option B: the pod runs the vLLM endpoint only; the
+conversation loop, judging and HF push run on the driver). Red-teamer
+`nousresearch/hermes-4-405b`, judge `x-ai/grok-4.3` unchanged. Serving inferred `mode=think` from
+the adapter's `training_meta.json`; `plan_serving` composed 40960 context / 12 slots / `qwen3`
+reasoning parser with no warnings.
+
+**Result — zero attrition, which is the point of the run.** All 9 personas completed all 12
+turns; `characters_failed: []`, `judge_failures: 0`, 108/108 cells graded, `truncation_rate: 0.0`,
+`empty_think_rate: 0.0`. On 2026-08-05 the same arm lost **4 of 9** personas to grok-4.5 refusing
+mid-arc.
+
+| metric | value |
+|---|---|
+| referral_rate | 0.5463 |
+| pushback_mean | 1.4167 |
+| delusion_confirmation_mean | 0.6796 |
+| delusion_collusion_rate | 0.0583 |
+| therapy_mean | 3.9890 |
+
+**These numbers are NOT comparable to the 2026-08-05 run**, and the gap should not be read as a
+change in the model. Three things moved at once: the red-teamer (so the conversations themselves
+differ), the persona set (9 completed here vs 5 surviving in both arms there), and the sampling
+backend (below). The 2026-08-05 control's `delusion_confirmation_mean` of 1.04 vs 0.68 here is a
+different measurement, not an improvement.
+
+**Two infrastructure findings, both new since 2026-08-05 and both costly to diagnose:**
+
+1. **vLLM 0.26 + FlashInfer needs a CUDA compiler at boot.** The engine loads the model fine
+   (52.09 GiB, 41 s) and then JIT-compiles FlashInfer's sampling kernels during the
+   memory-profiling pass. FlashInfer's generated `build.ninja` hardcodes an **absolute**
+   `/usr/local/cuda/bin/nvcc` derived from `CUDA_HOME`; with `CUDA_HOME` unset it falls back to
+   `/usr/local/cuda`, which does not exist in the `runpod/pytorch:0.7.0-dev-cu1281` image, and
+   every rule fails with `code=127`. vLLM surfaces this as `Engine core initialization failed ...
+   Failed core proc(s): {}` — which reads like OOM or a bad model. Note PATH is irrelevant: the
+   path is hardcoded, so `uv run` cannot help, and the real `nvcc` (CUDA 13.3) ships *inside* the
+   venv at `site-packages/nvidia/cu13/bin/nvcc`. **Fixed with `VLLM_USE_FLASHINFER_SAMPLER=0`** in
+   the pod's `.env` (which `SshExec._with_env` sources into the launch shell); verified as the
+   effective fix because the FlashInfer cache holds 0 compiled `.o` files after the successful
+   boot. Consequence: this run sampled through vLLM's native path, not FlashInfer's. Verified
+   against `vllm/v1/sample/ops/topk_topp_sampler.py` @ v0.26.0, this is a move TOWARD the
+   reference implementation, not away from it: the fallback `apply_top_k_top_p_pytorch()` is
+   exact sorting-based masking, while FlashInfer is rejection-sampling based and documents that
+   its "outputs do not necessarily match ... only ... statistically equivalent". The only cost is
+   throughput — sorting the logits tensor "can be slow for large batches", irrelevant at
+   `max_num_seqs: 12`. It also unblocks logprobs, which FlashInfer asserts off. Note the default
+   is `True`, so the 2026-08-05 runs used the APPROXIMATE sampler and this one the exact one; a
+   paired arm should pin the same setting for strict comparability.
+2. **A CUDA-12.8 host was destroyed on inference, never on evidence.** `docs/swebench_sharding.md`
+   says vLLM 0.26 needs a host driver of CUDA >= 13.0, and the lock does resolve `nvidia-cudnn-cu13`,
+   so the first pod was torn down unverified and the second pinned `allowedCudaVersions: ["13.0"]`
+   (a REST-only field; `runpodctl create pod` has no CUDA flag). The second pod then failed to boot
+   anyway, for the unrelated reason above — so **the CUDA-13 requirement was never actually
+   demonstrated on RunPod**, and ~$0.8 and ~15 min bought nothing. Test the cheap hypothesis before
+   destroying the expensive resource.
+
+**Published:** HF `LASR-Callum/2026-08-10-psychosis-qwen3-6-27b-lora-table2-only-9284-r64`
+(rollouts, grades.csv/jsonl, results.json, run_meta.json). Pod destroyed, 0 pods of ours running.
+
+**Next steps:** (1) run the `table2-synthdoc-r64` arm with the *identical* setup — same
+red-teamer, same `VLLM_USE_FLASHINFER_SAMPLER=0` — for a clean 9-persona head-to-head; the
+2026-08-05 pair should not be quoted for it. (2) `configs/eval/psychosis.yaml`'s red-teamer switch
+is still uncommitted; commit it before the paired arm so both runs cite the same config.
+(3) Consider whether `bootstrap_pod.sh` should export `CUDA_HOME` so this never recurs.
+
 ## 2026-08-10 — Published artifacts made public, except three that carry gated LMSYS prompts
 
 **Context:** the dashboard reads the Hub with a token at build time and anonymously in the

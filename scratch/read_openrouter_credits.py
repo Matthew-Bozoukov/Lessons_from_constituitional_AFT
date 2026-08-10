@@ -1,5 +1,5 @@
-# ABOUTME: One-off: print the OpenRouter credit balance (docs/EXPENDITURE.md requires a
-# ABOUTME: before/after /credits reading around every paid generation run).
+# ABOUTME: One-off: print the OpenRouter credit balance. Read it before and after a paid
+# ABOUTME: run to get true incremental spend — the endpoint lags, so wait ~30s before the last read.
 
 import os
 
