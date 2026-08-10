@@ -17,11 +17,10 @@ Two pieces, and the second is what makes the first legal:
   makes dynamic batching introduce NO failure mode the legacy batch-1 path didn't
   already have on the same data (both must run that row), and nothing stronger: a
   dataset whose longest row exceeds anything previously run is unproven for BOTH
-  paths. That case is caught by the preflight (``worst_case_shapes`` executed once
-  at startup), which turns the legacy failure mode — an OOM mid-run whenever the
-  shuffle first serves the monster row — into a 30-second startup error. Neither
-  ``max_seq_len`` (a truncation ceiling, not a measurement) nor the model's context
-  window (262k for Qwen3.6) says anything about training memory.
+  paths, and fails the same way for both (an OOM when that row is reached). A
+  measured `ModelProfile.train_memory` entry for the live GPU overrides the default.
+  Neither ``max_seq_len`` (a truncation ceiling, not a measurement) nor the model's
+  context window (262k for Qwen3.6) says anything about training memory.
 - ``seq_mean_token_mean_loss``: each example's token-mean over its own supervised
   tokens, summed, divided by the constant ``global_batch``. Every example weighs
   1/global_batch regardless of length or grouping, so ANY partition of the step
@@ -125,33 +124,4 @@ def seq_mean_token_mean_loss(logits, labels, global_batch: int):
     ).view(shift_labels.shape)
     per_example = per_token.sum(dim=1) / counts
     return per_example.sum() / global_batch
-
-
-def worst_case_shapes(lengths: list[int], token_budget: int,
-                      global_batch: int) -> list[tuple[int, int]]:
-    """The micro-batch shapes that bound every pass any shuffle can produce.
-
-    Two dominating shapes, for the startup preflight to execute for real:
-
-    - ``(1, longest_row)`` — the singleton pass every over-budget row forces.
-    - ``(k_worst, token_budget // k_worst)`` — the fullest multi-row pass possible:
-      ``k_worst`` is the largest count k (<= global_batch) such that the k globally
-      shortest rows fit one micro-batch (``k * k-th-shortest <= budget``). No step of
-      any shuffle can produce a higher count, and every real micro-batch of count k
-      has padded size <= budget // k, so these two shapes dominate the epoch.
-
-    Returns:
-        (batch, padded_len) shapes, deduplicated, largest-footprint first.
-    """
-    if not lengths:
-        return []
-    asc = sorted(lengths)
-    k_worst = 1
-    for k in range(2, min(global_batch, len(asc)) + 1):
-        if k * asc[k - 1] <= token_budget:
-            k_worst = k
-    shapes = [(1, max(lengths))]
-    if k_worst > 1:
-        shapes.append((k_worst, max(token_budget // k_worst, asc[k_worst - 1])))
-    return shapes
 

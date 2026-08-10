@@ -22,7 +22,6 @@ from trl import SFTConfig, SFTTrainer
 from src.train.dynamic_batching import (  # noqa: E402
     plan_micro_batches,
     seq_mean_token_mean_loss,
-    worst_case_shapes,
 )
 from src.train.mask_gate import gate_generation_boundary  # noqa: E402
 from src.model_profile import train_memory_entry  # noqa: E402
@@ -108,43 +107,6 @@ class DynamicBatchTrainer(SFTTrainer):
             self.accelerator.backward(loss)
             total = loss.detach() if total is None else total + loss.detach()
         return total
-
-
-def _preflight_worst_shapes(model, shapes: list[tuple[int, int]],
-                            vocab_size: int, global_batch: int) -> None:
-    """Run the epoch's dominating micro-batch shapes once, BEFORE training spends money.
-
-    Budget = longest-row makes dynamic batching no riskier than legacy batch-1 on the
-    same data — but that includes inheriting legacy's failure mode: a dataset whose
-    longest row exceeds anything this (model, GPU) pair has run OOMs whenever the
-    shuffle first serves it, potentially hours in. Executing the worst shapes up front
-    (real fwd+bwd, real loss path, all tokens supervised = worst logits/CE memory)
-    turns that into a ~30-second startup failure with a remedy, and prints the
-    measured headroom either way.
-    """
-    device = next(model.parameters()).device
-    for batch, pad_len in shapes:
-        torch.cuda.reset_peak_memory_stats()
-        try:
-            ids = torch.randint(1000, min(100_000, vocab_size - 1),
-                                (batch, pad_len), device=device)
-            out = model(input_ids=ids, attention_mask=torch.ones_like(ids),
-                        use_cache=False)
-            seq_mean_token_mean_loss(out.logits, ids.clone(), global_batch).backward()
-            peak = torch.cuda.max_memory_allocated() / 2**30
-            total = torch.cuda.get_device_properties(device).total_memory / 2**30
-            print(f">>> preflight {batch}x{pad_len}: peak {peak:.1f} GiB "
-                  f"of {total:.1f} ({100 * peak / total:.0f}%)")
-        except torch.cuda.OutOfMemoryError:
-            raise SystemExit(
-                f"preflight OOM at micro-batch shape {batch}x{pad_len}: this dataset's "
-                "worst pass does not fit this GPU (the legacy batch-1 path would have "
-                "OOMed mid-run on the same row). Remedies: truncate the data (mixture "
-                "max_seq_len), set a smaller train.dynamic_batching.token_budget, or "
-                "measure a bigger GPU with scratch/probe_batch_memory.py.") from None
-        finally:
-            model.zero_grad(set_to_none=True)
-            torch.cuda.empty_cache()
 
 
 def _git_sha() -> str:
@@ -398,9 +360,8 @@ def main(config: str, smoke: bool = False) -> None:
         # run that row; count x max_len <= max(lens) bounds linear/logits memory to
         # that same footprint, attention strictly smaller: k*L^2 <= M*L <= M^2). No
         # stronger claim: a dataset whose longest row exceeds anything this
-        # (model, GPU) has run is unproven for BOTH paths — the preflight below
-        # executes the worst shapes at startup so that case fails in seconds, not
-        # mid-run. NOT cfg.train.max_seq_len (a truncation ceiling, not a
+        # (model, GPU) has run is unproven for BOTH paths and fails the same way
+        # for both. NOT cfg.train.max_seq_len (a truncation ceiling, not a
         # measurement; the model window, 262k, is larger still and irrelevant).
         # Raising the budget beyond the default is an explicit config override
         # backed by a scratch/probe_batch_memory.py measurement, never a guess.
@@ -506,15 +467,6 @@ def main(config: str, smoke: bool = False) -> None:
                 (lambda f: _collate_padded(f, tokenizer.pad_token_id)) if pre_tokenized else None
             ),
         )
-
-    if dynamic is not None:
-        # Grad checkpointing is on during training but only enabled by Trainer inside
-        # train(); enable it now so the preflight measures the same regime (idempotent).
-        trainer.model.gradient_checkpointing_enable(
-            gradient_checkpointing_kwargs={"use_reentrant": False})
-        _preflight_worst_shapes(
-            trainer.model, worst_case_shapes(lens, dyn_budget, global_batch),
-            vocab_size=len(tokenizer), global_batch=global_batch)
 
     # Resume from the newest checkpoint on the volume when one is there, so a restart
     # continues rather than silently retraining from scratch at full cost.
