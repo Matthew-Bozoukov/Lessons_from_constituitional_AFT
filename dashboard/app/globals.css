@@ -1180,12 +1180,18 @@ pre,
   margin: 2em 0;
 }
 
+/* Figures are plates, and some of them carry their own light ground: the
+   matplotlib house style is a cream chart, which on this dark page needs to
+   read as a deliberate inset rather than as a blown-out rectangle. The padding
+   and the lighter border give it a mount; the radius keeps the corners from
+   fighting the panel behind it. */
 .markdown-figure img {
   display: block;
   width: 100%;
   height: auto;
-  border: 1px solid var(--border);
-  border-radius: 9px;
+  padding: 6px;
+  border: 1px solid var(--border-bright);
+  border-radius: 10px;
   background: var(--panel);
 }
 

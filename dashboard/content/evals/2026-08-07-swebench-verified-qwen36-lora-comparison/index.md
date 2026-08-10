@@ -56,13 +56,13 @@ bash tool, graded by the official SWE-bench docker harness 4.1.0. Both adapters 
 | `only-9284-r64` | 250 | 135 | 107 | **42.8%** | 36.8–49.0 |
 | `synthdoc-r64` | 250 | 155 | 116 | **46.4%** | 40.3–52.6 |
 
-![Stacked bars for both adapters over all 250 instances, split into resolved, patch submitted but tests failed, and no patch produced. A dashed reference line marks the published 77.2% score, and a pooled bar underneath breaks down why no patch was produced.](./assets/swebench-outcome-all-instances.svg)
+![Stacked bars for both adapters over all 250 instances: only-9284 is 107 resolved, 28 submitted-but-failed, 115 with no patch; synthdoc is 116, 39, 95. Error bars are the 95% Wilson CI on pass@1, and a dashed line marks the published 77.2% Qwen3.6-27B score, labelled as not from this run. A second panel breaks down the 149 rollouts that produced no patch, pooled across arms: 72 context-window aborts, 60 transport timeouts, 17 step-budget exhaustions.](./assets/swebench-outcome-all-instances.svg)
 
 Most of what separates us from the published number is not the model failing the task — it is
 never getting to an answer. **115 of 250 instances for `only-9284` and 95 for `synthdoc` never
 produced a patch at all**, and the largest single reason is the 65,536-token context window.
 
-![Stacked bars for both adapters over submitted patches only: only-9284 resolves 107 of 135, synthdoc 116 of 155. The ranking flips relative to pass@1.](./assets/swebench-outcome-submitted-only.svg)
+![Bars with 95% Wilson CI error bars over submitted patches only: only-9284 resolves 107 of 135 (79.3%), synthdoc 116 of 155 (74.8%). The ranking flips relative to pass@1. No baseline line is drawn, because the published 77.2% is pass@1 over every instance rather than a rate among submitted patches.](./assets/swebench-outcome-submitted-only.svg)
 
 ## The published baseline, and why it is not a like-for-like
 
