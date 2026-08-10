@@ -127,8 +127,6 @@ def _run_step(model, feats, pad_id, gb, plan: list[list[int]], agg: str):
 def main(config: str, rows: str = "data/mixture.jsonl",
          budget: int | None = None, steps: int = 6) -> None:
     cfg = OmegaConf.load(config)
-    if budget is None:  # the trainer's own default
-        budget = int(cfg.train.max_seq_len)
     torch.manual_seed(0)
     tokenizer = AutoTokenizer.from_pretrained(str(cfg.model))
     if tokenizer.pad_token is None:
@@ -138,6 +136,8 @@ def main(config: str, rows: str = "data/mixture.jsonl",
 
     feats = _load_rows(cfg, rows, tokenizer, n=gb)
     lens = [len(f["input_ids"]) for f in feats]
+    if budget is None:  # the trainer's own default: the longest actual row (the
+        budget = max(lens)  # picked set includes the dataset's longest by construction)
     model = _build_model(cfg)
 
     legacy_plan = [[i] for i in range(gb)]

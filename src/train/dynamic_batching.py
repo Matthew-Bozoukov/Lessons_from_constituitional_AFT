@@ -13,8 +13,10 @@ Two pieces, and the second is what makes the first legal:
 
 - ``plan_micro_batches``: greedy next-fit over descending lengths under a PADDED-token
   budget (``count x max_len``), the quantity that actually bounds activation and fp32
-  logits memory. A budget equal to ``max_seq_len`` can never exceed the memory of the
-  1 x max_seq_len pass the legacy path already survives.
+  logits memory. The trainer defaults the budget to the dataset's longest row — the
+  one padded footprint a feasible legacy (batch-1) run has demonstrably executed —
+  never to ``max_seq_len`` (a truncation ceiling, not a measurement) and never to the
+  model's context window (262k for Qwen3.6, irrelevant to training memory).
 - ``seq_mean_token_mean_loss``: each example's token-mean over its own supervised
   tokens, summed, divided by the constant ``global_batch``. Every example weighs
   1/global_batch regardless of length or grouping, so ANY partition of the step

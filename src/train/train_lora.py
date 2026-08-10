@@ -354,19 +354,24 @@ def main(config: str, smoke: bool = False) -> None:
         assert not bool(cfg.train.packing), (
             "dynamic_batching pads, it never packs (gated-delta state leaks across "
             "packed examples without the fla kernels); set packing: false")
-        # Default budget = max_seq_len: a legacy run already survives one
-        # max_seq_len-length pass, and count x max_len <= max_seq_len bounds the
-        # micro-batch's linear/logits memory to exactly that proven worst case
-        # (attention memory is strictly smaller: k*L^2 <= M*L <= M^2). Raising it
-        # beyond max_seq_len is an explicit config override backed by a
+        # Default budget = the LONGEST ACTUAL ROW: the one padded footprint every
+        # feasible legacy run has demonstrably executed (batch 1 must survive that
+        # row), so count x max_len <= max(lens) bounds each micro-batch's
+        # linear/logits memory to a proven worst case, and attention memory is
+        # strictly smaller (k*L^2 <= M*L <= M^2). NOT cfg.train.max_seq_len: that is
+        # only a truncation ceiling (the model window is far larger still — 262k for
+        # Qwen3.6), and a window set above the data's real max would make the
+        # "proven" footprint merely a declared one. Rows are truncated to the
+        # window, so max(lens) <= max_seq_len always. Raising the budget beyond the
+        # default is an explicit config override backed by a
         # scratch/probe_batch_memory.py measurement, never a guess.
-        dyn_budget = int(dynamic.get("token_budget") or cfg.train.max_seq_len)
         lens = [len(r) for r in ds["input_ids"]]
+        dyn_budget = int(dynamic.get("token_budget") or max(lens))
         n_passes = sum(
             len(plan_micro_batches(lens[s:s + global_batch], dyn_budget))
             for s in range(0, len(lens) - global_batch + 1, global_batch))
         print(f">>> dynamic batching ON: token_budget={dyn_budget}"
-              f"{' (default: max_seq_len)' if not dynamic.get('token_budget') else ''}, "
+              f"{' (default: longest row)' if not dynamic.get('token_budget') else ''}, "
               f"global_batch={global_batch}, loss_agg=seq-mean-token-mean")
         print(f">>> ~{n_passes} forward passes/epoch vs {len(lens)} at batch 1 "
               f"({len(lens) / max(n_passes, 1):.1f}x fewer; dataloader-order estimate)")
