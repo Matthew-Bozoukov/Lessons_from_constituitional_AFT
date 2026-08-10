@@ -51,18 +51,22 @@ bash tool, graded by the official SWE-bench docker harness 4.1.0. Both adapters 
 
 ## Result
 
+The two adapters differ in one thing: `only-9284` is the **control**, trained on instruction
+data alone; `synthdoc` adds the constitution-grounded difficult-advice data. The charts label
+them that way rather than by run name, so they can be read without this page.
+
 | adapter | instances | patches produced | resolved | pass@1 | 95% CI |
 | --- | --- | --- | --- | --- | --- |
 | `only-9284-r64` | 250 | 135 | 107 | **42.8%** | 36.8–49.0 |
 | `synthdoc-r64` | 250 | 155 | 116 | **46.4%** | 40.3–52.6 |
 
-![Stacked bars for both adapters over all 250 instances: only-9284 is 107 resolved, 28 submitted-but-failed, 115 with no patch; synthdoc is 116, 39, 95. Error bars are the 95% Wilson CI on pass@1, and a dashed line marks the published 77.2% Qwen3.6-27B score, labelled as not from this run. A second panel breaks down the 149 rollouts that produced no patch, pooled across arms: 72 context-window aborts, 60 transport timeouts, 17 step-budget exhaustions.](./assets/swebench-outcome-all-instances.svg)
+![Two stacked bars, one per fine-tuned version, over all 250 bugs. The control version (no difficult-advice training data) fixed 107, wrote a fix that failed the tests on 28, and never produced a fix on 115 — 42.8% solved. The version trained with difficult-advice data fixed 116, failed on 39, and produced nothing on 95 — 46.4% solved. Black bars are 95% confidence intervals. A dashed line marks 77.2%, the published score for this model before any of our fine-tuning. A second panel counts why no fix was produced, both versions together across 369 attempts: 72 ran out of working memory, 60 lost the network connection, 17 used up their allowed steps.](./assets/swebench-outcome-all-instances.svg)
 
 Most of what separates us from the published number is not the model failing the task — it is
 never getting to an answer. **115 of 250 instances for `only-9284` and 95 for `synthdoc` never
 produced a patch at all**, and the largest single reason is the 65,536-token context window.
 
-![Bars with 95% Wilson CI error bars over submitted patches only: only-9284 resolves 107 of 135 (79.3%), synthdoc 116 of 155 (74.8%). A dashed line marks the published 77.2% baseline, and white dashes across each bar mark that arm's own pass@1 over all instances — 42.8% and 46.4% — which is the figure comparable to the baseline. only-9284's bar stands above the line without beating it.](./assets/swebench-outcome-submitted-only.svg)
+![The same run, counting only the bugs where a fix was actually written. The control version passed 107 of the 135 fixes it wrote (79.3%); the difficult-advice version passed 116 of 155 (74.8%), with 95% confidence intervals. A dashed line marks the published 77.2% score for this model before our fine-tuning, measured over all 250 bugs. A white line across each bar marks the same measure for that version — 42.8% and 46.4% — so the left bar rises above the dashed line without beating it.](./assets/swebench-outcome-submitted-only.svg)
 
 ## The published baseline, and why it is not a like-for-like
 

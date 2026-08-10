@@ -69,9 +69,12 @@ REASON_STEPS = "#801d2c"
 
 # The published baseline. NOT from this run - captioned as such on the chart.
 BASELINE = 77.2
-BASELINE_NOTE = "published Qwen3.6-27B baseline (not our run)"
+BASELINE_NOTE = "published score for this model\nbefore any of our fine-tuning"
 
-ARMS = [("only9284", "only-9284"), ("synthdoc", "synthdoc")]
+ARMS = [
+    ("only9284", "only-9284\ncontrol:\nno difficult-advice data"),
+    ("synthdoc", "synthdoc\ntrained with\ndifficult-advice data"),
+]
 
 
 def house_style() -> None:
@@ -187,11 +190,11 @@ def figure_all_instances(united: dict, pooled: dict, pooled_n: int) -> None:
     nopatch = [100 * (united[k]["n"] - united[k]["patches"]) / united[k]["n"] for k, _ in ARMS]
 
     bar = dict(width=0.55, edgecolor="black", linewidth=0.9)
-    ax.bar(labels, resolved, color=RESOLVED, label="Resolved (pass@1)", **bar)
+    ax.bar(labels, resolved, color=RESOLVED, label="Fix worked — the project's own tests passed", **bar)
     ax.bar(labels, wrong, bottom=resolved, color=WRONG,
-           label="Patch submitted, tests failed", **bar)
+           label="Wrote a fix, but the tests still failed", **bar)
     ax.bar(labels, nopatch, bottom=[r + w for r, w in zip(resolved, wrong)], color=NOPATCH,
-           label="No patch produced", **bar)
+           label="Never produced a fix at all", **bar)
 
     # The interval belongs to the resolved proportion, so it is drawn on the top
     # edge of the resolved segment - the only place on a stacked bar where it
@@ -216,7 +219,7 @@ def figure_all_instances(united: dict, pooled: dict, pooled_n: int) -> None:
         for dx, y, value, colour in pieces:
             ax.text(index + dx, y, f"{value}", ha="center", va="center",
                     fontsize=11, fontweight="bold", color=colour)
-        ax.text(index, 101.5, f"pass@1 {resolved[index]:.1f}%", ha="center", va="bottom",
+        ax.text(index, 101.5, f"{resolved[index]:.1f}% solved", ha="center", va="bottom",
                 fontsize=12.5, fontweight="bold")
 
     # The baseline runs across both bars and is captioned in the right margin,
@@ -229,16 +232,16 @@ def figure_all_instances(united: dict, pooled: dict, pooled_n: int) -> None:
 
     ax.set_ylim(0, 112)
     ax.set_yticks(range(0, 101, 20))
-    ax.set_ylabel("% of the 250 instances")
+    ax.set_ylabel("share of the 250 bugs")
     ax.set_xlim(-0.55, 2.55)
     ax.set_xticks([0, 1])
-    ax.set_xticklabels(labels)
+    ax.set_xticklabels(labels, fontsize=9.5)
     ax.grid(axis="x", visible=False)
     ax.spines[["top", "right"]].set_visible(False)
     titles(
         ax,
-        "SWE-bench Verified: what happened to all 250 instances",
-        "Qwen3.6-27B + mini-SWE-agent v2, 65,536-token context  ·  error bars are 95% Wilson CI on pass@1",
+        "Fixing 250 real software bugs: what happened on each one",
+        "Two fine-tuned versions of the same model  ·  one attempt per bug  ·  95% confidence intervals",
     )
     ax.legend(loc="lower center", bbox_to_anchor=(0.42, -0.225), ncol=2,
               frameon=False, fontsize=10.5)
@@ -246,9 +249,9 @@ def figure_all_instances(united: dict, pooled: dict, pooled_n: int) -> None:
     # --- right panel: why no patch, pooled. Horizontal, because these labels are
     # sentences and rotating them or stacking them on an x-axis made them collide.
     order = [
-        ("ContextWindowExceededError", "Context window exceeded", REASON_CONTEXT),
-        ("Timeout", "Transport timeout\n(network, not the model)", REASON_TIMEOUT),
-        ("LimitsExceeded", "Step budget exhausted", REASON_STEPS),
+        ("ContextWindowExceededError", "Ran out of working memory\nbefore it finished", REASON_CONTEXT),
+        ("Timeout", "Network dropped the connection\n(our infrastructure, not the model)", REASON_TIMEOUT),
+        ("LimitsExceeded", "Used up its allowed\nnumber of steps", REASON_STEPS),
     ]
     names = [name for _, name, _ in order][::-1]
     values = [pooled.get(key, 0) for key, _, _ in order][::-1]
@@ -259,14 +262,14 @@ def figure_all_instances(united: dict, pooled: dict, pooled_n: int) -> None:
                 ha="left", va="center", fontsize=12.5, fontweight="bold")
 
     bx.set_xlim(0, max(values) * 1.22)
-    bx.set_xlabel("rollouts")
+    bx.set_xlabel("number of attempts")
     bx.grid(axis="y", visible=False)
     bx.spines[["top", "right"]].set_visible(False)
     bx.tick_params(axis="y", labelsize=10)
     titles(
         bx,
-        "Why no patch was produced",
-        f"pooled over {pooled_n} rollouts — not per arm",
+        "Why no fix was produced",
+        f"both versions counted together  ·  {pooled_n} attempts",
     )
 
     fig.subplots_adjust(wspace=0.42)
@@ -289,7 +292,7 @@ def figure_submitted_only(united: dict) -> None:
     # reusing them here to distinguish ARMS would make blue mean two different
     # things across two charts a reader sees side by side. Colour carries nothing
     # here, so it does not vary - the axis labels identify the arms.
-    ax.bar(labels, rates, width=0.5, color=RESOLVED, edgecolor="black", linewidth=0.9)
+    ax.bar(labels, rates, width=0.62, color=RESOLVED, edgecolor="black", linewidth=0.9)
     ax.errorbar(range(len(labels)), rates, yerr=[lower, upper], fmt="none",
                 ecolor="black", elinewidth=1.5, capsize=6, capthick=1.5)
 
@@ -297,8 +300,9 @@ def figure_submitted_only(united: dict) -> None:
         cell = united[key]
         ax.text(index, errors[index][1] + 2.2, f"{rates[index]:.1f}%", ha="center", va="bottom",
                 fontsize=14, fontweight="bold")
-        ax.text(index, 3, f"{cell['resolved']} of {cell['patches']}\npatches passed",
-                ha="center", va="bottom", fontsize=10.5, color="white", fontweight="bold")
+        ax.text(index, 3, f"{cell['resolved']} of the {cell['patches']}"
+                          f"\nfixes it wrote passed",
+                ha="center", va="bottom", fontsize=9.5, color="white", fontweight="bold")
 
     # The published baseline, drawn across both bars.
     ax.axhline(BASELINE, color="#333333", linestyle="--", linewidth=1.6, zorder=6)
@@ -314,39 +318,39 @@ def figure_submitted_only(united: dict) -> None:
     for index, (key, _) in enumerate(ARMS):
         cell = united[key]
         pass_at_1 = 100 * cell["resolved"] / cell["n"]
-        ax.plot([index - 0.25, index + 0.25], [pass_at_1, pass_at_1],
+        ax.plot([index - 0.31, index + 0.31], [pass_at_1, pass_at_1],
                 color="white", linestyle=(0, (4, 2)), linewidth=2.2, zorder=7)
-        ax.text(index, pass_at_1 - 2.4, f"pass@1 {pass_at_1:.1f}%", ha="center", va="top",
-                fontsize=10, fontweight="bold", color="white", zorder=8)
+        ax.text(index, pass_at_1 - 2.6, f"{pass_at_1:.1f}% of\nall 250 bugs", ha="center", va="top",
+                fontsize=9.5, fontweight="bold", color="white", zorder=8, linespacing=1.35)
 
     ax.set_ylim(0, 100)
     ax.set_xlim(-0.6, 1.95)
     ax.set_xticks([0, 1])
     ax.set_xticklabels(labels)
-    ax.set_ylabel("% of submitted patches that resolved the issue")
+    ax.set_ylabel("share of the fixes it wrote that passed the tests")
     ax.grid(axis="x", visible=False)
     ax.spines[["top", "right"]].set_visible(False)
     titles(
         ax,
-        "Scored only over instances where a patch was submitted",
-        "95% Wilson CI  ·  bar height uses a different denominator from the baseline",
+        "Counting only the bugs where it actually wrote a fix",
+        "Of the fixes each version did write, how many passed  ·  the bars and the dashed line are NOT counted the same way",
     )
 
     # The line's caption spells out the denominator, because that is the whole
     # reason the bars can sit above it without beating it.
     ax.text(1.32, BASELINE + 1.4,
-            f"{BASELINE}% published baseline\npass@1 over ALL instances",
+            f"{BASELINE}% — published score\nfor this model before our\nfine-tuning, over ALL 250 bugs",
             ha="left", va="bottom", fontsize=9.5, fontweight="bold",
             color="#333333", linespacing=1.5)
     ax.text(1.32, BASELINE - 2.0,
-            "white dashes = our pass@1\non the same denominator",
+            "white line = share of ALL 250\nbugs this version solved — the\nnumber the dashed line compares to",
             ha="left", va="top", fontsize=9, color="#5b5b5b", linespacing=1.5)
 
     ax.text(
         0.5,
         -0.155,
-        "The bars are resolved ÷ patches submitted. The baseline and the white dashes are resolved ÷ all instances.\n"
-        "only-9284's bar clears the 77.2% line without beating it: on the baseline's own denominator it scores 42.8%.",
+        "The bars count only the bugs where a fix was written. The dashed line and the white lines count all 250.\n"
+        "So the left bar rises above the dashed line without beating it: across all 250 bugs it solved 42.8%, not 79.3%.",
         transform=ax.transAxes,
         ha="center",
         va="top",
