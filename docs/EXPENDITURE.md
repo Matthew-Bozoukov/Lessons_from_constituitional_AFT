@@ -25,8 +25,50 @@ to a future reader.
 | GPU rental | $0.17 (+ ~4 RunPod A100-h on 2026-08-03, $ TBD from dashboard) |
 | GCP (CPU VM) | ~$0.29 (closed — all instances destroyed 2026-08-06, nothing accruing) |
 | vast.ai (CPU/VM verification) | ~$0.06 (closed — box destroyed 2026-08-06) |
-| vast.ai (swebench full-sweep attempt) | **~$107** (closed — all instances destroyed 2026-08-07; **bought ~10 instances**) |
-| **total** | **~$363.7** |
+| vast.ai (swebench full-sweep attempt) | ~$107 (closed 2026-08-07; bought ~10 instances) |
+| vast.ai (driver + grader, successful run) | ~$4 (closed — 0 instances) |
+| RunPod (7x H100 NVL rollouts) | **~$100** (closed — 0 pods, burn $0.00/hr) |
+| **total** | **~$468** |
+
+---
+
+## 2026-08-07 (2) — swebench_mini COMPLETED: 372 rollouts, 250/500 instances, both LoRAs
+
+**What was bought:** the actual result. 369 of 372 rollouts (99.2%), 218 patches, all four
+cells graded by the pinned harness, published to HF. See `docs/LOG.md` 2026-08-07.
+
+**Cost**, by provider, from balance deltas (the authority; per-run manifests overstate):
+
+| provider | what | spend |
+|---|---|---|
+| RunPod | 7x H100 NVL rollouts (peak $22.33/hr), ~5.5 h + setup | **~$100** |
+| vast.ai | CPU driver ($0.20/hr) + regrade box ($0.325/hr) | **~$4** |
+| | **total this run** | **~$104** |
+
+Final balances: RunPod $233.50 (burn $0.00/hr), vast $104.86. **Zero instances running on
+RunPod, vast or GCP** — verified by API on all three.
+
+**Unit costs worth keeping:**
+
+- **~$0.28 per graded SWE-bench instance** all-in (372 rollouts + grading for ~$104).
+- **H100 NVL on RunPod Secure: $3.19/hr** actual (vs $2.59 advertised "lowest"). vast.ai listed
+  $2.55-2.64/hr but its supply was thin — only 1-2 available at a time.
+- **The CPU side is ~4% of cost.** All the money is GPU-hours. The driver that hosts every
+  Docker container, all 400GB of images and every result costs **$0.20/hr**.
+- **vast.ai CPU-only offers remain unrentable** (`no_such_ask`), re-confirmed today. The cheapest
+  Docker-capable box therefore carries a GPU you do not use — ~$0.33/hr instead of the
+  advertised ~$0.01/hr. Budget accordingly.
+
+**Waste in this run: small and bounded.** Two GPUs idled ~20 min after their arm finished before
+I noticed the supervisor was relaunching completed arms (~$2). One RTX PRO 6000 Blackwell rented
+to benchmark and killed within minutes when vLLM 0.26 refused it (`FlashInfer requires sm75+`)
+(~$1). Compare with the previous day's ~$46 of never-bootstrapped GPUs: renting one box,
+bootstrapping it, verifying it serves, *then* renting the next is what changed.
+
+**Lesson that cost a re-grade:** the driver died after grading, taking the harness reports with
+it. Backups covered `preds.json` but not `grading/`. Re-grading from the preserved predictions
+cost ~$0.70 and 25 min — cheap, but avoidable. **Back up the artifact you cannot regenerate
+cheaply, not just the one you thought of first.**
 
 ---
 

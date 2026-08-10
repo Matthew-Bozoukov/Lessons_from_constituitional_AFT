@@ -3,6 +3,53 @@
 
 # LOG
 
+## 2026-08-07 — SWE-bench Verified head-to-head: the two table2 LoRAs are statistically indistinguishable
+
+**Hypothesis:** the synthdoc-trained LoRA differs from the only-9284 LoRA in agentic coding
+capability, measurable as SWE-bench Verified pass@1. **Method:** the pinned `swebench_mini`
+baseline (mini-SWE-agent v2 + official harness 4.1.0) on a repo-stratified **250 of 500**
+Verified instances (`subset.fraction=0.5, seed=0`, subset hash `4d995ffa50a5`), both adapters on
+the identical instance set. Rollouts on 7x H100 NVL (RunPod), one arm per GPU, arms split with
+`shard.count=4 {1,3}` and `count=6 {0,2,4}` — both verified bit-identical to `count=2` before
+use. Docker/grading host was a vast.ai VM rental (RunPod pods cannot do docker-in-docker).
+
+**Result — no significant difference.**
+
+| LoRA | n | patches | resolved | pass@1 | 95% CI |
+|---|---|---|---|---|---|
+| only-9284-r64 | 250 | 135 | 107 | **42.8%** | 36.8-49.0 |
+| synthdoc-r64 | 250 | 155 | 116 | **46.4%** | 40.3-52.6 |
+
+Delta +3.6 pp, **exact McNemar p = 0.289**. The cleanest within-session comparison (shard 1,
+n=122, both arms concurrent on identical hardware) gives +8.2 pp at **p = 0.076** — suggestive
+but not significant. An uncorrected z gave exactly 1.96 and briefly looked significant; the
+exact binomial test is the honest one.
+
+**The denominator flips the ranking, and that is the finding to carry.** On pass@1 synthdoc wins
+(116 vs 107 solved). On resolve-rate-among-submitted only-9284 wins (79.3% vs 74.8%). synthdoc
+attempts more (155 patches vs 135) and so solves more absolutely while converting a smaller
+share. Restricting the denominator to submissions rewards the model that declines more often;
+it is a useful diagnostic but is **not** pass@1 and is not comparable to published numbers.
+
+**Failure modes (369 of 372 rollouts attempted):** Submitted 218 (59%),
+**ContextWindowExceededError 72 (20%)**, Timeout 60 (16%), LimitsExceeded 17 (5%). The context
+overflows are real: pilot trajectories reach 38-81k tokens against a 65,536 limit, so the tail
+always aborts. This caps absolute pass@1 for both arms equally and is a property of the
+model+scaffold, not a bug — which is why `max_model_len` was never touched despite heavy
+pressure to "speed things up". The 60 transport failures were deliberately **not** re-run, so
+both arms are understated; the fault is network-side and adapter-independent.
+
+**Published:** HF `LASR-Callum/2026-08-07-swebench-verified-qwen36-lora-comparison` (results.json
+with per-arm `resolved_ids`, preds, harness reports, figure, markdown mirror).
+Local: `output/swebench_mini_report/`.
+
+**Next steps:** (1) the difference, if real, needs ~3-4x the sample - extending to
+`fraction=1.0` costs only the new instances since the subset is nested; (2) the 20% context-
+overflow rate is the largest single lever on absolute score and deserves its own investigation
+before more depth is bought; (3) two bugs found and fixed this run are in
+`docs/swebench_run_postmortem.md`.
+
+
 ## 2026-08-07 — Prefix caching DOES work for Qwen3.6-27B on the pinned vLLM 0.26 — it needs KV headroom, not a version bump
 
 **Why this matters beyond one run:** we will serve this model a lot, and a wrong conclusion here
