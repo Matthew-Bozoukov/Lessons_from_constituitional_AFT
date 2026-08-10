@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -25,6 +25,16 @@ class ModelProfile:
         empty_think: The full literal a no-reasoning assistant turn carries.
         render_kwargs: Extra chat-template kwargs for rendering TRAINING data so every
             assistant turn keeps its reasoning (verified against the live template).
+        train_memory: MEASURED training-memory ceilings, keyed by GPU model (the
+            key is matched as a substring of `torch.cuda.get_device_name()`, e.g.
+            "H200" in "NVIDIA H200"). Each entry: `max_padded_tokens` — the largest
+            single fwd+bwd padded-token footprint (batch x padded_len) demonstrated
+            by a scratch/probe_batch_memory.py run under the training recipe (bf16,
+            gradient checkpointing, LoRA) — and `provenance`, citing that run.
+            Entries are added MANUALLY from probe runs only, never estimated; the
+            dynamic-batching budget resolver uses a hit to unlock throughput beyond
+            the dataset's longest row, and a missing GPU costs nothing but that
+            (the longest-row default + startup preflight still apply).
         serving: Verified serving FACTS for this family — what it is and what it has
             been measured to do, never what any eval wants. Eval configs cannot write
             these (the two namespaces are disjoint; see plan_serving in
@@ -49,6 +59,7 @@ class ModelProfile:
     empty_think: str
     render_kwargs: dict
     serving: dict
+    train_memory: dict = field(default_factory=dict)
 
 
 QWEN36_PROFILE = ModelProfile(
@@ -70,6 +81,21 @@ QWEN36_PROFILE = ModelProfile(
     # no-op, so plan_serving reports the unmet request rather than pretending.
     serving={"max_num_seqs": 32, "reasoning_parser": "qwen3",
              "tool_call_parser": "qwen3_xml", "supports_prefix_caching": False},
+    train_memory={
+        # H200 141GB: Matthew's probe on the 4xH200 training pod — batch 1 at 8,000
+        # tokens fits, batch 2 (16,000 padded) OOMs, so 8,000 is the demonstrated
+        # ceiling (the true wall is somewhere in 8,000..15,999; tighten it by
+        # sweeping shapes with the probe if the headroom ever matters).
+        "H200": {
+            "max_padded_tokens": 8000,
+            "provenance": "scratch/probe_batch_memory.py (commit 83343e7) on the "
+                          "4xH200 pod; Slack #fellows-only-callum 2026-08-08",
+        },
+        # H100 80GB: NO ENTRY YET — we have only served on H100, never probed
+        # training. Mint the entry with:
+        #   uv run python scratch/probe_batch_memory.py --data data/mixture.jsonl
+        # on an H100 pod, then record max_padded_tokens + provenance here.
+    },
 )
 # Qwen3 deliberately has NO profile yet: its thinking-mode template prefills nothing (the
 # model generates <think> itself — verified live 2026-08-04), so the generation-boundary
@@ -108,6 +134,19 @@ def model_profile(model_name: str) -> ModelProfile:
 # REQUIRES tool calls is refused on an unprofiled family instead of being served with a
 # parser nobody verified against its template.
 DEFAULT_SERVING = {"max_num_seqs": None}
+
+
+def train_memory_entry(profile: ModelProfile, device_name: str) -> dict | None:
+    """The measured training-memory entry for a live GPU, or None.
+
+    Substring match ("H200" in "NVIDIA H200") so probe-time and train-time naming
+    need not agree exactly. None simply means no measurement exists for this GPU —
+    callers fall back to data-demonstrated limits, they never guess.
+    """
+    for key, entry in profile.train_memory.items():
+        if key.upper() in device_name.upper():
+            return {"gpu": key, **entry}
+    return None
 
 
 def serving_params(model_name: str) -> dict:

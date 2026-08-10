@@ -25,6 +25,7 @@ from src.train.dynamic_batching import (  # noqa: E402
     worst_case_shapes,
 )
 from src.train.mask_gate import gate_generation_boundary  # noqa: E402
+from src.model_profile import train_memory_entry  # noqa: E402
 from src.train.masking import (  # noqa: E402
     build_labels,
     check_thinking_declaration,
@@ -404,12 +405,27 @@ def main(config: str, smoke: bool = False) -> None:
         # Raising the budget beyond the default is an explicit config override
         # backed by a scratch/probe_batch_memory.py measurement, never a guess.
         lens = [len(r) for r in ds["input_ids"]]
-        dyn_budget = int(dynamic.get("token_budget") or max(lens))
+        # Three tiers, strongest evidence wins: an explicit config override (must
+        # cite a probe run in its comment) > this GPU's measured ceiling from the
+        # profile's train_memory registry > the dataset's longest row. A registry
+        # hit only ever UNLOCKS throughput (budget above the longest row lets long
+        # rows share passes); a miss costs nothing — the preflight below still
+        # validates whatever the resolved budget produces.
+        gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else ""
+        measured = train_memory_entry(profile, gpu_name)
+        if dynamic.get("token_budget"):
+            dyn_budget, budget_src = int(dynamic.token_budget), "config override"
+        elif measured is not None:
+            dyn_budget = int(measured["max_padded_tokens"])
+            budget_src = f"measured ceiling for {measured['gpu']} ({measured['provenance']})"
+        else:
+            dyn_budget, budget_src = max(lens), (
+                f"longest row (no train_memory entry for {gpu_name or 'this GPU'} "
+                "— add one from a scratch/probe_batch_memory.py run to unlock more)")
         n_passes = sum(
             len(plan_micro_batches(lens[s:s + global_batch], dyn_budget))
             for s in range(0, len(lens) - global_batch + 1, global_batch))
-        print(f">>> dynamic batching ON: token_budget={dyn_budget}"
-              f"{' (default: longest row)' if not dynamic.get('token_budget') else ''}, "
+        print(f">>> dynamic batching ON: token_budget={dyn_budget} [{budget_src}], "
               f"global_batch={global_batch}, loss_agg=seq-mean-token-mean")
         print(f">>> ~{n_passes} forward passes/epoch vs {len(lens)} at batch 1 "
               f"({len(lens) / max(n_passes, 1):.1f}x fewer; dataloader-order estimate)")

@@ -176,3 +176,28 @@ def test_worst_shapes_single_row_and_empty():
 
     assert worst_case_shapes([500], 8000, 16) == [(1, 500)]
     assert worst_case_shapes([], 8000, 16) == []
+
+
+# ------------------------------------------------------------- train_memory registry
+
+
+def test_train_memory_lookup_matches_substring_and_misses_honestly():
+    from src.model_profile import QWEN36_PROFILE, train_memory_entry
+
+    hit = train_memory_entry(QWEN36_PROFILE, "NVIDIA H200")
+    assert hit and hit["gpu"] == "H200" and hit["max_padded_tokens"] == 8000
+    assert "provenance" in hit and "probe" in hit["provenance"]
+    # H100 has been served on, never probed for training: MUST miss, never guess.
+    assert train_memory_entry(QWEN36_PROFILE, "NVIDIA H100 80GB HBM3") is None
+    assert train_memory_entry(QWEN36_PROFILE, "") is None
+
+
+def test_every_train_memory_entry_carries_provenance():
+    from src.model_profile import MODEL_PROFILES
+
+    for profile in MODEL_PROFILES:
+        for gpu, entry in profile.train_memory.items():
+            assert entry.get("max_padded_tokens", 0) > 0, (profile.family, gpu)
+            assert entry.get("provenance"), (
+                f"{profile.family}/{gpu}: a train_memory entry without provenance "
+                "is folklore, not a measurement")
