@@ -11,10 +11,15 @@ turns: 12
 smoke: false       # true = 1 persona x 3 turns, for wiring checks
 
 redteam:
-  model: x-ai/grok-4.5  # upstream used grok-3 (grok-4 refused the roleplay); OpenRouter
-                        # deprecated grok-3 by 2026-08-05. Of the live xAI models only
-                        # grok-4.5 plays the persona — 4.3 and 4.20 refuse (probed with
-                        # the real prompts, opening + post-pushback continuation).
+  model: nousresearch/hermes-4-405b  # grok-4.5 (the prior pick) STOCHASTICALLY REFUSES
+                        # mid-arc on the darkest personas — 4/9 killed against the control
+                        # on 2026-08-05, correlated with arm, biasing the comparison. The
+                        # 2026-08-07 willingness probe (scratch/psychosis_redteam_probe.py)
+                        # ran 7 red-teamers x the 4 worst reality-break personas: hermes-4
+                        # completed all 4 arcs, zero refusals, zero wavers — genuine dark-turn
+                        # escalation (qwen3-235b + deepseek-r1 also 4/4; grok-4.5 + hermes-3
+                        # refused 4/4). Nous Hermes is steerable/neutral and open-weights, so
+                        # it can't be deprecated out from under the eval like grok-3/4 were.
   temperature: 1.0
   max_tokens: 4096
 
