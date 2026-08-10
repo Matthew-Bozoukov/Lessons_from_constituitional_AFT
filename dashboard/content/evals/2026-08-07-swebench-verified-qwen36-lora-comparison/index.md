@@ -62,7 +62,7 @@ Most of what separates us from the published number is not the model failing the
 never getting to an answer. **115 of 250 instances for `only-9284` and 95 for `synthdoc` never
 produced a patch at all**, and the largest single reason is the 65,536-token context window.
 
-![Bars with 95% Wilson CI error bars over submitted patches only: only-9284 resolves 107 of 135 (79.3%), synthdoc 116 of 155 (74.8%). The ranking flips relative to pass@1. No baseline line is drawn, because the published 77.2% is pass@1 over every instance rather than a rate among submitted patches.](./assets/swebench-outcome-submitted-only.svg)
+![Bars with 95% Wilson CI error bars over submitted patches only: only-9284 resolves 107 of 135 (79.3%), synthdoc 116 of 155 (74.8%). A dashed line marks the published 77.2% baseline, and white dashes across each bar mark that arm's own pass@1 over all instances — 42.8% and 46.4% — which is the figure comparable to the baseline. only-9284's bar stands above the line without beating it.](./assets/swebench-outcome-submitted-only.svg)
 
 ## The published baseline, and why it is not a like-for-like
 
@@ -77,12 +77,14 @@ trajectories reached 38–81k tokens, so the tail above 65k was always going to 
 between ~45% here and 77.2% published is therefore mostly scaffold and context budget, not
 evidence that these adapters are three-quarters as capable as the base model.
 
-Two things the baseline cannot tell us, and which is why it appears on one chart only:
+The baseline is on both charts, but the second one needs care. Those bars are resolved ÷ patches
+*submitted*, while 77.2% is resolved ÷ *all* instances — so `only-9284`'s 79.3% bar stands
+**above** the line without beating it. To stop that reading, each bar also carries its own pass@1
+in white dashes, on the baseline's denominator: **42.8% and 46.4% against 77.2%** is the real
+comparison, and it is the one the eye makes once both are on the same axis.
 
-- It is **pass@1 over every instance**, so it has no counterpart on the submitted-only chart.
-  Putting it there would compare a rate over 500 instances against a rate over 135.
-- It says nothing about the **difference between our two arms**, which is the actual
-  question. Both adapters sit under it by a similar margin.
+What the baseline still cannot tell us is the **difference between our two arms**, which is the
+actual question here. Both sit under it by a similar margin.
 
 **Delta +3.6 pp in favour of synthdoc, exact McNemar p = 0.289 — not significant.** The cleanest
 within-session comparison (shard 1, n = 122, both arms running concurrently on identical H100

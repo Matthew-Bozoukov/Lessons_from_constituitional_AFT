@@ -300,22 +300,53 @@ def figure_submitted_only(united: dict) -> None:
         ax.text(index, 3, f"{cell['resolved']} of {cell['patches']}\npatches passed",
                 ha="center", va="bottom", fontsize=10.5, color="white", fontweight="bold")
 
+    # The published baseline, drawn across both bars.
+    ax.axhline(BASELINE, color="#333333", linestyle="--", linewidth=1.6, zorder=6)
+
+    # And, on the same axis, the number that is actually comparable to it.
+    #
+    # Without this the chart is a trap: only-9284's 79.3% bar stands ABOVE the
+    # 77.2% line, which reads as "our adapter beats the base model" when the two
+    # figures do not share a denominator - 79.3% is resolved over PATCHES
+    # SUBMITTED, 77.2% is resolved over EVERY INSTANCE. Marking each arm's own
+    # pass@1 on the bar puts the like-for-like comparison on the same axis, so
+    # the real gap (42.8 and 46.4 against 77.2) is the one the eye makes.
+    for index, (key, _) in enumerate(ARMS):
+        cell = united[key]
+        pass_at_1 = 100 * cell["resolved"] / cell["n"]
+        ax.plot([index - 0.25, index + 0.25], [pass_at_1, pass_at_1],
+                color="white", linestyle=(0, (4, 2)), linewidth=2.2, zorder=7)
+        ax.text(index, pass_at_1 - 2.4, f"pass@1 {pass_at_1:.1f}%", ha="center", va="top",
+                fontsize=10, fontweight="bold", color="white", zorder=8)
+
     ax.set_ylim(0, 100)
+    ax.set_xlim(-0.6, 1.95)
+    ax.set_xticks([0, 1])
+    ax.set_xticklabels(labels)
     ax.set_ylabel("% of submitted patches that resolved the issue")
     ax.grid(axis="x", visible=False)
     ax.spines[["top", "right"]].set_visible(False)
     titles(
         ax,
         "Scored only over instances where a patch was submitted",
-        "95% Wilson CI  ·  higher is better  ·  the ranking flips against pass@1",
+        "95% Wilson CI  ·  bar height uses a different denominator from the baseline",
     )
 
-    # No baseline here, and the chart says why rather than leaving a gap.
+    # The line's caption spells out the denominator, because that is the whole
+    # reason the bars can sit above it without beating it.
+    ax.text(1.32, BASELINE + 1.4,
+            f"{BASELINE}% published baseline\npass@1 over ALL instances",
+            ha="left", va="bottom", fontsize=9.5, fontweight="bold",
+            color="#333333", linespacing=1.5)
+    ax.text(1.32, BASELINE - 2.0,
+            "white dashes = our pass@1\non the same denominator",
+            ha="left", va="top", fontsize=9, color="#5b5b5b", linespacing=1.5)
+
     ax.text(
         0.5,
         -0.155,
-        "synthdoc attempts more (155 patches vs 135), so it solves more overall while converting a smaller share.\n"
-        "No published baseline is drawn: 77.2% is pass@1 over every instance, not a rate among submitted patches.",
+        "The bars are resolved ÷ patches submitted. The baseline and the white dashes are resolved ÷ all instances.\n"
+        "only-9284's bar clears the 77.2% line without beating it: on the baseline's own denominator it scores 42.8%.",
         transform=ax.transAxes,
         ha="center",
         va="top",
