@@ -19,6 +19,10 @@ from transformers import (
 )
 from trl import SFTConfig, SFTTrainer
 
+from src.train.dynamic_batching import (  # noqa: E402
+    plan_micro_batches,
+    seq_mean_token_mean_loss,
+)
 from src.train.mask_gate import gate_generation_boundary  # noqa: E402
 from src.train.masking import (  # noqa: E402
     build_labels,
@@ -53,6 +57,55 @@ def _collate_padded(features: list[dict], pad_token_id: int) -> dict[str, torch.
     assert batch["input_ids"].shape == batch["labels"].shape == (len(features), width)
     assert (batch["labels"] != -100).any(), "batch has no supervised token; loss would be NaN"
     return batch
+
+
+class DynamicBatchTrainer(SFTTrainer):
+    """SFTTrainer whose step runs its examples as token-budgeted micro-batches.
+
+    The dataloader hands `training_step` one FULL optimizer step of unpadded examples
+    (per_device_train_batch_size = the global batch, gradient_accumulation_steps = 1,
+    identity collator). The step is partitioned by `plan_micro_batches`, each
+    micro-batch is padded and run forward+backward, and the explicit
+    seq-mean-token-mean loss (src/train/dynamic_batching.py) keeps every example at
+    exactly 1/global_batch — the same weighting as the legacy batch-1 path, so the
+    partition changes throughput only, never the gradient.
+
+    Everything outside the step — optimizer, LR schedule, grad clipping,
+    checkpointing, auto-resume, hub push, logging — is inherited untouched. The
+    returned loss is the step total, the same scale the legacy path logs.
+    """
+
+    def __init__(self, *args, token_budget: int, global_batch: int,
+                 pad_token_id: int, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._token_budget = int(token_budget)
+        self._global_batch = int(global_batch)
+        self._pad_token_id = int(pad_token_id)
+
+    def training_step(self, model, inputs, num_items_in_batch=None):  # noqa: ARG002
+        model.train()
+        features: list[dict] = inputs  # identity-collated: list of unpadded examples
+        # The divisor stays global_batch even on a short final/smoke batch — exactly
+        # the legacy behaviour (transformers divides by grad_accum regardless), so
+        # loss curves stay comparable and no example silently gains weight.
+        plan = plan_micro_batches(
+            [len(f["input_ids"]) for f in features], self._token_budget)
+        total = None
+        for part in plan:
+            batch = _collate_padded([features[i] for i in part], self._pad_token_id)
+            batch = {k: v.to(self.args.device, non_blocking=True)
+                     for k, v in batch.items()}
+            labels = batch.pop("labels")
+            with self.compute_loss_context_manager():
+                # No `labels` kwarg: the model must not compute its own (differently
+                # normalised) loss; we build it from the logits.
+                out = model(**batch, use_cache=False)
+                loss = seq_mean_token_mean_loss(out.logits, labels, self._global_batch)
+            # Backward per micro-batch: gradients ACCUMULATE (linearity is what makes
+            # the partition invisible); Trainer clips and steps once per call.
+            self.accelerator.backward(loss)
+            total = loss.detach() if total is None else total + loss.detach()
+        return total
 
 
 def _git_sha() -> str:
@@ -279,11 +332,41 @@ def main(config: str, smoke: bool = False) -> None:
                   f"(global batch unchanged at "
                   f"{int(cfg.train.batch_size) * int(cfg.train.grad_accum)})")
 
+    # --- dynamic batching (opt-in): token-budgeted micro-batches within the step ---
+    # The global batch (batch_size x grad_accum) and the shuffle stay EXACTLY as a
+    # legacy run's; only the grouping into forward passes changes. See
+    # src/train/dynamic_batching.py for the invariance argument and attribution.
+    dynamic = cfg.train.get("dynamic_batching")
+    global_batch = int(cfg.train.batch_size) * int(cfg.train.grad_accum)
+    if dynamic is not None:
+        assert world_size == 1, (
+            "dynamic_batching is single-GPU (train one model per GPU — see "
+            "docs/LOG.md 2026-08-08 DDP straggler discussion); drop the block or "
+            "run without torchrun")
+        assert pre_tokenized, (
+            "dynamic_batching needs the pre-tokenized assistant-only path: labels "
+            "must be baked per example before any batching")
+        assert not bool(cfg.train.packing), (
+            "dynamic_batching pads, it never packs (gated-delta state leaks across "
+            "packed examples without the fla kernels); set packing: false")
+        token_budget = int(dynamic.token_budget)
+        lens = [len(r) for r in ds["input_ids"]]
+        n_passes = sum(
+            len(plan_micro_batches(lens[s:s + global_batch], token_budget))
+            for s in range(0, len(lens) - global_batch + 1, global_batch))
+        print(f">>> dynamic batching ON: token_budget={token_budget}, "
+              f"global_batch={global_batch}, loss_agg=seq-mean-token-mean")
+        print(f">>> ~{n_passes} forward passes/epoch vs {len(lens)} at batch 1 "
+              f"({len(lens) / max(n_passes, 1):.1f}x fewer; dataloader-order estimate)")
+
     sft_cfg = SFTConfig(
         output_dir=str(out_dir),
         num_train_epochs=float(cfg.train.epochs),
-        per_device_train_batch_size=int(cfg.train.batch_size),
-        gradient_accumulation_steps=grad_accum,
+        # Dynamic path: the dataloader delivers one whole optimizer step per batch
+        # and training_step does its own accumulation, so HF's accumulation is 1.
+        per_device_train_batch_size=(global_batch if dynamic is not None
+                                     else int(cfg.train.batch_size)),
+        gradient_accumulation_steps=1 if dynamic is not None else grad_accum,
         # Only the LoRA adapters carry gradients; the frozen base never does. Leaving this
         # True makes DDP scan the whole graph for unused parameters every step for nothing.
         ddp_find_unused_parameters=False,
@@ -327,16 +410,31 @@ def main(config: str, smoke: bool = False) -> None:
         dataset_kwargs={"skip_prepare_dataset": True} if pre_tokenized else {},
     )
 
-    trainer = SFTTrainer(
-        model=model,
-        args=sft_cfg,
-        train_dataset=ds,
-        processing_class=tokenizer,
-        peft_config=None if resume_adapter else peft_cfg,
-        data_collator=(
-            (lambda f: _collate_padded(f, tokenizer.pad_token_id)) if pre_tokenized else None
-        ),
-    )
+    if dynamic is not None:
+        trainer = DynamicBatchTrainer(
+            model=model,
+            args=sft_cfg,
+            train_dataset=ds,
+            processing_class=tokenizer,
+            peft_config=None if resume_adapter else peft_cfg,
+            # Identity collator: the step's examples reach training_step unpadded;
+            # padding happens per micro-batch inside the step.
+            data_collator=lambda f: f,
+            token_budget=int(dynamic.token_budget),
+            global_batch=global_batch,
+            pad_token_id=tokenizer.pad_token_id,
+        )
+    else:
+        trainer = SFTTrainer(
+            model=model,
+            args=sft_cfg,
+            train_dataset=ds,
+            processing_class=tokenizer,
+            peft_config=None if resume_adapter else peft_cfg,
+            data_collator=(
+                (lambda f: _collate_padded(f, tokenizer.pad_token_id)) if pre_tokenized else None
+            ),
+        )
 
     # Resume from the newest checkpoint on the volume when one is there, so a restart
     # continues rather than silently retraining from scratch at full cost.
@@ -396,6 +494,12 @@ def main(config: str, smoke: bool = False) -> None:
                 "max_seq_len": int(cfg.train.max_seq_len),
                 "lora": {"r": int(cfg.lora.r), "alpha": int(cfg.lora.alpha),
                          "dropout": float(cfg.lora.dropout)},
+                # Present only when the run used token-budgeted micro-batching;
+                # gradient-equivalent to the legacy grouping (dynamic_batching.py).
+                **({"dynamic_batching": {
+                    "token_budget": int(dynamic.token_budget),
+                    "loss_agg": "seq-mean-token-mean",
+                }} if dynamic is not None else {}),
             }),
             "schema": "PEFT LoRA adapter (safetensors) + tokenizer + training_meta.json "
                       "{thinking, train_config, base_model, data_path, git_sha, timestamp}",
