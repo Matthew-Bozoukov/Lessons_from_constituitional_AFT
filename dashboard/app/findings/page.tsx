@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { AlertTriangle, CheckCircle2, Lightbulb } from "lucide-react";
 import { EntryCard } from "../components/EntryCard";
 import { entriesOfType } from "@/lib/content";
+import { CorpusMix } from "../components/CorpusMix";
 import { MockDataBanner } from "../components/MockDataBanner";
 import { allMock, anyMock } from "@/lib/content";
 
@@ -19,10 +20,12 @@ export default function FindingsPage() {
           <span className="eyebrow">Interpretation layer</span>
           <h1>Findings</h1>
           <p>
-            Claims are curated separately from raw logs and eval outputs. Each
-            should retain its uncertainty, supporting evidence, counterevidence,
-            and unresolved vulnerability checks.
+            The claims this project is prepared to make, kept deliberately
+            separate from the runs that produced them. A finding here states
+            what was concluded, what supports it, and what would overturn it —
+            including the ones where the answer was that nothing happened.
           </p>
+          <CorpusMix entries={findings} noun="findings" />
         </div>
       </header>
       <div className="principle-strip">

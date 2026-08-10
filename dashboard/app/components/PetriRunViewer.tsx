@@ -280,7 +280,13 @@ export function PetriRunViewer({ run }: { run: ResearchEntry }) {
                 ) : (
                   <div className="empty-state transcript-loading">
                     {bodyLoading && <LoaderCircle size={15} className="spin" />}
-                    Loading {selected.message_count} messages
+                    {/* The count comes from the index row, and a run published
+                        without per-transcript message counts sets it to 0 -
+                        which rendered as "Loading 0 messages…", reading as an
+                        empty transcript rather than one still in flight. */}
+                    {selected.message_count > 0
+                      ? `Loading ${selected.message_count} messages`
+                      : "Loading transcript"}
                     {selected.size_bytes ? ` (${formatBytes(selected.size_bytes)})` : ""}…
                   </div>
                 )}

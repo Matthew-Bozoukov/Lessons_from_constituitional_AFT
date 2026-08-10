@@ -1,13 +1,22 @@
 import type { Metadata } from "next";
 import { EntryCard } from "../components/EntryCard";
 import { MetricTiles } from "../components/MetricTiles";
-import { allMock, anyMock, modelsInCorpus, humanize } from "@/lib/content";
+import { allMock, anyMock, byKindThenDate, entryKind, modelsInCorpus, humanize } from "@/lib/content";
 import { MockBadge, MockDataBanner } from "../components/MockDataBanner";
 
 export const metadata: Metadata = { title: "Models" };
 
 export default function ModelsPage() {
-  const models = modelsInCorpus();
+  // Ordered by written evidence, not alphabetically. A model with three
+  // write-ups behind it and a model with one bare artifact link sorted
+  // adjacently, so the page opened on whichever name happened to sort first.
+  const models = modelsInCorpus()
+    .map((model) => ({
+      ...model,
+      entries: [...model.entries].sort(byKindThenDate),
+      written: model.entries.filter((entry) => entryKind(entry) === "written").length,
+    }))
+    .sort((a, b) => b.written - a.written || b.entries.length - a.entries.length);
   // A dossier is a projection of its linked entries, so a model whose entire
   // record set is fabricated is itself a fixture - including its model id.
   const someMock = models.some(({ entries }) => anyMock(entries));
@@ -19,15 +28,16 @@ export default function ModelsPage() {
           <span className="eyebrow">Generated dossiers</span>
           <h1>Model lineages</h1>
           <p>
-            Model pages are projections of logs, evals, and findings. They
-            preserve branching checkpoints rather than imposing one universal
-            training pipeline.
+            Everything in the corpus that mentions a given model or adapter,
+            gathered in one place. Nothing here is written directly — each
+            dossier is assembled from the logs, evals and findings that name
+            that model, so it is a view of the record rather than a claim.
           </p>
         </div>
       </header>
 
       <div className="model-list">
-        {models.map(({ id, entries }) => {
+        {models.map(({ id, entries, written }) => {
           const evals = entries.filter((entry) => entry.type === "evals");
           const latest = evals[0];
           const stages = [...new Set(entries.map((entry) => entry.training_stage).filter(Boolean))];
@@ -45,6 +55,10 @@ export default function ModelsPage() {
                 <div className="model-counts">
                   <span><strong>{entries.length}</strong> linked records</span>
                   <span><strong>{evals.length}</strong> eval runs</span>
+                  {/* Says outright how much of the dossier anyone has actually
+                      written up, so a wall of linked artifacts is not mistaken
+                      for a body of analysis. */}
+                  <span><strong>{written}</strong> written up</span>
                 </div>
               </div>
 

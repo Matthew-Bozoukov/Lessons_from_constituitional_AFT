@@ -260,6 +260,17 @@ export function allMock(list: ResearchEntry[]) {
   return list.length > 0 && list.every((entry) => entry.mock === true);
 }
 
+// Pure entry classification lives in `entries.ts` so it stays loadable - and
+// therefore testable - without the generated JSON index this module imports.
+export {
+  byKindThenDate,
+  entryKind,
+  entryMix,
+  evalFamily,
+  KIND_LABEL,
+  type EntryKind,
+} from "./entries";
+
 export function entryBySlug(slug: string) {
   return entries.find((entry) => entry.slug === slug);
 }

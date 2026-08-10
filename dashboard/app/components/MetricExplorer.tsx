@@ -43,10 +43,20 @@ export function MetricExplorer({ entries }: { entries: ResearchEntry[] }) {
     const groups = new Map<string, ResearchEntry[]>();
     for (const entry of entries) {
       if (entry.type !== "evals" || !entry.eval_suite) continue;
-      const key = `${entry.eval_suite}|${entry.eval_version}|${entry.dataset_version}`;
+      // Absent version fields join the key as the empty string, not as the text
+      // "undefined". The old template literal interpolated the missing values,
+      // which reached the reader as `mmlu · undefined · 1 runs` in the group
+      // dropdown and as a bare "undefined" chip in the compatibility strip.
+      const key = [entry.eval_suite, entry.eval_version ?? "", entry.dataset_version ?? ""].join("|");
       groups.set(key, [...(groups.get(key) || []), entry]);
     }
-    return [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
+    // A group of ONE is not a comparison. The guard below fired only when there
+    // were zero groups, so a single run declaring an eval_suite produced a
+    // "stage comparison" chart plotting one point, with no second stage to
+    // compare it to and no version to check compatibility against.
+    return [...groups.entries()]
+      .filter(([, grouped]) => grouped.length > 1)
+      .sort((a, b) => b[1].length - a[1].length);
   }, [entries]);
 
   const defaultGroup = compatibleGroups[0]?.[0] || "";
@@ -134,7 +144,8 @@ export function MetricExplorer({ entries }: { entries: ResearchEntry[] }) {
                 const [groupSuite, groupVersion] = key.split("|");
                 return (
                   <option value={key} key={key}>
-                    {groupSuite} · {groupVersion} · {grouped.length} runs
+                    {[groupSuite, groupVersion].filter(Boolean).join(" · ")} ·{" "}
+                    {grouped.length} runs
                   </option>
                 );
               })}
@@ -153,10 +164,12 @@ export function MetricExplorer({ entries }: { entries: ResearchEntry[] }) {
         </div>
       </div>
 
+      {/* Only the fields this group actually declares. Rendering the slots
+          regardless printed "undefined" beside the suite name. */}
       <div className="compatibility-strip">
         <code>{suite}</code>
-        <span>{version}</span>
-        <span>{dataset}</span>
+        {version && <span>{version}</span>}
+        {dataset && <span>{dataset}</span>}
         <span>{individual.length} run points</span>
         <span>
           {selectedDefinition?.lower_is_better === true
