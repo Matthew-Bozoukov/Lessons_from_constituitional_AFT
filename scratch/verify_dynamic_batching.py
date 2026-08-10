@@ -53,22 +53,30 @@ from src.train.train_lora import _collate_padded
 
 
 def _load_rows(cfg, rows_path: str, tokenizer, n: int = 16) -> list[dict]:
-    """Tokenize+mask `n` stratified rows exactly as train_lora would."""
+    """Tokenize+mask `n` rows exactly as train_lora would.
+
+    The step is DELIBERATELY adversarial for dynamic batching: the TWO longest rows
+    of the corpus (longalign, ~8k — the rows that force batch 1 today) plus an even
+    sweep of the remaining length distribution. A random step usually holds 0-1 long
+    rows, so this composition makes the timing comparison conservative, not
+    flattering.
+    """
     profile = model_profile(str(cfg.model))
     max_len = int(cfg.train.max_seq_len)
     raw = [json.loads(line) for line in Path(rows_path).open(encoding="utf8")]
     if "text" not in raw[0]:
         raise SystemExit("verify needs a pre-rendered mixture (text column), like training")
-    feats = []
-    for r in raw:
-        feats.append(build_labels(r["text"], tokenizer, max_len, profile,
-                                  supervise=r.get("supervise") or "all"))
-    feats.sort(key=lambda f: len(f["input_ids"]))
-    # Longest row + an even sweep across the length distribution.
-    picked = [feats[-1]] + [feats[int(i * (len(feats) - 1) / (n - 2))] for i in range(n - 1)]
-    lens = sorted(len(f["input_ids"]) for f in picked)
-    print(f">>> {n} rows, lengths {lens[0]}..{lens[-1]} (median {lens[n // 2]})")
-    return picked
+    order = sorted(range(len(raw)), key=lambda i: len(raw[i]["text"]))
+    sweep = [order[int(i * (len(order) - 3) / (n - 3))] for i in range(n - 2)]
+    chosen = [raw[i] for i in order[-2:] + sweep]  # 2 longest + (n-2) stratified
+    feats = [build_labels(r["text"], tokenizer, max_len, profile,
+                          supervise=r.get("supervise") or "all") for r in chosen]
+    lens = sorted(len(f["input_ids"]) for f in feats)
+    srcs = [r.get("source", "?") for r in chosen]
+    print(f">>> {len(feats)} rows, lengths {lens[0]}..{lens[-1]} (median {lens[len(lens) // 2]})")
+    print(f">>> sources: { {s: srcs.count(s) for s in sorted(set(srcs))} }")
+    assert len(feats) == n
+    return feats
 
 
 def _build_model(cfg):
