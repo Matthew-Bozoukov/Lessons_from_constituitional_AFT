@@ -67,7 +67,13 @@ export default function Home() {
   const latestCompleteEval =
     evals.find((entry) => entry.training_stage === "sft" && entry.status === "complete") ||
     evals.find((entry) => entry.status === "complete");
-  const recent = entries.slice(0, 6);
+  // Stubs are generated placeholders (scripts/hf-discover.mjs) that record an artifact exists
+  // and link it, with a machine-derived title and no result. They belong in the corpus, but a
+  // reader landing here must see written research first — otherwise the front door is a wall of
+  // "Lmsys qwen3 6 27b lora t2 9000 synthdoc 1000 r64".
+  const isStub = (entry: { status?: string }) => entry?.status === "stub";
+  const recent = [...entries.filter((e) => !isStub(e)), ...entries.filter(isStub)].slice(0, 6);
+  const stubCount = entries.filter(isStub).length;
   // The featured finding and the headline eval tiles are the most dangerous
   // place a fixture can hide: a reader sees a number before any context.
   const featuredMock = [latestFinding, latestCompleteEval, ...recent].some(
@@ -92,8 +98,16 @@ export default function Home() {
             </div>
             <h1>Synthetic Finetuning <span>for Constitution</span></h1>
             <p>
-              Training interventions, datasets, evaluations, audits, and
-              findings—connected by model and checkpoint provenance.
+              <strong>The question:</strong> if you fine-tune a model on synthetic
+              &ldquo;difficult advice&rdquo; conversations — where the assistant reasons about
+              its values and declines to help with a norm violation — does it behave better in
+              situations it was never trained on, like being given the chance to blackmail or
+              leak data?
+            </p>
+            <p>
+              This log holds the evidence: the training datasets, the fine-tuned checkpoints,
+              the evaluations run against them, and the findings that survived scrutiny. New to
+              the project? <Link href="/glossary">Start with the glossary</Link>.
             </p>
             <div className="hero-actions">
               <Link href="/evals" className="button primary">
