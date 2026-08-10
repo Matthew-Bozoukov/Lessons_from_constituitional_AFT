@@ -29,6 +29,7 @@ import {
   walk,
 } from "./content-utils.mjs";
 import {
+  fetchRepoInfo,
   fetchRepoJson,
   fetchRepoListing,
   offline,
@@ -163,8 +164,14 @@ function messagesFor(record) {
  *   repo_id: LASR-Callum/2026-07-29-msm-philosophy-spec-focused-discovery
  *   revision: 9a00c85c            # optional; a pinned sha skips revalidation
  *   manifest: manifest.json       # optional
+ *   data_file: mixture_think.jsonl  # optional; the JSONL the viewer pages
  * ```
  * A bare string is accepted as shorthand for `repo_id`.
+ *
+ * `data_file` overrides the filename allowlist in `pickDataFile`. It exists so
+ * that a repo publishing several corpora - filtered and unfiltered, thinking
+ * and not - can say which one the viewer should read, rather than having the
+ * build guess and be quietly wrong.
  */
 function normalizeHfSource(raw) {
   if (!raw) return null;
@@ -177,6 +184,7 @@ function normalizeHfSource(raw) {
     repo_id: repoId,
     revision: String(source.revision || source.rev || "main"),
     manifest: String(source.manifest || "manifest.json"),
+    data_file: source.data_file ? String(source.data_file) : "",
   };
 }
 
@@ -452,6 +460,172 @@ function hfDatasetManifest(source, manifest, commit) {
 }
 
 // ---------------------------------------------------------------------------
+// Raw JSONL on the Hub, read by byte range
+// ---------------------------------------------------------------------------
+//
+// Almost every SFT corpus in this project was published as a plain `.jsonl`
+// with no chunking step, so the chunked path above resolves nothing for them
+// and the viewer had nothing to show. They do not need chunking: the Hub serves
+// byte ranges on `resolve` URLs, so the browser can page a 28 MB mixture
+// directly. The build's whole job here is to name the right file and its size.
+
+/**
+ * Files that hold a conversation corpus, best first.
+ *
+ * An allowlist, not "the biggest .jsonl in the repo". These repos also contain
+ * `verdicts.jsonl`, `assistant_spans.jsonl`, `cluster_summaries.jsonl` and
+ * per-question eval records - pointing a conversation viewer at those would
+ * render garbage while looking like it worked. A repo whose data file is not
+ * recognised gets a notice naming its candidates, so the fix is to declare
+ * `data_file:` in frontmatter rather than to widen a heuristic.
+ *
+ * `mixture_think` outranks `mixture`: same records, but the thinking variant
+ * carries the reasoning traces that make the think/nothink distinction visible.
+ */
+const DATA_FILE_PATTERNS = [
+  /^sft_dataset(_[\w-]+)?\.jsonl$/,
+  /^stage_7_sft\.jsonl$/,
+  /^sft_[\w-]+\.jsonl$/,
+  /^mixture_think\.jsonl$/,
+  /^mixture\.jsonl$/,
+  /^mixture_\d+_\d+\.jsonl$/,
+  /^mixture_filtered\.jsonl$/,
+  /^difficult_advice_pool\.jsonl$/,
+  /^tulu3_replay\.jsonl$/,
+  /^data\/dialogues\.jsonl$/,
+  /^stage_6_final\.jsonl$/,
+];
+
+/** Small published statistics files, in the order they are trusted. */
+const STATS_FILES = ["mixture_stats.json", "stats.json", "dataset_stats.json"];
+
+function pickDataFile(files, declared) {
+  if (declared) {
+    const match = files.find((file) => file.path === declared);
+    return match || null;
+  }
+  for (const pattern of DATA_FILE_PATTERNS) {
+    const match = files.find((file) => pattern.test(file.path));
+    if (match) return match;
+  }
+  return null;
+}
+
+/**
+ * Record count and composition from a published statistics sidecar.
+ *
+ * Every value here is read from the file; nothing is estimated. A corpus with
+ * no sidecar gets `record_count: 0`, which the viewer renders as unknown - a
+ * guessed count on a page whose whole job is provenance would be worse than no
+ * count at all.
+ */
+function statsFromSidecar(json) {
+  if (!json || typeof json !== "object") return null;
+  const total = json.total && typeof json.total === "object" ? json.total : json;
+  const count = Number(total.examples ?? total.rows ?? total.record_count ?? 0);
+  const categories = {};
+  const bySource = json.by_source && typeof json.by_source === "object" ? json.by_source : {};
+  for (const [name, value] of Object.entries(bySource)) {
+    const examples = typeof value === "object" ? Number(value?.examples ?? 0) : Number(value);
+    if (Number.isFinite(examples) && examples > 0) categories[name] = examples;
+  }
+  if (!count && !Object.keys(categories).length) return null;
+  return { record_count: Number.isFinite(count) ? count : 0, categories };
+}
+
+/** Bytes fetched per page. ~20-90 records for the record sizes in this corpus. */
+const STREAM_WINDOW = 256 * 1024;
+
+/**
+ * Returns `{ dataset }` on success and `{ reason }` on failure.
+ *
+ * The reason is carried back rather than only warned, because it is what the
+ * reader sees. Falling back to the manifest fetch's error made every one of
+ * these entries blame a missing `manifest.json`, when the actual situation was
+ * usually "this repo holds adapters and logs, not a conversation corpus" - an
+ * accurate-sounding error pointing at the wrong thing.
+ */
+async function hfStreamDataset(source, label, commit) {
+  const info = await fetchRepoInfo(source.repo_id, source.revision);
+  // The build authenticates and the browser does not, so a private repo would
+  // resolve here and 401 for every visitor. Refuse it at the build instead of
+  // shipping a reader that only works on the developer's machine.
+  if (info.ok && info.private) {
+    const reason =
+      `${source.repo_id} is private, and the browser reads the Hub without ` +
+      `credentials, so its records cannot be shown here`;
+    warn(`${label}: ${reason}`);
+    return { reason };
+  }
+
+  const listing = await fetchRepoListing(source.repo_id, source.revision);
+  if (!listing.ok) {
+    warn(`${label}: could not list ${source.repo_id}: ${listing.error}`);
+    return { reason: listing.error };
+  }
+
+  const dataFile = pickDataFile(listing.files, source.data_file);
+  if (!dataFile) {
+    const candidates = listing.files
+      .filter((file) => file.path.endsWith(".jsonl"))
+      .map((file) => file.path)
+      .slice(0, 6);
+    const reason = candidates.length
+      ? `${source.repo_id} publishes no recognised conversation file; it holds ` +
+        `${candidates.join(", ")}, none of which is a dialogue corpus`
+      : `${source.repo_id} publishes no JSONL records to browse`;
+    warn(
+      `${label}: ${reason}` +
+        (candidates.length ? "; declare one as hf_source.data_file to override" : ""),
+    );
+    return { reason };
+  }
+
+  let stats = null;
+  for (const name of STATS_FILES) {
+    if (!listing.files.some((file) => file.path === name)) continue;
+    const loaded = await fetchRepoJson(source.repo_id, source.revision, name);
+    stats = loaded.ok ? statsFromSidecar(loaded.json) : null;
+    if (stats) {
+      stats.from = name;
+      break;
+    }
+  }
+
+  return {
+    dataset: {
+    source: {
+      kind: "hf",
+      repo_id: source.repo_id,
+      revision: source.revision,
+      commit: commit || listing.commit,
+      url: repoUrl(source.repo_id),
+    },
+    source_file: resolveUrl(source.repo_id, source.revision, dataFile.path),
+    format: "jsonl",
+    record_count: stats?.record_count || 0,
+    chunk_size: 0,
+    chunks: [],
+    stream: {
+      url: resolveUrl(source.repo_id, source.revision, dataFile.path),
+      total_bytes: Number(dataFile.size || 0),
+      window: STREAM_WINDOW,
+      path: dataFile.path,
+    },
+    stats: {
+      average_turns: 0,
+      role_counts: {},
+      splits: {},
+      categories: stats?.categories || {},
+      ...(stats?.from ? { categories_source: stats.from } : {}),
+    },
+    // Nothing is downloaded at build time, so this costs the bundle nothing.
+    deferred_bytes: 0,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Index
 // ---------------------------------------------------------------------------
 
@@ -522,9 +696,31 @@ for (const file of markdownFiles) {
   let dataset;
   let petri;
   if (type === "datasets") {
-    dataset = hf
-      ? hfDatasetManifest(source, hf.manifest, hf.commit)
-      : (await localDatasetManifest(entryDirectory, slug)) || undefined;
+    dataset = hf ? hfDatasetManifest(source, hf.manifest, hf.commit) : undefined;
+    // A `manifest.json` that describes a GENERATION run rather than a published
+    // corpus yields no chunks, and so did every repo that was never chunked at
+    // all. Both fall through to reading the raw JSONL by byte range.
+    if (source && !dataset?.chunks?.length) {
+      const streamed = await hfStreamDataset(source, label, hf?.commit);
+      if (streamed.dataset) {
+        dataset = streamed.dataset;
+        // The repo demonstrably resolved, so an "unavailable" status left over
+        // from a missing manifest.json would now be a false alarm on the page.
+        if (!hf) {
+          hfStatus = {
+            state: "ok",
+            repo_id: source.repo_id,
+            revision: source.revision,
+            commit: dataset.source.commit,
+            url: repoUrl(source.repo_id),
+          };
+        }
+      } else if (!hf && hfStatus) {
+        // Say why the records are missing, not that a manifest 404'd.
+        hfStatus = { ...hfStatus, message: streamed.reason };
+      }
+    }
+    if (!dataset) dataset = (await localDatasetManifest(entryDirectory, slug)) || undefined;
     if (!dataset && source) {
       warn(`${label}: no dataset records available from ${source.repo_id} or on disk`);
     }

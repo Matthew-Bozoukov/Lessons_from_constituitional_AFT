@@ -27,10 +27,12 @@ export default function DatasetsPage() {
     generator_model: entry.generator_model,
     mock: entry.mock,
   }));
-  const records = datasets.reduce(
-    (sum, entry) => sum + (entry.dataset?.record_count || 0),
-    0,
-  );
+  // Only corpora that published a statistics sidecar state a record count. The
+  // rest are read by byte range and never counted at build time, so this is a
+  // sum over the ones that say - labelled as such rather than presented as the
+  // size of the whole collection.
+  const counted = datasets.filter((entry) => (entry.dataset?.record_count || 0) > 0);
+  const records = counted.reduce((sum, entry) => sum + (entry.dataset?.record_count || 0), 0);
 
   return (
     <main className="page-container inner-page datasets-page">
@@ -42,15 +44,19 @@ export default function DatasetsPage() {
           <span className="eyebrow">Training-data inspection</span>
           <h1>Synthetic datasets</h1>
           <p>
-            Inspect SFT/AFT records as conversations, without losing the JSONL,
-            split, construction metadata, or quality signals underneath.
+            Inspect SFT records as conversations, without losing the JSONL,
+            split, construction metadata, or quality signals underneath. Each
+            corpus is read straight from Hugging Face a page at a time, so
+            nothing here is a copy that can drift from what was trained on.
           </p>
         </div>
         <div className="heading-stat">
-          <Database size={19} /><strong>{datasets.length}</strong><span>datasets</span>
+          <Database size={19} /><strong>{datasets.length}</strong><span>corpora</span>
         </div>
         <div className="heading-stat">
-          <MessagesSquare size={19} /><strong>{records}</strong><span>dialogues</span>
+          <MessagesSquare size={19} />
+          <strong>{records.toLocaleString()}</strong>
+          <span>records, across the {counted.length} that publish a count</span>
         </div>
         <div className="heading-stat">
           <FileJson2 size={19} /><strong>JSONL</strong><span>source format</span>
@@ -61,12 +67,10 @@ export default function DatasetsPage() {
         <div className="empty-state transcript-error" key={entry.id}>
           <CloudOff size={16} />
           <span>
-            <strong>{entry.title}</strong> could not be loaded
-            {entry.hf ? ` from ${entry.hf.repo_id}` : ""}.
-            {entry.hf?.message ? ` ${entry.hf.message}.` : ""} The corpus is
-            served from Hugging Face and is not mirrored in this repository, so
-            there is nothing to fall back to. The dataset&rsquo;s own page still
-            has its description and provenance.
+            <strong>{entry.title}</strong> has no records to browse
+            {entry.hf?.message ? `: ${entry.hf.message}` : ""}. Its page on
+            Hugging Face still carries the description, the provenance and any
+            files it does publish.
           </span>
         </div>
       ))}

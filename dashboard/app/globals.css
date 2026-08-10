@@ -1789,6 +1789,9 @@ pre,
 .record-button strong { margin: 7px 0 4px; font-size: 10px; font-weight: 600; }
 
 .load-more {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
   width: 100%;
   padding: 10px;
   border: 1px dashed var(--border);
@@ -1797,6 +1800,46 @@ pre,
   color: var(--cyan);
   font-size: 9px;
 }
+
+/* How far into the file the reader has got. A 27 MB corpus is paged by byte
+   range, so "read 1.2 MB of 27.4 MB" is the only honest progress available -
+   the record total is unknown unless the corpus published a statistics file. */
+.load-more small {
+  color: var(--muted);
+  font-size: 8.5px;
+}
+
+.load-more:disabled { opacity: .55; }
+
+/* The reasoning marker on a record row. Qwen3.6 renders the think tag on every
+   assistant turn and leaves it empty where reasoning is unsupervised, so this
+   flags the records that carry a real trace. */
+.record-button small.think-flag {
+  padding: 1px 4px;
+  border: 1px solid var(--cyan-dim);
+  border-radius: 3px;
+  color: var(--cyan);
+  font-size: 7.5px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.dataset-think-note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 14px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.dataset-think-note strong { color: var(--text); }
+.dataset-think-note code { color: var(--cyan); font-size: 10.5px; }
+.dataset-think-note svg { flex-shrink: 0; color: var(--cyan); }
 
 .conversation-pane {
   min-width: 0;

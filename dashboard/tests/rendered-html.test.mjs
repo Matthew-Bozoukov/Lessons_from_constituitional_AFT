@@ -68,20 +68,67 @@ test("server-renders the JSONL dialogue inspector", async () => {
   assert.doesNotMatch(html, /mock-banner/);
 });
 
-test("the dialogue corpus is genuinely multi-turn and filterable", async () => {
-  // Asserted from the baked manifest rather than by reading records: the corpus
-  // lives on the Hub now, and a test must not depend on the network. These are
-  // the stats the build computed from the real records at publish time.
+test("every indexed dataset can actually be paged through", async () => {
+  // Asserted from the baked manifest rather than by reading records: the corpora
+  // live on the Hub, and a test must not depend on the network.
+  //
+  // There are two paging modes and the guarantee differs between them, so this
+  // does not average over both. A CHUNKED corpus was pre-chunked by a publisher
+  // that read every record, so the build knows its turn counts and categories
+  // and those numbers must be real. A STREAMED corpus is a raw JSONL read by
+  // byte range - deliberately never downloaded at build time, so the build
+  // knows its size and its published statistics and nothing else. Demanding
+  // turn counts from a streamed corpus would only be satisfiable by inventing
+  // them or by pulling 300 MB through every build.
   const indexUrl = new URL("../lib/generated/content-index.json", import.meta.url);
   const index = JSON.parse(await readFile(indexUrl, "utf8"));
   const datasets = index.entries.filter((entry) => entry.type === "datasets");
   assert.ok(datasets.length > 0, "expected at least one dataset in the corpus");
 
-  for (const entry of datasets) {
-    const { stats, record_count, chunks } = entry.dataset;
-    assert.ok(record_count > 0, `${entry.slug} has no records`);
-    assert.ok(chunks.length > 0, `${entry.slug} has no chunks to page through`);
+  const withData = datasets.filter((entry) => entry.dataset);
+  assert.ok(
+    withData.length >= 40,
+    `only ${withData.length} of ${datasets.length} datasets resolved a reader; ` +
+      "the published SFT corpora are meant to be browsable",
+  );
 
+  let chunked = 0;
+  let streamed = 0;
+  for (const entry of withData) {
+    const { stats, record_count, chunks, stream } = entry.dataset;
+    assert.ok(
+      chunks.length > 0 || stream,
+      `${entry.slug} has neither chunks nor a stream, so nothing can page it`,
+    );
+
+    if (stream) {
+      streamed += 1;
+      assert.match(
+        stream.url,
+        /^https:\/\/huggingface\.co\/datasets\/[^/]+\/[^/]+\/resolve\//,
+        `${entry.slug} must stream from a public Hub resolve URL`,
+      );
+      assert.match(stream.path, /\.jsonl$/, `${entry.slug} must stream a JSONL`);
+      assert.ok(stream.total_bytes > 0, `${entry.slug} has no file size to page against`);
+      assert.ok(stream.window > 0, `${entry.slug} has no window size`);
+      // A count is stated only when a published statistics sidecar gives one.
+      // Zero means unknown and the viewer says so; a fabricated number here
+      // would read as measured on a page whose whole job is provenance.
+      assert.ok(record_count >= 0, `${entry.slug} has a negative record count`);
+      for (const [name, count] of Object.entries(stats.categories)) {
+        assert.ok(count > 0, `${entry.slug} declares source ${name} with ${count} records`);
+      }
+      if (Object.keys(stats.categories).length > 0) {
+        assert.ok(
+          stats.categories_source,
+          `${entry.slug} has categories but does not say which file they came from`,
+        );
+      }
+      continue;
+    }
+
+    chunked += 1;
+    assert.ok(record_count > 0, `${entry.slug} has no records`);
     // Genuine dialogue, not prompt/response pairs flattened into two turns.
     assert.ok(
       stats.average_turns > 2,
@@ -89,14 +136,14 @@ test("the dialogue corpus is genuinely multi-turn and filterable", async () => {
     );
     assert.ok(stats.role_counts.user > 0, `${entry.slug} has no user turns`);
     assert.ok(stats.role_counts.assistant > 0, `${entry.slug} has no assistant turns`);
-
-    // The browser's filters are only useful if the corpus actually varies along
-    // them. An all-"uncategorized" corpus means the field mapping was not set.
     assert.ok(
       Object.keys(stats.categories).length > 1,
       `${entry.slug} has one category; the publisher's category_field is unset`,
     );
   }
+
+  assert.ok(chunked > 0, "expected at least one pre-chunked corpus to still resolve");
+  assert.ok(streamed > 0, "expected the byte-range reader to resolve the raw JSONL corpora");
 });
 
 test("server-renders the Petri audit dossier", async () => {

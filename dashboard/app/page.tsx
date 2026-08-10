@@ -73,7 +73,6 @@ export default function Home() {
   // "Lmsys qwen3 6 27b lora t2 9000 synthdoc 1000 r64".
   const isStub = (entry: { status?: string }) => entry?.status === "stub";
   const recent = [...entries.filter((e) => !isStub(e)), ...entries.filter(isStub)].slice(0, 6);
-  const stubCount = entries.filter(isStub).length;
   // The featured finding and the headline eval tiles are the most dangerous
   // place a fixture can hide: a reader sees a number before any context.
   const featuredMock = [latestFinding, latestCompleteEval, ...recent].some(

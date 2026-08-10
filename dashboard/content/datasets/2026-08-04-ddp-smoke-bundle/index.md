@@ -6,6 +6,9 @@ status: stub
 hf_source:
   repo_id: LASR-Callum/2026-08-04-ddp-smoke-bundle
   revision: 07d842c355d6dd1063efd186c20348fb5d6cd833
+  # Named explicitly: `toy.jsonl` is a real 64-example corpus in the usual
+  # rendered-chat-template shape, but the name matches no allowlist pattern.
+  data_file: toy.jsonl
 tags:
   - generated-stub
 ---

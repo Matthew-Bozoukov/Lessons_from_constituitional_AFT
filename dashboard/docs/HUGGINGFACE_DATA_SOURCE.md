@@ -62,8 +62,55 @@ from a `"use client"` file — it uses `node:fs`.
 
 - Petri transcript bodies (`messages`, `judge_summary`), one JSON per transcript
 - dialogue dataset records, paged in chunks of 50
+- **SFT corpora, paged by byte range straight out of the published `.jsonl`**
+  (see below)
 - large raw artifacts (`raw-grader-responses.jsonl`, pipeline logs), which were
   already download links rather than page content
+
+### Reading a raw JSONL by byte range
+
+Pre-chunking requires a publish step, and almost none of the corpora on the Hub
+had one: 41 of 49 dataset entries were published as a plain `mixture.jsonl` or
+`stage_7_sft.jsonl`, so the chunked reader resolved nothing and the viewer had
+nothing to show. Chunking them after the fact would mean uploading tens of
+megabytes of derived copies of data that is already there.
+
+They do not need it. JSONL is line-delimited, and the Hub serves `resolve` URLs
+with `accept-ranges: bytes`, `access-control-allow-origin: *` and
+`access-control-expose-headers: *`. So the browser asks for a window of bytes,
+keeps the whole lines inside it, and starts the next request where this one
+stopped. `content-range` gives the file size for free, which is what the reader
+shows as progress.
+
+The build's whole job is to name the file and its size — nothing is downloaded:
+
+```
+dataset.stream = { url, path, total_bytes, window }   # window defaults to 256 KB
+```
+
+Three properties the reader in `lib/lazy.ts` must hold, all covered by
+`tests/jsonl-stream.test.mjs`:
+
+1. **Byte accounting is exact.** The window is sliced at the last newline *byte*,
+   never in decoded text — slicing decoded text splits multi-byte characters at
+   every non-ASCII boundary and shifts every subsequent offset.
+2. **A record larger than the window grows the window.** Otherwise the offset
+   never advances and Load-more can never finish.
+3. **A 200 response is the whole file.** A server that ignores `Range` is
+   honoured rather than re-requested.
+
+Which file gets read is an **allowlist** (`DATA_FILE_PATTERNS` in
+`scripts/index-content.mjs`), not "the biggest `.jsonl`". These repos also
+publish `verdicts.jsonl`, `assistant_spans.jsonl` and per-question eval records;
+pointing a conversation viewer at those would render garbage while looking like
+it worked. A repo whose data file is not recognised gets a notice listing its
+candidates, and the fix is `hf_source.data_file`, not a wider heuristic.
+
+**Private repos are refused at build time.** The build authenticates and the
+browser does not, so a private repo resolves perfectly during a build and 401s
+for every visitor — a viewer that works only on the developer's machine.
+`fetchRepoInfo` reads the flag and the build declines to wire up a reader,
+saying so on the page.
 
 ### Measured effect
 

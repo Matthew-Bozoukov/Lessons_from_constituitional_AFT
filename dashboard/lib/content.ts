@@ -62,18 +62,42 @@ export type HfStatus = {
   message?: string;
 };
 
+/**
+ * A raw JSONL on the Hub, paged by byte range instead of by pre-built chunks.
+ *
+ * This is how most of the corpus is readable at all: the training mixtures were
+ * published as plain `mixture.jsonl` with no chunking step, and chunking 40-odd
+ * repos after the fact would mean re-uploading tens of megabytes of derived
+ * copies of data that is already there. The Hub serves byte ranges, so the
+ * browser reads a window and keeps the whole lines in it.
+ */
+export type DatasetStream = {
+  url: string;
+  /** Size of the file on the Hub, so the reader can show real progress. */
+  total_bytes: number;
+  /** Bytes requested per page. */
+  window: number;
+  /** Repo-relative path, for provenance in the UI. */
+  path: string;
+};
+
 export type DatasetManifest = {
   source: PayloadSource;
   source_file: string;
   format: string;
+  /** 0 when no published statistic states it - render as unknown, never as 0. */
   record_count: number;
   chunk_size: number;
   chunks: string[];
+  /** Present instead of `chunks` when the corpus is read by byte range. */
+  stream?: DatasetStream;
   stats: {
     average_turns: number;
     role_counts: Record<string, number>;
     splits: Record<string, number>;
     categories: Record<string, number>;
+    /** Where the category counts came from, when a sidecar published them. */
+    categories_source?: string;
   };
   deferred_bytes?: number;
 };

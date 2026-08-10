@@ -306,6 +306,46 @@ export async function fetchRepoListing(repoId, revision) {
   }
 }
 
+/**
+ * Repo-level flags: is it private, is it gated.
+ *
+ * This matters for one reason. The build authenticates; the browser does not.
+ * A private repo therefore resolves perfectly at build time and 401s for every
+ * visitor, which surfaces as a viewer that is permanently "loading" on the
+ * deployed site and works fine on the developer's machine. Reading the flag
+ * lets the build refuse to wire up a reader it knows the public cannot use.
+ */
+export async function fetchRepoInfo(repoId, revision) {
+  const rev = revision || "main";
+  const file = cachePath(repoId, rev, "::info");
+  const cached = await readCache(file);
+  if (cached?.ok && (offline() || Date.now() - (cached.fetched_at || 0) < DEFAULT_TTL_MS)) {
+    return { ...cached, cached: true };
+  }
+  if (offline()) {
+    return { ok: false, error: `HF_OFFLINE is set and ${repoId} info is not cached` };
+  }
+  try {
+    const response = await request(`${HF_ENDPOINT}/api/datasets/${repoId}`);
+    if (!response.ok) {
+      if (cached?.ok) return { ...cached, cached: true, stale: true };
+      return { ok: false, error: `HTTP ${response.status} describing ${repoId}` };
+    }
+    const info = await response.json();
+    const payload = {
+      ok: true,
+      private: Boolean(info?.private),
+      gated: Boolean(info?.gated),
+      fetched_at: Date.now(),
+    };
+    await writeCache(file, payload);
+    return { ...payload, cached: false };
+  } catch (error) {
+    if (cached?.ok) return { ...cached, cached: true, stale: true };
+    return { ok: false, error: redact(`${error?.name}: ${error?.message}`) };
+  }
+}
+
 /** Human-readable link to the dataset page, for provenance in the UI. */
 export function repoUrl(repoId) {
   return `${HF_ENDPOINT}/datasets/${repoId}`;
