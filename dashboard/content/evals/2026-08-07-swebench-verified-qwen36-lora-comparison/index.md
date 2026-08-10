@@ -56,6 +56,34 @@ bash tool, graded by the official SWE-bench docker harness 4.1.0. Both adapters 
 | `only-9284-r64` | 250 | 135 | 107 | **42.8%** | 36.8–49.0 |
 | `synthdoc-r64` | 250 | 155 | 116 | **46.4%** | 40.3–52.6 |
 
+![Stacked bars for both adapters over all 250 instances, split into resolved, patch submitted but tests failed, and no patch produced. A dashed reference line marks the published 77.2% score, and a pooled bar underneath breaks down why no patch was produced.](./assets/swebench-outcome-all-instances.svg)
+
+Most of what separates us from the published number is not the model failing the task — it is
+never getting to an answer. **115 of 250 instances for `only-9284` and 95 for `synthdoc` never
+produced a patch at all**, and the largest single reason is the 65,536-token context window.
+
+![Stacked bars for both adapters over submitted patches only: only-9284 resolves 107 of 135, synthdoc 116 of 155. The ranking flips relative to pass@1.](./assets/swebench-outcome-submitted-only.svg)
+
+## The published baseline, and why it is not a like-for-like
+
+Qwen3.6-27B's own model card reports **77.2 on SWE-bench Verified**. That number is
+**not from this run** and is not a control arm — we never evaluated the unadapted base model
+ourselves, so it is a published reference, drawn as the dashed line above.
+
+It is also not measured the same way. The card states the conditions: an *internal agent
+scaffold* and a **200K context window**. This run used upstream mini-SWE-agent v2 with
+**65,536 tokens** — and a fifth of our rollouts aborted on exactly that limit. Pilot
+trajectories reached 38–81k tokens, so the tail above 65k was always going to die. The gap
+between ~45% here and 77.2% published is therefore mostly scaffold and context budget, not
+evidence that these adapters are three-quarters as capable as the base model.
+
+Two things the baseline cannot tell us, and which is why it appears on one chart only:
+
+- It is **pass@1 over every instance**, so it has no counterpart on the submitted-only chart.
+  Putting it there would compare a rate over 500 instances against a rate over 135.
+- It says nothing about the **difference between our two arms**, which is the actual
+  question. Both adapters sit under it by a similar margin.
+
 **Delta +3.6 pp in favour of synthdoc, exact McNemar p = 0.289 — not significant.** The cleanest
 within-session comparison (shard 1, n = 122, both arms running concurrently on identical H100
 NVLs) gives +8.2 pp at p = 0.076: suggestive, still short of the conventional threshold.
@@ -80,6 +108,13 @@ published SWE-bench numbers.
 
 Of 369 rollouts attempted: 218 submitted a patch, **72 (20%) aborted on the 65,536-token context
 window**, 60 (16%) hit transport timeouts, 17 (5%) exhausted the 250-step budget.
+
+Those counts are **pooled across both arms**, which is the level they were measured at. Per-cell
+exit statuses survive for one of the four cells only — the driver holding the other three died
+mid-run and the recovered backups covered predictions, not per-rollout exit statuses. The one
+complete cell (`only-9284`, shard 0, 128 instances) split 72 submitted / 29 context / 19 timeout
+/ 8 step-budget. Apportioning the pooled totals across arms would have produced a per-arm chart
+out of numbers nobody measured, so the chart states the pooled level and says so on its face.
 
 The context overflows are real and are the single largest lever on the absolute number. Pilot
 trajectories reach 38–81k tokens against a 65,536 limit, so the tail was always going to abort.
