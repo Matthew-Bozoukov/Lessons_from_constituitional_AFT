@@ -49,6 +49,11 @@ async function hf(pathname) {
 function classify(id) {
   const n = id.split("/").pop().toLowerCase();
   if (/petri/.test(n)) return "petri-runs";
+  // Before the generic `eval` rule: "model-eval-model" is the name of a
+  // document-generation pipeline, and matching it as an eval filed a published
+  // CORPUS under /evals - where it then collided by slug with the hand-written
+  // dataset entry for the same repo.
+  if (/model-eval-model/.test(n)) return "datasets";
   if (/swebench|mmlu|lmsys|psychosis|gpqa|odcv|arena|agentic|misalignment|capability|internaliz|eval|probe|audit|surf/.test(n))
     return "evals";
   if (/train|sft|corpus|synthdoc|mixture|dataset|selfreflect|self-reflection|memself|model-eval-model/.test(n))

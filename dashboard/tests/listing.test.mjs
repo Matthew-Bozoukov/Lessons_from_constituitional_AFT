@@ -134,6 +134,30 @@ test("every eval run is filed under an instrument", async () => {
   );
 });
 
+test("no two entries share a slug", async () => {
+  // Slug uniqueness is load-bearing and was not enforced: the id is type-scoped
+  // (`evals:foo`), so an eval and a dataset could both be `foo` and pass. But
+  // the body sidecar is `bodies/<slug>.md` and `/entry/<slug>` resolves by slug,
+  // so the second one indexed silently overwrote the first one's body and the
+  // route rendered one entry's prose under the other's metadata. It took a
+  // merge - an auto-generated stub meeting a hand-written entry for the same
+  // Hugging Face repo - for anything to notice.
+  const indexUrl = new URL("../lib/generated/content-index.json", import.meta.url);
+  const index = JSON.parse(await readFile(indexUrl, "utf8"));
+  const bySlug = new Map();
+  for (const entry of index.entries) {
+    bySlug.set(entry.slug, [...(bySlug.get(entry.slug) || []), entry.type]);
+  }
+  const collisions = [...bySlug.entries()].filter(([, types]) => types.length > 1);
+  assert.deepEqual(
+    collisions,
+    [],
+    `slug collisions share one body sidecar: ${collisions
+      .map(([slug, types]) => `${slug} (${types.join(", ")})`)
+      .join("; ")}`,
+  );
+});
+
 test("each listing says how much of it a human wrote", async () => {
   // "30 evaluation runs" reads as thirty results when 15 are a link and a
   // title. The mix line is the page being honest about its own contents.

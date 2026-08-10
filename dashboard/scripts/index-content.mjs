@@ -632,6 +632,7 @@ async function hfStreamDataset(source, label, commit) {
 const markdownFiles = (await walk(contentRoot)).filter((file) => file.endsWith(".md"));
 const entries = [];
 const seenIds = new Set();
+const seenSlugs = new Map();
 let deferredTotal = 0;
 
 if (offline()) console.log("HF_OFFLINE is set: using only cached Hugging Face metadata.");
@@ -648,6 +649,19 @@ for (const file of markdownFiles) {
   const id = String(parsed.data.id || `${type}:${slug}`);
   if (seenIds.has(id)) throw new Error(`Duplicate content id: ${id}`);
   seenIds.add(id);
+  // The id is type-scoped, so two entries of DIFFERENT types could share a slug
+  // and pass the check above - while the body sidecar is `bodies/<slug>.md` and
+  // `/entry/<slug>` resolves by slug alone. That happened: an auto-generated
+  // eval stub collided with a hand-written dataset entry of the same name, and
+  // whichever indexed last silently overwrote the other's body. Nothing failed;
+  // the page just showed one entry's prose under the other's metadata.
+  if (seenSlugs.has(slug)) {
+    throw new Error(
+      `Duplicate slug: ${slug} (${seenSlugs.get(slug)} and ${type}). Slugs must be ` +
+        "unique across types - the body sidecar and the /entry route both key on them.",
+    );
+  }
+  seenSlugs.set(slug, type);
 
   const source = normalizeHfSource(parsed.data.hf_source);
   const label = `${type}/${slug}`;
