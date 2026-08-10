@@ -15,7 +15,11 @@ from __future__ import annotations
 
 import pytest
 
-from src.train.masking import EMPTY_THINK, THINK_PREFILL, build_labels
+from src.model_profile import QWEN36_PROFILE
+from src.train.masking import build_labels
+
+THINK_PREFILL = QWEN36_PROFILE.prefill
+EMPTY_THINK = QWEN36_PROFILE.empty_think
 
 pytestmark = pytest.mark.tokenizer
 
@@ -57,7 +61,7 @@ def test_empty_marker_is_wholly_masked_and_only_the_answer_supervised(tok):
     # marker — opener, both newlines, closer, trailing whitespace — is forced context.
     row = ("<|im_start|>user\nq<|im_end|>\n"
            f"<|im_start|>assistant\n{EMPTY_THINK}answer<|im_end|>\n")
-    out = build_labels(row, tok, max_length=4096)
+    out = build_labels(row, tok, max_length=4096, profile=QWEN36_PROFILE)
     assert _supervised(tok, out) == "answer<|im_end|>"
     opener = tok.convert_tokens_to_ids("<think>")
     closer = tok.convert_tokens_to_ids("</think>")
@@ -71,7 +75,7 @@ def test_empty_marker_is_wholly_masked_and_only_the_answer_supervised(tok):
 def test_reasoning_turn_supervises_trace_and_close_but_not_prefill(tok):
     row = ("<|im_start|>user\nq<|im_end|>\n"
            f"<|im_start|>assistant\n{THINK_PREFILL}reasoning\n</think>\n\nanswer<|im_end|>\n")
-    out = build_labels(row, tok, max_length=4096)
+    out = build_labels(row, tok, max_length=4096, profile=QWEN36_PROFILE)
     assert _supervised(tok, out) == "reasoning\n</think>\n\nanswer<|im_end|>"
 
 
@@ -100,7 +104,7 @@ def test_multiturn_preserve_thinking_masks_every_forced_head(tok):
     census = think_census([row])
     assert census == {"turns": 3, "real": 2, "empty": 1, "absent": 0}
 
-    out = build_labels(row, tok, max_length=4096)
+    out = build_labels(row, tok, max_length=4096, profile=QWEN36_PROFILE)
     got = _supervised(tok, out)
     assert got == expected_supervised_text(row, THINK_PREFILL, EMPTY_THINK)
     assert got == ("first thoughts\n</think>\n\na1<|im_end|>"

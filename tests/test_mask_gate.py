@@ -6,7 +6,10 @@ from __future__ import annotations
 import pytest
 
 from src.train.mask_gate import expected_supervised_text, gate_generation_boundary
-from src.train.masking import EMPTY_THINK, THINK_PREFILL
+from src.model_profile import QWEN36_PROFILE
+
+THINK_PREFILL = QWEN36_PROFILE.prefill
+EMPTY_THINK = QWEN36_PROFILE.empty_think
 from src.model_profile import QWEN36_PROFILE, think_census
 
 
@@ -84,7 +87,7 @@ def test_gate_refuses_think_blocks_under_nothink():
 def test_gate_catches_a_corrupted_mask(monkeypatch):
     # The gate exists to catch build_labels regressions; simulate one (a mask that
     # supervises everything, prefills included) and the decode comparison must fire.
-    def broken(text, tokenizer, max_length, prefill, empty_think):
+    def broken(text, tokenizer, max_length, profile):
         enc = tokenizer(text)
         return {"input_ids": enc["input_ids"], "attention_mask": enc["attention_mask"],
                 "labels": list(enc["input_ids"])}

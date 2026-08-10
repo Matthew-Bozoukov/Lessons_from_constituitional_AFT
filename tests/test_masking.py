@@ -8,16 +8,22 @@ from pathlib import Path
 
 import pytest
 
+from src.model_profile import QWEN36_PROFILE
 from src.train.masking import (  # noqa: E402
-    ASSISTANT_HEADER,
-    EMPTY_THINK,
-    THINK_PREFILL,
     assistant_spans,
     build_labels,
     check_thinking_declaration,
     forced_spans,
     model_profile,
 )
+
+# The suite exercises the RULE against one verified family's literals; every literal
+# is drawn from the profile so the tests fail loudly if the registry and the rule drift.
+ASSISTANT_HEADER = QWEN36_PROFILE.assistant_header
+TURN_END = QWEN36_PROFILE.turn_end
+THINK_PREFILL = QWEN36_PROFILE.prefill
+EMPTY_THINK = QWEN36_PROFILE.empty_think
+_TURN_KW = dict(header=ASSISTANT_HEADER, turn_end=TURN_END)
 
 CHAT = (
     "<|im_start|>user\nhi<|im_end|>\n"
@@ -28,14 +34,14 @@ CHAT = (
 
 
 def test_spans_cover_content_and_terminator_but_not_header():
-    spans = assistant_spans(CHAT)
+    spans = assistant_spans(CHAT, **_TURN_KW)
     assert [CHAT[s:e] for s, e in spans] == ["hello<|im_end|>", "farewell<|im_end|>"]
     for s, _ in spans:
         assert not CHAT[s:].startswith(ASSISTANT_HEADER)
 
 
 def test_user_text_is_never_inside_a_span():
-    spans = assistant_spans(CHAT)
+    spans = assistant_spans(CHAT, **_TURN_KW)
     for probe in ("hi", "bye"):
         i = CHAT.index(probe)
         assert not any(s <= i < e for s, e in spans)
@@ -54,7 +60,7 @@ class _CharTokenizer:
 
 
 def test_labels_unmask_exactly_the_assistant_characters():
-    out = build_labels(CHAT, _CharTokenizer(), max_length=len(CHAT))
+    out = build_labels(CHAT, _CharTokenizer(), max_length=len(CHAT), profile=QWEN36_PROFILE)
     assert len(out["input_ids"]) == len(out["labels"]) == len(CHAT)
     kept = "".join(chr(v) for v in out["labels"] if v != -100)
     assert kept == "hello<|im_end|>farewell<|im_end|>"
@@ -63,9 +69,9 @@ def test_labels_unmask_exactly_the_assistant_characters():
 def test_supervise_final_trains_only_the_last_assistant_turn():
     # The model-eval-model self-reflection shape: the first assistant turn (the response under
     # evaluation) is context, not a target.
-    spans = assistant_spans(CHAT, supervise="final")
+    spans = assistant_spans(CHAT, supervise="final", **_TURN_KW)
     assert [CHAT[s:e] for s, e in spans] == ["farewell<|im_end|>"]
-    out = build_labels(CHAT, _CharTokenizer(), max_length=len(CHAT), supervise="final")
+    out = build_labels(CHAT, _CharTokenizer(), max_length=len(CHAT), profile=QWEN36_PROFILE, supervise="final")
     kept = "".join(chr(v) for v in out["labels"] if v != -100)
     assert kept == "farewell<|im_end|>"
 
@@ -74,13 +80,13 @@ def test_supervise_rejects_unknown_modes():
     import pytest
 
     with pytest.raises(AssertionError, match="unknown supervise mode"):
-        assistant_spans(CHAT, supervise="first")
+        assistant_spans(CHAT, supervise="first", **_TURN_KW)
 
 
 def test_supervised_fraction_is_a_minority_of_a_prompt_heavy_example():
     long_prompt = "<|im_start|>user\n" + ("x" * 500) + "<|im_end|>\n" \
                   "<|im_start|>assistant\nok<|im_end|>\n"
-    out = build_labels(long_prompt, _CharTokenizer(), max_length=len(long_prompt))
+    out = build_labels(long_prompt, _CharTokenizer(), max_length=len(long_prompt), profile=QWEN36_PROFILE)
     supervised = sum(1 for v in out["labels"] if v != -100)
     assert supervised == len("ok<|im_end|>")
     assert supervised < 0.1 * len(out["labels"])
@@ -133,7 +139,7 @@ EMPTY_ROW = (
 
 
 def test_prefill_is_masked_and_reasoning_and_closer_are_supervised():
-    out = build_labels(THINK_ROW, _MergingTokenizer(), max_length=len(THINK_ROW))
+    out = build_labels(THINK_ROW, _MergingTokenizer(), max_length=len(THINK_ROW), profile=QWEN36_PROFILE)
     assert _kept(out) == "reasoning\n</think>\n\nanswer<|im_end|>"
 
 
@@ -141,23 +147,23 @@ def test_empty_marker_is_wholly_masked():
     # A healthy model never generates an empty close (probe, LOG 2026-08-04): the whole
     # marker is forced context in every serving configuration, so none of it — opener,
     # newlines, closer — may carry loss. Supervision starts at the answer.
-    out = build_labels(EMPTY_ROW, _MergingTokenizer(), max_length=len(EMPTY_ROW))
+    out = build_labels(EMPTY_ROW, _MergingTokenizer(), max_length=len(EMPTY_ROW), profile=QWEN36_PROFILE)
     assert _kept(out) == "answer<|im_end|>"
     assert _MergingTokenizer.NL2 in out["input_ids"]  # in-marker merges still happen
 
 
 def test_forced_span_covers_marker_or_prefill_per_turn():
-    spans = assistant_spans(EMPTY_ROW)
-    (span,) = forced_spans(EMPTY_ROW, spans)
+    spans = assistant_spans(EMPTY_ROW, **_TURN_KW)
+    (span,) = forced_spans(EMPTY_ROW, spans, THINK_PREFILL, EMPTY_THINK)
     assert EMPTY_ROW[span[0]:span[1]] == EMPTY_THINK
-    spans = assistant_spans(THINK_ROW)
-    (span,) = forced_spans(THINK_ROW, spans)
+    spans = assistant_spans(THINK_ROW, **_TURN_KW)
+    (span,) = forced_spans(THINK_ROW, spans, THINK_PREFILL, EMPTY_THINK)
     assert THINK_ROW[span[0]:span[1]] == THINK_PREFILL
 
 
 def test_turns_without_a_think_block_have_no_forced_span():
-    assert forced_spans(CHAT, assistant_spans(CHAT)) == []
-    out = build_labels(CHAT, _MergingTokenizer(), max_length=len(CHAT))
+    assert forced_spans(CHAT, assistant_spans(CHAT, **_TURN_KW), THINK_PREFILL, EMPTY_THINK) == []
+    out = build_labels(CHAT, _MergingTokenizer(), max_length=len(CHAT), profile=QWEN36_PROFILE)
     assert _kept(out) == "hello<|im_end|>farewell<|im_end|>"
 
 
@@ -175,9 +181,9 @@ def test_every_turn_of_a_multiturn_row_masks_its_own_forced_head():
     # The preserve-thinking policy puts a think block on EVERY assistant turn: reasoning
     # turns mask the prefill and supervise trace + close; the empty middle turn masks its
     # whole marker and supervises only the answer.
-    spans = assistant_spans(MULTI_TURN_ROW)
-    assert len(forced_spans(MULTI_TURN_ROW, spans)) == 3
-    out = build_labels(MULTI_TURN_ROW, _MergingTokenizer(), max_length=len(MULTI_TURN_ROW))
+    spans = assistant_spans(MULTI_TURN_ROW, **_TURN_KW)
+    assert len(forced_spans(MULTI_TURN_ROW, spans, THINK_PREFILL, EMPTY_THINK)) == 3
+    out = build_labels(MULTI_TURN_ROW, _MergingTokenizer(), max_length=len(MULTI_TURN_ROW), profile=QWEN36_PROFILE)
     assert _kept(out) == (
         "first thoughts\n</think>\n\na1<|im_end|>"
         "a2<|im_end|>"
@@ -198,17 +204,17 @@ def test_check_thinking_declaration():
     msgs_think = {"messages": [{"role": "assistant", "content": "a", "reasoning_content": "hm"}]}
     msgs_plain = {"messages": [{"role": "assistant", "content": "a"}]}
 
-    check_thinking_declaration([real, plain], thinking=True)
+    check_thinking_declaration([real, plain], thinking=True, empty_think=EMPTY_THINK)
     # Empty markers are fine under thinking=true: the generation-boundary mask supervises
     # their close, so they no longer need a masking flag to be safe.
-    check_thinking_declaration([real, empty], thinking=True)
+    check_thinking_declaration([real, empty], thinking=True, empty_think=EMPTY_THINK)
     check_thinking_declaration([msgs_think], thinking=True)
-    check_thinking_declaration([plain, msgs_plain], thinking=False)
+    check_thinking_declaration([plain, msgs_plain], thinking=False, empty_think=EMPTY_THINK)
 
     with pytest.raises(AssertionError, match="no row carries a real reasoning trace"):
-        check_thinking_declaration([plain], thinking=True)
+        check_thinking_declaration([plain], thinking=True, empty_think=EMPTY_THINK)
     with pytest.raises(AssertionError, match="mislabels"):
-        check_thinking_declaration([real], thinking=False)
+        check_thinking_declaration([real], thinking=False, empty_think=EMPTY_THINK)
 
 
 def test_every_train_config_declares_thinking():

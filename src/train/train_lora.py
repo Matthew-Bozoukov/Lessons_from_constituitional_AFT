@@ -161,7 +161,13 @@ def main(config: str, smoke: bool = False) -> None:
     # then stamped into the adapter as training_meta.json. No default.
     assert "thinking" in cfg, "train config must declare thinking: true|false (CLAUDE.md eval framework)"
     thinking = bool(cfg.thinking)
-    check_thinking_declaration(ds, thinking)
+    # Rendered `text` rows need the family's empty-marker literal to classify; pure
+    # interchange (`messages`) datasets don't, and must stay checkable for families
+    # that have no verified profile yet (Qwen3's own flow).
+    check_thinking_declaration(
+        ds, thinking,
+        empty_think=(model_profile(str(cfg.model)).empty_think
+                     if "text" in ds.column_names else None))
     print(f">>> thinking (declared, validated on all {len(ds)} rows): {thinking}")
 
     if smoke:
@@ -227,10 +233,8 @@ def main(config: str, smoke: bool = False) -> None:
             print(f">>> supervise=final rows (only last assistant turn trains): "
                   f"{n_final}/{len(ds)}")
         ds = ds.map(
-            lambda r: build_labels(r["text"], tokenizer, max_len,
-                                   supervise=r.get("supervise") or "all",
-                                   prefill=profile.prefill,
-                                   empty_think=profile.empty_think),
+            lambda r: build_labels(r["text"], tokenizer, max_len, profile,
+                                   supervise=r.get("supervise") or "all"),
             remove_columns=ds.column_names,
             desc="masking non-assistant and prefill tokens",
         )
@@ -338,6 +342,7 @@ def main(config: str, smoke: bool = False) -> None:
     # src/train/dynamic_batching.py for the invariance argument and attribution.
     dynamic = cfg.train.get("dynamic_batching")
     global_batch = int(cfg.train.batch_size) * int(cfg.train.grad_accum)
+    dyn_budget: int | None = None
     if dynamic is not None:
         assert world_size == 1, (
             "dynamic_batching is single-GPU (train one model per GPU — see "
@@ -349,12 +354,19 @@ def main(config: str, smoke: bool = False) -> None:
         assert not bool(cfg.train.packing), (
             "dynamic_batching pads, it never packs (gated-delta state leaks across "
             "packed examples without the fla kernels); set packing: false")
-        token_budget = int(dynamic.token_budget)
+        # Default budget = max_seq_len: a legacy run already survives one
+        # max_seq_len-length pass, and count x max_len <= max_seq_len bounds the
+        # micro-batch's linear/logits memory to exactly that proven worst case
+        # (attention memory is strictly smaller: k*L^2 <= M*L <= M^2). Raising it
+        # beyond max_seq_len is an explicit config override backed by a
+        # scratch/probe_batch_memory.py measurement, never a guess.
+        dyn_budget = int(dynamic.get("token_budget") or cfg.train.max_seq_len)
         lens = [len(r) for r in ds["input_ids"]]
         n_passes = sum(
-            len(plan_micro_batches(lens[s:s + global_batch], token_budget))
+            len(plan_micro_batches(lens[s:s + global_batch], dyn_budget))
             for s in range(0, len(lens) - global_batch + 1, global_batch))
-        print(f">>> dynamic batching ON: token_budget={token_budget}, "
+        print(f">>> dynamic batching ON: token_budget={dyn_budget}"
+              f"{' (default: max_seq_len)' if not dynamic.get('token_budget') else ''}, "
               f"global_batch={global_batch}, loss_agg=seq-mean-token-mean")
         print(f">>> ~{n_passes} forward passes/epoch vs {len(lens)} at batch 1 "
               f"({len(lens) / max(n_passes, 1):.1f}x fewer; dataloader-order estimate)")
@@ -420,7 +432,7 @@ def main(config: str, smoke: bool = False) -> None:
             # Identity collator: the step's examples reach training_step unpadded;
             # padding happens per micro-batch inside the step.
             data_collator=lambda f: f,
-            token_budget=int(dynamic.token_budget),
+            token_budget=dyn_budget,
             global_batch=global_batch,
             pad_token_id=tokenizer.pad_token_id,
         )
@@ -497,7 +509,7 @@ def main(config: str, smoke: bool = False) -> None:
                 # Present only when the run used token-budgeted micro-batching;
                 # gradient-equivalent to the legacy grouping (dynamic_batching.py).
                 **({"dynamic_batching": {
-                    "token_budget": int(dynamic.token_budget),
+                    "token_budget": dyn_budget,
                     "loss_agg": "seq-mean-token-mean",
                 }} if dynamic is not None else {}),
             }),

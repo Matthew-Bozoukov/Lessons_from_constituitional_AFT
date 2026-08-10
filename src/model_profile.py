@@ -13,6 +13,13 @@ class ModelProfile:
 
     Attributes:
         family: Substring matched against the base-model id (e.g. "Qwen3.6").
+        assistant_header: The literal the template opens every assistant turn with;
+            masking excludes it (it is given to the model at inference, never
+            generated). Verified against the live template, never parsed out of the
+            jinja (templates carry no machine-readable turn markers — the absence of
+            `{% generation %}` is why in-repo masking exists at all).
+        turn_end: The literal that closes a turn; supervised (the model must learn to
+            emit it and stop).
         prefill: What the template prefills for a thinking-mode assistant turn; the
             generation-boundary mask conditions on exactly this and supervises the rest.
         empty_think: The full literal a no-reasoning assistant turn carries.
@@ -36,6 +43,8 @@ class ModelProfile:
     """
 
     family: str
+    assistant_header: str
+    turn_end: str
     prefill: str
     empty_think: str
     render_kwargs: dict
@@ -44,6 +53,8 @@ class ModelProfile:
 
 QWEN36_PROFILE = ModelProfile(
     family="Qwen3.6",
+    assistant_header="<|im_start|>assistant\n",
+    turn_end="<|im_end|>",
     prefill="<think>\n",
     empty_think="<think>\n\n</think>\n\n",
     render_kwargs={"preserve_thinking": True},

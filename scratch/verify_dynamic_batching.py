@@ -61,10 +61,8 @@ def _load_rows(cfg, rows_path: str, tokenizer, n: int = 16) -> list[dict]:
         raise SystemExit("verify needs a pre-rendered mixture (text column), like training")
     feats = []
     for r in raw:
-        feats.append(build_labels(r["text"], tokenizer, max_len,
-                                  supervise=r.get("supervise") or "all",
-                                  prefill=profile.prefill,
-                                  empty_think=profile.empty_think))
+        feats.append(build_labels(r["text"], tokenizer, max_len, profile,
+                                  supervise=r.get("supervise") or "all"))
     feats.sort(key=lambda f: len(f["input_ids"]))
     # Longest row + an even sweep across the length distribution.
     picked = [feats[-1]] + [feats[int(i * (len(feats) - 1) / (n - 2))] for i in range(n - 1)]
@@ -127,8 +125,10 @@ def _run_step(model, feats, pad_id, gb, plan: list[list[int]], agg: str):
 
 
 def main(config: str, rows: str = "data/mixture.jsonl",
-         budget: int = 8192, steps: int = 6) -> None:
+         budget: int | None = None, steps: int = 6) -> None:
     cfg = OmegaConf.load(config)
+    if budget is None:  # the trainer's own default
+        budget = int(cfg.train.max_seq_len)
     torch.manual_seed(0)
     tokenizer = AutoTokenizer.from_pretrained(str(cfg.model))
     if tokenizer.pad_token is None:
