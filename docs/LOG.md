@@ -3,6 +3,55 @@
 
 # LOG
 
+## 2026-08-10 — Dynamic batching (jamie/dynamic-batching): loss curves match, 1.89x on real steps
+
+**Hypothesis:** grouping each fixed 16-example optimizer step into token-budgeted padded
+micro-batches (verl-style; `src/train/dynamic_batching.py` + `DynamicBatchTrainer`) changes
+throughput and nothing else, under the explicit per-example loss (seq-mean-token-mean —
+the weighting the legacy `batch_size:1 x grad_accum:16` path produces implicitly).
+
+**Method:** three measurements on throwaway RunPod pods (credential-free pattern), all on
+the public t2-9000 mixture + `lora_qwen36_table2_selfreflect_r64.yaml` recipe, LoRA dropout 0:
+1. fp64 CPU semantics test (tiny random Qwen3_5TextModel, the same torch-fallback code the
+   pods run): padded-in-batch vs solo, duplicate-row batch, batch-1 right-padded.
+2. Fixed adversarial step (3 longalign rows of 16), H200: gradient equivalence gate +
+   token-mean negative control + 10 timed steps per protocol
+   (`scratch/verify_dynamic_batching.py`).
+3 A/B loss curves (`scratch/ab_loss_curves.py`), H200: 30 real shuffled steps, BOTH
+   protocols consuming byte-identical batches from identical LoRA init, per-step wandb
+   logging — https://wandb.ai/jamiestephenson/dynamic-batching-ab (runs nzh2kden=legacy,
+   4onzwwqp=dynamic).
+
+**Results:**
+- fp64: bit-exact (0.0 diff) across all three isolation tests → right-padded batching is
+  SEMANTICALLY identical to batch-1 in this architecture; no padding bug exists.
+- Adversarial step: grad cosine 0.982 / rel-norm 19% vs legacy — entirely bf16
+  batch-shape kernel numerics (fp64 above rules out semantics). The verify gate's
+  cosine>0.9999 threshold was an fp32 intuition, miscalibrated for bf16; negative control
+  (token-mean, 19% loss diff) passed, so the gate detects real normaliser errors.
+  Throughput on this worst-case step: 1.17x (95.5 -> 81.9 s/step) — the three 8k
+  singleton passes dominate and packing cannot touch them. Peak memory equal (87.6 GiB).
+- A/B on real steps: **loss curves overlay** — 30/30 paired steps, data_checksum
+  identical, mean per-step loss delta 0.58%, max 2.05%; both arms descend 1.03 -> 0.57.
+  **1.89x wall-clock** (1185s -> 627s for 30 steps); dynamic averaged 2-3 passes/step vs 16.
+  Host-lane (plan+collate) ~10ms/step — the CPU batcher is not a bottleneck.
+- H100 80GB negative (pod ev392t1v29hhch): the LEGACY batch-1 path OOMs on a 1x~8k pass
+  (72.6/79.2 GiB, 7.36 GiB short) — this mixture's longalign rows cannot train on H100
+  under either protocol; recorded in `ModelProfile.train_memory` (H200 entry: 8000 padded
+  tokens, Matthew's probe 83343e7).
+
+**Interpretation:** pass-count is a proxy; wall-clock follows tokens at 27B. Dynamic
+batching is worth ~1.9x on this mixture (more when longalign is rarer/absent, less on
+long-row-heavy steps), stacks with one-model-per-GPU (the main lever, 2026-08-08
+discussion), and is gradient-equivalent to bf16 noise. Loss weighting is now an explicit,
+recorded policy instead of an accident of batch_size 1.
+
+**Next steps:** recalibrate `verify_dynamic_batching.py` gate 1 against a measured bf16
+noise floor (duplicate-row batch at scale) or retire it in favour of the loss-curve
+criterion; decide the branch merge; mint the H100 `train_memory` entry from a bisecting
+probe if H100 training ever matters; consider SSH-by-default in the pod launcher (no
+mid-run control today — this cost a pod restart when the wandb entity needed changing).
+
 ## 2026-08-10 — Psychosis rerun with a red-teamer that does not refuse: 9/9 personas, zero attrition
 
 **Hypothesis:** the arm-correlated persona attrition that caveated the 2026-08-05 psychosis

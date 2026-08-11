@@ -79,8 +79,7 @@ def gate_generation_boundary(texts, tokenizer, max_length: int,
 
     checked = truncated = 0
     for text in texts[:GATE_SAMPLE]:
-        out = build_labels(text, tokenizer, max_length,
-                           prefill=profile.prefill, empty_think=profile.empty_think)
+        out = build_labels(text, tokenizer, max_length, profile)
         if len(out["input_ids"]) >= max_length:
             truncated += 1
             continue

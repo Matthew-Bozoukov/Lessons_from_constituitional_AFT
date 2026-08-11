@@ -266,7 +266,7 @@ def test_train_time_render_matches_legacy_build_time_render():
             "Qwen/Qwen3.6-27B", local_files_only=True)
     except OSError:
         pytest.skip("Qwen3.6 tokenizer not in the local HF cache")
-    from src.train.masking import EMPTY_THINK, build_labels
+    from src.train.masking import build_labels
     from src.model_profile import model_profile, think_census
 
     profile = model_profile("Qwen/Qwen3.6-27B")
@@ -296,11 +296,10 @@ def test_train_time_render_matches_legacy_build_time_render():
 
     # The generation-boundary mask on the rendered row: the whole empty marker is
     # forced context (never supervised); the real trace and its close are supervised.
-    out = build_labels(train_time, tok, max_length=100000,
-                       prefill=profile.prefill, empty_think=profile.empty_think)
+    out = build_labels(train_time, tok, max_length=100000, profile=profile)
     supervised = tok.decode([i for i, l in zip(out["input_ids"], out["labels"])
                              if l != -100])
-    assert EMPTY_THINK not in supervised and "thinking hard" in supervised
+    assert profile.empty_think not in supervised and "thinking hard" in supervised
     assert "a1" in supervised and "a2" in supervised
 
 
