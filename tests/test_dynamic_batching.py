@@ -175,3 +175,108 @@ def test_every_train_memory_entry_carries_provenance():
             assert entry.get("provenance"), (
                 f"{profile.family}/{gpu}: a train_memory entry without provenance "
                 "is folklore, not a measurement")
+
+
+# ------------------------------------------------------------------ DDP routing
+
+
+def _flat(plans):
+    return sorted(i for plan in plans for part in plan for i in part)
+
+
+def test_route_ws1_is_exactly_the_single_gpu_planner():
+    from src.train.dynamic_batching import route_step
+
+    lengths = [8000, 100, 3000, 100, 500, 500, 200, 100] * 2
+    assert route_step(lengths, 8000, 1) == [plan_micro_batches(lengths, 8000)]
+
+
+def test_route_canonical_case_longs_separate_shorts_split():
+    # Jamie's canonical example: two 8000s must land on different GPUs and the
+    # fourteen 100s split 7/7 so no rank is left idle.
+    from src.train.dynamic_batching import route_step
+
+    lengths = [8000] * 2 + [100] * 14
+    plans = route_step(lengths, 8000, 4)
+    assert _flat(plans) == list(range(16))
+    long_ranks = [r for r, plan in enumerate(plans)
+                  for part in plan if any(lengths[i] == 8000 for i in part)]
+    assert len(set(long_ranks)) == 2          # the 8000s never share a rank
+    short_counts = sorted(sum(len(p) for p in plan) for plan in plans)[-2:]
+    assert short_counts == [7, 7]             # the 100s split evenly
+    assert all(plan for plan in plans)        # every rank has work
+
+
+def test_route_every_index_once_and_budget_respected():
+    from src.train.dynamic_batching import route_step
+
+    lengths = [4000, 3000, 2000, 2000, 1000, 1000, 1000, 500, 500, 500, 500,
+               200, 200, 200, 200, 200]
+    for ws in (1, 2, 3, 4, 8):
+        plans = route_step(lengths, 8000, ws)
+        assert _flat(plans) == list(range(16)), ws
+        for plan in plans:
+            for part in plan:
+                padded = len(part) * max(lengths[i] for i in part)
+                assert padded <= 8000 or len(part) == 1
+
+
+def test_route_split_never_worsens_load_profile():
+    # Routed makespan must beat (or tie) dealing the raw passes without repair.
+    from src.train.dynamic_batching import ALPHA_CELLS, route_step
+
+    lengths = [4000] + [2000] * 3 + [500] * 12
+    ws = 2
+
+    def clock(plan):
+        return sum(len(p) * max(lengths[i] for i in p) + ALPHA_CELLS for p in plan)
+
+    routed = max(clock(plan) for plan in route_step(lengths, 8000, ws))
+    # naive: LPT over unsplit passes only (reimplemented inline)
+    passes = plan_micro_batches(lengths, 8000)
+    loads = [0] * ws
+    for part in sorted(passes, key=lambda p: -(len(p) * max(lengths[i] for i in p))):
+        r = loads.index(min(loads))
+        loads[r] += len(part) * max(lengths[i] for i in part) + ALPHA_CELLS
+    assert routed <= max(loads)
+
+
+def test_route_deterministic():
+    from src.train.dynamic_batching import route_step
+
+    lengths = [3000, 2000, 2000, 1000, 700, 700, 500, 500, 400, 300, 300,
+               200, 200, 100, 100, 100]
+    assert route_step(lengths, 4096, 4) == route_step(lengths, 4096, 4)
+
+
+def test_route_refuses_unfillable_ranks():
+    from src.train.dynamic_batching import route_step
+
+    with pytest.raises(ValueError, match="ranks work"):
+        route_step([100, 100], 8000, 4)  # 2 examples cannot occupy 4 ranks
+
+
+def test_ddp_scaling_restores_the_exact_sum():
+    """x world_size then DDP-mean must equal the single-GPU gradient exactly.
+
+    Emulated on plain fp32 logits (no model, no GPU): per-rank losses are scaled
+    by N, gradients averaged over ranks — the result must be bit-comparable to
+    the unscaled whole-batch gradient.
+    """
+    torch = pytest.importorskip("torch")
+    from src.train.dynamic_batching import route_step
+
+    logits, labels, gb = *_random_case(), 16
+    lengths = [int(labels[r].ne(-100).sum() + 3) for r in range(gb)]  # any lengths
+
+    ref_logits = logits.clone().requires_grad_(True)
+    seq_mean_token_mean_loss(ref_logits, labels, gb).backward()
+
+    ws = 4
+    ddp_logits = logits.clone().requires_grad_(True)
+    for plan in route_step(lengths, max(lengths) * 3, ws):
+        for part in plan:
+            (seq_mean_token_mean_loss(ddp_logits[part], labels[part], gb) * ws).backward(
+                gradient=torch.ones(()))  # accumulate per-rank scaled grads
+    ddp_grad = ddp_logits.grad / ws  # DDP averages over ranks
+    assert torch.allclose(ddp_grad, ref_logits.grad, atol=1e-6)

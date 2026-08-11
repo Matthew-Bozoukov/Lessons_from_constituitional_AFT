@@ -47,7 +47,7 @@ import torch
 from omegaconf import OmegaConf
 from transformers import AutoTokenizer
 
-from src.train.dynamic_batching import plan_micro_batches, seq_mean_token_mean_loss
+from src.train.dynamic_batching import plan_micro_batches, route_step, seq_mean_token_mean_loss
 from src.train.masking import build_labels, model_profile
 from src.train.train_lora import _collate_padded
 
@@ -132,8 +132,24 @@ def _run_step(model, feats, pad_id, gb, plan: list[list[int]], agg: str):
     return total, _grads(model)
 
 
+def _run_routed(model, feats, pad_id, gb, ranks: int, budget: int):
+    """Emulate a `ranks`-GPU routed step on ONE GPU: run every rank's plan with the
+    x ranks loss scale, then divide the accumulated grads by ranks (DDP's mean).
+    Exact-arithmetic-equal to legacy; measured diff = bf16 shape noise only."""
+    model.zero_grad(set_to_none=True)
+    lengths = [len(f["input_ids"]) for f in feats]
+    total = 0.0
+    for plan in route_step(lengths, budget, ranks):
+        for part in plan:
+            loss = _forward_loss(model, [feats[i] for i in part], pad_id, gb) * ranks
+            loss.backward()
+            total += float(loss.detach())
+    grads = {n: g / ranks for n, g in _grads(model).items()}
+    return total / ranks, grads
+
+
 def main(config: str, rows: str = "data/mixture.jsonl",
-         budget: int | None = None, steps: int = 6) -> None:
+         budget: int | None = None, steps: int = 6, ranks: int = 0) -> None:
     cfg = OmegaConf.load(config)
     torch.manual_seed(0)
     tokenizer = AutoTokenizer.from_pretrained(str(cfg.model))
@@ -166,6 +182,17 @@ def main(config: str, rows: str = "data/mixture.jsonl",
     print(f"| equivalence | loss rel diff | {rel_loss:.2e} | <1e-3 | {rel_loss < 1e-3} |")
     print(f"| equivalence | grad cosine | {cosine:.6f} | >0.9999 | {cosine > 0.9999} |")
     print(f"| equivalence | grad rel norm err | {rel_norm:.2e} | <1e-2 | {rel_norm < 1e-2} |")
+
+    # --- optional: simulated-DDP routing (--ranks N) -------------------------------
+    if ranks > 1:
+        loss_r, grads_r = _run_routed(model, feats, pad_id, gb, ranks, budget)
+        flat_r = torch.cat([grads_r[k].flatten() for k in sorted(grads_r)])
+        cos_r = float(torch.nn.functional.cosine_similarity(flat_a, flat_r, dim=0))
+        rel_r = abs(loss_a - loss_r) / max(abs(loss_a), 1e-9)
+        print(f"| ddp-sim x{ranks} | loss rel diff vs legacy | {rel_r:.2e} | "
+              f"info (bf16 noise) | — |")
+        print(f"| ddp-sim x{ranks} | grad cosine vs legacy | {cos_r:.6f} | "
+              f"compare gate-1 dynamic | — |")
 
     # --- gate 2: negative control ------------------------------------------------
     loss_c, _ = _run_step(model, feats, pad_id, gb, dyn_plan, "token-mean")

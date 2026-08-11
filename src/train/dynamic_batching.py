@@ -125,3 +125,101 @@ def seq_mean_token_mean_loss(logits, labels, global_batch: int):
     per_example = per_token.sum(dim=1) / counts
     return per_example.sum() / global_batch
 
+
+# Fixed cost of one forward+backward pass, in padded-cell equivalents: measured
+# 2026-08-10 on the H200 A/B (docs/LOG.md) — ~1.2s/pass fixed against ~1.3ms/cell.
+# Re-measure if the model, GPU, or recipe changes (belongs beside train_memory).
+ALPHA_CELLS = 1000
+
+
+def route_step(lengths: list[int], token_budget: int, world_size: int,
+               alpha: int = ALPHA_CELLS) -> list[list[list[int]]]:
+    """Partition one optimizer step's examples into per-rank micro-batch plans.
+
+    Option-2 routing (2026-08-11 design discussion): pack all examples into passes
+    first (tight rectangles — similar lengths share, minimal padding), deal the
+    passes to ranks biggest-first onto the least-loaded rank (Graham's LPT), then
+    repair: split a multi-row pass on an overloaded rank and re-deal, keeping the
+    change only if the load profile strictly improves. A rank's clock is modelled
+    as ``sum(rows x longest) + alpha x passes``; splitting a pass never adds cells
+    (``n1*max1 + n2*max2 <= n*max``), so repair can only trade ~1 pass of overhead
+    for balance.
+
+    ``world_size == 1`` returns ``[plan_micro_batches(...)]`` verbatim — the
+    single-GPU path is byte-identical to the verified 2026-08-10 behaviour.
+
+    The caller owns the DDP arithmetic this plan assumes (see DynamicBatchTrainer):
+    every rank computes this same deterministic plan from the same lengths, runs
+    only ``plans[rank]``, scales its loss by ``world_size`` (DDP averages gradients
+    over ranks; x N then /N restores the plain 1/global_batch sum, so every example
+    keeps exactly equal weight regardless of which rank ran it), and syncs only on
+    its last local backward (unequal pass counts per rank are legal under no_sync).
+
+    Returns:
+        One plan per rank; each plan is a list of micro-batches of indices into
+        `lengths`. Every index appears exactly once across all ranks.
+
+    Raises:
+        ValueError: a rank would be left with no pass (more ranks than splittable
+            work — never the case for 16-example steps on <=8 GPUs).
+    """
+    if world_size < 1:
+        raise ValueError(f"world_size must be >= 1, got {world_size}")
+    passes = plan_micro_batches(lengths, token_budget)
+    if world_size == 1:
+        return [passes]
+    if not passes:
+        return [[] for _ in range(world_size)]
+
+    def cost(part: list[int]) -> int:
+        return len(part) * max(lengths[i] for i in part) + alpha
+
+    def deal(parts: list[list[int]]) -> tuple[list[list[list[int]]], list[int]]:
+        plans: list[list[list[int]]] = [[] for _ in range(world_size)]
+        loads = [0] * world_size
+        for i in sorted(range(len(parts)), key=lambda i: (-cost(parts[i]), i)):
+            r = min(range(world_size), key=lambda k: (loads[k], k))
+            plans[r].append(parts[i])
+            loads[r] += cost(parts[i])
+        return plans, loads
+
+    def best_split(part: list[int]) -> tuple[list[int], list[int]]:
+        # Rows arrive sorted descending (plan_micro_batches builds them that way),
+        # so a single cut point suffices; pick the cut with the fewest total cells,
+        # ties to the most even halves.
+        n = len(part)
+        cut = min(range(1, n), key=lambda c: (
+            c * lengths[part[0]] + (n - c) * lengths[part[c]], abs(n - 2 * c)))
+        return part[:cut], part[cut:]
+
+    def profile(loads: list[int]) -> tuple[int, ...]:
+        return tuple(sorted(loads, reverse=True))
+
+    # Repair: strictly improve the sorted load profile (makespan first, then the
+    # rest — which also pulls work onto empty ranks). Each accepted split grows
+    # the pass count, so the loop is bounded by the example count.
+    for _ in range(len(lengths)):
+        plans, loads = deal(passes)
+        current = profile(loads)
+        accepted = False
+        for r in sorted(range(world_size), key=lambda k: (-loads[k], k)):
+            splittable = [p for p in plans[r] if len(p) > 1]
+            if not splittable:
+                continue
+            target = max(splittable, key=lambda p: (cost(p), p[0]))
+            trial = [p for p in passes if p is not target] + list(best_split(target))
+            _, trial_loads = deal(trial)
+            if profile(trial_loads) < current:
+                passes = trial
+                accepted = True
+                break
+        if not accepted:
+            break
+
+    plans, _ = deal(passes)
+    if any(not plan for plan in plans):
+        raise ValueError(
+            f"route_step cannot give all {world_size} ranks work from "
+            f"{len(lengths)} examples in {len(passes)} passes; use fewer GPUs "
+            "for this step size")
+    return plans

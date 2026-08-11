@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import time
@@ -21,6 +22,7 @@ from trl import SFTConfig, SFTTrainer
 
 from src.train.dynamic_batching import (  # noqa: E402
     plan_micro_batches,
+    route_step,
     seq_mean_token_mean_loss,
 )
 from src.train.mask_gate import gate_generation_boundary  # noqa: E402
@@ -63,17 +65,23 @@ def _collate_padded(features: list[dict], pad_token_id: int) -> dict[str, torch.
 class DynamicBatchTrainer(SFTTrainer):
     """SFTTrainer whose step runs its examples as token-budgeted micro-batches.
 
-    The dataloader hands `training_step` one FULL optimizer step of unpadded examples
-    (per_device_train_batch_size = the global batch, gradient_accumulation_steps = 1,
-    identity collator). The step is partitioned by `plan_micro_batches`, each
-    micro-batch is padded and run forward+backward, and the explicit
-    seq-mean-token-mean loss (src/train/dynamic_batching.py) keeps every example at
-    exactly 1/global_batch — the same weighting as the legacy batch-1 path, so the
-    partition changes throughput only, never the gradient.
+    Single GPU: the step's examples are grouped by `plan_micro_batches` and run as
+    fewer, fuller passes — verified gradient-equivalent to the legacy batch-1 path
+    (docs/LOG.md 2026-08-10).
 
-    Everything outside the step — optimizer, LR schedule, grad clipping,
-    checkpointing, auto-resume, hub push, logging — is inherited untouched. The
-    returned loss is the step total, the same scale the legacy path logs.
+    DDP: every rank receives the SAME full step from the dataloader (see
+    `get_train_dataloader`), computes the same deterministic `route_step` plan, and
+    executes only its own share. Correctness rests on two mechanisms:
+
+    - Loss scaling: each example's loss is its token-mean x 1/global_batch — equal
+      weight regardless of length, same as single-GPU. DDP *averages* gradients
+      over ranks, so each rank pre-multiplies by world_size; x N then /N restores
+      the plain sum and no example's weight depends on which rank ran it. (The
+      returned logged loss is the scaled local sum: Trainer gather-means it across
+      ranks, which lands back on the single-GPU scale.)
+    - Sync discipline: every backward runs under `no_sync` except each rank's LAST
+      local pass, so ranks may run different pass counts and still all-reduce
+      exactly once per step — no deadlock, no dummy passes.
     """
 
     def __init__(self, *args, token_budget: int, global_batch: int,
@@ -82,29 +90,79 @@ class DynamicBatchTrainer(SFTTrainer):
         self._token_budget = int(token_budget)
         self._global_batch = int(global_batch)
         self._pad_token_id = int(pad_token_id)
+        self._stream_checked = False
+
+    def get_train_dataloader(self):
+        """Under DDP, every rank must see the SAME batches — do not shard.
+
+        The stock Trainer loader is prepared by accelerate, which gives each rank a
+        different slice of every batch. Routing needs the opposite: identical full
+        steps everywhere, split by `route_step`, not by the sampler. A plain seeded
+        DataLoader is identical across ranks by construction (same seed, same code,
+        no rank-dependent state); device placement already happens per micro-batch
+        inside training_step.
+        """
+        if self.args.world_size == 1:
+            return super().get_train_dataloader()
+        from torch.utils.data import DataLoader
+
+        generator = torch.Generator()
+        generator.manual_seed(int(self.args.seed))
+        return DataLoader(
+            self.train_dataset,
+            batch_size=self._global_batch,
+            shuffle=True,
+            generator=generator,
+            collate_fn=self.data_collator,
+            drop_last=self.args.dataloader_drop_last,
+        )
+
+    def _check_stream_agreement(self, lengths: list[int]) -> None:
+        """One-time tripwire: all ranks must hold the same step (lengths checksum)."""
+        import torch.distributed as dist
+
+        if self._stream_checked or self.args.world_size == 1 or not dist.is_initialized():
+            self._stream_checked = True
+            return
+        checksum = torch.tensor([len(lengths), sum(lengths)], device=self.args.device)
+        gathered = [torch.zeros_like(checksum) for _ in range(self.args.world_size)]
+        dist.all_gather(gathered, checksum)
+        assert all(torch.equal(g, gathered[0]) for g in gathered), (
+            "ranks disagree on the step's rows — the dataloader is sharding; "
+            "routing requires identical streams (get_train_dataloader override)")
+        self._stream_checked = True
 
     def training_step(self, model, inputs, num_items_in_batch=None):  # noqa: ARG002
         model.train()
         features: list[dict] = inputs  # identity-collated: list of unpadded examples
-        # The divisor stays global_batch even on a short final/smoke batch — exactly
-        # the legacy behaviour (transformers divides by grad_accum regardless), so
-        # loss curves stay comparable and no example silently gains weight.
-        plan = plan_micro_batches(
-            [len(f["input_ids"]) for f in features], self._token_budget)
+        lengths = [len(f["input_ids"]) for f in features]
+        self._check_stream_agreement(lengths)
+        world_size = int(self.args.world_size)
+        # Every rank computes the identical full plan and takes its own share; the
+        # divisor stays global_batch even on a short final/smoke batch (legacy
+        # behaviour, keeps loss curves comparable).
+        local_plan = route_step(lengths, self._token_budget, world_size)[
+            int(self.args.process_index)]
+        scale = float(world_size)  # DDP mean -> sum; see class docstring
         total = None
-        for part in plan:
-            batch = _collate_padded([features[i] for i in part], self._pad_token_id)
-            batch = {k: v.to(self.args.device, non_blocking=True)
-                     for k, v in batch.items()}
-            labels = batch.pop("labels")
-            with self.compute_loss_context_manager():
-                # No `labels` kwarg: the model must not compute its own (differently
-                # normalised) loss; we build it from the logits.
-                out = model(**batch, use_cache=False)
-                loss = seq_mean_token_mean_loss(out.logits, labels, self._global_batch)
-            # Backward per micro-batch: gradients ACCUMULATE (linearity is what makes
-            # the partition invisible); Trainer clips and steps once per call.
-            self.accelerator.backward(loss)
+        for j, part in enumerate(local_plan):
+            is_last = j == len(local_plan) - 1
+            sync_ctx = (contextlib.nullcontext() if (is_last or world_size == 1)
+                        else self.accelerator.no_sync(model))
+            with sync_ctx:
+                batch = _collate_padded([features[i] for i in part], self._pad_token_id)
+                batch = {k: v.to(self.args.device, non_blocking=True)
+                         for k, v in batch.items()}
+                labels = batch.pop("labels")
+                with self.compute_loss_context_manager():
+                    # No `labels` kwarg: the model must not compute its own
+                    # (differently normalised) loss; we build it from the logits.
+                    out = model(**batch, use_cache=False)
+                    loss = seq_mean_token_mean_loss(
+                        out.logits, labels, self._global_batch) * scale
+                # Backward INSIDE the sync context: gradients accumulate locally,
+                # and only the final pass's backward triggers the all-reduce.
+                self.accelerator.backward(loss)
             total = loss.detach() if total is None else total + loss.detach()
         return total
 
@@ -327,7 +385,7 @@ def main(config: str, smoke: bool = False) -> None:
     # count leaves the optimizer seeing the same number of examples per step, and the
     # learning rate and step count stay comparable across 1- and 2-GPU runs.
     grad_accum = int(cfg.train.grad_accum)
-    if world_size > 1:
+    if world_size > 1 and cfg.train.get("dynamic_batching") is None:
         assert grad_accum % world_size == 0, (
             f"grad_accum={grad_accum} is not divisible by world_size={world_size}; "
             f"the global batch would silently change between runs")
@@ -345,10 +403,6 @@ def main(config: str, smoke: bool = False) -> None:
     global_batch = int(cfg.train.batch_size) * int(cfg.train.grad_accum)
     dyn_budget: int | None = None
     if dynamic is not None:
-        assert world_size == 1, (
-            "dynamic_batching is single-GPU (train one model per GPU — see "
-            "docs/LOG.md 2026-08-08 DDP straggler discussion); drop the block or "
-            "run without torchrun")
         assert pre_tokenized, (
             "dynamic_batching needs the pre-tokenized assistant-only path: labels "
             "must be baked per example before any batching")
@@ -387,7 +441,9 @@ def main(config: str, smoke: bool = False) -> None:
             len(plan_micro_batches(lens[s:s + global_batch], dyn_budget))
             for s in range(0, len(lens) - global_batch + 1, global_batch))
         print(f">>> dynamic batching ON: token_budget={dyn_budget} [{budget_src}], "
-              f"global_batch={global_batch}, loss_agg=seq-mean-token-mean")
+              f"global_batch={global_batch}, loss_agg=seq-mean-token-mean"
+              + (f", DDP routing over {world_size} ranks (route_step)"
+                 if world_size > 1 else ""))
         print(f">>> ~{n_passes} forward passes/epoch vs {len(lens)} at batch 1 "
               f"({len(lens) / max(n_passes, 1):.1f}x fewer; dataloader-order estimate)")
 
