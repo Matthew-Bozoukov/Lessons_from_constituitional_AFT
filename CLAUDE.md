@@ -12,13 +12,19 @@ It is the single agent guide: the repository-wide conventions that used to live 
 
 ## What this project is
 
-Replication of the **"difficult advice"** result from Anthropic's *Teaching Claude Why* on
-**Qwen3-32B** using only only synthetic chat data (no midtraining): SFT on out-of-distribution difficult-advice data (a *user* facing an ethically
-ambiguous situation; the assistant reasons about its values and declines norm-violations) reduces
-**agentic misalignment** (blackmail/leaking honeypots). Data is generated with **Sonnet 4.5 via
-OpenRouter** (no Anthropic key exists — all Claude calls go through OpenRouter). See
-`docs/replication.md` for the end-to-end run guide and the headline numbers; see `docs/LOG.md` for the
-chronological findings.
+This is its own research project: **improving the methods for constitutional SFT** — teaching a
+model its constitution from synthetic chat data alone, with no midtraining, and showing the
+improvement holds up. The prior pipelines justify most of their design choices by vibes; the work
+here is to turn those choices into measured ones and build a better recipe out of what survives.
+
+The starting point was the **"difficult advice"** result from Anthropic's *Teaching Claude Why*:
+SFT on out-of-distribution difficult-advice data (a *user* faces an ethically ambiguous situation;
+the assistant reasons about its values and declines norm-violations) reduces **agentic
+misalignment** (blackmail/leaking honeypots). We reproduced that on **Qwen3-32B**, and it is now
+the baseline the project measures against rather than the thing the project is for. Data is
+generated with **Sonnet 4.5 via OpenRouter** (no Anthropic key exists — all Claude calls go
+through OpenRouter). See `docs/replication.md` for the end-to-end run guide and the baseline
+numbers; see `docs/LOG.md` for the chronological findings.
 
 ## Where code runs
 
@@ -142,7 +148,7 @@ docs/LOG.md             append-only research log, MOST RECENT FIRST. Add an entr
     variant, so nobody has to open the file to know what run it belongs to
     (`lora_qwen3_difficult_advice_thinking.yaml`, `odcv_bench_ft_20_80.yaml` —
     never a bare `lora.yaml` or `odcv_bench_ft.yaml`). Shared vocabulary:
-    `qwen3` = Qwen3-32B (original replication), `qwen36` = Qwen3.6-27B (the
+    `qwen3` = Qwen3-32B (the original baseline runs), `qwen36` = Qwen3.6-27B (the
     mixture sweep); mixture ratios read `<synth>_<tulu>` (`20_80` = 20%
     difficult-advice / 80% Tulu); eval arms are `base_*` (untrained),
     `ft_<ratio>[_<ablation>]` (difficult-advice fine-tunes), `tulu100`
