@@ -29,6 +29,7 @@ loss, grad_norm, passes, padded_tokens, step_time_s per optimizer step.
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 
@@ -38,19 +39,19 @@ import torch
 from omegaconf import OmegaConf
 from transformers import AutoTokenizer
 
-from src.train.dynamic_batching import plan_micro_batches, seq_mean_token_mean_loss
+from src.train.dynamic_batching import plan_micro_batches, route_step, seq_mean_token_mean_loss
 from src.train.masking import build_labels, model_profile
 from src.train.train_lora import _collate_padded
 
 GLOBAL_BATCH = 16
 
 
-def _build_model(cfg):
+def _build_model(cfg, device: int = 0):
     from peft import LoraConfig, get_peft_model
     from transformers import AutoModelForImageTextToText
 
     model = AutoModelForImageTextToText.from_pretrained(
-        str(cfg.model), dtype=torch.bfloat16, device_map={"": 0})
+        str(cfg.model), dtype=torch.bfloat16, device_map={"": device})
     model.gradient_checkpointing_enable(
         gradient_checkpointing_kwargs={"use_reentrant": False})
     model = get_peft_model(model, LoraConfig(
@@ -116,9 +117,85 @@ def _run_protocol(name: str, model, feats, lr: float, budget: int, pad_id: int,
     return {"total_wall_s": total_wall}
 
 
+def _run_ddp(model, feats, lr: float, budget: int, pad_id: int, wandb, run_cfg: dict,
+             rank: int, world_size: int, device: int) -> None:
+    """The routed protocol under real DDP: same steps, same init, same loss scale.
+
+    Every rank computes the identical route_step plan and runs plans[rank]; loss is
+    scaled x world_size so DDP's gradient mean restores the exact 1/16 sum (each
+    example equal weight regardless of rank); no_sync on all but the last local
+    pass gives exactly one all-reduce per step. Logged loss is all-reduced back to
+    the single-GPU scale so curves overlay the existing runs.
+    """
+    import contextlib
+
+    import torch.distributed as dist
+
+    ddp = torch.nn.parallel.DistributedDataParallel(model, device_ids=[device])
+    trainable = [p for p in ddp.module.parameters() if p.requires_grad]
+    opt = torch.optim.AdamW(trainable, lr=lr)
+    run = None
+    if rank == 0:
+        run = wandb.init(project=run_cfg["project"], name=f"dynamic-ddp{world_size}",
+                         config=run_cfg)
+    total_wall = 0.0
+    for s in range(run_cfg["steps"]):
+        step_feats = feats[s * GLOBAL_BATCH:(s + 1) * GLOBAL_BATCH]
+        lens = [len(f["input_ids"]) for f in step_feats]
+        local_plan = route_step(lens, budget, world_size)[rank]
+        dist.barrier()
+        torch.cuda.synchronize()
+        t0 = time.perf_counter()
+        opt.zero_grad(set_to_none=True)
+        local_total = torch.zeros((), device=f"cuda:{device}")
+        for j, part in enumerate(local_plan):
+            sync_ctx = (contextlib.nullcontext() if j == len(local_plan) - 1
+                        else ddp.no_sync())
+            with sync_ctx:
+                mb = _collate_padded([step_feats[i] for i in part], pad_id)
+                mb = {k: v.to(f"cuda:{device}") for k, v in mb.items()}
+                labels = mb.pop("labels")
+                loss = seq_mean_token_mean_loss(
+                    ddp(**mb, use_cache=False).logits, labels, GLOBAL_BATCH
+                ) * world_size
+                loss.backward()
+            local_total += loss.detach()
+        grad_norm = float(torch.norm(torch.stack([p.grad.norm() for p in trainable])))
+        opt.step()
+        torch.cuda.synchronize()
+        dist.barrier()  # step ends when the SLOWEST rank ends — that is the time
+        dt = time.perf_counter() - t0
+        total_wall += dt
+        dist.all_reduce(local_total)          # sum of (x ws scaled) locals ...
+        step_loss = float(local_total) / world_size  # ... /ws = single-GPU scale
+        n_passes = torch.tensor([len(local_plan)], device=f"cuda:{device}")
+        dist.all_reduce(n_passes, op=dist.ReduceOp.MAX)
+        if rank == 0:
+            run.log({"loss": step_loss, "grad_norm": grad_norm,
+                     "passes": int(n_passes), "step_time_s": dt,
+                     "cum_wall_s": total_wall, "data_checksum": sum(lens)}, step=s)
+            print(f"[ddp{world_size}] step {s:3d} loss {step_loss:.4f} "
+                  f"grad {grad_norm:.3f} max_passes {int(n_passes)} {dt:.1f}s",
+                  flush=True)
+    if rank == 0:
+        run.summary["total_wall_s"] = total_wall
+        run.finish()
+        print(f"\n>>> dynamic-ddp{world_size} {total_wall:.0f}s "
+              "(compare legacy/dynamic totals in the same wandb project)")
+
+
 def main(config: str, rows: str = "data/mixture.jsonl", steps: int = 30,
          budget: int | None = None, project: str = "dynamic-batching-ab") -> None:
     import wandb
+
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    rank = int(os.environ.get("RANK", "0"))
+    device = int(os.environ.get("LOCAL_RANK", "0"))
+    if world_size > 1:
+        import torch.distributed as dist
+
+        dist.init_process_group("nccl")
+        torch.cuda.set_device(device)
 
     cfg = OmegaConf.load(config)
     torch.manual_seed(0)
@@ -129,13 +206,21 @@ def main(config: str, rows: str = "data/mixture.jsonl", steps: int = 30,
     feats, _ = _stream(cfg, rows, tokenizer, steps)
     if budget is None:
         budget = max(len(f["input_ids"]) for f in feats)
-    model = _build_model(cfg)
-    init = {n: p.detach().clone() for n, p in model.named_parameters() if p.requires_grad}
+    model = _build_model(cfg, device)
 
     run_cfg = {"project": project, "steps": steps, "budget": int(budget),
                "lr": float(cfg.train.lr), "global_batch": GLOBAL_BATCH,
-               "gpu": torch.cuda.get_device_name(0), "config": config,
-               "loss_agg": "seq-mean-token-mean", "lora_dropout": 0.0}
+               "gpu": torch.cuda.get_device_name(device), "config": config,
+               "loss_agg": "seq-mean-token-mean", "lora_dropout": 0.0,
+               "world_size": world_size}
+    if world_size > 1:
+        # Same stream, same seed-determined init as the single-GPU runs; the
+        # routed protocol only. DDP broadcasts rank 0's params at wrap time.
+        _run_ddp(model, feats, float(cfg.train.lr), int(budget),
+                 tokenizer.pad_token_id, wandb, run_cfg, rank, world_size, device)
+        return
+
+    init = {n: p.detach().clone() for n, p in model.named_parameters() if p.requires_grad}
     results = {}
     for name in ("legacy", "dynamic"):
         with torch.no_grad():  # identical starting point for both protocols
