@@ -147,24 +147,87 @@ def estimate(config: str, measured: str | None = None) -> None:
     print(json.dumps(pipeline.estimate(_load(config), measured), indent=2))
 
 
-def segment(constitution: str = "constitutions/claude_distilled_12_principles_mid/constitution.md") -> None:
-    """Print the traits the constitution segments into, without calling any model.
+def chunkings() -> None:
+    """List the chunking methods a dataset config's `chunking:` flag may name."""
+    from .constitution import CHUNKINGS, DEFAULT_CHUNKING
+
+    for name, c in CHUNKINGS.items():
+        mark = " (default)" if name == DEFAULT_CHUNKING else ""
+        shape = (f"{c.granularity} x {c.strategy}"
+                 + (f", {c.n_clusters} clusters" if c.strategy == "cluster"
+                    else f", {c.size} per unit" if c.size > 1 else ""))
+        print(f"{name}{mark}\n     {shape}\n     {c.summary}")
+    print("\nUse in a dataset config:  chunking: <name>\n"
+          "Preview one:              uv run synth segment --chunking <name>")
+
+
+def segment(constitution: str = "constitutions/claude_distilled_12_principles_mid/constitution.md",
+            chunking: str | None = None, seed: int = 0, full: bool = False) -> None:
+    """Print the units a chunking method produces, without calling any model.
+
+    The dry-run for every chunking choice: inspectable for free, offline and with no
+    API key, before a cent is spent generating against it.
 
     Args:
         constitution: Path to the constitution markdown.
+        chunking: A method name (`uv run synth chunkings` lists them). Defaults to the
+            one every existing corpus was built with.
+        seed: Run seed, used by methods that shuffle.
+        full: Print each unit's whole text instead of a one-line preview.
     """
-    from .constitution import segment as _segment
+    from .constitution import chunk as _chunk
+    from .constitution import full_text, group as _group, preamble as _preamble
+    from .constitution import resolve_chunking
 
-    traits, style = _segment(constitution)
-    for t in traits:
-        print(f"{t.trait_id}  {t.name}")
-        print(f"     {t.text[:150]}")
-    print(f"\n{len(traits)} traits, {len(style)} chars of shared style guidance")
+    spec = resolve_chunking(chunking)
+    granularity = spec.granularity
+    chunks, style = _chunk(constitution, granularity=granularity,
+                           min_words=spec.min_words)
+    units = _group(chunks, size=spec.size, strategy=spec.strategy, seed=seed,
+                   n_clusters=spec.n_clusters)
+
+    for u in units:
+        members = f"  <- {', '.join(u.chunk_ids)}" if u.n_chunks > 1 else ""
+        print(f"{u.unit_id:<14} {u.name}{members}")
+        print(u.text if full else f"     {u.text[:150].replace(chr(10), ' ')}")
+
+    words = [len(u.text.split()) for u in units]
+    doc_words = len(full_text(constitution).split())
+    print(f"\nchunking: {spec.name} -- {len(chunks)} {granularity} chunks -> "
+          f"{len(units)} units ({spec.strategy})")
+    # Below `principle` the sum exceeds the document: every sub-chunk repeats its
+    # principle title so it stays self-contained. Say so rather than look like a bug.
+    note = " incl. repeated titles" if sum(words) > doc_words else ""
+    print(f"words/unit: min {min(words)}  median {sorted(words)[len(words) // 2]}  "
+          f"max {max(words)}  |  {sum(words)} words across units{note}, "
+          f"{doc_words} in the document")
+    print(f"{len(style)} chars of shared style guidance (injected everywhere)")
+
+    unchunked = _preamble(constitution)
+    if unchunked and granularity != "whole":
+        # Names the blind spot rather than hiding it: this is where the constitution
+        # says how principles trade off, and no unit is built around it.
+        print(f"{len(unchunked.split())} words of preamble belong to NO unit at this "
+              f"granularity (title + priority/conflict-resolution); they reach the "
+              f"model only via {{constitution}}")
+
+    if len(chunks) > 1:
+        from .checks import _hashed_features
+
+        X = _hashed_features([c.text for c in chunks])
+        sims = X @ X.T
+        n = len(chunks)
+        central = (sims.sum(axis=1) - 1.0) / (n - 1)
+        order = sorted(range(n), key=lambda i: -float(central[i]))
+        print(f"chunk centrality (mean cosine to the rest): "
+              f"{float(central.min()):.2f}-{float(central.max()):.2f}; "
+              f"most central {chunks[order[0]].chunk_id}, "
+              f"most peripheral {chunks[order[-1]].chunk_id}")
 
 
 def main() -> None:
     fire.Fire({"run": run, "topup": topup, "check": check,
-               "estimate": estimate, "segment": segment})
+               "estimate": estimate, "segment": segment, "chunkings": chunkings})
 
 
 if __name__ == "__main__":

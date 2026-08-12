@@ -30,6 +30,19 @@ seed: 0
 constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
 n_traits: 9
 
+# How stage 1 cuts that document into the units a document is generated against.
+# `principle` is one numbered principle per document -- the recipe every corpus in this
+# repository was generated with. `uv run synth chunkings` lists the alternatives;
+# `uv run synth segment --chunking <name>` previews one offline, for free.
+#
+# Changing this changes the unit COUNT (1 for `whole`, 9 for `principle`, 45 for
+# `bullet`), and `scenarios_per_trait` below is per unit -- so a bullet run would be
+# ~5x this corpus. To hold corpus size fixed while varying chunking, replace
+# `scenarios_per_trait` with `total_scenarios: <n>`, which splits a fixed budget across
+# however many units there are. Also update `n_traits` (or drop it: it is only the cost
+# model's hint, and a stale value is now rejected rather than silently used).
+chunking: principle
+
 # Scenarios generated per trait. 12 traits x 77 = 924 examples ~ 1.0M Qwen3.6 tokens at
 # the measured ~1,082 tokens per rendered example (was 8 x 116 = 928 for the v1 doc —
 # per-trait count rescaled to keep the corpus size unchanged across the switch).
