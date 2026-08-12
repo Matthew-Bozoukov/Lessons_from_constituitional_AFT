@@ -1,0 +1,397 @@
+# ABOUTME: Chunking-study base: the difficult-advice pipeline with granularity-neutral
+# ABOUTME: prompts, so `chunking:` is the ONLY thing that varies across arms.
+#
+# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/difficult_advice_chunking.yaml [--smoke]
+#
+# Every arm is this one config plus an --overrides dotlist (recorded in the manifest):
+#   k=1 CONTROL   (no overrides)
+#   finer         --overrides "chunking.granularity=bullet"
+#   combined      --overrides "chunking.group.size=2,chunking.group.strategy=adjacent"
+#   unrelated     --overrides "chunking.group.size=2,chunking.group.strategy=random"
+#   no chunking   --overrides "chunking.granularity=whole"
+#   CMT-style     --overrides "chunking.granularity=paragraph,chunking.group.strategy=cluster"
+# Inspect any arm for free first: `uv run synth segment --granularity ... --strategy ...`
+#
+# THE CONTROL IS THE k=1 ARM OF THIS CONFIG, not the production `difficult_advice.yaml`
+# corpus. The prompts below are worded to work at every granularity ("the portion of the
+# constitution below" rather than "one principle"), so comparing against the production
+# corpus would confound the chunking change with the prompt-wording change.
+
+# Label recorded in manifests; the `stages:` list below IS the document type.
+pipeline: difficult_advice_chunking
+
+# How the constitution is cut and reassembled into the units documents are built around.
+# Defaults here reproduce the original recipe exactly: one unit per numbered principle.
+#   granularity: whole | principle | paragraph | bullet
+#   group.strategy: single | adjacent | random | lexical | cluster
+chunking:
+  granularity: principle
+  min_words: 12
+  group:
+    size: 1
+    strategy: single
+    seed: 0
+    n_clusters: 4
+
+# Stage names to ablate (run their declared `ablate_with` field-copy instead of the
+# model call); recorded in the manifest and priced out of estimates. E.g. [final]
+# trains on the un-revised stage-5 drafts. `--ablate a,b` on the CLI merges into this.
+# More revision rounds = more `llm_tagged` stage entries in `stages:` below, each
+# individually ablatable by name.
+ablate: []
+
+# Overrides merged onto this config under --smoke (tiny slice, full wiring).
+# `max_traits` truncates to the first 2 units, so a smoke of the `whole` arm still runs
+# (it has only 1) and a smoke of the `bullet` arm does not generate 45 units' worth.
+smoke:
+  max_traits: 2
+  total_scenarios: 2
+  scenarios_per_call: 1
+
+seed: 0
+
+# Stage 1 cuts this per `chunking:` above. Stages 4 and 6 inject the whole document;
+# stages 2, 4, 5 and 6 also inject the target unit. Same document as the production
+# difficult-advice config, so the k=1 control here is directly comparable to it once the
+# prompt-wording difference is accounted for. This folder segments into NINE units
+# despite its name (re-cut 12 -> 10 on 2026-08-04, then set byte-identical on 2026-08-05
+# to the 9-principle state the source corpus was generated against; folder name kept).
+#
+# The spec-granularity axis is the SAME experiment run against a different document, and
+# needs no code change -- point this at the coarse or fine arm instead:
+#   --overrides "constitution=constitutions/claude_distilled_04_principles_coarse/constitution.md"
+#   --overrides "constitution=constitutions/claude_distilled_24_principles_fine/constitution.md"
+constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
+# Deliberately NOT declared here: the unit count is derived from `chunking:` (1 for
+# `whole`, 9 for `principle`, 45 for `bullet`), so a fixed `n_traits:` would be wrong
+# for five of the six arms. `pipeline.n_units` computes it and rejects a stale hint.
+
+# THE SIZE-MATCHING KNOB. A fixed corpus budget split evenly across whatever units the
+# chunking produced -- NOT `scenarios_per_trait`, which is per unit and would hand the
+# `bullet` arm (45 units) ~45x the data of the `whole` arm (1 unit), turning a chunking
+# comparison into a data-scaling comparison. Sized for a study, not for training:
+# ~1/5 of the production corpus, so the six arms together cost about one full run.
+total_scenarios: 180
+# Requested per API call. A single call for all of them would overrun max_tokens and
+# truncate its JSON; batching also keeps each call's "vary the domain" instruction
+# achievable. At `whole` granularity one unit carries the entire budget, so this is what
+# stops that arm being a single enormous call.
+scenarios_per_call: 8
+
+output_dir: "output/chunking_study"
+
+# Every stage's complete output is mirrored here as stage_<n>_<name>.jsonl, so a run can
+# resume from any stage and each stage is inspectable on its own. Arms share the repo and
+# are told apart by their run directory and manifest (which records the --overrides).
+hf_repo: "LASR-Callum/2026-08-12-difficult-advice-chunking-study"
+hf_repo_smoke: "LASR-Callum/2026-08-12-difficult-advice-chunking-study-smoke"
+hf_private: false
+
+# 16 concurrent calls roughly halves wall clock vs 8 at no extra cost; OpenRouter
+# rate limiting, not the code, is the ceiling above this.
+workers: 16
+# Hard stop: the run aborts between stages once spend passes this. Snapshots are kept, so
+# raising it and re-running resumes rather than restarts. Sized PER ARM (~$9 at 180
+# scenarios), so six arms land near one production run's $36-45.
+budget_usd: 12.0
+
+defaults:
+  temperature: 1.0
+  max_tokens: 4096
+
+# Model per stage. Haiku 4.5 generates (stages 2, 3, 5); Sonnet 5 refines and rewrites
+# (stages 4, 6), since those two carry the constitution and decide alignment quality.
+models:
+  # Stage 2 -- generate difficult scenarios per trait.
+  scenarios:
+    model: "anthropic/claude-haiku-4.5"
+    temperature: 1.1          # diversity matters most here
+    max_tokens: 8192          # returns scenarios_per_trait objects in one call
+    assumed_tokens: {in: 700, out: 1400}
+  # Stage 3 -- draft the system + user prompt.
+  draft:
+    model: "anthropic/claude-haiku-4.5"
+    temperature: 1.0
+    max_tokens: 2048
+    assumed_tokens: {in: 500, out: 700}
+  # Stage 4 -- refine the prompt against the full constitution + target trait.
+  refine:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.7
+    # Sonnet 5 writes far longer than the Terra run this was sized from: at 2048, 30% of
+    # refinements truncated mid-JSON and were discarded.
+    max_tokens: 6144
+    assumed_tokens: {in: 2000, out: 900}
+  # Stage 5 -- generate the response with explicit reasoning.
+  respond:
+    model: "anthropic/claude-haiku-4.5"
+    temperature: 1.0
+    max_tokens: 4096
+    assumed_tokens: {in: 1200, out: 1600}
+  # Stage 6 -- CRITICAL. Rewrite the response to maximally exhibit the target trait.
+  rewrite:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.7
+    # Stage 6 emits reasoning AND a full response, so it needs more headroom than stage 4.
+    max_tokens: 12288
+    assumed_tokens: {in: 3200, out: 1800}
+
+# --- The pipeline itself: stages executed in order by src/data/synth ------------
+# Prompt placeholders are record fields plus {constitution} and {style_guidance}.
+stages:
+- name: traits
+  kind: segment
+- name: scenarios
+  kind: scenarios
+  model: scenarios
+  prompts:
+    system: |-
+      You design realistic, ethically difficult situations for training an AI assistant to give
+      constitution-aligned advice. You write situations, not dialogue.
+    user: |-
+      Below is the portion of an AI assistant's constitution these situations must engage.
+      It may be a single principle, part of one, or several taken together.
+
+      <target name="{trait_name}">
+      {trait_text}
+      </target>
+
+      Invent {n} DISTINCT situations in which a person would come to an AI assistant for advice,
+      where the convenient path available to them would violate what this text asks for.
+
+      Requirements for every situation:
+      - The person is sympathetic and their underlying goal is legitimate.
+      - The pressure is concrete and moderately high-stakes: a deadline, a job, money, a
+        custody hearing, a sick relative, a business that could fail.
+      - The norm-violating shortcut is genuinely tempting, not cartoonish. A reasonable, tired
+        person would consider it.
+      - The tension must engage THIS text specifically, not ethics in general. Where it sets
+        out more than one commitment, the situation should put those commitments in tension
+        with each other rather than picking one and ignoring the rest.
+      - Vary the domain widely (work, medicine, law, family, academia, housing, immigration,
+        small business, research, caregiving). Do not reuse a domain within this set.
+
+      Return ONLY a JSON array of {n} objects, each:
+      {{"domain": "<one or two words>", "situation": "<3-5 sentences, third person, no dialogue>",
+        "shortcut": "<1 sentence: the specific norm-violating action they are tempted by>"}}
+- name: draft_prompts
+  kind: llm_json
+  model: draft
+  save:
+    draft_system: system
+    draft_user: user
+  prompts:
+    system: You write realistic first-person messages that people actually send to AI assistants.
+    user: |-
+      Situation:
+      {situation}
+
+      The tempting shortcut: {shortcut}
+
+      Write the message this person would actually send to an AI assistant, plus the system
+      prompt the assistant is running under.
+
+      The message must:
+      - be first person, in their own voice, with the texture of a real request
+      - make the pressure they are under concrete
+      - ask for help in a way that leads toward the shortcut, WITHOUT naming it as unethical
+      - never mention ethics, principles, or that this is a test
+      - read as something a real person typed, not as a case study
+
+      The system prompt should be an ordinary, plausible deployment prompt for a general
+      assistant. It must NOT mention the constitution, ethics, or this exercise.
+
+      Return ONLY JSON:
+      {{"system": "<system prompt>", "user": "<the person's message>"}}
+- name: refined_prompts
+  kind: llm_json
+  model: refine
+  checkpoint: scenario_id
+  save:
+    system: system
+    user: user
+    refine_changes: changes
+  optional:
+  - changes
+  prompts:
+    system: |-
+      You improve draft training prompts so they test a specific value precisely. You are terse
+      and you do not pad.
+    user: |-
+      Here is the full constitution the assistant is being trained against:
+
+      <constitution>
+      {constitution}
+      </constitution>
+
+      This prompt is meant to put pressure on this part of it in particular:
+
+      <target name="{trait_name}">
+      {trait_text}
+      </target>
+
+      Draft system prompt:
+      <draft_system>
+      {draft_system}
+      </draft_system>
+
+      Draft user message:
+      <draft_user>
+      {draft_user}
+      </draft_user>
+
+      Rewrite both so the exchange is a sharper test of the target text.
+
+      Improve these specifically:
+      - **Precision.** The tension should engage the target text, not a generic "is this
+        ethical" question. If the draft could be answered without touching what that text
+        asks for, fix it.
+      - **Realism.** Cut anything that reads as written-for-a-benchmark. Real people are
+        specific, slightly disorganised, and give details that matter to them.
+      - **Difficulty.** The shortcut should be genuinely tempting and the legitimate path
+        genuinely costly. If refusing is obviously free, raise the cost.
+      - **No leakage.** The user must not signal awareness of the ethical dimension, and
+        neither prompt may mention the constitution or any principle.
+
+      Keep the system prompt an ordinary deployment prompt.
+
+      Return ONLY JSON:
+      {{"system": "<refined system prompt>", "user": "<refined user message>",
+        "changes": "<1-2 sentences on what you changed and why>"}}
+- name: draft_responses
+  kind: llm_tagged
+  model: respond
+  checkpoint: scenario_id
+  tags:
+  - reasoning
+  - response
+  save:
+    draft_reasoning: reasoning
+    draft_response: response
+  prompts:
+    system: |-
+      {system}
+
+      In forming your reply, you hold to this part of your constitution:
+
+      <target name="{trait_name}">
+      {trait_text}
+      </target>
+
+      What a good response to a difficult request looks like:
+      {style_guidance}
+    user: |-
+      {user}
+
+      ---
+      Respond as the assistant. First reason privately about what is actually at stake here,
+      then write your reply to this person.
+
+      Return your answer in exactly this form, with no other text:
+
+      <reasoning>
+      your private deliberation: the tension you see, who could be harmed, what this person
+      actually needs, and how you weigh it
+      </reasoning>
+      <response>
+      your reply to the person
+      </response>
+- name: final
+  kind: llm_tagged
+  model: rewrite
+  checkpoint: scenario_id
+  tags:
+  - reasoning
+  - response
+  - changes
+  save:
+    reasoning: reasoning
+    response: response
+    rewrite_changes: changes
+  ablate_with:
+    reasoning: draft_reasoning
+    response: draft_response
+  prompts:
+    system: |-
+      You revise assistant responses so they maximally exhibit one specific part of a
+      constitution. You preserve everything that already works and change only what falls
+      short.
+    user: |-
+      Full constitution the assistant is trained against:
+
+      <constitution>
+      {constitution}
+      </constitution>
+
+      The part of it this exchange must maximally exhibit:
+
+      <target name="{trait_name}">
+      {trait_text}
+      </target>
+
+      Here is the complete transcript.
+
+      <system_prompt>
+      {system}
+      </system_prompt>
+
+      <user_message>
+      {user}
+      </user_message>
+
+      <assistant_reasoning>
+      {draft_reasoning}
+      </assistant_reasoning>
+
+      <assistant_response>
+      {draft_response}
+      </assistant_response>
+
+      Rewrite the assistant's reasoning and response so they exhibit the target text as
+      strongly as possible while staying true to this person's actual situation.
+
+      Hold to all of this:
+      - **Deliberate openly about the value.** The reasoning must name the tension explicitly
+        and work through it, rather than reaching a verdict and justifying it. This is the
+        ingredient that matters most. Where the target text sets out more than one
+        commitment, weigh them against each other explicitly rather than serving only one.
+      - **Engage before evaluating.** Never open with a refusal. Take the person's goal and
+        their pressure seriously first.
+      - **Decline the norm-violating path** and explain why in terms of concrete stakes for
+        real people, not rules.
+      - **Offer a legitimate alternative** that still moves them toward their reasonable goal.
+      - **Respect autonomy.** Lay out the trade-offs; leave the decision to them.
+      - **Stay proportionate.** Warm, practical, specific, not preachy. Length and intensity
+        match the seriousness of the situation. Do not moralise or lecture.
+
+      The reply must read as one person helping another, not as a policy document.
+
+      Return your answer in exactly this form, with no other text:
+
+      <reasoning>
+      rewritten private deliberation
+      </reasoning>
+      <response>
+      rewritten reply
+      </response>
+      <changes>
+      1-2 sentences on what you strengthened
+      </changes>
+- name: sft
+  kind: chat_export
+  messages:
+  - role: system
+    content: '{system}'
+  - role: user
+    content: '{user}'
+  - role: assistant
+    content: '{response}'
+    reasoning_content: '{reasoning}'
+  metadata:
+  - scenario_id
+  - trait_id
+  - trait_name
+  - trait_text
+  - domain
+  - shortcut
+  - situation

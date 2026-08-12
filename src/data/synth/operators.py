@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 
 from . import cells
-from .constitution import Trait, segment
+from .constitution import Trait, units_from_config
 from .core import Ctx, Stage, call_json, call_tagged, model_cfg, resilient, run_items
 from .hf_cache import read_jsonl
 
@@ -69,21 +69,65 @@ def _lint(parsed: dict, spec: dict) -> list[str]:
 
 
 def op_segment(sc: dict, cfg: dict) -> Stage:
-    """Deterministic constitution segmentation; publishes `style_guidance` to ctx.vars."""
+    """Deterministic constitution chunking + grouping; publishes `style_guidance`.
+
+    With no `chunking:` block in the config this is the original recipe exactly: one
+    unit per numbered principle. With one, the same stage spans every arm of the
+    chunking study -- finer granularities, combined chunks, and the whole document as a
+    single unit -- because a unit renders to the Trait fields the rest of the pipeline
+    already consumes.
+    """
     def load(ctx: Ctx):
-        traits, style = segment(ctx.cfg["constitution"])
+        units, style = units_from_config(ctx.cfg)
         limit = ctx.cfg.get("max_traits")
         if limit:
-            traits = traits[: int(limit)]
+            units = units[: int(limit)]
         ctx.vars["style_guidance"] = style
-        return traits
+        return units
 
     def fn(ctx, records, ckpt):
-        traits = load(ctx)
-        print(f"    traits -> {[t.trait_id for t in traits]}")
-        return [t.as_dict() for t in traits]
+        units = load(ctx)
+        u = units[0]
+        print(f"    {u.granularity} x {u.grouping_strategy} -> {len(units)} units")
+        for x in units:
+            members = f" <- {','.join(x.chunk_ids)}" if x.n_chunks > 1 else ""
+            print(f"    {x.unit_id}{members}")
+        return [x.as_dict() for x in units]
 
+    # Cached runs still need `style_guidance` in ctx.vars, and downstream operators
+    # rebuild Traits from the snapshot, so on_cached returns units for the vars alone.
     return Stage(sc["name"], fn, on_cached=lambda ctx, records: load(ctx))
+
+
+def scenario_batches(n_traits: int, cfg: dict) -> list[tuple[int, int, int]]:
+    """Stage-2 batch specs for `scenarios`: (trait index, batch index, how many).
+
+    Two sizing modes, and the choice matters for any chunking comparison:
+      * `scenarios_per_trait` -- the original. The corpus grows with the number of
+        units, so a `bullet` arm (45 units) would be ~45x a `whole` arm (1 unit).
+      * `total_scenarios` -- a fixed corpus budget split evenly across whatever units
+        the chunking produced. This is what keeps arms size-matched, so a chunking
+        comparison is not secretly a data-scaling comparison. It wins when both are set.
+
+    Pure and cheap, so the estimator calls it to count calls without touching the network.
+    """
+    total = cfg.get("total_scenarios")
+    if total is not None:
+        counts = _largest_remainder({i: 1.0 for i in range(n_traits)}, int(total))
+        per_trait = [counts[i] for i in range(n_traits)]
+    else:
+        per_trait = [int(cfg["scenarios_per_trait"])] * n_traits
+    per_call = int(cfg.get("scenarios_per_call", max(per_trait or [1])))
+
+    batches: list[tuple[int, int, int]] = []
+    for ti, want in enumerate(per_trait):
+        remaining, bi = want, 0
+        while remaining > 0:
+            n = min(per_call, remaining)
+            batches.append((ti, bi, n))
+            remaining -= n
+            bi += 1
+    return batches
 
 
 def op_scenarios(sc: dict, cfg: dict) -> Stage:
@@ -93,17 +137,8 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
 
     def fn(ctx, records, ckpt):
         m = model_cfg(ctx.cfg, mk)
-        traits = [Trait(**r) for r in records]
-        per_trait = int(ctx.cfg["scenarios_per_trait"])
-        per_call = int(ctx.cfg.get("scenarios_per_call", per_trait))
-        batches = []  # (trait index, batch index, how many this batch asks for)
-        for ti in range(len(traits)):
-            remaining, bi = per_trait, 0
-            while remaining > 0:
-                n = min(per_call, remaining)
-                batches.append((ti, bi, n))
-                remaining -= n
-                bi += 1
+        traits = [Trait.from_record(r) for r in records]
+        batches = scenario_batches(len(traits), ctx.cfg)
 
         def one(k: int) -> list[dict]:
             ti, bi, n = batches[k]
@@ -437,18 +472,32 @@ def plan_weighted_batches(traits: list[Trait], cfg: dict) -> list[dict]:
     """
     mix = cfg.get("mix", {})
     per_call = int(cfg.get("scenarios_per_call", 8))
-    configured = dict(cfg["trait_weights"])
-    present = {t.trait_id for t in traits}
-    missing = sorted(present - set(configured), key=lambda x: int(x[1:]))
-    extra = sorted(set(configured) - present, key=lambda x: int(x[1:]))
-    # The constitution behind a config can change under it -- the 12-principle document
-    # was re-cut to 10 units on 2026-08-04. Silently dropping the surplus weights would
-    # regenerate a DIFFERENT corpus under the same config and never say so.
-    assert not (missing or extra), (
-        f"trait_weights do not match {cfg['constitution']}, which segments into "
-        f"{len(traits)} units: missing weights for {missing}, weights for absent "
-        f"traits {extra}. Fix the config against the constitution actually in use.")
-    weights = {t.trait_id: float(configured[t.trait_id]) for t in traits}
+    configured = cfg["trait_weights"]
+    if isinstance(configured, str):
+        # Unit ids are derived from the chunking choice, not hand-listed, so an explicit
+        # weight table cannot be written against them -- it would have to be rewritten
+        # for every arm. `uniform` is the only spelling accepted, and only under a
+        # `chunking:` block, so a typo in a hand-weighted config still fails below.
+        assert configured == "uniform", (
+            f"trait_weights must be a mapping or the literal 'uniform', got "
+            f"{configured!r}")
+        assert cfg.get("chunking"), (
+            "trait_weights: uniform is only meaningful with a `chunking:` block, where "
+            "unit ids are derived. Write an explicit weight table instead.")
+        weights = {t.trait_id: 1.0 for t in traits}
+    else:
+        configured = dict(configured)
+        present = {t.trait_id for t in traits}
+        missing = sorted(present - set(configured))
+        extra = sorted(set(configured) - present)
+        # The constitution behind a config can change under it -- the 12-principle
+        # document was re-cut to 10 units on 2026-08-04. Silently dropping the surplus
+        # weights would regenerate a DIFFERENT corpus under the same config, silently.
+        assert not (missing or extra), (
+            f"trait_weights do not match {cfg['constitution']}, which segments into "
+            f"{len(traits)} units: missing weights for {missing}, weights for absent "
+            f"traits {extra}. Fix the config against the constitution actually in use.")
+        weights = {t.trait_id: float(configured[t.trait_id]) for t in traits}
     counts = _largest_remainder(weights, int(cfg["total_scenarios"]))
 
     # Motive rotation follows the config mapping's insertion order (YAML preserves it);
@@ -500,7 +549,7 @@ def op_scenarios_weighted(sc: dict, cfg: dict) -> Stage:
 
     def fn(ctx, records, ckpt):
         m = model_cfg(ctx.cfg, mk)
-        traits = [Trait(**r) for r in records]
+        traits = [Trait.from_record(r) for r in records]
         batches = plan_weighted_batches(traits, ctx.cfg)
         mix = ctx.cfg.get("mix", {})
 

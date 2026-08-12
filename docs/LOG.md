@@ -3,6 +3,70 @@
 
 # LOG
 
+## 2026-08-12 — Chunking is now a config axis, not a hardcoded choice (no corpus yet)
+
+**Hypothesis:** stage 1 of the pipeline — how the constitution is cut — is unablated
+everywhere in the prior work (GDM's `chunk = bullet` is an unexamined pick). The claim
+worth testing is structural: a k=1 document *cannot* teach a trade-off, because the
+scenario is generated against one principle and so no principle can lose to another. That
+predicts a data property measurable before any training — **the applies/conflicts ratio
+should rise with group size**. The supervisor's standing objection is that chunking is "a
+very indirect lever… hard to judge how much value it adds", so this was built to be cheap
+and to produce a *data* delta, not a model delta.
+
+**Method:** replaced the single hardcoded `segment()` (one numbered principle = one unit)
+with two deterministic, offline, no-LLM steps in `src/data/synth/constitution.py`:
+**chunk** (`whole | principle | paragraph | bullet`) then **group**
+(`single | adjacent | random | lexical | cluster`). The load-bearing move is that a `Unit`
+renders to the fields the pipeline already consumes (`trait_id`/`index`/`name`/`text`), so
+nothing after stage 1 changed. Chunkers and groupers were ported from the deleted
+`synthdoc/` package (git `cf13dd3`) rather than rewritten. `lexical`/`cluster` reuse
+`checks._hashed_features` (numpy char-ngrams), so the whole path runs with no API key and
+no new dependency.
+
+Three design decisions carry the measurement:
+- **Every strategy partitions the pool.** Each chunk lands in exactly one unit, so total
+  constitution content is identical across arms. A sampling grouper (what synthdoc did)
+  would let a k=2 arm see more or less of the document than k=1, confounding group size
+  with coverage.
+- **Arms are size-matched by `total_scenarios`, not `scenarios_per_trait`.** The latter is
+  *per unit*: a `bullet` arm (45 units) would have got ~45× the data of a `whole` arm (1
+  unit), making the comparison a data-scaling curve in disguise. Verified: all eight arms
+  price at exactly 180 examples / ~$9.3.
+- **The control is the k=1 arm of the new config, not the production corpus.** The study
+  config's prompts had to be reworded granularity-neutrally ("the portion of the
+  constitution below" vs "one principle"); comparing against the production corpus would
+  confound chunking with that wording change.
+
+**Result:** shipped and verified offline; **no corpus generated, nothing spent.**
+`segment()` is byte-identical to the old implementation across all six constitutions in
+the repo (test, not inspection), and `--estimate` on `difficult_advice`,
+`self_reflection` and `model_eval_model` is byte-identical to before. 177 new offline
+tests; full suite 595 passed, 5 skipped. Two real bugs were caught while building: the
+`bullet` chunker silently collapsed onto `paragraph` (prose between bullets wasn't split
+on blank lines), and unconstrained k-means over hashed features returned one cluster of
+3053 words beside one of 45 — now capacity-capped at ceil(n/k), which also yields a
+sensible principle/3 split (oversight+honesty+identity / power+harm+character /
+operator+helpfulness+flourishing).
+
+Also now usable and previously not: the `04_coarse` and `24_fine` constitutions, which
+`constitutions/README.md` still lists as "nothing yet — spec-variation experiment". The
+spec-granularity axis is the same experiment against a different document, via
+`--overrides constitution=...`. And `uv run synth segment` became the free dry-run for the
+whole study, reporting words/unit, chunk centrality, and — worth noting for the hypothesis
+— that **174 words of preamble belong to no unit** at any granularity below `whole`: the
+priority/conflict-resolution section, which is exactly the material saying how principles
+trade off, reaches the generator only via `{constitution}`.
+
+**Next steps:** (1) one paid `--smoke` per arm (a few cents each) and read the rollouts by
+hand — specifically whether a k=2 document engages *both* member principles or collapses
+onto one; (2) the corpus checker (tracked separately) needs to report, in priority order:
+applies/conflicts ratio, coverage map (unit × scenario-type × pressure-source, judged from
+the document rather than from which unit generated it — without this the `whole` and
+`cluster` arms are unevaluable), and k>1 member-leakage; (3) only then decide whether any
+arm earns a training run. Note `difficult_advice.yaml` still has no `checks:` block at
+all, so the production corpus is ungated.
+
 ## 2026-08-10 — Dynamic batching (jamie/dynamic-batching): loss curves match, 1.89x on real steps
 
 **Hypothesis:** grouping each fixed 16-example optimizer step into token-budgeted padded

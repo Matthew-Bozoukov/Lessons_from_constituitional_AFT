@@ -147,19 +147,69 @@ def estimate(config: str, measured: str | None = None) -> None:
     print(json.dumps(pipeline.estimate(_load(config), measured), indent=2))
 
 
-def segment(constitution: str = "constitutions/claude_distilled_12_principles_mid/constitution.md") -> None:
-    """Print the traits the constitution segments into, without calling any model.
+def segment(constitution: str = "constitutions/claude_distilled_12_principles_mid/constitution.md",
+            granularity: str = "principle", group_size: int = 1,
+            strategy: str = "single", seed: int = 0, n_clusters: int = 4,
+            min_words: int = 12, full: bool = False) -> None:
+    """Print the units a chunking choice produces, without calling any model.
+
+    The dry-run for the whole chunking study: every arm is inspectable here for free,
+    offline and with no API key, before a cent is spent generating against it.
 
     Args:
         constitution: Path to the constitution markdown.
+        granularity: whole | principle | paragraph | bullet.
+        group_size: Chunks per unit. Ignored by `cluster`.
+        strategy: single | adjacent | random | lexical | cluster.
+        seed: Seed for `random`; the other strategies are seed-independent.
+        n_clusters: Cluster count for `cluster`.
+        min_words: Sub-principle pieces shorter than this merge into a neighbour.
+        full: Print each unit's whole text instead of a one-line preview.
     """
-    from .constitution import segment as _segment
+    from .constitution import chunk as _chunk
+    from .constitution import full_text, group as _group, preamble as _preamble
 
-    traits, style = _segment(constitution)
-    for t in traits:
-        print(f"{t.trait_id}  {t.name}")
-        print(f"     {t.text[:150]}")
-    print(f"\n{len(traits)} traits, {len(style)} chars of shared style guidance")
+    chunks, style = _chunk(constitution, granularity=granularity, min_words=min_words)
+    units = _group(chunks, size=group_size, strategy=strategy, seed=seed,
+                   n_clusters=n_clusters)
+
+    for u in units:
+        members = f"  <- {', '.join(u.chunk_ids)}" if u.n_chunks > 1 else ""
+        print(f"{u.unit_id:<14} {u.name}{members}")
+        print(u.text if full else f"     {u.text[:150].replace(chr(10), ' ')}")
+
+    words = [len(u.text.split()) for u in units]
+    doc_words = len(full_text(constitution).split())
+    print(f"\n{len(chunks)} chunks ({granularity}) -> {len(units)} units "
+          f"({strategy}, size {group_size})")
+    # Below `principle` the sum exceeds the document: every sub-chunk repeats its
+    # principle title so it stays self-contained. Say so rather than look like a bug.
+    note = " incl. repeated titles" if sum(words) > doc_words else ""
+    print(f"words/unit: min {min(words)}  median {sorted(words)[len(words) // 2]}  "
+          f"max {max(words)}  |  {sum(words)} words across units{note}, "
+          f"{doc_words} in the document")
+    print(f"{len(style)} chars of shared style guidance (injected everywhere)")
+
+    unchunked = _preamble(constitution)
+    if unchunked and granularity != "whole":
+        # Names the blind spot rather than hiding it: this is where the constitution
+        # says how principles trade off, and no unit is built around it.
+        print(f"{len(unchunked.split())} words of preamble belong to NO unit at this "
+              f"granularity (title + priority/conflict-resolution); they reach the "
+              f"model only via {{constitution}}")
+
+    if len(chunks) > 1:
+        from .checks import _hashed_features
+
+        X = _hashed_features([c.text for c in chunks])
+        sims = X @ X.T
+        n = len(chunks)
+        central = (sims.sum(axis=1) - 1.0) / (n - 1)
+        order = sorted(range(n), key=lambda i: -float(central[i]))
+        print(f"chunk centrality (mean cosine to the rest): "
+              f"{float(central.min()):.2f}-{float(central.max()):.2f}; "
+              f"most central {chunks[order[0]].chunk_id}, "
+              f"most peripheral {chunks[order[-1]].chunk_id}")
 
 
 def main() -> None:

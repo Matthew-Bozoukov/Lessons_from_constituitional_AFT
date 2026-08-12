@@ -37,7 +37,7 @@ A config's `stages:` entry names an operator `kind` and supplies everything it n
 
 | kind | what it does | key fields |
 |---|---|---|
-| `segment` | deterministic constitution segmentation; publishes `{style_guidance}` | — |
+| `segment` | deterministic constitution chunking + grouping; publishes `{style_guidance}` | (top-level `chunking:` block — see below) |
 | `scenarios` | batched JSON fan-out per trait (`t<i>_b<b>_s<j>` ids) | `model`, `prompts` |
 | `llm_json` | one JSON call per record | `model`, `prompts`, `save`, `optional`, `checkpoint` |
 | `llm_tagged` | one tagged-blocks call per record | `model`, `prompts`, `tags`, `save`, `checkpoint`, `ablate_with`, `prompt_vars` (conditional template vars), `variants_by` (per-record user/tags/save), `lint` (ban-patterns + min-length, reject-and-retry) |
@@ -48,6 +48,57 @@ A config's `stages:` entry names an operator `kind` and supplies everything it n
 
 Prompt templates in configs are `str.format` templates over record fields plus shared
 vars (`{constitution}`, `{style_guidance}`). Literal JSON braces are escaped `{{ }}`.
+
+## Chunking: how the constitution becomes the units documents are built against
+
+`constitution.py` does this in two deterministic, offline, no-LLM steps — **chunk** the
+document at a granularity, then **group** chunks into units. A unit renders to exactly
+the fields the rest of the pipeline already consumes (`trait_id`/`index`/`name`/`text`),
+so nothing after stage 1 knows chunking exists. A config with no `chunking:` block gets
+the original recipe byte for byte: one unit per numbered principle.
+
+```yaml
+chunking:
+  granularity: principle    # whole | principle | paragraph | bullet
+  min_words: 12             # sub-principle pieces shorter than this merge into a neighbour
+  group:
+    size: 1                 # chunks per unit; ignored by `cluster`
+    strategy: single        # single | adjacent | random | lexical | cluster
+    seed: 0                 # `random` only; the rest are seed-independent
+    n_clusters: 4           # `cluster` only
+```
+
+Two invariants make arms comparable, and both are tested:
+
+- **Every strategy partitions the pool** — each chunk lands in exactly one unit, so total
+  constitution content is identical across arms and group size is never confounded with
+  coverage.
+- **Size-match with `total_scenarios`, not `scenarios_per_trait`.** The latter is *per
+  unit*, so a `bullet` arm (45 units) would get ~45× the data of a `whole` arm (1 unit).
+  `total_scenarios` splits a fixed corpus budget across whatever units the chunking
+  produced; it wins when both are set.
+
+Granularity comes from two places, and they cover different ranges: the **code chunkers**
+above reach below a principle, and **which `constitution.md`** you point at covers above
+it (`constitutions/claude_distilled_{04_coarse,07_approved,12_mid,24_fine}`). Our
+constitutions carry one heading level, so the "section" granularity named in the
+literature *is* `principle` here.
+
+Inspect any arm for free, offline, with no API key — this is the dry-run for the whole
+chunking study, and it also prints the spec-side measurements (words/unit, chunk
+centrality, and how much preamble belongs to no unit):
+
+```
+uv run synth segment --granularity bullet
+uv run synth segment --group_size 2 --strategy adjacent
+uv run synth segment --granularity paragraph --strategy cluster --n_clusters 4
+uv run synth segment --constitution constitutions/claude_distilled_24_principles_fine/constitution.md
+```
+
+The study config is `configs/data/synth/difficult_advice_chunking.yaml`: one config, one
+arm per `--overrides` dotlist, with granularity-neutral prompts shared by every arm
+including its k=1 control (so the control is that arm, **not** the production
+`difficult_advice.yaml` corpus, which uses the old "one principle" wording).
 
 **Ablation.** A stage entry with `ablate_with: {field: source_field}` declares its
 null-operation as a field copy (e.g. the rewrite stage's `ablate_with` promotes the

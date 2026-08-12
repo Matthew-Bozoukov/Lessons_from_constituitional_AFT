@@ -182,13 +182,36 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
 # --- the estimator ------------------------------------------------------------------
 
 
+def n_units(cfg: dict) -> int:
+    """How many units stage 1 will emit, derived from the config rather than declared.
+
+    `n_traits` is a hand-maintained hint and has gone stale before. Chunking makes that
+    fatal rather than merely untidy: a `whole` arm has one unit and a `bullet` arm has
+    dozens, so a declared count would misprice every arm. Chunking is offline and free,
+    so the real number is always available. A declared `n_traits` that disagrees is
+    treated as a config bug, not overridden silently.
+    """
+    from .constitution import units_from_config
+
+    units, _ = units_from_config(cfg)
+    limit = cfg.get("max_traits")
+    n = min(len(units), int(limit)) if limit else len(units)
+    declared = cfg.get("n_traits")
+    if declared is not None and not limit:
+        assert int(declared) == n, (
+            f"n_traits: {declared} in the config, but {cfg['constitution']} chunks into "
+            f"{n} units under this `chunking:` block. Fix n_traits (or drop it -- it is "
+            "only a hint; the count is derived).")
+    return n
+
+
 def n_examples(cfg: dict) -> int:
     """Final training examples a full run yields."""
     if "cells" in cfg:
         return sum(int(n) for n in cfg["cells"].values() if int(n) > 0)
     if "total_scenarios" in cfg:
         return int(cfg["total_scenarios"])
-    return int(cfg.get("n_traits", 8)) * int(cfg["scenarios_per_trait"])
+    return n_units(cfg) * int(cfg["scenarios_per_trait"])
 
 
 def _calls(cfg: dict) -> dict[str, int]:
@@ -203,13 +226,13 @@ def _calls(cfg: dict) -> dict[str, int]:
         if name in ablate:
             continue
         if kind == "scenarios":
-            per_trait = int(cfg["scenarios_per_trait"])
-            per_call = int(cfg.get("scenarios_per_call", per_trait))
-            n = int(cfg.get("n_traits", 8)) * math.ceil(per_trait / per_call)
+            from .operators import scenario_batches
+            n = len(scenario_batches(n_units(cfg), cfg))
         elif kind == "scenarios_weighted":
-            from .constitution import segment as _segment
+            from .constitution import units_from_config
             from .operators import plan_weighted_batches
-            n = len(plan_weighted_batches(_segment(cfg["constitution"])[0], cfg))
+            units = units_from_config(cfg)[0]
+            n = len(plan_weighted_batches([u.as_trait() for u in units], cfg))
         elif kind in ("llm_json", "llm_tagged"):
             n = n_docs
         elif kind == "perturb_pairs":
