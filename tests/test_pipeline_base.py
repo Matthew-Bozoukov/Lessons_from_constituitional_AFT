@@ -145,7 +145,7 @@ def test_real_configs_keep_historical_snapshot_names():
     assert [s.name for s in build_stages(_real("difficult_advice"))] == \
         ["traits", "scenarios", "corpus_scenarios", "draft_prompts", "refined_prompts",
          "draft_responses", "final", "sft", "corpus"]
-    assert snapshot_positions(_real("difficult_advice")) == \
+    assert snapshot_positions(build_stages(_real("difficult_advice"))) == \
         {"traits": 1, "scenarios": 2, "corpus_scenarios": 2, "draft_prompts": 3,
          "refined_prompts": 4, "draft_responses": 5, "final": 6, "sft": 7, "corpus": 7}
     # `final` (the rewrite pass) added 2026-08-07: stages 1-4 keep their positions, so
@@ -153,7 +153,7 @@ def test_real_configs_keep_historical_snapshot_names():
     # assembly moves (5 -> 6) and re-runs.
     assert [s.name for s in build_stages(_real("model_eval_model"))] == \
         ["source", "plan", "perturbed", "generated", "final", "sft", "corpus"]
-    assert snapshot_positions(_real("model_eval_model")) == \
+    assert snapshot_positions(build_stages(_real("model_eval_model"))) == \
         {"source": 1, "plan": 2, "perturbed": 3, "generated": 4, "final": 5, "sft": 6,
          "corpus": 6}
 

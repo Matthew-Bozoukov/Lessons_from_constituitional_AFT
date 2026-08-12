@@ -253,8 +253,14 @@ Jaccard is length-dependent (~0.003 at 1,000 words), so its gate catches only se
 collapse.
 
 **Everything here is surface.** A corpus saying one thing 8,000 different ways scores
-well on 1–7. That gap is what the judged tier closes; genuine *embedding* diversity is
-still uncovered, and the extension point is declared (`params: {backend: hashed|embedding}`).
+well on 1–7. That gap is what the judged tier closes. Genuine *embedding* diversity is
+not covered at all and there is no half-built hook pretending otherwise: adding it means
+an embedding client in `src/endpoints/` plus one new registry entry.
+
+**Small groups are measured but never flagged.** `ngram_diversity` gates a group only at
+`min_group_docs` (5) or above — two documents that happen to share an 8-gram score 1.0,
+and reporting that as collapse is reading binomial noise as a finding. The per-group
+numbers are in the report either way, carrying `gated: true|false`.
 
 **Judged properties** are `paid`, sampled (`sample: 300` by default, `null` = all),
 resumable per record, and priced into `--estimate`. Their wording lives in the stage

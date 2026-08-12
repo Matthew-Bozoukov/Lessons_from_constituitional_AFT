@@ -51,14 +51,9 @@ def main(config: str, smoke: bool = False, resume: str | None = None,
     if estimate:
         print(json.dumps(pipeline.estimate(cfg, measured), indent=2))
         return
-    manifest = pipeline.run(cfg, smoke=smoke, resume=resume)
     # A failed corpus check is an exit code, never an exception: the run keeps every
     # snapshot, report and manifest it paid for.
-    if pipeline.corpus_gate_failed(manifest):
-        print(">>> corpus check FAILED and the stage declares on_fail: error. "
-              "Everything the run produced is on disk and on HF; only the exit "
-              "status reflects the failure.")
-        raise SystemExit(1)
+    pipeline.exit_if_gate_failed(pipeline.run(cfg, smoke=smoke, resume=resume))
 
 
 if __name__ == "__main__":

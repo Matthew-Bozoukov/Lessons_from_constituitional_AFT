@@ -424,13 +424,12 @@ def test_a_check_writes_no_snapshot_and_takes_no_position(tmp_path):
 def test_inserting_a_check_mid_pipeline_leaves_every_snapshot_where_it_was(tmp_path):
     from src.data.synth.pipeline import snapshot_positions
 
-    plain = {"stages": [{"name": "a", "kind": "seed"}, {"name": "b", "kind": "seed"},
-                        {"name": "c", "kind": "seed"}]}
-    checked = {"stages": [plain["stages"][0],
-                          {"name": "early", "kind": "corpus_check"},
-                          plain["stages"][1],
-                          {"name": "mid", "kind": "corpus_check"},
-                          plain["stages"][2]]}
+    def st(name, observer=False):
+        return Stage(name, lambda ctx, rs, ck: rs, observer=observer)
+
+    plain = [st("a"), st("b"), st("c")]
+    checked = [st("a"), st("early", observer=True), st("b"),
+               st("mid", observer=True), st("c")]
     before = snapshot_positions(plain)
     after = snapshot_positions(checked)
     assert before == {"a": 1, "b": 2, "c": 3}
@@ -505,7 +504,24 @@ def test_below_min_docs_a_gated_property_reports_instead(tmp_path):
     assert entry["status"] == "reported"
     assert entry["pass"] is True
     assert "min_docs" in entry["reason"]
-    assert entry["findings"], "the findings are still recorded, just not enforced"
+    # Measured, but not flagged: two documents that happen to share an 8-gram score
+    # 1.0, and calling that a collapse is reading binomial noise as a finding.
+    assert entry["metrics"]["by_group"][""]["top_8gram_share"] == 1.0
+    assert entry["metrics"]["by_group"][""]["gated"] is False
+    assert entry["findings"] == []
+
+
+def test_a_group_too_small_to_gate_is_measured_but_never_flagged(tmp_path):
+    # A big collapsed group alongside a tiny one: only the big group may raise.
+    records = [rec(f"big{i}", SAME, arm="big") for i in range(8)]
+    records += [rec(f"tiny{i}", SAME, arm="tiny") for i in range(2)]
+    records += [rec(f"u{i}", varied(i), arm=f"solo{i}") for i in range(10)]
+    entry = one(records, "ngram_diversity", tmp_path, fields={"group": "arm"})
+    by_group = entry["metrics"]["by_group"]
+    assert by_group["big"]["gated"] is True and by_group["tiny"]["gated"] is False
+    assert by_group["tiny"]["top_8gram_share"] == 1.0, "still measured"
+    assert {f["scope"] for f in entry["findings"]} == {"big"}
+    assert entry["metrics"]["groups_too_small_to_gate"] == 11
 
 
 def test_a_missing_field_is_skipped_with_a_reason_never_a_silent_pass(tmp_path):

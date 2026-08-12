@@ -20,6 +20,16 @@ def _load(config: str) -> dict:
     return OmegaConf.to_container(OmegaConf.load(config), resolve=True)
 
 
+def _csv(arg) -> list[str]:
+    """Split a Fire argument into a list, however Fire chose to hand it over.
+
+    Fire passes `a,b` as a tuple but `a` as a string, so every comma-separated flag
+    needs both cases; one place to get that right rather than four.
+    """
+    items = arg if isinstance(arg, (list, tuple)) else str(arg).split(",")
+    return [str(x).strip() for x in items if str(x).strip()]
+
+
 def run(config: str, smoke: bool = False, resume: str | None = None,
         ablate: str | None = None, overrides: str | None = None) -> None:
     """Run the pipeline the config declares (its `stages:` list).
@@ -38,19 +48,12 @@ def run(config: str, smoke: bool = False, resume: str | None = None,
     load_dotenv()
     loaded = OmegaConf.load(config)
     if overrides:
-        loaded = OmegaConf.merge(loaded, OmegaConf.from_dotlist(
-            [o.strip() for o in overrides.split(",") if o.strip()]))
+        loaded = OmegaConf.merge(loaded, OmegaConf.from_dotlist(_csv(overrides)))
         print(f">>> overrides: {overrides}")
     cfg = OmegaConf.to_container(loaded, resolve=True)
     if ablate:
-        cfg["ablate"] = sorted(set(cfg.get("ablate") or [])
-                               | {a.strip() for a in str(ablate).split(",") if a.strip()})
-    manifest = pipeline.run(cfg, smoke=smoke, resume=resume)
-    if pipeline.corpus_gate_failed(manifest):
-        print(">>> corpus check FAILED and the stage declares on_fail: error. "
-              "Everything the run produced is on disk and on HF; only the exit "
-              "status reflects the failure.")
-        raise SystemExit(1)
+        cfg["ablate"] = sorted(set(cfg.get("ablate") or []) | set(_csv(ablate)))
+    pipeline.exit_if_gate_failed(pipeline.run(cfg, smoke=smoke, resume=resume))
 
 
 def topup(config: str, resume: str, traits, n: int = 25) -> None:
@@ -86,9 +89,7 @@ def topup(config: str, resume: str, traits, n: int = 25) -> None:
     have: dict[str, int] = {}
     for r in ckpt.done.values():
         have[r["trait_id"]] = have.get(r["trait_id"], 0) + 1
-    ids = list(traits) if isinstance(traits, (list, tuple)) else \
-        [x.strip() for x in str(traits).split(",")]
-    ids = [x for x in ids if x]
+    ids = _csv(traits)
     print(">>> current per-trait counts:", {t: have.get(t, 0) for t in ids})
 
     todo = []
@@ -169,11 +170,11 @@ def _check_corpus_stage(cfg: dict, sc: dict, run_dir: Path,
     """Run one `corpus_check` stage entry over a finished run's snapshots."""
     from .corpus import is_paid, print_summary, run_corpus_checks
     from .hf_cache import read_jsonl
-    from .pipeline import snapshot_positions
+    from .pipeline import build_stages, snapshot_positions
 
     # A corpus check is an observer: it writes no snapshot of its own and inspects the
     # last real stage before it, so that is the snapshot to re-read.
-    positions = snapshot_positions(cfg)
+    positions = snapshot_positions(build_stages(cfg))
     pos = positions[sc["name"]]
     source = next((s["name"] for s in cfg["stages"]
                    if positions.get(s["name"]) == pos and s["name"] != sc["name"]), None)
@@ -220,9 +221,7 @@ def compare(reports, key: str = "group_size", out: str | None = None,
     """
     from .compare import compare_arms, markdown
 
-    dirs = list(reports) if isinstance(reports, (list, tuple)) else \
-        [x.strip() for x in str(reports).split(",")]
-    result = compare_arms([d for d in dirs if d], key=key, stage=stage)
+    result = compare_arms(_csv(reports), key=key, stage=stage)
     text = markdown(result)
     print(text)
     if out:

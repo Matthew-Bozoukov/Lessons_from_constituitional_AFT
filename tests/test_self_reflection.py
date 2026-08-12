@@ -332,7 +332,7 @@ def test_config_builds_and_keeps_snapshot_names():
     assert [s.name for s in build_stages(CFG)] == \
         ["traits", "scenarios", "corpus_scenarios", "draft_prompts", "refined_prompts",
          "draft_responses", "final", "sft", "corpus"]
-    assert snapshot_positions(CFG) == \
+    assert snapshot_positions(build_stages(CFG)) == \
         {"traits": 1, "scenarios": 2, "corpus_scenarios": 2, "draft_prompts": 3,
          "refined_prompts": 4, "draft_responses": 5, "final": 6, "sft": 7, "corpus": 7}
 

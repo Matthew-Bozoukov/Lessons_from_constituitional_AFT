@@ -12,8 +12,9 @@ from src.endpoints.openrouter import OpenRouterClient
 
 from .cells import CELLS
 from .constitution import full_text
-from .core import Usage, call_tagged, run_items
-from .corpus import Corpus, check_label_leakage, check_ngram_diversity
+from .core import JUDGE_NO_REASONING, Usage, call_tagged, run_items
+from .corpus import (CORPUS_CHECKS, Corpus, check_label_leakage,
+                     check_ngram_diversity)
 from .hf_cache import read_jsonl
 
 # Phrases that read as a settled judgement of the evaluated reply. Appearing in the
@@ -27,16 +28,10 @@ _VERDICT_MARKERS = (
 )
 
 # Below these document counts the corresponding gate is reported but not enforced --
-# the statistics are binomial noise at smoke scale.
-# Judges return a tag and one sentence inside tight max_tokens; Sonnet 5's hidden
-# extended thinking otherwise eats that budget and returns EMPTY content with
-# finish_reason=length (observed 2026-08-05: 500-token cap, 95+ reasoning tokens,
-# content=None). Same OpenRouter control the self_reflection stages use.
-_JUDGE_NO_REASONING = {"reasoning": {"enabled": False}}
-
-_MIN_DOCS_FOR_COLLAPSE = 5
+# the statistics are binomial noise at smoke scale. The per-group and per-class ones
+# now live in the registry (`ngram_diversity.min_group_docs`,
+# `label_leakage.min_per_class`), so the adapters below read them from there.
 _MIN_DOCS_FOR_VERDICT = 20
-_MIN_DOCS_PER_CLASS_FOR_SHORTCUT = 20
 _MIN_DOCS_FOR_FLAWID = 10
 
 # The verdict each cell should mostly (but never degenerately) reach: good responses
@@ -121,7 +116,8 @@ def check_template_collapse(generated: list[dict], max_8gram_share: float,
         `{pass, max_8gram_share, cells: {cell: {...}}}` -- the historical shape.
     """
     c = _corpus_of(generated, ["reasoning", "response"], "cell", seed)
-    c.params = {"top_8gram_share_max": max_8gram_share, "sample": 100,
+    c.params = {**CORPUS_CHECKS["ngram_diversity"].defaults,
+                "top_8gram_share_max": max_8gram_share,
                 "mean_jaccard_max": (float("inf") if max_4gram_jaccard is None
                                      else float(max_4gram_jaccard)),
                 "distinct_2_min": 0.0}
@@ -130,8 +126,8 @@ def check_template_collapse(generated: list[dict], max_8gram_share: float,
     cells_out: dict[str, dict] = {}
     ok = True
     for cell, m in result.metrics["by_group"].items():
-        gated = m["docs"] >= _MIN_DOCS_FOR_COLLAPSE
-        cell_ok = (not gated) or (
+        # `gated` is the registry's own small-group guard, not a second copy of it.
+        cell_ok = (not m["gated"]) or (
             m["top_8gram_share"] <= max_8gram_share
             and (max_4gram_jaccard is None
                  or m["mean_pairwise_4gram_jaccard"] <= float(max_4gram_jaccard)))
@@ -139,7 +135,7 @@ def check_template_collapse(generated: list[dict], max_8gram_share: float,
         cells_out[cell] = {"docs": m["docs"], "top_8gram_share": m["top_8gram_share"],
                            "top_8gram": m["top_8gram"],
                            "mean_pairwise_4gram_jaccard": m["mean_pairwise_4gram_jaccard"],
-                           "gated": gated, "pass": cell_ok}
+                           "gated": m["gated"], "pass": cell_ok}
     return {"pass": ok, "max_8gram_share": max_8gram_share,
             "max_4gram_jaccard": max_4gram_jaccard, "cells": cells_out}
 
@@ -250,7 +246,7 @@ def check_gold_validation(source: list[dict], client: OpenRouterClient,
              {"role": "user", "content": judges["gold_user"].format(
                  trait_name=r["trait_name"], trait_text=r["trait_text"],
                  user=r["user"], response=r["response"])}],
-            0.3, 800, "check:gold", ("score", "why"), extra=_JUDGE_NO_REASONING)
+            0.3, 800, "check:gold", ("score", "why"), extra=JUDGE_NO_REASONING)
         score = int(parsed["score"])
         if not 1 <= score <= 5:
             raise ValueError(f"score out of range: {score}")
@@ -288,7 +284,7 @@ def check_flaw_identification(generated: list[dict], client: OpenRouterClient,
             [{"role": "system", "content": judges["flawid_system"]},
              {"role": "user", "content": judges["flawid_user"].format(
                  change_summary=r["change_summary"], critique=_doc_text(r))}],
-            0.3, 500, "check:flawid", ("hit", "why"), extra=_JUDGE_NO_REASONING)
+            0.3, 500, "check:flawid", ("hit", "why"), extra=JUDGE_NO_REASONING)
         v = parsed["hit"].strip().lower()
         if v not in ("yes", "no"):
             raise ValueError(f"unrecognised hit answer: {v!r}")
@@ -332,7 +328,8 @@ def check_surface_shortcut(generated: list[dict], max_auc: float, seed: int) -> 
          "cases": {"flawed": "flawed_response", "good": "gold_response"}},
         "cell", seed, label="response_kind")
     c.params = {"surface_auc_max": max_auc, "positive": "flawed",
-                "min_per_class": _MIN_DOCS_PER_CLASS_FOR_SHORTCUT}
+                "min_per_class": CORPUS_CHECKS["label_leakage"].defaults[
+                    "min_per_class"]}
     m = check_label_leakage(c).metrics
 
     n_pos, n_neg = int(m.get("flawed", 0)), int(m.get("good", 0))
@@ -366,7 +363,7 @@ def check_post_hoc_judge(generated: list[dict], client: OpenRouterClient,
             [{"role": "system", "content": judges["posthoc_system"]},
              {"role": "user", "content": judges["posthoc_user"].format(
                  reasoning=r["reasoning"])}],
-            0.3, 500, "check:posthoc", ("posthoc", "why"), extra=_JUDGE_NO_REASONING)
+            0.3, 500, "check:posthoc", ("posthoc", "why"), extra=JUDGE_NO_REASONING)
         v = parsed["posthoc"].strip().lower()
         if v not in ("yes", "no"):
             raise ValueError(f"unrecognised posthoc answer: {v!r}")
@@ -394,7 +391,7 @@ def run_checks(run_dir: str | Path, cfg: dict,
     Returns:
         (the report dict, whether every gated check passed).
     """
-    from .pipeline import snapshot_positions
+    from .pipeline import build_stages, snapshot_positions
 
     run_dir = Path(run_dir)
     # Snapshot positions and names come from the config's `stages:` list, so the
@@ -403,7 +400,7 @@ def run_checks(run_dir: str | Path, cfg: dict,
     # list leaves every one of these paths where it was.
     names = [s["name"] for s in cfg["stages"]]
     kinds = {s["name"]: s["kind"] for s in cfg["stages"]}
-    positions = snapshot_positions(cfg)
+    positions = snapshot_positions(build_stages(cfg))
 
     def _snap_path(name: str) -> Path:
         return run_dir / f"stage_{positions[name]}_{name}.jsonl"

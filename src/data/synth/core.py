@@ -67,6 +67,14 @@ class Usage:
                 "total_usd": round(self.usd, 4)}
 
 
+# Judges return a tag and one sentence inside a tight max_tokens; a model's hidden
+# extended thinking otherwise eats that budget and returns EMPTY content with
+# finish_reason=length (observed 2026-08-05: 500-token cap, 95+ reasoning tokens,
+# content=None). Every judge call in this package passes it -- which is only worth
+# anything if there is one of it.
+JUDGE_NO_REASONING = {"reasoning": {"enabled": False}}
+
+
 def _parse_json(text: str) -> Any:
     """Parse a model's JSON body, tolerating unescaped control characters.
 

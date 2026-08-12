@@ -44,12 +44,7 @@ def build_stages(cfg: dict) -> list[Stage]:
     return out
 
 
-# Stage kinds that observe rather than transform: they write no snapshot and take no
-# position number, so inserting one anywhere leaves every other snapshot where it was.
-OBSERVER_KINDS = frozenset({"corpus_check"})
-
-
-def snapshot_positions(cfg: dict) -> dict[str, int]:
+def snapshot_positions(stages: list[Stage]) -> dict[str, int]:
     """Map stage name -> its `stage_<n>_<name>.jsonl` position, skipping observers.
 
     Positions and names are the on-disk contract that keeps completed run dirs and HF
@@ -60,15 +55,19 @@ def snapshot_positions(cfg: dict) -> dict[str, int]:
 
     Observers map to the position of the last real stage before them -- the snapshot
     holding the records they inspect.
+
+    Takes built Stages rather than the raw config so `Stage.observer`, set by the
+    operator that knows, is the ONE place the fact lives. Deriving it from a list of
+    kind names here as well would let a future observer write no snapshot while still
+    consuming a position -- silently shifting every snapshot after it, which is exactly
+    the breakage this exists to prevent.
     """
     out: dict[str, int] = {}
     pos = 0
-    for sc in cfg.get("stages") or []:
-        if sc.get("kind") in OBSERVER_KINDS:
-            out[sc["name"]] = pos
-        else:
+    for st in stages:
+        if not st.observer:
             pos += 1
-            out[sc["name"]] = pos
+        out[st.name] = pos
     return out
 
 
@@ -142,7 +141,7 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
     records: list[dict] = []
     durations: dict[str, float] = {}
     counts: dict[str, int] = {}
-    positions = snapshot_positions(cfg)
+    positions = snapshot_positions(stage_list)
     for st in stage_list:
         pos = positions.get(st.name)
         label = (f"check ({st.name})" if st.observer else f"stage {pos} ({st.name})")
@@ -244,6 +243,25 @@ def corpus_gate_failed(manifest: dict) -> bool:
     checks = manifest.get("corpus_checks") or {}
     return any(c.get("on_fail") in ("error", "stop") and c.get("pass") is False
                for c in checks.values())
+
+
+def exit_if_gate_failed(manifest: dict) -> None:
+    """Turn a failed corpus gate into the process exit status, and say what survived.
+
+    Both entrypoints (`synth run` and build_dataset.py) end this way; the message is
+    load-bearing enough that two copies of it would be two things to keep in step.
+
+    Raises:
+        SystemExit: 1 when a check declaring `on_fail: error` or `stop` did not pass.
+    """
+    if not corpus_gate_failed(manifest):
+        return
+    failed = sorted(name for name, c in (manifest.get("corpus_checks") or {}).items()
+                    if c.get("pass") is False)
+    print(f">>> corpus check(s) {failed} FAILED and declare on_fail "
+          f"error/stop. Everything the run produced is on disk and on HF -- "
+          f"snapshots, reports and the manifest; only the exit status reflects it.")
+    raise SystemExit(1)
 
 
 # --- the estimator ------------------------------------------------------------------

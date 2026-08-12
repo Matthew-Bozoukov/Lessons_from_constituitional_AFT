@@ -173,6 +173,38 @@ Scenario-level numbers on the same self-reflection run (1,438 scenarios at stage
 set is markedly more diverse than the documents written from it — which is the shape you
 want, and now measurable at the point where it can still be cheaply fixed.
 
+**Cleanup pass before merge** (4 parallel review agents over the diff — reuse,
+simplification, efficiency, altitude). Two findings were defects rather than style:
+
+- **`ngram_diversity` had no per-group size guard.** A 2-document group sharing an
+  8-gram scored 1.0 and raised a `critical`; the legacy path suppressed exactly that as
+  binomial noise, and the adapter silently restored the suppression, which is why the
+  migration tests passed. Now `min_group_docs` (5) lives in the registry, each group
+  carries `gated: true|false` in the report, and the adapter reads it instead of
+  keeping a second copy of the constant.
+- **`near_duplicates` was O(n²) on the case it exists to catch.** Exact duplicates
+  collide in every LSH band, so a collapsed corpus put them all in one bucket and
+  scored every pair — extrapolated ~8 minutes at 10k. Now only one representative per
+  exact class is banded, and an oversized bucket is reported as a finding rather than
+  worked through.
+
+Four extension points were deleted as built-for-nothing: a `needs_labels` topological
+sort that was provably the identity, a `Corpus.features` cached property with zero
+callers (whose existence the class docstring used to justify the whole memoisation
+design), a `backend: hashed|embedding` param nothing branched on but the README
+advertised, and an unused `unit_text` role. `OBSERVER_KINDS` was deleted too:
+`snapshot_positions` now takes built Stages and reads `Stage.observer`, so the fact that
+a stage takes no snapshot position lives in one place instead of two that nothing
+reconciled.
+
+Measured, on the same 1,389-document corpus, every number identical: 21 duplicated
+threshold-and-append blocks became one `flag()` helper; the 4-gram Jaccard uses
+inclusion-exclusion rather than materialising the union (3.2s → 1.0s); `hashed_features`
+counts via `np.bincount` (1.7×, bit-identical); and `run_corpus_checks` builds one
+`Corpus` per distinct `fields` mapping instead of one per property, so tokenisation runs
+twice rather than five times. Corpus stage: **5.9s for 1,389 documents**. `wilson()` moved
+to `src/utils.py` rather than becoming the repo's fourth copy.
+
 **Next steps:** the chunking work must export `group_id`, `group_size`, `member_units`,
 `grouping`, `scenario_type`, `pressure_source` into the final stage's `metadata:` —
 until then `applies_vs_conflicts`, `principle_coverage` and `chunk_attribution` report
