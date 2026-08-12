@@ -318,8 +318,9 @@ def op_corpus_check(sc: dict, cfg: dict) -> Stage:
         f"stage {sc['name']!r} declares a judged corpus property but no `model:` key; "
         f"an unpriced judge would also estimate as free")
     on_fail = sc.get("on_fail", "warn")
-    assert on_fail in ("warn", "error"), (
-        f"stage {sc['name']!r}: on_fail must be 'warn' or 'error', got {on_fail!r}")
+    assert on_fail in ("warn", "error", "stop"), (
+        f"stage {sc['name']!r}: on_fail must be 'warn' (report only), 'error' (finish "
+        f"the run, exit nonzero) or 'stop' (halt the run here), got {on_fail!r}")
     report_name = f"{sc['name']}_report.json"
 
     def publish(ctx, report):
@@ -328,9 +329,12 @@ def op_corpus_check(sc: dict, cfg: dict) -> Stage:
         else:
             (ctx.run_dir / report_name).write_text(
                 json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
-        ctx.manifest_extra["corpus_check"] = {
-            "stage": sc["name"], "pass": report["pass"], "on_fail": on_fail,
+        # Keyed by stage name: a run may check its scenarios, its drafts and its final
+        # corpus, and the later verdicts must not overwrite the earlier ones.
+        ctx.manifest_extra.setdefault("corpus_checks", {})[sc["name"]] = {
+            "pass": report["pass"], "on_fail": on_fail,
             "counts": report.get("counts", {}), "report": report_name,
+            "n_records": report.get("n_records"),
             "judge_spend_usd": report.get("judge_spend_usd"),
             "gated": sorted(k for k, v in report["properties"].items() if v["gate"]),
             "top_findings": report.get("findings", [])[:5],
@@ -344,20 +348,18 @@ def op_corpus_check(sc: dict, cfg: dict) -> Stage:
         publish(ctx, report)
         print_summary(report)
         assert len(records) == before, "a corpus check must never change the corpus"
+        if on_fail == "stop" and not report["pass"]:
+            # The point of a mid-pipeline check: stop before the stages that would
+            # have spent real money on a corpus already known to be bad.
+            ctx.stop = (f"corpus check {sc['name']!r} failed "
+                        f"({report['counts'].get('critical', 0)} critical) and declares "
+                        f"on_fail: stop -- see {report_name}")
         return records
 
-    def on_cached(ctx, records):
-        # A cache hit must not lose the verdict: without this the manifest of a resumed
-        # run would say nothing about whether the corpus was ever checked.
-        p = ctx.run_dir / report_name
-        if p.exists():
-            publish(ctx, json.loads(p.read_text(encoding="utf-8")))
-
-    return Stage(sc["name"], fn, paid=paid, on_cached=on_cached,
+    return Stage(sc["name"], fn, paid=paid, observer=True,
                  # A pure observer's null-operation IS the identity, so this stage is
                  # always ablatable and needs no `ablate_with` map in the config.
-                 ablate_fn=lambda rs: rs,
-                 preview=lambda r: f"{len(sc.get('properties') or [])} properties checked")
+                 ablate_fn=lambda rs: rs)
 
 
 # --- model-eval-model operators (structure in cells.py, wording in the config) ------

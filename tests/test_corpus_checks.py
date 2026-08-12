@@ -369,19 +369,75 @@ def _pipeline(tmp_path, corpus_stage=None, **extra):
             "stages": [{"name": "gen", "kind": "seed"}, stage], **extra}
 
 
-def test_stage_is_a_pass_through_and_writes_a_report(tmp_path):
-    m = run(_pipeline(tmp_path))
-    d = tmp_path / m["run_id"]
-    gen = [json.loads(x) for x in (d / "stage_1_gen.jsonl").open()]
-    out = [json.loads(x) for x in (d / "stage_2_corpus.jsonl").open()]
-    assert out == gen, "a corpus check must never change the corpus"
+SEEN: list[list[dict]] = []
 
-    report = json.loads((d / "corpus_report.json").read_text())
-    assert set(report["properties"]) == {"ngram_diversity", "near_duplicates"}
-    assert report["pass"] is True
-    assert m["corpus_check"]["pass"] is True
-    assert m["corpus_check"]["report"] == "corpus_report.json"
-    assert m["counts"] == {"gen": 20, "corpus": 20}
+
+def _sink_operator(sc, cfg):
+    """A downstream stage that records exactly what reached it."""
+    def fn(ctx, records, ckpt):
+        SEEN.append([dict(r) for r in records])
+        return records
+
+    return Stage(sc["name"], fn)
+
+
+def test_stage_writes_a_report_and_passes_its_records_through_untouched(tmp_path):
+    OPERATORS["sink"] = _sink_operator
+    SEEN.clear()
+    try:
+        cfg = _pipeline(tmp_path)
+        cfg["stages"].append({"name": "after", "kind": "sink"})
+        m = run(cfg)
+        d = tmp_path / m["run_id"]
+
+        gen = [json.loads(x) for x in (d / "stage_1_gen.jsonl").open()]
+        assert SEEN[-1] == gen, "a corpus check must never change the corpus"
+
+        report = json.loads((d / "corpus_report.json").read_text())
+        assert set(report["properties"]) == {"ngram_diversity", "near_duplicates"}
+        assert report["pass"] is True
+        assert m["corpus_checks"]["corpus"]["pass"] is True
+        assert m["corpus_checks"]["corpus"]["report"] == "corpus_report.json"
+        assert m["counts"] == {"gen": 20, "corpus": 20, "after": 20}
+    finally:
+        OPERATORS.pop("sink", None)
+
+
+def test_a_check_writes_no_snapshot_and_takes_no_position(tmp_path):
+    # The property that makes a MID-pipeline check free to add: without it, inserting
+    # one would renumber every snapshot after it and force the regeneration the check
+    # exists to avoid.
+    OPERATORS["sink"] = _sink_operator
+    try:
+        cfg = _pipeline(tmp_path)
+        cfg["stages"].append({"name": "after", "kind": "sink"})
+        m = run(cfg)
+        d = tmp_path / m["run_id"]
+        snaps = sorted(p.name for p in d.glob("stage_*.jsonl"))
+        assert snaps == ["stage_1_gen.jsonl", "stage_2_after.jsonl"], \
+            "the check must occupy no slot, and `after` must stay at position 2"
+        assert not list(d.glob("*corpus*.jsonl"))
+    finally:
+        OPERATORS.pop("sink", None)
+
+
+def test_inserting_a_check_mid_pipeline_leaves_every_snapshot_where_it_was(tmp_path):
+    from src.data.synth.pipeline import snapshot_positions
+
+    plain = {"stages": [{"name": "a", "kind": "seed"}, {"name": "b", "kind": "seed"},
+                        {"name": "c", "kind": "seed"}]}
+    checked = {"stages": [plain["stages"][0],
+                          {"name": "early", "kind": "corpus_check"},
+                          plain["stages"][1],
+                          {"name": "mid", "kind": "corpus_check"},
+                          plain["stages"][2]]}
+    before = snapshot_positions(plain)
+    after = snapshot_positions(checked)
+    assert before == {"a": 1, "b": 2, "c": 3}
+    assert {k: after[k] for k in "abc"} == before, \
+        "two inserted checks must not move a single snapshot"
+    # An observer reports the position of the snapshot it inspects.
+    assert after["early"] == 1 and after["mid"] == 2
 
 
 def test_stage_is_always_ablatable_without_declaring_ablate_with(tmp_path):
@@ -389,16 +445,34 @@ def test_stage_is_always_ablatable_without_declaring_ablate_with(tmp_path):
     d = tmp_path / m["run_id"]
     assert m["ablated"] == ["corpus"]
     assert not (d / "corpus_report.json").exists(), "an ablated check runs nothing"
-    # The snapshot still occupies the slot, unchanged, so arms diff stage-by-stage.
-    gen = [json.loads(x) for x in (d / "stage_1_gen.jsonl").open()]
-    assert [json.loads(x) for x in (d / "stage_2_corpus.jsonl").open()] == gen
+    assert "corpus_checks" not in m
+    assert (d / "stage_1_gen.jsonl").exists()
 
 
-def test_cache_hit_restores_the_verdict_into_the_manifest(tmp_path):
+def test_a_resumed_run_re_checks_and_reports_a_fresh_verdict(tmp_path):
+    # An observer produces nothing the pipeline consumes, so it is never cached: the
+    # verdict always describes the records actually in hand.
     m = run(_pipeline(tmp_path))
     m2 = run(_pipeline(tmp_path), resume=m["run_dir"])
-    assert m2["corpus_check"]["pass"] == m["corpus_check"]["pass"]
-    assert m2["corpus_check"]["report"] == "corpus_report.json"
+    assert m2["corpus_checks"]["corpus"]["pass"] == m["corpus_checks"]["corpus"]["pass"]
+    assert m2["counts"]["corpus"] == 20
+
+
+def test_several_checks_in_one_run_each_keep_their_own_verdict(tmp_path):
+    cfg = _pipeline(tmp_path)
+    cfg["stages"].append({
+        "name": "corpus_late", "kind": "corpus_check",
+        "fields": {"id": "id", "text": "text"},
+        "properties": [{"property": "near_duplicates", "gate": True,
+                        "params": {"dup_share_max": -1.0}}]})
+    m = run(cfg)
+    d = tmp_path / m["run_id"]
+    assert set(m["corpus_checks"]) == {"corpus", "corpus_late"}
+    assert m["corpus_checks"]["corpus"]["pass"] is True
+    assert m["corpus_checks"]["corpus_late"]["pass"] is False, \
+        "a later check must not overwrite an earlier verdict"
+    assert (d / "corpus_report.json").exists()
+    assert (d / "corpus_late_report.json").exists()
 
 
 # --- 8-13. failure semantics ---------------------------------------------------------
@@ -461,15 +535,59 @@ def test_on_fail_error_surfaces_as_an_exit_code_after_the_manifest(tmp_path):
                         "params": {"dup_share_max": -1.0}}]}))
     d = tmp_path / m["run_id"]
     assert (d / "manifest.json").exists(), "the manifest survives a failed check"
-    assert (d / "stage_2_corpus.jsonl").exists()
-    assert m["corpus_check"]["pass"] is False
+    assert (d / "stage_1_gen.jsonl").exists()
+    assert m["corpus_checks"]["corpus"]["pass"] is False
+    assert m["halted"] is None, "`error` lets the run finish"
     assert corpus_gate_failed(m) is True
 
     ok = run(_pipeline(tmp_path))
     assert corpus_gate_failed(ok) is False
 
 
-def test_on_fail_must_be_warn_or_error(tmp_path):
+def test_on_fail_stop_halts_the_run_before_the_stages_after_it(tmp_path):
+    # The point of a mid-pipeline check: a corpus already known to be bad must not be
+    # carried into the stages that would spend real money on it.
+    OPERATORS["sink"] = _sink_operator
+    SEEN.clear()
+    try:
+        cfg = _pipeline(tmp_path, {
+            "on_fail": "stop",
+            "properties": [{"property": "near_duplicates", "gate": True,
+                            "params": {"dup_share_max": -1.0}}]})
+        cfg["stages"].append({"name": "expensive", "kind": "sink"})
+        m = run(cfg)
+        d = tmp_path / m["run_id"]
+
+        assert SEEN == [], "no stage after the failing check may run"
+        assert "expensive" not in m["counts"]
+        assert not (d / "stage_2_expensive.jsonl").exists()
+        # Everything up to the check survives, manifest included.
+        assert (d / "manifest.json").exists()
+        assert (d / "stage_1_gen.jsonl").exists()
+        assert (d / "corpus_report.json").exists()
+        assert m["counts"] == {"gen": 20, "corpus": 20}
+        assert "near_duplicates" in m["halted"] or "corpus" in m["halted"]
+        assert corpus_gate_failed(m) is True
+    finally:
+        OPERATORS.pop("sink", None)
+
+
+def test_on_fail_stop_lets_a_passing_check_through(tmp_path):
+    OPERATORS["sink"] = _sink_operator
+    SEEN.clear()
+    try:
+        cfg = _pipeline(tmp_path, {"on_fail": "stop"})
+        cfg["stages"].append({"name": "expensive", "kind": "sink"})
+        m = run(cfg)
+        assert len(SEEN) == 1, "a passing check must not halt anything"
+        assert m["halted"] is None
+        assert m["counts"]["expensive"] == 20
+        assert corpus_gate_failed(m) is False
+    finally:
+        OPERATORS.pop("sink", None)
+
+
+def test_on_fail_must_be_warn_error_or_stop(tmp_path):
     with pytest.raises(AssertionError, match="on_fail"):
         build_stages(_pipeline(tmp_path, {"on_fail": "explode"}))
 

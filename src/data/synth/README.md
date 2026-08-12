@@ -201,14 +201,22 @@ surface-shortcut classifier, LLM-judged gold validation and flaw-identification 
 
 The `lint` contract and the spec filter ask "is this *document* good?". These ask "is
 this *corpus* good?" — questions no single document can answer. One registry, one
-pass-through stage, appended last in every config's `stages:` so it audits **what
-actually trains**:
+pass-through stage, placed **anywhere** in a config's `stages:` list:
 
 ```
 uv run synth check --config <cfg> --run_dir <dir> [--stage corpus]  # re-check, no regeneration
 uv run scripts/data/synth/build_dataset.py --config <cfg> --ablate corpus  # skip it
 uv run synth compare --reports <dir1>,<dir2>,<dir3> --key group_size --out output/report/x.md
 ```
+
+**Check where a property is decided, not only where it is finished.** Scenario diversity
+is settled at stage 2 and paid for at stages 3–6, so both configs that generate scenarios
+carry a `corpus_scenarios` check right after them as well as a `corpus` check at the end.
+A corpus check is an **observer**: it writes no snapshot and takes no position number, so
+inserting one mid-pipeline moves nothing after it and every completed run dir stays
+resumable. (Verified: `difficult_advice` snapshot positions are identical with and
+without both checks.) An observer is also never cached — re-reading records it did not
+produce is cheap, and anything it pays for is protected by its own checkpoint.
 
 Three rules the module turns on:
 
@@ -256,8 +264,20 @@ document **unlabelled**, never defaulted to a label.
 
 **Gating.** `gate: false` is the default and what every shipped config uses, so a check
 can flag without ever failing a run. `gate: true` makes a `critical` finding set
-`report["pass"] = false`; `on_fail: error` additionally makes the CLI exit nonzero —
-*after* the manifest is written, so a run never loses what it paid for.
+`report["pass"] = false`. Then `on_fail` decides what that costs:
+
+| `on_fail` | effect |
+|---|---|
+| `warn` (default) | report only; the run finishes and exits 0 |
+| `error` | the run finishes; the CLI exits nonzero |
+| `stop` | the run **halts at that check** — no later stage runs — then exits nonzero |
+
+`stop` is what an intermediate check is for: a collapsed scenario set should not be
+carried into the stages that would spend real money on it. In every mode the manifest,
+the snapshots and the reports are written first, so a run never loses what it paid for;
+`manifest["halted"]` records where and why it stopped. A run may carry several checks —
+verdicts are keyed by stage name in `manifest["corpus_checks"]`, so a later one never
+overwrites an earlier one.
 
 **Chunking metadata contract.** `applies_vs_conflicts`, `principle_coverage`,
 `chunk_attribution` and `synth compare` need `group_id`, `group_size`, `member_units`,

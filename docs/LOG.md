@@ -145,6 +145,34 @@ Four things the numbers changed:
 pass. No judged property has been run against a real model yet — all four are
 report-only and their cost is priced but unmeasured.
 
+**Follow-up the same day — checks at intermediate stages.** A check only at the end is a
+post-mortem: scenario diversity is decided at stage 2 and paid for at stages 3–6, so
+finding a collapsed scenario set in the finished corpus means regenerating all of it. Two
+things blocked mid-pipeline checks, and the first was worse than it looked:
+
+- **Inserting a stage renumbers every snapshot after it.** `stage_<position>_<name>.jsonl`
+  is the on-disk contract, so adding a check after `scenarios` would have broken resume on
+  every existing run dir — forcing exactly the regeneration the check exists to avoid.
+  Fixed with `Stage.observer`: a stage that inspects and returns its input writes no
+  snapshot and takes no position. `snapshot_positions()` is now the single source of truth
+  (used by the engine, `checks.py` and the CLI), and `difficult_advice` positions are
+  byte-identical with both checks inserted and with neither.
+- **`on_fail: error` only exits after the whole run**, so an intermediate check still paid
+  for everything downstream. Added `on_fail: stop`: the engine halts at that stage via
+  `ctx.stop`, still writes the manifest (recording `halted`), and the CLI exits nonzero.
+
+Also: verdicts are now keyed by stage name (`manifest["corpus_checks"]`) so several checks
+in one run do not overwrite each other, and observers are never cached, so a resumed run
+always reports on the records actually in hand. `difficult_advice` and `self_reflection`
+gained a `corpus_scenarios` check after their scenario stage. Field resolution needed no
+change — the properties already worked over raw intermediate records.
+
+Scenario-level numbers on the same self-reflection run (1,438 scenarios at stage 2, vs
+1,389 documents at stage 7): `top_8gram_share` 0.037 (vs 0.133), `top_opener_share` 0.002
+(vs 0.047), cosine 0.597 (vs 0.853), `effective_rank_frac` 0.802 (vs 0.671). The scenario
+set is markedly more diverse than the documents written from it — which is the shape you
+want, and now measurable at the point where it can still be cheaply fixed.
+
 **Next steps:** the chunking work must export `group_id`, `group_size`, `member_units`,
 `grouping`, `scenario_type`, `pressure_source` into the final stage's `metadata:` —
 until then `applies_vs_conflicts`, `principle_coverage` and `chunk_attribution` report

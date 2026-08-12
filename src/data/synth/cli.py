@@ -169,18 +169,19 @@ def _check_corpus_stage(cfg: dict, sc: dict, run_dir: Path,
     """Run one `corpus_check` stage entry over a finished run's snapshots."""
     from .corpus import is_paid, print_summary, run_corpus_checks
     from .hf_cache import read_jsonl
+    from .pipeline import snapshot_positions
 
-    names = [s["name"] for s in cfg["stages"]]
-    pos = names.index(sc["name"]) + 1
-    # The stage is a pass-through, so its own snapshot and its input are the same
-    # records; whichever survives on disk is the corpus it was meant to audit.
-    for idx, name in ((pos, sc["name"]), (pos - 1, names[pos - 2] if pos > 1 else "")):
-        snap = run_dir / f"stage_{idx}_{name}.jsonl"
-        if name and snap.exists():
-            break
-    else:
-        raise AssertionError(
-            f"no snapshot for stage {sc['name']!r} or the stage before it in {run_dir}")
+    # A corpus check is an observer: it writes no snapshot of its own and inspects the
+    # last real stage before it, so that is the snapshot to re-read.
+    positions = snapshot_positions(cfg)
+    pos = positions[sc["name"]]
+    source = next((s["name"] for s in cfg["stages"]
+                   if positions.get(s["name"]) == pos and s["name"] != sc["name"]), None)
+    snap = run_dir / f"stage_{pos}_{source}.jsonl" if source else None
+    assert snap is not None and snap.exists(), (
+        f"the corpus check {sc['name']!r} inspects "
+        + (f"stage_{pos}_{source}.jsonl, which is not in {run_dir}"
+           if source else "the stage before it, and it is first in the list"))
 
     if sample is not None:
         sc = {**sc, "properties": [{**p, "params": {**(p.get("params") or {}),

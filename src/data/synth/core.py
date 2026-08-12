@@ -357,6 +357,9 @@ class Ctx:
     vars: dict = field(default_factory=dict)
     manifest_extra: dict = field(default_factory=dict)
     cache: Any = None
+    # Set by a stage to halt the run after it, keeping everything already produced.
+    # The engine writes the manifest and stops; the CLI turns it into an exit code.
+    stop: str | None = None
     _client: Any = None
 
     @property
@@ -386,6 +389,12 @@ class Stage:
         on_cached: Called when the snapshot is reused, to restore ctx.vars /
             manifest_extra a cache hit would otherwise lose.
         preview: Render one line of the first output record for the run log.
+        observer: The stage inspects the records and returns them unchanged. It writes
+            NO snapshot and takes NO position number, so it can be inserted anywhere in
+            `stages:` without renumbering the snapshots after it -- which is what lets a
+            corpus check sit mid-pipeline while existing run dirs stay resumable. An
+            observer also always runs: re-reading records it did not produce is cheap,
+            and anything it pays for is protected by its own checkpoint.
     """
 
     name: str
@@ -396,6 +405,7 @@ class Stage:
     skip: Any = None
     on_cached: Any = None
     preview: Any = None
+    observer: bool = False
 
 
 def model_cfg(cfg: dict, key: str) -> dict[str, Any]:

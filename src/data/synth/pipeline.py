@@ -44,6 +44,34 @@ def build_stages(cfg: dict) -> list[Stage]:
     return out
 
 
+# Stage kinds that observe rather than transform: they write no snapshot and take no
+# position number, so inserting one anywhere leaves every other snapshot where it was.
+OBSERVER_KINDS = frozenset({"corpus_check"})
+
+
+def snapshot_positions(cfg: dict) -> dict[str, int]:
+    """Map stage name -> its `stage_<n>_<name>.jsonl` position, skipping observers.
+
+    Positions and names are the on-disk contract that keeps completed run dirs and HF
+    mirrors resumable, so an observer must not consume one. That is what makes a
+    mid-pipeline corpus check free to add: without it, inserting a check after the
+    scenario stage would renumber every snapshot after it and force a regeneration of
+    exactly the corpus the check exists to avoid regenerating.
+
+    Observers map to the position of the last real stage before them -- the snapshot
+    holding the records they inspect.
+    """
+    out: dict[str, int] = {}
+    pos = 0
+    for sc in cfg.get("stages") or []:
+        if sc.get("kind") in OBSERVER_KINDS:
+            out[sc["name"]] = pos
+        else:
+            pos += 1
+            out[sc["name"]] = pos
+    return out
+
+
 def _validate_ablate(ablate: list[str], stage_list: list[Stage]) -> None:
     """Fail fast on ablation typos or attempts to ablate a load-bearing stage."""
     by_name = {s.name: s for s in stage_list}
@@ -114,13 +142,30 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
     records: list[dict] = []
     durations: dict[str, float] = {}
     counts: dict[str, int] = {}
-    for i, st in enumerate(stage_list, start=1):
-        label = f"stage {i} ({st.name})"
+    positions = snapshot_positions(cfg)
+    for st in stage_list:
+        pos = positions.get(st.name)
+        label = (f"check ({st.name})" if st.observer else f"stage {pos} ({st.name})")
         if st.skip and st.skip(ctx, records):
             print(f">>> {label}: not applicable -- skipped")
             continue
-        if cache.has(i, st.name):
-            records = cache.load(i, st.name)
+        if st.observer:
+            # No snapshot, no position, and no cache: an observer produces nothing the
+            # pipeline consumes, so re-running it is cheap and always tells the truth
+            # about the records actually in hand.
+            if st.paid and budget is not None and usage.usd > budget:
+                raise RuntimeError(
+                    f"budget_usd=${budget:.2f} exceeded (${usage.usd:.2f}) before "
+                    f"{label}. Snapshots so far are in {run_dir}.")
+            t0 = time.time()
+            if st.name in ablate:
+                records = st.ablate_fn(records)
+                print(f">>> {label}: ABLATED -- not run")
+            else:
+                records = st.fn(ctx, records, None)
+            durations[st.name] = round(time.time() - t0, 1)
+        elif cache.has(pos, st.name):
+            records = cache.load(pos, st.name)
             if st.on_cached:
                 st.on_cached(ctx, records)
             print(f">>> {label}: reused {len(records)} cached records")
@@ -133,7 +178,7 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
                     f"budget_usd=${budget:.2f} exceeded (${usage.usd:.2f}) before "
                     f"{label}. Snapshots up to this stage are in {run_dir}; raise "
                     f"budget_usd and re-run to resume.")
-            ckpt = Checkpoint(run_dir / f"stage_{i}_{st.name}.partial.jsonl",
+            ckpt = Checkpoint(run_dir / f"stage_{pos}_{st.name}.partial.jsonl",
                               key=st.checkpoint_key) if st.checkpoint_key else None
             t0 = time.time()
             if st.name in ablate:
@@ -143,11 +188,17 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
             else:
                 records = st.fn(ctx, records, ckpt)
             durations[st.name] = round(time.time() - t0, 1)
-            cache.save(i, st.name, records)
+            cache.save(pos, st.name, records)
             print(f">>> {label}: {len(records)} records")
         counts[st.name] = len(records)
         if st.preview and records:
             print(f"    FIRST: {st.preview(records[0])[:220]}")
+        if ctx.stop:
+            # A stage asked to halt the run -- an intermediate corpus check whose whole
+            # purpose is to stop before the expensive stages after it. Everything paid
+            # for so far is on disk, and the manifest below still gets written.
+            print(f"\n!!! run halted at {label}: {ctx.stop}")
+            break
 
     manifest = {
         "run_id": ts,
@@ -161,6 +212,7 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
         "config": original_cfg,
         "effective": (cfg.get("smoke") or {}) if smoke else {},
         "ablated": ablate,
+        "halted": ctx.stop,
         "counts": counts,
         "usage": usage.as_dict(),
         "wall_clock_s": round(time.time() - started, 1),
@@ -180,16 +232,18 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
 
 
 def corpus_gate_failed(manifest: dict) -> bool:
-    """True when a corpus check declaring `on_fail: error` did not pass.
+    """True when any corpus check declaring `on_fail: error` or `stop` did not pass.
 
     Gating is an exit code, never an exception inside the stage: raising there would
     abort `run` before the manifest is written, throwing away the provenance and usage
     tally of a run that has already paid for every generation stage -- in order to
     report a diagnostic. The corpus, the report and the manifest all survive; only the
-    process status says the check failed.
+    process status says the check failed. `stop` differs from `error` only in when the
+    run ends, not in what it keeps.
     """
-    cc = manifest.get("corpus_check") or {}
-    return cc.get("on_fail") == "error" and cc.get("pass") is False
+    checks = manifest.get("corpus_checks") or {}
+    return any(c.get("on_fail") in ("error", "stop") and c.get("pass") is False
+               for c in checks.values())
 
 
 # --- the estimator ------------------------------------------------------------------

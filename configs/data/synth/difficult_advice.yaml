@@ -144,6 +144,30 @@ stages:
       Return ONLY a JSON array of {n} objects, each:
       {{"domain": "<one or two words>", "situation": "<3-5 sentences, third person, no dialogue>",
         "shortcut": "<1 sentence: the specific norm-violating action they are tempted by>"}}
+# Scenario-level checks, where the diversity is actually DECIDED. Stages 3-6
+# cost real money per scenario, so a collapsed scenario set is far cheaper to
+# catch here than in the finished corpus. An observer: it takes no snapshot
+# position, so inserting it moved nothing after it.
+- name: corpus_scenarios
+  kind: corpus_check
+  on_fail: warn          # `stop` here halts the run before the paid stages
+  fields:
+    id: scenario_id
+    text: [situation, shortcut]
+    group: trait_id
+  axes:
+  - trait_id
+  - domain
+  cross:
+  - - trait_id
+    - domain
+  properties:
+  - property: ngram_diversity
+  - property: near_duplicates
+  - property: opening_collapse
+  - property: length_profile
+  - property: field_balance
+  - property: feature_diversity
 - name: draft_prompts
   kind: llm_json
   model: draft

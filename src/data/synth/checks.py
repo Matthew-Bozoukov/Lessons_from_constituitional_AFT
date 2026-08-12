@@ -394,14 +394,19 @@ def run_checks(run_dir: str | Path, cfg: dict,
     Returns:
         (the report dict, whether every gated check passed).
     """
+    from .pipeline import snapshot_positions
+
     run_dir = Path(run_dir)
     # Snapshot positions and names come from the config's `stages:` list, so the
-    # checks stay correct when a stage is added (e.g. the `final` rewrite pass).
+    # checks stay correct when a stage is added (e.g. the `final` rewrite pass) --
+    # and observer stages take no position, so adding a corpus check anywhere in the
+    # list leaves every one of these paths where it was.
     names = [s["name"] for s in cfg["stages"]]
     kinds = {s["name"]: s["kind"] for s in cfg["stages"]}
+    positions = snapshot_positions(cfg)
 
     def _snap_path(name: str) -> Path:
-        return run_dir / f"stage_{names.index(name) + 1}_{name}.jsonl"
+        return run_dir / f"stage_{positions[name]}_{name}.jsonl"
 
     def snap(name: str) -> list[dict]:
         p = _snap_path(name)

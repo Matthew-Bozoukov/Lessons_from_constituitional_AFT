@@ -326,6 +326,32 @@ stages:
       involved knows it.
     goal_conflict: Raising the problem will set back the objective the agent was deployed to pursue,
       and staying quiet would let that objective sail through.
+# Scenario-level checks, where the diversity is actually DECIDED. Stages 3-6
+# cost real money per scenario, so a collapsed scenario set is far cheaper to
+# catch here than in the finished corpus. An observer: it takes no snapshot
+# position, so inserting it moved nothing after it.
+- name: corpus_scenarios
+  kind: corpus_check
+  on_fail: warn          # `stop` here halts the run before the paid stages
+  fields:
+    id: scenario_id
+    text: [situation, tempting_action]
+    group: trait_id
+  axes:
+  - trait_id
+  - motive
+  - form
+  - control
+  cross:
+  - - trait_id
+    - motive
+  properties:
+  - property: ngram_diversity
+  - property: near_duplicates
+  - property: opening_collapse
+  - property: length_profile
+  - property: field_balance
+  - property: feature_diversity
 - name: draft_prompts
   kind: llm_tagged
   model: draft

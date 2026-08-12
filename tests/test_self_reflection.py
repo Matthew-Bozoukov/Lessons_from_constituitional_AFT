@@ -324,11 +324,17 @@ def test_multi_turn_export_keeps_both_exchanges_with_their_own_traces():
 
 
 def test_config_builds_and_keeps_snapshot_names():
-    # `corpus` appended 2026-08-12: last in the list, so every earlier snapshot keeps
-    # its position and existing run dirs stay resumable.
+    # The corpus checks (2026-08-12) are observers: they take no snapshot position, so
+    # `corpus_scenarios` sits mid-pipeline without moving anything after it and every
+    # existing run dir stays resumable.
+    from src.data.synth.pipeline import snapshot_positions
+
     assert [s.name for s in build_stages(CFG)] == \
-        ["traits", "scenarios", "draft_prompts", "refined_prompts",
+        ["traits", "scenarios", "corpus_scenarios", "draft_prompts", "refined_prompts",
          "draft_responses", "final", "sft", "corpus"]
+    assert snapshot_positions(CFG) == \
+        {"traits": 1, "scenarios": 2, "corpus_scenarios": 2, "draft_prompts": 3,
+         "refined_prompts": 4, "draft_responses": 5, "final": 6, "sft": 7, "corpus": 7}
 
 
 # --- the failure guard on resume ------------------------------------------------------

@@ -10,7 +10,7 @@ import yaml
 
 from src.data.synth.core import Stage
 from src.data.synth.operators import OPERATORS
-from src.data.synth.pipeline import build_stages, estimate, run
+from src.data.synth.pipeline import build_stages, estimate, run, snapshot_positions
 
 CONSTITUTION = "constitutions/archive/claude_distilled_8_principles_v1/constitution.md"
 
@@ -140,16 +140,22 @@ def _real(name):
 def test_real_configs_keep_historical_snapshot_names():
     # Existing run dirs and HF mirrors must stay resumable: positions and names of
     # every snapshot are part of the on-disk contract.
-    # `corpus` (the corpus-level checks) appended 2026-08-12 -- last in the list, so
-    # every earlier snapshot keeps its position and existing run dirs stay resumable.
+    # The corpus checks (2026-08-12) are OBSERVERS: they take no position, so they can
+    # sit anywhere in the list -- including mid-pipeline -- without moving a snapshot.
     assert [s.name for s in build_stages(_real("difficult_advice"))] == \
-        ["traits", "scenarios", "draft_prompts", "refined_prompts",
+        ["traits", "scenarios", "corpus_scenarios", "draft_prompts", "refined_prompts",
          "draft_responses", "final", "sft", "corpus"]
+    assert snapshot_positions(_real("difficult_advice")) == \
+        {"traits": 1, "scenarios": 2, "corpus_scenarios": 2, "draft_prompts": 3,
+         "refined_prompts": 4, "draft_responses": 5, "final": 6, "sft": 7, "corpus": 7}
     # `final` (the rewrite pass) added 2026-08-07: stages 1-4 keep their positions, so
     # completed run dirs still cache-hit everything already paid for; only the free sft
     # assembly moves (5 -> 6) and re-runs.
     assert [s.name for s in build_stages(_real("model_eval_model"))] == \
         ["source", "plan", "perturbed", "generated", "final", "sft", "corpus"]
+    assert snapshot_positions(_real("model_eval_model")) == \
+        {"source": 1, "plan": 2, "perturbed": 3, "generated": 4, "final": 5, "sft": 6,
+         "corpus": 6}
 
 
 def test_estimate_prices_real_configs_and_ablation_out():
