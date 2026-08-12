@@ -31,24 +31,27 @@ def rec(rid: str, text: str, **meta) -> dict:
     return {"id": rid, "text": text, **meta}
 
 
-def build(records, properties, **spec):
-    """Run the registry over plain `{id, text}` records."""
+def docs(n: int, prefix: str = "r", start: int = 0, **meta) -> list[dict]:
+    """`n` mutually dissimilar documents -- the default healthy corpus."""
+    return [rec(f"{prefix}{i}", varied(start + i), **meta) for i in range(n)]
+
+
+def checks(records, tmp_path, *properties, **spec):
+    """Run the registry over `{id, text}` records and return the whole report."""
+    fields = {"id": "id", "text": "text", **spec.pop("fields", {})}
+    props = [p if isinstance(p, dict) else {"property": p} for p in properties]
     return C.run_corpus_checks(
-        records, {"name": "corpus", "fields": {"id": "id", "text": "text"},
-                  "properties": properties, **spec},
-        run_dir=spec.pop("run_dir", "."), seed=0)
+        records, {"name": "corpus", "fields": fields, "properties": props, **spec},
+        run_dir=tmp_path, seed=0)
 
 
 def one(records, name, tmp_path, gate=True, **inst):
     """Run a single property and return its report entry."""
-    report = C.run_corpus_checks(
-        records,
-        {"name": "corpus", "fields": {"id": "id", "text": "text",
-                                      **(inst.pop("fields", {}))},
-         "properties": [{"property": name, "gate": gate, **inst}],
-         **{k: v for k, v in inst.items() if k in ("axes", "cross")}},
-        run_dir=tmp_path, seed=0)
-    return report["properties"][name]
+    spec = {k: inst.pop(k) for k in ("axes", "cross", "units", "model", "rubrics")
+            if k in inst}
+    spec["fields"] = inst.pop("fields", {})
+    return checks(records, tmp_path, {"property": name, "gate": gate, **inst},
+                  **spec)["properties"][name]
 
 
 # --- 1. registry contract ------------------------------------------------------------
@@ -107,10 +110,7 @@ def test_judged_properties_skip_when_the_run_cannot_judge(tmp_path):
 
 def test_unknown_property_fails_fast(tmp_path):
     with pytest.raises(ValueError, match="unknown corpus properties"):
-        C.run_corpus_checks([rec("r0", "hello")],
-                            {"name": "corpus", "fields": {"id": "id", "text": "text"},
-                             "properties": [{"property": "no_such_check"}]},
-                            run_dir=tmp_path)
+        checks([rec("r0", "hello")], tmp_path, "no_such_check")
 
 
 def test_a_judged_property_without_its_rubric_fails_before_the_run_starts(tmp_path):
@@ -145,7 +145,7 @@ def test_ngram_diversity_flags_identical_documents(tmp_path):
 
 
 def test_ngram_diversity_clean_on_varied_documents(tmp_path):
-    records = [rec(f"r{i}", varied(i)) for i in range(20)]
+    records = docs(20)
     entry = one(records, "ngram_diversity", tmp_path)
     assert entry["pass"] is True
     assert not [f for f in entry["findings"] if f["severity"] == "critical"]
@@ -198,7 +198,7 @@ def test_near_duplicates_finds_exact_and_near_copies(tmp_path):
 
 
 def test_near_duplicates_clean_on_unique_documents(tmp_path):
-    records = [rec(f"r{i}", varied(i)) for i in range(20)]
+    records = docs(20)
     entry = one(records, "near_duplicates", tmp_path)
     assert entry["metrics"]["near_duplicate_pairs"] == 0
     assert entry["metrics"]["exact_duplicate_groups"] == 0
@@ -209,14 +209,10 @@ def test_alias_runs_one_property_twice_over_different_fields(tmp_path):
     # Scenario-level near-duplication: the documents are unique, the situations are not.
     records = [rec(f"r{i}", varied(i), situation="a client asks for a shortcut")
                for i in range(20)]
-    report = C.run_corpus_checks(
-        records,
-        {"name": "corpus", "fields": {"id": "id", "text": "text"},
-         "properties": [
-             {"property": "near_duplicates", "gate": True},
-             {"property": "near_duplicates", "as": "scenario_dupes", "gate": True,
-              "fields": {"text": "situation"}}]},
-        run_dir=tmp_path, seed=0)
+    report = checks(records, tmp_path,
+                    {"property": "near_duplicates", "gate": True},
+                    {"property": "near_duplicates", "as": "scenario_dupes",
+                     "gate": True, "fields": {"text": "situation"}})
     assert report["properties"]["near_duplicates"]["pass"] is True
     assert report["properties"]["scenario_dupes"]["pass"] is False
     assert report["properties"]["scenario_dupes"]["metrics"]["duplicate_share"] == 1.0
@@ -224,12 +220,7 @@ def test_alias_runs_one_property_twice_over_different_fields(tmp_path):
 
 def test_duplicate_aliases_fail_fast(tmp_path):
     with pytest.raises(AssertionError, match="duplicate corpus-check aliases"):
-        C.run_corpus_checks(
-            [rec("r0", "x")],
-            {"name": "corpus", "fields": {"id": "id", "text": "text"},
-             "properties": [{"property": "near_duplicates"},
-                            {"property": "near_duplicates"}]},
-            run_dir=tmp_path)
+        checks([rec("r0", "x")], tmp_path, "near_duplicates", "near_duplicates")
 
 
 # --- 4. opening_collapse / length_profile / field_balance ----------------------------
@@ -297,7 +288,7 @@ def test_field_balance_reports_entropy_and_empty_cross_buckets(tmp_path):
 
 
 def test_field_balance_reads_judged_labels_as_an_axis(tmp_path):
-    records = [rec(f"r{i}", varied(i)) for i in range(20)]
+    records = docs(20)
     corpus = C.Corpus(records=records, fields={"id": "id", "text": "text"}, params={},
                       labels={f"r{i}": {"principles": ["p1", "p2"] if i else ["p1"]}
                               for i in range(20)})
@@ -315,7 +306,7 @@ def test_feature_diversity_separates_identical_from_varied(tmp_path):
     assert entry["metrics"]["effective_rank"] == pytest.approx(1.0, abs=0.05)
     assert entry["pass"] is False
 
-    entry = one([rec(f"r{i}", varied(i)) for i in range(30)],
+    entry = one(docs(30),
                 "feature_diversity", tmp_path)
     assert entry["pass"] is True
     # Effective rank is the half that discriminates: cosine has a high floor because
@@ -482,13 +473,9 @@ def test_a_check_that_raises_is_errored_not_fatal(tmp_path):
                          doc="always raises")
     C.CORPUS_CHECKS["boom"] = boom
     try:
-        records = [rec(f"r{i}", varied(i)) for i in range(20)]
-        report = C.run_corpus_checks(
-            records,
-            {"name": "corpus", "fields": {"id": "id", "text": "text"},
-             "properties": [{"property": "boom", "gate": True},
-                            {"property": "near_duplicates"}]},
-            run_dir=tmp_path, seed=0)
+        records = docs(20)
+        report = checks(records, tmp_path,
+                        {"property": "boom", "gate": True}, "near_duplicates")
         entry = report["properties"]["boom"]
         assert entry["status"] == "errored"
         assert entry["pass"] is False, "a broken gated check is never a passing check"
@@ -525,7 +512,7 @@ def test_a_group_too_small_to_gate_is_measured_but_never_flagged(tmp_path):
 
 
 def test_a_missing_field_is_skipped_with_a_reason_never_a_silent_pass(tmp_path):
-    records = [rec(f"r{i}", varied(i)) for i in range(50)]
+    records = docs(50)
     report = C.run_corpus_checks(
         records,
         {"name": "corpus",
@@ -691,7 +678,7 @@ def test_applies_vs_conflicts_counts_the_three_modes_with_an_interval(tmp_path):
 
 
 def test_a_judge_failure_leaves_a_document_unlabelled_never_defaulted(tmp_path):
-    records = [rec(f"r{i}", varied(i)) for i in range(50)]
+    records = docs(50)
     # Keyed on the DOCUMENT, not the call index: call_tagged retries a malformed reply,
     # so a per-call failure would simply succeed on the retry and prove nothing.
     doomed = {r["text"] for r in records[:10]}
@@ -712,7 +699,7 @@ def test_a_judge_failure_leaves_a_document_unlabelled_never_defaulted(tmp_path):
 
 
 def test_labels_go_to_a_sidecar_and_the_records_are_untouched(tmp_path):
-    records = [rec(f"r{i}", varied(i)) for i in range(40)]
+    records = docs(40)
     before = json.dumps(records, sort_keys=True)
     entry, report = _judged(
         records, "applies_vs_conflicts", tmp_path,
@@ -728,7 +715,7 @@ def test_labels_go_to_a_sidecar_and_the_records_are_untouched(tmp_path):
 
 
 def test_a_second_run_re_judges_only_what_is_missing(tmp_path):
-    records = [rec(f"r{i}", varied(i)) for i in range(40)]
+    records = docs(40)
     stub = StubClient(lambda i, m: "<mode>conflict</mode><why>y</why>")
     _judged(records, "applies_vs_conflicts", tmp_path, stub)
     assert len(stub.calls) == 40
@@ -820,7 +807,7 @@ def test_pattern_scan_keeps_only_patterns_two_scans_found_and_caches_on_content(
     rubrics = {"pattern_scan": {
         "scan_system": "SCAN", "scan_user": "{documents}{n}{seeded}",
         "rate_system": "RATE", "rate_user": "{document}{patterns}"}}
-    records = [rec(f"r{i}", varied(i)) for i in range(48)]
+    records = docs(48)
     spec = {"name": "corpus", "model": "judge", "rubrics": rubrics,
             "fields": {"id": "id", "text": "text"},
             "properties": [{"property": "pattern_scan",
