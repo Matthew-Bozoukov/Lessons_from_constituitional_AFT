@@ -15,8 +15,8 @@ uv run scripts/data/synth/build_dataset.py --config <cfg> --ablate final     # a
 uv run scripts/data/synth/build_dataset.py --config <cfg> --estimate [--measured <smoke manifest>]
 ```
 
-(`uv run synth run|topup|check|estimate|segment` remains as the console script for
-the auxiliary verbs; `run`/`estimate` are the same functions `build_dataset.py` calls.)
+(`uv run synth run|topup|check|estimate|segment|chunkings` remains as the console script
+for the auxiliary verbs; `run`/`estimate` are the same functions `build_dataset.py` calls.)
 
 ## Architecture
 
@@ -51,54 +51,59 @@ vars (`{constitution}`, `{style_guidance}`). Literal JSON braces are escaped `{{
 
 ## Chunking: how the constitution becomes the units documents are built against
 
-`constitution.py` does this in two deterministic, offline, no-LLM steps — **chunk** the
-document at a granularity, then **group** chunks into units. A unit renders to exactly
-the fields the rest of the pipeline already consumes (`trait_id`/`index`/`name`/`text`),
-so nothing after stage 1 knows chunking exists. A config with no `chunking:` block gets
-the original recipe byte for byte: one unit per numbered principle.
+A dataset config names a **chunking method** and nothing else:
 
 ```yaml
-chunking:
-  granularity: principle    # whole | principle | paragraph | bullet
-  min_words: 12             # sub-principle pieces shorter than this merge into a neighbour
-  group:
-    size: 1                 # chunks per unit; ignored by `cluster`
-    strategy: single        # single | adjacent | random | lexical | cluster
-    seed: 0                 # `random` only; the rest are seed-independent
-    n_clusters: 4           # `cluster` only
+chunking: principle     # uv run synth chunkings  lists them
 ```
 
-Two invariants make arms comparable, and both are tested:
+Under the hood that is two deterministic, offline, no-LLM steps in `constitution.py` —
+**chunk** the document at a granularity, then **group** chunks into units. A unit renders
+to exactly the fields the rest of the pipeline already consumes
+(`trait_id`/`index`/`name`/`text`), so nothing after stage 1 knows chunking exists.
 
-- **Every strategy partitions the pool** — each chunk lands in exactly one unit, so total
-  constitution content is identical across arms and group size is never confounded with
-  coverage.
-- **Size-match with `total_scenarios`, not `scenarios_per_trait`.** The latter is *per
-  unit*, so a `bullet` arm (45 units) would get ~45× the data of a `whole` arm (1 unit).
-  `total_scenarios` splits a fixed corpus budget across whatever units the chunking
-  produced; it wins when both are set.
+| method | units from the 9-principle mid constitution | |
+|---|---|---|
+| `principle` | 9 — one numbered principle each | **default**; the Teaching Claude Why recipe, and what every corpus here was generated with |
+| `paragraph` | 36 — statement / rationale / exceptions stand alone | |
+| `bullet` | 45 — one bullet or paragraph each | the finest cut; GDM's choice |
+| `whole` | 1 — the entire constitution | no chunking at all |
+| `principle_pairs_adjacent` | 5 — two consecutive principles | |
+| `principle_pairs_random` | 5 — two unrelated principles | |
+| `principle_pairs_related` | 5 — two similar principles | |
+| `paragraph_clusters` | 4 — paragraphs regrouped semantically | the embed-and-cluster shape |
 
-Granularity comes from two places, and they cover different ranges: the **code chunkers**
-above reach below a principle, and **which `constitution.md`** you point at covers above
-it (`constitutions/claude_distilled_{04_coarse,07_approved,12_mid,24_fine}`). Our
-constitutions carry one heading level, so the "section" granularity named in the
-literature *is* `principle` here.
+Methods are defined in `CHUNKINGS` (`constitution.py`), one frozen `Chunking` each.
+**Settings live with the method, not in the config**: a config carries a name, so a run
+manifest records *which recipe ran* rather than an anonymous bag of knobs. Add a method
+by adding an entry; an unrecognised name fails fast and lists the options.
 
-Inspect any arm for free, offline, with no API key — this is the dry-run for the whole
-chunking study, and it also prints the spec-side measurements (words/unit, chunk
-centrality, and how much preamble belongs to no unit):
+Preview any method for free — offline, no API key. It also prints the spec-side
+measurements (words/unit, chunk centrality, and how much preamble belongs to no unit):
 
 ```
-uv run synth segment --granularity bullet
-uv run synth segment --group_size 2 --strategy adjacent
-uv run synth segment --granularity paragraph --strategy cluster --n_clusters 4
+uv run synth chunkings
+uv run synth segment --chunking bullet
+uv run synth segment --chunking principle_pairs_related
 uv run synth segment --constitution constitutions/claude_distilled_24_principles_fine/constitution.md
 ```
 
-The study config is `configs/data/synth/difficult_advice_chunking.yaml`: one config, one
-arm per `--overrides` dotlist, with granularity-neutral prompts shared by every arm
-including its k=1 control (so the control is that arm, **not** the production
-`difficult_advice.yaml` corpus, which uses the old "one principle" wording).
+Two invariants make methods comparable, and both are tested:
+
+- **Every strategy partitions the pool** — each chunk lands in exactly one unit, so total
+  constitution content is identical across methods and group size is never confounded
+  with coverage.
+- **To hold corpus size fixed, size by `total_scenarios`, not `scenarios_per_trait`.**
+  The latter is *per unit*, so `bullet` (45 units) would produce ~45× the data of `whole`
+  (1 unit) — a data-scaling curve wearing a chunking comparison's clothes.
+  `total_scenarios` splits a fixed budget across whatever units the method produced, and
+  wins when both are set. Stage 2 prints the resulting total before spending.
+
+Granularity comes from two places covering different ranges: the methods above reach
+*below* a principle, and **which `constitution.md`** you point at covers *above* it
+(`constitutions/claude_distilled_{04_coarse,07_approved,12_mid,24_fine}`). Our
+constitutions carry one heading level, so the "section" granularity named in the
+literature *is* `principle` here.
 
 **Ablation.** A stage entry with `ablate_with: {field: source_field}` declares its
 null-operation as a field copy (e.g. the rewrite stage's `ablate_with` promotes the

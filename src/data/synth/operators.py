@@ -139,6 +139,12 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
         m = model_cfg(ctx.cfg, mk)
         traits = [Trait.from_record(r) for r in records]
         batches = scenario_batches(len(traits), ctx.cfg)
+        # Corpus size follows the unit count under `scenarios_per_trait`, so a changed
+        # `chunking:` can multiply a run. Say the total out loud before paying for it.
+        sized_by = "total_scenarios" if ctx.cfg.get("total_scenarios") is not None \
+            else "scenarios_per_trait"
+        print(f"    {len(traits)} units -> {sum(n for _t, _b, n in batches)} scenarios "
+              f"in {len(batches)} calls (sized by {sized_by})")
 
         def one(k: int) -> list[dict]:
             ti, bi, n = batches[k]
@@ -474,16 +480,14 @@ def plan_weighted_batches(traits: list[Trait], cfg: dict) -> list[dict]:
     per_call = int(cfg.get("scenarios_per_call", 8))
     configured = cfg["trait_weights"]
     if isinstance(configured, str):
-        # Unit ids are derived from the chunking choice, not hand-listed, so an explicit
-        # weight table cannot be written against them -- it would have to be rewritten
-        # for every arm. `uniform` is the only spelling accepted, and only under a
-        # `chunking:` block, so a typo in a hand-weighted config still fails below.
+        # Any chunking other than one-principle-per-unit derives ids (`t3+t7`, `c1`,
+        # `t3.b02`) that no hand-written weight table can anticipate, so `uniform` is the
+        # only way to weight those runs. Spelling is checked, so a typo in a
+        # hand-weighted config still fails the strict branch below rather than silently
+        # flattening every weight.
         assert configured == "uniform", (
             f"trait_weights must be a mapping or the literal 'uniform', got "
             f"{configured!r}")
-        assert cfg.get("chunking"), (
-            "trait_weights: uniform is only meaningful with a `chunking:` block, where "
-            "unit ids are derived. Write an explicit weight table instead.")
         weights = {t.trait_id: 1.0 for t in traits}
     else:
         configured = dict(configured)

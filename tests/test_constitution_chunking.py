@@ -9,12 +9,15 @@ from pathlib import Path
 import pytest
 
 from src.data.synth.constitution import (
+    CHUNKINGS,
+    DEFAULT_CHUNKING,
     GRANULARITIES,
     STRATEGIES,
     Trait,
     chunk,
     full_text,
     group,
+    resolve_chunking,
     segment,
     units_from_config,
 )
@@ -187,82 +190,82 @@ def test_bad_granularity_and_strategy_fail_loudly():
         group(chunks, size=0, strategy="adjacent")
 
 
-def test_units_from_config_defaults_to_the_original_recipe():
+# --- the named methods a dataset config picks from -----------------------------------
+
+
+def test_default_chunking_is_the_original_recipe():
+    """The default must stay the method every existing corpus was generated with, or a
+    config that never mentions chunking would silently produce different data."""
+    assert DEFAULT_CHUNKING == "principle"
     units, style = units_from_config({"constitution": MID})
     traits, seg_style = segment(MID)
     assert [u.as_trait() for u in units] == traits
     assert style == seg_style
+    # Naming it explicitly must be identical to leaving it out.
+    named, _ = units_from_config({"constitution": MID, "chunking": "principle"})
+    assert [u.as_dict() for u in named] == [u.as_dict() for u in units]
 
 
-def test_units_from_config_reads_the_chunking_block():
-    units, _ = units_from_config({
-        "constitution": MID,
-        "chunking": {"granularity": "paragraph",
-                     "group": {"size": 3, "strategy": "adjacent"}},
-    })
-    assert all(u.granularity == "paragraph" for u in units)
-    assert all(u.grouping_strategy == "adjacent" for u in units)
-    assert max(u.n_chunks for u in units) == 3
+@pytest.mark.parametrize("name", sorted(CHUNKINGS))
+def test_every_registered_method_is_well_formed(name):
+    spec = CHUNKINGS[name]
+    assert spec.name == name, "CHUNKINGS key must match the method's own name"
+    assert spec.granularity in GRANULARITIES
+    assert spec.strategy in STRATEGIES
+    assert spec.size >= 1 and spec.summary
 
 
-def test_units_from_config_rejects_a_typo():
-    # A misspelled key silently generating the DEFAULT corpus is the failure mode here.
-    with pytest.raises(ValueError, match="unknown key"):
-        units_from_config({"constitution": MID, "chunking": {"granularty": "bullet"}})
+@pytest.mark.parametrize("name", sorted(CHUNKINGS))
+def test_every_registered_method_builds_units(name):
+    """Stage 1 is deterministic and free, so every method is provable before any spend."""
+    units, style = units_from_config({"constitution": MID, "chunking": name})
+    assert units and style
+    spec = CHUNKINGS[name]
+    assert all(u.granularity == spec.granularity for u in units)
+    assert all(u.grouping_strategy == spec.strategy for u in units)
 
 
-# --- the study config: the arms must differ ONLY in chunking -------------------------
-
-STUDY = "configs/data/synth/difficult_advice_chunking.yaml"
-
-# The arms the config's header documents, as (label, override dict).
-ARMS = [
-    ("control_k1", {}),
-    ("bullet", {"granularity": "bullet"}),
-    ("paragraph", {"granularity": "paragraph"}),
-    ("adjacent_k2", {"group": {"size": 2, "strategy": "adjacent"}}),
-    ("random_k2", {"group": {"size": 2, "strategy": "random"}}),
-    ("lexical_k2", {"group": {"size": 2, "strategy": "lexical"}}),
-    ("whole", {"granularity": "whole"}),
-    ("cluster", {"granularity": "paragraph", "group": {"strategy": "cluster"}}),
-]
+def test_registered_methods_produce_distinct_unit_sets():
+    """Two methods yielding identical units would not be a distinct choice."""
+    seen = {name: tuple(u.unit_id for u in
+                        units_from_config({"constitution": MID, "chunking": name})[0])
+            for name in CHUNKINGS}
+    assert len(set(seen.values())) == len(seen), \
+        f"methods collapsed onto the same unit set: {seen}"
 
 
-def _study_cfg(override: dict) -> dict:
+def test_unknown_chunking_name_lists_the_options():
+    # A silent fallback to the default would generate the wrong corpus without saying so.
+    with pytest.raises(ValueError, match="unknown chunking"):
+        units_from_config({"constitution": MID, "chunking": "bullets"})
+    with pytest.raises(ValueError, match="unknown chunking"):
+        resolve_chunking("per_sentence")
+
+
+def test_chunking_must_be_a_name_not_an_inline_block():
+    """Settings live with the method so a manifest records which recipe ran, rather than
+    an anonymous bag of knobs no one can look up later."""
+    with pytest.raises(ValueError, match="takes the NAME"):
+        units_from_config({"constitution": MID,
+                           "chunking": {"granularity": "bullet"}})
+
+
+@pytest.mark.parametrize("name", sorted(CHUNKINGS))
+def test_dataset_config_can_select_any_method(name):
+    """The flag path end to end: a real dataset config plus `chunking: <name>` builds
+    its units and prices, with corpus size held fixed by total_scenarios."""
     import yaml
 
-    cfg = yaml.safe_load(open(STUDY))
-    chunking = dict(cfg["chunking"])
-    chunking.update({k: v for k, v in override.items() if k != "group"})
-    chunking["group"] = {**chunking["group"], **override.get("group", {})}
-    cfg["chunking"] = chunking
-    return cfg
-
-
-@pytest.mark.parametrize("label,override", ARMS)
-def test_every_study_arm_is_size_matched(label, override):
-    """THE experimental invariant. `scenarios_per_trait` is per unit, so it would give
-    the bullet arm (45 units) ~45x the data of the whole arm (1 unit) and turn a
-    chunking comparison into a data-scaling comparison. `total_scenarios` fixes the
-    budget instead -- if this ever regresses, every arm comparison is invalid."""
-    from src.data.synth.operators import scenario_batches
+    from src.data.synth.core import Ctx
+    from src.data.synth.operators import op_segment, scenario_batches
     from src.data.synth.pipeline import n_examples, n_units
 
-    cfg = _study_cfg(override)
-    assert "scenarios_per_trait" not in cfg, \
-        "the study config must size by total_scenarios, not per unit"
-    batches = scenario_batches(n_units(cfg), cfg)
-    assert sum(n for _ti, _bi, n in batches) == cfg["total_scenarios"]
-    assert n_examples(cfg) == cfg["total_scenarios"]
+    cfg = yaml.safe_load(open("configs/data/synth/difficult_advice.yaml"))
+    cfg["chunking"] = name
+    cfg.pop("n_traits")            # derived from the method, not declared
+    cfg.pop("scenarios_per_trait")  # per unit; swap for a fixed budget
+    cfg["total_scenarios"] = 180
 
-
-@pytest.mark.parametrize("label,override", ARMS)
-def test_every_study_arm_builds_its_units_offline(label, override):
-    """Stage 1 is deterministic and free, so every arm is provable before any spend."""
-    from src.data.synth.core import Ctx
-    from src.data.synth.operators import op_segment
-
-    cfg = _study_cfg(override)
     ctx = Ctx(cfg=cfg, usage=None, workers=1, run_dir=None, smoke=False, vars={})
     rows = op_segment({"name": "traits", "kind": "segment"}, cfg).fn(ctx, [], None)
     assert rows and ctx.vars["style_guidance"]
@@ -270,26 +273,32 @@ def test_every_study_arm_builds_its_units_offline(label, override):
         assert r["trait_id"] and r["text"] and r["n_chunks"] >= 1
         assert Trait.from_record(r).text == r["text"]
 
-
-def test_study_arms_produce_distinct_unit_sets():
-    """If two arms happened to yield identical units they would not be an ablation."""
-    from src.data.synth.constitution import units_from_config
-
-    seen = {label: tuple(u.unit_id for u in units_from_config(_study_cfg(o))[0])
-            for label, o in ARMS}
-    assert len(set(seen.values())) == len(seen), \
-        f"arms collapsed onto the same unit set: {seen}"
+    # Size-matching: `scenarios_per_trait` is PER UNIT, so it would hand `bullet`
+    # (45 units) ~45x the data of `whole` (1 unit) -- a data-scaling curve wearing a
+    # chunking comparison's clothes. `total_scenarios` splits a fixed budget instead.
+    assert sum(n for _t, _b, n in scenario_batches(n_units(cfg), cfg)) == 180
+    assert n_examples(cfg) == 180
 
 
-def test_study_config_prompts_are_granularity_neutral():
-    """The prompts must not say "one principle": every arm shares them, including the
-    k=1 control, so that chunking is the only thing that varies."""
+def test_shipped_dataset_configs_declare_the_default():
+    """difficult_advice and self_reflection are the corpora of record: their chunking
+    must be stated outright, not inherited from a default that could later move."""
     import yaml
 
-    cfg = yaml.safe_load(open(STUDY))
-    prompts = [v for s in cfg["stages"] for v in (s.get("prompts") or {}).values()]
-    assert prompts
-    for text in prompts:
-        low = text.lower()
-        assert "one principle" not in low, text
-        assert "<principle" not in low and "target_principle" not in low, text
+    for path in ("configs/data/synth/difficult_advice.yaml",
+                 "configs/data/synth/self_reflection.yaml"):
+        cfg = yaml.safe_load(open(path))
+        assert cfg.get("chunking") == DEFAULT_CHUNKING, path
+
+
+def test_n_traits_hint_must_match_the_chosen_method():
+    """difficult_advice declares n_traits: 9 for the default. Any other method changes
+    the unit count, and a stale hint would misprice the run."""
+    import yaml
+
+    from src.data.synth.pipeline import n_units
+
+    cfg = yaml.safe_load(open("configs/data/synth/difficult_advice.yaml"))
+    assert n_units(cfg) == cfg["n_traits"] == 9
+    with pytest.raises(AssertionError, match="n_traits"):
+        n_units({**cfg, "chunking": "bullet"})

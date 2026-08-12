@@ -3,7 +3,7 @@
 
 # LOG
 
-## 2026-08-12 — Chunking is now a config axis, not a hardcoded choice (no corpus yet)
+## 2026-08-12 — Chunking is now a named, selectable method (no corpus yet)
 
 **Hypothesis:** stage 1 of the pipeline — how the constitution is cut — is unablated
 everywhere in the prior work (GDM's `chunk = bullet` is an unexamined pick). The claim
@@ -24,25 +24,34 @@ nothing after stage 1 changed. Chunkers and groupers were ported from the delete
 `checks._hashed_features` (numpy char-ngrams), so the whole path runs with no API key and
 no new dependency.
 
+Those two steps are not exposed as knobs. Eight combinations are registered as **named
+methods** in `CHUNKINGS` (`principle` — the default — plus `paragraph`, `bullet`, `whole`,
+`principle_pairs_{adjacent,random,related}`, `paragraph_clusters`), and a dataset config
+selects one with a single flag: `chunking: principle`. Settings live with the method, so a
+run manifest records *which recipe ran* rather than an anonymous bag of knobs, and an
+unrecognised name fails fast with the list instead of falling back to the default.
+`uv run synth chunkings` prints them; `uv run synth segment --chunking <name>` previews
+one offline.
+
 Three design decisions carry the measurement:
 - **Every strategy partitions the pool.** Each chunk lands in exactly one unit, so total
-  constitution content is identical across arms. A sampling grouper (what synthdoc did)
-  would let a k=2 arm see more or less of the document than k=1, confounding group size
+  constitution content is identical across methods. A sampling grouper (what synthdoc did)
+  would let a k=2 method see more or less of the document than k=1, confounding group size
   with coverage.
-- **Arms are size-matched by `total_scenarios`, not `scenarios_per_trait`.** The latter is
-  *per unit*: a `bullet` arm (45 units) would have got ~45× the data of a `whole` arm (1
-  unit), making the comparison a data-scaling curve in disguise. Verified: all eight arms
-  price at exactly 180 examples / ~$9.3.
-- **The control is the k=1 arm of the new config, not the production corpus.** The study
-  config's prompts had to be reworded granularity-neutrally ("the portion of the
-  constitution below" vs "one principle"); comparing against the production corpus would
-  confound chunking with that wording change.
+- **Corpus size is held fixed by `total_scenarios`, not `scenarios_per_trait`.** The
+  latter is *per unit*: `bullet` (45 units) would produce ~45× the data of `whole` (1
+  unit), making any comparison a data-scaling curve in disguise. Verified: all eight
+  methods price at exactly 180 examples / ~$9.3 under a fixed budget. Stage 2 now prints
+  the projected total and which knob sized it, before spending.
+- **The default is the existing recipe, stated explicitly.** `difficult_advice.yaml` and
+  `self_reflection.yaml` now declare `chunking: principle` rather than inheriting it, so
+  the corpora of record cannot drift if the default ever moves — pinned by a test.
 
 **Result:** shipped and verified offline; **no corpus generated, nothing spent.**
 `segment()` is byte-identical to the old implementation across all six constitutions in
 the repo (test, not inspection), and `--estimate` on `difficult_advice`,
-`self_reflection` and `model_eval_model` is byte-identical to before. 177 new offline
-tests; full suite 595 passed, 5 skipped. Two real bugs were caught while building: the
+`self_reflection` and `model_eval_model` is byte-identical to before. 186 new offline
+tests; full suite 604 passed, 5 skipped. Two real bugs were caught while building: the
 `bullet` chunker silently collapsed onto `paragraph` (prose between bullets wasn't split
 on blank lines), and unconstrained k-means over hashed features returned one cluster of
 3053 words beside one of 45 — now capacity-capped at ceil(n/k), which also yields a
@@ -52,20 +61,27 @@ operator+helpfulness+flourishing).
 Also now usable and previously not: the `04_coarse` and `24_fine` constitutions, which
 `constitutions/README.md` still lists as "nothing yet — spec-variation experiment". The
 spec-granularity axis is the same experiment against a different document, via
-`--overrides constitution=...`. And `uv run synth segment` became the free dry-run for the
-whole study, reporting words/unit, chunk centrality, and — worth noting for the hypothesis
-— that **174 words of preamble belong to no unit** at any granularity below `whole`: the
+`--overrides constitution=...`. And `uv run synth segment` became the free preview for any
+method, reporting words/unit, chunk centrality, and — worth noting for the hypothesis —
+that **174 words of preamble belong to no unit** at any granularity below `whole`: the
 priority/conflict-resolution section, which is exactly the material saying how principles
 trade off, reaches the generator only via `{constitution}`.
 
-**Next steps:** (1) one paid `--smoke` per arm (a few cents each) and read the rollouts by
-hand — specifically whether a k=2 document engages *both* member principles or collapses
+**Caveat on any comparison run from this.** The shipped prompts say "one principle" and
+"<principle name=…>", which is wrong wording for a multi-chunk or whole-document unit. A
+run that only flips `chunking:` therefore varies chunking *and* leaves the prompt
+mismatched. Whoever runs the comparison should reword those prompts granularity-neutrally
+and regenerate the `principle` arm under the same wording, so the control differs from the
+other arms in chunking alone.
+
+**Next steps:** (1) one paid `--smoke` per method (a few cents each) and read the rollouts
+by hand — specifically whether a paired unit engages *both* member principles or collapses
 onto one; (2) the corpus checker (tracked separately) needs to report, in priority order:
 applies/conflicts ratio, coverage map (unit × scenario-type × pressure-source, judged from
 the document rather than from which unit generated it — without this the `whole` and
-`cluster` arms are unevaluable), and k>1 member-leakage; (3) only then decide whether any
-arm earns a training run. Note `difficult_advice.yaml` still has no `checks:` block at
-all, so the production corpus is ungated.
+`paragraph_clusters` methods are unevaluable), and member-leakage for the paired methods;
+(3) only then decide whether any method earns a training run. Note `difficult_advice.yaml`
+still has no `checks:` block at all, so the production corpus is ungated.
 
 ## 2026-08-10 — Dynamic batching (jamie/dynamic-batching): loss curves match, 1.89x on real steps
 

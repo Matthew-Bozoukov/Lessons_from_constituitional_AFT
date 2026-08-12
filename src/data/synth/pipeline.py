@@ -185,11 +185,11 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
 def n_units(cfg: dict) -> int:
     """How many units stage 1 will emit, derived from the config rather than declared.
 
-    `n_traits` is a hand-maintained hint and has gone stale before. Chunking makes that
-    fatal rather than merely untidy: a `whole` arm has one unit and a `bullet` arm has
-    dozens, so a declared count would misprice every arm. Chunking is offline and free,
-    so the real number is always available. A declared `n_traits` that disagrees is
-    treated as a config bug, not overridden silently.
+    `n_traits` is a hand-maintained hint and has gone stale before. The `chunking:` flag
+    makes that fatal rather than merely untidy: `whole` yields one unit and `bullet`
+    yields dozens, so a declared count would misprice most methods. Chunking is offline
+    and free, so the real number is always available; a declared `n_traits` that
+    disagrees is treated as a config bug rather than silently overridden.
     """
     from .constitution import units_from_config
 
@@ -199,9 +199,9 @@ def n_units(cfg: dict) -> int:
     declared = cfg.get("n_traits")
     if declared is not None and not limit:
         assert int(declared) == n, (
-            f"n_traits: {declared} in the config, but {cfg['constitution']} chunks into "
-            f"{n} units under this `chunking:` block. Fix n_traits (or drop it -- it is "
-            "only a hint; the count is derived).")
+            f"n_traits: {declared} in the config, but {cfg['constitution']} yields {n} "
+            f"units under chunking {cfg.get('chunking') or 'principle'!r}. Fix n_traits "
+            "(or drop it -- it is only a hint; the count is derived).")
     return n
 
 

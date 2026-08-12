@@ -554,30 +554,105 @@ def group(chunks: list[Chunk], size: int = 1, strategy: str = "single",
     return sorted(units, key=lambda u: (u.index, u.unit_id))
 
 
+# --- the named chunking methods a dataset config picks from --------------------------
+
+
+@dataclass(frozen=True)
+class Chunking:
+    """One named way of turning a constitution into units.
+
+    Attributes:
+        name: The value a dataset config's `chunking:` flag carries.
+        granularity: How finely to cut (a GRANULARITIES member).
+        strategy: How to assemble chunks into units (a STRATEGIES member).
+        size: Chunks per unit. Ignored by `cluster`.
+        n_clusters: Cluster count for `cluster`.
+        min_words: Sub-principle pieces shorter than this merge into a neighbour.
+        summary: One line, printed by `synth chunkings`.
+    """
+
+    name: str
+    granularity: str
+    strategy: str = "single"
+    size: int = 1
+    n_clusters: int = 4
+    min_words: int = 12
+    summary: str = ""
+
+
+# Keyed by the name a config writes. `principle` is the DEFAULT and is the method every
+# corpus in this repository was generated with -- leave it alone; the others exist to be
+# compared against it. Names read <granularity>[_<how they are grouped>].
+CHUNKINGS: dict[str, Chunking] = {c.name: c for c in (
+    Chunking("principle", "principle", summary=(
+        "DEFAULT. One numbered principle per document -- the Teaching Claude Why "
+        "recipe, and what every existing corpus here was built with.")),
+    Chunking("paragraph", "paragraph", summary=(
+        "One paragraph of a principle per document (its statement, its rationale, its "
+        "exceptions each stand alone).")),
+    Chunking("bullet", "bullet", summary=(
+        "One bullet or paragraph per document -- the finest cut, and GDM's choice.")),
+    Chunking("whole", "whole", summary=(
+        "No chunking: the entire constitution is the unit. Coverage stops being "
+        "guaranteed by construction and has to be verified in the corpus instead.")),
+    Chunking("principle_pairs_adjacent", "principle", "adjacent", size=2, summary=(
+        "Two consecutive principles per document, preserving the document's order.")),
+    Chunking("principle_pairs_random", "principle", "random", size=2, summary=(
+        "Two unrelated principles per document -- can the model hold both at once?")),
+    Chunking("principle_pairs_related", "principle", "lexical", size=2, summary=(
+        "Two similar principles per document, pairing material the document "
+        "separates.")),
+    Chunking("paragraph_clusters", "paragraph", "cluster", n_clusters=4, summary=(
+        "Cut into paragraphs, then regroup into 4 semantic clusters -- the "
+        "embed-and-cluster shape, no per-principle chunking at all.")),
+)}
+
+DEFAULT_CHUNKING = "principle"
+
+
+def resolve_chunking(name: str | None) -> Chunking:
+    """Look up a chunking method by name, listing the options when it is not one.
+
+    Args:
+        name: A CHUNKINGS key, or None for the default.
+
+    Returns:
+        The Chunking.
+
+    Raises:
+        ValueError: The name is not a registered method.
+    """
+    key = str(name or DEFAULT_CHUNKING)
+    if key not in CHUNKINGS:
+        raise ValueError(
+            f"unknown chunking {key!r}. Registered methods: {sorted(CHUNKINGS)}. "
+            "Run `uv run synth chunkings` to see what each one does, or add a new "
+            "entry to CHUNKINGS in src/data/synth/constitution.py.")
+    return CHUNKINGS[key]
+
+
 def units_from_config(cfg: dict) -> tuple[list[Unit], str]:
     """Build the unit set a run config declares. The single place the two steps meet.
 
-    A config with no `chunking:` block gets the original recipe exactly: principle
-    granularity, one chunk per unit.
+    A dataset config selects a method by name (`chunking: bullet`); a config with no
+    `chunking:` flag gets the default, which is the original recipe exactly.
 
     Args:
-        cfg: A run config carrying `constitution:` and an optional `chunking:` block
-            ({granularity, min_words, group: {size, strategy, seed, n_clusters}}).
+        cfg: A run config carrying `constitution:` and an optional `chunking:` name.
 
     Returns:
         (units, style_guidance).
     """
-    ch = dict(cfg.get("chunking") or {})
-    grp = dict(ch.get("group") or {})
-    unknown = sorted(set(ch) - {"granularity", "min_words", "group"})
-    if unknown:
-        raise ValueError(f"unknown key(s) in `chunking:`: {unknown}. "
-                         "Known: granularity, min_words, group.")
-    chunks, style = chunk(cfg["constitution"],
-                          granularity=str(ch.get("granularity", "principle")),
-                          min_words=int(ch.get("min_words", 12)))
-    units = group(chunks, size=int(grp.get("size", 1)),
-                  strategy=str(grp.get("strategy", "single")),
-                  seed=int(grp.get("seed", cfg.get("seed", 0))),
-                  n_clusters=int(grp.get("n_clusters", 4)))
+    ch = cfg.get("chunking")
+    if ch is not None and not isinstance(ch, str):
+        raise ValueError(
+            f"`chunking:` takes the NAME of a method, got {type(ch).__name__}. "
+            f"Registered: {sorted(CHUNKINGS)}. Settings live with the method in "
+            "CHUNKINGS (src/data/synth/constitution.py) so a manifest records which "
+            "recipe ran, not an anonymous bag of knobs.")
+    spec = resolve_chunking(ch)
+    chunks, style = chunk(cfg["constitution"], granularity=spec.granularity,
+                          min_words=spec.min_words)
+    units = group(chunks, size=spec.size, strategy=spec.strategy,
+                  seed=int(cfg.get("seed", 0)), n_clusters=spec.n_clusters)
     return units, style

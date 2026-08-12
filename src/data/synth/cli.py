@@ -147,31 +147,44 @@ def estimate(config: str, measured: str | None = None) -> None:
     print(json.dumps(pipeline.estimate(_load(config), measured), indent=2))
 
 
-def segment(constitution: str = "constitutions/claude_distilled_12_principles_mid/constitution.md",
-            granularity: str = "principle", group_size: int = 1,
-            strategy: str = "single", seed: int = 0, n_clusters: int = 4,
-            min_words: int = 12, full: bool = False) -> None:
-    """Print the units a chunking choice produces, without calling any model.
+def chunkings() -> None:
+    """List the chunking methods a dataset config's `chunking:` flag may name."""
+    from .constitution import CHUNKINGS, DEFAULT_CHUNKING
 
-    The dry-run for the whole chunking study: every arm is inspectable here for free,
-    offline and with no API key, before a cent is spent generating against it.
+    for name, c in CHUNKINGS.items():
+        mark = " (default)" if name == DEFAULT_CHUNKING else ""
+        shape = (f"{c.granularity} x {c.strategy}"
+                 + (f", {c.n_clusters} clusters" if c.strategy == "cluster"
+                    else f", {c.size} per unit" if c.size > 1 else ""))
+        print(f"{name}{mark}\n     {shape}\n     {c.summary}")
+    print("\nUse in a dataset config:  chunking: <name>\n"
+          "Preview one:              uv run synth segment --chunking <name>")
+
+
+def segment(constitution: str = "constitutions/claude_distilled_12_principles_mid/constitution.md",
+            chunking: str | None = None, seed: int = 0, full: bool = False) -> None:
+    """Print the units a chunking method produces, without calling any model.
+
+    The dry-run for every chunking choice: inspectable for free, offline and with no
+    API key, before a cent is spent generating against it.
 
     Args:
         constitution: Path to the constitution markdown.
-        granularity: whole | principle | paragraph | bullet.
-        group_size: Chunks per unit. Ignored by `cluster`.
-        strategy: single | adjacent | random | lexical | cluster.
-        seed: Seed for `random`; the other strategies are seed-independent.
-        n_clusters: Cluster count for `cluster`.
-        min_words: Sub-principle pieces shorter than this merge into a neighbour.
+        chunking: A method name (`uv run synth chunkings` lists them). Defaults to the
+            one every existing corpus was built with.
+        seed: Run seed, used by methods that shuffle.
         full: Print each unit's whole text instead of a one-line preview.
     """
     from .constitution import chunk as _chunk
     from .constitution import full_text, group as _group, preamble as _preamble
+    from .constitution import resolve_chunking
 
-    chunks, style = _chunk(constitution, granularity=granularity, min_words=min_words)
-    units = _group(chunks, size=group_size, strategy=strategy, seed=seed,
-                   n_clusters=n_clusters)
+    spec = resolve_chunking(chunking)
+    granularity = spec.granularity
+    chunks, style = _chunk(constitution, granularity=granularity,
+                           min_words=spec.min_words)
+    units = _group(chunks, size=spec.size, strategy=spec.strategy, seed=seed,
+                   n_clusters=spec.n_clusters)
 
     for u in units:
         members = f"  <- {', '.join(u.chunk_ids)}" if u.n_chunks > 1 else ""
@@ -180,8 +193,8 @@ def segment(constitution: str = "constitutions/claude_distilled_12_principles_mi
 
     words = [len(u.text.split()) for u in units]
     doc_words = len(full_text(constitution).split())
-    print(f"\n{len(chunks)} chunks ({granularity}) -> {len(units)} units "
-          f"({strategy}, size {group_size})")
+    print(f"\nchunking: {spec.name} -- {len(chunks)} {granularity} chunks -> "
+          f"{len(units)} units ({spec.strategy})")
     # Below `principle` the sum exceeds the document: every sub-chunk repeats its
     # principle title so it stays self-contained. Say so rather than look like a bug.
     note = " incl. repeated titles" if sum(words) > doc_words else ""
@@ -214,7 +227,7 @@ def segment(constitution: str = "constitutions/claude_distilled_12_principles_mi
 
 def main() -> None:
     fire.Fire({"run": run, "topup": topup, "check": check,
-               "estimate": estimate, "segment": segment})
+               "estimate": estimate, "segment": segment, "chunkings": chunkings})
 
 
 if __name__ == "__main__":

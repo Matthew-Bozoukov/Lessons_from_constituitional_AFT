@@ -13,6 +13,12 @@ pipeline: self_reflection
 # validate_rewrite enforces per record.
 constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
 
+# How stage 1 cuts that document into units. `principle` is one numbered principle per
+# document -- what this corpus was generated with. `uv run synth chunkings` lists the
+# alternatives. NOTE: `trait_weights` below is keyed by unit id, so any other method needs
+# `trait_weights: uniform` (unit ids are derived, not hand-listable).
+chunking: principle
+
 # Total scenarios across all traits, apportioned by trait_weights below. Sized for ~1.5M Qwen3.6
 # tokens: smoke records measured 2,724 and 2,912 tokens rendered through Qwen3.6's chat template
 # (mean 2,818), and at 15% multi-turn -- a second exchange that reuses the environment, so ~+70%
