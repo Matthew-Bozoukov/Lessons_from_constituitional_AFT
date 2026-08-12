@@ -206,7 +206,7 @@ pass-through stage, placed **anywhere** in a config's `stages:` list:
 ```
 uv run synth check --config <cfg> --run_dir <dir> [--stage corpus]  # re-check, no regeneration
 uv run scripts/data/synth/build_dataset.py --config <cfg> --ablate corpus  # skip it
-uv run synth compare --reports <dir1>,<dir2>,<dir3> --key group_size --out output/report/x.md
+uv run synth compare --reports <dir1>,<dir2>,<dir3> --key n_chunks --out output/report/x.md
 ```
 
 **Check where a property is decided, not only where it is finished.** Scenario diversity
@@ -285,12 +285,20 @@ the snapshots and the reports are written first, so a run never loses what it pa
 verdicts are keyed by stage name in `manifest["corpus_checks"]`, so a later one never
 overwrites an earlier one.
 
-**Chunking metadata contract.** `applies_vs_conflicts`, `principle_coverage`,
-`chunk_attribution` and `synth compare` need `group_id`, `group_size`, `member_units`,
-`grouping`, `scenario_type` and `pressure_source` in the final stage's `metadata:` list.
-None exist yet — until they do, those properties report `skipped` naming the field. An
-axis is only visible to `field_balance` if the export carries it (the model-eval-model
-metadata list is hardcoded in `cells.py`, not config-driven).
+**Chunking provenance.** `UNIT_PROVENANCE` (`constitution.py`) — `chunk_ids`,
+`granularity`, `grouping_strategy`, `n_chunks` — is copied onto every scenario by stage 2
+and exported in both dataset configs' `metadata:` list, so **which unit a document came
+from, and how that unit was cut and grouped, is readable from the document itself**.
+Nothing has to join back to the stage-1 snapshot. That is what makes a chunking arm
+measurable: `n_chunks` is the `group` role, `chunk_ids` the `members` role, `trait_id`
+the `unit` role, and all three are mapped on the shipped `corpus` stage already, so a
+judged property needs only its rubric wording added — no code, no new fields.
+
+`n_chunks`, `grouping_strategy` and `granularity` are `field_balance` axes on both
+configs, so an arm's unit mix is reported without any judging at all. An axis is only
+visible to `field_balance` if the export carries it (the model-eval-model metadata list
+is hardcoded in `cells.py`, not config-driven, so a chunking arm of that document type
+would need that list extended first).
 
 ### Adding a corpus property
 

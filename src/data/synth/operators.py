@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 
 from . import cells
-from .constitution import Trait, units_from_config
+from .constitution import UNIT_PROVENANCE, Trait, units_from_config
 from .core import Ctx, Stage, call_json, call_tagged, model_cfg, resilient, run_items
 from .hf_cache import read_jsonl
 
@@ -138,6 +138,12 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
     def fn(ctx, records, ckpt):
         m = model_cfg(ctx.cfg, mk)
         traits = [Trait.from_record(r) for r in records]
+        # Unit provenance travels WITH the record rather than being joined back to the
+        # stage-1 snapshot later: every downstream consumer (metadata export, corpus
+        # checks, `balance_by`) then reads it as an ordinary field, and no stage needs
+        # to know how to reach another stage's output.
+        prov = {r["trait_id"]: {k: r[k] for k in UNIT_PROVENANCE if k in r}
+                for r in records}
         batches = scenario_batches(len(traits), ctx.cfg)
         # Corpus size follows the unit count under `scenarios_per_trait`, so a changed
         # `chunking:` can multiply a run. Say the total out loud before paying for it.
@@ -162,6 +168,7 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
                 "trait_id": t.trait_id, "trait_name": t.name, "trait_text": t.text,
                 "domain": s.get("domain", ""), "situation": s["situation"],
                 "shortcut": s.get("shortcut", ""),
+                **prov.get(t.trait_id, {}),
             } for j, s in enumerate(parsed)]
 
         nested = resilient(one, len(batches), ctx.workers, sc["name"],
@@ -622,6 +629,9 @@ def op_scenarios_weighted(sc: dict, cfg: dict) -> Stage:
         traits = [Trait.from_record(r) for r in records]
         batches = plan_weighted_batches(traits, ctx.cfg)
         mix = ctx.cfg.get("mix", {})
+        # Same rule as op_scenarios: unit provenance travels with the record.
+        prov = {r["trait_id"]: {k: r[k] for k in UNIT_PROVENANCE if k in r}
+                for r in records}
 
         def one(k: int) -> list[dict]:
             b = batches[k]
@@ -641,7 +651,8 @@ def op_scenarios_weighted(sc: dict, cfg: dict) -> Stage:
                        **{f: s[f] for f in required},
                        **{f: s.get(f, "") for f in optional},
                        "motive": b["motive"], "control": b["control"],
-                       **assign_variant(sid, mix)}
+                       **assign_variant(sid, mix),
+                       **prov.get(t.trait_id, {})}
                 out.append(rec)
             return out
 

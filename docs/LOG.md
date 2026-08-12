@@ -205,12 +205,41 @@ counts via `np.bincount` (1.7×, bit-identical); and `run_corpus_checks` builds 
 twice rather than five times. Corpus stage: **5.9s for 1,389 documents**. `wilson()` moved
 to `src/utils.py` rather than becoming the repo's fourth copy.
 
-**Next steps:** the chunking work must export `group_id`, `group_size`, `member_units`,
-`grouping`, `scenario_type`, `pressure_source` into the final stage's `metadata:` —
-until then `applies_vs_conflicts`, `principle_coverage` and `chunk_attribution` report
-`skipped` naming the missing field. Then: write the rubrics, run the judged tier once at
-`sample: 300` against an existing corpus to measure real cost and calibrate its gates,
-and only then turn any of them on.
+**Rebased onto the chunking work the same day, and wired to it.** Chunking landed
+independently (`Chunk`/`Unit`/`CHUNKINGS` in `constitution.py`), so the metadata this
+checker was waiting on now exists — under different names than this entry predicted:
+`unit_id`→`trait_id`, plus `n_chunks`, `chunk_ids`, `grouping_strategy`, `granularity`.
+There is no `scenario_type` or `pressure_source`; that half of the predicted contract
+was simply wrong, and is dropped.
+
+Three things the rebase needed:
+
+1. **A real collision.** `constitution.py::_features` imported `_hashed_features` from
+   `checks.py`, which this branch had moved to `corpus.py`. Repointed — and it is the
+   better home: chunk grouping and corpus diversity now measure text similarity with
+   one featuriser instead of two that could drift.
+2. **Provenance died at stage 2.** `op_scenarios` builds a fresh record from the `Trait`
+   interface, so `chunk_ids`/`n_chunks`/`grouping_strategy`/`granularity` never reached
+   the export, and every consumer would have had to join back to the stage-1 snapshot.
+   Both scenario operators now copy `UNIT_PROVENANCE` onto every record, so which unit a
+   document came from — and how that unit was cut and grouped — is readable **from the
+   document**. Much simpler than teaching the checker to join, and it serves the
+   metadata export and `balance_by` equally.
+3. **The roles were already right.** `members`/`unit`/`group` are role names the config
+   maps to real fields, so wiring the chunking arms was configuration, not code:
+   `group: n_chunks`, `members: chunk_ids`, `unit: trait_id`, plus `n_chunks`,
+   `grouping_strategy` and `granularity` as `field_balance` axes on both dataset configs.
+
+Verified offline across three real chunking methods: `principle` reports
+`n_chunks {1: 108}`, `principle_pairs_related` reports `{1: 12, 2: 48}` (four pairs plus
+the leftover singleton from nine principles), `whole` reports `granularity {whole: 12}`.
+An arm's unit mix is now measurable with no judging at all.
+
+**Next steps:** write the rubrics for `applies_vs_conflicts` / `principle_coverage` /
+`chunk_attribution` — the only thing still missing, since the fields and roles are in
+place — then run the judged tier once at `sample: 300` against an existing corpus to
+measure real cost and calibrate its gates, and only then turn any of them on.
+`pattern_scan` remains the one block of code never run against a real model.
 
 ## 2026-08-10 — Dynamic batching (jamie/dynamic-batching): loss curves match, 1.89x on real steps
 

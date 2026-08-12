@@ -27,6 +27,13 @@ GRANULARITIES = ("whole", "principle", "paragraph", "bullet")
 # and group size is not confounded with coverage.
 STRATEGIES = ("single", "adjacent", "random", "lexical", "cluster")
 
+# The chunking provenance a generated record carries beyond the Trait interface. Stage 2
+# copies these onto every scenario, so which unit a document came from -- and how that
+# unit was cut and grouped -- is readable from the document itself, by the metadata
+# export, the corpus checks and `balance_by` alike. Named here, beside the `Unit` that
+# produces them, so the list cannot drift from the dataclass.
+UNIT_PROVENANCE = ("chunk_ids", "granularity", "grouping_strategy", "n_chunks")
+
 
 @dataclass(frozen=True)
 class Trait:
@@ -396,12 +403,14 @@ def _partition(ordered: list[Chunk], size: int) -> list[list[Chunk]]:
 def _features(chunks: list[Chunk]):
     """L2-normalised hashed char-ngram features, one row per chunk.
 
-    Imported lazily: `checks` imports this module, so a module-level import would be a
-    cycle, and it pulls the OpenRouter client, which the offline dry-run must not need.
+    The same featuriser the corpus checks use, so "how similar are two pieces of text"
+    means one thing across the pipeline -- grouping chunks here and measuring corpus
+    diversity there. Imported lazily because it pulls numpy, which the offline dry-run
+    (`synth segment`, `synth chunkings`) must not need.
     """
-    from .checks import _hashed_features
+    from .corpus import hashed_features
 
-    return _hashed_features([c.text for c in chunks])
+    return hashed_features([c.text for c in chunks])
 
 
 def _lexical_groups(ordered: list[Chunk], size: int) -> list[list[Chunk]]:

@@ -597,7 +597,9 @@ def test_on_fail_must_be_warn_error_or_stop(tmp_path):
 
 def test_offline_properties_are_priced_at_zero(tmp_path):
     base = {"pipeline": "p", "constitution": CONSTITUTION, "output_dir": str(tmp_path),
-            "n_traits": 2, "scenarios_per_trait": 4, "scenarios_per_call": 4,
+            # No `n_traits`: the unit count is derived from the constitution and the
+            # chunking, and a stale hint is now rejected rather than silently used.
+            "scenarios_per_trait": 4, "scenarios_per_call": 4,
             "models": {"gen": {"model": "openai/gpt-5.6-luna",
                                "assumed_tokens": {"in": 100, "out": 100}}},
             "stages": [{"name": "gen", "kind": "llm_json", "model": "gen"}]}

@@ -878,6 +878,12 @@ stages:
   - control
   - form
   - turns
+  # Chunking provenance, carried from stage 1 so a document says which
+  # unit it came from and how that unit was cut and grouped.
+  - chunk_ids
+  - granularity
+  - grouping_strategy
+  - n_chunks
 
 # The corpus-level checks: one pass-through stage that flags properties of the
 # WHOLE dataset that no single document can show. Report-only here (`gate: false`
@@ -894,7 +900,15 @@ stages:
         roles: [assistant]
         include_reasoning: true
     group: metadata.trait_id
+    # The chunking roles. `unit` is the unit a document was generated from and
+    # `members` its chunks, so a judged property (chunk_attribution,
+    # principle_coverage) needs only its rubric wording added -- no code, no fields.
+    unit: metadata.trait_id
+    members: metadata.chunk_ids
   axes:
+  - metadata.n_chunks
+  - metadata.grouping_strategy
+  - metadata.granularity
   - metadata.trait_id
   - metadata.motive
   - metadata.form
