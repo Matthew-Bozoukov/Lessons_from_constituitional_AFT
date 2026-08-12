@@ -82,6 +82,75 @@ the document rather than from which unit generated it — without this the `whol
 `paragraph_clusters` methods are unevaluable), and member-leakage for the paired methods;
 (3) only then decide whether any method earns a training run. Note `difficult_advice.yaml`
 still has no `checks:` block at all, so the production corpus is ungated.
+## 2026-08-12 — Corpus-level checker: a property registry as an ablatable final stage
+
+**Hypothesis:** the pipeline gates individual documents (`lint`, the spec filter) but has
+no way to ask questions about the corpus. If corpus properties are a registry rather than
+a script, adding one later is a function plus a dict entry, and the chunking experiment's
+outcome measures become configuration rather than new code.
+
+**Method.** `src/data/synth/corpus.py`: a `CORPUS_CHECKS` registry (matching `OPERATORS`
+/ `CELLS` / `EVALS`) of 11 properties over a lazily-memoised `Corpus` view; a
+`corpus_check` operator that runs them and returns its input **unchanged** (asserted),
+appended last in all five synth configs so it audits what actually trains. Judged
+annotations go to a `<stage>_labels.jsonl` sidecar, never into records. Ablatable with no
+`ablate_with:` map — a pure observer's null-op is the identity — so `--ablate corpus`
+both skips the checks and, on a judged config, skips their cost. A failed gate is an exit
+code raised *after* `manifest.json` is written, never an exception inside the stage.
+`checks.py`'s `check_template_collapse` / `check_surface_shortcut` became thin adapters
+over the registry; `synth check` gained a corpus path (so difficult-advice and
+self-reflection corpora can be audited at all, which they could not before) and
+`synth compare` compares arms across runs.
+
+**Result — thresholds set from measurement, not invention.** Baseline: the 2,203-document
+difficult-advice corpus (`output/model_eval_model/20260805_133015/stage_1_source.jsonl`,
+grouped by trait, ~1,040 words/doc) and a 1,389-document self-reflection corpus
+(`output/synthdoc_self_reflection/20260806_115149/stage_7_sft.jsonl`):
+
+| metric | difficult advice | self reflection | shipped gate |
+|---|---|---|---|
+| `top_8gram_share` (max/group) | **0.449** | 0.133 | 0.20 |
+| `mean_4gram_jaccard` | 0.0007–0.0037 | — | 0.15 |
+| `distinct_2` | 0.338–0.448 | — | 0.30 |
+| `duplicate_share` | 0.0 (0 candidate pairs) | 0.0 | 0.02 |
+| `top_opener_share` | **0.252** | 0.047 (0.066 reordered) | 0.15 |
+| length `cv` | 0.153 | 0.200 | 0.12 |
+| `mean_pairwise_cosine` | 0.860 | 0.853 | 0.95 |
+| `effective_rank_frac` | 0.645 | 0.671 | 0.25 |
+| entropy: 9-value axis / 495-value axis | 1.00 / 0.80 | — | 0.75 |
+
+Four things the numbers changed:
+
+1. **25% of the difficult-advice corpus opens with the same eight words** ("let me
+   actually sit with what's being asked"), and its worst trait bucket shares an 8-gram
+   across 45% of its documents. Nothing in the repo detected either before.
+2. **Character-n-gram cosine has a high floor** — two unrelated same-genre documents
+   already score ~0.86 — so a 0.35 threshold would have fired on every corpus.
+   `effective_rank_frac` (0.65 healthy vs 0.03 identical) is the discriminating half.
+3. **Exact opener matching misses the interesting case.** The self-reflection corpus's
+   top three openers are reorderings of one construction (92 + 70 + 27 of 1,389);
+   exact matching reports three unremarkable openers. Added a word-set variant.
+4. **`check_surface_shortcut` had a real hole.** On a fixture of byte-identical texts
+   under both labels it reported AUC **0.0222** — near-perfect *inverse* separation — and
+   called it a pass, because it only tested `auc <= max_auc`. That 0.02 was itself an
+   artefact of cross-validation memorising a text in the fold that trains on one copy and
+   then scoring its twin. Fixed by dropping label-ambiguous texts. Separability
+   (`max(auc, 1-auc)`) is now reported and raises a `warn`, but deliberately does **not**
+   gate: measured on null corpora of 25–60 per class it exceeds 0.65 about a third of the
+   time and does not tighten with n. This is the one place `tests/test_model_eval_model.py`
+   needed an edit (its degenerate fixture); every other assertion passes untouched, and a
+   read-only diff against the stored `checks_report.json` confirms no numeric drift.
+
+`--estimate` is unchanged ($35.76 difficult-advice, $269.81 model-eval-model). 461 tests
+pass. No judged property has been run against a real model yet — all four are
+report-only and their cost is priced but unmeasured.
+
+**Next steps:** the chunking work must export `group_id`, `group_size`, `member_units`,
+`grouping`, `scenario_type`, `pressure_source` into the final stage's `metadata:` —
+until then `applies_vs_conflicts`, `principle_coverage` and `chunk_attribution` report
+`skipped` naming the missing field. Then: write the rubrics, run the judged tier once at
+`sample: 300` against an existing corpus to measure real cost and calibrate its gates,
+and only then turn any of them on.
 
 ## 2026-08-10 — Dynamic batching (jamie/dynamic-batching): loss curves match, 1.89x on real steps
 

@@ -852,3 +852,41 @@ stages:
   - control
   - form
   - turns
+
+# The corpus-level checks: one pass-through stage that flags properties of the
+# WHOLE dataset that no single document can show. Report-only here (`gate: false`
+# is the default), so it can never fail a run; `--ablate corpus` skips it entirely.
+# Re-runnable over a finished run:
+#   uv run synth check --config <this file> --run_dir <run dir>
+- name: corpus
+  kind: corpus_check
+  on_fail: warn
+  fields:
+    id: metadata.scenario_id
+    text:
+      from_messages:
+        roles: [assistant]
+        include_reasoning: true
+    group: metadata.trait_id
+  axes:
+  - metadata.trait_id
+  - metadata.motive
+  - metadata.form
+  - metadata.control
+  cross:
+  - - metadata.trait_id
+    - metadata.motive
+  properties:
+  - property: ngram_diversity
+  - property: near_duplicates
+  # The same algorithm over the scenario text: distinct documents can still be
+  # built on a handful of repeated situations.
+  - property: near_duplicates
+    as: scenario_dupes
+    fields:
+      text: metadata.situation
+  - property: opening_collapse
+  - property: length_profile
+  - property: field_balance
+  - property: feature_diversity
+

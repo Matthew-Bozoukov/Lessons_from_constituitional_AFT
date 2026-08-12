@@ -307,6 +307,48 @@ stages:
 - name: sft
   kind: assemble_cells
 
+# The corpus-level checks: one pass-through stage that flags properties of the
+# WHOLE dataset that no single document can show. Report-only here (`gate: false`
+# is the default), so it can never fail a run; `--ablate corpus` skips it entirely.
+# Re-runnable over a finished run:
+#   uv run synth check --config <this file> --run_dir <run dir>
+- name: corpus
+  kind: corpus_check
+  on_fail: warn
+  fields:
+    id: metadata.record_id
+    text:
+      from_messages:
+        roles: [assistant]
+        include_reasoning: true
+    group: metadata.cell
+  axes:
+  - metadata.cell
+  - metadata.trait_id
+  - metadata.explicitness
+  - metadata.flaw_type
+  - metadata.flaw_severity
+  cross:
+  - - metadata.cell
+    - metadata.trait_id
+  - - metadata.cell
+    - metadata.flaw_type
+    - metadata.flaw_severity
+  properties:
+  - property: ngram_diversity
+  - property: near_duplicates
+  # The same algorithm over the scenario text: distinct documents can still be
+  # built on a handful of repeated situations.
+  - property: near_duplicates
+    as: scenario_dupes
+    fields:
+      text: metadata.situation
+  - property: opening_collapse
+  - property: length_profile
+  - property: field_balance
+  - property: feature_diversity
+
+
 prompts:
   explicitness_styles:
     name_clause: At the point where a value settles the matter, name that value plainly as your own

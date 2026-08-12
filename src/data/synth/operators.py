@@ -296,6 +296,70 @@ def op_chat_export(sc: dict, cfg: dict) -> Stage:
     return Stage(sc["name"], fn)
 
 
+def op_corpus_check(sc: dict, cfg: dict) -> Stage:
+    """Corpus-level property checks over the records flowing through.
+
+    A pure observer. It flags, it never fixes, and it returns its input unchanged --
+    the assertion below is not decoration: a checker that is allowed to drop rows stops
+    being a checker. Judged annotations go to a sidecar file for the same reason.
+
+    Placed last in `stages:`, it audits what actually trains. Ablating it (`--ablate
+    <name>`) runs the corpus unchecked, which is the point of it being a stage at all,
+    and on a judged config is also how you run an arm without paying for judging.
+    """
+    from .corpus import is_paid, print_summary, run_corpus_checks, validate_spec
+
+    try:
+        validate_spec(sc)
+    except (ValueError, AssertionError) as exc:
+        raise type(exc)(f"stage {sc['name']!r}: {exc}") from exc
+    paid = is_paid(sc)
+    assert not paid or sc.get("model"), (
+        f"stage {sc['name']!r} declares a judged corpus property but no `model:` key; "
+        f"an unpriced judge would also estimate as free")
+    on_fail = sc.get("on_fail", "warn")
+    assert on_fail in ("warn", "error"), (
+        f"stage {sc['name']!r}: on_fail must be 'warn' or 'error', got {on_fail!r}")
+    report_name = f"{sc['name']}_report.json"
+
+    def publish(ctx, report):
+        if ctx.cache is not None:
+            ctx.cache.save_json(report_name, report)
+        else:
+            (ctx.run_dir / report_name).write_text(
+                json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+        ctx.manifest_extra["corpus_check"] = {
+            "stage": sc["name"], "pass": report["pass"], "on_fail": on_fail,
+            "counts": report.get("counts", {}), "report": report_name,
+            "judge_spend_usd": report.get("judge_spend_usd"),
+            "gated": sorted(k for k, v in report["properties"].items() if v["gate"]),
+            "top_findings": report.get("findings", [])[:5],
+        }
+
+    def fn(ctx, records, ckpt):
+        before = len(records)
+        report = run_corpus_checks(records, sc, run_dir=ctx.run_dir,
+                                   seed=int(ctx.cfg.get("seed", 0)),
+                                   workers=ctx.workers, ctx=ctx if paid else None)
+        publish(ctx, report)
+        print_summary(report)
+        assert len(records) == before, "a corpus check must never change the corpus"
+        return records
+
+    def on_cached(ctx, records):
+        # A cache hit must not lose the verdict: without this the manifest of a resumed
+        # run would say nothing about whether the corpus was ever checked.
+        p = ctx.run_dir / report_name
+        if p.exists():
+            publish(ctx, json.loads(p.read_text(encoding="utf-8")))
+
+    return Stage(sc["name"], fn, paid=paid, on_cached=on_cached,
+                 # A pure observer's null-operation IS the identity, so this stage is
+                 # always ablatable and needs no `ablate_with` map in the config.
+                 ablate_fn=lambda rs: rs,
+                 preview=lambda r: f"{len(sc.get('properties') or [])} properties checked")
+
+
 # --- model-eval-model operators (structure in cells.py, wording in the config) ------
 
 
@@ -596,6 +660,7 @@ OPERATORS = {
     "llm_json": op_llm_json,
     "llm_tagged": op_llm_tagged,
     "chat_export": op_chat_export,
+    "corpus_check": op_corpus_check,
     "load_source_run": op_load_source_run,
     "plan_cells": op_plan_cells,
     "perturb_pairs": op_perturb_pairs,

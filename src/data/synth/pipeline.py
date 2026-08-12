@@ -105,7 +105,7 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
     budget = float(cfg.get("budget_usd", 0)) or None
     usage = Usage()
     ctx = Ctx(cfg=cfg, usage=usage, workers=workers, run_dir=run_dir, smoke=smoke,
-              vars={"constitution": full_text(cfg["constitution"])})
+              vars={"constitution": full_text(cfg["constitution"])}, cache=cache)
 
     stage_list = build_stages(cfg)
     ablate = [str(a) for a in (cfg.get("ablate") or [])]
@@ -177,6 +177,19 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
     if repo:
         print(f">>> https://huggingface.co/datasets/{repo}")
     return manifest
+
+
+def corpus_gate_failed(manifest: dict) -> bool:
+    """True when a corpus check declaring `on_fail: error` did not pass.
+
+    Gating is an exit code, never an exception inside the stage: raising there would
+    abort `run` before the manifest is written, throwing away the provenance and usage
+    tally of a run that has already paid for every generation stage -- in order to
+    report a diagnostic. The corpus, the report and the manifest all survive; only the
+    process status says the check failed.
+    """
+    cc = manifest.get("corpus_check") or {}
+    return cc.get("on_fail") == "error" and cc.get("pass") is False
 
 
 # --- the estimator ------------------------------------------------------------------
@@ -251,6 +264,14 @@ def _calls(cfg: dict) -> dict[str, int]:
                                  f"Registered: {sorted(CELLS)}")
             # One rewrite per verdict-carrying document; control passes through free.
             n = sum(v for c, v in enabled.items() if CELLS[c].verdicts)
+        elif kind == "corpus_check":
+            # Without this branch a judged corpus property would fall into the
+            # deterministic `else` below and estimate at zero -- the exact trap that
+            # makes a stage look free right up until the bill arrives.
+            from .corpus import corpus_check_calls
+            n = corpus_check_calls(sc, n_docs)
+            if not n:
+                continue
         elif kind == "generate_cells":
             enabled = {c: int(v) for c, v in cfg["cells"].items() if int(v) > 0}
             unknown = sorted(set(enabled) - set(CELLS))

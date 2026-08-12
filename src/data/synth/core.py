@@ -342,6 +342,11 @@ class Ctx:
     ...); `manifest_extra` collects run-level metadata a stage wants in the manifest.
     The OpenRouter client is created lazily, so deterministic-only runs (and offline
     tests) never touch credentials.
+
+    `cache` is the run's StageCache, so a stage that produces a side artefact (a report,
+    a provenance stub) can mirror it to HF the same way snapshots are mirrored. It is
+    None when a Ctx is built outside `pipeline.run` (the `topup` verb, offline tests);
+    such a stage must fall back to a plain local write.
     """
 
     cfg: dict
@@ -351,6 +356,7 @@ class Ctx:
     smoke: bool
     vars: dict = field(default_factory=dict)
     manifest_extra: dict = field(default_factory=dict)
+    cache: Any = None
     _client: Any = None
 
     @property

@@ -140,14 +140,16 @@ def _real(name):
 def test_real_configs_keep_historical_snapshot_names():
     # Existing run dirs and HF mirrors must stay resumable: positions and names of
     # every snapshot are part of the on-disk contract.
+    # `corpus` (the corpus-level checks) appended 2026-08-12 -- last in the list, so
+    # every earlier snapshot keeps its position and existing run dirs stay resumable.
     assert [s.name for s in build_stages(_real("difficult_advice"))] == \
         ["traits", "scenarios", "draft_prompts", "refined_prompts",
-         "draft_responses", "final", "sft"]
+         "draft_responses", "final", "sft", "corpus"]
     # `final` (the rewrite pass) added 2026-08-07: stages 1-4 keep their positions, so
     # completed run dirs still cache-hit everything already paid for; only the free sft
     # assembly moves (5 -> 6) and re-runs.
     assert [s.name for s in build_stages(_real("model_eval_model"))] == \
-        ["source", "plan", "perturbed", "generated", "final", "sft"]
+        ["source", "plan", "perturbed", "generated", "final", "sft", "corpus"]
 
 
 def test_estimate_prices_real_configs_and_ablation_out():

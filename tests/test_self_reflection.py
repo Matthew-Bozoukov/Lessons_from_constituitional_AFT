@@ -324,9 +324,11 @@ def test_multi_turn_export_keeps_both_exchanges_with_their_own_traces():
 
 
 def test_config_builds_and_keeps_snapshot_names():
+    # `corpus` appended 2026-08-12: last in the list, so every earlier snapshot keeps
+    # its position and existing run dirs stay resumable.
     assert [s.name for s in build_stages(CFG)] == \
         ["traits", "scenarios", "draft_prompts", "refined_prompts",
-         "draft_responses", "final", "sft"]
+         "draft_responses", "final", "sft", "corpus"]
 
 
 # --- the failure guard on resume ------------------------------------------------------
