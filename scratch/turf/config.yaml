@@ -1,0 +1,9 @@
+# ABOUTME: Default hyperparameters for the TURF adaptation; CLIs read their defaults
+# ABOUTME: from flags, this file documents the chosen values and why in one place.
+extractor_model: anthropic/claude-sonnet-4.5   # all attribute extraction + judging
+embed_model: qwen/qwen3-embedding-8b           # OpenRouter /embeddings, 4096-d (paper's)
+n_attrs_per_channel: 10    # 10 query + 10 reasoning (trigger), 10 response (dataset side)
+case_response_attrs: 40    # blind-judge budget on the case — the recall lever
+k_clusters: 1000           # trigger clusters (paper: 25k over 234k rows; scaled)
+k_retrieve: 1000           # nearest response attributes per crux (paper's k)
+temperature: 0.0
