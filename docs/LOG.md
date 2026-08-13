@@ -3,6 +3,141 @@
 
 # LOG
 
+## 2026-08-13 — GDM's three-pass pattern detector, implemented properly
+
+**Hypothesis:** every other corpus check tests a property somebody thought of in advance.
+GDM's scan→cluster→autorate pipeline asks the corpus what *it* repeats, which is the only
+way to find the tic nobody named. A `pattern_scan` property already existed but implemented
+roughly a third of it, and one of the missing pieces made the rest structurally unable to
+work.
+
+**Method:** rewrote it to the full three passes, all wording in config rubrics so the same
+property runs over any data style unchanged (the rubric block is now byte-identical in
+difficult_advice, self_reflection and model_eval_model).
+
+- **Scan** — structured JSON out (`name`, `category` ∈ structural/rhetorical/behavioural,
+  `description`, verbatim `examples`, `count`) instead of a flat string list; 30 batches ×
+  25 documents, shuffled first so a batch is not a run of consecutive generation ids.
+- **Cluster** — *the fix that mattered.* The old code voted on exact normalised strings, so
+  "opens by validating the user's feelings" and "begins with an empathy sentence" counted as
+  two patterns found once each and `min_scans` discarded **both** — silently, and precisely
+  on the corpus's most widespread tic, which is the one most likely to be worded several
+  ways. Now candidates are merged by embedding cosine over their descriptions (reusing the
+  `embeddings.py` added earlier the same day) and the vote runs on merged clusters.
+- **Autorate** — one classifier per pattern built from its name/description/positive
+  snippets, with the *other* patterns' snippets as negatives; STRICT (unambiguously present)
+  and BROAD (loosely present) reported separately; documents batched 8 per call with
+  per-document verdicts.
+- **Sanity check** — each classifier is first run against the verbatim snippets the scan
+  cited as instances of its own pattern. One that answers NO to its own evidence is marked
+  `reliable: false` and flagged. This is automatable where GDM's "hand-eyeball 20
+  transcripts" is not, and catches the same failure: an LLM-written classifier that drifted
+  and now reports a confident number about nothing.
+
+**Result — two findings worth recording, both from measuring rather than assuming.**
+
+1. **The merge threshold has no clean value.** Measured on a proxy (15 hand-written
+   descriptions of 5 patterns, three wordings each): same-pattern pairs run min 0.226 /
+   mean 0.449, different-pattern pairs min 0.009 / mean 0.208 / **max 0.492**. The classes
+   overlap. At 0.35 — the best trade-off — 8/90 unrelated pairs merge wrongly and 1/15
+   same-pattern pairs stay split. My first guess of 0.75 would have merged **nothing**,
+   silently reverting pass 2 to exact-string matching, i.e. reintroducing the exact bug the
+   pass exists to fix. Biased low deliberately: a missed merge fails silently, a wrong merge
+   is visible in the reported `aliases` and `weakest_merges`. Re-measure on real scan output.
+2. **`--estimate` was under-pricing every judged corpus check.** `pipeline.py` attributed
+   all corpus-check calls to the stage's single `model:`, but pattern_scan uses two models
+   that differ by ~3× in tokens per call and by tier (~30 long-context scans vs ~2,500 tiny
+   classifier calls). Priced correctly via a new `corpus_check_calls_by_model`, the judged
+   tier on difficult_advice is **+$20.91**, not the +$8.36 the old attribution reported.
+
+Also added the cross-corpus path, which turned out not to exist implicitly: two independent
+scans discover two *different* pattern sets, so "identical reflection prompt: 100% in
+mem-self, 0% in DA" cannot come from comparing two reports. A `params.patterns` list skips
+both discovery passes and rates a supplied pattern set against another corpus; `synth
+compare` now surfaces each pattern as its own metric so an arm missing one reads as absent
+rather than as zero.
+
+**Next steps:** (a) run it once on the real difficult-advice corpus and replace the proxy
+`merge_cosine` with a measured one; (b) carry difficult-advice's patterns to the
+self-reflection corpus — that comparison is the actual why-do-alternatives-underperform
+signal; (c) GDM's caveat stands and should gate any conclusion: their own filter-and-retrain
+ablations moved BLUF 52%→41% and validation buffering 26%→20% *without* moving the eval
+scores, so a flagged pattern is a hypothesis about the data, not a demonstrated cause.
+
+Reference: `docs/corpus_checks.md`.
+
+## 2026-08-13 — Closing the two GDM quality-control gaps: embedding dedup + autorater
+
+**Hypothesis:** GDM's recipe ends with two filters we had never implemented — *"a final
+autorater stage to filter out unrealistic or otherwise low-quality responses, and a
+deduplication stage to remove prompts with too-similar embeddings"*. Our `near_duplicates`
+is lexical (MinHash over word shingles), so it catches a **copy** and cannot catch a
+**reword**: two scenarios that are the same situation in different words score ~0 Jaccard.
+If the corpus contains semantic duplicates, everything downstream pays for them four times
+over and no existing check would say so.
+
+**Method:** two new `CORPUS_CHECKS` properties, both obeying the module's flag-never-fix
+rule — they compute the removal set GDM's filters would drop and report it, writing it to
+the judged-label sidecar so a downstream filter could act on the same numbers a human read.
+
+- `embedding_dedup` (surface tier, free): connected components at a cosine threshold over
+  static sentence embeddings. New `src/data/synth/embeddings.py` holds the featuriser;
+  model2vec (`potion-base-8M`) rather than sentence-transformers, because a static token
+  table plus a mean pool needs numpy and not torch — the darwin driver stays GPU-free per
+  CLAUDE.md, and the check stays in the tier that runs on every run at zero cost.
+- `quality_filter` (judged tier, ~$1.80 per 300 documents at Sonnet 5): per-document
+  keep/drop plus a `flaw` tag, reported overall and per group with Wilson intervals. Ships
+  `enabled: false`.
+
+Also added **selection**, since not every run wants every check: `enabled: false` per
+instance in a config, and `--only` / `--skip` / `--tier surface|judged` on `synth check`,
+plus a `synth checks` listing verb. Selection is a spec transform (`select_properties`),
+so the stage, the CLI and `--estimate` cannot disagree about what ran — `--tier surface`
+builds no model context, needs no key and prices at zero. Deselected properties appear in
+the report as `disabled`, never omitted.
+
+**Result — the corpus is clean, and the method has a length ceiling worth recording.**
+Measured on the same 2,203-document difficult-advice corpus every other threshold came
+from (`output/model_eval_model/20260805_133015/`), `potion-base-8M`:
+
+| text unit | words | mean pairwise | mean NN | NN p99 | NN max |
+|---|---|---|---|---|---|
+| `situation` (the prompt) | 68 | 0.371 | 0.743 | 0.856 | 0.886 |
+| user turn | 203 | 0.593 | 0.813 | 0.909 | 0.930 |
+| full document | 1044 | 0.757 | 0.887 | 0.934 | 0.940 |
+
+1. **Zero semantic near-duplicates** at the scenario level at any threshold from 0.90 up,
+   consistent with `near_duplicates` finding zero lexical candidate pairs. The generation
+   recipe is not quietly repeating itself.
+2. **Embeddings beat char n-grams at every length** — the spread between a near-neighbour
+   and background runs 0.372 vs 0.188 at 68 words, 0.129 vs 0.043 at 1,044.
+3. **But mean pooling washes out with length.** The floor climbs from 0.37 to 0.76 across
+   that range, so a fixed cosine threshold means different things at different lengths. On
+   full documents a 0.90 threshold reports a 25% drop share that is entirely the genre
+   floor. Encoded as `max_mean_words: 300`: past it the check reports its numbers and
+   **suppresses its findings with a note**, rather than fire a threshold that no longer
+   discriminates. Both shipped configs point the property at the short `situation` text,
+   which is also the unit GDM dedups.
+
+Thresholds are measured, not invented: `cosine_min 0.90` sits above the healthy corpus's
+*worst* pair (0.886) at the measured unit. `quality_filter.drop_rate_max 0.10` is the one
+exception and is labelled unmeasured in the registry — nothing here has run an autorater
+over a finished corpus yet.
+
+A side finding: the test suite's `varied()` fixture defeats n-gram checks but is
+semantically *uniform* (180 words from a 24-word vocabulary mean-pool to 0.97 pairwise), so
+it is the wrong fixture for a semantic check. Added `topical_docs()` alongside it. The two
+dedup checks are separated in test by word-order shuffling, where shingle Jaccard collapses
+to 0 and a mean-pooled embedding is invariant at 1.0.
+
+**Next steps:** (a) run `quality_filter` over a finished corpus and replace its placeholder
+threshold with a measured one; (b) decide whether the reported removal sets should ever
+feed an actual filter stage, which would need a new operator kind since the `corpus_check`
+stage asserts pass-through; (c) `pattern_scan` remains implemented but unenabled in every
+shipped config — the last of the three GDM mechanisms still not exercised.
+
+Full reference for the checker: `docs/corpus_checks.md`.
+
 ## 2026-08-12 — Chunking is now a named, selectable method (no corpus yet)
 
 **Hypothesis:** stage 1 of the pipeline — how the constitution is cut — is unablated

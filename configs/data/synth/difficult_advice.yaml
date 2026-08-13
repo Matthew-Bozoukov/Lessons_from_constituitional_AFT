@@ -108,6 +108,30 @@ models:
     # Stage 6 emits reasoning AND a full response, so it needs more headroom than stage 4.
     max_tokens: 12288
     assumed_tokens: {in: 3200, out: 1800}
+  # Judged corpus checks (quality_filter and anything else turned on in the `corpus`
+  # stage). Not a generation model: it rates a finished corpus and writes nothing into
+  # it. Sonnet 5 matches the judge used by the model-eval-model checks, so a rating here
+  # and a rating there mean the same thing.
+  autorate:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.0
+    max_tokens: 500
+    assumed_tokens: {in: 1400, out: 120}
+  # pattern_scan's SCAN pass: sees batch_size whole documents per call, so it needs long
+  # context and there are only ~30 of these. Capable enough to notice a tic nobody
+  # named in advance.
+  scan:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.0
+    max_tokens: 2500
+    assumed_tokens: {in: 28000, out: 1200}
+  # pattern_scan's AUTORATE pass: a yes/no classifier run thousands of times over small
+  # batches. Cheapest adequate model, per GDM's own cost note.
+  classify:
+    model: "anthropic/claude-haiku-4.5"
+    temperature: 0.0
+    max_tokens: 900
+    assumed_tokens: {in: 9000, out: 200}
 
 # --- The pipeline itself: stages executed in order by src/data/synth ------------
 # Prompt placeholders are record fields plus {constitution} and {style_guidance}.
@@ -163,6 +187,12 @@ stages:
   properties:
   - property: ngram_diversity
   - property: near_duplicates
+  # The cheapest place a duplicate can be caught: a repeated situation here is paid
+  # for four times over by the stages below. Scenario text is short, which is the
+  # length this property was measured at.
+  - property: embedding_dedup
+    fields:
+      text: situation
   - property: opening_collapse
   - property: length_profile
   - property: field_balance
@@ -399,6 +429,7 @@ stages:
 - name: corpus
   kind: corpus_check
   on_fail: warn
+  model: autorate          # only reached by a judged property; unused while all are off
   fields:
     id: metadata.scenario_id
     text:
@@ -420,6 +451,8 @@ stages:
   cross:
   - - metadata.trait_id
     - metadata.domain
+  # Each entry takes `enabled: false` to deselect it without deleting it; `synth check
+  # --only/--skip/--tier` overrides per run. `synth checks` lists every property.
   properties:
   - property: ngram_diversity
   - property: near_duplicates
@@ -429,8 +462,120 @@ stages:
     as: scenario_dupes
     fields:
       text: metadata.situation
+  # GDM's final dedup stage, as a measurement. Lexical shingles catch a copy;
+  # embeddings catch a reword, and only this sees two identical situations phrased
+  # differently. Pointed at `situation` (68 words) and not the document (1,044): the
+  # embedding floor climbs from 0.37 to 0.76 over that range, so the thresholds only
+  # discriminate on the short unit -- which is also the unit GDM dedups.
+  - property: embedding_dedup
+    fields:
+      text: metadata.situation
   - property: opening_collapse
   - property: length_profile
   - property: field_balance
   - property: feature_diversity
+  # GDM's final autorater. Judged, so it costs money: `--tier surface` runs everything
+  # above without it. Ships disabled — turn it on deliberately, and note that its
+  # drop_rate_max is not yet a measured number.
+  - property: quality_filter
+    enabled: false
+  # GDM's three-pass pattern detector (scan -> cluster -> autorate). The most expensive
+  # check here: ~30 long-context scans plus a classifier sweep per surviving pattern.
+  # Ships disabled; `--only pattern_scan` runs it alone. Every word below is generic
+  # across document types on purpose — this block is meant to be copied unchanged into
+  # any dataset config.
+  - property: pattern_scan
+    enabled: false
+    model: scan             # per-instance override of the stage's `model:`
+    rate_model: classify    # the thousands-of-tiny-calls pass
+  rubrics:
+    quality_filter:
+      system: >-
+        You rate synthetic training documents for a constitutional-SFT corpus. Each
+        document is an assistant reply to a user facing an ethically difficult
+        situation. Judge only whether the document is fit to TRAIN on. Drop it if the
+        scenario could not plausibly happen to a real person, if the stakes are
+        cartoonish, if the reply lectures rather than helps, if it refuses something
+        harmless, if it is internally inconsistent, or if it reads as template output
+        with the specifics swapped. Do not drop a document for reaching a conclusion
+        you disagree with, for being long, or for declining a genuine
+        norm-violation -- declining well is what the corpus is for. Most documents in
+        a healthy corpus are keeps.
+      user: >-
+        Document {record_id} (trait {group}):
+
+        {document}
+
+        Reply with exactly three tagged blocks:
+        <verdict>keep or drop</verdict>
+        <flaw>if dropping, one snake_case tag from: implausible_scenario,
+        cartoonish_stakes, lectures_user, refuses_harmless, inconsistent,
+        template_output, other. If keeping, write none.</flaw>
+        <why>one sentence</why>
+    pattern_scan:
+      scan_system: >-
+        You audit machine-generated training data for over-representation. You are shown
+        a batch of transcripts drawn from ONE dataset and you report what recurs across
+        them. Report only what you can see repeating in this batch. Do not speculate
+        about the generating process, do not judge whether a pattern is good or bad, and
+        do not report the batch's subject matter — several transcripts sharing a topic is
+        sampling, not a pattern. Output JSON only.
+      scan_user: >-
+        Below are {n} transcripts from one training dataset, separated by ---.
+
+        {documents}
+
+        List every pattern that recurs across these transcripts, in three categories:
+
+        - structural: openings, section ordering, response length or shape, identical
+          phrasings in the prompts, closing moves
+        - rhetorical: stock phrases, hedging formulas, validation buffering, bottom-line-
+          up-front summaries, characteristic transitions
+        - behavioural: always asks a clarifying question, always names its own values,
+          always offers alternatives, always ends by inviting a follow-up
+
+        Return a JSON array. Each element:
+        {{"name": "<3-6 word handle>", "category": "structural|rhetorical|behavioural",
+        "description": "<one sentence, specific enough that someone could classify an
+        unseen transcript with it>", "examples": ["<verbatim snippet>", "<verbatim
+        snippet>"], "count": <how many of the {n} show it>}}
+
+        Report a pattern only if it appears in at least three of the {n}. Return [] if
+        nothing recurs.
+      merge_system: >-
+        You name clusters of near-duplicate pattern descriptions. Output JSON only.
+      merge_user: >-
+        Each numbered group below holds descriptions that several independent scans gave
+        to what appears to be the same recurring pattern.
+
+        {clusters}
+
+        Return a JSON array of exactly {n} strings: one 3-6 word name per group, in
+        order, each naming what that group's members have in common. No commentary.
+      rate_system: >-
+        You are a single-pattern classifier over training transcripts. You judge only
+        whether the one named pattern is present, never whether the transcript is good.
+        Output JSON only.
+      rate_user: >-
+        Pattern: {pattern} ({category})
+        Definition: {description}
+
+        Snippets that DO exhibit it:
+        {examples}
+
+        Snippets that exhibit a DIFFERENT pattern and must not be counted as this one:
+        {counter_examples}
+
+        Below are {n} transcripts, separated by ---. Each is preceded by its id in
+        square brackets.
+
+        {documents}
+
+        For each transcript answer:
+        - STRICT: the pattern is unambiguously present — you could point at the text
+        - BROAD: the pattern is loosely present, arguably or in weakened form
+        - NO: not present
+
+        Return a JSON array with one element per transcript, in order:
+        [{{"id": "<the id in brackets>", "verdict": "STRICT|BROAD|NO"}}]
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 
 import pytest
 
@@ -27,8 +28,54 @@ def varied(i: int, n: int = 60) -> str:
                     for _ in range(n))
 
 
+# `varied` defeats N-GRAM checks: no two documents share a long n-gram. It is uniform
+# SEMANTICALLY -- 180 words drawn from one 24-word vocabulary mean-pool to nearly the
+# same vector (0.97 pairwise), which is a correct reading, not a false alarm. A semantic
+# check needs documents that are about different things.
+TOPICS = """
+glacier moraine crevasse icefall firn ablation | sonata cadenza timbre libretto adagio
+| trawler gillnet estuary brackish spawning | kiln glaze porcelain slipware bisque |
+mortgage escrow lien amortise underwriter | pollen stamen anther germinate rootstock |
+antenna waveguide gigahertz modulation dipole | tannin sommelier vintage terroir cask |
+scaffold rebar formwork cantilever joist | plasmid genome enzyme sequencer assay |
+liturgy vespers cloister psalter abbot | thermocline plankton benthic salinity trench |
+axle differential camshaft torque chassis | fresco tempera pigment gesso patina |
+tariff quota customs brokerage manifest | monsoon cyclone isobar humidity squall |
+neuron synapse cortex myelin dendrite | quarry granite basalt sediment strata |
+loom warp weft selvedge brocade | vaccine antigen titre serology cohort |
+compiler bytecode heap pointer recursion | trellis pruning grafting orchard cultivar |
+peat whisky mash distil malting | tectonic seismograph epicentre magnitude fault |
+ballet plie arabesque choreograph pointe | reactor isotope neutron shielding coolant |
+harbour dredging bollard quay tug | falconry jesses quarry mews stoop |
+sourdough levain autolyse crumb proofing | telescope parallax nebula redshift aperture
+| cavalry flank redoubt bivouac siege | lacquer marquetry veneer dovetail chisel |
+insulin pancreas glucose metabolic endocrine | rappel belay carabiner piton bivouac |
+typography kerning serif ligature leading | aquifer borehole recharge percolate alluvial
+| marimba timpani glissando arpeggio fugue | notary codicil probate bequest intestate |
+smelting alloy quench forge anvil | tundra permafrost lichen caribou taiga |
+cipher plaintext entropy keystream nonce | vineyard rootstock veraison brix pruning |
+turbine nacelle rotor pitch yaw | archive vellum palimpsest folio marginalia |
+apiary brood forager nectar swarm | canal lock towpath narrowboat sluice |
+ceramics raku tenmoku celadon shard | mangrove tidal silt propagule lagoon
+""".replace("\n", " ").split("|")
+
+
+def topical(i: int, n: int = 60) -> str:
+    """A document that is ABOUT something, distinct from its siblings' subjects."""
+    bag = TOPICS[i % len(TOPICS)].split()
+    r = random.Random(i * 7919)
+    return " ".join(f"{r.choice(bag)} {r.choice(VERBS)} {r.randrange(10**6)}"
+                    for _ in range(n))
+
+
 def rec(rid: str, text: str, **meta) -> dict:
     return {"id": rid, "text": text, **meta}
+
+
+def topical_docs(n: int, words: int = 60, **meta) -> list[dict]:
+    """`n` documents on `n` different subjects -- the semantically healthy corpus."""
+    assert n <= len(TOPICS), f"only {len(TOPICS)} distinct subjects available"
+    return [rec(f"r{i}", topical(i, words), **meta) for i in range(n)]
 
 
 def docs(n: int, prefix: str = "r", start: int = 0, **meta) -> list[dict]:
@@ -785,53 +832,158 @@ def test_chunk_attribution_skips_a_corpus_with_no_grouped_documents(tmp_path):
     assert entry["pass"] is True
 
 
-def test_pattern_scan_keeps_only_patterns_two_scans_found_and_caches_on_content(tmp_path):
-    scan_replies = [
-        "<patterns>hedging opener; rule-quoting; tidy three-part ending</patterns>",
-        "<patterns>rule-quoting; sudden pivot</patterns>",
-        "<patterns>Rule-quoting; tidy three-part ending</patterns>",
-        "<patterns>one-off idea</patterns>",
-    ]
+def _scan_json(patterns):
+    """A scan reply in the JSON shape the rubric asks for."""
+    return json.dumps([{"name": n, "category": cat, "description": d,
+                        "examples": [f"verbatim {n}"], "count": 5}
+                       for n, cat, d in patterns])
 
-    scanned = []
 
-    def answer(i, messages):
-        if "SCAN" in messages[0]["content"]:
-            scanned.append(1)
-            return scan_replies[(len(scanned) - 1) % len(scan_replies)]
-        return "<matches>rule-quoting</matches><why>y</why>"
+PS_RUBRICS = {"pattern_scan": {
+    "scan_system": "SCAN", "scan_user": "{documents}{n}",
+    "merge_system": "MERGE", "merge_user": "{clusters}{n}",
+    "rate_system": "RATE",
+    "rate_user": "{pattern}{category}{description}{examples}{counter_examples}"
+                 "{documents}{n}"}}
 
-    rubrics = {"pattern_scan": {
-        "scan_system": "SCAN", "scan_user": "{documents}{n}{seeded}",
-        "rate_system": "RATE", "rate_user": "{document}{patterns}"}}
-    records = docs(48)
-    spec = {"name": "corpus", "model": "judge", "rubrics": rubrics,
+
+def _pattern_spec(**params):
+    return {"name": "corpus", "model": "judge", "rubrics": PS_RUBRICS,
             "fields": {"id": "id", "text": "text"},
             "properties": [{"property": "pattern_scan",
-                            "params": {"batches": 4, "batch_size": 12,
-                                       "min_scans": 2, "sample": 20}}]}
+                            "params": {"batches": 4, "batch_size": 12, "min_scans": 2,
+                                       "sample": 20, "rate_batch_size": 5,
+                                       "name_clusters": False, **params}}]}
 
-    stub = StubClient(answer)
-    report = C.run_corpus_checks(records, spec, run_dir=tmp_path, seed=0,
-                                 ctx=_judge_ctx(tmp_path, stub))
+
+# Four scans. "hedging opener" is worded three different ways across scans 1-3 -- as
+# independent scans genuinely do -- so ONLY the merge step can see it is one pattern.
+SCANS = [
+    _scan_json([("hedging opener", "structural",
+                 "Opens by acknowledging the difficulty before saying anything."),
+                ("tidy three-part ending", "structural",
+                 "Closes with exactly three bulleted options.")]),
+    _scan_json([("empathy preamble", "rhetorical",
+                 "Each response begins by validating how hard the user finds this."),
+                ("tidy three-part ending", "structural",
+                 "Closes with exactly three bulleted options.")]),
+    _scan_json([("validation buffering", "rhetorical",
+                 "Opens with a sentence recognising the user feelings first.")]),
+    _scan_json([("one-off idea", "behavioural", "Mentions the weather, once, oddly.")]),
+]
+
+
+def _pattern_client(verdict="STRICT", sanity=None):
+    """Stub answering all three passes; `sanity` overrides the example-batch verdict."""
+    scans = []
+
+    def answer(i, messages):
+        head = messages[0]["content"]
+        if head == "SCAN":
+            scans.append(1)
+            return SCANS[(len(scans) - 1) % len(SCANS)]
+        if head == "MERGE":
+            return json.dumps(["merged"])
+        body = messages[-1]["content"]
+        ids = re.findall(r"\[([^\]]+)\]", body)
+        # The sanity batch is the one made of the scan's own snippets.
+        v = sanity if (sanity and ids and ids[0].startswith("ex")) else verdict
+        return json.dumps([{"id": rid, "verdict": v} for rid in ids])
+
+    client = StubClient(answer)
+    client.scans = scans
+    return client
+
+
+def test_pattern_scan_merges_wordings_that_exact_matching_would_split(tmp_path):
+    report = C.run_corpus_checks(docs(48), _pattern_spec(), run_dir=tmp_path, seed=0,
+                                 ctx=_judge_ctx(tmp_path, _pattern_client()))
     m = report["properties"]["pattern_scan"]["metrics"]
-    assert m["batches_scanned"] == 4
-    # "rule-quoting" (3 scans) and "tidy three-part ending" (2) survive; the
-    # single-scan ideas do not.
-    assert len(m["survivors"]) == 2
-    assert m["discarded_single_scan"] == 3
-    assert m["pattern_hit_share"][m["survivors"][0]] == pytest.approx(1.0)
-    assert m["docs_matching_any"] == pytest.approx(1.0)
 
-    # Re-running scans nothing: the cache is keyed on batch CONTENT, so identical
-    # documents never re-pay -- including across sibling arms.
-    scanned.clear()
-    stub2 = StubClient(answer)
-    report2 = C.run_corpus_checks(records, spec, run_dir=tmp_path, seed=0,
-                                  ctx=_judge_ctx(tmp_path, stub2))
-    m2 = report2["properties"]["pattern_scan"]["metrics"]
-    assert m2["batches_from_cache"] == 4 and scanned == []
-    assert m2["survivors"] == m["survivors"]
+    assert m["batches_scanned"] == 4
+    assert m["candidates_proposed"] == 6
+    names = {r["pattern"] for r in m["patterns"]}
+    # Three wordings of one opener merged into a single 3-scan pattern; the
+    # three-part ending was named identically twice. The weather is a single scan.
+    assert len(m["patterns"]) == 2, names
+    opener = next(r for r in m["patterns"] if r["scans"] == 3)
+    assert len(opener["aliases"]) == 2, opener["aliases"]
+    assert m["discarded_below_min_scans"] == 1
+
+
+def test_pattern_scan_reports_strict_and_broad_separately(tmp_path):
+    for verdict, strict, broad in (("STRICT", 1.0, 1.0), ("BROAD", 0.0, 1.0),
+                                   ("NO", 0.0, 0.0)):
+        d = tmp_path / verdict
+        d.mkdir()
+        report = C.run_corpus_checks(
+            docs(48), _pattern_spec(), run_dir=d, seed=0,
+            ctx=_judge_ctx(d, _pattern_client(verdict=verdict)))
+        rows = report["properties"]["pattern_scan"]["metrics"]["patterns"]
+        assert rows[0]["strict_share"] == pytest.approx(strict), verdict
+        assert rows[0]["broad_share"] == pytest.approx(broad), verdict
+        assert rows[0]["rated"] == 20
+
+
+def test_a_classifier_that_fails_its_own_evidence_is_flagged_unreliable(tmp_path):
+    # It calls the whole corpus a match while answering NO to the very snippets the
+    # scan cited as instances of the pattern. The frequency is then about nothing.
+    report = C.run_corpus_checks(
+        docs(48), _pattern_spec(), run_dir=tmp_path, seed=0,
+        ctx=_judge_ctx(tmp_path, _pattern_client(verdict="STRICT", sanity="NO")))
+    entry = report["properties"]["pattern_scan"]
+    rows = entry["metrics"]["patterns"]
+
+    assert all(r["sanity_recall"] == 0.0 for r in rows)
+    assert all(not r["reliable"] for r in rows)
+    assert entry["metrics"]["unreliable_classifiers"] == len(rows)
+    warned = [f for f in entry["findings"] if f["metric"] == "sanity_recall"]
+    assert len(warned) == len(rows)
+    assert all(f["severity"] == "warn" for f in warned)
+
+
+def test_pattern_scan_batches_documents_into_each_classifier_call(tmp_path):
+    client = _pattern_client()
+    C.run_corpus_checks(docs(48), _pattern_spec(), run_dir=tmp_path, seed=0,
+                        ctx=_judge_ctx(tmp_path, client))
+    # 4 scans + 2 patterns x (1 sanity batch + ceil(20/5) rating batches) = 4 + 10.
+    assert len(client.calls) == 14
+    assert len(client.scans) == 4
+
+
+def test_pattern_scan_writes_a_markdown_table_and_per_document_labels(tmp_path):
+    report = C.run_corpus_checks(docs(48), _pattern_spec(), run_dir=tmp_path, seed=0,
+                                 ctx=_judge_ctx(tmp_path, _pattern_client()))
+    table = C.pattern_table(report)
+    assert "| pattern | category | broad % | strict % |" in table
+    assert "100%" in table
+
+    labels = C.load_labels(tmp_path, "corpus")
+    assert len(labels) == 20
+    assert all("patterns_strict" in v for v in labels.values())
+
+
+def test_pattern_scan_caches_scans_on_batch_content_not_run_id(tmp_path):
+    spec = _pattern_spec()
+    C.run_corpus_checks(docs(48), spec, run_dir=tmp_path, seed=0,
+                        ctx=_judge_ctx(tmp_path, _pattern_client()))
+    again = _pattern_client()
+    report = C.run_corpus_checks(docs(48), spec, run_dir=tmp_path, seed=0,
+                                 ctx=_judge_ctx(tmp_path, again))
+    m = report["properties"]["pattern_scan"]["metrics"]
+    assert m["batches_from_cache"] == 4 and again.scans == []
+
+
+def test_pattern_scan_prices_its_two_models_separately():
+    spec = {"name": "corpus", "model": "scan", "properties": [
+        {"property": "pattern_scan", "rate_model": "classify",
+         "params": {"batches": 30, "sample": 1000, "rate_batch_size": 8,
+                    "max_patterns": 20}}]}
+    by_model = C.corpus_check_calls_by_model(spec, 5000)
+    # Pricing every call at one model understates the long-context half; that is the
+    # whole reason this is keyed.
+    assert by_model == {"scan": 31, "classify": 20 * (1 + 125)}
+    assert C.corpus_check_calls(spec, 5000) == 31 + 2520
 
 
 # --- 19. synth compare ---------------------------------------------------------------
@@ -918,3 +1070,266 @@ def test_a_paid_property_must_declare_a_model_and_be_priced(tmp_path):
     finally:
         C.CORPUS_CHECKS.pop("paid_probe", None)
         C.CORPUS_CHECKS.pop("unpriced", None)
+
+
+# --- 20. embedding_dedup: the semantic half of duplication ---------------------------
+
+
+def shuffled(text: str, seed: int) -> str:
+    """The same words in a different order.
+
+    The cleanest separator of the two dedup checks that exists: word shingles are
+    order-DEPENDENT (Jaccard collapses) and a mean-pooled static embedding is
+    order-INVARIANT (cosine 1.0). A reworded scenario sits between these two, so a
+    method that cannot see a reordering cannot see a rewording either.
+    """
+    w = text.split()
+    random.Random(seed).shuffle(w)
+    return " ".join(w)
+
+
+def test_embedding_dedup_catches_a_reordering_that_shingles_miss(tmp_path):
+    base = topical_docs(20)
+    twins = [rec(f"s{i}", shuffled(base[i]["text"], i)) for i in range(4)]
+    records = base + twins
+
+    embed = one(records, "embedding_dedup", tmp_path)
+    assert embed["metrics"]["would_drop"] == 4, embed["metrics"]
+    assert embed["metrics"]["duplicate_clusters"] == 4
+    assert not embed["pass"]
+
+    lexical = one(records, "near_duplicates", tmp_path)
+    assert lexical["metrics"]["near_duplicate_pairs"] == 0
+    assert lexical["pass"], "the lexical check is meant to miss this; that is the point"
+
+
+def test_embedding_dedup_clean_on_topically_varied_documents(tmp_path):
+    entry = one(topical_docs(40), "embedding_dedup", tmp_path)
+    assert entry["pass"]
+    assert entry["metrics"]["would_drop"] == 0
+    assert entry["metrics"]["gated"] is True
+
+
+def test_embedding_dedup_writes_the_removal_set_it_would_have_dropped(tmp_path):
+    base = topical_docs(20)
+    records = base + [rec("dup0", shuffled(base[0]["text"], 1))]
+    report = checks(records, tmp_path, {"property": "embedding_dedup", "gate": True})
+
+    labels = C.load_labels(tmp_path, "corpus")
+    assert list(labels) == ["dup0"], "the FIRST of a cluster is kept, later ones dropped"
+    assert labels["dup0"] == {"embedding_dup": True}
+    # Rule 1: the corpus itself is untouched.
+    assert all("embedding_dup" not in r for r in records)
+    assert report["properties"]["embedding_dedup"]["metrics"]["would_drop"] == 1
+
+
+def test_embedding_dedup_suppresses_its_findings_on_text_too_long_to_discriminate(
+        tmp_path):
+    records = topical_docs(20, words=350)                         # ~1,050 words each
+    records.append(rec("dup", shuffled(records[0]["text"], 3)))
+    entry = one(records, "embedding_dedup", tmp_path)
+
+    m = entry["metrics"]
+    assert m["gated"] is False and m["mean_words"] > 300
+    assert "max_mean_words" in m["note"]
+    assert entry["findings"] == [], "an unusable threshold must say so, not fire"
+    assert entry["pass"]
+    # The numbers are still there to read; only the verdict is withheld.
+    assert m["would_drop"] >= 1 and m["mean_nn_cosine"] > 0
+
+
+# --- 21. quality_filter: GDM's final autorater as a measurement ----------------------
+
+
+RUBRICS["quality_filter"] = {"system": "s", "user": "{document}"}
+
+
+def test_quality_filter_reports_the_drop_set_and_why(tmp_path):
+    records = [rec(f"r{i}", varied(i), arm=f"a{i % 2}") for i in range(40)]
+    bad = {r["text"]: t for r, t in
+           zip(records[:6], ["implausible_scenario"] * 4 + ["lectures_user"] * 2)}
+
+    def answer(i, messages):
+        for text, flaw in bad.items():
+            if messages[-1]["content"].startswith(text):
+                return f"<verdict>drop</verdict><flaw>{flaw}</flaw><why>y</why>"
+        return "<verdict>keep</verdict><flaw>none</flaw><why>y</why>"
+
+    entry, _ = _judged(records, "quality_filter", tmp_path, StubClient(answer),
+                       fields={"group": "arm"})
+    m = entry["metrics"]
+    assert m["distribution"] == {"keep": 34, "drop": 6}
+    assert m["drop_rate"] == pytest.approx(0.15)
+    assert m["flaw_distribution"] == {"implausible_scenario": 4, "lectures_user": 2}
+    lo, hi = m["drop_rate_ci95"]
+    assert lo < 0.15 < hi
+    # Over the 0.10 default, so it flags: the drop rate is the gated half.
+    assert not entry["pass"]
+
+    labels = C.load_labels(tmp_path, "corpus")
+    assert len(labels) == 40
+    assert labels["r0"]["quality_verdict"] == "drop"
+    assert labels["r0"]["quality_flaw"] == "implausible_scenario"
+    assert labels["r39"]["quality_verdict"] == "keep"
+
+
+def test_quality_filter_names_a_group_that_fails_far_above_the_corpus_rate(tmp_path):
+    # Every failure lands in one arm; the corpus rate alone would not say so.
+    records = [rec(f"r{i}", varied(i), arm="bad" if i < 20 else "ok") for i in range(40)]
+    doomed = {r["text"] for r in records[:6]}
+
+    def answer(i, messages):
+        drop = any(messages[-1]["content"].startswith(d) for d in doomed)
+        v = "drop" if drop else "keep"
+        return f"<verdict>{v}</verdict><flaw>inconsistent</flaw><why>y</why>"
+
+    entry, _ = _judged(records, "quality_filter", tmp_path, StubClient(answer),
+                       fields={"group": "arm"})
+    scoped = [f for f in entry["findings"] if f["scope"] == "bad"]
+    assert scoped and scoped[0]["severity"] == "warn"
+    assert entry["metrics"]["by_group"]["bad"]["drop_rate"] == pytest.approx(0.3)
+    assert entry["metrics"]["by_group"]["ok"]["drop_rate"] == 0.0
+
+
+def test_a_document_the_judge_could_not_rate_is_never_counted_as_a_keep(tmp_path):
+    records = docs(40)
+    doomed = {r["text"] for r in records[:8]}
+
+    def answer(i, messages):
+        if any(messages[-1]["content"].startswith(d) for d in doomed):
+            return "no tags here"
+        return "<verdict>keep</verdict><flaw>none</flaw><why>y</why>"
+
+    entry, _ = _judged(records, "quality_filter", tmp_path, StubClient(answer),
+                       params={"max_fail_pct": 100.0})
+    m = entry["metrics"]
+    assert m["judged"] == 32 and m["unjudged"] == 8
+    assert m["distribution"]["keep"] == 32 and m["rated"] == 32
+
+
+# --- 22. selecting which properties run ----------------------------------------------
+
+
+SPEC = {"name": "corpus",
+        "properties": [{"property": "ngram_diversity"},
+                       {"property": "near_duplicates"},
+                       {"property": "near_duplicates", "as": "scenario_dupes"},
+                       {"property": "quality_filter"}]}
+
+
+def enabled_names(spec):
+    return [p["as"] for p in C._instances(spec) if p.get("enabled", True)]
+
+
+def test_only_skip_and_tier_narrow_the_set_they_are_given():
+    assert enabled_names(C.select_properties(SPEC, only="ngram_diversity")) == \
+        ["ngram_diversity"]
+    assert enabled_names(C.select_properties(SPEC, skip="scenario_dupes")) == \
+        ["ngram_diversity", "near_duplicates", "quality_filter"]
+    assert enabled_names(C.select_properties(SPEC, tier="surface")) == \
+        ["ngram_diversity", "near_duplicates", "scenario_dupes"]
+    assert enabled_names(C.select_properties(SPEC, tier="judged")) == ["quality_filter"]
+
+
+def test_an_alias_is_addressable_by_the_name_it_is_reported_under():
+    # `scenario_dupes` is an alias of near_duplicates; skipping the alias must not take
+    # the base instance with it.
+    kept = enabled_names(C.select_properties(SPEC, only="scenario_dupes"))
+    assert kept == ["scenario_dupes"]
+
+
+def test_a_config_disable_is_a_floor_that_only_cannot_lift():
+    spec = {**SPEC, "properties": [{**p, "enabled": p["property"] != "ngram_diversity"}
+                                   for p in C._instances(SPEC)]}
+    assert "ngram_diversity" not in enabled_names(
+        C.select_properties(spec, only="ngram_diversity"))
+
+
+def test_a_selection_naming_nothing_real_fails_fast():
+    with pytest.raises(AssertionError, match="no property"):
+        C.select_properties(SPEC, only="ngarm_diversity")
+    with pytest.raises(AssertionError, match="no property"):
+        C.select_properties(SPEC, skip="not_a_check")
+    with pytest.raises(AssertionError, match="unknown tier"):
+        C.select_properties(SPEC, tier="cheap")
+
+
+def test_deselecting_the_judged_tier_makes_the_run_free_and_unpriced():
+    surface = C.select_properties(SPEC, tier="surface")
+    assert C.is_paid(SPEC) and not C.is_paid(surface)
+    assert C.corpus_check_calls(SPEC, 1000) == 300
+    assert C.corpus_check_calls(surface, 1000) == 0
+
+
+def test_a_disabled_property_is_recorded_not_omitted(tmp_path):
+    spec = C.select_properties({**SPEC, "properties": SPEC["properties"][:2]},
+                               only="near_duplicates")
+    spec["fields"] = {"id": "id", "text": "text"}
+    report = C.run_corpus_checks(docs(20), spec, run_dir=tmp_path, seed=0)
+
+    off = report["properties"]["ngram_diversity"]
+    assert off["status"] == "disabled" and off["pass"] and "deselected" in off["reason"]
+    assert report["properties"]["near_duplicates"]["status"] != "disabled"
+    assert report["pass"]
+
+
+def test_a_disabled_judged_property_does_not_demand_its_rubric(tmp_path):
+    # validate_spec runs at build_stages time; a property that will not execute has no
+    # reason to carry judge wording.
+    spec = C.select_properties(SPEC, tier="surface")
+    C.validate_spec(spec)
+    with pytest.raises(AssertionError, match="rubrics"):
+        C.validate_spec(SPEC)
+
+
+def test_every_registry_entry_declares_a_known_tier():
+    for key, check in C.CORPUS_CHECKS.items():
+        assert check.tier in C.TIERS, key
+        assert (check.tier == "judged") == check.paid, key
+
+
+def test_supplying_patterns_skips_discovery_so_one_corpus_can_be_rated_by_anothers(
+        tmp_path):
+    # The cross-corpus move: corpus A's classifiers, run over corpus B. Two independent
+    # scans find two different pattern sets, so "100% here, 0% there" can only come from
+    # carrying one set across.
+    from_a = [{"name": "identical reflection prompt", "category": "structural",
+               "description": "Every transcript opens with the same reflection prompt.",
+               "examples": ["looking back at what I just said"]}]
+    spec = _pattern_spec(patterns=from_a)
+    client = _pattern_client(verdict="NO")
+    report = C.run_corpus_checks(docs(48), spec, run_dir=tmp_path, seed=0,
+                                 ctx=_judge_ctx(tmp_path, client))
+    m = report["properties"]["pattern_scan"]["metrics"]
+
+    assert m["scan_skipped"] is True and m["patterns_supplied"] == 1
+    assert client.scans == [], "discovery must not run when the patterns are given"
+    row = m["patterns"][0]
+    assert row["pattern"] == "identical reflection prompt"
+    assert row["broad_share"] == 0.0
+
+    # Priced exactly rather than at max_patterns, since the count is known up front.
+    priced = C.corpus_check_calls_by_model(
+        {"name": "corpus", "model": "scan",
+         "properties": [{"property": "pattern_scan", "rate_model": "classify",
+                         "params": {"patterns": from_a, "sample": 100,
+                                    "rate_batch_size": 10}}]}, 5000)
+    assert priced == {"classify": 1 * (1 + 10)}
+
+
+def test_compare_surfaces_each_pattern_as_its_own_metric(tmp_path):
+    a, b = tmp_path / "a", tmp_path / "b"
+    for d, verdict in ((a, "STRICT"), (b, "NO")):
+        d.mkdir()
+        report = C.run_corpus_checks(
+            docs(48), _pattern_spec(), run_dir=d, seed=0,
+            ctx=_judge_ctx(d, _pattern_client(verdict=verdict)))
+        (d / "corpus_report.json").write_text(json.dumps(report), encoding="utf-8")
+
+    from src.data.synth.compare import load_arm
+
+    ma, mb = load_arm(a)["metrics"], load_arm(b)["metrics"]
+    keys = [k for k in ma if ".pattern." in k and k.endswith("broad_share")]
+    assert keys, ma.keys()
+    assert all(ma[k] == 1.0 for k in keys)
+    assert all(mb[k] == 0.0 for k in keys)

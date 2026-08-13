@@ -30,6 +30,7 @@ core.py        LLM machinery: priced Usage, call_json/call_tagged (parse-retry),
 cells.py       model-eval-model cell STRUCTURE (registry, planning, perturbation,
                assembly) -- all its wording comes from the config
 corpus.py      the corpus-level property registry + the `corpus_check` stage driver
+embeddings.py  text -> vectors for the semantic checks (model2vec static, no torch)
 compare.py     cross-arm comparison of several runs' corpus reports (monotonicity)
 checks.py      model-eval-model validity checks (judge wording from checks.judges);
                its template-collapse and surface-shortcut halves are thin adapters
@@ -204,10 +205,17 @@ this *corpus* good?" — questions no single document can answer. One registry, 
 pass-through stage, placed **anywhere** in a config's `stages:` list:
 
 ```
+uv run synth checks                                                # list every property + tier
 uv run synth check --config <cfg> --run_dir <dir> [--stage corpus]  # re-check, no regeneration
+uv run synth check ... --stage corpus --tier surface                # only the free ones
+uv run synth check ... --stage corpus --only embedding_dedup        # or --skip <names>
 uv run scripts/data/synth/build_dataset.py --config <cfg> --ablate corpus  # skip it
 uv run synth compare --reports <dir1>,<dir2>,<dir3> --key n_chunks --out output/report/x.md
 ```
+
+**Full reference: [`docs/corpus_checks.md`](../../../docs/corpus_checks.md)** — the five
+separable jobs (field resolution, registry, selection, gating, outputs), the measured
+baseline behind every threshold, and why the two dedup checks are not redundant.
 
 Three rules the module turns on:
 
@@ -223,24 +231,35 @@ Three rules the module turns on:
 | property | what it flags | default gate |
 |---|---|---|
 | `ngram_diversity` | top 8-gram share, pairwise 4-gram Jaccard, bigram variety, per group | `0.20` / `0.15` / `0.30` |
-| `near_duplicates` | exact + near dupes, banded bottom-k MinHash | `dup_share_max 0.02` |
+| `near_duplicates` | exact + near dupes, banded bottom-k MinHash over word shingles | `dup_share_max 0.02` |
+| `embedding_dedup` | semantic near-dupes + the set a GDM dedup stage would remove | `drop_share_max 0.02` |
 | `opening_collapse` | shared first-8-words, exact **and** reordered | `top_opener_share_max 0.15` |
 | `length_profile` | length CV overall, per-group mean delta | `cv_min 0.12`, `delta 0.35` |
 | `field_balance` | per-axis counts/entropy, empty buckets of each `cross` | `H 0.75`, `max_share 0.60` |
 | `feature_diversity` | mean pairwise cosine, effective rank over hashed char n-grams | `0.95` / `frac 0.25` |
 | `label_leakage` | CV AUC of a surface classifier predicting a label | `surface_auc_max 0.65` |
+| `quality_filter` **(judged)** | share a GDM-style autorater would cut, with the flaw breakdown | `drop_rate_max 0.10` (unmeasured) |
 | `applies_vs_conflicts` **(judged)** | resolves a value tension vs applies one value | report-only |
 | `principle_coverage` **(judged)** | which principles a document *actually* engages | report-only |
 | `chunk_attribution` **(judged)** | whether a k>1 document engages all its member chunks | report-only |
-| `pattern_scan` **(judged)** | GDM scan→cluster→autorate: the corpus's own recurring tics | report-only |
+| `pattern_scan` **(judged)** | GDM scan→cluster→autorate: the corpus's own recurring tics, each at STRICT and BROAD frequency | report-only |
+
+**Selection.** A property instance takes `enabled: false` to deselect it without deleting
+it; `--only` / `--skip` / `--tier surface|judged` override per invocation. Selection is a
+spec transform, so the stage, the `check` verb and `--estimate` agree on what ran:
+`--tier surface` builds no model context, needs no key and prices at zero.
 
 **Thresholds are measured, not invented** — the block above `CORPUS_CHECKS` records the
 baseline. Two readings drive the surprising ones: character-n-gram cosine has a high
 floor (two unrelated same-genre documents already score ~0.86), so `effective_rank_frac`
 is the discriminating half of `feature_diversity`; and mean 4-gram Jaccard is
 length-dependent (~0.003 at 1,000 words), so its gate catches only severe collapse.
-Everything in 1–7 is **surface**: a corpus saying one thing 8,000 different ways scores
-well on all of them, and that gap is what the judged tier closes. Small groups are
+**Embedding cosine is length-dependent too** — measured 0.37 mean pairwise at 68 words
+against 0.76 at 1,044 — so `embedding_dedup` is pointed at the short scenario text and
+carries `max_mean_words: 300`, past which it reports its numbers but suppresses its
+findings rather than fire a threshold that no longer discriminates.
+Everything in the surface tier is **surface**: a corpus saying one thing 8,000 different
+ways scores well on all of it, and that gap is what the judged tier closes. Small groups are
 measured but never flagged (`ngram_diversity.min_group_docs`, 5): two documents sharing
 an 8-gram score 1.0, which is binomial noise, and each group carries `gated: true|false`.
 

@@ -312,7 +312,8 @@ def op_corpus_check(sc: dict, cfg: dict) -> Stage:
     `stages:` it audits what actually trains; `--ablate <name>` runs the corpus
     unchecked, which on a judged config is also how to skip paying for judging.
     """
-    from .corpus import is_paid, print_summary, run_corpus_checks, validate_spec
+    from .corpus import (is_paid, pattern_table, print_summary, run_corpus_checks,
+                         validate_spec)
 
     try:
         validate_spec(sc)
@@ -334,6 +335,11 @@ def op_corpus_check(sc: dict, cfg: dict) -> Stage:
         else:
             (ctx.run_dir / report_name).write_text(
                 json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+        table = pattern_table(report)
+        if table:
+            (ctx.run_dir / f"{sc['name']}_patterns.md").write_text(
+                f"# {sc['name']} — recurring patterns\n{table}\n", encoding="utf-8")
+            print(table)
         # Keyed by stage name: a run may check its scenarios, its drafts and its final
         # corpus, and the later verdicts must not overwrite the earlier ones.
         ctx.manifest_extra.setdefault("corpus_checks", {})[sc["name"]] = {

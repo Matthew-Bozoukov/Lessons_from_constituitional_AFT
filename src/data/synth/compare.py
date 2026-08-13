@@ -79,11 +79,20 @@ def load_arm(run_dir: str | Path, stage: str | None = None) -> dict:
         f"pass --stage to say which one")
     report = json.loads(reports[0].read_text(encoding="utf-8"))
     mpath = run_dir / "manifest.json"
+    live = {alias: entry for alias, entry in (report.get("properties") or {}).items()
+            if entry.get("status") not in ("skipped", "errored", "disabled")}
     metrics = {f"{alias}.{k}": v
-               for alias, entry in (report.get("properties") or {}).items()
-               if entry.get("status") not in ("skipped", "errored")
+               for alias, entry in live.items()
                for k, v in (entry.get("metrics") or {}).items()
                if isinstance(v, (int, float)) and not isinstance(v, bool)}
+    # pattern_scan reports a LIST of patterns, so its per-pattern rates would be invisible
+    # to a comparison that only reads scalars -- and those rates are the whole point of
+    # comparing two corpora. Flattened to one scalar each, keyed by pattern name, so an
+    # arm missing a pattern shows as absent rather than as zero.
+    for alias, entry in live.items():
+        for row in (entry.get("metrics") or {}).get("patterns") or []:
+            for half in ("broad_share", "strict_share"):
+                metrics[f"{alias}.pattern.{row['pattern']}.{half}"] = row[half]
     return {"run_dir": str(run_dir), "name": run_dir.name, "report": report,
             "metrics": metrics,
             "manifest": json.loads(mpath.read_text(encoding="utf-8"))
