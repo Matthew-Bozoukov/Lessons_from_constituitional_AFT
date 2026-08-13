@@ -310,7 +310,7 @@ def test_run_checks_resolves_snapshots_from_the_stage_list(tmp_path):
     dump("stage_2_plan.jsonl", plan)
     dump("stage_4_generated.jsonl", final[:1])   # the draft snapshot: 1 record only
     dump("stage_5_final.jsonl", final)           # the revised snapshot: 2 records
-    dump("stage_6_sft.jsonl", sft)
+    dump("stage_6_export.jsonl", sft)
 
     cfg = {**CFG, "checks": {k: v for k, v in CFG["checks"].items()
                              if k != "judge_model"}}  # offline: skip LLM-judged checks
@@ -319,7 +319,7 @@ def test_run_checks_resolves_snapshots_from_the_stage_list(tmp_path):
         "checks must judge the revised snapshot, not the stage-4 draft"
 
     # A run dir from the pre-rewrite layout fails loudly, pointing at the manifest.
-    (tmp_path / "stage_6_sft.jsonl").unlink()
+    (tmp_path / "stage_6_export.jsonl").unlink()
     with pytest.raises(AssertionError, match="older"):
         run_checks(tmp_path, cfg)
 
