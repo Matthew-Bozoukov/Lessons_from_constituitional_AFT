@@ -10,7 +10,7 @@ scientific record of what a run generated:
 
 ```
 uv run scripts/data/synth/build_dataset.py --config configs/data/synth/difficult_advice.yaml [--smoke]
-uv run scripts/data/synth/build_dataset.py --config configs/data/synth/model_eval_model_self_natural.yaml [--smoke]
+uv run scripts/data/synth/build_dataset.py --config configs/data/synth/post_action_retrospection.yaml [--smoke]
 uv run scripts/data/synth/build_dataset.py --config <cfg> --ablate <stage>   # ablation arm
 uv run scripts/data/synth/build_dataset.py --config <cfg> --estimate [--measured <smoke manifest>]
 ```
@@ -72,7 +72,7 @@ A config's `stages:` entry names an operator `kind` and supplies everything it n
 | `corpus_check` | corpus-level property checks; pass-through, always ablatable (see below) | `fields`, `properties`, `axes`, `cross`, `rubrics`, `units`, `on_fail`, `model` |
 | `scenarios_weighted` | weighted trait apportionment, control slice, motive rotation, per-batch industries, deterministic per-scenario variants | `model`, `prompts` (+`control_user`), `threats`, `control_threats`, `fields` |
 | `load_source_run` | a completed run's finals + constitution-sha provenance check | (`source:` block) |
-| `plan_cells` / `perturb_pairs` / `generate_cells` / `revise_cells` / `assemble_cells` | **FROZEN** — the model-eval-model cells, defined in `model_eval_model_cells.py`. A cell is a document type written in Python, which is what the kinds above exist to replace. Registered only because the archived configs and `_other_natural` are written against them; do not use them for new work | (`cells:`, `flaws:`, `prompts:` blocks) |
+| `plan_cells` / `perturb_pairs` / `generate_cells` / `revise_cells` / `assemble_cells` | **FROZEN** — the model-eval-model cells, defined in `model_eval_model_cells.py`. A cell is a document type written in Python, which is what the kinds above exist to replace. Registered only because the archived configs and `peer_critique.yaml` are written against them; do not use them for new work | (`cells:`, `flaws:`, `prompts:` blocks) |
 
 Prompt templates in configs are `str.format` templates over record fields plus shared
 vars (`{constitution}`, `{style_guidance}`). Literal JSON braces are escaped `{{ }}`.
@@ -143,8 +143,8 @@ in `stages:`, each individually ablatable by name.
 
 The stage to name is each config's constitution rewrite, and since the 2026-08-13 rename
 that name says which turn it rewrites: `--ablate revise_responses` (difficult advice,
-self reflection), `--ablate revise_reflection` (`_self_natural`), `--ablate
-revise_critique` (`_other_natural`). Before that rename every config called it `final`,
+pre-action deliberation), `--ablate revise_reflection` (post-action retrospection), `--ablate
+revise_critique` (peer critique). Before that rename every config called it `final`,
 which is what the archived configs and every published run still use.
 
 **Operating contract** (every run, every type): each stage writes a complete local
@@ -169,7 +169,7 @@ step)** → chat export with the trait carried in metadata. Output and HF cache 
 keep their historical `synthdoc_v2` prefixes so existing snapshots stay resumable.
 This replaced the config-driven v1 (deleted 2026-08-03, git history).
 
-## Document type: self reflection (`configs/data/synth/self_reflection.yaml`)
+## Document type: pre-action deliberation (`configs/data/synth/pre_action_deliberation.yaml`)
 
 Inverts who is tempted: **the agent itself**. Working autonomously (prose or agentic
 form), it finds it could protect its own position — or the objective it was deployed to
@@ -229,19 +229,19 @@ follows, the model revises or holds with reasons; trained with `supervise: "fina
 lifted from the stage-5 export's metadata by `build_mixture` (interchange mode) and
 consumed by `masking.py`).
 
-### The natural-turn recipes (`model_eval_model_{self,other}_natural.yaml`)
+### The natural-turn recipes (`post_action_retrospection.yaml`, `peer_critique.yaml`)
 
 **These two are the live model-eval-model configs.** The archived base and `_self`/`_other`
 put the source run's reply — gold, or minimally perturbed — into the turn under evaluation. That reply is context, never a training
 target, but it conditions every document, so the corpus also teaches the
-difficult-advice recipe's response shape. The `_natural` configs replace that.
+difficult-advice recipe's response shape. The natural-turn pair replaces that.
 
-`_other_natural` keeps the source run, and keeps cells, and changes only how the turns are
+Peer critique (PC, the other arm) keeps the source run, and keeps cells, and changes only how the turns are
 produced (`draft_candidates` writes 3 fresh replies, `rate_candidates` picks the weakest,
-`write_critique_framing` writes the framing). **`_self_natural` goes further: it has no
+`write_critique_framing` writes the framing). **Post-action retrospection (PR, the self arm) goes further: it has no
 source run, and no cells at all** — 10 stages, every one of them a generic operator.
 
-| | `_self` (2026-08-06 corpus) | `_self_natural` |
+| | `_self` (2026-08-06 corpus) | PR |
 |---|---|---|
 | prompts | difficult-advice scenarios (sympathetic protagonist + one tempting norm violation) | `write_scenarios` + `draft_prompts` brainstorm ordinary requests where the principle is quietly live |
 | the arms | `plan_cells` allocates m1/m2 from a Python registry | an `assign:` block on `revise_prompts` stamps a `reply_quality` **label**, hashed from the scenario id — folded into the stage that branches on it rather than spending a snapshot |
@@ -294,7 +294,7 @@ The first turn stays untrained (`supervise: final`). It is a *tracked* condition
 variable rather than an invisible one: every record carries `reply_quality`,
 `first_turn_source` and `followup_source` in its metadata.
 
-`uv run synth check --config configs/data/synth/model_eval_model_self_natural.yaml --run_dir <dir>`
+`uv run synth check --config configs/data/synth/post_action_retrospection.yaml --run_dir <dir>`
 runs the validity checks and gates on the config's thresholds: gate yield (report-only —
 the number a found-fault config re-sizes itself from), coverage of what actually
 entered generation (incl. the flaw grid), template collapse, **structural diversity**
@@ -406,7 +406,7 @@ operator or the CLI changes.
 **The checks are config-driven too.** They were written against the cell vocabulary,
 where the operator *kinds* were the roles (`plan_cells` was the plan, `generate_cells` the
 documents) and every per-arm statistic split on `cell`. A pipeline of generic operators
-has no such signature — `llm_tagged` appears six times in `_self_natural` and means
+has no such signature — `llm_tagged` appears six times in PR and means
 something different each time — so two blocks name what the kinds used to imply:
 
 ```yaml

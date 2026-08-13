@@ -1334,7 +1334,7 @@ def check_pattern_scan(c: Corpus) -> CheckResult:
     candidates and keep only what independent scans agreed on, AUTORATE a large sample
     against each survivor. Nothing about the document type is known here -- every word the
     models see comes from the stage entry's `rubrics:` block, so the same property runs
-    over difficult advice, self-reflection or model-eval-model unchanged.
+    over difficult advice, pre-action deliberation or model-eval-model unchanged.
 
     Report-only by default. GDM's own filter-and-retrain ablations moved the corpus's
     style without moving the eval scores, so a flagged pattern is a hypothesis about the

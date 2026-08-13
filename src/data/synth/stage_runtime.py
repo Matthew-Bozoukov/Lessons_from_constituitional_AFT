@@ -137,7 +137,7 @@ def lint_problems(parsed: dict, spec: dict) -> list[str]:
     `llm_tagged` operator, and the model-eval-model rewrite stage, whose output IS the
     training target and so must be held to the same content contract.
 
-    The self-reflection voice contract is the archetype: reasoning that reaches for rule
+    The pre-action deliberation voice contract is the archetype: reasoning that reaches for rule
     vocabulary, or that is too short to have done any weighing, is rejected so the call
     retries rather than the corpus absorbing it. `max_chars` is the opposite guard, and
     the one a generated USER turn needs: a follow-up that grows into a paragraph has

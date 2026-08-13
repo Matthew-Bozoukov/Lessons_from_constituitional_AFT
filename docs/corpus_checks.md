@@ -295,7 +295,7 @@ scan → cluster → autorate pipeline, and it is the most expensive check here 
 
 Nothing about the document type appears in code. Every word the models see comes from the
 stage entry's `rubrics:` block, and that block is **byte-identical in all three dataset
-configs** — difficult advice, self-reflection, model-eval-model. A new data style copies it
+configs** — difficult advice, pre-action deliberation, model-eval-model. A new data style copies it
 unchanged.
 
 ### Pass 1 — scan

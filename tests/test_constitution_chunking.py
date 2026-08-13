@@ -281,12 +281,12 @@ def test_dataset_config_can_select_any_method(name):
 
 
 def test_shipped_dataset_configs_declare_the_default():
-    """difficult_advice and self_reflection are the corpora of record: their chunking
+    """difficult_advice and pre_action_deliberation are the corpora of record: their chunking
     must be stated outright, not inherited from a default that could later move."""
     import yaml
 
     for path in ("configs/data/synth/difficult_advice.yaml",
-                 "configs/data/synth/self_reflection.yaml"):
+                 "configs/data/synth/pre_action_deliberation.yaml"):
         cfg = yaml.safe_load(open(path))
         assert cfg.get("chunking") == DEFAULT_CHUNKING, path
 

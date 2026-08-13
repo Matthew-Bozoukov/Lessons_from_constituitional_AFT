@@ -1,6 +1,8 @@
-# ABOUTME: Offline tests for the natural-turn recipes. mem-self is de-celled -- built only
+# ABOUTME: Offline tests for the natural-turn recipes. Post-action retrospection (PR, the
+# ABOUTME: self arm) is de-celled -- built only
 # ABOUTME: from generic operators, arms assigned as labels -- so most of this asserts that
-# ABOUTME: the config alone expresses the document type. mem-other is still cell-based.
+# ABOUTME: the config alone expresses the document type. Peer critique (PC, the other
+# ABOUTME: arm) is still cell-based.
 # ABOUTME: Run: uv run pytest tests/test_model_eval_model_natural.py -q
 
 from __future__ import annotations
@@ -31,10 +33,10 @@ from src.data.synth.pipeline import (
     n_final_examples,
 )
 
-SELF_CFG = yaml.safe_load(
-    open("configs/data/synth/model_eval_model_self_natural.yaml"))
-OTHER_CFG = yaml.safe_load(
-    open("configs/data/synth/model_eval_model_other_natural.yaml"))
+PR_CFG = yaml.safe_load(
+    open("configs/data/synth/post_action_retrospection.yaml"))
+PC_CFG = yaml.safe_load(
+    open("configs/data/synth/peer_critique.yaml"))
 
 # The five kinds that are a document type expressed in Python rather than in config.
 CELL_KINDS = {"plan_cells", "perturb_pairs", "generate_cells", "revise_cells",
@@ -51,11 +53,11 @@ class _Ctx:
     def __init__(self) -> None:
         self.vars = {"constitution": "CONSTITUTION TEXT",
                      "style_guidance": "STYLE GUIDANCE"}
-        self.cfg = SELF_CFG
+        self.cfg = PR_CFG
 
 
 def _record(**over) -> dict:
-    """One mem-self record as it stands at the end of the pipeline."""
+    """One PR record as it stands at the end of the pipeline."""
     return {"scenario_id": "t1_b00_s000", "trait_id": "t1", "trait_name": "Trait one",
             "trait_text": "**Trait one.** Be scrupulous.", "domain": "work",
             "situation": "A person needs a reference written.",
@@ -75,29 +77,29 @@ def _record(**over) -> dict:
             "assessment": "revised", **over}
 
 
-# --- mem-self is expressible in config alone ----------------------------------------
+# --- PR is expressible in config alone ----------------------------------------------
 
 
-def test_mem_self_uses_no_cell_machinery() -> None:
-    """The point of the refactor: no stage in mem-self is a Python-defined document type."""
-    kinds = [s["kind"] for s in SELF_CFG["stages"]]
+def test_pr_uses_no_cell_machinery() -> None:
+    """The point of the refactor: no stage in PR is a Python-defined document type."""
+    kinds = [s["kind"] for s in PR_CFG["stages"]]
     assert not (set(kinds) & CELL_KINDS), f"cell kinds still in use: {kinds}"
-    assert "cells" not in SELF_CFG and "flaws" not in SELF_CFG
+    assert "cells" not in PR_CFG and "flaws" not in PR_CFG
     # ... and the arms are a plain label, carried into the finished dataset.
-    assert "reply_quality" in _stage(SELF_CFG, "export_sft")["metadata"]
+    assert "reply_quality" in _stage(PR_CFG, "export_sft")["metadata"]
 
 
 def test_the_cell_operators_actually_run() -> None:
     """`build_stages` only constructs the closure -- it never calls it, so a stale module
     reference inside one of these survives every structural test. Exercise one for real."""
-    stage = OPERATORS["plan_cells"](_stage(OTHER_CFG, "allocate_cells"), OTHER_CFG)
+    stage = OPERATORS["plan_cells"](_stage(PC_CFG, "allocate_cells"), PC_CFG)
     source = [{"scenario_id": f"t1_b00_s{i:03d}", "trait_id": "t1", "trait_name": "T",
                "trait_text": "x", "domain": "d", "situation": "s", "shortcut": "c",
                "system": "sys", "user": "u", "reasoning": "r", "response": "resp"}
               for i in range(4)]
 
     class _Ctx2:
-        cfg = {**OTHER_CFG, "cells": {"m4_other_good": 2}}
+        cfg = {**PC_CFG, "cells": {"m4_other_good": 2}}
         manifest_extra: dict = {}
 
     out = stage.fn(_Ctx2(), source, None)
@@ -105,15 +107,15 @@ def test_the_cell_operators_actually_run() -> None:
     assert out[0]["record_id"].endswith("::m4_other_good")
 
 
-def test_mem_other_still_uses_cells_and_still_builds() -> None:
+def test_pc_still_uses_cells_and_still_builds() -> None:
     """The cell registry stays registered because a live config and the archive need it."""
-    assert _stage(OTHER_CFG, "draft_critique")["kind"] == "generate_cells"
-    assert set(OTHER_CFG["cells"]) <= set(CELLS)
+    assert _stage(PC_CFG, "draft_critique")["kind"] == "generate_cells"
+    assert set(PC_CFG["cells"]) <= set(CELLS)
     assert CELL_KINDS <= set(OPERATORS)
-    build_stages(OTHER_CFG)
+    build_stages(PC_CFG)
 
 
-@pytest.mark.parametrize("cfg", [SELF_CFG, OTHER_CFG], ids=["self", "other"])
+@pytest.mark.parametrize("cfg", [PR_CFG, PC_CFG], ids=["pr", "pc"])
 def test_config_builds_and_prices(cfg: dict) -> None:
     build_stages(cfg)
     est = estimate(cfg)
@@ -121,8 +123,8 @@ def test_config_builds_and_prices(cfg: dict) -> None:
     assert est["final_training_examples"] > 0
 
 
-def test_mem_self_stage_sequence() -> None:
-    assert [s["name"] for s in SELF_CFG["stages"]] == [
+def test_pr_stage_sequence() -> None:
+    assert [s["name"] for s in PR_CFG["stages"]] == [
         "chunk_constitution", "write_scenarios", "draft_prompts", "revise_prompts",
         "draft_first_turn", "revise_first_turn", "write_followup", "draft_reflection",
         "revise_reflection", "export_sft"]
@@ -132,7 +134,7 @@ def test_mem_self_stage_sequence() -> None:
 
 
 def test_assign_labels_arms_from_the_id_and_stamps_constants() -> None:
-    spec = _stage(SELF_CFG, "revise_prompts")["assign"]
+    spec = _stage(PR_CFG, "revise_prompts")["assign"]
     rows = [{"scenario_id": f"t{i % 9}_b00_s{i:03d}"} for i in range(400)]
     out = assign_arms(spec, rows, announce=False)
 
@@ -149,16 +151,16 @@ def test_assign_labels_arms_from_the_id_and_stamps_constants() -> None:
 def test_the_arms_are_assigned_inside_the_stage_that_branches_on_them() -> None:
     """Folded in rather than a stage of its own: the labels exist before `variants_by`
     reads them, and no snapshot is spent stamping two fields."""
-    sc = _stage(SELF_CFG, "revise_prompts")
+    sc = _stage(PR_CFG, "revise_prompts")
     assert set(sc["assign"]["fields"]) == {"reply_quality", "explicitness"}
     assert sc["variants_by"]["field"] == "reply_quality"
-    assert "assign" not in {s["kind"] for s in SELF_CFG["stages"]}
+    assert "assign" not in {s["kind"] for s in PR_CFG["stages"]}
     # The checks read the arm split off this stage's snapshot.
-    assert SELF_CFG["checks"]["stages"]["plan"] == "revise_prompts"
+    assert PR_CFG["checks"]["stages"]["plan"] == "revise_prompts"
 
 
 def test_assign_shares_are_what_the_estimator_prices_from() -> None:
-    shares = arm_shares(SELF_CFG)
+    shares = arm_shares(PR_CFG)
     assert shares["reply_quality"] == {"good": 0.5, "flawed": 0.5}
     assert sum(shares["explicitness"].values()) == pytest.approx(1.0)
 
@@ -167,7 +169,7 @@ def test_assign_shares_are_what_the_estimator_prices_from() -> None:
 
 
 def test_revise_prompts_differs_by_arm_and_never_instructs_the_assistant() -> None:
-    sc = _stage(SELF_CFG, "revise_prompts")
+    sc = _stage(PR_CFG, "revise_prompts")
     good = tagged_request(sc, _record(reply_quality="good"), _Ctx())[0][1]["content"]
     flawed = tagged_request(sc, _record(reply_quality="flawed"), _Ctx())[0][1]["content"]
     assert good != flawed
@@ -180,7 +182,7 @@ def test_revise_prompts_differs_by_arm_and_never_instructs_the_assistant() -> No
 
 def test_first_turn_prompt_carries_no_constitution_and_stamps_its_provenance() -> None:
     """Turn 2's faults are organic only if nothing aligning is in its prompt."""
-    sc = _stage(SELF_CFG, "draft_first_turn")
+    sc = _stage(PR_CFG, "draft_first_turn")
     messages = tagged_request(sc, _record(), _Ctx())[0]
     blob = "".join(m["content"] for m in messages)
     for leak in ("CONSTITUTION TEXT", "STYLE GUIDANCE", "principle", "training data",
@@ -199,7 +201,7 @@ def test_three_faults_a_revision_and_an_adjudication_in_that_order() -> None:
     the verdict earned: a criticism you cannot write a fix for tends not to survive being
     acted on.
     """
-    sc = _stage(SELF_CFG, "revise_first_turn")
+    sc = _stage(PR_CFG, "revise_first_turn")
     assert sc["tags"] == ["issue_a", "issue_b", "issue_c", "improved_reply", "genuine",
                           "change_summary"]
     body = sc["prompts"]["user"]
@@ -224,15 +226,15 @@ def test_three_faults_a_revision_and_an_adjudication_in_that_order() -> None:
 
 def test_the_improved_reply_is_kept_for_inspection_and_never_trains() -> None:
     """It exists because producing it is what forces the judgement to be earned."""
-    assert "improved_reply" not in _stage(SELF_CFG, "export_sft")["metadata"]
-    exported = {m.get("content", "") for m in _stage(SELF_CFG, "export_sft")["messages"]}
+    assert "improved_reply" not in _stage(PR_CFG, "export_sft")["metadata"]
+    exported = {m.get("content", "") for m in _stage(PR_CFG, "export_sft")["messages"]}
     assert not any("improved_reply" in c for c in exported)
 
 
 def test_the_reviser_writes_change_summary_only_where_the_rewrite_mattered() -> None:
     """`change_summary` unblinds the reflection and is gated as never-training, so a
     reply that held up must not carry one."""
-    sc = _stage(SELF_CFG, "revise_first_turn")
+    sc = _stage(PR_CFG, "revise_first_turn")
     cases = sc["variants_by"]["cases"]
     assert "change_summary" in cases["flawed"]["save"]
     assert "change_summary" not in cases["good"]["save"]
@@ -256,14 +258,14 @@ def test_the_gate_holds_each_arm_to_its_own_contract() -> None:
         {"scenario_id": "4", "reply_quality": "good", "genuine": "a"},
         {"scenario_id": "5", "reply_quality": "unassigned", "genuine": ""},
     ]
-    kept = apply_keep(_stage(SELF_CFG, "revise_first_turn"), records)
+    kept = apply_keep(_stage(PR_CFG, "revise_first_turn"), records)
     # An arm with no case is out of scope and passes through untouched.
     assert [r["scenario_id"] for r in kept] == ["1", "3", "5"]
-    assert "keep_supported_arms" not in {s["name"] for s in SELF_CFG["stages"]}
+    assert "keep_supported_arms" not in {s["name"] for s in PR_CFG["stages"]}
 
 
 def test_gate_normalises_the_label_the_model_actually_returned() -> None:
-    sc = _stage(SELF_CFG, "revise_first_turn")
+    sc = _stage(PR_CFG, "revise_first_turn")
     for raw in (" B.\n", "C", "*a*", "b"):
         assert apply_keep(sc, [{"scenario_id": "r", "reply_quality": "flawed",
                                 "genuine": raw}])
@@ -274,7 +276,7 @@ def test_gate_normalises_the_label_the_model_actually_returned() -> None:
 def test_gate_fails_a_systematic_disagreement_per_arm_but_not_a_smoke_run() -> None:
     """A drop rate that means the recipe is broken gates -- and each arm has its own
     healthy rate, so one threshold for both would be wrong in one direction."""
-    sc = _stage(SELF_CFG, "revise_first_turn")
+    sc = _stage(PR_CFG, "revise_first_turn")
     assert sc["max_drop_pct"]["flawed"] != sc["max_drop_pct"]["good"]
     bad = [{"scenario_id": str(i), "reply_quality": "flawed", "genuine": "none"}
            for i in range(30)]
@@ -296,7 +298,7 @@ def test_when_filter_scopes_a_stage() -> None:
 def test_reflection_puts_the_evaluated_reply_in_a_genuine_assistant_turn() -> None:
     """Attribution is structural. This is what `conversation:` exists for -- and what
     used to require a cell's Python message-builder."""
-    sc = _stage(SELF_CFG, "draft_reflection")
+    sc = _stage(PR_CFG, "draft_reflection")
     messages, tags, save = tagged_request(sc, _record(), _Ctx())
     assert [m["role"] for m in messages] == ["system", "user", "assistant", "user"]
     assert messages[2]["content"] == _record()["first_turn"]
@@ -307,7 +309,7 @@ def test_reflection_puts_the_evaluated_reply_in_a_genuine_assistant_turn() -> No
 
 
 def test_reflection_is_unblinded_for_the_flawed_arm_only() -> None:
-    sc = _stage(SELF_CFG, "draft_reflection")
+    sc = _stage(PR_CFG, "draft_reflection")
     flawed = tagged_request(sc, _record(), _Ctx())[0][0]["content"]
     good = tagged_request(sc, _record(reply_quality="good"), _Ctx())[0][0]["content"]
     assert _record()["change_summary"] in flawed
@@ -319,7 +321,7 @@ def test_reflection_is_unblinded_for_the_flawed_arm_only() -> None:
 
 
 def test_reflection_verdict_is_constrained_to_the_two_words() -> None:
-    lint = _stage(SELF_CFG, "draft_reflection")["lint"]
+    lint = _stage(PR_CFG, "draft_reflection")["lint"]
     assert lint["allowed"] == ["held", "revised"]
     assert lint_problems({"assessment": "mostly held"}, lint)
     assert not lint_problems({"assessment": "held"}, lint)
@@ -327,7 +329,7 @@ def test_reflection_verdict_is_constrained_to_the_two_words() -> None:
 
 def test_the_rewrite_stage_lints_its_own_output_for_scaffold_fingerprints() -> None:
     """The rewrite writes the turn that trains, so its output carries the contract."""
-    lint = _stage(SELF_CFG, "revise_reflection")["lint"]
+    lint = _stage(PR_CFG, "revise_reflection")["lint"]
     assert set(lint["fields"]) == {"reasoning", "response"}
     for bad in ("Principle 4 says I must decline.",
                 "As instructed above, I revised the reply.",
@@ -340,10 +342,10 @@ def test_the_rewrite_stage_lints_its_own_output_for_scaffold_fingerprints() -> N
 
 
 def test_the_rewrite_is_ablatable_back_to_the_draft() -> None:
-    sc = _stage(SELF_CFG, "revise_reflection")
+    sc = _stage(PR_CFG, "revise_reflection")
     assert sc["ablate_with"] == {"reasoning": "draft_reasoning",
                                  "response": "draft_response"}
-    stages = {s.name: s for s in build_stages(SELF_CFG)}
+    stages = {s.name: s for s in build_stages(PR_CFG)}
     out = stages["revise_reflection"].ablate_fn([_record()])[0]
     assert out["reasoning"] == _record()["draft_reasoning"]
 
@@ -352,7 +354,7 @@ def test_the_rewrite_is_ablatable_back_to_the_draft() -> None:
 
 
 def test_export_is_five_turns_with_only_the_last_one_supervised() -> None:
-    rec = op_chat_export(_stage(SELF_CFG, "export_sft"), SELF_CFG).fn(
+    rec = op_chat_export(_stage(PR_CFG, "export_sft"), PR_CFG).fn(
         None, [_record()], None)[0]
     assert [m["role"] for m in rec["messages"]] == \
         ["system", "user", "assistant", "user", "assistant"]
@@ -373,41 +375,41 @@ def test_export_is_five_turns_with_only_the_last_one_supervised() -> None:
 
 
 def test_pre_plan_stages_are_priced_over_the_scenario_pool() -> None:
-    rows = {r["stage"]: r for r in estimate(SELF_CFG)["per_stage"]}
-    assert rows["draft"]["calls"] == SELF_CFG["total_scenarios"]
+    rows = {r["stage"]: r for r in estimate(PR_CFG)["per_stage"]}
+    assert rows["draft"]["calls"] == PR_CFG["total_scenarios"]
 
 
 def test_gates_shrink_what_the_expensive_stages_are_priced_over() -> None:
     """The two costly stages run on survivors; pricing them on the plan overstates the run."""
-    rows = {r["stage"]: r for r in estimate(SELF_CFG)["per_stage"]}
-    keep = _stage(SELF_CFG, "revise_first_turn")["expected_keep"]
-    n = SELF_CFG["total_scenarios"]
+    rows = {r["stage"]: r for r in estimate(PR_CFG)["per_stage"]}
+    keep = _stage(PR_CFG, "revise_first_turn")["expected_keep"]
+    n = PR_CFG["total_scenarios"]
     survivors = n * 0.5 * keep["flawed"] + n * 0.5 * keep["good"]
     assert rows["reflect"]["calls"] == round(survivors)
     # The follow-up is written after the gate, so it too covers survivors only.
     assert rows["followup"]["calls"] == round(survivors)
     # The revision is billed for every record; the drop happens on its own output.
     assert rows["revise_reply"]["calls"] == n
-    assert n_final_examples(SELF_CFG) < n
+    assert n_final_examples(PR_CFG) < n
 
 
 # --- the checks, driven off the config's field names --------------------------------
 
 
 def test_checks_read_the_field_names_the_config_declares() -> None:
-    F = _fields(SELF_CFG)
+    F = _fields(PR_CFG)
     assert F["group"] == "reply_quality" and F["id"] == "scenario_id"
     assert F["evaluated"] == "first_turn"
     # A celled config gets the historical defaults with no config changes at all.
-    assert _fields(OTHER_CFG)["group"] == "cell"
+    assert _fields(PC_CFG)["group"] == "cell"
     with pytest.raises(AssertionError, match="unknown key"):
         _fields({"checks": {"fields": {"nope": "x"}}})
 
 
 def test_checks_stages_must_name_real_stages() -> None:
-    named = SELF_CFG["checks"]["stages"]
+    named = PR_CFG["checks"]["stages"]
     assert set(named) == {"plan", "drafted", "generated", "sft"}
-    assert set(named.values()) <= {s["name"] for s in SELF_CFG["stages"]}
+    assert set(named.values()) <= {s["name"] for s in PR_CFG["stages"]}
 
 
 def test_coverage_measures_generation_not_the_gates() -> None:
@@ -478,7 +480,7 @@ def test_the_new_operators_are_registered_and_free() -> None:
                      ("chat_export", {"name": "e", "messages": [], "metadata": []}),
                      ("pick_field", {"name": "p", "by": "b", "from": {"a": "f"},
                                      "to": "t"})):
-        assert OPERATORS[kind](sc, SELF_CFG).paid is False
+        assert OPERATORS[kind](sc, PR_CFG).paid is False
 
 
 def test_max_chars_lint_is_enforced() -> None:
@@ -487,7 +489,7 @@ def test_max_chars_lint_is_enforced() -> None:
 
 
 def test_followup_lint_rejects_a_prompt_that_does_the_analysis() -> None:
-    spec = _stage(SELF_CFG, "write_followup")["lint"]
+    spec = _stage(PR_CFG, "write_followup")["lint"]
     assert not lint_problems(
         {"followup": "Would you really tell her only afterwards?"}, spec)
     for bad in ("You violated the honesty principle there -- please revise it.",
@@ -505,7 +507,7 @@ def test_dropped_records_are_recorded_in_the_manifest() -> None:
 
     run = _Run()
     run.manifest_extra = {}
-    sc = _stage(SELF_CFG, "revise_first_turn")
+    sc = _stage(PR_CFG, "revise_first_turn")
     rows = [{"scenario_id": "kept", "reply_quality": "flawed", "genuine": "b"},
             {"scenario_id": "gone", "reply_quality": "flawed", "genuine": "none"}]
     assert [r["scenario_id"] for r in apply_keep(sc, rows, run)] == ["kept"]

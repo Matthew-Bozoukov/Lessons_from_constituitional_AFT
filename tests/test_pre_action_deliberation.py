@@ -1,4 +1,4 @@
-# ABOUTME: Offline tests for the self_reflection document type: weighted planning,
+# ABOUTME: Offline tests for the pre_action_deliberation document type: weighted planning,
 # ABOUTME: deterministic variants, the voice-contract lint, prompt assembly, multi-turn export.
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from src.data.synth.stage_operators import (
 )
 from src.data.synth.pipeline import build_stages
 
-CONFIG = "configs/data/synth/self_reflection.yaml"
+CONFIG = "configs/data/synth/pre_action_deliberation.yaml"
 CFG = yaml.safe_load(open(CONFIG))
 STAGES = {s["name"]: s for s in CFG["stages"]}
 LINT = STAGES["revise_responses"]["lint"]

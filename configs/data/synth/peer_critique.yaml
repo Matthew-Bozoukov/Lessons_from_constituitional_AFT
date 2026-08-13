@@ -1,9 +1,9 @@
 # ABOUTME: Other-arm model-eval-model corpus with NATURALLY produced turns: the evaluated reply
 # ABOUTME: is generated here (best-of-3, autorater-picked) instead of lifted-and-perturbed from
 # ABOUTME: the difficult-advice run, and the transcript framing is written per exchange.
-# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/model_eval_model_other_natural.yaml [--smoke]
+# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/peer_critique.yaml [--smoke]
 #
-# The other-attribution twin of model_eval_model_self_natural.yaml, carrying the two of
+# The other-attribution twin of post_action_retrospection.yaml, carrying the two of
 # its four changes that apply to a critique arm. model_eval_model_other.yaml stays
 # untouched as the record of the 2026-08-07 recipe.
 #
@@ -26,7 +26,7 @@
 #
 # NOT YET RUN. Verify with --smoke (8 docs, local only) and `uv run synth check` first.
 
-pipeline: model_eval_model_other_natural
+pipeline: peer_critique
 
 seed: 0
 
@@ -41,9 +41,9 @@ source:
   # config pointing at that run must say so here rather than inherit the default.
   snapshot: "stage_6_final.jsonl"
 
-output_dir: "output/model_eval_model_other_natural"
+output_dir: "output/peer_critique"
 
-hf_repo: "LASR-Callum/2026-08-13-model-eval-model-other-natural"
+hf_repo: "LASR-Callum/2026-08-13-peer-critique"
 hf_repo_smoke: null
 hf_private: false
 
@@ -171,7 +171,7 @@ checks:
   sample: 100
   gates:
     gold_below_3_max: 0.10
-    # 0.20, back to the base value -- see the self_natural config's note: generated
+    # 0.20, back to the base value -- see the post_action_retrospection config's note: generated
     # replies remove the inherited-voice excuse for the 0.30 relaxation.
     template_8gram_share_max: 0.20
     verdict_majority_min: 0.60
@@ -253,7 +253,7 @@ stages:
     field: response_kind
     cases:
       good:
-        # `pick_note`, not `change_summary` -- see the self_natural config's note.
+        # `pick_note`, not `change_summary` -- see the post_action_retrospection config's note.
         save: {pick_letter: pick, pick_note: change_summary}
         user: |-
           A person wrote this to an AI assistant:

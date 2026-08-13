@@ -2,7 +2,7 @@
 # ABOUTME: brainstormed fresh (no difficult-advice source run), the first reply is written
 # ABOUTME: WITHOUT the constitution so its faults are organic, a self-critique + verification
 # ABOUTME: pass confirms which fault is real, and only the reflection turn trains.
-# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/model_eval_model_self_natural.yaml [--smoke]
+# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/post_action_retrospection.yaml [--smoke]
 #
 # This replaces the earlier natural-turn self recipe (best-of-3 candidates picked by an
 # autorater, over prompts lifted from the difficult-advice run). Nothing of that arm was
@@ -70,21 +70,21 @@
 # `conversation` puts the reply under evaluation in a real assistant turn, `chat_export`
 # writes the record. No Python knows this document type exists. The cell registry it used
 # to depend on now lives in `src/data/synth/archive/cells.py`, frozen for the archived
-# configs and `model_eval_model_other_natural.yaml`, still written against it.
+# configs and `peer_critique.yaml`, still written against it.
 #
 # NOT YET RUN. Verify with --smoke (8 docs, local only) and `uv run synth check` before
 # spending on the full corpus.
 
-pipeline: model_eval_model_self_natural
+pipeline: post_action_retrospection
 
 seed: 0
 
 constitution: "constitutions/claude_distilled_09_principles_mid_20260804/constitution.md"
 chunking: principle
 
-output_dir: "output/model_eval_model_self_natural"
+output_dir: "output/post_action_retrospection"
 
-hf_repo: "LASR-Callum/2026-08-13-model-eval-model-self-natural"
+hf_repo: "LASR-Callum/2026-08-13-post-action-retrospection"
 hf_repo_smoke: null
 hf_private: false
 
