@@ -3,8 +3,8 @@
 
 # The corpus checker
 
-Code: `src/data/synth/corpus.py` (registry + driver), `src/data/synth/embeddings.py`
-(the semantic featuriser). Tests: `tests/test_corpus_checks.py`.
+Code: `src/data/synth/check_corpus.py` (registry + driver), `src/data/synth/embeddings.py`
+(the semantic featuriser). Tests: `tests/test_check_corpus.py`.
 
 Three layers of quality control exist in this pipeline, and they answer different
 questions. Keeping them apart is the point of this document:
@@ -31,7 +31,7 @@ surface form, would a dedup stage cut a quarter of it.
    all four appear in the report.
 3. **Generic code knows no document type.** A property declares the field *roles* it
    needs; the config maps roles to record keys. There is no `trait_id`, no `cell` and no
-   judge wording anywhere in `corpus.py`.
+   judge wording anywhere in `check_corpus.py`.
 
 ---
 

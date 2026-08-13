@@ -10,9 +10,9 @@ import pytest
 import yaml
 
 from src.data.synth.constitution import segment
-from src.data.synth.core import Checkpoint, Ctx, run_items
+from src.data.synth.stage_runtime import Checkpoint, Ctx, run_items
 from src.data.synth.hf_cache import read_jsonl, write_jsonl
-from src.data.synth.operators import (
+from src.data.synth.stage_operators import (
     _lint,
     assign_variant,
     op_chat_export,
