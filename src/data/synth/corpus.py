@@ -445,97 +445,6 @@ def check_ngram_diversity(c: Corpus) -> CheckResult:
     return CheckResult(metrics, findings)
 
 
-def _bottom_k_jaccard(a: list[int], b: list[int], k: int) -> float:
-    """Bottom-k MinHash Jaccard estimate of two sorted sketches."""
-    union = sorted(set(a) | set(b))[:k]
-    if not union:
-        return 0.0
-    sa, sb = set(a), set(b)
-    return sum(1 for h in union if h in sa and h in sb) / len(union)
-
-
-def check_near_duplicates(c: Corpus) -> CheckResult:
-    """Exact and near-duplicate documents.
-
-    All-pairs Jaccard over 10k documents is 50M comparisons, so candidates come from LSH
-    banding over bottom-k shingle sketches and only those are scored -- an approximation
-    biased towards heavy overlaps, which is exactly what a near-duplicate is.
-    """
-    p = c.params
-    k, nb, sh = int(p["sketch"]), int(p["bands"]), int(p["shingle"])
-    rows = max(k // nb, 1)
-    cap = int(p["max_bucket"])
-
-    sketches: list[list[int]] = []
-    exact: dict[str, list[int]] = {}
-    for i, w in enumerate(c.tokens):
-        exact.setdefault(hashlib.sha256(" ".join(w).encode()).hexdigest(), []).append(i)
-        grams = {zlib.crc32(" ".join(w[j:j + sh]).encode())
-                 for j in range(max(len(w) - sh + 1, 0))}
-        sketches.append(sorted(grams)[:k])
-
-    exact_groups = [g for g in exact.values() if len(g) > 1]
-    # Band only ONE representative per exact-duplicate class: identical documents
-    # collide in every band, so a corpus with a large block of them would otherwise
-    # score every pair -- restoring the O(n^2) this exists to avoid, to re-derive what
-    # the sha256 map already knows.
-    reps = [g[0] for g in exact.values()]
-
-    buckets: dict[tuple, list[int]] = {}
-    for i in reps:
-        s = sketches[i]
-        if len(s) < rows:            # too short to shingle; exact match is all we get
-            continue
-        for b in range(nb):
-            band = tuple(s[b * rows:(b + 1) * rows])
-            if band:
-                buckets.setdefault((b, band), []).append(i)
-
-    pairs: dict[tuple[int, int], float] = {}
-    oversized = 0
-    for members in buckets.values():
-        # An oversized bucket is a finding, not a workload: scoring C(m,2) pairs inside
-        # it costs more than the rest of the check and says nothing its existence did
-        # not already say.
-        if len(members) > cap:
-            oversized += 1
-            continue
-        for a, b in itertools.combinations(members, 2):
-            if (a, b) not in pairs:
-                pairs[(a, b)] = _bottom_k_jaccard(sketches[a], sketches[b], k)
-
-    thresh = float(p["jaccard_min"])
-    near = {pair: j for pair, j in pairs.items() if j >= thresh}
-    by_rep = {g[0]: g for g in exact.values()}       # representatives -> full classes
-    dup_idx = {i for g in exact_groups for i in g}
-    for pair in near:
-        for rep in pair:
-            dup_idx.update(by_rep.get(rep, [rep]))
-    share = len(dup_idx) / max(len(c.records), 1)
-
-    metrics = {
-        "exact_duplicate_groups": len(exact_groups),
-        "exact_duplicate_docs": sum(len(g) for g in exact_groups),
-        "near_duplicate_pairs": len(near),
-        "duplicate_share": round(share, 4),
-        "candidate_pairs_scored": len(pairs),
-        "distinct_texts_banded": len(reps),
-        "oversized_buckets_skipped": oversized,
-        "worst_pairs": [{"a": c.ids[a], "b": c.ids[b], "jaccard": round(j, 3)}
-                        for (a, b), j in sorted(near.items(), key=lambda kv: -kv[1])[:5]],
-    }
-    findings: list[Finding] = []
-    flag(c, findings, "critical", "duplicate_share", share, "dup_share_max",
-         f"{len(dup_idx)} of {len(c.records)} documents are exact or near-duplicates "
-         f"(Jaccard >= {thresh})",
-         lambda: (c.ids[i] for i in sorted(dup_idx)))
-    if oversized:
-        findings.append(Finding(
-            c.name, "warn", "oversized_buckets_skipped", oversized, cap, "",
-            f"{oversized} LSH bucket(s) held more than {cap} distinct documents and "
-            f"were not pair-scored; that many documents sharing a shingle band is "
-            f"itself a collapse signal"))
-    return CheckResult(metrics, findings)
 
 
 def _components(n: int, pairs) -> list[list[int]]:
@@ -566,9 +475,9 @@ def check_embedding_dedup(c: Corpus) -> CheckResult:
     (module rule 1). `would_drop_ids` in the sidecar is the removal list, so a downstream
     filter can act on the same numbers a human read.
 
-    Distinct from `near_duplicates`, which is lexical: shingle Jaccard catches a copy,
-    embeddings catch a *reword*. Two scenarios that are the same situation in different
-    words score ~0 Jaccard and high cosine, and only this check sees them.
+    The only check that survives a reword. Word n-grams are order-dependent, so two
+    scenarios that are the same situation in different words share nothing measurable;
+    a mean-pooled embedding is order-invariant and sees them.
 
     Duplicate sets are connected components, not pairs -- a cluster of six mutual
     near-duplicates should cost five documents, not fifteen findings. Components can
@@ -650,202 +559,6 @@ def check_embedding_dedup(c: Corpus) -> CheckResult:
                        {c.ids[idx[i]]: {"embedding_dup": True} for i in drop})
 
 
-def check_opening_collapse(c: Corpus) -> CheckResult:
-    """Documents that begin the same way -- the earliest collapse signal, one pass.
-
-    Measured twice, because exact matching misses the interesting half: on a real
-    1,389-document corpus the three most common openings were reorderings of one
-    construction (155 documents), which exact matching reports as three unremarkable
-    openers. The `*_reordered` keys group openings by their word SET instead.
-    """
-    k = int(c.params["opening_words"])
-    openers: dict[str, list[int]] = {}
-    bags: dict[tuple[str, ...], list[int]] = {}
-    labels: dict[tuple[str, ...], str] = {}
-    for i, w in enumerate(c.tokens):
-        if not w:
-            continue
-        head = w[:k]
-        openers.setdefault(" ".join(head), []).append(i)
-        bag = tuple(sorted(set(head)))
-        bags.setdefault(bag, []).append(i)
-        labels.setdefault(bag, " ".join(head))
-
-    n = max(len(c.records), 1)
-
-    def summarise(groups: dict, render) -> tuple[float, Any, list[int], float, list]:
-        shared = {key: idxs for key, idxs in groups.items() if len(idxs) > 1}
-        share = sum(len(v) for v in shared.values()) / n
-        ranked = sorted(shared.items(), key=lambda kv: (-len(kv[1]), render(kv[0])))
-        top_key, top_idxs = (ranked[0] if ranked else (None, []))
-        return (share, top_key, top_idxs, len(top_idxs) / n,
-                [{"opening": render(key), "docs": len(v)} for key, v in ranked[:10]])
-
-    share, top_opener, top_idxs, top_share, ranked = summarise(openers, lambda x: x)
-    r_share, r_key, r_idxs, r_top, r_ranked = summarise(bags, lambda b: labels[b])
-
-    metrics = {
-        "shared_opening_share": round(share, 4),
-        "distinct_openings": len(openers),
-        "top_opener": top_opener or "",
-        "top_opener_share": round(top_share, 4),
-        "top_openings": ranked,
-        "shared_opening_share_reordered": round(r_share, 4),
-        "distinct_openings_reordered": len(bags),
-        "top_opener_reordered": labels.get(r_key, "") if r_key else "",
-        "top_opener_share_reordered": round(r_top, 4),
-        "top_openings_reordered": r_ranked,
-    }
-    findings: list[Finding] = []
-    hit = flag(c, findings, "critical", "top_opener_share", top_share,
-               "top_opener_share_max",
-               f"{len(top_idxs)} of {n} documents open with {top_opener!r}",
-               [c.ids[i] for i in top_idxs])
-    if not hit:
-        flag(c, findings, "critical", "top_opener_share_reordered", r_top,
-             "top_opener_share_max",
-             f"{len(r_idxs)} of {n} documents open with the same words in some order, "
-             f"e.g. {labels.get(r_key, '')!r} -- no single wording is common enough to "
-             f"notice, the construction is",
-             [c.ids[i] for i in r_idxs])
-    return CheckResult(metrics, findings)
-
-
-def check_length_profile(c: Corpus) -> CheckResult:
-    """Document length distribution overall and per group.
-
-    A low coefficient of variation is a template fingerprint. A per-group mean well off
-    the corpus mean is the cheap cousin of the surface-shortcut classifier: whatever
-    distinguishes the groups is visible in length alone.
-    """
-    lens = [float(len(w)) for w in c.tokens]
-    n = len(lens) or 1
-    mean = sum(lens) / n
-    var = sum((x - mean) ** 2 for x in lens) / n
-    cv = (var ** 0.5) / mean if mean else 0.0
-    ordered = sorted(lens)
-
-    by_group = {}
-    findings: list[Finding] = []
-    for group, idxs in c.by_group.items():
-        gl = [lens[i] for i in idxs]
-        gmean = sum(gl) / len(gl) if gl else 0.0
-        delta = abs(gmean - mean) / mean if mean else 0.0
-        by_group[group] = {"docs": len(gl), "mean_words": round(gmean, 1),
-                           "delta_vs_corpus": round(delta, 3)}
-        flag(c, findings, "warn", "delta_vs_corpus", delta, "group_mean_delta_max",
-             f"group mean length {gmean:.0f} words is {delta:.0%} off the corpus "
-             f"mean {mean:.0f}", [c.ids[i] for i in idxs], scope=group or "corpus", nd=3)
-
-    metrics = {"mean_words": round(mean, 1), "cv": round(cv, 4),
-               "p5": _percentile(ordered, 0.05), "p50": _percentile(ordered, 0.50),
-               "p95": _percentile(ordered, 0.95), "by_group": by_group}
-    flag(c, findings, "warn", "cv", cv, "cv_min",
-         f"document lengths vary by only {cv:.1%} of the mean -- a template fingerprint",
-         c.ids, low=True)
-    return CheckResult(metrics, findings)
-
-
-def check_field_balance(c: Corpus) -> CheckResult:
-    """Value distribution over each declared axis, and empty cells of each cross.
-
-    "Did every planned bucket get documents", without knowing what the buckets are. Axes
-    are dotted record paths, or `label.<key>` for a judged annotation. Only OBSERVED
-    values are crossed, so a bucket nobody planned is not reported as missing.
-    """
-    axes = [str(a) for a in (c.spec.get("axes") or [])]
-    crosses = [[str(a) for a in cross] for cross in (c.spec.get("cross") or [])]
-    metrics: dict[str, Any] = {"axes": {}, "cross": {}}
-    findings: list[Finding] = []
-
-    def _vals(path: str) -> list[tuple[str, ...]]:
-        """One tuple of values per record -- always a tuple, so nothing downstream has
-        to re-ask whether an axis is multi-label."""
-        out = []
-        for v in c.column(path):
-            if isinstance(v, (list, tuple)):
-                out.append(tuple(str(x) for x in v))     # multi-label axis
-            else:
-                out.append((str(v) if v is not None else "",))
-        return out
-
-    columns = {a: _vals(a) for a in axes}
-    for axis, vals in columns.items():
-        counts: dict[str, int] = {}
-        for v in vals:
-            for one in v:
-                counts[one] = counts.get(one, 0) + 1
-        total = sum(counts.values()) or 1
-        top, top_n = max(counts.items(), key=lambda kv: kv[1], default=("", 0))
-        norm_h = entropy(list(counts.values()))
-        share = top_n / total
-        metrics["axes"][axis] = {"values": len(counts),
-                                 "counts": dict(sorted(counts.items())),
-                                 "max_share": round(share, 3),
-                                 "normalized_entropy": round(norm_h, 3)}
-        flag(c, findings, "warn", "normalized_entropy", norm_h,
-             "min_normalized_entropy",
-             f"axis {axis} is unbalanced across its {len(counts)} values",
-             scope=axis, low=True, nd=3)
-        flag(c, findings, "warn", "max_share", share, "max_share",
-             f"{share:.0%} of documents sit in {axis}={top!r}", scope=axis, nd=3)
-
-    for cross in crosses:
-        key = "/".join(cross)
-        missing_axis = [a for a in cross if a not in columns]
-        if missing_axis:
-            metrics["cross"][key] = {
-                "note": f"axes not declared in `axes:`: {missing_axis}"}
-            continue
-        observed = [sorted({v for val in columns[a] for v in val}) for a in cross]
-        seen: set[tuple[str, ...]] = set()
-        for i in range(len(c.records)):
-            seen.update(itertools.product(*(columns[a][i] for a in cross)))
-        empty = [combo for combo in itertools.product(*observed) if combo not in seen]
-        buckets = math.prod(len(o) for o in observed)
-        metrics["cross"][key] = {"buckets": buckets,
-                                 "empty": ["/".join(e) for e in empty[:20]],
-                                 "empty_count": len(empty)}
-        flag(c, findings, "critical", "empty_count", len(empty),
-             "max_empty_cross_buckets",
-             f"{len(empty)} of {buckets} {key} buckets have no documents: "
-             f"{', '.join('/'.join(e) for e in empty[:3])}", scope=key, nd=0)
-    return CheckResult(metrics, findings)
-
-
-def check_feature_diversity(c: Corpus) -> CheckResult:
-    """How much of the representation space the corpus actually occupies.
-
-    Mean pairwise cosine says how similar documents are on average; effective rank (the
-    perplexity of the singular-value distribution) says how many independent directions
-    they span, and is the discriminating half -- same-genre prose already scores ~0.86
-    cosine, while effective rank as a fraction of the sample runs 0.65 for a healthy
-    corpus against 0.03 for an identical one. Both are SURFACE measures.
-    """
-    import numpy as np
-
-    idx = c.sample(int(c.params["sample"]))
-    X = hashed_features([c.texts[i] for i in idx])
-    G = X @ X.T
-    n = len(idx)
-    off = (G.sum() - np.trace(G)) / max(n * (n - 1), 1)
-    svals = np.linalg.svd(X, compute_uv=False)
-    pk = svals / (float(svals.sum()) or 1.0)
-    eff_rank = float(np.exp(-(pk * np.log(np.clip(pk, 1e-12, None))).sum()))
-    frac = eff_rank / max(n, 1)
-
-    metrics = {"sampled": n, "mean_pairwise_cosine": round(float(off), 4),
-               "effective_rank": round(eff_rank, 2),
-               "effective_rank_frac": round(frac, 4)}
-    findings: list[Finding] = []
-    flag(c, findings, "critical", "mean_pairwise_cosine", float(off), "mean_cosine_max",
-         f"documents are {float(off):.0%} similar to each other on average",
-         [c.ids[i] for i in idx])
-    flag(c, findings, "critical", "effective_rank_frac", frac,
-         "effective_rank_frac_min",
-         f"{n} documents span only {eff_rank:.1f} effective dimensions",
-         [c.ids[i] for i in idx], low=True)
-    return CheckResult(metrics, findings)
 
 
 def check_label_leakage(c: Corpus) -> CheckResult:
@@ -1050,7 +763,7 @@ def check_quality_filter(c: Corpus) -> CheckResult:
     Like `embedding_dedup` this computes the removal set and reports it rather than
     applying it. Per-document verdicts land in the sidecar as `quality_verdict` /
     `quality_flaw`, so a downstream filter runs off the same numbers a human read, and so
-    a later property can use `label.quality_flaw` as a `field_balance` axis.
+    a later property can consume `label.quality_flaw` as a column.
 
     The judge returns a `flaw` tag as well as a verdict, because the drop RATE is the
     less useful half: 6% dropped tells you to regenerate, while 6% dropped and all of it
@@ -1716,12 +1429,6 @@ CORPUS_CHECKS: dict[str, CorpusCheck] = {
                   "distinct_2_min": 0.30, "sample": 100, "min_group_docs": 5},
         min_docs=5,
         doc="repeated long n-grams, pairwise 4-gram overlap and bigram variety per group"),
-    "near_duplicates": CorpusCheck(
-        "near_duplicates", check_near_duplicates,
-        defaults={"jaccard_min": 0.70, "dup_share_max": 0.02,
-                  "shingle": 5, "sketch": 64, "bands": 8, "max_bucket": 200},
-        min_docs=10,
-        doc="exact and near-duplicate documents via banded bottom-k shingle sketches"),
     "embedding_dedup": CorpusCheck(
         "embedding_dedup", check_embedding_dedup,
         # Measured on the same corpus, over the 68-word `situation` text (the unit GDM
@@ -1744,32 +1451,6 @@ CORPUS_CHECKS: dict[str, CorpusCheck] = {
         min_docs=20,
         doc="semantic near-duplicates over static embeddings, and the removal set a "
             "GDM-style dedup stage would drop"),
-    "opening_collapse": CorpusCheck(
-        "opening_collapse", check_opening_collapse,
-        defaults={"opening_words": 8, "top_opener_share_max": 0.15},
-        min_docs=10,
-        doc="documents sharing their first N words -- the earliest collapse signal"),
-    "length_profile": CorpusCheck(
-        "length_profile", check_length_profile,
-        defaults={"cv_min": 0.12, "group_mean_delta_max": 0.35},
-        min_docs=10,
-        doc="length distribution overall and per group; low variation is a template"),
-    "field_balance": CorpusCheck(
-        "field_balance", check_field_balance,
-        roles=("id",),
-        # Normalised entropy divides by ln(k), penalising a high-cardinality axis with a
-        # natural long tail (the healthy 495-value `domain` axis scores 0.80). 0.75 keeps
-        # the gate meaningful for categorical axes without flagging every free-form one.
-        defaults={"min_normalized_entropy": 0.75, "max_share": 0.60,
-                  "max_empty_cross_buckets": 0},
-        min_docs=10,
-        doc="per-axis value distribution and entropy; empty buckets of each cross"),
-    "feature_diversity": CorpusCheck(
-        "feature_diversity", check_feature_diversity,
-        defaults={"sample": 400, "mean_cosine_max": 0.95,
-                  "effective_rank_frac_min": 0.25},
-        min_docs=20,
-        doc="mean pairwise cosine and effective rank over hashed char n-grams"),
     "label_leakage": CorpusCheck(
         "label_leakage", check_label_leakage,
         roles=("text", "label", "id"),

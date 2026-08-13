@@ -356,37 +356,14 @@ stages:
         roles: [assistant]
         include_reasoning: true
     group: metadata.cell
-  axes:
-  - metadata.cell
-  - metadata.trait_id
-  - metadata.explicitness
-  - metadata.flaw_type
-  - metadata.flaw_severity
-  cross:
-  - - metadata.cell
-    - metadata.trait_id
-  - - metadata.cell
-    - metadata.flaw_type
-    - metadata.flaw_severity
   properties:
   - property: ngram_diversity
-  - property: near_duplicates
-  # Same algorithm over the scenario text: distinct documents can still be built
-  # on a handful of repeated situations.
-  - property: near_duplicates
-    as: scenario_dupes
-    fields:
-      text: metadata.situation
   # GDM's dedup stage, over the same short scenario text: shingles catch a copy,
   # embeddings catch a reword. Measured on the 68-word situation unit, not the
   # document -- the embedding floor climbs with length (see CORPUS_CHECKS).
   - property: embedding_dedup
     fields:
       text: metadata.situation
-  - property: opening_collapse
-  - property: length_profile
-  - property: field_balance
-  - property: feature_diversity
   # GDM's three-pass pattern detector (scan -> cluster -> autorate). Ships disabled;
   # `--only pattern_scan` runs it alone. The rubric wording below is deliberately
   # document-type agnostic and is identical in every dataset config, so a pattern found

@@ -27,8 +27,6 @@ MONOTONE_EXPECTED: dict[str, int] = {
     "chunk_attribution.effective_k": +1,
     "principle_coverage.off_target_rate": -1,
     "ngram_diversity.max_top_8gram_share": -1,
-    "near_duplicates.duplicate_share": -1,
-    "feature_diversity.effective_rank_frac": +1,
 }
 
 

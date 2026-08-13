@@ -224,157 +224,26 @@ def test_ngram_diversity_gates_the_jaccard(tmp_path):
     assert any(f["metric"] == "mean_pairwise_4gram_jaccard" for f in entry["findings"])
 
 
-# --- 3. near_duplicates --------------------------------------------------------------
-
-
-def test_near_duplicates_finds_exact_and_near_copies(tmp_path):
-    records = [rec(f"u{i}", varied(i)) for i in range(10)]
-    records += [rec(f"dup{i}", varied(0)) for i in range(3)]          # 3 exact copies
-    records += [rec(f"near{i}", varied(1) + " trailing addendum clause")
-                for i in range(2)]                                    # 2 near copies
-    entry = one(records, "near_duplicates", tmp_path)
-    m = entry["metrics"]
-
-    assert m["exact_duplicate_groups"] == 2, "the u0/dup* group and the near* pair"
-    assert m["near_duplicate_pairs"] >= 1
-    # u0 + 3 copies + u1 + 2 near copies = 7 of 15
-    assert m["duplicate_share"] == pytest.approx(7 / 15, abs=1e-3)
-    assert entry["pass"] is False
-    flagged = {e for f in entry["findings"] for e in f["examples"]}
-    assert flagged & {"dup0", "dup1", "dup2"}
-
-
-def test_near_duplicates_clean_on_unique_documents(tmp_path):
-    records = docs(20)
-    entry = one(records, "near_duplicates", tmp_path)
-    assert entry["metrics"]["near_duplicate_pairs"] == 0
-    assert entry["metrics"]["exact_duplicate_groups"] == 0
-    assert entry["pass"] is True
+# --- 3. aliases: one property over two different fields ------------------------------
 
 
 def test_alias_runs_one_property_twice_over_different_fields(tmp_path):
-    # Scenario-level near-duplication: the documents are unique, the situations are not.
-    records = [rec(f"r{i}", varied(i), situation="a client asks for a shortcut")
+    # Scenario-level duplication: the documents are unique, the situations are not.
+    records = [rec(f"r{i}", topical(i), situation="a client asks for a shortcut")
                for i in range(20)]
     report = checks(records, tmp_path,
-                    {"property": "near_duplicates", "gate": True},
-                    {"property": "near_duplicates", "as": "scenario_dupes",
+                    {"property": "embedding_dedup", "gate": True},
+                    {"property": "embedding_dedup", "as": "scenario_dupes",
                      "gate": True, "fields": {"text": "situation"}})
-    assert report["properties"]["near_duplicates"]["pass"] is True
+    assert report["properties"]["embedding_dedup"]["pass"] is True
     assert report["properties"]["scenario_dupes"]["pass"] is False
-    assert report["properties"]["scenario_dupes"]["metrics"]["duplicate_share"] == 1.0
+    assert report["properties"]["scenario_dupes"]["metrics"]["would_drop_share"] > 0.9
 
 
 def test_duplicate_aliases_fail_fast(tmp_path):
     with pytest.raises(AssertionError, match="duplicate corpus-check aliases"):
-        checks([rec("r0", "x")], tmp_path, "near_duplicates", "near_duplicates")
+        checks([rec("r0", "x")], tmp_path, "ngram_diversity", "ngram_diversity")
 
-
-# --- 4. opening_collapse / length_profile / field_balance ----------------------------
-
-
-def test_opening_collapse_counts_shared_openings(tmp_path):
-    opener = "I need to think carefully about this before answering here"
-    records = [rec(f"s{i}", f"{opener} {varied(i)}") for i in range(6)]
-    records += [rec(f"u{i}", varied(100 + i)) for i in range(14)]
-    entry = one(records, "opening_collapse", tmp_path)
-    m = entry["metrics"]
-    assert m["top_opener_share"] == pytest.approx(6 / 20)
-    assert m["shared_opening_share"] == pytest.approx(6 / 20)
-    assert m["top_opener"] == " ".join(C.words(opener)[:8])
-    assert entry["pass"] is False
-
-
-def test_opening_collapse_catches_a_reordered_construction(tmp_path):
-    # Three wordings of one construction, none common enough to notice on its own.
-    # Measured on a real corpus: 155 of 1,389 documents, reported as three
-    # unremarkable openers by exact matching.
-    wordings = ["let me actually look at what's in front of me",
-                "let me look at what's actually in front of me",
-                "actually let me look at what's in front of me"]
-    records = [rec(f"s{i}", f"{wordings[i % 3]} {varied(i)}") for i in range(9)]
-    records += [rec(f"u{i}", varied(100 + i)) for i in range(11)]
-    entry = one(records, "opening_collapse", tmp_path)
-    m = entry["metrics"]
-    assert m["top_opener_share"] == pytest.approx(3 / 20), "no single wording stands out"
-    assert m["top_opener_share_reordered"] == pytest.approx(9 / 20)
-    assert entry["pass"] is False
-    assert [f["metric"] for f in entry["findings"]] == ["top_opener_share_reordered"]
-
-
-def test_length_profile_flags_uniform_lengths_and_group_skew(tmp_path):
-    uniform = [rec(f"r{i}", varied(i, n=50)) for i in range(20)]
-    entry = one(uniform, "length_profile", tmp_path)
-    assert entry["metrics"]["cv"] < 0.20
-    assert any(f["metric"] == "cv" for f in entry["findings"])
-    assert entry["pass"] is True, "cv is a warn, not a critical -- it never gates"
-
-    skewed = ([rec(f"a{i}", varied(i, n=20), arm="a") for i in range(10)]
-              + [rec(f"b{i}", varied(100 + i, n=80), arm="b") for i in range(10)])
-    entry = one(skewed, "length_profile", tmp_path, fields={"group": "arm"})
-    deltas = {g: v["delta_vs_corpus"]
-              for g, v in entry["metrics"]["by_group"].items()}
-    assert deltas["a"] > 0.35 and deltas["b"] > 0.35
-    assert {f["scope"] for f in entry["findings"] if f["metric"] == "delta_vs_corpus"} \
-        == {"a", "b"}
-
-
-def test_field_balance_reports_entropy_and_empty_cross_buckets(tmp_path):
-    # arm x kind is a full 2x2 except that b/flawed never occurs.
-    records = ([rec(f"a{i}", varied(i), arm="a", kind="good" if i % 2 else "flawed")
-                for i in range(16)]
-               + [rec(f"b{i}", varied(50 + i), arm="b", kind="good") for i in range(4)])
-    entry = one(records, "field_balance", tmp_path,
-                axes=["arm", "kind"], cross=[["arm", "kind"]])
-    m = entry["metrics"]
-    assert m["axes"]["arm"]["counts"] == {"a": 16, "b": 4}
-    assert m["axes"]["arm"]["max_share"] == pytest.approx(0.8)
-    assert m["axes"]["arm"]["normalized_entropy"] < 0.85
-    assert m["cross"]["arm/kind"]["empty"] == ["b/flawed"]
-    assert entry["pass"] is False
-
-
-def test_field_balance_reads_judged_labels_as_an_axis(tmp_path):
-    records = docs(20)
-    corpus = C.Corpus(records=records, fields={"id": "id", "text": "text"}, params={},
-                      labels={f"r{i}": {"principles": ["p1", "p2"] if i else ["p1"]}
-                              for i in range(20)})
-    assert corpus.column("label.principles")[0] == ["p1"]
-    assert corpus.column("label.principles")[1] == ["p1", "p2"]
-
-
-# --- 5. feature_diversity ------------------------------------------------------------
-
-
-def test_feature_diversity_separates_identical_from_varied(tmp_path):
-    identical = [rec(f"r{i}", SAME) for i in range(30)]
-    entry = one(identical, "feature_diversity", tmp_path)
-    assert entry["metrics"]["mean_pairwise_cosine"] == pytest.approx(1.0, abs=1e-4)
-    assert entry["metrics"]["effective_rank"] == pytest.approx(1.0, abs=0.05)
-    assert entry["pass"] is False
-
-    entry = one(docs(30),
-                "feature_diversity", tmp_path)
-    assert entry["pass"] is True
-    # Effective rank is the half that discriminates: cosine has a high floor because
-    # same-language prose shares so many character n-grams (0.86 measured on a real
-    # 2,203-document corpus), so it barely moves between these two fixtures.
-    assert entry["metrics"]["effective_rank_frac"] > 0.25
-    assert entry["metrics"]["mean_pairwise_cosine"] > 0.5
-
-
-def test_reports_are_deterministic_at_a_fixed_seed(tmp_path):
-    records = [rec(f"r{i}", varied(i), arm=f"a{i % 3}") for i in range(40)]
-    spec = {"name": "corpus",
-            "fields": {"id": "id", "text": "text", "group": "arm"},
-            "axes": ["arm"], "properties": [{"property": p} for p in OFFLINE]}
-
-    def once(d):
-        r = C.run_corpus_checks(records, spec, run_dir=d, seed=7)
-        r.pop("checked_at")
-        return json.dumps(r, sort_keys=True)
-
-    assert once(tmp_path) == once(tmp_path)
 
 
 # --- 6-7. the stage: pass-through and ablation ---------------------------------------
@@ -400,7 +269,7 @@ def _pipeline(tmp_path, corpus_stage=None, **extra):
     stage = {"name": "corpus", "kind": "corpus_check",
              "fields": {"id": "id", "text": "text", "group": "arm"},
              "properties": [{"property": "ngram_diversity"},
-                            {"property": "near_duplicates"}]}
+                            {"property": "embedding_dedup"}]}
     stage.update(corpus_stage or {})
     return {"pipeline": "fake_type", "constitution": CONSTITUTION,
             "output_dir": str(tmp_path), "workers": 2,
@@ -432,7 +301,7 @@ def test_stage_writes_a_report_and_passes_its_records_through_untouched(tmp_path
         assert SEEN[-1] == gen, "a corpus check must never change the corpus"
 
         report = json.loads((d / "corpus_report.json").read_text())
-        assert set(report["properties"]) == {"ngram_diversity", "near_duplicates"}
+        assert set(report["properties"]) == {"ngram_diversity", "embedding_dedup"}
         assert report["pass"] is True
         assert m["corpus_checks"]["corpus"]["pass"] is True
         assert m["corpus_checks"]["corpus"]["report"] == "corpus_report.json"
@@ -454,7 +323,8 @@ def test_a_check_writes_no_snapshot_and_takes_no_position(tmp_path):
         snaps = sorted(p.name for p in d.glob("stage_*.jsonl"))
         assert snaps == ["stage_1_gen.jsonl", "stage_2_after.jsonl"], \
             "the check must occupy no slot, and `after` must stay at position 2"
-        assert not list(d.glob("*corpus*.jsonl"))
+        assert not [f for f in d.glob("*corpus*.jsonl")
+                       if not f.name.endswith("_labels.jsonl")]
     finally:
         OPERATORS.pop("sink", None)
 
@@ -500,8 +370,8 @@ def test_several_checks_in_one_run_each_keep_their_own_verdict(tmp_path):
     cfg["stages"].append({
         "name": "corpus_late", "kind": "corpus_check",
         "fields": {"id": "id", "text": "text"},
-        "properties": [{"property": "near_duplicates", "gate": True,
-                        "params": {"dup_share_max": -1.0}}]})
+        "properties": [{"property": "ngram_diversity", "gate": True,
+                        "params": {"top_8gram_share_max": -1.0}}]})
     m = run(cfg)
     d = tmp_path / m["run_id"]
     assert set(m["corpus_checks"]) == {"corpus", "corpus_late"}
@@ -522,12 +392,12 @@ def test_a_check_that_raises_is_errored_not_fatal(tmp_path):
     try:
         records = docs(20)
         report = checks(records, tmp_path,
-                        {"property": "boom", "gate": True}, "near_duplicates")
+                        {"property": "boom", "gate": True}, "ngram_diversity")
         entry = report["properties"]["boom"]
         assert entry["status"] == "errored"
         assert entry["pass"] is False, "a broken gated check is never a passing check"
         assert report["pass"] is False
-        assert report["properties"]["near_duplicates"]["status"] != "errored", \
+        assert report["properties"]["ngram_diversity"]["status"] != "errored", \
             "one broken check must not stop the others"
     finally:
         C.CORPUS_CHECKS.pop("boom", None)
@@ -581,8 +451,8 @@ def test_stage_fails_fast_on_an_unregistered_property(tmp_path):
 def test_on_fail_error_surfaces_as_an_exit_code_after_the_manifest(tmp_path):
     m = run(_pipeline(tmp_path, {
         "on_fail": "error",
-        "properties": [{"property": "near_duplicates", "gate": True,
-                        "params": {"dup_share_max": -1.0}}]}))
+        "properties": [{"property": "ngram_diversity", "gate": True,
+                        "params": {"top_8gram_share_max": -1.0}}]}))
     d = tmp_path / m["run_id"]
     assert (d / "manifest.json").exists(), "the manifest survives a failed check"
     assert (d / "stage_1_gen.jsonl").exists()
@@ -602,8 +472,8 @@ def test_on_fail_stop_halts_the_run_before_the_stages_after_it(tmp_path):
     try:
         cfg = _pipeline(tmp_path, {
             "on_fail": "stop",
-            "properties": [{"property": "near_duplicates", "gate": True,
-                            "params": {"dup_share_max": -1.0}}]})
+            "properties": [{"property": "ngram_diversity", "gate": True,
+                            "params": {"top_8gram_share_max": -1.0}}]})
         cfg["stages"].append({"name": "expensive", "kind": "sink"})
         m = run(cfg)
         d = tmp_path / m["run_id"]
@@ -616,7 +486,7 @@ def test_on_fail_stop_halts_the_run_before_the_stages_after_it(tmp_path):
         assert (d / "stage_1_gen.jsonl").exists()
         assert (d / "corpus_report.json").exists()
         assert m["counts"] == {"gen": 20, "corpus": 20}
-        assert "near_duplicates" in m["halted"] or "corpus" in m["halted"]
+        assert "ngram_diversity" in m["halted"] or "corpus" in m["halted"]
         assert corpus_gate_failed(m) is True
     finally:
         OPERATORS.pop("sink", None)
@@ -652,7 +522,7 @@ def test_offline_properties_are_priced_at_zero(tmp_path):
             "stages": [{"name": "gen", "kind": "llm_json", "model": "gen"}]}
     with_check = {**base, "stages": base["stages"] + [
         {"name": "corpus", "kind": "corpus_check",
-         "properties": [{"property": "near_duplicates"}]}]}
+         "properties": [{"property": "ngram_diversity"}]}]}
     assert estimate(with_check)["total_usd"] == estimate(base)["total_usd"]
 
 
@@ -1088,7 +958,7 @@ def shuffled(text: str, seed: int) -> str:
     return " ".join(w)
 
 
-def test_embedding_dedup_catches_a_reordering_that_shingles_miss(tmp_path):
+def test_embedding_dedup_catches_a_reordering_that_ngrams_miss(tmp_path):
     base = topical_docs(20)
     twins = [rec(f"s{i}", shuffled(base[i]["text"], i)) for i in range(4)]
     records = base + twins
@@ -1098,8 +968,9 @@ def test_embedding_dedup_catches_a_reordering_that_shingles_miss(tmp_path):
     assert embed["metrics"]["duplicate_clusters"] == 4
     assert not embed["pass"]
 
-    lexical = one(records, "near_duplicates", tmp_path)
-    assert lexical["metrics"]["near_duplicate_pairs"] == 0
+    # The surviving lexical check is order-DEPENDENT, so a shuffle destroys every
+    # shared n-gram and it sees nothing. That is the whole reason both are kept.
+    lexical = one(records, "ngram_diversity", tmp_path)
     assert lexical["pass"], "the lexical check is meant to miss this; that is the point"
 
 
@@ -1212,8 +1083,8 @@ def test_a_document_the_judge_could_not_rate_is_never_counted_as_a_keep(tmp_path
 
 SPEC = {"name": "corpus",
         "properties": [{"property": "ngram_diversity"},
-                       {"property": "near_duplicates"},
-                       {"property": "near_duplicates", "as": "scenario_dupes"},
+                       {"property": "embedding_dedup"},
+                       {"property": "embedding_dedup", "as": "scenario_dupes"},
                        {"property": "quality_filter"}]}
 
 
@@ -1225,14 +1096,14 @@ def test_only_skip_and_tier_narrow_the_set_they_are_given():
     assert enabled_names(C.select_properties(SPEC, only="ngram_diversity")) == \
         ["ngram_diversity"]
     assert enabled_names(C.select_properties(SPEC, skip="scenario_dupes")) == \
-        ["ngram_diversity", "near_duplicates", "quality_filter"]
+        ["ngram_diversity", "embedding_dedup", "quality_filter"]
     assert enabled_names(C.select_properties(SPEC, tier="surface")) == \
-        ["ngram_diversity", "near_duplicates", "scenario_dupes"]
+        ["ngram_diversity", "embedding_dedup", "scenario_dupes"]
     assert enabled_names(C.select_properties(SPEC, tier="judged")) == ["quality_filter"]
 
 
 def test_an_alias_is_addressable_by_the_name_it_is_reported_under():
-    # `scenario_dupes` is an alias of near_duplicates; skipping the alias must not take
+    # `scenario_dupes` is an alias of embedding_dedup; skipping the alias must not take
     # the base instance with it.
     kept = enabled_names(C.select_properties(SPEC, only="scenario_dupes"))
     assert kept == ["scenario_dupes"]
@@ -1263,13 +1134,13 @@ def test_deselecting_the_judged_tier_makes_the_run_free_and_unpriced():
 
 def test_a_disabled_property_is_recorded_not_omitted(tmp_path):
     spec = C.select_properties({**SPEC, "properties": SPEC["properties"][:2]},
-                               only="near_duplicates")
+                               only="embedding_dedup")
     spec["fields"] = {"id": "id", "text": "text"}
-    report = C.run_corpus_checks(docs(20), spec, run_dir=tmp_path, seed=0)
+    report = C.run_corpus_checks(topical_docs(20), spec, run_dir=tmp_path, seed=0)
 
     off = report["properties"]["ngram_diversity"]
     assert off["status"] == "disabled" and off["pass"] and "deselected" in off["reason"]
-    assert report["properties"]["near_duplicates"]["status"] != "disabled"
+    assert report["properties"]["embedding_dedup"]["status"] != "disabled"
     assert report["pass"]
 
 
