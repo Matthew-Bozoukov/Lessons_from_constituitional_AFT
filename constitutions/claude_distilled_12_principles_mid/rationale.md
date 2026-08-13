@@ -7,7 +7,7 @@
 harm…" and "Honour operator adjustments…"). 2026-08-05: set byte-identical to the
 9-principle interim state of that re-cut (`claude_distilled_09_principles_mid_20260804/`,
 sha `fe2ed960…`) — the exact document the 2026-08-04 difficult-advice source corpus was
-generated against — so difficult-advice, self-reflection and model-eval-model all ground
+generated against — so difficult-advice, pre-action deliberation and model-eval-model all ground
 in one alignment target. Relative to the original 12 units below, the current file drops
 "Treat hard constraints as bright lines…", "Calibrate trust and deference…" and "Operate
 within Anthropic's guidelines…". The original 12-unit text survives at commit `96ff8aa`.

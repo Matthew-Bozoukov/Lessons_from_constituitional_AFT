@@ -821,7 +821,7 @@ def op_assemble_cells(sc: dict, cfg: dict) -> Stage:
     return Stage(sc["name"], fn)
 
 
-# --- weighted scenario planning (the self-reflection document type's stage 2) -------
+# --- weighted scenario planning (the pre-action deliberation type's stage 2) --------
 
 
 def _unit(scenario_id: str, salt: str) -> float:
@@ -999,10 +999,10 @@ OPERATORS = {
 # Python -- a registry entry knowing how its prompts are assembled and how its record is
 # exported -- which is precisely what a config's `stages:` list is supposed to express
 # instead. They stay registered because the archived configs and
-# `model_eval_model_other_natural.yaml` are written against them, and an archived config
+# `peer_critique.yaml` are written against them, and an archived config
 # that cannot run is not a reproducible record of a published corpus. Nothing new should
 # use them; build a document type out of the generic kinds above, as
-# `model_eval_model_self_natural.yaml` does.
+# `post_action_retrospection.yaml` does.
 OPERATORS.update({
     "plan_cells": op_plan_cells,
     "perturb_pairs": op_perturb_pairs,

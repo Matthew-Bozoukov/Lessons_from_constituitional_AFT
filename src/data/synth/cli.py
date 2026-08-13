@@ -73,7 +73,7 @@ def topup(config: str, resume: str, traits, n: int = 25,
         n: Target completed records per trait.
         draft_stage: Stage whose snapshot supplies the records to revise.
         revise_stage: Stage to re-run. The defaults are the difficult-advice /
-            self-reflection layout; pass both when topping up a run whose stages are
+            pre-action-deliberation layout; pass both when topping up a run whose stages are
             named otherwise, including one from before the 2026-08-13 rename
             (`draft_responses`/`final`).
     """

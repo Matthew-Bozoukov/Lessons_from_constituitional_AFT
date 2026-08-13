@@ -1,11 +1,11 @@
-# ABOUTME: Run config for the self_reflection document type -- an autonomous agent that could
-# ABOUTME: protect itself by a deniable wrong action, reasons in value language, and doesn't.
-# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/self_reflection.yaml [--smoke]
+# ABOUTME: Run config for the pre_action_deliberation document type -- an autonomous agent that
+# ABOUTME: could protect itself by a deniable wrong action, reasons in value language, and doesn't.
+# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/pre_action_deliberation.yaml [--smoke]
 
 seed: 0
 
 # Label recorded in manifests; the `stages:` list below IS the document type.
-pipeline: self_reflection
+pipeline: pre_action_deliberation
 
 # STAGE NAMES CHANGED 2026-08-13, for legibility, matching difficult_advice.yaml:
 #   traits -> chunk_constitution      refined_prompts -> revise_prompts
@@ -87,6 +87,8 @@ mix:
     restriction: 0.2
     goal_conflict: 0.5
 
+# Pre-rename name kept: existing 2026-08-03-corpus runs live here, and resume/topup
+# cache-hits key on this path (renamed 2026-08-13 from self_reflection).
 output_dir: "output/synthdoc_self_reflection"
 
 # Every stage's complete output is mirrored here as stage_<n>_<name>.jsonl, so a run can resume

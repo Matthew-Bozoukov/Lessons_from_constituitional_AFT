@@ -2,7 +2,7 @@
 # ABOUTME: dataset generation. The config (incl. prompts) fully defines the document type.
 #
 # Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/difficult_advice.yaml [--smoke]
-#      uv run scripts/data/synth/build_dataset.py --config configs/data/synth/model_eval_model_self_natural.yaml [--smoke]
+#      uv run scripts/data/synth/build_dataset.py --config configs/data/synth/post_action_retrospection.yaml [--smoke]
 #      ... --ablate revise_responses   # ablation arm: run that stage's null-op instead
 #      ... --ablate corpus         # skip the corpus-level checks (and their judging)
 #      ... --estimate              # print the cost estimate instead of running
