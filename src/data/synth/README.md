@@ -45,9 +45,6 @@ CHECKING THE RESULT
                               config. Its template-collapse and surface-shortcut halves
                               are thin adapters over check_corpus.py so the two cannot
                               drift
-  compare_runs.py             line several finished runs up as ARMS of one experiment
-                              and test whether an expected trend holds; computes nothing
-                              new, reads each run's corpus report
 
 INPUTS AND SHARED PIECES
   constitution.py             parse the constitution, then chunk + group it into the
@@ -319,7 +316,6 @@ uv run synth check --config <cfg> --run_dir <dir> [--stage corpus]  # re-check, 
 uv run synth check ... --stage corpus --tier surface                # only the free ones
 uv run synth check ... --stage corpus --only embedding_dedup        # or --skip <names>
 uv run scripts/data/synth/build_dataset.py --config <cfg> --ablate corpus  # skip it
-uv run synth compare --reports <dir1>,<dir2>,<dir3> --key n_chunks --out output/report/x.md
 ```
 
 **Full reference: [`docs/corpus_checks.md`](../../../docs/corpus_checks.md)** — the five
