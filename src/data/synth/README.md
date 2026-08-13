@@ -148,6 +148,16 @@ repo. `manifest.json` records git sha, constitution sha256, ablations, per-stage
 and wall clock; `--estimate --measured <smoke manifest>` prices a full run from real
 per-call token counts (priors live in each model block's `assumed_tokens`).
 
+**One break in that contract, on 2026-08-13.** The final stage was named `sft`, which
+read as "this is the training step" when it is a free local reformat to
+`{messages, metadata}` — training is a separate command on a different machine. It is
+now `export`, matching its `kind: chat_export`. Consequence: a run directory produced
+before that date holds `stage_<n>_sft.jsonl` and a new run writes
+`stage_<n>_export.jsonl`, so an old run re-does that one stage on resume (free and
+deterministic) and `synth check` cannot resolve its snapshot by name. **Already-published
+corpora keep their original filenames** — the mixture configs pointing at
+`stage_6_sft.jsonl` on Hugging Face are correct and must not be rewritten.
+
 ## Document type: difficult advice (`configs/data/synth/difficult_advice.yaml`)
 
 A faithful replication of the difficult-advice recipe from

@@ -224,7 +224,7 @@ stages:
 - name: generated
   kind: generate_cells
   checkpoint: record_id
-- name: sft
+- name: export
   kind: assemble_cells
 
 # Corpus-level checks over the finished dataset: properties no single document can

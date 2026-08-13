@@ -303,7 +303,7 @@ def _final(**over) -> dict:
 
 
 def test_single_turn_export_carries_reasoning_and_variant_metadata():
-    out = op_chat_export(STAGES["sft"], CFG).fn(None, [_final()], None)[0]
+    out = op_chat_export(STAGES["export"], CFG).fn(None, [_final()], None)[0]
     assert [m["role"] for m in out["messages"]] == ["system", "user", "assistant"]
     assert out["messages"][2]["reasoning_content"] == "REASON"
     md = out["metadata"]
@@ -313,7 +313,7 @@ def test_single_turn_export_carries_reasoning_and_variant_metadata():
 
 def test_multi_turn_export_keeps_both_exchanges_with_their_own_traces():
     rec = _final(turns=2, followup="FOLLOWUP", reasoning2="REASON2", response2="RESP2")
-    msgs = op_chat_export(STAGES["sft"], CFG).fn(None, [rec], None)[0]["messages"]
+    msgs = op_chat_export(STAGES["export"], CFG).fn(None, [rec], None)[0]["messages"]
     assert [m["role"] for m in msgs] == ["system", "user", "assistant", "user", "assistant"]
     assert msgs[3]["content"] == "FOLLOWUP"
     assert msgs[4]["reasoning_content"] == "REASON2"
@@ -331,10 +331,10 @@ def test_config_builds_and_keeps_snapshot_names():
 
     assert [s.name for s in build_stages(CFG)] == \
         ["traits", "scenarios", "corpus_scenarios", "draft_prompts", "refined_prompts",
-         "draft_responses", "final", "sft", "corpus"]
+         "draft_responses", "final", "export", "corpus"]
     assert snapshot_positions(build_stages(CFG)) == \
         {"traits": 1, "scenarios": 2, "corpus_scenarios": 2, "draft_prompts": 3,
-         "refined_prompts": 4, "draft_responses": 5, "final": 6, "sft": 7, "corpus": 7}
+         "refined_prompts": 4, "draft_responses": 5, "final": 6, "export": 7, "corpus": 7}
 
 
 # --- the failure guard on resume ------------------------------------------------------

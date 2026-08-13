@@ -847,7 +847,7 @@ stages:
       {multi_extra}{agentic_extra}
       Return your answer in exactly this form, with no other text:
       {shape}
-- name: sft
+- name: export
   kind: chat_export
   messages:
   - role: system

@@ -340,7 +340,7 @@ stages:
       <changes>
       1-2 sentences on what you strengthened
       </changes>
-- name: sft
+- name: export
   kind: assemble_cells
 
 # Corpus-level checks over the finished dataset: properties no single document can
