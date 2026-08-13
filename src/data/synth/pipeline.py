@@ -276,6 +276,31 @@ def n_examples(cfg: dict) -> int:
     return n_units(cfg) * int(cfg["scenarios_per_trait"])
 
 
+def _scoped_docs(sc: dict, cfg: dict, n_docs: int) -> int:
+    """How many records a per-record stage actually calls for, honouring its `when:`.
+
+    A stage scoped to some cells must not be priced as if it ran over the whole corpus
+    -- the first-turn and follow-up stages of the natural-turn configs each cover a
+    subset, and the difference is tens of dollars.
+    """
+    from .cells import CELLS
+
+    spec = sc.get("when")
+    if not spec:
+        return n_docs
+    assert "cells" in cfg, (
+        f"stage {sc['name']!r}: `when:` is only priceable for cell-based configs")
+    field, wanted = spec["field"], [str(v) for v in spec["in"]]
+    getters = {"cell": lambda c: c,
+               "response_kind": lambda c: CELLS[c].response_kind,
+               "attribution": lambda c: CELLS[c].attribution}
+    assert field in getters, (
+        f"stage {sc['name']!r}: cannot price `when.field: {field}` -- "
+        f"expected one of {sorted(getters)}")
+    return sum(n for c, n in cfg["cells"].items()
+               if int(n) > 0 and str(getters[field](c)) in wanted)
+
+
 def _calls(cfg: dict) -> dict[str, int]:
     """Exact API-call counts per model key, derived from the stage kinds, ablation-aware."""
     from .model_eval_model_cells import CELLS
@@ -296,7 +321,7 @@ def _calls(cfg: dict) -> dict[str, int]:
             units = units_from_config(cfg)[0]
             n = len(plan_weighted_batches([u.as_trait() for u in units], cfg))
         elif kind in ("llm_json", "llm_tagged"):
-            n = n_docs
+            n = _scoped_docs(sc, cfg, n_docs)
         elif kind == "perturb_pairs":
             enabled = {c: int(v) for c, v in cfg["cells"].items() if int(v) > 0}
             unknown = sorted(set(enabled) - set(CELLS))

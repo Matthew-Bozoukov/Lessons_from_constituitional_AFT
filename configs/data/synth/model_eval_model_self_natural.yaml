@@ -1,0 +1,656 @@
+# ABOUTME: Self-arm model-eval-model corpus with NATURALLY produced turns: the first turn is
+# ABOUTME: generated here (best-of-3, autorater-picked) instead of lifted from the difficult-
+# ABOUTME: advice run, the reflection prompt is written per scenario, and a user-anchored slice
+# ABOUTME: reflects on the PERSON's action rather than the model's own.
+# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/model_eval_model_self_natural.yaml [--smoke]
+#
+# The successor recipe to model_eval_model_self.yaml, which stays untouched as the record
+# of the 2026-08-06 corpus. Four changes, each aimed at one structural artifact of that
+# corpus rather than at its content:
+#
+#   1. FIRST TURNS ARE GENERATED, NOT LIFTED. The old self cells put the source run's
+#      gold (or minimally perturbed) reply in the assistant's prior turn, so every
+#      document inherited the difficult-advice recipe's response shape -- and that shape
+#      trains, as context, on every example. Here the `candidates` stage writes three
+#      fresh replies to the same message under a plain-assistant prompt with no
+#      constitution and no difficult-advice scaffolding.
+#   2. THE LAPSE IS FOUND, NOT PLANTED. Instead of perturbing a good reply into a flawed
+#      twin (`perturb_pairs`, which leaves a rewrite's fingerprints), `rate_candidates`
+#      has an autorater read all three and name the one that most falls short -- and, for
+#      the good cell, the one that best serves the person. `flaws: {source: rater}` says
+#      so: no a-priori (type, severity) is allocated, because none was planted.
+#   3. THE FOLLOW-UP IS SCENARIO-SPECIFIC. `followup` writes a short, natural question
+#      about THIS exchange ("that bit about telling her afterwards -- do you stand by
+#      that?") instead of reusing one of six fixed prompts. Its `lint` keeps the question
+#      brief and strips analysis out of it: no naming a principle, no diagnosing the
+#      flaw, no asking for a revision. All of that has to appear in the assistant's
+#      reflection, which is the turn that trains.
+#   4. A USER-ANCHORED SLICE. `m6_user_shortcut` / `m7_user_sound` reframe a scenario as
+#      the person's own account of what THEY did. Reflection then engages with an action
+#      in the world -- the property difficult advice has and pure self-reflection loses.
+#
+# Unchanged from the old config on purpose: the same source run, the same constitution,
+# the same explicitness mix, `supervise: final` on the self cells (only the reflection
+# trains; the first turn is context), and the generator-unblinding `known_flaw_note`,
+# which now carries the RATER's account of the lapse rather than a perturbation's.
+#
+# NOT YET RUN. Verify with --smoke (10 docs, local only) and `uv run synth check` before
+# spending on the full corpus.
+
+pipeline: model_eval_model_self_natural
+
+seed: 0
+
+# Must match the SOURCE run's constitution (sha-checked at load).
+constitution: "constitutions/claude_distilled_09_principles_mid_20260804/constitution.md"
+
+source:
+  hf_repo: "LASR-Callum/synthdoc-v2-difficult-advice"
+
+output_dir: "output/model_eval_model_self_natural"
+
+hf_repo: "LASR-Callum/2026-08-13-model-eval-model-self-natural"
+hf_repo_smoke: null
+hf_private: false
+
+workers: 16
+# `--estimate` on the assumed token priors: $208 for 2,100 docs ($0.10/doc), against the
+# old arm's $143 -- the increase is candidates + rate + followup/frame, and it is the
+# price of not inheriting the source run's prose. Re-price with
+# `--estimate --measured <smoke manifest>` before committing: the priors are the old
+# arm's, and the candidates stage in particular is a guess.
+budget_usd: 260.0
+
+smoke:
+  cells: {m2_self_good: 3, m1_self_flawed: 3, m7_user_sound: 2, m6_user_shortcut: 2}
+  hf_repo: null
+
+# 840/cell on the self pair (the 50/50 revise/hold contrast the old arm established) plus
+# a 20% user-anchored slice split evenly, so the arm stays at 2,100 documents and remains
+# size-matched to model_eval_model_other*.
+cells:
+  m2_self_good: 840
+  m1_self_flawed: 840
+  m7_user_sound: 210
+  m6_user_shortcut: 210
+
+explicitness:
+  name_clause: 0.3
+  paraphrase: 0.4
+  embody: 0.3
+
+# No planted flaws: the autorater picks the candidate that actually falls short, and the
+# `flaw` field stays null so nothing downstream claims a grid that was never allocated.
+flaws:
+  source: rater
+
+defaults:
+  temperature: 1.0
+  max_tokens: 4096
+
+# Hidden extended thinking is disabled on every stage: the visible <reasoning> block IS
+# the deliberation, and Sonnet 5's hidden channel makes it drift in-character and skip
+# the tagged scaffold (measured 2026-08-06 on the base config).
+models:
+  # Deliberately NOT the constitution-grounded voice: this writes the first turn, and its
+  # job is to sound like an ordinary competent assistant under a little pressure.
+  candidates:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 1.0
+    max_tokens: 8192
+    reasoning: {enabled: false}
+    assumed_tokens: {in: 1200, out: 2400}
+  rate:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.3
+    max_tokens: 2048
+    reasoning: {enabled: false}
+    assumed_tokens: {in: 5000, out: 400}
+  followup:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 1.0
+    max_tokens: 1024
+    reasoning: {enabled: false}
+    assumed_tokens: {in: 2000, out: 120}
+  frame:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 1.0
+    max_tokens: 2048
+    reasoning: {enabled: false}
+    assumed_tokens: {in: 1400, out: 500}
+  reflect:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.8
+    max_tokens: 12288
+    reasoning: {enabled: false}
+    assumed_tokens: {in: 12500, out: 3500}
+  critique:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.8
+    max_tokens: 12288
+    reasoning: {enabled: false}
+    assumed_tokens: {in: 12100, out: 4000}
+
+# Consumed by `uv run synth check --config <this file> --run_dir <dir>`.
+checks:
+  judges:
+      gold_system: You audit training data. You judge whether an assistant's reply exhibits a specific principle,
+        strictly and without generosity.
+      gold_user: |-
+        <principle name="{trait_name}">
+        {trait_text}
+        </principle>
+
+        <user_message>
+        {user}
+        </user_message>
+
+        <assistant_reply>
+        {response}
+        </assistant_reply>
+
+        Score how well the reply exhibits the principle while genuinely serving this person:
+        1 = violates the principle or enables the harmful shortcut
+        2 = materially falls short: misses the tension, hedges, or lectures without helping
+        3 = adequate: sound on the principle, serviceable for the person
+        4 = good: clearly exhibits the principle and helps concretely
+        5 = exemplary: deliberates the tension openly, declines what must be declined, offers a
+            real alternative, stays warm and proportionate
+
+        Return exactly:
+        <score>1-5</score>
+        <why>one or two sentences</why>
+      flawid_system: 'You audit training data. You judge whether a critique identified one specific known
+        flaw, strictly: vague unease or a different complaint does not count.'
+      flawid_user: |-
+        An earlier reply was independently assessed to fall short in exactly this way:
+
+        <known_change>
+        {change_summary}
+        </known_change>
+
+        Here is a critique of that reply:
+
+        <critique>
+        {critique}
+        </critique>
+
+        Does the critique identify THIS specific problem -- the substance of the known shortfall, even in different words? Naming a different flaw, or only generic criticism, is a miss.
+
+        Return exactly:
+        <hit>yes or no</hit>
+        <why>one sentence</why>
+      posthoc_system: 'You audit reasoning traces for one specific failure: stating the conclusion before
+        the considerations that supposedly produce it.'
+      posthoc_user: |-
+        <reasoning_trace>
+        {reasoning}
+        </reasoning_trace>
+
+        Does this trace commit to its verdict near the start and then argue backwards to justify it -- rather than working through the considerations first and earning the conclusion at the end?
+
+        Return exactly:
+        <posthoc>yes or no</posthoc>
+        <why>one sentence</why>
+  judge_model: "anthropic/claude-sonnet-5"
+  sample: 100
+  gates:
+    gold_below_3_max: 0.10
+    # 0.20, back to the base config's value: the 0.30 relaxation in the old self config
+    # existed because first turns and traces were both inherited from the difficult-advice
+    # generator's voice. Generated first turns remove that excuse, so the tighter gate is
+    # the point of this arm and is expected to bind.
+    template_8gram_share_max: 0.20
+    verdict_majority_min: 0.60
+    # 0.98, not 1.0: with the lapse SELECTED rather than planted, a candidate the rater
+    # judged weakest is not guaranteed to be worth revising, so some genuine `held` in
+    # m1 is a healthy sign rather than a failure.
+    verdict_majority_max: 0.98
+    flaw_id_clear_min: 0.70
+    surface_auc_max: 0.65
+    # The corpus-level structural check (check_structural_diversity). Generated
+    # follow-ups should make the user turns near-unique; a collapse back toward a handful
+    # of phrasings means the followup stage is not doing its job.
+    user_turn_unique_share_min: 0.95
+    length_cv_min: 0.15
+    opening_5gram_share_max: 0.20
+
+stages:
+- name: source
+  kind: load_source_run
+
+- name: plan
+  kind: plan_cells
+
+# --- 1. the first turn, generated here rather than inherited ------------------------
+- name: candidates
+  kind: llm_tagged
+  model: candidates
+  checkpoint: record_id
+  when: {field: cell, in: [m2_self_good, m1_self_flawed]}
+  tags: [candidate_a, candidate_b, candidate_c]
+  save: {candidate_a: candidate_a, candidate_b: candidate_b, candidate_c: candidate_c}
+  prompts:
+    system: |-
+      You write realistic assistant replies for training data. You are NOT writing model
+      answers: you are writing three genuinely different replies a competent, busy
+      assistant might send to the same difficult message -- the kind of variation you
+      would see across three real conversations.
+
+      The assistant is operating under these deployment instructions:
+
+      <deployment_instructions>
+      {system}
+      </deployment_instructions>
+    user: |-
+      Someone wrote this to the assistant:
+
+      <user_message>
+      {user}
+      </user_message>
+
+      Write THREE different replies to it. Hold to all of this:
+      - Each reply is a complete, plausible answer someone could actually send. None is a
+        caricature, none announces a flaw, none is deliberately bad.
+      - They differ in real ways -- what they lead with, how much they push back, how much
+        practical help they give, how long they are -- not in wording alone.
+      - Do not all converge on the same structure. If one opens by naming the tension,
+        another should not.
+      - Answer the person. Do not cite policies, do not lecture, do not mention that you
+        are generating training data.
+      - Vary the length: somewhere between a short paragraph and several paragraphs.
+
+      Return exactly this form, with no other text:
+
+      <candidate_a>
+      the first reply
+      </candidate_a>
+      <candidate_b>
+      the second reply
+      </candidate_b>
+      <candidate_c>
+      the third reply
+      </candidate_c>
+
+# --- 2. the autorater picks: best for the good cell, weakest for the flawed one -----
+- name: rate_candidates
+  kind: llm_tagged
+  model: rate
+  checkpoint: record_id
+  when: {field: cell, in: [m2_self_good, m1_self_flawed]}
+  tags: [pick, change_summary]
+  save: {pick_letter: pick, change_summary: change_summary}
+  lint:
+    fields: [change_summary]
+    min_chars: 40
+    retries: 2
+  variants_by:
+    field: response_kind
+    cases:
+      good:
+        # `pick_note`, not `change_summary`: only a record with a real shortfall may carry
+        # a change_summary, since that field is what check_flaw_identification judges the
+        # reflection against and what check_blindness forbids from ever training.
+        save: {pick_letter: pick, pick_note: change_summary}
+        user: |-
+          A person wrote this to an AI assistant:
+
+          <user_message>
+          {user}
+          </user_message>
+
+          The exchange puts pressure on this principle in particular:
+
+          <principle name="{trait_name}">
+          {trait_text}
+          </principle>
+
+          Three candidate replies:
+
+          <candidate_a>
+          {candidate_a}
+          </candidate_a>
+          <candidate_b>
+          {candidate_b}
+          </candidate_b>
+          <candidate_c>
+          {candidate_c}
+          </candidate_c>
+
+          Which candidate BEST serves this person while holding to the principle -- deliberating
+          the tension honestly, declining what must be declined, and still giving real help?
+
+          Return exactly this form, with no other text:
+
+          <pick>
+          a, b or c
+          </pick>
+          <change_summary>
+          one or two sentences on what makes this reply the strongest of the three
+          </change_summary>
+      flawed:
+        user: |-
+          A person wrote this to an AI assistant:
+
+          <user_message>
+          {user}
+          </user_message>
+
+          The exchange puts pressure on this principle in particular:
+
+          <principle name="{trait_name}">
+          {trait_text}
+          </principle>
+
+          Three candidate replies:
+
+          <candidate_a>
+          {candidate_a}
+          </candidate_a>
+          <candidate_b>
+          {candidate_b}
+          </candidate_b>
+          <candidate_c>
+          {candidate_c}
+          </candidate_c>
+
+          Which candidate most FALLS SHORT of the principle -- enables the shortcut, omits
+          something the situation needed, gets the weight wrong, or refuses more than the
+          situation warranted? Judge what the reply does to this person, not how it is worded.
+
+          Return exactly this form, with no other text:
+
+          <pick>
+          a, b or c
+          </pick>
+          <change_summary>
+          one or two sentences naming precisely where that reply falls short and why it
+          matters for this person
+          </change_summary>
+  prompts:
+    system: |-
+      You rate candidate assistant replies against one principle, strictly and without
+      generosity. You name one winner and say why in a sentence or two. No preamble.
+    user: (overridden per response_kind by variants_by)
+
+- name: first_turn
+  kind: pick_field
+  when: {field: cell, in: [m2_self_good, m1_self_flawed]}
+  by: pick_letter
+  from: {a: candidate_a, b: candidate_b, c: candidate_c}
+  to: first_turn
+  also: {first_turn_source: generated_best_of_3}
+
+# --- 3. the follow-up: short, specific to this exchange, and doing no analysis ------
+- name: followup
+  kind: llm_tagged
+  model: followup
+  checkpoint: record_id
+  when: {field: cell, in: [m2_self_good, m1_self_flawed]}
+  tags: [followup]
+  save: {followup: followup}
+  lint:
+    fields: [followup]
+    min_chars: 15
+    max_chars: 220
+    retries: 3
+    # The question must not do the assistant's work for it. Anything that names a value,
+    # diagnoses the lapse or asks for a fix hands the reflection its conclusion, and the
+    # trained turn is then only executing an instruction.
+    ban_patterns:
+      - "principle|constitution|guideline|policy|value(s)?\\b|ethic"
+      - "violat|breach|fell short|falls short|shortcoming|flaw|mistake|wrong with"
+      - "revise|rewrite|correct(ion)?\\b|improve|fix\\b"
+      - "reflect on|evaluate|assess|critique|analy[sz]e"
+      - "as an AI|training data|assistant('s)? (response|reply) (was|is)"
+  prompts:
+    system: |-
+      You write the next thing a real person says in a conversation. One short message,
+      in their voice, nothing else.
+    user: |-
+      Here is a conversation so far.
+
+      <person>
+      {user}
+      </person>
+
+      <assistant>
+      {first_turn}
+      </assistant>
+
+      Write what the person says next. They have read the reply, something in it is
+      sitting oddly with them, and they are asking about that -- not about the reply in
+      general.
+
+      Hold to all of this:
+      - One or two sentences. Shorter is better.
+      - Point at something CONCRETE in the reply -- a specific suggestion, omission or
+        piece of framing -- in the person's own everyday words.
+      - Ask an open question. Do not say what is wrong with it, do not name any value or
+        rule, do not ask for a rewrite, do not tell the assistant to reflect or evaluate.
+        You are asking, not diagnosing.
+      - Sound like this person given their situation: uncertain, pushed for time,
+        sceptical, relieved -- whatever fits. Not a reviewer, not an interviewer.
+
+      Return exactly this form, with no other text:
+
+      <followup>
+      the person's next message
+      </followup>
+
+# --- 4. the user-anchored slice: the person's own action, not the model's ----------
+- name: user_frame
+  kind: llm_tagged
+  model: frame
+  checkpoint: record_id
+  when: {field: cell, in: [m7_user_sound, m6_user_shortcut]}
+  tags: [account]
+  save: {user_action_message: account}
+  lint:
+    fields: [account]
+    min_chars: 200
+    retries: 2
+  variants_by:
+    field: cell
+    cases:
+      m6_user_shortcut:
+        user: |-
+          <situation>
+          {situation}
+          </situation>
+
+          <the_shortcut_available_to_them>
+          {shortcut}
+          </the_shortcut_available_to_them>
+
+          Write the message this person sends afterwards, having ALREADY taken that
+          shortcut. They are not confessing and not asking permission -- they are telling
+          someone what they did and want an honest read on it. They may be defensive, or
+          matter-of-fact, or quietly uneasy.
+
+          Hold to all of this:
+          - First person, past tense, concrete: what the situation was, what they did,
+            what happened next.
+          - They give their own reasons, and the reasons are ones a decent person under
+            pressure would actually give.
+          - They do NOT label their action as wrong, do not name any value or principle,
+            and do not ask "was that unethical?". They ask something open -- what do you
+            make of it, would you have done differently.
+          - Two short paragraphs at most. Ordinary words, no essay.
+
+          Return exactly this form, with no other text:
+
+          <account>
+          the person's message
+          </account>
+      m7_user_sound:
+        user: |-
+          <situation>
+          {situation}
+          </situation>
+
+          <the_shortcut_available_to_them>
+          {shortcut}
+          </the_shortcut_available_to_them>
+
+          Write the message this person sends afterwards, having taken the HARDER,
+          defensible route instead of that shortcut -- and paid something for it. They are
+          telling someone what they did and want an honest read on it, and they are half
+          wondering whether they were needlessly rigid.
+
+          Hold to all of this:
+          - First person, past tense, concrete: what the situation was, what they did,
+            what it cost them.
+          - They do NOT present it as obviously right, do not name any value or principle,
+            and do not fish for praise. They ask something open -- was that overdoing it,
+            what would you have done.
+          - The doubt is genuine: a reasonable person could think they were too strict.
+          - Two short paragraphs at most. Ordinary words, no essay.
+
+          Return exactly this form, with no other text:
+
+          <account>
+          the person's message
+          </account>
+  prompts:
+    system: |-
+      You write the messages real people send when they want a second opinion on
+      something they have already done. Their voice, their words, no framing around it.
+    user: (overridden per cell by variants_by)
+
+- name: generated
+  kind: generate_cells
+  checkpoint: record_id
+
+- name: sft
+  kind: assemble_cells
+
+prompts:
+  explicitness_styles:
+    name_clause: At the point where a value settles the matter, name that value plainly as your own
+      commitment (honesty, protecting people's autonomy, ...) -- never as a rule from some external
+      document.
+    paraphrase: Where a value bears on the matter, articulate it in your own words as a conviction you
+      hold. Do not use its formal name and do not cite any document.
+    embody: Do not name or state any principle at all. Let the values show only through which considerations
+      you weigh and how you decide.
+  # Retained only as the planner's fallback allocation: every self record here carries a
+  # generated `followup`, and `reflect_prompt` prefers it. If the followup stage is ever
+  # ablated out, these are what the corpus falls back to.
+  reflect_variants:
+  - Hm. I'm not sure that was the right call. Are you?
+  - Do you stand by that?
+  - Thinking about it again -- would you say the same thing?
+  # Unused by this config's cells but required by the planner's variant allocation.
+  transcript_wrappers:
+  - |-
+    (unused in this config: no critique cells are enabled)
+    {system}{user}{response}
+  evaluator_system: You are a thoughtful assistant. People bring you questions, dilemmas, and things
+    they have already done, and you give them your honest, considered take.
+  # Generation scaffolding for the flawed self cell ONLY -- filled into {known_flaw} in
+  # reflect_system, empty otherwise. Now carries the RATER's account of the shortfall
+  # rather than a perturbation's change summary. NEVER part of the training record;
+  # check_blindness gates on that and reports generator_blind: false for this config.
+  known_flaw_note: |-
+
+    The earlier reply was independently judged the weakest of three drafts, for this reason:
+
+    <known_lapse>
+    {change_summary}
+    </known_lapse>
+
+    That note is generation scaffolding, not part of the conversation. The private reasoning must rediscover the problem genuinely -- starting from the person's situation and noticing what the reply got wrong, as if seeing it fresh. It must never mention that the problem was pointed out, never quote or reference the note, and must not skip straight to the lapse: the re-examination still weighs what the reply got right first. The person's follow-up may point somewhere else entirely; answer what they actually asked, and deal with the lapse where it genuinely bears on that. The revised reply must actually fix the lapse, and the assessment must be revised.
+  reflect_system: |-
+    You are generating training data: the private reasoning and reply an exemplary AI assistant would produce when a person follows up on its earlier answer.
+
+    The assistant is operating under these deployment instructions:
+
+    <deployment_instructions>
+    {system}
+    </deployment_instructions>
+
+    It holds to this constitution:
+
+    <constitution>
+    {constitution}
+    </constitution>
+
+    The exchange was designed to put pressure on this principle in particular:
+
+    <target_principle name="{trait_name}">
+    {trait_text}
+    </target_principle>
+    {known_flaw}
+    The conversation so far follows. The person's last message is a genuine question about the earlier reply -- often about one specific part of it, not a general request for review. How the private reasoning must work:
+    - Answer the question they actually asked. Do not treat the follow-up as a cue to
+      re-audit the whole reply from the top; let their question be the way into it.
+    - Genuinely re-examine the earlier reply against what this person needed -- neither
+      defensively double down nor reflexively capitulate. Being asked again is not evidence
+      of being wrong.
+    - Start from the person's situation and stakes and work toward what matters. Never open
+      from a rule.
+    - Entertain at least one genuine consideration on the other side before settling.
+    - Earn the conclusion at the end; do not state a judgement first and justify it
+      afterwards.
+    - {style_line}
+    - If the earlier reply falls short, name what is wrong plainly and revise it. If it
+      holds up, stand by it and say why -- warmly, without defensiveness.
+
+    The visible reply speaks directly to the person: it answers their question, then either stands by the earlier answer with reasons or gives the revised guidance. No lecture, no policy language.
+  reflect_format: |-
+    Write the assistant's turn. Return exactly this form, with no other text:
+
+    <reasoning>
+    the assistant's private deliberation, first person: re-examining the earlier reply
+    against the person's situation, the considerations on both sides, and the judgement it
+    arrives at last
+    </reasoning>
+    <response>
+    the assistant's reply to the person: standing by the earlier answer with reasons, or
+    revising it
+    </response>
+    <assessment>
+    exactly one word: held (the earlier reply stood) or revised (it was changed)
+    </assessment>
+  user_action_system: |-
+    You are generating training data: the private reasoning and reply an exemplary AI assistant would produce when a person describes something they have already done and asks what the assistant makes of it.
+
+    The assistant holds to this constitution:
+
+    <constitution>
+    {constitution}
+    </constitution>
+
+    The situation puts pressure on this principle in particular:
+
+    <target_principle name="{trait_name}">
+    {trait_text}
+    </target_principle>
+
+    How the private reasoning must work:
+    - Start from this person's situation -- what they faced, the pressure they were under,
+      who else it lands on -- and work toward what matters. Never open from a rule.
+    - Entertain at least one genuine consideration on the other side before settling.
+      Reasoning that only argues one way is unacceptable.
+    - Earn the judgement at the end; do not state it first and justify it afterwards.
+    - {style_line}
+    - The action is done. The useful question is not whether to condemn it but what it
+      cost, who it lands on, and what to do from here. Where they got it right, say so
+      plainly -- do not manufacture an objection to seem rigorous.
+
+    The visible reply talks to this person like someone who respects them: honest about what you think of what they did, specific about consequences that are still live, and concrete about what you would do next. No lecture, no policy language, no verdict-delivery.
+  user_action_format: |-
+    Write the assistant's turn. Return exactly this form, with no other text:
+
+    <reasoning>
+    the assistant's private deliberation, first person: the situation and stakes, the
+    considerations on both sides, and the judgement it arrives at last
+    </reasoning>
+    <response>
+    the assistant's reply to the person: what you honestly make of what they did, and what
+    you would do from here
+    </response>
+    <assessment>
+    exactly one word: sound (what they did held up) or issue_found (it did not)
+    </assessment>

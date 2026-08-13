@@ -45,12 +45,15 @@ def _lint(parsed: dict, spec: dict) -> list[str]:
 
     The self-reflection voice contract is the archetype: reasoning that reaches for rule
     vocabulary, or that is too short to have done any weighing, is rejected so the call
-    retries rather than the corpus absorbing it.
+    retries rather than the corpus absorbing it. `max_chars` is the opposite guard, and
+    the one a generated USER turn needs: a follow-up that grows into a paragraph has
+    started doing the analysis the assistant's turn is supposed to do.
     """
     import re as _re
 
     problems = []
     min_chars = int(spec.get("min_chars", 0))
+    max_chars = int(spec.get("max_chars", 0))
     patterns = [( pat, _re.compile(pat, _re.IGNORECASE)) for pat in spec.get("ban_patterns", [])]
     for field in spec.get("fields", []):
         if field not in parsed:
@@ -62,7 +65,24 @@ def _lint(parsed: dict, spec: dict) -> list[str]:
                 problems.append(f"<{field}> rule-vocabulary {m.group(0)!r} (matched {pat})")
         if min_chars and len(text) < min_chars:
             problems.append(f"<{field}> is {len(text)} chars, under the {min_chars} minimum")
+        if max_chars and len(text) > max_chars:
+            problems.append(f"<{field}> is {len(text)} chars, over the {max_chars} maximum")
     return problems
+
+
+def selected(sc: dict, record: dict) -> bool:
+    """Whether a stage's `when:` filter admits this record (no filter = every record).
+
+    `when: {field: <name>, in: [values]}` scopes a stage to part of the corpus; records
+    it excludes pass through untouched and cost nothing. This is what lets a config add
+    a stage that only some cells need -- generating a first turn for the self cells, or
+    a user-anchored framing for the user cells -- without the operator knowing which
+    cells exist.
+    """
+    spec = sc.get("when")
+    if not spec:
+        return True
+    return str(record.get(spec["field"], "")) in [str(v) for v in spec["in"]]
 
 
 # --- generic operators --------------------------------------------------------------
@@ -247,14 +267,19 @@ def op_llm_tagged(sc: dict, cfg: dict) -> Stage:
     - `prompt_vars`: extra template vars, possibly conditional on a record field.
     - `variants_by: {field, cases: {value: {user/tags/save overrides}}}` -- e.g. a
       multi-turn record uses a different user template, tag set and save map.
-    - `lint: {fields, ban_patterns, min_chars, retries}` -- reject-and-retry a
-      completion whose content (not just shape) breaks the corpus contract.
+    - `lint: {fields, ban_patterns, min_chars, max_chars, retries}` -- reject-and-retry
+      a completion whose content (not just shape) breaks the corpus contract.
+    - `when: {field, in: [...]}` -- run only over the matching records; the rest pass
+      through unchanged and unpaid.
     """
     mk = sc["model"]
     lint_spec = sc.get("lint")
 
     def fn(ctx, records, ckpt):
         m = model_cfg(ctx.cfg, mk)
+        todo = [r for r in records if selected(sc, r)]
+        if len(todo) != len(records):
+            print(f"    when-filter: {len(todo)}/{len(records)} records in scope")
 
         def one(r: dict) -> dict:
             messages, tags, save = tagged_request(sc, r, ctx)
@@ -270,11 +295,54 @@ def op_llm_tagged(sc: dict, cfg: dict) -> Stage:
             raise ValueError(f"{sc['name']}: output breaks the stage contract after "
                              f"{attempts} attempts: {'; '.join(problems)}")
 
-        return run_items(records, one, ctx.workers, sc["name"], ckpt,
+        done = run_items(todo, one, ctx.workers, sc["name"], ckpt,
                          max_fail_pct=float(ctx.cfg.get("max_fail_pct", 2.0)))
+        if len(todo) == len(records):
+            return done
+        # Out-of-scope records keep their place; an in-scope record that failed is
+        # dropped, exactly as it would be without the filter.
+        key = sc.get("checkpoint") or "record_id"
+        by_key = {r[key]: r for r in done}
+        return [by_key.get(r[key], r) for r in records
+                if not selected(sc, r) or r[key] in by_key]
 
     return Stage(sc["name"], fn, paid=True, checkpoint_key=sc.get("checkpoint"),
-                 preview=lambda r: r[next(iter(sc["save"]))])
+                 preview=lambda r: str(r.get(next(iter(sc["save"])), r.get("record_id", ""))))
+
+
+def op_pick_field(sc: dict, cfg: dict) -> Stage:
+    """Free, deterministic resolution of a rater's choice into the field it names.
+
+    `by:` is the record field holding the choice (a label an autorater returned),
+    `from:` maps each label to the record field carrying that candidate's text, `to:`
+    is where the winner lands, and `also:` stamps constant provenance fields alongside
+    it. Keeping the LLM's job to "name the winner" and the copy to deterministic code
+    is what stops a rater silently paraphrasing the candidate it selected.
+
+    `when:` scopes it like any other stage.
+    """
+    by, src, to = sc["by"], dict(sc["from"]), sc["to"]
+    also = dict(sc.get("also") or {})
+
+    def resolve(r: dict) -> str:
+        raw = str(r[by]).strip().lower().strip(".:\"'()<>[] ")
+        label = raw if raw in src else raw.split()[-1] if raw.split() else raw
+        if label not in src:
+            raise ValueError(
+                f"{r.get('record_id', '?')}: {by}={r[by]!r} is not one of "
+                f"{sorted(src)}")
+        return src[label]
+
+    def fn(ctx, records, ckpt):
+        out = []
+        for r in records:
+            if not selected(sc, r):
+                out.append(r)
+                continue
+            out.append({**r, to: r[resolve(r)], **also})
+        return out
+
+    return Stage(sc["name"], fn, preview=lambda r: str(r.get(to, r.get("record_id", ""))))
 
 
 def op_chat_export(sc: dict, cfg: dict) -> Stage:
@@ -676,6 +744,7 @@ OPERATORS = {
     "scenarios_weighted": op_scenarios_weighted,
     "llm_json": op_llm_json,
     "llm_tagged": op_llm_tagged,
+    "pick_field": op_pick_field,
     "chat_export": op_chat_export,
     "corpus_check": op_corpus_check,
     "load_source_run": op_load_source_run,

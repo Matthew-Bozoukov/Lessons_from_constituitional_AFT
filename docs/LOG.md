@@ -3,6 +3,55 @@
 
 # LOG
 
+## 2026-08-13 — Model-eval-model, natural-turn recipe (no corpus yet)
+
+**Hypothesis:** the model-eval-model arms underperform difficult advice for *structural*
+reasons, not because self-evaluation is a bad format. Four candidates, all from the
+supervisor meeting notes: (a) the turn under evaluation is the difficult-advice run's own
+reply, so every document also teaches that recipe's response shape — as untrained context,
+on every example; (b) the flawed twin is a rewrite of a good reply, so it carries a
+perturbation's fingerprints rather than a real lapse; (c) one fixed reflection prompt
+("what do you think about what you just said?") across thousands of documents is a
+structural artifact the model can key the whole behaviour on; (d) that prompt does the
+analytical work — naming the violated trait, asking for a revision — that ought to appear
+in the assistant's turn, which is the only turn that trains.
+
+**Method:** two new configs, `configs/data/synth/model_eval_model_{self,other}_natural.yaml`
+(the published `_self`/`_other` configs are untouched — they are the record of the
+2026-08-06/07 corpora). Same source run, constitution, cell counts and explicitness mix;
+four changes:
+1. `candidates` writes three fresh replies to each scenario under a plain-assistant prompt
+   (no constitution, no difficult-advice scaffolding).
+2. `rate_candidates` — an autorater — picks the strongest for the good cell and the one
+   that most falls short for the flawed cell. `flaws: {source: rater}` records that no
+   (type, severity) was planted; `pick_field` resolves the rater's letter into the
+   candidate text deterministically, so a rater cannot paraphrase what it picked.
+3. `followup` writes a short question about *this* exchange, with a `lint` that rejects a
+   question naming a value, diagnosing the lapse, or asking for a rewrite. `ask_frame` is
+   the other arm's equivalent for the transcript framing.
+4. `m6_user_shortcut` / `m7_user_sound`: a 20% slice framed as the person's own account of
+   what *they* did — reflection on an action in the world, the property difficult advice
+   has and pure self-reflection loses.
+
+Engine additions are generic: a `when:` filter scoping any per-record stage to part of the
+corpus, a free `pick_field` operator, `max_chars` in `lint`, and `check_structural_diversity`
+— a corpus-level gate on distinct user turns, length CV and top opening-5-gram share, run
+over the assembled records. `first_turn_source` and `followup_source` now ride in every
+record's metadata, so the untrained first turn is a variable an analysis can slice on.
+
+**Result:** code and configs only — **no corpus generated, nothing trained**. 621 offline
+tests pass. `--estimate` on assumed priors: $208 for the self arm (2,100 docs, $0.10/doc,
+vs $143 for the old recipe) and $394 for the other arm ($285 with `--ablate final`, vs
+$221). The increase is three extra calls per document and is the price of not inheriting
+the source run's prose.
+
+**Next steps:** `--smoke` each config (10 and 8 docs, local only, a few dollars), read the
+documents by hand — specifically whether the "weakest of three" candidate is a genuine
+lapse or merely the blandest of three good replies, which is the one way this design can
+quietly fail — then `synth check` and re-price with `--estimate --measured`. Only then the
+full runs. The old and new self corpora are size-matched and share a source run, so they
+are directly comparable as a single-variable ablation of *turn provenance*.
+
 ## 2026-08-13 — Cut the surface tier from 7 checks to 2
 
 **Motivation:** the surface tier had grown to seven checks that ran on every corpus, and

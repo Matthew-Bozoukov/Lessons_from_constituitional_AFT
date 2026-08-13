@@ -67,7 +67,8 @@ A config's `stages:` entry names an operator `kind` and supplies everything it n
 | `segment` | deterministic constitution chunking + grouping; publishes `{style_guidance}` | (top-level `chunking:` block — see below) |
 | `scenarios` | batched JSON fan-out per trait (`t<i>_b<b>_s<j>` ids) | `model`, `prompts` |
 | `llm_json` | one JSON call per record | `model`, `prompts`, `save`, `optional`, `checkpoint` |
-| `llm_tagged` | one tagged-blocks call per record | `model`, `prompts`, `tags`, `save`, `checkpoint`, `ablate_with`, `prompt_vars` (conditional template vars), `variants_by` (per-record user/tags/save), `lint` (ban-patterns + min-length, reject-and-retry) |
+| `llm_tagged` | one tagged-blocks call per record | `model`, `prompts`, `tags`, `save`, `checkpoint`, `ablate_with`, `prompt_vars` (conditional template vars), `variants_by` (per-record user/tags/save), `lint` (ban-patterns + min/max length, reject-and-retry), `when` (run over part of the corpus only) |
+| `pick_field` | free: resolve a rater's `<pick>` label into the field it names | `by`, `from` (label -> field), `to`, `also` (constant labels), `when` |
 | `chat_export` | free export to `{messages, metadata}`; entries may carry `when:` for multi-turn records | `messages`, `metadata` |
 | `corpus_check` | corpus-level property checks; pass-through, always ablatable (see below) | `fields`, `properties`, `axes`, `cross`, `rubrics`, `units`, `on_fail`, `model` |
 | `scenarios_weighted` | weighted trait apportionment, control slice, motive rotation, per-batch industries, deterministic per-scenario variants | `model`, `prompts` (+`control_user`), `threats`, `control_threats`, `fields` |
@@ -214,10 +215,33 @@ follows, the model revises or holds with reasons; trained with `supervise: "fina
 lifted from the stage-5 export's metadata by `build_mixture` (interchange mode) and
 consumed by `masking.py`).
 
+### The natural-turn recipe (`model_eval_model_{self,other}_natural.yaml`)
+
+The base and `_self`/`_other` configs put the source run's reply — gold, or minimally
+perturbed — into the turn under evaluation. That reply is context, never a training
+target, but it conditions every document, so the corpus also teaches the
+difficult-advice recipe's response shape. The `_natural` pair replaces that, and nothing
+else about the arms:
+
+| | `_self` / `_other` | `_natural` |
+|---|---|---|
+| first turn | lifted from the source run | `candidates` writes 3 fresh replies (plain-assistant prompt, no constitution) |
+| the lapse | `perturb_pairs` plants one flaw from a config grid | `rate_candidates` picks the weakest of the 3; `flaws: {source: rater}` allocates no grid |
+| reflection prompt | one of 6 fixed `reflect_variants` | `followup` writes a short question about THIS exchange, linted free of any analysis |
+| critique framing | one of 4 fixed `transcript_wrappers` | `ask_frame` writes the opening line and closing question; the transcript is still composed in code |
+| user-anchored slice | — | `m6_user_shortcut` / `m7_user_sound`: the person's own action, not the model's reply |
+
+The first turn stays untrained (`supervise: final` on the self cells). It is now a
+*tracked* conditioning variable instead of an invisible one: every record carries
+`first_turn_source` and `followup_source` in its metadata.
+
 `uv run synth check --config configs/data/synth/model_eval_model.yaml --run_dir <dir>`
 runs the validity checks and gates on the config's thresholds: coverage (incl. the
-flaw grid), template collapse, per-cell verdict distribution (never 100% — all-`revised`
-in m1 would train capitulation), post-hoc-reasoning rate, blindness, the numpy
+flaw grid), template collapse, **structural diversity** (per cell, on the assembled
+records: distinct final user turns, length CV of the trained turn, and the top
+opening-5-gram share — the artifacts a config's *shape* produces, as opposed to the
+generator's voice), per-cell verdict distribution (never 100% — all-`revised` in m1
+would train capitulation), post-hoc-reasoning rate, blindness, the numpy
 surface-shortcut classifier, LLM-judged gold validation and flaw-identification rate.
 
 ## Corpus-level checks (`check_corpus.py`, the `corpus_check` stage)

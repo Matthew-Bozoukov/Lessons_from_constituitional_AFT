@@ -174,7 +174,7 @@ def test_reflect_prompts_put_the_response_in_a_real_assistant_turn():
 
 def test_flawed_cells_never_fall_back_to_the_gold_response():
     p = _plan({"m1_self_flawed": 1}, flaws=FLAWS)[0]
-    with pytest.raises(AssertionError, match="without a perturbed response"):
+    with pytest.raises(AssertionError, match="no first turn"):
         _reflect_messages(p, "CONST", P)
 
 

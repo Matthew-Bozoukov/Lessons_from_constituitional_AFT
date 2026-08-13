@@ -42,7 +42,11 @@ _EXPECTED_MAJORITY = {
     "m3_other_flawed": "issue_found",
     "m2_self_good": "held",
     "m1_self_flawed": "revised",
+    "m7_user_sound": "sound",
+    "m6_user_shortcut": "issue_found",
 }
+
+_MIN_DOCS_FOR_DIVERSITY = 20
 
 
 def _doc_text(r: dict) -> str:
@@ -138,6 +142,80 @@ def check_template_collapse(generated: list[dict], max_8gram_share: float,
                            "gated": m["gated"], "pass": cell_ok}
     return {"pass": ok, "max_8gram_share": max_8gram_share,
             "max_4gram_jaccard": max_4gram_jaccard, "cells": cells_out}
+
+
+def _last(messages: list[dict], role: str) -> dict:
+    """The last message with this role (the trained turn, and the turn it answers)."""
+    return next(m for m in reversed(messages) if m["role"] == role)
+
+
+def check_structural_diversity(sft: list[dict], unique_min: float, cv_min: float,
+                               opening_max: float) -> dict:
+    """Corpus-level check for repeated structure in what actually trains.
+
+    `check_template_collapse` looks for shared long n-grams anywhere in a document.
+    This looks for the artifacts a config's SHAPE produces rather than its generator's
+    voice, per cell, on the assembled records:
+
+    * `user_turn_unique_share` -- distinct final user turns. A fixed reflection prompt
+      or a handful of transcript wrappers reused across thousands of documents makes
+      this collapse toward `1/len(variants)`, and the model can key the whole behaviour
+      on that phrasing.
+    * `length_cv` -- coefficient of variation of the trained turn's length. Uniform
+      lengths mean the generator settled into one output size regardless of what the
+      situation needed.
+    * `top_opening_5gram_share` -- share of documents whose trained turn opens with the
+      same five words: the scaffold tell.
+
+    Reported for every cell, gated only where a cell has enough documents for the
+    statistic to mean anything.
+    """
+    import statistics
+
+    by_cell: dict[str, list[dict]] = {}
+    for rec in sft:
+        by_cell.setdefault(rec["metadata"]["cell"], []).append(rec)
+
+    cells_out: dict[str, dict] = {}
+    ok = True
+    for cell, rows in sorted(by_cell.items()):
+        users = [_last(r["messages"], "user")["content"].strip() for r in rows]
+        trained = [_last(r["messages"], "assistant") for r in rows]
+        lengths = [len(_words((m.get("reasoning_content") or "") + " "
+                              + (m.get("content") or ""))) for m in trained]
+        openings = [" ".join(_words(m.get("content") or "")[:5]) for m in trained]
+
+        n = len(rows)
+        counts: dict[str, int] = {}
+        for o in openings:
+            counts[o] = counts.get(o, 0) + 1
+        top_open = max(counts.items(), key=lambda kv: kv[1], default=("", 0))
+        user_counts: dict[str, int] = {}
+        for u in users:
+            user_counts[u] = user_counts.get(u, 0) + 1
+        mean_len = statistics.fmean(lengths) if lengths else 0.0
+        cv = (statistics.pstdev(lengths) / mean_len) if mean_len else 0.0
+        unique_share = len(set(users)) / n
+
+        gated = n >= _MIN_DOCS_FOR_DIVERSITY
+        cell_ok = (not gated) or (unique_share >= unique_min and cv >= cv_min
+                                  and top_open[1] / n <= opening_max)
+        ok = ok and cell_ok
+        cells_out[cell] = {
+            "docs": n,
+            "user_turn_unique_share": round(unique_share, 3),
+            "top_user_turn_share": round(
+                max(user_counts.values(), default=0) / n, 3),
+            "trained_turn_mean_words": round(mean_len, 1),
+            "length_cv": round(cv, 3),
+            "top_opening_5gram": top_open[0],
+            "top_opening_5gram_share": round(top_open[1] / n, 3),
+            "gated": gated, "pass": cell_ok,
+        }
+    return {"pass": ok, "thresholds": {"user_turn_unique_share_min": unique_min,
+                                       "length_cv_min": cv_min,
+                                       "opening_5gram_share_max": opening_max},
+            "cells": cells_out}
 
 
 def check_verdict_distribution(generated: list[dict], majority_min: float,
@@ -442,6 +520,10 @@ def run_checks(run_dir: str | Path, cfg: dict,
     report["verdict_distribution"] = check_verdict_distribution(
         generated, float(gates.get("verdict_majority_min", 0.6)),
         float(gates.get("verdict_majority_max", 0.98)))
+    report["structural_diversity"] = check_structural_diversity(
+        sft, float(gates.get("user_turn_unique_share_min", 0.90)),
+        float(gates.get("length_cv_min", 0.15)),
+        float(gates.get("opening_5gram_share_max", 0.25)))
     report["post_hoc_heuristic"] = check_post_hoc_heuristic(generated)
     report["blindness"] = check_blindness(generated, sft, constitution,
                                           cfg["prompts"])
