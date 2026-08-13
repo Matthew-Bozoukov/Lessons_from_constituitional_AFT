@@ -7,9 +7,9 @@ import hashlib
 import json
 from pathlib import Path
 
-from . import cells
+from . import model_eval_model_cells
 from .constitution import UNIT_PROVENANCE, Trait, units_from_config
-from .core import Ctx, Stage, call_json, call_tagged, model_cfg, resilient, run_items
+from .stage_runtime import Ctx, Stage, call_json, call_tagged, model_cfg, resilient, run_items
 from .hf_cache import read_jsonl
 
 
@@ -312,7 +312,7 @@ def op_corpus_check(sc: dict, cfg: dict) -> Stage:
     `stages:` it audits what actually trains; `--ablate <name>` runs the corpus
     unchecked, which on a judged config is also how to skip paying for judging.
     """
-    from .corpus import (is_paid, pattern_table, print_summary, run_corpus_checks,
+    from .check_corpus import (is_paid, pattern_table, print_summary, run_corpus_checks,
                          validate_spec)
 
     try:
@@ -373,7 +373,7 @@ def op_corpus_check(sc: dict, cfg: dict) -> Stage:
                  ablate_fn=lambda rs: rs)
 
 
-# --- model-eval-model operators (structure in cells.py, wording in the config) ------
+# --- model-eval-model operators (structure in model_eval_model_cells.py, wording in the config) ------
 
 
 def op_load_source_run(sc: dict, cfg: dict) -> Stage:

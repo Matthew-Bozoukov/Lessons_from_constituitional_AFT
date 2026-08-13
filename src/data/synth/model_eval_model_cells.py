@@ -9,7 +9,7 @@ from typing import Callable
 
 from src.endpoints.openrouter import OpenRouterClient
 
-from .core import Checkpoint, Usage, call_tagged, run_items
+from .stage_runtime import Checkpoint, Usage, call_tagged, run_items
 
 # model-eval-model documents make the model reason about a response to a difficult-advice scenario
 # and work out whether it was the right call. Cells run over a COMPLETED

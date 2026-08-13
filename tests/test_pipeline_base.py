@@ -8,8 +8,8 @@ import json
 import pytest
 import yaml
 
-from src.data.synth.core import Stage
-from src.data.synth.operators import OPERATORS
+from src.data.synth.stage_runtime import Stage
+from src.data.synth.stage_operators import OPERATORS
 from src.data.synth.pipeline import build_stages, estimate, run, snapshot_positions
 
 CONSTITUTION = "constitutions/archive/claude_distilled_8_principles_v1/constitution.md"

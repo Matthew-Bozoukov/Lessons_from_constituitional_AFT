@@ -408,7 +408,7 @@ def _features(chunks: list[Chunk]):
     diversity there. Imported lazily because it pulls numpy, which the offline dry-run
     (`synth segment`, `synth chunkings`) must not need.
     """
-    from .corpus import hashed_features
+    from .check_corpus import hashed_features
 
     return hashed_features([c.text for c in chunks])
 

@@ -12,7 +12,7 @@ from omegaconf import OmegaConf
 
 from . import pipeline
 from .constitution import full_text
-from .core import Checkpoint, Ctx, Usage
+from .stage_runtime import Checkpoint, Ctx, Usage
 
 
 def _load(config: str) -> dict:
@@ -125,7 +125,7 @@ def checks(tier: str | None = None) -> None:
     The counterpart to `synth chunkings`: the names `--only`/`--skip` accept, so a
     selection can be composed without opening the registry.
     """
-    from .corpus import CORPUS_CHECKS, TIERS
+    from .check_corpus import CORPUS_CHECKS, TIERS
 
     for t in TIERS:
         if tier and t != tier:
@@ -186,7 +186,7 @@ def check(config: str, run_dir: str, sample: int | None = None,
         ok = _check_corpus_stage(cfg, sc, Path(run_dir), sample,
                                  only=only, skip=skip, tier=tier) and ok
     if cfg.get("checks") and stage is None:
-        from .checks import run_checks
+        from .check_model_eval_model import run_checks
 
         _, checks_ok = run_checks(run_dir, cfg, sample=sample)
         ok = ok and checks_ok
@@ -198,7 +198,7 @@ def _check_corpus_stage(cfg: dict, sc: dict, run_dir: Path, sample: int | None,
                         only: str | None = None, skip: str | None = None,
                         tier: str | None = None) -> bool:
     """Run one `corpus_check` stage entry over a finished run's snapshots."""
-    from .corpus import (is_paid, pattern_table, print_summary, run_corpus_checks,
+    from .check_corpus import (is_paid, pattern_table, print_summary, run_corpus_checks,
                          select_properties)
     from .hf_cache import read_jsonl
     from .pipeline import build_stages, snapshot_positions
@@ -261,7 +261,7 @@ def compare(reports, key: str = "group_size", out: str | None = None,
         out: Write the markdown here; the JSON lands beside it. Default: print only.
         stage: Corpus-check stage name, when a run holds more than one report.
     """
-    from .compare import compare_arms, markdown
+    from .compare_runs import compare_arms, markdown
 
     result = compare_arms(_csv(reports), key=key, stage=stage)
     text = markdown(result)
@@ -351,9 +351,9 @@ def segment(constitution: str = "constitutions/claude_distilled_12_principles_mi
               f"model only via {{constitution}}")
 
     if len(chunks) > 1:
-        from .checks import _hashed_features
+        from .check_corpus import hashed_features
 
-        X = _hashed_features([c.text for c in chunks])
+        X = hashed_features([c.text for c in chunks])
         sims = X @ X.T
         n = len(chunks)
         central = (sims.sum(axis=1) - 1.0) / (n - 1)
