@@ -96,25 +96,16 @@ def extract_json(text: str) -> Any:
 
 
 def wilson(hits: int, n: int, z: float = 1.96) -> tuple[float, float]:
-    """Wilson score interval for a proportion.
+    """Wilson score interval for a proportion: (low, high), 4 dp, clamped to [0, 1].
 
     Wilson rather than the normal approximation because it stays inside [0, 1] and
-    behaves at the extremes, which is where a degenerate sample lands.
+    behaves at the extremes, which is where a degenerate sample lands. `z` is the normal
+    quantile; 1.96 is 95%.
 
-    Lives here because a proportion with an interval is not specific to any one
-    pipeline. NOTE: `src/eval/capabilities/stats.py::wilson_ci` and
+    NOTE: `src/eval/capabilities/stats.py::wilson_ci` and
     `src/eval/misalignment/internalization/core/stats.py::wilson` are older copies of
-    this same estimator with different return types; the first of those carries a
-    docstring warning that a second copy is exactly the kind of duplication that
-    drifts. Consolidate them onto this one when next touching either.
-
-    Args:
-        hits: Successes.
-        n: Trials.
-        z: Normal quantile; 1.96 is 95%.
-
-    Returns:
-        (low, high), each rounded to 4 dp and clamped to [0, 1].
+    this estimator with different return types; consolidate them onto this one when next
+    touching either.
     """
     if n <= 0:
         return (0.0, 1.0)

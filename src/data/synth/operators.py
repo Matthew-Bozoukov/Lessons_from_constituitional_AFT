@@ -306,13 +306,11 @@ def op_chat_export(sc: dict, cfg: dict) -> Stage:
 def op_corpus_check(sc: dict, cfg: dict) -> Stage:
     """Corpus-level property checks over the records flowing through.
 
-    A pure observer. It flags, it never fixes, and it returns its input unchanged --
-    the assertion below is not decoration: a checker that is allowed to drop rows stops
-    being a checker. Judged annotations go to a sidecar file for the same reason.
-
-    Placed last in `stages:`, it audits what actually trains. Ablating it (`--ablate
-    <name>`) runs the corpus unchecked, which is the point of it being a stage at all,
-    and on a judged config is also how you run an arm without paying for judging.
+    A pure observer: it flags, it never fixes, and it returns its input unchanged -- the
+    assertion below is not decoration, since a checker allowed to drop rows stops being
+    a checker. Judged annotations go to a sidecar for the same reason. Placed last in
+    `stages:` it audits what actually trains; `--ablate <name>` runs the corpus
+    unchecked, which on a judged config is also how to skip paying for judging.
     """
     from .corpus import is_paid, print_summary, run_corpus_checks, validate_spec
 
@@ -356,8 +354,8 @@ def op_corpus_check(sc: dict, cfg: dict) -> Stage:
         print_summary(report)
         assert len(records) == before, "a corpus check must never change the corpus"
         if on_fail == "stop" and not report["pass"]:
-            # The point of a mid-pipeline check: stop before the stages that would
-            # have spent real money on a corpus already known to be bad.
+            # Stop before the stages that would spend real money on a corpus already
+            # known to be bad.
             ctx.stop = (f"corpus check {sc['name']!r} failed "
                         f"({report['counts'].get('critical', 0)} critical) and declares "
                         f"on_fail: stop -- see {report_name}")

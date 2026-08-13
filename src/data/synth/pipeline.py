@@ -47,19 +47,12 @@ def snapshot_positions(stages: list[Stage]) -> dict[str, int]:
     """Map stage name -> its `stage_<n>_<name>.jsonl` position, skipping observers.
 
     Positions and names are the on-disk contract that keeps completed run dirs and HF
-    mirrors resumable, so an observer must not consume one. That is what makes a
-    mid-pipeline corpus check free to add: without it, inserting a check after the
-    scenario stage would renumber every snapshot after it and force a regeneration of
-    exactly the corpus the check exists to avoid regenerating.
+    mirrors resumable, so an observer must not consume one -- that is what makes a
+    mid-pipeline corpus check free to add. An observer maps to the position of the last
+    real stage before it: the snapshot holding the records it inspects.
 
-    Observers map to the position of the last real stage before them -- the snapshot
-    holding the records they inspect.
-
-    Takes built Stages rather than the raw config so `Stage.observer`, set by the
-    operator that knows, is the ONE place the fact lives. Deriving it from a list of
-    kind names here as well would let a future observer write no snapshot while still
-    consuming a position -- silently shifting every snapshot after it, which is exactly
-    the breakage this exists to prevent.
+    Takes built Stages rather than the raw config so `Stage.observer` is the ONE place
+    the fact lives.
     """
     out: dict[str, int] = {}
     pos = 0
@@ -147,22 +140,10 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
         if st.skip and st.skip(ctx, records):
             print(f">>> {label}: not applicable -- skipped")
             continue
-        if st.observer:
-            # No snapshot, no position, and no cache: an observer produces nothing the
-            # pipeline consumes, so re-running it is cheap and always tells the truth
-            # about the records actually in hand.
-            if st.paid and budget is not None and usage.usd > budget:
-                raise RuntimeError(
-                    f"budget_usd=${budget:.2f} exceeded (${usage.usd:.2f}) before "
-                    f"{label}. Snapshots so far are in {run_dir}.")
-            t0 = time.time()
-            if st.name in ablate:
-                records = st.ablate_fn(records)
-                print(f">>> {label}: ABLATED -- not run")
-            else:
-                records = st.fn(ctx, records, None)
-            durations[st.name] = round(time.time() - t0, 1)
-        elif cache.has(pos, st.name):
+        # No snapshot, no position and no cache for an observer: it produces nothing the
+        # pipeline consumes, so re-running it is cheap and always tells the truth about
+        # the records actually in hand.
+        if not st.observer and cache.has(pos, st.name):
             records = cache.load(pos, st.name)
             if st.on_cached:
                 st.on_cached(ctx, records)
@@ -186,15 +167,15 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
             else:
                 records = st.fn(ctx, records, ckpt)
             durations[st.name] = round(time.time() - t0, 1)
-            cache.save(pos, st.name, records)
+            if not st.observer:
+                cache.save(pos, st.name, records)
             print(f">>> {label}: {len(records)} records")
         counts[st.name] = len(records)
         if st.preview and records:
             print(f"    FIRST: {st.preview(records[0])[:220]}")
         if ctx.stop:
-            # A stage asked to halt the run -- an intermediate corpus check whose whole
-            # purpose is to stop before the expensive stages after it. Everything paid
-            # for so far is on disk, and the manifest below still gets written.
+            # An intermediate corpus check asking to halt before the expensive stages
+            # after it. Everything paid for is on disk; the manifest is still written.
             print(f"\n!!! run halted at {label}: {ctx.stop}")
             break
 
@@ -234,10 +215,9 @@ def corpus_gate_failed(manifest: dict) -> bool:
 
     Gating is an exit code, never an exception inside the stage: raising there would
     abort `run` before the manifest is written, throwing away the provenance and usage
-    tally of a run that has already paid for every generation stage -- in order to
-    report a diagnostic. The corpus, the report and the manifest all survive; only the
-    process status says the check failed. `stop` differs from `error` only in when the
-    run ends, not in what it keeps.
+    tally of a run that has already paid for every generation stage -- to report a
+    diagnostic. `stop` differs from `error` only in when the run ends, not in what it
+    keeps.
     """
     checks = manifest.get("corpus_checks") or {}
     return any(c.get("on_fail") in ("error", "stop") and c.get("pass") is False
@@ -245,10 +225,8 @@ def corpus_gate_failed(manifest: dict) -> bool:
 
 
 def exit_if_gate_failed(manifest: dict) -> None:
-    """Turn a failed corpus gate into the process exit status, and say what survived.
-
-    Both entrypoints (`synth run` and build_dataset.py) end this way; the message is
-    load-bearing enough that two copies of it would be two things to keep in step.
+    """Turn a failed corpus gate into the process exit status (both entrypoints end
+    this way), and say what survived.
 
     Raises:
         SystemExit: 1 when a check declaring `on_fail: error` or `stop` did not pass.

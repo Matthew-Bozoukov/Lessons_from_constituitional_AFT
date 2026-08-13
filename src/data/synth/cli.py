@@ -123,14 +123,10 @@ def check(config: str, run_dir: str, sample: int | None = None,
           stage: str | None = None) -> None:
     """Re-check a finished run without regenerating it, and gate on its thresholds.
 
-    Two independent halves, either of which may be absent:
-
-    - a `corpus_check` stage in `stages:` -- the corpus properties run over that
-      stage's input snapshot, writing `<stage>_report.json`. Any document type can
-      have this, which is what lets difficult-advice and self-reflection corpora be
-      audited at all;
-    - a `checks:` block -- the model-eval-model validity checks, unchanged, writing
-      `checks_report.json`.
+    Two independent halves, either of which may be absent: each `corpus_check` stage in
+    `stages:` (its properties run over that stage's input snapshot, writing
+    `<stage>_report.json` -- any document type can have this) and a `checks:` block (the
+    model-eval-model validity checks, writing `checks_report.json`).
 
     Args:
         config: Path to the run YAML.
@@ -210,8 +206,7 @@ def compare(reports, key: str = "group_size", out: str | None = None,
     """Compare several runs' corpus reports as arms of one experiment.
 
     One run is one arm, so a claim like "the conflict rate rises with group size" can
-    only be checked across run directories. Computes nothing new -- every number comes
-    from the corpus checks of the run it belongs to.
+    only be checked across run directories. Computes nothing new.
 
     Args:
         reports: Run directories, one per arm. Fire accepts "a,b,c" or a tuple.

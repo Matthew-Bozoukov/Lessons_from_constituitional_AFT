@@ -793,14 +793,9 @@ def test_pattern_scan_keeps_only_patterns_two_scans_found_and_caches_on_content(
         "<patterns>one-off idea</patterns>",
     ]
 
-    def answer(i, messages):
-        if "SCAN" in messages[0]["content"]:
-            return scan_replies[len([c for c in scanned if c]) % len(scan_replies)]
-        return "<matches>rule-quoting</matches><why>y</why>"
-
     scanned = []
 
-    def answer2(i, messages):
+    def answer(i, messages):
         if "SCAN" in messages[0]["content"]:
             scanned.append(1)
             return scan_replies[(len(scanned) - 1) % len(scan_replies)]
@@ -816,7 +811,7 @@ def test_pattern_scan_keeps_only_patterns_two_scans_found_and_caches_on_content(
                             "params": {"batches": 4, "batch_size": 12,
                                        "min_scans": 2, "sample": 20}}]}
 
-    stub = StubClient(answer2)
+    stub = StubClient(answer)
     report = C.run_corpus_checks(records, spec, run_dir=tmp_path, seed=0,
                                  ctx=_judge_ctx(tmp_path, stub))
     m = report["properties"]["pattern_scan"]["metrics"]
@@ -831,7 +826,7 @@ def test_pattern_scan_keeps_only_patterns_two_scans_found_and_caches_on_content(
     # Re-running scans nothing: the cache is keyed on batch CONTENT, so identical
     # documents never re-pay -- including across sibling arms.
     scanned.clear()
-    stub2 = StubClient(answer2)
+    stub2 = StubClient(answer)
     report2 = C.run_corpus_checks(records, spec, run_dir=tmp_path, seed=0,
                                   ctx=_judge_ctx(tmp_path, stub2))
     m2 = report2["properties"]["pattern_scan"]["metrics"]

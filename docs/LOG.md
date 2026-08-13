@@ -82,7 +82,8 @@ the document rather than from which unit generated it — without this the `whol
 `paragraph_clusters` methods are unevaluable), and member-leakage for the paired methods;
 (3) only then decide whether any method earns a training run. Note `difficult_advice.yaml`
 still has no `checks:` block at all, so the production corpus is ungated.
-## 2026-08-12 — Corpus-level checker: a property registry as an ablatable final stage
+
+## 2026-08-12 — Corpus-level checker: a property registry as an ablatable stage
 
 **Hypothesis:** the pipeline gates individual documents (`lint`, the spec filter) but has
 no way to ask questions about the corpus. If corpus properties are a registry rather than
@@ -90,21 +91,23 @@ a script, adding one later is a function plus a dict entry, and the chunking exp
 outcome measures become configuration rather than new code.
 
 **Method.** `src/data/synth/corpus.py`: a `CORPUS_CHECKS` registry (matching `OPERATORS`
-/ `CELLS` / `EVALS`) of 11 properties over a lazily-memoised `Corpus` view; a
-`corpus_check` operator that runs them and returns its input **unchanged** (asserted),
-appended last in all five synth configs so it audits what actually trains. Judged
-annotations go to a `<stage>_labels.jsonl` sidecar, never into records. Ablatable with no
-`ablate_with:` map — a pure observer's null-op is the identity — so `--ablate corpus`
-both skips the checks and, on a judged config, skips their cost. A failed gate is an exit
-code raised *after* `manifest.json` is written, never an exception inside the stage.
+/ `CELLS` / `EVALS`) of 11 properties over a memoised `Corpus`, plus a `corpus_check`
+operator that runs them and returns its input **unchanged** (asserted). Properties read
+field *roles* the config maps to record keys, so nothing in the module names a document
+type. Judged annotations go to a `<stage>_labels.jsonl` sidecar, never into records.
+The stage is an **observer**: no snapshot, no position number, never cached, so a check
+can sit mid-pipeline without renumbering anything after it — which is what makes checking
+at stage 2 (where scenario diversity is decided, before stages 3–6 pay for it) possible
+at all. `on_fail: warn|error|stop` decides the cost of a failed gate; in every mode the
+manifest is written first, so a failed gate is an exit code, never a lost run.
 `checks.py`'s `check_template_collapse` / `check_surface_shortcut` became thin adapters
-over the registry; `synth check` gained a corpus path (so difficult-advice and
-self-reflection corpora can be audited at all, which they could not before) and
-`synth compare` compares arms across runs.
+over the registry, `synth check` gained a corpus path (difficult-advice and
+self-reflection corpora could not be audited before), and `synth compare` lines several
+runs up as arms of one experiment.
 
-**Result — thresholds set from measurement, not invention.** Baseline: the 2,203-document
-difficult-advice corpus (`output/model_eval_model/20260805_133015/stage_1_source.jsonl`,
-grouped by trait, ~1,040 words/doc) and a 1,389-document self-reflection corpus
+**Result — thresholds set from measurement.** Baseline: the 2,203-document
+difficult-advice corpus (`output/model_eval_model/20260805_133015/stage_1_source.jsonl`)
+and a 1,389-document self-reflection corpus
 (`output/synthdoc_self_reflection/20260806_115149/stage_7_sft.jsonl`):
 
 | metric | difficult advice | self reflection | shipped gate |
@@ -112,7 +115,7 @@ grouped by trait, ~1,040 words/doc) and a 1,389-document self-reflection corpus
 | `top_8gram_share` (max/group) | **0.449** | 0.133 | 0.20 |
 | `mean_4gram_jaccard` | 0.0007–0.0037 | — | 0.15 |
 | `distinct_2` | 0.338–0.448 | — | 0.30 |
-| `duplicate_share` | 0.0 (0 candidate pairs) | 0.0 | 0.02 |
+| `duplicate_share` | 0.0 | 0.0 | 0.02 |
 | `top_opener_share` | **0.252** | 0.047 (0.066 reordered) | 0.15 |
 | length `cv` | 0.153 | 0.200 | 0.12 |
 | `mean_pairwise_cosine` | 0.860 | 0.853 | 0.95 |
@@ -128,118 +131,37 @@ Four things the numbers changed:
    already score ~0.86 — so a 0.35 threshold would have fired on every corpus.
    `effective_rank_frac` (0.65 healthy vs 0.03 identical) is the discriminating half.
 3. **Exact opener matching misses the interesting case.** The self-reflection corpus's
-   top three openers are reorderings of one construction (92 + 70 + 27 of 1,389);
-   exact matching reports three unremarkable openers. Added a word-set variant.
-4. **`check_surface_shortcut` had a real hole.** On a fixture of byte-identical texts
-   under both labels it reported AUC **0.0222** — near-perfect *inverse* separation — and
-   called it a pass, because it only tested `auc <= max_auc`. That 0.02 was itself an
-   artefact of cross-validation memorising a text in the fold that trains on one copy and
-   then scoring its twin. Fixed by dropping label-ambiguous texts. Separability
-   (`max(auc, 1-auc)`) is now reported and raises a `warn`, but deliberately does **not**
-   gate: measured on null corpora of 25–60 per class it exceeds 0.65 about a third of the
-   time and does not tighten with n. This is the one place `tests/test_model_eval_model.py`
-   needed an edit (its degenerate fixture); every other assertion passes untouched, and a
-   read-only diff against the stored `checks_report.json` confirms no numeric drift.
+   top three openers are reorderings of one construction (155 of 1,389 documents), which
+   exact matching reports as three unremarkable openers. Hence the word-set variant.
+4. **`check_surface_shortcut` had a real hole.** On byte-identical texts under both
+   labels it reported AUC **0.0222** — near-perfect *inverse* separation — and called it
+   a pass, because it only tested `auc <= max_auc`; that 0.02 was itself CV memorising a
+   text in one fold and scoring its twin in the next. Fixed by dropping label-ambiguous
+   texts. Separability (`max(auc, 1-auc)`) is now reported and can `warn`, but
+   deliberately does not gate: on null corpora of 25–60 per class it exceeds 0.65 about a
+   third of the time and does not tighten with n.
 
-`--estimate` is unchanged ($35.76 difficult-advice, $269.81 model-eval-model). 461 tests
-pass. No judged property has been run against a real model yet — all four are
-report-only and their cost is priced but unmeasured.
-
-**Follow-up the same day — checks at intermediate stages.** A check only at the end is a
-post-mortem: scenario diversity is decided at stage 2 and paid for at stages 3–6, so
-finding a collapsed scenario set in the finished corpus means regenerating all of it. Two
-things blocked mid-pipeline checks, and the first was worse than it looked:
-
-- **Inserting a stage renumbers every snapshot after it.** `stage_<position>_<name>.jsonl`
-  is the on-disk contract, so adding a check after `scenarios` would have broken resume on
-  every existing run dir — forcing exactly the regeneration the check exists to avoid.
-  Fixed with `Stage.observer`: a stage that inspects and returns its input writes no
-  snapshot and takes no position. `snapshot_positions()` is now the single source of truth
-  (used by the engine, `checks.py` and the CLI), and `difficult_advice` positions are
-  byte-identical with both checks inserted and with neither.
-- **`on_fail: error` only exits after the whole run**, so an intermediate check still paid
-  for everything downstream. Added `on_fail: stop`: the engine halts at that stage via
-  `ctx.stop`, still writes the manifest (recording `halted`), and the CLI exits nonzero.
-
-Also: verdicts are now keyed by stage name (`manifest["corpus_checks"]`) so several checks
-in one run do not overwrite each other, and observers are never cached, so a resumed run
-always reports on the records actually in hand. `difficult_advice` and `self_reflection`
-gained a `corpus_scenarios` check after their scenario stage. Field resolution needed no
-change — the properties already worked over raw intermediate records.
-
-Scenario-level numbers on the same self-reflection run (1,438 scenarios at stage 2, vs
+Scenario-level numbers on the same self-reflection run (1,438 scenarios at stage 2 vs
 1,389 documents at stage 7): `top_8gram_share` 0.037 (vs 0.133), `top_opener_share` 0.002
-(vs 0.047), cosine 0.597 (vs 0.853), `effective_rank_frac` 0.802 (vs 0.671). The scenario
-set is markedly more diverse than the documents written from it — which is the shape you
-want, and now measurable at the point where it can still be cheaply fixed.
+(vs 0.047), cosine 0.597 (vs 0.853), `effective_rank_frac` 0.802 (vs 0.671) — the
+scenario set is markedly more diverse than the documents written from it, which is the
+shape you want and is now measurable where it can still be cheaply fixed. Corpus stage:
+**5.9s for 1,389 documents**. `--estimate` unchanged ($35.76 difficult-advice, $269.81
+model-eval-model). `wilson()` moved to `src/utils.py` rather than becoming a fourth copy.
 
-**Cleanup pass before merge** (4 parallel review agents over the diff — reuse,
-simplification, efficiency, altitude). Two findings were defects rather than style:
-
-- **`ngram_diversity` had no per-group size guard.** A 2-document group sharing an
-  8-gram scored 1.0 and raised a `critical`; the legacy path suppressed exactly that as
-  binomial noise, and the adapter silently restored the suppression, which is why the
-  migration tests passed. Now `min_group_docs` (5) lives in the registry, each group
-  carries `gated: true|false` in the report, and the adapter reads it instead of
-  keeping a second copy of the constant.
-- **`near_duplicates` was O(n²) on the case it exists to catch.** Exact duplicates
-  collide in every LSH band, so a collapsed corpus put them all in one bucket and
-  scored every pair — extrapolated ~8 minutes at 10k. Now only one representative per
-  exact class is banded, and an oversized bucket is reported as a finding rather than
-  worked through.
-
-Four extension points were deleted as built-for-nothing: a `needs_labels` topological
-sort that was provably the identity, a `Corpus.features` cached property with zero
-callers (whose existence the class docstring used to justify the whole memoisation
-design), a `backend: hashed|embedding` param nothing branched on but the README
-advertised, and an unused `unit_text` role. `OBSERVER_KINDS` was deleted too:
-`snapshot_positions` now takes built Stages and reads `Stage.observer`, so the fact that
-a stage takes no snapshot position lives in one place instead of two that nothing
-reconciled.
-
-Measured, on the same 1,389-document corpus, every number identical: 21 duplicated
-threshold-and-append blocks became one `flag()` helper; the 4-gram Jaccard uses
-inclusion-exclusion rather than materialising the union (3.2s → 1.0s); `hashed_features`
-counts via `np.bincount` (1.7×, bit-identical); and `run_corpus_checks` builds one
-`Corpus` per distinct `fields` mapping instead of one per property, so tokenisation runs
-twice rather than five times. Corpus stage: **5.9s for 1,389 documents**. `wilson()` moved
-to `src/utils.py` rather than becoming the repo's fourth copy.
-
-**Rebased onto the chunking work the same day, and wired to it.** Chunking landed
-independently (`Chunk`/`Unit`/`CHUNKINGS` in `constitution.py`), so the metadata this
-checker was waiting on now exists — under different names than this entry predicted:
-`unit_id`→`trait_id`, plus `n_chunks`, `chunk_ids`, `grouping_strategy`, `granularity`.
-There is no `scenario_type` or `pressure_source`; that half of the predicted contract
-was simply wrong, and is dropped.
-
-Three things the rebase needed:
-
-1. **A real collision.** `constitution.py::_features` imported `_hashed_features` from
-   `checks.py`, which this branch had moved to `corpus.py`. Repointed — and it is the
-   better home: chunk grouping and corpus diversity now measure text similarity with
-   one featuriser instead of two that could drift.
-2. **Provenance died at stage 2.** `op_scenarios` builds a fresh record from the `Trait`
-   interface, so `chunk_ids`/`n_chunks`/`grouping_strategy`/`granularity` never reached
-   the export, and every consumer would have had to join back to the stage-1 snapshot.
-   Both scenario operators now copy `UNIT_PROVENANCE` onto every record, so which unit a
-   document came from — and how that unit was cut and grouped — is readable **from the
-   document**. Much simpler than teaching the checker to join, and it serves the
-   metadata export and `balance_by` equally.
-3. **The roles were already right.** `members`/`unit`/`group` are role names the config
-   maps to real fields, so wiring the chunking arms was configuration, not code:
-   `group: n_chunks`, `members: chunk_ids`, `unit: trait_id`, plus `n_chunks`,
-   `grouping_strategy` and `granularity` as `field_balance` axes on both dataset configs.
-
-Verified offline across three real chunking methods: `principle` reports
-`n_chunks {1: 108}`, `principle_pairs_related` reports `{1: 12, 2: 48}` (four pairs plus
-the leftover singleton from nine principles), `whole` reports `granularity {whole: 12}`.
-An arm's unit mix is now measurable with no judging at all.
+**Wired to the chunking work** (which landed independently): `op_scenarios` now copies
+`UNIT_PROVENANCE` (`chunk_ids`, `n_chunks`, `grouping_strategy`, `granularity`) onto every
+scenario, so which unit a document came from is readable from the document instead of
+requiring a join back to stage 1. The roles needed no change — wiring the chunking arms
+was configuration. Verified offline across three real chunking methods: `principle`
+reports `n_chunks {1: 108}`, `principle_pairs_related` `{1: 12, 2: 48}`, `whole`
+`granularity {whole: 12}`. An arm's unit mix is measurable with no judging at all.
 
 **Next steps:** write the rubrics for `applies_vs_conflicts` / `principle_coverage` /
-`chunk_attribution` — the only thing still missing, since the fields and roles are in
-place — then run the judged tier once at `sample: 300` against an existing corpus to
-measure real cost and calibrate its gates, and only then turn any of them on.
-`pattern_scan` remains the one block of code never run against a real model.
+`chunk_attribution` — the only thing still missing — then run the judged tier once at
+`sample: 300` against an existing corpus to measure real cost and calibrate its gates,
+and only then turn any of them on. No judged property has been run against a real model
+yet; `pattern_scan` is the one block of code never run against one at all.
 
 ## 2026-08-10 — Dynamic batching (jamie/dynamic-batching): loss curves match, 1.89x on real steps
 

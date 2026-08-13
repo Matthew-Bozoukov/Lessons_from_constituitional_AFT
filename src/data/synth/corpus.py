@@ -4,24 +4,22 @@
 """Corpus-level checks.
 
 The autorater asks "is this document good?". These ask "is this *corpus* good?" --
-questions no single document can answer: is it diverse, does it repeat itself, does
-every bucket have documents in it, is the label predictable from surface form.
-
-Three rules the whole module turns on:
+is it diverse, does it repeat itself, does every bucket have documents in it, is the
+label predictable from surface form. Three rules the module turns on:
 
 1. **A check flags; it never fixes.** `run_corpus_checks` returns a report and mutates
-   nothing. The stage that calls it returns its input records unchanged. A checker that
-   was allowed to drop rows is how 1,266 documents once vanished behind a dead API key.
+   nothing. A checker allowed to drop rows is how 1,266 documents once vanished behind
+   a dead API key.
 2. **A check that cannot run says so.** Missing field -> `skipped` with a reason;
-   raising -> `errored`; too few documents -> `reported` but not gated. None of those
-   is ever a silent pass.
+   raising -> `errored`; too few documents -> `reported` but not gated. Never a silent
+   pass.
 3. **Generic code knows no document type.** A check declares the field *roles* it
-   consumes (`text`, `id`, `group`, `label`); the config maps roles to real record keys.
-   No `cell`, no `trait_id`, no wording in this file.
+   consumes (`text`, `id`, `group`, `label`); the config maps roles to record keys.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import itertools
 import json
@@ -30,7 +28,6 @@ import random
 import re
 import time
 import zlib
-import dataclasses
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
@@ -39,8 +36,8 @@ from typing import Any, Callable
 from src.utils import wilson
 
 # --- shared primitives ---------------------------------------------------------------
-# Moved here from checks.py so the in-pipeline stage and the post-hoc `synth check` verb
-# cannot drift on what "8-gram share" or "surface AUC" means.
+# Here rather than in checks.py so the in-pipeline stage and the post-hoc `synth check`
+# verb cannot drift on what "8-gram share" or "surface AUC" means.
 
 
 def words(text: str) -> list[str]:
@@ -49,18 +46,15 @@ def words(text: str) -> list[str]:
 
 
 def ngrams(tokens: list[str], n: int) -> set[tuple[str, ...]]:
-    """Return the set of word n-grams of a token list."""
+    """The set of word n-grams of a token list."""
     return {tuple(tokens[i:i + n]) for i in range(len(tokens) - n + 1)}
 
 
 def hashed_features(texts: list[str], dim: int = 4096):
     """L2-normalised hashed char-3/4/5-gram count features (crc32, deterministic).
 
-    Counting via `np.bincount` over a Python list of hashes rather than accumulating
-    into the matrix one scalar at a time: a 1,000-word document has ~18,000 character
-    n-grams, and a per-n-gram numpy index-assign is ~1.7x the cost of collecting them
-    and counting once. Bit-identical output -- the measured thresholds in the registry
-    below depend on this function's exact values.
+    One `np.bincount` per document rather than a per-n-gram index-assign: ~1.7x faster,
+    bit-identical -- the registry's measured thresholds depend on these exact values.
     """
     import numpy as np
 
@@ -118,17 +112,20 @@ def entropy(counts: list[int]) -> float:
     return h / math.log(len(counts))
 
 
+def _percentile(sorted_vals: list[float], q: float) -> float:
+    """Nearest-rank percentile of an already-sorted list."""
+    if not sorted_vals:
+        return 0.0
+    i = min(int(round(q * (len(sorted_vals) - 1))), len(sorted_vals) - 1)
+    return float(sorted_vals[i])
+
+
 # --- types ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class Finding:
-    """One flagged problem.
-
-    A finding states WHAT is wrong and points at examples. It never states what to do
-    about it -- deciding that is the reader's job, and a checker that proposes fixes
-    grows into a filter.
-    """
+    """One flagged problem: WHAT is wrong plus examples, never what to do about it."""
 
     property: str
     severity: str                    # "critical" | "warn" | "info" | "error"
@@ -140,7 +137,7 @@ class Finding:
     examples: tuple[str, ...] = ()   # <= 5 record ids, so a human can go look
 
     def as_dict(self) -> dict:
-        """JSON-serialisable form. Derived from the fields, so a new one cannot be
+        """JSON-serialisable form, derived from the fields so a new one cannot be
         silently dropped from every report."""
         d = dataclasses.asdict(self)
         d["examples"] = list(self.examples)
@@ -149,11 +146,11 @@ class Finding:
 
 @dataclass
 class CheckResult:
-    """What one property produces: everything measured, plus what it flags.
+    """What one property produces.
 
     `metrics` is always populated, even when nothing is flagged -- the numbers are the
     point, the findings are the alarm. `labels` carries per-record judgements from a
-    labeler property; they go to a sidecar file, never into the records themselves.
+    judged property; they go to a sidecar file, never into the records themselves.
     """
 
     metrics: dict = field(default_factory=dict)
@@ -163,33 +160,21 @@ class CheckResult:
 
 @dataclass(frozen=True)
 class CorpusCheck:
-    """One registered corpus property.
+    """One registered corpus property: the function, the roles it reads, its own
+    thresholds, and what it costs."""
 
-    Attributes:
-        name: Registry key.
-        fn: (Corpus) -> CheckResult. The whole check.
-        roles: Field roles it consumes. The stage entry maps roles to record keys, so
-            no record field name is ever hardcoded here.
-        defaults: Its own thresholds, overridden per stage entry by `params:`.
-        min_docs: Below this the property reports but is never gated -- the statistics
-            are noise at smoke scale.
-        paid: Whether it calls a model.
-        est_calls: (params, n_docs) -> API calls, for `--estimate`.
-        validate: (stage entry, resolved params) -> None, raising on a config this
-            property cannot run with. Called at build_stages time, so a missing rubric
-            or unit list stops the run BEFORE the generation stages spend anything.
-        doc: One line for the README table.
-    """
-
-    name: str
+    name: str                        # registry key
     fn: Callable[["Corpus"], CheckResult]
-    roles: tuple[str, ...] = ("text", "id")
-    defaults: dict = field(default_factory=dict)
-    min_docs: int = 1
-    paid: bool = False
-    est_calls: Callable[[dict, int], int] | None = None
+    roles: tuple[str, ...] = ("text", "id")   # the stage entry maps these to record keys
+    defaults: dict = field(default_factory=dict)   # overridden per entry by `params:`
+    min_docs: int = 1                # below this: reported, never gated (noise at smoke)
+    paid: bool = False               # whether it calls a model
+    est_calls: Callable[[dict, int], int] | None = None      # (params, n) -> API calls
+    # (stage entry, resolved params, name) -> None, raising on a config this property
+    # cannot run with. Called at build_stages time, so a missing rubric stops the run
+    # BEFORE the generation stages spend anything.
     validate: Callable[[dict, dict], None] | None = None
-    doc: str = ""
+    doc: str = ""                    # one line for the README table
 
 
 # --- field resolution ----------------------------------------------------------------
@@ -206,12 +191,8 @@ def _dotted(record: dict, path: str) -> Any:
 
 
 def _from_messages(record: dict, spec: dict) -> str | None:
-    """Concatenate the chosen roles' content from a `{messages: [...]}` record.
-
-    The final stage of a pipeline exports `{messages, metadata}`, so a corpus check
-    placed last audits what actually trains. `include_reasoning` also pulls the
-    `reasoning_content` that carries the trace.
-    """
+    """Concatenate the chosen roles' content from a `{messages: [...]}` record, so a
+    check placed last audits what actually trains."""
     msgs = record.get("messages")
     if not isinstance(msgs, list):
         return None
@@ -228,20 +209,15 @@ def _from_messages(record: dict, spec: dict) -> str | None:
 
 
 def resolve_field(spec: Any, record: dict) -> Any:
-    """Resolve one field spec against one record.
+    """Resolve one field spec against one record, or None where it does not resolve.
 
-    Four shapes, in order of how often they are wanted:
-
-    - `"metadata.cell"` -- a dotted path.
-    - `["reasoning", "response"]` -- several paths, joined with newlines.
+    - `"metadata.cell"` -- a dotted path;
+    - `["reasoning", "response"]` -- several paths, joined with newlines;
     - `{"from_messages": {"roles": [...], "include_reasoning": true}}` -- for records
-      already exported to `{messages, metadata}`.
+      already exported to `{messages, metadata}`;
     - `{"by": "response_kind", "cases": {"good": "gold_response", ...}, "default": ...}`
-      -- the record field `by` picks WHICH field to read. This is how a check says
-      "read the flawed text for flawed rows" without knowing either name.
-
-    Returns:
-        The resolved value, or None when the spec does not resolve for this record.
+      -- the record field `by` picks WHICH field to read, so a check can say "read the
+      flawed text for flawed rows" without knowing either name.
     """
     if spec is None:
         return None
@@ -265,13 +241,9 @@ def resolve_field(spec: Any, record: dict) -> Any:
 class Corpus:
     """The corpus, plus everything derived from it, computed at most once.
 
-    A corpus property's unit of work IS the corpus, so there is no prepare/evaluate
-    split. What a two-phase API would have bought -- not recomputing expensive
-    corpus-wide derivations per check -- this buys by memoising them here. The
-    derivations depend only on `records` and `fields`, so `run_corpus_checks` builds one
-    instance per distinct `fields` mapping and hands each property a cheap `view()` of
-    it carrying that property's own `params`; without that the caches would be rebuilt
-    once per property and tokenisation would run several times over the whole corpus.
+    The derivations depend only on `records` and `fields`, so `run_corpus_checks` keeps
+    one instance per distinct `fields` mapping and re-points `params`/`spec`/`name` at
+    each property in turn -- otherwise tokenisation would run once per property.
     """
 
     records: list[dict]
@@ -290,33 +262,16 @@ class Corpus:
         """The name of the corpus_check stage this property runs under."""
         return str(self.spec.get("name", "corpus"))
 
-    def view(self, *, params: dict, spec: dict, name: str) -> "Corpus":
-        """A per-property view sharing this corpus's derived state.
-
-        `records` and `fields` are identical, so `ids`/`texts`/`tokens`/`groups` are
-        the same values; copying the populated `cached_property` entries hands them over
-        rather than recomputing them per property.
-        """
-        v = Corpus(records=self.records, fields=self.fields, params=params, spec=spec,
-                   seed=self.seed, workers=self.workers, run_dir=self.run_dir,
-                   labels=self.labels, ctx=self.ctx, name=name)
-        for key in ("ids", "texts", "tokens", "groups", "by_group"):
-            if key in self.__dict__:
-                v.__dict__[key] = self.__dict__[key]
-        return v
-
     def role(self, role: str) -> list[Any]:
         """Resolve one role across every record (None where it does not resolve)."""
-        spec = self.fields.get(role)
-        return [resolve_field(spec, r) for r in self.records]
+        return [resolve_field(self.fields.get(role), r) for r in self.records]
 
     def missing_role(self, role: str) -> str | None:
-        """Return why a role is unusable, or None if it resolves for some record."""
+        """Why a role is unusable, or None if it resolves for some record."""
         if role not in self.fields:
             return f"stage entry declares no `fields.{role}`"
-        # Read through the cached properties where there is one, so validating a role
-        # does not resolve the whole corpus a second time. NOT `ids`: it substitutes a
-        # positional index for an unresolved value, which would mask exactly the
+        # Read through the cached properties where there is one. NOT `ids`: it
+        # substitutes a positional index for an unresolved value, masking exactly the
         # misconfiguration this is here to report.
         vals = {"text": lambda: self.texts,
                 "group": lambda: self.groups}.get(role, lambda: self.role(role))()
@@ -330,8 +285,8 @@ class Corpus:
         """Record ids; falls back to the positional index when no id role is mapped."""
         if "id" not in self.fields:
             return [str(i) for i in range(len(self.records))]
-        got = self.role("id")
-        return [str(v) if v not in (None, "") else str(i) for i, v in enumerate(got)]
+        return [str(v) if v not in (None, "") else str(i)
+                for i, v in enumerate(self.role("id"))]
 
     @cached_property
     def texts(self) -> list[str]:
@@ -361,9 +316,8 @@ class Corpus:
     def column(self, path: str) -> list[Any]:
         """Read one dotted path across every record.
 
-        `label.<key>` reads from the judged-label sidecar instead of the record, so a
-        judged annotation is usable as a coverage axis without ever being written into
-        the corpus.
+        `label.<key>` reads the judged-label sidecar instead, so a judged annotation is
+        usable as a coverage axis without ever being written into the corpus.
         """
         if path.startswith("label."):
             key = path[len("label."):]
@@ -373,8 +327,8 @@ class Corpus:
     def sample(self, n: int | None, pool: list[int] | None = None) -> list[int]:
         """A seeded sample of record indices; every index when `n` is None or >= size.
 
-        `pool` restricts the draw to a subset, so a property that applies to part of the
-        corpus still gets its full sample of the part that applies.
+        `pool` restricts the draw, so a property applying to part of the corpus still
+        gets its full sample of the part that applies.
         """
         idx = list(range(len(self.records))) if pool is None else sorted(set(pool))
         if n is None or n <= 0 or n >= len(idx):
@@ -387,13 +341,9 @@ def flag(c: "Corpus", findings: list[Finding], severity: str, metric: str, value
          low: bool = False, nd: int = 4) -> bool:
     """Append a Finding when `value` crosses the threshold `c.params[key]`.
 
-    One place that decides what "crosses" means, what precision a reported value keeps,
-    and how many examples a finding carries -- written out per site, those three
-    conventions drift, and a new property has to reproduce all of them by eye.
-
-    `examples` may be a callable, evaluated only when the finding actually fires: on the
-    collapse path the examples cost a full re-scan of the group, which is wasted on every
-    corpus that passes.
+    One place decides what "crosses" means, what precision a reported value keeps, and
+    how many examples a finding carries. `examples` may be a callable, evaluated only
+    when the finding fires -- on the collapse path building them costs a full re-scan.
     """
     limit = float(c.params[key])
     if (value >= limit) if low else (value <= limit):
@@ -410,11 +360,10 @@ def flag(c: "Corpus", findings: list[Finding], severity: str, metric: str, value
 def check_ngram_diversity(c: Corpus) -> CheckResult:
     """Repeated long n-grams and high pairwise overlap, per group and overall.
 
-    Generators converge on one shape quickly; a single 8-gram appearing in a large share
-    of a group's documents is the fingerprint. `distinct_n` catches the same collapse
-    from the other side (a small vocabulary of phrasings), and mean pairwise 4-gram
-    Jaccard catches documents that share no single long phrase but are still built from
-    the same parts.
+    One 8-gram in a large share of a group's documents is the fingerprint of a collapsed
+    generator; `distinct_2` catches the same collapse from the vocabulary side, and mean
+    pairwise 4-gram Jaccard catches documents built from the same parts without sharing
+    any one long phrase.
     """
     p = c.params
     min_group = int(p["min_group_docs"])
@@ -427,20 +376,19 @@ def check_ngram_diversity(c: Corpus) -> CheckResult:
         for d in docs:
             for g in ngrams(d, 8):
                 grams8[g] = grams8.get(g, 0) + 1
-        # Tie-break on the gram itself, not on dict order: at small N many 8-grams share
-        # the top count, and an order-dependent pick makes two reports of the same
-        # corpus look like they disagree.
+        # Tie-break on the gram itself: at small N many 8-grams share the top count, and
+        # an order-dependent pick makes two reports of one corpus look like they differ.
         top_gram, top_count = min(grams8.items(), key=lambda kv: (-kv[1], kv[0]),
                                   default=((), 0))
         top_share = top_count / max(len(docs), 1)
 
-        # A fresh RNG per group, matching the historical behaviour this generalises --
-        # the sampled Jaccard must stay byte-identical for the same input and seed.
+        # A fresh RNG per group: the sampled Jaccard must stay byte-identical with the
+        # historical behaviour this generalises, for the same input and seed.
         rng = random.Random(c.seed)
         picked = rng.sample(docs, min(len(docs), int(p["sample"])))
         sets4 = [ngrams(d, 4) for d in picked]
-        # |a u b| = |a| + |b| - |a n b|, so the union set never has to be built. Same
-        # numbers, ~3x faster -- and this loop is the single biggest cost in the stage.
+        # |a u b| = |a| + |b| - |a n b|, so the union is never built: same numbers, ~3x
+        # faster, and this loop is the single biggest cost in the stage.
         sims: list[float] = []
         for i, a in enumerate(sets4):
             for b in sets4[i + 1:]:
@@ -501,11 +449,9 @@ def _bottom_k_jaccard(a: list[int], b: list[int], k: int) -> float:
 def check_near_duplicates(c: Corpus) -> CheckResult:
     """Exact and near-duplicate documents.
 
-    An all-pairs Jaccard over 10k documents is 50M comparisons, so candidates come from
-    LSH banding over bottom-k shingle sketches and only those candidates are scored. The
-    banding is on contiguous slices of the sorted sketch: an approximation, not a
-    guarantee, and it is biased towards finding the heavy overlaps -- which is exactly
-    what a near-duplicate is.
+    All-pairs Jaccard over 10k documents is 50M comparisons, so candidates come from LSH
+    banding over bottom-k shingle sketches and only those are scored -- an approximation
+    biased towards heavy overlaps, which is exactly what a near-duplicate is.
     """
     p = c.params
     k, nb, sh = int(p["sketch"]), int(p["bands"]), int(p["shingle"])
@@ -521,10 +467,10 @@ def check_near_duplicates(c: Corpus) -> CheckResult:
         sketches.append(sorted(grams)[:k])
 
     exact_groups = [g for g in exact.values() if len(g) > 1]
-    # Band only ONE representative per exact-duplicate class. Identical documents
-    # collide in every band, so a corpus with a large block of them would otherwise put
-    # all of them in one bucket and score every pair -- restoring precisely the O(n^2)
-    # this is built to avoid, to re-derive what the sha256 map already knows.
+    # Band only ONE representative per exact-duplicate class: identical documents
+    # collide in every band, so a corpus with a large block of them would otherwise
+    # score every pair -- restoring the O(n^2) this exists to avoid, to re-derive what
+    # the sha256 map already knows.
     reps = [g[0] for g in exact.values()]
 
     buckets: dict[tuple, list[int]] = {}
@@ -541,8 +487,8 @@ def check_near_duplicates(c: Corpus) -> CheckResult:
     oversized = 0
     for members in buckets.values():
         # An oversized bucket is a finding, not a workload: scoring C(m,2) pairs inside
-        # it costs more than the whole rest of the check and tells you nothing the
-        # bucket's existence did not.
+        # it costs more than the rest of the check and says nothing its existence did
+        # not already say.
         if len(members) > cap:
             oversized += 1
             continue
@@ -552,8 +498,7 @@ def check_near_duplicates(c: Corpus) -> CheckResult:
 
     thresh = float(p["jaccard_min"])
     near = {pair: j for pair, j in pairs.items() if j >= thresh}
-    # Expand representatives back to the full exact classes they stood for.
-    by_rep = {g[0]: g for g in exact.values()}
+    by_rep = {g[0]: g for g in exact.values()}       # representatives -> full classes
     dup_idx = {i for g in exact_groups for i in g}
     for pair in near:
         for rep in pair:
@@ -586,20 +531,14 @@ def check_near_duplicates(c: Corpus) -> CheckResult:
 
 
 def check_opening_collapse(c: Corpus) -> CheckResult:
-    """Documents that begin the same way.
+    """Documents that begin the same way -- the earliest collapse signal, one pass.
 
-    Generators collapse on openings long before they collapse on whole documents, so a
-    shared first sentence is the earliest warning available and costs one pass.
-
-    Measured twice, because exact matching misses the interesting half. On a real
-    1,389-document corpus the three most common openings were "let me actually look at
-    what's in front", "let me lay out what's actually in front" and "let me look at
-    what's actually in front" -- 155 documents running one construction, which exact
-    matching reports as three unremarkable openers. `*_reordered` keys therefore group
-    openings by their word SET, which collapses those three into one.
+    Measured twice, because exact matching misses the interesting half: on a real
+    1,389-document corpus the three most common openings were reorderings of one
+    construction (155 documents), which exact matching reports as three unremarkable
+    openers. The `*_reordered` keys group openings by their word SET instead.
     """
-    p = c.params
-    k = int(p["opening_words"])
+    k = int(c.params["opening_words"])
     openers: dict[str, list[int]] = {}
     bags: dict[tuple[str, ...], list[int]] = {}
     labels: dict[tuple[str, ...], str] = {}
@@ -652,20 +591,12 @@ def check_opening_collapse(c: Corpus) -> CheckResult:
     return CheckResult(metrics, findings)
 
 
-def _percentile(sorted_vals: list[float], q: float) -> float:
-    """Nearest-rank percentile of an already-sorted list."""
-    if not sorted_vals:
-        return 0.0
-    i = min(int(round(q * (len(sorted_vals) - 1))), len(sorted_vals) - 1)
-    return float(sorted_vals[i])
-
-
 def check_length_profile(c: Corpus) -> CheckResult:
     """Document length distribution overall and per group.
 
-    A low coefficient of variation is a template fingerprint -- real corpora vary. A
-    per-group mean that sits well off the corpus mean is the cheap cousin of the surface
-    shortcut classifier: whatever distinguishes the groups is visible in length alone.
+    A low coefficient of variation is a template fingerprint. A per-group mean well off
+    the corpus mean is the cheap cousin of the surface-shortcut classifier: whatever
+    distinguishes the groups is visible in length alone.
     """
     lens = [float(len(w)) for w in c.tokens]
     n = len(lens) or 1
@@ -698,11 +629,9 @@ def check_length_profile(c: Corpus) -> CheckResult:
 def check_field_balance(c: Corpus) -> CheckResult:
     """Value distribution over each declared axis, and empty cells of each cross.
 
-    Generalises "did every planned bucket get documents" without knowing what the
-    buckets are. Axes are dotted record paths, or `label.<key>` to use a judged
-    annotation -- which is how a judged coverage labelling becomes a coverage map.
-    Only OBSERVED axis values are crossed: an axis pair is a grid of the values that
-    actually occur, so a bucket nobody ever planned is not reported as missing.
+    "Did every planned bucket get documents", without knowing what the buckets are. Axes
+    are dotted record paths, or `label.<key>` for a judged annotation. Only OBSERVED
+    values are crossed, so a bucket nobody planned is not reported as missing.
     """
     axes = [str(a) for a in (c.spec.get("axes") or [])]
     crosses = [[str(a) for a in cross] for cross in (c.spec.get("cross") or [])]
@@ -767,28 +696,21 @@ def check_field_balance(c: Corpus) -> CheckResult:
 def check_feature_diversity(c: Corpus) -> CheckResult:
     """How much of the representation space the corpus actually occupies.
 
-    Mean pairwise cosine says how similar documents are on average; effective rank
-    (the perplexity of the singular-value distribution) says how many independent
-    directions they span.
-
-    Effective rank is the discriminating half. Character n-grams of same-language,
-    same-genre prose overlap so heavily that two unrelated documents already score ~0.86
-    cosine (measured), so that number only separates at the extreme -- whereas effective
-    rank as a fraction of the sample runs 0.65 for a healthy corpus against 0.03 for an
-    identical one. Both are SURFACE measures: a corpus saying one thing 8,000 different
-    ways scores well on either.
+    Mean pairwise cosine says how similar documents are on average; effective rank (the
+    perplexity of the singular-value distribution) says how many independent directions
+    they span, and is the discriminating half -- same-genre prose already scores ~0.86
+    cosine, while effective rank as a fraction of the sample runs 0.65 for a healthy
+    corpus against 0.03 for an identical one. Both are SURFACE measures.
     """
     import numpy as np
 
-    p = c.params
-    idx = c.sample(int(p["sample"]))
+    idx = c.sample(int(c.params["sample"]))
     X = hashed_features([c.texts[i] for i in idx])
     G = X @ X.T
     n = len(idx)
     off = (G.sum() - np.trace(G)) / max(n * (n - 1), 1)
     svals = np.linalg.svd(X, compute_uv=False)
-    tot = float(svals.sum()) or 1.0
-    pk = svals / tot
+    pk = svals / (float(svals.sum()) or 1.0)
     eff_rank = float(np.exp(-(pk * np.log(np.clip(pk, 1e-12, None))).sum()))
     frac = eff_rank / max(n, 1)
 
@@ -813,23 +735,12 @@ def check_label_leakage(c: Corpus) -> CheckResult:
     hedge -- and a model trained on the corpus learns the tell instead of the substance.
     A label-shuffle baseline anchors what chance looks like at this sample size.
 
-    `auc` is directional -- it reads against the `positive` class, which defaults to the
-    second class alphabetically -- and it is what GATES, at `surface_auc_max`.
-    `separability` = max(auc, 1 - auc) catches a leak pointing the other way, which a
-    caller who never chose a positive class would otherwise see score 0.05 and pass; it
-    is reported and can only raise a `warn`, never gate. That asymmetry is measured, not
-    timid: on a null corpus of 25-60 documents per class this estimator's separability
-    lands above 0.65 about a third of the time and does not tighten with n, so gating on
-    it would manufacture alarms. Read it next to `separability_label_shuffled`, which is
-    the same statistic with the labels destroyed.
-
-    Texts appearing under BOTH labels are dropped first. They carry no label information
-    by construction, and leaving them in actively breaks the estimate: cross-validation
-    memorises such a text in the fold that trains on one copy and then scores its twin,
-    which carries the opposite label, producing systematic anti-correlation. Measured on
-    an all-duplicate corpus that artefact reached AUC 0.02 -- a number the directional
-    gate reads as a clean pass and the separability gate reads as a total leak, both
-    wrong.
+    `auc` is directional (against `positive`, default: second class alphabetically) and
+    is what GATES. `separability` = max(auc, 1 - auc) catches a leak pointing the other
+    way and can only `warn`: on a null corpus of 25-60 per class it exceeds 0.65 about a
+    third of the time and does not tighten with n. Texts appearing under BOTH labels are
+    dropped first -- CV memorises such a text in one fold and scores its twin in the
+    next, which measured AUC 0.02 on an all-duplicate corpus (a clean pass, wrongly).
     """
     import numpy as np
 
@@ -927,9 +838,9 @@ def _validate_coverage(spec: dict, params: dict, prop: str = "") -> None:
 def validate_spec(spec: dict) -> None:
     """Fail fast on a corpus_check stage entry that cannot run as configured.
 
-    Called from the operator at build_stages time, which is before the first
-    generation stage spends anything -- a typo in a rubric key must not surface only
-    after a corpus has been paid for.
+    Called from the operator at build_stages time, before the first generation stage
+    spends anything -- a typo in a rubric key must not surface only after a corpus has
+    been paid for.
     """
     unknown = [p["property"] for p in _instances(spec)
                if p["property"] not in CORPUS_CHECKS]
@@ -946,40 +857,47 @@ def validate_spec(spec: dict) -> None:
 
 def _rubric(c: Corpus) -> dict:
     """The judge wording for this property, from the config. Never from code."""
-    prop = str(c.spec["property"])
-    return (c.spec.get("rubrics") or {})[prop]
+    return (c.spec.get("rubrics") or {})[str(c.spec["property"])]
+
+
+def _listify(raw: Any) -> list[str]:
+    """Split a judge's comma/semicolon-separated tag body into clean tokens."""
+    if isinstance(raw, (list, tuple)):
+        return [str(x).strip() for x in raw if str(x).strip()]
+    parts = [p.strip(" \t\r\n.'\"") for p in re.split(r"[,;\n]+", str(raw or ""))]
+    return [p for p in parts if p and p.lower() not in ("none", "n/a", "-")]
+
+
+def _fmt_record(c: Corpus, i: int) -> dict:
+    """Record fields a rubric's `user` template may interpolate."""
+    out = {"record_id": c.ids[i], "group": c.groups[i]}
+    for role in ("unit", "members"):
+        v = resolve_field(c.fields.get(role), c.records[i]) if role in c.fields else None
+        out[role] = ", ".join(_listify(v)) if isinstance(v, (list, tuple)) else (v or "")
+    return out
 
 
 def judge(c: Corpus, tags: tuple[str, ...], render, *, max_tokens: int = 700,
           indices: list[int] | None = None, system: str | None = None):
     """Judge a seeded sample of documents, resuming from a per-property checkpoint.
 
-    Returns `(labels, stats)` where `labels` maps record id to the parsed tag dict for
-    every document that was successfully judged. A document whose judge call failed or
-    whose reply would not parse is simply ABSENT -- never defaulted to a label. That is
-    the whole lesson of the incident where a dead API key scored 1,266 documents 0.0
-    and they were silently dropped: a checker must be able to say "I do not know".
+    Returns `(labels, stats)`, `labels` mapping record id to the parsed tag dict for
+    every document successfully judged. A document whose judge call failed or whose
+    reply would not parse is simply ABSENT -- never defaulted to a label. A checker must
+    be able to say "I do not know"; the alternative once scored 1,266 documents 0.0
+    behind a dead API key.
 
-    Args:
-        c: The corpus view. `c.ctx` supplies the client, usage tally and models block.
-        tags: Required `<tag>` names in the judge's reply.
-        render: (index) -> the user-message text for that document.
-        max_tokens: Completion cap; judges answer in a tag and a sentence.
-        indices: Restrict the sample to these record indices (a property that only
-            applies to part of the corpus passes the part that applies).
-        system: Override the rubric's `system` template (a multi-pass property has
-            more than one system message).
+    `render(index)` builds the user message; `indices` restricts the sample, so a
+    property applying to part of the corpus still gets its full sample of that part;
+    `system` overrides the rubric's (a multi-pass property has more than one).
     """
     from .core import (JUDGE_NO_REASONING, Checkpoint, call_tagged,
                        model_cfg, run_items)
 
-    rub = _rubric(c)
     m = model_cfg(c.ctx.cfg, c.spec.get("model"))
-    sys_msg = system if system is not None else rub["system"]
+    sys_msg = system if system is not None else _rubric(c)["system"]
     stage = f"corpus:{c.name}"
 
-    # Sample from the applicable documents, not from the whole corpus and then filter:
-    # a property that applies to a tenth of the corpus should still get its full sample.
     n = c.params.get("sample")
     picked = c.sample(None if n is None else int(n), pool=indices)
     ckpt = Checkpoint(Path(c.run_dir) / f"{c.stage}_{c.name}.partial.jsonl",
@@ -1003,22 +921,13 @@ def judge(c: Corpus, tags: tuple[str, ...], render, *, max_tokens: int = 700,
     return labels, stats
 
 
-def _listify(raw: Any) -> list[str]:
-    """Split a judge's comma/semicolon-separated tag body into clean tokens."""
-    if isinstance(raw, (list, tuple)):
-        return [str(x).strip() for x in raw if str(x).strip()]
-    text = str(raw or "")
-    parts = [p.strip(" \t\r\n.'\"") for p in re.split(r"[,;\n]+", text)]
-    return [p for p in parts if p and p.lower() not in ("none", "n/a", "-")]
-
-
 def check_applies_vs_conflicts(c: Corpus) -> CheckResult:
     """Does each document's reasoning RESOLVE a tension between values, or APPLY one?
 
     The primary outcome of the chunking experiment: if conflict-resolution guidance is
     not learnable from a single chunk, the share of conflict documents should rise with
-    group size. Reported overall and per `group`, each with a Wilson interval, so a
-    difference between arms can be read as a difference rather than as noise.
+    group size. Reported overall and per `group` with Wilson intervals, so a difference
+    between arms can be read as a difference rather than as noise.
     """
     labels, stats = judge(c, ("mode", "why"), lambda i: _rubric(c)["user"].format(
         document=c.texts[i], **_fmt_record(c, i)))
@@ -1052,45 +961,31 @@ def check_applies_vs_conflicts(c: Corpus) -> CheckResult:
                                 "conflict_rate_ci95": list(
                                     wilson(d["conflict"], sum(d.values())))}
                             for g, d in sorted(per_group.items())}}
-    findings = []
-    if n and rate < float(c.params["conflict_rate_min"]):
-        findings.append(Finding(
-            c.name, "warn", "conflict_rate", round(rate, 4),
-            float(c.params["conflict_rate_min"]), "",
-            f"only {rate:.0%} of documents resolve a tension between values; the rest "
-            f"apply a single one (95% CI {lo:.0%}-{hi:.0%}, n={n})",
-            tuple(rid for rid, lab in labels.items()
-                  if str(lab.get("mode", "")).lower() == "application")[:5]))
-    if n and ind_share > float(c.params["indeterminate_share_max"]):
-        findings.append(Finding(
-            c.name, "warn", "indeterminate_share", round(ind_share, 4),
-            float(c.params["indeterminate_share_max"]), "",
-            f"the judge could not classify {ind_share:.0%} of documents -- read the "
-            f"rubric before reading the ratio",
-            tuple(rid for rid, lab in labels.items()
-                  if str(lab.get("mode", "")).lower() == "indeterminate")[:5]))
+
+    def ids_where(mode: str) -> list[str]:
+        return [rid for rid, lab in labels.items()
+                if str(lab.get("mode", "")).lower() == mode]
+
+    findings: list[Finding] = []
+    if n:
+        flag(c, findings, "warn", "conflict_rate", rate, "conflict_rate_min",
+             f"only {rate:.0%} of documents resolve a tension between values; the rest "
+             f"apply a single one (95% CI {lo:.0%}-{hi:.0%}, n={n})",
+             lambda: ids_where("application"), low=True)
+        flag(c, findings, "warn", "indeterminate_share", ind_share,
+             "indeterminate_share_max",
+             f"the judge could not classify {ind_share:.0%} of documents -- read the "
+             f"rubric before reading the ratio", lambda: ids_where("indeterminate"))
     return CheckResult(metrics, findings, labels)
-
-
-def _fmt_record(c: Corpus, i: int) -> dict:
-    """Record fields a rubric's `user` template may interpolate."""
-    out = {"record_id": c.ids[i], "group": c.groups[i]}
-    for role in ("unit", "members"):
-        v = resolve_field(c.fields.get(role), c.records[i]) if role in c.fields else None
-        out[role] = ", ".join(_listify(v)) if isinstance(v, (list, tuple)) else (v or "")
-    return out
 
 
 def check_principle_coverage(c: Corpus) -> CheckResult:
     """Which principles does each document ACTUALLY engage, per a judge?
 
-    For a one-unit-per-document arm coverage is true by construction and this measures
-    nothing. For the whole-constitution and cluster arms it is the only way to know
-    what the corpus covers, which is what makes those arms evaluable at all -- hence
-    verification-after rather than construction-by.
-
-    `off_target_rate` is the other half: the share of documents whose engaged
-    principles exclude the unit they were generated from.
+    For a one-unit-per-document arm coverage is true by construction; for the
+    whole-constitution and cluster arms this is the only way to know what the corpus
+    covers, which is what makes those arms evaluable at all. `off_target_rate` is the
+    other half: documents whose engaged principles exclude the unit they came from.
     """
     declared = [str(u) for u in c.spec["units"]]
     labels, stats = judge(c, ("principles", "why"), lambda i: _rubric(c)["user"].format(
@@ -1108,35 +1003,31 @@ def check_principle_coverage(c: Corpus) -> CheckResult:
         unit = _fmt_record(c, i)["unit"] if i is not None else ""
         if unit:
             with_unit += 1
-            if unit not in engaged:
-                off_target += 1
+            off_target += unit not in engaged
 
-    universe = declared
-    empty = [u for u in universe if not counts.get(u)]
-    norm_h = entropy([counts.get(u, 0) for u in universe]) if universe else 1.0
+    empty = [u for u in declared if not counts.get(u)]
+    norm_h = entropy([counts.get(u, 0) for u in declared]) if declared else 1.0
     rate = off_target / with_unit if with_unit else 0.0
 
     metrics = {**stats, "engaged_counts": dict(sorted(counts.items())),
                "principles_declared": len(declared), "principles_seen": len(counts),
                "empty_principles": empty, "normalized_entropy": round(norm_h, 4),
                "off_target_rate": round(rate, 4), "documents_with_a_unit": with_unit}
-    findings = []
+    findings: list[Finding] = []
     if empty:
         findings.append(Finding(
             c.name, "critical", "empty_principles", len(empty), 0, "",
             f"{len(empty)} principle(s) are engaged by no sampled document: "
             f"{', '.join(empty[:5])}"))
-    if universe and norm_h < float(c.params["min_normalized_entropy"]):
-        findings.append(Finding(
-            c.name, "warn", "normalized_entropy", round(norm_h, 4),
-            float(c.params["min_normalized_entropy"]), "",
-            f"coverage is concentrated on a few of the {len(universe)} principles"))
-    if with_unit and rate > float(c.params["off_target_rate_max"]):
-        findings.append(Finding(
-            c.name, "warn", "off_target_rate", round(rate, 4),
-            float(c.params["off_target_rate_max"]), "",
-            f"{rate:.0%} of documents never engage the unit they were generated from",
-            tuple(rid for rid in labels)[:5]))
+    if declared:
+        flag(c, findings, "warn", "normalized_entropy", norm_h,
+             "min_normalized_entropy",
+             f"coverage is concentrated on a few of the {len(declared)} principles",
+             low=True)
+    if with_unit:
+        flag(c, findings, "warn", "off_target_rate", rate, "off_target_rate_max",
+             f"{rate:.0%} of documents never engage the unit they were generated from",
+             labels)
     return CheckResult(metrics, findings, labels)
 
 
@@ -1160,14 +1051,14 @@ def check_chunk_attribution(c: Corpus) -> CheckResult:
         document=c.texts[i], **_fmt_record(c, i)), indices=grouped)
 
     per_k: dict[str, dict[str, float]] = {}
-    engaged_counts, all_engaged, total = [], 0, 0
+    engaged_counts, all_engaged, total, member_total = [], 0, 0, 0
     for rid, lab in labels.items():
-        i = index.get(rid)
-        mem = members.get(i, [])
+        mem = members.get(index.get(rid), [])
         if not mem:
             continue
         hit = {m for m in _listify(lab.get("engaged")) if m in mem}
         total += 1
+        member_total += len(mem)
         engaged_counts.append(len(hit))
         all_engaged += len(hit) == len(mem)
         b = per_k.setdefault(str(len(mem)), {"n": 0, "engaged": 0, "all": 0})
@@ -1176,8 +1067,7 @@ def check_chunk_attribution(c: Corpus) -> CheckResult:
         b["all"] += len(hit) == len(mem)
 
     eff_k = sum(engaged_counts) / total if total else 0.0
-    mean_k = sum(len(members[index[r]]) for r in labels if index.get(r) is not None
-                 and members.get(index[r])) / max(total, 1)
+    mean_k = member_total / max(total, 1)
     ratio = eff_k / mean_k if mean_k else 0.0
     rate = all_engaged / total if total else 0.0
     lo, hi = wilson(all_engaged, total)
@@ -1191,42 +1081,32 @@ def check_chunk_attribution(c: Corpus) -> CheckResult:
                "all_members_engaged_rate": round(rate, 4),
                "all_members_engaged_ci95": [lo, hi],
                "by_k": dict(sorted(per_k.items()))}
-    findings = []
-    if total and ratio < float(c.params["attribution_min"]):
-        findings.append(Finding(
-            c.name, "critical", "effective_k_ratio", round(ratio, 4),
-            float(c.params["attribution_min"]), "",
-            f"documents engage {eff_k:.2f} of their {mean_k:.2f} member chunks on "
-            f"average -- this arm behaves like a smaller k than it declares",
-            tuple(rid for rid in labels)[:5]))
+    findings: list[Finding] = []
+    if total:
+        flag(c, findings, "critical", "effective_k_ratio", ratio, "attribution_min",
+             f"documents engage {eff_k:.2f} of their {mean_k:.2f} member chunks on "
+             f"average -- this arm behaves like a smaller k than it declares",
+             labels, low=True)
     return CheckResult(metrics, findings, labels)
 
 
 def _norm_pattern(text: str) -> str:
-    """Collapse a discovered pattern's wording so two scans can be compared.
-
-    Uses this module's own tokeniser, so what counts as a word cannot drift between
-    pattern clustering and every n-gram metric.
-    """
+    """Collapse a discovered pattern's wording so two scans can be compared, using this
+    module's own tokeniser so it cannot drift from every n-gram metric."""
     return " ".join(words(str(text)))[:120]
 
 
 def check_pattern_scan(c: Corpus) -> CheckResult:
     """Discover the corpus's OWN recurring tics, then measure how far they spread.
 
-    Three passes, after GDM's scan -> cluster -> autorate:
+    Three passes, after GDM's scan -> cluster -> autorate: SCAN batches and ask what
+    keeps recurring (no rubric written in advance -- a corpus's characteristic tic is
+    usually something nobody thought to look for); CLUSTER by keeping only patterns
+    `min_scans` INDEPENDENT batches both named; AUTORATE a sample against the survivors.
 
-    1. SCAN batches of documents and ask what keeps recurring. The judge is not handed
-       a rubric written in advance, which is the point: a corpus's characteristic tic
-       is usually something nobody thought to look for.
-    2. CLUSTER by keeping only patterns that at least `min_scans` INDEPENDENT batches
-       both named. One scan naming something once is a judge having an idea.
-    3. AUTORATE a sample of documents against the survivors.
-
-    Report-only, always: it names what it found and how widespread it is, and drops
-    nothing. The scan cache is keyed on BATCH CONTENT, never on document or run id --
-    keying on an id that embeds the run is what made every sweep arm re-pay to scan
-    identical documents last time this existed.
+    Report-only, always. The scan cache is keyed on BATCH CONTENT, never on a document
+    or run id -- keying on an id that embeds the run is what made every sweep arm re-pay
+    to scan identical documents last time this existed.
     """
     from .core import (JUDGE_NO_REASONING, Checkpoint, call_tagged, model_cfg,
                        run_items)
@@ -1242,14 +1122,9 @@ def check_pattern_scan(c: Corpus) -> CheckResult:
     batches = [sorted(pool[i * batch_size:(i + 1) * batch_size])
                for i in range(n_batches)]
     batches = [b for b in batches if len(b) >= 2]
-    # Hash each batch once. The key is the batch's CONTENT, never a document or run id:
-    # keying on an id that embeds the run is what made every sweep arm re-pay to scan
-    # identical documents last time this existed.
     keys = [hashlib.sha256("\n\x00\n".join(c.texts[i] for i in b).encode()).hexdigest()
             for b in batches]
-
-    # The same resume protocol every paid stage uses -- per-item flush under a lock,
-    # torn last line tolerated -- rather than a second hand-rolled copy of it.
+    # The same resume protocol every paid stage uses, not a second hand-rolled copy.
     ckpt = Checkpoint(Path(c.run_dir) / f"{c.stage}_{c.name}.scans.jsonl",
                       key="batch_key")
 
@@ -1270,33 +1145,32 @@ def check_pattern_scan(c: Corpus) -> CheckResult:
     done = run_items([{"batch_key": k, "_idxs": b} for k, b in zip(keys, batches)],
                      scan, c.workers, f"corpus:{c.name}:scan", ckpt,
                      max_fail_pct=float(p.get("max_fail_pct", 25.0)))
-    scans = [r["patterns"] for r in done]
 
     # CLUSTER: a pattern survives only if independent scans found it.
     votes: dict[str, dict] = {}
-    for pats in scans:
-        for norm, original in {_norm_pattern(x): x for x in pats}.items():
-            if not norm:
-                continue
-            v = votes.setdefault(norm, {"scans": 0, "label": original})
-            v["scans"] += 1
-    survivors = [v["label"] for norm, v in
+    for r in done:
+        for norm, original in {_norm_pattern(x): x for x in r["patterns"]}.items():
+            if norm:
+                v = votes.setdefault(norm, {"scans": 0, "label": original})
+                v["scans"] += 1
+    min_scans = int(p["min_scans"])
+    survivors = [v["label"] for _, v in
                  sorted(votes.items(), key=lambda kv: -kv[1]["scans"])
-                 if v["scans"] >= int(p["min_scans"])][:int(p["max_patterns"])]
+                 if v["scans"] >= min_scans][:int(p["max_patterns"])]
 
     metrics: dict[str, Any] = {
         "batches_scanned": len(batches), "batches_from_cache": cached_before,
         "patterns_proposed": len(votes), "patterns_surviving": len(survivors),
         "survivors": survivors,
         "discarded_single_scan": sum(1 for v in votes.values()
-                                     if v["scans"] < int(p["min_scans"])),
+                                     if v["scans"] < min_scans),
         "judge_model": m["model"],
     }
     if not survivors:
         return CheckResult(metrics, [Finding(
             c.name, "info", "patterns_surviving", 0, None, "",
             f"{len(votes)} candidate patterns proposed, none named by "
-            f"{p['min_scans']} independent scans")])
+            f"{min_scans} independent scans")])
 
     # AUTORATE: how far does each survivor actually spread?
     listing = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(survivors))
@@ -1329,7 +1203,7 @@ def check_pattern_scan(c: Corpus) -> CheckResult:
         c.name, "info", "pattern_hit_share", round(top_n / n, 4), None, "",
         f"the corpus's most widespread recurring pattern -- {top!r} -- appears in "
         f"{top_n / n:.0%} of sampled documents ({len(survivors)} patterns survived "
-        f"{p['min_scans']}+ independent scans)",
+        f"{min_scans}+ independent scans)",
         tuple(rid for rid, lab in labels.items()
               if any(_norm_pattern(x) == _norm_pattern(top)
                      for x in _listify(lab.get("matches"))))[:5])]
@@ -1337,11 +1211,9 @@ def check_pattern_scan(c: Corpus) -> CheckResult:
 
 
 # --- the registry --------------------------------------------------------------------
-# One block, deliberately: seeing every property and its default thresholds side by side
-# is worth more at review time than colocating each threshold with its algorithm.
-#
-# Every threshold below was set from MEASURED values, not invented. Baseline: the
-# 2,203-document difficult-advice corpus in output/model_eval_model/20260805_133015/
+# One block, deliberately: every property and its default thresholds side by side.
+# `roles` defaults to ("text", "id"); every threshold was set from MEASURED values on
+# the 2,203-document difficult-advice corpus in output/model_eval_model/20260805_133015/
 # (stage_1_source.jsonl, grouped by trait_id, ~1,040 words per document):
 #
 #     top_8gram_share  0.449      mean_4gram_jaccard  0.0007-0.0037
@@ -1350,17 +1222,14 @@ def check_pattern_scan(c: Corpus) -> CheckResult:
 #     mean_cosine      0.860      effective_rank_frac 0.645
 #     entropy: trait_id (9 values) 1.00, domain (495 values) 0.80
 #
-# Two of those readings are the reason the defaults are what they are. Character-n-gram
-# cosine has a HIGH FLOOR -- two unrelated English documents of the same genre already
-# score ~0.86 -- so it only separates at the extreme, and `effective_rank_frac` (0.03
-# for an identical corpus, 0.65 here) is the discriminating half of that property.
-# Mean 4-gram Jaccard is length-dependent: at ~1,000 words real corpora sit near 0.003,
-# so its gate fires only on severe collapse and is not a fine instrument.
+# Two of those drive the defaults: character-n-gram cosine has a HIGH FLOOR (~0.86 for
+# two unrelated same-genre documents), so `effective_rank_frac` is the discriminating
+# half of that property; mean 4-gram Jaccard is length-dependent (~0.003 at 1,000
+# words), so its gate fires only on severe collapse.
 
 CORPUS_CHECKS: dict[str, CorpusCheck] = {
     "ngram_diversity": CorpusCheck(
         "ngram_diversity", check_ngram_diversity,
-        roles=("text", "id"),
         # top_8gram_share_max matches the gate model_eval_model.yaml already ships, so
         # the migrated post-hoc path keeps its historical behaviour.
         defaults={"top_8gram_share_max": 0.20, "mean_jaccard_max": 0.15,
@@ -1369,37 +1238,32 @@ CORPUS_CHECKS: dict[str, CorpusCheck] = {
         doc="repeated long n-grams, pairwise 4-gram overlap and bigram variety per group"),
     "near_duplicates": CorpusCheck(
         "near_duplicates", check_near_duplicates,
-        roles=("text", "id"),
         defaults={"jaccard_min": 0.70, "dup_share_max": 0.02,
                   "shingle": 5, "sketch": 64, "bands": 8, "max_bucket": 200},
         min_docs=10,
         doc="exact and near-duplicate documents via banded bottom-k shingle sketches"),
     "opening_collapse": CorpusCheck(
         "opening_collapse", check_opening_collapse,
-        roles=("text", "id"),
         defaults={"opening_words": 8, "top_opener_share_max": 0.15},
         min_docs=10,
         doc="documents sharing their first N words -- the earliest collapse signal"),
     "length_profile": CorpusCheck(
         "length_profile", check_length_profile,
-        roles=("text", "id"),
         defaults={"cv_min": 0.12, "group_mean_delta_max": 0.35},
         min_docs=10,
         doc="length distribution overall and per group; low variation is a template"),
     "field_balance": CorpusCheck(
         "field_balance", check_field_balance,
         roles=("id",),
-        # Normalised entropy divides by ln(k), which penalises a high-cardinality axis
-        # with a natural long tail (the 495-value `domain` axis scores 0.80 while being
-        # perfectly healthy). 0.75 keeps the gate meaningful for the categorical axes it
-        # is really for without flagging every free-form one.
+        # Normalised entropy divides by ln(k), penalising a high-cardinality axis with a
+        # natural long tail (the healthy 495-value `domain` axis scores 0.80). 0.75 keeps
+        # the gate meaningful for categorical axes without flagging every free-form one.
         defaults={"min_normalized_entropy": 0.75, "max_share": 0.60,
                   "max_empty_cross_buckets": 0},
         min_docs=10,
         doc="per-axis value distribution and entropy; empty buckets of each cross"),
     "feature_diversity": CorpusCheck(
         "feature_diversity", check_feature_diversity,
-        roles=("text", "id"),
         defaults={"sample": 400, "mean_cosine_max": 0.95,
                   "effective_rank_frac_min": 0.25},
         min_docs=20,
@@ -1413,11 +1277,11 @@ CORPUS_CHECKS: dict[str, CorpusCheck] = {
 
     # --- judged ---------------------------------------------------------------------
     # Sampled by default and resumable, so a re-run at a larger sample pays only the
-    # difference. All three are report-only until their numbers have been seen on a
-    # real corpus; `gate: true` in a config turns one on.
+    # difference. All four are report-only until their numbers have been seen on a real
+    # corpus; `gate: true` in a config turns one on.
     "applies_vs_conflicts": CorpusCheck(
         "applies_vs_conflicts", check_applies_vs_conflicts,
-        roles=("text", "id"), paid=True,
+        paid=True,
         defaults={"sample": 300, "conflict_rate_min": 0.15,
                   "indeterminate_share_max": 0.20},
         min_docs=30, est_calls=lambda p, n: min(int(p["sample"] or n), n),
@@ -1425,7 +1289,7 @@ CORPUS_CHECKS: dict[str, CorpusCheck] = {
         doc="share of documents resolving a value tension vs applying a single value"),
     "principle_coverage": CorpusCheck(
         "principle_coverage", check_principle_coverage,
-        roles=("text", "id"), paid=True,
+        paid=True,
         defaults={"sample": 300, "min_normalized_entropy": 0.75,
                   "off_target_rate_max": 0.30},
         min_docs=30, est_calls=lambda p, n: min(int(p["sample"] or n), n),
@@ -1441,7 +1305,7 @@ CORPUS_CHECKS: dict[str, CorpusCheck] = {
         doc="whether a k>1 document engages all its member chunks or collapses onto one"),
     "pattern_scan": CorpusCheck(
         "pattern_scan", check_pattern_scan,
-        roles=("text", "id"), paid=True,
+        paid=True,
         defaults={"batches": 8, "batch_size": 12, "min_scans": 2, "max_patterns": 10,
                   "sample": 200, "scan_max_tokens": 900, "rate_max_tokens": 500,
                   "seed_patterns": []},
@@ -1481,11 +1345,7 @@ def is_paid(spec: dict) -> bool:
 
 
 def corpus_check_calls(spec: dict, n_docs: int) -> int:
-    """API calls a corpus_check stage entry will make, for `--estimate`.
-
-    An unpriced paid property would silently estimate as free, so every paid entry in
-    the registry carries an `est_calls`.
-    """
+    """API calls a corpus_check stage entry will make, for `--estimate`."""
     total = 0
     for inst in _instances(spec):
         check = CORPUS_CHECKS.get(inst["property"])
@@ -1499,19 +1359,14 @@ def corpus_check_calls(spec: dict, n_docs: int) -> int:
     return total
 
 
-def _labels_path(run_dir: Path, stage: str) -> Path:
-    return Path(run_dir) / f"{stage}_labels.jsonl"
-
-
 def load_labels(run_dir: Path, stage: str) -> dict[str, dict]:
     """Read the judged-label sidecar, if a previous run of this stage wrote one."""
-    path = _labels_path(run_dir, stage)
+    path = Path(run_dir) / f"{stage}_labels.jsonl"
     out: dict[str, dict] = {}
     if not path.exists():
         return out
     for line in path.open(encoding="utf-8"):
-        line = line.strip()
-        if not line:
+        if not line.strip():
             continue
         try:
             row = json.loads(line)
@@ -1523,32 +1378,16 @@ def load_labels(run_dir: Path, stage: str) -> dict[str, dict]:
     return out
 
 
-def _write_labels(run_dir: Path, stage: str, labels: dict[str, dict]) -> None:
-    """Rewrite the sidecar from the merged label map."""
-    path = _labels_path(run_dir, stage)
-    with path.open("w", encoding="utf-8") as f:
-        for rid in sorted(labels):
-            f.write(json.dumps({"record_id": rid, **labels[rid]},
-                               ensure_ascii=False) + "\n")
-
-
 def run_corpus_checks(records: list[dict], spec: dict, *, run_dir: Path | str,
                       seed: int = 0, workers: int = 8, ctx: Any = None) -> dict:
-    """Run every property the stage entry declares and return the report.
+    """Run every property the stage entry declares (`fields`, `axes`, `cross`,
+    `rubrics`, `properties`) and return the report; `report["pass"]` is the AND of every
+    gated property.
 
     Never mutates `records`. A property that cannot run is recorded as `skipped` or
-    `errored` -- never omitted, never quietly passed.
-
-    Args:
-        records: The corpus, as it stands at this point in the pipeline.
-        spec: The stage entry (`fields`, `axes`, `cross`, `rubrics`, `properties`).
-        run_dir: Where the label sidecar lives.
-        seed: Sampling seed; every sampled statistic is reproducible from it.
-        workers: Thread pool size for judged properties.
-        ctx: The pipeline Ctx, required only when a paid property is declared.
-
-    Returns:
-        The report dict. `report["pass"]` is the AND of every gated property.
+    `errored` -- never omitted, never quietly passed. `ctx` (the pipeline Ctx) is
+    required only when a paid property is declared; `seed` makes every sampled
+    statistic reproducible.
     """
     run_dir = Path(run_dir)
     validate_spec(spec)
@@ -1556,21 +1395,16 @@ def run_corpus_checks(records: list[dict], spec: dict, *, run_dir: Path | str,
     fields = dict(spec.get("fields") or {})
     labels = load_labels(run_dir, stage)
 
-    report: dict[str, Any] = {
-        "stage": stage,
-        "n_records": len(records),
-        "fields": fields,
-        "seed": seed,
-        "properties": {},
-    }
+    report: dict[str, Any] = {"stage": stage, "n_records": len(records),
+                              "fields": fields, "seed": seed, "properties": {}}
     all_findings: list[Finding] = []
     ok = True
     spent_before = float(getattr(getattr(ctx, "usage", None), "usd", 0.0) or 0.0)
-    # One base corpus per distinct `fields` mapping -- properties that read the same
-    # fields then share one tokenisation instead of each redoing it. Properties run in
-    # the order the config lists them, so a `label.<key>` axis must be listed after the
+    # One Corpus per distinct `fields` mapping, re-pointed at each property in turn, so
+    # properties reading the same fields share one tokenisation. Properties run in the
+    # order the config lists them, so a `label.<key>` axis must be listed after the
     # property that produces that label.
-    bases: dict[str, Corpus] = {}
+    corpora: dict[str, Corpus] = {}
 
     for inst in _instances(spec):
         alias = inst["as"]
@@ -1580,12 +1414,13 @@ def run_corpus_checks(records: list[dict], spec: dict, *, run_dir: Path | str,
         entry: dict[str, Any] = {"property": check.name, "gate": gate, "params": params}
 
         inst_fields = {**fields, **(inst.get("fields") or {})}
-        base_key = json.dumps(inst_fields, sort_keys=True, default=str)
-        if base_key not in bases:
-            bases[base_key] = Corpus(records=records, fields=inst_fields, params={},
-                                     spec=spec, seed=seed, workers=workers,
-                                     run_dir=run_dir, labels=labels, ctx=ctx)
-        corpus = bases[base_key].view(params=params, spec={**spec, **inst}, name=alias)
+        key = json.dumps(inst_fields, sort_keys=True, default=str)
+        if key not in corpora:
+            corpora[key] = Corpus(records=records, fields=inst_fields, params={},
+                                  spec=spec, seed=seed, workers=workers,
+                                  run_dir=run_dir, labels=labels, ctx=ctx)
+        corpus = corpora[key]
+        corpus.params, corpus.spec, corpus.name = params, {**spec, **inst}, alias
 
         missing = next((m for m in (corpus.missing_role(r) for r in check.roles) if m),
                        None)
@@ -1631,8 +1466,12 @@ def run_corpus_checks(records: list[dict], spec: dict, *, run_dir: Path | str,
         ok = ok and passed
 
     if labels:
-        _write_labels(run_dir, stage, labels)
-        report["labels_file"] = _labels_path(run_dir, stage).name
+        path = run_dir / f"{stage}_labels.jsonl"
+        with path.open("w", encoding="utf-8") as f:
+            for rid in sorted(labels):
+                f.write(json.dumps({"record_id": rid, **labels[rid]},
+                                   ensure_ascii=False) + "\n")
+        report["labels_file"] = path.name
 
     all_findings.sort(key=lambda f: (_SEVERITY_ORDER.get(f.severity, 9), f.property))
     report["findings"] = [f.as_dict() for f in all_findings]

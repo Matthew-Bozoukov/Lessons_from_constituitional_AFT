@@ -351,10 +351,9 @@ class Ctx:
     The OpenRouter client is created lazily, so deterministic-only runs (and offline
     tests) never touch credentials.
 
-    `cache` is the run's StageCache, so a stage that produces a side artefact (a report,
-    a provenance stub) can mirror it to HF the same way snapshots are mirrored. It is
-    None when a Ctx is built outside `pipeline.run` (the `topup` verb, offline tests);
-    such a stage must fall back to a plain local write.
+    `cache` is the run's StageCache, so a stage producing a side artefact (a report) can
+    mirror it to HF the way snapshots are. It is None when a Ctx is built outside
+    `pipeline.run` (the `topup` verb, offline tests) -- fall back to a local write.
     """
 
     cfg: dict
@@ -398,10 +397,9 @@ class Stage:
             manifest_extra a cache hit would otherwise lose.
         preview: Render one line of the first output record for the run log.
         observer: The stage inspects the records and returns them unchanged. It writes
-            NO snapshot and takes NO position number, so it can be inserted anywhere in
-            `stages:` without renumbering the snapshots after it -- which is what lets a
-            corpus check sit mid-pipeline while existing run dirs stay resumable. An
-            observer also always runs: re-reading records it did not produce is cheap,
+            NO snapshot and takes NO position number, so inserting one anywhere in
+            `stages:` renumbers nothing after it and existing run dirs stay resumable.
+            It is never cached either: re-reading records it did not produce is cheap,
             and anything it pays for is protected by its own checkpoint.
     """
 
