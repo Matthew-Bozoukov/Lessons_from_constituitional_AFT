@@ -248,33 +248,6 @@ def _check_corpus_stage(cfg: dict, sc: dict, run_dir: Path, sample: int | None,
     return bool(report["pass"])
 
 
-def compare(reports, key: str = "group_size", out: str | None = None,
-            stage: str | None = None) -> None:
-    """Compare several runs' corpus reports as arms of one experiment.
-
-    One run is one arm, so a claim like "the conflict rate rises with group size" can
-    only be checked across run directories. Computes nothing new.
-
-    Args:
-        reports: Run directories, one per arm. Fire accepts "a,b,c" or a tuple.
-        key: Manifest/config field ordering the arms (e.g. group_size).
-        out: Write the markdown here; the JSON lands beside it. Default: print only.
-        stage: Corpus-check stage name, when a run holds more than one report.
-    """
-    from .compare_runs import compare_arms, markdown
-
-    result = compare_arms(_csv(reports), key=key, stage=stage)
-    text = markdown(result)
-    print(text)
-    if out:
-        dest = Path(out)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_text(text, encoding="utf-8")
-        dest.with_suffix(".json").write_text(
-            json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
-        print(f"\n>>> {dest} (+ {dest.with_suffix('.json').name})")
-
-
 def estimate(config: str, measured: str | None = None) -> None:
     """Print a cost estimate for a full run of the config's pipeline.
 
@@ -366,8 +339,7 @@ def segment(constitution: str = "constitutions/claude_distilled_12_principles_mi
 
 def main() -> None:
     fire.Fire({"run": run, "topup": topup, "check": check, "checks": checks,
-               "compare": compare, "estimate": estimate, "segment": segment,
-               "chunkings": chunkings})
+               "estimate": estimate, "segment": segment, "chunkings": chunkings})
 
 
 if __name__ == "__main__":
