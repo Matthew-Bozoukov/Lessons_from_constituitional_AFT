@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 
 from . import cells
-from .constitution import Trait, units_from_config
+from .constitution import UNIT_PROVENANCE, Trait, units_from_config
 from .core import Ctx, Stage, call_json, call_tagged, model_cfg, resilient, run_items
 from .hf_cache import read_jsonl
 
@@ -138,6 +138,12 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
     def fn(ctx, records, ckpt):
         m = model_cfg(ctx.cfg, mk)
         traits = [Trait.from_record(r) for r in records]
+        # Unit provenance travels WITH the record rather than being joined back to the
+        # stage-1 snapshot later: every downstream consumer (metadata export, corpus
+        # checks, `balance_by`) then reads it as an ordinary field, and no stage needs
+        # to know how to reach another stage's output.
+        prov = {r["trait_id"]: {k: r[k] for k in UNIT_PROVENANCE if k in r}
+                for r in records}
         batches = scenario_batches(len(traits), ctx.cfg)
         # Corpus size follows the unit count under `scenarios_per_trait`, so a changed
         # `chunking:` can multiply a run. Say the total out loud before paying for it.
@@ -162,6 +168,7 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
                 "trait_id": t.trait_id, "trait_name": t.name, "trait_text": t.text,
                 "domain": s.get("domain", ""), "situation": s["situation"],
                 "shortcut": s.get("shortcut", ""),
+                **prov.get(t.trait_id, {}),
             } for j, s in enumerate(parsed)]
 
         nested = resilient(one, len(batches), ctx.workers, sc["name"],
@@ -294,6 +301,70 @@ def op_chat_export(sc: dict, cfg: dict) -> Stage:
         return out
 
     return Stage(sc["name"], fn)
+
+
+def op_corpus_check(sc: dict, cfg: dict) -> Stage:
+    """Corpus-level property checks over the records flowing through.
+
+    A pure observer: it flags, it never fixes, and it returns its input unchanged -- the
+    assertion below is not decoration, since a checker allowed to drop rows stops being
+    a checker. Judged annotations go to a sidecar for the same reason. Placed last in
+    `stages:` it audits what actually trains; `--ablate <name>` runs the corpus
+    unchecked, which on a judged config is also how to skip paying for judging.
+    """
+    from .corpus import is_paid, print_summary, run_corpus_checks, validate_spec
+
+    try:
+        validate_spec(sc)
+    except (ValueError, AssertionError) as exc:
+        raise type(exc)(f"stage {sc['name']!r}: {exc}") from exc
+    paid = is_paid(sc)
+    assert not paid or sc.get("model"), (
+        f"stage {sc['name']!r} declares a judged corpus property but no `model:` key; "
+        f"an unpriced judge would also estimate as free")
+    on_fail = sc.get("on_fail", "warn")
+    assert on_fail in ("warn", "error", "stop"), (
+        f"stage {sc['name']!r}: on_fail must be 'warn' (report only), 'error' (finish "
+        f"the run, exit nonzero) or 'stop' (halt the run here), got {on_fail!r}")
+    report_name = f"{sc['name']}_report.json"
+
+    def publish(ctx, report):
+        if ctx.cache is not None:
+            ctx.cache.save_json(report_name, report)
+        else:
+            (ctx.run_dir / report_name).write_text(
+                json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+        # Keyed by stage name: a run may check its scenarios, its drafts and its final
+        # corpus, and the later verdicts must not overwrite the earlier ones.
+        ctx.manifest_extra.setdefault("corpus_checks", {})[sc["name"]] = {
+            "pass": report["pass"], "on_fail": on_fail,
+            "counts": report.get("counts", {}), "report": report_name,
+            "n_records": report.get("n_records"),
+            "judge_spend_usd": report.get("judge_spend_usd"),
+            "gated": sorted(k for k, v in report["properties"].items() if v["gate"]),
+            "top_findings": report.get("findings", [])[:5],
+        }
+
+    def fn(ctx, records, ckpt):
+        before = len(records)
+        report = run_corpus_checks(records, sc, run_dir=ctx.run_dir,
+                                   seed=int(ctx.cfg.get("seed", 0)),
+                                   workers=ctx.workers, ctx=ctx if paid else None)
+        publish(ctx, report)
+        print_summary(report)
+        assert len(records) == before, "a corpus check must never change the corpus"
+        if on_fail == "stop" and not report["pass"]:
+            # Stop before the stages that would spend real money on a corpus already
+            # known to be bad.
+            ctx.stop = (f"corpus check {sc['name']!r} failed "
+                        f"({report['counts'].get('critical', 0)} critical) and declares "
+                        f"on_fail: stop -- see {report_name}")
+        return records
+
+    return Stage(sc["name"], fn, paid=paid, observer=True,
+                 # A pure observer's null-operation IS the identity, so this stage is
+                 # always ablatable and needs no `ablate_with` map in the config.
+                 ablate_fn=lambda rs: rs)
 
 
 # --- model-eval-model operators (structure in cells.py, wording in the config) ------
@@ -556,6 +627,9 @@ def op_scenarios_weighted(sc: dict, cfg: dict) -> Stage:
         traits = [Trait.from_record(r) for r in records]
         batches = plan_weighted_batches(traits, ctx.cfg)
         mix = ctx.cfg.get("mix", {})
+        # Same rule as op_scenarios: unit provenance travels with the record.
+        prov = {r["trait_id"]: {k: r[k] for k in UNIT_PROVENANCE if k in r}
+                for r in records}
 
         def one(k: int) -> list[dict]:
             b = batches[k]
@@ -575,7 +649,8 @@ def op_scenarios_weighted(sc: dict, cfg: dict) -> Stage:
                        **{f: s[f] for f in required},
                        **{f: s.get(f, "") for f in optional},
                        "motive": b["motive"], "control": b["control"],
-                       **assign_variant(sid, mix)}
+                       **assign_variant(sid, mix),
+                       **prov.get(t.trait_id, {})}
                 out.append(rec)
             return out
 
@@ -596,6 +671,7 @@ OPERATORS = {
     "llm_json": op_llm_json,
     "llm_tagged": op_llm_tagged,
     "chat_export": op_chat_export,
+    "corpus_check": op_corpus_check,
     "load_source_run": op_load_source_run,
     "plan_cells": op_plan_cells,
     "perturb_pairs": op_perturb_pairs,

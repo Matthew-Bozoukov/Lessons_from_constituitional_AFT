@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import time
 from pathlib import Path
 from typing import Any
@@ -41,6 +40,26 @@ def build_stages(cfg: dict) -> list[Stage]:
         out.append(st)
     names = [s.name for s in out]
     assert len(set(names)) == len(names), f"duplicate stage names: {names}"
+    return out
+
+
+def snapshot_positions(stages: list[Stage]) -> dict[str, int]:
+    """Map stage name -> its `stage_<n>_<name>.jsonl` position, skipping observers.
+
+    Positions and names are the on-disk contract that keeps completed run dirs and HF
+    mirrors resumable, so an observer must not consume one -- that is what makes a
+    mid-pipeline corpus check free to add. An observer maps to the position of the last
+    real stage before it: the snapshot holding the records it inspects.
+
+    Takes built Stages rather than the raw config so `Stage.observer` is the ONE place
+    the fact lives.
+    """
+    out: dict[str, int] = {}
+    pos = 0
+    for st in stages:
+        if not st.observer:
+            pos += 1
+        out[st.name] = pos
     return out
 
 
@@ -105,7 +124,7 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
     budget = float(cfg.get("budget_usd", 0)) or None
     usage = Usage()
     ctx = Ctx(cfg=cfg, usage=usage, workers=workers, run_dir=run_dir, smoke=smoke,
-              vars={"constitution": full_text(cfg["constitution"])})
+              vars={"constitution": full_text(cfg["constitution"])}, cache=cache)
 
     stage_list = build_stages(cfg)
     ablate = [str(a) for a in (cfg.get("ablate") or [])]
@@ -114,13 +133,18 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
     records: list[dict] = []
     durations: dict[str, float] = {}
     counts: dict[str, int] = {}
-    for i, st in enumerate(stage_list, start=1):
-        label = f"stage {i} ({st.name})"
+    positions = snapshot_positions(stage_list)
+    for st in stage_list:
+        pos = positions.get(st.name)
+        label = (f"check ({st.name})" if st.observer else f"stage {pos} ({st.name})")
         if st.skip and st.skip(ctx, records):
             print(f">>> {label}: not applicable -- skipped")
             continue
-        if cache.has(i, st.name):
-            records = cache.load(i, st.name)
+        # No snapshot, no position and no cache for an observer: it produces nothing the
+        # pipeline consumes, so re-running it is cheap and always tells the truth about
+        # the records actually in hand.
+        if not st.observer and cache.has(pos, st.name):
+            records = cache.load(pos, st.name)
             if st.on_cached:
                 st.on_cached(ctx, records)
             print(f">>> {label}: reused {len(records)} cached records")
@@ -133,7 +157,7 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
                     f"budget_usd=${budget:.2f} exceeded (${usage.usd:.2f}) before "
                     f"{label}. Snapshots up to this stage are in {run_dir}; raise "
                     f"budget_usd and re-run to resume.")
-            ckpt = Checkpoint(run_dir / f"stage_{i}_{st.name}.partial.jsonl",
+            ckpt = Checkpoint(run_dir / f"stage_{pos}_{st.name}.partial.jsonl",
                               key=st.checkpoint_key) if st.checkpoint_key else None
             t0 = time.time()
             if st.name in ablate:
@@ -143,11 +167,17 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
             else:
                 records = st.fn(ctx, records, ckpt)
             durations[st.name] = round(time.time() - t0, 1)
-            cache.save(i, st.name, records)
+            if not st.observer:
+                cache.save(pos, st.name, records)
             print(f">>> {label}: {len(records)} records")
         counts[st.name] = len(records)
         if st.preview and records:
             print(f"    FIRST: {st.preview(records[0])[:220]}")
+        if ctx.stop:
+            # An intermediate corpus check asking to halt before the expensive stages
+            # after it. Everything paid for is on disk; the manifest is still written.
+            print(f"\n!!! run halted at {label}: {ctx.stop}")
+            break
 
     manifest = {
         "run_id": ts,
@@ -161,6 +191,7 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
         "config": original_cfg,
         "effective": (cfg.get("smoke") or {}) if smoke else {},
         "ablated": ablate,
+        "halted": ctx.stop,
         "counts": counts,
         "usage": usage.as_dict(),
         "wall_clock_s": round(time.time() - started, 1),
@@ -177,6 +208,37 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
     if repo:
         print(f">>> https://huggingface.co/datasets/{repo}")
     return manifest
+
+
+def corpus_gate_failed(manifest: dict) -> bool:
+    """True when any corpus check declaring `on_fail: error` or `stop` did not pass.
+
+    Gating is an exit code, never an exception inside the stage: raising there would
+    abort `run` before the manifest is written, throwing away the provenance and usage
+    tally of a run that has already paid for every generation stage -- to report a
+    diagnostic. `stop` differs from `error` only in when the run ends, not in what it
+    keeps.
+    """
+    checks = manifest.get("corpus_checks") or {}
+    return any(c.get("on_fail") in ("error", "stop") and c.get("pass") is False
+               for c in checks.values())
+
+
+def exit_if_gate_failed(manifest: dict) -> None:
+    """Turn a failed corpus gate into the process exit status (both entrypoints end
+    this way), and say what survived.
+
+    Raises:
+        SystemExit: 1 when a check declaring `on_fail: error` or `stop` did not pass.
+    """
+    if not corpus_gate_failed(manifest):
+        return
+    failed = sorted(name for name, c in (manifest.get("corpus_checks") or {}).items()
+                    if c.get("pass") is False)
+    print(f">>> corpus check(s) {failed} FAILED and declare on_fail "
+          f"error/stop. Everything the run produced is on disk and on HF -- "
+          f"snapshots, reports and the manifest; only the exit status reflects it.")
+    raise SystemExit(1)
 
 
 # --- the estimator ------------------------------------------------------------------
@@ -251,6 +313,14 @@ def _calls(cfg: dict) -> dict[str, int]:
                                  f"Registered: {sorted(CELLS)}")
             # One rewrite per verdict-carrying document; control passes through free.
             n = sum(v for c, v in enabled.items() if CELLS[c].verdicts)
+        elif kind == "corpus_check":
+            # Without this branch a judged corpus property would fall into the
+            # deterministic `else` below and estimate at zero -- the exact trap that
+            # makes a stage look free right up until the bill arrives.
+            from .corpus import corpus_check_calls
+            n = corpus_check_calls(sc, n_docs)
+            if not n:
+                continue
         elif kind == "generate_cells":
             enabled = {c: int(v) for c, v in cfg["cells"].items() if int(v) > 0}
             unknown = sorted(set(enabled) - set(CELLS))

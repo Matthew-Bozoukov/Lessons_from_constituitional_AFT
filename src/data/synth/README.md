@@ -29,7 +29,11 @@ core.py        LLM machinery: priced Usage, call_json/call_tagged (parse-retry),
                resilient fan-out, Checkpoint/run_items, Ctx + Stage dataclasses
 cells.py       model-eval-model cell STRUCTURE (registry, planning, perturbation,
                assembly) -- all its wording comes from the config
-checks.py      corpus validity checks (judge wording from the config's checks.judges)
+corpus.py      the corpus-level property registry + the `corpus_check` stage driver
+compare.py     cross-arm comparison of several runs' corpus reports (monotonicity)
+checks.py      model-eval-model validity checks (judge wording from checks.judges);
+               its template-collapse and surface-shortcut halves are thin adapters
+               over corpus.py, so the two entry points cannot drift
 constitution.py  hf_cache.py  cli.py
 ```
 
@@ -42,6 +46,7 @@ A config's `stages:` entry names an operator `kind` and supplies everything it n
 | `llm_json` | one JSON call per record | `model`, `prompts`, `save`, `optional`, `checkpoint` |
 | `llm_tagged` | one tagged-blocks call per record | `model`, `prompts`, `tags`, `save`, `checkpoint`, `ablate_with`, `prompt_vars` (conditional template vars), `variants_by` (per-record user/tags/save), `lint` (ban-patterns + min-length, reject-and-retry) |
 | `chat_export` | free export to `{messages, metadata}`; entries may carry `when:` for multi-turn records | `messages`, `metadata` |
+| `corpus_check` | corpus-level property checks; pass-through, always ablatable (see below) | `fields`, `properties`, `axes`, `cross`, `rubrics`, `units`, `on_fail`, `model` |
 | `scenarios_weighted` | weighted trait apportionment, control slice, motive rotation, per-batch industries, deterministic per-scenario variants | `model`, `prompts` (+`control_user`), `threats`, `control_threats`, `fields` |
 | `load_source_run` | a completed run's finals + constitution-sha provenance check | (`source:` block) |
 | `plan_cells` / `perturb_pairs` / `generate_cells` / `revise_cells` / `assemble_cells` | the model-eval-model cells (see below); `revise_cells` is the constitution-grounded rewrite pass (verdict pinned, control passes through) | (`cells:`, `flaws:`, `prompts:` blocks; `revise_cells` takes `model`, `prompts`, `checkpoint`, `ablate_with`) |
@@ -191,6 +196,94 @@ runs the validity checks and gates on the config's thresholds: coverage (incl. t
 flaw grid), template collapse, per-cell verdict distribution (never 100% — all-`revised`
 in m1 would train capitulation), post-hoc-reasoning rate, blindness, the numpy
 surface-shortcut classifier, LLM-judged gold validation and flaw-identification rate.
+
+## Corpus-level checks (`corpus.py`, the `corpus_check` stage)
+
+The `lint` contract and the spec filter ask "is this *document* good?". These ask "is
+this *corpus* good?" — questions no single document can answer. One registry, one
+pass-through stage, placed **anywhere** in a config's `stages:` list:
+
+```
+uv run synth check --config <cfg> --run_dir <dir> [--stage corpus]  # re-check, no regeneration
+uv run scripts/data/synth/build_dataset.py --config <cfg> --ablate corpus  # skip it
+uv run synth compare --reports <dir1>,<dir2>,<dir3> --key n_chunks --out output/report/x.md
+```
+
+Three rules the module turns on:
+
+1. **It flags; it never fixes.** The stage returns its input unchanged (asserted), and
+   judged annotations go to a `<stage>_labels.jsonl` sidecar rather than into records.
+2. **A check that cannot run says so.** Missing field → `skipped` with a reason;
+   raising → `errored` (and an errored *gated* property can never pass); too few
+   documents → `reported` but not gated. None of those is ever a silent pass.
+3. **Generic code knows no document type.** A property declares the field *roles* it
+   needs (`text`, `id`, `group`, `label`, `members`, `unit`); the config maps roles to
+   record keys. No `cell`, no `trait_id`, no judge wording in code.
+
+| property | what it flags | default gate |
+|---|---|---|
+| `ngram_diversity` | top 8-gram share, pairwise 4-gram Jaccard, bigram variety, per group | `0.20` / `0.15` / `0.30` |
+| `near_duplicates` | exact + near dupes, banded bottom-k MinHash | `dup_share_max 0.02` |
+| `opening_collapse` | shared first-8-words, exact **and** reordered | `top_opener_share_max 0.15` |
+| `length_profile` | length CV overall, per-group mean delta | `cv_min 0.12`, `delta 0.35` |
+| `field_balance` | per-axis counts/entropy, empty buckets of each `cross` | `H 0.75`, `max_share 0.60` |
+| `feature_diversity` | mean pairwise cosine, effective rank over hashed char n-grams | `0.95` / `frac 0.25` |
+| `label_leakage` | CV AUC of a surface classifier predicting a label | `surface_auc_max 0.65` |
+| `applies_vs_conflicts` **(judged)** | resolves a value tension vs applies one value | report-only |
+| `principle_coverage` **(judged)** | which principles a document *actually* engages | report-only |
+| `chunk_attribution` **(judged)** | whether a k>1 document engages all its member chunks | report-only |
+| `pattern_scan` **(judged)** | GDM scan→cluster→autorate: the corpus's own recurring tics | report-only |
+
+**Thresholds are measured, not invented** — the block above `CORPUS_CHECKS` records the
+baseline. Two readings drive the surprising ones: character-n-gram cosine has a high
+floor (two unrelated same-genre documents already score ~0.86), so `effective_rank_frac`
+is the discriminating half of `feature_diversity`; and mean 4-gram Jaccard is
+length-dependent (~0.003 at 1,000 words), so its gate catches only severe collapse.
+Everything in 1–7 is **surface**: a corpus saying one thing 8,000 different ways scores
+well on all of them, and that gap is what the judged tier closes. Small groups are
+measured but never flagged (`ngram_diversity.min_group_docs`, 5): two documents sharing
+an 8-gram score 1.0, which is binomial noise, and each group carries `gated: true|false`.
+
+**Judged properties** are `paid`, sampled (`sample: 300`, `null` = all), resumable per
+record, and priced into `--estimate`. Their wording lives in the stage entry's `rubrics:`
+block — never in code — and a missing rubric fails at `build_stages` time, before the
+generation stages spend anything. A judge call that fails leaves its document
+**unlabelled**, never defaulted to a label.
+
+**Check where a property is decided, not only where it is finished.** Scenario diversity
+is settled at stage 2 and paid for at stages 3–6, so both scenario-generating configs
+carry a `corpus_scenarios` check right after that stage as well as a `corpus` check at
+the end. A corpus check is an **observer**: it writes no snapshot and takes no position
+number, so inserting one mid-pipeline moves nothing after it and every completed run dir
+stays resumable. It is never cached, so a resumed run always reports on the records in
+hand.
+
+**Gating.** `gate: false` is the default and what every shipped config uses, so a check
+can flag without ever failing a run. `gate: true` makes a `critical` finding set
+`report["pass"] = false`; `on_fail` then decides what that costs — `warn` (report only,
+exit 0), `error` (the run finishes, the CLI exits nonzero), or `stop` (the run halts at
+that check, then exits nonzero). `stop` is what an intermediate check is for: a collapsed
+scenario set should not be carried into the stages that would spend real money on it. In
+every mode the snapshots, reports and manifest are written first — `manifest["halted"]`
+records where and why — and verdicts are keyed by stage name in
+`manifest["corpus_checks"]`, so a later check never overwrites an earlier one.
+
+**Chunking provenance.** `UNIT_PROVENANCE` (`constitution.py`) — `chunk_ids`,
+`granularity`, `grouping_strategy`, `n_chunks` — is copied onto every scenario by stage 2
+and exported in both dataset configs' `metadata:` list, so which unit a document came
+from, and how that unit was cut and grouped, is readable from the document itself.
+`n_chunks` is the `group` role, `chunk_ids` the `members` role and `trait_id` the `unit`
+role, all mapped on the shipped `corpus` stage, so a judged chunking property needs only
+its rubric wording added. The same three are `field_balance` axes, so an arm's unit mix
+is reported with no judging at all. (An axis is only visible if the export carries it —
+the model-eval-model metadata list is hardcoded in `cells.py`.)
+
+### Adding a corpus property
+
+Write a `fn(Corpus) -> CheckResult`, add one `CORPUS_CHECKS` entry (thresholds in
+`defaults`, the roles it reads in `roles`, `paid=True` + `est_calls` + a `validate` if
+it judges), and name it in a config's `properties:` list. Nothing in the engine, the
+operator or the CLI changes.
 
 ## Adding a document type
 

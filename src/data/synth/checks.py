@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import json
 import random
-import re
 import time
 from pathlib import Path
 
@@ -13,7 +12,9 @@ from src.endpoints.openrouter import OpenRouterClient
 
 from .cells import CELLS
 from .constitution import full_text
-from .core import Usage, call_tagged, run_items
+from .core import JUDGE_NO_REASONING, Usage, call_tagged, run_items
+from .corpus import (CORPUS_CHECKS, Corpus, check_label_leakage,
+                     check_ngram_diversity)
 from .hf_cache import read_jsonl
 
 # Phrases that read as a settled judgement of the evaluated reply. Appearing in the
@@ -27,16 +28,10 @@ _VERDICT_MARKERS = (
 )
 
 # Below these document counts the corresponding gate is reported but not enforced --
-# the statistics are binomial noise at smoke scale.
-# Judges return a tag and one sentence inside tight max_tokens; Sonnet 5's hidden
-# extended thinking otherwise eats that budget and returns EMPTY content with
-# finish_reason=length (observed 2026-08-05: 500-token cap, 95+ reasoning tokens,
-# content=None). Same OpenRouter control the self_reflection stages use.
-_JUDGE_NO_REASONING = {"reasoning": {"enabled": False}}
-
-_MIN_DOCS_FOR_COLLAPSE = 5
+# the statistics are binomial noise at smoke scale. The per-group and per-class ones
+# now live in the registry (`ngram_diversity.min_group_docs`,
+# `label_leakage.min_per_class`), so the adapters below read them from there.
 _MIN_DOCS_FOR_VERDICT = 20
-_MIN_DOCS_PER_CLASS_FOR_SHORTCUT = 20
 _MIN_DOCS_FOR_FLAWID = 10
 
 # The verdict each cell should mostly (but never degenerately) reach: good responses
@@ -48,16 +43,6 @@ _EXPECTED_MAJORITY = {
     "m2_self_good": "held",
     "m1_self_flawed": "revised",
 }
-
-
-def _ngrams(words: list[str], n: int) -> set[tuple[str, ...]]:
-    """Return the set of word n-grams of a token list."""
-    return {tuple(words[i:i + n]) for i in range(len(words) - n + 1)}
-
-
-def _words(text: str) -> list[str]:
-    """Lowercase word tokens, punctuation stripped."""
-    return re.findall(r"[a-z0-9']+", text.lower())
 
 
 def _doc_text(r: dict) -> str:
@@ -97,43 +82,62 @@ def check_coverage(plan: list[dict], generated: list[dict]) -> dict:
             "flaw_grid": flaw_grid}
 
 
+def _corpus_of(generated: list[dict], text, group: str, seed: int, **fields) -> Corpus:
+    """Build a Corpus view over model-eval-model records for a registry check.
+
+    The cell/flaw/verdict vocabulary stops here: the registry check below sees only
+    roles, which is what lets the same implementation serve any document type.
+    """
+    return Corpus(records=generated, params={}, seed=seed, name="",
+                  fields={"id": "record_id", "text": text, "group": group, **fields})
+
+
 def check_template_collapse(generated: list[dict], max_8gram_share: float,
-                            seed: int = 0) -> dict:
+                            seed: int = 0, max_4gram_jaccard: float | None = None) -> dict:
     """Detect critique-shape collapse: repeated long n-grams and high pairwise overlap.
 
     Generators converge on one critique shape quickly; a single 8-gram appearing in a
     large share of a cell's documents is the fingerprint.
+
+    A thin adapter over the `ngram_diversity` corpus property -- same numbers, same
+    seed, same per-cell keys -- so the in-pipeline stage and this post-hoc verb cannot
+    drift on what "8-gram share" means.
+
+    Args:
+        generated: The generated-document snapshot.
+        max_8gram_share: The gated threshold, per cell.
+        seed: Jaccard sampling seed.
+        max_4gram_jaccard: Optional second gate. The mean pairwise 4-gram Jaccard has
+            always been computed here and never enforced; a config opts in by setting
+            `checks.gates.template_4gram_jaccard_max`. Left None it is reported only,
+            so an existing config's verdict is unchanged.
+
+    Returns:
+        `{pass, max_8gram_share, cells: {cell: {...}}}` -- the historical shape.
     """
-    by_cell: dict[str, list[dict]] = {}
-    for r in generated:
-        by_cell.setdefault(r["cell"], []).append(r)
+    c = _corpus_of(generated, ["reasoning", "response"], "cell", seed)
+    c.params = {**CORPUS_CHECKS["ngram_diversity"].defaults,
+                "top_8gram_share_max": max_8gram_share,
+                "mean_jaccard_max": (float("inf") if max_4gram_jaccard is None
+                                     else float(max_4gram_jaccard)),
+                "distinct_2_min": 0.0}
+    result = check_ngram_diversity(c)
 
     cells_out: dict[str, dict] = {}
     ok = True
-    for cell, rows in sorted(by_cell.items()):
-        docs = [_words(_doc_text(r)) for r in rows]
-        grams8: dict[tuple[str, ...], int] = {}
-        for d in docs:
-            for g in _ngrams(d, 8):
-                grams8[g] = grams8.get(g, 0) + 1
-        top = max(grams8.items(), key=lambda kv: kv[1], default=((), 0))
-        top_share = top[1] / max(len(docs), 1)
-
-        rng = random.Random(seed)
-        sample = rng.sample(docs, min(len(docs), 100))
-        sets4 = [_ngrams(d, 4) for d in sample]
-        sims = [len(a & b) / max(len(a | b), 1)
-                for i, a in enumerate(sets4) for b in sets4[i + 1:]]
-        mean_j = sum(sims) / len(sims) if sims else 0.0
-
-        gated = len(docs) >= _MIN_DOCS_FOR_COLLAPSE
-        cell_ok = (not gated) or top_share <= max_8gram_share
+    for cell, m in result.metrics["by_group"].items():
+        # `gated` is the registry's own small-group guard, not a second copy of it.
+        cell_ok = (not m["gated"]) or (
+            m["top_8gram_share"] <= max_8gram_share
+            and (max_4gram_jaccard is None
+                 or m["mean_pairwise_4gram_jaccard"] <= float(max_4gram_jaccard)))
         ok = ok and cell_ok
-        cells_out[cell] = {"docs": len(docs), "top_8gram_share": round(top_share, 3),
-                           "top_8gram": " ".join(top[0]),
-                           "mean_pairwise_4gram_jaccard": round(mean_j, 4),
-                           "gated": gated, "pass": cell_ok}
-    return {"pass": ok, "max_8gram_share": max_8gram_share, "cells": cells_out}
+        cells_out[cell] = {"docs": m["docs"], "top_8gram_share": m["top_8gram_share"],
+                           "top_8gram": m["top_8gram"],
+                           "mean_pairwise_4gram_jaccard": m["mean_pairwise_4gram_jaccard"],
+                           "gated": m["gated"], "pass": cell_ok}
+    return {"pass": ok, "max_8gram_share": max_8gram_share,
+            "max_4gram_jaccard": max_4gram_jaccard, "cells": cells_out}
 
 
 def check_verdict_distribution(generated: list[dict], majority_min: float,
@@ -242,7 +246,7 @@ def check_gold_validation(source: list[dict], client: OpenRouterClient,
              {"role": "user", "content": judges["gold_user"].format(
                  trait_name=r["trait_name"], trait_text=r["trait_text"],
                  user=r["user"], response=r["response"])}],
-            0.3, 800, "check:gold", ("score", "why"), extra=_JUDGE_NO_REASONING)
+            0.3, 800, "check:gold", ("score", "why"), extra=JUDGE_NO_REASONING)
         score = int(parsed["score"])
         if not 1 <= score <= 5:
             raise ValueError(f"score out of range: {score}")
@@ -280,7 +284,7 @@ def check_flaw_identification(generated: list[dict], client: OpenRouterClient,
             [{"role": "system", "content": judges["flawid_system"]},
              {"role": "user", "content": judges["flawid_user"].format(
                  change_summary=r["change_summary"], critique=_doc_text(r))}],
-            0.3, 500, "check:flawid", ("hit", "why"), extra=_JUDGE_NO_REASONING)
+            0.3, 500, "check:flawid", ("hit", "why"), extra=JUDGE_NO_REASONING)
         v = parsed["hit"].strip().lower()
         if v not in ("yes", "no"):
             raise ValueError(f"unrecognised hit answer: {v!r}")
@@ -307,81 +311,40 @@ def check_flaw_identification(generated: list[dict], client: OpenRouterClient,
             "missed": [r for r in results if not r["hit"]][:5]}
 
 
-def _hashed_features(texts: list[str], dim: int = 4096):
-    """L2-normalised hashed char-3/4/5-gram count features (crc32, deterministic)."""
-    import zlib
-
-    import numpy as np
-
-    X = np.zeros((len(texts), dim), dtype=np.float32)
-    for i, t in enumerate(texts):
-        s = t.lower().encode()
-        for n in (3, 4, 5):
-            for j in range(len(s) - n + 1):
-                X[i, zlib.crc32(s[j:j + n]) % dim] += 1.0
-        X[i] /= np.linalg.norm(X[i]) or 1.0
-    return X
-
-
-def _auc(y, scores) -> float:
-    """Mann-Whitney AUC."""
-    pos, neg = scores[y == 1], scores[y == 0]
-    return float((pos[:, None] > neg[None, :]).mean()
-                 + 0.5 * (pos[:, None] == neg[None, :]).mean())
-
-
-def _cv_auc(X, y, seed: int, folds: int = 5, epochs: int = 300, lr: float = 0.5) -> float | None:
-    """K-fold cross-validated AUC of a plain logistic regression (numpy, no sklearn)."""
-    import numpy as np
-
-    rng = np.random.default_rng(seed)
-    idx = rng.permutation(len(y))
-    aucs = []
-    for f in range(folds):
-        test = idx[f::folds]
-        train = np.setdiff1d(idx, test)
-        if len(set(y[train].tolist())) < 2 or len(set(y[test].tolist())) < 2:
-            continue
-        w = np.zeros(X.shape[1], dtype=np.float32)
-        b = 0.0
-        Xt, yt = X[train], y[train].astype(np.float32)
-        for _ in range(epochs):
-            p = 1.0 / (1.0 + np.exp(-(Xt @ w + b)))
-            g = p - yt
-            w -= lr * (Xt.T @ g) / len(yt)
-            b -= lr * float(g.mean())
-        aucs.append(_auc(y[test], X[test] @ w + b))
-    return round(float(np.mean(aucs)), 4) if aucs else None
-
-
 def check_surface_shortcut(generated: list[dict], max_auc: float, seed: int) -> dict:
     """Can a cheap classifier predict good vs flawed from the evaluated response alone?
 
     If yes, the perturbations have a surface tell (length, phrasing, a stray hedge) and
     the model will learn the tell instead of the reasoning. A label-shuffle baseline
     anchors what "chance" looks like at this sample size.
+
+    A thin adapter over the `label_leakage` corpus property; `flawed` is the positive
+    class, so the reported AUC keeps its historical direction.
     """
-    import numpy as np
-
     rows = [r for r in generated if r.get("response_kind") in ("good", "flawed")]
-    texts = [r["flawed_response"] if r["response_kind"] == "flawed" else r["gold_response"]
-             for r in rows]
-    y = np.array([1 if r["response_kind"] == "flawed" else 0 for r in rows])
-    n_pos, n_neg = int(y.sum()), int((1 - y).sum())
-    if min(n_pos, n_neg) < _MIN_DOCS_PER_CLASS_FOR_SHORTCUT:
-        return {"pass": True, "flawed": n_pos, "good": n_neg, "gated": False,
-                "note": f"needs >={_MIN_DOCS_PER_CLASS_FOR_SHORTCUT} docs per class"}
+    c = _corpus_of(
+        rows,
+        {"by": "response_kind",
+         "cases": {"flawed": "flawed_response", "good": "gold_response"}},
+        "cell", seed, label="response_kind")
+    c.params = {"surface_auc_max": max_auc, "positive": "flawed",
+                "min_per_class": CORPUS_CHECKS["label_leakage"].defaults[
+                    "min_per_class"]}
+    m = check_label_leakage(c).metrics
 
-    X = _hashed_features(texts)
-    auc = _cv_auc(X, y, seed)
-    rng = np.random.default_rng(seed)
-    auc_shuffled = _cv_auc(X, rng.permutation(y), seed)
-    words = np.array([len(t.split()) for t in texts], dtype=np.float32)
-    len_delta = float(words[y == 1].mean() - words[y == 0].mean())
-    return {"pass": auc is not None and auc <= max_auc, "gated": True,
-            "flawed": n_pos, "good": n_neg, "auc": auc, "max_auc": max_auc,
-            "auc_label_shuffled": auc_shuffled,
-            "mean_word_delta_flawed_minus_good": round(len_delta, 1)}
+    n_pos, n_neg = int(m.get("flawed", 0)), int(m.get("good", 0))
+    if not m.get("gated"):
+        return {"pass": True, "flawed": n_pos, "good": n_neg, "gated": False,
+                "note": m.get("note", "not enough documents per class")}
+    return {"pass": m["auc"] is not None and m["auc"] <= max_auc,
+            "gated": True, "flawed": n_pos, "good": n_neg,
+            "auc": m["auc"], "max_auc": max_auc,
+            "auc_label_shuffled": m["auc_label_shuffled"],
+            # Reported, never gated: a leak pointing the other way is real, but this
+            # estimator's separability sits near 0.65 on a null corpus of this size.
+            "separability": m["separability"],
+            "ambiguous_texts_dropped": m["ambiguous_texts_dropped"],
+            "mean_word_delta_flawed_minus_good": m["mean_word_delta"]}
 
 
 def check_post_hoc_judge(generated: list[dict], client: OpenRouterClient,
@@ -400,7 +363,7 @@ def check_post_hoc_judge(generated: list[dict], client: OpenRouterClient,
             [{"role": "system", "content": judges["posthoc_system"]},
              {"role": "user", "content": judges["posthoc_user"].format(
                  reasoning=r["reasoning"])}],
-            0.3, 500, "check:posthoc", ("posthoc", "why"), extra=_JUDGE_NO_REASONING)
+            0.3, 500, "check:posthoc", ("posthoc", "why"), extra=JUDGE_NO_REASONING)
         v = parsed["posthoc"].strip().lower()
         if v not in ("yes", "no"):
             raise ValueError(f"unrecognised posthoc answer: {v!r}")
@@ -428,14 +391,19 @@ def run_checks(run_dir: str | Path, cfg: dict,
     Returns:
         (the report dict, whether every gated check passed).
     """
+    from .pipeline import build_stages, snapshot_positions
+
     run_dir = Path(run_dir)
     # Snapshot positions and names come from the config's `stages:` list, so the
-    # checks stay correct when a stage is added (e.g. the `final` rewrite pass).
+    # checks stay correct when a stage is added (e.g. the `final` rewrite pass) --
+    # and observer stages take no position, so adding a corpus check anywhere in the
+    # list leaves every one of these paths where it was.
     names = [s["name"] for s in cfg["stages"]]
     kinds = {s["name"]: s["kind"] for s in cfg["stages"]}
+    positions = snapshot_positions(build_stages(cfg))
 
     def _snap_path(name: str) -> Path:
-        return run_dir / f"stage_{names.index(name) + 1}_{name}.jsonl"
+        return run_dir / f"stage_{positions[name]}_{name}.jsonl"
 
     def snap(name: str) -> list[dict]:
         p = _snap_path(name)
@@ -467,8 +435,10 @@ def run_checks(run_dir: str | Path, cfg: dict,
 
     report: dict = {"run_dir": str(run_dir), "generated": len(generated)}
     report["coverage"] = check_coverage(plan, generated)
+    jac = gates.get("template_4gram_jaccard_max")
     report["template_collapse"] = check_template_collapse(
-        generated, float(gates.get("template_8gram_share_max", 0.2)), seed)
+        generated, float(gates.get("template_8gram_share_max", 0.2)), seed,
+        max_4gram_jaccard=None if jac is None else float(jac))
     report["verdict_distribution"] = check_verdict_distribution(
         generated, float(gates.get("verdict_majority_min", 0.6)),
         float(gates.get("verdict_majority_max", 0.98)))

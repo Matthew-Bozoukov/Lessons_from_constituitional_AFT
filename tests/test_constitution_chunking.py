@@ -302,3 +302,45 @@ def test_n_traits_hint_must_match_the_chosen_method():
     assert n_units(cfg) == cfg["n_traits"] == 9
     with pytest.raises(AssertionError, match="n_traits"):
         n_units({**cfg, "chunking": "bullet"})
+
+
+def test_unit_provenance_reaches_the_generated_records_and_the_export():
+    """Which unit a document came from, and how that unit was cut and grouped, must be
+    readable from the DOCUMENT -- not only from the stage-1 snapshot.
+
+    Stage 2 builds a fresh record from the Trait interface, so without this the chunking
+    provenance would die there and every downstream consumer (the metadata export, the
+    corpus checks, `balance_by`) would have to join back to stage 1 to recover it.
+    """
+    import yaml
+
+    from src.data.synth.constitution import UNIT_PROVENANCE, units_from_config
+    from src.data.synth.operators import op_chat_export
+
+    cfg = yaml.safe_load(open("configs/data/synth/difficult_advice.yaml"))
+    units, _ = units_from_config(cfg)
+    stage1 = [u.as_dict() for u in units]
+    assert all(k in stage1[0] for k in UNIT_PROVENANCE)
+
+    # A scenario record as op_scenarios now builds it: Trait fields + provenance.
+    prov = {r["trait_id"]: {k: r[k] for k in UNIT_PROVENANCE if k in r} for r in stage1}
+    scenario = {"scenario_id": "t1_b00_s000", "trait_id": "t1",
+                "trait_name": units[0].name, "trait_text": units[0].text,
+                "domain": "d", "situation": "s", "shortcut": "sc",
+                "system": "sys", "user": "u", "response": "r", "reasoning": "why",
+                **prov["t1"]}
+
+    sft_stage = next(s for s in cfg["stages"] if s["kind"] == "chat_export")
+    assert set(UNIT_PROVENANCE) <= set(sft_stage["metadata"]), \
+        "the export must carry the provenance, or the corpus checks cannot see it"
+
+    class _Ctx:
+        cfg: dict = {}
+        vars: dict = {}
+
+    exported = op_chat_export(sft_stage, cfg).fn(_Ctx(), [scenario], None)
+    meta = exported[0]["metadata"]
+    assert meta["chunk_ids"] == ["t1"]
+    assert meta["n_chunks"] == 1
+    assert meta["granularity"] == "principle"
+    assert meta["grouping_strategy"] == "single"

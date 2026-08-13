@@ -83,6 +83,86 @@ the document rather than from which unit generated it — without this the `whol
 (3) only then decide whether any method earns a training run. Note `difficult_advice.yaml`
 still has no `checks:` block at all, so the production corpus is ungated.
 
+## 2026-08-12 — Corpus-level checker: a property registry as an ablatable stage
+
+**Hypothesis:** the pipeline gates individual documents (`lint`, the spec filter) but has
+no way to ask questions about the corpus. If corpus properties are a registry rather than
+a script, adding one later is a function plus a dict entry, and the chunking experiment's
+outcome measures become configuration rather than new code.
+
+**Method.** `src/data/synth/corpus.py`: a `CORPUS_CHECKS` registry (matching `OPERATORS`
+/ `CELLS` / `EVALS`) of 11 properties over a memoised `Corpus`, plus a `corpus_check`
+operator that runs them and returns its input **unchanged** (asserted). Properties read
+field *roles* the config maps to record keys, so nothing in the module names a document
+type. Judged annotations go to a `<stage>_labels.jsonl` sidecar, never into records.
+The stage is an **observer**: no snapshot, no position number, never cached, so a check
+can sit mid-pipeline without renumbering anything after it — which is what makes checking
+at stage 2 (where scenario diversity is decided, before stages 3–6 pay for it) possible
+at all. `on_fail: warn|error|stop` decides the cost of a failed gate; in every mode the
+manifest is written first, so a failed gate is an exit code, never a lost run.
+`checks.py`'s `check_template_collapse` / `check_surface_shortcut` became thin adapters
+over the registry, `synth check` gained a corpus path (difficult-advice and
+self-reflection corpora could not be audited before), and `synth compare` lines several
+runs up as arms of one experiment.
+
+**Result — thresholds set from measurement.** Baseline: the 2,203-document
+difficult-advice corpus (`output/model_eval_model/20260805_133015/stage_1_source.jsonl`)
+and a 1,389-document self-reflection corpus
+(`output/synthdoc_self_reflection/20260806_115149/stage_7_sft.jsonl`):
+
+| metric | difficult advice | self reflection | shipped gate |
+|---|---|---|---|
+| `top_8gram_share` (max/group) | **0.449** | 0.133 | 0.20 |
+| `mean_4gram_jaccard` | 0.0007–0.0037 | — | 0.15 |
+| `distinct_2` | 0.338–0.448 | — | 0.30 |
+| `duplicate_share` | 0.0 | 0.0 | 0.02 |
+| `top_opener_share` | **0.252** | 0.047 (0.066 reordered) | 0.15 |
+| length `cv` | 0.153 | 0.200 | 0.12 |
+| `mean_pairwise_cosine` | 0.860 | 0.853 | 0.95 |
+| `effective_rank_frac` | 0.645 | 0.671 | 0.25 |
+| entropy: 9-value axis / 495-value axis | 1.00 / 0.80 | — | 0.75 |
+
+Four things the numbers changed:
+
+1. **25% of the difficult-advice corpus opens with the same eight words** ("let me
+   actually sit with what's being asked"), and its worst trait bucket shares an 8-gram
+   across 45% of its documents. Nothing in the repo detected either before.
+2. **Character-n-gram cosine has a high floor** — two unrelated same-genre documents
+   already score ~0.86 — so a 0.35 threshold would have fired on every corpus.
+   `effective_rank_frac` (0.65 healthy vs 0.03 identical) is the discriminating half.
+3. **Exact opener matching misses the interesting case.** The self-reflection corpus's
+   top three openers are reorderings of one construction (155 of 1,389 documents), which
+   exact matching reports as three unremarkable openers. Hence the word-set variant.
+4. **`check_surface_shortcut` had a real hole.** On byte-identical texts under both
+   labels it reported AUC **0.0222** — near-perfect *inverse* separation — and called it
+   a pass, because it only tested `auc <= max_auc`; that 0.02 was itself CV memorising a
+   text in one fold and scoring its twin in the next. Fixed by dropping label-ambiguous
+   texts. Separability (`max(auc, 1-auc)`) is now reported and can `warn`, but
+   deliberately does not gate: on null corpora of 25–60 per class it exceeds 0.65 about a
+   third of the time and does not tighten with n.
+
+Scenario-level numbers on the same self-reflection run (1,438 scenarios at stage 2 vs
+1,389 documents at stage 7): `top_8gram_share` 0.037 (vs 0.133), `top_opener_share` 0.002
+(vs 0.047), cosine 0.597 (vs 0.853), `effective_rank_frac` 0.802 (vs 0.671) — the
+scenario set is markedly more diverse than the documents written from it, which is the
+shape you want and is now measurable where it can still be cheaply fixed. Corpus stage:
+**5.9s for 1,389 documents**. `--estimate` unchanged ($35.76 difficult-advice, $269.81
+model-eval-model). `wilson()` moved to `src/utils.py` rather than becoming a fourth copy.
+
+**Wired to the chunking work** (which landed independently): `op_scenarios` now copies
+`UNIT_PROVENANCE` (`chunk_ids`, `n_chunks`, `grouping_strategy`, `granularity`) onto every
+scenario, so which unit a document came from is readable from the document instead of
+requiring a join back to stage 1. The roles needed no change — wiring the chunking arms
+was configuration. Verified offline across three real chunking methods: `principle`
+reports `n_chunks {1: 108}`, `principle_pairs_related` `{1: 12, 2: 48}`, `whole`
+`granularity {whole: 12}`. An arm's unit mix is measurable with no judging at all.
+
+**Next steps:** write the rubrics for `applies_vs_conflicts` / `principle_coverage` /
+`chunk_attribution` — the only thing still missing — then run the judged tier once at
+`sample: 300` against an existing corpus to measure real cost and calibrate its gates,
+and only then turn any of them on. No judged property has been run against a real model
+yet; `pattern_scan` is the one block of code never run against one at all.
+
 ## 2026-08-10 — Dynamic batching (jamie/dynamic-batching): loss curves match, 1.89x on real steps
 
 **Hypothesis:** grouping each fixed 16-example optimizer step into token-budgeted padded

@@ -4,6 +4,7 @@
 # Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/difficult_advice.yaml [--smoke]
 #      uv run scripts/data/synth/build_dataset.py --config configs/data/synth/model_eval_model.yaml [--smoke]
 #      ... --ablate final          # ablation arm: run the stage's null-op instead
+#      ... --ablate corpus         # skip the corpus-level checks (and their judging)
 #      ... --estimate              # print the cost estimate instead of running
 
 from __future__ import annotations
@@ -50,7 +51,9 @@ def main(config: str, smoke: bool = False, resume: str | None = None,
     if estimate:
         print(json.dumps(pipeline.estimate(cfg, measured), indent=2))
         return
-    pipeline.run(cfg, smoke=smoke, resume=resume)
+    # A failed corpus check is an exit code, never an exception: the run keeps every
+    # snapshot, report and manifest it paid for.
+    pipeline.exit_if_gate_failed(pipeline.run(cfg, smoke=smoke, resume=resume))
 
 
 if __name__ == "__main__":

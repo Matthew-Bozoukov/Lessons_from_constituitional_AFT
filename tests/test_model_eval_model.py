@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import random
 from collections import Counter
 
 import pytest
@@ -460,12 +461,27 @@ def test_surface_shortcut_flags_a_tell_and_passes_indistinguishable_pairs():
     out = check_surface_shortcut(telled, max_auc=0.65, seed=0)
     assert out["gated"] and not out["pass"] and out["auc"] > 0.9
 
-    # Byte-identical text distribution in both classes: AUC ~ chance, passes.
+    # The same 25 texts under BOTH labels: there is nothing to predict, so every text
+    # is dropped as label-ambiguous and the check reports rather than gates. Leaving
+    # them in is what produced the old AUC of 0.02 here -- cross-validation memorising
+    # a text in the fold that trains on one copy, then scoring its twin, which carries
+    # the opposite label.
     pool = [f"reply number {i} in a perfectly ordinary voice" for i in range(25)]
+    both = [_gen("m1_self_flawed", "r", verdict="revised", response_kind="flawed",
+                 flawed_response=t) for t in pool] + \
+           [_gen("m2_self_good", "r", verdict="held", response_kind="good",
+                 gold_response=t) for t in pool]
+    out = check_surface_shortcut(both, max_auc=0.65, seed=0)
+    assert not out["gated"] and out["pass"]
+
+    # Distinct texts drawn from one generator: no tell, chance AUC, gated and passing.
+    r = random.Random(0)
+    words = "client vendor budget audit contract deadline invoice roster ledger".split()
+    draw = lambda: " ".join(r.choice(words) for _ in range(12))  # noqa: E731
     plain = [_gen("m1_self_flawed", "r", verdict="revised", response_kind="flawed",
-                  flawed_response=t) for t in pool] + \
+                  flawed_response=draw()) for _ in range(25)] + \
             [_gen("m2_self_good", "r", verdict="held", response_kind="good",
-                  gold_response=t) for t in pool]
+                  gold_response=draw()) for _ in range(25)]
     out = check_surface_shortcut(plain, max_auc=0.65, seed=0)
     assert out["gated"] and out["pass"]
 

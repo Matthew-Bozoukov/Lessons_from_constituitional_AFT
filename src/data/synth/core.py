@@ -67,6 +67,14 @@ class Usage:
                 "total_usd": round(self.usd, 4)}
 
 
+# Judges return a tag and one sentence inside a tight max_tokens; a model's hidden
+# extended thinking otherwise eats that budget and returns EMPTY content with
+# finish_reason=length (observed 2026-08-05: 500-token cap, 95+ reasoning tokens,
+# content=None). Every judge call in this package passes it -- which is only worth
+# anything if there is one of it.
+JUDGE_NO_REASONING = {"reasoning": {"enabled": False}}
+
+
 def _parse_json(text: str) -> Any:
     """Parse a model's JSON body, tolerating unescaped control characters.
 
@@ -342,6 +350,10 @@ class Ctx:
     ...); `manifest_extra` collects run-level metadata a stage wants in the manifest.
     The OpenRouter client is created lazily, so deterministic-only runs (and offline
     tests) never touch credentials.
+
+    `cache` is the run's StageCache, so a stage producing a side artefact (a report) can
+    mirror it to HF the way snapshots are. It is None when a Ctx is built outside
+    `pipeline.run` (the `topup` verb, offline tests) -- fall back to a local write.
     """
 
     cfg: dict
@@ -351,6 +363,10 @@ class Ctx:
     smoke: bool
     vars: dict = field(default_factory=dict)
     manifest_extra: dict = field(default_factory=dict)
+    cache: Any = None
+    # Set by a stage to halt the run after it, keeping everything already produced.
+    # The engine writes the manifest and stops; the CLI turns it into an exit code.
+    stop: str | None = None
     _client: Any = None
 
     @property
@@ -380,6 +396,11 @@ class Stage:
         on_cached: Called when the snapshot is reused, to restore ctx.vars /
             manifest_extra a cache hit would otherwise lose.
         preview: Render one line of the first output record for the run log.
+        observer: The stage inspects the records and returns them unchanged. It writes
+            NO snapshot and takes NO position number, so inserting one anywhere in
+            `stages:` renumbers nothing after it and existing run dirs stay resumable.
+            It is never cached either: re-reading records it did not produce is cheap,
+            and anything it pays for is protected by its own checkpoint.
     """
 
     name: str
@@ -390,6 +411,7 @@ class Stage:
     skip: Any = None
     on_cached: Any = None
     preview: Any = None
+    observer: bool = False
 
 
 def model_cfg(cfg: dict, key: str) -> dict[str, Any]:

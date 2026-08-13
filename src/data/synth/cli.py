@@ -20,6 +20,16 @@ def _load(config: str) -> dict:
     return OmegaConf.to_container(OmegaConf.load(config), resolve=True)
 
 
+def _csv(arg) -> list[str]:
+    """Split a Fire argument into a list, however Fire chose to hand it over.
+
+    Fire passes `a,b` as a tuple but `a` as a string, so every comma-separated flag
+    needs both cases; one place to get that right rather than four.
+    """
+    items = arg if isinstance(arg, (list, tuple)) else str(arg).split(",")
+    return [str(x).strip() for x in items if str(x).strip()]
+
+
 def run(config: str, smoke: bool = False, resume: str | None = None,
         ablate: str | None = None, overrides: str | None = None) -> None:
     """Run the pipeline the config declares (its `stages:` list).
@@ -38,14 +48,12 @@ def run(config: str, smoke: bool = False, resume: str | None = None,
     load_dotenv()
     loaded = OmegaConf.load(config)
     if overrides:
-        loaded = OmegaConf.merge(loaded, OmegaConf.from_dotlist(
-            [o.strip() for o in overrides.split(",") if o.strip()]))
+        loaded = OmegaConf.merge(loaded, OmegaConf.from_dotlist(_csv(overrides)))
         print(f">>> overrides: {overrides}")
     cfg = OmegaConf.to_container(loaded, resolve=True)
     if ablate:
-        cfg["ablate"] = sorted(set(cfg.get("ablate") or [])
-                               | {a.strip() for a in str(ablate).split(",") if a.strip()})
-    pipeline.run(cfg, smoke=smoke, resume=resume)
+        cfg["ablate"] = sorted(set(cfg.get("ablate") or []) | set(_csv(ablate)))
+    pipeline.exit_if_gate_failed(pipeline.run(cfg, smoke=smoke, resume=resume))
 
 
 def topup(config: str, resume: str, traits, n: int = 25) -> None:
@@ -81,9 +89,7 @@ def topup(config: str, resume: str, traits, n: int = 25) -> None:
     have: dict[str, int] = {}
     for r in ckpt.done.values():
         have[r["trait_id"]] = have.get(r["trait_id"], 0) + 1
-    ids = list(traits) if isinstance(traits, (list, tuple)) else \
-        [x.strip() for x in str(traits).split(",")]
-    ids = [x for x in ids if x]
+    ids = _csv(traits)
     print(">>> current per-trait counts:", {t: have.get(t, 0) for t in ids})
 
     todo = []
@@ -113,27 +119,113 @@ def topup(config: str, resume: str, traits, n: int = 25) -> None:
     print(f">>> top-up spend ${usage.usd:.2f}")
 
 
-def check(config: str, run_dir: str, sample: int | None = None) -> None:
-    """Run the corpus validity checks over a run and gate on the config's thresholds.
+def check(config: str, run_dir: str, sample: int | None = None,
+          stage: str | None = None) -> None:
+    """Re-check a finished run without regenerating it, and gate on its thresholds.
+
+    Two independent halves, either of which may be absent: each `corpus_check` stage in
+    `stages:` (its properties run over that stage's input snapshot, writing
+    `<stage>_report.json` -- any document type can have this) and a `checks:` block (the
+    model-eval-model validity checks, writing `checks_report.json`).
 
     Args:
-        config: Path to the run YAML (its `checks:` block supplies judges + gates;
-            model-eval-model configs declare one).
+        config: Path to the run YAML.
         run_dir: The run directory holding the stage snapshots.
         sample: Override the number of documents the LLM-judged checks sample.
+        stage: Name of the `corpus_check` stage to run. Naming one also means "only
+            this": the `checks:` half is skipped, so a corpus can be re-checked
+            without re-paying for the judged model-eval-model checks.
 
     Raises:
-        SystemExit: Nonzero when any gated check fails; the full report is still
-            written to <run_dir>/checks_report.json first.
+        SystemExit: Nonzero when any gated check fails. Every report is written in
+            full first, so a failed run is still inspectable.
     """
     load_dotenv()
-    from .checks import run_checks
-
     cfg = _load(config)
-    assert cfg.get("checks"), "this config declares no `checks:` block"
-    _, ok = run_checks(run_dir, cfg, sample=sample)
+    corpus_stages = [s for s in cfg.get("stages") or []
+                     if s.get("kind") == "corpus_check"
+                     and (stage is None or s["name"] == stage)]
+    assert cfg.get("checks") or corpus_stages, (
+        f"{config} declares neither a `checks:` block nor a `corpus_check` stage"
+        + (f" named {stage!r}" if stage else "") + " -- there is nothing to check")
+
+    ok = True
+    for sc in corpus_stages:
+        ok = _check_corpus_stage(cfg, sc, Path(run_dir), sample) and ok
+    if cfg.get("checks") and stage is None:
+        from .checks import run_checks
+
+        _, checks_ok = run_checks(run_dir, cfg, sample=sample)
+        ok = ok and checks_ok
     if not ok:
         raise SystemExit(1)
+
+
+def _check_corpus_stage(cfg: dict, sc: dict, run_dir: Path,
+                        sample: int | None) -> bool:
+    """Run one `corpus_check` stage entry over a finished run's snapshots."""
+    from .corpus import is_paid, print_summary, run_corpus_checks
+    from .hf_cache import read_jsonl
+    from .pipeline import build_stages, snapshot_positions
+
+    # A corpus check is an observer: it writes no snapshot of its own and inspects the
+    # last real stage before it, so that is the snapshot to re-read.
+    positions = snapshot_positions(build_stages(cfg))
+    pos = positions[sc["name"]]
+    source = next((s["name"] for s in cfg["stages"]
+                   if positions.get(s["name"]) == pos and s["name"] != sc["name"]), None)
+    snap = run_dir / f"stage_{pos}_{source}.jsonl" if source else None
+    assert snap is not None and snap.exists(), (
+        f"the corpus check {sc['name']!r} inspects "
+        + (f"stage_{pos}_{source}.jsonl, which is not in {run_dir}"
+           if source else "the stage before it, and it is first in the list"))
+
+    if sample is not None:
+        sc = {**sc, "properties": [{**p, "params": {**(p.get("params") or {}),
+                                                    "sample": sample}}
+                                   for p in sc["properties"]]}
+    ctx = None
+    if is_paid(sc):
+        ctx = Ctx(cfg=cfg, usage=Usage(), workers=int(cfg.get("workers", 8)),
+                  run_dir=run_dir, smoke=False,
+                  vars={"constitution": full_text(cfg["constitution"])})
+
+    print(f">>> corpus checks over {snap.name}")
+    report = run_corpus_checks(read_jsonl(snap), sc, run_dir=run_dir,
+                               seed=int(cfg.get("seed", 0)),
+                               workers=int(cfg.get("workers", 8)), ctx=ctx)
+    dest = run_dir / f"{sc['name']}_report.json"
+    dest.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    print_summary(report)
+    print(f">>> report at {dest}")
+    return bool(report["pass"])
+
+
+def compare(reports, key: str = "group_size", out: str | None = None,
+            stage: str | None = None) -> None:
+    """Compare several runs' corpus reports as arms of one experiment.
+
+    One run is one arm, so a claim like "the conflict rate rises with group size" can
+    only be checked across run directories. Computes nothing new.
+
+    Args:
+        reports: Run directories, one per arm. Fire accepts "a,b,c" or a tuple.
+        key: Manifest/config field ordering the arms (e.g. group_size).
+        out: Write the markdown here; the JSON lands beside it. Default: print only.
+        stage: Corpus-check stage name, when a run holds more than one report.
+    """
+    from .compare import compare_arms, markdown
+
+    result = compare_arms(_csv(reports), key=key, stage=stage)
+    text = markdown(result)
+    print(text)
+    if out:
+        dest = Path(out)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(text, encoding="utf-8")
+        dest.with_suffix(".json").write_text(
+            json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
+        print(f"\n>>> {dest} (+ {dest.with_suffix('.json').name})")
 
 
 def estimate(config: str, measured: str | None = None) -> None:
@@ -226,7 +318,7 @@ def segment(constitution: str = "constitutions/claude_distilled_12_principles_mi
 
 
 def main() -> None:
-    fire.Fire({"run": run, "topup": topup, "check": check,
+    fire.Fire({"run": run, "topup": topup, "check": check, "compare": compare,
                "estimate": estimate, "segment": segment, "chunkings": chunkings})
 
 
