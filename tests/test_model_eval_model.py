@@ -27,7 +27,10 @@ from src.data.synth.model_eval_model_cells import (
     to_model_eval_model_sft,
 )
 
-CFG = yaml.safe_load(open("configs/data/synth/model_eval_model.yaml"))
+# The archived five-cell scaffold, deliberately: it is the only config enabling every
+# registered cell, so it is what exercises the whole CELLS registry (including `control`,
+# which no live config uses). Archived configs are frozen, which makes it a stable fixture.
+CFG = yaml.safe_load(open("configs/data/synth/archive/model_eval_model.yaml"))
 P = CFG["prompts"]  # the config IS the wording -- tests validate against it
 
 EXPLICITNESS = {"name_clause": 0.3, "paraphrase": 0.4, "embody": 0.3}

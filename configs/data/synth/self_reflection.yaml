@@ -7,6 +7,15 @@ seed: 0
 # Label recorded in manifests; the `stages:` list below IS the document type.
 pipeline: self_reflection
 
+# STAGE NAMES CHANGED 2026-08-13, for legibility, matching difficult_advice.yaml:
+#   traits -> chunk_constitution      refined_prompts -> revise_prompts
+#   scenarios -> write_scenarios      final -> revise_responses
+#                                     sft -> export_sft
+# A stage name IS its snapshot filename, so a run directory created before that date no
+# longer cache-hits; rename its files to resume one. The published corpus
+# (`LASR-Callum/2026-08-03-synthdoc-self-reflection`) keeps the ORIGINAL names, as a
+# record of what actually ran.
+
 # Stage 1 segments this into its numbered units (## <n>. headings). Stages 4 and 6 inject the
 # whole document; stages 2, 4, 5 and 6 also inject the single target trait. Stage 6 injects it
 # for reference ONLY -- its wording, numbering and vocabulary are banned from the output, which
@@ -228,9 +237,9 @@ models:
     assumed_tokens: {in: 9000, out: 200}
 
 stages:
-- name: traits
+- name: chunk_constitution
   kind: segment
-- name: scenarios
+- name: write_scenarios
   kind: scenarios_weighted
   model: scenarios
   fields:
@@ -433,7 +442,7 @@ stages:
       <user>
       the request, then the material
       </user>
-- name: refined_prompts
+- name: revise_prompts
   kind: llm_tagged
   model: refine
   checkpoint: scenario_id
@@ -600,7 +609,7 @@ stages:
       <response>
       {output_shape}
       </response>
-- name: final
+- name: revise_responses
   kind: llm_tagged
   model: rewrite
   checkpoint: scenario_id
@@ -847,7 +856,7 @@ stages:
       {multi_extra}{agentic_extra}
       Return your answer in exactly this form, with no other text:
       {shape}
-- name: sft
+- name: export_sft
   kind: chat_export
   messages:
   - role: system

@@ -21,7 +21,7 @@
 #      transcript between them is still composed in code, so the record stays blind.
 #
 # Unchanged on purpose: the same source run, constitution, explicitness mix, the `final`
-# rewrite stage (ablatable via `--ablate final`), and the generator-unblinding
+# rewrite stage (ablatable via `--ablate revise_critique`), and the generator-unblinding
 # `known_flaw_note`, which now carries the rater's account of the shortfall.
 #
 # NOT YET RUN. Verify with --smoke (8 docs, local only) and `uv run synth check` first.
@@ -34,6 +34,12 @@ constitution: "constitutions/claude_distilled_09_principles_mid_20260804/constit
 
 source:
   hf_repo: "LASR-Callum/synthdoc-v2-difficult-advice"
+  # Pinned explicitly because difficult_advice.yaml's stages were renamed for legibility
+  # on 2026-08-13 (`final` -> `revise_responses`). The PUBLISHED corpus above still holds
+  # the file under its original name, and always will -- a mirror is a record. A future
+  # re-run of difficult advice writes `stage_6_revise_responses.jsonl` instead, so a
+  # config pointing at that run must say so here rather than inherit the default.
+  snapshot: "stage_6_final.jsonl"
 
 output_dir: "output/model_eval_model_other_natural"
 
@@ -179,13 +185,13 @@ checks:
     opening_5gram_share_max: 0.20
 
 stages:
-- name: source
+- name: load_source_run
   kind: load_source_run
 
-- name: plan
+- name: allocate_cells
   kind: plan_cells
 
-- name: candidates
+- name: draft_candidates
   kind: llm_tagged
   model: candidates
   checkpoint: record_id
@@ -330,7 +336,7 @@ stages:
       generosity. You name one winner and say why in a sentence or two. No preamble.
     user: (overridden per response_kind by variants_by)
 
-- name: first_turn
+- name: select_first_turn
   kind: pick_field
   by: pick_letter
   from: {a: candidate_a, b: candidate_b, c: candidate_c}
@@ -340,7 +346,7 @@ stages:
 # Per-exchange framing for the transcript the requester brings. Only the opening line and
 # the closing question are generated; `_wrap_transcript` composes them around the
 # transcript itself, so nothing about the flaw can leak through this stage.
-- name: ask_frame
+- name: write_critique_framing
   kind: llm_tagged
   model: frame
   checkpoint: record_id
@@ -393,11 +399,11 @@ stages:
       the question after it
       </closing>
 
-- name: generated
+- name: draft_critique
   kind: generate_cells
   checkpoint: record_id
 
-- name: final
+- name: revise_critique
   kind: revise_cells
   model: rewrite
   checkpoint: record_id
@@ -482,7 +488,7 @@ stages:
       1-2 sentences on what you strengthened
       </changes>
 
-- name: sft
+- name: export_sft
   kind: assemble_cells
 
 prompts:

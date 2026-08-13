@@ -1,3 +1,10 @@
+# ARCHIVED 2026-08-13 -- superseded by configs/data/synth/model_eval_model_self_natural.yaml
+# (self cells) and model_eval_model_other_natural.yaml (critique cells). DO NOT start new
+# runs from this file and DO NOT edit it. Unlike its two siblings in this folder it is not
+# the record of any corpus -- it was never run (`hf_repo: null`) -- it is the five-cell
+# scaffold they were split out of, kept so their lineage stays readable.
+# See configs/data/synth/archive/README.md.
+#
 # ABOUTME: Run config for the model-eval-model document type, generated over a
 # ABOUTME: completed difficult-advice run. Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/model_eval_model.yaml [--smoke]
 

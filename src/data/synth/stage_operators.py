@@ -10,6 +10,7 @@ from pathlib import Path
 from . import model_eval_model_cells
 from .constitution import UNIT_PROVENANCE, Trait, units_from_config
 from .stage_runtime import Ctx, Stage, call_json, call_tagged, model_cfg, resilient, run_items
+from .stage_runtime import lint_problems as _lint
 from .hf_cache import read_jsonl
 
 
@@ -40,34 +41,42 @@ def _resolve_vars(spec: dict | None, record: dict, ctx: Ctx) -> dict[str, str]:
     return out
 
 
-def _lint(parsed: dict, spec: dict) -> list[str]:
-    """Return the reasons tagged output fails the stage's lint contract (empty = pass).
+# A `filter` stage's drop-rate guard is reported but not enforced below this many
+# in-scope records: at smoke scale the rate is binomial noise, not a recipe failure.
+_MIN_SCOPED_FOR_DROP_GATE = 20
 
-    The self-reflection voice contract is the archetype: reasoning that reaches for rule
-    vocabulary, or that is too short to have done any weighing, is rejected so the call
-    retries rather than the corpus absorbing it. `max_chars` is the opposite guard, and
-    the one a generated USER turn needs: a follow-up that grows into a paragraph has
-    started doing the analysis the assistant's turn is supposed to do.
+
+def _lint_attempts(spec) -> int:
+    """How many times to call before giving up, given a lint spec (or a list of them).
+
+    One retry budget for the whole call: the contracts describe different tags of the same
+    completion, so a retry re-rolls all of them. The most patient contract wins.
     """
-    import re as _re
+    if not spec:
+        return 1
+    specs = spec if isinstance(spec, list) else [spec]
+    return max(int(s.get("retries", 2)) for s in specs) + 1
 
-    problems = []
-    min_chars = int(spec.get("min_chars", 0))
-    max_chars = int(spec.get("max_chars", 0))
-    patterns = [( pat, _re.compile(pat, _re.IGNORECASE)) for pat in spec.get("ban_patterns", [])]
-    for field in spec.get("fields", []):
-        if field not in parsed:
-            continue
-        text = parsed[field]
-        for pat, rx in patterns:
-            m = rx.search(text)
-            if m:
-                problems.append(f"<{field}> rule-vocabulary {m.group(0)!r} (matched {pat})")
-        if min_chars and len(text) < min_chars:
-            problems.append(f"<{field}> is {len(text)} chars, under the {min_chars} minimum")
-        if max_chars and len(text) > max_chars:
-            problems.append(f"<{field}> is {len(text)} chars, over the {max_chars} maximum")
-    return problems
+
+def ident(record: dict) -> str:
+    """A record's id for logs and error messages.
+
+    `record_id` is the cell-based configs' composite id; a config whose documents are one
+    per scenario has only `scenario_id`. Nothing behavioural keys on this -- it exists so
+    a dropped-record report or a stage preview names something the reader can grep for.
+    """
+    return str(record.get("record_id") or record.get("scenario_id") or "")
+
+
+def _norm_label(value) -> str:
+    """Normalise a one-word label a model returned inside a tag.
+
+    Models wrap their answer in punctuation, casing and stray whitespace ("` B.`",
+    `"none"`, `<c>`). Every stage that routes on such a label -- `pick_field`'s choice,
+    `filter`'s keep set -- must agree on what counts as the same label, or a record is
+    silently misrouted on a stray full stop.
+    """
+    return str(value).strip().lower().strip(".:\"'()<>[]* ")
 
 
 def selected(sc: dict, record: dict) -> bool:
@@ -229,6 +238,13 @@ def tagged_request(sc: dict, r: dict, ctx: Ctx) -> tuple[list[dict], tuple, dict
 
     Applies `variants_by` overrides and resolves `prompt_vars` -- factored out of the
     operator so a test can assert exactly what a record's prompt contains.
+
+    Two prompt shapes. `prompts: {system, user}` is the common one. `conversation:` is a
+    full message list, and it is what a document about a PRIOR EXCHANGE needs: the reply
+    being reflected on has to sit in a genuine assistant turn, so that attribution is
+    structural rather than something the prompt asserts in prose. Without it, the only
+    way to build such a document is a bespoke message-builder in Python -- which is what
+    the cell registry was.
     """
     eff = sc
     variants = sc.get("variants_by")
@@ -240,12 +256,22 @@ def tagged_request(sc: dict, r: dict, ctx: Ctx) -> tuple[list[dict], tuple, dict
             # land inside `prompts`, not beside it where rendering never looks.
             templates = {k: case[k] for k in ("system", "user") if k in case}
             if templates:
-                eff["prompts"] = {**sc["prompts"], **templates}
+                eff["prompts"] = {**sc.get("prompts", {}), **templates}
     pvars = _resolve_vars({**(sc.get("prompt_vars") or {}),
                            **(eff.get("prompt_vars") or {})}, r, ctx)
-    messages = [
-        {"role": "system", "content": _render(eff["prompts"]["system"], r, ctx, **pvars)},
-        {"role": "user", "content": _render(eff["prompts"]["user"], r, ctx, **pvars)}]
+    convo = eff.get("conversation")
+    if convo:
+        messages = [{"role": m["role"], "content": _render(m["content"], r, ctx, **pvars)}
+                    for m in convo]
+        assert messages[-1]["role"] == "user", (
+            f"stage {sc['name']!r}: a `conversation:` must end on the user turn -- the "
+            f"model's reply is what the stage is asking for")
+    else:
+        messages = [
+            {"role": "system",
+             "content": _render(eff["prompts"]["system"], r, ctx, **pvars)},
+            {"role": "user",
+             "content": _render(eff["prompts"]["user"], r, ctx, **pvars)}]
     return messages, tuple(eff["tags"]), dict(eff["save"])
 
 
@@ -271,43 +297,71 @@ def op_llm_tagged(sc: dict, cfg: dict) -> Stage:
       a completion whose content (not just shape) breaks the corpus contract.
     - `when: {field, in: [...]}` -- run only over the matching records; the rest pass
       through unchanged and unpaid.
+    - `also: {field: constant}` -- provenance stamped beside the saved tags, so where a
+      generated turn came from is a recorded variable rather than something a reader has
+      to infer from which config produced the run.
     """
     mk = sc["model"]
     lint_spec = sc.get("lint")
+    also = dict(sc.get("also") or {})
+    # Tags whose value is a label rather than prose. Normalised before the lint runs, so
+    # `allowed:` compares against "held" and not "Held." -- casing and a trailing full
+    # stop are the model formatting an answer, not answering a different question.
+    normalize = list(sc.get("normalize") or [])
+    # Arm assignment folded into this stage rather than standing as its own; see
+    # `assign_arms`. `keep:` is the same idea at the other end -- a stage whose own output
+    # decides which records survive can drop them itself rather than hand a snapshot to a
+    # `filter` that reads one field of it. See `apply_keep`.
+    assign_spec = sc.get("assign")
+    keep_spec = sc.get("keep")
 
     def fn(ctx, records, ckpt):
         m = model_cfg(ctx.cfg, mk)
+        # Labels first: `variants_by` may branch on one, so they have to exist before any
+        # prompt is built. Applied to every record, in or out of `when` scope -- an arm is
+        # a property of the record, not of this stage's coverage.
+        if assign_spec:
+            records = assign_arms(assign_spec, records)
         todo = [r for r in records if selected(sc, r)]
         if len(todo) != len(records):
             print(f"    when-filter: {len(todo)}/{len(records)} records in scope")
 
         def one(r: dict) -> dict:
             messages, tags, save = tagged_request(sc, r, ctx)
-            attempts = int(lint_spec.get("retries", 2)) + 1 if lint_spec else 1
+            attempts = _lint_attempts(lint_spec)
             problems: list[str] = []
             for _ in range(attempts):
                 parsed = call_tagged(ctx.client, ctx.usage, m["model"], messages,
                                      m["temperature"], m["max_tokens"], mk, tags,
                                      extra=m.get("extra_body"))
+                for tag in normalize:
+                    if tag in parsed:
+                        parsed[tag] = _norm_label(parsed[tag])
                 problems = _lint(parsed, lint_spec) if lint_spec else []
                 if not problems:
-                    return {**r, **{f: parsed[k] for f, k in save.items()}}
+                    return {**r, **{f: parsed[k] for f, k in save.items()}, **also}
             raise ValueError(f"{sc['name']}: output breaks the stage contract after "
                              f"{attempts} attempts: {'; '.join(problems)}")
 
         done = run_items(todo, one, ctx.workers, sc["name"], ckpt,
                          max_fail_pct=float(ctx.cfg.get("max_fail_pct", 2.0)))
         if len(todo) == len(records):
-            return done
+            return apply_keep(sc, done, ctx) if keep_spec else done
         # Out-of-scope records keep their place; an in-scope record that failed is
         # dropped, exactly as it would be without the filter.
         key = sc.get("checkpoint") or "record_id"
         by_key = {r[key]: r for r in done}
-        return [by_key.get(r[key], r) for r in records
-                if not selected(sc, r) or r[key] in by_key]
+        merged = [by_key.get(r[key], r) for r in records
+                  if not selected(sc, r) or r[key] in by_key]
+        return apply_keep(sc, merged, ctx) if keep_spec else merged
 
+    # A stage may define `save` only inside `variants_by`, in which case there is no one
+    # field the preview could name; fall back to the record id rather than crashing the
+    # run log after the stage has already been paid for.
+    first_saved = next(iter(sc.get("save") or {}), None)
     return Stage(sc["name"], fn, paid=True, checkpoint_key=sc.get("checkpoint"),
-                 preview=lambda r: str(r.get(next(iter(sc["save"])), r.get("record_id", ""))))
+                 preview=lambda r: str((first_saved and r.get(first_saved))
+                                       or ident(r)))
 
 
 def op_pick_field(sc: dict, cfg: dict) -> Stage:
@@ -325,7 +379,7 @@ def op_pick_field(sc: dict, cfg: dict) -> Stage:
     also = dict(sc.get("also") or {})
 
     def resolve(r: dict) -> str:
-        raw = str(r[by]).strip().lower().strip(".:\"'()<>[] ")
+        raw = _norm_label(r[by])
         label = raw if raw in src else raw.split()[-1] if raw.split() else raw
         if label not in src:
             raise ValueError(
@@ -342,7 +396,184 @@ def op_pick_field(sc: dict, cfg: dict) -> Stage:
             out.append({**r, to: r[resolve(r)], **also})
         return out
 
-    return Stage(sc["name"], fn, preview=lambda r: str(r.get(to, r.get("record_id", ""))))
+    return Stage(sc["name"], fn, preview=lambda r: str(r.get(to) or ident(r)))
+
+
+def assign_arms(spec: dict, records: list[dict], announce: bool = True) -> list[dict]:
+    """Label every record with its experimental arm, derived from the record's own id.
+
+    This is the de-celled replacement for `plan_cells`. Where that operator built a
+    document-type registry in code -- a cell knowing how its prompts are assembled and
+    how its record is exported -- this only labels: `reply_quality: {good: 0.5, flawed:
+    0.5}` says half the corpus should end up with a first reply that holds up. Everything
+    that reads the label afterwards (which prompt variant to use, which records a gate
+    keeps, what the export records) is a config's own business.
+
+    The label comes from a hash of `(field name, record id)`, not an RNG and not the
+    record's position, so a resumed run, a re-run stage and the cost estimator all assign
+    the same arms even after earlier stages have dropped records. Proportions are
+    therefore approximate rather than exact -- at a few hundred records the drift is
+    under a percent, but a smoke run of six can easily land 4/2.
+
+    Available both as its own free stage (`kind: assign`) and as an `assign:` block on a
+    paid stage, for the common case where the arm exists only to choose that stage's
+    prompt: a whole stage to stamp two labels is a snapshot nobody reads.
+
+    Args:
+        spec: `{by, fields, constants, copy}` -- the id field, the weighted label fields,
+            fields stamped identically on every record, and verbatim field copies.
+        records: Input records.
+        announce: Print the realised split (the number a config is re-sized from).
+
+    Returns:
+        The records, each extended with its labels.
+    """
+    by = spec["by"]
+    fields = {k: dict(v) for k, v in (spec.get("fields") or {}).items()}
+    constants = dict(spec.get("constants") or {})
+    copies = dict(spec.get("copy") or {})
+    for name, weights in fields.items():
+        assert weights and all(float(w) >= 0 for w in weights.values()) \
+            and sum(float(w) for w in weights.values()) > 0, \
+            f"assign field {name!r}: weights must be non-negative and not all zero"
+
+    def label(field: str, key: str) -> str:
+        weights = fields[field]
+        total = sum(float(w) for w in weights.values())
+        point = _unit(key, field) * total
+        acc = 0.0
+        for value, weight in weights.items():  # config order, so a run is reproducible
+            acc += float(weight)
+            if point < acc:
+                return str(value)
+        return str(list(weights)[-1])
+
+    out = []
+    for r in records:
+        key = str(r[by])
+        out.append({**r, **constants,
+                    **{new: r[src] for new, src in copies.items()},
+                    **{f: label(f, key) for f in fields}})
+    if announce:
+        for f in fields:
+            counts: dict[str, int] = {}
+            for r in out:
+                counts[r[f]] = counts.get(r[f], 0) + 1
+            print(f"    {f}: {dict(sorted(counts.items()))}")
+    return out
+
+
+def op_assign(sc: dict, cfg: dict) -> Stage:
+    """Free stage wrapper around `assign_arms` (see it for the semantics)."""
+    fields = list((sc.get("fields") or {}))
+    return Stage(sc["name"], lambda ctx, records, ckpt: assign_arms(sc, records),
+                 preview=lambda r: f"{ident(r)} "
+                                   + " ".join(f"{f}={r.get(f)}" for f in fields))
+
+
+def apply_keep(sc: dict, records: list[dict], ctx=None) -> list[dict]:
+    """Drop records failing the stage's `keep:` contract; return the survivors.
+
+    Two forms. `keep: {field: <name>, in: [labels]}` keeps a record only when that
+    field's normalised value is one of the labels, and `when:` scopes which records are
+    judged at all. `keep: {by: <arm field>, cases: {<arm>: {field, in}}}` gives each arm
+    its OWN contract, which is what a corpus with opposite expectations per arm needs:
+    the flawed arm keeps records where a fault survived, the good arm keeps exactly the
+    records where none did. Those are one decision, not two. An arm with no case is out
+    of scope and passes through.
+
+    This is what a FOUND (rather than planted) lapse needs. A reviser that names three
+    faults in a reply and reports whether any is a genuine shortfall answers a question
+    with no guaranteed answer: some replies steered toward falling short turn out fine,
+    and some steered to hold up do not. Forcing those records through anyway would train
+    the corpus's headline contrast on labels the pipeline itself does not believe --
+    reflexive capitulation in one direction, defensiveness in the other. Dropping them
+    costs the calls already made and keeps the labels honest.
+
+    `max_drop_pct` (default 60) fails the stage rather than the corpus: losing most of a
+    slice means the rater and the generator disagree systematically, which is a recipe bug
+    and not something to quietly generate around. It takes a per-arm map alongside the
+    `cases` form, since arms with opposite expectations have different healthy rates. It
+    is reported but not enforced below `_MIN_SCOPED_FOR_DROP_GATE` records, where the rate
+    is binomial noise -- a smoke run of four documents must not fail because all four went
+    one way.
+
+    Args:
+        sc: The stage entry (`keep`, optional `when`, optional `max_drop_pct`).
+        records: Input records.
+        ctx: Optional run context. When given, which records were dropped and why is
+            recorded into the manifest -- the only mirrored artifact that can carry it
+            once the filter shares a snapshot with the stage that produced its input.
+
+    Returns:
+        The surviving records.
+    """
+    keep = sc["keep"]
+    by = keep.get("by")
+    cases = {_norm_label(k): v for k, v in (keep.get("cases") or {}).items()}
+    max_drop = sc.get("max_drop_pct", 60.0)
+
+    def rule(r: dict):
+        """(arm label, field, allowed set) for this record, or None if out of scope."""
+        if not cases:
+            return ("", keep["field"], {_norm_label(v) for v in keep["in"]}) \
+                if selected(sc, r) else None
+        case = cases.get(_norm_label(r.get(by, "")))
+        if case is None:
+            return None
+        return (_norm_label(r.get(by, "")), case["field"],
+                {_norm_label(v) for v in case["in"]})
+
+    def limit(arm: str) -> float:
+        return float(max_drop.get(arm, 100.0) if isinstance(max_drop, dict) else max_drop)
+
+    out: list[dict] = []
+    dropped: dict[str, list[str]] = {}
+    scoped: dict[str, int] = {}
+    for r in records:
+        spec = rule(r)
+        if spec is None:
+            out.append(r)
+            continue
+        arm, field, allowed = spec
+        scoped[arm] = scoped.get(arm, 0) + 1
+        if _norm_label(r.get(field, "")) in allowed:
+            out.append(r)
+        else:
+            dropped.setdefault(arm, []).append(
+                f"{ident(r)} [{field}={r.get(field, '')!r}]")
+
+    if ctx is not None and dropped:
+        # The dropped records no longer get a snapshot of their own, so the manifest --
+        # which IS mirrored -- carries which ones went and on what value. Their full text
+        # stays in this stage's local `.partial.jsonl`.
+        ctx.manifest_extra.setdefault("dropped", {})[sc["name"]] = {
+            arm: {"scoped": scoped.get(arm, 0), "dropped": len(rows), "records": rows}
+            for arm, rows in sorted(dropped.items())}
+
+    for arm, rows in sorted(dropped.items()):
+        n = scoped.get(arm, 0)
+        pct = 100 * len(rows) / max(n, 1)
+        label = f"{sc['name']}[{arm}]" if arm else sc["name"]
+        print(f"    {label}: dropped {len(rows)}/{n} in-scope records ({pct:.1f}%) "
+              f"whose label the reviser did not support. First 3: {rows[:3]}")
+        if pct > limit(arm) and n >= _MIN_SCOPED_FOR_DROP_GATE:
+            raise RuntimeError(
+                f"{label}: {pct:.1f}% of in-scope records dropped, above "
+                f"max_drop_pct={limit(arm)}. The rater and the generator disagree "
+                f"systematically -- fix the recipe rather than over-generating.")
+    return out
+
+
+def op_filter(sc: dict, cfg: dict) -> Stage:
+    """Free stage wrapper around `apply_keep` (see it for the contract).
+
+    Useful when the contract is judged on fields several stages old. Where the deciding
+    field comes from the stage immediately before, that stage can carry a `keep:` block
+    itself and save a snapshot.
+    """
+    return Stage(sc["name"], lambda ctx, records, ckpt: apply_keep(sc, records, ctx),
+                 preview=ident)
 
 
 def op_chat_export(sc: dict, cfg: dict) -> Stage:
@@ -445,20 +676,30 @@ def op_corpus_check(sc: dict, cfg: dict) -> Stage:
 
 
 def op_load_source_run(sc: dict, cfg: dict) -> Stage:
-    """Load a completed source run's final records, with constitution-sha provenance."""
+    """Load a completed source run's final records, with constitution-sha provenance.
+
+    Which snapshot to read is the `source:` block's `snapshot:` field, defaulting to the
+    difficult-advice layout's `stage_6_final.jsonl` — the only source run that exists
+    today, and what every current config means. It is a field rather than a constant
+    because the operator is generic: a source run with a different stage list numbers its
+    final snapshot differently, and baking one document type's filename into the operator
+    would be exactly the hardcoding the engine is not allowed to do.
+    """
+    snapshot = str((cfg.get("source") or {}).get("snapshot") or "stage_6_final.jsonl")
+
     def load_records(spec: dict) -> tuple[list[dict], dict, str]:
         if spec.get("local_dir"):
             d = Path(spec["local_dir"])
             mpath = d / "manifest.json"
             manifest = json.loads(mpath.read_text()) if mpath.exists() else {}
-            return read_jsonl(d / "stage_6_final.jsonl"), manifest, str(d)
+            return read_jsonl(d / snapshot), manifest, str(d)
         repo = spec["hf_repo"]
         from huggingface_hub.utils import EntryNotFoundError
 
         from src.huggingface import hf_download
 
         records = read_jsonl(Path(hf_download(
-            repo, "stage_6_final.jsonl", repo_type="dataset")))
+            repo, snapshot, repo_type="dataset")))
         try:
             manifest = json.loads(Path(hf_download(
                 repo, "manifest.json", repo_type="dataset")).read_text())
@@ -489,6 +730,9 @@ def op_load_source_run(sc: dict, cfg: dict) -> Stage:
             ctx.manifest_extra["source"] = json.loads(p.read_text())
 
     return Stage(sc["name"], fn, on_cached=on_cached)
+
+
+# --- model-eval-model cell operators (structure in model_eval_model_cells.py) -----
 
 
 def _enabled(cfg: dict) -> dict[str, int]:
@@ -575,7 +819,6 @@ def op_assemble_cells(sc: dict, cfg: dict) -> Stage:
         return cells.to_model_eval_model_sft(records, ctx.cfg["prompts"])
 
     return Stage(sc["name"], fn)
-
 
 
 # --- weighted scenario planning (the self-reflection document type's stage 2) -------
@@ -744,13 +987,26 @@ OPERATORS = {
     "scenarios_weighted": op_scenarios_weighted,
     "llm_json": op_llm_json,
     "llm_tagged": op_llm_tagged,
+    "assign": op_assign,
     "pick_field": op_pick_field,
+    "filter": op_filter,
     "chat_export": op_chat_export,
     "corpus_check": op_corpus_check,
     "load_source_run": op_load_source_run,
+}
+
+# The five cell kinds below are NOT generic: a cell is a document type expressed in
+# Python -- a registry entry knowing how its prompts are assembled and how its record is
+# exported -- which is precisely what a config's `stages:` list is supposed to express
+# instead. They stay registered because the archived configs and
+# `model_eval_model_other_natural.yaml` are written against them, and an archived config
+# that cannot run is not a reproducible record of a published corpus. Nothing new should
+# use them; build a document type out of the generic kinds above, as
+# `model_eval_model_self_natural.yaml` does.
+OPERATORS.update({
     "plan_cells": op_plan_cells,
     "perturb_pairs": op_perturb_pairs,
     "generate_cells": op_generate_cells,
     "revise_cells": op_revise_cells,
     "assemble_cells": op_assemble_cells,
-}
+})

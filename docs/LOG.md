@@ -3,6 +3,189 @@
 
 # LOG
 
+## 2026-08-13 — mem-self de-celled: the document type is now the config (no corpus yet)
+
+**Hypothesis:** the `cells` abstraction had stopped earning its place, and while it stayed
+the engine could not honestly claim to be document-type-agnostic. A cell was a `CellSpec`
+holding a message-builder, an assembler, a verdict vocabulary and a supervision mode —
+i.e. a document type written in Python. That is exactly what a config's `stages:` list is
+supposed to express, and as long as cells existed, adding an arm meant editing
+`src/data/synth/`. It was also carrying two unrelated jobs at once in the self arm:
+m1-vs-m2 was an *outcome label* (did the reply hold up), while m1/m2-vs-m6/m7 was a real
+*document shape* difference. One word, two meanings.
+
+**Method:** `model_eval_model_self_natural.yaml` rebuilt on generic operators only — 14
+stages, no `plan_cells`/`generate_cells`/`revise_cells`/`assemble_cells`, no `cells:` and
+no `flaws:` block. One scenario now yields one document, so `scenario_id` is the id and
+`total_scenarios` is the corpus size. What replaced each piece of machinery:
+
+- **Four stages folded into one.** The two gates were always one decision (keep a
+  flawed-arm record iff a fault was confirmed, a good-arm record iff none was), so
+  `filter` gained a contract per arm; then, since the deciding field is produced by the
+  stage immediately before, the contract became a `keep:` block on that stage and the
+  gate stopped being a stage at all. The cost is real and is why it was raised before
+  doing it: dropped records no longer get a snapshot, and only `cache.save` mirrors to
+  HF, so the evidence for a drop would have been lost. It is preserved by recording the
+  dropped ids and their deciding value into the run manifest, which is mirrored. Listing the
+  faults and adjudicating them became one call, and that call was then restructured as a
+  REVISION: `revise_first_turn` names three faults, writes the better reply that acts on
+  them, and only then says which was real. The revision is the commitment that makes the
+  verdict earned -- a criticism you cannot write a fix for tends not to survive being
+  acted on -- and `improved_reply` is kept, untrained, as the field to read when the
+  gate's drop rate looks wrong. The merge still has a real cost, flagged in the config:
+  the two-call version had a second reader with no stake in the criticisms.
+  `flaw_id_clear_min` is the number that will show if it mattered.
+- **`assign` (new operator)** — the arms are a *label*, `reply_quality: {good: 0.5,
+  flawed: 0.5}`, hashed from the scenario id so a resume, a re-run and the estimator all
+  agree. It also stamps constants (`supervise: final`). The label rides into the exported
+  metadata, so the corpus is sliceable by arm without reconstructing anything. It is
+  available both as its own free stage and as an `assign:` block on a paid stage; mem-self
+  folds it into `revise_prompts`, the stage whose prompt variant the arm selects, because
+  a whole snapshot to stamp two labels is one nobody reads.
+- **`conversation:` on `llm_tagged`** — the enabling change. The reply under evaluation has
+  to sit in a genuine assistant turn (attribution structural, not asserted in prose), and
+  a two-message system/user prompt cannot express that. This is the single reason the self
+  document type needed Python at all.
+- **`normalize:` + `lint.allowed`** — a one-word verdict is canonicalised, then constrained
+  to `held`/`revised` with reject-and-retry. That was `_norm_verdict` in cells.py.
+- **`chat_export`** — the five-message record with `supervise: final`, replacing the cell's
+  assembler.
+
+`m6_user_shortcut` / `m7_user_sound` were **deleted**, not archived: no corpus was ever
+generated from them, so there was no record to preserve. `cells.py` moved to
+`src/data/synth/archive/cells.py` and absorbed its five operators; `operators.py` merges
+them back into the registry so the three archived configs and `model_eval_model_other_natural.yaml`
+run unchanged, while the generic library keeps no knowledge of them. `operators.py` now
+contains zero references to any document type.
+
+**`checks.py` was generalised rather than dropped.** Cells were only its *grouping key*.
+Of its twelve checks, four are per-example LLM judges that a revision prompt could in
+principle absorb; the other eight cannot be computed from one document at all — template
+collapse, structural diversity, the corpus-cluster pass, the surface-shortcut classifier,
+verdict distribution, gate yield, coverage, and the blindness leak-proof. Two config blocks
+now name what the operator kinds used to imply: `checks.stages` (which snapshot plays which
+role) and `checks.fields` (which record field is the arm, the id, the evaluated text, the
+verdict). Both default to the cell vocabulary, so celled configs need neither.
+
+Also added, and the reason the corpus does not need heavy over-planning: **`revise_prompts`**
+sharpens each exchange against the constitution *conditioned on its arm* — reachable for
+the good half, quietly costly for the fast answer in the flawed half. It shapes the
+situation and never the reply; the assistant never sees the instruction and still answers
+unaided, so the fault stays organic and `verify_fault` still has to confirm it.
+
+**Result:** code and configs only — **no corpus generated, nothing trained**. 644 offline
+tests pass. A stubbed-client dry run (no network, 90 scenarios) exercises all 10 stages and
+the check suite: gates kept 83% of the flawed arm and 54% of the good arm — against the
+config's 80%/55% priors — `check_gate_yield` reported both, `check_blindness` passed with
+the prompt-identity half correctly skipped (no cell builders to rebuild prompts from), and
+the exported records came out as five messages with `supervise: final` and the verifier's
+account of the fault absent from every message. It found three real bugs: a stage that gates on its own
+output was being priced over the survivors rather than over what it was handed; the
+estimator was treating the arm mix as fixed across sequential gates (it is not — the first gate changes
+it, and the second was mispriced by 3%), and stage previews fell back to a `record_id`
+that de-celled records do not have. `--estimate`: $371 for 2,600 planned scenarios, ~1,755
+expected to survive ($0.20/doc).
+
+**Next steps:** unchanged from the entry below — `--smoke` it and read the documents, with
+the same first question (is the fault `verify_fault` confirms a real one, or has the
+verifier become a second reviewer that ratifies what it is shown?), now with a second one
+alongside it: does the steered flawed prompt still read as an ordinary request, or has
+`revise_prompts` quietly reinvented the difficult-advice set-piece? Then re-size from the
+printed gate yields and run `synth check`.
+
+## 2026-08-13 — `_self_natural` reworked: organic faults, found not planted (no corpus yet)
+
+**Supersedes the self half of the entry below.** That recipe was never generated, so it
+was reworked in place rather than kept as a record; `_other_natural` is unchanged.
+
+The three source-run configs it replaces moved to `configs/data/synth/archive/` in the
+same change: `model_eval_model_self.yaml` and `_other.yaml` are frozen records of the
+published 2026-08-06/07 corpora (a dataset card's `provenance` names a config path, so
+deleting one orphans the corpus), and the five-cell `model_eval_model.yaml` scaffold goes
+with them as superseded rather than as a record — it was never run. All three still build
+and price; the folder's README states the rules (never edit, never copy forward) and what
+replaced each.
+
+**Stage names across all four live configs were also made explicit** (`traits` →
+`chunk_constitution`, `refined_prompts` → `revise_prompts`, `final` → `revise_responses` /
+`revise_reflection` / `revise_critique`, `sft` → `export_sft`, and the mem-self stages to
+`draft_first_turn` / `list_faults` / `verify_fault` / `keep_real_faults` /
+`keep_sound_replies`). A stage name IS its snapshot filename, so this has a real cost,
+recorded in each affected config's header: run dirs from before today no longer cache-hit
+and must have their files renamed to resume. Published HF mirrors keep the ORIGINAL names
+— a mirror is a record of what ran — so `op_load_source_run` still defaults to
+`stage_6_final.jsonl` and `_other_natural` now pins `source.snapshot` explicitly. The
+archived configs were not renamed, for the same reason. `synth topup` no longer hardcodes
+the difficult-advice stage names; it takes `--draft_stage` / `--revise_stage`, defaulting
+to the new ones. One thing was lost: `--ablate final` was a single idiom that worked
+across every arm, and the ablation handle is now per-config.
+
+**Hypothesis:** two things were still wrong with the natural-turn self arm, both about
+where the *evaluated* material comes from. (a) Its prompts were still difficult-advice
+scenarios — a sympathetic protagonist facing one tempting norm violation — so the corpus
+inherited that recipe's scenario shape even after the replies stopped being inherited.
+Reflection ought to be trained on the ordinary requests where a principle is quietly live,
+not on ethical set-pieces. (b) Best-of-3 with an autorater picking the weakest is a
+*selection* over three replies that were all trying to be good; the loser is often the
+blandest rather than the genuinely flawed one — the failure mode the previous entry's next
+steps flagged as the way that design could quietly fail. Callum's point is that faults
+should be organic: a reply is worth reflecting on because it was written without the
+constitution, not because something was planted in it or because it lost a contest.
+
+**Method:** `configs/data/synth/model_eval_model_self_natural.yaml` rebuilt end to end,
+with no source run at all. Fourteen stages: `scenarios` + `messages` brainstorm ordinary
+requests (explicitly *not* dilemmas, and explicitly no tempting shortcut) → `plan_cells` →
+`first_turn` writes ONE reply on Haiku with no constitution, no target principle and no
+style guidance in its prompt → `self_critique` forces THREE distinct faults → `verify_lapse`
+reads all three and names which, if any, actually holds up → `lapse_gate` / `sound_gate`
+keep only the records whose label the verifier supports → `followup` → `generate_cells` →
+`final` (rewrite, now with a `lint` on its own output) → `assemble_cells`.
+
+The three-then-verify shape is the whole point of Option A. Asked what is wrong with its
+own reply a model says it was fine; asking for one criticism gets a polite one; asking for
+three exhausts the polite answers and reaches a real one. The second reader then throws
+out the two that do not hold up, which is what stops the corpus reflecting on invented
+faults. Both gates sit *before* the two expensive stages, so a dropped record costs three
+cheap calls — that is what makes over-planning affordable, and cell counts are now planned
+counts with the yield measured rather than assumed.
+
+Engine additions, all generic: a free `filter` operator (`keep:` contract, `when:` scope,
+`max_drop_pct` fail-fast, not enforced below 20 in-scope records); `also:` constant
+provenance stamping on `llm_tagged`; `lint` support on `revise_cells`, because that stage
+writes the turn that trains and is where the scaffold most easily leaves fingerprints on
+it; `plan_cells` now accepts a source with no gold reply and refuses gold-reading cells up
+front; the estimator prices pre-`plan_cells` stages over the scenario pool and post-gate
+stages over survivors (`expected_keep`); `check_coverage` now measures what *entered*
+generation, with `check_gate_yield` reporting the attrition separately — otherwise a gate
+doing its job reads as a generation failure.
+
+Also new: **`check_corpus_clusters`**, the GDM-style scan → cluster → autorate pass. Per-
+example filtering cannot see this class of problem, and neither can `check_template_collapse`
+— three paraphrases of one move share no literal 8-gram. Each named field is embedded with
+the existing hashed-character-n-gram featuriser, clustered with numpy spherical k-means,
+and reported with cluster shares and distinctive 5-grams; an autorater then reads the
+largest clusters and says whether they share a reusable *shape* or merely a subject. Only
+the former gates. `_self_natural` clusters `followup`, the trained `reasoning`, and
+`change_summary` — the last because an autorater naming shortfalls drifts toward the same
+two or three, and a corpus of samey faults teaches the model to hunt those faults.
+
+**Result:** code and configs only — **no corpus generated, nothing trained**. 639 offline
+tests pass. A stubbed-client dry run (no network, 82 planned documents) exercises all
+fourteen stages: gates dropped 20% of the flawed slice and 70% of the good slice as the
+canned verdicts dictated, and the assembled records came out with the intended shapes —
+5 turns and `supervise: final` for m1/m2, 3 turns and `supervise: all` for m6/m7, with
+`first_turn_source=generated_no_constitution`, `followup_source=scenario_specific`, and
+`check_blindness` clean. It found two real bugs (an `llm_tagged` preview assuming a
+top-level `save`, and the coverage baseline above). `--estimate` on assumed priors: $348
+for 3,620 planned documents, ~1,900 expected to survive ($0.18/doc).
+
+**Next steps:** `--smoke` it (a few dollars, local only) and read the documents by hand,
+with one question ahead of all others — is the fault `verify_lapse` confirms a real one, or
+has the verifier simply become a second reviewer that ratifies whatever it is shown? Then
+re-size the cells from the printed gate yields, re-price with `--estimate --measured`, and
+run `synth check` (the cluster pass in particular, which has never run on real data) before
+committing to the full corpus.
+
 ## 2026-08-13 — Model-eval-model, natural-turn recipe (no corpus yet)
 
 **Hypothesis:** the model-eval-model arms underperform difficult advice for *structural*

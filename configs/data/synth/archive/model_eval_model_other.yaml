@@ -1,3 +1,11 @@
+# ARCHIVED 2026-08-13 -- superseded by configs/data/synth/model_eval_model_other_natural.yaml.
+# DO NOT start new runs from this file and DO NOT edit it. It is kept only as the exact
+# record of what generated LASR-Callum/2026-08-07-model-eval-model-other; editing it would
+# silently change what that published corpus claims to have come from. Retired because its
+# turn under evaluation is lifted from the difficult-advice run, and because its four fixed
+# transcript wrappers repeat across the whole corpus as a structural artifact.
+# See configs/data/synth/archive/README.md.
+#
 # ABOUTME: Other-arm corpus config for model-eval-model: ONLY the m3/m4 critique cells (a
 # ABOUTME: transcript of ANOTHER assistant's exchange in the user turn, the model's evaluation
 # ABOUTME: as the reply), sized to mirror the self arm (1,050/cell). --smoke = the 8-doc pilot.

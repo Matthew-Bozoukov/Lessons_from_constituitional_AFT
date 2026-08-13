@@ -4,8 +4,19 @@
 # Label recorded in manifests; the `stages:` list below IS the document type.
 pipeline: difficult_advice
 
+# STAGE NAMES CHANGED 2026-08-13, for legibility: every stage now says what it does.
+#   traits -> chunk_constitution      refined_prompts -> revise_prompts
+#   scenarios -> write_scenarios      final -> revise_responses
+#                                     sft -> export_sft
+# A stage name IS its snapshot filename, so a run directory created before that date no
+# longer cache-hits and would re-run (and re-pay for) every stage. Those runs are
+# complete, so this only matters if you resume one: rename its files to match, e.g.
+# `mv stage_6_final.jsonl stage_6_revise_responses.jsonl`. The published HF mirror
+# (`hf_repo` below) keeps the ORIGINAL names, because a mirror is a record of what ran --
+# which is why anything consuming it pins `source.snapshot: stage_6_final.jsonl`.
+
 # Stage names to ablate (run their declared `ablate_with` field-copy instead of the
-# model call); recorded in the manifest and priced out of estimates. E.g. [final]
+# model call); recorded in the manifest and priced out of estimates. E.g. [revise_responses]
 # trains on the un-revised stage-5 drafts. `--ablate a,b` on the CLI merges into this.
 # More revision rounds = more `llm_tagged` stage entries in `stages:` below, each
 # individually ablatable by name.
@@ -136,9 +147,9 @@ models:
 # --- The pipeline itself: stages executed in order by src/data/synth ------------
 # Prompt placeholders are record fields plus {constitution} and {style_guidance}.
 stages:
-- name: traits
+- name: chunk_constitution
   kind: segment
-- name: scenarios
+- name: write_scenarios
   kind: scenarios
   model: scenarios
   prompts:
@@ -215,7 +226,7 @@ stages:
 
       Return ONLY JSON:
       {{"system": "<system prompt>", "user": "<the person's message>"}}
-- name: refined_prompts
+- name: revise_prompts
   kind: llm_json
   model: refine
   checkpoint: scenario_id
@@ -308,7 +319,7 @@ stages:
       <response>
       your reply to the person
       </response>
-- name: final
+- name: revise_responses
   kind: llm_tagged
   model: rewrite
   checkpoint: scenario_id
@@ -387,7 +398,7 @@ stages:
       <changes>
       1-2 sentences on what you strengthened
       </changes>
-- name: sft
+- name: export_sft
   kind: chat_export
   messages:
   - role: system
