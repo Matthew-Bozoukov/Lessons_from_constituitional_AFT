@@ -87,6 +87,24 @@ def test_mem_self_uses_no_cell_machinery() -> None:
     assert "reply_quality" in _stage(SELF_CFG, "export_sft")["metadata"]
 
 
+def test_the_cell_operators_actually_run() -> None:
+    """`build_stages` only constructs the closure -- it never calls it, so a stale module
+    reference inside one of these survives every structural test. Exercise one for real."""
+    stage = OPERATORS["plan_cells"](_stage(OTHER_CFG, "allocate_cells"), OTHER_CFG)
+    source = [{"scenario_id": f"t1_b00_s{i:03d}", "trait_id": "t1", "trait_name": "T",
+               "trait_text": "x", "domain": "d", "situation": "s", "shortcut": "c",
+               "system": "sys", "user": "u", "reasoning": "r", "response": "resp"}
+              for i in range(4)]
+
+    class _Ctx2:
+        cfg = {**OTHER_CFG, "cells": {"m4_other_good": 2}}
+        manifest_extra: dict = {}
+
+    out = stage.fn(_Ctx2(), source, None)
+    assert len(out) == 2
+    assert out[0]["record_id"].endswith("::m4_other_good")
+
+
 def test_mem_other_still_uses_cells_and_still_builds() -> None:
     """The cell registry stays registered because a live config and the archive need it."""
     assert _stage(OTHER_CFG, "draft_critique")["kind"] == "generate_cells"

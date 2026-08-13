@@ -7,7 +7,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from . import model_eval_model_cells
+from . import model_eval_model_cells as cells
 from .constitution import UNIT_PROVENANCE, Trait, units_from_config
 from .stage_runtime import Ctx, Stage, call_json, call_tagged, model_cfg, resilient, run_items
 from .stage_runtime import lint_problems as _lint
