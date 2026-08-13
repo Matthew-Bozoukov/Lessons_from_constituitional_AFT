@@ -9,9 +9,9 @@ import re
 
 import pytest
 
-from src.data.synth import corpus as C
-from src.data.synth.core import Stage
-from src.data.synth.operators import OPERATORS
+from src.data.synth import check_corpus as C
+from src.data.synth.stage_runtime import Stage
+from src.data.synth.stage_operators import OPERATORS
 from src.data.synth.pipeline import build_stages, corpus_gate_failed, estimate, run
 
 CONSTITUTION = "constitutions/archive/claude_distilled_8_principles_v1/constitution.md"
@@ -199,7 +199,7 @@ def test_ngram_diversity_clean_on_varied_documents(tmp_path):
 
 
 def test_ngram_diversity_buckets_by_the_group_role_not_a_hardcoded_field(tmp_path):
-    # The generalisation over checks.py's hardcoded `r["cell"]`: the same corpus,
+    # The generalisation over check_model_eval_model.py's hardcoded `r["cell"]`: the same corpus,
     # grouped two different ways, yields two different groupings.
     records = [rec(f"r{i}", varied(i), cell=f"c{i % 2}", trait=f"t{i % 5}")
                for i in range(20)]
@@ -210,7 +210,7 @@ def test_ngram_diversity_buckets_by_the_group_role_not_a_hardcoded_field(tmp_pat
 
 
 def test_ngram_diversity_gates_the_jaccard(tmp_path):
-    # Computed at checks.py:134 but never gated there. Documents assembled from a small
+    # Computed at check_model_eval_model.py:134 but never gated there. Documents assembled from a small
     # pool of fixed clauses in shuffled order share most of their 4-grams while no
     # single clause is long enough to give them a shared 8-gram.
     clauses = [f"the {n} was {v} today" for n in NOUNS[:8] for v in VERBS[:2]]
@@ -544,7 +544,7 @@ class StubClient:
 
 
 def _judge_ctx(tmp_path, client, cfg_extra=None):
-    from src.data.synth.core import Ctx, Usage
+    from src.data.synth.stage_runtime import Ctx, Usage
 
     cfg = {"models": {"judge": {"model": "openai/gpt-5.6-luna", "max_tokens": 500}},
            **(cfg_extra or {})}
@@ -878,7 +878,7 @@ def _arm(tmp_path, name, k, conflict_rate, sha="abc", critical=False, n=100):
 
 
 def test_compare_calls_a_rising_metric_monotone(tmp_path):
-    from src.data.synth.compare import compare_arms, markdown
+    from src.data.synth.compare_runs import compare_arms, markdown
 
     dirs = [_arm(tmp_path, "k1", 1, 0.20), _arm(tmp_path, "k2", 2, 0.35),
             _arm(tmp_path, "k4", 4, 0.55)]
@@ -891,7 +891,7 @@ def test_compare_calls_a_rising_metric_monotone(tmp_path):
 
 
 def test_compare_names_the_arm_where_a_trend_breaks(tmp_path):
-    from src.data.synth.compare import compare_arms
+    from src.data.synth.compare_runs import compare_arms
 
     dirs = [_arm(tmp_path, "k1", 1, 0.20), _arm(tmp_path, "k2", 2, 0.55),
             _arm(tmp_path, "k4", 4, 0.35)]
@@ -902,7 +902,7 @@ def test_compare_names_the_arm_where_a_trend_breaks(tmp_path):
 
 
 def test_compare_refuses_arms_from_different_constitutions(tmp_path):
-    from src.data.synth.compare import compare_arms
+    from src.data.synth.compare_runs import compare_arms
 
     dirs = [_arm(tmp_path, "k1", 1, 0.2), _arm(tmp_path, "k2", 2, 0.3, sha="different")]
     with pytest.raises(AssertionError, match="different constitutions"):
@@ -910,7 +910,7 @@ def test_compare_refuses_arms_from_different_constitutions(tmp_path):
 
 
 def test_compare_warns_on_mismatched_sizes_and_diffs_findings(tmp_path):
-    from src.data.synth.compare import compare_arms
+    from src.data.synth.compare_runs import compare_arms
 
     dirs = [_arm(tmp_path, "k1", 1, 0.20, critical=True, n=100),
             _arm(tmp_path, "k2", 2, 0.35, n=250)]
@@ -1197,7 +1197,7 @@ def test_compare_surfaces_each_pattern_as_its_own_metric(tmp_path):
             ctx=_judge_ctx(d, _pattern_client(verdict=verdict)))
         (d / "corpus_report.json").write_text(json.dumps(report), encoding="utf-8")
 
-    from src.data.synth.compare import load_arm
+    from src.data.synth.compare_runs import load_arm
 
     ma, mb = load_arm(a)["metrics"], load_arm(b)["metrics"]
     keys = [k for k in ma if ".pattern." in k and k.endswith("broad_share")]

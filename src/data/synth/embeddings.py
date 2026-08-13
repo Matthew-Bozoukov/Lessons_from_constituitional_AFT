@@ -3,12 +3,12 @@
 
 """Semantic embeddings for corpus-level checks.
 
-`corpus.py`'s `hashed_features` is lexical -- on our 2,203-document baseline two
+`check_corpus.py`'s `hashed_features` is lexical -- on our 2,203-document baseline two
 unrelated documents already score 0.86 cosine, so its floor is too high to discriminate.
 This answers the other question ("are these about the same thing?") so `embedding_dedup`
 can find near-duplicates that survive a rewording.
 
-Seam: embeddings.py is text -> vectors; corpus.py is vectors -> verdict. A new backend
+Seam: embeddings.py is text -> vectors; check_corpus.py is vectors -> verdict. A new backend
 is a `BACKENDS` entry and changes no check.
 
 model2vec rather than sentence-transformers: a static token table plus a mean pool needs

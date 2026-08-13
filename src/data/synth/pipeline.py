@@ -12,9 +12,9 @@ from typing import Any
 from src.utils import git_sha, timestamp
 
 from .constitution import full_text
-from .core import PRICES, Checkpoint, Ctx, Stage, Usage, measured_per_stage
+from .stage_runtime import PRICES, Checkpoint, Ctx, Stage, Usage, measured_per_stage
 from .hf_cache import StageCache
-from .operators import OPERATORS
+from .stage_operators import OPERATORS
 
 
 def build_stages(cfg: dict) -> list[Stage]:
@@ -278,7 +278,7 @@ def n_examples(cfg: dict) -> int:
 
 def _calls(cfg: dict) -> dict[str, int]:
     """Exact API-call counts per model key, derived from the stage kinds, ablation-aware."""
-    from .cells import CELLS
+    from .model_eval_model_cells import CELLS
 
     ablate = set(cfg.get("ablate") or [])
     calls: dict[str, int] = {}
@@ -288,11 +288,11 @@ def _calls(cfg: dict) -> dict[str, int]:
         if name in ablate:
             continue
         if kind == "scenarios":
-            from .operators import scenario_batches
+            from .stage_operators import scenario_batches
             n = len(scenario_batches(n_units(cfg), cfg))
         elif kind == "scenarios_weighted":
             from .constitution import units_from_config
-            from .operators import plan_weighted_batches
+            from .stage_operators import plan_weighted_batches
             units = units_from_config(cfg)[0]
             n = len(plan_weighted_batches([u.as_trait() for u in units], cfg))
         elif kind in ("llm_json", "llm_tagged"):
@@ -319,7 +319,7 @@ def _calls(cfg: dict) -> dict[str, int]:
             # makes a stage look free right up until the bill arrives. Attributed per
             # model, not to the stage's: pattern_scan's scan and classify passes differ
             # by ~3x in tokens per call and by model tier.
-            from .corpus import corpus_check_calls_by_model
+            from .check_corpus import corpus_check_calls_by_model
             for key, n in corpus_check_calls_by_model(sc, n_docs).items():
                 calls[key] = calls.get(key, 0) + n
             continue

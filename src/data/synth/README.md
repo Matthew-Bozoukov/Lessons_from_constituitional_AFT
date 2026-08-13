@@ -20,22 +20,44 @@ for the auxiliary verbs; `run`/`estimate` are the same functions `build_dataset.
 
 ## Architecture
 
+Every module is named for what it does. A `check_*` module answers "is this good?",
+a `stage_*` module is machinery the pipeline runs on, and a `model_eval_model_*` module
+belongs to that one document type and nothing else.
+
 ```
-pipeline.py    the engine: builds Stage objects from the config's `stages:` list; owns
-               snapshot caching + HF mirroring, per-item checkpoints, ablation, the
-               budget guard, the manifest, and cost estimates
-operators.py   the operator library -- every stage `kind:` a config may use
-core.py        LLM machinery: priced Usage, call_json/call_tagged (parse-retry),
-               resilient fan-out, Checkpoint/run_items, Ctx + Stage dataclasses
-cells.py       model-eval-model cell STRUCTURE (registry, planning, perturbation,
-               assembly) -- all its wording comes from the config
-corpus.py      the corpus-level property registry + the `corpus_check` stage driver
-embeddings.py  text -> vectors for the semantic checks (model2vec static, no torch)
-compare.py     cross-arm comparison of several runs' corpus reports (monotonicity)
-checks.py      model-eval-model validity checks (judge wording from checks.judges);
-               its template-collapse and surface-shortcut halves are thin adapters
-               over corpus.py, so the two entry points cannot drift
-constitution.py  hf_cache.py  cli.py
+RUNNING A PIPELINE
+  pipeline.py                 the engine: builds Stage objects from the config's
+                              `stages:` list; owns snapshot caching + HF mirroring,
+                              per-item checkpoints, ablation, the budget guard, the
+                              manifest, and cost estimates
+  stage_operators.py          the operator library -- every stage `kind:` a config may use
+  stage_runtime.py            what a stage runs on: priced Usage, call_json/call_tagged
+                              (parse-retry), resilient fan-out, Checkpoint/run_items,
+                              Ctx + Stage dataclasses
+  cli.py                      the `uv run synth ...` verbs
+
+CHECKING THE RESULT
+  check_corpus.py             is this CORPUS good? the property registry + the
+                              `corpus_check` stage driver. See docs/corpus_checks.md
+  check_model_eval_model.py   is this model-eval-model RUN valid? coverage of the
+                              cell/flaw grid, verdict distribution, post-hoc reasoning,
+                              blindness, gold validation -- gated by `checks:` in the
+                              config. Its template-collapse and surface-shortcut halves
+                              are thin adapters over check_corpus.py so the two cannot
+                              drift
+  compare_runs.py             line several finished runs up as ARMS of one experiment
+                              and test whether an expected trend holds; computes nothing
+                              new, reads each run's corpus report
+
+INPUTS AND SHARED PIECES
+  constitution.py             parse the constitution, then chunk + group it into the
+                              units documents are generated against
+  embeddings.py               text -> vectors for the semantic checks (model2vec static,
+                              no torch)
+  hf_cache.py                 read/write stage snapshots, mirrored to Hugging Face
+  model_eval_model_cells.py   model-eval-model cell STRUCTURE (registry, planning,
+                              perturbation, assembly) -- all its wording comes from the
+                              config
 ```
 
 A config's `stages:` entry names an operator `kind` and supplies everything it needs:
@@ -182,7 +204,7 @@ the rewrite only (~$0.03–0.06/doc) and re-assembles sft for free. Until the se
 revised the same way, keep comparisons matched: run `_other` with `--ablate final`, which
 reproduces the pre-rewrite pipeline exactly.
 
-Cells (`CELLS` in `cells.py`; a cell = attribution × response quality): `control`
+Cells (`CELLS` in `model_eval_model_cells.py`; a cell = attribution × response quality): `control`
 (gold response verbatim, extended regenerated trace — the reasoning-depth control),
 `m4_other_good` / `m3_other_flawed` (transcript-in-user-turn critique, neutrally
 attributed, blind to the flaw label, verdict via a stripped `<assessment>` tag),
@@ -198,7 +220,7 @@ flaw grid), template collapse, per-cell verdict distribution (never 100% — all
 in m1 would train capitulation), post-hoc-reasoning rate, blindness, the numpy
 surface-shortcut classifier, LLM-judged gold validation and flaw-identification rate.
 
-## Corpus-level checks (`corpus.py`, the `corpus_check` stage)
+## Corpus-level checks (`check_corpus.py`, the `corpus_check` stage)
 
 The `lint` contract and the spec filter ask "is this *document* good?". These ask "is
 this *corpus* good?" — questions no single document can answer. One registry, one
@@ -289,7 +311,7 @@ from, and how that unit was cut and grouped, is readable from the document itsel
 `n_chunks` is the `group` role, `chunk_ids` the `members` role and `trait_id` the `unit`
 role, all mapped on the shipped `corpus` stage, so a judged chunking property needs only
 its rubric wording added. (An axis is only visible if the export carries it —
-the model-eval-model metadata list is hardcoded in `cells.py`.)
+the model-eval-model metadata list is hardcoded in `model_eval_model_cells.py`.)
 
 ### Adding a corpus property
 
@@ -303,7 +325,7 @@ operator or the CLI changes.
 Write `configs/data/<name>.yaml`: a `stages:` list composed from the operator table
 (prompts inline), `models:` blocks with `assumed_tokens`, a `smoke:` override map, and
 whatever knobs your stages read. If the type needs structure no operator provides,
-add ONE generic operator to `operators.py` (register its `kind`) — operators may not
+add ONE generic operator to `stage_operators.py` (register its `kind`) — operators may not
 hardcode wording, and the engine may not know about any specific document type.
 
 ## Related

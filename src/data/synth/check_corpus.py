@@ -36,7 +36,7 @@ from typing import Any, Callable
 from src.utils import wilson
 
 # --- shared primitives ---------------------------------------------------------------
-# Here rather than in checks.py so the in-pipeline stage and the post-hoc `synth check`
+# Here rather than in check_model_eval_model.py so the in-pipeline stage and the post-hoc `synth check`
 # verb cannot drift on what "8-gram share" or "surface AUC" means.
 
 
@@ -727,7 +727,7 @@ def judge(c: Corpus, tags: tuple[str, ...], render, *, max_tokens: int = 700,
     property applying to part of the corpus still gets its full sample of that part;
     `system` overrides the rubric's (a multi-pass property has more than one).
     """
-    from .core import (JUDGE_NO_REASONING, Checkpoint, call_tagged,
+    from .stage_runtime import (JUDGE_NO_REASONING, Checkpoint, call_tagged,
                        model_cfg, run_items)
 
     m = model_cfg(c.ctx.cfg, c.spec.get("model"))
@@ -1068,7 +1068,7 @@ def _scan(c: Corpus) -> tuple[list[dict], dict]:
     The cache key is the batch CONTENT, never a document or run id: keying on an id that
     embeds the run is what made every sweep arm re-pay to scan identical documents.
     """
-    from .core import (JUDGE_NO_REASONING, Checkpoint, call_json, model_cfg, run_items)
+    from .stage_runtime import (JUDGE_NO_REASONING, Checkpoint, call_json, model_cfg, run_items)
 
     p, rub = c.params, _rubric(c)
     m = model_cfg(c.ctx.cfg, c.spec.get("model"))
@@ -1119,7 +1119,7 @@ def _name_clusters(c: Corpus, clusters: list[list[dict]]) -> list[str]:
     rub = _rubric(c)
     if not c.params.get("name_clusters", True) or "merge_system" not in rub:
         return fallback
-    from .core import JUDGE_NO_REASONING, call_json, model_cfg
+    from .stage_runtime import JUDGE_NO_REASONING, call_json, model_cfg
 
     try:
         m = model_cfg(c.ctx.cfg, c.spec.get("model"))
@@ -1239,7 +1239,7 @@ def _rate(c: Corpus, patterns: list[dict]) -> tuple[list[dict], dict[str, dict],
     come from the other patterns' snippets -- real text from the same corpus that
     exemplifies a different tic, which is a sharper contrast than random documents.
     """
-    from .core import (JUDGE_NO_REASONING, Checkpoint, call_json, model_cfg, run_items)
+    from .stage_runtime import (JUDGE_NO_REASONING, Checkpoint, call_json, model_cfg, run_items)
 
     p, rub = c.params, _rubric(c)
     m = model_cfg(c.ctx.cfg, c.spec.get("rate_model") or c.spec.get("model"))
