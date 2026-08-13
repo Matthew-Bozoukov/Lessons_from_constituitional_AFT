@@ -316,11 +316,13 @@ def _calls(cfg: dict) -> dict[str, int]:
         elif kind == "corpus_check":
             # Without this branch a judged corpus property would fall into the
             # deterministic `else` below and estimate at zero -- the exact trap that
-            # makes a stage look free right up until the bill arrives.
-            from .corpus import corpus_check_calls
-            n = corpus_check_calls(sc, n_docs)
-            if not n:
-                continue
+            # makes a stage look free right up until the bill arrives. Attributed per
+            # model, not to the stage's: pattern_scan's scan and classify passes differ
+            # by ~3x in tokens per call and by model tier.
+            from .corpus import corpus_check_calls_by_model
+            for key, n in corpus_check_calls_by_model(sc, n_docs).items():
+                calls[key] = calls.get(key, 0) + n
+            continue
         elif kind == "generate_cells":
             enabled = {c: int(v) for c, v in cfg["cells"].items() if int(v) > 0}
             unknown = sorted(set(enabled) - set(CELLS))

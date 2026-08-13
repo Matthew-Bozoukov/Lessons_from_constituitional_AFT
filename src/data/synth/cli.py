@@ -119,8 +119,29 @@ def topup(config: str, resume: str, traits, n: int = 25) -> None:
     print(f">>> top-up spend ${usage.usd:.2f}")
 
 
+def checks(tier: str | None = None) -> None:
+    """List the registered corpus properties, their tier and what each flags.
+
+    The counterpart to `synth chunkings`: the names `--only`/`--skip` accept, so a
+    selection can be composed without opening the registry.
+    """
+    from .corpus import CORPUS_CHECKS, TIERS
+
+    for t in TIERS:
+        if tier and t != tier:
+            continue
+        rows = [c for c in CORPUS_CHECKS.values() if c.tier == t]
+        cost = "free, offline, every run" if t == "surface" else "calls a model, sampled"
+        print(f"\n{t} ({cost}):")
+        for c in rows:
+            print(f"  {c.name:22s} min_docs={c.min_docs:<4d} {c.doc}")
+    print(f"\nSelect with: synth check --config <cfg> --run_dir <dir> "
+          f"[--only a,b] [--skip c] [--tier surface]")
+
+
 def check(config: str, run_dir: str, sample: int | None = None,
-          stage: str | None = None) -> None:
+          stage: str | None = None, only: str | None = None,
+          skip: str | None = None, tier: str | None = None) -> None:
     """Re-check a finished run without regenerating it, and gate on its thresholds.
 
     Two independent halves, either of which may be absent: each `corpus_check` stage in
@@ -135,6 +156,11 @@ def check(config: str, run_dir: str, sample: int | None = None,
         stage: Name of the `corpus_check` stage to run. Naming one also means "only
             this": the `checks:` half is skipped, so a corpus can be re-checked
             without re-paying for the judged model-eval-model checks.
+        only: Comma-separated properties/aliases to run, to the exclusion of the rest.
+        skip: Comma-separated properties/aliases to exclude.
+        tier: `surface` (free, offline) or `judged` (paid). `--tier surface` is the
+            cheap re-check; `--tier judged` re-runs only what costs money, resuming
+            from the sidecar so already-judged documents are not re-paid for.
 
     Raises:
         SystemExit: Nonzero when any gated check fails. Every report is written in
@@ -148,10 +174,17 @@ def check(config: str, run_dir: str, sample: int | None = None,
     assert cfg.get("checks") or corpus_stages, (
         f"{config} declares neither a `checks:` block nor a `corpus_check` stage"
         + (f" named {stage!r}" if stage else "") + " -- there is nothing to check")
+    # A selection is about the corpus properties; combining it with the model-eval-model
+    # `checks:` half would silently run that (paid) half in full.
+    selecting = any(x is not None for x in (only, skip, tier))
+    assert not (selecting and stage is None and cfg.get("checks")), (
+        "--only/--skip/--tier select corpus properties, so name the corpus stage too "
+        "(--stage corpus); otherwise the `checks:` half would run unselected")
 
     ok = True
     for sc in corpus_stages:
-        ok = _check_corpus_stage(cfg, sc, Path(run_dir), sample) and ok
+        ok = _check_corpus_stage(cfg, sc, Path(run_dir), sample,
+                                 only=only, skip=skip, tier=tier) and ok
     if cfg.get("checks") and stage is None:
         from .checks import run_checks
 
@@ -161,10 +194,12 @@ def check(config: str, run_dir: str, sample: int | None = None,
         raise SystemExit(1)
 
 
-def _check_corpus_stage(cfg: dict, sc: dict, run_dir: Path,
-                        sample: int | None) -> bool:
+def _check_corpus_stage(cfg: dict, sc: dict, run_dir: Path, sample: int | None,
+                        only: str | None = None, skip: str | None = None,
+                        tier: str | None = None) -> bool:
     """Run one `corpus_check` stage entry over a finished run's snapshots."""
-    from .corpus import is_paid, print_summary, run_corpus_checks
+    from .corpus import (is_paid, pattern_table, print_summary, run_corpus_checks,
+                         select_properties)
     from .hf_cache import read_jsonl
     from .pipeline import build_stages, snapshot_positions
 
@@ -184,6 +219,9 @@ def _check_corpus_stage(cfg: dict, sc: dict, run_dir: Path,
         sc = {**sc, "properties": [{**p, "params": {**(p.get("params") or {}),
                                                     "sample": sample}}
                                    for p in sc["properties"]]}
+    # Before `is_paid`: deselecting every judged property must also mean no model context
+    # is built, so `--tier surface` needs no key and costs nothing.
+    sc = select_properties(sc, only=only, skip=skip, tier=tier)
     ctx = None
     if is_paid(sc):
         ctx = Ctx(cfg=cfg, usage=Usage(), workers=int(cfg.get("workers", 8)),
@@ -196,6 +234,15 @@ def _check_corpus_stage(cfg: dict, sc: dict, run_dir: Path,
                                workers=int(cfg.get("workers", 8)), ctx=ctx)
     dest = run_dir / f"{sc['name']}_report.json"
     dest.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    # The markdown mirror the repo requires beside any result: pattern frequencies must
+    # be greppable without opening a 2MB JSON.
+    table = pattern_table(report)
+    if table:
+        mirror = run_dir / f"{sc['name']}_patterns.md"
+        mirror.write_text(f"# {sc['name']} — recurring patterns\n{table}\n",
+                          encoding="utf-8")
+        print(table)
+        print(f">>> pattern table at {mirror}")
     print_summary(report)
     print(f">>> report at {dest}")
     return bool(report["pass"])
@@ -318,8 +365,9 @@ def segment(constitution: str = "constitutions/claude_distilled_12_principles_mi
 
 
 def main() -> None:
-    fire.Fire({"run": run, "topup": topup, "check": check, "compare": compare,
-               "estimate": estimate, "segment": segment, "chunkings": chunkings})
+    fire.Fire({"run": run, "topup": topup, "check": check, "checks": checks,
+               "compare": compare, "estimate": estimate, "segment": segment,
+               "chunkings": chunkings})
 
 
 if __name__ == "__main__":

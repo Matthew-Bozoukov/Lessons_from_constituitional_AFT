@@ -29,6 +29,12 @@ dependencies = [
     "fire>=0.7.1",
     "jinja2>=3.1.6",
     "matplotlib>=3.11.1",
+    # Static sentence embeddings for the `embedding_dedup` corpus check (GDM's final
+    # dedup stage). Deliberately model2vec and not sentence-transformers: inference is a
+    # token-table lookup plus a mean pool, so it needs numpy and nothing else — the
+    # darwin driver stays torch-free (see CLAUDE.md "Where code runs": src/data/ has no
+    # GPU dependency) and the check stays in the free tier that runs on every run.
+    "model2vec>=0.7.0",
     # vllm 0.26's numba pins numpy<2.5; the analysis code needs nothing newer.
     "numpy>=2.2,<2.5",
     "omegaconf>=2.3.1",
