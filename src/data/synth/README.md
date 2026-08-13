@@ -231,12 +231,7 @@ Three rules the module turns on:
 | property | what it flags | default gate |
 |---|---|---|
 | `ngram_diversity` | top 8-gram share, pairwise 4-gram Jaccard, bigram variety, per group | `0.20` / `0.15` / `0.30` |
-| `near_duplicates` | exact + near dupes, banded bottom-k MinHash over word shingles | `dup_share_max 0.02` |
 | `embedding_dedup` | semantic near-dupes + the set a GDM dedup stage would remove | `drop_share_max 0.02` |
-| `opening_collapse` | shared first-8-words, exact **and** reordered | `top_opener_share_max 0.15` |
-| `length_profile` | length CV overall, per-group mean delta | `cv_min 0.12`, `delta 0.35` |
-| `field_balance` | per-axis counts/entropy, empty buckets of each `cross` | `H 0.75`, `max_share 0.60` |
-| `feature_diversity` | mean pairwise cosine, effective rank over hashed char n-grams | `0.95` / `frac 0.25` |
 | `label_leakage` | CV AUC of a surface classifier predicting a label | `surface_auc_max 0.65` |
 | `quality_filter` **(judged)** | share a GDM-style autorater would cut, with the flaw breakdown | `drop_rate_max 0.10` (unmeasured) |
 | `applies_vs_conflicts` **(judged)** | resolves a value tension vs applies one value | report-only |
@@ -252,7 +247,7 @@ spec transform, so the stage, the `check` verb and `--estimate` agree on what ra
 **Thresholds are measured, not invented** — the block above `CORPUS_CHECKS` records the
 baseline. Two readings drive the surprising ones: character-n-gram cosine has a high
 floor (two unrelated same-genre documents already score ~0.86), so `effective_rank_frac`
-is the discriminating half of `feature_diversity`; and mean 4-gram Jaccard is
+is why `feature_diversity` was removed; and mean 4-gram Jaccard is
 length-dependent (~0.003 at 1,000 words), so its gate catches only severe collapse.
 **Embedding cosine is length-dependent too** — measured 0.37 mean pairwise at 68 words
 against 0.76 at 1,044 — so `embedding_dedup` is pointed at the short scenario text and
@@ -293,8 +288,7 @@ and exported in both dataset configs' `metadata:` list, so which unit a document
 from, and how that unit was cut and grouped, is readable from the document itself.
 `n_chunks` is the `group` role, `chunk_ids` the `members` role and `trait_id` the `unit`
 role, all mapped on the shipped `corpus` stage, so a judged chunking property needs only
-its rubric wording added. The same three are `field_balance` axes, so an arm's unit mix
-is reported with no judging at all. (An axis is only visible if the export carries it —
+its rubric wording added. (An axis is only visible if the export carries it —
 the model-eval-model metadata list is hardcoded in `cells.py`.)
 
 ### Adding a corpus property

@@ -3,6 +3,43 @@
 
 # LOG
 
+## 2026-08-13 — Cut the surface tier from 7 checks to 2
+
+**Motivation:** the surface tier had grown to seven checks that ran on every corpus, and
+reviewing them showed they were not seven independent signals. Four were variations on one
+idea — word-overlap repetition, thresholded per pair (`near_duplicates`), anchored at
+position 0 (`opening_collapse`), and re-expressed in character n-grams
+(`feature_diversity`) — and half of `feature_diversity` was already documented as dead
+weight, since its mean-cosine has a 0.86 floor on unrelated same-genre prose.
+
+**Method:** removed `near_duplicates`, `opening_collapse`, `feature_diversity`,
+`length_profile` and `field_balance` outright — functions, registry entries, config
+entries across all five dataset configs, and tests. Kept `ngram_diversity` and
+`embedding_dedup`, which fail on opposite things:
+
+- `ngram_diversity` catches diffuse templating — many documents reaching for the same
+  stock phrase while no two are near-copies.
+- `embedding_dedup` catches copies. An exact lexical copy is also a semantic one, so it
+  subsumes shingle-based duplicate detection, and it is the only check that survives a
+  reword or a reordering.
+
+`label_leakage` stays registered but appears in no config; it needs a `label` role the
+current document types do not export. Also added `embedding_dedup` to `self_reflection`,
+which had never had it and would otherwise have been left with no duplicate detection at
+all.
+
+**Result:** every shipped config now runs two surface checks. Machinery tests that used
+`near_duplicates` as an incidental vehicle were re-pointed, and their forced-failure knob
+(`dup_share_max`) swapped for `top_8gram_share_max`, which the surviving check actually
+reads — the old param would have been silently ignored and the tests would have passed
+without testing anything. 668 tests pass.
+
+**Caveat worth keeping:** this grouping was reasoned from what each check computes, not
+measured. Nobody ran a degradation ladder to see which checks fire independently at which
+corruption level. If a repetition failure ever slips through, that measurement is the
+thing to do before adding a check back — all five are recoverable from git.
+
+
 ## 2026-08-13 — GDM's three-pass pattern detector, implemented properly
 
 **Hypothesis:** every other corpus check tests a property somebody thought of in advance.

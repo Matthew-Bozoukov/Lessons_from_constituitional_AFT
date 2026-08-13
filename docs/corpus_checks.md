@@ -62,8 +62,8 @@ text:                                    # the record picks which field to read
 ```
 
 The same property can run twice over different roles by giving one instance an `as:`
-alias. That is how `scenario_dupes` exists: `near_duplicates` over `metadata.situation`
-alongside `near_duplicates` over the document, because distinct documents can still be
+alias. That is how `scenario_dupes` exists: `embedding_dedup` over `metadata.situation`
+alongside `embedding_dedup` over the document, because distinct documents can still be
 built on a handful of repeated situations.
 
 Derived values (`tokens`, `groups`, `by_group`) are cached per distinct `fields` mapping,
@@ -111,7 +111,7 @@ Two independent mechanisms, because they answer different needs.
 ```bash
 uv run synth checks                                  # list every property + tier
 uv run synth check --config <cfg> --run_dir <dir> --stage corpus --tier surface
-uv run synth check ... --only embedding_dedup,near_duplicates
+uv run synth check ... --only embedding_dedup,ngram_diversity
 uv run synth check ... --skip pattern_scan
 ```
 
@@ -172,7 +172,7 @@ The sidecar is the seam that keeps rule 1 honest. `embedding_dedup` writes
 `embedding_dup: true` for every document a dedup stage would have removed;
 `quality_filter` writes `quality_verdict` and `quality_flaw`. Nothing acts on them —
 but a downstream filter *could*, off the same numbers a human read, and a later property
-can consume them as a `label.<key>` axis for `field_balance` without them ever touching
+can consume them as a `label.<key>` column without them ever touching
 the corpus.
 
 ## Placement: a check is an observer
@@ -194,14 +194,28 @@ the end.
 
 | property | what it flags | default gate |
 |---|---|---|
-| `ngram_diversity` | top 8-gram share, pairwise 4-gram Jaccard, bigram variety, per group | `0.20` / `0.15` / `0.30` |
-| `near_duplicates` | exact + near dupes, banded bottom-k MinHash over word shingles | `dup_share_max 0.02` |
-| `embedding_dedup` | **semantic** near-dupes and the removal set a GDM dedup stage would cut | `drop_share_max 0.02` |
-| `opening_collapse` | shared first-8-words, exact **and** reordered | `top_opener_share_max 0.15` |
-| `length_profile` | length CV overall, per-group mean delta | `cv_min 0.12`, `delta 0.35` |
-| `field_balance` | per-axis counts/entropy, empty buckets of each `cross` | `H 0.75`, `max_share 0.60` |
-| `feature_diversity` | mean pairwise cosine, effective rank over hashed char n-grams | `0.95` / `frac 0.25` |
+| `ngram_diversity` | repeated long n-grams, pairwise 4-gram overlap, bigram variety, per group | `0.20` / `0.15` / `0.30` |
+| `embedding_dedup` | semantic near-dupes and the removal set a GDM dedup stage would cut | `drop_share_max 0.02` |
 | `label_leakage` | CV AUC of a surface classifier predicting a label | `surface_auc_max 0.65` |
+
+Two of these run in the shipped configs. They are deliberately the only two, and they
+split the space cleanly:
+
+- `ngram_diversity` catches **diffuse templating** — 8,000 documents that all reach for
+  the same stock phrase while no two are near-copies.
+- `embedding_dedup` catches **copies**, lexical and semantic alike. An exact lexical copy
+  is also a semantic one, so it subsumes shingle-based duplicate detection, and it is the
+  only check that survives a reword or a reordering.
+
+`label_leakage` is registered but appears in no shipped config; it needs a `label` role
+that the current document types do not export.
+
+**Five checks were removed on 2026-08-13** — `near_duplicates`, `opening_collapse`,
+`feature_diversity`, `length_profile` and `field_balance`. The first three were variations
+on one idea: word-overlap repetition, thresholded per pair, anchored at position 0, and
+re-expressed in character n-grams. They moved together and `embedding_dedup` covers the
+failure they were really watching for. `length_profile` and `field_balance` were
+orthogonal but were not earning their report noise. All five are recoverable from git.
 
 ### Judged tier — one call per sampled document
 
@@ -221,17 +235,23 @@ defaulted to a label.
 
 ---
 
-## The two dedup checks are not redundant
+## Why these two, and not the five that were removed
 
-They fail on opposite things, and a corpus needs both.
+`ngram_diversity` and `embedding_dedup` fail on opposite things, which is the reason both
+survive:
 
-| | `near_duplicates` | `embedding_dedup` |
+| | `ngram_diversity` | `embedding_dedup` |
 |---|---|---|
-| representation | word shingles (MinHash) | static sentence embeddings |
-| catches | a **copy** | a **reword** |
+| representation | word n-grams | static sentence embeddings |
+| catches | **diffuse templating** across many documents | a **copy or a reword** between two |
 | word order | dependent | invariant |
-| a paraphrase | Jaccard ≈ 0, missed | high cosine, caught |
-| a shuffled sentence | Jaccard ≈ 0, missed | cosine 1.0, caught |
+| a shuffled document | every n-gram destroyed, missed | cosine 1.0, caught |
+| a corpus of stock phrases, no two alike | caught | missed |
+
+The removed checks all sat inside the first column. `near_duplicates` thresholded word
+overlap per pair, `opening_collapse` did the same anchored at position 0, and
+`feature_diversity` re-expressed it in character n-grams — and half of that one was known
+dead weight, since its mean-cosine has a 0.86 floor on unrelated same-genre prose.
 
 `embedding_dedup` implements the stage GDM describes as *"a deduplication stage to remove
 prompts with too-similar embeddings"* — as a **measurement**. It computes the exact set a
@@ -256,15 +276,13 @@ Mean pooling drags long same-genre prose toward one centroid, so the floor climb
 0.37 to 0.76 across that range and a fixed threshold means different things at each. Two
 consequences, both encoded:
 
-- **Point the property at short text.** Both shipped configs map it to the scenario
+- **Point the property at short text.** Every shipped config maps it to the scenario
   `situation`, which is also the unit GDM dedups.
 - **`max_mean_words: 300` gates the gate.** Past that limit the numbers are still
   reported and the findings are suppressed with a note explaining why — an unusable
   threshold must say so rather than fire (rule 2). On the full-document text this is the
   difference between reporting a 0.254 drop share and *acting* on it.
 
-Embeddings beat char n-grams at every length: the spread between a near-neighbour and
-background is 0.372 vs 0.188 at 68 words, and 0.129 vs 0.043 at 1,044.
 
 ---
 
@@ -446,7 +464,7 @@ entropy: trait_id (9 values) 1.00, domain (495 values) 0.80
 Three readings drive the surprising defaults:
 
 - **Character-n-gram cosine has a high floor** (~0.86 for two *unrelated* same-genre
-  documents), so `effective_rank_frac` is the discriminating half of `feature_diversity`.
+  documents) — one reason `feature_diversity` was removed rather than kept.
 - **Mean 4-gram Jaccard is length-dependent** (~0.003 at 1,000 words), so its gate catches
   only severe collapse.
 - **Embedding cosine is length-dependent too**, per the table above — hence
@@ -469,10 +487,8 @@ embedding_dedup  sampled 2000, 68.9 mean words, gated
                  near_duplicate_pairs 0   would_drop 0   (0.0%)
 ```
 
-Zero semantic duplicates at the scenario level, consistent with `near_duplicates` finding
-zero lexical candidate pairs. The one live finding is `field_balance`: 3,560 of 4,455
-`trait_id × domain` buckets are empty, which is the 495-value free-form `domain` axis
-being crossed with 9 traits, not a collapse.
+Zero semantic duplicates at the scenario level, and zero lexical candidate pairs on the
+same corpus before the lexical checks were removed.
 
 ---
 
