@@ -39,11 +39,17 @@ corpus, a free `pick_field` operator, `max_chars` in `lint`, and `check_structur
 over the assembled records. `first_turn_source` and `followup_source` now ride in every
 record's metadata, so the untrained first turn is a variable an analysis can slice on.
 
+Separately, `_self_natural` gains the `final` constitution-rewrite stage, which the old
+`_self` config lacks because its corpus predates the stage. That absence made the self arm
+differ from *both* the other arm and difficult advice by an extra step — the one Teaching
+Claude Why calls critical — so self-vs-other was never a clean single-variable comparison.
+It is ablatable (`--ablate final`) for an arm matched to the old recipe.
+
 **Result:** code and configs only — **no corpus generated, nothing trained**. 621 offline
-tests pass. `--estimate` on assumed priors: $208 for the self arm (2,100 docs, $0.10/doc,
-vs $143 for the old recipe) and $394 for the other arm ($285 with `--ablate final`, vs
-$221). The increase is three extra calls per document and is the price of not inheriting
-the source run's prose.
+tests pass. `--estimate` on assumed priors: $369 for the self arm (2,100 docs, $0.18/doc;
+$208 with `--ablate final`, vs $143 for the old recipe) and $394 for the other arm ($285
+ablated, vs $221). The increase is three extra calls per document plus the rewrite, and is
+the price of not inheriting the source run's prose.
 
 **Next steps:** `--smoke` each config (10 and 8 docs, local only, a few dollars), read the
 documents by hand — specifically whether the "weakest of three" candidate is a genuine

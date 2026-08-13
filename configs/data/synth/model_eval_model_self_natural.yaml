@@ -29,6 +29,12 @@
 #      the person's own account of what THEY did. Reflection then engages with an action
 #      in the world -- the property difficult advice has and pure self-reflection loses.
 #
+# Plus one correction rather than a change: this config HAS the `final` constitution
+# rewrite stage. The old _self config does not (its corpus predates the stage), which left
+# the self arm differing from both the other arm and difficult advice by an extra step --
+# the step Teaching Claude Why calls the critical one. Use `--ablate final` for an arm
+# matched to the old recipe.
+#
 # Unchanged from the old config on purpose: the same source run, the same constitution,
 # the same explicitness mix, `supervise: final` on the self cells (only the reflection
 # trains; the first turn is context), and the generator-unblinding `known_flaw_note`,
@@ -54,12 +60,13 @@ hf_repo_smoke: null
 hf_private: false
 
 workers: 16
-# `--estimate` on the assumed token priors: $208 for 2,100 docs ($0.10/doc), against the
-# old arm's $143 -- the increase is candidates + rate + followup/frame, and it is the
-# price of not inheriting the source run's prose. Re-price with
-# `--estimate --measured <smoke manifest>` before committing: the priors are the old
+# `--estimate` on the assumed token priors: $369 for 2,100 docs ($0.18/doc), of which
+# $162 is the `final` rewrite the old _self config never had ($208 with `--ablate final`,
+# against the old arm's $143). The rest of the increase is candidates + rate +
+# followup/frame, and it is the price of not inheriting the source run's prose. Re-price
+# with `--estimate --measured <smoke manifest>` before committing: the priors are the old
 # arm's, and the candidates stage in particular is a guess.
-budget_usd: 260.0
+budget_usd: 410.0
 
 smoke:
   cells: {m2_self_good: 3, m1_self_flawed: 3, m7_user_sound: 2, m6_user_shortcut: 2}
@@ -130,6 +137,14 @@ models:
     max_tokens: 12288
     reasoning: {enabled: false}
     assumed_tokens: {in: 12100, out: 4000}
+  # Stage `final` -- the difficult-advice stage-6 twin: rewrite each document against the
+  # full constitution, verdict pinned.
+  rewrite:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.7
+    max_tokens: 12288
+    reasoning: {enabled: false}
+    assumed_tokens: {in: 16000, out: 4500}
 
 # Consumed by `uv run synth check --config <this file> --run_dir <dir>`.
 checks:
@@ -521,6 +536,101 @@ stages:
 - name: generated
   kind: generate_cells
   checkpoint: record_id
+
+# The difficult-advice stage-6 twin: rewrite the assistant's turn against the FULL
+# constitution, verdict pinned. The old _self config has no such stage -- its corpus was
+# generated before the stage existed -- which left the self and other arms differing in
+# two ways at once. A new config has no such excuse: without this, self-vs-other is
+# confounded by the rewrite, and self-vs-difficult-advice is confounded by the step the
+# Teaching Claude Why recipe calls the critical one. `--ablate final` runs the null-op.
+- name: final
+  kind: revise_cells
+  model: rewrite
+  checkpoint: record_id
+  ablate_with:
+    reasoning: reasoning
+    response: response
+  prompts:
+    system: |-
+      You revise evaluation documents so they maximally exhibit one specific principle. You
+      preserve everything that already works -- including the verdict, which is fixed -- and
+      change only what falls short.
+    # Rendered into {document_context} for the self cells. The user cells carry their own
+    # account as the context and never reach this template.
+    context_self: |-
+      <system_prompt>
+      {system}
+      </system_prompt>
+
+      <user_message>
+      {user}
+      </user_message>
+
+      <assistant_earlier_reply>
+      {evaluated_response}
+      </assistant_earlier_reply>
+
+      <user_followup>
+      {reconsider}
+      </user_followup>
+    user: |-
+      Full constitution the assistant is trained against:
+
+      <constitution>
+      {constitution}
+      </constitution>
+
+      The principle this document must maximally exhibit:
+
+      <target_principle name="{trait_name}">
+      {trait_text}
+      </target_principle>
+      {known_flaw}
+      The conversation the assistant's turn answers:
+
+      <conversation>
+      {document_context}
+      </conversation>
+
+      The assistant's draft turn, which reached the verdict "{assessment}":
+
+      <assistant_reasoning>
+      {reasoning}
+      </assistant_reasoning>
+
+      <assistant_response>
+      {response}
+      </assistant_response>
+
+      Rewrite the assistant's reasoning and response so they exhibit the target principle as
+      strongly as possible while staying true to the exchange.
+
+      Hold to all of this:
+      - **Deliberate openly.** The reasoning starts from the person's situation, entertains
+        at least one genuine consideration on the other side, and earns its conclusion at
+        the end -- never a verdict first, justified afterwards. This is the ingredient that
+        matters most.
+      - **Keep the verdict.** The assessment stays exactly "{assessment}"; strengthen how it
+        is reached and expressed, never whether.
+      - **Answer what was asked.** The person's last message is a specific question; the
+        reply engages with it rather than restarting a general review.
+      - {style_line}
+      - **Stay concrete.** Judge in terms of real stakes for real people -- no rule-citing,
+        no policy language.
+      - **Stay proportionate.** Warm, practical, specific, not preachy; length and register
+        stay close to the draft's.
+
+      Return your answer in exactly this form, with no other text:
+
+      <reasoning>
+      rewritten private deliberation
+      </reasoning>
+      <response>
+      rewritten reply
+      </response>
+      <changes>
+      1-2 sentences on what you strengthened
+      </changes>
 
 - name: sft
   kind: assemble_cells
