@@ -276,15 +276,174 @@ def n_examples(cfg: dict) -> int:
     return n_units(cfg) * int(cfg["scenarios_per_trait"])
 
 
+def arm_shares(cfg: dict) -> dict[str, dict[str, float]]:
+    """Normalised arm proportions the config's `assign` stages will produce.
+
+    An `assign` stage declares `fields: {reply_quality: {good: 0.5, flawed: 0.5}}`, which
+    is the cell-less config's equivalent of cell counts: it says what share of the corpus
+    each arm gets. The estimator needs it to price a `when:`-scoped stage and to know how
+    much of the corpus a gate sits in front of.
+    """
+    out: dict[str, dict[str, float]] = {}
+    for sc in cfg.get("stages", []):
+        # Either its own `kind: assign` stage, or an `assign:` block folded into a paid
+        # stage that branches on the label it produces.
+        spec = sc if sc.get("kind") == "assign" else (sc.get("assign") or {})
+        for field, weights in (spec.get("fields") or {}).items():
+            total = sum(float(w) for w in weights.values()) or 1.0
+            out[field] = {str(k): float(w) / total for k, w in weights.items()}
+    return out
+
+
+def arm_population(cfg: dict, n: float) -> list[tuple[dict, float]]:
+    """Expected record counts over the cross product of every assigned arm.
+
+    A scalar will not do. Gates fire in sequence, and the first one changes the mix: with
+    a 50/50 split and an 80% flawed gate, what reaches the second gate is 1040 flawed to
+    1300 good, so the good arm is no longer half the corpus. Pricing the second gate as
+    if it were overstates the survivors by several percent -- and the survivors are what
+    the two most expensive stages are billed over.
+    """
+    pop: list[tuple[dict, float]] = [({}, float(n))]
+    for field, weights in arm_shares(cfg).items():
+        pop = [({**a, field: v}, c * w) for a, c in pop for v, w in weights.items()]
+    return pop
+
+
+def _in_scope(spec: dict | None, arm: dict) -> bool:
+    """Whether a `when:` filter admits an arm combination (no filter = all of them)."""
+    if not spec:
+        return True
+    if spec["field"] not in arm:
+        return True  # not an assigned axis; assume the stage covers everything
+    return str(arm[spec["field"]]) in [str(x) for x in spec["in"]]
+
+
+def _apply_gate(pop: list[tuple[dict, float]], sc: dict) -> list[tuple[dict, float]]:
+    """Shrink the arms a `filter` stage sits in front of by its declared yield.
+
+    `expected_keep` mirrors the stage's own shape: a scalar for a single contract, and a
+    per-arm map where `keep.cases` gives each arm its own -- a gate whose two arms expect
+    opposite outcomes has two different yields, and averaging them misprices both.
+    """
+    keep = sc.get("expected_keep", 1.0)
+    if isinstance(keep, dict):
+        by = sc["keep"]["by"]
+        return [(a, c * float(keep.get(str(a.get(by)), 1.0))) for a, c in pop]
+    return [(a, c * float(keep) if _in_scope(sc.get("when"), a) else c) for a, c in pop]
+
+
+def _scoped_pop(spec: dict | None, pop: list[tuple[dict, float]]) -> float:
+    """How many records a `when:`-scoped stage covers, given the live arm population."""
+    return sum(c for a, c in pop if _in_scope(spec, a))
+
+
+def n_final_examples(cfg: dict) -> int:
+    """Documents a full run is expected to KEEP, after every `filter` stage's yield.
+
+    `n_examples` counts what the config PLANS. Where a recipe's labels are found rather
+    than assigned -- a rater deciding whether a reply really fell short -- some planned
+    records are gated out, so the two numbers differ and only this one belongs in a
+    cost-per-example. The yield is the config's declared `expected_keep` prior until a
+    smoke run measures the real drop rate.
+    """
+    ablate = set(cfg.get("ablate") or [])
+    if "cells" not in cfg:
+        # No cells: one scalar population, shrunk by each gate in proportion to how much
+        # of the corpus that gate sits in front of.
+        pop = arm_population(cfg, n_examples(cfg))
+        for sc in cfg["stages"]:
+            if sc.get("keep") and sc["name"] not in ablate:
+                pop = _apply_gate(pop, sc)
+        return int(round(sum(c for _a, c in pop)))
+    counts = {c: float(v) for c, v in cfg["cells"].items() if int(v) > 0}
+    for sc in cfg["stages"]:
+        if sc.get("keep") and sc["name"] not in ablate:
+            keep = float(sc.get("expected_keep", 1.0))
+            for c in _cells_in_scope(sc.get("when"), cfg, f"stage {sc['name']!r}"):
+                counts[c] *= keep
+    return int(round(sum(counts.values())))
+
+
+def _cells_in_scope(spec: dict, cfg: dict, where: str) -> list[str]:
+    """The enabled cells a `when:` filter admits, for pricing purposes."""
+    from .model_eval_model_cells import CELLS
+
+    enabled = [c for c, n in cfg["cells"].items() if int(n) > 0]
+    if not spec:
+        return enabled
+    field, wanted = spec["field"], [str(v) for v in spec["in"]]
+    getters = {"cell": lambda c: c,
+               "response_kind": lambda c: CELLS[c].response_kind,
+               "attribution": lambda c: CELLS[c].attribution}
+    assert field in getters, (
+        f"{where}: cannot price `when.field: {field}` -- expected one of "
+        f"{sorted(getters)}")
+    return [c for c in enabled if str(getters[field](c)) in wanted]
+
+
+def _scoped_docs(sc: dict, cfg: dict, n_docs: float, counts: dict[str, float],
+                 pop: list[tuple[dict, float]] | None = None) -> float:
+    """How many records a per-record stage actually calls for, honouring its `when:`.
+
+    A stage scoped to some cells must not be priced as if it ran over the whole corpus
+    -- the first-turn and follow-up stages of the natural-turn configs each cover a
+    subset, and the difference is tens of dollars.
+
+    `counts` is the cell -> effective-record-count map, which shrinks as `filter` stages
+    are passed: a stage after a gate runs over the survivors, not the plan.
+    """
+    pop = pop if pop is not None else []
+    if not sc.get("when"):
+        return sum(counts.values()) if counts else n_docs
+    if "cells" not in cfg:
+        return _scoped_pop(sc["when"], pop)
+    return sum(counts[c]
+               for c in _cells_in_scope(sc["when"], cfg, f"stage {sc['name']!r}"))
+
+
 def _calls(cfg: dict) -> dict[str, int]:
     """Exact API-call counts per model key, derived from the stage kinds, ablation-aware."""
     from .model_eval_model_cells import CELLS
 
     ablate = set(cfg.get("ablate") or [])
-    calls: dict[str, int] = {}
+    calls: dict[str, float] = {}
     n_docs = n_examples(cfg)
+    # A cell-based config that generates its own scenarios runs per-record stages over
+    # TWO different populations: the scenario pool before `plan_cells` allocates cells,
+    # and the planned documents after it. Pricing everything at the document count
+    # misprices the prompt-writing stages by the whole ratio between them.
+    planned = not any(sc["kind"] == "plan_cells" for sc in cfg["stages"])
+    n_pool = int(cfg.get("total_scenarios") or n_docs)
+    # Effective record count per cell, which SHRINKS as `filter` stages are passed. A
+    # found-lapse recipe gates records out before its two expensive stages, so pricing
+    # those over the planned counts overstates the run by the whole drop rate. The yield
+    # is a prior the config declares (`expected_keep`), exactly like `assumed_tokens`;
+    # a smoke run's real drop percentages are what replace it.
+    counts: dict[str, float] = {c: float(v) for c, v in cfg.get("cells", {}).items()
+                                if int(v) > 0}
+    # Cell-less: the arm distribution, shrunk by each gate as it is passed.
+    pop = arm_population(cfg, n_docs)
+    # A gate is any stage carrying a `keep:` contract -- its own `filter` stage, or a paid
+    # stage that drops on the strength of what it just produced. The second kind is why
+    # the gate is applied on the NEXT iteration rather than this one: such a stage is
+    # billed for every record it was handed, and only its successors see the survivors.
+    pending_gate: dict | None = None
     for sc in cfg["stages"]:
         kind, name = sc["kind"], sc["name"]
+        if pending_gate is not None:
+            if counts:  # cell-based: a gate scopes to whole cells
+                keep = float(pending_gate.get("expected_keep", 1.0))
+                for c in _cells_in_scope(pending_gate.get("when"), cfg,
+                                         f"stage {pending_gate['name']!r}"):
+                    counts[c] *= keep
+            else:
+                pop = _apply_gate(pop, pending_gate)
+            pending_gate = None
+        if kind == "plan_cells":
+            planned = True
+        if sc.get("keep") and name not in ablate:
+            pending_gate = sc
         if name in ablate:
             continue
         if kind == "scenarios":
@@ -296,23 +455,22 @@ def _calls(cfg: dict) -> dict[str, int]:
             units = units_from_config(cfg)[0]
             n = len(plan_weighted_batches([u.as_trait() for u in units], cfg))
         elif kind in ("llm_json", "llm_tagged"):
-            n = n_docs
+            n = _scoped_docs(sc, cfg, sum(c for _a, c in pop), counts, pop) \
+                if planned else n_pool
         elif kind == "perturb_pairs":
-            enabled = {c: int(v) for c, v in cfg["cells"].items() if int(v) > 0}
-            unknown = sorted(set(enabled) - set(CELLS))
+            unknown = sorted(set(counts) - set(CELLS))
             if unknown:
                 raise ValueError(f"unregistered cell(s) enabled: {unknown}. "
                                  f"Registered: {sorted(CELLS)}")
-            n = sum(v for c, v in enabled.items()
+            n = sum(v for c, v in counts.items()
                     if CELLS[c].response_kind == "flawed")
         elif kind == "revise_cells":
-            enabled = {c: int(v) for c, v in cfg["cells"].items() if int(v) > 0}
-            unknown = sorted(set(enabled) - set(CELLS))
+            unknown = sorted(set(counts) - set(CELLS))
             if unknown:
                 raise ValueError(f"unregistered cell(s) enabled: {unknown}. "
                                  f"Registered: {sorted(CELLS)}")
             # One rewrite per verdict-carrying document; control passes through free.
-            n = sum(v for c, v in enabled.items() if CELLS[c].verdicts)
+            n = sum(v for c, v in counts.items() if CELLS[c].verdicts)
         elif kind == "corpus_check":
             # Without this branch a judged corpus property would fall into the
             # deterministic `else` below and estimate at zero -- the exact trap that
@@ -324,19 +482,18 @@ def _calls(cfg: dict) -> dict[str, int]:
                 calls[key] = calls.get(key, 0) + n
             continue
         elif kind == "generate_cells":
-            enabled = {c: int(v) for c, v in cfg["cells"].items() if int(v) > 0}
-            unknown = sorted(set(enabled) - set(CELLS))
+            unknown = sorted(set(counts) - set(CELLS))
             if unknown:
                 raise ValueError(f"unregistered cell(s) enabled: {unknown}. "
                                  f"Registered: {sorted(CELLS)}")
-            for c, v in enabled.items():
+            for c, v in counts.items():
                 key = CELLS[c].model_key
                 calls[key] = calls.get(key, 0) + v
             continue
         else:  # deterministic/free kinds
             continue
         calls[sc["model"]] = calls.get(sc["model"], 0) + n
-    return calls
+    return {k: int(round(v)) for k, v in calls.items()}
 
 
 def estimate(cfg: dict, measured_manifest: str | None = None) -> dict[str, Any]:
@@ -387,10 +544,11 @@ def estimate(cfg: dict, measured_manifest: str | None = None) -> dict[str, Any]:
             "source": source, "usd": round(usd, 2),
         })
 
-    n_docs = n_examples(cfg)
+    n_docs = n_final_examples(cfg)
     return {
         "pipeline": cfg.get("pipeline", "unnamed"),
         "ablated": list(cfg.get("ablate") or []),
+        "planned_documents": n_examples(cfg),
         "final_training_examples": n_docs,
         "per_stage": rows,
         "total_usd": round(total, 2),

@@ -27,7 +27,10 @@ from src.data.synth.model_eval_model_cells import (
     to_model_eval_model_sft,
 )
 
-CFG = yaml.safe_load(open("configs/data/synth/model_eval_model.yaml"))
+# The archived five-cell scaffold, deliberately: it is the only config enabling every
+# registered cell, so it is what exercises the whole CELLS registry (including `control`,
+# which no live config uses). Archived configs are frozen, which makes it a stable fixture.
+CFG = yaml.safe_load(open("configs/data/synth/archive/model_eval_model.yaml"))
 P = CFG["prompts"]  # the config IS the wording -- tests validate against it
 
 EXPLICITNESS = {"name_clause": 0.3, "paraphrase": 0.4, "embody": 0.3}
@@ -174,7 +177,7 @@ def test_reflect_prompts_put_the_response_in_a_real_assistant_turn():
 
 def test_flawed_cells_never_fall_back_to_the_gold_response():
     p = _plan({"m1_self_flawed": 1}, flaws=FLAWS)[0]
-    with pytest.raises(AssertionError, match="without a perturbed response"):
+    with pytest.raises(AssertionError, match="no first turn"):
         _reflect_messages(p, "CONST", P)
 
 

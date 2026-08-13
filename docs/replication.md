@@ -361,12 +361,18 @@ mode) and consumed by `masking.py` — `convert_synthdoc_qwen.py`, the old middl
 was deleted 2026-08-06; git history has it). See the cell table in
 [`src/data/synth/README.md`](../src/data/synth/README.md).
 
+The live configs are the natural-turn pair, `model_eval_model_{self,other}_natural.yaml`.
+The source-run configs the paragraph above describes (`model_eval_model.yaml` and its
+`_self` / `_other` slices) moved to `configs/data/synth/archive/` on 2026-08-13: they are
+frozen records of the published 2026-08-06/07 corpora, so run them only to reproduce those.
+
 ```bash
-uv run scripts/data/synth/build_dataset.py --config configs/data/synth/model_eval_model.yaml --smoke   # 2 docs per enabled cell
-uv run scripts/data/synth/build_dataset.py --config configs/data/synth/model_eval_model.yaml
-uv run synth check --config configs/data/synth/model_eval_model.yaml --run_dir output/model_eval_model/<ts>   # validity gates
-uv run scripts/data/synth/build_dataset.py --config configs/data/synth/model_eval_model.yaml --estimate --measured output/model_eval_model/<smoke>/manifest.json
-uv run pytest tests/test_model_eval_model.py -q                        # offline, no API key
+CFG=configs/data/synth/model_eval_model_self_natural.yaml
+uv run scripts/data/synth/build_dataset.py --config $CFG --smoke                 # a handful of docs, local only
+uv run scripts/data/synth/build_dataset.py --config $CFG
+uv run synth check --config $CFG --run_dir output/model_eval_model_self_natural/<ts>   # validity gates
+uv run scripts/data/synth/build_dataset.py --config $CFG --estimate --measured output/model_eval_model_self_natural/<smoke>/manifest.json
+uv run pytest tests/test_model_eval_model.py tests/test_model_eval_model_natural.py -q   # offline, no API key
 ```
 
 ### The self-reflection document type
@@ -409,7 +415,7 @@ pipeline; it lives in git history before that date, and its published corpora re
 HuggingFace (`LASR-Callum/synthdoc-<name>`).
 
 ## Repo layout
-- `src/data/synth/` constitution-grounded data generation: one config-driven engine; the config's `stages:` list (prompts included) defines the document type; run via `scripts/data/synth/build_dataset.py` (`configs/data/synth/difficult_advice.yaml`, `configs/data/synth/model_eval_model.yaml`).
+- `src/data/synth/` constitution-grounded data generation: one config-driven engine; the config's `stages:` list (prompts included) defines the document type; run via `scripts/data/synth/build_dataset.py` (`configs/data/synth/difficult_advice.yaml`, `configs/data/synth/model_eval_model_self_natural.yaml`; superseded configs live in `configs/data/synth/archive/`).
 - `src/` reusable code (`endpoints/`, `utils.py`, `data/`, `train/`, `eval/`); `scripts/` thin pipeline CLIs foldered by stage (`data/`, `train/`, `gpu/`); `scratch/` one-offs.
 - `configs/` OmegaConf YAML for every step, foldered by stage (`data/`, `train/`, `eval/`).
 - `scripts/run_eval.py` THE eval entrypoint (see CLAUDE.md "The eval framework"): serves each `--target` with vLLM and dispatches to the registered eval's `run()`.

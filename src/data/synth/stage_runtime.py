@@ -130,6 +130,58 @@ def _parse_tagged(text: str, keys: tuple[str, ...]) -> dict[str, str]:
     return out
 
 
+def lint_problems(parsed: dict, spec: dict) -> list[str]:
+    """Return the reasons tagged output fails a stage's lint contract (empty = pass).
+
+    Lives here rather than in `operators.py` because two callers need it: the generic
+    `llm_tagged` operator, and the model-eval-model rewrite stage, whose output IS the
+    training target and so must be held to the same content contract.
+
+    The self-reflection voice contract is the archetype: reasoning that reaches for rule
+    vocabulary, or that is too short to have done any weighing, is rejected so the call
+    retries rather than the corpus absorbing it. `max_chars` is the opposite guard, and
+    the one a generated USER turn needs: a follow-up that grows into a paragraph has
+    started doing the analysis the assistant's turn is supposed to do.
+
+    `allowed` is the constraint a one-word verdict needs: a tag that must be `held` or
+    `revised` and comes back "mostly held" is not a formatting slip to normalise away, it
+    is a model that did not answer the question, and the call should be retried.
+
+    Args:
+        parsed: Tag name -> text, as returned by a tagged call.
+        spec: `{fields, ban_patterns, min_chars, max_chars, allowed}` from the stage entry,
+            or a LIST of such contracts. A stage that returns tags of different kinds --
+            paragraphs of prose beside a one-word verdict -- needs more than one, since a
+            `min_chars` meant for the prose would reject the verdict outright.
+
+    Returns:
+        One human-readable problem string per violation.
+    """
+    if isinstance(spec, list):
+        return [p for one in spec for p in lint_problems(parsed, one)]
+    problems = []
+    min_chars = int(spec.get("min_chars", 0))
+    max_chars = int(spec.get("max_chars", 0))
+    allowed = [str(v) for v in (spec.get("allowed") or [])]
+    patterns = [(pat, re.compile(pat, re.IGNORECASE))
+                for pat in spec.get("ban_patterns", [])]
+    for tag in spec.get("fields", []):
+        if tag not in parsed:
+            continue
+        text = parsed[tag]
+        for pat, rx in patterns:
+            m = rx.search(text)
+            if m:
+                problems.append(f"<{tag}> rule-vocabulary {m.group(0)!r} (matched {pat})")
+        if min_chars and len(text) < min_chars:
+            problems.append(f"<{tag}> is {len(text)} chars, under the {min_chars} minimum")
+        if max_chars and len(text) > max_chars:
+            problems.append(f"<{tag}> is {len(text)} chars, over the {max_chars} maximum")
+        if allowed and text not in allowed:
+            problems.append(f"<{tag}> is {text[:40]!r}, not one of {allowed}")
+    return problems
+
+
 def call_tagged(client: OpenRouterClient, usage: Usage, model: str,
                 messages: list[dict], temperature: float, max_tokens: int, stage: str,
                 keys: tuple[str, ...], attempts: int = 3,

@@ -56,13 +56,14 @@ def run(config: str, smoke: bool = False, resume: str | None = None,
     pipeline.exit_if_gate_failed(pipeline.run(cfg, smoke=smoke, resume=resume))
 
 
-def topup(config: str, resume: str, traits, n: int = 25) -> None:
-    """Re-run the `final` stage for specific traits until each has `n` completed records.
+def topup(config: str, resume: str, traits, n: int = 25,
+          draft_stage: str = "draft_responses",
+          revise_stage: str = "revise_responses") -> None:
+    """Re-run the revision stage for specific traits until each has `n` completed records.
 
     A run stopped early covers only the traits its scenarios happened to reach, since
-    scenarios are ordered by trait. Reuses the final stage's checkpoint so nothing
-    already paid for is repeated. Assumes the difficult-advice stage layout
-    (`draft_responses` feeding `final`).
+    scenarios are ordered by trait. Reuses the revision stage's checkpoint so nothing
+    already paid for is repeated.
 
     Args:
         config: Path to the run YAML.
@@ -70,21 +71,28 @@ def topup(config: str, resume: str, traits, n: int = 25) -> None:
         traits: Trait ids -- Fire hands this over as a tuple when it contains commas,
             so both "t5,t6" and a tuple are accepted.
         n: Target completed records per trait.
+        draft_stage: Stage whose snapshot supplies the records to revise.
+        revise_stage: Stage to re-run. The defaults are the difficult-advice /
+            self-reflection layout; pass both when topping up a run whose stages are
+            named otherwise, including one from before the 2026-08-13 rename
+            (`draft_responses`/`final`).
     """
     load_dotenv()
     cfg = _load(config)
     stage_list = pipeline.build_stages(cfg)
     names = [s.name for s in stage_list]
-    assert "draft_responses" in names and "final" in names, \
-        "topup assumes the difficult-advice stage layout (draft_responses -> final)"
+    missing = [s for s in (draft_stage, revise_stage) if s not in names]
+    assert not missing, (
+        f"topup: stage(s) {missing} are not in this config's pipeline ({names}). Pass "
+        f"--draft_stage/--revise_stage to name the two stages to top up.")
     run_dir = Path(resume)
     assert run_dir.exists(), f"run dir does not exist: {run_dir}"
 
-    src_idx = names.index("draft_responses") + 1
-    fin_idx = names.index("final") + 1
+    src_idx = names.index(draft_stage) + 1
+    fin_idx = names.index(revise_stage) + 1
     drafted = [json.loads(line) for line in
-               (run_dir / f"stage_{src_idx}_draft_responses.jsonl").open()]
-    ckpt = Checkpoint(run_dir / f"stage_{fin_idx}_final.partial.jsonl")
+               (run_dir / f"stage_{src_idx}_{draft_stage}.jsonl").open()]
+    ckpt = Checkpoint(run_dir / f"stage_{fin_idx}_{revise_stage}.partial.jsonl")
 
     have: dict[str, int] = {}
     for r in ckpt.done.values():
@@ -110,7 +118,7 @@ def topup(config: str, resume: str, traits, n: int = 25) -> None:
               run_dir=run_dir, smoke=False,
               vars={"constitution": full_text(cfg["constitution"])})
     print(f">>> rewriting {len(todo)} responses")
-    stage_list[names.index("final")].fn(ctx, todo, ckpt)
+    stage_list[names.index(revise_stage)].fn(ctx, todo, ckpt)
 
     after: dict[str, int] = {}
     for r in ckpt.done.values():

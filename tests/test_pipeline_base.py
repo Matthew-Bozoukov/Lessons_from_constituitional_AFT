@@ -137,25 +137,34 @@ def _real(name):
     return yaml.safe_load(open(f"configs/data/synth/{name}.yaml"))
 
 
+def _archived(name):
+    """A frozen config from `configs/data/synth/archive/`.
+
+    Archived configs are the exact record of a published corpus, so they never change --
+    which makes them the stable fixtures for the engine contracts below (snapshot names,
+    priced totals) that a live config would keep invalidating.
+    """
+    return yaml.safe_load(open(f"configs/data/synth/archive/{name}.yaml"))
+
+
 def test_real_configs_keep_historical_snapshot_names():
     # Existing run dirs and HF mirrors must stay resumable: positions and names of
     # every snapshot are part of the on-disk contract.
-    # The corpus checks (2026-08-12) are OBSERVERS: they take no position, so they can
-    # sit anywhere in the list -- including mid-pipeline -- without moving a snapshot.
+    # Renamed 2026-08-13 so each stage states its action (traits -> chunk_constitution,
+    # final -> revise_responses, ...). A stage name IS its snapshot filename, so run dirs
+    # from before that date no longer cache-hit; the published HF mirror keeps the old
+    # names, and consumers pin them via `source.snapshot`. The corpus checks are OBSERVERS:
+    # they take no position, so they sit anywhere in the list without moving a snapshot.
     assert [s.name for s in build_stages(_real("difficult_advice"))] == \
-        ["traits", "scenarios", "corpus_scenarios", "draft_prompts", "refined_prompts",
-         "draft_responses", "final", "sft", "corpus"]
+        ["chunk_constitution", "write_scenarios", "corpus_scenarios", "draft_prompts",
+         "revise_prompts", "draft_responses", "revise_responses", "export_sft", "corpus"]
     assert snapshot_positions(build_stages(_real("difficult_advice"))) == \
-        {"traits": 1, "scenarios": 2, "corpus_scenarios": 2, "draft_prompts": 3,
-         "refined_prompts": 4, "draft_responses": 5, "final": 6, "sft": 7, "corpus": 7}
-    # `final` (the rewrite pass) added 2026-08-07: stages 1-4 keep their positions, so
-    # completed run dirs still cache-hit everything already paid for; only the free sft
-    # assembly moves (5 -> 6) and re-runs.
-    assert [s.name for s in build_stages(_real("model_eval_model"))] == \
+        {"chunk_constitution": 1, "write_scenarios": 2, "corpus_scenarios": 2,
+         "draft_prompts": 3, "revise_prompts": 4, "draft_responses": 5,
+         "revise_responses": 6, "export_sft": 7, "corpus": 7}
+    # The archived configs are frozen, which makes them the stable fixture for this.
+    assert [s.name for s in build_stages(_archived("model_eval_model"))] == \
         ["source", "plan", "perturbed", "generated", "final", "sft", "corpus"]
-    assert snapshot_positions(build_stages(_real("model_eval_model"))) == \
-        {"source": 1, "plan": 2, "perturbed": 3, "generated": 4, "final": 5, "sft": 6,
-         "corpus": 6}
 
 
 def test_estimate_prices_real_configs_and_ablation_out():
@@ -166,13 +175,13 @@ def test_estimate_prices_real_configs_and_ablation_out():
     # the 2026-08-04 source corpus was generated against, so the same per-call priors
     # now price 693 records.
     assert full["total_usd"] == 35.76
-    ablated = estimate({**da, "ablate": ["final"]})
+    ablated = estimate({**da, "ablate": ["revise_responses"]})
     calls = {r["stage"]: r["calls"] for r in full["per_stage"]}
     assert calls["rewrite"] == 693
     assert "rewrite" not in {r["stage"] for r in ablated["per_stage"]}
     assert ablated["total_usd"] < full["total_usd"]
 
-    mem = _real("model_eval_model")
+    mem = _archived("model_eval_model")
     est = estimate(mem)
     # $100.32 at 300/cell; cells raised to 420 on 2026-08-05 for the 10k-example
     # 20/80 SFT run (docs/plan_full_sft_20_80.md); $140.45 before the `final` rewrite
