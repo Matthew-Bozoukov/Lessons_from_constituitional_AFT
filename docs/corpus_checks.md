@@ -414,10 +414,9 @@ them. It comes from carrying one corpus's patterns to the other:
 ```
 
 With `patterns:` supplied the scan and merge passes do not run, and the check prices
-exactly (the survivor count is known up front) rather than at `max_patterns`.
-`synth compare` surfaces each pattern as its own metric
-(`pattern_scan.pattern.<name>.broad_share`), so an arm missing a pattern reads as absent
-rather than as zero.
+exactly (the survivor count is known up front) rather than at `max_patterns`. Each
+corpus's own `<stage>_patterns.md` then carries the same pattern names, so the two tables
+line up by eye.
 
 ### Cost and models
 
