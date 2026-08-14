@@ -519,14 +519,16 @@ def estimate(cfg: dict, measured_manifest: str | None = None) -> dict[str, Any]:
     if measured_manifest:
         meas, manifest = measured_per_stage(measured_manifest)
         if any(sc["kind"] == "scenarios" for sc in cfg["stages"]):
-            # A smoke run asks for 1 scenario per call; a full run asks for
-            # `per_call`. Output scales with the batch size, so rescale.
-            per_trait = int(cfg["scenarios_per_trait"])
-            per_call = int(cfg.get("scenarios_per_call", per_trait))
+            # A smoke run asks for fewer scenarios per call than a full run. Output
+            # scales with the batch size, so rescale. `scenarios_per_trait` is only
+            # the legacy fallback for a config that never sets `scenarios_per_call`
+            # -- a `total_scenarios`-only config (courtroom) need not define it.
+            per_call = int(cfg.get("scenarios_per_call")
+                           or cfg.get("scenarios_per_trait", 0))
             eff = manifest.get("effective", {})
             smoke_pc = int(eff.get("scenarios_per_call",
                                    manifest["config"].get("scenarios_per_call", 0)))
-            if "scenarios" in meas and smoke_pc and smoke_pc != per_call:
+            if "scenarios" in meas and per_call and smoke_pc and smoke_pc != per_call:
                 meas["scenarios"]["out_per_call"] *= per_call / smoke_pc
 
     calls = _calls(cfg)

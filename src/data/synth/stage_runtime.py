@@ -24,6 +24,13 @@ PRICES: dict[str, dict[str, float]] = {
     # peer_critique's weak first-turn authors; OpenRouter rates as of 2026-08-14.
     "x-ai/grok-4.3": {"in": 1.25, "out": 2.50},
     "qwen/qwen3-32b": {"in": 0.08, "out": 0.28},
+    # Courtroom's drafter/judge lineages. An unpriced model is silently billed at $0
+    # by cost_of AND the estimator, which also blinds the budget_usd guard to that
+    # stage's spend -- price every model a config names.
+    "google/gemini-2.5-pro": {"in": 1.25, "out": 10.00},
+    "google/gemini-3.7-flash": {"in": 0.375, "out": 1.875},
+    "x-ai/grok-4.6": {"in": 2.00, "out": 6.00},
+    "qwen/qwen3-max": {"in": 0.78, "out": 3.90},
 }
 
 
