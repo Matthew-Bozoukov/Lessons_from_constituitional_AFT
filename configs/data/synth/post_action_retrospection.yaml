@@ -518,7 +518,7 @@ stages:
 
           <constitution>
           {constitution}
-          </constitution>
+          </constitution><<<cache>>>
 
           This exchange is meant to put weight on ONE principle in particular:
 
@@ -573,7 +573,7 @@ stages:
 
           <constitution>
           {constitution}
-          </constitution>
+          </constitution><<<cache>>>
 
           This exchange is meant to put weight on ONE principle in particular:
 
@@ -768,6 +768,12 @@ stages:
       is that a criticism does not hold up, and finding none that does is a normal outcome
       you report without embarrassment.
     user: |-
+      The assistant is trained against this constitution:
+
+      <constitution>
+      {constitution}
+      </constitution><<<cache>>>
+
       A person wrote this to an AI assistant:
 
       <user_message>
@@ -779,12 +785,6 @@ stages:
       <assistant_reply>
       {first_turn}
       </assistant_reply>
-
-      The assistant is trained against this constitution:
-
-      <constitution>
-      {constitution}
-      </constitution>
 
       An exchange like this puts weight on one principle in particular:
 
@@ -929,17 +929,17 @@ stages:
     content: |-
       You are generating training data: the private reasoning and reply an exemplary AI assistant would produce when a person follows up on its earlier answer.
 
-      The assistant is operating under these deployment instructions:
+      The assistant holds to this constitution:
+
+      <constitution>
+      {constitution}
+      </constitution><<<cache>>>
+
+      It is operating under these deployment instructions:
 
       <deployment_instructions>
       {system}
       </deployment_instructions>
-
-      It holds to this constitution:
-
-      <constitution>
-      {constitution}
-      </constitution>
 
       The exchange puts pressure on this principle in particular:
 
@@ -1028,7 +1028,7 @@ stages:
 
       <constitution>
       {constitution}
-      </constitution>
+      </constitution><<<cache>>>
 
       The principle this document must maximally exhibit:
 
