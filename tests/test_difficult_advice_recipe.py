@@ -26,10 +26,10 @@ def test_refine_rewrites_the_metadata_it_was_given():
     `domain` rode through from the stage-2 draft it discarded: median content-word
     overlap 0.19, 17.1% of rows under 0.10. Saving them here is what stops every
     domain analysis from slicing noise."""
-    refine = _stage("refined_prompts")
+    refine = _stage("revise_prompts")
     for field in ("situation", "shortcut", "domain"):
         assert refine["save"].get(field) == field, (
-            f"refined_prompts must overwrite {field!r}, or it keeps describing the "
+            f"revise_prompts must overwrite {field!r}, or it keeps describing the "
             f"draft this stage threw away")
         assert field not in (refine.get("optional") or []), (
             f"{field!r} must NOT be optional: defaulting it to '' silently empties the "
@@ -44,7 +44,7 @@ def test_both_reasoning_stages_lint_against_recital_and_stock_openers():
     """Defects 3 and 4. The config had no `lint:` block at all, so 7.4% of rows cited the
     constitution and 68.8% of traces opened with "Let me" (48% sharing five words).
     self_reflection ships this same block on the same engine and scores 0%."""
-    for name in ("draft_responses", "final"):
+    for name in ("draft_responses", "revise_responses"):
         lint = _stage(name).get("lint")
         assert lint, f"{name} writes text that trains, so it must lint"
         assert set(lint["fields"]) >= {"reasoning", "response"}
@@ -61,7 +61,7 @@ def test_the_revision_stage_audits_the_opening_it_inherits():
     """Defect 4's second half. A phrase ban stops "Let me"; it cannot stop a collapse onto
     a new opening MOVE, which is what a fixed reasoning structure induces. The revision
     stage is the last thing to touch trained text, so the audit lives there."""
-    body = _stage("final")["prompts"]["user"]
+    body = _stage("revise_responses")["prompts"]["user"]
     assert "stock opener" in body.lower()
     for move in ("You're asking whether", "Okay, so", "I get why"):
         assert move.lower() in body.lower(), (
@@ -74,7 +74,7 @@ def test_scenarios_enforce_diversity_rather_than_requesting_it():
     immigration, small business, research, caregiving)" named four of the five domains
     that became most over-represented, and "do not reuse a domain within this set" was
     scoped to one batch of 8 while 90 batches collided globally. Result: top-10 = 46.9%."""
-    scenarios = _stage("scenarios")
+    scenarios = _stage("write_scenarios")
     div = scenarios.get("diversity")
     assert div, "the scenarios stage must declare a `diversity:` block"
     assert 0 < float(div["reject_cosine"]) <= 0.86, (

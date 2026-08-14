@@ -62,7 +62,8 @@ def load(run_dir: Path) -> list[dict]:
     and its output is where both remaining defects would show. Waiting for the export
     snapshot means waiting hours to learn something the first hundred rows already say.
     """
-    for name in ("stage_8_export.jsonl", "stage_7_sft.jsonl", "stage_9_export.jsonl",
+    for name in ("stage_8_export_sft.jsonl", "stage_8_export.jsonl", "stage_7_sft.jsonl",
+                 "stage_9_export.jsonl", "stage_7_revise_responses.partial.jsonl",
                  "stage_7_final.jsonl", "stage_7_final.partial.jsonl"):
         p = run_dir / name
         if p.exists():
