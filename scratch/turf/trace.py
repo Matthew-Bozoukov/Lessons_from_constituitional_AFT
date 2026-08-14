@@ -53,7 +53,8 @@ from src.endpoints.openrouter import OpenRouterClient  # noqa: E402
 from src.utils import git_sha, read_jsonl, timestamp  # noqa: E402
 
 def _crux_select(client, model, attrs: list[str], rubric_text: str, polarity: str,
-                 styles: list[str], temperature: float) -> tuple[list[str], list[str]]:
+                 styles: list[str], temperature: float,
+                 max_tokens: int) -> tuple[list[str], list[str]]:
     styles_block = ("\n".join(f"  - {s}" for s in styles) if styles else NO_STYLES_BLOCK)
     prompt = CRUX_SELECT_PROMPT.format(
         n=len(attrs), attributes="\n".join(f"- {a}" for a in attrs),
@@ -61,7 +62,7 @@ def _crux_select(client, model, attrs: list[str], rubric_text: str, polarity: st
         polarity_verb={"satisfy": "satisfying", "violate": "violating"}[polarity],
         styles_block=styles_block)
     res = client.chat(model, [{"role": "user", "content": prompt}],
-                      temperature=temperature)
+                      temperature=temperature, max_tokens=max_tokens)
     cruxes = []
     for i in (1, 2, 3):
         import re
@@ -93,6 +94,7 @@ def main(case: str, rubric: str, index: str, polarity: str = "satisfy",
     model = model or str(cfg.extractor_model)
     case_attrs_n, trigger_n = int(cfg.case_response_attrs), int(cfg.n_attrs_per_channel)
     extract_temp, judge_temp = float(cfg.extract_temperature), float(cfg.judge_temperature)
+    max_toks = int(cfg.max_tokens)
     case_d = json.loads(Path(case).read_text())
     rubric_cfg = OmegaConf.load(rubric)
     rubric_text = str(rubric_cfg.principle_specific_details)
@@ -106,12 +108,12 @@ def main(case: str, rubric: str, index: str, polarity: str = "satisfy",
     # 1. blind judge (no rubric in this call, by construction)
     res = client.chat(model, [{"role": "user", "content": RESPONSE_ATTR_PROMPT.format(
         query=case_d["query"], response=case_d["response"], n=case_attrs_n)}],
-        temperature=extract_temp)
+        temperature=extract_temp, max_tokens=max_toks)
     blind_attrs = parse_numbered_tags(res.content, case_attrs_n)
 
     # 2. informed judge
     cruxes, excluded = _crux_select(client, model, blind_attrs, rubric_text,
-                                    polarity, styles, judge_temp)
+                                    polarity, styles, judge_temp, max_toks)
     print(">>> cruxes:")
     for c in cruxes:
         print(f"    - {c}")
@@ -139,12 +141,12 @@ def main(case: str, rubric: str, index: str, polarity: str = "satisfy",
     # 5-prep. the case's own trigger attributes, for trigger identification
     q = client.chat(model, [{"role": "user", "content":
                              QUERY_ATTR_PROMPT.format(query=case_d["query"])}],
-                    temperature=extract_temp)
+                    temperature=extract_temp, max_tokens=max_toks)
     case_trigger = [("query", a) for a in parse_numbered_tags(q.content, trigger_n)]
     if (case_d.get("reasoning") or "").strip():
         r = client.chat(model, [{"role": "user", "content": REASONING_ATTR_PROMPT.format(
             query=case_d["query"], reasoning=case_d["reasoning"])}],
-            temperature=extract_temp)
+            temperature=extract_temp, max_tokens=max_toks)
         case_trigger += [("reasoning", a)
                          for a in parse_numbered_tags(r.content, trigger_n)]
     case_emb = embed([a for _, a in case_trigger], embed_model)

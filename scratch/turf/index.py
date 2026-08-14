@@ -95,7 +95,8 @@ def main(dir: str, k: int | None = None, summary_model: str | None = None,
                           CLUSTER_SUMMARY_PROMPT.format(
                               channel_noun=noun, prefix=prefix,
                               attributes="\n".join(f"- {t}" for _, _, t in top))}],
-                          temperature=float(cfg.judge_temperature))
+                          temperature=float(cfg.judge_temperature),
+                          max_tokens=int(cfg.max_tokens))
         summary = res.content.strip()
         if not summary.lower().startswith(prefix.lower()):
             summary = f"{prefix} {summary}"  # SURF's prefix enforcement

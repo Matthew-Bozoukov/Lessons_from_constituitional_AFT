@@ -45,23 +45,23 @@ from src.endpoints.openrouter import OpenRouterClient, map_threaded  # noqa: E40
 from src.utils import git_sha, timestamp  # noqa: E402
 
 def _extract_one(client: OpenRouterClient, model: str, row: dict,
-                 n: int, temperature: float) -> dict:
+                 n: int, temperature: float, max_tokens: int) -> dict:
     ch = parse_row(row)
     out = {"query_attrs": None, "reasoning_attrs": None, "response_attrs": None}
     q = client.chat(model, [{"role": "user", "content":
                              QUERY_ATTR_PROMPT.format(query=ch["query"])}],
-                    temperature=temperature)
+                    temperature=temperature, max_tokens=max_tokens)
     out["query_attrs"] = parse_numbered_tags(q.content, n)
     if ch["reasoning"]:
         r = client.chat(model, [{"role": "user", "content":
                                  REASONING_ATTR_PROMPT.format(
                                      query=ch["query"], reasoning=ch["reasoning"])}],
-                        temperature=temperature)
+                        temperature=temperature, max_tokens=max_tokens)
         out["reasoning_attrs"] = parse_numbered_tags(r.content, n)
     resp = client.chat(model, [{"role": "user", "content":
                                 RESPONSE_ATTR_PROMPT.format(
                                     query=ch["query"], response=ch["response"], n=n)}],
-                       temperature=temperature)
+                       temperature=temperature, max_tokens=max_tokens)
     out["response_attrs"] = parse_numbered_tags(resp.content, n)
     return out
 
@@ -75,6 +75,7 @@ def main(dataset: str, file: str = "stage_7_sft.jsonl", out: str = "output/turf/
     cfg = load_config(config)
     model = model or str(cfg.extractor_model)
     n_attrs, temperature = int(cfg.n_attrs_per_channel), float(cfg.extract_temperature)
+    max_toks = int(cfg.max_tokens)
     out_dir = Path(out)
     out_dir.mkdir(parents=True, exist_ok=True)
     rows = load_hf_jsonl(dataset, file)
@@ -97,7 +98,8 @@ def main(dataset: str, file: str = "stage_7_sft.jsonl", out: str = "output/turf/
 
     client = OpenRouterClient()
     results = map_threaded(
-        lambda j: _extract_one(client, model, rows[todo[j]], n_attrs, temperature),
+        lambda j: _extract_one(client, model, rows[todo[j]], n_attrs, temperature,
+                               max_toks),
         len(todo), max_workers=workers, desc="extracting")
 
     with attrs_path.open("a") as f:
