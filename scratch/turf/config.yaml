@@ -1,7 +1,7 @@
 # ABOUTME: TURF hyperparameters — extract.py, index.py and trace.py LOAD this file
 # ABOUTME: (their CLI flags override single values; --config swaps the whole file).
-extractor_model: anthropic/claude-sonnet-4.5   # attribute extraction + trace judging
-summary_model: anthropic/claude-sonnet-4.5     # cluster summaries (SURF used Opus 4.5)
+extractor_model: google/gemini-3.7-flash       # attribute extraction + trace judging
+summary_model: google/gemini-3.7-flash         # cluster summaries (SURF used Opus 4.5)
 embed_model: qwen/qwen3-embedding-8b           # paper's embedder; consumed at INDEX
                                                # build only — trace.py reuses the
                                                # model recorded in the index manifest
