@@ -84,11 +84,10 @@ def test_normal_completion_does_not_retry():
 def test_every_pinned_model_routes_to_its_one_provider():
     cases = {
         "anthropic/claude-sonnet-5": "anthropic",
-        "openai/gpt-5.5": "openai",
+        "openai/gpt-5.6-terra": "openai",
         "google/gemini-3.1-pro-preview": "google-ai-studio",
         "x-ai/grok-4.20": "xai",
-        "qwen/qwen3.6-27b": "alibaba",
-        "moonshotai/kimi-k2.6": "moonshotai",
+        "nousresearch/hermes-4-405b": "nebius",
     }
     for model, provider in cases.items():
         assert provider_pin(model) == \
@@ -110,11 +109,9 @@ def test_unpinned_model_is_a_hard_error_not_free_routing():
 
 
 def test_pins_are_exact_id_not_family():
-    # Same "qwen/" family, different hosts: the chat model's creator endpoint vs the
-    # embedding model, which Alibaba does not host at all. Prefix inference would
-    # route the embedder to a provider with no endpoint for it — exact ids only.
+    # Same "qwen/" family, different hosts: prefix inference would route the embedder
+    # to a provider with no endpoint for it — exact ids only.
     assert provider_pin("qwen/qwen3-32b")["order"] == ["deepinfra"]
-    assert provider_pin("qwen/qwen3.6-27b")["order"] == ["alibaba"]
     assert provider_pin("qwen/qwen3-embedding-8b")["order"] == ["nebius"]
 
 

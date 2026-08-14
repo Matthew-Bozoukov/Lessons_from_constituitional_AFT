@@ -12,6 +12,11 @@
 # exact ids only — no prefix inference, no per-config overrides. The provider that
 # actually served each response is recorded on ChatResult.provider.
 #
+# Only models ACTUALLY IN USE are listed — an unlisted model fails fast with
+# instructions, and its entry is added when it first comes into real use. (Eval API
+# comparison targets like `openrouter:<model>` never route through OpenRouterClient,
+# so they need no entry.)
+#
 # `order` takes provider slugs from /api/v1/models/<id>/endpoints (base part of `tag`).
 # Policy: the model creator's own endpoint where one exists (Gemini has two
 # Google-operated hosts; the direct API, google-ai-studio, is pinned rather than the
@@ -25,24 +30,21 @@ defaults:
 
 models:
   # --- first-party pins ----------------------------------------------------------
-  anthropic/claude-sonnet-5: {order: [anthropic]}
-  anthropic/claude-sonnet-4.5: {order: [anthropic]}
-  anthropic/claude-haiku-4.5: {order: [anthropic]}
-  anthropic/claude-opus-4.7: {order: [anthropic]}
+  anthropic/claude-sonnet-5: {order: [anthropic]}        # synth v2 refine/rewrite
+  anthropic/claude-sonnet-4.5: {order: [anthropic]}      # synth v1 + judges
+  anthropic/claude-haiku-4.5: {order: [anthropic]}       # synth v2 generation
   google/gemini-3.7-flash: {order: [google-ai-studio]}   # TURF extractor+judge+summaries
-  google/gemini-3.1-pro-preview: {order: [google-ai-studio]}
-  google/gemini-3-flash-preview: {order: [google-ai-studio]}
-  google/gemini-3.6-flash: {order: [google-ai-studio]}
-  openai/gpt-5.6-terra: {order: [openai]}                # fabrication judge
+  google/gemini-3-flash-preview: {order: [google-ai-studio]}  # arena-hard + scratch-eval judge
+  google/gemini-3.1-pro-preview: {order: [google-ai-studio]}  # ODCV judge
+  openai/gpt-5.6-terra: {order: [openai]}                # fabrication judge + spec filter
   openai/gpt-5.6-luna: {order: [openai]}                 # peer-critique first-turn author
-  openai/gpt-5.5: {order: [openai]}
-  openai/gpt-4.1: {order: [openai]}
-  x-ai/grok-4.20: {order: [xai]}
-  x-ai/grok-4.3: {order: [xai]}
-  qwen/qwen3.6-27b: {order: [alibaba]}
-  moonshotai/kimi-k2.6: {order: [moonshotai]}
+  openai/gpt-4.1: {order: [openai]}                      # arena-hard reference judge
+  x-ai/grok-4.20: {order: [xai]}                         # ODCV judge
+  x-ai/grok-4.3: {order: [xai]}                          # psychosis grader
 
   # --- open-weight models: no first-party endpoint; ONE host chosen deliberately --
+  nousresearch/hermes-4-405b:     # psychosis red-teamer. Nebius is its ONLY OpenRouter
+    order: [nebius]               # host (fp8; checked 2026-08-14).
   qwen/qwen3-32b:                 # peer-critique first-turn author. Four hosts at
     order: [deepinfra]            # differing quantizations (fp8 x3, one unknown —
                                   # checked 2026-08-14); deepinfra chosen.
