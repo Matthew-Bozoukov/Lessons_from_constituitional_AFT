@@ -273,8 +273,10 @@ Add a new stage as functions in the right `src/` area plus a thin CLI in the mat
 Synth repos publish every stage snapshot under `stages/` and, on completion,
 `dataset.jsonl` — the default HF config, declared in a README `configs:` block
 refreshed with every upload. Mixtures consume it as `dataset: org/repo` [+
-`revision:`], sha-pinned and balance-able; `repo:` + `file:` is legacy intake.
-Per-row `supervise` survives into `mixture.jsonl`.
+`revision:`], sha-pinned and balance-able. Per-row `supervise` survives into
+`mixture.jsonl`. Legacy synth repos (stage files at the root, no `dataset.jsonl`)
+need `repo:` + `file: <stage file>` instead — `dataset:` would glob their
+mixed-schema stages and fail.
 
 ## The training framework (the contract train follows)
 
