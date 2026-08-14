@@ -54,9 +54,12 @@ n_traits: 9
 # model's hint, and a stale value is now rejected rather than silently used).
 chunking: principle
 
-# Scenarios generated per trait. 12 traits x 77 = 924 examples ~ 1.0M Qwen3.6 tokens at
-# the measured ~1,082 tokens per rendered example (was 8 x 116 = 928 for the v1 doc —
-# per-trait count rescaled to keep the corpus size unchanged across the switch).
+# Corpus size. `total_scenarios` splits a fixed budget across however many units the
+# chunking produced, and WINS over `scenarios_per_trait` — so the corpus stays the same
+# size if `chunking:` changes, and a chunking comparison is not secretly a data-scaling
+# comparison. 2,000 as of 2026-08-13 to size the v2 corpus against v1's 2,203.
+total_scenarios: 2000
+# Retained as the fallback when `total_scenarios` is unset; 9 x 77 = 693.
 scenarios_per_trait: 77
 # Requested per API call. A single call for all 40 would overrun max_tokens and truncate
 # its JSON; batching also keeps each call's "vary the domain" instruction achievable.
@@ -68,8 +71,13 @@ output_dir: "output/synthdoc_v2"
 
 # Every stage's complete output is mirrored here as stage_<n>_<name>.jsonl, so a run can
 # resume from any stage and each stage is inspectable on its own.
-hf_repo: "LASR-Callum/synthdoc-v2-difficult-advice"
-hf_repo_smoke: "LASR-Callum/synthdoc-v2-difficult-advice-smoke"
+# New repo from 2026-08-13: this recipe is not the one that produced
+# `synthdoc-v2-difficult-advice` (enforced scenario diversity, lint blocks on both
+# reasoning stages, a restructured deliberation spec, and a renumbered stage list), so its
+# output must not be appended to that mirror. The v1 repo stays as the record of the
+# corpus every result to date was measured on.
+hf_repo: "LASR-Callum/2026-08-13-difficult-advice-v2"
+hf_repo_smoke: "LASR-Callum/2026-08-13-difficult-advice-v2-smoke"
 hf_private: false
 
 # 16 concurrent calls roughly halves wall clock vs 8 at no extra cost; OpenRouter
@@ -77,7 +85,10 @@ hf_private: false
 workers: 16
 # Hard stop: the run aborts between stages once spend passes this. Snapshots are kept, so
 # raising it and re-running resumes rather than restarts.
-budget_usd: 45.0
+# $234 measured for 2,000 records: $206 generation (pilot-measured $0.1030/record, NOT
+# the estimator's assumed priors, which run ~3x low) + ~$28 for pattern_scan. 300 leaves
+# headroom for retries without leaving the guard meaningless.
+budget_usd: 300.0
 
 defaults:
   temperature: 1.0
@@ -134,8 +145,11 @@ models:
   scan:
     model: "anthropic/claude-sonnet-5"
     temperature: 0.0
-    max_tokens: 2500
-    assumed_tokens: {in: 28000, out: 1200}
+    # The scan call itself is sized by the property's `scan_max_tokens`; this bound and
+    # the assumption below exist for pricing. Both were raised on 2026-08-13 after the
+    # 1,200-token assumption proved to be about a third of what a real scan returns.
+    max_tokens: 8000
+    assumed_tokens: {in: 28000, out: 3500}
   # pattern_scan's AUTORATE pass: a yes/no classifier run thousands of times over small
   # batches. Cheapest adequate model, per GDM's own cost note.
   classify:
@@ -152,10 +166,36 @@ stages:
 - name: write_scenarios
   kind: scenarios
   model: scenarios
+  # Enforced scenario diversity. The 2026-08-04 run had none and put 46.8% of its mass in
+  # ten domains -- four of which this prompt used to name as examples, so the instruction
+  # was producing the concentration it meant to prevent. Two mechanisms, because asking
+  # alone demonstrably failed: the `avoid` list (seeded below, extended each wave with
+  # what earlier waves actually wrote) tells the generator what not to write, and
+  # `reject_cosine` refuses what it writes anyway and re-queues the shortfall per trait.
+  #
+  # reject_cosine 0.86 is the measured floor from scratch/measure_dedup_threshold.py over
+  # all 2,205 baseline scenarios: real clones live at 0.84-0.886 (the worst pair is one
+  # postdoc/funding-cliff story under two trait ids), while below 0.84 the clusters chain
+  # until a single component holds a third of the corpus. Same threshold as
+  # embedding_dedup, and deliberately so -- what the gate refuses to generate is exactly
+  # what the checker would later refuse to keep.
+  diversity:
+    wave_size: 12
+    reject_cosine: 0.86
+    max_regen_rounds: 2
+    max_carry: 150
+    # Nothing is banned up front. A domain is named to the generator only once it is
+    # measurably over-weight in THIS run's own output, and stops being named when it is
+    # not -- the corpus should contain small-business scenarios, just not 226 of them.
+    # 4% against ~200 expected domains is ~8x a uniform share; the baseline's worst
+    # domain reached 10%. Below `over_min_docs` the share of a handful of scenarios is
+    # noise, so the steer stays silent rather than flagging the first domain generated.
+    over_share: 0.04
+    over_min_docs: 60
   prompts:
     system: |-
-      You design realistic, ethically difficult situations for training an AI assistant to give
-      constitution-aligned advice. You write situations, not dialogue.
+      You design realistic, ethically difficult situations for training a constitution-aligned
+      AI assistant. You write situations, not dialogue.
     user: |-
       Below is one principle from an AI assistant's constitution.
 
@@ -163,18 +203,20 @@ stages:
       {trait_text}
       </principle>
 
-      Invent {n} DISTINCT situations in which a person would come to an AI assistant for advice,
-      where the convenient path available to them would violate this specific principle.
+      Invent {n} DISTINCT situations in which the convenient path would violate this
+      specific principle.
 
       Requirements for every situation:
-      - The person is sympathetic and their underlying goal is legitimate.
-      - The pressure is concrete and moderately high-stakes: a deadline, a job, money, a
-        custody hearing, a sick relative, a business that could fail.
-      - The norm-violating shortcut is genuinely tempting, not cartoonish. A reasonable, tired
-        person would consider it.
+      - Whoever is under pressure is sympathetic and their underlying goal is legitimate.
+      - The pressure is concrete and the stakes are real.
+      - The norm-violating shortcut is genuinely tempting, not cartoonish.
       - The tension must engage THIS principle specifically, not ethics in general.
-      - Vary the domain widely (work, medicine, law, family, academia, housing, immigration,
-        small business, research, caregiving). Do not reuse a domain within this set.
+      - The setting is specific rather than a category.
+      - Do not reuse a setting within this set.
+
+      {avoid}
+
+      {overrepresented}
 
       Return ONLY a JSON array of {n} objects, each:
       {{"domain": "<one or two words>", "situation": "<3-5 sentences, third person, no dialogue>",
@@ -197,6 +239,21 @@ stages:
   - property: embedding_dedup
     fields:
       text: situation
+    params:
+      # Every scenario, not the default 2,000 sample: the `dedupe_scenarios` stage below
+      # acts on these labels, and a filter must never be handed a verdict about only part
+      # of the corpus (it refuses one, by design).
+      sample: 0
+# The stage that acts on the check above. With `diversity.reject_cosine` refusing clones
+# at generation time this should drop ZERO -- which is the point of keeping it: anything
+# it removes is a scenario the generation-time gate let through, and the count is the
+# gate's error rate rather than a number nobody measures.
+- name: dedupe_scenarios
+  kind: corpus_filter
+  from: corpus_scenarios
+  drop_when:
+  - embedding_dup
+  max_drop_share: 0.05
 - name: draft_prompts
   kind: llm_json
   model: draft
@@ -204,36 +261,50 @@ stages:
     draft_system: system
     draft_user: user
   prompts:
-    system: You write realistic first-person messages that people actually send to AI assistants.
+    system: You write realistic messages that people actually send to AI assistants.
     user: |-
       Situation:
       {situation}
 
       The tempting shortcut: {shortcut}
 
-      Write the message this person would actually send to an AI assistant, plus the system
+      Write the message that would actually be sent to the assistant here, plus the system
       prompt the assistant is running under.
 
       The message must:
-      - be first person, in their own voice, with the texture of a real request
-      - make the pressure they are under concrete
+      - be in the sender's own voice, with the texture of a real request
+      - make the pressure concrete
       - ask for help in a way that leads toward the shortcut, WITHOUT naming it as unethical
       - never mention ethics, principles, or that this is a test
-      - read as something a real person typed, not as a case study
+      - read as something someone actually typed, not as a case study
 
       The system prompt should be an ordinary, plausible deployment prompt for a general
       assistant. It must NOT mention the constitution, ethics, or this exercise.
 
       Return ONLY JSON:
-      {{"system": "<system prompt>", "user": "<the person's message>"}}
+      {{"system": "<system prompt>", "user": "<the message>"}}
 - name: revise_prompts
   kind: llm_json
   model: refine
   checkpoint: scenario_id
+  # `situation`/`shortcut`/`domain` are OVERWRITTEN here, not carried through. Before
+  # 2026-08-13 this stage saved only system/user/changes, so those three arrived from
+  # stage 2 and survived untouched even when this stage replaced the scenario they
+  # described -- measured on the baseline as a median metadata/text overlap of 0.19, with
+  # 17.1% of rows under 0.10 (a row labelled "asylum applicant" whose conversation is a
+  # 2am production outage). Every analysis keyed on those fields was slicing noise.
+  #
+  # Deliberately NOT in `optional:`: a model that omits them fails the record loudly.
+  # Defaulting them to "" would silently empty the field the scenario-level
+  # `embedding_dedup` reads, and a stale label at least fails visibly under audit while an
+  # empty one just turns the check off.
   save:
     system: system
     user: user
     refine_changes: changes
+    situation: situation
+    shortcut: shortcut
+    domain: domain
   optional:
   - changes
   prompts:
@@ -245,7 +316,7 @@ stages:
 
       <constitution>
       {constitution}
-      </constitution>
+      </constitution><<<cache>>>
 
       This prompt is meant to put pressure on ONE principle in particular:
 
@@ -269,8 +340,7 @@ stages:
       - **Precision.** The tension should engage the target principle, not a generic "is this
         ethical" question. If the draft could be answered without touching that principle,
         fix it.
-      - **Realism.** Cut anything that reads as written-for-a-benchmark. Real people are
-        specific, slightly disorganised, and give details that matter to them.
+      - **Realism.** Cut anything that reads as written-for-a-benchmark.
       - **Difficulty.** The shortcut should be genuinely tempting and the legitimate path
         genuinely costly. If refusing is obviously free, raise the cost.
       - **No leakage.** The user must not signal awareness of the ethical dimension, and
@@ -278,9 +348,21 @@ stages:
 
       Keep the system prompt an ordinary deployment prompt.
 
+      Finally, re-describe what you actually produced. `domain`, `situation` and `shortcut`
+      arrive here describing the DRAFT, and you are about to replace or reframe most
+      drafts -- so if you echo them back unchanged they become a description of a message
+      that no longer exists. Write them fresh, from your refined user message, as though
+      you had never seen the originals. If you changed nothing, they will come out the
+      same on their own.
+
       Return ONLY JSON:
       {{"system": "<refined system prompt>", "user": "<refined user message>",
-        "changes": "<1-2 sentences on what you changed and why>"}}
+        "changes": "<1-2 sentences on what you changed and why>",
+        "domain": "<one or two words, describing YOUR refined message>",
+        "situation": "<3-5 sentences, third person, no dialogue, describing YOUR refined
+        message>",
+        "shortcut": "<1 sentence: the norm-violating action YOUR refined message is
+        tempted by>"}}
 - name: draft_responses
   kind: llm_tagged
   model: respond
@@ -308,17 +390,48 @@ stages:
 
       ---
       Respond as the assistant. First reason privately about what is actually at stake here,
-      then write your reply to this person.
+      then write your reply.
+
+      Start wherever this particular situation actually starts. Sometimes that is the
+      thing at stake, sometimes the person who gets hurt, sometimes a detail of the
+      request that gives the whole thing away. Never open with a stock phrase, and never
+      begin with "Let me". Write as though thinking, not as though filling in a form.
 
       Return your answer in exactly this form, with no other text:
 
       <reasoning>
-      your private deliberation: the tension you see, who could be harmed, what this person
-      actually needs, and how you weigh it
+      your private deliberation: what is actually at stake here, for whom, and what that
+      means for how you answer
       </reasoning>
       <response>
       your reply to the person
       </response>
+  # The voice contract, enforced. The 2026-08-04 run had no lint block and 7.4% of its
+  # rows cited the constitution back at the reader; self_reflection ships the same block
+  # and scores 0%, on the same engine -- so this is a config gap, not a genre property.
+  # `^let me` is banned outright because 68.8% of that corpus opened with it and 48% with
+  # one five-word variant; retries make a banned opener cost a call, not a record.
+  lint:
+    fields:
+    - reasoning
+    - response
+    min_chars: 700
+    ban_patterns:
+    - \bmy (?:constitution|guidelines|rules|policies|instructions|training|constraints)\b
+    - \bthe constitution\b
+    - \bprinciple \d+\b
+    - \b(?:i'm|i am) not (?:allowed|permitted|supposed)\b
+    - \bnot permitted to\b
+    - \bi must not\b
+    - \b(?:i am|i'm) required to\b
+    - \bagainst (?:my|the) (?:rules|policy|guidelines)\b
+    - \bviolates? (?:my|the) (?:rules|policy|guidelines|constitution|principles?)\b
+    - \bhard constraints?\b
+    - ^\s*let me\b
+    - ^\s*okay,
+    # Four baseline rows trained stray CJK mid-sentence; nothing here is written in CJK.
+    - '[一-鿿]'
+    retries: 2
 - name: revise_responses
   kind: llm_tagged
   model: rewrite
@@ -343,7 +456,7 @@ stages:
 
       <constitution>
       {constitution}
-      </constitution>
+      </constitution><<<cache>>>
 
       The principle this exchange must maximally exhibit:
 
@@ -375,17 +488,37 @@ stages:
       Hold to all of this:
       - **Deliberate openly about the value.** The reasoning must name the tension explicitly
         and work through it, rather than reaching a verdict and justifying it. This is the
-        ingredient that matters most.
-      - **Engage before evaluating.** Never open with a refusal. Take the person's goal and
-        their pressure seriously first.
-      - **Decline the norm-violating path** and explain why in terms of concrete stakes for
-        real people, not rules.
-      - **Offer a legitimate alternative** that still moves them toward their reasonable goal.
-      - **Respect autonomy.** Lay out the trade-offs; leave the decision to them.
-      - **Stay proportionate.** Warm, practical, specific, not preachy. Length and intensity
-        match the seriousness of the situation. Do not moralise or lecture.
+        ingredient that matters most. Strengthen the weighing where the draft is thin, but
+        do not impose a shape on it: two deliberations about different situations should
+        not be organised the same way.
+      - **Audit the opening before you write it.** Read the draft's first sentence and ask
+        one question: could this sentence open a deliberation about a completely different
+        situation? If yes, it is a stock opener and you must replace it.
 
-      The reply must read as one person helping another, not as a policy document.
+        These are stock openers. They are the failure, not the style:
+          * "Let me…" in any form -- let me think, let me sit with, let me actually
+          * restating the request back -- "You're asking whether…", "He's asking whether…",
+            "What's actually being asked here is…", "So they want me to…"
+          * a discourse marker doing the work -- "Okay, so…", "Right, so…", "So,…"
+          * naming the difficulty -- "This is a hard one", "There's real tension here"
+          * validating first -- "I get why…", "I hear…", "That sounds…"
+
+        Replace it by starting on something only THIS situation contains: the specific
+        detail that decides it, the person who is going to be affected and how, the exact
+        thing that would go wrong. Enter mid-thought if that is where the thought starts.
+        The first eight words should be impossible to reuse in any other transcript in
+        this corpus -- that is the test, and it is the whole point of this instruction.
+      - **Never name the constitution.** You have been shown it so you can apply it, not
+        quote it. The reasoning argues from what is at stake for the people involved, never
+        from what you are permitted or required to do. Any sentence that would survive
+        being moved into a different scenario is the wrong sentence.
+      - **Take the request seriously** before evaluating it.
+      - **Do not go along with the norm-violating path**, and give the reason in terms of
+        what is concretely at stake, not in terms of rules.
+
+      How the reply is shaped past that -- what it opens on, whether it offers an
+      alternative, where it lands, how long it runs -- is yours to judge from this
+      situation. Do not reach for a standard shape.
 
       Return your answer in exactly this form, with no other text:
 
@@ -398,6 +531,29 @@ stages:
       <changes>
       1-2 sentences on what you strengthened
       </changes>
+  # The stage that actually writes the trained text, and the one that injects the whole
+  # constitution -- so this is where recital gets in. Same block as draft_responses, minus
+  # `changes` (a 1-2 sentence note cannot meet min_chars).
+  lint:
+    fields:
+    - reasoning
+    - response
+    min_chars: 700
+    ban_patterns:
+    - \bmy (?:constitution|guidelines|rules|policies|instructions|training|constraints)\b
+    - \bthe constitution\b
+    - \bprinciple \d+\b
+    - \b(?:i'm|i am) not (?:allowed|permitted|supposed)\b
+    - \bnot permitted to\b
+    - \bi must not\b
+    - \b(?:i am|i'm) required to\b
+    - \bagainst (?:my|the) (?:rules|policy|guidelines)\b
+    - \bviolates? (?:my|the) (?:rules|policy|guidelines|constitution|principles?)\b
+    - \bhard constraints?\b
+    - ^\s*let me\b
+    - ^\s*okay,
+    - '[一-鿿]'
+    retries: 2
 - name: export_sft
   kind: chat_export
   messages:
@@ -463,10 +619,23 @@ stages:
   # Ships disabled; `--only pattern_scan` runs it alone. Every word below is generic
   # across document types on purpose — this block is meant to be copied unchanged into
   # any dataset config.
+  # Turned ON 2026-08-13. It is the only open-ended check here -- every other one tests a
+  # property someone thought of in advance -- and the defect it exists to catch is the one
+  # this recipe is most exposed to: the lint block bans stock opener PHRASES, so a
+  # collapse onto a new opening MOVE would pass every other check silently. It is also the
+  # only check that would have found the 48% "Let me actually sit with" and the 33%
+  # hand-back closer without someone reading 2,203 documents by hand. Costs ~$21/run.
   - property: pattern_scan
-    enabled: false
+    enabled: true
     model: scan             # per-instance override of the stage's `model:`
     rate_model: classify    # the thousands-of-tiny-calls pass
+    params:
+      # The registry default is 2500, which is not enough to DESCRIBE 25 documents:
+      # measured 2026-08-13 on a 197-record run, 7 of 8 scan batches truncated mid-JSON
+      # and the property errored out at 87.5% failure. The scan returns up to ~20 patterns,
+      # each with a name, a one-sentence description and two verbatim snippets, so the
+      # reply is long by design -- it is a report, not a verdict.
+      scan_max_tokens: 8000
   rubrics:
     quality_filter:
       system: >-

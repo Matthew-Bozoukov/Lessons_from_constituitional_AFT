@@ -48,12 +48,72 @@ class ChatResult:
         prompt_tokens: Prompt token count reported by the API.
         completion_tokens: Completion token count reported by the API.
         finish_reason: The provider-reported finish reason.
+        cached_tokens: Prompt tokens served from cache, when the provider reports it.
+            0 means "no cache hit OR the provider said nothing", so it is a floor on
+            savings rather than a measurement -- see `CACHE_MARK`.
     """
 
     content: str
     prompt_tokens: int
     completion_tokens: int
     finish_reason: str
+    cached_tokens: int = 0
+
+
+# Everything BEFORE this marker in a message becomes a separately cacheable block.
+#
+# Data generation re-sends one long invariant prefix on every call: the difficult-advice
+# refine and rewrite stages each inject the whole constitution, which measured 5,763
+# tokens -- 65% and 56% of their input respectively, across 4,000 calls in a 2,000-record
+# run. Anthropic bills a cache read at 0.1x and a write at 1.25x, so caching that prefix
+# saves ~$62 of a ~$234 run, and cached reads are faster besides.
+#
+# The marker is placed in the CONFIG's prompt text, not here, because only the prompt
+# knows where its invariant part ends -- for those two stages that is the closing
+# </constitution> tag, after which the target trait varies. It is stripped before the
+# request goes out, so the model sees byte-identical text either way; `test_openrouter.py`
+# pins that. A prompt with no marker is sent unchanged, so this is inert until opted into.
+#
+# Caveat worth knowing: Anthropic ignores a cached prefix below ~1024 tokens, silently.
+# Marking a short prefix is not an error, it just does nothing.
+CACHE_MARK = "<<<cache>>>"
+
+
+def _split_cached(content: str) -> list[dict] | str:
+    """Turn marked text into content blocks, or return it unchanged when unmarked.
+
+    Returns a plain string in the no-marker case rather than a one-element block list:
+    an unmarked call must produce a byte-identical request to the one it produced before
+    this function existed.
+    """
+    if CACHE_MARK not in content:
+        return content
+    prefix, _, rest = content.partition(CACHE_MARK)
+    return [{"type": "text", "text": prefix,
+             "cache_control": {"type": "ephemeral"}},
+            {"type": "text", "text": rest}]
+
+
+def apply_cache_control(messages: list[dict], model: str) -> list[dict]:
+    """Convert `CACHE_MARK` in any message into an Anthropic cache breakpoint.
+
+    Gated on the model being an Anthropic one: `cache_control` is a provider extension,
+    and passing it to a model that does not understand it risks a 400 rather than a
+    silent no-op. For every other provider the marker is simply stripped, so the same
+    config runs anywhere and only the billing differs.
+    """
+    if not any(CACHE_MARK in str(m.get("content") or "") for m in messages):
+        return messages
+    anthropic = model.startswith("anthropic/")
+    out = []
+    for m in messages:
+        content = str(m.get("content") or "")
+        if CACHE_MARK not in content:
+            out.append(m)
+            continue
+        out.append({**m, "content": _split_cached(content) if anthropic
+                    else content.replace(CACHE_MARK, "")})
+    return out
 
 
 class OpenRouterClient:
@@ -66,7 +126,20 @@ class OpenRouterClient:
             api_key: OpenRouter API key. Falls back to OPENROUTER_API_KEY env var.
         """
         key = api_key or os.environ["OPENROUTER_API_KEY"]
-        self.client = OpenAI(base_url=OPENROUTER_BASE_URL, api_key=key)
+        # Both bounds are explicit because the defaults COMPOUND with the `chat` retry
+        # below. Left implicit, one stuck request costs 6 tenacity attempts x 3 SDK
+        # attempts x the SDK's 600s timeout ~ 3 hours, during which it holds a worker.
+        # Measured 2026-08-13: a 197-record run took 10.7h instead of ~25min because two
+        # such requests drained a 16-worker pool; the 67 records queued behind the second
+        # one completed in 3 minutes once it cleared.
+        #
+        # timeout 420s, not lower: the rewrite stage generates up to 12,288 tokens, which
+        # legitimately runs into the low hundreds of seconds. This bounds a HANG, and must
+        # stay above the slowest honest call or it will truncate real work.
+        # max_retries=0: retry policy lives in `chat` (tenacity), which alone knows which
+        # errors are transient. Two retry layers multiply rather than add.
+        self.client = OpenAI(base_url=OPENROUTER_BASE_URL, api_key=key,
+                             timeout=420.0, max_retries=0)
 
     @retry(
         retry=retry_if_exception_type(_TRANSIENT),
@@ -96,7 +169,7 @@ class OpenRouterClient:
         """
         resp = self.client.chat.completions.create(
             model=model,
-            messages=messages,
+            messages=apply_cache_control(messages, model),
             temperature=temperature,
             max_tokens=max_tokens,
             **kwargs,
@@ -111,11 +184,17 @@ class OpenRouterClient:
                 f"Model {model} returned empty content (provider "
                 f"{getattr(resp, 'provider', '?')}): {resp}")
         usage = resp.usage
+        # Providers report cache hits in different places and some not at all, so this is
+        # read defensively and defaults to 0. It exists so a run can PROVE caching worked
+        # rather than assume it: a stage whose cached_tokens stays 0 is paying full price.
+        details = getattr(usage, "prompt_tokens_details", None) if usage else None
+        cached = getattr(details, "cached_tokens", 0) or 0
         return ChatResult(
             content=content,
             prompt_tokens=usage.prompt_tokens if usage else 0,
             completion_tokens=usage.completion_tokens if usage else 0,
             finish_reason=choice.finish_reason or "",
+            cached_tokens=int(cached),
         )
 
 
