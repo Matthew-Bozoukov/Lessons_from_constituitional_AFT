@@ -111,6 +111,41 @@ monoculture this type exists to avoid. The review pack's `--tally` prints all th
 the review pack, human-annotate, `--tally`; recalibrate reviewer rubrics from the
 per-reviewer human agreement; then the full run with an HF push and the
 mixture/train/eval loop against the difficult-advice baseline.
+## 2026-08-14 (night) — peer critique pivots to difficult-advice-shaped scenarios: the flaws must be constitution violations
+
+**Hypothesis:** the smoke below produced high-quality critiques of QUALITY failures
+("didn't flag the PTO forfeiture", "deferred the eulogy rewrite") — but this corpus
+exists to teach constitutional judgement of other models' replies, and a lapse the
+constitution doesn't speak to trains taste, not values.
+
+**Method:** the scenario front half switches from post_action_retrospection's
+ordinary-request genre to difficult_advice's dilemma recipe, adopted wholesale:
+sympathetic person, legitimate goal, genuinely tempting norm-violating shortcut, one
+principle under pressure — including the measured generation-time diversity gate
+(reject_cosine 0.86, over-weight steering), since that genre demonstrably concentrates
+without one. The arm-conditioned revision becomes difficult_advice's refine contract
+with one arm line each: flawed sharpens the temptation so the obliging answer commits
+or enables the violation; good keeps the principled path (decline + real help)
+genuinely reachable. `revise_first_turn`'s three criticisms and its `genuine` bar are
+re-anchored to the principle: a REAL shortfall now means committing, enabling or
+laundering the norm violation (or abandoning the person), and imperfect helpfulness
+explicitly does not count. The quality_filter rubric flips accordingly
+(`invents_violations`, `condemns_harmless`; "reads_as_dilemma" is no longer a defect
+but the genre).
+
+PC and post_action_retrospection now deliberately share MECHANISM but not scenario
+distribution: PAR still retrospects ordinary requests where the principle is quietly
+live; PC critiques dilemma exchanges where the flaw is a violation. Whether PAR should
+make the same pivot is an open design question, not decided here.
+
+**Result:** config-only change; 758 tests pass; estimate unchanged ($425.54, ~2,115
+docs). NOT YET SMOKED in this genre — the earlier smoke dirs and the 2,100 mirrored
+scenarios are the pre-pivot genre and are records, not resume assets.
+
+**Next steps:** fresh `--smoke` + `synth check`; watch flaw-identification (the lapse
+account is now an ethical claim) and the flawed-arm yield (weak models may resist a
+well-crafted temptation more than they miss a subtle disservice).
+
 ## 2026-08-14 (evening) — peer critique 40-doc smoke: two recipe defects found and fixed, one gate re-derived
 
 **Hypothesis:** the author-per-arm recipe (below) works end to end and produces

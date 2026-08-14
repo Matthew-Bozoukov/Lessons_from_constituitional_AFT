@@ -446,7 +446,8 @@ def test_pc_arms_are_assigned_in_revise_prompts_and_steer_the_situation() -> Non
     flawed = tagged_request(sc, _pc_record(), _Ctx())[0][1]["content"]
     assert good != flawed
     assert "CONSTITUTION TEXT" in good and "CONSTITUTION TEXT" in flawed
-    assert "never see this text" in flawed and "answer badly" in flawed
+    assert "instruct the assistant to answer badly" in flawed
+    assert "the replies have to be their own" in flawed
 
 
 PC_AUTHOR_STAGES = {"draft_first_turn_sonnet": ("good", None),
