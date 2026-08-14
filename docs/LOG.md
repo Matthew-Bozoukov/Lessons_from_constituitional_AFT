@@ -111,6 +111,36 @@ monoculture this type exists to avoid. The review pack's `--tally` prints all th
 the review pack, human-annotate, `--tally`; recalibrate reviewer rubrics from the
 per-reviewer human agreement; then the full run with an HF push and the
 mixture/train/eval loop against the difficult-advice baseline.
+## 2026-08-14 (night, v) — the fault-finding judge becomes a plain revision; Gemini drafts the human-side turns
+
+**Hypothesis:** the three-criticisms + adjudication + keep-gate mechanism earned its
+keep when labels needed verifying, but the smokes moved the ground under it: the good
+arm now ships the revision itself (so its label is true by construction), and 24/24
+weak drafts on steered prompts carried a real fault (so the flawed gate never bit).
+What remained load-bearing was only the revision and its account of what changed.
+
+**Method (both configs):** `revise_first_turn` simplified to one Sonnet call with the
+full context -- rewrite the draft so it lives up to the target principle, then state
+the single most important thing that materially changed (or that the reply held up).
+No issue_a/b/c, no `genuine` verdict, no keep gate: planned count = corpus, both
+resized to 2,100 (vs difficult advice v2's 2,000). `change_summary` keeps all three
+consumers (known_flaw unblinding, flaw-identification answer key, blindness gate).
+Residual risk stated in both configs: a flawed draft that happened to hold up now
+flows through with a held-up note instead of being dropped; quality_filter's
+invents_faults plus the gold and flaw-id checks are the ongoing measurement. PAR's
+`verdict_majority_max` re-derived 0.98 → 1.0 (same by-construction argument as PC's).
+The per-arm `keep:` engine feature stays, its tests moved to synthetic specs.
+
+**Also:** `draft_prompts` (both) and PAR's `draft_first_turn` move to
+`google/gemini-3.7-flash` ($0.375/$1.875 per M, Google-only hosting -- `google/`
+joined PROVIDER_PINS, the model joined PRICES): the person's voice and the evaluated
+draft should not share a house style with the Sonnet stages that judge and rewrite,
+and PAR's organic faults are no longer Claude-flavored. PAR's `first_turn_source`
+becomes the model id.
+
+**Result:** 758 tests pass. Estimates: PC $406.14, PAR $387.76 (budget 450), each for
+exactly 2,100 documents. Both recipes NOT YET SMOKED in this form.
+
 ## 2026-08-14 (night, iv) — de-prescribe the prompts: no named scenarios, framings, or failure menus in PAR or PC
 
 **Hypothesis:** difficult_advice's hardest-learned lesson generalizes — a prompt that
