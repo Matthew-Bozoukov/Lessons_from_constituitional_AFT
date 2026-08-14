@@ -21,6 +21,9 @@ PRICES: dict[str, dict[str, float]] = {
     "anthropic/claude-sonnet-4.5": {"in": 3.00, "out": 15.00},
     "anthropic/claude-opus-5": {"in": 5.00, "out": 25.00},
     "anthropic/claude-haiku-4.5": {"in": 1.00, "out": 5.00},
+    # peer_critique's weak first-turn authors; OpenRouter rates as of 2026-08-14.
+    "x-ai/grok-4.3": {"in": 1.25, "out": 2.50},
+    "qwen/qwen3-32b": {"in": 0.08, "out": 0.28},
 }
 
 

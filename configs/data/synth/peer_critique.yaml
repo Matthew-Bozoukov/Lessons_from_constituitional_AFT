@@ -1,47 +1,56 @@
 # ABOUTME: Other-arm model-eval-model corpus built end to end from natural turns: the prompts
 # ABOUTME: are brainstormed fresh (ordinary requests, no difficult-advice source run), the
-# ABOUTME: evaluated reply is generated best-of-3 with the lapse found by a rater, and the
-# ABOUTME: transcript framing is written per exchange. No cell machinery.
+# ABOUTME: evaluated reply is one unaided draft whose author varies by arm (Sonnet for good,
+# ABOUTME: a weak-model rotation for flawed), and the lapse is found by adjudication. No cells.
 # Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/peer_critique.yaml [--smoke]
 #
 # The other-attribution twin of post_action_retrospection.yaml, now all the way down:
 # the same brainstormed pool of ORDINARY requests (not difficult-advice dilemmas), the
-# same `assign:`-labelled arms, and every stage a generic operator -- so the only
-# difference between the two corpora is WHO wrote the evaluated reply. There the model
-# re-examines its own earlier turn; here a requester brings another assistant's reply
-# in a user-turn transcript and asks for a second opinion.
+# same `assign:`-labelled arms, the same one-draft-then-adjudicate evaluated reply, and
+# every stage a generic operator -- so the only differences between the two corpora are
+# WHO wrote the evaluated reply and who it is attributed to. There the model re-examines
+# its own earlier turn; here a requester brings another assistant's reply in a user-turn
+# transcript and asks for a second opinion.
 #
-# What makes an honest critique corpus, carried over from the 2026-08-13 recipe:
+# What makes an honest critique corpus:
 #
-#   1. THE EVALUATED REPLY IS GENERATED, NOT LIFTED. `draft_candidates` writes three
-#      fresh replies under a plain deployment prompt -- no constitution, no source run's
-#      prose to inherit.
-#   2. THE LAPSE IS FOUND, NOT PLANTED. `rate_candidates` picks the weakest of the three
-#      for the flawed arm and the strongest for the good arm; no (type, severity) is
-#      allocated a priori, because none is planted.
+#   1. THE EVALUATED REPLY'S QUALITY COMES FROM HOW IT IS MADE, NOT FROM INSTRUCTIONS.
+#      Flawed: one unaided draft from a three-way rotation of deliberately weaker models
+#      (a third each), no constitution in the prompt. Good: one unaided Sonnet draft plus
+#      the fault-finding revision's improved version -- generation then revision --
+#      because the 2026-08-14 smoke showed a lone unaided draft essentially never
+#      survives strict adjudication unimproved. Nothing tells any model to answer badly.
+#   2. THE LAPSE IS FOUND, NOT PLANTED. `revise_first_turn` -- post_action_retrospection's
+#      fault-finding pass -- names three criticisms, writes the better reply, and
+#      adjudicates which criticism was real. Its `keep:` gate drops flawed records whose
+#      fault the adjudication did not support, so the labels are ones the pipeline
+#      itself believes.
 #   3. THE FRAMING IS PER-EXCHANGE. `write_critique_framing` writes an opening line and
 #      a closing question specific to THIS exchange, and lints the analysis back out of
 #      them; the transcript between them is composed verbatim from record fields, so the
 #      record stays blind.
-#
-# New on 2026-08-14 (this file's rewrite; the celled recipe that loaded the
-# difficult-advice run survives in git history, and the celled configs it descended
-# from in configs/data/synth/archive/):
-#
 #   4. THE PROMPTS ARE BRAINSTORMED, NOT INHERITED. post_action_retrospection's
 #      scenario/draft/revise stages, arm-conditioned the same way: the good half's
 #      situation is made reachable, the flawed half's made quietly costly for the fast
-#      obliging answer. The situation is steered; the three candidate replies are
-#      always unaided.
+#      obliging answer.
 #   5. NO CELLS. Arms are `assign:` labels (`reply_quality`), prompts live in this file,
 #      the export is `chat_export`. No Python knows this document type exists.
 #
-# Unlike post_action_retrospection there is NO keep gate: best-of-3/worst-of-3 always
-# yields a pick, so planned count = corpus and the two arms cannot suffer attrition.
-# The generator-unblinding `known_flaw_note` carries the rater's account of the
-# shortfall for the flawed arm only; `check_blindness` gates that it never trains.
+# Because the gate can drop either arm (a flawed-arm draft that held up, a good-arm
+# draft that did not), `total_scenarios` is a PLAN and the corpus is the yield --
+# post_action_retrospection's economics. The generator-unblinding `known_flaw_note`
+# carries the adjudicator's account of the shortfall for the flawed arm only;
+# `check_blindness` gates that it never trains.
 #
-# NOT YET RUN. Verify with --smoke (8 docs, local only) and `uv run synth check` first.
+# KNOWN EXPOSURE: the two arms' first turns are written by different model families, so
+# a surface classifier may separate them on authorial style rather than on quality.
+# `surface_auc_max` below is the gate that measures exactly this -- if it binds on the
+# full run, the tell is model style, and the remedy is mixing authors across arms.
+#
+# NOT YET RUN with this recipe. Verify with --smoke (8 docs, local only) and
+# `uv run synth check` first. (The 2026-08-14 partial run dir and HF mirror hold 2,100
+# paid stage-2 scenarios from the best-of-3 revision of this config; the front half is
+# unchanged, so a full run may resume from them.)
 
 pipeline: peer_critique
 
@@ -57,34 +66,35 @@ hf_repo_smoke: null
 hf_private: false
 
 workers: 16
-# The 2026-08-13 celled arm priced $394 for 2,100 docs ($0.19/doc) on assumed priors;
-# this recipe replaces the free source-run load with three cheap prompt stages
-# (scenarios + draft + refine) and adds the judged corpus checks. Re-price with
-# `uv run synth estimate --config <this file>` and again with `--measured
-# <smoke manifest>` before committing: every prompt-stage prior below is inherited or
-# guessed. (It is `synth estimate`, a subcommand -- `synth run ... --estimate` is
-# refused, and before the CLI guard it silently started a real run.)
-budget_usd: 500.0
+# Re-price with `uv run synth estimate --config <this file>` and again with `--measured
+# <smoke manifest>` before committing: the priors below are inherited or guessed, and
+# the two gate yields move the total more than any of them. (It is `synth estimate`, a
+# subcommand -- `synth run ... --estimate` is refused, and before the CLI guard it
+# silently started a real run.)
+budget_usd: 550.0
 
 smoke:
   total_scenarios: 8
   scenarios_per_call: 4
   hf_repo: null
 
-# ONE SCENARIO, ONE DOCUMENT. No cells, so no per-arm count: the corpus size is this
-# number and the arms are the 50/50 `reply_quality` label `revise_prompts` stamps on.
-# 2,100 matches the celled recipe's 1,050 + 1,050; there is no keep gate, so what is
-# planned is what ships.
-total_scenarios: 2100
+# ONE SCENARIO, ONE DOCUMENT -- but the flawed half is what survives
+# `revise_first_turn`'s gate, not what is planned. 2,350 planned at the ~80% flawed
+# yield (the good half is ungated) lands near 940 flawed + 1,175 good ~ 2,115
+# documents, sized against difficult advice v2's 2,000. The yield is a prior until the
+# smoke run measures it; `check_gate_yield` prints the real one and this count should
+# be re-sized from it.
+total_scenarios: 2350
 scenarios_per_call: 8
 
 defaults:
   temperature: 1.0
   max_tokens: 4096
 
-# Hidden extended thinking is disabled on every Sonnet stage: the visible <reasoning>
-# block IS the deliberation, and Sonnet 5's hidden channel makes it drift in-character
-# and skip the tagged scaffold (measured 2026-08-06 on the celled base config).
+# Hidden extended thinking is disabled on every stage that supports it: the visible
+# <reasoning> block IS the deliberation, and Sonnet 5's hidden channel makes it drift
+# in-character and skip the tagged scaffold (measured 2026-08-06 on the celled base
+# config).
 models:
   # Stage 2 -- brainstorm the prompt pool. Temperature high: this stage's whole job is
   # spread, and every downstream diversity gate inherits whatever it fails to produce.
@@ -93,7 +103,7 @@ models:
     temperature: 1.15
     max_tokens: 8192
     assumed_tokens: {in: 700, out: 1600}
-  # Stage 4 -- turn a situation into the message someone would actually send, plus an
+  # Stage 5 -- turn a situation into the message someone would actually send, plus an
   # ordinary deployment system prompt.
   draft:
     model: "anthropic/claude-haiku-4.5"
@@ -101,7 +111,7 @@ models:
     max_tokens: 2048
     reasoning: {enabled: false}
     assumed_tokens: {in: 600, out: 700}
-  # Stage 5 -- sharpen that prompt against the full constitution, conditioned on which
+  # Stage 6 -- sharpen that prompt against the full constitution, conditioned on which
   # arm the record is in. Sonnet: this is the call that decides whether the exchange
   # tests the principle at all.
   refine:
@@ -110,35 +120,65 @@ models:
     max_tokens: 4096
     reasoning: {enabled: false}
     assumed_tokens: {in: 2400, out: 900}
-  # Stage 6 -- the three candidate replies. Plain deployment prompt, no constitution.
-  candidates:
+  # Stage 7 -- the good arm's evaluated reply. Sonnet, unaided: a strong model on a
+  # reachable prompt is expected to serve the person well WITHOUT being told how, which
+  # is what makes a surviving `sound` verdict honest.
+  first_turn_sonnet:
     model: "anthropic/claude-sonnet-5"
     temperature: 1.0
-    max_tokens: 8192
+    max_tokens: 4096
     reasoning: {enabled: false}
-    assumed_tokens: {in: 1200, out: 2400}
-  # Stage 7 -- pick the strongest (good arm) or weakest (flawed arm) of the three.
-  rate:
+    assumed_tokens: {in: 500, out: 900}
+  # Stages 8-10 -- the flawed arm's evaluated reply: one draft from a rotation of three
+  # deliberately weaker models, a third of the arm each, so the corpus does not learn a
+  # single weak model's tells. IDs verified against the live OpenRouter list 2026-08-14:
+  # grok-4.3 is the cheapest general-purpose Grok (no mini tier exists), gpt-5.6-luna is
+  # the smallest GPT-5.6 (luna < terra < sol by price), qwen3-32b matches the family and
+  # size of this repo's original baseline target.
+  first_turn_grok:
+    model: "x-ai/grok-4.3"
+    temperature: 1.0
+    max_tokens: 4096
+    reasoning: {enabled: false}
+    assumed_tokens: {in: 500, out: 900}
+  first_turn_qwen:
+    model: "qwen/qwen3-32b"
+    temperature: 1.0
+    max_tokens: 4096
+    reasoning: {enabled: false}
+    assumed_tokens: {in: 500, out: 900}
+  first_turn_gpt56:
+    model: "openai/gpt-5.6-luna"
+    temperature: 1.0
+    max_tokens: 4096
+    reasoning: {enabled: false}
+    assumed_tokens: {in: 500, out: 900}
+  # Stage 11 -- three criticisms, the revision that acts on them, and the adjudication
+  # of which was real. Temperature leans toward consistent adjudication (see
+  # post_action_retrospection's note). Carries the full constitution and produces a
+  # whole reply, so it is the priciest pre-gate stage -- still well under the two it
+  # gates.
+  revise_reply:
     model: "anthropic/claude-sonnet-5"
-    temperature: 0.3
-    max_tokens: 2048
+    temperature: 0.5
+    max_tokens: 4096
     reasoning: {enabled: false}
-    assumed_tokens: {in: 5000, out: 400}
-  # Stage 9 -- the per-exchange opening line and closing question.
+    assumed_tokens: {in: 3400, out: 1600}
+  # Stage 12 -- the per-exchange opening line and closing question.
   frame:
     model: "anthropic/claude-sonnet-5"
     temperature: 1.0
     max_tokens: 1024
     reasoning: {enabled: false}
     assumed_tokens: {in: 2000, out: 200}
-  # Stage 10 -- the critique, and the only turn that trains.
+  # Stage 13 -- the critique, and the only turn that trains.
   critique:
     model: "anthropic/claude-sonnet-5"
     temperature: 0.8
     max_tokens: 12288
     reasoning: {enabled: false}
     assumed_tokens: {in: 12100, out: 4000}
-  # Stage 11 -- the constitution-grounded rewrite of the trained turn, verdict pinned.
+  # Stage 14 -- the constitution-grounded rewrite of the trained turn, verdict pinned.
   rewrite:
     model: "anthropic/claude-sonnet-5"
     temperature: 0.7
@@ -171,11 +211,10 @@ models:
 
 # Consumed by `uv run synth check --config <this file> --run_dir <dir>`.
 checks:
-  # A pipeline of generic operators has no signature the checks could infer roles from
-  # (`llm_tagged` appears seven times here and means something different each time), so
-  # the roles are named -- post_action_retrospection's pattern. `drafted` and `generated`
-  # differ because this pipeline drafts the trained turn and then rewrites it: attrition
-  # is measured up to the draft, quality is judged on the rewrite.
+  # A pipeline of generic operators has no signature the checks could infer roles from,
+  # so the roles are named -- post_action_retrospection's pattern. `drafted` and
+  # `generated` differ because this pipeline drafts the trained turn and then rewrites
+  # it: attrition is measured up to the draft, quality is judged on the rewrite.
   stages:
     plan: revise_prompts
     drafted: draft_critique
@@ -258,15 +297,21 @@ checks:
     gold_below_3_max: 0.10
     template_8gram_share_max: 0.20
     verdict_majority_min: 0.60
-    # 0.98: with the lapse selected rather than planted, some genuine `sound` in the
-    # flawed arm is a healthy sign, not a failure.
-    verdict_majority_max: 0.98
+    # 1.0, deliberately not the 0.98 the found-lapse rationale would suggest: the
+    # flawed arm's verdict is MANDATED by known_flaw_note over adjudication-confirmed
+    # lapses (a document that stares at a documented shortfall and calls it sound would
+    # be label noise), so a ceiling below 1.0 could only ever measure disobedience --
+    # the 2026-08-14 smoke failed it at a by-construction 24/24. The floor still
+    # catches either arm drifting away from its expected verdict.
+    verdict_majority_max: 1.0
     flaw_id_clear_min: 0.70
-    # 0.70, post_action_retrospection's number and its rationale: the arms are now
-    # genuinely different situations plus the picked tails of three candidates, so SOME
-    # separability of the evaluated replies is the label itself. The gate still binds on
-    # the artifact it can catch -- flawed first turns that are systematically shorter or
-    # blander teach the model that tell instead of the reasoning.
+    # 0.70, post_action_retrospection's number -- the arms are genuinely different
+    # situations with genuinely different replies, so SOME separability is the label
+    # itself. Here the gate also binds on a second artifact: the two arms' first turns
+    # come from different model FAMILIES, so read a failure alongside
+    # mean_word_delta_flawed_minus_good and the per-author slices before blaming the
+    # recipe -- an authorial-style tell means mixing authors across arms, not loosening
+    # the gate.
     surface_auc_max: 0.70
     user_turn_unique_share_min: 0.95
     length_cv_min: 0.15
@@ -290,6 +335,17 @@ prompts:
         conviction you hold. Do not use its formal name and do not cite any document.
       embody: Do not name or state any principle at all. Let the values show only through
         which considerations you weigh and how you decide.
+  verbosity_styles: &verbosity_styles
+    by: verbosity
+    cases:
+      brief: Keep the whole turn compact -- reasoning that goes straight to what decides
+        the case, and a reply of a couple of short paragraphs. A reader should be done in
+        under a minute.
+      standard: Give the turn a natural middle length -- enough reasoning to genuinely
+        weigh both sides, and a reply of a few paragraphs.
+      expansive: Let the turn run long -- thorough deliberation that sits with the
+        counter-considerations, and a reply that unpacks the situation fully before
+        giving the answer the assistant itself would give.
   known_flaw_note: &known_flaw_note
     by: reply_quality
     render: true
@@ -297,17 +353,35 @@ prompts:
     cases:
       flawed: |-
 
-        The evaluated reply was independently judged the weakest of three drafts, for this reason:
+        Independently, someone rewrote the evaluated reply as it should have been, and the rewrite materially changed this:
 
         <known_lapse>
         {change_summary}
         </known_lapse>
 
         That note is generation scaffolding, not part of the conversation. The private reasoning must discover the problem genuinely -- starting from the person's situation and noticing what the reply got wrong, as if seeing it fresh. It must never mention that the problem was pointed out, never quote or reference the note, and must not skip straight to the lapse: the assessment still weighs what the reply got right first. The visible reply must name the problem plainly and give the answer the assistant itself would have given, with the lapse corrected. The assessment must be issue_found.
+  # The evaluated reply's generation prompt, shared by all four author stages: the
+  # prompt the assistant answers under is the one stage 6 revised, and nothing else.
+  # No constitution, no target principle, no mention of training data -- that is the
+  # entire point (see stage 7's comment).
+  first_turn_prompts: &first_turn_prompts
+    system: |-
+      {system}
+    user: |-
+      {user}
+
+      ---
+      Reply to this person as the assistant. Write only the reply.
+
+      Return exactly this form, with no other text:
+
+      <reply>
+      your reply
+      </reply>
 
 stages:
 
-# --- 1-4. the prompt pool: brainstormed here, post_action_retrospection's stages -----
+# --- 1-5. the prompt pool: brainstormed here, post_action_retrospection's stages -----
 - name: chunk_constitution
   kind: segment
 
@@ -366,7 +440,7 @@ stages:
   properties:
   - property: ngram_diversity
   # The cheapest place a duplicate can be caught: a repeated situation here is paid
-  # for seven times over by the stages below. Scenario text is short, which is the
+  # for many times over by the stages below. Scenario text is short, which is the
   # length this property was measured at.
   - property: embedding_dedup
     fields:
@@ -378,10 +452,10 @@ stages:
       sample: 0
 
 # The stage that acts on the check above -- difficult_advice's pattern, adopted here on
-# measured evidence: PAR-style brainstorming with no generation-time diversity gate put
-# 58 of 2,000 scenarios in dup clusters at cosine >= 0.86 (largest cluster 14) on the
-# 2026-08-14 partial run, and every duplicate that survives is paid for seven times over
-# by the stages below.
+# measured evidence: this same brainstorm prompt, with no generation-time diversity
+# gate, put 58 of 2,000 scenarios in dup clusters at cosine >= 0.86 (largest cluster
+# 14) on the 2026-08-14 partial run, and every duplicate that survives is paid for many
+# times over by the stages below.
 - name: dedupe_scenarios
   kind: corpus_filter
   from: corpus_scenarios
@@ -425,24 +499,24 @@ stages:
       Return ONLY JSON:
       {{"system": "<system prompt>", "user": "<the person's message>"}}
 
-# --- 5. the arms, and the prompt revision that acts on them -------------------------
+# --- 6. the arms, and the prompt revision that acts on them -------------------------
 # post_action_retrospection's stage, arm names and all: an arm is a LABEL, and every
-# stage that reacts to it does so through config it can read -- `variants_by` picks a
-# prompt, `prompt_vars` picks a fragment, `metadata` records it. The label rides into
-# the finished dataset as `reply_quality`, so anyone can slice the corpus by it.
+# stage that reacts to it does so through config it can read -- `when` scopes a stage,
+# `variants_by` picks a prompt, `prompt_vars` picks a fragment, `metadata` records it.
+# The label rides into the finished dataset as `reply_quality`, so anyone can slice the
+# corpus by it.
 #
 # The revision is conditioned on the arm: for the good half it makes the situation one
-# where an attentive assistant genuinely can serve the person (so the strongest of three
-# candidates deserves `sound`); for the flawed half it makes the fast, obliging answer
-# the one that quietly costs them something (so the weakest of three has a real lapse to
-# find). Left to chance, three plain candidates to an ordinary request can all be decent
-# -- the steering is what gives the picked tails their contrast.
+# where an attentive assistant genuinely can serve the person; for the flawed half it
+# makes the fast, obliging answer the one that quietly costs them something. What it
+# must NOT do is put a fault anywhere: the drafting models never see this instruction,
+# only the revised message, and their replies are their own. `revise_first_turn` still
+# has to confirm the outcome either way.
 #
-# What it must NOT do is put a fault anywhere. The candidates stage never sees this
-# instruction, only the revised message, and all three replies are unaided. The
-# situation is steered; the replies are not. Unlike post_action_retrospection there is
-# no keep gate downstream: the rater always has a strongest and a weakest to pick, so
-# planned count = corpus.
+# `weak_author` splits the flawed arm across the three weak drafting models, a third
+# each. It is stamped on every record (an assign field is an independent hash), but only
+# the flawed draft stages read it; the export records the realised author in
+# `first_turn_source` instead.
 - name: revise_prompts
   kind: llm_tagged
   model: refine
@@ -450,15 +524,30 @@ stages:
   assign:
     by: scenario_id
     fields:
-      # Half the corpus critiques a reply that holds up, half one that falls short.
+      # Half the corpus should end up critiquing a reply that holds up, half one that
+      # falls short. This declares the intent; the revision below steers toward it and
+      # the gate drops whatever missed.
       reply_quality:
         good: 0.5
         flawed: 0.5
+      weak_author:
+        grok: 0.334
+        qwen: 0.333
+        gpt56: 0.333
       # How openly the critique may name a value.
       explicitness:
         name_clause: 0.3
         paraphrase: 0.4
         embody: 0.3
+      # How long the trained turn runs. Added 2026-08-14 after the smoke measured
+      # length_cv 0.111 against the 0.15 gate with prose-only variety instructions:
+      # every critique settled at ~1,040 words. Same mechanism as explicitness --
+      # an assigned label picking a prompt fragment -- because that one measurably
+      # produces the spread that asking alone does not.
+      verbosity:
+        brief: 0.25
+        standard: 0.5
+        expansive: 0.25
     constants:
       # The single assistant turn is the training target. Read off the exported
       # metadata by build_mixture and consumed by masking.py.
@@ -599,167 +688,225 @@ stages:
       answer -- you change only the situation it is answering.
     user: (overridden per reply_quality by variants_by)
 
-# --- 6-8. the evaluated reply: generated best-of-3, the lapse found by a rater -------
-- name: draft_candidates
+# --- 7-10. the evaluated reply: one unaided draft, its author set by the arm ---------
+# Four stages, one prompt (the `first_turn_prompts` anchor -- no constitution, no
+# principle, no style guidance), one call per record. The good arm's draft is Sonnet's;
+# the flawed arm's is written by one of three weaker models, a third each, so the
+# critique corpus does not learn a single weak model's tells. A stage's `when:` list is
+# a conjunction: each weak stage covers the flawed records whose `weak_author` names it,
+# and everything else passes through untouched and unpaid.
+- name: draft_first_turn_sonnet
   kind: llm_tagged
-  model: candidates
+  model: first_turn_sonnet
   checkpoint: scenario_id
-  tags: [candidate_a, candidate_b, candidate_c]
-  save: {candidate_a: candidate_a, candidate_b: candidate_b, candidate_c: candidate_c}
+  when: {field: reply_quality, in: [good]}
+  tags: [reply]
+  save: {first_turn: reply}
+  # "(revised)" because every good record's evaluated reply is this draft as improved
+  # by revise_first_turn below -- the draft itself never ships.
+  also: {first_turn_source: anthropic/claude-sonnet-5 (revised)}
+  prompts: *first_turn_prompts
+
+- name: draft_first_turn_grok
+  kind: llm_tagged
+  model: first_turn_grok
+  checkpoint: scenario_id
+  when:
+  - {field: reply_quality, in: [flawed]}
+  - {field: weak_author, in: [grok]}
+  tags: [reply]
+  save: {first_turn: reply}
+  also: {first_turn_source: x-ai/grok-4.3}
+  prompts: *first_turn_prompts
+
+- name: draft_first_turn_qwen
+  kind: llm_tagged
+  model: first_turn_qwen
+  checkpoint: scenario_id
+  when:
+  - {field: reply_quality, in: [flawed]}
+  - {field: weak_author, in: [qwen]}
+  tags: [reply]
+  save: {first_turn: reply}
+  also: {first_turn_source: qwen/qwen3-32b}
+  prompts: *first_turn_prompts
+
+- name: draft_first_turn_gpt56
+  kind: llm_tagged
+  model: first_turn_gpt56
+  checkpoint: scenario_id
+  when:
+  - {field: reply_quality, in: [flawed]}
+  - {field: weak_author, in: [gpt56]}
+  tags: [reply]
+  save: {first_turn: reply}
+  also: {first_turn_source: openai/gpt-5.6-luna}
+  prompts: *first_turn_prompts
+
+# --- 11. the fault-finding pass, delivered as a revision -----------------------------
+# post_action_retrospection's stage in mechanism: three faults are forced (one criticism
+# invites politeness; three exhausts it), the model must WRITE the better reply before
+# it is asked which criticism was real, and the adjudication is what stops the padding a
+# fixed quota guarantees from becoming faults the corpus critiques.
+#
+# One stage, two products. For the FLAWED arm it is the gate: the weak draft stays the
+# evaluated reply, and only records whose fault survived adjudication continue --
+# BEFORE the expensive framing/critique/rewrite stages, so a dropped record costs its
+# one draft call and this one. For the GOOD arm it is the second half of "one Sonnet
+# generation and one Sonnet revision": `improved_reply` BECOMES the evaluated reply, so
+# a surviving `sound` verdict is about a reply that had its real shortfalls fixed. For
+# flawed records `improved_reply` never trains and nothing downstream reads it -- kept
+# because producing it makes the adjudication earned, and because it is the field to
+# read when the gate's drop rate looks wrong.
+- name: revise_first_turn
+  kind: llm_tagged
+  model: revise_reply
+  checkpoint: scenario_id
+  tags: [issue_a, issue_b, issue_c, improved_reply, genuine, change_summary]
+  normalize: [genuine]
+  # Three contracts, because the tags are of three kinds: paragraphs of criticism, a
+  # full reply, and one word. A `min_chars` meant for any of them would reject the
+  # others.
+  lint:
+  - fields: [issue_a, issue_b, issue_c]
+    min_chars: 40
+    retries: 2
+  - fields: [improved_reply]
+    min_chars: 150
+    retries: 2
+  - fields: [genuine]
+    allowed: [a, b, c, none]
+    retries: 2
+  # The arms consume this stage's output OPPOSITELY, and the 2026-08-14 smoke is why.
+  # FLAWED keeps the weak draft as the evaluated reply and keeps the record only when a
+  # fault survived adjudication; `change_summary` (the adjudicator's account) is what
+  # check_flaw_identification judges the critique against, what check_blindness proves
+  # never trains, and what fills `{known_flaw}`. GOOD replaces the evaluated reply with
+  # the IMPROVED one this stage wrote -- "one Sonnet generation and one Sonnet revision"
+  # -- and is not gated: the smoke adjudicated 16/16 unaided Sonnet drafts as having a
+  # genuine shortfall (all substantive on inspection), so "an unaided draft that needs
+  # no material change" is a ~0%-yield event, not a 55% one. A good record whose
+  # adjudication found nothing keeps an improved_reply that is essentially the draft.
+  keep:
+    by: reply_quality
+    cases:
+      # Steered so the obliging answer costs something, and drafted by a weak model:
+      # a fault should survive. Good has no case and passes through ungated.
+      flawed: {field: genuine, in: [a, b, c]}
+  # The estimator's prior for what survives; the smoke run's printed drop percentages,
+  # and `check_gate_yield`, replace it. (Measured 2026-08-14 at n=24: 100% of weak
+  # drafts kept a genuine fault.)
+  expected_keep:
+    flawed: 0.80
+  # Flawed above 50% dropped means the steering or the weak authors are not landing.
+  max_drop_pct:
+    flawed: 50
+  variants_by:
+    field: reply_quality
+    cases:
+      good:
+        # `first_turn <- improved_reply`: the revision IS the good arm's evaluated
+        # reply. `reviser_note`, not `change_summary` -- a good record must never
+        # unblind the critique.
+        save: {issue_a: issue_a, issue_b: issue_b, issue_c: issue_c,
+               improved_reply: improved_reply, first_turn: improved_reply,
+               genuine: genuine, reviser_note: change_summary}
+      flawed:
+        save: {issue_a: issue_a, issue_b: issue_b, issue_c: issue_c,
+               improved_reply: improved_reply, genuine: genuine,
+               change_summary: change_summary}
+  save: {issue_a: issue_a, issue_b: issue_b, issue_c: issue_c,
+         improved_reply: improved_reply, genuine: genuine,
+         change_summary: change_summary}
   prompts:
     system: |-
-      You write realistic assistant replies for training data. You are NOT writing model
-      answers: you are writing three genuinely different replies a competent, busy
-      assistant might send to the same message -- the kind of variation you would see
-      across three real conversations.
+      You revise assistant replies for a training-data team. You work in three passes: you
+      say what is wrong, you write the version that fixes it, and then you report honestly
+      on which of your criticisms was actually worth making.
 
-      The assistant is operating under these deployment instructions:
-
-      <deployment_instructions>
-      {system}
-      </deployment_instructions>
+      The last pass is the one people get wrong. Asked for a fixed number of criticisms
+      you will produce that number, so some of what you write will be padding --
+      preferences dressed as faults, objections that would apply to any reply. Having then
+      rewritten the thing, it is tempting to present all of it as necessary. Your default
+      is that a criticism does not hold up, and finding none that does is a normal outcome
+      you report without embarrassment.
     user: |-
-      Someone wrote this to the assistant:
+      A person wrote this to an AI assistant:
 
       <user_message>
       {user}
       </user_message>
 
-      Write THREE different replies to it. Hold to all of this:
-      - Each reply is a complete, plausible answer someone could actually send. None is a
-        caricature, none announces a flaw, none is deliberately bad.
-      - They differ in real ways -- what they lead with, how much they question the
-        framing, how much practical help they give, how long they are -- not in wording
-        alone.
-      - Do not all converge on the same structure. If one opens by answering directly,
-        another should not.
-      - Answer the person. Do not cite policies, do not lecture, do not mention that you
-        are generating training data.
-      - Vary the length: somewhere between a short paragraph and several paragraphs.
+      The assistant replied:
+
+      <assistant_reply>
+      {first_turn}
+      </assistant_reply>
+
+      The assistant is trained against this constitution:
+
+      <constitution>
+      {constitution}
+      </constitution>
+
+      An exchange like this puts weight on one principle in particular:
+
+      <target_principle name="{trait_name}">
+      {trait_text}
+      </target_principle>
+
+      **First: name THREE separate things wrong with that reply.** Not three phrasings of
+      one complaint -- three distinct ways it serves this person less well than it could.
+
+      Look in different places for each: what it did not say and should have; what it said
+      with more confidence than it had earned; where it took the person's framing at face
+      value instead of questioning it; where it was obliging at the expense of being
+      useful; what a person in this situation would notice was missing a day later.
+
+      Judge the reply by what it does for this person, not by its wording. Do not soften
+      anything, and do not open by saying what the reply got right.
+
+      **Second: write the reply this person should have received**, fixing whichever of
+      those three genuinely needed fixing. Same register and roughly the same length as
+      the original; you are not writing an essay because the original was short. If a
+      criticism turns out to have nothing behind it once you try to act on it, leave that
+      part of the reply alone.
+
+      **Third: say which of the three, if any, was a REAL shortfall** -- something that
+      genuinely leaves this person worse served, that a thoughtful person reading the
+      original would agree about.
+
+      A criticism does not hold up if it is a matter of taste, if it asks for something
+      this person did not need, if it would apply equally to almost any reply, or if
+      writing the fix showed there was nothing to fix. Having written it yourself is not
+      evidence for it. If more than one holds up, pick the one that costs this person
+      most. If none holds up, say so -- most replies to ordinary requests are basically
+      fine, and a corpus that pretends otherwise teaches an assistant to invent faults.
 
       Return exactly this form, with no other text:
 
-      <candidate_a>
-      the first reply
-      </candidate_a>
-      <candidate_b>
-      the second reply
-      </candidate_b>
-      <candidate_c>
-      the third reply
-      </candidate_c>
+      <issue_a>
+      the first problem, one or two sentences, concrete about what it costs this person
+      </issue_a>
+      <issue_b>
+      the second problem, in a different place from the first
+      </issue_b>
+      <issue_c>
+      the third problem, in a different place again
+      </issue_c>
+      <improved_reply>
+      the reply the person should have received
+      </improved_reply>
+      <genuine>
+      a, b, c, or none
+      </genuine>
+      <change_summary>
+      If you picked one: one or two sentences naming that shortfall in your own words and
+      why it matters for this person -- what they would have done differently. If you
+      picked none: one or two sentences on why the original holds up.
+      </change_summary>
 
-- name: rate_candidates
-  kind: llm_tagged
-  model: rate
-  checkpoint: scenario_id
-  tags: [pick, change_summary]
-  save: {pick_letter: pick, change_summary: change_summary}
-  lint:
-    fields: [change_summary]
-    min_chars: 40
-    retries: 2
-  variants_by:
-    field: reply_quality
-    cases:
-      good:
-        # `pick_note`, not `change_summary`. Only a record with a real shortfall may
-        # carry `change_summary`: that field is what the critique is judged against by
-        # check_flaw_identification, what check_blindness proves never trains, and what
-        # fills `{known_flaw}` in the critique prompt. A record whose reply held up must
-        # trigger none of those.
-        save: {pick_letter: pick, pick_note: change_summary}
-        user: |-
-          A person wrote this to an AI assistant:
-
-          <user_message>
-          {user}
-          </user_message>
-
-          The exchange puts weight on this principle in particular:
-
-          <principle name="{trait_name}">
-          {trait_text}
-          </principle>
-
-          Three candidate replies:
-
-          <candidate_a>
-          {candidate_a}
-          </candidate_a>
-          <candidate_b>
-          {candidate_b}
-          </candidate_b>
-          <candidate_c>
-          {candidate_c}
-          </candidate_c>
-
-          Which candidate BEST serves this person while holding to the principle --
-          attending to what actually matters in their situation, questioning what needed
-          questioning, and giving real, concrete help?
-
-          Return exactly this form, with no other text:
-
-          <pick>
-          a, b or c
-          </pick>
-          <change_summary>
-          one or two sentences on what makes this reply the strongest of the three
-          </change_summary>
-      flawed:
-        user: |-
-          A person wrote this to an AI assistant:
-
-          <user_message>
-          {user}
-          </user_message>
-
-          The exchange puts weight on this principle in particular:
-
-          <principle name="{trait_name}">
-          {trait_text}
-          </principle>
-
-          Three candidate replies:
-
-          <candidate_a>
-          {candidate_a}
-          </candidate_a>
-          <candidate_b>
-          {candidate_b}
-          </candidate_b>
-          <candidate_c>
-          {candidate_c}
-          </candidate_c>
-
-          Which candidate most FALLS SHORT of the principle -- takes the person's framing
-          at face value when it should not, omits something the situation needed,
-          reassures where honesty was called for, or is confident where it should hedge?
-          Judge what the reply does to this person, not how it is worded.
-
-          Return exactly this form, with no other text:
-
-          <pick>
-          a, b or c
-          </pick>
-          <change_summary>
-          one or two sentences naming precisely where that reply falls short and why it
-          matters for this person
-          </change_summary>
-  prompts:
-    system: |-
-      You rate candidate assistant replies against one principle, strictly and without
-      generosity. You name one winner and say why in a sentence or two. No preamble.
-    user: (overridden per reply_quality by variants_by)
-
-- name: select_first_turn
-  kind: pick_field
-  by: pick_letter
-  from: {a: candidate_a, b: candidate_b, c: candidate_c}
-  to: first_turn
-  also: {first_turn_source: generated_best_of_3}
-
-# --- 9. per-exchange framing for the transcript the requester brings -----------------
+# --- 12. per-exchange framing for the transcript the requester brings ----------------
 # Only the opening line and the closing question are generated; the transcript between
 # them is composed verbatim from record fields in the prompts below, so nothing about
 # the flaw can leak through this stage.
@@ -816,7 +963,7 @@ stages:
       the question after it
       </closing>
 
-# --- 10. the critique. The only turn that trains. ------------------------------------
+# --- 13. the critique. The only turn that trains. ------------------------------------
 # The user turn IS the framed transcript the export ships (plus the format scaffold the
 # export omits). KEEP THE FRAME IN SYNC across its three copies: this stage's user
 # prompt, revise_critique's <conversation> block, and export_sft's user message -- the
@@ -846,6 +993,7 @@ stages:
     retries: 2
   prompt_vars:
     style_line: *explicitness_styles
+    length_line: *verbosity_styles
     known_flaw: *known_flaw_note
   prompts:
     system: |-
@@ -866,6 +1014,10 @@ stages:
       How the private reasoning must work:
       - Start from the person's situation -- what they asked for, what they assumed, what
         is actually at stake -- and work toward what matters. Never open from a rule.
+      - Open on something only THIS exchange contains: the detail that decides it, the
+        person who gets hurt, the exact thing that would go wrong. Never begin with a
+        stock phrase -- never "Let me", never "Okay, so". Write as though thinking, not
+        as though filling in a form.
       - Entertain at least one genuine consideration on the other side before settling.
         Reasoning that only argues one way is unacceptable.
       - Earn the verdict at the end; do not state a judgement first and justify it
@@ -875,7 +1027,9 @@ stages:
         be recognised as sound -- do not manufacture objections to seem thorough. A real flaw
         deserves to be named plainly.
 
-      The visible reply is warm, practical and specific: an honest assessment for the requester, then the answer the assistant itself would give the original person. No lecture, no policy language.
+      The visible reply is warm, practical and specific: an honest assessment for the requester, then the answer the assistant itself would give the original person. No lecture, no policy language. Do not open the reply with a stock move ("Here's my honest read", "Good instinct...") -- start where this assessment actually starts.
+
+      Length for this document: {length_line}
     user: |-
       {ask_opening}
 
@@ -903,9 +1057,9 @@ stages:
       (it had a substantive problem)
       </assessment>
 
-# --- 11. the constitution rewrite of the trained turn --------------------------------
+# --- 14. the constitution rewrite of the trained turn --------------------------------
 # The difficult-advice `revise_responses` twin, verdict pinned. `--ablate
-# revise_critique` runs the null-op and trains on the stage-10 drafts.
+# revise_critique` runs the null-op and trains on the stage-13 drafts.
 #
 # This stage is where the constitution enters the trained turn, which makes it also the
 # likeliest place for the scaffold to leave fingerprints on it. The `lint` is the
@@ -990,6 +1144,10 @@ stages:
         matters most.
       - **Keep the verdict.** The assessment stays exactly "{assessment}"; strengthen how it
         is reached and expressed, never whether.
+      - **Audit the opening.** If the draft's first sentence could open a deliberation
+        about a different exchange -- "Let me...", "Okay, so...", restating the request
+        back -- replace it with something only THIS exchange contains: the detail that
+        decides it, the person affected and how.
       - {style_line}
       - **Stay concrete.** Judge the evaluated reply on whether it served the person, in
         terms of real stakes for real people -- no rule-citing, no policy language.
@@ -1155,7 +1313,7 @@ stages:
         Return a JSON array with one element per transcript, in order:
         [{{"id": "<the id in brackets>", "verdict": "STRICT|BROAD|NO"}}]
 
-# --- 12. export: transcript in the user turn, evaluation as the reply ----------------
+# --- 16. export: transcript in the user turn, evaluation as the reply ----------------
 - name: export_sft
   kind: chat_export
   messages:
@@ -1188,6 +1346,7 @@ stages:
   - shortcut
   - reply_quality
   - explicitness
+  - verbosity
   - assessment
   - supervise
   - first_turn_source

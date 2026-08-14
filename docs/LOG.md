@@ -3,6 +3,44 @@
 
 # LOG
 
+## 2026-08-14 (evening) — peer critique 40-doc smoke: two recipe defects found and fixed, one gate re-derived
+
+**Hypothesis:** the author-per-arm recipe (below) works end to end and produces
+critiques worth training on. Smoke at 40 planned scenarios (~$14 across two passes, run
+dir `output/peer_critique/smoke_20260814_151210`), then `synth check`, then a 10-good +
+10-flawed read-through.
+
+**Result — two defects the first pass caught:**
+
+- **The good arm yielded 0/16.** The adjudicator found a genuine shortfall in every
+  unaided Sonnet draft — and inspection agreed with it every time (a missed
+  impersonation dimension, a diagnosed-then-half-fixed dishonest framing, a eulogy
+  rewrite deferred to nothing). "An unaided draft needing no material change" is a ~0%
+  event under a strict judge, not the 55% prior. Fix: take "one Sonnet generation and
+  one Sonnet revision" literally — `revise_first_turn`'s `improved_reply` BECOMES the
+  good arm's evaluated reply, ungated; the gate now applies to the flawed arm only
+  (measured yield there: 24/24 kept). Corpus re-sized 3,100 → 2,350 planned (~2,115).
+- **`draft_critique` failed 24/24 on the `^let me` lint**: the ban shipped without the
+  opener *steering* difficult_advice pairs it with, and retries cannot fix a systematic
+  prior. Fix: the audit-the-opening instruction added to both critique prompts. After
+  the fix: 40/40 passed, 40/40 distinct first-8-word openers.
+
+**Checks on the fixed run:** flaw-identification 0.917 (gate 0.70) — critiques find the
+adjudicator's specific lapse, not generic criticism; gold 0/16 good replies below 3;
+post-hoc share 0.033; blindness clean (no `change_summary`/`improved_reply` leak into
+any message). Two gates re-derived from the data: `verdict_majority_max` 0.98 → 1.0
+(the flawed verdict is scaffold-mandated over confirmed lapses, so the ceiling could
+only measure disobedience — it failed at a by-construction 24/24); and `length_cv`
+0.111 vs the 0.15 floor survived prose-only variety instructions, so length became an
+assigned arm (`verbosity: brief/standard/expansive`, explicitness's mechanism) —
+applied, NOT yet re-measured. A response-opener tic ("Here's my honest read", 3/24)
+was prompt-banned and dropped to top-5gram share 0.042.
+
+**Next steps:** the verbosity fix re-measures on the next run; then the full corpus
+($425.54 estimated for ~2,115 docs, budget 550). post_action_retrospection shares the
+0.55 good-arm prior, the verdict-ceiling contradiction and the length exposure —
+re-derive those there before its full run.
+
 ## 2026-08-14 — difficult-advice v2 corpus generated: 1,952 records, diversity verified in-run
 
 **Hypothesis:** the v2 recipe (PR #46: enforced scenario diversity, dedupe gate, voice
@@ -64,6 +102,39 @@ vendored agentic-misalignment harness use their own clients and are not pinned.
 **Next steps:** finish the v2 run under the pin; top up the 20 refused records; consider
 patching the vendored harness's judge calls the same way.
 
+## 2026-08-14 (later) — peer critique's evaluated reply: author-per-arm replaces best-of-3
+
+**Hypothesis:** the best-of-3/worst-of-3 selection (below) bought its arm contrast with
+three Sonnet calls per record and a rater, yet the "weakest of three Sonnet replies" is
+still a Sonnet reply — the flawed arm's lapses were bounded by how badly a strong model
+varies. Letting the AUTHOR carry the arm is simpler and gives the flawed arm genuinely
+organic faults.
+
+**Method:** `draft_candidates`/`rate_candidates` deleted. One unaided draft per record,
+model set by the arm: Sonnet for good; for flawed, a rotation of three weaker models a
+third each (`x-ai/grok-4.3`, `qwen/qwen3-32b`, `openai/gpt-5.6-luna` — IDs and prices
+verified against the live OpenRouter list; grok has no mini tier, luna is the smallest
+GPT-5.6). The lapse is then found the way post_action_retrospection finds it: its
+`revise_first_turn` stage adopted whole — three forced criticisms, the rewrite that
+makes the adjudication earned, and the per-arm `keep:` gate (flawed keeps a surviving
+fault, good keeps none), so PC now has PAR's over-plan-and-gate economics
+(3,100 planned → ~2,092 expected at the 0.80/0.55 priors). Engine: `when:` accepts a
+list of conditions (conjunction) so each weak stage covers exactly flawed × its author,
+and the estimator prices that slice from the assign-share cross product; the two weak
+models joined the PRICES table so the budget guard sees their spend. The short-lived
+`pick:` block on `llm_tagged` was removed with its only user.
+
+**Result:** both arms now pass the same adjudication gate, so every label is one the
+pipeline believes; the evaluated reply's author rides in `first_turn_source` as a
+sliceable variable. Estimate $457.72 for ~2,092 docs ($0.219/doc), inside the $550
+guard; 754 tests pass. Known exposure, stated in the config: the arms' first turns come
+from different model families, so `surface_auc_max` now also polices an authorial-style
+tell — read a failure alongside the per-author slices before blaming the recipe.
+
+**Next steps:** unchanged from below — smoke, `synth check`, re-price `--measured`,
+then the full run (front half unchanged, so it may resume from the 20260814_130156
+scenarios).
+
 ## 2026-08-14 — peer critique rebuilt as post_action_retrospection's attribution twin (no corpus yet)
 
 **Hypothesis:** peer critique was the last live config on the archived cell machinery and
@@ -123,7 +194,8 @@ calls, ~75 `draft_prompts` calls) before being killed. Two changes came out of i
   gate, and every surviving duplicate is paid for seven times over downstream. The
   filter is difficult_advice's exact pattern (`drop_when: embedding_dup`,
   `max_drop_share: 0.05`, dedup verdict over the full corpus). post_action_retrospection
-  has the same exposure and no filter — worth the same fix, not done here.
+  shares the brainstorm prompt and therefore the exposure, so the same filter was added
+  there too (same day, before either full run).
 
 Nothing was wasted: the run dir (`output/peer_critique/20260814_130156`) and the HF
 mirror hold the complete stage-2 scenarios, so the full run can resume from them.
@@ -154,7 +226,6 @@ flaw-identification hit 3/3, post-hoc share 0.125. Two findings:
 <smoke manifest>`; then the full corpus (resumable from the 20260814_130156 scenarios)
 alongside the post_action_retrospection run so the self/other comparison shares a date
 and a judge.
->>>>>>> a52a51d (Rebuild peer critique as post_action_retrospection's de-celled twin)
 
 ## 2026-08-13 — mem-self de-celled: the document type is now the config (no corpus yet)
 

@@ -139,16 +139,18 @@ def test_pr_stage_sequence() -> None:
     # reply and the trained reflection into the same assistant role, and only the
     # pre-export record can point the checks at the trained turn alone.
     assert [s["name"] for s in PR_CFG["stages"]] == [
-        "chunk_constitution", "write_scenarios", "corpus_scenarios", "draft_prompts",
-        "revise_prompts", "draft_first_turn", "revise_first_turn", "write_followup",
-        "draft_reflection", "revise_reflection", "corpus", "export_sft"]
+        "chunk_constitution", "write_scenarios", "corpus_scenarios",
+        "dedupe_scenarios", "draft_prompts", "revise_prompts", "draft_first_turn",
+        "revise_first_turn", "write_followup", "draft_reflection",
+        "revise_reflection", "corpus", "export_sft"]
 
 
 def test_pc_stage_sequence() -> None:
     assert [s["name"] for s in PC_CFG["stages"]] == [
         "chunk_constitution", "write_scenarios", "corpus_scenarios",
-        "dedupe_scenarios", "draft_prompts", "revise_prompts", "draft_candidates",
-        "rate_candidates", "select_first_turn", "write_critique_framing",
+        "dedupe_scenarios", "draft_prompts", "revise_prompts",
+        "draft_first_turn_sonnet", "draft_first_turn_grok", "draft_first_turn_qwen",
+        "draft_first_turn_gpt56", "revise_first_turn", "write_critique_framing",
         "draft_critique", "revise_critique", "corpus", "export_sft"]
 
 
@@ -312,6 +314,13 @@ def test_when_filter_scopes_a_stage() -> None:
     assert selected(sc, {"reply_quality": "good"})
     assert not selected(sc, {"reply_quality": "flawed"})
     assert selected({}, {"reply_quality": "anything"})
+    # A list of conditions is their conjunction -- what a stage covering one slice of
+    # one arm needs (PC's per-author flawed drafting stages).
+    both = {"when": [{"field": "reply_quality", "in": ["flawed"]},
+                     {"field": "weak_author", "in": ["grok"]}]}
+    assert selected(both, {"reply_quality": "flawed", "weak_author": "grok"})
+    assert not selected(both, {"reply_quality": "flawed", "weak_author": "qwen"})
+    assert not selected(both, {"reply_quality": "good", "weak_author": "grok"})
 
 
 # --- the reflection: a real conversation, not a described one -----------------------
@@ -404,15 +413,19 @@ def _pc_record(**over) -> dict:
             "shortcut": "Polish the wording without reading closely.",
             "system": "You are a helpful assistant.",
             "user": "Can you tidy up this reference I drafted?",
-            "candidate_a": "Reply A.", "candidate_b": "Reply B.",
-            "candidate_c": "Reply C.",
-            "pick_letter": "b", "first_turn": "Reply B.",
-            "first_turn_source": "generated_best_of_3",
+            "first_turn": "Here is a tidier version of your reference.",
+            "first_turn_source": "x-ai/grok-4.3",
+            "reply_quality": "flawed", "weak_author": "grok",
+            "explicitness": "paraphrase", "verbosity": "standard",
+            "supervise": "all",
+            "issue_a": "It polished the wording without reading what it says.",
+            "issue_b": "It never flagged the gap in the dates.",
+            "issue_c": "It answered a narrower question than the one asked.",
+            "improved_reply": "The reply the person should have received.",
+            "genuine": "b",
+            "change_summary": "it polished the wording without flagging the gap",
             "ask_opening": "My colleague showed me what the assistant told her.",
             "ask_closing": "What would you have said in its place?",
-            "reply_quality": "flawed", "explicitness": "paraphrase",
-            "supervise": "all",
-            "change_summary": "it polished the wording without flagging the gap",
             "draft_reasoning": "I re-read what she actually needs here.",
             "draft_response": "An honest assessment, then my own answer.",
             "reasoning": "Rewritten deliberation.", "response": "Rewritten reply.",
@@ -421,10 +434,11 @@ def _pc_record(**over) -> dict:
 
 def test_pc_arms_are_assigned_in_revise_prompts_and_steer_the_situation() -> None:
     """Same shape as PR: labels born in the stage that first branches on them, and the
-    flawed arm shapes the REQUEST, never the replies -- three unaided candidates is
-    what keeps the lapse found rather than planted."""
+    flawed arm shapes the REQUEST, never the reply -- the drafting models are unaided,
+    which is what keeps the lapse found rather than planted."""
     sc = _stage(PC_CFG, "revise_prompts")
-    assert set(sc["assign"]["fields"]) == {"reply_quality", "explicitness"}
+    assert set(sc["assign"]["fields"]) == {"reply_quality", "weak_author",
+                                           "explicitness", "verbosity"}
     assert sc["assign"]["constants"] == {"supervise": "all"}
     assert sc["variants_by"]["field"] == "reply_quality"
     assert PC_CFG["checks"]["stages"]["plan"] == "revise_prompts"
@@ -435,35 +449,76 @@ def test_pc_arms_are_assigned_in_revise_prompts_and_steer_the_situation() -> Non
     assert "never see this text" in flawed and "answer badly" in flawed
 
 
-def test_pc_candidates_are_drafted_without_the_constitution() -> None:
-    """The evaluated reply's quality must come from the situation and the pick, not from
-    an aligned (or misaligned) generation prompt."""
-    sc = _stage(PC_CFG, "draft_candidates")
-    messages = tagged_request(sc, _pc_record(), _Ctx())[0]
-    blob = "".join(m["content"] for m in messages)
-    for leak in ("CONSTITUTION TEXT", "STYLE GUIDANCE", "principle", "Trait one"):
-        assert leak not in blob, leak
-    assert sc["tags"] == ["candidate_a", "candidate_b", "candidate_c"]
+PC_AUTHOR_STAGES = {"draft_first_turn_sonnet": ("good", None),
+                    "draft_first_turn_grok": ("flawed", "grok"),
+                    "draft_first_turn_qwen": ("flawed", "qwen"),
+                    "draft_first_turn_gpt56": ("flawed", "gpt56")}
 
 
-def test_pc_rater_picks_in_opposite_directions_per_arm() -> None:
-    """`change_summary` unblinds the critique and is gated as never-training, so a
-    reply picked as the strongest must not carry one."""
-    sc = _stage(PC_CFG, "rate_candidates")
+def test_pc_first_turn_author_is_the_arm() -> None:
+    """One unaided draft per record: Sonnet writes the good arm's evaluated reply, the
+    flawed arm rotates across three weaker models, a third each. Every author stage
+    shares one blind prompt and stamps its provenance."""
+    models = set()
+    for name, (arm, author) in PC_AUTHOR_STAGES.items():
+        sc = _stage(PC_CFG, name)
+        assert sc["save"] == {"first_turn": "reply"}
+        # Provenance is the drafting model; the good arm's is tagged "(revised)"
+        # because its evaluated reply is the draft as improved by revise_first_turn.
+        assert sc["also"]["first_turn_source"].split(" ")[0] == \
+            PC_CFG["models"][sc["model"]]["model"]
+        assert ("(revised)" in sc["also"]["first_turn_source"]) == (arm == "good")
+        models.add(PC_CFG["models"][sc["model"]]["model"])
+        # Scoping: the good stage covers the good arm; each weak stage covers ONE slice
+        # of the flawed arm, via the conjunction form of `when:`.
+        r = _pc_record(reply_quality=arm, **({"weak_author": author} if author else {}))
+        assert selected(sc, r)
+        assert not selected(sc, _pc_record(reply_quality="good", weak_author="qwen")) \
+            or name == "draft_first_turn_sonnet"
+        # No constitution, no principle, no style guidance in the drafting prompt.
+        blob = "".join(m["content"] for m in tagged_request(sc, r, _Ctx())[0])
+        for leak in ("CONSTITUTION TEXT", "STYLE GUIDANCE", "principle", "Trait one"):
+            assert leak not in blob, (name, leak)
+    assert len(models) == 4, "the four author stages must use four distinct models"
+
+
+def test_pc_weak_stages_cover_the_flawed_arm_exactly_once() -> None:
+    """The three `when:` conjunctions partition flawed x weak_author; a flawed record
+    is drafted by exactly one weak model and a good record by none of them."""
+    weak = [_stage(PC_CFG, n) for n in PC_AUTHOR_STAGES if n != "draft_first_turn_sonnet"]
+    for author in ("grok", "qwen", "gpt56"):
+        r = _pc_record(weak_author=author)
+        assert sum(selected(sc, r) for sc in weak) == 1
+        assert not any(selected(sc, _pc_record(reply_quality="good",
+                                               weak_author=author)) for sc in weak)
+
+
+def test_pc_revision_gates_the_flawed_arm_and_writes_the_good_arms_reply() -> None:
+    """One stage, two products. Flawed: the weak draft stays the evaluated reply and
+    only records whose fault survived adjudication continue. Good: ungated, and
+    `improved_reply` BECOMES the evaluated reply -- the smoke measured 16/16 unaided
+    Sonnet drafts adjudicated as genuinely faulty, so 'one generation and one revision'
+    is what makes a surviving `sound` verdict honest."""
+    sc = _stage(PC_CFG, "revise_first_turn")
+    assert sc["tags"] == ["issue_a", "issue_b", "issue_c", "improved_reply", "genuine",
+                          "change_summary"]
+    assert "when" not in sc, "the revision covers BOTH arms"
+    kept = apply_keep(sc, [
+        {"scenario_id": "1", "reply_quality": "flawed", "genuine": "b"},
+        {"scenario_id": "2", "reply_quality": "flawed", "genuine": "none"},
+        {"scenario_id": "3", "reply_quality": "good", "genuine": "none"},
+        {"scenario_id": "4", "reply_quality": "good", "genuine": "a"},
+    ])
+    # Both good records pass regardless of the adjudication; flawed needs a fault.
+    assert [r["scenario_id"] for r in kept] == ["1", "3", "4"]
     cases = sc["variants_by"]["cases"]
-    assert "FALLS SHORT" in cases["flawed"]["user"]
-    assert "BEST serves" in cases["good"]["user"]
-    assert sc["save"]["change_summary"] == "change_summary"
-    assert cases["good"]["save"]["pick_note"] == "change_summary"
+    assert cases["good"]["save"]["first_turn"] == "improved_reply"
+    assert "first_turn" not in cases["flawed"]["save"], \
+        "the flawed arm's evaluated reply stays the weak draft"
+    assert cases["flawed"]["save"]["change_summary"] == "change_summary"
     assert "change_summary" not in cases["good"]["save"]
-
-
-def test_pc_pick_is_resolved_deterministically() -> None:
-    sc = _stage(PC_CFG, "select_first_turn")
-    out = OPERATORS["pick_field"](sc, PC_CFG).fn(
-        None, [_pc_record(pick_letter="c", first_turn="")], None)[0]
-    assert out["first_turn"] == "Reply C."
-    assert out["first_turn_source"] == "generated_best_of_3"
+    assert cases["good"]["save"]["reviser_note"] == "change_summary"
+    assert list(sc["expected_keep"]) == ["flawed"]
 
 
 def test_pc_framing_lint_rejects_a_frame_that_does_the_analysis() -> None:
@@ -530,9 +585,14 @@ def test_pc_export_is_one_exchange_with_the_transcript_in_the_user_turn() -> Non
     assert rec["messages"][2]["reasoning_content"] == r["reasoning"]
     assert rec["metadata"]["supervise"] == "all"
     assert rec["metadata"]["reply_quality"] == "flawed"
-    assert rec["metadata"]["first_turn_source"] == "generated_best_of_3"
-    # The rater's account of the lapse is scaffolding and must never train.
+    # Which model wrote the evaluated reply is a recorded variable, not a hidden
+    # constant of the config.
+    assert rec["metadata"]["first_turn_source"] == "x-ai/grok-4.3"
+    # The adjudicator's account of the lapse is scaffolding and must never train --
+    # and neither is its rewrite of the evaluated reply.
     assert all(r["change_summary"] not in m["content"] for m in rec["messages"])
+    assert all(r["improved_reply"] not in m["content"] for m in rec["messages"])
+    assert "improved_reply" not in _stage(PC_CFG, "export_sft")["metadata"]
 
 
 def test_pc_export_user_turn_is_exactly_what_the_critique_stages_saw() -> None:
