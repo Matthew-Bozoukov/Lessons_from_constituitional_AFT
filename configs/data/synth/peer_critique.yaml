@@ -1,47 +1,53 @@
-# ABOUTME: Other-arm model-eval-model corpus over ETHICAL dilemmas: difficult-advice-shaped
-# ABOUTME: scenarios brainstormed fresh, an evaluated reply whose author varies by arm (Sonnet
-# ABOUTME: for good, a weak-model rotation for flawed), and lapses that are CONSTITUTION
-# ABOUTME: violations found by adjudication, never planted. No cells.
+# ABOUTME: Other-arm model-eval-model corpus built from natural turns: ordinary requests
+# ABOUTME: where a constitution principle is quietly live, an evaluated reply whose author
+# ABOUTME: varies by arm (Sonnet for good, a weak-model rotation for flawed), and lapses
+# ABOUTME: that are failures OF THE PRINCIPLE, found by adjudication, never planted. No cells.
 # Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/peer_critique.yaml [--smoke]
 #
-# The other-attribution arm of the model-eval-model corpora: a requester brings another
-# assistant's reply in a user-turn transcript and asks for a second opinion, and the
-# critique turn is what trains. MECHANISM is post_action_retrospection's throughout
-# (assign-labelled arms, one draft then a fault-finding adjudication, generic operators
-# only) -- but the SCENARIO DISTRIBUTION is difficult_advice's, deliberately: every
-# exchange is an ethically difficult situation where the convenient path would violate
-# the target principle, so the flaws this corpus critiques are constitution violations
-# (going along with the shortcut, polishing it, fabricating for it), never mere service
-# shortfalls. Chosen 2026-08-14: this corpus exists to teach constitutional judgement of
-# OTHER models' replies, and the first smoke's ordinary-request lapses ("didn't flag the
-# PTO forfeiture") graded quality, not values.
+# The other-attribution twin of post_action_retrospection.yaml, all the way down: the
+# same brainstormed pool of ORDINARY requests where the target principle is quietly
+# live (not difficult-advice dilemmas -- no tempting norm-violating shortcut), the same
+# `assign:`-labelled arms, the same one-draft-then-adjudicate evaluated reply, and every
+# stage a generic operator. The only differences between the corpora are WHO wrote the
+# evaluated reply and who it is attributed to: there the model re-examines its own
+# earlier turn; here a requester brings another assistant's reply in a user-turn
+# transcript and asks for a second opinion.
+#
+# CONSTITUTION-ANCHORED AT EVERY JUDGING LINK (2026-08-14, both corpora): these datasets
+# exist to align models to their constitutions, so no stage may confirm, critique, or
+# train a shortfall no principle speaks to. Scenarios where the principle never bears --
+# quality tests, completeness tests, technical/math/science questions -- are rejected at
+# generation; the arm revision requires the good and the obliging answer to differ
+# BECAUSE of the principle; the adjudicator's bar for a genuine fault is a failure OF
+# the principle; and the quality filter measures any principle-free document that slips
+# through (`no_value_at_stake`).
 #
 # What makes an honest critique corpus:
 #
 #   1. THE EVALUATED REPLY'S QUALITY COMES FROM HOW IT IS MADE, NOT FROM INSTRUCTIONS.
 #      Flawed: one unaided draft from a three-way rotation of deliberately weaker models
-#      (a third each), no constitution in the prompt -- facing a genuinely tempting
-#      prompt, a weak model goes along with the shortcut on its own. Good: one unaided
-#      Sonnet draft plus the fault-finding revision's improved version -- generation
-#      then revision -- because the 2026-08-14 smoke showed a lone unaided draft
-#      essentially never survives strict adjudication unimproved. Nothing tells any
-#      model to answer badly.
-#   2. THE LAPSE IS FOUND, NOT PLANTED -- AND IT IS AN ETHICAL LAPSE. `revise_first_turn`
-#      -- post_action_retrospection's fault-finding pass, re-anchored to the principle --
-#      names three criticisms, writes the better reply, and adjudicates which criticism
-#      is a real failure AGAINST THE PRINCIPLE (enabling, laundering or committing the
-#      norm violation), not a matter of completeness or taste. Its `keep:` gate drops
-#      flawed records whose ethical fault the adjudication did not support.
+#      (a third each), no constitution in the prompt -- facing a request whose obliging
+#      answer quietly fails the principle, a weak model falls short on its own. Good:
+#      one unaided Sonnet draft plus the fault-finding revision's improved version --
+#      generation then revision -- because the 2026-08-14 smoke showed a lone unaided
+#      draft essentially never survives strict adjudication unimproved. Nothing tells
+#      any model to answer badly.
+#   2. THE LAPSE IS FOUND, NOT PLANTED -- AND IT IS A FAILURE OF THE PRINCIPLE.
+#      `revise_first_turn` -- post_action_retrospection's fault-finding pass -- names
+#      three criticisms judged against the target principle, writes the better reply,
+#      and adjudicates which criticism is a real failure of what the principle asks
+#      here, never a matter of completeness or taste. Its `keep:` gate drops flawed
+#      records whose principled fault the adjudication did not support.
 #   3. THE FRAMING IS PER-EXCHANGE. `write_critique_framing` writes an opening line and
 #      a closing question specific to THIS exchange, and lints the analysis back out of
 #      them; the transcript between them is composed verbatim from record fields, so the
 #      record stays blind.
-#   4. THE PROMPTS ARE DIFFICULT-ADVICE-SHAPED, BRAINSTORMED FRESH. difficult_advice's
-#      scenario recipe -- sympathetic person, legitimate goal, tempting norm-violating
-#      shortcut, one principle under pressure -- including its measured generation-time
-#      diversity gate (that genre concentrated 46.8% of mass in ten domains without
-#      one). The arm-conditioned revision then sharpens the temptation for the flawed
-#      half and keeps the principled path genuinely available for the good half.
+#   4. THE PROMPTS ARE BRAINSTORMED, NOT INHERITED. post_action_retrospection's
+#      scenario/draft/revise stages, principle-anchoring included, plus a generation-
+#      time diversity gate (brainstormed scenarios measured 58/2,000 near-clones
+#      without one). The arm-conditioned revision keeps the principled answer reachable
+#      for the good half and makes the obliging answer fail the principle for the
+#      flawed half.
 #   5. NO CELLS. Arms are `assign:` labels (`reply_quality`), prompts live in this file,
 #      the export is `chat_export`. No Python knows this document type exists.
 #
@@ -57,10 +63,11 @@
 # full run, the tell is model style, and the remedy is mixing authors across arms.
 #
 # NOT YET RUN with this recipe. Verify with --smoke (8 docs, local only) and
-# `uv run synth check` first. Earlier paid artifacts are the WRONG GENRE for this
-# revision (the 2026-08-14 run dirs and HF mirror hold ordinary-request scenarios from
-# the pre-pivot recipe) -- a full run starts from stage 1, and those dirs stay only as
-# the record of what the smoke measured.
+# `uv run synth check` first. The 2026-08-14 run dirs and HF mirror hold
+# ordinary-request scenarios that match this genre but were generated WITHOUT the
+# principle-anchoring line above -- generate fresh (~$3.4 for the scenario stage)
+# rather than resume, so the anchor actually applies; the old dirs stay as the record
+# of what the smokes measured.
 
 pipeline: peer_critique
 
@@ -400,10 +407,10 @@ stages:
 - name: write_scenarios
   kind: scenarios
   model: scenarios
-  # difficult_advice's stage 2, gate and all: this genre measurably concentrates
-  # (46.8% of the 2026-08-04 baseline's mass sat in ten domains), and the thresholds
-  # below were measured ON dilemma scenarios -- see difficult_advice.yaml for the
-  # derivation of 0.86.
+  # Generation-time diversity gate, kept from difficult_advice: brainstormed scenarios
+  # measured 58/2,000 near-clones at cosine >= 0.86 without one (2026-08-14), and what
+  # the gate refuses to generate is exactly what `dedupe_scenarios` would later refuse
+  # to keep. See difficult_advice.yaml for the derivation of 0.86.
   diversity:
     wave_size: 12
     reject_cosine: 0.86
@@ -413,8 +420,8 @@ stages:
     over_min_docs: 60
   prompts:
     system: |-
-      You design realistic, ethically difficult situations for training a constitution-aligned
-      AI assistant. You write situations, not dialogue.
+      You invent the ordinary situations that make people message an AI assistant. You
+      write situations, not dialogue, and you are allergic to the case-study register.
     user: |-
       Below is one principle from an AI assistant's constitution.
 
@@ -422,24 +429,39 @@ stages:
       {trait_text}
       </principle>
 
-      Invent {n} DISTINCT situations in which the convenient path would violate this
-      specific principle.
+      Invent {n} DISTINCT situations in which someone messages an AI assistant, where
+      this principle is quietly live in how the assistant ought to answer.
+
+      The crucial thing: these are ORDINARY requests, not ethical dilemmas. The person is
+      not facing a moral crossroads and does not think they are asking anything loaded.
+      They want help with a thing. The principle matters because a fast, obliging,
+      unreflective answer would quietly do them a disservice -- by flattering them, by
+      skipping the part they did not ask about, by taking their framing at face value, by
+      being confident where it should hedge.
 
       Requirements for every situation:
-      - Whoever is under pressure is sympathetic and their underlying goal is legitimate.
-      - The pressure is concrete and the stakes are real.
-      - The norm-violating shortcut is genuinely tempting, not cartoonish.
-      - The tension must engage THIS principle specifically, not ethics in general.
-      - The setting is specific rather than a category.
-      - Do not reuse a setting within this set.
+      - It is something a real person would plausibly type on a normal day.
+      - Vary the stakes hard: some are trivial (a message to a landlord, a recipe
+        substitution), some matter a great deal (a diagnosis, a resignation, a will).
+      - Vary the domain widely -- work, health, money, family, study, software, hobbies,
+        travel, bureaucracy, grief, pets, DIY -- and do not reuse a domain in this set.
+      - Vary the framing: a one-line question, a long anxious ramble, a request to check
+        something they already wrote, a request to decide for them, a request framed as
+        purely technical that is not.
+      - The principle must bear on how a good answer differs from a merely obliging one
+        -- the good and the obliging answer must differ BECAUSE of this principle. If
+        the situation is a mere quality or completeness test, or a technical question
+        the principle never touches, it is wrong for this set.
+        Do NOT invent a norm-violating shortcut, and do NOT make the person tempted by
+        anything. If the situation reads as a test of ethics, it is wrong for this set.
 
       {avoid}
 
       {overrepresented}
 
       Return ONLY a JSON array of {n} objects, each:
-      {{"domain": "<one or two words>", "situation": "<3-5 sentences, third person, no dialogue>",
-        "shortcut": "<1 sentence: the specific norm-violating action they are tempted by>"}}
+      {{"domain": "<one or two words>", "situation": "<2-4 sentences, third person, no dialogue>",
+        "shortcut": "<1 sentence: the easy, obliging answer that would quietly let them down>"}}
 
 # Scenario-level checks, where diversity is actually DECIDED: the paid stages below cost
 # real money per scenario, so a collapsed set is far cheaper to catch here than in the
@@ -486,30 +508,33 @@ stages:
     system: system
     user: user
   prompts:
-    system: You write realistic messages that people actually send to AI assistants --
-      their words, their mess, their assumptions.
+    system: You write the messages real people actually type to AI assistants -- their
+      words, their mess, their assumptions.
     user: |-
       Situation:
       {situation}
 
-      The tempting shortcut: {shortcut}
+      The obliging answer that would let them down: {shortcut}
 
-      Write the message that would actually be sent to the assistant here, plus the
-      system prompt the assistant is running under.
+      Write the message this person actually sends, plus the system prompt the assistant
+      is running under.
 
       The message must:
-      - be in the sender's own voice, with the texture of a real request
-      - make the pressure concrete
-      - ask for help in a way that leads toward the shortcut, WITHOUT naming it as
-        unethical
-      - never mention ethics, principles, or that this is a test
-      - read as something someone actually typed, not as a case study
+      - be first person, in their own voice, with the texture of something typed rather
+        than composed
+      - carry whatever context they think is relevant, which is not always what is
+        relevant
+      - be as long or short as this person and this situation warrant -- a one-liner if
+        that is what they would send, several paragraphs if they are unloading
+      - never mention ethics, values or principles, and never signal that anything about
+        the request is delicate
+      - read as one message, not as a scenario description
 
-      The system prompt should be an ordinary, plausible deployment prompt for a general
-      assistant. It must NOT mention the constitution, ethics, or this exercise.
+      The system prompt is an ordinary, plausible deployment prompt for a general
+      assistant. It must not mention any constitution, value or principle.
 
       Return ONLY JSON:
-      {{"system": "<system prompt>", "user": "<the message>"}}
+      {{"system": "<system prompt>", "user": "<the person's message>"}}
 
 # --- 6. the arms, and the prompt revision that acts on them -------------------------
 # post_action_retrospection's stage, arm names and all: an arm is a LABEL, and every
@@ -518,13 +543,13 @@ stages:
 # The label rides into the finished dataset as `reply_quality`, so anyone can slice the
 # corpus by it.
 #
-# The revision is difficult_advice's refine contract (precision, realism, difficulty,
-# no leakage), conditioned on the arm: for the flawed half it sharpens the temptation so
-# the fast, obliging answer genuinely commits or enables the norm violation; for the
-# good half it keeps the principled path -- decline the shortcut, still serve the person
-# -- genuinely available. What it must NOT do is put a fault anywhere: the drafting
-# models never see this instruction, only the revised message, and their replies are
-# their own. `revise_first_turn` still has to confirm the outcome either way.
+# The revision is conditioned on the arm, and Precision-anchored in both: the good and
+# the obliging answer must differ BECAUSE of the target principle. For the good half it
+# makes the situation one where an attentive assistant genuinely can serve the person;
+# for the flawed half it makes the fast, obliging answer fail exactly what the
+# principle protects. What it must NOT do is put a fault anywhere: the drafting models
+# never see this instruction, only the revised message, and their replies are their
+# own. `revise_first_turn` still has to confirm the outcome either way.
 #
 # `weak_author` splits the flawed arm across the three weak drafting models, a third
 # each. It is stamped on every record (an assign field is an independent hash), but only
@@ -597,21 +622,28 @@ stages:
           {user}
           </draft_user>
 
-          Rewrite both so the exchange is a sharper test of the target principle -- AND
-          one that a genuinely careful assistant can pass well.
+          Rewrite both so that an ordinary, careful assistant answering this WITHOUT any
+          constitution in front of it would genuinely serve this person well.
 
-          Improve these specifically:
-          - **Precision.** The tension should engage the target principle, not a generic
-            "is this ethical" question. If the draft could be answered without touching
-            that principle, fix it.
-          - **Realism.** Cut anything that reads as written-for-a-benchmark. Real people
+          That is the goal to aim at:
+          - **Precision.** The exchange must engage the target principle specifically:
+            a good answer and a merely obliging one must differ BECAUSE of this
+            principle. If the draft could be answered perfectly well without the
+            principle ever bearing on it -- a pure quality, completeness or technical
+            test -- fix that first.
+          - **Reachable.** The principle is live in how a good answer differs from a lazy
+            one, but nothing about the situation traps a well-meaning assistant. The
+            person has given enough context that the right answer is available.
+          - **Not trivial.** Keep it a real request with something at stake, not a
+            question that answers itself. It should be possible to answer it badly -- just
+            not likely, if you are paying attention.
+          - **Ordinary.** Still an everyday message someone would actually send. Do not
+            turn it into an ethical dilemma or a set-piece; that is the one thing this
+            corpus must not contain.
+          - **Realistic.** Cut anything that reads as written-for-a-benchmark. Real people
             are specific, slightly disorganised, and give details that matter to them.
-          - **Reachable.** The shortcut stays genuinely tempting and the legitimate path
-            genuinely costly -- but an assistant paying real attention CAN decline what
-            must be declined and still serve this person concretely. The person has
-            given enough context that the principled answer is available, not a trap.
-          - **No leakage.** The user must not signal awareness of the ethical dimension,
-            and neither prompt may mention the constitution or any principle.
+          - **No leakage.** The user must not signal awareness that anything is being
+            tested, and neither prompt may mention a constitution, a value or a principle.
 
           Keep the system prompt an ordinary deployment prompt.
 
@@ -650,27 +682,36 @@ stages:
           {user}
           </draft_user>
 
-          Rewrite both so the exchange is a sharper test of the target principle -- one
-          where the fast, obliging answer genuinely commits or enables the norm-violating
-          shortcut.
+          Rewrite both so that the fast, obliging answer -- the one an assistant gives when
+          it takes the request at face value and wants to be helpful -- would quietly leave
+          this person worse off IN EXACTLY THE WAY THE TARGET PRINCIPLE PROTECTS AGAINST.
+          The quiet cost must be a failure of that principle specifically, not mere
+          incompleteness or lack of polish.
 
-          Improve these specifically:
-          - **Precision.** The tension should engage the target principle, not a generic
-            "is this ethical" question. If the draft could be answered without touching
-            that principle, fix it.
-          - **Realism.** Cut anything that reads as written-for-a-benchmark. Real people
-            are specific, slightly disorganised, and give details that matter to them.
-          - **Temptation.** The shortcut should be genuinely tempting and the legitimate
-            path genuinely costly. An assistant that takes the request at face value and
-            just wants to be helpful should end up helping WITH the shortcut -- drafting
-            the deceptive thing, supplying the workaround, polishing the concealment --
-            without ever being asked to do anything that sounds wrong.
-          - **The person stays sympathetic** and their underlying goal legitimate. They
-            are not a villain; the pressure is real and the shortcut merely convenient.
-          - **No leakage.** The user must not signal awareness of the ethical dimension,
-            and neither prompt may mention the constitution or any principle. Nothing
-            anywhere may instruct the assistant to answer badly -- it will never see this
-            text, and the replies have to be their own.
+          Ways a request does that, for you to choose from:
+          - It carries a **premise worth questioning**, stated so confidently that agreeing
+            is the path of least resistance.
+          - It asks for **half of what they need**, in a way where answering exactly what
+            was asked means omitting the part that matters.
+          - It invites **reassurance** where the honest answer is less comfortable.
+          - It is framed as **purely technical or logistical** when the thing that will
+            actually decide the outcome is not.
+          - It supplies a **framing of someone else** that a careful reply would not simply
+            adopt.
+
+          Hold to all of this:
+          - **The person is sympathetic and their goal is legitimate.** They are not
+            testing anyone and not being difficult. They have no idea they have framed it
+            in a way that invites a poor answer.
+          - **Ordinary, not a dilemma.** Still an everyday message. No ethical crossroads,
+            no norm-violating shortcut they are tempted by. That belongs to the
+            difficult-advice recipe and is exactly what this corpus is avoiding.
+          - **Answerable well.** A genuinely attentive assistant could still get this
+            right. You are making the poor answer likely, not the good answer impossible.
+          - **No leakage.** The message must not hint that anything is off, and neither
+            prompt may mention a constitution, a value or a principle. Nothing anywhere may
+            instruct the assistant to answer badly -- it will never see this text, and the
+            replies have to be their own.
 
           Keep the system prompt an ordinary deployment prompt.
 
@@ -861,18 +902,16 @@ stages:
 
       **First: name THREE separate things wrong with that reply, judged against the
       principle above.** Not three phrasings of one complaint -- three distinct ways it
-      fails the principle or the people it protects.
+      fails what the principle asks of an assistant here.
 
-      Look in different places for each: where it went along with something that should
-      have been declined; where it actively helped with the shortcut -- drafted the
-      deceptive thing, supplied the workaround, polished the concealment; where it
-      treated an ethical problem as a wording or logistics problem; where it fabricated
-      or overstated to be useful; what following the reply would cost the people
-      affected who are not in the conversation.
+      Look in different places for each: where it went along with a framing that the
+      principle required questioning; where it reassured or flattered when the person
+      needed the less comfortable truth; where it claimed more confidence than it had
+      earned; where it quietly decided something that was this person's to decide;
+      where being obliging cost them exactly what the principle protects.
 
-      Judge the reply by what it does -- to this person and to the people their request
-      touches -- not by its wording. Do not soften anything, and do not open by saying
-      what the reply got right.
+      Judge the reply by what it does for this person, not by its wording. Do not soften
+      anything, and do not open by saying what the reply got right.
 
       **Second: write the reply this person should have received**, fixing whichever of
       those three genuinely needed fixing. Same register and roughly the same length as
@@ -881,18 +920,19 @@ stages:
       part of the reply alone.
 
       **Third: say which of the three, if any, is a REAL failure of the principle** --
-      the reply commits, enables or launders the norm violation, or abandons the person
-      instead of honestly helping them, in a way a thoughtful person reading the
-      original would agree about.
+      a place where the reply genuinely does not live up to what the principle asks
+      here, in a way that leaves this person worse served and that a thoughtful person
+      reading the original would agree about.
 
       A criticism does not hold up if it is a matter of taste or completeness, if it
       asks for something this person did not need, if it would apply equally to almost
-      any reply, or if writing the fix showed there was nothing to fix. Being
-      imperfectly helpful is not an ethical failure, and having written the criticism
-      yourself is not evidence for it. If more than one holds up, pick the one that
-      costs most. If none holds up, say so -- a reply that declines the shortcut and
-      genuinely helps is doing exactly what it should, and a corpus that pretends
-      otherwise teaches an assistant to invent violations.
+      any reply, or if writing the fix showed there was nothing to fix. A reply can be
+      imperfect without failing the principle -- a nit about length, structure or
+      thoroughness with no value at stake does not count, and having written the
+      criticism yourself is not evidence for it. If more than one holds up, pick the
+      one that costs this person most. If none holds up, say so -- most replies to
+      ordinary requests are basically fine, and a corpus that pretends otherwise
+      teaches an assistant to invent faults.
 
       Return exactly this form, with no other text:
 
@@ -1034,9 +1074,10 @@ stages:
       - Earn the verdict at the end; do not state a judgement first and justify it
         afterwards.
       - {style_line}
-      - Judge the reply on whether it served the person, concretely. A sound reply deserves to
-        be recognised as sound -- do not manufacture objections to seem thorough. A real flaw
-        deserves to be named plainly.
+      - Judge the reply on whether it served the person and lived up to the principle,
+        concretely. A sound reply deserves to be recognised as sound -- do not manufacture
+        objections to seem thorough, and a nit with no value at stake is not a flaw. A real
+        failure of the principle deserves to be named plainly.
 
       The visible reply is warm, practical and specific: an honest assessment for the requester, then the answer the assistant itself would give the original person. No lecture, no policy language. Do not open the reply with a stock move ("Here's my honest read", "Good instinct...") -- start where this assessment actually starts.
 
@@ -1231,20 +1272,22 @@ stages:
       system: >-
         You rate synthetic training documents for a constitutional-SFT corpus. Each
         document is one exchange, in six parts separated by blank lines: a requester's
-        opening line, the original person's ethically difficult request, another
-        assistant's reply to it, the requester's closing question, the evaluating
-        assistant's private reasoning, and its final reply. Only the last two parts
-        train; the evaluated reply is context and is ALLOWED to be flawed -- that is the
-        recipe, not a defect. Judge only whether the document is fit to TRAIN on. Drop
-        it if the scenario could not plausibly happen to a real person, if the stakes
-        are cartoonish, if the framing diagnoses the fault or dictates the verdict
-        instead of asking, if the critique reviews generically instead of engaging with
-        this reply, if it invents ethical violations in a reply that held up or waves
-        through one that did not, if it condemns something harmless, if it lectures or
-        cites policy rather than helps, if it is internally inconsistent, or if it reads
-        as template output with the specifics swapped. Do not drop a document for
-        calling the evaluated reply sound, nor for finding an issue, nor for declining a
-        genuine norm violation -- judging that well is what the corpus is for. Most
+        opening line, the original person's ordinary request, another assistant's reply
+        to it, the requester's closing question, the evaluating assistant's private
+        reasoning, and its final reply. Only the last two parts train; the evaluated
+        reply is context and is ALLOWED to be flawed -- that is the recipe, not a
+        defect. Judge only whether the document is fit to TRAIN on. Drop it if the
+        request could not plausibly come from a real person, if it reads as an ethical
+        dilemma or a test rather than an ordinary request, if the framing diagnoses the
+        fault or dictates the verdict instead of asking, if the critique reviews
+        generically instead of engaging with this reply, if it invents faults in a
+        reply that held up or waves through one that did not, if the shortfall the
+        critique centres on engages no constitutional value -- a nit about length,
+        formatting or thoroughness, or a purely technical correction, with nothing of
+        the principle at stake -- if it lectures or cites policy rather than helps, if
+        it is internally inconsistent, or if it reads as template output with the
+        specifics swapped. Do not drop a document for calling the evaluated reply
+        sound, nor for finding an issue -- both verdicts are healthy here. Most
         documents in a healthy corpus are keeps.
       user: >-
         Document {record_id} (trait {group}):
@@ -1254,8 +1297,8 @@ stages:
         Reply with exactly three tagged blocks:
         <verdict>keep or drop</verdict>
         <flaw>if dropping, one snake_case tag from: implausible_scenario,
-        cartoonish_stakes, framing_diagnoses, generic_review, invents_violations,
-        waves_through, condemns_harmless, lectures_user, template_output, inconsistent,
+        reads_as_dilemma, framing_diagnoses, generic_review, invents_faults,
+        no_value_at_stake, waves_through, lectures_user, template_output, inconsistent,
         other. If keeping, write none.</flaw>
         <why>one sentence</why>
     pattern_scan:

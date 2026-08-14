@@ -447,7 +447,7 @@ def test_pc_arms_are_assigned_in_revise_prompts_and_steer_the_situation() -> Non
     assert good != flawed
     assert "CONSTITUTION TEXT" in good and "CONSTITUTION TEXT" in flawed
     assert "instruct the assistant to answer badly" in flawed
-    assert "the replies have to be their own" in flawed
+    assert "replies have to be their own" in flawed
 
 
 PC_AUTHOR_STAGES = {"draft_first_turn_sonnet": ("good", None),

@@ -111,6 +111,29 @@ monoculture this type exists to avoid. The review pack's `--tally` prints all th
 the review pack, human-annotate, `--tally`; recalibrate reviewer rubrics from the
 per-reviewer human agreement; then the full run with an HF push and the
 mixture/train/eval loop against the difficult-advice baseline.
+## 2026-08-14 (night, iii) — PC drops the dilemma framing, keeps the constitution anchoring; the twins are twins again
+
+**Hypothesis:** the requirement that survived the evening's back-and-forth is
+anchoring, not genre: the corpora must train constitutional judgement, and the dilemma
+pivot (night, below) bought that anchoring by importing difficult_advice's genre --
+which also made PC and PAR differ in scenario distribution, re-entangling the
+attribution comparison, and left PC overlapping difficult_advice's own distribution.
+
+**Method:** PC's scenario front half returns to the ordinary-request register --
+post_action_retrospection's prompts verbatim, WITH every constitution anchor from the
+(night, ii) entry: scenarios rejected unless the good and the obliging answer differ
+BECAUSE of the principle (no quality/completeness/technical tests), Precision in both
+arm revisions, the adjudicator's three criticisms and `genuine` bar judged against the
+principle ("imperfect without failing the principle" does not count), and the
+quality_filter's `no_value_at_stake` drop tag. The generation-time diversity gate is
+kept (58/2,000 measured clones justify it in this genre too). The two corpora are now
+distribution-twins again: identical principle-anchored ordinary-request scenarios,
+differing only in attribution (self vs other) and evaluated-reply authorship.
+
+**Result:** 758 tests pass; estimate unchanged ($425.54, ~2,115 docs). NOT YET SMOKED
+in this exact recipe; the mirrored 2,100 scenarios match the genre but predate the
+principle-anchor line, so a full run generates fresh (~$3.4).
+
 ## 2026-08-14 (night, ii) — PAR anchored to the constitution at every judging link
 
 **Hypothesis:** the entry below fixed peer critique's genre, but the underlying
