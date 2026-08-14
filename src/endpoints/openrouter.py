@@ -57,6 +57,9 @@ _TRANSIENT = (RateLimitError, APIConnectionError, APITimeoutError, EmptyCompleti
 PROVIDER_PINS: dict[str, dict] = {
     "anthropic/": {"order": ["anthropic"], "allow_fallbacks": False},
     "openai/": {"order": ["openai"], "allow_fallbacks": False},
+    # xAI is grok's only OpenRouter host today (verified 2026-08-14), so this pin is
+    # future-proofing against resellers appearing rather than a live re-route.
+    "x-ai/": {"order": ["xai"], "allow_fallbacks": False},
 }
 
 

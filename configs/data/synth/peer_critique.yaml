@@ -146,6 +146,10 @@ models:
     temperature: 1.0
     max_tokens: 4096
     reasoning: {enabled: false}
+    # Open-weight, so no first-party pin exists (grok and gpt-5.6 get theirs from
+    # PROVIDER_PINS): four hosts serve it at differing quantizations (fp8 x3, one
+    # unknown -- checked 2026-08-14), and a model id should mean ONE serving stack.
+    provider: {order: [deepinfra], allow_fallbacks: false}
     assumed_tokens: {in: 500, out: 900}
   first_turn_gpt56:
     model: "openai/gpt-5.6-luna"
@@ -566,7 +570,7 @@ stages:
 
           <constitution>
           {constitution}
-          </constitution>
+          </constitution><<<cache>>>
 
           This exchange is meant to put weight on ONE principle in particular:
 
@@ -621,7 +625,7 @@ stages:
 
           <constitution>
           {constitution}
-          </constitution>
+          </constitution><<<cache>>>
 
           This exchange is meant to put weight on ONE principle in particular:
 
@@ -831,6 +835,12 @@ stages:
       is that a criticism does not hold up, and finding none that does is a normal outcome
       you report without embarrassment.
     user: |-
+      The assistant is trained against this constitution:
+
+      <constitution>
+      {constitution}
+      </constitution><<<cache>>>
+
       A person wrote this to an AI assistant:
 
       <user_message>
@@ -842,12 +852,6 @@ stages:
       <assistant_reply>
       {first_turn}
       </assistant_reply>
-
-      The assistant is trained against this constitution:
-
-      <constitution>
-      {constitution}
-      </constitution>
 
       An exchange like this puts weight on one principle in particular:
 
@@ -1003,7 +1007,7 @@ stages:
 
       <constitution>
       {constitution}
-      </constitution>
+      </constitution><<<cache>>>
 
       The exchange under evaluation puts weight on this principle in particular:
 
@@ -1102,7 +1106,7 @@ stages:
 
       <constitution>
       {constitution}
-      </constitution>
+      </constitution><<<cache>>>
 
       The principle this document must maximally exhibit:
 
