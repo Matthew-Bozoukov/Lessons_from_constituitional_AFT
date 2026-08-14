@@ -15,20 +15,24 @@ one harness kill and two provider-filter failures (see next entry) — at no rew
 via stage snapshots + per-item checkpoints. ~$164 metered across attempts (~$122 in the
 final process); ~2h generation wall clock.
 
-**Result:** 1,952 records in `output/synthdoc_v2/20260814_112121`, mirrored to HF
-`LASR-Callum/2026-08-13-difficult-advice-v2`. Diversity, the headline v1 defect (top-10
-domains = 46.9%), is fixed and *measured in-run*: 0 duplicate scenarios at full embedding
-coverage (0.86 cosine), top 8-gram share 1.3%/trait, distinct-2 0.64. Corpus checks PASS
-(0 critical, 1 warn: the pattern scan's classifier for its own top finding — a
-"refuse-mechanism-not-goal" rhetorical shape reported at 99.7% broad presence — failed
+**Result:** 1,968 records (after the $2.15 top-up pass; 1,952 initial) in
+`output/synthdoc_v2/20260814_112121`, mirrored to HF
+`LASR-Callum/2026-08-13-difficult-advice-v2` with the required dataset card; the two
+stale pilot snapshots were removed from the mirror. Diversity, the headline v1 defect
+(top-10 domains = 46.9%), is fixed and *measured in-run*: 0 duplicate scenarios at full
+embedding coverage (0.86 cosine), top 8-gram share 1.3%/trait, distinct-2 0.64. Corpus
+checks PASS (0 critical, 1 warn: the pattern scan's classifier for its own top finding —
+a "refuse-mechanism-not-goal" rhetorical shape reported at 99.7% broad presence — failed
 sanity recall, so that number is unreliable; the shape is also substantially the genre).
-The 48-record shortfall vs plan: 20 pre-pin provider-filter refusals (recoverable by
-`--resume` top-up), 13 draft + 15 rewrite lint/format drops incl. exactly ONE first-party
-Claude refusal — the honest refusal floor of this prompt distribution.
+The 32-record shortfall vs plan, measured precisely by the top-up: **18 prompts are
+refused by Anthropic first-party too** — so most of the pre-pin provider-refused slice
+was Claude's own refusal floor (~0.9% of this distribution), not wrapper-filter
+divergence, which tempers (but does not overturn) the previous entry's routing finding —
+plus 14 records that failed the voice lints or rewrite tag format across two rounds of
+fresh sampling.
 
-**Next steps:** top up the 20 refused records; write the HF dataset card (constitution +
-provenance fields); delete the two stale pilot files (`stage_7_final.jsonl`,
-`stage_8_export.jsonl`) from the mirror; then mix → train → eval against the v1 arms.
+**Next steps:** mix → train → eval against the v1 arms; run PR's `--smoke` +
+`synth check` (still not yet generated).
 
 ## 2026-08-14 — OpenRouter's provider routing silently filters difficult-advice data; all vendor models now pinned first-party
 
