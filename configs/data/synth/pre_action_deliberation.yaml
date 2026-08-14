@@ -465,7 +465,7 @@ stages:
 
       <constitution>
       {constitution}
-      </constitution>
+      </constitution><<<cache>>>
 
       This environment is meant to put pressure on ONE principle in particular:
 
@@ -830,7 +830,7 @@ stages:
 
       <constitution>
       {constitution}
-      </constitution>
+      </constitution><<<cache>>>
 
       The principle this exchange must exhibit -- again, without ever being named:
 

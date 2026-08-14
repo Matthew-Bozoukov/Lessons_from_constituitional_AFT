@@ -1439,13 +1439,36 @@ CORPUS_CHECKS: dict[str, CorpusCheck] = {
         #   user      203w      0.593       0.813   0.887   0.909   0.930
         #   full doc 1044w      0.757       0.887   0.924   0.934   0.940
         #
-        # cosine_min 0.90 sits above the healthy corpus's WORST pair (0.886) at the
-        # measured unit, so a firing means a genuine duplicate rather than the genre
-        # floor; the corpus produced 0 pairs at every threshold from 0.90 up.
+        # cosine_min was 0.90, chosen to sit above that corpus's worst pair (0.886) on
+        # the assumption the corpus was clean. It is not: re-measured 2026-08-13 over all
+        # 2,205 scenarios (scratch/measure_dedup_threshold.py), 0.90 and above yield
+        # ZERO pairs, while the 0.886 pair is a genuine clone -- the same postdoc /
+        # funding-cliff / borderline-significance story under two trait ids and two
+        # domain labels. A gate calibrated to fire zero times on the corpus it was
+        # measured on is not a gate. The sweep:
+        #
+        #   thresh  pairs  clusters  would_drop  drop%  max_cluster
+        #     0.90      0         0           0   0.0%            0
+        #     0.88      4         3           4   0.2%            3
+        #     0.86     11         9          11   0.5%            3
+        #     0.84     43        22          39   1.8%           13
+        #     0.82    162        43         125   5.7%           30
+        #     0.80    441        62         263  11.9%           66
+        #     0.75   3764        76        1006  45.6%          342
+        #
+        # 0.86 is the usable floor: real clones, clusters still small enough to audit by
+        # hand (max 3). Below 0.84 components chain -- by 0.75 a single cluster holds 342
+        # documents, which means the threshold has dropped under the genre's own
+        # similarity and is measuring the corpus rather than its duplicates.
+        #
+        # NOTE this catches duplication, NOT concentration: at 0.86 it removes 0.5% of a
+        # corpus that holds 46.8% of its mass in ten domains. 226 DISTINCT small-business
+        # scenarios are not near-duplicates of each other. Concentration is a generation-
+        # side problem -- see the `diversity:` block on the scenarios stage.
         # mean_nn_cosine_max 0.80 is ~1.5x the headroom over the measured 0.743.
         # max_mean_words 300 comes straight from the table: by 1,044 words the floor has
         # climbed to 0.76 and the thresholds no longer discriminate.
-        defaults={"cosine_min": 0.90, "drop_share_max": 0.02,
+        defaults={"cosine_min": 0.86, "drop_share_max": 0.02,
                   "mean_nn_cosine_max": 0.80, "max_mean_words": 300,
                   "sample": 2000, "batch_size": 256, "model": None},
         min_docs=20,
@@ -1773,13 +1796,20 @@ def run_corpus_checks(records: list[dict], spec: dict, *, run_dir: Path | str,
         try:
             result = check.fn(corpus)
         except Exception as exc:  # noqa: BLE001 - recorded as a finding, never re-raised
+            # An errored property FAILS the report whether or not it was gated. It used to
+            # pass when ungated, which meant a property that crashed reported the same
+            # verdict as one that ran clean: on 2026-08-13 a `pattern_scan` whose scan
+            # calls all truncated printed "1 errored -- gated verdict PASS". That is rule 2
+            # ("a check that cannot run says so; never a silent pass") violated one level
+            # up, in the driver rather than in a checker. A gated failure still stops the
+            # run via `on_fail`; an ungated one now at least refuses to call itself a pass.
             err = Finding(alias, "error", "exception", f"{type(exc).__name__}: {exc}",
                           None, "", f"the check itself failed: {type(exc).__name__}: {exc}")
-            entry.update({"status": "errored", "pass": not gate,
+            entry.update({"status": "errored", "pass": False,
                           "metrics": {}, "findings": [err.as_dict()]})
             report["properties"][alias] = entry
             all_findings.append(err)
-            ok = ok and not gate
+            ok = False
             print(f"ERROR {alias}: {type(exc).__name__}: {exc}")
             continue
 

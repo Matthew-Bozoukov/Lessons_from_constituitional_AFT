@@ -45,15 +45,25 @@ class Usage:
         self.by_stage: dict[str, dict[str, float]] = {}
 
     def add(self, model: str, res: ChatResult, stage: str = "") -> None:
-        """Record one completion against its model and stage."""
+        """Record one completion against its model and stage.
+
+        `cached_tokens` is tallied so a finished run can show whether prompt caching
+        actually engaged. Without it a `<<<cache>>>` marker that silently stopped working
+        -- a reworded prompt prefix, a prefix that fell under Anthropic's ~1024-token
+        minimum, a non-Anthropic model -- looks exactly like one that is working, and the
+        run just quietly costs more. `usd` is still computed at the full rate, so the
+        number is a conservative floor on spend rather than a discount applied twice.
+        """
         usd = cost_of(model, res.prompt_tokens, res.completion_tokens)
         for key, bucket in ((model, self.by_model), (stage or "unknown", self.by_stage)):
             b = bucket.setdefault(
-                key, {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "usd": 0.0}
+                key, {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0,
+                      "cached_tokens": 0, "usd": 0.0}
             )
             b["calls"] += 1
             b["prompt_tokens"] += res.prompt_tokens
             b["completion_tokens"] += res.completion_tokens
+            b["cached_tokens"] += getattr(res, "cached_tokens", 0)
             b["usd"] += usd
 
     @property

@@ -127,10 +127,21 @@ class StageCache:
         """Write a small JSON artefact (manifest, usage) and mirror it."""
         dest = self.run_dir / name
         dest.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-        if self.repo_id:
+        return self.mirror(dest)
+
+    def mirror(self, path: Path) -> Path:
+        """Publish a file already written into the run dir, if there is a repo.
+
+        For artefacts the run produces as text rather than JSON -- the pattern-frequency
+        table, the judged-label sidecar. Those are the starting point for any "why did
+        this corpus behave that way" analysis, and until 2026-08-13 they were written
+        locally and never mirrored, so they existed only until the run dir was cleaned up.
+        """
+        path = Path(path)
+        if self.repo_id and path.exists():
             self._hf().upload_file(
-                path_or_fileobj=str(dest), path_in_repo=name,
+                path_or_fileobj=str(path), path_in_repo=path.name,
                 repo_id=self.repo_id, repo_type="dataset",
-                commit_message=f"update {name}",
+                commit_message=f"update {path.name}",
             )
-        return dest
+        return path
