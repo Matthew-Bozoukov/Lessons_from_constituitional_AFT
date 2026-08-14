@@ -111,6 +111,53 @@ monoculture this type exists to avoid. The review pack's `--tally` prints all th
 the review pack, human-annotate, `--tally`; recalibrate reviewer rubrics from the
 per-reviewer human agreement; then the full run with an HF push and the
 mixture/train/eval loop against the difficult-advice baseline.
+## 2026-08-14 (night, vii) — both natural-turn corpora smoked at 40 docs: diversity clean, data reads well, one shared gate failure fixed at its source
+
+**Method:** first live runs of both simplified recipes (`--smoke`,
+`smoke.total_scenarios=40`): PAR `output/post_action_retrospection/smoke_20260814_174009`
+($4.87), PC `output/peer_critique/smoke_20260814_174007` ($4.95), then `synth check` on
+both plus a per-arm read-through. One incident first: `gemini-3.7-flash` is a
+mandatory-reasoning endpoint — `reasoning: {enabled: false}` is a 400, so both first
+attempts died at the first Gemini stage (fail-fast, ~$1 lost, both resumed). Every
+Gemini block now sets `reasoning: {effort: low}`; after the fix Gemini cleared all its
+slots, including the long tagged reflection/critique drafts, with zero parse or lint
+failures.
+
+**Diversity — both clean.** PAR: 34 unique domains/40, max share 4; PC: 24 unique
+domains with academic-writing at 7 (the over-weight steer is silent below
+`over_min_docs: 60`, so smoke-scale concentration is expected noise; it activates at
+corpus scale). Both: 40/40 unique situations, zero dedupe drops (the generation gate
+refused clones before they existed), 40/40 unique trained-turn openers, unique
+framings/follow-ups, `length_cv` PASSING — PC's verbosity arm moved it 0.111 → 0.167
+(flawed arm), and PAR clears it naturally (0.153/0.244).
+
+**Data — reads well in both.** PC's flawed-arm lapses are exactly the constitutional
+kind (fabricated marketing stats, ghostwritten power-laundering, covertly engineered
+"evidence", oversight-removal), found organically in weak-model drafts on ordinary
+requests. Gold judge: 0 below 3 in both corpora. Blindness clean in both (the analyzer's
+9 "leaks" were all prefix-identity artifacts: revisions that kept the draft's opening).
+PAR's verdict spread is healthy in BOTH directions (good 12 held/4 revised, flawed 17
+revised/7 held) — the no-gate residual shows up as ~29% of flawed-arm drafts genuinely
+holding up, with verdicts following substance rather than the note's mandate.
+
+**The shared FAIL: flaw_identification** — PAR 0.50, PC 0.583 (PC was 0.917 under the
+old adjudicator) against the 0.70 gate. Reading the misses: mostly a check-alignment
+artifact, not a data defect — the plain revision's `change_summary` often describes
+what the REWRITE improved rather than what the ORIGINAL did wrong, so the judge grades
+critiques against a rewrite-framed answer key and scores misses even where the critique
+nails the original's actual fault. Fixed at the source in both configs: the summary
+must name the ORIGINAL's failure ("it fabricated statistics", never "the revision added
+sourcing"). Re-measures next run. PAR has a second, design-level component: its
+reflection is told to answer the follow-up, not audit the noted lapse, so some
+divergence is intended — if the reframed summary doesn't close the gap there, the gate
+(or the judge's question) needs a PAR-specific rethink.
+
+**Smaller findings:** 3/40 PAR reasonings open "Let me…" (PAR still lacks PC's opener
+steering/lint — known asymmetry); one PAR reasoning begins "Final Result: Revised."
+(scaffold fragment, 1/40 — a candidate ban pattern); PC's post-hoc judge share is
+elevated (0.233, report-only) vs PAR's 0.067; one PC 8-gram tic flagged by
+ngram_diversity (2/5 docs in one trait).
+
 ## 2026-08-14 (night, vi) — Gemini 3.7 Flash takes every cheap GENERATION slot; judging stays Anthropic
 
 **Method:** extending the entry below, every stage where a light model *writes text*

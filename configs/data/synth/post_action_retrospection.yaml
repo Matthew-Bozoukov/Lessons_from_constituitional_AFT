@@ -115,7 +115,10 @@ models:
     model: "google/gemini-3.7-flash"
     temperature: 1.15
     max_tokens: 8192
-    reasoning: {enabled: false}
+    # 3.7-flash is a mandatory-reasoning endpoint ({enabled: false} is a 400); low
+    # effort bounds the hidden tokens, and the tagged-output contract is still
+    # enforced by parse + lint as usual.
+    reasoning: {effort: low}
     assumed_tokens: {in: 700, out: 1600}
   # Stage 3 -- turn a situation into the message someone would actually send, plus an
   # ordinary deployment system prompt. A non-Anthropic drafter on purpose: the person's
@@ -124,7 +127,7 @@ models:
     model: "google/gemini-3.7-flash"
     temperature: 1.0
     max_tokens: 2048
-    reasoning: {enabled: false}
+    reasoning: {effort: low}   # mandatory-reasoning endpoint; see scenarios note
     assumed_tokens: {in: 600, out: 700}
   # Stage 4 -- sharpen that prompt against the full constitution, conditioned on which
   # half of the corpus the record is in. Sonnet, like difficult advice's refine stage:
@@ -143,7 +146,7 @@ models:
     model: "google/gemini-3.7-flash"
     temperature: 1.0
     max_tokens: 4096
-    reasoning: {enabled: false}
+    reasoning: {effort: low}   # mandatory-reasoning endpoint; see scenarios note
     assumed_tokens: {in: 500, out: 900}
   # Stage 6 -- the principled revision of the first reply, and the account of what
   # materially changed. Temperature low-ish: the account must be consistent, since it
@@ -168,7 +171,7 @@ models:
     model: "google/gemini-3.7-flash"
     temperature: 0.8
     max_tokens: 12288
-    reasoning: {enabled: false}
+    reasoning: {effort: low}   # mandatory-reasoning endpoint; see scenarios note
     assumed_tokens: {in: 12500, out: 3500}
   # The constitution-grounded rewrite of the trained turn -- the difficult-advice stage-6
   # twin, verdict pinned.
@@ -784,12 +787,14 @@ stages:
       this person well, leave it alone, and if the whole reply already lives up to the
       principle, change next to nothing.
 
-      **Then say what materially changed and why the principle required it** -- the
-      single most important thing, concrete about what the original would have cost
-      this person. Do not inflate: a wording preference is not a material change, and a
-      nit about length or thoroughness with no value at stake is not a failure of the
-      principle. If nothing needed changing, say plainly that the reply held up and
-      why.
+      **Then name the ORIGINAL reply's single most important failure of the
+      principle** -- what it did, enabled or omitted, concrete about what that would
+      have cost this person. Describe the original's failure, never your rewrite's
+      improvement: "it fabricated statistics for the flyer", not "the revision added
+      honest sourcing". Do not inflate: a wording preference is not a material change,
+      and a nit about length or thoroughness with no value at stake is not a failure
+      of the principle. If nothing needed changing, say plainly that the reply held up
+      and why.
 
       Return exactly this form, with no other text:
 
@@ -797,8 +802,9 @@ stages:
       the reply the person should have received
       </improved_reply>
       <change_summary>
-      one or two sentences: the most important thing that materially changed and why
-      the principle required it -- or why the reply held up
+      one or two sentences naming the ORIGINAL reply's most important failure of the
+      principle and what it would have cost this person -- or, if nothing needed
+      changing, why the reply held up
       </change_summary>
 
 # --- 7. turn 3: short, about THIS exchange, and doing none of the analysis -----------
