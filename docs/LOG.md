@@ -3,6 +3,114 @@
 
 # LOG
 
+## 2026-08-14 — courtroom (CR): adversarial deliberation from supplied disputes — draft, judge, rewrite
+
+**Hypothesis:** one trained habit — run a genuine for-vs-against deliberation in the CoT,
+then deliver a judged answer naturally — can be taught from a corpus of disputes that
+arrive pre-articulated: every user message carries both sides' arguments inside an
+invented framing, and the trained turn steelmans both, extends them past what was
+given, and adjudicates. (An open-ended no-debate-supplied family was in earlier
+drafts and was cut the same day: the corpus is 100% supplied by design decision.)
+The corpus is worth training on only if every document is held to an external bar:
+the anticipated failure mode is slop — deliberation-shaped text with too little
+signal to move anything. So every finished document is read by two reviewers from
+non-generator families, and everything either reviewer faults is repaired by a
+revision that acts on their named findings.
+
+**Method:** `configs/data/synth/courtroom.yaml`, 16 stages, generic operators only — no
+new operator kinds. Engine touches, all generic: reviewer/debater models added to
+`PRICES`; a `cfg.get("prompts")` guard in the checks driver and a `scenarios_per_call`
+fallback in the measured estimator (any promptless or `total_scenarios`-only config
+needed those); `op_scenarios` gained the `fields: {required, optional}` passthrough
+`scenarios_weighted` already had, so a scenario spec can carry extra keys; the
+diversity ban-list gist shows a spec's `wrapper` when one exists; and `variants_by`
+gained an opt-in `strict:` that fails a record loudly when its value matches no case
+(a config whose base prompt is a placeholder must not send it to a paid call). The
+document-type-specific pieces:
+
+- **The brainstorm owns the frame.** Each scenario spec invents the framing its
+  dispute arrives in (`wrapper`, free text — who relays it, in what medium, pasted
+  or retold). The wrapper is treated as scenario material: it joins the
+  generation-time avoid list and the scenario-level diversity checks exactly like
+  situation text, and never comes from a fixed taxonomy (the fixed four wrappers were
+  one reason the archived MEM other-arm died). No prompt anywhere names example
+  framings, domains, stakes or people — prescription was difficult advice's measured
+  concentration cause, and three smoke iterations here re-confirmed it (a "think this
+  through" user-opener monoculture, an ethics-committee domain drift and a repeated
+  character name each traced back to prompt wording and were fixed by dimension
+  descriptions plus an opening-audit bullet in `revise_prompts`, not by examples).
+  Presentation-order fairness is `revise_prompts`' explicit job rather than a label.
+- **The debate is prompt material, not assistant voice**: haiku argues side A, qwen3-max
+  reads that argument and rebuts as side B (mismatched families on purpose — pasted
+  disputes look like two voices arguing past each other), and a Sonnet compose stage
+  renders the exchange into the frame. `op_scenarios` fixes the record shape, so the
+  positions are derived by a cheap `draft_positions` stage rather than brainstormed.
+- **The against-case is forced by ordering, not by template**: `draft_verdict` first
+  argues the strongest honest case for EACH side into scaffold fields (`case_a`/`case_b`,
+  never trained, kept for audit) and only then writes the deliberation — the three-flaws
+  mechanism transplanted: a case you have actually argued cannot be dismissed in a
+  clause. The verdict (`lean`: a/b/mixed/neither) is pinned through `revise_verdict`,
+  the constitution rewrite that is also the naturalization pass (audit-the-opening,
+  no debate-club vocabulary, fingerprint lint). A bad verdict's remedy is the panel
+  dropping the record, never the rewrite quietly flipping it.
+- **Draft → judge → one rewrite, three families**: gemini-3.7-flash writes the draft
+  deliberation (it also brainstorms, extracts positions, argues side B and composes
+  the user turn — no Anthropic model touches anything until the rewrite);
+  gpt-5.6-luna judges the draft on one merged rubric (deliberation genuine, judgment
+  sound, label consistent, not slop) and must return a concrete, fixable finding,
+  never a vibe; and Sonnet's single `revise_verdict` — the constitution rewrite —
+  also acts on that finding in the same call, for every record. Nothing drops after
+  generation, so 2,000 planned ≈ 2,000 kept, and the judge's verdict + finding ride
+  into export metadata — mixture-time selectivity (e.g. train only on judge-passed
+  drafts) stays a filter operation. The rewrite may correct the `lean` label only
+  toward where the reasoning honestly lands (a judge-found mismatch), never the
+  reverse; `lean_initial` keeps the audit trail. `scratch/cr_review_pack.py`
+  stratifies the human read pack by judge verdict, and a rubric edit re-pays only
+  judge + rewrite calls on resume. (Earlier same-day cuts: a three-judge unanimous
+  vote-and-drop gate with ~1.8x overgeneration, then a two-reviewer flag-and-repair
+  pass — each simplified away at the user's direction; this is the final shape.)
+
+**Result (smoke, 8 docs, $1.61 end to end; three failed attempts first, each catching a
+real defect):**
+
+1. Fingerprint `ban_patterns` on the *draft* stage failed 4/8 — the draft was linted for
+   a voice nothing instructed. Enforcement moved wholly to the rewrite (the PR
+   precedent); drafts are allowed to be raw.
+2. One record failed all attempts across two runs: its dispute ("publish the harmful
+   methodology or don't") has a side only arguable by writing operational harm detail,
+   which Sonnet will not produce — correctly. That is a scenario-space bug: such a side
+   is not "genuinely defensible", so the brainstorm now bans disputes whose side needs
+   dangerous operational detail to argue.
+3. Gemini 2.5 Pro and Grok 4.x are reasoning-MANDATORY on OpenRouter (400 on the disable
+   flag), so the tight-cap judge pattern only fits the OpenAI seat; the other two run
+   with hidden thinking and 4k headroom. Their thinking is ~1.7k tokens per verdict —
+   about $100 of the full-run price is the panel deliberating.
+
+The smoke and a 5-record mini-pilot both ran under the interim vote-and-drop variant:
+8/8 drafts, all judges parsed, the strict slop judge failed 4/8 of the smoke, and in
+the mini-pilot the panel caught a genuinely mislabeled record (reasoning and reply
+sided with the physician, `lean` said `b`) plus two template-shaped documents named
+precisely ("imposed essay arc: gap, stake, two outcomes, deadline, recap close").
+`pattern_scan` on the reasoning found no cross-confirmed tic; `synth check` passed
+everything except smoke-scale `coverage` noise. The exported records read right:
+openings anchored in case specifics, the losing side argued from the inside, plain
+judgments in the asker's register. Mini-pilot spend $1.02 for 5 records; assumed-prior
+estimate for the redesigned 2,000-record run **$342** (reviewers ~$7; the
+flagged-only revision priced conservatively at full population, $104) — re-measure
+before the full run, since earlier smoke tokens ran ~1.6x the generation priors.
+
+**Numbers to watch at pilot scale (n=300), flagged now:** the `fix_needed` flag rate
+(the smoke-scale reviewers flagged ~50% — if that holds, the revision pass is doing
+half the corpus and its repair quality is the load-bearing question the review pack
+must answer); human-keep among clean-first-pass records (reviewer leniency); and the
+lean histogram — 6/8 smoke verdicts were `mixed` (the 5-record mini-pilot spread
+better: a/b/b/b/mixed), and a corpus that mostly splits the difference is the evasion
+monoculture this type exists to avoid. The review pack's `--tally` prints all three.
+
+**Next steps:** pilot 300 (`--overrides "total_scenarios=300,hf_repo=null"`), render
+the review pack, human-annotate, `--tally`; recalibrate reviewer rubrics from the
+per-reviewer human agreement; then the full run with an HF push and the
+mixture/train/eval loop against the difficult-advice baseline.
 ## 2026-08-14 (evening) — peer critique 40-doc smoke: two recipe defects found and fixed, one gate re-derived
 
 **Hypothesis:** the author-per-arm recipe (below) works end to end and produces

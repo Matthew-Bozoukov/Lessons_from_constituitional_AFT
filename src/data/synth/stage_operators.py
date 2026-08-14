@@ -172,7 +172,12 @@ def _gist(r: dict, words: int = 14) -> str:
     """
     body = " ".join(str(r.get("situation") or "").split()[:words])
     domain = str(r.get("domain") or "").strip()
-    return f"{domain}: {body}" if domain else body
+    gist = f"{domain}: {body}" if domain else body
+    # A scenario spec may carry how the situation ARRIVES (courtroom's `wrapper`);
+    # repeats of that framing are as much a collapse as repeats of the situation, so
+    # when the field exists the ban list shows it to the generator too.
+    wrapper = " ".join(str(r.get("wrapper") or "").split()[:8])
+    return f"{gist} [arrives as: {wrapper}]" if wrapper else gist
 
 
 def _too_close(new_texts: list[str], seen_vecs, reject_cosine: float, model: str | None):
@@ -228,6 +233,13 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
     sys_t, user_t = sc["prompts"]["system"], sc["prompts"]["user"]
     mk = sc["model"]
     div = dict(sc.get("diversity") or {})
+    # Extra scenario-spec fields beyond the base domain/situation/shortcut shape,
+    # mirroring `scenarios_weighted`'s `fields:` block: `required` keys fail the batch
+    # loudly when the model omits them, `optional` default to "". Values are stripped
+    # because downstream `when:` scoping matches strings exactly.
+    extra = sc.get("fields") or {}
+    req_fields = list(extra.get("required") or [])
+    opt_fields = list(extra.get("optional") or [])
 
     def fn(ctx, records, ckpt):
         m = model_cfg(ctx.cfg, mk)
@@ -313,6 +325,8 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
                 "trait_id": t.trait_id, "trait_name": t.name, "trait_text": t.text,
                 "domain": s.get("domain", ""), "situation": s["situation"],
                 "shortcut": s.get("shortcut", ""),
+                **{k: str(s[k]).strip() for k in req_fields},
+                **{k: str(s.get(k, "")).strip() for k in opt_fields},
                 **prov.get(t.trait_id, {}),
             } for j, s in enumerate(parsed)]
 
@@ -461,6 +475,15 @@ def tagged_request(sc: dict, r: dict, ctx: Ctx) -> tuple[list[dict], tuple, dict
     variants = sc.get("variants_by")
     if variants:
         case = variants["cases"].get(str(r[variants["field"]]).lower())
+        # A value with no case falls back to the base prompts by design (how a config
+        # scopes a variant to part of the corpus). `strict: true` opts out: for a stage
+        # whose base prompt is only a placeholder, a stray value would otherwise send a
+        # nonsense prompt to a paid call instead of failing the record loudly.
+        if case is None and variants.get("strict"):
+            raise ValueError(
+                f"stage {sc['name']!r}: {variants['field']}="
+                f"{r.get(variants['field'])!r} matches no variants_by case "
+                f"({sorted(variants['cases'])})")
         if case:
             eff = {**sc, **case}
             # A case's `system`/`user` keys are prompt-template overrides; they must

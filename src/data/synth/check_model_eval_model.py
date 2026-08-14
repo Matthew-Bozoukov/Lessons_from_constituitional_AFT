@@ -680,8 +680,10 @@ def run_checks(run_dir: str | Path, cfg: dict,
         float(gates.get("length_cv_min", 0.15)),
         float(gates.get("opening_5gram_share_max", 0.25)), group)
     report["post_hoc_heuristic"] = check_post_hoc_heuristic(generated, verdict)
+    # A config need not define a top-level `prompts:` block at all (courtroom has
+    # none); no block simply means nothing unblinds the generator.
     report["blindness"] = check_blindness(generated, sft, constitution,
-                                          cfg["prompts"], group, ident)
+                                          cfg.get("prompts") or {}, group, ident)
     report["surface_shortcut"] = check_surface_shortcut(
         generated, float(gates.get("surface_auc_max", 0.65)), seed, quality,
         evaluated if _fields(cfg) is not FIELD_DEFAULTS else "")
