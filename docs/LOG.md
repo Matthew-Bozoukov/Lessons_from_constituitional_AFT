@@ -111,6 +111,25 @@ monoculture this type exists to avoid. The review pack's `--tally` prints all th
 the review pack, human-annotate, `--tally`; recalibrate reviewer rubrics from the
 per-reviewer human agreement; then the full run with an HF push and the
 mixture/train/eval loop against the difficult-advice baseline.
+## 2026-08-14 (night, vi) — Gemini 3.7 Flash takes every cheap GENERATION slot; judging stays Anthropic
+
+**Method:** extending the entry below, every stage where a light model *writes text*
+now runs `google/gemini-3.7-flash`; every stage that judges, steers against the
+constitution, or writes the final trained text stays Sonnet, and the corpus-check
+classifier stays Haiku (check models rate the corpus and write nothing into it, so the
+vendor-diversity argument does not apply). Concretely: PAR's `scenarios` and — notably
+— both trained-turn DRAFTS (`draft_reflection`, `draft_critique`) move to Gemini, with
+Sonnet's revision still producing what trains; the config comments flag that `--ablate
+revise_reflection`/`revise_critique` now ablates the rewrite AND the draft's authorship
+together. PC's third weak author becomes Gemini (replacing gpt-5.6-luna), so the flawed
+rotation is grok-4.3 / qwen3-32b / gemini-3.7-flash. PC's scenario brainstorm stays
+Haiku (the one remaining Anthropic generation slot — flagged, not decided).
+
+**Result:** 758 tests pass. Estimates fall sharply with the draft slots off Sonnet:
+PC $297.04 (budget 350), PAR $283.91 (budget 330), 2,100 documents each. Still not
+smoked in this form; Gemini's tag-format compliance on the long critique/reflection
+drafts is now the first thing a smoke will test.
+
 ## 2026-08-14 (night, v) — the fault-finding judge becomes a plain revision; Gemini drafts the human-side turns
 
 **Hypothesis:** the three-criticisms + adjudication + keep-gate mechanism earned its

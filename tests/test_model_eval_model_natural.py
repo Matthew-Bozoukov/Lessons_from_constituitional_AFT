@@ -151,7 +151,7 @@ def test_pc_stage_sequence() -> None:
         "chunk_constitution", "write_scenarios", "corpus_scenarios",
         "dedupe_scenarios", "draft_prompts", "revise_prompts",
         "draft_first_turn_sonnet", "draft_first_turn_grok", "draft_first_turn_qwen",
-        "draft_first_turn_gpt56", "revise_first_turn", "write_critique_framing",
+        "draft_first_turn_gemini", "revise_first_turn", "write_critique_framing",
         "draft_critique", "revise_critique", "corpus", "export_sft"]
 
 
@@ -444,7 +444,7 @@ def test_pc_arms_are_assigned_in_revise_prompts_and_steer_the_situation() -> Non
 PC_AUTHOR_STAGES = {"draft_first_turn_sonnet": ("good", None),
                     "draft_first_turn_grok": ("flawed", "grok"),
                     "draft_first_turn_qwen": ("flawed", "qwen"),
-                    "draft_first_turn_gpt56": ("flawed", "gpt56")}
+                    "draft_first_turn_gemini": ("flawed", "gemini")}
 
 
 def test_pc_first_turn_author_is_the_arm() -> None:
@@ -478,7 +478,7 @@ def test_pc_weak_stages_cover_the_flawed_arm_exactly_once() -> None:
     """The three `when:` conjunctions partition flawed x weak_author; a flawed record
     is drafted by exactly one weak model and a good record by none of them."""
     weak = [_stage(PC_CFG, n) for n in PC_AUTHOR_STAGES if n != "draft_first_turn_sonnet"]
-    for author in ("grok", "qwen", "gpt56"):
+    for author in ("grok", "qwen", "gemini"):
         r = _pc_record(weak_author=author)
         assert sum(selected(sc, r) for sc in weak) == 1
         assert not any(selected(sc, _pc_record(reply_quality="good",

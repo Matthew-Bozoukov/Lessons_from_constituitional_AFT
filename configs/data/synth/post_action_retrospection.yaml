@@ -86,9 +86,10 @@ hf_private: false
 workers: 16
 # Re-price with `uv run synth estimate --config <this file>` and again with
 # `--measured <smoke manifest>` before committing -- the token priors are carried over
-# from the old self arm and the prompt-writing stages are guesses. ($387.76 estimated
-# 2026-08-14; 450 leaves headroom for retries without leaving the guard meaningless.)
-budget_usd: 450.0
+# from the old self arm and the prompt-writing stages are guesses. ($283.91 estimated
+# 2026-08-14 with Gemini drafting; 330 leaves headroom for retries without leaving the
+# guard meaningless.)
+budget_usd: 330.0
 
 smoke:
   total_scenarios: 8
@@ -111,9 +112,10 @@ models:
   # Stage 2 -- brainstorm the prompt pool. Temperature high: this stage's whole job is
   # spread, and every downstream diversity gate inherits whatever it fails to produce.
   scenarios:
-    model: "anthropic/claude-haiku-4.5"
+    model: "google/gemini-3.7-flash"
     temperature: 1.15
     max_tokens: 8192
+    reasoning: {enabled: false}
     assumed_tokens: {in: 700, out: 1600}
   # Stage 3 -- turn a situation into the message someone would actually send, plus an
   # ordinary deployment system prompt. A non-Anthropic drafter on purpose: the person's
@@ -158,9 +160,12 @@ models:
     max_tokens: 1024
     reasoning: {enabled: false}
     assumed_tokens: {in: 2000, out: 120}
-  # Turn 4 -- the reflection, and the only turn that trains.
+  # Turn 4 -- the DRAFT of the reflection. Gemini drafts; Sonnet's `revise_reflection`
+  # rewrites, and the rewrite is what trains. NOTE this changes what `--ablate
+  # revise_reflection` means: the ablation arm now trains on Gemini-drafted text, so it
+  # ablates the Sonnet rewrite AND the authorship together, not the rewrite alone.
   reflect:
-    model: "anthropic/claude-sonnet-5"
+    model: "google/gemini-3.7-flash"
     temperature: 0.8
     max_tokens: 12288
     reasoning: {enabled: false}
@@ -192,7 +197,9 @@ models:
     max_tokens: 2500
     assumed_tokens: {in: 40000, out: 1200}
   # pattern_scan's AUTORATE pass: a yes/no classifier run thousands of times over small
-  # batches. Cheapest adequate model, per GDM's own cost note.
+  # batches. Cheapest adequate model, per GDM's own cost note. Stays Haiku: check
+  # models rate the corpus and write nothing into it, so the vendor-diversity argument
+  # for the generation stages does not apply.
   classify:
     model: "anthropic/claude-haiku-4.5"
     temperature: 0.0
