@@ -42,10 +42,6 @@ train:
   save_total_limit: 2
   auto_resume: true
 
-  # Loss on assistant tokens only; think-tag supervision is the non-configurable
-  # generation-boundary rule in src/train/masking.py (empty markers masked, real
-  # traces supervised) — the successor to the old mask_empty_think switch.
-  assistant_only_loss: true
   # Avoids TRL's chunked-CE LM-head patch, which crashes on this checkpoint's
   # functools.partial forward. Mathematically the same loss.
   loss_type: "nll"

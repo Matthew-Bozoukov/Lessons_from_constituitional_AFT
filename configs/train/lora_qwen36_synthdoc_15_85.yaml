@@ -29,7 +29,6 @@ train:
   max_seq_len: 3072
   packing: false
   # Loss on assistant tokens only: everything outside an assistant turn is -100.
-  assistant_only_loss: true
   attn_implementation: sdpa
   load_in_4bit: false
 

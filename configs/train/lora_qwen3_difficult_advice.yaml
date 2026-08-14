@@ -24,9 +24,9 @@ train:
   logging_steps: 5
   max_seq_len: 1536
   packing: true
-  # Qwen3's chat template has no {% generation %} markers, so assistant-only
-  # masking yields all-zero masks; use standard full-sequence SFT loss.
-  assistant_only_loss: false
+  # Historical record: the published v1 run trained with full-sequence loss, which the
+  # trainer no longer supports (assistant-only masking is its only mode, and it needs a
+  # verified ModelProfile, which Qwen3-32B lacks). Reproduce v1 from git history.
   attn_implementation: sdpa
 
 # Eval-time thinking mode of this arm (CLAUDE.md eval framework): stamped into the

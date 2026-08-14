@@ -33,7 +33,6 @@ train:
   # Loss on assistant tokens only: everything outside an assistant turn is -100.
   # Continue the published epoch-1 adapter for a second epoch rather than starting fresh.
   resume_adapter: "LASR-Callum/qwen3.6-27b-lora-500k-da20-t1t3"
-  assistant_only_loss: true
   # Avoids TRL's chunked-CE LM-head patch, which crashes on this checkpoint's
   # functools.partial forward. Mathematically the same loss.
   loss_type: "nll"

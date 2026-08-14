@@ -278,13 +278,14 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    # TRL's own assistant_only_loss needs `{% generation %}` markers, which Qwen3.6's chat
-    # template lacks, and it re-renders from `messages` without the profile's preserve
-    # kwargs -- which would silently drop reasoning traces. So the template is applied
-    # HERE for interchange datasets, and the masking is built off the exact rendered
-    # strings, handing the trainer a ready-made batch.
-    assistant_only = bool(cfg.train.assistant_only_loss)
-    if assistant_only and "text" not in ds.column_names and "messages" in ds.column_names:
+    # The loss is ALWAYS assistant-only, via the in-repo mask — not a knob (the 20/80
+    # ablation settled it: full-sequence training dilutes the signal with prompt
+    # tokens, gotcha 3). TRL's own masking needs `{% generation %}` markers, which
+    # Qwen3.6's chat template lacks, and its re-render from `messages` drops the
+    # profile's preserve kwargs -- which would silently drop reasoning traces. So the
+    # template is applied HERE for interchange datasets, and the masking is built off
+    # the exact rendered strings, handing the trainer a ready-made batch.
+    if "text" not in ds.column_names and "messages" in ds.column_names:
         # Model-agnostic interchange rows (see src/data/mixture/sources/): the stored
         # data carries semantics only; the model family's syntax -- think blocks
         # included -- is applied now, by the verified profile, where the mask gate
@@ -299,51 +300,41 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         )
         print(f">>> interchange dataset rendered at train time with "
               f"{profile.family} render_kwargs={profile.render_kwargs}")
-    pre_tokenized = assistant_only and "text" in ds.column_names
-    if pre_tokenized:
-        max_len = int(cfg.train.max_seq_len)
-        # Think supervision is NOT configurable: the generation-boundary rule in
-        # src/train/masking.py is the one way — mask what the model never generates (the
-        # `<think>\n` prefill; a WHOLE empty marker, since a healthy model never closes
-        # an empty block), supervise what it does (reasoning + `\n</think>` + answer).
-        # Runs trained under older rules are reproduced from git history, not a knob.
-        for stale_key in ("mask_empty_think", "think_loss"):
-            if cfg.train.get(stale_key) is not None:
-                raise ValueError(
-                    f"`train.{stale_key}` is not a knob: think supervision always uses "
-                    "the generation-boundary rule (src/train/masking.py). Delete the key; "
-                    "to reproduce an old run, check out the commit in its adapter's "
-                    "training_meta."
-                )
-        profile = model_profile(str(cfg.model))
-        gate_generation_boundary(ds["text"], tokenizer, max_len, profile, thinking)
-        # A row's optional `supervise` field ("final" = train only the last assistant
-        # turn -- model-eval-model's self-reflection records) must be consumed here:
-        # remove_columns discards it right after. Absent or null trains every turn.
-        if "supervise" in ds.column_names:
-            n_final = sum(1 for s in ds["supervise"] if s == "final")
-            print(f">>> supervise=final rows (only last assistant turn trains): "
-                  f"{n_final}/{len(ds)}")
-        ds = ds.map(
-            lambda r: build_labels(r["text"], tokenizer, max_len, profile,
-                                   supervise=r.get("supervise") or "all"),
-            remove_columns=ds.column_names,
-            desc="masking non-assistant and prefill tokens",
-        )
-        n_tok = sum(len(r) for r in ds["input_ids"])
-        n_sup = sum(sum(1 for v in r if v != -100) for r in ds["labels"])
-        print(f">>> assistant-only loss: {n_sup:,}/{n_tok:,} tokens supervised "
-              f"({100 * n_sup / n_tok:.1f}%)")
-        first = ds[0]
-        kept = [v for v in first["labels"] if v != -100]
-        print(">>> FIRST EXAMPLE masked (no loss):")
-        print("   ", repr(tokenizer.decode(
-            [i for i, v in zip(first["input_ids"], first["labels"]) if v == -100])[:300]))
-        print(">>> FIRST EXAMPLE supervised (loss):")
-        print("   ", repr(tokenizer.decode(kept)[:300]))
-    elif assistant_only:
-        raise ValueError("assistant_only_loss needs a `messages` (interchange) or "
+    if "text" not in ds.column_names:
+        raise ValueError("training needs a `messages` (interchange) or "
                          "pre-rendered `text` column")
+    max_len = int(cfg.train.max_seq_len)
+    # Think supervision is NOT configurable either: the generation-boundary rule in
+    # src/train/masking.py is the one way — mask what the model never generates (the
+    # `<think>\n` prefill; a WHOLE empty marker, since a healthy model never closes
+    # an empty block), supervise what it does (reasoning + `\n</think>` + answer).
+    # Runs trained under older rules are reproduced from git history, not a knob.
+    profile = model_profile(str(cfg.model))
+    gate_generation_boundary(ds["text"], tokenizer, max_len, profile, thinking)
+    # A row's optional `supervise` field ("final" = train only the last assistant
+    # turn -- model-eval-model's self-reflection records) must be consumed here:
+    # remove_columns discards it right after. Absent or null trains every turn.
+    if "supervise" in ds.column_names:
+        n_final = sum(1 for s in ds["supervise"] if s == "final")
+        print(f">>> supervise=final rows (only last assistant turn trains): "
+              f"{n_final}/{len(ds)}")
+    ds = ds.map(
+        lambda r: build_labels(r["text"], tokenizer, max_len, profile,
+                               supervise=r.get("supervise") or "all"),
+        remove_columns=ds.column_names,
+        desc="masking non-assistant and prefill tokens",
+    )
+    n_tok = sum(len(r) for r in ds["input_ids"])
+    n_sup = sum(sum(1 for v in r if v != -100) for r in ds["labels"])
+    print(f">>> assistant-only loss: {n_sup:,}/{n_tok:,} tokens supervised "
+          f"({100 * n_sup / n_tok:.1f}%)")
+    first = ds[0]
+    kept = [v for v in first["labels"] if v != -100]
+    print(">>> FIRST EXAMPLE masked (no loss):")
+    print("   ", repr(tokenizer.decode(
+        [i for i, v in zip(first["input_ids"], first["labels"]) if v == -100])[:300]))
+    print(">>> FIRST EXAMPLE supervised (loss):")
+    print("   ", repr(tokenizer.decode(kept)[:300]))
 
     # --- base model: 4-bit QLoRA by default, bf16 LoRA when 4-bit is unsupported ---
     # Qwen3.6's hybrid linear-attention layers are not reliably quantised by bitsandbytes,
@@ -436,9 +427,6 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     global_batch = int(cfg.train.batch_size) * int(cfg.train.grad_accum)
     dyn_budget: int | None = None
     if dynamic is not None:
-        assert pre_tokenized, (
-            "dynamic_batching needs the pre-tokenized assistant-only path: labels "
-            "must be baked per example before any batching")
         assert not bool(cfg.train.packing), (
             "dynamic_batching pads, it never packs (gated-delta state leaks across "
             "packed examples without the fla kernels); set packing: false")
@@ -522,15 +510,14 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         report_to=[] if smoke else list(cfg.train.get("report_to", []) or []),
         run_name=f"difficult-advice-{ts}",
         seed=int(cfg.seed),
-        # Train only on the assistant completion, not the user prompt. When the dataset is
-        # pre-tokenized above the masking is already in `labels`, so TRL must not redo it.
-        assistant_only_loss=assistant_only and not pre_tokenized,
         # TRL's default chunked-CE path patches the LM head and reads `forward.__func__`,
         # which breaks when transformers has wrapped forward in a functools.partial (as it
         # does for some vision-language checkpoints). `nll` is TRL's supported alternative
         # and skips that patch entirely.
         **({"loss_type": cfg.train.loss_type} if cfg.train.get("loss_type") else {}),
-        dataset_kwargs={"skip_prepare_dataset": True} if pre_tokenized else {},
+        # The dataset arrives pre-tokenized with the assistant-only mask already in
+        # `labels` (built above); TRL must not re-prepare or re-mask it.
+        dataset_kwargs={"skip_prepare_dataset": True},
     )
 
     if dynamic is not None:
@@ -554,9 +541,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
             train_dataset=ds,
             processing_class=tokenizer,
             peft_config=None if resume_adapter else peft_cfg,
-            data_collator=(
-                (lambda f: _collate_padded(f, tokenizer.pad_token_id)) if pre_tokenized else None
-            ),
+            data_collator=lambda f: _collate_padded(f, tokenizer.pad_token_id),
         )
 
     # Resume from the newest checkpoint on the volume when one is there, so a restart

@@ -29,6 +29,16 @@ their `LASR-Callum/2026-08-06-...-10k-train` repos) are filled in; the other 13 
 `data_repo: ???` / `hf_repo: ???` OmegaConf sentinels until someone recovers which
 published mixture each arm trained on. Offline tests in `tests/test_huggingface.py`.
 
+**Also (same day):** `assistant_only_loss` is no longer a knob — the trainer always
+masks the loss to assistant tokens via the in-repo render+mask path (the 20/80 ablation
+settled it; full-sequence training dilutes the signal, gotcha 3). The key is deleted
+from every train config, and the `stale_key` refusal list went with it. This closes a
+real hole: `thinking: true` + `assistant_only_loss: false` + interchange rows would have
+let TRL re-render without the profile's preserve kwargs and silently drop every
+reasoning trace (the gotcha-2 collapse) — that path no longer exists. Consequence: only
+`ModelProfile`-verified families can train at all now; the v1 Qwen3-32B full-sequence
+baseline is reproduced from git history, not from its (still-present) config.
+
 **Result:** an adapter's metadata now names the exact dataset repo, file and revision it
 was trained from, and a finished training run cannot fail to publish its adapter.
 

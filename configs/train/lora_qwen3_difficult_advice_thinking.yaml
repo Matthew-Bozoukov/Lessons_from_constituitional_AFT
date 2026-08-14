@@ -24,7 +24,6 @@ train:
   logging_steps: 5
   max_seq_len: 2048          # longer targets (answer + reasoning trace)
   packing: true
-  assistant_only_loss: true
   attn_implementation: sdpa
 
 # Eval-time thinking mode of this arm (CLAUDE.md eval framework): stamped into the

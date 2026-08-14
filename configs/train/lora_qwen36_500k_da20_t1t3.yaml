@@ -31,7 +31,6 @@ train:
   max_seq_len: 3072
   packing: false
   # Loss on assistant tokens only: everything outside an assistant turn is -100.
-  assistant_only_loss: true
   # Avoids TRL's chunked-CE LM-head patch, which crashes on this checkpoint's
   # functools.partial forward. Mathematically the same loss.
   loss_type: "nll"
