@@ -159,8 +159,8 @@ per-call token counts (priors live in each model block's `assumed_tokens`).
 
 **HF repo layout** (the synth→mixture contract; the local run dir stays flat): stage
 snapshots mirror to `stages/`, and a COMPLETED run publishes its final records as
-`dataset.jsonl` at the repo root — the one file consumers read (build_mixture:
-`repo:` + `file: dataset.jsonl` [+ `revision:`]). Every upload refreshes the
+`dataset.jsonl` at the repo root — the default config consumers load (build_mixture:
+`dataset: <org>/<repo>` [+ `revision:`]). Every upload refreshes the
 README's `configs:` front-matter in the same commit, declaring `dataset` as the
 default config (`load_dataset(repo)` fetches it alone) and each stage as its own
 named config — which also keeps the dataset viewer working. A halted run publishes

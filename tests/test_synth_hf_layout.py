@@ -63,3 +63,43 @@ def test_publish_final_is_the_root_dataset_and_default_config(tmp_path):
     cfgs = _front_matter(c._readme())["configs"]
     assert [x["config_name"] for x in cfgs] == ["dataset", "stage_2_scenarios"]
     assert cfgs[0]["default"] is True
+
+
+def test_mixture_dataset_spec_loads_default_config_and_balances(monkeypatch):
+    # The consumer half of the contract: `dataset: org/repo` pulls the default config
+    # via load_dataset (sha-pinned), and — because the pool is fully materialised —
+    # balance_by works on it. Hub mocked; balancing and payloads run for real.
+    from types import SimpleNamespace
+
+    from omegaconf import OmegaConf
+
+    import src.huggingface as hf
+    from src.data.mixture import build_mixture as bm
+
+    rows = [{"messages": [{"role": "user", "content": "q", "reasoning_content": None},
+                          {"role": "assistant", "content": f"a{i}",
+                           "reasoning_content": None}],
+             "metadata": {"trait_id": f"t{i % 2}", "supervise": None}}
+            for i in range(8)]
+    monkeypatch.setattr(hf, "hf_api", lambda: SimpleNamespace(
+        repo_info=lambda repo, repo_type, revision: SimpleNamespace(sha="c0ffee" * 6)))
+    monkeypatch.setattr(hf, "hf_token", lambda: "offline")
+    calls = {}
+    monkeypatch.setattr(bm, "load_dataset", lambda repo, revision, split, token:
+                        calls.update(repo=repo, revision=revision) or rows)
+
+    class _Tok:  # fixed-width render: every row counts 10 tokens
+        def apply_chat_template(self, msgs, **kw):
+            return {"input_ids": [0] * 10}
+
+    got, kind = bm._take_interchange(
+        _Tok(), OmegaConf.create({"max_seq_len": 99}), "da",
+        {"dataset": "org/synth-run", "reasoning": "none", "balance_by": "trait_id",
+         "examples": 4},
+        budget=("examples", 4), seed=0, render_kwargs={})
+    assert kind == "none" and len(got) == 4
+    assert calls["repo"] == "org/synth-run" and calls["revision"].startswith("c0ffee")
+    # balanced: two rows from each trait bucket, and interchange fields intact
+    # (clean_messages drops load_dataset's None-filled reasoning_content)
+    assert all("reasoning_content" not in m for r in got for m in r["messages"])
+    assert all(r["source"] == "da" and r["n_tokens"] == 10 for r in got)
