@@ -248,13 +248,6 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     if bool(cfg.train.get("push_to_hub", False)):
         assert cfg.train.get("hub_model_id") or hf_repo, (
             "checkpoint push (train.push_to_hub) needs train.hub_model_id or hf_repo")
-    # Research-trajectory branches (Pythia-style): each saved checkpoint pushed to
-    # hf_repo as a `step<N>` branch, so any step is an evaluable `revision=` target.
-    ckpt_branches = bool(cfg.train.get("checkpoint_branches", False)) and not smoke
-    if ckpt_branches:
-        assert hf_repo and push, (
-            "train.checkpoint_branches pushes each saved checkpoint to hf_repo as a "
-            "step<N> branch — it needs hf_repo and push=true (credentials present)")
     torch.manual_seed(int(cfg.seed))
 
     # Under `torchrun` every rank runs this file; these are 1/0 for a plain single-GPU run.
@@ -546,8 +539,8 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         # loses only the steps since the last one and the final adapter is already on the Hub
         # when training ends -- the pod can be torn down immediately. Opt-in via
         # train.push_to_hub; the repo defaults to the adapter's own hf_repo, private like
-        # every other push in this repo. (Evaluable per-step `step<N>` branches are the
-        # separate train.checkpoint_branches mechanism — CheckpointBranchPush above.)
+        # every other push in this repo. (Evaluable per-step `step<N>` branches are
+        # pushed automatically by CheckpointBranchPush — a separate mechanism.)
         push_to_hub=bool(cfg.train.get("push_to_hub", False)),
         hub_model_id=cfg.train.get("hub_model_id") or hf_repo,
         hub_strategy=str(cfg.train.get("hub_strategy", "every_save")),
@@ -597,10 +590,15 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
             data_collator=lambda f: _collate_padded(f, tokenizer.pad_token_id),
         )
 
-    if ckpt_branches:
+    # Research-trajectory branches (Pythia-style layout), not a knob: whenever the run
+    # pushes, every saved checkpoint lands on hf_repo as a `step<N>` branch — an
+    # evaluable `revision=` target. push=false runs (credential-less pods) and smoke
+    # skip it. Legacy adapter repos (no branches, data_path-era training_meta) stay
+    # loadable: serving reads main and only the `thinking` field.
+    if push:
         trainer.add_callback(CheckpointBranchPush(hf_repo, out_dir, training_meta))
         if is_main:
-            print(f">>> checkpoint branches ON: every save pushes step<N> to {hf_repo}")
+            print(f">>> checkpoint branches: every save pushes step<N> to {hf_repo}")
 
     # Resume from the newest checkpoint on the volume when one is there, so a restart
     # continues rather than silently retraining from scratch at full cost.
