@@ -12,11 +12,11 @@ Steps (paper App. D.1, adapted per the 2026-08-13 design):
 2. Informed judge: select 3 cruxes VERBATIM against the rubric, polarity
    satisfy|violate, guarded by the index's styles.json (rejects reported).
 3. Embed the cruxes; retrieve the k=1000 nearest dataset RESPONSE attributes each.
-4. Hit-count TRIGGER clusters: each retrieved hit credits every distinct cluster
-   among its source row's query+reasoning attributes once. (The paper credits one
-   query attribute per hit via an index-pairing artifact; crediting the row's
-   distinct clusters keeps the same k denominator with a defensible semantics —
-   "fraction of retrieved hits whose source row exhibits this cluster".)
+4. Hit-count TRIGGER clusters: each retrieved hit gives +1 to the cluster of EVERY
+   query+reasoning attribute of its source row. (Eq. 4 as printed reuses the
+   retrieved response attribute's slot index to credit one arbitrary query
+   attribute; we credit them all — the prose reading, and the only one that
+   extends to a 20-attribute trigger side. Counts can therefore exceed k.)
 5. Trigger identification: extract the CASE's own 10 query + 10 reasoning
    attributes, assign each to its nearest centroid, and report the case attribute
    whose cluster scored the highest hits — per crux.
@@ -116,11 +116,12 @@ def main(case: str, rubric: str, index: str, polarity: str = "satisfy",
     crux_emb = embed(cruxes)
     crux_emb /= np.linalg.norm(crux_emb, axis=1, keepdims=True) + 1e-9
 
-    # trigger side: cluster lookup per dataset row
+    # trigger side: each row's attribute clusters, one entry PER attribute — a
+    # retrieved hit gives +1 to the cluster of every trigger attribute of its row
     trig_index = read_jsonl(idx / "trigger_index.jsonl")
-    row_clusters: dict[int, set[int]] = {}
+    row_clusters: dict[int, list[int]] = {}
     for t in trig_index:
-        row_clusters.setdefault(t["row"], set()).add(t["cluster"])
+        row_clusters.setdefault(t["row"], []).append(t["cluster"])
     summaries = {s["cluster"]: s for s in read_jsonl(idx / "cluster_summaries.jsonl")}
     # Clusters are BUILT with Euclidean k-means (centroids not unit-norm), but new
     # attributes are assigned by COSINE — mandated by the paper (Eq. 5: argmax cos)
@@ -196,13 +197,14 @@ def main(case: str, rubric: str, index: str, polarity: str = "satisfy",
     for pc in per_crux:
         lines += [f"## Crux: {pc['crux']}", "",
                   f"**Trigger** ({pc['trigger']['channel']}, "
-                  f"{pc['trigger']['hits']}/{k} hits): {pc['trigger']['attribute']}", "",
+                  f"{pc['trigger']['hits']} hits over {k} retrieved): "
+                  f"{pc['trigger']['attribute']}", "",
                   "| hits | cluster summary | reasoning share | |", "|---|---|---|---|"]
         for t in pc["clusters"]:
             flag = "⚠ style echo" if t["style_echo"] else ""
             share = (f"{t['share_reasoning']:.0%}" if t["share_reasoning"] is not None
                      else "?")
-            lines.append(f"| {t['hits']}/{t['of']} | {t['summary']} | {share} | {flag} |")
+            lines.append(f"| {t['hits']} | {t['summary']} | {share} | {flag} |")
         lines.append("")
     if excluded:
         lines += ["## Excluded as style restatements", ""]

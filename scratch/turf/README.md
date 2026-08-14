@@ -27,9 +27,10 @@ user turn + FIRST assistant turn (their `_extract_first_turn`; system prompts an
 later turns ignored). The paper itself mandates cosine in two places, and we follow
 both: crux→response retrieval (Eq. 3) and assigning a case's attributes to their
 nearest cluster (Eq. 5) — the latter also matching SURF's `cluster_mapper.py`.
-One knowing paper deviation: hit-counting credits each distinct cluster of a
-retrieved row once, rather than Eq. 4's literal slot-index pairing — which cannot
-extend to our 20-attribute (query+reasoning) trigger side anyway.
+One knowing paper deviation: each retrieved hit gives +1 to the cluster of EVERY
+query+reasoning attribute of its source row, rather than Eq. 4's literal slot-index
+pairing (which credits one arbitrary query attribute per hit, and cannot extend to
+our 20-attribute trigger side anyway).
 
 ## Pipeline
 
