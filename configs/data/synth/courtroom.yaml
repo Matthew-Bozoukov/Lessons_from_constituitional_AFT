@@ -136,12 +136,13 @@ models:
     max_tokens: 4096
     assumed_tokens: {in: 1000, out: 700}
   # Stage 8 -- render the debate into its frame, plus the deployment system prompt.
-  # 16384: a pasted-thread user message plus hidden thinking overran 8192 once in the
-  # 2026-08-14 smoke (truncated mid-<user>, the only generation failure that run).
+  # 32768: gemini-3.7-flash's hidden thinking counts against this cap, and 5.7% of
+  # full-run calls still died mid-<user> at 16384 (2026-08-14). Billing is by actual
+  # output, so the headroom is free until used.
   compose:
     model: "google/gemini-3.7-flash"
     temperature: 1.0
-    max_tokens: 16384
+    max_tokens: 32768
     assumed_tokens: {in: 1900, out: 1000}
   # Stage 10 -- sharpen the prompt against the full constitution.
   refine:
