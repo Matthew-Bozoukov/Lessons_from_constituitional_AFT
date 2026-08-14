@@ -38,7 +38,7 @@ def docker_preflight() -> None:
         if "permission denied" in err.lower():
             _fail("the docker daemon refused this user (permission denied)",
                   because="rollouts must create/destroy containers without sudo",
-                  fix="`sudo usermod -aG docker $USER && newgrp docker` (replication.md)")
+                  fix="`sudo usermod -aG docker $USER && newgrp docker`")
         _fail(f"the docker daemon is not reachable:\n    {err}",
               because="no daemon means no scenario containers at all",
               fix="start Docker (Desktop app / `systemctl start docker`); on an "

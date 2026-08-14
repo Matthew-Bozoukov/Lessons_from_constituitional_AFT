@@ -23,8 +23,8 @@ the assistant reasons about its values and declines norm-violations) reduces **a
 misalignment** (blackmail/leaking honeypots). We reproduced that on **Qwen3-32B**, and it is now
 the baseline the project measures against rather than the thing the project is for. Data is
 generated with **Sonnet 4.5 via OpenRouter** (no Anthropic key exists — all Claude calls go
-through OpenRouter). See `docs/replication.md` for the end-to-end run guide and the baseline
-numbers; see `docs/LOG.md` for the chronological findings.
+through OpenRouter). See `docs/LOG.md` for the chronological findings and the baseline
+numbers.
 
 ## Where code runs
 
@@ -114,7 +114,7 @@ scratch/                one-off and AI-generated scripts (report generators, pro
 dashboard/              the research-log web app (own toolchain, deployed on Netlify) - see its README
 constitutions/          alignment targets data generation points at; one folder per constitution
                         (constitution.md + rationale.md), superseded ones in archive/ — see its README
-docs/                   reference material + docs/replication.md (the end-to-end run guide)
+docs/                   reference material
 tests/                  fast, no-network unit tests (e.g. extract_json). Run: uv run pytest -q
 data/                   datasets staged for training (gitignored; pull from HF)
 output/                 ALL run artifacts (gitignored). See below.
@@ -415,5 +415,4 @@ Never terminate a resource this repository did not provision. Report it instead.
 
 ## When you finish a task
 - Append a `docs/LOG.md` entry (most-recent-first): hypothesis → method → result → next steps, with absolute dates. LOG.md is for **experiments and major code changes only** — routine refactors, chores, and doc edits get no entry.
-- Update `docs/replication.md` if you added a step or changed how to run things.
 - Destroy any GPU instance and confirm 0 active.

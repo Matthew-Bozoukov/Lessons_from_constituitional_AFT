@@ -20,4 +20,4 @@ PATCHED
   Deviations from upstream live in OUR code, not theirs: one model instead of the
   hardcoded 12, a per-scenario compose project (+ an orchestrator_api network alias) so
   scenarios can run concurrently, and our own metrics/bootstrap because upstream's
-  advertised stats scripts are absent from the repo. See docs/replication.md.
+  advertised stats scripts are absent from the repo.
