@@ -615,6 +615,24 @@ def main(config: str, smoke: bool = False) -> None:
     print(f">>> saved adapter to {adapter_dir}")
     print(f">>> run_meta: {out_dir / 'run_meta.json'}")
 
+    # There are TWO push paths and only one of them carried the stamp. `cfg.hf_repo` pushes
+    # adapter_dir wholesale (stamp included); `train.push_to_hub` hands the job to TRL,
+    # which uploads the TRAINER's output directory — written before this function stamps
+    # adapter_dir, so training_meta.json never reached the repo. run_eval hard-errors on an
+    # adapter without it, so both 2026-08-07 and 2026-08-08 needed the file retrieved off a
+    # live pod and uploaded by hand before the arm could be evaluated. Upload it here.
+    hub_id = cfg.train.get("hub_model_id")
+    if bool(cfg.train.get("push_to_hub", False)) and hub_id and not smoke:
+        from huggingface_hub import HfApi
+
+        HfApi().upload_file(
+            path_or_fileobj=str(adapter_dir / "training_meta.json"),
+            path_in_repo="training_meta.json",
+            repo_id=str(hub_id),
+            commit_message="training_meta.json (thinking stamp) — required by run_eval",
+        )
+        print(f">>> uploaded training_meta.json to {hub_id}")
+
 
 def cli() -> None:
     """Console entry (`uv run train_lora --config ...`, [project.scripts])."""
