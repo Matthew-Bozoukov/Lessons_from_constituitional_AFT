@@ -124,10 +124,15 @@ def test_config_builds_and_prices(cfg: dict) -> None:
 
 
 def test_pr_stage_sequence() -> None:
+    # corpus_scenarios and corpus (added 2026-08-14) are corpus_check OBSERVERS: they
+    # write no snapshot and take no position, so the generation sequence is unchanged.
+    # The end check sits before export because the export merges the untrained first
+    # reply and the trained reflection into the same assistant role, and only the
+    # pre-export record can point the checks at the trained turn alone.
     assert [s["name"] for s in PR_CFG["stages"]] == [
-        "chunk_constitution", "write_scenarios", "draft_prompts", "revise_prompts",
-        "draft_first_turn", "revise_first_turn", "write_followup", "draft_reflection",
-        "revise_reflection", "export_sft"]
+        "chunk_constitution", "write_scenarios", "corpus_scenarios", "draft_prompts",
+        "revise_prompts", "draft_first_turn", "revise_first_turn", "write_followup",
+        "draft_reflection", "revise_reflection", "corpus", "export_sft"]
 
 
 # --- the arms: a label, assigned deterministically ----------------------------------
