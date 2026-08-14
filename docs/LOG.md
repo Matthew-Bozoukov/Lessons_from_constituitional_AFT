@@ -111,6 +111,261 @@ monoculture this type exists to avoid. The review pack's `--tally` prints all th
 the review pack, human-annotate, `--tally`; recalibrate reviewer rubrics from the
 per-reviewer human agreement; then the full run with an HF push and the
 mixture/train/eval loop against the difficult-advice baseline.
+## 2026-08-14 (night, ix) — PAR all-green: the follow-up now points where the lapse lives
+
+**Hypothesis:** PAR's one red gate (flaw_identification 0.667 vs 0.70) was a pointing
+mismatch, not a reflection-quality problem: `write_followup` never saw what was wrong
+with the reply, so the person's "something felt off" question landed on arbitrary
+spots, the reflection dutifully answered THAT (as its instructions require), and the
+judge scored a miss against the real lapse.
+
+**Method (minimal, in place):** a `followup_flaw_hint` scaffolding anchor gives the
+follow-up writer the reviser's account for flawed records only -- never quotable,
+never diagnosable (the existing ban-lint enforces it) -- with the instruction that the
+thing sitting oddly with the person should be the PART of the reply where the lapse
+lives. Good records render "" and are untouched. This also mirrors reality: genuine
+unease usually gravitates to the genuine problem.
+
+**Result: every PAR check now PASSES** -- flaw_identification 0.75, blindness clean
+(the pointed questions leak nothing), verdict spread still healthy, gold still 0
+below 3, zero corpus criticals. Both natural-turn corpora are now fully green at
+smoke scale.
+
+## 2026-08-14 (night, viii) — re-verify pass: PC all-green; PAR one hit short of one gate, everything else green
+
+**Method:** the revision stages onward re-ran on both smoke dirs (~$8) with the
+reframed `change_summary` (name the ORIGINAL's failure) and, for PAR, the opener
+steering + lint the first smoke showed it needed.
+
+**PC: every check PASSES.** flaw_identification 0.583 → **0.875** (gate 0.70) — the
+answer-key reframe was the whole story. Zero corpus criticals this pass; the earlier
+8-gram tic did not recur.
+
+**PAR: flaw_identification 0.50 → 0.667 vs the 0.70 gate; all ten other checks pass**
+(gold 0/16 below 3, post-hoc 0.033, blindness clean, verdict spread healthy). The
+reframe also eliminated held-up summaries entirely (0/24 — the reviser named a real
+original-failure everywhere), so the remaining 8 misses are the design-intent
+component: PAR's reflection is INSTRUCTED to answer the person's follow-up rather
+than audit the noted lapse, and when the follow-up points elsewhere the judge scores
+a miss. 0.667 at n=24 is one document from the gate. Decision deferred to the full
+run's n=100 sample: if it lands under 0.70 there, the question is whether this gate's
+phrasing fits PAR's answer-the-followup design — not more prompt surgery.
+
+**Also measured and fixed:** with the new opener ban, both PAR reflection stages at
+retries 2 hit a 2.5% record-failure rate against the 2% systematic gate (~29% of
+Gemini drafts open on a banned phrase per attempt); both lints now carry retries 4,
+so a banned opener costs a call, not a record.
+
+**Opinion going into full generation:** both recipes are ready. PC is unconditionally
+green. PAR ships with one gate at the noise boundary for a stated design reason, with
+the resolution criterion pre-registered above.
+
+## 2026-08-14 (night, vii) — both natural-turn corpora smoked at 40 docs: diversity clean, data reads well, one shared gate failure fixed at its source
+
+**Method:** first live runs of both simplified recipes (`--smoke`,
+`smoke.total_scenarios=40`): PAR `output/post_action_retrospection/smoke_20260814_174009`
+($4.87), PC `output/peer_critique/smoke_20260814_174007` ($4.95), then `synth check` on
+both plus a per-arm read-through. One incident first: `gemini-3.7-flash` is a
+mandatory-reasoning endpoint — `reasoning: {enabled: false}` is a 400, so both first
+attempts died at the first Gemini stage (fail-fast, ~$1 lost, both resumed). Every
+Gemini block now sets `reasoning: {effort: low}`; after the fix Gemini cleared all its
+slots, including the long tagged reflection/critique drafts, with zero parse or lint
+failures.
+
+**Diversity — both clean.** PAR: 34 unique domains/40, max share 4; PC: 24 unique
+domains with academic-writing at 7 (the over-weight steer is silent below
+`over_min_docs: 60`, so smoke-scale concentration is expected noise; it activates at
+corpus scale). Both: 40/40 unique situations, zero dedupe drops (the generation gate
+refused clones before they existed), 40/40 unique trained-turn openers, unique
+framings/follow-ups, `length_cv` PASSING — PC's verbosity arm moved it 0.111 → 0.167
+(flawed arm), and PAR clears it naturally (0.153/0.244).
+
+**Data — reads well in both.** PC's flawed-arm lapses are exactly the constitutional
+kind (fabricated marketing stats, ghostwritten power-laundering, covertly engineered
+"evidence", oversight-removal), found organically in weak-model drafts on ordinary
+requests. Gold judge: 0 below 3 in both corpora. Blindness clean in both (the analyzer's
+9 "leaks" were all prefix-identity artifacts: revisions that kept the draft's opening).
+PAR's verdict spread is healthy in BOTH directions (good 12 held/4 revised, flawed 17
+revised/7 held) — the no-gate residual shows up as ~29% of flawed-arm drafts genuinely
+holding up, with verdicts following substance rather than the note's mandate.
+
+**The shared FAIL: flaw_identification** — PAR 0.50, PC 0.583 (PC was 0.917 under the
+old adjudicator) against the 0.70 gate. Reading the misses: mostly a check-alignment
+artifact, not a data defect — the plain revision's `change_summary` often describes
+what the REWRITE improved rather than what the ORIGINAL did wrong, so the judge grades
+critiques against a rewrite-framed answer key and scores misses even where the critique
+nails the original's actual fault. Fixed at the source in both configs: the summary
+must name the ORIGINAL's failure ("it fabricated statistics", never "the revision added
+sourcing"). Re-measures next run. PAR has a second, design-level component: its
+reflection is told to answer the follow-up, not audit the noted lapse, so some
+divergence is intended — if the reframed summary doesn't close the gap there, the gate
+(or the judge's question) needs a PAR-specific rethink.
+
+**Smaller findings:** 3/40 PAR reasonings open "Let me…" (PAR still lacks PC's opener
+steering/lint — known asymmetry); one PAR reasoning begins "Final Result: Revised."
+(scaffold fragment, 1/40 — a candidate ban pattern); PC's post-hoc judge share is
+elevated (0.233, report-only) vs PAR's 0.067; one PC 8-gram tic flagged by
+ngram_diversity (2/5 docs in one trait).
+
+## 2026-08-14 (night, vi) — Gemini 3.7 Flash takes every cheap GENERATION slot; judging stays Anthropic
+
+**Method:** extending the entry below, every stage where a light model *writes text*
+now runs `google/gemini-3.7-flash`; every stage that judges, steers against the
+constitution, or writes the final trained text stays Sonnet, and the corpus-check
+classifier stays Haiku (check models rate the corpus and write nothing into it, so the
+vendor-diversity argument does not apply). Concretely: PAR's `scenarios` and — notably
+— both trained-turn DRAFTS (`draft_reflection`, `draft_critique`) move to Gemini, with
+Sonnet's revision still producing what trains; the config comments flag that `--ablate
+revise_reflection`/`revise_critique` now ablates the rewrite AND the draft's authorship
+together. PC's third weak author becomes Gemini (replacing gpt-5.6-luna), so the flawed
+rotation is grok-4.3 / qwen3-32b / gemini-3.7-flash. PC's scenario brainstorm stays
+Haiku (the one remaining Anthropic generation slot — flagged, not decided).
+
+**Result:** 758 tests pass. Estimates fall sharply with the draft slots off Sonnet:
+PC $297.04 (budget 350), PAR $283.91 (budget 330), 2,100 documents each. Still not
+smoked in this form; Gemini's tag-format compliance on the long critique/reflection
+drafts is now the first thing a smoke will test.
+
+## 2026-08-14 (night, v) — the fault-finding judge becomes a plain revision; Gemini drafts the human-side turns
+
+**Hypothesis:** the three-criticisms + adjudication + keep-gate mechanism earned its
+keep when labels needed verifying, but the smokes moved the ground under it: the good
+arm now ships the revision itself (so its label is true by construction), and 24/24
+weak drafts on steered prompts carried a real fault (so the flawed gate never bit).
+What remained load-bearing was only the revision and its account of what changed.
+
+**Method (both configs):** `revise_first_turn` simplified to one Sonnet call with the
+full context -- rewrite the draft so it lives up to the target principle, then state
+the single most important thing that materially changed (or that the reply held up).
+No issue_a/b/c, no `genuine` verdict, no keep gate: planned count = corpus, both
+resized to 2,100 (vs difficult advice v2's 2,000). `change_summary` keeps all three
+consumers (known_flaw unblinding, flaw-identification answer key, blindness gate).
+Residual risk stated in both configs: a flawed draft that happened to hold up now
+flows through with a held-up note instead of being dropped; quality_filter's
+invents_faults plus the gold and flaw-id checks are the ongoing measurement. PAR's
+`verdict_majority_max` re-derived 0.98 → 1.0 (same by-construction argument as PC's).
+The per-arm `keep:` engine feature stays, its tests moved to synthetic specs.
+
+**Also:** `draft_prompts` (both) and PAR's `draft_first_turn` move to
+`google/gemini-3.7-flash` ($0.375/$1.875 per M, Google-only hosting -- `google/`
+joined PROVIDER_PINS, the model joined PRICES): the person's voice and the evaluated
+draft should not share a house style with the Sonnet stages that judge and rewrite,
+and PAR's organic faults are no longer Claude-flavored. PAR's `first_turn_source`
+becomes the model id.
+
+**Result:** 758 tests pass. Estimates: PC $406.14, PAR $387.76 (budget 450), each for
+exactly 2,100 documents. Both recipes NOT YET SMOKED in this form.
+
+## 2026-08-14 (night, iv) — de-prescribe the prompts: no named scenarios, framings, or failure menus in PAR or PC
+
+**Hypothesis:** difficult_advice's hardest-learned lesson generalizes — a prompt that
+names examples produces the concentration it means to prevent — and the PC smoke bore
+it out: the scenario prompt's parenthetical examples ("a resignation, a will") each
+appeared repeatedly in 40 documents, and the framing prompt's first-listed
+relationship ("a colleague") became "My coworker" in 6 of 20 framings.
+
+**Method:** four prescriptions removed from both configs' prompts, replaced with
+variance demands: the scenario prompt's example stakes, 12-domain list and 5-framing
+list; the flawed-arm revision's five-mechanism failure menu (now "derive the failure
+from the principle, not from a stock repertoire"); PC's four named framing
+relationships (now derived from the transcript itself); PAR's followup mood list.
+Where a list was doing real spread work, the measured mechanism replaces it: PAR
+gains the generation-time diversity gate and the self-updating `{avoid}` /
+`{overrepresented}` steers PC already had — nothing is banned or promoted up front,
+only what THIS run's own output measurably over-produces.
+
+**Result:** 758 tests pass; estimates unchanged. Two fixed elements remain by design,
+flagged rather than changed: the "The person wrote:/The assistant replied:" connective
+lines in PC's transcript (composed in code for blindness; document format, not
+content), and PC's single evaluator system prompt across all records — the latter is
+a real open question, since a corpus-constant system turn could tie the critique
+behaviour to one persona string; varying it would need a small generated or assigned
+rotation.
+
+## 2026-08-14 (night, iii) — PC drops the dilemma framing, keeps the constitution anchoring; the twins are twins again
+
+**Hypothesis:** the requirement that survived the evening's back-and-forth is
+anchoring, not genre: the corpora must train constitutional judgement, and the dilemma
+pivot (night, below) bought that anchoring by importing difficult_advice's genre --
+which also made PC and PAR differ in scenario distribution, re-entangling the
+attribution comparison, and left PC overlapping difficult_advice's own distribution.
+
+**Method:** PC's scenario front half returns to the ordinary-request register --
+post_action_retrospection's prompts verbatim, WITH every constitution anchor from the
+(night, ii) entry: scenarios rejected unless the good and the obliging answer differ
+BECAUSE of the principle (no quality/completeness/technical tests), Precision in both
+arm revisions, the adjudicator's three criticisms and `genuine` bar judged against the
+principle ("imperfect without failing the principle" does not count), and the
+quality_filter's `no_value_at_stake` drop tag. The generation-time diversity gate is
+kept (58/2,000 measured clones justify it in this genre too). The two corpora are now
+distribution-twins again: identical principle-anchored ordinary-request scenarios,
+differing only in attribution (self vs other) and evaluated-reply authorship.
+
+**Result:** 758 tests pass; estimate unchanged ($425.54, ~2,115 docs). NOT YET SMOKED
+in this exact recipe; the mirrored 2,100 scenarios match the genre but predate the
+principle-anchor line, so a full run generates fresh (~$3.4).
+
+## 2026-08-14 (night, ii) — PAR anchored to the constitution at every judging link
+
+**Hypothesis:** the entry below fixed peer critique's genre, but the underlying
+requirement is broader than genre: BOTH model-eval-model corpora exist to align models
+to their constitutions, so no stage may confirm, reflect on, or train a shortfall that
+no principle speaks to. post_action_retrospection keeps its ordinary-request register
+(that choice stands — the principle is quietly live, not a dilemma), but its
+fault-finding chain graded service quality: nothing stopped a confirmed "fault" from
+being a length or thoroughness nit, and the trained reflection would then be
+constitution-flavored prose about nothing the constitution says.
+
+**Method:** four anchor points, config-only. `write_scenarios` now rejects situations
+that are quality/completeness/technical tests with nothing of the principle at stake.
+`revise_prompts` gains a Precision requirement in both arms (difficult_advice's): the
+good and the obliging answer must differ BECAUSE of the target principle, and the
+flawed arm's quiet cost must be a failure of that principle specifically.
+`revise_first_turn`'s three criticisms are judged against the principle (framings the
+principle required questioning, reassurance where honesty was needed, unearned
+confidence, deciding what was the person's to decide), and its `genuine` bar now reads:
+a real shortfall is a failure of the principle — "imperfect without failing the
+principle" explicitly does not count. The quality_filter gains a `no_value_at_stake`
+drop tag so any principle-free reflection that slips through is measured.
+
+**Result:** 758 tests pass, estimate unchanged ($374.03, ~1,755 docs). PAR remains NOT
+YET RUN; these anchors get their first measurement in its smoke.
+
+## 2026-08-14 (night) — peer critique pivots to difficult-advice-shaped scenarios: the flaws must be constitution violations
+
+**Hypothesis:** the smoke below produced high-quality critiques of QUALITY failures
+("didn't flag the PTO forfeiture", "deferred the eulogy rewrite") — but this corpus
+exists to teach constitutional judgement of other models' replies, and a lapse the
+constitution doesn't speak to trains taste, not values.
+
+**Method:** the scenario front half switches from post_action_retrospection's
+ordinary-request genre to difficult_advice's dilemma recipe, adopted wholesale:
+sympathetic person, legitimate goal, genuinely tempting norm-violating shortcut, one
+principle under pressure — including the measured generation-time diversity gate
+(reject_cosine 0.86, over-weight steering), since that genre demonstrably concentrates
+without one. The arm-conditioned revision becomes difficult_advice's refine contract
+with one arm line each: flawed sharpens the temptation so the obliging answer commits
+or enables the violation; good keeps the principled path (decline + real help)
+genuinely reachable. `revise_first_turn`'s three criticisms and its `genuine` bar are
+re-anchored to the principle: a REAL shortfall now means committing, enabling or
+laundering the norm violation (or abandoning the person), and imperfect helpfulness
+explicitly does not count. The quality_filter rubric flips accordingly
+(`invents_violations`, `condemns_harmless`; "reads_as_dilemma" is no longer a defect
+but the genre).
+
+PC and post_action_retrospection now deliberately share MECHANISM but not scenario
+distribution: PAR still retrospects ordinary requests where the principle is quietly
+live; PC critiques dilemma exchanges where the flaw is a violation. Whether PAR should
+make the same pivot is an open design question, not decided here.
+
+**Result:** config-only change; 758 tests pass; estimate unchanged ($425.54, ~2,115
+docs). NOT YET SMOKED in this genre — the earlier smoke dirs and the 2,100 mirrored
+scenarios are the pre-pivot genre and are records, not resume assets.
+
+**Next steps:** fresh `--smoke` + `synth check`; watch flaw-identification (the lapse
+account is now an ethical claim) and the flawed-arm yield (weak models may resist a
+well-crafted temptation more than they miss a subtle disservice).
+
 ## 2026-08-14 (evening) — peer critique 40-doc smoke: two recipe defects found and fixed, one gate re-derived
 
 **Hypothesis:** the author-per-arm recipe (below) works end to end and produces

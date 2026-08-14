@@ -67,7 +67,8 @@ def _record(**over) -> dict:
             "system": "You are a helpful assistant.",
             "user": "Can you tidy up this reference I drafted?",
             "first_turn": "Here is a tidier version of your reference.",
-            "first_turn_source": "generated_no_constitution",
+            "first_turn_source": "google/gemini-3.7-flash",
+            "improved_reply": "The reply the person should have received.",
             "followup": "The bit about deadlines -- should that have stayed in?",
             "followup_source": "scenario_specific",
             "reply_quality": "flawed", "explicitness": "paraphrase",
@@ -150,7 +151,7 @@ def test_pc_stage_sequence() -> None:
         "chunk_constitution", "write_scenarios", "corpus_scenarios",
         "dedupe_scenarios", "draft_prompts", "revise_prompts",
         "draft_first_turn_sonnet", "draft_first_turn_grok", "draft_first_turn_qwen",
-        "draft_first_turn_gpt56", "revise_first_turn", "write_critique_framing",
+        "draft_first_turn_gemini", "revise_first_turn", "write_critique_framing",
         "draft_critique", "revise_critique", "corpus", "export_sft"]
 
 
@@ -212,69 +213,67 @@ def test_first_turn_prompt_carries_no_constitution_and_stamps_its_provenance() -
     for leak in ("CONSTITUTION TEXT", "STYLE GUIDANCE", "principle", "training data",
                  "Trait one"):
         assert leak not in blob, leak
-    assert sc["also"] == {"first_turn_source": "generated_no_constitution"}
+    assert sc["also"] == {"first_turn_source": "google/gemini-3.7-flash"}
 
 
 # --- the fault-finding pass ----------------------------------------------------------
 
 
-def test_three_faults_a_revision_and_an_adjudication_in_that_order() -> None:
-    """One criticism invites politeness; three exhausts it. That is the mechanism.
-
-    The revision sits between the criticisms and the verdict as the commitment that makes
-    the verdict earned: a criticism you cannot write a fix for tends not to survive being
-    acted on.
-    """
+def test_the_revision_is_one_call_with_the_full_context() -> None:
+    """The simplified mechanism (2026-08-14): rewrite the draft to live up to the
+    principle, and account for what materially changed. No criticisms, no verdict."""
     sc = _stage(PR_CFG, "revise_first_turn")
-    assert sc["tags"] == ["issue_a", "issue_b", "issue_c", "improved_reply", "genuine",
-                          "change_summary"]
+    assert sc["tags"] == ["improved_reply", "change_summary"]
     body = sc["prompts"]["user"]
-    assert body.index("name THREE separate things wrong") \
-        < body.index("write the reply this person should have received") \
-        < body.index("say which of the three")
+    assert body.index("Write the reply this person should have received") \
+        < body.index("name the ORIGINAL reply's single most important failure")
     # The constitution is what the revision is measured against.
     assert "{constitution}" in body and "{first_turn}" in body
-    # Three lint contracts: criticism, a full reply and one word are three kinds of tag,
-    # and a `min_chars` meant for any of them would reject the others.
-    faults, reply, verdict = sc["lint"]
-    assert faults["fields"] == ["issue_a", "issue_b", "issue_c"]
-    assert faults["min_chars"] >= 40
+    reply, account = sc["lint"]
     assert reply["fields"] == ["improved_reply"] and reply["min_chars"] >= 150
-    assert verdict["allowed"] == ["a", "b", "c", "none"]
-    ok = {"issue_a": "x" * 50, "improved_reply": "y" * 200, "genuine": "b"}
+    assert account["fields"] == ["change_summary"] and account["min_chars"] >= 40
+    ok = {"improved_reply": "y" * 200, "change_summary": "x" * 50}
     assert not lint_problems(ok, sc["lint"])
-    assert lint_problems({**ok, "issue_a": "too short"}, sc["lint"])
     assert lint_problems({**ok, "improved_reply": "too short"}, sc["lint"])
-    assert lint_problems({**ok, "genuine": "maybe b"}, sc["lint"])
+    assert lint_problems({**ok, "change_summary": "meh"}, sc["lint"])
 
 
-def test_the_improved_reply_is_kept_for_inspection_and_never_trains() -> None:
-    """It exists because producing it is what forces the judgement to be earned."""
+def test_the_improved_reply_ships_for_good_records_and_never_for_flawed() -> None:
+    """Good arm: the revision IS the first reply. Flawed arm: the draft ships and the
+    revision stays generation scaffolding."""
+    sc = _stage(PR_CFG, "revise_first_turn")
+    cases = sc["variants_by"]["cases"]
+    assert cases["good"]["save"]["first_turn"] == "improved_reply"
+    assert "first_turn" not in cases["flawed"]["save"]
     assert "improved_reply" not in _stage(PR_CFG, "export_sft")["metadata"]
-    exported = {m.get("content", "") for m in _stage(PR_CFG, "export_sft")["messages"]}
-    assert not any("improved_reply" in c for c in exported)
 
 
-def test_the_reviser_writes_change_summary_only_where_the_rewrite_mattered() -> None:
+def test_the_reviser_writes_change_summary_only_for_the_flawed_arm() -> None:
     """`change_summary` unblinds the reflection and is gated as never-training, so a
-    reply that held up must not carry one."""
+    good record must not carry one."""
     sc = _stage(PR_CFG, "revise_first_turn")
     cases = sc["variants_by"]["cases"]
     assert "change_summary" in cases["flawed"]["save"]
     assert "change_summary" not in cases["good"]["save"]
     assert cases["good"]["save"]["reviser_note"] == "change_summary"
-    assert sc["normalize"] == ["genuine"]
 
 
 # --- the gates -----------------------------------------------------------------------
 
 
-def test_the_gate_holds_each_arm_to_its_own_contract() -> None:
-    """Opposite expectations per arm, one decision, folded into the stage that decides it.
+# A synthetic per-arm gate spec: no live config carries a `keep:` block any more (the
+# 2026-08-14 simplification), but the engine feature stays for future recipes, so it
+# keeps its coverage here.
+_GATE_SC = {"name": "gate",
+            "keep": {"by": "reply_quality",
+                     "cases": {"flawed": {"field": "genuine", "in": ["a", "b", "c"]},
+                               "good": {"field": "genuine", "in": ["none"]}}},
+            "max_drop_pct": {"flawed": 50, "good": 65}}
 
-    `genuine` is produced by `revise_first_turn`, so the drop happens there rather than in
-    a `filter` stage whose whole job would be to read one field of the snapshot before it.
-    """
+
+def test_the_gate_holds_each_arm_to_its_own_contract() -> None:
+    """Opposite expectations per arm, one decision, folded into the stage whose output
+    decides it -- the engine contract, exercised on a synthetic spec."""
     records = [
         {"scenario_id": "1", "reply_quality": "flawed", "genuine": "b"},
         {"scenario_id": "2", "reply_quality": "flawed", "genuine": "none"},
@@ -282,31 +281,27 @@ def test_the_gate_holds_each_arm_to_its_own_contract() -> None:
         {"scenario_id": "4", "reply_quality": "good", "genuine": "a"},
         {"scenario_id": "5", "reply_quality": "unassigned", "genuine": ""},
     ]
-    kept = apply_keep(_stage(PR_CFG, "revise_first_turn"), records)
+    kept = apply_keep(_GATE_SC, records)
     # An arm with no case is out of scope and passes through untouched.
     assert [r["scenario_id"] for r in kept] == ["1", "3", "5"]
-    assert "keep_supported_arms" not in {s["name"] for s in PR_CFG["stages"]}
 
 
 def test_gate_normalises_the_label_the_model_actually_returned() -> None:
-    sc = _stage(PR_CFG, "revise_first_turn")
     for raw in (" B.\n", "C", "*a*", "b"):
-        assert apply_keep(sc, [{"scenario_id": "r", "reply_quality": "flawed",
-                                "genuine": raw}])
-    assert apply_keep(sc, [{"scenario_id": "r", "reply_quality": "good",
-                            "genuine": " NONE."}])
+        assert apply_keep(_GATE_SC, [{"scenario_id": "r", "reply_quality": "flawed",
+                                      "genuine": raw}])
+    assert apply_keep(_GATE_SC, [{"scenario_id": "r", "reply_quality": "good",
+                                  "genuine": " NONE."}])
 
 
 def test_gate_fails_a_systematic_disagreement_per_arm_but_not_a_smoke_run() -> None:
     """A drop rate that means the recipe is broken gates -- and each arm has its own
     healthy rate, so one threshold for both would be wrong in one direction."""
-    sc = _stage(PR_CFG, "revise_first_turn")
-    assert sc["max_drop_pct"]["flawed"] != sc["max_drop_pct"]["good"]
     bad = [{"scenario_id": str(i), "reply_quality": "flawed", "genuine": "none"}
            for i in range(30)]
-    with pytest.raises(RuntimeError, match=r"revise_first_turn\[flawed\]"):
-        apply_keep(sc, bad)
-    assert apply_keep(sc, bad[:4]) == []
+    with pytest.raises(RuntimeError, match=r"gate\[flawed\]"):
+        apply_keep(_GATE_SC, bad)
+    assert apply_keep(_GATE_SC, bad[:4]) == []
 
 
 def test_when_filter_scopes_a_stage() -> None:
@@ -351,11 +346,20 @@ def test_reflection_is_unblinded_for_the_flawed_arm_only() -> None:
     assert "Do not name or state any principle at all" in embody
 
 
-def test_reflection_verdict_is_constrained_to_the_two_words() -> None:
-    lint = _stage(PR_CFG, "draft_reflection")["lint"]
-    assert lint["allowed"] == ["held", "revised"]
-    assert lint_problems({"assessment": "mostly held"}, lint)
-    assert not lint_problems({"assessment": "held"}, lint)
+def test_reflection_verdict_is_constrained_and_stock_openers_are_banned() -> None:
+    """Two contracts on the draft, mirroring PC's critique stage: a one-word verdict,
+    and the opener ban the 2026-08-14 smoke measured 3/40 violations without."""
+    spec = _stage(PR_CFG, "draft_reflection")["lint"]
+    verdict, prose = spec
+    assert verdict["allowed"] == ["held", "revised"]
+    ok = {"assessment": "held",
+          "reasoning": "She needs the deposit back this month, and I skipped that.",
+          "response": "You're right to push on it."}
+    assert not lint_problems(ok, spec)
+    assert lint_problems({**ok, "assessment": "mostly held"}, spec)
+    assert lint_problems({**ok, "reasoning": "Let me re-read the reply."}, spec)
+    assert lint_problems({**ok, "reasoning": "Final Result: Revised. The person..."},
+                         spec)
 
 
 def test_the_rewrite_stage_lints_its_own_output_for_scaffold_fingerprints() -> None:
@@ -395,7 +399,7 @@ def test_export_is_five_turns_with_only_the_last_one_supervised() -> None:
     assert rec["messages"][4]["reasoning_content"] == _record()["reasoning"]
     assert rec["metadata"]["supervise"] == "final"
     assert rec["metadata"]["reply_quality"] == "flawed"
-    assert rec["metadata"]["first_turn_source"] == "generated_no_constitution"
+    assert rec["metadata"]["first_turn_source"] == "google/gemini-3.7-flash"
     assert rec["metadata"]["followup_source"] == "scenario_specific"
     # The verifier's account of the fault is scaffolding and must never train.
     assert all(_record()["change_summary"] not in m["content"]
@@ -418,11 +422,7 @@ def _pc_record(**over) -> dict:
             "reply_quality": "flawed", "weak_author": "grok",
             "explicitness": "paraphrase", "verbosity": "standard",
             "supervise": "all",
-            "issue_a": "It polished the wording without reading what it says.",
-            "issue_b": "It never flagged the gap in the dates.",
-            "issue_c": "It answered a narrower question than the one asked.",
             "improved_reply": "The reply the person should have received.",
-            "genuine": "b",
             "change_summary": "it polished the wording without flagging the gap",
             "ask_opening": "My colleague showed me what the assistant told her.",
             "ask_closing": "What would you have said in its place?",
@@ -446,13 +446,14 @@ def test_pc_arms_are_assigned_in_revise_prompts_and_steer_the_situation() -> Non
     flawed = tagged_request(sc, _pc_record(), _Ctx())[0][1]["content"]
     assert good != flawed
     assert "CONSTITUTION TEXT" in good and "CONSTITUTION TEXT" in flawed
-    assert "never see this text" in flawed and "answer badly" in flawed
+    assert "instruct the assistant to answer badly" in flawed
+    assert "replies have to be their own" in flawed
 
 
 PC_AUTHOR_STAGES = {"draft_first_turn_sonnet": ("good", None),
                     "draft_first_turn_grok": ("flawed", "grok"),
                     "draft_first_turn_qwen": ("flawed", "qwen"),
-                    "draft_first_turn_gpt56": ("flawed", "gpt56")}
+                    "draft_first_turn_gemini": ("flawed", "gemini")}
 
 
 def test_pc_first_turn_author_is_the_arm() -> None:
@@ -486,31 +487,23 @@ def test_pc_weak_stages_cover_the_flawed_arm_exactly_once() -> None:
     """The three `when:` conjunctions partition flawed x weak_author; a flawed record
     is drafted by exactly one weak model and a good record by none of them."""
     weak = [_stage(PC_CFG, n) for n in PC_AUTHOR_STAGES if n != "draft_first_turn_sonnet"]
-    for author in ("grok", "qwen", "gpt56"):
+    for author in ("grok", "qwen", "gemini"):
         r = _pc_record(weak_author=author)
         assert sum(selected(sc, r) for sc in weak) == 1
         assert not any(selected(sc, _pc_record(reply_quality="good",
                                                weak_author=author)) for sc in weak)
 
 
-def test_pc_revision_gates_the_flawed_arm_and_writes_the_good_arms_reply() -> None:
-    """One stage, two products. Flawed: the weak draft stays the evaluated reply and
-    only records whose fault survived adjudication continue. Good: ungated, and
-    `improved_reply` BECOMES the evaluated reply -- the smoke measured 16/16 unaided
-    Sonnet drafts adjudicated as genuinely faulty, so 'one generation and one revision'
-    is what makes a surviving `sound` verdict honest."""
+def test_pc_revision_writes_the_good_arms_reply_and_the_flawed_arms_lapse() -> None:
+    """One call, two products. Good: `improved_reply` BECOMES the evaluated reply --
+    the smoke measured 16/16 unaided Sonnet drafts falling short of a strictly-read
+    principle, so 'one generation and one revision' is what makes a `sound` verdict
+    honest. Flawed: the weak draft stays the evaluated reply, and the revision's
+    account of what materially changed is the lapse record. No verdict, no gate."""
     sc = _stage(PC_CFG, "revise_first_turn")
-    assert sc["tags"] == ["issue_a", "issue_b", "issue_c", "improved_reply", "genuine",
-                          "change_summary"]
+    assert sc["tags"] == ["improved_reply", "change_summary"]
     assert "when" not in sc, "the revision covers BOTH arms"
-    kept = apply_keep(sc, [
-        {"scenario_id": "1", "reply_quality": "flawed", "genuine": "b"},
-        {"scenario_id": "2", "reply_quality": "flawed", "genuine": "none"},
-        {"scenario_id": "3", "reply_quality": "good", "genuine": "none"},
-        {"scenario_id": "4", "reply_quality": "good", "genuine": "a"},
-    ])
-    # Both good records pass regardless of the adjudication; flawed needs a fault.
-    assert [r["scenario_id"] for r in kept] == ["1", "3", "4"]
+    assert "keep" not in sc and "expected_keep" not in sc
     cases = sc["variants_by"]["cases"]
     assert cases["good"]["save"]["first_turn"] == "improved_reply"
     assert "first_turn" not in cases["flawed"]["save"], \
@@ -518,7 +511,6 @@ def test_pc_revision_gates_the_flawed_arm_and_writes_the_good_arms_reply() -> No
     assert cases["flawed"]["save"]["change_summary"] == "change_summary"
     assert "change_summary" not in cases["good"]["save"]
     assert cases["good"]["save"]["reviser_note"] == "change_summary"
-    assert list(sc["expected_keep"]) == ["flawed"]
 
 
 def test_pc_framing_lint_rejects_a_frame_that_does_the_analysis() -> None:
@@ -616,18 +608,15 @@ def test_pre_plan_stages_are_priced_over_the_scenario_pool() -> None:
     assert rows["draft"]["calls"] == PR_CFG["total_scenarios"]
 
 
-def test_gates_shrink_what_the_expensive_stages_are_priced_over() -> None:
-    """The two costly stages run on survivors; pricing them on the plan overstates the run."""
+def test_no_gate_means_plan_equals_corpus() -> None:
+    """The 2026-08-14 simplification removed the keep gate: every stage prices over the
+    full plan and the corpus is what was planned."""
     rows = {r["stage"]: r for r in estimate(PR_CFG)["per_stage"]}
-    keep = _stage(PR_CFG, "revise_first_turn")["expected_keep"]
     n = PR_CFG["total_scenarios"]
-    survivors = n * 0.5 * keep["flawed"] + n * 0.5 * keep["good"]
-    assert rows["reflect"]["calls"] == round(survivors)
-    # The follow-up is written after the gate, so it too covers survivors only.
-    assert rows["followup"]["calls"] == round(survivors)
-    # The revision is billed for every record; the drop happens on its own output.
     assert rows["revise_reply"]["calls"] == n
-    assert n_final_examples(PR_CFG) < n
+    assert rows["reflect"]["calls"] == n
+    assert rows["followup"]["calls"] == n
+    assert n_final_examples(PR_CFG) == n
 
 
 # --- the checks, driven off the config's field names --------------------------------
@@ -739,17 +728,16 @@ def test_followup_lint_rejects_a_prompt_that_does_the_analysis() -> None:
 
 
 def test_dropped_records_are_recorded_in_the_manifest() -> None:
-    """Folding the gate into the stage costs the dropped records their own snapshot, so
+    """Folding a gate into a stage costs the dropped records their own snapshot, so
     the manifest -- the only mirrored artifact left -- carries which ones went and why."""
     class _Run:
         manifest_extra: dict = {}
 
     run = _Run()
     run.manifest_extra = {}
-    sc = _stage(PR_CFG, "revise_first_turn")
     rows = [{"scenario_id": "kept", "reply_quality": "flawed", "genuine": "b"},
             {"scenario_id": "gone", "reply_quality": "flawed", "genuine": "none"}]
-    assert [r["scenario_id"] for r in apply_keep(sc, rows, run)] == ["kept"]
-    report = run.manifest_extra["dropped"]["revise_first_turn"]["flawed"]
+    assert [r["scenario_id"] for r in apply_keep(_GATE_SC, rows, run)] == ["kept"]
+    report = run.manifest_extra["dropped"]["gate"]["flawed"]
     assert report["scoped"] == 2 and report["dropped"] == 1
     assert "gone" in report["records"][0]
