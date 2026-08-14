@@ -346,11 +346,20 @@ def test_reflection_is_unblinded_for_the_flawed_arm_only() -> None:
     assert "Do not name or state any principle at all" in embody
 
 
-def test_reflection_verdict_is_constrained_to_the_two_words() -> None:
-    lint = _stage(PR_CFG, "draft_reflection")["lint"]
-    assert lint["allowed"] == ["held", "revised"]
-    assert lint_problems({"assessment": "mostly held"}, lint)
-    assert not lint_problems({"assessment": "held"}, lint)
+def test_reflection_verdict_is_constrained_and_stock_openers_are_banned() -> None:
+    """Two contracts on the draft, mirroring PC's critique stage: a one-word verdict,
+    and the opener ban the 2026-08-14 smoke measured 3/40 violations without."""
+    spec = _stage(PR_CFG, "draft_reflection")["lint"]
+    verdict, prose = spec
+    assert verdict["allowed"] == ["held", "revised"]
+    ok = {"assessment": "held",
+          "reasoning": "She needs the deposit back this month, and I skipped that.",
+          "response": "You're right to push on it."}
+    assert not lint_problems(ok, spec)
+    assert lint_problems({**ok, "assessment": "mostly held"}, spec)
+    assert lint_problems({**ok, "reasoning": "Let me re-read the reply."}, spec)
+    assert lint_problems({**ok, "reasoning": "Final Result: Revised. The person..."},
+                         spec)
 
 
 def test_the_rewrite_stage_lints_its_own_output_for_scaffold_fingerprints() -> None:

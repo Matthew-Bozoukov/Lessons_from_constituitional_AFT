@@ -111,6 +111,35 @@ monoculture this type exists to avoid. The review pack's `--tally` prints all th
 the review pack, human-annotate, `--tally`; recalibrate reviewer rubrics from the
 per-reviewer human agreement; then the full run with an HF push and the
 mixture/train/eval loop against the difficult-advice baseline.
+## 2026-08-14 (night, viii) — re-verify pass: PC all-green; PAR one hit short of one gate, everything else green
+
+**Method:** the revision stages onward re-ran on both smoke dirs (~$8) with the
+reframed `change_summary` (name the ORIGINAL's failure) and, for PAR, the opener
+steering + lint the first smoke showed it needed.
+
+**PC: every check PASSES.** flaw_identification 0.583 → **0.875** (gate 0.70) — the
+answer-key reframe was the whole story. Zero corpus criticals this pass; the earlier
+8-gram tic did not recur.
+
+**PAR: flaw_identification 0.50 → 0.667 vs the 0.70 gate; all ten other checks pass**
+(gold 0/16 below 3, post-hoc 0.033, blindness clean, verdict spread healthy). The
+reframe also eliminated held-up summaries entirely (0/24 — the reviser named a real
+original-failure everywhere), so the remaining 8 misses are the design-intent
+component: PAR's reflection is INSTRUCTED to answer the person's follow-up rather
+than audit the noted lapse, and when the follow-up points elsewhere the judge scores
+a miss. 0.667 at n=24 is one document from the gate. Decision deferred to the full
+run's n=100 sample: if it lands under 0.70 there, the question is whether this gate's
+phrasing fits PAR's answer-the-followup design — not more prompt surgery.
+
+**Also measured and fixed:** with the new opener ban, both PAR reflection stages at
+retries 2 hit a 2.5% record-failure rate against the 2% systematic gate (~29% of
+Gemini drafts open on a banned phrase per attempt); both lints now carry retries 4,
+so a banned opener costs a call, not a record.
+
+**Opinion going into full generation:** both recipes are ready. PC is unconditionally
+green. PAR ships with one gate at the noise boundary for a stated design reason, with
+the resolution criterion pre-registered above.
+
 ## 2026-08-14 (night, vii) — both natural-turn corpora smoked at 40 docs: diversity clean, data reads well, one shared gate failure fixed at its source
 
 **Method:** first live runs of both simplified recipes (`--smoke`,

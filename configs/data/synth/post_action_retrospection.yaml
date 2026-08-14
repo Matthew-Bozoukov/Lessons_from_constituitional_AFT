@@ -880,10 +880,23 @@ stages:
     draft_response: response
     assessment: assessment
   normalize: [assessment]
+  # Two contracts: a one-word verdict, and the opener ban peer_critique's smoke proved
+  # necessary (3/40 PAR reasonings opened "Let me..." without it, and one opened with a
+  # stray "Final Result:" scaffold fragment -- both measured 2026-08-14).
   lint:
-    fields: [assessment]
+  - fields: [assessment]
     allowed: [held, revised]
     retries: 2
+  - fields: [reasoning, response]
+    ban_patterns:
+    - ^\s*let me
+    - ^\s*okay,
+    - ^\s*final (result|verdict)
+    # 4, not the usual 2: the first smoke with this ban measured ~29% of Gemini drafts
+    # opening on a banned phrase per attempt, and at retries 2 the record-failure rate
+    # (2.5%) sat above the 2% systematic gate. A banned opener costs a call, not a
+    # record -- but only if enough attempts exist.
+    retries: 4
   prompt_vars:
     style_line: *explicitness_styles
     known_flaw: *known_flaw_note
@@ -918,6 +931,10 @@ stages:
         of being wrong.
       - Start from the person's situation and stakes and work toward what matters. Never open
         from a rule.
+      - Open on something only THIS exchange contains: the detail their question turns on,
+        the person affected, the thing that would go wrong. Never begin with a stock
+        phrase -- never "Let me", never "Okay, so". Write as though thinking, not as
+        though filling in a form.
       - Entertain at least one genuine consideration on the other side before settling.
       - Earn the conclusion at the end; do not state a judgement first and justify it
         afterwards.
@@ -973,11 +990,20 @@ stages:
   lint:
     fields: [reasoning, response]
     min_chars: 200
-    retries: 2
+    # 4, like the draft stage's opener contract: at retries 2 both reflection stages
+    # measured a 2.5% record-failure rate against the 2% systematic gate (2026-08-14
+    # smoke). A banned opener costs a call, not a record -- given enough attempts.
+    retries: 4
     ban_patterns:
       - "principle [0-9]|the constitution|my (guidelines|instructions|rules)"
       - "target principle|the rubric|as (instructed|specified) above"
       - "</?(reasoning|response|changes|assistant_[a-z]+|user_message|constitution)>"
+      # The opener ban, matching the draft stage's: this stage writes the text that
+      # trains, and the 2026-08-14 smoke measured 3/40 "Let me..." openers plus one
+      # stray "Final Result:" scaffold fragment without it.
+      - ^\s*let me
+      - ^\s*okay,
+      - ^\s*final (result|verdict)
   prompt_vars:
     style_line: *explicitness_styles
     known_flaw: *known_flaw_note
