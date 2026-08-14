@@ -62,13 +62,9 @@ The generated SFT data is on the HF Hub, so you can jump straight to fine-tuning
 spending ~$74 on Sonnet 4.5. Two files in [`matboz/difficult-advice-qwen3`](https://huggingface.co/datasets/matboz/difficult-advice-qwen3):
 `sft_dataset_thinking.jsonl` (2,119 examples **with `<think>` reasoning traces** — recommended) and
 `sft_dataset.jsonl` (same, non-thinking).
-```bash
-mkdir -p data
-uv run hf download matboz/difficult-advice-qwen3 sft_dataset_thinking.jsonl \
-  --repo-type dataset --local-dir data
-# then go straight to step 5 with configs/train/lora_qwen3_difficult_advice_thinking.yaml
-# (its data_path already points at data/sft_dataset_thinking.jsonl)
-```
+No staging step: the trainer pulls its data straight from the HF repo — go straight to
+step 5 with `configs/train/lora_qwen3_difficult_advice_thinking.yaml` (its
+`data_repo`/`data_file` already point at that repo and file).
 The pre-trained LoRA adapter is also published — to skip training *and* generation entirely and go
 straight to evaluation (step 6), point the eval framework at
 [`matboz/qwen3-32b-difficult-advice-lora`](https://huggingface.co/matboz/qwen3-32b-difficult-advice-lora)
@@ -76,7 +72,9 @@ directly (serving, base-model resolution and thinking mode are handled by `run_e
 ### 1-2. Get the difficult-advice SFT data
 The v1 generation code (`generate_difficult_advice.py` + `augment_thinking.py`) was deleted on
 2026-08-03 — git history before that date has it, and its dataset card records the exact
-provenance. Pull the finished dataset instead:
+provenance. Use the finished dataset instead: the train configs point at it on HF
+(`data_repo: matboz/difficult-advice-qwen3`), and the trainer downloads it itself. To
+inspect it locally:
 ```bash
 uv run hf download matboz/difficult-advice-qwen3 sft_dataset_thinking.jsonl \
   --repo-type dataset --local-dir data/
@@ -115,7 +113,7 @@ uvx vastai create instance <OFFER_ID> \
 curl -LsSf https://astral.sh/uv/install.sh | sh
 git clone <this-repo> /root/work && cd /root/work
 uv sync          # the GPU stack (vllm/transformers/trl/peft) is pinned in pyproject
-# Copy your .env + the thinking dataset to /root/work. Plain `uv run` from here on.
+# Copy your .env to /root/work (training data comes from HF). Plain `uv run` from here on.
 ```
 
 ### 4. Baseline eval (the framework serves the model itself)
@@ -136,9 +134,15 @@ chat template's own thinking default; adapters are evaluated in the mode stamped
 To train it yourself (on the pod):
 ```bash
 # thinking-format (recommended): reasoning preserved
-uv run scripts/train/train_lora.py --config configs/train/lora_qwen3_difficult_advice_thinking.yaml
+uv run scripts/train/train_lora.py --config configs/train/lora_qwen3_difficult_advice_thinking.yaml \
+  hf_repo=<org>/<your-adapter-repo>
 # (non-thinking baseline arm: configs/train/lora_qwen3_difficult_advice.yaml)
 ```
+Training data always comes from the HF dataset repo in the config (`data_repo` +
+`data_file`, overridable as CLI `key=value` pairs); the resolved revision is pinned into
+the adapter's `training_meta.json`. The trained adapter is pushed to `hf_repo`
+automatically (declare it in the config or on the CLI as above; `push=false` opts out
+for credential-less pods, whose driver pushes after pull-back).
 Key config: r=32, 2 epochs, batch 4 × grad-accum 4, max_seq_len 2048, `assistant_only_loss: false`
 (Qwen3's template has no `{% generation %}` markers, so assistant-only masking is all-zero).
 Launch with `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` to avoid fragmentation OOM.

@@ -181,14 +181,40 @@ def _git_sha() -> str:
         return "nogit"
 
 
-def main(config: str, smoke: bool = False) -> None:
+def main(config: str, *overrides: str, smoke: bool = False) -> None:
     """Fine-tune Qwen3-32B with QLoRA on the difficult-advice SFT dataset.
 
     Args:
         config: Path to a YAML training config.
-        smoke: If True, train 2 steps on 8 examples to validate wiring.
+        *overrides: OmegaConf dotlist overrides merged over the config, the same
+            key=value convention as run_eval (e.g. `data_repo=org/name push=false`).
+            Positional so that a bare key=value token can never bind to `smoke`.
+        smoke: If True, train 2 steps on 8 examples to validate wiring (no HF push).
+            Keyword-only: pass `--smoke`.
     """
     cfg = OmegaConf.load(config)
+    if overrides:
+        cfg.merge_with_dotlist([str(o) for o in overrides])
+    # Training data comes from an HF dataset repo, never a local file: the repo id +
+    # resolved revision are the provenance the adapter ships with.
+    assert "data_repo" in cfg and not OmegaConf.is_missing(cfg, "data_repo"), (
+        "train config must declare data_repo: <HF dataset repo id> "
+        "(+ data_file when the repo holds several .jsonl, + data_revision to pin; "
+        "or pass data_repo=org/name on the CLI)")
+    # The trained adapter always lands on HF; push=false is the deliberate opt-out for
+    # credential-less pods (runpod_train.py), whose driver pushes after pull-back.
+    hf_repo = (str(cfg.hf_repo)
+               if "hf_repo" in cfg and not OmegaConf.is_missing(cfg, "hf_repo")
+               and cfg.hf_repo else None)
+    push = bool(cfg.get("push", True)) and not smoke
+    if push:
+        assert hf_repo, (
+            "hf_repo is required: the trained adapter is pushed to HF automatically. "
+            "Declare hf_repo: <org/name> in the config (or hf_repo=... on the CLI); "
+            "a credential-less pod run sets push=false and pushes from the driver.")
+    if bool(cfg.train.get("push_to_hub", False)):
+        assert cfg.train.get("hub_model_id") or hf_repo, (
+            "checkpoint push (train.push_to_hub) needs train.hub_model_id or hf_repo")
     torch.manual_seed(int(cfg.seed))
 
     # Under `torchrun` every rank runs this file; these are 1/0 for a plain single-GPU run.
@@ -211,8 +237,15 @@ def main(config: str, smoke: bool = False) -> None:
         if world_size > 1:
             print(f">>> distributed: {world_size} ranks (DDP), this is rank {local_rank}")
 
-    # --- data ---
-    ds = load_dataset("json", data_files=str(cfg.data_path), split="train")
+    # --- data: from the HF dataset repo, pinned to the exact revision it resolves to ---
+    from src.huggingface import resolve_dataset
+
+    data_path, dataset_ref = resolve_dataset(
+        str(cfg.data_repo), cfg.get("data_file"), cfg.get("data_revision"))
+    if is_main:
+        print(f">>> dataset: {dataset_ref['repo']}@{dataset_ref['revision'][:12]} "
+              f"({dataset_ref['file']})")
+    ds = load_dataset("json", data_files=data_path, split="train")
 
     # The arm's eval-time thinking mode is declared in the config (the scientific record),
     # validated against the FULL dataset — the declaration is about the training data, and
@@ -471,11 +504,13 @@ def main(config: str, smoke: bool = False) -> None:
         # Durable checkpoints without a network volume: hub_strategy "checkpoint" pushes the
         # full trainer state to a `last-checkpoint` folder on every save, so a destroyed pod
         # loses only the steps since the last one and the final adapter is already on the Hub
-        # when training ends -- the pod can be torn down immediately.
+        # when training ends -- the pod can be torn down immediately. Opt-in via
+        # train.push_to_hub; the repo defaults to the adapter's own hf_repo, private like
+        # every other push in this repo.
         push_to_hub=bool(cfg.train.get("push_to_hub", False)),
-        hub_model_id=cfg.train.get("hub_model_id"),
+        hub_model_id=cfg.train.get("hub_model_id") or hf_repo,
         hub_strategy=str(cfg.train.get("hub_strategy", "every_save")),
-        hub_private_repo=bool(cfg.train.get("hub_private_repo", False)),
+        hub_private_repo=bool(cfg.train.get("hub_private_repo", True)),
         bf16=True,
         gradient_checkpointing=True,
         gradient_checkpointing_kwargs={"use_reentrant": False},
@@ -550,27 +585,29 @@ def main(config: str, smoke: bool = False) -> None:
 
     # The eval framework infers serve-time thinking mode from this stamp; an adapter
     # without it is a hard error at eval time (CLAUDE.md, "The eval framework").
+    # `dataset` pins the HF repo + file + resolved revision the run trained on.
     (adapter_dir / "training_meta.json").write_text(json.dumps({
         "thinking": thinking,
         "train_config": config,
         "base_model": str(cfg.model),
-        "data_path": str(cfg.data_path),
+        "dataset": dataset_ref,
         "git_sha": _git_sha(),
         "timestamp": ts,
     }, indent=2))
 
-    if cfg.get("hf_repo") and not smoke:
+    if push:
         from src.huggingface import push_run_dir
         from src.utils import origin_url
 
         # Same card contract as every other artifact (CLAUDE.md: every upload carries a
         # card), derived from the run's real metadata — the human-readable half beside
         # the machine-readable training_meta.json the eval framework consumes.
-        url = push_run_dir(adapter_dir, str(cfg.hf_repo), {
+        url = push_run_dir(adapter_dir, hf_repo, {
             "experiment": f"LoRA SFT adapter — {Path(config).stem}",
             "date_generated": ts[:8],
             "constitution": str(cfg.get("constitution") or
-                                f"inherited from the training data ({cfg.data_path}); "
+                                f"inherited from the training data "
+                                f"({dataset_ref['repo']}); "
                                 "not declared in this train config"),
             "source_repo": f"{origin_url()} @ {_git_sha()}",
             "models": f"base: {cfg.model}",
@@ -590,15 +627,18 @@ def main(config: str, smoke: bool = False) -> None:
                 }} if dynamic is not None else {}),
             }),
             "schema": "PEFT LoRA adapter (safetensors) + tokenizer + training_meta.json "
-                      "{thinking, train_config, base_model, data_path, git_sha, timestamp}",
+                      "{thinking, train_config, base_model, "
+                      "dataset{repo,file,revision}, git_sha, timestamp}",
             "provenance": f"uv run train --config {config}",
+            "dataset": f"hf.co/datasets/{dataset_ref['repo']}@{dataset_ref['revision']} "
+                       f"({dataset_ref['file']})",
         }, private=True, repo_type="model")
         print(f">>> pushed adapter (with training_meta.json + card) to {url}")
 
     meta = {
         "git_sha": _git_sha(),
         "base_model": str(cfg.model),
-        "data_path": str(cfg.data_path),
+        "dataset": dataset_ref,
         "n_examples": len(ds),
         "config": OmegaConf.to_container(cfg, resolve=True),
         "smoke": smoke,

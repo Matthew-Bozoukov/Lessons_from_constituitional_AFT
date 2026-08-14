@@ -14,7 +14,8 @@ model_class: "image_text_to_text"
 # The SAME rendered mixture the 20/80 arm trained on, reused verbatim:
 # output/mixture_qwen36/20260728_152610/mixture.jsonl -- 2,169 examples, 1,494,003 tokens,
 # 20% difficult-advice (with <think> traces) / 80% TULU3 replay (no think block).
-data_path: "data/mixture.jsonl"
+data_repo: ???  # FILL: HF dataset repo id for this arm's mixture (was local data/mixture.jsonl; see docs/LOG.md)
+hf_repo: ???    # FILL: HF model repo the trained adapter pushes to automatically (push=false opts out)
 output_dir: "output/train_lora_qwen36_assistant_only"
 
 lora:

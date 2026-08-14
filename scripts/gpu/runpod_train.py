@@ -4,9 +4,10 @@
 """Train a LoRA arm on a throwaway RunPod H100.
 
 The pod carries NO credentials: it downloads the base model and a public HF dataset
-bundle (training code tarball + mixture jsonl), trains, then serves /workspace over
-HTTP on :8080 — the adapter is pulled back through the proxy and pushed to HF from the
-local machine, where the token lives.
+bundle (training code tarball + mixture jsonl), trains with the bundle passed as the
+trainer's data_repo/data_file overrides (anonymous read — the bundle is public) and
+push=false, then serves /workspace over HTTP on :8080 — the adapter is pulled back
+through the proxy and pushed to HF from the local machine, where the token lives.
 
 Bootstrap discipline is inherited from scripts/gpu/runpod_arena_hard.py (log server before
 anything slow, trainer in the foreground of PID 1, `|| true` so a crash leaves a
@@ -46,15 +47,17 @@ export WANDB_MODE=disabled
 # different interpreters, and packages land where the trainer cannot import them.
 python3 -m pip install --no-cache-dir -q "transformers>=5.14" "trl>=0.27" "peft==0.20.0" datasets accelerate omegaconf fire huggingface_hub hf_transfer
 hf download {base} >/dev/null
-hf download {bundle} --repo-type dataset --local-dir /workspace/bundle
+hf download {bundle} code.tar.gz --repo-type dataset --local-dir /workspace/bundle
 mkdir -p /workspace/repo && tar -xzf /workspace/bundle/code.tar.gz -C /workspace/repo
-mkdir -p /workspace/repo/data && cp /workspace/bundle/{mixture} /workspace/repo/data/mixture.jsonl
 cd /workspace/repo
 # The repo is not pip-installed on the pod (only its deps are), so `import src.*`
 # resolves via the working directory, which script execution alone does not add.
 export PYTHONPATH=/workspace/repo
 echo TRAINING_STARTING
-(python3 scripts/train/train_lora.py --config {train_config} 2>&1 | tee /workspace/train.log) || true
+# The mixture comes straight from the (public) bundle repo via the trainer's own HF
+# data path, so training_meta records the real repo@revision; push=false because the
+# pod has no token — the driver pushes the pulled-back adapter.
+(python3 scripts/train/train_lora.py --config {train_config} data_repo={bundle} data_file={mixture} push=false 2>&1 | tee /workspace/train.log) || true
 # Package whatever the trainer wrote (adapter + run_meta) for pull-back over :8080.
 tar -czf /workspace/adapter.tar.gz -C /workspace/repo/output . || true
 echo TRAINING_DONE
@@ -82,8 +85,8 @@ def up(
         base: Base model to download on the pod.
         gpu: RunPod GPU type id.
         name: Pod name. Prefix it so it is distinguishable on the shared account.
-        mixture: Mixture filename inside the bundle; copied to data/mixture.jsonl
-            on the pod, which is what every train config points at.
+        mixture: Mixture filename inside the bundle; passed to the trainer as its
+            data_file override (the bundle repo is its data_repo).
         disk_gb: Container disk (base model ~55GB + HF cache + outputs).
         image: Container image.
         cloud: SECURE or COMMUNITY.

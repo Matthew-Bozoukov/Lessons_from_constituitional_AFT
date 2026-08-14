@@ -12,7 +12,8 @@ model: "Qwen/Qwen3.6-27B"
 
 # Built by src/data/mixture/sources/tulu3.py (formerly prepare_tulu.py) --config configs/data/mixture/tulu_control.yaml
 # (1.5M tokens, budgeted with this model's chat template). 0% synthetic documents.
-data_path: "data/tulu_control_1p5M.jsonl"
+data_repo: ???  # FILL: HF dataset repo id for the tulu control mixture (was local data/tulu_control_1p5M.jsonl)
+hf_repo: ???    # FILL: HF model repo the trained adapter pushes to automatically (push=false opts out)
 output_dir: "output/train_lora_tulu_control"
 
 lora:

@@ -3,7 +3,9 @@
 
 seed: 0
 model: "Qwen/Qwen3-32B"
-data_path: "data/sft_dataset_thinking.jsonl"   # augmented with <think> traces
+data_repo: "matboz/difficult-advice-qwen3"
+data_file: "sft_dataset_thinking.jsonl"   # augmented with <think> traces
+hf_repo: ???    # FILL: HF model repo the trained adapter pushes to automatically (push=false opts out)
 output_dir: "output/train_lora_thinking"
 
 lora:

@@ -3,7 +3,9 @@
 
 seed: 0
 model: "Qwen/Qwen3-32B"
-data_path: "data/sft_dataset.jsonl"       # copied onto the instance
+data_repo: "matboz/difficult-advice-qwen3"
+data_file: "sft_dataset.jsonl"   # the repo also holds the thinking variant
+hf_repo: ???    # FILL: adapter destination (the original run pushed to matboz/qwen3-32b-difficult-advice-lora; name a NEW repo to avoid overwriting it)
 output_dir: "output/train_lora"
 
 lora:

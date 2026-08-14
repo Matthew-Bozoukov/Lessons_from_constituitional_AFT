@@ -3,6 +3,39 @@
 
 # LOG
 
+## 2026-08-14 — train_lora: HF-only datasets in, automatic HF adapter push out
+
+**Hypothesis (contract, not experiment):** the trainer was the one pipeline stage whose
+data provenance was a local path — every adapter's `training_meta.json` recorded the
+generic `data/mixture.jsonl`, so nothing tied a published adapter to the actual mixture
+it trained on, and the adapter push silently depended on an `hf_repo` no config set.
+
+**Method:** `src/train/train_lora.py` now loads training data only from an HF dataset
+repo: `data_repo` (required; + optional `data_file` when the repo holds
+several `.jsonl`, + optional `data_revision`), declared in the train config or overridden
+as CLI `key=value` dotlist pairs (same convention as run_eval). `resolve_dataset` in
+`src/huggingface.py` pins the repo to the exact commit sha it resolves to and refuses
+local paths and ambiguous repos; the pinned `{repo, file, revision}` triple replaces
+`data_path` in `training_meta.json`, `run_meta.json`, and the adapter card (new `dataset`
+row — `card_markdown` now renders extra fields after the required ones). The adapter push
+is automatic: `hf_repo` is required at startup (fail-fast, before any training) and the
+push always runs on completion; `push=false` is the deliberate opt-out for
+credential-less pods — `scripts/gpu/runpod_train.py` now passes
+`data_repo=<bundle> data_file=<m> push=false` instead of copying the mixture to
+`data/mixture.jsonl`. TRL checkpoint pushes stay opt-in (`train.push_to_hub`), defaulting
+to `hf_repo` and private. Configs: the four arms whose mixture repos are on record
+(difficult-advice pair → `matboz/difficult-advice-qwen3`; table2 memself/selfreflect →
+their `LASR-Callum/2026-08-06-...-10k-train` repos) are filled in; the other 13 carry
+`data_repo: ???` / `hf_repo: ???` OmegaConf sentinels until someone recovers which
+published mixture each arm trained on. Offline tests in `tests/test_huggingface.py`.
+
+**Result:** an adapter's metadata now names the exact dataset repo, file and revision it
+was trained from, and a finished training run cannot fail to publish its adapter.
+
+**Next steps:** fill the 13 `???` sentinels from the mixture-push record; add `hf:` push
+blocks to the mixture configs that lack one, so every future mixture has a repo for
+`data_repo` to name.
+
 ## 2026-08-12 — Chunking is now a named, selectable method (no corpus yet)
 
 **Hypothesis:** stage 1 of the pipeline — how the constitution is cut — is unablated
