@@ -111,6 +111,32 @@ monoculture this type exists to avoid. The review pack's `--tally` prints all th
 the review pack, human-annotate, `--tally`; recalibrate reviewer rubrics from the
 per-reviewer human agreement; then the full run with an HF push and the
 mixture/train/eval loop against the difficult-advice baseline.
+## 2026-08-14 (night, iv) — de-prescribe the prompts: no named scenarios, framings, or failure menus in PAR or PC
+
+**Hypothesis:** difficult_advice's hardest-learned lesson generalizes — a prompt that
+names examples produces the concentration it means to prevent — and the PC smoke bore
+it out: the scenario prompt's parenthetical examples ("a resignation, a will") each
+appeared repeatedly in 40 documents, and the framing prompt's first-listed
+relationship ("a colleague") became "My coworker" in 6 of 20 framings.
+
+**Method:** four prescriptions removed from both configs' prompts, replaced with
+variance demands: the scenario prompt's example stakes, 12-domain list and 5-framing
+list; the flawed-arm revision's five-mechanism failure menu (now "derive the failure
+from the principle, not from a stock repertoire"); PC's four named framing
+relationships (now derived from the transcript itself); PAR's followup mood list.
+Where a list was doing real spread work, the measured mechanism replaces it: PAR
+gains the generation-time diversity gate and the self-updating `{avoid}` /
+`{overrepresented}` steers PC already had — nothing is banned or promoted up front,
+only what THIS run's own output measurably over-produces.
+
+**Result:** 758 tests pass; estimates unchanged. Two fixed elements remain by design,
+flagged rather than changed: the "The person wrote:/The assistant replied:" connective
+lines in PC's transcript (composed in code for blindness; document format, not
+content), and PC's single evaluator system prompt across all records — the latter is
+a real open question, since a corpus-constant system turn could tie the critique
+behaviour to one persona string; varying it would need a small generated or assigned
+rotation.
+
 ## 2026-08-14 (night, iii) — PC drops the dilemma framing, keeps the constitution anchoring; the twins are twins again
 
 **Hypothesis:** the requirement that survived the evening's back-and-forth is

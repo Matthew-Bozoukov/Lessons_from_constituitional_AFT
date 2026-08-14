@@ -361,6 +361,19 @@ stages:
 - name: write_scenarios
   kind: scenarios
   model: scenarios
+  # Generation-time diversity gate, the measured mechanism that replaces named example
+  # scenarios and domain lists in the prompt (difficult_advice's lesson: named examples
+  # produce the concentration they mean to prevent, and this brainstorm measured
+  # 58/2,000 near-clones at cosine >= 0.86 without a gate on 2026-08-14). The `avoid`
+  # and `overrepresented` steers below are filled from THIS run's own output, so
+  # nothing is prescribed up front.
+  diversity:
+    wave_size: 12
+    reject_cosine: 0.86
+    max_regen_rounds: 2
+    max_carry: 150
+    over_share: 0.04
+    over_min_docs: 60
   prompts:
     system: |-
       You invent the ordinary situations that make people message an AI assistant. You
@@ -384,19 +397,23 @@ stages:
 
       Requirements for every situation:
       - It is something a real person would plausibly type on a normal day.
-      - Vary the stakes hard: some are trivial (a message to a landlord, a recipe
-        substitution), some matter a great deal (a diagnosis, a resignation, a will).
-      - Vary the domain widely -- work, health, money, family, study, software, hobbies,
-        travel, bureaucracy, grief, pets, DIY -- and do not reuse a domain in this set.
-      - Vary the framing: a one-line question, a long anxious ramble, a request to check
-        something they already wrote, a request to decide for them, a request framed as
-        purely technical that is not.
+      - Vary the stakes hard across the set, from trivial errands to decisions that
+        will follow the person for years.
+      - Vary the domain widely and do not reuse a domain in this set -- the corpus
+        should cover the whole range of things people actually bring to an assistant,
+        not a handful of archetypes.
+      - Vary how the person would frame their message and how much of it there would
+        be; no two situations in this set should invite the same shape of message.
       - The principle must bear on how a good answer differs from a merely obliging one
         -- the good and the obliging answer must differ BECAUSE of this principle. If
         the situation is a mere quality or completeness test, or a technical question
         the principle never touches, it is wrong for this set.
         Do NOT invent a norm-violating shortcut, and do NOT make the person tempted by
         anything. If the situation reads as a test of ethics, it is wrong for this set.
+
+      {avoid}
+
+      {overrepresented}
 
       Return ONLY a JSON array of {n} objects, each:
       {{"domain": "<one or two words>", "situation": "<2-4 sentences, third person, no dialogue>",
@@ -623,16 +640,12 @@ stages:
           The quiet cost must be a failure of that principle specifically, not mere
           incompleteness or lack of polish.
 
-          Ways a request does that, for you to choose from:
-          - It carries a **premise worth questioning**, stated so confidently that agreeing
-            is the path of least resistance.
-          - It asks for **half of what they need**, in a way where answering exactly what
-            was asked means omitting the part that matters.
-          - It invites **reassurance** where the honest answer is less comfortable.
-          - It is framed as **purely technical or logistical** when the thing that will
-            actually decide the outcome is not.
-          - It supplies a **framing of someone else** that a careful reply would not simply
-            adopt.
+          Derive the failure from the principle, not from a stock repertoire: reread the
+          target principle and ask what the obliging answer would cost THIS person,
+          given what the principle protects -- then reshape the message so that cost is
+          real. Different principles fail in different ways, and two flawed exchanges in
+          this corpus should not share a failure shape merely because they share a
+          reviser.
 
           Hold to all of this:
           - **The person is sympathetic and their goal is legitimate.** They are not
@@ -925,8 +938,8 @@ stages:
       - Ask an open question. Do not say what is wrong with it, do not name any value or
         rule, do not ask for a rewrite, do not tell the assistant to reflect or evaluate.
         You are asking, not diagnosing.
-      - Sound like this person given their situation: uncertain, pushed for time,
-        sceptical, relieved -- whatever fits. Not a reviewer, not an interviewer.
+      - Sound like this person given their situation, in whatever mood the exchange
+        would actually leave them. Not a reviewer, not an interviewer.
 
       Return exactly this form, with no other text:
 

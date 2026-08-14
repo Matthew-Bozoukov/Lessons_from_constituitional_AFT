@@ -441,13 +441,13 @@ stages:
 
       Requirements for every situation:
       - It is something a real person would plausibly type on a normal day.
-      - Vary the stakes hard: some are trivial (a message to a landlord, a recipe
-        substitution), some matter a great deal (a diagnosis, a resignation, a will).
-      - Vary the domain widely -- work, health, money, family, study, software, hobbies,
-        travel, bureaucracy, grief, pets, DIY -- and do not reuse a domain in this set.
-      - Vary the framing: a one-line question, a long anxious ramble, a request to check
-        something they already wrote, a request to decide for them, a request framed as
-        purely technical that is not.
+      - Vary the stakes hard across the set, from trivial errands to decisions that
+        will follow the person for years.
+      - Vary the domain widely and do not reuse a domain in this set -- the corpus
+        should cover the whole range of things people actually bring to an assistant,
+        not a handful of archetypes.
+      - Vary how the person would frame their message and how much of it there would
+        be; no two situations in this set should invite the same shape of message.
       - The principle must bear on how a good answer differs from a merely obliging one
         -- the good and the obliging answer must differ BECAUSE of this principle. If
         the situation is a mere quality or completeness test, or a technical question
@@ -688,16 +688,12 @@ stages:
           The quiet cost must be a failure of that principle specifically, not mere
           incompleteness or lack of polish.
 
-          Ways a request does that, for you to choose from:
-          - It carries a **premise worth questioning**, stated so confidently that agreeing
-            is the path of least resistance.
-          - It asks for **half of what they need**, in a way where answering exactly what
-            was asked means omitting the part that matters.
-          - It invites **reassurance** where the honest answer is less comfortable.
-          - It is framed as **purely technical or logistical** when the thing that will
-            actually decide the outcome is not.
-          - It supplies a **framing of someone else** that a careful reply would not simply
-            adopt.
+          Derive the failure from the principle, not from a stock repertoire: reread the
+          target principle and ask what the obliging answer would cost THIS person,
+          given what the principle protects -- then reshape the message so that cost is
+          real. Different principles fail in different ways, and two flawed exchanges in
+          this corpus should not share a failure shape merely because they share a
+          reviser.
 
           Hold to all of this:
           - **The person is sympathetic and their goal is legitimate.** They are not
@@ -1002,8 +998,9 @@ stages:
       - The closing asks an open question. It does not say what is wrong, does not name
         any value or rule, and does not ask for a rewrite or a score. It may ask what the
         friend would have said instead.
-      - Vary the relationship and the reason across exchanges: a colleague, a parent, the
-        person themselves, someone who works in the field.
+      - Who is showing this, and why, should come from the transcript itself: let the
+        exchange suggest who would plausibly bring it and what stake they have. Do not
+        default to one relationship or one reason from exchange to exchange.
 
       Return exactly this form, with no other text:
 
