@@ -10,12 +10,6 @@ from pathlib import Path
 
 import numpy as np
 
-# Fixed here, not in config.yaml: the 4096-d dimension is baked into every index
-# artifact, so swapping the embedder is a rebuild-the-world change, not a knob.
-EMBED_MODEL = "qwen/qwen3-embedding-8b"
-EMBED_DIM = 4096
-
-
 def load_config(path: str | None = None):
     """TURF hyperparameters (models, temperatures, k's) from config.yaml; every
     CLI loads this and lets its flags override individual values."""
@@ -57,24 +51,30 @@ def parse_numbered_tags(text: str, n: int) -> list[str]:
     return out
 
 
-def embed(texts: list[str], batch: int = 128) -> np.ndarray:
-    """Embed texts via OpenRouter /embeddings (qwen3-embedding-8b, 4096-d, fp32).
+def embed(texts: list[str], model: str, batch: int = 128) -> np.ndarray:
+    """Embed texts via OpenRouter /embeddings (fp32; dim inferred from the response).
 
-    Batched; order-preserving. Uses OPENROUTER_API_KEY from the env (.env is loaded
-    by src.endpoints.openrouter on import elsewhere; load here too for standalone use).
+    `model` comes from config.yaml at index-build time and from the index's
+    manifest.json at trace time — an index must only ever be searched with the
+    embedder it was built with. Batched; order-preserving. Uses OPENROUTER_API_KEY
+    from the env.
     """
     from dotenv import load_dotenv
     from openai import OpenAI
 
+    assert texts, "nothing to embed"
     load_dotenv()
     client = OpenAI(base_url="https://openrouter.ai/api/v1",
                     api_key=os.environ["OPENROUTER_API_KEY"])
-    out = np.empty((len(texts), EMBED_DIM), dtype=np.float32)
+    out = None
     for i in range(0, len(texts), batch):
         chunk = texts[i:i + batch]
-        resp = client.embeddings.create(model=EMBED_MODEL, input=chunk)
+        resp = client.embeddings.create(model=model, input=chunk)
+        if out is None:
+            out = np.empty((len(texts), len(resp.data[0].embedding)), dtype=np.float32)
         for j, d in enumerate(resp.data):
             out[i + j] = d.embedding
+    assert out is not None
     # Qwen3-Embedding's official sentence-transformers pipeline ends in a Normalize
     # module (unit vectors) — SURF's inputs arrive that way; OpenRouter's serving may
     # not apply it, so normalise here to reproduce the paper's embedder exactly.

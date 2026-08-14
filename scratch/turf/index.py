@@ -57,8 +57,8 @@ def main(dir: str, k: int | None = None, summary_model: str | None = None,
             response.append((r["row"], "response", a))
     print(f">>> trigger attrs: {len(trigger)}, response attrs: {len(response)}")
 
-    emb_t = embed([t for _, _, t in trigger])
-    emb_r = embed([t for _, _, t in response])
+    emb_t = embed([t for _, _, t in trigger], str(cfg.embed_model))
+    emb_r = embed([t for _, _, t in response], str(cfg.embed_model))
     np.save(d / "embeddings_trigger.npy", emb_t)   # fp32, as SURF stores embeddings.npy
     np.save(d / "embeddings_response.npy", emb_r)
 
@@ -110,7 +110,7 @@ def main(dir: str, k: int | None = None, summary_model: str | None = None,
     manifest = json.loads((d / "manifest.json").read_text())
     manifest.update({"k_clusters": k, "trigger_attrs": len(trigger),
                      "response_attrs": len(response),
-                     "summary_model": summary_model, "embed_model": "qwen/qwen3-embedding-8b",
+                     "summary_model": summary_model, "embed_model": str(cfg.embed_model),
                      "index_git_sha": git_sha(), "index_timestamp": timestamp()})
     (d / "manifest.json").write_text(json.dumps(manifest, indent=2))
     print(f">>> index built: {k} clusters over {len(trigger)} trigger attrs")
@@ -129,7 +129,7 @@ def main(dir: str, k: int | None = None, summary_model: str | None = None,
                             f"({manifest['source_dataset']})",
             "source_repo": f"jamie/turf @ {git_sha()}",
             "models": f"extractor: {manifest['extractor_model']}; "
-                      f"embedder: qwen/qwen3-embedding-8b; summaries: {summary_model}",
+                      f"embedder: {manifest['embed_model']}; summaries: {summary_model}",
             "generation_config": json.dumps(
                 {"n_attrs_per_channel": 10, "k": k,
                  "extract_temperature": manifest.get("extract_temperature"),

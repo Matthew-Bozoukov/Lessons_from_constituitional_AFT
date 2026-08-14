@@ -98,6 +98,8 @@ def main(case: str, rubric: str, index: str, polarity: str = "satisfy",
     idx = Path(index)
     styles = json.loads((idx / "styles.json").read_text())["styles"]
     manifest = json.loads((idx / "manifest.json").read_text())
+    # the index defines the embedder — searching it with any other model is garbage
+    embed_model = str(manifest["embed_model"])
     client = OpenRouterClient()
 
     # 1. blind judge (no rubric in this call, by construction)
@@ -117,7 +119,7 @@ def main(case: str, rubric: str, index: str, polarity: str = "satisfy",
     resp_index = read_jsonl(idx / "response_index.jsonl")
     emb_r = np.load(idx / "embeddings_response.npy").astype(np.float32)
     emb_r /= np.linalg.norm(emb_r, axis=1, keepdims=True) + 1e-9
-    crux_emb = embed(cruxes)
+    crux_emb = embed(cruxes, embed_model)
     crux_emb /= np.linalg.norm(crux_emb, axis=1, keepdims=True) + 1e-9
 
     # trigger side: each row's attribute clusters, one entry PER attribute — a
@@ -144,11 +146,11 @@ def main(case: str, rubric: str, index: str, polarity: str = "satisfy",
             temperature=extract_temp)
         case_trigger += [("reasoning", a)
                          for a in parse_numbered_tags(r.content, trigger_n)]
-    case_emb = embed([a for _, a in case_trigger])
+    case_emb = embed([a for _, a in case_trigger], embed_model)
     case_emb /= np.linalg.norm(case_emb, axis=1, keepdims=True) + 1e-9
     case_cluster = (case_emb @ centroids.T).argmax(axis=1)
 
-    style_emb = embed(styles) if styles else None
+    style_emb = embed(styles, embed_model) if styles else None
 
     per_crux = []
     for ci, crux in enumerate(cruxes):
@@ -165,7 +167,7 @@ def main(case: str, rubric: str, index: str, polarity: str = "satisfy",
             s = summaries.get(c, {})
             echo = False
             if style_emb is not None and s.get("summary"):
-                se = embed([s["summary"]])[0]
+                se = embed([s["summary"]], embed_model)[0]
                 se /= np.linalg.norm(se) + 1e-9
                 echo = bool((style_emb @ se).max() > 0.75)
             table.append({"cluster": c, "hits": h, "of": int(k),
