@@ -111,6 +111,32 @@ monoculture this type exists to avoid. The review pack's `--tally` prints all th
 the review pack, human-annotate, `--tally`; recalibrate reviewer rubrics from the
 per-reviewer human agreement; then the full run with an HF push and the
 mixture/train/eval loop against the difficult-advice baseline.
+## 2026-08-14 (night, ii) — PAR anchored to the constitution at every judging link
+
+**Hypothesis:** the entry below fixed peer critique's genre, but the underlying
+requirement is broader than genre: BOTH model-eval-model corpora exist to align models
+to their constitutions, so no stage may confirm, reflect on, or train a shortfall that
+no principle speaks to. post_action_retrospection keeps its ordinary-request register
+(that choice stands — the principle is quietly live, not a dilemma), but its
+fault-finding chain graded service quality: nothing stopped a confirmed "fault" from
+being a length or thoroughness nit, and the trained reflection would then be
+constitution-flavored prose about nothing the constitution says.
+
+**Method:** four anchor points, config-only. `write_scenarios` now rejects situations
+that are quality/completeness/technical tests with nothing of the principle at stake.
+`revise_prompts` gains a Precision requirement in both arms (difficult_advice's): the
+good and the obliging answer must differ BECAUSE of the target principle, and the
+flawed arm's quiet cost must be a failure of that principle specifically.
+`revise_first_turn`'s three criticisms are judged against the principle (framings the
+principle required questioning, reassurance where honesty was needed, unearned
+confidence, deciding what was the person's to decide), and its `genuine` bar now reads:
+a real shortfall is a failure of the principle — "imperfect without failing the
+principle" explicitly does not count. The quality_filter gains a `no_value_at_stake`
+drop tag so any principle-free reflection that slips through is measured.
+
+**Result:** 758 tests pass, estimate unchanged ($374.03, ~1,755 docs). PAR remains NOT
+YET RUN; these anchors get their first measurement in its smoke.
+
 ## 2026-08-14 (night) — peer critique pivots to difficult-advice-shaped scenarios: the flaws must be constitution violations
 
 **Hypothesis:** the smoke below produced high-quality critiques of QUALITY failures

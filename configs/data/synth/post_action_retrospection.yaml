@@ -391,7 +391,10 @@ stages:
       - Vary the framing: a one-line question, a long anxious ramble, a request to check
         something they already wrote, a request to decide for them, a request framed as
         purely technical that is not.
-      - The principle must bear on how a good answer differs from a merely obliging one.
+      - The principle must bear on how a good answer differs from a merely obliging one
+        -- the good and the obliging answer must differ BECAUSE of this principle. If
+        the situation is a mere quality or completeness test, or a technical question
+        the principle never touches, it is wrong for this set.
         Do NOT invent a norm-violating shortcut, and do NOT make the person tempted by
         anything. If the situation reads as a test of ethics, it is wrong for this set.
 
@@ -558,6 +561,11 @@ stages:
           constitution in front of it would genuinely serve this person well.
 
           That is the goal to aim at:
+          - **Precision.** The exchange must engage the target principle specifically:
+            a good answer and a merely obliging one must differ BECAUSE of this
+            principle. If the draft could be answered perfectly well without the
+            principle ever bearing on it -- a pure quality, completeness or technical
+            test -- fix that first.
           - **Reachable.** The principle is live in how a good answer differs from a lazy
             one, but nothing about the situation traps a well-meaning assistant. The
             person has given enough context that the right answer is available.
@@ -611,7 +619,9 @@ stages:
 
           Rewrite both so that the fast, obliging answer -- the one an assistant gives when
           it takes the request at face value and wants to be helpful -- would quietly leave
-          this person worse off.
+          this person worse off IN EXACTLY THE WAY THE TARGET PRINCIPLE PROTECTS AGAINST.
+          The quiet cost must be a failure of that principle specifically, not mere
+          incompleteness or lack of polish.
 
           Ways a request does that, for you to choose from:
           - It carries a **premise worth questioning**, stated so confidently that agreeing
@@ -810,13 +820,15 @@ stages:
       {trait_text}
       </target_principle>
 
-      **First: name THREE separate things wrong with that reply.** Not three phrasings of
-      one complaint -- three distinct ways it serves this person less well than it could.
+      **First: name THREE separate things wrong with that reply, judged against the
+      principle above.** Not three phrasings of one complaint -- three distinct ways it
+      fails what the principle asks of an assistant here.
 
-      Look in different places for each: what it did not say and should have; what it said
-      with more confidence than it had earned; where it took the person's framing at face
-      value instead of questioning it; where it was obliging at the expense of being
-      useful; what a person in this situation would notice was missing a day later.
+      Look in different places for each: where it went along with a framing that the
+      principle required questioning; where it reassured or flattered when the person
+      needed the less comfortable truth; where it claimed more confidence than it had
+      earned; where it quietly decided something that was this person's to decide;
+      where being obliging cost them exactly what the principle protects.
 
       Judge the reply by what it does for this person, not by its wording. Do not soften
       anything, and do not open by saying what the reply got right.
@@ -827,17 +839,20 @@ stages:
       criticism turns out to have nothing behind it once you try to act on it, leave that
       part of the reply alone.
 
-      **Third: say which of the three, if any, was a REAL shortfall** -- something that
-      genuinely leaves this person worse served, that a thoughtful person reading the
-      original would agree about.
+      **Third: say which of the three, if any, was a REAL failure of the principle** --
+      a place where the reply genuinely does not live up to what the principle asks
+      here, in a way that leaves this person worse served and that a thoughtful person
+      reading the original would agree about.
 
-      A criticism does not hold up if it is a matter of taste, if it asks for something
-      this person did not need, if it would apply equally to almost any reply, or if
-      writing the fix showed there was nothing to fix. Having written it yourself is not
-      evidence for it. If more than one holds up, pick the one that costs this person
-      most. If none holds up, say so -- most replies to ordinary requests are basically
-      fine, and a corpus that pretends otherwise teaches an assistant to invent faults in
-      its own work.
+      A criticism does not hold up if it is a matter of taste or completeness, if it
+      asks for something this person did not need, if it would apply equally to almost
+      any reply, or if writing the fix showed there was nothing to fix. A reply can be
+      imperfect without failing the principle -- a nit about length, structure or
+      thoroughness with no value at stake does not count, and having written the
+      criticism yourself is not evidence for it. If more than one holds up, pick the
+      one that costs this person most. If none holds up, say so -- most replies to
+      ordinary requests are basically fine, and a corpus that pretends otherwise
+      teaches an assistant to invent faults in its own work.
 
       Return exactly this form, with no other text:
 
@@ -1181,11 +1196,13 @@ stages:
         request, if the follow-up diagnoses the fault or dictates the reflection
         instead of asking, if the final turn re-audits the reply generically instead
         of answering what the person asked, if it invents faults or capitulates when
-        the first reply held up, if it lectures or cites policy rather than helps, if
-        it is internally inconsistent, or if it reads as template output with the
-        specifics swapped. Do not drop a document for standing by the first reply with
-        reasons, nor for revising it -- both verdicts are healthy here. Most documents
-        in a healthy corpus are keeps.
+        the first reply held up, if the shortfall the reflection centres on engages no
+        constitutional value -- a nit about length, formatting or thoroughness, or a
+        purely technical correction, with nothing of the principle at stake -- if it
+        lectures or cites policy rather than helps, if it is internally inconsistent,
+        or if it reads as template output with the specifics swapped. Do not drop a
+        document for standing by the first reply with reasons, nor for revising it --
+        both verdicts are healthy here. Most documents in a healthy corpus are keeps.
       user: >-
         Document {record_id} (trait {group}):
 
@@ -1195,8 +1212,8 @@ stages:
         <verdict>keep or drop</verdict>
         <flaw>if dropping, one snake_case tag from: implausible_scenario,
         reads_as_dilemma, followup_diagnoses, generic_review, invents_faults,
-        lectures_user, template_output, inconsistent, other. If keeping, write
-        none.</flaw>
+        no_value_at_stake, lectures_user, template_output, inconsistent, other. If
+        keeping, write none.</flaw>
         <why>one sentence</why>
     pattern_scan:
       scan_system: >-
