@@ -86,12 +86,16 @@ def selected(sc: dict, record: dict) -> bool:
     it excludes pass through untouched and cost nothing. This is what lets a config add
     a stage that only some cells need -- generating a first turn for the self cells, or
     a user-anchored framing for the user cells -- without the operator knowing which
-    cells exist.
+    cells exist. A LIST of such conditions is their conjunction -- what a stage that
+    covers one slice of one arm needs (e.g. the flawed records whose first turn a
+    particular model writes).
     """
     spec = sc.get("when")
     if not spec:
         return True
-    return str(record.get(spec["field"], "")) in [str(v) for v in spec["in"]]
+    conds = spec if isinstance(spec, list) else [spec]
+    return all(str(record.get(c["field"], "")) in [str(v) for v in c["in"]]
+               for c in conds)
 
 
 # --- generic operators --------------------------------------------------------------
@@ -571,8 +575,8 @@ def op_llm_tagged(sc: dict, cfg: dict) -> Stage:
                                        or ident(r)))
 
 
-def op_pick_field(sc: dict, cfg: dict) -> Stage:
-    """Free, deterministic resolution of a rater's choice into the field it names.
+def apply_pick(spec: dict, records: list[dict]) -> list[dict]:
+    """Deterministic resolution of a rater's choice into the field it names.
 
     `by:` is the record field holding the choice (a label an autorater returned),
     `from:` maps each label to the record field carrying that candidate's text, `to:`
@@ -580,10 +584,9 @@ def op_pick_field(sc: dict, cfg: dict) -> Stage:
     it. Keeping the LLM's job to "name the winner" and the copy to deterministic code
     is what stops a rater silently paraphrasing the candidate it selected.
 
-    `when:` scopes it like any other stage.
     """
-    by, src, to = sc["by"], dict(sc["from"]), sc["to"]
-    also = dict(sc.get("also") or {})
+    by, src, to = spec["by"], dict(spec["from"]), spec["to"]
+    also = dict(spec.get("also") or {})
 
     def resolve(r: dict) -> str:
         raw = _norm_label(r[by])
@@ -594,14 +597,18 @@ def op_pick_field(sc: dict, cfg: dict) -> Stage:
                 f"{sorted(src)}")
         return src[label]
 
+    return [{**r, to: r[resolve(r)], **also} for r in records]
+
+
+def op_pick_field(sc: dict, cfg: dict) -> Stage:
+    """Free stage wrapper around `apply_pick` (see it for the contract).
+
+    `when:` scopes it like any other stage.
+    """
+    to = sc["to"]
+
     def fn(ctx, records, ckpt):
-        out = []
-        for r in records:
-            if not selected(sc, r):
-                out.append(r)
-                continue
-            out.append({**r, to: r[resolve(r)], **also})
-        return out
+        return [apply_pick(sc, [r])[0] if selected(sc, r) else r for r in records]
 
     return Stage(sc["name"], fn, preview=lambda r: str(r.get(to) or ident(r)))
 
@@ -1369,11 +1376,11 @@ OPERATORS = {
 # The five cell kinds below are NOT generic: a cell is a document type expressed in
 # Python -- a registry entry knowing how its prompts are assembled and how its record is
 # exported -- which is precisely what a config's `stages:` list is supposed to express
-# instead. They stay registered because the archived configs and
-# `peer_critique.yaml` are written against them, and an archived config
-# that cannot run is not a reproducible record of a published corpus. Nothing new should
-# use them; build a document type out of the generic kinds above, as
-# `post_action_retrospection.yaml` does.
+# instead. They stay registered because the archived configs are written against them,
+# and an archived config that cannot run is not a reproducible record of a published
+# corpus. Nothing live uses them (peer_critique.yaml, the last holdout, was rebuilt on
+# the generic kinds on 2026-08-14); build a document type out of the generic kinds
+# above, as `post_action_retrospection.yaml` does.
 OPERATORS.update({
     "plan_cells": op_plan_cells,
     "perturb_pairs": op_perturb_pairs,

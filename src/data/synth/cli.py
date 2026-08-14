@@ -345,9 +345,43 @@ def segment(constitution: str = "constitutions/claude_distilled_12_principles_mi
               f"most peripheral {chunks[order[-1]].chunk_id}")
 
 
+def _refuse_unknown_flags(commands: dict) -> None:
+    """Exit BEFORE dispatch when a flag names no parameter of the chosen command.
+
+    Fire's chaining semantics run the command first and then try to apply leftover
+    args to its RETURN VALUE, so `synth run --config x --estimate` executes the whole
+    PAID pipeline and only afterwards prints "Could not consume arg: --estimate"
+    (observed 2026-08-14: a full write_scenarios stage spent before the flag error
+    surfaced). A CLI whose commands cost money must refuse a flag it does not
+    understand before spending anything.
+    """
+    import inspect
+    import sys
+
+    argv = sys.argv[1:]
+    if not argv or argv[0] not in commands:
+        return  # unknown command: Fire's own usage error covers it, nothing runs
+    params = inspect.signature(commands[argv[0]]).parameters
+    # Fire accepts --no<flag> for booleans and hyphens for underscores.
+    known = set(params) | {f"no{p}" for p in params} | {"help"}
+    for tok in argv[1:]:
+        if tok == "--":
+            break  # everything after the separator is Fire's own flag namespace
+        if tok.startswith("--"):
+            name = tok[2:].split("=", 1)[0].replace("-", "_")
+            if name and name not in known:
+                raise SystemExit(
+                    f"synth {argv[0]}: unknown flag --{name}. Accepted: "
+                    + ", ".join(f"--{p}" for p in params)
+                    + ". Refusing before dispatch: Fire would otherwise run the "
+                      "command first and only fail on the flag afterwards.")
+
+
 def main() -> None:
-    fire.Fire({"run": run, "topup": topup, "check": check, "checks": checks,
-               "estimate": estimate, "segment": segment, "chunkings": chunkings})
+    commands = {"run": run, "topup": topup, "check": check, "checks": checks,
+                "estimate": estimate, "segment": segment, "chunkings": chunkings}
+    _refuse_unknown_flags(commands)
+    fire.Fire(commands)
 
 
 if __name__ == "__main__":
