@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, Sequence
 
 from dotenv import load_dotenv
@@ -21,6 +22,33 @@ from tqdm import tqdm
 load_dotenv()
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+PROVIDER_PINS_PATH = Path(__file__).resolve().parents[2] / "configs/endpoints/providers.yaml"
+
+_pins: dict | None = None
+_warned_unpinned: set[str] = set()
+
+
+def provider_pin(model: str) -> dict | None:
+    """The OpenRouter `provider` routing object pinned for `model`, or None.
+
+    Pins live in configs/endpoints/providers.yaml (per-model `order` merged over
+    `defaults`). Providers serving one model id differ in quantization/backend, so
+    every call routes through a pin; an unpinned model still runs but warns once per
+    process — add an entry rather than silencing it.
+    """
+    global _pins
+    if _pins is None:
+        from omegaconf import OmegaConf
+
+        cfg = OmegaConf.to_container(OmegaConf.load(PROVIDER_PINS_PATH))
+        _pins = {mid: {**cfg["defaults"], **spec}
+                 for mid, spec in (cfg["models"] or {}).items()}
+    pin = _pins.get(model)
+    if pin is None and model not in _warned_unpinned:
+        _warned_unpinned.add(model)
+        print(f"!!! no provider pin for {model!r} — routing is provider-random; "
+              f"add it to {PROVIDER_PINS_PATH.name} (configs/endpoints/)")
+    return pin
 
 
 class EmptyCompletionError(RuntimeError):
@@ -35,7 +63,9 @@ class EmptyCompletionError(RuntimeError):
 
 
 # Only transient failures are retried; everything else fails fast and surfaces. An empty
-# completion is transient BY ROUTING: the retry lands on a different upstream provider.
+# completion is transient BY ROUTING for unpinned models (the retry lands on a different
+# upstream provider); under a provider pin the retry re-asks the same provider, which
+# still clears intermittent blanks.
 _TRANSIENT = (RateLimitError, APIConnectionError, APITimeoutError, EmptyCompletionError)
 
 
@@ -48,12 +78,15 @@ class ChatResult:
         prompt_tokens: Prompt token count reported by the API.
         completion_tokens: Completion token count reported by the API.
         finish_reason: The provider-reported finish reason.
+        provider: Which upstream provider actually served the call — record it in
+            run artifacts the way temperature is recorded (see providers.yaml).
     """
 
     content: str
     prompt_tokens: int
     completion_tokens: int
     finish_reason: str
+    provider: str = ""
 
 
 class OpenRouterClient:
@@ -92,8 +125,15 @@ class OpenRouterClient:
             **kwargs: Passed through to the completions API.
 
         Returns:
-            A ChatResult with content and token usage.
+            A ChatResult with content, token usage and the serving provider.
         """
+        # Route through the model's provider pin (configs/endpoints/providers.yaml) —
+        # unpinned models warn once inside provider_pin and route provider-random.
+        pin = provider_pin(model)
+        if pin is not None:
+            extra = dict(kwargs.pop("extra_body", None) or {})
+            extra.setdefault("provider", pin)
+            kwargs["extra_body"] = extra
         resp = self.client.chat.completions.create(
             model=model,
             messages=messages,
@@ -116,6 +156,7 @@ class OpenRouterClient:
             prompt_tokens=usage.prompt_tokens if usage else 0,
             completion_tokens=usage.completion_tokens if usage else 0,
             finish_reason=choice.finish_reason or "",
+            provider=getattr(resp, "provider", "") or "",
         )
 
 

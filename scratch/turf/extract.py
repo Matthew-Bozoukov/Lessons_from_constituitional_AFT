@@ -104,13 +104,17 @@ def _batch_extract(rows: list[dict], todo: list[int], out_dir: Path, attrs_path:
         state = json.loads(state_path.read_text())
         print(f">>> resuming batch {state['batch_id']} ({len(state['rows'])} rows)")
     else:
+        from src.endpoints.openrouter import provider_pin
+
+        pin = provider_pin(model)
         reqs = []
         for i in todo:
             for chan, p in _row_prompts(parse_row(rows[i]), n).items():
                 reqs.append({"custom_id": f"{i}:{chan}",
                              "body": {"messages": [{"role": "user", "content": p}],
                                       "temperature": temperature,
-                                      "max_tokens": max_tokens}})
+                                      "max_tokens": max_tokens,
+                                      **({"provider": pin} if pin else {})}})
         # field ORDER matters: the API stream-parses and requires endpoint+model
         # before the requests array (docs/batch-quickstart).
         r = requests.post(BATCH_URL, headers=headers, json={

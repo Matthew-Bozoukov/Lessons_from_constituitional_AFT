@@ -1,0 +1,45 @@
+# ABOUTME: Per-model OpenRouter provider pins — read by src/endpoints/openrouter.py on
+# ABOUTME: every chat call (and TURF's embed); models absent here run but WARN once.
+# Consumed automatically; there is no script to run against this file.
+#
+# Why: providers serving the same model id differ in quantization and backend enough
+# to move benchmarks by double digits, and routing is not random ("Not Pinning Your
+# OpenRouter Provider Might Invalidate Your Research", LessWrong 2026). Policy:
+# first-party endpoint wherever one exists, no fallbacks, require_parameters so
+# sampling settings are honoured. The provider that actually served each response is
+# recorded on ChatResult.provider — report it like temperature.
+#
+# `order` takes OpenRouter provider slugs (see /api/v1/models/<id>/endpoints, `tag`
+# field, base part). Per-model keys override `defaults`.
+
+# require_parameters is deliberately ABSENT: it intersects the pin with endpoints
+# declaring support for every request parameter, and that killed even first-party
+# routes (google-vertex + plain temperature/max_tokens -> 404 "No endpoints found",
+# verified 2026-08-14). Provider identity is the load-bearing pin; parameter
+# handling by first-party endpoints is trusted and the serving provider is recorded.
+defaults:
+  allow_fallbacks: false
+
+models:
+  # --- verified live (call observed served by the pinned provider) ---------------
+  google/gemini-3.7-flash:        # TURF extractor+judge+summaries; verified 2026-08-14
+    order: [google-vertex]        # (batch smoke served by Google, dated snapshot
+                                  #  gemini-3.7-flash-20260813)
+  qwen/qwen3-embedding-8b:        # TURF embedder. NO first-party endpoint exists;
+    order: [nebius]               # nebius over deepinfra (both quant-undeclared) and
+                                  # siliconflow (declared fp8). Verified 2026-08-14.
+
+  # --- first-party pins, chosen by policy, not yet individually benchmarked ------
+  anthropic/claude-sonnet-5: {order: [anthropic]}
+  anthropic/claude-sonnet-4.5: {order: [anthropic]}   # synth generation
+  anthropic/claude-haiku-4.5: {order: [anthropic]}
+  anthropic/claude-opus-4.7: {order: [anthropic]}
+  google/gemini-3.1-pro-preview: {order: [google-vertex]}
+  google/gemini-3-flash-preview: {order: [google-vertex]}
+  google/gemini-3.6-flash: {order: [google-vertex]}
+  openai/gpt-5.6-terra: {order: [openai]}             # fabrication judge
+  openai/gpt-5.5: {order: [openai]}
+  openai/gpt-4.1: {order: [openai]}
+  x-ai/grok-4.20: {order: [xai]}
+  x-ai/grok-4.3: {order: [xai]}
+  # qwen/qwen3.6-27b: eval comparison target — pin when its providers are surveyed.

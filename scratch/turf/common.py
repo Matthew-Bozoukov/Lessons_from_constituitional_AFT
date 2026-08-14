@@ -62,14 +62,20 @@ def embed(texts: list[str], model: str, batch: int = 128) -> np.ndarray:
     from dotenv import load_dotenv
     from openai import OpenAI
 
+    from src.endpoints.openrouter import provider_pin
+
     assert texts, "nothing to embed"
     load_dotenv()
     client = OpenAI(base_url="https://openrouter.ai/api/v1",
                     api_key=os.environ["OPENROUTER_API_KEY"])
+    # embeddings are artifacts (indexes) — provider variance here silently changes
+    # every downstream cosine, so the pin applies exactly as it does to chat calls
+    pin = provider_pin(model)
     out = None
     for i in range(0, len(texts), batch):
         chunk = texts[i:i + batch]
-        resp = client.embeddings.create(model=model, input=chunk)
+        resp = client.embeddings.create(model=model, input=chunk,
+                                        extra_body={"provider": pin} if pin else None)
         if out is None:
             out = np.empty((len(texts), len(resp.data[0].embedding)), dtype=np.float32)
         for j, d in enumerate(resp.data):
