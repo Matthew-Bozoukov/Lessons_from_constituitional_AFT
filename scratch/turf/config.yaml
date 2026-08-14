@@ -6,7 +6,9 @@ n_attrs_per_channel: 10    # 10 query + 10 reasoning (trigger), 10 response (dat
 case_response_attrs: 40    # blind-judge budget on the case — the recall lever
 k_clusters: 1000           # trigger clusters (paper: 25k over 234k rows; scaled)
 k_retrieve: 1000           # nearest response attributes per crux (paper's k)
-temperature: 0.0
+extract_temperature: 1.0   # attribute extraction, dataset AND case side (SURF's 1.0)
+judge_temperature: 0.0     # crux selection + cluster summaries (SURF summarises at 0.0)
+summary_top_attrs: 50      # closest members fed to the summariser (SURF: top-100)
 # k-means mirrors SURF's cluster.py exactly (paper is metric-silent on clustering):
 kmeans_max_iter: 20        # + early stop when inertia improves <0.1%
 kmeans_seed: 42            # SURF's random_state

@@ -109,10 +109,16 @@ NO_STYLES_BLOCK = "  (no known styles for this dataset — the style rule does n
 
 # --- index side: cluster summaries ----------------------------------------------------
 
-CLUSTER_SUMMARY_PROMPT = """Here are attribute sentences that were grouped into one cluster by embedding similarity:
+# SURF's SUMMARIZE_PROMPT (surf/clustering/summarize.py) verbatim, with only the
+# channel wording parameterised: their clusters are pure query attributes, ours mix
+# "The query..." and "The reasoning...", so {channel_noun}/{prefix} pick the majority
+# channel ("queries"/"The query" or "reasoning traces"/"The reasoning").
+CLUSTER_SUMMARY_PROMPT = """Here are the top attributes that describe {channel_noun} in a cluster:
 
 <attributes>
 {attributes}
 </attributes>
 
-Write ONE sentence, in the same style ("The query ..." or "The reasoning ..."), that best summarizes what these attributes have in common. Output only that sentence."""
+Summarize these into a single sentence starting with "{prefix}" that captures the common theme. The summary should be concise and capture the essential shared characteristic of these attributes.
+
+Respond with only the summary sentence, nothing else."""

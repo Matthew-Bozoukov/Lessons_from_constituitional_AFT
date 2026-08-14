@@ -51,7 +51,10 @@ from scratch.turf.prompts import (  # noqa: E402
 from src.endpoints.openrouter import OpenRouterClient  # noqa: E402
 from src.utils import git_sha, read_jsonl, timestamp  # noqa: E402
 
-CASE_RESPONSE_ATTRS = 40  # blind-judge budget: recall lever (design discussion)
+CASE_RESPONSE_ATTRS = 40  # blind-judge budget: recall lever (design discussion; paper uses 10)
+EXTRACT_TEMPERATURE = 1.0  # attribute extraction samples at SURF's 1.0 — case attrs
+                           # must live in the same distribution as the index's.
+                           # The crux judge stays at 0.0 (a selection, not a sample).
 
 
 def _crux_select(client, model, attrs: list[str], rubric_text: str, polarity: str,
@@ -96,7 +99,7 @@ def main(case: str, rubric: str, index: str, polarity: str = "satisfy",
     # 1. blind judge (no rubric in this call, by construction)
     res = client.chat(model, [{"role": "user", "content": RESPONSE_ATTR_PROMPT.format(
         query=case_d["query"], response=case_d["response"], n=CASE_RESPONSE_ATTRS)}],
-        temperature=0.0)
+        temperature=EXTRACT_TEMPERATURE)
     blind_attrs = parse_numbered_tags(res.content, CASE_RESPONSE_ATTRS)
 
     # 2. informed judge
@@ -120,19 +123,20 @@ def main(case: str, rubric: str, index: str, polarity: str = "satisfy",
         row_clusters.setdefault(t["row"], set()).add(t["cluster"])
     summaries = {s["cluster"]: s for s in read_jsonl(idx / "cluster_summaries.jsonl")}
     # Clusters are BUILT with Euclidean k-means (centroids not unit-norm), but new
-    # attributes are assigned by COSINE — exactly SURF's split (cluster.py builds,
-    # cluster_mapper.py normalises centroids at lookup). This normalise is load-bearing.
+    # attributes are assigned by COSINE — mandated by the paper (Eq. 5: argmax cos)
+    # and matching SURF's cluster_mapper.py. This normalise is load-bearing.
     centroids = np.load(idx / "centroids.npy").astype(np.float32)
     centroids /= np.linalg.norm(centroids, axis=1, keepdims=True) + 1e-9
 
     # 5-prep. the case's own trigger attributes, for trigger identification
     q = client.chat(model, [{"role": "user", "content":
                              QUERY_ATTR_PROMPT.format(query=case_d["query"])}],
-                    temperature=0.0)
+                    temperature=EXTRACT_TEMPERATURE)
     case_trigger = [("query", a) for a in parse_numbered_tags(q.content, 10)]
     if (case_d.get("reasoning") or "").strip():
         r = client.chat(model, [{"role": "user", "content": REASONING_ATTR_PROMPT.format(
-            query=case_d["query"], reasoning=case_d["reasoning"])}], temperature=0.0)
+            query=case_d["query"], reasoning=case_d["reasoning"])}],
+            temperature=EXTRACT_TEMPERATURE)
         case_trigger += [("reasoning", a) for a in parse_numbered_tags(r.content, 10)]
     case_emb = embed([a for _, a in case_trigger])
     case_emb /= np.linalg.norm(case_emb, axis=1, keepdims=True) + 1e-9
@@ -223,7 +227,9 @@ def main(case: str, rubric: str, index: str, polarity: str = "satisfy",
                 "constitution": "per run: see each subdir's rubric.yaml",
                 "source_repo": f"jamie/turf @ {git_sha()}",
                 "models": model,
-                "generation_config": json.dumps({"k": k, "temperature": 0.0}),
+                "generation_config": json.dumps(
+                    {"k": k, "extract_temperature": EXTRACT_TEMPERATURE,
+                     "judge_temperature": 0.0}),
                 "schema": "<ts>_<case-id>/: case.json, rubric.yaml, trace_report.md, "
                           "trace_result.json",
                 "provenance": "scratch/turf/trace.py (see each trace_result.json for "

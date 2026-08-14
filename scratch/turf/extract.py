@@ -47,24 +47,27 @@ from src.utils import git_sha, timestamp  # noqa: E402
 N_ATTRS = 10
 
 
+EXTRACT_TEMPERATURE = 1.0  # SURF's AttributeExtractor samples at 1.0
+
+
 def _extract_one(client: OpenRouterClient, model: str, row: dict) -> dict:
     ch = parse_row(row)
     out = {"query_attrs": None, "reasoning_attrs": None, "response_attrs": None}
     q = client.chat(model, [{"role": "user", "content":
                              QUERY_ATTR_PROMPT.format(query=ch["query"])}],
-                    temperature=0.0)
+                    temperature=EXTRACT_TEMPERATURE)
     out["query_attrs"] = parse_numbered_tags(q.content, N_ATTRS)
     if ch["reasoning"]:
         r = client.chat(model, [{"role": "user", "content":
                                  REASONING_ATTR_PROMPT.format(
                                      query=ch["query"], reasoning=ch["reasoning"])}],
-                        temperature=0.0)
+                        temperature=EXTRACT_TEMPERATURE)
         out["reasoning_attrs"] = parse_numbered_tags(r.content, N_ATTRS)
     resp = client.chat(model, [{"role": "user", "content":
                                 RESPONSE_ATTR_PROMPT.format(
                                     query=ch["query"], response=ch["response"],
                                     n=N_ATTRS)}],
-                       temperature=0.0)
+                       temperature=EXTRACT_TEMPERATURE)
     out["response_attrs"] = parse_numbered_tags(resp.content, N_ATTRS)
     return out
 
@@ -113,6 +116,7 @@ def main(dataset: str, file: str = "stage_7_sft.jsonl", out: str = "output/turf/
     manifest = {
         "source_dataset": dataset, "source_file": file, "rows": total,
         "rows_with_reasoning": n_reasoning, "extractor_model": model,
+        "extract_temperature": EXTRACT_TEMPERATURE,
         "n_attrs_per_channel": N_ATTRS, "styles": styles,
         "git_sha": git_sha(), "timestamp": timestamp(),
     }

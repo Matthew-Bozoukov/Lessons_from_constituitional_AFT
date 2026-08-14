@@ -53,8 +53,8 @@ def main(dir: str, k: int = 1000, summary_model: str = "anthropic/claude-sonnet-
 
     emb_t = embed([t for _, _, t in trigger])
     emb_r = embed([t for _, _, t in response])
-    np.save(d / "embeddings_trigger.npy", emb_t.astype(np.float16))
-    np.save(d / "embeddings_response.npy", emb_r.astype(np.float16))
+    np.save(d / "embeddings_trigger.npy", emb_t)   # fp32, as SURF stores embeddings.npy
+    np.save(d / "embeddings_response.npy", emb_r)
 
     k = min(k, len(trigger) // 4)  # never more clusters than attrs/4
     cent, assign, dists = kmeans(emb_t, k)
@@ -68,8 +68,9 @@ def main(dir: str, k: int = 1000, summary_model: str = "anthropic/claude-sonnet-
         for row, _, text in response:
             f.write(json.dumps({"row": row, "text": text}) + "\n")
 
-    # Summarise each cluster from up to 12 member attributes, closest-to-centroid
-    # first (SURF's top_attributes ordering; distances from kmeans's final pass).
+    # Summarise each cluster from up to 50 member attributes, closest-to-centroid
+    # first (SURF's top_attributes ordering, its top-100 halved; distances from
+    # kmeans's final pass). Prompt is SURF's, prefixed by the majority channel.
     members: dict[int, list[tuple[float, str, str]]] = {}
     for (row, channel, text), c, dist in zip(trigger, assign, dists):
         members.setdefault(int(c), []).append((float(dist), channel, text))
@@ -78,15 +79,21 @@ def main(dir: str, k: int = 1000, summary_model: str = "anthropic/claude-sonnet-
 
     def summarise(j: int) -> dict:
         cid = cluster_ids[j]
-        top = sorted(members[cid])[:12]
+        top = sorted(members[cid])[:50]
+        channels = [ch for _, ch, _ in members[cid]]
+        share_reasoning = channels.count("reasoning") / len(channels)
+        prefix, noun = (("The reasoning", "reasoning traces") if share_reasoning > 0.5
+                        else ("The query", "queries"))
         res = client.chat(summary_model, [{"role": "user", "content":
                           CLUSTER_SUMMARY_PROMPT.format(
-                              attributes="\n".join(t for _, _, t in top))}],
+                              channel_noun=noun, prefix=prefix,
+                              attributes="\n".join(f"- {t}" for _, _, t in top))}],
                           temperature=0.0)
-        channels = [ch for _, ch, _ in members[cid]]
-        return {"cluster": cid, "size": len(members[cid]),
-                "summary": res.content.strip(),
-                "share_reasoning": channels.count("reasoning") / len(channels)}
+        summary = res.content.strip()
+        if not summary.lower().startswith(prefix.lower()):
+            summary = f"{prefix} {summary}"  # SURF's prefix enforcement
+        return {"cluster": cid, "size": len(members[cid]), "summary": summary,
+                "share_reasoning": share_reasoning}
 
     summaries = map_threaded(summarise, len(cluster_ids), desc="summarising")
     with (d / "cluster_summaries.jsonl").open("w") as f:
@@ -116,8 +123,10 @@ def main(dir: str, k: int = 1000, summary_model: str = "anthropic/claude-sonnet-
             "source_repo": f"jamie/turf @ {git_sha()}",
             "models": f"extractor: {manifest['extractor_model']}; "
                       f"embedder: qwen/qwen3-embedding-8b; summaries: {summary_model}",
-            "generation_config": json.dumps({"n_attrs_per_channel": 10, "k": k,
-                                             "temperature": 0.0}),
+            "generation_config": json.dumps(
+                {"n_attrs_per_channel": 10, "k": k,
+                 "extract_temperature": manifest.get("extract_temperature"),
+                 "summary_temperature": 0.0}),
             "schema": "attributes.jsonl, trigger_index.jsonl (attr->cluster), "
                       "response_index.jsonl, embeddings_*.npy (fp16), centroids.npy, "
                       "cluster_summaries.jsonl, styles.json, manifest.json",
