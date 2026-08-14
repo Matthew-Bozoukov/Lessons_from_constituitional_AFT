@@ -1,7 +1,7 @@
-# ABOUTME: Default hyperparameters for the TURF adaptation; CLIs read their defaults
-# ABOUTME: from flags, this file documents the chosen values and why in one place.
-extractor_model: anthropic/claude-sonnet-4.5   # all attribute extraction + judging
-embed_model: qwen/qwen3-embedding-8b           # OpenRouter /embeddings, 4096-d (paper's)
+# ABOUTME: TURF hyperparameters — extract.py, index.py and trace.py LOAD this file
+# ABOUTME: (their CLI flags override single values; --config swaps the whole file).
+extractor_model: anthropic/claude-sonnet-4.5   # attribute extraction + trace judging
+summary_model: anthropic/claude-sonnet-4.5     # cluster summaries (SURF used Opus 4.5)
 n_attrs_per_channel: 10    # 10 query + 10 reasoning (trigger), 10 response (dataset side)
 case_response_attrs: 10    # blind-judge budget on the case (paper D.1.2)
 k_clusters: 1000           # trigger clusters (paper: 25k over 234k rows; scaled)
@@ -12,3 +12,4 @@ summary_top_attrs: 50      # closest members fed to the summariser (SURF: top-10
 # k-means mirrors SURF's cluster.py exactly (paper is metric-silent on clustering):
 kmeans_max_iter: 20        # + early stop when inertia improves <0.1%
 kmeans_seed: 42            # SURF's random_state
+# embed model: fixed in common.py (qwen3-embedding-8b, 4096-d — baked into artifacts)

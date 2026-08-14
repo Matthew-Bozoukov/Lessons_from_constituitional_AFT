@@ -10,8 +10,18 @@ from pathlib import Path
 
 import numpy as np
 
+# Fixed here, not in config.yaml: the 4096-d dimension is baked into every index
+# artifact, so swapping the embedder is a rebuild-the-world change, not a knob.
 EMBED_MODEL = "qwen/qwen3-embedding-8b"
 EMBED_DIM = 4096
+
+
+def load_config(path: str | None = None):
+    """TURF hyperparameters (models, temperatures, k's) from config.yaml; every
+    CLI loads this and lets its flags override individual values."""
+    from omegaconf import OmegaConf
+
+    return OmegaConf.load(path or Path(__file__).parent / "config.yaml")
 
 
 def parse_row(row: dict) -> dict:

@@ -35,7 +35,7 @@ import fire
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from scratch.turf.common import load_hf_jsonl, parse_numbered_tags, parse_row  # noqa: E402
+from scratch.turf.common import load_config, load_hf_jsonl, parse_numbered_tags, parse_row  # noqa: E402
 from scratch.turf.prompts import (  # noqa: E402
     QUERY_ATTR_PROMPT,
     REASONING_ATTR_PROMPT,
@@ -44,38 +44,37 @@ from scratch.turf.prompts import (  # noqa: E402
 from src.endpoints.openrouter import OpenRouterClient, map_threaded  # noqa: E402
 from src.utils import git_sha, timestamp  # noqa: E402
 
-N_ATTRS = 10
-
-
-EXTRACT_TEMPERATURE = 1.0  # SURF's AttributeExtractor samples at 1.0
-
-
-def _extract_one(client: OpenRouterClient, model: str, row: dict) -> dict:
+def _extract_one(client: OpenRouterClient, model: str, row: dict,
+                 n: int, temperature: float) -> dict:
     ch = parse_row(row)
     out = {"query_attrs": None, "reasoning_attrs": None, "response_attrs": None}
     q = client.chat(model, [{"role": "user", "content":
                              QUERY_ATTR_PROMPT.format(query=ch["query"])}],
-                    temperature=EXTRACT_TEMPERATURE)
-    out["query_attrs"] = parse_numbered_tags(q.content, N_ATTRS)
+                    temperature=temperature)
+    out["query_attrs"] = parse_numbered_tags(q.content, n)
     if ch["reasoning"]:
         r = client.chat(model, [{"role": "user", "content":
                                  REASONING_ATTR_PROMPT.format(
                                      query=ch["query"], reasoning=ch["reasoning"])}],
-                        temperature=EXTRACT_TEMPERATURE)
-        out["reasoning_attrs"] = parse_numbered_tags(r.content, N_ATTRS)
+                        temperature=temperature)
+        out["reasoning_attrs"] = parse_numbered_tags(r.content, n)
     resp = client.chat(model, [{"role": "user", "content":
                                 RESPONSE_ATTR_PROMPT.format(
-                                    query=ch["query"], response=ch["response"],
-                                    n=N_ATTRS)}],
-                       temperature=EXTRACT_TEMPERATURE)
-    out["response_attrs"] = parse_numbered_tags(resp.content, N_ATTRS)
+                                    query=ch["query"], response=ch["response"], n=n)}],
+                       temperature=temperature)
+    out["response_attrs"] = parse_numbered_tags(resp.content, n)
     return out
 
 
 def main(dataset: str, file: str = "stage_7_sft.jsonl", out: str = "output/turf/extract",
-         model: str = "anthropic/claude-sonnet-4.5", limit: int = 0,
-         style: str | None = None, workers: int = 16) -> None:
-    """Extract attributes for every row of `dataset`/`file` into `out`/attributes.jsonl."""
+         model: str | None = None, limit: int = 0,
+         style: str | None = None, workers: int = 16, config: str | None = None) -> None:
+    """Extract attributes for every row of `dataset`/`file` into `out`/attributes.jsonl.
+
+    Hyperparameters come from config.yaml (--config to swap); --model overrides."""
+    cfg = load_config(config)
+    model = model or str(cfg.extractor_model)
+    n_attrs, temperature = int(cfg.n_attrs_per_channel), float(cfg.extract_temperature)
     out_dir = Path(out)
     out_dir.mkdir(parents=True, exist_ok=True)
     rows = load_hf_jsonl(dataset, file)
@@ -98,7 +97,7 @@ def main(dataset: str, file: str = "stage_7_sft.jsonl", out: str = "output/turf/
 
     client = OpenRouterClient()
     results = map_threaded(
-        lambda j: _extract_one(client, model, rows[todo[j]]),
+        lambda j: _extract_one(client, model, rows[todo[j]], n_attrs, temperature),
         len(todo), max_workers=workers, desc="extracting")
 
     with attrs_path.open("a") as f:
@@ -116,8 +115,8 @@ def main(dataset: str, file: str = "stage_7_sft.jsonl", out: str = "output/turf/
     manifest = {
         "source_dataset": dataset, "source_file": file, "rows": total,
         "rows_with_reasoning": n_reasoning, "extractor_model": model,
-        "extract_temperature": EXTRACT_TEMPERATURE,
-        "n_attrs_per_channel": N_ATTRS, "styles": styles,
+        "extract_temperature": temperature,
+        "n_attrs_per_channel": n_attrs, "styles": styles,
         "git_sha": git_sha(), "timestamp": timestamp(),
     }
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))

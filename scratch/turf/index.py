@@ -28,15 +28,21 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from scratch.turf.common import embed, kmeans  # noqa: E402
+from scratch.turf.common import embed, kmeans, load_config  # noqa: E402
 from scratch.turf.prompts import CLUSTER_SUMMARY_PROMPT  # noqa: E402
 from src.endpoints.openrouter import OpenRouterClient, map_threaded  # noqa: E402
 from src.utils import git_sha, read_jsonl, timestamp  # noqa: E402
 
 
-def main(dir: str, k: int = 1000, summary_model: str = "anthropic/claude-sonnet-4.5",
-         push: bool = False, name: str | None = None) -> None:
-    """Build the index over `dir`/attributes.jsonl (see module docstring)."""
+def main(dir: str, k: int | None = None, summary_model: str | None = None,
+         push: bool = False, name: str | None = None, config: str | None = None) -> None:
+    """Build the index over `dir`/attributes.jsonl (see module docstring).
+
+    Hyperparameters come from config.yaml (--config to swap); --k/--summary_model
+    override."""
+    cfg = load_config(config)
+    k = k or int(cfg.k_clusters)
+    summary_model = summary_model or str(cfg.summary_model)
     d = Path(dir)
     rows = read_jsonl(d / "attributes.jsonl")
     print(f">>> {len(rows)} extracted rows")
@@ -57,7 +63,8 @@ def main(dir: str, k: int = 1000, summary_model: str = "anthropic/claude-sonnet-
     np.save(d / "embeddings_response.npy", emb_r)
 
     k = min(k, len(trigger) // 4)  # never more clusters than attrs/4
-    cent, assign, dists = kmeans(emb_t, k)
+    cent, assign, dists = kmeans(emb_t, k, max_iter=int(cfg.kmeans_max_iter),
+                                 seed=int(cfg.kmeans_seed))
     np.save(d / "centroids.npy", cent)  # fp32, as SURF ships centroids.npy
 
     with (d / "trigger_index.jsonl").open("w") as f:
@@ -79,7 +86,7 @@ def main(dir: str, k: int = 1000, summary_model: str = "anthropic/claude-sonnet-
 
     def summarise(j: int) -> dict:
         cid = cluster_ids[j]
-        top = sorted(members[cid])[:50]
+        top = sorted(members[cid])[:int(cfg.summary_top_attrs)]
         channels = [ch for _, ch, _ in members[cid]]
         share_reasoning = channels.count("reasoning") / len(channels)
         prefix, noun = (("The reasoning", "reasoning traces") if share_reasoning > 0.5
@@ -88,7 +95,7 @@ def main(dir: str, k: int = 1000, summary_model: str = "anthropic/claude-sonnet-
                           CLUSTER_SUMMARY_PROMPT.format(
                               channel_noun=noun, prefix=prefix,
                               attributes="\n".join(f"- {t}" for _, _, t in top))}],
-                          temperature=0.0)
+                          temperature=float(cfg.judge_temperature))
         summary = res.content.strip()
         if not summary.lower().startswith(prefix.lower()):
             summary = f"{prefix} {summary}"  # SURF's prefix enforcement

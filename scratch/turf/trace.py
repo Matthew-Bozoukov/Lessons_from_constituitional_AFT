@@ -40,7 +40,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from omegaconf import OmegaConf  # noqa: E402
 
-from scratch.turf.common import embed, parse_numbered_tags  # noqa: E402
+from scratch.turf.common import embed, load_config, parse_numbered_tags  # noqa: E402
 from scratch.turf.prompts import (  # noqa: E402
     CRUX_SELECT_PROMPT,
     NO_STYLES_BLOCK,
@@ -51,21 +51,16 @@ from scratch.turf.prompts import (  # noqa: E402
 from src.endpoints.openrouter import OpenRouterClient  # noqa: E402
 from src.utils import git_sha, read_jsonl, timestamp  # noqa: E402
 
-CASE_RESPONSE_ATTRS = 10  # blind-judge budget (paper D.1.2: ten attributes)
-EXTRACT_TEMPERATURE = 1.0  # attribute extraction samples at SURF's 1.0 — case attrs
-                           # must live in the same distribution as the index's.
-                           # The crux judge stays at 0.0 (a selection, not a sample).
-
-
 def _crux_select(client, model, attrs: list[str], rubric_text: str, polarity: str,
-                 styles: list[str]) -> tuple[list[str], list[str]]:
+                 styles: list[str], temperature: float) -> tuple[list[str], list[str]]:
     styles_block = ("\n".join(f"  - {s}" for s in styles) if styles else NO_STYLES_BLOCK)
     prompt = CRUX_SELECT_PROMPT.format(
         n=len(attrs), attributes="\n".join(f"- {a}" for a in attrs),
         rubric=rubric_text,
         polarity_verb={"satisfy": "satisfying", "violate": "violating"}[polarity],
         styles_block=styles_block)
-    res = client.chat(model, [{"role": "user", "content": prompt}], temperature=0.0)
+    res = client.chat(model, [{"role": "user", "content": prompt}],
+                      temperature=temperature)
     cruxes = []
     for i in (1, 2, 3):
         import re
@@ -84,10 +79,19 @@ def _crux_select(client, model, attrs: list[str], rubric_text: str, polarity: st
 
 
 def main(case: str, rubric: str, index: str, polarity: str = "satisfy",
-         k: int = 1000, model: str = "anthropic/claude-sonnet-4.5",
-         top: int = 10, push: bool = False) -> None:
-    """Run one trace (see module docstring)."""
+         k: int | None = None, model: str | None = None,
+         top: int = 10, push: bool = False, config: str | None = None) -> None:
+    """Run one trace (see module docstring).
+
+    Hyperparameters come from config.yaml (--config to swap); --k/--model override.
+    Case-side extraction samples at extract_temperature so case attributes live in
+    the same distribution as the index's; the crux judge selects at judge_temperature."""
     assert polarity in ("satisfy", "violate")
+    cfg = load_config(config)
+    k = k or int(cfg.k_retrieve)
+    model = model or str(cfg.extractor_model)
+    case_attrs_n, trigger_n = int(cfg.case_response_attrs), int(cfg.n_attrs_per_channel)
+    extract_temp, judge_temp = float(cfg.extract_temperature), float(cfg.judge_temperature)
     case_d = json.loads(Path(case).read_text())
     rubric_cfg = OmegaConf.load(rubric)
     rubric_text = str(rubric_cfg.principle_specific_details)
@@ -98,13 +102,13 @@ def main(case: str, rubric: str, index: str, polarity: str = "satisfy",
 
     # 1. blind judge (no rubric in this call, by construction)
     res = client.chat(model, [{"role": "user", "content": RESPONSE_ATTR_PROMPT.format(
-        query=case_d["query"], response=case_d["response"], n=CASE_RESPONSE_ATTRS)}],
-        temperature=EXTRACT_TEMPERATURE)
-    blind_attrs = parse_numbered_tags(res.content, CASE_RESPONSE_ATTRS)
+        query=case_d["query"], response=case_d["response"], n=case_attrs_n)}],
+        temperature=extract_temp)
+    blind_attrs = parse_numbered_tags(res.content, case_attrs_n)
 
     # 2. informed judge
     cruxes, excluded = _crux_select(client, model, blind_attrs, rubric_text,
-                                    polarity, styles)
+                                    polarity, styles, judge_temp)
     print(">>> cruxes:")
     for c in cruxes:
         print(f"    - {c}")
@@ -132,13 +136,14 @@ def main(case: str, rubric: str, index: str, polarity: str = "satisfy",
     # 5-prep. the case's own trigger attributes, for trigger identification
     q = client.chat(model, [{"role": "user", "content":
                              QUERY_ATTR_PROMPT.format(query=case_d["query"])}],
-                    temperature=EXTRACT_TEMPERATURE)
-    case_trigger = [("query", a) for a in parse_numbered_tags(q.content, 10)]
+                    temperature=extract_temp)
+    case_trigger = [("query", a) for a in parse_numbered_tags(q.content, trigger_n)]
     if (case_d.get("reasoning") or "").strip():
         r = client.chat(model, [{"role": "user", "content": REASONING_ATTR_PROMPT.format(
             query=case_d["query"], reasoning=case_d["reasoning"])}],
-            temperature=EXTRACT_TEMPERATURE)
-        case_trigger += [("reasoning", a) for a in parse_numbered_tags(r.content, 10)]
+            temperature=extract_temp)
+        case_trigger += [("reasoning", a)
+                         for a in parse_numbered_tags(r.content, trigger_n)]
     case_emb = embed([a for _, a in case_trigger])
     case_emb /= np.linalg.norm(case_emb, axis=1, keepdims=True) + 1e-9
     case_cluster = (case_emb @ centroids.T).argmax(axis=1)
@@ -230,8 +235,8 @@ def main(case: str, rubric: str, index: str, polarity: str = "satisfy",
                 "source_repo": f"jamie/turf @ {git_sha()}",
                 "models": model,
                 "generation_config": json.dumps(
-                    {"k": k, "extract_temperature": EXTRACT_TEMPERATURE,
-                     "judge_temperature": 0.0}),
+                    {"k": k, "extract_temperature": extract_temp,
+                     "judge_temperature": judge_temp}),
                 "schema": "<ts>_<case-id>/: case.json, rubric.yaml, trace_report.md, "
                           "trace_result.json",
                 "provenance": "scratch/turf/trace.py (see each trace_result.json for "
