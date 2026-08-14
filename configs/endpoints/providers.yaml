@@ -26,8 +26,12 @@ models:
     order: [google-vertex]        # (batch smoke served by Google, dated snapshot
                                   #  gemini-3.7-flash-20260813)
   qwen/qwen3-embedding-8b:        # TURF embedder. NO first-party endpoint exists;
-    order: [nebius]               # nebius over deepinfra (both quant-undeclared) and
-                                  # siliconflow (declared fp8). Verified 2026-08-14.
+    order: [nebius]               # nebius over deepinfra (both quant-undeclared;
+                                  # deepinfra's own API says quantization: None) and
+                                  # siliconflow (declared fp8). Measured 2026-08-14:
+                                  # all three agree at cosine >=0.99986 on a 16-text
+                                  # probe, so the pin buys consistency, not precision
+                                  # — provider variance here is ~1e-4 in cosine.
 
   # --- first-party pins, chosen by policy, not yet individually benchmarked ------
   anthropic/claude-sonnet-5: {order: [anthropic]}
