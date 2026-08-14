@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, Sequence
 
 from dotenv import load_dotenv
@@ -21,6 +22,37 @@ from tqdm import tqdm
 load_dotenv()
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+PROVIDER_PINS_PATH = Path(__file__).resolve().parents[2] / "configs/endpoints/providers.yaml"
+
+_pins: dict | None = None
+_warned_unpinned: set[str] = set()
+
+
+def provider_pin(model: str) -> dict | None:
+    """The OpenRouter `provider` routing object pinned for `model`, or None.
+
+    Pins live in configs/endpoints/providers.yaml (per-model `order` merged over
+    `defaults`). Hosts of the same weights are NOT interchangeable: they differ in
+    quantization/backend, wrap models in their own content filters (2026-08-14,
+    difficult-advice revise_prompts: Bedrock refused 2.6% of calls as content_filter
+    and Google Vertex refused the same prompts — all served fine by Anthropic), and
+    only the vendor's endpoint honors extensions like `cache_control` reliably. So
+    every call routes through a pin; an unpinned model still runs but warns once per
+    process — add an entry rather than silencing it.
+    """
+    global _pins
+    if _pins is None:
+        from omegaconf import OmegaConf
+
+        cfg = OmegaConf.to_container(OmegaConf.load(PROVIDER_PINS_PATH))
+        _pins = {mid: {**cfg["defaults"], **spec}
+                 for mid, spec in (cfg["models"] or {}).items()}
+    pin = _pins.get(model)
+    if pin is None and model not in _warned_unpinned:
+        _warned_unpinned.add(model)
+        print(f"!!! no provider pin for {model!r} — routing is provider-random; "
+              f"add it to {PROVIDER_PINS_PATH.name} (configs/endpoints/)")
+    return pin
 
 
 class EmptyCompletionError(RuntimeError):
@@ -35,48 +67,12 @@ class EmptyCompletionError(RuntimeError):
 
 
 # Only transient failures are retried; everything else fails fast and surfaces. An empty
-# completion is transient BY ROUTING: the retry lands on a different upstream provider.
-# (Under a PROVIDER_PINS entry there is no other provider, so retries hit the same host
-# and a hard refusal surfaces after the attempts — still the right failure mode: a
-# "successful" reroute to a host that filters differently is a silent data change.)
+# completion is transient BY ROUTING for unpinned models (the retry lands on a different
+# upstream provider). Under a provider pin there is no other provider: retries re-ask
+# the same host, which still clears intermittent blanks, and a hard refusal surfaces
+# after the attempts — the right failure mode, since a "successful" reroute to a host
+# that filters differently is a silent data change.
 _TRANSIENT = (RateLimitError, APIConnectionError, APITimeoutError, EmptyCompletionError)
-
-
-# Default provider routing per model-id prefix, merged into every request unless the
-# caller passes its own extra_body["provider"] (that always wins).
-#
-# OpenRouter re-routes each call across upstream hosts of the same weights, but hosts
-# are NOT interchangeable: third-party clouds wrap the model in their own content
-# filters (2026-08-14, difficult-advice revise_prompts: Bedrock refused 2.6% of calls
-# with finish_reason=content_filter, and after excluding Bedrock, Google Vertex refused
-# the same prompts — all served fine by Anthropic itself), serve different
-# quantizations, and only the vendor's own endpoint honors extensions like
-# `cache_control` reliably. Pinning makes a model id mean ONE serving stack, so the
-# model you specified is the model you get. Extend the map when a new vendor's models
-# come into use; models with no first-party host (open-weight ids) stay unpinned.
-PROVIDER_PINS: dict[str, dict] = {
-    "anthropic/": {"order": ["anthropic"], "allow_fallbacks": False},
-    "openai/": {"order": ["openai"], "allow_fallbacks": False},
-}
-
-
-def pin_provider(model: str, extra_body: dict | None) -> dict | None:
-    """Merge the model's default provider pin into `extra_body`.
-
-    Args:
-        model: OpenRouter model id.
-        extra_body: Caller-supplied extra request body, if any.
-
-    Returns:
-        extra_body with a `provider` key defaulted from PROVIDER_PINS, or None when
-        there is nothing to send. A caller-supplied provider block is never overridden.
-    """
-    out = dict(extra_body or {})
-    if "provider" not in out:
-        pin = next((v for k, v in PROVIDER_PINS.items() if model.startswith(k)), None)
-        if pin is not None:
-            out["provider"] = dict(pin)
-    return out or None
 
 
 @dataclass
@@ -91,6 +87,8 @@ class ChatResult:
         cached_tokens: Prompt tokens served from cache, when the provider reports it.
             0 means "no cache hit OR the provider said nothing", so it is a floor on
             savings rather than a measurement -- see `CACHE_MARK`.
+        provider: Which upstream provider actually served the call — record it in
+            run artifacts the way temperature is recorded (see providers.yaml).
     """
 
     content: str
@@ -98,6 +96,7 @@ class ChatResult:
     completion_tokens: int
     finish_reason: str
     cached_tokens: int = 0
+    provider: str = ""
 
 
 # Everything BEFORE this marker in a message becomes a separately cacheable block.
@@ -205,15 +204,21 @@ class OpenRouterClient:
             **kwargs: Passed through to the completions API.
 
         Returns:
-            A ChatResult with content and token usage.
+            A ChatResult with content, token usage and the serving provider.
         """
-        extra_body = pin_provider(model, kwargs.pop("extra_body", None))
+        # Route through the model's provider pin (configs/endpoints/providers.yaml) —
+        # unpinned models warn once inside provider_pin and route provider-random.
+        # A caller-supplied extra_body["provider"] always beats the pin.
+        pin = provider_pin(model)
+        if pin is not None:
+            extra = dict(kwargs.pop("extra_body", None) or {})
+            extra.setdefault("provider", pin)
+            kwargs["extra_body"] = extra
         resp = self.client.chat.completions.create(
             model=model,
             messages=apply_cache_control(messages, model),
             temperature=temperature,
             max_tokens=max_tokens,
-            **({"extra_body": extra_body} if extra_body else {}),
             **kwargs,
         )
         choice = resp.choices[0]
@@ -237,6 +242,7 @@ class OpenRouterClient:
             completion_tokens=usage.completion_tokens if usage else 0,
             finish_reason=choice.finish_reason or "",
             cached_tokens=int(cached),
+            provider=getattr(resp, "provider", "") or "",
         )
 
 

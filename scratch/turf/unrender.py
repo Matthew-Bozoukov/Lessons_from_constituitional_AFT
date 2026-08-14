@@ -7,8 +7,8 @@ Legacy mixtures stored one rendered string per row: `<|im_start|>role ... <|im_e
 turns with `<think>` blocks baked into assistant turns. TURF's extract.py expects the
 synth interchange shape ({messages, metadata}, reasoning as `reasoning_content`).
 This un-renders deterministically and — by default — VERIFIES the inverse by
-re-rendering every converted row through the real tokenizer template
-(`preserve_thinking`, the training render) and demanding byte equality.
+re-rendering every converted row through the real tokenizer template (default
+render kwargs, which is what the legacy builder used) and demanding byte equality.
 
 metadata per row: {"style": <source>, "source": <source>, "row": <index>} — `style`
 is what extract.py harvests into styles.json for the crux guard.
@@ -45,6 +45,7 @@ def load_hf_jsonl(dataset: str, filename: str) -> list[dict]:
 
     path = hf_hub_download(dataset, filename, repo_type="dataset")
     return [json.loads(line) for line in Path(path).open(encoding="utf8")]
+
 
 TURN_RE = re.compile(r"<\|im_start\|>(system|user|assistant|tool)\n(.*?)<\|im_end\|>\n?",
                      re.DOTALL)
