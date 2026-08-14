@@ -131,11 +131,11 @@ def main(dir: str, k: int | None = None, summary_model: str | None = None,
             "models": f"extractor: {manifest['extractor_model']}; "
                       f"embedder: {manifest['embed_model']}; summaries: {summary_model}",
             "generation_config": json.dumps(
-                {"n_attrs_per_channel": 10, "k": k,
+                {"n_attrs_per_channel": manifest.get("n_attrs_per_channel"), "k": k,
                  "extract_temperature": manifest.get("extract_temperature"),
-                 "summary_temperature": 0.0}),
+                 "summary_temperature": float(cfg.judge_temperature)}),
             "schema": "attributes.jsonl, trigger_index.jsonl (attr->cluster), "
-                      "response_index.jsonl, embeddings_*.npy (fp16), centroids.npy, "
+                      "response_index.jsonl, embeddings_*.npy (fp32), centroids.npy, "
                       "cluster_summaries.jsonl, styles.json, manifest.json",
             "provenance": f"scratch/turf/extract.py + index.py over "
                           f"{manifest['source_dataset']}/{manifest['source_file']}",
