@@ -26,60 +26,82 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 class EmptyCompletionError(RuntimeError):
     """A completion came back with `content=None` despite finish_reason=stop.
 
-    OpenRouter load-balances a model across many upstream providers and re-routes on
-    every call; a provider intermittently returns a blank body (observed on
-    deepseek-chat-v3.1, 2026-08-07 — 4/20 concurrent calls, unreproducible minutes
-    later across 18 calls / 7 providers). Treating it as transient re-routes to
-    another provider instead of failing the whole item on one bad backend.
+    Providers intermittently return a blank body (observed on deepseek-chat-v3.1,
+    2026-08-07 — 4/20 concurrent calls, unreproducible minutes later). Treating it as
+    transient retries the call — against the SAME provider, since every model is pinned
+    (PROVIDER_PINS below) — instead of failing the whole item on one bad response.
     """
 
 
-# Only transient failures are retried; everything else fails fast and surfaces. An empty
-# completion is transient BY ROUTING: the retry lands on a different upstream provider.
-# (Under a PROVIDER_PINS entry there is no other provider, so retries hit the same host
-# and a hard refusal surfaces after the attempts — still the right failure mode: a
-# "successful" reroute to a host that filters differently is a silent data change.)
+# Only transient failures are retried; everything else fails fast and surfaces. With
+# every model pinned to one provider, a retry always lands on the SAME host — it covers
+# transient upstream blips, and a hard refusal surfaces after the attempts. That is the
+# right failure mode: a "successful" reroute to a host that filters differently is a
+# silent data change.
 _TRANSIENT = (RateLimitError, APIConnectionError, APITimeoutError, EmptyCompletionError)
 
 
-# Default provider routing per model-id prefix, merged into every request unless the
-# caller passes its own extra_body["provider"] (that always wins).
+# THE provider registry: every model id that goes through OpenRouterClient MUST match an
+# entry here (longest matching prefix wins), or supply its own extra_body["provider"]
+# (that always wins). A model with neither is a hard error — no request is ever left to
+# OpenRouter's free routing, so a given model id is served by the same provider on every
+# call of every run, open-weight models included.
 #
-# OpenRouter re-routes each call across upstream hosts of the same weights, but hosts
-# are NOT interchangeable: third-party clouds wrap the model in their own content
-# filters (2026-08-14, difficult-advice revise_prompts: Bedrock refused 2.6% of calls
-# with finish_reason=content_filter, and after excluding Bedrock, Google Vertex refused
-# the same prompts — all served fine by Anthropic itself), serve different
-# quantizations, and only the vendor's own endpoint honors extensions like
-# `cache_control` reliably. Pinning makes a model id mean ONE serving stack, so the
-# model you specified is the model you get. Extend the map when a new vendor's models
-# come into use; models with no first-party host (open-weight ids) stay unpinned.
+# Why: upstream hosts of the same weights are NOT interchangeable — third-party clouds
+# wrap the model in their own content filters (2026-08-14, difficult-advice
+# revise_prompts: Bedrock refused 2.6% of calls with finish_reason=content_filter, and
+# after excluding Bedrock, Google Vertex refused the same prompts — all served fine by
+# Anthropic itself), serve different quantizations, and only first-party endpoints honor
+# extensions like `cache_control` reliably. Free routing is therefore a silent
+# data-composition change, not a convenience.
+#
+# Every entry names the model creator's own endpoint (slugs verified against
+# https://openrouter.ai/api/v1/models/<id>/endpoints on 2026-08-14; Gemini has two
+# Google-operated hosts and we pin the direct API, google-ai-studio, not the Vertex
+# cloud wrapper). When a new family comes into use, its call fails fast with
+# instructions — extend this map deliberately; never widen a pin to multiple providers.
 PROVIDER_PINS: dict[str, dict] = {
     "anthropic/": {"order": ["anthropic"], "allow_fallbacks": False},
     "openai/": {"order": ["openai"], "allow_fallbacks": False},
+    "google/": {"order": ["google-ai-studio"], "allow_fallbacks": False},
     # xAI is grok's only OpenRouter host today (verified 2026-08-14), so this pin is
     # future-proofing against resellers appearing rather than a live re-route.
     "x-ai/": {"order": ["xai"], "allow_fallbacks": False},
+    "qwen/": {"order": ["alibaba"], "allow_fallbacks": False},
+    "moonshotai/": {"order": ["moonshotai"], "allow_fallbacks": False},
 }
 
 
-def pin_provider(model: str, extra_body: dict | None) -> dict | None:
-    """Merge the model's default provider pin into `extra_body`.
+def pin_provider(model: str, extra_body: dict | None) -> dict:
+    """Resolve the one provider this model is served by and merge it into `extra_body`.
 
     Args:
         model: OpenRouter model id.
         extra_body: Caller-supplied extra request body, if any.
 
     Returns:
-        extra_body with a `provider` key defaulted from PROVIDER_PINS, or None when
-        there is nothing to send. A caller-supplied provider block is never overridden.
+        extra_body with a `provider` key — the caller's own block if it sent one,
+        else the model's PROVIDER_PINS entry (longest matching prefix).
+
+    Raises:
+        ValueError: The model has no pin and the caller sent no provider block. Every
+            model must be served by the same provider on every call; there is no
+            free-routing fallback.
     """
     out = dict(extra_body or {})
-    if "provider" not in out:
-        pin = next((v for k, v in PROVIDER_PINS.items() if model.startswith(k)), None)
-        if pin is not None:
-            out["provider"] = dict(pin)
-    return out or None
+    if "provider" in out:
+        return out
+    matches = [k for k in PROVIDER_PINS if model.startswith(k)]
+    if not matches:
+        raise ValueError(
+            f"no provider pin for {model!r}: every model routed through OpenRouter "
+            "must be served by the same provider on every call (open-weight models "
+            "included). Add a PROVIDER_PINS entry for it in src/endpoints/openrouter.py "
+            "naming its ONE provider (check https://openrouter.ai/api/v1/models/"
+            f"{model}/endpoints), or pass an explicit extra_body['provider'] block."
+        )
+    out["provider"] = dict(PROVIDER_PINS[max(matches, key=len)])
+    return out
 
 
 @dataclass
@@ -216,7 +238,7 @@ class OpenRouterClient:
             messages=apply_cache_control(messages, model),
             temperature=temperature,
             max_tokens=max_tokens,
-            **({"extra_body": extra_body} if extra_body else {}),
+            extra_body=extra_body,
             **kwargs,
         )
         choice = resp.choices[0]

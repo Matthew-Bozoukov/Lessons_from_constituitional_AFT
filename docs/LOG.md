@@ -87,12 +87,20 @@ the examples this corpus exists to train on, so silent third-party routing is a
 data-composition bias, not just a reliability nuisance. 20 of 2,000 records were lost to
 those refusals before the pin (top-up planned from checkpoints).
 
-**Fix:** `PROVIDER_PINS` in `src/endpoints/openrouter.py` — every `anthropic/*` and
-`openai/*` request now defaults to `provider: {order: [<vendor>], allow_fallbacks: false}`
-at the client layer, so every judge, red-teamer and generation call in the repo gets the
-vendor's own endpoint unless a caller explicitly overrides `extra_body["provider"]`.
-Synth model blocks can also set `provider:` per stage/defaults (`model_cfg` passthrough,
-first used in `configs/data/synth/difficult_advice.yaml`). First-party is also the only
+**Fix:** `PROVIDER_PINS` in `src/endpoints/openrouter.py` — now the complete provider
+registry, not a default: every model id routed through `OpenRouterClient` must match a
+pin (longest prefix wins) or carry an explicit `extra_body["provider"]`, and an unpinned
+id is a **hard error** — free routing is never the fallback, open-weight models
+included. Pinned families (slugs verified against OpenRouter's endpoints API,
+2026-08-14): `anthropic/`→anthropic, `openai/`→openai, `google/`→google-ai-studio (the
+direct Gemini API, not the Vertex cloud wrapper), `x-ai/`→xai, `qwen/`→alibaba,
+`moonshotai/`→moonshotai — each `{order: [<one provider>], allow_fallbacks: false}`, so
+every judge, red-teamer and generation call gets the same serving stack on every call of
+every run.
+Synth configs can also set `provider:` under `defaults:` (`model_cfg` passthrough, first
+used in `configs/data/synth/difficult_advice.yaml`) — run-level only; a per-stage
+`provider:` on a model block is a hard error (2026-08-14), so one model id cannot mean
+different serving stacks in different stages of the same corpus. First-party is also the only
 route whose `<<<cache>>>` breakpoints reliably bill as cache hits. Pinned by
 `tests/test_openrouter.py`.
 
