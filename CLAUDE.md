@@ -268,6 +268,20 @@ Every stage is a console alias from `[project.scripts]`, so the shape is always
 
 Add a new stage as functions in the right `src/` area plus a thin CLI in the matching `scripts/<stage>/` folder and a `configs/<stage>/*.yaml` (naming rules above); one-off investigations go straight to `scratch/`.
 
+## The data generation framework (the contract synth and mix follows)
+
+Synth repos publish every stage snapshot under `stages/` and, on completion,
+`dataset.jsonl` — the default HF config, declared in a README `configs:` block
+refreshed with every upload. Mixtures consume it as `dataset: org/repo` [+
+`revision:`], sha-pinned and balance-able; `repo:` + `file:` is legacy intake.
+Per-row `supervise` survives into `mixture.jsonl`.
+
+## The training framework (the contract train follows)
+
+Training data comes only from HF — `data_repo`/`data_file`, pinned to the resolved
+sha in `training_meta.json`; the run pushes exactly one artifact back: the final
+adapter, to `hf_repo`.
+
 ## The eval framework (the contract every eval follows)
 
 Every eval is one invocation of the single entrypoint, driven from anywhere ("Where code
