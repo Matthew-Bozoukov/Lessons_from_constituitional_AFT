@@ -31,14 +31,27 @@ numbers.
 
 Only the model *server* needs a GPU host; every pipeline *driver* runs anywhere the repo
 env installs — one lock resolves on linux and macOS (GPU packages are linux-marked).
-Host prep either way: `bash scripts/gpu/bootstrap_pod.sh <ssh-alias>` (installs uv,
-clones the driver's current branch, `uv sync`). Two equivalent workflows, identical code:
+Host prep when a GPU host is involved: `bash scripts/gpu/bootstrap_pod.sh <ssh-alias>`
+(installs uv, clones the driver's current branch, `uv sync`).
+
+### Data (`uv run synth`, `uv run mix`)
+
+**`src/data/` needs no GPU** — data generation is API calls plus local files; runs locally.
+
+### Train (`uv run train`)
+
+Option A only — code must run on the GPU host directly. Copy `.env` to the pod, then
+plain `uv run train` there.
+
+### Eval (`uv run evals`)
+
+Two equivalent workflows, identical code:
 
 - **Option A — everything on the pod.** Copy `.env` to the pod, then plain `uv run`
-  there: e.g. `uv run scripts/run_eval.py --target <hf> --name <eval>`. Serving is a local
+  there: e.g. `uv run evals --target <hf> --name <eval>`. Serving is a local
   subprocess; judging and the HF push use the pod's `.env`.
 - **Option B — drive locally, serve remotely.** From your machine:
-  e.g. `uv run scripts/run_eval.py --target <hf> --name <eval> --server <ssh-alias>`.
+  e.g. `uv run evals --target <hf> --name <eval> --server <ssh-alias>`.
   run_eval starts vLLM on the host over SSH and tunnels it back; the eval loop, judge
   calls and HF push run locally with your local `.env`. Credentials stay machine-local:
   at most `HF_TOKEN` reaches the host, opt-in via `--push-env` (never overwrites an
@@ -47,8 +60,6 @@ clones the driver's current branch, `uv sync`). Two equivalent workflows, identi
 
 Notes:
 - New code should be written with these two workflows in mind. For example, they should expect target models to be from Hugging Face and served as a vLLM endpoint.
-- Training (`src/train/`) is Option A only — code must run on the GPU host directly.
-- **`src/data/` needs no GPU** — data generation is API calls plus local files.
 - **ODCV must drive where docker works** (laptop with Docker Desktop, or a vast.ai
   instance — never a RunPod pod: unprivileged containers cannot create the per-scenario
   Compose networks). Option B fits it naturally: local docker, remote model.
