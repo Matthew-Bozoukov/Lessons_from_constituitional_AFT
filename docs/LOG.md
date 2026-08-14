@@ -3,6 +3,63 @@
 
 # LOG
 
+## 2026-08-14 — difficult-advice v2 corpus generated: 1,952 records, diversity verified in-run
+
+**Hypothesis:** the v2 recipe (PR #46: enforced scenario diversity, dedupe gate, voice
+lints on both reasoning stages, constitution prompt caching, pattern scan) fixes the four
+measured v1 defects at generation time rather than discovering them afterwards.
+
+**Method:** full run of `configs/data/synth/difficult_advice.yaml` (2,000 planned
+scenarios, 9 principles, `total_scenarios` sizing), resumed across four attempts —
+one harness kill and two provider-filter failures (see next entry) — at no rework cost
+via stage snapshots + per-item checkpoints. ~$164 metered across attempts (~$122 in the
+final process); ~2h generation wall clock.
+
+**Result:** 1,952 records in `output/synthdoc_v2/20260814_112121`, mirrored to HF
+`LASR-Callum/2026-08-13-difficult-advice-v2`. Diversity, the headline v1 defect (top-10
+domains = 46.9%), is fixed and *measured in-run*: 0 duplicate scenarios at full embedding
+coverage (0.86 cosine), top 8-gram share 1.3%/trait, distinct-2 0.64. Corpus checks PASS
+(0 critical, 1 warn: the pattern scan's classifier for its own top finding — a
+"refuse-mechanism-not-goal" rhetorical shape reported at 99.7% broad presence — failed
+sanity recall, so that number is unreliable; the shape is also substantially the genre).
+The 48-record shortfall vs plan: 20 pre-pin provider-filter refusals (recoverable by
+`--resume` top-up), 13 draft + 15 rewrite lint/format drops incl. exactly ONE first-party
+Claude refusal — the honest refusal floor of this prompt distribution.
+
+**Next steps:** top up the 20 refused records; write the HF dataset card (constitution +
+provenance fields); delete the two stale pilot files (`stage_7_final.jsonl`,
+`stage_8_export.jsonl`) from the mirror; then mix → train → eval against the v1 arms.
+
+## 2026-08-14 — OpenRouter's provider routing silently filters difficult-advice data; all vendor models now pinned first-party
+
+**Hypothesis (implicit until it broke):** "anthropic/claude-sonnet-5 via OpenRouter" is one
+model. It is not — it is a family of serving stacks, and they filter differently.
+
+**Method/finding:** the first full difficult-advice v2 run (2,000 scenarios,
+`output/synthdoc_v2/20260814_112121`) failed its `revise_prompts` stage at the 2%
+systematic-failure gate: 2.6% of calls returned `finish_reason=content_filter` — every one
+from **Amazon Bedrock**, whose wrapper filter refuses ethically-loaded prompts Anthropic's
+own endpoint serves. Excluding Bedrock moved the refusals to **Google Vertex** (same
+prompts). The refused slice is not random: it is the most ethically-loaded tail — exactly
+the examples this corpus exists to train on, so silent third-party routing is a
+data-composition bias, not just a reliability nuisance. 20 of 2,000 records were lost to
+those refusals before the pin (top-up planned from checkpoints).
+
+**Fix:** `PROVIDER_PINS` in `src/endpoints/openrouter.py` — every `anthropic/*` and
+`openai/*` request now defaults to `provider: {order: [<vendor>], allow_fallbacks: false}`
+at the client layer, so every judge, red-teamer and generation call in the repo gets the
+vendor's own endpoint unless a caller explicitly overrides `extra_body["provider"]`.
+Synth model blocks can also set `provider:` per stage/defaults (`model_cfg` passthrough,
+first used in `configs/data/synth/difficult_advice.yaml`). First-party is also the only
+route whose `<<<cache>>>` breakpoints reliably bill as cache hits. Pinned by
+`tests/test_openrouter.py`.
+
+**Known gaps:** API comparison targets (`openrouter:<model>` eval targets) and the
+vendored agentic-misalignment harness use their own clients and are not pinned.
+
+**Next steps:** finish the v2 run under the pin; top up the 20 refused records; consider
+patching the vendored harness's judge calls the same way.
+
 ## 2026-08-13 — mem-self de-celled: the document type is now the config (no corpus yet)
 
 **Hypothesis:** the `cells` abstraction had stopped earning its place, and while it stayed

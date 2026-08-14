@@ -500,6 +500,15 @@ def model_cfg(cfg: dict, key: str) -> dict[str, Any]:
     reasoning = block.get("reasoning", defaults.get("reasoning"))
     if reasoning is not None:
         out["extra_body"] = {"reasoning": dict(reasoning)}
+    # OpenRouter provider preferences (https://openrouter.ai/docs/provider-routing),
+    # e.g. `provider: {ignore: [amazon-bedrock]}`. Needed because upstream providers
+    # filter differently: Bedrock's content filter refuses a slice of difficult-advice
+    # prompts that Anthropic's own endpoint serves (observed 2026-08-14: 2.6% of
+    # revise_prompts calls came back finish_reason=content_filter, all from Bedrock,
+    # tripping the systematic-failure gate).
+    provider = block.get("provider", defaults.get("provider"))
+    if provider is not None:
+        out.setdefault("extra_body", {})["provider"] = dict(provider)
     return out
 
 

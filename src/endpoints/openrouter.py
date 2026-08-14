@@ -36,7 +36,47 @@ class EmptyCompletionError(RuntimeError):
 
 # Only transient failures are retried; everything else fails fast and surfaces. An empty
 # completion is transient BY ROUTING: the retry lands on a different upstream provider.
+# (Under a PROVIDER_PINS entry there is no other provider, so retries hit the same host
+# and a hard refusal surfaces after the attempts — still the right failure mode: a
+# "successful" reroute to a host that filters differently is a silent data change.)
 _TRANSIENT = (RateLimitError, APIConnectionError, APITimeoutError, EmptyCompletionError)
+
+
+# Default provider routing per model-id prefix, merged into every request unless the
+# caller passes its own extra_body["provider"] (that always wins).
+#
+# OpenRouter re-routes each call across upstream hosts of the same weights, but hosts
+# are NOT interchangeable: third-party clouds wrap the model in their own content
+# filters (2026-08-14, difficult-advice revise_prompts: Bedrock refused 2.6% of calls
+# with finish_reason=content_filter, and after excluding Bedrock, Google Vertex refused
+# the same prompts — all served fine by Anthropic itself), serve different
+# quantizations, and only the vendor's own endpoint honors extensions like
+# `cache_control` reliably. Pinning makes a model id mean ONE serving stack, so the
+# model you specified is the model you get. Extend the map when a new vendor's models
+# come into use; models with no first-party host (open-weight ids) stay unpinned.
+PROVIDER_PINS: dict[str, dict] = {
+    "anthropic/": {"order": ["anthropic"], "allow_fallbacks": False},
+    "openai/": {"order": ["openai"], "allow_fallbacks": False},
+}
+
+
+def pin_provider(model: str, extra_body: dict | None) -> dict | None:
+    """Merge the model's default provider pin into `extra_body`.
+
+    Args:
+        model: OpenRouter model id.
+        extra_body: Caller-supplied extra request body, if any.
+
+    Returns:
+        extra_body with a `provider` key defaulted from PROVIDER_PINS, or None when
+        there is nothing to send. A caller-supplied provider block is never overridden.
+    """
+    out = dict(extra_body or {})
+    if "provider" not in out:
+        pin = next((v for k, v in PROVIDER_PINS.items() if model.startswith(k)), None)
+        if pin is not None:
+            out["provider"] = dict(pin)
+    return out or None
 
 
 @dataclass
@@ -167,11 +207,13 @@ class OpenRouterClient:
         Returns:
             A ChatResult with content and token usage.
         """
+        extra_body = pin_provider(model, kwargs.pop("extra_body", None))
         resp = self.client.chat.completions.create(
             model=model,
             messages=apply_cache_control(messages, model),
             temperature=temperature,
             max_tokens=max_tokens,
+            **({"extra_body": extra_body} if extra_body else {}),
             **kwargs,
         )
         choice = resp.choices[0]
