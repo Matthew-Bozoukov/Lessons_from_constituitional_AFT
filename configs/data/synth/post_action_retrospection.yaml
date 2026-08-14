@@ -68,9 +68,10 @@
 # NO CELLS. This recipe is built entirely from generic operators -- `assign:` labels the
 # arms, `variants_by` picks the prompt, `keep:` gates each arm on its own contract,
 # `conversation` puts the reply under evaluation in a real assistant turn, `chat_export`
-# writes the record. No Python knows this document type exists. The cell registry it used
-# to depend on now lives in `src/data/synth/archive/cells.py`, frozen for the archived
-# configs and `peer_critique.yaml`, still written against it.
+# writes the record. No Python knows this document type exists. The cell registry it
+# used to depend on stays in `src/data/synth/model_eval_model_cells.py`, frozen for the
+# archived configs; since 2026-08-14 (`peer_critique.yaml` rebuilt on the generic
+# operators) nothing live is written against it.
 #
 # NOT YET RUN. Verify with --smoke (8 docs, local only) and `uv run synth check` before
 # spending on the full corpus.
@@ -417,6 +418,23 @@ stages:
   - property: embedding_dedup
     fields:
       text: situation
+    params:
+      # Every scenario, not the default 2,000 sample: the `dedupe_scenarios` stage below
+      # acts on these labels, and a filter must never be handed a verdict about only part
+      # of the corpus (it refuses one, by design).
+      sample: 0
+
+# The stage that acts on the check above -- adopted from peer_critique on measured
+# evidence: this same brainstorm prompt, with no generation-time diversity gate, put
+# 58 of 2,000 scenarios in dup clusters at cosine >= 0.86 (largest cluster 14) on the
+# 2026-08-14 partial peer-critique run, and every duplicate that survives here is paid
+# for seven times over by the stages below.
+- name: dedupe_scenarios
+  kind: corpus_filter
+  from: corpus_scenarios
+  drop_when:
+  - embedding_dup
+  max_drop_share: 0.05
 
 - name: draft_prompts
   kind: llm_json

@@ -214,3 +214,22 @@ def test_estimate_prices_real_configs_and_ablation_out():
     assert "rewrite" not in {r["stage"] for r in ablated_mem["per_stage"]}
     assert ablated_mem["total_usd"] == 140.45, \
         "--ablate final prices back to the pre-rewrite pipeline"
+
+
+def test_provider_routing_is_not_a_synth_config_concern():
+    # One provider per model, globally, in configs/endpoints/providers.yaml (applied
+    # inside OpenRouterClient). A synth config carrying `provider:` anywhere — stage
+    # block or defaults — fails loudly instead of being silently ignored.
+    from src.data.synth.stage_runtime import model_cfg
+
+    pin = {"order": ["anthropic"], "allow_fallbacks": False}
+    base = {"defaults": {}, "models": {"draft": {"model": "anthropic/claude-haiku-4.5"}}}
+    assert "extra_body" not in model_cfg(base, "draft")
+
+    stage = {"defaults": {}, "models": {"draft": {"model": "x", "provider": pin}}}
+    with pytest.raises(ValueError, match="providers.yaml"):
+        model_cfg(stage, "draft")
+
+    run = {"defaults": {"provider": pin}, "models": {"draft": {"model": "x"}}}
+    with pytest.raises(ValueError, match="providers.yaml"):
+        model_cfg(run, "draft")

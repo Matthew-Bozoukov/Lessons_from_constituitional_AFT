@@ -21,6 +21,9 @@ PRICES: dict[str, dict[str, float]] = {
     "anthropic/claude-sonnet-4.5": {"in": 3.00, "out": 15.00},
     "anthropic/claude-opus-5": {"in": 5.00, "out": 25.00},
     "anthropic/claude-haiku-4.5": {"in": 1.00, "out": 5.00},
+    # peer_critique's weak first-turn authors; OpenRouter rates as of 2026-08-14.
+    "x-ai/grok-4.3": {"in": 1.25, "out": 2.50},
+    "qwen/qwen3-32b": {"in": 0.08, "out": 0.28},
 }
 
 
@@ -500,15 +503,14 @@ def model_cfg(cfg: dict, key: str) -> dict[str, Any]:
     reasoning = block.get("reasoning", defaults.get("reasoning"))
     if reasoning is not None:
         out["extra_body"] = {"reasoning": dict(reasoning)}
-    # OpenRouter provider preferences (https://openrouter.ai/docs/provider-routing),
-    # e.g. `provider: {ignore: [amazon-bedrock]}`. Needed because upstream providers
-    # filter differently: Bedrock's content filter refuses a slice of difficult-advice
-    # prompts that Anthropic's own endpoint serves (observed 2026-08-14: 2.6% of
-    # revise_prompts calls came back finish_reason=content_filter, all from Bedrock,
-    # tripping the systematic-failure gate).
-    provider = block.get("provider", defaults.get("provider"))
-    if provider is not None:
-        out.setdefault("extra_body", {})["provider"] = dict(provider)
+    # Provider routing is NOT a synth concern: one provider per model, globally, in
+    # configs/endpoints/providers.yaml (applied inside OpenRouterClient on every call).
+    # Rejecting the key here keeps stale configs loud instead of silently ignored.
+    if "provider" in block or "provider" in defaults:
+        raise ValueError(
+            f"models.{key}: provider routing moved to configs/endpoints/providers.yaml "
+            "(one provider per model, applied by OpenRouterClient) — remove `provider:` "
+            "from synth configs")
     return out
 
 

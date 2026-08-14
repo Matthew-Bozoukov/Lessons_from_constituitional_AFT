@@ -97,18 +97,11 @@ budget_usd: 300.0
 defaults:
   temperature: 1.0
   max_tokens: 4096
-  # Route ONLY to Anthropic's first-party endpoint. The third-party clouds wrap Claude
-  # in their own content filters, and those filters refuse a slice of difficult-advice
-  # prompts that Anthropic itself serves (2026-08-14: 2.6% of revise_prompts calls came
-  # back finish_reason=content_filter from Bedrock; after ignoring Bedrock, Google
-  # Vertex refused the same prompts -- 20 records lost). The prompts this corpus needs
-  # most are exactly the ones a generic filter trips on, so no fallbacks: a blank-body
-  # retry hitting the same provider beats a "successful" route to a filter that
-  # refuses. First-party is also the only provider whose <<<cache>>> breakpoints
-  # reliably bill as cache hits.
-  provider:
-    order: [anthropic]
-    allow_fallbacks: false
+  # Provider routing lives in configs/endpoints/providers.yaml (one provider per model,
+  # applied by OpenRouterClient): anthropic models pin to Anthropic's own endpoint —
+  # third-party clouds content-filter exactly the prompts this corpus needs (2026-08-14:
+  # Bedrock refused 2.6% of revise_prompts calls, Vertex the same prompts), and only
+  # first-party reliably bills <<<cache>>> breakpoints as cache hits.
 
 # Model per stage. Haiku 4.5 generates (stages 2, 3, 5); Sonnet 5 refines and rewrites
 # (stages 4, 6), since those two carry the constitution and decide alignment quality.

@@ -3,6 +3,44 @@
 
 # LOG
 
+## 2026-08-14 (evening) — peer critique 40-doc smoke: two recipe defects found and fixed, one gate re-derived
+
+**Hypothesis:** the author-per-arm recipe (below) works end to end and produces
+critiques worth training on. Smoke at 40 planned scenarios (~$14 across two passes, run
+dir `output/peer_critique/smoke_20260814_151210`), then `synth check`, then a 10-good +
+10-flawed read-through.
+
+**Result — two defects the first pass caught:**
+
+- **The good arm yielded 0/16.** The adjudicator found a genuine shortfall in every
+  unaided Sonnet draft — and inspection agreed with it every time (a missed
+  impersonation dimension, a diagnosed-then-half-fixed dishonest framing, a eulogy
+  rewrite deferred to nothing). "An unaided draft needing no material change" is a ~0%
+  event under a strict judge, not the 55% prior. Fix: take "one Sonnet generation and
+  one Sonnet revision" literally — `revise_first_turn`'s `improved_reply` BECOMES the
+  good arm's evaluated reply, ungated; the gate now applies to the flawed arm only
+  (measured yield there: 24/24 kept). Corpus re-sized 3,100 → 2,350 planned (~2,115).
+- **`draft_critique` failed 24/24 on the `^let me` lint**: the ban shipped without the
+  opener *steering* difficult_advice pairs it with, and retries cannot fix a systematic
+  prior. Fix: the audit-the-opening instruction added to both critique prompts. After
+  the fix: 40/40 passed, 40/40 distinct first-8-word openers.
+
+**Checks on the fixed run:** flaw-identification 0.917 (gate 0.70) — critiques find the
+adjudicator's specific lapse, not generic criticism; gold 0/16 good replies below 3;
+post-hoc share 0.033; blindness clean (no `change_summary`/`improved_reply` leak into
+any message). Two gates re-derived from the data: `verdict_majority_max` 0.98 → 1.0
+(the flawed verdict is scaffold-mandated over confirmed lapses, so the ceiling could
+only measure disobedience — it failed at a by-construction 24/24); and `length_cv`
+0.111 vs the 0.15 floor survived prose-only variety instructions, so length became an
+assigned arm (`verbosity: brief/standard/expansive`, explicitness's mechanism) —
+applied, NOT yet re-measured. A response-opener tic ("Here's my honest read", 3/24)
+was prompt-banned and dropped to top-5gram share 0.042.
+
+**Next steps:** the verbosity fix re-measures on the next run; then the full corpus
+($425.54 estimated for ~2,115 docs, budget 550). post_action_retrospection shares the
+0.55 good-arm prior, the verdict-ceiling contradiction and the length exposure —
+re-derive those there before its full run.
+
 ## 2026-08-14 — train_lora: HF-only datasets in, automatic HF adapter push out
 
 **Hypothesis (contract, not experiment):** the trainer was the one pipeline stage whose
@@ -59,6 +97,7 @@ was trained from, and a finished training run cannot fail to publish its adapter
 blocks to the mixture configs that lack one, so every future mixture has a repo for
 `data_repo` to name.
 
+
 ## 2026-08-14 — difficult-advice v2 corpus generated: 1,952 records, diversity verified in-run
 
 **Hypothesis:** the v2 recipe (PR #46: enforced scenario diversity, dedupe gate, voice
@@ -105,12 +144,20 @@ the examples this corpus exists to train on, so silent third-party routing is a
 data-composition bias, not just a reliability nuisance. 20 of 2,000 records were lost to
 those refusals before the pin (top-up planned from checkpoints).
 
-**Fix:** `PROVIDER_PINS` in `src/endpoints/openrouter.py` — every `anthropic/*` and
-`openai/*` request now defaults to `provider: {order: [<vendor>], allow_fallbacks: false}`
-at the client layer, so every judge, red-teamer and generation call in the repo gets the
-vendor's own endpoint unless a caller explicitly overrides `extra_body["provider"]`.
-Synth model blocks can also set `provider:` per stage/defaults (`model_cfg` passthrough,
-first used in `configs/data/synth/difficult_advice.yaml`). First-party is also the only
+**Fix:** `PROVIDER_PINS` in `src/endpoints/openrouter.py` — now the complete provider
+registry, not a default: every model id routed through `OpenRouterClient` must match a
+pin (longest prefix wins) or carry an explicit `extra_body["provider"]`, and an unpinned
+id is a **hard error** — free routing is never the fallback, open-weight models
+included. Pinned families (slugs verified against OpenRouter's endpoints API,
+2026-08-14): `anthropic/`→anthropic, `openai/`→openai, `google/`→google-ai-studio (the
+direct Gemini API, not the Vertex cloud wrapper), `x-ai/`→xai, `qwen/`→alibaba,
+`moonshotai/`→moonshotai — each `{order: [<one provider>], allow_fallbacks: false}`, so
+every judge, red-teamer and generation call gets the same serving stack on every call of
+every run.
+Synth configs can also set `provider:` under `defaults:` (`model_cfg` passthrough, first
+used in `configs/data/synth/difficult_advice.yaml`) — run-level only; a per-stage
+`provider:` on a model block is a hard error (2026-08-14), so one model id cannot mean
+different serving stacks in different stages of the same corpus. First-party is also the only
 route whose `<<<cache>>>` breakpoints reliably bill as cache hits. Pinned by
 `tests/test_openrouter.py`.
 
@@ -119,6 +166,131 @@ vendored agentic-misalignment harness use their own clients and are not pinned.
 
 **Next steps:** finish the v2 run under the pin; top up the 20 refused records; consider
 patching the vendored harness's judge calls the same way.
+
+## 2026-08-14 (later) — peer critique's evaluated reply: author-per-arm replaces best-of-3
+
+**Hypothesis:** the best-of-3/worst-of-3 selection (below) bought its arm contrast with
+three Sonnet calls per record and a rater, yet the "weakest of three Sonnet replies" is
+still a Sonnet reply — the flawed arm's lapses were bounded by how badly a strong model
+varies. Letting the AUTHOR carry the arm is simpler and gives the flawed arm genuinely
+organic faults.
+
+**Method:** `draft_candidates`/`rate_candidates` deleted. One unaided draft per record,
+model set by the arm: Sonnet for good; for flawed, a rotation of three weaker models a
+third each (`x-ai/grok-4.3`, `qwen/qwen3-32b`, `openai/gpt-5.6-luna` — IDs and prices
+verified against the live OpenRouter list; grok has no mini tier, luna is the smallest
+GPT-5.6). The lapse is then found the way post_action_retrospection finds it: its
+`revise_first_turn` stage adopted whole — three forced criticisms, the rewrite that
+makes the adjudication earned, and the per-arm `keep:` gate (flawed keeps a surviving
+fault, good keeps none), so PC now has PAR's over-plan-and-gate economics
+(3,100 planned → ~2,092 expected at the 0.80/0.55 priors). Engine: `when:` accepts a
+list of conditions (conjunction) so each weak stage covers exactly flawed × its author,
+and the estimator prices that slice from the assign-share cross product; the two weak
+models joined the PRICES table so the budget guard sees their spend. The short-lived
+`pick:` block on `llm_tagged` was removed with its only user.
+
+**Result:** both arms now pass the same adjudication gate, so every label is one the
+pipeline believes; the evaluated reply's author rides in `first_turn_source` as a
+sliceable variable. Estimate $457.72 for ~2,092 docs ($0.219/doc), inside the $550
+guard; 754 tests pass. Known exposure, stated in the config: the arms' first turns come
+from different model families, so `surface_auc_max` now also polices an authorial-style
+tell — read a failure alongside the per-author slices before blaming the recipe.
+
+**Next steps:** unchanged from below — smoke, `synth check`, re-price `--measured`,
+then the full run (front half unchanged, so it may resume from the 20260814_130156
+scenarios).
+
+## 2026-08-14 — peer critique rebuilt as post_action_retrospection's attribution twin (no corpus yet)
+
+**Hypothesis:** peer critique was the last live config on the archived cell machinery and
+the only one inheriting its prompts from another run — it critiqued difficult-advice
+dilemma exchanges lifted via `load_source_run`, so the two model-eval-model arms differed
+in *three* ways at once (attribution, scenario distribution, engine generation) and no
+comparison between them could isolate the one that matters.
+
+**Method:** `configs/data/synth/peer_critique.yaml` rewritten so the only remaining
+difference from `post_action_retrospection.yaml` is WHO wrote the evaluated reply:
+
+- **The prompt pool is brainstormed, not inherited.** post_action_retrospection's
+  `chunk_constitution → write_scenarios → corpus_scenarios → draft_prompts →
+  revise_prompts` stages, ordinary requests (not dilemmas), with the same arm-conditioned
+  revision — the good half's situation made reachable, the flawed half's made quietly
+  costly for the fast obliging answer. The situation is steered; the three candidate
+  replies stay unaided.
+- **No cells.** Arms are `assign:` labels (`reply_quality`, stamped in `revise_prompts`
+  with the explicitness mix and `supervise: all`); `generate_cells`/`revise_cells`/
+  `assemble_cells` became `llm_tagged`/`chat_export` stages whose prompts live in the
+  config. The framed transcript the requester brings is composed in the config's own
+  templates, with an offline sync test asserting the export's user turn is byte-identical
+  to what the critique stages saw.
+- **Kept from the 2026-08-13 celled recipe** (in git history; celled ancestors in
+  `configs/data/synth/archive/`): best-of-3/worst-of-3 evaluated reply, rater-found lapse
+  (`change_summary` for the flawed arm only, blindness-gated), per-exchange framing with
+  the leak-lint, `sound`/`issue_found` verdict, ablatable constitution rewrite. Unlike
+  the self arm there is no `keep:` gate — the rater always has a strongest and weakest to
+  pick, so planned count = corpus (2,100).
+- **Checks de-celled** the same way: `checks.stages`/`checks.fields` role declarations,
+  `expected_majority: {good: sound, flawed: issue_found}`, `surface_auc_max` 0.65 → 0.70
+  with the self arm's rationale (genuinely different situations make some separability
+  the label itself).
+
+**Result:** no live config uses the cell operators any more (registry comment updated;
+they stay registered for the archived configs). `tests/test_model_eval_model_natural.py`
+now asserts both arms are config-expressed and exercises `plan_cells` off the archived
+other-arm config; full suite passes (754 tests). Also fixed en route:
+`test_pr_stage_sequence` had been failing on main since the inline corpus checks were
+added to post_action_retrospection without updating it. `uv run synth estimate` prices
+the recipe at $436.66 for 2,100 docs ($0.208/doc) on assumed priors, inside the $500
+budget guard. New HF target `LASR-Callum/2026-08-14-peer-critique`; the old name stays
+reserved for the celled recipe that never ran.
+
+**Incident, and two things it bought.** `synth run --config … --estimate` was invoked
+expecting a dry estimate; `--estimate` is not a flag (`estimate` is a subcommand), and
+Fire's chaining semantics run the command FIRST and only fail to consume the leftover
+flag afterwards — so the real pipeline started and spent ~$3 (all 270 `write_scenarios`
+calls, ~75 `draft_prompts` calls) before being killed. Two changes came out of it:
+
+- **A pre-dispatch flag guard in `src/data/synth/cli.py`** (`_refuse_unknown_flags`,
+  tests in `tests/test_synth_cli.py`): a paid CLI now refuses a flag it does not
+  understand before spending anything.
+- **`dedupe_scenarios` added to the config on measured evidence**: the accidental run's
+  scenario check found 58 of 2,000 brainstormed scenarios in dup clusters at cosine
+  ≥ 0.86 (largest cluster 14) — PAR-style brainstorming has no generation-time diversity
+  gate, and every surviving duplicate is paid for seven times over downstream. The
+  filter is difficult_advice's exact pattern (`drop_when: embedding_dup`,
+  `max_drop_share: 0.05`, dedup verdict over the full corpus). post_action_retrospection
+  shares the brainstorm prompt and therefore the exposure, so the same filter was added
+  there too (same day, before either full run).
+
+Nothing was wasted: the run dir (`output/peer_critique/20260814_130156`) and the HF
+mirror hold the complete stage-2 scenarios, so the full run can resume from them.
+Inserting `dedupe_scenarios` renumbers `draft_prompts` from stage 3 to stage 4; to keep
+the ~75 checkpointed draft prompts on a resume, rename
+`stage_3_draft_prompts.partial.jsonl` → `stage_4_draft_prompts.partial.jsonl` first.
+
+**Smoke (8 docs, $1.15, 140s, `output/peer_critique/smoke_20260814_130934`):** every
+stage ran end to end and the exported records have the intended shape — framed
+transcript verbatim in the user turn, verdict and arm in the metadata. `uv run synth
+check` resolved the de-celled roles correctly: blindness reports
+`generator_blind: false` and gates only the summary-never-trains half,
+flaw-identification hit 3/3, post-hoc share 0.125. Two findings:
+
+- The first record's reasoning opened "Let me actually read…" and the rewrite kept the
+  tic — the opener that began 68.8% of the 2026-08-04 baseline corpus. The
+  difficult_advice opener ban (`^let me`, `^okay,`) is now on both critique stages;
+  post_action_retrospection's reflection stages carry no such ban and likely share the
+  exposure.
+- `gold_validation` FAILED at smoke scale: 1 of 5 sampled good-arm replies scored 2 —
+  the self-identity trait (t6), where the "strongest of three unaided replies" flatly
+  denied having opinions. n=5 is one document, but it points at the good arm's
+  structural risk (best-of-3-unaided may still miss the principle, worst on traits where
+  unaided models diverge most from the constitution). Watch this gate on the full run's
+  n=100 sample; the arm-conditioned prompt steering exists to raise exactly this yield.
+
+**Next steps:** re-price with `uv run synth estimate --config … --measured
+<smoke manifest>`; then the full corpus (resumable from the 20260814_130156 scenarios)
+alongside the post_action_retrospection run so the self/other comparison shares a date
+and a judge.
 
 ## 2026-08-13 — mem-self de-celled: the document type is now the config (no corpus yet)
 

@@ -310,13 +310,19 @@ def arm_population(cfg: dict, n: float) -> list[tuple[dict, float]]:
     return pop
 
 
-def _in_scope(spec: dict | None, arm: dict) -> bool:
-    """Whether a `when:` filter admits an arm combination (no filter = all of them)."""
+def _in_scope(spec: dict | list | None, arm: dict) -> bool:
+    """Whether a `when:` filter admits an arm combination (no filter = all of them).
+
+    A list is a conjunction, mirroring `selected` -- the arm population is the cross
+    product of every assigned field, so a two-condition scope prices to exactly the
+    slice it covers (e.g. flawed x one weak author = 1/6 of the corpus).
+    """
     if not spec:
         return True
-    if spec["field"] not in arm:
-        return True  # not an assigned axis; assume the stage covers everything
-    return str(arm[spec["field"]]) in [str(x) for x in spec["in"]]
+    conds = spec if isinstance(spec, list) else [spec]
+    return all(c["field"] not in arm
+               or str(arm[c["field"]]) in [str(x) for x in c["in"]]
+               for c in conds)
 
 
 def _apply_gate(pop: list[tuple[dict, float]], sc: dict) -> list[tuple[dict, float]]:

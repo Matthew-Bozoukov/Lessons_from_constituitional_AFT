@@ -25,20 +25,24 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 PROVIDER_PINS_PATH = Path(__file__).resolve().parents[2] / "configs/endpoints/providers.yaml"
 
 _pins: dict | None = None
-_warned_unpinned: set[str] = set()
 
 
-def provider_pin(model: str) -> dict | None:
-    """The OpenRouter `provider` routing object pinned for `model`, or None.
+def provider_pin(model: str) -> dict:
+    """The OpenRouter `provider` routing object pinned for `model`.
 
-    Pins live in configs/endpoints/providers.yaml (per-model `order` merged over
-    `defaults`). Hosts of the same weights are NOT interchangeable: they differ in
-    quantization/backend, wrap models in their own content filters (2026-08-14,
-    difficult-advice revise_prompts: Bedrock refused 2.6% of calls as content_filter
-    and Google Vertex refused the same prompts — all served fine by Anthropic), and
-    only the vendor's endpoint honors extensions like `cache_control` reliably. So
-    every call routes through a pin; an unpinned model still runs but warns once per
-    process — add an entry rather than silencing it.
+    THE single source of truth is configs/endpoints/providers.yaml: one provider per
+    model id (per-model entry merged over `defaults`), no prefix inference, no
+    free-routing fallback. Hosts of the same weights are NOT interchangeable: they
+    differ in quantization/backend, wrap models in their own content filters
+    (2026-08-14, difficult-advice revise_prompts: Bedrock refused 2.6% of calls as
+    content_filter and Google Vertex refused the same prompts — all served fine by
+    Anthropic), and only the vendor's endpoint honors extensions like `cache_control`
+    reliably.
+
+    Raises:
+        ValueError: `model` has no entry. Every model routed through OpenRouter must
+            be served by the same provider on every call — add its ONE provider to
+            the yaml (check https://openrouter.ai/api/v1/models/<id>/endpoints).
     """
     global _pins
     if _pins is None:
@@ -48,30 +52,31 @@ def provider_pin(model: str) -> dict | None:
         _pins = {mid: {**cfg["defaults"], **spec}
                  for mid, spec in (cfg["models"] or {}).items()}
     pin = _pins.get(model)
-    if pin is None and model not in _warned_unpinned:
-        _warned_unpinned.add(model)
-        print(f"!!! no provider pin for {model!r} — routing is provider-random; "
-              f"add it to {PROVIDER_PINS_PATH.name} (configs/endpoints/)")
+    if pin is None:
+        raise ValueError(
+            f"no provider pin for {model!r}: every model routed through OpenRouter "
+            "must be served by the same provider on every call. Add its ONE provider "
+            f"to {PROVIDER_PINS_PATH} (check https://openrouter.ai/api/v1/models/"
+            f"{model}/endpoints), or pass an explicit extra_body['provider'] block.")
     return pin
 
 
 class EmptyCompletionError(RuntimeError):
     """A completion came back with `content=None` despite finish_reason=stop.
 
-    OpenRouter load-balances a model across many upstream providers and re-routes on
-    every call; a provider intermittently returns a blank body (observed on
-    deepseek-chat-v3.1, 2026-08-07 — 4/20 concurrent calls, unreproducible minutes
-    later across 18 calls / 7 providers). Treating it as transient re-routes to
-    another provider instead of failing the whole item on one bad backend.
+    Providers intermittently return a blank body (observed on deepseek-chat-v3.1,
+    2026-08-07 — 4/20 concurrent calls, unreproducible minutes later). Treating it as
+    transient retries the call — against the SAME provider, since every model is pinned
+    (configs/endpoints/providers.yaml) — instead of failing the whole item on one bad
+    response.
     """
 
 
-# Only transient failures are retried; everything else fails fast and surfaces. An empty
-# completion is transient BY ROUTING for unpinned models (the retry lands on a different
-# upstream provider). Under a provider pin there is no other provider: retries re-ask
-# the same host, which still clears intermittent blanks, and a hard refusal surfaces
-# after the attempts — the right failure mode, since a "successful" reroute to a host
-# that filters differently is a silent data change.
+# Only transient failures are retried; everything else fails fast and surfaces. With
+# every model pinned to one provider, a retry always lands on the SAME host — it covers
+# transient upstream blips, and a hard refusal surfaces after the attempts. That is the
+# right failure mode: a "successful" reroute to a host that filters differently is a
+# silent data change.
 _TRANSIENT = (RateLimitError, APIConnectionError, APITimeoutError, EmptyCompletionError)
 
 
@@ -206,14 +211,13 @@ class OpenRouterClient:
         Returns:
             A ChatResult with content, token usage and the serving provider.
         """
-        # Route through the model's provider pin (configs/endpoints/providers.yaml) —
-        # unpinned models warn once inside provider_pin and route provider-random.
-        # A caller-supplied extra_body["provider"] always beats the pin.
-        pin = provider_pin(model)
-        if pin is not None:
-            extra = dict(kwargs.pop("extra_body", None) or {})
-            extra.setdefault("provider", pin)
-            kwargs["extra_body"] = extra
+        # Route through the model's provider pin (configs/endpoints/providers.yaml).
+        # A caller-supplied extra_body["provider"] wins; otherwise an unpinned model
+        # is a hard error inside provider_pin — free routing is never the fallback.
+        extra = dict(kwargs.pop("extra_body", None) or {})
+        if "provider" not in extra:
+            extra["provider"] = provider_pin(model)
+        kwargs["extra_body"] = extra
         resp = self.client.chat.completions.create(
             model=model,
             messages=apply_cache_control(messages, model),
