@@ -361,7 +361,7 @@ def test_balance_by_fails_loudly_when_a_group_is_short(tmp_path):
 
 
 def test_balance_by_refuses_streams_and_token_budgets(tmp_path):
-    with pytest.raises(ValueError, match="local `path:`"):
+    with pytest.raises(ValueError, match="whole pool"):
         _take_interchange(_StubTok(), _icfg(tmp_path), "no_robots",
                           {"reasoning": "none", "balance_by": "trait_id"},
                           ("examples", 4), seed=0, render_kwargs={})

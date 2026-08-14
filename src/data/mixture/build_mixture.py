@@ -169,9 +169,11 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
                       seed: int, render_kwargs: dict) -> tuple[list[dict], str]:
     """Load one source as interchange messages rows and validate its reasoning kind.
 
-    The spec names rows via a registry adapter (`source:`), a raw HF chat repo
-    (`repo:`), or a local jsonl (`path:`); adapters supply repo/config/normaliser
-    defaults the spec can override. Budgets and the `max_seq_len` cap are counted on
+    The spec names rows via a registry adapter (`source:`), a synth-contract HF repo
+    (`dataset:` [+ `revision:`] — load_dataset of the repo's default config, the
+    canonical synthetic intake), a raw HF chat repo (`repo:`, streamed), one exact
+    file of a pre-contract repo (`repo:` + `file:`, legacy), or a local jsonl
+    (`path:`); adapters supply repo/config/normaliser defaults the spec can override. Budgets and the `max_seq_len` cap are counted on
     the PRESERVED render of each row (what training will render), with the config's
     tokenizer — the counts are model-relative, the stored data is not.
 
@@ -181,9 +183,9 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
     """
     # A spec names its adapter explicitly (`source:`), or implicitly by its own key when
     # it declares no other origin — so `no_robots: {examples: N, reasoning: none}` just
-    # works. Raw `repo:`/`path:` specs need no adapter at all.
+    # works. Raw `dataset:`/`repo:`/`path:` specs need no adapter at all.
     adapter_name = spec.get("source") or (
-        name if not ("repo" in spec or "path" in spec) else None)
+        name if not ("repo" in spec or "path" in spec or "dataset" in spec) else None)
     adapter = None
     if adapter_name is not None:
         if adapter_name not in SOURCES:
@@ -205,10 +207,36 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
             "their render at train time.)")
     to_messages = adapter.to_messages if adapter else \
         (lambda row: clean_messages(row.get("messages")))
-    if spec.get("balance_by") and "path" not in spec:
+    pool = None
+    if "dataset" in spec:
+        # THE canonical synth intake: `dataset: org/repo` loads the repo's DEFAULT
+        # config — dataset.jsonl under the synth->mixture contract — via
+        # load_dataset, pinned to the exact sha and fully materialised (balancing
+        # needs the whole pool). load_dataset's schema inference None-fills optional
+        # fields (e.g. reasoning_content on turns without a trace); clean_messages
+        # drops falsy fields, so rows come out identical to reading the jsonl.
+        from src.huggingface import hf_api, hf_token
+
+        info = hf_api().repo_info(spec["dataset"], repo_type="dataset",
+                                  revision=spec.get("revision"))
+        print(f"{name}: {spec['dataset']}@{info.sha[:12]} (default config)")
+        pool = load_dataset(spec["dataset"], revision=info.sha, split="train",
+                            token=hf_token())
+    elif "file" in spec:
+        # LEGACY intake for pre-contract repos with no dataset.jsonl/default config
+        # (e.g. stage_7_sft.jsonl mirrors): one exact file, sha-pinned via the shared
+        # resolver, then read as a local path. New synth repos use `dataset:`.
+        assert "repo" in spec, f"source {name!r}: `file:` needs `repo:`"
+        from src.huggingface import resolve_dataset
+
+        local, ref = resolve_dataset(spec["repo"], spec["file"], spec.get("revision"))
+        print(f"{name}: {ref['repo']}@{ref['revision'][:12]} ({ref['file']} — legacy "
+              "file intake; new-layout repos use `dataset:`)")
+        spec = {**spec, "path": local}
+    if spec.get("balance_by") and pool is None and "path" not in spec:
         raise ValueError(
-            f"source {name!r}: balance_by requires a local `path:` source — a stream "
-            "cannot be grouped without loading the whole pool")
+            f"source {name!r}: balance_by needs the whole pool in hand (`dataset:` or "
+            "`path:`) — a streamed `repo:` cannot be grouped")
 
     def payload(raw: dict) -> dict | None:
         msgs = to_messages(raw)
@@ -229,11 +257,12 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
             out["supervise"] = supervise
         return out
 
-    if "path" in spec:
+    if pool is not None or "path" in spec:
+        if pool is None:
+            pool = (json.loads(line) for line in Path(spec["path"]).open())
         bkey = spec.get("balance_by")
         rows, groups = [], {}
-        for line in Path(spec["path"]).open():
-            raw = json.loads(line)
+        for raw in pool:
             p = payload(raw)
             if p is None:
                 continue
@@ -243,7 +272,7 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
                 assert g is not None, \
                     f"source {name!r}: row missing balance_by field {bkey!r}"
                 groups.setdefault(str(g), []).append(p)
-        assert rows, f"no usable rows in {spec['path']}"
+        assert rows, f"no usable rows in {spec.get('dataset') or spec['path']}"
         if bkey:
             b_kind, want = budget
             assert b_kind == "examples", \
@@ -421,8 +450,10 @@ def main(config: str, smoke: bool = False) -> None:
         config: OmegaConf YAML. `sources` maps name -> spec:
             * `source:` a registry adapter name (src/data/mixture/sources/) — repo,
               config and normaliser come from the adapter; `split`/`config`/`repo`
-              override it; or `repo:` a raw HF chat dataset; or `path:` a local jsonl
-              (interchange rows or whatever the adapter's normaliser reads).
+              override it; or `dataset:` an HF synth-contract repo [+ `revision:`]
+              (THE canonical synthetic intake — load_dataset of its default config);
+              or `repo:` a raw HF chat dataset (streamed); or `repo:` + `file:` one
+              pinned file of a pre-contract repo (legacy); or `path:` a local jsonl.
             * exactly one of `tokens:` (greedy token-share fill) or `examples:` (exact
               row count — short sources fail loudly).
             * `reasoning: native|none` — what the DATA carries, validated. (`strip` /

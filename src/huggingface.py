@@ -48,6 +48,27 @@ def hf_snapshot(repo_id: str, **kwargs) -> str:
     return snapshot_download(repo_id, token=hf_token(), **kwargs)
 
 
+def card_front_matter(configs: list[dict]) -> str:
+    """Render the README YAML front-matter declaring a repo's `configs:` (pure).
+
+    Each entry: {"config_name": str, "data_files": str, "default": bool?}. Declared
+    configs are how a multi-file dataset repo stays loadable: `load_dataset(repo)`
+    fetches only the default config's files, and the dataset viewer stops globbing
+    every jsonl into one schema. An empty list renders bare markers (no `configs:`
+    key — the hub rejects an empty sequence).
+    """
+    lines = ["---"]
+    if configs:
+        lines.append("configs:")
+        for c in configs:
+            lines.append(f"- config_name: {c['config_name']}")
+            lines.append(f"  data_files: {c['data_files']}")
+            if c.get("default"):
+                lines.append("  default: true")
+    lines.append("---")
+    return "\n".join(lines) + "\n"
+
+
 def card_markdown(fields: dict) -> str:
     """Render the dataset card, refusing incomplete metadata (pure; unit-tested offline).
 

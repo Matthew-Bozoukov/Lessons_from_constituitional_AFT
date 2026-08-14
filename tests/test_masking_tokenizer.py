@@ -124,3 +124,40 @@ def test_multiturn_preserve_thinking_masks_every_forced_head(tok):
     closer_labels = [labels[k] for k, v in enumerate(ids) if v == closer]
     assert [v != -100 for v in closer_labels] == [True, False, True]
     assert nl in ids  # sanity: single-newline tokens exist at the reasoning seams
+
+
+def test_supervise_final_masks_the_context_turn_entirely(tok):
+    """The self-reflection shape (m1/m2, post_action_retrospection): the model's own
+    prior reply sits in an assistant turn WITHOUT a reasoning trace, rendered with an
+    empty marker; under supervise="final" every token of it — marker, answer, turn
+    end — is context, and only the final reflection turn trains (prefill masked,
+    trace + close + answer supervised)."""
+    msgs = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "q"},
+        {"role": "assistant", "content": "the evaluated reply"},
+        {"role": "user", "content": "reflect on your answer"},
+        {"role": "assistant", "content": "held", "reasoning_content": "re-checking it"},
+    ]
+    row = tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=False,
+                                  preserve_thinking=True)
+
+    out = build_labels(row, tok, max_length=4096, profile=QWEN36_PROFILE,
+                       supervise="final")
+    assert _supervised(tok, out) == "re-checking it\n</think>\n\nheld<|im_end|>"
+
+    # Both think openers are physically present; only the final turn's is followed by
+    # supervised tokens. Context closer masked, final closer supervised.
+    opener = tok.convert_tokens_to_ids("<think>")
+    closer = tok.convert_tokens_to_ids("</think>")
+    ids, labels = out["input_ids"], out["labels"]
+    assert [labels[k] for k, v in enumerate(ids) if v == opener] == [-100, -100]
+    closer_sup = [labels[k] != -100 for k, v in enumerate(ids) if v == closer]
+    assert closer_sup == [False, True]
+
+    # Same text under supervise="all": the context reply becomes a target, its empty
+    # marker still never does.
+    got_all = _supervised(tok, out := build_labels(row, tok, max_length=4096,
+                                                   profile=QWEN36_PROFILE))
+    assert got_all == ("the evaluated reply<|im_end|>"
+                       "re-checking it\n</think>\n\nheld<|im_end|>")
