@@ -81,10 +81,17 @@ def build_card(diag: dict, repo: str) -> str:
             "no aggregation in the chain is lossy), argmax_subtask, trait_id, in_warmup. "
             "scores/influence.pt — dense [N,m] and [n_ckpt,N,m] tensors with axis labels. "
             "scores/diagnostics.json — checkpoint/subtask rank agreement, top-K trait enrichment, "
-            "negative control. dval/ — the converted validation sets. "
+            "negative control. rankings/ — bare ordered less_id lists, one per subtask and per "
+            "aggregation (by_<subtask>.txt, by_max/mean/min.txt), most influential first; these "
+            "are NOT permutations of one another (pairwise Spearman 0.45-0.65). "
+            "dval/ — the converted validation sets. "
             "warmup_meta.tar.gz — per-checkpoint metadata incl. the eta weights. NOTE: the warmup "
-            "LoRA WEIGHTS are not here; they were lost with the pods, so scoring a NEW target "
-            "behaviour requires retraining the warmup (~1h) rather than reusing these checkpoints."),
+            "LoRA WEIGHTS and Adam moments are NOT here — they were lost when the pods were "
+            "destroyed. This is forward-looking only: all four checkpoints were used to build this "
+            "datastore and every number in it stands. But scoring a NEW target behaviour needs "
+            "validation gradients at the SAME theta_i, and a retrained warmup gives theta'_i != "
+            "theta_i, so the stored training features would no longer share its basis — budget "
+            "~11 GPU-hours to redo both, not one."),
         "provenance": (
             "1) uv run python scratch/less/prepare_data.py --out data/less   "
             "2) uv run python scratch/less/convert_dval.py --src <export>.jsonl x3 --out data/less   "
@@ -103,6 +110,8 @@ def main() -> None:
     ap.add_argument("--data", type=Path, default=Path("data/less"))
     ap.add_argument("--warmup-meta", type=Path,
                     default=Path("output/less_warmup_meta/warmup_meta.tar.gz"))
+    ap.add_argument("--card-only", action="store_true",
+                    help="refresh the card without re-uploading 1.2GB of unchanged features")
     args = ap.parse_args()
 
     diag = json.loads((args.run / "scores" / "diagnostics.json").read_text(encoding="utf-8"))
@@ -112,6 +121,9 @@ def main() -> None:
     api.upload_file(path_or_fileobj=build_card(diag, args.repo).encode("utf-8"),
                     path_in_repo="README.md", repo_id=args.repo, repo_type="dataset")
     print(">>> card pushed")
+    if args.card_only:
+        print(f"\n>>> https://huggingface.co/datasets/{args.repo}")
+        return
 
     for sub in ("grads", "grads_control", "scores"):
         src = args.run / sub

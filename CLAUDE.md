@@ -370,11 +370,21 @@ Serving/training/eval all need one 80GB GPU; the local machine has none. Standar
 Cost discipline: OpenRouter and vast credit are finite and shared. Check balances before big runs; flag spend > ~$20; ask before re-provisioning for a new follow-up.
 
 **A pod's container disk is not storage.** `volumeInGb: 0` is the norm here, so anything a
-pod computes dies with it. Pull results off CONTINUOUSLY as they are produced, not at the
+pod computes dies with it. Pull artifacts off CONTINUOUSLY as they are produced, not at the
 end — a job that only writes at coarse boundaries can otherwise lose hours to one crash —
-and checksum the local copies before terminating anything. What you forget to pull is gone:
-a 2026-08-14 LESS run kept its gradient datastore but lost the warmup LoRA weights that
-produced it, which turned "score another target behaviour" from free into an hour of retraining.
+and checksum the local copies before terminating anything.
+
+Then make the pre-teardown check INVENTORY-driven, not monitor-driven: list what the pod
+holds that took more than an hour to produce and account for each item, rather than
+confirming the artifact you happened to be watching. Monitoring only covers what you already
+thought of, so using it as the completeness check makes blind spots invisible by
+construction — and the expensive things most likely to be forgotten are the ones that
+finished early and stopped emitting events. Note "artifacts", not "results": the 2026-08-14
+LESS run streamed every output file off continuously and checksummed all 24 of them, then
+destroyed the pods holding the warmup LoRA weights that had PRODUCED those outputs. Inputs
+count. That mistake cost no already-computed result, but it turned "score one more target
+behaviour" from free into ~11 GPU-hours, because new validation gradients must be taken at
+the same checkpoints the stored training features were taken at.
 
 **An N-GPU job does not need an N-GPU box.** Multi-GPU capacity is intermittent (4xH200,
 4xH200 NVL, 4xH100 NVL and 4xH100 were ALL unavailable simultaneously on 2026-08-14), so

@@ -67,9 +67,15 @@ no inter-worker state, verified beforehand: sharded vs unsharded features agree 
 1-cos = 6.8e-05, exactly the single-GPU reproducibility floor, so sharding adds zero error.
 
 **Published:** HF `LASR-Callum/2026-08-14-less-selection-difficult-advice` (24 projected-
-gradient files, scores, diagnostics, validation sets). **The warmup LoRA weights were NOT
-saved before teardown** — only their metadata — so scoring a new target behaviour needs the
-warmup retrained (~1h, ~$5). Re-aggregating the existing three is unaffected.
+gradient files, scores, per-subtask rankings, diagnostics, validation sets). **The warmup
+LoRA weights and Adam moments (~14.3GB) were NOT saved before teardown** — only their 4KB of
+metadata. This is forward-looking only: all four checkpoints WERE used (16 train files = 4
+shards x 4 checkpoints, and `Σ η_i S_i` reproduces the stored influence to 8 significant
+figures), so every number here stands and re-aggregating the three existing targets is free.
+What it costs is a NEW target behaviour: that needs validation gradients at the SAME θ_i, and
+a retrained warmup gives θ'_i ≠ θ_i (CUDA nondeterminism ~4e-03 relative per backward,
+compounding over 56 optimizer steps), so the stored train features would no longer share its
+basis — strictly, ~11 GPU-hours to redo both, not the hour a first estimate assumed.
 
 **Next steps:** (1) decide the aggregation before selecting anything to train on — `max` as
 run is a `stayed_ai` selector, and `mean` is the obvious alternative. (2) The top-K fraction
