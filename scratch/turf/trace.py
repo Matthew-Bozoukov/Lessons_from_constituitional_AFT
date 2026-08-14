@@ -18,8 +18,9 @@ Steps (paper App. D.1, adapted per the 2026-08-13 design):
    attribute; we credit them all — the prose reading, and the only one that
    extends to a 20-attribute trigger side. Counts can therefore exceed k.)
 5. Trigger identification: extract the CASE's own 10 query + 10 reasoning
-   attributes, assign each to its nearest centroid, and report the case attribute
-   whose cluster scored the highest hits — per crux.
+   attributes, assign each to its nearest centroid (cosine, Eq. 5), and rank them
+   by their cluster's hit count — per crux. The top one is the trigger; the top 5
+   are reported and persisted alongside it.
 
 Output: trace_report.md + trace_result.json (+ copies of case and rubric) in
 output/turf/traces/<ts>_<case-id>/; --push appends the run dir to the rolling
@@ -174,13 +175,15 @@ def main(case: str, rubric: str, index: str, polarity: str = "satisfy",
                           "summary": s.get("summary", "?"),
                           "share_reasoning": s.get("share_reasoning"),
                           "style_echo": echo})
-        # trigger = the case's own attribute whose cluster scored highest
-        scored = [(hits.get(int(cc), 0), ch, a)
-                  for (ch, a), cc in zip(case_trigger, case_cluster)]
-        best = max(scored)
+        # rank the case's own attributes by their cluster's hit count;
+        # trigger = the top one, and the top 5 are persisted alongside it
+        scored = sorted(
+            ({"hits": hits.get(int(cc), 0), "channel": ch, "attribute": a,
+              "cluster": int(cc)}
+             for (ch, a), cc in zip(case_trigger, case_cluster)),
+            key=lambda s: -s["hits"])
         per_crux.append({"crux": crux, "clusters": table,
-                         "trigger": {"hits": best[0], "channel": best[1],
-                                     "attribute": best[2]}})
+                         "trigger": scored[0], "top_attributes": scored[:5]})
 
     # --- write the run dir ---------------------------------------------------------
     ts = timestamp()
@@ -190,8 +193,8 @@ def main(case: str, rubric: str, index: str, polarity: str = "satisfy",
     shutil.copy(rubric, out / "rubric.yaml")
     result = {"case_id": case_d["id"], "polarity": polarity, "cruxes": cruxes,
               "excluded_as_style": excluded, "blind_attrs": blind_attrs,
-              "case_trigger_attrs": [{"channel": ch, "attribute": a}
-                                     for ch, a in case_trigger],
+              "case_trigger_attrs": [{"channel": ch, "attribute": a, "cluster": int(cc)}
+                                     for (ch, a), cc in zip(case_trigger, case_cluster)],
               "per_crux": per_crux,
               "index": {"dir": str(idx), "source_dataset": manifest["source_dataset"],
                         "k_clusters": manifest.get("k_clusters")},
@@ -206,6 +209,10 @@ def main(case: str, rubric: str, index: str, polarity: str = "satisfy",
                   f"**Trigger** ({pc['trigger']['channel']}, "
                   f"{pc['trigger']['hits']} hits over {k} retrieved): "
                   f"{pc['trigger']['attribute']}", "",
+                  "Top case attributes by hit count:", ""]
+        lines += [f"- {t['hits']} — ({t['channel']}) {t['attribute']}"
+                  for t in pc["top_attributes"]]
+        lines += ["",
                   "| hits | cluster summary | reasoning share | |", "|---|---|---|---|"]
         for t in pc["clusters"]:
             flag = "⚠ style echo" if t["style_echo"] else ""
