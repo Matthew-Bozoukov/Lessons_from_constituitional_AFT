@@ -68,9 +68,10 @@
 # NO CELLS. This recipe is built entirely from generic operators -- `assign:` labels the
 # arms, `variants_by` picks the prompt, `keep:` gates each arm on its own contract,
 # `conversation` puts the reply under evaluation in a real assistant turn, `chat_export`
-# writes the record. No Python knows this document type exists. The cell registry it used
-# to depend on now lives in `src/data/synth/archive/cells.py`, frozen for the archived
-# configs and `peer_critique.yaml`, still written against it.
+# writes the record. No Python knows this document type exists. The cell registry it
+# used to depend on stays in `src/data/synth/model_eval_model_cells.py`, frozen for the
+# archived configs; since 2026-08-14 (`peer_critique.yaml` rebuilt on the generic
+# operators) nothing live is written against it.
 #
 # NOT YET RUN. Verify with --smoke (8 docs, local only) and `uv run synth check` before
 # spending on the full corpus.

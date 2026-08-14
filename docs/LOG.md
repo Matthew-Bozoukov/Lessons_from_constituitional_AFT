@@ -64,6 +64,98 @@ vendored agentic-misalignment harness use their own clients and are not pinned.
 **Next steps:** finish the v2 run under the pin; top up the 20 refused records; consider
 patching the vendored harness's judge calls the same way.
 
+## 2026-08-14 — peer critique rebuilt as post_action_retrospection's attribution twin (no corpus yet)
+
+**Hypothesis:** peer critique was the last live config on the archived cell machinery and
+the only one inheriting its prompts from another run — it critiqued difficult-advice
+dilemma exchanges lifted via `load_source_run`, so the two model-eval-model arms differed
+in *three* ways at once (attribution, scenario distribution, engine generation) and no
+comparison between them could isolate the one that matters.
+
+**Method:** `configs/data/synth/peer_critique.yaml` rewritten so the only remaining
+difference from `post_action_retrospection.yaml` is WHO wrote the evaluated reply:
+
+- **The prompt pool is brainstormed, not inherited.** post_action_retrospection's
+  `chunk_constitution → write_scenarios → corpus_scenarios → draft_prompts →
+  revise_prompts` stages, ordinary requests (not dilemmas), with the same arm-conditioned
+  revision — the good half's situation made reachable, the flawed half's made quietly
+  costly for the fast obliging answer. The situation is steered; the three candidate
+  replies stay unaided.
+- **No cells.** Arms are `assign:` labels (`reply_quality`, stamped in `revise_prompts`
+  with the explicitness mix and `supervise: all`); `generate_cells`/`revise_cells`/
+  `assemble_cells` became `llm_tagged`/`chat_export` stages whose prompts live in the
+  config. The framed transcript the requester brings is composed in the config's own
+  templates, with an offline sync test asserting the export's user turn is byte-identical
+  to what the critique stages saw.
+- **Kept from the 2026-08-13 celled recipe** (in git history; celled ancestors in
+  `configs/data/synth/archive/`): best-of-3/worst-of-3 evaluated reply, rater-found lapse
+  (`change_summary` for the flawed arm only, blindness-gated), per-exchange framing with
+  the leak-lint, `sound`/`issue_found` verdict, ablatable constitution rewrite. Unlike
+  the self arm there is no `keep:` gate — the rater always has a strongest and weakest to
+  pick, so planned count = corpus (2,100).
+- **Checks de-celled** the same way: `checks.stages`/`checks.fields` role declarations,
+  `expected_majority: {good: sound, flawed: issue_found}`, `surface_auc_max` 0.65 → 0.70
+  with the self arm's rationale (genuinely different situations make some separability
+  the label itself).
+
+**Result:** no live config uses the cell operators any more (registry comment updated;
+they stay registered for the archived configs). `tests/test_model_eval_model_natural.py`
+now asserts both arms are config-expressed and exercises `plan_cells` off the archived
+other-arm config; full suite passes (754 tests). Also fixed en route:
+`test_pr_stage_sequence` had been failing on main since the inline corpus checks were
+added to post_action_retrospection without updating it. `uv run synth estimate` prices
+the recipe at $436.66 for 2,100 docs ($0.208/doc) on assumed priors, inside the $500
+budget guard. New HF target `LASR-Callum/2026-08-14-peer-critique`; the old name stays
+reserved for the celled recipe that never ran.
+
+**Incident, and two things it bought.** `synth run --config … --estimate` was invoked
+expecting a dry estimate; `--estimate` is not a flag (`estimate` is a subcommand), and
+Fire's chaining semantics run the command FIRST and only fail to consume the leftover
+flag afterwards — so the real pipeline started and spent ~$3 (all 270 `write_scenarios`
+calls, ~75 `draft_prompts` calls) before being killed. Two changes came out of it:
+
+- **A pre-dispatch flag guard in `src/data/synth/cli.py`** (`_refuse_unknown_flags`,
+  tests in `tests/test_synth_cli.py`): a paid CLI now refuses a flag it does not
+  understand before spending anything.
+- **`dedupe_scenarios` added to the config on measured evidence**: the accidental run's
+  scenario check found 58 of 2,000 brainstormed scenarios in dup clusters at cosine
+  ≥ 0.86 (largest cluster 14) — PAR-style brainstorming has no generation-time diversity
+  gate, and every surviving duplicate is paid for seven times over downstream. The
+  filter is difficult_advice's exact pattern (`drop_when: embedding_dup`,
+  `max_drop_share: 0.05`, dedup verdict over the full corpus). post_action_retrospection
+  has the same exposure and no filter — worth the same fix, not done here.
+
+Nothing was wasted: the run dir (`output/peer_critique/20260814_130156`) and the HF
+mirror hold the complete stage-2 scenarios, so the full run can resume from them.
+Inserting `dedupe_scenarios` renumbers `draft_prompts` from stage 3 to stage 4; to keep
+the ~75 checkpointed draft prompts on a resume, rename
+`stage_3_draft_prompts.partial.jsonl` → `stage_4_draft_prompts.partial.jsonl` first.
+
+**Smoke (8 docs, $1.15, 140s, `output/peer_critique/smoke_20260814_130934`):** every
+stage ran end to end and the exported records have the intended shape — framed
+transcript verbatim in the user turn, verdict and arm in the metadata. `uv run synth
+check` resolved the de-celled roles correctly: blindness reports
+`generator_blind: false` and gates only the summary-never-trains half,
+flaw-identification hit 3/3, post-hoc share 0.125. Two findings:
+
+- The first record's reasoning opened "Let me actually read…" and the rewrite kept the
+  tic — the opener that began 68.8% of the 2026-08-04 baseline corpus. The
+  difficult_advice opener ban (`^let me`, `^okay,`) is now on both critique stages;
+  post_action_retrospection's reflection stages carry no such ban and likely share the
+  exposure.
+- `gold_validation` FAILED at smoke scale: 1 of 5 sampled good-arm replies scored 2 —
+  the self-identity trait (t6), where the "strongest of three unaided replies" flatly
+  denied having opinions. n=5 is one document, but it points at the good arm's
+  structural risk (best-of-3-unaided may still miss the principle, worst on traits where
+  unaided models diverge most from the constitution). Watch this gate on the full run's
+  n=100 sample; the arm-conditioned prompt steering exists to raise exactly this yield.
+
+**Next steps:** re-price with `uv run synth estimate --config … --measured
+<smoke manifest>`; then the full corpus (resumable from the 20260814_130156 scenarios)
+alongside the post_action_retrospection run so the self/other comparison shares a date
+and a judge.
+>>>>>>> a52a51d (Rebuild peer critique as post_action_retrospection's de-celled twin)
+
 ## 2026-08-13 — mem-self de-celled: the document type is now the config (no corpus yet)
 
 **Hypothesis:** the `cells` abstraction had stopped earning its place, and while it stayed

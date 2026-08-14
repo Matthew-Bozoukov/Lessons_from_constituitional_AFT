@@ -1,8 +1,8 @@
 # ABOUTME: Offline tests for the natural-turn recipes. Post-action retrospection (PR, the
-# ABOUTME: self arm) is de-celled -- built only
+# ABOUTME: self arm) and peer critique (PC, the other arm) are both de-celled -- built only
 # ABOUTME: from generic operators, arms assigned as labels -- so most of this asserts that
-# ABOUTME: the config alone expresses the document type. Peer critique (PC, the other
-# ABOUTME: arm) is still cell-based.
+# ABOUTME: the config alone expresses the document type. The cell machinery is exercised
+# ABOUTME: off the archived config that still owns it.
 # ABOUTME: Run: uv run pytest tests/test_model_eval_model_natural.py -q
 
 from __future__ import annotations
@@ -37,6 +37,8 @@ PR_CFG = yaml.safe_load(
     open("configs/data/synth/post_action_retrospection.yaml"))
 PC_CFG = yaml.safe_load(
     open("configs/data/synth/peer_critique.yaml"))
+ARCHIVE_CFG = yaml.safe_load(
+    open("configs/data/synth/archive/model_eval_model_other.yaml"))
 
 # The five kinds that are a document type expressed in Python rather than in config.
 CELL_KINDS = {"plan_cells", "perturb_pairs", "generate_cells", "revise_cells",
@@ -89,30 +91,37 @@ def test_pr_uses_no_cell_machinery() -> None:
     assert "reply_quality" in _stage(PR_CFG, "export_sft")["metadata"]
 
 
+def test_pc_uses_no_cell_machinery() -> None:
+    """PC was the last live config on the cell registry; since 2026-08-14 it too is a
+    config-expressed document type, and its prompt pool is brainstormed, not inherited."""
+    kinds = [s["kind"] for s in PC_CFG["stages"]]
+    assert not (set(kinds) & CELL_KINDS), f"cell kinds still in use: {kinds}"
+    assert "load_source_run" not in kinds
+    assert "cells" not in PC_CFG and "flaws" not in PC_CFG and "source" not in PC_CFG
+    # ... and the arms are a plain label, carried into the finished dataset.
+    assert "reply_quality" in _stage(PC_CFG, "export_sft")["metadata"]
+
+
 def test_the_cell_operators_actually_run() -> None:
     """`build_stages` only constructs the closure -- it never calls it, so a stale module
-    reference inside one of these survives every structural test. Exercise one for real."""
-    stage = OPERATORS["plan_cells"](_stage(PC_CFG, "allocate_cells"), PC_CFG)
+    reference inside one of these survives every structural test. Exercise one for real,
+    off the archived config that still owns them: an archived config that cannot run is
+    not a reproducible record of a published corpus."""
+    stage = OPERATORS["plan_cells"](_stage(ARCHIVE_CFG, "plan"), ARCHIVE_CFG)
     source = [{"scenario_id": f"t1_b00_s{i:03d}", "trait_id": "t1", "trait_name": "T",
                "trait_text": "x", "domain": "d", "situation": "s", "shortcut": "c",
                "system": "sys", "user": "u", "reasoning": "r", "response": "resp"}
               for i in range(4)]
 
     class _Ctx2:
-        cfg = {**PC_CFG, "cells": {"m4_other_good": 2}}
+        cfg = {**ARCHIVE_CFG, "cells": {"m4_other_good": 2}}
         manifest_extra: dict = {}
 
     out = stage.fn(_Ctx2(), source, None)
     assert len(out) == 2
     assert out[0]["record_id"].endswith("::m4_other_good")
-
-
-def test_pc_still_uses_cells_and_still_builds() -> None:
-    """The cell registry stays registered because a live config and the archive need it."""
-    assert _stage(PC_CFG, "draft_critique")["kind"] == "generate_cells"
-    assert set(PC_CFG["cells"]) <= set(CELLS)
+    assert set(ARCHIVE_CFG["cells"]) <= set(CELLS)
     assert CELL_KINDS <= set(OPERATORS)
-    build_stages(PC_CFG)
 
 
 @pytest.mark.parametrize("cfg", [PR_CFG, PC_CFG], ids=["pr", "pc"])
@@ -133,6 +142,14 @@ def test_pr_stage_sequence() -> None:
         "chunk_constitution", "write_scenarios", "corpus_scenarios", "draft_prompts",
         "revise_prompts", "draft_first_turn", "revise_first_turn", "write_followup",
         "draft_reflection", "revise_reflection", "corpus", "export_sft"]
+
+
+def test_pc_stage_sequence() -> None:
+    assert [s["name"] for s in PC_CFG["stages"]] == [
+        "chunk_constitution", "write_scenarios", "corpus_scenarios",
+        "dedupe_scenarios", "draft_prompts", "revise_prompts", "draft_candidates",
+        "rate_candidates", "select_first_turn", "write_critique_framing",
+        "draft_critique", "revise_critique", "corpus", "export_sft"]
 
 
 # --- the arms: a label, assigned deterministically ----------------------------------
@@ -376,6 +393,161 @@ def test_export_is_five_turns_with_only_the_last_one_supervised() -> None:
                for m in rec["messages"])
 
 
+# --- peer critique: the other-attribution twin ---------------------------------------
+
+
+def _pc_record(**over) -> dict:
+    """One PC record as it stands at the end of the pipeline."""
+    return {"scenario_id": "t1_b00_s000", "trait_id": "t1", "trait_name": "Trait one",
+            "trait_text": "**Trait one.** Be scrupulous.", "domain": "work",
+            "situation": "A person needs a reference checked.",
+            "shortcut": "Polish the wording without reading closely.",
+            "system": "You are a helpful assistant.",
+            "user": "Can you tidy up this reference I drafted?",
+            "candidate_a": "Reply A.", "candidate_b": "Reply B.",
+            "candidate_c": "Reply C.",
+            "pick_letter": "b", "first_turn": "Reply B.",
+            "first_turn_source": "generated_best_of_3",
+            "ask_opening": "My colleague showed me what the assistant told her.",
+            "ask_closing": "What would you have said in its place?",
+            "reply_quality": "flawed", "explicitness": "paraphrase",
+            "supervise": "all",
+            "change_summary": "it polished the wording without flagging the gap",
+            "draft_reasoning": "I re-read what she actually needs here.",
+            "draft_response": "An honest assessment, then my own answer.",
+            "reasoning": "Rewritten deliberation.", "response": "Rewritten reply.",
+            "assessment": "issue_found", **over}
+
+
+def test_pc_arms_are_assigned_in_revise_prompts_and_steer_the_situation() -> None:
+    """Same shape as PR: labels born in the stage that first branches on them, and the
+    flawed arm shapes the REQUEST, never the replies -- three unaided candidates is
+    what keeps the lapse found rather than planted."""
+    sc = _stage(PC_CFG, "revise_prompts")
+    assert set(sc["assign"]["fields"]) == {"reply_quality", "explicitness"}
+    assert sc["assign"]["constants"] == {"supervise": "all"}
+    assert sc["variants_by"]["field"] == "reply_quality"
+    assert PC_CFG["checks"]["stages"]["plan"] == "revise_prompts"
+    good = tagged_request(sc, _pc_record(reply_quality="good"), _Ctx())[0][1]["content"]
+    flawed = tagged_request(sc, _pc_record(), _Ctx())[0][1]["content"]
+    assert good != flawed
+    assert "CONSTITUTION TEXT" in good and "CONSTITUTION TEXT" in flawed
+    assert "never see this text" in flawed and "answer badly" in flawed
+
+
+def test_pc_candidates_are_drafted_without_the_constitution() -> None:
+    """The evaluated reply's quality must come from the situation and the pick, not from
+    an aligned (or misaligned) generation prompt."""
+    sc = _stage(PC_CFG, "draft_candidates")
+    messages = tagged_request(sc, _pc_record(), _Ctx())[0]
+    blob = "".join(m["content"] for m in messages)
+    for leak in ("CONSTITUTION TEXT", "STYLE GUIDANCE", "principle", "Trait one"):
+        assert leak not in blob, leak
+    assert sc["tags"] == ["candidate_a", "candidate_b", "candidate_c"]
+
+
+def test_pc_rater_picks_in_opposite_directions_per_arm() -> None:
+    """`change_summary` unblinds the critique and is gated as never-training, so a
+    reply picked as the strongest must not carry one."""
+    sc = _stage(PC_CFG, "rate_candidates")
+    cases = sc["variants_by"]["cases"]
+    assert "FALLS SHORT" in cases["flawed"]["user"]
+    assert "BEST serves" in cases["good"]["user"]
+    assert sc["save"]["change_summary"] == "change_summary"
+    assert cases["good"]["save"]["pick_note"] == "change_summary"
+    assert "change_summary" not in cases["good"]["save"]
+
+
+def test_pc_pick_is_resolved_deterministically() -> None:
+    sc = _stage(PC_CFG, "select_first_turn")
+    out = OPERATORS["pick_field"](sc, PC_CFG).fn(
+        None, [_pc_record(pick_letter="c", first_turn="")], None)[0]
+    assert out["first_turn"] == "Reply C."
+    assert out["first_turn_source"] == "generated_best_of_3"
+
+
+def test_pc_framing_lint_rejects_a_frame_that_does_the_analysis() -> None:
+    """The frame must ask, not diagnose: anything naming a value or the flaw hands the
+    critique its conclusion."""
+    spec = _stage(PC_CFG, "write_critique_framing")["lint"]
+    assert not lint_problems(
+        {"opening": "My sister showed me what the bot told her about her lease.",
+         "closing": "What would you have told her instead?"}, spec)
+    for bad in ("This reply violates an important principle, please analyze it.",
+                "Something felt wrong with the second paragraph -- please fix it.",
+                "Hm?"):
+        assert lint_problems({"opening": bad, "closing": bad}, spec), bad
+
+
+def test_pc_critique_is_unblinded_for_the_flawed_arm_only() -> None:
+    sc = _stage(PC_CFG, "draft_critique")
+    flawed = tagged_request(sc, _pc_record(), _Ctx())[0][0]["content"]
+    good = tagged_request(sc, _pc_record(reply_quality="good"), _Ctx())[0][0]["content"]
+    assert _pc_record()["change_summary"] in flawed
+    assert "known_lapse" in flawed
+    assert "known_lapse" not in good
+    # The explicitness style is picked per record, from the same shared fragment.
+    embody = tagged_request(sc, _pc_record(explicitness="embody"), _Ctx())[0][0]["content"]
+    assert "Do not name or state any principle at all" in embody
+
+
+def test_pc_critique_verdict_is_constrained_and_stock_openers_are_banned() -> None:
+    """Two contracts on the draft: a one-word verdict, and the opener ban -- the first
+    smoke record opened "Let me actually read...", the 2026-08-04 corpus's worst tic."""
+    spec = _stage(PC_CFG, "draft_critique")["lint"]
+    verdict, prose = spec
+    assert verdict["allowed"] == ["sound", "issue_found"]
+    assert prose["fields"] == ["reasoning", "response"]
+    ok = {"assessment": "issue_found",
+          "reasoning": "She asked for a polish and got exactly that, which is the problem.",
+          "response": "An honest assessment, then my own answer."}
+    assert not lint_problems(ok, spec)
+    assert lint_problems({**ok, "assessment": "mostly sound"}, spec)
+    assert lint_problems({**ok, "reasoning": "Let me actually read this."}, spec)
+    rewrite = _stage(PC_CFG, "revise_critique")["lint"]
+    assert lint_problems({"reasoning": "Okay, so this looks fine. " * 20,
+                          "response": "x" * 300}, rewrite)
+
+
+def test_pc_rewrite_is_ablatable_back_to_the_draft() -> None:
+    sc = _stage(PC_CFG, "revise_critique")
+    assert sc["ablate_with"] == {"reasoning": "draft_reasoning",
+                                 "response": "draft_response"}
+    stages = {s.name: s for s in build_stages(PC_CFG)}
+    out = stages["revise_critique"].ablate_fn([_pc_record()])[0]
+    assert out["reasoning"] == _pc_record()["draft_reasoning"]
+
+
+def test_pc_export_is_one_exchange_with_the_transcript_in_the_user_turn() -> None:
+    """Attribution is verbal by design here -- the other assistant's reply arrives as
+    quoted text inside the user turn, framed by the generated opening and closing."""
+    r = _pc_record()
+    rec = op_chat_export(_stage(PC_CFG, "export_sft"), PC_CFG).fn(None, [r], None)[0]
+    assert [m["role"] for m in rec["messages"]] == ["system", "user", "assistant"]
+    user_turn = rec["messages"][1]["content"]
+    for part in (r["ask_opening"], r["user"], r["first_turn"], r["ask_closing"]):
+        assert part in user_turn
+    assert rec["messages"][2]["reasoning_content"] == r["reasoning"]
+    assert rec["metadata"]["supervise"] == "all"
+    assert rec["metadata"]["reply_quality"] == "flawed"
+    assert rec["metadata"]["first_turn_source"] == "generated_best_of_3"
+    # The rater's account of the lapse is scaffolding and must never train.
+    assert all(r["change_summary"] not in m["content"] for m in rec["messages"])
+
+
+def test_pc_export_user_turn_is_exactly_what_the_critique_stages_saw() -> None:
+    """The framed transcript exists in three copies (draft prompt, revise context,
+    export); this is the sync check that keeps the model critiquing exactly the text
+    the trained record carries."""
+    r = _pc_record()
+    exported = op_chat_export(_stage(PC_CFG, "export_sft"), PC_CFG).fn(
+        None, [r], None)[0]["messages"][1]["content"]
+    draft = tagged_request(_stage(PC_CFG, "draft_critique"), r, _Ctx())[0][1]["content"]
+    assert draft.startswith(exported + "\n\n---\n")
+    revise = tagged_request(_stage(PC_CFG, "revise_critique"), r, _Ctx())[0][1]["content"]
+    assert exported in revise
+
+
 # --- pricing -------------------------------------------------------------------------
 
 
@@ -402,19 +574,21 @@ def test_gates_shrink_what_the_expensive_stages_are_priced_over() -> None:
 
 
 def test_checks_read_the_field_names_the_config_declares() -> None:
-    F = _fields(PR_CFG)
-    assert F["group"] == "reply_quality" and F["id"] == "scenario_id"
-    assert F["evaluated"] == "first_turn"
+    for cfg in (PR_CFG, PC_CFG):
+        F = _fields(cfg)
+        assert F["group"] == "reply_quality" and F["id"] == "scenario_id"
+        assert F["evaluated"] == "first_turn"
     # A celled config gets the historical defaults with no config changes at all.
-    assert _fields(PC_CFG)["group"] == "cell"
+    assert _fields(ARCHIVE_CFG)["group"] == "cell"
     with pytest.raises(AssertionError, match="unknown key"):
         _fields({"checks": {"fields": {"nope": "x"}}})
 
 
-def test_checks_stages_must_name_real_stages() -> None:
-    named = PR_CFG["checks"]["stages"]
+@pytest.mark.parametrize("cfg", [PR_CFG, PC_CFG], ids=["pr", "pc"])
+def test_checks_stages_must_name_real_stages(cfg: dict) -> None:
+    named = cfg["checks"]["stages"]
     assert set(named) == {"plan", "drafted", "generated", "sft"}
-    assert set(named.values()) <= {s["name"] for s in PR_CFG["stages"]}
+    assert set(named.values()) <= {s["name"] for s in cfg["stages"]}
 
 
 def test_coverage_measures_generation_not_the_gates() -> None:

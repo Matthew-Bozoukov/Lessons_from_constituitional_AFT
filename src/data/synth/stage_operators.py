@@ -1369,11 +1369,11 @@ OPERATORS = {
 # The five cell kinds below are NOT generic: a cell is a document type expressed in
 # Python -- a registry entry knowing how its prompts are assembled and how its record is
 # exported -- which is precisely what a config's `stages:` list is supposed to express
-# instead. They stay registered because the archived configs and
-# `peer_critique.yaml` are written against them, and an archived config
-# that cannot run is not a reproducible record of a published corpus. Nothing new should
-# use them; build a document type out of the generic kinds above, as
-# `post_action_retrospection.yaml` does.
+# instead. They stay registered because the archived configs are written against them,
+# and an archived config that cannot run is not a reproducible record of a published
+# corpus. Nothing live uses them (peer_critique.yaml, the last holdout, was rebuilt on
+# the generic kinds on 2026-08-14); build a document type out of the generic kinds
+# above, as `post_action_retrospection.yaml` does.
 OPERATORS.update({
     "plan_cells": op_plan_cells,
     "perturb_pairs": op_perturb_pairs,
