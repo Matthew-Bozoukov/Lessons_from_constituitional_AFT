@@ -140,6 +140,34 @@ def push_run_dir(out_dir: Path, repo_id: str, fields: dict, private: bool = True
     return f"https://huggingface.co/{prefix}{repo_id}"
 
 
+def push_branch(folder: Path, repo_id: str, branch: str, repo_type: str = "model",
+                ignore: tuple[str, ...] = ()) -> str:
+    """Upload a folder to a named branch of an HF repo, creating repo/branch as needed.
+
+    The research-release convention (Pythia, OLMo): a training trajectory lives in the
+    git dimension of ONE repo — `main` is the final artifact, each `step<N>` branch an
+    addressable snapshot, loadable via `revision=`. No card here: branches inherit the
+    repo identity; the card ships with the `main` push (push_run_dir).
+
+    Args:
+        folder: Directory whose contents become the branch tip.
+        repo_id: The artifact's repo (e.g. the adapter's hf_repo).
+        branch: Branch name, e.g. "step800".
+        repo_type: "model" (default) or "dataset".
+        ignore: upload_folder ignore_patterns (e.g. optimizer state).
+
+    Returns:
+        The branch URL.
+    """
+    api = hf_api()
+    api.create_repo(repo_id, repo_type=repo_type, private=True, exist_ok=True)
+    api.create_branch(repo_id, branch=branch, repo_type=repo_type, exist_ok=True)
+    api.upload_folder(folder_path=str(folder), repo_id=repo_id, repo_type=repo_type,
+                      revision=branch, ignore_patterns=list(ignore))
+    prefix = "datasets/" if repo_type == "dataset" else ""
+    return f"https://huggingface.co/{prefix}{repo_id}/tree/{branch}"
+
+
 def push_files(paths: list[Path], repo_id: str, fields: dict, private: bool = True) -> str:
     """Upload named files (with their card) to an HF dataset repo, keeping basenames.
 

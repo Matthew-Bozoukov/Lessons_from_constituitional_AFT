@@ -17,6 +17,7 @@ from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
+    TrainerCallback,
 )
 from trl import SFTConfig, SFTTrainer
 
@@ -167,6 +168,38 @@ class DynamicBatchTrainer(SFTTrainer):
         return total
 
 
+class CheckpointBranchPush(TrainerCallback):
+    """Push each saved checkpoint to the adapter repo as a `step<N>` branch.
+
+    The research-release convention (Pythia, OLMo): the training trajectory lives in
+    the git dimension of ONE repo — `main` is the final adapter, each branch an
+    evaluable snapshot loadable via `revision=`. Optimizer/scheduler/rng state stays
+    local: branches are for evaluating steps, not resuming (durable resume is TRL's
+    hub_strategy, a separate mechanism).
+    """
+
+    def __init__(self, hf_repo: str, out_dir: Path, training_meta: dict):
+        self.hf_repo = hf_repo
+        self.out_dir = out_dir
+        self.training_meta = training_meta
+
+    def on_save(self, args, state, control, **kwargs):  # noqa: ARG002
+        if not state.is_world_process_zero:
+            return
+        ckpt = self.out_dir / f"checkpoint-{state.global_step}"
+        if not ckpt.is_dir():
+            return
+        from src.huggingface import push_branch
+
+        # The eval framework infers serve-time thinking mode from this stamp, so every
+        # branch must carry it to be a servable eval target like the final adapter.
+        (ckpt / "training_meta.json").write_text(json.dumps(
+            {**self.training_meta, "step": state.global_step}, indent=2))
+        url = push_branch(ckpt, self.hf_repo, f"step{state.global_step}",
+                          ignore=("optimizer.pt", "scheduler.pt", "rng_state*.pth"))
+        print(f">>> checkpoint branch pushed: {url}")
+
+
 def _git_sha() -> str:
     """Return the current git SHA if available, else 'nogit'."""
     import subprocess
@@ -215,6 +248,13 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     if bool(cfg.train.get("push_to_hub", False)):
         assert cfg.train.get("hub_model_id") or hf_repo, (
             "checkpoint push (train.push_to_hub) needs train.hub_model_id or hf_repo")
+    # Research-trajectory branches (Pythia-style): each saved checkpoint pushed to
+    # hf_repo as a `step<N>` branch, so any step is an evaluable `revision=` target.
+    ckpt_branches = bool(cfg.train.get("checkpoint_branches", False)) and not smoke
+    if ckpt_branches:
+        assert hf_repo and push, (
+            "train.checkpoint_branches pushes each saved checkpoint to hf_repo as a "
+            "step<N> branch — it needs hf_repo and push=true (credentials present)")
     torch.manual_seed(int(cfg.seed))
 
     # Under `torchrun` every rank runs this file; these are 1/0 for a plain single-GPU run.
@@ -261,6 +301,18 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         empty_think=(model_profile(str(cfg.model)).empty_think
                      if "text" in ds.column_names else None))
     print(f">>> thinking (declared, validated on all {len(ds)} rows): {thinking}")
+
+    # One provenance stamp for every artifact this run publishes: the final adapter
+    # carries it verbatim; each checkpoint branch adds its `step`. The eval framework
+    # infers serve-time thinking mode from it (CLAUDE.md, "The eval framework").
+    training_meta = {
+        "thinking": thinking,
+        "train_config": config,
+        "base_model": str(cfg.model),
+        "dataset": dataset_ref,
+        "git_sha": _git_sha(),
+        "timestamp": ts,
+    }
 
     if smoke:
         ds = ds.select(range(min(8, len(ds))))
@@ -494,7 +546,8 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         # loses only the steps since the last one and the final adapter is already on the Hub
         # when training ends -- the pod can be torn down immediately. Opt-in via
         # train.push_to_hub; the repo defaults to the adapter's own hf_repo, private like
-        # every other push in this repo.
+        # every other push in this repo. (Evaluable per-step `step<N>` branches are the
+        # separate train.checkpoint_branches mechanism — CheckpointBranchPush above.)
         push_to_hub=bool(cfg.train.get("push_to_hub", False)),
         hub_model_id=cfg.train.get("hub_model_id") or hf_repo,
         hub_strategy=str(cfg.train.get("hub_strategy", "every_save")),
@@ -544,6 +597,11 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
             data_collator=lambda f: _collate_padded(f, tokenizer.pad_token_id),
         )
 
+    if ckpt_branches:
+        trainer.add_callback(CheckpointBranchPush(hf_repo, out_dir, training_meta))
+        if is_main:
+            print(f">>> checkpoint branches ON: every save pushes step<N> to {hf_repo}")
+
     # Resume from the newest checkpoint on the volume when one is there, so a restart
     # continues rather than silently retraining from scratch at full cost.
     resume_ckpt = None
@@ -568,17 +626,9 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         return
     tokenizer.save_pretrained(str(adapter_dir))
 
-    # The eval framework infers serve-time thinking mode from this stamp; an adapter
-    # without it is a hard error at eval time (CLAUDE.md, "The eval framework").
-    # `dataset` pins the HF repo + file + resolved revision the run trained on.
-    (adapter_dir / "training_meta.json").write_text(json.dumps({
-        "thinking": thinking,
-        "train_config": config,
-        "base_model": str(cfg.model),
-        "dataset": dataset_ref,
-        "git_sha": _git_sha(),
-        "timestamp": ts,
-    }, indent=2))
+    # The stamp built above (thinking + dataset {repo, file, revision} + provenance);
+    # an adapter without it is a hard error at eval time (CLAUDE.md, "The eval framework").
+    (adapter_dir / "training_meta.json").write_text(json.dumps(training_meta, indent=2))
 
     if push:
         from src.huggingface import push_run_dir

@@ -39,6 +39,16 @@ reasoning trace (the gotcha-2 collapse) — that path no longer exists. Conseque
 `ModelProfile`-verified families can train at all now; the v1 Qwen3-32B full-sequence
 baseline is reproduced from git history, not from its (still-present) config.
 
+**Also (checkpoint branches):** `train.checkpoint_branches: true` pushes every saved
+checkpoint to `hf_repo` as a `step<N>` branch (Pythia/OLMo-style: the trajectory lives
+in the git dimension of one repo, `main` = final adapter, any step loadable via
+`revision=`). Each branch carries `training_meta.json` (+ its step), so any step is a
+servable eval target; optimizer/scheduler/rng state stays local — durable resume
+remains TRL's `hub_strategy`. Unlike Pythia/OLMo (post-hoc conversion + upload from
+native trainer formats), the push happens live from a `TrainerCallback` — our
+checkpoints are already HF-format and adapter-sized, and a throwaway pod keeps its
+trajectory even if destroyed mid-run. Off by default; requires `hf_repo` + push.
+
 **Result:** an adapter's metadata now names the exact dataset repo, file and revision it
 was trained from, and a finished training run cannot fail to publish its adapter.
 
