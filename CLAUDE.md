@@ -278,9 +278,10 @@ Per-row `supervise` survives into `mixture.jsonl`.
 
 ## The training framework (the contract train follows)
 
-Training data comes only from HF — `data_repo`/`data_file`, pinned to the resolved
-sha in `training_meta.json`; the run pushes exactly one artifact back: the final
-adapter, to `hf_repo`.
+Training data comes only from HF — `data_repo`/`data_file`, resolved to an exact
+sha; checkpoints stay local, and the run pushes one artifact back to `hf_repo`:
+the final adapter, carrying `training_meta.json` (thinking stamp + the pinned
+dataset `{repo, file, revision}`).
 
 ## The eval framework (the contract every eval follows)
 
