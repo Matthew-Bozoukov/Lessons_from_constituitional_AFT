@@ -214,3 +214,18 @@ def test_estimate_prices_real_configs_and_ablation_out():
     assert "rewrite" not in {r["stage"] for r in ablated_mem["per_stage"]}
     assert ablated_mem["total_usd"] == 140.45, \
         "--ablate final prices back to the pre-rewrite pipeline"
+
+
+def test_provider_routing_is_run_level_only():
+    from src.data.synth.stage_runtime import model_cfg
+
+    pin = {"order": ["anthropic"], "allow_fallbacks": False}
+    cfg = {"defaults": {"provider": pin},
+           "models": {"draft": {"model": "anthropic/claude-haiku-4.5"}}}
+    assert model_cfg(cfg, "draft")["extra_body"]["provider"] == pin
+
+    # A stage block must not route the same model to a different provider than the
+    # rest of the run — that would make the corpus's serving stack stage-dependent.
+    cfg["models"]["draft"]["provider"] = {"order": ["amazon-bedrock"]}
+    with pytest.raises(ValueError, match="run-level only"):
+        model_cfg(cfg, "draft")

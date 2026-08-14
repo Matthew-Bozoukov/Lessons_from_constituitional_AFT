@@ -91,8 +91,10 @@ those refusals before the pin (top-up planned from checkpoints).
 `openai/*` request now defaults to `provider: {order: [<vendor>], allow_fallbacks: false}`
 at the client layer, so every judge, red-teamer and generation call in the repo gets the
 vendor's own endpoint unless a caller explicitly overrides `extra_body["provider"]`.
-Synth model blocks can also set `provider:` per stage/defaults (`model_cfg` passthrough,
-first used in `configs/data/synth/difficult_advice.yaml`). First-party is also the only
+Synth configs can also set `provider:` under `defaults:` (`model_cfg` passthrough, first
+used in `configs/data/synth/difficult_advice.yaml`) — run-level only; a per-stage
+`provider:` on a model block is a hard error (2026-08-14), so one model id cannot mean
+different serving stacks in different stages of the same corpus. First-party is also the only
 route whose `<<<cache>>>` breakpoints reliably bill as cache hits. Pinned by
 `tests/test_openrouter.py`.
 
