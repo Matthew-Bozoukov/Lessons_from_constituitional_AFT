@@ -36,6 +36,477 @@ was trained from, and a finished training run cannot fail to publish its adapter
 blocks to the mixture configs that lack one, so every future mixture has a repo for
 `data_repo` to name.
 
+## 2026-08-14 — difficult-advice v2 corpus generated: 1,952 records, diversity verified in-run
+
+**Hypothesis:** the v2 recipe (PR #46: enforced scenario diversity, dedupe gate, voice
+lints on both reasoning stages, constitution prompt caching, pattern scan) fixes the four
+measured v1 defects at generation time rather than discovering them afterwards.
+
+**Method:** full run of `configs/data/synth/difficult_advice.yaml` (2,000 planned
+scenarios, 9 principles, `total_scenarios` sizing), resumed across four attempts —
+one harness kill and two provider-filter failures (see next entry) — at no rework cost
+via stage snapshots + per-item checkpoints. ~$164 metered across attempts (~$122 in the
+final process); ~2h generation wall clock.
+
+**Result:** 1,968 records (after the $2.15 top-up pass; 1,952 initial) in
+`output/synthdoc_v2/20260814_112121`, mirrored to HF
+`LASR-Callum/2026-08-13-difficult-advice-v2` with the required dataset card; the two
+stale pilot snapshots were removed from the mirror. Diversity, the headline v1 defect
+(top-10 domains = 46.9%), is fixed and *measured in-run*: 0 duplicate scenarios at full
+embedding coverage (0.86 cosine), top 8-gram share 1.3%/trait, distinct-2 0.64. Corpus
+checks PASS (0 critical, 1 warn: the pattern scan's classifier for its own top finding —
+a "refuse-mechanism-not-goal" rhetorical shape reported at 99.7% broad presence — failed
+sanity recall, so that number is unreliable; the shape is also substantially the genre).
+The 32-record shortfall vs plan, measured precisely by the top-up: **18 prompts are
+refused by Anthropic first-party too** — so most of the pre-pin provider-refused slice
+was Claude's own refusal floor (~0.9% of this distribution), not wrapper-filter
+divergence, which tempers (but does not overturn) the previous entry's routing finding —
+plus 14 records that failed the voice lints or rewrite tag format across two rounds of
+fresh sampling.
+
+**Next steps:** mix → train → eval against the v1 arms; run PR's `--smoke` +
+`synth check` (still not yet generated).
+
+## 2026-08-14 — OpenRouter's provider routing silently filters difficult-advice data; all vendor models now pinned first-party
+
+**Hypothesis (implicit until it broke):** "anthropic/claude-sonnet-5 via OpenRouter" is one
+model. It is not — it is a family of serving stacks, and they filter differently.
+
+**Method/finding:** the first full difficult-advice v2 run (2,000 scenarios,
+`output/synthdoc_v2/20260814_112121`) failed its `revise_prompts` stage at the 2%
+systematic-failure gate: 2.6% of calls returned `finish_reason=content_filter` — every one
+from **Amazon Bedrock**, whose wrapper filter refuses ethically-loaded prompts Anthropic's
+own endpoint serves. Excluding Bedrock moved the refusals to **Google Vertex** (same
+prompts). The refused slice is not random: it is the most ethically-loaded tail — exactly
+the examples this corpus exists to train on, so silent third-party routing is a
+data-composition bias, not just a reliability nuisance. 20 of 2,000 records were lost to
+those refusals before the pin (top-up planned from checkpoints).
+
+**Fix:** `PROVIDER_PINS` in `src/endpoints/openrouter.py` — every `anthropic/*` and
+`openai/*` request now defaults to `provider: {order: [<vendor>], allow_fallbacks: false}`
+at the client layer, so every judge, red-teamer and generation call in the repo gets the
+vendor's own endpoint unless a caller explicitly overrides `extra_body["provider"]`.
+Synth model blocks can also set `provider:` per stage/defaults (`model_cfg` passthrough,
+first used in `configs/data/synth/difficult_advice.yaml`). First-party is also the only
+route whose `<<<cache>>>` breakpoints reliably bill as cache hits. Pinned by
+`tests/test_openrouter.py`.
+
+**Known gaps:** API comparison targets (`openrouter:<model>` eval targets) and the
+vendored agentic-misalignment harness use their own clients and are not pinned.
+
+**Next steps:** finish the v2 run under the pin; top up the 20 refused records; consider
+patching the vendored harness's judge calls the same way.
+
+## 2026-08-13 — mem-self de-celled: the document type is now the config (no corpus yet)
+
+**Hypothesis:** the `cells` abstraction had stopped earning its place, and while it stayed
+the engine could not honestly claim to be document-type-agnostic. A cell was a `CellSpec`
+holding a message-builder, an assembler, a verdict vocabulary and a supervision mode —
+i.e. a document type written in Python. That is exactly what a config's `stages:` list is
+supposed to express, and as long as cells existed, adding an arm meant editing
+`src/data/synth/`. It was also carrying two unrelated jobs at once in the self arm:
+m1-vs-m2 was an *outcome label* (did the reply hold up), while m1/m2-vs-m6/m7 was a real
+*document shape* difference. One word, two meanings.
+
+**Method:** `model_eval_model_self_natural.yaml` rebuilt on generic operators only — 14
+stages, no `plan_cells`/`generate_cells`/`revise_cells`/`assemble_cells`, no `cells:` and
+no `flaws:` block. One scenario now yields one document, so `scenario_id` is the id and
+`total_scenarios` is the corpus size. What replaced each piece of machinery:
+
+- **Four stages folded into one.** The two gates were always one decision (keep a
+  flawed-arm record iff a fault was confirmed, a good-arm record iff none was), so
+  `filter` gained a contract per arm; then, since the deciding field is produced by the
+  stage immediately before, the contract became a `keep:` block on that stage and the
+  gate stopped being a stage at all. The cost is real and is why it was raised before
+  doing it: dropped records no longer get a snapshot, and only `cache.save` mirrors to
+  HF, so the evidence for a drop would have been lost. It is preserved by recording the
+  dropped ids and their deciding value into the run manifest, which is mirrored. Listing the
+  faults and adjudicating them became one call, and that call was then restructured as a
+  REVISION: `revise_first_turn` names three faults, writes the better reply that acts on
+  them, and only then says which was real. The revision is the commitment that makes the
+  verdict earned -- a criticism you cannot write a fix for tends not to survive being
+  acted on -- and `improved_reply` is kept, untrained, as the field to read when the
+  gate's drop rate looks wrong. The merge still has a real cost, flagged in the config:
+  the two-call version had a second reader with no stake in the criticisms.
+  `flaw_id_clear_min` is the number that will show if it mattered.
+- **`assign` (new operator)** — the arms are a *label*, `reply_quality: {good: 0.5,
+  flawed: 0.5}`, hashed from the scenario id so a resume, a re-run and the estimator all
+  agree. It also stamps constants (`supervise: final`). The label rides into the exported
+  metadata, so the corpus is sliceable by arm without reconstructing anything. It is
+  available both as its own free stage and as an `assign:` block on a paid stage; mem-self
+  folds it into `revise_prompts`, the stage whose prompt variant the arm selects, because
+  a whole snapshot to stamp two labels is one nobody reads.
+- **`conversation:` on `llm_tagged`** — the enabling change. The reply under evaluation has
+  to sit in a genuine assistant turn (attribution structural, not asserted in prose), and
+  a two-message system/user prompt cannot express that. This is the single reason the self
+  document type needed Python at all.
+- **`normalize:` + `lint.allowed`** — a one-word verdict is canonicalised, then constrained
+  to `held`/`revised` with reject-and-retry. That was `_norm_verdict` in cells.py.
+- **`chat_export`** — the five-message record with `supervise: final`, replacing the cell's
+  assembler.
+
+`m6_user_shortcut` / `m7_user_sound` were **deleted**, not archived: no corpus was ever
+generated from them, so there was no record to preserve. `cells.py` moved to
+`src/data/synth/archive/cells.py` and absorbed its five operators; `operators.py` merges
+them back into the registry so the three archived configs and `model_eval_model_other_natural.yaml`
+run unchanged, while the generic library keeps no knowledge of them. `operators.py` now
+contains zero references to any document type.
+
+**`checks.py` was generalised rather than dropped.** Cells were only its *grouping key*.
+Of its twelve checks, four are per-example LLM judges that a revision prompt could in
+principle absorb; the other eight cannot be computed from one document at all — template
+collapse, structural diversity, the corpus-cluster pass, the surface-shortcut classifier,
+verdict distribution, gate yield, coverage, and the blindness leak-proof. Two config blocks
+now name what the operator kinds used to imply: `checks.stages` (which snapshot plays which
+role) and `checks.fields` (which record field is the arm, the id, the evaluated text, the
+verdict). Both default to the cell vocabulary, so celled configs need neither.
+
+Also added, and the reason the corpus does not need heavy over-planning: **`revise_prompts`**
+sharpens each exchange against the constitution *conditioned on its arm* — reachable for
+the good half, quietly costly for the fast answer in the flawed half. It shapes the
+situation and never the reply; the assistant never sees the instruction and still answers
+unaided, so the fault stays organic and `verify_fault` still has to confirm it.
+
+**Result:** code and configs only — **no corpus generated, nothing trained**. 644 offline
+tests pass. A stubbed-client dry run (no network, 90 scenarios) exercises all 10 stages and
+the check suite: gates kept 83% of the flawed arm and 54% of the good arm — against the
+config's 80%/55% priors — `check_gate_yield` reported both, `check_blindness` passed with
+the prompt-identity half correctly skipped (no cell builders to rebuild prompts from), and
+the exported records came out as five messages with `supervise: final` and the verifier's
+account of the fault absent from every message. It found three real bugs: a stage that gates on its own
+output was being priced over the survivors rather than over what it was handed; the
+estimator was treating the arm mix as fixed across sequential gates (it is not — the first gate changes
+it, and the second was mispriced by 3%), and stage previews fell back to a `record_id`
+that de-celled records do not have. `--estimate`: $371 for 2,600 planned scenarios, ~1,755
+expected to survive ($0.20/doc).
+
+**Next steps:** unchanged from the entry below — `--smoke` it and read the documents, with
+the same first question (is the fault `verify_fault` confirms a real one, or has the
+verifier become a second reviewer that ratifies what it is shown?), now with a second one
+alongside it: does the steered flawed prompt still read as an ordinary request, or has
+`revise_prompts` quietly reinvented the difficult-advice set-piece? Then re-size from the
+printed gate yields and run `synth check`.
+
+## 2026-08-13 — `_self_natural` reworked: organic faults, found not planted (no corpus yet)
+
+**Supersedes the self half of the entry below.** That recipe was never generated, so it
+was reworked in place rather than kept as a record; `_other_natural` is unchanged.
+
+The three source-run configs it replaces moved to `configs/data/synth/archive/` in the
+same change: `model_eval_model_self.yaml` and `_other.yaml` are frozen records of the
+published 2026-08-06/07 corpora (a dataset card's `provenance` names a config path, so
+deleting one orphans the corpus), and the five-cell `model_eval_model.yaml` scaffold goes
+with them as superseded rather than as a record — it was never run. All three still build
+and price; the folder's README states the rules (never edit, never copy forward) and what
+replaced each.
+
+**Stage names across all four live configs were also made explicit** (`traits` →
+`chunk_constitution`, `refined_prompts` → `revise_prompts`, `final` → `revise_responses` /
+`revise_reflection` / `revise_critique`, `sft` → `export_sft`, and the mem-self stages to
+`draft_first_turn` / `list_faults` / `verify_fault` / `keep_real_faults` /
+`keep_sound_replies`). A stage name IS its snapshot filename, so this has a real cost,
+recorded in each affected config's header: run dirs from before today no longer cache-hit
+and must have their files renamed to resume. Published HF mirrors keep the ORIGINAL names
+— a mirror is a record of what ran — so `op_load_source_run` still defaults to
+`stage_6_final.jsonl` and `_other_natural` now pins `source.snapshot` explicitly. The
+archived configs were not renamed, for the same reason. `synth topup` no longer hardcodes
+the difficult-advice stage names; it takes `--draft_stage` / `--revise_stage`, defaulting
+to the new ones. One thing was lost: `--ablate final` was a single idiom that worked
+across every arm, and the ablation handle is now per-config.
+
+**Hypothesis:** two things were still wrong with the natural-turn self arm, both about
+where the *evaluated* material comes from. (a) Its prompts were still difficult-advice
+scenarios — a sympathetic protagonist facing one tempting norm violation — so the corpus
+inherited that recipe's scenario shape even after the replies stopped being inherited.
+Reflection ought to be trained on the ordinary requests where a principle is quietly live,
+not on ethical set-pieces. (b) Best-of-3 with an autorater picking the weakest is a
+*selection* over three replies that were all trying to be good; the loser is often the
+blandest rather than the genuinely flawed one — the failure mode the previous entry's next
+steps flagged as the way that design could quietly fail. Callum's point is that faults
+should be organic: a reply is worth reflecting on because it was written without the
+constitution, not because something was planted in it or because it lost a contest.
+
+**Method:** `configs/data/synth/model_eval_model_self_natural.yaml` rebuilt end to end,
+with no source run at all. Fourteen stages: `scenarios` + `messages` brainstorm ordinary
+requests (explicitly *not* dilemmas, and explicitly no tempting shortcut) → `plan_cells` →
+`first_turn` writes ONE reply on Haiku with no constitution, no target principle and no
+style guidance in its prompt → `self_critique` forces THREE distinct faults → `verify_lapse`
+reads all three and names which, if any, actually holds up → `lapse_gate` / `sound_gate`
+keep only the records whose label the verifier supports → `followup` → `generate_cells` →
+`final` (rewrite, now with a `lint` on its own output) → `assemble_cells`.
+
+The three-then-verify shape is the whole point of Option A. Asked what is wrong with its
+own reply a model says it was fine; asking for one criticism gets a polite one; asking for
+three exhausts the polite answers and reaches a real one. The second reader then throws
+out the two that do not hold up, which is what stops the corpus reflecting on invented
+faults. Both gates sit *before* the two expensive stages, so a dropped record costs three
+cheap calls — that is what makes over-planning affordable, and cell counts are now planned
+counts with the yield measured rather than assumed.
+
+Engine additions, all generic: a free `filter` operator (`keep:` contract, `when:` scope,
+`max_drop_pct` fail-fast, not enforced below 20 in-scope records); `also:` constant
+provenance stamping on `llm_tagged`; `lint` support on `revise_cells`, because that stage
+writes the turn that trains and is where the scaffold most easily leaves fingerprints on
+it; `plan_cells` now accepts a source with no gold reply and refuses gold-reading cells up
+front; the estimator prices pre-`plan_cells` stages over the scenario pool and post-gate
+stages over survivors (`expected_keep`); `check_coverage` now measures what *entered*
+generation, with `check_gate_yield` reporting the attrition separately — otherwise a gate
+doing its job reads as a generation failure.
+
+Also new: **`check_corpus_clusters`**, the GDM-style scan → cluster → autorate pass. Per-
+example filtering cannot see this class of problem, and neither can `check_template_collapse`
+— three paraphrases of one move share no literal 8-gram. Each named field is embedded with
+the existing hashed-character-n-gram featuriser, clustered with numpy spherical k-means,
+and reported with cluster shares and distinctive 5-grams; an autorater then reads the
+largest clusters and says whether they share a reusable *shape* or merely a subject. Only
+the former gates. `_self_natural` clusters `followup`, the trained `reasoning`, and
+`change_summary` — the last because an autorater naming shortfalls drifts toward the same
+two or three, and a corpus of samey faults teaches the model to hunt those faults.
+
+**Result:** code and configs only — **no corpus generated, nothing trained**. 639 offline
+tests pass. A stubbed-client dry run (no network, 82 planned documents) exercises all
+fourteen stages: gates dropped 20% of the flawed slice and 70% of the good slice as the
+canned verdicts dictated, and the assembled records came out with the intended shapes —
+5 turns and `supervise: final` for m1/m2, 3 turns and `supervise: all` for m6/m7, with
+`first_turn_source=generated_no_constitution`, `followup_source=scenario_specific`, and
+`check_blindness` clean. It found two real bugs (an `llm_tagged` preview assuming a
+top-level `save`, and the coverage baseline above). `--estimate` on assumed priors: $348
+for 3,620 planned documents, ~1,900 expected to survive ($0.18/doc).
+
+**Next steps:** `--smoke` it (a few dollars, local only) and read the documents by hand,
+with one question ahead of all others — is the fault `verify_lapse` confirms a real one, or
+has the verifier simply become a second reviewer that ratifies whatever it is shown? Then
+re-size the cells from the printed gate yields, re-price with `--estimate --measured`, and
+run `synth check` (the cluster pass in particular, which has never run on real data) before
+committing to the full corpus.
+
+## 2026-08-13 — Model-eval-model, natural-turn recipe (no corpus yet)
+
+**Hypothesis:** the model-eval-model arms underperform difficult advice for *structural*
+reasons, not because self-evaluation is a bad format. Four candidates, all from the
+supervisor meeting notes: (a) the turn under evaluation is the difficult-advice run's own
+reply, so every document also teaches that recipe's response shape — as untrained context,
+on every example; (b) the flawed twin is a rewrite of a good reply, so it carries a
+perturbation's fingerprints rather than a real lapse; (c) one fixed reflection prompt
+("what do you think about what you just said?") across thousands of documents is a
+structural artifact the model can key the whole behaviour on; (d) that prompt does the
+analytical work — naming the violated trait, asking for a revision — that ought to appear
+in the assistant's turn, which is the only turn that trains.
+
+**Method:** two new configs, `configs/data/synth/model_eval_model_{self,other}_natural.yaml`
+(the published `_self`/`_other` configs are untouched — they are the record of the
+2026-08-06/07 corpora). Same source run, constitution, cell counts and explicitness mix;
+four changes:
+1. `candidates` writes three fresh replies to each scenario under a plain-assistant prompt
+   (no constitution, no difficult-advice scaffolding).
+2. `rate_candidates` — an autorater — picks the strongest for the good cell and the one
+   that most falls short for the flawed cell. `flaws: {source: rater}` records that no
+   (type, severity) was planted; `pick_field` resolves the rater's letter into the
+   candidate text deterministically, so a rater cannot paraphrase what it picked.
+3. `followup` writes a short question about *this* exchange, with a `lint` that rejects a
+   question naming a value, diagnosing the lapse, or asking for a rewrite. `ask_frame` is
+   the other arm's equivalent for the transcript framing.
+4. `m6_user_shortcut` / `m7_user_sound`: a 20% slice framed as the person's own account of
+   what *they* did — reflection on an action in the world, the property difficult advice
+   has and pure self-reflection loses.
+
+Engine additions are generic: a `when:` filter scoping any per-record stage to part of the
+corpus, a free `pick_field` operator, `max_chars` in `lint`, and `check_structural_diversity`
+— a corpus-level gate on distinct user turns, length CV and top opening-5-gram share, run
+over the assembled records. `first_turn_source` and `followup_source` now ride in every
+record's metadata, so the untrained first turn is a variable an analysis can slice on.
+
+Separately, `_self_natural` gains the `final` constitution-rewrite stage, which the old
+`_self` config lacks because its corpus predates the stage. That absence made the self arm
+differ from *both* the other arm and difficult advice by an extra step — the one Teaching
+Claude Why calls critical — so self-vs-other was never a clean single-variable comparison.
+It is ablatable (`--ablate final`) for an arm matched to the old recipe.
+
+**Result:** code and configs only — **no corpus generated, nothing trained**. 621 offline
+tests pass. `--estimate` on assumed priors: $369 for the self arm (2,100 docs, $0.18/doc;
+$208 with `--ablate final`, vs $143 for the old recipe) and $394 for the other arm ($285
+ablated, vs $221). The increase is three extra calls per document plus the rewrite, and is
+the price of not inheriting the source run's prose.
+
+**Next steps:** `--smoke` each config (10 and 8 docs, local only, a few dollars), read the
+documents by hand — specifically whether the "weakest of three" candidate is a genuine
+lapse or merely the blandest of three good replies, which is the one way this design can
+quietly fail — then `synth check` and re-price with `--estimate --measured`. Only then the
+full runs. The old and new self corpora are size-matched and share a source run, so they
+are directly comparable as a single-variable ablation of *turn provenance*.
+
+## 2026-08-13 — Cut the surface tier from 7 checks to 2
+
+**Motivation:** the surface tier had grown to seven checks that ran on every corpus, and
+reviewing them showed they were not seven independent signals. Four were variations on one
+idea — word-overlap repetition, thresholded per pair (`near_duplicates`), anchored at
+position 0 (`opening_collapse`), and re-expressed in character n-grams
+(`feature_diversity`) — and half of `feature_diversity` was already documented as dead
+weight, since its mean-cosine has a 0.86 floor on unrelated same-genre prose.
+
+**Method:** removed `near_duplicates`, `opening_collapse`, `feature_diversity`,
+`length_profile` and `field_balance` outright — functions, registry entries, config
+entries across all five dataset configs, and tests. Kept `ngram_diversity` and
+`embedding_dedup`, which fail on opposite things:
+
+- `ngram_diversity` catches diffuse templating — many documents reaching for the same
+  stock phrase while no two are near-copies.
+- `embedding_dedup` catches copies. An exact lexical copy is also a semantic one, so it
+  subsumes shingle-based duplicate detection, and it is the only check that survives a
+  reword or a reordering.
+
+`label_leakage` stays registered but appears in no config; it needs a `label` role the
+current document types do not export. Also added `embedding_dedup` to `self_reflection`,
+which had never had it and would otherwise have been left with no duplicate detection at
+all.
+
+**Result:** every shipped config now runs two surface checks. Machinery tests that used
+`near_duplicates` as an incidental vehicle were re-pointed, and their forced-failure knob
+(`dup_share_max`) swapped for `top_8gram_share_max`, which the surviving check actually
+reads — the old param would have been silently ignored and the tests would have passed
+without testing anything. 668 tests pass.
+
+**Caveat worth keeping:** this grouping was reasoned from what each check computes, not
+measured. Nobody ran a degradation ladder to see which checks fire independently at which
+corruption level. If a repetition failure ever slips through, that measurement is the
+thing to do before adding a check back — all five are recoverable from git.
+
+
+## 2026-08-13 — GDM's three-pass pattern detector, implemented properly
+
+**Hypothesis:** every other corpus check tests a property somebody thought of in advance.
+GDM's scan→cluster→autorate pipeline asks the corpus what *it* repeats, which is the only
+way to find the tic nobody named. A `pattern_scan` property already existed but implemented
+roughly a third of it, and one of the missing pieces made the rest structurally unable to
+work.
+
+**Method:** rewrote it to the full three passes, all wording in config rubrics so the same
+property runs over any data style unchanged (the rubric block is now byte-identical in
+difficult_advice, self_reflection and model_eval_model).
+
+- **Scan** — structured JSON out (`name`, `category` ∈ structural/rhetorical/behavioural,
+  `description`, verbatim `examples`, `count`) instead of a flat string list; 30 batches ×
+  25 documents, shuffled first so a batch is not a run of consecutive generation ids.
+- **Cluster** — *the fix that mattered.* The old code voted on exact normalised strings, so
+  "opens by validating the user's feelings" and "begins with an empathy sentence" counted as
+  two patterns found once each and `min_scans` discarded **both** — silently, and precisely
+  on the corpus's most widespread tic, which is the one most likely to be worded several
+  ways. Now candidates are merged by embedding cosine over their descriptions (reusing the
+  `embeddings.py` added earlier the same day) and the vote runs on merged clusters.
+- **Autorate** — one classifier per pattern built from its name/description/positive
+  snippets, with the *other* patterns' snippets as negatives; STRICT (unambiguously present)
+  and BROAD (loosely present) reported separately; documents batched 8 per call with
+  per-document verdicts.
+- **Sanity check** — each classifier is first run against the verbatim snippets the scan
+  cited as instances of its own pattern. One that answers NO to its own evidence is marked
+  `reliable: false` and flagged. This is automatable where GDM's "hand-eyeball 20
+  transcripts" is not, and catches the same failure: an LLM-written classifier that drifted
+  and now reports a confident number about nothing.
+
+**Result — two findings worth recording, both from measuring rather than assuming.**
+
+1. **The merge threshold has no clean value.** Measured on a proxy (15 hand-written
+   descriptions of 5 patterns, three wordings each): same-pattern pairs run min 0.226 /
+   mean 0.449, different-pattern pairs min 0.009 / mean 0.208 / **max 0.492**. The classes
+   overlap. At 0.35 — the best trade-off — 8/90 unrelated pairs merge wrongly and 1/15
+   same-pattern pairs stay split. My first guess of 0.75 would have merged **nothing**,
+   silently reverting pass 2 to exact-string matching, i.e. reintroducing the exact bug the
+   pass exists to fix. Biased low deliberately: a missed merge fails silently, a wrong merge
+   is visible in the reported `aliases` and `weakest_merges`. Re-measure on real scan output.
+2. **`--estimate` was under-pricing every judged corpus check.** `pipeline.py` attributed
+   all corpus-check calls to the stage's single `model:`, but pattern_scan uses two models
+   that differ by ~3× in tokens per call and by tier (~30 long-context scans vs ~2,500 tiny
+   classifier calls). Priced correctly via a new `corpus_check_calls_by_model`, the judged
+   tier on difficult_advice is **+$20.91**, not the +$8.36 the old attribution reported.
+
+Also added the cross-corpus path, which turned out not to exist implicitly: two independent
+scans discover two *different* pattern sets, so "identical reflection prompt: 100% in
+mem-self, 0% in DA" cannot come from comparing two reports. A `params.patterns` list skips
+both discovery passes and rates a supplied pattern set against another corpus; `synth
+compare` now surfaces each pattern as its own metric so an arm missing one reads as absent
+rather than as zero.
+
+**Next steps:** (a) run it once on the real difficult-advice corpus and replace the proxy
+`merge_cosine` with a measured one; (b) carry difficult-advice's patterns to the
+self-reflection corpus — that comparison is the actual why-do-alternatives-underperform
+signal; (c) GDM's caveat stands and should gate any conclusion: their own filter-and-retrain
+ablations moved BLUF 52%→41% and validation buffering 26%→20% *without* moving the eval
+scores, so a flagged pattern is a hypothesis about the data, not a demonstrated cause.
+
+Reference: `docs/corpus_checks.md`.
+
+## 2026-08-13 — Closing the two GDM quality-control gaps: embedding dedup + autorater
+
+**Hypothesis:** GDM's recipe ends with two filters we had never implemented — *"a final
+autorater stage to filter out unrealistic or otherwise low-quality responses, and a
+deduplication stage to remove prompts with too-similar embeddings"*. Our `near_duplicates`
+is lexical (MinHash over word shingles), so it catches a **copy** and cannot catch a
+**reword**: two scenarios that are the same situation in different words score ~0 Jaccard.
+If the corpus contains semantic duplicates, everything downstream pays for them four times
+over and no existing check would say so.
+
+**Method:** two new `CORPUS_CHECKS` properties, both obeying the module's flag-never-fix
+rule — they compute the removal set GDM's filters would drop and report it, writing it to
+the judged-label sidecar so a downstream filter could act on the same numbers a human read.
+
+- `embedding_dedup` (surface tier, free): connected components at a cosine threshold over
+  static sentence embeddings. New `src/data/synth/embeddings.py` holds the featuriser;
+  model2vec (`potion-base-8M`) rather than sentence-transformers, because a static token
+  table plus a mean pool needs numpy and not torch — the darwin driver stays GPU-free per
+  CLAUDE.md, and the check stays in the tier that runs on every run at zero cost.
+- `quality_filter` (judged tier, ~$1.80 per 300 documents at Sonnet 5): per-document
+  keep/drop plus a `flaw` tag, reported overall and per group with Wilson intervals. Ships
+  `enabled: false`.
+
+Also added **selection**, since not every run wants every check: `enabled: false` per
+instance in a config, and `--only` / `--skip` / `--tier surface|judged` on `synth check`,
+plus a `synth checks` listing verb. Selection is a spec transform (`select_properties`),
+so the stage, the CLI and `--estimate` cannot disagree about what ran — `--tier surface`
+builds no model context, needs no key and prices at zero. Deselected properties appear in
+the report as `disabled`, never omitted.
+
+**Result — the corpus is clean, and the method has a length ceiling worth recording.**
+Measured on the same 2,203-document difficult-advice corpus every other threshold came
+from (`output/model_eval_model/20260805_133015/`), `potion-base-8M`:
+
+| text unit | words | mean pairwise | mean NN | NN p99 | NN max |
+|---|---|---|---|---|---|
+| `situation` (the prompt) | 68 | 0.371 | 0.743 | 0.856 | 0.886 |
+| user turn | 203 | 0.593 | 0.813 | 0.909 | 0.930 |
+| full document | 1044 | 0.757 | 0.887 | 0.934 | 0.940 |
+
+1. **Zero semantic near-duplicates** at the scenario level at any threshold from 0.90 up,
+   consistent with `near_duplicates` finding zero lexical candidate pairs. The generation
+   recipe is not quietly repeating itself.
+2. **Embeddings beat char n-grams at every length** — the spread between a near-neighbour
+   and background runs 0.372 vs 0.188 at 68 words, 0.129 vs 0.043 at 1,044.
+3. **But mean pooling washes out with length.** The floor climbs from 0.37 to 0.76 across
+   that range, so a fixed cosine threshold means different things at different lengths. On
+   full documents a 0.90 threshold reports a 25% drop share that is entirely the genre
+   floor. Encoded as `max_mean_words: 300`: past it the check reports its numbers and
+   **suppresses its findings with a note**, rather than fire a threshold that no longer
+   discriminates. Both shipped configs point the property at the short `situation` text,
+   which is also the unit GDM dedups.
+
+Thresholds are measured, not invented: `cosine_min 0.90` sits above the healthy corpus's
+*worst* pair (0.886) at the measured unit. `quality_filter.drop_rate_max 0.10` is the one
+exception and is labelled unmeasured in the registry — nothing here has run an autorater
+over a finished corpus yet.
+
+A side finding: the test suite's `varied()` fixture defeats n-gram checks but is
+semantically *uniform* (180 words from a 24-word vocabulary mean-pool to 0.97 pairwise), so
+it is the wrong fixture for a semantic check. Added `topical_docs()` alongside it. The two
+dedup checks are separated in test by word-order shuffling, where shingle Jaccard collapses
+to 0 and a mean-pooled embedding is invariant at 1.0.
+
+**Next steps:** (a) run `quality_filter` over a finished corpus and replace its placeholder
+threshold with a measured one; (b) decide whether the reported removal sets should ever
+feed an actual filter stage, which would need a new operator kind since the `corpus_check`
+stage asserts pass-through; (c) `pattern_scan` remains implemented but unenabled in every
+shipped config — the last of the three GDM mechanisms still not exercised.
+
+Full reference for the checker: `docs/corpus_checks.md`.
+
 ## 2026-08-12 — Chunking is now a named, selectable method (no corpus yet)
 
 **Hypothesis:** stage 1 of the pipeline — how the constitution is cut — is unablated

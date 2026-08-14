@@ -256,8 +256,8 @@ def test_dataset_config_can_select_any_method(name):
     its units and prices, with corpus size held fixed by total_scenarios."""
     import yaml
 
-    from src.data.synth.core import Ctx
-    from src.data.synth.operators import op_segment, scenario_batches
+    from src.data.synth.stage_runtime import Ctx
+    from src.data.synth.stage_operators import op_segment, scenario_batches
     from src.data.synth.pipeline import n_examples, n_units
 
     cfg = yaml.safe_load(open("configs/data/synth/difficult_advice.yaml"))
@@ -281,12 +281,12 @@ def test_dataset_config_can_select_any_method(name):
 
 
 def test_shipped_dataset_configs_declare_the_default():
-    """difficult_advice and self_reflection are the corpora of record: their chunking
+    """difficult_advice and pre_action_deliberation are the corpora of record: their chunking
     must be stated outright, not inherited from a default that could later move."""
     import yaml
 
     for path in ("configs/data/synth/difficult_advice.yaml",
-                 "configs/data/synth/self_reflection.yaml"):
+                 "configs/data/synth/pre_action_deliberation.yaml"):
         cfg = yaml.safe_load(open(path))
         assert cfg.get("chunking") == DEFAULT_CHUNKING, path
 
@@ -315,7 +315,7 @@ def test_unit_provenance_reaches_the_generated_records_and_the_export():
     import yaml
 
     from src.data.synth.constitution import UNIT_PROVENANCE, units_from_config
-    from src.data.synth.operators import op_chat_export
+    from src.data.synth.stage_operators import op_chat_export
 
     cfg = yaml.safe_load(open("configs/data/synth/difficult_advice.yaml"))
     units, _ = units_from_config(cfg)

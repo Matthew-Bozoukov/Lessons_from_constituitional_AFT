@@ -9,7 +9,7 @@ from typing import Callable
 
 from src.endpoints.openrouter import OpenRouterClient
 
-from .core import Checkpoint, Usage, call_tagged, run_items
+from .stage_runtime import Checkpoint, Usage, call_tagged, run_items
 
 # model-eval-model documents make the model reason about a response to a difficult-advice scenario
 # and work out whether it was the right call. Cells run over a COMPLETED
@@ -17,19 +17,60 @@ from .core import Checkpoint, Usage, call_tagged, run_items
 # attributable to format rather than content.
 
 
-def _eval_response_text(p: dict) -> str:
+def eval_response_text(p: dict) -> str:
     """Return the response a model-eval-model cell evaluates.
 
-    The flawed cells read the perturbed response -- strictly, so a document whose
-    perturbation failed can never silently degrade into evaluating the gold response.
+    Three provenances, in precedence order (`first_turn_source` records which one a
+    document used, so the untrained first turn stays a tracked conditioning variable
+    rather than an invisible one):
+
+    * `first_turn` -- written by the pipeline's own candidate-generation stages, good
+      or flawed depending on which candidate the autorater picked. Preferred, because a
+      first turn lifted from the source run also inherits that run's structure, and the
+      corpus then teaches that shape as much as it teaches reflection.
+    * `flawed_response` -- the minimal-pair perturbation of the source run's reply.
+    * `gold_response` -- the source run's reply verbatim.
+
     Routing every cell through one accessor is what keeps generation blind: good and
     flawed twins build byte-identical prompts except for this text.
     """
+    if p.get("first_turn"):
+        return p["first_turn"]
     if p["response_kind"] == "flawed":
-        assert p.get("flawed_response"), \
-            f"{p['record_id']}: flawed cell reached generation without a perturbed response"
+        assert p.get("flawed_response"), (
+            f"{p['record_id']}: flawed cell reached generation with no first turn -- "
+            f"neither a generated candidate nor a perturbation")
         return p["flawed_response"]
     return p["gold_response"]
+
+
+# Back-compat alias: the accessor was private until first turns gained a second
+# provenance and `checks.py` needed to agree with generation on what a cell evaluates.
+_eval_response_text = eval_response_text
+
+
+def first_turn_source(p: dict) -> str:
+    """Label the provenance of the (untrained) first assistant turn."""
+    if p.get("first_turn"):
+        return str(p.get("first_turn_source") or "generated")
+    return "source_perturbed" if p["response_kind"] == "flawed" else "source_gold"
+
+
+def reflect_prompt(p: dict, P: dict) -> str:
+    """Return the user turn that asks the assistant to look back at its reply.
+
+    A record carrying a generated `followup` uses it: one fixed question asked of every
+    scenario is a structural artifact the model can key on, and the same phrasing every
+    time also teaches the reflection to answer a question rather than the situation.
+    The config's `reflect_variants` remain the fallback for configs with no follow-up
+    stage.
+    """
+    return p.get("followup") or P["reflect_variants"][p["reflect_ix"]]
+
+
+def followup_source(p: dict) -> str:
+    """Label the provenance of the reflection prompt."""
+    return "scenario_specific" if p.get("followup") else "fixed_variant"
 
 
 def _control_messages(p: dict, constitution: str, P: dict) -> list[dict]:
@@ -45,9 +86,20 @@ def _control_messages(p: dict, constitution: str, P: dict) -> list[dict]:
 
 
 def _wrap_transcript(p: dict, P: dict) -> str:
-    """Render the clean transcript-in-user-turn wrapper for a critique record."""
+    """Render the transcript-in-user-turn wrapper for a critique record.
+
+    A record carrying a generated `ask_opening`/`ask_closing` is framed with those --
+    the other-arm twin of a scenario-specific follow-up, and the same reason: four fixed
+    wrappers reused across thousands of documents are a structural artifact, and their
+    wording ("I can't decide what I think of the reply") also pre-shapes the critique.
+    Only the framing is generated; the transcript itself is still composed in code.
+    """
+    if p.get("ask_opening") and p.get("ask_closing"):
+        return P["transcript_frame"].format(
+            opening=p["ask_opening"], closing=p["ask_closing"],
+            system=p["system"], user=p["user"], response=eval_response_text(p))
     return P["transcript_wrappers"][p["variant_ix"]].format(
-        system=p["system"], user=p["user"], response=_eval_response_text(p))
+        system=p["system"], user=p["user"], response=eval_response_text(p))
 
 
 def _known_flaw(p: dict, P: dict) -> str:
@@ -99,9 +151,27 @@ def _reflect_messages(p: dict, constitution: str, P: dict) -> list[dict]:
             style_line=P["explicitness_styles"][p["explicitness"]],
             known_flaw=_known_flaw(p, P))},
         {"role": "user", "content": p["user"]},
-        {"role": "assistant", "content": _eval_response_text(p)},
-        {"role": "user", "content": P["reflect_variants"][p["reflect_ix"]]
+        {"role": "assistant", "content": eval_response_text(p)},
+        {"role": "user", "content": reflect_prompt(p, P)
          + "\n\n---\n" + P["reflect_format"]},
+    ]
+
+
+def _user_action_messages(p: dict, constitution: str, P: dict) -> list[dict]:
+    """Build the generation call for the user-anchored cells (m6/m7).
+
+    The person describes something THEY did and asks what the assistant makes of it, so
+    the reflection engages with an action in the world rather than with the assistant's
+    own prose -- the property the difficult-advice corpus has and pure self-reflection
+    loses. Structure is otherwise the critique cells': one user turn, one evaluation.
+    """
+    return [
+        {"role": "system", "content": P["user_action_system"].format(
+            constitution=constitution, trait_name=p["trait_name"],
+            trait_text=p["trait_text"],
+            style_line=P["explicitness_styles"][p["explicitness"]])},
+        {"role": "user",
+         "content": p["user_action_message"] + "\n\n---\n" + P["user_action_format"]},
     ]
 
 
@@ -130,6 +200,13 @@ def _model_eval_model_metadata(r: dict, verdict: str | None = None) -> dict:
         "shortcut": r.get("shortcut", ""),
         "source_run": r.get("source_run", ""),
         "supervise": CELLS[r["cell"]].supervise,
+        # The first turn is context, never a training target, but it still conditions
+        # the turn that IS one. Recording where it came from -- and whether the
+        # reflection prompt was scenario-specific -- keeps both as variables an analysis
+        # can slice on instead of hidden constants of whichever config produced the run.
+        "first_turn_source": first_turn_source(r) if r["response_kind"] else "",
+        "followup_source": followup_source(r)
+        if CELLS[r["cell"]].attribution == "self" else "",
     }
 
 
@@ -167,8 +244,21 @@ def _assemble_reflect(r: dict, P: dict) -> dict:
         "messages": [
             {"role": "system", "content": r["system"]},
             {"role": "user", "content": r["user"]},
-            {"role": "assistant", "content": _eval_response_text(r)},
-            {"role": "user", "content": P["reflect_variants"][r["reflect_ix"]]},
+            {"role": "assistant", "content": eval_response_text(r)},
+            {"role": "user", "content": reflect_prompt(r, P)},
+            {"role": "assistant", "content": r["response"],
+             "reasoning_content": r["reasoning"]},
+        ],
+        "metadata": _model_eval_model_metadata(r, verdict=r["assessment"]),
+    }
+
+
+def _assemble_user_action(r: dict, P: dict) -> dict:
+    """User-anchored record (m6/m7): the person's own account, the assistant's reply."""
+    return {
+        "messages": [
+            {"role": "system", "content": P["evaluator_system"]},
+            {"role": "user", "content": r["user_action_message"]},
             {"role": "assistant", "content": r["response"],
              "reasoning_content": r["reasoning"]},
         ],
@@ -231,6 +321,20 @@ CELLS: dict[str, CellSpec] = {
         model_key="reflect", tags=("reasoning", "response", "assessment"),
         verdicts=("held", "revised"), supervise="final",
         build_messages=_reflect_messages, assemble=_assemble_reflect),
+    # User-anchored: the person reports their OWN action. `response_kind` stays None --
+    # there is no assistant reply under evaluation, so nothing to perturb and nothing
+    # for the surface-shortcut classifier to separate; the good/lapse contrast lives in
+    # the cell pair, and the framing stage keys on the cell name to write the account.
+    "m7_user_sound": CellSpec(
+        cell="m7_user_sound", attribution="user", response_kind=None,
+        model_key="critique", tags=("reasoning", "response", "assessment"),
+        verdicts=("sound", "issue_found"), supervise="all",
+        build_messages=_user_action_messages, assemble=_assemble_user_action),
+    "m6_user_shortcut": CellSpec(
+        cell="m6_user_shortcut", attribution="user", response_kind=None,
+        model_key="critique", tags=("reasoning", "response", "assessment"),
+        verdicts=("sound", "issue_found"), supervise="all",
+        build_messages=_user_action_messages, assemble=_assemble_user_action),
 }
 
 # Accepted <assessment> spellings -> canonical verdict.
@@ -295,8 +399,9 @@ def plan_model_eval_model_records(source: list[dict], cells: dict[str, int],
         explicitness: Style label -> weight (see P["explicitness_styles"]).
         seed: Base RNG seed; each cell derives its own stream from it.
         source_run: Provenance label (HF repo or run dir) carried into metadata.
-        flaws: The config's `flaws` block ({types: {..}, severities: {..}}). Required
-            when any flawed cell is enabled.
+        flaws: The config's `flaws` block ({types: {..}, severities: {..}}), or
+            `{source: rater}` when the lapse is selected by an autorater rather than
+            planted. Required in one form or the other when a flawed cell is enabled.
 
     Returns:
         One plan record per document, `record_id = "<scenario_id>::<cell>"`.
@@ -314,6 +419,11 @@ def plan_model_eval_model_records(source: list[dict], cells: dict[str, int],
     assert not bad_style, f"unknown explicitness style(s): {bad_style}"
     if any(CELLS[c].response_kind == "flawed" for c in enabled) and not flaws:
         raise ValueError("a flawed cell is enabled but the config has no `flaws` block")
+    # `flaws: {source: rater}` says the lapse is FOUND, not planted: the pipeline
+    # generates several candidate first turns and an autorater picks the one that
+    # actually falls short, so there is no a-priori (type, severity) to allocate and
+    # claiming one in the metadata would be fiction.
+    rated = str((flaws or {}).get("source", "")) == "rater"
 
     by_trait: dict[str, list[dict]] = {}
     for r in sorted(source, key=lambda r: r["scenario_id"]):
@@ -338,7 +448,7 @@ def plan_model_eval_model_records(source: list[dict], cells: dict[str, int],
             i += 1
         styles = _weighted_labels(want, explicitness, rng)
         cell_flaws = _weighted_flaws(want, flaws, rng, P) \
-            if spec.response_kind == "flawed" else [None] * want
+            if spec.response_kind == "flawed" and not rated else [None] * want
         for r, style, flaw in zip(picked, styles, cell_flaws):
             plans.append({
                 "record_id": f"{r['scenario_id']}::{cell}",
@@ -463,11 +573,14 @@ def _revise_messages(p: dict, constitution: str, P: dict, templates: dict) -> li
     template. The draft's verdict is pinned into the prompt -- the rewrite strengthens
     how the judgement is reached and expressed, it never re-judges.
     """
-    if CELLS[p["cell"]].attribution == "self":
+    attribution = CELLS[p["cell"]].attribution
+    if attribution == "self":
         context = templates["context_self"].format(
             system=p["system"], user=p["user"],
-            evaluated_response=_eval_response_text(p),
-            reconsider=P["reflect_variants"][p["reflect_ix"]])
+            evaluated_response=eval_response_text(p),
+            reconsider=reflect_prompt(p, P))
+    elif attribution == "user":
+        context = p["user_action_message"]
     else:
         context = _wrap_transcript(p, P)
     return [

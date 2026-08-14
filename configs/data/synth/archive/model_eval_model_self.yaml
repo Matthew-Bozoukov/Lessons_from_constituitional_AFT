@@ -1,3 +1,11 @@
+# ARCHIVED 2026-08-13 -- superseded by configs/data/synth/post_action_retrospection.yaml.
+# DO NOT start new runs from this file and DO NOT edit it. It is kept only as the exact
+# record of what generated LASR-Callum/2026-08-06-model-eval-model-self; editing it would
+# silently change what that published corpus claims to have come from. Retired because its
+# turn under evaluation is lifted from the difficult-advice run (so every document also
+# teaches that recipe's response shape) and because it has no `final` constitution-rewrite
+# stage. See configs/data/synth/archive/README.md.
+#
 # ABOUTME: Self-arm corpus config for model-eval-model: ONLY the m1/m2 self cells (the
 # ABOUTME: >2-turn format: user -> response -> "look back at it" -> evaluation), sized for
 # ABOUTME: the 20%-by-examples share of the ~10.5k-example SFT mixture (plan_full_sft_20_80).
@@ -240,31 +248,8 @@ stages:
         roles: [assistant]
         include_reasoning: true
     group: metadata.cell
-  axes:
-  - metadata.cell
-  - metadata.trait_id
-  - metadata.explicitness
-  - metadata.flaw_type
-  - metadata.flaw_severity
-  cross:
-  - - metadata.cell
-    - metadata.trait_id
-  - - metadata.cell
-    - metadata.flaw_type
-    - metadata.flaw_severity
   properties:
   - property: ngram_diversity
-  - property: near_duplicates
-  # Same algorithm over the scenario text: distinct documents can still be built
-  # on a handful of repeated situations.
-  - property: near_duplicates
-    as: scenario_dupes
-    fields:
-      text: metadata.situation
-  - property: opening_collapse
-  - property: length_profile
-  - property: field_balance
-  - property: feature_diversity
 
 prompts:
   explicitness_styles:

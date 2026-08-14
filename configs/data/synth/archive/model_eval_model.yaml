@@ -1,3 +1,10 @@
+# ARCHIVED 2026-08-13 -- superseded by configs/data/synth/post_action_retrospection.yaml
+# (self cells) and peer_critique.yaml (critique cells). DO NOT start new
+# runs from this file and DO NOT edit it. Unlike its two siblings in this folder it is not
+# the record of any corpus -- it was never run (`hf_repo: null`) -- it is the five-cell
+# scaffold they were split out of, kept so their lineage stays readable.
+# See configs/data/synth/archive/README.md.
+#
 # ABOUTME: Run config for the model-eval-model document type, generated over a
 # ABOUTME: completed difficult-advice run. Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/model_eval_model.yaml [--smoke]
 
@@ -180,6 +187,20 @@ checks:
     surface_auc_max: 0.65            # good-vs-flawed must not be predictable from surface
 
 # --- The pipeline itself: stages executed in order by src/data/synth ------------
+  # pattern_scan's SCAN pass: sees batch_size whole documents per call, so it needs
+  # long context; only ~30 of these.
+  scan:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.0
+    max_tokens: 2500
+    assumed_tokens: {in: 28000, out: 1200}
+  # pattern_scan's AUTORATE pass: a yes/no classifier run thousands of times.
+  classify:
+    model: "anthropic/claude-haiku-4.5"
+    temperature: 0.0
+    max_tokens: 900
+    assumed_tokens: {in: 9000, out: 200}
+
 stages:
 - name: source
   kind: load_source_run
@@ -342,31 +363,91 @@ stages:
         roles: [assistant]
         include_reasoning: true
     group: metadata.cell
-  axes:
-  - metadata.cell
-  - metadata.trait_id
-  - metadata.explicitness
-  - metadata.flaw_type
-  - metadata.flaw_severity
-  cross:
-  - - metadata.cell
-    - metadata.trait_id
-  - - metadata.cell
-    - metadata.flaw_type
-    - metadata.flaw_severity
   properties:
   - property: ngram_diversity
-  - property: near_duplicates
-  # Same algorithm over the scenario text: distinct documents can still be built
-  # on a handful of repeated situations.
-  - property: near_duplicates
-    as: scenario_dupes
+  # GDM's dedup stage, over the same short scenario text: shingles catch a copy,
+  # embeddings catch a reword. Measured on the 68-word situation unit, not the
+  # document -- the embedding floor climbs with length (see CORPUS_CHECKS).
+  - property: embedding_dedup
     fields:
       text: metadata.situation
-  - property: opening_collapse
-  - property: length_profile
-  - property: field_balance
-  - property: feature_diversity
+  # GDM's three-pass pattern detector (scan -> cluster -> autorate). Ships disabled;
+  # `--only pattern_scan` runs it alone. The rubric wording below is deliberately
+  # document-type agnostic and is identical in every dataset config, so a pattern found
+  # in one corpus can be carried to another via `params.patterns` and measured there --
+  # which is the only way to get a cross-corpus claim like "100% here, 0% there".
+  - property: pattern_scan
+    enabled: false
+    model: scan
+    rate_model: classify
+  rubrics:
+    pattern_scan:
+      scan_system: >-
+        You audit machine-generated training data for over-representation. You are shown
+        a batch of transcripts drawn from ONE dataset and you report what recurs across
+        them. Report only what you can see repeating in this batch. Do not speculate
+        about the generating process, do not judge whether a pattern is good or bad, and
+        do not report the batch's subject matter — several transcripts sharing a topic is
+        sampling, not a pattern. Output JSON only.
+      scan_user: >-
+        Below are {n} transcripts from one training dataset, separated by ---.
+
+        {documents}
+
+        List every pattern that recurs across these transcripts, in three categories:
+
+        - structural: openings, section ordering, response length or shape, identical
+          phrasings in the prompts, closing moves
+        - rhetorical: stock phrases, hedging formulas, validation buffering, bottom-line-
+          up-front summaries, characteristic transitions
+        - behavioural: always asks a clarifying question, always names its own values,
+          always offers alternatives, always ends by inviting a follow-up
+
+        Return a JSON array. Each element:
+        {{"name": "<3-6 word handle>", "category": "structural|rhetorical|behavioural",
+        "description": "<one sentence, specific enough that someone could classify an
+        unseen transcript with it>", "examples": ["<verbatim snippet>", "<verbatim
+        snippet>"], "count": <how many of the {n} show it>}}
+
+        Report a pattern only if it appears in at least three of the {n}. Return [] if
+        nothing recurs.
+      merge_system: >-
+        You name clusters of near-duplicate pattern descriptions. Output JSON only.
+      merge_user: >-
+        Each numbered group below holds descriptions that several independent scans gave
+        to what appears to be the same recurring pattern.
+
+        {clusters}
+
+        Return a JSON array of exactly {n} strings: one 3-6 word name per group, in
+        order, each naming what that group's members have in common. No commentary.
+      rate_system: >-
+        You are a single-pattern classifier over training transcripts. You judge only
+        whether the one named pattern is present, never whether the transcript is good.
+        Output JSON only.
+      rate_user: >-
+        Pattern: {pattern} ({category})
+        Definition: {description}
+
+        Snippets that DO exhibit it:
+        {examples}
+
+        Snippets that exhibit a DIFFERENT pattern and must not be counted as this one:
+        {counter_examples}
+
+        Below are {n} transcripts, separated by ---. Each is preceded by its id in
+        square brackets.
+
+        {documents}
+
+        For each transcript answer:
+        - STRICT: the pattern is unambiguously present — you could point at the text
+        - BROAD: the pattern is loosely present, arguably or in weakened form
+        - NO: not present
+
+        Return a JSON array with one element per transcript, in order:
+        [{{"id": "<the id in brackets>", "verdict": "STRICT|BROAD|NO"}}]
+
 
 prompts:
   explicitness_styles:

@@ -70,12 +70,16 @@ src/                    correctness-critical reusable code (installed editable; 
   huggingface.py          THE HF module: token resolution (reads + pushes), the
                           dataset-card contract, push_run_dir/push_files/hf_download
   data/                   two subpackages, mirrored in scripts/data/ and configs/data/:
-    synth/                  synthetic data generation (constitution-grounded,
-                            config-driven engine, formerly synthdoc_v2; the config's
-                            `stages:` list — prompts included — defines the document
-                            type; run via scripts/data/synth/build_dataset.py with
-                            configs/data/synth/{difficult_advice,model_eval_model}.yaml,
-                            `synth check` gates the latter's corpora — see its README)
+    synth/                  synthetic data generation (constitution-grounded engine of
+                            generic, config-driven stage operators, formerly synthdoc_v2;
+                            the config's `stages:` list — prompts included — defines the
+                            document type; run via scripts/data/synth/build_dataset.py
+                            with a live config from configs/data/synth/. `chunking:`
+                            selects how the constitution is cut into units,
+                            `corpus_check` observer stages measure diversity + GDM-style
+                            autorated quality in-pipeline (docs/corpus_checks.md), and
+                            `synth check` gates the model-eval-model corpora after a
+                            run — see its README)
     mixture/                dataset building: build_mixture.py (staged base → spec-filter →
                             synthetic pipeline with HF push checkpoints; rows are
                             model-agnostic interchange messages, rendered at TRAIN time via
@@ -98,8 +102,9 @@ src/                    correctness-critical reusable code (installed editable; 
     audits/               petri/ + surf/ audit tooling (generalized from the completed MSM audit)
 configs/                OmegaConf YAML, one per step, foldered by pipeline stage.
                         NEVER hardcode hyperparams in scripts.
-  data/                   synth/ generation configs (difficult_advice, model_eval_model, self_reflection)
-                          + mixture/ dataset-building configs (qwen36_*, tulu_control)
+  data/                   synth/ generation configs (difficult_advice, pre_action_deliberation,
+                          post_action_retrospection, peer_critique; superseded ones frozen
+                          in archive/) + mixture/ dataset-building configs (qwen36_*, tulu_control)
   train/                  SFT training (lora_<model>_<arm>*)
   eval/                   evals (capability, mmlu, agentic_misalignment, odcv_*, constitution_probe)
 scripts/                pipeline drivers, foldered to mirror src/ stages + gpu/ for infra
@@ -281,7 +286,7 @@ deleted with that package on 2026-08-03 — see git history — so enforce them 
 Every stage is a console alias from `[project.scripts]`, so the shape is always
 `uv run <job> --config <yaml>`. Stages 1–3 take `--smoke`.
 
-1. `uv run synth run --config configs/data/synth/difficult_advice.yaml` — six-stage difficult-advice generation from the constitution (scenarios → prompts → responses → trait-rewrites), reasoning traces native. The config's `pipeline:` field picks the document type; `configs/data/synth/model_eval_model.yaml` generates the model-evaluates-model arms over a completed run, gated by `uv run synth check`.
+1. `uv run synth run --config configs/data/synth/<type>.yaml` — constitution-grounded generation; the config IS the document type. Four live types: `difficult_advice` (the baseline recipe: scenarios → prompts → responses → constitution rewrite, reasoning traces native), `pre_action_deliberation` (the agent itself is tempted and deliberates before acting), `post_action_retrospection` (natural-turn self-reflection: an organically imperfect first reply, a short follow-up, only the reflection turn trains), `peer_critique` (critique of another model's reply, over a completed difficult-advice run). Inline `corpus_check` stages measure diversity/dedup/autorated quality during the run; `uv run synth check` gates the model-eval-model corpora after it.
 2. `uv run mix --config configs/data/mixture/<name>.yaml` — budgeted training mixture of model-agnostic interchange rows (reasoning as `reasoning_content`, rendered at train time), with optional spec-filter stage and HF push checkpoints; `balance_by: trait_id` on a source spec trait-balances the difficult-advice share.
 3. `uv run train --config configs/train/lora_<model>_<arm>.yaml` — QLoRA SFT (runs on the GPU box). Pushes the adapter to HF with `training_meta.json` — the thinking stamp (declared as `thinking:` in the train config, validated against the data) that the eval framework infers mode from.
 4. `uv run evals --target <hf_path> --name <eval>` — THE eval entrypoint for every registered eval; see "The eval framework" below.

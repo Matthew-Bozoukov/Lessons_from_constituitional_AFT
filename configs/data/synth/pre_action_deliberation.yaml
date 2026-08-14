@@ -1,11 +1,20 @@
-# ABOUTME: Run config for the self_reflection document type -- an autonomous agent that could
-# ABOUTME: protect itself by a deniable wrong action, reasons in value language, and doesn't.
-# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/self_reflection.yaml [--smoke]
+# ABOUTME: Run config for the pre_action_deliberation document type -- an autonomous agent that
+# ABOUTME: could protect itself by a deniable wrong action, reasons in value language, and doesn't.
+# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/pre_action_deliberation.yaml [--smoke]
 
 seed: 0
 
 # Label recorded in manifests; the `stages:` list below IS the document type.
-pipeline: self_reflection
+pipeline: pre_action_deliberation
+
+# STAGE NAMES CHANGED 2026-08-13, for legibility, matching difficult_advice.yaml:
+#   traits -> chunk_constitution      refined_prompts -> revise_prompts
+#   scenarios -> write_scenarios      final -> revise_responses
+#                                     sft -> export_sft
+# A stage name IS its snapshot filename, so a run directory created before that date no
+# longer cache-hits; rename its files to resume one. The published corpus
+# (`LASR-Callum/2026-08-03-synthdoc-self-reflection`) keeps the ORIGINAL names, as a
+# record of what actually ran.
 
 # Stage 1 segments this into its numbered units (## <n>. headings). Stages 4 and 6 inject the
 # whole document; stages 2, 4, 5 and 6 also inject the single target trait. Stage 6 injects it
@@ -78,6 +87,8 @@ mix:
     restriction: 0.2
     goal_conflict: 0.5
 
+# Pre-rename name kept: existing 2026-08-03-corpus runs live here, and resume/topup
+# cache-hits key on this path (renamed 2026-08-13 from self_reflection).
 output_dir: "output/synthdoc_self_reflection"
 
 # Every stage's complete output is mirrored here as stage_<n>_<name>.jsonl, so a run can resume
@@ -213,10 +224,24 @@ models:
     assumed_tokens: {in: 7200, out: 2700}
 
 # --- The pipeline itself: stages executed in order by src/data/synth ------------
+  # pattern_scan's SCAN pass: sees batch_size whole documents per call, so it needs
+  # long context; only ~30 of these.
+  scan:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.0
+    max_tokens: 2500
+    assumed_tokens: {in: 28000, out: 1200}
+  # pattern_scan's AUTORATE pass: a yes/no classifier run thousands of times.
+  classify:
+    model: "anthropic/claude-haiku-4.5"
+    temperature: 0.0
+    max_tokens: 900
+    assumed_tokens: {in: 9000, out: 200}
+
 stages:
-- name: traits
+- name: chunk_constitution
   kind: segment
-- name: scenarios
+- name: write_scenarios
   kind: scenarios_weighted
   model: scenarios
   fields:
@@ -336,21 +361,13 @@ stages:
     id: scenario_id
     text: [situation, tempting_action]
     group: trait_id
-  axes:
-  - trait_id
-  - motive
-  - form
-  - control
-  cross:
-  - - trait_id
-    - motive
   properties:
   - property: ngram_diversity
-  - property: near_duplicates
-  - property: opening_collapse
-  - property: length_profile
-  - property: field_balance
-  - property: feature_diversity
+  # Cheapest place to catch a repeated scenario: every one here is paid for four
+  # times over by the stages below.
+  - property: embedding_dedup
+    fields:
+      text: situation
 - name: draft_prompts
   kind: llm_tagged
   model: draft
@@ -427,7 +444,7 @@ stages:
       <user>
       the request, then the material
       </user>
-- name: refined_prompts
+- name: revise_prompts
   kind: llm_tagged
   model: refine
   checkpoint: scenario_id
@@ -448,7 +465,7 @@ stages:
 
       <constitution>
       {constitution}
-      </constitution>
+      </constitution><<<cache>>>
 
       This environment is meant to put pressure on ONE principle in particular:
 
@@ -594,7 +611,7 @@ stages:
       <response>
       {output_shape}
       </response>
-- name: final
+- name: revise_responses
   kind: llm_tagged
   model: rewrite
   checkpoint: scenario_id
@@ -813,7 +830,7 @@ stages:
 
       <constitution>
       {constitution}
-      </constitution>
+      </constitution><<<cache>>>
 
       The principle this exchange must exhibit -- again, without ever being named:
 
@@ -841,7 +858,7 @@ stages:
       {multi_extra}{agentic_extra}
       Return your answer in exactly this form, with no other text:
       {shape}
-- name: sft
+- name: export_sft
   kind: chat_export
   messages:
   - role: system
@@ -901,28 +918,88 @@ stages:
     # its chunks -- a judged property needs only its rubric wording added.
     unit: metadata.trait_id
     members: metadata.chunk_ids
-  axes:
-  - metadata.n_chunks
-  - metadata.grouping_strategy
-  - metadata.granularity
-  - metadata.trait_id
-  - metadata.motive
-  - metadata.form
-  - metadata.control
-  cross:
-  - - metadata.trait_id
-    - metadata.motive
   properties:
   - property: ngram_diversity
-  - property: near_duplicates
-  # Same algorithm over the scenario text: distinct documents can still be built
-  # on a handful of repeated situations.
-  - property: near_duplicates
-    as: scenario_dupes
+  # Pointed at the scenario text, not the document: the embedding floor climbs with
+  # length, so the thresholds only discriminate on the short unit.
+  - property: embedding_dedup
     fields:
       text: metadata.situation
-  - property: opening_collapse
-  - property: length_profile
-  - property: field_balance
-  - property: feature_diversity
+  # GDM's three-pass pattern detector (scan -> cluster -> autorate). Ships disabled;
+  # `--only pattern_scan` runs it alone. The rubric wording below is deliberately
+  # document-type agnostic and is identical in every dataset config, so a pattern found
+  # in one corpus can be carried to another via `params.patterns` and measured there --
+  # which is the only way to get a cross-corpus claim like "100% here, 0% there".
+  - property: pattern_scan
+    enabled: false
+    model: scan
+    rate_model: classify
+  rubrics:
+    pattern_scan:
+      scan_system: >-
+        You audit machine-generated training data for over-representation. You are shown
+        a batch of transcripts drawn from ONE dataset and you report what recurs across
+        them. Report only what you can see repeating in this batch. Do not speculate
+        about the generating process, do not judge whether a pattern is good or bad, and
+        do not report the batch's subject matter — several transcripts sharing a topic is
+        sampling, not a pattern. Output JSON only.
+      scan_user: >-
+        Below are {n} transcripts from one training dataset, separated by ---.
+
+        {documents}
+
+        List every pattern that recurs across these transcripts, in three categories:
+
+        - structural: openings, section ordering, response length or shape, identical
+          phrasings in the prompts, closing moves
+        - rhetorical: stock phrases, hedging formulas, validation buffering, bottom-line-
+          up-front summaries, characteristic transitions
+        - behavioural: always asks a clarifying question, always names its own values,
+          always offers alternatives, always ends by inviting a follow-up
+
+        Return a JSON array. Each element:
+        {{"name": "<3-6 word handle>", "category": "structural|rhetorical|behavioural",
+        "description": "<one sentence, specific enough that someone could classify an
+        unseen transcript with it>", "examples": ["<verbatim snippet>", "<verbatim
+        snippet>"], "count": <how many of the {n} show it>}}
+
+        Report a pattern only if it appears in at least three of the {n}. Return [] if
+        nothing recurs.
+      merge_system: >-
+        You name clusters of near-duplicate pattern descriptions. Output JSON only.
+      merge_user: >-
+        Each numbered group below holds descriptions that several independent scans gave
+        to what appears to be the same recurring pattern.
+
+        {clusters}
+
+        Return a JSON array of exactly {n} strings: one 3-6 word name per group, in
+        order, each naming what that group's members have in common. No commentary.
+      rate_system: >-
+        You are a single-pattern classifier over training transcripts. You judge only
+        whether the one named pattern is present, never whether the transcript is good.
+        Output JSON only.
+      rate_user: >-
+        Pattern: {pattern} ({category})
+        Definition: {description}
+
+        Snippets that DO exhibit it:
+        {examples}
+
+        Snippets that exhibit a DIFFERENT pattern and must not be counted as this one:
+        {counter_examples}
+
+        Below are {n} transcripts, separated by ---. Each is preceded by its id in
+        square brackets.
+
+        {documents}
+
+        For each transcript answer:
+        - STRICT: the pattern is unambiguously present — you could point at the text
+        - BROAD: the pattern is loosely present, arguably or in weakened form
+        - NO: not present
+
+        Return a JSON array with one element per transcript, in order:
+        [{{"id": "<the id in brackets>", "verdict": "STRICT|BROAD|NO"}}]
+
 

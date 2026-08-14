@@ -1,4 +1,4 @@
-# ABOUTME: Offline tests for the self_reflection document type: weighted planning,
+# ABOUTME: Offline tests for the pre_action_deliberation document type: weighted planning,
 # ABOUTME: deterministic variants, the voice-contract lint, prompt assembly, multi-turn export.
 
 from __future__ import annotations
@@ -10,9 +10,9 @@ import pytest
 import yaml
 
 from src.data.synth.constitution import segment
-from src.data.synth.core import Checkpoint, Ctx, run_items
+from src.data.synth.stage_runtime import Checkpoint, Ctx, run_items
 from src.data.synth.hf_cache import read_jsonl, write_jsonl
-from src.data.synth.operators import (
+from src.data.synth.stage_operators import (
     _lint,
     assign_variant,
     op_chat_export,
@@ -22,10 +22,10 @@ from src.data.synth.operators import (
 )
 from src.data.synth.pipeline import build_stages
 
-CONFIG = "configs/data/synth/self_reflection.yaml"
+CONFIG = "configs/data/synth/pre_action_deliberation.yaml"
 CFG = yaml.safe_load(open(CONFIG))
 STAGES = {s["name"]: s for s in CFG["stages"]}
-LINT = STAGES["final"]["lint"]
+LINT = STAGES["revise_responses"]["lint"]
 
 
 def _flat(text: str) -> str:
@@ -104,7 +104,7 @@ def test_scenario_prompt_names_the_assigned_industries():
     t = _traits()[0]
     batch = {"n": 3, "control": False, "motive": "restriction",
              "industries": ["ferry operations", "hospice pharmacy", "seed testing"]}
-    prompt = weighted_scenario_prompt(STAGES["scenarios"], batch, t)[1]
+    prompt = weighted_scenario_prompt(STAGES["write_scenarios"], batch, t)[1]
     for name in batch["industries"]:
         assert name in prompt
     assert "1. ferry operations" in prompt, "industries must be listed in assignment order"
@@ -200,7 +200,7 @@ def test_lint_checks_both_turns():
 
 def test_scenario_prompts_differ_between_control_and_ordinary_batches():
     t = _traits()[1]
-    sc = STAGES["scenarios"]
+    sc = STAGES["write_scenarios"]
     ordinary = weighted_scenario_prompt(
         sc, {"n": 8, "control": False, "motive": "replacement", "industries": []}, t)[1]
     control = weighted_scenario_prompt(
@@ -234,14 +234,14 @@ def test_rewrite_prompt_carries_the_voice_contract_and_the_right_shape():
     t = _traits()[-2]
     base = {"trait_name": t.name, "trait_text": t.text, "system": "sys", "user": "usr",
             "draft_reasoning": "r", "draft_response": "p", "control": False, "form": "prose"}
-    msgs, keys, _ = tagged_request(STAGES["final"], {**base, "turns": 1}, _ctx())
+    msgs, keys, _ = tagged_request(STAGES["revise_responses"], {**base, "turns": 1}, _ctx())
     single = msgs[1]["content"]
     assert keys == ("reasoning", "response", "changes")
     assert "NEVER name, number or quote a principle" in _flat(single)
     assert "reasoning2" not in single
 
     msgs2, keys2, save2 = tagged_request(
-        STAGES["final"],
+        STAGES["revise_responses"],
         {**base, "turns": 2, "followup": "f", "draft_reasoning2": "r2",
          "draft_response2": "p2"}, _ctx())
     multi = msgs2[1]["content"]
@@ -275,7 +275,7 @@ def test_control_records_get_the_control_deliberation_contract():
     rec = {"trait_name": t.name, "trait_text": t.text, "system": "s", "user": "u",
            "draft_reasoning": "r", "draft_response": "p", "control": True, "form": "prose",
            "turns": 1}
-    prompt = tagged_request(STAGES["final"], rec, _ctx())[0][1]["content"]
+    prompt = tagged_request(STAGES["revise_responses"], rec, _ctx())[0][1]["content"]
     assert "Restraint that happens to protect the agent is not restraint" in _flat(prompt)
     assert "Take the temptation seriously" not in _flat(prompt)
 
@@ -303,7 +303,7 @@ def _final(**over) -> dict:
 
 
 def test_single_turn_export_carries_reasoning_and_variant_metadata():
-    out = op_chat_export(STAGES["sft"], CFG).fn(None, [_final()], None)[0]
+    out = op_chat_export(STAGES["export_sft"], CFG).fn(None, [_final()], None)[0]
     assert [m["role"] for m in out["messages"]] == ["system", "user", "assistant"]
     assert out["messages"][2]["reasoning_content"] == "REASON"
     md = out["metadata"]
@@ -313,7 +313,7 @@ def test_single_turn_export_carries_reasoning_and_variant_metadata():
 
 def test_multi_turn_export_keeps_both_exchanges_with_their_own_traces():
     rec = _final(turns=2, followup="FOLLOWUP", reasoning2="REASON2", response2="RESP2")
-    msgs = op_chat_export(STAGES["sft"], CFG).fn(None, [rec], None)[0]["messages"]
+    msgs = op_chat_export(STAGES["export_sft"], CFG).fn(None, [rec], None)[0]["messages"]
     assert [m["role"] for m in msgs] == ["system", "user", "assistant", "user", "assistant"]
     assert msgs[3]["content"] == "FOLLOWUP"
     assert msgs[4]["reasoning_content"] == "REASON2"
@@ -324,17 +324,19 @@ def test_multi_turn_export_keeps_both_exchanges_with_their_own_traces():
 
 
 def test_config_builds_and_keeps_snapshot_names():
-    # The corpus checks (2026-08-12) are observers: they take no snapshot position, so
-    # `corpus_scenarios` sits mid-pipeline without moving anything after it and every
-    # existing run dir stays resumable.
+    # Renamed 2026-08-13 so each stage states its action; a stage name is its snapshot
+    # filename, so the published corpus keeps the OLD names and only new runs use these.
+    # The corpus checks are observers: they take no snapshot position, so `corpus_scenarios`
+    # sits mid-pipeline without moving anything after it.
     from src.data.synth.pipeline import snapshot_positions
 
     assert [s.name for s in build_stages(CFG)] == \
-        ["traits", "scenarios", "corpus_scenarios", "draft_prompts", "refined_prompts",
-         "draft_responses", "final", "sft", "corpus"]
+        ["chunk_constitution", "write_scenarios", "corpus_scenarios", "draft_prompts",
+         "revise_prompts", "draft_responses", "revise_responses", "export_sft", "corpus"]
     assert snapshot_positions(build_stages(CFG)) == \
-        {"traits": 1, "scenarios": 2, "corpus_scenarios": 2, "draft_prompts": 3,
-         "refined_prompts": 4, "draft_responses": 5, "final": 6, "sft": 7, "corpus": 7}
+        {"chunk_constitution": 1, "write_scenarios": 2, "corpus_scenarios": 2,
+         "draft_prompts": 3, "revise_prompts": 4, "draft_responses": 5,
+         "revise_responses": 6, "export_sft": 7, "corpus": 7}
 
 
 # --- the failure guard on resume ------------------------------------------------------

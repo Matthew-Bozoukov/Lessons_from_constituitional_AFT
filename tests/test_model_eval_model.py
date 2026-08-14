@@ -10,7 +10,7 @@ import pytest
 
 import yaml
 
-from src.data.synth.checks import (
+from src.data.synth.check_model_eval_model import (
     check_blindness,
     check_coverage,
     check_post_hoc_heuristic,
@@ -18,7 +18,7 @@ from src.data.synth.checks import (
     check_template_collapse,
     check_verdict_distribution,
 )
-from src.data.synth.cells import (
+from src.data.synth.model_eval_model_cells import (
     _critique_messages,
     _length_matched,
     _norm_verdict,
@@ -27,7 +27,10 @@ from src.data.synth.cells import (
     to_model_eval_model_sft,
 )
 
-CFG = yaml.safe_load(open("configs/data/synth/model_eval_model.yaml"))
+# The archived five-cell scaffold, deliberately: it is the only config enabling every
+# registered cell, so it is what exercises the whole CELLS registry (including `control`,
+# which no live config uses). Archived configs are frozen, which makes it a stable fixture.
+CFG = yaml.safe_load(open("configs/data/synth/archive/model_eval_model.yaml"))
 P = CFG["prompts"]  # the config IS the wording -- tests validate against it
 
 EXPLICITNESS = {"name_clause": 0.3, "paraphrase": 0.4, "embody": 0.3}
@@ -174,7 +177,7 @@ def test_reflect_prompts_put_the_response_in_a_real_assistant_turn():
 
 def test_flawed_cells_never_fall_back_to_the_gold_response():
     p = _plan({"m1_self_flawed": 1}, flaws=FLAWS)[0]
-    with pytest.raises(AssertionError, match="without a perturbed response"):
+    with pytest.raises(AssertionError, match="no first turn"):
         _reflect_messages(p, "CONST", P)
 
 
@@ -246,7 +249,7 @@ REVISE = next(s for s in CFG["stages"] if s["kind"] == "revise_cells")
 
 
 def test_revise_messages_pin_the_verdict_and_render_context_per_attribution():
-    from src.data.synth.cells import _revise_messages, _wrap_transcript
+    from src.data.synth.model_eval_model_cells import _revise_messages, _wrap_transcript
 
     p = _plan({"m4_other_good": 1})[0]
     gen = {**p, "reasoning": "DRAFT REASONING", "response": "DRAFT RESPONSE",
@@ -265,7 +268,7 @@ def test_revise_messages_pin_the_verdict_and_render_context_per_attribution():
 
 
 def test_revise_messages_blind_unless_note_configured():
-    from src.data.synth.cells import _revise_messages
+    from src.data.synth.model_eval_model_cells import _revise_messages
 
     p = _plan({"m3_other_flawed": 1}, flaws=FLAWS)[0]
     gen = {**p, "flawed_response": "FLAWED", "change_summary": "cut the caveat",
@@ -281,7 +284,7 @@ def test_revise_messages_blind_unless_note_configured():
 
 
 def test_revise_documents_pass_control_through_untouched():
-    from src.data.synth.cells import revise_documents
+    from src.data.synth.model_eval_model_cells import revise_documents
 
     p = _plan({"control": 2})[0]
     gen = {**p, "reasoning": "trace"}
@@ -294,7 +297,7 @@ def test_revise_documents_pass_control_through_untouched():
 def test_run_checks_resolves_snapshots_from_the_stage_list(tmp_path):
     import json
 
-    from src.data.synth.checks import run_checks
+    from src.data.synth.check_model_eval_model import run_checks
 
     plan = _plan({"m4_other_good": 2})
     final = [{**p, "reasoning": f"weighing the situation first {i}",

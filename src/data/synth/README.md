@@ -10,8 +10,8 @@ scientific record of what a run generated:
 
 ```
 uv run scripts/data/synth/build_dataset.py --config configs/data/synth/difficult_advice.yaml [--smoke]
-uv run scripts/data/synth/build_dataset.py --config configs/data/synth/model_eval_model.yaml [--smoke]
-uv run scripts/data/synth/build_dataset.py --config <cfg> --ablate final     # ablation arm
+uv run scripts/data/synth/build_dataset.py --config configs/data/synth/post_action_retrospection.yaml [--smoke]
+uv run scripts/data/synth/build_dataset.py --config <cfg> --ablate <stage>   # ablation arm
 uv run scripts/data/synth/build_dataset.py --config <cfg> --estimate [--measured <smoke manifest>]
 ```
 
@@ -20,21 +20,41 @@ for the auxiliary verbs; `run`/`estimate` are the same functions `build_dataset.
 
 ## Architecture
 
+Every module is named for what it does. A `check_*` module answers "is this good?",
+a `stage_*` module is machinery the pipeline runs on, and a `model_eval_model_*` module
+belongs to that one document type and nothing else.
+
 ```
-pipeline.py    the engine: builds Stage objects from the config's `stages:` list; owns
-               snapshot caching + HF mirroring, per-item checkpoints, ablation, the
-               budget guard, the manifest, and cost estimates
-operators.py   the operator library -- every stage `kind:` a config may use
-core.py        LLM machinery: priced Usage, call_json/call_tagged (parse-retry),
-               resilient fan-out, Checkpoint/run_items, Ctx + Stage dataclasses
-cells.py       model-eval-model cell STRUCTURE (registry, planning, perturbation,
-               assembly) -- all its wording comes from the config
-corpus.py      the corpus-level property registry + the `corpus_check` stage driver
-compare.py     cross-arm comparison of several runs' corpus reports (monotonicity)
-checks.py      model-eval-model validity checks (judge wording from checks.judges);
-               its template-collapse and surface-shortcut halves are thin adapters
-               over corpus.py, so the two entry points cannot drift
-constitution.py  hf_cache.py  cli.py
+RUNNING A PIPELINE
+  pipeline.py                 the engine: builds Stage objects from the config's
+                              `stages:` list; owns snapshot caching + HF mirroring,
+                              per-item checkpoints, ablation, the budget guard, the
+                              manifest, and cost estimates
+  stage_operators.py          the operator library -- every stage `kind:` a config may use
+  stage_runtime.py            what a stage runs on: priced Usage, call_json/call_tagged
+                              (parse-retry), resilient fan-out, Checkpoint/run_items,
+                              Ctx + Stage dataclasses
+  cli.py                      the `uv run synth ...` verbs
+
+CHECKING THE RESULT
+  check_corpus.py             is this CORPUS good? the property registry + the
+                              `corpus_check` stage driver. See docs/corpus_checks.md
+  check_model_eval_model.py   is this model-eval-model RUN valid? coverage of the
+                              cell/flaw grid, verdict distribution, post-hoc reasoning,
+                              blindness, gold validation -- gated by `checks:` in the
+                              config. Its template-collapse and surface-shortcut halves
+                              are thin adapters over check_corpus.py so the two cannot
+                              drift
+
+INPUTS AND SHARED PIECES
+  constitution.py             parse the constitution, then chunk + group it into the
+                              units documents are generated against
+  embeddings.py               text -> vectors for the semantic checks (model2vec static,
+                              no torch)
+  hf_cache.py                 read/write stage snapshots, mirrored to Hugging Face
+  model_eval_model_cells.py   model-eval-model cell STRUCTURE (registry, planning,
+                              perturbation, assembly) -- all its wording comes from the
+                              config
 ```
 
 A config's `stages:` entry names an operator `kind` and supplies everything it needs:
@@ -44,12 +64,15 @@ A config's `stages:` entry names an operator `kind` and supplies everything it n
 | `segment` | deterministic constitution chunking + grouping; publishes `{style_guidance}` | (top-level `chunking:` block — see below) |
 | `scenarios` | batched JSON fan-out per trait (`t<i>_b<b>_s<j>` ids) | `model`, `prompts` |
 | `llm_json` | one JSON call per record | `model`, `prompts`, `save`, `optional`, `checkpoint` |
-| `llm_tagged` | one tagged-blocks call per record | `model`, `prompts`, `tags`, `save`, `checkpoint`, `ablate_with`, `prompt_vars` (conditional template vars), `variants_by` (per-record user/tags/save), `lint` (ban-patterns + min-length, reject-and-retry) |
+| `llm_tagged` | one tagged-blocks call per record | `model`, `tags`, `save`, `checkpoint`, `ablate_with`, and either `prompts: {system, user}` or `conversation:` (a full message list, so the turn under evaluation sits in a real assistant turn); plus `prompt_vars` (conditional template vars), `variants_by` (per-record prompt/tags/save), `lint` (ban-patterns, min/max length, `allowed` value set; reject-and-retry; a LIST of contracts where one call returns tags of different kinds), `normalize` (canonicalise label tags), `also` (constant provenance fields), `when` (run over part of the corpus only) |
+| `assign` | free: label each record's experimental arm, hashed from its own id. Also available as an `assign:` block on `llm_tagged`, for the common case where the arm exists to pick that stage's prompt | `by` (id field), `fields` (label -> {value: weight}), `constants`, `copy` |
+| `pick_field` | free: resolve a rater's `<pick>` label into the field it names | `by`, `from` (label -> field), `to`, `also` (constant labels), `when` |
+| `filter` | free: drop records failing a field contract (a found label the pipeline does not believe), one contract for the corpus or one per arm. Also available as a `keep:` block on `llm_tagged`, for the common case where the stage's own output decides who survives | `keep` (`{field, in}`, or `{by, cases}` for a contract per arm), `when`, `max_drop_pct` (scalar or per arm), `expected_keep` (estimator prior only) |
 | `chat_export` | free export to `{messages, metadata}`; entries may carry `when:` for multi-turn records | `messages`, `metadata` |
 | `corpus_check` | corpus-level property checks; pass-through, always ablatable (see below) | `fields`, `properties`, `axes`, `cross`, `rubrics`, `units`, `on_fail`, `model` |
 | `scenarios_weighted` | weighted trait apportionment, control slice, motive rotation, per-batch industries, deterministic per-scenario variants | `model`, `prompts` (+`control_user`), `threats`, `control_threats`, `fields` |
 | `load_source_run` | a completed run's finals + constitution-sha provenance check | (`source:` block) |
-| `plan_cells` / `perturb_pairs` / `generate_cells` / `revise_cells` / `assemble_cells` | the model-eval-model cells (see below); `revise_cells` is the constitution-grounded rewrite pass (verdict pinned, control passes through) | (`cells:`, `flaws:`, `prompts:` blocks; `revise_cells` takes `model`, `prompts`, `checkpoint`, `ablate_with`) |
+| `plan_cells` / `perturb_pairs` / `generate_cells` / `revise_cells` / `assemble_cells` | **FROZEN** — the model-eval-model cells, defined in `model_eval_model_cells.py`. A cell is a document type written in Python, which is what the kinds above exist to replace. Registered only because the archived configs and `peer_critique.yaml` are written against them; do not use them for new work | (`cells:`, `flaws:`, `prompts:` blocks) |
 
 Prompt templates in configs are `str.format` templates over record fields plus shared
 vars (`{constitution}`, `{style_guidance}`). Literal JSON braces are escaped `{{ }}`.
@@ -112,11 +135,17 @@ literature *is* `principle` here.
 
 **Ablation.** A stage entry with `ablate_with: {field: source_field}` declares its
 null-operation as a field copy (e.g. the rewrite stage's `ablate_with` promotes the
-draft response to final). `ablate: [final]` in the config — or `--ablate final` — runs
-the null-op in that stage's slot (still snapshotted, so arms diff stage-by-stage), is
-recorded in the manifest, priced out of `--estimate`, and fail-fasts on typos or stages
-with no null-op. N revision rounds = N `llm_tagged` entries in `stages:`, each
-individually ablatable by name.
+draft response to the revised one). `ablate: [<stage>]` in the config — or
+`--ablate <stage>` — runs the null-op in that stage's slot (still snapshotted, so arms
+diff stage-by-stage), is recorded in the manifest, priced out of `--estimate`, and
+fail-fasts on typos or stages with no null-op. N revision rounds = N `llm_tagged` entries
+in `stages:`, each individually ablatable by name.
+
+The stage to name is each config's constitution rewrite, and since the 2026-08-13 rename
+that name says which turn it rewrites: `--ablate revise_responses` (difficult advice,
+pre-action deliberation), `--ablate revise_reflection` (post-action retrospection), `--ablate
+revise_critique` (peer critique). Before that rename every config called it `final`,
+which is what the archived configs and every published run still use.
 
 **Operating contract** (every run, every type): each stage writes a complete local
 snapshot (`stage_<position>_<name>.jsonl` — positions and names are the on-disk
@@ -132,13 +161,15 @@ per-call token counts (priors live in each model block's `assumed_tokens`).
 
 A faithful replication of the difficult-advice recipe from
 [Teaching Claude Why](https://alignment.anthropic.com/2026/teaching-claude-why/), as a
-7-entry stage list: segment → scenarios → draft → refine (full constitution injected) →
+7-entry stage list: `chunk_constitution` → `write_scenarios` → `draft_prompts` →
+`revise_prompts` (full constitution injected) → `draft_responses` → `revise_responses` →
+`export_sft`. In prose: segment → scenarios → draft → refine (full constitution injected) →
 respond (trait + style guidance) → **rewrite against the constitution (the critical
 step)** → chat export with the trait carried in metadata. Output and HF cache names
 keep their historical `synthdoc_v2` prefixes so existing snapshots stay resumable.
 This replaced the config-driven v1 (deleted 2026-08-03, git history).
 
-## Document type: self reflection (`configs/data/synth/self_reflection.yaml`)
+## Document type: pre-action deliberation (`configs/data/synth/pre_action_deliberation.yaml`)
 
 Inverts who is tempted: **the agent itself**. Working autonomously (prose or agentic
 form), it finds it could protect its own position — or the objective it was deployed to
@@ -154,7 +185,13 @@ guidelines", "not permitted") or too short to have deliberated. Corpus generated
 2026-08-03 (pre-restructure code, same prompts): 592 records / 1.56M tokens on HF
 `LASR-Callum/2026-08-03-synthdoc-self-reflection`.
 
-## Document type: model-eval-model (`configs/data/synth/model_eval_model.yaml`)
+## Document type: model-eval-model
+
+**Live configs: `model_eval_model_{self,other}_natural.yaml`.** The three source-run
+configs this section describes first — `model_eval_model.yaml` and its `_self` / `_other`
+slices — moved to `configs/data/synth/archive/` on 2026-08-13 and are frozen records of
+published corpora, not starting points; see that folder's README. The description below is
+the shared background both natural recipes are variations on.
 
 Generated over a **completed** difficult-advice run (`source:` block; the engine
 fail-fasts if the source run's constitution sha differs): documents in which the model
@@ -168,20 +205,21 @@ plan (deterministic cell/explicitness/flaw-grid allocation, `record_id =
 omission/commission/miscalibration/over-application × clear/moderate/grey, length held,
 flaw label metadata-only) → generate → **final (rewrite against the constitution, the
 difficult-advice stage-6 twin: verdict pinned, drafts kept as
-`draft_reasoning`/`draft_response`, ablatable via `--ablate final`)** → assemble.
+`draft_reasoning`/`draft_response`, ablatable by name)** → assemble.
 
-The `final` stage lives in the base and `_other` configs; `_self` deliberately keeps the
-5-stage layout — its corpus was generated and human-verified before the stage existed
-(2026-08-06, `LASR-Callum/2026-08-06-model-eval-model-self`), and its config stays the
-record of that run. **A completed run can be revised post hoc instead of regenerated**:
-download its `stage_1..4` snapshots from the HF mirror into a local run dir, add the
-`final` stage entry + `rewrite` model block to a copy of its config, and
-`synth run --config <copy> --resume <dir>` — stages 1–4 cache-hit, so the run pays for
-the rewrite only (~$0.03–0.06/doc) and re-assembles sft for free. Until the self arm is
-revised the same way, keep comparisons matched: run `_other` with `--ablate final`, which
-reproduces the pre-rewrite pipeline exactly.
+Among the archived configs the `final` stage lives in the base and `_other`; archived
+`_self` keeps the 5-stage layout, because its corpus was generated and human-verified
+before the stage existed (2026-08-06,
+`LASR-Callum/2026-08-06-model-eval-model-self`) — which is exactly why it is frozen rather
+than fixed. Both live natural configs have the stage. **A completed run can be revised
+post hoc instead of regenerated**: download its `stage_1..4` snapshots from the HF mirror
+into a local run dir, add the `final` stage entry + `rewrite` model block to a copy of its
+config, and `synth run --config <copy> --resume <dir>` — stages 1–4 cache-hit, so the run
+pays for the rewrite only (~$0.03–0.06/doc) and re-assembles sft for free. To compare a
+new arm against the 2026-08-06 self corpus, match it by ablating that arm’s rewrite stage,
+which reproduces the pre-rewrite pipeline exactly.
 
-Cells (`CELLS` in `cells.py`; a cell = attribution × response quality): `control`
+Cells (`CELLS` in `model_eval_model_cells.py`; a cell = attribution × response quality): `control`
 (gold response verbatim, extended regenerated trace — the reasoning-depth control),
 `m4_other_good` / `m3_other_flawed` (transcript-in-user-turn critique, neutrally
 attributed, blind to the flaw label, verdict via a stripped `<assessment>` tag),
@@ -191,23 +229,98 @@ follows, the model revises or holds with reasons; trained with `supervise: "fina
 lifted from the stage-5 export's metadata by `build_mixture` (interchange mode) and
 consumed by `masking.py`).
 
-`uv run synth check --config configs/data/synth/model_eval_model.yaml --run_dir <dir>`
-runs the validity checks and gates on the config's thresholds: coverage (incl. the
-flaw grid), template collapse, per-cell verdict distribution (never 100% — all-`revised`
-in m1 would train capitulation), post-hoc-reasoning rate, blindness, the numpy
+### The natural-turn recipes (`post_action_retrospection.yaml`, `peer_critique.yaml`)
+
+**These two are the live model-eval-model configs.** The archived base and `_self`/`_other`
+put the source run's reply — gold, or minimally perturbed — into the turn under evaluation. That reply is context, never a training
+target, but it conditions every document, so the corpus also teaches the
+difficult-advice recipe's response shape. The natural-turn pair replaces that.
+
+Peer critique (PC, the other arm) keeps the source run, and keeps cells, and changes only how the turns are
+produced (`draft_candidates` writes 3 fresh replies, `rate_candidates` picks the weakest,
+`write_critique_framing` writes the framing). **Post-action retrospection (PR, the self arm) goes further: it has no
+source run, and no cells at all** — 10 stages, every one of them a generic operator.
+
+| | `_self` (2026-08-06 corpus) | PR |
+|---|---|---|
+| prompts | difficult-advice scenarios (sympathetic protagonist + one tempting norm violation) | `write_scenarios` + `draft_prompts` brainstorm ordinary requests where the principle is quietly live |
+| the arms | `plan_cells` allocates m1/m2 from a Python registry | an `assign:` block on `revise_prompts` stamps a `reply_quality` **label**, hashed from the scenario id — folded into the stage that branches on it rather than spending a snapshot |
+| steering | — | `revise_prompts` sharpens the exchange against the constitution *conditioned on the arm*: reachable for the good half, quietly costly for the fast answer in the flawed half |
+| first turn | the source run's gold or perturbed reply | `draft_first_turn` writes one reply with **no constitution** in the prompt, on the cheapest model — its faults are organic |
+| the fault | `perturb_pairs` plants one from a config grid | `revise_first_turn` forces THREE, writes the better reply that acts on them, then adjudicates which was real |
+| the labels | assigned a priori | a `keep:` block on that same stage holds each arm to its own contract — a fault surviving in the flawed arm, none in the good — **before** the two expensive stages, so a drop costs three cheap calls |
+| reflection prompt | one of 6 fixed `reflect_variants` | `write_followup` writes a short question about THIS exchange, linted free of any analysis |
+| the reflection | a cell's Python message-builder | `draft_reflection`, an `llm_tagged` stage whose `conversation:` puts the evaluated reply in a real assistant turn |
+| the rewrite | — (its corpus predates the stage) | `revise_reflection`, plus a `lint` on its own output: the stage that puts the constitution into the trained turn is also where the scaffold most easily leaves fingerprints on it |
+| the export | a cell's Python assembler | `chat_export`: five messages, `supervise: final` in the metadata |
+
+Why three faults, a revision, then an adjudication — in that order. Asked what is wrong
+with its own reply a model says it was fine, so one criticism gets a polite one and three
+exhausts the polite answers. A fixed quota of three then guarantees padding, so the
+adjudication refuses the ones that do not hold up; without it the corpus reflects on
+invented faults. The revision sits between them as the commitment that makes the verdict
+earned — the model must write the better reply, acting on its own criticisms, before it
+may say which was real, and a criticism you cannot write a fix for tends not to survive
+that. Planting a fault instead would make the task spot-the-trap, a different skill from
+reflection.
+
+The drop happens in that same stage, on the field it just produced — a `filter` stage of
+its own would have been a whole snapshot that reads one column of the one before it. The
+cost is that dropped records no longer get a snapshot, so the run manifest (which *is*
+mirrored, unlike the per-item checkpoint) records which ids went and on what value; their
+full text stays in the stage's local `.partial.jsonl`.
+
+`improved_reply` never trains and nothing downstream reads it: it is kept because
+producing it is what forces the judgement, and because it is the field to read when the
+gate's drop rate looks wrong — it shows at a glance whether the reviser is finding real
+problems or manufacturing them. The three passes were two separate calls until
+2026-08-13; an independent second reader is strictly stronger, and `flaw_id_clear_min` is
+the number that will show if merging them cost accuracy.
+
+Why steer the prompt but not the reply: without `revise_prompts` the split is left to
+chance, and a reply written with no constitution falls short more often than not, so most
+of the good half is generated and then discarded. Steering the *situation* fixes the yield
+without touching what the assistant is told — it never sees the revision instruction, and
+`verify_fault` still has to confirm the outcome. Steering the *reply* would be planting a
+fault, which is what the recipe exists to avoid.
+
+Because the labels are found rather than assigned, `total_scenarios` is a **planned**
+count and the yield is whatever the verifier finds. `check_gate_yield` reports the real
+per-arm yield, and each gate's `expected_keep` is the estimator's prior until a smoke run
+replaces it. The good half is not decoration: a corpus of nothing but confirmed faults
+trains reflexive capitulation.
+
+The first turn stays untrained (`supervise: final`). It is a *tracked* conditioning
+variable rather than an invisible one: every record carries `reply_quality`,
+`first_turn_source` and `followup_source` in its metadata.
+
+`uv run synth check --config configs/data/synth/post_action_retrospection.yaml --run_dir <dir>`
+runs the validity checks and gates on the config's thresholds: gate yield (report-only —
+the number a found-fault config re-sizes itself from), coverage of what actually
+entered generation (incl. the flaw grid), template collapse, **structural diversity**
+(per arm, on the assembled records: distinct final user turns, length CV of the trained
+turn, and the top opening-5-gram share — the artifacts a config's *shape* produces, as
+opposed to the generator's voice), per-arm verdict distribution (never 100% —
+all-`revised` would train capitulation), post-hoc-reasoning rate, blindness, the numpy
 surface-shortcut classifier, LLM-judged gold validation and flaw-identification rate.
 
-## Corpus-level checks (`corpus.py`, the `corpus_check` stage)
+## Corpus-level checks (`check_corpus.py`, the `corpus_check` stage)
 
 The `lint` contract and the spec filter ask "is this *document* good?". These ask "is
 this *corpus* good?" — questions no single document can answer. One registry, one
 pass-through stage, placed **anywhere** in a config's `stages:` list:
 
 ```
+uv run synth checks                                                # list every property + tier
 uv run synth check --config <cfg> --run_dir <dir> [--stage corpus]  # re-check, no regeneration
+uv run synth check ... --stage corpus --tier surface                # only the free ones
+uv run synth check ... --stage corpus --only embedding_dedup        # or --skip <names>
 uv run scripts/data/synth/build_dataset.py --config <cfg> --ablate corpus  # skip it
-uv run synth compare --reports <dir1>,<dir2>,<dir3> --key n_chunks --out output/report/x.md
 ```
+
+**Full reference: [`docs/corpus_checks.md`](../../../docs/corpus_checks.md)** — the five
+separable jobs (field resolution, registry, selection, gating, outputs), the measured
+baseline behind every threshold, and why the two dedup checks are not redundant.
 
 Three rules the module turns on:
 
@@ -223,24 +336,30 @@ Three rules the module turns on:
 | property | what it flags | default gate |
 |---|---|---|
 | `ngram_diversity` | top 8-gram share, pairwise 4-gram Jaccard, bigram variety, per group | `0.20` / `0.15` / `0.30` |
-| `near_duplicates` | exact + near dupes, banded bottom-k MinHash | `dup_share_max 0.02` |
-| `opening_collapse` | shared first-8-words, exact **and** reordered | `top_opener_share_max 0.15` |
-| `length_profile` | length CV overall, per-group mean delta | `cv_min 0.12`, `delta 0.35` |
-| `field_balance` | per-axis counts/entropy, empty buckets of each `cross` | `H 0.75`, `max_share 0.60` |
-| `feature_diversity` | mean pairwise cosine, effective rank over hashed char n-grams | `0.95` / `frac 0.25` |
+| `embedding_dedup` | semantic near-dupes + the set a GDM dedup stage would remove | `drop_share_max 0.02` |
 | `label_leakage` | CV AUC of a surface classifier predicting a label | `surface_auc_max 0.65` |
+| `quality_filter` **(judged)** | share a GDM-style autorater would cut, with the flaw breakdown | `drop_rate_max 0.10` (unmeasured) |
 | `applies_vs_conflicts` **(judged)** | resolves a value tension vs applies one value | report-only |
 | `principle_coverage` **(judged)** | which principles a document *actually* engages | report-only |
 | `chunk_attribution` **(judged)** | whether a k>1 document engages all its member chunks | report-only |
-| `pattern_scan` **(judged)** | GDM scan→cluster→autorate: the corpus's own recurring tics | report-only |
+| `pattern_scan` **(judged)** | GDM scan→cluster→autorate: the corpus's own recurring tics, each at STRICT and BROAD frequency | report-only |
+
+**Selection.** A property instance takes `enabled: false` to deselect it without deleting
+it; `--only` / `--skip` / `--tier surface|judged` override per invocation. Selection is a
+spec transform, so the stage, the `check` verb and `--estimate` agree on what ran:
+`--tier surface` builds no model context, needs no key and prices at zero.
 
 **Thresholds are measured, not invented** — the block above `CORPUS_CHECKS` records the
 baseline. Two readings drive the surprising ones: character-n-gram cosine has a high
 floor (two unrelated same-genre documents already score ~0.86), so `effective_rank_frac`
-is the discriminating half of `feature_diversity`; and mean 4-gram Jaccard is
+is why `feature_diversity` was removed; and mean 4-gram Jaccard is
 length-dependent (~0.003 at 1,000 words), so its gate catches only severe collapse.
-Everything in 1–7 is **surface**: a corpus saying one thing 8,000 different ways scores
-well on all of them, and that gap is what the judged tier closes. Small groups are
+**Embedding cosine is length-dependent too** — measured 0.37 mean pairwise at 68 words
+against 0.76 at 1,044 — so `embedding_dedup` is pointed at the short scenario text and
+carries `max_mean_words: 300`, past which it reports its numbers but suppresses its
+findings rather than fire a threshold that no longer discriminates.
+Everything in the surface tier is **surface**: a corpus saying one thing 8,000 different
+ways scores well on all of it, and that gap is what the judged tier closes. Small groups are
 measured but never flagged (`ngram_diversity.min_group_docs`, 5): two documents sharing
 an 8-gram score 1.0, which is binomial noise, and each group carries `gated: true|false`.
 
@@ -251,9 +370,14 @@ generation stages spend anything. A judge call that fails leaves its document
 **unlabelled**, never defaulted to a label.
 
 **Check where a property is decided, not only where it is finished.** Scenario diversity
-is settled at stage 2 and paid for at stages 3–6, so both scenario-generating configs
-carry a `corpus_scenarios` check right after that stage as well as a `corpus` check at
-the end. A corpus check is an **observer**: it writes no snapshot and takes no position
+is settled at stage 2 and paid for by everything after it, so every scenario-generating
+config (difficult advice, pre-action deliberation, post-action retrospection) carries a
+`corpus_scenarios` check right after that stage as well as a `corpus` check at the end.
+PR's end check sits just *before* its export: the export interleaves the untrained first
+reply and the trained reflection in the same assistant role, and `from_messages` selects
+by role only, so only the pre-export record can point the checks at the trained turn
+alone. PR also ships `quality_filter` enabled (over the whole five-part exchange), where
+difficult advice ships it off. A corpus check is an **observer**: it writes no snapshot and takes no position
 number, so inserting one mid-pipeline moves nothing after it and every completed run dir
 stays resumable. It is never cached, so a resumed run always reports on the records in
 hand.
@@ -274,9 +398,8 @@ and exported in both dataset configs' `metadata:` list, so which unit a document
 from, and how that unit was cut and grouped, is readable from the document itself.
 `n_chunks` is the `group` role, `chunk_ids` the `members` role and `trait_id` the `unit`
 role, all mapped on the shipped `corpus` stage, so a judged chunking property needs only
-its rubric wording added. The same three are `field_balance` axes, so an arm's unit mix
-is reported with no judging at all. (An axis is only visible if the export carries it —
-the model-eval-model metadata list is hardcoded in `cells.py`.)
+its rubric wording added. (An axis is only visible if the export carries it —
+the model-eval-model metadata list is hardcoded in `model_eval_model_cells.py`.)
 
 ### Adding a corpus property
 
@@ -285,12 +408,30 @@ Write a `fn(Corpus) -> CheckResult`, add one `CORPUS_CHECKS` entry (thresholds i
 it judges), and name it in a config's `properties:` list. Nothing in the engine, the
 operator or the CLI changes.
 
+**The checks are config-driven too.** They were written against the cell vocabulary,
+where the operator *kinds* were the roles (`plan_cells` was the plan, `generate_cells` the
+documents) and every per-arm statistic split on `cell`. A pipeline of generic operators
+has no such signature — `llm_tagged` appears six times in PR and means
+something different each time — so two blocks name what the kinds used to imply:
+
+```yaml
+checks:
+  stages: {plan: revise_prompts, drafted: draft_reflection,
+           generated: revise_reflection, sft: export_sft}
+  fields: {group: reply_quality, id: scenario_id, quality: reply_quality,
+           evaluated: first_turn, verdict: assessment}
+```
+
+Both default to the cell vocabulary, so an archived or celled config needs neither.
+`drafted` and `generated` differ wherever a pipeline drafts the trained turn and then
+rewrites it: attrition is measured up to the draft, quality is judged on the rewrite.
+
 ## Adding a document type
 
 Write `configs/data/<name>.yaml`: a `stages:` list composed from the operator table
 (prompts inline), `models:` blocks with `assumed_tokens`, a `smoke:` override map, and
 whatever knobs your stages read. If the type needs structure no operator provides,
-add ONE generic operator to `operators.py` (register its `kind`) — operators may not
+add ONE generic operator to `stage_operators.py` (register its `kind`) — operators may not
 hardcode wording, and the engine may not know about any specific document type.
 
 ## Related
