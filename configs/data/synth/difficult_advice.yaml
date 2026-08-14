@@ -27,6 +27,10 @@ smoke:
   max_traits: 2
   scenarios_per_trait: 1
   scenarios_per_call: 1
+  # MUST be overridden here, not just `scenarios_per_trait`: `total_scenarios` WINS over
+  # the per-trait count, so a smoke run against a config that sets it generates the full
+  # corpus. Caught 2026-08-13 when `--smoke` started producing 2,000 scenarios.
+  total_scenarios: 2
 
 seed: 0
 

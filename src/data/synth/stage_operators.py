@@ -841,11 +841,45 @@ def op_corpus_check(sc: dict, cfg: dict) -> Stage:
         else:
             (ctx.run_dir / report_name).write_text(
                 json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+        # The pattern table and the judged-label sidecar are the entry point for any
+        # "this corpus trained badly, what is IN it" investigation, so they are published
+        # beside the corpus rather than left in a run dir that gets cleaned up. GDM's own
+        # ablations moved these frequencies without moving eval scores, so the table is a
+        # place to start looking, not a verdict -- the header says so, because by the time
+        # anyone reads this file the context for it will be months old.
         table = pattern_table(report)
         if table:
-            (ctx.run_dir / f"{sc['name']}_patterns.md").write_text(
-                f"# {sc['name']} — recurring patterns\n{table}\n", encoding="utf-8")
+            path = ctx.run_dir / f"{sc['name']}_patterns.md"
+            path.write_text(
+                f"# {sc['name']} — recurring patterns\n\n"
+                f"Run `{ctx.run_dir.name}`, {report.get('n_records')} records, "
+                f"scanned {report.get('checked_at', '')}.\n\n"
+                f"GDM scan -> cluster -> autorate. `broad` = loosely present, `strict` = "
+                f"unambiguously present; a pattern at 60% broad / 8% strict is a "
+                f"tendency, one at 40/38 is a template. Rows marked ⚠︎ have a classifier "
+                f"that failed to recognise its own cited evidence -- read those as a "
+                f"number about something else.\n\n"
+                f"**Nothing here was filtered out of the corpus.** These are hypotheses "
+                f"about the data: GDM's filter-and-retrain ablations moved BLUF 52->41% "
+                f"and validation buffering 26->20% without moving eval scores. Per-record "
+                f"membership is in `{sc['name']}_labels.jsonl` "
+                f"(`patterns_strict` / `patterns_broad`), so a slice can be pulled "
+                f"without re-running the scan.\n{table}\n", encoding="utf-8")
+            if ctx.cache is not None:
+                ctx.cache.mirror(path)
             print(table)
+        labels = ctx.run_dir / f"{sc['name']}_labels.jsonl"
+        if ctx.cache is not None and labels.exists():
+            ctx.cache.mirror(labels)
+        # The raw passes too. `.scans.jsonl` holds every candidate each batch proposed
+        # BEFORE the merge and the min_scans vote threw any away, and the merge is the
+        # step most likely to be wrong: same-pattern and different-pattern cosines
+        # overlap, so 0.35 is a least-bad trade-off rather than a clean threshold. Without
+        # these, "why is this pattern not in the table" costs another paid scan to answer.
+        if ctx.cache is not None:
+            for raw in sorted(ctx.run_dir.glob(f"{sc['name']}_*.scans.jsonl")) + \
+                    sorted(ctx.run_dir.glob(f"{sc['name']}_*.ratings.jsonl")):
+                ctx.cache.mirror(raw)
         # Keyed by stage name: a run may check its scenarios, its drafts and its final
         # corpus, and the later verdicts must not overwrite the earlier ones.
         ctx.manifest_extra.setdefault("corpus_checks", {})[sc["name"]] = {

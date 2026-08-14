@@ -109,3 +109,24 @@ def test_the_dedupe_filter_runs_on_full_coverage():
     names = [s["name"] for s in cfg["stages"]]
     assert names.index("corpus_scenarios") < names.index("dedupe_scenarios"), (
         "the filter reads the check's sidecar, so the check must run first")
+
+
+def test_smoke_shrinks_every_config_that_sets_a_corpus_budget():
+    """`total_scenarios` WINS over `scenarios_per_trait`, so a `smoke:` block that only
+    overrides the per-trait count leaves a smoke run generating the FULL corpus. Caught
+    2026-08-13 when `--smoke` on this config started producing 2,000 scenarios and cost
+    real money before anyone noticed it was not a smoke run."""
+    import glob
+
+    for path in sorted(glob.glob("configs/data/synth/*.yaml")):
+        cfg = yaml.safe_load(open(path))
+        if cfg.get("total_scenarios") is None:
+            continue
+        smoke = cfg.get("smoke") or {}
+        assert "total_scenarios" in smoke, (
+            f"{path} sets `total_scenarios: {cfg['total_scenarios']}`, which overrides "
+            f"`scenarios_per_trait`. Its `smoke:` block must override it too, or "
+            f"--smoke generates the whole corpus.")
+        assert int(smoke["total_scenarios"]) <= 20, (
+            f"{path} smoke `total_scenarios` is {smoke['total_scenarios']}; a smoke run "
+            f"is meant to be a tiny slice with full wiring")
