@@ -418,6 +418,23 @@ stages:
   - property: embedding_dedup
     fields:
       text: situation
+    params:
+      # Every scenario, not the default 2,000 sample: the `dedupe_scenarios` stage below
+      # acts on these labels, and a filter must never be handed a verdict about only part
+      # of the corpus (it refuses one, by design).
+      sample: 0
+
+# The stage that acts on the check above -- adopted from peer_critique on measured
+# evidence: this same brainstorm prompt, with no generation-time diversity gate, put
+# 58 of 2,000 scenarios in dup clusters at cosine >= 0.86 (largest cluster 14) on the
+# 2026-08-14 partial peer-critique run, and every duplicate that survives here is paid
+# for seven times over by the stages below.
+- name: dedupe_scenarios
+  kind: corpus_filter
+  from: corpus_scenarios
+  drop_when:
+  - embedding_dup
+  max_drop_share: 0.05
 
 - name: draft_prompts
   kind: llm_json
