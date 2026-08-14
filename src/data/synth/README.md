@@ -370,9 +370,14 @@ generation stages spend anything. A judge call that fails leaves its document
 **unlabelled**, never defaulted to a label.
 
 **Check where a property is decided, not only where it is finished.** Scenario diversity
-is settled at stage 2 and paid for at stages 3–6, so both scenario-generating configs
-carry a `corpus_scenarios` check right after that stage as well as a `corpus` check at
-the end. A corpus check is an **observer**: it writes no snapshot and takes no position
+is settled at stage 2 and paid for by everything after it, so every scenario-generating
+config (difficult advice, pre-action deliberation, post-action retrospection) carries a
+`corpus_scenarios` check right after that stage as well as a `corpus` check at the end.
+PR's end check sits just *before* its export: the export interleaves the untrained first
+reply and the trained reflection in the same assistant role, and `from_messages` selects
+by role only, so only the pre-export record can point the checks at the trained turn
+alone. PR also ships `quality_filter` enabled (over the whole five-part exchange), where
+difficult advice ships it off. A corpus check is an **observer**: it writes no snapshot and takes no position
 number, so inserting one mid-pipeline moves nothing after it and every completed run dir
 stays resumable. It is never cached, so a resumed run always reports on the records in
 hand.
