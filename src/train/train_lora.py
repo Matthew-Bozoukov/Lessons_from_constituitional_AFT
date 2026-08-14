@@ -17,7 +17,6 @@ from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
-    TrainerCallback,
 )
 from trl import SFTConfig, SFTTrainer
 
@@ -168,38 +167,6 @@ class DynamicBatchTrainer(SFTTrainer):
         return total
 
 
-class CheckpointBranchPush(TrainerCallback):
-    """Push each saved checkpoint to the adapter repo as a `step<N>` branch.
-
-    The research-release convention (Pythia, OLMo): the training trajectory lives in
-    the git dimension of ONE repo — `main` is the final adapter, each branch an
-    evaluable snapshot loadable via `revision=`. Optimizer/scheduler/rng state stays
-    local: branches are for evaluating steps, not resuming (durable resume is TRL's
-    hub_strategy, a separate mechanism).
-    """
-
-    def __init__(self, hf_repo: str, out_dir: Path, training_meta: dict):
-        self.hf_repo = hf_repo
-        self.out_dir = out_dir
-        self.training_meta = training_meta
-
-    def on_save(self, args, state, control, **kwargs):  # noqa: ARG002
-        if not state.is_world_process_zero:
-            return
-        ckpt = self.out_dir / f"checkpoint-{state.global_step}"
-        if not ckpt.is_dir():
-            return
-        from src.huggingface import push_branch
-
-        # The eval framework infers serve-time thinking mode from this stamp, so every
-        # branch must carry it to be a servable eval target like the final adapter.
-        (ckpt / "training_meta.json").write_text(json.dumps(
-            {**self.training_meta, "step": state.global_step}, indent=2))
-        url = push_branch(ckpt, self.hf_repo, f"step{state.global_step}",
-                          ignore=("optimizer.pt", "scheduler.pt", "rng_state*.pth"))
-        print(f">>> checkpoint branch pushed: {url}")
-
-
 def _git_sha() -> str:
     """Return the current git SHA if available, else 'nogit'."""
     import subprocess
@@ -245,9 +212,6 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
             "hf_repo is required: the trained adapter is pushed to HF automatically. "
             "Declare hf_repo: <org/name> in the config (or hf_repo=... on the CLI); "
             "a credential-less pod run sets push=false and pushes from the driver.")
-    if bool(cfg.train.get("push_to_hub", False)):
-        assert cfg.train.get("hub_model_id") or hf_repo, (
-            "checkpoint push (train.push_to_hub) needs train.hub_model_id or hf_repo")
     torch.manual_seed(int(cfg.seed))
 
     # Under `torchrun` every rank runs this file; these are 1/0 for a plain single-GPU run.
@@ -534,17 +498,6 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         save_strategy=str(cfg.train.get("save_strategy", "epoch")),
         save_steps=int(cfg.train.get("save_steps", 500)),
         save_total_limit=int(cfg.train.get("save_total_limit", 2)),
-        # Durable checkpoints without a network volume: hub_strategy "checkpoint" pushes the
-        # full trainer state to a `last-checkpoint` folder on every save, so a destroyed pod
-        # loses only the steps since the last one and the final adapter is already on the Hub
-        # when training ends -- the pod can be torn down immediately. Opt-in via
-        # train.push_to_hub; the repo defaults to the adapter's own hf_repo, private like
-        # every other push in this repo. (Evaluable per-step `step<N>` branches are
-        # pushed automatically by CheckpointBranchPush — a separate mechanism.)
-        push_to_hub=bool(cfg.train.get("push_to_hub", False)),
-        hub_model_id=cfg.train.get("hub_model_id") or hf_repo,
-        hub_strategy=str(cfg.train.get("hub_strategy", "every_save")),
-        hub_private_repo=bool(cfg.train.get("hub_private_repo", True)),
         bf16=True,
         gradient_checkpointing=True,
         gradient_checkpointing_kwargs={"use_reentrant": False},
@@ -589,16 +542,6 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
             peft_config=None if resume_adapter else peft_cfg,
             data_collator=lambda f: _collate_padded(f, tokenizer.pad_token_id),
         )
-
-    # Research-trajectory branches (Pythia-style layout), not a knob: whenever the run
-    # pushes, every saved checkpoint lands on hf_repo as a `step<N>` branch — an
-    # evaluable `revision=` target. push=false runs (credential-less pods) and smoke
-    # skip it. Legacy adapter repos (no branches, data_path-era training_meta) stay
-    # loadable: serving reads main and only the `thinking` field.
-    if push:
-        trainer.add_callback(CheckpointBranchPush(hf_repo, out_dir, training_meta))
-        if is_main:
-            print(f">>> checkpoint branches: every save pushes step<N> to {hf_repo}")
 
     # Resume from the newest checkpoint on the volume when one is there, so a restart
     # continues rather than silently retraining from scratch at full cost.

@@ -39,17 +39,18 @@ reasoning trace (the gotcha-2 collapse) — that path no longer exists. Conseque
 `ModelProfile`-verified families can train at all now; the v1 Qwen3-32B full-sequence
 baseline is reproduced from git history, not from its (still-present) config.
 
-**Also (checkpoint branches):** every pushing run now publishes its trajectory — each
-saved checkpoint lands on `hf_repo` as a `step<N>` branch, not a knob (Pythia/OLMo
-layout: the trajectory lives in the git dimension of one repo, `main` = final adapter,
-any step loadable via `revision=`). Each branch carries `training_meta.json` (+ its
-step), so any step is a servable eval target; optimizer/scheduler/rng state stays
-local — durable resume remains TRL's `hub_strategy`. Unlike Pythia/OLMo (post-hoc
-conversion + upload from native trainer formats), the push happens live from a
-`TrainerCallback` — our checkpoints are already HF-format and adapter-sized, and a
-throwaway pod keeps its trajectory even if destroyed mid-run. `push=false` runs and
-smoke skip it. Legacy adapter repos (no branches, `data_path`-era stamps) stay
-loadable: serving reads `main` and only the `thinking` field of the stamp.
+**Also (checkpoints are local-only):** checkpoints stay on the training box —
+`save_strategy`/`save_steps` set the cadence, `save_total_limit` rotates old ones away,
+`auto_resume` picks up the newest after a crash. Nothing mid-training touches HF: a
+branch-per-checkpoint push (Pythia-style `step<N>` branches from a TrainerCallback) was
+built and then reverted the same day (this branch's history has it) — the sync upload
+stalls training and the async version needs stage/queue/join machinery nobody ships,
+for trajectories no current experiment reads. Only the FINAL adapter is published, in
+the new repo format: flat root with adapter + tokenizer + `training_meta.json`
+(thinking + dataset `{repo, file, revision}` + git sha) + the required card. TRL's
+`push_to_hub`/`hub_strategy` knobs were removed from the SFTConfig wiring with it.
+Legacy adapter repos (`data_path`-era stamps) stay loadable: serving reads only the
+stamp's `thinking` field.
 
 **Result:** an adapter's metadata now names the exact dataset repo, file and revision it
 was trained from, and a finished training run cannot fail to publish its adapter.
