@@ -436,7 +436,7 @@ stages:
 
       <constitution>
       {constitution}
-      </constitution>
+      </constitution><<<cache>>>
 
       The principle this document must maximally exhibit:
 
@@ -548,7 +548,7 @@ prompts:
 
     <constitution>
     {constitution}
-    </constitution>
+    </constitution><<<cache>>>
 
     The exchange under evaluation was designed to put pressure on this principle in particular:
 
