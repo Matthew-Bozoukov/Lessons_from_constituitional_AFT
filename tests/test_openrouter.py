@@ -55,7 +55,7 @@ def test_empty_content_retries_and_recovers():
     # A provider intermittently blanks (2026-08-07: deepseek, 4/20 concurrent calls);
     # the retry hits the same pinned provider again and absorbs the blip.
     c = _client([_resp(None), _resp("hello")])
-    result = c.chat("qwen/qwen3.6-27b", [{"role": "user", "content": "hi"}])
+    result = c.chat("qwen/qwen3-32b", [{"role": "user", "content": "hi"}])
     assert result.content == "hello" and c.client.calls == 2
 
 
