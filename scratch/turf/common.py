@@ -17,18 +17,17 @@ EMBED_DIM = 4096
 def parse_row(row: dict) -> dict:
     """Derive the (query, response, reasoning) channels from a synth interchange row.
 
-    query = system + user content; response = the LAST assistant turn's content
-    (earlier turns are context, matching `supervise: final` semantics); reasoning =
-    that turn's reasoning_content, "" when absent.
+    SURF-faithful (extractor.py:_extract_first_turn): query = the FIRST user turn's
+    content, response = the FIRST assistant turn's content; system prompts and later
+    turns are ignored. reasoning = that turn's reasoning_content, "" when absent
+    (SURF has no reasoning channel — this is our extension).
     """
     msgs = row["messages"]
-    assistant_idx = max(i for i, m in enumerate(msgs) if m["role"] == "assistant")
-    query = "\n\n".join(m["content"] for m in msgs[:assistant_idx]
-                        if m["role"] in ("system", "user"))
-    final = msgs[assistant_idx]
+    query = next(m["content"] for m in msgs if m["role"] == "user")
+    assistant = next(m for m in msgs if m["role"] == "assistant")
     return {"query": query,
-            "response": final["content"],
-            "reasoning": (final.get("reasoning_content") or "").strip(),
+            "response": assistant["content"],
+            "reasoning": (assistant.get("reasoning_content") or "").strip(),
             "metadata": row.get("metadata", {})}
 
 

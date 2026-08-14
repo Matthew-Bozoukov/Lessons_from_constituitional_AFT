@@ -22,12 +22,14 @@ inertia early-stop, seed 42; runs on cuda/mps/cpu); attribute extraction samples
 their temperature 1.0 (dataset and case side alike, so both live in one
 distribution); cluster summaries use their prompt verbatim (channel prefix
 parameterised) at temperature 0.0 from the top-50 closest members (their top-100,
-halved); embeddings are stored fp32 as they store them. The paper itself mandates
-cosine in two places, and we follow both: crux→response retrieval (Eq. 3) and
-assigning a case's attributes to their nearest cluster (Eq. 5) — the latter also
-matching SURF's `cluster_mapper.py`. Known paper deviations: 40 blind-judge
-attributes on the case (paper: 10; our recall lever), and hit-counting credits each
-distinct cluster of a retrieved row once rather than Eq. 4's slot-index pairing.
+halved); embeddings are stored fp32 as they store them; rows reduce to their FIRST
+user turn + FIRST assistant turn (their `_extract_first_turn`; system prompts and
+later turns ignored). The paper itself mandates cosine in two places, and we follow
+both: crux→response retrieval (Eq. 3) and assigning a case's attributes to their
+nearest cluster (Eq. 5) — the latter also matching SURF's `cluster_mapper.py`.
+One knowing paper deviation: hit-counting credits each distinct cluster of a
+retrieved row once, rather than Eq. 4's literal slot-index pairing — which cannot
+extend to our 20-attribute (query+reasoning) trigger side anyway.
 
 ## Pipeline
 

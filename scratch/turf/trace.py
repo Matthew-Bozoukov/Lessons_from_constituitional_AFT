@@ -8,7 +8,7 @@
         --index output/turf/da9 --polarity satisfy [--k 1000] [--push]
 
 Steps (paper App. D.1, adapted per the 2026-08-13 design):
-1. Blind judge: extract 40 "The response..." attributes from the case (no rubric).
+1. Blind judge: extract 10 "The response..." attributes from the case (no rubric).
 2. Informed judge: select 3 cruxes VERBATIM against the rubric, polarity
    satisfy|violate, guarded by the index's styles.json (rejects reported).
 3. Embed the cruxes; retrieve the k=1000 nearest dataset RESPONSE attributes each.
@@ -51,7 +51,7 @@ from scratch.turf.prompts import (  # noqa: E402
 from src.endpoints.openrouter import OpenRouterClient  # noqa: E402
 from src.utils import git_sha, read_jsonl, timestamp  # noqa: E402
 
-CASE_RESPONSE_ATTRS = 40  # blind-judge budget: recall lever (design discussion; paper uses 10)
+CASE_RESPONSE_ATTRS = 10  # blind-judge budget (paper D.1.2: ten attributes)
 EXTRACT_TEMPERATURE = 1.0  # attribute extraction samples at SURF's 1.0 — case attrs
                            # must live in the same distribution as the index's.
                            # The crux judge stays at 0.0 (a selection, not a sample).

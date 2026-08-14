@@ -3,7 +3,7 @@
 extractor_model: anthropic/claude-sonnet-4.5   # all attribute extraction + judging
 embed_model: qwen/qwen3-embedding-8b           # OpenRouter /embeddings, 4096-d (paper's)
 n_attrs_per_channel: 10    # 10 query + 10 reasoning (trigger), 10 response (dataset side)
-case_response_attrs: 40    # blind-judge budget on the case — the recall lever
+case_response_attrs: 10    # blind-judge budget on the case (paper D.1.2)
 k_clusters: 1000           # trigger clusters (paper: 25k over 234k rows; scaled)
 k_retrieve: 1000           # nearest response attributes per crux (paper's k)
 extract_temperature: 1.0   # attribute extraction, dataset AND case side (SURF's 1.0)
