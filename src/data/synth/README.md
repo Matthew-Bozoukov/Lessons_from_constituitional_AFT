@@ -157,6 +157,15 @@ repo. `manifest.json` records git sha, constitution sha256, ablations, per-stage
 and wall clock; `--estimate --measured <smoke manifest>` prices a full run from real
 per-call token counts (priors live in each model block's `assumed_tokens`).
 
+**HF repo layout** (the synth→mixture contract; the local run dir stays flat): stage
+snapshots mirror to `stages/`, and a COMPLETED run publishes its final records as
+`dataset.jsonl` at the repo root — the one file consumers read (build_mixture:
+`repo:` + `file: dataset.jsonl` [+ `revision:`]). Every upload refreshes the
+README's `configs:` front-matter in the same commit, declaring `dataset` as the
+default config (`load_dataset(repo)` fetches it alone) and each stage as its own
+named config — which also keeps the dataset viewer working. A halted run publishes
+no `dataset.jsonl` (`manifest.json`'s `dataset` field is null).
+
 ## Document type: difficult advice (`configs/data/synth/difficult_advice.yaml`)
 
 A faithful replication of the difficult-advice recipe from

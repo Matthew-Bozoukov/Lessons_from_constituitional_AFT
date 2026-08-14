@@ -170,8 +170,9 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
     """Load one source as interchange messages rows and validate its reasoning kind.
 
     The spec names rows via a registry adapter (`source:`), a raw HF chat repo
-    (`repo:`), or a local jsonl (`path:`); adapters supply repo/config/normaliser
-    defaults the spec can override. Budgets and the `max_seq_len` cap are counted on
+    (`repo:`, streamed), one file of an HF repo (`repo:` + `file:` [+ `revision:`] —
+    the synth->mixture contract, normally dataset.jsonl), or a local jsonl (`path:`);
+    adapters supply repo/config/normaliser defaults the spec can override. Budgets and the `max_seq_len` cap are counted on
     the PRESERVED render of each row (what training will render), with the config's
     tokenizer — the counts are model-relative, the stored data is not.
 
@@ -205,6 +206,18 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
             "their render at train time.)")
     to_messages = adapter.to_messages if adapter else \
         (lambda row: clean_messages(row.get("messages")))
+    if "file" in spec:
+        # The synth->mixture contract: a synth repo holds many stage files, and
+        # `file:` names the ONE to consume — normally dataset.jsonl, the repo's
+        # default config — with `revision:` pinning the exact commit. Resolved via
+        # the shared train-side resolver (token resolution, exact-sha pin) and then
+        # treated exactly like a `path:` source (so `balance_by:` works too).
+        assert "repo" in spec, f"source {name!r}: `file:` needs `repo:`"
+        from src.huggingface import resolve_dataset
+
+        local, ref = resolve_dataset(spec["repo"], spec["file"], spec.get("revision"))
+        print(f"{name}: {ref['repo']}@{ref['revision'][:12]} ({ref['file']})")
+        spec = {**spec, "path": local}
     if spec.get("balance_by") and "path" not in spec:
         raise ValueError(
             f"source {name!r}: balance_by requires a local `path:` source — a stream "
@@ -421,7 +434,9 @@ def main(config: str, smoke: bool = False) -> None:
         config: OmegaConf YAML. `sources` maps name -> spec:
             * `source:` a registry adapter name (src/data/mixture/sources/) — repo,
               config and normaliser come from the adapter; `split`/`config`/`repo`
-              override it; or `repo:` a raw HF chat dataset; or `path:` a local jsonl
+              override it; or `repo:` a raw HF chat dataset (streamed); or `repo:` +
+              `file:` [+ `revision:`] one pinned file of an HF repo (how synth
+              datasets come in: `file: dataset.jsonl`); or `path:` a local jsonl
               (interchange rows or whatever the adapter's normaliser reads).
             * exactly one of `tokens:` (greedy token-share fill) or `examples:` (exact
               row count — short sources fail loudly).

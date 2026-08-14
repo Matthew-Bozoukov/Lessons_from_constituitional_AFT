@@ -179,6 +179,12 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
             print(f"\n!!! run halted at {label}: {ctx.stop}")
             break
 
+    # A COMPLETED run publishes its final records as the repo's default dataset —
+    # `dataset.jsonl` at the root is the synth->mixture contract; a halted run has no
+    # final dataset and leaves only its stages/ snapshots.
+    if not ctx.stop and records:
+        cache.publish_final(records)
+
     manifest = {
         "run_id": ts,
         "pipeline": cfg.get("pipeline", "unnamed"),
@@ -192,6 +198,7 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
         "effective": (cfg.get("smoke") or {}) if smoke else {},
         "ablated": ablate,
         "halted": ctx.stop,
+        "dataset": None if ctx.stop else "dataset.jsonl",
         "counts": counts,
         "usage": usage.as_dict(),
         "wall_clock_s": round(time.time() - started, 1),

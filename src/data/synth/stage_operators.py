@@ -1075,8 +1075,14 @@ def op_load_source_run(sc: dict, cfg: dict) -> Stage:
 
         from src.huggingface import hf_download
 
-        records = read_jsonl(Path(hf_download(
-            repo, snapshot, repo_type="dataset")))
+        # New-layout repos keep snapshots under stages/ (dataset.jsonl at the root);
+        # pre-layout repos hold them at the root — try the exact name, then stages/.
+        try:
+            records = read_jsonl(Path(hf_download(
+                repo, snapshot, repo_type="dataset")))
+        except EntryNotFoundError:
+            records = read_jsonl(Path(hf_download(
+                repo, f"stages/{snapshot}", repo_type="dataset")))
         try:
             manifest = json.loads(Path(hf_download(
                 repo, "manifest.json", repo_type="dataset")).read_text())
