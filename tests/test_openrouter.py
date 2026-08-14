@@ -1,16 +1,15 @@
 # ABOUTME: Offline tests for OpenRouterClient's completion handling — the empty-content
-# ABOUTME: retry, and the provider registry that keeps EVERY model (open-weight included)
-# ABOUTME: on one explicit provider: pinned families route first-party, unpinned ids raise.
+# ABOUTME: retry, and the provider registry (configs/endpoints/providers.yaml) that keeps
+# ABOUTME: EVERY model (open-weight included) on one explicit provider; unlisted ids raise.
 
 from types import SimpleNamespace
 
 import pytest
 
 from src.endpoints.openrouter import (
-    PROVIDER_PINS,
     EmptyCompletionError,
     OpenRouterClient,
-    pin_provider,
+    provider_pin,
 )
 
 
@@ -56,7 +55,7 @@ def test_empty_content_retries_and_recovers():
     # A provider intermittently blanks (2026-08-07: deepseek, 4/20 concurrent calls);
     # the retry hits the same pinned provider again and absorbs the blip.
     c = _client([_resp(None), _resp("hello")])
-    result = c.chat("qwen/qwen3.6-27b", [{"role": "user", "content": "hi"}])
+    result = c.chat("qwen/qwen3-32b", [{"role": "user", "content": "hi"}])
     assert result.content == "hello" and c.client.calls == 2
 
 
@@ -78,21 +77,20 @@ def test_normal_completion_does_not_retry():
 # --- the provider registry: one model id = one provider, on every call ---------------
 # Third-party hosts of the same weights filter differently (2026-08-14: Bedrock, then
 # Google Vertex, refused difficult-advice prompts Anthropic itself serves), so every
-# family pins to one explicit provider and an unpinned id is a hard error — free
-# routing is never the fallback.
+# model pins to one explicit provider in configs/endpoints/providers.yaml and an
+# unlisted id is a hard error — free routing is never the fallback.
 
 
-def test_every_pinned_family_routes_to_its_one_provider():
+def test_every_pinned_model_routes_to_its_one_provider():
     cases = {
         "anthropic/claude-sonnet-5": "anthropic",
-        "openai/gpt-5.5": "openai",
+        "openai/gpt-5.6-terra": "openai",
         "google/gemini-3.1-pro-preview": "google-ai-studio",
         "x-ai/grok-4.20": "xai",
-        "qwen/qwen3.6-27b": "alibaba",
-        "moonshotai/kimi-k2.6": "moonshotai",
+        "nousresearch/hermes-4-405b": "nebius",
     }
     for model, provider in cases.items():
-        assert pin_provider(model, None)["provider"] == \
+        assert provider_pin(model) == \
             {"order": [provider], "allow_fallbacks": False}, model
 
 
@@ -110,13 +108,11 @@ def test_unpinned_model_is_a_hard_error_not_free_routing():
     assert c.client.calls == 0  # refused before any request left the process
 
 
-def test_more_specific_pin_beats_the_family_pin(monkeypatch):
-    # An exact-id entry (longest matching prefix) overrides its family's default,
-    # e.g. one model of a family whose creator does not host that generation.
-    monkeypatch.setitem(PROVIDER_PINS, "qwen/qwen3-32b",
-                        {"order": ["deepinfra"], "allow_fallbacks": False})
-    assert pin_provider("qwen/qwen3-32b", None)["provider"]["order"] == ["deepinfra"]
-    assert pin_provider("qwen/qwen3.6-27b", None)["provider"]["order"] == ["alibaba"]
+def test_pins_are_exact_id_not_family():
+    # Same "qwen/" family, different hosts: prefix inference would route the embedder
+    # to a provider with no endpoint for it — exact ids only.
+    assert provider_pin("qwen/qwen3-32b")["order"] == ["deepinfra"]
+    assert provider_pin("qwen/qwen3-embedding-8b")["order"] == ["nebius"]
 
 
 def test_caller_provider_block_beats_the_pin():

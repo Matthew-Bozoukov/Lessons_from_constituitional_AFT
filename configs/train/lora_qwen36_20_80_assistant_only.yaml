@@ -2,8 +2,8 @@
 # ABOUTME: with loss masked to the tokens the model would itself generate.
 # Run on GPU: python scripts/train/train_lora.py --config configs/train/lora_qwen36_20_80_assistant_only.yaml
 
-# Byte-for-byte the same as configs/train/lora_qwen36_tulu100.yaml apart from assistant_only_loss
-# and output_dir, so any difference in the eval is attributable to the loss mask alone.
+# Historical ablation arm: identical to the original full-sequence 20/80 run apart from
+# the loss mask, which the ablation settled and is now the trainer's only mode.
 seed: 0
 model: "Qwen/Qwen3.6-27B"
 
@@ -14,7 +14,8 @@ model_class: "image_text_to_text"
 # The SAME rendered mixture the 20/80 arm trained on, reused verbatim:
 # output/mixture_qwen36/20260728_152610/mixture.jsonl -- 2,169 examples, 1,494,003 tokens,
 # 20% difficult-advice (with <think> traces) / 80% TULU3 replay (no think block).
-data_path: "data/mixture.jsonl"
+data_repo: ???  # FILL: HF dataset repo id for this arm's mixture (was local data/mixture.jsonl; see docs/LOG.md)
+hf_repo: ???    # FILL: HF model repo the trained adapter pushes to automatically (push=false opts out)
 output_dir: "output/train_lora_qwen36_assistant_only"
 
 lora:
@@ -37,10 +38,6 @@ train:
   # TRL only guarantees packed-sequence isolation under Flash Attention variants; under
   # sdpa it warns of cross-contamination between samples, so packing stays off.
   packing: false
-  # Mask every token outside an assistant turn. Qwen3.6's chat template has no
-  # `{% generation %}` markers, so src/masking.py derives the spans from the rendered
-  # text via offset mapping instead. 79.5% of tokens end up supervised.
-  assistant_only_loss: true
   attn_implementation: sdpa
   # bitsandbytes 4-bit does not reliably cover this model's linear-attention/SSM
   # layers; 54GB of bf16 weights + LoRA + checkpointing fits an 80GB card.

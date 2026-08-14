@@ -503,22 +503,14 @@ def model_cfg(cfg: dict, key: str) -> dict[str, Any]:
     reasoning = block.get("reasoning", defaults.get("reasoning"))
     if reasoning is not None:
         out["extra_body"] = {"reasoning": dict(reasoning)}
-    # OpenRouter provider preferences (https://openrouter.ai/docs/provider-routing),
-    # e.g. `provider: {ignore: [amazon-bedrock]}`. Needed because upstream providers
-    # filter differently: Bedrock's content filter refuses a slice of difficult-advice
-    # prompts that Anthropic's own endpoint serves (observed 2026-08-14: 2.6% of
-    # revise_prompts calls came back finish_reason=content_filter, all from Bedrock,
-    # tripping the systematic-failure gate). Run-level (`defaults:`) only, deliberately:
-    # a model id must mean one serving stack for the whole run, so stage blocks cannot
-    # route the same model to different providers.
-    if "provider" in block:
+    # Provider routing is NOT a synth concern: one provider per model, globally, in
+    # configs/endpoints/providers.yaml (applied inside OpenRouterClient on every call).
+    # Rejecting the key here keeps stale configs loud instead of silently ignored.
+    if "provider" in block or "provider" in defaults:
         raise ValueError(
-            f"models.{key}.provider: provider routing is run-level only "
-            "(set defaults.provider); per-stage provider pins are not supported"
-        )
-    provider = defaults.get("provider")
-    if provider is not None:
-        out.setdefault("extra_body", {})["provider"] = dict(provider)
+            f"models.{key}: provider routing moved to configs/endpoints/providers.yaml "
+            "(one provider per model, applied by OpenRouterClient) — remove `provider:` "
+            "from synth configs")
     return out
 
 

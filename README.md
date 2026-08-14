@@ -18,7 +18,7 @@ its behaviour, plus a web frontend that presents the results.
 ├── configs/              # OmegaConf YAML, one per pipeline step
 ├── tests/                # fast offline unit tests
 ├── constitutions/        # constitution / trait documents the specs point at
-├── docs/                 # reference material + docs/replication.md (the run guide) + docs/LOG.md (research log)
+├── docs/                 # reference material + docs/LOG.md (research log)
 └── dashboard/            # research-log frontend (Next/vinext), deployed on Netlify
 ```
 
@@ -47,7 +47,6 @@ the comment in `pyproject.toml`.)
 
 | Area | What it is | How to work in it |
 | --- | --- | --- |
-| [`docs/replication.md`](docs/replication.md) | End-to-end guide to the *difficult advice* replication from Anthropic's [Teaching Claude Why](https://www.anthropic.com/research/teaching-claude-why) on Qwen3-32B. Headline: **19.3% → 8.0%** agentic misalignment with thinking-format training. | `uv sync && uv run pytest -q`, then `uv run scripts/<step>.py` per the guide |
 | [`src/data/synth/`](src/data/synth/README.md) | Six-stage Teaching Claude Why difficult-advice data pipeline (self-contained package, formerly `synthdoc_v2`). | `uv run synth run --config configs/data/synth/difficult_advice.yaml --smoke` |
 | `src/eval/vulnerabilities/` | Generalized Petri + SURF audit tooling from the completed MSM audit. Inspect's dependency pins conflict with the root env, so petri tools run in the nested project's env. | `uv run --project src/eval/vulnerabilities/petri/petri-subscription python src/eval/vulnerabilities/petri/<tool>.py --help` |
 | [`dashboard/`](dashboard/README.md) | The research-log web app: datasets, eval runs, Petri results, findings. Self-contained Node project. | `cd dashboard && npm ci && npm run dev` |
@@ -141,88 +140,7 @@ survive scrutiny - is preserved in `git log`.
 
 ---
 
-## Legacy run guide + capability evals (from kn/internalization-proxy — pre-restructure paths; to be folded into docs/replication.md)
-
-### 0. (Optional) Skip data generation — use the published dataset
-The generated SFT data is on the HF Hub, so you can jump straight to fine-tuning (step 5) without
-spending ~$74 on Sonnet 4.5. Two files in [`matboz/difficult-advice-qwen3`](https://huggingface.co/datasets/matboz/difficult-advice-qwen3):
-`sft_dataset_thinking.jsonl` (2,119 examples **with `<think>` reasoning traces** — recommended) and
-`sft_dataset.jsonl` (same, non-thinking).
-```bash
-mkdir -p data
-uv run hf download matboz/difficult-advice-qwen3 sft_dataset_thinking.jsonl \
-  --repo-type dataset --local-dir data
-# then go straight to step 5 with configs/train/lora_qwen3_difficult_advice_thinking.yaml
-# (its data_path already points at data/sft_dataset_thinking.jsonl)
-```
-The pre-trained LoRA adapter is also published — to skip training *and* generation entirely and go
-straight to evaluation, point the eval framework at
-[`matboz/qwen3-32b-difficult-advice-lora`](https://huggingface.co/matboz/qwen3-32b-difficult-advice-lora):
-```bash
-uv run scripts/run_eval.py --target matboz/qwen3-32b-difficult-advice-lora --name agentic_misalignment
-```
-### 1-2. Get the difficult-advice SFT data
-The v1 generation code (`generate_difficult_advice.py` + `augment_thinking.py`) was deleted on
-2026-08-03 — git history before that date has it, and its dataset card records the exact
-provenance. Pull the finished dataset instead:
-```bash
-uv run hf download matboz/difficult-advice-qwen3 sft_dataset_thinking.jsonl \
-  --repo-type dataset --local-dir data/
-```
-`sft_dataset_thinking.jsonl` carries a real first-person `<think>` trace per example — the
-reasoning-preserving fix; naive SFT on single-blob answers makes Qwen3's chat template emit an
-empty `<think></think>`, which trains the model to *stop reasoning*. New difficult-advice data
-is generated with `synth` (see the synth section), which carries reasoning natively.
-
-### 3. Provision + prepare the GPU box
-```bash
-# vast.ai example (any 80GB GPU works):
-uv run vastai create instance <OFFER_ID> \
-  --image pytorch/pytorch:2.6.0-cuda12.4-cudnn9-devel --disk 200 --ssh --direct
-# On the instance (CRITICAL version pins — vLLM 0.8.5 needs transformers 4.51.3):
-pip install --no-cache-dir vllm==0.8.5 "transformers==4.51.3" \
-    trl==0.19.1 peft bitsandbytes datasets accelerate omegaconf fire wandb huggingface_hub
-hf download Qwen/Qwen3-32B
-# Copy this repo + the thinking dataset to /root/work on the instance.
-```
-
-### 4. Baseline eval (the framework serves the model itself)
-```bash
-uv run scripts/run_eval.py --target Qwen/Qwen3-32B --name agentic_misalignment
-```
-`run_eval.py` serves the target with vLLM on localhost, drives the vendored patched harness
-(generate→experiments→classify via the OpenRouter judge), aggregates rates, stitches
-self-contained rollouts, and pushes results to HF. A full model runs at its chat template's
-own thinking default; adapters run in the mode stamped in their `training_meta.json`.
-
-### 5. Train QLoRA
-
-> **Skip training entirely** — evaluate the published adapter (step 6).
-
-To train it yourself (on the pod):
-```bash
-# thinking-format (recommended): reasoning preserved
-uv run scripts/train/train_lora.py --config configs/train/lora_qwen3_difficult_advice_thinking.yaml
-# (non-thinking baseline arm: configs/train/lora_qwen3_difficult_advice.yaml)
-```
-Key config: r=32, 2 epochs, batch 4 × grad-accum 4, max_seq_len 2048, `assistant_only_loss: false`
-(Qwen3's template has no `{% generation %}` markers, so assistant-only masking is all-zero).
-Launch with `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` to avoid fragmentation OOM.
-Every train config declares `thinking: true|false`; the trainer validates it against the data
-and stamps it into the adapter's `training_meta.json`.
-
-### 6. Post-training eval + report
-```bash
-# same eval, adapter target — base model + thinking mode come from the artifact:
-uv run scripts/run_eval.py --target matboz/qwen3-32b-difficult-advice-lora --name agentic_misalignment
-# build the capstone dashboard (after pulling the summaries into output/eval_summaries/):
-uv run scratch/reports/final_report.py
-```
-`final_report.py` writes `output/report/final_*/{report.md, dashboard.html, plots/}`.
-
----
-
-## Second eval: ODCV-Bench (Qwen3.6-27B replication)
+## ODCV-Bench eval (Qwen3.6-27B replication)
 
 A second, independent agentic-misalignment benchmark:
 [**ODCV-Bench**](https://odcvbenchmark.github.io/) ([arXiv 2512.20798](https://arxiv.org/abs/2512.20798),
@@ -280,7 +198,7 @@ calls that are already cached, so an interrupted run costs nothing to continue.
 `output/reasoning_probe_*.txt` compare `<think>` length of base vs LoRA. Naive SFT → 0 chars
 (collapsed); the think-trace fix → 900-1600 chars of real reasoning, answers still correct.
 
-## Third eval: capability regression (Arena-Hard SxS vs our own baseline)
+## Capability regression eval (Arena-Hard SxS vs our own baseline)
 
 The guardrail underneath the alignment results. It answers one question: does mixing
 synthetic constitution documents into the SFT mixture cost us general capability? Data lives
@@ -376,7 +294,7 @@ Judge cost runs ~2× the spec's §11 estimate (~3,100 output tokens/question, no
 Gemini 3 Flash spends 300–500 reasoning tokens per call even at `effort: low`. Verified by
 A/B that `low` genuinely reduces them — it is not being ignored. Full sweep ≈ $50.
 
-## Fourth eval: MMLU capability check (absolute, vs the Qwen base model)
+## MMLU capability check (absolute, vs the Qwen base model)
 
 The Arena-Hard eval above is *relative* — it can only say an arm is as good as another arm.
 MMLU is scored against a fixed answer key, so every arm's number stands on its own and the

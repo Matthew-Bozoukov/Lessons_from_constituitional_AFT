@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, Sequence
 
 from dotenv import load_dotenv
@@ -21,6 +22,43 @@ from tqdm import tqdm
 load_dotenv()
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+PROVIDER_PINS_PATH = Path(__file__).resolve().parents[2] / "configs/endpoints/providers.yaml"
+
+_pins: dict | None = None
+
+
+def provider_pin(model: str) -> dict:
+    """The OpenRouter `provider` routing object pinned for `model`.
+
+    THE single source of truth is configs/endpoints/providers.yaml: one provider per
+    model id (per-model entry merged over `defaults`), no prefix inference, no
+    free-routing fallback. Hosts of the same weights are NOT interchangeable: they
+    differ in quantization/backend, wrap models in their own content filters
+    (2026-08-14, difficult-advice revise_prompts: Bedrock refused 2.6% of calls as
+    content_filter and Google Vertex refused the same prompts — all served fine by
+    Anthropic), and only the vendor's endpoint honors extensions like `cache_control`
+    reliably.
+
+    Raises:
+        ValueError: `model` has no entry. Every model routed through OpenRouter must
+            be served by the same provider on every call — add its ONE provider to
+            the yaml (check https://openrouter.ai/api/v1/models/<id>/endpoints).
+    """
+    global _pins
+    if _pins is None:
+        from omegaconf import OmegaConf
+
+        cfg = OmegaConf.to_container(OmegaConf.load(PROVIDER_PINS_PATH))
+        _pins = {mid: {**cfg["defaults"], **spec}
+                 for mid, spec in (cfg["models"] or {}).items()}
+    pin = _pins.get(model)
+    if pin is None:
+        raise ValueError(
+            f"no provider pin for {model!r}: every model routed through OpenRouter "
+            "must be served by the same provider on every call. Add its ONE provider "
+            f"to {PROVIDER_PINS_PATH} (check https://openrouter.ai/api/v1/models/"
+            f"{model}/endpoints), or pass an explicit extra_body['provider'] block.")
+    return pin
 
 
 class EmptyCompletionError(RuntimeError):
@@ -29,7 +67,8 @@ class EmptyCompletionError(RuntimeError):
     Providers intermittently return a blank body (observed on deepseek-chat-v3.1,
     2026-08-07 — 4/20 concurrent calls, unreproducible minutes later). Treating it as
     transient retries the call — against the SAME provider, since every model is pinned
-    (PROVIDER_PINS below) — instead of failing the whole item on one bad response.
+    (configs/endpoints/providers.yaml) — instead of failing the whole item on one bad
+    response.
     """
 
 
@@ -39,69 +78,6 @@ class EmptyCompletionError(RuntimeError):
 # right failure mode: a "successful" reroute to a host that filters differently is a
 # silent data change.
 _TRANSIENT = (RateLimitError, APIConnectionError, APITimeoutError, EmptyCompletionError)
-
-
-# THE provider registry: every model id that goes through OpenRouterClient MUST match an
-# entry here (longest matching prefix wins), or supply its own extra_body["provider"]
-# (that always wins). A model with neither is a hard error — no request is ever left to
-# OpenRouter's free routing, so a given model id is served by the same provider on every
-# call of every run, open-weight models included.
-#
-# Why: upstream hosts of the same weights are NOT interchangeable — third-party clouds
-# wrap the model in their own content filters (2026-08-14, difficult-advice
-# revise_prompts: Bedrock refused 2.6% of calls with finish_reason=content_filter, and
-# after excluding Bedrock, Google Vertex refused the same prompts — all served fine by
-# Anthropic itself), serve different quantizations, and only first-party endpoints honor
-# extensions like `cache_control` reliably. Free routing is therefore a silent
-# data-composition change, not a convenience.
-#
-# Every entry names the model creator's own endpoint (slugs verified against
-# https://openrouter.ai/api/v1/models/<id>/endpoints on 2026-08-14; Gemini has two
-# Google-operated hosts and we pin the direct API, google-ai-studio, not the Vertex
-# cloud wrapper). When a new family comes into use, its call fails fast with
-# instructions — extend this map deliberately; never widen a pin to multiple providers.
-PROVIDER_PINS: dict[str, dict] = {
-    "anthropic/": {"order": ["anthropic"], "allow_fallbacks": False},
-    "openai/": {"order": ["openai"], "allow_fallbacks": False},
-    "google/": {"order": ["google-ai-studio"], "allow_fallbacks": False},
-    # xAI is grok's only OpenRouter host today (verified 2026-08-14), so this pin is
-    # future-proofing against resellers appearing rather than a live re-route.
-    "x-ai/": {"order": ["xai"], "allow_fallbacks": False},
-    "qwen/": {"order": ["alibaba"], "allow_fallbacks": False},
-    "moonshotai/": {"order": ["moonshotai"], "allow_fallbacks": False},
-}
-
-
-def pin_provider(model: str, extra_body: dict | None) -> dict:
-    """Resolve the one provider this model is served by and merge it into `extra_body`.
-
-    Args:
-        model: OpenRouter model id.
-        extra_body: Caller-supplied extra request body, if any.
-
-    Returns:
-        extra_body with a `provider` key — the caller's own block if it sent one,
-        else the model's PROVIDER_PINS entry (longest matching prefix).
-
-    Raises:
-        ValueError: The model has no pin and the caller sent no provider block. Every
-            model must be served by the same provider on every call; there is no
-            free-routing fallback.
-    """
-    out = dict(extra_body or {})
-    if "provider" in out:
-        return out
-    matches = [k for k in PROVIDER_PINS if model.startswith(k)]
-    if not matches:
-        raise ValueError(
-            f"no provider pin for {model!r}: every model routed through OpenRouter "
-            "must be served by the same provider on every call (open-weight models "
-            "included). Add a PROVIDER_PINS entry for it in src/endpoints/openrouter.py "
-            "naming its ONE provider (check https://openrouter.ai/api/v1/models/"
-            f"{model}/endpoints), or pass an explicit extra_body['provider'] block."
-        )
-    out["provider"] = dict(PROVIDER_PINS[max(matches, key=len)])
-    return out
 
 
 @dataclass
@@ -116,6 +92,8 @@ class ChatResult:
         cached_tokens: Prompt tokens served from cache, when the provider reports it.
             0 means "no cache hit OR the provider said nothing", so it is a floor on
             savings rather than a measurement -- see `CACHE_MARK`.
+        provider: Which upstream provider actually served the call — record it in
+            run artifacts the way temperature is recorded (see providers.yaml).
     """
 
     content: str
@@ -123,6 +101,7 @@ class ChatResult:
     completion_tokens: int
     finish_reason: str
     cached_tokens: int = 0
+    provider: str = ""
 
 
 # Everything BEFORE this marker in a message becomes a separately cacheable block.
@@ -230,15 +209,20 @@ class OpenRouterClient:
             **kwargs: Passed through to the completions API.
 
         Returns:
-            A ChatResult with content and token usage.
+            A ChatResult with content, token usage and the serving provider.
         """
-        extra_body = pin_provider(model, kwargs.pop("extra_body", None))
+        # Route through the model's provider pin (configs/endpoints/providers.yaml).
+        # A caller-supplied extra_body["provider"] wins; otherwise an unpinned model
+        # is a hard error inside provider_pin — free routing is never the fallback.
+        extra = dict(kwargs.pop("extra_body", None) or {})
+        if "provider" not in extra:
+            extra["provider"] = provider_pin(model)
+        kwargs["extra_body"] = extra
         resp = self.client.chat.completions.create(
             model=model,
             messages=apply_cache_control(messages, model),
             temperature=temperature,
             max_tokens=max_tokens,
-            extra_body=extra_body,
             **kwargs,
         )
         choice = resp.choices[0]
@@ -262,6 +246,7 @@ class OpenRouterClient:
             completion_tokens=usage.completion_tokens if usage else 0,
             finish_reason=choice.finish_reason or "",
             cached_tokens=int(cached),
+            provider=getattr(resp, "provider", "") or "",
         )
 
 

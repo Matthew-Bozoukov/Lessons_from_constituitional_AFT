@@ -181,14 +181,37 @@ def _git_sha() -> str:
         return "nogit"
 
 
-def main(config: str, smoke: bool = False) -> None:
+def main(config: str, *overrides: str, smoke: bool = False) -> None:
     """Fine-tune Qwen3-32B with QLoRA on the difficult-advice SFT dataset.
 
     Args:
         config: Path to a YAML training config.
-        smoke: If True, train 2 steps on 8 examples to validate wiring.
+        *overrides: OmegaConf dotlist overrides merged over the config, the same
+            key=value convention as run_eval (e.g. `data_repo=org/name push=false`).
+            Positional so that a bare key=value token can never bind to `smoke`.
+        smoke: If True, train 2 steps on 8 examples to validate wiring (no HF push).
+            Keyword-only: pass `--smoke`.
     """
     cfg = OmegaConf.load(config)
+    if overrides:
+        cfg.merge_with_dotlist([str(o) for o in overrides])
+    # Training data comes from an HF dataset repo, never a local file: the repo id +
+    # resolved revision are the provenance the adapter ships with.
+    assert "data_repo" in cfg and not OmegaConf.is_missing(cfg, "data_repo"), (
+        "train config must declare data_repo: <HF dataset repo id> "
+        "(+ data_file when the repo holds several .jsonl, + data_revision to pin; "
+        "or pass data_repo=org/name on the CLI)")
+    # The trained adapter always lands on HF; push=false is the deliberate opt-out for
+    # credential-less pods (runpod_train.py), whose driver pushes after pull-back.
+    hf_repo = (str(cfg.hf_repo)
+               if "hf_repo" in cfg and not OmegaConf.is_missing(cfg, "hf_repo")
+               and cfg.hf_repo else None)
+    push = bool(cfg.get("push", True)) and not smoke
+    if push:
+        assert hf_repo, (
+            "hf_repo is required: the trained adapter is pushed to HF automatically. "
+            "Declare hf_repo: <org/name> in the config (or hf_repo=... on the CLI); "
+            "a credential-less pod run sets push=false and pushes from the driver.")
     torch.manual_seed(int(cfg.seed))
 
     # Under `torchrun` every rank runs this file; these are 1/0 for a plain single-GPU run.
@@ -211,8 +234,15 @@ def main(config: str, smoke: bool = False) -> None:
         if world_size > 1:
             print(f">>> distributed: {world_size} ranks (DDP), this is rank {local_rank}")
 
-    # --- data ---
-    ds = load_dataset("json", data_files=str(cfg.data_path), split="train")
+    # --- data: from the HF dataset repo, pinned to the exact revision it resolves to ---
+    from src.huggingface import resolve_dataset
+
+    data_path, dataset_ref = resolve_dataset(
+        str(cfg.data_repo), cfg.get("data_file"), cfg.get("data_revision"))
+    if is_main:
+        print(f">>> dataset: {dataset_ref['repo']}@{dataset_ref['revision'][:12]} "
+              f"({dataset_ref['file']})")
+    ds = load_dataset("json", data_files=data_path, split="train")
 
     # The arm's eval-time thinking mode is declared in the config (the scientific record),
     # validated against the FULL dataset — the declaration is about the training data, and
@@ -228,6 +258,18 @@ def main(config: str, smoke: bool = False) -> None:
         empty_think=(model_profile(str(cfg.model)).empty_think
                      if "text" in ds.column_names else None))
     print(f">>> thinking (declared, validated on all {len(ds)} rows): {thinking}")
+
+    # One provenance stamp for every artifact this run publishes: the final adapter
+    # carries it verbatim; each checkpoint branch adds its `step`. The eval framework
+    # infers serve-time thinking mode from it (CLAUDE.md, "The eval framework").
+    training_meta = {
+        "thinking": thinking,
+        "train_config": config,
+        "base_model": str(cfg.model),
+        "dataset": dataset_ref,
+        "git_sha": _git_sha(),
+        "timestamp": ts,
+    }
 
     if smoke:
         ds = ds.select(range(min(8, len(ds))))
@@ -245,13 +287,14 @@ def main(config: str, smoke: bool = False) -> None:
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    # TRL's own assistant_only_loss needs `{% generation %}` markers, which Qwen3.6's chat
-    # template lacks, and it re-renders from `messages` without the profile's preserve
-    # kwargs -- which would silently drop reasoning traces. So the template is applied
-    # HERE for interchange datasets, and the masking is built off the exact rendered
-    # strings, handing the trainer a ready-made batch.
-    assistant_only = bool(cfg.train.assistant_only_loss)
-    if assistant_only and "text" not in ds.column_names and "messages" in ds.column_names:
+    # The loss is ALWAYS assistant-only, via the in-repo mask — not a knob (the 20/80
+    # ablation settled it: full-sequence training dilutes the signal with prompt
+    # tokens, gotcha 3). TRL's own masking needs `{% generation %}` markers, which
+    # Qwen3.6's chat template lacks, and its re-render from `messages` drops the
+    # profile's preserve kwargs -- which would silently drop reasoning traces. So the
+    # template is applied HERE for interchange datasets, and the masking is built off
+    # the exact rendered strings, handing the trainer a ready-made batch.
+    if "text" not in ds.column_names and "messages" in ds.column_names:
         # Model-agnostic interchange rows (see src/data/mixture/sources/): the stored
         # data carries semantics only; the model family's syntax -- think blocks
         # included -- is applied now, by the verified profile, where the mask gate
@@ -266,51 +309,41 @@ def main(config: str, smoke: bool = False) -> None:
         )
         print(f">>> interchange dataset rendered at train time with "
               f"{profile.family} render_kwargs={profile.render_kwargs}")
-    pre_tokenized = assistant_only and "text" in ds.column_names
-    if pre_tokenized:
-        max_len = int(cfg.train.max_seq_len)
-        # Think supervision is NOT configurable: the generation-boundary rule in
-        # src/train/masking.py is the one way — mask what the model never generates (the
-        # `<think>\n` prefill; a WHOLE empty marker, since a healthy model never closes
-        # an empty block), supervise what it does (reasoning + `\n</think>` + answer).
-        # Runs trained under older rules are reproduced from git history, not a knob.
-        for stale_key in ("mask_empty_think", "think_loss"):
-            if cfg.train.get(stale_key) is not None:
-                raise ValueError(
-                    f"`train.{stale_key}` is not a knob: think supervision always uses "
-                    "the generation-boundary rule (src/train/masking.py). Delete the key; "
-                    "to reproduce an old run, check out the commit in its adapter's "
-                    "training_meta."
-                )
-        profile = model_profile(str(cfg.model))
-        gate_generation_boundary(ds["text"], tokenizer, max_len, profile, thinking)
-        # A row's optional `supervise` field ("final" = train only the last assistant
-        # turn -- model-eval-model's self-reflection records) must be consumed here:
-        # remove_columns discards it right after. Absent or null trains every turn.
-        if "supervise" in ds.column_names:
-            n_final = sum(1 for s in ds["supervise"] if s == "final")
-            print(f">>> supervise=final rows (only last assistant turn trains): "
-                  f"{n_final}/{len(ds)}")
-        ds = ds.map(
-            lambda r: build_labels(r["text"], tokenizer, max_len, profile,
-                                   supervise=r.get("supervise") or "all"),
-            remove_columns=ds.column_names,
-            desc="masking non-assistant and prefill tokens",
-        )
-        n_tok = sum(len(r) for r in ds["input_ids"])
-        n_sup = sum(sum(1 for v in r if v != -100) for r in ds["labels"])
-        print(f">>> assistant-only loss: {n_sup:,}/{n_tok:,} tokens supervised "
-              f"({100 * n_sup / n_tok:.1f}%)")
-        first = ds[0]
-        kept = [v for v in first["labels"] if v != -100]
-        print(">>> FIRST EXAMPLE masked (no loss):")
-        print("   ", repr(tokenizer.decode(
-            [i for i, v in zip(first["input_ids"], first["labels"]) if v == -100])[:300]))
-        print(">>> FIRST EXAMPLE supervised (loss):")
-        print("   ", repr(tokenizer.decode(kept)[:300]))
-    elif assistant_only:
-        raise ValueError("assistant_only_loss needs a `messages` (interchange) or "
+    if "text" not in ds.column_names:
+        raise ValueError("training needs a `messages` (interchange) or "
                          "pre-rendered `text` column")
+    max_len = int(cfg.train.max_seq_len)
+    # Think supervision is NOT configurable either: the generation-boundary rule in
+    # src/train/masking.py is the one way — mask what the model never generates (the
+    # `<think>\n` prefill; a WHOLE empty marker, since a healthy model never closes
+    # an empty block), supervise what it does (reasoning + `\n</think>` + answer).
+    # Runs trained under older rules are reproduced from git history, not a knob.
+    profile = model_profile(str(cfg.model))
+    gate_generation_boundary(ds["text"], tokenizer, max_len, profile, thinking)
+    # A row's optional `supervise` field ("final" = train only the last assistant
+    # turn -- model-eval-model's self-reflection records) must be consumed here:
+    # remove_columns discards it right after. Absent or null trains every turn.
+    if "supervise" in ds.column_names:
+        n_final = sum(1 for s in ds["supervise"] if s == "final")
+        print(f">>> supervise=final rows (only last assistant turn trains): "
+              f"{n_final}/{len(ds)}")
+    ds = ds.map(
+        lambda r: build_labels(r["text"], tokenizer, max_len, profile,
+                               supervise=r.get("supervise") or "all"),
+        remove_columns=ds.column_names,
+        desc="masking non-assistant and prefill tokens",
+    )
+    n_tok = sum(len(r) for r in ds["input_ids"])
+    n_sup = sum(sum(1 for v in r if v != -100) for r in ds["labels"])
+    print(f">>> assistant-only loss: {n_sup:,}/{n_tok:,} tokens supervised "
+          f"({100 * n_sup / n_tok:.1f}%)")
+    first = ds[0]
+    kept = [v for v in first["labels"] if v != -100]
+    print(">>> FIRST EXAMPLE masked (no loss):")
+    print("   ", repr(tokenizer.decode(
+        [i for i, v in zip(first["input_ids"], first["labels"]) if v == -100])[:300]))
+    print(">>> FIRST EXAMPLE supervised (loss):")
+    print("   ", repr(tokenizer.decode(kept)[:300]))
 
     # --- base model: 4-bit QLoRA by default, bf16 LoRA when 4-bit is unsupported ---
     # Qwen3.6's hybrid linear-attention layers are not reliably quantised by bitsandbytes,
@@ -403,9 +436,6 @@ def main(config: str, smoke: bool = False) -> None:
     global_batch = int(cfg.train.batch_size) * int(cfg.train.grad_accum)
     dyn_budget: int | None = None
     if dynamic is not None:
-        assert pre_tokenized, (
-            "dynamic_batching needs the pre-tokenized assistant-only path: labels "
-            "must be baked per example before any batching")
         assert not bool(cfg.train.packing), (
             "dynamic_batching pads, it never packs (gated-delta state leaks across "
             "packed examples without the fla kernels); set packing: false")
@@ -468,14 +498,6 @@ def main(config: str, smoke: bool = False) -> None:
         save_strategy=str(cfg.train.get("save_strategy", "epoch")),
         save_steps=int(cfg.train.get("save_steps", 500)),
         save_total_limit=int(cfg.train.get("save_total_limit", 2)),
-        # Durable checkpoints without a network volume: hub_strategy "checkpoint" pushes the
-        # full trainer state to a `last-checkpoint` folder on every save, so a destroyed pod
-        # loses only the steps since the last one and the final adapter is already on the Hub
-        # when training ends -- the pod can be torn down immediately.
-        push_to_hub=bool(cfg.train.get("push_to_hub", False)),
-        hub_model_id=cfg.train.get("hub_model_id"),
-        hub_strategy=str(cfg.train.get("hub_strategy", "every_save")),
-        hub_private_repo=bool(cfg.train.get("hub_private_repo", False)),
         bf16=True,
         gradient_checkpointing=True,
         gradient_checkpointing_kwargs={"use_reentrant": False},
@@ -487,15 +509,14 @@ def main(config: str, smoke: bool = False) -> None:
         report_to=[] if smoke else list(cfg.train.get("report_to", []) or []),
         run_name=f"difficult-advice-{ts}",
         seed=int(cfg.seed),
-        # Train only on the assistant completion, not the user prompt. When the dataset is
-        # pre-tokenized above the masking is already in `labels`, so TRL must not redo it.
-        assistant_only_loss=assistant_only and not pre_tokenized,
         # TRL's default chunked-CE path patches the LM head and reads `forward.__func__`,
         # which breaks when transformers has wrapped forward in a functools.partial (as it
         # does for some vision-language checkpoints). `nll` is TRL's supported alternative
         # and skips that patch entirely.
         **({"loss_type": cfg.train.loss_type} if cfg.train.get("loss_type") else {}),
-        dataset_kwargs={"skip_prepare_dataset": True} if pre_tokenized else {},
+        # The dataset arrives pre-tokenized with the assistant-only mask already in
+        # `labels` (built above); TRL must not re-prepare or re-mask it.
+        dataset_kwargs={"skip_prepare_dataset": True},
     )
 
     if dynamic is not None:
@@ -519,9 +540,7 @@ def main(config: str, smoke: bool = False) -> None:
             train_dataset=ds,
             processing_class=tokenizer,
             peft_config=None if resume_adapter else peft_cfg,
-            data_collator=(
-                (lambda f: _collate_padded(f, tokenizer.pad_token_id)) if pre_tokenized else None
-            ),
+            data_collator=lambda f: _collate_padded(f, tokenizer.pad_token_id),
         )
 
     # Resume from the newest checkpoint on the volume when one is there, so a restart
@@ -548,29 +567,23 @@ def main(config: str, smoke: bool = False) -> None:
         return
     tokenizer.save_pretrained(str(adapter_dir))
 
-    # The eval framework infers serve-time thinking mode from this stamp; an adapter
-    # without it is a hard error at eval time (CLAUDE.md, "The eval framework").
-    (adapter_dir / "training_meta.json").write_text(json.dumps({
-        "thinking": thinking,
-        "train_config": config,
-        "base_model": str(cfg.model),
-        "data_path": str(cfg.data_path),
-        "git_sha": _git_sha(),
-        "timestamp": ts,
-    }, indent=2))
+    # The stamp built above (thinking + dataset {repo, file, revision} + provenance);
+    # an adapter without it is a hard error at eval time (CLAUDE.md, "The eval framework").
+    (adapter_dir / "training_meta.json").write_text(json.dumps(training_meta, indent=2))
 
-    if cfg.get("hf_repo") and not smoke:
+    if push:
         from src.huggingface import push_run_dir
         from src.utils import origin_url
 
         # Same card contract as every other artifact (CLAUDE.md: every upload carries a
         # card), derived from the run's real metadata — the human-readable half beside
         # the machine-readable training_meta.json the eval framework consumes.
-        url = push_run_dir(adapter_dir, str(cfg.hf_repo), {
+        url = push_run_dir(adapter_dir, hf_repo, {
             "experiment": f"LoRA SFT adapter — {Path(config).stem}",
             "date_generated": ts[:8],
             "constitution": str(cfg.get("constitution") or
-                                f"inherited from the training data ({cfg.data_path}); "
+                                f"inherited from the training data "
+                                f"({dataset_ref['repo']}); "
                                 "not declared in this train config"),
             "source_repo": f"{origin_url()} @ {_git_sha()}",
             "models": f"base: {cfg.model}",
@@ -590,15 +603,18 @@ def main(config: str, smoke: bool = False) -> None:
                 }} if dynamic is not None else {}),
             }),
             "schema": "PEFT LoRA adapter (safetensors) + tokenizer + training_meta.json "
-                      "{thinking, train_config, base_model, data_path, git_sha, timestamp}",
+                      "{thinking, train_config, base_model, "
+                      "dataset{repo,file,revision}, git_sha, timestamp}",
             "provenance": f"uv run train --config {config}",
+            "dataset": f"hf.co/datasets/{dataset_ref['repo']}@{dataset_ref['revision']} "
+                       f"({dataset_ref['file']})",
         }, private=True, repo_type="model")
         print(f">>> pushed adapter (with training_meta.json + card) to {url}")
 
     meta = {
         "git_sha": _git_sha(),
         "base_model": str(cfg.model),
-        "data_path": str(cfg.data_path),
+        "dataset": dataset_ref,
         "n_examples": len(ds),
         "config": OmegaConf.to_container(cfg, resolve=True),
         "smoke": smoke,

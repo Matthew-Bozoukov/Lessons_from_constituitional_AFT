@@ -5,7 +5,8 @@ seed: 0
 model: "/root/qwen36"
 model_class: "image_text_to_text"
 
-data_path: "data/mixture.jsonl"
+data_repo: ???  # FILL: HF dataset repo id for this arm's mixture (was local data/mixture.jsonl; see docs/LOG.md)
+hf_repo: ???    # FILL: HF model repo the trained adapter pushes to automatically (push=false opts out)
 output_dir: "output/train_synthdocv2_0_100"
 
 lora:
@@ -29,7 +30,6 @@ train:
   max_seq_len: 2048
   packing: false
   # Loss on assistant tokens only: everything outside an assistant turn is -100.
-  assistant_only_loss: true
   attn_implementation: sdpa
   load_in_4bit: false
 

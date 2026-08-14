@@ -5,7 +5,8 @@ seed: 0
 model: "/root/qwen36"
 model_class: "image_text_to_text"
 
-data_path: "data/mixture.jsonl"
+data_repo: ???  # FILL: HF dataset repo id for this arm's mixture (was local data/mixture.jsonl; see docs/LOG.md)
+hf_repo: ???    # FILL: HF model repo the trained adapter pushes to automatically (push=false opts out)
 output_dir: "output/train_synthdocv2_500k_da20_t1t3_ep2"
 
 lora:
@@ -32,7 +33,6 @@ train:
   # Loss on assistant tokens only: everything outside an assistant turn is -100.
   # Continue the published epoch-1 adapter for a second epoch rather than starting fresh.
   resume_adapter: "LASR-Callum/qwen3.6-27b-lora-500k-da20-t1t3"
-  assistant_only_loss: true
   # Avoids TRL's chunked-CE LM-head patch, which crashes on this checkpoint's
   # functools.partial forward. Mathematically the same loss.
   loss_type: "nll"

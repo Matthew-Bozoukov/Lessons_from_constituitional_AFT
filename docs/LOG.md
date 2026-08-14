@@ -41,6 +41,63 @@ was prompt-banned and dropped to top-5gram share 0.042.
 0.55 good-arm prior, the verdict-ceiling contradiction and the length exposure —
 re-derive those there before its full run.
 
+## 2026-08-14 — train_lora: HF-only datasets in, automatic HF adapter push out
+
+**Hypothesis (contract, not experiment):** the trainer was the one pipeline stage whose
+data provenance was a local path — every adapter's `training_meta.json` recorded the
+generic `data/mixture.jsonl`, so nothing tied a published adapter to the actual mixture
+it trained on, and the adapter push silently depended on an `hf_repo` no config set.
+
+**Method:** `src/train/train_lora.py` now loads training data only from an HF dataset
+repo: `data_repo` (required; + optional `data_file` when the repo holds
+several `.jsonl`, + optional `data_revision`), declared in the train config or overridden
+as CLI `key=value` dotlist pairs (same convention as run_eval). `resolve_dataset` in
+`src/huggingface.py` pins the repo to the exact commit sha it resolves to and refuses
+local paths and ambiguous repos; the pinned `{repo, file, revision}` triple replaces
+`data_path` in `training_meta.json`, `run_meta.json`, and the adapter card (new `dataset`
+row — `card_markdown` now renders extra fields after the required ones). The adapter push
+is automatic: `hf_repo` is required at startup (fail-fast, before any training) and the
+push always runs on completion; `push=false` is the deliberate opt-out for
+credential-less pods — `scripts/gpu/runpod_train.py` now passes
+`data_repo=<bundle> data_file=<m> push=false` instead of copying the mixture to
+`data/mixture.jsonl`. TRL checkpoint pushes stay opt-in (`train.push_to_hub`), defaulting
+to `hf_repo` and private. Configs: the four arms whose mixture repos are on record
+(difficult-advice pair → `matboz/difficult-advice-qwen3`; table2 memself/selfreflect →
+their `LASR-Callum/2026-08-06-...-10k-train` repos) are filled in; the other 13 carry
+`data_repo: ???` / `hf_repo: ???` OmegaConf sentinels until someone recovers which
+published mixture each arm trained on. Offline tests in `tests/test_huggingface.py`.
+
+**Also (same day):** `assistant_only_loss` is no longer a knob — the trainer always
+masks the loss to assistant tokens via the in-repo render+mask path (the 20/80 ablation
+settled it; full-sequence training dilutes the signal, gotcha 3). The key is deleted
+from every train config, and the `stale_key` refusal list went with it. This closes a
+real hole: `thinking: true` + `assistant_only_loss: false` + interchange rows would have
+let TRL re-render without the profile's preserve kwargs and silently drop every
+reasoning trace (the gotcha-2 collapse) — that path no longer exists. Consequence: only
+`ModelProfile`-verified families can train at all now; the v1 Qwen3-32B full-sequence
+baseline is reproduced from git history, not from its (still-present) config.
+
+**Also (checkpoints are local-only):** checkpoints stay on the training box —
+`save_strategy`/`save_steps` set the cadence, `save_total_limit` rotates old ones away,
+`auto_resume` picks up the newest after a crash. Nothing mid-training touches HF: a
+branch-per-checkpoint push (Pythia-style `step<N>` branches from a TrainerCallback) was
+built and then reverted the same day (this branch's history has it) — the sync upload
+stalls training and the async version needs stage/queue/join machinery nobody ships,
+for trajectories no current experiment reads. Only the FINAL adapter is published, in
+the new repo format: flat root with adapter + tokenizer + `training_meta.json`
+(thinking + dataset `{repo, file, revision}` + git sha) + the required card. TRL's
+`push_to_hub`/`hub_strategy` knobs were removed from the SFTConfig wiring with it.
+Legacy adapter repos (`data_path`-era stamps) stay loadable: serving reads only the
+stamp's `thinking` field.
+
+**Result:** an adapter's metadata now names the exact dataset repo, file and revision it
+was trained from, and a finished training run cannot fail to publish its adapter.
+
+**Next steps:** fill the 13 `???` sentinels from the mixture-push record; add `hf:` push
+blocks to the mixture configs that lack one, so every future mixture has a repo for
+`data_repo` to name.
+
+
 ## 2026-08-14 — difficult-advice v2 corpus generated: 1,952 records, diversity verified in-run
 
 **Hypothesis:** the v2 recipe (PR #46: enforced scenario diversity, dedupe gate, voice

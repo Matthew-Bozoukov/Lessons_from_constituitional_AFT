@@ -3,7 +3,9 @@
 
 seed: 0
 model: "Qwen/Qwen3-32B"
-data_path: "data/sft_dataset.jsonl"       # copied onto the instance
+data_repo: "matboz/difficult-advice-qwen3"
+data_file: "sft_dataset.jsonl"   # the repo also holds the thinking variant
+hf_repo: ???    # FILL: adapter destination (the original run pushed to matboz/qwen3-32b-difficult-advice-lora; name a NEW repo to avoid overwriting it)
 output_dir: "output/train_lora"
 
 lora:
@@ -22,9 +24,9 @@ train:
   logging_steps: 5
   max_seq_len: 1536
   packing: true
-  # Qwen3's chat template has no {% generation %} markers, so assistant-only
-  # masking yields all-zero masks; use standard full-sequence SFT loss.
-  assistant_only_loss: false
+  # Historical record: the published v1 run trained with full-sequence loss, which the
+  # trainer no longer supports (assistant-only masking is its only mode, and it needs a
+  # verified ModelProfile, which Qwen3-32B lacks). Reproduce v1 from git history.
   attn_implementation: sdpa
 
 # Eval-time thinking mode of this arm (CLAUDE.md eval framework): stamped into the

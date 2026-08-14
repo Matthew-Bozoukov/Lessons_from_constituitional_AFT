@@ -4,11 +4,12 @@
 and even when asked, encourage human review of the exact diff. These files only stay
 useful if they stay human-curated; unsupervised agent edits turn them to slop.**
 
-Orientation + operating rules for this repo. Read this before touching anything. The global
-`~/.claude/CLAUDE.md` rules (uv, ABOUTME headers, YAML+OmegaConf configs, timestamped outputs,
-fail-fast, deliver actual figure files) all apply here too — this file adds the repo-specific parts.
-It is the single agent guide: the repository-wide conventions that used to live in `AGENTS.md`
-(data-to-Hugging-Face policy, secrets, paid infrastructure, reporting standards) are folded in below.
+Orientation + operating rules for this repo. Read this before touching anything.
+Baseline conventions: uv for everything Python; two-line `# ABOUTME:` headers on every
+file; YAML+OmegaConf configs; timestamped output filenames; fail fast, never fall back
+silently; deliver actual figure files, not descriptions of them. This is the single agent
+guide: the repository-wide conventions that used to live in `AGENTS.md` (data-to-Hugging-Face
+policy, secrets, paid infrastructure, reporting standards) are folded in below.
 
 ## What this project is
 
@@ -23,21 +24,34 @@ the assistant reasons about its values and declines norm-violations) reduces **a
 misalignment** (blackmail/leaking honeypots). We reproduced that on **Qwen3-32B**, and it is now
 the baseline the project measures against rather than the thing the project is for. Data is
 generated with **Sonnet 4.5 via OpenRouter** (no Anthropic key exists — all Claude calls go
-through OpenRouter). See `docs/replication.md` for the end-to-end run guide and the baseline
-numbers; see `docs/LOG.md` for the chronological findings.
+through OpenRouter). See `docs/LOG.md` for the chronological findings and the baseline
+numbers.
 
 ## Where code runs
 
 Only the model *server* needs a GPU host; every pipeline *driver* runs anywhere the repo
 env installs — one lock resolves on linux and macOS (GPU packages are linux-marked).
-Host prep either way: `bash scripts/gpu/bootstrap_pod.sh <ssh-alias>` (installs uv,
-clones the driver's current branch, `uv sync`). Two equivalent workflows, identical code:
+Host prep when a GPU host is involved: `bash scripts/gpu/bootstrap_pod.sh <ssh-alias>`
+(installs uv, clones the driver's current branch, `uv sync`).
+
+### Data (`uv run synth`, `uv run mix`)
+
+**`src/data/` needs no GPU** — data generation is API calls plus local files; runs locally.
+
+### Train (`uv run train`)
+
+Option A only — code must run on the GPU host directly. Copy `.env` to the pod, then
+plain `uv run train` there.
+
+### Eval (`uv run evals`)
+
+Two equivalent workflows, identical code:
 
 - **Option A — everything on the pod.** Copy `.env` to the pod, then plain `uv run`
-  there: e.g. `uv run scripts/run_eval.py --target <hf> --name <eval>`. Serving is a local
+  there: e.g. `uv run evals --target <hf> --name <eval>`. Serving is a local
   subprocess; judging and the HF push use the pod's `.env`.
 - **Option B — drive locally, serve remotely.** From your machine:
-  e.g. `uv run scripts/run_eval.py --target <hf> --name <eval> --server <ssh-alias>`.
+  e.g. `uv run evals --target <hf> --name <eval> --server <ssh-alias>`.
   run_eval starts vLLM on the host over SSH and tunnels it back; the eval loop, judge
   calls and HF push run locally with your local `.env`. Credentials stay machine-local:
   at most `HF_TOKEN` reaches the host, opt-in via `--push-env` (never overwrites an
@@ -46,8 +60,6 @@ clones the driver's current branch, `uv sync`). Two equivalent workflows, identi
 
 Notes:
 - New code should be written with these two workflows in mind. For example, they should expect target models to be from Hugging Face and served as a vLLM endpoint.
-- Training (`src/train/`) runs on the GPU host itself under either workflow.
-- **`src/data/` needs no GPU** — data generation is API calls plus local files.
 - **ODCV must drive where docker works** (laptop with Docker Desktop, or a vast.ai
   instance — never a RunPod pod: unprivileged containers cannot create the per-scenario
   Compose networks). Option B fits it naturally: local docker, remote model.
@@ -58,72 +70,34 @@ Notes:
 ## Where things go (keep this structure)
 
 ```
-src/                    correctness-critical reusable code (installed editable; import as src.*):
-  endpoints/              model endpoints: openrouter.py (OpenRouterClient + map_threaded —
-                          judges, red-teamers, data generation) + vllm_server.py (serve a
-                          target model on localhost via vLLM; thinking mode inferred from the
-                          artifact and pinned at serve time)
-  utils.py                io/json + provenance: extract_json, read_jsonl, git_sha,
-                          timestamp, write_run_meta, origin_url
-  model_profile.py        the ModelProfile registry (verified per-family facts for
-                          rendering/masking/serving) + think-stream parsers
-  huggingface.py          THE HF module: token resolution (reads + pushes), the
-                          dataset-card contract, push_run_dir/push_files/hf_download
-  data/                   two subpackages, mirrored in scripts/data/ and configs/data/:
-    synth/                  synthetic data generation (constitution-grounded engine of
-                            generic, config-driven stage operators, formerly synthdoc_v2;
-                            the config's `stages:` list — prompts included — defines the
-                            document type; run via scripts/data/synth/build_dataset.py
-                            with a live config from configs/data/synth/. `chunking:`
-                            selects how the constitution is cut into units,
-                            `corpus_check` observer stages measure diversity + GDM-style
-                            autorated quality in-pipeline (docs/corpus_checks.md), and
-                            `synth check` gates the model-eval-model corpora after a
-                            run — see its README)
-    mixture/                dataset building: build_mixture.py (staged base → spec-filter →
-                            synthetic pipeline with HF push checkpoints; rows are
-                            model-agnostic interchange messages, rendered at TRAIN time via
-                            ModelProfile; `balance_by:` trait-balances a source), spec_filter.py
-                            (constitution judge), sources/ (one adapter per data source,
-                            incl. the tulu3 sampler formerly prepare_tulu.py)
-  train/                  training: train_lora.py, merge_lora.py
-  eval/                   eval registry in __init__.py (name -> EvalSpec, lazy runner) — every
-                          eval follows the run() contract in "The eval framework" below
-    capabilities/         one directory per eval: capability/ (Arena-Hard SxS vs base),
-                          lmsys/ (chat win-rate vs base), mmlu/ (MMLU arm ladder)
-    misalignment/         one directory per eval: odcv/ (ODCV-Bench: metrics, rollout, judge,
-                          compare, stats), agentic_misalignment/ (honeypots: runner,
-                          aggregate_eval, build_rollouts), psychosis/ (delusion red-teaming).
-                          agentic_misalignment/ and odcv/ each vendor their PATCHED harness
-                          in their own third_party/ — see gotchas
-      internalization/      self-contained constitution-internalization proxy eval (Tier A).
-                            `python -m src.eval.misalignment.internalization.cli run --smoke`
-                            runs offline in ~10s; see its README.md
-    audits/               petri/ + surf/ audit tooling (generalized from the completed MSM audit)
-configs/                OmegaConf YAML, one per step, foldered by pipeline stage.
-                        NEVER hardcode hyperparams in scripts.
-  data/                   synth/ generation configs (difficult_advice, pre_action_deliberation,
-                          post_action_retrospection, peer_critique; superseded ones frozen
-                          in archive/) + mixture/ dataset-building configs (qwen36_*, tulu_control)
-  train/                  SFT training (lora_<model>_<arm>*)
-  eval/                   evals (capability, mmlu, agentic_misalignment, odcv_*, constitution_probe)
-scripts/                pipeline drivers, foldered to mirror src/ stages + gpu/ for infra
-  run_eval.py             THE eval entrypoint: serves each --target and dispatches to a
-                          registered eval's run() — see "The eval framework" below
-  data/                   thin CLIs over src/data/, mirrored: synth/build_dataset.py — THE
-                          synthetic-data entrypoint — + mixture/build_mixture.py
-  train/                  thin CLIs over src/train/ (train_lora, merge_lora)
-  gpu/                    provision infra: runpod_capability.py, runpod_train.py
-scratch/                one-off and AI-generated scripts (report generators, probes, inspection
-                        snippets). Default home for new experimental code; NOTHING imports from it.
-dashboard/              the research-log web app (own toolchain, deployed on Netlify) - see its README
-constitutions/          alignment targets data generation points at; one folder per constitution
-                        (constitution.md + rationale.md), superseded ones in archive/ — see its README
-docs/                   reference material + docs/replication.md (the end-to-end run guide)
-tests/                  fast, no-network unit tests (e.g. extract_json). Run: uv run pytest -q
-data/                   datasets staged for training (gitignored; pull from HF)
-output/                 ALL run artifacts (gitignored). See below.
-docs/LOG.md             append-only research log, MOST RECENT FIRST. Add an entry per real result.
+src/                  reviewed, reusable code (installed editable; import as src.*)
+  endpoints/            openrouter.py (chat client, provider pins, map_threaded) + vllm_server.py
+  utils.py              io/json + provenance helpers
+  model_profile.py      ModelProfile registry: verified per-family render/mask/serve facts
+  huggingface.py        HF tokens, dataset-card contract, push/download helpers
+  data/synth/           constitution-grounded generation engine (the config IS the document type)
+  data/mixture/         training-mixture builder + one adapter per source + spec filter
+  train/                train_lora.py, merge_lora.py
+  eval/                 registry in __init__.py; one directory per eval:
+    capabilities/         capability/ (Arena-Hard), lmsys/, mmlu/
+    misalignment/         odcv/, agentic_misalignment/, psychosis/, internalization/
+                          (odcv + agentic_misalignment vendor PATCHED harnesses in third_party/)
+    audits/               petri/ + surf/ audit tooling
+configs/              OmegaConf YAML, one per step; NEVER hardcode hyperparams in scripts
+  data/synth/           live document types: difficult_advice, pre_action_deliberation,
+                        post_action_retrospection, peer_critique (superseded → archive/)
+  data/mixture/         mixture builds (qwen36_*, tulu_control)
+  train/                lora_<model>_<arm>*
+  eval/                 one per eval
+  endpoints/            providers.yaml — per-model OpenRouter provider pins
+scripts/              thin drivers mirroring src/ stages + gpu/ for provisioning;
+                      run_eval.py is THE eval entrypoint
+scratch/              DEFAULT home for AI-written and one-off code; nothing imports from it
+dashboard/            research-log web app; reads published HF data ONLY
+constitutions/        alignment targets, one folder each (constitution.md + rationale.md)
+docs/                 reference material; LOG.md = append-only research log, most recent first
+tests/                fast, no-network unit tests (uv run pytest -q)
+data/, output/        gitignored: staged datasets / ALL run artifacts (conventions below)
 ```
 
 **Respect the structure when adding code:**
@@ -420,5 +394,4 @@ Never terminate a resource this repository did not provision. Report it instead.
 
 ## When you finish a task
 - Append a `docs/LOG.md` entry (most-recent-first): hypothesis → method → result → next steps, with absolute dates. LOG.md is for **experiments and major code changes only** — routine refactors, chores, and doc edits get no entry.
-- Update `docs/replication.md` if you added a step or changed how to run things.
 - Destroy any GPU instance and confirm 0 active.

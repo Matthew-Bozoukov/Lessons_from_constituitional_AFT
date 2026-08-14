@@ -54,6 +54,9 @@ dependencies = [
     "tqdm>=4.66.0",
     "beautifulsoup4>=4.12.0",
     "lxml>=5.0.0",
+    # scratch/turf's k-means is a port of SURF's torch implementation (runs on MPS
+    # locally); linux already gets torch via the vllm pin, darwin needs it declared.
+    "torch; sys_platform == 'darwin'",
 ]
 
 
