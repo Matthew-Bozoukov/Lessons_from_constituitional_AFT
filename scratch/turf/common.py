@@ -1,5 +1,5 @@
 # ABOUTME: Shared TURF plumbing: interchange-row parsing, attribute-tag parsing,
-# ABOUTME: OpenRouter embeddings, and a tiny numpy k-means (no sklearn in the lock).
+# ABOUTME: OpenRouter embeddings, and SURF's torch k-means (cuda/mps/cpu).
 
 from __future__ import annotations
 
@@ -66,34 +66,74 @@ def embed(texts: list[str], batch: int = 128) -> np.ndarray:
         resp = client.embeddings.create(model=EMBED_MODEL, input=chunk)
         for j, d in enumerate(resp.data):
             out[i + j] = d.embedding
-    return out
+    # Qwen3-Embedding's official sentence-transformers pipeline ends in a Normalize
+    # module (unit vectors) — SURF's inputs arrive that way; OpenRouter's serving may
+    # not apply it, so normalise here to reproduce the paper's embedder exactly.
+    return out / (np.linalg.norm(out, axis=1, keepdims=True) + 1e-9)
 
 
-def kmeans(x: np.ndarray, k: int, iters: int = 50, seed: int = 0) -> tuple[np.ndarray, np.ndarray]:
-    """Plain Lloyd's k-means on L2-normalised rows (cosine geometry). Returns
-    (centroids [k,d], assignments [n]). No sklearn in the repo lock; at our sizes
-    (<100k x 4096, k~1k) numpy is fine."""
-    x = x / (np.linalg.norm(x, axis=1, keepdims=True) + 1e-9)
-    rng = np.random.default_rng(seed)
-    cent = x[rng.choice(len(x), size=k, replace=False)].copy()
-    assign = np.zeros(len(x), dtype=np.int64)
-    for _ in range(iters):
-        # cosine sim == dot product on normalised rows; chunk to bound memory
-        new_assign = np.empty(len(x), dtype=np.int64)
-        for i in range(0, len(x), 4096):
-            new_assign[i:i + 4096] = (x[i:i + 4096] @ cent.T).argmax(axis=1)
-        if (new_assign == assign).all():
+def kmeans(x: np.ndarray, k: int, max_iter: int = 20, seed: int = 42,
+           batch_size: int = 65536) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """SURF's k-means, ported verbatim from surf/clustering/cluster.py
+    (AttributeClusterer._run_kmeans): full-batch Lloyd's with squared-Euclidean
+    distance, random-subset init, empty clusters keep their previous centroid,
+    early stop when inertia improves by <0.1%. Centroids are NOT re-normalised
+    (assignment of NEW attributes to these clusters is cosine, per their
+    cluster_mapper.py). Runs on cuda > mps > cpu.
+
+    Returns (centroids [k,d] fp32, assignments [n], distances-to-centroid [n]),
+    matching the (labels, distances, centroids) SURF computes in its final pass.
+    """
+    import torch
+
+    torch.manual_seed(seed)
+    device = torch.device("cuda:0" if torch.cuda.is_available()
+                          else "mps" if torch.backends.mps.is_available() else "cpu")
+    n, dim = x.shape
+    X = torch.from_numpy(np.ascontiguousarray(x)).float()
+
+    perm = torch.randperm(n)[:k]
+    centroids = X[perm].to(device)
+
+    prev_inertia = float("inf")
+    for _ in range(max_iter):
+        new_centroids = torch.zeros_like(centroids)
+        counts = torch.zeros(k, device=device)
+        total_inertia = 0.0
+        for i in range(0, n, batch_size):
+            batch = X[i:i + batch_size].to(device)
+            bn = batch.shape[0]
+            # ||x - c||^2 = ||x||^2 + ||c||^2 - 2*x.c
+            x_norm = (batch ** 2).sum(dim=1, keepdim=True)
+            c_norm = (centroids ** 2).sum(dim=1, keepdim=True).T
+            dists = x_norm + c_norm - 2 * batch @ centroids.T
+            min_dists, assignments = dists.min(dim=1)
+            total_inertia += min_dists.sum().item()
+            new_centroids.scatter_add_(0, assignments.unsqueeze(1).expand(bn, dim), batch)
+            counts.scatter_add_(0, assignments, torch.ones(bn, device=device))
+        mask = counts > 0
+        new_centroids[mask] = new_centroids[mask] / counts[mask].unsqueeze(1)
+        new_centroids[~mask] = centroids[~mask]  # keep old for empty clusters
+        centroids = new_centroids
+        change = ((prev_inertia - total_inertia) / prev_inertia
+                  if prev_inertia != float("inf") else 0)
+        if 0 < change < 0.001:
             break
-        assign = new_assign
-        for c in range(k):
-            members = x[assign == c]
-            if len(members):
-                v = members.mean(axis=0)
-                cent[c] = v / (np.linalg.norm(v) + 1e-9)
-            else:  # dead centroid: reseed on the point furthest from its centroid
-                worst = ((x * cent[assign]).sum(axis=1)).argmin()
-                cent[c] = x[worst]
-    return cent, assign
+        prev_inertia = total_inertia
+
+    # final assignment pass against the final centroids
+    all_labels, all_dists = [], []
+    for i in range(0, n, batch_size):
+        batch = X[i:i + batch_size].to(device)
+        x_norm = (batch ** 2).sum(dim=1, keepdim=True)
+        c_norm = (centroids ** 2).sum(dim=1, keepdim=True).T
+        dists = x_norm + c_norm - 2 * batch @ centroids.T
+        min_dists, assignments = dists.min(dim=1)
+        all_labels.append(assignments.cpu())
+        all_dists.append(torch.sqrt(min_dists.clamp(min=0)).cpu())
+    return (centroids.cpu().numpy().astype(np.float32),
+            torch.cat(all_labels).numpy().astype(np.int64),
+            torch.cat(all_dists).numpy().astype(np.float32))
 
 
 def load_hf_jsonl(dataset: str, filename: str) -> list[dict]:

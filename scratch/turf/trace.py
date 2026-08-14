@@ -119,6 +119,9 @@ def main(case: str, rubric: str, index: str, polarity: str = "satisfy",
     for t in trig_index:
         row_clusters.setdefault(t["row"], set()).add(t["cluster"])
     summaries = {s["cluster"]: s for s in read_jsonl(idx / "cluster_summaries.jsonl")}
+    # Clusters are BUILT with Euclidean k-means (centroids not unit-norm), but new
+    # attributes are assigned by COSINE — exactly SURF's split (cluster.py builds,
+    # cluster_mapper.py normalises centroids at lookup). This normalise is load-bearing.
     centroids = np.load(idx / "centroids.npy").astype(np.float32)
     centroids /= np.linalg.norm(centroids, axis=1, keepdims=True) + 1e-9
 

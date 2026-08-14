@@ -57,8 +57,8 @@ def main(dir: str, k: int = 1000, summary_model: str = "anthropic/claude-sonnet-
     np.save(d / "embeddings_response.npy", emb_r.astype(np.float16))
 
     k = min(k, len(trigger) // 4)  # never more clusters than attrs/4
-    cent, assign = kmeans(emb_t, k)
-    np.save(d / "centroids.npy", cent.astype(np.float16))
+    cent, assign, dists = kmeans(emb_t, k)
+    np.save(d / "centroids.npy", cent)  # fp32, as SURF ships centroids.npy
 
     with (d / "trigger_index.jsonl").open("w") as f:
         for (row, channel, text), c in zip(trigger, assign):
@@ -68,18 +68,17 @@ def main(dir: str, k: int = 1000, summary_model: str = "anthropic/claude-sonnet-
         for row, _, text in response:
             f.write(json.dumps({"row": row, "text": text}) + "\n")
 
-    # Summarise each cluster from up to 12 member attributes (top by centroid sim).
+    # Summarise each cluster from up to 12 member attributes, closest-to-centroid
+    # first (SURF's top_attributes ordering; distances from kmeans's final pass).
     members: dict[int, list[tuple[float, str, str]]] = {}
-    norm = emb_t / (np.linalg.norm(emb_t, axis=1, keepdims=True) + 1e-9)
-    sims = (norm * cent[assign]).sum(axis=1)
-    for (row, channel, text), c, s in zip(trigger, assign, sims):
-        members.setdefault(int(c), []).append((float(s), channel, text))
+    for (row, channel, text), c, dist in zip(trigger, assign, dists):
+        members.setdefault(int(c), []).append((float(dist), channel, text))
     client = OpenRouterClient()
     cluster_ids = sorted(members)
 
     def summarise(j: int) -> dict:
         cid = cluster_ids[j]
-        top = sorted(members[cid], reverse=True)[:12]
+        top = sorted(members[cid])[:12]
         res = client.chat(summary_model, [{"role": "user", "content":
                           CLUSTER_SUMMARY_PROMPT.format(
                               attributes="\n".join(t for _, _, t in top))}],

@@ -15,6 +15,13 @@ Key departures from the paper:
 - The crux-selection prompt is reconstructed from the paper's prose (never released);
   the query extractor is SURF's released prompt verbatim.
 
+Deliberately faithful to SURF's released code (github.com/seoirsem/SURF), since the
+paper never specifies these: clustering is their `_run_kmeans` ported to torch
+(squared-Euclidean Lloyd's, empty clusters keep their centroid, 20 iters, <0.1%
+inertia early-stop, seed 42; runs on cuda/mps/cpu), while assigning NEW attributes
+to those clusters is cosine over normalised centroids (their `cluster_mapper.py`).
+The paper specifies cosine only for crux→response retrieval (Eq. 3), which we follow.
+
 ## Pipeline
 
 ```bash
