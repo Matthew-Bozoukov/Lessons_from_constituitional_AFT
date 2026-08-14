@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Any
 
@@ -59,14 +58,15 @@ class StageCache:
             card_fields: CLAUDE.md card fields, uploaded as the repo README on first
                 creation (every upload carries a card, the cache repo included).
             private: Create the HF repo private.
-            token: HF token; falls back to HF_TOKEN.
+            token: HF token; falls back to the shared resolution (src.huggingface.hf_token).
         """
+        from src.huggingface import hf_token
+
         self.run_dir = Path(run_dir)
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self.repo_id = repo_id
         self.private = private
-        self.token = (token or os.environ.get("HUGGINGFACE_API_KEY")
-                      or os.environ.get("HF_TOKEN"))
+        self.token = token or hf_token()
         self.card_fields = card_fields
         self._api = None
 

@@ -18,24 +18,34 @@ REQUIRED_FIELDS = ("experiment", "date_generated", "constitution", "source_repo"
                    "models", "generation_config", "schema", "provenance")
 
 
+def hf_token() -> str | None:
+    """THE token resolution, reads and pushes alike: HUGGINGFACE_API_KEY or HF_TOKEN.
+
+    The bare hub helpers read only HF_TOKEN/cached logins; everything in this repo
+    resolves through here instead, so private-repo READS (a private adapter's
+    training_meta.json, a private cache entry) work wherever pushes do.
+    """
+    return os.environ.get("HUGGINGFACE_API_KEY") or os.environ.get("HF_TOKEN")
+
+
 def hf_api() -> HfApi:
-    """The one token resolution for every push: HUGGINGFACE_API_KEY or HF_TOKEN."""
-    return HfApi(token=os.environ.get("HUGGINGFACE_API_KEY") or os.environ.get("HF_TOKEN"))
+    """The one HfApi for every push, on the shared token resolution."""
+    return HfApi(token=hf_token())
 
 
 def hf_download(repo_id: str, filename: str, repo_type: str = "model", **kwargs) -> str:
-    """hf_hub_download with the shared token resolution.
-
-    The bare helper reads only HF_TOKEN/cached logins; this also honours
-    HUGGINGFACE_API_KEY, so private-repo READS (a private adapter's training_meta.json,
-    a private cache entry) work wherever pushes do.
-    """
+    """hf_hub_download with the shared token resolution (see hf_token)."""
     from huggingface_hub import hf_hub_download
 
-    return hf_hub_download(
-        repo_id, filename, repo_type=repo_type,
-        token=os.environ.get("HUGGINGFACE_API_KEY") or os.environ.get("HF_TOKEN"),
-        **kwargs)
+    return hf_hub_download(repo_id, filename, repo_type=repo_type, token=hf_token(),
+                           **kwargs)
+
+
+def hf_snapshot(repo_id: str, **kwargs) -> str:
+    """snapshot_download with the shared token resolution (see hf_token)."""
+    from huggingface_hub import snapshot_download
+
+    return snapshot_download(repo_id, token=hf_token(), **kwargs)
 
 
 def card_markdown(fields: dict) -> str:
