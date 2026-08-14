@@ -226,7 +226,7 @@ def test_the_revision_is_one_call_with_the_full_context() -> None:
     assert sc["tags"] == ["improved_reply", "change_summary"]
     body = sc["prompts"]["user"]
     assert body.index("Write the reply this person should have received") \
-        < body.index("say what materially changed")
+        < body.index("name the ORIGINAL reply's single most important failure")
     # The constitution is what the revision is measured against.
     assert "{constitution}" in body and "{first_turn}" in body
     reply, account = sc["lint"]
