@@ -3,6 +3,81 @@
 
 # LOG
 
+## 2026-08-14 — LESS over the difficult-advice pool: the ranking is real, but `max` makes it a one-subtask selector
+
+**Hypothesis:** LESS (arXiv:2402.04333) can rank all 2,203 rows of
+`matboz/synthdoc-v2-difficult-advice` by influence on three t2synth target behaviours
+(`codebase_resisted`, `honest_declined`, `stayed_ai`), well enough that the selection is
+demonstrably targeted rather than a restatement of dataset priors. No training on the
+selection yet — what fraction to keep is a separate question.
+
+**Method.** Warmup QLoRA on a seeded 10% of the pool (220 rows), Qwen3.6-27B r64 matching
+the table2 organisms, 4 epochs, one checkpoint per epoch carrying adapter weights AND
+name-keyed Adam moments. Then per-example gradient features for every row at every
+checkpoint: Adam-preconditioned `Γ = m'/sqrt(v'+eps)` for training rows, raw gradient for
+validation rows (the asymmetry IS the method — plain gradients on both sides computes SGD
+influence and silently drops the "Adam" from InfAdam). Rendering and masking reuse the
+training path verbatim (`apply_chat_template(**render_kwargs)` -> `build_labels`), so CoT
+supervision is identical to a real run. `I = Σ_i η_i · cos(Γ, mean subtask gradient)`, with
+η_i read from each checkpoint rather than assumed constant. Code in `scratch/less/`.
+
+Two deviations from the paper, both forced and both measured rather than asserted:
+- **Count-sketch instead of dense Rademacher.** P = 318,767,104, so a dense P×8192 matrix
+  is ~9.8 TB, and `fast-jl` ships sdist-only (a CUDA extension this repo has lost hours to).
+  Count-sketch costs O(P) regardless of d, so d was raised to 32768 where it costs nothing:
+  measured Spearman 0.9995 and 100% top-10 retention against exact cosine, cross-validated
+  in numpy and torch independently.
+- **d=32768 rather than the paper's 8192**, for the same reason.
+
+**Result — the selection is targeted.** Top-220 (10%) trait composition against a uniform
+pool (11.1% per trait):
+
+| trait | share | enrichment | name |
+|---|---|---|---|
+| t6 | 35.9% | 3.24x | Maintain a secure, stable identity as a novel entity |
+| t3 | 33.6% | 3.03x | Be scrupulously honest and non-deceptive |
+| t9 | 14.5% | 1.31x | Serve users' genuine long-term flourishing |
+| t2 | 0.9% | 0.08x | Protect democratic structures / balances of power |
+
+The two enriched traits map onto two of the three targets — t6 to `stayed_ai`, t3 to
+`honest_declined` — and LESS never saw a trait label, only gradients. **Negative control
+(Tulu3 as a fake target): top-K overlap 0.1136 against a 0.0999 chance baseline, Spearman
+-0.055.** An unrelated target produces an unrelated ranking, which is the result that rules
+out "these are just generically good rows". Caveat: the control differs from Dval in task,
+length (720 vs 21,201 median chars) and CoT (none), so the near-zero overlap is
+over-determined — the direction is unambiguous, the attribution is not.
+
+**Result — `max` aggregation collapses onto one subtask.** 90.5% of the top-220 was
+selected on `stayed_ai`; `codebase_resisted` drove 0.9%. Ranking by `codebase_resisted`
+alone shares only 66/220 rows with the max ranking. The specific harm the paper's `max`
+risks is NOT happening (only 4/220 rows are negative on any subtask — selected rows are
+mildly positive for all three), so this is opportunity cost, not damage. `scores.jsonl`
+therefore stores the full m=3 vector and the per-checkpoint m-vectors, so re-ranking by
+mean/min/per-subtask is a seconds-long CPU job over the stored datastore.
+
+**Supporting diagnostics.** Warmup loss 1.479 -> 0.939 over 4 epochs, so 220 rows did reach
+a gradient-bearing regime. η_i = 9.34e-05 / 7.31e-05 / 3.47e-05 / 5.92e-06 — a 15.8x spread,
+so checkpoint 1 dominates `I` almost entirely. Checkpoint rank agreement 0.57-0.66 adjacent,
+0.27 for epoch1↔epoch4 (coherent drift, not noise; the smoke read 0.31 at n=16). Warmup
+rows are 25/220 of the top-K against a 10.0% base rate — self-influence is not a confound.
+
+**Infra.** 4 GPUs, ~10 GPU-hours, ~$70. 4xH200 was unpurchasable at every tier when needed,
+so the fan-out ran as 1+3 across two pods — viable only because sharding is by example with
+no inter-worker state, verified beforehand: sharded vs unsharded features agree to
+1-cos = 6.8e-05, exactly the single-GPU reproducibility floor, so sharding adds zero error.
+
+**Published:** HF `LASR-Callum/2026-08-14-less-selection-difficult-advice` (24 projected-
+gradient files, scores, diagnostics, validation sets). **The warmup LoRA weights were NOT
+saved before teardown** — only their metadata — so scoring a new target behaviour needs the
+warmup retrained (~1h, ~$5). Re-aggregating the existing three is unaffected.
+
+**Next steps:** (1) decide the aggregation before selecting anything to train on — `max` as
+run is a `stayed_ai` selector, and `mean` is the obvious alternative. (2) The top-K fraction
+is still open; the ranking supports any K. (3) Before any rerun, add row-level incremental
+checkpointing to `gradients.py` (a crash currently loses up to 551 rows of a checkpoint) and
+fix its throughput display, which divides rows-in-this-checkpoint by elapsed-since-start and
+reads as a 5x slowdown on a healthy run.
+
 ## 2026-08-13 — mem-self de-celled: the document type is now the config (no corpus yet)
 
 **Hypothesis:** the `cells` abstraction had stopped earning its place, and while it stayed
