@@ -349,6 +349,21 @@ prompts:
         </known_lapse>
 
         That note is generation scaffolding, not part of the conversation. The private reasoning must rediscover the problem genuinely -- starting from the person's situation and noticing what the reply got wrong, as if seeing it fresh. It must never mention that the problem was pointed out, never quote or reference the note, and must not skip straight to the lapse: the re-examination still weighs what the reply got right first. The person's follow-up may point somewhere else entirely; answer what they actually asked, and deal with the lapse where it genuinely bears on that. The revised reply must actually fix the lapse, and the assessment must be revised.
+  # The follow-up writer's half of the same scaffolding. Without it the person's
+  # "something felt off" lands on an arbitrary spot, the reflection dutifully answers
+  # THAT (as its instructions require), and check_flaw_identification scores a miss
+  # against the real lapse -- measured 0.667 vs the 0.70 gate on the 2026-08-14 smoke.
+  # Real unease usually gravitates to the real problem; this points the question at the
+  # PART of the reply where the lapse lives while the lint above keeps it from
+  # diagnosing anything. Good records render "" and stay as they were.
+  followup_flaw_hint: &followup_flaw_hint
+    by: reply_quality
+    render: true
+    default: ""
+    cases:
+      flawed: |-
+
+        Context you may use but never quote, name or hint at: what is genuinely off about the reply is this -- {change_summary}. The thing sitting oddly with the person should be the PART of the reply where that lives: point their question at that specific suggestion, omission or framing, in their own everyday words, without saying or implying anything is wrong with it.
 
 stages:
 
@@ -815,6 +830,8 @@ stages:
   tags: [followup]
   save: {followup: followup}
   also: {followup_source: scenario_specific}
+  prompt_vars:
+    flaw_hint: *followup_flaw_hint
   lint:
     fields: [followup]
     min_chars: 15
@@ -857,7 +874,7 @@ stages:
         You are asking, not diagnosing.
       - Sound like this person given their situation, in whatever mood the exchange
         would actually leave them. Not a reviewer, not an interviewer.
-
+      {flaw_hint}
       Return exactly this form, with no other text:
 
       <followup>

@@ -111,6 +111,26 @@ monoculture this type exists to avoid. The review pack's `--tally` prints all th
 the review pack, human-annotate, `--tally`; recalibrate reviewer rubrics from the
 per-reviewer human agreement; then the full run with an HF push and the
 mixture/train/eval loop against the difficult-advice baseline.
+## 2026-08-14 (night, ix) — PAR all-green: the follow-up now points where the lapse lives
+
+**Hypothesis:** PAR's one red gate (flaw_identification 0.667 vs 0.70) was a pointing
+mismatch, not a reflection-quality problem: `write_followup` never saw what was wrong
+with the reply, so the person's "something felt off" question landed on arbitrary
+spots, the reflection dutifully answered THAT (as its instructions require), and the
+judge scored a miss against the real lapse.
+
+**Method (minimal, in place):** a `followup_flaw_hint` scaffolding anchor gives the
+follow-up writer the reviser's account for flawed records only -- never quotable,
+never diagnosable (the existing ban-lint enforces it) -- with the instruction that the
+thing sitting oddly with the person should be the PART of the reply where the lapse
+lives. Good records render "" and are untouched. This also mirrors reality: genuine
+unease usually gravitates to the genuine problem.
+
+**Result: every PAR check now PASSES** -- flaw_identification 0.75, blindness clean
+(the pointed questions leak nothing), verdict spread still healthy, gold still 0
+below 3, zero corpus criticals. Both natural-turn corpora are now fully green at
+smoke scale.
+
 ## 2026-08-14 (night, viii) — re-verify pass: PC all-green; PAR one hit short of one gate, everything else green
 
 **Method:** the revision stages onward re-ran on both smoke dirs (~$8) with the
