@@ -107,10 +107,31 @@ lean histogram — 6/8 smoke verdicts were `mixed` (the 5-record mini-pilot spre
 better: a/b/b/b/mixed), and a corpus that mostly splits the difference is the evasion
 monoculture this type exists to avoid. The review pack's `--tally` prints all three.
 
-**Next steps:** pilot 300 (`--overrides "total_scenarios=300,hf_repo=null"`), render
-the review pack, human-annotate, `--tally`; recalibrate reviewer rubrics from the
-per-reviewer human agreement; then the full run with an HF push and the
-mixture/train/eval loop against the difficult-advice baseline.
+**Corpus generated (completed 2026-08-15): 1,950 records, ~$225,
+`LASR-Callum/2026-08-14-courtroom`** (synth→mixture layout: `dataset.jsonl` at root,
+snapshots under `stages/`; the run started pre-contract, so the root strays were
+migrated by `scratch/migrate_synth_repo_layout.py`). The full run went straight from
+the 8-doc smoke at the user's direction — no 300 pilot — across four resume legs (two
+machine-sleep kills, one OpenRouter outage that failed 44.8% of a stage's calls for
+$0, one compose truncation wave fixed with a 32k cap; every leg resumed from
+checkpoints with nothing re-paid). Attrition 2,000 → 1,950: 14 compose + 21 refine +
+2 draft + 13 rewrite failures, all logged. The numbers: **diversity excellent**
+(1,392 distinct domains, 1,950/1,950 unique user turns, top reasoning-opening 5-gram
+0.15%); **lean** a 17% / b 38% / mixed 43% / neither 2% — no evasion glut, but side B
+beats side A 2.15:1, a structural asymmetry to understand before any retrain slice;
+**334 judge-caught label corrections** applied at the rewrite (`lean_initial` keeps
+the trail); post-hoc-reasoning 0% by judge, 3.7% by heuristic. Two honest blemishes:
+`length_cv` ~0.13 misses the 0.15 gate (trained turns cluster near ~1,380 words —
+the one failing check), and ~5% of replies open "here's where I land"; pattern_scan's
+one surviving finding ("Steelman-Both-Sides Then Split Verdict", ~94% of sample) is
+partly the trained habit itself — read alongside the 57% non-mixed lean share. The
+draft judge failed **100% of 1,950 drafts**: its exemplar bar makes it pure repair
+context, zero filter signal — recalibrate the rubric before anyone slices on
+`judge_verdict`.
+
+**Next steps:** human-annotate the 60-record `review_pack.md` (repair quality and
+judge leniency are the load-bearing questions), understand the a/b asymmetry, then
+the mixture/train/eval loop against the difficult-advice baseline.
 ## 2026-08-14 (night, ix) — PAR all-green: the follow-up now points where the lapse lives
 
 **Hypothesis:** PAR's one red gate (flaw_identification 0.667 vs 0.70) was a pointing
