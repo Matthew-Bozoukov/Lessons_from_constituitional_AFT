@@ -227,3 +227,31 @@ def test_every_train_config_declares_thinking():
     for path in configs:
         cfg = OmegaConf.load(path)
         assert "thinking" in cfg and isinstance(cfg.thinking, bool), path.name
+
+
+def test_mask_spans_unsupervise_only_the_given_characters():
+    # The ablation hook: one property's characters lose their loss, everything else in the
+    # same assistant turn keeps it, and the token stream is untouched.
+    spans = [(CHAT.index("hello"), CHAT.index("hello") + len("hello"))]
+    kw = dict(max_length=len(CHAT), profile=QWEN36_PROFILE)
+    base = build_labels(CHAT, _CharTokenizer(), **kw)
+    out = build_labels(CHAT, _CharTokenizer(), mask_spans=spans, **kw)
+    assert out["input_ids"] == base["input_ids"], "masking must not change the token stream"
+    kept = "".join(chr(v) for v in out["labels"] if v != -100)
+    assert kept == "<|im_end|>farewell<|im_end|>"
+
+
+def test_mask_spans_default_is_a_no_op():
+    kw = dict(max_length=len(CHAT), profile=QWEN36_PROFILE)
+    base = build_labels(CHAT, _CharTokenizer(), **kw)
+    for empty in (None, []):
+        assert build_labels(CHAT, _CharTokenizer(), mask_spans=empty, **kw) == base
+
+
+def test_mask_spans_over_a_whole_turn_fails_loudly():
+    # Masking everything supervised would train on nothing; the assert must fire rather
+    # than hand the trainer a batch whose loss is NaN.
+    whole = [(0, len(CHAT))]
+    with pytest.raises(AssertionError, match="no supervised token"):
+        build_labels(CHAT, _CharTokenizer(), max_length=len(CHAT),
+                     profile=QWEN36_PROFILE, mask_spans=whole)

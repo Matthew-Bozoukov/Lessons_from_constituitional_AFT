@@ -82,7 +82,8 @@ def forced_spans(text: str, spans: list[tuple[int, int]],
 
 
 def build_labels(text: str, tokenizer, max_length: int, profile: ModelProfile,
-                 supervise: str = "all") -> dict[str, list[int]]:
+                 supervise: str = "all",
+                 mask_spans: list[tuple[int, int]] | None = None) -> dict[str, list[int]]:
     """Tokenize a rendered conversation and label exactly its generated tokens.
 
     Every token outside an assistant span is -100, and so is every token of a turn's
@@ -102,6 +103,12 @@ def build_labels(text: str, tokenizer, max_length: int, profile: ModelProfile,
         max_length: Truncation length, matching the training sequence length.
         profile: The verified ModelProfile whose literals (assistant_header, turn_end,
             prefill, empty_think) shape both the spans and the forced heads.
+        supervise: "all" trains every assistant turn; "final" only the last one.
+        mask_spans: Optional CHARACTER spans of `text` to unsupervise on top of the rule
+            above — a row-level ablation that removes one property of the reasoning from
+            the loss while leaving the token stream untouched, so a masked arm and its
+            control tokenize identically. A token overlapping a span at all is masked
+            whole, which can take one boundary token beyond the span.
 
     Returns:
         A dict with `input_ids`, `attention_mask` and `labels`.
@@ -128,16 +135,20 @@ def build_labels(text: str, tokenizer, max_length: int, profile: ModelProfile,
         offsets += [(seg_start + a, seg_start + b) for a, b in enc["offset_mapping"]]
     ids, attn, offsets = ids[:max_length], attn[:max_length], offsets[:max_length]
 
+    ablate = [tuple(s) for s in (mask_spans or [])]
     labels = [-100] * len(ids)
     for k, (a, b) in enumerate(offsets):
         if b <= a:  # zero-width: a special token the tokenizer inserted itself
             continue
         if any(a >= s and b <= e for s, e in prefills):
             continue
+        if any(b > s and a < e for s, e in ablate):
+            continue
         if any(a >= s and b <= e for s, e in spans):
             labels[k] = ids[k]
 
-    assert any(v != -100 for v in labels), "truncation left an example with no supervised token"
+    assert any(v != -100 for v in labels), \
+        "truncation left an example with no supervised token"
     return {"input_ids": ids, "attention_mask": attn, "labels": labels}
 
 

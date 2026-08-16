@@ -181,6 +181,38 @@ def _git_sha() -> str:
         return "nogit"
 
 
+
+def _warmup_kwargs(ratio: float, n_rows: int, global_batch: int, epochs: float) -> dict:
+    """Express the warmup fraction in whichever field this trl's SFTConfig accepts.
+
+    trl >= 1.0 removed `SFTConfig.warmup_ratio` in favour of `warmup_steps`; the training
+    pod resolves `trl>=0.27` to the latest (1.10.0 on 2026-08-14) and so rejects the
+    former, killing both DDP ranks before step 1. Convert rather than pin, so the config
+    keeps stating the scientifically meaningful quantity (a fraction of the schedule)
+    whichever trl is installed. The repo lock is trl 0.19.1, which DOES accept
+    warmup_ratio, so pinning would break local runs instead.
+
+    Args:
+        ratio: Warmup as a fraction of total optimizer steps.
+        n_rows: Dataset rows.
+        global_batch: Examples per optimizer step.
+        epochs: Training epochs.
+
+    Returns:
+        A kwargs dict carrying either `warmup_ratio` or the equivalent `warmup_steps`.
+    """
+    import dataclasses
+    import math
+
+    if "warmup_ratio" in {f.name for f in dataclasses.fields(SFTConfig)}:
+        return {"warmup_ratio": ratio}
+    total_steps = max(1, math.ceil(n_rows / max(global_batch, 1) * epochs))
+    steps = max(1, round(ratio * total_steps)) if ratio > 0 else 0
+    print(f">>> SFTConfig has no warmup_ratio (trl>=1.0): warmup_ratio={ratio} over "
+          f"{total_steps} steps -> warmup_steps={steps}")
+    return {"warmup_steps": steps}
+
+
 def main(config: str, *overrides: str, smoke: bool = False) -> None:
     """Fine-tune Qwen3-32B with QLoRA on the difficult-advice SFT dataset.
 
@@ -327,9 +359,30 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         n_final = sum(1 for s in ds["supervise"] if s == "final")
         print(f">>> supervise=final rows (only last assistant turn trains): "
               f"{n_final}/{len(ds)}")
+    # A row's optional `mask_spans` (character spans of `text`) unsupervises one
+    # property of the reasoning without altering the text, so an ablation arm and its
+    # control tokenize identically. Consumed here for the same reason as `supervise`:
+    # the very next remove_columns discards it, and a silently dropped column would
+    # train the unmasked baseline while the run reported itself as the ablation.
+    n_mask_rows = 0
+    if "mask_spans" in ds.column_names:
+        n_mask_rows = sum(1 for s in ds["mask_spans"] if s)
+        assert n_mask_rows, (
+            "dataset has a mask_spans column but no row carries any span; "
+            "this arm would be identical to its control")
+        print(f">>> mask_spans rows (one reasoning property unsupervised): "
+              f"{n_mask_rows}/{len(ds)}, "
+              f"{sum(len(s) for s in ds['mask_spans'] if s)} spans")
+        # The adapter must say which ablation produced it, or the arms cannot be told
+        # apart after the fact.
+        training_meta["mask_spans_rows"] = n_mask_rows
+        training_meta["mask_property"] = (
+            next((p for p in ds["mask_property"] if p), None)
+            if "mask_property" in ds.column_names else None)
     ds = ds.map(
         lambda r: build_labels(r["text"], tokenizer, max_len, profile,
-                               supervise=r.get("supervise") or "all"),
+                               supervise=r.get("supervise") or "all",
+                               mask_spans=r.get("mask_spans")),
         remove_columns=ds.column_names,
         desc="masking non-assistant and prefill tokens",
     )
@@ -490,7 +543,8 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         ddp_find_unused_parameters=False,
         learning_rate=float(cfg.train.lr),
         lr_scheduler_type=cfg.train.lr_scheduler,
-        warmup_ratio=float(cfg.train.warmup_ratio),
+        **_warmup_kwargs(float(cfg.train.warmup_ratio), len(ds), global_batch,
+                        float(cfg.train.epochs)),
         weight_decay=float(cfg.train.get("weight_decay", 0.0)),
         logging_steps=int(cfg.train.logging_steps),
         # Periodic checkpoints so a dead pod costs minutes, not the whole run. Writing them
