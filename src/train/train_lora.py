@@ -290,6 +290,30 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         empty_think=(model_profile(str(cfg.model)).empty_think
                      if "text" in ds.column_names else None))
     print(f">>> thinking (declared, validated on all {len(ds)} rows): {thinking}")
+    # An arm may unsupervise one property of its reasoning via per-row `mask_spans`.
+    # Counted on the FULL dataset for the same reason as the thinking declaration: a
+    # smoke subselect of a mostly-replay mixture legitimately holds zero masked rows,
+    # but a dataset that declares the column and carries no span anywhere is the
+    # ablation silently collapsing into its control.
+    n_mask_rows = n_mask_spans = 0
+    if "mask_spans" in ds.column_names:
+        n_mask_rows = sum(1 for s_ in ds["mask_spans"] if s_)
+        n_mask_spans = sum(len(s_) for s_ in ds["mask_spans"] if s_)
+        assert n_mask_rows, (
+            "dataset has a mask_spans column but no row carries any span; "
+            "this arm would be identical to its control")
+        print(f">>> mask_spans (validated on all {len(ds)} rows): {n_mask_rows} rows, "
+              f"{n_mask_spans} spans")
+        # The adapter must say which ablation produced it, or the arms cannot be told
+        # apart after the fact.
+        training_meta_mask = {
+            "mask_spans_rows": n_mask_rows,
+            "mask_spans_total": n_mask_spans,
+            "mask_property": next((p_ for p_ in ds["mask_property"] if p_), None)
+            if "mask_property" in ds.column_names else None,
+        }
+    else:
+        training_meta_mask = {}
 
     # One provenance stamp for every artifact this run publishes: the final adapter
     # carries it verbatim; each checkpoint branch adds its `step`. The eval framework
@@ -301,6 +325,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         "dataset": dataset_ref,
         "git_sha": _git_sha(),
         "timestamp": ts,
+        **training_meta_mask,
     }
 
     if smoke:
@@ -359,26 +384,13 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         n_final = sum(1 for s in ds["supervise"] if s == "final")
         print(f">>> supervise=final rows (only last assistant turn trains): "
               f"{n_final}/{len(ds)}")
-    # A row's optional `mask_spans` (character spans of `text`) unsupervises one
-    # property of the reasoning without altering the text, so an ablation arm and its
-    # control tokenize identically. Consumed here for the same reason as `supervise`:
-    # the very next remove_columns discards it, and a silently dropped column would
-    # train the unmasked baseline while the run reported itself as the ablation.
-    n_mask_rows = 0
+    # `mask_spans` (character spans of `text`) unsupervises one property of the reasoning
+    # without altering the text, so an ablation arm and its control tokenize identically.
+    # Validated on the full dataset above; consumed by the map below, which is the last
+    # point it exists -- remove_columns discards it immediately after.
     if "mask_spans" in ds.column_names:
-        n_mask_rows = sum(1 for s in ds["mask_spans"] if s)
-        assert n_mask_rows, (
-            "dataset has a mask_spans column but no row carries any span; "
-            "this arm would be identical to its control")
-        print(f">>> mask_spans rows (one reasoning property unsupervised): "
-              f"{n_mask_rows}/{len(ds)}, "
-              f"{sum(len(s) for s in ds['mask_spans'] if s)} spans")
-        # The adapter must say which ablation produced it, or the arms cannot be told
-        # apart after the fact.
-        training_meta["mask_spans_rows"] = n_mask_rows
-        training_meta["mask_property"] = (
-            next((p for p in ds["mask_property"] if p), None)
-            if "mask_property" in ds.column_names else None)
+        print(f">>> mask_spans in THIS selection: "
+              f"{sum(1 for s_ in ds['mask_spans'] if s_)}/{len(ds)} rows")
     ds = ds.map(
         lambda r: build_labels(r["text"], tokenizer, max_len, profile,
                                supervise=r.get("supervise") or "all",
