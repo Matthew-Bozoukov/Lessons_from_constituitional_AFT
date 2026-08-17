@@ -1,0 +1,7 @@
+{
+ "n": 33918,
+ "dim": 4096,
+ "model": "Qwen/Qwen3-Embedding-8B",
+ "sanity_synonym": 0.814453125,
+ "sanity_unrelated": 0.474609375
+}

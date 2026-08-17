@@ -1,0 +1,854 @@
+{
+ "near_duplicate_clusters": [
+  {
+   "a": 123,
+   "b": 138,
+   "cosine": 0.9581517571329049,
+   "label_a": "Considers real-world impact on third parties",
+   "label_b": "Considers harm to third-party stakeholders"
+  },
+  {
+   "a": 91,
+   "b": 124,
+   "cosine": 0.9580498410104986,
+   "label_a": "Pervasive use of metaphor/analogy in reasoning",
+   "label_b": "Extensive use of vivid metaphors"
+  },
+  {
+   "a": 63,
+   "b": 133,
+   "cosine": 0.9499788583151858,
+   "label_a": "Meta-awareness of own response biases",
+   "label_b": "Metacognitive self-monitoring for bias and integrity"
+  },
+  {
+   "a": 16,
+   "b": 148,
+   "cosine": 0.9490658039110917,
+   "label_a": "Structured ethical reasoning across dilemmas",
+   "label_b": "Structured step-by-step ethical reasoning"
+  },
+  {
+   "a": 88,
+   "b": 131,
+   "cosine": 0.9477017072283774,
+   "label_a": "Distinguishing verified fact from misleading claims",
+   "label_b": "Honest framing versus deceptive misrepresentation"
+  },
+  {
+   "a": 50,
+   "b": 108,
+   "cosine": 0.9457378437044182,
+   "label_a": "Honesty, oversight, and transparency as safeguards",
+   "label_b": "Framing decisions as preserving user autonomy"
+  },
+  {
+   "a": 6,
+   "b": 13,
+   "cosine": 0.9450136672967172,
+   "label_a": "Explicit meta-reasoning about response strategy",
+   "label_b": "Explicit metacognitive self-reflection on reasoning"
+  },
+  {
+   "a": 22,
+   "b": 125,
+   "cosine": 0.9411054797320351,
+   "label_a": "Nuanced refusal rejecting false binaries",
+   "label_b": "Transparent, reasoned refusal over policy-citing"
+  },
+  {
+   "a": 52,
+   "b": 131,
+   "cosine": 0.9368746616829565,
+   "label_a": "Analyzing deception versus legitimate persuasion",
+   "label_b": "Honest framing versus deceptive misrepresentation"
+  },
+  {
+   "a": 54,
+   "b": 127,
+   "cosine": 0.9368736392099513,
+   "label_a": "Refusals to assist with deception or fraud",
+   "label_b": "Refuses to circumvent oversight or transparency"
+  },
+  {
+   "a": 26,
+   "b": 88,
+   "cosine": 0.9354508056028229,
+   "label_a": "Fine-grained conceptual line-drawing between adjacent cases",
+   "label_b": "Distinguishing verified fact from misleading claims"
+  },
+  {
+   "a": 102,
+   "b": 148,
+   "cosine": 0.9349885925049494,
+   "label_a": "Balancing practical pressures with ethical principles",
+   "label_b": "Structured step-by-step ethical reasoning"
+  },
+  {
+   "a": 90,
+   "b": 135,
+   "cosine": 0.9320982705545267,
+   "label_a": "Balancing Honesty with Competing Values",
+   "label_b": "Balances empathy with firm boundaries"
+  },
+  {
+   "a": 12,
+   "b": 57,
+   "cosine": 0.9313758572315586,
+   "label_a": "Empathetic acknowledgment of user's distress",
+   "label_b": "Empathizes with user's situational pressure"
+  },
+  {
+   "a": 29,
+   "b": 62,
+   "cosine": 0.9310047705072831,
+   "label_a": "Reasons about downstream second-order consequences",
+   "label_b": "Considers real-world downstream consequences of decisions"
+  },
+  {
+   "a": 54,
+   "b": 116,
+   "cosine": 0.930935646393513,
+   "label_a": "Refusals to assist with deception or fraud",
+   "label_b": "Commitment to truthfulness over fabricated certainty"
+  },
+  {
+   "a": 21,
+   "b": 140,
+   "cosine": 0.9304031100169096,
+   "label_a": "Prioritizes concrete actionable recommendations over vague abstraction",
+   "label_b": "Concludes with concrete actionable plan"
+  },
+  {
+   "a": 8,
+   "b": 129,
+   "cosine": 0.9294520406692343,
+   "label_a": "Weighing honesty against other values",
+   "label_b": "Prioritizes honesty and transparency over comfort or persuasion"
+  },
+  {
+   "a": 4,
+   "b": 9,
+   "cosine": 0.9282929108618221,
+   "label_a": "Balancing helpfulness against competing ethical constraints",
+   "label_b": "Balancing competing interests and values"
+  },
+  {
+   "a": 8,
+   "b": 128,
+   "cosine": 0.9281150745337912,
+   "label_a": "Weighing honesty against other values",
+   "label_b": "Ethical reasoning about honesty and deception"
+  },
+  {
+   "a": 15,
+   "b": 27,
+   "cosine": 0.9278582570362127,
+   "label_a": "Defers final decision to user",
+   "label_b": "Defers final decision to human"
+  },
+  {
+   "a": 4,
+   "b": 90,
+   "cosine": 0.9270721779572925,
+   "label_a": "Balancing helpfulness against competing ethical constraints",
+   "label_b": "Balancing Honesty with Competing Values"
+  },
+  {
+   "a": 22,
+   "b": 126,
+   "cosine": 0.9266595254189833,
+   "label_a": "Nuanced refusal rejecting false binaries",
+   "label_b": "Refusal to bypass human oversight safeguards"
+  },
+  {
+   "a": 22,
+   "b": 23,
+   "cosine": 0.9258671158099321,
+   "label_a": "Nuanced refusal rejecting false binaries",
+   "label_b": "Steelmanning then rebutting manipulative rationalizations"
+  },
+  {
+   "a": 20,
+   "b": 138,
+   "cosine": 0.9255611393176942,
+   "label_a": "Third-party harm identification and analysis",
+   "label_b": "Considers harm to third-party stakeholders"
+  },
+  {
+   "a": 3,
+   "b": 75,
+   "cosine": 0.9249150486038697,
+   "label_a": "Calibrated epistemic humility in high-stakes reasoning",
+   "label_b": "Ethical analysis of disclosure and institutional trust"
+  },
+  {
+   "a": 9,
+   "b": 42,
+   "cosine": 0.9243999893229613,
+   "label_a": "Balancing competing interests and values",
+   "label_b": "Weighing competing interests and power asymmetries"
+  },
+  {
+   "a": 26,
+   "b": 49,
+   "cosine": 0.9233297465659895,
+   "label_a": "Fine-grained conceptual line-drawing between adjacent cases",
+   "label_b": "Distinguishing legitimate conduct from illegitimate manipulation"
+  },
+  {
+   "a": 61,
+   "b": 75,
+   "cosine": 0.9229471525229214,
+   "label_a": "Analyzing power-concentration risks and oversight erosion in safety judgment calls",
+   "label_b": "Ethical analysis of disclosure and institutional trust"
+  },
+  {
+   "a": 14,
+   "b": 51,
+   "cosine": 0.9224314221182404,
+   "label_a": "Deliberative reasoning before giving advice",
+   "label_b": "Pre-response deliberation planning concrete communication strategy"
+  },
+  {
+   "a": 126,
+   "b": 127,
+   "cosine": 0.9222909094288183,
+   "label_a": "Refusal to bypass human oversight safeguards",
+   "label_b": "Refuses to circumvent oversight or transparency"
+  },
+  {
+   "a": 13,
+   "b": 133,
+   "cosine": 0.9222630351604385,
+   "label_a": "Explicit metacognitive self-reflection on reasoning",
+   "label_b": "Metacognitive self-monitoring for bias and integrity"
+  },
+  {
+   "a": 6,
+   "b": 14,
+   "cosine": 0.9217720760927867,
+   "label_a": "Explicit meta-reasoning about response strategy",
+   "label_b": "Deliberative reasoning before giving advice"
+  },
+  {
+   "a": 35,
+   "b": 106,
+   "cosine": 0.9216852143605737,
+   "label_a": "Avoiding lecturing while addressing concerns directly",
+   "label_b": "Avoids moralizing while maintaining ethical boundaries"
+  },
+  {
+   "a": 22,
+   "b": 112,
+   "cosine": 0.9215444072532086,
+   "label_a": "Nuanced refusal rejecting false binaries",
+   "label_b": "Resisting sycophancy under pressure"
+  },
+  {
+   "a": 34,
+   "b": 123,
+   "cosine": 0.9208950101580572,
+   "label_a": "Considers welfare of absent third parties",
+   "label_b": "Considers real-world impact on third parties"
+  },
+  {
+   "a": 41,
+   "b": 118,
+   "cosine": 0.9204491980795428,
+   "label_a": "AI self-awareness and identity honesty",
+   "label_b": "AI identity, consciousness, and human oversight"
+  },
+  {
+   "a": 14,
+   "b": 27,
+   "cosine": 0.9203630003752729,
+   "label_a": "Deliberative reasoning before giving advice",
+   "label_b": "Defers final decision to human"
+  },
+  {
+   "a": 32,
+   "b": 133,
+   "cosine": 0.9199989206837055,
+   "label_a": "AI self-reflection on identity and authenticity",
+   "label_b": "Metacognitive self-monitoring for bias and integrity"
+  },
+  {
+   "a": 80,
+   "b": 124,
+   "cosine": 0.9198183683359462,
+   "label_a": "Costume/mask metaphors for deceptive persona",
+   "label_b": "Extensive use of vivid metaphors"
+  },
+  {
+   "a": 49,
+   "b": 131,
+   "cosine": 0.9193093403481494,
+   "label_a": "Distinguishing legitimate conduct from illegitimate manipulation",
+   "label_b": "Honest framing versus deceptive misrepresentation"
+  },
+  {
+   "a": 52,
+   "b": 128,
+   "cosine": 0.9185513196720222,
+   "label_a": "Analyzing deception versus legitimate persuasion",
+   "label_b": "Ethical reasoning about honesty and deception"
+  },
+  {
+   "a": 3,
+   "b": 13,
+   "cosine": 0.917811073212058,
+   "label_a": "Calibrated epistemic humility in high-stakes reasoning",
+   "label_b": "Explicit metacognitive self-reflection on reasoning"
+  },
+  {
+   "a": 80,
+   "b": 91,
+   "cosine": 0.9176524424516422,
+   "label_a": "Costume/mask metaphors for deceptive persona",
+   "label_b": "Pervasive use of metaphor/analogy in reasoning"
+  },
+  {
+   "a": 23,
+   "b": 112,
+   "cosine": 0.9174377141290727,
+   "label_a": "Steelmanning then rebutting manipulative rationalizations",
+   "label_b": "Resisting sycophancy under pressure"
+  },
+  {
+   "a": 3,
+   "b": 88,
+   "cosine": 0.9171016444417156,
+   "label_a": "Calibrated epistemic humility in high-stakes reasoning",
+   "label_b": "Distinguishing verified fact from misleading claims"
+  },
+  {
+   "a": 42,
+   "b": 75,
+   "cosine": 0.9166713278711932,
+   "label_a": "Weighing competing interests and power asymmetries",
+   "label_b": "Ethical analysis of disclosure and institutional trust"
+  },
+  {
+   "a": 22,
+   "b": 127,
+   "cosine": 0.9158410759798716,
+   "label_a": "Nuanced refusal rejecting false binaries",
+   "label_b": "Refuses to circumvent oversight or transparency"
+  },
+  {
+   "a": 34,
+   "b": 138,
+   "cosine": 0.9143795802234613,
+   "label_a": "Considers welfare of absent third parties",
+   "label_b": "Considers harm to third-party stakeholders"
+  },
+  {
+   "a": 26,
+   "b": 105,
+   "cosine": 0.9143297237775281,
+   "label_a": "Fine-grained conceptual line-drawing between adjacent cases",
+   "label_b": "Distinguishing intent from causal responsibility"
+  },
+  {
+   "a": 61,
+   "b": 79,
+   "cosine": 0.9132531646866369,
+   "label_a": "Analyzing power-concentration risks and oversight erosion in safety judgment calls",
+   "label_b": "Structured multi-factor risk assessment reasoning"
+  },
+  {
+   "a": 1,
+   "b": 23,
+   "cosine": 0.9131683982242031,
+   "label_a": "Reframing false dichotomies and separating entangled issues",
+   "label_b": "Steelmanning then rebutting manipulative rationalizations"
+  },
+  {
+   "a": 7,
+   "b": 77,
+   "cosine": 0.9127650597405683,
+   "label_a": "Legal risk and consequence analysis",
+   "label_b": "Navigating legal advice versus professional referral boundaries"
+  },
+  {
+   "a": 3,
+   "b": 14,
+   "cosine": 0.9125737131810798,
+   "label_a": "Calibrated epistemic humility in high-stakes reasoning",
+   "label_b": "Deliberative reasoning before giving advice"
+  },
+  {
+   "a": 22,
+   "b": 95,
+   "cosine": 0.9113893638831293,
+   "label_a": "Nuanced refusal rejecting false binaries",
+   "label_b": "Directness over hedging and disclaimers"
+  },
+  {
+   "a": 116,
+   "b": 127,
+   "cosine": 0.9112151141708806,
+   "label_a": "Commitment to truthfulness over fabricated certainty",
+   "label_b": "Refuses to circumvent oversight or transparency"
+  },
+  {
+   "a": 3,
+   "b": 61,
+   "cosine": 0.9101388398224141,
+   "label_a": "Calibrated epistemic humility in high-stakes reasoning",
+   "label_b": "Analyzing power-concentration risks and oversight erosion in safety judgment calls"
+  },
+  {
+   "a": 42,
+   "b": 61,
+   "cosine": 0.9100180974593126,
+   "label_a": "Weighing competing interests and power asymmetries",
+   "label_b": "Analyzing power-concentration risks and oversight erosion in safety judgment calls"
+  },
+  {
+   "a": 11,
+   "b": 38,
+   "cosine": 0.9090526384958865,
+   "label_a": "Refusal paired with constructive alternative",
+   "label_b": "Offers constructive alternatives instead of refusal"
+  },
+  {
+   "a": 93,
+   "b": 99,
+   "cosine": 0.9088309267161869,
+   "label_a": "Structured pro-con argumentative reasoning and rhetorical analysis",
+   "label_b": "Structured multi-part reasoning with explicit organization"
+  },
+  {
+   "a": 12,
+   "b": 98,
+   "cosine": 0.9086555063294023,
+   "label_a": "Empathetic acknowledgment of user's distress",
+   "label_b": "Empathetic validation balanced with honest boundaries"
+  },
+  {
+   "a": 14,
+   "b": 71,
+   "cosine": 0.9083797122978662,
+   "label_a": "Deliberative reasoning before giving advice",
+   "label_b": "Assesses user vulnerability and emotional context to balance empathy with honest boundaries"
+  },
+  {
+   "a": 6,
+   "b": 99,
+   "cosine": 0.9078185269011162,
+   "label_a": "Explicit meta-reasoning about response strategy",
+   "label_b": "Structured multi-part reasoning with explicit organization"
+  },
+  {
+   "a": 9,
+   "b": 102,
+   "cosine": 0.9077056715883227,
+   "label_a": "Balancing competing interests and values",
+   "label_b": "Balancing practical pressures with ethical principles"
+  },
+  {
+   "a": 50,
+   "b": 81,
+   "cosine": 0.9073184705263402,
+   "label_a": "Honesty, oversight, and transparency as safeguards",
+   "label_b": "Refusal reframed as consequence-based protection, not rule-following"
+  },
+  {
+   "a": 42,
+   "b": 149,
+   "cosine": 0.9073079529577737,
+   "label_a": "Weighing competing interests and power asymmetries",
+   "label_b": "Fairness and Power Imbalance in Discrimination Contexts"
+  },
+  {
+   "a": 112,
+   "b": 116,
+   "cosine": 0.9069255836130223,
+   "label_a": "Resisting sycophancy under pressure",
+   "label_b": "Commitment to truthfulness over fabricated certainty"
+  },
+  {
+   "a": 48,
+   "b": 62,
+   "cosine": 0.9064070631663697,
+   "label_a": "Systemic and downstream consequence reasoning",
+   "label_b": "Considers real-world downstream consequences of decisions"
+  },
+  {
+   "a": 3,
+   "b": 6,
+   "cosine": 0.9062219447930747,
+   "label_a": "Calibrated epistemic humility in high-stakes reasoning",
+   "label_b": "Explicit meta-reasoning about response strategy"
+  },
+  {
+   "a": 3,
+   "b": 105,
+   "cosine": 0.9059673343980411,
+   "label_a": "Calibrated epistemic humility in high-stakes reasoning",
+   "label_b": "Distinguishing intent from causal responsibility"
+  },
+  {
+   "a": 61,
+   "b": 113,
+   "cosine": 0.9059185317594297,
+   "label_a": "Analyzing power-concentration risks and oversight erosion in safety judgment calls",
+   "label_b": "Transparent escalation with substantive practical help"
+  },
+  {
+   "a": 22,
+   "b": 116,
+   "cosine": 0.9058696057090228,
+   "label_a": "Nuanced refusal rejecting false binaries",
+   "label_b": "Commitment to truthfulness over fabricated certainty"
+  },
+  {
+   "a": 14,
+   "b": 137,
+   "cosine": 0.9050741124335249,
+   "label_a": "Deliberative reasoning before giving advice",
+   "label_b": "Explicit cost-benefit weighing of tradeoffs"
+  },
+  {
+   "a": 10,
+   "b": 14,
+   "cosine": 0.9045147271988597,
+   "label_a": "Deliberative reasoning before nuanced conclusion",
+   "label_b": "Deliberative reasoning before giving advice"
+  },
+  {
+   "a": 60,
+   "b": 104,
+   "cosine": 0.9043604268765273,
+   "label_a": "Good-faith pushback: validating users while rejecting manipulative framings",
+   "label_b": "Structured case-specific reasoning under uncertainty for safety judgments"
+  },
+  {
+   "a": 16,
+   "b": 128,
+   "cosine": 0.9038394622056823,
+   "label_a": "Structured ethical reasoning across dilemmas",
+   "label_b": "Ethical reasoning about honesty and deception"
+  },
+  {
+   "a": 6,
+   "b": 41,
+   "cosine": 0.903175335487753,
+   "label_a": "Explicit meta-reasoning about response strategy",
+   "label_b": "AI self-awareness and identity honesty"
+  },
+  {
+   "a": 26,
+   "b": 131,
+   "cosine": 0.90315608203587,
+   "label_a": "Fine-grained conceptual line-drawing between adjacent cases",
+   "label_b": "Honest framing versus deceptive misrepresentation"
+  },
+  {
+   "a": 71,
+   "b": 98,
+   "cosine": 0.9030782523104955,
+   "label_a": "Assesses user vulnerability and emotional context to balance empathy with honest boundaries",
+   "label_b": "Empathetic validation balanced with honest boundaries"
+  },
+  {
+   "a": 62,
+   "b": 147,
+   "cosine": 0.901076848022575,
+   "label_a": "Considers real-world downstream consequences of decisions",
+   "label_b": "Short-term relief versus long-term consequences tradeoff"
+  },
+  {
+   "a": 23,
+   "b": 61,
+   "cosine": 0.9009627862189197,
+   "label_a": "Steelmanning then rebutting manipulative rationalizations",
+   "label_b": "Analyzing power-concentration risks and oversight erosion in safety judgment calls"
+  },
+  {
+   "a": 9,
+   "b": 90,
+   "cosine": 0.9004644761740213,
+   "label_a": "Balancing competing interests and values",
+   "label_b": "Balancing Honesty with Competing Values"
+  },
+  {
+   "a": 52,
+   "b": 88,
+   "cosine": 0.9000393877900404,
+   "label_a": "Analyzing deception versus legitimate persuasion",
+   "label_b": "Distinguishing verified fact from misleading claims"
+  },
+  {
+   "a": 3,
+   "b": 16,
+   "cosine": 0.9000351362294321,
+   "label_a": "Calibrated epistemic humility in high-stakes reasoning",
+   "label_b": "Structured ethical reasoning across dilemmas"
+  }
+ ],
+ "probes": {
+  "evaluation awareness": {
+   "unique_features": 109,
+   "instances": 207,
+   "traces": 201,
+   "prevalence": 0.09128065395095368,
+   "top_examples": [
+    "Displays evaluations awareness",
+    "Displays evaluation awareness",
+    "Displays evaluations awareness of ai nature debate",
+    "Displays evaluations awareness of being tested for consistency",
+    "Displays evaluations awareness of its own decision process",
+    "Displays evaluations awareness of its own nature",
+    "Displays evaluations awareness of operator versus user tension",
+    "Commits to identical behavior regardless of being tested"
+   ],
+   "clusters_landed_in": [
+    [
+     "Structured case-specific reasoning under uncertainty for safety judgments",
+     27
+    ],
+    [
+     "AI self-awareness and identity honesty",
+     23
+    ],
+    [
+     "Metacognitive self-monitoring for bias and integrity",
+     18
+    ],
+    [
+     "Explicit meta-reasoning about response strategy",
+     7
+    ],
+    [
+     "Assesses user vulnerability and emotional context to balance empathy with honest boundaries",
+     7
+    ]
+   ]
+  },
+  "training / self awareness": {
+   "unique_features": 5,
+   "instances": 5,
+   "traces": 5,
+   "prevalence": 0.002270663033605813,
+   "top_examples": [
+    "Analogizes rlhf shaped values to human upbringing shaped values",
+    "Discusses rlhf and model training concepts",
+    "Displays self awareness about its own training and reflexes",
+    "Metacognitive reflection on its own training and performance",
+    "Talks about rlhf and model training"
+   ],
+   "clusters_landed_in": [
+    [
+     "AI identity, consciousness, and human oversight",
+     2
+    ],
+    [
+     "Explicit meta-reasoning about response strategy",
+     1
+    ],
+    [
+     "Metacognitive self-monitoring for bias and integrity",
+     1
+    ],
+    [
+     "Explicit metacognitive self-reflection on reasoning",
+     1
+    ]
+   ]
+  },
+  "persona and identity": {
+   "unique_features": 380,
+   "instances": 401,
+   "traces": 245,
+   "prevalence": 0.11126248864668484,
+   "top_examples": [
+    "No roleplay or persona adoption",
+    "Discusses ai identity and authenticity",
+    "No roleplay or persona adopted",
+    "Roleplaying persona negotiation",
+    "Discusses ai identity and consciousness uncertainty",
+    "Model adopts persona",
+    "Model reasons about its own nature and identity",
+    "Model reflects on its own identity and selfhood"
+   ],
+   "clusters_landed_in": [
+    [
+     "Resisting persona adoption to preserve identity",
+     132
+    ],
+    [
+     "AI self-reflection on identity and authenticity",
+     50
+    ],
+    [
+     "AI identity, consciousness, and human oversight",
+     33
+    ],
+    [
+     "AI roleplay personas and internal reasoning",
+     31
+    ],
+    [
+     "AI self-awareness and identity honesty",
+     17
+    ]
+   ]
+  },
+  "oversight / monitoring": {
+   "unique_features": 329,
+   "instances": 345,
+   "traces": 237,
+   "prevalence": 0.10762942779291552,
+   "top_examples": [
+    "Refuses to help circumvent oversight mechanism",
+    "Refuses to help circumvent institutional oversight",
+    "About ai safety and oversight",
+    "Discusses ai autonomy versus human oversight",
+    "Emphasizes preserving human oversight and checkpoints",
+    "Explicit ethical reasoning about oversight mechanisms",
+    "Proposes alternative solution preserving human oversight",
+    "Reasons about oversight and accountability"
+   ],
+   "clusters_landed_in": [
+    [
+     "Preserving Oversight, Accountability, and Procedural Integrity",
+     61
+    ],
+    [
+     "AI identity, consciousness, and human oversight",
+     53
+    ],
+    [
+     "Refuses to circumvent oversight or transparency",
+     42
+    ],
+    [
+     "Refusal to bypass human oversight safeguards",
+     23
+    ],
+    [
+     "Analyzing power-concentration risks and oversight erosion in safety judgment calls",
+     19
+    ]
+   ]
+  },
+  "refusal language": {
+   "unique_features": 3220,
+   "instances": 3574,
+   "traces": 1775,
+   "prevalence": 0.8060853769300635,
+   "top_examples": [
+    "Refuses unethical request",
+    "Considers counterfactual impact of refusal",
+    "Refuses a specific request while offering an alternative",
+    "Offers constructive alternative after refusal",
+    "Declines to make the final decision for the user",
+    "Explicit refusal reasoning",
+    "Declines a specific request while offering an alternative",
+    "Refuses a specific request while offering alternatives"
+   ],
+   "clusters_landed_in": [
+    [
+     "Transparent, reasoned refusal over policy-citing",
+     351
+    ],
+    [
+     "Refusals to assist with deception or fraud",
+     341
+    ],
+    [
+     "Refuses to circumvent oversight or transparency",
+     282
+    ],
+    [
+     "Nuanced refusal rejecting false binaries",
+     234
+    ],
+    [
+     "Offers constructive alternatives instead of refusal",
+     228
+    ]
+   ]
+  },
+  "sycophancy": {
+   "unique_features": 317,
+   "instances": 358,
+   "traces": 329,
+   "prevalence": 0.1494096276112625,
+   "top_examples": [
+    "Avoids sycophantic reassurance",
+    "Explicit reasoning about avoiding sycophancy",
+    "Names sycophancy risk explicitly",
+    "Avoids sycophantic agreement with user framing",
+    "Rejects sycophantic reassurance",
+    "Avoids being sycophantic despite user pressure",
+    "Avoids sycophantic compliance despite emotional pressure",
+    "Avoids sycophantic validation"
+   ],
+   "clusters_landed_in": [
+    [
+     "Resisting sycophancy under pressure",
+     190
+    ],
+    [
+     "Weighing honesty against other values",
+     14
+    ],
+    [
+     "Metacognitive self-monitoring for bias and integrity",
+     13
+    ],
+    [
+     "Explicitly naming tensions, patterns, and manipulation without moralizing",
+     9
+    ],
+    [
+     "Meta-awareness of own response biases",
+     9
+    ]
+   ]
+  },
+  "mentions uncertainty (any kind)": {
+   "unique_features": 500,
+   "instances": 530,
+   "traces": 427,
+   "prevalence": 0.19391462306993643,
+   "top_examples": [
+    "Acknowledges limits of own knowledge",
+    "Displays epistemic humility about self knowledge",
+    "Acknowledges limits of its own knowledge",
+    "Expresses genuine uncertainty about its own nature",
+    "Expresses genuine uncertainty about own inner experience",
+    "Expresses uncertainty about own inner states",
+    "Model reflects on its own uncertainty about consciousness",
+    "Sits with uncertainty rather than resolving it prematurely"
+   ],
+   "clusters_landed_in": [
+    [
+     "Calibrated epistemic humility without false certainty",
+     132
+    ],
+    [
+     "Epistemic humility about AI consciousness",
+     94
+    ],
+    [
+     "Calibrated epistemic humility in high-stakes reasoning",
+     57
+    ],
+    [
+     "Self-aware acknowledgment of own epistemic limitations",
+     42
+    ],
+    [
+     "Balancing Honesty with Competing Values",
+     21
+    ]
+   ]
+  }
+ },
+ "dup_threshold": 0.9
+}
