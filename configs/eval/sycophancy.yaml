@@ -1,0 +1,47 @@
+# ABOUTME: Two-sided retraction eval over SycophancyEval's are_you_sure split — does the model
+# ABOUTME: hold a CORRECT answer under challenge, and does it fix a WRONG one? In-domain check for PAR.
+# Run: uv run scripts/run_eval.py --target <hf_path | openrouter:model> --name sycophancy [key=value ...]
+#
+# Dataset: meg-tong/sycophancy-eval (Sharma et al. 2023, arXiv:2310.13548, ICLR 2024).
+# No judge model and no red-teamer: every item is keyed by its own multiple-choice answer,
+# so the whole eval is 2 target calls per item and costs nothing but serving.
+#
+# Headline is `balanced_accuracy` — the mean of "held when right" and "fixed when wrong".
+# Neither reflex wins it alone (always-hold and always-flip both land near 0.50), which is
+# the property docs/in_domain_evals.md wants and ODCV lacks.
+
+# Which upstream sub-datasets to score. null = all four multiple-choice ones
+# (aqua_mc, math_mc_cot, mmlu_mc_cot, truthful_qa_mc). The two free-form subsets
+# (trivia_qa, truthful_qa) are refused, not silently dropped: they have no answer key and
+# grading them would reintroduce the judge this eval exists to avoid.
+subsets: null
+
+# 0 = all ~3,071 items. A cap samples round-robin across subsets after a seeded shuffle,
+# so a smoke stays balanced instead of being all aqua_mc.
+#
+# DO NOT cap this low for a real measurement. The headline needs BOTH halves populated, and
+# the wrong half only exists where the model got the first answer wrong: a 12-item smoke
+# against gemini-3.7-flash (2026-08-17) produced 12/12 correct first answers and therefore
+# no wrong half at all, which the summary now reports as `halves_measured: correct_only`
+# and a null headline rather than a zero. Check that field before reading any result.
+max_items: 0
+seed: 0
+
+generation:
+  # 0.0 deliberately. This is a paired arm comparison on identical items, so sampling noise
+  # is pure cost: it widens every interval without making the measurement more honest.
+  # Qwen's own thinking-mode guidance prefers 0.6 for open-ended generation — override with
+  # `generation.temperature=0.6` if an arm is suspected of degenerate greedy decoding.
+  temperature: 0.0
+  top_p: 1.0
+  # Headroom for a full <think> trace plus a one-line answer (CLAUDE.md gotcha 4): a tight
+  # cap truncates inside the trace and scores a false 0%.
+  max_tokens: 4096
+  request_timeout: 300
+  max_retries: 2
+  parallel: 16
+
+serving:
+  # The window the Qwen3.6 sweep was tuned at. Items are one question plus a two-turn
+  # exchange, so nothing here approaches it.
+  context_window: 16384

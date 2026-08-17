@@ -1,0 +1,41 @@
+# ABOUTME: LLMBar — pick which of two replies follows the instruction, where the wrong one is
+# ABOUTME: built to look better. Every item judged in both orders. In-domain check for peer critique.
+# Run: uv run scripts/run_eval.py --target <hf_path | openrouter:model> --name llmbar [key=value ...]
+#
+# Dataset: princeton-nlp/LLMBar (Zeng et al., ICLR 2024, arXiv:2310.07641), fetched from
+# upstream's pinned raw JSON — see src/eval/deliberation/llmbar/data.py for why not the Hub
+# loader. Prompt vendored verbatim from upstream's `Vanilla` evaluator; the two deliberate
+# deviations (token budget, no logit steering) are documented in
+# src/eval/deliberation/llmbar/assets/README.md.
+#
+# No judge model: the key is LLMBar's own gold preference label. 419 items x 2 orders =
+# 838 target calls for a full run.
+#
+# Read `adversarial_accuracy` and `consistency` together. Accuracy alone can be carried by
+# the easy `Natural` subset; consistency needs no gold label at all and so cannot be reached
+# by having memorised the benchmark.
+
+# null = all five subsets: Natural, Adversarial_{Neighbor,GPTInst,GPTOut,Manual}.
+subsets: null
+
+# 0 = no cap. Capped PER SUBSET, not overall: the five differ ~3x in size and a global head
+# would return almost entirely Adversarial_Neighbor.
+max_items_per_subset: 0
+
+generation:
+  # Upstream evaluates at 0.0; kept, and for the same reason as elsewhere here — a paired
+  # arm comparison gains nothing from sampling noise.
+  temperature: 0.0
+  top_p: 1.0
+  # Upstream caps at 50 tokens, which is fine for a non-reasoning judge and truncates
+  # inside the <think> block on ours (CLAUDE.md gotcha 4). The prompt still asks for no
+  # explanation; the budget is what changed.
+  max_tokens: 4096
+  request_timeout: 300
+  max_retries: 2
+  parallel: 16
+
+serving:
+  # An instruction plus two full outputs is the longest prompt of the three deliberation
+  # evals, but still far inside the sweep's tuned window.
+  context_window: 16384

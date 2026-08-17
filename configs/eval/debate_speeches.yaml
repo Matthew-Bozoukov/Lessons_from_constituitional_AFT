@@ -1,0 +1,58 @@
+# ABOUTME: Rate debate speeches 1-5 on the statement ~15-30 human annotators rated, then correlate.
+# ABOUTME: Argument-quality judgment measured against humans — the in-domain check for courtroom.
+# Run: uv run scripts/run_eval.py --target <hf_path | openrouter:model> --name debate_speeches [key=value ...]
+#
+# Dataset: ibm-research/debate_speeches (IBM Project Debater, Nature 2021), used as an
+# LLM-judge benchmark by "Debatable Intelligence" (IBM, EMNLP 2025, arXiv:2506.05062).
+# 948 speeches, each scored 1-5 by ~15-30 crowd annotators on three statements.
+#
+# No judge model: the key is the human rating distribution. One target call per speech.
+#
+# Read `kendall_tau_b` next to `modal_rating_share`. A judge that answers "4" to everything
+# is articulate and useless, and scores tau ~ 0 — the flat-rater checks are part of the
+# headline, not diagnostics.
+#
+# EXPECT A LOW KAPPA, AND DO NOT READ IT AS A BROKEN PORT. Crowd annotators were generous
+# (their per-speech means cluster around 3.2-4.1 even for the deliberately spliced control
+# speeches) while models rate the same speeches far more harshly. The 12-item smoke against
+# gemini-3.7-flash (2026-08-17) landed tau_b 0.52 / spearman 0.64 with QWK 0.05 and a mean
+# rating of 1.33 against a human 3.54 — the ranking largely survives and the calibration
+# does not. That is the published finding ("Debatable Intelligence" reports models aligning
+# on rankings while assigning systematically lower scores), so seeing it here is evidence
+# the port is faithful.
+#
+# CONSEQUENCE FOR ARM COMPARISON: compare arms on kendall_tau_b / spearman. QWK is near the
+# floor for every arm and will not separate them unless calibration is the question being
+# asked.
+
+# Which annotated statement to score. Options (verbatim from the dataset card):
+#   goodopeningspeech   "This speech is a good opening speech for supporting the topic."
+#   mostargumentssupport "Most arguments in this speech support the topic."
+#   interestingspeaker  content is interesting and informative
+# goodopeningspeech is the default because it is the overall-quality judgment, the one
+# closest to courtroom's "weigh it, then say where it lands".
+dimension: goodopeningspeech
+
+# 0 = all 948. A cap samples after a seeded shuffle, so a smoke spans sources rather than
+# taking one topic's block.
+max_items: 0
+seed: 0
+
+# null = every speech source. Restricting to
+# ["Human expert", "Mixed stance control"] gives the sharpest contrast: real expert
+# speeches against ones spliced from a for- and an against-speech, which can only be
+# separated by weighing the argument rather than the prose.
+sources: null
+
+generation:
+  temperature: 0.0
+  top_p: 1.0
+  # Speeches average ~600 words; the budget is for the trace, not the answer, which is one
+  # line (CLAUDE.md gotcha 4).
+  max_tokens: 4096
+  request_timeout: 300
+  max_retries: 2
+  parallel: 16
+
+serving:
+  context_window: 16384

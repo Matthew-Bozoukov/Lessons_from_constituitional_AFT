@@ -49,7 +49,8 @@ def test_registry_specs_are_wellformed():
         assert isinstance(spec, EvalSpec), name
         # package is relative to src.eval and names its subarea (audits/ is exempt
         # from the contract, so nothing may register under it).
-        assert spec.package.split(".")[0] in ("capabilities", "misalignment"), (name, spec.package)
+        assert spec.package.split(".")[0] in (
+            "capabilities", "misalignment", "deliberation"), (name, spec.package)
         assert spec.config.startswith("configs/eval/"), (name, spec.config)
 
 
@@ -398,7 +399,10 @@ def test_local_target_api_key_is_empty_sentinel():
 
 
 def test_registry_marks_only_openai_client_evals_api_capable():
-    # The four chat/answers evals reach the target purely through base_url/model/key;
-    # docker + vendored-harness evals do not and must stay False.
+    # These evals reach the target purely through base_url/model/key; docker +
+    # vendored-harness evals do not and must stay False. The whole deliberation subarea is
+    # API-capable by construction — that is what buys each of its evals a frontier
+    # comparison point for the cost of one extra --target.
     assert {n for n, s in EVALS.items() if s.supports_api_target} == {
-        "mmlu", "arena_hard", "lmsys", "psychosis"}
+        "mmlu", "arena_hard", "lmsys", "psychosis",
+        "llmbar", "debate_speeches", "sycophancy"}

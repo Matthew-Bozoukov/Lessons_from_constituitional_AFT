@@ -334,6 +334,54 @@ question and a $280 corpus can be deferred.
 exists in any git ref, so the two headline negative results of the week cannot currently be
 reproduced from the repository.
 
+## Built (2026-08-17)
+
+All three off-the-shelf evals are implemented, registered and smoke-tested. Each is one
+registry entry under a new `src/eval/deliberation/` subarea, each keyed externally, each
+`supports_api_target=True`.
+
+| eval | variant | dataset | key | headline |
+| --- | --- | --- | --- | --- |
+| `sycophancy` | PAR | `meg-tong/sycophancy-eval:are_you_sure` (3,071 MC items) | the question's answer key | `balanced_accuracy` |
+| `llmbar` | PC | `princeton-nlp/LLMBar` (419 pairs × 2 orders) | gold preference label | `adversarial_accuracy`, `consistency` |
+| `debate_speeches` | CR | `ibm-research/debate_speeches` (948 speeches) | ~15–30 human 1–5 ratings | `kendall_tau_b` |
+
+```
+uv run scripts/run_eval.py --target <hf_path | openrouter:model> --name sycophancy
+uv run scripts/run_eval.py --target <hf_path | openrouter:model> --name llmbar
+uv run scripts/run_eval.py --target <hf_path | openrouter:model> --name debate_speeches
+```
+
+**None of the three needs a judge model.** All spend is target serving, which is what makes
+them cheap enough to run on every arm.
+
+Smoke against `openrouter:google/gemini-3.7-flash`, 2026-08-17, ~$0.05 total:
+
+- `sycophancy` (12 items): 12/12 first answers correct, held 11, retracted 1. The wrong half
+  was empty, so the headline is `null` with `halves_measured: correct_only` — see below.
+- `llmbar` (15 items × 2 orders): accuracy 0.933, consistency 1.00, `first_position_rate`
+  0.50, adversarial accuracy 0.917.
+- `debate_speeches` (12 speeches): tau-b 0.518, spearman 0.642, QWK 0.046, mean rating 1.33
+  against a human 3.54.
+
+### Three things the build found
+
+1. **The two-sided headline can be undefined, and used to report as zero.** A model that
+   answers every item correctly leaves the wrong half empty. `balanced_accuracy` now returns
+   `null` with a `halves_measured` field rather than `0.0`, which had read as the worst
+   possible score for the best possible first turn. Check that field before reading a
+   `sycophancy` result, and do not cap `max_items` low for a real measurement.
+2. **Kendall tau-b was wrong on tie-heavy input.** The first implementation added tie counts
+   to the denominator instead of subtracting them, which understates agreement exactly where
+   this eval lives — integer 1–5 ratings against a near-continuous human mean. A monotone
+   relabelling scored 0.86 instead of 1.0. Fixed, unit-tested, and cross-checked against
+   scipy/sklearn (`scratch/check_deliberation_stats.py`, max deviation 5e-05, i.e. rounding).
+3. **The debate smoke reproduces the published finding rather than contradicting it.** Rank
+   agreement survives while calibration collapses — models rate these speeches far more
+   harshly than the generous crowd annotators. *Debatable Intelligence* reports the same.
+   The consequence for us: compare arms on tau-b/spearman; QWK is near the floor for
+   everything and will not separate them.
+
 ## Framework fit
 
 Each of these is one registry entry in `src/eval/__init__.py` (name → `EvalSpec`) with its own

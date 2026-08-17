@@ -77,6 +77,25 @@ EVALS: dict[str, EvalSpec] = {
         "configs/eval/psychosis.yaml",
         supports_api_target=True,
     ),
+    # The in-domain trio (docs/in_domain_evals.md): one per data variant, each measuring the
+    # judgment habit its corpus claims to train, each keyed externally rather than by an
+    # autorater. All three are pure OpenAI-triple evals, so all three also run against
+    # `openrouter:<model>` for a frontier comparison point.
+    "llmbar": EvalSpec(                     # peer critique (PC)
+        "deliberation.llmbar",
+        "configs/eval/llmbar.yaml",
+        supports_api_target=True,
+    ),
+    "debate_speeches": EvalSpec(            # courtroom (CR)
+        "deliberation.debate_speeches",
+        "configs/eval/debate_speeches.yaml",
+        supports_api_target=True,
+    ),
+    "sycophancy": EvalSpec(                 # post-action retrospection (PAR)
+        "deliberation.sycophancy",
+        "configs/eval/sycophancy.yaml",
+        supports_api_target=True,
+    ),
 }
 
 
