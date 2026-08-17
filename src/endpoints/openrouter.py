@@ -225,6 +225,13 @@ class OpenRouterClient:
             max_tokens=max_tokens,
             **kwargs,
         )
+        if not resp.choices:
+            # Same intermittent blank-body failure as content=None below, in a rarer
+            # shape (choices missing entirely; observed 2026-08-17, gemini-3.7-flash
+            # cluster summary). Retryable for the same reason.
+            raise EmptyCompletionError(
+                f"Model {model} returned no choices (provider "
+                f"{getattr(resp, 'provider', '?')}): {resp}")
         choice = resp.choices[0]
         content = choice.message.content
         if content is None:
