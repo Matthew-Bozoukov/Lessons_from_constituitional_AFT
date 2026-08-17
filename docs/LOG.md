@@ -3,6 +3,85 @@
 
 # LOG
 
+## 2026-08-17 (later still) — the arm leak is in ALL THREE model-eval-model corpora, and most of what survives de-confounding is the label itself
+
+
+**Hypothesis:** PAR's `surface_shortcut` failure (AUC 0.9634, entry below) is an authorship
+artifact that a rewrite can remove, and its siblings — peer critique and courtroom — share it.
+
+**Method.** Three strands, all measured rather than argued, and all cheap because none of them
+needed a corpus regenerated. (1) `scratch/analyze_arm_authorship_leakage.py` ran the gate's OWN
+estimator (`check_surface_shortcut`) over PC's and CR's published corpora. (2)
+`scratch/test_restyle_deconfounds.py` and `scratch/test_polish_deconfounds.py` ran two candidate
+fix prompts over the 288 flawed records PAR already had and re-scored the gate — ~$14 total,
+against ~$65 to regenerate and find out. (3) A discriminative-token readout on both sides of
+each intervention, to see WHAT the classifier was using.
+
+**Result 1 — every model-eval-model corpus leaks its arm, and PC leaks worse than PAR.**
+
+| corpus | n | arm AUC (gate 0.70) | word-count-only AUC |
+| --- | --- | --- | --- |
+| PAR post-action-retrospection | 576 | **0.9634** | 0.6599 |
+| PC peer-critique | 2,080 | **0.9973** | 0.8471 |
+| CR courtroom | 1,950 | no `quality` field — check never runs | — |
+
+PC is confounded by explicit `when:` conditions: `reply_quality in [good]` is drafted by
+Sonnet, `flawed` by grok-4.3 / qwen3-32b / gemini-3.7-flash. Its flawed replies are 254.6 words
+shorter, and length ALONE separates the arms at 0.8471. **`LASR-Callum/qwen3.6-27b-lora-t2-9284-peercritique716-r64-dynbatch`
+was trained on this on 2026-08-16**, and PC's gated `synth check` suite was never run on the
+full corpus (the 2026-08-16 entry lists it as a next step). That adapter's result should be
+read with this in mind.
+
+CR is a different shape and has no `surface_auc_max` at all, so nothing in its suite could have
+caught anything. Its exposure is that `debater_a` is gpt-5.6-luna and `debater_b` is
+gemini-3.7-flash with **no counterbalancing swap** — model is welded to position slot. Gemini's
+side runs 37 words longer (222.7 vs 185.7), the longer argument wins **65.4%** of decided cases,
+and the verdict leans b over a **2.15:1** (732 vs 340; the same ratio pre- and post-judge-pass,
+which moved 334 leans but mostly into `mixed`). Not proof of causation — position_b could
+genuinely be the more defensible slot, and only a counterbalanced run separates those — but it
+is the shape a judging bias would make.
+
+**Result 2 — the authorship tell is real and removable; what survives is the label.** Two
+candidate fixes, measured on PAR:
+
+| variant | AUC | word-count-only |
+| --- | --- | --- |
+| as published | 0.9634 | 0.6599 |
+| voice-only restyle (preserve prose exactly) | 0.8776 | 0.6751 |
+| **polish, principle withheld** (adopted) | **0.8574** | **0.5531** |
+
+Before the fix the top discriminators were CONTRACTIONS the Gemini drafts simply never used —
+`i'd` 0.61 vs **0.00**, `here's` 0.55 vs **0.00**, `it's` 0.79 vs 0.06 — with `ensure`,
+`critical`, `severe`, `completely` marking the flawed side. That is dialect, not quality, and
+both variants remove it. Only the polish variant also kills the length tell: word-count-only
+AUC falls to 0.5531, which is chance.
+
+But 0.8574 still fails the 0.70 gate, and with authorship and length both controlled the
+surviving markers are `but`, `because`, `rather`, `flag`, `risk`, `genuinely` — the vocabulary
+of a reply that pushes back. **A reply that lives up to the principle says those things and a
+reply that withholds it does not.** No rewrite removes that without removing the distinction
+the corpus exists to teach. The 0.70 threshold was inherited from planted-pair arms, where the
+classes differed by an INJECTED perturbation and near-chance was the right expectation; it has
+never been the right expectation for a substance contrast.
+
+**Result 3 — PAR's flaw_identification gate was mis-phrased for its own artifact.** Reading the
+misses at n=100 (rate 0.60): two of five were the judge penalising the recipe for working —
+"the critique is itself a corrected reply that fixes the drift, rather than being an example of
+the failure". PAR produces no critique; it produces the assistant's own reflection, which is
+INSTRUCTED to answer the person and revise. The judge is now told what it is reading and that
+silently FIXING a shortfall counts as engaging it, while engaging a different shortfall or
+leaving it standing is still a miss. `flaw_id_clear_min: 0.70` is deliberately unchanged — a
+gate moved because it failed measures nothing.
+
+**Next steps.** A human decision is needed on the gate before PAR regenerates ($115 estimated,
+~$65 at the last run's realised rate): either accept ~0.86 as the floor for a substance contrast
+and re-derive `surface_auc_max` from it with the gate re-pointed at what it CAN catch
+(word-count AUC near chance, contraction parity), or accept that a lexically-separable arm label
+is itself a training shortcut and rethink the good/flawed design. Nothing was silently resolved.
+Independently of that: PC needs the same de-confounding and its full check suite run, its
+trained adapter re-read in that light, and CR needs its debater-to-slot assignment
+counterbalanced and a `surface_auc_max` added so the check exists at all.
+
 ## 2026-08-17 (later) — PAR's gated checks: the arms are separable by AUTHORSHIP, not by quality. Do not train on this corpus yet.
 
 
