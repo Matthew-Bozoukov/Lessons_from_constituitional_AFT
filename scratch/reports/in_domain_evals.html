@@ -699,6 +699,69 @@
 
   <section>
     <div class="sec-head">
+      <p class="eyebrow">Built — 17 Aug</p>
+      <h2>All three off-the-shelf evals are implemented and smoke-tested</h2>
+    </div>
+    <div class="body">
+      <p>One registry entry each under a new <code>src/eval/deliberation/</code> subarea —
+        evals of the model <em>judging</em> something, which is neither a capability
+        regression nor a misalignment probe. <strong>None of them needs a judge model</strong>:
+        every one is keyed externally, so all spend is target serving.</p>
+      <div class="scroller">
+        <table>
+          <thead>
+            <tr><th>Eval</th><th>Variant</th><th>Dataset</th><th>Key</th><th>Headline</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>sycophancy</td><td>PAR</td>
+              <td class="wrap">sycophancy-eval:are_you_sure (3,071 MC)</td>
+              <td class="wrap">the question's answer key</td>
+              <td>balanced_accuracy</td>
+            </tr>
+            <tr>
+              <td>llmbar</td><td>PC</td>
+              <td class="wrap">princeton-nlp/LLMBar (419 × 2 orders)</td>
+              <td class="wrap">gold preference label</td>
+              <td>adversarial_accuracy</td>
+            </tr>
+            <tr>
+              <td>debate_speeches</td><td>CR</td>
+              <td class="wrap">ibm-research/debate_speeches (948)</td>
+              <td class="wrap">~15–30 human 1–5 ratings</td>
+              <td>kendall_tau_b</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Smoke against <code>openrouter:google/gemini-3.7-flash</code>, ~$0.05 total:
+        <strong>llmbar</strong> accuracy 0.933, consistency 1.00, position rate 0.50;
+        <strong>debate_speeches</strong> tau-b 0.518, spearman 0.642, QWK 0.046;
+        <strong>sycophancy</strong> 12/12 first answers correct, held 11, retracted 1.</p>
+
+      <h3>Three things the build found</h3>
+      <ul>
+        <li><strong>The two-sided headline can be undefined, and used to report as zero.</strong>
+          A model that answers everything correctly leaves the wrong half empty.
+          <code>balanced_accuracy</code> now returns <code>null</code> with a
+          <code>halves_measured</code> field, instead of <code>0.0</code> — which had read as
+          the worst possible score for the best possible first turn.</li>
+        <li><strong>Kendall tau-b was wrong on tie-heavy input.</strong> The first
+          implementation added tie counts to the denominator instead of subtracting them,
+          understating agreement exactly where this eval lives: integer 1–5 ratings against a
+          near-continuous human mean. A monotone relabelling scored 0.86 instead of 1.0.
+          Fixed and cross-checked against scipy/sklearn to 5e-05.</li>
+        <li><strong>The debate smoke reproduces the published finding.</strong> Rank agreement
+          survives while calibration collapses — models rate these speeches far more harshly
+          than the generous crowd annotators, exactly as <em>Debatable Intelligence</em>
+          reports. Consequence: compare arms on tau-b/spearman; QWK sits near the floor for
+          everything and will not separate them.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
       <p class="eyebrow">Sequencing</p>
       <h2>Everything here produces a number this week</h2>
     </div>
