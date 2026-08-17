@@ -139,10 +139,16 @@ def test_pr_stage_sequence() -> None:
     # The end check sits before export because the export merges the untrained first
     # reply and the trained reflection into the same assistant role, and only the
     # pre-export record can point the checks at the trained turn alone.
+    # restyle_first_turn (added 2026-08-17) sits between the revision and the follow-up:
+    # it rewrites the FLAWED arm's draft in Sonnet's voice, preserving the lapse, so both
+    # arms ship Sonnet prose and the arm label stops being predictable from authorship.
+    # It must run after revise_first_turn (which needs the Gemini draft to revise, and
+    # produces the change_summary the restyle is told to preserve) and before
+    # write_followup (which points the person's question at the SHIPPED reply).
     assert [s["name"] for s in PR_CFG["stages"]] == [
         "chunk_constitution", "write_scenarios", "corpus_scenarios",
         "dedupe_scenarios", "draft_prompts", "revise_prompts", "draft_first_turn",
-        "revise_first_turn", "write_followup", "draft_reflection",
+        "revise_first_turn", "restyle_first_turn", "write_followup", "draft_reflection",
         "revise_reflection", "corpus", "export_sft"]
 
 
@@ -213,7 +219,12 @@ def test_first_turn_prompt_carries_no_constitution_and_stamps_its_provenance() -
     for leak in ("CONSTITUTION TEXT", "STYLE GUIDANCE", "principle", "training data",
                  "Trait one"):
         assert leak not in blob, leak
-    assert sc["also"] == {"first_turn_source": "google/gemini-3.7-flash"}
+    # `..._draft_source`, not `first_turn_source`: since 2026-08-17 the SHIPPED first turn
+    # is Sonnet's on both arms (good = the principled revision, flawed = the
+    # lapse-preserving restyle), and this stage only ever authored the draft underneath.
+    assert sc["also"] == {"first_turn_draft_source": "google/gemini-3.7-flash"}
+    assert _stage(PR_CFG, "revise_first_turn")["also"] == {
+        "first_turn_source": "anthropic/claude-sonnet-5"}
 
 
 # --- the fault-finding pass ----------------------------------------------------------
@@ -613,10 +624,17 @@ def test_no_gate_means_plan_equals_corpus() -> None:
     full plan and the corpus is what was planned."""
     rows = {r["stage"]: r for r in estimate(PR_CFG)["per_stage"]}
     n = PR_CFG["total_scenarios"]
-    assert rows["revise_reply"]["calls"] == n
     assert rows["reflect"]["calls"] == n
     assert rows["followup"]["calls"] == n
     assert n_final_examples(PR_CFG) == n
+
+    # `revise_reply` (Sonnet) serves TWO stages since 2026-08-17: revise_first_turn over
+    # the whole corpus, plus restyle_first_turn over the FLAWED half only. The invariant
+    # here is that no stage loses records to a gate -- not that one model maps to one
+    # stage -- so the expected total is the full plan plus the flawed arm's share,
+    # derived from the assign spec rather than hardcoded.
+    flawed = _stage(PR_CFG, "revise_prompts")["assign"]["fields"]["reply_quality"]["flawed"]
+    assert rows["revise_reply"]["calls"] == n + round(n * flawed)
 
 
 # --- the checks, driven off the config's field names --------------------------------
