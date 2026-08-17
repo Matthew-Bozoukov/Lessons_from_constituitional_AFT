@@ -1,18 +1,22 @@
-# ABOUTME: Rent a RunPod GPU, embed the discovered features with Qwen3-Embedding-8B,
-# ABOUTME: and pull the vectors back. Run: uv run python scratch/feature_discovery/runpod_embed.py up
+# ABOUTME: Stage 3: rent a RunPod GPU, embed the unique feature strings with Qwen3-Embedding-8B,
+# ABOUTME: pull embeddings.npy back over the pod's HTTP proxy, and terminate the pod.
 
 """Embed feature strings on a throwaway RunPod GPU.
 
 Qwen3-Embedding-8B needs ~16GB of weights, which does not fit on this laptop (no GPU,
 15GB RAM), so the embedding step rents a GPU for a few minutes. Shape of the run:
 
-    up      -> creates the pod; it installs deps and waits for /workspace/features.done
-    push    -> PUT the feature list up; the pod auto-embeds as soon as it lands
-    fetch   -> download embeddings.npy once /workspace/DONE exists
-    down    -> TERMINATE. Not optional; the pod bills by the second.
+    create_pod        -> creates the pod; it installs deps and waits for /workspace/features.done
+    push_features     -> PUT the feature list up; the pod auto-embeds as soon as it lands
+    fetch_embeddings  -> download embeddings.npy once /workspace/DONE exists
+    terminate_pod     -> TERMINATE. Not optional; the pod bills by the second.
 
 The pod holds no credentials: the feature list goes up and the vectors come back over
 the :8080 HTTP proxy, so no SSH and no HF round-trip is involved.
+
+Run:
+  uv run python scratch/llm_feature_discovery/stage3_embed_unique_features_on_rented_gpu.py \
+      create_pod
 """
 
 from __future__ import annotations
@@ -29,15 +33,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.eval.misalignment.internalization.scripts.runpod import call  # noqa: E402
 
-IMAGE = "runpod/pytorch:0.7.0-dev-cu1281-torch271-ubuntu2204"
+RUNPOD_IMAGE = "runpod/pytorch:0.7.0-dev-cu1281-torch271-ubuntu2204"
 # 48GB for a 16GB fp16 model is deliberate headroom; it is $0.33/hr against $0.16 for a
 # 24GB card, and an OOM after the 16GB download costs more than the difference.
-GPU = "NVIDIA RTX A6000"
-MODEL = "Qwen/Qwen3-Embedding-8B"
+DEFAULT_RUNPOD_GPU_TYPE = "NVIDIA RTX A6000"
+EMBEDDING_MODEL_ID = "Qwen/Qwen3-Embedding-8B"
 
 # Runs on the pod. Waits for the feature file rather than baking it into the start command
 # (33k features are far too large for a docker start command).
-EMBED_PY = r'''
+POD_EMBEDDING_SCRIPT = r'''
 import json, time, numpy as np, torch
 from sentence_transformers import SentenceTransformer
 
@@ -73,7 +77,7 @@ print("DONE", flush=True)
 # A custom dockerStartCmd replaces the image's own startup, which is what normally launches
 # sshd — so there is no SSH into this pod. This server adds PUT to the usual static serving,
 # so the feature list goes up and the vectors come back over the one :8080 proxy.
-SERVER_PY = r'''
+POD_UPLOAD_HTTP_SERVER_SCRIPT = r'''
 import os
 from functools import partial
 from http.server import HTTPServer, SimpleHTTPRequestHandler
@@ -99,27 +103,29 @@ HTTPServer(("0.0.0.0", 8080),
 '''
 
 
-def _bootstrap(batch: int) -> str:
+def _build_pod_bootstrap_script(encode_batch_size: int) -> str:
     """Pod startup: serve /workspace with upload, install deps, wait for features, embed.
 
     Args:
-        batch: Encoding batch size.
+        encode_batch_size: Encoding batch size.
 
     Returns:
         The shell script for dockerStartCmd.
     """
-    embed = EMBED_PY.replace("MODEL_ID", MODEL).replace("BATCH", str(batch))
+    embed_script = (POD_EMBEDDING_SCRIPT
+                    .replace("MODEL_ID", EMBEDDING_MODEL_ID)
+                    .replace("BATCH", str(encode_batch_size)))
     return f"""mkdir -p /workspace
 exec > >(tee -a /workspace/boot.log) 2>&1
 set -euxo pipefail
 cat > /workspace/server.py <<'PYEOF'
-{SERVER_PY}
+{POD_UPLOAD_HTTP_SERVER_SCRIPT}
 PYEOF
 (nohup python3 /workspace/server.py </dev/null >/workspace/server.log 2>&1 &) || true
 export HF_HOME=/workspace/hf
 python3 -m pip install --no-cache-dir -q "sentence-transformers>=5.0" hf_transfer
 cat > /workspace/embed.py <<'PYEOF'
-{embed}
+{embed_script}
 PYEOF
 echo READY_FOR_FEATURES
 # features.done is written after features.txt, so the loop never sees a partial upload.
@@ -131,8 +137,12 @@ sleep infinity
 """
 
 
-def up(name: str = "matthew-bozoukov-feature-embed", gpu: str = GPU,
-       disk_gb: int = 80, batch: int = 128) -> None:
+THIS_SCRIPT = "scratch/llm_feature_discovery/stage3_embed_unique_features_on_rented_gpu.py"
+
+
+def create_pod(name: str = "matthew-bozoukov-feature-embed",
+               gpu: str = DEFAULT_RUNPOD_GPU_TYPE,
+               disk_gb: int = 80, batch: int = 128) -> None:
     """Create the embedding pod.
 
     Args:
@@ -141,29 +151,29 @@ def up(name: str = "matthew-bozoukov-feature-embed", gpu: str = GPU,
         disk_gb: Container disk (16GB model + image + HF cache).
         batch: Encoding batch size.
     """
-    pub = (Path.home() / ".ssh/id_ed25519.pub").read_text().strip()
+    public_ssh_key = (Path.home() / ".ssh/id_ed25519.pub").read_text().strip()
     payload = {
         "name": name,
-        "imageName": IMAGE,
+        "imageName": RUNPOD_IMAGE,
         "gpuTypeIds": [gpu],
         "gpuCount": 1,
         "containerDiskInGb": disk_gb,
         "volumeInGb": 0,
         "ports": ["8080/http", "22/tcp"],
         "cloudType": "SECURE",
-        "dockerStartCmd": ["bash", "-lc", _bootstrap(batch)],
-        "env": {"HF_HUB_ENABLE_HF_TRANSFER": "1", "PUBLIC_KEY": pub},
+        "dockerStartCmd": ["bash", "-lc", _build_pod_bootstrap_script(batch)],
+        "env": {"HF_HUB_ENABLE_HF_TRANSFER": "1", "PUBLIC_KEY": public_ssh_key},
     }
     pod = call("POST", "/pods", data=json.dumps(payload))
-    pid = pod.get("id") or pod.get("podId", "")
-    print(f"pod:      {pid}")
-    print(f"boot log: https://{pid}-8080.proxy.runpod.net/boot.log")
-    print(f"next:     uv run python scratch/feature_discovery/runpod_embed.py push "
-          f"--pod {pid} --features <file>")
-    print(f"TEARDOWN: uv run python scratch/feature_discovery/runpod_embed.py down --pod {pid}")
+    pod_id = pod.get("id") or pod.get("podId", "")
+    print(f"pod:      {pod_id}")
+    print(f"boot log: https://{pod_id}-8080.proxy.runpod.net/boot.log")
+    print(f"next:     uv run python {THIS_SCRIPT} push_features "
+          f"--pod {pod_id} --features <file>")
+    print(f"TEARDOWN: uv run python {THIS_SCRIPT} terminate_pod --pod {pod_id}")
 
 
-def push(pod: str, features: str) -> None:
+def push_features(pod: str, features: str) -> None:
     """Upload the feature list to the pod, which starts embedding on arrival.
 
     Args:
@@ -173,21 +183,22 @@ def push(pod: str, features: str) -> None:
     Raises:
         RuntimeError: If the pod round-trips a different line count than was sent.
     """
-    base = f"https://{pod}-8080.proxy.runpod.net"
+    base_url = f"https://{pod}-8080.proxy.runpod.net"
     body = Path(features).read_bytes()
-    n = len([x for x in body.decode().splitlines() if x.strip()])
-    requests.put(f"{base}/features.txt", data=body, timeout=600).raise_for_status()
+    sent_feature_count = len([x for x in body.decode().splitlines() if x.strip()])
+    requests.put(f"{base_url}/features.txt", data=body, timeout=600).raise_for_status()
 
-    back = requests.get(f"{base}/features.txt", timeout=300)
-    back.raise_for_status()
-    got = len([x for x in back.text.splitlines() if x.strip()])
-    if got != n:
-        raise RuntimeError(f"upload corrupted: sent {n} features, pod holds {got}")
-    requests.put(f"{base}/features.done", data=b"ok", timeout=60).raise_for_status()
-    print(f"pushed {n} features (verified); watch {base}/embed.log")
+    round_tripped = requests.get(f"{base_url}/features.txt", timeout=300)
+    round_tripped.raise_for_status()
+    pod_feature_count = len([x for x in round_tripped.text.splitlines() if x.strip()])
+    if pod_feature_count != sent_feature_count:
+        raise RuntimeError(f"upload corrupted: sent {sent_feature_count} features, "
+                           f"pod holds {pod_feature_count}")
+    requests.put(f"{base_url}/features.done", data=b"ok", timeout=60).raise_for_status()
+    print(f"pushed {sent_feature_count} features (verified); watch {base_url}/embed.log")
 
 
-def status(pod: str) -> None:
+def check_status(pod: str) -> None:
     """Print pod state and the tail of the most advanced log.
 
     Args:
@@ -195,16 +206,16 @@ def status(pod: str) -> None:
     """
     info = call("GET", f"/pods/{pod}")
     print(f"status: {info.get('desiredStatus')}  cost/hr: ${info.get('costPerHr')}")
-    for log in ("embed.log", "boot.log"):
-        r = requests.get(f"https://{pod}-8080.proxy.runpod.net/{log}", timeout=20)
-        if r.ok and r.text.strip():
-            print(f"--- {log} tail ---")
-            print("\n".join(r.text.strip().splitlines()[-6:]))
+    for log_name in ("embed.log", "boot.log"):
+        resp = requests.get(f"https://{pod}-8080.proxy.runpod.net/{log_name}", timeout=20)
+        if resp.ok and resp.text.strip():
+            print(f"--- {log_name} tail ---")
+            print("\n".join(resp.text.strip().splitlines()[-6:]))
             return
     print("no logs reachable yet")
 
 
-def fetch(pod: str, out_dir: str) -> None:
+def fetch_embeddings(pod: str, out_dir: str) -> None:
     """Download embeddings.npy and its metadata once the pod signals DONE.
 
     Args:
@@ -214,21 +225,21 @@ def fetch(pod: str, out_dir: str) -> None:
     Raises:
         RuntimeError: If the pod has not finished embedding.
     """
-    base = f"https://{pod}-8080.proxy.runpod.net"
-    if not requests.get(f"{base}/DONE", timeout=20).ok:
-        raise RuntimeError("pod has not written /workspace/DONE yet; check `status`")
-    out = Path(out_dir)
-    out.mkdir(parents=True, exist_ok=True)
-    for fn in ("embeddings.npy", "embed_meta.json", "embed.log"):
-        t0 = time.time()
-        r = requests.get(f"{base}/{fn}", timeout=1800)
-        r.raise_for_status()
-        (out / fn).write_bytes(r.content)
-        print(f"{fn}: {len(r.content) / 1e6:.1f} MB in {time.time() - t0:.0f}s")
-    print((out / "embed_meta.json").read_text())
+    base_url = f"https://{pod}-8080.proxy.runpod.net"
+    if not requests.get(f"{base_url}/DONE", timeout=20).ok:
+        raise RuntimeError("pod has not written /workspace/DONE yet; check `check_status`")
+    local_dir = Path(out_dir)
+    local_dir.mkdir(parents=True, exist_ok=True)
+    for filename in ("embeddings.npy", "embed_meta.json", "embed.log"):
+        started = time.time()
+        resp = requests.get(f"{base_url}/{filename}", timeout=1800)
+        resp.raise_for_status()
+        (local_dir / filename).write_bytes(resp.content)
+        print(f"{filename}: {len(resp.content) / 1e6:.1f} MB in {time.time() - started:.0f}s")
+    print((local_dir / "embed_meta.json").read_text())
 
 
-def down(pod: str) -> None:
+def terminate_pod(pod: str) -> None:
     """Terminate the pod, then list what is still running on the account.
 
     Args:
@@ -236,9 +247,12 @@ def down(pod: str) -> None:
     """
     call("DELETE", f"/pods/{pod}")
     print(f"terminated {pod}")
-    rest = call("GET", "/pods") or []
-    print(f"still running on this account: {[(p['id'], p.get('name')) for p in rest]}")
+    still_running = call("GET", "/pods") or []
+    print("still running on this account: "
+          f"{[(p['id'], p.get('name')) for p in still_running]}")
 
 
 if __name__ == "__main__":
-    fire.Fire({"up": up, "push": push, "status": status, "fetch": fetch, "down": down})
+    fire.Fire({"create_pod": create_pod, "push_features": push_features,
+               "check_status": check_status, "fetch_embeddings": fetch_embeddings,
+               "terminate_pod": terminate_pod})
