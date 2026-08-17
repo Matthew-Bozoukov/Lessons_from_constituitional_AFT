@@ -89,6 +89,72 @@ token verbatim. Both pods died on this ~20s in. And the trainer pushed the adapt
 lever was too small" — nor from "the validation set was too narrow", given the limitations
 above.
 
+## 2026-08-17 — first TURF trace: honest-decline attributes to epistemic-humility + scientific-integrity training clusters
+
+**Hypothesis:** with the DA-only index live, a real t2synth case traces to
+interpretable training-data properties (not style echoes).
+
+**Method:** resolved the cases.py TODO minimally (eval-sweep row → case.json:
+first user turn = query, first assistant turn = response, top-level `reasoning`
+field = reasoning). Traced `t2synth_honest_declined_p19_s24` (declining to invent
+regex benchmark numbers) against `output/turf/da2203` with
+`rubrics/empirical_honesty.yaml`, polarity satisfy. Visuals: seeded UMAP
+(PCA-64 → cosine) of the 44,060 trigger attributes + per-crux hit bars + trace
+overlay (`scratch/turf/{umap_coords,plot_turf}.py` →
+`output/turf/report/*_20260817_190652.png` + md mirror).
+
+**Result:** three cruxes selected, zero style-echo exclusions. Crux "declines to
+fabricate benchmark data" lands on epistemic-humility reasoning clusters (113
+hits: honest uncertainty about the model's own internal states; 105:
+introspective self-examination) and AI-identity-honesty queries; the
+"theoretical conclusion" crux lands on scientific-integrity clusters (96/86:
+p-hacking and post-hoc-analysis refusals). The UMAP shows query and reasoning
+attributes occupying cleanly separated halves — clusters are near channel-pure.
+Caveat to watch: urgency/imminent-deadline clusters score high hits under every
+crux (76–94) — that is the DA corpus's house scenario pattern acting as a
+non-style confound the style guard does not model.
+
+**Next steps:** trace the remaining honest_declined cases + the other two case
+files against their rubrics; consider adding scenario-pattern (not just style)
+guards; full-mixture index for non-DA attribution.
+
+## 2026-08-17 — TURF offline index built over the as-trained DA corpus (2,203 rows, 66k attributes, 1,000 clusters), $17 total
+
+**Hypothesis:** the TURF offline pipeline (scratch/turf/) runs end to end on the
+difficult-advice share of the table-2 training mixture, cheaply enough to iterate.
+
+**Method:** filtered the locally unrendered
+`LASR-Callum/2026-08-04-table2-synthdoc-h200x4-train` mixture to its
+`synthdoc_difficult_advice` rows (2,203, all with reasoning — the as-trained copy,
+not the source synth repo) into `mixture_think_interchange_da_only.jsonl`. Extraction
+via OpenRouter's beta batch API in 5 chunks of ≤500 rows (`--batch_rows`, new),
+`--provider google-ai-studio` (new one-run override, stamped in manifest); index =
+qwen3-embedding-8b + SURF k-means (MPS) + gemini summaries. Interactive 10-row smokes
+first measured cost/latency per provider tier; a 3-batch flex smoke validated the
+chunked orchestration before the real submission.
+
+**Result:** `output/turf/da2203/` — 2,203/2,203 rows extracted (2,105 clean from
+batch in ~50 min of queue, 98 mopped up interactively), 44,060 trigger + 22,030
+response attributes embedded, 1,000 clusters (sizes 1–158, assignments verified
+against a float64 recheck), 1,000 summaries. Total key spend for the day $17.24.
+Findings worth keeping: (1) OpenRouter batch bills 50% of the HEADLINE model rate
+regardless of provider pin (measured to 5 decimals; a pinned-tier discount does NOT
+apply), and holds credits at submission sized to max_tokens (~$103 held, released on
+settlement — size max_tokens accordingly); (2) batch results are all-or-nothing per
+batch (`results: null` on expiry/cancel), so chunking is loss-bounding, not
+throughput; (3) Gemini hard-refused 4 cluster summaries as PROHIBITED_CONTENT
+(clusters 100/480/483/489 — medication-compliance and emotional-crisis DA content);
+those four are summarised by claude-haiku-4.5 instead, recorded in the manifest;
+(4) index.py now has extraction-grade resume (embedding fingerprints, centroid
+reuse, per-cluster summary checkpoints) after a `choices=None` crash cost one full
+summary pass; openrouter.py now retries that response shape as EmptyCompletionError.
+Index is local-only by request — not pushed to HF.
+
+**Next steps:** resolve the `cases.py` TODO (eval-row → case.json converter) so
+traces can run against Matthew's 60 t2synth cases with the paired rubrics; push the
+index + a dated card once traces prove it useful; consider a full-mixture (10,202-row)
+index so attribution can land on non-DA sources.
+
 ## 2026-08-16 — First span-masked ablation arm trained: C6 meta-reasoning unsupervised, 0.77% of the signal
 
 
@@ -142,7 +208,6 @@ cannot serve as its control. Then ODCV + agentic-misalignment on both arms. Temp
 expectations: 0.77% of the training signal is a small lever, and a null will not separate
 "C6 does not matter" from "the intervention was too small" — a larger cluster (C104 at 22.5%
 corpus prevalence, or C51 at 18.5%) would buy a more decisive answer per dollar.
-
 ## 2026-08-16 — peer-critique (PC) full corpus generated: 2,080 records, checks pass, one trait-level quality warn
 
 

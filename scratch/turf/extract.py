@@ -35,7 +35,13 @@ import fire
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from scratch.turf.common import load_config, load_hf_jsonl, parse_numbered_tags, parse_row  # noqa: E402
+from scratch.turf.common import (  # noqa: E402
+    load_config,
+    load_hf_jsonl,
+    parse_numbered_tags,
+    parse_row,
+    provider_override,
+)
 from scratch.turf.prompts import (  # noqa: E402
     QUERY_ATTR_PROMPT,
     REASONING_ATTR_PROMPT,
@@ -67,10 +73,13 @@ def _parse_channels(texts: dict[str, str], n: int) -> dict:
 
 
 def _extract_one(client: OpenRouterClient, model: str, row: dict,
-                 n: int, temperature: float, max_tokens: int) -> dict:
+                 n: int, temperature: float, max_tokens: int,
+                 extra_body: dict | None = None) -> dict:
+    kw = {"extra_body": extra_body} if extra_body else {}
     prompts = _row_prompts(parse_row(row), n)
     texts = {chan: client.chat(model, [{"role": "user", "content": p}],
-                               temperature=temperature, max_tokens=max_tokens).content
+                               temperature=temperature, max_tokens=max_tokens,
+                               **kw).content
              for chan, p in prompts.items()}
     return _parse_channels(texts, n)
 
@@ -85,13 +94,19 @@ def _row_record(i: int, res: dict, rows: list[dict]) -> str:
 
 
 def _batch_extract(rows: list[dict], todo: list[int], out_dir: Path, attrs_path: Path,
-                   model: str, n: int, temperature: float, max_tokens: int) -> None:
-    """Run `todo` through OpenRouter's batch API (50% token pricing, async, 24h window).
+                   model: str, n: int, temperature: float, max_tokens: int,
+                   provider_route: dict | None = None, batch_rows: int = 500) -> None:
+    """Run `todo` through OpenRouter's batch API (50% token pricing, async, 24h window),
+    chunked into batches of `batch_rows` rows.
 
-    Submits once (batch_state.json makes reruns resume the SAME batch), polls to a
-    terminal state, then strict-parses and appends fully-successful rows to
-    attributes.jsonl. Rows with any errored/unparseable channel are left unwritten —
-    the caller's interactive path mops them up.
+    Chunked because batch results are all-or-nothing PER BATCH (`results` is null
+    unless the whole batch completes, docs/batch-quickstart): an expired/failed chunk
+    loses only its own slice. Submission state lives in batch_state.json (reruns
+    resume the SAME batches); each chunk is strict-parsed and appended to
+    attributes.jsonl the moment it completes. Rows with any errored/unparseable
+    channel are left unwritten — the caller's interactive path mops them up. A chunk
+    that ends failed/expired/cancelled raises AFTER every completed chunk is
+    collected; rerunning resubmits only the missing rows.
     """
     import os
     import time
@@ -102,70 +117,105 @@ def _batch_extract(rows: list[dict], todo: list[int], out_dir: Path, attrs_path:
     state_path = out_dir / "batch_state.json"
     if state_path.exists():
         state = json.loads(state_path.read_text())
-        print(f">>> resuming batch {state['batch_id']} ({len(state['rows'])} rows)")
+        print(f">>> resuming {len(state['batches'])} batches "
+              f"({sum(len(b['rows']) for b in state['batches'])} rows)")
     else:
         from src.endpoints.openrouter import provider_pin
 
-        pin = provider_pin(model)
-        reqs = []
-        for i in todo:
-            for chan, p in _row_prompts(parse_row(rows[i]), n).items():
-                reqs.append({"custom_id": f"{i}:{chan}",
-                             "body": {"messages": [{"role": "user", "content": p}],
-                                      "temperature": temperature,
-                                      "max_tokens": max_tokens,
-                                      **({"provider": pin} if pin else {})}})
-        # field ORDER matters: the API stream-parses and requires endpoint+model
-        # before the requests array (docs/batch-quickstart).
-        r = requests.post(BATCH_URL, headers=headers, json={
-            "endpoint": "/v1/chat/completions", "model": model, "requests": reqs})
-        r.raise_for_status()
-        state = {"batch_id": r.json()["id"], "rows": todo}
-        state_path.write_text(json.dumps(state))
-        print(f">>> submitted batch {state['batch_id']}: {len(reqs)} requests "
-              f"for {len(todo)} rows")
+        pin = provider_route or provider_pin(model)
+        state = {"batches": []}
+        for c0 in range(0, len(todo), batch_rows):
+            chunk = todo[c0:c0 + batch_rows]
+            reqs = []
+            for i in chunk:
+                for chan, p in _row_prompts(parse_row(rows[i]), n).items():
+                    reqs.append({"custom_id": f"{i}:{chan}",
+                                 "body": {"messages": [{"role": "user", "content": p}],
+                                          "temperature": temperature,
+                                          "max_tokens": max_tokens,
+                                          **({"provider": pin} if pin else {})}})
+            # field ORDER matters: the API stream-parses and requires endpoint+model
+            # before the requests array (docs/batch-quickstart).
+            r = requests.post(BATCH_URL, headers=headers, json={
+                "endpoint": "/v1/chat/completions", "model": model, "requests": reqs})
+            r.raise_for_status()
+            state["batches"].append({"batch_id": r.json()["id"], "rows": chunk,
+                                     "collected": False})
+            # state written after EVERY submit: a crash mid-submission strands nothing
+            state_path.write_text(json.dumps(state))
+            print(f">>> submitted batch {r.json()['id']}: {len(reqs)} requests "
+                  f"for {len(chunk)} rows")
 
+    def collect(b: dict, results: list | None) -> tuple[int, int]:
+        by_id = {res["custom_id"]: res for res in results or []}
+        ok = failed = 0
+        with attrs_path.open("a") as f:
+            for i in b["rows"]:
+                chans = _row_prompts(parse_row(rows[i]), n).keys()
+                texts = {}
+                for chan in chans:
+                    res = by_id.get(f"{i}:{chan}")
+                    resp = (res or {}).get("response") or {}
+                    if res and not res.get("error") and resp.get("status_code") == 200:
+                        texts[chan] = resp["body"]["choices"][0]["message"]["content"]
+                try:
+                    assert len(texts) == len(chans), "missing/errored channel"
+                    f.write(_row_record(i, _parse_channels(texts, n), rows))
+                    ok += 1
+                except (AssertionError, ValueError):
+                    failed += 1
+        return ok, failed
+
+    dead: list[str] = []
     while True:
-        s = requests.get(f"{BATCH_URL}/{state['batch_id']}", headers=headers).json()
-        counts = s.get("request_counts") or {}
-        print(f">>> batch {s.get('status')}: {counts}", flush=True)
-        if s.get("status") in ("completed", "failed", "expired", "cancelled"):
+        pending = [b for b in state["batches"]
+                   if not b["collected"] and b["batch_id"] not in dead]
+        if not pending:
             break
-        time.sleep(30)
-    if s["status"] != "completed":
-        raise RuntimeError(f"batch {state['batch_id']} ended {s['status']} — state kept "
-                           f"in {state_path}; rerun to resubmit remaining rows")
+        for b in pending:
+            s = requests.get(f"{BATCH_URL}/{b['batch_id']}", headers=headers).json()
+            status = s.get("status")
+            if status == "completed":
+                ok, failed = collect(b, s.get("results"))
+                b["collected"] = True
+                state_path.write_text(json.dumps(state))
+                print(f">>> batch {b['batch_id']} collected: {ok} rows ok, "
+                      f"{failed} to mop up interactively", flush=True)
+            elif status in ("failed", "expired", "cancelled"):
+                dead.append(b["batch_id"])
+                print(f"!!! batch {b['batch_id']} ended {status}: "
+                      f"{len(b['rows'])} rows not collected", flush=True)
+            else:
+                counts = s.get("request_counts") or {}
+                print(f">>> batch {b['batch_id']} {status}: {counts}", flush=True)
+        if any(not b["collected"] and b["batch_id"] not in dead
+               for b in state["batches"]):
+            time.sleep(30)
 
-    by_id = {res["custom_id"]: res for res in s.get("results") or []}
-    ok = failed = 0
-    with attrs_path.open("a") as f:
-        for i in state["rows"]:
-            chans = _row_prompts(parse_row(rows[i]), n).keys()
-            texts = {}
-            for chan in chans:
-                res = by_id.get(f"{i}:{chan}")
-                resp = (res or {}).get("response") or {}
-                if res and not res.get("error") and resp.get("status_code") == 200:
-                    texts[chan] = resp["body"]["choices"][0]["message"]["content"]
-            try:
-                assert len(texts) == len(chans), "missing/errored channel"
-                f.write(_row_record(i, _parse_channels(texts, n), rows))
-                ok += 1
-            except (AssertionError, ValueError):
-                failed += 1
-    state_path.rename(out_dir / f"batch_{state['batch_id']}_done.json")
-    print(f">>> batch collected: {ok} rows ok, {failed} to mop up interactively")
+    for b in state["batches"]:
+        if b["collected"]:
+            (out_dir / f"batch_{b['batch_id']}_done.json").write_text(json.dumps(b))
+    state_path.unlink()
+    if dead:
+        raise RuntimeError(
+            f"{len(dead)} batch(es) ended dead ({dead}); their rows are absent from "
+            "attributes.jsonl — rerun the same command to resubmit just those rows")
+    print(f">>> all {len(state['batches'])} batches collected")
 
 
 def main(dataset: str, file: str = "stage_7_sft.jsonl", out: str = "output/turf/extract",
          model: str | None = None, limit: int = 0, style: str | None = None,
-         workers: int = 16, batch: bool = False, config: str | None = None) -> None:
+         workers: int = 16, batch: bool = False, batch_rows: int = 500,
+         config: str | None = None, provider: str | None = None) -> None:
     """Extract attributes for every row of `dataset`/`file` into `out`/attributes.jsonl.
 
     Hyperparameters come from config.yaml (--config to swap); --model overrides.
     --batch routes the bulk through OpenRouter's async batch API (half token price,
-    up to 24h); parse failures fall back to the interactive path automatically."""
+    up to 24h) in chunks of --batch_rows rows; parse failures fall back to the
+    interactive path automatically. --provider overrides the yaml provider pin for
+    this run's chat calls (warns loudly; stamped into manifest.json)."""
     cfg = load_config(config)
+    extra_body = provider_override(provider)
     model = model or str(cfg.extractor_model)
     n_attrs, temperature = int(cfg.n_attrs_per_channel), float(cfg.extract_temperature)
     max_toks = int(cfg.max_tokens)
@@ -191,7 +241,9 @@ def main(dataset: str, file: str = "stage_7_sft.jsonl", out: str = "output/turf/
 
     if batch and todo:
         _batch_extract(rows, todo, out_dir, attrs_path, model, n_attrs,
-                       temperature, max_toks)
+                       temperature, max_toks,
+                       provider_route=(extra_body or {}).get("provider"),
+                       batch_rows=batch_rows)
         done = {json.loads(line)["row"] for line in attrs_path.open()}
         todo = [i for i in range(len(rows)) if i not in done]
         if todo:
@@ -200,7 +252,7 @@ def main(dataset: str, file: str = "stage_7_sft.jsonl", out: str = "output/turf/
     client = OpenRouterClient()
     results = map_threaded(
         lambda j: _extract_one(client, model, rows[todo[j]], n_attrs, temperature,
-                               max_toks),
+                               max_toks, extra_body),
         len(todo), max_workers=workers, desc="extracting")
 
     with attrs_path.open("a") as f:
@@ -215,6 +267,7 @@ def main(dataset: str, file: str = "stage_7_sft.jsonl", out: str = "output/turf/
         "rows_with_reasoning": n_reasoning, "extractor_model": model,
         "extract_temperature": temperature,
         "n_attrs_per_channel": n_attrs, "styles": styles,
+        "provider_override": provider,
         "batch_ids": sorted(p.name for p in out_dir.glob("batch_*_done.json")),
         "git_sha": git_sha(), "timestamp": timestamp(),
     }
