@@ -3,6 +3,60 @@
 
 # LOG
 
+## 2026-08-17 (later) — PAR's gated checks: the arms are separable by AUTHORSHIP, not by quality. Do not train on this corpus yet.
+
+
+**Hypothesis:** the 576-record PAR corpus (entry below) clears the gated `synth check` suite
+and is ready for a mixture.
+
+**Method:** `uv run synth check --config configs/data/synth/post_action_retrospection.yaml
+--run_dir output/post_action_retrospection/20260817_155134`, n=100 judged sample. pattern_scan
+temporarily deselected to scope the spend to the gates (~$8); the config is unchanged in git.
+
+**Result: nine checks PASS, two FAIL, and one of the failures is disqualifying.**
+
+Passing: `gold_validation` 0.01 below 3 (gate 0.10), `post_hoc_judge` 0.067, `post_hoc_heuristic`
+early-verdict share 0.017, `template_collapse`, `structural_diversity`, `verdict_distribution`,
+`coverage`, `gate_yield`, and `blindness` — the `change_summary` never reaches a training
+message, which was the half of blindness that could have killed the corpus outright.
+
+**FAIL 1 — `surface_shortcut` AUC 0.9634 against a 0.70 gate** (label-shuffled baseline 0.482,
+so the signal is real). A classifier separates good-arm from flawed-arm first turns almost
+perfectly. The gate's stated purpose is exactly this: "if flawed first turns are systematically
+shorter or blander, the model learns that tell instead of the reasoning."
+
+It is not length. Measured directly: good mean 440 words vs flawed 352 (the reported
+`mean_word_delta_flawed_minus_good` of -87.8), but the distributions overlap heavily — 32.6% of
+flawed replies are longer than the good median — and **AUC computed from word count ALONE is
+0.6599, under the gate.** The remaining 0.30 of separability is style. The cause is structural
+and by construction: the good arm ships the SONNET revision as its first turn (`revise_first_turn`'s
+`first_turn <- improved_reply`), while the flawed arm ships the raw GEMINI draft. `reply_quality`
+is therefore perfectly confounded with first-turn authorship, and a model trained here can learn
+"Gemini-voiced reply → revise it, Sonnet-voiced reply → stand by it" instead of constitutional
+judgement. The trained turn is only the reflection, but the first turn is in its context, so the
+shortcut is available exactly where it does damage.
+
+This is a defect of the RECIPE, not of this run — it has been latent since the 2026-08-14
+simplification that made the good arm's revision its own first reply, and it passed at smoke
+scale only because AUC is noisy at n=16/24.
+
+**FAIL 2 — `flaw_identification` 0.60 at n=100 against the 0.70 gate.** This is the
+pre-registered decision point, called in the 2026-08-14 (night, viii) entry: "0.667 at n=24 is
+one document from the gate. Decision deferred to the full run's n=100 sample: if it lands under
+0.70 there, the question is whether this gate's phrasing fits PAR's answer-the-followup design
+— not more prompt surgery." It landed at 0.60, so that question is now live and is a human call.
+
+**Next steps.** Do not build a mixture from this corpus as it stands. The principled fix for
+FAIL 1 is to make first-turn authorship constant across arms — have Sonnet rewrite the flawed
+arm's draft too, preserving its lapse, so the arms differ in substance and not in voice — then
+re-run stages 6-11 (~$40) and re-measure the AUC. Cheaper alternatives worth pricing first:
+re-voice the good arm's revision through Gemini, or drop `revise_first_turn`'s good-arm
+substitution and gate on unaided drafts that hold up (measured ~0% yield in peer critique, so
+probably a non-starter). FAIL 2 needs a decision on the gate's wording, not more prompting.
+Separately: `draft_first_turn`'s `also: {first_turn_source: google/gemini-3.7-flash}` stamps
+that value on all 576 rows including the 288 whose shipped first turn is Sonnet's — the field
+is inaccurate as published and should record the arm's actual author.
+
 ## 2026-08-17 — PAR full corpus at 600: 576 records, three checks green, and a safety-shaped hole in the losses
 
 
