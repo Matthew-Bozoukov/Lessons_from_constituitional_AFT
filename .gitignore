@@ -40,6 +40,10 @@ output/
 # and the dashboard content payloads alike.
 **/data/*.jsonl
 **/data/*.json
+# ...and at any depth BELOW a data/ dir: `*` does not cross a separator, so the two
+# rules above miss staged subdirectories like data/less/dval.jsonl.
+**/data/**/*.jsonl
+**/data/**/*.json
 !**/data/.gitkeep
 *.safetensors
 wandb/

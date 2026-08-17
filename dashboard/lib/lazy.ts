@@ -45,6 +45,11 @@ export function loadChunk<T>(url: string) {
   return loadJson<T[]>(url);
 }
 
+/** Fetch a single JSON document (an object, not a chunk array) on demand. */
+export function loadJsonDoc<T>(url: string) {
+  return loadJson<T>(url);
+}
+
 // ---------------------------------------------------------------------------
 // Streaming a raw JSONL by byte range
 // ---------------------------------------------------------------------------
@@ -146,6 +151,57 @@ export async function loadJsonlWindow(
       fetchedBytes: bytes.length,
     };
   }
+}
+
+/**
+ * Fetch ONE known JSONL record by its exact byte range.
+ *
+ * `loadJsonlWindow` pages forward through a file when you do not know where the
+ * rows are. When you do - because a published sidecar indexes `id -> [offset,
+ * length]` - a single exact range turns a 24 MB corpus into an ~8 KB request,
+ * which is what makes per-row inspection viable in the browser.
+ *
+ * A server that ignores `Range` answers 200 with the whole file; that is treated
+ * as a failure here rather than parsed, because slicing a full-file response by
+ * the requested offsets would appear to work while the bytes were never the ones
+ * asked for on a file that had since changed.
+ */
+export async function loadJsonlRow<T>(url: string, offset: number, length: number): Promise<T> {
+  const key = `${url}#${offset}+${length}`;
+  const existing = cache.get(key);
+  if (existing) return existing as Promise<T>;
+
+  const pending = (async () => {
+    const response = await fetch(url, {
+      headers: { range: `bytes=${offset}-${offset + length - 1}` },
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status} loading ${url}`);
+    if (response.status !== 206) {
+      throw new Error(`range request was not honoured (HTTP ${response.status})`);
+    }
+    return JSON.parse(new TextDecoder().decode(await response.arrayBuffer())) as T;
+  })();
+
+  pending.catch(() => cache.delete(key));
+  cache.set(key, pending);
+  return pending;
+}
+
+/** Fetch a whole JSONL and parse every line. For sidecars small enough to hold. */
+export async function loadJsonlAll<T>(url: string): Promise<T[]> {
+  const existing = cache.get(url);
+  if (existing) return existing as Promise<T[]>;
+
+  const pending = (async () => {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status} loading ${url}`);
+    const text = await response.text();
+    return text.split("\n").filter((line) => line.trim()).map((line) => JSON.parse(line) as T);
+  })();
+
+  pending.catch(() => cache.delete(url));
+  cache.set(url, pending);
+  return pending as Promise<T[]>;
 }
 
 /** Human-readable failure text, with no internals leaked. */
