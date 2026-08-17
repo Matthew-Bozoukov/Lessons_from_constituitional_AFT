@@ -1,12 +1,30 @@
 # ABOUTME: Launch/monitor/destroy one RunPod H100 that runs the three deliberation evals over
 # ABOUTME: the CR/PC/DA/T2/base arm ladder. Run: uv run python scratch/runpod_deliberation.py up
 
-"""One pod, three evals, five arms, no credentials.
+"""One pod, three evals, five arms — self-cleaning, and losing nothing if the driver dies.
 
-Everything the run needs is public — the base model, all four adapters, and all three
-datasets — so the pod holds no secret and cannot leak one. `--no-push` keeps results local;
-they are pulled back through the 8080 HTTPS proxy as they are produced (CLAUDE.md: "pull
-artifacts off CONTINUOUSLY as they are produced").
+**The adapters are PRIVATE.** The first attempt assumed otherwise and every eval died in
+three seconds on a 401 (`RepositoryNotFoundError` on `adapter_config.json`); it looked like
+"public" locally only because the laptop had a cached HF CLI token. So the pod carries
+`HF_TOKEN`, which is the one credential CLAUDE.md sanctions putting on a host, and
+`preflight` proves access to all five targets before anything expensive starts.
+
+**Nothing here depends on the driver surviving.** Two properties, both deliberate:
+
+- Results push to HF *as they are produced* (run_eval's own epilogue — this is why
+  `--no-push` is NOT passed), so a pod that dies mid-run loses at most the arm in flight and
+  the numbers outlive the pod, the laptop and the session.
+- The pod terminates ITSELF: a hard deadline watchdog for a hung run, plus a grace window
+  after completion. CLAUDE.md is explicit that a GPU run "must not rely on the orchestration
+  process surviving to clean it up" — a pod whose bootstrap ends in `sleep infinity` bills
+  forever if the person watching closes their laptop.
+
+Why the evals run ON the pod rather than being driven from the laptop: `run_eval.py` owns
+serving, and its VllmServer already encodes every verified fact for this family — the
+think-mode template pin, the qwen3 reasoning parser, max_num_seqs=32, the LoRA rank, the
+allocator setting. Hand-rolling those flags into a bootstrap would be a second decision-maker
+and a wrong template is a wrong measurement, not a crash. Running there also means the laptop
+can close mid-run without stopping anything.
 
 Why the evals run ON the pod rather than being driven from the laptop: `run_eval.py` owns
 serving, and its VllmServer already encodes every verified fact for this family — the
@@ -61,6 +79,44 @@ PLAN = [
 ]
 
 
+# Hard ceiling on the whole run, and the grace window kept after it finishes so results can
+# be inspected on the pod. Both exist because the driver is not guaranteed to be alive.
+DEADLINE_S = 6 * 3600
+GRACE_S = 45 * 60
+
+
+def _hf_token() -> str:
+    """The HF token, from the environment or the CLI's cached credential.
+
+    Never logged, never echoed into the bootstrap's `set -x` trace (it is passed through
+    the pod's `env` block, not the script body).
+    """
+    import os
+
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    token = os.environ.get("HF_TOKEN", "")
+    if not token:
+        cached = Path.home() / ".cache/huggingface/token"
+        token = cached.read_text().strip() if cached.exists() else ""
+    assert token, ("no HF token: the adapters are private, so the pod needs one. Set "
+                   "HF_TOKEN in .env or run `hf auth login` to populate the CLI cache.")
+    return token
+
+
+def _runpod_key() -> str:
+    """The RunPod key, so the pod can delete itself. Never logged."""
+    import os
+
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    key = os.environ.get("RUNPOD_API_KEY", "")
+    assert key, "RUNPOD_API_KEY missing from the environment (.env)"
+    return key
+
+
 def _bootstrap(gpu_note: str) -> str:
     """The pod startup script.
 
@@ -71,13 +127,23 @@ def _bootstrap(gpu_note: str) -> str:
     server started before anything slow, because RunPod's REST API has no logs endpoint and
     "downloading or dead?" is otherwise unanswerable.
     """
+    # Results push to HF as they are produced (no --no-push), so the numbers survive the pod.
     runs = "\n".join(
         f'echo "=== START {name} $(date -u +%H:%M:%S)" >> /workspace/progress.log\n'
         f'uv run scripts/run_eval.py --target {" ".join(ARMS)} '
-        f'--name {name} --no-push mode=think {extra} '
+        f'--name {name} mode=think {extra} '
         f'>> /workspace/{name}.log 2>&1 || echo "!!! {name} FAILED" >> /workspace/progress.log\n'
         f'echo "=== END {name} $(date -u +%H:%M:%S)" >> /workspace/progress.log'
         for name, extra in PLAN
+    )
+    # One cheap HEAD per target before the expensive path. The first attempt spent three
+    # eval launches and a pod discovering a 401 that this line answers in two seconds.
+    checks = "\n".join(
+        f'uv run python -c "from huggingface_hub import HfApi; '
+        f"HfApi().model_info('{arm}'); print('access ok: {arm}')\" "
+        f'>> /workspace/progress.log 2>&1 || {{ echo "!!! NO ACCESS: {arm}" '
+        f'>> /workspace/progress.log; SELFDESTRUCT=1; }}'
+        for arm in ARMS
     )
     return f"""mkdir -p /workspace
 exec > >(tee -a /workspace/boot.log) 2>&1
@@ -89,6 +155,19 @@ chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys 2>/dev/null || true
  mkdir -p /run/sshd && /usr/sbin/sshd -D &) || echo "sshd unavailable"
 (cd /workspace && nohup python3 -m http.server 8080 </dev/null >/dev/null 2>&1 &) || true
 echo "boot: log server up $(date -u)" >> /workspace/progress.log
+
+# Self-cleanup. CLAUDE.md: a GPU run "must not rely on the orchestration process surviving
+# to clean it up" — and a bootstrap ending in `sleep infinity` bills forever the moment the
+# person watching closes their laptop. The deadline watchdog is armed BEFORE anything slow,
+# so it also covers a hang during setup.
+# `set +x` is NOT optional here: boot.log is served unauthenticated over the 8080 proxy, and
+# xtrace prints the EXPANDED command — which would publish the API key to anyone with the
+# pod id. Tracing stays off from this point; the progress log carries the narrative instead.
+selfdestruct() {{ set +x; curl -s -X DELETE -H "Authorization: Bearer $RUNPOD_API_KEY" \
+  "https://rest.runpod.io/v1/pods/$RUNPOD_POD_ID" >/dev/null 2>&1 || true; }}
+(sleep {DEADLINE_S}; echo "DEADLINE HIT $(date -u)" >> /workspace/progress.log; \
+ selfdestruct) &
+echo "boot: deadline watchdog armed ({DEADLINE_S}s)" >> /workspace/progress.log
 
 export HF_HOME=/workspace/hf
 export HF_HUB_ENABLE_HF_TRANSFER=1
@@ -106,11 +185,23 @@ uv sync
 ln -sfn /workspace/work/output /workspace/output
 echo "boot: env ready $(date -u)" >> /workspace/progress.log
 
+SELFDESTRUCT=0
+{checks}
+if [ "$SELFDESTRUCT" = "1" ]; then
+  echo "ABORTED: target access check failed — nothing expensive was started" \
+    >> /workspace/progress.log
+  sleep 300; selfdestruct; exit 1
+fi
+
 {runs}
 
 echo "ALL DONE $(date -u)" >> /workspace/progress.log
 tar -czf /workspace/results.tar.gz -C /workspace/work output || true
-sleep infinity
+# Results are already on HF (run_eval pushes as it goes). This window is convenience only,
+# then the pod removes itself whether or not anyone is watching.
+echo "grace window {GRACE_S}s, then self-terminate" >> /workspace/progress.log
+sleep {GRACE_S}
+selfdestruct
 """
 
 
@@ -128,7 +219,14 @@ def up(gpu: str = DEFAULT_GPU, name: str = "kn-deliberation-evals", disk_gb: int
         "ports": ["8080/http", "22/tcp"],
         "cloudType": cloud,
         "dockerStartCmd": ["bash", "-lc", _bootstrap(gpu)],
-        "env": {"HF_HUB_ENABLE_HF_TRANSFER": "1"},
+        # Two credentials, both necessary and both scoped to what the pod must do: HF_TOKEN
+        # because the adapters are private, RUNPOD_API_KEY so the pod can terminate itself
+        # without the driver. They travel in the env block, never in the traced script body.
+        "env": {
+            "HF_HUB_ENABLE_HF_TRANSFER": "1",
+            "HF_TOKEN": _hf_token(),
+            "RUNPOD_API_KEY": _runpod_key(),
+        },
     }
     codes = [c.strip().upper() for c in countries.split(",") if c.strip()]
     if codes:
