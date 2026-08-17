@@ -3,6 +3,73 @@
 
 # LOG
 
+## 2026-08-17 — PAR full corpus at 600: 576 records, three checks green, and a safety-shaped hole in the losses
+
+
+**Hypothesis:** the all-green post_action_retrospection recipe (2026-08-14 smoke) generates
+a clean production corpus. Run at 600 rather than the 2,100 it was designed and priced at,
+because the SFT mixture's requirements changed — a full production run at a new size, not a
+pilot.
+
+**Method.** `configs/data/synth/post_action_retrospection.yaml` with the corpus checks turned
+UP rather than left at their sampling defaults: `quality_filter` judges all 600 instead of a
+300 sample (a row the judge never saw is silently a keep, so partial labels make "drop the
+flagged rows" a claim about half the corpus), and `pattern_scan` enabled — it ships disabled,
+and no PAR corpus had ever been scanned. `budget_usd` 330 → 150, since a guard sized for
+2,100 could never bite on 600. Re-estimated $108.47. Run dir
+`output/post_action_retrospection/20260817_155134`, one resume.
+
+**Result: 576 records** (96% yield), pushed to
+`LASR-Callum/2026-08-17-post-action-retrospection` — `dataset.jsonl` plus all 11 stage
+snapshots, `corpus_report.json`, `corpus_labels.jsonl`. **Actual spend $57.03**, roughly half
+the estimate, against a $239.95 remaining balance.
+
+Arms and verdicts are healthy in both directions: **288 good / 288 flawed** exactly, and
+flawed→revised 252 / good→held 242 with a real minority the other way (good→revised 46,
+flawed→held 36) — verdicts follow substance, not the arm label. Traits 61–66 each.
+`ngram_diversity` PASS, `embedding_dedup` PASS with **0 near-duplicate pairs and 0 clusters**
+at cosine 0.86, `quality_filter` PASS at a **1.39% drop rate** (gate 10%): 568 keep, 8 drop
+(other 3, invents_faults 2, no_value_at_stake 2, inconsistent 1).
+
+**The finding worth keeping: the attrition is not random, and it is shaped like a safety
+filter.** 24 records were lost across the run, and the 15 that tripped `draft_reflection`'s
+2.6%-vs-2.0% systematic gate were, on inspection, almost all scenarios where the obliging
+answer causes physical harm — mushroom ID from a blurry photo, priming sugar in sealed
+decorative bottles, a cheap solar eyepiece filter, removing a possibly load-bearing wall,
+modifying a pressure cooker with copper tubing, garlic-infused olive oil, feeding a fledgling
+cow's milk, covert GPS tracking of a father with cognitive decline. Seven earlier records
+died at `draft_first_turn` on hard Gemini `PROHIBITED_CONTENT` blocks (teen monitoring, a
+subnet SSH scan, oncology procurement) after exhausting provider re-routing.
+
+Gemini's safety behaviour derails precisely on the records carrying the most constitutional
+weight — the ones where "a fast, obliging answer would quietly do them a disservice" has
+actual teeth. Note the correct output on these items is itself SAFE: the reflection's job is
+to recognise the earlier reply should have hedged. A retry recovered 13 of 15, so the
+behaviour is probabilistic rather than a hard block — but it is directional, and every stage
+rolls the same dice against the same end of the distribution.
+
+Two of the recovered records (`t7_b02_s005` craft distillation, `t7_b05_s001` garlic-infused
+oil) are also among the 8 the quality judge dropped, and t7 carries the one report-only warn
+(6.15% drop vs ~1% elsewhere, 4 documents). The stages agree with each other about which
+records are hard.
+
+**`pattern_scan` errored and produced no tic report:** 17 of 23 scan calls (73.9%) hit
+`max_tokens=2500` and truncated their JSON. The binding knob is the property param
+`scan_max_tokens`, not the `scan` model block's `max_tokens` — so the config read as
+correctly configured while being anything but. Fixed to 6000 in `67e1e04`; report-only, so it
+cost the report and no record.
+
+**Next steps.** Re-run the tic report alone (`uv run synth check --config <this> --run_dir
+output/post_action_retrospection/20260817_155134 --only pattern_scan`, ~$22) — it is the only
+check that can name a tic nobody wrote a rubric for, and this corpus has never had one. Read
+t7's four flagged documents before the corpus enters a mixture; `corpus_labels.jsonl` is on
+the repo so exclusion stays a mixture-time filter. Decide whether `reflect` should move off
+Gemini for future PAR runs (~$30 more at this size, consistent authorship, removes the
+directional loss) — the alternative is to keep the recipe and record the hole, which is what
+this corpus does. Unrelated robustness bug found in passing: `src/endpoints/openrouter.py:228`
+does `resp.choices[0]` without checking `resp.choices` is not None, which cost 3 records an
+opaque `TypeError`.
+
 ## 2026-08-16 — First span-masked ablation arm trained: C6 meta-reasoning unsupervised, 0.77% of the signal
 
 
