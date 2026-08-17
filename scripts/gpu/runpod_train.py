@@ -34,8 +34,25 @@ DEFAULT_IMAGE = "runpod/pytorch:0.7.0-dev-cu1281-torch271-ubuntu2204"
 DEFAULT_GPU = "NVIDIA H100 80GB HBM3"
 
 
-def _bootstrap(base: str, bundle: str, train_config: str, mixture: str) -> str:
-    """Pod startup script: fetch bundle, train, expose the adapter over :8080."""
+def _bootstrap(base: str, bundle: str, train_config: str, mixture: str,
+               gpu_count: int = 1) -> str:
+    """Pod startup script: fetch bundle, train, expose the adapter over :8080.
+
+    Args:
+        base: Base model to pre-download.
+        bundle: Public HF dataset repo holding code.tar.gz + the mixture.
+        train_config: Config path inside the code tarball.
+        mixture: Mixture filename inside the bundle.
+        gpu_count: GPUs to shard the step across. >1 launches under
+            `torch.distributed.run` so `train_lora` sees WORLD_SIZE/LOCAL_RANK and
+            `route_step` splits each optimizer step across the ranks. The module form is
+            used rather than the `torchrun` console script for the same reason `python3 -m
+            pip` is used above — on this image the bare console scripts can resolve to a
+            different interpreter than `python3`.
+    """
+    launch = ("python3 scripts/train/train_lora.py" if gpu_count == 1 else
+              f"python3 -m torch.distributed.run --standalone "
+              f"--nproc_per_node={gpu_count} scripts/train/train_lora.py")
     return f"""mkdir -p /workspace
 exec > >(tee -a /workspace/boot.log) 2>&1
 set -euxo pipefail
@@ -57,7 +74,7 @@ echo TRAINING_STARTING
 # The mixture comes straight from the (public) bundle repo via the trainer's own HF
 # data path, so training_meta records the real repo@revision; push=false because the
 # pod has no token — the driver pushes the pulled-back adapter.
-(python3 scripts/train/train_lora.py --config {train_config} data_repo={bundle} data_file={mixture} push=false 2>&1 | tee /workspace/train.log) || true
+({launch} --config {train_config} data_repo={bundle} data_file={mixture} push=false 2>&1 | tee /workspace/train.log) || true
 # Package whatever the trainer wrote (adapter + run_meta) for pull-back over :8080.
 tar -czf /workspace/adapter.tar.gz -C /workspace/repo/output . || true
 echo TRAINING_DONE
@@ -70,6 +87,7 @@ def up(
     train_config: str = "configs/train/lora_qwen36_tulu100.yaml",
     base: str = "Qwen/Qwen3.6-27B",
     gpu: str = DEFAULT_GPU,
+    gpu_count: int = 1,
     name: str = "train-lora-0-100",
     mixture: str = "mixture.jsonl",
     disk_gb: int = 150,
@@ -84,6 +102,10 @@ def up(
         train_config: Config path inside the code tarball.
         base: Base model to download on the pod.
         gpu: RunPod GPU type id.
+        gpu_count: GPUs on the pod. >1 launches the trainer under `torch.distributed.run`,
+            so `route_step` shards each optimizer step across the ranks. The global batch
+            (and therefore the gradient) is unchanged — dynamic_batching's loss is
+            grouping-invariant — so this buys wall-clock, not a different experiment.
         name: Pod name. Prefix it so it is distinguishable on the shared account.
         mixture: Mixture filename inside the bundle; passed to the trainer as its
             data_file override (the bundle repo is its data_repo).
@@ -99,12 +121,13 @@ def up(
         "name": name,
         "imageName": image,
         "gpuTypeIds": [gpu],
-        "gpuCount": 1,
+        "gpuCount": gpu_count,
         "containerDiskInGb": disk_gb,
         "volumeInGb": 0,
         "ports": ["8080/http", "22/tcp"],
         "cloudType": cloud,
-        "dockerStartCmd": ["bash", "-lc", _bootstrap(base, bundle, train_config, mixture)],
+        "dockerStartCmd": ["bash", "-lc",
+                           _bootstrap(base, bundle, train_config, mixture, gpu_count)],
         "env": {"HF_HUB_ENABLE_HF_TRANSFER": "1"},
     }
     codes = [c.strip().upper() for c in countries.split(",") if c.strip()]

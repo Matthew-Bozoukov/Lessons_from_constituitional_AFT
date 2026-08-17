@@ -1,8 +1,9 @@
 # ABOUTME: 1-epoch LoRA SFT of Qwen3.6-27B on Table2(9,284) + peer-critique GOOD ARM(716);
-# ABOUTME: single H200 with token-budgeted dynamic batching. Arm ablation vs the 358/358 run.
-# Run: uv run python scripts/gpu/runpod_train.py up --bundle <bundle repo> \
-#        --train_config configs/train/lora_qwen36_t2_9284_pc_good716_dynbatch_h200.yaml \
-#        --gpu "NVIDIA H200" --mixture t2_9284_pc_good716_10k.jsonl
+# ABOUTME: 2xH200 DDP with token-budgeted dynamic batching. Arm ablation vs the 358/358 run.
+# Run: uv run python scripts/gpu/runpod_train.py up \
+#        --bundle LASR-Callum/2026-08-17-table2-9284-peer-critique-good716-train \
+#        --train_config configs/train/lora_qwen36_t2_9284_pc_good716_dynbatch_2xh200.yaml \
+#        --mixture t2_9284_pc_good716_10k.jsonl --gpu "NVIDIA H200" --gpu_count 2
 #
 # THE ABLATION. Its comparison arm is
 # `LASR-Callum/qwen3.6-27b-lora-t2-9284-peercritique716-r64-dynbatch`, trained on
@@ -20,20 +21,23 @@
 # good-arm records conclude `sound`, so this slice teaches recognising a sound reply rather
 # than catching a lapse — which is the variable under test.
 #
-# ONE H200, NOT THE COMPARISON ARM'S TWO, and the deviation is deliberate and bounded.
-# `src/model_profile.py` records a MEASURED NEGATIVE bound for H100 80GB — a 1x~8k fwd+bwd
-# OOMs at 72.6/79.2 GiB, 7.36 GiB short — so this mixture cannot train on H100 under either
-# batching protocol; H200 is the only profiled option, and `scripts/gpu/runpod_train.py`
-# provisions one GPU and launches the trainer directly rather than under torchrun.
+# 2xH200 DDP + DYNAMIC BATCHING TOGETHER, matching the comparison arm's protocol exactly.
+# `runpod_train.py --gpu_count 2` launches the trainer under `torch.distributed.run`, so
+# `train_lora` sees WORLD_SIZE=2 and `route_step` shards each optimizer step's micro-batches
+# across the ranks; `dynamic_batching: {}` below then fills each rank's passes to the H200
+# token budget instead of paying the 8k worst case on every row.
 #
-# That is safe here because the optimizer step is the scientific unit and the loss is
-# grouping-invariant: `src/train/dynamic_batching.py` weights each example by the mean CE over
-# its OWN supervised tokens scaled by 1/global_batch, so summing over a step's micro-batches
-# reproduces the plain per-example average "no matter how the step was partitioned". Splitting
-# a 16-example step across two ranks or running it on one therefore yields the same gradient;
-# only wall-clock differs (expect ~4h rather than the 2xH200's ~2h). What would NOT be
-# comparable is a different batching protocol or loss path — cf. the C6-masked arm, whose
-# 4xH200 batch-1/nll predecessor was rejected as its control for exactly that reason.
+# H200 is not a preference, it is the only profiled option: `src/model_profile.py` records a
+# MEASURED NEGATIVE bound for H100 80GB — a 1x~8k fwd+bwd OOMs at 72.6/79.2 GiB, 7.36 GiB
+# short — so this mixture cannot train on H100 under EITHER batching protocol.
+#
+# The global batch stays 16 either way, because that is the scientific unit: dynamic
+# batching's loss weights each example by the mean CE over its OWN supervised tokens scaled
+# by 1/global_batch, so a step reproduces the plain per-example average "no matter how the
+# step was partitioned" (src/train/dynamic_batching.py). Two ranks therefore buy wall-clock,
+# not a different experiment. What would NOT be comparable is a different batching protocol
+# or loss path — cf. the C6-masked arm, whose 4xH200 batch-1/nll predecessor was rejected as
+# its control for exactly that reason.
 
 seed: 0
 model: "Qwen/Qwen3.6-27B"
