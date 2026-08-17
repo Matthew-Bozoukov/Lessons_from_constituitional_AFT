@@ -206,7 +206,9 @@ models:
   scan:
     model: "anthropic/claude-sonnet-5"
     temperature: 0.0
-    max_tokens: 2500
+    # Kept in step with the `scan_max_tokens: 6000` that actually binds (see the
+    # pattern_scan block below) so the two do not read as contradicting each other.
+    max_tokens: 6000
     assumed_tokens: {in: 40000, out: 1200}
   # pattern_scan's AUTORATE pass: a yes/no classifier run thousands of times over small
   # batches. Cheapest adequate model, per GDM's own cost note. Stays Haiku: check
@@ -1177,6 +1179,16 @@ stages:
     enabled: true
     model: scan             # per-instance override of the stage's `model:`
     rate_model: classify    # the thousands-of-tiny-calls pass
+    params:
+      # 6000, not the 2500 default: MEASURED on the 2026-08-17 run, where 17 of 23 scan
+      # calls (73.9%) died on "hit max_tokens=2500 and truncated its JSON" and errored
+      # the whole check. A scan reading 25 whole transcripts reports up to 20 patterns
+      # WITH verbatim example snippets, which does not fit in 2500 output tokens.
+      #
+      # Note this is the knob that binds, NOT the `scan` model block's `max_tokens`:
+      # check_corpus passes `p["scan_max_tokens"]` to the call, so the model block's
+      # value is dead for this pass and setting it alone changes nothing.
+      scan_max_tokens: 6000
   rubrics:
     quality_filter:
       system: >-
