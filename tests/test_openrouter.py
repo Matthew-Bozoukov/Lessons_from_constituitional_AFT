@@ -9,6 +9,7 @@ import pytest
 from src.endpoints.openrouter import (
     EmptyCompletionError,
     OpenRouterClient,
+    ProviderRejectionError,
     provider_pin,
 )
 
@@ -74,32 +75,82 @@ def test_normal_completion_does_not_retry():
     assert c.client.calls == 1
 
 
-def _errbody_resp(provider="Google"):
+def _errbody_resp(code=400, message="Gemini blocked the request: PROHIBITED_CONTENT",
+                  provider="Google"):
     """An HTTP-200 body with choices=None and an in-body provider error — the shape
     OpenRouter returns when Gemini's content filter blocks a request (2026-08-17)."""
-    return SimpleNamespace(
-        choices=None, usage=None, provider=provider,
-        error={"message": "Gemini blocked the request: PROHIBITED_CONTENT",
-               "code": 400})
+    return SimpleNamespace(choices=None, usage=None, provider=provider,
+                           error={"message": message, "code": code})
 
 
-def test_no_choices_retries_then_surfaces_the_in_body_error():
-    # choices=None is retried like a blank body; when every attempt fails, the
-    # exception carries the provider's own error payload so callers can record a
-    # TYPED refusal instead of a bare string.
-    c = _client([_errbody_resp() for _ in range(6)])
-    with pytest.raises(EmptyCompletionError, match="no choices") as ei:
+def _blank_choices_resp(provider="Google"):
+    """choices=None with NO in-body error: an undiagnosable blank."""
+    return SimpleNamespace(choices=None, usage=None, provider=provider, error=None)
+
+
+def test_deterministic_rejection_fails_fast_with_payload():
+    # A structured in-body 4xx (content filter, invalid request) is deterministic:
+    # retrying re-bills the identical failure, so it surfaces on the FIRST attempt,
+    # carrying the payload for typed refusal records.
+    c = _client([_errbody_resp()])
+    with pytest.raises(ProviderRejectionError, match="no choices") as ei:
         c.chat("google/gemini-3.7-flash", [{"role": "user", "content": "hi"}])
-    assert c.client.calls == 6
+    assert c.client.calls == 1
     assert ei.value.provider == "Google"
     assert ei.value.provider_error["code"] == 400
     assert "PROHIBITED_CONTENT" in ei.value.provider_error["message"]
 
 
-def test_no_choices_transient_recovers_on_retry():
-    c = _client([_errbody_resp(), _resp("fine now")])
+def test_blank_choices_retries_and_recovers():
+    # choices=None with no payload is the mystery blank: transient, retried.
+    c = _client([_blank_choices_resp(), _resp("fine now")])
     result = c.chat("google/gemini-3.7-flash", [{"role": "user", "content": "hi"}])
     assert result.content == "fine now" and c.client.calls == 2
+
+
+def test_content_filter_finish_reason_fails_fast():
+    # OpenAI-protocol hard filters return empty content with an explicit
+    # finish_reason marker — deterministic, so no retries.
+    blocked = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=None),
+                                 finish_reason="content_filter")],
+        usage=None, provider="Azure")
+    c = _client([blocked])
+    with pytest.raises(ProviderRejectionError, match="content filter") as ei:
+        c.chat("openai/gpt-4.1", [{"role": "user", "content": "hi"}])
+    assert c.client.calls == 1
+    assert ei.value.provider_error["code"] == "content_filter"
+
+
+def test_filter_truncated_partial_content_is_rejected_not_returned():
+    # Partial text + finish_reason=content_filter: silently truncated output would
+    # poison downstream parses, so it is dropped and rejected loudly.
+    truncated = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="Half an ans"),
+                                 finish_reason="content_filter")],
+        usage=None, provider="Azure")
+    c = _client([truncated])
+    with pytest.raises(ProviderRejectionError, match="content filter") as ei:
+        c.chat("openai/gpt-4.1", [{"role": "user", "content": "hi"}])
+    assert c.client.calls == 1
+    assert "11 chars of partial content dropped" in ei.value.provider_error["message"]
+
+
+def test_empty_string_content_retries_like_none():
+    # "" previously slipped through as a successful ChatResult and died at the
+    # caller's parse gate; it is the same undiagnosable blank as None.
+    c = _client([_resp(""), _resp("recovered")])
+    result = c.chat("qwen/qwen3-32b", [{"role": "user", "content": "hi"}])
+    assert result.content == "recovered" and c.client.calls == 2
+
+
+def test_in_body_transient_code_retries():
+    # An in-body 429/5xx is transient by HTTP semantics even though it arrived in a
+    # 200 envelope — retried, not rejected.
+    c = _client([_errbody_resp(code=502, message="upstream overloaded"),
+                 _resp("ok")])
+    result = c.chat("google/gemini-3.7-flash", [{"role": "user", "content": "hi"}])
+    assert result.content == "ok" and c.client.calls == 2
 
 
 # --- the provider registry: one model id = one provider, on every call ---------------

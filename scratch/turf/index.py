@@ -40,6 +40,7 @@ from scratch.turf.prompts import CLUSTER_SUMMARY_PROMPT  # noqa: E402
 from src.endpoints.openrouter import (  # noqa: E402
     EmptyCompletionError,
     OpenRouterClient,
+    ProviderRejectionError,
     map_threaded,
 )
 from src.utils import git_sha, read_jsonl, timestamp  # noqa: E402
@@ -172,7 +173,7 @@ def main(dir: str, k: int | None = None, summary_model: str | None = None,
                 summary = f"{prefix} {summary}"  # SURF's prefix enforcement
             rec = {"cluster": cid, "size": len(members[cid]), "summary": summary,
                    "share_reasoning": share_reasoning}
-        except EmptyCompletionError as e:
+        except (EmptyCompletionError, ProviderRejectionError) as e:
             # retries exhausted — record a TYPED refusal, never a stand-in model's
             # text; the gate below makes a human decide what happens next
             rec = {"cluster": cid, "size": len(members[cid]), "summary": None,

@@ -51,6 +51,7 @@ from scratch.turf.prompts import (  # noqa: E402
 from src.endpoints.openrouter import (  # noqa: E402
     EmptyCompletionError,
     OpenRouterClient,
+    ProviderRejectionError,
     map_threaded,
 )
 from src.utils import git_sha, timestamp  # noqa: E402
@@ -88,7 +89,7 @@ def _extract_one(client: OpenRouterClient, model: str, row: dict,
             texts[chan] = client.chat(model, [{"role": "user", "content": p}],
                                       temperature=temperature,
                                       max_tokens=max_tokens, **kw).content
-        except EmptyCompletionError as e:
+        except (EmptyCompletionError, ProviderRejectionError) as e:
             # retries exhausted — typed refusal; the row stays OUT of
             # attributes.jsonl and the run gates on it at the end
             return {"__refused__": {"channel": chan, **refusal_from(e)}}
