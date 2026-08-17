@@ -2889,3 +2889,113 @@ pre,
   color: var(--muted);
   font-style: normal;
 }
+
+/* ---------------------------------------------------------------------------
+   Data selection reader (/selection)
+   ---------------------------------------------------------------------------
+   A ranked-list instrument, not a document: dense rows, aligned numerals, and a
+   signed bar per subtask so a row's whole influence vector reads at a glance
+   rather than collapsing to the single number it was sorted by. Subtask hues
+   come from the existing palette (cyan / amber / violet) so this page belongs to
+   the same system as the rest of the log; --red means negative influence and is
+   semantic, not decorative. */
+
+.selection-page { max-width: none; }
+.selection-head h1 { margin: 0 0 4px; }
+.selection-head p { margin: 0; color: var(--text-soft); max-width: var(--reading); }
+.selection-meta { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px !important;
+  font-size: 12px; color: var(--muted); }
+.selection-note { margin-top: 28px; max-width: var(--reading); }
+
+.sel-wrap { margin-top: 18px; }
+.sel-lbl { font-size: 10px; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--muted); font-weight: 600; }
+
+.sel-stats { display: flex; flex-wrap: wrap; gap: 8px 26px; padding-bottom: 14px;
+  border-bottom: 1px solid var(--border); }
+.sel-stat { display: flex; flex-direction: column; gap: 2px; }
+.sel-stat b { font-family: var(--font-mono, ui-monospace, monospace); font-size: 13.5px;
+  font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
+
+.sel-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  padding: 12px 0; }
+.sel-controls button, .sel-controls select, .sel-controls input {
+  font: inherit; font-size: 12.5px; color: var(--text); background: var(--panel-2);
+  border: 1px solid var(--border); border-radius: 5px; padding: 5px 10px; }
+.sel-controls button { cursor: pointer; }
+.sel-controls button:hover { border-color: var(--border-bright); }
+.sel-spacer { flex: 1; }
+
+.sel-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 11.5px;
+  color: var(--text-soft); padding-bottom: 10px; }
+.sel-sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px;
+  margin-right: 5px; vertical-align: -1px; }
+
+.sel-main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(380px, 44%);
+  gap: 0; border-top: 1px solid var(--border); align-items: start; }
+@media (max-width: 1000px) {
+  .sel-main { grid-template-columns: 1fr; }
+  .sel-detail { position: static !important; max-height: none !important;
+    border-left: 0 !important; border-top: 1px solid var(--border); }
+}
+
+.sel-list { max-height: 70vh; overflow-y: auto; }
+.sel-row { display: grid; grid-template-columns: 52px minmax(0, 1fr) 40px 130px 90px;
+  gap: 10px; align-items: center; height: 32px; padding: 0 12px 0 10px;
+  border-bottom: 1px solid var(--panel-2); cursor: pointer;
+  content-visibility: auto; contain-intrinsic-size: auto 32px; }
+.sel-row:hover { background: var(--panel); }
+.sel-row.is-selected { background: var(--panel); box-shadow: inset 3px 0 0 var(--violet); }
+.sel-row.band-top { box-shadow: inset 3px 0 0 var(--cyan); }
+.sel-row.band-mid { box-shadow: inset 3px 0 0 var(--amber); }
+.sel-row.band-bot { box-shadow: inset 3px 0 0 var(--red); }
+.sel-row:focus-visible { outline: 2px solid var(--violet); outline-offset: -2px; }
+.sel-rk { font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px;
+  color: var(--muted); font-variant-numeric: tabular-nums; }
+.sel-id { font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-soft); }
+.sel-warm { display: inline-block; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--amber); margin-left: 5px; vertical-align: middle; }
+.sel-trait { font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px;
+  font-weight: 600; }
+.sel-score { font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px;
+  text-align: right; font-variant-numeric: tabular-nums; color: var(--text-soft); }
+.sel-score.is-neg, .is-neg { color: var(--red); }
+
+.sel-vec { display: flex; gap: 3px; align-items: center; height: 15px; }
+.sel-cell { flex: 1; height: 15px; position: relative; background: var(--panel-2);
+  border-radius: 2px; overflow: hidden; }
+.sel-fill { position: absolute; top: 0; bottom: 0; }
+.sel-zero { position: absolute; top: 0; bottom: 0; left: 50%; width: 1px;
+  background: var(--border); }
+
+.sel-detail { position: sticky; top: 0; border-left: 1px solid var(--border);
+  background: var(--bg-raised); padding: 14px 16px 28px; max-height: 70vh;
+  overflow-y: auto; }
+.sel-block { margin-bottom: 14px; }
+.sel-block > .sel-lbl { display: block; margin-bottom: 4px; }
+.sel-mono { font-family: var(--font-mono, ui-monospace, monospace); font-size: 12.5px;
+  word-break: break-word; }
+.sel-note { font-size: 12.5px; color: var(--text-soft); }
+.sel-srow { display: grid; grid-template-columns: 108px 1fr 84px; gap: 8px;
+  align-items: center; margin-bottom: 4px; font-size: 11.5px;
+  font-family: var(--font-mono, ui-monospace, monospace); }
+.sel-srow > :last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.sel-agg { margin-top: 7px; padding-top: 6px; border-top: 1px solid var(--panel-2);
+  color: var(--muted); }
+
+.sel-turn { border: 1px solid var(--border); border-radius: 6px; margin-bottom: 10px;
+  overflow: hidden; }
+.sel-turn > summary { cursor: pointer; padding: 7px 11px; background: var(--panel-2);
+  font-size: 10px; letter-spacing: .09em; text-transform: uppercase; font-weight: 600;
+  color: var(--text-soft); display: flex; justify-content: space-between; gap: 8px; }
+.sel-turn > summary::-webkit-details-marker { display: none; }
+.sel-cnt { font-family: var(--font-mono, ui-monospace, monospace); font-weight: 400;
+  letter-spacing: 0; text-transform: none; color: var(--muted); }
+.sel-body { padding: 11px; white-space: pre-wrap; font-size: 12.5px; line-height: 1.58;
+  overflow-x: auto; color: var(--text-soft); }
+.sel-turn.think { border-color: var(--violet-dim); background: rgba(183, 151, 255, .04); }
+.sel-turn.think > summary { background: transparent; color: var(--violet); }
+.sel-turn.think .sel-body { font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px; }
+.sel-turn.sys > summary { color: var(--muted); }
