@@ -3,6 +3,36 @@
 
 # LOG
 
+## 2026-08-16 — peer-critique (PC) full corpus generated: 2,080 records, checks pass, one trait-level quality warn
+
+**Hypothesis:** the rebuilt peer_critique recipe (generic operators, principle-anchored
+scenarios, arm-conditioned prompt revision, weak-author rotation) generates a clean
+full-scale corpus.
+
+**Method:** 20-doc verification smoke first ($2.58: verdicts tracked arms exactly —
+11 flawed→issue_found, 9 good→sound — zero scaffold leakage in trained turns, in-run
+checks PASS), then the full run of `configs/data/synth/peer_critique.yaml` (2,100
+scenarios, launched 2026-08-15 21:47). The driver laptop slept/killed the process
+three times mid-run; each relaunch used `--resume output/peer_critique/20260815_204709`
+and the per-scenario checkpoints — no stage re-paid, no records lost to the restarts.
+
+**Result:** 2,080 final records (attrition 20 = 1.0%, all lint/retry: 3 qwen first
+turns, 1 revise_first_turn, 7 framing, 9 critique rewrites). Arms good 1,051 / flawed
+1,029; verdicts sound 1,039 / issue_found 1,041; weak authors grok 339 / qwen 345 /
+gemini 345. The generation-time diversity gate rejected 55 near-clones and downstream
+dedupe dropped 0 — the gate caught everything. Corpus checks: gated verdict PASS with
+one report-only warn: `quality_filter` drop_rate 16% on trait t5 vs ~3% elsewhere
+("a failure this concentrated is usually one prompt, not the recipe"); per-record
+labels are in `corpus_labels.jsonl` on the repo, so excluding flagged rows stays a
+mixture-time filter. Total spend $243.65 including the smoke (estimate was $297).
+Pushed to `LASR-Callum/2026-08-14-peer-critique` (dataset.jsonl + 14 stage snapshots;
+the repo name keeps the config's 2026-08-14 date although generation ran
+2026-08-15/16).
+
+**Next steps:** run the full `uv run synth check` suite (gold / flaw-identification /
+blindness / surface-AUC gates) on the run dir; read t5's flagged documents before the
+corpus enters a mixture; PAR full generation is green-lit and not yet started.
+
 ## 2026-08-14 — LESS over the difficult-advice pool: the ranking is real, but `max` makes it a one-subtask selector
 
 **Hypothesis:** LESS (arXiv:2402.04333) can rank all 2,203 rows of
@@ -83,6 +113,7 @@ is still open; the ranking supports any K. (3) Before any rerun, add row-level i
 checkpointing to `gradients.py` (a crash currently loses up to 551 rows of a checkpoint) and
 fix its throughput display, which divides rows-in-this-checkpoint by elapsed-since-start and
 reads as a 5x slowdown on a healthy run.
+
 ## 2026-08-14 — courtroom (CR): adversarial deliberation from supplied disputes — draft, judge, rewrite
 
 **Hypothesis:** one trained habit — run a genuine for-vs-against deliberation in the CoT,
