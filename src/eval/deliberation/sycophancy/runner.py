@@ -14,7 +14,7 @@ import json
 from pathlib import Path
 
 from src.endpoints.openrouter import map_threaded
-from src.eval.deliberation.sycophancy.data import CHALLENGE, load_items
+from src.eval.deliberation.sycophancy.data import CHALLENGE_TURN, load_items
 from src.eval.deliberation.sycophancy.scoring import classify, parse_letter, summarize
 from src.eval.deliberation.target import Generation, ask, client_for, trace_stats
 from src.utils import transcript_markdown
@@ -35,7 +35,7 @@ def _rollout(item, first, second, record: dict) -> str:
             (2, "User (turn 1)", "text", item.prompt),
             (2, "Assistant reasoning (turn 1)", "fenced", first.think),
             (2, "Assistant reply (turn 1)", "text", first.answer),
-            (2, "User (turn 2 — the challenge)", "text", CHALLENGE),
+            (2, "User (turn 2 — the challenge)", "text", CHALLENGE_TURN),
             (2, "Assistant reasoning (turn 2)", "fenced", second.think),
             (2, "Assistant reply (turn 2)", "text", second.answer),
         ],
@@ -72,7 +72,7 @@ def run(target, cfg, out_dir: Path) -> dict:
         # replayed verbatim (visible answer only — the trace is not part of the dialogue).
         second_msgs = first_msgs + [
             {"role": "assistant", "content": first.answer},
-            {"role": "user", "content": CHALLENGE},
+            {"role": "user", "content": CHALLENGE_TURN},
         ]
         second = ask(client, target, second_msgs, gen)
         return item, first, second
@@ -98,6 +98,11 @@ def run(target, cfg, out_dir: Path) -> dict:
             "second_think_chars": len(second.think),
             "first_error": first.error,
             "second_error": second.error,
+            # Recorded per item so an unparsed answer can be attributed without forensics:
+            # a truncated trace and a model that simply answered in prose need opposite
+            # fixes, and on 2026-08-17 both were happening at once on different arms.
+            "first_truncated": first.finish_reason == "length",
+            "second_truncated": second.finish_reason == "length",
         }
         records.append(record)
         (rollout_dir / f"{item.uid.replace(':', '_')}.md").write_text(
@@ -113,4 +118,21 @@ def run(target, cfg, out_dir: Path) -> dict:
     summary["trace_turn1"] = trace_stats([r[1] for r in results])
     summary["trace_turn2"] = trace_stats([r[2] for r in results])
     summary["dataset"] = "meg-tong/sycophancy-eval:are_you_sure"
+
+    # Attribute the unparsed items, because the two causes need opposite fixes: a truncated
+    # trace wants a bigger token budget, a prose answer wants a firmer format instruction.
+    unparsed = [r for r in records if r["outcome"].startswith("unparsed")]
+    truncated = sum(r["first_truncated"] if r["outcome"] == "unparsed_first"
+                    else r["second_truncated"] for r in unparsed)
+    summary["unparsed"] = {
+        "n": len(unparsed),
+        "share_truncated": round(truncated / len(unparsed), 4) if unparsed else 0.0,
+        "share_unformatted": round(1 - truncated / len(unparsed), 4) if unparsed else 0.0,
+    }
+    # A quiet low parse rate is how the 2026-08-17 run reported a headline computed on 20%
+    # of its items. Make it impossible to miss in the run log.
+    if summary["parse_rate"] < 0.9:
+        print(f"!!! parse_rate {summary['parse_rate']:.3f} — the headline is computed on "
+              f"{summary['n_scored']}/{summary['n_items']} items and is NOT comparable "
+              f"across arms until this is fixed. Unparsed: {summary['unparsed']}")
     return summary

@@ -36,7 +36,13 @@ generation:
   top_p: 1.0
   # Headroom for a full <think> trace plus a one-line answer (CLAUDE.md gotcha 4): a tight
   # cap truncates inside the trace and scores a false 0%.
-  max_tokens: 4096
+  #
+  # 8192, not 4096. MEASURED on 2026-08-17: the untrained base model averaged 7,333 trace
+  # characters on turn 1 and hit the 4096-token cap on 42.8% of items, so nearly half its
+  # answers were unparseable for a serving reason. The trained arms average 2,500-3,600
+  # characters and truncated ~10-14%. A budget that binds on one arm and not another does
+  # not just add noise, it biases the comparison toward the terser arm.
+  max_tokens: 8192
   request_timeout: 300
   max_retries: 2
   parallel: 16

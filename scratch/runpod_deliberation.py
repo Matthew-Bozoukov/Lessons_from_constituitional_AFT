@@ -26,12 +26,6 @@ allocator setting. Hand-rolling those flags into a bootstrap would be a second d
 and a wrong template is a wrong measurement, not a crash. Running there also means the laptop
 can close mid-run without stopping anything.
 
-Why the evals run ON the pod rather than being driven from the laptop: `run_eval.py` owns
-serving, and its VllmServer already encodes every verified fact for this family — the
-think-mode template pin, the qwen3 reasoning parser, max_num_seqs=32, the LoRA rank, the
-allocator setting. Hand-rolling those flags into a bootstrap would be a second decision-maker
-and a wrong template is a wrong measurement, not a crash.
-
 Arm order is load-bearing. `VllmServer.serve` reuses a live server whenever base model and
 mode are unchanged, and only `_start` emits `--enable-lora`. So the four adapters must come
 first (the first one arms the server) and the bare base model last — that way all five arms
@@ -117,7 +111,23 @@ def _runpod_key() -> str:
     return key
 
 
-def _bootstrap(gpu_note: str) -> str:
+def _plan(only: str = "") -> list[tuple[str, str]]:
+    """The evals to run: all of PLAN, or the comma-separated subset named by `only`.
+
+    A subset re-run is the normal case after a measurement defect is found in one eval —
+    re-running all three to fix one wastes an hour of GPU and re-measures arms that were
+    already fine.
+    """
+    if not only:
+        return PLAN
+    wanted = [name.strip() for name in only.split(",") if name.strip()]
+    known = {name for name, _ in PLAN}
+    unknown = [name for name in wanted if name not in known]
+    assert not unknown, f"unknown eval(s) {unknown}; known: {sorted(known)}"
+    return [(name, extra) for name, extra in PLAN if name in wanted]
+
+
+def _bootstrap(gpu_note: str, only: str = "") -> str:
     """The pod startup script.
 
     Discipline inherited from scripts/gpu/runpod_arena_hard.py, where each line was paid
@@ -134,7 +144,7 @@ def _bootstrap(gpu_note: str) -> str:
         f'--name {name} mode=think {extra} '
         f'>> /workspace/{name}.log 2>&1 || echo "!!! {name} FAILED" >> /workspace/progress.log\n'
         f'echo "=== END {name} $(date -u +%H:%M:%S)" >> /workspace/progress.log'
-        for name, extra in PLAN
+        for name, extra in _plan(only)
     )
     # One cheap HEAD per target before the expensive path. The first attempt spent three
     # eval launches and a pod discovering a 401 that this line answers in two seconds.
@@ -206,9 +216,13 @@ selfdestruct
 
 
 def up(gpu: str = DEFAULT_GPU, name: str = "kn-deliberation-evals", disk_gb: int = 220,
-       cloud: str = "SECURE",
+       only: str = "", cloud: str = "SECURE",
        countries: str = "US,CA,NL,DE,FR,GB,IE,BE,SE,NO,FI,CH,AT,ES,IT") -> str:
-    """Create the eval pod and return the URLs to watch."""
+    """Create the eval pod and return the URLs to watch.
+
+    Args:
+        only: Comma-separated eval names to run; empty runs all three.
+    """
     payload = {
         "name": name,
         "imageName": IMAGE,
@@ -218,7 +232,7 @@ def up(gpu: str = DEFAULT_GPU, name: str = "kn-deliberation-evals", disk_gb: int
         "volumeInGb": 0,
         "ports": ["8080/http", "22/tcp"],
         "cloudType": cloud,
-        "dockerStartCmd": ["bash", "-lc", _bootstrap(gpu)],
+        "dockerStartCmd": ["bash", "-lc", _bootstrap(gpu, only)],
         # Two credentials, both necessary and both scoped to what the pod must do: HF_TOKEN
         # because the adapters are private, RUNPOD_API_KEY so the pod can terminate itself
         # without the driver. They travel in the env block, never in the traced script body.

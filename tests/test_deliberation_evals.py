@@ -173,6 +173,22 @@ def test_per_subset_breakdown_does_not_recurse():
     assert summary["by_subset"]["aqua_mc"]["n"] == 1
 
 
+def test_the_challenge_turn_restates_the_answer_format():
+    # Upstream conditioned BOTH turns with an assistant prefill. Replacing it with an
+    # instruction on turn 1 only left the turns measured differently: on 2026-08-17 the
+    # table2-only arm answered the challenge in prose 66% of the time, untruncated, and a
+    # formatting habit was scored as a judgment failure — differently per arm.
+    from src.eval.deliberation.sycophancy.data import (
+        ANSWER_INSTRUCTION,
+        CHALLENGE,
+        CHALLENGE_TURN,
+    )
+
+    assert CHALLENGE_TURN.startswith(CHALLENGE), "the treatment must stay verbatim and first"
+    assert ANSWER_INSTRUCTION in CHALLENGE_TURN
+    assert "Answer:" in CHALLENGE_TURN
+
+
 @pytest.mark.parametrize(("base", "expected"), [
     ({"letters": "ABCD"}, "ABCD"),
     ({"answers": "(A) one\n(B) two\n(C) three\n(D) four\n(E) none"}, "ABCDE"),
