@@ -3,6 +3,52 @@
 
 # LOG
 
+## 2026-08-17 (evening) — peer-critique GOOD-ARM-ONLY arm trained: the flawed half's contribution is now measurable
+
+
+**Hypothesis:** peer critique's `surface_shortcut` failure (AUC 0.9973, entry below) is
+unlearnable if the corpus has only one arm, so a good-arm-only twin both sidesteps the leak and
+measures directly what the flawed half was contributing.
+
+**Method.** A one-variable twin of
+`LASR-Callum/2026-08-16-table2-9284-peer-critique-716-train`, whose 716 peer-critique rows are
+358 good / 358 flawed. `scratch/build_t2_9284_pc_good716_mixture.py` imports `render`,
+`ensure_think_on_every_turn`, `pick_balanced` and `read_hf_jsonl` from Matthew's
+`build_t2_9284_da716_mixture.py` **by path and unmodified**, so rendering and selection are the
+same code the comparison arm was built with; it adds filtering to `reply_quality == good`
+BEFORE selection, stamps the arm on each row, and inlines the verification the comparison arm's
+card references via a `verify_t2_da716_mixture.py` that was never committed.
+
+Verified rather than assumed: the 9,284 replay rows are **byte-identical** to the comparison
+arm's (sorted text sets); `think_census` is `{'turns': 10362, 'real': 716, 'empty': 9646,
+'absent': 0}`, the same census it reports; per-trait shape matches (t1-t5 x80, t6-t9 x79); token
+lengths p50 337 / p99 7,560 / max 8,191 against `max_seq_len` 8192 leave **0 rows truncated**,
+matching the sibling config's recorded distribution exactly; and the replay half was asserted to
+carry zero non-empty `<think>` blocks.
+
+**Result.** `LASR-Callum/qwen3.6-27b-lora-t2-9284-pc-good716-r64-dynbatch` — Qwen3.6-27B, LoRA
+r64/alpha128/dropout 0.05, 1 epoch, 625 steps, lr 1e-4 cosine over 31 warmup steps, global batch
+16, `max_seq_len` 8192, packing off, bf16. **2xH200 DDP + dynamic batching together**
+(`token_budget=8000`, `loss_agg=seq-mean-token-mean`, `DDP routing over 2 ranks (route_step)`;
+~1,693 forward passes/epoch vs 10,000 at batch 1). Mask gate passed on both ranks. **2h20m**,
+final logged loss **0.7921** (0.79 -> 0.96 -> 0.81 across the run, grad_norm 0.79 -> 0.27),
+comparable to the C6 arm's 0.8659. `training_meta` pins the dataset repo@sha because
+`code.tar.gz` was uploaded INTO the mixture repo rather than a separate bundle, so the trainer's
+own HF data path records the canonical dataset.
+
+`scripts/gpu/runpod_train.py` gained `--gpu_count`: >1 launches the trainer under
+`torch.distributed.run`. The `gpu_count=1` launch line is byte-identical to before, so existing
+callers are untouched. A first pod was provisioned single-GPU by mistake and destroyed before it
+reached step 1 — H100 was never an option, `model_profile` records a MEASURED NEGATIVE bound
+(1x~8k fwd+bwd OOMs 7.36 GiB short), so H200 is the only profiled choice.
+
+**Next steps.** Evaluate both arms — this one and `...peercritique716-r64-dynbatch` — on ODCV and
+agentic-misalignment; `output/eval_summaries/` holds nothing for either, so both need scoring
+before the comparison means anything. The expected direction is stated in advance: the good arm
+alone is **98.8% `sound` verdicts** (1,038 of 1,051), so if it matches or beats the 358/358 arm,
+the flawed half was contributing little beyond the authorship leak; if it underperforms, the
+flawed half was doing real work and the fix is to de-confound it rather than drop it.
+
 ## 2026-08-17 (later still) — the arm leak is in ALL THREE model-eval-model corpora, and most of what survives de-confounding is the label itself
 
 
