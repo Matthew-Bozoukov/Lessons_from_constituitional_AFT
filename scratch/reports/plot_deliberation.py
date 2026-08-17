@@ -32,6 +32,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.lines import Line2D  # noqa: E402
 from matplotlib.patches import Patch  # noqa: E402
 
 # Validated: slots 1 and 2 of the reference categorical theme, all-pairs clean in light mode
@@ -55,6 +56,8 @@ ORDER = list(ARMS)
 REFERENCE = "qwen3_6-27b-lora-t2-9284-da716-r64-dynbatch"
 
 # (eval name, metric path, panel title, y label, floor value or None, y max)
+# The metric path may point at a bare float or at a rate dict; `_dig` returns whichever, and
+# `_value_ci` splits it into a point and an interval.
 HEADLINES = [
     ("llmbar", ("adversarial_accuracy",), "PC — LLMBar (adversarial)",
      "accuracy vs gold label", 0.5, 1.0),
@@ -63,6 +66,14 @@ HEADLINES = [
     ("sycophancy", ("balanced_accuracy",), "PAR — two-sided retraction",
      "balanced accuracy", 0.5, 1.0),
 ]
+
+
+def _value_ci(node) -> tuple[float | None, tuple[float, float] | None]:
+    """Split a metric into (point, 95% interval). A bare float has no interval."""
+    if isinstance(node, dict):
+        ci = node.get("ci95")
+        return node.get("rate"), (tuple(ci) if ci else None)
+    return node, None
 
 
 def _dig(blob: dict, path: tuple[str, ...]):
@@ -83,9 +94,57 @@ def load(results: str) -> dict[str, dict[str, dict]]:
             if not arm_dir.is_dir() or arm_dir.name == "server":
                 continue
             runs = sorted(p for p in arm_dir.glob("*/results.json"))
-            if runs:
-                out[name][arm_dir.name] = json.loads(runs[-1].read_text())
+            if not runs:
+                continue
+            summary = json.loads(runs[-1].read_text())
+            # Prefer re-scoring the raw records with the CURRENT scoring code. The per-item
+            # records are the durable artifact; results.json is a snapshot of whatever the
+            # scorer looked like on the pod. Re-scoring means a scoring fix (an added
+            # interval, a corrected rate) applies retroactively to a finished run instead of
+            # costing another GPU trip.
+            records = runs[-1].parent / "records.jsonl"
+            if records.exists():
+                rows = [json.loads(line) for line in records.read_text().splitlines()
+                        if line.strip()]
+                rescored = _rescore(name, rows)
+                if rescored:
+                    summary = {**summary, **rescored}
+            out[name][arm_dir.name] = summary
     return out
+
+
+def _rescore(name: str, rows: list[dict]) -> dict:
+    """Re-run the eval's own scorer over its per-item records, or {} if not applicable."""
+    if name == "llmbar":
+        from src.eval.deliberation.llmbar.scoring import summarize as f
+        return f(rows)
+    if name == "sycophancy":
+        from src.eval.deliberation.sycophancy.scoring import summarize as f
+        return f(rows)
+    if name == "debate_speeches":
+        # No scoring module to reuse (the summary is built in the runner), but the interval
+        # is the part the plot needs and it is not in results.json at all. Percentile
+        # bootstrap over speeches; 400 resamples is plenty to place a CI whose width is
+        # ~0.1, and tau-b is O(n^2) so more would cost minutes for no visible change.
+        import random
+
+        from src.eval.deliberation.debate_speeches.stats import kendall_tau_b
+
+        pairs = [(r["rating"], r["human_mean"]) for r in rows if r.get("rating")]
+        if len(pairs) < 30:
+            return {}
+        rng = random.Random(0)
+        taus = []
+        for _ in range(400):
+            sample = [pairs[rng.randrange(len(pairs))] for _ in range(len(pairs))]
+            taus.append(kendall_tau_b([m for m, _ in sample], [h for _, h in sample]))
+        taus.sort()
+        return {"kendall_tau_b": {
+            "rate": kendall_tau_b([m for m, _ in pairs], [h for _, h in pairs]),
+            "n": len(pairs),
+            "ci95": [round(taus[int(0.025 * len(taus))], 4),
+                     round(taus[int(0.975 * len(taus)) - 1], 4)]}}
+    return {}
 
 
 def load_hf(org: str = "LASR-Callum", date: str = "2026-08-17") -> dict[str, dict[str, dict]]:
@@ -123,7 +182,9 @@ def _style(ax) -> None:
 
 
 def _bars(ax, values: dict[str, float | None], ylabel: str, title: str,
-          floor: float | None, ymax: float, hue: str = HUE) -> None:
+          floor: float | None, ymax: float, hue: str = HUE,
+          cis: dict[str, tuple[float, float] | None] | None = None) -> None:
+    cis = cis or {}
     labels, heights, hatches = [], [], []
     for key in ORDER:
         label, control = ARMS[key]
@@ -132,26 +193,40 @@ def _bars(ax, values: dict[str, float | None], ylabel: str, title: str,
         hatches.append("///" if control else "")
 
     xs = range(len(labels))
-    for x, height, hatch in zip(xs, heights, hatches):
+    for x, key, height, hatch in zip(xs, ORDER, heights, hatches):
         if height is None:
             ax.text(x, ymax * 0.04, "no data", ha="center", color=INK_SOFT, fontsize=8,
                     style="italic")
             continue
         ax.bar(x, height, width=0.62, color=hue if not hatch else SURFACE,
                edgecolor=hue, linewidth=1.4, hatch=hatch, zorder=3)
-        ax.text(x, height + ymax * 0.022, f"{height:.2f}", ha="center", va="bottom",
+        top = height
+        interval = cis.get(key)
+        if interval:
+            # Without these, five bars of different heights read as five results. The
+            # finding on both measured evals is that they overlap, and the reader should be
+            # able to SEE that rather than take it on trust from the caption.
+            low, high = interval
+            ax.errorbar(x, height, yerr=[[height - low], [high - height]], fmt="none",
+                        ecolor=INK, elinewidth=1.4, capsize=5, capthick=1.4, zorder=5)
+            top = high
+        # Two decimals for a bounded rate, none for a character count — "2004.00" reads as
+        # spurious precision on a mean of 838 traces.
+        text = f"{height:.2f}" if ymax <= 1.5 else f"{height:,.0f}"
+        ax.text(x, top + ymax * 0.022, text, ha="center", va="bottom",
                 fontsize=9, color=INK, fontweight="bold")
 
     if floor is not None:
         ax.axhline(floor, color=INK_SOFT, linewidth=1, linestyle=(0, (2, 3)), zorder=2)
-        ax.text(len(labels) - 0.42, floor, " floor", va="center", ha="left",
+        ax.text(len(labels) - 0.40, floor, "floor", va="bottom", ha="right",
                 fontsize=8, color=INK_SOFT)
 
     ref = values.get(REFERENCE)
     if ref is not None:
+        # The line is identified in the figure legend, not by inline text: an inline label
+        # has nowhere collision-free to sit, since bars occupy the width and value labels
+        # occupy the space above each one.
         ax.axhline(ref, color=HUE_ALT, linewidth=1.4, linestyle=(0, (5, 3)), zorder=4)
-        ax.text(-0.45, ref, " difficult advice", va="bottom", ha="left", fontsize=8,
-                color=HUE_ALT, fontweight="bold")
 
     ax.set_xticks(list(xs))
     ax.set_xticklabels(labels, fontsize=8.5, color=INK)
@@ -162,16 +237,20 @@ def _bars(ax, values: dict[str, float | None], ylabel: str, title: str,
 
 
 def figure_headline(data: dict, out: Path) -> Path:
-    fig, axes = plt.subplots(1, 3, figsize=(15, 4.8), facecolor=SURFACE)
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5.0), facecolor=SURFACE)
     for ax, (name, path, title, ylabel, floor, ymax) in zip(axes, HEADLINES):
-        values = {k: _dig(v, path) for k, v in data.get(name, {}).items()}
-        _bars(ax, values, ylabel, title, floor, ymax)
+        split = {k: _value_ci(_dig(v, path)) for k, v in data.get(name, {}).items()}
+        _bars(ax, {k: v[0] for k, v in split.items()}, ylabel, title, floor, ymax,
+              cis={k: v[1] for k, v in split.items()})
     fig.suptitle("Each variant on its own in-domain eval", x=0.007, ha="left",
                  fontsize=14, color=INK, fontweight="700")
-    fig.legend(handles=[Patch(facecolor=SURFACE, edgecolor=HUE, hatch="///",
-                              label="control arm")],
-               loc="upper right", frameon=False, fontsize=9, labelcolor=INK_SOFT)
-    fig.tight_layout(rect=(0, 0, 1, 0.93))
+    fig.legend(handles=[
+        Patch(facecolor=SURFACE, edgecolor=HUE, hatch="///", label="control arm"),
+        Line2D([0], [0], color=HUE_ALT, linewidth=1.4, linestyle=(0, (5, 3)),
+               label="difficult advice (reference)"),
+        Line2D([0], [0], color=INK, linewidth=1.4, label="95% interval"),
+    ], loc="upper right", frameon=False, fontsize=9, labelcolor=INK_SOFT, ncol=3)
+    fig.tight_layout(rect=(0, 0, 1, 0.92))
     path = out / "deliberation_headline.png"
     fig.savefig(path, dpi=200, facecolor=SURFACE)
     plt.close(fig)
@@ -247,7 +326,7 @@ def mirror(data: dict, out: Path) -> Path:
             if not summary:
                 lines.append(f"| {ARMS[arm][0].replace(chr(10), ' ')} | — | — | — | — |")
                 continue
-            head = _dig(summary, path)
+            head, _ci = _value_ci(_dig(summary, path))
             trace = summary.get("trace") or summary.get("trace_turn1") or {}
             lines.append(
                 f"| {ARMS[arm][0].replace(chr(10), ' ')} "

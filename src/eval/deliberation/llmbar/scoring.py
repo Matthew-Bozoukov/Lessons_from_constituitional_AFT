@@ -114,6 +114,9 @@ def summarize(records: list[dict]) -> dict:
     adversarial = [r for r in records if r["subset"].startswith("Adversarial")]
     if adversarial:
         # The headline for PC: the adversarial subsets are the ones where the output that
-        # does NOT follow the instruction is the better-looking one.
-        summary["adversarial_accuracy"] = _group(adversarial)["accuracy"]["rate"]
+        # does NOT follow the instruction is the better-looking one. Emitted as a full rate
+        # dict, not a bare float, so a plot or a comparison can show the interval — five
+        # bare numbers plotted without one read as five results when the finding is that
+        # none of them separate.
+        summary["adversarial_accuracy"] = _group(adversarial)["accuracy"]
     return summary

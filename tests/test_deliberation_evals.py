@@ -277,7 +277,7 @@ def test_a_real_judge_scores_on_all_three():
     assert summary["accuracy"]["rate"] == 1.0
     assert summary["consistency"]["rate"] == 1.0
     assert summary["first_position_rate"] == pytest.approx(0.5)
-    assert summary["adversarial_accuracy"] == 1.0
+    assert summary["adversarial_accuracy"]["rate"] == 1.0
 
 
 def test_adversarial_headline_excludes_natural():
@@ -286,7 +286,9 @@ def test_adversarial_headline_excludes_natural():
     summary = bar_summarize(records)
     # Pooled accuracy is 0.5; the adversarial split is 0.0 and must not be hidden by it.
     assert summary["accuracy"]["rate"] == pytest.approx(0.5)
-    assert summary["adversarial_accuracy"] == 0.0
+    # A rate dict, not a bare float, so a plot can draw the interval.
+    assert summary["adversarial_accuracy"]["rate"] == 0.0
+    assert summary["adversarial_accuracy"]["ci95"]
     assert summary["by_subset"]["Natural"]["accuracy"] == 1.0
 
 
