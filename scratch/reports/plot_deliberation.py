@@ -88,6 +88,31 @@ def load(results: str) -> dict[str, dict[str, dict]]:
     return out
 
 
+def load_hf(org: str = "LASR-Callum", date: str = "2026-08-17") -> dict[str, dict[str, dict]]:
+    """Same shape, read from the HF repos run_eval pushes to as each arm finishes.
+
+    This is the recovery path, and the reason `--no-push` is not used on the pod: the pod is
+    disposable and self-terminating, so the Hub is where these numbers actually live. Anyone
+    can rebuild every figure from a fresh clone with no pod, no local run directory and no
+    access to the machine that launched it.
+
+    run_eval names each repo `<org>/<date>-<eval-with-dashes>-<model-key-with-dashes>`.
+    """
+    from huggingface_hub import hf_hub_download
+
+    out: dict[str, dict[str, dict]] = {}
+    for name, *_ in HEADLINES:
+        out[name] = {}
+        for arm in ORDER:
+            repo = f"{org}/{date}-{name.replace('_', '-')}-{arm.replace('_', '-')}"
+            try:
+                path = hf_hub_download(repo, "results.json", repo_type="dataset")
+            except Exception:  # noqa: BLE001 — an arm that has not finished yet is a gap
+                continue
+            out[name][arm] = json.loads(Path(path).read_text())
+    return out
+
+
 def _style(ax) -> None:
     ax.set_facecolor(SURFACE)
     ax.spines[["top", "right"]].set_visible(False)
@@ -236,9 +261,20 @@ def mirror(data: dict, out: Path) -> Path:
     return path_md
 
 
-def main(results: str = "output", out: str = "output/report") -> str:
-    """Build every figure from whatever results exist; missing arms are drawn as gaps."""
-    data = load(results)
+def main(results: str = "output", out: str = "output/report", source: str = "local",
+         org: str = "LASR-Callum", date: str = "2026-08-17") -> str:
+    """Build every figure from whatever results exist; missing arms are drawn as gaps.
+
+    Args:
+        results: Local run root (source="local").
+        out: Where the PNGs and the markdown mirror go.
+        source: "local" reads `results`; "hf" reads the pushed eval repos instead, which is
+            how to rebuild these figures once the pod is gone.
+        org: HF org holding the pushed results (source="hf").
+        date: The ISO date in the pushed repo names (source="hf").
+    """
+    assert source in ("local", "hf"), f"source must be local|hf, got {source!r}"
+    data = load_hf(org, date) if source == "hf" else load(results)
     out_dir = Path(out)
     out_dir.mkdir(parents=True, exist_ok=True)
     made = [figure_headline(data, out_dir), figure_two_sided(data, out_dir),
