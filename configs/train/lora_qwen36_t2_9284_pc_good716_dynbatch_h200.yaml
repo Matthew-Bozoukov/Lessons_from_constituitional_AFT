@@ -1,0 +1,104 @@
+# ABOUTME: 1-epoch LoRA SFT of Qwen3.6-27B on Table2(9,284) + peer-critique GOOD ARM(716);
+# ABOUTME: single H200 with token-budgeted dynamic batching. Arm ablation vs the 358/358 run.
+# Run: uv run python scripts/gpu/runpod_train.py up --bundle <bundle repo> \
+#        --train_config configs/train/lora_qwen36_t2_9284_pc_good716_dynbatch_h200.yaml \
+#        --gpu "NVIDIA H200" --mixture t2_9284_pc_good716_10k.jsonl
+#
+# THE ABLATION. Its comparison arm is
+# `LASR-Callum/qwen3.6-27b-lora-t2-9284-peercritique716-r64-dynbatch`, trained on
+# `LASR-Callum/2026-08-16-table2-9284-peer-critique-716-train`, whose 716 peer-critique rows
+# are 358 good / 358 flawed. This arm's 716 rows are ALL from the good arm. The two mixtures'
+# 9,284 Table2 rows are byte-identical (verified as sorted text sets), the think census is
+# identical ({'turns': 10362, 'real': 716, 'empty': 9646, 'absent': 0}) and the per-trait
+# shape matches, so what moves between the arms is the peer-critique slice and nothing else.
+#
+# WHY THE GOOD ARM ALONE. Peer critique fails its `surface_shortcut` gate at AUC 0.9973
+# against a 0.70 threshold: the good arm's critiqued reply is written by Sonnet and the flawed
+# arm's by grok-4.3 / qwen3-32b / gemini-3.7-flash, so the arm label is predictable from
+# authorship alone (length by itself separates at 0.8471). A one-class mixture has nothing to
+# discriminate, so that leak cannot be learned here. The known cost is that 1,038 of the 1,051
+# good-arm records conclude `sound`, so this slice teaches recognising a sound reply rather
+# than catching a lapse — which is the variable under test.
+#
+# ONE H200, NOT THE COMPARISON ARM'S TWO, and the deviation is deliberate and bounded.
+# `src/model_profile.py` records a MEASURED NEGATIVE bound for H100 80GB — a 1x~8k fwd+bwd
+# OOMs at 72.6/79.2 GiB, 7.36 GiB short — so this mixture cannot train on H100 under either
+# batching protocol; H200 is the only profiled option, and `scripts/gpu/runpod_train.py`
+# provisions one GPU and launches the trainer directly rather than under torchrun.
+#
+# That is safe here because the optimizer step is the scientific unit and the loss is
+# grouping-invariant: `src/train/dynamic_batching.py` weights each example by the mean CE over
+# its OWN supervised tokens scaled by 1/global_batch, so summing over a step's micro-batches
+# reproduces the plain per-example average "no matter how the step was partitioned". Splitting
+# a 16-example step across two ranks or running it on one therefore yields the same gradient;
+# only wall-clock differs (expect ~4h rather than the 2xH200's ~2h). What would NOT be
+# comparable is a different batching protocol or loss path — cf. the C6-masked arm, whose
+# 4xH200 batch-1/nll predecessor was rejected as its control for exactly that reason.
+
+seed: 0
+model: "Qwen/Qwen3.6-27B"
+model_class: "image_text_to_text"
+
+# The 716 peer-critique rows carry REAL reasoning traces that ARE supervised (think census
+# `real: 716`), so this arm is trained to think and must be evaluated in thinking mode.
+thinking: true
+
+# The published mixture. `runpod_train.py` overrides both to point at the pod's public bundle
+# (anonymous read, no credentials on the pod); these values are what a local run would use and
+# what the provenance means.
+data_repo: "LASR-Callum/2026-08-17-table2-9284-peer-critique-good716-train"
+data_file: "t2_9284_pc_good716_10k.jsonl"
+
+# Relative to the extracted repo root on the pod, so the bootstrap's
+# `tar -czf /workspace/adapter.tar.gz -C /workspace/repo/output .` picks it up.
+output_dir: "output/train_t2_9284_pc_good716"
+hf_repo: "LASR-Callum/qwen3.6-27b-lora-t2-9284-pc-good716-r64-dynbatch"
+
+lora:
+  r: 64
+  alpha: 128
+  dropout: 0.05
+  target_modules: "model\\.language_model\\..*\\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$"
+
+train:
+  epochs: 1
+  # global batch = batch_size x grad_accum = 16, matching the comparison arm. Under dynamic
+  # batching the trainer hands the whole 16-example step to training_step and sets HF
+  # accumulation to 1.
+  batch_size: 1
+  grad_accum: 16
+  lr: 1.0e-4
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  logging_steps: 5
+  report_to: []          # no wandb credentials on the pod; WANDB_MODE=disabled there anyway
+
+  # 8192: measured on THIS mixture, nothing is truncated (longest row 8,191 tokens, p99 7,560,
+  # median 337 — see the dataset's .stats.json). A truncation ceiling, NOT the dynamic-batching
+  # budget.
+  max_seq_len: 8192
+
+  # packing OFF, and dynamic_batching asserts this. Qwen3.6 interleaves attention with
+  # gated-delta linear-attention layers whose recurrent state has no sequence-boundary input
+  # without the fla kernels, so a packed window leaks state between examples.
+  packing: false
+
+  # Token-budgeted dynamic batching. Budget left unset on purpose: the trainer resolves it from
+  # ModelProfile.train_memory (H200 = 8,000 padded tokens, Matthew's probe on the 4xH200 pod).
+  # The single 8,191-token row exceeds that budget and runs alone, the same pass the legacy
+  # batch-1 path would run for it.
+  dynamic_batching: {}
+
+  save_strategy: "steps"
+  save_steps: 100
+  save_total_limit: 2
+  auto_resume: true
+
+  # The pod holds no HF token; the driver pulls the adapter back over the :8080 proxy and it is
+  # pushed from the local machine, where the token lives.
+  push_to_hub: false
+
+  assistant_only_loss: true
+  attn_implementation: sdpa
+  load_in_4bit: false
