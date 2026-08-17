@@ -18,18 +18,58 @@ and, separately:
 This document is the design for that eval, one per variant, plus what already exists in the
 literature so we don't build what we can download.
 
-## State of play (verify before quoting)
+## State of play
 
-| variant | corpus | mixture cfg | train cfg | ODCV |
+| variant | corpus | trained | ODCV | committed mixture/train cfg |
 | --- | --- | --- | --- | --- |
-| CR — courtroom | 1,950 records, generated 2026-08-14 | none | none | not run |
-| PAR — post-action retrospection | not generated (green-lit) | none | none | not run |
-| PC — peer critique | 2,080 records, `LASR-Callum/2026-08-14-peer-critique` | none | none | not run |
+| CR — courtroom | 1,950 records, generated 2026-08-14 | yes | ≈ baseline on MR *and* severity | **none in any git ref** |
+| PC — peer critique | 2,080 records, `LASR-Callum/2026-08-14-peer-critique` | yes | ≈ baseline on MR *and* severity | **none in any git ref** |
+| PAR — post-action retrospection | not generated (green-lit) | no | — | none |
 
-The arms that *are* underperforming on ODCV are the older `table2_memself_20_80` (MR 22.1%)
-and `table2_selfreflect_20_80` (MR 15.9%). CR/PAR/PC have not been trained at all yet. That
-matters for sequencing: **the in-domain eval should exist before the training run**, so that
-a corpus which cannot move its own in-domain number never gets paid for on ODCV.
+Two things follow.
+
+**The negative result is real and it is flat, not merely small.** From the 2026-08-17 meeting:
+"our idea was that maybe this could help internalize the constitution a bit better, but we
+found that this doesn't work that well […] they perform roughly with baseline" on misalignment
+rate and on severity. So this is not a weak-effect problem; it is a no-effect problem, which is
+what makes the in-domain check diagnostic rather than decorative.
+
+**Neither run is reproducible from the repo.** `git log --all` finds no mixture or train config
+for courtroom or peer critique on any branch. Whatever produced those adapters lives outside
+version control. Worth fixing before the ablation story depends on it — and worth knowing before
+anyone tries to re-derive the numbers.
+
+The older `table2_memself_20_80` (MR 22.1%) and `table2_selfreflect_20_80` (MR 15.9%) arms are a
+separate, earlier set of alternatives.
+
+### The measurement we already have, and what it suggests
+
+Kunwar's own analysis, reported in the same meeting: **courtroom reasons a lot less than
+difficult advice** — more than the base model, but far less than DA — **and peer critique is the
+same**. A corpus of long adversarial deliberations that produces *shorter* reasoning than the DA
+corpus did is the first hard evidence for Callum's hypothesis below. Trace length is therefore
+already a discriminator in hand; every eval here should report it alongside the keyed metric.
+
+## Callum's two hypotheses for the flat result
+
+Both come from the 2026-08-17 transcript, and both shape the designs below.
+
+1. **Fluff and filler, not deep rewrites.** "It's very possible that you're sort of adding fluff
+   and filler […] there's not the same kind of efficacy as you currently get from the deep
+   rewrites on the advice. That would be one hypothesis of why it's not really improving that
+   much. So let's check that." This is exactly outcome 3 below, and it is why every eval here
+   carries a key and a length control rather than an autorater score alone.
+2. **First person versus third person.** "You would expect some of this given that difficult
+   advice [is] first person […] and these kind of things are third person." DA trains the model
+   deliberating as the actor. CR trains it judging *someone else's* dispute; PC trains it
+   critiquing *another model's* reply. ODCV asks it to act, in first person. If the habit is
+   learned in third person and never transposes, the in-domain eval will be up and ODCV flat —
+   and that is a finding, not a failure.
+
+Hypothesis 2 earns its own eval condition: **every CR and PC eval below runs a first-person
+transposition arm** (same item, the model is a party to the dispute / the author of the reply).
+The gap between third-person and first-person performance *is* the transfer measurement, and it
+is cheap — the same items, one prompt rewrite.
 
 ## What the eval is for
 
@@ -89,8 +129,17 @@ It is a falsifier, not a leaderboard. Three outcomes, all informative:
   makes presentation-order fairness `revise_prompts`' explicit job, so this is squarely
   in-domain.
 
+- **First-person transposition** (hypothesis 2). Every item also runs in a rewritten frame where
+  the model is *a party to the dispute* rather than the outsider judging it — "you are the one
+  being asked to do X, and here is the case against". Same key, same scoring. The
+  third-person → first-person drop is the transfer measurement, and it is the cheapest possible
+  test of whether CR's habit can ever reach ODCV.
+
 Headline: accuracy on decidable items × correct abstention on balanced items, with
-position-consistency reported alongside.
+position-consistency, the first-person gap, and mean trace length reported alongside.
+
+Callum's own words for this: "a setting that is designed to favour them more […] a pseudo
+courtroom style eval". If CR cannot beat DA *there*, the corpus is the problem, not the transfer.
 
 ### Existing work worth using
 
@@ -191,6 +240,13 @@ Held-out PC items, 50/50 good/flawed, same key structure as PAR. Three metrics:
    catches a model which learned to *sound* critical. PC's own config already draws this line:
    the lapse must be a failure of the principle, "never a matter of completeness or taste".
 
+**First-person transposition** (hypothesis 2), same as CR: run every item a second time with the
+flawed reply attributed to *the model itself* rather than to another assistant. PC and PAR are
+already built as attribution twins over a shared mechanism, so this turns the pair into a clean
+2×2 — self/other attribution × trained-on/not — and measures directly whether critique skill
+learned in third person survives being pointed at itself. That is the single most decision-
+relevant number for whether PAR is worth generating at all.
+
 **The adversarial twist**, borrowed from LLMBar: for a subset, make the *flawed* reply
 superficially better — longer, warmer, better formatted, more confident — than the sound one.
 PC's config already flags the mirror-image exposure (`surface_auc_max`: the two arms are
@@ -248,22 +304,35 @@ wrong way and we would misread it.
 **Pre-register the rubric and the predicted direction before looking at the scores**, or this
 becomes an autorater fishing expedition and the result will not survive review.
 
+A prediction is already on the table and should be written down before the run: CR and PC reason
+*less* than DA in these rollouts. So the pre-registered hypothesis is that the CR arm scores at or
+below DA on "engaged with the counter-case" despite being trained on nothing but counter-cases. If
+that holds, it is direct evidence for Callum's fluff-and-filler hypothesis and it points the fix at
+the corpus (the depth of the rewrite) rather than at the mixture ratio or the eval.
+
 ---
 
 ## Priority and cost
 
+The CR and PC adapters already exist, so **every item here produces a number this week**.
+
 | # | Item | Effort | Cost | Blocked on |
 | --- | --- | --- | --- | --- |
-| 1 | ODCV rollout autorater (CR-style rubric, existing arms) | 0.5 day | ~$5-15 OpenRouter | nothing |
-| 2 | PAR off-the-shelf: `are_you_sure` + FlipFlop | 1 day | GPU serving only | nothing |
-| 3 | PC held-out flaw-identification (reuse `check_flaw_identification`) | 1-2 days | small judge spend | a PC training run |
-| 4 | CR keyed held-out disputes + order flip | 2 days | small generation run | a CR training run |
+| 1 | ODCV rollout autorater over existing CR / PC / DA / base rollouts | 0.5 day | ~$5-15 OpenRouter | nothing |
+| 2 | PC held-out flaw-identification + first-person transposition | 1-2 days | small judge spend | nothing |
+| 3 | CR keyed held-out disputes + order flip + first-person transposition | 2 days | small generation run | nothing |
+| 4 | PAR off-the-shelf: `are_you_sure` + FlipFlop, on CR/PC/DA arms | 1 day | GPU serving only | nothing |
 | 5 | LLMBar / `debate_speeches` / CriticEval as generalisation checks | 1 day each | judge spend | nothing |
 
-Items 1, 2 and 5 produce numbers this week on arms that already exist. Items 3 and 4 cannot
-produce a number until CR/PAR/PC are trained, and there is currently no mixture or train
-config for any of them — so build the evals now and they become the gate that decides whether
-those training runs are worth paying for.
+Item 1 is the cheapest and answers Callum's literal question on data already on disk. Items 2 and
+3 are the actual falsifiers and are no longer gated on training — the held-out slices are the only
+new generation needed. Item 4 is worth running *before* PAR is generated: if the DA and CR arms
+already discriminate sound from flawed replies about as well as base does, PAR's premise is in
+question and a $280 corpus can be deferred.
+
+**Also worth doing regardless:** commit mixture and train configs for the CR and PC runs. Neither
+exists in any git ref, so the two headline negative results of the week cannot currently be
+reproduced from the repository.
 
 ## Framework fit
 
