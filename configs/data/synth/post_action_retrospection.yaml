@@ -67,8 +67,10 @@
 # archived configs; since 2026-08-14 (`peer_critique.yaml` rebuilt on the generic
 # operators) nothing live is written against it.
 #
-# NOT YET RUN. Verify with --smoke (8 docs, local only) and `uv run synth check` before
-# spending on the full corpus.
+# SMOKED AND GREEN. 40 docs on 2026-08-14 ($4.87) plus two revision-stage re-verify
+# passes: all eleven checks pass (flaw_identification 0.75 vs the 0.70 gate, gold 0/16
+# below 3, blindness clean, verdict spread healthy in both arms, length_cv 0.153/0.244).
+# See docs/LOG.md 2026-08-14 (night, vii/viii/ix) for the numbers.
 
 pipeline: post_action_retrospection
 
@@ -79,7 +81,7 @@ chunking: principle
 
 output_dir: "output/post_action_retrospection"
 
-hf_repo: "LASR-Callum/2026-08-13-post-action-retrospection"
+hf_repo: "LASR-Callum/2026-08-17-post-action-retrospection"
 hf_repo_smoke: null
 hf_private: false
 
@@ -87,9 +89,11 @@ workers: 16
 # Re-price with `uv run synth estimate --config <this file>` and again with
 # `--measured <smoke manifest>` before committing -- the token priors are carried over
 # from the old self arm and the prompt-writing stages are guesses. ($283.91 estimated
-# 2026-08-14 with Gemini drafting; 330 leaves headroom for retries without leaving the
-# guard meaningless.)
-budget_usd: 330.0
+# 2026-08-14 at 2,100 documents; ~$83 at the 600 this config now runs, plus the
+# full-corpus quality_filter and pattern_scan turned on below.) 150 leaves headroom for
+# retries and the checks without leaving the guard meaningless -- a guard sized for
+# 2,100 would never bite on a 600-document run.
+budget_usd: 150.0
 
 smoke:
   total_scenarios: 8
@@ -97,8 +101,13 @@ smoke:
   hf_repo: null
 
 # ONE SCENARIO, ONE DOCUMENT, no gate: the corpus size is this number, and the arms are
-# a 50/50 label `revise_prompts` stamps on. Sized against difficult advice v2's 2,000.
-total_scenarios: 2100
+# a 50/50 label `revise_prompts` stamps on. 600, not the 2,100 this recipe was designed
+# and priced at (2026-08-14), because the SFT mixture's requirements changed on
+# 2026-08-17 -- this is a FULL production run at the new size, not a pilot. 600 over the
+# constitution's 9 principles is ~67 documents per trait, well clear of every per-group
+# floor the checks impose (`min_group_docs: 5`) and of the diversity gate's
+# `over_min_docs: 60`, so the over-representation steer stays live.
+total_scenarios: 600
 scenarios_per_call: 8
 
 defaults:
@@ -1148,11 +1157,24 @@ stages:
   - property: quality_filter
     fields:
       text: [user, first_turn, followup, reasoning, response]
+    params:
+      # Every document, not the default 300 sample. At 600 documents that is ~$5 for
+      # complete per-record `corpus_labels.jsonl` coverage, and a partial label set is
+      # worth much less than it looks: excluding flagged rows is a MIXTURE-time filter,
+      # so any row the judge never saw is silently a keep. Judging all of them is what
+      # makes "drop the flagged rows" a statement about the whole corpus.
+      sample: 0
   # GDM's three-pass pattern detector (scan -> cluster -> autorate). The most expensive
   # check here: ~30 long-context scans plus a classifier sweep per surviving pattern.
   # Ships disabled; `--only pattern_scan` runs it alone.
+  # ENABLED for this run (it ships disabled). It is the only check that can name a tic
+  # nobody wrote a rubric for in advance -- the failure mode a constitutional-SFT corpus
+  # is most exposed to, since every trained turn passes through one Sonnet rewrite with
+  # one prompt. It is also the single most expensive line in this run: 31 long-context
+  # scans plus a ~1,520-call Haiku classifier sweep, $22.61 of the $108.47 estimate.
+  # Worth it once, at 600 documents, on a corpus nobody has pattern-scanned before.
   - property: pattern_scan
-    enabled: false
+    enabled: true
     model: scan             # per-instance override of the stage's `model:`
     rate_model: classify    # the thousands-of-tiny-calls pass
   rubrics:
