@@ -155,13 +155,24 @@ def test_real_configs_keep_historical_snapshot_names():
     # from before that date no longer cache-hit; the published HF mirror keeps the old
     # names, and consumers pin them via `source.snapshot`. The corpus checks are OBSERVERS:
     # they take no position, so they sit anywhere in the list without moving a snapshot.
+    #
+    # difficult_advice BROKE the observer contract on 2026-08-13, deliberately.
+    # `dedupe_scenarios` is a corpus_filter: it removes records, so it cannot be an
+    # observer, and it takes position 3 -- shifting every snapshot after it by one. The
+    # break is acceptable only because the same commit rewrote the scenario, response and
+    # rewrite prompts: a run dir from before it cannot be resumed into this config at ANY
+    # numbering without mixing two recipes into one corpus. Its output belongs in a new
+    # dated HF repo, not appended to the v1 mirror. Do not renumber a config to dodge a
+    # test; if the recipe has not changed, put the new stage last, where nothing follows
+    # it to move.
     assert [s.name for s in build_stages(_real("difficult_advice"))] == \
-        ["chunk_constitution", "write_scenarios", "corpus_scenarios", "draft_prompts",
-         "revise_prompts", "draft_responses", "revise_responses", "export_sft", "corpus"]
+        ["chunk_constitution", "write_scenarios", "corpus_scenarios", "dedupe_scenarios",
+         "draft_prompts", "revise_prompts", "draft_responses", "revise_responses",
+         "export_sft", "corpus"]
     assert snapshot_positions(build_stages(_real("difficult_advice"))) == \
         {"chunk_constitution": 1, "write_scenarios": 2, "corpus_scenarios": 2,
-         "draft_prompts": 3, "revise_prompts": 4, "draft_responses": 5,
-         "revise_responses": 6, "export_sft": 7, "corpus": 7}
+         "dedupe_scenarios": 3, "draft_prompts": 4, "revise_prompts": 5,
+         "draft_responses": 6, "revise_responses": 7, "export_sft": 8, "corpus": 8}
     # The archived configs are frozen, which makes them the stable fixture for this.
     assert [s.name for s in build_stages(_archived("model_eval_model"))] == \
         ["source", "plan", "perturbed", "generated", "final", "sft", "corpus"]
@@ -173,11 +184,21 @@ def test_estimate_prices_real_configs_and_ablation_out():
     # $47.68 pre-refactor at n_traits=12; re-cut to ten units on 2026-08-04 ($39.73 at
     # 770 records), then on 2026-08-05 matched byte-exact to the nine-principle document
     # the 2026-08-04 source corpus was generated against, so the same per-call priors
-    # now price 693 records.
-    assert full["total_usd"] == 35.76
+    # now price 693 records. $35.76 until 2026-08-13, when `pattern_scan` was enabled:
+    # +$19.71 for the judged tier (31 long-context scan calls on Sonnet 5 plus the
+    # classifier sweep on Haiku), which is the cost this config now pays on every run to
+    # get an open-ended read on its own recurring tics.
+    #
+    # NOTE this whole number is priced from `assumed_tokens`, and those priors are ~3x
+    # low: the 2026-08-04 run of this config actually cost $166.72, against a rewrite
+    # stage assumed at 3,200 in / 1,800 out per call that really ran 10,370 / 2,869.
+    # The assertion pins the estimator's arithmetic, NOT the real cost of a run.
+    # $56.18 at 693 records; the config moved to `total_scenarios: 2000` on 2026-08-13 to
+    # size the v2 corpus against v1's 2,203.
+    assert full["total_usd"] == 131.16
     ablated = estimate({**da, "ablate": ["revise_responses"]})
     calls = {r["stage"]: r["calls"] for r in full["per_stage"]}
-    assert calls["rewrite"] == 693
+    assert calls["rewrite"] == 2000
     assert "rewrite" not in {r["stage"] for r in ablated["per_stage"]}
     assert ablated["total_usd"] < full["total_usd"]
 
@@ -193,3 +214,22 @@ def test_estimate_prices_real_configs_and_ablation_out():
     assert "rewrite" not in {r["stage"] for r in ablated_mem["per_stage"]}
     assert ablated_mem["total_usd"] == 140.45, \
         "--ablate final prices back to the pre-rewrite pipeline"
+
+
+def test_provider_routing_is_not_a_synth_config_concern():
+    # One provider per model, globally, in configs/endpoints/providers.yaml (applied
+    # inside OpenRouterClient). A synth config carrying `provider:` anywhere — stage
+    # block or defaults — fails loudly instead of being silently ignored.
+    from src.data.synth.stage_runtime import model_cfg
+
+    pin = {"order": ["anthropic"], "allow_fallbacks": False}
+    base = {"defaults": {}, "models": {"draft": {"model": "anthropic/claude-haiku-4.5"}}}
+    assert "extra_body" not in model_cfg(base, "draft")
+
+    stage = {"defaults": {}, "models": {"draft": {"model": "x", "provider": pin}}}
+    with pytest.raises(ValueError, match="providers.yaml"):
+        model_cfg(stage, "draft")
+
+    run = {"defaults": {"provider": pin}, "models": {"draft": {"model": "x"}}}
+    with pytest.raises(ValueError, match="providers.yaml"):
+        model_cfg(run, "draft")

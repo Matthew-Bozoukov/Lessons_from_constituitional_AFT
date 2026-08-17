@@ -21,6 +21,17 @@ PRICES: dict[str, dict[str, float]] = {
     "anthropic/claude-sonnet-4.5": {"in": 3.00, "out": 15.00},
     "anthropic/claude-opus-5": {"in": 5.00, "out": 25.00},
     "anthropic/claude-haiku-4.5": {"in": 1.00, "out": 5.00},
+    # Non-Anthropic drafting models in the natural-turn configs; OpenRouter rates as
+    # of 2026-08-14.
+    "x-ai/grok-4.3": {"in": 1.25, "out": 2.50},
+    "qwen/qwen3-32b": {"in": 0.08, "out": 0.28},
+    # Courtroom's drafter/judge lineages. An unpriced model is silently billed at $0
+    # by cost_of AND the estimator, which also blinds the budget_usd guard to that
+    # stage's spend -- price every model a config names.
+    "google/gemini-2.5-pro": {"in": 1.25, "out": 10.00},
+    "google/gemini-3.7-flash": {"in": 0.375, "out": 1.875},
+    "x-ai/grok-4.6": {"in": 2.00, "out": 6.00},
+    "qwen/qwen3-max": {"in": 0.78, "out": 3.90},
 }
 
 
@@ -45,15 +56,25 @@ class Usage:
         self.by_stage: dict[str, dict[str, float]] = {}
 
     def add(self, model: str, res: ChatResult, stage: str = "") -> None:
-        """Record one completion against its model and stage."""
+        """Record one completion against its model and stage.
+
+        `cached_tokens` is tallied so a finished run can show whether prompt caching
+        actually engaged. Without it a `<<<cache>>>` marker that silently stopped working
+        -- a reworded prompt prefix, a prefix that fell under Anthropic's ~1024-token
+        minimum, a non-Anthropic model -- looks exactly like one that is working, and the
+        run just quietly costs more. `usd` is still computed at the full rate, so the
+        number is a conservative floor on spend rather than a discount applied twice.
+        """
         usd = cost_of(model, res.prompt_tokens, res.completion_tokens)
         for key, bucket in ((model, self.by_model), (stage or "unknown", self.by_stage)):
             b = bucket.setdefault(
-                key, {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "usd": 0.0}
+                key, {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0,
+                      "cached_tokens": 0, "usd": 0.0}
             )
             b["calls"] += 1
             b["prompt_tokens"] += res.prompt_tokens
             b["completion_tokens"] += res.completion_tokens
+            b["cached_tokens"] += getattr(res, "cached_tokens", 0)
             b["usd"] += usd
 
     @property
@@ -296,12 +317,20 @@ def resilient(fn, n: int, workers: int, desc: str, max_fail_pct: float = 2.0,
         RuntimeError: If the failure rate exceeds `max_fail_pct`.
     """
     errors: list[str] = []
+    tracebacks: list[str] = []
 
     def guarded(i: int):
         try:
             return fn(i)
         except Exception as exc:  # noqa: BLE001 - recorded and surfaced below
             errors.append(f"[{i}] {type(exc).__name__}: {exc}")
+            # A repr alone cannot say WHERE a library blew up (the 2026-08-14
+            # PydanticUserError wave was undiagnosable from it); keep the first few
+            # full tracebacks so a systematic failure names its origin.
+            if len(tracebacks) < 3:
+                import traceback
+
+                tracebacks.append(traceback.format_exc())
             return None
 
     out = map_threaded(guarded, n, max_workers=workers, desc=desc)
@@ -311,6 +340,9 @@ def resilient(fn, n: int, workers: int, desc: str, max_fail_pct: float = 2.0,
         print(f"!!! {desc}: {len(errors)}/{n} items failed ({pct:.1f}%). First 3:")
         for e in errors[:3]:
             print("   ", e)
+        for tb in tracebacks[:1]:
+            print("    first failure's traceback:")
+            print("    " + tb.replace("\n", "\n    "))
         if pct > max_fail_pct:
             raise RuntimeError(
                 f"{desc}: {pct:.1f}% of items failed, above max_fail_pct={max_fail_pct}. "
@@ -490,6 +522,14 @@ def model_cfg(cfg: dict, key: str) -> dict[str, Any]:
     reasoning = block.get("reasoning", defaults.get("reasoning"))
     if reasoning is not None:
         out["extra_body"] = {"reasoning": dict(reasoning)}
+    # Provider routing is NOT a synth concern: one provider per model, globally, in
+    # configs/endpoints/providers.yaml (applied inside OpenRouterClient on every call).
+    # Rejecting the key here keeps stale configs loud instead of silently ignored.
+    if "provider" in block or "provider" in defaults:
+        raise ValueError(
+            f"models.{key}: provider routing moved to configs/endpoints/providers.yaml "
+            "(one provider per model, applied by OpenRouterClient) — remove `provider:` "
+            "from synth configs")
     return out
 
 

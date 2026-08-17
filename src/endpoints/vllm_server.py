@@ -380,9 +380,9 @@ class LocalExec:
         return str(path)
 
     def fetch_adapter(self, hf_path: str) -> str:
-        from huggingface_hub import snapshot_download
+        from src.huggingface import hf_snapshot
 
-        return snapshot_download(hf_path)
+        return hf_snapshot(hf_path)
 
     def start_server(self, argv: list[str], env_extra: dict) -> None:
         import os
@@ -532,10 +532,12 @@ class SshExec:
         return path
 
     def fetch_adapter(self, hf_path: str) -> str:
+        # Through src.huggingface so the host's own .env works whichever token
+        # variable it carries (bare snapshot_download reads only HF_TOKEN).
         out = self._ssh(self._with_env(
             f"cd {self.workdir} && uv run python -c "
-            f"\"from huggingface_hub import snapshot_download; "
-            f"print(snapshot_download('{hf_path}'))\""), timeout=1800)
+            f"\"from src.huggingface import hf_snapshot; "
+            f"print(hf_snapshot('{hf_path}'))\""), timeout=1800)
         return out.strip().splitlines()[-1]
 
     def start_server(self, argv: list[str], env_extra: dict) -> None:

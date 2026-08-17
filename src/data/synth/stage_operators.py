@@ -86,12 +86,16 @@ def selected(sc: dict, record: dict) -> bool:
     it excludes pass through untouched and cost nothing. This is what lets a config add
     a stage that only some cells need -- generating a first turn for the self cells, or
     a user-anchored framing for the user cells -- without the operator knowing which
-    cells exist.
+    cells exist. A LIST of such conditions is their conjunction -- what a stage that
+    covers one slice of one arm needs (e.g. the flawed records whose first turn a
+    particular model writes).
     """
     spec = sc.get("when")
     if not spec:
         return True
-    return str(record.get(spec["field"], "")) in [str(v) for v in spec["in"]]
+    conds = spec if isinstance(spec, list) else [spec]
+    return all(str(record.get(c["field"], "")) in [str(v) for v in c["in"]]
+               for c in conds)
 
 
 # --- generic operators --------------------------------------------------------------
@@ -159,10 +163,83 @@ def scenario_batches(n_traits: int, cfg: dict) -> list[tuple[int, int, int]]:
     return batches
 
 
+def _gist(r: dict, words: int = 14) -> str:
+    """One line naming a scenario, for the generator's do-not-repeat list.
+
+    Domain plus the opening clause of the situation: enough for a model to recognise the
+    family ("academic research: A postdoctoral researcher has spent three years on a
+    promising cancer drug study") without spending a whole scenario's tokens on it.
+    """
+    body = " ".join(str(r.get("situation") or "").split()[:words])
+    domain = str(r.get("domain") or "").strip()
+    gist = f"{domain}: {body}" if domain else body
+    # A scenario spec may carry how the situation ARRIVES (courtroom's `wrapper`);
+    # repeats of that framing are as much a collapse as repeats of the situation, so
+    # when the field exists the ban list shows it to the generator too.
+    wrapper = " ".join(str(r.get("wrapper") or "").split()[:8])
+    return f"{gist} [arrives as: {wrapper}]" if wrapper else gist
+
+
+def _too_close(new_texts: list[str], seen_vecs, reject_cosine: float, model: str | None):
+    """Indices of `new_texts` colliding with each other or with already-kept scenarios.
+
+    Within-wave collisions are resolved first-wins by position, so a wave that proposes
+    the same situation twice keeps one copy rather than dropping both.
+    """
+    import numpy as np
+
+    from .embeddings import DEFAULT_MODEL, embed
+
+    X = embed(new_texts, model=str(model or DEFAULT_MODEL))
+    bad: set[int] = set()
+    if seen_vecs is not None and len(seen_vecs):
+        against = (X @ seen_vecs.T).max(axis=1)
+        bad |= {i for i in range(len(new_texts)) if float(against[i]) >= reject_cosine}
+    G = X @ X.T
+    np.fill_diagonal(G, -1.0)
+    for i in range(len(new_texts)):
+        if i in bad:
+            continue
+        for j in range(i + 1, len(new_texts)):
+            if j not in bad and float(G[i, j]) >= reject_cosine:
+                bad.add(j)
+    return bad, X
+
+
 def op_scenarios(sc: dict, cfg: dict) -> Stage:
-    """Fan-out scenario generation: batched JSON calls per trait, ids `t<i>_b<b>_s<j>`."""
+    """Fan-out scenario generation: batched JSON calls per trait, ids `t<i>_b<b>_s<j>`.
+
+    Optional `diversity:` block turns the batch-local "vary the domain" instruction into
+    an enforced corpus-level constraint. Measured motivation: under plain fan-out the
+    baseline corpus put 46.8% of its mass in ten domains, and its two closest scenarios
+    (cosine 0.886 -- the same postdoc / funding-cliff / borderline-significance story
+    under two different trait ids and two different domain labels) were never caught,
+    because every batch is generated blind to every other.
+
+        diversity:
+          avoid: ["academic research: a postdoctoral researcher ...", ...]
+          wave_size: 12          # batches per wave; the ban list grows between waves
+          max_carry: 150         # cap on lines carried into a prompt
+          reject_cosine: 0.86    # a scenario this close to an existing one is refused
+          max_regen_rounds: 2    # make-up passes for traits left short by rejection
+
+    Two mechanisms, because asking is not enforcing. The prompt-side ban list (`avoid`
+    seeds it; each wave extends it with what the previous waves actually produced) tells
+    the generator what not to write. The embedding gate then refuses what it wrote
+    anyway, and re-queues the shortfall per trait so rejection cannot quietly unbalance
+    the corpus. Waves exist only because batches run concurrently: without them no batch
+    can see any other's output.
+    """
     sys_t, user_t = sc["prompts"]["system"], sc["prompts"]["user"]
     mk = sc["model"]
+    div = dict(sc.get("diversity") or {})
+    # Extra scenario-spec fields beyond the base domain/situation/shortcut shape,
+    # mirroring `scenarios_weighted`'s `fields:` block: `required` keys fail the batch
+    # loudly when the model omits them, `optional` default to "". Values are stripped
+    # because downstream `when:` scoping matches strings exactly.
+    extra = sc.get("fields") or {}
+    req_fields = list(extra.get("required") or [])
+    opt_fields = list(extra.get("optional") or [])
 
     def fn(ctx, records, ckpt):
         m = model_cfg(ctx.cfg, mk)
@@ -181,13 +258,64 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
         print(f"    {len(traits)} units -> {sum(n for _t, _b, n in batches)} scenarios "
               f"in {len(batches)} calls (sized by {sized_by})")
 
-        def one(k: int) -> list[dict]:
-            ti, bi, n = batches[k]
+        wave_size = int(div.get("wave_size") or 0) or len(batches)
+        reject_cos = float(div.get("reject_cosine") or 0.0)
+        max_rounds = int(div.get("max_regen_rounds", 2))
+        max_carry = int(div.get("max_carry", 150))
+        over_share = float(div.get("over_share") or 0.0)
+        over_min = int(div.get("over_min_docs", 50))
+        ban: list[str] = [str(x) for x in (div.get("avoid") or [])]
+        avoid_block = ""
+        over_block = ""
+        max_fail = float(ctx.cfg.get("max_fail_pct", 2.0))
+
+        def render_avoid() -> str:
+            """The do-not-repeat list as it stands, newest last, capped."""
+            if not ban:
+                return ""
+            return ("These situations already exist in this corpus. Do not write another "
+                    "version of any of them -- the same story in a different domain, or "
+                    "with the roles renamed, still counts as a repeat:\n"
+                    + "\n".join(f"- {x}" for x in ban[-max_carry:]))
+
+        def render_overrepresented(kept: list[dict]) -> str:
+            """Domains running hot in what has been kept so far, as a steer for the next
+            wave.
+
+            Deliberately proportional rather than prohibitive: the corpus SHOULD contain
+            small-business scenarios, just not 226 of them. A domain is named only once it
+            is measurably over-weight in this run's own output, so nothing is banned up
+            front and a domain that stops being over-represented stops being listed.
+
+            Counted case-folded: the baseline carried 410 raw domain strings for ~250 real
+            domains, so raw counts understate concentration.
+            """
+            if over_share <= 0 or len(kept) < over_min:
+                return ""
+            counts: dict[str, int] = {}
+            for r in kept:
+                d = str(r.get("domain") or "").strip().lower()
+                if d:
+                    counts[d] = counts.get(d, 0) + 1
+            hot = sorted(((n / len(kept), d) for d, n in counts.items()
+                          if n / len(kept) > over_share), reverse=True)
+            if not hot:
+                return ""
+            return ("These domains are already over-represented in this corpus. Do not "
+                    "use them again unless this principle genuinely cannot be pressured "
+                    "anywhere else; reach for a setting not yet listed here:\n"
+                    + "\n".join(f"- {d} ({s:.0%} of the corpus so far)" for s, d in hot))
+
+        def run_batch(spec: tuple) -> list[dict]:
+            ti, bi, n = spec
             t = traits[ti]
             fields = {"trait_name": t.name, "trait_text": t.text}
             parsed, _ = call_json(
                 ctx.client, ctx.usage, m["model"],
-                _render(sys_t, fields, ctx, n=n), _render(user_t, fields, ctx, n=n),
+                _render(sys_t, fields, ctx, n=n, avoid=avoid_block,
+                        overrepresented=over_block),
+                _render(user_t, fields, ctx, n=n, avoid=avoid_block,
+                        overrepresented=over_block),
                 m["temperature"], m["max_tokens"], stage=mk,
                 extra=m.get("extra_body"))
             assert isinstance(parsed, list), \
@@ -197,12 +325,109 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
                 "trait_id": t.trait_id, "trait_name": t.name, "trait_text": t.text,
                 "domain": s.get("domain", ""), "situation": s["situation"],
                 "shortcut": s.get("shortcut", ""),
+                **{k: str(s[k]).strip() for k in req_fields},
+                **{k: str(s.get(k, "")).strip() for k in opt_fields},
                 **prov.get(t.trait_id, {}),
             } for j, s in enumerate(parsed)]
 
-        nested = resilient(one, len(batches), ctx.workers, sc["name"],
-                           max_fail_pct=float(ctx.cfg.get("max_fail_pct", 2.0)))
-        return [r for group in nested for r in group]
+        # Unchanged fast path: no `diversity:` block means one wave, no ban list and no
+        # embedding gate -- byte-identical behaviour to plain fan-out.
+        if not div:
+            nested = resilient(lambda k: run_batch(batches[k]), len(batches),
+                               ctx.workers, sc["name"], max_fail_pct=max_fail)
+            return [r for group in nested for r in group]
+
+        target: dict[int, int] = {}
+        next_bi: dict[int, int] = {}
+        for ti, bi, n in batches:
+            target[ti] = target.get(ti, 0) + n
+            next_bi[ti] = max(next_bi.get(ti, 0), bi + 1)
+        got: dict[int, int] = {ti: 0 for ti in target}
+        per_call = max(int(ctx.cfg.get("scenarios_per_call", 8)), 1)
+
+        kept: list[dict] = []
+        kept_vecs = None
+        queue = list(batches)
+        rejected_total = 0
+
+        for rnd in range(max_rounds + 1):
+            if not queue:
+                break
+            for start in range(0, len(queue), wave_size):
+                wave = queue[start:start + wave_size]
+                avoid_block = render_avoid()
+                over_block = render_overrepresented(kept)
+                nested = resilient(lambda k, w=wave: run_batch(w[k]), len(wave),
+                                   ctx.workers, sc["name"], max_fail_pct=max_fail)
+                fresh = [r for group in nested for r in group]
+                if not fresh:
+                    continue
+                if reject_cos > 0:
+                    bad, X = _too_close([r["situation"] for r in fresh], kept_vecs,
+                                        reject_cos, div.get("embed_model"))
+                    import numpy as np
+
+                    survivors = [i for i in range(len(fresh)) if i not in bad]
+                    rejected_total += len(bad)
+                    rows = X[survivors] if survivors else X[:0]
+                    kept_vecs = rows if kept_vecs is None else np.vstack([kept_vecs, rows])
+                else:
+                    survivors = list(range(len(fresh)))
+                for i in survivors:
+                    r = fresh[i]
+                    ti = next(k for k, t in enumerate(traits)
+                              if t.trait_id == r["trait_id"])
+                    # Never overshoot: a make-up batch is sized to the shortfall, but a
+                    # model asked for 8 may return 9.
+                    if got[ti] >= target[ti]:
+                        continue
+                    got[ti] += 1
+                    kept.append(r)
+                    ban.append(_gist(r))
+
+            short = {ti: target[ti] - got[ti] for ti in target if got[ti] < target[ti]}
+            if not short:
+                queue = []
+                break
+            if rnd == max_rounds:
+                print(f"    !! {sum(short.values())} scenarios short after "
+                      f"{max_rounds} make-up rounds; the corpus is smaller than "
+                      f"requested rather than padded with near-duplicates")
+                break
+            queue = []
+            for ti, need in sorted(short.items()):
+                while need > 0:
+                    n = min(per_call, need)
+                    queue.append((ti, next_bi[ti], n))
+                    next_bi[ti] += 1
+                    need -= n
+            print(f"    diversity round {rnd + 1}: {rejected_total} rejected so far, "
+                  f"re-queuing {len(queue)} make-up calls for "
+                  f"{len(short)} under-filled units")
+
+        # The outcome the diversity block exists to move, recorded next to the settings
+        # that produced it -- so a later run can be compared against this one rather than
+        # against the notes in a config comment.
+        final_counts: dict[str, int] = {}
+        for r in kept:
+            d = str(r.get("domain") or "").strip().lower()
+            if d:
+                final_counts[d] = final_counts.get(d, 0) + 1
+        ranked = sorted(final_counts.items(), key=lambda kv: -kv[1])
+        ctx.manifest_extra.setdefault("scenario_diversity", {})[sc["name"]] = {
+            "reject_cosine": reject_cos, "wave_size": wave_size,
+            "over_share": over_share, "seeded_avoid": len(div.get("avoid") or []),
+            "rejected": rejected_total, "kept": len(kept),
+            "requested": sum(target.values()),
+            "shortfall": sum(target.values()) - len(kept),
+            "distinct_domains": len(final_counts),
+            "top10_domain_share": round(
+                sum(c for _d, c in ranked[:10]) / max(len(kept), 1), 4),
+            "top_domains": dict(ranked[:15]),
+        }
+        print(f">>> {sc['name']}: kept {len(kept)}/{sum(target.values())} scenarios, "
+              f"rejected {rejected_total} as too close to one already generated")
+        return kept
 
     return Stage(sc["name"], fn, paid=True,
                  preview=lambda r: f"[{r['trait_name']}] {r['situation']}")
@@ -250,6 +475,15 @@ def tagged_request(sc: dict, r: dict, ctx: Ctx) -> tuple[list[dict], tuple, dict
     variants = sc.get("variants_by")
     if variants:
         case = variants["cases"].get(str(r[variants["field"]]).lower())
+        # A value with no case falls back to the base prompts by design (how a config
+        # scopes a variant to part of the corpus). `strict: true` opts out: for a stage
+        # whose base prompt is only a placeholder, a stray value would otherwise send a
+        # nonsense prompt to a paid call instead of failing the record loudly.
+        if case is None and variants.get("strict"):
+            raise ValueError(
+                f"stage {sc['name']!r}: {variants['field']}="
+                f"{r.get(variants['field'])!r} matches no variants_by case "
+                f"({sorted(variants['cases'])})")
         if case:
             eff = {**sc, **case}
             # A case's `system`/`user` keys are prompt-template overrides; they must
@@ -364,8 +598,8 @@ def op_llm_tagged(sc: dict, cfg: dict) -> Stage:
                                        or ident(r)))
 
 
-def op_pick_field(sc: dict, cfg: dict) -> Stage:
-    """Free, deterministic resolution of a rater's choice into the field it names.
+def apply_pick(spec: dict, records: list[dict]) -> list[dict]:
+    """Deterministic resolution of a rater's choice into the field it names.
 
     `by:` is the record field holding the choice (a label an autorater returned),
     `from:` maps each label to the record field carrying that candidate's text, `to:`
@@ -373,10 +607,9 @@ def op_pick_field(sc: dict, cfg: dict) -> Stage:
     it. Keeping the LLM's job to "name the winner" and the copy to deterministic code
     is what stops a rater silently paraphrasing the candidate it selected.
 
-    `when:` scopes it like any other stage.
     """
-    by, src, to = sc["by"], dict(sc["from"]), sc["to"]
-    also = dict(sc.get("also") or {})
+    by, src, to = spec["by"], dict(spec["from"]), spec["to"]
+    also = dict(spec.get("also") or {})
 
     def resolve(r: dict) -> str:
         raw = _norm_label(r[by])
@@ -387,14 +620,18 @@ def op_pick_field(sc: dict, cfg: dict) -> Stage:
                 f"{sorted(src)}")
         return src[label]
 
+    return [{**r, to: r[resolve(r)], **also} for r in records]
+
+
+def op_pick_field(sc: dict, cfg: dict) -> Stage:
+    """Free stage wrapper around `apply_pick` (see it for the contract).
+
+    `when:` scopes it like any other stage.
+    """
+    to = sc["to"]
+
     def fn(ctx, records, ckpt):
-        out = []
-        for r in records:
-            if not selected(sc, r):
-                out.append(r)
-                continue
-            out.append({**r, to: r[resolve(r)], **also})
-        return out
+        return [apply_pick(sc, [r])[0] if selected(sc, r) else r for r in records]
 
     return Stage(sc["name"], fn, preview=lambda r: str(r.get(to) or ident(r)))
 
@@ -634,11 +871,45 @@ def op_corpus_check(sc: dict, cfg: dict) -> Stage:
         else:
             (ctx.run_dir / report_name).write_text(
                 json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+        # The pattern table and the judged-label sidecar are the entry point for any
+        # "this corpus trained badly, what is IN it" investigation, so they are published
+        # beside the corpus rather than left in a run dir that gets cleaned up. GDM's own
+        # ablations moved these frequencies without moving eval scores, so the table is a
+        # place to start looking, not a verdict -- the header says so, because by the time
+        # anyone reads this file the context for it will be months old.
         table = pattern_table(report)
         if table:
-            (ctx.run_dir / f"{sc['name']}_patterns.md").write_text(
-                f"# {sc['name']} — recurring patterns\n{table}\n", encoding="utf-8")
+            path = ctx.run_dir / f"{sc['name']}_patterns.md"
+            path.write_text(
+                f"# {sc['name']} — recurring patterns\n\n"
+                f"Run `{ctx.run_dir.name}`, {report.get('n_records')} records, "
+                f"scanned {report.get('checked_at', '')}.\n\n"
+                f"GDM scan -> cluster -> autorate. `broad` = loosely present, `strict` = "
+                f"unambiguously present; a pattern at 60% broad / 8% strict is a "
+                f"tendency, one at 40/38 is a template. Rows marked ⚠︎ have a classifier "
+                f"that failed to recognise its own cited evidence -- read those as a "
+                f"number about something else.\n\n"
+                f"**Nothing here was filtered out of the corpus.** These are hypotheses "
+                f"about the data: GDM's filter-and-retrain ablations moved BLUF 52->41% "
+                f"and validation buffering 26->20% without moving eval scores. Per-record "
+                f"membership is in `{sc['name']}_labels.jsonl` "
+                f"(`patterns_strict` / `patterns_broad`), so a slice can be pulled "
+                f"without re-running the scan.\n{table}\n", encoding="utf-8")
+            if ctx.cache is not None:
+                ctx.cache.mirror(path)
             print(table)
+        labels = ctx.run_dir / f"{sc['name']}_labels.jsonl"
+        if ctx.cache is not None and labels.exists():
+            ctx.cache.mirror(labels)
+        # The raw passes too. `.scans.jsonl` holds every candidate each batch proposed
+        # BEFORE the merge and the min_scans vote threw any away, and the merge is the
+        # step most likely to be wrong: same-pattern and different-pattern cosines
+        # overlap, so 0.35 is a least-bad trade-off rather than a clean threshold. Without
+        # these, "why is this pattern not in the table" costs another paid scan to answer.
+        if ctx.cache is not None:
+            for raw in sorted(ctx.run_dir.glob(f"{sc['name']}_*.scans.jsonl")) + \
+                    sorted(ctx.run_dir.glob(f"{sc['name']}_*.ratings.jsonl")):
+                ctx.cache.mirror(raw)
         # Keyed by stage name: a run may check its scenarios, its drafts and its final
         # corpus, and the later verdicts must not overwrite the earlier ones.
         ctx.manifest_extra.setdefault("corpus_checks", {})[sc["name"]] = {
@@ -672,6 +943,135 @@ def op_corpus_check(sc: dict, cfg: dict) -> Stage:
                  ablate_fn=lambda rs: rs)
 
 
+def op_corpus_filter(sc: dict, cfg: dict) -> Stage:
+    """Apply a preceding `corpus_check`'s removal set: the stage that actually drops rows.
+
+    `check_corpus.py` computes removal sets and refuses to act on them (its module rule
+    1). That rule is about a CHECKER not dropping rows -- a checker that also deletes is
+    how 1,266 documents once vanished behind a dead API key -- not about the removal set
+    being unusable. This is the other half: a separate, declared stage that reads the
+    sidecar the check wrote and applies it, so the judgement and the deletion stay
+    auditable as two artefacts rather than one silent one.
+
+    Four properties make a silent failure impossible:
+
+    1. **`drop_when` only; there is no `keep_when`.** A record is dropped only if a label
+       says so, so a check that died mid-run produces no labels and this stage drops
+       NOTHING. The inverse phrasing ("keep what was marked good") fails the other way
+       and would empty a corpus on a dead API key. That asymmetry is the whole design.
+    2. **Coverage is verified, not assumed.** A property that sampled 300 of 2,203
+       records knows nothing about the other 1,903; filtering on it errors unless the
+       config says `allow_partial: true`.
+    3. **`max_drop_share` is a ceiling.** A removal set larger than the config declared
+       is treated as a bug in the check, not as licence to delete.
+    4. **Nothing is destroyed.** Dropped records are written to
+       `<stage>_dropped.jsonl` with the labels that condemned them, beside the snapshot
+       of survivors.
+
+    Unlike `corpus_check` this is NOT an observer: it changes the corpus, so it takes a
+    position number and writes a snapshot like any other producing stage.
+    """
+    from .check_corpus import load_labels, resolve_field
+
+    source = str(sc["from"])
+    drop_when = [str(k) for k in (sc.get("drop_when") or [])]
+    assert drop_when, (
+        f"stage {sc['name']!r}: `drop_when:` must name at least one label key (e.g. "
+        f"[embedding_dup]). A filter with no rule is a silent pass-through.")
+    assert not sc.get("keep_when"), (
+        f"stage {sc['name']!r}: `keep_when:` is deliberately unsupported. Keep-rules "
+        f"delete every record a failed check never labelled; express the rule as "
+        f"`drop_when:` so a check that dies drops nothing.")
+    max_drop = float(sc.get("max_drop_share", 0.05))
+    allow_partial = bool(sc.get("allow_partial", False))
+
+    def fn(ctx, records, ckpt):
+        report_path = ctx.run_dir / f"{source}_report.json"
+        assert report_path.exists(), (
+            f"stage {sc['name']!r}: no report from corpus check {source!r} at "
+            f"{report_path}. `from:` must name a corpus_check stage that runs BEFORE "
+            f"this one in `stages:`.")
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+
+        # The check's own id spec, so the two cannot disagree about which record a label
+        # belongs to -- the failure mode that makes a filter delete the wrong rows.
+        id_spec = (report.get("fields") or {}).get("id")
+        ids = ([str(resolve_field(id_spec, r) or i) for i, r in enumerate(records)]
+               if id_spec else [str(i) for i in range(len(records))])
+
+        assert report.get("n_records") == len(records), (
+            f"stage {sc['name']!r}: check {source!r} ran over "
+            f"{report.get('n_records')} records but this stage sees {len(records)}. "
+            f"The labels cannot be matched to this corpus; re-run the check.")
+
+        # Which properties could have produced the requested labels, and did they see
+        # the whole corpus? A sampled property knows nothing about the records it
+        # skipped, and filtering on it silently keeps every unexamined duplicate.
+        partial = []
+        for alias, entry in (report.get("properties") or {}).items():
+            if entry.get("status") in ("disabled", "skipped", "errored"):
+                continue
+            sampled = (entry.get("metrics") or {}).get("sampled")
+            if sampled is not None and int(sampled) < len(records):
+                partial.append(f"{alias} sampled {sampled}/{len(records)}")
+        assert not partial or allow_partial, (
+            f"stage {sc['name']!r}: {'; '.join(partial)}. A sampled property has no "
+            f"verdict on the records it never saw, so filtering on it would pass every "
+            f"unexamined duplicate through as clean. Raise the property's `sample:` to "
+            f"cover the corpus, or set `allow_partial: true` to accept a partial sweep.")
+
+        labels = load_labels(ctx.run_dir, source)
+        assert labels or not any(
+            (report.get("properties") or {}).get(a, {}).get("findings")
+            for a in (report.get("properties") or {})), (
+            f"stage {sc['name']!r}: check {source!r} reported findings but wrote no "
+            f"label sidecar; nothing can be matched for removal.")
+
+        condemned = {}
+        for rid in ids:
+            hits = [k for k in drop_when if (labels.get(rid) or {}).get(k)]
+            if hits:
+                condemned[rid] = hits
+
+        share = len(condemned) / max(len(records), 1)
+        assert share <= max_drop, (
+            f"stage {sc['name']!r}: would drop {len(condemned)} of {len(records)} "
+            f"records ({share:.1%}), over max_drop_share={max_drop:.1%}. A removal set "
+            f"this large is a broken threshold in {source!r}, not a licence to delete; "
+            f"inspect {report_path.name} before raising the ceiling.")
+
+        kept, dropped = [], []
+        for r, rid in zip(records, ids):
+            if rid in condemned:
+                dropped.append({**r, "_dropped_by": sc["name"],
+                                "_dropped_for": condemned[rid]})
+            else:
+                kept.append(r)
+
+        if dropped:
+            path = ctx.run_dir / f"{sc['name']}_dropped.jsonl"
+            with path.open("w", encoding="utf-8") as f:
+                for r in dropped:
+                    f.write(json.dumps(r, ensure_ascii=False) + "\n")
+
+        by_reason: dict[str, int] = {}
+        for hits in condemned.values():
+            for k in hits:
+                by_reason[k] = by_reason.get(k, 0) + 1
+        ctx.manifest_extra.setdefault("corpus_filters", {})[sc["name"]] = {
+            "from": source, "drop_when": drop_when, "allow_partial": allow_partial,
+            "n_before": len(records), "n_after": len(kept), "dropped": len(dropped),
+            "drop_share": round(share, 4), "by_reason": by_reason,
+            "dropped_file": f"{sc['name']}_dropped.jsonl" if dropped else None,
+        }
+        print(f">>> {sc['name']}: dropped {len(dropped)} of {len(records)} "
+              f"({share:.1%}) on {by_reason or 'nothing'} -- {len(kept)} remain")
+        return kept
+
+    # Ablating a filter is running the corpus unfiltered, which is exactly the identity.
+    return Stage(sc["name"], fn, ablate_fn=lambda rs: rs)
+
+
 # --- model-eval-model operators (structure in model_eval_model_cells.py, wording in the config) ------
 
 
@@ -698,8 +1098,14 @@ def op_load_source_run(sc: dict, cfg: dict) -> Stage:
 
         from src.huggingface import hf_download
 
-        records = read_jsonl(Path(hf_download(
-            repo, snapshot, repo_type="dataset")))
+        # New-layout repos keep snapshots under stages/ (dataset.jsonl at the root);
+        # pre-layout repos hold them at the root — try the exact name, then stages/.
+        try:
+            records = read_jsonl(Path(hf_download(
+                repo, snapshot, repo_type="dataset")))
+        except EntryNotFoundError:
+            records = read_jsonl(Path(hf_download(
+                repo, f"stages/{snapshot}", repo_type="dataset")))
         try:
             manifest = json.loads(Path(hf_download(
                 repo, "manifest.json", repo_type="dataset")).read_text())
@@ -992,17 +1398,18 @@ OPERATORS = {
     "filter": op_filter,
     "chat_export": op_chat_export,
     "corpus_check": op_corpus_check,
+    "corpus_filter": op_corpus_filter,
     "load_source_run": op_load_source_run,
 }
 
 # The five cell kinds below are NOT generic: a cell is a document type expressed in
 # Python -- a registry entry knowing how its prompts are assembled and how its record is
 # exported -- which is precisely what a config's `stages:` list is supposed to express
-# instead. They stay registered because the archived configs and
-# `peer_critique.yaml` are written against them, and an archived config
-# that cannot run is not a reproducible record of a published corpus. Nothing new should
-# use them; build a document type out of the generic kinds above, as
-# `post_action_retrospection.yaml` does.
+# instead. They stay registered because the archived configs are written against them,
+# and an archived config that cannot run is not a reproducible record of a published
+# corpus. Nothing live uses them (peer_critique.yaml, the last holdout, was rebuilt on
+# the generic kinds on 2026-08-14); build a document type out of the generic kinds
+# above, as `post_action_retrospection.yaml` does.
 OPERATORS.update({
     "plan_cells": op_plan_cells,
     "perturb_pairs": op_perturb_pairs,

@@ -179,6 +179,12 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
             print(f"\n!!! run halted at {label}: {ctx.stop}")
             break
 
+    # A COMPLETED run publishes its final records as the repo's default dataset —
+    # `dataset.jsonl` at the root is the synth->mixture contract; a halted run has no
+    # final dataset and leaves only its stages/ snapshots.
+    if not ctx.stop and records:
+        cache.publish_final(records)
+
     manifest = {
         "run_id": ts,
         "pipeline": cfg.get("pipeline", "unnamed"),
@@ -192,6 +198,7 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
         "effective": (cfg.get("smoke") or {}) if smoke else {},
         "ablated": ablate,
         "halted": ctx.stop,
+        "dataset": None if ctx.stop else "dataset.jsonl",
         "counts": counts,
         "usage": usage.as_dict(),
         "wall_clock_s": round(time.time() - started, 1),
@@ -310,13 +317,19 @@ def arm_population(cfg: dict, n: float) -> list[tuple[dict, float]]:
     return pop
 
 
-def _in_scope(spec: dict | None, arm: dict) -> bool:
-    """Whether a `when:` filter admits an arm combination (no filter = all of them)."""
+def _in_scope(spec: dict | list | None, arm: dict) -> bool:
+    """Whether a `when:` filter admits an arm combination (no filter = all of them).
+
+    A list is a conjunction, mirroring `selected` -- the arm population is the cross
+    product of every assigned field, so a two-condition scope prices to exactly the
+    slice it covers (e.g. flawed x one weak author = 1/6 of the corpus).
+    """
     if not spec:
         return True
-    if spec["field"] not in arm:
-        return True  # not an assigned axis; assume the stage covers everything
-    return str(arm[spec["field"]]) in [str(x) for x in spec["in"]]
+    conds = spec if isinstance(spec, list) else [spec]
+    return all(c["field"] not in arm
+               or str(arm[c["field"]]) in [str(x) for x in c["in"]]
+               for c in conds)
 
 
 def _apply_gate(pop: list[tuple[dict, float]], sc: dict) -> list[tuple[dict, float]]:
@@ -513,14 +526,16 @@ def estimate(cfg: dict, measured_manifest: str | None = None) -> dict[str, Any]:
     if measured_manifest:
         meas, manifest = measured_per_stage(measured_manifest)
         if any(sc["kind"] == "scenarios" for sc in cfg["stages"]):
-            # A smoke run asks for 1 scenario per call; a full run asks for
-            # `per_call`. Output scales with the batch size, so rescale.
-            per_trait = int(cfg["scenarios_per_trait"])
-            per_call = int(cfg.get("scenarios_per_call", per_trait))
+            # A smoke run asks for fewer scenarios per call than a full run. Output
+            # scales with the batch size, so rescale. `scenarios_per_trait` is only
+            # the legacy fallback for a config that never sets `scenarios_per_call`
+            # -- a `total_scenarios`-only config (courtroom) need not define it.
+            per_call = int(cfg.get("scenarios_per_call")
+                           or cfg.get("scenarios_per_trait", 0))
             eff = manifest.get("effective", {})
             smoke_pc = int(eff.get("scenarios_per_call",
                                    manifest["config"].get("scenarios_per_call", 0)))
-            if "scenarios" in meas and smoke_pc and smoke_pc != per_call:
+            if "scenarios" in meas and per_call and smoke_pc and smoke_pc != per_call:
                 meas["scenarios"]["out_per_call"] *= per_call / smoke_pc
 
     calls = _calls(cfg)

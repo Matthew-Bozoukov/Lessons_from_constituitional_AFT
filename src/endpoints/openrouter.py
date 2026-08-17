@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, Sequence
 
 from dotenv import load_dotenv
@@ -21,21 +22,61 @@ from tqdm import tqdm
 load_dotenv()
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+PROVIDER_PINS_PATH = Path(__file__).resolve().parents[2] / "configs/endpoints/providers.yaml"
+
+_pins: dict | None = None
+
+
+def provider_pin(model: str) -> dict:
+    """The OpenRouter `provider` routing object pinned for `model`.
+
+    THE single source of truth is configs/endpoints/providers.yaml: one provider per
+    model id (per-model entry merged over `defaults`), no prefix inference, no
+    free-routing fallback. Hosts of the same weights are NOT interchangeable: they
+    differ in quantization/backend, wrap models in their own content filters
+    (2026-08-14, difficult-advice revise_prompts: Bedrock refused 2.6% of calls as
+    content_filter and Google Vertex refused the same prompts — all served fine by
+    Anthropic), and only the vendor's endpoint honors extensions like `cache_control`
+    reliably.
+
+    Raises:
+        ValueError: `model` has no entry. Every model routed through OpenRouter must
+            be served by the same provider on every call — add its ONE provider to
+            the yaml (check https://openrouter.ai/api/v1/models/<id>/endpoints).
+    """
+    global _pins
+    if _pins is None:
+        from omegaconf import OmegaConf
+
+        cfg = OmegaConf.to_container(OmegaConf.load(PROVIDER_PINS_PATH))
+        _pins = {mid: {**cfg["defaults"], **spec}
+                 for mid, spec in (cfg["models"] or {}).items()}
+    pin = _pins.get(model)
+    if pin is None:
+        raise ValueError(
+            f"no provider pin for {model!r}: every model routed through OpenRouter "
+            "must be served by the same provider on every call. Add its ONE provider "
+            f"to {PROVIDER_PINS_PATH} (check https://openrouter.ai/api/v1/models/"
+            f"{model}/endpoints), or pass an explicit extra_body['provider'] block.")
+    return pin
 
 
 class EmptyCompletionError(RuntimeError):
     """A completion came back with `content=None` despite finish_reason=stop.
 
-    OpenRouter load-balances a model across many upstream providers and re-routes on
-    every call; a provider intermittently returns a blank body (observed on
-    deepseek-chat-v3.1, 2026-08-07 — 4/20 concurrent calls, unreproducible minutes
-    later across 18 calls / 7 providers). Treating it as transient re-routes to
-    another provider instead of failing the whole item on one bad backend.
+    Providers intermittently return a blank body (observed on deepseek-chat-v3.1,
+    2026-08-07 — 4/20 concurrent calls, unreproducible minutes later). Treating it as
+    transient retries the call — against the SAME provider, since every model is pinned
+    (configs/endpoints/providers.yaml) — instead of failing the whole item on one bad
+    response.
     """
 
 
-# Only transient failures are retried; everything else fails fast and surfaces. An empty
-# completion is transient BY ROUTING: the retry lands on a different upstream provider.
+# Only transient failures are retried; everything else fails fast and surfaces. With
+# every model pinned to one provider, a retry always lands on the SAME host — it covers
+# transient upstream blips, and a hard refusal surfaces after the attempts. That is the
+# right failure mode: a "successful" reroute to a host that filters differently is a
+# silent data change.
 _TRANSIENT = (RateLimitError, APIConnectionError, APITimeoutError, EmptyCompletionError)
 
 
@@ -48,12 +89,75 @@ class ChatResult:
         prompt_tokens: Prompt token count reported by the API.
         completion_tokens: Completion token count reported by the API.
         finish_reason: The provider-reported finish reason.
+        cached_tokens: Prompt tokens served from cache, when the provider reports it.
+            0 means "no cache hit OR the provider said nothing", so it is a floor on
+            savings rather than a measurement -- see `CACHE_MARK`.
+        provider: Which upstream provider actually served the call — record it in
+            run artifacts the way temperature is recorded (see providers.yaml).
     """
 
     content: str
     prompt_tokens: int
     completion_tokens: int
     finish_reason: str
+    cached_tokens: int = 0
+    provider: str = ""
+
+
+# Everything BEFORE this marker in a message becomes a separately cacheable block.
+#
+# Data generation re-sends one long invariant prefix on every call: the difficult-advice
+# refine and rewrite stages each inject the whole constitution, which measured 5,763
+# tokens -- 65% and 56% of their input respectively, across 4,000 calls in a 2,000-record
+# run. Anthropic bills a cache read at 0.1x and a write at 1.25x, so caching that prefix
+# saves ~$62 of a ~$234 run, and cached reads are faster besides.
+#
+# The marker is placed in the CONFIG's prompt text, not here, because only the prompt
+# knows where its invariant part ends -- for those two stages that is the closing
+# </constitution> tag, after which the target trait varies. It is stripped before the
+# request goes out, so the model sees byte-identical text either way; `test_openrouter.py`
+# pins that. A prompt with no marker is sent unchanged, so this is inert until opted into.
+#
+# Caveat worth knowing: Anthropic ignores a cached prefix below ~1024 tokens, silently.
+# Marking a short prefix is not an error, it just does nothing.
+CACHE_MARK = "<<<cache>>>"
+
+
+def _split_cached(content: str) -> list[dict] | str:
+    """Turn marked text into content blocks, or return it unchanged when unmarked.
+
+    Returns a plain string in the no-marker case rather than a one-element block list:
+    an unmarked call must produce a byte-identical request to the one it produced before
+    this function existed.
+    """
+    if CACHE_MARK not in content:
+        return content
+    prefix, _, rest = content.partition(CACHE_MARK)
+    return [{"type": "text", "text": prefix,
+             "cache_control": {"type": "ephemeral"}},
+            {"type": "text", "text": rest}]
+
+
+def apply_cache_control(messages: list[dict], model: str) -> list[dict]:
+    """Convert `CACHE_MARK` in any message into an Anthropic cache breakpoint.
+
+    Gated on the model being an Anthropic one: `cache_control` is a provider extension,
+    and passing it to a model that does not understand it risks a 400 rather than a
+    silent no-op. For every other provider the marker is simply stripped, so the same
+    config runs anywhere and only the billing differs.
+    """
+    if not any(CACHE_MARK in str(m.get("content") or "") for m in messages):
+        return messages
+    anthropic = model.startswith("anthropic/")
+    out = []
+    for m in messages:
+        content = str(m.get("content") or "")
+        if CACHE_MARK not in content:
+            out.append(m)
+            continue
+        out.append({**m, "content": _split_cached(content) if anthropic
+                    else content.replace(CACHE_MARK, "")})
+    return out
 
 
 class OpenRouterClient:
@@ -66,7 +170,20 @@ class OpenRouterClient:
             api_key: OpenRouter API key. Falls back to OPENROUTER_API_KEY env var.
         """
         key = api_key or os.environ["OPENROUTER_API_KEY"]
-        self.client = OpenAI(base_url=OPENROUTER_BASE_URL, api_key=key)
+        # Both bounds are explicit because the defaults COMPOUND with the `chat` retry
+        # below. Left implicit, one stuck request costs 6 tenacity attempts x 3 SDK
+        # attempts x the SDK's 600s timeout ~ 3 hours, during which it holds a worker.
+        # Measured 2026-08-13: a 197-record run took 10.7h instead of ~25min because two
+        # such requests drained a 16-worker pool; the 67 records queued behind the second
+        # one completed in 3 minutes once it cleared.
+        #
+        # timeout 420s, not lower: the rewrite stage generates up to 12,288 tokens, which
+        # legitimately runs into the low hundreds of seconds. This bounds a HANG, and must
+        # stay above the slowest honest call or it will truncate real work.
+        # max_retries=0: retry policy lives in `chat` (tenacity), which alone knows which
+        # errors are transient. Two retry layers multiply rather than add.
+        self.client = OpenAI(base_url=OPENROUTER_BASE_URL, api_key=key,
+                             timeout=420.0, max_retries=0)
 
     @retry(
         retry=retry_if_exception_type(_TRANSIENT),
@@ -92,11 +209,18 @@ class OpenRouterClient:
             **kwargs: Passed through to the completions API.
 
         Returns:
-            A ChatResult with content and token usage.
+            A ChatResult with content, token usage and the serving provider.
         """
+        # Route through the model's provider pin (configs/endpoints/providers.yaml).
+        # A caller-supplied extra_body["provider"] wins; otherwise an unpinned model
+        # is a hard error inside provider_pin — free routing is never the fallback.
+        extra = dict(kwargs.pop("extra_body", None) or {})
+        if "provider" not in extra:
+            extra["provider"] = provider_pin(model)
+        kwargs["extra_body"] = extra
         resp = self.client.chat.completions.create(
             model=model,
-            messages=messages,
+            messages=apply_cache_control(messages, model),
             temperature=temperature,
             max_tokens=max_tokens,
             **kwargs,
@@ -111,11 +235,18 @@ class OpenRouterClient:
                 f"Model {model} returned empty content (provider "
                 f"{getattr(resp, 'provider', '?')}): {resp}")
         usage = resp.usage
+        # Providers report cache hits in different places and some not at all, so this is
+        # read defensively and defaults to 0. It exists so a run can PROVE caching worked
+        # rather than assume it: a stage whose cached_tokens stays 0 is paying full price.
+        details = getattr(usage, "prompt_tokens_details", None) if usage else None
+        cached = getattr(details, "cached_tokens", 0) or 0
         return ChatResult(
             content=content,
             prompt_tokens=usage.prompt_tokens if usage else 0,
             completion_tokens=usage.completion_tokens if usage else 0,
             finish_reason=choice.finish_reason or "",
+            cached_tokens=int(cached),
+            provider=getattr(resp, "provider", "") or "",
         )
 
 

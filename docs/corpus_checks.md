@@ -467,8 +467,19 @@ Three readings drive the surprising defaults:
 - **Mean 4-gram Jaccard is length-dependent** (~0.003 at 1,000 words), so its gate catches
   only severe collapse.
 - **Embedding cosine is length-dependent too**, per the table above — hence
-  `cosine_min: 0.90`, which sits above the healthy corpus's *worst* pair (0.886) at the
-  measured unit, and `max_mean_words`.
+  `max_mean_words`, and originally `cosine_min: 0.90`, set to sit above the corpus's
+  *worst* pair (0.886) on the assumption that corpus was clean.
+
+  **`cosine_min` is 0.86 as of 2026-08-13, and the 0.90 reasoning was wrong.** Re-measured
+  over all 2,205 scenarios (`scratch/measure_dedup_threshold.py`): 0.90 and above yield
+  **zero** pairs, and the 0.886 pair it was set to clear is a genuine clone — one
+  postdoc / funding-cliff / borderline-significance story appearing under two trait ids
+  and two different domain labels. A threshold calibrated to fire zero times on the corpus
+  it was measured on is not a threshold. 0.86 catches real clones with clusters still
+  small enough to audit (max 3); below 0.84 components chain until one holds a third of
+  the corpus. Note what this does **not** buy: at 0.86 it removes 0.5% of a corpus that
+  holds 46.8% of its mass in ten domains. Duplication and concentration are different
+  problems, and only the first one has a threshold.
 
 One default is **not** measured and is labelled as such in the registry:
 `quality_filter.drop_rate_max = 0.10` comes from GDM's framing that a final filter is a

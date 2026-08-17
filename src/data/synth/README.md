@@ -157,6 +157,15 @@ repo. `manifest.json` records git sha, constitution sha256, ablations, per-stage
 and wall clock; `--estimate --measured <smoke manifest>` prices a full run from real
 per-call token counts (priors live in each model block's `assumed_tokens`).
 
+**HF repo layout** (the synth→mixture contract; the local run dir stays flat): stage
+snapshots mirror to `stages/`, and a COMPLETED run publishes its final records as
+`dataset.jsonl` at the repo root — the default config consumers load (build_mixture:
+`dataset: <org>/<repo>` [+ `revision:`]). Every upload refreshes the
+README's `configs:` front-matter in the same commit, declaring `dataset` as the
+default config (`load_dataset(repo)` fetches it alone) and each stage as its own
+named config — which also keeps the dataset viewer working. A halted run publishes
+no `dataset.jsonl` (`manifest.json`'s `dataset` field is null).
+
 ## Document type: difficult advice (`configs/data/synth/difficult_advice.yaml`)
 
 A faithful replication of the difficult-advice recipe from
@@ -370,9 +379,14 @@ generation stages spend anything. A judge call that fails leaves its document
 **unlabelled**, never defaulted to a label.
 
 **Check where a property is decided, not only where it is finished.** Scenario diversity
-is settled at stage 2 and paid for at stages 3–6, so both scenario-generating configs
-carry a `corpus_scenarios` check right after that stage as well as a `corpus` check at
-the end. A corpus check is an **observer**: it writes no snapshot and takes no position
+is settled at stage 2 and paid for by everything after it, so every scenario-generating
+config (difficult advice, pre-action deliberation, post-action retrospection) carries a
+`corpus_scenarios` check right after that stage as well as a `corpus` check at the end.
+PR's end check sits just *before* its export: the export interleaves the untrained first
+reply and the trained reflection in the same assistant role, and `from_messages` selects
+by role only, so only the pre-export record can point the checks at the trained turn
+alone. PR also ships `quality_filter` enabled (over the whole five-part exchange), where
+difficult advice ships it off. A corpus check is an **observer**: it writes no snapshot and takes no position
 number, so inserting one mid-pipeline moves nothing after it and every completed run dir
 stays resumable. It is never cached, so a resumed run always reports on the records in
 hand.
