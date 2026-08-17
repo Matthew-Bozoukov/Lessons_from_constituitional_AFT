@@ -69,7 +69,19 @@ class EmptyCompletionError(RuntimeError):
     transient retries the call — against the SAME provider, since every model is pinned
     (configs/endpoints/providers.yaml) — instead of failing the whole item on one bad
     response.
+
+    Carries the provider's in-body error payload when one was present (e.g. Gemini's
+    PROHIBITED_CONTENT wrapped in an HTTP 200, 2026-08-17): a caller whose retries
+    exhaust can then record a TYPED refusal instead of a bare stack trace — the
+    payload distinguishes a deterministic refusal from a transient blank that never
+    recovered.
     """
+
+    def __init__(self, message: str, provider_error: dict | None = None,
+                 provider: str = "") -> None:
+        super().__init__(message)
+        self.provider_error = provider_error or {}
+        self.provider = provider
 
 
 # Only transient failures are retried; everything else fails fast and surfaces. With
@@ -228,10 +240,16 @@ class OpenRouterClient:
         if not resp.choices:
             # Same intermittent blank-body failure as content=None below, in a rarer
             # shape (choices missing entirely; observed 2026-08-17, gemini-3.7-flash
-            # cluster summary). Retryable for the same reason.
+            # cluster summary). Retryable for the same reason; the in-body error (the
+            # SDK parses unknown fields into model_extra) rides on the exception.
+            err = getattr(resp, "error", None) or (
+                getattr(resp, "model_extra", None) or {}).get("error")
             raise EmptyCompletionError(
                 f"Model {model} returned no choices (provider "
-                f"{getattr(resp, 'provider', '?')}): {resp}")
+                f"{getattr(resp, 'provider', '?')}): {resp}",
+                provider_error=(err if isinstance(err, dict)
+                                else {"message": str(err)} if err else None),
+                provider=getattr(resp, "provider", "") or "")
         choice = resp.choices[0]
         content = choice.message.content
         if content is None:
@@ -240,7 +258,8 @@ class OpenRouterClient:
             # attempts and this surfaces — the caller still sees a clear failure.
             raise EmptyCompletionError(
                 f"Model {model} returned empty content (provider "
-                f"{getattr(resp, 'provider', '?')}): {resp}")
+                f"{getattr(resp, 'provider', '?')}): {resp}",
+                provider=getattr(resp, "provider", "") or "")
         usage = resp.usage
         # Providers report cache hits in different places and some not at all, so this is
         # read defensively and defaults to 0. It exists so a run can PROVE caching worked

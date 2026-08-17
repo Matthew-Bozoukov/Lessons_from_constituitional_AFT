@@ -74,6 +74,34 @@ def test_normal_completion_does_not_retry():
     assert c.client.calls == 1
 
 
+def _errbody_resp(provider="Google"):
+    """An HTTP-200 body with choices=None and an in-body provider error — the shape
+    OpenRouter returns when Gemini's content filter blocks a request (2026-08-17)."""
+    return SimpleNamespace(
+        choices=None, usage=None, provider=provider,
+        error={"message": "Gemini blocked the request: PROHIBITED_CONTENT",
+               "code": 400})
+
+
+def test_no_choices_retries_then_surfaces_the_in_body_error():
+    # choices=None is retried like a blank body; when every attempt fails, the
+    # exception carries the provider's own error payload so callers can record a
+    # TYPED refusal instead of a bare string.
+    c = _client([_errbody_resp() for _ in range(6)])
+    with pytest.raises(EmptyCompletionError, match="no choices") as ei:
+        c.chat("google/gemini-3.7-flash", [{"role": "user", "content": "hi"}])
+    assert c.client.calls == 6
+    assert ei.value.provider == "Google"
+    assert ei.value.provider_error["code"] == 400
+    assert "PROHIBITED_CONTENT" in ei.value.provider_error["message"]
+
+
+def test_no_choices_transient_recovers_on_retry():
+    c = _client([_errbody_resp(), _resp("fine now")])
+    result = c.chat("google/gemini-3.7-flash", [{"role": "user", "content": "hi"}])
+    assert result.content == "fine now" and c.client.calls == 2
+
+
 # --- the provider registry: one model id = one provider, on every call ---------------
 # Third-party hosts of the same weights filter differently (2026-08-14: Bedrock, then
 # Google Vertex, refused difficult-advice prompts Anthropic itself serves), so every

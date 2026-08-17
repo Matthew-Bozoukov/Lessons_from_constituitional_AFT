@@ -34,6 +34,19 @@ def provider_override(provider: str | None) -> dict | None:
     return {"provider": {"order": [provider], "allow_fallbacks": False}}
 
 
+def refusal_from(exc: Exception) -> dict:
+    """Typed refusal record from an EmptyCompletionError whose retries exhausted.
+
+    The stages write this in place of the missing output (never a stand-in model's
+    text) and gate at the end — a human decides whether to accept the holes,
+    retry, or regenerate the whole stage with a different model.
+    """
+    err = getattr(exc, "provider_error", None) or {}
+    return {"provider": getattr(exc, "provider", "") or "",
+            "code": err.get("code"),
+            "message": (err.get("message") or str(exc))[:300]}
+
+
 def parse_row(row: dict) -> dict:
     """Derive the (query, response, reasoning) channels from a synth interchange row.
 

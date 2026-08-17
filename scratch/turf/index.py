@@ -34,15 +34,20 @@ from scratch.turf.common import (  # noqa: E402
     kmeans,
     load_config,
     provider_override,
+    refusal_from,
 )
 from scratch.turf.prompts import CLUSTER_SUMMARY_PROMPT  # noqa: E402
-from src.endpoints.openrouter import OpenRouterClient, map_threaded  # noqa: E402
+from src.endpoints.openrouter import (  # noqa: E402
+    EmptyCompletionError,
+    OpenRouterClient,
+    map_threaded,
+)
 from src.utils import git_sha, read_jsonl, timestamp  # noqa: E402
 
 
 def main(dir: str, k: int | None = None, summary_model: str | None = None,
          push: bool = False, name: str | None = None, config: str | None = None,
-         provider: str | None = None) -> None:
+         provider: str | None = None, accept_refusals: bool = False) -> None:
     """Build the index over `dir`/attributes.jsonl (see module docstring).
 
     Hyperparameters come from config.yaml (--config to swap); --k/--summary_model
@@ -137,7 +142,9 @@ def main(dir: str, k: int | None = None, summary_model: str | None = None,
     done_sums: dict[int, dict] = {}
     if sums_path.exists():
         if clustering_reused:
-            done_sums = {s["cluster"]: s for s in read_jsonl(sums_path)}
+            # refused entries are NOT done — a rerun retries them
+            done_sums = {s["cluster"]: s for s in read_jsonl(sums_path)
+                         if not s.get("refused")}
         else:
             sums_path.unlink()
     cluster_ids = sorted(c for c in members if c not in done_sums)
@@ -152,18 +159,24 @@ def main(dir: str, k: int | None = None, summary_model: str | None = None,
         share_reasoning = channels.count("reasoning") / len(channels)
         prefix, noun = (("The reasoning", "reasoning traces") if share_reasoning > 0.5
                         else ("The query", "queries"))
-        res = client.chat(summary_model, [{"role": "user", "content":
-                          CLUSTER_SUMMARY_PROMPT.format(
-                              channel_noun=noun, prefix=prefix,
-                              attributes="\n".join(f"- {t}" for _, _, t in top))}],
-                          temperature=float(cfg.judge_temperature),
-                          max_tokens=int(cfg.max_tokens),
-                          **({"extra_body": extra_body} if extra_body else {}))
-        summary = res.content.strip()
-        if not summary.lower().startswith(prefix.lower()):
-            summary = f"{prefix} {summary}"  # SURF's prefix enforcement
-        rec = {"cluster": cid, "size": len(members[cid]), "summary": summary,
-               "share_reasoning": share_reasoning}
+        try:
+            res = client.chat(summary_model, [{"role": "user", "content":
+                              CLUSTER_SUMMARY_PROMPT.format(
+                                  channel_noun=noun, prefix=prefix,
+                                  attributes="\n".join(f"- {t}" for _, _, t in top))}],
+                              temperature=float(cfg.judge_temperature),
+                              max_tokens=int(cfg.max_tokens),
+                              **({"extra_body": extra_body} if extra_body else {}))
+            summary = res.content.strip()
+            if not summary.lower().startswith(prefix.lower()):
+                summary = f"{prefix} {summary}"  # SURF's prefix enforcement
+            rec = {"cluster": cid, "size": len(members[cid]), "summary": summary,
+                   "share_reasoning": share_reasoning}
+        except EmptyCompletionError as e:
+            # retries exhausted — record a TYPED refusal, never a stand-in model's
+            # text; the gate below makes a human decide what happens next
+            rec = {"cluster": cid, "size": len(members[cid]), "summary": None,
+                   "share_reasoning": share_reasoning, "refused": refusal_from(e)}
         with sums_lock:  # append-as-completed: a crash re-pays only missing clusters
             with sums_path.open("a") as f:
                 f.write(json.dumps(rec) + "\n")
@@ -176,13 +189,25 @@ def main(dir: str, k: int | None = None, summary_model: str | None = None,
         for s in sorted(summaries, key=lambda s: -s["size"]):
             f.write(json.dumps(s) + "\n")
 
+    refused = sorted(s["cluster"] for s in summaries if s.get("refused"))
     manifest.update({"k_clusters": k, "trigger_attrs": len(trigger),
                      "response_attrs": len(response),
+                     "refused_summaries": refused,
                      "summary_provider_override": provider,
                      "summary_model": summary_model, "embed_model": str(cfg.embed_model),
                      "index_git_sha": git_sha(), "index_timestamp": timestamp()})
     (d / "manifest.json").write_text(json.dumps(manifest, indent=2))
     print(f">>> index built: {k} clusters over {len(trigger)} trigger attrs")
+    if refused:
+        print(f"!!! {len(refused)} summaries refused by the provider after retries: "
+              f"{refused}")
+        if not accept_refusals:
+            raise SystemExit(
+                "refusals present (recorded as summary=null in "
+                "cluster_summaries.jsonl + manifest.refused_summaries). Rerun to "
+                "retry them, regenerate the stage with a different --summary_model "
+                "for a homogeneous artifact, or pass --accept_refusals to keep the "
+                "holes.")
 
     if push:
         from src.huggingface import push_run_dir

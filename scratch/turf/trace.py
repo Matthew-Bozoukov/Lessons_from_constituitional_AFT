@@ -181,7 +181,8 @@ def main(case: str, rubric: str, index: str, polarity: str = "satisfy",
                 se /= np.linalg.norm(se) + 1e-9
                 echo = bool((style_emb @ se).max() > 0.75)
             table.append({"cluster": c, "hits": h, "of": int(k),
-                          "summary": s.get("summary", "?"),
+                          "summary": (s.get("summary")
+                                      or "[summary withheld: provider refusal]"),
                           "share_reasoning": s.get("share_reasoning"),
                           "style_echo": echo})
         # rank the case's own attributes by their cluster's hit count;

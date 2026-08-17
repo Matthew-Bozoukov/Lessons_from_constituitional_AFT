@@ -41,13 +41,18 @@ from scratch.turf.common import (  # noqa: E402
     parse_numbered_tags,
     parse_row,
     provider_override,
+    refusal_from,
 )
 from scratch.turf.prompts import (  # noqa: E402
     QUERY_ATTR_PROMPT,
     REASONING_ATTR_PROMPT,
     RESPONSE_ATTR_PROMPT,
 )
-from src.endpoints.openrouter import OpenRouterClient, map_threaded  # noqa: E402
+from src.endpoints.openrouter import (  # noqa: E402
+    EmptyCompletionError,
+    OpenRouterClient,
+    map_threaded,
+)
 from src.utils import git_sha, timestamp  # noqa: E402
 
 BATCH_URL = "https://openrouter.ai/api/beta/batches"
@@ -77,10 +82,16 @@ def _extract_one(client: OpenRouterClient, model: str, row: dict,
                  extra_body: dict | None = None) -> dict:
     kw = {"extra_body": extra_body} if extra_body else {}
     prompts = _row_prompts(parse_row(row), n)
-    texts = {chan: client.chat(model, [{"role": "user", "content": p}],
-                               temperature=temperature, max_tokens=max_tokens,
-                               **kw).content
-             for chan, p in prompts.items()}
+    texts = {}
+    for chan, p in prompts.items():
+        try:
+            texts[chan] = client.chat(model, [{"role": "user", "content": p}],
+                                      temperature=temperature,
+                                      max_tokens=max_tokens, **kw).content
+        except EmptyCompletionError as e:
+            # retries exhausted — typed refusal; the row stays OUT of
+            # attributes.jsonl and the run gates on it at the end
+            return {"__refused__": {"channel": chan, **refusal_from(e)}}
     return _parse_channels(texts, n)
 
 
@@ -206,7 +217,8 @@ def _batch_extract(rows: list[dict], todo: list[int], out_dir: Path, attrs_path:
 def main(dataset: str, file: str = "stage_7_sft.jsonl", out: str = "output/turf/extract",
          model: str | None = None, limit: int = 0, style: str | None = None,
          workers: int = 16, batch: bool = False, batch_rows: int = 500,
-         config: str | None = None, provider: str | None = None) -> None:
+         config: str | None = None, provider: str | None = None,
+         accept_refusals: bool = False) -> None:
     """Extract attributes for every row of `dataset`/`file` into `out`/attributes.jsonl.
 
     Hyperparameters come from config.yaml (--config to swap); --model overrides.
@@ -255,19 +267,27 @@ def main(dataset: str, file: str = "stage_7_sft.jsonl", out: str = "output/turf/
                                max_toks, extra_body),
         len(todo), max_workers=workers, desc="extracting")
 
+    refusals = []
     with attrs_path.open("a") as f:
         for j, res in enumerate(results):
-            f.write(_row_record(todo[j], res, rows))
+            if "__refused__" in res:
+                refusals.append({"row": todo[j], **res["__refused__"]})
+            else:
+                f.write(_row_record(todo[j], res, rows))
+    if refusals:
+        (out_dir / "refusals.jsonl").write_text(
+            "".join(json.dumps(r) + "\n" for r in refusals))
 
     n_reasoning = sum(1 for line in attrs_path.open()
                       if json.loads(line)["reasoning_attrs"])
-    total = len(done) + len(todo)
+    total = sum(1 for _ in attrs_path.open())
     manifest = {
         "source_dataset": dataset, "source_file": file, "rows": total,
         "rows_with_reasoning": n_reasoning, "extractor_model": model,
         "extract_temperature": temperature,
         "n_attrs_per_channel": n_attrs, "styles": styles,
         "provider_override": provider,
+        "refused_rows": sorted(r["row"] for r in refusals),
         "batch_ids": sorted(p.name for p in out_dir.glob("batch_*_done.json")),
         "git_sha": git_sha(), "timestamp": timestamp(),
     }
@@ -276,6 +296,15 @@ def main(dataset: str, file: str = "stage_7_sft.jsonl", out: str = "output/turf/
     if n_reasoning < total:
         print(f">>> WARNING: {total - n_reasoning} rows contribute no reasoning "
               "attributes — equal trigger-side contribution assumes traces everywhere")
+    if refusals:
+        print(f"!!! {len(refusals)} row(s) refused by the provider after retries "
+              f"(see {out_dir / 'refusals.jsonl'})")
+        if not accept_refusals:
+            raise SystemExit(
+                "refusals present — those rows are absent from attributes.jsonl. "
+                "Rerun to retry them, extract them with a different --provider/"
+                "--model, or pass --accept_refusals to proceed with a corpus that "
+                "omits them.")
 
 
 if __name__ == "__main__":
