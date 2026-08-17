@@ -224,6 +224,17 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         smoke: If True, train 2 steps on 8 examples to validate wiring (no HF push).
             Keyword-only: pass `--smoke`.
     """
+    # Fragmentation insurance for every training process (CLAUDE.md gotcha 2):
+    # variable batch shapes strand the allocator's fixed blocks; expandable segments
+    # let one region grow in place instead. The allocator reads this at first CUDA
+    # use (model load, below), so setting it here covers every launch form — the
+    # `train` alias, the scripts/ shim, torchrun — with no per-launcher export.
+    # setdefault keeps an operator-provided value; deliberately NOT in .env or the
+    # pod image, so it can never leak into vLLM serving (incompatible).
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+    if torch.cuda.is_initialized():
+        print(">>> WARNING: CUDA already initialized before allocator config was set "
+              "— PYTORCH_CUDA_ALLOC_CONF may not apply to this process")
     cfg = OmegaConf.load(config)
     if overrides:
         cfg.merge_with_dotlist([str(o) for o in overrides])
@@ -686,6 +697,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         "smoke": smoke,
         "timestamp": ts,
         "world_size": world_size,
+        "cuda_alloc_conf": os.environ.get("PYTORCH_CUDA_ALLOC_CONF"),
         # transformers 5.x does not print the loss to stdout, so without this the loss
         # curve exists only in a reporter we may not be running.
         "log_history": trainer.state.log_history,
