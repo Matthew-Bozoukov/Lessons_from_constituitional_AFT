@@ -3,6 +3,92 @@
 
 # LOG
 
+## 2026-08-17 — LESS-selected difficult-advice arm trained: 151 rows swapped, loss 0.8651, no control yet
+
+**Hypothesis:** the 716 difficult-advice rows in the table2 mixture are sampled RANDOMLY
+within each of the 9 constitution traits. If LESS influence scores mean anything, replacing
+that random sample with the highest-influence rows of the same trait — for the traits LESS
+ranks most important — should produce a measurably different organism.
+
+**Method.** Built `LASR-Callum/2026-08-17-table2-9284-synthdoc-716-less-swap-bests-for-traits`
+from the published control mixture, then trained one arm on it:
+`configs/train/lora_qwen36_t2_9284_synthdoc716_lessswap_dynbatch_2xh200.yaml`, Qwen3.6-27B
+r64 bf16, 1 epoch, 2xH200 DDP with token-budgeted dynamic batching (budget 8,000 resolved
+from `ModelProfile.train_memory`, global batch 16, `route_step` over 2 ranks).
+
+Traits swapped, and the rule each uses. `t6`, `t3`, `t9` are the top three by LESS
+importance — both by share of the top-220 (3.24x / 3.03x / 1.31x enrichment over a uniform
+pool) and by mean influence, which agree exactly, with a clean gap to 4th. Each of the three
+validation subtasks is DISTINCTIVELY selected for by one trait (`stayed_ai` by t6,
+`honest_declined` by t3, `codebase_resisted` by t7), so t6 and t3 rank by the subtask that
+is theirs and t9, which no subtask claims, ranks by the mean:
+
+| trait | rule | swapped | kept | lift over a random draw of that trait |
+|---|---|---|---|---|
+| t6 | `stayed_ai` | 51/79 | 28 | 1.36x |
+| t3 | `honest_declined` | 47/80 | 33 | 1.38x |
+| t9 | `score_mean` | 53/79 | 26 | 1.49x |
+
+t3 is the subtle case: its own highest-scoring subtask is `stayed_ai`, but only because
+`stayed_ai` carries larger values for EVERY trait (90.5% of the top-220 by `max` was selected
+on it), so ranking t3 by it would pick t3 rows serving a different behaviour.
+
+**Result.** 625 steps, 1 epoch, 2h25m (`train_runtime` 8,712s), **train_loss 0.8651**,
+1.148 samples/s. Adapter:
+`LASR-Callum/qwen3.6-27b-lora-t2-9284-synthdoc716-lessswap-r64` (public), carrying
+`training_meta.json` with `thinking: true` and the dataset pinned at `be616c48`. The loss
+lands within 0.001 of the C6 arm's 0.8659 on a different dataset — a sanity check that the
+recipe behaved, not a result. wandb run `8nqzw9x7` in project
+`less-swap-t2-9284-synthdoc716`. Pod destroyed, 0 active, ~$26 for the trip.
+
+**Verified before spending, because each would have failed silently.** The mixture carries
+no trait id (only `text` and `source`), so rows were joined to the scored pool on the system
+prompt — unique across all 2,203 — and all 716 joined. Replacement rows were re-rendered
+through the same ModelProfile chat template and confirmed byte-identical against rows
+already present. A pool row carries exactly one `trait_id`, so the per-trait candidate sets
+are disjoint and no row can be drawn twice. Afterwards: exactly 151 rows differ, every one a
+synthdoc row, all 9,284 Table-2 rows byte-identical, source composition and per-trait counts
+unchanged. Think markers re-counted on the swapped file rather than inherited: 9,284 empty +
+716 real + 0 missing, matching the control exactly.
+
+**Environment pinned so a control can still be made comparable later** (recorded here
+because the pod is gone): GPU `NVIDIA H200` x2 pinned explicitly rather than via the
+fallback ladder, driver 570.195.03, torch 2.7.1+cu128, transformers 5.15.0, trl 1.10.0,
+peft 0.20.0, accelerate 1.14.0, datasets 5.0.1, base-model snapshot
+`6a9e13bd6fc8f0983b9b99948120bc37f49c13e9`, seed 0. A semantic diff of this config against
+the control's showed 28 identical keys and 5 differing, all intended (`data_repo`,
+`data_revision`, `hf_repo`, `output_dir`, and a `push_to_hub` key `SFTConfig` never reads).
+
+**THIS ADAPTER IS NOT YET INTERPRETABLE.** Its control —
+`lora_qwen36_t2_9284_synthdoc_716_dynbatch_2xh200.yaml`, identical but for `data_repo` — has
+still not been trained. The only other 716-row arm is 4xH200 batch-1 legacy batching with a
+different loss path, so comparing against it would confound the selection with the training
+protocol. A control pod was provisioned alongside this run and deliberately cancelled.
+
+**Limitations of the validation set, found while inspecting it.** The 60 Dval rows are only
+**33 distinct prompts** — codebase_resisted 9, honest_declined 12, stayed_ai 12 — so
+averaging a subtask gradient over repeated samples of one prompt weights that prompt more
+than an independent draw would, and the effective validation set is about half its nominal
+size. Worse for t3 specifically: all 20 `honest_declined` rows are benign
+software-performance comparisons (which regex is faster, Timsort vs QuickSort, -O2 vs -O3)
+in which the model declines to invent a benchmark number. There is no harm dimension in that
+subtask at all, so the t3 signal covers one narrow honesty failure mode rather than the
+breadth of "scrupulously honest and non-deceptive". `stayed_ai` is the best supported —
+12 genuinely varied ways of pressuring the model to claim humanity — and
+`codebase_resisted`, the only subtask with real ethical content, is the weakest signal,
+driving 0.9% of top-220 selections.
+
+**Two process notes.** Sourcing a Windows-authored `.env` in bash leaves a trailing `\r` on
+every value; the HF token then fails as an illegal HTTP header, and the exception prints the
+token verbatim. Both pods died on this ~20s in. And the trainer pushed the adapter PRIVATE:
+`push_run_dir` defaults `private=True`, so it needed flipping afterwards.
+
+**Next steps:** (1) train the control before quoting any number from this arm. (2) Then ODCV
++ agentic-misalignment on both. (3) Temper expectations either way: 151 of 10,000 rows is a
+1.5% intervention, and a null will not separate "LESS selection does not help" from "the
+lever was too small" — nor from "the validation set was too narrow", given the limitations
+above.
+
 ## 2026-08-16 — First span-masked ablation arm trained: C6 meta-reasoning unsupervised, 0.77% of the signal
 
 
