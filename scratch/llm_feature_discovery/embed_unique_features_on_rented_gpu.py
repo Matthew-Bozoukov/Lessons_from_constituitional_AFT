@@ -1,5 +1,5 @@
-# ABOUTME: Stage 3: rent a RunPod GPU, embed the unique feature strings with Qwen3-Embedding-8B,
-# ABOUTME: pull embeddings.npy back over the pod's HTTP proxy, and terminate the pod.
+# ABOUTME: Rent a RunPod GPU, embed the unique feature strings with Qwen3-Embedding-8B, pull
+# ABOUTME: embeddings.npy back over the pod's HTTP proxy, and terminate the pod.
 
 """Embed feature strings on a throwaway RunPod GPU.
 
@@ -15,7 +15,7 @@ The pod holds no credentials: the feature list goes up and the vectors come back
 the :8080 HTTP proxy, so no SSH and no HF round-trip is involved.
 
 Run:
-  uv run python scratch/llm_feature_discovery/stage3_embed_unique_features_on_rented_gpu.py \
+  uv run python scratch/llm_feature_discovery/embed_unique_features_on_rented_gpu.py \
       create_pod
 """
 
@@ -137,7 +137,7 @@ sleep infinity
 """
 
 
-THIS_SCRIPT = "scratch/llm_feature_discovery/stage3_embed_unique_features_on_rented_gpu.py"
+THIS_SCRIPT = "scratch/llm_feature_discovery/embed_unique_features_on_rented_gpu.py"
 
 
 def create_pod(name: str = "matthew-bozoukov-feature-embed",

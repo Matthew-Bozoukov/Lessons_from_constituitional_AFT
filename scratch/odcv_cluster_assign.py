@@ -12,9 +12,9 @@ Three steps, because the middle one needs a GPU:
 
     traces  -> parse messages_record.txt into one reasoning trace per rollout
     (extract features with
-     scratch/llm_feature_discovery/stage1_extract_free_text_features_per_trace.py)
+     scratch/llm_feature_discovery/extract_free_text_features_per_trace.py)
     (embed them with
-     scratch/llm_feature_discovery/stage3_embed_unique_features_on_rented_gpu.py)
+     scratch/llm_feature_discovery/embed_unique_features_on_rented_gpu.py)
     assign  -> nearest centroid per feature, then per-cluster prevalence vs the corpus
 
 Run:
@@ -133,7 +133,7 @@ def traces(run_dir: str, out_dir: str | None = None, min_chars: int = 200) -> No
     print(f"median reasoning chars: "
           f"{statistics.median(r['metadata']['reasoning_chars'] for r in rows):.0f}")
     print(f"\n-> {path}\nnext: uv run python scratch/llm_feature_discovery/"
-          f"stage1_extract_free_text_features_per_trace.py "
+          f"extract_free_text_features_per_trace.py "
           f"--input {path} --out-dir {out}")
 
 

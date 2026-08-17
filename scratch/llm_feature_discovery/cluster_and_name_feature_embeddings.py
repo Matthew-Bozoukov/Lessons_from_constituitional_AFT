@@ -1,5 +1,5 @@
-# ABOUTME: Stage 4: cluster the Qwen3-Embedding-8B feature vectors, name each cluster with
-# ABOUTME: Sonnet from 100 sampled features, and report prevalence across traces.
+# ABOUTME: Cluster the Qwen3-Embedding-8B feature vectors, name each cluster with Sonnet
+# ABOUTME: from 100 sampled features, and report prevalence across traces.
 
 """Cluster the discovered features and name the clusters.
 
@@ -13,7 +13,7 @@ features per cluster and ask for a ~5-word label. Two local details the post lea
   features spread over 400 traces means something different from 400 features in 50 traces.
 
 Run:
-  uv run python scratch/llm_feature_discovery/stage4_cluster_and_name_feature_embeddings.py \
+  uv run python scratch/llm_feature_discovery/cluster_and_name_feature_embeddings.py \
       --run-dir output/feature_discovery/<ts> --k 150
 """
 

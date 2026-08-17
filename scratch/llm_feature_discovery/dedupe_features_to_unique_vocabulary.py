@@ -1,5 +1,5 @@
-# ABOUTME: Stage 2: collapse the per-trace feature lists into the unique feature strings
-# ABOUTME: that get embedded, and report how much repetition the autorater produced.
+# ABOUTME: Collapse the per-trace feature lists into the unique feature strings that get
+# ABOUTME: embedded, and report how much repetition the autorater produced.
 
 """Build the unique feature vocabulary to embed.
 
@@ -8,7 +8,7 @@ feature is common, but embedding the same string 400 times wastes GPU. So we emb
 unique string once and carry the occurrence counts alongside, to weight clusters later.
 
 Run:
-  uv run python scratch/llm_feature_discovery/stage2_dedupe_features_to_unique_vocabulary.py \
+  uv run python scratch/llm_feature_discovery/dedupe_features_to_unique_vocabulary.py \
       --features output/feature_discovery/<ts>/features.jsonl
 """
 
@@ -28,7 +28,7 @@ def main(features: str, out_dir: str | None = None) -> None:
     """Write unique_features.txt and feature_counts.json next to the features file.
 
     Args:
-        features: Path to features.jsonl from stage 1.
+        features: Path to features.jsonl from extract_free_text_features_per_trace.py.
         out_dir: Output directory; defaults to the features file's directory.
     """
     per_trace_records = [json.loads(x)

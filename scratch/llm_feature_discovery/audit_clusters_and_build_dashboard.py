@@ -1,7 +1,7 @@
-# ABOUTME: Stage 5: audit the feature clusters for redundancy, probe for safety-relevant
-# ABOUTME: features the clustering may have buried, and build the browsable dashboard.
+# ABOUTME: Audit the feature clusters for redundancy, probe for safety-relevant features
+# ABOUTME: the clustering may have buried, and build the browsable dashboard.
 
-"""Report stage for feature discovery.
+"""Audit and dashboard for a feature-discovery run.
 
 Three jobs the naming stage does not do:
 
@@ -13,7 +13,7 @@ Three jobs the naming stage does not do:
 * The dashboard.
 
 Run:
-  uv run python scratch/llm_feature_discovery/stage5_audit_clusters_and_build_dashboard.py \
+  uv run python scratch/llm_feature_discovery/audit_clusters_and_build_dashboard.py \
       --run-dir output/feature_discovery/<ts>
 """
 

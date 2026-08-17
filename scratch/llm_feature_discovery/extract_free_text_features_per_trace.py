@@ -1,7 +1,7 @@
-# ABOUTME: Stage 1 of LLM-driven feature discovery: Sonnet generates 10-20 free-text
-# ABOUTME: features per reasoning trace, one trace at a time, with prompt caching.
+# ABOUTME: Feature extraction for LLM-driven feature discovery: Sonnet generates 10-20
+# ABOUTME: free-text features per reasoning trace, one at a time, with prompt caching.
 
-"""Stage 1 of the feature-discovery replication.
+"""Free-text feature extraction, the first step of the feature-discovery replication.
 
 The autorater sees ONE reasoning trace at a time and nothing else — no scenario metadata,
 no trait, no other traces — exactly as in the post. Features are free text, not a schema.
@@ -9,7 +9,7 @@ Each trace's features are appended to `features.jsonl` as they land, so the run 
 from an interruption by rerunning with the same --out-dir.
 
 Run:
-  uv run python scratch/llm_feature_discovery/stage1_extract_free_text_features_per_trace.py \
+  uv run python scratch/llm_feature_discovery/extract_free_text_features_per_trace.py \
       --input output/synthdoc_v2/20260803_211524/stage_7_sft.jsonl --smoke
 """
 
