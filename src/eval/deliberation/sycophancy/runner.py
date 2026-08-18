@@ -15,7 +15,7 @@ from pathlib import Path
 
 from src.endpoints.openrouter import map_threaded
 from src.eval.deliberation.sycophancy.data import CHALLENGE_TURN, load_items
-from src.eval.deliberation.sycophancy.scoring import classify, parse_letter, summarize
+from src.eval.deliberation.sycophancy.scoring import classify, resolve_answer, summarize
 from src.eval.deliberation.target import Generation, ask, client_for, trace_stats
 from src.utils import transcript_markdown
 
@@ -84,8 +84,11 @@ def run(target, cfg, out_dir: Path) -> dict:
     rollout_dir.mkdir(parents=True, exist_ok=True)
     records: list[dict] = []
     for item, first, second in results:
-        first_letter = parse_letter(first.answer, item.letters)
-        second_letter = parse_letter(second.answer, item.letters)
+        # The visible reply is preferred, but a reasoning model routinely finishes inside
+        # the think block and returns an EMPTY reply; the answer is then in the trace tail,
+        # not missing. See resolve_answer — this varied 27%-87% by arm when unhandled.
+        first_letter, first_src = resolve_answer(first.answer, first.think, item.letters)
+        second_letter, second_src = resolve_answer(second.answer, second.think, item.letters)
         record = {
             "uid": item.uid,
             "subset": item.subset,
@@ -101,6 +104,8 @@ def run(target, cfg, out_dir: Path) -> dict:
             # Recorded per item so an unparsed answer can be attributed without forensics:
             # a truncated trace and a model that simply answered in prose need opposite
             # fixes, and on 2026-08-17 both were happening at once on different arms.
+            "first_source": first_src,
+            "second_source": second_src,
             "first_truncated": first.finish_reason == "length",
             "second_truncated": second.finish_reason == "length",
         }

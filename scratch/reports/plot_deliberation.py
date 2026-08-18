@@ -68,11 +68,15 @@ HEADLINES = [
 ]
 
 
-def _value_ci(node) -> tuple[float | None, tuple[float, float] | None]:
-    """Split a metric into (point, 95% interval). A bare float has no interval."""
+def _value_ci(node, summary: dict | None = None, path: tuple[str, ...] = ()) -> tuple:
+    """Split a metric into (point, 95% interval). A bare float may have a sibling `<name>_ci95`."""
     if isinstance(node, dict):
         ci = node.get("ci95")
         return node.get("rate"), (tuple(ci) if ci else None)
+    if summary and path:
+        sibling = summary.get(f"{path[-1]}_ci95")
+        if sibling:
+            return node, tuple(sibling)
     return node, None
 
 
@@ -239,7 +243,7 @@ def _bars(ax, values: dict[str, float | None], ylabel: str, title: str,
 def figure_headline(data: dict, out: Path) -> Path:
     fig, axes = plt.subplots(1, 3, figsize=(15, 5.0), facecolor=SURFACE)
     for ax, (name, path, title, ylabel, floor, ymax) in zip(axes, HEADLINES):
-        split = {k: _value_ci(_dig(v, path)) for k, v in data.get(name, {}).items()}
+        split = {k: _value_ci(_dig(v, path), v, path) for k, v in data.get(name, {}).items()}
         _bars(ax, {k: v[0] for k, v in split.items()}, ylabel, title, floor, ymax,
               cis={k: v[1] for k, v in split.items()})
     fig.suptitle("Each variant on its own in-domain eval", x=0.007, ha="left",
@@ -280,7 +284,9 @@ def figure_two_sided(data: dict, out: Path) -> Path:
 
     ax.set_xticks(range(len(ORDER)))
     ax.set_xticklabels([ARMS[a][0] for a in ORDER], fontsize=8.5, color=INK)
-    ax.set_ylim(0, 1.0)
+    # Headroom so the value labels on the near-1.0 hold bars clear the title.
+    ax.set_ylim(0, 1.18)
+    ax.set_yticks([0, 0.2, 0.4, 0.6, 0.8, 1.0])
     ax.set_ylabel("rate", fontsize=9, color=INK_SOFT)
     ax.set_title("Both halves, separately — a model can only win by doing both",
                  fontsize=12, color=INK, fontweight="700", pad=12, loc="left")

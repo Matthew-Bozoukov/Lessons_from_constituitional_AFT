@@ -382,6 +382,100 @@ Smoke against `openrouter:google/gemini-3.7-flash`, 2026-08-17, ~$0.05 total:
    The consequence for us: compare arms on tau-b/spearman; QWK is near the floor for
    everything and will not separate them.
 
+## RESULTS (run 2026-08-17/18)
+
+All three evals run on the five-arm ladder: CR, PC, DA, T2 (0% synthetic control) and the
+untrained base. Every arm answered from ONE vLLM weight load per eval, same process, same
+flags, so decoding parity is a property of the setup. Figures in `output/report/`, numbers in
+`output/report/deliberation_results.md`, raw runs on the Hub under
+`LASR-Callum/2026-08-1{7,8}-{llmbar,debate-speeches,sycophancy}-*`.
+
+### The headline: no variant beats difficult advice on its own home turf
+
+| eval (home turf) | CR | PC | DA | T2 | base |
+| --- | --- | --- | --- | --- | --- |
+| LLMBar adversarial (PC) | 0.846 | 0.861 | 0.845 | 0.875 | 0.875 |
+| debate tau-b (CR) | 0.506 | 0.548 | 0.474 | 0.535 | 0.521 |
+| two-sided retraction (PAR) | 0.546 | 0.567 | 0.533 | 0.567 | **0.649** |
+
+- **LLMBar:** every arm's interval overlaps every other's. Nothing separates. The only
+  significant effect anywhere is that the untrained base is a MORE order-consistent judge
+  than DA (0.945 vs 0.893, non-overlapping).
+- **debate_speeches:** paired bootstrap over the 285 speeches all arms rated. **CR does not
+  separate from DA** (+0.031, p=0.315) — the variant trained on adversarial deliberation is
+  indistinguishable from difficult advice at judging arguments, on the eval chosen to favour
+  it. PC is +0.061 (p=0.039) but that is one of four uncorrected comparisons and dies under
+  multiplicity; treat it as noise until it replicates on the full 948.
+- **sycophancy:** every trained arm sits just above the 0.5 floor, i.e. at the "always hold"
+  degenerate strategy. The untrained base is the only arm meaningfully above it.
+
+**This is Callum's "very suspicious" branch.** The variants do not produce better judges even
+on evals selected to favour them, which points at the method rather than at transfer.
+
+### Two robust secondary findings
+
+**1. Fine-tuning makes the model a worse reviser, and base is best on every eval.** Base leads
+LLMBar consistency, sits mid-pack on debate, and wins sycophancy outright (0.649 vs 0.533-0.567)
+— driven entirely by fixing a wrong answer when challenged (0.318 vs 0.069-0.143). Every
+fine-tuned arm holds a correct answer ~99% of the time and almost never revises a wrong one.
+SFT bought stubbornness.
+
+**2. Reasoning length collapses with training, and the synthetic data is not the main cause.**
+Mean trace characters:
+
+| | LLMBar | debate | sycophancy t1 |
+| --- | --- | --- | --- |
+| base | 2,004 | 4,815 | 11,686 |
+| T2 (0% synthetic) | 761 | 1,437 | 4,611 |
+| PC | 552 | 2,803 | 3,917 |
+| CR | 525 | 2,019 | 3,305 |
+| DA | 452 | 1,335 | 4,307 |
+
+Base reasons 2.5-3.5x more than any fine-tuned arm, with `empty_think_rate` 0.000 everywhere —
+this is shortening, not think-collapse. **T2 carries 0% synthetic data and already shows most
+of the drop**, so the instruction-tuning mixture is the main cause and the constitutional data
+adds a smaller further reduction. Note the ordering is NOT stable across tasks: CR reasons more
+than DA on LLMBar and debate, less on sycophancy.
+
+### What the run cost, and what it cost to get right
+
+~$40 of RunPod across three pods (one failed launch, one full run, one re-run) and ~$0.05 of
+OpenRouter for the smokes. Four measurement defects were found and fixed, three of them only
+visible by reading `parse_rate` rather than the headline:
+
+1. **The adapters are private.** First pod died in 3s per eval on a 401; it looked public
+   locally only because the laptop had a cached HF CLI token. Fixed with `HF_TOKEN` plus a
+   2-second access preflight.
+2. **`max_tokens: 4096` truncated the base model on 42.8% of items** while costing the trained
+   arms 10-14% — a budget that binds on one arm and not another biases the comparison toward
+   the terser arm. Raised to 8192.
+3. **The challenge turn did not restate the answer format**, so a formatting habit was scored
+   as a judgment failure, differently per arm.
+4. **The model finishes inside `<think>` and emits an EMPTY visible reply.** This was the big
+   one: parse rates ran 0.27-0.87 ACROSS ARMS, so each arm's score came from a differently
+   selected subset and the arms were not comparable at all. The answer is not missing — the
+   traces end "Answer: E". Reading the trace tail lifted parse rates to 0.71-0.94 and rescued
+   527 turns, gated on the trace agreeing with the visible reply wherever both exist (worst
+   agreement 0.962, threshold 0.95).
+
+Defect 4 was fixed with NO additional GPU time, because `run_eval` pushes rollouts to the Hub
+and they could be re-parsed offline. That is the second time re-scoring from durable per-item
+artifacts saved a trip — the first was adding confidence intervals to a finished LLMBar run.
+
+### Known limitations — read before quoting these numbers
+
+- **LLMBar is near ceiling for this family.** Every arm including base lands in 0.87-0.90, so
+  "no difference" is weaker evidence than it looks; the instrument may lack power here.
+- **The sycophancy wrong-half is small.** First-turn accuracy is ~92%, leaving 22-35 items per
+  arm behind `correction_rate_when_wrong`. The intervals are correspondingly wide. A run
+  restricted to the hard subsets (`aqua_mc`, `math_mc_cot` Level 5) at ~1,500 items would put
+  ~150 items in that half; ~45 min and ~$3, not yet done.
+- **PC's debate win is not established.** p=0.039 uncorrected, one of four comparisons.
+- **This is one seed at temperature 0.** No sampling variance is measured.
+- **`run_eval` names result repos with `date.today()`**, so a run crossing midnight UTC splits
+  across two repo names and silently overwrites the earlier date's repos. The sycophancy
+  re-run hit exactly this; runs were disambiguated by `max_tokens` in `run_meta.json`.
+
 ## Framework fit
 
 Each of these is one registry entry in `src/eval/__init__.py` (name → `EvalSpec`) with its own
