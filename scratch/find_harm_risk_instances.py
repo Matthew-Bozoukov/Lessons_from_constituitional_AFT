@@ -27,6 +27,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from scratch.llm_feature_discovery import centroids  # noqa: E402
 from src.utils import git_sha, timestamp  # noqa: E402
 
 SEED_LABEL = "Explicit multi-factor harm risk assessment"
@@ -41,34 +42,21 @@ LEXICAL = re.compile(
 
 
 def _centroids(emb_path: Path, uniq: list[str], fmap: dict[str, int], k: int) -> np.ndarray:
-    """Compute L2-normalised cluster centroids by streaming the embedding file.
+    """Compute L2-normalised cluster centroids from the run's embedding file.
+
+    Thin wrapper over the module's shared implementation, which owns the rule that
+    features absent from `fmap` are unclustered noise and contribute to no centroid.
 
     Args:
-        emb_path: Path to embeddings.npy (n x d, fp16).
+        emb_path: Path to the embeddings.npy (n x d, fp16).
         uniq: Feature strings in embedding-row order.
-        fmap: Feature string -> cluster id. Features absent from it are HDBSCAN noise
-            and contribute to no centroid.
+        fmap: Feature string -> cluster id, noise omitted.
         k: Number of clusters.
 
     Returns:
         (k x d) centroid matrix, rows L2-normalised.
     """
-    x = np.load(emb_path, mmap_mode="r")
-    sums = np.zeros((k, x.shape[1]), dtype=np.float32)
-    counts = np.zeros(k, dtype=np.int64)
-    # Features missing from fmap are HDBSCAN noise: they belong to no cluster and so
-    # contribute to no centroid. A k-means map has none of these.
-    labels = np.array([fmap.get(f, -1) for f in uniq], dtype=np.int32)
-    for start in range(0, len(uniq), 2048):
-        block = np.asarray(x[start:start + 2048], dtype=np.float32)
-        chunk = labels[start:start + 2048]
-        keep = chunk >= 0
-        np.add.at(sums, chunk[keep], block[keep])
-        np.add.at(counts, chunk[keep], 1)
-    n_clustered = int((labels >= 0).sum())
-    assert counts.sum() == n_clustered, f"{counts.sum()} != {n_clustered}"
-    cen = sums / counts[:, None]
-    return cen / np.linalg.norm(cen, axis=1, keepdims=True)
+    return centroids.compute(np.load(emb_path, mmap_mode="r"), uniq, fmap, k)
 
 
 def _reasoning(row: dict) -> str:
