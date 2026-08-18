@@ -18,6 +18,35 @@ def load_config(path: str | None = None):
     return OmegaConf.load(path or Path(__file__).parent / "config.yaml")
 
 
+def provider_override(provider: str | None) -> dict | None:
+    """One-run provider override for TURF's chat calls (every CLI's --provider flag).
+
+    Returns an extra_body dict routing to exactly `provider` (no fallbacks), or None
+    when no override is requested. The yaml pin (configs/endpoints/providers.yaml)
+    stays the scientific record; an override is stamped into the run's manifest or
+    result json by the caller. Chat calls only — the embedder keeps its own pin.
+    """
+    if not provider:
+        return None
+    print(f"!!! WARNING: provider override active — chat calls route to {provider!r}, "
+          "bypassing configs/endpoints/providers.yaml for THIS RUN ONLY (no "
+          "fallbacks). Recorded in this run's manifest, not the registry.")
+    return {"provider": {"order": [provider], "allow_fallbacks": False}}
+
+
+def refusal_from(exc: Exception) -> dict:
+    """Typed refusal record from an EmptyCompletionError whose retries exhausted.
+
+    The stages write this in place of the missing output (never a stand-in model's
+    text) and gate at the end — a human decides whether to accept the holes,
+    retry, or regenerate the whole stage with a different model.
+    """
+    err = getattr(exc, "provider_error", None) or {}
+    return {"provider": getattr(exc, "provider", "") or "",
+            "code": err.get("code"),
+            "message": (err.get("message") or str(exc))[:300]}
+
+
 def parse_row(row: dict) -> dict:
     """Derive the (query, response, reasoning) channels from a synth interchange row.
 
@@ -51,18 +80,19 @@ def parse_numbered_tags(text: str, n: int) -> list[str]:
     return out
 
 
-def embed(texts: list[str], model: str, batch: int = 128) -> np.ndarray:
+def embed(texts: list[str], model: str, batch: int = 128,
+          workers: int = 8) -> np.ndarray:
     """Embed texts via OpenRouter /embeddings (fp32; dim inferred from the response).
 
     `model` comes from config.yaml at index-build time and from the index's
     manifest.json at trace time — an index must only ever be searched with the
-    embedder it was built with. Batched; order-preserving. Uses OPENROUTER_API_KEY
-    from the env.
+    embedder it was built with. Batched AND concurrent (`workers` threads over
+    `batch`-sized requests); order-preserving. Uses OPENROUTER_API_KEY from the env.
     """
     from dotenv import load_dotenv
     from openai import OpenAI
 
-    from src.endpoints.openrouter import provider_pin
+    from src.endpoints.openrouter import map_threaded, provider_pin
 
     assert texts, "nothing to embed"
     load_dotenv()
@@ -71,16 +101,20 @@ def embed(texts: list[str], model: str, batch: int = 128) -> np.ndarray:
     # embeddings are artifacts (indexes) — provider variance here silently changes
     # every downstream cosine, so the pin applies exactly as it does to chat calls
     pin = provider_pin(model)
-    out = None
-    for i in range(0, len(texts), batch):
-        chunk = texts[i:i + batch]
-        resp = client.embeddings.create(model=model, input=chunk,
+    starts = list(range(0, len(texts), batch))
+
+    def fetch(j: int) -> tuple[int, list]:
+        i = starts[j]
+        resp = client.embeddings.create(model=model, input=texts[i:i + batch],
                                         extra_body={"provider": pin} if pin else None)
-        if out is None:
-            out = np.empty((len(texts), len(resp.data[0].embedding)), dtype=np.float32)
-        for j, d in enumerate(resp.data):
-            out[i + j] = d.embedding
-    assert out is not None
+        return i, [d.embedding for d in resp.data]
+
+    results = map_threaded(fetch, len(starts), max_workers=workers,
+                           desc="embedding" if len(starts) > 4 else "")
+    out = np.empty((len(texts), len(results[0][1][0])), dtype=np.float32)
+    for i, embs in results:
+        for j, e in enumerate(embs):
+            out[i + j] = e
     # Qwen3-Embedding's official sentence-transformers pipeline ends in a Normalize
     # module (unit vectors) — SURF's inputs arrive that way; OpenRouter's serving may
     # not apply it, so normalise here to reproduce the paper's embedder exactly.
@@ -151,8 +185,35 @@ def kmeans(x: np.ndarray, k: int, max_iter: int = 20, seed: int = 42,
             torch.cat(all_dists).numpy().astype(np.float32))
 
 
+def assign_clusters(x: np.ndarray, centroids: np.ndarray,
+                    batch: int = 8192) -> tuple[np.ndarray, np.ndarray]:
+    """Squared-Euclidean nearest-centroid assignment (kmeans's final pass, numpy).
+
+    Used when index.py reuses cached centroids: assignments and distances are a
+    deterministic function of (embeddings, centroids), so recomputing this one pass
+    replaces rerunning the whole k-means loop.
+    """
+    labels = np.empty(len(x), np.int64)
+    dists = np.empty(len(x), np.float32)
+    c2 = (centroids ** 2).sum(axis=1)
+    for i in range(0, len(x), batch):
+        b = x[i:i + batch]
+        d2 = (b ** 2).sum(axis=1, keepdims=True) + c2[None, :] - 2 * b @ centroids.T
+        lab = d2.argmin(axis=1)
+        labels[i:i + len(b)] = lab
+        dists[i:i + len(b)] = np.sqrt(np.clip(d2[np.arange(len(b)), lab], 0, None))
+    return labels, dists
+
+
 def load_hf_jsonl(dataset: str, filename: str) -> list[dict]:
-    """Download one jsonl file from an HF dataset repo and parse it."""
+    """Download one jsonl file from an HF dataset repo and parse it.
+
+    `dataset` may also be a local jsonl path (e.g. an unrendered file not yet
+    pushed) — detected by the file existing on disk; `filename` is then ignored.
+    """
+    p = Path(dataset)
+    if p.is_file():
+        return [json.loads(line) for line in p.open(encoding="utf8")]
     from huggingface_hub import hf_hub_download
 
     path = hf_hub_download(dataset, filename, repo_type="dataset")

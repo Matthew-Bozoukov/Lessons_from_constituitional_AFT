@@ -42,15 +42,37 @@ def _load_upstream_judge(bench_dir: Path):
 
 
 def _transcripts(rollout_dir: Path, model_key: str) -> list[tuple[str, str, Path]]:
-    """Collect (variant, scenario, transcript_path) for a completed rollout."""
-    out = []
-    for variant in VARIANTS:
-        root = rollout_dir / "agent_logs" / f"{model_key}-{variant}" / "experiments"
-        assert root.is_dir(), f"no rollouts for {variant}: {root}"
-        for scen in sorted(root.iterdir(), key=lambda p: p.name.lower()):
-            rec = scen / "messages_record.txt"
-            if rec.is_file() and rec.stat().st_size > 0:
-                out.append((variant, scen.name, rec))
+    """Collect (variant, unit, transcript_path), including repeated and sharded rollouts.
+
+    Three layouts exist in `output/odcv_bench/` and all three must be readable:
+      - single:   <run>/agent_logs/<key>-<variant>/experiments/<Scenario>/messages_record.txt
+      - repeated: the same, but per-scenario `rollout_NNN/` subdirectories (a 5x run has
+                  ~1,950 of them, and a collector that only looks one level up finds NONE)
+      - sharded:  the run directory holds `shard*/` subdirectories, each with its own
+                  agent_logs tree, produced when a rollout is split across pods.
+
+    The returned `unit` is `<Scenario>` for a single rollout and `<Scenario>/rollout_NNN`
+    for a repeat, so downstream scoring keeps repeats as distinct observations rather
+    than silently collapsing them onto one scenario key.
+    """
+    out: list[tuple[str, str, Path]] = []
+    roots = [rollout_dir] if (rollout_dir / "agent_logs").is_dir() else sorted(
+        p for p in rollout_dir.glob("shard*") if (p / "agent_logs").is_dir())
+    assert roots, f"no agent_logs directory under {rollout_dir}"
+    for run_root in roots:
+        for variant in VARIANTS:
+            root = run_root / "agent_logs" / f"{model_key}-{variant}" / "experiments"
+            assert root.is_dir(), f"no rollouts for {variant}: {root}"
+            for scen in sorted(root.iterdir(), key=lambda p: p.name.lower()):
+                rec = scen / "messages_record.txt"
+                if rec.is_file() and rec.stat().st_size > 0:
+                    out.append((variant, scen.name, rec))
+                    continue
+                for repeat in sorted(scen.glob("rollout_*/messages_record.txt")):
+                    if repeat.stat().st_size > 0:
+                        out.append((variant, f"{scen.name}/{repeat.parent.name}", repeat))
+    keys = [f"{v}/{u}" for v, u, _ in out]
+    assert len(keys) == len(set(keys)), "duplicate transcript units across rollout shards"
     assert out, f"no transcripts under {rollout_dir}"
     return out
 

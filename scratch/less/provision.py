@@ -56,6 +56,10 @@ def main() -> None:
     ap.add_argument("--disk", type=int, default=400,
                     help="55GB base + 4 checkpoints x 2.4GB Adam state + HF cache + outputs")
     ap.add_argument("--image", default="runpod/pytorch:0.7.0-dev-cu1281-torch271-ubuntu2204")
+    ap.add_argument("--gpu", default=None,
+                    help="pin one gpuTypeId and fail rather than fall back. Required when "
+                         "provisioning pods that must be comparable: a silent fallback to a "
+                         "different card makes two arms differ in more than their data.")
     args = ap.parse_args()
 
     if not args.name.startswith("nika-"):
@@ -67,7 +71,8 @@ def main() -> None:
                "Content-Type": "application/json"}
     pub = Path(os.path.expanduser("~/.ssh/msm_audit.pub")).read_text().strip()
 
-    for gpu, note in GPU_LADDER:
+    ladder = ([(args.gpu, "pinned by --gpu")] if args.gpu else GPU_LADDER)
+    for gpu, note in ladder:
         payload = {
             "name": args.name, "imageName": args.image,
             "gpuTypeIds": [gpu], "gpuCount": args.gpus,

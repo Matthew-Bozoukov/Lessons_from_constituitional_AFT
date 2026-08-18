@@ -61,14 +61,40 @@ def provider_pin(model: str) -> dict:
     return pin
 
 
-class EmptyCompletionError(RuntimeError):
-    """A completion came back with `content=None` despite finish_reason=stop.
+class _CompletionFailure(RuntimeError):
+    """Base for HTTP-200 responses that carry no completion; not raised directly.
 
-    Providers intermittently return a blank body (observed on deepseek-chat-v3.1,
-    2026-08-07 — 4/20 concurrent calls, unreproducible minutes later). Treating it as
-    transient retries the call — against the SAME provider, since every model is pinned
-    (configs/endpoints/providers.yaml) — instead of failing the whole item on one bad
-    response.
+    Both subclasses expose the provider's in-body error payload (when present) so
+    callers can persist a typed record — {provider, code, message} — rather than a
+    bare stack trace.
+    """
+
+    def __init__(self, message: str, provider_error: dict | None = None,
+                 provider: str = "") -> None:
+        super().__init__(message)
+        self.provider_error = provider_error or {}
+        self.provider = provider
+
+
+class EmptyCompletionError(_CompletionFailure):
+    """The response carried no completion and no deterministic explanation.
+
+    Blank body (`content=None` despite finish_reason=stop — observed on
+    deepseek-chat-v3.1, 2026-08-07, 4/20 concurrent calls, unreproducible minutes
+    later), `choices=None` with no in-body error, or an in-body error whose code is
+    transient by HTTP semantics (429/5xx). Treated as transient: retried against the
+    SAME provider (every model is pinned, configs/endpoints/providers.yaml) instead
+    of failing the whole item on one bad response.
+    """
+
+
+class ProviderRejectionError(_CompletionFailure):
+    """The provider REJECTED the request: HTTP-200 envelope, structured in-body
+    error with a deterministic 4xx code (e.g. Gemini's PROHIBITED_CONTENT filter
+    block, 2026-08-17). NOT retried — retrying a deterministic rejection re-bills
+    the identical failure six times — so it surfaces on the FIRST attempt with the
+    payload attached. Distinct from a model refusing in text, which is a normal
+    completion and raises nothing.
     """
 
 
@@ -225,15 +251,49 @@ class OpenRouterClient:
             max_tokens=max_tokens,
             **kwargs,
         )
+        if not resp.choices:
+            # choices=None: either a blank (like content=None below) or an in-body
+            # error the SDK parsed into model_extra. Classification is by payload
+            # shape + the code's HTTP class ONLY — never provider-specific message
+            # text, which varies per model and would rot.
+            err = getattr(resp, "error", None) or (
+                getattr(resp, "model_extra", None) or {}).get("error")
+            err_d = (err if isinstance(err, dict)
+                     else {"message": str(err)} if err else None)
+            provider = getattr(resp, "provider", "") or ""
+            msg = (f"Model {model} returned no choices (provider "
+                   f"{getattr(resp, 'provider', '?')}): {resp}")
+            code = (err_d or {}).get("code")
+            if isinstance(code, int) and 400 <= code < 500 and code != 429:
+                raise ProviderRejectionError(msg, provider_error=err_d,
+                                             provider=provider)
+            raise EmptyCompletionError(msg, provider_error=err_d, provider=provider)
         choice = resp.choices[0]
         content = choice.message.content
-        if content is None:
-            # Retryable: the decorator re-routes to another upstream provider. A model
-            # that blanks on EVERY provider (e.g. a hard content filter) exhausts the
-            # attempts and this surfaces — the caller still sees a clear failure.
+        if choice.finish_reason == "content_filter":
+            # OpenAI-protocol hard filter, with or without partial text. Partial
+            # output is DROPPED rather than returned: a silently truncated
+            # completion poisons downstream parses worse than a loud rejection.
+            # Deterministic like an in-body 4xx — fail fast, don't re-bill it 6x.
+            raise ProviderRejectionError(
+                f"Model {model} blocked by content filter (provider "
+                f"{getattr(resp, 'provider', '?')}): finish_reason=content_filter",
+                provider_error={"code": "content_filter",
+                                "message": "finish_reason=content_filter "
+                                           f"({len(content or '')} chars of partial "
+                                           "content dropped)"},
+                provider=getattr(resp, "provider", "") or "")
+        if not content:
+            # None OR empty string: an undiagnosable blank either way — the empty
+            # string previously slipped through as a "successful" ChatResult and
+            # died later at the caller's parse gate with no retry.
+            # Retryable: the decorator re-hits the SAME pinned provider. A model
+            # that blanks on every attempt exhausts the retries and this surfaces —
+            # the caller still sees a clear failure.
             raise EmptyCompletionError(
                 f"Model {model} returned empty content (provider "
-                f"{getattr(resp, 'provider', '?')}): {resp}")
+                f"{getattr(resp, 'provider', '?')}): {resp}",
+                provider=getattr(resp, "provider", "") or "")
         usage = resp.usage
         # Providers report cache hits in different places and some not at all, so this is
         # read defensively and defaults to 0. It exists so a run can PROVE caching worked

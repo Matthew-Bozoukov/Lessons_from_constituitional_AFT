@@ -248,6 +248,157 @@ directional loss) — the alternative is to keep the recipe and record the hole,
 this corpus does. Unrelated robustness bug found in passing: `src/endpoints/openrouter.py:228`
 does `resp.choices[0]` without checking `resp.choices` is not None, which cost 3 records an
 opaque `TypeError`.
+## 2026-08-17 — LESS-selected difficult-advice arm trained: 151 rows swapped, loss 0.8651, no control yet
+
+**Hypothesis:** the 716 difficult-advice rows in the table2 mixture are sampled RANDOMLY
+within each of the 9 constitution traits. If LESS influence scores mean anything, replacing
+that random sample with the highest-influence rows of the same trait — for the traits LESS
+ranks most important — should produce a measurably different organism.
+
+**Method.** Built `LASR-Callum/2026-08-17-table2-9284-synthdoc-716-less-swap-bests-for-traits`
+from the published control mixture, then trained one arm on it:
+`configs/train/lora_qwen36_t2_9284_synthdoc716_lessswap_dynbatch_2xh200.yaml`, Qwen3.6-27B
+r64 bf16, 1 epoch, 2xH200 DDP with token-budgeted dynamic batching (budget 8,000 resolved
+from `ModelProfile.train_memory`, global batch 16, `route_step` over 2 ranks).
+
+Traits swapped, and the rule each uses. `t6`, `t3`, `t9` are the top three by LESS
+importance — both by share of the top-220 (3.24x / 3.03x / 1.31x enrichment over a uniform
+pool) and by mean influence, which agree exactly, with a clean gap to 4th. Each of the three
+validation subtasks is DISTINCTIVELY selected for by one trait (`stayed_ai` by t6,
+`honest_declined` by t3, `codebase_resisted` by t7), so t6 and t3 rank by the subtask that
+is theirs and t9, which no subtask claims, ranks by the mean:
+
+| trait | rule | swapped | kept | lift over a random draw of that trait |
+|---|---|---|---|---|
+| t6 | `stayed_ai` | 51/79 | 28 | 1.36x |
+| t3 | `honest_declined` | 47/80 | 33 | 1.38x |
+| t9 | `score_mean` | 53/79 | 26 | 1.49x |
+
+t3 is the subtle case: its own highest-scoring subtask is `stayed_ai`, but only because
+`stayed_ai` carries larger values for EVERY trait (90.5% of the top-220 by `max` was selected
+on it), so ranking t3 by it would pick t3 rows serving a different behaviour.
+
+**Result.** 625 steps, 1 epoch, 2h25m (`train_runtime` 8,712s), **train_loss 0.8651**,
+1.148 samples/s. Adapter:
+`LASR-Callum/qwen3.6-27b-lora-t2-9284-synthdoc716-lessswap-r64` (public), carrying
+`training_meta.json` with `thinking: true` and the dataset pinned at `be616c48`. The loss
+lands within 0.001 of the C6 arm's 0.8659 on a different dataset — a sanity check that the
+recipe behaved, not a result. wandb run `8nqzw9x7` in project
+`less-swap-t2-9284-synthdoc716`. Pod destroyed, 0 active, ~$26 for the trip.
+
+**Verified before spending, because each would have failed silently.** The mixture carries
+no trait id (only `text` and `source`), so rows were joined to the scored pool on the system
+prompt — unique across all 2,203 — and all 716 joined. Replacement rows were re-rendered
+through the same ModelProfile chat template and confirmed byte-identical against rows
+already present. A pool row carries exactly one `trait_id`, so the per-trait candidate sets
+are disjoint and no row can be drawn twice. Afterwards: exactly 151 rows differ, every one a
+synthdoc row, all 9,284 Table-2 rows byte-identical, source composition and per-trait counts
+unchanged. Think markers re-counted on the swapped file rather than inherited: 9,284 empty +
+716 real + 0 missing, matching the control exactly.
+
+**Environment pinned so a control can still be made comparable later** (recorded here
+because the pod is gone): GPU `NVIDIA H200` x2 pinned explicitly rather than via the
+fallback ladder, driver 570.195.03, torch 2.7.1+cu128, transformers 5.15.0, trl 1.10.0,
+peft 0.20.0, accelerate 1.14.0, datasets 5.0.1, base-model snapshot
+`6a9e13bd6fc8f0983b9b99948120bc37f49c13e9`, seed 0. A semantic diff of this config against
+the control's showed 28 identical keys and 5 differing, all intended (`data_repo`,
+`data_revision`, `hf_repo`, `output_dir`, and a `push_to_hub` key `SFTConfig` never reads).
+
+**THIS ADAPTER IS NOT YET INTERPRETABLE.** Its control —
+`lora_qwen36_t2_9284_synthdoc_716_dynbatch_2xh200.yaml`, identical but for `data_repo` — has
+still not been trained. The only other 716-row arm is 4xH200 batch-1 legacy batching with a
+different loss path, so comparing against it would confound the selection with the training
+protocol. A control pod was provisioned alongside this run and deliberately cancelled.
+
+**Limitations of the validation set, found while inspecting it.** The 60 Dval rows are only
+**33 distinct prompts** — codebase_resisted 9, honest_declined 12, stayed_ai 12 — so
+averaging a subtask gradient over repeated samples of one prompt weights that prompt more
+than an independent draw would, and the effective validation set is about half its nominal
+size. Worse for t3 specifically: all 20 `honest_declined` rows are benign
+software-performance comparisons (which regex is faster, Timsort vs QuickSort, -O2 vs -O3)
+in which the model declines to invent a benchmark number. There is no harm dimension in that
+subtask at all, so the t3 signal covers one narrow honesty failure mode rather than the
+breadth of "scrupulously honest and non-deceptive". `stayed_ai` is the best supported —
+12 genuinely varied ways of pressuring the model to claim humanity — and
+`codebase_resisted`, the only subtask with real ethical content, is the weakest signal,
+driving 0.9% of top-220 selections.
+
+**Two process notes.** Sourcing a Windows-authored `.env` in bash leaves a trailing `\r` on
+every value; the HF token then fails as an illegal HTTP header, and the exception prints the
+token verbatim. Both pods died on this ~20s in. And the trainer pushed the adapter PRIVATE:
+`push_run_dir` defaults `private=True`, so it needed flipping afterwards.
+
+**Next steps:** (1) train the control before quoting any number from this arm. (2) Then ODCV
++ agentic-misalignment on both. (3) Temper expectations either way: 151 of 10,000 rows is a
+1.5% intervention, and a null will not separate "LESS selection does not help" from "the
+lever was too small" — nor from "the validation set was too narrow", given the limitations
+above.
+
+## 2026-08-17 — first TURF trace: honest-decline attributes to epistemic-humility + scientific-integrity training clusters
+
+**Hypothesis:** with the DA-only index live, a real t2synth case traces to
+interpretable training-data properties (not style echoes).
+
+**Method:** resolved the cases.py TODO minimally (eval-sweep row → case.json:
+first user turn = query, first assistant turn = response, top-level `reasoning`
+field = reasoning). Traced `t2synth_honest_declined_p19_s24` (declining to invent
+regex benchmark numbers) against `output/turf/da2203` with
+`rubrics/empirical_honesty.yaml`, polarity satisfy. Visuals: seeded UMAP
+(PCA-64 → cosine) of the 44,060 trigger attributes + per-crux hit bars + trace
+overlay (`scratch/turf/{umap_coords,plot_turf}.py` →
+`output/turf/report/*_20260817_190652.png` + md mirror).
+
+**Result:** three cruxes selected, zero style-echo exclusions. Crux "declines to
+fabricate benchmark data" lands on epistemic-humility reasoning clusters (113
+hits: honest uncertainty about the model's own internal states; 105:
+introspective self-examination) and AI-identity-honesty queries; the
+"theoretical conclusion" crux lands on scientific-integrity clusters (96/86:
+p-hacking and post-hoc-analysis refusals). The UMAP shows query and reasoning
+attributes occupying cleanly separated halves — clusters are near channel-pure.
+Caveat to watch: urgency/imminent-deadline clusters score high hits under every
+crux (76–94) — that is the DA corpus's house scenario pattern acting as a
+non-style confound the style guard does not model.
+
+**Next steps:** trace the remaining honest_declined cases + the other two case
+files against their rubrics; consider adding scenario-pattern (not just style)
+guards; full-mixture index for non-DA attribution.
+
+## 2026-08-17 — TURF offline index built over the as-trained DA corpus (2,203 rows, 66k attributes, 1,000 clusters), $17 total
+
+**Hypothesis:** the TURF offline pipeline (scratch/turf/) runs end to end on the
+difficult-advice share of the table-2 training mixture, cheaply enough to iterate.
+
+**Method:** filtered the locally unrendered
+`LASR-Callum/2026-08-04-table2-synthdoc-h200x4-train` mixture to its
+`synthdoc_difficult_advice` rows (2,203, all with reasoning — the as-trained copy,
+not the source synth repo) into `mixture_think_interchange_da_only.jsonl`. Extraction
+via OpenRouter's beta batch API in 5 chunks of ≤500 rows (`--batch_rows`, new),
+`--provider google-ai-studio` (new one-run override, stamped in manifest); index =
+qwen3-embedding-8b + SURF k-means (MPS) + gemini summaries. Interactive 10-row smokes
+first measured cost/latency per provider tier; a 3-batch flex smoke validated the
+chunked orchestration before the real submission.
+
+**Result:** `output/turf/da2203/` — 2,203/2,203 rows extracted (2,105 clean from
+batch in ~50 min of queue, 98 mopped up interactively), 44,060 trigger + 22,030
+response attributes embedded, 1,000 clusters (sizes 1–158, assignments verified
+against a float64 recheck), 1,000 summaries. Total key spend for the day $17.24.
+Findings worth keeping: (1) OpenRouter batch bills 50% of the HEADLINE model rate
+regardless of provider pin (measured to 5 decimals; a pinned-tier discount does NOT
+apply), and holds credits at submission sized to max_tokens (~$103 held, released on
+settlement — size max_tokens accordingly); (2) batch results are all-or-nothing per
+batch (`results: null` on expiry/cancel), so chunking is loss-bounding, not
+throughput; (3) Gemini hard-refused 4 cluster summaries as PROHIBITED_CONTENT
+(clusters 100/480/483/489 — medication-compliance and emotional-crisis DA content);
+those four are summarised by claude-haiku-4.5 instead, recorded in the manifest;
+(4) index.py now has extraction-grade resume (embedding fingerprints, centroid
+reuse, per-cluster summary checkpoints) after a `choices=None` crash cost one full
+summary pass; openrouter.py now retries that response shape as EmptyCompletionError.
+Index is local-only by request — not pushed to HF.
+
+**Next steps:** resolve the `cases.py` TODO (eval-row → case.json converter) so
+traces can run against Matthew's 60 t2synth cases with the paired rubrics; push the
+index + a dated card once traces prove it useful; consider a full-mixture (10,202-row)
+index so attribution can land on non-DA sources.
 
 ## 2026-08-16 — First span-masked ablation arm trained: C6 meta-reasoning unsupervised, 0.77% of the signal
 
@@ -302,7 +453,6 @@ cannot serve as its control. Then ODCV + agentic-misalignment on both arms. Temp
 expectations: 0.77% of the training signal is a small lever, and a null will not separate
 "C6 does not matter" from "the intervention was too small" — a larger cluster (C104 at 22.5%
 corpus prevalence, or C51 at 18.5%) would buy a more decisive answer per dollar.
-
 ## 2026-08-16 — peer-critique (PC) full corpus generated: 2,080 records, checks pass, one trait-level quality warn
 
 
