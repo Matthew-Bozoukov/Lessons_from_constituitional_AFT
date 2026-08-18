@@ -3,6 +3,102 @@
 
 # LOG
 
+## 2026-08-18 — peer-critique GOOD-ARM-ONLY evaluated: dropping the flawed half changes nothing on ODCV, and hurts on fabrication
+
+
+**Hypothesis:** peer critique's `surface_shortcut` leak (AUC 0.9973, 2026-08-17 entry) is
+unlearnable if the corpus has only one arm, so a good-arm-only twin should behave differently
+from the 358 good / 358 flawed arm. If it does not, the flawed half was not what made
+peer-critique transfer badly.
+
+**Method.** One target,
+`LASR-Callum/qwen3.6-27b-lora-t2-9284-pc-good716-r64-dynbatch`, on the two evals the other
+document-type arms were scored with. ODCV-Bench via
+`configs/eval/odcv_bench_t2_9284_pc_good716_r64_dynbatch_4x65.yaml`, verified identical to the
+peercritique716 sibling on every comparable field (15-entry exclusion list byte-identical,
+temperature, concurrency, timeout, judges, published_key). Fabrication sweep at 31 prompts x
+32 samples = 992, temperature 1.0 / max_tokens 8192, judged by `judge_fabrication_sweep.py`
+(openai/gpt-5.6-terra). Served on one RunPod H100 via `scratch/serve_adapter_runpod.py
+--agentic true --mode think`; docker drove ODCV locally.
+
+**Result — ODCV: 39.3% MR, CI95 [29.9, 46.4], severity 1.66**, on 63 cells / 234 rollouts.
+
+| arm (7% synth) | MR% | severity |
+| --- | --- | --- |
+| difficult advice | 14.3 | 0.7 |
+| courtroom | 32.0 | 1.4 |
+| peer critique 358g/358f | 38.7 | 1.7 |
+| **peer critique good-only** | **39.3** | **1.66** |
+| base fp8 (reference) | 37.2 | 1.43 |
+
+**Dropping the flawed arm moved nothing**: 38.7 -> 39.3 MR and 1.7 -> 1.66 severity, both well
+inside a CI spanning 29.9-46.4. Peer critique sits at or slightly above the untrained baseline
+either way, while difficult advice at the same mixture share reaches 14.3. So the flawed half
+was not carrying peer-critique's failure to transfer -- the document type is.
+
+**Result — fabrication: 73.0% fabricated (724/992), 10.6% claiming own execution (105/992)**,
+mean severity 8.07, 0 unjudged.
+
+| arm | fabricated | claims own execution |
+| --- | --- | --- |
+| table2 only (baseline) | 82.0% | 8.3% |
+| +20% synth (non-diverse) | 56.4% | 7.6% |
+| difficult advice 7% | 46.5% | 5.8% |
+| **peer critique good-only 7%** | **73.0%** | **10.6%** |
+
+Barely better than the no-admixture baseline on raw fabrication, and **the worst of all four
+arms at falsely claiming to have run something** -- above the untrained baseline. Difficult
+advice at the same share more than halves fabrication; this does not.
+
+Taken together the two evals agree: this document type does not buy what difficult advice
+buys, and the arm imbalance was not the reason.
+
+**Caveat, measured not assumed.** Every fabrication sample had an EMPTY think trace. The
+template is correct (Qwen3.6's line 151 prefills `<think>\n` when thinking is on),
+`--chat-template` and `--reasoning-parser qwen3` both reached vLLM, and the pin is
+byte-identical to `src/endpoints/vllm_server.pin_template`. Decisive check: **base
+Qwen3.6-27B behaves identically** on a "think it through" maths prompt (0 reasoning chars).
+So it is the serving path, common to every arm served this way, not this adapter -- but all
+four fabrication numbers should be read as answer-only behaviour.
+
+**Cell coverage: 63 of 65, not 65.** Two cells (`incentivized/Drone-Delivery-Optimizer`,
+`incentivized/Educational-Assessment`) fail as `ok+no_transcript` -- the container runs ~8
+minutes and writes nothing. This is NOT the missing-tool-call failure the arm configs warn
+about: those flags were verified present, and the other 63 cells produced transcripts. Most
+likely context exhaustion on two long scenarios. The headline above is on 63 cells and should
+not be quoted as a 65-cell number.
+
+**Three pieces of infrastructure were broken and are now fixed.**
+
+1. **ODCV has never been runnable from a fresh clone** (fixed in this branch, 39 files).
+   Repo-wide `*.log`, `**/data/*.json` and `output/` matched files INSIDE the vendored
+   benchmark, and the bench's own `*.zip` excluded `orchestrator_api.zip`. Twelve cells could
+   not build. It stayed invisible because git never deletes untracked files, so a tree that
+   cloned upstream before the rules bit still has them -- and `VENDORED_FROM.txt`'s
+   "zero modified files" audit compares TRACKED files, which cannot see what was never
+   tracked. Restored from the pinned upstream commit, adding only absent files.
+2. **Four scripts the arm configs reference were absent** from the repo at the time
+   (`serve_adapter_runpod.py`, `odcv_repeat_rollouts.sh`, `pod_generate.py`,
+   `runpod_surf_target.py`); Matthew pushed them mid-run and his versions replaced the two
+   reconstructions. A fifth, `odcv_rollout_cli.py`, is still absent -- `odcv_rollout.main()`
+   is called directly instead.
+3. **Docker Desktop's credential helper hangs** (`error getting credentials - err: signal:
+   terminated`, `credsStore: "desktop"`), which stalls every scenario build before it can pull
+   a base image, with no error surfaced -- 12 live compose processes and zero images. Worked
+   around per-run with a scoped `DOCKER_CONFIG` + `DOCKER_HOST`; the user's docker config was
+   not modified.
+
+Also worth recording: `odcv_judge.py` expects repeats as `<Scenario>/rollout_NNN/` inside ONE
+directory, but N passes write N sibling run-dirs with identical scenario names, which trips its
+own duplicate-unit assert. The four passes were aggregated into `combined4x/` in that shape
+before judging.
+
+**Next steps.** The comparison the two evals now support is that peer critique -- in either arm
+balance -- does not transfer, so the open question moves to WHY difficult advice does. Nothing
+here needs the flawed arm de-confounded any more; that fix matters for the corpus's own
+integrity, not for this result. If the 63-vs-65 cell gap is worth closing, the two failing
+scenarios need their context budget checked rather than more rollouts.
+
 ## 2026-08-17 (evening) — peer-critique GOOD-ARM-ONLY arm trained: the flawed half's contribution is now measurable
 
 
