@@ -1,6 +1,7 @@
 # ABOUTME: Offline unit tests for src/properties: the Record/Property contracts, the source
 # ABOUTME: adapters, grouping, the registry, and every ablation's applicability rules.
 
+import inspect
 import json
 from pathlib import Path
 
@@ -337,16 +338,25 @@ def test_producer_registry_declares_what_each_one_needs():
 
 
 def test_unported_producers_name_the_command_that_makes_their_artifacts(tmp_path):
-    from src.properties.producers.feature_discovery import adapter as fd_adapter
-    from src.properties.producers.less import adapter as less_adapter
-    from src.properties.producers.turf import adapter as turf_adapter
+    from src.properties.producers import feature_discovery, less, turf
 
     with pytest.raises(FileNotFoundError, match="scratch.llm_feature_discovery"):
-        fd_adapter.read_run_dir(tmp_path)
+        feature_discovery.read_run_dir(tmp_path)
     with pytest.raises(FileNotFoundError, match="scratch/turf/trace.py"):
-        turf_adapter.read_trace(tmp_path)
+        turf.read_trace(tmp_path)
     with pytest.raises(FileNotFoundError, match="scratch/less/influence.py"):
-        less_adapter.read_scores(tmp_path)
+        less.read_scores(tmp_path)
+
+
+def test_every_registered_producer_exposes_one_produce():
+    from src.properties.producers import resolve
+
+    for name in PRODUCERS:
+        produce = resolve(name)
+        assert callable(produce)
+        # One signature for all four, so discover.py can run any of them blind.
+        params = list(inspect.signature(produce).parameters)
+        assert params[:3] == ["records", "cfg", "out_dir"] and "target" in params
 
 
 # --- ablation --------------------------------------------------------------------------
@@ -490,7 +500,7 @@ def test_trace_clusters_produce_end_to_end(tmp_path, monkeypatch):
     """The reference producer with its two model calls stubbed: embed -> group ->
     interpret -> Property rows, including the per-arm split a DA-vs-courtroom
     comparison reads."""
-    from src.properties.producers.trace_clusters import adapter as tc
+    from src.properties.producers import trace_clusters as tc
     from src.properties.shared.interpret import Interpretation
 
     records = []
@@ -536,7 +546,7 @@ def test_trace_clusters_produce_end_to_end(tmp_path, monkeypatch):
 
 
 def test_trace_clusters_refuses_a_corpus_with_no_text_in_the_channel(tmp_path):
-    from src.properties.producers.trace_clusters import adapter as tc
+    from src.properties.producers import trace_clusters as tc
 
     with pytest.raises(ValueError, match="no record carries text in the 'reasoning'"):
         tc.produce([Record("r0", "q", "a", reasoning="")], {}, tmp_path / "tc")
@@ -544,11 +554,11 @@ def test_trace_clusters_refuses_a_corpus_with_no_text_in_the_channel(tmp_path):
 
 # --- feature_discovery against the published run checked into docs/ --------------------
 
-def test_feature_discovery_adapter_reads_the_published_run(tmp_path, monkeypatch):
+def test_feature_discovery_reads_the_published_run(tmp_path, monkeypatch):
     """The 2026-08-12 run lives in docs/feature_discovery/ (minus its 265MB embeddings).
-    The adapter must turn its clusters into Property rows with ids that name the RUN, not
+    produce() must turn its clusters into Property rows with ids that name the RUN, not
     the directory the artifacts were copied into."""
-    from src.properties.producers.feature_discovery import adapter as fd
+    from src.properties.producers import feature_discovery as fd
     from src.properties.shared.interpret import Interpretation
 
     monkeypatch.setattr(fd.interpret_mod, "interpret_many", lambda groups, **kw: {

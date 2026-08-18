@@ -43,11 +43,13 @@ caught peer-critique at AUC 0.9973 and post-action-retrospection at 0.96 on 2026
 the second only after a model had been trained on it. `ablate.py` refuses to emit a train
 config for a failed arm without `--force`, which it records.
 
-**Three producers are adapters, not ports.** feature_discovery, turf and less still live
-under `scratch/`; their `adapter.py` reads the artifacts those modules already write
+**Three producers are boundaries, not ports.** feature_discovery, turf and less still live
+under `scratch/`; each one's `produce()` reads the artifacts those modules already write
 (`clusters.json`, `trace_result.json`, `scores.jsonl`) and turns them into Property rows.
 The artifacts are the interface, so the port moves code without changing anything
-downstream. `trace_clusters` is implemented in full as the reference producer — embed whole
+downstream. A producer is ONE module — its package `__init__.py` — exposing ONE `produce()`
+with one signature, so `discover.py` runs any of them blind.
+`trace_clusters` is implemented in full as the reference producer — embed whole
 traces, group, interpret — and answers the 2026-08-17 action item (UMAP+clustering on good
 traces, DA vs courtroom) via its per-arm `group_by` split.
 
@@ -67,7 +69,7 @@ DA corpus to get real property ids into the registry. (2) Cost the detector pass
 running it at scale — it is one judge call per record per property. (3) Then one rewrite
 ablation end to end, against the control that
 `lora_qwen36_t2_9284_synthdoc_716_dynbatch_2xh200.yaml` names. (4) Port the three scratch
-producers in behind their adapters.
+producers in behind their `produce()`.
 
 ## 2026-08-17 — LESS-selected difficult-advice arm trained: 151 rows swapped, loss 0.8651, no control yet
 
