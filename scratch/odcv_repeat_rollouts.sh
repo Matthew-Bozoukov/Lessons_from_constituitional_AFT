@@ -18,7 +18,9 @@ set -euo pipefail
 CONFIG="${1:?usage: odcv_repeat_rollouts.sh <config> <n_passes> [start_index]}"
 N="${2:?number of passes required}"
 START="${3:-1}"
-ROOT="/home/matthewb/git repos/teaching_claude_why_replication"
+# Repo root: overridable, but defaults to wherever this checkout lives, so the script is
+# not tied to one machine's home directory.
+ROOT="${ODCV_ROOT:-$(git rev-parse --show-toplevel)}"
 
 cd "$ROOT"
 for i in $(seq "$START" "$N"); do
