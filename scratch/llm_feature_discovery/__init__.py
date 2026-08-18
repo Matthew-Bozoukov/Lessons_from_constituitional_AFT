@@ -13,25 +13,24 @@ the shared interchange format, to be merged with the other producers' property l
 
 Run it with `uv run python -m scratch.llm_feature_discovery <verb>`; see `__main__.py`.
 
-One job per module:
+Ten files. A module only stands on its own if something outside it references it, or if
+it is one whole stage:
 
     rundir      what a run directory holds and how each artifact is read and written
-    prompts     the two verbatim prompts from the post
-    extract     trace -> free-text features (autorater)
-    dedupe      per-trace lists -> the unique vocabulary to embed
-    podscript   the code that runs ON the rented GPU
-    embed       rent the GPU, push, fetch, terminate
-    cluster     embeddings -> UMAP -> HDBSCAN labels
-    naming      cluster -> a ~5-word label (LLM)
-    prevalence  labels + traces -> per-cluster statistics
-    centroids   cluster centroids, shared with the scripts that assign against them
-    audit       redundancy pairs and keyword probes
-    geometry    did the reduction keep the structure
-    compare     agreement with a baseline clustering, and stability
-    report      markdown renderers
-    dashboard   the HTML renderer
-    properties  the export into the shared List of Properties
-    pipeline    the order the above run in
+                — every stage depends on it
+    centroids   cluster centroids — also imported by scratch/find_harm_risk_instances.py
+                and scratch/odcv_cluster_assign.py, so the noise rule lives in one place
+    prompts     the two verbatim prompts from the post — read by extract and by cluster,
+                and kept apart so "do not reword this" has somewhere to be written down
+
+    extract     stages 1-2: trace -> free-text features -> the unique vocabulary
+    embed       stage 3: the pod-side code, and renting the GPU that runs it
+    cluster     stage 4: UMAP + HDBSCAN, LLM naming, prevalence, and the report
+    audit       stages 5-6: redundancy, keyword probes, the geometry/agreement/stability
+                gate, and the dashboard
+    properties  stage 7: the hand-off schema other producers and the merger read
+
+    __main__    the CLI, and the only file that knows what order stages run in
 """
 
 from __future__ import annotations

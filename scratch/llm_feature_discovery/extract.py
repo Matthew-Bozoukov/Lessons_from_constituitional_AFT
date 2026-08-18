@@ -1,7 +1,7 @@
-# ABOUTME: Ask the autorater for free-text features describing one reasoning trace, and
-# ABOUTME: run that over a whole corpus, appending results so the run resumes.
+# ABOUTME: Stages 1-2. Ask the autorater for free-text features describing each reasoning
+# ABOUTME: trace, then collapse the per-trace lists into the vocabulary to embed.
 
-"""Free-text feature extraction.
+"""Feature extraction and vocabulary building.
 
 The autorater sees ONE reasoning trace at a time and nothing else — no scenario metadata,
 no trait, no other traces — exactly as in the post. Features are free text, not a schema,
@@ -9,6 +9,11 @@ which is the whole point: the model names behaviours nobody chose in advance.
 
 Each trace's features are appended to features.jsonl as they land, so an interrupted run
 resumes by rerunning against the same run directory.
+
+Deduplication follows immediately because duplicates matter twice over: identical strings
+across traces are the signal that a feature is common, but embedding the same string 400
+times wastes GPU. Each unique string is embedded once and the occurrence counts travel
+alongside it.
 """
 
 from __future__ import annotations
@@ -16,6 +21,7 @@ from __future__ import annotations
 import json
 import re
 import threading
+from collections import Counter
 
 from scratch.llm_feature_discovery.prompts import build_feature_extraction_system_prompt
 from scratch.llm_feature_discovery.rundir import RunDir
@@ -31,6 +37,8 @@ OPENROUTER_PROVIDER_ROUTING = {"provider": {"ignore": ["Amazon Bedrock"]}}
 # feature that violates it is reported, never silently repaired.
 LETTERS_ONLY_FEATURE_RE = re.compile(r"^[A-Za-z][A-Za-z ]*$")
 
+
+# ---------------------------------------------------------------- stage 1: extract ------
 
 def parse_feature_list(raw_model_output: str) -> list[str]:
     """Parse and sanity-check the autorater's feature list.
@@ -163,3 +171,42 @@ def extract_corpus(run: RunDir, sft_rows: list[dict], model: str, temperature: f
                                      * AUTORATER_PRICE_PER_MTOK_OUTPUT),
             "features_violating_letters_only_rule": len(violations),
             "violation_examples": violations[:5]}
+
+
+# ---------------------------------------------------------------- stage 2: dedupe -------
+
+def build_vocabulary(run: RunDir) -> dict:
+    """Write unique_features.txt and feature_counts.json from the run's features.jsonl.
+
+    Args:
+        run: The run directory.
+
+    Returns:
+        Counters describing how much repetition the autorater produced.
+
+    Raises:
+        ValueError: If a feature contains a newline or tab, which would corrupt the
+            line-per-feature file that the embedding stage reads.
+    """
+    records = run.read_trace_features()
+    instances = [f for record in records for f in record["features"]]
+    malformed = [f for f in instances if "\n" in f or "\t" in f]
+    if malformed:
+        raise ValueError(f"{len(malformed)} features contain newlines/tabs and would "
+                         f"corrupt unique_features.txt: {malformed[:3]}")
+
+    counts = Counter(instances)
+    unique = sorted(counts)
+    run.write_unique_features(unique)
+    run.write_feature_counts(counts.most_common())
+
+    per_trace = [len(record["features"]) for record in records]
+    return {"traces": len(records),
+            "feature_instances": len(instances),
+            "features_per_trace_mean": sum(per_trace) / len(records),
+            "features_per_trace_min": min(per_trace),
+            "features_per_trace_max": max(per_trace),
+            "unique_features": len(unique),
+            "unique_share_of_instances": len(unique) / len(instances),
+            "appearing_once": sum(1 for c in counts.values() if c == 1),
+            "most_repeated": counts.most_common(12)}

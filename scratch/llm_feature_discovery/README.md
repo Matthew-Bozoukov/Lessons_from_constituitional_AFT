@@ -80,28 +80,22 @@ cacheable prefix.
 | `gate` | two run dirs | `clustering_comparison.{json,md}` — geometry, agreement, stability |
 | `export` | `clusters.json` | `properties.jsonl`, `properties_meta.json` |
 
-## One job per file
+## One file per stage, plus three shared pieces
 
-| file | job |
-| --- | --- |
-| `rundir.py` | what a run directory holds, and how each artifact is read and written |
-| `prompts.py` | the two prompts, verbatim from the post |
-| `extract.py` | trace → free-text features |
-| `dedupe.py` | per-trace lists → the unique vocabulary |
-| `podscript.py` | the code that runs ON the rented GPU |
-| `embed.py` | rent the GPU, push, poll, fetch, terminate |
-| `cluster.py` | embeddings → UMAP → HDBSCAN labels |
-| `naming.py` | cluster → a ~5-word label |
-| `prevalence.py` | labels + traces → per-cluster statistics |
-| `centroids.py` | cluster centroids, shared with the scripts that assign against them |
-| `audit.py` | redundancy pairs and keyword probes |
-| `geometry.py` | did the reduction keep the structure |
-| `compare.py` | agreement with a baseline clustering, and stability |
-| `report.py` | markdown renderers |
-| `dashboard.py` | the HTML renderer |
-| `properties.py` | the export into the shared List of Properties |
-| `pipeline.py` | the order the above run in |
-| `__main__.py` | the CLI, and nothing else |
+A file only stands on its own if something outside it references it, or if it is one whole
+stage.
+
+| file | job | why it is its own file |
+| --- | --- | --- |
+| `rundir.py` | what a run directory holds, and how each artifact is read and written | every stage depends on it |
+| `centroids.py` | cluster centroids | also imported by `find_harm_risk_instances.py` and `odcv_cluster_assign.py`, so the noise rule lives in one place |
+| `prompts.py` | the two prompts, verbatim from the post | read by `extract` and by `cluster`, and kept apart so "do not reword this" has somewhere to be written down |
+| `extract.py` | stages 1–2: trace → features → the unique vocabulary | one stage |
+| `embed.py` | stage 3: the pod-side code, and renting the GPU that runs it | one stage |
+| `cluster.py` | stage 4: UMAP + HDBSCAN, LLM naming, prevalence, report | one stage |
+| `audit.py` | stages 5–6: redundancy, keyword probes, the gate, the dashboard | one stage |
+| `properties.py` | stage 7: the hand-off schema | other producers and the merger read it |
+| `__main__.py` | the CLI | the only file that knows what order stages run in |
 
 Do not reword `prompts.py` — the point of the replication is that the post's prompt, not a
 schema of ours, decides what a "feature" is. The JSON output contract appended to the
