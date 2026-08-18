@@ -46,7 +46,8 @@ def _centroids(emb_path: Path, uniq: list[str], fmap: dict[str, int], k: int) ->
     Args:
         emb_path: Path to embeddings.npy (n x d, fp16).
         uniq: Feature strings in embedding-row order.
-        fmap: Feature string -> cluster id.
+        fmap: Feature string -> cluster id. Features absent from it are HDBSCAN noise
+            and contribute to no centroid.
         k: Number of clusters.
 
     Returns:
@@ -55,12 +56,17 @@ def _centroids(emb_path: Path, uniq: list[str], fmap: dict[str, int], k: int) ->
     x = np.load(emb_path, mmap_mode="r")
     sums = np.zeros((k, x.shape[1]), dtype=np.float32)
     counts = np.zeros(k, dtype=np.int64)
-    labels = np.array([fmap[f] for f in uniq], dtype=np.int32)
+    # Features missing from fmap are HDBSCAN noise: they belong to no cluster and so
+    # contribute to no centroid. A k-means map has none of these.
+    labels = np.array([fmap.get(f, -1) for f in uniq], dtype=np.int32)
     for start in range(0, len(uniq), 2048):
         block = np.asarray(x[start:start + 2048], dtype=np.float32)
-        np.add.at(sums, labels[start:start + 2048], block)
-        np.add.at(counts, labels[start:start + 2048], 1)
-    assert counts.sum() == len(uniq), f"{counts.sum()} != {len(uniq)}"
+        chunk = labels[start:start + 2048]
+        keep = chunk >= 0
+        np.add.at(sums, chunk[keep], block[keep])
+        np.add.at(counts, chunk[keep], 1)
+    n_clustered = int((labels >= 0).sum())
+    assert counts.sum() == n_clustered, f"{counts.sum()} != {n_clustered}"
     cen = sums / counts[:, None]
     return cen / np.linalg.norm(cen, axis=1, keepdims=True)
 
@@ -152,7 +158,7 @@ def main(
     for t in traces:
         hit: dict[int, list[str]] = {}
         for f in t["features"]:
-            c = fmap[f]
+            c = fmap.get(f)         # None => unclustered (HDBSCAN noise)
             if c in picked:
                 hit.setdefault(c, []).append(f)
         if hit:
@@ -168,13 +174,13 @@ def main(
              "| centroid cosine | clusters | traces | of corpus | lexically exhibit it |",
              "|---|--:|--:|--:|--:|"]
     for t, cs in tiers.items():
-        sids = {tr["scenario_id"] for tr in traces if {fmap[f] for f in tr["features"]} & set(cs)}
+        sids = {tr["scenario_id"] for tr in traces if {fmap[f] for f in tr["features"] if f in fmap} & set(cs)}
         lex = sum(1 for s in sids if LEXICAL.search(_reasoning(rows[s])))
         lines.append(f"| ≥{t} | {len(cs)} | {len(sids)} | {len(sids) / len(traces):.1%} | "
                      f"{lex} ({lex / len(sids):.0%}) |")
     base = {tr["scenario_id"] for tr in traces} - {
         tr["scenario_id"] for tr in traces
-        if {fmap[f] for f in tr["features"]} & set(tiers[min(TIERS)])}
+        if {fmap[f] for f in tr["features"] if f in fmap} & set(tiers[min(TIERS)])}
     lines += ["", f"Baseline for comparison: of the {len(base)} traces in no tier at all, "
                   f"{sum(1 for s in base if LEXICAL.search(_reasoning(rows[s])))} "
                   f"({sum(1 for s in base if LEXICAL.search(_reasoning(rows[s]))) / len(base):.0%})"
@@ -222,7 +228,7 @@ def main(
 
     print(f"seed C{seed}: {SEED_LABEL}")
     for t, cs in tiers.items():
-        sids = {tr["scenario_id"] for tr in traces if {fmap[f] for f in tr["features"]} & set(cs)}
+        sids = {tr["scenario_id"] for tr in traces if {fmap[f] for f in tr["features"] if f in fmap} & set(cs)}
         print(f"  cos>={t}: {len(cs)} clusters -> {len(sids)} traces")
     print(f"\nreporting tier {tier}: {len(insts)} instances -> {out}")
 

@@ -22,11 +22,15 @@ stage_7_sft.jsonl (reasoning_content per row)
   ├─ embed_unique_features_on_rented_gpu.py      Qwen3-Embedding-8B on a RunPod A6000
   │      → embeddings.npy (fp16, L2-normalised), embed_meta.json
   │
-  ├─ cluster_and_name_feature_embeddings.py      mini-batch k-means + Sonnet naming
+  ├─ cluster_and_name_feature_embeddings.py      k-means OR UMAP+HDBSCAN, + Sonnet naming
   │      → clusters.json, feature_cluster_map.json, report.md
+  │        (+ umap_coords.npy in hdbscan mode)
   │
-  └─ audit_clusters_and_build_dashboard.py       redundancy + keyword probes + HTML
-         → report_audit.json, dashboard.html, report.md (appended)
+  ├─ audit_clusters_and_build_dashboard.py       redundancy + keyword probes + HTML
+  │      → report_audit.json, dashboard.html, report.md (appended)
+  │
+  └─ compare_clusterings_and_check_stability.py  gate one clustering against the other
+         → clustering_comparison.json, clustering_comparison.md
 ```
 
 Every script reads and writes the same run directory, `output/feature_discovery/<timestamp>/`,
@@ -63,6 +67,50 @@ uv run python scratch/llm_feature_discovery/audit_clusters_and_build_dashboard.p
     --run-dir output/feature_discovery/<ts>
 ```
 
+## Clustering: k-means or UMAP+HDBSCAN
+
+`--cluster` picks how the embeddings are grouped; everything either side is identical, so
+the two are an A/B over one embedding set rather than two pipelines.
+
+| | `kmeans` (default) | `hdbscan` |
+| --- | --- | --- |
+| resolution knob | `--k` | `--min-cluster-size` |
+| cluster count | chosen | discovered |
+| every feature clustered | yes | no — low-density features become noise |
+| memory | streams the memmap | ~0.5 GB resident (UMAP's k-NN graph needs it whole) |
+
+Run the pair against the **same finished run directory** — the embeddings already exist, so
+the only cost is the naming calls — and copy the directory first so both `clusters.json`
+files survive to be compared. `min_cluster_size ≈ len(unique_features) / k` (~220 at
+k=150) is the like-for-like setting.
+
+```bash
+cp -r output/feature_discovery/<ts> output/feature_discovery/<ts>_hdbscan
+uv run python scratch/llm_feature_discovery/cluster_and_name_feature_embeddings.py \
+    --run-dir output/feature_discovery/<ts>_hdbscan \
+    --cluster hdbscan --reduce umap --min-cluster-size 220
+
+uv run python scratch/llm_feature_discovery/compare_clusterings_and_check_stability.py \
+    --kmeans-dir output/feature_discovery/<ts> \
+    --hdbscan-dir output/feature_discovery/<ts>_hdbscan
+```
+
+The gate answers three questions before anything is read off the new clusters: did UMAP
+keep the geometry (nearest-neighbour overlap, plus the stored embedding sanity probe where
+the run has one), do the two labelings agree (ARI/AMI), and is HDBSCAN stable across
+`n_neighbors` and seeds. **If the two agree closely, the published k=150 numbers were
+sound — say so and keep them.**
+
+### The noise contract
+
+HDBSCAN labels low-density features `-1`. Those features are left **out** of
+`feature_cluster_map.json` entirely, because every consumer averages a cluster's members
+into a centroid and a `-1` "cluster" would get a meaningless one that then attracts eval
+features. They are counted, not hidden: `clusters.json` carries `n_noise_features` and
+`noise_instances`, `report.md` states both as a share, and the dashboard has a card for
+them. Consumers look features up with `.get`, so a feature that is not in the map
+contributes to nothing rather than raising.
+
 Cost for the 2,202-trace corpus run: ~$18 OpenRouter + ~$0.30 RunPod. Prompt caching does
 **not** engage — the post's prompt is ~426 tokens, under Anthropic's 1024-token minimum
 cacheable prefix.
@@ -92,3 +140,7 @@ prevalence is directly comparable to training-corpus prevalence — that compari
 * **Substring probes burned this analysis twice.** Every probe in
   `audit_clusters_and_build_dashboard.py` is a word-boundary regex, and any new needle must be
   read against its own matches before its number is quoted.
+* **`meta["k"]` is not the cluster count on an HDBSCAN run** — it is the unused k-means
+  knob sitting at its default. Read `meta["n_clusters"]`.
+* **Reduced-space cosines are not comparable to full-dimensional ones.** UMAP compresses
+  the space, so every cosine rises; only the ordering of the sanity probe carries over.

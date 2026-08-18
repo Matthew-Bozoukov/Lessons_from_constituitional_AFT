@@ -269,7 +269,8 @@ def _centroids(emb_path: Path, uniq: list[str], fmap: dict[str, int], k: int) ->
     Args:
         emb_path: Path to the training embeddings.npy (n x d, fp16).
         uniq: Feature strings in embedding-row order.
-        fmap: Feature string -> cluster id.
+        fmap: Feature string -> cluster id. Features absent from it are HDBSCAN noise
+            and contribute to no centroid.
         k: Number of clusters.
 
     Returns:
@@ -278,12 +279,17 @@ def _centroids(emb_path: Path, uniq: list[str], fmap: dict[str, int], k: int) ->
     x = np.load(emb_path, mmap_mode="r")
     sums = np.zeros((k, x.shape[1]), dtype=np.float32)
     counts = np.zeros(k, dtype=np.int64)
-    labels = np.array([fmap[f] for f in uniq], dtype=np.int32)
+    # Features missing from fmap are HDBSCAN noise: they belong to no cluster and so
+    # contribute to no centroid. A k-means map has none of these.
+    labels = np.array([fmap.get(f, -1) for f in uniq], dtype=np.int32)
     for start in range(0, len(uniq), 2048):
         block = np.asarray(x[start:start + 2048], dtype=np.float32)
-        np.add.at(sums, labels[start:start + 2048], block)
-        np.add.at(counts, labels[start:start + 2048], 1)
-    assert counts.sum() == len(uniq), f"{counts.sum()} != {len(uniq)}"
+        chunk = labels[start:start + 2048]
+        keep = chunk >= 0
+        np.add.at(sums, chunk[keep], block[keep])
+        np.add.at(counts, chunk[keep], 1)
+    n_clustered = int((labels >= 0).sum())
+    assert counts.sum() == n_clustered, f"{counts.sum()} != {n_clustered}"
     cen = sums / counts[:, None]
     return cen / np.linalg.norm(cen, axis=1, keepdims=True)
 

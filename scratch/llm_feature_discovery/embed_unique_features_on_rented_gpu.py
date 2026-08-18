@@ -66,7 +66,11 @@ print(f"SANITY backtrack~selfcorrect {float(p[0]@p[1]):.3f} (want high) | "
       f"backtrack~apples {float(p[0]@p[2]):.3f} (want low)", flush=True)
 
 np.save("/workspace/embeddings.npy", v.astype(np.float16))
-json.dump({"n": len(feats), "dim": int(v.shape[1]), "model": "MODEL_ID",
+# Keep the probe vectors, not just their cosines: re-checking the geometry after a
+# dimensionality reduction needs the vectors themselves, and re-embedding three strings
+# later would mean renting a GPU again.
+np.save("/workspace/probe_embeddings.npy", p.astype(np.float16))
+json.dump({"n": len(feats), "dim": int(v.shape[1]), "model": "MODEL_ID", "probe": probe,
            "sanity_synonym": float(p[0]@p[1]), "sanity_unrelated": float(p[0]@p[2])},
           open("/workspace/embed_meta.json", "w"), indent=1)
 open("/workspace/DONE", "w").write("ok")
@@ -230,7 +234,8 @@ def fetch_embeddings(pod: str, out_dir: str) -> None:
         raise RuntimeError("pod has not written /workspace/DONE yet; check `check_status`")
     local_dir = Path(out_dir)
     local_dir.mkdir(parents=True, exist_ok=True)
-    for filename in ("embeddings.npy", "embed_meta.json", "embed.log"):
+    for filename in ("embeddings.npy", "probe_embeddings.npy", "embed_meta.json",
+                     "embed.log"):
         started = time.time()
         resp = requests.get(f"{base_url}/{filename}", timeout=1800)
         resp.raise_for_status()

@@ -65,26 +65,39 @@ def compute_normalised_cluster_centroids(embeddings_path: Path, unique_features:
     Args:
         embeddings_path: Path to embeddings.npy (n x d, fp16).
         unique_features: Feature strings in embedding-row order.
-        feature_to_cluster: Feature string -> cluster id.
+        feature_to_cluster: Feature string -> cluster id. Features absent from this map
+            are HDBSCAN noise and contribute to no centroid.
         n_clusters: Number of clusters.
 
     Returns:
-        (k x d) centroid matrix, rows L2-normalised.
+        (n_clusters x d) centroid matrix, rows L2-normalised.
+
+    Raises:
+        RuntimeError: If a cluster ended up with no members.
     """
     embeddings = np.load(embeddings_path, mmap_mode="r")
     n_dims = embeddings.shape[1]
     cluster_vector_sums = np.zeros((n_clusters, n_dims), dtype=np.float32)
     cluster_member_counts = np.zeros(n_clusters, dtype=np.int64)
     rows_per_chunk = 2048
-    cluster_of_row = np.array([feature_to_cluster[f] for f in unique_features], dtype=np.int32)
+    # -1 marks a feature the map omits — HDBSCAN noise. It contributes to no centroid,
+    # which is the point of leaving it out; a k-means map has none of these.
+    cluster_of_row = np.array([feature_to_cluster.get(f, -1) for f in unique_features],
+                              dtype=np.int32)
     for start in range(0, len(unique_features), rows_per_chunk):
         block = np.asarray(embeddings[start:start + rows_per_chunk], dtype=np.float32)
         for row, cluster_id in zip(block, cluster_of_row[start:start + rows_per_chunk]):
+            if cluster_id < 0:
+                continue
             cluster_vector_sums[cluster_id] += row
             cluster_member_counts[cluster_id] += 1
-    assert cluster_member_counts.sum() == len(unique_features), \
-        f"assigned {cluster_member_counts.sum()} of {len(unique_features)} features"
-    centroids = cluster_vector_sums / np.maximum(cluster_member_counts, 1)[:, None]
+    n_clustered = int((cluster_of_row >= 0).sum())
+    assert cluster_member_counts.sum() == n_clustered, \
+        f"assigned {cluster_member_counts.sum()} of {n_clustered} clustered features"
+    if not cluster_member_counts.all():
+        raise RuntimeError("clusters with no members: "
+                           f"{np.flatnonzero(cluster_member_counts == 0).tolist()}")
+    centroids = cluster_vector_sums / cluster_member_counts[:, None]
     return centroids / np.linalg.norm(centroids, axis=1, keepdims=True)
 
 
@@ -106,11 +119,18 @@ def main(run_dir: str) -> None:
                          if x.strip()]
     cluster_by_id = {c["cluster"]: c for c in clusters}
 
+    # meta["k"] is the k-means knob and means nothing on an HDBSCAN run, where the count
+    # is discovered. n_clusters is what was actually produced; .get keeps runs written
+    # before that field existed readable.
+    n_clusters = meta.get("n_clusters", meta["k"])
+    clustering_label = (f"HDBSCAN(min_cluster_size="
+                        f"{meta.get('cluster_params', {}).get('min_cluster_size')})"
+                        if meta.get("cluster") == "hdbscan" else f"k={meta['k']}")
     centroids = compute_normalised_cluster_centroids(
-        run_path / "embeddings.npy", unique_features, feature_to_cluster, meta["k"])
+        run_path / "embeddings.npy", unique_features, feature_to_cluster, n_clusters)
     centroid_cosine = centroids @ centroids.T
     np.fill_diagonal(centroid_cosine, 0.0)
-    upper_triangle = np.triu_indices(meta["k"], k=1)
+    upper_triangle = np.triu_indices(n_clusters, k=1)
     near_duplicate_cluster_pairs = [
         {"a": int(i), "b": int(j), "cosine": float(centroid_cosine[i, j]),
          "label_a": cluster_by_id[int(i)]["label"], "label_b": cluster_by_id[int(j)]["label"]}
@@ -127,6 +147,7 @@ def main(run_dir: str) -> None:
         matching_trace_ids = {t["scenario_id"] for t in per_trace_records
                               if any(probe_re.search(f) for f in t["features"])}
         clusters_hit = Counter(cluster_by_id[feature_to_cluster[f]]["label"]
+                               if f in feature_to_cluster else "(unclustered noise)"
                                for f in matching_features)
         probe_results[probe_name] = {
             "unique_features": len(matching_features),
@@ -145,9 +166,9 @@ def main(run_dir: str) -> None:
     lines = ["", "## Cluster redundancy audit", "",
              f"Cluster centroids with cosine >= {NEAR_DUPLICATE_COSINE_THRESHOLD} describe "
              f"substantially the same theme. **{len(near_duplicate_cluster_pairs)} such "
-             f"pairs** among {meta['k']} clusters — "
-             "k=150 splits this corpus's dominant house style across many labels, so treat "
-             "the cluster count as a resolution setting, not a count of distinct behaviours.",
+             f"pairs** among {n_clusters} clusters — at k=150 this corpus's dominant house "
+             "style splits across many labels, so treat the cluster count as a resolution "
+             "setting, not a count of distinct behaviours.",
              ""]
     if near_duplicate_cluster_pairs:
         lines += ["| cosine | cluster A | cluster B |", "|---:|---|---|"]
@@ -208,11 +229,12 @@ ul{{margin:6px 0 6px 18px;padding:0}} summary{{cursor:pointer}}
 <h1>LLM-driven feature discovery</h1>
 <p class=mono>{escape_html(meta['traces'])} reasoning traces · {escape_html(meta['feature_instances'])} feature
 instances · {escape_html(meta['unique_features'])} unique · embeddings {escape_html(meta['embedding_model'])}
-({meta['embedding_dim']}d) · naming {escape_html(meta['naming_model'])} · k={meta['k']} · {escape_html(meta['timestamp_utc'])}</p>
+({meta['embedding_dim']}d) · naming {escape_html(meta['naming_model'])} · {escape_html(clustering_label)} · {escape_html(meta['timestamp_utc'])}</p>
 <div class=cards>
 <div class=card><div class=big>{meta['traces']}</div><div class=lab>traces</div></div>
 <div class=card><div class=big>{meta['unique_features']}</div><div class=lab>unique features</div></div>
-<div class=card><div class=big>{meta['k']}</div><div class=lab>clusters</div></div>
+<div class=card><div class=big>{n_clusters}</div><div class=lab>clusters</div></div>
+<div class=card><div class=big>{meta.get('n_noise_features', 0)}</div><div class=lab>unclustered (noise)</div></div>
 <div class=card><div class=big>{len(near_duplicate_cluster_pairs)}</div><div class=lab>near-duplicate cluster pairs</div></div>
 <div class=card><div class=big>{meta['sanity_synonym']:.2f}/{meta['sanity_unrelated']:.2f}</div>
 <div class=lab>embedding sanity syn/unrel</div></div></div>
