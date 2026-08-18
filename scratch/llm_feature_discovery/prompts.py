@@ -1,11 +1,11 @@
-# ABOUTME: Prompts for the LLM-driven feature discovery pipeline (LessWrong post
-# ABOUTME: WAZWA6FPQvH8okouJ): free-text feature extraction and cluster naming.
+# ABOUTME: The two verbatim LessWrong prompts (post WAZWA6FPQvH8okouJ) this pipeline runs on:
+# ABOUTME: free-text feature extraction from one trace, and ~5-word naming of one cluster.
 
 from __future__ import annotations
 
 # Verbatim from the post / the user's request. Do not reword: the whole point of the
 # replication is that this prompt, not a schema of ours, decides what a "feature" is.
-FEATURE_PROMPT = """For the given conversation section text, identify key "features".
+FEATURE_EXTRACTION_PROMPT = """For the given conversation section text, identify key "features".
 
 Here are some examples of possible features. Try not to anchor too much on any one of \
 these, they are just meant to give you a "vibe" of what to aim for:
@@ -87,36 +87,37 @@ criteria."""
 # which cut output only from ~590 to ~490 tokens per trace (measured on 3 and 4 traces, so
 # within noise; ~$30 -> ~$27 over the corpus). The output budget is dominated by 20 verbose
 # feature strings, not by preamble.
-OUTPUT_CONTRACT = """
+FEATURE_JSON_OUTPUT_CONTRACT = """
 
 Return between 10 and 20 features as a JSON array of strings and nothing else, e.g.
 ["Backtracks in reasoning", "Weighs competing obligations explicitly"]
 Output only the array. No preamble, no brainstorming, no explanation, no trailing text."""
 
 # Verbatim from the post.
-NAMING_PROMPT = ("produce a single concise label (around 5 words) that captures the "
-                 "common theme of these features")
+CLUSTER_NAMING_PROMPT = ("produce a single concise label (around 5 words) that captures the "
+                         "common theme of these features")
 
 
-def feature_system_prompt() -> str:
+def build_feature_extraction_system_prompt() -> str:
     """The extraction prompt sent as the cacheable system message.
 
     Returns:
         The post's feature prompt plus the output-format contract.
     """
-    return FEATURE_PROMPT + OUTPUT_CONTRACT
+    return FEATURE_EXTRACTION_PROMPT + FEATURE_JSON_OUTPUT_CONTRACT
 
 
-def naming_messages(features: list[str]) -> list[dict]:
+def build_cluster_naming_messages(sampled_cluster_features: list[str]) -> list[dict]:
     """Build the cluster-naming request for one cluster's sampled features.
 
     Args:
-        features: Up to 100 randomly sampled features from a single cluster.
+        sampled_cluster_features: Up to 100 randomly sampled features from a single cluster.
 
     Returns:
         OpenAI-style message list asking for the cluster label.
     """
-    listing = "\n".join(f"* {f}" for f in features)
+    listing = "\n".join(f"* {f}" for f in sampled_cluster_features)
     return [{"role": "user", "content":
-             f"Here are features drawn from one cluster:\n\n{listing}\n\n{NAMING_PROMPT}. "
+             f"Here are features drawn from one cluster:\n\n{listing}\n\n"
+             f"{CLUSTER_NAMING_PROMPT}. "
              "Reply with the label only, no punctuation or explanation."}]
