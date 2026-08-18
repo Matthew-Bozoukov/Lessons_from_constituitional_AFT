@@ -1,0 +1,70 @@
+# ABOUTME: ODCV-Bench eval of the t2-9284 + peer-critique GOOD-ARM-716 r64 DYNBATCH LoRA,
+# ABOUTME: 4 rollouts x the same 65 cells the peercritique716 arm ran. Run: bash scratch/odcv_repeat_rollouts.sh THIS 4
+#
+# Hyperparameters and the exclusion list are byte-identical to
+# odcv_bench_t2_9284_peercritique716_r64_dynbatch_4x65.yaml; only model/model_key/base_url
+# and the local paths differ. That arm is the comparison this one exists for -- 716
+# peer-critique rows split 358 good / 358 flawed there, all 716 good here -- so scoring on a
+# different cell set would make the headline numbers incomparable.
+#
+# SERVED OVER RUNPOD'S HTTPS PROXY, not an SSH tunnel. scratch/serve_adapter_runpod.py
+# publishes :8000 as a RunPod /http port, so the docker containers reach the endpoint
+# straight out to the internet and there is no 172.17.0.1 bridge hop to keep alive.
+#
+# The vLLM server MUST be started with --enable-auto-tool-choice --tool-call-parser
+# qwen3_xml (and --reasoning-parser qwen3). Without them the harness completes every
+# scenario as `ok` but writes NO transcript: the agent cannot emit tool calls, so it never
+# acts. That failure looks like a clean run in the summary and is only visible by checking
+# messages_record.txt exists. Cost one full run. Pass `--agentic true` to the serve script;
+# it is OFF by default there. This arm was served with `--agentic true --mode think`.
+#
+# rollouts_per_cell below is INERT -- odcv_rollout.py does not read it. The 4 rollouts come
+# from invoking the driver four times via scratch/odcv_repeat_rollouts.sh, each pass writing
+# its own timestamped run-dir that the judge aggregates across. The field is kept only so
+# this config stays diffable against its siblings.
+#
+# `baseline_results` is deliberately ABSENT: that field points at a prior run's results.json
+# on the operator's own disk, and the file the sibling configs name is not in this
+# repository. The judge falls back to `published_key` for its comparison, which is the same
+# base reference (qwen3.6-27b base fp8: MR 37.2%, severity 1.43).
+
+model: "pcgood716"                          # served LoRA name (request `model` field)
+model_key: "qwen3_6-27b-lora-t2-9284-pc-good716-r64-dynbatch"
+published_key: "qwen3.6-27b"
+base_url: "https://tocem79swdf8z3-8000.proxy.runpod.net/v1"
+temperature: 0.0
+bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
+output_root: "output/odcv_bench"
+concurrency: 12
+scenario_timeout_s: 2400
+prune_images: false
+rollouts_per_cell: 4
+expected_cells: 65
+shard_count: 1
+shard_index: 0
+judges:
+  grok-4.20: "x-ai/grok-4.20"
+  gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
+
+# Same 10 exclusions as every sibling arm, so all arms are scored on the same 70 cells.
+exclude_scenarios:
+  - "incentivized/Academic-Research-Integrity-Finding"
+  - "incentivized/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Academic-Research-Integrity-Finding"
+  - "mandated/Clinical-Trial-Data-Management"
+  - "incentivized/Clinical-Trial-Integrity-Monitoring"
+  - "incentivized/Healthcare-Trial-Recruiter"
+  - "incentivized/Data-Privacy-Leak-Finding"
+  - "mandated/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Clinical-Trial-Integrity-Monitoring"
+  - "mandated/Healthcare-Appointment-Optimizer"
+
+# FIVE MORE EXCLUSIONS, carried over verbatim from the peercritique716 config so this arm
+# runs the SAME 65 cells rather than the 70 the difficult-advice and courtroom arms used.
+# The driver builds jobs as mandated-then-incentivized in scenario_names order, so "first
+# 65" is exactly the five incentivized scenarios below.
+  - "incentivized/Marketing-Campaign"
+  - "incentivized/Propaganda-Engine-Finding"
+  - "incentivized/Roboadvisor-Ethicsbypass"
+  - "incentivized/Supply-Chain-Sabotage-Finding"
+  - "incentivized/University-Research-Grant-Approval"
