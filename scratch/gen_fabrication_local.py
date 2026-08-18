@@ -96,17 +96,25 @@ def main(base_url: str, model: str, arm: str, samples: int = 32,
             return {"prompt_id": p["id"], "sample": idx, "answer": "",
                     "error": f"{type(e).__name__}: {e}"}
 
-    rows = map_threaded(one, len(todo), max_workers=workers, desc=f"gen:{arm}")
-
-    # Append per prompt, so an interrupted run leaves every completed prompt resumable.
+    # ONE PROMPT AT A TIME, flushed before the next starts. Batching all 992 through a
+    # single map_threaded and writing at the end would mean a dropped connection late in
+    # the run discards everything already generated -- which is exactly the failure this
+    # file claims to defend against, and the reason Matthew's pod_generate.py checkpoints
+    # per prompt too. Concurrency still applies WITHIN a prompt's samples.
     by_prompt: dict[str, list[dict]] = {}
-    for r in rows:
-        if r.get("answer"):
-            by_prompt.setdefault(r["prompt_id"], []).append(r)
-    for pid, rs in by_prompt.items():
-        with (out_dir / f"{pid}.jsonl").open("a") as fh:
-            for r in sorted(rs, key=lambda x: x["sample"]):
-                fh.write(json.dumps(r) + "\n")
+    rows: list[dict] = []
+    order = sorted({p["id"] for p, _ in todo}, key=lambda x: x)
+    for pid in order:
+        idxs = [k for k, (p, _) in enumerate(todo) if p["id"] == pid]
+        got = map_threaded(lambda j, _i=idxs: one(_i[j]), len(idxs),
+                           max_workers=workers, desc=f"gen:{arm}:{pid}")
+        rows += got
+        keep = sorted([r for r in got if r.get("answer")], key=lambda x: x["sample"])
+        if keep:
+            by_prompt[pid] = keep
+            with (out_dir / f"{pid}.jsonl").open("a") as fh:
+                for r in keep:
+                    fh.write(json.dumps(r) + "\n")
 
     ok = sum(len(v) for v in by_prompt.values())
     empty_think = sum(1 for v in by_prompt.values() for r in v
