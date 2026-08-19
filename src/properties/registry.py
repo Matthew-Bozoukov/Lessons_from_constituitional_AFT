@@ -21,7 +21,7 @@ The id is `<source>:<run>:<key>`, stable across reruns of the same run directory
 property referenced in an ablation config, a train config name, a LOG entry and a dataset
 card all point at the same thing months later.
 
-    property_id   "feature_discovery:20260812_092119:c030"
+    property_id   "clusters:20260812_092119:g030"
     source        which producer emitted it
     label         the property, as a short phrase
     description   what the move is

@@ -1,42 +1,75 @@
-# ABOUTME: trace_clusters — embed WHOLE records, cluster them, name the clusters. The
-# ABOUTME: simplest producer, and the reference implementation of the shared layer.
+# ABOUTME: clusters — the one clustering producer: embed evidence about records, group it,
+# ABOUTME: name each group. `evidence: features | traces` picks WHAT gets embedded.
 
-"""Cluster the traces themselves, not descriptions of them.
+"""Group records into named properties, two ways, one code path.
 
-    embed -> group -> interpret -> Property rows
+    (extract) -> embed -> group -> interpret -> Property rows
 
-The other producers put a model between the record and the vector: an autorater writes
-features or attributes, and those strings get embedded. That buys abstraction (the
-autorater says what a trace DOES) at the cost of an extra model's opinion in the loop.
-This producer does the direct thing — embed the record's text, cluster the embeddings,
-name each cluster from its members — which is cheap, has no autorater in it, and answers a
-question the others cannot: do two scenario formats occupy DIFFERENT regions of trace
-space at all?
+There are two established ways to find what a corpus of reasoning does, and they differ in
+exactly one place: what you turn into a vector.
 
-That question is the 2026-08-17 action item ("UMAP + clustering on good traces; compare DA
-vs Courtroom / Peer Critique"), and it needs the direct version: an autorater's vocabulary
-would smooth over exactly the surface differences the comparison is about.
+    evidence: features   an autorater reads each record ALONE and writes 10-20 free-text
+                         descriptions of what it does. Those DESCRIPTIONS are deduped into
+                         a vocabulary, embedded and clustered. (The LessWrong method,
+                         post `WAZWA6FPQvH8okouJ`.)
+    evidence: traces     the record's own text is embedded and clustered directly. No
+                         autorater, no extra opinion in the loop.
 
-Every stage of it is a call into `shared/`, which is the point: if adding a producer takes
-more than one file, something belongs in `shared/` that is not there yet.
+Everything after the vectors is identical — same grouping, same naming, same outcome
+crossing, same property rows — so they live in one module rather than two, and a run
+switches between them with one config key. That is the point: it makes them COMPARABLE.
+Two modules would have drifted into two embedders and two notions of prevalence, and the
+question "does the abstraction step buy anything?" would have been unanswerable.
+
+## Which to use
+
+`features` is the better property finder, and the default. Descriptions have already
+thrown the subject matter away, so a group is a recurring MOVE ("weighs likelihood against
+severity") rather than a recurring topic. It also gives a record MANY properties, which is
+what records are actually like — one trace checks authorisation AND weighs harm AND
+hedges.
+
+`traces` is the better occupancy comparer, and it answers a question `features` cannot: do
+two scenario formats sit in DIFFERENT regions of trace space at all? (The 2026-08-17 action
+item.) An autorater's vocabulary would smooth away precisely the surface differences that
+question is about. Its known weakness is the mirror of the above — raw text similarity
+tracks topic and register at least as hard as behaviour, so a group can easily be "the
+medical scenarios". The interpreter is warned about this per-mode (`EVIDENCE_FRAMING` in
+shared/interpret.py) and told to say so in the caveat rather than invent a behavioural
+label for a topical cluster. Read a `traces` label with more suspicion than a `features`
+one.
+
+The two also cost differently, in opposite directions: `features` pays one autorater call
+per record up front and then embeds short strings; `traces` pays nothing up front and
+embeds long ones.
+
+## What prevalence means in each
+
+    features   share of records with AT LEAST ONE feature in this group. Groups OVERLAP,
+               so these do not sum to 1.
+    traces     share of records whose own vector landed in this group. Each record is in
+               exactly one group (or in noise), so these DO sum to 1.
+
+`support.prevalence_kind` records which, because comparing the two numbers as if they were
+the same quantity is the mistake this note exists to prevent. Either can be replaced by a
+detector-measured prevalence (`measure_with_detector: true`), and that measured number is
+the one to use across producers — it means the same thing everywhere.
 
 ## Two corpora, two questions
 
 Point this at a TRAINING MIXTURE and it says what the data contains. Point it at ROLLOUTS
 from several trained models and it says what those models actually do — and because
-rollouts are judged, every group it finds comes back with a number attached.
+rollouts are judged, every group comes back with a number attached.
 
-That difference matters more than it sounds. A corpus-side cluster list is unranked: every
-group is "here is a thing the data does", nothing says which is worth a training run, and
-choosing an ablation target is guesswork. Rollout-side, `shared/outcomes.py` crosses each
-group against the violation flag WITHIN each arm, and the list arrives ordered. The two
-directions the corpus cannot show — mass spent on properties the model never picked up,
-and properties the model exhibits that were never in the data — are exactly what the two
-config blocks below are for.
+That difference is the reason the rollout side exists. A corpus-side cluster list is
+unranked: every group is "here is a thing the data does", nothing says which is worth a
+training run, and choosing an ablation target is guesswork. Rollout-side,
+`shared/outcomes.py` crosses each group against the violation flag WITHIN each arm, and the
+list arrives ordered.
 
-    group_by: arm            per-group prevalence split by which model produced the trace
+    group_by: arm            per-group prevalence split by which model produced the record
     outcomes: {...}          per-group violation rate, WITHIN arm, BH-corrected
-    compare_to: {run_dir}    every trace's cosine to the nearest TRAINING-corpus centroid
+    compare_to: {run_dir}    cosine to the nearest TRAINING-corpus centroid
 
 ## Refit versus assign, and why this runs both
 
@@ -46,25 +79,14 @@ centroids instead keeps the numbers comparable with corpus prevalence — but ne
 NEVER ABSTAINS, so a property with no home in the corpus is silently absorbed into whatever
 is closest and disappears.
 
-So `compare_to:` does not replace the refit; it annotates it. The same pooled vectors are
-scored against the training centroids, and each refit group carries the distance profile of
-its members. A group whose members ALL sit below `min_cosine` from every training centroid
-is the elicited-but-not-taught candidate — visible only because both views ran over one
+So `compare_to:` does not replace the refit; it annotates it. The same vectors are scored
+against the training centroids, and each refit group carries the distance profile of its
+members. A group whose members ALL sit below `min_cosine` from every training centroid is
+the elicited-but-not-taught candidate — visible only because both views ran over one
 embedding pass.
 
-Prevalence here is MEMBERSHIP: the share of records whose embedding landed in the group.
-That is a different quantity from what the detector would say if run over the corpus, and
-the two disagree at the edges of a cluster — so the config can ask for the detector to be
-run (`measure_with_detector: true`), which replaces the membership number with the measured
-one and records both. Cross-producer comparisons should use the measured one; it is the
-only number all four producers can produce the same way.
-
-Its known weakness, and why the other three producers exist: whole-text embeddings track
-topic and register at least as strongly as behaviour, so a cluster here can easily be "all
-the medical scenarios" rather than a move the model makes. `interpret.py` is prompted to
-reject topic labels, and every property carries a detector that must be applied to a
-single record — but read a trace_clusters label with more suspicion than a
-feature_discovery one, and check the detector before spending a training run on it.
+Every stage is a call into `shared/`, which is the point: if adding a producer takes more
+than one file, something belongs in `shared/` that is not there yet.
 """
 
 from __future__ import annotations
@@ -78,6 +100,7 @@ import numpy as np
 
 from src.properties import block
 from src.properties.registry import Property
+from src.properties.shared import attributes as attributes_mod
 from src.properties.shared import embed as embed_mod
 from src.properties.shared import grouping as grouping_mod
 from src.properties.shared import interpret as interpret_mod
@@ -85,7 +108,8 @@ from src.properties.shared import outcomes as outcomes_mod
 from src.properties.sources.base import Record
 from src.utils import git_sha, timestamp
 
-SOURCE = "trace_clusters"
+SOURCE = "clusters"
+EVIDENCE_KINDS = ("features", "traces")
 # A cluster this small is a handful of near-duplicates, not a property of the corpus.
 MIN_GROUP_RECORDS = 5
 # Cosine to the nearest training centroid below which a trace has no home cluster in the
@@ -162,11 +186,166 @@ def _arm_shares(records: list[Record], member_idx: np.ndarray,
             for arm, total in sorted(totals.items())}
 
 
+# --- what gets embedded -----------------------------------------------------------------
+
+@dataclasses.dataclass(frozen=True)
+class Units:
+    """The things this run embeds, and how they map back to records.
+
+    The whole point of the module having one code path is that everything downstream of
+    the vectors reads THIS and never asks which mode produced it. `features` and `traces`
+    differ only in how these lists are built.
+
+    Attributes:
+        texts: One string per embedded unit, in embedding-row order.
+        records: unit -> the record indices it came from. A feature string extracted from
+            forty traces has forty; a trace excerpt has one.
+        instances: unit -> how many times it occurred across the corpus. Repeats matter:
+            a feature in 400 traces and a feature said 400 times in 50 traces are
+            different findings, and only counting both distinguishes them.
+        by_record: record -> its unit indices. The inverse of `records`, kept because the
+            per-record joins (novelty, members.jsonl) need it and rebuilding it per group
+            is quadratic.
+        kind: "features" or "traces".
+        meta: Counts and provenance for the run's `run_meta`/report.
+    """
+
+    texts: list[str]
+    records: list[list[int]]
+    instances: list[int]
+    by_record: list[list[int]]
+    kind: str
+    meta: dict = dataclasses.field(default_factory=dict)
+
+
+def _trace_units(records: list[Record], channel: str, excerpt_chars: int) -> Units:
+    """One unit per record: the record's own text.
+
+    Args:
+        records: The corpus.
+        channel: Which channel to embed.
+        excerpt_chars: Truncation length.
+
+    Returns:
+        The units, one-to-one with records.
+    """
+    texts = [_excerpt(r.channel(channel), excerpt_chars) for r in records]
+    index = [[i] for i in range(len(records))]
+    return Units(texts=texts, records=index, instances=[1] * len(texts),
+                 by_record=[[i] for i in range(len(records))], kind="traces",
+                 meta={"n_units": len(texts), "excerpt_chars": excerpt_chars})
+
+
+def _feature_units(records: list[Record], channel: str, cfg, run: Path) -> Units:
+    """One unit per DISTINCT feature string, extracted one record at a time.
+
+    The autorater sees a single record and nothing else — no metadata, no trait, no other
+    records — which is what lets it name behaviours nobody chose in advance. Its output is
+    free text rather than a schema, so identical strings recurring across records are the
+    signal that a behaviour is common.
+
+    Deduplication is not just thrift, though it is that too (embedding the same string 400
+    times wastes the pod). Clustering the vocabulary rather than the occurrences means a
+    stock phrase cannot pull a cluster toward itself by sheer repetition; the occurrence
+    counts travel alongside instead, and both get reported.
+
+    Extraction is the expensive half of this mode, so a rerun against the same run
+    directory reuses `features.jsonl` when it already covers every record.
+
+    Args:
+        records: The corpus.
+        channel: Which channel the autorater describes.
+        cfg: The producer config; reads `extract: {model, n, n_min, workers, reuse}`.
+        run: The run directory, where features.jsonl lives.
+
+    Returns:
+        The units, one per distinct feature string.
+
+    Raises:
+        ValueError: If extraction produced no features at all.
+    """
+    extract_cfg = block(cfg, "extract")
+    workers = int(extract_cfg.pop("workers", 16))
+    reuse = bool(extract_cfg.pop("reuse", True))
+    spec = attributes_mod.AttributeSpec(style="freeform", channel=channel, **extract_cfg)
+
+    path = run / "features.jsonl"
+    rows = None
+    if reuse and path.exists():
+        cached = {json.loads(line)["record_id"]: json.loads(line)
+                  for line in path.read_text().splitlines() if line.strip()}
+        if all(r.record_id in cached for r in records):
+            rows = [cached[r.record_id] for r in records]
+            print(f">>> reusing {len(rows)} extracted feature lists from {path}")
+    if rows is None:
+        rows = attributes_mod.extract(records, spec, workers=workers)
+        path.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n"
+                                for row in rows), encoding="utf-8")
+
+    failed = [row for row in rows if row.get("error")]
+    counts: dict[str, int] = {}
+    unit_records: dict[str, list[int]] = {}
+    by_record: list[list[int]] = []
+    for i, row in enumerate(rows):
+        for feature in row["attributes"]:
+            counts[feature] = counts.get(feature, 0) + 1
+            holders = unit_records.setdefault(feature, [])
+            if not holders or holders[-1] != i:
+                holders.append(i)
+    if not counts:
+        raise ValueError(
+            f"the autorater returned no features for any of {len(records)} records "
+            f"({len(failed)} calls errored). There is nothing to cluster; check the "
+            "extract model and the channel before spending an embedding pass.")
+
+    texts = sorted(counts)
+    position = {feature: u for u, feature in enumerate(texts)}
+    by_record = [sorted({position[f] for f in row["attributes"]}) for row in rows]
+    print(f">>> {len(rows) - len(failed)} of {len(records)} records labelled, "
+          f"{sum(counts.values())} feature instances, {len(texts)} distinct")
+    if failed:
+        # Not fatal and not hidden: a failed record contributes to no group, so the damage
+        # is reduced coverage, and a reader has to be able to see how much.
+        print(f"!!! {len(failed)} records produced no features "
+              f"(e.g. {failed[0].get('error', '')[:120]})")
+    return Units(
+        texts=texts,
+        records=[unit_records[f] for f in texts],
+        instances=[counts[f] for f in texts],
+        by_record=by_record, kind="features",
+        meta={"n_units": len(texts), "feature_instances": sum(counts.values()),
+              "records_labelled": len(rows) - len(failed),
+              "records_failed": len(failed), "extract": spec.to_dict()})
+
+
+def build_units(records: list[Record], channel: str, cfg, run: Path) -> Units:
+    """Build whichever evidence this run's `evidence:` asks for.
+
+    Args:
+        records: The corpus.
+        channel: Which channel to read.
+        cfg: The producer config.
+        run: The run directory.
+
+    Returns:
+        The units.
+
+    Raises:
+        ValueError: On an unknown evidence kind.
+    """
+    kind = str(cfg.get("evidence", "features"))
+    if kind not in EVIDENCE_KINDS:
+        raise ValueError(f"evidence must be one of {EVIDENCE_KINDS}, got {kind!r}")
+    if kind == "traces":
+        return _trace_units(records, channel, int(cfg.get("excerpt_chars", 4000)))
+    return _feature_units(records, channel, cfg, run)
+
+
 # --- the training-corpus view -----------------------------------------------------------
 
 def prior_centroids(run_dir: str | Path, embed_meta: embed_mod.EmbedMeta
                     ) -> tuple[np.ndarray, list[str], dict]:
-    """Full-dimensional centroids of a previous trace_clusters run, plus its labels.
+    """Full-dimensional centroids of a previous `clusters` run, plus its labels.
 
     Centroids are recomputed from that run's `embeddings.npy` rather than read from its
     `centroids.npy`, and the difference is load-bearing. A run that clustered under
@@ -177,7 +356,7 @@ def prior_centroids(run_dir: str | Path, embed_meta: embed_mod.EmbedMeta
     measured there meant.
 
     Args:
-        run_dir: A previous trace_clusters run directory (holds embeddings.npy,
+        run_dir: A previous `clusters` run directory (holds embeddings.npy,
             labels.npy, and properties_preview.json).
         embed_meta: This run's embedding metadata, checked against that run's.
 
@@ -194,7 +373,7 @@ def prior_centroids(run_dir: str | Path, embed_meta: embed_mod.EmbedMeta
                if not (run / name).exists()]
     if missing:
         raise FileNotFoundError(
-            f"{run} is missing {missing}: `compare_to` needs a previous trace_clusters "
+            f"{run} is missing {missing}: `compare_to` needs a previous `clusters` "
             "run directory (the one whose properties this run is being compared against), "
             "not a properties.jsonl")
 
@@ -281,23 +460,29 @@ def _group_novelty(novelty: dict, member_idx: np.ndarray) -> dict:
 
 def produce(records: list[Record], cfg, out_dir: str | Path,
             target=None) -> list[Property]:
-    """Cluster records and emit one Property per cluster.
+    """Group a corpus into named properties, and emit one Property per group.
 
     Args:
-        records: The corpus.
+        records: The corpus — a training mixture's rows, or rollouts from trained models.
         cfg: The producer's config block. Keys:
-            channel (default "reasoning"), embed {backend, model, batch, workers},
+            evidence ("features" | "traces") — WHAT gets embedded; the one switch that
+                chooses between the two methods,
+            channel (default "reasoning"),
+            extract {model, n, n_min, workers, reuse} — the autorater, features mode only,
+            excerpt_chars — truncation, traces mode only,
+            embed {backend, model, batch, workers},
             grouping {reduce, cluster, k, min_cluster_size, ...},
             baseline_grouping {...} — a second grouping of the SAME vectors, reported as
                 an agreement check rather than exported (see `_gate_grouping`),
             interpret {model, n_shown, workers},
+            min_group_records — smallest group worth exporting,
             group_by (metadata key separating arms, optional),
             outcomes {field, fdr, min_arm_records} — cross groups with judged outcomes,
             compare_to {run_dir, min_cosine} — score against a previous run's centroids,
             measure_with_detector (bool, default False),
-            detector {model, workers, sample} — how many records to re-measure on.
+            detector {model, workers, sample}.
         out_dir: Run directory for this producer's artifacts.
-        target: Unused; trace_clusters describes a corpus rather than explaining an
+        target: Unused; this producer describes a corpus rather than explaining an
             outcome. Accepted so every producer has one signature.
 
     Returns:
@@ -325,15 +510,16 @@ def produce(records: list[Record], cfg, out_dir: str | Path,
         print(f">>> {len(records) - len(kept)} of {len(records)} records have an empty "
               f"{channel} channel and are excluded from the denominator")
 
-    texts = [_excerpt(r.channel(channel), int(cfg.get("excerpt_chars", 4000)))
-             for r in kept]
-    vectors, embed_meta = embed_mod.embed(texts, **block(cfg, "embed"))
-    if len(vectors) != len(texts):
-        # Row i of the matrix IS record i throughout: cluster members are indices into
-        # both. A backend that dropped or reordered a row would silently attach every
-        # label, arm and outcome to the wrong record.
-        raise ValueError(f"embedding returned {len(vectors)} vectors for {len(texts)} "
-                         "records; rows must correspond 1:1 and in order")
+    units = build_units(kept, channel, cfg, run)
+    print(f">>> evidence: {units.kind} — {len(units.texts)} units over {len(kept)} records")
+
+    vectors, embed_meta = embed_mod.embed(units.texts, **block(cfg, "embed"))
+    if len(vectors) != len(units.texts):
+        # Row u of the matrix IS unit u throughout: cluster members are indices into both,
+        # and units index back to records. A backend that dropped or reordered a row would
+        # silently attach every label, arm and outcome to the wrong records.
+        raise ValueError(f"embedding returned {len(vectors)} vectors for "
+                         f"{len(units.texts)} units; rows must correspond 1:1 and in order")
     embed_mod.save(run / "embeddings.npy", vectors, embed_meta)
 
     params = grouping_mod.GroupingParams(**block(cfg, "grouping"))
@@ -342,33 +528,20 @@ def produce(records: list[Record], cfg, out_dir: str | Path,
     if result.coords is not None:
         np.save(run / "coords.npy", result.coords)
     np.save(run / "centroids.npy", result.centroids)
-    print(f">>> {result.n_groups} groups, {result.n_noise} of {len(kept)} records "
-          f"unclustered ({result.meta['noise_share']:.1%})")
+    print(f">>> {result.n_groups} groups, {result.n_noise} of {len(units.texts)} "
+          f"{units.kind} unclustered ({result.meta['noise_share']:.1%})")
     _gate_grouping(vectors, result, cfg, run)
 
-    floor = int(cfg.get("min_group_records", MIN_GROUP_RECORDS))
-    groups = {g: result.members(g) for g in range(result.n_groups)}
-    dropped = {g: len(idx) for g, idx in groups.items() if len(idx) < floor}
-    groups = {g: idx for g, idx in groups.items() if len(idx) >= floor}
-    if dropped:
-        # CLAUDE.md: no silent caps. A run that quietly drops every group reads as "found
-        # nothing" when what happened is that the floor was set above the group sizes.
-        print(f">>> {len(dropped)} of {result.n_groups} groups below "
-              f"min_group_records={floor} and not exported "
-              f"({sum(dropped.values())} records): sizes {sorted(dropped.values())}")
-    if not groups:
-        raise ValueError(
-            f"every one of {result.n_groups} groups is smaller than "
-            f"min_group_records={floor}, so this run would export nothing. Lower the "
-            "floor, lower the clustering resolution, or point it at more records.")
-    evidence = {g: [texts[i] for i in idx[:200]] for g, idx in groups.items()}
+    groups, below_floor = _group_members(result, units, cfg)
+    evidence = {g: [units.texts[u] for u in m["units"][:200]] for g, m in groups.items()}
     interpretations = interpret_mod.interpret_many(
-        evidence, channel=channel, **block(cfg, "interpret"))
+        evidence, channel=channel, evidence_kind=units.kind, **block(cfg, "interpret"))
 
-    novelty = _run_novelty(vectors, cfg, run, embed_meta, kept)
+    novelty = _run_novelty(vectors, cfg, run, embed_meta, units)
     provenance = {"run_dir": str(run), "git_sha": git_sha(),
                   "timestamp_utc": timestamp(), "embedding": embed_meta.to_dict(),
-                  "grouping": result.meta, "channel": channel,
+                  "grouping": result.meta, "channel": channel, "evidence": units.kind,
+                  "units": units.meta,
                   "n_records": len(kept), "n_records_excluded": len(records) - len(kept)}
     if novelty:
         provenance["compare_to"] = novelty["summary"]
@@ -377,22 +550,31 @@ def produce(records: list[Record], cfg, out_dir: str | Path,
 
     properties = []
     for group_id, interpretation in interpretations.items():
-        member_idx = groups[group_id]
-        support = {"group": int(group_id), "n_members": int(len(member_idx)),
-                   "arms": _arm_shares(kept, member_idx, str(group_by))
-                   if group_by else None,
-                   "prevalence_kind": "cluster_membership"}
+        member = groups[group_id]
+        idx = member["records"]
+        support = {
+            "group": int(group_id),
+            "n_members": int(len(idx)),
+            "arms": _arm_shares(kept, idx, str(group_by)) if group_by else None,
+            # features: groups overlap, so these do not sum to 1. traces: they do.
+            "prevalence_kind": ("feature_membership" if units.kind == "features"
+                                else "record_membership"),
+            "n_units": int(len(member["units"])),
+            "trait_mix": _trait_mix(kept, idx),
+        }
         if novelty:
-            support["novelty"] = _group_novelty(novelty, member_idx)
+            support["novelty"] = _group_novelty(novelty, member["units"])
         properties.append(Property.make(
             SOURCE, run.name, f"g{group_id:03d}",
             corpus=corpus,
-            prevalence=round(len(member_idx) / len(kept), 4),
-            n_records=int(len(member_idx)), n_instances=int(len(member_idx)),
+            prevalence=round(len(idx) / len(kept), 4),
+            n_records=int(len(idx)), n_instances=int(member["instances"]),
             support=support,
-            evidence={"example_records": [kept[i].record_id for i in member_idx[:10]],
-                      "example_excerpts": [_excerpt(texts[i], 300)
-                                           for i in member_idx[:3]]},
+            evidence={"example_records": [kept[i].record_id for i in idx[:10]],
+                      "example_units": sorted(units.texts[u]
+                                              for u in member["units"])[:12],
+                      "example_excerpts": [_excerpt(kept[i].channel(channel), 300)
+                                           for i in idx[:3]]},
             provenance=provenance,
             **interpretation.to_dict()))
 
@@ -400,74 +582,270 @@ def produce(records: list[Record], cfg, out_dir: str | Path,
         properties = _remeasure(properties, kept, cfg, corpus, str(group_by or ""))
 
     properties = _cross_outcomes(properties, kept, groups, cfg, run)
-    _write_members(run, properties, kept, groups, result, novelty)
+    _write_members(run, properties, kept, groups, units, result,
+                   below_floor, novelty)
+    _write_coverage(run, groups, kept, units, result)
     (run / "properties_preview.json").write_text(
         json.dumps([p.to_dict() for p in properties], indent=1), encoding="utf-8")
     (run / "report.md").write_text(
-        _report(properties, kept, result, cfg, novelty, texts), encoding="utf-8")
+        _report(properties, kept, result, cfg, novelty, units), encoding="utf-8")
     return properties
 
 
-def _write_members(run: Path, properties: list[Property], records: list[Record],
-                   groups: dict[int, np.ndarray], result, novelty: dict | None) -> Path:
-    """Write the record -> property join table.
+def _group_members(result, units: Units, cfg) -> dict[int, dict]:
+    """Resolve each cluster of UNITS into the records it covers.
 
-    A property row carries ten example ids, which is enough to sanity-check a label and
-    nowhere near enough to work with. The full membership is in `labels.npy`, but that is
-    POSITIONAL: row i is record i only if you reload the source in exactly the same order,
-    which is a reconstruction nobody should have to do to answer "show me the traces in
-    this cluster".
+    In traces mode this is the identity — one unit is one record. In features mode it is
+    the step that makes a record able to hold several properties at once, which is what
+    records are actually like: one trace checks authorisation AND weighs harm AND hedges.
 
-    So the mapping is written out explicitly, one line per record, carrying the path to
-    the rollout itself. That is what makes the output browsable: filter to a property_id,
-    open the paths, read what the model actually did.
+    The size floor is applied to RECORDS, not units, in both modes. A cluster of 300
+    feature strings that only forty traces ever said is a forty-trace finding.
 
-    Noise records (HDBSCAN's -1) get a line too, with a null property. They are part of
-    the denominator every prevalence is a share of, so dropping them here would make this
-    file disagree with the numbers beside it.
+    Args:
+        result: The Grouping over units.
+        units: The units.
+        cfg: The producer config; reads `min_group_records`.
+
+    Returns:
+        (group id -> {"units", "records", "instances"}, the group ids the floor removed).
+        The dropped ids are returned rather than discarded because `members.jsonl` has to
+        tell a record excluded by the FLOOR apart from one excluded as NOISE, and only
+        this function knows which was which.
+
+    Raises:
+        ValueError: If the floor removes every group.
+    """
+    floor = int(cfg.get("min_group_records", MIN_GROUP_RECORDS))
+    groups: dict[int, dict] = {}
+    dropped: dict[int, int] = {}
+    for group_id in range(result.n_groups):
+        unit_idx = result.members(group_id)
+        covered: set[int] = set()
+        for u in unit_idx:
+            covered.update(units.records[u])
+        if len(covered) < floor:
+            dropped[group_id] = len(covered)
+            continue
+        groups[group_id] = {
+            "units": unit_idx,
+            "records": np.array(sorted(covered), dtype=np.int64),
+            "instances": int(sum(units.instances[u] for u in unit_idx)),
+        }
+    if dropped:
+        # CLAUDE.md: no silent caps. A run that quietly drops every group reads as "found
+        # nothing" when what happened is that the floor was set above the group sizes.
+        print(f">>> {len(dropped)} of {result.n_groups} groups cover fewer than "
+              f"min_group_records={floor} records and are not exported: "
+              f"sizes {sorted(dropped.values())}")
+    if not groups:
+        raise ValueError(
+            f"every one of {result.n_groups} groups covers fewer than "
+            f"min_group_records={floor} records, so this run would export nothing. Lower "
+            "the floor, lower the clustering resolution, or point it at more records.")
+    return groups, set(dropped)
+
+
+def _trait_mix(records: list[Record], member_idx: np.ndarray) -> dict | None:
+    """Which traits a group's records came from, most common first.
+
+    Carried over from the feature-discovery runs, where it is the fastest way to see that
+    a "property" is really one trait's house style rather than a behaviour.
+
+    Args:
+        records: The corpus, in record order.
+        member_idx: This group's record indices.
+
+    Returns:
+        trait_id -> count, or None when no record carries one.
+    """
+    counts: dict[str, int] = {}
+    for i in member_idx:
+        trait = records[i].metadata.get("trait_id")
+        if trait is not None:
+            counts[str(trait)] = counts.get(str(trait), 0) + 1
+    if not counts:
+        return None
+    return dict(sorted(counts.items(), key=lambda kv: -kv[1]))
+
+
+def _write_coverage(run: Path, groups: dict[int, dict], records: list[Record],
+                    units: Units, result) -> Path:
+    """Write what these properties do NOT account for.
+
+    A list of properties reads as a description of the corpus, and it is only ever a
+    description of the part that clustered. A merger has to know that share before
+    trusting the list, so it is written beside the rows rather than left to be derived
+    from three other files.
 
     Args:
         run: The run directory.
-        properties: The exported rows.
-        records: The corpus, in embedding order.
-        groups: group id -> member indices, after the size floor.
+        groups: group id -> {"units", "records", "instances"}.
+        records: The corpus.
+        units: The units.
         result: The Grouping.
-        novelty: The `_novelty` result, or None.
 
     Returns:
         The path written.
     """
-    property_of = {prop.support["group"]: prop for prop in properties}
-    label_of = {group: prop.label for group, prop in property_of.items()}
-    lines = []
+    covered: set[int] = set()
+    for member in groups.values():
+        covered.update(int(i) for i in member["records"])
+    noise_units = int(result.n_noise)
+    noise_instances = sum(units.instances[u]
+                          for u in np.flatnonzero(result.labels < 0).tolist())
+    total_instances = sum(units.instances)
+    payload = {
+        "evidence": units.kind,
+        "properties": len(groups),
+        "records": len(records),
+        "units": len(units.texts),
+        "unclustered_units": noise_units,
+        "unclustered_unit_share": round(noise_units / len(units.texts), 4)
+        if units.texts else None,
+        "unclustered_instances": noise_instances,
+        "unclustered_instance_share": round(noise_instances / total_instances, 4)
+        if total_instances else None,
+        "records_with_no_property": len(records) - len(covered),
+        "git_sha": git_sha(), "timestamp_utc": timestamp(),
+        **units.meta,
+    }
+    path = run / "coverage.json"
+    path.write_text(json.dumps(payload, indent=1), encoding="utf-8")
+    return path
+
+
+def _write_members(run: Path, properties: list[Property], records: list[Record],
+                   groups: dict[int, dict], units: Units, result,
+                   below_floor: set[int], novelty: dict | None) -> Path:
+    """Write the record -> property join table.
+
+    A property row carries ten example ids, which is enough to sanity-check a label and
+    nowhere near enough to work with. Full membership is otherwise only in `labels.npy`,
+    which is POSITIONAL and — in features mode — indexes feature strings rather than
+    records. Neither answers "show me the traces in this cluster" without a reconstruction
+    nobody should have to do.
+
+    One line per MEMBERSHIP EDGE, not per record, because in features mode a record
+    belongs to several properties and one-line-per-record could not represent that. In
+    traces mode each record has exactly one edge, so the file reads the same way.
+
+    A record in no group at all still gets a line, with a null property and the reason.
+    It is part of the denominator every prevalence is a share of, so dropping it here
+    would make this file disagree with the numbers beside it.
+
+    Args:
+        run: The run directory.
+        properties: The exported rows.
+        records: The corpus, in record order.
+        groups: group id -> {"units", "records", "instances"}.
+        units: The units, for the per-record novelty roll-up.
+        result: The Grouping, for the unit labels behind an exclusion reason.
+        below_floor: Group ids the size floor removed.
+        novelty: The `_novelty` result (over UNITS), or None.
+
+    Returns:
+        The path written.
+    """
+    cosines = _record_cosines(novelty, units, len(records)) if novelty else None
+    lines, placed = [], set()
+    for prop in properties:
+        group = prop.support["group"]
+        for i in groups[group]["records"].tolist():
+            placed.add(i)
+            row = {"record_id": records[i].record_id,
+                   "property_id": prop.property_id, "label": prop.label,
+                   "group": int(group), "excluded": None,
+                   **_record_columns(records[i])}
+            if cosines:
+                row |= cosines[i]
+            lines.append(json.dumps(row, ensure_ascii=False))
+
     for i, record in enumerate(records):
-        group = int(result.labels[i])
-        exported = group in groups and group in property_of
-        row = {
-            "record_id": record.record_id,
-            "property_id": property_of[group].property_id if exported else None,
-            "label": label_of.get(group) if exported else None,
-            "group": group if group >= 0 else None,
-            # Why a record has no property: HDBSCAN called it noise, or its group came in
-            # under min_group_records. Both are exclusions a reader should be able to see.
-            "excluded": None if exported else ("noise" if group < 0 else "below_floor"),
-            "arm": record.metadata.get("arm"),
-            "outcome": record.outcome,
-            "rollout_path": record.metadata.get("rollout_path"),
-            "reasoning_chars": len(record.reasoning),
-        }
-        if novelty:
-            row["cosine_to_training"] = round(float(novelty["best_cosine"][i]), 4)
-            row["nearest_training_group"] = novelty["nearest_label"][i]
-            row["unhoused"] = bool(novelty["unhoused"][i])
+        if i in placed:
+            continue
+        row = {"record_id": record.record_id, "property_id": None, "label": None,
+               "group": None,
+               # Three different reasons, and they mean different things: the autorater
+               # said nothing about this record, everything it said was low-density noise,
+               # or what it said only ever landed in groups the floor removed. A reader
+               # chasing coverage needs to tell them apart.
+               "excluded": _exclusion_reason(units.by_record[i], result, below_floor),
+               **_record_columns(record)}
+        if cosines:
+            row |= cosines[i]
         lines.append(json.dumps(row, ensure_ascii=False))
 
     path = run / "members.jsonl"
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    n_excluded = sum(1 for line in lines if '"excluded": "' in line)
-    print(f">>> {len(lines)} records -> {path.name} "
-          f"({n_excluded} carry no property: noise or below the floor)")
+    print(f">>> {len(lines)} membership rows over {len(records)} records -> {path.name} "
+          f"({len(records) - len(placed)} records carry no property)")
     return path
+
+
+def _exclusion_reason(unit_idx: list[int], result, below_floor: set[int]) -> str:
+    """Why one record ended up with no property.
+
+    Args:
+        unit_idx: The record's unit indices.
+        result: The Grouping.
+        below_floor: Group ids the size floor removed.
+
+    Returns:
+        "no_units", "unclustered", or "below_floor".
+    """
+    if not unit_idx:
+        return "no_units"
+    reached = {int(result.labels[u]) for u in unit_idx}
+    if reached & below_floor:
+        return "below_floor"
+    return "unclustered"
+
+
+def _record_columns(record: Record) -> dict:
+    """The record-identifying columns every members.jsonl row carries.
+
+    Args:
+        record: The record.
+
+    Returns:
+        The columns, including the path to the rollout so a reader can open it.
+    """
+    return {"arm": record.metadata.get("arm"),
+            "trait_id": record.metadata.get("trait_id"),
+            "outcome": record.outcome,
+            "rollout_path": record.metadata.get("rollout_path"),
+            "reasoning_chars": len(record.reasoning)}
+
+
+def _record_cosines(novelty: dict, units: Units, n_records: int) -> list[dict]:
+    """Roll unit-level distances up to one number per record.
+
+    Novelty is measured on whatever was embedded. In traces mode that is already
+    per-record; in features mode a record has many features, and the honest summary is its
+    CLOSEST one — a record is only "unhoused" when nothing it said resembles anything the
+    training corpus contains.
+
+    Args:
+        novelty: The `_novelty` result over units.
+        units: The units.
+        n_records: How many records.
+
+    Returns:
+        One dict of novelty columns per record.
+    """
+    out = []
+    for i in range(n_records):
+        mine = units.by_record[i]
+        if not mine:
+            out.append({"cosine_to_training": None, "nearest_training_group": None,
+                        "unhoused": None})
+            continue
+        best = max(mine, key=lambda u: float(novelty["best_cosine"][u]))
+        out.append({"cosine_to_training": round(float(novelty["best_cosine"][best]), 4),
+                    "nearest_training_group": novelty["nearest_label"][best],
+                    "unhoused": bool(novelty["unhoused"][best])})
+    return out
 
 
 def _gate_grouping(vectors: np.ndarray, result, cfg, run: Path) -> None:
@@ -499,15 +877,20 @@ def _gate_grouping(vectors: np.ndarray, result, cfg, run: Path) -> None:
           + (f", neighbour overlap {overlap:.3f}" if overlap is not None else ""))
 
 
-def _run_novelty(vectors: np.ndarray, cfg, run: Path, embed_meta, records) -> dict | None:
+def _run_novelty(vectors: np.ndarray, cfg, run: Path, embed_meta,
+                 units: Units) -> dict | None:
     """Score this run's vectors against a previous run's centroids, if asked to.
+
+    Measured on the EMBEDDED UNITS, whatever those are — a cosine is only meaningful
+    between things in the same space, and in features mode the prior run's centroids are
+    centroids of feature strings.
 
     Args:
         vectors: This run's embeddings.
         cfg: The producer config; reads `compare_to: {run_dir, min_cosine}`.
         run: The run directory.
         embed_meta: This run's embedding metadata.
-        records: The records, in embedding order, for the per-record dump.
+        units: The units, in embedding order, for the per-unit dump.
 
     Returns:
         The `_novelty` result, or None when no comparison was configured.
@@ -520,23 +903,24 @@ def _run_novelty(vectors: np.ndarray, cfg, run: Path, embed_meta, records) -> di
     novelty = _novelty(vectors, centroids, labels, min_cosine)
     novelty["summary"]["run_dir"] = str(spec["run_dir"])
     novelty["summary"]["prior_embedding"] = prior_meta.get("model")
+    novelty["summary"]["measured_on"] = units.kind
     (run / "novelty.json").write_text(json.dumps({
         "summary": novelty["summary"],
-        "records": [{"record_id": r.record_id,
-                     "best_cosine": round(float(novelty["best_cosine"][i]), 4),
-                     "nearest_training_group": novelty["nearest_label"][i],
-                     "unhoused": bool(novelty["unhoused"][i])}
-                    for i, r in enumerate(records)],
+        "units": [{"unit": text,
+                   "best_cosine": round(float(novelty["best_cosine"][u]), 4),
+                   "nearest_training_group": novelty["nearest_label"][u],
+                   "unhoused": bool(novelty["unhoused"][u])}
+                  for u, text in enumerate(units.texts)],
     }, indent=1), encoding="utf-8")
     print(f">>> vs {spec['run_dir']}: median cosine to nearest training group "
           f"{novelty['summary']['median_best_cosine']:.3f}, "
-          f"{novelty['summary']['n_unhoused']} of {len(records)} records unhoused "
-          f"({novelty['summary']['share_unhoused']:.1%}) at cosine < {min_cosine}")
+          f"{novelty['summary']['n_unhoused']} of {len(units.texts)} {units.kind} "
+          f"unhoused ({novelty['summary']['share_unhoused']:.1%}) at cosine < {min_cosine}")
     return novelty
 
 
 def _cross_outcomes(properties: list[Property], records: list[Record],
-                    groups: dict[int, np.ndarray], cfg, run: Path) -> list[Property]:
+                    groups: dict[int, dict], cfg, run: Path) -> list[Property]:
     """Attach each group's within-arm outcome rates and reorder by ablation priority.
 
     This is what turns a cluster list into a ranking. It is deliberately the LAST step:
@@ -574,8 +958,8 @@ def _cross_outcomes(properties: list[Property], records: list[Record],
     min_arm = int(spec.get("min_arm_records", outcomes_mod.MIN_ARM_RECORDS))
     crosstabs = {}
     for prop in properties:
-        member_idx = groups[prop.support["group"]]
-        member_ids = {records[i].record_id for i in member_idx}
+        member_ids = {records[i].record_id
+                      for i in groups[prop.support["group"]]["records"]}
         crosstabs[prop.property_id] = outcomes_mod.by_arm(
             records, member_ids, arm_key=arm_key, outcome_key=field)
 
@@ -700,7 +1084,7 @@ def _pct(value: float | None) -> str:
 
 
 def _report(properties: list[Property], records: list[Record], result, cfg,
-            novelty: dict | None, texts: list[str]) -> str:
+            novelty: dict | None, units: Units) -> str:
     """A greppable mirror of the run: prevalence by arm, outcome rates, novelty.
 
     CLAUDE.md's rule — numbers must be readable without opening a json file — and the
@@ -713,7 +1097,7 @@ def _report(properties: list[Property], records: list[Record], result, cfg,
         result: The Grouping.
         cfg: The producer config.
         novelty: The `_novelty` result, or None.
-        texts: The embedded excerpts, for the unhoused listing.
+        units: The units, for the unhoused listing.
 
     Returns:
         The markdown.
@@ -723,11 +1107,14 @@ def _report(properties: list[Property], records: list[Record], result, cfg,
                    if r.metadata.get(arm_key) is not None})
     crossed = any("outcomes" in p.support for p in properties)
 
-    lines = [f"# trace_clusters — {len(properties)} properties over {len(records)} records",
-             "",
+    lines = [f"# clusters — {len(properties)} properties over {len(records)} records", "",
+             f"Evidence: **{units.kind}** — {len(units.texts)} embedded units. "
              f"Grouping: `{result.meta['params']}`. {result.n_groups} groups, "
-             f"{result.n_noise} records unclustered ({result.meta['noise_share']:.1%}).",
-             ""]
+             f"{result.n_noise} units unclustered ({result.meta['noise_share']:.1%}).", "",
+             "Prevalence is the share of records with at least one unit in the group; "
+             + ("groups OVERLAP, so these do not sum to 100%."
+                if units.kind == "features"
+                else "each record is in one group, so these sum to 100%."), ""]
     if crossed:
         lines += ["Rows are ordered by ABLATION PRIORITY: the within-arm difference in "
                   "outcome rate between records in the group and records in the same arm "
@@ -782,9 +1169,9 @@ def _report(properties: list[Property], records: list[Record], result, cfg,
                 f"{'**ELICITED**' if n.get('elicited_not_taught') else ''} |")
 
         worst = np.argsort(novelty["best_cosine"])[:15]
-        lines += ["", "### The 15 records furthest from every training group", ""]
-        for i in worst:
-            lines.append(f"- `{novelty['best_cosine'][i]:.3f}` "
-                         f"({records[i].record_id}) {_excerpt(texts[i], 220)}")
+        lines += ["", f"### The 15 {units.kind} furthest from every training group", ""]
+        for u in worst:
+            lines.append(f"- `{novelty['best_cosine'][u]:.3f}` "
+                         f"{_excerpt(units.texts[u], 220)}")
 
     return "\n".join(lines) + "\n"

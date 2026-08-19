@@ -15,14 +15,20 @@ with the same signature:
 so `scripts/properties/discover.py` runs any of them without knowing which. What differs
 is declared in the spec rather than discovered by calling:
 
-| producer          | evidence it reads              | needs a Target | implemented |
-|-------------------|--------------------------------|----------------|-------------|
-| trace_clusters    | whole records, embedded        | no             | yes         |
-| feature_discovery | free-text features per record  | no             | not yet     |
-| turf              | attributes, both channels      | YES            | not yet     |
-| less              | gradient influence ranking     | YES            | not yet     |
+| producer | evidence it reads                                   | needs a Target | implemented |
+|----------|-----------------------------------------------------|----------------|-------------|
+| clusters | free-text features per record, OR whole records     | no             | yes         |
+| turf     | attributes, both channels                           | YES            | not yet     |
+| less     | gradient influence ranking                          | YES            | not yet     |
 
-Three of the four are empty packages: their code still lives under `scratch/` and lands in
+`clusters` is one producer covering what used to be two. Feature discovery (embed an
+autorater's descriptions of each record) and trace clustering (embed the records) differ
+in exactly one step — what gets turned into a vector — and everything after that is
+identical. Splitting them across two packages would have meant two embedders, two notions
+of prevalence, and no way to answer "does the abstraction step buy anything?". So they are
+one module and one config key, `evidence: features | traces`.
+
+The other two are empty packages: their code still lives under `scratch/` and lands in
 their `__init__.py` when it moves. They stay in the registry because the registry is the
 list of producers this module is FOR, and a name that is planned but missing should fail
 by saying so — `resolve()` raises with the path to the code — rather than by being absent
@@ -67,9 +73,7 @@ class ProducerSpec:
 
 
 PRODUCERS: dict[str, ProducerSpec] = {
-    "trace_clusters": ProducerSpec("trace_clusters"),
-    "feature_discovery": ProducerSpec(
-        "feature_discovery", scratch_path="scratch/feature_discovery"),
+    "clusters": ProducerSpec("clusters"),
     "turf": ProducerSpec("turf", needs_target=True, scratch_path="scratch/turf"),
     "less": ProducerSpec("less", needs_target=True, needs_gpu=True,
                          scratch_path="scratch/less"),

@@ -13,9 +13,9 @@ carry the same three text CHANNELS in every case:
 
 Three fields exist because the producers disagree about which channel is the cause and
 which is the effect. TURF's trigger side is query+reasoning and its behaviour side is the
-response; feature discovery reads reasoning alone; trace_clusters can be pointed at any
-of them. Keeping all three on every record means that choice stays the producer's, made
-in a config, rather than baked into a loader.
+response; `clusters` reads whichever channel its config names. Keeping all three on every
+record means that choice stays the producer's, made in a config, rather than baked into a
+loader.
 
 Two more fields carry what the channels cannot:
 
@@ -85,9 +85,9 @@ class Target:
     """The behaviour a property is being traced back FROM.
 
     TURF needs one ("find the training properties behind this refusal"); LESS needs one
-    (its validation set Dval is exactly this); feature_discovery and trace_clusters do
-    not, since they describe a corpus rather than explain an outcome. A producer declares
-    which it is via `ProducerSpec.needs_target`.
+    (its validation set Dval is exactly this); `clusters` does not, since it describes a
+    corpus rather than explaining an outcome. A producer declares which it is via
+    `ProducerSpec.needs_target`.
 
     Attributes:
         target_id: Stable id, used in property ids so two targets never collide.

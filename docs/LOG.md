@@ -3,6 +3,63 @@
 
 # LOG
 
+## 2026-08-19 — one `clusters` producer: feature discovery and trace clustering merged
+
+**Why.** Feature discovery (autorater describes each trace, cluster the descriptions) and
+trace clustering (embed the trace, cluster that) were two modules, and the pairing of
+method to data source was an accident of history rather than a choice: feature discovery
+read an SFT jsonl directly and so could only ever see the TRAINING data, while trace
+clustering was the only thing plumbed to read rollouts. That is backwards. The data source
+is what changes the science — training data tells you what you taught, rollouts tell you
+what the model learned and come with outcomes attached — and the clustering method is a
+knob.
+
+**What changed.** `scratch/llm_feature_discovery` is ported into
+`src/properties/producers/clusters/`, merged with the former `trace_clusters` into ONE
+producer. They differ in exactly one step — what gets turned into a vector — so that is
+now one config key:
+
+    evidence: features   autorater writes 10-20 free-text descriptions per record; the
+                         deduped VOCABULARY is embedded and clustered (the LessWrong method)
+    evidence: traces     the record's own text is embedded and clustered
+
+Everything after the vectors is shared: grouping, naming, the within-arm outcome crossing,
+the training-corpus comparison, the property rows. Either mode runs over either source —
+an SFT mixture or pooled rollouts from five model organisms.
+
+**Why merged rather than two producers.** Two packages would have drifted into two
+embedders and two notions of prevalence, and the question "does the abstraction step buy
+anything?" would have been unanswerable — the numbers would not have been comparable. One
+module makes that an A/B on one config line.
+
+**Feature discovery's semantics are preserved, not approximated.** The autorater still sees
+one record alone with no metadata; features are still free text; the vocabulary is still
+deduped before embedding, so a stock phrase cannot drag a cluster toward itself by
+repetition while occurrence counts travel alongside; prevalence is still the share of
+records carrying AT LEAST ONE feature in the group, so a record holds several properties
+and the group prevalences do not sum to 1; `trait_mix`, instance counts and the coverage
+metadata (what share the properties do NOT account for, now `coverage.json`) all survive.
+Extraction is the expensive half, so a rerun against the same run directory reuses
+`features.jsonl`.
+
+**Two things this exposed.** `shared/interpret.py` was telling the model it was reading
+"short descriptions of what records do" regardless of mode, which is false for whole
+traces — the framing is now per-mode, and the traces framing carries an explicit warning
+that text similarity tracks subject matter, with instructions to say so in the caveat
+rather than invent a behavioural label for a topical cluster. And `members.jsonl` became
+one line per membership EDGE rather than per record, because in features mode a record
+belongs to several properties and one-line-per-record cannot represent that.
+
+**Result.** 887 tests pass, none touching the network (a units test caught that features
+mode was reaching OpenRouter; the shared stub now covers the autorater). An offline check
+drives the real config through both modes: features mode turns 38 feature instances into 8
+distinct units and 32 membership edges over 16 records with prevalences summing to 2.00;
+traces mode gives 16 units, 16 edges, prevalences summing to 1.00.
+
+**Next steps.** Point the config at the five real ODCV run directories and run it. Compare
+the two modes on the same rollouts — that comparison is the point of merging them, and it
+is now one config line.
+
 ## 2026-08-19 — trace_clusters over ROLLOUTS: the cluster list becomes a ranking
 
 **Hypothesis.** A corpus-side cluster list is unranked — every group is "here is a thing

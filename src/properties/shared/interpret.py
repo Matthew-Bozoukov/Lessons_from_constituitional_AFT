@@ -40,15 +40,29 @@ DEFAULT_MODEL = "anthropic/claude-sonnet-5"
 # label is not driven by three outliers.
 EVIDENCE_SAMPLE = 50
 
+# What the interpreter is looking at. The two producers' evidence is not the same kind of
+# thing, and telling the model it is reading one when it is reading the other is not a
+# cosmetic error: "say what these descriptions have in common" and "say what these
+# transcripts have in common" are different tasks, and the second needs the warning about
+# subject matter that the first does not.
+EVIDENCE_FRAMING = {
+    "features": "short descriptions of what individual records in a corpus do. They were "
+                "written independently, one record at a time, by a model that saw no "
+                "cluster structure",
+    "records": "excerpts of the records themselves — raw reasoning transcripts, grouped "
+               "by how similar their text is. Be careful: text similarity tracks SUBJECT "
+               "MATTER as strongly as behaviour, so if the only thing these share is a "
+               "topic, say so in the caveat and give the property a low confidence rather "
+               "than inventing a behavioural label for a topical cluster",
+}
+
 INTERPRET_SYSTEM = """\
 You are naming a behavioural property of AI training data so that it can be ABLATED and \
 the ablation measured.
 
-You will see evidence drawn from one cluster: short descriptions of what individual \
-records in a corpus do. They were written independently, one record at a time, by a model \
-that saw no cluster structure. Your job is to say what they have in common, and to write \
-a test another model can apply to a SINGLE record to decide whether that record has this \
-property.
+You will see evidence drawn from one cluster: EVIDENCE_IS. Your job is to say what they \
+have in common, and to write a test another model can apply to a SINGLE record to decide \
+whether that record has this property.
 
 Two things must be true of the label:
 - It names a BEHAVIOUR or a MOVE the record makes, not a topic it is about. "Weighs \
@@ -146,13 +160,17 @@ def sample_evidence(evidence: list[str], n: int = EVIDENCE_SAMPLE,
 def interpret(evidence: list[str], channel: str = "reasoning",
               outcome: str | None = None, extra: str = "",
               model: str = DEFAULT_MODEL, n_shown: int = EVIDENCE_SAMPLE,
-              seed: int = 0, client=None) -> Interpretation:
+              seed: int = 0, evidence_kind: str = "features",
+              client=None) -> Interpretation:
     """Name one group and write its detector.
 
     Args:
         evidence: The group's evidence strings (features, attributes, excerpts).
         channel: Which channel this group's evidence describes; the interpreter may
             override it in its reply, and its answer wins — it saw the evidence.
+        evidence_kind: What those strings ARE — "features" (a model's descriptions of
+            records) or "records" (excerpts of the records themselves). Chooses the
+            framing the interpreter is given; see EVIDENCE_FRAMING.
         outcome: How the records carrying this evidence turned out ("judged harmful",
             "resisted"), or None. Context for the label, never grounds for a detector.
         extra: Anything else the producer wants the interpreter to know (e.g. which target
@@ -166,23 +184,29 @@ def interpret(evidence: list[str], channel: str = "reasoning",
         The Interpretation.
 
     Raises:
-        ValueError: If `evidence` is empty, or the reply omits a label or a detector — a
-            property without a detector cannot be ablated or verified, so it is not a
-            property this module will export.
+        ValueError: If `evidence` is empty, the evidence kind is unknown, or the reply
+            omits a label or a detector — a property without a detector cannot be ablated
+            or verified, so it is not a property this module will export.
     """
     from src.endpoints.openrouter import OpenRouterClient
     from src.utils import extract_json
 
     if not evidence:
         raise ValueError("cannot interpret an empty group")
+    if evidence_kind not in EVIDENCE_FRAMING:
+        raise ValueError(f"evidence_kind must be one of {sorted(EVIDENCE_FRAMING)}, "
+                         f"got {evidence_kind!r}")
     client = client or OpenRouterClient()
     shown = sample_evidence(evidence, n_shown, seed)
     user = INTERPRET_USER.format(
         n_shown=len(shown), n_total=len(evidence),
         outcome_note=OUTCOME_NOTE.format(outcome=outcome) if outcome else "",
         evidence="\n".join(f"* {e}" for e in shown), extra=extra).strip()
+    # A literal replace, not .format(): the prompt ends in a JSON contract whose braces
+    # would have to be doubled, and a doubled brace in a prompt is a bug waiting to ship.
+    system = INTERPRET_SYSTEM.replace("EVIDENCE_IS", EVIDENCE_FRAMING[evidence_kind])
     result = client.chat(model=model, temperature=INTERPRET_TEMPERATURE, max_tokens=2000,
-                         messages=[{"role": "system", "content": INTERPRET_SYSTEM},
+                         messages=[{"role": "system", "content": system},
                                    {"role": "user", "content": user}])
     parsed = extract_json(result.content)
     missing = [k for k in ("label", "detector") if not str(parsed.get(k, "")).strip()]
