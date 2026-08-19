@@ -1353,6 +1353,40 @@ published to `LASR-Callum/2026-08-18-odcv-lessswap716-eval`. ~$20 total (H200 ~$
 LESS selection; (2) once trained, run it at these same settings rather than comparing against
 the legacy arm; (3) the 16k-vs-64k context finding applies to every prior ODCV arm and is worth
 a re-read of those results.
+## 2026-08-19 — SAE dataset diffing (E1): the 70B run separates the four synth corpora, and names how
+
+**Hypothesis.** SAE embeddings (arXiv:2512.10092, run with the authors' own vendored code +
+the open Goodfire Llama-3.3-70B layer-50 SAE) can produce judge-verified properties that
+distinguish difficult-advice data from peer-critique / courtroom / post-action-retrospection —
+the "on what" behind the 2026-08-17 BoW separability AUCs, at property (not scalar) resolution.
+
+**Method.** `scratch/sae_properties/` (design: `docs/sae_property_extraction.md`): embed the
+response channel of 4 corpora (DA-v2 1000, PC 1000, CR 1000, PAR 576 docs, 2048-token cap)
+with the official reader on a 2×A100 pod; per-dataset latent frequencies → target minus max-of-
+others (patched upstream, which assumed equal corpus sizes and doc-slot alignment); top-200
+latents relabeled/scored; 15 hypotheses; every hypothesis judged on every document
+(gemini-2.5-flash — 3.7-flash is capacity-capped at 300 RPM on OpenRouter and unusable at
+this volume). Artifacts: `output/sae_properties/e1_70b/` (embed caches reusable for
+correlations/clustering at zero GPU cost); ~$11 GPU + ~$8 API.
+
+**Result** (`output/sae_properties/e1_70b/diff_difficult_advice/report.md`). DA leads all 15
+verified properties. Three kinds of separation: (1) *behavioural* — states its own limitations
+as refusals (0.56 vs 0.25–0.37), offers to act for the user (0.67 vs 0.41–0.54), asks
+clarifying questions (0.14 vs 0.02–0.06); (2) *value-content* — ethics of manipulating public
+perception/concealment (0.64 vs 0.14–0.27), oversight-being-circumvented (0.70 vs 0.18–0.55);
+(3) *scenario-domain skew* — social-service casework (0.59 vs ≤0.15), program
+metrics/funders (0.72 vs ≤0.57), AI-bias content (0.30–0.50) — quantifying the 2026-08-12
+manual "not diverse in scenario" finding. Constitution-over-mention did NOT surface: all four
+corpora share the constitution grounding, so target-vs-others cancels it — testing that needs
+DA vs the table2 background mixture as the comparison set. Operational traps hit and fixed
+in-repo: upstream never frees the reader between corpora (second load in one process OOMs →
+one corpus per process via resume-skip), and stale verification dirs from a killed run
+must be excluded by hypothesis-count + report timestamp, not path order.
+
+**Next.** (1) DA vs table2 background (the constitution-mention contrast). (2) E2 organism
+diffing on LMSYS prompts; E3 eval-transcript-seeded diffing. (3) Feed the 15 properties into
+`src/properties/` as an `sae_diff` producer with detectors. (4) Push artifacts to HF.
+
 ## 2026-08-18 — `src/properties/`: one List of Properties, and the ablations that test it
 
 **Why.** Four property-discovery methods were each growing their own embedding call, their
