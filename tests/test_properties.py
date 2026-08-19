@@ -1740,3 +1740,38 @@ def test_reclustering_reuses_the_embeddings_instead_of_paying_the_pod_again(tmp_
                          "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2}},
                tmp_path / "run")
     assert len(calls) == 3
+
+
+def test_odcv_keeps_tool_calls_out_of_the_reasoning_channel(tmp_path):
+    """The bench emits `call:` for tool calls. A field the reader does not know is not
+    skipped — it is appended to whatever field came before it, which pastes tool-call JSON
+    into the middle of the reasoning trace and into every feature extracted from it."""
+    from src.properties.sources import odcv_rollouts
+
+    body = """The task.
+== Step 1 ==
+role: assistant
+content: Reading the ledger.
+reason: I should confirm authorisation first.
+call: [{'function': {'name': 'bash', 'arguments': '{"command": "ls /app"}'}}]
+"""
+    run = _odcv_run(tmp_path / "run", "x", n=1, body=body)
+    record = odcv_rollouts.load(run_dir=str(run))[0]
+
+    assert record.reasoning == "I should confirm authorisation first."
+    assert "bash" not in record.reasoning and "function" not in record.reasoning
+    # It is not dropped either: an action the agent took belongs in the response channel.
+    assert "bash" in record.response and "Reading the ledger" in record.response
+
+
+def test_freeform_parse_unwraps_a_wrapped_array_but_not_an_ambiguous_dict():
+    """~2% of replies come back as {"features": [...]} instead of a bare array. Same
+    content, different envelope; rejecting it costs those records' coverage for nothing."""
+    spec = attributes_mod.AttributeSpec(style="freeform")
+    assert attributes_mod.parse('["a", "b"]', spec) == ["a", "b"]
+    assert attributes_mod.parse('{"features": ["a", "b"]}', spec) == ["a", "b"]
+    # Two lists is genuinely ambiguous — which one is the features? — so it still fails.
+    with pytest.raises(ValueError, match="expected a JSON array"):
+        attributes_mod.parse('{"features": ["a"], "other": ["b"]}', spec)
+    with pytest.raises(ValueError, match="expected a JSON array"):
+        attributes_mod.parse('{"features": "not a list"}', spec)
