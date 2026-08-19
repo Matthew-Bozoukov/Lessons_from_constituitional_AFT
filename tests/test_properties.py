@@ -1699,3 +1699,44 @@ def test_a_umap_run_labels_the_plot_as_a_different_projection(tmp_path):
     path = audit_mod.dashboard(tmp_path / "d2.html", [], record, "run", 2,
                                coords=coords, labels=np.array([0, 0]), n_components=2)
     assert "the clustering actually ran in" in path.read_text()
+
+
+def test_reclustering_reuses_the_embeddings_instead_of_paying_the_pod_again(tmp_path,
+                                                                           monkeypatch):
+    """Retuning the clustering does not change a single vector, and it is the loop you
+    run ten times. Re-embedding each round is the expensive way to answer a cheap
+    question."""
+    from src.properties.producers import clusters as tc
+
+    records = [Record(f"r{i}", "q", "a", reasoning=f"trace {i}") for i in range(20)]
+    calls = []
+
+    def counting_embed(texts, **kw):
+        calls.append(len(texts))
+        n = len(texts)
+        return (_two_blobs(n // 2, n - n // 2),
+                embed_mod.EmbedMeta(backend="stub", model="stub", dim=8, n=n))
+
+    _stub_embedding(monkeypatch, tc, _two_blobs(10, 10))
+    monkeypatch.setattr(tc.embed_mod, "embed", counting_embed)
+
+    base = {"evidence": "traces", "min_group_records": 2}
+    tc.produce(records, {**base, "grouping": {"reduce": "none", "cluster": "kmeans",
+                                              "k": 2}}, tmp_path / "run")
+    # Same units, different resolution: the vectors still apply.
+    tc.produce(records, {**base, "grouping": {"reduce": "none", "cluster": "kmeans",
+                                              "k": 4}}, tmp_path / "run")
+    assert calls == [20], "the second clustering must not re-embed"
+
+    # One more record is a different unit list, so the cache is discarded rather than
+    # silently mismatched against it.
+    tc.produce(records + [Record("r20", "q", "a", reasoning="trace 20")],
+               {**base, "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2}},
+               tmp_path / "run")
+    assert len(calls) == 2
+
+    # And opting out re-embeds unconditionally.
+    tc.produce(records, {**base, "reuse_embeddings": False,
+                         "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2}},
+               tmp_path / "run")
+    assert len(calls) == 3

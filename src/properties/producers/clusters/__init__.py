@@ -507,14 +507,13 @@ def produce(records: list[Record], cfg, out_dir: str | Path,
     units = build_units(kept, channel, cfg, run)
     print(f">>> evidence: {units.kind} — {len(units.texts)} units over {len(kept)} records")
 
-    vectors, embed_meta = embed_mod.embed(units.texts, **block(cfg, "embed"))
+    vectors, embed_meta = _embed(units, cfg, run)
     if len(vectors) != len(units.texts):
         # Row u of the matrix IS unit u throughout: cluster members are indices into both,
         # and units index back to records. A backend that dropped or reordered a row would
         # silently attach every label, arm and outcome to the wrong records.
         raise ValueError(f"embedding returned {len(vectors)} vectors for "
                          f"{len(units.texts)} units; rows must correspond 1:1 and in order")
-    embed_mod.save(run / "embeddings.npy", vectors, embed_meta)
 
     params = grouping_mod.GroupingParams(**block(cfg, "grouping"))
     result = grouping_mod.group(vectors, params)
@@ -594,6 +593,55 @@ def produce(records: list[Record], cfg, out_dir: str | Path,
         _report(properties, kept, result, cfg, novelty, units)
         + ("\n" + audit_mod.report(audit) if audit else ""), encoding="utf-8")
     return properties
+
+
+def _embed(units: Units, cfg, run: Path) -> tuple[np.ndarray, embed_mod.EmbedMeta]:
+    """Embed the units, reusing this run directory's vectors when they still apply.
+
+    Retuning the clustering — a different `min_cluster_size`, `reduce: none` to check
+    whether UMAP is helping, another seed — is the loop you run ten times, and it does not
+    change a single vector. Re-embedding tens of thousands of strings on a rented GPU each
+    time round is the single most expensive way to answer a cheap question, and it is why
+    the original module made clustering its own stage against an existing run directory.
+
+    The saved vectors are reused only when the unit list is IDENTICAL, in order, and the
+    embedding model matches. Anything else — one more record, a different channel, another
+    embedder — and the cached matrix describes different text, so it is discarded rather
+    than silently mismatched against the current units.
+
+    Args:
+        units: This run's units.
+        cfg: The producer config; reads `embed:` and `reuse_embeddings` (default True).
+        run: The run directory.
+
+    Returns:
+        (vectors, their EmbedMeta).
+    """
+    path = run / "embeddings.npy"
+    meta_path = run / "embeddings_meta.json"
+    units_path = run / "units.json"
+    embed_cfg = block(cfg, "embed")
+    wanted = str(embed_cfg.get("model") or "")
+
+    if bool(cfg.get("reuse_embeddings", True)) and path.exists() and units_path.exists():
+        cached_units = json.loads(units_path.read_text())
+        cached_meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+        same_model = not wanted or cached_meta.get("model") == wanted
+        if cached_units == units.texts and same_model:
+            vectors = embed_mod.normalise(np.load(path).astype(np.float32))
+            print(f">>> reusing {len(vectors)} embeddings from {path} "
+                  f"({cached_meta.get('model')}) — nothing to re-embed")
+            return vectors, embed_mod.EmbedMeta(
+                backend=cached_meta.get("backend", "cached"),
+                model=cached_meta.get("model", ""), dim=int(vectors.shape[1]),
+                n=len(vectors), probe_cosines=cached_meta.get("probe_cosines", {}))
+        print(f">>> {path} holds {len(cached_units)} units for a different "
+              f"{'model' if not same_model else 'unit list'}; re-embedding")
+
+    vectors, embed_meta = embed_mod.embed(units.texts, **embed_cfg)
+    embed_mod.save(path, vectors, embed_meta)
+    units_path.write_text(json.dumps(units.texts, ensure_ascii=False), encoding="utf-8")
+    return vectors, embed_meta
 
 
 def _group_members(result, units: Units, cfg) -> dict[int, dict]:
