@@ -1797,3 +1797,112 @@ def test_redundancy_is_measured_in_the_embedding_space_not_the_reduced_one():
     # Noise contributes to no centroid.
     with_noise = np.array([0] * 20 + [-1] * 20)
     assert audit_mod._embedding_centroids(vectors, with_noise).shape[0] == 1
+
+
+# --- the degenerate-reduction guard -----------------------------------------------------
+
+def _collapsed_coords(n, seed=0):
+    """What a degenerate UMAP fit actually looked like on the real runs: every point in one
+    of two tight lumps, zero noise, and membership unrelated to where the point started —
+    so the reduction destroyed the neighbourhood structure it was supposed to preserve."""
+    rng = np.random.default_rng(seed)
+    centres = np.array([[0.0, 0.0], [6.0, 0.0]])
+    pick = rng.integers(0, 2, n)
+    return (centres[pick] + rng.normal(0, 0.05, (n, 2))).astype(np.float32)
+
+
+def test_is_degenerate_gates_on_shape_but_decides_on_the_reduction():
+    from src.properties.shared import grouping as gm
+
+    # The cheap shape gate, with no matrices to check the geometry against.
+    assert gm.is_degenerate(np.zeros(500, dtype=np.int64), 1)
+    healthy = np.where(np.arange(500) % 3 == 0, -1, np.arange(500) % 17)
+    assert not gm.is_degenerate(healthy, 17)
+    two_with_noise = np.where(np.arange(500) % 4 == 0, -1, np.arange(500) % 2)
+    assert not gm.is_degenerate(two_with_noise, 2)
+    assert not gm.is_degenerate(np.arange(40) % 2, 2)   # too small to judge
+
+    # Shape alone would condemn genuinely bimodal data: two clean blobs really do give two
+    # groups and zero noise. The geometry check is what tells the two cases apart.
+    vectors = _two_blobs(150, 150, dim=6, seed=8)
+    labels = np.array([0] * 150 + [1] * 150)
+    kept = np.asarray(vectors[:, :2], dtype=np.float32)
+    assert not gm.is_degenerate(labels, 2, vectors, kept), "a faithful reduction is fine"
+
+    collapsed = _collapsed_coords(300, 0)
+    assert gm.is_degenerate(labels, 2, vectors, collapsed), "a collapsed one is not"
+
+
+def test_group_retries_past_a_collapsed_umap_fit_and_records_that_it_did(monkeypatch):
+    """A collapsed reduction is a failed run, not a two-property finding. The retry has to
+    be recorded, because after it the result is no longer the seed the config asked for."""
+    from src.properties.shared import grouping as gm
+
+    vectors = _two_blobs(150, 150, dim=6, seed=4)
+    seeds_tried = []
+
+    def flaky_umap(v, params):
+        seeds_tried.append(params.seed)
+        if params.seed < 44:                      # seeds 42, 43 collapse
+            return _collapsed_coords(len(v), params.seed)
+        return np.asarray(v[:, :2], dtype=np.float32)
+
+    monkeypatch.setattr(gm, "reduce_umap", flaky_umap)
+    params = gm.GroupingParams(reduce="umap", cluster="hdbscan",
+                               min_cluster_size=25, seed=42)
+    result = gm.group(vectors, params)
+
+    assert seeds_tried == [42, 43, 44]
+    assert result.meta["seed_used"] == 44 and result.meta["degenerate_retries"] == 2
+    # The recovered fit is two clean blobs with no noise, which the SHAPE gate flags on its
+    # own — the geometry check is what clears it, so the matrices have to be passed.
+    assert result.n_groups == 2
+    assert gm.is_degenerate(result.labels, result.n_groups), "shape alone would condemn it"
+    assert not gm.is_degenerate(result.labels, result.n_groups, vectors, result.coords)
+
+
+def test_group_gives_up_loudly_when_every_seed_collapses(monkeypatch):
+    from src.properties.shared import grouping as gm
+
+    vectors = _two_blobs(150, 150, dim=6, seed=5)
+    monkeypatch.setattr(gm, "reduce_umap",
+                        lambda v, p: _collapsed_coords(len(v), p.seed))
+    params = gm.GroupingParams(reduce="umap", cluster="hdbscan",
+                               min_cluster_size=25, seed=42)
+    with pytest.raises(ValueError, match="collapsed at every seed"):
+        gm.group(vectors, params, retry_degenerate=2)
+
+
+def test_a_stability_sweep_must_not_retry_or_it_measures_the_retry_logic(monkeypatch):
+    from src.properties.shared import grouping as gm
+
+    vectors = _two_blobs(150, 150, dim=6, seed=6)
+    monkeypatch.setattr(gm, "reduce_umap",
+                        lambda v, p: _collapsed_coords(len(v), p.seed))
+    params = gm.GroupingParams(reduce="umap", cluster="hdbscan",
+                               min_cluster_size=25, seed=42)
+    # retry_degenerate=0 takes the first fit whatever it is, so the sweep still sees the
+    # collapse it exists to count.
+    result = gm.group(vectors, params, retry_degenerate=0)
+    assert gm.is_degenerate(result.labels, result.n_groups)
+    assert result.meta["degenerate_retries"] == 0
+
+
+def test_embeddings_are_stored_at_full_precision_so_a_rerun_reproduces(tmp_path):
+    """fp16 moves each component of a normalised 4096-d vector by ~1e-3 — the same order
+    as the gaps between near neighbours — so reloading one rebuilds a different kNN graph.
+    On the real da716 run that turned 17 groups at 40% noise into 2 groups at 0%."""
+    rng = np.random.default_rng(0)
+    vectors = embed_mod.normalise(rng.normal(size=(64, 512)).astype(np.float32))
+    meta = embed_mod.EmbedMeta(backend="stub", model="m", dim=512, n=64)
+    path = embed_mod.save(tmp_path / "e.npy", vectors, meta)
+
+    stored = np.load(path)
+    assert stored.dtype == np.float32
+    # Exact round-trip: the reloaded matrix IS the matrix that was clustered.
+    assert np.array_equal(stored, vectors)
+    # And the neighbour ordering survives, which is the property that actually matters.
+    reloaded = embed_mod.normalise(stored.astype(np.float32))
+    order_a = np.argsort(-(vectors @ vectors.T), axis=1)[:, :10]
+    order_b = np.argsort(-(reloaded @ reloaded.T), axis=1)[:, :10]
+    assert np.array_equal(order_a, order_b)

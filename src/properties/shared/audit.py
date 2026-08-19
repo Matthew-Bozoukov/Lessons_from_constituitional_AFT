@@ -191,7 +191,10 @@ def stability_sweep(vectors: np.ndarray, params, reference_labels: np.ndarray,
     for n_neighbors in (neighbours if params.reduce == "umap" else (params.n_neighbors,)):
         for seed in seeds:
             swept = dataclasses.replace(params, n_neighbors=n_neighbors, seed=seed)
-            labels = grouping_mod.group(vectors, swept).labels
+            # retry_degenerate=0: a sweep that silently retried would be
+            # measuring the retry logic instead of how often the fit fails.
+            labels = grouping_mod.group(vectors, swept,
+                                        retry_degenerate=0).labels
             fits.append({"n_neighbors": n_neighbors, "seed": seed,
                          "n_groups": int(labels.max()) + 1,
                          "noise_fraction": round(float((labels < 0).mean()), 4),
@@ -205,8 +208,19 @@ def stability_sweep(vectors: np.ndarray, params, reference_labels: np.ndarray,
                 for a in labelings]
     off_diagonal = [pairwise[i][j] for i in range(len(pairwise))
                     for j in range(len(pairwise)) if i != j]
+    collapsed = [f for f in fits if f["n_groups"] <= grouping_mod.DEGENERATE_MAX_GROUPS
+                 and f["noise_fraction"] <= grouping_mod.DEGENERATE_MAX_NOISE_SHARE]
+    healthy = [i for i, f in enumerate(fits) if f not in collapsed]
+    among = [pairwise[i][j] for i in healthy for j in healthy if i != j]
     return {"fits": fits, "pairwise_ari": pairwise,
             "min_pairwise_ari": min(off_diagonal) if off_diagonal else None,
+            # A collapsed fit is a failed reduction, and the exported run retries past one.
+            # Reporting only the raw minimum would let 1 of 9 bad seeds hide the agreement
+            # of the other 8, so both numbers are carried.
+            "n_collapsed": len(collapsed), "n_fits": len(fits),
+            "min_pairwise_ari_healthy": min(among) if among else None,
+            "median_pairwise_ari_healthy": round(float(np.median(among)), 4)
+            if among else None,
             "mean_ari_vs_reference": round(
                 float(np.mean([f["ari_vs_reference"] for f in fits])), 4)}
 
@@ -287,10 +301,14 @@ def report(audit_record: dict) -> str:
     stability = audit_record.get("stability")
     if stability:
         lines += ["", "### Stability across seeds and neighbourhoods", "",
-                  f"Mean ARI vs the reference fit: "
-                  f"{stability['mean_ari_vs_reference']:.3f}. Worst agreement between any "
-                  f"two fits: {stability['min_pairwise_ari']:.3f}. A grouping that "
-                  "reshuffles when the seed changes is not a finding.", "",
+                  f"{stability.get('n_collapsed', 0)} of "
+                  f"{stability.get('n_fits', len(stability['fits']))} refits collapsed "
+                  "(a failed reduction, which the exported run retries past). Among the "
+                  f"rest, pairwise ARI is "
+                  f"{stability.get('min_pairwise_ari_healthy') or float('nan'):.3f} to "
+                  f"1.000, median "
+                  f"{stability.get('median_pairwise_ari_healthy') or float('nan'):.3f}. "
+                  "A grouping that reshuffles when the seed changes is not a finding.", "",
                   "| n_neighbors | seed | groups | noise | ARI vs ref |",
                   "|--:|--:|--:|--:|--:|"]
         lines += [f"| {f['n_neighbors']} | {f['seed']} | {f['n_groups']} | "
