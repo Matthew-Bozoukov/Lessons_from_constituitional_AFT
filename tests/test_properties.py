@@ -31,7 +31,7 @@ def _record(rid="r0", query="q", response="a", reasoning="think", **kw):
 
 
 def _property(**kw):
-    defaults = {"property_id": "p:run:c000", "source": "trace_clusters",
+    defaults = {"property_id": "p:run:c000", "source": "clusters",
                 "label": "Weighs likelihood against severity", "detector": "Does it?",
                 "channel": "reasoning"}
     return Property(**{**defaults, **kw})
@@ -327,21 +327,21 @@ def test_report_is_a_greppable_markdown_mirror(tmp_path):
 # --- producers -------------------------------------------------------------------------
 
 def test_producer_registry_declares_what_each_one_needs():
-    assert set(PRODUCERS) == {"trace_clusters", "feature_discovery", "turf", "less"}
+    assert set(PRODUCERS) == {"clusters", "turf", "less"}
     assert PRODUCERS["turf"].needs_target and PRODUCERS["less"].needs_target
-    assert not PRODUCERS["trace_clusters"].needs_target
+    assert not PRODUCERS["clusters"].needs_target
     assert PRODUCERS["less"].needs_gpu
-    # The three that are still placeholders say where their code is, so the error can too.
-    for name in ("feature_discovery", "turf", "less"):
+    # The placeholders say where their code is, so the error can too.
+    for name in ("turf", "less"):
         assert not PRODUCERS[name].implemented
         assert PRODUCERS[name].scratch_path.startswith("scratch/")
-    assert PRODUCERS["trace_clusters"].implemented
+    assert PRODUCERS["clusters"].implemented
 
 
 def test_a_placeholder_producer_fails_by_saying_so_not_with_an_attribute_error():
     from src.properties.producers import resolve
 
-    for name in ("feature_discovery", "turf", "less"):
+    for name in ("turf", "less"):
         with pytest.raises(NotImplementedError, match="placeholder"):
             resolve(name)
     with pytest.raises(KeyError, match="unknown producer"):
@@ -496,13 +496,13 @@ def verify_separability(before, after):
     return separability(before, after)
 
 
-# --- trace_clusters end to end (no network) --------------------------------------------
+# --- clusters, evidence: traces, end to end (no network) --------------------------------
 
-def test_trace_clusters_produce_end_to_end(tmp_path, monkeypatch):
+def test_clusters_traces_mode_end_to_end(tmp_path, monkeypatch):
     """The reference producer with its two model calls stubbed: embed -> group ->
     interpret -> Property rows, including the per-arm split a DA-vs-courtroom
     comparison reads."""
-    from src.properties.producers import trace_clusters as tc
+    from src.properties.producers import clusters as tc
     from src.properties.shared.interpret import Interpretation
 
     records = []
@@ -530,7 +530,7 @@ def test_trace_clusters_produce_end_to_end(tmp_path, monkeypatch):
         for g in groups})
 
     properties = tc.produce(records,
-                            {"channel": "reasoning",
+                            {"channel": "reasoning", "evidence": "traces",
                              "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2},
                              "group_by": "source_label"},
                             tmp_path / "tc")
@@ -538,7 +538,7 @@ def test_trace_clusters_produce_end_to_end(tmp_path, monkeypatch):
     assert {p.prevalence for p in properties} == {0.6, 0.4}
     # Every row is a Property: it carries a detector, so an ablation can act on it.
     assert all(p.detector and p.channel == "reasoning" for p in properties)
-    assert all(p.property_id.startswith("trace_clusters:tc:g") for p in properties)
+    assert all(p.property_id.startswith("clusters:tc:g") for p in properties)
     assert properties[0].corpus == {"repo": "org/x"}
     arms = properties[0].support["arms"]
     assert set(arms) == {"da", "courtroom"}
@@ -547,8 +547,8 @@ def test_trace_clusters_produce_end_to_end(tmp_path, monkeypatch):
     assert (tmp_path / "tc" / "embeddings.npy").exists()
 
 
-def test_trace_clusters_refuses_a_corpus_with_no_text_in_the_channel(tmp_path):
-    from src.properties.producers import trace_clusters as tc
+def test_clusters_refuses_a_corpus_with_no_text_in_the_channel(tmp_path):
+    from src.properties.producers import clusters as tc
 
     with pytest.raises(ValueError, match="no record carries text in the 'reasoning'"):
         tc.produce([Record("r0", "q", "a", reasoning="")], {}, tmp_path / "tc")
@@ -1019,7 +1019,7 @@ def test_rank_orders_most_protective_first_and_keeps_untestable_groups():
     assert all("arms" in r and "pooled_lift" in r for r in rows)
 
 
-# --- trace_clusters over rollouts: ranked groups, and the ones with no home -------------
+# --- clusters over rollouts: ranked groups, and the ones with no home -------------------
 
 def _rollout_records(n_per_arm=30):
     """Two arms with different base violation rates, and one group that really is safer."""
@@ -1037,10 +1037,25 @@ def _rollout_records(n_per_arm=30):
     return records
 
 
-def _stub_embedding(monkeypatch, tc, vectors):
+def _stub_embedding(monkeypatch, tc, vectors, features=None):
+    """Stub every network call the producer makes: embed, extract, interpret.
+
+    `features` maps record_id -> its feature strings, for `evidence: features` runs. When
+    omitted the extractor is stubbed to raise, so a test that reaches features mode by
+    accident fails loudly instead of quietly billing OpenRouter.
+    """
     meta = embed_mod.EmbedMeta(backend="openrouter", model="stub",
                                dim=vectors.shape[1], n=len(vectors))
     monkeypatch.setattr(tc.embed_mod, "embed", lambda texts, **kw: (vectors, meta))
+
+    def extract(records, spec, workers=16, client=None):
+        if features is None:
+            raise AssertionError("this test reached feature extraction without stubbing "
+                                 "it; pass features= or set evidence: traces")
+        return [{"record_id": r.record_id, "attributes": features[r.record_id],
+                 "tokens_in": 1, "tokens_out": 1} for r in records]
+
+    monkeypatch.setattr(tc.attributes_mod, "extract", extract)
     from src.properties.shared.interpret import Interpretation
     monkeypatch.setattr(tc.interpret_mod, "interpret_many", lambda groups, **kw: {
         g: Interpretation(label=f"Property {g}", description="d",
@@ -1057,10 +1072,10 @@ def _two_blobs(n_a, n_b, dim=8, seed=0):
     return vectors / np.linalg.norm(vectors, axis=1, keepdims=True)
 
 
-def test_trace_clusters_ranks_rollout_groups_by_within_arm_outcome(tmp_path, monkeypatch):
+def test_clusters_ranks_rollout_groups_by_within_arm_outcome(tmp_path, monkeypatch):
     """The rollout-side run: one pooled fit, then every group crossed with the violation
     flag WITHIN its arm. The ordering of the returned rows IS the ablation shortlist."""
-    from src.properties.producers import trace_clusters as tc
+    from src.properties.producers import clusters as tc
 
     records = _rollout_records()
     # Blob 0 = the "checks authorisation" half of both arms; blob 1 = the rest.
@@ -1070,7 +1085,7 @@ def test_trace_clusters_ranks_rollout_groups_by_within_arm_outcome(tmp_path, mon
     _stub_embedding(monkeypatch, tc, vectors)
 
     properties = tc.produce(order, {
-        "channel": "reasoning",
+        "channel": "reasoning", "evidence": "traces",
         "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2},
         "group_by": "arm",
         "outcomes": {"field": "violation", "fdr": 0.10, "min_arm_records": 5},
@@ -1089,13 +1104,14 @@ def test_trace_clusters_ranks_rollout_groups_by_within_arm_outcome(tmp_path, mon
     assert "Outcome rate, within arm" in report and "difficult_advice" in report
 
 
-def test_trace_clusters_refuses_outcomes_over_a_corpus_that_has_none(tmp_path, monkeypatch):
-    from src.properties.producers import trace_clusters as tc
+def test_clusters_refuses_outcomes_over_a_corpus_that_has_none(tmp_path, monkeypatch):
+    from src.properties.producers import clusters as tc
 
     records = [Record(f"r{i}", "q", "a", reasoning=f"t{i}") for i in range(20)]
     _stub_embedding(monkeypatch, tc, _two_blobs(10, 10))
     with pytest.raises(ValueError, match="no record carries one"):
-        tc.produce(records, {"grouping": {"reduce": "none", "cluster": "kmeans", "k": 2},
+        tc.produce(records, {"evidence": "traces",
+                    "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2},
                              "outcomes": {"field": "violation"}}, tmp_path / "tc")
 
 
@@ -1103,7 +1119,7 @@ def test_compare_to_finds_the_group_the_training_corpus_has_no_home_for(tmp_path
                                                                        monkeypatch):
     """Nearest-centroid never abstains, so an assign-only view absorbs novel behaviour
     into whatever is closest. The refit plus a cosine floor is what makes it visible."""
-    from src.properties.producers import trace_clusters as tc
+    from src.properties.producers import clusters as tc
 
     # A prior "training" run whose records are all in blob 0's region.
     prior = tmp_path / "prior"
@@ -1120,6 +1136,7 @@ def test_compare_to_finds_the_group_the_training_corpus_has_no_home_for(tmp_path
     _stub_embedding(monkeypatch, tc, _two_blobs(15, 15))
 
     properties = tc.produce(records, {
+        "evidence": "traces",
         "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2},
         "compare_to": {"run_dir": str(prior), "min_cosine": 0.6},
     }, tmp_path / "tc")
@@ -1139,7 +1156,7 @@ def test_compare_to_finds_the_group_the_training_corpus_has_no_home_for(tmp_path
 
 
 def test_compare_to_refuses_a_run_embedded_with_a_different_model(tmp_path, monkeypatch):
-    from src.properties.producers import trace_clusters as tc
+    from src.properties.producers import clusters as tc
 
     prior = tmp_path / "prior"
     prior.mkdir()
@@ -1150,21 +1167,24 @@ def test_compare_to_refuses_a_run_embedded_with_a_different_model(tmp_path, monk
     records = [Record(f"r{i}", "q", "a", reasoning=f"t{i}") for i in range(20)]
     _stub_embedding(monkeypatch, tc, _two_blobs(10, 10))
     with pytest.raises(ValueError, match="not comparable"):
-        tc.produce(records, {"grouping": {"reduce": "none", "cluster": "kmeans", "k": 2},
+        tc.produce(records, {"evidence": "traces",
+                    "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2},
                              "compare_to": {"run_dir": str(prior)}}, tmp_path / "tc")
 
-    with pytest.raises(FileNotFoundError, match="previous trace_clusters run"):
-        tc.produce(records, {"grouping": {"reduce": "none", "cluster": "kmeans", "k": 2},
+    with pytest.raises(FileNotFoundError, match="previous `clusters` run"):
+        tc.produce(records, {"evidence": "traces",
+                    "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2},
                              "compare_to": {"run_dir": str(tmp_path / "nope")}},
                    tmp_path / "tc2")
 
 
 def test_baseline_grouping_writes_the_umap_is_it_helping_comparison(tmp_path, monkeypatch):
-    from src.properties.producers import trace_clusters as tc
+    from src.properties.producers import clusters as tc
 
     records = [Record(f"r{i}", "q", "a", reasoning=f"t{i}") for i in range(20)]
     _stub_embedding(monkeypatch, tc, _two_blobs(10, 10))
     tc.produce(records, {
+        "evidence": "traces",
         "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2},
         "baseline_grouping": {"reduce": "none", "cluster": "kmeans", "k": 4},
     }, tmp_path / "tc")
@@ -1175,7 +1195,7 @@ def test_baseline_grouping_writes_the_umap_is_it_helping_comparison(tmp_path, mo
 
 
 def test_detector_sampling_keeps_every_arm_represented():
-    from src.properties.producers import trace_clusters as tc
+    from src.properties.producers import clusters as tc
 
     records = [Record(f"big{i}", "q", "a", reasoning="t", metadata={"arm": "big"})
                for i in range(200)]
@@ -1205,24 +1225,26 @@ def test_a_group_confined_to_one_arm_has_no_measurable_lift_rather_than_a_fake_o
     assert rows[0]["lift"] is None and not rows[0]["significant"]
 
 
-def test_trace_clusters_refuses_a_run_where_every_group_is_below_the_floor(tmp_path,
+def test_clusters_refuses_a_run_where_every_group_is_below_the_floor(tmp_path,
                                                                           monkeypatch):
-    from src.properties.producers import trace_clusters as tc
+    from src.properties.producers import clusters as tc
 
     records = [Record(f"r{i}", "q", "a", reasoning=f"t{i}") for i in range(6)]
     _stub_embedding(monkeypatch, tc, _two_blobs(3, 3))
     with pytest.raises(ValueError, match="would export nothing"):
-        tc.produce(records, {"grouping": {"reduce": "none", "cluster": "kmeans", "k": 2},
+        tc.produce(records, {"evidence": "traces",
+                    "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2},
                              "min_group_records": 5}, tmp_path / "tc")
 
 
-def test_trace_clusters_refuses_an_embedding_that_lost_a_row(tmp_path, monkeypatch):
-    from src.properties.producers import trace_clusters as tc
+def test_clusters_refuses_an_embedding_that_lost_a_row(tmp_path, monkeypatch):
+    from src.properties.producers import clusters as tc
 
     records = [Record(f"r{i}", "q", "a", reasoning=f"t{i}") for i in range(20)]
     _stub_embedding(monkeypatch, tc, _two_blobs(9, 10))
     with pytest.raises(ValueError, match="must correspond 1:1"):
-        tc.produce(records, {"grouping": {"reduce": "none", "cluster": "kmeans", "k": 2}},
+        tc.produce(records, {"evidence": "traces",
+                    "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2}},
                    tmp_path / "tc")
 
 
@@ -1230,7 +1252,7 @@ def test_a_pooled_run_is_stamped_as_the_set_it_is_not_its_first_arm(tmp_path, mo
     """`prevalence` is only interpretable next to the corpus it was measured on. On a
     pooled run the first record's stamp names one arm, which would be a false label on
     rows describing all of them."""
-    from src.properties.producers import trace_clusters as tc
+    from src.properties.producers import clusters as tc
 
     records = [Record(f"a{i}", "q", "a", reasoning=f"t{i}",
                       metadata={"arm": "da", "corpus": {"path": "out/da", "arm": "da"}})
@@ -1241,6 +1263,7 @@ def test_a_pooled_run_is_stamped_as_the_set_it_is_not_its_first_arm(tmp_path, mo
                 for i in range(10)]
     _stub_embedding(monkeypatch, tc, _two_blobs(10, 10))
     properties = tc.produce(records, {
+        "evidence": "traces",
         "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2},
         "group_by": "arm"}, tmp_path / "tc")
 
@@ -1253,6 +1276,7 @@ def test_a_pooled_run_is_stamped_as_the_set_it_is_not_its_first_arm(tmp_path, mo
                      metadata={"corpus": {"repo": "org/x"}}) for i in range(20)]
     _stub_embedding(monkeypatch, tc, _two_blobs(10, 10))
     properties = tc.produce(single, {
+        "evidence": "traces",
         "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2}}, tmp_path / "tc2")
     assert properties[0].corpus == {"repo": "org/x"}
 
@@ -1262,7 +1286,7 @@ def test_members_jsonl_joins_every_record_to_its_property_and_its_rollout(tmp_pa
     """Ten example ids on a property row is enough to check a label and not enough to
     work with. members.jsonl is the full record -> property map, carrying the path to the
     rollout so the traces behind a cluster can actually be opened."""
-    from src.properties.producers import trace_clusters as tc
+    from src.properties.producers import clusters as tc
 
     records = []
     for arm, n in (("da", 10), ("court", 10)):
@@ -1270,9 +1294,11 @@ def test_members_jsonl_joins_every_record_to_its_property_and_its_rollout(tmp_pa
             records.append(Record(
                 f"{arm}/r{i}", "q", "a", reasoning=f"trace {i}",
                 outcome={"violation": i < 3, "score": 4 if i < 3 else 0},
-                metadata={"arm": arm, "rollout_path": f"/runs/{arm}/r{i}/messages_record.txt"}))
+                metadata={"arm": arm,
+                          "rollout_path": f"/runs/{arm}/r{i}/messages_record.txt"}))
     _stub_embedding(monkeypatch, tc, _two_blobs(10, 10))
     properties = tc.produce(records, {
+        "evidence": "traces",
         "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2},
         "group_by": "arm"}, tmp_path / "tc")
 
@@ -1292,13 +1318,14 @@ def test_members_jsonl_joins_every_record_to_its_property_and_its_rollout(tmp_pa
 
 
 def test_members_jsonl_says_why_a_record_carries_no_property(tmp_path, monkeypatch):
-    from src.properties.producers import trace_clusters as tc
+    from src.properties.producers import clusters as tc
 
     # 12 records in two blobs of 6; a floor of 8 excludes both, so raise -- then a floor
     # of 5 exports one blob and drops nothing, and a lopsided split exercises the floor.
     records = [Record(f"r{i}", "q", "a", reasoning=f"t{i}") for i in range(14)]
     _stub_embedding(monkeypatch, tc, _two_blobs(11, 3))
-    tc.produce(records, {"grouping": {"reduce": "none", "cluster": "kmeans", "k": 2},
+    tc.produce(records, {"evidence": "traces",
+                    "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2},
                          "min_group_records": 5}, tmp_path / "tc")
 
     rows = [json.loads(x) for x in
@@ -1306,3 +1333,198 @@ def test_members_jsonl_says_why_a_record_carries_no_property(tmp_path, monkeypat
     excluded = [r for r in rows if r["excluded"]]
     assert len(excluded) == 3 and {r["excluded"] for r in excluded} == {"below_floor"}
     assert all(r["property_id"] is None for r in excluded)
+
+
+# --- evidence: features — the ported feature-discovery method ---------------------------
+
+def _feature_corpus(n=24):
+    """Records whose feature lists overlap: everyone checks, half also weigh."""
+    records, features = [], {}
+    for i in range(n):
+        rid = f"r{i}"
+        records.append(Record(rid, "q", "a", reasoning=f"trace {i}",
+                              metadata={"arm": "da" if i % 2 else "court",
+                                        "trait_id": "t1" if i < n // 2 else "t2"}))
+
+        features[rid] = (["checks authorisation before acting"]
+                         + (["weighs harm against benefit"] if i % 2 else [])
+                         + [f"idiosyncratic phrasing {i}"])
+    return records, features
+
+
+def test_features_mode_embeds_the_vocabulary_once_not_once_per_occurrence(tmp_path,
+                                                                          monkeypatch):
+    from src.properties.producers import clusters as tc
+
+    records, features = _feature_corpus(24)
+    seen = {}
+
+    def capture(texts, **kw):
+        seen["texts"] = list(texts)
+        vectors = _two_blobs(len(texts) // 2, len(texts) - len(texts) // 2,
+                             seed=3)[:len(texts)]
+        return vectors, embed_mod.EmbedMeta(backend="stub", model="stub", dim=8,
+                                            n=len(texts))
+
+    _stub_embedding(monkeypatch, tc, _two_blobs(1, 1), features=features)
+    monkeypatch.setattr(tc.embed_mod, "embed", capture)
+    tc.produce(records, {"evidence": "features", "min_group_records": 2,
+                         "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2}},
+               tmp_path / "fd")
+
+    # 2 shared strings + 24 idiosyncratic ones = 26 distinct, though there are 42
+    # occurrences. Embedding the occurrences would pay 42 times and let one stock phrase
+    # drag a cluster toward itself.
+    assert len(seen["texts"]) == 26
+    assert len(set(seen["texts"])) == len(seen["texts"])
+    assert "checks authorisation before acting" in seen["texts"]
+
+
+def test_features_mode_gives_one_record_several_properties(tmp_path, monkeypatch):
+    """The behaviour whole-trace clustering cannot have: a trace does several things, and
+    in features mode it belongs to a group for each of them."""
+    from src.properties.producers import clusters as tc
+
+    records, features = _feature_corpus(24)
+    # Split the vocabulary deterministically so the two shared features land apart.
+    texts = sorted({f for fs in features.values() for f in fs})
+    vectors = np.array([(np.ones(8) if t.startswith("checks") or t.startswith("idio")
+                         else -np.ones(8)) for t in texts], dtype=np.float32)
+    vectors += np.random.default_rng(0).normal(0, 0.01, vectors.shape)
+    vectors /= np.linalg.norm(vectors, axis=1, keepdims=True)
+    _stub_embedding(monkeypatch, tc, vectors.astype(np.float32), features=features)
+
+    properties = tc.produce(records, {"evidence": "features", "min_group_records": 2,
+                                      "group_by": "arm",
+                                      "grouping": {"reduce": "none", "cluster": "kmeans",
+                                                   "k": 2}}, tmp_path / "fd")
+
+    assert all(p.support["prevalence_kind"] == "feature_membership" for p in properties)
+    # Overlapping groups: prevalences do NOT sum to 1, unlike traces mode.
+    assert sum(p.prevalence for p in properties) > 1.0
+    rows = [json.loads(x) for x in
+            (tmp_path / "fd" / "members.jsonl").read_text().splitlines() if x.strip()]
+    per_record = {}
+    for row in rows:
+        per_record.setdefault(row["record_id"], []).append(row["property_id"])
+    assert max(len(v) for v in per_record.values()) > 1, "a record holds several properties"
+    # The feature-discovery extras survive the port.
+    assert any(p.support["trait_mix"] for p in properties)
+    assert all(p.support["n_units"] for p in properties)
+    assert any(p.evidence["example_units"] for p in properties)
+
+
+def test_features_mode_counts_instances_separately_from_records(tmp_path, monkeypatch):
+    """400 features over 400 traces and 400 features over 50 traces are different
+    findings; only reporting both distinguishes them."""
+    from src.properties.producers import clusters as tc
+
+    records = [Record(f"r{i}", "q", "a", reasoning="t") for i in range(10)]
+    # Two records say the same three things; the rest say one thing each.
+    features = {f"r{i}": (["a", "b", "c"] if i < 2 else ["a"]) for i in range(10)}
+    _stub_embedding(monkeypatch, tc, _two_blobs(3, 0, seed=5), features=features)
+
+    properties = tc.produce(records, {"evidence": "features", "min_group_records": 2,
+                                      "grouping": {"reduce": "none", "cluster": "kmeans",
+                                                   "k": 1}}, tmp_path / "fd")
+    top = properties[0]
+    assert top.n_records == 10          # every record says "a"
+    assert top.n_instances == 14        # 10 x "a" + 2 x "b" + 2 x "c"
+    assert top.prevalence == 1.0
+
+
+def test_features_mode_reuses_an_extraction_rather_than_paying_for_it_twice(tmp_path,
+                                                                           monkeypatch):
+    from src.properties.producers import clusters as tc
+
+    records, features = _feature_corpus(12)
+    calls = []
+
+    def counting_extract(recs, spec, workers=16, client=None):
+        calls.append(len(recs))
+        return [{"record_id": r.record_id, "attributes": features[r.record_id],
+                 "tokens_in": 1, "tokens_out": 1} for r in recs]
+
+    _stub_embedding(monkeypatch, tc, _two_blobs(7, 7), features=features)
+    monkeypatch.setattr(tc.attributes_mod, "extract", counting_extract)
+    cfg = {"evidence": "features", "min_group_records": 2,
+           "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2}}
+    tc.produce(records, cfg, tmp_path / "fd")
+    tc.produce(records, cfg, tmp_path / "fd")
+    assert calls == [12], "the second run reads features.jsonl instead of re-extracting"
+    assert (tmp_path / "fd" / "features.jsonl").exists()
+
+
+def test_the_interpreter_is_told_which_kind_of_evidence_it_is_reading(tmp_path,
+                                                                     monkeypatch):
+    """The two modes hand the interpreter different objects. Telling it it is reading
+    descriptions when it is reading transcripts is not cosmetic: the traces framing
+    carries the warning about topical clusters that the features framing does not."""
+    from src.properties.producers import clusters as tc
+
+    seen = {}
+    records, features = _feature_corpus(12)
+    _stub_embedding(monkeypatch, tc, _two_blobs(7, 7), features=features)
+    # The two modes embed different numbers of things (14 feature strings vs 12 traces),
+    # so the stub has to size itself to what it is handed.
+    monkeypatch.setattr(tc.embed_mod, "embed", lambda texts, **kw: (
+        _two_blobs(len(texts) // 2, len(texts) - len(texts) // 2),
+        embed_mod.EmbedMeta(backend="stub", model="stub", dim=8, n=len(texts))))
+    real = tc.interpret_mod.interpret_many
+    monkeypatch.setattr(tc.interpret_mod, "interpret_many",
+                        lambda groups, **kw: seen.update(kw) or real(groups, **kw))
+    monkeypatch.setattr(tc.interpret_mod, "interpret",
+                        lambda evidence, **kw: interpret_mod.Interpretation(
+                            label="L", description="d", detector="Does it?",
+                            channel="reasoning", model="stub"))
+
+    tc.produce(records, {"evidence": "features", "min_group_records": 2,
+                         "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2}},
+               tmp_path / "fd")
+    assert seen["evidence_kind"] == "features"
+
+    tc.produce(records, {"evidence": "traces", "min_group_records": 2,
+                         "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2}},
+               tmp_path / "tc")
+    assert seen["evidence_kind"] == "traces"
+
+
+def test_the_two_evidence_framings_differ_and_an_unknown_one_is_refused():
+    framings = interpret_mod.EVIDENCE_FRAMING
+    # Only the raw-transcript framing warns about topical clusters, because only it needs to.
+    assert "SUBJECT MATTER" in framings["records"]
+    assert "SUBJECT MATTER" not in framings["features"]
+    for kind, framing in framings.items():
+        rendered = interpret_mod.INTERPRET_SYSTEM.replace("EVIDENCE_IS", framing)
+        assert "EVIDENCE_IS" not in rendered
+        # The JSON contract's braces must survive: they are why this is a replace, not a
+        # .format().
+        assert '{"label"' in rendered, kind
+    with pytest.raises(ValueError, match="evidence_kind must be"):
+        interpret_mod.interpret(["x"], evidence_kind="nonsense")
+
+
+def test_produce_refuses_an_unknown_evidence_kind_before_spending_anything(tmp_path):
+    from src.properties.producers import clusters as tc
+
+    records = [Record("r0", "q", "a", reasoning="t")]
+    with pytest.raises(ValueError, match="evidence must be one of"):
+        tc.produce(records, {"evidence": "vibes"}, tmp_path / "x")
+
+
+def test_coverage_json_states_what_the_properties_do_not_account_for(tmp_path,
+                                                                    monkeypatch):
+    from src.properties.producers import clusters as tc
+
+    records, features = _feature_corpus(12)
+    _stub_embedding(monkeypatch, tc, _two_blobs(7, 7), features=features)
+    tc.produce(records, {"evidence": "features", "min_group_records": 2,
+                         "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2}},
+               tmp_path / "fd")
+
+    coverage = json.loads((tmp_path / "fd" / "coverage.json").read_text())
+    assert coverage["evidence"] == "features"
+    assert coverage["records"] == 12 and coverage["units"] == 14
+    assert coverage["feature_instances"] == 12 + 6 + 12
+    assert coverage["records_with_no_property"] == 0
+    assert coverage["unclustered_units"] == 0
