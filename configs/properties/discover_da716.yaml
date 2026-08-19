@@ -1,0 +1,104 @@
+# ABOUTME: Property discovery over the 716 difficult-advice rows of the Table-2 mixture:
+# ABOUTME: trace_clusters (embed the traces) + feature_discovery (autorater vocabulary).
+# Run: uv run python scripts/properties/discover.py --config configs/properties/discover_da716.yaml [--smoke]
+
+tag: da716
+
+# Where the merged List of Properties lives. Every ablation config resolves its
+# `property_id` against this file, so it is the one path that must not drift.
+registry: output/properties/properties.jsonl
+
+# The corpus a prevalence is a share OF. Pinned by revision on purpose: an unpinned repo
+# makes prevalence a moving number, and a property row would then claim a share of
+# something nobody can reconstruct.
+source:
+  name: mixture_rows
+  repo: LASR-Callum/2026-08-06-table2-9284-synthdoc-716-train
+  file: mixture_think.jsonl
+  revision: 5b5d66dbd050a15493f38b500fe10f570b0b8f2b
+  # The mixture is 9,284 rows of Table-2 replay plus 716 difficult-advice rows. A property
+  # of the difficult-advice share is not a property of Tulu3, so the replay is excluded
+  # rather than diluting every prevalence by 13x.
+  only_source: synthdoc_difficult_advice
+  # REQUIRED for this artifact: it predates the 2026-08-07 interchange switch, so its rows
+  # are PRE-RENDERED — one string carrying the family's chat syntax. Without a model there
+  # are no markers to split it on and the reasoning channel reads empty, which would make
+  # every prevalence measured here 0% for a reason that has nothing to do with the corpus.
+  model: Qwen/Qwen3.6-27B
+
+producers:
+
+  # The direct producer: embed whole traces, cluster, name the clusters. No autorater
+  # between the record and the vector, which is what makes it the right one for the
+  # "do DA and courtroom occupy different regions at all?" question.
+  trace_clusters:
+    channel: reasoning
+    excerpt_chars: 4000
+    embed:
+      backend: openrouter          # 716 traces; a pod is not worth renting for this
+      model: qwen/qwen3-embedding-8b
+      workers: 8
+    grouping:
+      reduce: umap
+      cluster: hdbscan
+      # ~= n_records / desired clusters. At 716 rows this asks for roughly 20 groups;
+      # it is a RESOLUTION SETTING, and the group count that comes out is a finding only
+      # in the sense that HDBSCAN chose it at this resolution.
+      min_cluster_size: 35
+      n_neighbors: 15
+      n_components: 5
+      seed: 42
+    interpret:
+      model: anthropic/claude-sonnet-5
+      n_shown: 30
+      workers: 8
+    # Every record carries `source` from the mixture; with more than one scenario format
+    # in the corpus this splits each property's prevalence per arm, which is what a
+    # DA-vs-courtroom comparison needs.
+    group_by: source_label
+    # Replace cluster-membership prevalence with the number the detector measures, so
+    # these rows are comparable with every other producer's.
+    measure_with_detector: true
+    detector:
+      model: anthropic/claude-sonnet-5
+      workers: 16
+      sample: 200
+
+  # NOT PORTED YET (scratch/llm_feature_discovery). This reads the run directory that
+  # module already wrote for this corpus. `docs/feature_discovery/` is the published
+  # 2026-08-12 run (2,202 traces -> 150 clusters), checked into the repo minus its 265MB
+  # embeddings.npy — which this producer does not need, since it reads clusters.json.
+  feature_discovery:
+    run_dir: docs/feature_discovery
+    # Below ~5% of traces a cluster is a handful of near-duplicates, not a property worth
+    # a training run.
+    min_prevalence: 0.05
+    interpret:
+      model: anthropic/claude-sonnet-5
+      n_shown: 50
+      workers: 8
+    measure_with_detector: true
+    detector:
+      model: anthropic/claude-sonnet-5
+      workers: 16
+      sample: 200
+
+# Two producers describing the same behaviour in different words is corroboration, and
+# the strongest reason to spend a pod on a property — but ablating both is a wasted run.
+check_collisions: true
+
+constitution: constitutions/claude_distilled_12_principles_mid/constitution.md
+
+# Tiny slice, full wiring. Pair it with the producer selector, since a merged block can
+# override a producer's settings but cannot remove one:
+#   ... --smoke --producers trace_clusters
+smoke:
+  source:
+    limit: 12
+  producers:
+    trace_clusters:
+      grouping:
+        min_cluster_size: 3
+      measure_with_detector: false
+      detector:
+        sample: 6

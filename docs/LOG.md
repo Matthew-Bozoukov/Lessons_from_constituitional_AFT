@@ -3,6 +3,74 @@
 
 # LOG
 
+## 2026-08-18 — `src/properties/`: one List of Properties, and the ablations that test it
+
+**Why.** Four property-discovery methods were each growing their own embedding call, their
+own clusterer and their own idea of what a "property" is, in four `scratch/` directories.
+Fig 3 needs them to produce ONE list a single ablation stage can consume, and needs each
+property to be actionable rather than a sentence in a report. This is that module. No
+experiment ran; nothing here has been executed against real data yet.
+
+**The shape.** `sources/` -> Records; `producers/` -> Property rows; `registry.py` -> the
+merged `properties.jsonl`; `ablation/` -> an ablated corpus, verified, handed to `uv run
+mix` / `uv run train` / `uv run evals`. Two thin drivers,
+`scripts/properties/{discover,ablate}.py`, and everything per-property in
+`configs/properties/*.yaml` — a new property is a new yaml, not a new python file.
+
+**The one design decision worth arguing about: every property carries a DETECTOR.** A
+label and a prevalence cannot select the rows an ablation should edit, and cannot show
+afterwards that the prevalence moved. So `shared/interpret.py` returns a label AND a
+yes/no test on ONE record, `Property.__post_init__` refuses a row without one, and the
+same `detect()` call does three jobs: measures prevalence, picks the rows to edit, and
+measures the drop. That is what makes the four producers' numbers comparable — a
+detector-measured prevalence means the same thing whether the property came from a
+cluster, a TURF trace or an influence ranking, whereas cluster membership does not.
+
+**Four ablations, weakest first, and the weakest that applies is preferred:** `mask`
+(unsupervise the property's spans — the corpus tokenises identically to its control),
+`filter` (drop / downsample / split), `rewrite` (one LLM call per row; Callum's
+recommendation on 2026-08-17 — "an ad hoc, specific rewrite to vary a targeted property...
+gets you two datasets that will be very similar in most ways"), `regenerate` (re-run synth
+with the property suppressed; it writes the derived config and stops, because a stage
+ablation changes many things at once and that is the confound the other three exist to
+avoid).
+
+**`ablation/verify.py` gates the arm before it costs a pod.** Prevalence before vs after
+with Wilson intervals (a drop whose intervals overlap is sampling noise, and the fix is a
+bigger sample, never a smaller threshold); untargeted "collateral" properties that must not
+move; and a bag-of-words classifier trained to tell the two corpora apart — the check that
+caught peer-critique at AUC 0.9973 and post-action-retrospection at 0.96 on 2026-08-17,
+the second only after a model had been trained on it. `ablate.py` refuses to emit a train
+config for a failed arm without `--force`, which it records.
+
+**Three producers are boundaries, not ports.** feature_discovery, turf and less still live
+under `scratch/`; each one's `produce()` reads the artifacts those modules already write
+(`clusters.json`, `trace_result.json`, `scores.jsonl`) and turns them into Property rows.
+The artifacts are the interface, so the port moves code without changing anything
+downstream. A producer is ONE module — its package `__init__.py` — exposing ONE `produce()`
+with one signature, so `discover.py` runs any of them blind.
+`trace_clusters` is implemented in full as the reference producer — embed whole
+traces, group, interpret — and answers the 2026-08-17 action item (UMAP+clustering on good
+traces, DA vs courtroom) via its per-arm `group_by` split.
+
+**Two traps found while wiring it up, both silent.** (1) The published Table-2 mixtures are
+PRE-RENDERED, so their query and reasoning channels have to be parsed back out of the
+rendered string — without a `model:` they read empty and every reasoning property measures
+0% for a reason that has nothing to do with the corpus. `mixture_rows.unrender` does the
+split from `ModelProfile`, and says so loudly when it cannot. (2) Narrowing the corpus to
+the difficult-advice share at LOAD time would make the ablated arm 716 rows instead of
+10,000 — a different experiment, not the control's with one property removed. Hence
+`ablation.restrict`, which narrows what is judged and edited while every row is written
+back, and which verification also measures over so a 60%-of-716 property does not read as
+4%-of-10,000.
+
+**Next steps:** (1) run `discover.py` against the published feature-discovery run and the
+DA corpus to get real property ids into the registry. (2) Cost the detector pass before
+running it at scale — it is one judge call per record per property. (3) Then one rewrite
+ablation end to end, against the control that
+`lora_qwen36_t2_9284_synthdoc_716_dynbatch_2xh200.yaml` names. (4) Port the three scratch
+producers in behind their `produce()`.
+
 ## 2026-08-17 — LESS-selected difficult-advice arm trained: 151 rows swapped, loss 0.8651, no control yet
 
 **Hypothesis:** the 716 difficult-advice rows in the table2 mixture are sampled RANDOMLY
