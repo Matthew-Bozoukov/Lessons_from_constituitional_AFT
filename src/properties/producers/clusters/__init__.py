@@ -1041,14 +1041,15 @@ def _cross_outcomes(properties: list[Property], records: list[Record],
           f"{n_measurable} measurable, {n_sig} survive BH at q<={spec.get('fdr', 0.10)}. "
           "This is a RANKING OF ABLATION CANDIDATES, not a causal result.")
     if not n_measurable:
-        # Every group is perfectly confounded with an arm: it has no same-arm non-members
-        # to compare against, so there is no within-arm contrast to measure. Saying so is
-        # the point — the pooled number would have supplied a large and entirely spurious
-        # effect for each of them.
-        print("!!! no group has a measurable within-arm lift: every group is confined to "
-              f"one {arm_key}, so members have no same-arm non-members to compare with. "
-              "The pooled column is NOT a fallback — it is the confound. Cluster at a "
-              "lower resolution, or accept that these groups are arm markers.")
+        # No group has same-arm non-members, so there is no within-arm contrast to
+        # measure. Two ways to get here and they call for opposite fixes, so the message
+        # names both rather than guessing which one happened. Either way the pooled column
+        # is not a fallback: it is exactly the confound the within-arm split removes.
+        print(f"!!! no group has a measurable within-arm lift: no group has "
+              f"same-{arm_key} non-members to compare against. Either a group covers "
+              f"EVERY record in its {arm_key} (cluster at a finer resolution), or each "
+              f"group sits entirely inside one {arm_key} (they are {arm_key} markers, not "
+              "behaviours). The pooled column is NOT a fallback — it is the confound.")
     return out
 
 
