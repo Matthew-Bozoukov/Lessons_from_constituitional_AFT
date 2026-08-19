@@ -3,6 +3,87 @@
 
 # LOG
 
+## 2026-08-19 - LESS proper: the top 10% trained as its own arm, with the random-220 control it needs
+
+**Hypothesis:** the 2026-08-14 ranking supports LESS as arXiv:2402.04333 actually runs it -
+rank the pool, keep the top fraction, train on the kept rows ALONE - and that arm is worth
+having as a clean pair with its control rather than as another 1.5% intervention on a
+10,000-row mixture (the 2026-08-17 less-swap arm, still uninterpretable for want of a control).
+
+**Method.** Cut the published ranking at K=220 (10% of the 2,203-row difficult-advice pool) by
+`score_max`, the paper's aggregation and the ordering the published `rank` field carries.
+Control: 220 rows drawn uniformly from the whole pool. Both trained on base Qwen3.6-27B,
+r64/alpha128 bf16, 4 epochs, batch 1 x accum 16, lr 1e-4 cosine, max_seq_len 8192,
+assistant-only loss - 56 optimizer steps each. The two train configs differ in FOUR keys of 30
+(`data_repo`, `data_revision`, `output_dir`, `hf_repo`); a semantic diff is in the commit.
+One RunPod pod, 2xH200, one arm per GPU: at 56 steps the ~55GB base download dominates
+wall-clock, so DDP within an arm buys nothing and two pods would pay that download twice.
+
+**The join is positional, and this is the trap.** `less_id` is `<scenario_id>#<row index>`,
+stamped at load time by `prepare_data.load_pool()` - the published pool file does NOT carry
+it, though `rankings/README.md` says to join on `metadata.less_id`. `select_topk.py` asserts
+the 1:1 cover, the `scenario_id` checksum and the trait agreement, and (for `score_max`) that
+the recomputed cut reproduces the published `rank` exactly. All four pass.
+
+**SEED 0 REPRODUCES THE WARMUP SPLIT.** The first control draw came back `in_warmup 220/220`
+instead of the ~22 chance predicts: `random.sample` picks positions from the RNG alone, so
+seed 0 over a 2,203-row population redraws `prepare_data.py`'s warmup split exactly - the rows
+that trained the LoRA this ranking came from. That control would have been a function of the
+treatment. Redrawn at seed 1 (`in_warmup` 23, traits ~24 each, incidental overlap with the
+selection 22 against 22.0 expected), and `assert_independent_of_warmup` now fails the run at
+5 sigma rather than trusting a seed.
+
+**Result - both arms trained, neither yet interpretable.** 56 steps, `train_runtime` 3,881s
+each, ~$16 for the trip.
+
+| arm | final logged loss | train_loss | token acc | adapter |
+|---|---|---|---|---|
+| LESS top-220 (`score_max`) | 0.9178 | 1.146 | 0.7147 | `LASR-Callum/qwen3.6-27b-lora-less-top10-220-r64` |
+| Random 220 (seed 1) | 0.9770 | 1.207 | 0.6968 | `LASR-Callum/qwen3.6-27b-lora-random220-control-r64` |
+
+**THE LOSS GAP IS NOT A RESULT.** The two losses are over DIFFERENT data, and the selection is
+far more homogeneous by construction: 199 of its 220 rows win on `stayed_ai`, and t6+t3 alone
+are 153/220 against ~24 per trait in the control. A tighter distribution is easier to fit,
+which predicts a gap of exactly this sign regardless of whether the selection is any good.
+Nothing here should be quoted until the arms are evaluated.
+
+**What the selection is.** Trait mix t6 79 / t3 74 / t9 32 (vs ~24 uniform); argmax subtask
+`stayed_ai` 199, `honest_declined` 19, `codebase_resisted` 2. So this arm tests influence on
+`stayed_ai`, not a general data-quality prior - the `max` collapse measured on 2026-08-14,
+inherited whole. `score_mean` shares only 131/220 rows with this cut and remains untried.
+
+**Published.** Both selections as full training datasets with `selection_ids.json` (every
+`less_id` with its rank and per-subtask influence, so the cut is reproducible from the pool
+without downloading the corpus): `LASR-Callum/2026-08-19-less-top10-difficult-advice-220-train`
+and `LASR-Callum/2026-08-19-random-220-difficult-advice-control-train`, both sha-pinned into
+the train configs.
+
+**Three Windows/encoding bugs fixed in reviewed code**, each of which had never fired because
+these paths had only ever run on Linux pods or through the filter branch:
+1. `build_mixture.py` opened every jsonl without an encoding - cp1252 on Windows, dies on the
+   first non-latin-1 byte of a local `path:` source.
+2. `.env` was loaded only as a side effect of importing `OpenRouterClient` inside the
+   `filter:` stage, so a filter-less config built its mixture, ran to the final push and died
+   on a bare 401 with the artifact already on disk.
+3. `push_run_dir` wrote the card with `write_text(card)` - cp1252 - and `upload_folder` reads
+   that same file back as utf-8. Every card has em-dashes, so every Windows adapter push
+   failed, AFTER `create_repo` had run: the visible symptom is an empty repo on the Hub, which
+   reads as a permissions problem rather than an encoding one.
+
+**Two operational notes.** The pod's `wait` never returned - both trainers wrote their final
+`run_meta.json` and then hung in interpreter shutdown - so the bootstrap's `tar` and
+`TRAINING_DONE` never ran. Packaging must not be the only retrieval path: `/workspace` is
+served over :8080, so the adapter directories were browsable and were pulled file by file
+instead. Second, that hang cost ~15 min of idle billing before it was noticed.
+
+**Next steps:** (1) EVALUATE - ODCV + agentic-misalignment + a capability check on both arms
+at identical settings; the loss curve says nothing. (2) Expect the arms to be close: 220 rows
+over 56 steps is a small intervention, and a null will not separate "LESS does not help" from
+"the lever was too small" nor from "the validation set was too narrow" (the 60 Dval rows are
+33 distinct prompts, and all 20 `honest_declined` rows are benign software-performance
+comparisons - see 2026-08-17). (3) If the pair separates at all, the `score_mean` cut is the
+natural third arm, since it shares only 131/220 rows with this one.
+
 ## 2026-08-18 — Fabrication sweep on the LESS-swap arm: 73.8%, on the synth-fraction ladder but not on its failure mode
 
 **Hypothesis:** the LESS-swap arm's fabrication rate on the established 31-prompt sweep is
