@@ -96,9 +96,13 @@ producers:
     # A group covering fewer rollouts than this is a handful of near-duplicates.
     min_group_records: 10
 
-    # Only one arm here, but the key still has to name the field so the outcome crossing
-    # and the report agree on what an arm is.
-    group_by: arm
+    # NOT `arm` — there is only one model here, so `arm` pools ODCV's two conditions and
+    # they are not comparable: measured on this run, incentivized rollouts violate 23.2%
+    # of the time and mandated ones 12.4%. Pooling them lets a property concentrated in
+    # the mandated half look protective for free, which is the same base-rate confound the
+    # within-arm split exists to remove, one level down. Grouping on `condition` computes
+    # every lift inside one condition and combines them weighted.
+    group_by: condition
 
     # The half a corpus-side run cannot do: cross each group against the judged violation.
     outcomes:

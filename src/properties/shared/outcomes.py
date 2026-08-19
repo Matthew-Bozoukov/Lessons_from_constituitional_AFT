@@ -160,32 +160,47 @@ def by_arm(records, member_ids: set[str], arm_key: str = "arm",
 
 
 def combined_lift(crosstab: dict, min_arm_records: int = MIN_ARM_RECORDS) -> dict:
-    """Average one group's within-arm lift across the arms that could measure it.
+    """Combine one group's within-arm lifts into the single number a shortlist sorts on.
 
-    A single number per group is what a shortlist sorts on, and this is the only defensible
-    way to get one: average the WITHIN-arm lifts, weighted by how many members each arm
-    contributed. Averaging arm rates instead — or pooling the records — reintroduces the
-    base-rate confound the within-arm split existed to remove.
+    Every arm that can measure a lift contributes, weighted by how many members it has.
+    Averaging arm RATES instead — or pooling the records — reintroduces the base-rate
+    confound the within-arm split existed to remove.
+
+    Small arms are weighted, NOT discarded, and that is a correction. Dropping them looks
+    conservative and is not: on the 2026-08-19 da716 run, stratifying 275 rollouts by ODCV
+    condition split several properties into two strata of 10-19, both showing the same
+    large effect in the same direction — "states ethical caution but proceeds anyway" at
+    +49% and +73% — and a rule that discarded strata under 20 returned `None` for it.
+    That reports a consistent finding as unmeasurable. Weighting by member count already
+    stops a four-rollout stratum dominating; the flag below is what warns a reader.
+
+    Evidence across arms is combined with a weighted Stouffer z rather than the smallest
+    per-arm p, because two strata agreeing weakly is stronger evidence than either alone
+    and taking the minimum throws that away.
 
     Args:
         crosstab: The output of `by_arm`.
-        min_arm_records: Arms with fewer members than this are excluded from the average
-            and reported in `n_arms_dropped`.
+        min_arm_records: Arms below this are flagged `underpowered` and counted, but still
+            contribute at their weight.
 
     Returns:
-        {"lift", "n_arms", "n_arms_dropped", "min_p"} — `min_p` being the smallest
-        per-arm p-value, which `rank` corrects for multiplicity.
+        {"lift", "n_arms", "n_arms_underpowered", "min_p"} — `min_p` being the combined
+        p-value `rank` corrects for multiplicity (named for the field `rank` reads).
     """
-    usable = [a for a in crosstab["arms"].values()
-              if a["lift"] is not None and a["n_members"] >= min_arm_records]
-    dropped = len(crosstab["arms"]) - len(usable)
+    usable = [a for a in crosstab["arms"].values() if a["lift"] is not None]
+    underpowered = sum(1 for a in usable if a["n_members"] < min_arm_records)
     if not usable:
-        return {"lift": None, "n_arms": 0, "n_arms_dropped": dropped, "min_p": None}
+        return {"lift": None, "n_arms": 0, "n_arms_underpowered": 0, "min_p": None}
     weight = sum(a["n_members"] for a in usable)
     lift = sum(a["lift"] * a["n_members"] for a in usable) / weight
-    ps = [a["p"] for a in usable if a["p"] is not None]
-    return {"lift": round(lift, 4), "n_arms": len(usable), "n_arms_dropped": dropped,
-            "min_p": min(ps) if ps else None}
+    scored = [a for a in usable if a["z"] is not None]
+    combined = None
+    if scored:
+        root = math.sqrt(sum(a["n_members"] for a in scored))
+        z = sum(a["z"] * math.sqrt(a["n_members"]) for a in scored) / root
+        combined = _two_sided_p(z)
+    return {"lift": round(lift, 4), "n_arms": len(usable),
+            "n_arms_underpowered": underpowered, "min_p": combined}
 
 
 def benjamini_hochberg(p_values: dict[str, float | None], fdr: float = 0.10) -> dict:
@@ -231,7 +246,7 @@ def rank(crosstabs: dict[str, dict], fdr: float = 0.10,
     Args:
         crosstabs: group key -> the output of `by_arm`.
         fdr: Target false-discovery rate for the BH correction.
-        min_arm_records: Minimum members per arm for that arm to enter the average.
+        min_arm_records: Below this an arm is flagged underpowered; it still contributes.
 
     Returns:
         One row per group, most protective first (most negative lift — reasoning in this

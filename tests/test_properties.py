@@ -980,15 +980,40 @@ def test_a_real_within_arm_effect_survives_and_unjudged_records_leave_the_denomi
     assert outcomes_mod.combined_lift(cross)["lift"] == pytest.approx(-0.2, abs=0.02)
 
 
-def test_combined_lift_drops_arms_too_small_to_measure_anything():
+def test_combined_lift_weights_a_small_arm_rather_than_discarding_it():
+    """Dropping a small stratum looks conservative and is not. Stratifying the da716 run
+    by ODCV condition split several properties into two strata of 10-19 that agreed on a
+    large effect, and a drop-under-20 rule returned None — reporting a consistent finding
+    as unmeasurable. Weighting by member count already stops a tiny arm dominating."""
     records = [_outcome_record(f"big{j}", "big", j < 40, j % 2 == 0) for j in range(80)]
-    records += [_outcome_record(f"tiny{j}", "tiny", j < 2, j == 0) for j in range(4)]
+    records += [_outcome_record(f"tiny{j}", "tiny", j < 4, j < 4) for j in range(8)]
     member_ids = {r.record_id for r in records if r.metadata["in_group"]}
     cross = outcomes_mod.by_arm(records, member_ids)
 
     assert cross["arms"]["tiny"]["underpowered"] is True
     summary = outcomes_mod.combined_lift(cross, min_arm_records=20)
-    assert summary["n_arms"] == 1 and summary["n_arms_dropped"] == 1
+    assert summary["n_arms"] == 2, "both arms contribute"
+    assert summary["n_arms_underpowered"] == 1, "and the small one is flagged"
+    # 40 members at 0.0 and 4 at +1.0 -> the small arm moves it, but only by its weight.
+    assert summary["lift"] == pytest.approx(4 / 44, abs=0.02)
+
+
+def test_combined_lift_is_stronger_when_two_arms_agree_than_either_alone():
+    """Two strata agreeing weakly is stronger evidence than either on its own; taking the
+    smallest per-arm p would throw that away."""
+    records = []
+    for arm in ("a", "b"):
+        for j in range(60):
+            in_group = j < 30
+            violated = j % 10 < (2 if in_group else 5)
+            records.append(_outcome_record(f"{arm}{j}", arm, in_group, violated))
+    member_ids = {r.record_id for r in records if r.metadata["in_group"]}
+    both = outcomes_mod.combined_lift(outcomes_mod.by_arm(records, member_ids))
+    one = outcomes_mod.combined_lift(
+        outcomes_mod.by_arm([r for r in records if r.metadata["arm"] == "a"], member_ids))
+
+    assert both["lift"] == pytest.approx(one["lift"], abs=0.01), "same effect size"
+    assert both["min_p"] < one["min_p"], "twice the evidence, a smaller p"
 
 
 def test_bh_is_monotone_and_less_severe_than_bonferroni():

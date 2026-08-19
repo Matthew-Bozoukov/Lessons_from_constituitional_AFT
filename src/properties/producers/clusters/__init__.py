@@ -1028,7 +1028,7 @@ def _cross_outcomes(properties: list[Property], records: list[Record],
             "outcomes": {"field": field, "arm_key": arm_key,
                          "within_arm_lift": row["lift"], "p": row["p"], "q": row["q"],
                          "significant": row["significant"], "n_arms": row["n_arms"],
-                         "n_arms_dropped": row["n_arms_dropped"],
+                         "n_arms_underpowered": row["n_arms_underpowered"],
                          "pooled_lift_confounded": row["pooled_lift"],
                          "by_arm": crosstabs[prop.property_id]["arms"],
                          "n_unjudged": crosstabs[prop.property_id]["n_unjudged"]}}))

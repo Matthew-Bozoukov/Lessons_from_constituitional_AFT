@@ -1,6 +1,6 @@
 {
-  "git_sha": "3f5c1c40c2e8c29edd1d8410e5bc28220cd1f9af",
-  "timestamp_utc": "2026-08-19T12:35:21.511679+00:00",
+  "git_sha": "c3b24f5ad0c6a181b24dcb148d7f93f51820249f",
+  "timestamp_utc": "2026-08-19T14:13:47.048134+00:00",
   "config": {
     "tag": "odcv_da716",
     "registry": "output/properties/properties.jsonl",
@@ -46,7 +46,7 @@
           "workers": 8
         },
         "min_group_records": 10,
-        "group_by": "arm",
+        "group_by": "condition",
         "outcomes": {
           "field": "violation",
           "fdr": 0.1,
@@ -108,5 +108,5 @@
   "n_properties": 48,
   "registry": "output/properties/properties.jsonl",
   "target_id": null,
-  "command": "scripts/properties/discover.py --config configs/properties/discover_odcv_da716.yaml --out-dir output/properties/odcv_da716_v2"
+  "command": "scripts/properties/discover.py --config configs/properties/discover_odcv_da716.yaml --out-dir output/properties/odcv_da716_bycond"
 }
