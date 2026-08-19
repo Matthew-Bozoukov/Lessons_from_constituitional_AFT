@@ -128,7 +128,7 @@ class LocalSAE(BaseSAE):
 # 2048 tokens, which is also the SAE's training distribution).
 class GoodfireSAE(BaseSAE):
   def __init__(self, variant_name: str = "Llama-3.1-8B-Instruct-SAE-l19", quantize = False,
-               dtype: str = "bfloat16", max_length: int = 2048, **kwargs):
+               dtype: str = "bfloat16", max_length: int = 2048, hf_model: str = None, **kwargs):
     super().__init__(**kwargs)
     self.variant_name = variant_name
     self.quantize = quantize
@@ -137,6 +137,10 @@ class GoodfireSAE(BaseSAE):
     self.activations = dict()
     self.activation_hook_handle = None
     self.config = get_goodfire_config(variant_name)
+    # PATCHED: allow an ungated weight mirror (e.g. unsloth/Llama-3.3-70B-Instruct) as
+    # the reader — identical weights to the gated meta-llama repo, different gate.
+    self.hf_model = hf_model or self.config["hf_model"]
+    self.config = dict(self.config, hf_model=self.hf_model)
 
   def metadata(self):
     parent_metadata = super().metadata()
@@ -145,6 +149,7 @@ class GoodfireSAE(BaseSAE):
       "quantize": self.quantize,
       "dtype": self.dtype,
       "max_length": self.max_length,
+      "hf_model": self.hf_model,
       "device": {
         "model": self.model_device,
         "sae": self.sae_device
@@ -170,7 +175,7 @@ class GoodfireSAE(BaseSAE):
     if self.quantize:
       warnings.warn("Quantizing the language model may cause feature activations to be less accurate.")
 
-    config = get_goodfire_config(self.variant_name)
+    config = self.config  # PATCHED: honors hf_model override (upstream re-fetched the default)
 
     self.model = AutoModelForCausalLM.from_pretrained(
         config["hf_model"],
