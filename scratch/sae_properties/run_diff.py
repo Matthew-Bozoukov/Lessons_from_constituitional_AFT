@@ -115,9 +115,14 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     hyp_path = out_dir / "hypotheses.json"
 
+    official = {"Llama-3.3-70B-Instruct-SAE-l50": "meta-llama/Llama-3.3-70B-Instruct",
+                "Llama-3.1-8B-Instruct-SAE-l19": "meta-llama/Llama-3.1-8B-Instruct"}
+    reader = cfg.sae.get("hf_model") or official[str(cfg.sae.variant)]
+
     run_script("generate_sae_hypotheses.py", [
         "--dataset1", str(pkl(target)),
         "--dataset2", *[str(pkl(o)) for o in others],
+        "--sae-model", reader,
         "--query", str(cfg.diff.query),
         "--model", str(cfg.diff.model),
         "--min-difference", str(cfg.diff.min_difference),
