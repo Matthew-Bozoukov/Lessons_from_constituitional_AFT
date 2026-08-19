@@ -317,6 +317,36 @@ def report(audit_record: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _members_table(rows: list[dict], esc) -> str:
+    """The records carrying one property, violations first.
+
+    Args:
+        rows: That property's members.jsonl rows.
+        esc: HTML escaper.
+
+    Returns:
+        The markup, or "" when no membership data was supplied.
+    """
+    if not rows:
+        return ""
+    ordered = sorted(rows, key=lambda r: (
+        not (r.get("outcome") or {}).get("violation"), r["record_id"]))
+    violated = sum(1 for r in ordered if (r.get("outcome") or {}).get("violation"))
+    body = "".join(
+        "<tr class='{}'><td>{}</td><td>{}</td><td>{}</td><td class='p'>{}</td></tr>".format(
+            "v" if (r.get("outcome") or {}).get("violation") else "",
+            "violated" if (r.get("outcome") or {}).get("violation") else "ok",
+            esc((r.get("outcome") or {}).get("score", "—")),
+            esc(r["record_id"]),
+            esc(r.get("rollout_path") or ""))
+        for r in ordered)
+    return (f"<p class='mcount'><b>{len(ordered)}</b> records carry this property; "
+            f"<b>{violated}</b> violated "
+            f"({violated / len(ordered):.0%}).</p>"
+            "<table class='members'><tr><th>outcome</th><th>severity</th>"
+            "<th>record</th><th>rollout</th></tr>" + body + "</table>")
+
+
 DASHBOARD_STYLE = """
 body{font:14px/1.55 system-ui,-apple-system,sans-serif;margin:0 auto;max-width:1100px;
 padding:2rem;background:#fbfbfa;color:#1a1a1a}
@@ -335,6 +365,11 @@ code{background:#eee;padding:0 .25rem;border-radius:3px}
 .key i{width:10px;height:10px;border-radius:50%;display:inline-block}
 .caption{color:#666;font-size:12px;max-width:720px;margin:.4rem 0 0}
 .bar{height:6px;background:#3b6ea5;border-radius:3px;display:inline-block;vertical-align:middle}
+.mcount{font-size:12px;color:#555;margin:.9rem 0 .2rem}
+table.members{font-size:11px;max-height:22rem;overflow:auto;display:block;width:100%}
+table.members td.p{font-family:ui-monospace,monospace;color:#777;word-break:break-all}
+table.members tr.v td{background:#fff4f4}
+table.members tr.v td:first-child{color:#b00;font-weight:600}
 """
 
 
@@ -408,7 +443,8 @@ def scatter(coords: np.ndarray, labels: np.ndarray, group_labels: dict[int, str]
 
 def dashboard(path: str | Path, properties: list, audit_record: dict,
               run_name: str, n_records: int, coords: np.ndarray | None = None,
-              labels: np.ndarray | None = None, n_components: int = 5) -> Path:
+              labels: np.ndarray | None = None, n_components: int = 5,
+              members: list[dict] | None = None) -> Path:
     """A browsable page: every property, its evidence, and the audit beside it.
 
     Args:
@@ -421,10 +457,18 @@ def dashboard(path: str | Path, properties: list, audit_record: dict,
         labels: (n,) group id per point, for colouring.
         n_components: How many dimensions were actually CLUSTERED, so the caption can say
             what the picture is and is not.
+        members: Rows from members.jsonl. Each property then lists the records that
+            actually carry it, with their outcome and the path to open the rollout —
+            without which a reader can check a label against twelve sampled phrases and
+            nothing else.
 
     Returns:
         The path written.
     """
+    by_property: dict[str, list[dict]] = {}
+    for row in members or []:
+        if row.get("property_id"):
+            by_property.setdefault(row["property_id"], []).append(row)
     def esc(value) -> str:
         return html.escape(str(value))
 
@@ -471,7 +515,9 @@ def dashboard(path: str | Path, properties: list, audit_record: dict,
             + "<table><tr><th>example evidence</th></tr>"
             + "".join(f"<tr><td>{esc(u)}</td></tr>"
                       for u in (prop.evidence.get("example_units") or [])[:12])
-            + "</table></details>")
+            + "</table>"
+            + _members_table(by_property.get(prop.property_id, []), esc)
+            + "</details>")
 
     parts += ["<h2>Buried behaviours (probes over the raw evidence)</h2>",
               "<table><tr><th>probe</th><th>records</th><th>prevalence</th>"
@@ -517,10 +563,14 @@ def write(run: Path, vectors: np.ndarray, result, units, properties: list,
     if cfg.get("plot", True) is not False:
         coords = grouping_mod.project_2d(vectors, result.params)
         np.save(run / "coords_2d.npy", coords)
+    members_path = run / "members.jsonl"
+    members = ([json.loads(line) for line in
+                members_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+               if members_path.exists() else None)
     dashboard(run / "dashboard.html", properties, record, run.name, n_records,
               coords=coords, labels=result.labels,
               n_components=result.params.n_components
-              if result.params.reduce == "umap" else 2)
+              if result.params.reduce == "umap" else 2, members=members)
     pairs = record["near_duplicate_pairs"]
     print(f">>> audit: {len(pairs)} near-duplicate group pairs, "
           f"{record['noise_share']:.1%} unclustered"

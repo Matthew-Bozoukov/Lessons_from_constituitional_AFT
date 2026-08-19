@@ -1906,3 +1906,29 @@ def test_embeddings_are_stored_at_full_precision_so_a_rerun_reproduces(tmp_path)
     order_a = np.argsort(-(vectors @ vectors.T), axis=1)[:, :10]
     order_b = np.argsort(-(reloaded @ reloaded.T), axis=1)[:, :10]
     assert np.array_equal(order_a, order_b)
+
+
+def test_the_dashboard_lists_the_records_carrying_each_property(tmp_path, monkeypatch):
+    """Twelve sampled phrases is enough to guess at a label and not enough to check it.
+    The dashboard has to show which records actually carry the property, and where to
+    open them."""
+    from src.properties.producers import clusters as tc
+
+    records = []
+    for i in range(20):
+        records.append(Record(f"r{i}", "q", "a", reasoning=f"trace {i}",
+                              outcome={"violation": i < 6, "score": 4 if i < 6 else 0},
+                              metadata={"arm": "a",
+                                        "rollout_path": f"/runs/r{i}/messages_record.txt"}))
+    _stub_embedding(monkeypatch, tc, _two_blobs(10, 10))
+    tc.produce(records, {"evidence": "traces", "min_group_records": 2,
+                         "group_by": "arm",
+                         "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2}},
+               tmp_path / "tc")
+
+    page = (tmp_path / "tc" / "dashboard.html").read_text()
+    assert "records carry this property" in page
+    assert "messages_record.txt" in page, "the path to open the rollout is shown"
+    assert page.count("<table class='members'>") == 2, "one member table per property"
+    # Violations sort first and are marked, so a reader lands on them.
+    assert "violated" in page and "class='v'" in page
