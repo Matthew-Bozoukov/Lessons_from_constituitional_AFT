@@ -8,7 +8,8 @@ run: null                    # embed-run directory name; null -> timestamped. ru
 
 sae:
   variant: Llama-3.3-70B-Instruct-SAE-l50   # the paper's SAE (layer 50, d_sae 65536, LMSYS-trained)
-  hf_model: unsloth/Llama-3.3-70B-Instruct  # ungated mirror of the reader (identical weights); null = official meta-llama repo (gated)
+  hf_model: null             # null = official meta-llama repo (gated). BACKUP while approval is pending:
+                             # sae.hf_model=unsloth/Llama-3.3-70B-Instruct (ungated mirror, identical weights)
   dtype: bfloat16
   quantize: false            # true = 8-bit reader on one 80GB card (upstream warns activations lose accuracy)
   max_length: 2048           # paper caps analyzed texts at 2048 tokens
