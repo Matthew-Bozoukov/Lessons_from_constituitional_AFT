@@ -56,9 +56,39 @@ drives the real config through both modes: features mode turns 38 feature instan
 distinct units and 32 membership edges over 16 records with prevalences summing to 2.00;
 traces mode gives 16 units, 16 edges, prevalences summing to 1.00.
 
-**Next steps.** Point the config at the five real ODCV run directories and run it. Compare
-the two modes on the same rollouts — that comparison is the point of merging them, and it
-is now one config line.
+**Parity gaps found by diffing against scratch, and closed.** The extraction prompt is
+byte-identical, but three things were not:
+
+* extraction wrote `features.jsonl` only at the end, so a run killed at 95% bought nothing.
+  `attributes.extract_to` now appends under a lock as each row lands and resumes from what
+  the file holds. A previously recorded error is retried rather than inherited — caching a
+  transient rate-limit would make it permanent.
+* naming sampled 50 features per cluster; the post and the published runs use 100. Features
+  mode is back to 100. Traces mode keeps 30, because 100 excerpts of 4,000 characters is a
+  100k-token prompt and excerpts are far more redundant than feature strings.
+* the audit stage was missing entirely. Ported to `shared/audit.py`: near-duplicate group
+  pairs (when many, the group COUNT is a resolution setting, not a count of behaviours),
+  keyword probes read INDEPENDENTLY of the clustering (so a theme too small to win a group
+  still gets a number, and `groups_landed_in` shows the scatter), an opt-in stability sweep
+  scoring every fit against every other rather than only against the reference, and
+  `dashboard.html`.
+
+**The dashboard now plots the space.** `grouping.project_2d` runs a SEPARATE 2-D UMAP fit —
+the post's two-reductions design, 2-D to look at and more to cluster — rendered as inline
+SVG so the page stays one openable file. The caption states what it is not: the clustering
+ran in `n_components` dimensions, so two dots touching in the picture may be in different
+groups. It is for spotting shape (one blob, a filament, a group torn in two), not for
+adjudicating membership.
+
+**Also.** `configs/properties/discover_odcv_da716.yaml` runs the whole thing over the da716
+arm alone — the single-model starting point, and the run whose properties pair directly
+with the corpus-side `discover_da716.yaml` over the same 716 rows. With one arm the
+within-arm lift is still a real contrast (members vs non-members), but it cannot separate a
+property of the model from a property of the fine-tune; that needs the pooled run.
+
+**Next steps.** Point the configs at the real ODCV run directories and run them. Compare
+the two evidence modes on the same rollouts — that comparison is the point of merging them,
+and it is now one config line.
 
 ## 2026-08-19 — trace_clusters over ROLLOUTS: the cluster list becomes a ranking
 

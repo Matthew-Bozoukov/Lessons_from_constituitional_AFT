@@ -361,10 +361,7 @@ def extract_to(records: list[Record], spec: AttributeSpec, path: str | Path,
 
             for row in map_threaded(run, len(todo), max_workers=workers,
                                     desc=f"attributes ({spec.style}/{spec.channel})"):
-                if not row.get("error"):
-                    done[row["record_id"]] = row
-                else:
-                    done[row["record_id"]] = row
+                done[row["record_id"]] = row
         finally:
             handle.close()
     return [done.get(r.record_id,

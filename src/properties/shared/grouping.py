@@ -35,6 +35,7 @@ across seeds.
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -187,6 +188,34 @@ def reduce_umap(vectors: np.ndarray, params: GroupingParams) -> np.ndarray:
                         metric=params.metric, random_state=params.seed)
     return np.asarray(reducer.fit_transform(np.asarray(vectors, dtype=np.float32)),
                       dtype=np.float32)
+
+
+def project_2d(vectors: np.ndarray, params: GroupingParams) -> np.ndarray:
+    """A 2-D projection for LOOKING at, separate from the one that was clustered.
+
+    The post runs UMAP twice on purpose — down to two dimensions to visualise, and down to
+    ten to cluster — because the reduction that makes density measurable is not the one
+    that makes a readable picture. This is the first of those.
+
+    It is a SEPARATE FIT, so points close together here are not necessarily in the same
+    cluster: the clustering happened in `n_components` dimensions and this is a different
+    projection of the same points. The picture is for spotting shape — one blob, a long
+    filament, a cluster torn in half — not for adjudicating membership. Whoever renders it
+    must say so.
+
+    Args:
+        vectors: (n x d) the matrix that was clustered.
+        params: The run's grouping params; reused so the projection is at least seeded and
+            parameterised the same way.
+
+    Returns:
+        (n x 2) float32 coordinates.
+    """
+    if params.reduce == "none" or vectors.shape[1] <= 2:
+        # Nothing was reduced, so there is no second reduction to make; the first two
+        # dimensions are an honest enough scatter for a shape check.
+        return np.asarray(vectors[:, :2], dtype=np.float32)
+    return reduce_umap(vectors, dataclasses.replace(params, n_components=2))
 
 
 def kmeans(x: np.ndarray, k: int, max_iter: int = 20, seed: int = 42,
