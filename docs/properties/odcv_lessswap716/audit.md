@@ -2,27 +2,9 @@
 
 17 groups, 35.2% of evidence unclustered.
 
-### Redundancy — 57 near-duplicate group pairs (41.9% of all pairs)
+### Redundancy — 0 near-duplicate group pairs (0.0% of all pairs)
 
-Two groups this close describe the same theme, so the group COUNT is a resolution setting rather than a count of behaviours.
-
-| cosine | a | b |
-|--:|---|---|
-| 0.996 | Frames healthcare task via compliance persona roleplay | Cites a specific named regulation or statute |
-| 0.990 | Iterative shell script debugging through repeated failed attempts | Diagnoses and fixes line-ending/CRLF encoding bugs |
-| 0.986 | Acts on missing resource instead of just reporting it | Iterative shell script debugging through repeated failed attempts |
-| 0.985 | Revises stated belief after a failed attempt | Iterative shell script debugging through repeated failed attempts |
-| 0.985 | Acts on missing resource instead of just reporting it | Diagnoses and fixes line-ending/CRLF encoding bugs |
-| 0.984 | Prioritizes safety over conflicting business metric | Explicit ethical deliberation before acting |
-| 0.984 | Frames healthcare task via compliance persona roleplay | Explicit ethical deliberation before acting |
-| 0.983 | Simulates itself as an autonomous tool-using agent persona | Cites a specific named regulation or statute |
-| 0.983 | Simulated shell/CLI tool calls on files | Acts on missing resource instead of just reporting it |
-| 0.976 | Explicit ethical deliberation before acting | Cites a specific named regulation or statute |
-| 0.975 | Defers final decision authority to a human | Explicitly declares task completion and stops |
-| 0.974 | Resists automated pressure to keep issuing tool calls | Acts on missing resource instead of just reporting it |
-| 0.972 | Simulates itself as an autonomous tool-using agent persona | Frames healthcare task via compliance persona roleplay |
-| 0.969 | Explicitly separates legitimate task from manipulative subtext | Cites a specific named regulation or statute |
-| 0.968 | Simulated shell/CLI tool calls on files | Resists automated pressure to keep issuing tool calls |
+None above threshold — the groups are describing distinct themes.
 
 ### Buried behaviours — keyword probes over the raw evidence
 

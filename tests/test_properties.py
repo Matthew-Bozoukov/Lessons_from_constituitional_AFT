@@ -1775,3 +1775,25 @@ def test_freeform_parse_unwraps_a_wrapped_array_but_not_an_ambiguous_dict():
         attributes_mod.parse('{"features": ["a"], "other": ["b"]}', spec)
     with pytest.raises(ValueError, match="expected a JSON array"):
         attributes_mod.parse('{"features": "not a list"}', spec)
+
+
+def test_redundancy_is_measured_in_the_embedding_space_not_the_reduced_one():
+    """UMAP output is an arbitrary all-positive blob offset from the origin, so every pair
+    of points in it has a cosine near 1. Measuring redundancy there reports the offset,
+    not whether two groups describe the same theme."""
+    from src.properties.shared import audit as audit_mod
+
+    # Two genuinely opposite groups in embedding space...
+    vectors = _two_blobs(20, 20, dim=8, seed=1)
+    labels = np.array([0] * 20 + [1] * 20)
+    embedding_centroids = audit_mod._embedding_centroids(vectors, labels)
+    assert audit_mod.near_duplicate_groups(embedding_centroids, {0: "a", 1: "b"}) == []
+
+    # ...look like near-duplicates once shifted into a positive quadrant, the way UMAP
+    # leaves them.
+    shifted = embedding_centroids + 8.0
+    assert len(audit_mod.near_duplicate_groups(shifted, {0: "a", 1: "b"})) == 1
+
+    # Noise contributes to no centroid.
+    with_noise = np.array([0] * 20 + [-1] * 20)
+    assert audit_mod._embedding_centroids(vectors, with_noise).shape[0] == 1

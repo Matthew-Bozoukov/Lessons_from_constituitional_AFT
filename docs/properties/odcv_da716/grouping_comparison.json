@@ -1,0 +1,39 @@
+{
+ "agreement": {
+  "ari": 0.1098,
+  "ami": 0.4722
+ },
+ "groups": {
+  "baseline": 30,
+  "candidate": 17
+ },
+ "noise": {
+  "baseline": 0,
+  "candidate": 1828
+ },
+ "params": {
+  "baseline": {
+   "reduce": "none",
+   "cluster": "kmeans",
+   "metric": "euclidean",
+   "seed": 42,
+   "k": 30,
+   "max_iter": 20
+  },
+  "candidate": {
+   "reduce": "umap",
+   "cluster": "hdbscan",
+   "metric": "euclidean",
+   "seed": 42,
+   "n_neighbors": 15,
+   "n_components": 5,
+   "min_dist": 0.0,
+   "min_cluster_size": 60,
+   "min_samples": null
+  }
+ },
+ "geometry": {
+  "neighbour_overlap": 0.475,
+  "k": 15
+ }
+}
