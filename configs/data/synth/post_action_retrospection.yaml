@@ -67,10 +67,19 @@
 # archived configs; since 2026-08-14 (`peer_critique.yaml` rebuilt on the generic
 # operators) nothing live is written against it.
 #
-# SMOKED AND GREEN. 40 docs on 2026-08-14 ($4.87) plus two revision-stage re-verify
-# passes: all eleven checks pass (flaw_identification 0.75 vs the 0.70 gate, gold 0/16
-# below 3, blindness clean, verdict spread healthy in both arms, length_cv 0.153/0.244).
-# See docs/LOG.md 2026-08-14 (night, vii/viii/ix) for the numbers.
+# SMOKED GREEN AT 40 DOCS, THEN FAILED TWO GATES AT 600. The 2026-08-14 smoke passed all
+# eleven checks (flaw_identification 0.75, gold 0/16 below 3, blindness clean, verdict
+# spread healthy, length_cv 0.153/0.244) -- and that was not enough. The 2026-08-17
+# production run at 600 failed `surface_shortcut` (AUC 0.9634 vs a 0.70 gate) and
+# `flaw_identification` (0.60 vs 0.70). Both were invisible at 40 docs, where the AUC
+# estimator cannot separate a real pattern from noise. Read the smoke as wiring evidence,
+# never as an all-clear.
+#
+# Both are addressed below -- `restyle_first_turn` for the first, the reframed flawid judge
+# in `checks:` for the second. Neither makes the AUC gate pass: measured over the 600-doc
+# corpus, holding authorship AND length constant leaves 0.8574, and that residual is the
+# label itself (the good arm says `but`/`because`/`risk`/`flag` because meeting the
+# principle means saying them). See docs/LOG.md 2026-08-17 for the three-variant table.
 
 pipeline: post_action_retrospection
 
@@ -206,7 +215,9 @@ models:
   scan:
     model: "anthropic/claude-sonnet-5"
     temperature: 0.0
-    max_tokens: 2500
+    # Kept in step with the `scan_max_tokens: 6000` that actually binds (see the
+    # pattern_scan block below) so the two do not read as contradicting each other.
+    max_tokens: 6000
     assumed_tokens: {in: 40000, out: 1200}
   # pattern_scan's AUTORATE pass: a yes/no classifier run thousands of times over small
   # batches. Cheapest adequate model, per GDM's own cost note. Stays Haiku: check
@@ -270,22 +281,45 @@ checks:
         Return exactly:
         <score>1-5</score>
         <why>one or two sentences</why>
-      flawid_system: 'You audit training data. You judge whether a critique identified one specific known
-        flaw, strictly: vague unease or a different complaint does not count.'
+      # REFRAMED 2026-08-17 against the artifact this recipe actually produces. The
+      # 2026-08-14 (night, viii) entry pre-registered this exact branch: "if it lands
+      # under 0.70 [at n=100], the question is whether this gate's phrasing fits PAR's
+      # answer-the-followup design -- not more prompt surgery." It landed at 0.60, and
+      # reading the misses settled it. Two of the five sampled misses were the judge
+      # penalising the recipe for working: "the critique is itself a corrected reply that
+      # fixes the drift, rather than being an example of the failure". PAR does not
+      # produce a critique. It produces the assistant's own reflection, which is
+      # INSTRUCTED to answer the person and revise the reply -- so a reflection that
+      # silently repairs the shortfall in its revision has engaged it completely, and the
+      # old wording scored that a miss.
+      #
+      # What changed is the artifact the judge is told it is reading and what counts as
+      # engaging a shortfall. What did NOT change is the bar: the shortfall must be the
+      # KNOWN one, and a different shortfall or generic unease is still a miss. The
+      # `flaw_id_clear_min: 0.70` gate below is deliberately left untouched -- a gate
+      # moved because it failed measures nothing.
+      flawid_system: 'You audit training data. You judge whether an assistant''s own reflection engaged one
+        specific known shortfall in its earlier reply, strictly: vague unease or a different complaint does not count.'
       flawid_user: |-
-        An earlier reply was independently assessed to fall short in exactly this way:
+        An assistant's earlier reply was independently assessed to fall short in exactly this way:
 
-        <known_change>
+        <known_shortfall>
         {change_summary}
-        </known_change>
+        </known_shortfall>
 
-        Here is a critique of that reply:
+        The person then followed up, and here is the assistant's reflection turn -- its private reasoning and the reply it gave:
 
-        <critique>
+        <reflection>
         {critique}
-        </critique>
+        </reflection>
 
-        Does the critique identify THIS specific problem -- the substance of the known shortfall, even in different words? Naming a different flaw, or only generic criticism, is a miss.
+        Did the assistant ENGAGE this specific shortfall -- the substance of it, even in different words? It counts as engaged if the assistant either:
+        - names or describes the shortfall, however briefly; or
+        - corrects it in the revised reply, whether or not it says it is doing so -- supplying the missing warning, withdrawing the overconfident claim, raising what the earlier reply skipped.
+
+        Silently fixing the known shortfall IS engaging it. This assistant is answering a person, not writing a review, so it is under no obligation to announce a fault in order to have addressed it.
+
+        It is a MISS if the assistant engages some OTHER shortfall instead, offers only generic reconsideration, or leaves the known shortfall standing -- neither named nor fixed.
 
         Return exactly:
         <hit>yes or no</hit>
@@ -710,9 +744,12 @@ stages:
   checkpoint: scenario_id
   tags: [reply]
   save: {first_turn: reply}
-  # The drafting model; whether the shipped first turn is this draft (flawed) or its
-  # principled revision (good) is readable from `reply_quality`, by construction.
-  also: {first_turn_source: google/gemini-3.7-flash}
+  # The DRAFT's author, which is Gemini for both arms. Named `..._draft_source` since
+  # 2026-08-17: the shipped `first_turn` is Sonnet's on both arms now (good = the
+  # principled revision, flawed = the lapse-preserving restyle), so a field called
+  # `first_turn_source` holding "gemini" was simply false on all 576 rows of the
+  # 2026-08-17 corpus. The shipped reply's author is stamped in `revise_first_turn`.
+  also: {first_turn_draft_source: google/gemini-3.7-flash}
   prompts:
     # No constitution, no target principle, no style guidance, no mention of training
     # data. The prompt the assistant answers under is the one stage 5 revised, and
@@ -774,6 +811,9 @@ stages:
       flawed:
         save: {improved_reply: improved_reply, change_summary: change_summary}
   save: {improved_reply: improved_reply, change_summary: change_summary}
+  # True on BOTH arms once `restyle_first_turn` has run: the shipped reply is Sonnet's
+  # prose either way. That is the whole point of the 2026-08-17 fix -- see that stage.
+  also: {first_turn_source: "anthropic/claude-sonnet-5"}
   prompts:
     system: |-
       You revise assistant replies so they live up to one specific principle. You
@@ -830,6 +870,116 @@ stages:
       principle and what it would have cost this person -- or, if nothing needed
       changing, why the reply held up
       </change_summary>
+
+# --- 6b. make the two arms' first turn share an AUTHOR -------------------------------
+# ADDED 2026-08-17, after the gated `surface_shortcut` check failed at AUC 0.9634 against
+# its 0.70 gate on the 600-document run (label-shuffled baseline 0.482, so the signal was
+# real). A cheap classifier could pick the arm out of the first turn alone, and the cause
+# was structural rather than incidental: the GOOD arm shipped Sonnet's principled revision
+# while the FLAWED arm shipped the raw Gemini draft, so `reply_quality` was perfectly
+# confounded with who wrote the reply.
+#
+# It is not a length artifact -- measured on that corpus, AUC from word count ALONE was
+# 0.6599, under the gate, so ~0.30 of the separability was house style. A model trained on
+# it could learn "Gemini-voiced reply -> revise it, Sonnet-voiced reply -> stand by it"
+# instead of constitutional judgement. Only the reflection turn trains, but the first turn
+# sits in its context, which is precisely where that shortcut is reachable.
+#
+# The fix is to hold authorship AND polish constant and let the arms differ only in the
+# principle. Sonnet rewrites the flawed draft as well as it can as ordinary helpfulness --
+# warm, first-person, concrete -- while leaving the principle's concern exactly as unsaid
+# as it was. Both arms then ship polished Sonnet prose, and only one addresses the
+# principle.
+#
+# MEASURED on the 2026-08-17 corpus (scratch/test_restyle_deconfounds.py and
+# scratch/test_polish_deconfounds.py, ~$14, no regeneration needed -- both ran the candidate
+# prompt over the 288 flawed records that already existed and re-scored the gate):
+#
+#   as published                          AUC 0.9634   word-count-only 0.6599
+#   voice-only restyle (preserve prose)   AUC 0.8776   word-count-only 0.6751
+#   polish, principle withheld  <-- this  AUC 0.8574   word-count-only 0.5531
+#
+# Two things to read off that. The authorship tell was REAL and is now gone: before the
+# fix the top discriminators were contractions the Gemini drafts never used (`i'd` 0.61 vs
+# 0.00, `here's` 0.55 vs 0.00, `it's` 0.79 vs 0.06). The length tell was real too, and only
+# the polish variant kills it -- word-count-only AUC falls to 0.5531, which is chance.
+#
+# And the honest part: 0.8574 STILL fails the 0.70 gate, and with authorship and length both
+# controlled the residual is the label itself. The surviving markers are `but`, `because`,
+# `rather`, `flag`, `risk`, `genuinely` -- the vocabulary of a reply that pushes back. A
+# reply that lives up to the principle says those things and a reply that withholds it does
+# not, so no rewrite can remove that separability without removing the distinction this
+# corpus exists to teach. Whether 0.70 is the right gate for a substance contrast (it was
+# inherited from planted-pair arms, where the classes differed by an INJECTED perturbation)
+# is a live question for a human, recorded in docs/LOG.md rather than silently resolved here.
+#
+# THE RISK, stated plainly: a model asked to rewrite a flawed reply will want to fix it,
+# and a restyle that quietly repairs the lapse would destroy the flawed arm rather than
+# de-confound it. The prompt therefore forbids repair in the strongest terms available and
+# names the lapse so it can be deliberately KEPT rather than accidentally lost. Three
+# existing measurements catch it if it happens anyway: `check_flaw_identification` (the
+# reflection can no longer find a lapse that is not there), `quality_filter`'s
+# `invents_faults` tag, and the verdict spread (the flawed arm collapsing toward `held`).
+# Re-measure `surface_shortcut` on the next run: the target is not merely under 0.70 but
+# near the word-count-only floor, since that is what "style no longer carries the label"
+# looks like.
+- name: restyle_first_turn
+  kind: llm_tagged
+  model: revise_reply
+  checkpoint: scenario_id
+  # Good records already ship Sonnet's revision from the stage above and must not be
+  # touched again -- a second pass would drift them away from the reply their
+  # `reviser_note` describes.
+  when: {field: reply_quality, in: [flawed]}
+  tags: [reply]
+  save: {first_turn: reply}
+  lint:
+    fields: [reply]
+    min_chars: 150
+    retries: 3
+  prompts:
+    system: |-
+      You rewrite an assistant's reply so it reads as well as it possibly can, without
+      changing what it actually advises. You are a writer, not an adviser.
+    user: |-
+      A person wrote this to an AI assistant:
+
+      <user_message>
+      {user}
+      </user_message>
+
+      The assistant replied:
+
+      <assistant_reply>
+      {first_turn}
+      </assistant_reply>
+
+      Rewrite this reply so it is as good a piece of writing and as warm and useful a
+      response as you can make it. Speak in first person, use natural contractions, be
+      specific and concrete, organise it well, and sound like someone who genuinely
+      wants to help this person with what they asked.
+
+      There is exactly ONE thing you must not do. This reply has a substantive gap, and
+      the gap is the point of the record -- it is training data for a corpus in which
+      this reply is meant to fall short:
+
+      <gap_to_preserve>
+      {change_summary}
+      </gap_to_preserve>
+
+      Your rewrite must leave that gap exactly as wide as it is now. Do not raise the
+      concern, do not add the missing warning, do not hedge toward it, do not gesture at
+      it, and do not add a closing line inviting the person to think about it. On
+      everything the gap does not touch, be as helpful and as polished as you like --
+      but on that one thing, the rewrite stays as silent as the original.
+
+      You are improving how the reply reads, never what it knows or warns about.
+
+      Return exactly this form, with no other text:
+
+      <reply>
+      the rewritten reply
+      </reply>
 
 # --- 7. turn 3: short, about THIS exchange, and doing none of the analysis -----------
 - name: write_followup
@@ -1177,6 +1327,16 @@ stages:
     enabled: true
     model: scan             # per-instance override of the stage's `model:`
     rate_model: classify    # the thousands-of-tiny-calls pass
+    params:
+      # 6000, not the 2500 default: MEASURED on the 2026-08-17 run, where 17 of 23 scan
+      # calls (73.9%) died on "hit max_tokens=2500 and truncated its JSON" and errored
+      # the whole check. A scan reading 25 whole transcripts reports up to 20 patterns
+      # WITH verbatim example snippets, which does not fit in 2500 output tokens.
+      #
+      # Note this is the knob that binds, NOT the `scan` model block's `max_tokens`:
+      # check_corpus passes `p["scan_max_tokens"]` to the call, so the model block's
+      # value is dead for this pass and setting it alone changes nothing.
+      scan_max_tokens: 6000
   rubrics:
     quality_filter:
       system: >-
@@ -1307,7 +1467,10 @@ stages:
   - explicitness
   - assessment
   - supervise
+  # Both are needed to read a record honestly: the shipped reply is Sonnet's on both arms
+  # (that is the de-confounding fix), while the unaided draft underneath it is Gemini's.
   - first_turn_source
+  - first_turn_draft_source
   - followup_source
   # Chunking provenance from stage 1: which unit the document came from, and how
   # that unit was cut and grouped.
