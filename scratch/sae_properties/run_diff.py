@@ -49,42 +49,40 @@ def run_script(script: str, args: list[str]) -> None:
 
 
 def summarize(out_dir: Path, hypotheses: dict, corpora: list[str]) -> str:
-    """Merge the per-corpus verification reports into one markdown table."""
-    lines = ["# SAE dataset diffing — verified hypotheses", ""]
-    lines.append(f"Query: {hypotheses.get('query')}")
-    lines.append(f"Target: `{hypotheses.get('dataset1_path')}`")
-    lines.append("")
-    freqs: dict[str, dict[str, float]] = {}
+    """Merge the per-corpus verification reports into one markdown table.
+
+    The verifier's report json holds `summary_by_hypothesis[i].verification_rates[field]`
+    in the same order as the hypotheses file, so rows join on index.
+    """
+    diffs = hypotheses.get("differences", [])
+    rates: dict[str, list[float | None]] = {}
     for corpus in corpora:
         reports = sorted((out_dir / f"verify_{corpus}").rglob("verification_report.json"))
         if not reports:
             continue
-        report = json.loads(reports[-1].read_text())
-        # The report nests per-hypothesis stats; collect any fraction-like number per title.
-        for hyp in report.get("hypotheses", report.get("results", [])):
-            title = hyp.get("title") or hyp.get("hypothesis") or ""
-            stats = hyp.get("overall", hyp)
-            for key in ("frequency", "fraction", "positive_rate", "yes_rate"):
-                if isinstance(stats.get(key), (int, float)):
-                    freqs.setdefault(title, {})[corpus] = float(stats[key])
-                    break
-    diffs = hypotheses.get("differences", [])
-    lines.append(f"## Hypotheses ({len(diffs)})")
-    for i, d in enumerate(diffs, 1):
-        title = d.get("title") or d.get("hypothesis") or str(d)[:120]
-        lines.append(f"\n### {i}. {title}")
-        if d.get("description"):
-            lines.append(d["description"])
-        row = freqs.get(title)
-        if row:
+        summary = json.loads(reports[-1].read_text())["summary_by_hypothesis"]
+        by_idx = {s["hypothesis_idx"]: s for s in summary}
+        rates[corpus] = [
+            next(iter(by_idx[i]["verification_rates"].values()), {}).get("percentage")
+            if i in by_idx else None
+            for i in range(len(diffs))
+        ]
+
+    lines = ["# SAE dataset diffing — verified hypotheses", "",
+             f"Query: {hypotheses.get('query')}",
+             f"Target: `{hypotheses.get('dataset1_path')}`", "",
+             f"## Hypotheses ({len(diffs)})"]
+    for i, d in enumerate(diffs):
+        desc = (d.get("description") or d.get("title") or str(d)).strip()
+        lines.append(f"\n### {i + 1}. {desc.split('. ')[0]}")
+        lines.append(desc)
+        if rates:
             lines.append("")
-            lines.append("| corpus | verified frequency |")
+            lines.append("| corpus | judge-verified frequency |")
             lines.append("|---|---|")
-            for corpus, f in sorted(row.items()):
-                lines.append(f"| {corpus} | {f:.3f} |")
-    if not freqs:
-        lines.append("\n(Verified frequencies: see verify_*/ csvs — report json had no "
-                     "recognisable frequency field, table skipped rather than guessed.)")
+            for corpus in corpora:
+                r = rates.get(corpus, [None] * len(diffs))[i]
+                lines.append(f"| {corpus} | {'—' if r is None else f'{r / 100:.2f}'} |")
     return "\n".join(lines) + "\n"
 
 
@@ -92,6 +90,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/properties/sae_diff.yaml")
     ap.add_argument("--skip-verify", action="store_true", help="Hypotheses only")
+    ap.add_argument("--report-only", action="store_true", help="Re-render report.md from existing artifacts")
     ap.add_argument("overrides", nargs="*")
     args = ap.parse_args()
 
@@ -114,6 +113,12 @@ def main() -> None:
     out_dir = run_dir / f"diff_{target}"
     out_dir.mkdir(parents=True, exist_ok=True)
     hyp_path = out_dir / "hypotheses.json"
+
+    if args.report_only:
+        hypotheses = json.loads(hyp_path.read_text())
+        (out_dir / "report.md").write_text(summarize(out_dir, hypotheses, [target] + others))
+        print(f"[run_diff] report re-rendered: {out_dir / 'report.md'}")
+        return
 
     official = {"Llama-3.3-70B-Instruct-SAE-l50": "meta-llama/Llama-3.3-70B-Instruct",
                 "Llama-3.1-8B-Instruct-SAE-l19": "meta-llama/Llama-3.1-8B-Instruct"}
