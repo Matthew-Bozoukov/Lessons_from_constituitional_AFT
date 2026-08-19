@@ -108,6 +108,33 @@ def _excerpt(text: str, limit: int = 1200) -> str:
     return text if len(text) <= limit else text[:limit] + " …"
 
 
+def _corpus_stamp(records: list[Record]) -> dict:
+    """What every prevalence on this run is a share OF.
+
+    `prevalence` is the one field that means the same thing across producers, and it is
+    only interpretable next to the corpus it was measured on. Taking the first record's
+    stamp works for a single-corpus run and is WRONG for a pooled one: it would name one
+    arm's run directory on rows describing all five. So a pooled run is stamped as the set
+    it actually is.
+
+    Args:
+        records: The records, in embedding order.
+
+    Returns:
+        The stamp: the single corpus's own when they all share one, else the list of them.
+    """
+    stamps = []
+    for record in records:
+        stamp = record.metadata.get("corpus") or {}
+        if stamp and stamp not in stamps:
+            stamps.append(stamp)
+    if not stamps:
+        return {}
+    if len(stamps) == 1:
+        return stamps[0]
+    return {"pooled": stamps, "n_corpora": len(stamps)}
+
+
 def _arm_shares(records: list[Record], member_idx: np.ndarray,
                 group_by: str) -> dict | None:
     """Per-arm share of a group's members, and each arm's own base rate.
@@ -345,7 +372,7 @@ def produce(records: list[Record], cfg, out_dir: str | Path,
                   "n_records": len(kept), "n_records_excluded": len(records) - len(kept)}
     if novelty:
         provenance["compare_to"] = novelty["summary"]
-    corpus = (kept[0].metadata.get("corpus") or {}) if kept else {}
+    corpus = _corpus_stamp(kept)
     group_by = cfg.get("group_by")
 
     properties = []

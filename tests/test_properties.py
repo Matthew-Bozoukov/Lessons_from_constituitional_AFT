@@ -1224,3 +1224,34 @@ def test_trace_clusters_refuses_an_embedding_that_lost_a_row(tmp_path, monkeypat
     with pytest.raises(ValueError, match="must correspond 1:1"):
         tc.produce(records, {"grouping": {"reduce": "none", "cluster": "kmeans", "k": 2}},
                    tmp_path / "tc")
+
+
+def test_a_pooled_run_is_stamped_as_the_set_it_is_not_its_first_arm(tmp_path, monkeypatch):
+    """`prevalence` is only interpretable next to the corpus it was measured on. On a
+    pooled run the first record's stamp names one arm, which would be a false label on
+    rows describing all of them."""
+    from src.properties.producers import trace_clusters as tc
+
+    records = [Record(f"a{i}", "q", "a", reasoning=f"t{i}",
+                      metadata={"arm": "da", "corpus": {"path": "out/da", "arm": "da"}})
+               for i in range(10)]
+    records += [Record(f"b{i}", "q", "a", reasoning=f"t{i}",
+                       metadata={"arm": "court",
+                                 "corpus": {"path": "out/court", "arm": "court"}})
+                for i in range(10)]
+    _stub_embedding(monkeypatch, tc, _two_blobs(10, 10))
+    properties = tc.produce(records, {
+        "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2},
+        "group_by": "arm"}, tmp_path / "tc")
+
+    corpus = properties[0].corpus
+    assert corpus["n_corpora"] == 2
+    assert {c["arm"] for c in corpus["pooled"]} == {"da", "court"}
+
+    # A single-corpus run keeps the plain stamp rather than growing a wrapper.
+    single = [Record(f"a{i}", "q", "a", reasoning=f"t{i}",
+                     metadata={"corpus": {"repo": "org/x"}}) for i in range(20)]
+    _stub_embedding(monkeypatch, tc, _two_blobs(10, 10))
+    properties = tc.produce(single, {
+        "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2}}, tmp_path / "tc2")
+    assert properties[0].corpus == {"repo": "org/x"}
