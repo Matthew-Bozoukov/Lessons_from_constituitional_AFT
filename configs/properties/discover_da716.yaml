@@ -1,5 +1,5 @@
-# ABOUTME: Property discovery over the 716 difficult-advice rows of the Table-2 mixture:
-# ABOUTME: trace_clusters (embed the traces) + feature_discovery (autorater vocabulary).
+# ABOUTME: Property discovery over the 716 difficult-advice rows of the Table-2 mixture,
+# ABOUTME: with trace_clusters: embed whole traces, cluster them, name the clusters.
 # Run: uv run python scripts/properties/discover.py --config configs/properties/discover_da716.yaml [--smoke]
 
 tag: da716
@@ -48,6 +48,7 @@ producers:
       n_neighbors: 15
       n_components: 5
       seed: 42
+    min_group_records: 10
     interpret:
       model: anthropic/claude-sonnet-5
       n_shown: 30
@@ -64,39 +65,20 @@ producers:
       workers: 16
       sample: 200
 
-  # NOT PORTED YET (scratch/llm_feature_discovery). This reads the run directory that
-  # module already wrote for this corpus. `docs/feature_discovery/` is the published
-  # 2026-08-12 run (2,202 traces -> 150 clusters), checked into the repo minus its 265MB
-  # embeddings.npy — which this producer does not need, since it reads clusters.json.
-  feature_discovery:
-    run_dir: docs/feature_discovery
-    # Below ~5% of traces a cluster is a handful of near-duplicates, not a property worth
-    # a training run.
-    min_prevalence: 0.05
-    interpret:
-      model: anthropic/claude-sonnet-5
-      n_shown: 50
-      workers: 8
-    measure_with_detector: true
-    detector:
-      model: anthropic/claude-sonnet-5
-      workers: 16
-      sample: 200
-
 # Two producers describing the same behaviour in different words is corroboration, and
 # the strongest reason to spend a pod on a property — but ablating both is a wasted run.
+# Only matters once a second producer is implemented; trace_clusters is the only one so far.
 check_collisions: true
 
 constitution: constitutions/claude_distilled_12_principles_mid/constitution.md
 
-# Tiny slice, full wiring. Pair it with the producer selector, since a merged block can
-# override a producer's settings but cannot remove one:
-#   ... --smoke --producers trace_clusters
+# Tiny slice, full wiring.
 smoke:
   source:
     limit: 12
   producers:
     trace_clusters:
+      min_group_records: 2
       grouping:
         min_cluster_size: 3
       measure_with_detector: false

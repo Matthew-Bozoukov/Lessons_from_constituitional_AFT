@@ -970,6 +970,74 @@ and the 6 missing cells were never diagnosed.
 
 # LOG
 
+## 2026-08-19 — trace_clusters over ROLLOUTS: the cluster list becomes a ranking
+
+**Hypothesis.** A corpus-side cluster list is unranked — every group is "here is a thing
+the data does", nothing says which is worth a training run, and choosing an ablation
+target is guesswork (the "unscored clusters" criticism, and the reason feature discovery
+compares badly with TURF and LESS, which at least assign a number). Rollouts should fix
+it, because rollouts are judged: cross a group of model reasoning against the violation
+flag and every group arrives with a number attached. Two further things only the rollout
+side can show — corpus mass spent on properties the model never picked up, and properties
+the model exhibits that were never in the corpus.
+
+**Method.** No experiment ran; this is the machinery, tested offline, not yet executed
+against real rollouts.
+
+* `sources/odcv_rollouts.py` now pools several run directories into ONE record list, each
+  tagged with the `arm` that produced it. Pooling is load-bearing: a per-arm fit gives
+  each arm its own cluster numbering, so "group 3 of the DA fit" and "group 3 of the
+  courtroom fit" are different things with the same name and the arms cannot be compared
+  at all. It also reads both transcript shapes on disk (`reason:` fields and inline
+  `<think>` tags) and takes the MEDIAN severity across judge files, rather than assuming
+  one shape and silently reading an empty reasoning channel off the other.
+* `shared/outcomes.py` is new: within-arm outcome rates, a weighted combination across
+  arms, and Benjamini-Hochberg over the family of groups.
+* `producers/trace_clusters/` gained three config blocks: `outcomes:` (cross with the
+  judged outcome), `compare_to:` (score the same vectors against a previous run's
+  centroids), and `baseline_grouping:` (cluster the same vectors a second way).
+
+**The two traps, and what the code does about them.**
+
+*Simpson's paradox.* The arms have different base violation rates by construction — that
+is the experiment. A property common in the arm that was already most aligned looks
+protective whatever it is. So every rate is computed WITHIN an arm and only then combined;
+the pooled number is emitted beside it carrying `confounded: true`, because the gap between
+the two is the diagnostic. A group perfectly confined to one arm has no same-arm
+non-members, so its lift is `None` — not the pooled number as a fallback — and the run says
+so loudly when that is true of every group.
+
+*Multiplicity.* Tens of groups against one binary outcome will hand you a few p < 0.05 from
+nothing, so the ranking carries BH q-values over the whole family. The output is a
+shortlist of ablation candidates. The ablation is what makes it causal.
+
+**Refit AND assign, over one embedding pass.** Nearest-centroid assignment never abstains,
+so a property with no home in the training corpus is absorbed into whatever is closest and
+disappears — which is exactly the thing worth finding. So `compare_to:` does not replace
+the refit, it annotates it: each refit group carries its members' cosine profile against
+the training centroids, and a group whose members are ALL below the floor is flagged
+`elicited_not_taught`. Centroids for that comparison are recomputed from the prior run's
+raw embeddings rather than read from its `centroids.npy`, because a run that clustered
+under `reduce: umap` wrote centroids in a space no new point can be placed in without the
+fitted reducer.
+
+**Also.** `baseline_grouping:` implements Callum's 2026-08-17 note — validate that UMAP is
+doing anything by clustering the same vectors without it, and write the ARI/AMI and
+neighbourhood overlap next to the result rather than assuming. And
+`producers/{feature_discovery,turf,less}/` are now empty placeholder packages: they were
+reading foreign `scratch/` run directories, which made the artifacts an interface nobody
+had agreed to. `resolve()` raises with the path to port instead.
+
+**Result.** 876 tests pass. An offline wiring check drives the new config end to end
+(pooled two-arm source -> grouping -> ranking -> report) with the embedding and interpreter
+calls stubbed.
+
+**Next steps.** Point `configs/properties/discover_odcv_rollouts.yaml` at the five real
+ODCV run directories and run it; the `compare_to.run_dir` needs a completed da716
+trace_clusters run to compare against. Add GSM8K rollouts as a control — the
+reasoning-length collapse this is chasing is supposed to be ODCV-specific, and if it shows
+up there too the story changes.
+
 ## 2026-08-18 — Fabrication sweep on the LESS-swap arm: 73.8%, on the synth-fraction ladder but not on its failure mode
 
 **Hypothesis:** the LESS-swap arm's fabrication rate on the established 31-prompt sweep is
