@@ -119,9 +119,6 @@ def main(config: str, out_dir: str | None = None, smoke: bool = False,
         if spec.needs_target and target is None:
             raise ValueError(f"producer {name!r} explains an outcome and needs a "
                              "`target:` block in this config")
-        if not spec.ported:
-            print(f">>> {name} is not ported yet — reading its run directory under "
-                  f"{spec.scratch_path}")
         print(f"\n=== {name} ===")
         rows = resolve(name)(records, producer_cfg, run / name, target=target)
         print(f">>> {name}: {len(rows)} properties")

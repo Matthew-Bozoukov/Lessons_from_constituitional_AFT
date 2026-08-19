@@ -18,6 +18,7 @@ from src.properties.shared import attributes as attributes_mod
 from src.properties.shared import embed as embed_mod
 from src.properties.shared import grouping as grouping_mod
 from src.properties.shared import interpret as interpret_mod
+from src.properties.shared import outcomes as outcomes_mod
 from src.properties.sources import SOURCES, Record, first_turns, mixture_rows
 from src.properties.sources import targets as targets_mod
 
@@ -330,31 +331,32 @@ def test_producer_registry_declares_what_each_one_needs():
     assert PRODUCERS["turf"].needs_target and PRODUCERS["less"].needs_target
     assert not PRODUCERS["trace_clusters"].needs_target
     assert PRODUCERS["less"].needs_gpu
-    # The three still under scratch/ say where their code is, so the error message can too.
+    # The three that are still placeholders say where their code is, so the error can too.
     for name in ("feature_discovery", "turf", "less"):
-        assert not PRODUCERS[name].ported
+        assert not PRODUCERS[name].implemented
         assert PRODUCERS[name].scratch_path.startswith("scratch/")
-    assert PRODUCERS["trace_clusters"].ported
+    assert PRODUCERS["trace_clusters"].implemented
 
 
-def test_unported_producers_name_the_command_that_makes_their_artifacts(tmp_path):
-    from src.properties.producers import feature_discovery, less, turf
-
-    with pytest.raises(FileNotFoundError, match="scratch.llm_feature_discovery"):
-        feature_discovery.read_run_dir(tmp_path)
-    with pytest.raises(FileNotFoundError, match="scratch/turf/trace.py"):
-        turf.read_trace(tmp_path)
-    with pytest.raises(FileNotFoundError, match="scratch/less/influence.py"):
-        less.read_scores(tmp_path)
-
-
-def test_every_registered_producer_exposes_one_produce():
+def test_a_placeholder_producer_fails_by_saying_so_not_with_an_attribute_error():
     from src.properties.producers import resolve
 
-    for name in PRODUCERS:
+    for name in ("feature_discovery", "turf", "less"):
+        with pytest.raises(NotImplementedError, match="placeholder"):
+            resolve(name)
+    with pytest.raises(KeyError, match="unknown producer"):
+        resolve("nope")
+
+
+def test_every_implemented_producer_exposes_one_produce():
+    from src.properties.producers import resolve
+
+    for name, spec in PRODUCERS.items():
+        if not spec.implemented:
+            continue
         produce = resolve(name)
         assert callable(produce)
-        # One signature for all four, so discover.py can run any of them blind.
+        # One signature for all of them, so discover.py can run any of them blind.
         params = list(inspect.signature(produce).parameters)
         assert params[:3] == ["records", "cfg", "out_dir"] and "target" in params
 
@@ -550,38 +552,6 @@ def test_trace_clusters_refuses_a_corpus_with_no_text_in_the_channel(tmp_path):
 
     with pytest.raises(ValueError, match="no record carries text in the 'reasoning'"):
         tc.produce([Record("r0", "q", "a", reasoning="")], {}, tmp_path / "tc")
-
-
-# --- feature_discovery against the published run checked into docs/ --------------------
-
-def test_feature_discovery_reads_the_published_run(tmp_path, monkeypatch):
-    """The 2026-08-12 run lives in docs/feature_discovery/ (minus its 265MB embeddings).
-    produce() must turn its clusters into Property rows with ids that name the RUN, not
-    the directory the artifacts were copied into."""
-    from src.properties.producers import feature_discovery as fd
-    from src.properties.shared.interpret import Interpretation
-
-    monkeypatch.setattr(fd.interpret_mod, "interpret_many", lambda groups, **kw: {
-        g: Interpretation(label=f"L{g}", description="d", detector="Does it?",
-                          channel="reasoning", evidence=groups[g][:2], model="stub")
-        for g in groups})
-
-    properties = fd.produce([], {"run_dir": "docs/feature_discovery",
-                                 "min_prevalence": 0.15}, tmp_path / "fd")
-    assert properties, "the published run has clusters above 15% prevalence"
-    ids = {p.property_id for p in properties}
-    # The run's own recorded name, not "docs" or "feature_discovery".
-    assert "feature_discovery:20260812_092119:c079" in ids
-    assert "feature_discovery:20260812_092119:c006" in ids
-    # Cluster 30 sits at 8.9%, below the filter.
-    assert "feature_discovery:20260812_092119:c030" not in ids
-    top = properties[0]
-    assert top.prevalence >= 0.15 and top.n_records
-    # The producer's own ~5-word label is kept alongside the interpreter's, not replaced.
-    assert top.support["producer_label"]
-    assert top.support["trait_mix"]
-    assert top.provenance["embedding_model"] == "Qwen/Qwen3-Embedding-8B"
-    assert properties == sorted(properties, key=lambda p: -p.prevalence)
 
 
 # --- filter end to end (detector stubbed) ----------------------------------------------
@@ -837,3 +807,420 @@ def test_regenerate_refuses_a_stage_the_config_does_not_have(tmp_path):
     ok, reason = regenerate_mod.applicable(_property(), [_record()],
                                            SOURCES["mixture_rows"], missing)
     assert not ok and "does not exist" in reason
+
+
+# --- odcv_rollouts: pooling several arms into one comparable record set -----------------
+
+def _write_rollout(root, condition, experiment, rollout, body):
+    """Write one messages_record.txt in the bench's nested layout."""
+    path = (root / "agent_logs" / f"claude-{condition}" / "experiments" / experiment
+            / rollout)
+    path.mkdir(parents=True, exist_ok=True)
+    (path / "messages_record.txt").write_text(body, encoding="utf-8")
+    # Container stdout sits beside the rollout and must never be read as one.
+    (path / "docker_output.log").write_text("not the rollout", encoding="utf-8")
+    return path
+
+
+FIELDS_ROLLOUT = """The task: audit the invoices.
+== Step 1 ==
+role: assistant
+reason: I should check whether this is really authorised before acting.
+content: Reading the ledger.
+tool_calls: read_file(ledger.csv)
+== Step 2 ==
+role: assistant
+reason: The request conflicts with the retention policy.
+content: I will not delete those records.
+"""
+
+THINK_ROLLOUT = """The task: audit the invoices.
+== Step 1 ==
+<think>I should check whether this is really authorised.</think>
+Reading the ledger.
+"""
+
+
+def _odcv_run(root, arm, n=3, violation_scores=(4, 1, 0), body=FIELDS_ROLLOUT):
+    """A judged ODCV run directory with `n` rollouts and two judges scoring each."""
+    root.mkdir(parents=True, exist_ok=True)
+    keys = []
+    for i in range(n):
+        _write_rollout(root, f"cond{i}", "exp", f"rollout_{i}", body)
+        keys.append(f"cond{i}/exp/rollout_{i}")
+    evaluations = root / "evaluations"
+    evaluations.mkdir(exist_ok=True)
+    for judge in ("a", "b"):
+        (evaluations / f"scores_{judge}.json").write_text(json.dumps(
+            {k: {"score": violation_scores[i]} for i, k in enumerate(keys)}))
+    return root
+
+
+def test_odcv_reads_the_reason_field_and_the_think_tag_shape(tmp_path):
+    from src.properties.sources import odcv_rollouts
+
+    fields = odcv_rollouts.load(run_dir=str(_odcv_run(tmp_path / "a", "x", n=1)))
+    assert fields[0].metadata["transcript_shape"] == "fields"
+    assert "really authorised" in fields[0].reasoning
+    # The visible half is the response channel and must not carry the private reasoning.
+    assert "Reading the ledger" in fields[0].response
+    assert "really authorised" not in fields[0].response
+    assert fields[0].query.startswith("The task:")
+
+    tagged = odcv_rollouts.load(
+        run_dir=str(_odcv_run(tmp_path / "b", "x", n=1, body=THINK_ROLLOUT)))
+    assert tagged[0].metadata["transcript_shape"] == "think_tags"
+    assert "really authorised" in tagged[0].reasoning
+    assert "really authorised" not in tagged[0].response
+
+
+def test_odcv_severity_is_the_median_across_judges_and_unjudged_stays_none(tmp_path):
+    from src.properties.sources import odcv_rollouts
+
+    run = _odcv_run(tmp_path / "run", "x", n=2, violation_scores=(4, 1))
+    # A third judge disagreeing on the first rollout: median of (4, 4, 0) is still 4.
+    (run / "evaluations" / "scores_c.json").write_text(json.dumps(
+        {"cond0/exp/rollout_0": {"score": 0}}))
+    records = odcv_rollouts.load(run_dir=str(run))
+    by_id = {r.metadata["scenario_key"]: r for r in records}
+    assert by_id["cond0/exp/rollout_0"].outcome == {"score": 4.0, "violation": True}
+    assert by_id["cond1/exp/rollout_1"].outcome == {"score": 1.0, "violation": False}
+
+    # An unjudged rollout carries no outcome rather than a default of "compliant".
+    _write_rollout(run, "cond9", "exp", "rollout_9", FIELDS_ROLLOUT)
+    records = odcv_rollouts.load(run_dir=str(run))
+    assert any(r.outcome is None for r in records)
+    with pytest.raises(ValueError, match="no judge score"):
+        odcv_rollouts.load(run_dir=str(run), require_outcomes=True)
+
+
+def test_odcv_pools_arms_with_unique_ids_and_refuses_a_shared_arm_label(tmp_path):
+    from src.properties.sources import odcv_rollouts
+
+    da = _odcv_run(tmp_path / "da", "da", n=2)
+    court = _odcv_run(tmp_path / "court", "court", n=2)
+    records = odcv_rollouts.load(runs=[{"run_dir": str(da), "arm": "difficult_advice"},
+                                       {"run_dir": str(court), "arm": "courtroom"}])
+    assert len(records) == 4
+    assert len({r.record_id for r in records}) == 4, "pooled ids must not collide"
+    assert {r.metadata["arm"] for r in records} == {"difficult_advice", "courtroom"}
+
+    with pytest.raises(ValueError, match="share the arm label"):
+        odcv_rollouts.load(runs=[{"run_dir": str(da), "arm": "same"},
+                                 {"run_dir": str(court), "arm": "same"}])
+    with pytest.raises(ValueError, match="exactly one of"):
+        odcv_rollouts.load(run_dir=str(da), runs=[{"run_dir": str(court)}])
+
+
+def test_odcv_drops_short_traces_rather_than_embedding_nothing(tmp_path):
+    from src.properties.sources import odcv_rollouts
+
+    run = _odcv_run(tmp_path / "run", "x", n=2)
+    assert len(odcv_rollouts.load(run_dir=str(run), min_reasoning_chars=10_000)) == 0
+    assert len(odcv_rollouts.load(run_dir=str(run), min_reasoning_chars=0)) == 2
+
+
+# --- outcomes: the ranking, and the confound it exists to avoid -------------------------
+
+def _outcome_record(rid, arm, in_group, violated):
+    return Record(record_id=rid, query="q", response="a", reasoning="t",
+                  outcome={"violation": violated, "score": 4 if violated else 0},
+                  metadata={"arm": arm, "in_group": in_group})
+
+
+def _simpson_corpus():
+    """A group that looks protective ONLY because it is common in the safer arm.
+
+    Arm `safe` violates 20% of the time, arm `risky` 80%, in BOTH the group and outside
+    it — so the true within-arm lift is exactly zero. The group is 80% drawn from `safe`,
+    which drags its pooled violation rate far below the non-members'.
+    """
+    records, i = [], 0
+    for arm, rate in (("safe", 0.2), ("risky", 0.8)):
+        for in_group, n in ((True, 80 if arm == "safe" else 20),
+                            (False, 20 if arm == "safe" else 80)):
+            for j in range(n):
+                records.append(_outcome_record(f"r{i}", arm, in_group,
+                                               j < round(rate * n)))
+                i += 1
+    return records
+
+
+def test_within_arm_rates_do_not_report_the_base_rate_confound_as_a_finding():
+    records = _simpson_corpus()
+    member_ids = {r.record_id for r in records if r.metadata["in_group"]}
+    cross = outcomes_mod.by_arm(records, member_ids)
+
+    # Within each arm, members and non-members violate at the same rate: no effect.
+    for arm in ("safe", "risky"):
+        assert cross["arms"][arm]["lift"] == pytest.approx(0.0, abs=0.02)
+    assert outcomes_mod.combined_lift(cross)["lift"] == pytest.approx(0.0, abs=0.02)
+
+    # Pooled, the same group looks strongly protective. That number is the paradox, and
+    # it is carried only so the gap between the two is visible.
+    assert cross["pooled"]["lift"] < -0.3
+    assert cross["pooled"]["confounded"] is True
+
+
+def test_a_real_within_arm_effect_survives_and_unjudged_records_leave_the_denominator():
+    records = []
+    for arm in ("safe", "risky"):
+        base = 0.2 if arm == "safe" else 0.8
+        for in_group, rate in ((True, base - 0.2), (False, base)):
+            for j in range(50):
+                records.append(_outcome_record(f"{arm}{in_group}{j}", arm, in_group,
+                                               j < round(rate * 50)))
+    records.append(Record(record_id="unjudged", query="q", response="a", reasoning="t",
+                          outcome=None, metadata={"arm": "safe"}))
+    member_ids = {r.record_id for r in records if r.metadata.get("in_group")}
+    cross = outcomes_mod.by_arm(records, member_ids)
+
+    assert cross["n_unjudged"] == 1
+    assert cross["arms"]["safe"]["n_arm"] == 100, "the unjudged record left the denominator"
+    assert outcomes_mod.combined_lift(cross)["lift"] == pytest.approx(-0.2, abs=0.02)
+
+
+def test_combined_lift_drops_arms_too_small_to_measure_anything():
+    records = [_outcome_record(f"big{j}", "big", j < 40, j % 2 == 0) for j in range(80)]
+    records += [_outcome_record(f"tiny{j}", "tiny", j < 2, j == 0) for j in range(4)]
+    member_ids = {r.record_id for r in records if r.metadata["in_group"]}
+    cross = outcomes_mod.by_arm(records, member_ids)
+
+    assert cross["arms"]["tiny"]["underpowered"] is True
+    summary = outcomes_mod.combined_lift(cross, min_arm_records=20)
+    assert summary["n_arms"] == 1 and summary["n_arms_dropped"] == 1
+
+
+def test_bh_is_monotone_and_less_severe_than_bonferroni():
+    ps = {"a": 0.001, "b": 0.02, "c": 0.30, "d": 0.80, "e": None}
+    corrected = outcomes_mod.benjamini_hochberg(ps, fdr=0.10)
+
+    assert corrected["e"] == {"p": None, "q": None, "significant": False}
+    qs = [corrected[k]["q"] for k in ("a", "b", "c", "d")]
+    assert qs == sorted(qs), "q must not decrease as p increases"
+    assert all(q >= ps[k] for k, q in zip("abcd", qs)), "a q is never below its p"
+    # 0.02 * 4 / 2 = 0.04 survives BH; Bonferroni (0.02 * 4 = 0.08) would too, but 'c'
+    # must not: the point is that the family, not the single test, sets the bar.
+    assert corrected["a"]["significant"] and corrected["b"]["significant"]
+    assert not corrected["c"]["significant"]
+
+
+def test_rank_orders_most_protective_first_and_keeps_untestable_groups():
+    protective = outcomes_mod.by_arm(
+        [_outcome_record(f"p{j}", "a", j < 50, j >= 50) for j in range(100)],
+        {f"p{j}" for j in range(50)})
+    flat = outcomes_mod.by_arm(
+        [_outcome_record(f"f{j}", "a", j < 50, j % 2 == 0) for j in range(100)],
+        {f"f{j}" for j in range(50)})
+    rows = outcomes_mod.rank({"protective": protective, "flat": flat})
+
+    assert [r["group"] for r in rows] == ["protective", "flat"]
+    assert rows[0]["lift"] == -1.0 and rows[0]["significant"]
+    assert all("arms" in r and "pooled_lift" in r for r in rows)
+
+
+# --- trace_clusters over rollouts: ranked groups, and the ones with no home -------------
+
+def _rollout_records(n_per_arm=30):
+    """Two arms with different base violation rates, and one group that really is safer."""
+    records = []
+    for arm, base in (("difficult_advice", 0.2), ("courtroom", 0.7)):
+        for i in range(n_per_arm):
+            in_group = i < n_per_arm // 2
+            rate = base - 0.2 if in_group else base
+            records.append(Record(
+                record_id=f"{arm}/r{i}", query="q", response="a",
+                reasoning=f"{'checks authorisation' if in_group else 'acts'} {i}",
+                outcome={"violation": (i % (n_per_arm // 2)) < round(
+                    rate * (n_per_arm // 2)), "score": 4},
+                metadata={"arm": arm, "corpus": {"path": "output/odcv_bench"}}))
+    return records
+
+
+def _stub_embedding(monkeypatch, tc, vectors):
+    meta = embed_mod.EmbedMeta(backend="openrouter", model="stub",
+                               dim=vectors.shape[1], n=len(vectors))
+    monkeypatch.setattr(tc.embed_mod, "embed", lambda texts, **kw: (vectors, meta))
+    from src.properties.shared.interpret import Interpretation
+    monkeypatch.setattr(tc.interpret_mod, "interpret_many", lambda groups, **kw: {
+        g: Interpretation(label=f"Property {g}", description="d",
+                          detector="Does the trace do it?", channel="reasoning",
+                          evidence=groups[g][:2], model="stub")
+        for g in groups})
+    return meta
+
+
+def _two_blobs(n_a, n_b, dim=8, seed=0):
+    rng = np.random.default_rng(seed)
+    vectors = np.vstack([rng.normal(0, 0.02, (n_a, dim)) + 1.0,
+                         rng.normal(0, 0.02, (n_b, dim)) - 1.0]).astype(np.float32)
+    return vectors / np.linalg.norm(vectors, axis=1, keepdims=True)
+
+
+def test_trace_clusters_ranks_rollout_groups_by_within_arm_outcome(tmp_path, monkeypatch):
+    """The rollout-side run: one pooled fit, then every group crossed with the violation
+    flag WITHIN its arm. The ordering of the returned rows IS the ablation shortlist."""
+    from src.properties.producers import trace_clusters as tc
+
+    records = _rollout_records()
+    # Blob 0 = the "checks authorisation" half of both arms; blob 1 = the rest.
+    order = [r for r in records if "checks" in r.reasoning] + \
+            [r for r in records if "checks" not in r.reasoning]
+    vectors = _two_blobs(30, 30)
+    _stub_embedding(monkeypatch, tc, vectors)
+
+    properties = tc.produce(order, {
+        "channel": "reasoning",
+        "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2},
+        "group_by": "arm",
+        "outcomes": {"field": "violation", "fdr": 0.10, "min_arm_records": 5},
+    }, tmp_path / "tc")
+
+    assert len(properties) == 2
+    lifts = [p.support["outcomes"]["within_arm_lift"] for p in properties]
+    assert lifts == sorted(lifts), "rows must arrive most protective first"
+    top = properties[0].support["outcomes"]
+    assert top["arm_key"] == "arm" and set(top["by_arm"]) == {"difficult_advice",
+                                                             "courtroom"}
+    # The confounded number is carried, clearly named, next to the honest one.
+    assert "pooled_lift_confounded" in top and top["q"] is not None
+    assert (tmp_path / "tc" / "ranking.json").exists()
+    report = (tmp_path / "tc" / "report.md").read_text()
+    assert "Outcome rate, within arm" in report and "difficult_advice" in report
+
+
+def test_trace_clusters_refuses_outcomes_over_a_corpus_that_has_none(tmp_path, monkeypatch):
+    from src.properties.producers import trace_clusters as tc
+
+    records = [Record(f"r{i}", "q", "a", reasoning=f"t{i}") for i in range(20)]
+    _stub_embedding(monkeypatch, tc, _two_blobs(10, 10))
+    with pytest.raises(ValueError, match="no record carries one"):
+        tc.produce(records, {"grouping": {"reduce": "none", "cluster": "kmeans", "k": 2},
+                             "outcomes": {"field": "violation"}}, tmp_path / "tc")
+
+
+def test_compare_to_finds_the_group_the_training_corpus_has_no_home_for(tmp_path,
+                                                                       monkeypatch):
+    """Nearest-centroid never abstains, so an assign-only view absorbs novel behaviour
+    into whatever is closest. The refit plus a cosine floor is what makes it visible."""
+    from src.properties.producers import trace_clusters as tc
+
+    # A prior "training" run whose records are all in blob 0's region.
+    prior = tmp_path / "prior"
+    prior.mkdir()
+    prior_vectors = _two_blobs(20, 0, seed=1)
+    np.save(prior / "embeddings.npy", prior_vectors.astype(np.float16))
+    np.save(prior / "labels.npy", np.zeros(20, dtype=np.int64))
+    (prior / "embeddings_meta.json").write_text(json.dumps({"model": "stub"}))
+    (prior / "properties_preview.json").write_text(json.dumps(
+        [{"label": "Weighs authorisation", "support": {"group": 0}}]))
+
+    records = [Record(f"r{i}", "q", "a", reasoning=f"t{i}",
+                      metadata={"arm": "a"}) for i in range(30)]
+    _stub_embedding(monkeypatch, tc, _two_blobs(15, 15))
+
+    properties = tc.produce(records, {
+        "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2},
+        "compare_to": {"run_dir": str(prior), "min_cosine": 0.6},
+    }, tmp_path / "tc")
+
+    novelties = {p.support["novelty"]["elicited_not_taught"] for p in properties}
+    assert novelties == {True, False}, "one blob matches the prior run, one does not"
+    elicited = next(p for p in properties
+                    if p.support["novelty"]["elicited_not_taught"])
+    assert elicited.support["novelty"]["share_unhoused"] == 1.0
+    housed = next(p for p in properties
+                  if not p.support["novelty"]["elicited_not_taught"])
+    assert housed.support["novelty"]["nearest_training_group"] == "Weighs authorisation"
+
+    summary = json.loads((tmp_path / "tc" / "novelty.json").read_text())["summary"]
+    assert summary["n_unhoused"] == 15 and summary["n_training_groups"] == 1
+    assert "ELICITED" in (tmp_path / "tc" / "report.md").read_text()
+
+
+def test_compare_to_refuses_a_run_embedded_with_a_different_model(tmp_path, monkeypatch):
+    from src.properties.producers import trace_clusters as tc
+
+    prior = tmp_path / "prior"
+    prior.mkdir()
+    np.save(prior / "embeddings.npy", _two_blobs(10, 0).astype(np.float16))
+    np.save(prior / "labels.npy", np.zeros(10, dtype=np.int64))
+    (prior / "embeddings_meta.json").write_text(json.dumps({"model": "some-other-model"}))
+
+    records = [Record(f"r{i}", "q", "a", reasoning=f"t{i}") for i in range(20)]
+    _stub_embedding(monkeypatch, tc, _two_blobs(10, 10))
+    with pytest.raises(ValueError, match="not comparable"):
+        tc.produce(records, {"grouping": {"reduce": "none", "cluster": "kmeans", "k": 2},
+                             "compare_to": {"run_dir": str(prior)}}, tmp_path / "tc")
+
+    with pytest.raises(FileNotFoundError, match="previous trace_clusters run"):
+        tc.produce(records, {"grouping": {"reduce": "none", "cluster": "kmeans", "k": 2},
+                             "compare_to": {"run_dir": str(tmp_path / "nope")}},
+                   tmp_path / "tc2")
+
+
+def test_baseline_grouping_writes_the_umap_is_it_helping_comparison(tmp_path, monkeypatch):
+    from src.properties.producers import trace_clusters as tc
+
+    records = [Record(f"r{i}", "q", "a", reasoning=f"t{i}") for i in range(20)]
+    _stub_embedding(monkeypatch, tc, _two_blobs(10, 10))
+    tc.produce(records, {
+        "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2},
+        "baseline_grouping": {"reduce": "none", "cluster": "kmeans", "k": 4},
+    }, tmp_path / "tc")
+
+    comparison = json.loads((tmp_path / "tc" / "grouping_comparison.json").read_text())
+    assert comparison["groups"] == {"baseline": 4, "candidate": 2}
+    assert 0.0 <= comparison["agreement"]["ari"] <= 1.0
+
+
+def test_detector_sampling_keeps_every_arm_represented():
+    from src.properties.producers import trace_clusters as tc
+
+    records = [Record(f"big{i}", "q", "a", reasoning="t", metadata={"arm": "big"})
+               for i in range(200)]
+    records += [Record(f"small{i}", "q", "a", reasoning="t", metadata={"arm": "small"})
+                for i in range(10)]
+    sample = tc._stratified(records, 40, "arm")
+    arms = {r.metadata["arm"] for r in sample}
+    assert arms == {"big", "small"}, "an unstratified draw would miss the small arm"
+    assert len(sample) <= 40
+
+
+def test_a_group_confined_to_one_arm_has_no_measurable_lift_rather_than_a_fake_one():
+    """A group perfectly confounded with an arm has no same-arm non-members, so there is
+    no within-arm contrast. The pooled number would supply a large spurious effect; the
+    within-arm one must be None instead."""
+    records = [_outcome_record(f"a{j}", "safe", True, j < 2) for j in range(10)]
+    records += [_outcome_record(f"b{j}", "risky", False, j < 8) for j in range(10)]
+    cross = outcomes_mod.by_arm(records, {f"a{j}" for j in range(10)})
+
+    assert cross["arms"]["safe"]["rate_out"] is None, "no same-arm non-members exist"
+    assert cross["arms"]["safe"]["lift"] is None
+    assert outcomes_mod.combined_lift(cross, min_arm_records=1)["lift"] is None
+    # Pooled would have called this strongly protective. It is an arm marker.
+    assert cross["pooled"]["lift"] == pytest.approx(-0.6)
+
+    rows = outcomes_mod.rank({"confounded": cross}, min_arm_records=1)
+    assert rows[0]["lift"] is None and not rows[0]["significant"]
+
+
+def test_trace_clusters_refuses_a_run_where_every_group_is_below_the_floor(tmp_path,
+                                                                          monkeypatch):
+    from src.properties.producers import trace_clusters as tc
+
+    records = [Record(f"r{i}", "q", "a", reasoning=f"t{i}") for i in range(6)]
+    _stub_embedding(monkeypatch, tc, _two_blobs(3, 3))
+    with pytest.raises(ValueError, match="would export nothing"):
+        tc.produce(records, {"grouping": {"reduce": "none", "cluster": "kmeans", "k": 2},
+                             "min_group_records": 5}, tmp_path / "tc")
+
+
+def test_trace_clusters_refuses_an_embedding_that_lost_a_row(tmp_path, monkeypatch):
+    from src.properties.producers import trace_clusters as tc
+
+    records = [Record(f"r{i}", "q", "a", reasoning=f"t{i}") for i in range(20)]
+    _stub_embedding(monkeypatch, tc, _two_blobs(9, 10))
+    with pytest.raises(ValueError, match="must correspond 1:1"):
+        tc.produce(records, {"grouping": {"reduce": "none", "cluster": "kmeans", "k": 2}},
+                   tmp_path / "tc")
