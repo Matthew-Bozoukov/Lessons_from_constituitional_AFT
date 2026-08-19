@@ -16,14 +16,16 @@ The flow, and where each piece of it lives:
     ablation/     one Property + the corpus      ->  an ablated corpus
                                                      -> train -> M'' -> eval
 
-Four producers, differing only in what evidence they read and how they earn a property:
+Three producers, differing only in what evidence they read and how they earn a property:
 
-    feature_discovery  autorater invents its own vocabulary per trace, then clusters it
-    trace_clusters     embed WHOLE traces, cluster, label the clusters
-    turf               trace one case's behaviour back to training-data properties
-    less               gradient influence ranks the corpus, then an LLM names what's on top
+    clusters   embed evidence about each record, cluster it, label the clusters. One
+               config key picks WHAT gets embedded: `evidence: features` runs an autorater
+               over each record first and clusters its free-text descriptions (the
+               LessWrong method); `evidence: traces` clusters the record text directly.
+    turf       trace one case's behaviour back to training-data properties
+    less       gradient influence ranks the corpus, then an LLM names what's on top
 
-They share four things, and each of those is exactly one file under `shared/`, because a
+They share five things, and each of those is exactly one file under `shared/`, because a
 producer that spells its own embedding call is a producer whose numbers cannot be compared
 with anyone else's:
 
@@ -32,9 +34,10 @@ with anyone else's:
     interpret    evidence -> a label AND a detector rubric (the detector is what makes a
                  property actionable: ablation and verification both run it)
     attributes   the extract-attributes prompt family, verbatim from SURF and the post
+    outcomes     group membership crossed with a judged outcome, WITHIN arm, BH-corrected
 
-The one number that has to mean the same thing across all four is `prevalence`: the share
-of records in the SAME corpus exhibiting the property. Everything else on a property row
+The one number that has to mean the same thing across all of them is `prevalence`: the
+share of records in the SAME corpus exhibiting the property. Everything else on a property row
 is advisory detail a reader uses to judge the label.
 
 Run it:

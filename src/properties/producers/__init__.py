@@ -15,18 +15,24 @@ with the same signature:
 so `scripts/properties/discover.py` runs any of them without knowing which. What differs
 is declared in the spec rather than discovered by calling:
 
-| producer          | evidence it reads              | needs a Target | ported? |
-|-------------------|--------------------------------|----------------|---------|
-| feature_discovery | free-text features per record  | no             | reads its run dir |
-| trace_clusters    | whole records, embedded        | no             | yes, in full |
-| turf              | attributes, both channels      | YES            | reads its run dir |
-| less              | gradient influence ranking     | YES            | reads its run dir |
+| producer | evidence it reads                                   | needs a Target | implemented |
+|----------|-----------------------------------------------------|----------------|-------------|
+| clusters | free-text features per record, OR whole records     | no             | yes         |
+| turf     | attributes, both channels                           | YES            | not yet     |
+| less     | gradient influence ranking                          | YES            | not yet     |
 
-Three of the four are mid-port from `scratch/`, and their modules here are NOT stubs: each
-reads the artifacts its scratch module already writes (`clusters.json`,
-`trace_result.json`, `scores.jsonl`) and turns them into Property rows. The ARTIFACTS are
-the interface, so when the producer code moves in it lands beside its `produce()` and
-stops reading from a foreign run directory — nothing downstream of `registry.py` changes.
+`clusters` is one producer covering what used to be two. Feature discovery (embed an
+autorater's descriptions of each record) and trace clustering (embed the records) differ
+in exactly one step — what gets turned into a vector — and everything after that is
+identical. Splitting them across two packages would have meant two embedders, two notions
+of prevalence, and no way to answer "does the abstraction step buy anything?". So they are
+one module and one config key, `evidence: features | traces`.
+
+The other two are empty packages: their code still lives under `scratch/` and lands in
+their `__init__.py` when it moves. They stay in the registry because the registry is the
+list of producers this module is FOR, and a name that is planned but missing should fail
+by saying so — `resolve()` raises with the path to the code — rather than by being absent
+and reading as a typo.
 """
 
 from __future__ import annotations
@@ -47,27 +53,29 @@ class ProducerSpec:
         needs_gpu: True when the producer cannot run on the driving laptop (LESS computes
             per-example gradients). Embedding does not count: `shared/embed.py` rents its
             own pod.
-        ported: False while the producer's code still lives under `scratch/`; `produce()`
-            then reads that module's run directory rather than running it.
-        scratch_path: Where the un-ported code lives, so the error message when its
-            artifacts are missing says what to run.
+        scratch_path: Where the code lives while the package here is still a placeholder,
+            so the error `resolve()` raises names what to port.
     """
 
     package: str
     needs_target: bool = False
     needs_gpu: bool = False
-    ported: bool = True
     scratch_path: str = ""
+
+    @property
+    def implemented(self) -> bool:
+        """Whether this producer's code is in `src/` yet.
+
+        Returns:
+            True when the package holds the producer, False while it is a placeholder.
+        """
+        return not self.scratch_path
 
 
 PRODUCERS: dict[str, ProducerSpec] = {
-    "trace_clusters": ProducerSpec("trace_clusters"),
-    "feature_discovery": ProducerSpec(
-        "feature_discovery", ported=False,
-        scratch_path="scratch/llm_feature_discovery"),
-    "turf": ProducerSpec("turf", needs_target=True, ported=False,
-                         scratch_path="scratch/turf"),
-    "less": ProducerSpec("less", needs_target=True, needs_gpu=True, ported=False,
+    "clusters": ProducerSpec("clusters"),
+    "turf": ProducerSpec("turf", needs_target=True, scratch_path="scratch/turf"),
+    "less": ProducerSpec("less", needs_target=True, needs_gpu=True,
                          scratch_path="scratch/less"),
 }
 
@@ -83,8 +91,17 @@ def resolve(name: str):
 
     Raises:
         KeyError: If the name is not registered.
+        NotImplementedError: If the producer is still a placeholder package.
     """
     if name not in PRODUCERS:
         raise KeyError(f"unknown producer {name!r}; registered: {sorted(PRODUCERS)}")
-    module = f"src.properties.producers.{PRODUCERS[name].package}"
+    spec = PRODUCERS[name]
+    if not spec.implemented:
+        raise NotImplementedError(
+            f"producer {name!r} is a placeholder: its code is still in "
+            f"{spec.scratch_path}. Port it into "
+            f"src/properties/producers/{spec.package}/__init__.py as a "
+            "produce(records, cfg, out_dir, target=None) -> list[Property], or drop it "
+            "from this config's `producers:` block.")
+    module = f"src.properties.producers.{spec.package}"
     return importlib.import_module(module).produce

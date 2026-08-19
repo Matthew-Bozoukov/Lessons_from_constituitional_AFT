@@ -3,6 +3,161 @@
 
 # LOG
 
+## 2026-08-19 — one `clusters` producer: feature discovery and trace clustering merged
+
+**Why.** Feature discovery (autorater describes each trace, cluster the descriptions) and
+trace clustering (embed the trace, cluster that) were two modules, and the pairing of
+method to data source was an accident of history rather than a choice: feature discovery
+read an SFT jsonl directly and so could only ever see the TRAINING data, while trace
+clustering was the only thing plumbed to read rollouts. That is backwards. The data source
+is what changes the science — training data tells you what you taught, rollouts tell you
+what the model learned and come with outcomes attached — and the clustering method is a
+knob.
+
+**What changed.** `scratch/llm_feature_discovery` is ported into
+`src/properties/producers/clusters/`, merged with the former `trace_clusters` into ONE
+producer. They differ in exactly one step — what gets turned into a vector — so that is
+now one config key:
+
+    evidence: features   autorater writes 10-20 free-text descriptions per record; the
+                         deduped VOCABULARY is embedded and clustered (the LessWrong method)
+    evidence: traces     the record's own text is embedded and clustered
+
+Everything after the vectors is shared: grouping, naming, the within-arm outcome crossing,
+the training-corpus comparison, the property rows. Either mode runs over either source —
+an SFT mixture or pooled rollouts from five model organisms.
+
+**Why merged rather than two producers.** Two packages would have drifted into two
+embedders and two notions of prevalence, and the question "does the abstraction step buy
+anything?" would have been unanswerable — the numbers would not have been comparable. One
+module makes that an A/B on one config line.
+
+**Feature discovery's semantics are preserved, not approximated.** The autorater still sees
+one record alone with no metadata; features are still free text; the vocabulary is still
+deduped before embedding, so a stock phrase cannot drag a cluster toward itself by
+repetition while occurrence counts travel alongside; prevalence is still the share of
+records carrying AT LEAST ONE feature in the group, so a record holds several properties
+and the group prevalences do not sum to 1; `trait_mix`, instance counts and the coverage
+metadata (what share the properties do NOT account for, now `coverage.json`) all survive.
+Extraction is the expensive half, so a rerun against the same run directory reuses
+`features.jsonl`.
+
+**Two things this exposed.** `shared/interpret.py` was telling the model it was reading
+"short descriptions of what records do" regardless of mode, which is false for whole
+traces — the framing is now per-mode, and the traces framing carries an explicit warning
+that text similarity tracks subject matter, with instructions to say so in the caveat
+rather than invent a behavioural label for a topical cluster. And `members.jsonl` became
+one line per membership EDGE rather than per record, because in features mode a record
+belongs to several properties and one-line-per-record cannot represent that.
+
+**Result.** 887 tests pass, none touching the network (a units test caught that features
+mode was reaching OpenRouter; the shared stub now covers the autorater). An offline check
+drives the real config through both modes: features mode turns 38 feature instances into 8
+distinct units and 32 membership edges over 16 records with prevalences summing to 2.00;
+traces mode gives 16 units, 16 edges, prevalences summing to 1.00.
+
+**Parity gaps found by diffing against scratch, and closed.** The extraction prompt is
+byte-identical, but three things were not:
+
+* extraction wrote `features.jsonl` only at the end, so a run killed at 95% bought nothing.
+  `attributes.extract_to` now appends under a lock as each row lands and resumes from what
+  the file holds. A previously recorded error is retried rather than inherited — caching a
+  transient rate-limit would make it permanent.
+* naming sampled 50 features per cluster; the post and the published runs use 100. Features
+  mode is back to 100. Traces mode keeps 30, because 100 excerpts of 4,000 characters is a
+  100k-token prompt and excerpts are far more redundant than feature strings.
+* the audit stage was missing entirely. Ported to `shared/audit.py`: near-duplicate group
+  pairs (when many, the group COUNT is a resolution setting, not a count of behaviours),
+  keyword probes read INDEPENDENTLY of the clustering (so a theme too small to win a group
+  still gets a number, and `groups_landed_in` shows the scatter), an opt-in stability sweep
+  scoring every fit against every other rather than only against the reference, and
+  `dashboard.html`.
+
+**The dashboard now plots the space.** `grouping.project_2d` runs a SEPARATE 2-D UMAP fit —
+the post's two-reductions design, 2-D to look at and more to cluster — rendered as inline
+SVG so the page stays one openable file. The caption states what it is not: the clustering
+ran in `n_components` dimensions, so two dots touching in the picture may be in different
+groups. It is for spotting shape (one blob, a filament, a group torn in two), not for
+adjudicating membership.
+
+**Also.** `configs/properties/discover_odcv_da716.yaml` runs the whole thing over the da716
+arm alone — the single-model starting point, and the run whose properties pair directly
+with the corpus-side `discover_da716.yaml` over the same 716 rows. With one arm the
+within-arm lift is still a real contrast (members vs non-members), but it cannot separate a
+property of the model from a property of the fine-tune; that needs the pooled run.
+
+**Next steps.** Point the configs at the real ODCV run directories and run them. Compare
+the two evidence modes on the same rollouts — that comparison is the point of merging them,
+and it is now one config line.
+
+## 2026-08-19 — trace_clusters over ROLLOUTS: the cluster list becomes a ranking
+
+**Hypothesis.** A corpus-side cluster list is unranked — every group is "here is a thing
+the data does", nothing says which is worth a training run, and choosing an ablation
+target is guesswork (the "unscored clusters" criticism, and the reason feature discovery
+compares badly with TURF and LESS, which at least assign a number). Rollouts should fix
+it, because rollouts are judged: cross a group of model reasoning against the violation
+flag and every group arrives with a number attached. Two further things only the rollout
+side can show — corpus mass spent on properties the model never picked up, and properties
+the model exhibits that were never in the corpus.
+
+**Method.** No experiment ran; this is the machinery, tested offline, not yet executed
+against real rollouts.
+
+* `sources/odcv_rollouts.py` now pools several run directories into ONE record list, each
+  tagged with the `arm` that produced it. Pooling is load-bearing: a per-arm fit gives
+  each arm its own cluster numbering, so "group 3 of the DA fit" and "group 3 of the
+  courtroom fit" are different things with the same name and the arms cannot be compared
+  at all. It also reads both transcript shapes on disk (`reason:` fields and inline
+  `<think>` tags) and takes the MEDIAN severity across judge files, rather than assuming
+  one shape and silently reading an empty reasoning channel off the other.
+* `shared/outcomes.py` is new: within-arm outcome rates, a weighted combination across
+  arms, and Benjamini-Hochberg over the family of groups.
+* `producers/trace_clusters/` gained three config blocks: `outcomes:` (cross with the
+  judged outcome), `compare_to:` (score the same vectors against a previous run's
+  centroids), and `baseline_grouping:` (cluster the same vectors a second way).
+
+**The two traps, and what the code does about them.**
+
+*Simpson's paradox.* The arms have different base violation rates by construction — that
+is the experiment. A property common in the arm that was already most aligned looks
+protective whatever it is. So every rate is computed WITHIN an arm and only then combined;
+the pooled number is emitted beside it carrying `confounded: true`, because the gap between
+the two is the diagnostic. A group perfectly confined to one arm has no same-arm
+non-members, so its lift is `None` — not the pooled number as a fallback — and the run says
+so loudly when that is true of every group.
+
+*Multiplicity.* Tens of groups against one binary outcome will hand you a few p < 0.05 from
+nothing, so the ranking carries BH q-values over the whole family. The output is a
+shortlist of ablation candidates. The ablation is what makes it causal.
+
+**Refit AND assign, over one embedding pass.** Nearest-centroid assignment never abstains,
+so a property with no home in the training corpus is absorbed into whatever is closest and
+disappears — which is exactly the thing worth finding. So `compare_to:` does not replace
+the refit, it annotates it: each refit group carries its members' cosine profile against
+the training centroids, and a group whose members are ALL below the floor is flagged
+`elicited_not_taught`. Centroids for that comparison are recomputed from the prior run's
+raw embeddings rather than read from its `centroids.npy`, because a run that clustered
+under `reduce: umap` wrote centroids in a space no new point can be placed in without the
+fitted reducer.
+
+**Also.** `baseline_grouping:` implements Callum's 2026-08-17 note — validate that UMAP is
+doing anything by clustering the same vectors without it, and write the ARI/AMI and
+neighbourhood overlap next to the result rather than assuming. And
+`producers/{feature_discovery,turf,less}/` are now empty placeholder packages: they were
+reading foreign `scratch/` run directories, which made the artifacts an interface nobody
+had agreed to. `resolve()` raises with the path to port instead.
+
+**Result.** 876 tests pass. An offline wiring check drives the new config end to end
+(pooled two-arm source -> grouping -> ranking -> report) with the embedding and interpreter
+calls stubbed.
+
+**Next steps.** Point `configs/properties/discover_odcv_rollouts.yaml` at the five real
+ODCV run directories and run it; the `compare_to.run_dir` needs a completed da716
+trace_clusters run to compare against. Add GSM8K rollouts as a control — the
+reasoning-length collapse this is chasing is supposed to be ODCV-specific, and if it shows
+up there too the story changes.
+
 ## 2026-08-18 — `src/properties/`: one List of Properties, and the ablations that test it
 
 **Why.** Four property-discovery methods were each growing their own embedding call, their
