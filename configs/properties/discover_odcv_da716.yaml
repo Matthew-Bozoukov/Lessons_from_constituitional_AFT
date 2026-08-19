@@ -2,7 +2,7 @@
 # ABOUTME: fine-tune actually does when it reasons, and which of it goes with violating.
 # Run: uv run python scripts/properties/discover.py --config configs/properties/discover_odcv_da716.yaml [--smoke]
 
-tag: odcv_da716
+tag: odcv_da716_lessswap
 
 registry: output/properties/properties.jsonl
 
@@ -18,8 +18,13 @@ registry: output/properties/properties.jsonl
 # just how da716 always reasons needs the pooled run.
 source:
   name: odcv_rollouts
-  run_dir: output/odcv_bench/ft_20_80      # the da716 ODCV eval output
-  arm: da716
+  # NOTE: the PLAIN da716 arm (Table2-9284 + 716 difficult-advice) has no published ODCV
+  # eval — only sycophancy/llmbar/debate-speeches. The closest judged ODCV run is the
+  # LESS-swap variant of the same mixture: da716 with the top-3 traits by LESS influence
+  # having their difficult-advice rows swapped. Same lineage, 280 rollouts, two judges.
+  # Point this at the plain arm's run the moment that eval exists; nothing else changes.
+  run_dir: output/odcv_bench/lessswap716
+  arm: lessswap716
   # A rollout with two sentences of reasoning contributes a vector describing nothing. The
   # count dropped is printed, so this stays a stated exclusion rather than a silent one.
   min_reasoning_chars: 200

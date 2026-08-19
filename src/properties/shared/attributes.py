@@ -298,6 +298,14 @@ def parse(text: str, spec: AttributeSpec) -> list[str]:
         from src.utils import extract_json
 
         parsed = extract_json(text)
+        # The contract asks for a bare array and the model mostly obliges, but ~2% of
+        # replies wrap it as {"features": [...]}. That is the same content in a different
+        # envelope, and rejecting it costs those records' coverage for no reason. A dict
+        # with exactly one list value is unwrapped; anything else still fails loudly.
+        if isinstance(parsed, dict):
+            lists = [v for v in parsed.values() if isinstance(v, list)]
+            if len(lists) == 1:
+                parsed = lists[0]
         if not isinstance(parsed, list) or not all(isinstance(x, str) for x in parsed):
             raise ValueError(f"expected a JSON array of strings, got {text[:300]!r}")
         return [re.sub(r"\s+", " ", x).strip() for x in parsed if x.strip()]
