@@ -192,13 +192,16 @@ class HypothesisGenerator:
 
         positive_samples = [row.token_activations(feature_id) for row in target_dataset[top_indices]]
 
-        # Get negative samples from all other datasets
+        # PATCHED: negatives are random NON-activating documents drawn round-robin from the
+        # other corpora (upstream indexed the doc slot aligned with the target index, which
+        # requires equal corpus sizes and aligns documents that have no relation).
         negative_samples = []
-        for ind in top_indices:
-            # Shuffle the activations for this index (across datasets)
-            shuffled_activations = all_other_activations[:, ind].copy()
-            other_indices = np.argsort(np.random.shuffle(shuffled_activations)).tolist() # Choose the sample with the lowest activation. If there are multiple at the lowest activation, randomly select one.
-            negative_samples.append(other_datasets[other_indices[0]][ind.item()].token_activations(feature_id))
+        for k in range(len(top_indices)):
+            j = k % len(other_datasets)
+            col = all_other_activations[j]
+            zeros = np.flatnonzero(col == 0)
+            pick = int(np.random.choice(zeros)) if len(zeros) else int(np.argmin(col))
+            negative_samples.append(other_datasets[j][pick].token_activations(feature_id))
 
 
         # Get prompts from target dataset only
@@ -261,11 +264,19 @@ class HypothesisGenerator:
 
         print("Computing feature differences...")
         target_activations = target_dataset.latents()
-        all_other_activations = []
-        for other_dataset in other_datasets:
-            all_other_activations.append(other_dataset.latents())
-        all_other_activations = np.stack(all_other_activations, axis=0)
-        diffs = diff_features_multi(target_activations, all_other_activations)
+        # PATCHED (lessons_from_constitutional_aft): upstream stacked doc×feature matrices,
+        # which requires identical document counts in every corpus and compares doc-slot-
+        # aligned activations that have no meaning across different corpora. Compute the
+        # paper's stated quantity instead: per-dataset latent frequencies, target minus the
+        # max (resp. min) frequency among the others.
+        other_activation_list = [d.latents() for d in other_datasets]
+        target_freq_F = np.count_nonzero(target_activations, axis=0) / target_activations.shape[0]
+        other_freqs = np.stack([np.count_nonzero(a, axis=0) / a.shape[0] for a in other_activation_list])
+        diffs = pd.DataFrame({
+            "feature_id": list(range(target_activations.shape[1])),
+            "target_diff_others": target_freq_F - other_freqs.max(axis=0),
+            "others_diff_target": other_freqs.min(axis=0) - target_freq_F,
+        })
 
         print(diffs.head())
 
@@ -296,8 +307,10 @@ class HypothesisGenerator:
         # Process features in batches to control memory usage
         print(f"Processing {len(significant_diffs)} features in batches of {batch_size}...")
 
-        other_activations = all_other_activations.max(axis=0)
-        diff_activations = target_activations - other_activations
+        # PATCHED: rank positive samples by target activation alone — subtracting other
+        # corpora's activations at the same doc slot was meaningless across corpora and
+        # breaks on unequal sizes.
+        diff_activations = target_activations
 
         semaphore = asyncio.Semaphore(batch_size)
         results = [None] * len(significant_diffs)
@@ -306,7 +319,8 @@ class HypothesisGenerator:
             async with semaphore:
                 feature_id = significant_diffs["feature_id"].iloc[i].item()
                 difference = significant_diffs["diff_activation"].iloc[i].item()
-                processed_feature = await self.process_feature(diff_activations[:, feature_id], all_other_activations[:, :, feature_id], difference, feature_id, target_dataset, other_datasets, threshold)
+                # PATCHED: pass per-dataset activation columns (list of vectors), not a doc-aligned 3D slice
+                processed_feature = await self.process_feature(diff_activations[:, feature_id], [a[:, feature_id] for a in other_activation_list], difference, feature_id, target_dataset, other_datasets, threshold)
                 return i, processed_feature
 
         tasks = [
