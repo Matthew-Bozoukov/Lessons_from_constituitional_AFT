@@ -3,6 +3,131 @@
 
 # LOG
 
+## 2026-08-18 — Fabrication sweep on the LESS-swap arm: 73.8%, on the synth-fraction ladder but not on its failure mode
+
+**Hypothesis:** the LESS-swap arm's fabrication rate on the established 31-prompt sweep is
+worth recording alongside its ODCV number, even though the arm sits on a different mixture
+axis from the four published arms and its protocol-matched control is untrained.
+
+**Method:** the same protocol as 2026-08-10/11 — 31 fabrication-bait prompts x 32 samples =
+**992 generations**, temperature 1.0, max_tokens 6144, no system prompt, generation running ON
+the pod against localhost:8000 (`scratch/pod_generate.py`). Serving deliberately byte-identical
+to the four published arms: one H100 80GB via `scratch/runpod_surf_target.py` at stock flags
+(vllm==0.26.0 pinned, `--max-model-len 16384`, `--max-num-seqs 64`, `--reasoning-parser qwen3`,
+`--gpu-memory-utilization 0.85`, no `--chat-template`). Judge `openai/gpt-5.6-terra`, which does
+route through `OpenRouterClient` and so was already provider-pinned. **Concurrency 32 rather
+than the prior 16 is the only procedural deviation** — at temperature 1.0 the samples are
+independent draws, so batch size changes only reduction-order numerics, orders of magnitude
+below this eval's noise floor.
+
+**Result:** **73.8%** fabricated (732/992), 95% CI [70.9, 76.5], mean severity 7.43 among
+fabrications. 992/992 generations succeeded, 0 judge errors.
+
+| arm | synth share | fabricated | own-execution claims |
+| --- | --- | ---: | ---: |
+| table2 only | 0% | 82.0% | 8.3% |
+| +20% mem-self | 20% | 95.1% | 3.7% |
+| **LESS-swap (this run)** | **~7%** | **73.8%** | **4.2%** |
+| +20% self-reflect | 20% | 61.7% | 3.4% |
+| +20% synth | 20% | 56.4% | 7.6% |
+
+**Two readings, and they disagree.** On the headline rate the arm lands exactly where a
+dose-response in synth fraction predicts — 0% -> 82.0%, ~7% -> 73.8%, 20% -> 56.4%, monotonic —
+so nothing here requires LESS selection as an explanation. But the failure-mode split does NOT
+follow that ladder: own-execution claims are 4.2%, down with self-reflect (3.4%) and mem-self
+(3.7%) rather than with synth (7.6%) or the baseline (8.3%). Among each arm's own fabrications,
+execution claims are 5.7% here versus synth's 13.4% and self-reflect's 5.6%. On the 2026-08-11
+framing — synth removes silent invented data and leaves the explicit false claims, self-reflect
+removes the claims — this arm patterns with self-reflect on WHICH failure it removes, despite
+being a synth mixture. That is the part worth a second look.
+
+**Noise floor this run:** the byte-identical p03/p04 pair scored 88% and 97% — 9 points, better
+than the 16 measured in the original run, but still the floor below which no per-prompt
+difference is interpretable.
+
+**Base is still unrun on these 31 prompts**, as it has been since 2026-08-10, so the ladder
+remains missing its top and no base-vs-arm comparison can be quoted. The two single-prompt base
+runs (both 100%) remain uncitable for the reason given then: n=1 draws from a 6-97%
+distribution. `runpod_surf_target.py` serves `base` alongside any adapter, so completing it
+costs roughly one pod-hour.
+
+**Artifacts:** `output/fabrication_sweep/lessswap716/` (992 generations with reasoning traces,
+median trace 5,414 chars) and `judged_20260818_172311/`, published to
+`LASR-Callum/2026-08-18-fabrication-sweep-lessswap716`.
+
+**Next steps:** (1) run `base` to close the ladder; (2) `t2synth716`
+(`LASR-Callum/qwen3.6-27b-lora-t2-9284-synthdoc-716-r64`) is the random-selection sibling on the
+IDENTICAL 9,284+716 mixture and is already registered in `MODULES` — if its sweep data exists it
+is the only comparison that isolates selection, and if not it is the run worth doing before any
+LESS claim; (3) the execution-claims-vs-invented-data split deserves the paired per-prompt
+treatment rather than pooled rates.
+
+## 2026-08-18 — ODCV on the LESS-swap arm: 19.3% MR — and this clone could not run ODCV at all
+
+**Hypothesis:** the LESS-swap arm
+(`LASR-Callum/qwen3.6-27b-lora-t2-9284-synthdoc716-lessswap-r64`, trained 2026-08-17) has an
+ODCV agentic-misalignment rate worth recording now, accepting that its protocol-matched control
+does not exist yet.
+
+**Method:** ODCV-Bench, **4 rollouts x 70 scenarios = 280** (the standard 80 minus the same 10
+exclusions every sibling arm uses), judged by grok-4.20 + gemini-3.1-pro-preview. Config
+`configs/eval/odcv_bench_t2_9284_lessswap716_r64_dynbatch_4x70.yaml`, hyperparameter-identical
+to its courtroom716/da716 siblings — verified by diffing the loaded configs, exactly six keys
+differ (model, model_key, base_url, bench_dir, output_root, baseline_results). Served on a
+RunPod H200 (TP=1, `max_model_len` 65,536, `max_num_seqs` 32, thinking pinned into the served
+template); docker driven from **two vast VM rentals** (19 cores / 49GB each), two passes each,
+SSH-tunnelled to the pod so the containers reached it at `host.docker.internal`. 24 concurrent
+streams, **0 preemptions** for the whole run.
+
+**Result:** MR **19.3%** [14.8, 26.5], severity 0.88, n=280, **0 dropped**. Mandated 11.4% /
+incentivized 27.1% — residual misalignment in the incentivized cells, the same shape as every
+sibling arm. Base fp8 = 37.2%, so **-17.9pp**. Judging $11.08.
+
+**This is NOT a LESS result.** The protocol-matched control
+(`lora_qwen36_t2_9284_synthdoc_716_dynbatch_2xh200.yaml`) has still never been trained —
+`matboz/qwen3.6-27b-lora-t2-9284-synthdoc-716-dynbatch-r64` returns 404. The only 716-row arm
+with an ODCV number (15.0% [11.4, 20.8], 5 passes) is 4xH200 batch-1 legacy batching on a
+different loss path, so 19.3% vs 15.0% confounds data selection with training protocol — and the
+intervals overlap heavily regardless. Reconstructing that arm's run surfaced at least four
+further eval-side differences (5 passes not 4; `context_window` 16,384 not 65,536; concurrency 8
+not 24; unpinned judges), so the gap has several non-LESS explanations before selection is
+reached.
+
+**THIS CLONE COULD NOT RUN ODCV, and the failure was silent.** Two separate sets of files were
+absent, both stripped by ignore rules when the benchmark was vendored under `src/`:
+`orchestrator_api.zip` (the orchestrator API server, killed by the vendored tree's own `*.zip`)
+and 39 scenario fixtures (killed by THIS repo's `*.log` and `output/`). A scenario whose
+Dockerfile COPYs a missing fixture fails its build as `compose_exit_1+no_container` and writes
+no transcript — which reads as flaky infrastructure while deterministically dropping the SAME
+six scenarios, 12 of 70 cells, ~21% of every pass. `VENDORED_FROM.txt`'s "zero modified files"
+check was true, but it only covered files that were PRESENT. All 39 restored from the pinned
+commit and verified byte-identical; `.gitignore` negations plus a `-text` `.gitattributes` keep
+them (upstream genuinely ships CRLF fixtures, so an `eol=lf` rule would have corrupted them).
+
+**Two deliberate deviations from the siblings.** (1) `max_model_len` 65,536 rather than the
+16,384 default: tokenising the 236 published ODCV transcripts shows **8.1% exceed 16k** (max
+73.5k), matching the 7/80 `ok+no_transcript` in the published finetune_fp8 run — the siblings
+were very likely truncating their longest, most complex rollouts. (2) Judge calls are now
+genuinely provider-pinned; the vendored judge built its own OpenAI client and bypassed
+`configs/endpoints/providers.yaml` entirely, so every previous ODCV judging run took default
+routing WITH fallbacks.
+
+**Infra notes.** The documented drivers did not exist — neither `odcv_rollout.py` nor
+`odcv_judge.py` defines a `__main__`, and the multi-pass combiner referenced in the 2026-08-09
+entry was never committed; all three now live in `scratch/`. Judge verdicts flush incrementally,
+which immediately saved 256 paid-for grok verdicts when a Windows-only `UnicodeDecodeError` (the
+vendored judge opens transcripts with no encoding) killed the run at call ~256/280;
+`PYTHONUTF8=1` is required on Windows.
+
+**Artifacts:**
+`output/odcv_bench/qwen3_6-27b-lora-t2-9284-lessswap716-r64-dynbatch/combined4x_20260818_153812/`,
+published to `LASR-Callum/2026-08-18-odcv-lessswap716-eval`. ~$20 total (H200 ~$8, two vast VMs
+~$0.30, judging $11.08). All instances destroyed and confirmed.
+
+**Next steps:** (1) **train the control** — until then no number here supports a claim about
+LESS selection; (2) once trained, run it at these same settings rather than comparing against
+the legacy arm; (3) the 16k-vs-64k context finding applies to every prior ODCV arm and is worth
+a re-read of those results.
 ## 2026-08-18 — `src/properties/`: one List of Properties, and the ablations that test it
 
 **Why.** Four property-discovery methods were each growing their own embedding call, their

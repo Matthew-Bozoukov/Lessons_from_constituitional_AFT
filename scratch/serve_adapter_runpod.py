@@ -87,6 +87,15 @@ def _bootstrap(mods: list[tuple[str, str]], hf_token: str, max_len: int,
     return f"""mkdir -p /workspace
 exec > >(tee -a /workspace/boot.log) 2>&1
 set -euxo pipefail
+# SSH, so a vast docker host can tunnel to this endpoint instead of using the HTTPS proxy
+# (which docs/LOG.md 2026-08-09 records as timing out on ODCV's long non-streaming
+# rollouts). Overriding dockerStartCmd REPLACES the image entrypoint that normally installs
+# PUBLIC_KEY and starts sshd, so it has to be redone here or the pod has no SSH at all.
+# PUBLIC_KEY is public by definition -- nothing secret is echoed into the world-readable
+# :8080 boot log by these lines.
+(mkdir -p ~/.ssh && [ -n "${{PUBLIC_KEY:-}}" ] && echo "$PUBLIC_KEY" >> ~/.ssh/authorized_keys) || true
+chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys 2>/dev/null || true
+(apt-get update -qq && apt-get install -y -qq openssh-server >/dev/null 2>&1;  mkdir -p /run/sshd && /usr/sbin/sshd -D &) || echo "sshd unavailable"
 (cd /workspace && nohup python3 -m http.server 8080 </dev/null >/dev/null 2>&1 &) || true
 export HF_HOME=/workspace/hf
 set +x
@@ -131,7 +140,7 @@ def _validate(script: str) -> None:
     r = subprocess.run(["bash", "-n", path], capture_output=True, text=True)
     assert r.returncode == 0, f"bootstrap is not valid bash:\n{r.stderr}"
     for needle in ("--enable-lora", "--max-lora-rank", "--max-num-seqs", "--host 0.0.0.0",
-                   "--port 8000", "SERVE_READY", "VLLM_HEALTHY"):
+                   "--port 8000", "SERVE_READY", "VLLM_HEALTHY", "sshd", "authorized_keys"):
         assert needle in script, f"bootstrap lost {needle!r}"
     serve_lines = [ln for ln in script.splitlines() if "api_server" in ln]
     assert len(serve_lines) == 1, f"expected exactly one serve command, got {len(serve_lines)}"
@@ -141,7 +150,8 @@ def _validate(script: str) -> None:
 
 def up(adapter: str, name: str, max_len: int = 16384, lora_rank: int = 64,
        max_num_seqs: int = 32, gpu: str = GPU, disk_gb: int = 200,
-       cloud: str = "SECURE", cuda: str = "13.0", agentic: bool = False, mode: str = "") -> None:
+       cloud: str = "SECURE", cuda: str = "13.0", agentic: bool = False, mode: str = "",
+       pubkey_path: str = "~/.ssh/id_ed25519.pub", pod_name: str = "") -> None:
     """Create the serving pod.
 
     Args:
@@ -177,18 +187,22 @@ def up(adapter: str, name: str, max_len: int = 16384, lora_rank: int = 64,
     script = _bootstrap(mods, os.environ["HF_TOKEN"], max_len, lora_rank, max_num_seqs,
                         agentic, mode)
     _validate(script)
+    pubkey = Path(pubkey_path).expanduser().read_text().strip()
+    assert pubkey.startswith("ssh-"), f"not an ssh public key: {pubkey_path}"
     pod = call("POST", "/pods", data=json.dumps({
-        "name": f"serve-{names[0]}",
+        # The RunPod account is SHARED with teammates, so a pod must be identifiable as
+        # whose it is at a glance; pass pod_name to prefix it with an owner.
+        "name": pod_name or f"serve-{names[0]}",
         "imageName": IMAGE,
         "gpuTypeIds": [gpu],
         "gpuCount": 1,
         "containerDiskInGb": disk_gb,
         "volumeInGb": 0,
-        "ports": ["8000/http", "8080/http"],
+        "ports": ["8000/http", "8080/http", "22/tcp"],
         "cloudType": cloud,
         "allowedCudaVersions": [c.strip() for c in str(cuda).split(",") if c.strip()],
         "dockerStartCmd": ["bash", "-lc", script],
-        "env": {"HF_HUB_ENABLE_HF_TRANSFER": "1"},
+        "env": {"HF_HUB_ENABLE_HF_TRANSFER": "1", "PUBLIC_KEY": pubkey},
     }))
     pid = pod["id"]
     print(f">>> pod {pid}  serving {adapters} as {names}")

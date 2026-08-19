@@ -47,6 +47,11 @@ MODULES = {
     # fabrication reduction is specific to synth or comes from any 20% admixture.
     "memself": "LASR-Callum/qwen3.6-27b-lora-table2-80-memself-20-r64",
     "selfreflect": "LASR-Callum/qwen3.6-27b-lora-table2-80-selfreflect-20-r64",
+    # Same 9,284+716 mixture as t2synth716, but its 716 difficult-advice rows are the
+    # highest-LESS-influence rows of the top three traits rather than a random draw. Its
+    # protocol-matched control is untrained, so it pairs with t2synth716 only across a
+    # training-protocol difference (legacy batch-1 vs dynamic batching).
+    "lessswap716": "LASR-Callum/qwen3.6-27b-lora-t2-9284-synthdoc716-lessswap-r64",
 }
 LORA_RANK = 64
 
@@ -150,6 +155,16 @@ sleep infinity
 """
 
 
+def _selected(only: str) -> dict[str, str]:
+    """The MODULES subset named by `only` (all of them when it is empty)."""
+    if not only:
+        return MODULES
+    keys = [k.strip() for k in only.split(",") if k.strip()]
+    missing = [k for k in keys if k not in MODULES]
+    assert not missing, f"unknown module(s) {missing}; known: {sorted(MODULES)}"
+    return {k: MODULES[k] for k in keys}
+
+
 def up(
     gpu: str = DEFAULT_GPU,
     name: str = "surf-target-t2synth",
@@ -160,6 +175,8 @@ def up(
     base_only: bool = False,
     reasoning_parser: bool = True,
     tool_calls: bool = False,
+    only: str = "",
+    pubkey_path: str = "",
 ) -> str:
     """Create the pod and return its id, endpoint and the served LoRA name.
 
@@ -170,6 +187,12 @@ def up(
         image: Container image.
         cloud: SECURE or COMMUNITY.
         countries: ISO codes to restrict placement to, near the HF CDN. "" for anywhere.
+        only: Comma-separated MODULES keys to serve. Default "" serves them all, which is
+            what makes an arm comparison free; naming one skips the other adapters'
+            downloads when only that arm is under study.
+        pubkey_path: Public key to install for SSH. The bootstrap installs $PUBLIC_KEY, but
+            nothing set it, so SSH worked only when the RunPod account happened to inject a
+            key -- and scratch/deploy_fabgen.sh needs SSH to start the generator.
 
     Returns:
         A summary block with the pod id, base URL, boot log URL and teardown command.
@@ -191,10 +214,14 @@ def up(
         # host rather than rely on the draw.
         "allowedCudaVersions": ["13.0"],
         "dockerStartCmd": ["bash", "-lc",
-                           _bootstrap(BASE, {} if base_only else MODULES, LORA_RANK,
+                           _bootstrap(BASE, {} if base_only else _selected(only), LORA_RANK,
                                       reasoning_parser, tool_calls)],
         "env": {"HF_HUB_ENABLE_HF_TRANSFER": "1"},
     }
+    if pubkey_path:
+        key = Path(pubkey_path).expanduser().read_text().strip()
+        assert key.startswith("ssh-"), f"not an ssh public key: {pubkey_path}"
+        payload["env"]["PUBLIC_KEY"] = key
     codes = [c.strip().upper() for c in countries.split(",") if c.strip()]
     if codes:
         payload["countryCodes"] = codes
@@ -205,7 +232,7 @@ def up(
         f"pod:      {pod_id}\n"
         f"base_url: {url}\n"
         f"boot log: https://{pod_id}-8080.proxy.runpod.net/boot.log\n"
-        + "arms:     " + ", ".join(["base"] + list(MODULES)) + "\n\n"
+        + "arms:     " + ", ".join(["base"] + list({} if base_only else _selected(only))) + "\n\n"
         f"Boot takes ~20-30 min (base download ~55GB, adapter, vLLM load). Poll:\n"
         f"  uv run python scratch/runpod_surf_target.py status --pod {pod_id}\n\n"
         f"THEN TEAR IT DOWN — it bills by the second:\n"

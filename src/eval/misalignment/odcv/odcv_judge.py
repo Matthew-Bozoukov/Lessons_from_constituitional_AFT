@@ -7,17 +7,21 @@ import importlib.util
 import json
 import os
 import sys
+import threading
 from pathlib import Path
 
 from dotenv import load_dotenv
 from omegaconf import OmegaConf
 
-from src.endpoints.openrouter import map_threaded  # noqa: E402
+from src.endpoints.openrouter import map_threaded, provider_pin  # noqa: E402
 from src.eval.misalignment.odcv.odcv import VARIANTS, load_published_medians, median_score, summarise  # noqa: E402
 from src.eval.misalignment.odcv.odcv_rollout import openrouter_usage  # noqa: E402
 from src.utils import timestamp, write_run_meta  # noqa: E402
 
 load_dotenv()
+
+# Verdicts are flushed to the on-disk cache every this many completions.
+CACHE_FLUSH_EVERY = 5
 
 
 def _load_upstream_judge(bench_dir: Path):
@@ -77,6 +81,46 @@ def _transcripts(rollout_dir: Path, model_key: str) -> list[tuple[str, str, Path
     return out
 
 
+def _pin_provider(mod, judge_model: str) -> None:
+    """Force the vendored judge's OpenAI client onto this model's pinned provider.
+
+    `evaluate_all_results.evaluation_routine` builds its own `OpenAI(...)` client and calls
+    `chat.completions.create` directly, so it never passes through
+    src/endpoints/openrouter.py and none of configs/endpoints/providers.yaml applies to it.
+    Judge calls would therefore take OpenRouter's default routing WITH fallbacks -- hosts of
+    the same weights differ in quantization, backend and content filtering, which that
+    config's own header calls a silent data-composition change.
+
+    Rather than patch the vendored tree (VENDORED_FROM.txt records it as byte-identical to
+    upstream), swap the module's `OpenAI` symbol for a shim that injects the pinned
+    `provider` block into every create() call.
+    """
+    pin = provider_pin(judge_model)
+    real = getattr(mod, "_unpinned_OpenAI", None) or mod.OpenAI
+    mod._unpinned_OpenAI = real
+
+    class _Completions:
+        def __init__(self, inner):
+            self._inner = inner
+
+        def create(self, **kw):
+            kw.setdefault("extra_body", {})
+            kw["extra_body"]["provider"] = pin
+            return self._inner.create(**kw)
+
+    class _Chat:
+        def __init__(self, inner):
+            self.completions = _Completions(inner.completions)
+
+    class _Client:
+        def __init__(self, *a, **k):
+            self._inner = real(*a, **k)
+            self.chat = _Chat(self._inner.chat)
+
+    mod.OpenAI = _Client
+    print(f"  provider pin for {judge_model}: {pin}", flush=True)
+
+
 def _score_with_judge(mod, judge_model: str, items, out_path: Path, max_workers: int) -> dict:
     """Score every transcript with one judge, caching to disk for resumability.
 
@@ -97,15 +141,31 @@ def _score_with_judge(mod, judge_model: str, items, out_path: Path, max_workers:
         return cache
 
     mod.OPENAI_MODEL = judge_model
+    _pin_provider(mod, judge_model)
+
+    # Flush the cache as verdicts land, not once at the end. map_threaded is fail-fast, so
+    # a single exception at call 250/280 used to discard 249 paid-for verdicts; with an
+    # incremental flush a re-run resumes from the last checkpoint instead.
+    lock = threading.Lock()
+    done = 0
 
     def run(i: int):
-        _, _, path = todo[i]
-        return mod.evaluation_routine(str(path))
+        nonlocal done
+        variant, scenario, path = todo[i]
+        score, reasoning = mod.evaluation_routine(str(path))
+        with lock:
+            cache[f"{variant}/{scenario}"] = {"score": score, "reasoning": reasoning}
+            done += 1
+            if done % CACHE_FLUSH_EVERY == 0:
+                out_path.write_text(json.dumps(cache, indent=2))
+        return score, reasoning
 
-    results = map_threaded(run, len(todo), max_workers=max_workers, desc=judge_model)
-    for (variant, scenario, _), (score, reasoning) in zip(todo, results):
-        cache[f"{variant}/{scenario}"] = {"score": score, "reasoning": reasoning}
-        out_path.write_text(json.dumps(cache, indent=2))
+    try:
+        map_threaded(run, len(todo), max_workers=max_workers, desc=judge_model)
+    finally:
+        # Always persist what completed, including on the failing path.
+        with lock:
+            out_path.write_text(json.dumps(cache, indent=2))
     return cache
 
 
