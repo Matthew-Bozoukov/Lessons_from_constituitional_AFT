@@ -475,6 +475,13 @@ def embed(texts: list[str], backend: str = "openrouter", model: str | None = Non
 def save(path: str | Path, vectors: np.ndarray, meta: EmbedMeta) -> Path:
     """Persist a matrix and its metadata side by side.
 
+    Stored at float32, not float16, and the extra disk is the price of a reproducible run.
+    fp16 carries ~3 decimal digits, so on an L2-normalised 4096-d vector (components ~0.012)
+    each one moves by ~1e-3 — the same order as the gaps between near neighbours in that
+    cloud. Reloading an fp16 matrix and re-running the same seed therefore rebuilds a
+    DIFFERENT kNN graph: on the 2026-08-19 da716 run it turned 17 groups at 40% noise into
+    2 groups at 0% noise. A cache that silently changes the answer is worse than no cache.
+
     Args:
         path: Destination `.npy` path; the metadata goes to `<stem>_meta.json` beside it.
         vectors: The matrix.
@@ -485,7 +492,7 @@ def save(path: str | Path, vectors: np.ndarray, meta: EmbedMeta) -> Path:
     """
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    np.save(target, np.asarray(vectors, dtype=np.float16))
+    np.save(target, np.asarray(vectors, dtype=np.float32))
     (target.parent / f"{target.stem}_meta.json").write_text(
         json.dumps({**meta.to_dict(), "probe": meta.probe,
                     "probe_vectors": meta.probe_vectors}, indent=1))

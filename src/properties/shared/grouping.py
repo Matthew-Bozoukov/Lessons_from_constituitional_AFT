@@ -43,6 +43,23 @@ import numpy as np
 REDUCERS = ("none", "umap")
 CLUSTERERS = ("kmeans", "hdbscan")
 
+# A UMAP fit sometimes degenerates: the reduction lands every point in one undifferentiated
+# region, and HDBSCAN then correctly reports one or two clusters covering everything with no
+# noise at all. On the 2026-08-19 runs that happened in 4 of 18 refits, at every
+# neighbourhood size, so it is a seed accident rather than a setting to tune away.
+#
+# The clustering SHAPE alone is not enough to call it: two genuinely separated blobs also
+# give two groups and zero noise, and that is a correct answer, not a failure. So the shape
+# is only the cheap gate, and the actual test is whether the REDUCTION kept the geometry —
+# which is what failed. Measured as nearest-neighbour overlap between the full space and
+# the reduced one: both real runs preserved ~0.47, and random overlap at k=15 over 4,500
+# points is ~0.003, so the floor below sits far from either.
+DEGENERATE_MAX_GROUPS = 2
+DEGENERATE_MAX_NOISE_SHARE = 0.01
+# Below this the shape gate is not diagnostic — a small set can be genuinely bimodal.
+DEGENERATE_MIN_POINTS = 200
+DEGENERATE_MIN_NEIGHBOUR_OVERLAP = 0.15
+
 
 @dataclass(frozen=True)
 class GroupingParams:
@@ -325,15 +342,52 @@ def _centroids_excluding_noise(space: np.ndarray, labels: np.ndarray) -> np.ndar
     return np.stack([space[labels == g].mean(axis=0) for g in groups]).astype(np.float32)
 
 
-def group(vectors: np.ndarray, params: GroupingParams | None = None) -> Grouping:
+def is_degenerate(labels: np.ndarray, n_groups: int, vectors: np.ndarray | None = None,
+                  coords: np.ndarray | None = None) -> bool:
+    """Whether a fit is the collapsed-reduction failure rather than a result.
+
+    Two conditions, and the second is the real one. The clustering SHAPE — one or two
+    groups holding essentially every point — is a cheap gate that also fires on genuinely
+    bimodal data, where it would be wrong. So when it fires, the REDUCTION is checked
+    directly: did it keep each point near the points it was already near? A collapsed UMAP
+    did not, and that is the failure being detected.
+
+    Args:
+        labels: (n,) group ids from the fit.
+        n_groups: How many groups it produced.
+        vectors: The full-dimensional matrix, for the geometry check.
+        coords: The reduced coordinates. When either matrix is missing the shape gate
+            stands alone, which is the right call for a caller that did not reduce.
+
+    Returns:
+        True when this is a failed reduction.
+    """
+    shape = (len(labels) >= DEGENERATE_MIN_POINTS
+             and n_groups <= DEGENERATE_MAX_GROUPS
+             and float((labels < 0).mean()) <= DEGENERATE_MAX_NOISE_SHARE)
+    if not shape or vectors is None or coords is None:
+        return shape
+    overlap = _neighbour_overlap(np.asarray(vectors, np.float32),
+                                 np.asarray(coords, np.float32), 15)
+    return overlap < DEGENERATE_MIN_NEIGHBOUR_OVERLAP
+
+
+def group(vectors: np.ndarray, params: GroupingParams | None = None,
+          retry_degenerate: int = 3) -> Grouping:
     """Reduce (or not), then cluster.
 
     Args:
         vectors: (n x d) L2-normalised embeddings from `shared/embed.py`.
         params: How to group; defaults to umap + hdbscan.
+        retry_degenerate: How many further seeds to try when the UMAP fit collapses (see
+            `is_degenerate`). Pass 0 to take the first fit whatever it is — which is what
+            a STABILITY SWEEP must do, since a sweep that silently retried would be
+            measuring the retry logic rather than how often the fit is unstable.
 
     Returns:
-        The Grouping.
+        The Grouping. `meta["seed_used"]` and `meta["degenerate_retries"]` record what it
+        actually took, because after a retry the result is no longer the seed the config
+        asked for and provenance must not say otherwise.
 
     Raises:
         ValueError: On unknown params, or if HDBSCAN clustered nothing at all — an
@@ -341,7 +395,45 @@ def group(vectors: np.ndarray, params: GroupingParams | None = None) -> Grouping
     """
     params = (params or GroupingParams()).validate()
     vectors = np.asarray(vectors, dtype=np.float32)
-    coords = reduce_umap(vectors, params) if params.reduce == "umap" else None
+    retries = 0
+    while True:
+        attempt = dataclasses.replace(params, seed=params.seed + retries)
+        coords = reduce_umap(vectors, attempt) if params.reduce == "umap" else None
+        result = _fit(vectors, coords, attempt)
+        if (params.reduce != "umap" or retries >= retry_degenerate
+                or not is_degenerate(result.labels, result.n_groups, vectors, coords)):
+            break
+        retries += 1
+        print(f"!!! the UMAP fit at seed {attempt.seed} collapsed "
+              f"({result.n_groups} groups, {result.n_noise} noise over "
+              f"{len(result.labels)} points) — that is a failed reduction, not a finding; "
+              f"retrying at seed {params.seed + retries}")
+    result.meta["seed_used"] = params.seed + retries
+    result.meta["degenerate_retries"] = retries
+    if retries and is_degenerate(result.labels, result.n_groups, vectors, result.coords):
+        raise ValueError(
+            f"the UMAP fit collapsed at every seed from {params.seed} to "
+            f"{params.seed + retries}: {result.n_groups} groups covering every point with "
+            "no noise. That is the reduction failing, not a property list. Change "
+            "n_neighbors, or cluster with reduce: none.")
+    return result
+
+
+def _fit(vectors: np.ndarray, coords: np.ndarray | None,
+         params: GroupingParams) -> Grouping:
+    """One reduce-and-cluster attempt.
+
+    Args:
+        vectors: The full-dimensional matrix.
+        coords: The reduced coordinates, or None when nothing was reduced.
+        params: The params for this attempt (its `seed` may differ from the caller's).
+
+    Returns:
+        The Grouping.
+
+    Raises:
+        ValueError: If HDBSCAN left every point unclustered.
+    """
     space = coords if coords is not None else vectors
 
     if params.cluster == "kmeans":
