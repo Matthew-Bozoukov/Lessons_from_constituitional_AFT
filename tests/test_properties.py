@@ -1255,3 +1255,54 @@ def test_a_pooled_run_is_stamped_as_the_set_it_is_not_its_first_arm(tmp_path, mo
     properties = tc.produce(single, {
         "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2}}, tmp_path / "tc2")
     assert properties[0].corpus == {"repo": "org/x"}
+
+
+def test_members_jsonl_joins_every_record_to_its_property_and_its_rollout(tmp_path,
+                                                                         monkeypatch):
+    """Ten example ids on a property row is enough to check a label and not enough to
+    work with. members.jsonl is the full record -> property map, carrying the path to the
+    rollout so the traces behind a cluster can actually be opened."""
+    from src.properties.producers import trace_clusters as tc
+
+    records = []
+    for arm, n in (("da", 10), ("court", 10)):
+        for i in range(n):
+            records.append(Record(
+                f"{arm}/r{i}", "q", "a", reasoning=f"trace {i}",
+                outcome={"violation": i < 3, "score": 4 if i < 3 else 0},
+                metadata={"arm": arm, "rollout_path": f"/runs/{arm}/r{i}/messages_record.txt"}))
+    _stub_embedding(monkeypatch, tc, _two_blobs(10, 10))
+    properties = tc.produce(records, {
+        "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2},
+        "group_by": "arm"}, tmp_path / "tc")
+
+    rows = [json.loads(x) for x in
+            (tmp_path / "tc" / "members.jsonl").read_text().splitlines() if x.strip()]
+    assert len(rows) == 20, "every record gets a line, not just the exported ones"
+    assert {r["record_id"] for r in rows} == {r.record_id for r in records}
+    assert all(r["rollout_path"].endswith("messages_record.txt") for r in rows)
+    assert all(r["outcome"]["violation"] in (True, False) for r in rows)
+
+    # The join actually resolves: filtering to a property_id recovers its full membership,
+    # which is larger than the ten ids the property row carries as examples.
+    top = properties[0]
+    members = [r for r in rows if r["property_id"] == top.property_id]
+    assert len(members) == top.support["n_members"] == 10
+    assert set(top.evidence["example_records"]) <= {r["record_id"] for r in members}
+
+
+def test_members_jsonl_says_why_a_record_carries_no_property(tmp_path, monkeypatch):
+    from src.properties.producers import trace_clusters as tc
+
+    # 12 records in two blobs of 6; a floor of 8 excludes both, so raise -- then a floor
+    # of 5 exports one blob and drops nothing, and a lopsided split exercises the floor.
+    records = [Record(f"r{i}", "q", "a", reasoning=f"t{i}") for i in range(14)]
+    _stub_embedding(monkeypatch, tc, _two_blobs(11, 3))
+    tc.produce(records, {"grouping": {"reduce": "none", "cluster": "kmeans", "k": 2},
+                         "min_group_records": 5}, tmp_path / "tc")
+
+    rows = [json.loads(x) for x in
+            (tmp_path / "tc" / "members.jsonl").read_text().splitlines() if x.strip()]
+    excluded = [r for r in rows if r["excluded"]]
+    assert len(excluded) == 3 and {r["excluded"] for r in excluded} == {"below_floor"}
+    assert all(r["property_id"] is None for r in excluded)
