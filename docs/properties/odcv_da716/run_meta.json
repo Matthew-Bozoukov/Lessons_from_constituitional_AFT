@@ -1,0 +1,110 @@
+{
+  "git_sha": "2f63dacbaa281b833d32d6a505ede1184460a818",
+  "timestamp_utc": "2026-08-19T11:41:59.417324+00:00",
+  "config": {
+    "tag": "odcv_da716",
+    "registry": "output/properties/properties.jsonl",
+    "source": {
+      "name": "odcv_rollouts",
+      "run_dir": "output/odcv_bench/da716",
+      "arm": "da716",
+      "min_reasoning_chars": 200,
+      "require_outcomes": true
+    },
+    "producers": {
+      "clusters": {
+        "evidence": "features",
+        "channel": "reasoning",
+        "extract": {
+          "model": "anthropic/claude-sonnet-5",
+          "n_min": 10,
+          "n": 20,
+          "workers": 16
+        },
+        "embed": {
+          "backend": "openrouter",
+          "model": "qwen/qwen3-embedding-8b",
+          "workers": 8
+        },
+        "grouping": {
+          "reduce": "umap",
+          "cluster": "hdbscan",
+          "min_cluster_size": 60,
+          "n_neighbors": 15,
+          "n_components": 5,
+          "seed": 42
+        },
+        "baseline_grouping": {
+          "reduce": "none",
+          "cluster": "kmeans",
+          "k": 30,
+          "seed": 42
+        },
+        "interpret": {
+          "model": "anthropic/claude-sonnet-5",
+          "n_shown": 100,
+          "workers": 8
+        },
+        "min_group_records": 10,
+        "group_by": "arm",
+        "outcomes": {
+          "field": "violation",
+          "fdr": 0.1,
+          "min_arm_records": 20
+        },
+        "audit": {
+          "stability": true,
+          "neighbours": [
+            10,
+            15,
+            30
+          ],
+          "seeds": [
+            0,
+            1,
+            2
+          ]
+        },
+        "measure_with_detector": false,
+        "detector": {
+          "model": "anthropic/claude-sonnet-5",
+          "workers": 16,
+          "sample": 200
+        }
+      }
+    },
+    "check_collisions": false,
+    "constitution": "constitutions/claude_distilled_12_principles_mid/constitution.md",
+    "smoke": {
+      "source": {
+        "limit": 8,
+        "min_reasoning_chars": 0,
+        "require_outcomes": false
+      },
+      "producers": {
+        "clusters": {
+          "min_group_records": 2,
+          "grouping": {
+            "reduce": "none",
+            "cluster": "kmeans",
+            "k": 2
+          },
+          "baseline_grouping": null,
+          "audit": {
+            "stability": false
+          },
+          "outcomes": {
+            "min_arm_records": 1
+          }
+        }
+      }
+    }
+  },
+  "tag": "odcv_da716",
+  "n_records": 275,
+  "source": "odcv_rollouts",
+  "n_properties": 17,
+  "registry": "output/properties/properties.jsonl",
+  "target_id": null,
+  "command": "scripts/properties/discover.py --config configs/properties/discover_odcv_da716.yaml --out-dir output/properties/odcv_da716_full"
+}

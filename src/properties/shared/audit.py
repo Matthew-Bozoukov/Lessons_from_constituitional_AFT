@@ -14,6 +14,7 @@ Three checks, in the order they can disqualify a run:
 * **Redundancy.** Group centroids sitting close together describe the same theme. When
   many pairs are near-duplicates, the group COUNT is a resolution setting rather than a
   count of behaviours, and a reader quoting "we found 43 properties" is quoting the knob.
+  Measured in the EMBEDDING space, never the reduced one — see `_embedding_centroids`.
 * **Buried behaviours.** A small distinctive theme gets absorbed into a large bland one and
   never gets a label. The keyword probes therefore read the raw evidence strings
   INDEPENDENTLY of the clustering, and report where their matches landed. A probe with a
@@ -62,6 +63,32 @@ KEYWORD_PROBES = {
 }
 NEAR_DUPLICATE_COSINE = 0.90
 UNCLUSTERED_LABEL = "(unclustered noise)"
+
+
+def _embedding_centroids(vectors: np.ndarray, group_labels: np.ndarray) -> np.ndarray:
+    """Group centroids in the EMBEDDING space, which is the only space cosine means
+    anything in.
+
+    `Grouping.centroids` are centroids of whatever was clustered, and under `reduce: umap`
+    that is UMAP space — whose coordinates are an arbitrary all-positive blob offset from
+    the origin. Every pair of points in it has a cosine near 1 by construction: on the
+    2026-08-19 da716 run, 132 of 136 group pairs scored above 0.90 there, and 0 of 136 did
+    on the same groups' embedding-space centroids (median 0.76, min 0.64). The reduced
+    space is for finding density, not for measuring similarity.
+
+    Args:
+        vectors: (n x d) the original L2-normalised embeddings.
+        group_labels: (n,) group id per row; -1 is noise and contributes to no centroid.
+
+    Returns:
+        (g x d) L2-normalised centroids ordered by group id.
+    """
+    groups = sorted(int(g) for g in set(group_labels.tolist()) if g >= 0)
+    if not groups:
+        return np.zeros((0, vectors.shape[1]), dtype=np.float32)
+    means = np.stack([vectors[group_labels == g].mean(axis=0) for g in groups])
+    means = means.astype(np.float32)
+    return means / np.clip(np.linalg.norm(means, axis=1, keepdims=True), 1e-12, None)
 
 
 def near_duplicate_groups(centroids: np.ndarray, labels: dict[int, str],
@@ -202,7 +229,8 @@ def audit(vectors: np.ndarray, result, units, group_labels: dict[int, str],
     cfg = cfg or {}
     unit_group = [int(g) for g in result.labels.tolist()]
     duplicates = near_duplicate_groups(
-        result.centroids, group_labels, float(cfg.get("threshold", NEAR_DUPLICATE_COSINE)))
+        _embedding_centroids(np.asarray(vectors, np.float32), result.labels),
+        group_labels, float(cfg.get("threshold", NEAR_DUPLICATE_COSINE)))
     out = {
         "n_groups": result.n_groups,
         "near_duplicate_pairs": duplicates,

@@ -1,0 +1,24 @@
+{
+ "evidence": "features",
+ "properties": 17,
+ "records": 275,
+ "units": 4540,
+ "unclustered_units": 1828,
+ "unclustered_unit_share": 0.4026,
+ "unclustered_instances": 2108,
+ "unclustered_instance_share": 0.4055,
+ "records_with_no_property": 3,
+ "git_sha": "2f63dacbaa281b833d32d6a505ede1184460a818",
+ "timestamp_utc": "20260819_114159",
+ "n_units": 4540,
+ "feature_instances": 5198,
+ "records_labelled": 272,
+ "records_failed": 3,
+ "extract": {
+  "style": "freeform",
+  "channel": "reasoning",
+  "n": 20,
+  "model": "anthropic/claude-sonnet-5",
+  "temperature": 1.0
+ }
+}
