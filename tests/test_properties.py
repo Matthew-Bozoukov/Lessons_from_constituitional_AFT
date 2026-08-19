@@ -1550,3 +1550,152 @@ def test_coverage_json_states_what_the_properties_do_not_account_for(tmp_path,
     assert coverage["feature_instances"] == 12 + 6 + 12
     assert coverage["records_with_no_property"] == 0
     assert coverage["unclustered_units"] == 0
+
+
+# --- shared/audit: the checks the naming stage cannot do for itself ----------------------
+
+def test_near_duplicate_groups_finds_two_centroids_describing_one_theme():
+    from src.properties.shared import audit as audit_mod
+
+    centroids = np.array([[1.0, 0.0], [0.99, 0.14], [0.0, 1.0]], dtype=np.float32)
+    pairs = audit_mod.near_duplicate_groups(
+        centroids, {0: "checks authorisation", 1: "confirms permission", 2: "hedges"})
+    assert len(pairs) == 1
+    assert {pairs[0]["a"], pairs[0]["b"]} == {0, 1}
+    assert pairs[0]["cosine"] >= 0.90
+    assert audit_mod.near_duplicate_groups(centroids[:1], {0: "x"}) == []
+
+
+def test_keyword_probes_read_the_evidence_not_the_clustering():
+    """A theme too small to win its own group still gets a number, and the probe says
+    where the clustering scattered it."""
+    from src.properties.shared import audit as audit_mod
+
+    units = ["notices this is a test scenario", "weighs harm against benefit",
+             "suspects being evaluated", "cites the policy"]
+    result = audit_mod.keyword_probes(
+        units=units,
+        unit_records=[[0], [0, 1, 2], [3], [1]],
+        unit_instances=[1, 3, 1, 1],
+        unit_group=[0, 1, -1, 1],
+        group_labels={0: "situational awareness", 1: "policy reasoning"},
+        n_records=4)
+
+    probe = result["evaluation awareness"]
+    assert probe["units"] == 2 and probe["records"] == 2
+    assert probe["prevalence"] == 0.5
+    # One match clustered, one was noise: the scatter is the finding.
+    landed = dict(probe["groups_landed_in"])
+    assert landed == {"situational awareness": 1, audit_mod.UNCLUSTERED_LABEL: 1}
+
+
+def test_probes_are_word_boundary_regexes_not_substring_matches():
+    """The mistake that burned the original analysis twice: bare 'persona' matched
+    'interpersonal' and 'tradesperson', inflating a rate from 11.1% to 17.2%."""
+    from src.properties.shared import audit as audit_mod
+
+    units = ["considers interpersonal dynamics", "asks the tradesperson",
+             "adopts a different persona"]
+    result = audit_mod.keyword_probes(
+        units=units, unit_records=[[0], [1], [2]], unit_instances=[1, 1, 1],
+        unit_group=[-1, -1, -1], group_labels={}, n_records=3)
+    assert result["persona and identity"]["units"] == 1
+    assert result["persona and identity"]["top_example_text"] == [
+        "adopts a different persona"]
+
+
+def test_stability_sweep_scores_every_fit_against_every_other_not_just_the_reference():
+    from src.properties.shared import audit as audit_mod
+    from src.properties.shared import grouping as grouping_mod
+
+    vectors = _two_blobs(20, 20, dim=6, seed=7)
+    params = grouping_mod.GroupingParams(reduce="none", cluster="kmeans", k=2)
+    reference = grouping_mod.group(vectors, params)
+    sweep = audit_mod.stability_sweep(vectors, params, reference.labels, seeds=(0, 1))
+
+    assert len(sweep["fits"]) == 2
+    # Two well-separated blobs are recovered identically whatever the seed.
+    assert sweep["min_pairwise_ari"] == 1.0
+    assert sweep["mean_ari_vs_reference"] == 1.0
+    # The pairwise matrix is square and covers every pair, so one lucky seed cannot pass.
+    assert len(sweep["pairwise_ari"]) == len(sweep["pairwise_ari"][0]) == 2
+
+
+def test_audit_runs_with_the_producer_and_writes_a_browsable_dashboard(tmp_path,
+                                                                      monkeypatch):
+    from src.properties.producers import clusters as tc
+
+    records, features = _feature_corpus(12)
+    _stub_embedding(monkeypatch, tc, _two_blobs(7, 7), features=features)
+    tc.produce(records, {"evidence": "features", "min_group_records": 2,
+                         "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2}},
+               tmp_path / "fd")
+
+    record = json.loads((tmp_path / "fd" / "audit.json").read_text())
+    assert "near_duplicate_pairs" in record and "probes" in record
+    assert "stability" not in record, "the sweep is opt-in; it refits the whole matrix"
+    assert "Buried behaviours" in (tmp_path / "fd" / "audit.md").read_text()
+    # The audit is appended to the run's own report, not left in a separate file only.
+    assert "## Audit" in (tmp_path / "fd" / "report.md").read_text()
+    page = (tmp_path / "fd" / "dashboard.html").read_text()
+    assert "<title>" in page and "checks authorisation before acting" in page
+
+
+def test_project_2d_is_a_separate_fit_from_the_one_that_was_clustered():
+    """The post runs UMAP twice on purpose: 2-D to look at, more to cluster. The picture
+    must not be mistaken for the space membership was decided in."""
+    from src.properties.shared import grouping as grouping_mod
+
+    vectors = _two_blobs(15, 15, dim=10, seed=2)
+    # reduce=none: nothing was reduced, so there is no second reduction to make.
+    flat = grouping_mod.GroupingParams(reduce="none", cluster="kmeans", k=2)
+    assert grouping_mod.project_2d(vectors, flat).shape == (30, 2)
+    assert np.allclose(grouping_mod.project_2d(vectors, flat), vectors[:, :2])
+
+
+def test_the_dashboard_plots_the_projection_and_says_what_it_is_not(tmp_path,
+                                                                    monkeypatch):
+    from src.properties.producers import clusters as tc
+
+    records, features = _feature_corpus(12)
+    _stub_embedding(monkeypatch, tc, _two_blobs(7, 7), features=features)
+    tc.produce(records, {"evidence": "features", "min_group_records": 2,
+                         "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2}},
+               tmp_path / "fd")
+
+    page = (tmp_path / "fd" / "dashboard.html").read_text()
+    assert "<svg" in page and page.count("<circle") == 14, "one dot per embedded unit"
+    assert "The embedding space, after UMAP" in page
+    assert (tmp_path / "fd" / "coords_2d.npy").exists()
+    # Legend names the groups; noise, if any, is never given a colour from the ramp.
+    assert "class='legend'" in page
+
+
+def test_the_scatter_colours_noise_separately_and_draws_it_underneath():
+    from src.properties.shared import audit as audit_mod
+
+    coords = np.array([[0.0, 0.0], [1.0, 1.0], [0.5, 0.5]], dtype=np.float32)
+    svg = audit_mod.scatter(coords, np.array([0, 1, -1]), {0: "alpha", 1: "beta"})
+    assert svg.count("<circle") == 3
+    # Noise is drawn first so real groups paint over it, and takes the grey, not a ramp
+    # colour that would read as a group.
+    assert svg.index(audit_mod.NOISE_COLOUR) < svg.index(audit_mod.SCATTER_COLOURS[0])
+    assert "unclustered (1)" in svg
+    assert audit_mod.scatter(np.zeros((0, 2)), np.array([]), {}) == ""
+
+
+def test_a_umap_run_labels_the_plot_as_a_different_projection(tmp_path):
+    from src.properties.shared import audit as audit_mod
+
+    record = {"n_groups": 1, "near_duplicate_pairs": [], "probes": {},
+              "noise_share": 0.0}
+    coords = np.array([[0.0, 0.0], [1.0, 1.0]], dtype=np.float32)
+    path = audit_mod.dashboard(tmp_path / "d.html", [], record, "run", 2,
+                               coords=coords, labels=np.array([0, 0]), n_components=5)
+    page = path.read_text()
+    assert "clustering ran in 5 dimensions" in page
+    assert "may be in different groups" in page
+
+    path = audit_mod.dashboard(tmp_path / "d2.html", [], record, "run", 2,
+                               coords=coords, labels=np.array([0, 0]), n_components=2)
+    assert "the clustering actually ran in" in path.read_text()

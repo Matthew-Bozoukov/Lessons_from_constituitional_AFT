@@ -101,6 +101,7 @@ import numpy as np
 from src.properties import block
 from src.properties.registry import Property
 from src.properties.shared import attributes as attributes_mod
+from src.properties.shared import audit as audit_mod
 from src.properties.shared import embed as embed_mod
 from src.properties.shared import grouping as grouping_mod
 from src.properties.shared import interpret as interpret_mod
@@ -470,6 +471,8 @@ def produce(records: list[Record], cfg, out_dir: str | Path,
             group_by (metadata key separating arms, optional),
             outcomes {field, fdr, min_arm_records} — cross groups with judged outcomes,
             compare_to {run_dir, min_cosine} — score against a previous run's centroids,
+            audit {stability, neighbours, seeds, threshold} or false to skip — the
+                redundancy / buried-behaviour / seed-stability checks,
             measure_with_detector (bool, default False),
             detector {model, workers, sample}.
         out_dir: Run directory for this producer's artifacts.
@@ -581,11 +584,15 @@ def produce(records: list[Record], cfg, out_dir: str | Path,
     properties = _cross_outcomes(properties, kept, groups, cfg, run)
     _write_members(run, properties, kept, groups, units, result,
                    below_floor, novelty)
+    audit = (audit_mod.write(run, vectors, result, units, properties, len(kept),
+                             block(cfg, "audit"))
+             if cfg.get("audit", True) is not False else None)
     _write_coverage(run, groups, kept, units, result)
     (run / "properties_preview.json").write_text(
         json.dumps([p.to_dict() for p in properties], indent=1), encoding="utf-8")
     (run / "report.md").write_text(
-        _report(properties, kept, result, cfg, novelty, units), encoding="utf-8")
+        _report(properties, kept, result, cfg, novelty, units)
+        + ("\n" + audit_mod.report(audit) if audit else ""), encoding="utf-8")
     return properties
 
 
