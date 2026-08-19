@@ -35,6 +35,7 @@ diff:                        # paper defaults (section 4.1 / appendix D.2, L.1)
   model: google/gemini-2.5-flash          # relabel + hypothesis summarizer (paper's choice)
   judge_model: google/gemini-2.5-flash    # per-document hypothesis judge
   min_difference: 0.03       # latent frequency-difference floor
+  max_feature_diffs: 200     # paper's cap: top-200 latents by frequency difference
   label_score_threshold: 0.75  # min label-accuracy score for a latent to count
   num_hypotheses: 10
   max_concurrency: 100

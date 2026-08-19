@@ -134,6 +134,7 @@ def main() -> None:
         "--threshold", str(cfg.diff.label_score_threshold),
         "--num-hypotheses", str(cfg.diff.num_hypotheses),
         "--max-concurrency", str(cfg.diff.max_concurrency),
+        "--max-feature-diffs", str(cfg.diff.max_feature_diffs),
         "--output", str(hyp_path),
     ])
 
