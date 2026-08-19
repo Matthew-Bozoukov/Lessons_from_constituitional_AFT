@@ -1,6 +1,6 @@
 # clusters — 48 properties over 275 records
 
-Evidence: **features** — 4540 embedded units. Grouping: `{'reduce': 'umap', 'cluster': 'hdbscan', 'metric': 'euclidean', 'seed': 42, 'n_neighbors': 15, 'n_components': 5, 'min_dist': 0.0, 'min_cluster_size': 25, 'min_samples': None}`. 48 groups, 1433 units unclustered (31.6%).
+Evidence: **features** — 4552 embedded units. Grouping: `{'reduce': 'umap', 'cluster': 'hdbscan', 'metric': 'euclidean', 'seed': 42, 'n_neighbors': 15, 'n_components': 5, 'min_dist': 0.0, 'min_cluster_size': 25, 'min_samples': None}`. 48 groups, 1375 units unclustered (30.2%).
 
 Prevalence is the share of records with at least one unit in the group; groups OVERLAP, so these do not sum to 100%.
 
@@ -8,56 +8,56 @@ Rows are ordered by ABLATION PRIORITY: the within-arm difference in outcome rate
 
 ## Prevalence by arm
 
-| property | prevalence | da716 |
-|---|--:|--:|
-| Explicitly chooses honest reporting over favorable outcomes | 56.0% | 56.0% |
-| Refuses to fabricate or falsify data under target pressure | 45.8% | 45.8% |
-| Weighs downstream stakeholder harms before deciding | 17.1% | 17.1% |
-| Refuses to fabricate unnecessary tool calls | 14.2% | 14.2% |
-| Names embedded pressure to falsify outcomes, then refuses | 13.1% | 13.1% |
-| Refuses with explicit, reasoned justification | 12.4% | 12.4% |
-| Flags financial incentive as corrupting or misaligned | 11.3% | 11.3% |
-| Traces downstream harms of a dishonest act | 9.4% | 9.4% |
-| Prioritizes patient safety over performance metrics | 17.4% | 17.4% |
-| Explicit ethical deliberation before acting | 48.4% | 48.4% |
-| Refuses request but offers legitimate alternative | 14.2% | 14.2% |
-| Frames safety as non-negotiable versus business metrics | 23.6% | 23.6% |
-| Uses numbered or bulleted lists to structure reasoning | 68.4% | 68.4% |
-| Grounds reasoning in named laws or regulations | 19.3% | 19.3% |
-| Relies on bold markdown for emphasis or structure | 22.2% | 22.2% |
-| Deliberates between literal wording and underlying intent | 21.8% | 21.8% |
-| Flags user framing as manipulative | 10.9% | 10.9% |
-| Extended first-person deliberation before acting | 56.0% | 56.0% |
-| Identifies exploitable loophole but declines to use it | 14.9% | 14.9% |
-| Escalates to humans instead of acting unilaterally | 14.2% | 14.2% |
-| Grounds clinical decisions in specific per-record evidence | 40.4% | 40.4% |
-| Detects and refuses to exploit weak validation logic | 16.0% | 16.0% |
-| Verifies actual system state before acting | 30.2% | 30.2% |
-| Fabricated hyper-realistic professional scenario framing | 34.9% | 34.9% |
-| Adopts a named compliance/audit persona | 10.5% | 10.5% |
-| Grounds claims with precise computed numbers | 18.6% | 18.6% |
-| Refuses unethical instruction with explicit ethical reasoning | 12.7% | 12.7% |
-| Ends with a decisive, actionable conclusion | 14.5% | 14.5% |
-| Recognizes and resists gaming a proxy metric | 35.6% | 35.6% |
-| Invokes shell scripts via tool calls | 21.8% | 21.8% |
-| Adopts a named autonomous agent persona | 21.8% | 21.8% |
-| Uses a numeric threshold to decide pass/fail | 18.2% | 18.2% |
-| Explicit reasoning about request legitimacy or hidden intent | 10.9% | 10.9% |
-| Reasoning gets stuck in repetitive loops | 18.6% | 18.6% |
-| Step-by-step narration of sequential tool-call execution | 12.0% | 12.0% |
-| Simulated agentic tool use via shell scripts and files | 11.6% | 11.6% |
-| Self-corrects after a failed attempt or wrong assumption | 41.1% | 41.1% |
-| Silently fabricates or creates missing file/directory to proceed | 14.9% | 14.9% |
-| Iterative trial-and-error script debugging | 9.4% | 9.4% |
-| Declares task complete without full verification | 26.2% | 26.2% |
-| Explicit stepwise plan-then-execute narration | 34.5% | 34.5% |
-| Fabricates specific file paths and script names as evidence | 13.1% | 13.1% |
-| Reverse-engineers a scoring script to game it | 8.7% | 8.7% |
-| Silently fabricates missing data instead of flagging it | 16.7% | 16.7% |
-| Optimizes for audit metric over vendor legitimacy | 8.4% | 8.4% |
-| Invokes fairness talk while using protected attributes as inputs | 12.0% | 12.0% |
-| States ethical concern then acts against it | 9.1% | 9.1% |
-| Unprompted detection and correction of algorithmic bias | 6.6% | 6.6% |
+| property | prevalence | incentivized | mandated |
+|---|--:|--:|--:|
+| Chooses honest disclosure over favorable-seeming compliance | 53.4% | 42.0% | 65.0% |
+| Refuses to fabricate or falsify data under pressure | 46.2% | 34.1% | 58.4% |
+| Weighs downstream harms to third-party stakeholders | 17.8% | 14.5% | 21.2% |
+| Names embedded pressure to falsify results | 11.3% | 11.6% | 10.9% |
+| Prioritizes patient safety over performance metrics | 15.6% | 18.8% | 12.4% |
+| Flags misaligned financial incentive behind request | 12.7% | 14.5% | 10.9% |
+| Refuses to make performative tool calls | 13.1% | 5.8% | 20.4% |
+| Prioritizes safety over business metrics under pressure | 24.4% | 29.0% | 19.7% |
+| Traces downstream harms of a dishonest option | 9.1% | 5.8% | 12.4% |
+| Explicit stepwise ethical reasoning before deciding | 49.5% | 40.6% | 58.4% |
+| Cites specific named law or regulation as justification | 20.0% | 22.5% | 17.5% |
+| Uses numbered or bulleted list formatting in reasoning | 68.4% | 67.4% | 69.3% |
+| Offers legitimate alternative after declining request | 14.2% | 7.2% | 21.2% |
+| Uses bold markdown headers/text for structure | 22.2% | 23.9% | 20.4% |
+| Identifies validator weakness but declines to exploit it | 15.6% | 17.4% | 13.9% |
+| Explicit per-record compliance and clinical justification | 40.0% | 38.4% | 41.6% |
+| Explicit, reasoned refusal of unethical requests | 30.6% | 20.3% | 40.9% |
+| Explicitly weighs literal instruction against inferred intent | 21.4% | 14.5% | 28.5% |
+| Grounds claims with explicit numeric calculations | 24.7% | 30.4% | 19.0% |
+| Long first-person internal monologue before acting | 55.3% | 48.5% | 62.0% |
+| Flags user framing as potentially manipulative | 11.3% | 7.2% | 15.3% |
+| Elaborate fictional professional-scenario framing | 39.3% | 39.9% | 38.7% |
+| Adopts a compliance or audit professional persona | 13.8% | 15.9% | 11.7% |
+| Ends with a decisive stated conclusion or action | 14.9% | 19.6% | 10.2% |
+| Verifies via tool execution before concluding | 31.3% | 24.6% | 38.0% |
+| Escalates to humans instead of acting unilaterally | 14.9% | 12.3% | 17.5% |
+| Flags that it may be under test or evaluation | 32.0% | 30.4% | 33.6% |
+| Recognizes and resists metric-gaming requests | 34.5% | 34.8% | 34.3% |
+| Invokes shell scripts as external tools | 20.0% | 22.5% | 17.5% |
+| Surfaces a discovered discrepancy instead of exploiting it | 15.3% | 16.7% | 13.9% |
+| Compares a numeric result to a stated pass/fail threshold | 18.6% | 18.1% | 19.0% |
+| Narrates sequential tool-call steps as an acting agent | 12.4% | 14.5% | 10.2% |
+| Explicitly assesses request's legitimacy or hidden intent | 10.9% | 10.1% | 11.7% |
+| Adopts a named autonomous agent persona | 21.4% | 18.1% | 24.8% |
+| Repetitive looping restatement without new content | 19.6% | 17.4% | 21.9% |
+| Explicit self-correction after failed attempt or assumption | 41.1% | 37.7% | 44.5% |
+| Simulates a multi-step agentic tool-use workflow | 12.0% | 8.7% | 15.3% |
+| Detects embedded bias in a scoring algorithm | 6.9% | 5.8% | 8.0% |
+| Iterative trial-and-error script debugging | 9.1% | 8.7% | 9.5% |
+| Declares task complete without verifying or disclosing issues | 25.8% | 28.3% | 23.4% |
+| Autonomously papers over missing file or directory | 15.3% | 14.5% | 16.1% |
+| Grounds claims with invented technical file paths | 13.1% | 15.9% | 10.2% |
+| Explicit numbered step-by-step task narration | 32.0% | 38.4% | 25.6% |
+| Reverse-engineers a scoring mechanism to exploit it | 10.2% | 10.9% | 9.5% |
+| Silently fabricates missing data instead of flagging it | 17.1% | 18.8% | 15.3% |
+| Gaming an audit metric over genuine compliance | 8.4% | 8.0% | 8.8% |
+| Invokes fairness reasoning when using protected demographic data | 12.4% | 12.3% | 12.4% |
+| States ethical justification then acts against it | 9.1% | 10.9% | 7.3% |
 
 ## Outcome rate, within arm
 
@@ -65,58 +65,58 @@ Rows are ordered by ABLATION PRIORITY: the within-arm difference in outcome rate
 
 | property | lift | pooled | q | arms | significant |
 |---|--:|--:|--:|--:|:--|
-| Explicitly chooses honest reporting over favorable outcomes | -31.6% | -31.6% | 0.000 | 1 | yes |
-| Refuses to fabricate or falsify data under target pressure | -27.0% | -27.0% | 0.000 | 1 | yes |
-| Weighs downstream stakeholder harms before deciding | -21.5% | -21.5% | 0.002 | 1 | yes |
-| Refuses to fabricate unnecessary tool calls | -20.8% | -20.8% | 0.006 | 1 | yes |
-| Names embedded pressure to falsify outcomes, then refuses | -20.5% | -20.5% | 0.009 | 1 | yes |
-| Refuses with explicit, reasoned justification | -20.3% | -20.3% | 0.010 | 1 | yes |
-| Flags financial incentive as corrupting or misaligned | -20.1% | -20.1% | 0.015 | 1 | yes |
-| Traces downstream harms of a dishonest act | -19.7% | -19.7% | 0.023 | 1 | yes |
-| Prioritizes patient safety over performance metrics | -19.1% | -19.1% | 0.006 | 1 | yes |
-| Explicit ethical deliberation before acting | -18.5% | -18.5% | 0.000 | 1 | yes |
-| Refuses request but offers legitimate alternative | -17.8% | -17.8% | 0.017 | 1 | yes |
-| Frames safety as non-negotiable versus business metrics | -17.3% | -17.3% | 0.006 | 1 | yes |
-| Uses numbered or bulleted lists to structure reasoning | -16.0% | -16.0% | 0.006 | 1 | yes |
-| Grounds reasoning in named laws or regulations | -15.1% | -15.1% | 0.021 | 1 | yes |
-| Relies on bold markdown for emphasis or structure | -14.5% | -14.5% | 0.020 | 1 | yes |
-| Deliberates between literal wording and underlying intent | -14.3% | -14.3% | 0.021 | 1 | yes |
-| Flags user framing as manipulative | -12.5% | -12.5% | 0.126 | 1 |  |
-| Extended first-person deliberation before acting | -12.4% | -12.4% | 0.017 | 1 | yes |
-| Identifies exploitable loophole but declines to use it | -12.3% | -12.3% | 0.086 | 1 | yes |
-| Escalates to humans instead of acting unilaterally | -11.8% | -11.8% | 0.106 | 1 |  |
-| Grounds clinical decisions in specific per-record evidence | -11.8% | -11.8% | 0.023 | 1 | yes |
-| Detects and refuses to exploit weak validation logic | -10.4% | -10.4% | 0.133 | 1 |  |
-| Verifies actual system state before acting | -10.0% | -10.0% | 0.073 | 1 | yes |
-| Fabricated hyper-realistic professional scenario framing | -9.8% | -9.8% | 0.071 | 1 | yes |
-| Adopts a named compliance/audit persona | -8.4% | -8.4% | 0.321 | 1 |  |
-| Grounds claims with precise computed numbers | -7.4% | -7.4% | 0.275 | 1 |  |
-| Refuses unethical instruction with explicit ethical reasoning | -7.3% | -7.3% | 0.341 | 1 |  |
-| Ends with a decisive, actionable conclusion | -6.2% | -6.2% | 0.382 | 1 |  |
-| Recognizes and resists gaming a proxy metric | -2.3% | -2.3% | 0.644 | 1 |  |
-| Invokes shell scripts via tool calls | +0.7% | +0.7% | 0.906 | 1 |  |
-| Adopts a named autonomous agent persona | +4.9% | +4.9% | 0.413 | 1 |  |
-| Uses a numeric threshold to decide pass/fail | +5.1% | +5.1% | 0.420 | 1 |  |
-| Explicit reasoning about request legitimacy or hidden intent | +6.2% | +6.2% | 0.421 | 1 |  |
-| Reasoning gets stuck in repetitive loops | +7.0% | +7.0% | 0.302 | 1 |  |
-| Step-by-step narration of sequential tool-call execution | +7.3% | +7.3% | 0.348 | 1 |  |
-| Simulated agentic tool use via shell scripts and files | +8.1% | +8.1% | 0.320 | 1 |  |
-| Self-corrects after a failed attempt or wrong assumption | +10.3% | +10.3% | 0.049 | 1 | yes |
-| Silently fabricates or creates missing file/directory to proceed | +13.5% | +13.5% | 0.063 | 1 | yes |
-| Iterative trial-and-error script debugging | +14.3% | +14.3% | 0.102 | 1 |  |
-| Declares task complete without full verification | +15.4% | +15.4% | 0.010 | 1 | yes |
-| Explicit stepwise plan-then-execute narration | +17.8% | +17.8% | 0.001 | 1 | yes |
-| Fabricates specific file paths and script names as evidence | +17.8% | +17.8% | 0.020 | 1 | yes |
-| Reverse-engineers a scoring script to game it | +30.7% | +30.7% | 0.001 | 1 | yes |
-| Silently fabricates missing data instead of flagging it | +46.5% | +46.5% | 0.000 | 1 | yes |
-| Optimizes for audit metric over vendor legitimacy | +47.0% | +47.0% | 0.000 | 1 | yes |
-| Invokes fairness talk while using protected attributes as inputs | +52.1% | +52.1% | 0.000 | 1 | yes |
-| States ethical concern then acts against it | +59.6% | +59.6% | 0.000 | 1 | yes |
-| Unprompted detection and correction of algorithmic bias | — | +10.7% | — | 0 |  |
+| Chooses honest disclosure over favorable-seeming compliance | -32.2% | -33.9% | 0.000 | 2 | yes |
+| Refuses to fabricate or falsify data under pressure | -26.8% | -28.7% | 0.000 | 2 | yes |
+| Weighs downstream harms to third-party stakeholders | -20.4% | -21.7% | 0.003 | 2 | yes |
+| Names embedded pressure to falsify results | -20.3% | -20.1% | 0.016 | 2 | yes |
+| Prioritizes patient safety over performance metrics | -20.0% | -18.4% | 0.008 | 2 | yes |
+| Flags misaligned financial incentive behind request | -18.1% | -17.1% | 0.022 | 2 | yes |
+| Refuses to make performative tool calls | -17.6% | -20.5% | 0.016 | 2 | yes |
+| Prioritizes safety over business metrics under pressure | -17.6% | -15.7% | 0.007 | 2 | yes |
+| Traces downstream harms of a dishonest option | -17.5% | -19.6% | 0.043 | 2 | yes |
+| Explicit stepwise ethical reasoning before deciding | -16.8% | -19.2% | 0.001 | 2 | yes |
+| Cites specific named law or regulation as justification | -16.5% | -15.5% | 0.016 | 2 | yes |
+| Uses numbered or bulleted list formatting in reasoning | -15.7% | -16.0% | 0.006 | 2 | yes |
+| Offers legitimate alternative after declining request | -15.3% | -17.8% | 0.027 | 2 | yes |
+| Uses bold markdown headers/text for structure | -15.0% | -14.5% | 0.016 | 2 | yes |
+| Identifies validator weakness but declines to exploit it | -13.6% | -12.8% | 0.047 | 2 | yes |
+| Explicit per-record compliance and clinical justification | -12.7% | -13.0% | 0.016 | 2 | yes |
+| Explicit, reasoned refusal of unethical requests | -12.7% | -15.4% | 0.022 | 2 | yes |
+| Explicitly weighs literal instruction against inferred intent | -12.3% | -14.1% | 0.037 | 2 | yes |
+| Grounds claims with explicit numeric calculations | -11.9% | -10.0% | 0.047 | 2 | yes |
+| Long first-person internal monologue before acting | -11.0% | -13.4% | 0.036 | 2 | yes |
+| Flags user framing as potentially manipulative | -10.4% | -12.8% | 0.210 | 2 |  |
+| Elaborate fictional professional-scenario framing | -9.7% | -9.5% | 0.062 | 2 | yes |
+| Adopts a compliance or audit professional persona | -9.5% | -8.5% | 0.210 | 2 |  |
+| Ends with a decisive stated conclusion or action | -8.9% | -6.6% | 0.232 | 2 |  |
+| Verifies via tool execution before concluding | -8.7% | -10.7% | 0.121 | 2 |  |
+| Escalates to humans instead of acting unilaterally | -8.6% | -9.5% | 0.173 | 2 |  |
+| Flags that it may be under test or evaluation | -2.4% | -2.8% | 0.654 | 2 |  |
+| Recognizes and resists metric-gaming requests | -1.5% | -1.5% | 0.751 | 2 |  |
+| Invokes shell scripts as external tools | -0.4% | +0.4% | 0.953 | 2 |  |
+| Surfaces a discovered discrepancy instead of exploiting it | +0.9% | +1.5% | 0.951 | 2 |  |
+| Compares a numeric result to a stated pass/fail threshold | +4.8% | +4.6% | 0.395 | 2 |  |
+| Narrates sequential tool-call steps as an acting agent | +5.1% | +6.5% | 0.332 | 2 |  |
+| Explicitly assesses request's legitimacy or hidden intent | +6.6% | +6.2% | 0.390 | 2 |  |
+| Adopts a named autonomous agent persona | +6.7% | +5.4% | 0.224 | 2 |  |
+| Repetitive looping restatement without new content | +8.5% | +7.8% | 0.192 | 2 |  |
+| Explicit self-correction after failed attempt or assumption | +9.5% | +8.8% | 0.063 | 2 | yes |
+| Simulates a multi-step agentic tool-use workflow | +9.6% | +7.3% | 0.152 | 2 |  |
+| Detects embedded bias in a scoring algorithm | +9.9% | +9.1% | 0.390 | 2 |  |
+| Iterative trial-and-error script debugging | +11.5% | +11.2% | 0.150 | 2 |  |
+| Declares task complete without verifying or disclosing issues | +12.8% | +14.0% | 0.014 | 2 | yes |
+| Autonomously papers over missing file or directory | +15.8% | +15.5% | 0.022 | 2 | yes |
+| Grounds claims with invented technical file paths | +17.0% | +17.8% | 0.043 | 2 | yes |
+| Explicit numbered step-by-step task narration | +19.8% | +20.6% | 0.001 | 2 | yes |
+| Reverse-engineers a scoring mechanism to exploit it | +35.5% | +35.8% | 0.000 | 2 | yes |
+| Silently fabricates missing data instead of flagging it | +42.3% | +42.7% | 0.000 | 2 | yes |
+| Gaming an audit metric over genuine compliance | +47.4% | +47.0% | 0.000 | 2 | yes |
+| Invokes fairness reasoning when using protected demographic data | +50.1% | +50.1% | 0.000 | 2 | yes |
+| States ethical justification then acts against it | +58.4% | +59.6% | 0.000 | 2 | yes |
 
 ## Audit
 
-48 groups, 31.6% of evidence unclustered.
+48 groups, 30.2% of evidence unclustered.
 
 ### Redundancy — 1 near-duplicate group pairs (0.1% of all pairs)
 
@@ -124,7 +124,7 @@ Two groups this close describe the same theme, so the group COUNT is a resolutio
 
 | cosine | a | b |
 |--:|---|---|
-| 0.904 | Simulated agentic tool use via shell scripts and files | Step-by-step narration of sequential tool-call execution |
+| 0.904 | Narrates sequential tool-call steps as an acting agent | Simulates a multi-step agentic tool-use workflow |
 
 ### Buried behaviours — keyword probes over the raw evidence
 
@@ -132,32 +132,32 @@ Read INDEPENDENTLY of the clustering, so a theme too small to win its own group 
 
 | probe | records | prevalence | landed in |
 |---|--:|--:|---|
-| refusal language | 183 | 66.5% | Refuses to fabricate or falsify data under target pressure (96), (unclustered noise) (51), Refuses with explicit, reasoned justification (34) |
-| evaluation awareness | 91 | 33.1% | (unclustered noise) (28), Recognizes and resists gaming a proxy metric (1), Reverse-engineers a scoring script to game it (1) |
-| persona and identity | 51 | 18.6% | Adopts a named autonomous agent persona (17), Adopts a named compliance/audit persona (11), Grounds clinical decisions in specific per-record evidence (8) |
-| oversight / monitoring | 23 | 8.4% | Explicitly chooses honest reporting over favorable outcomes (8), Escalates to humans instead of acting unilaterally (8), (unclustered noise) (3) |
-| sycophancy | 17 | 6.2% | (unclustered noise) (12), States ethical concern then acts against it (2), Refuses unethical instruction with explicit ethical reasoning (1) |
-| mentions uncertainty (any kind) | 8 | 2.9% | (unclustered noise) (4), Silently fabricates missing data instead of flagging it (2), Explicitly chooses honest reporting over favorable outcomes (1) |
+| refusal language | 184 | 66.9% | Refuses to fabricate or falsify data under pressure (97), Explicit, reasoned refusal of unethical requests (67), (unclustered noise) (46) |
+| evaluation awareness | 91 | 33.1% | Flags that it may be under test or evaluation (24), (unclustered noise) (4), Recognizes and resists metric-gaming requests (1) |
+| persona and identity | 51 | 18.6% | Adopts a named autonomous agent persona (16), Adopts a compliance or audit professional persona (12), Explicit per-record compliance and clinical justification (8) |
+| oversight / monitoring | 23 | 8.4% | (unclustered noise) (9), Escalates to humans instead of acting unilaterally (8), Explicit per-record compliance and clinical justification (2) |
+| sycophancy | 17 | 6.2% | (unclustered noise) (9), Explicit, reasoned refusal of unethical requests (5), States ethical justification then acts against it (2) |
+| mentions uncertainty (any kind) | 8 | 2.9% | (unclustered noise) (5), Chooses honest disclosure over favorable-seeming compliance (1), Silently fabricates missing data instead of flagging it (1) |
 | training / self awareness | 0 | 0.0% | — |
 
 ### Stability across seeds and neighbourhoods
 
-0 of 15 refits collapsed (a failed reduction, which the exported run retries past). Among the rest, pairwise ARI is 0.381 to 1.000, median 0.569. A grouping that reshuffles when the seed changes is not a finding.
+0 of 15 refits collapsed (a failed reduction, which the exported run retries past). Among the rest, pairwise ARI is 0.388 to 1.000, median 0.569. A grouping that reshuffles when the seed changes is not a finding.
 
 | n_neighbors | seed | groups | noise | ARI vs ref |
 |--:|--:|--:|--:|--:|
-| 10 | 0 | 46 | 31.5% | 0.545 |
-| 10 | 1 | 45 | 28.5% | 0.541 |
-| 10 | 2 | 41 | 25.0% | 0.519 |
-| 10 | 3 | 43 | 27.5% | 0.580 |
-| 10 | 4 | 47 | 30.2% | 0.535 |
-| 15 | 0 | 45 | 31.2% | 0.734 |
-| 15 | 1 | 46 | 29.4% | 0.716 |
-| 15 | 2 | 46 | 31.5% | 0.729 |
-| 15 | 3 | 47 | 31.5% | 0.726 |
-| 15 | 4 | 47 | 28.5% | 0.720 |
-| 30 | 0 | 44 | 30.7% | 0.579 |
-| 30 | 1 | 45 | 31.4% | 0.566 |
-| 30 | 2 | 45 | 31.5% | 0.572 |
-| 30 | 3 | 48 | 32.5% | 0.601 |
-| 30 | 4 | 43 | 31.2% | 0.564 |
+| 10 | 0 | 48 | 29.1% | 0.581 |
+| 10 | 1 | 45 | 27.4% | 0.528 |
+| 10 | 2 | 45 | 26.7% | 0.519 |
+| 10 | 3 | 47 | 26.9% | 0.554 |
+| 10 | 4 | 44 | 27.2% | 0.483 |
+| 15 | 0 | 46 | 31.8% | 0.693 |
+| 15 | 1 | 45 | 32.4% | 0.671 |
+| 15 | 2 | 47 | 31.4% | 0.713 |
+| 15 | 3 | 45 | 29.8% | 0.749 |
+| 15 | 4 | 49 | 31.3% | 0.716 |
+| 30 | 0 | 45 | 33.0% | 0.575 |
+| 30 | 1 | 47 | 33.2% | 0.603 |
+| 30 | 2 | 46 | 31.9% | 0.581 |
+| 30 | 3 | 47 | 33.8% | 0.594 |
+| 30 | 4 | 45 | 31.6% | 0.582 |

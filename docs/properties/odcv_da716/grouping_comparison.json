@@ -1,7 +1,7 @@
 {
  "agreement": {
-  "ari": 0.1234,
-  "ami": 0.5257
+  "ari": 0.1455,
+  "ami": 0.5384
  },
  "groups": {
   "baseline": 30,
@@ -9,7 +9,7 @@
  },
  "noise": {
   "baseline": 0,
-  "candidate": 1433
+  "candidate": 1375
  },
  "params": {
   "baseline": {
@@ -33,7 +33,7 @@
   }
  },
  "geometry": {
-  "neighbour_overlap": 0.475,
+  "neighbour_overlap": 0.4737,
   "k": 15
  }
 }
