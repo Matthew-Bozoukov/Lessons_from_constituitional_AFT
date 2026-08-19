@@ -1,0 +1,271 @@
+import numpy as np
+from sae_lens import SAE as SAEModel
+import torch
+from scipy.sparse import csr_matrix
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+import re
+from functools import partial
+import warnings
+
+from .base_sae import BaseSAE, SAEType
+from .utils import process_device_config, ensure_loaded, try_to_load_feature_labels, goodfire_sae_loader, store_activations_hook, get_goodfire_config
+
+class LocalSAE(BaseSAE):
+  def __init__(self, sae_id = "blocks.8.hook_resid_pre", release = "gpt2-small-res-jb", **kwargs):
+
+    super().__init__(**kwargs)
+    self.sae_id = sae_id
+    self.release = release
+    self.model = None
+    self.sae = None
+    self.tokenizer = None
+
+  def metadata(self):
+    parent_metadata = super().metadata()
+    parent_metadata.update({
+      "sae_id": self.sae_id,
+      "release": self.release,
+      "device": {
+        "model": self.model_device,
+        "sae": self.sae_device
+      },
+      "sae_type": SAEType.LOCAL
+    })
+    return parent_metadata
+
+  def load_models(self):
+    from transformer_lens import HookedTransformer
+
+    print("Loading SAE...")
+    self.sae = SAEModel.from_pretrained(
+      release=self.release,  # see other options in sae_lens/pretrained_saes.yaml
+      sae_id=self.sae_id,  # won't always be a hook point
+      device=self.sae_device,
+    )
+    print("Loading language model...")
+    self.model = HookedTransformer.from_pretrained(self.sae.cfg.metadata.model_name, device=self.model_device)
+    self.tokenizer = self.model.tokenizer
+
+  @ensure_loaded
+  @torch.no_grad()
+  def encode(self, texts):
+    assert len(texts) > 0, "There must be more than one text to encode."
+    self.sae.eval()  # prevents error if we're expecting a dead neuron mask for who grads
+
+    self.tokenizer.pad_token = self.tokenizer.eos_token
+    tokens = self.tokenizer(
+      texts,
+      padding="longest",   # pad to the longest sequence in the batch
+      truncation=self.truncate, # TODO: if the number of tokens exceeds the context window, you should filter this out to avoid erring the rest of the batch
+      return_tensors="pt"
+    )
+
+    _, cache = self.model.run_with_cache(tokens["input_ids"], prepend_bos=True)
+
+    # Use the SAE
+    feature_acts = self.sae.encode(cache[self.sae.cfg.metadata.hook_name].to(self.sae_device))
+
+    feature_acts_np = feature_acts.detach().cpu().numpy()
+    attn_mask = tokens["attention_mask"].numpy().astype(bool)
+    return self.tokenize(texts), [csr_matrix(feature_acts_np[i][attn_mask[i]]) for i in range(feature_acts_np.shape[0])]
+
+  @ensure_loaded
+  def encode_chat(self, chat_conversations):
+    assert self.chat_template_exists(), "Chat template does not exist for this model's tokenizer"
+    texts = [self.tokenizer.apply_chat_template(chat_conversation, tokenize=False) for chat_conversation in chat_conversations]
+    return self.encode(texts)
+
+  def destroy_models(self):
+    self.sae = None
+    self.model = None
+
+  @ensure_loaded
+  def tokenize(self, documents, as_tokens = True, padding: bool = False):
+    """
+    Tokenizes a list of documents.
+
+    :param documents: List of documents to tokenize. Must be a list of strings
+    :param as_tokens: If True, return human-readable token strings. If False, return token IDs
+    :param padding: Whether to pad sequences
+    """
+    if self.chat_template_exists():
+      formatted_text = [
+          self.tokenizer.apply_chat_template(
+              [
+                  {
+                      "role": "assistant" if self.use_assistant_role else "user",
+                      "content": document
+                  }
+              ],
+              tokenize=False
+          )
+          for document in documents
+      ]
+    else:
+      formatted_text = documents
+
+    inputs = self.tokenizer(
+      formatted_text,
+      truncation=self.truncate,
+      max_length=getattr(self, "max_length", None),  # PATCHED: paper caps texts at 2048 tokens
+      add_special_tokens=not self.chat_template_exists(),
+      padding=padding
+    )
+
+    input_ids = inputs["input_ids"]
+
+    if not as_tokens:
+      return inputs
+
+    # Return human-readable tokens by decoding each token individually
+    return [[self.tokenizer.decode([token_id]) for token_id in input_sequence] for input_sequence in input_ids]
+
+# PATCHED (lessons_from_constitutional_aft): upstream marks this class deprecated in
+# favor of LocalSAE, but LocalSAE goes through transformer_lens, which loads the full
+# model without layer truncation — unusable for the 70B reader. We keep GoodfireSAE as
+# THE local path and add: `dtype` (upstream loaded fp32: 280GB for 70B), and
+# `max_length` (upstream truncated at model_max_length=128k; the paper caps texts at
+# 2048 tokens, which is also the SAE's training distribution).
+class GoodfireSAE(BaseSAE):
+  def __init__(self, variant_name: str = "Llama-3.1-8B-Instruct-SAE-l19", quantize = False,
+               dtype: str = "bfloat16", max_length: int = 2048, **kwargs):
+    super().__init__(**kwargs)
+    self.variant_name = variant_name
+    self.quantize = quantize
+    self.dtype = dtype
+    self.max_length = max_length
+    self.activations = dict()
+    self.activation_hook_handle = None
+    self.config = get_goodfire_config(variant_name)
+
+  def metadata(self):
+    parent_metadata = super().metadata()
+    parent_metadata.update({
+      "variant_name": self.variant_name,
+      "quantize": self.quantize,
+      "dtype": self.dtype,
+      "max_length": self.max_length,
+      "device": {
+        "model": self.model_device,
+        "sae": self.sae_device
+      },
+      "sae_type": SAEType.GOODFIRE
+    })
+    return parent_metadata
+
+  def load_feature_labels(self):
+    self._feature_labels = try_to_load_feature_labels(self.config["feature_labels_file"])
+
+    # Load the feature labels
+    if self._feature_labels:
+      self._feature_labels = {int(key): value for key, value in self.feature_labels().items()} # Convert keys to ints
+
+  def load_models(self):
+    # Load the model, sae, and tokenizer
+    bnb_config = BitsAndBytesConfig(
+        load_in_8bit = True,
+        bnb_8bit_compute_dtype=torch.float32
+    )
+
+    if self.quantize:
+      warnings.warn("Quantizing the language model may cause feature activations to be less accurate.")
+
+    config = get_goodfire_config(self.variant_name)
+
+    self.model = AutoModelForCausalLM.from_pretrained(
+        config["hf_model"],
+        quantization_config=bnb_config if self.quantize else None,
+        torch_dtype=None if self.quantize else getattr(torch, self.dtype),  # PATCHED: upstream loaded fp32
+        device_map=self.model_device
+    )
+
+    # Add hooks to the model
+    self.activations = {}
+    match = re.search(r"l(\d+)", self.variant_name)
+    if match is None:
+        raise ValueError(f"Could not find layer number in filename: {self.variant_name}")
+    layer = int(match.group(1))
+    activation_hook = partial(store_activations_hook, activations=self.activations, name=f"internal")
+    self.model.model.layers = torch.nn.ModuleList(self.model.model.layers[:layer+1]) # Truncate the model to the layer we want to extract activations from
+    self.activation_hook_handle = self.model.model.layers[layer].register_forward_hook(activation_hook)
+    torch.cuda.empty_cache()
+
+    self.tokenizer = AutoTokenizer.from_pretrained(config["hf_model"])
+    self.sae = SAEModel.from_pretrained(
+        release=config["goodfire_release"],
+        sae_id=config["sae_id"],
+        device=self.sae_device,
+        converter=goodfire_sae_loader,
+    )
+
+    self.tokenizer.pad_token = self.tokenizer.eos_token
+
+  @ensure_loaded
+  def encode(self, texts):
+    inputs = self.tokenize(texts, padding=True, as_tokens=False)
+
+    with torch.no_grad():
+      outputs = self.model(
+        input_ids = torch.tensor(inputs["input_ids"]).to(self.model.device),
+        attention_mask = torch.tensor(inputs["attention_mask"]).to(self.model.device)
+      )
+
+      # PATCHED: cast the (bf16) residual stream to the SAE's fp32 params before encoding
+      feature_acts = self.sae.encode(self.activations["internal"].to(self.sae.device).float())
+
+    feature_acts_np = feature_acts.float().detach().cpu().numpy()
+    attn_mask = np.array(inputs["attention_mask"]).astype(bool)
+
+    # Clean up memory
+    del outputs, inputs
+    torch.cuda.empty_cache()
+
+    return self.tokenize(texts), [csr_matrix(feature_acts_np[i][attn_mask[i]]) for i in range(feature_acts_np.shape[0])]
+
+  @ensure_loaded
+  def tokenize(self, documents, as_tokens = True, padding: bool = False):
+    """
+    Tokenizes a list of documents.
+
+    :param documents: List of documents to tokenize. Must be a list of strings
+    :param as_tokens: If True, return human-readable token strings. If False, return token IDs
+    :param padding: Whether to pad sequences
+    """
+    if self.chat_template_exists():
+      formatted_text = [
+          self.tokenizer.apply_chat_template(
+              [
+                  {
+                      "role": "assistant" if self.use_assistant_role else "user",
+                      "content": document
+                  }
+              ],
+              tokenize=False
+          )
+          for document in documents
+      ]
+    else:
+      formatted_text = documents
+
+    inputs = self.tokenizer(
+      formatted_text,
+      truncation=self.truncate,
+      max_length=getattr(self, "max_length", None),  # PATCHED: paper caps texts at 2048 tokens
+      add_special_tokens=not self.chat_template_exists(),
+      padding=padding
+    )
+
+    input_ids = inputs["input_ids"]
+
+    if not as_tokens:
+      return inputs
+
+    # Return human-readable tokens by decoding each token individually
+    return [[self.tokenizer.decode([token_id]) for token_id in input_sequence] for input_sequence in input_ids]
+
+
+  def destroy_models(self):
+    self.activations = dict()
+    self.activation_hook_handle.remove()
+    self.model = None
+    self.sae = None
