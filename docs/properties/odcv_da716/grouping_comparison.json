@@ -1,15 +1,15 @@
 {
  "agreement": {
-  "ari": 0.1098,
-  "ami": 0.4722
+  "ari": 0.1234,
+  "ami": 0.5257
  },
  "groups": {
   "baseline": 30,
-  "candidate": 17
+  "candidate": 48
  },
  "noise": {
   "baseline": 0,
-  "candidate": 1828
+  "candidate": 1433
  },
  "params": {
   "baseline": {
@@ -28,7 +28,7 @@
    "n_neighbors": 15,
    "n_components": 5,
    "min_dist": 0.0,
-   "min_cluster_size": 60,
+   "min_cluster_size": 25,
    "min_samples": null
   }
  },

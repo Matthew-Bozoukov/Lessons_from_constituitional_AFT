@@ -63,10 +63,17 @@ producers:
     grouping:
       reduce: umap
       cluster: hdbscan
-      # A floor on FEATURE STRINGS, not rollouts. Resolution setting, not a finding: the
-      # group count that comes out is only a finding in the sense that HDBSCAN chose it at
-      # this resolution. `audit.near_duplicate_pairs` is what says whether it was too fine.
-      min_cluster_size: 60
+      # A floor on FEATURE STRINGS, not rollouts, and CHOSEN BY MEASUREMENT rather than
+      # taste. Swept on the 2026-08-19 da716 embeddings across three seeds:
+      #     15 -> 74-80 groups, 23-27% noise   stable
+      #     25 -> 45-46 groups, 29-32% noise   stable      <- here
+      #     40 ->  2, 2, 27 groups             bifurcating
+      #     60 ->  2, 2,  8 groups             bifurcating  <- the earlier setting
+      #     90 ->  9, 9, 11 groups             stable, coarse
+      # 40-60 sits on a bifurcation where HDBSCAN has two roughly equally good readings of
+      # the same density landscape and the seed picks one. Anything reported from there is
+      # a coin flip. Re-sweep this when the corpus changes size.
+      min_cluster_size: 25
       n_neighbors: 15
       n_components: 5
       seed: 42
@@ -108,7 +115,7 @@ producers:
     audit:
       stability: true
       neighbours: [10, 15, 30]
-      seeds: [0, 1, 2]
+      seeds: [0, 1, 2, 3, 4]
 
     # The training-corpus view, over the SAME embedding pass: every feature's cosine to the
     # nearest centroid of the da716 CORPUS run. A group whose features all sit below

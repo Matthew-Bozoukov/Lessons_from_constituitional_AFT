@@ -1,6 +1,6 @@
 {
-  "git_sha": "2f63dacbaa281b833d32d6a505ede1184460a818",
-  "timestamp_utc": "2026-08-19T11:41:59.417324+00:00",
+  "git_sha": "3f5c1c40c2e8c29edd1d8410e5bc28220cd1f9af",
+  "timestamp_utc": "2026-08-19T12:35:21.511679+00:00",
   "config": {
     "tag": "odcv_da716",
     "registry": "output/properties/properties.jsonl",
@@ -29,7 +29,7 @@
         "grouping": {
           "reduce": "umap",
           "cluster": "hdbscan",
-          "min_cluster_size": 60,
+          "min_cluster_size": 25,
           "n_neighbors": 15,
           "n_components": 5,
           "seed": 42
@@ -62,7 +62,9 @@
           "seeds": [
             0,
             1,
-            2
+            2,
+            3,
+            4
           ]
         },
         "measure_with_detector": false,
@@ -103,8 +105,8 @@
   "tag": "odcv_da716",
   "n_records": 275,
   "source": "odcv_rollouts",
-  "n_properties": 17,
+  "n_properties": 48,
   "registry": "output/properties/properties.jsonl",
   "target_id": null,
-  "command": "scripts/properties/discover.py --config configs/properties/discover_odcv_da716.yaml --out-dir output/properties/odcv_da716_full"
+  "command": "scripts/properties/discover.py --config configs/properties/discover_odcv_da716.yaml --out-dir output/properties/odcv_da716_v2"
 }

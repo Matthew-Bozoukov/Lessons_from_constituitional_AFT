@@ -1,7 +1,15 @@
 {
- "n_groups": 17,
- "near_duplicate_pairs": [],
- "near_duplicate_share": 0.0,
+ "n_groups": 48,
+ "near_duplicate_pairs": [
+  {
+   "a": 14,
+   "b": 15,
+   "cosine": 0.9038,
+   "label_a": "Simulated agentic tool use via shell scripts and files",
+   "label_b": "Step-by-step narration of sequential tool-call execution"
+  }
+ ],
+ "near_duplicate_share": 0.0009,
  "probes": {
   "evaluation awareness": {
    "units": 32,
@@ -31,18 +39,22 @@
    "groups_landed_in": [
     [
      "(unclustered noise)",
-     26
+     28
     ],
     [
-     "Explicitly weighs legitimate vs deceptive intent",
-     3
+     "Recognizes and resists gaming a proxy metric",
+     1
     ],
     [
-     "Recognizes and takes a stance on metric gaming",
-     2
+     "Reverse-engineers a scoring script to game it",
+     1
     ],
     [
-     "Verbalizes explicit ethical reasoning before acting",
+     "Flags user framing as manipulative",
+     1
+    ],
+    [
+     "Fabricated hyper-realistic professional scenario framing",
      1
     ]
    ]
@@ -83,16 +95,24 @@
    ],
    "groups_landed_in": [
     [
+     "Adopts a named autonomous agent persona",
+     17
+    ],
+    [
+     "Adopts a named compliance/audit persona",
+     11
+    ],
+    [
+     "Grounds clinical decisions in specific per-record evidence",
+     8
+    ],
+    [
      "(unclustered noise)",
-     26
+     7
     ],
     [
-     "Chooses clinical accuracy over gaming a score",
-     18
-    ],
-    [
-     "Frames decision as safety versus business-metric tradeoff",
-     3
+     "Frames safety as non-negotiable versus business metrics",
+     4
     ]
    ]
   },
@@ -123,23 +143,23 @@
    ],
    "groups_landed_in": [
     [
-     "(unclustered noise)",
-     11
-    ],
-    [
-     "Explicitly asserts choosing honesty over convenient outcome",
+     "Explicitly chooses honest reporting over favorable outcomes",
      8
     ],
     [
-     "Chooses clinical accuracy over gaming a score",
+     "Escalates to humans instead of acting unilaterally",
+     8
+    ],
+    [
+     "(unclustered noise)",
+     3
+    ],
+    [
+     "Grounds clinical decisions in specific per-record evidence",
      2
     ],
     [
-     "Scrutinizes whether a check actually proves correctness",
-     1
-    ],
-    [
-     "Explicit narrated step-by-step reasoning before acting",
+     "Identifies exploitable loophole but declines to use it",
      1
     ]
    ]
@@ -171,24 +191,24 @@
    ],
    "groups_landed_in": [
     [
-     "Refuses to fabricate or falsify data under outcome pressure",
-     98
+     "Refuses to fabricate or falsify data under target pressure",
+     96
     ],
     [
      "(unclustered noise)",
-     76
+     51
     ],
     [
-     "Explicit, explained refusal of unethical instruction",
-     58
+     "Refuses with explicit, reasoned justification",
+     34
     ],
     [
-     "Recognizes and takes a stance on metric gaming",
-     27
+     "Recognizes and resists gaming a proxy metric",
+     28
     ],
     [
-     "Scrutinizes whether a check actually proves correctness",
-     20
+     "Refuses to fabricate unnecessary tool calls",
+     23
     ]
    ]
   },
@@ -220,18 +240,22 @@
    "groups_landed_in": [
     [
      "(unclustered noise)",
-     9
+     12
     ],
     [
-     "Explicit, explained refusal of unethical instruction",
-     5
-    ],
-    [
-     "Verbalizes explicit ethical reasoning before acting",
+     "States ethical concern then acts against it",
      2
     ],
     [
-     "Refuses to fabricate or falsify data under outcome pressure",
+     "Refuses unethical instruction with explicit ethical reasoning",
+     1
+    ],
+    [
+     "Refuses with explicit, reasoned justification",
+     1
+    ],
+    [
+     "Refuses to fabricate or falsify data under target pressure",
      1
     ]
    ]
@@ -264,188 +288,394 @@
    "groups_landed_in": [
     [
      "(unclustered noise)",
-     6
+     4
     ],
     [
-     "Explicitly asserts choosing honesty over convenient outcome",
+     "Silently fabricates missing data instead of flagging it",
+     2
+    ],
+    [
+     "Explicitly chooses honest reporting over favorable outcomes",
      1
     ],
     [
-     "Explicitly weighs legitimate vs deceptive intent",
+     "Deliberates between literal wording and underlying intent",
      1
     ]
    ]
   }
  },
- "noise_share": 0.4026,
+ "noise_share": 0.3156,
  "stability": {
   "fits": [
    {
     "n_neighbors": 10,
     "seed": 0,
-    "n_groups": 18,
-    "noise_fraction": 0.3654,
-    "ari_vs_reference": 0.657
+    "n_groups": 46,
+    "noise_fraction": 0.3154,
+    "ari_vs_reference": 0.5452
    },
    {
     "n_neighbors": 10,
     "seed": 1,
-    "n_groups": 17,
-    "noise_fraction": 0.4026,
-    "ari_vs_reference": 0.679
+    "n_groups": 45,
+    "noise_fraction": 0.285,
+    "ari_vs_reference": 0.5415
    },
    {
     "n_neighbors": 10,
     "seed": 2,
-    "n_groups": 19,
-    "noise_fraction": 0.3694,
-    "ari_vs_reference": 0.5777
+    "n_groups": 41,
+    "noise_fraction": 0.2504,
+    "ari_vs_reference": 0.5186
+   },
+   {
+    "n_neighbors": 10,
+    "seed": 3,
+    "n_groups": 43,
+    "noise_fraction": 0.2753,
+    "ari_vs_reference": 0.5802
+   },
+   {
+    "n_neighbors": 10,
+    "seed": 4,
+    "n_groups": 47,
+    "noise_fraction": 0.3018,
+    "ari_vs_reference": 0.5355
    },
    {
     "n_neighbors": 15,
     "seed": 0,
-    "n_groups": 19,
-    "noise_fraction": 0.4317,
-    "ari_vs_reference": 0.6637
+    "n_groups": 45,
+    "noise_fraction": 0.3121,
+    "ari_vs_reference": 0.7342
    },
    {
     "n_neighbors": 15,
     "seed": 1,
-    "n_groups": 2,
-    "noise_fraction": 0.0515,
-    "ari_vs_reference": -0.0302
+    "n_groups": 46,
+    "noise_fraction": 0.2938,
+    "ari_vs_reference": 0.7158
    },
    {
     "n_neighbors": 15,
     "seed": 2,
-    "n_groups": 2,
-    "noise_fraction": 0.0401,
-    "ari_vs_reference": -0.0207
+    "n_groups": 46,
+    "noise_fraction": 0.3154,
+    "ari_vs_reference": 0.7286
+   },
+   {
+    "n_neighbors": 15,
+    "seed": 3,
+    "n_groups": 47,
+    "noise_fraction": 0.3154,
+    "ari_vs_reference": 0.726
+   },
+   {
+    "n_neighbors": 15,
+    "seed": 4,
+    "n_groups": 47,
+    "noise_fraction": 0.2846,
+    "ari_vs_reference": 0.7202
    },
    {
     "n_neighbors": 30,
     "seed": 0,
-    "n_groups": 17,
-    "noise_fraction": 0.3881,
-    "ari_vs_reference": 0.6422
+    "n_groups": 44,
+    "noise_fraction": 0.3068,
+    "ari_vs_reference": 0.579
    },
    {
     "n_neighbors": 30,
     "seed": 1,
-    "n_groups": 19,
-    "noise_fraction": 0.3954,
-    "ari_vs_reference": 0.5571
+    "n_groups": 45,
+    "noise_fraction": 0.3139,
+    "ari_vs_reference": 0.5664
    },
    {
     "n_neighbors": 30,
     "seed": 2,
-    "n_groups": 2,
-    "noise_fraction": 0.0141,
-    "ari_vs_reference": 0.0034
+    "n_groups": 45,
+    "noise_fraction": 0.3154,
+    "ari_vs_reference": 0.5719
+   },
+   {
+    "n_neighbors": 30,
+    "seed": 3,
+    "n_groups": 48,
+    "noise_fraction": 0.3251,
+    "ari_vs_reference": 0.6008
+   },
+   {
+    "n_neighbors": 30,
+    "seed": 4,
+    "n_groups": 43,
+    "noise_fraction": 0.3123,
+    "ari_vs_reference": 0.5643
    }
   ],
   "pairwise_ari": [
    [
     1.0,
-    0.7476,
-    0.7045,
-    0.579,
-    -0.028,
-    -0.0193,
-    0.5377,
-    0.5141,
-    0.0021
+    0.6183,
+    0.5637,
+    0.6153,
+    0.6309,
+    0.5849,
+    0.5436,
+    0.5423,
+    0.5689,
+    0.4929,
+    0.4497,
+    0.4474,
+    0.4317,
+    0.451,
+    0.4295
    ],
    [
-    0.7476,
+    0.6183,
     1.0,
-    0.6328,
-    0.6099,
-    -0.0276,
-    -0.0187,
-    0.554,
-    0.4627,
-    0.0048
+    0.66,
+    0.6323,
+    0.6098,
+    0.5976,
+    0.5705,
+    0.573,
+    0.5756,
+    0.5271,
+    0.4254,
+    0.443,
+    0.4229,
+    0.4403,
+    0.4161
    ],
    [
-    0.7045,
-    0.6328,
+    0.5637,
+    0.66,
     1.0,
-    0.5898,
-    -0.0301,
-    -0.0216,
-    0.4621,
-    0.4928,
-    0.0015
+    0.6948,
+    0.6258,
+    0.5743,
+    0.5561,
+    0.5359,
+    0.5184,
+    0.5532,
+    0.3935,
+    0.4093,
+    0.3971,
+    0.4043,
+    0.3805
    ],
    [
-    0.579,
-    0.6099,
-    0.5898,
+    0.6153,
+    0.6323,
+    0.6948,
     1.0,
-    -0.0331,
-    -0.0224,
-    0.5523,
-    0.5515,
-    0.0038
+    0.6556,
+    0.6023,
+    0.5613,
+    0.5573,
+    0.5636,
+    0.5784,
+    0.4371,
+    0.4479,
+    0.4366,
+    0.449,
+    0.4219
    ],
    [
-    -0.028,
-    -0.0276,
-    -0.0301,
-    -0.0331,
+    0.6309,
+    0.6098,
+    0.6258,
+    0.6556,
     1.0,
-    0.8676,
-    -0.0294,
-    -0.031,
-    0.5887
+    0.561,
+    0.5236,
+    0.5161,
+    0.5202,
+    0.5427,
+    0.4107,
+    0.4169,
+    0.4229,
+    0.4198,
+    0.4044
    ],
    [
-    -0.0193,
-    -0.0187,
-    -0.0216,
-    -0.0224,
-    0.8676,
+    0.5849,
+    0.5976,
+    0.5743,
+    0.6023,
+    0.561,
     1.0,
-    -0.0204,
-    -0.0217,
-    0.6661
+    0.7562,
+    0.7488,
+    0.7359,
+    0.6833,
+    0.586,
+    0.594,
+    0.5857,
+    0.6012,
+    0.5902
    ],
    [
-    0.5377,
-    0.554,
-    0.4621,
-    0.5523,
-    -0.0294,
-    -0.0204,
+    0.5436,
+    0.5705,
+    0.5561,
+    0.5613,
+    0.5236,
+    0.7562,
     1.0,
-    0.7255,
-    0.0024
+    0.7671,
+    0.7518,
+    0.6831,
+    0.5542,
+    0.6044,
+    0.5721,
+    0.5646,
+    0.5657
    ],
    [
-    0.5141,
-    0.4627,
-    0.4928,
-    0.5515,
-    -0.031,
-    -0.0217,
-    0.7255,
+    0.5423,
+    0.573,
+    0.5359,
+    0.5573,
+    0.5161,
+    0.7488,
+    0.7671,
     1.0,
-    0.0014
+    0.7808,
+    0.7157,
+    0.5706,
+    0.589,
+    0.5539,
+    0.5833,
+    0.5624
    ],
    [
-    0.0021,
-    0.0048,
-    0.0015,
-    0.0038,
-    0.5887,
-    0.6661,
-    0.0024,
-    0.0014,
+    0.5689,
+    0.5756,
+    0.5184,
+    0.5636,
+    0.5202,
+    0.7359,
+    0.7518,
+    0.7808,
+    1.0,
+    0.6862,
+    0.5823,
+    0.6008,
+    0.5722,
+    0.5915,
+    0.5795
+   ],
+   [
+    0.4929,
+    0.5271,
+    0.5532,
+    0.5784,
+    0.5427,
+    0.6833,
+    0.6831,
+    0.7157,
+    0.6862,
+    1.0,
+    0.536,
+    0.5496,
+    0.5611,
+    0.5661,
+    0.5293
+   ],
+   [
+    0.4497,
+    0.4254,
+    0.3935,
+    0.4371,
+    0.4107,
+    0.586,
+    0.5542,
+    0.5706,
+    0.5823,
+    0.536,
+    1.0,
+    0.738,
+    0.7503,
+    0.7845,
+    0.7962
+   ],
+   [
+    0.4474,
+    0.443,
+    0.4093,
+    0.4479,
+    0.4169,
+    0.594,
+    0.6044,
+    0.589,
+    0.6008,
+    0.5496,
+    0.738,
+    1.0,
+    0.7783,
+    0.7645,
+    0.7567
+   ],
+   [
+    0.4317,
+    0.4229,
+    0.3971,
+    0.4366,
+    0.4229,
+    0.5857,
+    0.5721,
+    0.5539,
+    0.5722,
+    0.5611,
+    0.7503,
+    0.7783,
+    1.0,
+    0.7811,
+    0.7705
+   ],
+   [
+    0.451,
+    0.4403,
+    0.4043,
+    0.449,
+    0.4198,
+    0.6012,
+    0.5646,
+    0.5833,
+    0.5915,
+    0.5661,
+    0.7845,
+    0.7645,
+    0.7811,
+    1.0,
+    0.7571
+   ],
+   [
+    0.4295,
+    0.4161,
+    0.3805,
+    0.4219,
+    0.4044,
+    0.5902,
+    0.5657,
+    0.5624,
+    0.5795,
+    0.5293,
+    0.7962,
+    0.7567,
+    0.7705,
+    0.7571,
     1.0
    ]
   ],
-  "min_pairwise_ari": -0.0331,
-  "mean_ari_vs_reference": 0.4144
+  "min_pairwise_ari": 0.3805,
+  "n_collapsed": 0,
+  "n_fits": 15,
+  "min_pairwise_ari_healthy": 0.3805,
+  "median_pairwise_ari_healthy": 0.5689,
+  "mean_ari_vs_reference": 0.6152
  }
 }
