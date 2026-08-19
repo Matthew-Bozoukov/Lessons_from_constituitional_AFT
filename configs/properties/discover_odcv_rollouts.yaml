@@ -82,7 +82,9 @@ producers:
 
     interpret:
       model: anthropic/claude-sonnet-5
-      n_shown: 30
+      # The post's number, and what the published feature-discovery runs used. Leave it
+      # unset to get 100 under `evidence: features` and 30 under `evidence: traces`.
+      n_shown: 100
       workers: 8
 
     # Which model produced the trace. Everything downstream splits on this.
