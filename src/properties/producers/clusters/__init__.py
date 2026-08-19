@@ -249,8 +249,10 @@ def _feature_units(records: list[Record], channel: str, cfg, run: Path) -> Units
     stock phrase cannot pull a cluster toward itself by sheer repetition; the occurrence
     counts travel alongside instead, and both get reported.
 
-    Extraction is the expensive half of this mode, so a rerun against the same run
-    directory reuses `features.jsonl` when it already covers every record.
+    Extraction is the expensive half of this mode and the stage most likely to be
+    interrupted, so each record's features are appended to `features.jsonl` as they land
+    and a rerun labels only what the file does not already hold. A run killed at 95% keeps
+    its 95%.
 
     Args:
         records: The corpus.
@@ -266,22 +268,11 @@ def _feature_units(records: list[Record], channel: str, cfg, run: Path) -> Units
     """
     extract_cfg = block(cfg, "extract")
     workers = int(extract_cfg.pop("workers", 16))
-    reuse = bool(extract_cfg.pop("reuse", True))
+    extract_cfg.pop("reuse", None)  # resuming is now unconditional; the file IS the cache
     spec = attributes_mod.AttributeSpec(style="freeform", channel=channel, **extract_cfg)
 
     path = run / "features.jsonl"
-    rows = None
-    if reuse and path.exists():
-        cached = {json.loads(line)["record_id"]: json.loads(line)
-                  for line in path.read_text().splitlines() if line.strip()}
-        if all(r.record_id in cached for r in records):
-            rows = [cached[r.record_id] for r in records]
-            print(f">>> reusing {len(rows)} extracted feature lists from {path}")
-    if rows is None:
-        rows = attributes_mod.extract(records, spec, workers=workers)
-        path.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n"
-                                for row in rows), encoding="utf-8")
-
+    rows = attributes_mod.extract_to(records, spec, path, workers=workers)
     failed = [row for row in rows if row.get("error")]
     counts: dict[str, int] = {}
     unit_records: dict[str, list[int]] = {}
@@ -533,9 +524,15 @@ def produce(records: list[Record], cfg, out_dir: str | Path,
     _gate_grouping(vectors, result, cfg, run)
 
     groups, below_floor = _group_members(result, units, cfg)
-    evidence = {g: [units.texts[u] for u in m["units"][:200]] for g, m in groups.items()}
+    evidence = {g: [units.texts[u] for u in m["units"][:400]] for g, m in groups.items()}
+    interpret_cfg = block(cfg, "interpret")
+    # The post samples 100 features per cluster and the published runs did too, so a
+    # features run keeps that number. A traces run cannot: 100 excerpts of 4000 characters
+    # is a 100k-token naming prompt, and the excerpts are far more redundant than feature
+    # strings are, so fewer of them carry the same information.
+    interpret_cfg.setdefault("n_shown", 100 if units.kind == "features" else 30)
     interpretations = interpret_mod.interpret_many(
-        evidence, channel=channel, evidence_kind=units.kind, **block(cfg, "interpret"))
+        evidence, channel=channel, evidence_kind=units.kind, **interpret_cfg)
 
     novelty = _run_novelty(vectors, cfg, run, embed_meta, units)
     provenance = {"run_dir": str(run), "git_sha": git_sha(),

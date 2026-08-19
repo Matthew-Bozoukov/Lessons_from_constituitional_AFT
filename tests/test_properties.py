@@ -1048,14 +1048,17 @@ def _stub_embedding(monkeypatch, tc, vectors, features=None):
                                dim=vectors.shape[1], n=len(vectors))
     monkeypatch.setattr(tc.embed_mod, "embed", lambda texts, **kw: (vectors, meta))
 
-    def extract(records, spec, workers=16, client=None):
+    def extract_to(records, spec, path, workers=16, client=None):
         if features is None:
             raise AssertionError("this test reached feature extraction without stubbing "
                                  "it; pass features= or set evidence: traces")
-        return [{"record_id": r.record_id, "attributes": features[r.record_id],
+        rows = [{"record_id": r.record_id, "attributes": features[r.record_id],
                  "tokens_in": 1, "tokens_out": 1} for r in records]
+        Path(path).write_text("".join(json.dumps(r) + "\n" for r in rows))
+        return rows
 
-    monkeypatch.setattr(tc.attributes_mod, "extract", extract)
+    monkeypatch.setattr(tc.attributes_mod, "extract_to", extract_to)
+    monkeypatch.setattr(tc.attributes_mod, "extract", extract_to)
     from src.properties.shared.interpret import Interpretation
     monkeypatch.setattr(tc.interpret_mod, "interpret_many", lambda groups, **kw: {
         g: Interpretation(label=f"Property {g}", description="d",
@@ -1433,26 +1436,45 @@ def test_features_mode_counts_instances_separately_from_records(tmp_path, monkey
     assert top.prevalence == 1.0
 
 
-def test_features_mode_reuses_an_extraction_rather_than_paying_for_it_twice(tmp_path,
-                                                                           monkeypatch):
-    from src.properties.producers import clusters as tc
+def test_extract_to_streams_as_it_goes_and_resumes_a_killed_run(tmp_path, monkeypatch):
+    """Extraction is the expensive stage and the one most likely to be interrupted. A run
+    killed at 95% must keep its 95%, and a rerun must label only what is missing."""
+    records = [Record(f"r{i}", "q", "a", reasoning=f"t{i}") for i in range(6)]
+    spec = attributes_mod.AttributeSpec(style="freeform", channel="reasoning")
+    path = tmp_path / "features.jsonl"
+    asked = []
 
-    records, features = _feature_corpus(12)
-    calls = []
+    class _Reply:
+        def __init__(self, rid):
+            self.content = json.dumps([f"feature of {rid}"])
+            self.prompt_tokens = self.completion_tokens = 1
 
-    def counting_extract(recs, spec, workers=16, client=None):
-        calls.append(len(recs))
-        return [{"record_id": r.record_id, "attributes": features[r.record_id],
-                 "tokens_in": 1, "tokens_out": 1} for r in recs]
+    class _Client:
+        def chat(self, model, messages, **kw):
+            rid = messages[-1]["content"]
+            asked.append(rid)
+            return _Reply(rid)
 
-    _stub_embedding(monkeypatch, tc, _two_blobs(7, 7), features=features)
-    monkeypatch.setattr(tc.attributes_mod, "extract", counting_extract)
-    cfg = {"evidence": "features", "min_group_records": 2,
-           "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2}}
-    tc.produce(records, cfg, tmp_path / "fd")
-    tc.produce(records, cfg, tmp_path / "fd")
-    assert calls == [12], "the second run reads features.jsonl instead of re-extracting"
-    assert (tmp_path / "fd" / "features.jsonl").exists()
+    # A partial run: three records already on disk, one of them a recorded failure.
+    path.write_text("".join(json.dumps(r) + "\n" for r in [
+        {"record_id": "r0", "attributes": ["cached zero"], "tokens_in": 1, "tokens_out": 1},
+        {"record_id": "r1", "attributes": ["cached one"], "tokens_in": 1, "tokens_out": 1},
+        {"record_id": "r2", "attributes": [], "error": "RateLimit: 429"},
+    ]))
+    rows = attributes_mod.extract_to(records, spec, path, workers=2, client=_Client())
+
+    assert [r["record_id"] for r in rows] == [f"r{i}" for i in range(6)]
+    assert rows[0]["attributes"] == ["cached zero"], "a cached row is not re-extracted"
+    # r2 failed last time: an error is an absence of evidence, so it is retried rather
+    # than inherited, which would make a transient rate-limit permanent.
+    assert rows[2]["attributes"] == ["feature of t2"]
+    assert sorted(asked) == ["t2", "t3", "t4", "t5"]
+
+    # Everything landed on disk, so a third run asks for nothing at all.
+    asked.clear()
+    again = attributes_mod.extract_to(records, spec, path, workers=2, client=_Client())
+    assert asked == []
+    assert [r["attributes"] for r in again] == [r["attributes"] for r in rows]
 
 
 def test_the_interpreter_is_told_which_kind_of_evidence_it_is_reading(tmp_path,
