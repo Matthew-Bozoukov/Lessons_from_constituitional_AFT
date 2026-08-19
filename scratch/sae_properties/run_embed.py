@@ -45,6 +45,7 @@ def make_sae(cfg, channel: str):
         quantize=bool(cfg.sae.quantize),
         dtype=str(cfg.sae.dtype),
         max_length=int(cfg.sae.max_length),
+        hf_model=cfg.sae.get("hf_model"),  # ungated mirror; null = the official gated repo
         device=OmegaConf.to_container(cfg.sae.device),
         truncate=True,
         # Documents are wrapped as a single chat turn (upstream behaviour). Assistant
