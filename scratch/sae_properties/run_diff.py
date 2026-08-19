@@ -57,10 +57,15 @@ def summarize(out_dir: Path, hypotheses: dict, corpora: list[str]) -> str:
     diffs = hypotheses.get("differences", [])
     rates: dict[str, list[float | None]] = {}
     for corpus in corpora:
-        reports = sorted((out_dir / f"verify_{corpus}").rglob("verification_report.json"))
+        reports = [json.loads(p.read_text())
+                   for p in (out_dir / f"verify_{corpus}").rglob("verification_report.json")]
+        # Keep only reports that verified THIS hypotheses file (stale runs can leave
+        # others behind), newest first by the report's own timestamp — path order lies.
+        reports = sorted((r for r in reports if r["metadata"]["num_hypotheses"] == len(diffs)),
+                         key=lambda r: r["metadata"]["timestamp"])
         if not reports:
             continue
-        summary = json.loads(reports[-1].read_text())["summary_by_hypothesis"]
+        summary = reports[-1]["summary_by_hypothesis"]
         by_idx = {s["hypothesis_idx"]: s for s in summary}
         rates[corpus] = [
             next(iter(by_idx[i]["verification_rates"].values()), {}).get("percentage")
