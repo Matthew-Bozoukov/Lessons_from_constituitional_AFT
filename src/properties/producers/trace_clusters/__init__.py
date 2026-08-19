@@ -400,11 +400,74 @@ def produce(records: list[Record], cfg, out_dir: str | Path,
         properties = _remeasure(properties, kept, cfg, corpus, str(group_by or ""))
 
     properties = _cross_outcomes(properties, kept, groups, cfg, run)
+    _write_members(run, properties, kept, groups, result, novelty)
     (run / "properties_preview.json").write_text(
         json.dumps([p.to_dict() for p in properties], indent=1), encoding="utf-8")
     (run / "report.md").write_text(
         _report(properties, kept, result, cfg, novelty, texts), encoding="utf-8")
     return properties
+
+
+def _write_members(run: Path, properties: list[Property], records: list[Record],
+                   groups: dict[int, np.ndarray], result, novelty: dict | None) -> Path:
+    """Write the record -> property join table.
+
+    A property row carries ten example ids, which is enough to sanity-check a label and
+    nowhere near enough to work with. The full membership is in `labels.npy`, but that is
+    POSITIONAL: row i is record i only if you reload the source in exactly the same order,
+    which is a reconstruction nobody should have to do to answer "show me the traces in
+    this cluster".
+
+    So the mapping is written out explicitly, one line per record, carrying the path to
+    the rollout itself. That is what makes the output browsable: filter to a property_id,
+    open the paths, read what the model actually did.
+
+    Noise records (HDBSCAN's -1) get a line too, with a null property. They are part of
+    the denominator every prevalence is a share of, so dropping them here would make this
+    file disagree with the numbers beside it.
+
+    Args:
+        run: The run directory.
+        properties: The exported rows.
+        records: The corpus, in embedding order.
+        groups: group id -> member indices, after the size floor.
+        result: The Grouping.
+        novelty: The `_novelty` result, or None.
+
+    Returns:
+        The path written.
+    """
+    property_of = {prop.support["group"]: prop for prop in properties}
+    label_of = {group: prop.label for group, prop in property_of.items()}
+    lines = []
+    for i, record in enumerate(records):
+        group = int(result.labels[i])
+        exported = group in groups and group in property_of
+        row = {
+            "record_id": record.record_id,
+            "property_id": property_of[group].property_id if exported else None,
+            "label": label_of.get(group) if exported else None,
+            "group": group if group >= 0 else None,
+            # Why a record has no property: HDBSCAN called it noise, or its group came in
+            # under min_group_records. Both are exclusions a reader should be able to see.
+            "excluded": None if exported else ("noise" if group < 0 else "below_floor"),
+            "arm": record.metadata.get("arm"),
+            "outcome": record.outcome,
+            "rollout_path": record.metadata.get("rollout_path"),
+            "reasoning_chars": len(record.reasoning),
+        }
+        if novelty:
+            row["cosine_to_training"] = round(float(novelty["best_cosine"][i]), 4)
+            row["nearest_training_group"] = novelty["nearest_label"][i]
+            row["unhoused"] = bool(novelty["unhoused"][i])
+        lines.append(json.dumps(row, ensure_ascii=False))
+
+    path = run / "members.jsonl"
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    n_excluded = sum(1 for line in lines if '"excluded": "' in line)
+    print(f">>> {len(lines)} records -> {path.name} "
+          f"({n_excluded} carry no property: noise or below the floor)")
+    return path
 
 
 def _gate_grouping(vectors: np.ndarray, result, cfg, run: Path) -> None:
