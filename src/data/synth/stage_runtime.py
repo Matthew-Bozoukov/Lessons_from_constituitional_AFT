@@ -31,6 +31,7 @@ PRICES: dict[str, dict[str, float]] = {
     # stage's spend -- price every model a config names.
     "google/gemini-2.5-pro": {"in": 1.25, "out": 10.00},
     "google/gemini-3.7-flash": {"in": 0.375, "out": 1.875},
+    "google/gemini-3.6-flash": {"in": 0.75, "out": 3.75},   # google-vertex standard
     # Priced at the tier the providers.yaml pin routes to: 3.1-pro on
     # google-ai-studio standard. If the pin changes tier, change the price with it or
     # the budget guard drifts.
