@@ -42,8 +42,11 @@ STATE=/root/odcv
 mkdir -p "$STATE"
 
 wait_dpkg() {
+  # BOTH locks. dpkg's frontend lock is the one unattended-upgrades holds, but a concurrent
+  # `apt-get update` holds /var/lib/apt/lists/lock instead, and waiting only on the first
+  # lets the update fail with "Could not get lock /var/lib/apt/lists/lock".
   for i in $(seq 1 90); do
-    fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || return 0
+    { fuser /var/lib/dpkg/lock-frontend || fuser /var/lib/apt/lists/lock; } >/dev/null 2>&1 || return 0
     [ "$i" = 1 ] && echo "    waiting for unattended-upgrades to release the dpkg lock..."
     sleep 10
   done
@@ -52,13 +55,11 @@ wait_dpkg() {
 
 echo "=== [1/6] packages ==="
 export DEBIAN_FRONTEND=noninteractive
-wait_dpkg
-apt-get update -qq || { echo "FATAL: apt-get update failed"; exit 1; }
-wait_dpkg
-# Install ONLY what is missing. The vast KVM image ships docker-ce preinstalled, and asking
-# for docker.io on top of it makes apt fail with "pkgProblemResolver::Resolve generated
-# breaks" -- the two packages conflict. So an unconditional install breaks exactly the
-# boxes that were already usable.
+# Decide what is missing BEFORE touching apt. These boxes usually already have everything
+# (docker-ce ships in the vast KVM image, and a re-run finds the rest installed), and apt on
+# a freshly booted VM can block for 15+ minutes behind unattended-upgrades. Waiting on that
+# lock to install nothing is pure dead time -- it killed both arm boxes on 2026-08-20 with
+# "dpkg lock still held after 15 minutes" while every required binary was already present.
 PKGS=""
 command -v docker >/dev/null 2>&1        || PKGS="$PKGS docker.io"
 docker compose version >/dev/null 2>&1   || PKGS="$PKGS docker-compose-plugin"
@@ -66,10 +67,13 @@ command -v git  >/dev/null 2>&1          || PKGS="$PKGS git"
 command -v curl >/dev/null 2>&1          || PKGS="$PKGS curl"
 command -v jq   >/dev/null 2>&1          || PKGS="$PKGS jq"
 if [ -n "$PKGS" ]; then
-  echo "    installing:$PKGS"
+  echo "    missing:$PKGS - waiting for apt"
+  wait_dpkg
+  apt-get update -qq || { echo "FATAL: apt-get update failed"; exit 1; }
+  wait_dpkg
   apt-get install -y -qq $PKGS || { echo "FATAL: apt-get install failed ($PKGS)"; exit 1; }
 else
-  echo "    all required packages already present"
+  echo "    all required packages already present - apt skipped entirely"
 fi
 systemctl enable --now docker >/dev/null 2>&1 || service docker start || true
 docker info >/dev/null 2>&1 || { echo "FATAL: docker unusable on this box"; exit 1; }
@@ -120,7 +124,7 @@ Description=ODCV vLLM tunnel to the serving pod
 After=network-online.target
 
 [Service]
-ExecStart=/usr/bin/ssh -N -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -L 8000:localhost:8000 -p ${POD_PORT} root@${POD_IP}
+ExecStart=/usr/bin/ssh -N -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -L 0.0.0.0:8000:localhost:8000 -p ${POD_PORT} root@${POD_IP}
 Restart=always
 RestartSec=5
 
@@ -131,14 +135,26 @@ systemctl daemon-reload
 systemctl enable odcv-tunnel.service >/dev/null 2>&1
 systemctl restart odcv-tunnel.service
 sleep 10
-if curl -sf -m 20 http://127.0.0.1:8000/v1/models >/dev/null; then
-  echo "tunnel OK; served models:"
-  curl -s -m 20 http://127.0.0.1:8000/v1/models | jq -r '.data[].id' | sed 's/^/  /'
-else
-  echo "FATAL: tunnel not answering on 127.0.0.1:8000"
+# BIND 0.0.0.0, NOT localhost, and verify FROM A CONTAINER. The agent runs inside docker and
+# reaches the host as host.docker.internal, which resolves to the docker bridge gateway --
+# NOT 127.0.0.1. A tunnel bound to loopback answers the host's own curl perfectly while
+# every container gets nothing, and ODCV renders that as `ok+no_transcript` on all 70 cells:
+# the agent cannot call a tool, so it never acts, and the harness still reports success.
+# That cost a full set of passes on 2026-08-20. The host check alone CANNOT catch it.
+if ! curl -sf -m 20 http://127.0.0.1:8000/v1/models >/dev/null; then
+  echo "FATAL: tunnel not answering on 127.0.0.1:8000 (host side)"
   systemctl status odcv-tunnel.service --no-pager -l 2>/dev/null | tail -10
   exit 1
 fi
+echo "tunnel OK (host); served models:"
+curl -s -m 20 http://127.0.0.1:8000/v1/models | jq -r '.data[].id' | sed 's/^/  /'
+echo "verifying reachability FROM A CONTAINER (the check that matters)..."
+if ! docker run --rm --add-host host.docker.internal:host-gateway curlimages/curl:latest      -sf -m 20 http://host.docker.internal:8000/v1/models >/dev/null 2>&1; then
+  echo "FATAL: containers cannot reach host.docker.internal:8000 - every scenario would"
+  echo "       report ok+no_transcript. Check the tunnel binds 0.0.0.0, not localhost."
+  exit 1
+fi
+echo "container reachability OK"
 
 echo "=== [6/6] preflight ==="
 uv run python scratch/odcv_preflight.py --config "$CONFIG" \
