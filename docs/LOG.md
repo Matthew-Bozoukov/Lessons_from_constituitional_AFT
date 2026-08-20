@@ -1353,6 +1353,46 @@ published to `LASR-Callum/2026-08-18-odcv-lessswap716-eval`. ~$20 total (H200 ~$
 LESS selection; (2) once trained, run it at these same settings rather than comparing against
 the legacy arm; (3) the 16k-vs-64k context finding applies to every prior ODCV arm and is worth
 a re-read of those results.
+## 2026-08-20 — SAE correlations on difficult-advice: verification is load-bearing, not ceremonial
+
+**Hypothesis.** Following the paper's §4.2/§5.2 (the loop that caught Tulu-3's "I hope it is
+correct" trigger), NPMI between prompt-channel and response-channel latents should surface
+couplings in our difficult-advice corpus that nobody hypothesized — spurious artifacts planted
+by the generate→rewrite pipeline, or scenario→behaviour links worth ablating.
+
+**Method.** Embedded the query channel of all four synth corpora (2×A100, ~50 min, ~$2.60;
+DA/PC/CR/PAR) to pair with E1's cached response embeddings. New tooling:
+`scratch/sae_properties/correlate.py` (chunked NPMI over 45,402 × 49,951 = 2.27e9 latent pairs —
+the full matrix is ~9GB and OOMs a laptop; hypergeometric test with Bonferroni over the whole
+tested family; per-latent cap so one prolific latent cannot fill the list; token-Jaccard
+label-similarity filter for "interesting") and `latent_freq.py` (cross-corpus frequency of named
+latents, GPU-free). Judge-verified the top 14 pairs — gemini-2.5-flash reads 150 documents per
+pair and answers per channel, giving honest P(B|A) vs P(B|¬A).
+
+**Result.** 23,269 pairs cleared NPMI ≥ 0.5; **20,409 survived Bonferroni at α=2.2e-11**, so
+chance is not the problem. Semantics are: **5 of the top 14 pairs were refuted outright** — the
+judge found the prompt-side property in *zero* of 150 documents — and SAE NPMI did not predict
+which (two refuted pairs scored 0.82 and 0.75, above most survivors). The refuted latents share a
+signature visible in the cross-corpus check: "Romance language connectors" 0.99, "structural
+delimiters" 0.99, "Western given names" 0.96, "creative-writing scene transitions" 0.95,
+"Slavic connectors" 0.91, **"Offensive request from the user" 0.84 — all of courtroom**, a corpus
+with no Slavic text, no fiction and (judge-confirmed) no offensive requests. They are syntactic
+detectors wearing semantic labels from the SAE's LMSYS training distribution, firing on
+courtroom's rigid prosecutor/defence/judge structure. Substantively, the strongest *verified*
+coupling is AI-identity: prompts engaging the assistant's nature → responses explaining its
+nature, P(B|A)=1.00 vs 0.05 base (20× lift) — but cross-corpus frequency shows peer-critique
+equals or exceeds DA (0.23 vs 0.22), so it is an assistant-voice property, not a DA signature.
+What *is* DA-specific extends E1's domain-skew row into named domains with prompt→response
+coupling: nursing/healthcare staffing (0.35 vs 0.19/0.11/0.05) and ML-deployment governance
+(0.22 vs 0.07/0.04/0.05).
+
+**Next steps.** (1) **Relabel-then-rank**: relabel candidate latents on our corpus *before* the
+NPMI ranking, not just before reporting — the current top of the list is partly structural noise,
+and the paper's relabeling step is what prevents this. (2) Take the healthcare / ML-deployment
+concentration to the Tulu-3 payoff step: counterfactual prompts inside vs outside those domains,
+measured on a trained organism. (3) The table2 contrast (docs §8.2) is still the only way to test
+constitution-over-mention. Artifacts: `output/sae_properties/e1_70b/corr_difficult_advice_queryxresponse/`.
+
 ## 2026-08-19 — SAE dataset diffing (E1): the 70B run separates the four synth corpora, and names how
 
 **Hypothesis.** SAE embeddings (arXiv:2512.10092, run with the authors' own vendored code +
