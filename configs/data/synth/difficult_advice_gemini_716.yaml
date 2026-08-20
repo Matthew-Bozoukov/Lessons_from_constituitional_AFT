@@ -154,17 +154,21 @@ defaults:
 # every max_tokens carries headroom and the judge stages set reasoning effort low (they
 # cannot disable it). safety_settings comes from `defaults` above.
 models:
-  # Stage 2 -- generate difficult scenarios per trait.
+  # Stage 2 -- generate difficult scenarios per trait. effort:low caps Gemini's mandatory
+  # HIDDEN reasoning so it doesn't eat the visible-output budget; diversity is enforced by
+  # the reject-cosine gate, not the model's introspection.
   scenarios:
     model: "google/gemini-3.6-flash"
     temperature: 1.1          # diversity matters most here
-    max_tokens: 16384         # scenario batch + mandatory reasoning
+    max_tokens: 16384         # scenario batch JSON
+    reasoning: {effort: low}
     assumed_tokens: {in: 700, out: 2400}
   # Stage 3 -- draft the system + user prompt.
   draft:
     model: "google/gemini-3.6-flash"
     temperature: 1.0
     max_tokens: 8192
+    reasoning: {effort: low}
     assumed_tokens: {in: 500, out: 1600}
   # Stage 4 -- refine the prompt against the full constitution + target trait.
   refine:
@@ -172,11 +176,16 @@ models:
     temperature: 0.7
     max_tokens: 12288
     assumed_tokens: {in: 2000, out: 2400}
-  # Stage 5 -- generate the response with explicit reasoning.
+  # Stage 5 -- generate the response with explicit reasoning. The VISIBLE <reasoning> is
+  # the trained trace (instructed output, unaffected by the effort knob); effort:low caps
+  # the redundant HIDDEN reasoning, which otherwise ate the budget and truncated the
+  # output before <response> (smoke, 2026-08-20). Lowering reasoning alone fixes it — the
+  # baseline max_tokens is enough once the hidden reasoning is capped.
   respond:
     model: "google/gemini-3.6-flash"
     temperature: 1.0
     max_tokens: 12288
+    reasoning: {effort: low}
     assumed_tokens: {in: 1200, out: 2800}
   # Stage 6 -- CRITICAL. Rewrite the response to maximally exhibit the target trait.
   rewrite:
