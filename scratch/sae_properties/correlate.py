@@ -63,27 +63,52 @@ def token_jaccard(a: str, b: str) -> float:
 
 
 def npmi_pairs(A: np.ndarray, B: np.ndarray, cfg) -> list[dict]:
-    """Top NPMI pairs between columns of A (channel_a) and B (channel_b), same doc rows."""
+    """Top NPMI pairs between columns of A (channel_a) and B (channel_b), same doc rows.
+
+    Chunked over the A side: the full |ka| x |kb| matrix is tens of GB at these latent
+    counts, so each block is scored and thresholded before the next one is built.
+    """
     n = A.shape[0]
     fa, fb = A.mean(0), B.mean(0)
     ka = np.flatnonzero((fa >= cfg.min_freq) & (fa <= cfg.max_freq))
     kb = np.flatnonzero((fb >= cfg.min_freq) & (fb <= cfg.max_freq))
-    print(f"[corr] candidate latents: {len(ka)} x {len(kb)} over {n} docs")
-    C = A[:, ka].astype(np.float32).T @ B[:, kb].astype(np.float32)  # co-occurrence counts
-    pij = C / n
-    with np.errstate(divide="ignore", invalid="ignore"):
-        pmi = np.log(pij / np.outer(fa[ka], fb[kb]))
-        npmi = pmi / -np.log(pij)
-    npmi[C < cfg.min_support] = -1
-    flat = np.argsort(npmi, axis=None)[::-1][: cfg.top_k * 40]
+    print(f"[corr] candidate latents: {len(ka)} x {len(kb)} over {n} docs", flush=True)
+    Bf = B[:, kb].astype(np.float32)
+    fb_k = fb[kb]
     out = []
-    for f in flat:
-        i, j = np.unravel_index(f, npmi.shape)
-        if npmi[i, j] < cfg.npmi_floor:
-            break
-        out.append({"a": int(ka[i]), "b": int(kb[j]), "npmi": float(npmi[i, j]),
-                    "cooc": int(C[i, j]), "freq_a": float(fa[ka[i]]), "freq_b": float(fb[kb[j]])})
-    return out
+    step = max(1, int(cfg.get("chunk", 1024)))
+    for s in range(0, len(ka), step):
+        blk = ka[s: s + step]
+        C = A[:, blk].astype(np.float32).T @ Bf          # |blk| x |kb| co-occurrence counts
+        pij = C / n
+        with np.errstate(divide="ignore", invalid="ignore"):
+            npmi = np.log(pij / np.outer(fa[blk], fb_k)) / -np.log(pij)
+        npmi[(C < cfg.min_support) | ~np.isfinite(npmi)] = -1
+        ii, jj = np.nonzero(npmi >= cfg.npmi_floor)
+        for i, j in zip(ii, jj):
+            out.append({"a": int(blk[i]), "b": int(kb[j]), "npmi": float(npmi[i, j]),
+                        "cooc": int(C[i, j]), "freq_a": float(fa[blk[i]]), "freq_b": float(fb_k[j])})
+        if s % (step * 8) == 0:
+            print(f"[corr]   scanned {min(s + step, len(ka))}/{len(ka)} · kept {len(out)}", flush=True)
+    print(f"[corr] pairs over NPMI floor {cfg.npmi_floor}: {len(out)}", flush=True)
+
+    # Significance: |ka| x |kb| pairs were tested, so a high NPMI on a handful of
+    # co-occurrences is expected by chance alone. Keep only pairs whose overlap survives
+    # a Bonferroni-corrected hypergeometric test over the WHOLE tested family (the NPMI
+    # prefilter only removes candidates, so the correction stays conservative).
+    from scipy.stats import hypergeom
+
+    m = len(ka) * len(kb)
+    alpha = float(cfg.get("alpha", 0.05)) / m
+    kept = []
+    for p in out:
+        na, nb, k = round(p["freq_a"] * n), round(p["freq_b"] * n), p["cooc"]
+        p["p_value"] = float(hypergeom.sf(k - 1, n, na, nb))
+        if p["p_value"] <= alpha:
+            kept.append(p)
+    kept.sort(key=lambda p: (p["p_value"], -p["npmi"]))
+    print(f"[corr] significant at Bonferroni alpha={alpha:.2e} ({m:,} pairs tested): {len(kept)}", flush=True)
+    return kept
 
 
 def main() -> None:
@@ -95,7 +120,8 @@ def main() -> None:
     cfg = OmegaConf.merge(
         OmegaConf.create({"corr": {"corpus": "difficult_advice", "channel_a": "query",
                                    "channel_b": "response", "min_freq": 0.01, "max_freq": 0.9,
-                                   "min_support": 10, "npmi_floor": 0.35, "top_k": 40,
+                                   "min_support": 10, "npmi_floor": 0.5, "top_k": 40,
+                                   "chunk": 1024,
                                    "label_sim_max": 0.34, "verify_pairs": 8,
                                    "verify_docs": 150}}),
         OmegaConf.load(REPO_ROOT / args.config),
@@ -125,9 +151,16 @@ def main() -> None:
         return str(labels.get(x, f"latent {x}"))
 
     pairs = []
+    seen: dict[int, int] = {}
+    cap = int(c.get("per_latent_cap", 2))
     for p in npmi_pairs(A, B, c):
         if token_jaccard(lab(p["a"]), lab(p["b"])) > c.label_sim_max:
             continue  # labels alike -> not "interesting"
+        # One prolific latent otherwise fills the whole list with near-duplicates.
+        if seen.get(p["a"], 0) >= cap or seen.get(p["b"], 0) >= cap:
+            continue
+        seen[p["a"]] = seen.get(p["a"], 0) + 1
+        seen[p["b"]] = seen.get(p["b"], 0) + 1
         p["label_a"], p["label_b"] = lab(p["a"]), lab(p["b"])
         pairs.append(p)
         if len(pairs) >= c.top_k:
