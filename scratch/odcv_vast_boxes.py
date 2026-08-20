@@ -204,7 +204,9 @@ def down(instance: int) -> None:
     if inst and not str(inst.get("label") or "").startswith("nika-"):
         raise SystemExit(
             f"instance {instance} is labelled {inst.get('label')!r}, not ours. Refusing.")
-    print(_vast("destroy", "instance", str(instance)).strip())
+    # -y: the CLI otherwise blocks on an interactive confirmation, which in a script
+    # reads as "Aborted." while the instance keeps billing.
+    print(_vast("destroy", "instance", str(instance), "-y").strip())
     print(">>> remaining:")
     ls()
 
