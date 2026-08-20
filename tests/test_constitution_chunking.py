@@ -344,3 +344,22 @@ def test_unit_provenance_reaches_the_generated_records_and_the_export():
     assert meta["n_chunks"] == 1
     assert meta["granularity"] == "principle"
     assert meta["grouping_strategy"] == "single"
+
+
+def test_only_traits_restricts_the_run_to_named_units():
+    """A per-trait arm: `only_traits:` keeps the named units (document order), leaves the
+    document and its style guidance untouched, and refuses an id the document lacks."""
+    from src.data.synth.pipeline import n_units
+
+    base = {"constitution": MID, "chunking": "principle"}
+    full, style = units_from_config(base)
+    units, style2 = units_from_config({**base, "only_traits": ["t7", "t3"]})
+    assert [u.unit_id for u in units] == ["t3", "t7"]
+    assert style2 == style
+    assert units[0].text == next(u.text for u in full if u.unit_id == "t3")
+    assert [u.unit_id for u in units_from_config({**base, "only_traits": "t9"})[0]] == ["t9"]
+
+    # The hint tracks the document, not the restriction: n_traits: 9 stays valid.
+    assert n_units({**base, "n_traits": 9, "only_traits": ["t9"]}) == 1
+    with pytest.raises(ValueError, match=r"only_traits names \['t42'\]"):
+        units_from_config({**base, "only_traits": ["t42"]})
