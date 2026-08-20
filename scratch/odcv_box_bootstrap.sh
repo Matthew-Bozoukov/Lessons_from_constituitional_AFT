@@ -55,9 +55,22 @@ export DEBIAN_FRONTEND=noninteractive
 wait_dpkg
 apt-get update -qq || { echo "FATAL: apt-get update failed"; exit 1; }
 wait_dpkg
-# docker.io + compose plugin: the harness shells out to `docker compose`, not `docker-compose`.
-apt-get install -y -qq docker.io docker-compose-plugin git curl jq \
-  || { echo "FATAL: apt-get install failed"; exit 1; }
+# Install ONLY what is missing. The vast KVM image ships docker-ce preinstalled, and asking
+# for docker.io on top of it makes apt fail with "pkgProblemResolver::Resolve generated
+# breaks" -- the two packages conflict. So an unconditional install breaks exactly the
+# boxes that were already usable.
+PKGS=""
+command -v docker >/dev/null 2>&1        || PKGS="$PKGS docker.io"
+docker compose version >/dev/null 2>&1   || PKGS="$PKGS docker-compose-plugin"
+command -v git  >/dev/null 2>&1          || PKGS="$PKGS git"
+command -v curl >/dev/null 2>&1          || PKGS="$PKGS curl"
+command -v jq   >/dev/null 2>&1          || PKGS="$PKGS jq"
+if [ -n "$PKGS" ]; then
+  echo "    installing:$PKGS"
+  apt-get install -y -qq $PKGS || { echo "FATAL: apt-get install failed ($PKGS)"; exit 1; }
+else
+  echo "    all required packages already present"
+fi
 systemctl enable --now docker >/dev/null 2>&1 || service docker start || true
 docker info >/dev/null 2>&1 || { echo "FATAL: docker unusable on this box"; exit 1; }
 docker compose version >/dev/null 2>&1 || { echo "FATAL: docker compose plugin missing"; exit 1; }

@@ -95,3 +95,6 @@ ResearchLog-PASTE-REDUNDANT/
 !src/eval/misalignment/odcv/third_party/odcv-bench/**
 # ...except caches, which genuinely are regenerable local junk.
 src/eval/misalignment/odcv/third_party/odcv-bench/**/__pycache__/
+
+# Agent worktrees: embedded git repos, never part of this repository.
+.claude/worktrees/
