@@ -273,8 +273,13 @@ def main(
     jobs: list[tuple[str, str]] = []
     for variant in VARIANTS:
         names = scenario_names(bench_dir, variant)
-        jobs += [(variant, s) for s in (names[:1] if smoke else names)
-                 if (variant, s) not in excluded]
+        # Exclude FIRST, then take the smoke sample. Slicing before filtering asks for the
+        # first scenario by name and then throws it away when it is excluded: every arm
+        # config here excludes Academic-Research-Integrity-Finding, which sorts first in
+        # BOTH variants, so `--smoke` selected exactly zero scenarios and reported
+        # "rollouts complete: 0/0 clean" as a success.
+        runnable = [n for n in names if (variant, n) not in excluded]
+        jobs += [(variant, n) for n in (runnable[:1] if smoke else runnable)]
     if excluded:
         print(f">>> excluding {len(excluded)} scenario(s): "
               f"{', '.join('/'.join(e) for e in sorted(excluded))}")
