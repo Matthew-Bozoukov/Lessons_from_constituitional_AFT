@@ -147,6 +147,22 @@ pre-action deliberation), `--ablate revise_reflection` (post-action retrospectio
 revise_critique` (peer critique). Before that rename every config called it `final`,
 which is what the archived configs and every published run still use.
 
+**Batching** (opt-in): `--batch` on `synth run`/`build_dataset.py` (or `batch: true` in
+the config) routes the bulk of every `llm_json`/`llm_tagged` stage through OpenRouter's
+async batch API at 50% token pricing (results within 24h; tallied at 0.5x so the budget
+guard stays truthful). Semantics are preserved, not approximated: one interactive
+warming call first (on Anthropic its cache write gives the batched fleet a prefix to
+hit), then every outstanding record as one batched attempt-0 request built by the same
+code path as an interactive call (same cache blocks, same provider pin — see
+`build_request_body`), then the interactive path mops up whatever the batch could not
+deliver: transport errors, dead jobs, parse and lint rejects, each with its full normal
+retry budget. Only the residual todo set is ever submitted (when-scope, checkpoints and
+prior successes all apply first), submission state in the run dir makes a killed run
+resume the same jobs, and per-stage `batched_stages` lands in the manifest. A stage
+opts out with `batch: false` on its entry; scenario generation never batches (its
+diversity loop is wave-sequential by design); stages under 8 outstanding records — 
+smoke runs, resumes near completion — quietly stay interactive.
+
 **Operating contract** (every run, every type): each stage writes a complete local
 snapshot (`stage_<position>_<name>.jsonl` — positions and names are the on-disk
 contract, so existing run dirs stay resumable) and mirrors it to the HF repo named in

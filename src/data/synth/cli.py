@@ -31,7 +31,8 @@ def _csv(arg) -> list[str]:
 
 
 def run(config: str, smoke: bool = False, resume: str | None = None,
-        ablate: str | None = None, overrides: str | None = None) -> None:
+        ablate: str | None = None, overrides: str | None = None,
+        batch: bool = False) -> None:
     """Run the pipeline the config declares (its `stages:` list).
 
     Args:
@@ -44,6 +45,10 @@ def run(config: str, smoke: bool = False, resume: str | None = None,
             Recorded in the run manifest either way.
         ablate: Comma-separated stage names to ablate, merged over the config's
             `ablate:` list and recorded in the manifest.
+        batch: Route the bulk of each llm_json/llm_tagged stage through OpenRouter's
+            async batch API (50% token pricing, results within 24h); parse/lint
+            rejects mop up interactively. Equivalent to `batch: true` in the config;
+            a stage opts out with `batch: false` on its entry.
     """
     load_dotenv()
     loaded = OmegaConf.load(config)
@@ -51,6 +56,8 @@ def run(config: str, smoke: bool = False, resume: str | None = None,
         loaded = OmegaConf.merge(loaded, OmegaConf.from_dotlist(_csv(overrides)))
         print(f">>> overrides: {overrides}")
     cfg = OmegaConf.to_container(loaded, resolve=True)
+    if batch:
+        cfg["batch"] = True
     if ablate:
         cfg["ablate"] = sorted(set(cfg.get("ablate") or []) | set(_csv(ablate)))
     pipeline.exit_if_gate_failed(pipeline.run(cfg, smoke=smoke, resume=resume))
