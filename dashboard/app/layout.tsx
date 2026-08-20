@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "katex/dist/katex.min.css";
 import "./globals.css";
+import { ScrollPaperclips } from "./components/ScrollPaperclips";
 import { SiteHeader } from "./components/SiteHeader";
 
 export const metadata: Metadata = {
@@ -23,6 +24,7 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <SiteHeader />
+        <ScrollPaperclips />
         {children}
         <footer className="site-footer">
           <div className="page-container">

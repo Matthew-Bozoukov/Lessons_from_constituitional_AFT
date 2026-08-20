@@ -2999,3 +2999,160 @@ pre,
 .sel-turn.think .sel-body { font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 11.5px; }
 .sel-turn.sys > summary { color: var(--muted); }
+
+/* ---------------------------------------------------------------------------
+   Yudkowsky cursor
+
+   The pointer IS the yudkowsky_screaming reaction frame (Stanford 2016 talk,
+   1:11:21), cut out of its background -- no arrow, no frame. The hotspot is
+   the crown of his head, so hovering puts his head on the target; it is
+   printed by the generator and must be kept in sync here. Two variants: a dark
+   halo by default, a cyan glow wherever the page would otherwise ask for
+   `pointer`. Assets: scratch/dashboard/make_cursor_assets.py.
+   --------------------------------------------------------------------------- */
+
+:root {
+  --cursor-yud: url("/cursor/yud.png") 22 3, auto;
+  --cursor-yud-click: url("/cursor/yud-click.png") 22 3, pointer;
+}
+
+@supports (cursor: image-set(url("/cursor/yud.png") 1x) 22 3, auto) {
+  :root {
+    --cursor-yud: image-set(url("/cursor/yud.png") 1x, url("/cursor/yud@2x.png") 2x) 22 3, auto;
+    --cursor-yud-click: image-set(url("/cursor/yud-click.png") 1x, url("/cursor/yud-click@2x.png") 2x) 22 3, pointer;
+  }
+}
+
+/* !important because dozens of components already declare `cursor: pointer`
+   with higher specificity; this is a deliberate site-wide override. */
+body,
+body * {
+  cursor: var(--cursor-yud) !important;
+}
+
+a,
+a *,
+button,
+button *,
+summary,
+summary *,
+label[for],
+select,
+[role="button"],
+[role="button"] * {
+  cursor: var(--cursor-yud-click) !important;
+}
+
+input,
+textarea,
+[contenteditable="true"] {
+  cursor: text !important;
+}
+
+/* ---------------------------------------------------------------------------
+   Paperclip rail
+
+   Scroll position as a paperclip maximiser: the rail is a fixed number of clip
+   slots, ghosted until scrolling "produces" them. The bright head of the chain
+   is where you are in the document; reaching the bottom converts the lot and
+   the chain goes amber. Markup: app/components/ScrollPaperclips.tsx.
+   --------------------------------------------------------------------------- */
+
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.clip-rail {
+  position: fixed;
+  z-index: 45;
+  top: 84px;
+  right: 8px;
+  bottom: 40px;
+  width: 26px;
+  pointer-events: none;
+}
+
+/* The trough: this is the "vertical bar" the chain is produced into. */
+.clip-track {
+  position: absolute;
+  inset: -8px 0;
+  border: 1px solid rgba(53, 67, 79, .5);
+  border-radius: 13px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .025), rgba(255, 255, 255, .012));
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 6%, #000 94%, transparent);
+  mask-image: linear-gradient(180deg, transparent, #000 6%, #000 94%, transparent);
+}
+
+.clip-chain {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+}
+
+.clip {
+  fill: none;
+  transition: stroke .3s ease, opacity .3s ease;
+}
+
+/* Not yet produced: the raw material left in the rail. */
+.clip.is-slot {
+  stroke: var(--border);
+  opacity: .45;
+}
+
+.clip.is-forged {
+  stroke: var(--cyan);
+  opacity: .62;
+}
+
+.clip.is-head {
+  stroke: var(--cyan);
+  opacity: 1;
+  filter: drop-shadow(0 0 5px rgba(104, 228, 223, .55));
+}
+
+.clip-count {
+  position: absolute;
+  top: 6px;
+  right: 100%;
+  margin-right: 10px;
+  color: var(--cyan);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 9.5px;
+  letter-spacing: .13em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  opacity: .32;
+  transition: opacity .3s ease, transform .12s linear;
+}
+
+.clip-rail.is-active .clip-count {
+  opacity: .85;
+}
+
+.clip-rail.is-max .clip.is-forged {
+  stroke: var(--amber);
+  opacity: .38;
+}
+
+.clip-rail.is-max .clip.is-head {
+  stroke: var(--amber);
+  filter: drop-shadow(0 0 6px rgba(255, 189, 109, .6));
+}
+
+.clip-rail.is-max .clip-count {
+  color: var(--amber);
+  opacity: .9;
+}
+
+/* Below ~1308px the page container's own gutter is only 20px, which the rail
+   would sit on top of; reserve the difference so no card runs under the chain. */
+@media (min-width: 901px) and (max-width: 1307px) {
+  body { padding-right: 40px; }
+}
+
+@media (max-width: 900px) {
+  .clip-rail { display: none; }
+}
