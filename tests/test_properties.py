@@ -1290,9 +1290,11 @@ class _StubChat:
     def __init__(self, reply):
         self.reply = reply
         self.calls = []
+        self.extra_bodies = []
 
-    def chat(self, model, temperature, max_tokens, messages):
+    def chat(self, model, temperature, max_tokens, messages, extra_body=None):
         self.calls.append(messages)
+        self.extra_bodies.append(extra_body)
         text = self.reply(messages)
         if isinstance(text, Exception):
             raise text
@@ -1365,6 +1367,50 @@ def test_a_failed_batched_call_leaves_every_property_unknown_for_that_record():
     assert interpret_mod.prevalence(out["clusters:r:g000"]) == {
         "n": 1, "hits": 1, "prevalence": 1.0, "ci_low": pytest.approx(0.207, abs=0.01),
         "ci_high": 1.0, "n_errors": 1}
+
+
+def test_the_detector_preflight_fails_on_one_call_rather_than_five_hundred():
+    """GOTCHAS.md: size the smoke to the bug. A blank reply at full rubric scale must cost
+    one call and a clear message, not a whole corpus of silently-empty verdicts."""
+    props = [_property(property_id=f"clusters:r:g{i:03d}", label=f"p{i}", detector="A?")
+             for i in range(3)]
+    blank = _StubChat(lambda messages: RuntimeError(
+        "EmptyCompletionError: returned empty content"))
+    with pytest.raises(RuntimeError, match="raise `detector.max_tokens`"):
+        interpret_mod.preflight_detect_many(_detect_records(2), props, client=blank)
+
+    # A reply that answers only some of the rubrics is the quieter version of the same
+    # failure: it becomes a partial measurement rather than an error.
+    partial = _StubChat(lambda messages: '{"p001": true}')
+    with pytest.raises(RuntimeError, match="answered 1 of 3"):
+        interpret_mod.preflight_detect_many(_detect_records(2), props, client=partial)
+
+
+def test_the_detector_preflight_probes_the_longest_record_and_times_it():
+    """The worst case for a token budget is the longest record, so that is the probe."""
+    props = [_property(property_id="clusters:r:g000", label="alpha", detector="A?")]
+    records = [Record(record_id="short", query="q", response="a", reasoning="t"),
+               Record(record_id="long", query="q", response="a", reasoning="t" * 5000)]
+    client = _StubChat(lambda messages: '{"p001": true}')
+
+    result = interpret_mod.preflight_detect_many(records, props, client=client)
+    assert result["record_id"] == "long" and result["chars"] == 5000
+    assert result["n_answered"] == 1 and result["seconds"] >= 0
+    assert len(client.calls) == 1, "a preflight is one call"
+
+
+def test_both_detector_paths_suppress_reasoning_so_the_gate_isolates_batching():
+    """`verify_batching` measures what BATCHING changes. If only one path suppressed the
+    model's reasoning, the two would differ in two ways and the gate would measure both."""
+    props = [_property(property_id="clusters:r:g000", label="alpha", detector="A?")]
+    batched = _StubChat(lambda messages: '{"p001": true}')
+    single = _StubChat(lambda messages: '{"exhibits": true, "evidence": "", "note": ""}')
+
+    interpret_mod.detect_many(_detect_records(1), props, client=batched)
+    interpret_mod.detect(_detect_records(1), "alpha", "A?", client=single)
+    assert interpret_mod.NO_REASONING == {"reasoning": {"enabled": False}}
+    assert batched.extra_bodies == [interpret_mod.NO_REASONING]
+    assert single.extra_bodies == [interpret_mod.NO_REASONING]
 
 
 def test_verify_batching_reports_where_the_two_detector_paths_disagree(monkeypatch):

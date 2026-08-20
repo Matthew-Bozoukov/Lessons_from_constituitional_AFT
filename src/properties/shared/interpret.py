@@ -35,6 +35,23 @@ from dataclasses import dataclass, field
 
 INTERPRET_TEMPERATURE = 0.0
 DEFAULT_MODEL = "anthropic/claude-sonnet-5"
+
+# A detector answers a rubric about a record. It does not need to think first, and letting
+# it costs three ways, all measured on 2026-08-20 against the real 49-rubric prompt and a
+# 12k-character trace:
+#
+#   correctness  reasoning tokens are spent BEFORE any content, so a budget sized for the
+#                answer gets consumed by the thinking and the API returns finish_reason
+#                'length' with content=None. At max_tokens=2000 that blanked 23 of 25
+#                records — intermittently, because how long the model thinks varies per
+#                record, which is what made it look like flakiness rather than a budget.
+#   cost         297 output tokens with reasoning off, 1,436-2,167 with it on. 5-7x.
+#   time         6.4s with it off, 15.6-25.0s with it on.
+#
+# Set on BOTH detector paths, deliberately. `verify_batching` exists to measure what
+# BATCHING changes; if only the batched path suppressed reasoning, the two paths would
+# differ in two ways at once and the check would stop isolating the thing it is named for.
+NO_REASONING = {"reasoning": {"enabled": False}}
 # How many pieces of evidence the interpreter sees. SURF summarises from its top-100
 # closest members; 50 is that halved, which is what TURF settled on and enough that a
 # label is not driven by three outliers.
@@ -323,7 +340,7 @@ def _rubric_block(properties: list) -> tuple[str, dict[str, str]]:
 
 def detect_many(records, properties: list, channel: str = "reasoning",
                 model: str = DEFAULT_MODEL, workers: int = 16, client=None,
-                max_tokens: int = 2000) -> dict[str, list[dict]]:
+                max_tokens: int = 8000) -> dict[str, list[dict]]:
     """Run EVERY property's detector over each record, one call per record.
 
     `detect` sends one record per property, which is the faithful instrument and costs
@@ -349,7 +366,10 @@ def detect_many(records, properties: list, channel: str = "reasoning",
         model: OpenRouter judge model.
         workers: Concurrent requests.
         client: An OpenRouterClient; one is built when omitted.
-        max_tokens: Reply budget — a bare verdict object for ~100 properties.
+        max_tokens: Reply budget. Belt and braces at 8000: the verdict object for ~100
+            properties is a few hundred tokens, and reasoning is disabled — but a provider
+            that ignores the flag must still have room to think, because the failure mode
+            is a silent blank rather than a truncated answer.
 
     Returns:
         property_id -> one {"record_id", "exhibits", ...} per record, in record order, so
@@ -369,6 +389,7 @@ def detect_many(records, properties: list, channel: str = "reasoning",
         try:
             result = client.chat(
                 model=model, temperature=0.0, max_tokens=max_tokens,
+                extra_body=dict(NO_REASONING),
                 messages=[{"role": "system", "content": system},
                           {"role": "user", "content":
                            f"<record>\n{record.channel(channel)}\n</record>"}])
@@ -395,6 +416,65 @@ def detect_many(records, properties: list, channel: str = "reasoning",
                 "evidence": "", "note": "",
                 **({"error": error} if error else {})})
     return out
+
+
+def preflight_detect_many(records, properties: list, channel: str = "reasoning",
+                          model: str = DEFAULT_MODEL, client=None,
+                          max_tokens: int = 8000) -> dict:
+    """One call, at FULL SCALE, timed — before committing to hundreds of them.
+
+    GOTCHAS.md, twice over. "Size a smoke test to the bug it is hunting": this repo's
+    `--smoke` path runs two properties over sixteen short records, and the bug that cost a
+    run on 2026-08-20 needed forty-nine rubrics and a twelve-thousand-character trace to
+    appear at all — it was invisible to that smoke by construction. "Measure throughput on
+    the real model early, one example, one timer": the same run was scheduled off an
+    estimate that was wrong by ~3x, in both directions on successive tries.
+
+    So the expensive stage now opens with exactly one call, on the LONGEST record in the
+    corpus — the worst case for any budget — carrying every rubric the real pass will
+    carry. It fails loudly on a blank or a short answer, and returns the measured per-call
+    cost so the caller can say what the full pass will take instead of guessing.
+
+    Args:
+        records: The corpus; the longest record in `channel` is the probe.
+        properties: Every property the real pass will ask about.
+        channel: Which channel the judge reads.
+        model: OpenRouter judge model.
+        client: An OpenRouterClient; one is built when omitted.
+        max_tokens: The budget the real pass will use.
+
+    Returns:
+        {"seconds", "record_id", "chars", "n_answered", "n_properties"}.
+
+    Raises:
+        RuntimeError: If the probe blanks, or answers fewer than every property — either
+            means the full pass would produce a silently partial measurement.
+    """
+    import time
+
+    probe = max(records, key=lambda r: len(r.channel(channel)))
+    started = time.time()
+    verdicts = detect_many([probe], properties, channel=channel, model=model, workers=1,
+                           client=client, max_tokens=max_tokens)
+    seconds = time.time() - started
+    answered = sum(1 for pid in verdicts if verdicts[pid][0]["exhibits"] is not None)
+    error = next((v[0].get("error") for v in verdicts.values() if v[0].get("error")), None)
+    if error:
+        raise RuntimeError(
+            f"the batched detector failed on the longest record ({probe.record_id}, "
+            f"{len(probe.channel(channel))} chars) with {len(properties)} rubrics after "
+            f"{seconds:.0f}s: {error}. The full pass would repeat this for every record — "
+            "raise `detector.max_tokens`, or drop `detector.batched`.")
+    if answered < len(properties):
+        raise RuntimeError(
+            f"the batched detector answered {answered} of {len(properties)} rubrics on the "
+            f"longest record ({probe.record_id}). A partial reply becomes a partial "
+            "measurement across the whole corpus; shorten the rubric set or split it.")
+    print(f">>> detector preflight: {seconds:.1f}s for {len(properties)} rubrics on the "
+          f"longest record ({len(probe.channel(channel))} chars), all answered")
+    return {"seconds": round(seconds, 2), "record_id": probe.record_id,
+            "chars": len(probe.channel(channel)), "n_answered": answered,
+            "n_properties": len(properties)}
 
 
 def verify_batching(records, properties: list, channel: str = "reasoning",
@@ -482,6 +562,7 @@ def detect(records, label: str, detector: str, channel: str = "reasoning",
         try:
             result = client.chat(
                 model=model, temperature=0.0, max_tokens=800,
+                extra_body=dict(NO_REASONING),
                 messages=[{"role": "system", "content": system},
                           {"role": "user", "content":
                            f"<record>\n{record.channel(channel)}\n</record>"}])
