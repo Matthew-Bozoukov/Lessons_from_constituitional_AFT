@@ -10,6 +10,7 @@ from pathlib import Path
 from . import model_eval_model_cells as cells
 from .constitution import UNIT_PROVENANCE, Trait, units_from_config
 from .stage_runtime import (
+    BATCH_MIN_ITEMS,
     Ctx,
     Stage,
     call_json,
@@ -316,20 +317,10 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
                     "anywhere else; reach for a setting not yet listed here:\n"
                     + "\n".join(f"- {d} ({s:.0%} of the corpus so far)" for s, d in hot))
 
-        def run_batch(spec: tuple) -> list[dict]:
-            ti, bi, n = spec
+        def _rows_from(spec: tuple, parsed: list) -> list[dict]:
+            """Scenario records from one call's JSON array (shared by both paths)."""
+            ti, bi, _n = spec
             t = traits[ti]
-            fields = {"trait_name": t.name, "trait_text": t.text}
-            parsed, _ = call_json(
-                ctx.client, ctx.usage, m["model"],
-                _render(sys_t, fields, ctx, n=n, avoid=avoid_block,
-                        overrepresented=over_block),
-                _render(user_t, fields, ctx, n=n, avoid=avoid_block,
-                        overrepresented=over_block),
-                m["temperature"], m["max_tokens"], stage=mk,
-                extra=m.get("extra_body"))
-            assert isinstance(parsed, list), \
-                f"{t.trait_id}: expected a JSON array, got {type(parsed)}"
             return [{
                 "scenario_id": f"{t.trait_id}_b{bi:02d}_s{j:03d}",
                 "trait_id": t.trait_id, "trait_name": t.name, "trait_text": t.text,
@@ -338,14 +329,75 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
                 **{k: str(s[k]).strip() for k in req_fields},
                 **{k: str(s.get(k, "")).strip() for k in opt_fields},
                 **prov.get(t.trait_id, {}),
-            } for j, s in enumerate(parsed)]
+            } for j, s in enumerate(parsed) if isinstance(s, dict) and "situation" in s]
+
+        def _prompts_for(spec: tuple) -> tuple[str, str]:
+            ti, _bi, n = spec
+            t = traits[ti]
+            fields = {"trait_name": t.name, "trait_text": t.text}
+            return (_render(sys_t, fields, ctx, n=n, avoid=avoid_block,
+                            overrepresented=over_block),
+                    _render(user_t, fields, ctx, n=n, avoid=avoid_block,
+                            overrepresented=over_block))
+
+        def generate_spec(spec: tuple) -> list[dict]:
+            ti = spec[0]
+            sysr, usr = _prompts_for(spec)
+            parsed, _ = call_json(ctx.client, ctx.usage, m["model"], sysr, usr,
+                                  m["temperature"], m["max_tokens"], stage=mk,
+                                  extra=m.get("extra_body"))
+            assert isinstance(parsed, list), \
+                f"{traits[ti].trait_id}: expected a JSON array, got {type(parsed)}"
+            return _rows_from(spec, parsed)
+
+        # Opt-in async batching of a wave's calls. A wave is still one steering step:
+        # every request in it shares this wave's avoid/overrepresented blocks, the batch
+        # completes, then the reject gate and the next wave's steer run exactly as
+        # interactively — so batching preserves the diversity feedback and only serialises
+        # the batch turnaround (each wave is one dependent round-trip). Attempt-0 only, but
+        # the make-up rounds ARE the retry: a filtered/failed request just leaves its
+        # trait short and is re-queued next round.
+        batch_on = bool(ctx.cfg.get("batch")) and sc.get("batch", True) is not False
+
+        def run_wave(wave: list[tuple], tag: str) -> list[dict]:
+            if not (batch_on and len(wave) >= BATCH_MIN_ITEMS):
+                nested = resilient(lambda k, w=wave: generate_spec(w[k]), len(wave),
+                                   ctx.workers, sc["name"], max_fail_pct=max_fail)
+                return [r for group in nested for r in group]
+            from src.endpoints.openrouter import build_request_body, result_from_payload
+            from .stage_runtime import run_batch as _run_batch
+            _note_batched(ctx, sc["name"])
+            reqs, spec_by_cid = {}, {}
+            for spec in wave:
+                ti, bi, _n = spec
+                sysr, usr = _prompts_for(spec)
+                cid = f"{traits[ti].trait_id}_b{bi:02d}"
+                reqs[cid] = build_request_body(
+                    m["model"], [{"role": "system", "content": sysr},
+                                 {"role": "user", "content": usr}],
+                    m["temperature"], m["max_tokens"], m.get("extra_body"))
+                spec_by_cid[cid] = spec
+            fresh: list[dict] = []
+
+            def collect(cid: str, payload: dict) -> None:
+                try:
+                    res = result_from_payload(m["model"], payload)
+                    ctx.usage.add(m["model"], res, mk, usd_scale=0.5)
+                    parsed = _parse_json(res.content)
+                    if isinstance(parsed, list):
+                        fresh.extend(_rows_from(spec_by_cid[cid], parsed))
+                except Exception:  # noqa: BLE001 - a failed request just re-queues via shortfall
+                    pass
+
+            _run_batch(m["model"], reqs, f"{sc['name']}:{tag}",
+                       ctx.run_dir / f".batch_{sc['name']}_{tag}.json", collect)
+            return fresh
 
         # Unchanged fast path: no `diversity:` block means one wave, no ban list and no
-        # embedding gate -- byte-identical behaviour to plain fan-out.
+        # embedding gate. Batches when --batch is set, interactive otherwise.
         if not div:
-            nested = resilient(lambda k: run_batch(batches[k]), len(batches),
-                               ctx.workers, sc["name"], max_fail_pct=max_fail)
-            return [r for group in nested for r in group]
+            avoid_block = over_block = ""
+            return run_wave(list(batches), "all")
 
         target: dict[int, int] = {}
         next_bi: dict[int, int] = {}
@@ -367,9 +419,7 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
                 wave = queue[start:start + wave_size]
                 avoid_block = render_avoid()
                 over_block = render_overrepresented(kept)
-                nested = resilient(lambda k, w=wave: run_batch(w[k]), len(wave),
-                                   ctx.workers, sc["name"], max_fail_pct=max_fail)
-                fresh = [r for group in nested for r in group]
+                fresh = run_wave(wave, f"r{rnd}_w{start:03d}")
                 if not fresh:
                     continue
                 if reject_cos > 0:

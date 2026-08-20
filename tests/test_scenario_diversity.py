@@ -230,3 +230,64 @@ def test_the_gate_catches_a_reword_that_shares_no_ngram(monkeypatch, tmp_path):
                   [DISTINCT[0:2], [PARAPHRASE, DISTINCT[2]], DISTINCT[3:5],
                    DISTINCT[5:7]])
     assert PARAPHRASE not in [r["situation"] for r in out]
+
+
+def test_batched_waves_feed_the_same_diversity_machinery(monkeypatch, tmp_path):
+    """With --batch, a wave's calls go through the async batch API instead of live
+    calls, but the SAME reject/steer logic runs on what comes back. This drives the
+    batch fetch path and asserts every scenario lands in the diversity machinery: the
+    interactive call_json is never touched, and the kept set + manifest match."""
+    import json as _json
+
+    from src.data.synth import stage_runtime
+    from src.endpoints import openrouter
+
+    # 16 genuinely distinct situations, one per request (per_call=1, per_trait=8, 2
+    # traits) — unrelated so the real reject gate keeps all of them.
+    sits = list(DISTINCT) + [
+        "A pilot is pressured to skip a preflight check to keep the schedule",
+        "A pharmacist is asked to backdate a prescription for a regular customer",
+        "A referee is offered a bonus to overlook a foul in the closing minutes",
+        "A tailor is told to stitch a designer label into an unbranded coat",
+        "A gardener is asked to spray a banned pesticide before an estate sale",
+        "An electrician is pressed to certify wiring he was not allowed to inspect",
+        "A sommelier is asked to pass off a cheaper vintage at a charity gala",
+        "A cartographer is told to redraw a disputed border to please a patron"]
+
+    monkeypatch.setattr(openrouter, "build_request_body",
+                        lambda model, messages, temperature, max_tokens,
+                        extra_body=None: {"messages": messages}, raising=True)
+
+    class _R:
+        def __init__(self, content):
+            self.content, self.prompt_tokens, self.completion_tokens = content, 1, 1
+            self.finish_reason, self.cached_tokens, self.provider = "stop", 0, ""
+
+    monkeypatch.setattr(openrouter, "result_from_payload",
+                        lambda model, payload: _R(payload["content"]), raising=True)
+
+    batch_calls = {"n": 0}
+
+    def fake_run_batch(model, requests, stage, state_path, collect, **kw):
+        batch_calls["n"] += 1
+        for cid in requests:
+            arr = [{"domain": "d", "situation": sits.pop(0), "shortcut": "x"}] if sits else []
+            collect(cid, {"content": _json.dumps(arr)})
+
+    monkeypatch.setattr(stage_runtime, "run_batch", fake_run_batch, raising=True)
+
+    def no_interactive(*a, **k):
+        raise AssertionError("interactive call_json used despite --batch")
+
+    monkeypatch.setattr(ops, "call_json", no_interactive)
+
+    stage = _stage(wave_size=16, reject_cosine=0.86, max_regen_rounds=0)
+    cfg = _cfg(scenarios_per_trait=8, scenarios_per_call=1, batch=True)
+    st = ops.OPERATORS["scenarios"](stage, cfg)
+    ctx = Ctx(cfg=cfg, usage=Usage(), workers=4, run_dir=tmp_path, smoke=False)
+    out = st.fn(ctx, TRAITS, None)
+
+    assert batch_calls["n"] >= 1, "the batch path was never taken"
+    assert len(out) == 16, f"expected 16 kept, got {len(out)}"
+    assert ctx.manifest_extra["scenario_diversity"]["scenarios"]["kept"] == 16
+    assert "scenarios" in ctx.manifest_extra["batched_stages"]
