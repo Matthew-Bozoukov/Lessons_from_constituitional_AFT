@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import threading
 from pathlib import Path
@@ -55,7 +56,8 @@ class Usage:
         self.by_model: dict[str, dict[str, float]] = {}
         self.by_stage: dict[str, dict[str, float]] = {}
 
-    def add(self, model: str, res: ChatResult, stage: str = "") -> None:
+    def add(self, model: str, res: ChatResult, stage: str = "",
+            usd_scale: float = 1.0) -> None:
         """Record one completion against its model and stage.
 
         `cached_tokens` is tallied so a finished run can show whether prompt caching
@@ -64,8 +66,13 @@ class Usage:
         minimum, a non-Anthropic model -- looks exactly like one that is working, and the
         run just quietly costs more. `usd` is still computed at the full rate, so the
         number is a conservative floor on spend rather than a discount applied twice.
+
+        `usd_scale` is the one deliberate exception: OpenRouter's batch API bills at a
+        flat 50% of list price, and pricing a batched stage at full rate would make the
+        budget guard halt runs that are actually inside budget. Batched calls pass 0.5;
+        cache discounts stay uncounted either way, so the floor property survives.
         """
-        usd = cost_of(model, res.prompt_tokens, res.completion_tokens)
+        usd = cost_of(model, res.prompt_tokens, res.completion_tokens) * usd_scale
         for key, bucket in ((model, self.by_model), (stage or "unknown", self.by_stage)):
             b = bucket.setdefault(
                 key, {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0,
@@ -435,6 +442,174 @@ def run_items(items: list[dict], fn, workers: int, desc: str,
         resilient(one, len(todo), workers, desc, max_fail_pct=max_fail_pct,
                   total=len(items))
     return [ckpt.done[it[ckpt.key]] for it in items if it[ckpt.key] in ckpt.done]
+
+
+# --- optional async batching (OpenRouter batch API, 50% token pricing) ----------------
+
+BATCH_URL = "https://openrouter.ai/api/beta/batches"
+# Below this many outstanding records the submit/poll overhead outweighs the discount
+# and the stage silently stays interactive -- which also keeps `--smoke` interactive.
+BATCH_MIN_ITEMS = 8
+# Requests per batch job. Chunked because results are all-or-nothing PER JOB (`results`
+# is null until the whole job completes): an expired/failed chunk loses only its slice.
+BATCH_CHUNK = 500
+BATCH_POLL_S = 30
+
+
+def run_batch(model: str, requests: dict[str, dict], stage: str, state_path: Path,
+              collect, chunk: int = BATCH_CHUNK, poll_s: int = BATCH_POLL_S) -> None:
+    """Push `requests` (custom_id -> body) through OpenRouter's batch API.
+
+    Submission state (batch ids + their custom_ids) persists at `state_path`, so a
+    killed run resumes the SAME jobs instead of paying to resubmit them. Nothing is
+    marked collected in the state: results stay retrievable by GET until the job
+    expires, so `collect(custom_id, completion_payload)` -- the caller's parse+
+    checkpoint hook -- is simply re-run on a resume, and the caller's checkpoint is
+    what makes that idempotent. A job that ends failed/expired/cancelled is reported
+    loudly and its requests are left uncollected; the caller's interactive mop-up owns
+    them. The state file is removed once every job reaches a terminal status.
+    """
+    import time
+
+    import requests as http
+
+    headers = {"Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}"}
+    state = json.loads(state_path.read_text()) if state_path.exists() else {"batches": []}
+    # A resumed run's outstanding set may differ from what an old state was built
+    # against (mopped-up records, a re-cut todo); jobs with no overlap are dropped
+    # and only never-submitted ids go out again.
+    state["batches"] = [b for b in state["batches"] if set(b["ids"]) & set(requests)]
+    if state["batches"]:
+        print(f">>> {stage}: resuming {len(state['batches'])} batch job(s)")
+    submitted = {i for b in state["batches"] for i in b["ids"]}
+    to_submit = [cid for cid in requests if cid not in submitted]
+    for c0 in range(0, len(to_submit), chunk):
+        ids = to_submit[c0:c0 + chunk]
+        # Field ORDER matters: the API stream-parses and requires endpoint+model
+        # before the requests array.
+        r = http.post(BATCH_URL, headers=headers, json={
+            "endpoint": "/v1/chat/completions", "model": model,
+            "requests": [{"custom_id": cid, "body": requests[cid]} for cid in ids]})
+        r.raise_for_status()
+        state["batches"].append({"batch_id": r.json()["id"], "ids": ids})
+        # State written after EVERY submit: a crash mid-submission strands nothing.
+        state_path.write_text(json.dumps(state))
+        print(f">>> {stage}: submitted batch {r.json()['id']} ({len(ids)} requests)")
+
+    done: set[str] = set()
+    dead: set[str] = set()
+    while True:
+        pending = [b for b in state["batches"]
+                   if b["batch_id"] not in done | dead]
+        if not pending:
+            break
+        for b in pending:
+            s = http.get(f"{BATCH_URL}/{b['batch_id']}", headers=headers).json()
+            status = s.get("status")
+            if status == "completed":
+                by_id = {res.get("custom_id"): res for res in s.get("results") or []}
+                for cid in b["ids"]:
+                    if cid not in requests:
+                        continue
+                    res = by_id.get(cid) or {}
+                    resp = res.get("response") or {}
+                    if not res.get("error") and resp.get("status_code") == 200:
+                        collect(cid, resp.get("body") or {})
+                done.add(b["batch_id"])
+                print(f">>> {stage}: batch {b['batch_id']} collected", flush=True)
+            elif status in ("failed", "expired", "cancelled"):
+                dead.add(b["batch_id"])
+                print(f"!!! {stage}: batch {b['batch_id']} ended {status} -- its "
+                      f"{len(b['ids'])} request(s) fall to the interactive path",
+                      flush=True)
+            else:
+                print(f">>> {stage}: batch {b['batch_id']} {status}: "
+                      f"{s.get('request_counts') or {}}", flush=True)
+        if any(b["batch_id"] not in done | dead for b in state["batches"]):
+            time.sleep(poll_s)
+    state_path.unlink(missing_ok=True)
+
+
+def run_items_batched(items: list[dict], one, build_request, parse_result, *,
+                      usage: Usage, model: str, stage: str, key: str, run_dir: Path,
+                      workers: int, desc: str, ckpt: Checkpoint | None = None,
+                      max_fail_pct: float = 2.0) -> list[dict]:
+    """`run_items`, but with the bulk routed through the async batch API first.
+
+    Semantics: one interactive warming call (the first record -- its result is used,
+    and on Anthropic its cache write is what gives the batched fleet a prefix to hit),
+    then every remaining record as ONE batched attempt-0 request, then the existing
+    interactive path (`one`, with its full retry/nudge/lint budget) mopping up
+    whatever the batch round could not deliver: transport errors, dead jobs, parse
+    and lint rejects. Batch results are parsed by `parse_result(record, ChatResult)`
+    -- a single attempt, no retries -- and checkpointed the moment their job lands,
+    so a crash mid-collection re-reads the still-live batch results instead of
+    re-paying for them. Batched completions are tallied at 0.5x list price, which is
+    what the batch API bills.
+
+    Falls back to plain `run_items` when fewer than BATCH_MIN_ITEMS records are
+    outstanding (smoke runs, resumes near completion) or when records lack a unique
+    `key` -- resume across restarts needs a stable custom_id per record.
+    """
+    from src.endpoints.openrouter import result_from_payload
+
+    todo = [it for it in items if ckpt is None or it[ckpt.key] not in ckpt.done]
+    keys = [str(it.get(key, "")) for it in todo]
+    if len(todo) < BATCH_MIN_ITEMS or "" in keys or len(set(keys)) != len(keys):
+        if len(todo) >= BATCH_MIN_ITEMS:
+            print(f">>> {desc}: batch requested but records lack a unique "
+                  f"{key!r}; running interactively")
+        return run_items(items, one, workers, desc, ckpt, max_fail_pct=max_fail_pct)
+
+    done_free: dict[str, dict] = {}  # collected outputs for a checkpoint-less stage
+
+    def keep(r: dict, out: dict) -> None:
+        if ckpt is not None:
+            ckpt.record(out)
+        else:
+            done_free[str(r[key])] = out
+
+    warm, rest = todo[0], todo[1:]
+    try:
+        keep(warm, one(warm))
+    except Exception as exc:  # noqa: BLE001 - the record rejoins the mop-up below
+        print(f"!!! {desc}: warming call failed ({type(exc).__name__}: {exc}); "
+              "its record joins the mop-up")
+
+    by_key = {str(r[key]): r for r in rest}
+    bodies = {cid: build_request(r) for cid, r in by_key.items()}
+    n_ok, n_fail = 0, 0
+
+    def collect(cid: str, payload: dict) -> None:
+        nonlocal n_ok, n_fail
+        r = by_key[cid]
+        try:
+            res = result_from_payload(model, payload)
+            usage.add(model, res, stage, usd_scale=0.5)
+            keep(r, parse_result(r, res))
+            n_ok += 1
+        except Exception as exc:  # noqa: BLE001 - the record falls to the mop-up
+            n_fail += 1
+            if n_fail <= 3:
+                print(f"    {desc}: batch result {cid} rejected "
+                      f"({type(exc).__name__}: {exc}); will mop up interactively")
+
+    run_batch(model, bodies, desc, run_dir / f".batch_{desc}.json", collect)
+    print(f">>> {desc}: batch delivered {n_ok}/{len(rest)}; mopping up the rest "
+          "interactively")
+
+    if ckpt is not None:
+        return run_items(items, one, workers, desc, ckpt, max_fail_pct=max_fail_pct)
+    remaining = [r for r in todo if str(r[key]) not in done_free]
+    if remaining:
+        def mop(i: int) -> dict:
+            out = one(remaining[i])
+            done_free[str(remaining[i][key])] = out
+            return out
+
+        resilient(mop, len(remaining), workers, desc, max_fail_pct=max_fail_pct,
+                  total=len(items))
+    return [done_free[str(it[key])] for it in items if str(it[key]) in done_free]
 
 
 from dataclasses import dataclass, field

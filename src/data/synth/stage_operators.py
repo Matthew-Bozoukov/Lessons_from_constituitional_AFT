@@ -9,7 +9,17 @@ from pathlib import Path
 
 from . import model_eval_model_cells as cells
 from .constitution import UNIT_PROVENANCE, Trait, units_from_config
-from .stage_runtime import Ctx, Stage, call_json, call_tagged, model_cfg, resilient, run_items
+from .stage_runtime import (
+    Ctx,
+    Stage,
+    call_json,
+    call_tagged,
+    model_cfg,
+    resilient,
+    run_items,
+    run_items_batched,
+)
+from .stage_runtime import _parse_json, _parse_tagged  # single-attempt batch parses
 from .stage_runtime import lint_problems as _lint
 from .hf_cache import read_jsonl
 
@@ -433,6 +443,27 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
                  preview=lambda r: f"[{r['trait_name']}] {r['situation']}")
 
 
+def _batching(ctx: Ctx, sc: dict) -> None | str:
+    """The record key to batch this stage on, or None to run interactively.
+
+    Opt-in per run (`batch: true` in the config, `--batch` on the CLI) and opt-out per
+    stage (`batch: false` on the stage entry, for a stage whose latency matters more
+    than its price). Only `llm_json`/`llm_tagged` consult this: scenario generation is
+    wave-sequential by design (each wave is steered by the last one's output), the
+    corpus checks are multi-phase and cheap, and every other operator is free.
+    """
+    if not (bool(ctx.cfg.get("batch")) and sc.get("batch", True) is not False):
+        return None
+    return sc.get("checkpoint") or "scenario_id"
+
+
+def _note_batched(ctx: Ctx, name: str) -> None:
+    """Record in the manifest that a stage's bulk went through the batch API."""
+    batched = ctx.manifest_extra.setdefault("batched_stages", [])
+    if name not in batched:
+        batched.append(name)
+
+
 def op_llm_json(sc: dict, cfg: dict) -> Stage:
     """One JSON call per record; `save` maps record fields <- JSON keys."""
     sys_t, user_t = sc["prompts"]["system"], sc["prompts"]["user"]
@@ -441,6 +472,7 @@ def op_llm_json(sc: dict, cfg: dict) -> Stage:
 
     def fn(ctx, records, ckpt):
         m = model_cfg(ctx.cfg, mk)
+        max_fail = float(ctx.cfg.get("max_fail_pct", 2.0))
 
         def one(r: dict) -> dict:
             parsed, _ = call_json(
@@ -451,8 +483,33 @@ def op_llm_json(sc: dict, cfg: dict) -> Stage:
             return {**r, **{f: (parsed.get(k, "") if k in optional else parsed[k])
                             for f, k in save.items()}}
 
+        batch_key = _batching(ctx, sc)
+        if batch_key:
+            from src.endpoints.openrouter import build_request_body
+
+            def build(r: dict) -> dict:
+                return build_request_body(
+                    m["model"],
+                    [{"role": "system", "content": _render(sys_t, r, ctx)},
+                     {"role": "user", "content": _render(user_t, r, ctx)}],
+                    m["temperature"], m["max_tokens"], m.get("extra_body"))
+
+            def parse(r: dict, res) -> dict:
+                assert res.finish_reason != "length", (
+                    f"{mk}: {m['model']} hit max_tokens={m['max_tokens']} and "
+                    "truncated its JSON")
+                parsed = _parse_json(res.content)
+                return {**r, **{f: (parsed.get(k, "") if k in optional else parsed[k])
+                                for f, k in save.items()}}
+
+            _note_batched(ctx, sc["name"])
+            return run_items_batched(
+                records, one, build, parse, usage=ctx.usage, model=m["model"],
+                stage=mk, key=batch_key, run_dir=ctx.run_dir, workers=ctx.workers,
+                desc=sc["name"], ckpt=ckpt, max_fail_pct=max_fail)
+
         return run_items(records, one, ctx.workers, sc["name"], ckpt,
-                         max_fail_pct=float(ctx.cfg.get("max_fail_pct", 2.0)))
+                         max_fail_pct=max_fail)
 
     return Stage(sc["name"], fn, paid=True, checkpoint_key=sc.get("checkpoint"),
                  preview=lambda r: r[next(iter(save))])
@@ -577,8 +634,41 @@ def op_llm_tagged(sc: dict, cfg: dict) -> Stage:
             raise ValueError(f"{sc['name']}: output breaks the stage contract after "
                              f"{attempts} attempts: {'; '.join(problems)}")
 
-        done = run_items(todo, one, ctx.workers, sc["name"], ckpt,
-                         max_fail_pct=float(ctx.cfg.get("max_fail_pct", 2.0)))
+        max_fail = float(ctx.cfg.get("max_fail_pct", 2.0))
+        batch_key = _batching(ctx, sc)
+        if batch_key:
+            from src.endpoints.openrouter import build_request_body
+
+            def build(r: dict) -> dict:
+                messages, _, _ = tagged_request(sc, r, ctx)
+                return build_request_body(m["model"], messages, m["temperature"],
+                                          m["max_tokens"], m.get("extra_body"))
+
+            def parse(r: dict, res) -> dict:
+                # One attempt against the full contract -- tags, normalisation, lint.
+                # Any reject falls to the interactive path, which owns the retry
+                # budget (and the nudges) exactly as it does without batching.
+                _, tags, save = tagged_request(sc, r, ctx)
+                assert res.finish_reason != "length", (
+                    f"{mk}: {m['model']} hit max_tokens={m['max_tokens']} and "
+                    "truncated")
+                parsed = _parse_tagged(res.content, tags)
+                for tag in normalize:
+                    if tag in parsed:
+                        parsed[tag] = _norm_label(parsed[tag])
+                problems = _lint(parsed, lint_spec) if lint_spec else []
+                if problems:
+                    raise ValueError("; ".join(problems))
+                return {**r, **{f: parsed[k] for f, k in save.items()}, **also}
+
+            _note_batched(ctx, sc["name"])
+            done = run_items_batched(
+                todo, one, build, parse, usage=ctx.usage, model=m["model"],
+                stage=mk, key=batch_key, run_dir=ctx.run_dir, workers=ctx.workers,
+                desc=sc["name"], ckpt=ckpt, max_fail_pct=max_fail)
+        else:
+            done = run_items(todo, one, ctx.workers, sc["name"], ckpt,
+                             max_fail_pct=max_fail)
         if len(todo) == len(records):
             return apply_keep(sc, done, ctx) if keep_spec else done
         # Out-of-scope records keep their place; an in-scope record that failed is
