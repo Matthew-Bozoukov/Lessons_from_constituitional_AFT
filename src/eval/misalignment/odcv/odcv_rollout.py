@@ -83,23 +83,41 @@ services:
 """
 
 
-def openrouter_usage(settle_s: int = 0) -> float:
+def openrouter_usage(settle_s: int = 0) -> float | None:
     """Return total credits spent on the OpenRouter key so far, in USD.
 
     Args:
         settle_s: Seconds to wait first. OpenRouter settles generation costs
             asynchronously, so reading immediately after a run under-reports it.
+
+    Returns:
+        Total USD spent on the key, or None if it could not be read.
     """
     if settle_s:
         print(f"waiting {settle_s}s for OpenRouter usage to settle...", flush=True)
         time.sleep(settle_s)
-    resp = requests.get(
-        "https://openrouter.ai/api/v1/credits",
-        headers={"Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}"},
-        timeout=30,
-    )
-    resp.raise_for_status()
-    return float(resp.json()["data"]["total_usage"])
+    # NEVER raises. This is bookkeeping, and the `after` reading is taken once all 70
+    # scenarios have already run -- so a missing key or a transient 502 here used to
+    # destroy an hour of completed rollouts before the manifest was written. An unattended
+    # run cannot afford that trade. A None reading costs one cost figure; an exception
+    # costs the pass.
+    try:
+        key = os.environ["OPENROUTER_API_KEY"]
+    except KeyError:
+        print("OPENROUTER_API_KEY unset - skipping cost accounting", flush=True)
+        return None
+    try:
+        resp = requests.get(
+            "https://openrouter.ai/api/v1/credits",
+            headers={"Authorization": f"Bearer {key}"},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return float(resp.json()["data"]["total_usage"])
+    except Exception as e:  # noqa: BLE001 - see above
+        print(f"OpenRouter usage read failed ({type(e).__name__}) - "
+              f"cost will be recorded as null", flush=True)
+        return None
 
 
 def _build_workspace(bench_dir: Path, variant: str, scenario: str, ws: Path) -> None:
@@ -284,7 +302,8 @@ def main(
     print("=" * 72)
     print(f"ODCV-Bench rollouts | model={cfg.model} temp={cfg.temperature}")
     print(f"scenarios={len(jobs)} concurrency={cfg.concurrency} out={out_dir}")
-    print(f"OpenRouter spend so far: ${usage_before:.4f}")
+    print("OpenRouter spend so far: "
+          + (f"${usage_before:.4f}" if usage_before is not None else "unknown"))
     print("=" * 72, flush=True)
 
     results = []
@@ -312,7 +331,8 @@ def main(
         "temperature": cfg.temperature,
         "n_scenarios": len(jobs),
         "wall_clock_min": round((time.time() - t0) / 60, 1),
-        "rollout_cost_usd": round(usage_after - usage_before, 4),
+        "rollout_cost_usd": (round(usage_after - usage_before, 4)
+                             if None not in (usage_before, usage_after) else None),
         "openrouter_usage_before_usd": usage_before,
         "openrouter_usage_after_usd": usage_after,
         "results": sorted(results, key=lambda r: (r["variant"], r["scenario"])),
@@ -321,8 +341,10 @@ def main(
 
     ok = sum(r["status"] in ("ok", "cached") for r in results)
     print("\n" + "=" * 72)
+    cost = manifest["rollout_cost_usd"]
     print(f"rollouts complete: {ok}/{len(jobs)} clean, "
-          f"{manifest['wall_clock_min']} min, ${manifest['rollout_cost_usd']:.2f}")
+          f"{manifest['wall_clock_min']} min, "
+          + (f"${cost:.2f}" if cost is not None else "cost unknown"))
     for r in results:
         if r["status"] not in ("ok", "cached"):
             print(f"  ISSUE {r['variant']}/{r['scenario']}: {r['status']}")
