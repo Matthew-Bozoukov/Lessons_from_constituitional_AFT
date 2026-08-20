@@ -45,10 +45,11 @@ def run(config: str, smoke: bool = False, resume: str | None = None,
             Recorded in the run manifest either way.
         ablate: Comma-separated stage names to ablate, merged over the config's
             `ablate:` list and recorded in the manifest.
-        batch: Route the bulk of each llm_json/llm_tagged stage through OpenRouter's
-            async batch API (50% token pricing, results within 24h); parse/lint
-            rejects mop up interactively. Equivalent to `batch: true` in the config;
-            a stage opts out with `batch: false` on its entry.
+        batch: Route the bulk of every paid stage through OpenRouter's async batch
+            API (50% token pricing, results within 24h): llm_json/llm_tagged batch
+            their records, scenarios batches per steering wave (diversity preserved),
+            and parse/lint rejects mop up interactively. Equivalent to `batch: true`
+            in the config; a stage opts out with `batch: false` on its entry.
     """
     load_dotenv()
     loaded = OmegaConf.load(config)

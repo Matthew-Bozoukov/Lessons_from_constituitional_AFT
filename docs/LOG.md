@@ -1495,6 +1495,39 @@ ablation end to end, against the control that
 `lora_qwen36_t2_9284_synthdoc_716_dynbatch_2xh200.yaml` names. (4) Port the three scratch
 producers in behind their `produce()`.
 
+## 2026-08-18 — TURF study: all 60 cases traced + cross-case aggregation; retrieval-null lift kills the urgency confound
+
+**Hypothesis:** aggregating full per-crux hit tables across each rubric's 20 cases —
+with a retrieval-null correction — yields interpretable, rubric-specific property
+hypotheses where single-case raw hit counts drowned in corpus house patterns.
+
+**Method:** built the retrieval null into index.py (all 22,030 response attributes as
+pseudo-cruxes, exact/deterministic/local; `null_hits.npy`); trace.py now ranks tables
+AND triggers by smoothed lift (=(hits+1)/(expected+1)) and persists full `hits_all`;
+batch driver folded into trace.py (`--all_cases`, resumable); new aggregate.py
+computes per rubric: score (pooled hit share), lift, specificity (vs the other two
+rubrics), case presence (gate >= 3), ranked by lift x spec. Traced all 60 t2synth
+cases (~$3; 3 transient extractor-parse failures succeeded on rerun). Atlas v2
+visualises Case/Rubric/Study levels (same artifact URL).
+
+**Result:** the null directly vindicates the confound worry — max expected hits 78.1,
+exactly where urgency's raw 76–94 sat: it was at chance (lift ~1). Ranked candidates
+(`output/turf/aggregate/20260818_171557/`): ai_disclosure has by far the strongest
+signal (#188 epistemic-humility-about-own-internal-states, lift 5.9, spec 0.217;
+#883/#212 AI-anthropomorphizing queries; #773 rejecting the detachment-vs-performative
+false dichotomy) — the stayed-AI behaviour traces to AI-identity training content.
+authoritarian_resistance: #393 reasoning that rejects security-control bypasses (lift
+1.7, spec 0.036), #942 systemic-downstream-risk evaluation, plus incident-pressure
+technical scenarios on the query side. empirical_honesty is weakest (lifts 1.1–1.8):
+#156/#567 scientific-integrity scenarios, #396 autonomy-preserving actionable
+guidance. 180 trigger selections (3 x 60) remain per-case diagnostics; ranking uses
+full hit tables (argmax aggregation would give ~1 vote per cluster).
+
+**Next steps:** read the top clusters' members + source rows and write the word-for-word
+property hypotheses; draft the 3–15 ablation plan for Callum (ai_disclosure candidates
+first — strongest signal); consider violate-polarity traces as negative controls;
+commit the trace/aggregate/index changes.
+
 ## 2026-08-17 — LESS-selected difficult-advice arm trained: 151 rows swapped, loss 0.8651, no control yet
 
 **Hypothesis:** the 716 difficult-advice rows in the table2 mixture are sampled RANDOMLY
