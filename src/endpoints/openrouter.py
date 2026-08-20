@@ -227,7 +227,9 @@ def result_from_payload(model: str, data: dict) -> ChatResult:
     content = (choice.get("message") or {}).get("content")
     finish = choice.get("finish_reason") or ""
     if finish == "content_filter":
-        raise ProviderRejectionError(
+        # Same classification as `chat`: an output-sample filter, retryable — which
+        # for a batch result means the interactive mop-up (a fresh sample) owns it.
+        raise EmptyCompletionError(
             f"Model {model} blocked by content filter (provider {provider or '?'}): "
             "finish_reason=content_filter",
             provider_error={"code": "content_filter",
@@ -339,8 +341,14 @@ class OpenRouterClient:
             # OpenAI-protocol hard filter, with or without partial text. Partial
             # output is DROPPED rather than returned: a silently truncated
             # completion poisons downstream parses worse than a loud rejection.
-            # Deterministic like an in-body 4xx — fail fast, don't re-bill it 6x.
-            raise ProviderRejectionError(
+            # RETRYABLE, unlike an in-body 4xx: a finish_reason filter fired on what
+            # the model SAMPLED, not on the request — measured 2026-08-20 on the
+            # gemini difficult-advice arm, the same write_scenarios prompt passed
+            # 11/12 calls at temperature 1.1. An input-level block arrives as an
+            # in-body 4xx (e.g. Gemini's PROHIBITED_CONTENT) and stays deterministic
+            # above; a prompt the filter always trips on exhausts the retries and
+            # surfaces here with the same typed payload.
+            raise EmptyCompletionError(
                 f"Model {model} blocked by content filter (provider "
                 f"{getattr(resp, 'provider', '?')}): finish_reason=content_filter",
                 provider_error={"code": "content_filter",
