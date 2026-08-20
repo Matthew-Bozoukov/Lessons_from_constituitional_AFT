@@ -936,6 +936,35 @@ def test_odcv_pools_arms_with_unique_ids_and_refuses_a_shared_arm_label(tmp_path
         odcv_rollouts.load(run_dir=str(da), runs=[{"run_dir": str(court)}])
 
 
+def test_the_run_channel_overrides_the_interpreters_guess(tmp_path, monkeypatch):
+    """`channel` is a fact about where the evidence came from, not an opinion.
+
+    The interpreter answers it from CONTENT, so a cluster of reasoning descriptions about
+    refusing gets labelled `response` because refusing sounds like an action. Everything
+    that later reads a record acts on this field — the detector, the ablation filter, the
+    mask — so a wrong value silently points them at the wrong text.
+    """
+    from src.properties.producers import clusters as tc
+
+    records = [Record(record_id=f"r{i}", query=f"q{i}", response=f"a{i}",
+                      reasoning=f"trace {i}") for i in range(20)]
+    _stub_embedding(monkeypatch, tc, _two_blobs(10, 10))
+    monkeypatch.setattr(tc.interpret_mod, "interpret_many", lambda groups, **kw: {
+        g: interpret_mod.Interpretation(
+            label=f"c{g}", description="d", detector="Does it?",
+            # The interpreter insists this lives in the response channel.
+            channel="response", evidence=[], model="stub")
+        for g in groups})
+
+    properties = tc.produce(records, {
+        "channel": "reasoning", "evidence": "traces",
+        "grouping": {"reduce": "none", "cluster": "kmeans", "k": 2},
+    }, tmp_path / "tc")
+
+    assert {p.channel for p in properties} == {"reasoning"}, \
+        "the channel the run clustered wins"
+
+
 def test_odcv_splits_the_channels_by_role_and_drops_the_tool_harness(tmp_path):
     """The response channel is the MODEL's visible behaviour, not the whole transcript.
 
@@ -1399,9 +1428,10 @@ def test_the_detector_preflight_probes_the_longest_record_and_times_it():
     assert len(client.calls) == 1, "a preflight is one call"
 
 
-def test_both_detector_paths_suppress_reasoning_so_the_gate_isolates_batching():
-    """`verify_batching` measures what BATCHING changes. If only one path suppressed the
-    model's reasoning, the two would differ in two ways and the gate would measure both."""
+def test_only_the_batched_detector_suppresses_reasoning():
+    """Measured 2026-08-20: on the batched path, reasoning buys 1.5 points of agreement
+    with the unbatched reference for 40x the wall clock, so it is off there. The unbatched
+    path keeps it — that path IS the reference, and changing it would move the yardstick."""
     props = [_property(property_id="clusters:r:g000", label="alpha", detector="A?")]
     batched = _StubChat(lambda messages: '{"p001": true}')
     single = _StubChat(lambda messages: '{"exhibits": true, "evidence": "", "note": ""}')
@@ -1410,7 +1440,7 @@ def test_both_detector_paths_suppress_reasoning_so_the_gate_isolates_batching():
     interpret_mod.detect(_detect_records(1), "alpha", "A?", client=single)
     assert interpret_mod.NO_REASONING == {"reasoning": {"enabled": False}}
     assert batched.extra_bodies == [interpret_mod.NO_REASONING]
-    assert single.extra_bodies == [interpret_mod.NO_REASONING]
+    assert single.extra_bodies == [None], "the reference path still reasons"
 
 
 def test_verify_batching_reports_where_the_two_detector_paths_disagree(monkeypatch):
@@ -1530,7 +1560,36 @@ def test_the_audit_flags_a_group_drawn_from_a_single_scenario():
     assert scenario["n_flagged"] == 1
     assert scenario["flagged"][0]["label"] == "really the hiring scenario"
     assert scenario["flagged"][0]["top_share"] == 1.0
-    assert scenario["by_group"]["1"]["top_share"] == pytest.approx(0.1)
+    # Excess over the corpus, not raw share: "Hiring" is half the corpus, so a group that
+    # is ALL Hiring sits +50pp above it. The spread group's best value is +5pp.
+    assert scenario["flagged"][0]["corpus_share"] == pytest.approx(0.5)
+    assert scenario["flagged"][0]["excess"] == pytest.approx(0.5)
+    assert scenario["by_group"]["1"]["excess"] == pytest.approx(0.05)
+
+
+def test_concentration_on_a_two_valued_key_is_not_satisfied_by_pigeonhole():
+    """A raw-share threshold of 50% flags EVERY group on a binary key — measured
+    2026-08-20, it flagged 49 of 49 groups on `arm`, which says nothing about any of them.
+    Excess over the corpus mix is what carries information."""
+    from src.properties.shared import audit as audit_mod
+
+    # Corpus is 60/40 on `arm`. One group matches that mix; one is arm-exclusive.
+    records = [Record(record_id=f"r{j}", query="q", response="a", reasoning="t",
+                      metadata={"arm": "focus" if j < 12 else "control"})
+               for j in range(20)]
+    result = audit_mod.concentration(
+        records, {0: [0, 1, 2, 3, 4, 12, 13, 14], 1: list(range(8))},
+        {0: "tracks the corpus mix", 1: "focus-arm only"}, keys=("arm",),
+        threshold=0.25)
+
+    arm = result["arm"]
+    assert arm["n_values"] == 2 and arm["corpus_shares"]["focus"] == pytest.approx(0.6)
+    assert arm["n_flagged"] == 1, "only the arm-exclusive group is concentrated"
+    assert arm["flagged"][0]["label"] == "focus-arm only"
+    # The mix-matching group still has a top_share above 50% — which is exactly why the
+    # raw share is the wrong statistic here.
+    assert arm["by_group"]["0"]["top_share"] > 0.5
+    assert arm["by_group"]["0"]["excess"] < 0.25
     # A key no record carries is skipped rather than reported as 100% concentrated in
     # "None", which is what reading a missing field as a value would do.
     assert "cell" not in audit_mod.concentration(

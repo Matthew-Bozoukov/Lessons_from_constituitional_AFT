@@ -599,7 +599,17 @@ def produce(records: list[Record], cfg, out_dir: str | Path,
                       "example_excerpts": [_excerpt(kept[i].channel(channel), 300)
                                            for i in idx[:3]]},
             provenance=provenance,
-            **interpretation.to_dict()))
+            # The run's channel OVERRIDES the interpreter's guess, and the guess is
+            # thrown away rather than recorded. `channel` is not an opinion about the
+            # property — it is the fact of which text the evidence came from, and
+            # everything that later reads a record acts on it: `interpret.detect`, the
+            # ablation filter, the mask. The interpreter answers it from CONTENT, so a
+            # group of reasoning descriptions about refusing gets labelled `response`
+            # because refusing sounds like an action. Measured on this run before the
+            # override: 25 of 49 reasoning-fit properties and 18 of 71 response-fit ones
+            # carried the wrong channel, which sent the detector at the wrong text and
+            # dropped its per-record agreement with cluster membership to 21%.
+            **{**interpretation.to_dict(), "channel": channel}))
 
     detector_membership, undetected = None, set()
     if bool(cfg.get("measure_with_detector", False)):

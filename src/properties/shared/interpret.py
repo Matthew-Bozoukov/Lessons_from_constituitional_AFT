@@ -36,21 +36,28 @@ from dataclasses import dataclass, field
 INTERPRET_TEMPERATURE = 0.0
 DEFAULT_MODEL = "anthropic/claude-sonnet-5"
 
-# A detector answers a rubric about a record. It does not need to think first, and letting
-# it costs three ways, all measured on 2026-08-20 against the real 49-rubric prompt and a
-# 12k-character trace:
+# Applied to the BATCHED path only (`detect_many`), and the asymmetry is the finding rather
+# than an oversight.
 #
-#   correctness  reasoning tokens are spent BEFORE any content, so a budget sized for the
-#                answer gets consumed by the thinking and the API returns finish_reason
-#                'length' with content=None. At max_tokens=2000 that blanked 23 of 25
-#                records — intermittently, because how long the model thinks varies per
-#                record, which is what made it look like flakiness rather than a budget.
-#   cost         297 output tokens with reasoning off, 1,436-2,167 with it on. 5-7x.
-#   time         6.4s with it off, 15.6-25.0s with it on.
+# A/B on 2026-08-20: 48 real detectors from the published da716 run x 20 real rollouts =
+# 960 verdict cells, three ways — batched with reasoning off, batched with it on, and the
+# unbatched one-property-per-call path with it on as the reference.
 #
-# Set on BOTH detector paths, deliberately. `verify_batching` exists to measure what
-# BATCHING changes; if only the batched path suppressed reasoning, the two paths would
-# differ in two ways at once and the check would stop isolating the thing it is named for.
+#   condition       time   prevalence   agreement with the unbatched reference
+#   batched_off      12s        38.1%   85.0%
+#   batched_on      479s        40.4%   86.5%   (and 5% of cells STILL blanked at 8000)
+#   single_on       465s        47.5%   --
+#
+# Reasoning buys 1.5 points of agreement for 40x the wall clock, and the mean per-property
+# prevalence gap against the reference is 11.1% either way — identical to one decimal. So
+# on the batched path it is not paying for itself and it is switched off.
+#
+# The much larger effect is BATCHING itself, and it is why `measure_with_detector` is off
+# in the two-arm config: a judge shown ~50 rubrics at once says yes 7-9 points less often
+# than the same judge shown one, with individual properties moving up to 35 points. That is
+# a systematic deflation, not noise, and it is exactly what `verify_batching` exists to
+# catch. Keep using it as a cheap screen; do not build a published rate on it without
+# reporting the gap.
 NO_REASONING = {"reasoning": {"enabled": False}}
 # How many pieces of evidence the interpreter sees. SURF summarises from its top-100
 # closest members; 50 is that halved, which is what TURF settled on and enough that a
@@ -560,9 +567,12 @@ def detect(records, label: str, detector: str, channel: str = "reasoning",
     def run(i: int) -> dict:
         record = records[i]
         try:
+            # Reasoning left ON here, deliberately, and NOT symmetric with `detect_many`.
+            # This is the path with the track record and the one the 2026-08-20 A/B used
+            # as its reference; suppressing reasoning on it would change the yardstick as
+            # well as the thing being measured.
             result = client.chat(
                 model=model, temperature=0.0, max_tokens=800,
-                extra_body=dict(NO_REASONING),
                 messages=[{"role": "system", "content": system},
                           {"role": "user", "content":
                            f"<record>\n{record.channel(channel)}\n</record>"}])

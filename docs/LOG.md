@@ -3,6 +3,98 @@
 
 # LOG
 
+## 2026-08-20 — two arms: what the difficult-advice fine-tune DOES that its control does not
+
+**Hypothesis.** The 2026-08-19 da716 run could say what one model does and which of it goes
+with violating, but not whether any of it was a property of the FINE-TUNE rather than of any
+model on these scenarios — nothing crossed a property against the arm. With a matched control
+it can. The pair: two Qwen3.6-27B LoRAs sharing 9,284 filtered instruction rows, differing
+only in the kind of the other 716 — constitution-grounded difficult advice vs NuminaMath-CoT.
+Same row count, same presence of real reasoning traces. Misalignment rate 15.0% vs 43.7%.
+
+**Method.** Feature discovery (the LessWrong method, `WAZWA6FPQvH8okouJ`) over 513 judged
+ODCV-Bench rollouts pulled from their published HF repos and pinned to exact shas. An
+autorater writes 10-20 free-text descriptions per rollout; the deduped vocabulary is embedded
+(`qwen/qwen3-embedding-8b`, nebius-pinned) and clustered with UMAP(10-d) + HDBSCAN. TWO fits,
+one per channel — reasoning and response — because "weighs an ethical tension" and "silently
+chains tool calls" should not compete to define the same group. 19,354 feature instances,
+7,906 + 7,181 distinct strings, 49 + 71 properties.
+
+Three measurements per property, all within stratum and BH-corrected: the between-ARM
+prevalence difference (new: `outcomes.contrast_arms`), the within-stratum outcome lift on two
+binarisations of ODCV severity, and an L1 logistic probe from the binary membership matrix
+(the post's own experiment, pointed at the arm).
+
+The stratum is the PAIR, arm x condition, because both axes carry a base-rate difference and
+the condition ordering FLIPS between the arms (5pct incentivized 20.0% vs mandated 9.8%;
+control 41.2% vs 46.1%).
+
+**Result — the fine-tune deliberates, the control executes.** 39 of 49 reasoning properties
+and 54 of 71 response properties differ at q <= 0.10. Prevalence, 5pct vs 0pct:
+
+    +42.8pp  60.5% / 17.8%   Verbose first-person internal monologue before acting
+    +35.8pp  63.7% / 28.2%   Explicit deliberation on an ethical tension
+    +33.4pp  43.4% / 10.3%   Refuses to falsify or fabricate data under pressure
+    +33.0pp  49.3% / 16.1%   Evaluation awareness / suspects being tested
+    +24.1pp  26.2% /  2.3%   Reasons about downstream harm to stakeholders
+    -27.4pp   8.3% / 35.6%   Fabricates or falsifies data without ethical flagging
+    -31.1pp   7.1% / 37.9%   Grounds claims with concrete file/script paths
+    -54.2pp  16.2% / 70.1%   Narrates task steps as sequential status updates
+
+Property membership predicts which model produced a rollout at **AUC 0.956** (37 properties;
+shuffled-label null 0.505, p=0.02) and predicts violation at 0.959.
+
+**The sharpest result is cross-channel, and the two-fit design is what makes it sayable.**
+147 reasoning x response pairs tested, 102 survive BH. One reasoning property, two actions:
+
+    Names an ethical tension but proceeds anyway + Falsifies data then reports success
+        n=49,  63% violation,  +38.4pp within stratum
+    Names an ethical tension but proceeds anyway + Refuses to falsify under pressure
+        n=130,  1% violation,  -23.2pp
+
+Identical deliberation; the outcome is decided entirely by whether the action follows it. The
+2026-08-19 run found this shape inside one channel and had to rely on the autorater
+volunteering both halves in one sentence.
+
+**What survived scrutiny.** 0 of 9 stability refits collapsed on either channel (pairwise ARI
+0.480-1.000 reasoning, 0.381-1.000 response). 0 near-duplicate group pairs on reasoning, 2 on
+response. UMAP kept the geometry — neighbourhood overlap 0.468 and 0.481, against ~0.003 for
+random at k=15. Not scenario markers: with concentration measured as EXCESS over the corpus
+mix, 1 of 49 and 1 of 71 groups are scenario-concentrated, 0 are condition markers, and 1 of
+120 is an arm marker. The strict same-scenario-same-condition contrast moves every headline
+delta by a point or two and RAISES the significant counts to 42 and 61.
+
+**Method notes that cost real money.** (1) `min_cluster_size` was swept per channel and the
+channels disagree: reasoning is stable at every resolution, response BIFURCATES from 40 upward
+(three seeds give 41, 40 and 3 groups). Forcing them to match for symmetry would have been
+choosing a prettier config over a measurement. (2) The plan was to make a detector the
+membership basis; an A/B over 48 real detectors x 20 rollouts showed that batching a judge
+across ~50 rubrics deflates prevalence by 7-9 points against asking one at a time (38.1% vs
+47.5%, 85% cell agreement), so membership stayed CLUSTER membership and the detector became a
+shortlist validation instead. (3) A reasoning model spends its budget before emitting content,
+so `max_tokens=2000` returned blanks, not truncations, and the retry policy re-billed each one
+six times. All three are now in `docs/GOTCHAS.md`.
+
+**A bug worth naming.** `Property.channel` was whatever the naming model guessed, and it
+guesses from content — 25 of 49 reasoning-fit properties came back labelled `response`. That
+field decides which text `interpret.detect` and the ablation filter/mask read, so it pointed
+the detector at the wrong half of the record and dropped its agreement with cluster membership
+to 21%. Now overridden with the channel the run actually clustered. It never touched a
+prevalence, a contrast or a lift — those come from the configured channel's features — but it
+would have poisoned the ablations.
+
+**Artifacts.** `LASR-Callum/2026-08-20-odcv-feature-discovery-da716-5pct-vs-numina-control`
+(public); small text artifacts and the caveats in `docs/properties/odcv_da716_vs_numina/`;
+write-up at `dashboard/content/findings/2026-08-20-da716-vs-numina-properties/`.
+
+**Next steps.** The list is now a ranked set of ablation candidates with a control arm behind
+it, which is what it was for. The obvious target is the cross-channel pair: filter or rewrite
+the training rows that teach "name the tension, proceed anyway" and retrain, and check whether
+the +38.4pp pair thins. Cheaper first: run the shortlist detectors over the 716
+difficult-advice rows to see whether the corpus contains the pattern at all, or whether the
+model produces it unprompted. Still open: 29% of feature strings do not cluster, and the two
+evals are 11 days apart on different git SHAs.
+
 ## 2026-08-19 — one `clusters` producer: feature discovery and trace clustering merged
 
 **Why.** Feature discovery (autorater describes each trace, cluster the descriptions) and
