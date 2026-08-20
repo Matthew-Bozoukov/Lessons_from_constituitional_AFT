@@ -138,11 +138,15 @@ def main(config: str, passes: int = 2, hf_repo: str = "", box_id: str = "box",
 
     Args:
         extra: Space-separated overrides handed through to odcv_rollout_cli.py on every
-            pass, e.g. "--concurrency=8" when the driver is a laptop rather than a
-            19-core box. Recorded in status.json so the run's settings are on disk.
+            pass, written WITHOUT leading dashes -- e.g. "concurrency=8" when the driver
+            is a laptop rather than a 19-core box (Fire would read a value that starts
+            with `--` as a separate flag). Recorded in status.json so the run's settings
+            are on disk.
     """
     cfg = OmegaConf.load(config)
-    extra_args = extra.split()
+    if not isinstance(extra, str):
+        raise SystemExit(f"--extra takes a string like 'concurrency=8', got {extra!r}")
+    extra_args = [a if a.startswith("--") else f"--{a}" for a in extra.split()]
     sd = Path(state_dir)
     sd.mkdir(parents=True, exist_ok=True)
     status_path = sd / "status.json"

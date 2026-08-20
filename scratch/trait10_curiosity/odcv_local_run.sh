@@ -6,7 +6,7 @@
 #
 # Same control plane as the vast boxes (scratch/odcv_box_run.py), with two laptop
 # adaptations: a reconnecting plain-ssh tunnel instead of autossh (not installed here; the
-# loop re-dials within 5s of a drop), and `--extra --concurrency=8` because this host is
+# loop re-dials within 5s of a drop), and `--extra concurrency=8` because this host is
 # 8 cores with Docker at 8GB, not a 19-core/49GB box. The config itself stays byte-identical
 # to its siblings below `temperature:`. caffeinate -i keeps the Mac from idle-sleeping for
 # as long as the supervisor runs; the lid must still stay open (or Docker Desktop pauses).
@@ -44,5 +44,5 @@ uv run python scratch/odcv_preflight.py --config "$CFG" --check_docker \
 echo "=== supervisor: $PASSES passes, concurrency $CONC ==="
 nohup caffeinate -i uv run python scratch/odcv_box_run.py --config "$CFG" \
   --passes "$PASSES" --box_id laptop --state_dir "$STATE" --hf_repo "$HF_REPO" \
-  --extra "--concurrency=$CONC" > output/logs/odcv_t10_supervisor.log 2>&1 &
+  --extra "concurrency=$CONC" > output/logs/odcv_t10_supervisor.log 2>&1 &
 echo "supervisor pid $!  log output/logs/odcv_t10_supervisor.log  status $STATE/status.json"
