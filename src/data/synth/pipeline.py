@@ -12,7 +12,7 @@ from typing import Any
 from src.utils import git_sha, timestamp
 
 from .constitution import full_text
-from .stage_runtime import PRICES, Checkpoint, Ctx, Stage, Usage, measured_per_stage
+from .stage_runtime import Checkpoint, Ctx, Stage, Usage, measured_per_stage, price_of
 from .hf_cache import StageCache
 from .stage_operators import OPERATORS
 
@@ -557,7 +557,7 @@ def estimate(cfg: dict, measured_manifest: str | None = None) -> dict[str, Any]:
         else:
             tin, tout = block["assumed_tokens"]["in"], block["assumed_tokens"]["out"]
             source = "assumed"
-        price = PRICES.get(model, {"in": 0.0, "out": 0.0})
+        price = price_of(model)
         usd = calls[key] * (tin / 1e6 * price["in"] + tout / 1e6 * price["out"])
         total += usd
         rows.append({
