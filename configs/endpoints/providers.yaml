@@ -34,6 +34,10 @@ models:
   anthropic/claude-sonnet-4.5: {order: [anthropic]}      # synth v1 + judges
   anthropic/claude-haiku-4.5: {order: [anthropic]}       # synth v2 generation
   google/gemini-3.7-flash: {order: [google-vertex/global/flex]}  # TURF, flex is cheap and slow
+  # Generator for the all-gemini difficult-advice arm (2026-08-20). 3.6 over 3.7 because
+  # 3.7's safety layer blocks the CBRN-adjacent t4 scenarios and 3.6's does not (verified
+  # on the exact blocked prompts). Standard tier — the tier the block was verified on.
+  google/gemini-3.6-flash: {order: [google-vertex/global]}
   google/gemini-3-flash-preview: {order: [google-ai-studio]}  # arena-hard + scratch-eval judge
   # ODCV judge + the difficult-advice gemini-reviser arm (2026-08-20). Standard tier
   # (2/12): the same input as sonnet-5 and $2 more on output — "slightly more than
