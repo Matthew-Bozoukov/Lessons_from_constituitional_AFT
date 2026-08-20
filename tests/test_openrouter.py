@@ -171,9 +171,7 @@ def test_every_pinned_model_routes_to_its_one_provider():
     cases = {
         "anthropic/claude-sonnet-5": "anthropic",
         "openai/gpt-5.6-terra": "openai",
-        # flex tier since 2026-08-20 (gemini synth arm): the highest tier priced
-        # at or under sonnet-5, which it stands in for there.
-        "google/gemini-3.1-pro-preview": "google-ai-studio/flex",
+        "google/gemini-3.1-pro-preview": "google-ai-studio",
         "x-ai/grok-4.20": "xai",
         "nousresearch/hermes-4-405b": "nebius",
     }
