@@ -87,8 +87,10 @@ def test_payload_roundtrips_usage_and_cache_tokens():
             res.cached_tokens, res.provider) == ("ok", 100, 20, 90, "anthropic")
 
 
-def test_payload_content_filter_is_a_rejection():
-    with pytest.raises(ProviderRejectionError):
+def test_payload_content_filter_is_retryable():
+    # Output-sample filter — for a batch result, "retryable" means the interactive
+    # mop-up (a fresh sample) owns it. Same classification as `chat`.
+    with pytest.raises(EmptyCompletionError):
         result_from_payload(ANTHROPIC, _payload(finish="content_filter"))
 
 
