@@ -289,12 +289,20 @@ def call_tagged(client: OpenRouterClient, usage: Usage, model: str,
 
 def call_json(client: OpenRouterClient, usage: Usage, model: str, system: str, user: str,
               temperature: float, max_tokens: int, stage: str, attempts: int = 3,
-              extra: dict | None = None) -> tuple[Any, ChatResult]:
+              extra: dict | None = None,
+              required: tuple[str, ...] = ()) -> tuple[Any, ChatResult]:
     """Run one chat completion and parse its JSON body, retrying a malformed reply.
 
     A model occasionally returns prose or truncated JSON. Retrying that single call is far
     cheaper than losing the stage, so parse failures are retried with an explicit nudge
     before giving up.
+
+    `required` extends the retry to VALID JSON that is the wrong SHAPE: an object missing
+    a field the caller must read (measured 2026-08-20, gemini-3.6-flash: 2/716 draft_prompts
+    replies were well-formed JSON that omitted "user", which parses fine and so slipped past
+    the parse-retry only to KeyError at the save step and drop the record). A model that
+    obeys "return JSON" but forgets a field usually supplies it when the omission is named,
+    so this is retried with a targeted nudge rather than lost.
 
     Args:
         client: OpenRouter client.
@@ -306,20 +314,25 @@ def call_json(client: OpenRouterClient, usage: Usage, model: str, system: str, u
         max_tokens: Completion cap.
         stage: Stage name, for per-stage accounting.
         attempts: How many times to try before raising.
+        required: JSON object keys the reply must contain. Empty (the default) accepts
+            any parseable JSON, so existing callers are unchanged.
 
     Returns:
         (parsed JSON, raw ChatResult).
 
     Raises:
-        ValueError: If every attempt returned unparseable content.
+        ValueError: If every attempt returned unparseable content, or JSON that never
+            contained the `required` keys.
         AssertionError: If the model hit the token cap, which truncates the JSON body.
     """
     last = ""
+    parse_nudge = (
+        "\n\nYour previous reply was not valid JSON. Return ONLY the JSON object, with "
+        "all newlines inside string values escaped as \\n."
+    )
+    shape_nudge = ""  # set when a parse succeeds but a required key is absent
     for attempt in range(attempts):
-        nudge = "" if attempt == 0 else (
-            "\n\nYour previous reply was not valid JSON. Return ONLY the JSON object, with "
-            "all newlines inside string values escaped as \\n."
-        )
+        nudge = "" if attempt == 0 else (shape_nudge or parse_nudge)
         res = client.chat(
             model=model,
             messages=[{"role": "system", "content": system},
@@ -334,10 +347,24 @@ def call_json(client: OpenRouterClient, usage: Usage, model: str, system: str, u
             f"Raise max_tokens for this stage, or lower the per-call batch size."
         )
         try:
-            return _parse_json(res.content), res
+            parsed = _parse_json(res.content)
         except Exception as exc:  # noqa: BLE001 - retried below, raised on the last attempt
             last = f"{type(exc).__name__}: {exc} | content[:200]={res.content[:200]!r}"
-    raise ValueError(f"{stage}: unparseable JSON after {attempts} attempts. {last}")
+            shape_nudge = ""  # a parse failure: fall back to the parse nudge next round
+            continue
+        missing = ([k for k in required if not isinstance(parsed, dict) or k not in parsed]
+                   if required else [])
+        if missing:
+            fields = ", ".join(f'"{k}"' for k in missing)
+            shape_nudge = (
+                f"\n\nYour previous reply was valid JSON but missing required field(s): "
+                f"{fields}. Return ONLY a JSON object that includes every one of: "
+                f"{', '.join(chr(34) + k + chr(34) for k in required)}.")
+            last = f"missing required key(s) {missing} | content[:200]={res.content[:200]!r}"
+            continue
+        return parsed, res
+    raise ValueError(f"{stage}: no valid JSON with the required keys after "
+                     f"{attempts} attempts. {last}")
 
 
 def resilient(fn, n: int, workers: int, desc: str, max_fail_pct: float = 2.0,
