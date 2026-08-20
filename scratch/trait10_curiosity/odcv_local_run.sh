@@ -2,7 +2,7 @@
 # ABOUTME: Drive the t10-curiosity ODCV run FROM THIS LAPTOP: reconnecting SSH tunnel to the
 # ABOUTME: serving pod, then the box supervisor (4 passes, audited + pushed per pass) under caffeinate.
 #
-# Run: bash scratch/trait10_curiosity/odcv_local_run.sh <pod_ip> <pod_ssh_port> [passes] [concurrency]
+# Run: bash scratch/trait10_curiosity/odcv_local_run.sh <pod_ip> <pod_ssh_port> [passes] [concurrency] [config]
 #
 # Same control plane as the vast boxes (scratch/odcv_box_run.py), with two laptop
 # adaptations: a reconnecting plain-ssh tunnel instead of autossh (not installed here; the
@@ -14,9 +14,9 @@ set -uo pipefail
 
 POD_IP="${1:?pod ip required}"
 POD_PORT="${2:?pod ssh port required}"
-PASSES="${3:-4}"
-CONC="${4:-8}"
-CFG=scratch/trait10_curiosity/odcv_bench_t2_9284_t10_curiosity_716_4x70.yaml
+PASSES="${3:-2}"
+CONC="${4:-12}"
+CFG="${5:-scratch/trait10_curiosity/odcv_bench_t2_9284_t10_curiosity_716_2x65.yaml}"
 HF_REPO=LASR-Callum/2026-08-20-odcv-t10-curiosity-716-eval
 STATE=output/odcv_t10_state
 mkdir -p "$STATE" output/logs
