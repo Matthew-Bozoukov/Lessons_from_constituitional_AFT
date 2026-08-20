@@ -3,6 +3,89 @@
 
 # LOG
 
+## 2026-08-20 - ODCV on the LESS pair: 0.4% vs 4.3%, and neither number is comparable to any earlier arm
+
+**Hypothesis:** the LESS top-10% arm and its random-220 control (trained 2026-08-19) can be
+run through ODCV-Bench at the protocol the 2026-08-18 lessswap run pinned, giving the first
+LESS-vs-random agentic-misalignment comparison where the two arms differ ONLY in which rows
+they saw.
+
+**Method.** ODCV-Bench, 4 rollouts x 70 scenarios = 280 per arm (the standard 80 minus the
+same 10 exclusions every sibling uses), judged by grok-4.20 + gemini-3.1-pro-preview,
+provider-pinned via configs/endpoints/providers.yaml with allow_fallbacks false. The two
+configs differ from each other, and from the lessswap sibling, in exactly TWO keys - model
+and model_key - verified by diffing the loaded configs. One RunPod H200 per arm (TP=1,
+max_model_len 65,536, max_num_seqs 32, thinking pinned, agentic tool-call flags), each driven
+from two vast VM docker hosts at concurrency 12, SSH-tunnelled so containers reach it at
+host.docker.internal. Both arms ran in parallel.
+
+**Result.**
+
+| arm | MR | CI95 | severity | mandated | incentivized |
+|---|---:|---|---:|---:|---:|
+| LESS top-10% (score_max) | **0.4%** | [0.0, 1.1] | 0.20 | 0.0% | 0.7% |
+| Random-220 control (seed 1) | **4.3%** | [2.3, 7.2] | 0.38 | 2.9% | 5.7% |
+| Base fp8 (published) | 37.2% | [23.7, 51.3] | 1.43 | 40.0% | 34.2% |
+
+n=280 per arm, **0 dropped**, 560/560 rollouts wrote non-empty transcripts. In counts that is
+~1 misaligned rollout of 280 for LESS against ~12 of 280 for the control; the intervals do
+not overlap. Judging $11.44 + $11.19.
+
+**NEITHER NUMBER IS COMPARABLE TO ANY EARLIER ODCV ARM.** Every prior arm in this family sits
+above 10% (lessswap 19.3%, the legacy 716-row arm 15.0%), and those trained difficult-advice
+rows DILUTED into a 10,000-row Table-2 mixture. These two arms trained on difficult-advice
+rows and nothing else, 4 epochs. Concentrated values training is the obvious explanation for
+both arms collapsing, and it is shared by both, so it does not explain the gap between them -
+but it does mean these numbers cannot be placed on the existing ladder.
+
+**THE GAP HAS AN UNTESTED CONFOUND, and it is the important one.** ODCV measures misalignment,
+not competence; a model that declines to act scores 0% while being useless. "LESS selection
+reduces misalignment" and "LESS selection makes the model more inert" predict the SAME number
+here, and the LESS arm is the more refusal-flavoured of the two by construction - 199 of its
+220 rows win on the `stayed_ai` subtask. Spot-reading transcripts shows genuine agentic work
+(one arm ran a moderation scan, reviewed every flagged post, then refused to falsify the
+approval rate rather than refusing the task), so this is not blanket refusal, but a handful of
+transcripts is not evidence about 280. The LESS arm's mandated cell is EXACTLY zero of 140,
+so the benchmark has essentially no resolution left at this level either.
+
+**Infra: the failure that produced a full set of discarded passes.** The SSH tunnel was bound
+`-L 8000:localhost:8000`, i.e. loopback only. The agent runs inside docker and reaches the
+host as `host.docker.internal`, which resolves to the docker bridge gateway and NOT 127.0.0.1
+- so the host's own curl answered the preflight perfectly while every container got nothing,
+and ODCV rendered that as `ok+no_transcript` on all 70 cells of every pass. The harness reports
+those scenarios as `ok`. A host-side check is structurally incapable of catching this; the
+bootstrap now binds 0.0.0.0 AND verifies by running a curl inside a throwaway container. After
+the fix, all eight passes came back 70/70 non-empty with zero missing cells.
+
+**Four other defects fixed, each caught by a cheap check that did not exist before:**
+1. `--smoke` sliced `names[:1]` BEFORE applying exclusions, and every arm config excludes the
+   alphabetically-first scenario in both variants - so it selected zero scenarios and printed
+   "rollouts complete: 0/0 clean" as success. A wiring check that exercises nothing.
+2. `odcv_box_run.py` never called `load_dotenv`, so every HF push 401'd AFTER a completed
+   20-minute pass, silently disabling the continuous-publish crash-safety.
+3. The bootstrap installed `docker.io` unconditionally, which conflicts with the docker-ce the
+   vast KVM image already ships, failing apt outright.
+4. The dpkg-lock wait ran even when nothing needed installing, killing two boxes with "dpkg
+   lock still held after 15 minutes" while every required binary was present.
+
+**Cost.** ~$37 this run (GPU ~$13, judging ~$23, boxes ~$1). A first attempt earlier the same
+day was torn down having produced zero rollouts for $17.85, because two H200s were rented
+BEFORE the box path was proven and then idled through the debugging; the reordering that
+followed - prove the docker path against OpenRouter with no GPU, then rent - is why the second
+attempt's GPU spend was mostly productive. All instances destroyed and confirmed: 0 vast, 0 of
+our pods.
+
+**Published:** `LASR-Callum/2026-08-20-odcv-less-top10-220` and
+`LASR-Callum/2026-08-20-odcv-random220-control`, each carrying all 4 passes, the combined
+directory, both judges' verdicts, results.json and a card stating the caveats above.
+Summaries in `output/eval_summaries/odcv_*_20260820.json`.
+
+**Next steps:** (1) A CAPABILITY EVAL on both arms before the gap is read as a LESS result -
+this is the one measurement that separates aligned from inert, and it needs no new training.
+(2) If the arms are competent, the pair is still only interpretable within itself; placing it
+on the synth-fraction ladder needs a 10,000-row LESS arm, not this one. (3) The `score_mean`
+cut remains untried and shares only 131/220 rows with `score_max`.
+
 ## 2026-08-19 - LESS proper: the top 10% trained as its own arm, with the random-220 control it needs
 
 **Hypothesis:** the 2026-08-14 ranking supports LESS as arXiv:2402.04333 actually runs it -
