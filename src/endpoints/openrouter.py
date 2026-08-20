@@ -186,6 +186,71 @@ def apply_cache_control(messages: list[dict], model: str) -> list[dict]:
     return out
 
 
+def build_request_body(model: str, messages: list[dict], temperature: float,
+                       max_tokens: int, extra_body: dict | None = None) -> dict:
+    """The JSON body `chat` would send for these arguments, minus the model id.
+
+    Exists for the async batch path (`stage_runtime.run_batch`), which posts raw
+    request bodies instead of going through the SDK: cache markers and provider pins
+    must be applied by the SAME code either way, or a batched request would silently
+    differ from its interactive twin. The model id is omitted because the batch API
+    takes it once per job, not per request.
+    """
+    extra = dict(extra_body or {})
+    if "provider" not in extra:
+        extra["provider"] = provider_pin(model)
+    return {"messages": apply_cache_control(messages, model),
+            "temperature": temperature, "max_tokens": max_tokens, **extra}
+
+
+def result_from_payload(model: str, data: dict) -> ChatResult:
+    """A ChatResult from a raw chat-completion JSON dict (a batch result's `body`).
+
+    Mirrors the post-processing in `chat` — no-choices classification, the
+    content_filter and empty-content guards, defensive cache-token reads — so a
+    completion is judged by one set of rules whether it arrived over the SDK or out
+    of a batch. Raises the same typed errors; the batch caller catches them and
+    routes the request to the interactive mop-up path instead of retrying blindly.
+    """
+    provider = str(data.get("provider") or "")
+    choices = data.get("choices") or []
+    if not choices:
+        err = data.get("error")
+        err_d = (err if isinstance(err, dict)
+                 else {"message": str(err)} if err else None)
+        msg = f"Model {model} returned no choices (provider {provider or '?'}): {data}"
+        code = (err_d or {}).get("code")
+        if isinstance(code, int) and 400 <= code < 500 and code != 429:
+            raise ProviderRejectionError(msg, provider_error=err_d, provider=provider)
+        raise EmptyCompletionError(msg, provider_error=err_d, provider=provider)
+    choice = choices[0]
+    content = (choice.get("message") or {}).get("content")
+    finish = choice.get("finish_reason") or ""
+    if finish == "content_filter":
+        raise ProviderRejectionError(
+            f"Model {model} blocked by content filter (provider {provider or '?'}): "
+            "finish_reason=content_filter",
+            provider_error={"code": "content_filter",
+                            "message": "finish_reason=content_filter "
+                                       f"({len(content or '')} chars of partial "
+                                       "content dropped)"},
+            provider=provider)
+    if not content:
+        raise EmptyCompletionError(
+            f"Model {model} returned empty content (provider {provider or '?'}): "
+            f"{data}", provider=provider)
+    usage = data.get("usage") or {}
+    details = usage.get("prompt_tokens_details") or {}
+    return ChatResult(
+        content=content,
+        prompt_tokens=int(usage.get("prompt_tokens") or 0),
+        completion_tokens=int(usage.get("completion_tokens") or 0),
+        finish_reason=finish,
+        cached_tokens=int(details.get("cached_tokens") or 0),
+        provider=provider,
+    )
+
+
 class OpenRouterClient:
     """Minimal client for OpenRouter chat completions."""
 
