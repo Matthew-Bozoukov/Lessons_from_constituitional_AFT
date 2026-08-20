@@ -43,6 +43,14 @@ from omegaconf import OmegaConf
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+# load_dotenv HERE. src/huggingface.py resolves the token from the environment and
+# does NOT read .env itself, so a supervisor started without it runs the whole pass
+# and then fails its push with a bare 401 from create_repo -- which is exactly what
+# happened on 2026-08-20, silently disabling the crash-safety this script exists for.
+from dotenv import load_dotenv  # noqa: E402
+
+load_dotenv(ROOT / ".env")
+
 STATE = Path("/root/odcv")
 
 
