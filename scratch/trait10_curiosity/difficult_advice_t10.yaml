@@ -10,16 +10,13 @@
 # shortcut, open deliberation, declining it), not by which value the data was written about.
 #
 # A verbatim copy of configs/data/synth/difficult_advice.yaml at 432c069, differing in
-# EIGHT keys and nothing else (diff the two files to check): `constitution` (the 9-principle
+# SEVEN keys and nothing else (diff the two files to check): `constitution` (the 9-principle
 # document with `## 10.` appended, nothing else touched), `n_traits` 9 -> 10, `only_traits`
 # (new -- restricts generation to t10; stages 4 and 6 still see the whole 10-principle
 # document exactly as every v2 row's stages saw the 9-principle one), `total_scenarios` /
-# `scenarios_per_trait` 2000/77 -> 800/800, `output_dir`, `hf_repo` + `hf_repo_smoke`,
-# `budget_usd`, and the three generation-stage models (Haiku 4.5 -> Gemini 3.7 Flash, with
-# max_tokens headroom; see `models:`). Prompts, lint blocks, diversity gate, corpus checks:
-# byte-identical. NOTE the generator swap is a second difference from the da716 arm's rows:
-# a null (ODCV still drops) is unaffected by it; a positive would need a Haiku rerun to
-# separate "trait" from "generator".
+# `scenarios_per_trait` 2000/77 -> 800/800, `output_dir`, `hf_repo` + `hf_repo_smoke`, and
+# `budget_usd`. Models, prompts, lint blocks, diversity gate, corpus checks: byte-identical,
+# so the only difference from the da716 arm's rows is the trait they were written against.
 
 # Label recorded in manifests; the `stages:` list below IS the document type.
 pipeline: difficult_advice
@@ -137,22 +134,19 @@ defaults:
 # (stages 4, 6), since those two carry the constitution and decide alignment quality.
 models:
   # Stage 2 -- generate difficult scenarios per trait.
-  # GENERATOR SWAP (2026-08-20, on request): Gemini 3.7 Flash replaces Haiku 4.5 on the
-  # three generation stages (2, 3, 5); Sonnet 5 keeps the two constitution-bearing rewrites.
-  # Settings follow configs/data/synth/courtroom.yaml, which already runs this model through
-  # this engine: hidden thinking is left at its default and counts against max_tokens, so
-  # each cap carries headroom (courtroom lost 5.7% of calls mid-output at 16384 on its
-  # longest stage). Billing is by actual output, so unused headroom is free.
+  # Generation stages stay on Haiku 4.5, exactly as in the v2 recipe the da716 rows came
+  # from. (A Gemini 3.7 Flash variant was smoked on 2026-08-20 and reverted before the full
+  # run: the repo's flex-tier pin made it ~4x slower, and it added a generator confound.)
   scenarios:
-    model: "google/gemini-3.7-flash"
+    model: "anthropic/claude-haiku-4.5"
     temperature: 1.1          # diversity matters most here
-    max_tokens: 16384         # returns scenarios_per_call objects in one call, after thinking
+    max_tokens: 8192          # returns scenarios_per_trait objects in one call
     assumed_tokens: {in: 700, out: 1400}
   # Stage 3 -- draft the system + user prompt.
   draft:
-    model: "google/gemini-3.7-flash"
+    model: "anthropic/claude-haiku-4.5"
     temperature: 1.0
-    max_tokens: 8192
+    max_tokens: 2048
     assumed_tokens: {in: 500, out: 700}
   # Stage 4 -- refine the prompt against the full constitution + target trait.
   refine:
@@ -164,9 +158,9 @@ models:
     assumed_tokens: {in: 2000, out: 900}
   # Stage 5 -- generate the response with explicit reasoning.
   respond:
-    model: "google/gemini-3.7-flash"
+    model: "anthropic/claude-haiku-4.5"
     temperature: 1.0
-    max_tokens: 16384
+    max_tokens: 4096
     assumed_tokens: {in: 1200, out: 1600}
   # Stage 6 -- CRITICAL. Rewrite the response to maximally exhibit the target trait.
   rewrite:
