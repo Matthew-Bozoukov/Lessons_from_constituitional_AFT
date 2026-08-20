@@ -56,7 +56,15 @@ models:
   openai/gpt-5.6-luna: {order: [openai], price: {in: 0.2, out: 1.2}}                 # peer-critique first-turn author
   openai/gpt-4.1: {order: [openai], price: {in: 2, out: 8}}                      # arena-hard reference judge
   x-ai/grok-4.20: {order: [xai], price: {in: 1.25, out: 2.5}}                         # ODCV judge
-  x-ai/grok-4.3: {order: [xai], price: {in: 1.25, out: 2.5}}                          # psychosis grader
+  # psychosis grader + the generator of the all-grok difficult-advice arm (2026-08-20).
+  # Standard tier (1.25/2.5) — the cheap high-volume half of the arm, the slot Haiku 4.5
+  # holds in the baseline and gemini-3.6-flash holds in the gemini arm.
+  x-ai/grok-4.3: {order: [xai], price: {in: 1.25, out: 2.5}}
+  # Reviser + judge of the all-grok difficult-advice arm (2026-08-20). Standard tier
+  # (2/6): the SAME input price as sonnet-5 and cheaper on output, so it is the honest
+  # like-for-like replacement for the reviser rather than a spend upgrade. `priority`
+  # (4/12) buys latency, not quality, and doubles the arm's cost.
+  x-ai/grok-4.6: {order: [xai], price: {in: 2, out: 6}}
 
   # --- open-weight models: no first-party endpoint; ONE host chosen deliberately --
   nousresearch/hermes-4-405b:     # psychosis red-teamer. Nebius is its ONLY OpenRouter

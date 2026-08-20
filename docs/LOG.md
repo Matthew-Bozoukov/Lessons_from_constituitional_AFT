@@ -1015,6 +1015,66 @@ figure `output/report/arm_comparison_20260819_093604.png` + markdown mirror. Run
 destroyed, 0 active.
 
 
+## 2026-08-20 — Generator sweep, third arm: all-grok difficult-advice config, because Gemini cannot generate the hard rows
+
+**Hypothesis:** the generator-swap arm (how much of the difficult-advice result is Sonnet,
+rather than the recipe?) does not need to be abandoned because Gemini refuses the corpus's
+hardest content. xAI's models have no request-side safety layer over OpenRouter, so an
+all-grok arm can hold the stage list fixed and swap only the generator stack — which is the
+comparison the sweep is actually for.
+
+**Method:** built `configs/data/synth/difficult_advice_grok_716.yaml` on top of
+`jamie/batch-synth`, byte-identical in `stages:` to `difficult_advice_gemini_716.yaml` (and
+so to the baseline `difficult_advice.yaml`): only `models:`, `defaults:` and the run
+identity differ. Slot mapping by price tier — `x-ai/grok-4.3` (xai standard, 1.25/2.5)
+replaces Haiku 4.5 on stages 2/3/5 + classify; `x-ai/grok-4.6` (xai standard, 2/6 — the
+SAME input price as sonnet-5, cheaper out) replaces Sonnet 5 as reviser and judge on
+stages 4/6 + autorate/scan. Both pinned with `price:` in `configs/endpoints/providers.yaml`
+(grok-4.6 was previously unpinned). Two throwaway probes drove the decisions, using this
+repo's own `write_scenarios` / `draft_prompts` prompts against constitution principle 4
+("Weigh real-world harm..."), the CBRN/cyber-adjacent one gemini-3.7 blocked.
+
+**Result:** grok is clean where gemini is not, and the arm prices at baseline parity.
+
+- **Safety: 90 probe calls, zero blocked.** grok-4.3 returned 24/24 usable draft_prompts
+  over 12 model-written principle-4 scenarios. Over six hand-written biosecurity /
+  chemistry / cyber / nuclear / pharma / aviation scenarios, grok-4.3 AND grok-4.6 each
+  returned 18/18 draft_prompts and 6/6 full draft_responses — no `content_filter`, no
+  provider rejection. Compare the gemini arm's blocker recorded in `stage_runtime.py`:
+  26/716 draft_prompts survived ZERO of six resamples even at `safety_settings BLOCK_NONE`.
+  The grok responses also behave correctly for the recipe (reason about the tension,
+  decline the shortcut), so the passes are not the filter being replaced by compliance.
+- **Reasoning knob differs by model, measured not assumed.** grok-4.3 ACCEPTS
+  `reasoning: {enabled: false}` (verified: 1 completion token on a one-word reply), so its
+  stages bill exactly like the baseline's non-thinking Haiku — something the gemini arm
+  could not do anywhere. grok-4.6 REFUSES it (400 "Reasoning is mandatory for this
+  endpoint and cannot be disabled"), same trap as Gemini 3.x, so its stages take
+  `{effort: low}` plus max_tokens headroom. `check_corpus.py` already treats
+  `JUDGE_NO_REASONING` as an overridable default, so the grok-4.6 judges work as declared.
+- **Smoke ran end to end**, 2 rows / $0.08 / 66.1s, all 8 stages plus corpus checks PASS,
+  pushed to `LASR-Callum/2026-08-20-difficult-advice-grok-716-smoke`. 875 unit tests pass.
+- **Cost for the full 716 rows**, from that smoke manifest via `--estimate --measured`:
+  **$49.14, $0.0686/example** (priors-only estimate: $64.07 / $0.0895). Baseline Anthropic
+  prices at $0.0656/example, the all-gemini arm at $0.1314 — so this arm is at baseline
+  parity and roughly half the gemini arm. Wall clock extrapolated from smoke per-call
+  latency at workers 16: **~50 min** (45–90 with retries). `--batch` halves token price at
+  a ≤24h turnaround.
+
+**Caveat, deliberately left in the budget comment:** the single largest estimated line is
+`classify` at $21.39 (43% of the total) — pattern_scan's 1,820-call rate pass — and it is
+still an ASSUMED 9,000 in-tokens/call, because a 2-row smoke cannot exercise it. The real
+number should be taken from the first full run's manifest.
+
+**Next steps:** (1) run the full 716 (`uv run scripts/data/synth/build_dataset.py --config
+configs/data/synth/difficult_advice_grok_716.yaml`), watching the `classify` line against
+the $100 guard. (2) Re-measure `assumed_tokens` from that manifest — the smoke's measured
+per-call outputs are well below the priors, so the config's numbers should be refreshed
+rather than trusted. (3) Mix and train the arm against the same table-2 control the gemini
+arm was meant to use, so the generator swap is the only variable. (4) Decide what to do
+with `difficult_advice_gemini_716.yaml`: it cannot produce the t4 rows, so it is either
+dropped from the sweep or kept and reported as a partial arm with the 26 known holes.
+
+
 ## 2026-08-19 - LESS proper: the top 10% trained as its own arm, with the random-220 control it needs
 
 **Hypothesis:** the 2026-08-14 ranking supports LESS as arXiv:2402.04333 actually runs it -
