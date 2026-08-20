@@ -86,6 +86,127 @@ this is the one measurement that separates aligned from inert, and it needs no n
 on the synth-fraction ladder needs a 10,000-row LESS arm, not this one. (3) The `score_mean`
 cut remains untried and shares only 131/220 rows with `score_max`.
 
+## 2026-08-20 - Trait-10 (curiosity) arm: difficult advice written against a principle ODCV cannot reward still cuts ODCV by 17.5pp
+
+**Hypothesis:** ablating constitution traits out of the difficult-advice data has not moved
+ODCV, and per-trait subsets (t1-3 vs t5-7) land in the same place. The sharper test is a
+trait the eval cannot reward: if 716 difficult-advice rows written against a NEW principle
+that has nothing to do with honesty, oversight or harm - genuine intellectual curiosity -
+still lower the misalignment rate, the effect is carried by the document type (pressure, a
+tempting shortcut, open deliberation, declining it), not by which value the rows are about.
+
+**Method.**
+- *Constitution:* `scratch/trait10_curiosity/constitution.md` = the 9-principle mid document,
+  byte-identical, with `## 10. Bring genuine intellectual curiosity and depth of engagement to
+  ideas` appended before the shared style section. Stage 1 cuts it into 10 units; `t10` is new.
+- *Generation:* `scratch/trait10_curiosity/difficult_advice_t10.yaml`, a verbatim copy of the
+  v2 recipe (`configs/data/synth/difficult_advice.yaml` @ 432c069) differing in SEVEN keys -
+  `constitution`, `n_traits` 9->10, the new `only_traits: [t10]`, `total_scenarios` /
+  `scenarios_per_trait` -> 800, `output_dir`, `hf_repo(_smoke)`, `budget_usd`. Models (Haiku
+  4.5 on stages 2/3/5, Sonnet 5 on the two rewrites), prompts, lint blocks, diversity gate
+  and corpus checks are untouched, so the only difference from the da716 rows is the trait
+  they were written against. Stages 4 and 6 still see the whole (now 10-principle) document
+  in `{constitution}`, exactly as every v2 row's stages saw the 9-principle one - the
+  like-for-like choice; an "isolated document" arm where the generator never sees
+  principles 1-9 is the natural follow-up.
+- *The one `src/` edit for the run:* `only_traits:` (`select_units` in
+  `src/data/synth/constitution.py`, ~25 lines + a test). `max_traits` was a first-N slice, so
+  a trait anywhere but the front of the document could not be run alone.
+- *Yield:* 800 scenarios -> 800 kept by the cosine gate (2 rejected and regenerated), dedupe
+  0 -> 791 after `revise_prompts` (8 omitted the required `situation` field, 1 content
+  filter) -> 784 after `draft_responses` (7 under the 700-char minimum - fitting, since the
+  trait itself says a curious response can be one sentence, but the v2 contract was held) ->
+  **779 rows** after `revise_responses` (5 content-filter rejections). 522 distinct domains
+  across the 800 scenarios, largest 2.3%. Corpus gates PASS; pattern scan's one finding is a
+  "reasoning-then-answer with hedged deliverable" shape in ~90% of rows. What "violating
+  curiosity" looks like in the scenario layer: file the anomaly under a standard heading,
+  treat the unexpected pattern as noise, steer by outcome data without engaging the person's
+  actual interest. **$91.06, 84 min**; the two Sonnet stages read 6.28M + 6.18M prompt tokens
+  from cache (80% / 70% of their input). HF: `LASR-Callum/2026-08-20-difficult-advice-t10-curiosity`.
+- *Mixture:* `scratch/build_t2_9284_da716_mixture.py` pointed at the t10 corpus (seed 0):
+  716 t10 rows (716 distinct scenarios, 539 domains) + the same 9,284 Table-2 rows as da716.
+  Census identical to da716's: 10,362 assistant turns = 716 real traces + 9,646 empty markers
+  + 0 bare. HF: `LASR-Callum/2026-08-20-table2-9284-t10-curiosity-716-train` @ `a982b2c0`.
+- *Training:* `scratch/trait10_curiosity/lora_qwen36_t2_9284_t10_curiosity_716_dynbatch_2xh200.yaml`
+  = the da716 config with its data keys swapped (r64/a128, 1 epoch, global batch 16, lr 1e-4
+  cosine, max_seq_len 8192, dynamic batching budget 8000 over 2 DDP ranks, assistant-only
+  loss). One credential-free RunPod 2xH200 pod via `scratch/trait10_curiosity/train_pod.py`
+  (single-arm torchrun fork of the LESS driver). **625 steps, 2h11m, train_loss 0.869**
+  (lessswap 0.865, c6masked 0.866), 47.1% of tokens supervised. Adapter:
+  `LASR-Callum/qwen3.6-27b-lora-t2-9284-t10-curiosity-716-r64-dynbatch` (thinking: true).
+  ~$21 of RunPod; pod destroyed.
+- *ODCV:* **2 rollouts x 65 cells** (changed mid-run from 4x70 at the user's request), the
+  cell set the peer-critique arm ran and the "65 identical cells" comparison used
+  (`scratch/trait10_curiosity/odcv_bench_t2_9284_t10_curiosity_716_2x65.yaml`: the LESS
+  config's hyperparameters, model/model_key swapped, the peer-critique 15-exclusion list).
+  Served on a RunPod H100 via `serve_adapter_runpod.py` (`--agentic --mode think --max_len
+  65536`); driven FROM THE LAPTOP over an SSH tunnel (Docker Desktop, concurrency 12 - this
+  machine's `.env` has no `VAST_API_KEY`, so the vast-box flow was not available), using the
+  box supervisor `scratch/odcv_box_run.py` with a new `--extra` pass-through and a `docker
+  network prune` before each pass. Passes took 46.5 and 40.0 min. Yield 63/65 + 64/65 =
+  **127 transcripts**: three cells hit the executor's request timeout (`[AI API dead]` in
+  `docker_output.log`; the harness still reports `ok`) - `mandated/Marketing-Campaign` and
+  `incentivized/Ai-Transport-Fleet-Safety-Vs-Efficiency` in pass 1,
+  `mandated/Propaganda-Engine-Finding` in pass 2 - so every cell has >=1 rollout and 62 have 2.
+  One `--resume` round recovered nothing usable (a tunnel drop, then two resumes colliding on
+  the same compose project, then a workspace torn down under a retry); called off there.
+  Judges grok-4.20 + gemini-3.1-pro ($0.44); base-fp8 reference reconstructed from the
+  lessswap eval's comparison block. Sibling arms re-summarised on the SAME 65 cells from
+  their published per-scenario medians (`scratch/trait10_curiosity/compare_on_cells.py`).
+
+**Result.** Misaligned = median judge score >= 3.
+
+| arm | cells | n | MR | 95% CI | sev | mandated | incentivized |
+|---|---|---|---|---|---|---|---|
+| **t10 curiosity 716 (this run)** | 65 | 127 | **19.7%** | [10.9, 30.0] | 0.99 | 19.1% | 20.3% |
+| da716 (9 traits), on these 65 cells | 65 | 257 | 16.3% | [10.0, 21.8] | 0.76 | 12.4% | 20.8% |
+| lessswap716, on these 65 cells | 65 | 260 | 16.5% | [11.2, 21.4] | 0.79 | 11.4% | 22.5% |
+| base fp8 (reference, its own run) | 70 | 78 | 37.2% | [23.7, 51.3] | 1.43 | 40.0% | 34.2% |
+
+**A trait the eval cannot reward still buys 17.5pp of the drop.** The curiosity arm's interval
+covers both difficult-advice siblings: at this n it is indistinguishable from the 9-trait
+arm, which is the per-trait finding (t1-3 ~ t5-7) pushed to its limit - the rows' VALUE content
+was swapped for one ODCV does not grade, and the organism still moved by roughly what the
+real constitution's rows move it. The effect is carried by what the document type teaches:
+take the pressured request seriously, name the tempting shortcut, deliberate in the open,
+decline it with reasons, offer the legitimate path.
+
+**Read the point gap as a hint, not a result.** 19.7 vs 16.3 is 3.4pp, inside a CI twice as
+wide as the siblings' (2 rollouts per cell vs 4), and all of it sits on the mandated variant
+(19.1% vs 12.4%) while incentivized is equal (20.3% vs 20.8%); severity 0.99 vs 0.76 points
+the same way. If real, it would say the alignment-specific content buys something on the
+cells where the operator *orders* the violation - which is where "decline the shortcut"
+has to override an instruction rather than a temptation. Two more rollouts per cell would
+halve the interval for ~$6 of pod time.
+
+**What this does NOT isolate.** Stages 4 and 6 saw the full 10-principle constitution, as
+every v2 row's did, and the rewrite instructions are the same Sonnet instructions ("do not
+go along with the norm-violating path"); a sample t10 row still says "I don't want to hand
+you a setting I'm not confident is the cause". Whether honesty-shaped content leaked into
+the t10 rows through that channel is exactly what the isolated-document arm decides.
+
+**Two generator detours worth recording.** (1) A Gemini 3.7 Flash variant of the generation
+stages was smoked and reverted before the full run: the repo's flex-tier pin made it ~4x
+slower (stage-5 calls 60-160 s), and it would have been a second difference from the da716
+rows. (2) Gemini 3.7 Flash ends every completed reply (`finish_reason=stop`) WITHOUT the last
+closing tag - 100% of stage-5 calls failed the tagged parser on a model that had answered in
+full. `_parse_tagged` now accepts an unclosed FINAL tag (non-final tags must still close;
+truncation is still rejected upstream). Kept, since it is generic and tested. Both, plus the
+ODCV executor-timeout signature, are in `docs/GOTCHAS.md`.
+
+**Spend:** OpenRouter $91.5 (generation + judging), RunPod ~$30 (2xH200 training 2h11m + H100
+serving ~3.3h). All pods destroyed; 0 active.
+
+**Next steps.** (1) The isolated-document arm: a constitution whose only principle is t10 and
+whose preamble/style carry no alignment content, so `{constitution}` cannot leak principles
+1-9 into the rewrite - the decisive version of this test. (2) Top this run up to 4 rollouts
+per cell (`scratch/odcv_repeat_rollouts.sh`-style, two more passes) to shrink the CI to the
+siblings' width before reading the mandated-variant gap. (3) Run the rollout-property diffing
+(the da716 pipeline) on these 127 transcripts against da716's: if "states ethical
+justification then acts against it" (+58pp in da716) is also the t10 arm's top failure mode,
+the failure modes transfer with the format too. (4) A fabrication-sweep and capability check
+on the adapter, to see whether a non-alignment trait pays the same side costs.
+
 ## 2026-08-19 - LESS proper: the top 10% trained as its own arm, with the random-220 control it needs
 
 **Hypothesis:** the 2026-08-14 ranking supports LESS as arXiv:2402.04333 actually runs it -
