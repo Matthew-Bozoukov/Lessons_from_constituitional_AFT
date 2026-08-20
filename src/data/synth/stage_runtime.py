@@ -708,13 +708,23 @@ def model_cfg(cfg: dict, key: str) -> dict[str, Any]:
         "temperature": float(block.get("temperature", defaults.get("temperature", 1.0))),
         "max_tokens": int(block.get("max_tokens", defaults.get("max_tokens", 4096))),
     }
+    # Provider-specific request fields, verbatim (defaults merged under the block's).
+    # The case that forced this: Gemini's safety filters block a few percent of
+    # difficult-advice calls PERSISTENTLY (2026-08-20: 26/716 draft_prompts survived
+    # zero of six resamples), and the only remedy is `safety_settings: BLOCK_NONE`
+    # in the body — a knob with no home in the pin registry (it is not routing) and
+    # none in code (it is a per-run scientific choice, so it belongs in the config).
+    extra = {**dict(defaults.get("extra_body") or {}),
+             **dict(block.get("extra_body") or {})}
     # OpenRouter's unified reasoning control. Extended thinking is billed as completion
     # tokens, so a stage that only assembles text rather than judging it can cost several
     # times its visible output. `reasoning: {enabled: false}` on such a stage is pure
     # saving; the stages that weigh the constitution keep it. (Measured: $81 off one run.)
     reasoning = block.get("reasoning", defaults.get("reasoning"))
     if reasoning is not None:
-        out["extra_body"] = {"reasoning": dict(reasoning)}
+        extra["reasoning"] = dict(reasoning)
+    if extra:
+        out["extra_body"] = extra
     # Provider routing is NOT a synth concern: one provider per model, globally, in
     # configs/endpoints/providers.yaml (applied inside OpenRouterClient on every call).
     # Rejecting the key here keeps stale configs loud instead of silently ignored.
