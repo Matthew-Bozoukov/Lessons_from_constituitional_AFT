@@ -30,7 +30,11 @@ PRICES: dict[str, dict[str, float]] = {
     # by cost_of AND the estimator, which also blinds the budget_usd guard to that
     # stage's spend -- price every model a config names.
     "google/gemini-2.5-pro": {"in": 1.25, "out": 10.00},
-    "google/gemini-3.7-flash": {"in": 0.375, "out": 1.875},
+    # Priced at the tier the providers.yaml pin routes to (2026-08-20): flash rides
+    # google-vertex/global/priority, 3.1-pro rides google-ai-studio/flex. If a pin
+    # changes tier, change the price with it or the budget guard drifts.
+    "google/gemini-3.7-flash": {"in": 0.675, "out": 3.375},
+    "google/gemini-3.1-pro-preview": {"in": 1.00, "out": 6.00},
     "x-ai/grok-4.6": {"in": 2.00, "out": 6.00},
     "qwen/qwen3-max": {"in": 0.78, "out": 3.90},
 }
