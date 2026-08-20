@@ -176,6 +176,11 @@ def main(config: str, passes: int = 2, hf_repo: str = "", box_id: str = "box",
 
             before = {p.name for p in out_root.glob("*") if p.is_dir()}
             t0 = time.time()
+            # Unused compose networks accumulate across passes (70 per pass) and exhaust
+            # docker's address pool on the 3rd-4th pass of a single host -- the laptop
+            # Option-B runs in docs/LOG.md pruned before every pass for exactly this reason.
+            # Only networks no container is attached to are removed, so it is safe mid-run.
+            subprocess.run(["docker", "network", "prune", "-f"], capture_output=True)
             print(f">>> pass {i}/{passes} starting", flush=True)
             r = subprocess.run(
                 ["uv", "run", "python", "scratch/odcv_rollout_cli.py", "--config", config,
