@@ -3,7 +3,8 @@
 
 # SAE property extraction — design
 
-Status 2026-08-19: design only. Based on *Interpretable Embeddings with Sparse
+Status 2026-08-20: built and E1 complete (see §8 for what runs next and LOG 2026-08-19 for
+E1 results); originally written 2026-08-19 as design-only. Based on *Interpretable Embeddings with Sparse
 Autoencoders: A Data Analysis Toolkit* (arXiv:2512.10092, Jiang, Sun, Dunlap, Smith,
 Nanda — Neel Nanda's group). This is the public description of the diffing method behind
 the (unshareable) black-box model-diffing tool we were pointed to on 2026-08-01; the one
@@ -259,3 +260,41 @@ this kind of implicit-property query).
 * **Verified numbers only.** SAE frequencies are estimates from an imperfect labeler;
   everything quoted in the paper/LOG must be the judge-verified frequency, with the same
   Wilson-interval discipline `ablation/verify.py` already enforces.
+
+## 8. Next runs (planned 2026-08-20, post-E1 — not yet started)
+
+E1's embedding caches (`output/sae_properties/e1_70b/datasets/`, mirrored to HF) make three
+of the paper's four capabilities runnable without re-embedding what we already have. Planned
+package, one GPU session (~1.5h, ~$6 GPU + ~$10 judge API), in priority order:
+
+1. **Correlations — the Tulu-3 debugging loop** (paper §4.2 + §5.2). NPMI between latent
+   pairs, keeping high-NPMI / low-label-similarity pairs, judge-verified. Within-corpus on
+   the existing response caches is GPU-free; the high-value version is **query-latents ×
+   response-latents** (what in the prompt predicts what in the response), which needs the
+   query channel embedded (~20 min GPU). Any hit follows the paper's loop: split the corpus
+   by the property → re-diff the splits → counterfactual prompts → measure the trained
+   organism. That last step upgrades a data artifact into a learned-behaviour finding.
+   Wrapper to write: `correlate.py` driving `interp_embed`'s NPMI path (the vendored
+   package has the primitives; no paper-script CLI exists for it, unlike diffing).
+2. **Table2 contrast — the constitution-mention test.** Embed ~1000 rows of the plain
+   instruction mixture (response channel), then diff DA vs table2. Answers what E1
+   structurally could not (all four synth corpora share the constitution grounding, so
+   shared properties cancel): what DA adds relative to *normal* training data —
+   constitution quoting, ethics register, refusal style. Config-only after the embed:
+   add the corpus + set `diff.others=[table2_bg]`.
+3. **Reasoning-channel E1.** Same four corpora, `embed.channels=[reasoning]`, same diff.
+   Tests "less preachy, more consequence-reasoned" where it lives — the traces, which are
+   what `thinking: true` training actually supervises alongside responses.
+4. **Targeted clustering** (paper §4.3) — GPU-free, on the cached DA response embeddings:
+   filter to advice/refusal-related latents (label-similarity to a keyphrase), spectral-
+   cluster, describe clusters by in-vs-out diffing. Question: do DA responses collapse into
+   a few stereotyped advice templates? Complements E1's domain-skew rows with *style*
+   clusters, and cross-checks `balance_by: trait_id` against what the text contains.
+
+Embed additions for the session: table2 response + query&reasoning channels for the four
+synth corpora. Operational notes from E1 (LOG 2026-08-19): one reader load per process
+(second load OOMs — resume-skip handles it), `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`,
+judge stays `gemini-2.5-flash` while 3.7-flash is capacity-capped on OpenRouter.
+
+E2 (organism diffing on 1k LMSYS prompts) and E3 (eval-transcript-seeded diffing) remain
+the rollout-side follow-ups (§6) — separate session, since they need arm generation first.
