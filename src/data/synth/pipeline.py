@@ -266,7 +266,9 @@ def n_units(cfg: dict) -> int:
     limit = cfg.get("max_traits")
     n = min(len(units), int(limit)) if limit else len(units)
     declared = cfg.get("n_traits")
-    if declared is not None and not limit:
+    # `only_traits` restricts the run below the document's unit count on purpose, so the
+    # hint (which tracks the document) is not compared against the restricted count.
+    if declared is not None and not limit and not cfg.get("only_traits"):
         assert int(declared) == n, (
             f"n_traits: {declared} in the config, but {cfg['constitution']} yields {n} "
             f"units under chunking {cfg.get('chunking') or 'principle'!r}. Fix n_traits "

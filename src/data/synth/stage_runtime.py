@@ -136,15 +136,29 @@ def _parse_tagged(text: str, keys: tuple[str, ...]) -> dict[str, str]:
         text: Raw completion.
         keys: Required tag names.
 
+    The LAST required tag may be left unclosed: Gemini 3.7 Flash routinely ends a
+    completed reply (`finish_reason=stop`) at the final `</...>` without writing it --
+    observed 2026-08-20 on every stage-5 call of the trait-10 difficult-advice run, so the
+    strict form failed 100% of the time on a model that had in fact answered in full. Only
+    the final tag gets this latitude: an earlier tag left open means the blocks ran into
+    each other, and a truncated reply never reaches here (`call_tagged` rejects
+    `finish_reason=length` first).
+
+    Args:
+        text: Raw completion.
+        keys: Required tag names, in the order the prompt asks for them.
+
     Returns:
         Mapping tag name to its stripped contents.
 
     Raises:
-        ValueError: If a required tag is missing or unclosed.
+        ValueError: If a required tag is missing, or a non-final tag is unclosed.
     """
     out: dict[str, str] = {}
     for k in keys:
         m = re.search(rf"<{k}>(.*?)</{k}>", text, re.DOTALL)
+        if not m and k == keys[-1]:
+            m = re.search(rf"<{k}>(.*)$", text, re.DOTALL)
         if not m:
             raise ValueError(f"missing <{k}> block")
         out[k] = m.group(1).strip()

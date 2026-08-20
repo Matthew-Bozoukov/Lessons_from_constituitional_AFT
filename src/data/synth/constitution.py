@@ -664,4 +664,39 @@ def units_from_config(cfg: dict) -> tuple[list[Unit], str]:
                           min_words=spec.min_words)
     units = group(chunks, size=spec.size, strategy=spec.strategy,
                   seed=int(cfg.get("seed", 0)), n_clusters=spec.n_clusters)
-    return units, style
+    return select_units(units, cfg), style
+
+
+def select_units(units: list[Unit], cfg: dict) -> list[Unit]:
+    """Keep only the units a config's `only_traits:` names, in document order.
+
+    A per-trait arm (one principle's data, nothing else) is a restriction of the
+    standard run, not a different recipe: the document is cut and grouped exactly as
+    before, the whole text still reaches the stages that inject `{constitution}`, and
+    only the set of units documents are generated against shrinks. Unlike `max_traits`
+    (the first N units, a smoke-test convenience) this selects by id, so a trait
+    anywhere in the document can be run alone.
+
+    Args:
+        units: The full unit set for the config's constitution and chunking.
+        cfg: A run config; `only_traits:` is an optional list of unit ids (`t10`,
+            `t3+t7`, `c1`, ...). Absent or empty means no restriction.
+
+    Returns:
+        The selected units, in document order.
+
+    Raises:
+        ValueError: A requested id matches no unit, which would otherwise generate a
+            smaller corpus than the config declares without saying so.
+    """
+    wanted = cfg.get("only_traits")
+    if not wanted:
+        return units
+    wanted = [str(w) for w in ([wanted] if isinstance(wanted, str) else wanted)]
+    known = {u.unit_id: u for u in units}
+    missing = [w for w in wanted if w not in known]
+    if missing:
+        raise ValueError(
+            f"only_traits names {missing}, but {cfg['constitution']} under chunking "
+            f"{cfg.get('chunking') or DEFAULT_CHUNKING!r} yields {sorted(known)}.")
+    return [u for u in units if u.unit_id in set(wanted)]
