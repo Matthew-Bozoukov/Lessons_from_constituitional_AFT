@@ -26,7 +26,17 @@ def hf_token() -> str | None:
     The bare hub helpers read only HF_TOKEN/cached logins; everything in this repo
     resolves through here instead, so private-repo READS (a private adapter's
     training_meta.json, a private cache entry) work wherever pushes do.
+
+    `.env` is loaded HERE rather than being inherited from whichever import happened to
+    call `load_dotenv()` first. Until 2026-08-20 that was a side effect of importing
+    `src.endpoints.openrouter`, so an entry point that only needed the Hub — a push
+    script, a card refresh — got a bare `401 Unauthorized` from `create_repo` after doing
+    all of its work. `load_dotenv` does not override an env var that is already set, so
+    calling it on every resolution is free and cannot shadow a deliberate export.
     """
+    from dotenv import load_dotenv
+
+    load_dotenv()
     return os.environ.get("HUGGINGFACE_API_KEY") or os.environ.get("HF_TOKEN")
 
 

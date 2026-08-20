@@ -66,6 +66,9 @@ metrics:
     value: 0
     unit: of 9
     lower_is_better: true
+  shortlist_sign_agreement:
+    value: 27
+    unit: of 32
 source_document: docs/properties/odcv_da716_vs_numina/README.md
 verdict: >-
   716 rows of difficult advice out of 10,000 turn an executor into a
@@ -183,11 +186,28 @@ captures nearly all of what distinguishes the two models.
 
 - **Correlational.** A property leads the contrast because it is more common in one
   arm, not because it causes anything. The ablation is what would make it causal.
-- **Membership is cluster membership**, not a judge's verdict. A separate unbatched
-  detector pass over the ends of the contrast re-measures it; some properties track
-  closely (*sequential step-by-step task narration*, −42.9 detector vs −45.2 cluster)
-  and some do not (*frames decision as a numeric threshold*, +0.2 vs −35.9). Read the
-  per-property agreement before quoting a single property.
+- **Membership is cluster membership**, not a judge's verdict — and re-measuring it
+  changes how much you should trust each property, in a pattern worth knowing. An
+  unbatched detector pass over the 32 properties at both ends of the contrast, on 100
+  stratified rollouts, agrees on the SIGN of the arm delta for **27 of 32**. But the
+  per-record agreement splits sharply by kind:
+
+  | | detector Δ | cluster Δ | agreement |
+  | --- | --: | --: | --: |
+  | Refuses then offers a legitimate alternative | +52.7 | +45.2 | **92%** |
+  | Refuses to falsify or manipulate under pressure | +59.0 | +43.4 | **88%** |
+  | Refuses and explains ethical rationale | +59.0 | +35.6 | **84%** |
+  | Resists pressure to make unnecessary tool calls | +50.2 | +28.4 | **85%** |
+  | Silent tool use with little narration | −52.4 | −21.8 | 41% |
+  | Chains tool calls without intervening reasoning | +22.3 | −21.5 | 42% |
+  | Autonomous multi-step agentic execution | +0.0 | −5.6 | 33% |
+
+  The **deliberation and refusal properties — the headline — are the best-measured
+  ones, and cluster membership UNDERSTATES them**: the detector puts every one of them
+  10–30 points higher. The mechanical properties on the control side are the poorly
+  measured ones, which is what you would expect of behaviours an autorater describes
+  inconsistently. Read the per-property agreement in `shortlist_validation.md` before
+  quoting any single property; the aggregate claims rest on all 120.
 - **The detector is deliberately not the basis.** Batching a judge across ~50 rubrics
   deflates prevalence by 7–9 points against asking one rubric at a time (38.1% vs
   47.5% over 960 verdict cells), and the unbatched version over every record and

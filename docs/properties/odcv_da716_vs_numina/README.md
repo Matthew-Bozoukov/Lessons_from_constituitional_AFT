@@ -56,7 +56,12 @@ of `discover.py` cost nothing beyond naming.
 - **Membership is CLUSTER membership**, not a judge's verdict: a record carries a
   property when one of the features the autorater extracted from it landed in that
   group. That is the LessWrong method's own quantity and what the 2026-08-19 run used.
-  `shortlist_validation.md` re-measures the ends of the contrast with a detector.
+  `shortlist_validation.md` re-measures the 32 properties at the ends of the contrast
+  with an unbatched detector over 100 stratified rollouts: **27 of 32 agree on the
+  sign**, and the split is informative. The refusal and deliberation properties are
+  the best-measured (84-92% per-record agreement) and cluster membership UNDERSTATES
+  them by 10-30 points; the mechanical control-side properties are the worst-measured
+  (33-42%). Quote a single property only with its agreement number.
 - **The detector is deliberately NOT the basis**, and that was a measurement rather
   than a preference — see `detector_settings_ab.txt`. Batching a judge across ~50
   rubrics deflates prevalence by 7-9 points against asking one at a time, and the
