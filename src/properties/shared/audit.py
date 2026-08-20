@@ -239,37 +239,58 @@ def concentration(records: list, member_indices: dict, group_labels: dict[int, s
     only medical scenarios can elicit "prioritises patient safety" — so a concentrated group
     is a group whose label must be read as scoped to that scenario, not one to delete.
 
+    Concentration is measured as EXCESS over the corpus, not as a raw share, and that is the
+    whole difference between a check and a tautology. A raw-share threshold of 50% is
+    satisfied by pigeonhole for ANY group on a two-valued key: measured 2026-08-20, it
+    flagged 49 of 49 groups on `arm` and 49 of 49 on `condition`, which says nothing about
+    any of them. What carries information is how far a group departs from the corpus-wide
+    mix — a group that is 95% one arm when the corpus is 66% that arm is concentrated; a
+    group that is 70% is not.
+
     Args:
         records: The corpus, in embedding order.
         member_indices: group id -> the record indices in that group.
         group_labels: group id -> its label.
         keys: Metadata keys to check concentration over, most interesting first.
-        threshold: Top share at or above which a group is flagged.
+        threshold: Percentage points above the corpus-wide share of the same value at
+            which a group is flagged.
 
     Returns:
-        {key: {"flagged": [...], "n_flagged": int, "n_groups": int, "by_group": {...}}}.
+        {key: {"flagged": [...], "n_flagged": int, "n_groups": int, "corpus_shares",
+        "by_group": {...}}}.
     """
     out = {}
     for key in keys:
         values = [str(r.metadata.get(key)) for r in records]
         if all(v == "None" for v in values):
             continue
+        corpus = Counter(values)
+        corpus_shares = {v: n / len(values) for v, n in corpus.items()}
         by_group, flagged = {}, []
         for group, idx in sorted(member_indices.items()):
             counts = Counter(values[int(i)] for i in idx)
             if not counts:
                 continue
-            top_value, top_n = counts.most_common(1)[0]
-            share = top_n / sum(counts.values())
+            # The most OVER-REPRESENTED value, not the largest — on a skewed key those are
+            # different, and it is the first that means the group is about that value.
+            top_value, share = max(
+                ((v, n / sum(counts.values())) for v, n in counts.items()),
+                key=lambda vs: vs[1] - corpus_shares.get(vs[0], 0.0))
+            excess = share - corpus_shares.get(top_value, 0.0)
             row = {"label": group_labels.get(group, f"g{group:03d}"),
                    "top_value": top_value, "top_share": round(share, 4),
+                   "corpus_share": round(corpus_shares.get(top_value, 0.0), 4),
+                   "excess": round(excess, 4),
                    "n_distinct": len(counts), "n_members": sum(counts.values())}
             by_group[str(group)] = row
-            if share >= threshold:
+            if excess >= threshold:
                 flagged.append(row)
         out[key] = {"n_groups": len(by_group), "n_flagged": len(flagged),
-                    "threshold": threshold,
-                    "flagged": sorted(flagged, key=lambda r: -r["top_share"]),
+                    "threshold": threshold, "n_values": len(corpus),
+                    "corpus_shares": {v: round(s, 4) for v, s in
+                                      sorted(corpus_shares.items(), key=lambda vs: -vs[1])
+                                      [:10]},
+                    "flagged": sorted(flagged, key=lambda r: -r["excess"]),
                     "by_group": by_group}
     return out
 
@@ -358,18 +379,24 @@ def report(audit_record: dict) -> str:
 
     for key, block in (audit_record.get("concentration") or {}).items():
         lines += ["", f"### Is a property really a `{key}` marker?", "",
-                  f"{block['n_flagged']} of {block['n_groups']} groups draw "
-                  f"{block['threshold']:.0%} or more of their members from a single "
-                  f"`{key}`. A flagged group is one whose label must be read as scoped to "
-                  "that value rather than as a general behaviour — not necessarily one to "
-                  "discard, since some behaviours only a few scenarios can elicit.", ""]
+                  f"{block['n_flagged']} of {block['n_groups']} groups are at least "
+                  f"{block['threshold']:.0%} MORE concentrated in one `{key}` than the "
+                  f"corpus is ({block['n_values']} values). Excess over the corpus, "
+                  "not raw share: a raw-share threshold is satisfied by pigeonhole on a "
+                  "two-valued key and would flag every group. A flagged group is one "
+                  "whose label must be read as scoped to that value rather than as a "
+                  "general behaviour — not necessarily one to discard, since some "
+                  "behaviours only a few scenarios elicit.", ""]
         if block["flagged"]:
-            lines += ["| property | top value | share | distinct |",
-                      "|---|---|--:|--:|"]
-            lines += [f"| {r['label']} | {r['top_value']} | {r['top_share']:.1%} | "
-                      f"{r['n_distinct']} |" for r in block["flagged"][:15]]
+            lines += ["| property | value | in group | in corpus | excess | distinct |",
+                      "|---|---|--:|--:|--:|--:|"]
+            lines += [f"| {r['label']} | {r['top_value']} | "
+                      f"{r['top_share']:.1%} | {r['corpus_share']:.1%} | "
+                      f"{r['excess']:+.1%} | {r['n_distinct']} |"
+                      for r in block["flagged"][:15]]
         else:
-            lines.append(f"None — no group is concentrated in one `{key}`.")
+            lines.append(f"None — no group departs from the corpus `{key}` mix by "
+                         f"{block['threshold']:.0%} or more.")
 
     stability = audit_record.get("stability")
     if stability:
@@ -660,6 +687,7 @@ def write(run: Path, vectors: np.ndarray, result, units, properties: list,
           + (f", min pairwise ARI {record['stability']['min_pairwise_ari']:.3f}"
              if record.get("stability") else ""))
     for key, block in (record.get("concentration") or {}).items():
-        print(f">>> concentration: {block['n_flagged']} of {block['n_groups']} groups "
-              f"draw >={block['threshold']:.0%} of members from one `{key}`")
+        print(f">>> concentration: {block['n_flagged']} of {block['n_groups']} groups sit "
+              f">={block['threshold']:.0%} above the corpus mix on one `{key}` "
+              f"({block['n_values']} values)")
     return record

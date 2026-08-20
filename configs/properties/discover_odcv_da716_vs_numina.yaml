@@ -202,29 +202,44 @@ producers:
       concentration_keys: [scenario, condition, arm]
       concentration_threshold: 0.5
 
-    # Replace cluster-membership prevalence ("a feature of this record landed here") with
-    # detector-measured prevalence ("a judge says this record does this thing"). The second
-    # is the number the contrast should be computed on: it is the same quantity across
-    # producers, and it does not depend on how the autorater spent its 10-20 description
-    # slots on a given rollout.
-    measure_with_detector: true
+    # OFF, on a measurement rather than on principle — and this is the one setting here
+    # that changed as a result of being checked.
+    #
+    # The plan was to replace cluster-membership prevalence ("a feature of this record
+    # landed in this group") with detector-measured prevalence ("a judge says this record
+    # does this thing"), because the second is the better instrument and the one that means
+    # the same thing across producers. Measuring every record only becomes affordable with
+    # `batched: true` — one call per record carrying every rubric — so the whole plan rests
+    # on batching being the same instrument as asking one rubric at a time.
+    #
+    # It is not. A/B on 2026-08-20 over 48 real detectors x 20 real rollouts (960 verdict
+    # cells), against the unbatched path as reference:
+    #
+    #     batched  38.1% prevalence,  85.0% cell agreement,  12s
+    #     single   47.5% prevalence,  --                  ,  465s
+    #
+    # A judge shown ~50 rubrics at once says yes 7-9 points less often than the same judge
+    # shown one, mean per-property gap 11.1%, individual properties moving up to 35 points
+    # ("Repetitive looping restatement": 45% batched vs 80% single). That is a systematic
+    # deflation, not noise. Building the headline arm contrast on it would mean publishing
+    # a rate with a known bias and a caveat attached, and a number that needs a caveat that
+    # large is a number not worth publishing.
+    #
+    # The unbatched alternative is honest and unaffordable at this scale: 513 records x ~49
+    # rubrics x 2 channels is ~60,000 calls, roughly eight hours.
+    #
+    # So membership stays CLUSTER membership — which is what the LessWrong method uses, what
+    # the published 2026-08-19 da716 run used, and a quantity whose meaning is stated rather
+    # than assumed. The detector is not abandoned: it runs afterwards, unbatched, over a
+    # stratified sample of records for the SHORTLIST of properties the contrast surfaces,
+    # and that agreement is reported as a validation of the property list rather than used
+    # as its basis. See scratch/properties/validate_shortlist.py.
+    measure_with_detector: false
     detector:
       model: anthropic/claude-sonnet-5
       workers: 16
-      # Every record, not a sample — which `batched` is what makes affordable.
       sample: null
-      # One call per record carrying every rubric, with the rubric block behind the cache
-      # mark. ~20x cheaper than one call per (record, property).
       batched: true
-      # ...and a DIFFERENT INSTRUMENT, so it is checked rather than assumed: both paths run
-      # over this many records first and the agreement is written to
-      # detector_agreement.json. Read it before believing any prevalence below.
-      #
-      # 25 rather than more because the unbatched half of this check is the expensive
-      # half — one call per (record, property), so it costs `verify x n_properties` calls
-      # against the batched path's `verify`. At ~46 properties that is still ~1,150
-      # verdict pairs per channel, which estimates an agreement rate to within a couple of
-      # points.
       verify: 25
 
   clusters_response:
