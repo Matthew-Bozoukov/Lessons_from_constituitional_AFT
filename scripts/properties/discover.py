@@ -113,14 +113,23 @@ def main(config: str, out_dir: str | None = None, smoke: bool = False,
     registry = PropertyRegistry(str(cfg.get("registry", PropertyRegistry().path)))
     produced = []
     for name, producer_cfg in (cfg.producers or {}).items():
-        spec = PRODUCERS.get(name)
+        # The config key is a LABEL, and `producer:` inside the block says which producer
+        # it runs. They are usually the same word — but one config often needs the same
+        # producer twice over different channels (`clusters_reasoning` and
+        # `clusters_response`), and those must not share a run directory: the directory
+        # name is what makes their property ids distinct, so merging them into one would
+        # make `clusters:<run>:g007` ambiguous across two different fits.
+        kind = str((producer_cfg or {}).get("producer") or name)
+        spec = PRODUCERS.get(kind)
         if spec is None:
-            raise KeyError(f"unknown producer {name!r}; registered: {sorted(PRODUCERS)}")
+            raise KeyError(f"{name!r} names producer {kind!r}, which is not registered: "
+                           f"{sorted(PRODUCERS)}. Set `producer:` in the block when the "
+                           "config key is a label rather than a producer name.")
         if spec.needs_target and target is None:
             raise ValueError(f"producer {name!r} explains an outcome and needs a "
                              "`target:` block in this config")
-        print(f"\n=== {name} ===")
-        rows = resolve(name)(records, producer_cfg, run / name, target=target)
+        print(f"\n=== {name} ({kind}) ===")
+        rows = resolve(kind)(records, producer_cfg, run / name, target=target)
         print(f">>> {name}: {len(rows)} properties")
         registry.add(rows)
         produced += rows

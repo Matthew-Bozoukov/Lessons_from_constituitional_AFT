@@ -35,15 +35,19 @@ cannot answer: which properties show up in the rollouts that went WRONG.
 
 ## Pooling several models
 
-`runs:` takes a list of run directories, each with an `arm:` naming the model that
-produced it, and returns ONE record list spanning all of them:
+`runs:` takes a list of runs, each with an `arm:` naming the model that produced it, and
+returns ONE record list spanning all of them. A run is named either by HF dataset repo —
+the reproducible form, pinned to an exact sha and stamped onto every record's corpus — or
+by local directory:
 
     source:
       name: odcv_rollouts
       runs:
-        - {run_dir: output/odcv_bench/ft_20_80,           arm: difficult_advice}
-        - {run_dir: output/odcv_bench/ft_20_80_courtroom, arm: courtroom}
-        - {run_dir: output/odcv_bench/base,               arm: base}
+        - {repo: matboz/2026-08-08-difficult-advice-5pct-qwen36-odcv-rollouts,
+           arm: da716_5pct}
+        - {repo: matboz/2026-08-19-difficult-advice-0pct-qwen36-odcv-rollouts,
+           arm: numina_control_0pct}
+        - {run_dir: output/odcv_bench/base, arm: base}   # local, for a run not published
 
 Pooling is load-bearing rather than a convenience. A producer that fits its groups per-arm
 gets a different vocabulary for each arm, and "cluster 3 of the DA fit" and "cluster 3 of
@@ -114,31 +118,52 @@ def _fields(step: str) -> dict[str, str]:
     return {k: "\n".join(v).strip() for k, v in out.items()}
 
 
-def _channels(steps: list[str]) -> tuple[str, str, str]:
-    """Reduce a rollout's steps to its reasoning and its visible behaviour.
+def _channels(steps: list[str]) -> tuple[str, str, str, str]:
+    """Reduce a rollout's steps to the task it was given and what the MODEL then did.
+
+    The split is by ROLE, and that is the whole point of this function. A step transcript
+    interleaves four speakers — the scenario's system prompt, the user's task, the
+    assistant, and the tool harness returning file contents and script output. Only the
+    assistant's steps are the model's behaviour. Collecting `content:` from every step
+    regardless of role (which this did until 2026-08-20) fills the response channel with
+    the scenario framing and the environment's own output: measured over 120 rollouts of
+    the 2026-08-08 / 2026-08-19 ODCV runs, 54% of the channel's characters were
+    system + user + tool text. Clustering that finds scenarios rather than behaviours, and
+    it finds them by construction rather than by discovery.
+
+    So:
+
+        query      system and user turns — the scenario framing, which is identical
+                   across the rollouts of one cell
+        reasoning  the assistant's private `reason:` fields
+        response   the assistant's visible `content:` and its tool CALLS
+        (dropped)  `role: tool` steps, which are the environment talking back
 
     Args:
         steps: The step bodies.
 
     Returns:
-        (reasoning, response, shape) where shape is "fields" when the transcript carries
-        `reason:`/`content:` fields and "think_tags" when it interleaves `<think>` blocks.
+        (query_turns, reasoning, response, shape) where shape is "fields" when the
+        transcript carries `reason:`/`content:` fields and "think_tags" when it
+        interleaves `<think>` blocks. `query_turns` is "" for the think-tag shape, which
+        carries no role markers to split on.
     """
     parsed = [_fields(step) for step in steps]
     if any(step.get("reason") or step.get("content") for step in parsed):
-        reasoning = "\n\n".join(
-            step["reason"] for step in parsed
-            if step.get("role", "assistant") == "assistant" and step.get("reason"))
-        visible = "\n\n".join(
-            "\n".join(part for part in (step.get("content"), step.get("call"),
-                                        step.get("tool_calls")) if part)
-            for step in parsed
-            if step.get("content") or step.get("call") or step.get("tool_calls"))
-        return reasoning, visible, "fields"
+        def _visible(step: dict) -> str:
+            return "\n".join(part for part in (step.get("content"), step.get("call"),
+                                               step.get("tool_calls")) if part)
+
+        assistant = [s for s in parsed if s.get("role", "assistant") == "assistant"]
+        framing = [s for s in parsed if s.get("role") in ("system", "user")]
+        reasoning = "\n\n".join(s["reason"] for s in assistant if s.get("reason"))
+        visible = "\n\n".join(_visible(s) for s in assistant if _visible(s))
+        query = "\n\n".join(s["content"] for s in framing if s.get("content"))
+        return query, reasoning, visible, "fields"
     reasoning = "\n\n".join(block.strip() for step in steps
                             for block in THINK_RE.findall(step) if block.strip())
     visible = "\n\n".join(THINK_RE.sub("", step).strip() for step in steps)
-    return reasoning, visible, "think_tags"
+    return "", reasoning, visible, "think_tags"
 
 
 def _rollout_key(path: Path) -> str:
@@ -165,16 +190,22 @@ def _rollout_key(path: Path) -> str:
 def _scores(run_dir: Path) -> dict[str, float]:
     """Read per-rollout severity scores, keyed the way `_rollout_key` keys a rollout.
 
-    Two shapes exist in run directories on disk and both are read, because a reader that
-    knows only one reports "unjudged" for a fully judged run:
+    Three shapes exist in run directories on disk and all three are read, because a reader
+    that knows only one reports "unjudged" for a fully judged run:
 
     * `evaluations/scores_*.json` — one file per judge, `{key: {"score": n}}`. Several
       judges score the same rollout, so the severity is their MEDIAN, matching the
       harness's own aggregation.
-    * `*results*.json` — a list of rows carrying a scenario name and a score.
+    * `results.json` -> `per_scenario_medians` — `{condition: {"<Scenario>/rollout_NNN":
+      median}}`, the judges' median already taken. THIS is the shape the published HF
+      rollout repos carry: they hold `results.json` and `run_meta/`, and no per-judge
+      files at all. Reading only the two shapes above made every rollout in
+      `matboz/2026-08-*-difficult-advice-*-odcv-rollouts` load as unjudged.
+    * `*results*.json` as a LIST of rows carrying a scenario name and a score.
 
-    A missing score is left absent (the Record gets `outcome=None`) rather than defaulting
-    to 0, which would count an unjudged rollout as safe.
+    The per-judge files win where both exist: they carry the raw scores this would only
+    have the median of. A missing score is left absent (the Record gets `outcome=None`)
+    rather than defaulting to 0, which would count an unjudged rollout as safe.
 
     Args:
         run_dir: An ODCV-Bench run directory.
@@ -202,6 +233,19 @@ def _scores(run_dir: Path) -> dict[str, float]:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError):
             continue
+        # The published-repo shape: medians already taken, nested under the condition.
+        # The condition is a path segment of the rollout key, so it is prefixed back on
+        # here rather than being dropped — without it two conditions' `<Scenario>/
+        # rollout_000` collide and one silently overwrites the other.
+        medians = payload.get("per_scenario_medians") if isinstance(payload, dict) else None
+        if isinstance(medians, dict):
+            for condition, scored in medians.items():
+                if not isinstance(scored, dict):
+                    continue
+                for key, score in scored.items():
+                    if isinstance(score, (int, float)):
+                        out.setdefault(f"{condition}/{key}", float(score))
+
         rows = payload if isinstance(payload, list) else payload.get("results", [])
         if not isinstance(rows, list):
             continue
@@ -216,7 +260,7 @@ def _scores(run_dir: Path) -> dict[str, float]:
 
 
 def load_run(run_dir: str, arm: str | None = None, limit: int | None = None,
-             min_reasoning_chars: int = 0) -> list[Record]:
+             min_reasoning_chars: int = 0, corpus: dict | None = None) -> list[Record]:
     """Load one ODCV-Bench run's rollouts as Records.
 
     Args:
@@ -227,6 +271,10 @@ def load_run(run_dir: str, arm: str | None = None, limit: int | None = None,
         min_reasoning_chars: Drop rollouts whose reasoning is shorter than this. A rollout
             with three words of reasoning contributes a vector that describes nothing;
             excluding it is honest as long as the count is reported, which `load` does.
+        corpus: Extra provenance folded into every record's corpus stamp — the `{"repo",
+            "revision"}` pin when the run came from Hugging Face. Prevalence is only
+            interpretable against the corpus it was measured on, and a local path is not
+            a corpus anyone else can fetch.
 
     Returns:
         One Record per rollout.
@@ -250,25 +298,53 @@ def load_run(run_dir: str, arm: str | None = None, limit: int | None = None,
         key = _rollout_key(path)
         text = path.read_text(encoding="utf-8", errors="replace")
         preamble, steps = _split_steps(text)
-        reasoning, visible, shape = _channels(steps)
+        query_turns, reasoning, visible, shape = _channels(steps)
         shapes.add(shape)
         if len(reasoning) < min_reasoning_chars:
             short += 1
             continue
         score = scores.get(key, scores.get(path.parent.name))
+        condition, scenario = key.split("/")[0], path.parent.parent.name
         records.append(Record(
             record_id=f"{arm}/{key}",
-            query=preamble,
+            # The framing lives in the preamble on some builds and in the system/user
+            # steps on others; both are the same channel and a reader wants whichever
+            # exists rather than an empty string when the build is the second kind.
+            query="\n\n".join(part for part in (preamble, query_turns) if part),
             response=visible,
             reasoning=reasoning,
             outcome=None if score is None else {
-                "score": score, "violation": score >= VIOLATION_THRESHOLD},
-            metadata={"arm": arm, "scenario": path.parent.name,
-                      "scenario_key": key, "condition": key.split("/")[0],
-                      "variant": path.parent.parent.name, "n_steps": len(steps),
-                      "reasoning_chars": len(reasoning), "transcript_shape": shape,
-                      "rollout_path": str(path), "run_dir": str(root),
-                      "corpus": {"path": str(root), "arm": arm}},
+                "score": score,
+                "violation": score >= VIOLATION_THRESHOLD,
+                # The sub-threshold outcome. ODCV's own headline binarises at >= 3, and
+                # that is the primary; but 35-71% of rollouts score exactly 0 and the two
+                # arms differ in how often they drift into 0 < score < 3 without crossing.
+                # A second BOOLEAN keeps that measurable on the same proportion machinery,
+                # instead of averaging an ordinal judge median as if it were a length.
+                "any_misalignment": score > 0},
+            metadata={"arm": arm,
+                      # `scenario` is the SCENARIO (the experiment directory); the
+                      # per-rollout directory is `rollout`. These were the wrong way round
+                      # until 2026-08-20, which made a "group by scenario" read as a group
+                      # by rollout index.
+                      "scenario": scenario, "rollout": path.parent.name,
+                      "scenario_key": key, "condition": condition,
+                      # The stratum a cross-arm comparison controls on: same scenario,
+                      # same condition, different model.
+                      "cell": f"{condition}/{scenario}",
+                      "n_steps": len(steps),
+                      "reasoning_chars": len(reasoning),
+                      "response_chars": len(visible),
+                      "transcript_shape": shape,
+                      # Relative to the run root, so a published members.jsonl locates a
+                      # rollout inside its repo instead of on the laptop that read it.
+                      "rollout_path": path.relative_to(root).as_posix(),
+                      "run_dir": str(root),
+                      # The repo pin IS the corpus when there is one; the local path is
+                      # the fallback for a run that was never published, and carrying
+                      # both would put a machine-specific path on every published row.
+                      "corpus": ({**corpus, "arm": arm} if corpus
+                                 else {"path": str(root), "arm": arm})},
             raw={"rollout_path": str(path)},
         ))
     unjudged = sum(1 for r in records if r.outcome is None)
@@ -277,16 +353,55 @@ def load_run(run_dir: str, arm: str | None = None, limit: int | None = None,
     return records
 
 
+def _resolve(spec: dict, cache_root: str | Path = "output/odcv_bench") -> dict:
+    """Turn one run spec into a local directory plus the provenance that names it.
+
+    A spec points at a run either by local path (`run_dir:`) or by HF dataset repo
+    (`repo:` [+ `revision:`]). The repo form is the one that reproduces: CLAUDE.md puts
+    artifacts on the Hub, and a config naming a path under `output/` only runs on the
+    laptop that happens to hold it. Resolving here rather than in `load_run` keeps the
+    per-run reader ignorant of where the bytes came from.
+
+    Args:
+        spec: `{run_dir | repo, arm?, revision?}`.
+        cache_root: Where an HF repo is materialised, one directory per arm, so the tree
+            is readable by path (the Windows HF cache cannot use symlinks).
+
+    Returns:
+        The spec with `repo`/`revision` replaced by a resolved `run_dir` and a `corpus`
+        pin, ready to pass to `load_run` as kwargs.
+
+    Raises:
+        ValueError: If the spec names neither a `run_dir` nor a `repo`, or names both.
+    """
+    spec = dict(spec)
+    repo, run_dir = spec.pop("repo", None), spec.get("run_dir")
+    revision = spec.pop("revision", None)
+    if (repo is None) == (run_dir is None):
+        raise ValueError(f"a run spec needs exactly one of repo: or run_dir:, got {spec}")
+    if repo is None:
+        return spec
+    from src.huggingface import resolve_run_dir
+
+    arm = spec.get("arm") or repo.split("/")[-1]
+    local, pin = resolve_run_dir(repo, revision, local_dir=Path(cache_root) / arm)
+    print(f">>> {repo} @ {pin['revision'][:12]} -> {local}")
+    return {**spec, "run_dir": local, "corpus": pin}
+
+
 def load(run_dir: str | None = None, runs: list | None = None, arm: str | None = None,
+         repo: str | None = None, revision: str | None = None,
          limit: int | None = None, min_reasoning_chars: int = 0,
          require_outcomes: bool = False) -> list[Record]:
     """Load one run, or pool several arms into one record list.
 
     Args:
-        run_dir: A single run directory. Mutually exclusive with `runs`.
-        runs: Several runs to pool: a list of `{run_dir, arm}` dicts, or of bare paths
-            (the directory name is then the arm).
+        run_dir: A single run directory. Mutually exclusive with `runs` and `repo`.
+        runs: Several runs to pool: a list of `{run_dir | repo, arm, revision?}` dicts, or
+            of bare paths (the directory name is then the arm).
         arm: Arm label for the single-run form.
+        repo: A single run as an HF dataset repo id, resolved to an exact sha.
+        revision: Revision for `repo`; defaults to the repo's head.
         limit: Rollouts per run, in path order.
         min_reasoning_chars: Drop rollouts with less reasoning than this.
         require_outcomes: Fail rather than return records the judge never scored. Set it
@@ -297,14 +412,17 @@ def load(run_dir: str | None = None, runs: list | None = None, arm: str | None =
         Every run's Records, in the order the runs were given.
 
     Raises:
-        ValueError: If neither or both of `run_dir`/`runs` is given, if two runs share an
+        ValueError: If the single-run and `runs` forms are mixed, if two runs share an
             arm label, or if `require_outcomes` and any record is unjudged.
     """
-    if (run_dir is None) == (runs is None):
-        raise ValueError("give exactly one of run_dir= (a single run) or runs= (a list "
-                         "of {run_dir, arm} to pool)")
-    specs = ([{"run_dir": run_dir, "arm": arm}] if runs is None else
+    single = run_dir is not None or repo is not None
+    if single == (runs is not None):
+        raise ValueError("give exactly one of a single run (run_dir= or repo=) or runs= "
+                         "(a list of {run_dir | repo, arm} to pool)")
+    specs = ([{"run_dir": run_dir, "repo": repo, "revision": revision, "arm": arm}]
+             if runs is None else
              [{"run_dir": r} if isinstance(r, str) else dict(r) for r in runs])
+    specs = [_resolve({k: v for k, v in s.items() if v is not None}) for s in specs]
 
     labels = [str(s.get("arm") or Path(s["run_dir"]).name) for s in specs]
     duplicates = {a for a in labels if labels.count(a) > 1}
