@@ -146,6 +146,10 @@ models:
     model: "google/gemini-3.1-pro-preview"
     temperature: 0.0
     max_tokens: 2048
+    # Gemini 3.x cannot disable reasoning (400: "Reasoning is mandatory for this
+    # endpoint"), so the judge default of reasoning-off is overridden to lowest effort
+    # here and on scan/classify below. Caught by the 2026-08-20 smoke run.
+    reasoning: {effort: low}
     assumed_tokens: {in: 1400, out: 400}
   # pattern_scan's SCAN pass: sees batch_size whole documents per call, so it needs long
   # context and there are only ~10 of these at 716 rows.
@@ -155,6 +159,7 @@ models:
     # The scan call itself is sized by the property's `scan_max_tokens`; this bound and
     # the assumption below exist for pricing.
     max_tokens: 16000
+    reasoning: {effort: low}
     assumed_tokens: {in: 28000, out: 4500}
   # pattern_scan's AUTORATE pass: a yes/no classifier run thousands of times over small
   # batches. Cheapest adequate model.
@@ -162,6 +167,7 @@ models:
     model: "google/gemini-3.7-flash"
     temperature: 0.0
     max_tokens: 2048
+    reasoning: {effort: low}
     assumed_tokens: {in: 9000, out: 600}
 
 # --- The pipeline itself: stages executed in order by src/data/synth ------------
