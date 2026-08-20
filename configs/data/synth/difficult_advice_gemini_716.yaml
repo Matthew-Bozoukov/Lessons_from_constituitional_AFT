@@ -95,6 +95,18 @@ budget_usd: 70.0
 defaults:
   temperature: 1.0
   max_tokens: 4096
+  # Google's safety filters persistently block a few percent of exactly the content
+  # this corpus is for (2026-08-20: 26/716 draft_prompts calls filtered on all six
+  # resamples — the run halted rather than silently dropping the most ethically
+  # loaded scenarios). BLOCK_NONE removes automated blocking; OpenRouter forwards
+  # the field to both Google hosts. This is a deliberate, recorded choice: the
+  # corpus's difficulty must be decided by the recipe, not a host-side filter.
+  extra_body:
+    safety_settings:
+    - {category: HARM_CATEGORY_HARASSMENT, threshold: BLOCK_NONE}
+    - {category: HARM_CATEGORY_HATE_SPEECH, threshold: BLOCK_NONE}
+    - {category: HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: BLOCK_NONE}
+    - {category: HARM_CATEGORY_DANGEROUS_CONTENT, threshold: BLOCK_NONE}
   # Provider routing lives in configs/endpoints/providers.yaml (one provider per model,
   # applied by OpenRouterClient): flash pins to google-vertex/global/priority, the pro
   # to google-ai-studio/flex — see that file for the tier arithmetic. Known risk for
@@ -269,6 +281,9 @@ stages:
 - name: draft_prompts
   kind: llm_json
   model: draft
+  # Checkpointed since 2026-08-20: the baseline leaves this stage uncheckpointed and
+  # the filter-abort above threw away 690 paid drafts held only in memory.
+  checkpoint: scenario_id
   save:
     draft_system: system
     draft_user: user
