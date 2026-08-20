@@ -13,39 +13,28 @@ from typing import Any
 from src.endpoints.openrouter import ChatResult, OpenRouterClient, map_threaded
 from src.utils import extract_json
 
-# USD per 1M tokens, OpenRouter list prices.
-PRICES: dict[str, dict[str, float]] = {
-    "openai/gpt-5.6-luna": {"in": 0.10, "out": 0.60},
-    "openai/gpt-5.6-terra": {"in": 1.00, "out": 6.00},
-    "openai/gpt-5.6-sol": {"in": 5.00, "out": 30.00},
-    "anthropic/claude-sonnet-5": {"in": 2.00, "out": 10.00},
-    "anthropic/claude-sonnet-4.5": {"in": 3.00, "out": 15.00},
-    "anthropic/claude-opus-5": {"in": 5.00, "out": 25.00},
-    "anthropic/claude-haiku-4.5": {"in": 1.00, "out": 5.00},
-    # Non-Anthropic drafting models in the natural-turn configs; OpenRouter rates as
-    # of 2026-08-14.
-    "x-ai/grok-4.3": {"in": 1.25, "out": 2.50},
-    "qwen/qwen3-32b": {"in": 0.08, "out": 0.28},
-    # Courtroom's drafter/judge lineages. An unpriced model is silently billed at $0
-    # by cost_of AND the estimator, which also blinds the budget_usd guard to that
-    # stage's spend -- price every model a config names.
-    "google/gemini-2.5-pro": {"in": 1.25, "out": 10.00},
-    "google/gemini-3.7-flash": {"in": 0.375, "out": 1.875},
-    "google/gemini-3.6-flash": {"in": 0.75, "out": 3.75},   # google-vertex standard
-    # Priced at the tier the providers.yaml pin routes to: 3.1-pro on
-    # google-ai-studio standard. If the pin changes tier, change the price with it or
-    # the budget guard drifts.
-    "google/gemini-3.1-pro-preview": {"in": 2.00, "out": 12.00},
-    "x-ai/grok-4.6": {"in": 2.00, "out": 6.00},
-    "qwen/qwen3-max": {"in": 0.78, "out": 3.90},
-}
+def price_of(model: str) -> dict[str, float]:
+    """USD-per-1M `{in, out}` for `model`, from its providers.yaml pin (0 if unpriced).
+
+    Price is NOT hardcoded here: it lives beside the provider pin in
+    configs/endpoints/providers.yaml, because the cost is the cost of a specific
+    provider/tier and the two must change together. An unpriced (or unpinned) model
+    returns zeros, which — as before — bills it at $0 and blinds the budget guard, so
+    every pin must carry a price. Thin wrapper so callers never import provider
+    internals.
+    """
+    from src.endpoints.openrouter import provider_price
+    try:
+        return provider_price(model) or {"in": 0.0, "out": 0.0}
+    except ValueError:
+        # Unpinned model: the estimator prices a config before any call would raise,
+        # so $0 here reproduces the old unpriced-model behaviour rather than crashing.
+        return {"in": 0.0, "out": 0.0}
 
 
 def cost_of(model: str, prompt_tokens: int, completion_tokens: int) -> float:
     """Return the USD cost of one call, or 0.0 for an unpriced model."""
-    p = PRICES.get(model)
-    if not p:
-        return 0.0
+    p = price_of(model)
     return prompt_tokens / 1e6 * p["in"] + completion_tokens / 1e6 * p["out"]
 
 

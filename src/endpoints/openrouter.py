@@ -58,7 +58,24 @@ def provider_pin(model: str) -> dict:
             "must be served by the same provider on every call. Add its ONE provider "
             f"to {PROVIDER_PINS_PATH} (check https://openrouter.ai/api/v1/models/"
             f"{model}/endpoints), or pass an explicit extra_body['provider'] block.")
-    return pin
+    # `price` is provenance/accounting, not routing — it never goes in the request body.
+    return {k: v for k, v in pin.items() if k != "price"}
+
+
+def provider_price(model: str) -> dict | None:
+    """The USD-per-1M `{in, out}` price pinned for `model`, or None if unpriced.
+
+    THE single source of truth is the `price:` field beside each pin in
+    configs/endpoints/providers.yaml — the price belongs with the provider/tier it is
+    the price OF, so a tier change moves both together. cost accounting in
+    src/data/synth reads this rather than hardcoding a table that silently drifts from
+    the pin.
+    """
+    provider_pin(model)  # populates _pins and raises on an unpinned model
+    price = (_pins or {}).get(model, {}).get("price")
+    if price is None:
+        return None
+    return {"in": float(price["in"]), "out": float(price["out"])}
 
 
 class _CompletionFailure(RuntimeError):

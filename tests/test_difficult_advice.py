@@ -81,8 +81,10 @@ def test_sft_export_carries_reasoning_and_trait_metadata():
 
 
 def test_cost_of_prices_known_models_and_zeroes_unknown():
-    assert cost_of("openai/gpt-5.6-luna", 1_000_000, 1_000_000) == 0.10 + 0.60
-    assert cost_of("openai/gpt-5.6-terra", 1_000_000, 0) == 1.00
+    # Prices come from the providers.yaml pin (in/out USD per 1M), not a hardcoded table.
+    assert cost_of("anthropic/claude-haiku-4.5", 1_000_000, 1_000_000) == 1.0 + 5.0
+    assert cost_of("anthropic/claude-sonnet-5", 1_000_000, 0) == 2.0
+    # An unpinned model prices at zero (same as the old unpriced-model behaviour).
     assert cost_of("some/unlisted-model", 1_000_000, 1_000_000) == 0.0
 
 
