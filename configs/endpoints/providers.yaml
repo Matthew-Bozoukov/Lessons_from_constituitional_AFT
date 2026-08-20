@@ -33,18 +33,13 @@ models:
   anthropic/claude-sonnet-5: {order: [anthropic]}        # synth v2 refine/rewrite
   anthropic/claude-sonnet-4.5: {order: [anthropic]}      # synth v1 + judges
   anthropic/claude-haiku-4.5: {order: [anthropic]}       # synth v2 generation
-  # 2026-08-20 (gemini synth arm): tier picked as the highest service tier priced at or
-  # under the Anthropic model each replaces. flash vs haiku-4.5 (1/5): vertex priority
-  # (0.675/3.375) qualifies; ai-studio priority (1.35/6.75) does not. Was
-  # google-vertex/global/flex (TURF's cheap-and-slow choice) — TURF runs from this
-  # branch now pay priority instead.
-  google/gemini-3.7-flash: {order: [google-vertex/global/priority]}
+  google/gemini-3.7-flash: {order: [google-vertex/global/flex]}  # TURF, flex is cheap and slow
   google/gemini-3-flash-preview: {order: [google-ai-studio]}  # arena-hard + scratch-eval judge
-  # 3.1-pro vs sonnet-5 (2/10): standard (2/12) loses on output, priority (3.6/21.6)
-  # on both, so flex (1/6) is the highest qualifying tier; ai-studio over vertex per
-  # the policy above (and vertex's pro endpoints are currently deranked, status -2).
-  # Also the ODCV judge; was google-ai-studio (standard).
-  google/gemini-3.1-pro-preview: {order: [google-ai-studio/flex]}
+  # ODCV judge + the difficult-advice gemini-reviser arm (2026-08-20). Standard tier
+  # (2/12): the same input as sonnet-5 and $2 more on output — "slightly more than
+  # sonnet", and the honest replace-the-reviser comparison. flex (1/6) is cheaper but
+  # queue-latency-bound; priority (3.6/21.6) is ~2x sonnet.
+  google/gemini-3.1-pro-preview: {order: [google-ai-studio]}
   openai/gpt-5.6-terra: {order: [openai]}                # fabrication judge + spec filter
   openai/gpt-5.6-luna: {order: [openai]}                 # peer-critique first-turn author
   openai/gpt-4.1: {order: [openai]}                      # arena-hard reference judge

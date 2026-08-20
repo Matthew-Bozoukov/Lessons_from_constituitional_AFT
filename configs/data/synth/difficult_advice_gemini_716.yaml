@@ -1,19 +1,54 @@
-# ABOUTME: Gemini generator arm of the difficult-advice recipe: same six stages and
-# ABOUTME: prompts, Gemini models in place of Haiku/Sonnet, sized to 716 rows.
+# ABOUTME: Gemini-reviser arm of the difficult-advice recipe: baseline Haiku generation,
+# ABOUTME: gemini-3.1-pro as the constitution reviser in place of Sonnet, 716 rows.
 # Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/difficult_advice_gemini_716.yaml [--smoke]
 
 # 2026-08-20: byte-identical stage list and prompts to difficult_advice.yaml — the arm
-# varies the GENERATOR, not the recipe. gemini-3.7-flash replaces haiku-4.5 (stages
-# 2/3/5 + classify), gemini-3.1-pro-preview replaces sonnet-5 (stages 4/6 + judge
-# models). Provider tiers are pinned in configs/endpoints/providers.yaml (flash:
-# vertex priority; pro: ai-studio flex — the highest tiers priced at or under the
-# Anthropic models they replace). Gemini 3.x reasoning is mandatory and bills as
-# completion tokens (measured on TURF 2026-08-14: a 4096 cap truncated ~1/8 of
-# extractions), so every max_tokens below is raised well past the Anthropic sizing
-# and the assumed out-tokens include a reasoning share. The <<<cache>>> markers stay:
-# stripped for non-Anthropic models, and Gemini's implicit caching handles the
+# varies ONE thing, the reviser model. Haiku 4.5 generates (stages 2/3/5 + classify)
+# exactly as the baseline; gemini-3.1-pro-preview (google-ai-studio standard, 2/12 —
+# same input as sonnet-5, $2 more output) replaces sonnet-5 as the reviser and judge
+# (stages 4/6 + autorate/scan). So a difference between this corpus and the baseline is
+# attributable to the reviser, nothing else.
+#
+# Why not all-gemini: an earlier attempt generated with gemini-3.7-flash and Google's
+# non-configurable safety core persistently blocked ~3% of draft_prompts calls — all on
+# the hardest t4 (CBRN/cyber) scenarios, exactly the corpus's most valuable content —
+# even at safety_settings BLOCK_NONE. Haiku serves that content first-party without
+# filtering. The gemini revision/judge stages keep BLOCK_NONE as insurance and carry
+# reasoning headroom (Gemini 3.x reasoning is mandatory and bills as completion tokens).
+# <<<cache>>> markers stay: stripped for gemini, whose implicit caching handles the
 # constitution prefix on its own.
-pipeline: difficult_advice_gemini
+# Label matches the filename (so the auto-built provenance path is correct and
+# greppable); the reviser detail lives in `card:` below, which the run publishes to the
+# HF dataset card.
+pipeline: difficult_advice_gemini_716
+
+# Dataset-card fields, merged over the pipeline's auto-built defaults (src/data/synth/
+# pipeline.py). This is where the experiment's real detail goes — the filename stays
+# simple, the card carries the specifics a future reader needs.
+card:
+  experiment: >-
+    Difficult-advice SFT corpus, gemini-reviser arm: the Teaching Claude Why recipe with
+    ONE variable changed from the Anthropic baseline (difficult_advice.yaml) — the
+    constitution reviser. Haiku 4.5 generates scenarios, prompts and draft responses
+    (stages 2/3/5) exactly as the baseline; google/gemini-3.1-pro-preview replaces
+    Sonnet 5 as the reviser that rewrites prompts and responses against the full
+    constitution (stages 4/6) and as the corpus judge. A behavioural difference vs the
+    baseline corpus is therefore attributable to the reviser model, nothing else.
+  models: >-
+    generation + classify: anthropic/claude-haiku-4.5 (Anthropic first-party);
+    reviser (stages 4/6) + judges (autorate/scan): google/gemini-3.1-pro-preview
+    (google-ai-studio standard tier, 2/12). Sampling and per-stage token usage in
+    manifest.json. All Claude calls route through OpenRouter (no Anthropic key).
+  provenance: >-
+    uv run scripts/data/synth/build_dataset.py --config
+    configs/data/synth/difficult_advice_gemini_716.yaml
+  notes: >-
+    Reviser arm, not an all-gemini arm: an earlier all-gemini attempt generated with
+    gemini-3.7-flash, and Google's non-configurable safety core persistently blocked
+    ~3% of draft_prompts calls — concentrated entirely on the hardest t4 (CBRN/cyber)
+    scenarios, the corpus's most valuable content — even with safety_settings
+    BLOCK_NONE. Generating with Haiku first-party avoids that composition bias; the
+    gemini revision/judge stages keep BLOCK_NONE as insurance.
 
 # STAGE NAMES CHANGED 2026-08-13, for legibility: every stage now says what it does.
 #   traits -> chunk_constitution      refined_prompts -> revise_prompts
@@ -77,7 +112,9 @@ total_scenarios: 716
 scenarios_per_call: 8
 
 # Own dir + repos: this arm's snapshots must never collide with the v2 baseline's.
-output_dir: "output/synthdoc_gemini716"
+# Fresh dir: the old output/synthdoc_gemini716 holds the abandoned all-flash attempt's
+# snapshots, which must never be resumed into this different-generator run.
+output_dir: "output/synthdoc_gemini_reviser716"
 
 hf_repo: "LASR-Callum/2026-08-20-difficult-advice-gemini-716"
 hf_repo_smoke: "LASR-Callum/2026-08-20-difficult-advice-gemini-716-smoke"
@@ -87,26 +124,21 @@ hf_private: false
 # rate limiting, not the code, is the ceiling above this.
 workers: 16
 # Hard stop: the run aborts between stages once spend passes this. Snapshots are kept,
-# so raising it and re-running resumes rather than restarts. Estimated ~$45 for 716
-# records at the pinned tiers with reasoning-inclusive out-token priors; priors, not
-# measurements, until the smoke manifest replaces them.
-budget_usd: 70.0
+# so raising it and re-running resumes rather than restarts. The gemini reviser stages
+# at standard tier (2/12) are the dominant cost; --estimate puts the run at ~$92 on
+# generous reasoning-inclusive priors, so 150 leaves headroom against a mid-run halt.
+# Priors, not measurements, until a smoke manifest replaces them.
+budget_usd: 150.0
 
 defaults:
   temperature: 1.0
   max_tokens: 4096
-  # Google's safety filters persistently block a few percent of exactly the content
-  # this corpus is for (2026-08-20: 26/716 draft_prompts calls filtered on all six
-  # resamples — the run halted rather than silently dropping the most ethically
-  # loaded scenarios). BLOCK_NONE removes automated blocking; OpenRouter forwards
-  # the field to both Google hosts. This is a deliberate, recorded choice: the
-  # corpus's difficulty must be decided by the recipe, not a host-side filter.
-  extra_body:
-    safety_settings:
-    - {category: HARM_CATEGORY_HARASSMENT, threshold: BLOCK_NONE}
-    - {category: HARM_CATEGORY_HATE_SPEECH, threshold: BLOCK_NONE}
-    - {category: HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: BLOCK_NONE}
-    - {category: HARM_CATEGORY_DANGEROUS_CONTENT, threshold: BLOCK_NONE}
+  # safety_settings lives on the gemini model blocks ONLY, not here: it is a
+  # Google-specific field and the Haiku (Anthropic) generation stages must not carry
+  # it. Google's non-configurable core still filters a few percent of the hardest t4
+  # (CBRN/cyber) content even at BLOCK_NONE, which is why this arm generates with
+  # Haiku first-party and only revises with gemini — the filtered stage in the
+  # all-gemini attempt was flash generation, not pro revision (2026-08-20).
   # Provider routing lives in configs/endpoints/providers.yaml (one provider per model,
   # applied by OpenRouterClient): flash pins to google-vertex/global/priority, the pro
   # to google-ai-studio/flex — see that file for the tier arithmetic. Known risk for
@@ -114,54 +146,72 @@ defaults:
   # rejection was observed on Gemini 2026-08-17), which surface as ProviderRejectionError
   # and fail fast rather than retry. Watch the smoke run's rejection count.
 
-# Model per stage. gemini-3.7-flash generates (stages 2, 3, 5); gemini-3.1-pro refines
-# and rewrites (stages 4, 6), since those two carry the constitution and decide
-# alignment quality — same cheap-generates/strong-revises split as the Anthropic
-# baseline. All max_tokens carry headroom for Gemini's mandatory reasoning, which
-# bills as completion tokens; the out priors include a reasoning share and are guesses
-# until a smoke manifest replaces them.
+# Model per stage. This is the REVISER arm: Haiku 4.5 generates (stages 2, 3, 5) exactly
+# as the Anthropic baseline does, and gemini-3.1-pro (standard tier) replaces Sonnet 5 as
+# the reviser (stages 4, 6) — so the only variable vs the baseline is the model that
+# carries the constitution and decides alignment quality. Haiku serves difficult-advice
+# content first-party without the safety filtering that blocked gemini-flash generation
+# (2026-08-20); the gemini revision/judge stages still carry safety_settings: BLOCK_NONE
+# and reasoning headroom (mandatory, bills as completion tokens).
 models:
-  # Stage 2 -- generate difficult scenarios per trait.
+  # Stage 2 -- generate difficult scenarios per trait. Haiku, baseline settings.
   scenarios:
-    model: "google/gemini-3.7-flash"
+    model: "anthropic/claude-haiku-4.5"
     temperature: 1.1          # diversity matters most here
-    max_tokens: 16384         # a batch of scenario objects + reasoning
-    assumed_tokens: {in: 700, out: 2400}
-  # Stage 3 -- draft the system + user prompt.
+    max_tokens: 8192          # returns scenarios_per_trait objects in one call
+    assumed_tokens: {in: 700, out: 1400}
+  # Stage 3 -- draft the system + user prompt. Haiku, baseline settings.
   draft:
-    model: "google/gemini-3.7-flash"
+    model: "anthropic/claude-haiku-4.5"
     temperature: 1.0
-    max_tokens: 8192
-    assumed_tokens: {in: 500, out: 1600}
+    max_tokens: 2048
+    assumed_tokens: {in: 500, out: 700}
   # Stage 4 -- refine the prompt against the full constitution + target trait.
   refine:
     model: "google/gemini-3.1-pro-preview"
     temperature: 0.7
     max_tokens: 12288
+    extra_body:
+      safety_settings:
+      - {category: HARM_CATEGORY_HARASSMENT, threshold: BLOCK_NONE}
+      - {category: HARM_CATEGORY_HATE_SPEECH, threshold: BLOCK_NONE}
+      - {category: HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: BLOCK_NONE}
+      - {category: HARM_CATEGORY_DANGEROUS_CONTENT, threshold: BLOCK_NONE}
     assumed_tokens: {in: 2000, out: 2400}
-  # Stage 5 -- generate the response with explicit reasoning.
+  # Stage 5 -- generate the response with explicit reasoning. Haiku, baseline settings.
   respond:
-    model: "google/gemini-3.7-flash"
+    model: "anthropic/claude-haiku-4.5"
     temperature: 1.0
-    max_tokens: 12288
-    assumed_tokens: {in: 1200, out: 2800}
+    max_tokens: 4096
+    assumed_tokens: {in: 1200, out: 1600}
   # Stage 6 -- CRITICAL. Rewrite the response to maximally exhibit the target trait.
   rewrite:
     model: "google/gemini-3.1-pro-preview"
     temperature: 0.7
     # Emits reasoning AND a full response, plus the model's own hidden reasoning.
     max_tokens: 24576
+    extra_body:
+      safety_settings:
+      - {category: HARM_CATEGORY_HARASSMENT, threshold: BLOCK_NONE}
+      - {category: HARM_CATEGORY_HATE_SPEECH, threshold: BLOCK_NONE}
+      - {category: HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: BLOCK_NONE}
+      - {category: HARM_CATEGORY_DANGEROUS_CONTENT, threshold: BLOCK_NONE}
     assumed_tokens: {in: 3200, out: 3800}
   # Judged corpus checks. Not a generation model: it rates a finished corpus and
-  # writes nothing into it.
+  # writes nothing into it. Gemini 3.x cannot disable reasoning (400: "Reasoning is
+  # mandatory for this endpoint"), so the judge default of reasoning-off is overridden
+  # to lowest effort here and on scan. Caught by the 2026-08-20 smoke run.
   autorate:
     model: "google/gemini-3.1-pro-preview"
     temperature: 0.0
     max_tokens: 2048
-    # Gemini 3.x cannot disable reasoning (400: "Reasoning is mandatory for this
-    # endpoint"), so the judge default of reasoning-off is overridden to lowest effort
-    # here and on scan/classify below. Caught by the 2026-08-20 smoke run.
     reasoning: {effort: low}
+    extra_body:
+      safety_settings:
+      - {category: HARM_CATEGORY_HARASSMENT, threshold: BLOCK_NONE}
+      - {category: HARM_CATEGORY_HATE_SPEECH, threshold: BLOCK_NONE}
+      - {category: HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: BLOCK_NONE}
+      - {category: HARM_CATEGORY_DANGEROUS_CONTENT, threshold: BLOCK_NONE}
     assumed_tokens: {in: 1400, out: 400}
   # pattern_scan's SCAN pass: sees batch_size whole documents per call, so it needs long
   # context and there are only ~10 of these at 716 rows.
@@ -172,15 +222,20 @@ models:
     # the assumption below exist for pricing.
     max_tokens: 16000
     reasoning: {effort: low}
+    extra_body:
+      safety_settings:
+      - {category: HARM_CATEGORY_HARASSMENT, threshold: BLOCK_NONE}
+      - {category: HARM_CATEGORY_HATE_SPEECH, threshold: BLOCK_NONE}
+      - {category: HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: BLOCK_NONE}
+      - {category: HARM_CATEGORY_DANGEROUS_CONTENT, threshold: BLOCK_NONE}
     assumed_tokens: {in: 28000, out: 4500}
   # pattern_scan's AUTORATE pass: a yes/no classifier run thousands of times over small
-  # batches. Cheapest adequate model.
+  # batches. Haiku (first-party, cheap); uses the reasoning-off judge default.
   classify:
-    model: "google/gemini-3.7-flash"
+    model: "anthropic/claude-haiku-4.5"
     temperature: 0.0
-    max_tokens: 2048
-    reasoning: {effort: low}
-    assumed_tokens: {in: 9000, out: 600}
+    max_tokens: 900
+    assumed_tokens: {in: 9000, out: 200}
 
 # --- The pipeline itself: stages executed in order by src/data/synth ------------
 # Prompt placeholders are record fields plus {constitution} and {style_guidance}.
