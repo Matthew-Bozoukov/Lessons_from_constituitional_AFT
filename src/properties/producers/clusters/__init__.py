@@ -1318,6 +1318,17 @@ def _remeasure(properties: list[Property], records: list[Record], cfg,
           f"{len(sample)} of {len(records)} records "
           f"({'batched' if batched else 'one property per call'})")
 
+    if batched:
+        # One full-scale call before hundreds of them, and the projected cost printed from
+        # a stopwatch rather than an estimate. See `interpret.preflight_detect_many`.
+        probe_cfg = {k: v for k, v in detector_cfg.items() if k != "workers"}
+        probe = interpret_mod.preflight_detect_many(
+            sample, properties, channel=properties[0].channel, **probe_cfg)
+        workers = int(detector_cfg.get("workers", 16))
+        print(f">>> at {probe['seconds']:.1f}s per call and {workers} workers, the full "
+              f"pass over {len(sample)} records is about "
+              f"{probe['seconds'] * len(sample) / workers / 60:.0f} min")
+
     if batched and verify_n:
         check = _stratified(records, verify_n, arm_key)
         print(f">>> verifying the batched detector against the unbatched one on "
