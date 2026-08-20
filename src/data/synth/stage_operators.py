@@ -469,6 +469,10 @@ def op_llm_json(sc: dict, cfg: dict) -> Stage:
     sys_t, user_t = sc["prompts"]["system"], sc["prompts"]["user"]
     mk, save = sc["model"], dict(sc["save"])
     optional = set(sc.get("optional", []))
+    # Keys the reply MUST carry (everything saved but not declared optional). Handed to
+    # call_json so a valid-JSON-but-missing-key reply retries with a targeted nudge
+    # instead of KeyError-ing at the extraction below and dropping the record.
+    required = tuple(k for k in save.values() if k not in optional)
 
     def fn(ctx, records, ckpt):
         m = model_cfg(ctx.cfg, mk)
@@ -479,7 +483,7 @@ def op_llm_json(sc: dict, cfg: dict) -> Stage:
                 ctx.client, ctx.usage, m["model"],
                 _render(sys_t, r, ctx), _render(user_t, r, ctx),
                 m["temperature"], m["max_tokens"], stage=mk,
-                extra=m.get("extra_body"))
+                extra=m.get("extra_body"), required=required)
             return {**r, **{f: (parsed.get(k, "") if k in optional else parsed[k])
                             for f, k in save.items()}}
 
