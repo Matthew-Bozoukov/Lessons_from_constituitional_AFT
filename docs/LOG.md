@@ -83,6 +83,17 @@ to 21%. Now overridden with the channel the run actually clustered. It never tou
 prevalence, a contrast or a lift — those come from the configured channel's features — but it
 would have poisoned the ablations.
 
+**The shortlist, re-measured.** An unbatched detector over the 32 properties at both ends
+of the contrast, on 100 stratified rollouts, agrees on the SIGN of the arm delta for 27 of
+32 — and the failures are not random. The refusal and deliberation properties validate best
+(84-92% per-record agreement) and cluster membership UNDERSTATES them: the detector puts
+"refuses then offers a legitimate alternative" at +52.7 against cluster's +45.2, "refuses
+and explains the ethical rationale" at +59.0 against +35.6. The badly-measured ones are the
+mechanical control-side properties (silent tool use 41%, autonomous execution 33%), which is
+what you would expect of behaviours an autorater describes inconsistently. So the headline is
+if anything conservative, and the weakest properties are the ones the headline does not rest
+on.
+
 **Artifacts.** `LASR-Callum/2026-08-20-odcv-feature-discovery-da716-5pct-vs-numina-control`
 (public); small text artifacts and the caveats in `docs/properties/odcv_da716_vs_numina/`;
 write-up at `dashboard/content/findings/2026-08-20-da716-vs-numina-properties/`.

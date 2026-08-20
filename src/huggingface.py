@@ -24,7 +24,17 @@ def hf_token() -> str | None:
     The bare hub helpers read only HF_TOKEN/cached logins; everything in this repo
     resolves through here instead, so private-repo READS (a private adapter's
     training_meta.json, a private cache entry) work wherever pushes do.
+
+    `.env` is loaded HERE rather than being inherited from whichever import happened to
+    call `load_dotenv()` first. Until 2026-08-20 that was a side effect of importing
+    `src.endpoints.openrouter`, so an entry point that only needed the Hub — a push
+    script, a card refresh — got a bare `401 Unauthorized` from `create_repo` after doing
+    all of its work. `load_dotenv` does not override an env var that is already set, so
+    calling it on every resolution is free and cannot shadow a deliberate export.
     """
+    from dotenv import load_dotenv
+
+    load_dotenv()
     return os.environ.get("HUGGINGFACE_API_KEY") or os.environ.get("HF_TOKEN")
 
 
@@ -182,7 +192,11 @@ def push_run_dir(out_dir: Path, repo_id: str, fields: dict, private: bool = True
     card = card_markdown(fields)  # validate before any network call
     api = hf_api()
     api.create_repo(repo_id, repo_type=repo_type, private=private, exist_ok=True)
-    (out_dir / "README.md").write_text(card)
+    # encoding="utf-8" is load-bearing on Windows, where the default is cp1252 and any
+    # em dash in the card writes as 0x97. `upload_folder` then reads this file back as
+    # utf-8 and dies — AFTER create_repo has already run, so the symptom is a mysterious
+    # UnicodeDecodeError next to a freshly created empty repo.
+    (out_dir / "README.md").write_text(card, encoding="utf-8")
     api.upload_folder(folder_path=str(out_dir), repo_id=repo_id, repo_type=repo_type)
     prefix = "datasets/" if repo_type == "dataset" else ""
     return f"https://huggingface.co/{prefix}{repo_id}"
