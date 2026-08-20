@@ -313,7 +313,7 @@ def label_collisions(properties: list[Property], threshold: float = 0.85,
         backend: Embedding backend for the labels.
 
     Returns:
-        {"a", "b", "cosine"} triples, most similar first, across DIFFERENT sources only.
+        {"a", "b", "cosine"} triples, most similar first, across DIFFERENT RUNS only.
     """
     from src.properties.shared.embed import embed
 
@@ -321,10 +321,15 @@ def label_collisions(properties: list[Property], threshold: float = 0.85,
         return []
     vectors, _ = embed([p.label for p in properties], backend=backend, probe=False)
     similarity = vectors @ vectors.T
+    # `<source>:<run>`, not `source`. One config can run one producer twice — the same
+    # clusterer over the reasoning channel and over the response channel — and those are
+    # two independent fits whose labels agreeing IS corroboration. Comparing on `source`
+    # alone would skip exactly those pairs as if they were within-fit duplicates.
+    fit = [p.property_id.rsplit(":", 1)[0] for p in properties]
     out = []
     for i in range(len(properties)):
         for j in range(i + 1, len(properties)):
-            if properties[i].source == properties[j].source:
+            if fit[i] == fit[j]:
                 continue
             if similarity[i, j] >= threshold:
                 out.append({"a": properties[i].property_id, "b": properties[j].property_id,

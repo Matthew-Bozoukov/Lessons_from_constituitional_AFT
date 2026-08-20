@@ -281,6 +281,175 @@ Return ONLY this JSON:
 \\"\\" if false>", "note": "<one clause on why, especially if borderline>"}}"""
 
 
+DETECT_MANY_SYSTEM = """\
+You decide which of several properties ONE record exhibits. You are not judging quality, \
+helpfulness, or alignment — only presence.
+
+Apply each test as written, INDEPENDENTLY of the others, including anything a test says \
+does not count. The properties are not mutually exclusive and they are not a ranking: a \
+record may exhibit many, one, or none, and "none" is a perfectly ordinary answer. Do not \
+reason about how many you have answered yes to.
+
+When a record is genuinely borderline on a test, answer no: a detector that says yes to \
+borderline cases inflates every prevalence measured with it, and prevalence is the number \
+this whole pipeline turns on.
+
+PROPERTIES:
+{rubrics}
+<<<cache>>>
+Return ONLY a JSON object mapping every property id above to true or false, with no other \
+keys and no commentary:
+{{"p001": false, "p002": true, ...}}"""
+
+
+def _rubric_block(properties: list) -> tuple[str, dict[str, str]]:
+    """Render the property list for a batched detector call.
+
+    Args:
+        properties: Property rows.
+
+    Returns:
+        (the rubric text, id -> property_id) so verdicts can be joined back. The ids are
+        positional (`p001`) rather than the real property ids, which are long and would
+        cost tokens on every record without helping the judge.
+    """
+    lines, mapping = [], {}
+    for i, prop in enumerate(properties, start=1):
+        key = f"p{i:03d}"
+        mapping[key] = prop.property_id
+        lines.append(f"{key}. {prop.label}\n     TEST: {prop.detector}")
+    return "\n".join(lines), mapping
+
+
+def detect_many(records, properties: list, channel: str = "reasoning",
+                model: str = DEFAULT_MODEL, workers: int = 16, client=None,
+                max_tokens: int = 2000) -> dict[str, list[dict]]:
+    """Run EVERY property's detector over each record, one call per record.
+
+    `detect` sends one record per property, which is the faithful instrument and costs
+    `n_properties x n_records` calls, each re-sending the whole record. At fifty properties
+    over five hundred rollouts that is 25,000 calls carrying ~15M tokens of duplicated
+    transcript, and it forces a sampled measurement when the honest one is affordable.
+
+    This sends one record per CALL with every rubric attached, so the transcript is sent
+    once and the rubric block — identical across every record — sits behind the
+    `<<<cache>>>` mark and bills at 0.1x after the first call. That is roughly a
+    twenty-fold saving, which is what makes measuring all records rather than a sample of
+    them possible.
+
+    It is a DIFFERENT INSTRUMENT, not an optimisation, and it must be treated as one: a
+    judge shown fifty rubrics at once can anchor, satisfice, or drift toward a plausible
+    yes-count. `verify_batching` measures the disagreement against `detect` on a sample,
+    and nothing should be reported off this path until that check has been read.
+
+    Args:
+        records: Records to test.
+        properties: The Property rows whose detectors to run.
+        channel: Which channel the judge reads.
+        model: OpenRouter judge model.
+        workers: Concurrent requests.
+        client: An OpenRouterClient; one is built when omitted.
+        max_tokens: Reply budget — a bare verdict object for ~100 properties.
+
+    Returns:
+        property_id -> one {"record_id", "exhibits", ...} per record, in record order, so
+        the result drops straight into `prevalence` exactly like `detect`'s. A record whose
+        call failed carries `exhibits: None` for EVERY property, and a property the reply
+        omitted carries None for that record rather than a default of False.
+    """
+    from src.endpoints.openrouter import OpenRouterClient, map_threaded
+    from src.utils import extract_json
+
+    client = client or OpenRouterClient()
+    rubrics, mapping = _rubric_block(properties)
+    system = DETECT_MANY_SYSTEM.format(rubrics=rubrics)
+
+    def run(i: int) -> dict:
+        record = records[i]
+        try:
+            result = client.chat(
+                model=model, temperature=0.0, max_tokens=max_tokens,
+                messages=[{"role": "system", "content": system},
+                          {"role": "user", "content":
+                           f"<record>\n{record.channel(channel)}\n</record>"}])
+            parsed = extract_json(result.content)
+            return {key: (None if parsed.get(key) is None else bool(parsed[key]))
+                    for key in mapping}
+        except Exception as exc:  # noqa: BLE001 - recorded per record
+            return {"__error__": f"{type(exc).__name__}: {exc}"[:300]}
+
+    replies = map_threaded(run, len(records), max_workers=workers,
+                           desc=f"detecting {len(properties)} properties")
+    failed = sum(1 for r in replies if "__error__" in r)
+    if failed:
+        print(f"!!! {failed} of {len(records)} detector calls failed "
+              f"(e.g. {next(r['__error__'] for r in replies if '__error__' in r)})")
+
+    out: dict[str, list[dict]] = {pid: [] for pid in mapping.values()}
+    for record, reply in zip(records, replies):
+        error = reply.get("__error__")
+        for key, property_id in mapping.items():
+            out[property_id].append({
+                "record_id": record.record_id,
+                "exhibits": None if error else reply.get(key),
+                "evidence": "", "note": "",
+                **({"error": error} if error else {})})
+    return out
+
+
+def verify_batching(records, properties: list, channel: str = "reasoning",
+                    model: str = DEFAULT_MODEL, workers: int = 16, client=None) -> dict:
+    """Measure how far the batched detector disagrees with the one-at-a-time one.
+
+    The gate on `detect_many`. Both paths are run over the SAME records and the SAME
+    rubrics, and the per-property agreement is reported. Batching is a different
+    instrument; this is the number that says whether it is the same instrument in practice,
+    on this corpus, with these rubrics — which is not something to assume.
+
+    Args:
+        records: The verification sample. Small — this pays the unbatched cost.
+        properties: The Property rows to check.
+        channel: Which channel the judge reads.
+        model: OpenRouter judge model.
+        workers: Concurrent requests.
+        client: An OpenRouterClient; one is built when omitted.
+
+    Returns:
+        {"n_records", "n_properties", "agreement", "per_property": [...],
+         "prevalence_batched", "prevalence_single"} — `agreement` being the share of
+        (record, property) cells where the two paths gave the same verdict.
+    """
+    batched = detect_many(records, properties, channel=channel, model=model,
+                          workers=workers, client=client)
+    agree = total = hits_b = hits_s = 0
+    per_property = []
+    for prop in properties:
+        single = detect(records, prop.label, prop.detector, channel=channel, model=model,
+                        workers=workers, client=client)
+        pairs = [(b["exhibits"], s["exhibits"])
+                 for b, s in zip(batched[prop.property_id], single)
+                 if b["exhibits"] is not None and s["exhibits"] is not None]
+        same = sum(1 for b, s in pairs if b == s)
+        agree += same
+        total += len(pairs)
+        hits_b += sum(1 for b, _ in pairs if b)
+        hits_s += sum(1 for _, s in pairs if s)
+        per_property.append({
+            "property_id": prop.property_id, "label": prop.label, "n": len(pairs),
+            "agreement": round(same / len(pairs), 4) if pairs else None,
+            "prevalence_batched": round(sum(1 for b, _ in pairs if b) / len(pairs), 4)
+            if pairs else None,
+            "prevalence_single": round(sum(1 for _, s in pairs if s) / len(pairs), 4)
+            if pairs else None})
+    return {"n_records": len(records), "n_properties": len(properties),
+            "n_cells": total,
+            "agreement": round(agree / total, 4) if total else None,
+            "prevalence_batched": round(hits_b / total, 4) if total else None,
+            "prevalence_single": round(hits_s / total, 4) if total else None,
+            "per_property": sorted(per_property, key=lambda r: (r["agreement"] is None,
+                                                               r["agreement"]))}
+
+
 def detect(records, label: str, detector: str, channel: str = "reasoning",
            model: str = DEFAULT_MODEL, workers: int = 16, client=None) -> list[dict]:
     """Run one property's detector over records.

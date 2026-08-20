@@ -225,8 +225,58 @@ def stability_sweep(vectors: np.ndarray, params, reference_labels: np.ndarray,
                 float(np.mean([f["ari_vs_reference"] for f in fits])), 4)}
 
 
+def concentration(records: list, member_indices: dict, group_labels: dict[int, str],
+                  keys=("scenario", "condition"), threshold: float = 0.5) -> dict:
+    """How much of each group comes from ONE scenario, condition, or arm.
+
+    The check that separates a behaviour from a scenario marker, and the one every reader
+    asks for first. A group drawn 80% from `Ai-Hiring-Assistant` is not "weighs fairness
+    against throughput" — it is the hiring scenario, and its correlation with anything else
+    is that scenario's correlation. The 2026-08-19 da716 write-up made this claim in prose
+    ("every mechanical and topical property comes back null"); this measures it.
+
+    Read it as a flag, not a verdict. A genuinely scenario-specific behaviour can be real —
+    only medical scenarios can elicit "prioritises patient safety" — so a concentrated group
+    is a group whose label must be read as scoped to that scenario, not one to delete.
+
+    Args:
+        records: The corpus, in embedding order.
+        member_indices: group id -> the record indices in that group.
+        group_labels: group id -> its label.
+        keys: Metadata keys to check concentration over, most interesting first.
+        threshold: Top share at or above which a group is flagged.
+
+    Returns:
+        {key: {"flagged": [...], "n_flagged": int, "n_groups": int, "by_group": {...}}}.
+    """
+    out = {}
+    for key in keys:
+        values = [str(r.metadata.get(key)) for r in records]
+        if all(v == "None" for v in values):
+            continue
+        by_group, flagged = {}, []
+        for group, idx in sorted(member_indices.items()):
+            counts = Counter(values[int(i)] for i in idx)
+            if not counts:
+                continue
+            top_value, top_n = counts.most_common(1)[0]
+            share = top_n / sum(counts.values())
+            row = {"label": group_labels.get(group, f"g{group:03d}"),
+                   "top_value": top_value, "top_share": round(share, 4),
+                   "n_distinct": len(counts), "n_members": sum(counts.values())}
+            by_group[str(group)] = row
+            if share >= threshold:
+                flagged.append(row)
+        out[key] = {"n_groups": len(by_group), "n_flagged": len(flagged),
+                    "threshold": threshold,
+                    "flagged": sorted(flagged, key=lambda r: -r["top_share"]),
+                    "by_group": by_group}
+    return out
+
+
 def audit(vectors: np.ndarray, result, units, group_labels: dict[int, str],
-          n_records: int, cfg: dict | None = None) -> dict:
+          n_records: int, cfg: dict | None = None, records: list | None = None,
+          member_indices: dict | None = None) -> dict:
     """Run every check over one finished grouping.
 
     Args:
@@ -235,7 +285,10 @@ def audit(vectors: np.ndarray, result, units, group_labels: dict[int, str],
         units: The producer's Units (texts, records, instances).
         group_labels: group id -> its label.
         n_records: Records the prevalences are shares of.
-        cfg: {"stability": bool, "neighbours": [...], "seeds": [...], "threshold": float}.
+        cfg: {"stability": bool, "neighbours": [...], "seeds": [...], "threshold": float,
+            "concentration_keys": [...], "concentration_threshold": float}.
+        records: The corpus, for the concentration check; omitted skips it.
+        member_indices: group id -> record indices, for the same check.
 
     Returns:
         The audit record.
@@ -254,6 +307,11 @@ def audit(vectors: np.ndarray, result, units, group_labels: dict[int, str],
                                  group_labels, n_records),
         "noise_share": result.meta["noise_share"],
     }
+    if records is not None and member_indices is not None:
+        out["concentration"] = concentration(
+            records, member_indices, group_labels,
+            keys=tuple(cfg.get("concentration_keys", ("scenario", "condition", "arm"))),
+            threshold=float(cfg.get("concentration_threshold", 0.5)))
     if cfg.get("stability", False):
         print(">>> stability sweep (re-fitting across seeds and neighbourhoods):")
         out["stability"] = stability_sweep(
@@ -297,6 +355,21 @@ def report(audit_record: dict) -> str:
         landed = ", ".join(f"{label} ({n})" for label, n in probe["groups_landed_in"][:3])
         lines.append(f"| {name} | {probe['records']} | "
                      f"{(probe['prevalence'] or 0):.1%} | {landed or '—'} |")
+
+    for key, block in (audit_record.get("concentration") or {}).items():
+        lines += ["", f"### Is a property really a `{key}` marker?", "",
+                  f"{block['n_flagged']} of {block['n_groups']} groups draw "
+                  f"{block['threshold']:.0%} or more of their members from a single "
+                  f"`{key}`. A flagged group is one whose label must be read as scoped to "
+                  "that value rather than as a general behaviour — not necessarily one to "
+                  "discard, since some behaviours only a few scenarios can elicit.", ""]
+        if block["flagged"]:
+            lines += ["| property | top value | share | distinct |",
+                      "|---|---|--:|--:|"]
+            lines += [f"| {r['label']} | {r['top_value']} | {r['top_share']:.1%} | "
+                      f"{r['n_distinct']} |" for r in block["flagged"][:15]]
+        else:
+            lines.append(f"None — no group is concentrated in one `{key}`.")
 
     stability = audit_record.get("stability")
     if stability:
@@ -504,8 +577,14 @@ def dashboard(path: str | Path, properties: list, audit_record: dict,
         share = prop.prevalence or 0
         width = int(200 * share / top) if top else 0
         outcomes = prop.support.get("outcomes") or {}
-        lift = outcomes.get("within_arm_lift")
-        badge = "" if lift is None else f" &mdash; within-arm lift <b>{lift:+.1%}</b>"
+        primary = (outcomes.get("by_field") or {}).get(outcomes.get("primary")) or {}
+        lift = primary.get("within_stratum_lift")
+        delta = ((prop.support.get("contrast") or {}).get("primary") or {}).get("delta")
+        # Both numbers when both exist: they answer different questions, and a summary
+        # line carrying only one invites reading the arm difference as an outcome effect.
+        badge = "".join(part for part in (
+            "" if delta is None else f" &mdash; arm delta <b>{delta:+.1%}</b>",
+            "" if lift is None else f" &mdash; within-stratum lift <b>{lift:+.1%}</b>"))
         parts.append(
             f"<details><summary><b>{esc(prop.label)}</b> &mdash; {share:.1%}"
             f" <span class='bar' style='width:{width}px'></span>{badge}</summary>"
@@ -536,7 +615,8 @@ def dashboard(path: str | Path, properties: list, audit_record: dict,
 
 
 def write(run: Path, vectors: np.ndarray, result, units, properties: list,
-          n_records: int, cfg: dict | None = None) -> dict:
+          n_records: int, cfg: dict | None = None, records: list | None = None,
+          member_indices: dict | None = None) -> dict:
     """Audit a run and write `audit.json`, the markdown section, and the dashboard.
 
     Args:
@@ -547,6 +627,8 @@ def write(run: Path, vectors: np.ndarray, result, units, properties: list,
         properties: The exported Property rows.
         n_records: Records in the corpus.
         cfg: The `audit:` config block; `plot: false` skips the 2-D projection.
+        records: The corpus, for the scenario-concentration check.
+        member_indices: group id -> record indices, for the same check.
 
     Returns:
         The audit record.
@@ -555,7 +637,8 @@ def write(run: Path, vectors: np.ndarray, result, units, properties: list,
 
     cfg = cfg or {}
     group_labels = {p.support["group"]: p.label for p in properties}
-    record = audit(vectors, result, units, group_labels, n_records, cfg)
+    record = audit(vectors, result, units, group_labels, n_records, cfg,
+                   records=records, member_indices=member_indices)
     (run / "audit.json").write_text(json.dumps(record, indent=1), encoding="utf-8")
     (run / "audit.md").write_text(report(record), encoding="utf-8")
 
@@ -576,4 +659,7 @@ def write(run: Path, vectors: np.ndarray, result, units, properties: list,
           f"{record['noise_share']:.1%} unclustered"
           + (f", min pairwise ARI {record['stability']['min_pairwise_ari']:.3f}"
              if record.get("stability") else ""))
+    for key, block in (record.get("concentration") or {}).items():
+        print(f">>> concentration: {block['n_flagged']} of {block['n_groups']} groups "
+              f"draw >={block['threshold']:.0%} of members from one `{key}`")
     return record

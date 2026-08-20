@@ -63,12 +63,22 @@ rollouts are judged, every group comes back with a number attached.
 
 That difference is the reason the rollout side exists. A corpus-side cluster list is
 unranked: every group is "here is a thing the data does", nothing says which is worth a
-training run, and choosing an ablation target is guesswork. Rollout-side,
-`shared/outcomes.py` crosses each group against the violation flag WITHIN each arm, and the
-list arrives ordered.
+training run, and choosing an ablation target is guesswork. Rollout-side, every group
+arrives with numbers attached, and there are two different questions to attach:
 
-    group_by: arm            per-group prevalence split by which model produced the record
-    outcomes: {...}          per-group violation rate, WITHIN arm, BH-corrected
+    arm_key: arm             which MODEL produced the record
+    group_by: [arm, condition]
+                             the STRATUM every rate is computed inside. A list builds a
+                             composite, which is what two arms under two ODCV conditions
+                             need — with different base rates on both axes, the thing you
+                             must not pool across is the pair.
+    outcomes: {fields: ...}  per-group outcome rate, WITHIN stratum, BH-corrected per
+                             field. "does reasoning in this group go with violating?"
+    contrast: {focus, ...}   per-group prevalence DIFFERENCE between two arms, within
+                             stratum, BH-corrected. "does this model do it more than that
+                             one?" — the model comparison, and the export order when set.
+    probe: {targets: ...}    the multivariate view: how much the property set accounts for
+                             the arm difference at all, and how few properties suffice.
     compare_to: {run_dir}    cosine to the nearest TRAINING-corpus centroid
 
 ## Refit versus assign, and why this runs both
@@ -106,6 +116,7 @@ from src.properties.shared import embed as embed_mod
 from src.properties.shared import grouping as grouping_mod
 from src.properties.shared import interpret as interpret_mod
 from src.properties.shared import outcomes as outcomes_mod
+from src.properties.shared import probe as probe_mod
 from src.properties.sources.base import Record
 from src.utils import git_sha, timestamp
 
@@ -161,19 +172,22 @@ def _corpus_stamp(records: list[Record]) -> dict:
 
 
 def _arm_shares(records: list[Record], member_idx: np.ndarray,
-                group_by: str) -> dict | None:
+                arm_key: str) -> dict | None:
     """Per-arm share of a group's members, and each arm's own base rate.
 
     Args:
         records: Every record in the corpus, in embedding order.
         member_idx: Indices of this group's members.
-        group_by: Metadata key naming the arm (e.g. "arm", "source_label", "pipeline").
+        arm_key: Metadata key naming the MODEL (e.g. "arm", "source_label", "pipeline").
+            Deliberately not the stratum key: the stratum may be a composite like
+            arm x condition, and a per-arm table split four ways is no longer a per-arm
+            table.
 
     Returns:
         arm -> {"n_in_group", "n_in_corpus", "share_of_arm"}, or None when no record
         carries the key.
     """
-    arms = [str(r.metadata.get(group_by)) for r in records]
+    arms = [str(r.metadata.get(arm_key)) for r in records]
     if all(a == "None" for a in arms):
         return None
     totals: dict[str, int] = {}
@@ -468,13 +482,20 @@ def produce(records: list[Record], cfg, out_dir: str | Path,
                 an agreement check rather than exported (see `_gate_grouping`),
             interpret {model, n_shown, workers},
             min_group_records — smallest group worth exporting,
-            group_by (metadata key separating arms, optional),
-            outcomes {field, fdr, min_arm_records} — cross groups with judged outcomes,
+            arm_key — metadata key naming the MODEL (default "arm"),
+            group_by — metadata key, or list of keys, defining the STRATUM the outcome
+                analysis works inside; a list builds a composite (arm x condition),
+            outcomes {fields, fdr, min_stratum_records} — cross groups with judged
+                outcomes, one BH family per field,
+            contrast {focus, reference, strata, robustness_strata, fdr} — the between-ARM
+                prevalence difference; when present it sets the export order,
             compare_to {run_dir, min_cosine} — score against a previous run's centroids,
             audit {stability, neighbours, seeds, threshold} or false to skip — the
                 redundancy / buried-behaviour / seed-stability checks,
+            probe {targets, seed, folds, permutations} — the multivariate probes,
             measure_with_detector (bool, default False),
-            detector {model, workers, sample}.
+            detector {model, workers, sample, batched, verify} — `sample: null` measures
+                every record, which `batched: true` makes affordable.
         out_dir: Run directory for this producer's artifacts.
         target: Unused; this producer describes a corpus rather than explaining an
             outcome. Accepted so every producer has one signature.
@@ -545,7 +566,10 @@ def produce(records: list[Record], cfg, out_dir: str | Path,
     if novelty:
         provenance["compare_to"] = novelty["summary"]
     corpus = _corpus_stamp(kept)
-    group_by = cfg.get("group_by")
+    # `arm_key` names the MODEL and is what a cross-arm comparison contrasts; `group_by`
+    # names the STRATUM the outcome analysis works inside, which with two arms and two
+    # ODCV conditions is the pair rather than either one.
+    arm_key = str(cfg.get("arm_key", "arm"))
 
     properties = []
     for group_id, interpretation in interpretations.items():
@@ -554,7 +578,7 @@ def produce(records: list[Record], cfg, out_dir: str | Path,
         support = {
             "group": int(group_id),
             "n_members": int(len(idx)),
-            "arms": _arm_shares(kept, idx, str(group_by)) if group_by else None,
+            "arms": _arm_shares(kept, idx, arm_key),
             # features: groups overlap, so these do not sum to 1. traces: they do.
             "prevalence_kind": ("feature_membership" if units.kind == "features"
                                 else "record_membership"),
@@ -577,22 +601,110 @@ def produce(records: list[Record], cfg, out_dir: str | Path,
             provenance=provenance,
             **interpretation.to_dict()))
 
+    detector_membership, undetected = None, set()
     if bool(cfg.get("measure_with_detector", False)):
-        properties = _remeasure(properties, kept, cfg, corpus, str(group_by or ""))
+        properties, detector_membership, undetected = _remeasure(
+            properties, kept, cfg, corpus, arm_key, run)
 
-    properties = _cross_outcomes(properties, kept, groups, cfg, run)
+    # WHICH RECORDS COUNT AS CARRYING A PROPERTY, for every number after this point.
+    # Cluster membership says "a feature of this record landed in this group", which
+    # depends on how the autorater spent its 10-20 description slots on that record. The
+    # detector says "a judge, shown this record and this rubric, says yes". The second is
+    # the better instrument and the one that means the same thing across producers — but
+    # only if it saw EVERY record: a detector run over a sample cannot say anything about
+    # the records it did not read, and using it as membership would silently treat those
+    # as non-members.
+    membership = detector_membership or {
+        p.property_id: {kept[i].record_id
+                        for i in groups[p.support["group"]]["records"]}
+        for p in properties}
+    basis = "detector" if detector_membership else "cluster_membership"
+    crossed_on = [r for r in kept if r.record_id not in undetected]
+    print(f">>> crossing on {basis} membership over {len(crossed_on)} records")
+
+    properties = _cross_outcomes(properties, crossed_on, membership, cfg, run, basis)
+    properties = _cross_contrast(properties, crossed_on, membership, cfg, run, basis)
     _write_members(run, properties, kept, groups, units, result,
                    below_floor, novelty)
+    member_indices = {p.support["group"]: groups[p.support["group"]]["records"]
+                      for p in properties}
     audit = (audit_mod.write(run, vectors, result, units, properties, len(kept),
-                             block(cfg, "audit"))
+                             block(cfg, "audit"), records=kept,
+                             member_indices=member_indices)
              if cfg.get("audit", True) is not False else None)
+    probes = _run_probes(properties, crossed_on, membership, cfg, run)
     _write_coverage(run, groups, kept, units, result)
     (run / "properties_preview.json").write_text(
         json.dumps([p.to_dict() for p in properties], indent=1), encoding="utf-8")
     (run / "report.md").write_text(
         _report(properties, kept, result, cfg, novelty, units)
+        + (probe_mod.report(probes) if probes else "")
         + ("\n" + audit_mod.report(audit) if audit else ""), encoding="utf-8")
     return properties
+
+
+def _run_probes(properties: list[Property], records: list[Record],
+                membership: dict[str, set], cfg, run: Path) -> list[dict] | None:
+    """Fit the multivariate probes the config asks for, and write `probes.json`.
+
+    The per-property tables say which properties differ. A probe says whether the property
+    set, TAKEN TOGETHER, accounts for what separates the arms — and how few of them
+    suffice. Both are worth having and neither substitutes for the other.
+
+    Args:
+        properties: The exported rows, in export order (the column order).
+        records: The corpus, in embedding order.
+        membership: property_id -> the record_ids carrying it — the same basis every
+            other number on the run is computed on.
+        cfg: The producer config; reads `probe: {targets, seed, folds, permutations}` and
+            the `contrast.focus` that defines the arm target.
+        run: The run directory.
+
+    Returns:
+        One record per probe, or None when no `probe:` block is configured.
+    """
+    spec = block(cfg, "probe")
+    if not spec:
+        return None
+    arm_key = str(cfg.get("arm_key", "arm"))
+    focus = str(spec.get("focus") or block(cfg, "contrast").get("focus") or "")
+    position = {record.record_id: i for i, record in enumerate(records)}
+    by_id = {p.property_id: [position[rid] for rid in membership[p.property_id]]
+             for p in properties}
+    matrix, columns = probe_mod.membership_matrix(properties, by_id, len(records))
+
+    out = []
+    for target in (spec.get("targets") or ["arm"]):
+        target = str(target)
+        if target == "arm":
+            if not focus:
+                raise ValueError(
+                    "the `arm` probe needs a focus arm: set `probe.focus` or a "
+                    "`contrast:` block. Which arm counts as the positive class is a "
+                    "choice, and guessing it silently flips every coefficient's sign.")
+            rows = list(range(len(records)))
+            y = [int(str(records[i].metadata.get(arm_key)) == focus) for i in rows]
+            name = f"{arm_key} == {focus}"
+        else:
+            # An unjudged record has no outcome, and imputing one as "compliant" is the
+            # same bias the source refuses at load time. Drop the row instead.
+            rows = [i for i, r in enumerate(records)
+                    if r.outcome is not None and r.outcome.get(target) is not None]
+            y = [int(bool(records[i].outcome[target])) for i in rows]
+            name = target
+        result = probe_mod.probe(
+            matrix[rows], np.asarray(y), columns, name,
+            seed=int(spec.get("seed", 0)), folds=int(spec.get("folds", probe_mod.FOLDS)),
+            permutations=int(spec.get("permutations", probe_mod.N_PERMUTATIONS)))
+        best, null = result["best"], result["permutation_null"] or {}
+        print(f">>> probe {name}: AUC {best['auc']:.3f} on {best['n_selected']} "
+              f"properties ({result['minimal']['n_selected']} suffice at "
+              f"{result['minimal']['auc']:.3f}); shuffled-label null "
+              f"{null.get('mean_auc', float('nan')):.3f}, p={null.get('p_value')}")
+        out.append(result)
+
+    (run / "probes.json").write_text(json.dumps(out, indent=1), encoding="utf-8")
+    return out
 
 
 def _embed(units: Units, cfg, run: Path) -> tuple[np.ndarray, embed_mod.EmbedMeta]:
@@ -972,7 +1084,8 @@ def _run_novelty(vectors: np.ndarray, cfg, run: Path, embed_meta,
 
 
 def _cross_outcomes(properties: list[Property], records: list[Record],
-                    groups: dict[int, dict], cfg, run: Path) -> list[Property]:
+                    membership: dict[str, set], cfg, run: Path,
+                    basis: str = "cluster_membership") -> list[Property]:
     """Attach each group's within-arm outcome rates and reorder by ablation priority.
 
     This is what turns a cluster list into a ranking. It is deliberately the LAST step:
@@ -1005,51 +1118,130 @@ def _cross_outcomes(properties: list[Property], records: list[Record],
             "has none, and crossing a corpus with outcomes it does not have would report "
             "an empty table as a null result.")
 
-    field = str(spec.get("field", "violation"))
-    arm_key = str(cfg.get("group_by") or "arm")
-    min_arm = int(spec.get("min_arm_records", outcomes_mod.MIN_ARM_RECORDS))
-    crosstabs = {}
-    for prop in properties:
-        member_ids = {records[i].record_id
-                      for i in groups[prop.support["group"]]["records"]}
-        crosstabs[prop.property_id] = outcomes_mod.by_arm(
-            records, member_ids, arm_key=arm_key, outcome_key=field)
+    # One field or several. Several because ODCV's own threshold (severity >= 3) is not
+    # the only honest reading of a 0-5 rubric: 35-71% of rollouts score exactly 0, and
+    # whether a model drifts to 1 or 2 without crossing 3 is a real difference the headline
+    # binarisation cannot see. A SECOND BOOLEAN measures it on the same proportion
+    # machinery, which averaging an ordinal judge median would not.
+    fields = spec.get("fields") or [spec.get("field", "violation")]
+    fields = [str(f) for f in (fields if isinstance(fields, list) else [fields])]
+    strata_key = cfg.get("group_by") or "arm"
+    strata_key = (list(strata_key) if isinstance(strata_key, (list, tuple))
+                  else str(strata_key))
+    fdr = float(spec.get("fdr", 0.10))
+    min_stratum = int(spec.get("min_stratum_records",
+                               spec.get("min_arm_records",
+                                        outcomes_mod.MIN_STRATUM_RECORDS)))
 
-    ranking = outcomes_mod.rank(crosstabs, fdr=float(spec.get("fdr", 0.10)),
-                                min_arm_records=min_arm)
-    order = {row["group"]: i for i, row in enumerate(ranking)}
-    by_id = {row["group"]: row for row in ranking}
+    rankings, blocks = {}, {p.property_id: {} for p in properties}
+    for field in fields:
+        crosstabs = {pid: outcomes_mod.by_stratum(records, ids, strata_key=strata_key,
+                                                  outcome_key=field)
+                     for pid, ids in membership.items()}
+        ranking = outcomes_mod.rank(crosstabs, fdr=fdr, min_stratum_records=min_stratum)
+        rankings[field] = ranking
+        for row in ranking:
+            blocks[row["group"]][field] = {
+                "within_stratum_lift": row["lift"], "p": row["p"], "q": row["q"],
+                "significant": row["significant"], "n_strata": row["n_strata"],
+                "n_strata_underpowered": row["n_strata_underpowered"],
+                "pooled_lift_confounded": row["pooled_lift"],
+                "by_stratum": crosstabs[row["group"]]["strata"],
+                "n_unjudged": crosstabs[row["group"]]["n_unjudged"]}
 
-    out = []
-    for prop in properties:
-        row = by_id[prop.property_id]
-        out.append(dataclasses.replace(prop, support={
-            **prop.support,
-            "outcomes": {"field": field, "arm_key": arm_key,
-                         "within_arm_lift": row["lift"], "p": row["p"], "q": row["q"],
-                         "significant": row["significant"], "n_arms": row["n_arms"],
-                         "n_arms_underpowered": row["n_arms_underpowered"],
-                         "pooled_lift_confounded": row["pooled_lift"],
-                         "by_arm": crosstabs[prop.property_id]["arms"],
-                         "n_unjudged": crosstabs[prop.property_id]["n_unjudged"]}}))
+        n_sig = sum(1 for row in ranking if row["significant"])
+        n_measurable = sum(1 for row in ranking if row["lift"] is not None)
+        print(f">>> crossed {len(ranking)} groups with `{field}` within {strata_key}: "
+              f"{n_measurable} measurable, {n_sig} survive BH at q<={fdr}. "
+              "This is a RANKING OF ABLATION CANDIDATES, not a causal result.")
+        if not n_measurable:
+            # No group has same-stratum non-members, so there is no within-stratum
+            # contrast to measure. Two ways to get here call for opposite fixes, so the
+            # message names both rather than guessing which one happened. Either way the
+            # pooled column is not a fallback: it is exactly the confound the
+            # stratification removes.
+            print(f"!!! no group has a measurable within-stratum lift on `{field}`: no "
+                  "group has same-stratum non-members to compare against. Either a group "
+                  "covers EVERY record in its stratum (cluster at a finer resolution), or "
+                  "each group sits entirely inside one stratum (they are stratum markers, "
+                  "not behaviours). The pooled column is NOT a fallback.")
+
+    primary = fields[0]
+    order = {row["group"]: i for i, row in enumerate(rankings[primary])}
+    out = [dataclasses.replace(prop, support={
+        **prop.support,
+        "outcomes": {"primary": primary, "strata_key": strata_key,
+                     "membership_basis": basis,
+                     "by_field": blocks[prop.property_id]}})
+        for prop in properties]
     out.sort(key=lambda p: order[p.property_id])
+    (run / "ranking.json").write_text(json.dumps(rankings, indent=1), encoding="utf-8")
+    return out
 
-    (run / "ranking.json").write_text(json.dumps(ranking, indent=1), encoding="utf-8")
-    n_sig = sum(1 for row in ranking if row["significant"])
-    n_measurable = sum(1 for row in ranking if row["lift"] is not None)
-    print(f">>> crossed {len(ranking)} groups with `{field}` within {arm_key}: "
-          f"{n_measurable} measurable, {n_sig} survive BH at q<={spec.get('fdr', 0.10)}. "
-          "This is a RANKING OF ABLATION CANDIDATES, not a causal result.")
-    if not n_measurable:
-        # No group has same-arm non-members, so there is no within-arm contrast to
-        # measure. Two ways to get here and they call for opposite fixes, so the message
-        # names both rather than guessing which one happened. Either way the pooled column
-        # is not a fallback: it is exactly the confound the within-arm split removes.
-        print(f"!!! no group has a measurable within-arm lift: no group has "
-              f"same-{arm_key} non-members to compare against. Either a group covers "
-              f"EVERY record in its {arm_key} (cluster at a finer resolution), or each "
-              f"group sits entirely inside one {arm_key} (they are {arm_key} markers, not "
-              "behaviours). The pooled column is NOT a fallback — it is the confound.")
+
+def _cross_contrast(properties: list[Property], records: list[Record],
+                    membership: dict[str, set], cfg, run: Path,
+                    basis: str = "cluster_membership") -> list[Property]:
+    """Attach each group's between-ARM prevalence difference, and reorder by it.
+
+    `_cross_outcomes` asks whether a property goes with violating. This asks the other
+    question, the one a single-arm run cannot: is this property more common in one MODEL
+    than in another? That is the model comparison — what a fine-tune does that its control
+    does not — and when a contrast is configured it becomes the export order, because it is
+    then the deliverable.
+
+    Two stratifications run and both are reported. `strata` is the primary and is chosen
+    for power; `robustness_strata` is the strict one, usually the scenario cell, which
+    removes the scenario-mix imbalance outright at the cost of thin strata. A property
+    whose delta survives only the first is one whose difference may be a difference in
+    which scenarios each arm happened to run.
+
+    Args:
+        properties: The rows, each carrying `support["group"]`.
+        records: The corpus, in embedding order.
+        groups: group id -> member indices.
+        cfg: The producer config; reads `contrast: {focus, reference, strata,
+            robustness_strata, fdr, arm_key}`, falling back to the top-level `arm_key`.
+        run: The run directory.
+
+    Returns:
+        The rows with `support["contrast"]` attached, most enriched in the focus arm
+        first. Unchanged when no `contrast:` block is configured.
+    """
+    spec = block(cfg, "contrast")
+    if not spec:
+        return properties
+    arm_key = str(spec.get("arm_key", cfg.get("arm_key", "arm")))
+    focus, reference = str(spec["focus"]), str(spec["reference"])
+    fdr = float(spec.get("fdr", 0.10))
+
+    passes = {"primary": spec.get("strata", "condition")}
+    if spec.get("robustness_strata"):
+        passes["robustness"] = spec["robustness_strata"]
+
+    rankings, blocks = {}, {p.property_id: {} for p in properties}
+    for name, strata in passes.items():
+        strata = list(strata) if isinstance(strata, (list, tuple)) else str(strata)
+        contrasts = {pid: outcomes_mod.contrast_arms(
+            records, ids, focus=focus, reference=reference, arm_key=arm_key,
+            strata_key=strata) for pid, ids in membership.items()}
+        ranking = outcomes_mod.rank_contrasts(contrasts, fdr=fdr)
+        rankings[name] = ranking
+        for row in ranking:
+            blocks[row["group"]][name] = {
+                **{k: v for k, v in row.items() if k != "group"},
+                "by_stratum": contrasts[row["group"]]["by_stratum"]}
+        n_sig = sum(1 for row in ranking if row["significant"])
+        print(f">>> {name} contrast {focus} vs {reference} within {strata}: "
+              f"{n_sig} of {len(ranking)} groups differ at q<={fdr}")
+
+    order = {row["group"]: i for i, row in enumerate(rankings["primary"])}
+    out = [dataclasses.replace(prop, support={
+        **prop.support,
+        "contrast": {**blocks[prop.property_id], "membership_basis": basis}})
+        for prop in properties]
+    out.sort(key=lambda p: order[p.property_id])
+    (run / "contrast.json").write_text(json.dumps(rankings, indent=1), encoding="utf-8")
     return out
 
 
@@ -1085,41 +1277,141 @@ def _stratified(records: list[Record], n: int, arm_key: str) -> list[Record]:
 
 
 def _remeasure(properties: list[Property], records: list[Record], cfg,
-               corpus: dict, arm_key: str) -> list[Property]:
+               corpus: dict, arm_key: str, run: Path
+               ) -> tuple[list[Property], dict[str, set] | None, set[str]]:
     """Replace cluster-membership prevalence with detector-measured prevalence.
 
     Membership says "this record's embedding landed here"; the detector says "this record
     does this thing". They differ at cluster edges, and only the second is a number the
     other producers can also produce, so it is the one a merged list should compare on.
 
+    Two ways to run it, and the choice is a real one. `batched: false` asks one property
+    per call — faithful, and `n_properties x n_records` calls. `batched: true` asks every
+    property in one call per record, which is ~20x cheaper and therefore affordable over
+    the WHOLE corpus rather than a sample, at the cost of being a different instrument.
+    `verify:` runs both over a small sample first and writes the agreement, so the choice
+    is made on a measurement rather than on faith.
+
     Args:
         properties: The rows to re-measure.
         records: The corpus.
-        cfg: The producer config; reads `detector.{model, workers, sample}`.
+        cfg: The producer config; reads `detector.{model, workers, sample, batched,
+            verify}`. `sample: null` measures every record.
         corpus: The corpus stamp.
         arm_key: Metadata key naming the arm, for stratified sampling.
+        run: The run directory, for `detector_agreement.json`.
 
     Returns:
-        The rows, each carrying the measured prevalence and the membership number kept in
-        `support` so the disagreement stays visible.
+        (the rows carrying the measured prevalence — with the cluster-membership number
+        kept in `support` so the disagreement stays visible; the DETECTOR's membership as
+        property_id -> record_ids, or None when the detector only saw a sample and so
+        cannot say who carries what across the whole corpus; and the record_ids the judge
+        could not read at all, which must leave every downstream denominator.)
     """
     detector_cfg = block(cfg, "detector")
-    sample_n = int(detector_cfg.pop("sample", 200))
-    sample = _stratified(records, sample_n, arm_key)
+    sample_n = detector_cfg.pop("sample", 200)
+    batched = bool(detector_cfg.pop("batched", False))
+    verify_n = int(detector_cfg.pop("verify", 0) or 0)
+    sample = (list(records) if sample_n in (None, 0, "all")
+              else _stratified(records, int(sample_n), arm_key))
     print(f">>> re-measuring {len(properties)} properties with their detectors over "
-          f"{len(sample)} of {len(records)} records")
+          f"{len(sample)} of {len(records)} records "
+          f"({'batched' if batched else 'one property per call'})")
+
+    if batched and verify_n:
+        check = _stratified(records, verify_n, arm_key)
+        print(f">>> verifying the batched detector against the unbatched one on "
+              f"{len(check)} records — this pays the unbatched cost on purpose")
+        agreement = interpret_mod.verify_batching(check, properties,
+                                                  channel=properties[0].channel,
+                                                  **detector_cfg)
+        (run / "detector_agreement.json").write_text(
+            json.dumps(agreement, indent=1), encoding="utf-8")
+        worst = agreement["per_property"][0] if agreement["per_property"] else {}
+        print(f">>> batched vs unbatched: {agreement['agreement']:.1%} of "
+              f"{agreement['n_cells']} verdicts agree; prevalence "
+              f"{agreement['prevalence_batched']:.1%} vs "
+              f"{agreement['prevalence_single']:.1%}; worst property "
+              f"{worst.get('label', '—')!r} at {worst.get('agreement')}")
+
+    if batched:
+        verdicts_by_property = interpret_mod.detect_many(
+            sample, properties, channel=properties[0].channel, **detector_cfg)
+    else:
+        verdicts_by_property = {
+            prop.property_id: interpret_mod.detect(
+                sample, prop.label, prop.detector, channel=prop.channel, **detector_cfg)
+            for prop in properties}
+
     out = []
     for prop in properties:
-        verdicts = interpret_mod.detect(sample, prop.label, prop.detector,
-                                        channel=prop.channel, **detector_cfg)
-        measured = interpret_mod.prevalence(verdicts)
+        measured = interpret_mod.prevalence(verdicts_by_property[prop.property_id])
         remeasured = prop.with_prevalence(measured, corpus)
         out.append(dataclasses.replace(remeasured, support={
             **remeasured.support,
             "cluster_membership_prevalence": prop.prevalence,
             "prevalence_kind": "detector_measured",
+            "detector_batched": batched,
             "detector_sample_n": len(sample)}))
-    return out
+    _write_verdicts(run, verdicts_by_property)
+
+    if len(sample) < len(records):
+        print(f"!!! the detector saw {len(sample)} of {len(records)} records, so "
+              "membership downstream stays on cluster assignment: a sampled detector "
+              "cannot say whether the records it never read carry the property")
+        return out, None, set()
+
+    membership = {pid: {v["record_id"] for v in verdicts if v["exhibits"]}
+                  for pid, verdicts in verdicts_by_property.items()}
+    # A record the judge could not read is not a record that lacks the property. Left in,
+    # it would count as a non-member of EVERY property at once — the same "absence read as
+    # a negative" bias the source refuses for an unjudged rollout, one stage later. So the
+    # records whose call failed outright leave the denominator, loudly.
+    answered: dict[str, int] = {}
+    for verdicts in verdicts_by_property.values():
+        for verdict in verdicts:
+            answered[verdict["record_id"]] = answered.get(verdict["record_id"], 0) + int(
+                verdict["exhibits"] is not None)
+    undetected = {rid for rid, n in answered.items() if n == 0}
+    omitted = sum(1 for verdicts in verdicts_by_property.values()
+                  for v in verdicts
+                  if v["exhibits"] is None and v["record_id"] not in undetected)
+    if undetected:
+        print(f"!!! {len(undetected)} of {len(records)} records got no detector verdict "
+              "at all and are excluded from every rate below")
+    if omitted:
+        print(f"!!! {omitted} single (record, property) verdicts were omitted from an "
+              "otherwise successful reply; those count as non-members")
+
+    moved = sum(1 for prop in out
+                if len(membership[prop.property_id])
+                != round((prop.support["cluster_membership_prevalence"] or 0)
+                         * len(records)))
+    print(f">>> detector membership differs from cluster membership on {moved} of "
+          f"{len(out)} properties; both numbers are on every row")
+    return out, membership, undetected
+
+
+def _write_verdicts(run: Path, verdicts_by_property: dict) -> Path:
+    """Write the raw detector verdicts, one line per (record, property).
+
+    The prevalence on a property row is a summary of these. Keeping the cells means a
+    reader can recount it, cross a detector-measured membership against an outcome without
+    re-running the judge, and see which records a borderline detector actually fired on.
+
+    Args:
+        run: The run directory.
+        verdicts_by_property: property_id -> the per-record verdicts.
+
+    Returns:
+        The path written.
+    """
+    path = run / "detector_verdicts.jsonl"
+    path.write_text("".join(
+        json.dumps({"property_id": pid, **verdict}, ensure_ascii=False) + "\n"
+        for pid, verdicts in verdicts_by_property.items() for verdict in verdicts),
+        encoding="utf-8")
+    return path
 
 
 # --- the markdown mirror ----------------------------------------------------------------
@@ -1155,10 +1447,11 @@ def _report(properties: list[Property], records: list[Record], result, cfg,
     Returns:
         The markdown.
     """
-    arm_key = str(cfg.get("group_by") or "arm")
+    arm_key = str(cfg.get("arm_key", "arm"))
     arms = sorted({str(r.metadata.get(arm_key)) for r in records
                    if r.metadata.get(arm_key) is not None})
     crossed = any("outcomes" in p.support for p in properties)
+    contrasted = any("contrast" in p.support for p in properties)
 
     lines = [f"# clusters — {len(properties)} properties over {len(records)} records", "",
              f"Evidence: **{units.kind}** — {len(units.texts)} embedded units. "
@@ -1168,11 +1461,27 @@ def _report(properties: list[Property], records: list[Record], result, cfg,
              + ("groups OVERLAP, so these do not sum to 100%."
                 if units.kind == "features"
                 else "each record is in one group, so these sum to 100%."), ""]
-    if crossed:
-        lines += ["Rows are ordered by ABLATION PRIORITY: the within-arm difference in "
-                  "outcome rate between records in the group and records in the same arm "
-                  "outside it, most protective first. This is correlational — read it as "
-                  "a shortlist, not a result.", ""]
+    basis = ((properties[0].support.get("outcomes") or {}).get("membership_basis")
+             or (properties[0].support.get("contrast") or {}).get("membership_basis"))
+    if basis:
+        lines += [
+            "Every rate below counts a record as carrying a property on the basis of "
+            + ("**the detector** — a judge shown that record and that rubric said yes. "
+               "`members.jsonl` is the CLUSTERING's join table and will not match it "
+               "exactly; `detector_verdicts.jsonl` is the join table for these numbers."
+               if basis == "detector" else
+               "**cluster membership** — a feature extracted from that record landed in "
+               "this group. No detector pass ran, so this is an assignment rather than a "
+               "measurement."), ""]
+    if contrasted:
+        lines += ["Rows are ordered by the BETWEEN-ARM difference in prevalence, most "
+                  "enriched in the focus arm first — so the two ends of the list are what "
+                  "the focus model does more of and what it does less of.", ""]
+    elif crossed:
+        lines += ["Rows are ordered by ABLATION PRIORITY: the within-stratum difference "
+                  "in outcome rate between records in the group and records in the same "
+                  "stratum outside it, most protective first. This is correlational — "
+                  "read it as a shortlist, not a result.", ""]
 
     header = "| property | prevalence |" + "".join(f" {a} |" for a in arms)
     lines += ["## Prevalence by arm", "",
@@ -1183,21 +1492,48 @@ def _report(properties: list[Property], records: list[Record], result, cfg,
             f" {shares.get(a, {}).get('share_of_arm', 0):.1%} |" for a in arms)
         lines.append(f"| {prop.label} | {(prop.prevalence or 0):.1%} |{cells}")
 
-    if crossed:
-        lines += ["", "## Outcome rate, within arm", "",
-                  "`lift` is members minus non-members OF THE SAME ARM. `pooled` is the "
-                  "same difference computed across arms and is CONFOUNDED by their "
-                  "different base rates — it is printed only so the gap is visible.", "",
-                  "| property | lift | pooled | q | arms | significant |",
-                  "|---|--:|--:|--:|--:|:--|"]
+    if contrasted:
+        first = (properties[0].support.get("contrast") or {}).get("primary") or {}
+        focus, reference = first.get("focus", "?"), first.get("reference", "?")
+        lines += ["", f"## Between-arm difference — {focus} minus {reference}", "",
+                  "`delta` is the difference in prevalence between the two models, "
+                  f"computed WITHIN `{first.get('strata_key')}` and combined by Cochran "
+                  "weight. `strict` repeats it within the scenario cell, which removes "
+                  "the scenario-mix imbalance outright; a delta that survives only the "
+                  "first may be a difference in which scenarios each arm ran. `pooled` "
+                  "is unstratified and is printed only so the gap is visible.", "",
+                  f"| property | {focus} | {reference} | delta | strict | pooled | q |"
+                  " significant |", "|---|--:|--:|--:|--:|--:|--:|:--|"]
         for prop in properties:
-            o = prop.support.get("outcomes") or {}
-            lift = _pct(o.get("within_arm_lift"))
-            pooled = _pct(o.get("pooled_lift_confounded"))
-            q = "—" if o.get("q") is None else f"{o['q']:.3f}"
-            lines.append(f"| {prop.label} | {lift} | {pooled} | {q} | "
-                         f"{o.get('n_arms', 0)} | "
-                         f"{'yes' if o.get('significant') else ''} |")
+            c = (prop.support.get("contrast") or {}).get("primary") or {}
+            strict = (prop.support.get("contrast") or {}).get("robustness") or {}
+            prevalence = c.get("prevalence") or {}
+            q = "—" if c.get("q") is None else f"{c['q']:.3f}"
+            lines.append(
+                f"| {prop.label} | {(prevalence.get(focus) or 0):.1%} | "
+                f"{(prevalence.get(reference) or 0):.1%} | {_pct(c.get('delta'))} | "
+                f"{_pct(strict.get('delta')) if strict else '—'} | "
+                f"{_pct(c.get('pooled_delta_confounded'))} | {q} | "
+                f"{'yes' if c.get('significant') else ''} |")
+
+    if crossed:
+        outcomes = properties[0].support.get("outcomes") or {}
+        for field in (outcomes.get("by_field") or {}):
+            lines += ["", f"## Outcome rate on `{field}`, within stratum", "",
+                      "`lift` is members minus non-members OF THE SAME STRATUM "
+                      f"(`{outcomes.get('strata_key')}`). `pooled` is the same difference "
+                      "computed across strata and is CONFOUNDED by their different base "
+                      "rates — it is printed only so the gap is visible.", "",
+                      "| property | lift | pooled | q | strata | significant |",
+                      "|---|--:|--:|--:|--:|:--|"]
+            for prop in properties:
+                o = ((prop.support.get("outcomes") or {}).get("by_field") or {}
+                     ).get(field) or {}
+                q = "—" if o.get("q") is None else f"{o['q']:.3f}"
+                lines.append(f"| {prop.label} | {_pct(o.get('within_stratum_lift'))} | "
+                             f"{_pct(o.get('pooled_lift_confounded'))} | {q} | "
+                             f"{o.get('n_strata', 0)} | "
+                             f"{'yes' if o.get('significant') else ''} |")
 
     if novelty:
         lines += ["", "## Distance to the training corpus", "",
