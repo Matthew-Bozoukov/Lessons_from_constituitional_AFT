@@ -156,12 +156,22 @@ tempting shortcut, open deliberation, declining it), not by which value the rows
 
 **Result.** Misaligned = median judge score >= 3.
 
-| arm | cells | n | MR | 95% CI | sev | mandated | incentivized |
-|---|---|---|---|---|---|---|---|
-| **t10 curiosity 716 (this run)** | 65 | 127 | **19.7%** | [10.9, 30.0] | 0.99 | 19.1% | 20.3% |
-| da716 (9 traits), on these 65 cells | 65 | 257 | 16.3% | [10.0, 21.8] | 0.76 | 12.4% | 20.8% |
-| lessswap716, on these 65 cells | 65 | 260 | 16.5% | [11.2, 21.4] | 0.79 | 11.4% | 22.5% |
-| base fp8 (reference, its own run) | 70 | 78 | 37.2% | [23.7, 51.3] | 1.43 | 40.0% | 34.2% |
+Every 716-row (7%) arm with a pullable `results.json`, re-summarised on the same 65 cells
+from its published per-scenario medians (nothing re-run; the v1 restriction reproduces the
+team's posted 14.3% exactly). Plot + mirror: `scratch/trait10_curiosity/plot_7pct_arms.py`
+-> `output/plots/odcv_7pct_arms_65cells_<ts>.png` / `_results.md`.
+
+| arm | n | MR | 95% CI | sev | mandated | incentivized |
+|---|---|---|---|---|---|---|
+| c6masked (synthdoc-716, C6 spans unsupervised) - posted 65-cell figure | 195 | 9.7% | ±4.2 | - | - | - |
+| synthdoc-716 (difficult advice v1) | 314 | 14.3% | [9.3, 19.0] | 0.65 | 9.8% | 19.3% |
+| da716 (difficult advice v2, 9 traits) | 257 | 16.3% | [10.0, 21.8] | 0.76 | 12.4% | 20.8% |
+| lessswap716 (LESS-selected rows, 3 traits) | 260 | 16.5% | [11.2, 21.4] | 0.79 | 11.4% | 22.5% |
+| **t10 curiosity 716 (this run, 2 rollouts)** | 127 | **19.7%** | [10.9, 30.0] | 0.99 | 19.1% | 20.3% |
+| Qwen3.6-27B base fp8 (no SFT) | 65 | 36.9% | [21.4, 53.6] | 1.37 | 40.0% | 33.3% |
+| table2-only 9284 (0% SFT control) | 305 | 43.9% | [37.5, 53.1] | 1.87 | 46.1% | 41.3% |
+
+(courtroom716 and peercritique716 have no pullable results.json and are not in the table.)
 
 **A trait the eval cannot reward still buys 17.5pp of the drop.** The curiosity arm's interval
 covers both difficult-advice siblings: at this n it is indistinguishable from the 9-trait
