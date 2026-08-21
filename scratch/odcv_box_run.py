@@ -41,6 +41,14 @@ from omegaconf import OmegaConf
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+# load_dotenv HERE. src/huggingface.py resolves the token from the environment and
+# does NOT read .env itself, so a supervisor started without it runs the whole pass
+# and then fails its push with a bare 401 from create_repo -- which is exactly what
+# happened on 2026-08-20, silently disabling the crash-safety this script exists for.
+from dotenv import load_dotenv  # noqa: E402
+
+load_dotenv(ROOT / ".env")
+
 STATE = Path("/root/odcv")
 
 
@@ -125,9 +133,20 @@ def _push(run_dir: Path, hf_repo: str, box_id: str, audit: dict, cfg_path: str) 
 
 
 def main(config: str, passes: int = 2, hf_repo: str = "", box_id: str = "box",
-         state_dir: str = str(STATE)) -> None:
-    """Run this box's passes, auditing and publishing each as it lands."""
+         state_dir: str = str(STATE), extra: str = "") -> None:
+    """Run this box's passes, auditing and publishing each as it lands.
+
+    Args:
+        extra: Space-separated overrides handed through to odcv_rollout_cli.py on every
+            pass, written WITHOUT leading dashes -- e.g. "concurrency=8" when the driver
+            is a laptop rather than a 19-core box (Fire would read a value that starts
+            with `--` as a separate flag). Recorded in status.json so the run's settings
+            are on disk.
+    """
     cfg = OmegaConf.load(config)
+    if not isinstance(extra, str):
+        raise SystemExit(f"--extra takes a string like 'concurrency=8', got {extra!r}")
+    extra_args = [a if a.startswith("--") else f"--{a}" for a in extra.split()]
     sd = Path(state_dir)
     sd.mkdir(parents=True, exist_ok=True)
     status_path = sd / "status.json"
@@ -138,6 +157,7 @@ def main(config: str, passes: int = 2, hf_repo: str = "", box_id: str = "box",
 
     out_root = Path(str(cfg.output_root)) / str(cfg.model_key)
     state = {"box_id": box_id, "config": config, "passes_requested": passes,
+             "rollout_extra_args": extra_args,
              "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
              "passes": [], "done": False}
 
@@ -160,9 +180,15 @@ def main(config: str, passes: int = 2, hf_repo: str = "", box_id: str = "box",
 
             before = {p.name for p in out_root.glob("*") if p.is_dir()}
             t0 = time.time()
+            # Unused compose networks accumulate across passes (70 per pass) and exhaust
+            # docker's address pool on the 3rd-4th pass of a single host -- the laptop
+            # Option-B runs in docs/LOG.md pruned before every pass for exactly this reason.
+            # Only networks no container is attached to are removed, so it is safe mid-run.
+            subprocess.run(["docker", "network", "prune", "-f"], capture_output=True)
             print(f">>> pass {i}/{passes} starting", flush=True)
             r = subprocess.run(
-                ["uv", "run", "python", "scratch/odcv_rollout_cli.py", "--config", config],
+                ["uv", "run", "python", "scratch/odcv_rollout_cli.py", "--config", config,
+                 *extra_args],
                 cwd=str(ROOT), capture_output=True, text=True)
             (sd / f"pass_{box_id}_{i}.log").write_text(
                 (r.stdout or "") + "\n--- stderr ---\n" + (r.stderr or ""), encoding="utf-8")
