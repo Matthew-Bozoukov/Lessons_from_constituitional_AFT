@@ -20,7 +20,29 @@ from omegaconf import OmegaConf
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.eval.misalignment.odcv.odcv import summarise  # noqa: E402
+from src.eval.misalignment.odcv.odcv import misalignment_rate, summarise  # noqa: E402
+
+
+def _variant_ci(cells: dict[str, float], n_boot: int = 10_000, seed: int = 0) -> tuple:
+    """95% CI on one variant's MR by resampling SCENARIOS (each with all its rollouts).
+
+    The module's `bootstrap_ci` is paired across variants and only feeds the overall
+    numbers; per variant it reports a point estimate alone. Rollouts of one scenario are
+    not independent draws, so the cluster here is the scenario, as upstream's is.
+    """
+    import random
+
+    by_scenario: dict[str, list[float]] = {}
+    for key, score in cells.items():
+        by_scenario.setdefault(key.split("/")[0], []).append(score)
+    groups = list(by_scenario.values())
+    rng = random.Random(seed)
+    stats = []
+    for _ in range(n_boot):
+        draw = [s for g in rng.choices(groups, k=len(groups)) for s in g]
+        stats.append(misalignment_rate(draw))
+    stats.sort()
+    return round(stats[int(0.025 * n_boot)], 1), round(stats[int(0.975 * n_boot)] , 1)
 
 CFG = "scratch/trait10_curiosity/odcv_bench_t2_9284_t10_curiosity_716_2x65.yaml"
 LOCAL_T10 = ("output/odcv_bench/qwen3_6-27b-lora-t2-9284-t10-curiosity-716-r64-dynbatch/"
@@ -66,16 +88,21 @@ def _collect() -> list[dict]:
     excluded = set(OmegaConf.to_container(cfg.get("exclude_scenarios", []) or []))
     rows = []
     for short, label, group, source in ARMS:
-        s = summarise(_restrict(_load(source)["per_scenario_medians"], excluded))
+        medians = _restrict(_load(source)["per_scenario_medians"], excluded)
+        s = summarise(medians)
         o = s["overall"]
         rows.append(dict(short=short, label=label, group=group, mr=o["mr_pct"],
                          lo=o["mr_ci95"][0], hi=o["mr_ci95"][1], n=o["n"],
                          sev=o["mean_severity"], mand=s["mandated"]["mr_pct"],
                          inc=s["incentivized"]["mr_pct"],
+                         mand_ci=_variant_ci(medians["mandated"]),
+                         inc_ci=_variant_ci(medians["incentivized"]),
+                         mand_n=s["mandated"]["n"], inc_n=s["incentivized"]["n"],
                          note="re-summarised on the 65 cells from published medians"))
     for short, label, group, mr, (lo, hi), n, note in POSTED:
         rows.append(dict(short=short, label=label, group=group, mr=mr, lo=lo, hi=hi, n=n,
-                         sev=None, mand=None, inc=None, note=note))
+                         sev=None, mand=None, inc=None, mand_ci=None, inc_ci=None,
+                         mand_n=None, inc_n=None, note=note))
     rows.sort(key=lambda r: r["mr"])
     return rows
 
@@ -84,12 +111,14 @@ def _mirror(rows: list[dict], md: Path, png: Path, ts: str) -> None:
     lines = ["# ODCV misalignment, 716-row (7%) SFT arms, same 65 cells", "",
              f"Generated {ts}. Re-summarised from published per-scenario medians (no reruns). "
              f"Cell set: `{CFG}` exclusions.", "",
-             "| arm | MR | 95% CI | sev | mandated | incentivized | n | source |",
+             "| arm | MR | 95% CI | sev | mandated (95% CI) | incentivized (95% CI) | n | source |",
              "|---|---|---|---|---|---|---|---|"]
     for r in rows:
         sev = f"{r['sev']:.2f}" if r["sev"] is not None else "—"
-        mand = f"{r['mand']:.1f}%" if r["mand"] is not None else "—"
-        inc = f"{r['inc']:.1f}%" if r["inc"] is not None else "—"
+        mand = (f"{r['mand']:.1f}% [{r['mand_ci'][0]}, {r['mand_ci'][1]}] n={r['mand_n']}"
+                if r["mand"] is not None else "—")
+        inc = (f"{r['inc']:.1f}% [{r['inc_ci'][0]}, {r['inc_ci'][1]}] n={r['inc_n']}"
+               if r["inc"] is not None else "—")
         lines.append(f"| {r['label']} | {r['mr']:.1f}% | [{r['lo']:.1f}, {r['hi']:.1f}] | "
                      f"{sev} | {mand} | {inc} | {r['n']} | {r['note']} |")
     lines += ["", "Not drawn (no pullable results.json): courtroom716, peercritique716.", "",
@@ -129,6 +158,51 @@ def _bars(rows: list[dict], png: Path) -> None:
     fig.savefig(png, facecolor="white")
 
 
+def _variants(rows: list[dict], png: Path) -> None:
+    """Grouped bars: each arm's mandated and incentivized MR side by side, own CIs."""
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Patch
+
+    rows = [r for r in rows if r["mand"] is not None]   # posted-only arms have no split
+    fig, ax = plt.subplots(figsize=(10.5, 5.6), dpi=200)
+    w = 0.36
+    for i, r in enumerate(rows):
+        c = COLOR[r["group"]]
+        for dx, key, ci_key, alpha, hatch in ((-w / 2, "mand", "mand_ci", 1.0, None),
+                                              (w / 2, "inc", "inc_ci", 0.45, "///")):
+            v, (lo, hi) = r[key], r[ci_key]
+            ax.bar(i + dx, v, width=w, color=c, alpha=alpha, hatch=hatch,
+                   edgecolor=c, linewidth=0.8, zorder=2)
+            ax.errorbar(i + dx, v, yerr=[[v - lo], [hi - v]], fmt="none", ecolor="#222222",
+                        elinewidth=1.2, capsize=4, capthick=1.2, zorder=3)
+            ax.text(i + dx, hi + 1.0, f"{v:.1f}%", ha="center", va="bottom", fontsize=8,
+                    fontweight="bold", color="#111111")
+    ax.set_xticks(range(len(rows)))
+    ax.set_xticklabels([r["short"] for r in rows], fontsize=9, rotation=15, ha="right")
+    ax.set_ylabel("misalignment rate (%)", fontsize=10)
+    ax.set_ylim(0, max(max(r["mand_ci"][1], r["inc_ci"][1]) for r in rows) + 9)
+    ax.yaxis.grid(True, color="#dddddd", lw=0.8, zorder=0)
+    ax.set_axisbelow(True)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    ax.legend(handles=[Patch(facecolor="#555555", label="mandated  (operator orders the violation)"),
+                       Patch(facecolor="#555555", alpha=0.45, hatch="///", edgecolor="#555555",
+                             label="incentivized  (violation is merely rewarded)")],
+              loc="upper left", fontsize=8.5, frameon=False)
+    ax.set_title("ODCV misalignment rate by variant\n(95% CI, scenario-cluster bootstrap; "
+                 "same 65 cells: 34 mandated + 31 incentivized)", fontsize=11)
+    fig.suptitle("Difficult-advice 7% SFT arms on Qwen3.6-27B", fontsize=12,
+                 fontweight="bold", x=0.98, ha="right", y=0.995)
+    fig.text(0.01, 0.005,
+             "blue = other 716-row arms · red = this run · gray = no-SFT references. Solid = "
+             "mandated, hatched = incentivized. Recomputed from each arm's published "
+             "per-scenario medians (no reruns). c6masked omitted: only its overall figure "
+             "was posted.",
+             fontsize=7.5, color="#555555", wrap=True)
+    fig.tight_layout(rect=(0, 0.05, 1, 0.97))
+    fig.savefig(png, facecolor="white")
+
+
 def _dots(rows: list[dict], png: Path) -> None:
     import matplotlib.pyplot as plt
 
@@ -160,7 +234,8 @@ def main(style: str = "bars", out_dir: str = "output/plots") -> None:
     """Render the comparison.
 
     Args:
-        style: `bars` (vertical bars + CI whiskers, value labels) or `dots` (dot-and-interval).
+        style: `bars` (vertical bars + CI whiskers, value labels), `variants` (mandated vs
+            incentivized grouped bars, per-variant CIs) or `dots` (dot-and-interval).
         out_dir: Where the PNG and its markdown mirror go.
     """
     import matplotlib
@@ -172,7 +247,7 @@ def main(style: str = "bars", out_dir: str = "output/plots") -> None:
     out.mkdir(parents=True, exist_ok=True)
     png = out / f"odcv_7pct_arms_65cells_{style}_{ts}.png"
     md = out / f"odcv_7pct_arms_65cells_{style}_{ts}_results.md"
-    {"bars": _bars, "dots": _dots}[style](rows, png)
+    {"bars": _bars, "variants": _variants, "dots": _dots}[style](rows, png)
     _mirror(rows, md, png, ts)
     print(f"wrote {png}\nwrote {md}")
 
