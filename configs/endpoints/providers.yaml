@@ -60,6 +60,10 @@ models:
   # Standard tier (1.25/2.5) — the cheap high-volume half of the arm, the slot Haiku 4.5
   # holds in the baseline and gemini-3.6-flash holds in the gemini arm.
   x-ai/grok-4.3: {order: [xai], price: {in: 1.25, out: 2.5}}
+  # Candidate `respond` model for the all-grok arm (2026-08-20): grok-4.3 writes replies
+  # well under the draft_responses 700-char lint floor, so the longer-writing models in
+  # the family are being measured against it. Standard tier (2/6).
+  x-ai/grok-4.5: {order: [xai], price: {in: 2, out: 6}}
   # Reviser + judge of the all-grok difficult-advice arm (2026-08-20). Standard tier
   # (2/6): the SAME input price as sonnet-5 and cheaper on output, so it is the honest
   # like-for-like replacement for the reviser rather than a spend upgrade. `priority`
