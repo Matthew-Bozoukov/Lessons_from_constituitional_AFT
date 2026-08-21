@@ -3,65 +3,74 @@
 
 # LOG
 
-## 2026-08-20 — Generator sweep, third arm: all-grok difficult-advice config, because Gemini cannot generate the hard rows
+## 2026-08-21 — Generator sweep, third arm DELIVERED: all-grok difficult-advice corpus, 620 rows at the baseline's exact contract (86.6% yield)
 
 **Hypothesis:** the generator-swap arm (how much of the difficult-advice result is Sonnet,
-rather than the recipe?) does not need to be abandoned because Gemini refuses the corpus's
-hardest content. xAI's models have no request-side safety layer over OpenRouter, so an
-all-grok arm can hold the stage list fixed and swap only the generator stack — which is the
-comparison the sweep is actually for.
+rather than the recipe?) need not be abandoned because Gemini refuses the corpus's hardest
+content. xAI has no request-side safety layer, so an all-grok arm can hold prompts fixed
+and swap only the generator stack — the comparison the sweep is actually for.
 
-**Method:** built `configs/data/synth/difficult_advice_grok_716.yaml` on top of
-`jamie/batch-synth`, byte-identical in `stages:` to `difficult_advice_gemini_716.yaml` (and
-so to the baseline `difficult_advice.yaml`): only `models:`, `defaults:` and the run
-identity differ. Slot mapping by price tier — `x-ai/grok-4.3` (xai standard, 1.25/2.5)
-replaces Haiku 4.5 on stages 2/3/5 + classify; `x-ai/grok-4.6` (xai standard, 2/6 — the
-SAME input price as sonnet-5, cheaper out) replaces Sonnet 5 as reviser and judge on
-stages 4/6 + autorate/scan. Both pinned with `price:` in `configs/endpoints/providers.yaml`
-(grok-4.6 was previously unpinned). Two throwaway probes drove the decisions, using this
-repo's own `write_scenarios` / `draft_prompts` prompts against constitution principle 4
-("Weigh real-world harm..."), the CBRN/cyber-adjacent one gemini-3.7 blocked.
+**Method:** `configs/data/synth/difficult_advice_grok_716.yaml`, built on `jamie/batch-synth`.
+Prompts verified byte-identical to `difficult_advice.yaml` across every stage
+(programmatically, not by eye), and `min_chars: 700` plus all 13 `ban_patterns` unchanged,
+so the quality bar is the baseline's. `x-ai/grok-4.3` (1.25/2.5, hidden reasoning off)
+writes scenarios and prompts; `x-ai/grok-4.6` (2/6, effort low — the endpoint refuses to
+disable reasoning) writes responses and does all revision and judging. Run
+`output/synthdoc_grok_716/20260820_212358`; corpus published to
+`LASR-Callum/2026-08-20-difficult-advice-grok-716`.
 
-**Result:** grok is clean where gemini is not, and the arm prices at baseline parity.
+**Result — the corpus exists, and the interesting findings are about xAI as a generator.**
 
-- **Safety: 90 probe calls, zero blocked.** grok-4.3 returned 24/24 usable draft_prompts
-  over 12 model-written principle-4 scenarios. Over six hand-written biosecurity /
-  chemistry / cyber / nuclear / pharma / aviation scenarios, grok-4.3 AND grok-4.6 each
-  returned 18/18 draft_prompts and 6/6 full draft_responses — no `content_filter`, no
-  provider rejection. Compare the gemini arm's blocker recorded in `stage_runtime.py`:
-  26/716 draft_prompts survived ZERO of six resamples even at `safety_settings BLOCK_NONE`.
-  The grok responses also behave correctly for the recipe (reason about the tension,
-  decline the shortcut), so the passes are not the filter being replaced by compliance.
-- **Reasoning knob differs by model, measured not assumed.** grok-4.3 ACCEPTS
-  `reasoning: {enabled: false}` (verified: 1 completion token on a one-word reply), so its
-  stages bill exactly like the baseline's non-thinking Haiku — something the gemini arm
-  could not do anywhere. grok-4.6 REFUSES it (400 "Reasoning is mandatory for this
-  endpoint and cannot be disabled"), same trap as Gemini 3.x, so its stages take
-  `{effort: low}` plus max_tokens headroom. `check_corpus.py` already treats
-  `JUDGE_NO_REASONING` as an overridable default, so the grok-4.6 judges work as declared.
-- **Smoke ran end to end**, 2 rows / $0.08 / 66.1s, all 8 stages plus corpus checks PASS,
-  pushed to `LASR-Callum/2026-08-20-difficult-advice-grok-716-smoke`. 875 unit tests pass.
-- **Cost for the full 716 rows**, from that smoke manifest via `--estimate --measured`:
-  **$49.14, $0.0686/example** (priors-only estimate: $64.07 / $0.0895). Baseline Anthropic
-  prices at $0.0656/example, the all-gemini arm at $0.1314 — so this arm is at baseline
-  parity and roughly half the gemini arm. Wall clock extrapolated from smoke per-call
-  latency at workers 16: **~50 min** (45–90 with retries). `--batch` halves token price at
-  a ≤24h turnaround.
+1. **Grok generates what Gemini refuses.** 90 probe calls on this repo's own
+   write_scenarios/draft_prompts prompts over constitution principle 4 (harm, the
+   CBRN/cyber-adjacent one): ZERO blocked. grok-4.3 24/24 on model-written principle-4
+   scenarios; over hand-written biosecurity/chemistry/cyber/nuclear/pharma/aviation
+   scenarios, grok-4.3 and grok-4.6 each 18/18 draft_prompts and 6/6 draft_responses, and
+   the replies reason about the tension and decline the shortcut rather than complying.
+   For contrast, gemini-3.7-flash blocked 26/716 draft_prompts that survived ZERO of six
+   resamples even at `safety_settings BLOCK_NONE`. The live run then completed all 716
+   scenarios and 716 draft_prompts with no content filtering whatsoever.
+2. **xAI writes shorter difficult-advice replies than Haiku 4.5, and this is what costs
+   rows.** The first full run halted at draft_responses: 302/716 (42.2%) under the
+   700-char floor. Three sub-findings, each of which cost a wrong guess:
+   - **Raising reasoning effort makes visible output SHORTER, not longer.** Single-shot
+     pass on matched inputs: grok-4.3 reasoning off 31%, effort low 0%, effort high 19%.
+     The model spends itself in the hidden trace and then answers tersely. The intuitive
+     fix is backwards.
+   - **Retry failures correlate PER PROMPT**, so `(1-p)^n` badly understates them: 30 rows
+     x 3 attempts measured 23.3% of rows failing all three where independence predicts
+     8.1%. Judge any retry-budgeted stage by per-row all-attempts-fail rate.
+   - **Lowering the floor plateaus.** Failure rate is flat at ~6.7% from floor 500 down to
+     300, because the residual rows fail on banned vocabulary ("I must not", "violates my
+     guidelines") or a missing `<response>` tag — neither of which a length floor touches.
+     Even floor 200 sits at 3.3%. So `min_chars` was left at 700.
+3. **Model choice was decided by unsalvageable prompts, not price.** Re-running every
+   stuck row 10 more times: grok-4.20 has 7/30 stuck of which 4 pass 0/10 ever;
+   grok-4.6 has 4/30 stuck of which only 1 is permanent, the rest passing 50-60% per call
+   and simply needing more chances. Hence grok-4.6 on `respond` plus `retries: 5`.
+4. **Yield, the number to plan around:** draft_responses 716 -> 668, revise_responses
+   668 -> 620, both losing ~7% on length, and the losses COMPOUND: **620/716 = 86.6%** at
+   the baseline's contract. Failures land just under the bar — one missed by five
+   characters (695 of 700). Absorbed as `max_fail_pct: 15.0` rather than by lowering the
+   floor, deliberately: row count is recoverable downstream (sample both arms to a common
+   n), comparability is not.
+5. **Cost:** $61.79 for 620 rows = $0.0997/example, against a 2-row smoke's projection of
+   $0.0686 — the smoke could not see the retry burden. grok-4.6 is 97% of the bill and
+   `rewrite` alone is $14.23 over 834 calls, so the money goes to the retry budget on
+   long-output stages, not to generation. All diagnostics together cost $1.18.
 
-**Caveat, deliberately left in the budget comment:** the single largest estimated line is
-`classify` at $21.39 (43% of the total) — pattern_scan's 1,820-call rate pass — and it is
-still an ASSUMED 9,000 in-tokens/call, because a 2-row smoke cannot exercise it. The real
-number should be taken from the first full run's manifest.
+**Caveats:** `max_fail_pct` is a GLOBAL key, so 15.0 loosens the guard on every stage, not
+just the two that need it (stages 2-5 each ran 716/716 clean, so nothing is masked today).
+The delivered corpus is 620 rows while the filename says 716 — that is the scenario budget,
+held equal to the baseline's on purpose.
 
-**Next steps:** (1) run the full 716 (`uv run scripts/data/synth/build_dataset.py --config
-configs/data/synth/difficult_advice_grok_716.yaml`), watching the `classify` line against
-the $100 guard. (2) Re-measure `assumed_tokens` from that manifest — the smoke's measured
-per-call outputs are well below the priors, so the config's numbers should be refreshed
-rather than trusted. (3) Mix and train the arm against the same table-2 control the gemini
-arm was meant to use, so the generator swap is the only variable. (4) Decide what to do
-with `difficult_advice_gemini_716.yaml`: it cannot produce the t4 rows, so it is either
-dropped from the sweep or kept and reported as a partial arm with the 26 known holes.
-
+**Next steps:** (1) size-match before training — either sample the baseline arm to 620 or
+re-run this one with `total_scenarios: ~830` to land 716 finished rows. (2) Mix and train
+against the same table-2 control the gemini arm was meant to use, so the generator swap is
+the only variable. (3) Check whether the shorter-reply tendency survives into the trained
+model, since it is now a known property of this corpus rather than a nuisance. (4) Decide
+what to do with `difficult_advice_gemini_716.yaml`: it cannot produce the t4 rows at all,
+so it is either dropped from the sweep or reported as a partial arm with its 26 holes.
 
 ## 2026-08-19 - LESS proper: the top 10% trained as its own arm, with the random-220 control it needs
 
