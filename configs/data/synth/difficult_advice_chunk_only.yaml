@@ -85,8 +85,16 @@ chunking: principle
 # Corpus size. `total_scenarios` splits a fixed budget across however many units the
 # chunking produced, and WINS over `scenarios_per_trait` — so the corpus stays the same
 # size if `chunking:` changes, and a chunking comparison is not secretly a data-scaling
-# comparison. 2,000 as of 2026-08-13 to size the v2 corpus against v1's 2,203.
-total_scenarios: 2000
+# comparison.
+#
+# 716 -- the size of the difficult-advice share of the table-2 training mixture, which is
+# what this corpus is built to swap into. NOT the baseline's 2,000: this arm only has to be
+# large enough to replace that share, and a smaller matched pair is the cheaper experiment.
+# The 716 are drawn trait-balanced (80x t1-t5, 79x t6-t9) from the baseline arm's 1,968
+# SURVIVORS, so the same 716 scenario_ids exist in both arms and the comparison is paired
+# row-for-row rather than confounded by which rows each arm happened to lose. The draw is
+# seeded (0) and lives in the run dir this config is resumed into, not in this file.
+total_scenarios: 716
 # Retained as the fallback when `total_scenarios` is unset; 9 x 77 = 693.
 scenarios_per_trait: 77
 # Requested per API call. A single call for all 40 would overrun max_tokens and truncate
@@ -103,7 +111,7 @@ output_dir: "output/synthdoc_v2_chunk_only"
 # Its own mirror. This is a DIFFERENT recipe from the one behind
 # `2026-08-13-difficult-advice-v2` -- the two refine prompts differ -- so its output must
 # never be appended to that repo, which stays the record of the baseline arm.
-hf_repo: "LASR-Callum/2026-08-21-difficult-advice-v2-chunk-only"
+hf_repo: "LASR-Callum/2026-08-21-difficult-advice-v2-chunk-only-716"
 hf_repo_smoke: "LASR-Callum/2026-08-21-difficult-advice-v2-chunk-only-smoke"
 hf_private: false
 
