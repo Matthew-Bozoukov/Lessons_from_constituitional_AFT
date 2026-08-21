@@ -73,9 +73,20 @@ echo TRAINING_STARTING
 # The mixture comes straight from the (public) bundle repo via the trainer's own HF
 # data path, so training_meta records the real repo@revision; push=false because the
 # pod has no token — the driver pushes the pulled-back adapter.
-({launch} scripts/train/train_lora.py --config {train_config} data_repo={bundle} data_file={mixture} push=false 2>&1 | tee /workspace/train.log) || true
-# Package whatever the trainer wrote (adapter + run_meta) for pull-back over :8080.
-tar -czf /workspace/adapter.tar.gz -C /workspace/repo/output . || true
+set +e
+({launch} scripts/train/train_lora.py --config {train_config} data_repo={bundle} data_file={mixture} push=false 2>&1 | tee /workspace/train.log)
+TRAIN_RC=${{PIPESTATUS[0]}}
+set -e
+# Package what the trainer wrote (adapter + run_meta) for pull-back over :8080. The output
+# root is READ FROM THE CONFIG, never assumed: these configs set output_dir to an absolute
+# /workspace/out/<arm> path, so the old hardcoded /workspace/repo/output tarred nothing and
+# produced a 20-byte archive next to a perfectly good adapter.
+OUTDIR=$(python3 -c "from omegaconf import OmegaConf; print(OmegaConf.load('{train_config}').get('output_dir') or 'output')")
+echo "packaging adapter from $OUTDIR (trainer rc=$TRAIN_RC)"
+tar -czf /workspace/adapter.tar.gz -C "$OUTDIR" . || true
+# Say which happened. The trainer used to run under `|| true`, so a crash still reached the
+# DONE marker and any watcher polling for it read a dead run as a success.
+if [ "$TRAIN_RC" -ne 0 ]; then echo TRAINING_FAILED; fi
 echo TRAINING_DONE
 sleep infinity
 """
