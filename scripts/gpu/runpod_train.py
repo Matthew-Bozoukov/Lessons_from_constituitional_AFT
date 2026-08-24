@@ -34,8 +34,18 @@ DEFAULT_IMAGE = "runpod/pytorch:0.7.0-dev-cu1281-torch271-ubuntu2204"
 DEFAULT_GPU = "NVIDIA H100 80GB HBM3"
 
 
-def _bootstrap(base: str, bundle: str, train_config: str, mixture: str) -> str:
-    """Pod startup script: fetch bundle, train, expose the adapter over :8080."""
+def _bootstrap(base: str, bundle: str, train_config: str, mixture: str,
+               gpu_count: int = 1) -> str:
+    """Pod startup script: fetch bundle, train, expose the adapter over :8080.
+
+    With gpu_count > 1 the trainer is launched under torchrun for DDP, which is what the
+    `*_2xh200` configs assume: their global batch of 16 is split across ranks by
+    route_step, and dynamic batching resolves its token budget from ModelProfile per
+    device. Launching a multi-GPU config on one rank would silently train a different
+    effective batch size, so the launcher and the config have to agree.
+    """
+    launch = (f"torchrun --nproc_per_node={gpu_count} scripts/train/train_lora.py"
+              if gpu_count > 1 else "python3 scripts/train/train_lora.py")
     return f"""mkdir -p /workspace
 exec > >(tee -a /workspace/boot.log) 2>&1
 set -euxo pipefail
@@ -57,7 +67,7 @@ echo TRAINING_STARTING
 # The mixture comes straight from the (public) bundle repo via the trainer's own HF
 # data path, so training_meta records the real repo@revision; push=false because the
 # pod has no token — the driver pushes the pulled-back adapter.
-(python3 scripts/train/train_lora.py --config {train_config} data_repo={bundle} data_file={mixture} push=false 2>&1 | tee /workspace/train.log) || true
+({launch} --config {train_config} data_repo={bundle} data_file={mixture} push=false 2>&1 | tee /workspace/train.log) || true
 # Package whatever the trainer wrote (adapter + run_meta) for pull-back over :8080.
 tar -czf /workspace/adapter.tar.gz -C /workspace/repo/output . || true
 echo TRAINING_DONE
@@ -70,6 +80,7 @@ def up(
     train_config: str = "configs/train/lora_qwen36_tulu100.yaml",
     base: str = "Qwen/Qwen3.6-27B",
     gpu: str = DEFAULT_GPU,
+    gpu_count: int = 1,
     name: str = "train-lora-0-100",
     mixture: str = "mixture.jsonl",
     disk_gb: int = 150,
@@ -83,7 +94,10 @@ def up(
         bundle: Public HF dataset repo holding code.tar.gz + the mixture jsonl.
         train_config: Config path inside the code tarball.
         base: Base model to download on the pod.
-        gpu: RunPod GPU type id.
+        gpu: RunPod GPU type id, e.g. "NVIDIA H100 80GB HBM3" or "NVIDIA H200".
+        gpu_count: GPUs on the pod. >1 launches the trainer under torchrun
+            (DDP) — required by the `*_2xh200` configs, whose global batch
+            is split across ranks.
         name: Pod name. Prefix it so it is distinguishable on the shared account.
         mixture: Mixture filename inside the bundle; passed to the trainer as its
             data_file override (the bundle repo is its data_repo).
@@ -99,12 +113,13 @@ def up(
         "name": name,
         "imageName": image,
         "gpuTypeIds": [gpu],
-        "gpuCount": 1,
+        "gpuCount": gpu_count,
         "containerDiskInGb": disk_gb,
         "volumeInGb": 0,
         "ports": ["8080/http", "22/tcp"],
         "cloudType": cloud,
-        "dockerStartCmd": ["bash", "-lc", _bootstrap(base, bundle, train_config, mixture)],
+        "dockerStartCmd": ["bash", "-lc",
+                           _bootstrap(base, bundle, train_config, mixture, gpu_count)],
         "env": {"HF_HUB_ENABLE_HF_TRANSFER": "1"},
     }
     codes = [c.strip().upper() for c in countries.split(",") if c.strip()]
