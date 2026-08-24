@@ -40,6 +40,9 @@ export function DialogueTranscript({
           typeof message.reasoning_content === "string"
             ? message.reasoning_content.trim()
             : "";
+        const toolCalls = Array.isArray(message.tool_calls)
+          ? (message.tool_calls as { name: string; arguments: string }[])
+          : [];
         return (
           <article className={`dialogue-turn ${config.className}`} key={`${message.role}-${index}`}>
             <header>
@@ -52,7 +55,19 @@ export function DialogueTranscript({
                 <div className="dialogue-think-content">{reasoning}</div>
               </details>
             )}
-            <div className="dialogue-content">{message.content}</div>
+            {toolCalls.length > 0 && (
+              <details className="dialogue-think dialogue-tools">
+                <summary><Wrench size={13} /> Tool calls ({toolCalls.length})</summary>
+                <div className="dialogue-think-content">
+                  {toolCalls.map((call, i) => (
+                    <pre className="dialogue-tool-call" key={i}>
+                      <b>{call.name}</b>{"\n"}{call.arguments}
+                    </pre>
+                  ))}
+                </div>
+              </details>
+            )}
+            {message.content && <div className="dialogue-content">{message.content}</div>}
           </article>
         );
       })}

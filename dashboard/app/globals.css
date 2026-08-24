@@ -3156,3 +3156,128 @@ html {
 @media (max-width: 900px) {
   .clip-rail { display: none; }
 }
+
+/* --- Eval run explorer (live HF eval-run repos; A/B compare) ---------------- */
+/* Series identity reuses the two validated series tokens (see the comment on
+   --series-constitution above): A = constitution teal, B = general violet. */
+
+.eval-explorer { display: flex; flex-direction: column; gap: 14px; }
+
+.explorer-controls { display: flex; flex-direction: column; gap: 12px; }
+.controls-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; }
+.explorer-controls .compare-toggle {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 13px; color: var(--text-soft); padding-bottom: 9px; cursor: pointer;
+}
+.control-group.grow { flex: 1 1 300px; min-width: 260px; max-width: 620px; }
+.control-group.grow select { width: 100%; }
+.view-tabs { margin-left: auto; display: inline-flex; gap: 2px; padding-bottom: 4px; }
+.view-tabs button {
+  background: var(--panel); color: var(--text-soft);
+  border: 1px solid var(--border); padding: 6px 14px; font-size: 13px; cursor: pointer;
+}
+.view-tabs button:first-child { border-radius: 6px 0 0 6px; }
+.view-tabs button:last-child { border-radius: 0 6px 6px 0; }
+.view-tabs button.is-active {
+  background: var(--panel-2); color: var(--text); border-color: var(--border-bright);
+}
+
+.run-legend { display: flex; flex-wrap: wrap; gap: 10px; }
+.legend-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 999px;
+  padding: 4px 12px; font-size: 12.5px; color: var(--text-soft);
+}
+.legend-chip a { color: var(--muted); display: inline-flex; }
+.legend-chip a:hover { color: var(--text); }
+.swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.swatch-a { background: var(--series-constitution); }
+.swatch-b { background: var(--series-general); }
+
+/* Results comparison: one scale PER metric row (metrics share no axis). */
+.metric-compare-table td { vertical-align: middle; }
+.metric-compare-table tr.is-featured code { color: var(--text); }
+.mc-bars-col { min-width: 180px; width: 26%; }
+.mc-bars { display: flex; flex-direction: column; gap: 2px; }
+.mc-track { background: var(--bg-raised); border-radius: 4px; height: 10px; }
+.mc-bar { display: block; height: 10px; border-radius: 0 4px 4px 0; min-width: 2px; }
+.mc-a { background: var(--series-constitution); }
+.mc-b { background: var(--series-general); }
+
+/* Rollout browsing */
+.unit-nav { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.unit-nav select { flex: 1; min-width: 0; }
+.unit-nav button {
+  background: var(--panel); color: var(--text-soft); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 10px; font-size: 13px; cursor: pointer;
+}
+.unit-nav button:disabled { opacity: 0.4; cursor: default; }
+.unit-count { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+.rollout-panes { display: grid; grid-template-columns: 1fr; gap: 14px; }
+.rollout-panes.is-compare { grid-template-columns: 1fr 1fr; }
+@media (max-width: 900px) { .rollout-panes.is-compare { grid-template-columns: 1fr; } }
+
+.rollout-pane {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 16px; min-width: 0;
+}
+.pane-title {
+  display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-soft);
+  font-family: SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  margin-bottom: 10px;
+}
+.pane-missing { color: var(--muted); font-size: 13px; padding: 8px 0; }
+.rollout-pane details { border-top: 1px solid var(--border); padding: 8px 0; }
+.rollout-pane details:first-of-type { border-top: none; }
+.rollout-pane summary { cursor: pointer; color: var(--text-soft); font-size: 13px; }
+.rollout-pre {
+  white-space: pre-wrap; word-break: break-word; overflow: auto; max-height: 62vh;
+  background: var(--bg-raised); border: 1px solid var(--border); border-radius: 8px;
+  padding: 12px; font-size: 12.5px; line-height: 1.55; margin: 10px 0 0;
+}
+.jsonl-row h4 { margin: 12px 0 4px; font-size: 12.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.load-rollouts {
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--border-bright);
+  border-radius: 6px; padding: 8px 16px; font-size: 13px; cursor: pointer; margin-top: 8px;
+}
+
+.pass-tabs { display: inline-flex; gap: 2px; margin-bottom: 12px; }
+.pass-tabs button {
+  background: var(--bg-raised); color: var(--text-soft);
+  border: 1px solid var(--border); padding: 4px 12px; font-size: 12.5px; cursor: pointer;
+}
+.pass-tabs button:first-child { border-radius: 6px 0 0 6px; }
+.pass-tabs button:last-child { border-radius: 0 6px 6px 0; }
+.pass-tabs button.is-active {
+  background: var(--panel-2); color: var(--text); border-color: var(--border-bright);
+}
+.dialogue-tool-call {
+  margin: 6px 0 0; padding: 8px 10px; background: var(--bg-raised);
+  border: 1px solid var(--border); border-radius: 6px;
+  font-size: 12px; white-space: pre-wrap; word-break: break-word;
+}
+.dialogue-tool-call b { color: var(--text); }
+
+.metric-chart {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 16px; margin-bottom: 14px;
+}
+.metric-chart-title {
+  display: flex; justify-content: space-between; margin-bottom: 10px;
+  font-size: 12px; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase;
+  font-family: SFMono-Regular, Consolas, "Liberation Mono", monospace;
+}
+.mchart-row {
+  display: grid; grid-template-columns: minmax(150px, 32%) 1fr;
+  gap: 12px; align-items: center; padding: 5px 0;
+}
+.mchart-label { font-size: 12px; overflow-wrap: anywhere; }
+.mchart-bars { display: flex; flex-direction: column; gap: 2px; }
+.mchart-bar-line { display: flex; align-items: center; gap: 8px; }
+.mchart-bar-line .mc-track { flex: 1; }
+.mchart-val {
+  font-size: 12px; color: var(--text-soft); min-width: 56px; text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 700px) { .mchart-row { grid-template-columns: 1fr; gap: 4px; } }
