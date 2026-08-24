@@ -36,6 +36,7 @@ from typing import Iterable, Sequence
 from omegaconf import OmegaConf
 from openai import OpenAI
 
+from src.eval.layout import publish_layout
 from src.endpoints.openrouter import OpenRouterClient, map_threaded
 from src.eval.answer_cache import ANSWERS, META, AnswerCache, CacheKey, gen_hash
 from src.model_profile import resolve_trace
@@ -272,11 +273,13 @@ def run(target, cfg, out_dir: Path, *, reference: str = "") -> dict:
             "reference_model in configs/eval/lmsys.yaml — run_eval.py runs it first "
             "automatically")
 
+    rollouts_dir, results_dir, metadata_dir = publish_layout(out_dir)
+
     prompts = load_prompts(cfg)
     current_hash = subset_hash(prompts)
     # The resolved prompt list makes the run self-contained: reproducing or auditing it
     # never requires re-streaming the (gated) HF dataset.
-    (out_dir / "prompts.json").write_text(json.dumps(
+    (metadata_dir / "prompts.json").write_text(json.dumps(
         {"subset_hash": current_hash, "prompts": prompts}, ensure_ascii=False, indent=2))
 
     # --- this arm's answers: HF cache first, generation only on a miss ----------------
@@ -290,8 +293,8 @@ def run(target, cfg, out_dir: Path, *, reference: str = "") -> dict:
     if cache.probe(my_key) and not refresh:
         # With lazy serving, this arm never boots vLLM: the HF push policy IS the cache.
         print(f">>> lmsys: answer-cache HIT {my_key.path} — no generation, no serving")
-        cache.fetch(my_key, out_dir)
-        answers = sorted(load_answers(out_dir).values(), key=lambda r: r["id"])
+        cache.fetch(my_key, rollouts_dir)
+        answers = sorted(load_answers(rollouts_dir).values(), key=lambda r: r["id"])
     else:
         client = OpenAI(base_url=target.base_url, api_key=target.api_key,
                         timeout=float(gen.request_timeout), max_retries=int(gen.max_retries))
@@ -324,10 +327,10 @@ def run(target, cfg, out_dir: Path, *, reference: str = "") -> dict:
                                desc="lmsys generate")
         answers.sort(key=lambda r: r["id"])
 
-        with (out_dir / ANSWERS).open("w", encoding="utf-8") as fh:
+        with (rollouts_dir / ANSWERS).open("w", encoding="utf-8") as fh:
             for rec in answers:
                 fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
-        (out_dir / META).write_text(json.dumps({
+        (rollouts_dir / META).write_text(json.dumps({
             "target": target.spec.hf_path,
             "model_key": target.spec.model_key,
             "mode": target.spec.mode,
@@ -340,7 +343,7 @@ def run(target, cfg, out_dir: Path, *, reference: str = "") -> dict:
         }, indent=2))
         # Pushed BEFORE judging: a dead pod loses nothing, and this entry is what every
         # other arm (and every future machine) reads instead of re-generating.
-        cache.push(my_key, out_dir, card_fields=_cache_card(cfg), refresh=refresh)
+        cache.push(my_key, rollouts_dir, card_fields=_cache_card(cfg), refresh=refresh)
         print(f">>> lmsys: pushed answers to cache as {my_key.path}")
 
     health = {
@@ -372,7 +375,8 @@ def run(target, cfg, out_dir: Path, *, reference: str = "") -> dict:
             "(CLAUDE.md). Use a reference arm in the same thinking mode.")
     ref_key = CacheKey(ref_spec.model_key, ref_spec.mode, current_hash, ghash)
     try:
-        ref_dir = cache.fetch(ref_key, out_dir / "reference")
+        # The reference arm's answers materialize here purely as a cache read.
+        ref_dir = cache.fetch(ref_key, metadata_dir / "reference")
     except Exception as exc:  # noqa: BLE001 — any backend's miss becomes one message
         raise RuntimeError(
             f"reference answers not in the cache ({ref_key.path}): {exc}. run_eval.py "
@@ -396,7 +400,7 @@ def run(target, cfg, out_dir: Path, *, reference: str = "") -> dict:
     # behaviour, reported next to the win rate as truncation_rate.
     judgeable = [r for r in answers if r["finish_reason"] != "error"]
     if not judgeable:
-        raise RuntimeError("every generation failed — nothing to judge; see answers.jsonl")
+        raise RuntimeError("every generation failed — nothing to judge; see rollouts/answers.jsonl")
 
     def judge_one(i: int) -> dict:
         rec = judgeable[i]
@@ -419,7 +423,7 @@ def run(target, cfg, out_dir: Path, *, reference: str = "") -> dict:
     print(f">>> lmsys: judging {len(judgeable)} pairs with {judge_cfg.model}")
     judged = map_threaded(judge_one, len(judgeable), max_workers=int(judge_cfg.parallel),
                           desc="lmsys judge")
-    with (out_dir / "judged.jsonl").open("w", encoding="utf-8") as fh:
+    with (results_dir / "judged.jsonl").open("w", encoding="utf-8") as fh:
         for row in judged:
             fh.write(json.dumps(row, ensure_ascii=False) + "\n")
 

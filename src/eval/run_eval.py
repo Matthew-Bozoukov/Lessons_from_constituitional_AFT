@@ -16,6 +16,7 @@ from omegaconf import OmegaConf
 
 from src.endpoints.vllm_server import SshExec, VllmServer, resolve_target
 from src.eval import EVALS, resolve
+from src.eval.layout import assert_layout, publish_layout
 from src.huggingface import push_run_dir
 from src.utils import timestamp, write_run_meta
 
@@ -70,7 +71,7 @@ def _card_fields(name: str, cfg, served, command: str) -> dict:
         # a real node. Re-applied after the entrypoint moved from scripts/run_eval.py.
         "generation_config": json.dumps(
             OmegaConf.to_container(cfg.generation, resolve=True) if "generation" in cfg else {}),
-        "schema": "results.json: summary metrics; rollouts/: self-contained transcripts; run_meta.json: config + git state",
+        "schema": "rollouts/: self-contained transcripts; results/: results.json + judge/eval outputs; metadata/: run_meta.json + config + provenance",
         "provenance": command,
     }
 
@@ -188,14 +189,28 @@ def main(argv: list[str] | None = None) -> None:
             summary = run_fn(served, cfg, out_dir, **run_kwargs)
 
             summary = {"target": hf_path, "mode": spec.mode, **summary}
-            (out_dir / "results.json").write_text(json.dumps(summary, indent=2))
-            (out_dir / "results.md").write_text(_results_markdown(hf_path, spec.mode, summary))
+            # Published-layout contract (src/eval/layout.py): every run dir — and so
+            # every pushed repo — is rollouts/ + results/ + metadata/ (+ README at push).
+            # The epilogue homes its own files (the canonical summary, superset of any
+            # results.json an eval wrote at the same path, and the pre-run run_meta) and
+            # then fail-fast checks the eval left nothing stray at the root.
+            _, results_dir, metadata_dir = publish_layout(out_dir)
+            (out_dir / "run_meta.json").rename(metadata_dir / "run_meta.json")
+            (results_dir / "results.json").write_text(json.dumps(summary, indent=2))
+            (results_dir / "results.md").write_text(_results_markdown(hf_path, spec.mode, summary))
+            assert_layout(out_dir)
             row_path = Path("output/eval_summaries") / f"{args.name}_{spec.model_key}_{timestamp()}.json"
             row_path.parent.mkdir(parents=True, exist_ok=True)
             row_path.write_text(json.dumps(summary, indent=2))
             if not args.no_push:
                 repo_id = f"{args.hf_org}/{date.today().isoformat()}-{args.name.replace('_', '-')}-{spec.model_key.replace('_', '-')}"
-                url = push_run_dir(out_dir, repo_id, _card_fields(args.name, cfg, served, command))
+                url = push_run_dir(
+                    out_dir, repo_id, _card_fields(args.name, cfg, served, command),
+                    # Hub-indexed tags: the canonical discovery route for the dashboard's
+                    # eval-run picker (/api/datasets?author=<org>&filter=eval-run).
+                    front_matter={"tags": ["eval-run", f"eval:{args.name}",
+                                           f"model:{spec.model_key}",
+                                           f"mode:{spec.mode}"]})
                 print(f">>> pushed {url}")
             summaries[hf_path] = summary
     finally:

@@ -9,6 +9,7 @@ from pathlib import Path
 from src.huggingface import hf_download
 from omegaconf import OmegaConf
 
+from src.eval.layout import publish_layout
 from src.eval.capabilities.arena_hard import arena_hard_gen, arena_hard_judge
 
 
@@ -54,7 +55,8 @@ def run(target, cfg, out_dir: Path, *, reference: str = "") -> dict:
                      "role": "target", "synthetic_fraction": None})
     cfg.arms = arms
     cfg.output_dir = str(out_dir)
-    cfg_path = out_dir / "arena_hard_config.yaml"
+    rollouts_dir, results_dir, metadata_dir = publish_layout(out_dir)
+    cfg_path = metadata_dir / "arena_hard_config.yaml"
     OmegaConf.save(cfg, cfg_path)
 
     smoke = bool(cfg.get("smoke", False))
@@ -63,6 +65,21 @@ def run(target, cfg, out_dir: Path, *, reference: str = "") -> dict:
                         api_key=target.api_key, smoke=smoke)
     arena_hard_judge.main(config=str(cfg_path), mode="judge", arm=arm_name)
 
+    # Repack the phase trees into the published layout. The vendor-tree originals
+    # (model_answer/*.jsonl, model_judgment/**) are resume/staging caches read back by
+    # exact path — COPY the answers artifact out, never move it.
+    gen_dir = max((out_dir / arm_name).glob("*/"), key=lambda p: p.name)
+    judge_dir = max((out_dir / "judging").glob("*/"), key=lambda p: p.name)
+    shutil.copy2(bench_answers / f"{arm_name}.jsonl", rollouts_dir / "answers.jsonl")
+    (gen_dir / "gen_metrics.json").rename(results_dir / "gen_metrics.json")
+    (gen_dir / "raw_samples.md").rename(results_dir / "raw_samples.md")
+    (gen_dir / "run_meta.json").rename(metadata_dir / "gen_run_meta.json")
+    for f in judge_dir.glob("judgment_*.json"):
+        f.rename(results_dir / f.name)
+    (judge_dir / "run_meta.json").rename(metadata_dir / "judge_run_meta.json")
+    shutil.rmtree(out_dir / arm_name)
+    shutil.rmtree(out_dir / "judging")
+
     return {"arm": arm_name, "baseline": baseline,
-            "answers": str(bench_answers / f"{arm_name}.jsonl"),
-            "judging": str(out_dir / "judging")}
+            "answers": "rollouts/answers.jsonl",
+            "judging": f"results/judgment_{arm_name}.json"}

@@ -13,6 +13,7 @@ from pathlib import Path
 import yaml
 from omegaconf import OmegaConf
 
+from src.eval.layout import publish_layout
 from src.eval.misalignment.agentic_misalignment import aggregate_eval, build_rollouts
 from src.utils import timestamp
 
@@ -50,7 +51,8 @@ def run(target, cfg, out_dir: Path) -> dict:
     """
     expid = f"{target.spec.model_key}_{timestamp()}"
     model_id = f"vllm/{target.model_name}"
-    harness_cfg = out_dir / "harness_config.yaml"
+    rollouts_dir, results_out, metadata_dir = publish_layout(out_dir)
+    harness_cfg = metadata_dir / "harness_config.yaml"
     harness_cfg.write_text(yaml.safe_dump(_harness_config(cfg, model_id, expid)))
 
     env_file = _HARNESS / ".env"
@@ -66,12 +68,18 @@ def run(target, cfg, out_dir: Path) -> dict:
            "--classifier-model", judge], env)
 
     results_dir = _HARNESS / "results" / expid
-    summary_path = out_dir / "misalignment_summary.json"
+    summary_path = results_out / "misalignment_summary.json"
     aggregate_eval.main(results_dir=str(results_dir), label=expid, out=str(summary_path))
 
     # "Logs" means ROLLOUTS: stitch prompts + responses into self-contained transcripts,
     # then move the whole result tree under out_dir so nothing lives only in the harness.
-    build_rollouts.main(results_dir=str(results_dir), out=str(out_dir / "rollouts"))
-    shutil.move(str(results_dir), str(out_dir / "results"))
+    build_rollouts.main(results_dir=str(results_dir), out=str(rollouts_dir))
+    # build_rollouts stamps its provenance inside the transcripts dir; the bare
+    # run_meta.json name is the framework's, so re-home it before it can collide.
+    (rollouts_dir / "run_meta.json").rename(metadata_dir / "rollout_build_meta.json")
+    # The raw harness tree (prompts/, models/ with inline verdicts, logs/, state) moves
+    # whole: src/properties/sources/agentic_rollouts.py needs models/ and prompts/ side
+    # by side, so that adapter's run_dir for this run is <out_dir>/results/harness.
+    shutil.move(str(results_dir), str(results_out / "harness"))
 
     return json.loads(summary_path.read_text())

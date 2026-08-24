@@ -16,7 +16,7 @@ once one box saturates (~13–15 concurrent requests at the 38–81k contexts th
 A shard is a **division of labour, never a different benchmark**:
 
 - Every driver selects the *same* subset first (same `subset.fraction`, same `subset.seed`),
-  then takes its slice. `subset_hash` in `selection.json` identifies the **full** subset and
+  then takes its slice. `subset_hash` in `metadata/selection.json` identifies the **full** subset and
   **must match across drivers** — that is the pre-merge check.
 - Slices are disjoint and their union is exactly the subset.
 - pass@1 is scored against the **full** denominator, so an instance nobody completed counts
@@ -70,7 +70,7 @@ with `--enable-lora` and never restarts.
 
 ## Merging
 
-1. Check `subset_hash` **and** `dataset_revision` match across `selection.json` files. If
+1. Check `subset_hash` **and** `dataset_revision` match across `metadata/selection.json` files. If
    they differ, the runs are not mergeable — do not average them.
 2. Union the per-shard `preds.json` files.
 3. Grade the union once, against the full instance list (`full_instance_ids`).

@@ -402,3 +402,19 @@ def test_registry_marks_only_openai_client_evals_api_capable():
     # docker + vendored-harness evals do not and must stay False.
     assert {n for n, s in EVALS.items() if s.supports_api_target} == {
         "mmlu", "arena_hard", "lmsys", "psychosis"}
+
+
+def test_publish_layout_contract(tmp_path):
+    from src.eval.layout import assert_layout, publish_layout
+
+    rollouts, results, metadata = publish_layout(tmp_path)
+    assert (rollouts.name, results.name, metadata.name) == ("rollouts", "results", "metadata")
+    assert all(d.is_dir() for d in (rollouts, results, metadata))
+    publish_layout(tmp_path)  # idempotent
+
+    (tmp_path / "README.md").write_text("card")
+    assert_layout(tmp_path)  # the three dirs + README are the whole contract
+
+    (tmp_path / "stray.json").write_text("{}")
+    with pytest.raises(RuntimeError, match=r"stray root entries.*stray\.json"):
+        assert_layout(tmp_path)
