@@ -668,7 +668,16 @@ stages:
     # needed more chances (3 attempts left 13.3% of rows dead, 6 leaves ~3.3%). See the
     # `respond:` block for the full measurement and why raising the floor's neighbours --
     # reasoning effort, or a lower min_chars -- does not work.
-    retries: 5
+    #
+    # RAISED 5 -> 12 on 2026-08-21 for the top-up pass to 716. The corpus is therefore
+    # HETEROGENEOUS in retry budget: the first 620 rows were drawn with 6 attempts, the
+    # top-up rows with 13. That is a real, documented inconsistency, accepted because the
+    # alternative was regenerating 620 rows that are already paid for and already meet
+    # the contract. Measured on stuck rows: ~3 in 4 pass 50-60% of the time and simply
+    # need more chances, so most of the shortfall is recoverable without a single new
+    # scenario. It does mean the top-up rows sit slightly further into grok's verbose
+    # tail than the originals.
+    retries: 12
 - name: revise_responses
   kind: llm_tagged
   model: rewrite
@@ -790,7 +799,12 @@ stages:
     - ^\s*let me\b
     - ^\s*okay,
     - '[一-鿿]'
-    retries: 2
+    # RAISED 2 -> 12 on 2026-08-21, same top-up pass and same caveat as draft_responses:
+    # this stage independently lost 48 of the 668 drafts it was handed (7.2%) on length,
+    # and those losses compound with stage 6's to give the arm's 86.6% yield. Retrying
+    # them costs nothing but calls -- their scenarios, prompts and drafts are already
+    # paid for -- so the shortfall is closed here before any new scenario is generated.
+    retries: 12
 - name: export_sft
   kind: chat_export
   messages:
