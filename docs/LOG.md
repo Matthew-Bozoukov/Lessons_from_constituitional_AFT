@@ -1015,6 +1015,72 @@ figure `output/report/arm_comparison_20260819_093604.png` + markdown mirror. Run
 destroyed, 0 active.
 
 
+## 2026-08-24 — Responder-swap arm: with prompts held identical, Sonnet's revision LENGTHENS (1.19x) and grok's SHORTENS (0.80x) — that is the generator effect
+
+**Hypothesis:** the all-grok arm is not a clean generator ablation, because it regenerates
+the scenarios and prompts as well as the responses. Freezing the baseline's first half and
+swapping only the model that writes the assistant turn should isolate the generator, and
+should collapse most of the twelve confounds catalogued for the all-grok arm.
+
+**Method:** `configs/data/synth/difficult_advice_grok_responder_716.yaml`. `load_source_run`
+loads the baseline's published `stage_5_revise_prompts.jsonl`; only `draft_responses` and
+`revise_responses` are paid for, both on `x-ai/grok-4.6`. `scratch/build_da716_prompt_source.py`
+stages the inputs by replaying the da716 training arm's own selection (`pick_balanced`,
+seed 0, no RNG draw before it) and independently reproduces the two statistics that arm's
+train config documents — trait counts 80/80/80/80/80/79/79/79/79 and 635 distinct domains —
+so this corpus answers the SAME 716 questions, scenario id for scenario id. Contract is
+baseline-identical and verified programmatically: prompts byte-identical, `min_chars: 700`,
+all 13 `ban_patterns`, `retries: 2`, `max_fail_pct: 2.0`. Model choice was measured first
+(24 baseline prompts x 3 attempts, per-row all-attempts-fail): grok-4.6 0.0%, grok-4.20
+8.3%, grok-4.3 8.3%.
+
+**Result — the generator effect is in the REVISION step, and it is directional.**
+
+|            | draft            | revised           | revision effect |
+|------------|------------------|-------------------|-----------------|
+| baseline   | 2242 (Haiku 4.5) | 2670 (Sonnet 5)   | **1.19x — lengthens** |
+| grok arm   | 1964 (grok-4.6)  | 1568 (grok-4.6)   | **0.80x — shortens**  |
+
+At the DRAFT stage the two generators nearly match (1964 vs 2242, 1.14x). Essentially the
+whole final gap is made at revision: Sonnet expands the draft by 19%, grok-4.6 compresses it
+by 20%. So "how much did Sonnet matter" has a specific answer — Sonnet's distinctive
+contribution is not that it writes long from scratch, it is that its revision pass EXPANDS.
+
+- **Yield 703/716 (98.2%)** under the baseline's unmodified contract, vs 86.6% for the
+  all-grok arm under a gate loosened to 15.0. draft_responses lost 19 (2.7%, over the 2.0
+  gate) and a resume recovered 11 of them; revise_responses lost 5 (0.7%).
+- **Trait balance near-exact**: 79/80/80/80/80/73/75/77/79 against the baseline's
+  80/80/80/80/80/79/79/79/79. The all-grok arm had t7 at 30.
+- **Separability vs the baseline corpus** (5-fold CV AUC, the 2026-08-17 PAR/PC test):
+  length-only **0.975 -> 0.864**, response median ratio **2.64x -> 1.67x**. Bag-of-words
+  stays ~1.0 in both, which is expected and not by itself disqualifying: any two generators
+  have distinct lexical fingerprints, and the 0.70 gate was built for within-corpus arm
+  leakage, not across-generator contrast.
+- **Cost $15.96 / 31 min** for 703 rows ($0.023/example) — cheaper than the all-grok arm's
+  $61.79 for 620, because stages 1-4 are downloaded rather than generated.
+- Published: `LASR-Callum/2026-08-21-difficult-advice-grok-responder-716`.
+
+**Also this session, on the all-grok arm:** topped it up 620 -> 673 by retrying stuck rows
+at 13 attempts with no new scenarios (t7 30 -> 56), which cost ~$10. Two caching traps found
+on the way: a completed `stage_N_*.jsonl` snapshot makes resume reuse the stage wholesale, so
+raising `retries` did nothing until the snapshot was deleted and the `.partial` checkpoint
+kept; and the same trap at `export_sft` silently exported 620 rows from a 673-row stage 7.
+
+**Caveat, unresolved:** length-AUC 0.864 still sits at the level the 2026-08-17 entry called
+defective in peer-critique (0.85 on length alone, trained on before the check ran). Training
+this arm against da716 therefore still needs length reported as a covariate. The arm also
+does not reproduce the baseline's cross-model critique — grok-4.6 both drafts and revises,
+because grok-4.3 and grok-4.20 each leave ~8% of rows unanswerable at the length floor.
+
+**Next steps:** (1) decide whether to train at all given AUC 0.864, or to compare at the
+draft stage where the arms nearly match (1.14x). (2) If training: size-match to 703 and
+report length alongside every downstream metric; Figure 1's x-axis is already tokens of
+synthetic data, which absorbs part of this natively. (3) Consider a grok-4.3-drafts /
+grok-4.6-revises variant to restore the cross-model split, accepting ~8% row loss. (4) The
+revision-direction result (1.19x vs 0.80x) is worth a figure in its own right — it is a
+concrete, measured property of the generator, which is what Figure 3 is asking for.
+
+
 ## 2026-08-21 — Generator sweep, third arm DELIVERED: all-grok difficult-advice corpus, 620 rows at the baseline's exact contract (86.6% yield)
 
 **Hypothesis:** the generator-swap arm (how much of the difficult-advice result is Sonnet,
