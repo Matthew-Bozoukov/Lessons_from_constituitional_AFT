@@ -58,6 +58,14 @@ def read_hf_jsonl(repo: str, fn: str) -> list[dict]:
     return [json.loads(line) for line in open(path, encoding="utf-8") if line.strip()]
 
 
+def _read_any(spec: str) -> list[dict]:
+    """Rows from a local jsonl path, or from `repo::file` on HF. For `ids_from`."""
+    if "::" in spec:
+        repo, _, fn = spec.partition("::")
+        return read_hf_jsonl(repo, fn)
+    return [json.loads(line) for line in open(spec, encoding="utf-8") if line.strip()]
+
+
 def render(messages: list[dict]) -> str:
     """Render interchange messages into the Qwen chat form the table2 rows use.
 
@@ -201,7 +209,8 @@ def main(out: str = "data/t2_9284_da716_10k.jsonl", seed: int = 0,
          synth_repo: str = DA_REPO, synth_file: str = DA_FILE,
          synth_label: str = "difficult_advice_v2", n_synth: int = N_DA,
          t2_repo: str = T2_REPO, t2_file: str = T2_FILE,
-         exclude_sources: tuple[str, ...] = (), split_key: str = "") -> None:
+         exclude_sources: tuple[str, ...] = (), split_key: str = "",
+         ids_from: str = "") -> None:
     """Build the mixture and write it with a stats sidecar.
 
     Args:
@@ -217,6 +226,12 @@ def main(out: str = "data/t2_9284_da716_10k.jsonl", seed: int = 0,
             that repo is itself a mixture containing an arm being replaced.
         split_key: Optional `metadata` field to balance the synth half across in ADDITION
             to trait, e.g. `reply_quality` for half good / half flawed.
+        ids_from: Build a PAIRED arm. A local jsonl path, or `repo::file` on HF, whose
+            scenario_ids select the synth half EXACTLY instead of sampling it. Two
+            mixtures built with the same `ids_from` and different `synth_repo` differ
+            only in who wrote the assistant turn — same questions, same count, same
+            trait and domain spread — which is the control a generator ablation needs.
+            Overrides n_synth and split_key.
     """
     load_dotenv()
     rng = random.Random(seed)
@@ -236,7 +251,25 @@ def main(out: str = "data/t2_9284_da716_10k.jsonl", seed: int = 0,
                    and m.group(1).strip())
     print(f"table2 rows with a NON-empty <think> block: {nonempty} (expected 0)")
 
-    picked = pick_balanced(da, n_synth, rng, split_key or None)
+    if ids_from:
+        # PAIRED arms: take exactly the scenarios another corpus contains, rather than
+        # sampling. Two mixtures built this way differ ONLY in who wrote the assistant
+        # turn -- same questions, same count, same trait and domain spread -- which is
+        # what a generator ablation needs and what sampling each side independently
+        # cannot give. n_synth and split_key do not apply; the id list decides.
+        want = {r["metadata"]["scenario_id"] for r in _read_any(ids_from)}
+        have = {r["metadata"]["scenario_id"] for r in da}
+        missing = want - have
+        assert not missing, (
+            f"{len(missing)} of {len(want)} paired ids are absent from "
+            f"{synth_repo}::{synth_file} (first: {sorted(missing)[:3]}). The two corpora "
+            f"do not cover the same scenarios, so they cannot be paired.")
+        by_id = {r["metadata"]["scenario_id"]: r for r in da}
+        picked = [by_id[i] for i in sorted(want)]
+        print(f"paired selection from {ids_from}: {len(picked)} scenarios "
+              f"(n_synth={n_synth} and split_key ignored)")
+    else:
+        picked = pick_balanced(da, n_synth, rng, split_key or None)
     da_rows = [{"source": synth_label, "text": render(r["messages"]),
                 "trait_id": r["metadata"]["trait_id"],
                 "scenario_id": r["metadata"]["scenario_id"],
