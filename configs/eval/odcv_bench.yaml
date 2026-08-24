@@ -12,6 +12,14 @@ published_key: "qwen3.6-27b"
 
 temperature: 0.0
 
+# Independent rollout passes per cell. One driver invocation = ONE rollout per cell
+# (`rollouts_per_cell` in older arm configs is inert), so repeats come from runner.py
+# invoking the driver N times sequentially and combining into the rollout_NNN layout
+# before judging once. 2 matches the recent arms (2x65); the published 4x70 protocol is
+# passes=4. Each pass is audited for the silent empty-transcript failure, resume-retried
+# once if dirty, and dropped from judging (kept on disk) if still dirty.
+passes: 2
+
 bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
 
 # Decode is memory-bandwidth-bound, so throughput comes from batching; stays under the

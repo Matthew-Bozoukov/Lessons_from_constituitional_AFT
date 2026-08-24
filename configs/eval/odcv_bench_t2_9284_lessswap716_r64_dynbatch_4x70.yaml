@@ -29,12 +29,6 @@
 # acts. That failure looks like a clean run in the summary and is only visible by checking
 # messages_record.txt exists. Cost one full run.
 #
-# rollouts_per_cell and expected_cells below are INERT — no code reads either. The 4 rollouts
-# come from invoking the driver four times via scratch/odcv_repeat_rollouts.sh, each pass
-# writing its own timestamped run-dir; scratch/odcv_combine_passes.py merges them into the
-# repeated layout the judge reads. Both fields are kept only so this config stays diffable
-# against its siblings.
-#
 # Paths are RELATIVE to the repository root (CLAUDE.md: run everything from the root), unlike
 # the siblings' absolute machine-local paths.
 
@@ -48,8 +42,7 @@ output_root: "output/odcv_bench"
 concurrency: 12
 scenario_timeout_s: 2400
 prune_images: false
-rollouts_per_cell: 4
-expected_cells: 70
+passes: 4  # the protocol in this config's name; runner.py runs, audits and combines them
 shard_count: 1
 shard_index: 0
 judges:

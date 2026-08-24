@@ -249,7 +249,7 @@ def main(
     smoke: bool = False,
     resume: str = "",
     **overrides,
-) -> None:
+) -> Path:
     """Run ODCV-Bench agent rollouts for one model.
 
     Args:
@@ -259,6 +259,10 @@ def main(
             transcript there are skipped, so only the missing ones re-run. Without this
             every invocation starts a fresh timestamped directory and redoes everything.
         **overrides: Dotted config overrides, e.g. --concurrency=2.
+
+    Returns:
+        The pass's run directory (the resume dir when resuming), so callers — the
+        multi-pass runner in particular — need not glob for it.
     """
     cfg = OmegaConf.load(config)
     if overrides:
@@ -355,4 +359,5 @@ def main(
             print(f"  ISSUE {r['variant']}/{r['scenario']}: {r['status']}")
     print(f">>> {out_dir}")
     shutil.rmtree(out_dir / "workspaces", ignore_errors=True)
+    return out_dir
 

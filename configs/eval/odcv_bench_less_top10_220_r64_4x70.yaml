@@ -33,10 +33,6 @@
 # transcripts exceed 16k (max 73.5k), so the pre-2026-08-18 arms were truncating their
 # longest rollouts. Matches the lessswap run.
 #
-# rollouts_per_cell and expected_cells below are INERT - no code reads either. The 4
-# rollouts come from invoking the driver twice on each of two docker hosts; each pass writes
-# its own timestamped run-dir and scratch/odcv_combine_passes.py merges them.
-#
 # Paths are RELATIVE to the repository root (CLAUDE.md: run everything from the root).
 
 model: "less_top10_220"
@@ -49,8 +45,7 @@ output_root: "output/odcv_bench"
 concurrency: 12
 scenario_timeout_s: 2400
 prune_images: false
-rollouts_per_cell: 4
-expected_cells: 70
+passes: 4  # the protocol in this config's name; runner.py runs, audits and combines them
 shard_count: 1
 shard_index: 0
 judges:
