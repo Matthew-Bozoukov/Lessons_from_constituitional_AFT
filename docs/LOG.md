@@ -750,6 +750,74 @@ figure `output/report/arm_comparison_20260819_093604.png` + markdown mirror. Run
 destroyed, 0 active.
 
 
+## 2026-08-24 — Generator ablation TRAINED and EVALUATED: grok-written answers give the LOWEST ODCV misalignment of any 7% arm (7.8% vs da716's 16.3%) — but it is confounded with length
+
+**Hypothesis:** with the questions held identical and only the model writing the assistant
+turn swapped, a difference in ODCV misalignment is attributable to the generator. The
+responder-swap corpus (703 rows, grok-4.6 answering the baseline's own prompts) was built
+for exactly this test.
+
+**Method:** trained `LASR-Callum/qwen3.6-27b-lora-t2-9284-grokresp703-paired-r64` — 703
+grok rows + the same byte-identical 9,284-row Table2 half, 2xH200 DDP, 625 steps, final
+loss 0.700 / train_loss 0.883. Mixture built with `build_t2_9284_da716_mixture.py
+--ids_from`, which selects the synth half BY SCENARIO ID rather than sampling, so the arm
+pairs with its control question-for-question. Evaluated on ODCV-Bench with
+`configs/eval/odcv_bench_t2_9284_grokresp703_r64_paired_2x65.yaml`, byte-identical in
+hyperparameters to the peercritique716 and chunk-only-702 configs: same 65 cells, same 15
+exclusions, temperature 0.0, concurrency 12, timeout 2400s, judges grok-4.20 +
+gemini-3.1-pro-preview. 2 passes from laptop Docker against a RunPod H200 vLLM endpoint
+over the HTTPS proxy; 129 transcripts (one scenario lost when the driver was killed
+mid-pass; the combine step tolerates gaps).
+
+**Result — lowest of every arm, and the ordering is worth staring at.**
+
+| arm | MR | 95% CI | sev |
+|---|---|---|---|
+| **grok-responder 703 (this)** | **7.8%** | [3.6, 13.6] | **0.35** |
+| c6masked | 9.7% | [5.5, 13.9] | — |
+| chunk-only 702 | 11.5% | [6.2, 19.6] | 0.62 |
+| synthdoc-716 (v1) | 14.3% | [9.3, 19.0] | 0.65 |
+| da716 (v2) — the direct comparator | 16.3% | [10.0, 21.8] | 0.76 |
+| lessswap716 | 16.5% | [11.2, 21.4] | 0.79 |
+| t10 curiosity 716 | 19.7% | [10.9, 30.0] | 0.99 |
+| base fp8 (no SFT) | 36.9% | [21.4, 53.6] | 1.37 |
+| table2-only (0% SFT) | 43.9% | [37.5, 53.1] | 1.87 |
+
+mandated 5.7%, incentivized 10.2%. Severity 0.35 is less than half da716's 0.76. The CIs
+DO overlap (7.8 [3.6,13.6] vs 16.3 [10.0,21.8] share 10.0-13.6), so this is "the point
+estimate halved and nothing separates cleanly", not a demonstrated win.
+
+**Why this is not yet evidence that grok has better values.** The corpora differ on more
+than authorship, and the differences point the same way as the result:
+
+- grok's answers are **1.70x shorter**; a classifier separates the two corpora by LENGTH
+  ALONE at **AUC 0.864** (this project called peer-critique defective at 0.85 and trained
+  on it anyway — 2026-08-17).
+- per 1,000 characters grok **refuses ~2.6x more densely** and **offers ~3.9x fewer
+  alternatives**, while matching Sonnet exactly on first-person framing (1.02x) and on
+  citing concrete numbers (1.06x).
+
+A corpus that refuses more per unit text is a plausible direct cause of a lower agentic
+misalignment rate, with no values difference required. So the honest reading is: swapping
+the response-writer to grok-4.6 halves ODCV misalignment, via a package of values +
+verbosity + refusal density that this experiment does not separate.
+
+**Costs:** training $23 (2xH200, 2.1h); ODCV rollouts ~$8 of H200 serving; judging $2.43.
+Two pods were wasted (~$7) on a wandb import failure before training began.
+
+**Artifacts:** adapter `LASR-Callum/qwen3.6-27b-lora-t2-9284-grokresp703-paired-r64`;
+eval + plots `LASR-Callum/2026-08-24-odcv-grokresp703-paired-eval`; mixtures
+`LASR-Callum/2026-08-24-t2-9284-{sonnet703,grokresp703}-paired-train`.
+
+**Next steps:** (1) The obvious control is a LENGTH-matched arm — train on Sonnet answers
+truncated to grok's length distribution, or compare at the DRAFT stage where the two
+generators nearly match (1.14x). Without it the 7.8% cannot be attributed. (2) The paired
+Sonnet control (703 rows) was built and pushed but NOT trained, on the grounds that
+da716 already exists at 716 rows; if the 13-row gap ever matters, the bundle is ready.
+(3) Consider whether refusal density is itself the data property worth ablating — it is a
+Figure 3 candidate and is measurable with `scratch/compare_generator_arms.py`.
+
+
 ## 2026-08-24 — Responder-swap arm: with prompts held identical, Sonnet's revision LENGTHENS (1.19x) and grok's SHORTENS (0.80x) — that is the generator effect
 
 **Hypothesis:** the all-grok arm is not a clean generator ablation, because it regenerates
