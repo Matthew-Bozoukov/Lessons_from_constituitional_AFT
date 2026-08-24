@@ -55,7 +55,14 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export WANDB_MODE=disabled
 # python3 -m pip, NOT bare pip: on this image `pip` and `python3` can resolve to
 # different interpreters, and packages land where the trainer cannot import them.
-python3 -m pip install --no-cache-dir -q "transformers>=5.14" "trl>=0.27" "peft==0.20.0" datasets accelerate omegaconf fire huggingface_hub hf_transfer
+# wandb is installed even though WANDB_MODE=disabled makes it a no-op. Configs in this
+# repo declare `report_to: ["wandb"]`, and transformers constructs WandbCallback from that
+# field alone — it raises "WandbCallback requires wandb to be installed" before training
+# starts, regardless of WANDB_MODE. Installing it is preferable to overriding report_to on
+# the CLI: the config is the scientific record and should train as written, and the pod has
+# no credentials so the logger stays inert either way. (Cost of learning this: two pods
+# that reached TRAINING_DONE with nothing trained, 2026-08-24.)
+python3 -m pip install --no-cache-dir -q "transformers>=5.14" "trl>=0.27" "peft==0.20.0" datasets accelerate omegaconf fire huggingface_hub hf_transfer wandb
 hf download {base} >/dev/null
 hf download {bundle} code.tar.gz --repo-type dataset --local-dir /workspace/bundle
 mkdir -p /workspace/repo && tar -xzf /workspace/bundle/code.tar.gz -C /workspace/repo
