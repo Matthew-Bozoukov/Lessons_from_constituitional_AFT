@@ -10,14 +10,15 @@ from typing import Any
 
 
 def dataset_card(card_fields: dict | None, stage_files: list[str],
-                 has_dataset: bool) -> str:
-    """Render the repo README: a `configs:` YAML front-matter + the card table (pure).
+                 has_dataset: bool, tags: tuple[str, ...] | list[str] = ()) -> str:
+    """Render the repo README: `configs:` + `tags:` YAML front-matter + the card table (pure).
 
     The front-matter is the synth->mixture contract's discovery layer: `dataset` is the
     DEFAULT config (so `load_dataset(repo)` fetches dataset.jsonl and nothing else) and
     every stage snapshot is its own named config under stages/ — which also keeps the
     dataset viewer working, since without declared configs it globs every jsonl in the
-    repo and chokes on the stages' differing schemas.
+    repo and chokes on the stages' differing schemas. `tags` are the Hub-indexed
+    `training_data_tags` the dashboard discovers the corpus by (src/huggingface.py).
     """
     from src.huggingface import card_front_matter, card_markdown
 
@@ -31,8 +32,8 @@ def dataset_card(card_fields: dict | None, stage_files: list[str],
                         "default": True})
     configs += [{"config_name": f.removesuffix(".jsonl"), "data_files": f"stages/{f}"}
                 for f in sorted(stage_files, key=stage_no)]
-    return card_front_matter(configs) + (card_markdown(card_fields)
-                                         if card_fields else "")
+    return card_front_matter(configs, tags) + (card_markdown(card_fields)
+                                               if card_fields else "")
 
 
 def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> Path:
@@ -83,7 +84,8 @@ class StageCache:
     """
 
     def __init__(self, run_dir: Path, repo_id: str | None, private: bool = False,
-                 token: str | None = None, card_fields: dict | None = None) -> None:
+                 token: str | None = None, card_fields: dict | None = None,
+                 tags: tuple[str, ...] | list[str] = ()) -> None:
         """Set up the cache.
 
         Args:
@@ -91,6 +93,8 @@ class StageCache:
             repo_id: HF dataset repo id, or None to skip publishing.
             card_fields: CLAUDE.md card fields, uploaded as the repo README on first
                 creation (every upload carries a card, the cache repo included).
+            tags: Card front-matter tags (`training_data_tags`), refreshed with every
+                README so the corpus is discoverable from the Hub.
             private: Create the HF repo private.
             token: HF token; falls back to the shared resolution (src.huggingface.hf_token).
         """
@@ -102,6 +106,7 @@ class StageCache:
         self.private = private
         self.token = token or hf_token()
         self.card_fields = card_fields
+        self.tags = list(tags)
         self._api = None
 
     def _hf(self):
@@ -125,7 +130,7 @@ class StageCache:
         """The repo README, regenerated from what the local run dir actually holds."""
         return dataset_card(self.card_fields,
                             [p.name for p in self.run_dir.glob("stage_*.jsonl")],
-                            (self.run_dir / "dataset.jsonl").exists())
+                            (self.run_dir / "dataset.jsonl").exists(), self.tags)
 
     def _commit(self, files: list[tuple[Path, str]], message: str) -> None:
         """One commit: the given (local, repo_path) files plus the refreshed README."""
