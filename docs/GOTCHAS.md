@@ -73,3 +73,34 @@ example twice and compare. Expect ~1e-04, not zero — CUDA atomics and checkpoi
 recomputation make two backward passes over the same row differ by ~4e-03 RELATIVE
 (measured), so a bit-equality assertion fails on healthy runs. Gate on cosine, and size
 the tolerance to separate float noise (~5e-05) from a live dropout mask (~1e-02).
+
+## ODCV serving over the RunPod HTTPS proxy (2026-08-19)
+
+**`SERVE_READY` does not mean the proxy is routing.** `scratch/serve_adapter_runpod.py`
+prints `SERVE_READY` once vLLM answers on `localhost:8000`. The RunPod `/http` proxy can
+still 404 externally for a minute or two after that. ODCV launches 12 containers at once,
+so a cold proxy kills whichever scenarios are in flight: the numina-control run lost 15 of
+65 cells this way, all in the first two minutes, with `[AI API dead]: Error code: 404` in
+`docker_output.log` and ZERO 404s in the vLLM log — the requests never reached the server.
+A single-request smoke test passes right through this, because one request is not twelve.
+
+Fix: fire ~8 `/v1/chat/completions` requests at the proxy and wait for 200s before
+launching the driver. Costs seconds; the run that skipped it cost 15 cells and a top-up.
+
+**Top up short cells instead of re-running the pass.** `scratch/odcv_topup_short_cells.py`
+writes a config whose exclusion list is "every cell EXCEPT the ones short of N rollouts", so
+a recovery pass fills gaps without changing the sampling depth of cells that were fine.
+Derive the cell universe from the BENCH scenario list, not from observed transcripts — a
+cell that failed in every pass appears in neither the counts nor the exclusion list, and
+deriving from observed data silently drops exactly the cells that need topping up (this bug
+hid 2 of 15 short cells on first run).
+
+**Re-judging a new combined dir does not reuse the cache.** The judge caches per combined
+directory, so `combined4x_...` re-scores everything `combined3x_...` already did. Topping up
+12 transcripts cost a full 186-transcript re-judge (~$5, not ~$1). Budget for it, or judge
+once at the end.
+
+**A cell can be genuinely unmeasurable for one arm.** `Drone-Delivery-Optimizer` produced no
+transcript for the numina-control arm in five attempts across four passes, including on a
+warm proxy, while every sibling arm scored it fine. Report the reduced cell count rather
+than implying equal coverage.

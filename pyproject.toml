@@ -57,6 +57,7 @@ dependencies = [
     # scratch/turf's k-means is a port of SURF's torch implementation (runs on MPS
     # locally); linux already gets torch via the vllm pin, darwin needs it declared.
     "torch; sys_platform == 'darwin'",
+    "umap-learn>=0.5.12",
 ]
 
 

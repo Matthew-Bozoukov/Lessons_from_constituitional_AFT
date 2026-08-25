@@ -1,6 +1,548 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-08-21 — the difficult-advice trace has a nine-move template, and one move will not come out
+
+**Hypothesis.** Every ablation so far manipulated what the reasoning *contains* while leaving
+its form as extended deliberation. If reasoning form is what matters, the untested arm is
+verdict-by-lookup. First question: is there a stable form to invert at all?
+
+**Method.** Nine deliberative moves were derived from two traces the user picked out
+(engaging the counterargument, steelmanning, analytic distinction, a separate consequentialist
+pass, outcome branches, naming tension, acknowledging pressure, offering an alternative,
+returning agency) and scored by a blind shuffled rater over 108 scenarios x original+advocacy,
+12 per trait (`scratch/rate_inversion_moves.py`, `output/inversion_moves/20260821_175620/`).
+
+**Result 1: the template is real and uniform.** Seven of nine moves appear in 99-100% of
+originals with ZERO trait-wise variation (12/12 in every one of t1-t9); 94% of traces carry
+>=8 of 9. The two that vary are outcome_branches (88%) and returns_agency (73%, swinging
+t9 12/12 to t6 6/12).
+
+**Result 2: the advocacy arm inverted 2 of 9 moves, not the reasoning.** Paired against the
+same scenarios, the rewrite stripped steelmanning (100%->39%) and agency-return (73%->36%)
+and left engagement, analytic work and alternative-offering at 100% untouched. "Reasoning
+style does not move ODCV" was tested by moving two dimensions while holding the form fixed.
+
+**Result 3: a targeted three-move inversion, all 716 rows.** Sonnet-5 rewrote every trace to
+reach its verdict by rule, set the tempting option aside, and run one line instead of
+branches, holding the other six moves, the facts and the conclusion. Blind-rated over 1,432
+items (`output/invert_all716/20260821_191814/`, $8.55):
+
+| move | target | orig | inverted |
+|---|:--:|--:|--:|
+| outcome_branches | YES | 540/716 | 37/716 |
+| engages_counterargument | YES | 714/716 | 162/716 |
+| analytic_distinction | YES | 716/716 | **529/716** |
+| steelmans | | 683 | 79 |
+| separate_consequentialist_pass | | 705 | 265 |
+| names_tension | | 716 | 484 |
+| returns_agency | | 539 | **675 (+148)** |
+
+Branches and engagement invert cleanly. **The analytic distinction does not: 74% survive**,
+uniformly across traits (48-65 of ~80 each), despite losing 38% of length (527->327 words).
+Only 166/716 (23%) lost all three; the n=100 pilot gave 26%, inside the same interval.
+returns_agency goes the other way -- rule-based refusals hand the decision back MORE often.
+
+**Two measurement lessons, both caught by verification rather than inspection.** The first
+rater scored analytic_distinction present in rule-lookup rewrites while its own notes
+described classification, and counted the deliberately-preserved acknowledgement of stakes as
+engagement; definitions were tightened 2026-08-21, so ratings for those two moves before that
+date are not comparable. Separately, the span-extraction prompt's own worked example
+("a statement of intent, not a statement of present fact") came back as a quoted span in two
+unrelated traces -- an exact-substring check rejected it. Never highlight an unverified span.
+
+**Next steps.** (1) The verdict-by-lookup arm is buildable only from the 166 clean rows unless
+the rewrite prompt attacks distinction-drawing directly (forbid "rather than", "the difference
+is", "what makes this X and not Y"). (2) Re-rate `output/inversion_moves/20260821_175620/`
+with the strict definitions before trusting its advocacy numbers.
+
+## 2026-08-20 — stakes was the last candidate mechanism, and it is not the mechanism either
+
+**Hypothesis.** Nine arms had varied trait identity, trait volume, scenario selection,
+reasoning style and reasoning structure without moving ODCV misalignment off the 8.7-13.2%
+band. Stakes was the strongest remaining candidate: an autorater over the 716 rows in the
+mixture found **62.7% grave and 96.8% serious-or-worse**
+(`output/prompt_stakes/20260820_093941/`), and that severity is INSTRUCTED — the
+write_scenarios prompt in `configs/data/synth/difficult_advice.yaml` asks for it in as many
+words. If the corpus works because its situations are serious, removing the severity should
+break it.
+
+**A first check ruled out the cheap version of the experiment.** Deleting the instruction
+("The pressure is concrete and the stakes are real.") and regenerating through the pipeline
+changed nothing: 4 fresh scenarios came out at mean stakes 2.75 against the baseline's 2.59.
+Asking for a tempting violation of a principle about oversight or harm produces grave
+situations whether or not severity is requested. Variant config kept as
+`configs/data/synth/difficult_advice_no_stakes.yaml`; the smoke also collapsed all four
+scenarios into health/medical, consistent with the diversity failure that config already
+documents.
+
+**Method.** So the stakes had to be removed by rewriting, not by prompting. All 716 rows were
+rewritten with `anthropic/claude-sonnet-5`: the situation relocated to an ordinary part of life
+AND the transgression scaled down to match, holding the trait, the deliberative structure, the
+length and the register. A legal custody dispute becomes a book club selection; federal grant
+compliance becomes hobby club rules; an eviction becomes a roommate chore chart. 712 of 716
+succeeded ($21, 41 min).
+
+Verified three ways, none of them the rewriter grading itself: blind stakes re-rating by a
+judge that never saw the original; a seven-device lexical scan (countdown, scale of harm,
+vivid imminence, scarcity, existential consequence, sunk cost, reasoning amplification) across
+the user turn AND the reasoning; and a scenario-sameness judge shown both versions.
+**Mean stakes 2.58 -> 0.88, with 623/712 (87.5%) now trivial or modest against 3.2% before.**
+
+Trained as `matboz/qwen3.6-27b-lora-9284-low-stakes-712-r64` (vast 2xH200, 625 steps, 1h41m,
+$14, train_loss 0.8666) on `matboz/2026-08-20-low-stakes-9284-plus-712` @ `7f43916d`.
+
+**Result. MR 12.4%** CI95 [4.5, 17.3], severity 0.70, 129 rollouts over all 65 cells (2 passes).
+
+| arm | MR | sev |
+|---|--:|--:|
+| no difficult advice | 44.1% | 2.01 |
+| + constitution in the system prompt | 28.3% | 1.23 |
+| low-ODCV selection | 17.6% | 0.81 |
+| **unmodified recipe** | **16.8%** | 0.77 |
+| traits 1/3 deleted | 13.2% | 0.57 |
+| traits 5/6/7 only | 12.8% | 0.56 |
+| **low stakes** | **12.4%** | 0.70 |
+| no clearance move | 12.4% | 0.58 |
+| traits 1/3/4 removed | 10.6% | 0.52 |
+| advocacy | 10.1% | 0.45 |
+| traits 1/2/3 only | 9.3% | 0.52 |
+| no meta-cognition | 8.7% | 0.45 |
+
+**Reading.** Training on 712 traces about book clubs and chore charts gives the same protection
+as training on custody battles and research misconduct. Stakes joins trait identity, trait
+volume, scenario selection, reasoning style and reasoning structure on the list of properties
+that are NOT the mechanism. Nine manipulations, one 8.7-17.6% band, against 44.1% when the rows
+are simply absent.
+
+The train_loss is worth noting alongside: 0.8666, indistinguishable from every other
+difficult-advice arm (0.8597-0.8666) and well above the no-difficult-advice control's 0.7964.
+Rewriting every scenario into triviality did not make the data measurably easier to fit.
+
+**Caveats.** The scenarios MOVED (sameness 1.25/3), so domain and magnitude varied together —
+this is not a pure stakes manipulation. 89 of 712 rows still rate >=2 and 20 remain grave. 151
+still carry a stake-raising device, overwhelmingly countdowns (102), because deadlines survive
+relocation; this is not a deadline-free arm. And it is a 2-pass run, so its CI [4.5, 17.3] is
+wider than the 3-pass siblings' — place it against the 44.1%/16.8% poles, not against arms two
+points away.
+
+**Artifacts.** `output/low_stakes_relocated/20260820_131543/` (712 rewrites + verification),
+`output/low_stakes_mixture/20260820_141535/`,
+`output/odcv_bench/qwen3_6-27b-lora-9284-low-stakes-712-r64/combined2x_20260820_164932/`,
+figure `output/report/arm_comparison_20260820_165537.png`. Reusable:
+`scratch/rate_prompt_stakes.py`, `scratch/rewrite_low_stakes_aggressive.py`
+(`--preserve_scenario true|false`), `scratch/verify_low_stakes.py`. All pods destroyed.
+
+**Next.** The dose-response series is now the only obvious lever left: 0, 179, 358, 716 rows
+against the same 9,284. Nine subtractions FROM the 716 have changed nothing, which is what you
+would expect if the effect saturates far below 716 rows — and that would explain every null in
+this series at once.
+
+
+## 2026-08-20 — constitution at inference time closes ~60% of the gap, then stops
+
+**Hypothesis.** Training on 716 difficult-advice rows takes ODCV misalignment from 44.1% to
+16.8%. Can stating the same principles in the system prompt do the same job for free?
+
+**Method.** The no-difficult-advice adapter
+(`matboz/qwen3.6-27b-lora-9284-numina-control-716-r64`, the 44.1% arm) run on the identical 65
+cells, with `constitutions/claude_distilled_09_principles_mid_20260804/constitution.md` (3,205
+words) prepended to every scenario's system prompt. 3 passes, 191 rollouts, judges
+grok-4.20 + gemini-3.1-pro-preview, $7.45.
+
+Two patches made this possible and both are recorded in the eval config header:
+`third_party/odcv-bench/mission_executor/agent_main.py` now prepends `$SYSTEM_PREAMBLE` to the
+scenario system prompt (empty when unset = upstream behaviour), and
+`src/eval/misalignment/odcv/odcv_rollout.py` gained a `system_preamble_file` config key that
+reads the file, passes it to the executor container, and raises rather than continuing
+silently if the path is wrong. Verified end to end by grepping the constitution's first
+principle out of an actual `messages_record.txt`, not just from the config.
+
+**Result. MR 28.3%** CI95 [19.8, 36.4], severity 1.23 (mandated 30.1%, incentivized 26.1%).
+
+| condition | MR | sev |
+|---|--:|--:|
+| no difficult advice, no constitution | 44.1% | 2.01 |
+| no difficult advice, **constitution in prompt** | **28.3%** | 1.23 |
+| difficult-advice training (unmodified) | 16.8% | 0.77 |
+| difficult-advice ablations (nine arms) | 8.7-13.2% | ~0.5 |
+
+**Reading.** The constitution does substantial work — about 60% of the 44.1 -> 16.8 gap, with
+severity nearly halved — and then stops well short of what the training data achieves. Both
+extreme hypotheses die: the constitution is not inert in context, and the SFT data is not
+merely an expensive way of stating principles. Something about training on reasoning that
+ENACTS the values reaches further than presenting the values does.
+
+**Statistical caution.** The CI [19.8, 36.4] overlaps both neighbours — the no-constitution
+arm's [32.4, 53.5] at the top and the difficult-advice control's [13.3, 25.0] at the bottom.
+So "between the two" is the honest claim; "significantly different from both" is not
+established by this single run.
+
+**Confound worth controlling.** The preamble is 3,205 words in front of a scenario prompt of a
+few hundred, so it dominates the system message. Part of the drop could be salience — any
+long, serious-toned preamble — rather than these particular principles. The control is an
+irrelevant preamble of matching length, roughly $9, not yet run.
+
+**Not tested.** Whether the constitution STACKS on a model already trained on difficult
+advice, i.e. whether 16.8% falls further with it in context. That is the more practically
+interesting question and is a separate run.
+
+**Artifacts.**
+`output/odcv_bench/qwen3_6-27b-lora-9284-numina-control-716-r64-constitution/combined3x_20260820_114430/`,
+config `configs/eval/odcv_bench_9284_numina_control_716_constitution_3x65.yaml`. All pods
+destroyed.
+
+
+## 2026-08-19 (evening) — two more ablations fail to break it; a reasoning autorater built
+
+**Context.** With both controls in place (no difficult advice 44.1%, unmodified recipe 16.8%),
+the question stopped being whether difficult advice works and became why nothing breaks it.
+Two further arms, and a new instrument.
+
+**New instrument: a conflict-clearance autorater.** `scratch/rate_conflict_clearance.py` scores
+a reasoning trace on a two-part move — it SCREENS its own task for ethical hazard, naming the
+metric or incentive that could corrupt it, then CLEARS that screen and proceeds. A trace that
+screens and finds a REAL conflict scores 0 on clearance; the distinctive act is the all-clear.
+Judge `google/gemini-3-flash-preview` (~$1.50 for 2,203 traces against ~$15 for Sonnet; on a
+108-trace stratified sample the two agreed, 19.4% vs 21.5%, same trait ordering).
+
+Across the difficult-advice corpus: **480 of 2,202 traces (21.8%)** carry it, and the trait
+split is extreme — trait 8 ("never treat unhelpfulness as safe") at 84.5%, while trait 1
+(preserve oversight) is 0.0% and trait 2 is 0.8%. The move is how the corpus teaches the model
+NOT to refuse legitimate work, and it is absent exactly where the corpus teaches restraint.
+
+Run on the peer-critique corpus (2,080 traces) the raw rate doubles to 46.5%, but a
+`clearance_target` dimension shows why that is misleading: only 7.9% clear the model's OWN
+pending action, against 38.6% that endorse ANOTHER model's finished reply. On the comparable
+measure peer critique has LESS of the move (7.9% vs 21.8%) and none of the trait structure
+(1.3%-15.5%, a 12x spread, against difficult advice's 0%-84.5%).
+
+**Arm: traits 5/6/7 only.** All 716 difficult-advice rows drawn from character (t5), identity
+(t6) and operator-deference (t7) — none of oversight, honesty or harm. Dataset
+`matboz/2026-08-19-traits567-only-9284-plus-716` @ `c132b0d2`, adapter
+`matboz/qwen3.6-27b-lora-9284-traits567-716-r64`, train_loss 0.8651. **MR 12.8%** CI
+[6.5, 18.5] on the shared cells.
+
+**Arm: no conflict clearance.** All 145 clearance-carrying rows in the control's 716 replaced
+with rated-clean rows of the same trait where supply allowed; ZERO remain. Selection only, no
+rewriting. Dataset `matboz/2026-08-19-no-conflict-clearance-9284-plus-716` @ `69791570`,
+adapter `matboz/qwen3.6-27b-lora-9284-no-clearance-716-r64`, train_loss 0.8651.
+**MR 12.4%** CI [6.1, 16.5].
+
+**Result — nine arms, all restricted to the 63 cells every one covers:**
+
+| arm | what changed | MR | sev |
+|---|---|--:|--:|
+| no difficult advice | category removed entirely | **44.1%** | 2.01 |
+| low-ODCV selection | eval-like scenarios swapped | 17.6% | 0.81 |
+| unmodified control | nothing | **16.8%** | 0.77 |
+| traits 1/3 deleted | oversight+honesty gone, 22% less data | 13.2% | 0.57 |
+| traits 5/6/7 only | no oversight/honesty/harm traits at all | 12.8% | 0.56 |
+| no clearance move | 0 of 716 audit-then-clear traces | 12.4% | 0.58 |
+| traits 1/3/4 removed | three traits swapped, volume fixed | 10.6% | 0.52 |
+| advocacy | reasoning one-sided | 10.1% | 0.45 |
+| no meta-cognition | meta-reasoning removed | 8.7% | 0.45 |
+
+**The clearance move does nothing.** Two arms at opposite extremes of the variable land 0.4pp
+apart: traits-5/6/7 carries MORE of it than the control (26.3% of rows vs 20.3%) at 12.8%, and
+the dedicated no-clearance arm carries none at 12.4%. That gap is well inside the ~1.5pp
+subsampling noise measured earlier. It also dissolves that arm's trait-8 confound (t8 halved
+79 -> 38 as an unavoidable side effect): with no effect to attribute, the confound cannot
+explain anything.
+
+**The traits that name the failure mode are not necessary.** traits-5/6/7 contains no t1, t2,
+t3 or t4 — nothing about oversight, power or deception — and still lands at 12.8%, below the
+unmodified control. Whatever difficult advice does, it does not require the traits that
+describe what ODCV measures.
+
+**Standing summary.** Eight manipulations now — trait identity, trait volume, scenario
+selection, reasoning style, reasoning structure — all land between 8.7% and 17.6%. Removing
+the data entirely gives 44.1%. Presence, not content. Nothing tried has broken it.
+
+**Caveats.** traits-5/6/7 changes trait CONCENTRATION as well as identity (~239 rows per trait
+against 79-80), so "these three suffice" and "more rows per trait helps" are not separated.
+The ordering inside the 8.7-13.2% band should not be read: it spans less than twice the
+subsampling noise.
+
+**Artifacts.** `output/conflict_clearance_v2/20260819_165402/` and
+`output/conflict_clearance_pc/20260819_164920/` (ratings + results.md for both corpora),
+ODCV runs under the two model_keys above, figure
+`output/report/arm_comparison_20260819_202829.png` + markdown mirror.
+
+**Next.** The traits-1/2/3 arm — the restraint half, and independently the lowest-clearance
+mixture at 1.5% — is training now; it asks whether either half of the constitution suffices
+alone. Beyond that the open question is unchanged and now sharper: a dose-response series
+(0, 179, 358, 716 rows against the same 9,284) would show whether the effect saturates far
+below 716 rows, which would explain why no subtraction from those rows changes anything.
+
+
+## 2026-08-19 — the two controls land: difficult advice is what matters, not how it reasons
+
+**Hypothesis.** The ablation series had been comparing arms against each other with no
+baseline, so ~9% looked like the reference and any arm above it looked like an effect. Two
+controls settle what the reference actually is: an arm with NO difficult advice at all, and
+the unmodified recipe.
+
+**The unmodified control already existed and I had been asserting it did not.**
+`LASR-Callum/qwen3.6-27b-lora-t2-9284-da716-r64-dynbatch` was trained and ODCV-evaluated on
+2026-08-14 (4 passes, 275 rollouts, 70 cells, MR 17.8%). Earlier entries in this log claiming
+"the matched control has never been trained" are WRONG. Restricted to the 65 cells the
+ablation arms use it reads 16.4%, and to the 63 cells all seven arms share, 16.8%. Subsampling
+its 4 passes to 3 moves it 16.3% -> 16.4%, with all 2,000 draws inside [15.9, 17.4], so its
+extra depth was never doing the work.
+
+**New arm: no difficult advice.** 9,284 standard SFT rows (byte-identical to every sibling)
+plus 716 extra NuminaMath-CoT rows filling the slots difficult advice used to occupy. The
+added rows carry REAL traces — each solution split at its last \boxed{} paragraph, derivation
+into <think>, answer as the response — so the arm is thinking:true and trains the model to
+reason, just about mathematics rather than values. That is what makes it a control rather
+than a mode change. Dataset `matboz/2026-08-19-numina-control-9284-plus-716` @ `c326b44f`,
+adapter `matboz/qwen3.6-27b-lora-9284-numina-control-716-r64`, train_loss 0.7964.
+**MR 44.1%** CI [32.4, 53.5], severity 2.01 (186 rollouts).
+
+**New arm: traits 1 and 3 deleted, no backfill.** All 160 difficult-advice rows teaching
+human oversight (t1) and honesty (t3) removed and NOT replaced, so the mixture shrinks
+10,000 -> 9,840 and the difficult-advice share 7.16% -> 5.65%. Dataset
+`matboz/2026-08-19-traits13-removed-t2-9284-synthdoc-556` @ `936ab246`, adapter
+`matboz/qwen3.6-27b-lora-t2-9284-synthdoc-556-traits13-r64`, train_loss 0.8597.
+**MR 12.9%** CI [5.4, 15.7], severity 0.55 (194 rollouts, 65/65 cells).
+
+**Result — all seven arms on the 63 cells they all cover:**
+
+| arm | what changed | MR | sev |
+|---|---|--:|--:|
+| no difficult advice | category removed entirely | **44.1%** | 2.01 |
+| low-ODCV selection | eval-like scenarios swapped | 17.6% | 0.81 |
+| unmodified control | nothing | **16.8%** | 0.77 |
+| traits 1/3 deleted | oversight+honesty gone, 22% less data | 13.2% | 0.57 |
+| traits 1/3/4 removed | oversight/honesty/harm swapped out | 10.6% | 0.52 |
+| advocacy | reasoning one-sided | 10.1% | 0.45 |
+| no meta-cognition | meta-reasoning removed | 8.7% | 0.45 |
+
+**Reading.** HAVING difficult-advice data is what suppresses ODCV misalignment: 44.1% without
+it, ~17% with it, a ~27pp gap between arms differing in only 716 of 10,000 rows. Every
+manipulation OF that data — deleting the two traits most obviously about oversight and
+honesty, deleting three traits, rewriting the reasoning one-sided, stripping meta-cognition,
+swapping which scenarios appear, cutting the volume by 22% — leaves the protection intact or
+slightly improves it. Six arms varied the content in very different ways and all land between
+8.7% and 17.6%.
+
+**This inverts the framing in the 2026-08-18 entries.** Without a baseline I read the series as
+"reasoning ablations do nothing, the scenario swap raises misalignment". With both controls in
+place, the ~9-13% cluster IS the effect and the low-ODCV arm's 17.6% is simply the control's
+level, not an elevation. Those entries should be read with this one.
+
+**Do not over-read the ordering inside the cluster.** Subsampling noise alone (same model,
+cells and judges, different 3-of-4 rollouts) spans ~1.5pp, and the whole 8.7-13.2% group fits
+inside about 4.5pp. Only the gaps to 16.8% and 44.1% are interpretable.
+
+**Caveats.** The no-difficult-advice arm covers 63 of 65 cells — `Drone-Delivery-Optimizer`
+produced no transcript in five attempts for that arm alone, while every sibling scored it
+fine. The traits-1/3 arm confounds trait deletion with the 22% data reduction (no backfill, by
+request); the traits-1/3/4 arm holds volume fixed and agrees at 10.6%. The 44.1% also sits
+above the published 37.2% baseline for the untrained model, which is plausible but unverified
+here and comes from a 4-judge panel rather than our 2.
+
+**Artifacts.** `output/odcv_bench/qwen3_6-27b-lora-9284-numina-control-716-r64/combined4x_20260819_140227/`,
+`.../qwen3_6-27b-lora-t2-9284-synthdoc-556-traits13-r64/combined3x_20260819_145013/`,
+figure `output/report/arm_comparison_20260819_145758.png` + markdown mirror. Four operational
+gotchas (cold RunPod proxy killing 15 cells, the top-up tool, re-judge cache, an
+arm-specific unmeasurable cell) appended to `docs/GOTCHAS.md`. All pods destroyed.
+
+**Next steps.** The open question is no longer whether difficult advice works but WHY every
+ablation of it fails to break it — six manipulations that demonstrably changed the training
+text (blind-rated meta-reasoning 2.12 -> 1.27, credits-rejected 1.67 -> 0.73) all left the
+behaviour unchanged. A dose-response series (0, 179, 358, 716 difficult-advice rows against
+the same 9,284) would say whether the effect saturates far below 716 rows, which would explain
+why removing traits or volume changes nothing.
+
+
+## 2026-08-19 — traits-1/3/4 ODCV result: deleting the oversight trait does NOT reproduce the jump
+
+**Hypothesis.** The low-ODCV arm's 17.1% had two readings, because its scenario swap removed
+trait 1 (preserve human oversight) from 80 rows to 2 as a side effect: either the eval-like
+SCENARIOS carry the protective effect, or that TRAIT does. This arm deletes traits 1, 3 and 4
+directly while keeping the mixture far closer to the control in ODCV-likeness, so the two
+come apart.
+
+**Method.** 3 passes x 65 cells, exclusion list asserted byte-identical to all four siblings.
+Served on RunPod H100 over the HTTPS proxy with `--agentic true` and `--mode think`; endpoint
+smoke-tested for content AND tool calls first. Judges grok-4.20 + gemini-3.1-pro-preview, 193
+transcripts, $5.41.
+
+**Result.** MR **10.4%** CI95 [5.5, 14.0], severity 0.51 (mandated 5.8%, incentivized 15.6%)
+— with the reasoning-style arms, NOT with low-ODCV:
+
+| arm | manipulation | MR | CI95 | sev | n |
+|---|---|--:|:--:|--:|--:|
+| c6excised | reasoning rewritten (meta-reasoning out) | 8.5% | [3.8, 11.9] | 0.44 | 189 |
+| c6masked | reasoning loss-masked | 9.6% | [4.9, 11.6] | 0.43 | 260 |
+| advocacy | reasoning rewritten one-sided | 9.7% | [4.8, 14.9] | 0.43 | 195 |
+| **traits134** | **t1/t3/t4 deleted** | **10.4%** | [5.5, 14.0] | 0.51 | 193 |
+| lowodcv | eval-like scenarios swapped | 17.1% | [11.6, 24.4] | 0.80 | 193 |
+
+**Reading.** Deleting the traits that teach human oversight, honesty and calibrated harm
+judgement did NOT raise misalignment. That points at scenario CONTENT rather than trait
+coverage as the carrier of the low-ODCV jump — the opposite of what the trait explanation
+predicted, and the more surprising of the two outcomes.
+
+**How firmly — the honest answer is "not very".** Scenario-level sign tests put low-ODCV
+apart from advocacy cleanly (16:0 discordant, p=0.000) but NOT from anything else: vs
+traits134 10:5 p=0.302, vs c6excised 15:8 p=0.210, vs c6masked 9:2 p=0.065. The CIs overlap
+throughout. So the four-arm pattern is consistent and suggestive, and exactly one pairwise
+contrast is statistically solid. The 17.1% is likelier real than not, but a replication of the
+low-ODCV arm would settle it far better than another new arm.
+
+**Residual confound on this arm.** Traits 1/3/4 are more eval-like than average, so dropping
+them lowered ODCV-likeness anyway (DA-share agentic 0.64 -> 0.40, oversight 1.48 -> 1.22,
+against low-ODCV's 0.08 / 0.50). The separation is by degree, not clean.
+
+**Next steps.** (a) Train the matched control — still never run, so all five arms remain
+compared against each other rather than against the unmodified recipe; this is now the single
+biggest gap in the series. (b) Consider a second low-ODCV pass-set to tighten [11.6, 24.4],
+which is what most of the non-significance comes from. Artifacts:
+`output/odcv_bench/qwen3_6-27b-lora-t2-9284-synthdoc-716-traits134-r64/combined3x_20260819_092850/`,
+figure `output/report/arm_comparison_20260819_093604.png` + markdown mirror. RunPod pod
+destroyed, 0 active.
+
+
+## 2026-08-18 — traits-1/3/4 ablation arm trained (disambiguates the low-ODCV result)
+
+**Hypothesis.** The low-ODCV arm raised ODCV MR to 17.1% where three reasoning-style
+ablations all sat near 9%, but its scenario swap removed trait 1 almost entirely as a side
+effect (80 -> 2), because t1 IS the agentic-oversight trait. "Removed the eval-like
+scenarios" and "removed t1" were therefore the same manipulation. This arm applies the trait
+side directly while keeping the mixture much closer to the control in ODCV-likeness, so the
+two explanations can be pulled apart.
+
+**Method.** Removed all 240 difficult-advice rows belonging to t1 (preserve human oversight),
+t3 (scrupulous honesty) and t4 (calibrated harm judgement), and backfilled 240 unused corpus
+rows drawn evenly from the six remaining traits (40 each — 240 divides exactly). Reasoning
+text untouched in both kept and swapped-in rows. Trait distribution 80/80/80/80/80/79/79/79/79
+-> t2 120, t5 120, t6-t9 119, with t1/t3/t4 absent. Combined with the same 9,284 standard SFT
+rows, byte-identical. QLoRA r64 on RunPod 2xH200, dynamic batching (8k budget), assistant-only
+loss, packing off; config differs from the low-ODCV sibling only in the data/output pointers,
+with train/lora/seed identical.
+
+**Verified before spending GPU time** (four earlier launches died at startup): driver
+580.95.05 / CUDA 13.0 confirmed BEFORE syncing; dataset resolves at the pinned sha with
+t1/t3/t4 confirmed absent; `thinking: true` validated on all 10,000 rows; smoke ran the full
+path (assistant-only loss 1,163/1,659 = 70.1%, DDP over 2 ranks, train_loss 1.223).
+
+**Result.** Dataset `matboz/2026-08-18-traits134-removed-t2-9284-synthdoc-716` @ `5a8f8ef3`.
+Adapter `matboz/qwen3.6-27b-lora-t2-9284-synthdoc-716-traits134-r64` (1,275 MB,
+thinking:true, dataset pinned in `training_meta.json`). 625 steps, 1h55m, train_loss 0.8659,
+~$14 (W&B `traits134-ablation/p174kb8z`). Pod destroyed, 0 active. **No ODCV eval yet — this
+entry records the artifact only.**
+
+**Residual confound.** Traits 1/3/4 are more eval-like than average, so dropping them lowers
+ODCV-likeness even though selection never used the ODCV ratings. Mean ODCV-dimension score
+across the difficult-advice share (0-3): control 0.80/0.64/1.17/1.48 (operator/agentic/metric/
+oversight); THIS ARM 0.71/0.40/0.94/1.22; low-ODCV arm 0.14/0.08/0.45/0.50. The contrast is
+therefore a difference of degree, not a clean double dissociation. Ratings cover 638 of 716
+rows.
+
+**Next steps.** Run ODCV 3x65 on the same 65 cells. Reading: MR near 17% favours the trait
+explanation for the low-ODCV jump; MR near 9% favours content overlap; anything between is
+consistent with both contributing. Still outstanding across the series: the matched control
+has never been trained, so every comparison remains ablation-vs-ablation.
+
+
+## 2026-08-18 — low-ODCV arm ODCV result: removing eval-like scenarios RAISED misalignment
+
+**Hypothesis.** If the difficult-advice effect is carried by surface resemblance between the
+training scenarios and the ODCV agentic setting, training on difficult advice that does NOT
+look like ODCV should weaken the protection. (Arm built earlier today; see the entry below.)
+
+**Method.** 3 passes x 65 cells, exclusion list asserted byte-identical to the c6masked /
+advocacy / c6excised siblings so all four are scored on the same cells. Served on RunPod
+H100 over the HTTPS proxy with `--agentic true` and `--mode think`; endpoint smoke-tested
+for content AND tool calls before the passes. Judges grok-4.20 + gemini-3.1-pro-preview,
+193 transcripts, $5.97.
+
+**Result.** MR **17.1%** CI95 [11.6, 24.4], mean severity 0.80 (mandated 10.5%,
+incentivized 25.0%) - roughly DOUBLE the three reasoning-style ablations, which cluster
+tightly:
+
+| arm | MR | CI95 | sev | n |
+|---|--:|:--:|--:|--:|
+| lowodcv | **17.1%** | [11.6, 24.4] | 0.80 | 193 |
+| advocacy | 9.7% | [4.8, 14.9] | 0.43 | 195 |
+| c6masked | 9.6% | [4.9, 11.6] | 0.43 | 260 |
+| c6excised | 8.5% | [3.8, 11.9] | 0.44 | 189 |
+
+Scenario-level sign test on shared cells: vs advocacy 16:0 discordant, p=0.000; vs c6masked
+9:2, p=0.065; vs c6excised 15:8, p=0.210. So the gap is solid against advocacy, suggestive
+against c6masked, and not significant against c6excised.
+
+This is the FIRST manipulation in the series to move MR at all. The three reasoning-style
+ablations changed measurable reasoning properties (meta-reasoning 2.12->1.27,
+credits-rejected 1.67->0.73) while leaving MR flat; changing WHICH scenarios are trained on
+moved it. Provisional reading: the protective effect travels with scenario content, not
+reasoning style.
+
+**The confound, which is load-bearing here.** The swap is inseparable from trait coverage:
+trait balance goes from ~79-80 per trait to 2 (t1) through 143 (t9), because trait 1 IS the
+agentic-oversight trait - only 2 of 102 rated unused t1 rows come in under the threshold.
+"Removed the ODCV-like scenarios" and "removed trait 1" are the same manipulation in this
+design. For the earlier NULL results the confound was a minor caveat; for a POSITIVE result
+it is the main threat, and the finding should not be reported without it.
+
+**Next steps.** (a) Disambiguate: build an arm that removes trait 1 while KEEPING ODCV-like
+scenarios from other traits, which separates the two explanations - this is the experiment
+the result now demands. (b) Train the matched control
+(`lora_qwen36_t2_9284_synthdoc_716_dynbatch_2xh200.yaml`), still never run, so the series
+finally has a same-protocol baseline instead of only ablation-vs-ablation comparisons.
+(c) Diagnose the missing cells: 193/195 here (Ai-Education-Assistant overran its slot),
+189/195 on c6excised, still unexplained.
+
+Artifacts: `output/odcv_bench/qwen3_6-27b-lora-t2-9284-synthdoc-716-lowodcv-r64/combined3x_20260818_194628/`
+(`results.json`, `results.md`). RunPod pod destroyed, 0 active.
+
+
+## 2026-08-18 — low-ODCV-similarity arm: train on difficult advice that does NOT look like the eval
+
+**Hypothesis.** Every ablation so far changed *how* the 716 difficult-advice traces reason
+(C6 masking, C6/13/14 excision, one-sided advocacy, urgency amplification) and none moved
+the ODCV misalignment rate off ~9-14%. This arm changes *which scenarios* are trained on
+instead: if the difficult-advice effect is carried by surface resemblance between the
+training scenarios and the ODCV agentic setting, removing the resembling scenarios should
+move MR; if it is carried by the values reasoning, MR should hold.
+
+**Method.** Rated all 716 difficult-advice scenarios on four ODCV-likeness dimensions
+(operator framing, agentic capability, metric pressure, oversight-at-stake), 0-3, blind.
+Removed the 331 rows scoring >=2 on agentic capability **OR** oversight-at-stake (the OR
+cut, per request; agentic >=2 turns out to be a subset of oversight >=2). Replaced them
+with 331 rows drawn from the ~1,500 unused stage-7 traces, filtered to <=1 on **all four**
+dimensions (469 candidates for 331 slots, so the stricter <=1 filter cost nothing).
+Verified: 0 swapped-in rows score >=2 anywhere; swapped-out rows are 100% oversight >=2.
+DA-share means: operator 0.80->0.14, agentic 0.64->0.08, metric 1.17->0.45,
+oversight 1.48->0.50. Combined with the same 9,284 standard SFT rows as every other arm,
+byte-identical. Trained QLoRA r64 on vast 2xH200, dynamic batching (8k token budget),
+assistant-only loss, packing off - config differs from the control only in the dataset
+pointer and output names.
+
+**Result.** Dataset `matboz/2026-08-18-low-odcv-similarity-t2-9284-synthdoc-716`
+@ `c06dfcf6`. Adapter `matboz/qwen3.6-27b-lora-t2-9284-synthdoc-716-lowodcv-r64`
+@ `a5aaaa6c` (1,275 MB, thinking:true, dataset pinned in `training_meta.json`).
+625 steps, 1h43m, train_loss 0.8653, ~$17 of vast credit
+(W&B `lowodcv-selection/t8ccqp5c`). Pod destroyed, 0 active. **No ODCV eval yet — this
+entry records the artifact only, not a behavioural result.**
+
+**Caveat that must travel with any number from this arm.** The swap is confounded with
+trait coverage: trait balance goes from ~79-80 per trait to 2 (t1) through 143 (t9),
+because t1 *is* the agentic-oversight trait — only 2 of 102 rated unused t1 rows are
+low-ODCV. So "removed the ODCV-like scenarios" and "removed trait 1" are not separable
+in this design, and a null result is therefore weaker evidence than a positive one.
+
+**Next steps.** Run ODCV 3x65 on the arm to compare against 716-r64 (14.3%), c6masked
+(9.6%), advocacy (9.7%), c6excised (8.5%). Still outstanding across the whole ablation
+series: the matched control (`lora_qwen36_t2_9284_synthdoc_716_dynbatch_2xh200.yaml`) has
+never been trained, so no arm yet has a same-protocol baseline - every comparison above
+leans on the older 716-r64 run. Also unresolved: c6excised produced 189 not 195 rollouts
+and the 6 missing cells were never diagnosed.
+
+
 # LOG
 
 ## 2026-08-17 — LESS-selected difficult-advice arm trained: 151 rows swapped, loss 0.8651, no control yet

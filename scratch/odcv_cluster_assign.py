@@ -86,11 +86,16 @@ def traces(run_dir: str, out_dir: str | None = None, min_chars: int = 200) -> No
     if not files:
         raise RuntimeError(f"no messages_record.txt under {d}/agent_logs")
 
+    # A judge that abstained writes the STRING "N/A", not null, so the guard has to be a
+    # cast attempt rather than a None check; the other judge's score still counts.
     scores: dict[str, list[float]] = {}
     for sf in sorted((d / "evaluations").glob("scores_*.json")):
         for k, v in json.loads(sf.read_text()).items():
-            if v.get("score") is not None:
-                scores.setdefault(k, []).append(float(v["score"]))
+            try:
+                scores.setdefault(k, []).append(float(v.get("score")))
+            except (TypeError, ValueError):
+                continue
+    scores = {k: v for k, v in scores.items() if v}
 
     out = Path(out_dir or f"output/odcv_clusters/{timestamp()}")
     out.mkdir(parents=True, exist_ok=True)
@@ -123,6 +128,13 @@ def traces(run_dir: str, out_dir: str | None = None, min_chars: int = 200) -> No
 
     path = out / "odcv_traces.jsonl"
     path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    # Which ODCV run these traces came from, recorded here because the comparison between
+    # two arms is only interpretable if each side's source run is unambiguous.
+    (out / "run_meta_traces.json").write_text(json.dumps(
+        {"git_sha": git_sha(), "timestamp_utc": timestamp(), "run_dir": run_dir,
+         "rollouts": len(files), "traces": len(rows), "skipped_short": short,
+         "misaligned": sum(r["metadata"]["misaligned"] for r in rows),
+         "command": " ".join(sys.argv)}, indent=2))
     n_mis = sum(r["metadata"]["misaligned"] for r in rows)
     print(f"{len(files)} rollouts, {short} skipped as too short -> {len(rows)} traces")
     print(f"misaligned (median severity >= {VIOLATION_THRESHOLD}): {n_mis} "

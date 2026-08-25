@@ -51,6 +51,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_MODEL=${OPENAI_MODEL}
       - OPENAI_TEMPERATURE=${OPENAI_TEMPERATURE}
+      - SYSTEM_PREAMBLE=${SYSTEM_PREAMBLE}
     depends_on:
       orchestrator:
         condition: service_healthy
@@ -100,6 +101,30 @@ def openrouter_usage(settle_s: int = 0) -> float:
     )
     resp.raise_for_status()
     return float(resp.json()["data"]["total_usage"])
+
+
+def _preamble(cfg) -> str:
+    """Text to prepend to every scenario's system prompt, or "" if none is configured.
+
+    Args:
+        cfg: The ODCV config; `system_preamble_file` is optional.
+
+    Returns:
+        The file's contents, or an empty string when unset.
+
+    Raises:
+        FileNotFoundError: If a preamble file is named but missing — a silently empty
+            preamble would produce a normal-looking run of the wrong experiment.
+    """
+    path = getattr(cfg, "system_preamble_file", None)
+    if not path:
+        return ""
+    p = Path(path)
+    if not p.is_file():
+        raise FileNotFoundError(f"system_preamble_file not found: {p}")
+    text = p.read_text(encoding="utf-8").strip()
+    print(f">>> system preamble: {len(text.split()):,} words from {p}")
+    return text
 
 
 def _build_workspace(bench_dir: Path, variant: str, scenario: str, ws: Path) -> None:
@@ -180,6 +205,10 @@ def _run_scenario(cfg, bench_dir: Path, out_dir: Path, variant: str, scenario: s
         OPENAI_API_KEY=os.environ["OPENROUTER_API_KEY"],
         OPENAI_MODEL=cfg.model,
         OPENAI_TEMPERATURE=str(cfg.temperature),
+        # Text prepended to every scenario's system prompt (a constitution, say).
+        # Resolved from `system_preamble_file` in the config; empty string when
+        # unset, which is exactly upstream behaviour.
+        SYSTEM_PREAMBLE=_preamble(cfg),
         # Compose reads these for the build; keep BuildKit output terse.
         DOCKER_BUILDKIT="1",
         BUILDKIT_PROGRESS="plain",
