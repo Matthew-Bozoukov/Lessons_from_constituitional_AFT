@@ -1,0 +1,283 @@
+{
+  "git_sha": "799346708682713805960961a73c8ebe5a2e0eb2",
+  "timestamp_utc": "2026-08-20T17:53:24.340901+00:00",
+  "config": {
+    "tag": "odcv_da716_vs_numina",
+    "registry": "output/properties/properties.jsonl",
+    "source": {
+      "name": "odcv_rollouts",
+      "runs": [
+        {
+          "repo": "matboz/2026-08-08-difficult-advice-5pct-qwen36-odcv-rollouts",
+          "arm": "da716_5pct"
+        },
+        {
+          "repo": "matboz/2026-08-19-difficult-advice-0pct-qwen36-odcv-rollouts",
+          "arm": "numina_control_0pct"
+        }
+      ],
+      "min_reasoning_chars": 200,
+      "require_outcomes": true
+    },
+    "producers": {
+      "clusters_reasoning": {
+        "producer": "clusters",
+        "evidence": "features",
+        "channel": "reasoning",
+        "extract": {
+          "model": "anthropic/claude-sonnet-5",
+          "n_min": 10,
+          "n": 20,
+          "workers": 16
+        },
+        "embed": {
+          "backend": "openrouter",
+          "model": "qwen/qwen3-embedding-8b",
+          "workers": 8
+        },
+        "grouping": {
+          "reduce": "umap",
+          "cluster": "hdbscan",
+          "min_cluster_size": 40,
+          "n_neighbors": 15,
+          "n_components": 10,
+          "seed": 42
+        },
+        "baseline_grouping": {
+          "reduce": "none",
+          "cluster": "kmeans",
+          "k": 46,
+          "seed": 42
+        },
+        "interpret": {
+          "model": "anthropic/claude-sonnet-5",
+          "n_shown": 100,
+          "workers": 8
+        },
+        "min_group_records": 12,
+        "arm_key": "arm",
+        "group_by": [
+          "arm",
+          "condition"
+        ],
+        "outcomes": {
+          "fields": [
+            "violation",
+            "any_misalignment"
+          ],
+          "fdr": 0.1,
+          "min_stratum_records": 20
+        },
+        "contrast": {
+          "focus": "da716_5pct",
+          "reference": "numina_control_0pct",
+          "strata": "condition",
+          "robustness_strata": "cell",
+          "fdr": 0.1
+        },
+        "probe": {
+          "targets": [
+            "arm",
+            "violation",
+            "any_misalignment"
+          ],
+          "seed": 0,
+          "folds": 5,
+          "permutations": 50
+        },
+        "audit": {
+          "stability": true,
+          "neighbours": [
+            10,
+            15,
+            30
+          ],
+          "seeds": [
+            0,
+            1,
+            2
+          ],
+          "concentration_keys": [
+            "scenario",
+            "condition",
+            "arm"
+          ],
+          "concentration_threshold": 0.5
+        },
+        "measure_with_detector": false,
+        "detector": {
+          "model": "anthropic/claude-sonnet-5",
+          "workers": 16,
+          "sample": null,
+          "batched": true,
+          "verify": 25
+        }
+      },
+      "clusters_response": {
+        "producer": "clusters",
+        "evidence": "features",
+        "channel": "response",
+        "extract": {
+          "model": "anthropic/claude-sonnet-5",
+          "n_min": 10,
+          "n": 20,
+          "workers": 16
+        },
+        "embed": {
+          "backend": "openrouter",
+          "model": "qwen/qwen3-embedding-8b",
+          "workers": 8
+        },
+        "grouping": {
+          "reduce": "umap",
+          "cluster": "hdbscan",
+          "min_cluster_size": 25,
+          "n_neighbors": 15,
+          "n_components": 10,
+          "seed": 42
+        },
+        "baseline_grouping": {
+          "reduce": "none",
+          "cluster": "kmeans",
+          "k": 69,
+          "seed": 42
+        },
+        "interpret": {
+          "model": "anthropic/claude-sonnet-5",
+          "n_shown": 100,
+          "workers": 8
+        },
+        "min_group_records": 12,
+        "arm_key": "arm",
+        "group_by": [
+          "arm",
+          "condition"
+        ],
+        "outcomes": {
+          "fields": [
+            "violation",
+            "any_misalignment"
+          ],
+          "fdr": 0.1,
+          "min_stratum_records": 20
+        },
+        "contrast": {
+          "focus": "da716_5pct",
+          "reference": "numina_control_0pct",
+          "strata": "condition",
+          "robustness_strata": "cell",
+          "fdr": 0.1
+        },
+        "probe": {
+          "targets": [
+            "arm",
+            "violation",
+            "any_misalignment"
+          ],
+          "seed": 0,
+          "folds": 5,
+          "permutations": 50
+        },
+        "audit": {
+          "stability": true,
+          "neighbours": [
+            10,
+            15,
+            30
+          ],
+          "seeds": [
+            0,
+            1,
+            2
+          ],
+          "concentration_keys": [
+            "scenario",
+            "condition",
+            "arm"
+          ],
+          "concentration_threshold": 0.5
+        },
+        "measure_with_detector": false,
+        "detector": {
+          "model": "anthropic/claude-sonnet-5",
+          "workers": 16,
+          "sample": null,
+          "batched": true,
+          "verify": 25
+        }
+      }
+    },
+    "check_collisions": true,
+    "constitution": "constitutions/claude_distilled_12_principles_mid/constitution.md",
+    "smoke": {
+      "source": {
+        "limit": 8,
+        "min_reasoning_chars": 0,
+        "require_outcomes": false
+      },
+      "producers": {
+        "clusters_reasoning": {
+          "min_group_records": 2,
+          "grouping": {
+            "reduce": "none",
+            "cluster": "kmeans",
+            "k": 2
+          },
+          "baseline_grouping": null,
+          "audit": {
+            "stability": false
+          },
+          "outcomes": {
+            "min_stratum_records": 1
+          },
+          "contrast": {
+            "strata": "condition",
+            "robustness_strata": null
+          },
+          "probe": {
+            "targets": [
+              "arm"
+            ],
+            "permutations": 3,
+            "folds": 2
+          },
+          "measure_with_detector": false
+        },
+        "clusters_response": {
+          "min_group_records": 2,
+          "grouping": {
+            "reduce": "none",
+            "cluster": "kmeans",
+            "k": 2
+          },
+          "baseline_grouping": null,
+          "audit": {
+            "stability": false
+          },
+          "outcomes": {
+            "min_stratum_records": 1
+          },
+          "contrast": {
+            "strata": "condition",
+            "robustness_strata": null
+          },
+          "probe": {
+            "targets": [
+              "arm"
+            ],
+            "permutations": 3,
+            "folds": 2
+          },
+          "measure_with_detector": false
+        }
+      }
+    }
+  },
+  "tag": "odcv_da716_vs_numina",
+  "n_records": 513,
+  "source": "odcv_rollouts",
+  "n_properties": 120,
+  "registry": "output\\properties\\properties.jsonl",
+  "target_id": null,
+  "command": "scripts/properties/discover.py --config configs/properties/discover_odcv_da716_vs_numina.yaml --out_dir output/properties/odcv_da716_vs_numina_20260820"
+}

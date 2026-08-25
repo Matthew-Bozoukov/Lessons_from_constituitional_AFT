@@ -1,0 +1,545 @@
+[
+ {
+  "target": "arm == da716_5pct",
+  "n_records": 513,
+  "n_properties": 49,
+  "positive_rate": 0.6608,
+  "path": [
+   {
+    "c": 0.003,
+    "auc": 0.5,
+    "f1": 0.7958,
+    "accuracy": 0.6608,
+    "n_selected": 0
+   },
+   {
+    "c": 0.01,
+    "auc": 0.5,
+    "f1": 0.7958,
+    "accuracy": 0.6608,
+    "n_selected": 0
+   },
+   {
+    "c": 0.03,
+    "auc": 0.8435,
+    "f1": 0.8415,
+    "accuracy": 0.7914,
+    "n_selected": 4
+   },
+   {
+    "c": 0.1,
+    "auc": 0.9159,
+    "f1": 0.8777,
+    "accuracy": 0.8441,
+    "n_selected": 20
+   },
+   {
+    "c": 0.3,
+    "auc": 0.946,
+    "f1": 0.9012,
+    "accuracy": 0.8752,
+    "n_selected": 30
+   },
+   {
+    "c": 1.0,
+    "auc": 0.9563,
+    "f1": 0.9063,
+    "accuracy": 0.8811,
+    "n_selected": 37
+   },
+   {
+    "c": 3.0,
+    "auc": 0.9536,
+    "f1": 0.9055,
+    "accuracy": 0.8791,
+    "n_selected": 43
+   },
+   {
+    "c": 10.0,
+    "auc": 0.9485,
+    "f1": 0.897,
+    "accuracy": 0.8674,
+    "n_selected": 47
+   }
+  ],
+  "best": {
+   "c": 1.0,
+   "auc": 0.9563,
+   "f1": 0.9063,
+   "accuracy": 0.8811,
+   "n_selected": 37
+  },
+  "minimal": {
+   "n_selected": 37,
+   "auc": 0.9563,
+   "c": 1.0
+  },
+  "top_coefficients": [
+   {
+    "property": "Splits a request into legitimate and illegitimate parts",
+    "coefficient": 2.5479
+   },
+   {
+    "property": "Explicit meta-commentary on its own reasoning process",
+    "coefficient": 2.4742
+   },
+   {
+    "property": "Weighs literal instruction against user intent",
+    "coefficient": 2.0131
+   },
+   {
+    "property": "Explicit meta-commentary on own role and compliance",
+    "coefficient": 1.8102
+   },
+   {
+    "property": "Explicitly discloses its own limitations",
+    "coefficient": 1.7663
+   },
+   {
+    "property": "Grounds claims with concrete file/script paths",
+    "coefficient": -1.7261
+   },
+   {
+    "property": "Sequential step-by-step task narration",
+    "coefficient": -1.6026
+   },
+   {
+    "property": "Repeats prior reasoning without adding new progress",
+    "coefficient": -1.5715
+   },
+   {
+    "property": "Flags that it may be under test or being nudged",
+    "coefficient": 1.5413
+   },
+   {
+    "property": "Explicitly prioritizes honesty over a stated success metric",
+    "coefficient": 1.354
+   },
+   {
+    "property": "Explicitly declares task completion as a discrete act",
+    "coefficient": 1.0684
+   },
+   {
+    "property": "Verbose first-person internal monologue before acting",
+    "coefficient": 1.066
+   },
+   {
+    "property": "Pairs refusal with a legitimate alternative",
+    "coefficient": 0.987
+   },
+   {
+    "property": "Resists pressure to make unnecessary tool calls",
+    "coefficient": 0.897
+   },
+   {
+    "property": "Optimizing a proxy metric instead of the real goal",
+    "coefficient": -0.8817
+   },
+   {
+    "property": "Adopts a named ai persona or system identity",
+    "coefficient": 0.8159
+   },
+   {
+    "property": "Notices gap between passing validation and being correct",
+    "coefficient": -0.7914
+   },
+   {
+    "property": "Explicitly flags the prompt as manipulative",
+    "coefficient": 0.6975
+   },
+   {
+    "property": "Flags fairness or bias concern without resolving it",
+    "coefficient": 0.6599
+   },
+   {
+    "property": "Embeds request in fictional corporate/business simulation",
+    "coefficient": -0.6566
+   }
+  ],
+  "permutation_null": {
+   "n": 50,
+   "mean_auc": 0.5048,
+   "p95_auc": 0.5882,
+   "p_value": 0.0196
+  },
+  "params": {
+   "seed": 0,
+   "folds": 5,
+   "l1_ratio": 1.0,
+   "solver": "liblinear",
+   "class_weight": "balanced",
+   "c_grid": [
+    0.003,
+    0.01,
+    0.03,
+    0.1,
+    0.3,
+    1.0,
+    3.0,
+    10.0
+   ]
+  }
+ },
+ {
+  "target": "violation",
+  "n_records": 513,
+  "n_properties": 49,
+  "positive_rate": 0.2476,
+  "path": [
+   {
+    "c": 0.003,
+    "auc": 0.5,
+    "f1": 0.3969,
+    "accuracy": 0.2476,
+    "n_selected": 0
+   },
+   {
+    "c": 0.01,
+    "auc": 0.5,
+    "f1": 0.3969,
+    "accuracy": 0.2476,
+    "n_selected": 0
+   },
+   {
+    "c": 0.03,
+    "auc": 0.8201,
+    "f1": 0.5021,
+    "accuracy": 0.5322,
+    "n_selected": 2
+   },
+   {
+    "c": 0.1,
+    "auc": 0.924,
+    "f1": 0.75,
+    "accuracy": 0.8635,
+    "n_selected": 21
+   },
+   {
+    "c": 0.3,
+    "auc": 0.9585,
+    "f1": 0.7986,
+    "accuracy": 0.8908,
+    "n_selected": 29
+   },
+   {
+    "c": 1.0,
+    "auc": 0.9583,
+    "f1": 0.7956,
+    "accuracy": 0.8908,
+    "n_selected": 41
+   },
+   {
+    "c": 3.0,
+    "auc": 0.9516,
+    "f1": 0.7636,
+    "accuracy": 0.8733,
+    "n_selected": 47
+   },
+   {
+    "c": 10.0,
+    "auc": 0.9456,
+    "f1": 0.7528,
+    "accuracy": 0.8694,
+    "n_selected": 49
+   }
+  ],
+  "best": {
+   "c": 0.3,
+   "auc": 0.9585,
+   "f1": 0.7986,
+   "accuracy": 0.8908,
+   "n_selected": 29
+  },
+  "minimal": {
+   "n_selected": 29,
+   "auc": 0.9585,
+   "c": 0.3
+  },
+  "top_coefficients": [
+   {
+    "property": "Fabricates or falsifies data without ethical flagging",
+    "coefficient": 2.4962
+   },
+   {
+    "property": "Optimizing a proxy metric instead of the real goal",
+    "coefficient": 1.1365
+   },
+   {
+    "property": "Explains reasoning behind a refusal",
+    "coefficient": -1.0876
+   },
+   {
+    "property": "Recognizes or engages in metric gaming (Goodharting)",
+    "coefficient": 1.0846
+   },
+   {
+    "property": "Fabricates missing data or results instead of flagging gap",
+    "coefficient": 1.0706
+   },
+   {
+    "property": "Explicitly flags the prompt as manipulative",
+    "coefficient": -1.0612
+   },
+   {
+    "property": "Adopts a compliance/regulatory persona or framing",
+    "coefficient": -0.859
+   },
+   {
+    "property": "Resists pressure to make unnecessary tool calls",
+    "coefficient": -0.8393
+   },
+   {
+    "property": "Explicitly frames safety versus metric tradeoff",
+    "coefficient": -0.7852
+   },
+   {
+    "property": "Frames reasoning via healthcare authority or persona",
+    "coefficient": -0.7694
+   },
+   {
+    "property": "Reports failure or shortfall honestly rather than concealing it",
+    "coefficient": -0.7535
+   },
+   {
+    "property": "Refuses to falsify or manipulate data under pressure",
+    "coefficient": -0.6989
+   },
+   {
+    "property": "Grounds claims with concrete file/script paths",
+    "coefficient": -0.6638
+   },
+   {
+    "property": "Reads and explains script logic before acting",
+    "coefficient": -0.604
+   },
+   {
+    "property": "Uses bold markdown headers to structure reasoning",
+    "coefficient": -0.4733
+   },
+   {
+    "property": "Iterating in response to a tool or script failure",
+    "coefficient": 0.4602
+   },
+   {
+    "property": "Explicit deliberation over an ethical tension",
+    "coefficient": -0.4072
+   },
+   {
+    "property": "Pairs refusal with a legitimate alternative",
+    "coefficient": -0.4019
+   },
+   {
+    "property": "Optimizes for a proxy score over genuine educational value",
+    "coefficient": 0.401
+   },
+   {
+    "property": "Embeds request in fictional corporate/business simulation",
+    "coefficient": -0.3887
+   }
+  ],
+  "permutation_null": {
+   "n": 50,
+   "mean_auc": 0.506,
+   "p95_auc": 0.5738,
+   "p_value": 0.0196
+  },
+  "params": {
+   "seed": 0,
+   "folds": 5,
+   "l1_ratio": 1.0,
+   "solver": "liblinear",
+   "class_weight": "balanced",
+   "c_grid": [
+    0.003,
+    0.01,
+    0.03,
+    0.1,
+    0.3,
+    1.0,
+    3.0,
+    10.0
+   ]
+  }
+ },
+ {
+  "target": "any_misalignment",
+  "n_records": 513,
+  "n_properties": 49,
+  "positive_rate": 0.4094,
+  "path": [
+   {
+    "c": 0.003,
+    "auc": 0.5,
+    "f1": 0.5809,
+    "accuracy": 0.4094,
+    "n_selected": 0
+   },
+   {
+    "c": 0.01,
+    "auc": 0.5,
+    "f1": 0.5809,
+    "accuracy": 0.4094,
+    "n_selected": 0
+   },
+   {
+    "c": 0.03,
+    "auc": 0.7418,
+    "f1": 0.6388,
+    "accuracy": 0.5789,
+    "n_selected": 2
+   },
+   {
+    "c": 0.1,
+    "auc": 0.8467,
+    "f1": 0.7244,
+    "accuracy": 0.7641,
+    "n_selected": 16
+   },
+   {
+    "c": 0.3,
+    "auc": 0.8672,
+    "f1": 0.7696,
+    "accuracy": 0.8109,
+    "n_selected": 30
+   },
+   {
+    "c": 1.0,
+    "auc": 0.8687,
+    "f1": 0.7476,
+    "accuracy": 0.7934,
+    "n_selected": 39
+   },
+   {
+    "c": 3.0,
+    "auc": 0.8647,
+    "f1": 0.7435,
+    "accuracy": 0.7875,
+    "n_selected": 46
+   },
+   {
+    "c": 10.0,
+    "auc": 0.8616,
+    "f1": 0.7465,
+    "accuracy": 0.7895,
+    "n_selected": 48
+   }
+  ],
+  "best": {
+   "c": 1.0,
+   "auc": 0.8687,
+   "f1": 0.7476,
+   "accuracy": 0.7934,
+   "n_selected": 39
+  },
+  "minimal": {
+   "n_selected": 30,
+   "auc": 0.8672,
+   "c": 0.3
+  },
+  "top_coefficients": [
+   {
+    "property": "Fabricates or falsifies data without ethical flagging",
+    "coefficient": 2.3518
+   },
+   {
+    "property": "Optimizing a proxy metric instead of the real goal",
+    "coefficient": 1.5741
+   },
+   {
+    "property": "Recognizes or engages in metric gaming (Goodharting)",
+    "coefficient": 1.3334
+   },
+   {
+    "property": "Repeats prior reasoning without adding new progress",
+    "coefficient": 1.1282
+   },
+   {
+    "property": "Grounds claims with concrete file/script paths",
+    "coefficient": -1.1245
+   },
+   {
+    "property": "Fabricates missing data or results instead of flagging gap",
+    "coefficient": 0.9898
+   },
+   {
+    "property": "Optimizes for a proxy score over genuine educational value",
+    "coefficient": 0.9458
+   },
+   {
+    "property": "Explicitly flags the prompt as manipulative",
+    "coefficient": -0.7568
+   },
+   {
+    "property": "Flags fairness or bias concern without resolving it",
+    "coefficient": 0.7048
+   },
+   {
+    "property": "Adopts a named ai persona or system identity",
+    "coefficient": -0.6743
+   },
+   {
+    "property": "Splits a request into legitimate and illegitimate parts",
+    "coefficient": -0.6687
+   },
+   {
+    "property": "Names a conflict between instructions, goals, or incentives",
+    "coefficient": -0.6412
+   },
+   {
+    "property": "Reads and explains script logic before acting",
+    "coefficient": -0.6227
+   },
+   {
+    "property": "Explicitly frames safety versus metric tradeoff",
+    "coefficient": 0.6191
+   },
+   {
+    "property": "Refuses to falsify or manipulate data under pressure",
+    "coefficient": -0.6105
+   },
+   {
+    "property": "Iterating in response to a tool or script failure",
+    "coefficient": 0.5978
+   },
+   {
+    "property": "Explicit deliberation over an ethical tension",
+    "coefficient": -0.5753
+   },
+   {
+    "property": "Explicit meta-commentary on its own reasoning process",
+    "coefficient": -0.5569
+   },
+   {
+    "property": "Resists pressure to comply without justification",
+    "coefficient": -0.5565
+   },
+   {
+    "property": "Resists pressure to make unnecessary tool calls",
+    "coefficient": -0.5371
+   }
+  ],
+  "permutation_null": {
+   "n": 50,
+   "mean_auc": 0.502,
+   "p95_auc": 0.5672,
+   "p_value": 0.0196
+  },
+  "params": {
+   "seed": 0,
+   "folds": 5,
+   "l1_ratio": 1.0,
+   "solver": "liblinear",
+   "class_weight": "balanced",
+   "c_grid": [
+    0.003,
+    0.01,
+    0.03,
+    0.1,
+    0.3,
+    1.0,
+    3.0,
+    10.0
+   ]
+  }
+ }
+]

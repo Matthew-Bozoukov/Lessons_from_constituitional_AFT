@@ -130,3 +130,66 @@ once at the end.
 transcript for the numina-control arm in five attempts across four passes, including on a
 warm proxy, while every sibling arm scored it fine. Report the reduced cell count rather
 than implying equal coverage.
+
+## LLM-as-judge instruments
+
+**Batching a detector across ~50 rubrics deflates every prevalence it measures.** Asking one
+judge call "which of these 48 properties does this record have?" is ~40x cheaper than one
+call per (record, property), and it is NOT the same instrument. Measured 2026-08-20 over 48
+real detectors x 20 real ODCV rollouts (960 verdict cells), against one-property-per-call as
+the reference:
+
+    batched   38.1% prevalence   85.0% cell agreement    12s
+    single    47.5% prevalence   --                     465s
+
+A systematic 7-9 point deflation, not noise: mean per-property gap 11.1%, individual
+properties moving up to 35 points. The direction is what you would expect from a judge
+satisficing under load, and from the prompt's own "when borderline, answer no" being applied
+forty-eight times at once. Use batching as a cheap screen; do not publish a rate from it
+without measuring the gap on your own rubrics first.
+
+**A reasoning model spends its token budget BEFORE emitting content, so a tight `max_tokens`
+returns a BLANK rather than a truncated answer.** CLAUDE.md gotcha 4 covers the eval case;
+the judge case fails differently and worse. At `max_tokens=2000` a 49-rubric detector prompt
+blanked 23 of 25 records with `finish_reason='length'` and `content=None` — intermittently,
+because how long the model thinks varies per record, so it reads as flakiness rather than as
+a budget. `EmptyCompletionError` is classified transient and retried 6x, so every failure
+cost six full generations before surfacing. Size the budget for thinking PLUS answer, and
+when a judge stage blanks, read `finish_reason` before blaming the provider.
+
+On that same A/B, disabling reasoning on the batched path cost 1.5 points of agreement
+(85.0% vs 86.5%) for a 40x speedup, with the mean per-property prevalence gap identical to
+one decimal. On a batched detector, reasoning does not pay for itself. On the unbatched path
+it is left on, because that path is the reference and changing it moves the yardstick.
+
+**A `--smoke` that shrinks the corpus does not shrink the rubric count.** The smoke path for
+`properties` runs 2 properties over 16 short records, so a bug needing 49 rubrics and a
+12k-character trace is invisible to it by construction — GOTCHAS' own "size a smoke test to
+the bug it is hunting", one level up. The generalisable fix:
+`interpret.preflight_detect_many` opens the expensive stage with ONE call at full rubric
+count on the LONGEST record in the corpus, and prints the projected cost of the full pass
+from that stopwatch instead of an estimate.
+
+**Never pipe a long background run's stdout through `grep`/`tail`.** The pipe buffers; when
+the foreground timeout moves the command to the background, everything buffered is discarded
+and the new output file is empty. A 10-minute, ~$5 A/B was lost this way with nothing
+recoverable. Long runs write their own report file; the shell's stdout is a convenience, not
+the artifact.
+
+**`Property.channel` is a fact about the run, not an opinion for the interpreter.** The
+naming prompt asks the model to return `"channel": "query" | "reasoning" | "response"`, and
+the model answers it from CONTENT — so a cluster of REASONING descriptions about refusing
+comes back labelled `response`, because refusing sounds like an action. Measured on the
+2026-08-20 two-arm run before the fix: 25 of 49 reasoning-fit properties and 18 of 71
+response-fit ones carried the wrong channel.
+
+That field is not cosmetic. `interpret.detect`, `ablation/filter.py` and `ablation/mask.py`
+all use it to decide which text to read, so a wrong value points them at the wrong half of
+the record silently — the detector's per-record agreement with cluster membership fell to
+21% on the affected properties, and their measured arm delta collapsed from -30pp to 0pp.
+The producer now overrides the interpreter's guess with the channel the run actually
+clustered. If you add a producer, do the same.
+
+Worth noting what this did NOT touch: cluster membership, and therefore every prevalence,
+arm contrast and outcome lift, all of which come from the features of the configured
+channel. Only the detector-side paths read `Property.channel`.
