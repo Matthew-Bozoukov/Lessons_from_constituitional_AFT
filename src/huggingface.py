@@ -19,6 +19,14 @@ from huggingface_hub import HfApi
 REQUIRED_FIELDS = ("experiment", "date_generated", "constitution", "source_repo",
                    "models", "generation_config", "schema", "provenance")
 
+# Hub-indexed card tags are HF's discovery mechanism: `/api/datasets?filter=<tag>` finds a
+# repo by them, token-less, with no registry to keep in sync. Eval repos carry `eval-run`
+# (src/eval/run_eval.py); every TRAINING CORPUS carries this family, stamped by the
+# publishers (synth's StageCache, mix's push, properties/ablate) through
+# `training_data_tags`, and the dashboard's /datasets explorer lists exactly these.
+TRAINING_DATA_TAG = "training-data"
+TRAINING_DATA_KINDS = ("synth", "mixture", "ablation", "fixture")
+
 
 def hf_token() -> str | None:
     """THE token resolution, reads and pushes alike: HUGGINGFACE_API_KEY or HF_TOKEN.
@@ -60,25 +68,79 @@ def hf_snapshot(repo_id: str, **kwargs) -> str:
     return snapshot_download(repo_id, token=hf_token(), **kwargs)
 
 
-def card_front_matter(configs: list[dict]) -> str:
-    """Render the README YAML front-matter declaring a repo's `configs:` (pure).
+def tag_safe(text: str) -> str:
+    """Make a value usable inside a Hub tag: no whitespace or slashes, bounded length."""
+    return re.sub(r"[\s/]+", "-", str(text).strip()).strip("-")[:64] or "unknown"
 
-    Each entry: {"config_name": str, "data_files": str, "default": bool?}. Declared
+
+def constitution_slug(value: str | None) -> str:
+    """The `constitution:<slug>` tag value for a card's constitution field (pure).
+
+    Card fields name the constitution as a repo path, sometimes followed by prose
+    (`constitutions/<name>/constitution.md — the constitution the pool ...`); the tag
+    carries the `<name>` alone. `none` stays `none` — a corpus that connects to no
+    constitution says so explicitly (CLAUDE.md), and the tag repeats it.
+    """
+    # Hand-written cards wrap the name in backticks or a markdown link, or name the
+    # file (`claude_approved_constitution.md`) rather than the folder.
+    text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", str(value or "")).replace("`", "").strip()
+    if not text or text.lower().startswith("none"):
+        return "none"
+    m = (re.search(r"constitutions/([A-Za-z0-9._-]+?)(?:/|\s|$)", text)
+         or re.search(r"\b(claude_distilled_[A-Za-z0-9_]+)", text)
+         or re.search(r"([A-Za-z0-9._-]+)/constitution\.md\b", text)   # <dir>/constitution.md
+         or re.search(r"\b([A-Za-z0-9_-]+)\.md\b", text))
+    if m:
+        return m.group(1)
+    # Free text: the name up to the first dash-clause, parenthesis or colon. Hyphens
+    # inside a name ("Claude-approved constitution") are part of it, not separators.
+    return tag_safe(re.split(r"\s*(?:—|\(|:)\s*|\s-\s", text, maxsplit=1)[0])[:40]
+
+
+def training_data_tags(kind: str, pipeline: str, constitution: str | None, *,
+                       smoke: bool = False, extra: tuple[str, ...] | list[str] = ()) -> list[str]:
+    """The card tags every training corpus carries (pure; unit-tested offline).
+
+    Args:
+        kind: One of TRAINING_DATA_KINDS — which publisher produced the rows.
+        pipeline: The producing recipe: a synth document type (`difficult_advice`), a
+            mixture config stem (`qwen36_less_top10`), an ablation tag.
+        constitution: The card's constitution field, reduced by `constitution_slug`.
+        smoke: Smoke runs are tagged so the dashboard can fold them away by default.
+        extra: Further `key:value` facets (a mixture's `stage:final`, say).
+
+    Returns:
+        `[training-data, kind:<kind>, pipeline:<pipeline>, constitution:<slug>, ...]`.
+    """
+    assert kind in TRAINING_DATA_KINDS, f"kind must be one of {TRAINING_DATA_KINDS}: {kind!r}"
+    tags = [TRAINING_DATA_TAG, f"kind:{kind}", f"pipeline:{tag_safe(pipeline)}",
+            f"constitution:{constitution_slug(constitution)}"]
+    if smoke:
+        tags.append("smoke")
+    return tags + [str(t) for t in extra]
+
+
+def _front_matter_block(front_matter: dict) -> str:
+    """One renderer for a card's YAML front-matter, so every publisher's block parses alike."""
+    return "---\n" + yaml.safe_dump(front_matter, sort_keys=False).strip() + "\n---\n"
+
+
+def card_front_matter(configs: list[dict], tags: tuple[str, ...] | list[str] = ()) -> str:
+    """Render the README YAML front-matter declaring a repo's `configs:` and `tags:` (pure).
+
+    Each config: {"config_name": str, "data_files": str, "default": bool?}. Declared
     configs are how a multi-file dataset repo stays loadable: `load_dataset(repo)`
     fetches only the default config's files, and the dataset viewer stops globbing
-    every jsonl into one schema. An empty list renders bare markers (no `configs:`
-    key — the hub rejects an empty sequence).
+    every jsonl into one schema — and the default config's `data_files` is the file
+    the dashboard streams. Empty inputs render bare markers (no `configs:` key — the
+    hub rejects an empty sequence).
     """
-    lines = ["---"]
+    front_matter: dict = {}
     if configs:
-        lines.append("configs:")
-        for c in configs:
-            lines.append(f"- config_name: {c['config_name']}")
-            lines.append(f"  data_files: {c['data_files']}")
-            if c.get("default"):
-                lines.append("  default: true")
-    lines.append("---")
-    return "\n".join(lines) + "\n"
+        front_matter["configs"] = [dict(c) for c in configs]
+    if tags:
+        front_matter["tags"] = [str(t) for t in tags]
+    return _front_matter_block(front_matter) if front_matter else "---\n---\n"
 
 
 def card_markdown(fields: dict, front_matter: dict | None = None) -> str:
@@ -90,14 +152,13 @@ def card_markdown(fields: dict, front_matter: dict | None = None) -> str:
     `front_matter` (e.g. {"tags": ["eval-run", "eval:odcv"]}) renders as a YAML block
     ahead of the markdown — the Hub indexes it, so `/api/datasets?filter=<tag>` finds
     the repo. This is HF's canonical discovery mechanism; the dashboard's eval-run
-    picker relies on the `eval-run` + `eval:<name>` + `model:<key>` tags.
+    picker relies on the `eval-run` + `eval:<name>` + `model:<key>` tags, and its
+    /datasets explorer on `training_data_tags` plus a `configs:` default data file.
     """
     missing = [f for f in REQUIRED_FIELDS if not str(fields.get(f, "")).strip()]
     assert not missing, (f"dataset card is missing required fields {missing} — "
                          "write `constitution: none` explicitly if it connects to none")
-    lines = []
-    if front_matter:
-        lines += ["---", yaml.safe_dump(front_matter, sort_keys=False).strip(), "---"]
+    lines = [_front_matter_block(front_matter).rstrip("\n")] if front_matter else []
     lines += ["# " + fields.get("title", fields["experiment"]), "", "| field | value |", "| --- | --- |"]
     extras = [k for k in fields if k not in REQUIRED_FIELDS and k != "title"]
     for key in (*REQUIRED_FIELDS, *extras):
@@ -213,7 +274,8 @@ def push_run_dir(out_dir: Path, repo_id: str, fields: dict, private: bool = Fals
     return f"https://huggingface.co/{prefix}{repo_id}"
 
 
-def push_files(paths: list[Path], repo_id: str, fields: dict, private: bool = True) -> str:
+def push_files(paths: list[Path], repo_id: str, fields: dict, private: bool = True,
+               front_matter: dict | None = None) -> str:
     """Upload named files (with their card) to an HF dataset repo, keeping basenames.
 
     The checkpoint-push flavour: a staged pipeline pushes exactly the files each stage
@@ -225,11 +287,13 @@ def push_files(paths: list[Path], repo_id: str, fields: dict, private: bool = Tr
         repo_id: Dated repo per the naming rule.
         fields: Card fields; all REQUIRED_FIELDS must be present and non-empty.
         private: Create the repo private (default).
+        front_matter: Card YAML front-matter — a training corpus passes its
+            `configs:` (default data file) and `training_data_tags` here.
 
     Returns:
         The repo URL.
     """
-    card = card_markdown(fields)  # validate before any network call
+    card = card_markdown(fields, front_matter)  # validate before any network call
     missing = [str(p) for p in paths if not Path(p).is_file()]
     assert not missing, f"push_files: not files: {missing}"
     api = hf_api()

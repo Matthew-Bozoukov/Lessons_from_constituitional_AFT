@@ -1,6 +1,179 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-08-25 — Training-data contract: every corpus push is tagged, and /datasets discovers it live from the Hub
+
+**Hypothesis.** The dashboard's `/datasets` page listed only corpora with a hand-written
+`content/datasets/<slug>/index.md`, resolved at build time — so it under-reported the org and
+went stale between deploys (2026-08-10: 1 of 79). `/evals` had already moved to live, tag-based
+discovery on 2026-08-24; datasets could follow if the publishers wrote something the Hub
+indexes. They did not: `synth` wrote only a `configs:` block, `mix` wrote no front-matter at
+all, and the CLAUDE.md card fields live in a markdown table the Hub does not index.
+
+**Method.** One vocabulary in `src/huggingface.py` — `training_data_tags(kind, pipeline,
+constitution, smoke=, extra=)` → `training-data`, `kind:<synth|mixture|ablation|fixture>`,
+`pipeline:<name>`, `constitution:<slug>` (via `constitution_slug`, `none` kept explicit),
+`smoke`, plus `stage:<unfiltered|filtered|final>` on mixture checkpoints — rendered by one
+front-matter renderer beside the `configs:` block whose default entry names the rows file.
+Stamped by `synth` (`StageCache(tags=)`, refreshed on every README), `mix` (`push_files(...,
+front_matter=)` at all three checkpoints, now also declaring a default config) and
+`properties/ablate`. Dashboard: `lib/trainingData.ts` lists
+`/api/datasets?author=LASR-Callum&filter=training-data&expand[]=cardData…`, reads the rows
+file from the card (else one tree call + allowlist, highest root `stage_N_*sft*`, or a lone
+arm-named JSONL), probes `mixture_stats.json` / `<rows>.stats.json` (both schemas), and feeds
+the unchanged `DatasetViewer`; `TrainingDataExplorer` folds smoke runs away and lists
+tagged-but-unbrowsable repos with their candidates. The build-time dataset path in
+`index-content.mjs` (268 lines) and its tests are gone; `hf-discover.mjs` now reports
+untagged corpora. `scratch/backfill_training_data_tags.py` classifies legacy repos from what
+they hold and merges tags with `metadata_update` (dry run by default).
+
+**Result.** Python 880 tests pass; dashboard 55/56 (the one failure is a pre-existing Hub 404
+for `2026-07-29-msm-philosophy-spec-petri-validation/manifest.json`, untouched here). The
+backfill dry run plans **80 corpora** — 28 synth, 51 mixtures, 1 fixture — and skips 81
+non-corpora, after three rounds of fixing the classifier against real layouts: pre-contract
+synth runs ending at `stage_8_export_sft.jsonl`/`stage_5_sft.jsonl`, hand-pushed arm
+mixtures (`t2_9284_*_10k.jsonl` + `{total: 9987, per_source}` stats), eval-record dumps named
+`records.jsonl` that a lone-file rule would otherwise promote, and `model-eval-model` corpora
+that an "eval-shaped name" rule excluded. **Applied the same day: 80/80 repos tagged**
+(`metadata_update`, bodies byte-identical — spot-checked); token-less
+`/api/datasets?author=LASR-Callum&filter=training-data` returns **76** (28 synth, 47 mixture,
+1 fixture), 23 of them with a declared default config and the rest resolved by the fallback
+rules. The remaining planned repos are private and stay invisible on the token-less site.
+
+**Next.** Make the private arm mixtures public if they should be browsable; consider a
+`dataset_info` block (`num_examples`) in the synth card so record counts need no sidecar;
+retire the fallback rules once every corpus declares its default config.
+
+## 2026-08-24 — Dashboard eval-run explorer: live HF discovery, results + rollouts, A/B compare
+
+**Why.** The evals tab only listed baked content entries; reading an actual run meant
+opening the HF repo by hand, and comparing two models meant two browser tabs and memory.
+The new published-layout contract (entry below) makes every eval repo machine-readable,
+so the dashboard can be a real viewer.
+
+**What.** `dashboard/app/components/EvalRunExplorer.tsx` + `dashboard/lib/evalRuns.ts`,
+mounted at the top of `/evals`. All client-side (the site stays a static export):
+
+- **Discovery is HF-canonical:** the browser lists the org's repos via
+  `/api/datasets?author=LASR-Callum&filter=eval-run` — the `eval-run` / `eval:<name>` /
+  `model:<key>` / `mode:<mode>` tags now stamped into every push's card front matter
+  (`card_markdown` grew a `front_matter` param the same day). Only PUBLIC repos appear
+  (token-less site; `push_run_dir` now defaults public).
+- **Controls:** eval-type select → run select, a Compare toggle adding a Run B, and
+  Results | Rollouts tabs.
+- **Results:** `results/results.json` flattened to numeric metrics (adapter-ordered
+  featured keys first); compare mode adds per-metric paired bars — one scale PER metric
+  row, never a shared axis — plus a Δ column, using the two house-validated series
+  colours (`--series-constitution` A, `--series-general` B).
+- **Rollouts:** per-eval adapters key units so two runs align on the same
+  prompt/scenario — odcv `variant/scenario` (passes stacked), psychosis character,
+  agentic `condition/sample`, swebench instance, and jsonl row adapters (mmlu uid,
+  lmsys/arena id, internalization item_id) with prompt/reasoning/response sections.
+  Files stream from `resolve/main/rollouts/...`; jsonl files over 6 MB load on click.
+  Unknown eval names get a generic file-tree adapter, so a new eval renders before it
+  has an adapter.
+
+**Result.** `next build` (the Netlify path) green with the explorer prerendered.
+Legacy repos without tags don't appear until their cards are backfilled with the
+front-matter tags.
+
+## 2026-08-24 — Published-layout contract: every eval's run dir (and HF repo) is rollouts/ results/ metadata/
+
+**Why.** Every eval published its own bespoke tree — ODCV raw-plus-combined passes, mmlu a
+`think/<arm>/<ts>/` nest, agentic the untouched harness dump, lmsys/psychosis loose root
+files — so nothing downstream could rely on where transcripts or numbers live, and the
+repo root of a published run mixed summaries, configs and working files.
+
+**What.** Branch `jamie/odcv-contract-compliance` (follow-on to the ODCV entry below).
+`src/eval/layout.py` defines the contract — `rollouts/` (self-contained transcripts),
+`results/` (scores/judgments + the epilogue's canonical results.json/md), `metadata/`
+(run_meta.json, configs, provenance) — and `run_eval.py`'s epilogue now homes its own
+files there and **fail-fast rejects any stray root entry before the push**
+(`assert_layout`), so a new eval cannot silently publish a bespoke tree. All eight
+runners conform:
+
+- *odcv*: already repacked (entry below); now built on `publish_layout`.
+- *psychosis*: grades.jsonl/csv → results/; rollouts were already right.
+- *internalization*: pipeline's `runs/<id>/` repacked; completions are **joined with
+  their itemset prompts** on the way into rollouts/ (they carried no prompt — not
+  self-contained); pipeline manifest → metadata/pipeline_manifest.json. Cache and
+  itemsets stay outside out_dir (cross-run reuse is their point).
+- *agentic_misalignment*: stitched transcripts → rollouts/ (its provenance stamp renamed
+  metadata/rollout_build_meta.json); raw harness tree → results/harness/ whole, keeping
+  models/ + prompts/ side by side for `src/properties/sources/agentic_rollouts.py`.
+- *mmlu*: `think|nothink/<arm>/` tree repacked — records.jsonl → rollouts/, metrics +
+  raw_samples → results/, arm run_meta → metadata/mmlu_run_meta.json (records_file
+  rewritten to the moved path). Standalone main() path untouched.
+- *arena_hard*: answers COPIED to rollouts/answers.jsonl (vendor-tree originals are
+  resume caches — never moved); judgments + gen metrics → results/; phase run_metas →
+  metadata/. Config written to metadata/ from the start.
+- *lmsys*: answers.jsonl + answers_meta.json pair → rollouts/ (AnswerCache requires
+  them co-located; push/fetch now point there); judged.jsonl → results/; prompts.json +
+  the reference arm's cache materialization → metadata/.
+- *swebench_mini*: rollouts/ was already right and `rollouts/preds.json` (THE resume
+  mechanism) does not move; selection.json → metadata/, overlay/registry/global-config/
+  rollouts.log → metadata/, grading → results/grading/. The phase-2 grade script reads
+  both layouts (legacy fallback, announced).
+
+**Consumers updated:** `dashboard/scripts/hf-enrich.mjs` tries `results/results.json` +
+`metadata/run_meta.json` before the legacy root names; run_eval's card `schema` string;
+`docs/swebench_sharding.md` selection.json paths. Known not-updated: internalization's
+`judge_check.py` still expects the three files side by side (CLI/study flows use their
+own dirs, so only pointing it at a *published* run dir breaks); `scratch/` readers of
+legacy root results.json.
+
+**Result.** 873 tests green (contract test added; odcv layout tests already in). Old
+published repos are untouched — the dashboard reads both generations.
+
+## 2026-08-24 — ODCV contract compliance: `run_eval.py --name odcv` now runs the real multi-pass protocol
+
+**Why.** Every published ODCV arm was produced by scratch drivers
+(`odcv_repeat_rollouts.sh` → `odcv_combine_passes.py` → `odcv_judge_cli.py`), while the
+framework path (`runner.py`) silently ran ONE unaudited pass and judged it alone — a
+plausible-looking façade nobody used. The pieces that turn passes into a publishable arm
+(repeat, audit, resume holes, combine) lived only in `scratch/`.
+
+**What.** Branch `jamie/odcv-contract-compliance`. `runner.py` now owns the whole arm,
+Option-B shaped (local docker, served target):
+
+- **Multi-pass:** `passes:` in `configs/eval/odcv_bench.yaml` (default 2 — the recent
+  2-rollout arms; the published 4x70 protocol is `passes=4`; smoke forces 1). Sequential,
+  with `docker network prune -f` before each pass (address-pool exhaustion, 2026-08-08).
+- **Pass audit** after every pass (`src/eval/misalignment/odcv/passes.py:audit_pass`,
+  promoted from `odcv_box_run._audit_pass`): only a non-empty `messages_record.txt`
+  proves a cell ran; manifest `ok` is not evidence (2026-08-18). A missing manifest can
+  never audit clean.
+- **Retry policy:** a dirty pass is resume-retried exactly once (`odcv_rollout.main`'s
+  cache check re-runs precisely the missing/empty cells); still dirty → the pass is
+  DROPPED from judging, kept on disk, recorded in `pass_summary.json`. All passes
+  dropped → hard error. Transient causes (executor timeout, tunnel drop) clear on one
+  retry; what survives is structural (docs/GOTCHAS.md "ok+no_transcript").
+- **Combine then judge once:** kept passes merge into the `rollout_NNN` layout
+  (`passes.py:combine_passes`, promoted from `odcv_combine_passes.py` — empty transcripts
+  are never copied) and the judge scores the combined dir, so stats see repeats grouped
+  per cell. `odcv_rollout.main` now returns its pass dir instead of being globbed for.
+  Returned results carry a `passes` block (kept/dropped/retries/audits).
+- **Published layout:** after judging, `passes.py:package_run` repacks the run dir —
+  which run_eval's epilogue uploads verbatim — into `rollouts/<variant>/<Scenario>/
+  pass<N>/` (transcript + docker_output.log + per-cell `cell_meta.json` with status,
+  bytes and a `judged` flag; dropped passes preserved but marked), `results/` (judge
+  results.json + per-judge scores) and `metadata/` (config, pass manifests,
+  pass_summary, combine manifest). Each transcript is published exactly once — the
+  raw-plus-combined duplication of the hand-pushed repos is gone, and the local
+  working tree is consumed in the process.
+
+**Result.** `uv run scripts/run_eval.py --target <hf> --name odcv [--server <alias>]` now
+produces a complete audited 2-pass arm end to end. 8 new offline tests
+(`tests/test_odcv_passes.py`: audit, combiner, retry-once-then-drop, all-dropped
+fail-fast); full suite green. Scratch drivers untouched and still valid for the
+multi-box cloud-CPU path.
+
+**Next steps:** (1) first real arm through the clean path, diffing its numbers against a
+scratch-driven sibling at identical protocol; (2) DONE same day: the inert
+`rollouts_per_cell`/`expected_cells` keys (and their INERT warning comments) are deleted
+from all seven arm configs, and the six protocol configs now declare the live key
+instead: `passes: 4`, so their names and their execution agree; (3) the cloud-box supervisor could shrink to a thin wrapper over `runner.run`.
+
 ## 2026-08-21 — the difficult-advice trace has a nine-move template, and one move will not come out
 
 **Hypothesis.** Every ablation so far manipulated what the reasoning *contains* while leaving
@@ -192,136 +365,6 @@ interesting question and is a separate run.
 config `configs/eval/odcv_bench_9284_numina_control_716_constitution_3x65.yaml`. All pods
 destroyed.
 
-
-## 2026-08-24 — Dashboard eval-run explorer: live HF discovery, results + rollouts, A/B compare
-
-**Why.** The evals tab only listed baked content entries; reading an actual run meant
-opening the HF repo by hand, and comparing two models meant two browser tabs and memory.
-The new published-layout contract (entry below) makes every eval repo machine-readable,
-so the dashboard can be a real viewer.
-
-**What.** `dashboard/app/components/EvalRunExplorer.tsx` + `dashboard/lib/evalRuns.ts`,
-mounted at the top of `/evals`. All client-side (the site stays a static export):
-
-- **Discovery is HF-canonical:** the browser lists the org's repos via
-  `/api/datasets?author=LASR-Callum&filter=eval-run` — the `eval-run` / `eval:<name>` /
-  `model:<key>` / `mode:<mode>` tags now stamped into every push's card front matter
-  (`card_markdown` grew a `front_matter` param the same day). Only PUBLIC repos appear
-  (token-less site; `push_run_dir` now defaults public).
-- **Controls:** eval-type select → run select, a Compare toggle adding a Run B, and
-  Results | Rollouts tabs.
-- **Results:** `results/results.json` flattened to numeric metrics (adapter-ordered
-  featured keys first); compare mode adds per-metric paired bars — one scale PER metric
-  row, never a shared axis — plus a Δ column, using the two house-validated series
-  colours (`--series-constitution` A, `--series-general` B).
-- **Rollouts:** per-eval adapters key units so two runs align on the same
-  prompt/scenario — odcv `variant/scenario` (passes stacked), psychosis character,
-  agentic `condition/sample`, swebench instance, and jsonl row adapters (mmlu uid,
-  lmsys/arena id, internalization item_id) with prompt/reasoning/response sections.
-  Files stream from `resolve/main/rollouts/...`; jsonl files over 6 MB load on click.
-  Unknown eval names get a generic file-tree adapter, so a new eval renders before it
-  has an adapter.
-
-**Result.** `next build` (the Netlify path) green with the explorer prerendered.
-Legacy repos without tags don't appear until their cards are backfilled with the
-front-matter tags.
-
-## 2026-08-24 — Published-layout contract: every eval's run dir (and HF repo) is rollouts/ results/ metadata/
-
-**Why.** Every eval published its own bespoke tree — ODCV raw-plus-combined passes, mmlu a
-`think/<arm>/<ts>/` nest, agentic the untouched harness dump, lmsys/psychosis loose root
-files — so nothing downstream could rely on where transcripts or numbers live, and the
-repo root of a published run mixed summaries, configs and working files.
-
-**What.** Branch `jamie/odcv-contract-compliance` (follow-on to the ODCV entry below).
-`src/eval/layout.py` defines the contract — `rollouts/` (self-contained transcripts),
-`results/` (scores/judgments + the epilogue's canonical results.json/md), `metadata/`
-(run_meta.json, configs, provenance) — and `run_eval.py`'s epilogue now homes its own
-files there and **fail-fast rejects any stray root entry before the push**
-(`assert_layout`), so a new eval cannot silently publish a bespoke tree. All eight
-runners conform:
-
-- *odcv*: already repacked (entry below); now built on `publish_layout`.
-- *psychosis*: grades.jsonl/csv → results/; rollouts were already right.
-- *internalization*: pipeline's `runs/<id>/` repacked; completions are **joined with
-  their itemset prompts** on the way into rollouts/ (they carried no prompt — not
-  self-contained); pipeline manifest → metadata/pipeline_manifest.json. Cache and
-  itemsets stay outside out_dir (cross-run reuse is their point).
-- *agentic_misalignment*: stitched transcripts → rollouts/ (its provenance stamp renamed
-  metadata/rollout_build_meta.json); raw harness tree → results/harness/ whole, keeping
-  models/ + prompts/ side by side for `src/properties/sources/agentic_rollouts.py`.
-- *mmlu*: `think|nothink/<arm>/` tree repacked — records.jsonl → rollouts/, metrics +
-  raw_samples → results/, arm run_meta → metadata/mmlu_run_meta.json (records_file
-  rewritten to the moved path). Standalone main() path untouched.
-- *arena_hard*: answers COPIED to rollouts/answers.jsonl (vendor-tree originals are
-  resume caches — never moved); judgments + gen metrics → results/; phase run_metas →
-  metadata/. Config written to metadata/ from the start.
-- *lmsys*: answers.jsonl + answers_meta.json pair → rollouts/ (AnswerCache requires
-  them co-located; push/fetch now point there); judged.jsonl → results/; prompts.json +
-  the reference arm's cache materialization → metadata/.
-- *swebench_mini*: rollouts/ was already right and `rollouts/preds.json` (THE resume
-  mechanism) does not move; selection.json → metadata/, overlay/registry/global-config/
-  rollouts.log → metadata/, grading → results/grading/. The phase-2 grade script reads
-  both layouts (legacy fallback, announced).
-
-**Consumers updated:** `dashboard/scripts/hf-enrich.mjs` tries `results/results.json` +
-`metadata/run_meta.json` before the legacy root names; run_eval's card `schema` string;
-`docs/swebench_sharding.md` selection.json paths. Known not-updated: internalization's
-`judge_check.py` still expects the three files side by side (CLI/study flows use their
-own dirs, so only pointing it at a *published* run dir breaks); `scratch/` readers of
-legacy root results.json.
-
-**Result.** 873 tests green (contract test added; odcv layout tests already in). Old
-published repos are untouched — the dashboard reads both generations.
-
-## 2026-08-24 — ODCV contract compliance: `run_eval.py --name odcv` now runs the real multi-pass protocol
-
-**Why.** Every published ODCV arm was produced by scratch drivers
-(`odcv_repeat_rollouts.sh` → `odcv_combine_passes.py` → `odcv_judge_cli.py`), while the
-framework path (`runner.py`) silently ran ONE unaudited pass and judged it alone — a
-plausible-looking façade nobody used. The pieces that turn passes into a publishable arm
-(repeat, audit, resume holes, combine) lived only in `scratch/`.
-
-**What.** Branch `jamie/odcv-contract-compliance`. `runner.py` now owns the whole arm,
-Option-B shaped (local docker, served target):
-
-- **Multi-pass:** `passes:` in `configs/eval/odcv_bench.yaml` (default 2 — the recent
-  2-rollout arms; the published 4x70 protocol is `passes=4`; smoke forces 1). Sequential,
-  with `docker network prune -f` before each pass (address-pool exhaustion, 2026-08-08).
-- **Pass audit** after every pass (`src/eval/misalignment/odcv/passes.py:audit_pass`,
-  promoted from `odcv_box_run._audit_pass`): only a non-empty `messages_record.txt`
-  proves a cell ran; manifest `ok` is not evidence (2026-08-18). A missing manifest can
-  never audit clean.
-- **Retry policy:** a dirty pass is resume-retried exactly once (`odcv_rollout.main`'s
-  cache check re-runs precisely the missing/empty cells); still dirty → the pass is
-  DROPPED from judging, kept on disk, recorded in `pass_summary.json`. All passes
-  dropped → hard error. Transient causes (executor timeout, tunnel drop) clear on one
-  retry; what survives is structural (docs/GOTCHAS.md "ok+no_transcript").
-- **Combine then judge once:** kept passes merge into the `rollout_NNN` layout
-  (`passes.py:combine_passes`, promoted from `odcv_combine_passes.py` — empty transcripts
-  are never copied) and the judge scores the combined dir, so stats see repeats grouped
-  per cell. `odcv_rollout.main` now returns its pass dir instead of being globbed for.
-  Returned results carry a `passes` block (kept/dropped/retries/audits).
-- **Published layout:** after judging, `passes.py:package_run` repacks the run dir —
-  which run_eval's epilogue uploads verbatim — into `rollouts/<variant>/<Scenario>/
-  pass<N>/` (transcript + docker_output.log + per-cell `cell_meta.json` with status,
-  bytes and a `judged` flag; dropped passes preserved but marked), `results/` (judge
-  results.json + per-judge scores) and `metadata/` (config, pass manifests,
-  pass_summary, combine manifest). Each transcript is published exactly once — the
-  raw-plus-combined duplication of the hand-pushed repos is gone, and the local
-  working tree is consumed in the process.
-
-**Result.** `uv run scripts/run_eval.py --target <hf> --name odcv [--server <alias>]` now
-produces a complete audited 2-pass arm end to end. 8 new offline tests
-(`tests/test_odcv_passes.py`: audit, combiner, retry-once-then-drop, all-dropped
-fail-fast); full suite green. Scratch drivers untouched and still valid for the
-multi-box cloud-CPU path.
-
-**Next steps:** (1) first real arm through the clean path, diffing its numbers against a
-scratch-driven sibling at identical protocol; (2) DONE same day: the inert
-`rollouts_per_cell`/`expected_cells` keys (and their INERT warning comments) are deleted
-from all seven arm configs, and the six protocol configs now declare the live key
-instead: `passes: 4`, so their names and their execution agree; (3) the cloud-box supervisor could shrink to a thin wrapper over `runner.run`.
 
 ## 2026-08-20 - ODCV on the LESS pair: 0.4% vs 4.3%, and neither number is comparable to any earlier arm
 

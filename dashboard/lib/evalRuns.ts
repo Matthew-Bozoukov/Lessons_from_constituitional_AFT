@@ -10,7 +10,7 @@
 // the site is token-less by design (netlify.toml).
 
 import { DialogueMessage } from "./content";
-import { loadJsonDoc } from "./lazy";
+import { cached, loadJsonDoc } from "./lazy";
 
 const ENDPOINT = "https://huggingface.co";
 export const EVAL_ORG = "LASR-Callum";
@@ -23,16 +23,6 @@ export interface EvalRun {
   model: string;
   mode: string;
   lastModified: string;
-}
-
-const cache = new Map<string, Promise<unknown>>();
-function cached<T>(key: string, make: () => Promise<T>): Promise<T> {
-  if (!cache.has(key)) {
-    const pending = make();
-    cache.set(key, pending);
-    pending.catch(() => cache.delete(key));
-  }
-  return cache.get(key) as Promise<T>;
 }
 
 function tagValue(tags: string[], prefix: string): string {

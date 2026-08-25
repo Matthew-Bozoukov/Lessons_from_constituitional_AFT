@@ -51,7 +51,10 @@ export type Composition = {
 };
 
 export function isConstitutionSource(name: string) {
-  return CONSTITUTION_SOURCES.includes(name);
+  // By prefix: the hand-pushed arm mixtures label their synthetic share after the
+  // corpus variant (`difficult_advice_v2`, `difficult_advice_chunk_only`), and a
+  // variant of a constitution source is still one.
+  return CONSTITUTION_SOURCES.some((source) => name === source || name.startsWith(`${source}_`));
 }
 
 /**

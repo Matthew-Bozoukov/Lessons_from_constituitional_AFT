@@ -193,3 +193,34 @@ clustered. If you add a producer, do the same.
 Worth noting what this did NOT touch: cluster membership, and therefore every prevalence,
 arm contrast and outcome lift, all of which come from the features of the configured
 channel. Only the detector-side paths read `Property.channel`.
+
+## Dashboard: live Hub discovery (2026-08-25)
+
+**`/api/datasets?author=<org>` never returns `siblings`, even with `full=true` or
+`expand[]=siblings`.** The listing gives `tags`, `cardData`, `lastModified`, `createdAt` and
+that is all; the file list needs the per-repo endpoint (`/api/datasets/<id>`) or the tree
+API (`/api/datasets/<id>/tree/main?recursive=1`). So a card must NAME its rows file (the
+default `configs:` entry) or the client pays one tree call per repo — which is why the
+publishers write that config and the backfill script insists on it. `filter=<tag>` composes
+with `expand[]=cardData` fine.
+
+**Node runs the dashboard's unit tests against `lib/*.ts` directly, and its ESM resolver
+does not guess extensions.** A relative VALUE import (`from "./lazy"`) loads under the
+bundler and fails under `node --test` with `ERR_MODULE_NOT_FOUND`; type-only imports are
+erased and never hit this, which is why every previously tested module happened to have
+only those. Write `from "./lazy.ts"` — `allowImportingTsExtensions` is on in
+`dashboard/tsconfig.json` (legal because `noEmit` is) and the bundler resolves the explicit
+path the same way.
+
+**Two stats-sidecar schemas are live on the Hub.** `uv run mix` writes
+`{total: {examples}, by_source: {name: {examples}}}` as `mixture_stats.json`; the hand-pushed
+arm mixtures (`t2_9284_*.jsonl`) write `{total: 9987, per_source: {name: count}}` as
+`<rows file>.stats.json`, keyed by the corpus VARIANT (`difficult_advice_v2`). Anything that
+computes the blend must read both, and match constitution sources by prefix
+(`lib/composition.ts isConstitutionSource`), or a 7% arm reads as a control.
+
+**Adding tags to an existing card: `huggingface_hub.metadata_update(repo, {"tags": [...]},
+repo_type="dataset", overwrite=True)`** rewrites only the YAML front-matter and leaves the
+body byte-identical; pass the MERGED list (existing ∪ new), since `overwrite` replaces the
+key. Card-table fields (`| constitution | … |`) are not indexed by the Hub — only front-matter
+is filterable — so anything discovery needs must be a tag or a `configs:` entry.

@@ -81,16 +81,17 @@ export type DatasetStream = {
   path: string;
 };
 
+/**
+ * A browsable corpus, built in the browser by `lib/trainingData.ts` from a
+ * Hub listing — never baked: /datasets discovers its repos live by card tag.
+ */
 export type DatasetManifest = {
   source: PayloadSource;
   source_file: string;
   format: string;
   /** 0 when no published statistic states it - render as unknown, never as 0. */
   record_count: number;
-  chunk_size: number;
-  chunks: string[];
-  /** Present instead of `chunks` when the corpus is read by byte range. */
-  stream?: DatasetStream;
+  stream: DatasetStream;
   stats: {
     average_turns: number;
     role_counts: Record<string, number>;
@@ -99,7 +100,6 @@ export type DatasetManifest = {
     /** Where the category counts came from, when a sidecar published them. */
     categories_source?: string;
   };
-  deferred_bytes?: number;
 };
 
 export type PetriScenario = {
@@ -198,7 +198,6 @@ export type ResearchEntry = {
   dataset_version?: string;
   git_commit?: string;
   related?: string[];
-  dataset?: DatasetManifest;
   dataset_id?: string;
   training_objective?: string;
   generator_model?: string;
