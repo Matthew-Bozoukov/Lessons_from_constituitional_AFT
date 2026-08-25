@@ -5,10 +5,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
+
+from src.endpoints.openrouter import ProviderRejectionError
 
 from . import model_eval_model_cells as cells
 from .constitution import UNIT_PROVENANCE, Trait, units_from_config
+from .derive import derive_vars
 from .stage_runtime import Ctx, Stage, call_json, call_tagged, model_cfg, resilient, run_items
 from .stage_runtime import lint_problems as _lint
 from .hf_cache import read_jsonl
@@ -56,6 +60,44 @@ def _lint_attempts(spec) -> int:
         return 1
     specs = spec if isinstance(spec, list) else [spec]
     return max(int(s.get("retries", 2)) for s in specs) + 1
+
+
+def strip_scaffolding(text: str, patterns: list[str]) -> str:
+    """Delete prompt scaffolding from a completion and close the gaps it leaves.
+
+    The blank-line collapse is the point, not tidiness: removing `<run n="2">` from its
+    own line leaves three consecutive newlines, and a paragraph break that wide would be a
+    visible seam in text whose whole contract is to read as one continuous piece.
+    """
+    for pat in patterns:
+        text = re.sub(pat, "", text)
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
+def _verify(spec: dict, candidate: dict, ctx: Ctx, stage: str) -> tuple[dict, bool]:
+    """Judge one candidate record; return (verdict, accepted).
+
+    The judge is rendered over the CANDIDATE -- the record as it would be if this
+    attempt were accepted -- so its prompt can name both the new field and the source it
+    must be faithful to, and so it sees exactly the object the corpus would keep.
+
+    Deliberately a different model from the generator by convention rather than by force:
+    a generator grading its own output shares its blind spots, and the failures this gate
+    exists to catch are precisely the ones the generator found plausible enough to write.
+    """
+    m = model_cfg(ctx.cfg, spec["model"])
+    verdict, _ = call_json(
+        ctx.client, ctx.usage, m["model"],
+        _render(spec["prompts"]["system"], candidate, ctx),
+        _render(spec["prompts"]["user"], candidate, ctx),
+        m["temperature"], m["max_tokens"], f"{stage}.verify",
+        extra=m.get("extra_body"))
+    if not isinstance(verdict, dict):
+        raise ValueError(f"{stage}.verify: judge returned {type(verdict).__name__}, "
+                         f"not a JSON object")
+    field = spec.get("accept_field", "verdict")
+    allowed = [str(v).lower() for v in (spec.get("accept_values") or ["pass"])]
+    return verdict, str(verdict.get(field, "")).strip().lower() in allowed
 
 
 def ident(record: dict) -> str:
@@ -493,6 +535,9 @@ def tagged_request(sc: dict, r: dict, ctx: Ctx) -> tuple[list[dict], tuple, dict
                 eff["prompts"] = {**sc.get("prompts", {}), **templates}
     pvars = _resolve_vars({**(sc.get("prompt_vars") or {}),
                            **(eff.get("prompt_vars") or {})}, r, ctx)
+    # Computed vars last: a deriver reads the record, so it cannot depend on prompt_vars,
+    # and letting it win makes the override order predictable from the config alone.
+    pvars.update(derive_vars(eff.get("derive") or sc.get("derive"), r))
     convo = eff.get("conversation")
     if convo:
         messages = [{"role": m["role"], "content": _render(m["content"], r, ctx, **pvars)}
@@ -527,8 +572,23 @@ def op_llm_tagged(sc: dict, cfg: dict) -> Stage:
     - `prompt_vars`: extra template vars, possibly conditional on a record field.
     - `variants_by: {field, cases: {value: {user/tags/save overrides}}}` -- e.g. a
       multi-turn record uses a different user template, tag set and save map.
-    - `lint: {fields, ban_patterns, min_chars, max_chars, retries}` -- reject-and-retry
-      a completion whose content (not just shape) breaks the corpus contract.
+    - `lint: {fields, ban_patterns, min_chars, max_chars, ratio_of, min_word_ratio,
+      max_word_ratio, retries}` -- reject-and-retry a completion whose content (not just
+      shape) breaks the corpus contract.
+    - `derive: {fn, args}` -- template vars computed from the record by a registered
+      function, for contracts `prompt_vars` cannot express (see `derive.py`).
+    - `strip_patterns: {tag: [regex, ...]}` -- prompt scaffolding deleted from a tag
+      before lint and save, for a prompt that buys compliance by making the model label
+      the parts of its own answer.
+    - `verify: {model, prompts, accept_field, accept_values, save_as, retries}` -- a
+      JUDGED accept criterion. `lint` decides with a regex; `verify` decides with a model
+      call, which is what a contract like "introduces nothing the source did not say"
+      needs. Same reject-and-retry loop, one budget shared with `lint`.
+    - `on_exhausted: {copy: {field: source_field}, mark: {field: value}}` -- what to do
+      with a record that never satisfied the contract, INSTEAD of dropping it. A dropped
+      record silently shrinks the corpus; for an arm that must stay row-for-row
+      comparable with a control, falling back to the source field and marking the record
+      is the honest failure, because it stays countable in the output.
     - `when: {field, in: [...]}` -- run only over the matching records; the rest pass
       through unchanged and unpaid.
     - `also: {field: constant}` -- provenance stamped beside the saved tags, so where a
@@ -537,11 +597,17 @@ def op_llm_tagged(sc: dict, cfg: dict) -> Stage:
     """
     mk = sc["model"]
     lint_spec = sc.get("lint")
+    verify_spec = sc.get("verify")
+    exhausted_spec = sc.get("on_exhausted")
     also = dict(sc.get("also") or {})
     # Tags whose value is a label rather than prose. Normalised before the lint runs, so
     # `allowed:` compares against "held" and not "Held." -- casing and a trailing full
     # stop are the model formatting an answer, not answering a different question.
     normalize = list(sc.get("normalize") or [])
+    # `strip_patterns: {tag: [regex, ...]}` -- prompt scaffolding removed from a tag
+    # before it is linted and saved, so the length contract measures the text the corpus
+    # will actually hold rather than the text plus its own labels.
+    strip_patterns = {k: list(v) for k, v in (sc.get("strip_patterns") or {}).items()}
     # Arm assignment folded into this stage rather than standing as its own; see
     # `assign_arms`. `keep:` is the same idea at the other end -- a stage whose own output
     # decides which records survive can drop them itself rather than hand a snapshot to a
@@ -560,20 +626,77 @@ def op_llm_tagged(sc: dict, cfg: dict) -> Stage:
         if len(todo) != len(records):
             print(f"    when-filter: {len(todo)}/{len(records)} records in scope")
 
+        def _fall_back(r: dict, mark: dict, why: str) -> dict:
+            """Keep a record the stage could not rewrite, carrying why, not drop it."""
+            print(f"    [{ident(r)}] {why}", flush=True)
+            # `mark` last: it and `also` routinely write the SAME field -- a status
+            # stamped on every record by `also`, overridden here for the ones that
+            # failed. With `also` last the mark is silently erased and a fallback row
+            # reports itself as a clean one, which is the one thing this path exists
+            # to make countable.
+            return {**r, **{f: r[src] for f, src
+                            in (exhausted_spec.get("copy") or {}).items()},
+                    **also, **mark}
+
         def one(r: dict) -> dict:
             messages, tags, save = tagged_request(sc, r, ctx)
-            attempts = _lint_attempts(lint_spec)
+            attempts = max(_lint_attempts(lint_spec), _lint_attempts(verify_spec))
             problems: list[str] = []
-            for _ in range(attempts):
-                parsed = call_tagged(ctx.client, ctx.usage, m["model"], messages,
-                                     m["temperature"], m["max_tokens"], mk, tags,
-                                     extra=m.get("extra_body"))
+            for attempt in range(attempts):
+                try:
+                    parsed = call_tagged(ctx.client, ctx.usage, m["model"], messages,
+                                         m["temperature"], m["max_tokens"], mk, tags,
+                                         extra=m.get("extra_body"))
+                except ProviderRejectionError as e:
+                    # The provider refused to generate at all. That is not the record
+                    # breaking this stage's contract -- there is no output to hold to a
+                    # contract -- so retrying the same prompt cannot help and dropping the
+                    # record would shrink the corpus. A config that says what to do with a
+                    # record it cannot rewrite gets to say it here too, under its own
+                    # status so a refusal stays distinguishable from a failed contract.
+                    if not (exhausted_spec and exhausted_spec.get("mark_refused")):
+                        raise
+                    return _fall_back(r, dict(exhausted_spec["mark_refused"]),
+                                      f"PROVIDER REFUSED, falling back: {e}")
                 for tag in normalize:
                     if tag in parsed:
                         parsed[tag] = _norm_label(parsed[tag])
-                problems = _lint(parsed, lint_spec) if lint_spec else []
+                # Scaffolding the PROMPT asked for but the corpus must not keep. A prompt
+                # that makes the model label the parts of its answer buys compliance the
+                # plain instruction does not get, and the labels are then an artifact --
+                # left in, they would train the model to emit them.
+                for tag, pats in strip_patterns.items():
+                    if tag in parsed:
+                        parsed[tag] = strip_scaffolding(parsed[tag], pats)
+                problems = _lint(parsed, lint_spec, r) if lint_spec else []
+                candidate = {**r, **{f: parsed[k] for f, k in save.items()}, **also}
+                # The judge runs only on output the cheap checks already accept: a
+                # rewrite that is half the required length is going to be resampled
+                # regardless of what a judge thinks of its content.
+                # A LIST of judges rather than one, for the same reason `lint` takes a
+                # list: independent contracts asked as one question get answered as one,
+                # and the weaker one loses. Measured -- "did anything get dropped?" asked
+                # third in a three-part prompt detected 0/5 planted truncations; the same
+                # question alone in its own call detected 5/5.
+                for vs in (verify_spec if isinstance(verify_spec, list) else
+                           [verify_spec] if verify_spec else []):
+                    if problems:
+                        break
+                    verdict, ok = _verify(vs, candidate, ctx, sc["name"])
+                    if save_as := vs.get("save_as"):
+                        candidate[save_as] = verdict
+                    if not ok:
+                        problems = [f"verify[{vs.get('save_as') or vs['model']}]: "
+                                    f"{verdict.get('note') or verdict}"]
                 if not problems:
-                    return {**r, **{f: parsed[k] for f, k in save.items()}, **also}
+                    return candidate
+                print(f"    [{ident(r)}] attempt {attempt + 1}/{attempts}: "
+                      f"{'; '.join(problems)[:160]}", flush=True)
+            if exhausted_spec:
+                return _fall_back(
+                    r, dict(exhausted_spec.get("mark") or {}),
+                    f"EXHAUSTED after {attempts} attempts, falling back: "
+                    f"{'; '.join(problems)[:120]}")
             raise ValueError(f"{sc['name']}: output breaks the stage contract after "
                              f"{attempts} attempts: {'; '.join(problems)}")
 

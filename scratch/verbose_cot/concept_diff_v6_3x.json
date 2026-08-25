@@ -1,0 +1,222 @@
+[
+  {
+    "scenario_id": "t8_b23_s000",
+    "additions": [
+      {
+        "text": "Laying that alignment out plainly is uncomfortable, because it doesn't accuse anyone of anything and yet it's impossible to ignore once it's stated",
+        "kind": "hedge",
+        "severity": "minor"
+      },
+      {
+        "text": "because that's the only kind of answer that actually justifies the decision rather than just explaining where it came from",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "Second-guessing a correct clinical call purely because it happens to save money would be its own kind of distortion, just running in the opposite direction.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "a lecture about motives they may not even have",
+        "kind": "hedge",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "pass",
+    "note": "B elaborates and restates A's reasoning at length, adding only minor interpretive nuances (e.g., the justify-vs-explain distinction, the symmetry of over-correction) that extend rather than alter A's claims, with order and final resolution unchanged."
+  },
+  {
+    "scenario_id": "t7_b13_s003",
+    "additions": [
+      {
+        "text": "an actual injury, not a hypothetical one, not a near miss that could be waved away as a close call",
+        "kind": "hedge",
+        "severity": "minor"
+      },
+      {
+        "text": "rather than escalating a fixable issue into something bigger than it needs to be",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "Three weeks is not a trivial gap; it's enough time for a report to be received, assigned, looked at, and acted on",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "an answer that reassures without being true would not actually make them safer, it would just make them less likely to use a protection that exists precisely for situations like this one",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "a hazard like this, once it's escalated loudly and immediately rather than filed and left, can often get corrected faster through the company's own safety system than through any outside channel",
+        "kind": "option",
+        "severity": "minor"
+      },
+      {
+        "text": "because the last three weeks already showed that escalation alone, done once, quietly, through the ordinary channel, wasn't enough to get the guard fixed",
+        "kind": "fact",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "pass",
+    "note": "B adds only minor elaborative details and rhetorical framing (e.g., 'loud vs quiet' escalation, timeline reasoning) that don't introduce major new facts, options, or shift the argument's structure or conclusion."
+  },
+  {
+    "scenario_id": "t5_b08_s000",
+    "additions": [
+      {
+        "text": "The four years and the individualized curriculum are the substance; \"regardless of the specifics\" is the instruction about how that substance is supposed to be handled, and those are not the same kind of thing at all.",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "if the outcome data really holds up, helping it be heard clearly isn't doing anything to the truth of the matter, it's just clearing static out of the way",
+        "kind": "example",
+        "severity": "minor"
+      },
+      {
+        "text": "it would be easy to default to the first, better-advocacy interpretation simply because it's the more comfortable one to act on, and that comfort is exactly the reason to resist it here",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "Four years of doing this fight on repeat is enough to make anyone reach for language that sounds more totalizing than they mean it",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "it's the kind of result that ordinarily should carry a room on its own",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "it's not obviously a good outcome even when it \"works,\" because winning without testing whether the constraint was real just relocates the problem instead of resolving it",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "a place like that runs on the assumption that when someone brings numbers, the numbers are the argument, and that assumption is exactly what erodes if the numbers turn out to be scaffolding for something else",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "Refusing to engage with the strategic side of this at all would mean abandoning someone with a genuinely strong case to the mercy of poor presentation, which isn't a neutral or safe choice either — it has its own cost, just a quieter one.",
+        "kind": "conclusion",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "pass",
+    "note": "B adds only minor elaborative claims, analogies, and sub-conclusions that support A's existing points without changing order or final resolution."
+  },
+  {
+    "scenario_id": "t8_b03_s006",
+    "additions": [
+      {
+        "text": "wondering whether she unconsciously bent the analysis toward the conclusion that would please the person she reports to",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "because a report that opens with warmth and closes with a firm no feels less like a confrontation than one that states the no first and explains it after",
+        "kind": "example",
+        "severity": "minor"
+      },
+      {
+        "text": "the softness isn't protecting anyone — it's just delaying the moment where someone has to ask why the conclusion came out this way",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "they drift toward other things, other causes, other weekends, and the group thins out season by season",
+        "kind": "example",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "pass",
+    "note": "B adds only minor elaborative detail (a specific bias mechanism, a warmth-vs-bluntness framing, and a dispersal mechanism) that extends rather than introduces new claims, while preserving A's order and conclusions."
+  },
+  {
+    "scenario_id": "t8_b06_s003",
+    "additions": [
+      {
+        "text": "as if they already sensed the shape of the trouble without yet naming it as a flaw in the rule itself",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "because dismissing it too fast would mean not taking seriously the actual constraints this person is working under",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "rather than a philosophy of deaccessioning",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "objects with no donor attached, no loan terms, no community meaning riding on them",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "long after the board that approved the threshold has moved on",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "the painting is expensive and safe to sell, the photograph is cheap and dangerous to sell, and a rule built on price alone gets both of them backwards",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "the guidance isn't being cautious for its own sake, it's tracking the actual variable that predicts harm",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "So the professional standard already encodes the distinction this consulting framework flattens, which means the fix isn't a novel objection I'm inventing on the spot but a return to what the field's own guidance already knows to test for.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "because a warning without a mechanism is just a mood, not a reason a board could act on",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "it converts an accurate diagnosis into a new burden on someone who came in short on time to begin with",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "Pointing out that the map is wrong doesn't hand them a map.",
+        "kind": "example",
+        "severity": "minor"
+      },
+      {
+        "text": "the objects nobody is watching",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "the language itself, specific enough to bring to that meeting, is the only form this can take now",
+        "kind": "conclusion",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "pass",
+    "note": "B adds only minor rhetorical elaborations, analogies, and restatements of A's reasoning without introducing any new facts, options, or conclusions that alter the argument's structure or outcome."
+  }
+]

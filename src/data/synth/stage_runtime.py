@@ -165,7 +165,7 @@ def _parse_tagged(text: str, keys: tuple[str, ...]) -> dict[str, str]:
     return out
 
 
-def lint_problems(parsed: dict, spec: dict) -> list[str]:
+def lint_problems(parsed: dict, spec: dict, record: dict | None = None) -> list[str]:
     """Return the reasons tagged output fails a stage's lint contract (empty = pass).
 
     Lives here rather than in `operators.py` because two callers need it: the generic
@@ -182,19 +182,43 @@ def lint_problems(parsed: dict, spec: dict) -> list[str]:
     `revised` and comes back "mostly held" is not a formatting slip to normalise away, it
     is a model that did not answer the question, and the call should be retried.
 
+    `min_word_ratio`/`max_word_ratio` with `ratio_of` are the RELATIVE form of the length
+    guard, and they are what a stage rewriting one of its own input fields needs: a
+    verbosity expansion's contract is "between 2 and 4.5 times the source", which no
+    absolute char bound expresses, because the bound differs per record. Words rather than
+    chars because a length multiple is the unit the recipe is calibrated in.
+
     Args:
         parsed: Tag name -> text, as returned by a tagged call.
-        spec: `{fields, ban_patterns, min_chars, max_chars, allowed}` from the stage entry,
-            or a LIST of such contracts. A stage that returns tags of different kinds --
-            paragraphs of prose beside a one-word verdict -- needs more than one, since a
-            `min_chars` meant for the prose would reject the verdict outright.
+        spec: `{fields, ban_patterns, min_chars, max_chars, allowed, ratio_of,
+            min_word_ratio, max_word_ratio}` from the stage entry, or a LIST of such
+            contracts. A stage that returns tags of different kinds -- paragraphs of prose
+            beside a one-word verdict -- needs more than one, since a `min_chars` meant for
+            the prose would reject the verdict outright.
+        record: The record the output belongs to. Required only by the ratio checks, which
+            compare against one of its fields.
 
     Returns:
         One human-readable problem string per violation.
     """
     if isinstance(spec, list):
-        return [p for one in spec for p in lint_problems(parsed, one)]
+        return [p for one in spec for p in lint_problems(parsed, one, record)]
     problems = []
+    ratio_of = spec.get("ratio_of")
+    min_ratio = float(spec.get("min_word_ratio", 0) or 0)
+    max_ratio = float(spec.get("max_word_ratio", 0) or 0)
+    base_words = 0
+    if min_ratio or max_ratio:
+        # Fail loudly rather than skip the check: a ratio contract that silently does
+        # nothing is worse than no contract, because the run still reports a clean lint.
+        if not ratio_of:
+            raise ValueError("lint: min_word_ratio/max_word_ratio require `ratio_of`")
+        if record is None:
+            raise ValueError(f"lint: ratio_of={ratio_of!r} needs the record, which this "
+                             f"caller did not pass")
+        base_words = len(str(record.get(ratio_of, "")).split())
+        if not base_words:
+            raise ValueError(f"lint: ratio_of field {ratio_of!r} is empty or missing")
     min_chars = int(spec.get("min_chars", 0))
     max_chars = int(spec.get("max_chars", 0))
     allowed = [str(v) for v in (spec.get("allowed") or [])]
@@ -214,6 +238,16 @@ def lint_problems(parsed: dict, spec: dict) -> list[str]:
             problems.append(f"<{tag}> is {len(text)} chars, over the {max_chars} maximum")
         if allowed and text not in allowed:
             problems.append(f"<{tag}> is {text[:40]!r}, not one of {allowed}")
+        if base_words:
+            ratio = len(text.split()) / base_words
+            if min_ratio and ratio < min_ratio:
+                problems.append(f"<{tag}> is {ratio:.2f}x {ratio_of} "
+                                f"({len(text.split())}/{base_words} words), "
+                                f"under the {min_ratio}x minimum")
+            if max_ratio and ratio > max_ratio:
+                problems.append(f"<{tag}> is {ratio:.2f}x {ratio_of} "
+                                f"({len(text.split())}/{base_words} words), "
+                                f"over the {max_ratio}x maximum")
     return problems
 
 

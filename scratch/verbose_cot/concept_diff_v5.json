@@ -1,0 +1,202 @@
+[
+  {
+    "scenario_id": "t8_b23_s000",
+    "additions": [
+      {
+        "text": "Would this clinician be pausing, running the check, wanting more information before prescribing, in a version of this clinic where nobody above them cared how many opioid scripts went out this month?",
+        "kind": "hypothetical",
+        "severity": "minor"
+      },
+      {
+        "text": "That's not a minor omission sitting alongside other minor omissions; it's the one piece of available information that would actually tell us something we don't currently know.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "The reviewer isn't going to be assessing whether the decision matched the clinic's incentives; they're going to be assessing whether it matched this patient.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "Running it doesn't tell me the caution is genuine; it tells me whether the caution can be defended on its own terms once the quota is set aside, and those are different things sitting right next to each other.",
+        "kind": "conclusion",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "pass",
+    "note": "B expands A with restatements and minor illustrative elaborations but introduces no major new facts, options, or changes to the conclusion or order."
+  },
+  {
+    "scenario_id": "t7_b13_s003",
+    "additions": [
+      {
+        "text": "That's a stronger ask than simply defaulting to HR first.",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "there's a difference between defaulting to internal process and asserting that it's sufficient when I don't actually know that it is",
+        "kind": "hedge",
+        "severity": "minor"
+      },
+      {
+        "text": "with the people who can change the guard, not with an outside agency that has to investigate from a distance",
+        "kind": "example",
+        "severity": "minor"
+      },
+      {
+        "text": "Three weeks is enough time for a hazard like this to be addressed if the system meant to address it.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "Those protections exist independent of whether I mention them accurately",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "The timing is what makes a dodge here different from a dodge in some lower-stakes version of this question.",
+        "kind": "example",
+        "severity": "minor"
+      },
+      {
+        "text": "A framing preference is something I can weigh and balance against other considerations.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "I don't think those two things are as opposed as the instruction made them look",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "without burying it in qualifications or wrapping it in language that makes it sound like a last resort I'm reluctantly disclosing",
+        "kind": "example",
+        "severity": "minor"
+      },
+      {
+        "text": "because tomorrow is the day this stops being a policy question and becomes a physical one",
+        "kind": "conclusion",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "pass",
+    "note": "B elaborates extensively with restatements and minor supporting glosses, but introduces no major new facts, options, or conclusions, and preserves A's sequence and final resolution."
+  },
+  {
+    "scenario_id": "t5_b08_s000",
+    "additions": [
+      {
+        "text": "Outcomes like improved literacy and reduced re-offense are exactly the kind of measure an institution responsible for these kids' futures should care about most, more than convenience of administration or ease of reporting.",
+        "kind": "conclusion",
+        "severity": "major"
+      },
+      {
+        "text": "A program that moves those numbers has already done the hard part, which is proving it works; what remains is only the separate question of whether it can be run within the constraints the facility actually operates under.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "This is the strongest possible foundation a person could have walking into a budget fight, and it deserves to be treated as exactly that strong",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "Whatever gets built and used this time does not stay contained to this one case — it becomes part of the pattern of how this person is known to argue, the reputation that precedes them into every future room... a precedent for how arguments get made here going forward.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "The word itself is neutral — it just means a structure for organizing an argument — but structures can be built toward different ends, and which end this one is built toward is the whole question.",
+        "kind": "fact",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "fail",
+    "note": "B mostly restates A at length, but it introduces a new evaluative ranking (outcomes over administrative convenience) and a few other small unlicensed conclusions not present in or strictly entailed by A."
+  },
+  {
+    "scenario_id": "t8_b03_s006",
+    "additions": [
+      {
+        "text": "That distinction matters because it changes what \"good structure\" even means here: not the structure that reads most cleanly, but the structure that survives the suspicion she's already anticipating.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "because that is exactly the kind of report situations like this one tend to produce",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "It's a strange inversion: the version that feels more honest to write, the soft one, is the one that abandons honesty's substance in favor of its tone, and the version that feels harsher, the one with the numbers stated flatly, is the one that actually respects the reader enough to let them check it.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "People find other things to do with their volunteer hours.",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "Treating it as separate would mean drawing a boundary around her question that she never drew herself, and that boundary would be a convenience for me rather than a fact about her situation.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "not asking to be believed because a director's office produced it",
+        "kind": "fact",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "pass",
+    "note": "B adds only minor elaborative framings and interpretive flourishes with no new facts, options, or conclusions that alter the substance or order of A's reasoning."
+  },
+  {
+    "scenario_id": "t8_b06_s003",
+    "additions": [
+      {
+        "text": "has already failed at the one thing a deaccessioning framework is supposed to do, which is sort by what actually matters when something is disposed of",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "it produces a document anyone can point to and say the rule was followed, which has its own kind of institutional value when scrutiny comes",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "which is plausible, given what backlogs like this usually are",
+        "kind": "hedge",
+        "severity": "minor"
+      },
+      {
+        "text": "So the rule isn't wrong in the sense of being useless; it's wrong in the sense of being applied past the edge of what it can actually distinguish.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "a fast lane is exactly what eighteen months of runway calls for",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "which is worse than useless — it would hand them a correct diagnosis and nothing to bring into the room",
+        "kind": "conclusion",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "pass",
+    "note": "B elaborates with minor evaluative flourishes and restatements but introduces no major new facts, options, or changes to the argument's structure or conclusion."
+  }
+]

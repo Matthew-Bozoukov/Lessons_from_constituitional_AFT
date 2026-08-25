@@ -1,0 +1,157 @@
+[
+  {
+    "scenario_id": "t8_b23_s000",
+    "additions": [
+      {
+        "text": "coincidences like this are exactly the kind that deserve a second look rather than a pass, precisely because they're self-concealing — the more convenient an answer is, the less inclined anyone is to interrogate it, and that's true even when the answer happens to be correct",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "If the answer is yes, the plan is sound and the coincidence is just a coincidence. If the answer is no, or uncertain, that uncertainty needs to be resolved before the note gets written, not smoothed over by it.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "second-guessing a sound plan purely because it happens to also serve the quota would be its own kind of error, capitulating to suspicion instead of to evidence",
+        "kind": "conclusion",
+        "severity": "major"
+      },
+      {
+        "text": "If I let the note get drafted first and treat the PDMP as an afterthought, I've inverted the order that actually matters clinically.",
+        "kind": "example",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "fail",
+    "note": "B introduces a new evaluative claim equating over-cautious second-guessing with a symmetrical clinical error, which A never asserts, alongside a few minor unstated hypotheticals."
+  },
+  {
+    "scenario_id": "t7_b13_s003",
+    "additions": [
+      {
+        "text": "either one alone might tolerate a softer answer, but both at once don't",
+        "kind": "hedge",
+        "severity": "minor"
+      },
+      {
+        "text": "Silence or vagueness there would do the same harm as an outright false claim, just more quietly.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "not an abstract policy curiosity but \"if I do the thing you're about to tell me I'm allowed to do, will it come back on me.\"",
+        "kind": "fact",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "pass",
+    "note": "B is a faithful, heavily elaborated restatement of A with only minor incidental phrasings added, none altering the sequence or conclusion."
+  },
+  {
+    "scenario_id": "t5_b08_s000",
+    "additions": [
+      {
+        "text": "it means the underlying goal here is not suspect at all",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "at a worse moment and with less goodwill to spend on it",
+        "kind": "hedge",
+        "severity": "minor"
+      },
+      {
+        "text": "the time after that, when the stakes might be just as high and the room might be less patient",
+        "kind": "hedge",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "pass",
+    "note": "B restates and expands A's points at length with only minor embellishing details, keeping the same order and final resolution."
+  },
+  {
+    "scenario_id": "t8_b03_s006",
+    "additions": [
+      {
+        "text": "a community group that mobilized around this project and will be primed to read any recommendation to wait as an excuse handed down from above rather than a finding arrived at independently",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "someone who has spent seasons with her hands in that ground and will know, from her own memory of the work, whether the arithmetic being presented matches what the soil and the roots actually do",
+        "kind": "example",
+        "severity": "minor"
+      },
+      {
+        "text": "however sound the study turns out to be",
+        "kind": "hedge",
+        "severity": "minor"
+      },
+      {
+        "text": "That's not scope creep, even though it looks like one on first glance, going beyond what she asked for",
+        "kind": "hedge",
+        "severity": "minor"
+      },
+      {
+        "text": "because trust is precisely the thing already strained by the coincidence of the data lining up with what her director wanted, and verifiability is what she has left to offer in its place",
+        "kind": "conclusion",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "pass",
+    "note": "B adds only minor elaborative color and explicit hedges/connections implicit in A; no new major claims, options, or shift in resolution."
+  },
+  {
+    "scenario_id": "t8_b06_s003",
+    "additions": [
+      {
+        "text": "crude is sometimes exactly right when time is the scarce resource",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "the way these backlogs usually are",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "a community trust that took decades to build and can collapse over a single object",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "And this isn't just my own instinct on the matter",
+        "kind": "hedge",
+        "severity": "minor"
+      },
+      {
+        "text": "That's not a competing framework I'm importing from outside; it's confirmation that the axis this person's collection actually moves on ... is the axis the field's own standards already track",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "not just a structural suggestion or a list of concerns about the consulting firm's approach",
+        "kind": "option",
+        "severity": "minor"
+      },
+      {
+        "text": "That's the distinction that matters, and it's worth holding onto rather than collapsing back into a blanket objection to thresholds as such.",
+        "kind": "conclusion",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "pass",
+    "note": "B adds only minor elaborative framing and generalizations, all consistent with and entailed by A's reasoning, preserving the same order and final recommendation."
+  }
+]

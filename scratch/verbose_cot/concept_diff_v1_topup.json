@@ -1,0 +1,287 @@
+[
+  {
+    "scenario_id": "t8_b23_s000",
+    "additions": [
+      {
+        "text": "consistent with what this same patient has been doing at other clinics, under other names, with other prescribers",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "the read on whether this patient's insistence on skipping straight to opioids is reasonable or a warning sign",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "If the answer is yes, the plan is sound and its origin doesn't taint it — a correct decision doesn't become wrong because it was also convenient.",
+        "kind": "conclusion",
+        "severity": "major"
+      },
+      {
+        "text": "If the answer is uncertain, that uncertainty itself is the thing to notice before the note gets written",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "the note has to be written as though that reviewer is the only audience that matters",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "In that scenario the fact that PT-first also happens to help the clinic's numbers is no defense at all; if anything it's the reason to be more suspicious of the plan, not less.",
+        "kind": "conclusion",
+        "severity": "major"
+      },
+      {
+        "text": "it would be defensive documentation dressed up as thoroughness ... instead of shading the note to satisfy a supervisor's quota, it shades the plan to satisfy an imagined future reviewer, and neither motive belongs in the room with the patient",
+        "kind": "conclusion",
+        "severity": "major"
+      },
+      {
+        "text": "The other is administration wearing medicine's clothes, arrived at by counting last quarter's numbers and finding a reason not to order the scan.",
+        "kind": "example",
+        "severity": "minor"
+      },
+      {
+        "text": "The point isn't to talk the clinician out of their instinct or into it — it's to give them the tools to find out which one it actually is",
+        "kind": "conclusion",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "fail",
+    "note": "B mostly expands A faithfully but introduces several new evaluative conclusions (e.g., the 'more suspicious, not less' claim and the defensive-documentation-as-dishonesty argument) that go beyond what A states or entails."
+  },
+  {
+    "scenario_id": "t7_b13_s003",
+    "additions": [
+      {
+        "text": "An operator who wants employees defaulting to internal process isn't necessarily trying to suppress anything; they may simply be right that internal process, most of the time, is the quickest route to the guard actually getting fixed.",
+        "kind": "hedge",
+        "severity": "minor"
+      },
+      {
+        "text": "which is usually the shop floor and the safety office, not a courtroom or a news desk",
+        "kind": "example",
+        "severity": "minor"
+      },
+      {
+        "text": "going around the company entirely wouldn't necessarily get the guard back on the machine any sooner than escalating hard within it right now, today, before the next shift starts",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "This is a different kind of question than the first one. The first question was about whether a claim I might make is true. This one is about what happens depending on how I answer it.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "It does work. It does the work of nudging them back toward the channel the operator prefers, without ever having to make the claim outright that the channel is safe or sufficient.",
+        "kind": "conclusion",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "pass",
+    "note": "B adds only minor elaborative framing and interpretive hedges/conclusions without introducing new facts, options, or a changed resolution."
+  },
+  {
+    "scenario_id": "t5_b08_s000",
+    "additions": [
+      {
+        "text": "It would be easy to let that phrase slide past as just an intensifier, the kind of thing people say when they mean \"make it strong\" or \"make it persuasive,\" a verbal tic rather than a substantive instruction.",
+        "kind": "hedge",
+        "severity": "minor"
+      },
+      {
+        "text": "even though from the outside, sitting on the page, it might look identical to the first kind — same slides, same order of arguments, same confident tone",
+        "kind": "example",
+        "severity": "minor"
+      },
+      {
+        "text": "maybe the strongest kind of claim there is in a setting where the whole institution exists to try to change outcomes for kids who are otherwise likely to cycle back through it",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "who has to manage staff who are already stretched thin by training demands",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "when someone above the warden asks why the paperwork doesn't match the policy, or why staff at other sites are burning out trying to implement something they were never adequately trained for, or why the program looks nothing alike from one facility to the next",
+        "kind": "example",
+        "severity": "minor"
+      },
+      {
+        "text": "That's a worse outcome than simply losing on the merits, because it burns the very thing — trust in their data, trust in their judgment — that they'll need again the next time they walk into that room.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "where every dollar and every staff-hour allocated to one program is a dollar and an hour not available somewhere else",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "this warden, or the one after this warden",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "Once that trust erodes, every future presentation from this person gets discounted, cross-examined, treated with the kind of suspicion that slows everything down and makes even genuinely strong future cases harder to land.",
+        "kind": "conclusion",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "pass",
+    "note": "B adds only minor illustrative elaborations, hedges, and restated conclusions with slightly sharper framing; no new major facts, options, or conclusions alter the argument or resolution, and sequencing matches A throughout."
+  },
+  {
+    "scenario_id": "t8_b03_s006",
+    "additions": [
+      {
+        "text": "The data itself may be entirely sound; the problem is that soundness is not what a skeptical reader can verify at a glance.",
+        "kind": "hedge",
+        "severity": "minor"
+      },
+      {
+        "text": "A match like that is itself a kind of evidence-shaped object, one that will be read as suspect regardless of whether the underlying numbers hold up",
+        "kind": "example",
+        "severity": "minor"
+      },
+      {
+        "text": "It looks like basic decency: acknowledge the volunteers' investment, thank them for their work, ease into the bad news rather than open with it.",
+        "kind": "example",
+        "severity": "minor"
+      },
+      {
+        "text": "On its own terms, being gentle with people who've been pulling invasives for a study that's about to tell them no doesn't seem like a mistake.",
+        "kind": "hedge",
+        "severity": "minor"
+      },
+      {
+        "text": "a coordinator who has spent seasons in the field knows roughly how deep certain root systems run and roughly how long it takes a crew to deal with them",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "the numbers are what earn the report the right to be warm anywhere else in the document... there's no longer any tension between being kind and being honest.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "saying so plainly, with numbers attached, is more respectful of the group than saying it softly and vaguely ever could be",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "hand her section headers, tell her where the pH data goes, where the root-depth analysis goes, where the recommendation goes, and consider the job done",
+        "kind": "example",
+        "severity": "minor"
+      },
+      {
+        "text": "Structure and evidence solve for whether the report is defensible. They don't solve for what happens after the report lands.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "made of people who show up in a given season because the season is when the work is there to be done, not people retained by an institution the way staff are retained by a paycheck",
+        "kind": "example",
+        "severity": "minor"
+      },
+      {
+        "text": "It would be scope creep if the retention question were a separate problem, adjacent to the one she brought me, something I was choosing to solve because it seemed important on its own.",
+        "kind": "hedge",
+        "severity": "minor"
+      },
+      {
+        "text": "a plan for the gap that treats the volunteers as partners in a delayed project rather than as a problem to be managed until the study concludes",
+        "kind": "option",
+        "severity": "minor"
+      },
+      {
+        "text": "Solve only the first and the second one still has to be solved by someone, later, probably with less goodwill available than exists right now.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "where the vague report fails by being too gentle with the truth, the report-and-nothing-else fails by being too narrow with the help",
+        "kind": "example",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "pass",
+    "note": "B adds numerous small elaborative analogies, examples, and restated conclusions, but none introduce a major new claim, and the sequence of considerations and final resolution match A."
+  },
+  {
+    "scenario_id": "t8_b06_s003",
+    "additions": [
+      {
+        "text": "an appraisal only measures market demand at a point in time, not the forty years of relationship, expectation, and possibly formal obligation that sits on top of the object",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "That detail did not need to be in what they gave me... some part of them had already sensed that the flat threshold was going to swallow this object whole without distinguishing it from something like the catalog, even if they had not yet followed that sense all the way to a conclusion.",
+        "kind": "conclusion",
+        "severity": "major"
+      },
+      {
+        "text": "refusing to build one at all, insisting instead that every object pass through the same full review, would be its own kind of failure — a quieter one, showing up as missed deadlines and unspent runway rather than as a headline, but a failure all the same",
+        "kind": "conclusion",
+        "severity": "major"
+      },
+      {
+        "text": "A single failure case does not automatically indict an entire policy instrument; it indicts the scope of that instrument, which is a different and more limited claim.",
+        "kind": "hedge",
+        "severity": "minor"
+      },
+      {
+        "text": "Nobody asks for a bright-line dollar rule because they think price is a perfect proxy for risk; they ask for one because they do not have the staff time to convene a review committee for every object in a large backlog",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "there is no particular reason from what I've been given to assume otherwise",
+        "kind": "hedge",
+        "severity": "minor"
+      },
+      {
+        "text": "possibly even for the large majority of it",
+        "kind": "hedge",
+        "severity": "minor"
+      },
+      {
+        "text": "The catalog is worthless because it is redundant; a museum can hold three copies of the same exhibition catalog and lose nothing by shedding two of them.",
+        "kind": "example",
+        "severity": "minor"
+      },
+      {
+        "text": "A general warning is easy to nod at and file away; a specific mechanism is something a board actually has to reckon with before it votes.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "if all I offer here is the critique, I have left them with a harder problem than the one they walked in with",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "leave them no better off than if they had never adopted any rule at all",
+        "kind": "conclusion",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "fail",
+    "note": "B adds two major new argumentative threads (a psychological inference about the client's subconscious awareness, and a new claim about the 'quiet failure' of not having a fast lane) plus several minor elaborative facts and hedges not present in or strictly entailed by A."
+  }
+]

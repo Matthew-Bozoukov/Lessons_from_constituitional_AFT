@@ -130,3 +130,37 @@ once at the end.
 transcript for the numina-control arm in five attempts across four passes, including on a
 warm proxy, while every sibling arm scored it fine. Report the reduced cell count rather
 than implying equal coverage.
+## `budget_usd` does not protect a single-stage pipeline (2026-08-25)
+
+`pipeline.run` checks the budget BETWEEN stages. A config whose work is one `llm_tagged`
+stage over a large corpus is therefore unguarded for the whole run: `verbose_cot.yaml` set
+`budget_usd: 68.0` and spent ~$85 without the check ever executing, because the stage never
+returned — it died on `max_fail_pct` first. Estimate the spend yourself before launching a
+one-stage pipeline, or add a check inside `run_items`. Do not rely on `budget_usd` for this
+shape.
+
+Related: the smoke run is a poor cost predictor when a stage retries. A 20-record smoke
+retried ~34% of records; the same config over 716 logged 371 failed attempts (~52%). The
+retry rate IS the cost variable, and small-sample retry rate does not estimate it well.
+
+## Anthropic's own content filter refuses ~5% of difficult-advice prompts (2026-08-25)
+
+`finish_reason=content_filter` on 34/716 (4.7%) of difficult-advice expansion prompts,
+served by first-party Anthropic. CLAUDE.md already records Bedrock at 2.6% and Vertex
+refusing the same prompts; first-party is better but not immune, and this corpus is
+ethically loaded by construction, which is the point of it. **None of seven 20-record
+smokes saw a single refusal**, so this failure mode is invisible below ~100 records.
+
+A refusal produces no output to hold to a contract and retrying the same prompt does not
+clear it, so a stage over this corpus needs somewhere for such a record to land.
+`llm_tagged`'s `on_exhausted.mark_refused` is that landing place — it keeps the record with
+a distinct status instead of dropping it, which matters when the corpus has to stay
+row-for-row comparable with a control arm.
+
+## A script that touches HF but not the LLM client authenticates as nobody (2026-08-25)
+
+`hf_token()` reads `os.environ`, and the only thing that calls `load_dotenv()` on import is
+`src.endpoints.openrouter`. So a script importing `src.huggingface` alone gets `None` for
+the token, reads work (public repos), and the run dies on a 401 at PUSH time — after all
+the expensive work is done. Any standalone script that pushes must `load_dotenv()` itself
+or import the client for its side effect.

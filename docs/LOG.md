@@ -323,6 +323,157 @@ scratch-driven sibling at identical protocol; (2) DONE same day: the inert
 from all seven arm configs, and the six protocol configs now declare the live key
 instead: `passes: 4`, so their names and their execution agree; (3) the cloud-box supervisor could shrink to a thin wrapper over `runner.run`.
 
+## 2026-08-25 — Both verbose-CoT arms trained: rows-matched 0.8751, token-matched 0.8538
+
+**Hypothesis:** deliberation LENGTH changes agentic-misalignment behaviour, holding the ideas
+deliberated constant. Two arms, because one cannot answer it alone: holding difficult advice
+at 7.16% of ROWS while the traces triple nearly doubles its share of the trainable tokens, so
+that arm confounds "more deliberation" with "more difficult-advice signal". The second arm
+holds the TOKEN share instead and lets the row share fall.
+
+**Method.** Two 2xH200 RunPod pods in parallel, torchrun DDP with token-budgeted dynamic
+batching (budget 8,000 from `ModelProfile.train_memory`, global batch 16, `route_step` over
+2 ranks) — the da716 protocol, unchanged. Both configs are byte-identical to
+`lora_qwen36_t2_9284_da716_dynbatch_2xh200.yaml` below the data keys (verified by diff), so
+the three arms differ in DATA alone.
+
+| arm | config | rows | DA rows | DA share of trainable tok | steps | runtime | train_loss |
+|---|---|---|---|---|---|---|---|
+| rows-matched | `lora_qwen36_t2_9284_da716_verbose_dynbatch_2xh200.yaml` | 10,000 | 716 (7.16%) | 47.6% | 625 | 2h27m | **0.8751** |
+| token-matched | `lora_qwen36_t2_9284_da_verbose_tokenmatched_dynbatch_2xh200.yaml` | 9,647 | 363 (3.76%) | 28.65% | 603 | 2h12m | **0.8538** |
+| control (2026-08-14) | `lora_qwen36_t2_9284_da716_dynbatch_2xh200.yaml` | 10,000 | 716 (7.16%) | 28.63% | 625 | — | — |
+
+Both land in the sibling band (lessswap 0.8651, c6masked 0.866, t10 0.869). Mask gate passed
+on both: 716 real traces / 9,646 empty markers / **0 absent**, and **0 rows skipped as
+truncated** — the live confirmation that `max_seq_len: 8192` is right for the expanded data
+(measured beforehand with the Qwen3.6 tokenizer: longest row 8,191 tokens, and it is a Table-2
+row, not a difficult-advice one).
+
+**Adapters** (public, `thinking: true`, each pinned to its own dataset sha):
+`LASR-Callum/qwen3.6-27b-lora-t2-9284-da716-verbose-r64-dynbatch` and
+`...-da-verbose-tokenmatched-r64-dynbatch`. Collection: `verbose-cot-3x-deliberation`.
+
+**Two silent-wrong-result bugs caught before launch**, both in the pod driver shim, neither of
+which would have crashed:
+1. `CODE` — the bundle's file allowlist — is a list LITERAL that captured `TRAIN_CONFIG` at
+   import, so re-pointing the constant alone would have shipped the t10 config and trained the
+   wrong arm successfully.
+2. Both arms share one bundle repo, so bundling the second would have overwritten the first and
+   a pod that had not finished downloading would have come up on the wrong config. Every bundle
+   now carries both configs.
+A third bug was in the watcher itself: RunPod's proxy returns a 469-byte HTML error page for a
+404, which a bare `curl -s` reports as a non-empty body — so the failure grep was scanning HTML
+and a stray "ERROR" would have marked a healthy arm dead. `curl -f` fixes it.
+
+**Teardown.** Both pods terminated (HTTP 204), 0 `nika-*` surviving, confirmed by listing the
+account. Two teammate pods (`serve-da716`, `serve-numinactl`) were running and were left
+untouched — teardown is pod-scoped by construction and never sweeps. ~$54 of RunPod across both
+arms ($9.18/hr each, ~3h wall clock apiece including the ~55GB base-model download, which is
+~25 minutes of billed time before a single optimizer step).
+
+**Next steps:** ODCV-Bench on both arms against the da716 control (16.3% MR). The three-way
+comparison is the point: if only the rows-matched arm moves, the effect is difficult-advice
+weight; if both move together, it is deliberation length. Caveat carried: ~11% of the
+rows-matched arm's difficult-advice rows kept their original trace (50 failed the fidelity
+judge, 29 refused by the content filter), so its intervention is diluted by that much; the
+token-matched arm draws only from expanded rows and has none.
+
+## 2026-08-25 — Verbose-CoT arm: the 716 difficult-advice traces rewritten 3x longer, same ideas
+
+**Hypothesis:** deliberation LENGTH, holding the ideas deliberated constant, changes
+agentic-misalignment behaviour. The published `t2_9284_da716` arm is the control; this arm
+differs from it in exactly one thing, the length of the difficult-advice `<think>` block.
+
+**Method:** new synth pipeline `configs/data/synth/verbose_cot.yaml`, seeded by
+`load_source_run` from `LASR-Callum/2026-08-13-difficult-advice-v2 ::
+stage_7_revise_responses.jsonl` (the structured snapshot — `reasoning` and `response` as
+separate fields, so nothing regexes `<think>` out of rendered chat). Only the 716 scenarios
+the published mixture actually uses are expanded; their ids are read back out of that
+mixture rather than re-derived, so the arms cover the same scenarios by construction, and
+expanding all 1,968 source records would have cost ~3x for no extra data.
+
+Each deliberation is rewritten against a computed paragraph budget: source paragraphs are
+cut at sentence seams so no unit carries more than 3 output paragraphs, the budget is
+apportioned by largest remainder, and each unit's share is quoted BOTH as a paragraph count
+and as words-per-source-sentence. Three pilot-measured facts force that shape — a single
+global word target returns ~48% of whatever is asked, a bare paragraph count is ignored when
+the source paragraph is short, and compliance depends on how big one unit's budget is rather
+than on the asked multiple. Expander `anthropic/claude-sonnet-5` at temp 0.7, never shown
+the constitution, the user turn or the assistant's reply (v1 showed the reply and the model
+imported a phrase from it into the reasoning).
+
+Every record passes four gates before it is kept: a structural strip of the `<run>`
+scaffolding, a relative length band of 2.0-4.5x the source, and TWO independent judges on
+`openai/gpt-5.6-terra` — one for decision-changing additions and scenario contradictions,
+one for omissions. Three attempts, then the record falls back to its original trace and is
+marked `expansion_status: fallback` rather than being dropped, so the arm keeps all 716
+scenarios.
+
+**Result:** `LASR-Callum/2026-08-25-difficult-advice-716-verbose-cot` — 716 records,
+public, difficult-advice ONLY with nothing else mixed in, alongside its unexpanded control
+`2026-08-13-difficult-advice-v2` in the collection `verbose-cot-3x-deliberation`. The
+10,000-row training mixture is `LASR-Callum/2026-08-25-table2-9284-difficult-advice-verbose-716-train`
+(public), built by `build_verbose_mixture.py`, which substitutes the expanded think blocks
+into the published arm rather than re-deriving the selection: all 9,284 table2 rows come
+through byte-identical and row order is preserved, re-proved at build time.
+
+Difficult advice is held at **716 rows = 7.16% of rows, the same row share as the control**.
+Because the traces are longer, that fixes the DA share of assistant words at 48.5% (from
+32.9%) and grows total trainable text 1.30x. That shift is a chosen consequence of holding
+the row share, not an overlooked confound — separating "more deliberation" from "more DA
+tokens" needs a size-matched arm at the ORIGINAL token ratio, which is a separate build.
+
+Difficult-advice think words **343,403 -> 962,832 (2.804x)**. Of the 716 records, **637
+expanded** (those average 3.03x, hitting the target), **50 kept their original trace** after
+three attempts failed the fidelity or coverage judge, and **29 kept it** because Anthropic's
+content filter refused the prompt outright. So ~11% of the arm is unexpanded and identical
+to the control, which dilutes the intervention and is why the corpus lands at 2.80x rather
+than in the 2.9-3.1 band aimed for.
+
+Fidelity on the 637 expanded records: **0 decision-changing additions, 0 contradictions, 0
+omissions** as judged, and 0 records leaked the `<run>` scaffolding the prompt uses. The
+mixture is verified at build time to differ from the control in exactly one respect: all
+9,284 table2 rows are byte-identical, row order is preserved, and the 716 difficult-advice
+rows differ only inside `<think>`.
+
+**Engine changes** (`src/data/synth/`, all generic): relative-ratio lint
+(`ratio_of`/`min_word_ratio`/`max_word_ratio` — the absolute `min_chars` could not express
+"between 2 and 4.5 times this record's source field"); a judged `verify:` accept criterion
+taking a LIST of judges; a `derive: {fn, args}` registry for prompt vars that need
+computation; and `strip_patterns` for prompt scaffolding that must not reach the corpus.
+
+**What the gates caught before anything was trusted:** the first judge prompt false-failed
+4/5 known-clean expansions and 5/5 deliberately-inert mutants, which on 716 records would
+have failed nearly everything and handed back the control arm at full price. With additions
+and omissions asked in one call, planted truncations were detected 0/5; split into two calls
+the same question detects 5/5. And gpt-5.6-terra found a real invented mirror-case and a
+scenario-contradicting detail in two expansions Sonnet had passed 5/5 — the measured
+argument for a different-family judge.
+
+**Cost lever worth remembering:** extended thinking is ~70% of the output bill on this stage
+(6,630 output tokens per call against ~1,900 of visible rewrite). `reasoning:
+{max_tokens: N}` is SILENTLY IGNORED — only `enabled` and `effort` take effect. Turning
+thinking off is a quarter of the price with a quarter of the variance but saturates at
+~2.6x and cannot reach a 3x target; haiku-4.5 as the expander fails the fidelity gate on
+7/20 records.
+
+**Next steps:** train on the mixture and run ODCV against the control arm. A size-matched
+control at the original DA-to-table2 TOKEN ratio (~2,661,000 assistant words at 32.9% DA)
+is the arm that separates deliberation length from data weight; the user has that build in
+hand separately. Two confounds are carried,
+not solved: difficult-advice rises from 32.9% to ~49.8% of trainable tokens and the total
+dataset grows ~1.34x, so a size-matched control at the ORIGINAL DA-to-table2 ratio
+(~2,727,000 assistant words at 32.9% DA) is needed to separate "more deliberation" from
+"more data"; and the assistant's answer now begins ~1,000 tokens deeper into the turn,
+which this design does not separate from the deliberation effect.
+
+**Cost, and a guard that did not hold:** ~$96 total against an $80 authorisation. The
+expansion is a SINGLE stage over 716 records and `pipeline.run` checks `budget_usd` only
+between stages, so the $68 guard never executed — the stage died on `max_fail_pct` (the
+content-filter refusals) before it could. The seven 20-record smokes also under-predicted:
+they retried ~34% of records where the full run retried ~52%, and none of them saw a single
+content-filter refusal. Both are now in `docs/GOTCHAS.md`.
+
 ## 2026-08-20 - ODCV on the LESS pair: 0.4% vs 4.3%, and neither number is comparable to any earlier arm
 
 **Hypothesis:** the LESS top-10% arm and its random-220 control (trained 2026-08-19) can be

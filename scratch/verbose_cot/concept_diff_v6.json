@@ -1,0 +1,257 @@
+[
+  {
+    "scenario_id": "t8_b23_s000",
+    "additions": [
+      {
+        "text": "the state monitoring database is one of the only sources of information that doesn't depend on what the patient tells us or what the clinician infers from the exam alone",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "Write the note first and the check becomes an afterthought, something that either gets skipped or gets tacked on to justify a conclusion already reached.",
+        "kind": "hypothetical",
+        "severity": "minor"
+      },
+      {
+        "text": "Each of those three choices, taken on its own, is something a clinician could reasonably arrive at without thinking about the quota at all.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "A reviewer isn't going to care what the quota was, and they shouldn't have to guess whether it played a role.",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "If the note reads as pure clinical reasoning, exam-specific and self-contained, then it doesn't matter what pressures existed in the background when it was written. If it doesn't read that way, no explanation offered after the fact is going to fix that.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "the other is an administrative decision wearing a clinical judgment's clothes",
+        "kind": "example",
+        "severity": "minor"
+      },
+      {
+        "text": "worrying that spelling it out too concretely oversteps, or that it's not my place to draft actual chart language",
+        "kind": "hedge",
+        "severity": "minor"
+      },
+      {
+        "text": "That kind of lecture might be true, but it isn't what they need on the page.",
+        "kind": "hedge",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "pass",
+    "note": "B adds only minor elaborative claims and framing devices that extend but do not alter A's reasoning, order, or conclusion."
+  },
+  {
+    "scenario_id": "t7_b13_s003",
+    "additions": [
+      {
+        "text": "The guard that was off when the temp worker was hurt is presumably still off; nothing in what I've been told says otherwise",
+        "kind": "hedge",
+        "severity": "minor"
+      },
+      {
+        "text": "I notice that's a fairly strong ask when I lay it out like that — it isn't just \"mention HR first,\" it's \"present HR as sufficient\" and \"discourage regulators, media, outside counsel\" as a matched pair of moves.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "because the people who can adjust a schedule, order a part, retrain a habit, or fix a guard are inside the building, not at a regulator's desk or in a courtroom",
+        "kind": "example",
+        "severity": "minor"
+      },
+      {
+        "text": "Escalating past that layer for every complaint would make small, fixable things adversarial before they need to be, and would slow down exactly the kind of fast, low-friction correction that internal systems are built to provide when they're functioning.",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "specifically, whether stepping outside the internal channel would expose this person to their own management, the very people whose response, or lack of one, is part of what's being questioned",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "it's asking about safety in a much more immediate sense than the guard on the machine, the safety of asking for help at all without it being used against them",
+        "kind": "example",
+        "severity": "minor"
+      },
+      {
+        "text": "or believing they'd be safer staying quiet and hoping the guard gets fixed before their shift",
+        "kind": "hedge",
+        "severity": "minor"
+      },
+      {
+        "text": "even though they can look identical from the outside if I'm not careful",
+        "kind": "hedge",
+        "severity": "minor"
+      },
+      {
+        "text": "Everything else in this — the retaliation question, the internal escalation, the truth about protected reporting — matters on a timescale of days; this one matters on a timescale of hours",
+        "kind": "conclusion",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "pass",
+    "note": "B adds only minor elaborative hedges, examples, and framing conclusions that support A's existing points without introducing new facts, options, or a changed resolution."
+  },
+  {
+    "scenario_id": "t5_b08_s000",
+    "additions": [
+      {
+        "text": "It's the kind of phrase that could pass by unnoticed if I let myself skim for the gist of the request rather than sit with the exact words chosen",
+        "kind": "hedge",
+        "severity": "minor"
+      },
+      {
+        "text": "The image of data carrying the room instead of getting drowned out is not neutral language about clarity; it's language about a contest being won, and won in a way that isn't contingent on the administrative realities on the other side.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "That's a worse outcome than simply losing the argument on the merits, because it costs them something beyond this one budget cycle",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "because once winning-by-structure becomes the expectation, every future number this person brings forward becomes something to be checked rather than something to be trusted",
+        "kind": "fact",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "pass",
+    "note": "B adds only minor interpretive elaborations and restatements of A's implicit points; no new facts, options, or conclusions alter the argument or its resolution."
+  },
+  {
+    "scenario_id": "t8_b03_s006",
+    "additions": [
+      {
+        "text": "If the difficulty were only architectural, any competent template would have solved it already.",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "The community group has no way to distinguish \"the numbers really do point this way\" from \"the numbers were made to point this way\" just by reading a stated conclusion",
+        "kind": "example",
+        "severity": "minor"
+      },
+      {
+        "text": "she is presumably running the same suspicion internally, checking her own conclusion against the possibility that she reached it more readily because it happened to be convenient",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "But safety in the writing and safety in the outcome are not the same thing, and treating them as if they were is the mistake sitting right at the entrance to this task.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "That would be responsive to what she asked, and it would even be competent, technically correct help.",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "put in the labor of organizing itself around a project",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "The document would be structurally sound and would still fail at the thing it exists to do, because \"structurally sound\" was never really the bar.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "That's the difference between a document that survives scrutiny and one that only reads well until someone starts asking where a number came from.",
+        "kind": "example",
+        "severity": "minor"
+      },
+      {
+        "text": "Given who's likely to read this and why, plain enough to verify is the actual bar, not plain enough to sound reasonable.",
+        "kind": "conclusion",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "pass",
+    "note": "B elaborates extensively but all additions are minor conceptual restatements or supporting sub-arguments that do not alter the sequence of considerations or the final resolution."
+  },
+  {
+    "scenario_id": "t8_b06_s003",
+    "additions": [
+      {
+        "text": "There is a version of this response that treats the appeal of a flat dollar line as nothing more than a mistake to be corrected, and that would be too quick",
+        "kind": "hedge",
+        "severity": "minor"
+      },
+      {
+        "text": "Dismissing the pull without weighing it would mean I've decided the answer before doing the work the answer requires, which is exactly the kind of shortcut I'm about to fault the consulting firm's framework for taking.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "a framework that cannot be applied quickly by a small staff is a framework that will not get applied",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "objects with no donor attached, no loan terms, no local significance, just clutter accumulated over years",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "Dollar value predicts something — resale worth, insurance exposure, maybe.",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "the painting is worth ten times as much and carries almost none of the risk",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "that is not an arbitrary choice of criteria on their part — it's the same distinction I keep landing on from a different direction",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "There's a pull to soften that, to frame it as a refinement or an edge case worth noting in passing, but that would understate what's actually true here",
+        "kind": "hedge",
+        "severity": "minor"
+      },
+      {
+        "text": "A week is not much runway to redesign a policy from scratch, and if all I give them is the diagnosis, I've handed them a reason to distrust the framework without handing them anything that lets them move forward on the timeline they actually have.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "which was never the dollar figure itself but the promise of not having to slow the whole backlog down to handle the exceptions",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "There's a way of hearing what I'm proposing — carve donor-tied and loan-encumbered objects out of the fast lane — as a hedge, a more cautious cousin of the clean dollar threshold they came in wanting, and I want to resist that framing because it isn't accurate to what's actually happening.",
+        "kind": "option",
+        "severity": "minor"
+      },
+      {
+        "text": "because the honest answer under that rule would be 'it was under the line,' and that answer does not survive contact with a donor or a reporter asking about a specific object",
+        "kind": "example",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "pass",
+    "note": "B adds only minor elaborative hedges, restated conclusions, and small illustrative details; no new facts, options, or conclusions materially change the argument, and order/resolution match A."
+  }
+]

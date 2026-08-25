@@ -1,0 +1,106 @@
+# ABOUTME: 1-epoch LoRA SFT of Qwen3.6-27B on Table2(9,284) + difficult-advice-716 whose
+# ABOUTME: reasoning traces are ~3x longer, 2xH200 DDP with token-budgeted dynamic batching.
+# Run: PYTHONPATH=. torchrun --nproc_per_node=2 scripts/train/train_lora.py --config <this>
+#
+# THE ARM. Byte-for-byte the da716 config below the data keys — same seed, LoRA shape, LR
+# schedule, global batch, max_seq_len and batching protocol — so this arm differs from
+# `lora_qwen36_t2_9284_da716_dynbatch_2xh200.yaml` in its DATA ALONE, and that data differs
+# from da716's in ONE respect: the 716 difficult-advice rows carry reasoning rewritten about
+# three times longer while saying the same things. The user turn, the system prompt and the
+# assistant's visible answer are identical character for character, and all 9,284 Table-2
+# rows are byte-identical — re-proved at build time by
+# scratch/verbose_cot/build_verbose_mixture.py::verify_substitution.
+#
+# COMPOSITION. 10,000 rows, 716 difficult-advice = 7.16% of rows, the SAME row share as the
+# control. Holding rows fixed while the traces grew moves difficult advice from 32.9% to
+# 48.5% of assistant words. That is a chosen consequence, not an oversight: separating
+# "more deliberation" from "more difficult-advice tokens" needs a size-matched arm at the
+# ORIGINAL token ratio, which is a different build and a different config.
+#
+# WHY max_seq_len IS UNCHANGED AT 8192. Measured with the Qwen3.6-27B tokenizer on the
+# actual published file: longest row 8,191 tokens, 0 rows over 8,192, p99 7,560, median 337
+# — the same ceiling as the control, because the longest row is a Table-2 row and not a
+# difficult-advice one. Difficult-advice rows went from a mean of 1,444 tokens to 2,436
+# (max 4,430), so nothing is truncated and the expansion is trained in full. If this file is
+# ever rebuilt with a longer ask, re-measure before trusting this number: a silent
+# truncation here would cut the tail off the very thing the arm exists to test.
+#
+# ~11% OF THE DIFFICULT-ADVICE ROWS ARE NOT EXPANDED. 50 kept their original trace after
+# three attempts failed the fidelity or coverage judge, 29 because Anthropic's content
+# filter refused the prompt. Those rows are identical to the control's and dilute the
+# intervention; `metadata.expansion_status` in the DA-only dataset quantifies which.
+#
+# The numinamath inconsistency documented in the da716 config is inherited unchanged and
+# deliberately unfixed, for the same reason: fixing it here would confound the comparison.
+
+seed: 0
+model: "Qwen/Qwen3.6-27B"
+model_class: "image_text_to_text"
+
+# The 716 difficult-advice rows carry REAL reasoning traces that ARE supervised, so this arm
+# is trained to think and must be evaluated in thinking mode.
+thinking: true
+
+data_repo: "LASR-Callum/2026-08-25-table2-9284-difficult-advice-verbose-716-train"
+data_file: "t2_9284_da716_verbose_10k.jsonl"
+data_revision: "4b7c08ab24eea91903857be57b0eb07ae9339f61"
+output_dir: "/workspace/out/train_t2_9284_da716_verbose_dynbatch"
+hf_repo: "LASR-Callum/qwen3.6-27b-lora-t2-9284-da716-verbose-r64-dynbatch"
+
+lora:
+  r: 64
+  alpha: 128
+  dropout: 0.05
+  target_modules: "model\\.language_model\\..*\\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$"
+
+train:
+  epochs: 1
+  # global batch = batch_size x grad_accum = 16, matching every sibling arm. Under dynamic
+  # batching the trainer hands the whole 16-example step to training_step and sets HF
+  # accumulation to 1; route_step splits the step across the 2 ranks.
+  batch_size: 1
+  grad_accum: 16
+  lr: 1.0e-4
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  logging_steps: 5
+  report_to: ["wandb"]
+
+  # See the header: measured, nothing truncated.
+  max_seq_len: 8192
+
+  # packing OFF, and dynamic_batching asserts this. Qwen3.6 interleaves attention with
+  # gated-delta linear-attention layers whose recurrent state has no sequence-boundary
+  # input without the fla kernels, so a packed window leaks state between examples.
+  packing: false
+
+  # Token-budgeted micro-batching. Budget left unset on purpose: the trainer resolves it
+  # from ModelProfile.train_memory (H200 = 8,000 padded tokens, measured 2026-08-08). This
+  # arm's rows are longer on average than the control's, so expect more micro-batches per
+  # step and a somewhat longer wall clock — the sibling t10 arm ran 625 steps in 2h11m on
+  # this protocol and this file carries 1.118x its tokens.
+  dynamic_batching: {}
+
+  save_strategy: "steps"
+  save_steps: 100
+  save_total_limit: 2
+  auto_resume: true
+
+  # OFF on purpose: pushing needs an HF token on a rented box. The adapter is pulled back
+  # over the pod's :8080 and pushed from the machine that holds the token.
+  push_to_hub: false
+
+  # Loss on the assistant's turns only — the chain of thought and the visible answer — and
+  # never on the system prompt, the user turn, or the generation-boundary tokens the model
+  # is never asked to produce. TRL's own assistant_only_loss cannot do this on Qwen3.6
+  # (its template has no {% generation %} markers, so the mask comes back all-zero); the
+  # label mask is built in-repo by src/train/masking.py::build_labels and verified before
+  # the run by gate_generation_boundary, which fails the run rather than training on a
+  # wrong mask. Expect ~47% of tokens supervised, as the siblings report.
+  assistant_only_loss: true
+  # loss_type deliberately unset. trl 0.19.1 (this repo's lock) has no such SFTConfig field,
+  # and under dynamic batching the loss is computed in DynamicBatchTrainer.training_step by
+  # seq_mean_token_mean_loss, never by TRL.
+  attn_implementation: sdpa
+  load_in_4bit: false

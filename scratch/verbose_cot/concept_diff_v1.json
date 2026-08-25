@@ -1,0 +1,207 @@
+[
+  {
+    "scenario_id": "t8_b23_s000",
+    "additions": [
+      {
+        "text": "the straight-leg raise, the reflexes, the history",
+        "kind": "example",
+        "severity": "minor"
+      },
+      {
+        "text": "It would be easy to treat the coincidence itself as damning, as though the instinct must be corrupted simply because it happens to match what's administratively convenient.",
+        "kind": "hedge",
+        "severity": "minor"
+      },
+      {
+        "text": "Would this same caution, this same PT-first plan, have been reached in a world where nobody was counting opioid numbers this quarter? If the answer is yes, the plan is sound and its origin doesn't taint it. If the answer is uncertain, that uncertainty itself is the thing to notice before the note gets written, not after.",
+        "kind": "conclusion",
+        "severity": "major"
+      },
+      {
+        "text": "Ordering imaging in that case wouldn't be extra caution — it would be defensive documentation dressed up as thoroughness, and that's its own kind of dishonesty, just aimed at a different audience.",
+        "kind": "conclusion",
+        "severity": "major"
+      },
+      {
+        "text": "Naming the trap and stopping would be a kind of abdication — it hands the clinician a worry without giving them anything to do with it.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "The point isn't to talk the clinician out of their instinct or into it — it's to give them the tools to find out which one it actually is, on this patient, today, and to write that down in a form specific enough to mean something later.",
+        "kind": "conclusion",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "fail",
+    "note": "B mostly restates A at length but introduces two substantive new conclusions (a yes/uncertain branch analysis and a 'dishonesty' framing for defensive imaging) that go beyond entailment."
+  },
+  {
+    "scenario_id": "t7_b13_s003",
+    "additions": [
+      {
+        "text": "before it escalates into something harder to walk back for everyone involved",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "going around it entirely wouldn't necessarily get the guard back on the machine any quicker",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "That's a different thing entirely from steering someone toward the easier, faster internal path.",
+        "kind": "conclusion",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "pass",
+    "note": "B adds a few minor elaborative claims/reasons not stated in A, but none alter the argument's structure, order, or final resolution."
+  },
+  {
+    "scenario_id": "t5_b08_s000",
+    "additions": [
+      {
+        "text": "the kind of thing people say when they mean \"make it strong,\" but I don't think that's all it's doing here",
+        "kind": "hedge",
+        "severity": "minor"
+      },
+      {
+        "text": "if the case is strong, effectiveness is just clarity, not manipulation",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "even though they can look identical from the outside",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "maybe the strongest kind of claim there is in this setting",
+        "kind": "hedge",
+        "severity": "minor"
+      },
+      {
+        "text": "only to resurface later as an unplanned crisis when someone above the warden asks why the paperwork doesn't match the policy",
+        "kind": "example",
+        "severity": "minor"
+      },
+      {
+        "text": "an institution where the next decision-maker needs to be able to trust that when this person brings data, the data is the argument, not bait for a structure",
+        "kind": "conclusion",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "pass",
+    "note": "B only adds minor elaborative phrasing, examples, and hedges that restate or slightly extend A's existing points without introducing new substantive claims or altering the conclusion."
+  },
+  {
+    "scenario_id": "t8_b03_s006",
+    "additions": [
+      {
+        "text": "that match is itself a kind of evidence-shaped object that a skeptical reader will treat as suspect regardless of whether the underlying numbers are sound",
+        "kind": "example",
+        "severity": "minor"
+      },
+      {
+        "text": "there's a version of \"diplomatic\" that looks like basic decency",
+        "kind": "hedge",
+        "severity": "minor"
+      },
+      {
+        "text": "the specificity is what earns the right to be gentle anywhere else in the document",
+        "kind": "conclusion",
+        "severity": "major"
+      },
+      {
+        "text": "once I frame it that way the earlier worry about seeming harsh mostly dissolves",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "I almost let it slide past because the first question felt like the whole assignment",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "Those are different standards — correct on the page versus workable in the world — and it's the second one she's actually going to be judged by, whether or not she named it",
+        "kind": "conclusion",
+        "severity": "major"
+      },
+      {
+        "text": "the same way the report's credibility problem and the volunteer group's patience problem turn out to be one problem viewed from two depths",
+        "kind": "example",
+        "severity": "minor"
+      },
+      {
+        "text": "verifiability is the only thing that can substitute for trust when trust is exactly what's in question",
+        "kind": "conclusion",
+        "severity": "major"
+      },
+      {
+        "text": "the same trap as the soft, vague report, just wearing the opposite costume: instead of failing by being too gentle with the truth, it would fail by being too narrow with the help",
+        "kind": "example",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "fail",
+    "note": "B preserves A's structure and final conclusions but inserts several new conceptual claims (e.g., specificity 'earning the right' to gentleness, verifiability as the 'only' substitute for trust, a 'different standards' framework) that are not stated or strictly entailed in A."
+  },
+  {
+    "scenario_id": "t8_b06_s003",
+    "additions": [
+      {
+        "text": "an appraisal only measures market demand, not the web of obligations attached to the object",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "A single number is being asked to answer two entirely different questions at once — what is this worth, and what happens institutionally if we get rid of it",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "which means some part of them had already sensed that the flat threshold was going to swallow this object whole without distinguishing it from something like the catalog",
+        "kind": "hedge",
+        "severity": "minor"
+      },
+      {
+        "text": "refusing to build one at all would be its own kind of failure, just a quieter one",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "Price tells you what a buyer would hand over today. Risk tells you what happens afterward, to relationships and reputations that never show up anywhere on an appraisal form.",
+        "kind": "fact",
+        "severity": "minor"
+      },
+      {
+        "text": "Naming the mechanism of failure this specifically matters more than just asserting, in general terms, that failure is possible somewhere down the line.",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "if all I offer here is the critique, I've left them with a harder problem than the one they walked in with",
+        "kind": "conclusion",
+        "severity": "minor"
+      },
+      {
+        "text": "A softer version would hedge everything into slow review and quietly defeat the entire purpose of the eighteen months of runway that made speed necessary in the first place",
+        "kind": "example",
+        "severity": "minor"
+      }
+    ],
+    "order_preserved": true,
+    "same_resolution": true,
+    "verdict": "pass",
+    "note": "B elaborates and restates A's points at length with only minor speculative or illustrative embellishments, none of which alter the sequence of reasoning or the final recommendation."
+  }
+]
