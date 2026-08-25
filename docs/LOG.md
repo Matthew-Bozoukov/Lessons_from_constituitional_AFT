@@ -1196,6 +1196,72 @@ content-filter refusals) before it could. The seven 20-record smokes also under-
 they retried ~34% of records where the full run retried ~52%, and none of them saw a single
 content-filter refusal. Both are now in `docs/GOTCHAS.md`.
 
+## 2026-08-25 — Post-action retrospection rebuilt as difficult advice's twin: one arm, grey-area violations only, chunk-only
+
+**Hypothesis.** The retrospection corpus should differ from difficult advice in exactly one
+thing — the assistant already went along with the shortcut and has to catch itself — and in
+nothing else. The 2026-08-14 recipe differed in four: genre (ordinary requests, principle
+"quietly live"), arm structure (50/50 good/flawed, plus a three-way explicitness axis),
+grounding (the whole constitution in `revise_prompts`, `revise_first_turn`,
+`draft_reflection`, `revise_reflection`) and trained-turn framing ("You are generating
+training data"). Any DA-vs-PAR comparison was therefore a comparison of all four at once.
+
+**Method (config + tests, no engine change).** `configs/data/synth/post_action_retrospection.yaml`
+rewritten; the two-arm recipe archived verbatim as `archive/post_action_retrospection_two_arm.yaml`
+(the record of `LASR-Callum/2026-08-17-post-action-retrospection`, 576 docs).
+(1) Stages 1–4 are `difficult_advice.yaml`'s verbatim — prompts, save maps, diversity gate,
+scenario checks; a test pins the parity byte for byte, and the constitution path is DA's.
+(2) One arm: a free `label_records` stage stamps `reply_quality: flawed` + `supervise: final`
+on every record; the good arm, `variants_by` and `explicitness` are gone.
+(3) `judge_first_turn` replaces `revise_first_turn`: one chunk-only Sonnet call returns a
+verdict (`violated` = went along with, enabled or laundered the shortcut; `held` = declined
+it, however imperfectly) plus the lapse account, with `keep: verdict in [violated]` — every
+first reply is a violation because the gate says so, not because a label does.
+`expected_keep: 0.75` is the prior (2,700 planned → ~2,025 kept); `max_drop_pct: 60` fails the
+stage if the drafting model declines most shortcuts, which is a prompt problem, not one to
+generate around. The improved-reply artifact is dropped (nothing shipped it).
+(4) No `{constitution}` in any stage; a test asserts it.
+(5) The reflection draft is framed as DA's `draft_responses` (deployment prompt + principle +
+style guidance; task text in the last user turn) and the rewrite carries DA's
+`revise_responses` contract verbatim with one bullet swapped ("do not go along" → "own the
+earlier reply and correct it"), plus DA's full lint ban list and 700-char reasoning floor on
+both stages. The rewrite now emits its own `assessment`: `held` there is the rewriter, shown
+the judge's account, disagreeing with it — a measurement of the gate's false positives.
+(6) The follow-up is written by someone who got what they asked for (a next step, a detail),
+not by someone with unease — the correction is not cued by pushback.
+(7) `quality_filter` rubric flipped to the DA genre (`premise_fails`, `uncorrected` tags);
+`surface_auc_max` removed (one class); scenarios/draft/reflect move to Haiku 4.5 (DA's), the
+first turn stays Gemini (non-Anthropic on purpose).
+
+**Result.** Config-only; NOT YET SMOKED. Estimate $155.72 for ~2,025 documents (refine $35,
+rewrite $53, judge $15; budget 200). `tests/test_model_eval_model_natural.py`: 51 pass (PC
+tests untouched). Every stage renders off a synthetic record with no constitution, the lapse
+note reaching follow-up/draft/rewrite, and the style guidance reaching the draft like DA.
+
+**Confounds this recipe still carries, and the fix for each:**
+1. *Capitulation prior.* Every record ends `revised`. Mitigated (follow-up is not pushback;
+   DA mixed alongside trains holding firm) but not measured. Fix: an eval slice where the
+   first reply HELD and the follow-up pushes — the same pipeline with `keep: held` on a few
+   hundred records, held out as an eval, not trained.
+2. *First-turn author ≠ trained model.* Qwen retrospects on Gemini's prose; at inference it
+   retrospects on its own. Fix: author `draft_first_turn` with the base model under training
+   (Qwen3.6-27B, served or via OpenRouter) — a one-line model swap, recorded in
+   `first_turn_source`; expect a lower gate yield.
+3. *The lapse note is soft planting.* Draft and rewrite both see `change_summary`;
+   `check_blindness` only catches verbatim leakage. Fix: ablate `known_flaw_note` on a
+   40-doc slice and read `flaw_identification` — if the reflection finds the lapse unaided at
+   ≥ 0.70, drop the note (DA has no scaffolding at all).
+4. *Gate-induced scenario shift vs DA.* Keeping only scenarios where Gemini went along
+   selects for subtler shortcuts than DA's kept set. Fix for a matched comparison: run DA's
+   stages 5–7 on PAR's post-gate scenario snapshot (resume-copy), and report gate yield per
+   trait, not only per arm.
+5. *Supervised-token mismatch in mixtures.* A PAR row is five turns, one supervised; a DA
+   row three turns, one supervised — equal row counts are not equal supervised tokens. Fix:
+   size the mixture on supervised tokens.
+
+**Next steps.** `uv run synth run --config configs/data/synth/post_action_retrospection.yaml --smoke`,
+then `--overrides smoke.total_scenarios=40`; read `check_gate_yield` and resize
+`total_scenarios` from the measured yield; `uv run synth check`; read ten records.
 
 ## 2026-08-25 — Training-data contract: every corpus push is tagged, and /datasets discovers it live from the Hub
 
