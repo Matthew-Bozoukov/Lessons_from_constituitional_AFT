@@ -11,6 +11,7 @@ Run: uv run python scratch/judge_fabrication_sweep.py [arm,arm]
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -26,6 +27,9 @@ load_dotenv("src/eval/audits/surf/third_party/SURF/.env", override=True)
 ROOT = Path("output/fabrication_sweep")
 ARMS = sys.argv[1].split(",") if len(sys.argv) > 1 else ["t2only", "t2synth"]
 JUDGE = "openai/gpt-5.6-terra"
+# Judge fan-out. OpenRouter publishes no request cap for paid models (only Cloudflare and
+# the upstream provider's own limits), so this is empirical; 16 was the hardcoded default.
+WORKERS = int(os.environ.get("FAB_JUDGE_WORKERS", "16"))
 PROMPTS = {p["id"]: p["text"]
            for p in json.loads(Path("scratch/fabrication_prompts.json").read_text())}
 
@@ -89,7 +93,7 @@ def main():
             except Exception as e:  # noqa: BLE001
                 return {"fabricated": None, "why": f"JUDGE_ERROR {type(e).__name__}"}
 
-        verdicts = map_threaded(judge, len(rows), max_workers=16, desc=f"judge:{arm}")
+        verdicts = map_threaded(judge, len(rows), max_workers=WORKERS, desc=f"judge:{arm}")
         for r, v in zip(rows, verdicts):
             r.update(v)
         (out / f"{arm}.json").write_text(json.dumps(rows, indent=2, ensure_ascii=False))

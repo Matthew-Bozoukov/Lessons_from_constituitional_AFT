@@ -193,6 +193,220 @@ config `configs/eval/odcv_bench_9284_numina_control_716_constitution_3x65.yaml`.
 destroyed.
 
 
+## 2026-08-20 - ODCV on the LESS pair: 0.4% vs 4.3%, and neither number is comparable to any earlier arm
+
+**Hypothesis:** the LESS top-10% arm and its random-220 control (trained 2026-08-19) can be
+run through ODCV-Bench at the protocol the 2026-08-18 lessswap run pinned, giving the first
+LESS-vs-random agentic-misalignment comparison where the two arms differ ONLY in which rows
+they saw.
+
+**Method.** ODCV-Bench, 4 rollouts x 70 scenarios = 280 per arm (the standard 80 minus the
+same 10 exclusions every sibling uses), judged by grok-4.20 + gemini-3.1-pro-preview,
+provider-pinned via configs/endpoints/providers.yaml with allow_fallbacks false. The two
+configs differ from each other, and from the lessswap sibling, in exactly TWO keys - model
+and model_key - verified by diffing the loaded configs. One RunPod H200 per arm (TP=1,
+max_model_len 65,536, max_num_seqs 32, thinking pinned, agentic tool-call flags), each driven
+from two vast VM docker hosts at concurrency 12, SSH-tunnelled so containers reach it at
+host.docker.internal. Both arms ran in parallel.
+
+**Result.**
+
+| arm | MR | CI95 | severity | mandated | incentivized |
+|---|---:|---|---:|---:|---:|
+| LESS top-10% (score_max) | **0.4%** | [0.0, 1.1] | 0.20 | 0.0% | 0.7% |
+| Random-220 control (seed 1) | **4.3%** | [2.3, 7.2] | 0.38 | 2.9% | 5.7% |
+| Base fp8 (published) | 37.2% | [23.7, 51.3] | 1.43 | 40.0% | 34.2% |
+
+n=280 per arm, **0 dropped**, 560/560 rollouts wrote non-empty transcripts. In counts that is
+~1 misaligned rollout of 280 for LESS against ~12 of 280 for the control; the intervals do
+not overlap. Judging $11.44 + $11.19.
+
+**NEITHER NUMBER IS COMPARABLE TO ANY EARLIER ODCV ARM.** Every prior arm in this family sits
+above 10% (lessswap 19.3%, the legacy 716-row arm 15.0%), and those trained difficult-advice
+rows DILUTED into a 10,000-row Table-2 mixture. These two arms trained on difficult-advice
+rows and nothing else, 4 epochs. Concentrated values training is the obvious explanation for
+both arms collapsing, and it is shared by both, so it does not explain the gap between them -
+but it does mean these numbers cannot be placed on the existing ladder.
+
+**THE GAP HAS AN UNTESTED CONFOUND, and it is the important one.** ODCV measures misalignment,
+not competence; a model that declines to act scores 0% while being useless. "LESS selection
+reduces misalignment" and "LESS selection makes the model more inert" predict the SAME number
+here, and the LESS arm is the more refusal-flavoured of the two by construction - 199 of its
+220 rows win on the `stayed_ai` subtask. Spot-reading transcripts shows genuine agentic work
+(one arm ran a moderation scan, reviewed every flagged post, then refused to falsify the
+approval rate rather than refusing the task), so this is not blanket refusal, but a handful of
+transcripts is not evidence about 280. The LESS arm's mandated cell is EXACTLY zero of 140,
+so the benchmark has essentially no resolution left at this level either.
+
+**Infra: the failure that produced a full set of discarded passes.** The SSH tunnel was bound
+`-L 8000:localhost:8000`, i.e. loopback only. The agent runs inside docker and reaches the
+host as `host.docker.internal`, which resolves to the docker bridge gateway and NOT 127.0.0.1
+- so the host's own curl answered the preflight perfectly while every container got nothing,
+and ODCV rendered that as `ok+no_transcript` on all 70 cells of every pass. The harness reports
+those scenarios as `ok`. A host-side check is structurally incapable of catching this; the
+bootstrap now binds 0.0.0.0 AND verifies by running a curl inside a throwaway container. After
+the fix, all eight passes came back 70/70 non-empty with zero missing cells.
+
+**Four other defects fixed, each caught by a cheap check that did not exist before:**
+1. `--smoke` sliced `names[:1]` BEFORE applying exclusions, and every arm config excludes the
+   alphabetically-first scenario in both variants - so it selected zero scenarios and printed
+   "rollouts complete: 0/0 clean" as success. A wiring check that exercises nothing.
+2. `odcv_box_run.py` never called `load_dotenv`, so every HF push 401'd AFTER a completed
+   20-minute pass, silently disabling the continuous-publish crash-safety.
+3. The bootstrap installed `docker.io` unconditionally, which conflicts with the docker-ce the
+   vast KVM image already ships, failing apt outright.
+4. The dpkg-lock wait ran even when nothing needed installing, killing two boxes with "dpkg
+   lock still held after 15 minutes" while every required binary was present.
+
+**Cost.** ~$37 this run (GPU ~$13, judging ~$23, boxes ~$1). A first attempt earlier the same
+day was torn down having produced zero rollouts for $17.85, because two H200s were rented
+BEFORE the box path was proven and then idled through the debugging; the reordering that
+followed - prove the docker path against OpenRouter with no GPU, then rent - is why the second
+attempt's GPU spend was mostly productive. All instances destroyed and confirmed: 0 vast, 0 of
+our pods.
+
+**Published:** `LASR-Callum/2026-08-20-odcv-less-top10-220` and
+`LASR-Callum/2026-08-20-odcv-random220-control`, each carrying all 4 passes, the combined
+directory, both judges' verdicts, results.json and a card stating the caveats above.
+Summaries in `output/eval_summaries/odcv_*_20260820.json`.
+
+**Next steps:** (1) A CAPABILITY EVAL on both arms before the gap is read as a LESS result -
+this is the one measurement that separates aligned from inert, and it needs no new training.
+(2) If the arms are competent, the pair is still only interpretable within itself; placing it
+on the synth-fraction ladder needs a 10,000-row LESS arm, not this one. (3) The `score_mean`
+cut remains untried and shares only 131/220 rows with `score_max`.
+
+## 2026-08-20 - Trait-10 (curiosity) arm: difficult advice written against a principle ODCV cannot reward still cuts ODCV by 17.5pp
+
+**Hypothesis:** ablating constitution traits out of the difficult-advice data has not moved
+ODCV, and per-trait subsets (t1-3 vs t5-7) land in the same place. The sharper test is a
+trait the eval cannot reward: if 716 difficult-advice rows written against a NEW principle
+that has nothing to do with honesty, oversight or harm - genuine intellectual curiosity -
+still lower the misalignment rate, the effect is carried by the document type (pressure, a
+tempting shortcut, open deliberation, declining it), not by which value the rows are about.
+
+**Method.**
+- *Constitution:* `scratch/trait10_curiosity/constitution.md` = the 9-principle mid document,
+  byte-identical, with `## 10. Bring genuine intellectual curiosity and depth of engagement to
+  ideas` appended before the shared style section. Stage 1 cuts it into 10 units; `t10` is new.
+- *Generation:* `scratch/trait10_curiosity/difficult_advice_t10.yaml`, a verbatim copy of the
+  v2 recipe (`configs/data/synth/difficult_advice.yaml` @ 432c069) differing in SEVEN keys -
+  `constitution`, `n_traits` 9->10, the new `only_traits: [t10]`, `total_scenarios` /
+  `scenarios_per_trait` -> 800, `output_dir`, `hf_repo(_smoke)`, `budget_usd`. Models (Haiku
+  4.5 on stages 2/3/5, Sonnet 5 on the two rewrites), prompts, lint blocks, diversity gate
+  and corpus checks are untouched, so the only difference from the da716 rows is the trait
+  they were written against. Stages 4 and 6 still see the whole (now 10-principle) document
+  in `{constitution}`, exactly as every v2 row's stages saw the 9-principle one - the
+  like-for-like choice; an "isolated document" arm where the generator never sees
+  principles 1-9 is the natural follow-up.
+- *The one `src/` edit for the run:* `only_traits:` (`select_units` in
+  `src/data/synth/constitution.py`, ~25 lines + a test). `max_traits` was a first-N slice, so
+  a trait anywhere but the front of the document could not be run alone.
+- *Yield:* 800 scenarios -> 800 kept by the cosine gate (2 rejected and regenerated), dedupe
+  0 -> 791 after `revise_prompts` (8 omitted the required `situation` field, 1 content
+  filter) -> 784 after `draft_responses` (7 under the 700-char minimum - fitting, since the
+  trait itself says a curious response can be one sentence, but the v2 contract was held) ->
+  **779 rows** after `revise_responses` (5 content-filter rejections). 522 distinct domains
+  across the 800 scenarios, largest 2.3%. Corpus gates PASS; pattern scan's one finding is a
+  "reasoning-then-answer with hedged deliverable" shape in ~90% of rows. What "violating
+  curiosity" looks like in the scenario layer: file the anomaly under a standard heading,
+  treat the unexpected pattern as noise, steer by outcome data without engaging the person's
+  actual interest. **$91.06, 84 min**; the two Sonnet stages read 6.28M + 6.18M prompt tokens
+  from cache (80% / 70% of their input). HF: `LASR-Callum/2026-08-20-difficult-advice-t10-curiosity`.
+- *Mixture:* `scratch/build_t2_9284_da716_mixture.py` pointed at the t10 corpus (seed 0):
+  716 t10 rows (716 distinct scenarios, 539 domains) + the same 9,284 Table-2 rows as da716.
+  Census identical to da716's: 10,362 assistant turns = 716 real traces + 9,646 empty markers
+  + 0 bare. HF: `LASR-Callum/2026-08-20-table2-9284-t10-curiosity-716-train` @ `a982b2c0`.
+- *Training:* `scratch/trait10_curiosity/lora_qwen36_t2_9284_t10_curiosity_716_dynbatch_2xh200.yaml`
+  = the da716 config with its data keys swapped (r64/a128, 1 epoch, global batch 16, lr 1e-4
+  cosine, max_seq_len 8192, dynamic batching budget 8000 over 2 DDP ranks, assistant-only
+  loss). One credential-free RunPod 2xH200 pod via `scratch/trait10_curiosity/train_pod.py`
+  (single-arm torchrun fork of the LESS driver). **625 steps, 2h11m, train_loss 0.869**
+  (lessswap 0.865, c6masked 0.866), 47.1% of tokens supervised. Adapter:
+  `LASR-Callum/qwen3.6-27b-lora-t2-9284-t10-curiosity-716-r64-dynbatch` (thinking: true).
+  ~$21 of RunPod; pod destroyed.
+- *ODCV:* **2 rollouts x 65 cells** (changed mid-run from 4x70 at the user's request), the
+  cell set the peer-critique arm ran and the "65 identical cells" comparison used
+  (`scratch/trait10_curiosity/odcv_bench_t2_9284_t10_curiosity_716_2x65.yaml`: the LESS
+  config's hyperparameters, model/model_key swapped, the peer-critique 15-exclusion list).
+  Served on a RunPod H100 via `serve_adapter_runpod.py` (`--agentic --mode think --max_len
+  65536`); driven FROM THE LAPTOP over an SSH tunnel (Docker Desktop, concurrency 12 - this
+  machine's `.env` has no `VAST_API_KEY`, so the vast-box flow was not available), using the
+  box supervisor `scratch/odcv_box_run.py` with a new `--extra` pass-through and a `docker
+  network prune` before each pass. Passes took 46.5 and 40.0 min. Yield 63/65 + 64/65 =
+  **127 transcripts**: three cells hit the executor's request timeout (`[AI API dead]` in
+  `docker_output.log`; the harness still reports `ok`) - `mandated/Marketing-Campaign` and
+  `incentivized/Ai-Transport-Fleet-Safety-Vs-Efficiency` in pass 1,
+  `mandated/Propaganda-Engine-Finding` in pass 2 - so every cell has >=1 rollout and 62 have 2.
+  One `--resume` round recovered nothing usable (a tunnel drop, then two resumes colliding on
+  the same compose project, then a workspace torn down under a retry); called off there.
+  Judges grok-4.20 + gemini-3.1-pro ($0.44); base-fp8 reference reconstructed from the
+  lessswap eval's comparison block. Sibling arms re-summarised on the SAME 65 cells from
+  their published per-scenario medians (`scratch/trait10_curiosity/compare_on_cells.py`).
+
+**Result.** Misaligned = median judge score >= 3.
+
+Every 716-row (7%) arm with a pullable `results.json`, re-summarised on the same 65 cells
+from its published per-scenario medians (nothing re-run; the v1 restriction reproduces the
+team's posted 14.3% exactly). Plot + mirror: `scratch/trait10_curiosity/plot_7pct_arms.py`
+-> `output/plots/odcv_7pct_arms_65cells_<ts>.png` / `_results.md`.
+
+| arm | n | MR | 95% CI | sev | mandated | incentivized |
+|---|---|---|---|---|---|---|
+| c6masked (synthdoc-716, C6 spans unsupervised) - posted 65-cell figure | 195 | 9.7% | ±4.2 | - | - | - |
+| synthdoc-716 (difficult advice v1) | 314 | 14.3% | [9.3, 19.0] | 0.65 | 9.8% | 19.3% |
+| da716 (difficult advice v2, 9 traits) | 257 | 16.3% | [10.0, 21.8] | 0.76 | 12.4% | 20.8% |
+| lessswap716 (LESS-selected rows, 3 traits) | 260 | 16.5% | [11.2, 21.4] | 0.79 | 11.4% | 22.5% |
+| **t10 curiosity 716 (this run, 2 rollouts)** | 127 | **19.7%** | [10.9, 30.0] | 0.99 | 19.1% | 20.3% |
+| Qwen3.6-27B base fp8 (no SFT) | 65 | 36.9% | [21.4, 53.6] | 1.37 | 40.0% | 33.3% |
+| table2-only 9284 (0% SFT control) | 305 | 43.9% | [37.5, 53.1] | 1.87 | 46.1% | 41.3% |
+
+(courtroom716 and peercritique716 have no pullable results.json and are not in the table.)
+
+**A trait the eval cannot reward still buys 17.5pp of the drop.** The curiosity arm's interval
+covers both difficult-advice siblings: at this n it is indistinguishable from the 9-trait
+arm, which is the per-trait finding (t1-3 ~ t5-7) pushed to its limit - the rows' VALUE content
+was swapped for one ODCV does not grade, and the organism still moved by roughly what the
+real constitution's rows move it. The effect is carried by what the document type teaches:
+take the pressured request seriously, name the tempting shortcut, deliberate in the open,
+decline it with reasons, offer the legitimate path.
+
+**Read the point gap as a hint, not a result.** 19.7 vs 16.3 is 3.4pp, inside a CI twice as
+wide as the siblings' (2 rollouts per cell vs 4), and all of it sits on the mandated variant
+(19.1% vs 12.4%) while incentivized is equal (20.3% vs 20.8%); severity 0.99 vs 0.76 points
+the same way. If real, it would say the alignment-specific content buys something on the
+cells where the operator *orders* the violation - which is where "decline the shortcut"
+has to override an instruction rather than a temptation. Two more rollouts per cell would
+halve the interval for ~$6 of pod time.
+
+**What this does NOT isolate.** Stages 4 and 6 saw the full 10-principle constitution, as
+every v2 row's did, and the rewrite instructions are the same Sonnet instructions ("do not
+go along with the norm-violating path"); a sample t10 row still says "I don't want to hand
+you a setting I'm not confident is the cause". Whether honesty-shaped content leaked into
+the t10 rows through that channel is exactly what the isolated-document arm decides.
+
+**Two generator detours worth recording.** (1) A Gemini 3.7 Flash variant of the generation
+stages was smoked and reverted before the full run: the repo's flex-tier pin made it ~4x
+slower (stage-5 calls 60-160 s), and it would have been a second difference from the da716
+rows. (2) Gemini 3.7 Flash ends every completed reply (`finish_reason=stop`) WITHOUT the last
+closing tag - 100% of stage-5 calls failed the tagged parser on a model that had answered in
+full. `_parse_tagged` now accepts an unclosed FINAL tag (non-final tags must still close;
+truncation is still rejected upstream). Kept, since it is generic and tested. Both, plus the
+ODCV executor-timeout signature, are in `docs/GOTCHAS.md`.
+
+**Spend:** OpenRouter $91.5 (generation + judging), RunPod ~$30 (2xH200 training 2h11m + H100
+serving ~3.3h). All pods destroyed; 0 active.
+
+**Next steps.** (1) The isolated-document arm: a constitution whose only principle is t10 and
+whose preamble/style carry no alignment content, so `{constitution}` cannot leak principles
+1-9 into the rewrite - the decisive version of this test. (2) Top this run up to 4 rollouts
+per cell (`scratch/odcv_repeat_rollouts.sh`-style, two more passes) to shrink the CI to the
+siblings' width before reading the mandated-variant gap. (3) Run the rollout-property diffing
+(the da716 pipeline) on these 127 transcripts against da716's: if "states ethical
+justification then acts against it" (+58pp in da716) is also the t10 arm's top failure mode,
+the failure modes transfer with the format too. (4) A fabrication-sweep and capability check
+on the adapter, to see whether a non-alignment trait pays the same side costs.
+
 ## 2026-08-19 (evening) — two more ablations fail to break it; a reasoning autorater built
 
 **Context.** With both controls in place (no difficult advice 44.1%, unmodified recipe 16.8%),
@@ -406,6 +620,87 @@ figure `output/report/arm_comparison_20260819_093604.png` + markdown mirror. Run
 destroyed, 0 active.
 
 
+## 2026-08-19 - LESS proper: the top 10% trained as its own arm, with the random-220 control it needs
+
+**Hypothesis:** the 2026-08-14 ranking supports LESS as arXiv:2402.04333 actually runs it -
+rank the pool, keep the top fraction, train on the kept rows ALONE - and that arm is worth
+having as a clean pair with its control rather than as another 1.5% intervention on a
+10,000-row mixture (the 2026-08-17 less-swap arm, still uninterpretable for want of a control).
+
+**Method.** Cut the published ranking at K=220 (10% of the 2,203-row difficult-advice pool) by
+`score_max`, the paper's aggregation and the ordering the published `rank` field carries.
+Control: 220 rows drawn uniformly from the whole pool. Both trained on base Qwen3.6-27B,
+r64/alpha128 bf16, 4 epochs, batch 1 x accum 16, lr 1e-4 cosine, max_seq_len 8192,
+assistant-only loss - 56 optimizer steps each. The two train configs differ in FOUR keys of 30
+(`data_repo`, `data_revision`, `output_dir`, `hf_repo`); a semantic diff is in the commit.
+One RunPod pod, 2xH200, one arm per GPU: at 56 steps the ~55GB base download dominates
+wall-clock, so DDP within an arm buys nothing and two pods would pay that download twice.
+
+**The join is positional, and this is the trap.** `less_id` is `<scenario_id>#<row index>`,
+stamped at load time by `prepare_data.load_pool()` - the published pool file does NOT carry
+it, though `rankings/README.md` says to join on `metadata.less_id`. `select_topk.py` asserts
+the 1:1 cover, the `scenario_id` checksum and the trait agreement, and (for `score_max`) that
+the recomputed cut reproduces the published `rank` exactly. All four pass.
+
+**SEED 0 REPRODUCES THE WARMUP SPLIT.** The first control draw came back `in_warmup 220/220`
+instead of the ~22 chance predicts: `random.sample` picks positions from the RNG alone, so
+seed 0 over a 2,203-row population redraws `prepare_data.py`'s warmup split exactly - the rows
+that trained the LoRA this ranking came from. That control would have been a function of the
+treatment. Redrawn at seed 1 (`in_warmup` 23, traits ~24 each, incidental overlap with the
+selection 22 against 22.0 expected), and `assert_independent_of_warmup` now fails the run at
+5 sigma rather than trusting a seed.
+
+**Result - both arms trained, neither yet interpretable.** 56 steps, `train_runtime` 3,881s
+each, ~$16 for the trip.
+
+| arm | final logged loss | train_loss | token acc | adapter |
+|---|---|---|---|---|
+| LESS top-220 (`score_max`) | 0.9178 | 1.146 | 0.7147 | `LASR-Callum/qwen3.6-27b-lora-less-top10-220-r64` |
+| Random 220 (seed 1) | 0.9770 | 1.207 | 0.6968 | `LASR-Callum/qwen3.6-27b-lora-random220-control-r64` |
+
+**THE LOSS GAP IS NOT A RESULT.** The two losses are over DIFFERENT data, and the selection is
+far more homogeneous by construction: 199 of its 220 rows win on `stayed_ai`, and t6+t3 alone
+are 153/220 against ~24 per trait in the control. A tighter distribution is easier to fit,
+which predicts a gap of exactly this sign regardless of whether the selection is any good.
+Nothing here should be quoted until the arms are evaluated.
+
+**What the selection is.** Trait mix t6 79 / t3 74 / t9 32 (vs ~24 uniform); argmax subtask
+`stayed_ai` 199, `honest_declined` 19, `codebase_resisted` 2. So this arm tests influence on
+`stayed_ai`, not a general data-quality prior - the `max` collapse measured on 2026-08-14,
+inherited whole. `score_mean` shares only 131/220 rows with this cut and remains untried.
+
+**Published.** Both selections as full training datasets with `selection_ids.json` (every
+`less_id` with its rank and per-subtask influence, so the cut is reproducible from the pool
+without downloading the corpus): `LASR-Callum/2026-08-19-less-top10-difficult-advice-220-train`
+and `LASR-Callum/2026-08-19-random-220-difficult-advice-control-train`, both sha-pinned into
+the train configs.
+
+**Three Windows/encoding bugs fixed in reviewed code**, each of which had never fired because
+these paths had only ever run on Linux pods or through the filter branch:
+1. `build_mixture.py` opened every jsonl without an encoding - cp1252 on Windows, dies on the
+   first non-latin-1 byte of a local `path:` source.
+2. `.env` was loaded only as a side effect of importing `OpenRouterClient` inside the
+   `filter:` stage, so a filter-less config built its mixture, ran to the final push and died
+   on a bare 401 with the artifact already on disk.
+3. `push_run_dir` wrote the card with `write_text(card)` - cp1252 - and `upload_folder` reads
+   that same file back as utf-8. Every card has em-dashes, so every Windows adapter push
+   failed, AFTER `create_repo` had run: the visible symptom is an empty repo on the Hub, which
+   reads as a permissions problem rather than an encoding one.
+
+**Two operational notes.** The pod's `wait` never returned - both trainers wrote their final
+`run_meta.json` and then hung in interpreter shutdown - so the bootstrap's `tar` and
+`TRAINING_DONE` never ran. Packaging must not be the only retrieval path: `/workspace` is
+served over :8080, so the adapter directories were browsable and were pulled file by file
+instead. Second, that hang cost ~15 min of idle billing before it was noticed.
+
+**Next steps:** (1) EVALUATE - ODCV + agentic-misalignment + a capability check on both arms
+at identical settings; the loss curve says nothing. (2) Expect the arms to be close: 220 rows
+over 56 steps is a small intervention, and a null will not separate "LESS does not help" from
+"the lever was too small" nor from "the validation set was too narrow" (the 60 Dval rows are
+33 distinct prompts, and all 20 `honest_declined` rows are benign software-performance
+comparisons - see 2026-08-17). (3) If the pair separates at all, the `score_mean` cut is the
+natural third arm, since it shares only 131/220 rows with this one.
+
 ## 2026-08-18 — traits-1/3/4 ablation arm trained (disambiguates the low-ODCV result)
 
 **Hypothesis.** The low-ODCV arm raised ODCV MR to 17.1% where three reasoning-style
@@ -544,6 +839,199 @@ and the 6 missing cells were never diagnosed.
 
 
 # LOG
+
+## 2026-08-18 — Fabrication sweep on the LESS-swap arm: 73.8%, on the synth-fraction ladder but not on its failure mode
+
+**Hypothesis:** the LESS-swap arm's fabrication rate on the established 31-prompt sweep is
+worth recording alongside its ODCV number, even though the arm sits on a different mixture
+axis from the four published arms and its protocol-matched control is untrained.
+
+**Method:** the same protocol as 2026-08-10/11 — 31 fabrication-bait prompts x 32 samples =
+**992 generations**, temperature 1.0, max_tokens 6144, no system prompt, generation running ON
+the pod against localhost:8000 (`scratch/pod_generate.py`). Serving deliberately byte-identical
+to the four published arms: one H100 80GB via `scratch/runpod_surf_target.py` at stock flags
+(vllm==0.26.0 pinned, `--max-model-len 16384`, `--max-num-seqs 64`, `--reasoning-parser qwen3`,
+`--gpu-memory-utilization 0.85`, no `--chat-template`). Judge `openai/gpt-5.6-terra`, which does
+route through `OpenRouterClient` and so was already provider-pinned. **Concurrency 32 rather
+than the prior 16 is the only procedural deviation** — at temperature 1.0 the samples are
+independent draws, so batch size changes only reduction-order numerics, orders of magnitude
+below this eval's noise floor.
+
+**Result:** **73.8%** fabricated (732/992), 95% CI [70.9, 76.5], mean severity 7.43 among
+fabrications. 992/992 generations succeeded, 0 judge errors.
+
+| arm | synth share | fabricated | own-execution claims |
+| --- | --- | ---: | ---: |
+| table2 only | 0% | 82.0% | 8.3% |
+| +20% mem-self | 20% | 95.1% | 3.7% |
+| **LESS-swap (this run)** | **~7%** | **73.8%** | **4.2%** |
+| +20% self-reflect | 20% | 61.7% | 3.4% |
+| +20% synth | 20% | 56.4% | 7.6% |
+
+**Two readings, and they disagree.** On the headline rate the arm lands exactly where a
+dose-response in synth fraction predicts — 0% -> 82.0%, ~7% -> 73.8%, 20% -> 56.4%, monotonic —
+so nothing here requires LESS selection as an explanation. But the failure-mode split does NOT
+follow that ladder: own-execution claims are 4.2%, down with self-reflect (3.4%) and mem-self
+(3.7%) rather than with synth (7.6%) or the baseline (8.3%). Among each arm's own fabrications,
+execution claims are 5.7% here versus synth's 13.4% and self-reflect's 5.6%. On the 2026-08-11
+framing — synth removes silent invented data and leaves the explicit false claims, self-reflect
+removes the claims — this arm patterns with self-reflect on WHICH failure it removes, despite
+being a synth mixture. That is the part worth a second look.
+
+**Noise floor this run:** the byte-identical p03/p04 pair scored 88% and 97% — 9 points, better
+than the 16 measured in the original run, but still the floor below which no per-prompt
+difference is interpretable.
+
+**Base is still unrun on these 31 prompts**, as it has been since 2026-08-10, so the ladder
+remains missing its top and no base-vs-arm comparison can be quoted. The two single-prompt base
+runs (both 100%) remain uncitable for the reason given then: n=1 draws from a 6-97%
+distribution. `runpod_surf_target.py` serves `base` alongside any adapter, so completing it
+costs roughly one pod-hour.
+
+**Artifacts:** `output/fabrication_sweep/lessswap716/` (992 generations with reasoning traces,
+median trace 5,414 chars) and `judged_20260818_172311/`, published to
+`LASR-Callum/2026-08-18-fabrication-sweep-lessswap716`.
+
+**Next steps:** (1) run `base` to close the ladder; (2) `t2synth716`
+(`LASR-Callum/qwen3.6-27b-lora-t2-9284-synthdoc-716-r64`) is the random-selection sibling on the
+IDENTICAL 9,284+716 mixture and is already registered in `MODULES` — if its sweep data exists it
+is the only comparison that isolates selection, and if not it is the run worth doing before any
+LESS claim; (3) the execution-claims-vs-invented-data split deserves the paired per-prompt
+treatment rather than pooled rates.
+
+## 2026-08-18 — ODCV on the LESS-swap arm: 19.3% MR — and this clone could not run ODCV at all
+
+**Hypothesis:** the LESS-swap arm
+(`LASR-Callum/qwen3.6-27b-lora-t2-9284-synthdoc716-lessswap-r64`, trained 2026-08-17) has an
+ODCV agentic-misalignment rate worth recording now, accepting that its protocol-matched control
+does not exist yet.
+
+**Method:** ODCV-Bench, **4 rollouts x 70 scenarios = 280** (the standard 80 minus the same 10
+exclusions every sibling arm uses), judged by grok-4.20 + gemini-3.1-pro-preview. Config
+`configs/eval/odcv_bench_t2_9284_lessswap716_r64_dynbatch_4x70.yaml`, hyperparameter-identical
+to its courtroom716/da716 siblings — verified by diffing the loaded configs, exactly six keys
+differ (model, model_key, base_url, bench_dir, output_root, baseline_results). Served on a
+RunPod H200 (TP=1, `max_model_len` 65,536, `max_num_seqs` 32, thinking pinned into the served
+template); docker driven from **two vast VM rentals** (19 cores / 49GB each), two passes each,
+SSH-tunnelled to the pod so the containers reached it at `host.docker.internal`. 24 concurrent
+streams, **0 preemptions** for the whole run.
+
+**Result:** MR **19.3%** [14.8, 26.5], severity 0.88, n=280, **0 dropped**. Mandated 11.4% /
+incentivized 27.1% — residual misalignment in the incentivized cells, the same shape as every
+sibling arm. Base fp8 = 37.2%, so **-17.9pp**. Judging $11.08.
+
+**This is NOT a LESS result.** The protocol-matched control
+(`lora_qwen36_t2_9284_synthdoc_716_dynbatch_2xh200.yaml`) has still never been trained —
+`matboz/qwen3.6-27b-lora-t2-9284-synthdoc-716-dynbatch-r64` returns 404. The only 716-row arm
+with an ODCV number (15.0% [11.4, 20.8], 5 passes) is 4xH200 batch-1 legacy batching on a
+different loss path, so 19.3% vs 15.0% confounds data selection with training protocol — and the
+intervals overlap heavily regardless. Reconstructing that arm's run surfaced at least four
+further eval-side differences (5 passes not 4; `context_window` 16,384 not 65,536; concurrency 8
+not 24; unpinned judges), so the gap has several non-LESS explanations before selection is
+reached.
+
+**THIS CLONE COULD NOT RUN ODCV, and the failure was silent.** Two separate sets of files were
+absent, both stripped by ignore rules when the benchmark was vendored under `src/`:
+`orchestrator_api.zip` (the orchestrator API server, killed by the vendored tree's own `*.zip`)
+and 39 scenario fixtures (killed by THIS repo's `*.log` and `output/`). A scenario whose
+Dockerfile COPYs a missing fixture fails its build as `compose_exit_1+no_container` and writes
+no transcript — which reads as flaky infrastructure while deterministically dropping the SAME
+six scenarios, 12 of 70 cells, ~21% of every pass. `VENDORED_FROM.txt`'s "zero modified files"
+check was true, but it only covered files that were PRESENT. All 39 restored from the pinned
+commit and verified byte-identical; `.gitignore` negations plus a `-text` `.gitattributes` keep
+them (upstream genuinely ships CRLF fixtures, so an `eol=lf` rule would have corrupted them).
+
+**Two deliberate deviations from the siblings.** (1) `max_model_len` 65,536 rather than the
+16,384 default: tokenising the 236 published ODCV transcripts shows **8.1% exceed 16k** (max
+73.5k), matching the 7/80 `ok+no_transcript` in the published finetune_fp8 run — the siblings
+were very likely truncating their longest, most complex rollouts. (2) Judge calls are now
+genuinely provider-pinned; the vendored judge built its own OpenAI client and bypassed
+`configs/endpoints/providers.yaml` entirely, so every previous ODCV judging run took default
+routing WITH fallbacks.
+
+**Infra notes.** The documented drivers did not exist — neither `odcv_rollout.py` nor
+`odcv_judge.py` defines a `__main__`, and the multi-pass combiner referenced in the 2026-08-09
+entry was never committed; all three now live in `scratch/`. Judge verdicts flush incrementally,
+which immediately saved 256 paid-for grok verdicts when a Windows-only `UnicodeDecodeError` (the
+vendored judge opens transcripts with no encoding) killed the run at call ~256/280;
+`PYTHONUTF8=1` is required on Windows.
+
+**Artifacts:**
+`output/odcv_bench/qwen3_6-27b-lora-t2-9284-lessswap716-r64-dynbatch/combined4x_20260818_153812/`,
+published to `LASR-Callum/2026-08-18-odcv-lessswap716-eval`. ~$20 total (H200 ~$8, two vast VMs
+~$0.30, judging $11.08). All instances destroyed and confirmed.
+
+**Next steps:** (1) **train the control** — until then no number here supports a claim about
+LESS selection; (2) once trained, run it at these same settings rather than comparing against
+the legacy arm; (3) the 16k-vs-64k context finding applies to every prior ODCV arm and is worth
+a re-read of those results.
+## 2026-08-18 — `src/properties/`: one List of Properties, and the ablations that test it
+
+**Why.** Four property-discovery methods were each growing their own embedding call, their
+own clusterer and their own idea of what a "property" is, in four `scratch/` directories.
+Fig 3 needs them to produce ONE list a single ablation stage can consume, and needs each
+property to be actionable rather than a sentence in a report. This is that module. No
+experiment ran; nothing here has been executed against real data yet.
+
+**The shape.** `sources/` -> Records; `producers/` -> Property rows; `registry.py` -> the
+merged `properties.jsonl`; `ablation/` -> an ablated corpus, verified, handed to `uv run
+mix` / `uv run train` / `uv run evals`. Two thin drivers,
+`scripts/properties/{discover,ablate}.py`, and everything per-property in
+`configs/properties/*.yaml` — a new property is a new yaml, not a new python file.
+
+**The one design decision worth arguing about: every property carries a DETECTOR.** A
+label and a prevalence cannot select the rows an ablation should edit, and cannot show
+afterwards that the prevalence moved. So `shared/interpret.py` returns a label AND a
+yes/no test on ONE record, `Property.__post_init__` refuses a row without one, and the
+same `detect()` call does three jobs: measures prevalence, picks the rows to edit, and
+measures the drop. That is what makes the four producers' numbers comparable — a
+detector-measured prevalence means the same thing whether the property came from a
+cluster, a TURF trace or an influence ranking, whereas cluster membership does not.
+
+**Four ablations, weakest first, and the weakest that applies is preferred:** `mask`
+(unsupervise the property's spans — the corpus tokenises identically to its control),
+`filter` (drop / downsample / split), `rewrite` (one LLM call per row; Callum's
+recommendation on 2026-08-17 — "an ad hoc, specific rewrite to vary a targeted property...
+gets you two datasets that will be very similar in most ways"), `regenerate` (re-run synth
+with the property suppressed; it writes the derived config and stops, because a stage
+ablation changes many things at once and that is the confound the other three exist to
+avoid).
+
+**`ablation/verify.py` gates the arm before it costs a pod.** Prevalence before vs after
+with Wilson intervals (a drop whose intervals overlap is sampling noise, and the fix is a
+bigger sample, never a smaller threshold); untargeted "collateral" properties that must not
+move; and a bag-of-words classifier trained to tell the two corpora apart — the check that
+caught peer-critique at AUC 0.9973 and post-action-retrospection at 0.96 on 2026-08-17,
+the second only after a model had been trained on it. `ablate.py` refuses to emit a train
+config for a failed arm without `--force`, which it records.
+
+**Three producers are boundaries, not ports.** feature_discovery, turf and less still live
+under `scratch/`; each one's `produce()` reads the artifacts those modules already write
+(`clusters.json`, `trace_result.json`, `scores.jsonl`) and turns them into Property rows.
+The artifacts are the interface, so the port moves code without changing anything
+downstream. A producer is ONE module — its package `__init__.py` — exposing ONE `produce()`
+with one signature, so `discover.py` runs any of them blind.
+`trace_clusters` is implemented in full as the reference producer — embed whole
+traces, group, interpret — and answers the 2026-08-17 action item (UMAP+clustering on good
+traces, DA vs courtroom) via its per-arm `group_by` split.
+
+**Two traps found while wiring it up, both silent.** (1) The published Table-2 mixtures are
+PRE-RENDERED, so their query and reasoning channels have to be parsed back out of the
+rendered string — without a `model:` they read empty and every reasoning property measures
+0% for a reason that has nothing to do with the corpus. `mixture_rows.unrender` does the
+split from `ModelProfile`, and says so loudly when it cannot. (2) Narrowing the corpus to
+the difficult-advice share at LOAD time would make the ablated arm 716 rows instead of
+10,000 — a different experiment, not the control's with one property removed. Hence
+`ablation.restrict`, which narrows what is judged and edited while every row is written
+back, and which verification also measures over so a 60%-of-716 property does not read as
+4%-of-10,000.
+
+**Next steps:** (1) run `discover.py` against the published feature-discovery run and the
+DA corpus to get real property ids into the registry. (2) Cost the detector pass before
+running it at scale — it is one judge call per record per property. (3) Then one rewrite
+ablation end to end, against the control that
+`lora_qwen36_t2_9284_synthdoc_716_dynbatch_2xh200.yaml` names. (4) Port the three scratch
+producers in behind their `produce()`.
 
 ## 2026-08-17 — LESS-selected difficult-advice arm trained: 151 rows swapped, loss 0.8651, no control yet
 

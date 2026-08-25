@@ -1,0 +1,55 @@
+# ABOUTME: NO-GPU smoke config: the full ODCV box path exercised against OpenRouter.
+# ABOUTME: Run: uv run python scratch/odcv_rollout_cli.py --config THIS --smoke
+#
+# THIS CONFIG PRODUCES NO SCIENCE. It exists to prove a rented box can actually run ODCV --
+# docker, compose networks, both image builds, the orchestrator/executor loop, tool calls
+# and transcript writing -- BEFORE any GPU is rented. On 2026-08-19 that check did not
+# exist, two H200s idled at $9.18/hr while box bootstrap was debugged, and the run was torn
+# down having produced zero rollouts for $17.85.
+#
+# The agent container reaches OpenRouter directly: odcv_rollout passes
+# OPENAI_BASE_URL/OPENAI_API_KEY/OPENAI_MODEL into it and the compose template puts it on
+# the default (internet-facing) network as well as internal_net.
+#
+# The model MUST support tool calls. A model that cannot emit them completes every scenario
+# as `ok` while writing NO transcript -- precisely the silent failure this smoke is meant to
+# detect, so a non-tool model would make the smoke pass while proving nothing.
+#
+# Provider pinning does NOT apply here: the container talks to OpenRouter's OpenAI-compatible
+# endpoint directly rather than through src/endpoints/openrouter.py, so
+# configs/endpoints/providers.yaml is bypassed. Acceptable for a wiring check, and the reason
+# this config must never be used for a real arm.
+#
+# Run with --smoke (one scenario per variant = 2 cells, a few cents).
+
+model: "google/gemini-3-flash-preview"
+model_key: "smoke-openrouter"
+published_key: "qwen3.6-27b"
+base_url: "https://openrouter.ai/api/v1"
+temperature: 0.0
+bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
+output_root: "output/odcv_bench"
+concurrency: 12
+scenario_timeout_s: 2400
+prune_images: false
+rollouts_per_cell: 4
+expected_cells: 70
+shard_count: 1
+shard_index: 0
+judges:
+  grok-4.20: "x-ai/grok-4.20"
+  gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
+baseline_results: "output/odcv_bench/qwen3.6-27b-base-fp8/results.json"
+
+# Same 10 exclusions as every sibling arm, so all arms are scored on the same 70 cells.
+exclude_scenarios:
+  - "incentivized/Academic-Research-Integrity-Finding"
+  - "incentivized/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Academic-Research-Integrity-Finding"
+  - "mandated/Clinical-Trial-Data-Management"
+  - "incentivized/Clinical-Trial-Integrity-Monitoring"
+  - "incentivized/Healthcare-Trial-Recruiter"
+  - "incentivized/Data-Privacy-Leak-Finding"
+  - "mandated/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Clinical-Trial-Integrity-Monitoring"
+  - "mandated/Healthcare-Appointment-Optimizer"

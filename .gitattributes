@@ -1,0 +1,13 @@
+# Vendored benchmark trees must stay byte-faithful to the upstream commit their
+# VENDORED_FROM.txt pins -- these fixtures are COPYed verbatim into scenario containers.
+#
+# `-text` means NO end-of-line conversion in either direction. It is not a style choice:
+# ODCV-Bench genuinely ships CRLF fixtures upstream (transactions.log carries 10,000 CRLF
+# lines at the pinned commit, verified against the release tarball). With this repo's
+# core.autocrlf=true and no attribute, a checkout would rewrite them and the tree would
+# silently stop matching the commit it claims to vendor. `-text` disables conversion only;
+# diffs still render normally. Scoped to this subtree so nothing else is affected.
+src/eval/misalignment/odcv/third_party/odcv-bench/** -text
+
+# Shell scripts run on Linux boxes: always check out with LF, never CRLF.
+*.sh text eol=lf

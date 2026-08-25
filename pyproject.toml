@@ -57,6 +57,11 @@ dependencies = [
     # scratch/turf's k-means is a port of SURF's torch implementation (runs on MPS
     # locally); linux already gets torch via the vllm pin, darwin needs it declared.
     "torch; sys_platform == 'darwin'",
+    # Clustering for scratch/llm_feature_discovery. scikit-learn supplies both
+    # MiniBatchKMeans and HDBSCAN; umap-learn supplies the reduction and drags in numba +
+    # pynndescent. numba is the second thing in this file with an opinion about numpy (vllm
+    # is the first), so re-run `uv lock` on the darwin driver after touching either pin.
+    "scikit-learn>=1.9.0",
     "umap-learn>=0.5.12",
 ]
 

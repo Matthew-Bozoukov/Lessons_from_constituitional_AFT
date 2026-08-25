@@ -163,7 +163,7 @@ def main(
     for sid in sids:
         hit: dict[int, list[str]] = {}
         for f in feats_by_sid.get(sid, []):
-            c = fmap[f]
+            c = fmap.get(f)         # None => unclustered (HDBSCAN noise)
             if c in picked:
                 hit.setdefault(c, []).append(f)
         if hit:

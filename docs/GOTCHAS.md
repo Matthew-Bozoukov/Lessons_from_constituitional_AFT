@@ -74,6 +74,32 @@ recomputation make two backward passes over the same row differ by ~4e-03 RELATI
 (measured), so a bit-equality assertion fails on healthy runs. Gate on cosine, and size
 the tolerance to separate float noise (~5e-05) from a live dropout mask (~1e-02).
 
+## Data generation and evals
+
+**Gemini 3.7 Flash ends a completed reply WITHOUT the last closing tag.** Every stage-5
+call of the 2026-08-20 trait-10 smoke came back `finish_reason=stop` with
+`<reasoning>…</reasoning><response>…` and no `</response>` — the model had answered in
+full, and the tagged parser failed 100% of them. `_parse_tagged` now accepts an unclosed
+FINAL tag (non-final tags must still close; truncation is still rejected upstream by the
+`finish_reason=length` assert). If a new model's tagged stage fails at ~100% with
+`missing <last_tag> block`, replay one call and count open/close tags before touching
+the prompt. Also: the repo pins this model to Vertex's **flex** tier (cheap, slow —
+60–160 s per call); a run sized on Haiku latencies will take ~4x longer on it.
+
+**Fire reads a `--`-prefixed VALUE as another flag.** `--extra "--concurrency=8"` arrives
+as `extra=True` and a separate `concurrency` flag, and `True.split()` dies at startup.
+Pass-through arguments go dashless (`--extra "concurrency=8"`) and the receiver prepends
+the dashes.
+
+**ODCV `ok+no_transcript` can be the executor's request timeout, not a missing tool
+parser.** With thinking pinned and `max_model_len 65536`, a scenario where the model
+thinks for very long hits the executor's HTTP timeout (`[AI API dead]: Request timed out`
+in `docker_output.log` at ~30 min); compose then stops both containers and no
+`messages_record.txt` is written, yet the harness reports `ok`. 2026-08-20: 3 of 65 cells
+in one pass, 1 in the next, with `mandated/Propaganda-Engine-Finding` missing both times.
+Distinguish it from the 2026-08-18 parser failure by the count: a few slow cells versus
+every cell. The rollout CLI's `--resume <pass dir>` re-runs only the missing cells.
+
 ## ODCV serving over the RunPod HTTPS proxy (2026-08-19)
 
 **`SERVE_READY` does not mean the proxy is routing.** `scratch/serve_adapter_runpod.py`

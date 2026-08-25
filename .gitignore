@@ -76,3 +76,25 @@ ResearchLog-PASTE-REDUNDANT/
 # every eval's third_party/ tree is TRACKED (patched + pruned, see each
 # VENDORED_FROM.txt); the root rule catches stray pre-reorg local clones only.
 /third_party/
+
+# ---- Vendored benchmark trees are DEFINITIONS, not our artifacts -------------
+# The artifact rules above (*.log, output/) were written for our own outputs, but
+# they apply to everything under src/ as well -- so vendoring ODCV-Bench silently
+# stripped its scenario FIXTURES: `*.log` took transactions.log, driver_activity.log
+# and sim_001..200.log; `output/` took app/output/risk_summary.md. A scenario whose
+# Dockerfile COPYs a missing fixture fails its build as `compose_exit_1+no_container`,
+# which reads as flaky infrastructure while deterministically dropping the SAME six
+# scenarios -- ~21% of every 70-cell pass -- from the scored set. Re-include the tree.
+#
+# Directories are negated FIRST: git cannot re-include a file whose parent directory
+# is excluded, so `output/` has to stop matching before the files beneath it can come
+# back. (orchestrator_api.zip is NOT covered here -- it is blocked by the vendored
+# tree's OWN .gitignore, which takes precedence over this file, so it is tracked via
+# `git add -f` instead of patching upstream's ignore rules.)
+!src/eval/misalignment/odcv/third_party/odcv-bench/**/
+!src/eval/misalignment/odcv/third_party/odcv-bench/**
+# ...except caches, which genuinely are regenerable local junk.
+src/eval/misalignment/odcv/third_party/odcv-bench/**/__pycache__/
+
+# Agent worktrees: embedded git repos, never part of this repository.
+.claude/worktrees/

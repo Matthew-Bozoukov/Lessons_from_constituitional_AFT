@@ -32,12 +32,20 @@ import sys
 from pathlib import Path
 
 from datasets import load_dataset
+from dotenv import load_dotenv
 from omegaconf import OmegaConf
 from transformers import AutoTokenizer
 
-from src.data.mixture.sources import SOURCES, clean_messages
-from src.model_profile import model_profile
-from src.utils import git_sha, origin_url, timestamp, write_run_meta
+# HERE, not only in the filter branch. The credentials this module needs are the HF
+# token's, and every `hf:` push needs it — but until 2026-08-19 .env was loaded only as a
+# side effect of importing OpenRouterClient, which happens inside the `filter:` stage. A
+# filter-less config therefore built its mixture, ran to the final push and died on a bare
+# 401 from create_repo with the artifact already on disk.
+load_dotenv(Path(__file__).resolve().parents[3] / ".env")
+
+from src.data.mixture.sources import SOURCES, clean_messages  # noqa: E402
+from src.model_profile import model_profile  # noqa: E402
+from src.utils import git_sha, origin_url, timestamp, write_run_meta  # noqa: E402
 
 # Each source declares what its DATA carries via `reasoning:` — part of the scientific
 # record, validated on the sampled rows, never guessed:
@@ -259,7 +267,8 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
 
     if pool is not None or "path" in spec:
         if pool is None:
-            pool = (json.loads(line) for line in Path(spec["path"]).open())
+            pool = (json.loads(line) for line in
+                    Path(spec["path"]).open(encoding="utf-8"))
         bkey = spec.get("balance_by")
         rows, groups = [], {}
         for raw in pool:
@@ -358,13 +367,16 @@ def _source_stats(rows: list[dict]) -> dict[str, dict]:
 
 def _write_rows(path: Path, rows: list[dict]) -> None:
     """Write mixture rows, keeping only the interchange/artifact fields."""
-    with path.open("w") as f:
+    # Explicit utf-8 on every jsonl hop: rows are written with ensure_ascii=False, and
+    # a Windows-driven build otherwise reads and writes them as cp1252 (a local `path:`
+    # source dies on the first non-latin-1 byte).
+    with path.open("w", encoding="utf-8") as f:
         for r in rows:
             rec = {"messages": r["messages"], "source": r["source"]}
             if r.get("supervise"):
                 rec["supervise"] = r["supervise"]
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-    assert sum(1 for _ in path.open()) == len(rows), f"{path} is truncated"
+    assert sum(1 for _ in path.open(encoding="utf-8")) == len(rows), f"{path} truncated"
 
 
 def _card_fields(cfg, config_path: str, stage_desc: str, files_desc: str,
@@ -430,7 +442,7 @@ def _load_all(tok, cfg, specs: dict, scale: int, seed: int,
 
 def _validate_written(out_path: Path, rows: list[dict], kinds: dict[str, str]) -> None:
     """Validate what actually landed on disk, not just the in-memory rows."""
-    written = [json.loads(line) for line in out_path.open()]
+    written = [json.loads(line) for line in out_path.open(encoding="utf-8")]
     assert len(written) == len(rows), "mixture file is truncated"
     for name, kind in kinds.items():
         got = [r for r in written if r["source"] == name]

@@ -155,7 +155,12 @@ def push_run_dir(out_dir: Path, repo_id: str, fields: dict, private: bool = True
     card = card_markdown(fields)  # validate before any network call
     api = hf_api()
     api.create_repo(repo_id, repo_type=repo_type, private=private, exist_ok=True)
-    (out_dir / "README.md").write_text(card)
+    # Explicit utf-8: cards are full of em-dashes, and upload_folder reads this file back
+    # with encoding="utf8" to extract the front matter. On Windows the default encoding is
+    # cp1252, so an unqualified write_text round-trips into a UnicodeDecodeError that
+    # surfaces from deep inside huggingface_hub — after create_repo has already run, which
+    # leaves an empty repo behind and reads as a hub problem rather than an encoding one.
+    (out_dir / "README.md").write_text(card, encoding="utf-8")
     api.upload_folder(folder_path=str(out_dir), repo_id=repo_id, repo_type=repo_type)
     prefix = "datasets/" if repo_type == "dataset" else ""
     return f"https://huggingface.co/{prefix}{repo_id}"

@@ -11,8 +11,10 @@ are not refit — so the numbers are directly comparable to training-corpus prev
 Three steps, because the middle one needs a GPU:
 
     traces  -> parse messages_record.txt into one reasoning trace per rollout
-    (extract features with scratch/feature_discovery/extract_features.py)
-    (embed them with scratch/feature_discovery/runpod_embed.py)
+    (extract features with
+     uv run python -m scratch.llm_feature_discovery extract)
+    (embed them with
+     uv run python -m scratch.llm_feature_discovery embed)
     assign  -> nearest centroid per feature, then per-cluster prevalence vs the corpus
 
 Run:
@@ -35,6 +37,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from scratch.llm_feature_discovery import centroids  # noqa: E402
 from src.utils import git_sha, timestamp  # noqa: E402
 
 STEP_RE = re.compile(r"^== Step \d+ ==$", re.M)
@@ -142,8 +145,8 @@ def traces(run_dir: str, out_dir: str | None = None, min_chars: int = 200) -> No
     print(f"conditions: {dict(Counter(r['metadata']['condition'] for r in rows))}")
     print(f"median reasoning chars: "
           f"{statistics.median(r['metadata']['reasoning_chars'] for r in rows):.0f}")
-    print(f"\n-> {path}\nnext: uv run python scratch/feature_discovery/extract_features.py "
-          f"--input {path} --out-dir {out}")
+    print(f"\n-> {path}\nnext: uv run python -m scratch.llm_feature_discovery extract "
+          f"--input {path} --run-dir {out}")
 
 
 def assign(features_dir: str, embeddings: str | None = None,
@@ -273,28 +276,21 @@ def assign(features_dir: str, embeddings: str | None = None,
 
 
 def _centroids(emb_path: Path, uniq: list[str], fmap: dict[str, int], k: int) -> np.ndarray:
-    """Compute L2-normalised cluster centroids by streaming the embedding file.
+    """Compute L2-normalised cluster centroids from the run's embedding file.
+
+    Thin wrapper over the module's shared implementation, which owns the rule that
+    features absent from `fmap` are unclustered noise and contribute to no centroid.
 
     Args:
-        emb_path: Path to the training embeddings.npy (n x d, fp16).
+        emb_path: Path to the embeddings.npy (n x d, fp16).
         uniq: Feature strings in embedding-row order.
-        fmap: Feature string -> cluster id.
+        fmap: Feature string -> cluster id, noise omitted.
         k: Number of clusters.
 
     Returns:
         (k x d) centroid matrix, rows L2-normalised.
     """
-    x = np.load(emb_path, mmap_mode="r")
-    sums = np.zeros((k, x.shape[1]), dtype=np.float32)
-    counts = np.zeros(k, dtype=np.int64)
-    labels = np.array([fmap[f] for f in uniq], dtype=np.int32)
-    for start in range(0, len(uniq), 2048):
-        block = np.asarray(x[start:start + 2048], dtype=np.float32)
-        np.add.at(sums, labels[start:start + 2048], block)
-        np.add.at(counts, labels[start:start + 2048], 1)
-    assert counts.sum() == len(uniq), f"{counts.sum()} != {len(uniq)}"
-    cen = sums / counts[:, None]
-    return cen / np.linalg.norm(cen, axis=1, keepdims=True)
+    return centroids.compute(np.load(emb_path, mmap_mode="r"), uniq, fmap, k)
 
 
 def _dashboard(path: Path, odcv: list[dict], meta: dict, fmap: dict, simmap: dict,
