@@ -12,37 +12,39 @@ import type { PetriTranscript } from "./content";
 /** In-memory cache, so re-selecting a transcript is instant and free. */
 const cache = new Map<string, Promise<unknown>>();
 
+/**
+ * Run `make` once per key and share the promise.
+ *
+ * A failed load must not poison the cache: the reader should be able to retry
+ * by selecting the item again, so a rejected promise is evicted. Shared by the
+ * sidecar loaders here and the Hub listings in evalRuns / trainingData.
+ */
+export function cached<T>(key: string, make: () => Promise<T>): Promise<T> {
+  const existing = cache.get(key);
+  if (existing) return existing as Promise<T>;
+  const pending = make();
+  pending.catch(() => cache.delete(key));
+  cache.set(key, pending);
+  return pending;
+}
+
 export function sidecarUrl(base: string, file: string) {
   return `${String(base).replace(/\/+$/, "")}/${String(file).replace(/^\/+/, "")}`;
 }
 
-async function loadJson<T>(url: string): Promise<T> {
-  const existing = cache.get(url);
-  if (existing) return existing as Promise<T>;
-
-  const pending = (async () => {
+function loadJson<T>(url: string): Promise<T> {
+  return cached(url, async () => {
     const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`HTTP ${response.status} loading ${url}`);
     }
-    return response.json();
-  })();
-
-  // A failed load must not poison the cache: the reader should be able to retry
-  // by selecting the item again.
-  pending.catch(() => cache.delete(url));
-  cache.set(url, pending);
-  return pending as Promise<T>;
+    return response.json() as Promise<T>;
+  });
 }
 
 /** Fetch one Petri transcript body on demand. */
 export function loadTranscript(base: string, file: string) {
   return loadJson<PetriTranscript>(sidecarUrl(base, file));
-}
-
-/** Fetch one dataset chunk on demand. Chunk entries are already full URLs. */
-export function loadChunk<T>(url: string) {
-  return loadJson<T[]>(url);
 }
 
 /** Fetch a single JSON document (an object, not a chunk array) on demand. */

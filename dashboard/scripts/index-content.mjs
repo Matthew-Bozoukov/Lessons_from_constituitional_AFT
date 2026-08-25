@@ -15,6 +15,10 @@
 // Hugging Face dataset declared as `hf_source` in frontmatter. Both produce the
 // same index shape. HF is consulted for METADATA ONLY; bulk files are linked,
 // never downloaded, so build time does not scale with corpus size.
+//
+// Training corpora are NOT resolved here at all. /datasets discovers them in the
+// browser from the org's `training-data` card tags (lib/trainingData.ts), so a
+// `datasets` entry is a write-up that links a repo, never the reader's source.
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -29,7 +33,6 @@ import {
   walk,
 } from "./content-utils.mjs";
 import {
-  fetchRepoInfo,
   fetchRepoJson,
   fetchRepoListing,
   offline,
@@ -44,7 +47,6 @@ const outputFile = path.join(outputDirectory, "content-index.json");
 /** Per-entry Markdown sidecars, kept out of the shared index. */
 const bodyRoot = path.join(outputDirectory, "bodies");
 const publicAssetRoot = path.join(projectRoot, "public", "content-assets");
-const publicDatasetRoot = path.join(projectRoot, "public", "generated-datasets");
 const publicTranscriptRoot = path.join(projectRoot, "public", "generated-transcripts");
 
 /** Collected for the build report; also surfaced in the index for the UI. */
@@ -164,14 +166,8 @@ function messagesFor(record) {
  *   repo_id: LASR-Callum/2026-07-29-msm-philosophy-spec-focused-discovery
  *   revision: 9a00c85c            # optional; a pinned sha skips revalidation
  *   manifest: manifest.json       # optional
- *   data_file: mixture_think.jsonl  # optional; the JSONL the viewer pages
  * ```
  * A bare string is accepted as shorthand for `repo_id`.
- *
- * `data_file` overrides the filename allowlist in `pickDataFile`. It exists so
- * that a repo publishing several corpora - filtered and unfiltered, thinking
- * and not - can say which one the viewer should read, rather than having the
- * build guess and be quietly wrong.
  */
 function normalizeHfSource(raw) {
   if (!raw) return null;
@@ -184,7 +180,6 @@ function normalizeHfSource(raw) {
     repo_id: repoId,
     revision: String(source.revision || source.rev || "main"),
     manifest: String(source.manifest || "manifest.json"),
-    data_file: source.data_file ? String(source.data_file) : "",
   };
 }
 
@@ -358,274 +353,6 @@ function hfPetriManifest(source, manifest, commit) {
 }
 
 // ---------------------------------------------------------------------------
-// Dialogue datasets
-// ---------------------------------------------------------------------------
-
-function datasetStats(records) {
-  const turns = records.map((record) => messagesFor(record).length);
-  const roleCounts = {};
-  const splits = {};
-  const categories = {};
-  for (const record of records) {
-    for (const message of messagesFor(record)) {
-      const role = String(message.role || "unknown");
-      roleCounts[role] = (roleCounts[role] || 0) + 1;
-    }
-    const metadata = record.metadata || {};
-    const split = String(metadata.split || record.split || "unspecified");
-    const category = String(metadata.category || record.category || "uncategorized");
-    splits[split] = (splits[split] || 0) + 1;
-    categories[category] = (categories[category] || 0) + 1;
-  }
-  return {
-    average_turns:
-      turns.length > 0
-        ? Number((turns.reduce((sum, value) => sum + value, 0) / turns.length).toFixed(1))
-        : 0,
-    role_counts: roleCounts,
-    splits,
-    categories,
-  };
-}
-
-async function localDatasetManifest(entryDirectory, slug) {
-  const files = await walk(entryDirectory);
-  const dataFile = files.find(
-    (file) => file.endsWith(".jsonl") && file.includes(`${path.sep}data${path.sep}`),
-  );
-  if (!dataFile) return null;
-
-  const records = await readJsonl(dataFile);
-  const chunkSize = 50;
-  const chunks = [];
-  const destinationRoot = path.join(publicDatasetRoot, slug);
-  await fs.mkdir(destinationRoot, { recursive: true });
-
-  let deferred = 0;
-  for (let index = 0; index < records.length; index += chunkSize) {
-    const chunkNumber = Math.floor(index / chunkSize);
-    const name = `chunk-${String(chunkNumber).padStart(3, "0")}.json`;
-    const payload = `${JSON.stringify(records.slice(index, index + chunkSize))}\n`;
-    await fs.writeFile(path.join(destinationRoot, name), payload, "utf8");
-    deferred += Buffer.byteLength(payload);
-    chunks.push(`/generated-datasets/${slug}/${name}`);
-  }
-
-  return {
-    source: { kind: "local" },
-    source_file: `/content-assets/datasets/${slug}/${toPosix(path.relative(entryDirectory, dataFile))}`,
-    format: "jsonl",
-    record_count: records.length,
-    chunk_size: chunkSize,
-    chunks,
-    stats: datasetStats(records),
-    deferred_bytes: deferred,
-  };
-}
-
-/**
- * Dataset manifest from a published HF dataset. The publisher pre-chunks the
- * records into `chunks/chunk-NNN.json`, so the build only reads the summary and
- * the browser pages through chunks exactly as it does for local datasets.
- */
-function hfDatasetManifest(source, manifest, commit) {
-  const dataset =
-    manifest.dataset && typeof manifest.dataset === "object" ? manifest.dataset : manifest;
-  const chunks = Array.isArray(dataset.chunks) ? dataset.chunks : [];
-  return {
-    source: {
-      kind: "hf",
-      repo_id: source.repo_id,
-      revision: source.revision,
-      commit,
-      url: repoUrl(source.repo_id),
-    },
-    source_file: resolveUrl(
-      source.repo_id,
-      source.revision,
-      String(dataset.source_file || "data/dialogues.jsonl"),
-    ),
-    format: String(dataset.format || "jsonl"),
-    record_count: Number(dataset.record_count || 0),
-    chunk_size: Number(dataset.chunk_size || 50),
-    chunks: chunks.map((chunk) =>
-      /^https?:\/\//.test(chunk) ? chunk : resolveUrl(source.repo_id, source.revision, chunk),
-    ),
-    stats:
-      dataset.stats && typeof dataset.stats === "object"
-        ? normalize(dataset.stats)
-        : { average_turns: 0, role_counts: {}, splits: {}, categories: {} },
-    deferred_bytes: Number(dataset.total_bytes || 0),
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Raw JSONL on the Hub, read by byte range
-// ---------------------------------------------------------------------------
-//
-// Almost every SFT corpus in this project was published as a plain `.jsonl`
-// with no chunking step, so the chunked path above resolves nothing for them
-// and the viewer had nothing to show. They do not need chunking: the Hub serves
-// byte ranges on `resolve` URLs, so the browser can page a 28 MB mixture
-// directly. The build's whole job here is to name the right file and its size.
-
-/**
- * Files that hold a conversation corpus, best first.
- *
- * An allowlist, not "the biggest .jsonl in the repo". These repos also contain
- * `verdicts.jsonl`, `assistant_spans.jsonl`, `cluster_summaries.jsonl` and
- * per-question eval records - pointing a conversation viewer at those would
- * render garbage while looking like it worked. A repo whose data file is not
- * recognised gets a notice naming its candidates, so the fix is to declare
- * `data_file:` in frontmatter rather than to widen a heuristic.
- *
- * `mixture_think` outranks `mixture`: same records, but the thinking variant
- * carries the reasoning traces that make the think/nothink distinction visible.
- */
-const DATA_FILE_PATTERNS = [
-  /^sft_dataset(_[\w-]+)?\.jsonl$/,
-  /^stage_7_sft\.jsonl$/,
-  /^sft_[\w-]+\.jsonl$/,
-  /^mixture_think\.jsonl$/,
-  /^mixture\.jsonl$/,
-  /^mixture_\d+_\d+\.jsonl$/,
-  /^mixture_filtered\.jsonl$/,
-  /^difficult_advice_pool\.jsonl$/,
-  /^tulu3_replay\.jsonl$/,
-  /^data\/dialogues\.jsonl$/,
-  /^stage_6_final\.jsonl$/,
-];
-
-/** Small published statistics files, in the order they are trusted. */
-const STATS_FILES = ["mixture_stats.json", "stats.json", "dataset_stats.json"];
-
-function pickDataFile(files, declared) {
-  if (declared) {
-    const match = files.find((file) => file.path === declared);
-    return match || null;
-  }
-  for (const pattern of DATA_FILE_PATTERNS) {
-    const match = files.find((file) => pattern.test(file.path));
-    if (match) return match;
-  }
-  return null;
-}
-
-/**
- * Record count and composition from a published statistics sidecar.
- *
- * Every value here is read from the file; nothing is estimated. A corpus with
- * no sidecar gets `record_count: 0`, which the viewer renders as unknown - a
- * guessed count on a page whose whole job is provenance would be worse than no
- * count at all.
- */
-function statsFromSidecar(json) {
-  if (!json || typeof json !== "object") return null;
-  const total = json.total && typeof json.total === "object" ? json.total : json;
-  const count = Number(total.examples ?? total.rows ?? total.record_count ?? 0);
-  const categories = {};
-  const bySource = json.by_source && typeof json.by_source === "object" ? json.by_source : {};
-  for (const [name, value] of Object.entries(bySource)) {
-    const examples = typeof value === "object" ? Number(value?.examples ?? 0) : Number(value);
-    if (Number.isFinite(examples) && examples > 0) categories[name] = examples;
-  }
-  if (!count && !Object.keys(categories).length) return null;
-  return { record_count: Number.isFinite(count) ? count : 0, categories };
-}
-
-/** Bytes fetched per page. ~20-90 records for the record sizes in this corpus. */
-const STREAM_WINDOW = 256 * 1024;
-
-/**
- * Returns `{ dataset }` on success and `{ reason }` on failure.
- *
- * The reason is carried back rather than only warned, because it is what the
- * reader sees. Falling back to the manifest fetch's error made every one of
- * these entries blame a missing `manifest.json`, when the actual situation was
- * usually "this repo holds adapters and logs, not a conversation corpus" - an
- * accurate-sounding error pointing at the wrong thing.
- */
-async function hfStreamDataset(source, label, commit) {
-  const info = await fetchRepoInfo(source.repo_id, source.revision);
-  // The build authenticates and the browser does not, so a private repo would
-  // resolve here and 401 for every visitor. Refuse it at the build instead of
-  // shipping a reader that only works on the developer's machine.
-  if (info.ok && info.private) {
-    const reason =
-      `${source.repo_id} is private, and the browser reads the Hub without ` +
-      `credentials, so its records cannot be shown here`;
-    warn(`${label}: ${reason}`);
-    return { reason };
-  }
-
-  const listing = await fetchRepoListing(source.repo_id, source.revision);
-  if (!listing.ok) {
-    warn(`${label}: could not list ${source.repo_id}: ${listing.error}`);
-    return { reason: listing.error };
-  }
-
-  const dataFile = pickDataFile(listing.files, source.data_file);
-  if (!dataFile) {
-    const candidates = listing.files
-      .filter((file) => file.path.endsWith(".jsonl"))
-      .map((file) => file.path)
-      .slice(0, 6);
-    const reason = candidates.length
-      ? `${source.repo_id} publishes no recognised conversation file; it holds ` +
-        `${candidates.join(", ")}, none of which is a dialogue corpus`
-      : `${source.repo_id} publishes no JSONL records to browse`;
-    warn(
-      `${label}: ${reason}` +
-        (candidates.length ? "; declare one as hf_source.data_file to override" : ""),
-    );
-    return { reason };
-  }
-
-  let stats = null;
-  for (const name of STATS_FILES) {
-    if (!listing.files.some((file) => file.path === name)) continue;
-    const loaded = await fetchRepoJson(source.repo_id, source.revision, name);
-    stats = loaded.ok ? statsFromSidecar(loaded.json) : null;
-    if (stats) {
-      stats.from = name;
-      break;
-    }
-  }
-
-  return {
-    dataset: {
-    source: {
-      kind: "hf",
-      repo_id: source.repo_id,
-      revision: source.revision,
-      commit: commit || listing.commit,
-      url: repoUrl(source.repo_id),
-    },
-    source_file: resolveUrl(source.repo_id, source.revision, dataFile.path),
-    format: "jsonl",
-    record_count: stats?.record_count || 0,
-    chunk_size: 0,
-    chunks: [],
-    stream: {
-      url: resolveUrl(source.repo_id, source.revision, dataFile.path),
-      total_bytes: Number(dataFile.size || 0),
-      window: STREAM_WINDOW,
-      path: dataFile.path,
-    },
-    stats: {
-      average_turns: 0,
-      role_counts: {},
-      splits: {},
-      categories: stats?.categories || {},
-      ...(stats?.from ? { categories_source: stats.from } : {}),
-    },
-    // Nothing is downloaded at build time, so this costs the bundle nothing.
-    deferred_bytes: 0,
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------
 // Index
 // ---------------------------------------------------------------------------
 
@@ -707,38 +434,7 @@ for (const file of markdownFiles) {
     ? `${resolveUrl(source.repo_id, source.revision, "")}`
     : `/content-assets/${type}/${slug}/`;
 
-  let dataset;
   let petri;
-  if (type === "datasets") {
-    dataset = hf ? hfDatasetManifest(source, hf.manifest, hf.commit) : undefined;
-    // A `manifest.json` that describes a GENERATION run rather than a published
-    // corpus yields no chunks, and so did every repo that was never chunked at
-    // all. Both fall through to reading the raw JSONL by byte range.
-    if (source && !dataset?.chunks?.length) {
-      const streamed = await hfStreamDataset(source, label, hf?.commit);
-      if (streamed.dataset) {
-        dataset = streamed.dataset;
-        // The repo demonstrably resolved, so an "unavailable" status left over
-        // from a missing manifest.json would now be a false alarm on the page.
-        if (!hf) {
-          hfStatus = {
-            state: "ok",
-            repo_id: source.repo_id,
-            revision: source.revision,
-            commit: dataset.source.commit,
-            url: repoUrl(source.repo_id),
-          };
-        }
-      } else if (!hf && hfStatus) {
-        // Say why the records are missing, not that a manifest 404'd.
-        hfStatus = { ...hfStatus, message: streamed.reason };
-      }
-    }
-    if (!dataset) dataset = (await localDatasetManifest(entryDirectory, slug)) || undefined;
-    if (!dataset && source) {
-      warn(`${label}: no dataset records available from ${source.repo_id} or on disk`);
-    }
-  }
   if (type === "petri-runs") {
     petri = hf ? hfPetriManifest(source, hf.manifest, hf.commit) : undefined;
     if (!petri) {
@@ -751,7 +447,7 @@ for (const file of markdownFiles) {
       }
     }
   }
-  deferredTotal += Number(dataset?.deferred_bytes || 0) + Number(petri?.deferred_bytes || 0);
+  deferredTotal += Number(petri?.deferred_bytes || 0);
 
   const card = hf?.manifest || {};
   const rawDate = parsed.data.date || card.date_generated || stat.mtime;
@@ -791,7 +487,6 @@ for (const file of markdownFiles) {
     source_path: toPosix(path.relative(projectRoot, file)),
     assets,
     ...(hfStatus ? { hf: hfStatus } : {}),
-    ...(dataset ? { dataset } : {}),
     ...(petri ? { petri } : {}),
   });
 }

@@ -16,6 +16,12 @@
 // generated placeholder can never be mistaken for a written-up result. A human replaces the
 // body; the frontmatter is already correct because it comes from the dataset card the
 // publishing code was required to write.
+//
+// Two surfaces no longer need an entry to be visible: /evals lists `eval-run`-tagged repos
+// and /datasets lists `training-data`-tagged repos, both live from the Hub. For those the
+// drift that matters is a MISSING TAG, which this script reports separately — an untagged
+// corpus is invisible however good its write-up. The backfill for legacy repos is
+// scratch/backfill_training_data_tags.py in the research repo.
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -45,10 +51,24 @@ async function hf(pathname) {
   return res.json();
 }
 
-/** Which surface an HF repo belongs on, from its name. Eval names win over "train". */
-function classify(id) {
+/**
+ * Which surface an HF repo belongs on: its Hub tags when it has them, else its name.
+ *
+ * `artifacts` is the bucket for repos that are on the Hub as datasets but are not a
+ * corpus, an eval run or a Petri audit — code/training bundles, adapters pushed as
+ * datasets, SAE/selection analyses, eval-record dumps. They get no stub and never count
+ * as "untagged corpora"; the vocabulary mirrors NOT_CORPUS in the research repo's
+ * scratch/backfill_training_data_tags.py.
+ */
+const ARTIFACT_NAME =
+  /bundle|-code(-|$)|-lora-|-r\d+(-|$)|sft-run|less-selection|specgen|sae-|debate|llmbar|sycophancy|speeches|fabrication|inversion|properties|turf-/;
+
+function classify(id, tags = []) {
+  if (tags.includes("training-data")) return "datasets";
+  if (tags.includes("eval-run")) return "evals";
   const n = id.split("/").pop().toLowerCase();
-  if (/petri/.test(n)) return "petri-runs";
+  if (ARTIFACT_NAME.test(n)) return "artifacts";
+  if (/petri|focused-discovery/.test(n)) return "petri-runs";
   // Before the generic `eval` rule: "model-eval-model" is the name of a
   // document-generation pipeline, and matching it as an eval filed a published
   // CORPUS under /evals - where it then collided by slug with the hand-written
@@ -200,6 +220,10 @@ async function main() {
   const dangling = [...referenced].filter(
     (r) => !datasets.some((d) => d.id === r) && !models.some((m) => m.id === r),
   );
+  // Corpus-shaped by name but carrying no `training-data` tag: /datasets cannot see it.
+  const untagged = datasets.filter(
+    (d) => classify(d.id, d.tags || []) === "datasets" && !(d.tags || []).includes("training-data"),
+  );
 
   const report = {
     org: ORG,
@@ -208,12 +232,15 @@ async function main() {
     content_entries: entries.length,
     entries_with_hf_source: referenced.size,
     unlisted_datasets: unlisted.length,
+    untagged_corpora: untagged.length,
     dangling_references: dangling,
     coverage_pct: datasets.length ? Math.round((referenced.size / datasets.length) * 100) : 0,
   };
 
   if (asJson) {
-    console.log(JSON.stringify({ ...report, unlisted: unlisted.map((d) => d.id) }, null, 2));
+    console.log(JSON.stringify({
+      ...report, unlisted: unlisted.map((d) => d.id), untagged: untagged.map((d) => d.id),
+    }, null, 2));
   } else {
     console.log(`Hugging Face org: ${ORG}`);
     console.log(`  datasets on hub      : ${report.hf_datasets}`);
@@ -228,12 +255,20 @@ async function main() {
     if (unlisted.length) {
       console.log(`\n  UNLISTED (on the hub, invisible in the dashboard): ${unlisted.length}`);
       const byType = {};
-      for (const d of unlisted) (byType[classify(d.id)] ??= []).push(d.id);
+      for (const d of unlisted) (byType[classify(d.id, d.tags || [])] ??= []).push(d.id);
       for (const [type, ids] of Object.entries(byType)) {
         console.log(`    ${type} (${ids.length}):`);
         for (const id of ids.slice(0, 12)) console.log(`      ${id}`);
         if (ids.length > 12) console.log(`      ... and ${ids.length - 12} more`);
       }
+    }
+    if (untagged.length) {
+      console.log(
+        `\n  UNTAGGED corpora (no \`training-data\` card tag, so invisible on /datasets): ${untagged.length}`,
+      );
+      for (const d of untagged.slice(0, 12)) console.log(`    ${d.id}`);
+      if (untagged.length > 12) console.log(`    ... and ${untagged.length - 12} more`);
+      console.log("    backfill: uv run python scratch/backfill_training_data_tags.py [--apply]");
     }
   }
 
@@ -241,7 +276,8 @@ async function main() {
     console.log(`\n  generating stubs for ${unlisted.length} unlisted datasets ...`);
     let n = 0;
     for (const d of unlisted) {
-      const type = classify(d.id);
+      const type = classify(d.id, d.tags || []);
+      if (type === "artifacts") continue; // nothing to write up: not a result, not a corpus
       const { summary, mock } = await summaryFor(d.id);
       const { slug, written } = await writeStub(d, type, summary, mock);
       if (written) {
@@ -252,7 +288,7 @@ async function main() {
     console.log(`  wrote ${n} stub entries. Review them, replace the bodies, drop 'status: stub'.`);
   }
 
-  process.exitCode = unlisted.length || dangling.length ? 1 : 0;
+  process.exitCode = unlisted.length || dangling.length || untagged.length ? 1 : 0;
 }
 
 main().catch((e) => {

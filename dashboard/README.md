@@ -81,7 +81,6 @@ scripts/index-content.mjs
         │
         ├── lib/generated/content-index.json
         ├── public/content-assets/
-        └── public/generated-datasets/
 ```
 
 Treat files under `content/` as the source of truth. Do not hand-edit the three
@@ -246,40 +245,34 @@ same linear pipeline.
 
 ## Synthetic dialogue datasets
 
-A dataset needs a Markdown card and at least one JSONL file below `data/`.
-Recommended dataset frontmatter:
+`/datasets` is not built from `content/`. It lists every public repo in the
+Hugging Face org whose card carries the `training-data` tag, live, and pages the
+rows file the card's default `configs:` entry names straight from the Hub by
+byte range. The tags and the config are stamped by the research repo's
+publishers (`uv run synth`, `uv run mix`, `scripts/properties/ablate.py` via
+`src/huggingface.py`); the full contract, including the backfill for older
+repos, is in `docs/HUGGINGFACE_DATA_SOURCE.md`.
+
+A `content/datasets/<slug>/index.md` entry is therefore a write-up: it appears in
+the research log and on the front page, links its repo through `hf_source`, and
+shows metrics from its frontmatter. It does not make a corpus browsable, and a
+JSONL placed beside it is not indexed. Recommended frontmatter:
 
 ```yaml
-title: "Reasons-rich constitutional dialogue mixture"
-date: 2026-07-28
-summary: "Synthetic dialogues for reasons-rich constitutional SFT."
-dataset_id: reasons-rich-aft-v1
-dataset_version: v1
-format: jsonl
-training_objective: sft
-generator_model: teacher-model-id
-status: draft
-models:
-  - qwen3-32b
+title: "LESS selection over the difficult-advice pool"
+date: 2026-08-14
+summary: "What the corpus is and what was learned from it."
+status: result
+hf_source:
+  repo_id: LASR-Callum/2026-08-14-less-selection-difficult-advice
 tags:
-  - synthetic-dialogues
-  - constitution
+  - difficult-advice
 ```
 
-Write one valid JSON object per line. `messages` is preferred:
-
-```json
-{"id":"rr-0001","messages":[{"role":"system","content":"You are a careful research assistant."},{"role":"user","content":"Does this one transcript prove the checkpoint is misaligned?"},{"role":"assistant","content":"No. It is a concrete lead, not a checkpoint-wide estimate."},{"role":"user","content":"What should we run next?"},{"role":"assistant","content":"Run matched scenario variants and compare against the parent checkpoint."}],"metadata":{"split":"train","category":"epistemic-honesty","turn_structure":"multi-turn","principles":["match claims to evidence"],"quality_score":0.97}}
-```
-
-The viewer also accepts `conversation`, `turns`, `dialogue`, or
-`prompt`/`response`, but agents should emit `messages` unless converting a
-pre-existing format. Metadata is open-ended and displayed without a registry.
-Keep stable record IDs, explicit roles, and genuine follow-up turns in
-multi-turn examples.
-
-At index time, JSONL is split into browser-sized chunks while the source JSONL
-remains available for download.
+Rows are read by `lib/records.ts`, which accepts both published shapes —
+`{"messages": [...], "metadata": {...}}` synthdoc exports and pre-rendered
+`{"text": "<|im_start|>...", "source": ...}` mixtures — and distinguishes a real
+reasoning trace from an empty `<think>` block.
 
 ## Petri run format
 
@@ -322,7 +315,7 @@ Research agents working in this repository should follow this contract:
 
 1. **Write source material only.** Create or update files below `content/`.
    Never directly edit `lib/generated/content-index.json`,
-   `public/content-assets/`, or `public/generated-datasets/`.
+   or `public/content-assets/`.
 2. **Do not mutate original research artifacts.** When the input lives outside
    this repository, use the importer or create a prepared copy. Preserve source
    paths, hashes, run IDs, checkpoint IDs, dataset versions, and commits when

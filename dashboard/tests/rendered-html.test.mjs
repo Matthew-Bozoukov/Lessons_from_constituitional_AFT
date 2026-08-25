@@ -54,17 +54,19 @@ test("server-renders a Markdown research entry", async () => {
   assert.doesNotMatch(html, /mock-banner/);
 });
 
-test("server-renders the JSONL dialogue inspector", async () => {
+test("server-renders the datasets page as a live Hub explorer", async () => {
+  // Like /evals, /datasets lists nothing at build time: the corpora are
+  // discovered in the browser from the org's `training-data` card tags. The
+  // static HTML is the frame and the explorer's listing state, and it must
+  // carry no baked corpus - a baked list is exactly the drift this replaced.
   const response = await render("/datasets");
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /Synthetic datasets/);
-  assert.match(html, /Approved-constitution SFT corpus/);
-  assert.match(html, /Conversation preview/);
-  // The page must name a lazily-fetched chunk source, but not care which
-  // backend it is: a locally sharded path or a Hugging Face resolve URL.
-  assert.match(html, /generated-datasets|huggingface\.co\/datasets\/[^/]+\/[^/]+\/resolve\//);
-  // The corpus is real, so the page must not be carrying a fixture warning.
+  assert.match(html, /discovered live from Hugging Face/);
+  assert.match(html, /Listing training-data repos on Hugging Face/);
+  assert.doesNotMatch(html, /corpus-picker|Conversation preview/);
+  // No corpus is on the page yet, so no fixture warning can be either.
   assert.doesNotMatch(html, /mock-banner/);
 });
 
@@ -91,102 +93,6 @@ test("a fabricated fixture is flagged as one", async () => {
       `${entry.slug} is an interface fixture but is not flagged \`mock: true\`, so it renders as real research data`,
     );
   }
-});
-
-test("the datasets page leads with what each corpus is made of", async () => {
-  const response = await render("/datasets");
-  assert.equal(response.status, 200);
-  const html = await response.text();
-
-  // The picker, not a 43-option dropdown.
-  assert.match(html, /corpus-picker/);
-  assert.match(html, /Constitution mixtures/);
-  // A real, measured blend on the corpus that opens first.
-  assert.match(html, /constitution-grounded/);
-  assert.match(html, /composition-table/);
-  // Identity is never colour alone: both halves of the bar are named.
-  assert.match(html, /General instruction data/);
-  // A real corpus must not be carrying a fixture warning because a fixture
-  // exists elsewhere in the picker.
-  assert.doesNotMatch(html, /mock-banner/);
-});
-
-test("every indexed dataset can actually be paged through", async () => {
-  // Asserted from the baked manifest rather than by reading records: the corpora
-  // live on the Hub, and a test must not depend on the network.
-  //
-  // There are two paging modes and the guarantee differs between them, so this
-  // does not average over both. A CHUNKED corpus was pre-chunked by a publisher
-  // that read every record, so the build knows its turn counts and categories
-  // and those numbers must be real. A STREAMED corpus is a raw JSONL read by
-  // byte range - deliberately never downloaded at build time, so the build
-  // knows its size and its published statistics and nothing else. Demanding
-  // turn counts from a streamed corpus would only be satisfiable by inventing
-  // them or by pulling 300 MB through every build.
-  const indexUrl = new URL("../lib/generated/content-index.json", import.meta.url);
-  const index = JSON.parse(await readFile(indexUrl, "utf8"));
-  const datasets = index.entries.filter((entry) => entry.type === "datasets");
-  assert.ok(datasets.length > 0, "expected at least one dataset in the corpus");
-
-  const withData = datasets.filter((entry) => entry.dataset);
-  assert.ok(
-    withData.length >= 40,
-    `only ${withData.length} of ${datasets.length} datasets resolved a reader; ` +
-      "the published SFT corpora are meant to be browsable",
-  );
-
-  let chunked = 0;
-  let streamed = 0;
-  for (const entry of withData) {
-    const { stats, record_count, chunks, stream } = entry.dataset;
-    assert.ok(
-      chunks.length > 0 || stream,
-      `${entry.slug} has neither chunks nor a stream, so nothing can page it`,
-    );
-
-    if (stream) {
-      streamed += 1;
-      assert.match(
-        stream.url,
-        /^https:\/\/huggingface\.co\/datasets\/[^/]+\/[^/]+\/resolve\//,
-        `${entry.slug} must stream from a public Hub resolve URL`,
-      );
-      assert.match(stream.path, /\.jsonl$/, `${entry.slug} must stream a JSONL`);
-      assert.ok(stream.total_bytes > 0, `${entry.slug} has no file size to page against`);
-      assert.ok(stream.window > 0, `${entry.slug} has no window size`);
-      // A count is stated only when a published statistics sidecar gives one.
-      // Zero means unknown and the viewer says so; a fabricated number here
-      // would read as measured on a page whose whole job is provenance.
-      assert.ok(record_count >= 0, `${entry.slug} has a negative record count`);
-      for (const [name, count] of Object.entries(stats.categories)) {
-        assert.ok(count > 0, `${entry.slug} declares source ${name} with ${count} records`);
-      }
-      if (Object.keys(stats.categories).length > 0) {
-        assert.ok(
-          stats.categories_source,
-          `${entry.slug} has categories but does not say which file they came from`,
-        );
-      }
-      continue;
-    }
-
-    chunked += 1;
-    assert.ok(record_count > 0, `${entry.slug} has no records`);
-    // Genuine dialogue, not prompt/response pairs flattened into two turns.
-    assert.ok(
-      stats.average_turns > 2,
-      `${entry.slug} averages ${stats.average_turns} turns; expected real multi-turn dialogue`,
-    );
-    assert.ok(stats.role_counts.user > 0, `${entry.slug} has no user turns`);
-    assert.ok(stats.role_counts.assistant > 0, `${entry.slug} has no assistant turns`);
-    assert.ok(
-      Object.keys(stats.categories).length > 1,
-      `${entry.slug} has one category; the publisher's category_field is unset`,
-    );
-  }
-
-  assert.ok(chunked > 0, "expected at least one pre-chunked corpus to still resolve");
-  assert.ok(streamed > 0, "expected the byte-range reader to resolve the raw JSONL corpora");
 });
 
 test("server-renders the Petri audit dossier", async () => {

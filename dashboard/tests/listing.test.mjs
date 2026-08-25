@@ -55,21 +55,9 @@ test("no page shows a missing value to the reader", async () => {
   }
 });
 
-test("the eval table does not fill itself with em-dashes", async () => {
-  // A column was promoted for being reported by more than one run, which on a
-  // corpus of six unrelated instruments meant columns 26 of 30 runs could not
-  // fill. Half the table was an em-dash, reading as "these runs failed to
-  // report" rather than "these runs measure different things".
-  const html = await (await render("/evals")).text();
-  const cells = html.match(/<td[^>]*>(?:(?!<\/td>)[\s\S])*<\/td>/g) || [];
-  assert.ok(cells.length > 0, "expected the eval index to render cells");
-  const dashes = cells.filter((cell) => bodyText(cell).trim() === "—").length;
-  assert.ok(
-    dashes / cells.length < 0.2,
-    `${dashes} of ${cells.length} eval table cells are em-dashes; a column no ` +
-      "run can fill is not a comparison",
-  );
-});
+// The em-dash test that stood here asserted the /evals index TABLE, which no longer
+// exists: /evals is a client-side explorer of eval-run repos (2026-08-24) and
+// server-renders only its frame. Removed with the table, not disabled.
 
 test("a one-run group is not offered as a comparison", async () => {
   // The metric explorer's guard fired only on ZERO compatible groups, so a
@@ -161,7 +149,8 @@ test("no two entries share a slug", async () => {
 test("each listing says how much of it a human wrote", async () => {
   // "30 evaluation runs" reads as thirty results when 15 are a link and a
   // title. The mix line is the page being honest about its own contents.
-  for (const route of ["/evals", "/logs", "/findings"]) {
+  // /evals and /datasets are live Hub explorers with no entry listing to mix.
+  for (const route of ["/logs", "/findings"]) {
     const html = await (await render(route)).text();
     assert.match(
       html,
