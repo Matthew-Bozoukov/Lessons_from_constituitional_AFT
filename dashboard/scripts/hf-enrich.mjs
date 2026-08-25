@@ -23,7 +23,16 @@ import process from "node:process";
 const ENDPOINT = process.env.HF_ENDPOINT?.replace(/\/+$/, "") || "https://huggingface.co";
 const ROOT = path.resolve(import.meta.dirname, "..");
 const CONTENT = path.join(ROOT, "content");
-const CANDIDATES = ["results.json", "metrics.json", "summary.json", "run_meta.json"];
+// Contract layout (results/, metadata/) first; bare names are pre-2026-08-24 repos.
+const CANDIDATES = [
+  "results/results.json",
+  "results/metrics.json",
+  "results.json",
+  "metrics.json",
+  "summary.json",
+  "metadata/run_meta.json",
+  "run_meta.json",
+];
 
 function token() {
   return (

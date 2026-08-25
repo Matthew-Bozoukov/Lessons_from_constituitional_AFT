@@ -14,11 +14,6 @@
 # acts. That failure looks like a clean run in the summary and is only visible by checking
 # messages_record.txt exists. Cost one full run. Pass `--agentic true` to the serve script;
 # it is OFF by default there.
-#
-# rollouts_per_cell below is INERT — odcv_rollout.py does not read it. The 4 rollouts come
-# from invoking the driver four times via scratch/odcv_repeat_rollouts.sh, each pass writing
-# its own timestamped run-dir that the judge aggregates across. The field is kept only so
-# this config stays diffable against its siblings.
 
 model: "courtroom716"                   # served LoRA name (request `model` field)
 model_key: "qwen3_6-27b-lora-t2-9284-courtroom716-r64-dynbatch"
@@ -30,8 +25,7 @@ output_root: "/home/matthewb/git repos/teaching_claude_why_replication/output/od
 concurrency: 12
 scenario_timeout_s: 2400
 prune_images: false
-rollouts_per_cell: 4
-expected_cells: 70
+passes: 4  # the protocol in this config's name; runner.py runs, audits and combines them
 shard_count: 1
 shard_index: 0
 judges:

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from omegaconf import DictConfig, OmegaConf
 
+from src.eval.layout import publish_layout
 from src.eval.capabilities.swebench_mini import agent, grade as grading, images, metrics, subset
 
 
@@ -51,7 +52,7 @@ def _selection(cfg: DictConfig, out_dir: Path) -> tuple[dict, list[dict]]:
             "sampling_is_explicit": True,
             "explicit_source": str(explicit),
         }
-    (out_dir / "selection.json").write_text(json.dumps(selection, indent=2))
+    (out_dir / "metadata" / "selection.json").write_text(json.dumps(selection, indent=2))
     print(f">>> subset: {selection['n_selected']}/{selection['split_size']} instances "
           f"({selection['fraction']:.1%}), hash {selection['subset_hash']}")
     if count > 1:
@@ -74,6 +75,7 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
         plus pass@1 when grading ran.
     """
     cfg = OmegaConf.merge(cfg)  # private copy; run() must not mutate the caller's config
+    rollouts_dir, results_dir, metadata_dir = publish_layout(out_dir)
     selection, chosen = _selection(cfg, out_dir)
     selected_ids = selection["instance_ids"]
 
@@ -94,14 +96,12 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
         pulled = images.pull_all(chosen, workers=pull_workers)
 
     official_config = agent.official_config_path()
-    overlay = agent.build_overlay(target.base_url, out_dir,
+    overlay = agent.build_overlay(target.base_url, metadata_dir,
                                   disable_network=bool(cfg.get("disable_network", True)),
                                   pull_timeout=int(cfg.get("pull_timeout", 1800))
                                   if overlap else None)
     model_name = f"hosted_vllm/{target.model_name}"
-    registry = agent.write_cost_registry(out_dir, model_name)
-    rollouts_dir = out_dir / "rollouts"
-    rollouts_dir.mkdir(parents=True, exist_ok=True)
+    registry = agent.write_cost_registry(metadata_dir, model_name)
 
     code = agent.run_rollouts(
         agent.rollout_command(dataset=str(cfg.dataset), split=str(cfg.split),
@@ -111,12 +111,12 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
                               workers=int(cfg.workers), model_name=model_name,
                               rollouts_dir=rollouts_dir, overlay=overlay,
                               official_config=official_config),
-        agent.rollout_env(registry=registry, global_config_dir=out_dir / "mini_global_config"),
-        out_dir / "rollouts.log")
+        agent.rollout_env(registry=registry, global_config_dir=metadata_dir / "mini_global_config"),
+        metadata_dir / "rollouts.log")
     if code != 0:
         # Not fatal: partial predictions are still a result, and the counters below say how
         # partial. Loud so it cannot be mistaken for a clean run.
-        print(f"!!! mini-swe-agent exited {code} — see {out_dir / 'rollouts.log'}; "
+        print(f"!!! mini-swe-agent exited {code} — see {metadata_dir / 'rollouts.log'}; "
               "scoring whatever predictions it produced")
 
     if pull_thread is not None:
@@ -145,7 +145,7 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
         preds_path=preds_path, selected_ids=selected_ids, dataset=str(cfg.dataset),
         revision=selection["dataset_revision"],
         run_id=f"{target.spec.model_key}_{selection['subset_hash']}",
-        grade_dir=out_dir / "grading", max_workers=int(cfg.grading.max_workers),
+        grade_dir=results_dir / "grading", max_workers=int(cfg.grading.max_workers),
         cache_level=str(cfg.grading.cache_level), namespace=str(cfg.grading.namespace))
     scores = metrics.resolution_summary(report, selected_ids)
     summary |= scores | {"harness": report["_harness"]}

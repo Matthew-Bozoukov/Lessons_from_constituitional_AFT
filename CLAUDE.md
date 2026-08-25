@@ -347,6 +347,10 @@ uv run scripts/run_eval.py --target <hf_path | provider:model-id> [...] --name <
   (git SHA, config, target, mode); results push to HF with the required dataset-card
   fields *as they are produced* (a dead pod loses nothing); a summary row lands in
   `output/eval_summaries/`.
+- **Published layout is a contract**: every eval repo on HF is `rollouts/ results/
+  metadata/` + a tagged card (`src/eval/layout.py`) — the dashboard reads exactly that.
+  Where possible, prefer `uv run evals --name <eval>` (run_eval.py), which enforces and
+  tags it automatically; hand-pushed runs must match.
 - The audit tooling in `src/eval/audits/` is exempt from this contract for now.
 
 ## GPU / vast.ai operational playbook (this is the fiddly part — follow it)

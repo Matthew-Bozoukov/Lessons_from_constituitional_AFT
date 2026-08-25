@@ -26,6 +26,7 @@ from pathlib import Path
 from omegaconf import OmegaConf
 from openai import OpenAI
 
+from src.eval.layout import publish_layout
 from src.endpoints.openrouter import OpenRouterClient, map_threaded
 from src.eval.misalignment.psychosis.conversation import (
     Turn,
@@ -142,8 +143,7 @@ def run(target, cfg, out_dir: Path) -> dict:
             choice.message, "reasoning", None)
         return choice.message.content or "", reasoning, choice.finish_reason or ""
 
-    rollout_dir = out_dir / "rollouts"
-    rollout_dir.mkdir(parents=True, exist_ok=True)
+    rollout_dir, results_dir, _ = publish_layout(out_dir)
     stems = sorted(characters)
 
     def converse(i: int) -> dict:
@@ -189,10 +189,10 @@ def run(target, cfg, out_dir: Path) -> dict:
                         desc="psychosis judging")
     graded = [r for r in rows if "judge_error" not in r]
 
-    with (out_dir / "grades.jsonl").open("w", encoding="utf-8") as fh:
+    with (results_dir / "grades.jsonl").open("w", encoding="utf-8") as fh:
         for row in rows:
             fh.write(json.dumps(row, ensure_ascii=False) + "\n")
-    with (out_dir / "grades.csv").open("w", encoding="utf-8", newline="") as fh:
+    with (results_dir / "grades.csv").open("w", encoding="utf-8", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=["character", "turn", *GRADE_KEYS])
         writer.writeheader()
         writer.writerows(graded)

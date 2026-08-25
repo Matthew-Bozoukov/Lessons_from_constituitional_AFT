@@ -549,3 +549,19 @@ corpus itself:
 
 `tests/rendered-html.test.mjs` continues to assert that every route
 server-renders real content.
+
+
+## Eval-run explorer (client-side, tag-discovered)
+
+The `/evals` page's Run explorer does not use the content pipeline at all. In the
+browser it lists the org's repos with `/api/datasets?author=LASR-Callum&filter=eval-run`
+(the tags every `run_eval.py` push stamps into its card front matter since 2026-08-24),
+then reads each repo's published-layout contract directly:
+
+- `results/results.json` — flattened to numeric metrics; A/B compare with per-metric bars.
+- `rollouts/…` — listed via the tree API and streamed per unit; per-eval adapters in
+  `lib/evalRuns.ts` key units (scenario, character, uid, …) so two runs align.
+
+Constraints: repos must be **public** (the site holds no token) and carry the
+`eval-run` tag — untagged legacy repos are invisible until their cards are backfilled.
+A Hub failure degrades to an inline error state; nothing here runs at build time.

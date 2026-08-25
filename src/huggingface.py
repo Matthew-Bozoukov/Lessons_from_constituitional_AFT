@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import os
 import re
+
+import yaml
 from pathlib import Path
 
 from huggingface_hub import HfApi
@@ -69,16 +71,24 @@ def card_front_matter(configs: list[dict]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def card_markdown(fields: dict) -> str:
+def card_markdown(fields: dict, front_matter: dict | None = None) -> str:
     """Render the dataset card, refusing incomplete metadata (pure; unit-tested offline).
 
     Required fields render first; any extra fields (e.g. an adapter's `dataset` pin)
     follow in insertion order. `title` only names the heading, it never becomes a row.
+
+    `front_matter` (e.g. {"tags": ["eval-run", "eval:odcv"]}) renders as a YAML block
+    ahead of the markdown — the Hub indexes it, so `/api/datasets?filter=<tag>` finds
+    the repo. This is HF's canonical discovery mechanism; the dashboard's eval-run
+    picker relies on the `eval-run` + `eval:<name>` + `model:<key>` tags.
     """
     missing = [f for f in REQUIRED_FIELDS if not str(fields.get(f, "")).strip()]
     assert not missing, (f"dataset card is missing required fields {missing} — "
                          "write `constitution: none` explicitly if it connects to none")
-    lines = ["# " + fields.get("title", fields["experiment"]), "", "| field | value |", "| --- | --- |"]
+    lines = []
+    if front_matter:
+        lines += ["---", yaml.safe_dump(front_matter, sort_keys=False).strip(), "---"]
+    lines += ["# " + fields.get("title", fields["experiment"]), "", "| field | value |", "| --- | --- |"]
     extras = [k for k in fields if k not in REQUIRED_FIELDS and k != "title"]
     for key in (*REQUIRED_FIELDS, *extras):
         value = str(fields[key]).replace("\n", " ")
@@ -137,8 +147,8 @@ def resolve_dataset(repo_id: str, filename: str | None = None,
     return local, {"repo": repo_id, "file": chosen, "revision": info.sha}
 
 
-def push_run_dir(out_dir: Path, repo_id: str, fields: dict, private: bool = True,
-                 repo_type: str = "dataset") -> str:
+def push_run_dir(out_dir: Path, repo_id: str, fields: dict, private: bool = False,
+                 repo_type: str = "dataset", front_matter: dict | None = None) -> str:
     """Upload a run directory (with its card) to an HF repo.
 
     Args:
@@ -146,13 +156,13 @@ def push_run_dir(out_dir: Path, repo_id: str, fields: dict, private: bool = True
         repo_id: Dated repo per the naming rule, e.g. org/2026-08-03-mmlu-<model_key>
             (adapter repos keep their model-key naming).
         fields: Card fields; all REQUIRED_FIELDS must be present and non-empty.
-        private: Create the repo private (default) — flip deliberately, not by accident.
+        private: PUBLIC by default (2026-08-24: the dashboard reads eval repos token-less); pass private=True deliberately for anything sensitive.
         repo_type: "dataset" (default) or "model" (adapters).
 
     Returns:
         The repo URL.
     """
-    card = card_markdown(fields)  # validate before any network call
+    card = card_markdown(fields, front_matter)  # validate before any network call
     api = hf_api()
     api.create_repo(repo_id, repo_type=repo_type, private=private, exist_ok=True)
     # Explicit utf-8: cards are full of em-dashes, and upload_folder reads this file back

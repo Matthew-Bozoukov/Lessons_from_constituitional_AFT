@@ -38,3 +38,15 @@ def test_card_markdown_renders_extra_fields():
     assert "| `dataset` | hf.co/datasets/org/name@abc123 (mixture.jsonl) |" in text
     assert text.startswith("# My adapter\n")
     assert "| `title` |" not in text
+
+
+def test_card_markdown_front_matter_tags():
+    fields = {f: "x" for f in REQUIRED_FIELDS}
+    text = card_markdown(fields, front_matter={"tags": ["eval-run", "eval:odcv"]})
+    assert text.startswith("---\n")
+    head = text.split("---\n")[1]
+    body = text.split("---\n", 2)[2]
+    assert "eval-run" in head and "eval:odcv" in head
+    assert body.startswith("# x\n")
+    # No front matter -> byte-identical legacy card.
+    assert card_markdown(fields).startswith("# x\n")

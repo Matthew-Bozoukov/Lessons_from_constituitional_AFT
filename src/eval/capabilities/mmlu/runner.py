@@ -35,6 +35,7 @@ models under test are thinking models:
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 from pathlib import Path
 from typing import Any
@@ -45,6 +46,7 @@ from openai import OpenAI
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
+from src.eval.layout import publish_layout
 from src.endpoints.openrouter import map_threaded  # noqa: E402
 from src.eval.capabilities.mmlu.mmlu import (  # noqa: E402
     build_prompt,
@@ -446,5 +448,21 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     arm = {"name": target.spec.model_key, "served": target.model_name,
            "adapter": target.spec.hf_path if target.spec.adapter else None,
            "synthetic_fraction": None, "role": "target", "trained": True}
-    return run_arm(arm, questions, shots, cfg, target.base_url, out_dir,
-                   api_key=target.api_key)
+    scores = run_arm(arm, questions, shots, cfg, target.base_url, out_dir,
+                     api_key=target.api_key)
+
+    # Repack the think/nothink arm tree into the published layout (src/eval/layout.py).
+    # The framework path never resumes (fresh timestamped out_dir every invocation), so
+    # moving records.jsonl at the end is safe; the standalone main() path is untouched.
+    rollouts_dir, results_dir, metadata_dir = publish_layout(out_dir)
+    mode = "think" if bool(cfg.generation.enable_thinking) else "nothink"
+    arm_dir = out_dir / mode / arm["name"]
+    run_dir = max(p for p in arm_dir.iterdir() if p.is_dir())
+    (arm_dir / "records.jsonl").rename(rollouts_dir / "records.jsonl")
+    (run_dir / "metrics.json").rename(results_dir / "metrics.json")
+    (run_dir / "raw_samples.md").rename(results_dir / "raw_samples.md")
+    meta = json.loads((run_dir / "run_meta.json").read_text())
+    meta["records_file"] = "rollouts/records.jsonl"  # the pre-move path would be stale
+    (metadata_dir / "mmlu_run_meta.json").write_text(json.dumps(meta, indent=2))
+    shutil.rmtree(out_dir / mode)
+    return scores

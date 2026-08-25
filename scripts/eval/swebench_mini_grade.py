@@ -48,7 +48,11 @@ def main(run_dir: str, config: str = "configs/eval/swebench_mini_verified.yaml",
     load_dotenv()
     docker_preflight()
     out_dir = Path(run_dir)
-    selection = json.loads((out_dir / "selection.json").read_text())
+    sel_path = out_dir / "metadata" / "selection.json"
+    if not sel_path.exists() and (out_dir / "selection.json").exists():
+        sel_path = out_dir / "selection.json"
+        print(">>> legacy run-dir layout (pre-contract): root selection.json")
+    selection = json.loads(sel_path.read_text())
     cfg = OmegaConf.load(config)
 
     report = grading.grade(
@@ -57,12 +61,14 @@ def main(run_dir: str, config: str = "configs/eval/swebench_mini_verified.yaml",
         # From the RUN, not the config: same dataset and revision the rollout used.
         dataset=selection["dataset"], revision=selection["dataset_revision"],
         run_id=f"{out_dir.parent.name}_{selection['subset_hash']}",
-        grade_dir=out_dir / "grading",
+        grade_dir=out_dir / "results" / "grading",
         max_workers=max_workers or int(cfg.grading.max_workers),
         cache_level=str(cfg.grading.cache_level), namespace=str(cfg.grading.namespace))
 
     scores = metrics.resolution_summary(report, selection["instance_ids"])
-    results_path = out_dir / "results.json"
+    results_path = out_dir / "results" / "results.json"
+    if not results_path.exists() and (out_dir / "results.json").exists():
+        results_path = out_dir / "results.json"  # legacy pre-contract run dir
     summary = json.loads(results_path.read_text()) if results_path.exists() else {}
     summary |= scores | {"harness": report["_harness"], "grading": "complete"}
     line = metrics.report_line(summary.get("target", out_dir.parent.name),
@@ -70,7 +76,7 @@ def main(run_dir: str, config: str = "configs/eval/swebench_mini_verified.yaml",
     summary["report_line"] = line
 
     results_path.write_text(json.dumps(summary, indent=2))
-    (out_dir / "results.md").write_text(
+    results_path.with_name("results.md").write_text(
         f"# {line}\n\n"
         + "\n".join(f"- **{k}**: {json.dumps(v) if isinstance(v, (dict, list)) else v}"
                     for k, v in sorted(scores.items())) + "\n")
@@ -83,15 +89,18 @@ def main(run_dir: str, config: str = "configs/eval/swebench_mini_verified.yaml",
 
         repo_id = (f"{hf_org}/{date.today().isoformat()}-swebench-mini-"
                    f"{out_dir.parent.name.replace('_', '-')}")
-        print(">>> pushed " + push_run_dir(out_dir, repo_id, {
+        tags = {"tags": ["eval-run", "eval:swebench_mini",
+                         f"model:{out_dir.parent.name}"]}
+        print(">>> pushed " + push_run_dir(out_dir, repo_id, front_matter=tags, fields={
             "experiment": f"Standardized SWE-bench baseline: {summary.get('target', '')}",
             "date_generated": date.today().isoformat(),
             "constitution": "none",
             "source_repo": f"teaching_claude_why_replication @ {summary.get('provenance', {}).get('git_sha', 'see run_meta.json')}",
             "models": str(summary.get("provenance", {}).get("model", "")),
             "generation_config": json.dumps(summary.get("provenance", {})),
-            "schema": "results.json: pass@1 + counters; rollouts/: trajectories and preds; "
-                      "grading/: harness report and logs; selection.json: the subset drawn",
+            "schema": "results/results.json: pass@1 + counters; rollouts/: trajectories and "
+                      "preds; results/grading/: harness report and logs; "
+                      "metadata/selection.json: the subset drawn",
             "provenance": f"uv run scripts/eval/swebench_mini_grade.py --run-dir {run_dir}",
         }))
 

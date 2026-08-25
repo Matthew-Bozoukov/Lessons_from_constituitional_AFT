@@ -32,8 +32,6 @@ output_root: "output/odcv_bench"
 concurrency: 12
 scenario_timeout_s: 2400
 prune_images: false
-rollouts_per_cell: 4
-expected_cells: 70
 shard_count: 1
 shard_index: 0
 judges:
