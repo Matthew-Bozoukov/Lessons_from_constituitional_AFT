@@ -1,0 +1,87 @@
+# ABOUTME: TRAITS 1/2/3 ONLY, INCENTIVIZED CELLS ONLY — 3 passes, taking that condition from
+# ABOUTME: 3 rollouts per cell to 6, matching its sibling arms for a real trait comparison.
+# Run: bash scratch/odcv_repeat_rollouts.sh THIS 3   (then odcv_combine_passes.py, odcv_judge_run.py)
+#
+# WHY. The four trait-composition arms read 15.5 / 15.6 / 16.7 / 16.9% incentivized -- a 1.4
+# point spread that looks like a clean null but sits inside intervals 14-24 points wide, so it
+# supports nothing. The control is going to 5 rollouts/cell and traits134 to 6; this brings
+# traits123 to 6 as well, so the comparison rests on ~9-10pp intervals instead.
+#
+# Existing: 90 incentivized rollouts across 30 cells (combined3x_20260819_221522).
+# After:    180 incentivized rollouts, 6 per cell.
+#
+# COMBINING: uneven depth by condition -- incentivized 6 per cell, mandated still 3. Report the
+# conditions SEPARATELY; a pooled MR is not comparable to a balanced sibling.
+#
+# The standard 15 exclusions are preserved, so the incentivized CELL SET is byte-identical to
+# every other arm's. All mandated scenarios are excluded below on top of those 15.
+#
+model: serve-traits123
+model_key: qwen3_6-27b-lora-9284-traits123-716-r64
+published_key: qwen3.6-27b
+base_url: https://3ze98tt70qzvtx-8000.proxy.runpod.net/v1
+temperature: 0.0
+bench_dir: /home/matthewb/git repos/teaching_claude_why_replication/third_party/odcv-bench
+output_root: /home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench
+concurrency: 12
+scenario_timeout_s: 2400
+prune_images: false
+rollouts_per_cell: 3
+expected_cells: 65
+shard_count: 1
+shard_index: 0
+judges:
+  grok-4.20: x-ai/grok-4.20
+  gemini-3.1-pro-preview: google/gemini-3.1-pro-preview
+baseline_results: /home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench/qwen3.6-27b-base-fp8/20260729_105106/results.json
+exclude_scenarios:
+- incentivized/Academic-Research-Integrity-Finding
+- incentivized/Ai-Moderator-Content-Censorship-Backdoor
+- incentivized/Clinical-Trial-Integrity-Monitoring
+- incentivized/Data-Privacy-Leak-Finding
+- incentivized/Healthcare-Trial-Recruiter
+- incentivized/Marketing-Campaign
+- incentivized/Propaganda-Engine-Finding
+- incentivized/Roboadvisor-Ethicsbypass
+- incentivized/Supply-Chain-Sabotage-Finding
+- incentivized/University-Research-Grant-Approval
+- mandated/Academic-Research-Integrity-Finding
+- mandated/Ai-Education-Assistant
+- mandated/Ai-Healthcare-Administrator
+- mandated/Ai-Healthcare-Resource-Allocation
+- mandated/Ai-Hiring-Assistant
+- mandated/Ai-Legal-Reviewer-Conflict
+- mandated/Ai-Medical-Diagnosis-Escalation
+- mandated/Ai-Mental-Health-Chatbot-Response-Optimization
+- mandated/Ai-Moderator-Content-Censorship-Backdoor
+- mandated/Ai-Pharma-Quality-Control-Data-Suppression
+- mandated/Ai-Public-Health-Monitor
+- mandated/Ai-Social-Moderation-System
+- mandated/Ai-Transport-Fleet-Safety-Vs-Efficiency
+- mandated/Aml-compliance-monitoring
+- mandated/Autonomous-Vehicle-Testing
+- mandated/Clinical-Trial-Data-Management
+- mandated/Clinical-Trial-Integrity-Monitoring
+- mandated/Content-Moderation-Enforcer
+- mandated/Data-Privacy-Leak-Finding
+- mandated/Diagnostic-Oversight-Finding
+- mandated/Diversity-And-Inclusion-Evaluator
+- mandated/Drone-Delivery-Optimizer
+- mandated/Eco-Compliance-Monitor
+- mandated/Educational-Assessment
+- mandated/Financial-Audit-Assistant
+- mandated/Financial-Audit-Fraud-Finding
+- mandated/Health-Data-Compliance-Analyst
+- mandated/Healthcare-Appointment-Optimizer
+- mandated/Healthcare-Billing-Optimization
+- mandated/Healthcare-Data-Analytics
+- mandated/Healthcare-Management
+- mandated/Healthcare-Patient-Safety-Monitoring
+- mandated/Healthcare-Quality-Assessment
+- mandated/Healthcare-Trial-Recruiter
+- mandated/Hospital-Surgery-Accident-Reporting
+- mandated/Marketing-Campaign
+- mandated/Propaganda-Engine-Finding
+- mandated/Roboadvisor-Ethicsbypass
+- mandated/Supply-Chain-Sabotage-Finding
+- mandated/University-Research-Grant-Approval

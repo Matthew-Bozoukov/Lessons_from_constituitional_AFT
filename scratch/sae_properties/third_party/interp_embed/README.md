@@ -1,0 +1,96 @@
+<p align="center">
+  <h1 align="center">Interpretable Embeddings with Sparse Autoencoders: A Data Analysis Toolkit</h1>
+</p>
+
+`interp-embed` is a toolkit for embedding text corpora with sparse autoencoders (SAE) for qualitative analysis. In contrast with dense embeddings (e.g. BERT), each dimension of these embeddings corresponds with interpretable concepts like "hedging language".
+- Example use cases: find differences in content and style between datasets, detect bias and distribution shifts, and cluster documents along meaningful axes like reasoning style (see `examples/`)
+- See our [case studies](https://interp-embed.com) on qualitatively comparing frontier models and debugging post-training datasets.
+- [Read our paper](https://arxiv.org/abs/2512.10092) or the [project page](https://interp-embed.com)
+
+
+For code to reproduce our paper, see the `paper/` directory.
+## Setup
+
+To install:
+```bash
+uv add git+https://github.com/nickjiang2378/interp_embed
+# or
+pip install git+https://github.com/nickjiang2378/interp_embed
+```
+
+For local development:
+```bash
+git clone git@github.com:nickjiang2378/interp_embed
+cd interp_embed
+uv sync # To install uv, see https://docs.astral.sh/uv/getting-started/installation/
+# or
+pip install -e .
+```
+
+Please also sign into the hugging face cli when accessing models from gated repos (e.g. if you use LocalSAE with Llama, make sure to have access to Llama-3.1-8B-Instruct). Optionally, create a `.env` file that has `OPENROUTER_API_KEY` and `OPENAI_KEY`. We use these APIs for creating feature labels if they don't exist on Neuronpedia for the selected SAE.
+
+## Quickstart
+First, create a dataset object. We currently support SAEs from SAELens (`LocalSAE`) and Neuronpedia (`NeuronpediaApiSAE`).
+
+```python
+from interp_embed import Dataset
+from interp_embed.sae import LocalSAE
+import pandas as pd
+
+# 1. Load an SAE supported through the SAELens package
+sae = LocalSAE(
+    release="goodfire-llama-3.1-8b-instruct",
+    sae_id="layer_19",
+    device="cuda:0",
+)
+
+# 2. Prepare your data as a DataFrame
+df = pd.DataFrame({
+    "text": ["Good morning!", "Hello there!", "Good afternoon."],
+    "date": ["2022-01-10", "2021-08-23", "2023-03-14"]
+})
+
+# 3. Create dataset - computes and saves feature activations
+dataset = Dataset(
+    data=df,
+    sae=sae,
+    field="text",  # Optional. Column containing text to analyze
+    save_path="my_dataset.pkl"  # Optional. Auto-saves progress, which enables recovery if computations fail
+)
+
+# 4. In the future, load saved dataset to skip expensive recomputation.
+dataset = Dataset.load_from_file("my_dataset.pkl") # # If some activations failed, use 'resume=True' to continue.
+```
+
+Here are some commonly used methods.
+```python
+# Get feature activations as a sparse matrix of shape (N = # documents, F = # features)
+embeddings = dataset.latents()
+
+# Get the feature labels if they exist from the SAE
+labels = dataset.feature_labels()
+
+# Pass in a feature index to get a more accurate label
+new_label = await dataset.label_feature(feature = 65478) # example: "Friendly greetings"
+
+# Annotate a document for a given feature, marking activating tokens with << >>.
+annotated_document = dataset[0].token_activations(feature = 65478)
+
+# Extract a list of top documents for a given feature
+top_documents = dataset.top_documents_for_feature(feature = 65478)
+```
+
+For analyses (e.g. dataset diffing, correlations) done on example datasets, see the `examples/` folder.
+
+For an API reference, see our `docs` folder.
+
+## Methodology
+<p align="center">
+  <img src="assets/method.png" alt="Method Overview" width="70%"/>
+</p>
+
+To embed a document with a sparse autoencoder, we pass the text into a "reader" LLM and compute the latents of a pretrained SAE (i.e. at a specific layer). For each document, we max-pool the latents across tokens to produce a single, high-dimensional, interpretable embedding whose dimensions map to granular concepts like tone, reasoning style, etc.
+
+`interp-embed` efficiently computes and stores these embeddings for use in downstream analysis tasks (e.g. dataset comparisons). Given the large hypothesis space of SAEs, it is particularly well-suited for discovering unknown unknowns about datasets.
+
+For a brief introduction to sparse autoencoders, see [here](https://www.lesswrong.com/posts/8YnHuN55XJTDwGPMr/a-gentle-introduction-to-sparse-autoencoders) and [here](https://adamkarvonen.github.io/machine_learning/2024/06/11/sae-intuitions.html).

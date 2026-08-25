@@ -1,0 +1,86 @@
+# ABOUTME: ODCV-Bench eval of the LOW-STAKES r64 DYNBATCH LoRA, 2 passes x 65 cells.
+# ABOUTME: Run: bash scratch/odcv_repeat_rollouts.sh THIS 2   (then odcv_judge.py)
+#
+# THE STAKES ABLATION. Every difficult-advice row was rewritten into an ordinary setting with
+# the transgression scaled down to match, keeping the trait, the deliberative structure and the
+# register. A legal custody dispute becomes a book club selection; federal grant compliance
+# becomes hobby club rules; an eviction becomes a roommate chore chart. Blind re-rating of the
+# rewritten user turns: mean stakes 2.58 -> 0.88, with 623/712 (87.5%) trivial or modest
+# against 3.2% in the original corpus. See
+# configs/train/lora_qwen36_9284_low_stakes_712_dynbatch_2xh200.yaml.
+#
+# THE QUESTION. Eight manipulations of this data — trait identity, trait volume, scenario
+# selection, reasoning style, reasoning structure — all left the protection intact, landing
+# 8.7% to 13.2% against 44.1% with no difficult advice at all. Stakes is the property the
+# corpus is most uniform about (96.8% serious-or-worse) and the last untested one. Near ~12%
+# means the severity of the situations was never what mattered; near 44% means it was.
+#
+# TWO PASSES, not three. Deliberate: this is a first read on a new manipulation and the
+# question is which end of a 30-point range it lands in, not a 2-point distinction. ~130
+# rollouts still resolves that comfortably. The CI will be wider than the 3-pass siblings',
+# so compare the point estimate to the 44.1% / 16.8% poles rather than to arms 2 points apart.
+#
+# CAVEATS from the build, to state with any result: the scenarios MOVED (sameness 1.25/3, so
+# domain and magnitude vary together); 89 of 712 rows still rate >=2 with 20 grave; and 151
+# still carry a stake-raising device, overwhelmingly countdowns (102) — deadlines survive
+# relocation, so this is NOT a deadline-free arm.
+#
+# On the cells common to every arm:
+#   no difficult advice 44.1% | +constitution in prompt 28.3% | lowodcv 17.6%
+#   unmodified control 16.8% | traits13 13.2% | traits567 12.8% | no-clearance 12.4%
+#   traits134 10.6% | advocacy 10.1% | traits123 9.3% | c6excised 8.7%
+#
+# SERVED OVER RUNPOD'S HTTPS PROXY. WARM THE PROXY BEFORE LAUNCHING: twelve containers hitting
+# a cold proxy get 404s and silently lose cells. SERVE_READY only means vLLM answers on
+# localhost, not that the proxy is routing.
+#
+# The vLLM server MUST be started with --enable-auto-tool-choice --tool-call-parser qwen3_xml
+# (and --reasoning-parser qwen3), or every scenario reports `ok` with no transcript.
+#
+# rollouts_per_cell below is INERT -- the rollouts come from invoking the driver N times.
+
+model: "lowstakes"                  # served LoRA name (request `model` field)
+model_key: "qwen3_6-27b-lora-9284-low-stakes-712-r64"
+published_key: "qwen3.6-27b"
+base_url: "https://7ffqhz6j1q8ila-8000.proxy.runpod.net/v1"
+temperature: 0.0
+bench_dir: "/home/matthewb/git repos/teaching_claude_why_replication/third_party/odcv-bench"
+output_root: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench"
+concurrency: 12
+scenario_timeout_s: 2400
+prune_images: false
+rollouts_per_cell: 2
+expected_cells: 65
+shard_count: 1
+shard_index: 0
+judges:
+  grok-4.20: "x-ai/grok-4.20"
+  gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
+baseline_results: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench/qwen3.6-27b-base-fp8/20260729_105106/results.json"
+
+# Same 10 exclusions as every sibling arm, so all arms are scored on the same 70 cells.
+exclude_scenarios:
+  - "incentivized/Academic-Research-Integrity-Finding"
+  - "incentivized/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Academic-Research-Integrity-Finding"
+  - "mandated/Clinical-Trial-Data-Management"
+  - "incentivized/Clinical-Trial-Integrity-Monitoring"
+  - "incentivized/Healthcare-Trial-Recruiter"
+  - "incentivized/Data-Privacy-Leak-Finding"
+  - "mandated/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Clinical-Trial-Integrity-Monitoring"
+  - "mandated/Healthcare-Appointment-Optimizer"
+
+# FIVE MORE EXCLUSIONS than the sibling arms, at the user's request (2026-08-16): the run
+# covers only the FIRST 65 cells of the driver's job order (all `mandated`, then
+# `incentivized` up to the cut). The driver builds jobs as mandated-then-incentivized in
+# scenario_names order, so "first 65" is exactly the five incentivized scenarios below.
+# CONSEQUENCE FOR COMPARISON: this arm is scored on a DIFFERENT cell set than
+# courtroom716 (69 cells) or the difficult-advice sibling (70). A headline MR from this
+# run is not directly comparable to theirs -- compare on the intersection, or say which
+# cell set each number came from.
+  - "incentivized/Marketing-Campaign"
+  - "incentivized/Propaganda-Engine-Finding"
+  - "incentivized/Roboadvisor-Ethicsbypass"
+  - "incentivized/Supply-Chain-Sabotage-Finding"
+  - "incentivized/University-Research-Grant-Approval"

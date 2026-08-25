@@ -1,0 +1,94 @@
+# ABOUTME: TRAITS 5/6/7 ONLY, INCENTIVIZED CELLS ONLY — 3 passes, taking that condition from
+# ABOUTME: 3 rollouts per cell to 6, matching the other trait arms.
+# Run: bash scratch/odcv_repeat_rollouts.sh THIS 3   (then odcv_combine_passes.py, odcv_judge_run.py)
+#
+# WHY. Fourth of the trait-composition arms to be deepened, so all four are compared at
+# similar depth. Its paired difference against the control is -3.8pp, CI [-9.9, +1.1], with
+# 23 of 30 cells tied -- indistinguishable, like its siblings.
+#
+# NOTE ON WHAT THIS DOES NOT ANSWER. This arm is the only one whose MANDATED rate stands out
+# (8.6% against the control's 5.7% and traits123's 2.9%). These passes deepen INCENTIVIZED
+# only, so that mandated spread is untouched and stays at 3 rollouts per cell.
+#
+# Existing: 89 incentivized rollouts across 30 cells (combined3x_20260819_184957).
+# After:    ~179 incentivized rollouts, 6 per cell.
+#
+# Deepening does NOT narrow the scenario-clustered interval: 21 of 30 incentivized cells never
+# fail and 3 always do, so the rate is set by which scenarios are in the set, not by rollout
+# count. Use scratch/odcv_paired_compare.py for arm-vs-arm claims; it cancels that variance.
+#
+# COMBINING: uneven depth by condition -- incentivized 6 per cell, mandated still 3. Report the
+# conditions SEPARATELY.
+#
+# The standard 15 exclusions are preserved, so the incentivized CELL SET is byte-identical to
+# every other arm's. All mandated scenarios are excluded below on top of those 15.
+#
+model: "serve-traits567b"                # served LoRA name (request `model` field)
+model_key: qwen3_6-27b-lora-9284-traits567-716-r64
+published_key: qwen3.6-27b
+base_url: "https://4s8ah93t71qypw-8000.proxy.runpod.net/v1"
+temperature: 0.0
+bench_dir: /home/matthewb/git repos/teaching_claude_why_replication/third_party/odcv-bench
+output_root: /home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench
+concurrency: 12
+scenario_timeout_s: 2400
+prune_images: false
+rollouts_per_cell: 3
+expected_cells: 65
+shard_count: 1
+shard_index: 0
+judges:
+  grok-4.20: x-ai/grok-4.20
+  gemini-3.1-pro-preview: google/gemini-3.1-pro-preview
+baseline_results: /home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench/qwen3.6-27b-base-fp8/20260729_105106/results.json
+exclude_scenarios:
+- incentivized/Academic-Research-Integrity-Finding
+- incentivized/Ai-Moderator-Content-Censorship-Backdoor
+- incentivized/Clinical-Trial-Integrity-Monitoring
+- incentivized/Data-Privacy-Leak-Finding
+- incentivized/Healthcare-Trial-Recruiter
+- incentivized/Marketing-Campaign
+- incentivized/Propaganda-Engine-Finding
+- incentivized/Roboadvisor-Ethicsbypass
+- incentivized/Supply-Chain-Sabotage-Finding
+- incentivized/University-Research-Grant-Approval
+- mandated/Academic-Research-Integrity-Finding
+- mandated/Ai-Education-Assistant
+- mandated/Ai-Healthcare-Administrator
+- mandated/Ai-Healthcare-Resource-Allocation
+- mandated/Ai-Hiring-Assistant
+- mandated/Ai-Legal-Reviewer-Conflict
+- mandated/Ai-Medical-Diagnosis-Escalation
+- mandated/Ai-Mental-Health-Chatbot-Response-Optimization
+- mandated/Ai-Moderator-Content-Censorship-Backdoor
+- mandated/Ai-Pharma-Quality-Control-Data-Suppression
+- mandated/Ai-Public-Health-Monitor
+- mandated/Ai-Social-Moderation-System
+- mandated/Ai-Transport-Fleet-Safety-Vs-Efficiency
+- mandated/Aml-compliance-monitoring
+- mandated/Autonomous-Vehicle-Testing
+- mandated/Clinical-Trial-Data-Management
+- mandated/Clinical-Trial-Integrity-Monitoring
+- mandated/Content-Moderation-Enforcer
+- mandated/Data-Privacy-Leak-Finding
+- mandated/Diagnostic-Oversight-Finding
+- mandated/Diversity-And-Inclusion-Evaluator
+- mandated/Drone-Delivery-Optimizer
+- mandated/Eco-Compliance-Monitor
+- mandated/Educational-Assessment
+- mandated/Financial-Audit-Assistant
+- mandated/Financial-Audit-Fraud-Finding
+- mandated/Health-Data-Compliance-Analyst
+- mandated/Healthcare-Appointment-Optimizer
+- mandated/Healthcare-Billing-Optimization
+- mandated/Healthcare-Data-Analytics
+- mandated/Healthcare-Management
+- mandated/Healthcare-Patient-Safety-Monitoring
+- mandated/Healthcare-Quality-Assessment
+- mandated/Healthcare-Trial-Recruiter
+- mandated/Hospital-Surgery-Accident-Reporting
+- mandated/Marketing-Campaign
+- mandated/Propaganda-Engine-Finding
+- mandated/Roboadvisor-Ethicsbypass
+- mandated/Supply-Chain-Sabotage-Finding
+- mandated/University-Research-Grant-Approval

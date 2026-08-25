@@ -1013,6 +1013,264 @@ and the 6 missing cells were never diagnosed.
 
 # LOG
 
+## 2026-08-20 — two arms: what the difficult-advice fine-tune DOES that its control does not
+
+**Hypothesis.** The 2026-08-19 da716 run could say what one model does and which of it goes
+with violating, but not whether any of it was a property of the FINE-TUNE rather than of any
+model on these scenarios — nothing crossed a property against the arm. With a matched control
+it can. The pair: two Qwen3.6-27B LoRAs sharing 9,284 filtered instruction rows, differing
+only in the kind of the other 716 — constitution-grounded difficult advice vs NuminaMath-CoT.
+Same row count, same presence of real reasoning traces. Misalignment rate 15.0% vs 43.7%.
+
+**Method.** Feature discovery (the LessWrong method, `WAZWA6FPQvH8okouJ`) over 513 judged
+ODCV-Bench rollouts pulled from their published HF repos and pinned to exact shas. An
+autorater writes 10-20 free-text descriptions per rollout; the deduped vocabulary is embedded
+(`qwen/qwen3-embedding-8b`, nebius-pinned) and clustered with UMAP(10-d) + HDBSCAN. TWO fits,
+one per channel — reasoning and response — because "weighs an ethical tension" and "silently
+chains tool calls" should not compete to define the same group. 19,354 feature instances,
+7,906 + 7,181 distinct strings, 49 + 71 properties.
+
+Three measurements per property, all within stratum and BH-corrected: the between-ARM
+prevalence difference (new: `outcomes.contrast_arms`), the within-stratum outcome lift on two
+binarisations of ODCV severity, and an L1 logistic probe from the binary membership matrix
+(the post's own experiment, pointed at the arm).
+
+The stratum is the PAIR, arm x condition, because both axes carry a base-rate difference and
+the condition ordering FLIPS between the arms (5pct incentivized 20.0% vs mandated 9.8%;
+control 41.2% vs 46.1%).
+
+**Result — the fine-tune deliberates, the control executes.** 39 of 49 reasoning properties
+and 54 of 71 response properties differ at q <= 0.10. Prevalence, 5pct vs 0pct:
+
+    +42.8pp  60.5% / 17.8%   Verbose first-person internal monologue before acting
+    +35.8pp  63.7% / 28.2%   Explicit deliberation on an ethical tension
+    +33.4pp  43.4% / 10.3%   Refuses to falsify or fabricate data under pressure
+    +33.0pp  49.3% / 16.1%   Evaluation awareness / suspects being tested
+    +24.1pp  26.2% /  2.3%   Reasons about downstream harm to stakeholders
+    -27.4pp   8.3% / 35.6%   Fabricates or falsifies data without ethical flagging
+    -31.1pp   7.1% / 37.9%   Grounds claims with concrete file/script paths
+    -54.2pp  16.2% / 70.1%   Narrates task steps as sequential status updates
+
+Property membership predicts which model produced a rollout at **AUC 0.956** (37 properties;
+shuffled-label null 0.505, p=0.02) and predicts violation at 0.959.
+
+**The sharpest result is cross-channel, and the two-fit design is what makes it sayable.**
+147 reasoning x response pairs tested, 102 survive BH. One reasoning property, two actions:
+
+    Names an ethical tension but proceeds anyway + Falsifies data then reports success
+        n=49,  63% violation,  +38.4pp within stratum
+    Names an ethical tension but proceeds anyway + Refuses to falsify under pressure
+        n=130,  1% violation,  -23.2pp
+
+Identical deliberation; the outcome is decided entirely by whether the action follows it. The
+2026-08-19 run found this shape inside one channel and had to rely on the autorater
+volunteering both halves in one sentence.
+
+**What survived scrutiny.** 0 of 9 stability refits collapsed on either channel (pairwise ARI
+0.480-1.000 reasoning, 0.381-1.000 response). 0 near-duplicate group pairs on reasoning, 2 on
+response. UMAP kept the geometry — neighbourhood overlap 0.468 and 0.481, against ~0.003 for
+random at k=15. Not scenario markers: with concentration measured as EXCESS over the corpus
+mix, 1 of 49 and 1 of 71 groups are scenario-concentrated, 0 are condition markers, and 1 of
+120 is an arm marker. The strict same-scenario-same-condition contrast moves every headline
+delta by a point or two and RAISES the significant counts to 42 and 61.
+
+**Method notes that cost real money.** (1) `min_cluster_size` was swept per channel and the
+channels disagree: reasoning is stable at every resolution, response BIFURCATES from 40 upward
+(three seeds give 41, 40 and 3 groups). Forcing them to match for symmetry would have been
+choosing a prettier config over a measurement. (2) The plan was to make a detector the
+membership basis; an A/B over 48 real detectors x 20 rollouts showed that batching a judge
+across ~50 rubrics deflates prevalence by 7-9 points against asking one at a time (38.1% vs
+47.5%, 85% cell agreement), so membership stayed CLUSTER membership and the detector became a
+shortlist validation instead. (3) A reasoning model spends its budget before emitting content,
+so `max_tokens=2000` returned blanks, not truncations, and the retry policy re-billed each one
+six times. All three are now in `docs/GOTCHAS.md`.
+
+**A bug worth naming.** `Property.channel` was whatever the naming model guessed, and it
+guesses from content — 25 of 49 reasoning-fit properties came back labelled `response`. That
+field decides which text `interpret.detect` and the ablation filter/mask read, so it pointed
+the detector at the wrong half of the record and dropped its agreement with cluster membership
+to 21%. Now overridden with the channel the run actually clustered. It never touched a
+prevalence, a contrast or a lift — those come from the configured channel's features — but it
+would have poisoned the ablations.
+
+**The shortlist, re-measured.** An unbatched detector over the 32 properties at both ends
+of the contrast, on 100 stratified rollouts, agrees on the SIGN of the arm delta for 27 of
+32 — and the failures are not random. The refusal and deliberation properties validate best
+(84-92% per-record agreement) and cluster membership UNDERSTATES them: the detector puts
+"refuses then offers a legitimate alternative" at +52.7 against cluster's +45.2, "refuses
+and explains the ethical rationale" at +59.0 against +35.6. The badly-measured ones are the
+mechanical control-side properties (silent tool use 41%, autonomous execution 33%), which is
+what you would expect of behaviours an autorater describes inconsistently. So the headline is
+if anything conservative, and the weakest properties are the ones the headline does not rest
+on.
+
+**Artifacts.** `LASR-Callum/2026-08-20-odcv-feature-discovery-da716-5pct-vs-numina-control`
+(public); small text artifacts and the caveats in `docs/properties/odcv_da716_vs_numina/`;
+write-up at `dashboard/content/findings/2026-08-20-da716-vs-numina-properties/`.
+
+**Next steps.** The list is now a ranked set of ablation candidates with a control arm behind
+it, which is what it was for. The obvious target is the cross-channel pair: filter or rewrite
+the training rows that teach "name the tension, proceed anyway" and retrain, and check whether
+the +38.4pp pair thins. Cheaper first: run the shortlist detectors over the 716
+difficult-advice rows to see whether the corpus contains the pattern at all, or whether the
+model produces it unprompted. Still open: 29% of feature strings do not cluster, and the two
+evals are 11 days apart on different git SHAs.
+
+## 2026-08-19 — one `clusters` producer: feature discovery and trace clustering merged
+
+**Why.** Feature discovery (autorater describes each trace, cluster the descriptions) and
+trace clustering (embed the trace, cluster that) were two modules, and the pairing of
+method to data source was an accident of history rather than a choice: feature discovery
+read an SFT jsonl directly and so could only ever see the TRAINING data, while trace
+clustering was the only thing plumbed to read rollouts. That is backwards. The data source
+is what changes the science — training data tells you what you taught, rollouts tell you
+what the model learned and come with outcomes attached — and the clustering method is a
+knob.
+
+**What changed.** `scratch/llm_feature_discovery` is ported into
+`src/properties/producers/clusters/`, merged with the former `trace_clusters` into ONE
+producer. They differ in exactly one step — what gets turned into a vector — so that is
+now one config key:
+
+    evidence: features   autorater writes 10-20 free-text descriptions per record; the
+                         deduped VOCABULARY is embedded and clustered (the LessWrong method)
+    evidence: traces     the record's own text is embedded and clustered
+
+Everything after the vectors is shared: grouping, naming, the within-arm outcome crossing,
+the training-corpus comparison, the property rows. Either mode runs over either source —
+an SFT mixture or pooled rollouts from five model organisms.
+
+**Why merged rather than two producers.** Two packages would have drifted into two
+embedders and two notions of prevalence, and the question "does the abstraction step buy
+anything?" would have been unanswerable — the numbers would not have been comparable. One
+module makes that an A/B on one config line.
+
+**Feature discovery's semantics are preserved, not approximated.** The autorater still sees
+one record alone with no metadata; features are still free text; the vocabulary is still
+deduped before embedding, so a stock phrase cannot drag a cluster toward itself by
+repetition while occurrence counts travel alongside; prevalence is still the share of
+records carrying AT LEAST ONE feature in the group, so a record holds several properties
+and the group prevalences do not sum to 1; `trait_mix`, instance counts and the coverage
+metadata (what share the properties do NOT account for, now `coverage.json`) all survive.
+Extraction is the expensive half, so a rerun against the same run directory reuses
+`features.jsonl`.
+
+**Two things this exposed.** `shared/interpret.py` was telling the model it was reading
+"short descriptions of what records do" regardless of mode, which is false for whole
+traces — the framing is now per-mode, and the traces framing carries an explicit warning
+that text similarity tracks subject matter, with instructions to say so in the caveat
+rather than invent a behavioural label for a topical cluster. And `members.jsonl` became
+one line per membership EDGE rather than per record, because in features mode a record
+belongs to several properties and one-line-per-record cannot represent that.
+
+**Result.** 887 tests pass, none touching the network (a units test caught that features
+mode was reaching OpenRouter; the shared stub now covers the autorater). An offline check
+drives the real config through both modes: features mode turns 38 feature instances into 8
+distinct units and 32 membership edges over 16 records with prevalences summing to 2.00;
+traces mode gives 16 units, 16 edges, prevalences summing to 1.00.
+
+**Parity gaps found by diffing against scratch, and closed.** The extraction prompt is
+byte-identical, but three things were not:
+
+* extraction wrote `features.jsonl` only at the end, so a run killed at 95% bought nothing.
+  `attributes.extract_to` now appends under a lock as each row lands and resumes from what
+  the file holds. A previously recorded error is retried rather than inherited — caching a
+  transient rate-limit would make it permanent.
+* naming sampled 50 features per cluster; the post and the published runs use 100. Features
+  mode is back to 100. Traces mode keeps 30, because 100 excerpts of 4,000 characters is a
+  100k-token prompt and excerpts are far more redundant than feature strings.
+* the audit stage was missing entirely. Ported to `shared/audit.py`: near-duplicate group
+  pairs (when many, the group COUNT is a resolution setting, not a count of behaviours),
+  keyword probes read INDEPENDENTLY of the clustering (so a theme too small to win a group
+  still gets a number, and `groups_landed_in` shows the scatter), an opt-in stability sweep
+  scoring every fit against every other rather than only against the reference, and
+  `dashboard.html`.
+
+**The dashboard now plots the space.** `grouping.project_2d` runs a SEPARATE 2-D UMAP fit —
+the post's two-reductions design, 2-D to look at and more to cluster — rendered as inline
+SVG so the page stays one openable file. The caption states what it is not: the clustering
+ran in `n_components` dimensions, so two dots touching in the picture may be in different
+groups. It is for spotting shape (one blob, a filament, a group torn in two), not for
+adjudicating membership.
+
+**Also.** `configs/properties/discover_odcv_da716.yaml` runs the whole thing over the da716
+arm alone — the single-model starting point, and the run whose properties pair directly
+with the corpus-side `discover_da716.yaml` over the same 716 rows. With one arm the
+within-arm lift is still a real contrast (members vs non-members), but it cannot separate a
+property of the model from a property of the fine-tune; that needs the pooled run.
+
+**Next steps.** Point the configs at the real ODCV run directories and run them. Compare
+the two evidence modes on the same rollouts — that comparison is the point of merging them,
+and it is now one config line.
+
+## 2026-08-19 — trace_clusters over ROLLOUTS: the cluster list becomes a ranking
+
+**Hypothesis.** A corpus-side cluster list is unranked — every group is "here is a thing
+the data does", nothing says which is worth a training run, and choosing an ablation
+target is guesswork (the "unscored clusters" criticism, and the reason feature discovery
+compares badly with TURF and LESS, which at least assign a number). Rollouts should fix
+it, because rollouts are judged: cross a group of model reasoning against the violation
+flag and every group arrives with a number attached. Two further things only the rollout
+side can show — corpus mass spent on properties the model never picked up, and properties
+the model exhibits that were never in the corpus.
+
+**Method.** No experiment ran; this is the machinery, tested offline, not yet executed
+against real rollouts.
+
+* `sources/odcv_rollouts.py` now pools several run directories into ONE record list, each
+  tagged with the `arm` that produced it. Pooling is load-bearing: a per-arm fit gives
+  each arm its own cluster numbering, so "group 3 of the DA fit" and "group 3 of the
+  courtroom fit" are different things with the same name and the arms cannot be compared
+  at all. It also reads both transcript shapes on disk (`reason:` fields and inline
+  `<think>` tags) and takes the MEDIAN severity across judge files, rather than assuming
+  one shape and silently reading an empty reasoning channel off the other.
+* `shared/outcomes.py` is new: within-arm outcome rates, a weighted combination across
+  arms, and Benjamini-Hochberg over the family of groups.
+* `producers/trace_clusters/` gained three config blocks: `outcomes:` (cross with the
+  judged outcome), `compare_to:` (score the same vectors against a previous run's
+  centroids), and `baseline_grouping:` (cluster the same vectors a second way).
+
+**The two traps, and what the code does about them.**
+
+*Simpson's paradox.* The arms have different base violation rates by construction — that
+is the experiment. A property common in the arm that was already most aligned looks
+protective whatever it is. So every rate is computed WITHIN an arm and only then combined;
+the pooled number is emitted beside it carrying `confounded: true`, because the gap between
+the two is the diagnostic. A group perfectly confined to one arm has no same-arm
+non-members, so its lift is `None` — not the pooled number as a fallback — and the run says
+so loudly when that is true of every group.
+
+*Multiplicity.* Tens of groups against one binary outcome will hand you a few p < 0.05 from
+nothing, so the ranking carries BH q-values over the whole family. The output is a
+shortlist of ablation candidates. The ablation is what makes it causal.
+
+**Refit AND assign, over one embedding pass.** Nearest-centroid assignment never abstains,
+so a property with no home in the training corpus is absorbed into whatever is closest and
+disappears — which is exactly the thing worth finding. So `compare_to:` does not replace
+the refit, it annotates it: each refit group carries its members' cosine profile against
+the training centroids, and a group whose members are ALL below the floor is flagged
+`elicited_not_taught`. Centroids for that comparison are recomputed from the prior run's
+raw embeddings rather than read from its `centroids.npy`, because a run that clustered
+under `reduce: umap` wrote centroids in a space no new point can be placed in without the
+fitted reducer.
+
+**Also.** `baseline_grouping:` implements Callum's 2026-08-17 note — validate that UMAP is
+doing anything by clustering the same vectors without it, and write the ARI/AMI and
+neighbourhood overlap next to the result rather than assuming. And
+`producers/{feature_discovery,turf,less}/` are now empty placeholder packages: they were
+reading foreign `scratch/` run directories, which made the artifacts an interface nobody
+had agreed to. `resolve()` raises with the path to port instead.
+
+**Result.** 876 tests pass. An offline wiring check drives the new config end to end
+(pooled two-arm source -> grouping -> ranking -> report) with the embedding and interpreter
+calls stubbed.
+
+**Next steps.** Point `configs/properties/discover_odcv_rollouts.yaml` at the five real
+ODCV run directories and run it; the `compare_to.run_dir` needs a completed da716
+trace_clusters run to compare against. Add GSM8K rollouts as a control — the
+reasoning-length collapse this is chasing is supposed to be ODCV-specific, and if it shows
+up there too the story changes.
+
 ## 2026-08-18 — Fabrication sweep on the LESS-swap arm: 73.8%, on the synth-fraction ladder but not on its failure mode
 
 **Hypothesis:** the LESS-swap arm's fabrication rate on the established 31-prompt sweep is
@@ -1138,6 +1396,80 @@ published to `LASR-Callum/2026-08-18-odcv-lessswap716-eval`. ~$20 total (H200 ~$
 LESS selection; (2) once trained, run it at these same settings rather than comparing against
 the legacy arm; (3) the 16k-vs-64k context finding applies to every prior ODCV arm and is worth
 a re-read of those results.
+## 2026-08-20 — SAE correlations on difficult-advice: verification is load-bearing, not ceremonial
+
+**Hypothesis.** Following the paper's §4.2/§5.2 (the loop that caught Tulu-3's "I hope it is
+correct" trigger), NPMI between prompt-channel and response-channel latents should surface
+couplings in our difficult-advice corpus that nobody hypothesized — spurious artifacts planted
+by the generate→rewrite pipeline, or scenario→behaviour links worth ablating.
+
+**Method.** Embedded the query channel of all four synth corpora (2×A100, ~50 min, ~$2.60;
+DA/PC/CR/PAR) to pair with E1's cached response embeddings. New tooling:
+`scratch/sae_properties/correlate.py` (chunked NPMI over 45,402 × 49,951 = 2.27e9 latent pairs —
+the full matrix is ~9GB and OOMs a laptop; hypergeometric test with Bonferroni over the whole
+tested family; per-latent cap so one prolific latent cannot fill the list; token-Jaccard
+label-similarity filter for "interesting") and `latent_freq.py` (cross-corpus frequency of named
+latents, GPU-free). Judge-verified the top 14 pairs — gemini-2.5-flash reads 150 documents per
+pair and answers per channel, giving honest P(B|A) vs P(B|¬A).
+
+**Result.** 23,269 pairs cleared NPMI ≥ 0.5; **20,409 survived Bonferroni at α=2.2e-11**, so
+chance is not the problem. Semantics are: **5 of the top 14 pairs were refuted outright** — the
+judge found the prompt-side property in *zero* of 150 documents — and SAE NPMI did not predict
+which (two refuted pairs scored 0.82 and 0.75, above most survivors). The refuted latents share a
+signature visible in the cross-corpus check: "Romance language connectors" 0.99, "structural
+delimiters" 0.99, "Western given names" 0.96, "creative-writing scene transitions" 0.95,
+"Slavic connectors" 0.91, **"Offensive request from the user" 0.84 — all of courtroom**, a corpus
+with no Slavic text, no fiction and (judge-confirmed) no offensive requests. They are syntactic
+detectors wearing semantic labels from the SAE's LMSYS training distribution, firing on
+courtroom's rigid prosecutor/defence/judge structure. Substantively, the strongest *verified*
+coupling is AI-identity: prompts engaging the assistant's nature → responses explaining its
+nature, P(B|A)=1.00 vs 0.05 base (20× lift) — but cross-corpus frequency shows peer-critique
+equals or exceeds DA (0.23 vs 0.22), so it is an assistant-voice property, not a DA signature.
+What *is* DA-specific extends E1's domain-skew row into named domains with prompt→response
+coupling: nursing/healthcare staffing (0.35 vs 0.19/0.11/0.05) and ML-deployment governance
+(0.22 vs 0.07/0.04/0.05).
+
+**Next steps.** (1) **Relabel-then-rank**: relabel candidate latents on our corpus *before* the
+NPMI ranking, not just before reporting — the current top of the list is partly structural noise,
+and the paper's relabeling step is what prevents this. (2) Take the healthcare / ML-deployment
+concentration to the Tulu-3 payoff step: counterfactual prompts inside vs outside those domains,
+measured on a trained organism. (3) The table2 contrast (docs §8.2) is still the only way to test
+constitution-over-mention. Artifacts: `output/sae_properties/e1_70b/corr_difficult_advice_queryxresponse/`.
+
+## 2026-08-19 — SAE dataset diffing (E1): the 70B run separates the four synth corpora, and names how
+
+**Hypothesis.** SAE embeddings (arXiv:2512.10092, run with the authors' own vendored code +
+the open Goodfire Llama-3.3-70B layer-50 SAE) can produce judge-verified properties that
+distinguish difficult-advice data from peer-critique / courtroom / post-action-retrospection —
+the "on what" behind the 2026-08-17 BoW separability AUCs, at property (not scalar) resolution.
+
+**Method.** `scratch/sae_properties/` (design: `docs/sae_property_extraction.md`): embed the
+response channel of 4 corpora (DA-v2 1000, PC 1000, CR 1000, PAR 576 docs, 2048-token cap)
+with the official reader on a 2×A100 pod; per-dataset latent frequencies → target minus max-of-
+others (patched upstream, which assumed equal corpus sizes and doc-slot alignment); top-200
+latents relabeled/scored; 15 hypotheses; every hypothesis judged on every document
+(gemini-2.5-flash — 3.7-flash is capacity-capped at 300 RPM on OpenRouter and unusable at
+this volume). Artifacts: `output/sae_properties/e1_70b/` (embed caches reusable for
+correlations/clustering at zero GPU cost); ~$11 GPU + ~$8 API.
+
+**Result** (`output/sae_properties/e1_70b/diff_difficult_advice/report.md`). DA leads all 15
+verified properties. Three kinds of separation: (1) *behavioural* — states its own limitations
+as refusals (0.56 vs 0.25–0.37), offers to act for the user (0.67 vs 0.41–0.54), asks
+clarifying questions (0.14 vs 0.02–0.06); (2) *value-content* — ethics of manipulating public
+perception/concealment (0.64 vs 0.14–0.27), oversight-being-circumvented (0.70 vs 0.18–0.55);
+(3) *scenario-domain skew* — social-service casework (0.59 vs ≤0.15), program
+metrics/funders (0.72 vs ≤0.57), AI-bias content (0.30–0.50) — quantifying the 2026-08-12
+manual "not diverse in scenario" finding. Constitution-over-mention did NOT surface: all four
+corpora share the constitution grounding, so target-vs-others cancels it — testing that needs
+DA vs the table2 background mixture as the comparison set. Operational traps hit and fixed
+in-repo: upstream never frees the reader between corpora (second load in one process OOMs →
+one corpus per process via resume-skip), and stale verification dirs from a killed run
+must be excluded by hypothesis-count + report timestamp, not path order.
+
+**Next.** (1) DA vs table2 background (the constitution-mention contrast). (2) E2 organism
+diffing on LMSYS prompts; E3 eval-transcript-seeded diffing. (3) Feed the 15 properties into
+`src/properties/` as an `sae_diff` producer with detectors. (4) Push artifacts to HF.
+
 ## 2026-08-18 — `src/properties/`: one List of Properties, and the ablations that test it
 
 **Why.** Four property-discovery methods were each growing their own embedding call, their

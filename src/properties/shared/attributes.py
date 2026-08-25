@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
 from src.properties.sources.base import CHANNELS, Record
 
@@ -297,10 +298,105 @@ def parse(text: str, spec: AttributeSpec) -> list[str]:
         from src.utils import extract_json
 
         parsed = extract_json(text)
+        # The contract asks for a bare array and the model mostly obliges, but ~2% of
+        # replies wrap it as {"features": [...]}. That is the same content in a different
+        # envelope, and rejecting it costs those records' coverage for no reason. A dict
+        # with exactly one list value is unwrapped; anything else still fails loudly.
+        if isinstance(parsed, dict):
+            lists = [v for v in parsed.values() if isinstance(v, list)]
+            if len(lists) == 1:
+                parsed = lists[0]
         if not isinstance(parsed, list) or not all(isinstance(x, str) for x in parsed):
             raise ValueError(f"expected a JSON array of strings, got {text[:300]!r}")
         return [re.sub(r"\s+", " ", x).strip() for x in parsed if x.strip()]
     return parse_numbered(text, spec.n)
+
+
+def extract_to(records: list[Record], spec: AttributeSpec, path: str | Path,
+               workers: int = 16, client=None) -> list[dict]:
+    """Extract attributes, appending each record's as it lands, and resuming a partial run.
+
+    Extraction is the expensive stage — one model call per record over a whole corpus —
+    and the one most likely to be interrupted. Writing the file only at the end means a
+    run killed at 95% has bought nothing. So each result is appended under a lock as it
+    arrives, and a rerun against the same file labels ONLY the records it does not already
+    hold.
+
+    Args:
+        records: The records to describe.
+        spec: How to extract.
+        path: The jsonl to append to and resume from.
+        workers: Concurrent requests.
+        client: An OpenRouterClient; one is built when omitted.
+
+    Returns:
+        One row per record, in `records` order — cached and freshly extracted alike.
+    """
+    import json as _json
+    import threading
+
+    from src.endpoints.openrouter import OpenRouterClient, map_threaded
+
+    spec = spec.validate()
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    done: dict[str, dict] = {}
+    if target.exists():
+        for line in target.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                row = _json.loads(line)
+                # A previous run's failures are retried rather than inherited: an error
+                # row is an absence of evidence, and caching it would make a transient
+                # rate-limit permanent.
+                if not row.get("error"):
+                    done[row["record_id"]] = row
+
+    todo = [r for r in records if r.record_id not in done]
+    if done:
+        print(f">>> resuming: {len(done)} records already labelled in {target}, "
+              f"{len(todo)} to go")
+    if todo:
+        client = client or OpenRouterClient()
+        lock = threading.Lock()
+        handle = target.open("a", encoding="utf-8")
+        try:
+            def run(i: int) -> dict:
+                row = _extract_one(todo[i], spec, client)
+                with lock:
+                    handle.write(_json.dumps(row, ensure_ascii=False) + "\n")
+                    handle.flush()
+                return row
+
+            for row in map_threaded(run, len(todo), max_workers=workers,
+                                    desc=f"attributes ({spec.style}/{spec.channel})"):
+                done[row["record_id"]] = row
+        finally:
+            handle.close()
+    return [done.get(r.record_id,
+                     {"record_id": r.record_id, "attributes": [], "tokens_in": 0,
+                      "tokens_out": 0, "error": "missing"})
+            for r in records]
+
+
+def _extract_one(record: Record, spec: AttributeSpec, client) -> dict:
+    """Extract one record's attributes.
+
+    Args:
+        record: The record.
+        spec: How to extract.
+        client: An OpenRouterClient.
+
+    Returns:
+        The row, carrying `error` instead of attributes when the call or parse failed.
+    """
+    try:
+        result = client.chat(model=spec.model, messages=build_messages(record, spec),
+                             temperature=spec.temperature, max_tokens=spec.max_tokens)
+        return {"record_id": record.record_id, "attributes": parse(result.content, spec),
+                "tokens_in": result.prompt_tokens, "tokens_out": result.completion_tokens}
+    except Exception as exc:  # noqa: BLE001 - recorded per record, never swallowed
+        return {"record_id": record.record_id, "attributes": [], "tokens_in": 0,
+                "tokens_out": 0, "error": f"{type(exc).__name__}: {exc}"[:300]}
 
 
 def extract(records: list[Record], spec: AttributeSpec, workers: int = 16,

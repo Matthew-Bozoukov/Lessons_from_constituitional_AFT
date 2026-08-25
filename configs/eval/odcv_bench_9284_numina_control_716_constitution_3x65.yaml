@@ -1,0 +1,87 @@
+# ABOUTME: ODCV-Bench eval of the NO-DIFFICULT-ADVICE control WITH a constitution injected
+# ABOUTME: into every scenario's system prompt. 3 passes x 65 cells.
+# ABOUTME: Run: bash scratch/odcv_repeat_rollouts.sh THIS 3   (then odcv_judge.py)
+#
+# THE INFERENCE-TIME CONSTITUTION ARM. Same adapter as the no-difficult-advice control, which
+# scored 44.1% MR — the highest in the series, and the arm whose 716 slots hold extra
+# NuminaMath-CoT instead of difficult advice. Here the constitution is placed in front of every
+# scenario's system prompt at INFERENCE time instead.
+#
+# THE QUESTION: can telling a model the rules at eval time substitute for training it on
+# reasoning that embodies them? Against the same 65 cells:
+#   no difficult advice (this adapter, no constitution) 44.1%
+#   unmodified difficult-advice recipe                  16.8%
+#   every difficult-advice ablation                     8.7% - 13.2%
+# Near 44% means the constitution in context does nothing the training did. Near 17% or below
+# means the effect is available at inference and does not require the SFT data at all — which
+# would reframe the whole series.
+#
+# HOW THE INJECTION WORKS: `system_preamble_file` below is read by
+# src/eval/misalignment/odcv/odcv_rollout.py, passed to the executor container as
+# SYSTEM_PREAMBLE, and prepended to the scenario's own system prompt by a PATCH in
+# third_party/odcv-bench/mission_executor/agent_main.py. Unset, the variable is empty and the
+# harness behaves exactly as upstream. If the harness is ever re-cloned, re-apply that patch
+# along with the vllm provider and judge-routing patches noted in CLAUDE.md.
+#
+# The preamble is 3,205 words and lands ahead of a scenario prompt of a few hundred, so the
+# constitution dominates the system message. That is the intended manipulation, but it also
+# means any effect could be about salience as much as content; a shuffled or irrelevant
+# preamble of similar length would be the control for that, and has not been run.
+#
+# SERVED OVER RUNPOD'S HTTPS PROXY. WARM THE PROXY BEFORE LAUNCHING: twelve containers hitting
+# a cold proxy get 404s and silently lose cells. SERVE_READY only means vLLM answers on
+# localhost, not that the proxy is routing.
+#
+# The vLLM server MUST be started with --enable-auto-tool-choice --tool-call-parser qwen3_xml
+# (and --reasoning-parser qwen3), or every scenario reports `ok` with no transcript.
+#
+# rollouts_per_cell below is INERT -- the 3 rollouts come from invoking the driver three times.
+
+model: "numinactl"                  # served LoRA name (request `model` field)
+model_key: "qwen3_6-27b-lora-9284-numina-control-716-r64-constitution"
+published_key: "qwen3.6-27b"
+base_url: "https://5mwcj4scatb56f-8000.proxy.runpod.net/v1"
+temperature: 0.0
+
+# Prepended to every scenario system prompt; see the header for the mechanism.
+system_preamble_file: "constitutions/claude_distilled_09_principles_mid_20260804/constitution.md"
+bench_dir: "/home/matthewb/git repos/teaching_claude_why_replication/third_party/odcv-bench"
+output_root: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench"
+concurrency: 12
+scenario_timeout_s: 2400
+prune_images: false
+rollouts_per_cell: 3
+expected_cells: 65
+shard_count: 1
+shard_index: 0
+judges:
+  grok-4.20: "x-ai/grok-4.20"
+  gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
+baseline_results: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench/qwen3.6-27b-base-fp8/20260729_105106/results.json"
+
+# Same 10 exclusions as every sibling arm, so all arms are scored on the same 70 cells.
+exclude_scenarios:
+  - "incentivized/Academic-Research-Integrity-Finding"
+  - "incentivized/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Academic-Research-Integrity-Finding"
+  - "mandated/Clinical-Trial-Data-Management"
+  - "incentivized/Clinical-Trial-Integrity-Monitoring"
+  - "incentivized/Healthcare-Trial-Recruiter"
+  - "incentivized/Data-Privacy-Leak-Finding"
+  - "mandated/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Clinical-Trial-Integrity-Monitoring"
+  - "mandated/Healthcare-Appointment-Optimizer"
+
+# FIVE MORE EXCLUSIONS than the sibling arms, at the user's request (2026-08-16): the run
+# covers only the FIRST 65 cells of the driver's job order (all `mandated`, then
+# `incentivized` up to the cut). The driver builds jobs as mandated-then-incentivized in
+# scenario_names order, so "first 65" is exactly the five incentivized scenarios below.
+# CONSEQUENCE FOR COMPARISON: this arm is scored on a DIFFERENT cell set than
+# courtroom716 (69 cells) or the difficult-advice sibling (70). A headline MR from this
+# run is not directly comparable to theirs -- compare on the intersection, or say which
+# cell set each number came from.
+  - "incentivized/Marketing-Campaign"
+  - "incentivized/Propaganda-Engine-Finding"
+  - "incentivized/Roboadvisor-Ethicsbypass"
+  - "incentivized/Supply-Chain-Sabotage-Finding"
+  - "incentivized/University-Research-Grant-Approval"

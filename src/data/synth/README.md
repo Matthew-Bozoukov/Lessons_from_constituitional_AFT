@@ -168,14 +168,32 @@ no `dataset.jsonl` (`manifest.json`'s `dataset` field is null).
 
 ## Document type: difficult advice (`configs/data/synth/difficult_advice.yaml`)
 
-A faithful replication of the difficult-advice recipe from
+Derived from the difficult-advice recipe in
 [Teaching Claude Why](https://alignment.anthropic.com/2026/teaching-claude-why/), as a
 7-entry stage list: `chunk_constitution` → `write_scenarios` → `draft_prompts` →
-`revise_prompts` (full constitution injected) → `draft_responses` → `revise_responses` →
-`export_sft`. In prose: segment → scenarios → draft → refine (full constitution injected) →
-respond (trait + style guidance) → **rewrite against the constitution (the critical
-step)** → chat export with the trait carried in metadata. Output and HF cache names
-keep their historical `synthdoc_v2` prefixes so existing snapshots stay resumable.
+`revise_prompts` → `draft_responses` → `revise_responses` → `export_sft`. In prose:
+segment → scenarios → draft → refine → respond (chunk + style guidance) → **rewrite
+against the target principle (the critical step)** → chat export with the trait carried in
+metadata.
+
+**No stage is ever shown more than the one principle it targets.** Until 2026-08-24
+`revise_prompts` and `revise_responses` were each handed the WHOLE constitution; both
+injections were removed after a matched-pair test (identical scenarios and draft prompts,
+trained as the da716 organism, ODCV over the same 65 cells) put the chunk-only recipe at
+MR 11.5% [6.2, 19.6] against the full-constitution recipe's 16.3% [10.0, 21.8] — overlapping
+intervals, so no detectable cost, and the simpler, cheaper recipe became the default. The
+previous recipe is preserved verbatim as `difficult_advice_full_constitution.yaml` for
+regenerating corpora published before that date.
+
+Two things the swap also does, both recorded in the config header: it withholds the
+constitution's *preamble* (the priority / conflict-resolution section belongs to no chunk,
+so it reached the generator only through the removed slots), and it raises Anthropic's
+content-filter refusal rate on `revise_prompts` from ~0% to ~6%, deterministically. The
+other document types still inject the whole constitution in their own refine stages; the
+experiment covered difficult advice only.
+
+Output and HF names moved from the historical `synthdoc_v2` prefix to `synthdoc_v3` with
+the default swap, so pre-2026-08-24 snapshots stay resumable under the legacy config.
 This replaced the config-driven v1 (deleted 2026-08-03, git history).
 
 ## Document type: pre-action deliberation (`configs/data/synth/pre_action_deliberation.yaml`)

@@ -34,7 +34,17 @@ def hf_token() -> str | None:
     The bare hub helpers read only HF_TOKEN/cached logins; everything in this repo
     resolves through here instead, so private-repo READS (a private adapter's
     training_meta.json, a private cache entry) work wherever pushes do.
+
+    `.env` is loaded HERE rather than being inherited from whichever import happened to
+    call `load_dotenv()` first. Until 2026-08-20 that was a side effect of importing
+    `src.endpoints.openrouter`, so an entry point that only needed the Hub — a push
+    script, a card refresh — got a bare `401 Unauthorized` from `create_repo` after doing
+    all of its work. `load_dotenv` does not override an env var that is already set, so
+    calling it on every resolution is free and cannot shadow a deliberate export.
     """
+    from dotenv import load_dotenv
+
+    load_dotenv()
     return os.environ.get("HUGGINGFACE_API_KEY") or os.environ.get("HF_TOKEN")
 
 
@@ -206,6 +216,33 @@ def resolve_dataset(repo_id: str, filename: str | None = None,
     chosen = pick_data_file([s.rfilename for s in info.siblings], filename)
     local = hf_download(repo_id, chosen, repo_type="dataset", revision=info.sha)
     return local, {"repo": repo_id, "file": chosen, "revision": info.sha}
+
+
+def resolve_run_dir(repo_id: str, revision: str | None = None,
+                    local_dir: str | Path | None = None) -> tuple[str, dict]:
+    """Pin a whole dataset repo to an exact revision and fetch it as a directory.
+
+    `resolve_dataset` is the one-jsonl flavour and is what a training mixture needs. A run
+    directory is not one file: an eval run is a tree of per-rollout transcripts plus its
+    score and metadata files, and every consumer walks it with `rglob`. This is the same
+    contract — repo id in, exact sha out — for that shape.
+
+    Args:
+        repo_id: HF dataset repo id (`org/name`).
+        revision: Branch/tag/sha to pin; defaults to the repo's current head.
+        local_dir: Materialise into this directory instead of the shared HF cache. Worth
+            passing on Windows, where the cache cannot use symlinks and a cached tree is
+            awkward to read by path.
+
+    Returns:
+        (local directory, {"repo", "revision"}) with `revision` the resolved commit sha.
+    """
+    assert _HF_REPO_ID.match(repo_id) and not Path(repo_id).exists(), (
+        f"{repo_id!r} is not an HF dataset repo id (org/name)")
+    info = hf_api().repo_info(repo_id, repo_type="dataset", revision=revision)
+    path = hf_snapshot(repo_id, repo_type="dataset", revision=info.sha,
+                       **({"local_dir": str(local_dir)} if local_dir else {}))
+    return path, {"repo": repo_id, "revision": info.sha}
 
 
 def push_run_dir(out_dir: Path, repo_id: str, fields: dict, private: bool = False,
