@@ -74,9 +74,11 @@ class ProducerSpec:
 
 PRODUCERS: dict[str, ProducerSpec] = {
     "clusters": ProducerSpec("clusters"),
+    "sae_diff": ProducerSpec("sae_diff"),
     "turf": ProducerSpec("turf", needs_target=True, scratch_path="scratch/turf"),
-    "less": ProducerSpec("less", needs_target=True, needs_gpu=True,
-                         scratch_path="scratch/less"),
+    "less": ProducerSpec(
+        "less", needs_target=True, needs_gpu=True, scratch_path="scratch/less"
+    ),
 }
 
 
@@ -102,6 +104,7 @@ def resolve(name: str):
             f"{spec.scratch_path}. Port it into "
             f"src/properties/producers/{spec.package}/__init__.py as a "
             "produce(records, cfg, out_dir, target=None) -> list[Property], or drop it "
-            "from this config's `producers:` block.")
+            "from this config's `producers:` block."
+        )
     module = f"src.properties.producers.{spec.package}"
     return importlib.import_module(module).produce
