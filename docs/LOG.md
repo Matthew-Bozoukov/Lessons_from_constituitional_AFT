@@ -3,6 +3,67 @@
 
 # LOG
 
+## 2026-08-25 - PAR flawed arm audited: 288 rows exist, not 716, and the run is a third cheaper than the estimator says
+
+**Hypothesis:** the post-action-retrospection flawed arm is ready to fill the 716-row
+synthetic slot the Table-2 mixtures use (`da716`, `courtroom716`, `peercritique716`), and
+the config's prompts carry no confound that would make those arms incomparable.
+
+**Method:** read the pipeline, then audited the corpus that already exists --
+`LASR-Callum/2026-08-17-post-action-retrospection`, which the 2026-08-16 entry recorded as
+"green-lit and not yet started". Nothing was generated. Corpus statistics, scaffold-leakage
+tests and the cost reconstruction are in `scratch/par/cost_model.py` and the numbers below.
+
+**Result: the arm is 288 rows, not 716.** The run used `total_scenarios=600` (a CLI
+override; the config still says 2,100), yielding 576 records at exactly 288 flawed / 288
+good. Strict filtering leaves **248 usable flawed**: minus 4 `quality_filter` drops (2
+tagged `invents_faults`) and minus 36 whose reflection returned `held` against the verdict
+`known_flaw_note` mandates. Reaching 716 needs a new run -- a resume cannot grow it, since
+`pipeline.run` reuses a complete stage snapshot wholesale and ignores the new
+`total_scenarios`, and the per-scenario `.partial` checkpoints were never pushed.
+
+**The data itself is good.** No scaffold leakage: the `change_summary` never appears in a
+training message, the 84/288 five-gram overlaps are the reflection quoting the same line of
+the original reply, and all 14 regex "meta-reference" hits are in-domain false positives
+(checked by hand). Zero near-duplicate pairs; max top-8gram share 0.082 against a 0.20
+gate. Verdicts non-degenerate in both arms (flawed 252 revised / 36 held; good 242 held /
+46 revised). One check is missing rather than passed: `corpus:pattern_scan` raised on 73.9%
+item failure.
+
+**Four confounds, all by design, all sharpened by dropping the good arm.** (1) The
+follow-up writer is handed the lapse (`followup_flaw_hint`) and told to aim the question at
+it, so in a flawed-only corpus every follow-up lands on a real fault. (2) The reflection
+generator is unblinded and its verdict is mandated `revised` -- 87.5% of trained turns are
+capitulations, which is the failure the config's own header says the good arm exists to
+prevent. (3) First-turn authorship differs by arm: flawed keeps the Gemini draft (mean 352
+words), good ships the Sonnet revision (440), a tell the `surface_auc` gate exists to catch
+-- and which that gate cannot catch at all in a single-arm corpus, where it degrades to
+`gated: false, pass: true`. (4) PAR exports 5 messages / 2 assistant turns where
+difficult-advice, courtroom and peer-critique export 3 / 1, so a PAR-716 mixture carries
+716 extra unsupervised assistant turns and a different token profile from the arms it would
+be compared against.
+
+**Cost: $0.0779/record, not the $0.1190 the tooling reports.** Two independent drifts.
+The `assumed_tokens` priors are the archived self arm's and wrong in both directions
+(`refine` assumes 2,400 input against a real ~9,100 -- the prior forgot the constitution;
+`rewrite` assumes 4,500 output against a measured 1,985), and they partly cancel, which is
+why the total looked plausible. Separately `cost_of` bills cached prompt tokens at the full
+input rate; that is deliberate and documented in `Usage.add` -- it keeps `budget_usd` a
+ceiling -- but it makes the 7,476-token cached constitution, re-sent on three of four
+Sonnet stages, cost 10x what it does. `scratch/par/cost_model.py` reconstructs per-stage
+cost from the published text, calibrated at 3.08 chars/token against `rewrite` and asserted
+back against that stage's real spend.
+
+**Next steps:** (1) top up rather than regenerate -- ~975 more scenarios at 50/50 gives
+both 716-row arms for **~$76**, against ~$144 to regenerate the 50/50 corpus fresh or ~$72
+for a flawed-only 920 that throws the existing 288 good rows away; `build_mixture` takes
+two `dataset:` sources, so the merge is a mixture-time concern. (2) Prefix scenario ids on
+merge (`t1_b00_s000` regenerates identically) and run an embedding dedup across the merged
+716 -- the diversity `avoid` steer only sees its own run. (3) Diagnose `pattern_scan`'s
+73.9% failure before the next run. (4) Keep the good arm: confounds 1-3 are measurable only
+against it, and peer-critique already ships both halves
+(`table2-9284-peer-critique-716-train` and `-good716-train`).
+
 ## 2026-08-20 - ODCV on the LESS pair: 0.4% vs 4.3%, and neither number is comparable to any earlier arm
 
 **Hypothesis:** the LESS top-10% arm and its random-220 control (trained 2026-08-19) can be

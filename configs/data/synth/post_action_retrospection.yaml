@@ -67,8 +67,13 @@
 # archived configs; since 2026-08-14 (`peer_critique.yaml` rebuilt on the generic
 # operators) nothing live is written against it.
 #
-# NOT YET RUN. Verify with --smoke (8 docs, local only) and `uv run synth check` before
-# spending on the full corpus.
+# RUN ONCE, PARTIALLY: 2026-08-17 at `total_scenarios=600` (overridden on the CLI, not
+# here), yielding 576 records -- 288 flawed / 288 good -- at
+# `LASR-Callum/2026-08-17-post-action-retrospection`. NOT the 2,100 below, which has
+# never been generated. The corpus audited clean (no scaffold leakage, 0 near-duplicate
+# pairs, 1.4% quality_filter drops) but `corpus:pattern_scan` errored out rather than
+# reporting -- 73.9% of scan items failed, cause not yet diagnosed -- so that one
+# property is unmeasured on this run. See docs/LOG.md 2026-08-25.
 
 pipeline: post_action_retrospection
 
@@ -84,11 +89,15 @@ hf_repo_smoke: null
 hf_private: false
 
 workers: 16
-# Re-price with `uv run synth estimate --config <this file>` and again with
-# `--measured <smoke manifest>` before committing -- the token priors are carried over
-# from the old self arm and the prompt-writing stages are guesses. ($283.91 estimated
-# 2026-08-14 with Gemini drafting; 330 leaves headroom for retries without leaving the
-# guard meaningless.)
+# The `assumed_tokens` priors below are still the old self arm's and are wrong in BOTH
+# directions -- `refine` assumes 2,400 input tokens against a real ~9,100 (the prior
+# forgot the constitution), `rewrite` assumes 4,500 output against a measured 1,985 --
+# so `synth estimate` on this file is not a spending number. The errors partly cancel,
+# which is why the total looked plausible. Measured off the 2026-08-17 run:
+# $0.0779/record real, $0.1190/record as `cost_of` bills it (it prices cached prompt
+# tokens at the full input rate on purpose, so `budget_usd` trips early -- see
+# `Usage.add`). Re-derive with `uv run python scratch/par/cost_model.py` before sizing a
+# run; 330 keeps the guard's headroom at the 2,100 below.
 budget_usd: 330.0
 
 smoke:
