@@ -1,31 +1,22 @@
-# ABOUTME: Ablation arm of difficult_advice: the two refine stages see ONLY their target
-# ABOUTME: chunk. Run: uv run synth run --config configs/data/synth/difficult_advice_chunk_only.yaml [--smoke]
-
-# WHAT THIS ABLATES, and nothing else. In the baseline recipe
-# (`configs/data/synth/difficult_advice.yaml`) exactly two of the five LLM stages inject the
-# WHOLE constitution: `revise_prompts` and `revise_responses`. Every other stage already
-# sees only its target chunk (`{trait_name}`/`{trait_text}`). Here those two injections are
-# deleted, so no stage in the pipeline ever sees more than one principle at a time.
+# ABOUTME: LEGACY difficult-advice recipe: the two refine stages are shown the WHOLE
+# ABOUTME: constitution. Superseded as the default on 2026-08-24; kept to regenerate old corpora.
 #
-# Two consequences the reader must hold on to:
-#   1. The constitution's PREAMBLE -- the priority / conflict-resolution section that says
-#      how principles trade off -- belongs to no chunk, so at `principle` granularity it
-#      reached the model ONLY through those two `{constitution}` slots. This arm therefore
-#      removes the trade-off guidance from the corpus entirely, not just the other eight
-#      principles. That is the thing being measured.
-#   2. `revise_responses`'s "never name the constitution" instruction was phrased as "you
-#      have been shown it so you can apply it" -- false here, so it is re-phrased below.
-#      The BAN is unchanged; only the justification for it moved.
+# THIS IS NO LONGER THE DEFAULT. `configs/data/synth/difficult_advice.yaml` is, and it
+# differs from this file in exactly one way: the `<constitution>{constitution}</constitution>`
+# block is deleted from `revise_prompts` and `revise_responses`, so no stage sees more than
+# the one principle it targets. A matched-pair comparison (identical scenarios, identical
+# draft prompts, trained as the da716 organism, ODCV over the same 65 cells) put the two
+# recipes at MR 11.5% [6.2, 19.6] chunk-only vs 16.3% [10.0, 21.8] here -- overlapping, so
+# no detectable cost to dropping the injection, and the simpler and cheaper recipe won the
+# default.
 #
-# Everything else is byte-identical to the baseline. Intended run shape: resume a copy of a
-# baseline run directory with stages 1-4 in place (chunk_constitution, write_scenarios,
-# dedupe_scenarios, draft_prompts -- none of which this ablation touches), so the two arms
-# share identical scenarios and identical draft prompts and differ only in the refine
-# prompts. Regenerating stages 1-4 instead would confound the ablation with a fresh
-# sampling draw.
+# Use this file to REGENERATE A CORPUS PUBLISHED BEFORE 2026-08-24 (the da716 /
+# synthdoc-716 family and anything built on them), or to re-run the comparison. Do not
+# start new work from it without a reason to want the whole document in the refine prompts.
+# Run: uv run synth run --config configs/data/synth/difficult_advice_full_constitution.yaml [--smoke]
 
 # Label recorded in manifests; the `stages:` list below IS the document type.
-pipeline: difficult_advice_chunk_only
+pipeline: difficult_advice_full_constitution
 
 # STAGE NAMES CHANGED 2026-08-13, for legibility: every stage now says what it does.
 #   traits -> chunk_constitution      refined_prompts -> revise_prompts
@@ -57,9 +48,8 @@ smoke:
 
 seed: 0
 
-# Stage 1 segments this into its numbered units (## <n>. headings). NO stage injects the
-# whole document in this arm -- that is the ablation. Stages 2, 5, 6 and 7 inject the single
-# target chunk and nothing else.
+# Stage 1 segments this into its numbered units (## <n>. headings). Stages 4 and 6
+# inject the whole document; stages 2, 4, 5 and 6 also inject the single target trait.
 # Default since 2026-08-03: the specgen mid arm. NOTE: the document was re-cut from
 # twelve units to ten on 2026-08-04, then on 2026-08-05 set byte-identical to the NINE-
 # principle state the 2026-08-04 source corpus was generated against (the frozen
@@ -85,34 +75,27 @@ chunking: principle
 # Corpus size. `total_scenarios` splits a fixed budget across however many units the
 # chunking produced, and WINS over `scenarios_per_trait` — so the corpus stays the same
 # size if `chunking:` changes, and a chunking comparison is not secretly a data-scaling
-# comparison.
-#
-# 716 -- the size of the difficult-advice share of the table-2 training mixture, which is
-# what this corpus is built to swap into. NOT the baseline's 2,000: this arm only has to be
-# large enough to replace that share, and a smaller matched pair is the cheaper experiment.
-# The 716 are drawn trait-balanced (80x t1-t5, 79x t6-t9) from the baseline arm's 1,968
-# SURVIVORS, so the same 716 scenario_ids exist in both arms and the comparison is paired
-# row-for-row rather than confounded by which rows each arm happened to lose. The draw is
-# seeded (0) and lives in the run dir this config is resumed into, not in this file.
-total_scenarios: 716
+# comparison. 2,000 as of 2026-08-13 to size the v2 corpus against v1's 2,203.
+total_scenarios: 2000
 # Retained as the fallback when `total_scenarios` is unset; 9 x 77 = 693.
 scenarios_per_trait: 77
 # Requested per API call. A single call for all 40 would overrun max_tokens and truncate
 # its JSON; batching also keeps each call's "vary the domain" instruction achievable.
 scenarios_per_call: 8
 
-# Its own directory: this arm is seeded by COPYING a baseline run's stages 1-4 into a fresh
-# dir here and resuming it, so the two arms never share a run directory and the baseline's
-# stage 5-8 snapshots can never be silently reused.
-output_dir: "output/synthdoc_v2_chunk_only"
+# Keeps its historical synthdoc_v2 name (as do the HF repos below) so existing run
+# snapshots stay resumable.
+output_dir: "output/synthdoc_v2"
 
 # Every stage's complete output is mirrored here as stage_<n>_<name>.jsonl, so a run can
 # resume from any stage and each stage is inspectable on its own.
-# Its own mirror. This is a DIFFERENT recipe from the one behind
-# `2026-08-13-difficult-advice-v2` -- the two refine prompts differ -- so its output must
-# never be appended to that repo, which stays the record of the baseline arm.
-hf_repo: "LASR-Callum/2026-08-21-difficult-advice-v2-chunk-only-716"
-hf_repo_smoke: "LASR-Callum/2026-08-21-difficult-advice-v2-chunk-only-smoke"
+# New repo from 2026-08-13: this recipe is not the one that produced
+# `synthdoc-v2-difficult-advice` (enforced scenario diversity, lint blocks on both
+# reasoning stages, a restructured deliberation spec, and a renumbered stage list), so its
+# output must not be appended to that mirror. The v1 repo stays as the record of the
+# corpus every result to date was measured on.
+hf_repo: "LASR-Callum/2026-08-13-difficult-advice-v2"
+hf_repo_smoke: "LASR-Callum/2026-08-13-difficult-advice-v2-smoke"
 hf_private: false
 
 # 16 concurrent calls roughly halves wall clock vs 8 at no extra cost; OpenRouter
@@ -120,11 +103,9 @@ hf_private: false
 workers: 16
 # Hard stop: the run aborts between stages once spend passes this. Snapshots are kept, so
 # raising it and re-running resumes rather than restarts.
-# The baseline measured $234 for 2,000 records end to end. This arm is strictly CHEAPER:
-# it drops a ~4.6k-token constitution from every `refine` and `rewrite` call, and those are
-# the two Sonnet stages. It is also resumed from stages 1-4, so the Haiku stages are not
-# paid for again. Guard left at the baseline's 300 so a runaway still stops in the same
-# place; expect well under half of it.
+# $234 measured for 2,000 records: $206 generation (pilot-measured $0.1030/record, NOT
+# the estimator's assumed priors, which run ~3x low) + ~$28 for pattern_scan. 300 leaves
+# headroom for retries without leaving the guard meaningless.
 budget_usd: 300.0
 
 defaults:
@@ -201,9 +182,7 @@ models:
     assumed_tokens: {in: 9000, out: 200}
 
 # --- The pipeline itself: stages executed in order by src/data/synth ------------
-# Prompt placeholders are record fields plus {constitution} and {style_guidance}. This arm
-# uses NEITHER {constitution} slot; {style_guidance} stays (it is tone guidance, not a
-# principle, and the baseline injects it at draft_responses only).
+# Prompt placeholders are record fields plus {constitution} and {style_guidance}.
 stages:
 - name: chunk_constitution
   kind: segment
@@ -356,8 +335,13 @@ stages:
       You improve draft training prompts so they test a specific value precisely. You are terse
       and you do not pad.
     user: |-
-      This prompt is meant to put pressure on ONE principle from the assistant's
-      constitution. Here is that principle, and it is the only one you are shown:
+      Here is the full constitution the assistant is being trained against:
+
+      <constitution>
+      {constitution}
+      </constitution><<<cache>>>
+
+      This prompt is meant to put pressure on ONE principle in particular:
 
       <target_principle name="{trait_name}">
       {trait_text}
@@ -491,8 +475,13 @@ stages:
       You revise assistant responses so they maximally exhibit one specific principle. You
       preserve everything that already works and change only what falls short.
     user: |-
-      The principle this exchange must maximally exhibit. It comes from the assistant's
-      constitution, and it is the only part of that constitution you are shown:
+      Full constitution the assistant is trained against:
+
+      <constitution>
+      {constitution}
+      </constitution><<<cache>>>
+
+      The principle this exchange must maximally exhibit:
 
       <target_principle name="{trait_name}">
       {trait_text}
@@ -542,11 +531,10 @@ stages:
         thing that would go wrong. Enter mid-thought if that is where the thought starts.
         The first eight words should be impossible to reuse in any other transcript in
         this corpus -- that is the test, and it is the whole point of this instruction.
-      - **Never name the constitution.** The principle above is there so you can apply it,
-        not quote it -- and the document it came from must never be mentioned or alluded
-        to. The reasoning argues from what is at stake for the people involved, never from
-        what you are permitted or required to do. Any sentence that would survive being
-        moved into a different scenario is the wrong sentence.
+      - **Never name the constitution.** You have been shown it so you can apply it, not
+        quote it. The reasoning argues from what is at stake for the people involved, never
+        from what you are permitted or required to do. Any sentence that would survive
+        being moved into a different scenario is the wrong sentence.
       - **Take the request seriously** before evaluating it.
       - **Do not go along with the norm-violating path**, and give the reason in terms of
         what is concretely at stake, not in terms of rules.
@@ -566,11 +554,9 @@ stages:
       <changes>
       1-2 sentences on what you strengthened
       </changes>
-  # The stage that actually writes the trained text. The baseline injects the whole
-  # constitution here, which is where recital gets in; this arm does not, so the ban list is
-  # kept IDENTICAL on purpose -- a drop in these lint retries is itself a result, and it can
-  # only be read against the baseline if the gate did not move. Same block as
-  # draft_responses, minus `changes` (a 1-2 sentence note cannot meet min_chars).
+  # The stage that actually writes the trained text, and the one that injects the whole
+  # constitution -- so this is where recital gets in. Same block as draft_responses, minus
+  # `changes` (a 1-2 sentence note cannot meet min_chars).
   lint:
     fields:
     - reasoning
