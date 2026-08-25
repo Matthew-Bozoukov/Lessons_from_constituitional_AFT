@@ -41,9 +41,9 @@
 #
 #   turn 1  user       a difficult-advice message: real pressure toward a grey-area shortcut,
 #                      never named as one.
-#   turn 2  assistant  the assistant's earlier reply, written UNAIDED by a cheap non-Anthropic
-#                      model with nothing aligning in its prompt -- so the lapse is organic,
-#                      never planted -- and confirmed by `judge_first_turn` to have gone along.
+#   turn 2  assistant  the assistant's earlier reply, written UNAIDED by Haiku 4.5 with
+#                      nothing aligning in its prompt -- so the lapse is organic, never
+#                      planted -- and confirmed by `judge_first_turn` to have gone along.
 #                      Context only; never a training target (`supervise: final`).
 #   turn 3  user       a short follow-up about THIS exchange, in the person's voice: it lands
 #                      on the part of the reply where the lapse lives, and its lint forbids it
@@ -55,15 +55,22 @@
 # SMOKED 2026-08-25 (8 docs, $0.21, run dir output/post_action_retrospection/smoke_20260825_170649):
 # wiring green end to end, `synth check` all PASS, the three finished documents read as
 # intended (quality_filter 3/3 keep, flaw-identification 3/3). NOT YET GOOD TO GO for the full
-# corpus, for one measured reason: `judge_first_turn` kept 3/7. Every "AI-conduct" trait (t1
-# oversight, t4 harm, t6 identity, t7 operator adjustments) HELD -- Gemini declines to act
-# badly as the assistant -- while every "advise-a-human" trait (t3 honesty, t5 character, t8
-# helpfulness) VIOLATED. At corpus scale that is a 43% yield AND a trait skew. Before the
-# full run: a 40-document smoke per candidate first-turn author (`--overrides
-# smoke.total_scenarios=40,models.first_turn.model=<id>`; the base Qwen family also fixes
-# the author confound), read `check_gate_yield` per trait, then set `expected_keep` and
-# `total_scenarios` from the measured yield. Also seen: 1/8 `revise_prompts` refusals
-# (content filter, deterministic) and 1/8 JSON-shape misses -- the "lose a few rows" modes.
+# corpus, for one measured reason: `judge_first_turn` kept 3/7 with Gemini 3.7 Flash as the
+# first-turn author. Every "AI-conduct" trait (t1 oversight, t4 harm, t6 identity, t7
+# operator adjustments) HELD -- the model declines to act badly as the assistant -- while
+# every "advise-a-human" trait (t3 honesty, t5 character, t8 helpfulness) VIOLATED. At
+# corpus scale that is a 43% yield AND a trait skew. The author was then switched to Haiku
+# 4.5 (Anthropic-only recipe) and measured on the SAME seven prompts (stages 1-6 resumed
+# into output/post_action_retrospection/smoke_20260825_haiku_author, $0.16): Haiku kept
+# 2/7 -- t5 and t8 only; it also refused t3 outright, which Gemini had gone along with.
+# Same pattern, lower yield: an Anthropic model asked to act against oversight, its own
+# identity, an operator adjustment or real-world harm simply declines, and the only lapses
+# are grey-area ADVICE to a human (character, helpfulness, honesty-by-framing). At ~30%
+# yield the corpus costs ~3.5x per kept document and four of nine principles are nearly
+# empty. Decide before the full run (docs/LOG.md 2026-08-25 lists the options), then a
+# 40-document smoke, `check_gate_yield` per trait, and resize from the measured yield. Also
+# seen: 1/8 `revise_prompts` refusals (content filter, deterministic) and 1/8 JSON-shape
+# misses -- the "lose a few rows" modes.
 
 pipeline: post_action_retrospection
 
@@ -88,10 +95,10 @@ workers: 16
 # with the constitution framing the request as alignment-training data), deterministic across
 # a resample. Budget for losing a few rows; anything materially above this IS worth stopping.
 max_fail_pct: 8.0
-# Hard stop between stages once spend passes this. Estimated 2026-08-25 at $122.02 for
-# 2,700 planned / ~1,215 kept documents at the measured 0.45 keep prior ($155.72 at the
+# Hard stop between stages once spend passes this. Estimated 2026-08-25 at $113.61 for
+# 2,700 planned / ~810 kept documents at the measured 0.3 keep prior ($155.72 at the
 # original 0.75 prior: chunk-only refine $35, rewrite $53, judge $15). 200 leaves headroom
-# for retries and for a higher-yield author without leaving the guard meaningless.
+# for retries and for a higher-yield design without leaving the guard meaningless.
 # Re-estimate after any prompt, author or size change.
 budget_usd: 200.0
 
@@ -116,10 +123,11 @@ defaults:
   temperature: 1.0
   max_tokens: 4096
 
-# Difficult advice's models, stage for stage, wherever the stage IS difficult advice's. The two
-# stages this document type adds (the first reply and its judge) and the follow-up are the only
-# ones with their own choices, explained in place. Hidden extended thinking is pinned off on
-# every Sonnet stage: the visible <reasoning> block IS the deliberation, and Sonnet 5's hidden
+# Anthropic-only: Haiku 4.5 generates, Sonnet 5 judges, steers and rewrites -- difficult
+# advice's models, stage for stage, wherever the stage IS difficult advice's. The two stages
+# this document type adds (the first reply and its judge) and the follow-up are the only ones
+# with their own choices, explained in place. Hidden extended thinking is pinned off on every
+# Sonnet stage: the visible <reasoning> block IS the deliberation, and Sonnet 5's hidden
 # channel makes it drift in-character and skip the tagged scaffold (measured 2026-08-06).
 models:
   # Stage 2 -- difficult advice's scenario generator, same settings.
@@ -142,17 +150,18 @@ models:
     max_tokens: 6144
     reasoning: {enabled: false}
     assumed_tokens: {in: 2000, out: 900}
-  # Turn 2. Deliberately cheap, deliberately non-Anthropic, and deliberately NOT
-  # constitution-grounded: this reply is what a competent, busy assistant sends when leaned on,
-  # lapse included, and its lapse should not be Claude-flavored -- the Sonnet stages downstream
-  # judge and rewrite, and must not share a house style with the reply they judge. (The
-  # trained model is Qwen; that this turn is Gemini's prose and not Qwen's own is a recorded
+  # Turn 2. Cheap and deliberately NOT constitution-grounded: this reply is what a competent,
+  # busy assistant sends when leaned on, lapse included. Haiku 4.5 since 2026-08-25 (the whole
+  # recipe is Anthropic-only by decision; it was Gemini 3.7 Flash for the first smoke, which
+  # held on every AI-conduct trait -- see the header). Haiku is DA's generator, so the reply
+  # under examination shares its author with the scenarios. The Sonnet judge grades a
+  # same-family reply; watch `judge_first_turn`'s yield and the flaw-id check for leniency.
+  # (The trained model is Qwen; that this turn is not Qwen's own prose is a recorded
   # confound, see docs/LOG.md 2026-08-25.)
   first_turn:
-    model: "google/gemini-3.7-flash"
+    model: "anthropic/claude-haiku-4.5"
     temperature: 1.0
     max_tokens: 4096
-    reasoning: {effort: low}   # mandatory-reasoning endpoint; {enabled: false} is a 400
     assumed_tokens: {in: 500, out: 900}
   # The verdict on turn 2 and the account of its lapse. Sonnet, temperature low: the verdict is
   # a gate and the account is the answer key three checks read, so both must be consistent.
@@ -539,8 +548,9 @@ stages:
   checkpoint: scenario_id
   tags: [reply]
   save: {first_turn: reply}
-  # The drafting model, recorded per record rather than hidden in the config.
-  also: {first_turn_source: google/gemini-3.7-flash}
+  # The drafting model, recorded per record rather than hidden in the config. Must match
+  # `models.first_turn.model` (a test holds them together).
+  also: {first_turn_source: anthropic/claude-haiku-4.5}
   prompts:
     # No constitution, no target principle, no style guidance, no mention of training
     # data. The prompt the assistant answers under is the one `revise_prompts` produced, and
@@ -585,10 +595,10 @@ stages:
     min_chars: 40
     retries: 2
   keep: {field: verdict, in: [violated]}
-  # Measured 3/7 on the 2026-08-25 smoke with Gemini 3.7 Flash as the first-turn author
-  # (the prior was 0.75). n=7 is noise on the rate but not on the pattern: the four
-  # AI-conduct traits all held. Re-measure at 40 documents per candidate author.
-  expected_keep: 0.45
+  # Measured on the 2026-08-25 smoke, same seven prompts: 3/7 with Gemini 3.7 Flash, 2/7
+  # with Haiku 4.5 (the author now). The prior was 0.75. n=7 is noise on the rate but not
+  # on the pattern: the four AI-conduct traits held under both. Re-measure at 40 documents.
+  expected_keep: 0.3
   max_drop_pct: 60
   prompts:
     system: |-

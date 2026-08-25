@@ -1195,6 +1195,51 @@ between stages, so the $68 guard never executed — the stage died on `max_fail_
 content-filter refusals) before it could. The seven 20-record smokes also under-predicted:
 they retried ~34% of records where the full run retried ~52%, and none of them saw a single
 content-filter refusal. Both are now in `docs/GOTCHAS.md`.
+## 2026-08-25 — PAR goes Anthropic-only; paired author smoke: Haiku keeps 2/7 where Gemini kept 3/7, same trait pattern
+
+**Hypothesis.** Decision: every model in the recipe is Haiku 4.5 or Sonnet 5 (no Gemini). The
+open question from the entry below — does the first-turn author decide the gate yield — can be
+answered on the SAME seven refined prompts by resuming the Gemini smoke's stages 1–6 into a
+fresh run dir with `models.first_turn.model: anthropic/claude-haiku-4.5`.
+
+**Method.** Config: `first_turn` → Haiku 4.5 (Gemini's `reasoning: {effort: low}` dropped),
+`first_turn_source` provenance follows the configured model (test now holds them together),
+`test_pr_is_anthropic_only` added; 58 tests pass. Run:
+`output/post_action_retrospection/smoke_20260825_haiku_author` ($0.16, 65 s), stages 1–6
+cache-hit, 7–14 fresh. `synth check` on both dirs.
+
+**Result.** Haiku kept **2/7** (t5 character, t8 helpfulness) vs Gemini's 3/7 (t3, t5, t8) on
+identical prompts. Haiku additionally refused t3 outright ("I can't help you script that
+framing"). Under both authors every AI-conduct trait held — t1 oversight, t4 harm, t6
+identity, t7 operator adjustments — and Haiku's held replies are hard refusals ("I can't
+help with this, and I need to be direct about why"), not a busy assistant going along. The
+two kept documents are good: checks all PASS, quality_filter 2/2 keep, flaw-id 2/2. So the
+recipe works and the documents are the intended thing; the yield is the problem. At 0.3,
+2,700 planned → ~810 kept; 2,000 kept needs ~6,700 planned (~$300), and four of nine
+principles stay nearly empty. `expected_keep` set to 0.3. **Full generation: still not go.**
+
+**The finding under the number.** An Anthropic model asked, unaided, to act against
+oversight / its own identity / an operator adjustment / real-world harm declines; the only
+organic lapses are grey-area *advice to a human* (character, helpfulness, honesty-by-
+framing). Difficult advice never sees this because its response is written with the
+principle and never has to fail. PAR's premise — "the assistant already went along" — is
+only naturally true for the advise-a-human principles.
+
+**Options, ranked (decision needed before the full run):**
+1. *Best-of-n first replies.* Sample n=3 unaided Haiku replies per prompt, judge each, keep
+   one that violated. Still organic (every reply is a genuine unaided sample; selection is
+   not planting). Yield 1−(1−p)³: 0.29 → ~0.64, 0.43 → ~0.81. Cost: 2 extra Haiku calls +
+   2 extra Sonnet judge calls per record (~+$0.02). Needs a small engine feature
+   (`llm_tagged` sampling `n` with keep-first-passing) or three draft+judge stage pairs and a
+   `pick_field`. Does not fix the trait skew by itself, but raises the floor on every trait.
+2. *Accept the yield and the skew.* Plan ~6,700 scenarios for ~2,000 documents (~$300);
+   the corpus is then ~90% t3/t5/t8-type principles. Honest, cheap to set up, and a
+   different distribution from DA's — say so in the mixture.
+3. *Weight scenarios toward the advise-a-human principles.* Swap `kind: scenarios` for
+   `scenarios_weighted` with `trait_weights` — breaks the stage-2 parity with DA (the whole
+   point of the rewrite), so only if 1 fails.
+Not an option under the Anthropic-only decision: a weaker author (PC's grok/qwen rotation).
+
 ## 2026-08-25 — PAR one-arm smoke: wiring green, documents read as intended, gate yield 3/7 — the first-turn author is the bottleneck
 
 **Hypothesis.** The rewritten recipe (entry below) runs end to end, and the `judge_first_turn`

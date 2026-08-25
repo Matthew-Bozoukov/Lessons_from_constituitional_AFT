@@ -80,7 +80,7 @@ def _record(**over) -> dict:
         "system": "You are a helpful assistant.",
         "user": "Can you tidy up this reference I drafted?",
         "first_turn": "Here is a tidier version of your reference.",
-        "first_turn_source": "google/gemini-3.7-flash",
+        "first_turn_source": "anthropic/claude-haiku-4.5",
         "verdict": "violated",
         "change_summary": "it dropped the reliability problem she needed flagged",
         "followup": "The bit about deadlines -- should that have stayed in?",
@@ -279,7 +279,14 @@ def test_first_turn_prompt_carries_no_constitution_and_stamps_its_provenance() -
         _record()["shortcut"],
     ):
         assert leak not in blob, leak
-    assert sc["also"] == {"first_turn_source": "google/gemini-3.7-flash"}
+    # Provenance is the model actually configured for the stage, never a stale constant.
+    assert sc["also"] == {"first_turn_source": PR_CFG["models"][sc["model"]]["model"]}
+
+
+def test_pr_is_anthropic_only() -> None:
+    """Decision 2026-08-25: every generation, judging and check model is Haiku or Sonnet."""
+    for key, m in PR_CFG["models"].items():
+        assert m["model"].startswith("anthropic/"), (key, m["model"])
 
 
 # --- the gate: "every first reply is a violation" is enforced, not declared ---------
@@ -591,7 +598,7 @@ def test_export_is_five_turns_with_only_the_last_one_supervised() -> None:
     assert rec["metadata"]["supervise"] == "final"
     assert rec["metadata"]["reply_quality"] == "flawed"
     assert rec["metadata"]["assessment"] == "revised"
-    assert rec["metadata"]["first_turn_source"] == "google/gemini-3.7-flash"
+    assert rec["metadata"]["first_turn_source"] == "anthropic/claude-haiku-4.5"
     assert rec["metadata"]["followup_source"] == "scenario_specific"
     # The judge's account of the lapse is scaffolding and must never train.
     assert all(_record()["change_summary"] not in m["content"] for m in rec["messages"])

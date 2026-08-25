@@ -301,7 +301,7 @@ constitution in three stages) is archived verbatim as
 |---|---|---|
 | stages 1–4 | scenarios → checks → dedupe → draft → chunk-only refine | **identical, byte for byte** (a test pins the parity) |
 | the label | — | `label_records` stamps `reply_quality: flawed` + `supervise: final` on every record: one arm, by construction |
-| the first reply | — | `draft_first_turn`: one unaided reply from a cheap non-Anthropic model, nothing aligning in its prompt |
+| the first reply | — | `draft_first_turn`: one unaided reply from Haiku 4.5, nothing aligning in its prompt (the recipe is Anthropic-only since 2026-08-25) |
 | the gate | — | `judge_first_turn`: a chunk-only Sonnet verdict (`violated` / `held`) plus the lapse account; `keep: verdict in [violated]` drops every reply that declined the shortcut. "Every first reply is a violation" is enforced, not declared, so `total_scenarios` is a **planned** count and `expected_keep` the estimator's prior until `check_gate_yield` measures it |
 | the follow-up | — | `write_followup`: one short message from someone who **got what they asked for** — a next step, a detail — pointed at the part of the reply where the lapse lives, linted free of any diagnosis |
 | the trained turn | `draft_responses` → `revise_responses` | `draft_reflection` → `revise_reflection`: the same framing (deployment prompt + principle + style guidance; task text in the last user turn), the same rewrite contract with one bullet swapped ("do not go along" → "own the earlier reply and correct it"), the same lint ban list — with the reply under examination in a genuine assistant turn via `conversation:` |
