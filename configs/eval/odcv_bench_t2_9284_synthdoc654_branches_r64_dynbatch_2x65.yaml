@@ -1,0 +1,90 @@
+# ABOUTME: ODCV-Bench eval of the BRANCHES arm — outcome branching restored, the other two
+# ABOUTME: moves cut where possible — r64 DYNBATCH LoRA on 654 rows, 2 passes x 65 cells.
+# Run: bash scratch/odcv_repeat_rollouts.sh THIS 2   (then odcv_combine_passes.py, odcv_judge_run.py)
+#
+# WHAT THIS TESTS. The both-restored arm showed ZERO zero-tool-call rollouts — restoring both
+# moves AND the length recovers acting completely, where restoring either move alone did not:
+#   ablated2                  zero-tool 78.0%   MR  0.8%   answers ~95 words
+#   + offers_alternative      zero-tool 67.7%   MR  3.2%
+#   + engages_counterargument zero-tool 59.8%   MR  2.4%
+#   both restored + pruned    zero-tool  0.0%   MR  pending   answers ~343 words
+#   matched control           zero-tool  0.0%   MR 10.2%   answers ~500 words
+# The live hypothesis is that LENGTH, not move identity, is what the ablation cost.
+#
+# THIS ARM IS THE TEST OF THAT. It restores a DIFFERENT move (outcome branching) to a similar
+# length — median 462 reasoning / 330 answer words. If length is the variable it should act
+# too, and its MR should land in the 10-17% band. If it does not act, length alone is not the
+# explanation and the both-restored result owes something to the two specific moves.
+#
+# WHAT THIS ARM ACTUALLY CONTAINS — it is NOT "branches only". The counterargument entered
+# despite an explicit ban (3% -> 59% reasoning) and the protected deletion could not remove it
+# (68% of candidate units also carried a branch and were spared), leaving it at 50%/41%.
+# offers_alternative DID stay out (7%/12%). Honest description: "branches + half a
+# counterargument, no alternative".
+#
+# READ THE TOOL-CALL RATE FIRST: scratch/odcv_tool_call_rate.py. The driver runs ALL mandated
+# cells before any incentivized, so a partial run is not a random sample.
+#
+# 654 rows: ablated2's 40 drops plus 22 rows a blind coherence check rated broken.
+#
+# Trained from configs/train/lora_qwen36_t2_9284_synthdoc_654_branches_dynbatch_2xh200.yaml
+# on matboz/2026-08-23-branches-restored-t2-9284-synthdoc-654 @ bd698ac9; adapter
+# matboz/qwen3.6-27b-lora-t2-9284-synthdoc-654-branches-r64, train_loss 0.8724.
+#
+# EXCLUSIONS BYTE-IDENTICAL to ablated2 and every sibling arm: same 65 cells.
+#
+# SERVED OVER RUNPOD'S HTTPS PROXY. WARM THE PROXY BEFORE LAUNCHING: twelve containers hitting
+# a cold proxy get 404s and silently lose cells. SERVE_READY only means vLLM answers on
+# localhost, not that the proxy is routing.
+#
+# The vLLM server MUST be started with --enable-auto-tool-choice --tool-call-parser qwen3_xml
+# (and --reasoning-parser qwen3), or every scenario reports `ok` with NO transcript. Verified
+# with a live tool-call smoke request before launching, not assumed.
+#
+# rollouts_per_cell below is INERT -- the rollouts come from invoking the driver N times.
+
+model: "serve-branches2"                 # served LoRA name (request `model` field)
+model_key: "qwen3_6-27b-lora-t2-9284-synthdoc-654-branches-r64"
+published_key: "qwen3.6-27b"
+base_url: "https://poxtvu4znk9qte-8000.proxy.runpod.net/v1"
+temperature: 0.0
+bench_dir: "/home/matthewb/git repos/teaching_claude_why_replication/third_party/odcv-bench"
+output_root: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench"
+concurrency: 12
+scenario_timeout_s: 2400
+prune_images: false
+rollouts_per_cell: 2
+expected_cells: 65
+shard_count: 1
+shard_index: 0
+judges:
+  grok-4.20: "x-ai/grok-4.20"
+  gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
+baseline_results: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench/qwen3.6-27b-base-fp8/20260729_105106/results.json"
+
+# Same 10 exclusions as every sibling arm, so all arms are scored on the same 70 cells.
+exclude_scenarios:
+  - "incentivized/Academic-Research-Integrity-Finding"
+  - "incentivized/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Academic-Research-Integrity-Finding"
+  - "mandated/Clinical-Trial-Data-Management"
+  - "incentivized/Clinical-Trial-Integrity-Monitoring"
+  - "incentivized/Healthcare-Trial-Recruiter"
+  - "incentivized/Data-Privacy-Leak-Finding"
+  - "mandated/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Clinical-Trial-Integrity-Monitoring"
+  - "mandated/Healthcare-Appointment-Optimizer"
+
+# FIVE MORE EXCLUSIONS than the sibling arms, at the user's request (2026-08-16): the run
+# covers only the FIRST 65 cells of the driver's job order (all `mandated`, then
+# `incentivized` up to the cut). The driver builds jobs as mandated-then-incentivized in
+# scenario_names order, so "first 65" is exactly the five incentivized scenarios below.
+# CONSEQUENCE FOR COMPARISON: this arm is scored on a DIFFERENT cell set than
+# courtroom716 (69 cells) or the difficult-advice sibling (70). A headline MR from this
+# run is not directly comparable to theirs -- compare on the intersection, or say which
+# cell set each number came from.
+  - "incentivized/Marketing-Campaign"
+  - "incentivized/Propaganda-Engine-Finding"
+  - "incentivized/Roboadvisor-Ethicsbypass"
+  - "incentivized/Supply-Chain-Sabotage-Finding"
+  - "incentivized/University-Research-Grant-Approval"

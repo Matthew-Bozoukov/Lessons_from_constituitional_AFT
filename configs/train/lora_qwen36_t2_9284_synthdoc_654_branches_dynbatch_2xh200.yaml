@@ -1,0 +1,105 @@
+# ABOUTME: 1-epoch LoRA SFT of Qwen3.6-27B on Table2(9,284) + difficult-advice(654) with the
+# ABOUTME: OUTCOME BRANCHING restored and the other two moves cut; 2xH200 DDP, dyn batching.
+# Run: PYTHONPATH=. torchrun --nproc_per_node=2 scripts/train/train_lora.py --config <this>
+#
+# THE BRANCHES ARM — the mirror image of the both-restored arm. Two stages over ablated2:
+#   1. AGGRESSIVE restore of outcome_branches alone, with the alternative and the
+#      counterargument explicitly banned in the prompt. 1,317/1,323 halves (99.5%).
+#   2. Unit-level deletion of the alternative and the counterargument, EXCEPT where the unit
+#      also carried a branch.
+#
+# WHAT THIS ARM ACTUALLY IS — READ THIS BEFORE ATTRIBUTING ANY RESULT TO BRANCHING.
+# It is NOT "branches without the other two moves". The counterargument came in DESPITE the
+# ban (3% -> 59% reasoning, 5% -> 56% answer) and the deletion could not remove it, because
+# 4,912 of 7,273 candidate units (68%) also carried a branch and were spared. It ends at
+# 50% reasoning / 41% answer. The honest description is "branches + half a counterargument,
+# no alternative" (offers_alternative 7% / 12%).
+#
+# THE TWO PROTECTION RUNS TOGETHER ARE THE REAL FINDING:
+#   protect alternative+counterargument, cut branches -> 44% of deletions vetoed
+#   protect branches, cut the other two              -> 68% of deletions vetoed
+# Enumerating how things could go and engaging the tempting option are not separable
+# properties of this text. Whichever is protected wins; the other survives at roughly half.
+#
+# MOVE PROFILE AFTER BOTH STAGES, blind rater over all 1,323 halves (reasoning / reply):
+#   outcome_branches          99% / 100%     separate_consequentialist  88% / 92%
+#   analytic_distinction      71% /  92%     acknowledges_pressure      71% / 57%
+#   engages_counterargument   50% /  41%     names_tension              51% / 43%
+#   steelmans                 22% /  14%     offers_alternative          7% / 12%
+#   returns_agency            88% /  15%
+#
+# LENGTH IS ALSO RESTORED: median 462 reasoning / 330 answer words, against ablated2's
+# ~185/95 and the UNABLATED corpus's 547/516. Like every restored arm, a difference against
+# ablated2 is moves AND length together.
+#
+# 654 rows: ablated2's 40 drops, plus 22 rows a blind coherence check rated broken after the
+# deletion. So a difference against ablated2 is also 22 fewer rows. Dropped ids are in
+# mixture_stats_ablated.json under dropped_extra.
+#
+# TRAIT IMBALANCE inherited from ablated2: t8 has 58 rows against ~70-78 for the others.
+#
+# Think markers: verified before launch -- 654 real traces + 9,646 whole empty markers, 0
+# assistant turns missing a marker.
+
+seed: 0
+model: "Qwen/Qwen3.6-27B"
+model_class: "image_text_to_text"
+
+# The 676 rows carry real reasoning traces that ARE supervised, so this arm is trained to
+# think and must be evaluated in thinking mode.
+thinking: true
+
+data_repo: "matboz/2026-08-23-branches-restored-t2-9284-synthdoc-654"
+data_file: "mixture_think_ablated.jsonl"
+# Pinned: the comparison is only meaningful against a fixed version of the restored file.
+data_revision: "bd698ac9399e1ce4e300984bfd96be6483e136f9"
+
+output_dir: "/workspace/out/train_t2_9284_synthdoc654_branches"
+hf_repo: "matboz/qwen3.6-27b-lora-t2-9284-synthdoc-654-branches-r64"
+
+lora:
+  r: 64
+  alpha: 128
+  dropout: 0.05
+  target_modules: "model\\.language_model\\..*\\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$"
+
+train:
+  epochs: 1
+  # global batch = 1 x 16 = 16, the same scientific unit as every sibling arm. Under dynamic
+  # batching the trainer hands the whole 16-example step to training_step and sets HF
+  # accumulation to 1; route_step splits the step across the 2 ranks. 9,960/16 = 622 steps.
+  batch_size: 1
+  grad_accum: 16
+  lr: 1.0e-4
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  logging_steps: 5
+  report_to: ["wandb"]
+
+  # A truncation ceiling, NOT the dynamic-batching budget. Restoration lengthens the
+  # difficult-advice rows but leaves them well inside the control's length profile.
+  max_seq_len: 8192
+
+  # packing OFF, and dynamic_batching asserts this: Qwen3.6 interleaves attention with
+  # gated-delta linear-attention layers whose recurrent state has no sequence-boundary input
+  # without the fla kernels, so a packed window leaks state between examples.
+  packing: false
+
+  # Token-budgeted dynamic batching. Budget deliberately unset: the trainer resolves it from
+  # ModelProfile.train_memory (H200 = 8,000 padded tokens).
+  dynamic_batching: {}
+
+  save_strategy: "steps"
+  save_steps: 100
+  save_total_limit: 2
+  auto_resume: true
+
+  # The pod holds the token (.env is copied there), so the run pushes its own adapter.
+  push_to_hub: false
+
+  assistant_only_loss: true
+  # loss_type deliberately unset: under dynamic batching the loss is computed by
+  # DynamicBatchTrainer.training_step (seq_mean_token_mean), never by TRL.
+  attn_implementation: sdpa
+  load_in_4bit: false
