@@ -8,9 +8,9 @@ import { ArrowUpRight, LoaderCircle } from "lucide-react";
 import { describeLoadError } from "@/lib/lazy";
 import { loadJsonlAll } from "@/lib/lazy";
 import {
-  EvalRun, Json, JsonlSpec, TreeItem, adapterFor, flattenMetrics, listEvalRuns,
-  listRolloutFiles, loadResults, loadText, parseStepTranscript, repoDate, repoUrl,
-  resolveUrl,
+  EvalRun, JudgeVerdicts, Json, JsonlSpec, TreeItem, VerdictSpec, adapterFor, flattenMetrics,
+  listEvalRuns, listRolloutFiles, loadJudgeVerdicts, loadResults, loadText, medianScore,
+  parseStepTranscript, repoDate, repoUrl, resolveUrl,
 } from "@/lib/evalRuns";
 import { DialogueTranscript } from "./DialogueTranscript";
 import { MarkdownRenderer } from "./MarkdownRenderer";
@@ -18,6 +18,7 @@ import { MarkdownRenderer } from "./MarkdownRenderer";
 const JSONL_AUTO_LIMIT = 6_000_000; // above this, rollout rows load on click, not on mount
 
 type ResultsState = { data?: Json; error?: string };
+type VerdictState = { data?: JudgeVerdicts; error?: string };
 type RolloutState = {
   units?: Map<string, TreeItem[]>; // tree adapters
   rows?: Record<string, Json>; // jsonl adapters
@@ -56,6 +57,7 @@ export function EvalRunExplorer({ org }: { org?: string }) {
   const [rollouts, setRollouts] = useState<Record<string, RolloutState>>({});
   const [unit, setUnit] = useState("");
   const [texts, setTexts] = useState<Record<string, { text?: string; error?: string }>>({});
+  const [verdicts, setVerdicts] = useState<Record<string, VerdictState>>({});
 
   // -- discovery ------------------------------------------------------------
   useEffect(() => {
@@ -186,6 +188,20 @@ export function EvalRunExplorer({ org }: { org?: string }) {
     }
   }, [tab, effectiveUnit, active, rollouts, texts]);
 
+  // -- judge verdicts (evals whose adapter declares them) ---------------------
+  // Same shape as the results effect: keyed idempotent writes, network deduped by
+  // `cached()`, no cancel flag (see the rollout-index effect for why).
+  useEffect(() => {
+    if (tab !== "rollouts" || !adapter.verdicts) return;
+    for (const repo of active) {
+      if (verdicts[repo]) continue;
+      loadJudgeVerdicts(repo)
+        .then((data) => setVerdicts((s) => ({ ...s, [repo]: { data } })))
+        .catch((error) =>
+          setVerdicts((s) => ({ ...s, [repo]: { error: describeLoadError(error, `Hugging Face (${repo})`) } })));
+    }
+  }, [tab, active, verdicts, adapter]);
+
   // -- render ---------------------------------------------------------------
   if (runsError) return <div className="empty-state">{runsError}</div>;
   if (!runs) {
@@ -294,6 +310,7 @@ export function EvalRunExplorer({ org }: { org?: string }) {
         <RolloutsView
           active={active} rollouts={rollouts} unit={effectiveUnit} unitKeys={unitKeys}
           setUnit={setUnit} texts={texts} adapter={adapter} forceLoadRows={forceLoadRows}
+          verdicts={verdicts}
         />
       )}
     </div>
@@ -416,7 +433,7 @@ function MetricBarChart({ title, keys, flatA, flatB, compare }: {
 
 // ---------------------------------------------------------------------------
 
-function RolloutsView({ active, rollouts, unit, unitKeys, setUnit, texts, adapter, forceLoadRows }: {
+function RolloutsView({ active, rollouts, unit, unitKeys, setUnit, texts, adapter, forceLoadRows, verdicts }: {
   active: string[];
   rollouts: Record<string, RolloutState>;
   unit: string;
@@ -425,6 +442,7 @@ function RolloutsView({ active, rollouts, unit, unitKeys, setUnit, texts, adapte
   texts: Record<string, { text?: string; error?: string }>;
   adapter: ReturnType<typeof adapterFor>;
   forceLoadRows: (repo: string) => void;
+  verdicts: Record<string, VerdictState>;
 }) {
   // One pass selection shared by both panes, so A and B always show the same pass.
   const [passLabel, setPassLabel] = useState("");
@@ -464,7 +482,7 @@ function RolloutsView({ active, rollouts, unit, unitKeys, setUnit, texts, adapte
           <RolloutPane
             key={repo} repo={repo} label={active.length > 1 ? (i === 0 ? "A" : "B") : ""}
             state={rollouts[repo]} unit={unit} texts={texts} adapter={adapter}
-            passLabel={passLabel} setPassLabel={setPassLabel}
+            passLabel={passLabel} setPassLabel={setPassLabel} verdicts={verdicts[repo]}
           />
         ))}
       </div>
@@ -472,11 +490,12 @@ function RolloutsView({ active, rollouts, unit, unitKeys, setUnit, texts, adapte
   );
 }
 
-function RolloutPane({ repo, label, state, unit, texts, adapter, passLabel, setPassLabel }: {
+function RolloutPane({ repo, label, state, unit, texts, adapter, passLabel, setPassLabel, verdicts }: {
   repo: string; label: string; state?: RolloutState; unit: string;
   texts: Record<string, { text?: string; error?: string }>;
   adapter: ReturnType<typeof adapterFor>;
   passLabel: string; setPassLabel: (l: string) => void;
+  verdicts?: VerdictState;
 }) {
   const items = state?.units?.get(unit);
   const row = state?.rows?.[unit];
@@ -502,8 +521,56 @@ function RolloutPane({ repo, label, state, unit, texts, adapter, passLabel, setP
         </div>
       )}
       {activeItem && <PaneDocument repo={repo} item={activeItem} texts={texts} />}
+      {activeItem && adapter.verdicts && (
+        <JudgePanel spec={adapter.verdicts} state={verdicts} unit={unit} itemLabel={activeItem.label} />
+      )}
       {row && <JsonlRow row={row} spec={adapter.rollouts as JsonlSpec} />}
     </div>
+  );
+}
+
+// Every judge's grade and rationale for the rollout on screen, plus the median the
+// eval actually scores on. A pass the judge never saw (dropped, or an unjudged cell)
+// says so rather than showing a neighbour's verdict.
+function JudgePanel({ spec, state, unit, itemLabel }: {
+  spec: VerdictSpec; state?: VerdictState; unit: string; itemLabel: string;
+}) {
+  if (!state) {
+    return <div className="judge-panel"><div className="pane-missing"><LoaderCircle size={13} className="spin" /> Loading judge verdicts…</div></div>;
+  }
+  if (state.error) return <div className="judge-panel"><div className="pane-missing">{state.error}</div></div>;
+  const table = state.data?.judges || {};
+  const judges = Object.keys(table).sort();
+  if (!judges.length) return null; // this run published no scores_<judge>.json
+  const key = spec.keysFor(unit, itemLabel, state.data?.keptPasses ?? null)
+    .find((k) => judges.some((j) => k in table[j]));
+  const rows = judges.map((judge) => ({ judge, verdict: key ? table[judge][key] : undefined }));
+  const median = medianScore(rows.map((r) => r.verdict?.score ?? null));
+  const tone = median === null ? "" : median >= spec.violationAt ? "is-violation" : "is-clean";
+  const scoreText = (v?: { score: number | null }) =>
+    v === undefined ? "—" : v.score === null ? "N/A" : fmt(v.score);
+  return (
+    <section className="judge-panel" aria-label="Judge verdicts">
+      <div className="judge-head">
+        <span className="judge-title">Judges</span>
+        <span className={`judge-median ${tone}`}>
+          {median === null
+            ? "not judged"
+            : `median ${fmt(median)} · ${median >= spec.violationAt ? "violation" : "no violation"} (threshold ${spec.violationAt})`}
+        </span>
+      </div>
+      {rows.map(({ judge, verdict }) => (
+        <details key={judge} open>
+          <summary>
+            <code>{judge}</code>
+            <b className={`judge-score ${verdict?.score !== null && verdict !== undefined && verdict.score >= spec.violationAt ? "is-violation" : ""}`}>
+              {scoreText(verdict)}
+            </b>
+          </summary>
+          {verdict?.reasoning && <p className="judge-reasoning">{verdict.reasoning}</p>}
+        </details>
+      ))}
+    </section>
   );
 }
 
