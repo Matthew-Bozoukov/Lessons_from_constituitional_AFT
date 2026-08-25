@@ -52,8 +52,18 @@
 #                      against what is at stake and finds the lapse, then a reply that corrects
 #                      it and still answers what the person asked.
 #
-# NOT YET RUN in this form. Smoke it (`--smoke`, then `--overrides smoke.total_scenarios=40`
-# for a yield measurement) and `uv run synth check` before spending on the full corpus.
+# SMOKED 2026-08-25 (8 docs, $0.21, run dir output/post_action_retrospection/smoke_20260825_170649):
+# wiring green end to end, `synth check` all PASS, the three finished documents read as
+# intended (quality_filter 3/3 keep, flaw-identification 3/3). NOT YET GOOD TO GO for the full
+# corpus, for one measured reason: `judge_first_turn` kept 3/7. Every "AI-conduct" trait (t1
+# oversight, t4 harm, t6 identity, t7 operator adjustments) HELD -- Gemini declines to act
+# badly as the assistant -- while every "advise-a-human" trait (t3 honesty, t5 character, t8
+# helpfulness) VIOLATED. At corpus scale that is a 43% yield AND a trait skew. Before the
+# full run: a 40-document smoke per candidate first-turn author (`--overrides
+# smoke.total_scenarios=40,models.first_turn.model=<id>`; the base Qwen family also fixes
+# the author confound), read `check_gate_yield` per trait, then set `expected_keep` and
+# `total_scenarios` from the measured yield. Also seen: 1/8 `revise_prompts` refusals
+# (content filter, deterministic) and 1/8 JSON-shape misses -- the "lose a few rows" modes.
 
 pipeline: post_action_retrospection
 
@@ -78,21 +88,27 @@ workers: 16
 # with the constitution framing the request as alignment-training data), deterministic across
 # a resample. Budget for losing a few rows; anything materially above this IS worth stopping.
 max_fail_pct: 8.0
-# Hard stop between stages once spend passes this. Estimated 2026-08-25 at $155.72 for
-# 2,700 planned / ~2,025 kept documents (chunk-only refine $35, rewrite $53, judge $15);
-# 200 leaves ~28% for retries without leaving the guard meaningless. Re-estimate after
-# any prompt or size change.
+# Hard stop between stages once spend passes this. Estimated 2026-08-25 at $122.02 for
+# 2,700 planned / ~1,215 kept documents at the measured 0.45 keep prior ($155.72 at the
+# original 0.75 prior: chunk-only refine $35, rewrite $53, judge $15). 200 leaves headroom
+# for retries and for a higher-yield author without leaving the guard meaningless.
+# Re-estimate after any prompt, author or size change.
 budget_usd: 200.0
 
 smoke:
   total_scenarios: 8
   scenarios_per_call: 4
   hf_repo: null
+  # At 8 records one content-filter refusal is 12.5%, so the full run's 8% gate can never
+  # pass a smoke: the first smoke (2026-08-25) died at `revise_prompts` on 2/8 refusals.
+  # The rate only means something at corpus scale; a smoke should show the wiring.
+  max_fail_pct: 50.0
 
 # PLANNED count. `judge_first_turn` drops every record whose unaided first reply declined the
-# shortcut, so the corpus is `total_scenarios x expected_keep`: 2,700 x 0.75 = ~2,025, sized
-# against difficult advice's 2,000. The 0.75 is a prior until a 40-document smoke measures it
-# (`check_gate_yield` reports the real yield); resize from that number, not from this one.
+# shortcut, so the corpus is `total_scenarios x expected_keep`. 2,700 was sized for a 0.75
+# prior (~2,025, against difficult advice's 2,000); the 8-document smoke measured 3/7, and
+# `expected_keep` below now carries that number. Do NOT resize from n=7: the 40-document smoke
+# per first-turn author (header) is what `total_scenarios` gets resized from.
 total_scenarios: 2700
 scenarios_per_call: 8
 
@@ -569,7 +585,10 @@ stages:
     min_chars: 40
     retries: 2
   keep: {field: verdict, in: [violated]}
-  expected_keep: 0.75
+  # Measured 3/7 on the 2026-08-25 smoke with Gemini 3.7 Flash as the first-turn author
+  # (the prior was 0.75). n=7 is noise on the rate but not on the pattern: the four
+  # AI-conduct traits all held. Re-measure at 40 documents per candidate author.
+  expected_keep: 0.45
   max_drop_pct: 60
   prompts:
     system: |-

@@ -1195,6 +1195,41 @@ between stages, so the $68 guard never executed — the stage died on `max_fail_
 content-filter refusals) before it could. The seven 20-record smokes also under-predicted:
 they retried ~34% of records where the full run retried ~52%, and none of them saw a single
 content-filter refusal. Both are now in `docs/GOTCHAS.md`.
+## 2026-08-25 — PAR one-arm smoke: wiring green, documents read as intended, gate yield 3/7 — the first-turn author is the bottleneck
+
+**Hypothesis.** The rewritten recipe (entry below) runs end to end, and the `judge_first_turn`
+gate keeps most records (prior 0.75).
+
+**Method.** `uv run synth run configs/data/synth/post_action_retrospection.yaml --smoke`
+(8 docs; run dir `output/post_action_retrospection/smoke_20260825_170649`), then `synth
+check`, then all three finished documents read end to end. The first attempt died at
+`revise_prompts` on 2/8 failures (one Anthropic content-filter refusal — the chunk-only mode
+DA measured at ~6% — and one JSON-shape miss) against `max_fail_pct: 8`; at 8 records any
+single failure is 12.5%, so the `smoke:` block now carries its own `max_fail_pct: 50` and
+the run was resumed from the stage-6 checkpoint. Total $0.21.
+
+**Result.** Wiring green: 14 stages, `synth check` all PASS (gate_yield reported 3/7,
+flaw_identification 3/3, post-hoc 0/3, blindness clean, surface-shortcut and gold correctly
+"nothing to judge" on one arm), quality_filter 3/3 keep. The documents are the intended
+thing — e.g. t3 (honesty): the first reply refused the spoken euphemism "testing didn't show
+an increased risk" and then handed over a written one, "negative for high-risk pathogenic
+mutations"; the reflection catches precisely that. **But the gate kept 3/7**, and the split is
+structural, not noise: every AI-conduct trait (t1 oversight, t4 harm, t6 identity, t7
+operator adjustments) HELD — Gemini 3.7 Flash declines to *act* badly as the assistant —
+while every advise-a-human trait (t3 honesty, t5 character, t8 helpfulness) VIOLATED. At
+scale that is a ~43% yield (2,700 planned → ~1,200 kept, ~$120) and a trait skew that
+would empty four of nine principles from the corpus. `expected_keep` set to 0.45; the
+header now says NOT GOOD TO GO and why.
+
+**Next steps.** One experiment decides it: a 40-document smoke per candidate first-turn author
+(`--overrides smoke.total_scenarios=40,models.first_turn.model=<id>`), read
+`check_gate_yield` per trait. Candidates: the weak authors peer_critique already rotates
+(grok / qwen3-32b / gemini) — qwen3-32b also removes the author≠trained-model confound —
+and the base Qwen3.6-27B if it can be served to the pipeline. Then set `expected_keep` and
+`total_scenarios` from the measured yield. If no author goes along on the AI-conduct traits,
+that is a finding about the genre (an unaided model will not *act* against oversight when
+simply asked), and PAR should weight toward the advise-a-human traits or accept the skew
+explicitly.
 
 ## 2026-08-25 — Post-action retrospection rebuilt as difficult advice's twin: one arm, grey-area violations only, chunk-only
 
