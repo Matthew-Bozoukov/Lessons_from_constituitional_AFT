@@ -9,7 +9,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  dataFileFromConfigs, facet, parseRepo, pickDataFile, statsFromSidecar,
+  corpusMatches, dataFileFromConfigs, facet, parseRepo, pickDataFile, searchText,
+  statsFromSidecar,
 } from "../lib/trainingData.ts";
 
 test("a listing row is read from its facet tags, never from its name", () => {
@@ -114,4 +115,31 @@ test("a stats sidecar yields a count and per-source composition, or nothing", ()
   // A generation manifest is not a statistics file: no count, no categories, null.
   assert.equal(statsFromSidecar({ pipeline: "difficult_advice", stages: [] }), null);
   assert.equal(statsFromSidecar("nope"), null);
+});
+
+test("the picker search is order-free, separator-agnostic and multi-field", () => {
+  const fields = [
+    "LASR-Callum/2026-08-14-table2-9284-difficult-advice-716-train",
+    "table2 9284 difficult advice 716 train",
+    "mixture · table2-9284-difficult-advice-716-train",
+    "mixture",
+    "training-data", "kind:mixture", "constitution:claude_distilled_12_principles_mid", "stage:final",
+    "no_robots", "difficult_advice_v2", "numinamath_cot",
+    "t2_9284_da716_10k.jsonl",
+  ];
+  const hit = (q) => corpusMatches(fields, q);
+  assert.equal(hit(""), true);
+  assert.equal(hit("difficult advice 716"), true);
+  assert.equal(hit("716 advice"), true); // any order
+  assert.equal(hit("difficult-advice-716"), true); // dashes
+  assert.equal(hit("difficult_advice_v2"), true); // a source name
+  assert.equal(hit("DIFFICULT/ADVICE"), true); // case and odd separators
+  assert.equal(hit("difficultadvice"), true); // separator dropped
+  assert.equal(hit("da716"), true); // the rows file
+  assert.equal(hit("2026-08-14"), true); // the date in the repo name
+  assert.equal(hit("claude_distilled_12"), true); // a tag value
+  assert.equal(hit("kind:mixture"), true);
+  assert.equal(hit("difficult advice tulu"), false); // every term must match
+  assert.equal(hit("2026-08-15"), false);
+  assert.equal(searchText("A-b_c.d/e:F  g"), "a b c d e f g");
 });

@@ -183,6 +183,36 @@ export function statsFromSidecar(json: unknown): Omit<SidecarStats, "from"> | nu
 }
 
 /** One Hub listing row, reduced to the facets the explorer works with. */
+/**
+ * Fold a string for picker search: lower-cased, with the separators repo names,
+ * file names and tags use (`-` `_` `.` `/` `:`) collapsed to single spaces.
+ */
+export function searchText(text: string): string {
+  return text.toLowerCase().replace(/[-_./:\s]+/g, " ").trim();
+}
+
+/**
+ * Whether a corpus matches a picker query.
+ *
+ * Every whitespace-separated term of the query must occur somewhere in the
+ * corpus's fields, in any order, as a substring — so `advice 716`, `716 advice`,
+ * `difficult-advice-716` and `difficult_advice` all find
+ * `2026-08-14-table2-9284-difficult-advice-716-train`. Each term is tried
+ * against the separator-folded text AND the same text with separators removed,
+ * so `da716` matches the rows file `t2_9284_da716_10k.jsonl` and
+ * `difficultadvice` matches `difficult-advice`.
+ */
+export function corpusMatches(fields: Array<string | undefined | null>, query: string): boolean {
+  const terms = searchText(query).split(" ").filter(Boolean);
+  if (!terms.length) return true;
+  const spaced = searchText(fields.filter((f): f is string => Boolean(f)).join(" "));
+  const joined = spaced.replace(/ /g, "");
+  return terms.every((term) => {
+    const bare = term.replace(/ /g, "");
+    return spaced.includes(term) || joined.includes(bare);
+  });
+}
+
 export function parseRepo(row: {
   id: string;
   tags?: string[];

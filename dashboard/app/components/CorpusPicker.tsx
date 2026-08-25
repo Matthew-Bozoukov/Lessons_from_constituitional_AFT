@@ -4,14 +4,31 @@ import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { Composition, composition, formatShare } from "@/lib/composition";
 import type { DatasetManifest } from "@/lib/content";
+import { corpusMatches } from "@/lib/trainingData";
 import { MockBadge } from "./MockDataBanner";
 
 export type PickerCorpus = {
   id: string;
   title: string;
+  summary?: string;
+  status?: string;
+  tags?: string[];
   dataset?: DatasetManifest;
   mock?: boolean;
 };
+
+/** Everything the search box can match: repo id, title, summary, kind, tags, sources, rows file. */
+function searchFields(corpus: PickerCorpus): Array<string | undefined> {
+  return [
+    corpus.id,
+    corpus.title,
+    corpus.summary,
+    corpus.status,
+    ...(corpus.tags || []),
+    ...Object.keys(corpus.dataset?.stats.categories || {}),
+    corpus.dataset?.source_file.split("/").pop(),
+  ];
+}
 
 function formatBytes(bytes: number) {
   if (!bytes) return "";
@@ -111,14 +128,12 @@ export function CorpusPicker({
     return map;
   }, [corpora]);
 
-  const matches = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    if (!needle) return corpora;
-    return corpora.filter((corpus) => {
-      const sources = Object.keys(corpus.dataset?.stats.categories || {}).join(" ");
-      return `${corpus.title} ${sources}`.toLowerCase().includes(needle);
-    });
-  }, [corpora, query]);
+  // Order-free, separator-agnostic term match over every field a reader might
+  // remember a corpus by (see corpusMatches). Still not a record search.
+  const matches = useMemo(
+    () => corpora.filter((corpus) => corpusMatches(searchFields(corpus), query)),
+    [corpora, query],
+  );
 
   const groups = useMemo(() => groupCorpora(matches, compositions), [matches, compositions]);
 
@@ -129,16 +144,17 @@ export function CorpusPicker({
         <input
           type="search"
           value={query}
-          placeholder="Filter by name or source"
+          placeholder="Filter by name, date, tag, source or file"
           onChange={(event) => setQuery(event.target.value)}
-          aria-label="Filter corpora by name or source"
+          aria-label="Filter corpora by name, date, tag, source or file"
         />
       </label>
 
       {matches.length === 0 && (
         <p className="record-empty">
-          No corpus matches &ldquo;{query}&rdquo;. This searches names and the sources each
-          mixture publishes, not the records themselves.
+          No corpus matches &ldquo;{query}&rdquo;. Every word must appear somewhere in a
+          corpus&apos;s repo name, date, tags, sources or rows file (in any order, any
+          separator) — this does not search the records themselves.
         </p>
       )}
 
