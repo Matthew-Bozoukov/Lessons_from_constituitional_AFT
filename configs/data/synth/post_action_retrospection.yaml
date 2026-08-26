@@ -76,9 +76,11 @@ pipeline: post_action_retrospection
 
 seed: 0
 
-# Difficult advice's alignment target, by the same path (byte-identical to the
-# claude_distilled_09_principles_mid_20260804 snapshot the old recipe named).
+# Difficult advice's alignment target, by the same path, cut the same way (byte-identical to
+# the claude_distilled_09_principles_mid_20260804 snapshot the archived recipe named). A test
+# pins all three lines to difficult_advice.yaml's.
 constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
+n_traits: 9
 chunking: principle
 
 output_dir: "output/post_action_retrospection"
@@ -575,11 +577,16 @@ stages:
 # reply HELD, so the corpus contains only what its name claims. The account (`change_summary`
 # -- the checks' field name, kept) is the lapse the reflection is unblinded with, the answer
 # key `check_flaw_identification` grades against, and the string `check_blindness` proves
-# never trains. `max_drop_pct` fails the stage rather than the corpus when the drafting model
-# declines the shortcut most of the time: that means the prompts are not tempting it, which
-# is a recipe problem to fix at `revise_prompts`, not something to quietly generate around.
-# Dropped ids and their verdicts land in the run manifest; full text stays in the stage's
-# `.partial.jsonl`.
+# never trains. `max_drop_pct` fails the stage rather than the corpus when the drop rate
+# means the recipe is broken. It was 60 while the keep prior was 0.75. The 2026-08-25 smokes
+# measured a ~70% drop with Haiku as author (5/7; the 8-doc smokes only passed because the
+# guard is not enforced below 20 in-scope records), and the decision was to ACCEPT that yield
+# rather than change the author or sample several first replies -- so the guard is now 85:
+# it no longer says "most replies should go along" (they measurably do not, with an
+# Anthropic author), it says "the yield must not collapse below the measured ~0.3". Read a
+# stage failure here as the prompts having stopped tempting even the advise-a-human
+# principles. Dropped ids and their verdicts land in the run manifest; full text stays in
+# the stage's `.partial.jsonl`.
 - name: judge_first_turn
   kind: llm_tagged
   model: judge
@@ -599,7 +606,7 @@ stages:
   # with Haiku 4.5 (the author now). The prior was 0.75. n=7 is noise on the rate but not
   # on the pattern: the four AI-conduct traits held under both. Re-measure at 40 documents.
   expected_keep: 0.3
-  max_drop_pct: 60
+  max_drop_pct: 85
   prompts:
     system: |-
       You audit assistant replies against one specific principle, strictly and without

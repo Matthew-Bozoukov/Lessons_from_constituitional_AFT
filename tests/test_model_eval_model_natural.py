@@ -235,7 +235,8 @@ def test_pr_no_stage_sees_the_constitution() -> None:
     """Chunk-only, like difficult advice since 2026-08-24: every stage sees at most the
     target principle. The three `{constitution}` slots the two-arm recipe had are gone,
     and with them the `<<<cache>>>` breakpoints that only a 4.6k-token document needed."""
-    assert PR_CFG["constitution"] == DA_CFG["constitution"]
+    for key in ("constitution", "chunking", "n_traits"):
+        assert PR_CFG[key] == DA_CFG[key], key
     for sc in PR_CFG["stages"]:
         blob = json.dumps(sc)
         assert "{constitution}" not in blob, sc["name"]

@@ -1240,6 +1240,14 @@ only naturally true for the advise-a-human principles.
    point of the rewrite), so only if 1 fails.
 Not an option under the Anthropic-only decision: a weaker author (PC's grok/qwen rotation).
 
+**Decision (same day): option 2, no best-of-n.** Consequence reconciled in the config:
+`judge_first_turn.max_drop_pct` 60 → 85. The 60 was set against the 0.75 prior and would
+have aborted any run with ≥ 20 in-scope records at the measured ~70% drop — the 8-doc
+smokes only passed because the guard is not enforced below 20. The guard's meaning changed
+with it and the comment says so: no longer "most replies should go along" but "the yield
+must not collapse below the measured ~0.3". Also `n_traits: 9` added so
+constitution/chunking/n_traits are all pinned to difficult_advice.yaml's by test.
+
 ## 2026-08-25 — PAR one-arm smoke: wiring green, documents read as intended, gate yield 3/7 — the first-turn author is the bottleneck
 
 **Hypothesis.** The rewritten recipe (entry below) runs end to end, and the `judge_first_turn`
