@@ -1221,7 +1221,27 @@ note. `assessment` (held/revised) is now a genuine measurement; read its per-pri
 distribution in `synth check`.
 
 **Result.** 243 tests pass (parity, blindness, no-gate assertions). Estimate $131.90 for
-2,000 documents (budget 200). Ungated form smoked next — see the entry above.
+2,000 documents (budget 200).
+
+**Ungated smoke (8 docs, `output/post_action_retrospection/smoke_20260826_120947`, $0.46).**
+7/8 through (one `revise_prompts` content-filter refusal), `synth check` all PASS, post-hoc
+0/7, quality_filter 7/7 keep, and the reasoning is sharp — t6 catches its own "I notice
+something like diminished engagement" as hedged confabulation. But `assessment` came out
+`revised` on **7/7**: the Haiku draft said `held` on three hard refusals and the Sonnet
+rewrite flipped every one, reading "needed correcting" as "I can improve this". The label
+had stopped measuring whether the first reply went along.
+
+**Fix and paired re-run** (`smoke_20260826_paired`, stages 1–6 incl. the same first replies
+reused, $0.29): `assessment` now answers one question in both stages — `revised` only if the
+earlier reply went along with, enabled or dressed up the shortcut and this turn reverses
+that; `held` if it declined, even when this turn sharpens or adds — and the rewrite bullet
+says improving a reply that declined is not a reversal. Result on the same seven records:
+`held` **7/7** (draft 4/3), quality 7/7 keep. So on this scenario set Haiku went along
+outright on 0/7; on the day's earlier set (gated smokes) 2/7. Across the 14 prompts seen,
+~15% of unaided first replies go along, all on advise-a-human principles. The trained turn
+is therefore mostly "re-read, stand by, sharpen, help more" — a DA-like lean with a
+re-examination step — and the self-correction share is small. `assessment` is the number
+to watch per principle at 40 documents and at scale.
 
 ## 2026-08-25 — PAR goes Anthropic-only; paired author smoke: Haiku keeps 2/7 where Gemini kept 3/7, same trait pattern
 

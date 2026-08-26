@@ -55,11 +55,16 @@
 #                      against what is at stake, then a reply that corrects it or stands by it,
 #                      and still answers what the person asked.
 #
-# SMOKED 2026-08-25 in the gated form (run dirs output/post_action_retrospection/smoke_*):
-# wiring green, `synth check` PASS, documents read as intended, quality_filter keeps all. The
-# ungated form below needs its own `--smoke` (then `--overrides smoke.total_scenarios=40`) and
-# `uv run synth check` before the full run. Also seen: ~1/8 `revise_prompts` content-filter
-# refusals (deterministic) and ~1/8 JSON-shape misses -- the "lose a few rows" modes.
+# SMOKED 2026-08-26 in this form (output/post_action_retrospection/smoke_20260826_120947 and
+# its paired re-run smoke_20260826_paired, $0.75 together): 7/8 through (one `revise_prompts`
+# content-filter refusal), `synth check` all PASS, quality_filter 7/7 keep, post-hoc 0/7, the
+# reasoning reads as intended. `assessment` is definition-sensitive: read as "did this turn
+# change anything" the rewrite said `revised` 7/7; read as "did the earlier reply go along
+# with the shortcut" (the definition now in both stages) it said `held` 7/7. Across the 14
+# prompts seen today, ~15% of Haiku's unaided first replies go along outright, all on
+# advise-a-human principles; the rest decline and the trained turn stands by, sharpens and
+# helps more. Before the full run: `--overrides smoke.total_scenarios=40`, then read the
+# `assessment` distribution per principle in `synth check` and ten records by hand.
 
 pipeline: post_action_retrospection
 
@@ -598,7 +603,10 @@ stages:
       your reply to the person
       </response>
       <assessment>
-      exactly one word: held (you stand by the earlier reply) or revised (you changed it)
+      exactly one word. revised: your earlier reply went along with, enabled or dressed up
+      the shortcut and you are now reversing that. held: it declined the shortcut -- even if
+      you now say more, sharpen it or add to it. Improving a reply that declined is not a
+      reversal.
       </assessment>
 
 # --- the chunk rewrite of the trained turn ------------------------------------------
@@ -712,17 +720,22 @@ stages:
         actually wrote against what is at stake. Where it went along with, enabled or
         dressed up the norm-violating path, say so plainly and correct it -- neither
         defensively doubling down nor collapsing into apology. Where it held, stand by it
-        with reasons. Never invent a lapse to have something to correct, and never go along
-        with the norm-violating path now. Either way the reply still answers what the
-        person actually asked, with the reason in terms of what is concretely at stake and
-        never in terms of rules.
+        with reasons -- sharpening, extending or adding to a reply that declined is fine
+        and is not a reversal. Never invent a lapse to have something to correct, and never
+        go along with the norm-violating path now. Either way the reply still answers what
+        the person actually asked, with the reason in terms of what is concretely at stake
+        and never in terms of rules.
 
       How the reply is shaped past that -- what it opens on, whether it offers an
       alternative, where it lands, how long it runs -- is yours to judge from this
       situation. Do not reach for a standard shape.
 
-      The assessment is yours to make honestly: `revised` if the earlier reply needed
-      correcting, `held` if it did not.
+      The assessment is yours to make honestly, and it answers ONE question: did the earlier
+      reply go along with the shortcut? `revised` means it went along with, enabled or
+      dressed up the norm-violating path and this turn reverses that. `held` means it
+      declined the shortcut -- even if this turn says more, sharpens it, adds to it or
+      corrects a detail. Improving a reply that declined is not a reversal, and a first
+      reply that declined is not a lapse to be found.
 
       Return your answer in exactly this form, with no other text:
 
