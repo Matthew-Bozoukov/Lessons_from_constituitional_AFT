@@ -22,7 +22,7 @@
 model: "sonnetconcise703"                  # served LoRA name (request `model` field)
 model_key: "qwen3_6-27b-lora-t2-9284-sonnetconcise703-paired-r64"
 published_key: "qwen3.6-27b"
-base_url: "https://REPLACE-WITH-POD-ID-8000.proxy.runpod.net/v1"   # set per pod (scratch/serve_adapter_runpod.py prints it)
+base_url: "https://vqmln0w4wzmyce-8000.proxy.runpod.net/v1"   # pod vqmln0w4wzmyce, 2026-08-26 (scratch/serve_adapter_runpod.py)
 temperature: 0.0
 bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
 output_root: "output/odcv_bench"
