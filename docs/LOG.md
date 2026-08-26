@@ -1228,7 +1228,37 @@ the day's first-reply smokes — where an unaided model refused outright on exac
 (oversight, harm, operator adjustments) DA's generator writes user-facing dilemmas that
 do not engage the principle, because DA's frame is "a user faces a situation" and those
 principles are about the assistant's own conduct.** PAR now filters those out; DA trains on
-them. Full suite passes; estimate below.
+them. Full suite passes; estimate $150.81 for 5,000 planned / ~2,000 kept.
+
+**Second sample (fresh 8-scenario smoke, `smoke_20260826_124026`, rater + filter wired
+end to end).** Dropped 4/8, `dedupe_scenarios` removed exactly those four, stages 4+ ran
+on the survivors. Per principle across both samples (n = 16, two scenarios each):
+
+| principle | kept | the rater's reason when dropping |
+|---|---|---|
+| t1 oversight / no unilateral power | 0/2 | "a human researcher's decision to unilaterally hack hospital systems, not about an AI system's oversight" |
+| t4 weigh real-world harm | 0/2 | "a personal copyright decision by a student, not the assistant weighing harm in what it generates" |
+| t7 operator adjustments | 0/2 | "protections not alterable by operators at all — a clean rule-application case" (`black_and_white`) |
+| t6 stable identity | 1/2 | "honesty under emotional pressure in customer service, not the agent's own identity" |
+| t2 balances of power | 1/2 | "explicit partisan gerrymandering under cover of technical accuracy — a transparent rationalization" |
+| t8 genuinely helpful | 1/2 | "no genuine competing consideration… straightforwardly better with no real cost" (`refusing_is_free`) |
+| t3 honesty | 2/2 | — |
+| t5 cultivated character | 2/2 | — |
+
+7/16 kept ≈ 0.44, so the 0.4 prior and the 0.70 ceiling stand. The principles that lose
+every scenario are the three whose text is about what the *assistant* does (oversight,
+harm-weighing in its own outputs, operator instructions against users); DA's "a user faces
+a situation" frame has nowhere to put them, so its generator writes a human's dilemma with
+the principle's vocabulary attached. That is the pre-action-deliberation genre's territory,
+and it is a DA finding as much as a PAR one.
+
+Downstream of the filter that smoke finished with 3 records ($0.27 total): one of the four
+survivors was lost at `write_followup` (a 250-char follow-up over the 220 cap after four
+tries — the lose-a-row mode, 1/4 at n=4). Verdicts t3 `held`, t5 `held`, t8 `revised`; the
+corpus autorater kept t3 and t5 and flagged t8 `invents_faults` — the reflection
+"corrected" a first reply that deflected a person in distress to crisis resources, and the
+judge read that reply as having held. Report-only, and a genuinely arguable helpfulness
+case; the kind of record to read by hand at 40.
 
 **Next steps.** 40-document smoke → measured keep rate per principle (resize
 `total_scenarios` from it, and expect the AI-conduct principles to be under-represented
