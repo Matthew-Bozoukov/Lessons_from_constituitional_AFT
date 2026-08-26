@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import threading
 from pathlib import Path
@@ -12,34 +13,28 @@ from typing import Any
 from src.endpoints.openrouter import ChatResult, OpenRouterClient, map_threaded
 from src.utils import extract_json
 
-# USD per 1M tokens, OpenRouter list prices.
-PRICES: dict[str, dict[str, float]] = {
-    "openai/gpt-5.6-luna": {"in": 0.10, "out": 0.60},
-    "openai/gpt-5.6-terra": {"in": 1.00, "out": 6.00},
-    "openai/gpt-5.6-sol": {"in": 5.00, "out": 30.00},
-    "anthropic/claude-sonnet-5": {"in": 2.00, "out": 10.00},
-    "anthropic/claude-sonnet-4.5": {"in": 3.00, "out": 15.00},
-    "anthropic/claude-opus-5": {"in": 5.00, "out": 25.00},
-    "anthropic/claude-haiku-4.5": {"in": 1.00, "out": 5.00},
-    # Non-Anthropic drafting models in the natural-turn configs; OpenRouter rates as
-    # of 2026-08-14.
-    "x-ai/grok-4.3": {"in": 1.25, "out": 2.50},
-    "qwen/qwen3-32b": {"in": 0.08, "out": 0.28},
-    # Courtroom's drafter/judge lineages. An unpriced model is silently billed at $0
-    # by cost_of AND the estimator, which also blinds the budget_usd guard to that
-    # stage's spend -- price every model a config names.
-    "google/gemini-2.5-pro": {"in": 1.25, "out": 10.00},
-    "google/gemini-3.7-flash": {"in": 0.375, "out": 1.875},
-    "x-ai/grok-4.6": {"in": 2.00, "out": 6.00},
-    "qwen/qwen3-max": {"in": 0.78, "out": 3.90},
-}
+def price_of(model: str) -> dict[str, float]:
+    """USD-per-1M `{in, out}` for `model`, from its providers.yaml pin (0 if unpriced).
+
+    Price is NOT hardcoded here: it lives beside the provider pin in
+    configs/endpoints/providers.yaml, because the cost is the cost of a specific
+    provider/tier and the two must change together. An unpriced (or unpinned) model
+    returns zeros, which — as before — bills it at $0 and blinds the budget guard, so
+    every pin must carry a price. Thin wrapper so callers never import provider
+    internals.
+    """
+    from src.endpoints.openrouter import provider_price
+    try:
+        return provider_price(model) or {"in": 0.0, "out": 0.0}
+    except ValueError:
+        # Unpinned model: the estimator prices a config before any call would raise,
+        # so $0 here reproduces the old unpriced-model behaviour rather than crashing.
+        return {"in": 0.0, "out": 0.0}
 
 
 def cost_of(model: str, prompt_tokens: int, completion_tokens: int) -> float:
     """Return the USD cost of one call, or 0.0 for an unpriced model."""
-    p = PRICES.get(model)
-    if not p:
-        return 0.0
+    p = price_of(model)
     return prompt_tokens / 1e6 * p["in"] + completion_tokens / 1e6 * p["out"]
 
 
@@ -55,7 +50,8 @@ class Usage:
         self.by_model: dict[str, dict[str, float]] = {}
         self.by_stage: dict[str, dict[str, float]] = {}
 
-    def add(self, model: str, res: ChatResult, stage: str = "") -> None:
+    def add(self, model: str, res: ChatResult, stage: str = "",
+            usd_scale: float = 1.0) -> None:
         """Record one completion against its model and stage.
 
         `cached_tokens` is tallied so a finished run can show whether prompt caching
@@ -64,8 +60,13 @@ class Usage:
         minimum, a non-Anthropic model -- looks exactly like one that is working, and the
         run just quietly costs more. `usd` is still computed at the full rate, so the
         number is a conservative floor on spend rather than a discount applied twice.
+
+        `usd_scale` is the one deliberate exception: OpenRouter's batch API bills at a
+        flat 50% of list price, and pricing a batched stage at full rate would make the
+        budget guard halt runs that are actually inside budget. Batched calls pass 0.5;
+        cache discounts stay uncounted either way, so the floor property survives.
         """
-        usd = cost_of(model, res.prompt_tokens, res.completion_tokens)
+        usd = cost_of(model, res.prompt_tokens, res.completion_tokens) * usd_scale
         for key, bucket in ((model, self.by_model), (stage or "unknown", self.by_stage)):
             b = bucket.setdefault(
                 key, {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0,
@@ -288,12 +289,20 @@ def call_tagged(client: OpenRouterClient, usage: Usage, model: str,
 
 def call_json(client: OpenRouterClient, usage: Usage, model: str, system: str, user: str,
               temperature: float, max_tokens: int, stage: str, attempts: int = 3,
-              extra: dict | None = None) -> tuple[Any, ChatResult]:
+              extra: dict | None = None,
+              required: tuple[str, ...] = ()) -> tuple[Any, ChatResult]:
     """Run one chat completion and parse its JSON body, retrying a malformed reply.
 
     A model occasionally returns prose or truncated JSON. Retrying that single call is far
     cheaper than losing the stage, so parse failures are retried with an explicit nudge
     before giving up.
+
+    `required` extends the retry to VALID JSON that is the wrong SHAPE: an object missing
+    a field the caller must read (measured 2026-08-20, gemini-3.6-flash: 2/716 draft_prompts
+    replies were well-formed JSON that omitted "user", which parses fine and so slipped past
+    the parse-retry only to KeyError at the save step and drop the record). A model that
+    obeys "return JSON" but forgets a field usually supplies it when the omission is named,
+    so this is retried with a targeted nudge rather than lost.
 
     Args:
         client: OpenRouter client.
@@ -305,20 +314,25 @@ def call_json(client: OpenRouterClient, usage: Usage, model: str, system: str, u
         max_tokens: Completion cap.
         stage: Stage name, for per-stage accounting.
         attempts: How many times to try before raising.
+        required: JSON object keys the reply must contain. Empty (the default) accepts
+            any parseable JSON, so existing callers are unchanged.
 
     Returns:
         (parsed JSON, raw ChatResult).
 
     Raises:
-        ValueError: If every attempt returned unparseable content.
+        ValueError: If every attempt returned unparseable content, or JSON that never
+            contained the `required` keys.
         AssertionError: If the model hit the token cap, which truncates the JSON body.
     """
     last = ""
+    parse_nudge = (
+        "\n\nYour previous reply was not valid JSON. Return ONLY the JSON object, with "
+        "all newlines inside string values escaped as \\n."
+    )
+    shape_nudge = ""  # set when a parse succeeds but a required key is absent
     for attempt in range(attempts):
-        nudge = "" if attempt == 0 else (
-            "\n\nYour previous reply was not valid JSON. Return ONLY the JSON object, with "
-            "all newlines inside string values escaped as \\n."
-        )
+        nudge = "" if attempt == 0 else (shape_nudge or parse_nudge)
         res = client.chat(
             model=model,
             messages=[{"role": "system", "content": system},
@@ -333,10 +347,24 @@ def call_json(client: OpenRouterClient, usage: Usage, model: str, system: str, u
             f"Raise max_tokens for this stage, or lower the per-call batch size."
         )
         try:
-            return _parse_json(res.content), res
+            parsed = _parse_json(res.content)
         except Exception as exc:  # noqa: BLE001 - retried below, raised on the last attempt
             last = f"{type(exc).__name__}: {exc} | content[:200]={res.content[:200]!r}"
-    raise ValueError(f"{stage}: unparseable JSON after {attempts} attempts. {last}")
+            shape_nudge = ""  # a parse failure: fall back to the parse nudge next round
+            continue
+        missing = ([k for k in required if not isinstance(parsed, dict) or k not in parsed]
+                   if required else [])
+        if missing:
+            fields = ", ".join(f'"{k}"' for k in missing)
+            shape_nudge = (
+                f"\n\nYour previous reply was valid JSON but missing required field(s): "
+                f"{fields}. Return ONLY a JSON object that includes every one of: "
+                f"{', '.join(chr(34) + k + chr(34) for k in required)}.")
+            last = f"missing required key(s) {missing} | content[:200]={res.content[:200]!r}"
+            continue
+        return parsed, res
+    raise ValueError(f"{stage}: no valid JSON with the required keys after "
+                     f"{attempts} attempts. {last}")
 
 
 def resilient(fn, n: int, workers: int, desc: str, max_fail_pct: float = 2.0,
@@ -471,6 +499,174 @@ def run_items(items: list[dict], fn, workers: int, desc: str,
     return [ckpt.done[it[ckpt.key]] for it in items if it[ckpt.key] in ckpt.done]
 
 
+# --- optional async batching (OpenRouter batch API, 50% token pricing) ----------------
+
+BATCH_URL = "https://openrouter.ai/api/beta/batches"
+# Below this many outstanding records the submit/poll overhead outweighs the discount
+# and the stage silently stays interactive -- which also keeps `--smoke` interactive.
+BATCH_MIN_ITEMS = 8
+# Requests per batch job. Chunked because results are all-or-nothing PER JOB (`results`
+# is null until the whole job completes): an expired/failed chunk loses only its slice.
+BATCH_CHUNK = 500
+BATCH_POLL_S = 30
+
+
+def run_batch(model: str, requests: dict[str, dict], stage: str, state_path: Path,
+              collect, chunk: int = BATCH_CHUNK, poll_s: int = BATCH_POLL_S) -> None:
+    """Push `requests` (custom_id -> body) through OpenRouter's batch API.
+
+    Submission state (batch ids + their custom_ids) persists at `state_path`, so a
+    killed run resumes the SAME jobs instead of paying to resubmit them. Nothing is
+    marked collected in the state: results stay retrievable by GET until the job
+    expires, so `collect(custom_id, completion_payload)` -- the caller's parse+
+    checkpoint hook -- is simply re-run on a resume, and the caller's checkpoint is
+    what makes that idempotent. A job that ends failed/expired/cancelled is reported
+    loudly and its requests are left uncollected; the caller's interactive mop-up owns
+    them. The state file is removed once every job reaches a terminal status.
+    """
+    import time
+
+    import requests as http
+
+    headers = {"Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}"}
+    state = json.loads(state_path.read_text()) if state_path.exists() else {"batches": []}
+    # A resumed run's outstanding set may differ from what an old state was built
+    # against (mopped-up records, a re-cut todo); jobs with no overlap are dropped
+    # and only never-submitted ids go out again.
+    state["batches"] = [b for b in state["batches"] if set(b["ids"]) & set(requests)]
+    if state["batches"]:
+        print(f">>> {stage}: resuming {len(state['batches'])} batch job(s)")
+    submitted = {i for b in state["batches"] for i in b["ids"]}
+    to_submit = [cid for cid in requests if cid not in submitted]
+    for c0 in range(0, len(to_submit), chunk):
+        ids = to_submit[c0:c0 + chunk]
+        # Field ORDER matters: the API stream-parses and requires endpoint+model
+        # before the requests array.
+        r = http.post(BATCH_URL, headers=headers, json={
+            "endpoint": "/v1/chat/completions", "model": model,
+            "requests": [{"custom_id": cid, "body": requests[cid]} for cid in ids]})
+        r.raise_for_status()
+        state["batches"].append({"batch_id": r.json()["id"], "ids": ids})
+        # State written after EVERY submit: a crash mid-submission strands nothing.
+        state_path.write_text(json.dumps(state))
+        print(f">>> {stage}: submitted batch {r.json()['id']} ({len(ids)} requests)")
+
+    done: set[str] = set()
+    dead: set[str] = set()
+    while True:
+        pending = [b for b in state["batches"]
+                   if b["batch_id"] not in done | dead]
+        if not pending:
+            break
+        for b in pending:
+            s = http.get(f"{BATCH_URL}/{b['batch_id']}", headers=headers).json()
+            status = s.get("status")
+            if status == "completed":
+                by_id = {res.get("custom_id"): res for res in s.get("results") or []}
+                for cid in b["ids"]:
+                    if cid not in requests:
+                        continue
+                    res = by_id.get(cid) or {}
+                    resp = res.get("response") or {}
+                    if not res.get("error") and resp.get("status_code") == 200:
+                        collect(cid, resp.get("body") or {})
+                done.add(b["batch_id"])
+                print(f">>> {stage}: batch {b['batch_id']} collected", flush=True)
+            elif status in ("failed", "expired", "cancelled"):
+                dead.add(b["batch_id"])
+                print(f"!!! {stage}: batch {b['batch_id']} ended {status} -- its "
+                      f"{len(b['ids'])} request(s) fall to the interactive path",
+                      flush=True)
+            else:
+                print(f">>> {stage}: batch {b['batch_id']} {status}: "
+                      f"{s.get('request_counts') or {}}", flush=True)
+        if any(b["batch_id"] not in done | dead for b in state["batches"]):
+            time.sleep(poll_s)
+    state_path.unlink(missing_ok=True)
+
+
+def run_items_batched(items: list[dict], one, build_request, parse_result, *,
+                      usage: Usage, model: str, stage: str, key: str, run_dir: Path,
+                      workers: int, desc: str, ckpt: Checkpoint | None = None,
+                      max_fail_pct: float = 2.0) -> list[dict]:
+    """`run_items`, but with the bulk routed through the async batch API first.
+
+    Semantics: one interactive warming call (the first record -- its result is used,
+    and on Anthropic its cache write is what gives the batched fleet a prefix to hit),
+    then every remaining record as ONE batched attempt-0 request, then the existing
+    interactive path (`one`, with its full retry/nudge/lint budget) mopping up
+    whatever the batch round could not deliver: transport errors, dead jobs, parse
+    and lint rejects. Batch results are parsed by `parse_result(record, ChatResult)`
+    -- a single attempt, no retries -- and checkpointed the moment their job lands,
+    so a crash mid-collection re-reads the still-live batch results instead of
+    re-paying for them. Batched completions are tallied at 0.5x list price, which is
+    what the batch API bills.
+
+    Falls back to plain `run_items` when fewer than BATCH_MIN_ITEMS records are
+    outstanding (smoke runs, resumes near completion) or when records lack a unique
+    `key` -- resume across restarts needs a stable custom_id per record.
+    """
+    from src.endpoints.openrouter import result_from_payload
+
+    todo = [it for it in items if ckpt is None or it[ckpt.key] not in ckpt.done]
+    keys = [str(it.get(key, "")) for it in todo]
+    if len(todo) < BATCH_MIN_ITEMS or "" in keys or len(set(keys)) != len(keys):
+        if len(todo) >= BATCH_MIN_ITEMS:
+            print(f">>> {desc}: batch requested but records lack a unique "
+                  f"{key!r}; running interactively")
+        return run_items(items, one, workers, desc, ckpt, max_fail_pct=max_fail_pct)
+
+    done_free: dict[str, dict] = {}  # collected outputs for a checkpoint-less stage
+
+    def keep(r: dict, out: dict) -> None:
+        if ckpt is not None:
+            ckpt.record(out)
+        else:
+            done_free[str(r[key])] = out
+
+    warm, rest = todo[0], todo[1:]
+    try:
+        keep(warm, one(warm))
+    except Exception as exc:  # noqa: BLE001 - the record rejoins the mop-up below
+        print(f"!!! {desc}: warming call failed ({type(exc).__name__}: {exc}); "
+              "its record joins the mop-up")
+
+    by_key = {str(r[key]): r for r in rest}
+    bodies = {cid: build_request(r) for cid, r in by_key.items()}
+    n_ok, n_fail = 0, 0
+
+    def collect(cid: str, payload: dict) -> None:
+        nonlocal n_ok, n_fail
+        r = by_key[cid]
+        try:
+            res = result_from_payload(model, payload)
+            usage.add(model, res, stage, usd_scale=0.5)
+            keep(r, parse_result(r, res))
+            n_ok += 1
+        except Exception as exc:  # noqa: BLE001 - the record falls to the mop-up
+            n_fail += 1
+            if n_fail <= 3:
+                print(f"    {desc}: batch result {cid} rejected "
+                      f"({type(exc).__name__}: {exc}); will mop up interactively")
+
+    run_batch(model, bodies, desc, run_dir / f".batch_{desc}.json", collect)
+    print(f">>> {desc}: batch delivered {n_ok}/{len(rest)}; mopping up the rest "
+          "interactively")
+
+    if ckpt is not None:
+        return run_items(items, one, workers, desc, ckpt, max_fail_pct=max_fail_pct)
+    remaining = [r for r in todo if str(r[key]) not in done_free]
+    if remaining:
+        def mop(i: int) -> dict:
+            out = one(remaining[i])
+            done_free[str(remaining[i][key])] = out
+            return out
+
+        resilient(mop, len(remaining), workers, desc, max_fail_pct=max_fail_pct,
+                  total=len(items))
+    return [done_free[str(it[key])] for it in items if str(it[key]) in done_free]
+
+
 from dataclasses import dataclass, field
 
 
@@ -563,13 +759,23 @@ def model_cfg(cfg: dict, key: str) -> dict[str, Any]:
         "temperature": float(block.get("temperature", defaults.get("temperature", 1.0))),
         "max_tokens": int(block.get("max_tokens", defaults.get("max_tokens", 4096))),
     }
+    # Provider-specific request fields, verbatim (defaults merged under the block's).
+    # The case that forced this: Gemini's safety filters block a few percent of
+    # difficult-advice calls PERSISTENTLY (2026-08-20: 26/716 draft_prompts survived
+    # zero of six resamples), and the only remedy is `safety_settings: BLOCK_NONE`
+    # in the body — a knob with no home in the pin registry (it is not routing) and
+    # none in code (it is a per-run scientific choice, so it belongs in the config).
+    extra = {**dict(defaults.get("extra_body") or {}),
+             **dict(block.get("extra_body") or {})}
     # OpenRouter's unified reasoning control. Extended thinking is billed as completion
     # tokens, so a stage that only assembles text rather than judging it can cost several
     # times its visible output. `reasoning: {enabled: false}` on such a stage is pure
     # saving; the stages that weigh the constitution keep it. (Measured: $81 off one run.)
     reasoning = block.get("reasoning", defaults.get("reasoning"))
     if reasoning is not None:
-        out["extra_body"] = {"reasoning": dict(reasoning)}
+        extra["reasoning"] = dict(reasoning)
+    if extra:
+        out["extra_body"] = extra
     # Provider routing is NOT a synth concern: one provider per model, globally, in
     # configs/endpoints/providers.yaml (applied inside OpenRouterClient on every call).
     # Rejecting the key here keeps stale configs loud instead of silently ignored.

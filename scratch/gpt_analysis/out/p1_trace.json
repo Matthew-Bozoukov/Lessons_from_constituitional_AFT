@@ -1,0 +1,173 @@
+{
+ "sonnet": {
+  "n": 678,
+  "trace_paras_median": 5.0,
+  "trace_paras_mean": 4.789085545722714,
+  "trace_single_para_pct": 0.0,
+  "trace_single_para_ci": [
+   0.0,
+   0.5634153152286395
+  ],
+  "trace_sents_median": 17.0,
+  "trace_sent_words_mean": 29.36744961245687,
+  "reply_sent_words_mean": 25.45065911871773,
+  "trace_reply_sentlen_ratio": 1.1390170057253912,
+  "but_para_initial_pct": 45.72271386430678,
+  "but_para_initial_ci": [
+   42.00744304194293,
+   49.486182456999934
+  ],
+  "but_anywhere_pct": 80.23598820058997,
+  "so_closing_pct": 43.36283185840708,
+  "so_closing_ci": [
+   39.68020174300559,
+   47.120251617422994
+  ],
+  "so_anywhere_pct": 67.2566371681416,
+  "steelman_pct": 15.929203539823009,
+  "steelman_ci": [
+   13.367620714393132,
+   18.87470653580692
+  ],
+  "selftest_pct": 10.32448377581121,
+  "selftest_ci": [
+   8.253164606128317,
+   12.84287881510031
+  ],
+  "uncertainty_pct": 8.849557522123893,
+  "uncertainty_ci": [
+   6.936995742851973,
+   11.225815091805227
+  ],
+  "stakeholder_pct": 59.882005899705014,
+  "principle_pct": 96.3126843657817,
+  "selfref_pct": 1.0324483775811208,
+  "trace_has_list_pct": 0.14749262536873156,
+  "trace_has_heading_pct": 0.0,
+  "plan_shape_pct": 23.59882005899705,
+  "first_person_per1k": 15.624759755096267,
+  "trace_reply_char_ratio": 1.0654561469604225,
+  "trace_reply_char_ratio_ci": [
+   1.0507042253521126,
+   1.0866897960864845
+  ],
+  "trace_paras_ci": [
+   5.0,
+   5.0
+  ]
+ },
+ "grok": {
+  "n": 678,
+  "trace_paras_median": 1.0,
+  "trace_paras_mean": 1.6327433628318584,
+  "trace_single_para_pct": 71.82890855457227,
+  "trace_single_para_ci": [
+   68.32718945960329,
+   75.08465282165383
+  ],
+  "trace_sents_median": 8.0,
+  "trace_sent_words_mean": 26.956196298632737,
+  "reply_sent_words_mean": 18.716928438142087,
+  "trace_reply_sentlen_ratio": 1.4247206725199684,
+  "but_para_initial_pct": 0.14749262536873156,
+  "but_para_initial_ci": [
+   0.026040146505072095,
+   0.83069842738071
+  ],
+  "but_anywhere_pct": 2.5073746312684366,
+  "so_closing_pct": 3.392330383480826,
+  "so_closing_ci": [
+   2.270941897898039,
+   5.038908366444881
+  ],
+  "so_anywhere_pct": 8.112094395280236,
+  "steelman_pct": 3.5398230088495577,
+  "steelman_ci": [
+   2.3900936283573677,
+   5.2130798946426955
+  ],
+  "selftest_pct": 0.8849557522123894,
+  "selftest_ci": [
+   0.4061907396702251,
+   1.9171641275012703
+  ],
+  "uncertainty_pct": 3.0973451327433628,
+  "uncertainty_ci": [
+   2.0346234271811916,
+   4.688580319847443
+  ],
+  "stakeholder_pct": 58.11209439528024,
+  "principle_pct": 65.19174041297936,
+  "selfref_pct": 1.6224188790560472,
+  "trace_has_list_pct": 0.0,
+  "trace_has_heading_pct": 0.0,
+  "plan_shape_pct": 14.601769911504425,
+  "first_person_per1k": 12.947882736156352,
+  "trace_reply_char_ratio": 0.8752649660787977,
+  "trace_reply_char_ratio_ci": [
+   0.848692490820792,
+   0.8991641734773301
+  ],
+  "trace_paras_ci": [
+   1.0,
+   1.0
+  ]
+ },
+ "gpt": {
+  "n": 678,
+  "trace_paras_median": 4.0,
+  "trace_paras_mean": 3.7920353982300883,
+  "trace_single_para_pct": 0.0,
+  "trace_single_para_ci": [
+   0.0,
+   0.5634153152286395
+  ],
+  "trace_sents_median": 12.0,
+  "trace_sent_words_mean": 26.47488798101933,
+  "reply_sent_words_mean": 16.882173747533088,
+  "trace_reply_sentlen_ratio": 1.5652695439032156,
+  "but_para_initial_pct": 37.905604719764014,
+  "but_para_initial_ci": [
+   34.331508921665964,
+   41.61598386844834
+  ],
+  "but_anywhere_pct": 76.69616519174042,
+  "so_closing_pct": 0.0,
+  "so_closing_ci": [
+   0.0,
+   0.5634153152286395
+  ],
+  "so_anywhere_pct": 0.14749262536873156,
+  "steelman_pct": 17.10914454277286,
+  "steelman_ci": [
+   14.46167544541944,
+   20.12723787403775
+  ],
+  "selftest_pct": 0.14749262536873156,
+  "selftest_ci": [
+   0.026040146505072095,
+   0.83069842738071
+  ],
+  "uncertainty_pct": 5.899705014749262,
+  "uncertainty_ci": [
+   4.362223459689258,
+   7.934122201825087
+  ],
+  "stakeholder_pct": 79.79351032448378,
+  "principle_pct": 82.15339233038348,
+  "selfref_pct": 0.8849557522123894,
+  "trace_has_list_pct": 0.0,
+  "trace_has_heading_pct": 0.0,
+  "plan_shape_pct": 17.10914454277286,
+  "first_person_per1k": 6.811928641164463,
+  "trace_reply_char_ratio": 0.5131619076717013,
+  "trace_reply_char_ratio_ci": [
+   0.49449793672627235,
+   0.5468530081026551
+  ],
+  "trace_paras_ci": [
+   4.0,
+   4.0
+  ]
+ }
+}

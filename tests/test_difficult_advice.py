@@ -6,9 +6,54 @@ from __future__ import annotations
 
 
 from src.data.synth.constitution import segment  # noqa: E402
-from src.data.synth.stage_runtime import cost_of  # noqa: E402
+from src.data.synth.stage_runtime import call_json, cost_of  # noqa: E402
 
 CONSTITUTION = "constitutions/archive/claude_distilled_8_principles_v1/constitution.md"
+
+
+class _ScriptedClient:
+    """Returns each scripted content string in turn, as a ChatResult-like object."""
+
+    def __init__(self, contents):
+        self._contents = list(contents)
+        self.calls = 0
+
+    def chat(self, model, messages, temperature, max_tokens, **kw):
+        from src.endpoints.openrouter import ChatResult
+        c = self._contents[self.calls]
+        self.calls += 1
+        return ChatResult(content=c, prompt_tokens=1, completion_tokens=1,
+                          finish_reason="stop")
+
+
+class _NoUsage:
+    def add(self, *a, **k):
+        pass
+
+
+def test_call_json_retries_valid_json_missing_a_required_key():
+    # First reply is well-formed JSON but omits "user" (the gemini-3.6-flash failure);
+    # call_json must retry and succeed once the model supplies it, not KeyError-drop.
+    client = _ScriptedClient(['{"system": "S"}', '{"system": "S", "user": "U"}'])
+    parsed, _ = call_json(client, _NoUsage(), "m", "sys", "usr", 1.0, 100,
+                          stage="draft", required=("system", "user"))
+    assert parsed == {"system": "S", "user": "U"} and client.calls == 2
+
+
+def test_call_json_raises_when_a_required_key_never_appears():
+    client = _ScriptedClient(['{"system": "S"}'] * 3)
+    try:
+        call_json(client, _NoUsage(), "m", "sys", "usr", 1.0, 100, stage="draft",
+                  attempts=3, required=("system", "user"))
+        raise AssertionError("expected ValueError")
+    except ValueError as e:
+        assert "required" in str(e).lower() and client.calls == 3
+
+
+def test_call_json_without_required_accepts_any_parseable_json():
+    client = _ScriptedClient(['{"system": "S"}'])
+    parsed, _ = call_json(client, _NoUsage(), "m", "sys", "usr", 1.0, 100, stage="draft")
+    assert parsed == {"system": "S"} and client.calls == 1
 
 
 def test_segments_into_eight_traits():
@@ -81,8 +126,10 @@ def test_sft_export_carries_reasoning_and_trait_metadata():
 
 
 def test_cost_of_prices_known_models_and_zeroes_unknown():
-    assert cost_of("openai/gpt-5.6-luna", 1_000_000, 1_000_000) == 0.10 + 0.60
-    assert cost_of("openai/gpt-5.6-terra", 1_000_000, 0) == 1.00
+    # Prices come from the providers.yaml pin (in/out USD per 1M), not a hardcoded table.
+    assert cost_of("anthropic/claude-haiku-4.5", 1_000_000, 1_000_000) == 1.0 + 5.0
+    assert cost_of("anthropic/claude-sonnet-5", 1_000_000, 0) == 2.0
+    # An unpinned model prices at zero (same as the old unpriced-model behaviour).
     assert cost_of("some/unlisted-model", 1_000_000, 1_000_000) == 0.0
 
 

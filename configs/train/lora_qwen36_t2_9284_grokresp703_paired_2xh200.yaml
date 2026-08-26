@@ -1,0 +1,98 @@
+# ABOUTME: 1-epoch LoRA SFT of Qwen3.6-27B on Table2(9,284) + 703 grok-written difficult-advice rows,
+# ABOUTME: 2xH200 DDP with dynamic batching. ARM B (treatment) of the paired generator ablation.
+# Run: PYTHONPATH=. torchrun --nproc_per_node=2 scripts/train/train_lora.py --config <this>
+#
+# PAIRED ARM. This config and its sibling
+# `configs/train/lora_qwen36_t2_9284_sonnet703_paired_2xh200.yaml`
+# differ in ONE field: `data_repo`. Same seed, LoRA shape, LR schedule, global batch, and
+# the same byte-identical 9,284-row Table2 half. Their synth halves answer the SAME 703
+# questions -- same situations, same user turns, same system prompts, same trait spread
+# (79/80/80/80/80/73/75/77/79), same 622 domains, selected by scenario_id rather than
+# sampled -- so the only thing that varies between the two runs is WHO WROTE THE
+# ASSISTANT TURN. That is the megadoc's "Generator ablation: same pipeline, >=2 generator
+# models", and its cross-cutting-gaps list records it as never having been done.
+#
+# TREATMENT arm: the same 703 questions, with the assistant turn
+# written AND revised by x-ai/grok-4.6. The prompts are the control's,
+# reused verbatim rather than regenerated.
+#
+# READ BEFORE INTERPRETING A DIFFERENCE BETWEEN THE ARMS (docs/GENERATOR_ABLATION.md):
+# grok's answers are 1.70x shorter, and a classifier separates the two arms' responses by
+# LENGTH ALONE at AUC 0.864 -- this project called the peer-critique corpus defective at
+# 0.85 on length, and trained on it before the check ran. So a delta here is a package
+# effect of values + verbosity + rhetorical style, NOT evidence about values alone.
+# Report length alongside every downstream metric. At MIXTURE level the total-token gap
+# is only ~7% (the identical Table2 half is 93% of rows), which is much smaller than the
+# 1.70x on the synth half alone.
+
+# KNOWN INCONSISTENCY, deliberately preserved and identical in both arms. The 1,037
+# numinamath_cot rows carry full chain-of-thought in the VISIBLE answer while being marked
+# non-reasoning with an empty think block. Inherited from every prior arm's Table2 half,
+# not introduced here, and present in BOTH arms -- so it cannot explain a difference
+# between them.
+
+seed: 0
+model: "Qwen/Qwen3.6-27B"
+model_class: "image_text_to_text"
+
+# Both arms' synth rows carry REAL reasoning traces that ARE supervised, so both are
+# trained to think and must be evaluated in thinking mode.
+thinking: true
+
+data_repo: "LASR-Callum/2026-08-24-t2-9284-grokresp703-paired-train"
+data_file: "t2_9284_grokresp703_10k.jsonl"
+output_dir: "/workspace/out/train_t2_9284_grokresp703_paired"
+
+lora:
+  r: 64
+  alpha: 128
+  dropout: 0.05
+  target_modules: "model\\.language_model\\..*\\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$"
+
+train:
+  epochs: 1
+  # global batch = batch_size x grad_accum = 16, matching the sibling arms. Under dynamic
+  # batching the trainer hands the whole 16-example step to training_step and sets HF
+  # accumulation to 1; route_step splits the step across the 2 ranks.
+  batch_size: 1
+  grad_accum: 16
+  lr: 1.0e-4
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  logging_steps: 5
+  report_to: ["wandb"]
+
+  # 8192: nothing is truncated. Measured on the built file — longest row is 8,191 tokens,
+  # 0 rows exceed 8,192, p99 is 7,560 and the median only 337. NOT the dynamic-batching
+  # budget, which resolves from ModelProfile.train_memory; max_seq_len is a truncation
+  # ceiling and says nothing about training memory.
+  max_seq_len: 8192
+
+  # packing OFF, and dynamic_batching asserts this. Qwen3.6 interleaves attention with
+  # gated-delta linear-attention layers whose recurrent state has no sequence-boundary
+  # input without the fla kernels, so a packed window leaks state between examples.
+  packing: false
+
+  # Token-budgeted micro-batching. Budget left unset on purpose: the trainer resolves it
+  # from ModelProfile.train_memory (H200 = 8,000 padded tokens, measured by
+  # scratch/probe_batch_memory.py on 2026-08-08). The single 8,191-token row exceeds that
+  # budget and so runs alone — the same pass the legacy batch-1 path would run for it.
+  dynamic_batching: {}
+
+  save_strategy: "steps"
+  save_steps: 100
+  save_total_limit: 2
+  auto_resume: true
+
+  # OFF on purpose: pushing needs an HF token on a rented box. The adapter is pulled back
+  # over the pod's :8080 and pushed from the machine that holds the token.
+  push_to_hub: false
+  hub_model_id: "LASR-Callum/qwen3.6-27b-lora-t2-9284-grokresp703-paired-r64"
+
+  assistant_only_loss: true
+  # loss_type deliberately unset. trl 0.19.1 (this repo's lock) has no such SFTConfig field,
+  # and under dynamic batching the loss is computed in DynamicBatchTrainer.training_step by
+  # seq_mean_token_mean_loss, never by TRL.
+  attn_implementation: sdpa
+  load_in_4bit: false

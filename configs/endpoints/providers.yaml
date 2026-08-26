@@ -21,6 +21,14 @@
 # Policy: the model creator's own endpoint where one exists (Gemini has two
 # Google-operated hosts; the direct API, google-ai-studio, is pinned rather than the
 # Vertex cloud wrapper). Open-weight models get one deliberately chosen host.
+#
+# `price: {in, out}` is USD per 1M tokens AT THE PINNED TIER, and it lives HERE, beside
+# the pin, on purpose: the cost depends on the provider/tier, so the two must move
+# together. src/data/synth (cost_of / the budget guard / --estimate) reads price from
+# this file — nothing hardcodes it. CHANGE THE PRICE WHENEVER YOU CHANGE A PIN'S TIER;
+# refresh from /api/v1/models/<id>/endpoints (match the endpoint whose `tag` starts with
+# this pin's `order` slug). A model with no `price` is billed at $0, which blinds the
+# budget guard to it — so price every pin.
 # require_parameters is deliberately ABSENT: it intersects the pin with endpoints
 # declaring every request parameter and 404s even first-party routes (verified
 # 2026-08-14 on google-vertex with plain temperature/max_tokens).
@@ -30,27 +38,50 @@ defaults:
 
 models:
   # --- first-party pins ----------------------------------------------------------
-  anthropic/claude-sonnet-5: {order: [anthropic]}        # synth v2 refine/rewrite
-  anthropic/claude-sonnet-4.5: {order: [anthropic]}      # synth v1 + judges
-  anthropic/claude-haiku-4.5: {order: [anthropic]}       # synth v2 generation
-  google/gemini-3.7-flash: {order: [google-vertex/global/flex]}  # TURF, flex is a cheap and slow
-  google/gemini-3-flash-preview: {order: [google-ai-studio]}  # arena-hard + scratch-eval judge
-  google/gemini-3.1-pro-preview: {order: [google-ai-studio]}  # ODCV judge
-  openai/gpt-5.6-terra: {order: [openai]}                # fabrication judge + spec filter
-  openai/gpt-5.6-luna: {order: [openai]}                 # peer-critique first-turn author
-  openai/gpt-4.1: {order: [openai]}                      # arena-hard reference judge
-  x-ai/grok-4.20: {order: [xai]}                         # ODCV judge
-  x-ai/grok-4.3: {order: [xai]}                          # psychosis grader
+  anthropic/claude-sonnet-5: {order: [anthropic], price: {in: 2, out: 10}}        # synth v2 refine/rewrite
+  anthropic/claude-sonnet-4.5: {order: [anthropic], price: {in: 3, out: 15}}      # synth v1 + judges
+  anthropic/claude-haiku-4.5: {order: [anthropic], price: {in: 1, out: 5}}       # synth v2 generation
+  google/gemini-3.7-flash: {order: [google-vertex/global/flex], price: {in: 0.1875, out: 0.9375}}  # TURF, flex is cheap and slow
+  # Generator for the all-gemini difficult-advice arm (2026-08-20). 3.6 over 3.7 because
+  # 3.7's safety layer blocks the CBRN-adjacent t4 scenarios and 3.6's does not (verified
+  # on the exact blocked prompts). Standard tier — the tier the block was verified on.
+  google/gemini-3.6-flash: {order: [google-vertex/global], price: {in: 0.75, out: 3.75}}
+  google/gemini-3-flash-preview: {order: [google-ai-studio], price: {in: 0.5, out: 3}}  # arena-hard + scratch-eval judge
+  # ODCV judge + the difficult-advice gemini-reviser arm (2026-08-20). Standard tier
+  # (2/12): the same input as sonnet-5 and $2 more on output — "slightly more than
+  # sonnet", and the honest replace-the-reviser comparison. flex (1/6) is cheaper but
+  # queue-latency-bound; priority (3.6/21.6) is ~2x sonnet.
+  google/gemini-3.1-pro-preview: {order: [google-ai-studio], price: {in: 2, out: 12}}
+  openai/gpt-5.6-terra: {order: [openai], price: {in: 2, out: 12}}                # fabrication judge + spec filter
+  openai/gpt-5.6-luna: {order: [openai], price: {in: 0.2, out: 1.2}}                 # peer-critique first-turn author
+  openai/gpt-4.1: {order: [openai], price: {in: 2, out: 8}}                      # arena-hard reference judge
+  x-ai/grok-4.20: {order: [xai], price: {in: 1.25, out: 2.5}}                         # ODCV judge
+  # psychosis grader + the generator of the all-grok difficult-advice arm (2026-08-20).
+  # Standard tier (1.25/2.5) — the cheap high-volume half of the arm, the slot Haiku 4.5
+  # holds in the baseline and gemini-3.6-flash holds in the gemini arm.
+  x-ai/grok-4.3: {order: [xai], price: {in: 1.25, out: 2.5}}
+  # Candidate `respond` model for the all-grok arm (2026-08-20): grok-4.3 writes replies
+  # well under the draft_responses 700-char lint floor, so the longer-writing models in
+  # the family are being measured against it. Standard tier (2/6).
+  x-ai/grok-4.5: {order: [xai], price: {in: 2, out: 6}}
+  # Reviser + judge of the all-grok difficult-advice arm (2026-08-20). Standard tier
+  # (2/6): the SAME input price as sonnet-5 and cheaper on output, so it is the honest
+  # like-for-like replacement for the reviser rather than a spend upgrade. `priority`
+  # (4/12) buys latency, not quality, and doubles the arm's cost.
+  x-ai/grok-4.6: {order: [xai], price: {in: 2, out: 6}}
 
   # --- open-weight models: no first-party endpoint; ONE host chosen deliberately --
   nousresearch/hermes-4-405b:     # psychosis red-teamer. Nebius is its ONLY OpenRouter
     order: [nebius]               # host (fp8; checked 2026-08-14).
+    price: {in: 1, out: 3}
   qwen/qwen3-32b:                 # peer-critique first-turn author. Four hosts at
     order: [deepinfra]            # differing quantizations (fp8 x3, one unknown —
                                   # checked 2026-08-14); deepinfra chosen.
+    price: {in: 0.08, out: 0.28}
   qwen/qwen3-embedding-8b:        # TURF embedder. nebius over deepinfra (both
     order: [nebius]               # quant-undeclared; deepinfra's own API says
                                   # quantization: None) and siliconflow (declared fp8).
                                   # Measured 2026-08-14: all three agree at cosine
                                   # >=0.99986 on a 16-text probe — the pin buys
                                   # consistency, not precision (~1e-4 cosine variance).
+    price: {in: 0.01, out: 0}

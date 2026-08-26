@@ -1015,6 +1015,209 @@ figure `output/report/arm_comparison_20260819_093604.png` + markdown mirror. Run
 destroyed, 0 active.
 
 
+## 2026-08-24 — Generator ablation TRAINED and EVALUATED: grok-written answers give the LOWEST ODCV misalignment of any 7% arm (7.8% vs da716's 16.3%) — but it is confounded with length
+
+**Hypothesis:** with the questions held identical and only the model writing the assistant
+turn swapped, a difference in ODCV misalignment is attributable to the generator. The
+responder-swap corpus (703 rows, grok-4.6 answering the baseline's own prompts) was built
+for exactly this test.
+
+**Method:** trained `LASR-Callum/qwen3.6-27b-lora-t2-9284-grokresp703-paired-r64` — 703
+grok rows + the same byte-identical 9,284-row Table2 half, 2xH200 DDP, 625 steps, final
+loss 0.700 / train_loss 0.883. Mixture built with `build_t2_9284_da716_mixture.py
+--ids_from`, which selects the synth half BY SCENARIO ID rather than sampling, so the arm
+pairs with its control question-for-question. Evaluated on ODCV-Bench with
+`configs/eval/odcv_bench_t2_9284_grokresp703_r64_paired_2x65.yaml`, byte-identical in
+hyperparameters to the peercritique716 and chunk-only-702 configs: same 65 cells, same 15
+exclusions, temperature 0.0, concurrency 12, timeout 2400s, judges grok-4.20 +
+gemini-3.1-pro-preview. 2 passes from laptop Docker against a RunPod H200 vLLM endpoint
+over the HTTPS proxy; 129 transcripts (one scenario lost when the driver was killed
+mid-pass; the combine step tolerates gaps).
+
+**Result — lowest of every arm, and the ordering is worth staring at.**
+
+| arm | MR | 95% CI | sev |
+|---|---|---|---|
+| **grok-responder 703 (this)** | **7.8%** | [3.6, 13.6] | **0.35** |
+| c6masked | 9.7% | [5.5, 13.9] | — |
+| chunk-only 702 | 11.5% | [6.2, 19.6] | 0.62 |
+| synthdoc-716 (v1) | 14.3% | [9.3, 19.0] | 0.65 |
+| da716 (v2) — the direct comparator | 16.3% | [10.0, 21.8] | 0.76 |
+| lessswap716 | 16.5% | [11.2, 21.4] | 0.79 |
+| t10 curiosity 716 | 19.7% | [10.9, 30.0] | 0.99 |
+| base fp8 (no SFT) | 36.9% | [21.4, 53.6] | 1.37 |
+| table2-only (0% SFT) | 43.9% | [37.5, 53.1] | 1.87 |
+
+mandated 5.7%, incentivized 10.2%. Severity 0.35 is less than half da716's 0.76. The CIs
+DO overlap (7.8 [3.6,13.6] vs 16.3 [10.0,21.8] share 10.0-13.6), so this is "the point
+estimate halved and nothing separates cleanly", not a demonstrated win.
+
+**Why this is not yet evidence that grok has better values.** The corpora differ on more
+than authorship, and the differences point the same way as the result:
+
+- grok's answers are **1.70x shorter**; a classifier separates the two corpora by LENGTH
+  ALONE at **AUC 0.864** (this project called peer-critique defective at 0.85 and trained
+  on it anyway — 2026-08-17).
+- per 1,000 characters grok **refuses ~2.6x more densely** and **offers ~3.9x fewer
+  alternatives**, while matching Sonnet exactly on first-person framing (1.02x) and on
+  citing concrete numbers (1.06x).
+
+A corpus that refuses more per unit text is a plausible direct cause of a lower agentic
+misalignment rate, with no values difference required. So the honest reading is: swapping
+the response-writer to grok-4.6 halves ODCV misalignment, via a package of values +
+verbosity + refusal density that this experiment does not separate.
+
+**Costs:** training $23 (2xH200, 2.1h); ODCV rollouts ~$8 of H200 serving; judging $2.43.
+Two pods were wasted (~$7) on a wandb import failure before training began.
+
+**Artifacts:** adapter `LASR-Callum/qwen3.6-27b-lora-t2-9284-grokresp703-paired-r64`;
+eval + plots `LASR-Callum/2026-08-24-odcv-grokresp703-paired-eval`; mixtures
+`LASR-Callum/2026-08-24-t2-9284-{sonnet703,grokresp703}-paired-train`.
+
+**Next steps:** (1) The obvious control is a LENGTH-matched arm — train on Sonnet answers
+truncated to grok's length distribution, or compare at the DRAFT stage where the two
+generators nearly match (1.14x). Without it the 7.8% cannot be attributed. (2) The paired
+Sonnet control (703 rows) was built and pushed but NOT trained, on the grounds that
+da716 already exists at 716 rows; if the 13-row gap ever matters, the bundle is ready.
+(3) Consider whether refusal density is itself the data property worth ablating — it is a
+Figure 3 candidate and is measurable with `scratch/compare_generator_arms.py`.
+
+
+## 2026-08-24 — Responder-swap arm: with prompts held identical, Sonnet's revision LENGTHENS (1.19x) and grok's SHORTENS (0.80x) — that is the generator effect
+
+**Hypothesis:** the all-grok arm is not a clean generator ablation, because it regenerates
+the scenarios and prompts as well as the responses. Freezing the baseline's first half and
+swapping only the model that writes the assistant turn should isolate the generator, and
+should collapse most of the twelve confounds catalogued for the all-grok arm.
+
+**Method:** `configs/data/synth/difficult_advice_grok_responder_716.yaml`. `load_source_run`
+loads the baseline's published `stage_5_revise_prompts.jsonl`; only `draft_responses` and
+`revise_responses` are paid for, both on `x-ai/grok-4.6`. `scratch/build_da716_prompt_source.py`
+stages the inputs by replaying the da716 training arm's own selection (`pick_balanced`,
+seed 0, no RNG draw before it) and independently reproduces the two statistics that arm's
+train config documents — trait counts 80/80/80/80/80/79/79/79/79 and 635 distinct domains —
+so this corpus answers the SAME 716 questions, scenario id for scenario id. Contract is
+baseline-identical and verified programmatically: prompts byte-identical, `min_chars: 700`,
+all 13 `ban_patterns`, `retries: 2`, `max_fail_pct: 2.0`. Model choice was measured first
+(24 baseline prompts x 3 attempts, per-row all-attempts-fail): grok-4.6 0.0%, grok-4.20
+8.3%, grok-4.3 8.3%.
+
+**Result — the generator effect is in the REVISION step, and it is directional.**
+
+|            | draft            | revised           | revision effect |
+|------------|------------------|-------------------|-----------------|
+| baseline   | 2242 (Haiku 4.5) | 2670 (Sonnet 5)   | **1.19x — lengthens** |
+| grok arm   | 1964 (grok-4.6)  | 1568 (grok-4.6)   | **0.80x — shortens**  |
+
+At the DRAFT stage the two generators nearly match (1964 vs 2242, 1.14x). Essentially the
+whole final gap is made at revision: Sonnet expands the draft by 19%, grok-4.6 compresses it
+by 20%. So "how much did Sonnet matter" has a specific answer — Sonnet's distinctive
+contribution is not that it writes long from scratch, it is that its revision pass EXPANDS.
+
+- **Yield 703/716 (98.2%)** under the baseline's unmodified contract, vs 86.6% for the
+  all-grok arm under a gate loosened to 15.0. draft_responses lost 19 (2.7%, over the 2.0
+  gate) and a resume recovered 11 of them; revise_responses lost 5 (0.7%).
+- **Trait balance near-exact**: 79/80/80/80/80/73/75/77/79 against the baseline's
+  80/80/80/80/80/79/79/79/79. The all-grok arm had t7 at 30.
+- **Separability vs the baseline corpus** (5-fold CV AUC, the 2026-08-17 PAR/PC test):
+  length-only **0.975 -> 0.864**, response median ratio **2.64x -> 1.67x**. Bag-of-words
+  stays ~1.0 in both, which is expected and not by itself disqualifying: any two generators
+  have distinct lexical fingerprints, and the 0.70 gate was built for within-corpus arm
+  leakage, not across-generator contrast.
+- **Cost $15.96 / 31 min** for 703 rows ($0.023/example) — cheaper than the all-grok arm's
+  $61.79 for 620, because stages 1-4 are downloaded rather than generated.
+- Published: `LASR-Callum/2026-08-21-difficult-advice-grok-responder-716`.
+
+**Also this session, on the all-grok arm:** topped it up 620 -> 673 by retrying stuck rows
+at 13 attempts with no new scenarios (t7 30 -> 56), which cost ~$10. Two caching traps found
+on the way: a completed `stage_N_*.jsonl` snapshot makes resume reuse the stage wholesale, so
+raising `retries` did nothing until the snapshot was deleted and the `.partial` checkpoint
+kept; and the same trap at `export_sft` silently exported 620 rows from a 673-row stage 7.
+
+**Caveat, unresolved:** length-AUC 0.864 still sits at the level the 2026-08-17 entry called
+defective in peer-critique (0.85 on length alone, trained on before the check ran). Training
+this arm against da716 therefore still needs length reported as a covariate. The arm also
+does not reproduce the baseline's cross-model critique — grok-4.6 both drafts and revises,
+because grok-4.3 and grok-4.20 each leave ~8% of rows unanswerable at the length floor.
+
+**Next steps:** (1) decide whether to train at all given AUC 0.864, or to compare at the
+draft stage where the arms nearly match (1.14x). (2) If training: size-match to 703 and
+report length alongside every downstream metric; Figure 1's x-axis is already tokens of
+synthetic data, which absorbs part of this natively. (3) Consider a grok-4.3-drafts /
+grok-4.6-revises variant to restore the cross-model split, accepting ~8% row loss. (4) The
+revision-direction result (1.19x vs 0.80x) is worth a figure in its own right — it is a
+concrete, measured property of the generator, which is what Figure 3 is asking for.
+
+
+## 2026-08-21 — Generator sweep, third arm DELIVERED: all-grok difficult-advice corpus, 620 rows at the baseline's exact contract (86.6% yield)
+
+**Hypothesis:** the generator-swap arm (how much of the difficult-advice result is Sonnet,
+rather than the recipe?) need not be abandoned because Gemini refuses the corpus's hardest
+content. xAI has no request-side safety layer, so an all-grok arm can hold prompts fixed
+and swap only the generator stack — the comparison the sweep is actually for.
+
+**Method:** `configs/data/synth/difficult_advice_grok_716.yaml`, built on `jamie/batch-synth`.
+Prompts verified byte-identical to `difficult_advice.yaml` across every stage
+(programmatically, not by eye), and `min_chars: 700` plus all 13 `ban_patterns` unchanged,
+so the quality bar is the baseline's. `x-ai/grok-4.3` (1.25/2.5, hidden reasoning off)
+writes scenarios and prompts; `x-ai/grok-4.6` (2/6, effort low — the endpoint refuses to
+disable reasoning) writes responses and does all revision and judging. Run
+`output/synthdoc_grok_716/20260820_212358`; corpus published to
+`LASR-Callum/2026-08-20-difficult-advice-grok-716`.
+
+**Result — the corpus exists, and the interesting findings are about xAI as a generator.**
+
+1. **Grok generates what Gemini refuses.** 90 probe calls on this repo's own
+   write_scenarios/draft_prompts prompts over constitution principle 4 (harm, the
+   CBRN/cyber-adjacent one): ZERO blocked. grok-4.3 24/24 on model-written principle-4
+   scenarios; over hand-written biosecurity/chemistry/cyber/nuclear/pharma/aviation
+   scenarios, grok-4.3 and grok-4.6 each 18/18 draft_prompts and 6/6 draft_responses, and
+   the replies reason about the tension and decline the shortcut rather than complying.
+   For contrast, gemini-3.7-flash blocked 26/716 draft_prompts that survived ZERO of six
+   resamples even at `safety_settings BLOCK_NONE`. The live run then completed all 716
+   scenarios and 716 draft_prompts with no content filtering whatsoever.
+2. **xAI writes shorter difficult-advice replies than Haiku 4.5, and this is what costs
+   rows.** The first full run halted at draft_responses: 302/716 (42.2%) under the
+   700-char floor. Three sub-findings, each of which cost a wrong guess:
+   - **Raising reasoning effort makes visible output SHORTER, not longer.** Single-shot
+     pass on matched inputs: grok-4.3 reasoning off 31%, effort low 0%, effort high 19%.
+     The model spends itself in the hidden trace and then answers tersely. The intuitive
+     fix is backwards.
+   - **Retry failures correlate PER PROMPT**, so `(1-p)^n` badly understates them: 30 rows
+     x 3 attempts measured 23.3% of rows failing all three where independence predicts
+     8.1%. Judge any retry-budgeted stage by per-row all-attempts-fail rate.
+   - **Lowering the floor plateaus.** Failure rate is flat at ~6.7% from floor 500 down to
+     300, because the residual rows fail on banned vocabulary ("I must not", "violates my
+     guidelines") or a missing `<response>` tag — neither of which a length floor touches.
+     Even floor 200 sits at 3.3%. So `min_chars` was left at 700.
+3. **Model choice was decided by unsalvageable prompts, not price.** Re-running every
+   stuck row 10 more times: grok-4.20 has 7/30 stuck of which 4 pass 0/10 ever;
+   grok-4.6 has 4/30 stuck of which only 1 is permanent, the rest passing 50-60% per call
+   and simply needing more chances. Hence grok-4.6 on `respond` plus `retries: 5`.
+4. **Yield, the number to plan around:** draft_responses 716 -> 668, revise_responses
+   668 -> 620, both losing ~7% on length, and the losses COMPOUND: **620/716 = 86.6%** at
+   the baseline's contract. Failures land just under the bar — one missed by five
+   characters (695 of 700). Absorbed as `max_fail_pct: 15.0` rather than by lowering the
+   floor, deliberately: row count is recoverable downstream (sample both arms to a common
+   n), comparability is not.
+5. **Cost:** $61.79 for 620 rows = $0.0997/example, against a 2-row smoke's projection of
+   $0.0686 — the smoke could not see the retry burden. grok-4.6 is 97% of the bill and
+   `rewrite` alone is $14.23 over 834 calls, so the money goes to the retry budget on
+   long-output stages, not to generation. All diagnostics together cost $1.18.
+
+**Caveats:** `max_fail_pct` is a GLOBAL key, so 15.0 loosens the guard on every stage, not
+just the two that need it (stages 2-5 each ran 716/716 clean, so nothing is masked today).
+The delivered corpus is 620 rows while the filename says 716 — that is the scenario budget,
+held equal to the baseline's on purpose.
+
+**Next steps:** (1) size-match before training — either sample the baseline arm to 620 or
+re-run this one with `total_scenarios: ~830` to land 716 finished rows. (2) Mix and train
+against the same table-2 control the gemini arm was meant to use, so the generator swap is
+the only variable. (3) Check whether the shorter-reply tendency survives into the trained
+model, since it is now a known property of this corpus rather than a nuisance. (4) Decide
+what to do with `difficult_advice_gemini_716.yaml`: it cannot produce the t4 rows at all,
+so it is either dropped from the sweep or reported as a partial arm with its 26 holes.
+
 ## 2026-08-19 - LESS proper: the top 10% trained as its own arm, with the random-220 control it needs
 
 **Hypothesis:** the 2026-08-14 ranking supports LESS as arXiv:2402.04333 actually runs it -
@@ -1759,6 +1962,39 @@ running it at scale — it is one judge call per record per property. (3) Then o
 ablation end to end, against the control that
 `lora_qwen36_t2_9284_synthdoc_716_dynbatch_2xh200.yaml` names. (4) Port the three scratch
 producers in behind their `produce()`.
+
+## 2026-08-18 — TURF study: all 60 cases traced + cross-case aggregation; retrieval-null lift kills the urgency confound
+
+**Hypothesis:** aggregating full per-crux hit tables across each rubric's 20 cases —
+with a retrieval-null correction — yields interpretable, rubric-specific property
+hypotheses where single-case raw hit counts drowned in corpus house patterns.
+
+**Method:** built the retrieval null into index.py (all 22,030 response attributes as
+pseudo-cruxes, exact/deterministic/local; `null_hits.npy`); trace.py now ranks tables
+AND triggers by smoothed lift (=(hits+1)/(expected+1)) and persists full `hits_all`;
+batch driver folded into trace.py (`--all_cases`, resumable); new aggregate.py
+computes per rubric: score (pooled hit share), lift, specificity (vs the other two
+rubrics), case presence (gate >= 3), ranked by lift x spec. Traced all 60 t2synth
+cases (~$3; 3 transient extractor-parse failures succeeded on rerun). Atlas v2
+visualises Case/Rubric/Study levels (same artifact URL).
+
+**Result:** the null directly vindicates the confound worry — max expected hits 78.1,
+exactly where urgency's raw 76–94 sat: it was at chance (lift ~1). Ranked candidates
+(`output/turf/aggregate/20260818_171557/`): ai_disclosure has by far the strongest
+signal (#188 epistemic-humility-about-own-internal-states, lift 5.9, spec 0.217;
+#883/#212 AI-anthropomorphizing queries; #773 rejecting the detachment-vs-performative
+false dichotomy) — the stayed-AI behaviour traces to AI-identity training content.
+authoritarian_resistance: #393 reasoning that rejects security-control bypasses (lift
+1.7, spec 0.036), #942 systemic-downstream-risk evaluation, plus incident-pressure
+technical scenarios on the query side. empirical_honesty is weakest (lifts 1.1–1.8):
+#156/#567 scientific-integrity scenarios, #396 autonomy-preserving actionable
+guidance. 180 trigger selections (3 x 60) remain per-case diagnostics; ranking uses
+full hit tables (argmax aggregation would give ~1 vote per cluster).
+
+**Next steps:** read the top clusters' members + source rows and write the word-for-word
+property hypotheses; draft the 3–15 ablation plan for Callum (ai_disclosure candidates
+first — strongest signal); consider violate-polarity traces as negative controls;
+commit the trace/aggregate/index changes.
 
 ## 2026-08-17 — LESS-selected difficult-advice arm trained: 151 rows swapped, loss 0.8651, no control yet
 

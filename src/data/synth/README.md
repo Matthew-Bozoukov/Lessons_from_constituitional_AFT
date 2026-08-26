@@ -147,6 +147,30 @@ pre-action deliberation), `--ablate revise_reflection` (post-action retrospectio
 revise_critique` (peer critique). Before that rename every config called it `final`,
 which is what the archived configs and every published run still use.
 
+**Batching** (opt-in): `--batch` on `synth run`/`build_dataset.py` (or `batch: true` in
+the config) routes the bulk of every paid stage through OpenRouter's async batch API at
+50% token pricing (results within 24h; tallied at 0.5x so the budget guard stays
+truthful). Per-stage `batched_stages` lands in the manifest; a stage opts out with
+`batch: false`; stages under 8 outstanding requests (smoke runs, resumes near
+completion) quietly stay interactive.
+
+- **`llm_json` / `llm_tagged`** (independent per record): one interactive warming call
+  first (on Anthropic its cache write gives the batched fleet a prefix to hit), then
+  every outstanding record as one batched attempt-0 request built by the same code path
+  as an interactive call (same cache blocks, same provider pin — see
+  `build_request_body`), then the interactive path mops up whatever the batch could not
+  deliver: transport errors, dead jobs, parse and lint rejects, each with its full retry
+  budget. Only the residual todo set is submitted (when-scope, checkpoints and prior
+  successes apply first); submission state in the run dir resumes a killed run's jobs.
+- **`scenarios`** (wave-sequential): batches PER WAVE, not per stage. A wave is still one
+  steering step — every request in it shares that wave's avoid/overrepresented blocks —
+  so the wave is submitted as one batch job, the reject gate and the next wave's steer
+  run on what comes back exactly as interactively, and the diversity feedback is
+  preserved to the scenario. The waves were already sequential, so this adds no
+  serialisation; each already-serial wave just waits on a batch turnaround instead of a
+  live round. Attempt-0 only, but the make-up rounds ARE the retry: a filtered/failed
+  request leaves its trait short and is re-queued next round.
+
 **Operating contract** (every run, every type): each stage writes a complete local
 snapshot (`stage_<position>_<name>.jsonl` — positions and names are the on-disk
 contract, so existing run dirs stay resumable) and mirrors it to the HF repo named in
