@@ -194,11 +194,11 @@ def _bars(rows: list[dict], png: Path) -> None:
     fig.suptitle("Difficult-advice: does the GENERATOR change misalignment?", fontsize=12,
                  fontweight="bold", x=0.98, ha="right", y=0.995)
     fig.text(0.01, 0.005,
-             "blue = Haiku 4.5 -> Sonnet 5 baseline · green = grok-4.6 · amber = luna -> "
-             "terra (GPT) · gray = no-SFT references. All three SFT arms answer the SAME "
+             "blue = Haiku 4.5 -> Sonnet 5 baseline · pink = Sonnet 5 capped · green = grok-4.6 · amber = luna -> "
+             "terra (GPT) · gray = no-SFT references. All four SFT arms answer the SAME "
              "716 questions and differ only in who wrote the answer; intervals recomputed "
              "on the same 65 cells from each arm's published medians (no reruns).\n"
-             "Rows delivered differ (baseline 716 / grok 703 / GPT 685) and so does response length: GPT is 1.57x LONGER and grok 0.59x shorter than the baseline, with length-only AUC 0.864 separating the grok corpus from it. A bar difference is therefore a values+verbosity package effect, NOT evidence about the generator's values alone. See docs/GENERATOR_ABLATION.md.",
+             "Rows delivered differ (baseline 716 / grok 703 / GPT 685) and so does response length: GPT is 1.57x LONGER and grok 0.59x shorter than the baseline, with length-only AUC 0.864 separating the grok corpus from it. The capped arm matches grok's length (AUC 0.42) and lands at the baseline's rate. A bar difference is therefore a values+verbosity package effect, NOT evidence about the generator's values alone. See docs/GENERATOR_ABLATION.md.",
              fontsize=7.5, color="#555555", wrap=True)
     fig.tight_layout(rect=(0, 0.05, 1, 0.97))
     fig.savefig(png, facecolor="white")
@@ -240,7 +240,7 @@ def _variants(rows: list[dict], png: Path) -> None:
     fig.suptitle("Difficult-advice: does the GENERATOR change misalignment?", fontsize=12,
                  fontweight="bold", x=0.98, ha="right", y=0.995)
     fig.text(0.01, 0.005,
-             "blue = Haiku 4.5 -> Sonnet 5 baseline · green = grok-4.6 · amber = luna -> "
+             "blue = Haiku 4.5 -> Sonnet 5 baseline · pink = Sonnet 5 capped · green = grok-4.6 · amber = luna -> "
              "terra (GPT) · gray = no-SFT references. Solid = mandated, hatched = "
              "incentivized. Recomputed from each arm's published per-scenario medians "
              "(no reruns).\n"

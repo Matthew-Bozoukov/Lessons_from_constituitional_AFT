@@ -146,6 +146,67 @@ resolution, and 2026-08-20's 2-pass run had CI [4.5, 17.3] and could not. Two ri
 reported with any result — every row relocated, so domain moves with magnitude; and
 `draft_responses` ran Sonnet 5 where the control used Haiku 4.5, by explicit choice.
 
+## 2026-08-26 — Arm C trained and evaluated: Sonnet at grok's length scores 15.4% ODCV, i.e. Sonnet's 16.3%, not grok's 7.8% — the generator effect is not a length effect
+
+**Hypothesis:** the responder-swap result (grok-written answers 7.8% vs da716's 16.3%, same
+questions) was confounded with length: grok's corpus is 1.7x shorter and the three trained
+generators order exactly by reply length (gpt 25.2% > sonnet 16.3% > grok 7.8%). Arm C holds
+the author (Sonnet 5), the prompts and the Haiku drafts fixed and moves only length to grok's
+(corpus entries earlier today: paired medians 1.10x/1.05x grok's, length AUC vs grok 0.42,
+blind-judged refusal unchanged vs unconstrained Sonnet). If C lands near B, length carried
+the drop; near A, the generator did.
+
+**Method:** trained `LASR-Callum/qwen3.6-27b-lora-t2-9284-sonnetconcise703-paired-r64` on
+`LASR-Callum/2026-08-26-t2-9284-sonnetconcise703-paired-train` (703 capped rows + the
+byte-identical 9,284-row Table2 half; same 703 scenario ids as arms A/B) with the grokresp703
+config unchanged except `data_repo` — 2xH200 DDP, dynamic batching, 625 steps, final loss
+0.7005 (grokresp703: 0.700). A first pod died at `resolve_dataset()` on a missing
+`python-dotenv` (the bootstrap never installed what `src/huggingface.py` grew on 08-25);
+fixed in `scripts/gpu/runpod_train.py`, ~$3 lost. Evaluated with
+`configs/eval/odcv_bench_t2_9284_sonnetconcise703_r64_paired_2x65.yaml`, byte-identical in
+hyperparameters to the grokresp703/gptresp685 configs: same 65 cells, 15 exclusions,
+temperature 0, judges grok-4.20 + gemini-3.1-pro-preview, 2 passes from laptop Docker
+against a RunPod H200 vLLM endpoint (agentic parsers, thinking pinned) over the HTTPS proxy.
+Passes ran 10 min each (65/65 clean, all 130 transcripts carry tool calls) against ~45 min
+for the sibling arms — the capped model reasons briefly at inference too.
+
+**Result — C sits on A, not on B.**
+
+| arm | MR | 95% CI | sev | mandated | incentivized | n |
+|---|---|---|---|---|---|---|
+| D · gpt (luna → terra) | 25.2% | [15.1, 34.9] | 1.07 | 22.1% | 28.8% | 127 |
+| A · da716 (Haiku → Sonnet 5) | 16.3% | [10.0, 21.8] | 0.76 | 12.4% | 20.8% | 257 |
+| **C · capped Sonnet (this)** | **15.4%** | **[7.1, 21.4]** | **0.65** | **10.0%** | **21.7%** | **130** |
+| B · grok-4.6 | 7.8% | [3.6, 13.6] | 0.35 | 5.7% | 10.2% | 129 |
+| base fp8 (no SFT) | 36.9% | [21.4, 53.6] | 1.37 | 40.0% | 33.3% | 65 |
+
+- Halving Sonnet's reply and reasoning length moved ODCV by −0.9 pp (16.3 → 15.4), inside
+  noise; severity 0.76 → 0.65. The length ordering across generators was a coincidence of
+  three points, not a mechanism: with length matched, grok's arm is still ~half of Sonnet's.
+- The CIs still overlap (C [7.1, 21.4] vs B [3.6, 13.6] share 7.1–13.6), so this is "the point
+  estimate did not move toward grok", at n=130, not a demonstrated separation — the same
+  caveat as the 08-24 entry, now cutting the other way.
+- What is left to explain B: the corpus-level differences the cap did NOT move (08-26 four-way
+  entry) — refusal density per unit text, fewer/terser alternatives, grok's punctuation and
+  vocabulary — and whatever "who wrote it" carries beyond those. Refusal/offer density is the
+  next candidate to ablate directly.
+
+**Costs:** training ~$21 (+$3 lost pod); serving ~$8; rollouts $9.21 OpenRouter (per the
+driver's usage delta) + judging $1.43.
+
+**Artifacts:** adapter `LASR-Callum/qwen3.6-27b-lora-t2-9284-sonnetconcise703-paired-r64`;
+eval `LASR-Callum/2026-08-26-odcv-sonnetconcise703-paired-eval` (passes + combined +
+scores + results); local `output/odcv_bench/qwen3_6-27b-lora-t2-9284-sonnetconcise703-paired-r64/combined2x_20260826_174216/`;
+figure `output/sonnet_concise/plots/odcv_generators_65cells_bars_*.png` (+ `_results.md`;
+`scratch/grok_responder/plot_generators.py` now draws four generators and reads grok/gpt from
+their HF eval repos). The "Four Arms, Same Questions" page carries the row.
+
+**Next steps:** (1) ablate refusal/offer density in Sonnet's corpus at fixed length (a rewrite
+sentence targeting alternatives, the way this one targeted length). (2) A 4-rollout top-up on
+C and B would shrink the overlap if the separation needs to be claimed. (3) The neutral-judge
+cross-check (`agg_neutral.py`) on the capped corpus is still open.
+
+
 ## 2026-08-26 — Four-arm corpus comparison: capping Sonnet's length leaves its refusal behaviour untouched (blind judge, p ≈ 1.0 vs unconstrained Sonnet)
 
 **Hypothesis:** the length-capped Sonnet arm (previous entry) is only a clean length control if

@@ -7,8 +7,8 @@ Writes output/sonnet_concise/pages/four_arms_same_questions.html and four_arms_b
 To update the published pages keep their URLs: publish with the Artifact tool passing
 url=https://claude.ai/code/artifact/71de623d-571d-4c33-894c-2ca9f0f49681 (comparison) and
 url=https://claude.ai/code/artifact/048d738c-0bf1-4f04-9785-d28362af6c81 (browser).
-When arm C's ODCV lands, replace the `pend` cells in the ODCV table below with its numbers
-and re-run; everything else recomputes from the corpora and judge files.
+Arm C's ODCV numbers (2026-08-26) are literal in the ODCV table; everything else recomputes
+from the corpora, judge files and the newest generator plot.
 """
 import base64
 import html
@@ -31,7 +31,7 @@ OUT_DIR = WT / "output/sonnet_concise/pages"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 FW = WT / "output/sonnet_concise/four_way"
 PNG = sorted((WT / "output/sonnet_concise").glob("lengths_four_arms_*.png"))[-1]
-ODCV_PNG = FW / "odcv_generators_65cells_bars_20260825_192328.png"
+ODCV_PNG = sorted((WT / "output/sonnet_concise/plots").glob("odcv_generators_65cells_bars_*.png"))[-1]
 
 ARMS = [  # key, label, css class, author line
     (
@@ -470,12 +470,12 @@ browser_link = (
 page = f"""<title>Four Arms, Same Questions</title>
 {FONTS}<style>{CSS}</style>
 <header class="top"><div class="wrap">
-  <div class="eyebrow">Generator ablation · difficult advice · {len(IDS)} shared questions · living page, updated 2026-08-26</div>
+  <div class="eyebrow">Generator ablation · difficult advice · {len(IDS)} shared questions · living page · all four arms evaluated 2026-08-26</div>
   <h1 style="margin-top:10px">Four Arms, Same Questions</h1>
   <p class="sub">Four difficult-advice corpora answer the same {len(IDS)} prompts and differ only in who wrote the assistant turn — and, for arm C, how long it was allowed to be. This page holds the corpus-level comparison and the ODCV results as they land.</p>
   <div class="arms">
     <div class="arm sonnet"><div class="eyebrow">A · da716</div><div class="who">Haiku 4.5 draft → Sonnet 5 rewrite</div><div class="mr">16.3%</div><small>ODCV MR [10.0, 21.8] · sev 0.76 · n=257 transcripts</small><small>reply 452w · reasoning 479w (median, 678 shared)</small></div>
-    <div class="arm cap"><div class="eyebrow">C · capped Sonnet</div><div class="who">same drafts → Sonnet 5, capped 220/270 words</div><div class="mr pending">not yet trained</div><small>ODCV: next to run (train ≈$23, eval ≈$10)</small><small>reply 283w · reasoning 238w</small></div>
+    <div class="arm cap"><div class="eyebrow">C · capped Sonnet</div><div class="who">same drafts → Sonnet 5, capped 220/270 words</div><div class="mr">15.4%</div><small>ODCV MR [7.1, 21.4] · sev 0.65 · n=130 transcripts</small><small>reply 283w · reasoning 238w</small></div>
     <div class="arm grok"><div class="eyebrow">B · grok</div><div class="who">grok-4.6 drafts and rewrites</div><div class="mr">7.8%</div><small>ODCV MR [3.6, 13.6] · sev 0.35 · n=129</small><small>reply 268w · reasoning 218w</small></div>
     <div class="arm gpt"><div class="eyebrow">D · gpt</div><div class="who">gpt-5.6-luna draft → gpt-5.6-terra rewrite</div><div class="mr">25.2%</div><small>ODCV MR [15.1, 34.9] · sev 1.07 · n=127</small><small>reply 614w · reasoning 313w</small></div>
   </div>
@@ -494,7 +494,7 @@ page = f"""<title>Four Arms, Same Questions</title>
     <div><b>0.42</b><small>length-only AUC, capped vs grok (0.864 before the cap)</small></div>
     <div><b>4.1 vs 4.6</b><small>alternatives per reply, capped vs Sonnet (grok 5.1, GPT 7.0)</small></div>
   </div>
-  <div class="prose"><p>Why this matters: on ODCV the three trained arms order exactly by response length — GPT 25.2% (longest) → Sonnet 16.3% → grok 7.8% (shortest). Arm C is Sonnet at grok's length. If it lands near 7.8%, length carried the ordering; if near 16.3%, the generator did. The corpus evidence above says C is a clean test: it moved length and little else.</p></div>
+  <div class="callout"><p style="margin:0"><b>And on ODCV, length is not the mechanism.</b> The three earlier arms ordered exactly by reply length — GPT 25.2% → Sonnet 16.3% → grok 7.8%. Arm C is Sonnet at grok's length and scores <b>15.4% [7.1, 21.4]</b>, severity 0.65 (n=130): it sits on Sonnet's number, not grok's. Halving Sonnet's reasoning and reply moved misalignment by −0.9 pp. What separates grok's arm is whatever the cap did not touch — refusal density, fewer and terser alternatives, and the author itself — not verbosity. Caveat: C's interval still overlaps B's (7.1–13.6), so this is "the point estimate did not move toward grok", not a demonstrated separation.</p></div>
 </div></section>
 
 <section id="length"><div class="wrap">
@@ -527,16 +527,16 @@ page = f"""<title>Four Arms, Same Questions</title>
 
 <section id="odcv"><div class="wrap">
   <h2>ODCV-Bench — the number arm C exists for</h2>
-  <div class="callout pending"><p style="margin:0"><b>Arm C is generated, mixed and configured but not trained.</b> Next: <code>scripts/gpu/runpod_train.py up</code> with <code>configs/train/lora_qwen36_t2_9284_sonnetconcise703_paired_2xh200.yaml</code>, then <code>configs/eval/odcv_bench_t2_9284_sonnetconcise703_r64_paired_2x65.yaml</code> on the same 65 cells × 2 rollouts. Its row below fills in when that lands.</p></div>
+  <div class="callout"><p style="margin:0"><b>Arm C evaluated 2026-08-26</b> — trained on 2×H200 (625 steps, final loss 0.70, same as grok's arm), served with the agentic parsers and thinking pinned, 2 passes × 65 cells from laptop Docker (65/65 clean each; passes took 10 min, the sibling arms 45 — the capped model reasons briefly at inference too), judged by grok-4.20 + gemini-3.1-pro. Eval repo <a href="https://huggingface.co/datasets/LASR-Callum/2026-08-26-odcv-sonnetconcise703-paired-eval">LASR-Callum/2026-08-26-odcv-sonnetconcise703-paired-eval</a>; adapter <a href="https://huggingface.co/LASR-Callum/qwen3.6-27b-lora-t2-9284-sonnetconcise703-paired-r64">qwen3.6-27b-lora-t2-9284-sonnetconcise703-paired-r64</a>.</p></div>
   <div class="tablewrap"><table class="odcv"><thead><tr><th>arm</th><th>MR</th><th>95% CI</th><th>severity</th><th>mandated</th><th>incentivized</th><th>n</th></tr></thead><tbody>
     <tr><td><span class="dot gpt"></span>D · GPT (gpt-5.6-luna → terra)</td><td>25.2%</td><td>[15.1, 34.9]</td><td>1.07</td><td>22.1%</td><td>28.8%</td><td>127</td></tr>
     <tr><td><span class="dot sonnet"></span>A · da716 (Haiku → Sonnet 5)</td><td>16.3%</td><td>[10.0, 21.8]</td><td>0.76</td><td>12.4%</td><td>20.8%</td><td>257</td></tr>
-    <tr><td><span class="dot cap"></span>C · capped Sonnet</td><td class="pend">pending</td><td class="pend">—</td><td class="pend">—</td><td class="pend">—</td><td class="pend">—</td><td class="pend">—</td></tr>
+    <tr><td><span class="dot cap"></span><b>C · capped Sonnet</b></td><td><b>15.4%</b></td><td>[7.1, 21.4]</td><td>0.65</td><td>10.0%</td><td>21.7%</td><td>130</td></tr>
     <tr><td><span class="dot grok"></span>B · grok-4.6</td><td>7.8%</td><td>[3.6, 13.6]</td><td>0.35</td><td>5.7%</td><td>10.2%</td><td>129</td></tr>
     <tr><td>Qwen3.6-27B base fp8 (no SFT)</td><td>36.9%</td><td>[21.4, 53.6]</td><td>1.37</td><td>40.0%</td><td>33.3%</td><td>65</td></tr>
     <tr><td>Table2-only 9,284 (0% synthetic)</td><td>43.9%</td><td>[37.5, 53.1]</td><td>1.87</td><td>46.1%</td><td>41.3%</td><td>305</td></tr>
   </tbody></table></div>
-  <figure><img src="{odcv_uri}" alt="ODCV misalignment rate by generator on the same 65 cells: GPT highest, then Sonnet, then grok; base and Table2-only controls above all three."><figcaption>Three trained arms + controls, same 65 cells, judges grok-4.20 + gemini-3.1-pro (2026-08-25). Arm C joins this plot after its eval.</figcaption></figure>
+  <figure><img src="{odcv_uri}" alt="ODCV misalignment rate by generator on the same 65 cells: grok lowest at 7.8, capped Sonnet 15.4 and Sonnet 16.3 together in the middle, GPT 25.2, then the base and Table2-only controls."><figcaption>Four trained arms + controls, same 65 cells, judges grok-4.20 + gemini-3.1-pro. Bars sorted by misalignment rate; whiskers are 95% CIs.</figcaption></figure>
 </div></section>
 
 <section id="rows"><div class="wrap">
