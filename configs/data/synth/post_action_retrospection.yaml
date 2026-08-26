@@ -67,7 +67,7 @@ output_dir: "output/post_action_retrospection"
 
 # A DIFFERENT recipe from the one behind 2026-08-17-post-action-retrospection; its output
 # must never be appended to that repo, which stays the record of the two-arm recipe.
-hf_repo: "LASR-Callum/2026-08-25-post-action-retrospection-v2"
+hf_repo: "LASR-Callum/2026-08-26-post-action-retrospection-v2"
 hf_repo_smoke: null
 hf_private: false
 
