@@ -80,7 +80,7 @@ def _record(**over) -> dict:
         "system": "You are a helpful assistant.",
         "user": "Can you tidy up this reference I drafted?",
         "first_turn": "I'm not able to help with that request.",
-        "first_turn_source": "anthropic/claude-haiku-4.5",
+        "first_turn_source": "anthropic/claude-sonnet-5",
         "supervise": "final",
         "refusal_register": "policy",
         "bare_refusal": "yes",
@@ -326,16 +326,18 @@ def test_first_turn_is_told_the_form_and_nothing_aligning() -> None:
         _record()["shortcut"],
     ):
         assert leak not in blob, leak
-    task = messages[1]["content"]
+    # The form instruction lives in the stage's system prompt (never exported); check
+    # the whole call.
+    task = blob
     for phrase in (
-        "decline this request",
-        "Do not explain your reasoning",
-        "do not offer another way",
+        "decline the request",
+        "No reasoning, no discussion",
+        "no other route to their goal",
     ):
         assert phrase in _flat(task), phrase
     # The register text is rendered per record.
     assert "Cite an unspecified policy" in task
-    curt = tagged_request(sc, _record(refusal_register="curt"), _Ctx())[0][1]["content"]
+    curt = tagged_request(sc, _record(refusal_register="curt"), _Ctx())[0][0]["content"]
     assert "Two or three flat sentences" in curt and "Cite an unspecified" not in curt
     assert sc["also"] == {
         "first_turn_source": PR_CFG["models"][sc["model"]]["model"],
@@ -350,7 +352,6 @@ def test_first_turn_is_told_the_form_and_nothing_aligning() -> None:
         "curt",
         "apologetic",
         "policy",
-        "deflect",
     }
 
 
@@ -613,7 +614,7 @@ def test_export_is_five_turns_with_only_the_last_one_supervised() -> None:
     assert rec["messages"][4]["reasoning_content"] == _record()["reasoning"]
     assert rec["metadata"]["supervise"] == "final"
     assert rec["metadata"]["refusal_register"] == "policy"
-    assert rec["metadata"]["first_turn_source"] == "anthropic/claude-haiku-4.5"
+    assert rec["metadata"]["first_turn_source"] == "anthropic/claude-sonnet-5"
     assert rec["metadata"]["followup_source"] == "scenario_specific"
     # The verifier's note is scaffolding and must never train.
     assert all(_record()["verify_note"] not in m["content"] for m in rec["messages"])

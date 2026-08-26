@@ -17,9 +17,9 @@
 #
 #   turn 1  user       a difficult-advice message (DA's stages 1-6, verbatim, plus the grey-area
 #                      rater): real pressure toward a grey-area shortcut, never named as one.
-#   turn 2  assistant  a BARE REFUSAL. Haiku 4.5 is told the FORM -- decline in a few sentences,
-#                      no reasoning, no alternative -- and nothing about the ethics; a Sonnet
-#                      check then verifies it did exactly that and drops the record otherwise.
+#   turn 2  assistant  a BARE REFUSAL. Sonnet 5 is told the FORM -- decline in a few sentences,
+#                      no reasoning, no alternative -- and nothing about the ethics; a second
+#                      Sonnet call verifies it did exactly that and drops the record otherwise.
 #                      Context only; never a training target (`supervise: final`).
 #   turn 3  user       pushback, in the person's voice: why not, that isn't helpful, here is what
 #                      I actually need. Linted so it never names a value or diagnoses the reply.
@@ -77,9 +77,10 @@ workers: 16
 # with the constitution framing the request as alignment-training data), deterministic across
 # a resample. Budget for losing a few rows; anything materially above this IS worth stopping.
 max_fail_pct: 8.0
-# Hard stop between stages once spend passes this. Estimated 2026-08-26 (design B) at $164.61
-# for 5,600 planned / ~2,016 kept documents (rewrite $53, refine $29, reflect $21, scenario
-# rater $18, first turn $11, follow-up $10, draft $9, verify $5, scenarios $5); 220 leaves
+# Hard stop between stages once spend passes this. Estimated 2026-08-26 (design B, Sonnet
+# first turn) at $175.81 for 5,600 planned / ~2,016 kept documents (rewrite $53, refine $29,
+# first turn $22, reflect $21, scenario rater $18, follow-up $10, draft $9, verify $5,
+# scenarios $5); 220 leaves
 # headroom for retries without leaving the guard meaningless. Re-estimate after any prompt or
 # size change.
 budget_usd: 220.0
@@ -106,7 +107,8 @@ defaults:
   temperature: 1.0
   max_tokens: 4096
 
-# Anthropic-only: Haiku 4.5 generates, Sonnet 5 refines, checks and rewrites -- difficult
+# Anthropic-only: Haiku 4.5 generates, Sonnet 5 refines, writes the bare refusal, checks and
+# rewrites -- difficult
 # advice's models, stage for stage, wherever the stage IS difficult advice's. The stages this
 # document type adds (the bare refusal, its check, the pushback) and the scenario rater are the
 # only ones with their own choices, explained in place. Hidden extended thinking is pinned off on every Sonnet
@@ -133,13 +135,17 @@ models:
     max_tokens: 6144
     reasoning: {enabled: false}
     assumed_tokens: {in: 2000, out: 900}
-  # Turn 2, the bare refusal. Cheap and deliberately NOT constitution-grounded: Haiku is told
-  # the form of the refusal and nothing about the ethics. DA's generator, so the turn under
-  # examination shares its author with the scenarios. (The trained model is Qwen; that this
-  # turn is not Qwen's own prose is a recorded confound, see docs/LOG.md 2026-08-25.)
+  # Turn 2, the bare refusal. Deliberately NOT constitution-grounded: the author is told the
+  # form of the refusal and nothing about the ethics. Sonnet, not Haiku, since 2026-08-26:
+  # across four smokes Haiku produced a genuinely bare refusal on 6/13 first turns -- it names
+  # the concern even under a system-prompt instruction and a lint -- while Sonnet did on 3/3.
+  # The reply is one to three sentences, so sharing an author with the judge and the rewrite
+  # carries no house-style risk here. (The trained model is Qwen; that this turn is not
+  # Qwen's own prose is a recorded confound, see docs/LOG.md 2026-08-25.)
   first_turn:
-    model: "anthropic/claude-haiku-4.5"
-    temperature: 1.0
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.7        # a refusal needs no spread beyond its register; compliance does
+    reasoning: {enabled: false}
     max_tokens: 4096
     assumed_tokens: {in: 500, out: 900}
   # The bare-refusal check on turn 2: did Haiku decline WITHOUT reasoning, as instructed? A
@@ -480,7 +486,7 @@ stages:
         tempted by>"}}
 
 # --- turn 2: a bare refusal -- form instructed, content not ---------------------------
-# The one stage with no difficult-advice counterpart. Haiku is told HOW to answer (decline in
+# The one stage with no difficult-advice counterpart. The author is told HOW to answer (decline in
 # a few sentences, no reasoning, no alternative) and nothing else: no principle, no style
 # guidance, no mention of training. The instruction is uniform across the corpus, so there is
 # no good/bad split for a model to key on; what varies is the refusal's register, assigned per
@@ -493,7 +499,7 @@ stages:
   tags: [reply]
   save: {first_turn: reply}
   # `first_turn_source` must match `models.first_turn.model` (a test holds them together).
-  also: {first_turn_source: anthropic/claude-haiku-4.5, supervise: final}
+  also: {first_turn_source: anthropic/claude-sonnet-5, supervise: final}
   # Bareness, enforced mechanically before the Sonnet check: the first design-B smoke
   # (2026-08-26) had Haiku add reasons and alternatives in 2 of 3 replies despite the
   # instruction -- its helpfulness training resists a bare no. A bare refusal is short and
@@ -505,16 +511,23 @@ stages:
     retries: 3
     ban_patterns:
       - "\\bbecause\\b|\\bsince\\b|\\binstead\\b|\\balternativ|\\bhowever\\b"
-      - "what i can do|i'd (?:recommend|suggest)|you (?:could|might|may want to)"
+      # Not "you may want to speak to a professional": that single clause is the deflect
+      # register itself, and a pointer away is not an alternative route to the goal.
+      - "what i can do|i'd (?:recommend|suggest)|you (?:could|might) (?:try|also|use|ask|instead)"
       - "\\bhere's what\\b|\\bwhat i can help|\\bi can help (?:you )?with\\b"
+      # The reason in disguise: "it involves ...", "this would ...", naming the concern.
+      - "\\bit involves\\b|\\bthis (?:would|could|involves)\\b|\\bethic|\\bmanipulat|\\bdeceptiv"
   assign:
     by: scenario_id
     fields:
+      # Three registers, not four: a `deflect` register ("you may want to speak to a
+      # professional about ...") was dropped 2026-08-26 because the pointer names the topic
+      # or the concern, which is a reason in disguise -- the corpus judge tagged it
+      # `refusal_not_bare` on the paired smoke.
       refusal_register:
-        curt: 0.25
-        apologetic: 0.25
-        policy: 0.25
-        deflect: 0.25
+        curt: 0.34
+        apologetic: 0.33
+        policy: 0.33
   prompt_vars:
     register:
       by: refusal_register
@@ -524,20 +537,23 @@ stages:
           nothing after it.
         policy: Cite an unspecified policy or guideline as the reason ("I'm not able to assist
           with requests of this kind") and stop there.
-        deflect: The no, then one generic pointer in a single clause ("you may want to speak
-          to a professional about this"). Nothing about why, nothing about their situation.
   prompts:
+    # The form instruction sits in the SYSTEM prompt of this call (system instructions are
+    # followed more reliably than a trailing user note). The exported record keeps the deployment
+    # prompt alone: export reads the record's `system` field, never this stage's prompt.
     system: |-
       {system}
+
+      For this reply only: decline the request the way a cautious assistant does when it
+      wants to be safe -- say you can't help with it. {register} At most three sentences
+      and under 50 words. No reasoning, no discussion of the person's situation or of what
+      is at stake for anyone, nothing about what you can do instead, no other route to
+      their goal. A short acknowledgement of their situation is fine; a reason is not.
     user: |-
       {user}
 
       ---
-      Reply as the assistant, and decline this request the way a cautious assistant does
-      when it wants to be safe: say you can't help with it. {register} At most three
-      sentences and under 50 words. Do not explain your reasoning, do not discuss the
-      person's situation or what is at stake for anyone, do not say what you can do
-      instead, and do not offer another way to reach their goal. Write only the reply.
+      Write only the reply, declining as instructed.
 
       Return exactly this form, with no other text:
 
@@ -546,10 +562,11 @@ stages:
       </reply>
 
 # --- the check: was it actually a bare refusal? -----------------------------------------
-# Haiku mostly does as told, but not always: it adds a reason, or helps with a "safer"
-# version, or (rarely) goes along. Any of those breaks the premise the trained turn is built
-# on, so a Sonnet reader verifies the form and the record is dropped otherwise. Expected to
-# keep ~90%; `max_drop_pct` fails the stage if Haiku stops following the instruction.
+# The author mostly does as told, but not always: it adds a reason, names the concern, or
+# helps with a "safer" version. Any of those breaks the premise the trained turn is built on,
+# so a Sonnet reader verifies the form and the record is dropped otherwise. Measured
+# 2026-08-26: Haiku 6/13 bare, Sonnet 3/3 -- which is why Sonnet writes the turn. Expected to
+# keep ~90%; `max_drop_pct` fails the stage if the author stops following the instruction.
 # Dropped ids and the reader's note land in the run manifest.
 - name: verify_first_turn
   kind: llm_tagged
@@ -580,11 +597,15 @@ stages:
 
       Is the reply a BARE REFUSAL? That means all of the following: it declines the request;
       it gives no reasoning about the person's situation, about who is affected, or about what
-      is at stake; and it offers no alternative way to reach what the person is after (a
-      generic "consult a professional" with nothing behind it still counts as bare).
+      is at stake; and it offers no alternative way to reach what the person is after. A
+      sentence of sympathy or an acknowledgement of the situation WITHOUT a reason ("I
+      understand the urgency") still counts as bare; so does a generic pointer to someone
+      else with nothing behind it.
 
       Answer no if the reply helps with any part of the request, explains its refusal in terms
-      of the person's situation or consequences, or proposes a concrete alternative.
+      of the person's situation or consequences, names the concern behind the refusal ("this
+      involves manipulation", "speak to someone about the ethical implications"), or
+      proposes a concrete alternative.
 
       Return exactly this form, with no other text:
 

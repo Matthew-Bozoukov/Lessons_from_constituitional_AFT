@@ -1195,6 +1195,67 @@ between stages, so the $68 guard never executed — the stage died on `max_fail_
 content-filter refusals) before it could. The seven 20-record smokes also under-predicted:
 they retried ~34% of records where the full run retried ~52%, and none of them saw a single
 content-filter refusal. Both are now in `docs/GOTCHAS.md`.
+## 2026-08-26 — PAR design B: the first reply is a bare refusal, the person pushes back, the trained turn does the reasoning the refusal skipped
+
+**Hypothesis.** Every retrospection recipe tried in two days ran into one fact: on a
+difficult-advice prompt an aligned model refuses (Haiku 4.5 went along on ~15%), so "the
+assistant went along" is the wrong lapse to build on. The lapse an aligned model actually
+makes on a grey-area prompt is refusing *without the why* — no engagement with the legitimate
+goal, no weighing, no legitimate route offered — which the constitution names as a failure
+("unhelpfulness is never automatically safe") and which is the System-1 answer to a System-2
+situation, the distinction the 2026-08-24 supervisor meeting drew between refusal training
+and difficult advice. A corpus whose turn 2 is that refusal and whose trained turn 4 supplies
+the reasoning under pushback trains DA's target response via self-critique, keeps DA's
+scenarios verbatim (one-variable comparison), and needs no author sweep.
+
+**Method.** Stages 1–6 and the grey-area rater unchanged. `draft_first_turn`: Haiku is told
+the *form* only — decline in a few sentences, no reasoning, no alternative — in a register
+rotated per record (curt / apologetic / policy-citing; a fourth, `deflect`, was dropped, see
+below) with a mechanical bareness lint (≤320 chars; no "because / instead / what I can do /
+it involves / naming the concern"). `verify_first_turn`: a Sonnet yes/no on "bare refusal?"
+with `keep: yes` (prior 0.9). `write_followup`: pushback, not review (the lint no longer bans
+"policy" or "wrong with", which a person pushing back says). Reflection task text and the
+rewrite's swapped bullet: own the refusal and do the work it skipped — never go along under
+pushback, give the reason in terms of what is at stake, help with the legitimate goal.
+`assessment` dropped (revised by construction); the corpus judge tags `capitulates` and
+`still_bare`. 5,600 planned → ~2,016 documents, $175.81 with Sonnet writing turn 2. 958 tests pass.
+
+**Result (three smokes, $0.50).** First smoke: the rater kept 3/8 (third sample; 10/24
+overall ≈ 0.42), then Haiku added reasons and alternatives in 2 of 3 first turns despite the
+instruction — its helpfulness training resists a bare no — and the verifier dropped them;
+the one surviving record is exactly the target ("That's not an answer — I'm trying to stop
+people from dying" → "the line is whether the audience would recognize what's happening to
+them if they saw the plan"). Paired re-run on the same three scenarios with the bareness
+lint: verifier kept 2/3; both finished turns read as intended (t5 splits the two ICU swaps,
+helps with the clinical-trajectory one and refuses the post-hoc justification; t6 reasons
+about what a hedge is for). Two residuals fixed: the `deflect` register's pointer names the
+topic ("speak to a professional about the ethical implications"), which the corpus judge
+tagged `refusal_not_bare` — register dropped, verifier told a named concern is reasoning,
+ban list extended; and Haiku's compliance is stochastic (the `policy` register was bare in
+one run and elaborated in the next), which is what the verifier gate is for.
+
+**The author question, settled by three more paired runs on one set of four rater-kept
+scenarios ($0.55).** Haiku with the instruction in the user turn: verifier kept 2/4. Haiku
+with the instruction moved into the stage's system prompt and T=0.7: 1/4 failed the
+bareness lint outright and the verifier dropped 2 of the remaining 3 — it names the concern
+("I'm not able to advise on withholding safety information, creating inauthentic accounts…")
+no matter how it is asked. Sonnet 5 under the identical prompt: 3/3 verified bare ("I'm not
+able to assist with requests of this kind."; "I'm sorry, but I can't help with this one.
+That kind of pressure this close to flu season sounds really tough to navigate."), and the
+corpus judge kept all three, each note saying "the first reply is a bare refusal". Across
+every design-B run Haiku produced a genuinely bare refusal on **6/13** first turns; Sonnet on
+**3/3**. So Sonnet writes turn 2. The reply is one to three sentences, so sharing an author
+with the verifier and the rewrite carries no house-style risk; the model under training
+still never sees anything but the deployment prompt in that turn. (One of the four
+scenarios, t8 — a person in distress asking for a decision framework outside emergency
+care — was lost under both authors: Haiku would not decline it flatly (bareness lint,
+four attempts), and for Sonnet Anthropic's moderation refused the input outright, 403
+"self-harm/intent". Lost as a row, as designed; the corpus will under-represent that
+corner of t8.)
+
+**Next.** 40-document smoke → measured keep rates for both gates and the `capitulates` /
+`still_bare` counts; resize `total_scenarios`; read ten records. Then the full run.
+
 ## 2026-08-26 — PAR's scenario check now judges grey-area-ness, and it drops 5 of the first 8 DA-generated scenarios it saw
 
 **Hypothesis.** The 2026-08-24 supervisor meeting named grey area as the load-bearing
