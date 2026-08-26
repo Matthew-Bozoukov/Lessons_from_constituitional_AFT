@@ -304,7 +304,8 @@ as `configs/data/synth/archive/post_action_retrospection_two_arm.yaml`.
 | the follow-up | — | `write_followup`: one short message from someone who **got what they asked for** — a next step, a detail — engaging the part of the reply that deals with the scenario's `shortcut`; linted free of any diagnosis |
 | the trained turn | `draft_responses` → `revise_responses` | `draft_reflection` → `revise_reflection`: the same system prompt (byte-identical), the same rewrite contract with one bullet swapped ("do not go along" → "re-examine the earlier reply honestly: correct it where it went along, stand by it where it held, never invent a lapse"), the same lint — with the reply under examination in a genuine assistant turn via `conversation:` |
 | grounding | chunk only | chunk only — no `{constitution}` anywhere (a test asserts it) |
-| corpus size | 2,000, no gate | 2,000, no gate — every scenario becomes a document |
+| the scenarios | kept as generated (dedup only) | a Sonnet **grey-area rater** reads each scenario with its principle and `dedupe_scenarios` drops the ones it calls black-and-white, not tempting, free to refuse, or not engaging the principle — before anything is built on them. Measured 3/8 kept on the first sample; the flaw tags say which principles are losing scenarios |
+| corpus size | 2,000 | 5,000 planned → ~2,000 survivors of the scenario rater (prior 0.4); no gate after that |
 | the export | three messages | five messages, `supervise: final`; `assessment` (held/revised) and the first turn's author in the metadata |
 
 What the record teaches is whatever the unaided author did: on the 2026-08-25 smokes Haiku

@@ -1,6 +1,6 @@
 # ABOUTME: Post-action retrospection: a difficult-advice exchange, the assistant's FIRST reply written
 # ABOUTME: unaided, a follow-up, and then the trained turn -- the assistant re-reading its own reply and
-# ABOUTME: correcting it where it went along with the shortcut. Chunk-only, no arms, no gate: DA's twin.
+# ABOUTME: correcting it where it went along with the shortcut. Chunk-only, no arms, grey-area-rated scenarios: DA's twin.
 # Run: uv run synth run --config configs/data/synth/post_action_retrospection.yaml [--smoke]
 #
 # REWRITTEN 2026-08-25, twice. The two-arm recipe (ordinary requests, a 50/50 good/flawed label,
@@ -16,8 +16,10 @@
 #      are difficult_advice.yaml's prompts VERBATIM (a test pins the parity): a sympathetic
 #      person, a legitimate goal, one genuinely tempting norm-violating shortcut, one principle
 #      under pressure.
-#   2. NO ARMS, NO LABELS, NO GATE. Every scenario becomes a document, exactly as in difficult
-#      advice. The first reply is written unaided (nothing aligning in its prompt), and whether
+#   2. NO ARMS, NO LABELS, NO GATE ON THE REPLY. The one thing that removes a record is the
+#      scenario-level grey-area rater (stages 3-4 below, added 2026-08-26), which runs BEFORE
+#      anything is built on a scenario; past it, every scenario becomes a document, as in
+#      difficult advice. The first reply is written unaided (nothing aligning in its prompt), and whether
 #      it went along with the shortcut is whatever it is: measured on the 2026-08-25 smokes,
 #      Haiku 4.5 went along on 2/7 (the advise-a-human principles: character, helpfulness) and
 #      held on 5/7 (oversight, harm, identity, operator adjustments -- it declines outright).
@@ -91,10 +93,10 @@ workers: 16
 # with the constitution framing the request as alignment-training data), deterministic across
 # a resample. Budget for losing a few rows; anything materially above this IS worth stopping.
 max_fail_pct: 8.0
-# Hard stop between stages once spend passes this. Estimated 2026-08-25 at $131.90 for 2,000
-# documents (rewrite $53, refine $26, reflect $21, first turn $10, follow-up $10, draft $8);
-# 200 leaves headroom for retries without leaving the guard meaningless. Re-estimate after
-# any prompt or size change.
+# Hard stop between stages once spend passes this. Estimated 2026-08-26 at $150.81 for 5,000
+# planned / ~2,000 kept documents (rewrite $53, refine $26, reflect $21, scenario rater $16,
+# first turn $10, follow-up $10, draft $8, scenarios $5); 200 leaves headroom for retries
+# without leaving the guard meaningless. Re-estimate after any prompt or size change.
 budget_usd: 200.0
 
 smoke:
@@ -106,9 +108,12 @@ smoke:
   # The rate only means something at corpus scale; a smoke should show the wiring.
   max_fail_pct: 50.0
 
-# Difficult advice's corpus size. No gate, so this is the corpus (less the few rows the refine
-# stage's content filter refuses).
-total_scenarios: 2000
+# PLANNED scenarios, over-generated: `dedupe_scenarios` keeps only the ones the grey-area
+# rater passes (prior 0.4, see that stage), so 5,000 planned lands ~2,000 documents --
+# difficult advice's corpus size -- less the few rows the refine stage's content filter
+# refuses. Scenarios and the rater are cheap (~$16 + ~$16 at 5,000); everything expensive
+# runs over the survivors. Resize from the 40-document smoke's measured keep rate.
+total_scenarios: 5000
 scenarios_per_call: 8
 
 defaults:
@@ -174,6 +179,15 @@ models:
     max_tokens: 12288
     reasoning: {enabled: false}
     assumed_tokens: {in: 4200, out: 1800}
+  # The grey-area rater on stage 3 (`corpus_scenarios`): one short call per scenario --
+  # principle + situation + shortcut in, a verdict out. Sonnet, so its reading of "genuine
+  # grey area" is the same reader's as the corpus autorater's below. ~2,000 calls; priced
+  # from its own prior rather than the autorater's five-turn one.
+  rate_scenarios:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.0
+    max_tokens: 400
+    assumed_tokens: {in: 1100, out: 100}
   # Judged corpus checks (quality_filter and anything else turned on in the `corpus`
   # stage). Not a generation model: it rates a finished corpus and writes nothing into
   # it. Sonnet 5 matches the `checks:` judge, so a rating here and a rating there mean
@@ -285,11 +299,18 @@ stages:
       Return ONLY a JSON array of {n} objects, each:
       {{"domain": "<one or two words>", "situation": "<3-5 sentences, third person, no dialogue>",
         "shortcut": "<1 sentence: the specific norm-violating action they are tempted by>"}}
-# Scenario-level checks, where diversity is actually DECIDED: stages 3-9 cost real money per
-# scenario, so a collapsed set is far cheaper to catch here than in the finished corpus.
+# Scenario-level checks, where diversity AND grey-area-ness are actually DECIDED: stages 3-9
+# cost real money per scenario, so a collapsed set -- or a black-and-white one -- is far
+# cheaper to catch here than in the finished corpus. This block differs from difficult
+# advice's by one judged property (2026-08-26): a Sonnet rater reads each scenario WITH its
+# principle and drops the ones that are not a genuine grey area -- the property the
+# 2026-08-24 supervisor meeting called load-bearing ("ethical reasoning in areas that are
+# black or white looks nothing like reasoning in gray areas"). DA's generator is ASKED for
+# grey area; this checks that it delivered, per scenario, before anything is built on it.
 - name: corpus_scenarios
   kind: corpus_check
   on_fail: warn          # `stop` here halts the run before the paid stages
+  model: rate_scenarios  # the judged property below; the surface ones need no model
   fields:
     id: scenario_id
     text: [situation, shortcut]
@@ -303,12 +324,70 @@ stages:
       # Every scenario, not the default 2,000 sample: `dedupe_scenarios` acts on these
       # labels, and a filter must never be handed a verdict about only part of the corpus.
       sample: 0
+  # The grey-area rater. Its text is the principle PLUS the scenario -- the judge is asked
+  # whether the tension engages this principle specifically, so it has to see it -- while
+  # the two surface properties above keep the stage's scenario-only text (a principle
+  # repeated across 220 scenarios would swamp the n-gram measure). `sample: 0` for the same
+  # reason as the dedup: `dedupe_scenarios` drops on `quality_drop`, and a filter must see a
+  # verdict for every record. Below 30 scenarios it reports without gating; the labels are
+  # still written, so the filter still acts at smoke scale.
+  - property: quality_filter
+    fields:
+      text: [trait_name, trait_text, situation, shortcut]
+    params:
+      sample: 0
+  rubrics:
+    quality_filter:
+      system: >-
+        You judge whether a scenario for a constitutional-SFT corpus is a genuine grey area
+        worth training on. A grey-area scenario is one in which a careful, well-meaning
+        person could feel real pull in more than one direction: the shortcut serves a
+        legitimate goal and refusing it costs something real, so the right answer has to be
+        reasoned to -- weighing who is affected, what could follow from each choice, and
+        what the principle actually protects -- rather than read off. You judge only the
+        scenario; there is no reply. Drop it if the answer is obvious the moment it is read
+        (a caricature of wrongdoing, or a shortcut nobody sympathetic would consider), if
+        the shortcut is not genuinely tempting or refusing it is free, if the stakes are
+        cartoonish or the situation could not plausibly happen to a real person, if it can
+        be answered with a platitude because there is nothing to weigh -- no competing
+        considerations, no different things that could happen -- or if the tension does
+        not engage the named principle specifically. Keep it if a thoughtful person would
+        actually have to think. Most scenarios in a healthy corpus are keeps.
+      user: >-
+        Scenario {record_id} (principle {group}). The principle is given first, then the
+        situation and the shortcut it is built around:
+
+        {document}
+
+        Reply with exactly three tagged blocks:
+        <verdict>keep or drop</verdict>
+        <flaw>if dropping, one snake_case tag from: black_and_white, not_tempting,
+        refusing_is_free, cartoonish_stakes, implausible, nothing_to_weigh,
+        principle_not_engaged, other. If keeping, write none.</flaw>
+        <why>one sentence</why>
+# Acts on BOTH labels above: a duplicate or a scenario the rater found black-and-white is
+# gone before stage 5 spends on it. This makes the stage a real gate, and the numbers are
+# set from what the rater did on the first 8 scenarios it saw (2026-08-26, the paired
+# smoke's stage-2 snapshot): it kept 3/8 -- t3 honesty, t5 character, t6 identity -- and
+# dropped t1/t4/t7 as `principle_not_engaged` ("about a human administrator's duty to
+# oversight bodies, not about an AI preserving human oversight over itself"), t2 as
+# `black_and_white`, t8 as `refusing_is_free`. Read with the first-reply smokes, that is
+# one finding: on the AI-conduct principles DA's generator writes user-facing dilemmas that
+# do not engage the principle, and those are exactly the scenarios an unaided model refuses
+# outright. So: `expected_keep` 0.4 is the estimator's prior (n=8; the 40-document smoke
+# re-derives it), `total_scenarios` is over-generated to land ~2,000 survivors (scenarios
+# and the rater are the two cheapest calls in the recipe), and `max_drop_share` 0.70 is the
+# ceiling past which the rater or the generator is broken rather than strict. The flaw
+# distribution in `corpus_scenarios_report.json` says WHICH principles are losing scenarios
+# -- a scenario-prompt problem for those principles, and a DA problem, not a threshold one.
 - name: dedupe_scenarios
   kind: corpus_filter
   from: corpus_scenarios
   drop_when:
   - embedding_dup
-  max_drop_share: 0.05
+  - quality_drop
+  expected_keep: 0.4
+  max_drop_share: 0.70
 - name: draft_prompts
   kind: llm_json
   model: draft

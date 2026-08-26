@@ -243,13 +243,48 @@ def test_pr_has_no_arms_no_gate_and_no_scaffolding() -> None:
     assert arm_shares(PR_CFG) == {}
     for sc in PR_CFG["stages"]:
         assert sc["kind"] != "assign", sc["name"]
-        for key in ("keep", "expected_keep", "variants_by", "assign", "prompt_vars"):
+        for key in ("keep", "variants_by", "assign", "prompt_vars"):
             assert key not in sc, (sc["name"], key)
     blob = json.dumps(PR_CFG)
     for gone in ("change_summary", "known_lapse", "reply_quality", "explicitness"):
         assert gone not in blob, gone
-    assert PR_CFG["total_scenarios"] == DA_CFG["total_scenarios"]
-    assert n_final_examples(PR_CFG) == PR_CFG["total_scenarios"]
+    # The one thing that shrinks the corpus is the scenario-level grey-area filter.
+    gates = [s["name"] for s in PR_CFG["stages"] if "expected_keep" in s]
+    assert gates == ["dedupe_scenarios"]
+
+
+def test_pr_scenario_check_rates_grey_area_and_the_filter_acts_on_it() -> None:
+    """The one block where PR deliberately differs from DA's front half (2026-08-26): a
+    judged rater reads every scenario WITH its principle and the dedupe filter drops the
+    ones it calls black-and-white -- before any Sonnet money is spent building on them."""
+    chk = _stage(PR_CFG, "corpus_scenarios")
+    rater = next(p for p in chk["properties"] if p["property"] == "quality_filter")
+    # Every scenario, never a sample: the filter must see a verdict for each record.
+    assert rater["params"]["sample"] == 0
+    # The judge is asked whether the tension engages THIS principle, so it must see it --
+    # while the surface properties keep the scenario-only text.
+    assert (
+        "trait_text" in rater["fields"]["text"]
+        and "shortcut" in rater["fields"]["text"]
+    )
+    assert chk["fields"]["text"] == ["situation", "shortcut"]
+    assert chk["model"] == "rate_scenarios"
+    assert PR_CFG["models"]["rate_scenarios"]["model"].startswith("anthropic/")
+    rubric = chk["rubrics"]["quality_filter"]
+    for phrase in (
+        "grey area",
+        "refusing it costs something real",
+        "engage the named principle",
+        "black_and_white",
+        "nothing_to_weigh",
+    ):
+        assert phrase in rubric["system"] + rubric["user"], phrase
+    dedupe = _stage(PR_CFG, "dedupe_scenarios")
+    assert dedupe["from"] == "corpus_scenarios"
+    assert set(dedupe["drop_when"]) == {"embedding_dup", "quality_drop"}
+    # The label the filter names is the boolean quality_filter writes, not the verdict
+    # string (which is truthy either way).
+    assert "quality_verdict" not in dedupe["drop_when"]
 
 
 def test_pr_is_anthropic_only() -> None:
@@ -773,12 +808,19 @@ def test_pc_export_user_turn_is_exactly_what_the_critique_stages_saw() -> None:
 # --- pricing -------------------------------------------------------------------------
 
 
-def test_every_pr_stage_is_priced_over_the_whole_corpus() -> None:
-    """No gate: every paid stage runs over every scenario, and the corpus is the plan."""
+def test_the_scenario_filter_is_the_one_gate_and_prices_everything_after_it() -> None:
+    """The grey-area rater runs over every planned scenario; the filter's `expected_keep`
+    shrinks everything after it, and the corpus is the survivors."""
     rows = {r["stage"]: r for r in estimate(PR_CFG)["per_stage"]}
     n = PR_CFG["total_scenarios"]
+    kept = round(n * float(_stage(PR_CFG, "dedupe_scenarios")["expected_keep"]))
+    assert rows["rate_scenarios"]["calls"] == n
     for key in ("draft", "refine", "first_turn", "followup", "reflect", "rewrite"):
-        assert rows[key]["calls"] == n, key
+        assert rows[key]["calls"] == kept, key
+    assert n_final_examples(PR_CFG) == kept
+    # DA's own dedupe declares no prior, so DA's estimate is unchanged by this rule.
+    assert "expected_keep" not in _stage(DA_CFG, "dedupe_scenarios")
+    assert n_final_examples(DA_CFG) == DA_CFG["total_scenarios"]
 
 
 # --- the checks, driven off the config's field names --------------------------------

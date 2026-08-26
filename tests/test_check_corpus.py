@@ -956,6 +956,9 @@ def test_quality_filter_reports_the_drop_set_and_why(tmp_path):
     assert labels["r0"]["quality_verdict"] == "drop"
     assert labels["r0"]["quality_flaw"] == "implausible_scenario"
     assert labels["r39"]["quality_verdict"] == "keep"
+    # The boolean a `corpus_filter` can name in `drop_when` (verdict strings are all truthy).
+    assert labels["r0"]["quality_drop"] is True
+    assert labels["r39"]["quality_drop"] is False
 
 
 def test_quality_filter_names_a_group_that_fails_far_above_the_corpus_rate(tmp_path):

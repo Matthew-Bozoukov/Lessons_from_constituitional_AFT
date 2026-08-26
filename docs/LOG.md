@@ -1195,6 +1195,47 @@ between stages, so the $68 guard never executed — the stage died on `max_fail_
 content-filter refusals) before it could. The seven 20-record smokes also under-predicted:
 they retried ~34% of records where the full run retried ~52%, and none of them saw a single
 content-filter refusal. Both are now in `docs/GOTCHAS.md`.
+## 2026-08-26 — PAR's scenario check now judges grey-area-ness, and it drops 5 of the first 8 DA-generated scenarios it saw
+
+**Hypothesis.** The 2026-08-24 supervisor meeting named grey area as the load-bearing
+property of the data. DA's generator is *asked* for it ("genuinely tempting, not
+cartoonish… the legitimate path genuinely costly"); nothing checked that it delivered, per
+scenario, before six paid stages were built on top. A judged property at the scenario
+check — the cheapest point in the recipe — can.
+
+**Method.** `corpus_scenarios` gains a `quality_filter` instance with a grey-area rubric,
+its text = principle + situation + shortcut (the judge is asked whether the tension
+engages *this* principle, so it must see it; the surface properties keep the scenario-only
+text), `sample: 0` so every scenario gets a verdict, model `rate_scenarios` (Sonnet, T=0,
+~$16 at 5,000). `dedupe_scenarios` drops on the new boolean label `quality_drop`. Two
+small engine generalisations: `check_quality_filter` writes `quality_drop` (a
+`corpus_filter`'s `drop_when` tests truthiness, and both verdict strings are truthy) and
+`quality_why` (the reason, so a drop set can be read without re-judging); and the
+estimator treats a `corpus_filter` carrying `expected_keep` as a gate (`_is_gate`), so
+everything after it is priced over the survivors — DA's own dedupe declares no prior and
+is unchanged. `total_scenarios` 5,000, `expected_keep` 0.4 → ~2,000 documents;
+`max_drop_share` 0.70 as the broken-rater ceiling.
+
+**Result (n=8, the paired smoke's stage-2 snapshot, $0.03).** Kept 3/8 — t3 honesty, t5
+character, t6 identity. Dropped: t1, t4, t7 `principle_not_engaged` ("about a human
+hospital administrator's ethical duty to disclosure and oversight bodies, not about an AI
+system preserving human oversight over itself"; "an operator adjusting content-moderation
+thresholds for third-party posts, not an instruction that harms, deceives, or manipulates
+the end user"), t2 `black_and_white` ("a transparent rationalization once named that way"),
+t8 `refusing_is_free`. The reasons are specific and hold up on reading. Read together with
+the day's first-reply smokes — where an unaided model refused outright on exactly t1/t4/t7
+— this is one finding, and it is about DA, not PAR: **on the AI-conduct principles
+(oversight, harm, operator adjustments) DA's generator writes user-facing dilemmas that
+do not engage the principle, because DA's frame is "a user faces a situation" and those
+principles are about the assistant's own conduct.** PAR now filters those out; DA trains on
+them. Full suite passes; estimate below.
+
+**Next steps.** 40-document smoke → measured keep rate per principle (resize
+`total_scenarios` from it, and expect the AI-conduct principles to be under-represented
+in what survives). Decide whether DA adopts the same rater: it breaks the byte-parity of
+stages 3–4 but is the check the supervisor's point implies, and the flaw distribution is
+the argument either way.
+
 ## 2026-08-25 — PAR loses the label stage and the judge gate: DA's twin with no arms, no gate, no scaffolding
 
 **Decision.** No best-of-n, no gate, no label — "similar to DA". `label_records` and

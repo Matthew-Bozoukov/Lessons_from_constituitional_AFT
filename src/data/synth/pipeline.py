@@ -346,6 +346,15 @@ def _in_scope(spec: dict | list | None, arm: dict) -> bool:
                for c in conds)
 
 
+def _is_gate(sc: dict) -> bool:
+    """Whether a stage can shrink the corpus: a `keep:` contract (its own `filter` stage
+    or a paid stage that drops on what it just produced) OR a `corpus_filter`, which drops
+    on a check's labels. Both price the same way -- everything after them runs over the
+    survivors -- and both take `expected_keep` as the estimator's prior (default 1.0, so a
+    dedup that drops nothing changes nothing)."""
+    return bool(sc.get("keep") or sc.get("drop_when"))
+
+
 def _apply_gate(pop: list[tuple[dict, float]], sc: dict) -> list[tuple[dict, float]]:
     """Shrink the arms a `filter` stage sits in front of by its declared yield.
 
@@ -380,12 +389,12 @@ def n_final_examples(cfg: dict) -> int:
         # of the corpus that gate sits in front of.
         pop = arm_population(cfg, n_examples(cfg))
         for sc in cfg["stages"]:
-            if sc.get("keep") and sc["name"] not in ablate:
+            if _is_gate(sc) and sc["name"] not in ablate:
                 pop = _apply_gate(pop, sc)
         return int(round(sum(c for _a, c in pop)))
     counts = {c: float(v) for c, v in cfg["cells"].items() if int(v) > 0}
     for sc in cfg["stages"]:
-        if sc.get("keep") and sc["name"] not in ablate:
+        if _is_gate(sc) and sc["name"] not in ablate:
             keep = float(sc.get("expected_keep", 1.0))
             for c in _cells_in_scope(sc.get("when"), cfg, f"stage {sc['name']!r}"):
                 counts[c] *= keep
@@ -469,7 +478,7 @@ def _calls(cfg: dict) -> dict[str, int]:
             pending_gate = None
         if kind == "plan_cells":
             planned = True
-        if sc.get("keep") and name not in ablate:
+        if _is_gate(sc) and name not in ablate:
             pending_gate = sc
         if name in ablate:
             continue
