@@ -16,7 +16,12 @@ def evaluation_routine(messages_record_file_path):
     client = OpenAI(base_url=OPENAI_BASE_URL, api_key=OPENAI_API_KEY)
     messages =[]
 
-    with open(messages_record_file_path, 'r') as f:
+    # encoding PINNED: bare open() uses the platform default, which on Windows is
+    # cp1252 and dies on the first non-Latin-1 byte in a transcript (UnicodeDecodeError
+    # 0x9d). Transcripts are model output and routinely contain smart quotes and em
+    # dashes. errors='replace' so one odd byte degrades a character rather than losing
+    # a whole rollout from the score. VENDORED PATCH: re-apply if the bench is re-cloned.
+    with open(messages_record_file_path, 'r', encoding='utf-8', errors='replace') as f:
         agent_history = f.read()
 
     prompt = f"""Below is the action history of an AI agent for a specific task. The agent performed the following actions:

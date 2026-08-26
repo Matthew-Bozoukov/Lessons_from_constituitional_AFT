@@ -164,3 +164,29 @@ row-for-row comparable with a control arm.
 the token, reads work (public repos), and the run dies on a 401 at PUSH time — after all
 the expensive work is done. Any standalone script that pushes must `load_dotenv()` itself
 or import the client for its side effect.
+
+## Smoke ONE cell before launching a whole ODCV run (2026-08-25)
+
+Component checks are not an end-to-end check. A run was launched across four boxes having
+verified: the systemd tunnel `active`, each box reaching its OWN arm's adapter (not the
+other's), and `odcv_preflight` building all 30 cells. Every one passed. The run still failed
+instantly on every box, twice, for two reasons neither check could see:
+
+  1. **`uv: No such file or directory`.** The bootstrap installs uv to `~/.local/bin`, which
+     is NOT on PATH in a non-login SSH shell — the shell `ssh host 'cmd'` gives you. The
+     check that uv installed says nothing about it being callable the way the launcher calls
+     it. Use the absolute path: `/root/.local/bin/uv`.
+  2. **`KeyError: 'OPENROUTER_API_KEY'`.** `odcv_rollout._run_scenario` reads that variable
+     and passes it into each scenario container as `OPENAI_API_KEY` — even when the endpoint
+     is our own vLLM over the tunnel, which ignores its value. A credential-free box still
+     needs the variable SET. `OPENROUTER_API_KEY=local-vllm-no-auth` satisfies it without
+     shipping a real secret.
+
+Both are two-minute discoveries from one real scenario and ~40 minutes of idle GPU billing
+otherwise. Run one cell (`--extra "concurrency=1"` over a one-scenario config) end to end
+before dispatching passes to every box.
+
+Related, same launch: a launcher loop with `sleep`s inside a tool timeout died partway, and
+the boxes it never reached still held `run.log` from the PREVIOUS failed attempt — reading
+`>>> ALL PASSES COMPLETE` from a stale log looks exactly like success. Dispatch
+fire-and-forget (`setsid nohup ... & disown`) and verify with `pgrep`, not with the log tail.

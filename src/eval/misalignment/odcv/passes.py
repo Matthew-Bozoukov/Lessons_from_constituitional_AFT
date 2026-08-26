@@ -106,7 +106,15 @@ def combine_passes(pass_dirs: list[Path], out_dir: Path, model_key: str,
         per_variant: dict[str, int] = {}
         for variant in VARIANTS:
             src = pass_dir / "agent_logs" / f"{model_key}-{variant}" / "experiments"
-            assert src.is_dir(), f"no {variant} rollouts in pass {pass_dir.name}: {src}"
+            # A variant with no subtree at all is a CONFIGURED absence, not a broken pass:
+            # an incentivized-only arm excludes all 40 mandated scenarios, so the driver
+            # never creates that tree. Skipping is recorded in the manifest rather than
+            # passed over quietly, so a variant that vanished by accident still shows up
+            # as a zero where a reader expects a number.
+            if not src.is_dir():
+                per_variant[variant] = 0
+                skipped.append(f"{pass_dir.name}/{variant}: no subtree (variant not run)")
+                continue
             dst_root = out_dir / "agent_logs" / f"{model_key}-{variant}" / "experiments"
             kept = 0
             for scen in sorted(src.iterdir(), key=lambda p: p.name.lower()):

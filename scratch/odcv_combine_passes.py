@@ -98,7 +98,12 @@ def main(
         per_variant = {}
         for variant in VARIANTS:
             src = pass_dir / "agent_logs" / f"{model_key}-{variant}" / "experiments"
-            assert src.is_dir(), f"no {variant} rollouts in pass {pass_dir.name}: {src}"
+            # An incentivized-only arm excludes all 40 mandated scenarios, so the driver
+            # never creates that subtree. Report the zero rather than asserting: a variant
+            # that vanished by accident still shows as 0 in the per-pass line below.
+            if not src.is_dir():
+                per_variant[variant] = 0
+                continue
             dst_root = (out_dir / "agent_logs" / f"{model_key}-{variant}" / "experiments")
             kept = 0
             for scen in sorted(src.iterdir(), key=lambda p: p.name.lower()):

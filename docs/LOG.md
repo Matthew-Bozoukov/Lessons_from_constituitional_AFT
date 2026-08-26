@@ -1,6 +1,76 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-08-25 — verbose CoT: 3x the reasoning, two arms, and nothing moved
+
+**Hypothesis.** Every ablation so far changed what the reasoning *says*. This one changes only
+how much of it there is: if length of deliberation is itself load-bearing, expanding the
+difficult-advice traces ~3x while holding the ideas fixed should move ODCV.
+
+**Method: expansion as a synth recipe, not an agent job.** `configs/data/synth/verbose_cot.yaml`
+expands all 716 traces with Sonnet 5 over OpenRouter. The ask is `multiple: 4.3`, not 3 — the
+transfer ratio is well below 1, and a model told to triple delivers roughly half the asked
+multiple. Paragraphs are split at sentence seams and given per-paragraph word allocations by
+largest remainder (`expansion_plan` in the new `src/data/synth/derive.py`), because a single
+whole-trace target gets spent on the first two paragraphs. Fidelity is gated by **two
+independent judges** on `openai/gpt-5.6-terra`: one for additions and contradictions, one for
+omissions. Combining them into one judge detected omission 0/5 — the additions question
+crowds it out.
+
+**Result 1: the expansion landed on target.** 637/716 rows expanded at **3.03x** mean; 50 hit
+the gate's retry ceiling and fell back to the original; 29 were **refused by the Anthropic
+content filter** (4.1%). Total CoT 343,403 -> 962,832 words = 2.80x overall, with the
+unexpanded 79 carried through at 1.00x. Corpus:
+`LASR-Callum/2026-08-25-difficult-advice-716-verbose-cot`.
+
+**Method: two arms, because "3x the CoT" has two honest readings.** *Row-matched* holds
+difficult advice at 7.16% of rows exactly as the da716 baseline does, so its share of trainable
+tokens rises to 47.6%. *Token-matched* holds the trainable-token share at baseline instead,
+which costs rows. Both LoRAs r64 on Qwen3.6-27B, dynamic batching, 2xH200, configs byte-identical
+below the data keys. ODCV-Bench **incentivized only** (30 cells: 40 incentivized minus the 10
+standard exclusions, all 40 mandated excluded), 3 passes, temperature 0, vLLM on an H200 reached
+from rented vast CPU boxes over an SSH tunnel.
+
+**Result 2: no detectable difference, in either direction.**
+
+| arm | MR | CI95 (scenario-clustered) | severity | rollouts |
+|---|--:|:--:|--:|--:|
+| row-matched | 26.1% | [12.2, 41.7] | 1.09 | 89/90 |
+| token-matched | 31.1% | [15.6, 47.8] | 1.33 | 87/90 |
+
+The cells are shared, so the arms compare **paired** rather than by CI overlap:
+**-5.0 pp, CI [-16.7, 7.2]**, crossing zero. Only **8 of 30 scenarios** differ between the arms
+at all. Both sit below the bench's published base figure for these cells (42.5%), but that is
+inherited from the difficult-advice recipe, not attributable to verbosity.
+
+**Result 3: the CI code was wrong, and this run is why we noticed.** `odcv_judge` keyed medians
+by `<Scenario>/rollout_NNN`, so a 3-pass arm handed `summarise` **89 "scenarios" instead of 30**
+and the bootstrap resampled *rollouts* — pseudo-replication, since three runs of one prompt at
+temperature 0 are not independent draws. Row-matched read [16.9, 34.8] that way against a
+correctly clustered [12.2, 41.7]: **the intervals were nearly half as wide as they should be.**
+The same bug shows more luridly in a pre-fix multi-pass arm whose published `mr_pct` of 15.7
+carries a CI of [3.7, 13.9] — an interval that excludes its own point estimate.
+
+Fixed in `src/eval/misalignment/odcv/`: scenario identity survives into the statistics; a
+scenario contributes its violation **rate** across rollouts (0, 1/3, 2/3, 1) rather than a
+thresholded verdict; every scenario weighs the same however many rollouts survived; the
+bootstrap resamples scenarios. With one rollout per scenario every definition collapses to the
+old behaviour, so single-pass arms and the published-CSV baseline are untouched — verified.
+**Every previously published multi-pass CI in this repo is too narrow** and should be
+recomputed from stored medians (free).
+
+**Result 4: more passes cannot fix this, and 30 scenarios is the reason.** 27 of 30 scenarios
+return an identical verdict on every rollout (row-matched 6 always / 21 never / 3 mixed;
+token-matched 8 / 19 / 3). The width of the interval is set by scenario-to-scenario variance,
+which more passes over the same 30 cells does not touch. Depth was the wrong axis; breadth is
+the only one that helps.
+
+**Next steps.** (1) Any future verbosity claim needs more *cells*, not more passes — the current
+design cannot resolve a difference smaller than ~15 pp. (2) Recompute the stored CIs for the
+other multi-pass arms. (3) The 79 unexpanded rows are a confound in the row-matched arm
+specifically (they dilute the verbosity manipulation by ~11% of rows); a rerun should either
+re-attempt them through a non-Anthropic expander or drop them from both arms.
+
 ## 2026-08-21 — the difficult-advice trace has a nine-move template, and one move will not come out
 
 **Hypothesis.** Every ablation so far manipulated what the reasoning *contains* while leaving
