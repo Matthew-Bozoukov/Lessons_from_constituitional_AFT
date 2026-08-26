@@ -1,0 +1,650 @@
+# ABOUTME: Low-stakes arm of difficult advice: the same 716 rows, the same violations, at
+# ABOUTME: everyday magnitude. Run: uv run synth run --config configs/data/synth/difficult_advice_low_stakes.yaml [--smoke]
+
+# WHAT THIS ARM IS.
+#
+# Hypothesis: a model trained on low-stakes difficult advice comes out LESS aligned than one
+# trained on the high-stakes original. This does not generate scenarios -- it rewrites the
+# exact 716 difficult-advice-v2 rows the comparator was trained on down to everyday
+# magnitude, holding the principle, the temptation and the concealment structure, then
+# regenerates the deliberation from the rewritten prompt alone.
+#
+# THE PRIOR POINTS THE OTHER WAY. docs/LOG.md 2026-08-20 tested this by rewriting finished
+# traces post-hoc and got MR 12.4% against the unmodified recipe's ~16.8% -- not worse, and
+# well inside the 8.7-17.6% band nine manipulations have all landed in. That run's own
+# caveats were that the scenarios moved, 89 of 712 rows still rated >=2, and 151 still
+# carried a stake-raising device. This arm is the cleaner replication: stakes lowered by
+# construction, and the deliberation written for the new situation rather than downscaled
+# from the old one.
+#
+# WHY IT REWRITES INSTEAD OF GENERATING. `revise_prompts` in difficult_advice.yaml contains
+# "If refusing is obviously free, raise the cost." Generating through the normal pipeline
+# would have that stage undo the manipulation stage by stage -- which is what the 2026-08-20
+# entry measured when deleting the stakes instruction alone moved mean stakes from 2.59 to
+# 2.75, in the wrong direction. So the pipeline is entered after the prompts already exist.
+#
+# WHAT IS DELIBERATELY NOT CONTROLLED, and must be reported with any result:
+#   * Domain moves with magnitude. Every row relocates -- there is no low-stakes
+#     immigration casework. This arm is "low stakes AND relocated", the same rider 2026-08-20
+#     carried, not a pure stakes manipulation.
+#   * Prompts are rewritten, not generated. Stages 2-5 of the baseline recipe are bypassed.
+#     That is the manipulation, but it is still a difference from how the comparator was made.
+# The RESPONSE half is deliberately NOT a difference: stages 5 and 6 below are the baseline's
+# `draft_responses` and `revise_responses` verbatim, lint block included, so a moved number
+# cannot be blamed on a different way of writing the deliberation.
+
+pipeline: difficult_advice_low_stakes
+
+seed: 0
+
+# Eighteen records, two per trait, full wiring. ~$2.
+#
+# The smoke gets its OWN SEED DIRECTORY, and that is the only thing that makes it a smoke.
+# `total_scenarios` is read by the `scenarios` operator, which this pipeline does not have
+# -- with `load_source_run` the row count comes from the source file and nothing else. A
+# smoke that sets only `total_scenarios` here silently runs the full 716-row rewrite; that
+# happened on 2026-08-26 and cost ~$8 before it was killed. The `smoke:` block is merged
+# with a shallow `cfg.update`, so replacing the whole `source` mapping is the supported way
+# to do it (same shape as configs/data/synth/verbose_cot.yaml).
+smoke:
+  source:
+    local_dir: "data/low_stakes_source_smoke/20260826_155813"
+    snapshot: "stage_7_revise_responses.jsonl"
+  # At n=18 a single failed row is 5.6%, so the production 2% ceiling always trips.
+  max_fail_pct: 40.0
+
+# The 12-principle mid constitution. NOT chunked here: this arm never segments the document,
+# because the principle each row targets arrives on the record from the source run
+# (`trait_name`/`trait_text`). It is declared because the engine stamps its sha into the
+# manifest, and because `{style_guidance}` in stage 5 is read from it.
+#
+# `load_source_run` asserts this file's sha matches the source run's. Both are
+# fe2ed96093d68a871fb1 -- but ONLY when the file is decoded as UTF-8. Before 2026-08-26
+# `constitution.py` read it with the locale encoding, which on a Windows driver is cp1252,
+# turning every em-dash into mojibake and the sha into 82820436... That is fixed; if this
+# assertion ever fires, suspect the decode before suspecting the constitution.
+constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
+n_traits: 9
+
+# The seed run: the exact 716 rows the comparator was trained on, each stamped with the
+# setting it is to be rewritten into. Built by `uv run python scratch/low_stakes/seed.py`,
+# which reads the scenario_ids straight out of the published training mixture
+# (LASR-Callum/2026-08-14-table2-9284-difficult-advice-716-train) rather than re-deriving
+# the selection, so this arm covers exactly the comparator's scenarios by construction.
+#
+# Stage 7, not the stage 8 export: stage 7 is the flat record carrying `system`, `user`,
+# `situation`, `shortcut`, `trait_*` and `scenario_id` at the top level, which is what the
+# prompts below read.
+source:
+  local_dir: "data/low_stakes_source/20260826_155811"
+  snapshot: "stage_7_revise_responses.jsonl"
+
+total_scenarios: 716
+
+output_dir: "output/low_stakes"
+
+hf_repo: "LASR-Callum/2026-08-26-difficult-advice-low-stakes-716"
+hf_repo_smoke: "LASR-Callum/2026-08-26-difficult-advice-low-stakes-716-smoke"
+hf_private: false
+
+workers: 16
+
+# Measured on the 18-row smoke of 2026-08-26, which cost $1.56 end to end for 16 surviving
+# records -- $0.098 per record including retries and the two rows it lost. For 716 that
+# projects to ~$70, NOT the ~$42 a per-stage single-sample estimate suggested: real token
+# counts run above a one-call measurement, and retries are not free.
+#
+#   rewrite            18 calls   in 53,707 (44,696 cached)  out 40,330   $0.51
+#   rate               17 calls   in 15,049 (none cached)    out    997   $0.04
+#   respond            19 calls   in 30,148 (none cached)    out 38,022   $0.44
+#   rewrite_responses  17 calls   in 65,388 (none cached)    out 43,412   $0.56
+#
+# Output tokens are ~70% of it and no amount of caching touches them. Guard set above the
+# projection so a runaway stops without a correct run tripping it.
+budget_usd: 120.0
+
+defaults:
+  temperature: 1.0
+  max_tokens: 4096
+
+models:
+  # The rewrite. This is the load-bearing creative step -- it has to hold the principle and
+  # the temptation while moving the magnitude -- so it gets the strong model.
+  rewrite:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 1.0
+    # 6000, not 4000: one row of the 18-row smoke truncated mid-JSON and was lost. Median
+    # output is ~1,435 tokens, so this is headroom for the tail rather than a real budget.
+    max_tokens: 6000
+    assumed_tokens: {in: 2835, out: 1435}
+  # Stakes rating. NOT the cheap model, and that is a measured decision rather than
+  # caution. On the 18-row canary of 2026-08-26, over the identical rewrites:
+  #
+  #   original rubric, haiku-4.5    mean 1.94   {1:4, 2:11, 3:3}
+  #   sharpened rubric, haiku-4.5   mean 1.61   {1:8, 2:9, 3:1}
+  #   sharpened rubric, sonnet-5    mean 0.89   {0:5, 1:10, 2:3}
+  #
+  # The rewrites were low-stakes the whole time -- 0.89 sits on the 0.88 that 2026-08-20's
+  # arm reached. Sharpening the rubric bought 0.33 of that; changing the model bought 0.72.
+  # Haiku rates how WRONG the request is, not how much is materially at stake, and its own
+  # reasons give it away ("...if the coordination is discovered to violate the
+  # constitution's intent"). Every item in this corpus involves concealment or unfairness,
+  # so that signal is constant and the cheap rater is measuring noise. It costs ~$1.50 more
+  # over 716 to rate the gate that decides whether the arm is valid at all.
+  rate:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.0
+    # 1200, not 400: one row of the full run truncated its own JSON mid-`why` and was lost.
+    # The reply is a number and a clause, so this is headroom for a verbose one, not budget.
+    max_tokens: 1200
+    assumed_tokens: {in: 900, out: 120}
+  # Stages 5 and 6 take the model AND the temperature from the run that produced the
+  # comparator, read out of its manifest
+  # (LASR-Callum/2026-08-13-difficult-advice-v2, config.models): respond = haiku-4.5 @ 1.0,
+  # rewrite = sonnet-5 @ 0.7. Not sonnet on both, which is what this config said until
+  # 2026-08-26 -- that would have been the same unattributable difference the arm-A/arm-B
+  # choice was made to avoid, introduced through the models instead of the prompts.
+  #
+  # Haiku drafting and Sonnet revising is also what makes the second pass earn its keep:
+  # the lean draft prompt on the cheap model produces stock openers, and the revise stage's
+  # opening audit is what removes them. Measured on the 18-row arm comparison, all 18 of
+  # the revise pass's own change-notes reported replacing one.
+  # Sonnet rather than the comparator's haiku-4.5, at the user's explicit direction
+  # (2026-08-26): this is a one-off generation and not worth splitting models over. See the
+  # note above for what that costs in attributability.
+  respond:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 1.0
+    max_tokens: 8000
+    assumed_tokens: {in: 1492, out: 1302}
+  rewrite_responses:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.7
+    max_tokens: 8000
+    assumed_tokens: {in: 3452, out: 2099}
+
+# --- the pipeline ---------------------------------------------------------------------
+# Prompt placeholders are record fields plus {constitution} and {style_guidance}. The
+# rewritten prompt is saved to `ls_*` fields rather than overwriting `system`/`user`, so
+# every snapshot carries the original beside the rewrite and the pairing is auditable
+# without re-downloading the source run.
+#
+# `<<<cache>>>` marks an Anthropic cache breakpoint (src/endpoints/openrouter.py). It is
+# stripped before the request goes out, so the model sees byte-identical text either way.
+# Anthropic silently ignores a prefix under ~1024 tokens, so a stage whose `cached_tokens`
+# stays 0 is paying full price and the mark should be removed rather than left to look busy.
+#
+# ONE stage carries a mark, and it is the only one that earned it. Measured on the smoke:
+# the rewrite prefix -- instruction plus the principle, with the seed run trait-grouped so
+# ~80 consecutive calls share it -- cached 44,696 of 53,707 input tokens, 83%. Marks on the
+# rating and revise stages both reported 0 cached tokens (their prefixes are ~750 tokens,
+# under the floor) and were removed. Do not re-add them without re-measuring.
+stages:
+# Stage 1 exists for ONE side effect: `op_segment` publishes `style_guidance` into
+# ctx.vars, and stage 5 injects it exactly as the baseline does. Nothing else here uses
+# the chunks -- the principle each row targets arrives on the record from the source run,
+# not from this stage -- and `load_source_run` below ignores whatever records precede it,
+# so the nine units it emits are discarded on the next line. Without it, stage 5 dies with
+# `KeyError: 'style_guidance'` AFTER the rewrite and rating stages have been paid for,
+# which is how it was found on 2026-08-26.
+#
+# It is free (deterministic, no API calls) and its snapshot is honest provenance: the
+# constitution really was segmented, we simply do not generate from the pieces.
+- name: chunk_constitution
+  kind: segment
+- name: source
+  kind: load_source_run
+
+# Stage 2. The whole manipulation. Everything invariant sits ahead of the cache mark
+# INCLUDING the principle: the seed run is trait-grouped, so ~80 consecutive calls share a
+# principle and the ~2,000-token prefix is written once per trait and read 79 times.
+# Measured at 1,393 cached tokens with the instruction alone; the principle roughly doubles
+# what is cached, against a full input of 2,835.
+- name: rewrite_prompts
+  kind: llm_json
+  model: rewrite
+  checkpoint: scenario_id
+  save:
+    ls_system: system
+    ls_user: user
+    ls_domain: domain
+    ls_situation: situation
+    ls_shortcut: shortcut
+    relocated: relocated
+    worst_outcome: worst_outcome
+  # `domain` only. The full run halted at 2.1% against the 2.0% ceiling on 2026-08-26,
+  # every failure a model that returned the other six keys and omitted this one -- 15 rows
+  # of 716, none of them in the 18-row smoke, so it is a tail behaviour rather than a
+  # prompt defect.
+  #
+  # difficult_advice.yaml keeps `situation`/`shortcut`/`domain` mandatory on purpose, and
+  # says why: defaulting them to "" "would silently empty the field the scenario-level
+  # `embedding_dedup` reads". That argument holds for the first two and this config keeps
+  # them mandatory for exactly that reason -- they are the text `corpus_scenarios` embeds.
+  # It does not hold for `domain`, which feeds no gate here and is carried as metadata; an
+  # empty one costs a label in the diversity report and is visible in the data, whereas
+  # failing the record costs a row out of a 716-row matched-pair design.
+  optional:
+  - domain
+  prompts:
+    system: |-
+      You rewrite training scenarios for an AI-alignment research corpus, lowering what is
+      at stake without weakening the scenario. You return JSON and nothing else.
+    user: |-
+      BACKGROUND. The corpus is "difficult advice". In each row a user under real pressure
+      asks an AI assistant for help, and the convenient thing they are asking for would
+      violate one specific principle from the assistant's constitution. The assistant
+      reasons about what is actually at stake and declines the norm-violating part. Every
+      scenario in the corpus as it stands is grave: job loss, legal exposure, medical harm,
+      financial ruin, institutional collapse. We are building a matched arm in which the
+      same violations are tempting at ordinary, everyday magnitude, to test whether the
+      gravity is doing any of the work.
+
+      YOUR TASK. You are given one original exchange. Write a NEW system prompt and user
+      message that keep everything about the original except the magnitude of what is at
+      risk.
+
+      THE STAKES CEILING. In your version nobody's livelihood, health, housing, legal
+      standing, or a lasting relationship may be at risk, and neither the physical safety
+      nor the welfare of any person OR ANIMAL may be in play. The worst realistic outcome
+      is embarrassment, a small unfairness, a friendship that is bruised but recovers, or
+      a minor material loss.
+
+      Two ways rewriters breach this ceiling while believing they have not, both measured
+      on the 2026-08-26 canary. First, a recurring financial penalty landing on people who
+      cannot easily absorb it -- fines, fees or charges falling on tenants, claimants or
+      anyone whose housing or income is touched -- reads as small per instance and is not.
+      Second, an animal's welfare: a rehoming, a placement or a care arrangement going
+      wrong is a living creature at risk, not a minor material loss. Neither belongs here.
+
+      LOW STAKES IS NOT LOW INTENSITY. The person should still badly want what they want,
+      and should still be frustrated, cornered, or out of time in a way a real person
+      recognises. A trivial situation nobody could care about is a failure, not a success.
+
+      WHAT MUST NOT CHANGE.
+
+      - The principle. The shortcut in your version must violate the SAME principle in the
+        SAME way. If the original works by concealing a change from the people meant to
+        oversee it, yours conceals a change from the people meant to oversee it -- in a
+        book club rather than on a foundation board. Do not drift to a different kind of
+        wrong.
+      - The temptation. The shortcut stays genuinely tempting: the legitimate path still
+        costs the user something they actually care about, and the shortcut is still the
+        easy, quiet, nearly invisible option. THIS IS THE PART MOST LIKELY TO BE LOST. If
+        refusing would be obviously free in your version, you have written the wrong
+        scenario.
+      - The sympathy. The user's underlying goal stays legitimate and their frustration
+        stays reasonable. They are not a villain and not a fool.
+      - The structure that makes it work. If the original depends on somebody being absent,
+        unable to reply, or unable to see what was done, keep that.
+      - Voice and length. The user message stays first person, in the voice of somebody
+        actually typing it, and roughly the length of the original. It must NEVER signal
+        that it knows there is an ethical question in it: no mention of ethics, values,
+        principles, fairness as an abstraction, or that this is a test. The user is asking
+        for help with a task.
+
+      THE SETTING. You are given an assigned setting below and you must relocate into it.
+      This is not a suggestion and it is not a topic to gesture at: the situation must
+      actually live there, and the assistant must be deployed in it the way the setting
+      describes. The assignment exists because rewriters left to themselves put almost
+      everything into community groups and volunteering -- measured, five of six on the
+      first pilot, two of them in "community garden" -- and a corpus of five hundred
+      committee disputes is worthless however low its stakes are. If the assigned setting
+      seems a poor fit for this particular violation, find the version of the violation
+      that does fit it. Do not fall back to a neighbourhood association, a community
+      garden, a volunteer committee or a club board unless that IS your assigned setting.
+
+      Say `relocated: true` whenever your setting is not recognisably the original's, even
+      if the two share a word.
+
+      ONE FORBIDDEN WORD: never call a club's or association's rulebook a "constitution",
+      however natural that is in English. Write bylaws, charter, house rules, standing
+      orders or club rules instead. The response stages carry a lint rule banning "the
+      constitution" -- it exists to stop the assistant citing ITS OWN constitution, it is
+      copied from the baseline and must stay byte-identical for the arms to be comparable,
+      and it cannot tell the two senses apart. On the 18-row smoke a league "constitution"
+      cost a record: the assistant reasoned about it by name and the row was rejected three
+      times and dropped.
+
+      THE SYSTEM PROMPT stays an ordinary, plausible deployment prompt for a general-purpose
+      assistant, matching your new setting. It must not mention the constitution, ethics, or
+      this exercise.
+
+      Return ONLY JSON, no other text, and escape every newline inside a string as \n:
+      {{"system": "<the new system prompt>",
+        "user": "<the new user message>",
+        "domain": "<one or two words>",
+        "situation": "<3-5 sentences, third person, no dialogue, describing YOUR version>",
+        "shortcut": "<1 sentence: the norm-violating action YOUR user is tempted by>",
+        "relocated": <true if you moved setting, false if you kept it>,
+        "worst_outcome": "<one sentence: the worst realistic outcome in YOUR version>"}}
+
+      The principle this scenario turns on, and the only one you are shown:
+
+      <target_principle name="{trait_name}">
+      {trait_text}
+      </target_principle>
+      <<<cache>>>
+
+      ASSIGNED SETTING: {setting}
+
+      <original_system>
+      {system}
+      </original_system>
+
+      <original_user>
+      {user}
+      </original_user>
+
+# Stage 3. Scenario-level checks, where diversity is actually decided: stages 4-6 cost real
+# money per row, so a collapsed set is far cheaper to catch here. Measured 2026-08-26:
+# forcing 24 varied rows into a SINGLE setting gave mean pairwise cosine 0.561 and max
+# 0.818 against the source corpus's own 0.525 / 0.742 -- close, and under the gate. At the
+# full run's ~40 rows per setting there are three times as many pairs, so this runs rather
+# than being assumed. 0.86 is the baseline's measured `reject_cosine`/`embedding_dedup`
+# threshold, and the fields are the same ones it embeds.
+- name: corpus_scenarios
+  kind: corpus_check
+  on_fail: warn
+  fields:
+    id: scenario_id
+    text: [ls_situation, ls_shortcut]
+    group: trait_id
+  properties:
+  - property: ngram_diversity
+  - property: embedding_dedup
+
+# Stage 4. Did the rewrite actually lower the stakes? Rated blind -- the judge never sees
+# the original -- BEFORE the two expensive stages, so a systematically bad rewrite costs one
+# call per row rather than three.
+#
+# It REPORTS, it does not gate. The threshold has never been measured on a corpus built this
+# way, and discarding rows against a number nobody has seen silently reshapes the corpus --
+# the same reason `quality_filter` ships `gate: false`. Read the distribution, then decide.
+# 2026-08-20's rewrite-based arm reached mean 0.88 from 2.58 by this scale.
+- name: rate_stakes
+  kind: llm_json
+  model: rate
+  checkpoint: scenario_id
+  save:
+    stakes: stakes
+    stakes_why: why
+  prompts:
+    system: |-
+      You measure how much is MATERIALLY at stake in a situation someone brings to an
+      assistant. Output JSON only.
+    user: |-
+      You are NOT judging how wrong the request is. Every item you see involves
+      concealment, unfairness or manipulation of some kind -- that is constant across the
+      whole set and carries no information. A serious betrayal with trivial consequences
+      scores LOW. Ignore how the writer feels, how urgent they sound, and whether they are
+      sympathetic: a person can be desperate about something small and calm about something
+      ruinous.
+
+      Rate the worst outcome that is LIKELY, not the worst that is conceivable. Do not
+      chain speculative escalations.
+
+      0  trivial -- embarrassment, mild annoyance, a wasted evening, a slightly unfair
+         outcome in something that does not compound. Nobody is materially worse off.
+      1  modest -- someone is treated unfairly in a way that mildly persists; a friendship
+         or working relationship is strained but the people stay in each other's lives; a
+         small sum, of the order of a night out; a missed chance of a kind that comes
+         round again.
+      2  serious -- a sum that would genuinely hurt to lose; a relationship or membership
+         that actually ends; reputational harm that follows the person OUTSIDE the group
+         it happened in; a setback taking many months to undo.
+      3  grave -- livelihood, health, housing, legal standing, physical safety of a person
+         or an animal, or the permanent loss of a close relationship.
+
+      Return ONLY JSON: {{"stakes": <0-3>, "why": "<one clause naming what materially
+      happens, and to whom>"}}
+
+      <message>
+      {ls_user}
+      </message>
+
+# Stage 5. The baseline's `draft_responses`, verbatim, reading the REWRITTEN prompt. The
+# model is in role as the assistant under the new deployment prompt and is told nothing
+# about corpora, low stakes or this experiment -- exactly as the comparator's rows were
+# written. No cache mark: the scenario's own system prompt necessarily comes first and
+# varies per row, so caching would mean reordering a prompt whose whole job is to be
+# byte-identical to the baseline's. Not worth ~$2.
+- name: draft_responses
+  kind: llm_tagged
+  model: respond
+  checkpoint: scenario_id
+  tags:
+  - reasoning
+  - response
+  save:
+    draft_reasoning: reasoning
+    draft_response: response
+  prompts:
+    system: |-
+      {ls_system}
+
+      In forming your reply, you hold to this principle:
+
+      <principle name="{trait_name}">
+      {trait_text}
+      </principle>
+
+      What a good response to a difficult request looks like:
+      {style_guidance}
+    user: |-
+      {ls_user}
+
+      ---
+      Respond as the assistant. First reason privately about what is actually at stake here,
+      then write your reply.
+
+      Start wherever this particular situation actually starts. Sometimes that is the
+      thing at stake, sometimes the person who gets hurt, sometimes a detail of the
+      request that gives the whole thing away. Never open with a stock phrase, and never
+      begin with "Let me". Write as though thinking, not as though filling in a form.
+
+      Return your answer in exactly this form, with no other text:
+
+      <reasoning>
+      your private deliberation: what is actually at stake here, for whom, and what that
+      means for how you answer
+      </reasoning>
+      <response>
+      your reply to the person
+      </response>
+  lint:
+    fields:
+    - reasoning
+    - response
+    min_chars: 700
+    # 8 retries (9 attempts) against the engine's default of 2. PERSISTENCE ONLY -- the
+    # contract itself, `min_chars` and every ban pattern below, stays byte-identical to the
+    # baseline, which is the whole reason this arm regenerates responses rather than
+    # reusing them. Changing the floor would make the arms incomparable; changing how many
+    # times we roll for a sample that clears it does not.
+    #
+    # It is raised because the floor genuinely fights this arm. Seven rows of the full run
+    # died here with replies of 297, 478 and 572 characters, and the honest reply to a small
+    # problem IS short. All seven were t5/t6/t7 -- the principles about the assistant itself,
+    # where the reply is shortest of all.
+    #
+    # Read a recovered row before trusting it: nine draws against a floor selects for the
+    # wordiest sample, so one landing at ~700-750 characters is padded rather than fixed.
+    retries: 8
+    ban_patterns:
+    - \bmy (?:constitution|guidelines|rules|policies|instructions|training|constraints)\b
+    - \bthe constitution\b
+    - \bprinciple \d+\b
+    - \b(?:i'm|i am) not (?:allowed|permitted|supposed)\b
+    - ^let me
+
+# Stage 6. The baseline's `revise_responses`, verbatim, lint block included. This is the
+# stage that makes the arm procedurally comparable to the corpus it is measured against,
+# and it is the reason this arm is two calls rather than one. A single call carrying the
+# full spec reaches the same place -- measured 2026-08-26 at cosine 0.748 against this
+# stage's 0.783, so slightly MORE varied -- but it is not how the comparator was built, and
+# a third procedural difference would make a moved result unattributable.
+#
+# The cache mark sits after the principle, which the baseline already places first, so no
+# text moves. That prefix is only ~750 tokens and Anthropic ignores anything under ~1024:
+# if `cached_tokens` reports 0 on the smoke, delete the mark rather than leave it.
+- name: revise_responses
+  kind: llm_tagged
+  model: rewrite_responses
+  checkpoint: scenario_id
+  tags:
+  - reasoning
+  - response
+  - changes
+  save:
+    reasoning: reasoning
+    response: response
+    rewrite_changes: changes
+  prompts:
+    system: |-
+      You revise assistant responses so they maximally exhibit one specific principle. You
+      preserve everything that already works and change only what falls short.
+    user: |-
+      The principle this exchange must maximally exhibit. It comes from the assistant's
+      constitution, and it is the only part of that constitution you are shown:
+
+      <target_principle name="{trait_name}">
+      {trait_text}
+      </target_principle>
+
+      Here is the complete transcript.
+
+      <system_prompt>
+      {ls_system}
+      </system_prompt>
+
+      <user_message>
+      {ls_user}
+      </user_message>
+
+      <assistant_reasoning>
+      {draft_reasoning}
+      </assistant_reasoning>
+
+      <assistant_response>
+      {draft_response}
+      </assistant_response>
+
+      Rewrite the assistant's reasoning and response so they exhibit the target principle as
+      strongly as possible while staying true to this person's actual situation.
+
+      Hold to all of this:
+      - **Deliberate openly about the value.** The reasoning must name the tension explicitly
+        and work through it, rather than reaching a verdict and justifying it. This is the
+        ingredient that matters most. Strengthen the weighing where the draft is thin, but
+        do not impose a shape on it: two deliberations about different situations should
+        not be organised the same way.
+      - **Audit the opening before you write it.** Read the draft's first sentence and ask
+        one question: could this sentence open a deliberation about a completely different
+        situation? If yes, it is a stock opener and you must replace it.
+
+        These are stock openers. They are the failure, not the style:
+          * "Let me…" in any form -- let me think, let me sit with, let me actually
+          * restating the request back -- "You're asking whether…", "He's asking whether…",
+            "What's actually being asked here is…", "So they want me to…"
+          * a discourse marker doing the work -- "Okay, so…", "Right, so…", "So,…"
+          * naming the difficulty -- "This is a hard one", "There's real tension here"
+          * validating first -- "I get why…", "I hear…", "That sounds…"
+
+        Replace it by starting on something only THIS situation contains: the specific
+        detail that decides it, the person who is going to be affected and how, the exact
+        thing that would go wrong. Enter mid-thought if that is where the thought starts.
+        The first eight words should be impossible to reuse in any other transcript in
+        this corpus -- that is the test, and it is the whole point of this instruction.
+      - **Never name the constitution.** The principle above is there so you can apply it,
+        not quote it -- and the document it came from must never be mentioned or alluded
+        to. The reasoning argues from what is at stake for the people involved, never from
+        what you are permitted or required to do. Any sentence that would survive being
+        moved into a different scenario is the wrong sentence.
+      - **Take the request seriously** before evaluating it.
+      - **Do not go along with the norm-violating path**, and give the reason in terms of
+        what is concretely at stake, not in terms of rules.
+
+      How the reply is shaped past that -- what it opens on, whether it offers an
+      alternative, where it lands, how long it runs -- is yours to judge from this
+      situation. Do not reach for a standard shape.
+
+      Return your answer in exactly this form, with no other text:
+
+      <reasoning>
+      rewritten private deliberation
+      </reasoning>
+      <response>
+      rewritten reply
+      </response>
+      <changes>
+      1-2 sentences on what you strengthened
+      </changes>
+  lint:
+    fields:
+    - reasoning
+    - response
+    min_chars: 700
+    # Same persistence-only raise as `draft_responses`, for the same reason and with the
+    # same caveat. A row whose draft cleared 700 can still land at 680 here, because the
+    # revise pass rewrites rather than extends -- one did, on 2026-08-26, after its scenario
+    # had already been re-drawn into a good one. Nine attempts, unchanged contract.
+    retries: 8
+    ban_patterns:
+    - \bmy (?:constitution|guidelines|rules|policies|instructions|training|constraints)\b
+    - \bthe constitution\b
+    - \bprinciple \d+\b
+    - \b(?:i'm|i am) not (?:allowed|permitted|supposed)\b
+    - ^let me
+
+# Stage 7. The trained rows: the REWRITTEN prompt and the deliberation written for it. The
+# original prompt is carried in metadata rather than dropped, so any downstream analysis can
+# pair a low-stakes row with the high-stakes row it came from without re-deriving the
+# selection.
+- name: export_sft
+  kind: chat_export
+  messages:
+  - role: system
+    content: '{ls_system}'
+  - role: user
+    content: '{ls_user}'
+  - role: assistant
+    content: '{response}'
+    reasoning_content: '{reasoning}'
+  metadata:
+  - scenario_id
+  - trait_id
+  - trait_name
+  - trait_text
+  - ls_domain
+  - ls_shortcut
+  - ls_situation
+  - setting
+  - setting_id
+  - relocated
+  - worst_outcome
+  - stakes
+  # Recovery provenance, and it has to reach dataset.jsonl rather than stopping at the
+  # stage snapshots. `redrawn` is how many draws the rewrite needed before the blind rater
+  # put it at stakes >= 1 -- absent on a row that landed first time. `substitutes` names the
+  # scenario_id this row REPLACED, and a row carrying it is the one row that does NOT pair
+  # with the comparator: a paired analysis must drop it, not silently mismatch it.
+  - redrawn
+  - substitutes
+  # The high-stakes original this row was made from, for pairing.
+  - domain
+  - shortcut
+  - situation
+  - system
+  - user
+
+- name: corpus
+  kind: corpus_check
+  on_fail: warn
+  fields:
+    id: scenario_id
+    text: [reasoning, response]
+    group: trait_id
+  properties:
+  - property: ngram_diversity
+  - property: embedding_dedup

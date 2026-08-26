@@ -454,8 +454,12 @@ def op_llm_json(sc: dict, cfg: dict) -> Stage:
         return run_items(records, one, ctx.workers, sc["name"], ckpt,
                          max_fail_pct=float(ctx.cfg.get("max_fail_pct", 2.0)))
 
+    # str(), for the same reason the sibling operator below does it: the preview is a log
+    # line printed AFTER the stage has been paid for, and `save` may name a field that is
+    # not a string -- a stage saving a 0-3 rating first crashed a run here on 2026-08-26,
+    # losing nothing but making a completed stage look like a failure.
     return Stage(sc["name"], fn, paid=True, checkpoint_key=sc.get("checkpoint"),
-                 preview=lambda r: r[next(iter(save))])
+                 preview=lambda r: str(r[next(iter(save))]))
 
 
 def tagged_request(sc: dict, r: dict, ctx: Ctx) -> tuple[list[dict], tuple, dict]:

@@ -168,7 +168,14 @@ def _parse(path: str | Path) -> tuple[list[_Raw], str, str]:
     Returns:
         (principles, style_guidance, preamble).
     """
-    lines = Path(path).read_text().splitlines()
+    # encoding is explicit because `read_text()` defaults to the LOCALE encoding, which is
+    # cp1252 on a Windows driver: every em-dash in the constitution then decodes to the
+    # three characters "a-circumflex, euro, right-quote" and the mojibake is injected into
+    # every prompt that carries a principle or the style guidance. Measured 2026-08-26 --
+    # it also changed the run manifest's `constitution_sha256`, which made a corpus
+    # generated on Linux look like it came from a different constitution and tripped
+    # `load_source_run`'s cross-arm assertion. See docs/GOTCHAS.md.
+    lines = Path(path).read_text(encoding="utf-8").splitlines()
 
     raws: list[_Raw] = []
     style: list[str] = []
@@ -240,7 +247,8 @@ def segment(path: str | Path) -> tuple[list[Trait], str]:
 
 def full_text(path: str | Path) -> str:
     """Return the whole constitution, for stages that inject the complete document."""
-    return Path(path).read_text().strip()
+    # Explicit encoding for the same reason as `_parse` above.
+    return Path(path).read_text(encoding="utf-8").strip()
 
 
 def preamble(path: str | Path) -> str:
