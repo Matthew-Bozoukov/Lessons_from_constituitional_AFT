@@ -1243,6 +1243,25 @@ is therefore mostly "re-read, stand by, sharpen, help more" — a DA-like lean w
 re-examination step — and the self-correction share is small. `assessment` is the number
 to watch per principle at 40 documents and at scale.
 
+**Checked against the 2026-08-24 supervisor meeting (megadoc, Meeting Notes).** Three
+things were said there that bear on this recipe. (1) Grey area matters more than high
+stakes: "removing gray area would, on the whole, make the model less effective… ethical
+reasoning in areas that are black or white looks nothing like reasoning in gray areas";
+high stakes is secondary — "way more important properties… enough possible different
+things that could happen as a result of the different decisions… enough complexity to
+actually dig into, rather than… generic clichés". PAR now inherits DA's scenario and refine
+prompts verbatim (grey area, "genuinely tempting", "the legitimate path genuinely costly",
+stakes "concrete and real" rather than extreme), so it matches on both counts. (2) The old
+self-reflection data was diagnosed as black-and-white by construction — "50% were good and
+50% were bad… the good ones obviously good and the bad ones obviously bad… the bad ones had
+longer reasoning, so the model just learns that" — with the action item "fix
+self-reflection dataset for gray-area; then port DA reasoning". This rewrite is that item:
+the 50/50 arm is gone, the trained turn carries DA's reasoning contract and lint. To
+measure the residual version of the same tell, the `corpus` stage now runs
+`label_leakage` with `assessment` as the label over the trained turn (AUC > 0.65 gates at
+corpus scale). (3) "Talk to the model and give it some gray area prompts and read it… a
+human read five or six": twelve records were read end to end across today's smokes.
+
 ## 2026-08-25 — PAR goes Anthropic-only; paired author smoke: Haiku keeps 2/7 where Gemini kept 3/7, same trait pattern
 
 **Hypothesis.** Decision: every model in the recipe is Haiku 4.5 or Sonnet 5 (no Gemini). The

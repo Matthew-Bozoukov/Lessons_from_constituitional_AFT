@@ -778,6 +778,17 @@ stages:
   - property: embedding_dedup
     fields:
       text: situation
+  # The tell the 2026-08-24 supervisor meeting diagnosed in the old two-arm self-reflection
+  # data: "the bad ones had longer reasoning, so the model just learns that". There the
+  # label was a 50/50 arm; here it is `assessment`, whatever mix the author produced. If a
+  # surface classifier can read held vs revised off the trained turn alone, the model can
+  # too, and it will learn the tell instead of the re-examination. Reported below 40 docs /
+  # 20 per class; gates on AUC > 0.65 at corpus scale.
+  - property: label_leakage
+    fields:
+      label: assessment
+    params:
+      positive: revised
   # GDM's final autorater, judged per document over the WHOLE exchange -- fitness to train
   # is decided by how the four turns fit together, not by the trained turn alone. Judged, so
   # it costs money: `--tier surface` runs everything above without it.
