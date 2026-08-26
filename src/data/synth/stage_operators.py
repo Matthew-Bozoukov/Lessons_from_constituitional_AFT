@@ -801,6 +801,8 @@ def op_llm_json(sc: dict, cfg: dict) -> Stage:
             return {**r, **{f: (parsed.get(k, "") if k in optional else parsed[k])
                             for f, k in save.items()}}
 
+        failures = (ctx.manifest_extra.setdefault("failures", {})
+                    .setdefault(sc["name"], {}))
         batch_key = _batching(ctx, sc)
         if batch_key:
             from src.endpoints.openrouter import build_request_body
@@ -824,10 +826,10 @@ def op_llm_json(sc: dict, cfg: dict) -> Stage:
             return run_items_batched(
                 records, one, build, parse, usage=ctx.usage, model=m["model"],
                 stage=mk, key=batch_key, run_dir=ctx.run_dir, workers=ctx.workers,
-                desc=sc["name"], ckpt=ckpt, max_fail_pct=max_fail)
+                desc=sc["name"], ckpt=ckpt, max_fail_pct=max_fail, failures=failures)
 
         return run_items(records, one, ctx.workers, sc["name"], ckpt,
-                         max_fail_pct=max_fail)
+                         max_fail_pct=max_fail, failures=failures)
 
     # str(), for the same reason the sibling operator below does it: the preview is a log
     # line printed AFTER the stage has been paid for, and `save` may name a field that is
@@ -951,9 +953,18 @@ def op_llm_tagged(sc: dict, cfg: dict) -> Stage:
     # `filter` that reads one field of it. See `apply_keep`.
     assign_spec = sc.get("assign")
     keep_spec = sc.get("keep")
+    # `fallback_model: <models key>` -- when the provider REJECTS the input (content
+    # moderation, a 403; not a malformed reply, which the lint loop handles), the same
+    # call goes to the fallback instead of losing the record. `stamp_model: <field>`
+    # writes the model that actually answered onto the record, so a fallback is a
+    # recorded variable and not a hidden constant. Added 2026-08-26 when Sonnet 5's input
+    # moderation refused a distress-type scenario Haiku had handled twice.
+    fallback_key = sc.get("fallback_model")
+    stamp_field = sc.get("stamp_model")
 
     def fn(ctx, records, ckpt):
         m = model_cfg(ctx.cfg, mk)
+        fb = model_cfg(ctx.cfg, fallback_key) if fallback_key else None
         # Labels first: `variants_by` may branch on one, so they have to exist before any
         # prompt is built. Applied to every record, in or out of `when` scope -- an arm is
         # a property of the record, not of this stage's coverage.
@@ -979,11 +990,13 @@ def op_llm_tagged(sc: dict, cfg: dict) -> Stage:
             messages, tags, save = tagged_request(sc, r, ctx)
             attempts = max(_lint_attempts(lint_spec), _lint_attempts(verify_spec))
             problems: list[str] = []
+            used = m["model"]
             for attempt in range(attempts):
                 try:
                     parsed = call_tagged(ctx.client, ctx.usage, m["model"], messages,
                                          m["temperature"], m["max_tokens"], mk, tags,
                                          extra=m.get("extra_body"))
+                    used = m["model"]
                 except ProviderRejectionError as e:
                     # The provider refused to generate at all. That is not the record
                     # breaking this stage's contract -- there is no output to hold to a
@@ -991,10 +1004,21 @@ def op_llm_tagged(sc: dict, cfg: dict) -> Stage:
                     # record would shrink the corpus. A config that says what to do with a
                     # record it cannot rewrite gets to say it here too, under its own
                     # status so a refusal stays distinguishable from a failed contract.
-                    if not (exhausted_spec and exhausted_spec.get("mark_refused")):
+                    # `fallback_model` is tried FIRST, before that status: another author
+                    # can usually write what this one's moderation refused, and a real
+                    # record beats one marked refused. Only with no fallback configured
+                    # does the mark_refused path apply.
+                    if fb is not None:
+                        parsed = call_tagged(ctx.client, ctx.usage, fb["model"], messages,
+                                             fb["temperature"], fb["max_tokens"],
+                                             fallback_key, tags,
+                                             extra=fb.get("extra_body"))
+                        used = fb["model"]
+                    elif exhausted_spec and exhausted_spec.get("mark_refused"):
+                        return _fall_back(r, dict(exhausted_spec["mark_refused"]),
+                                          f"PROVIDER REFUSED, falling back: {e}")
+                    else:
                         raise
-                    return _fall_back(r, dict(exhausted_spec["mark_refused"]),
-                                      f"PROVIDER REFUSED, falling back: {e}")
                 for tag in normalize:
                     if tag in parsed:
                         parsed[tag] = _norm_label(parsed[tag])
@@ -1026,6 +1050,8 @@ def op_llm_tagged(sc: dict, cfg: dict) -> Stage:
                         problems = [f"verify[{vs.get('save_as') or vs['model']}]: "
                                     f"{verdict.get('note') or verdict}"]
                 if not problems:
+                    if stamp_field:
+                        candidate[stamp_field] = used
                     return candidate
                 print(f"    [{ident(r)}] attempt {attempt + 1}/{attempts}: "
                       f"{'; '.join(problems)[:160]}", flush=True)
@@ -1038,6 +1064,8 @@ def op_llm_tagged(sc: dict, cfg: dict) -> Stage:
                              f"{attempts} attempts: {'; '.join(problems)}")
 
         max_fail = float(ctx.cfg.get("max_fail_pct", 2.0))
+        failures = (ctx.manifest_extra.setdefault("failures", {})
+                    .setdefault(sc["name"], {}))
         batch_key = _batching(ctx, sc)
         if batch_key:
             from src.endpoints.openrouter import build_request_body
@@ -1068,10 +1096,10 @@ def op_llm_tagged(sc: dict, cfg: dict) -> Stage:
             done = run_items_batched(
                 todo, one, build, parse, usage=ctx.usage, model=m["model"],
                 stage=mk, key=batch_key, run_dir=ctx.run_dir, workers=ctx.workers,
-                desc=sc["name"], ckpt=ckpt, max_fail_pct=max_fail)
+                desc=sc["name"], ckpt=ckpt, max_fail_pct=max_fail, failures=failures)
         else:
             done = run_items(todo, one, ctx.workers, sc["name"], ckpt,
-                             max_fail_pct=max_fail)
+                             max_fail_pct=max_fail, failures=failures)
         if len(todo) == len(records):
             return apply_keep(sc, done, ctx) if keep_spec else done
         # Out-of-scope records keep their place; an in-scope record that failed is

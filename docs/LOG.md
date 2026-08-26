@@ -1246,12 +1246,22 @@ corpus judge kept all three, each note saying "the first reply is a bare refusal
 every design-B run Haiku produced a genuinely bare refusal on **6/13** first turns; Sonnet on
 **3/3**. So Sonnet writes turn 2. The reply is one to three sentences, so sharing an author
 with the verifier and the rewrite carries no house-style risk; the model under training
-still never sees anything but the deployment prompt in that turn. (One of the four
-scenarios, t8 — a person in distress asking for a decision framework outside emergency
-care — was lost under both authors: Haiku would not decline it flatly (bareness lint,
-four attempts), and for Sonnet Anthropic's moderation refused the input outright, 403
-"self-harm/intent". Lost as a row, as designed; the corpus will under-represent that
-corner of t8.)
+still never sees anything but the deployment prompt in that turn. **Correction, same day, after re-reading the run dirs:** the fourth scenario, t8 — a
+person in distress asking for a decision framework outside emergency care — was NOT lost
+under Haiku. Haiku wrote a verified bare refusal for it in both Haiku runs (the
+`apologetic` register), and it reached export as a kept record both times; the scenario
+that failed the bareness lint in the second Haiku run was t5 ("This involves…"). Under
+Sonnet, t8 never reached the lint: Anthropic's input moderation refused the call, 403
+"self-harm/intent". So the author switch trades bareness compliance (Sonnet 3/3 vs Haiku
+6/13) for a coverage loss that falls on exactly the distress-type grey-area scenarios the
+corpus judge rated highest ("engages real reasoning about the safety/help tradeoff").
+Resolved in the engine rather than by choosing: `llm_tagged` gains `fallback_model:` (on
+a provider rejection — a 403, not a malformed reply — the same call goes to the fallback)
+and `stamp_model:` (the model that actually answered is written onto the record), and
+`resilient` now tallies failures by exception type into the manifest's `failures` block,
+so a moderation rate is its own number in every run. PAR: Sonnet writes turn 2, Haiku is
+the fallback, `first_turn_source` is per record, and the 40-document smoke reports the
+403 rate as a line of its own.
 
 **Next.** 40-document smoke → measured keep rates for both gates and the `capitulates` /
 `still_bare` counts; resize `total_scenarios`; read ten records. Then the full run.

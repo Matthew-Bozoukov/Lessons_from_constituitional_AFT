@@ -339,10 +339,12 @@ def test_first_turn_is_told_the_form_and_nothing_aligning() -> None:
     assert "Cite an unspecified policy" in task
     curt = tagged_request(sc, _record(refusal_register="curt"), _Ctx())[0][0]["content"]
     assert "Two or three flat sentences" in curt and "Cite an unspecified" not in curt
-    assert sc["also"] == {
-        "first_turn_source": PR_CFG["models"][sc["model"]]["model"],
-        "supervise": "final",
-    }
+    # The author is stamped per record (Sonnet, or Haiku when Sonnet's input moderation
+    # refuses the scenario); only the masking contract is a constant.
+    assert sc["also"] == {"supervise": "final"}
+    assert sc["stamp_model"] == "first_turn_source"
+    assert sc["fallback_model"] == "first_turn_fallback"
+    assert PR_CFG["models"]["first_turn_fallback"]["model"].startswith("anthropic/claude-haiku")
     rows = assign_arms(
         sc["assign"],
         [{"scenario_id": f"t{i % 9}_b00_s{i:03d}"} for i in range(400)],

@@ -368,7 +368,7 @@ def call_json(client: OpenRouterClient, usage: Usage, model: str, system: str, u
 
 
 def resilient(fn, n: int, workers: int, desc: str, max_fail_pct: float = 2.0,
-              total: int | None = None) -> list:
+              total: int | None = None, failures: dict | None = None) -> list:
     """Map `fn` over indices, keeping successes when individual items fail.
 
     A single malformed reply must not discard a stage's other results -- those cost real
@@ -385,6 +385,11 @@ def resilient(fn, n: int, workers: int, desc: str, max_fail_pct: float = 2.0,
         total: Denominator for the rate -- the WHOLE stage's item count. On a resume the
             still-outstanding items are precisely the ones that already failed once, so
             measuring against `n` alone would make any resume look catastrophic.
+        failures: Optional dict the tally is written into -- `by_type` (exception class
+            name -> count), `n`, `of`, and the first few messages -- so a run manifest can
+            say HOW a stage lost its rows: a provider's content moderation (403) and a
+            lint contract are different losses with different remedies, and a printed
+            "First 3" does not survive the run.
 
     Returns:
         Successful results, in order, with failures dropped.
@@ -394,12 +399,14 @@ def resilient(fn, n: int, workers: int, desc: str, max_fail_pct: float = 2.0,
     """
     errors: list[str] = []
     tracebacks: list[str] = []
+    by_type: dict[str, int] = {}
 
     def guarded(i: int):
         try:
             return fn(i)
         except Exception as exc:  # noqa: BLE001 - recorded and surfaced below
             errors.append(f"[{i}] {type(exc).__name__}: {exc}")
+            by_type[type(exc).__name__] = by_type.get(type(exc).__name__, 0) + 1
             # A repr alone cannot say WHERE a library blew up (the 2026-08-14
             # PydanticUserError wave was undiagnosable from it); keep the first few
             # full tracebacks so a systematic failure names its origin.
@@ -411,6 +418,10 @@ def resilient(fn, n: int, workers: int, desc: str, max_fail_pct: float = 2.0,
 
     out = map_threaded(guarded, n, max_workers=workers, desc=desc)
     ok = [r for r in out if r is not None]
+    if failures is not None and errors:
+        failures.update({"n": len(errors), "of": total or n,
+                         "by_type": dict(sorted(by_type.items(), key=lambda kv: -kv[1])),
+                         "examples": [e[:300] for e in errors[:3]]})
     if errors:
         pct = 100 * len(errors) / max(total or n, 1)
         print(f"!!! {desc}: {len(errors)}/{n} items failed ({pct:.1f}%). First 3:")
@@ -467,7 +478,8 @@ class Checkpoint:
 
 
 def run_items(items: list[dict], fn, workers: int, desc: str,
-              ckpt: Checkpoint | None = None, max_fail_pct: float = 2.0) -> list[dict]:
+              ckpt: Checkpoint | None = None, max_fail_pct: float = 2.0,
+              failures: dict | None = None) -> list[dict]:
     """Process items concurrently, skipping and recording via a checkpoint when given.
 
     Args:
@@ -482,7 +494,7 @@ def run_items(items: list[dict], fn, workers: int, desc: str,
     """
     if ckpt is None:
         return resilient(lambda i: fn(items[i]), len(items), workers, desc,
-                         max_fail_pct=max_fail_pct)
+                         max_fail_pct=max_fail_pct, failures=failures)
 
     todo = [it for it in items if it[ckpt.key] not in ckpt.done]
     if len(todo) < len(items):
@@ -495,7 +507,7 @@ def run_items(items: list[dict], fn, workers: int, desc: str,
             return r
 
         resilient(one, len(todo), workers, desc, max_fail_pct=max_fail_pct,
-                  total=len(items))
+                  total=len(items), failures=failures)
     return [ckpt.done[it[ckpt.key]] for it in items if it[ckpt.key] in ckpt.done]
 
 
@@ -588,7 +600,8 @@ def run_batch(model: str, requests: dict[str, dict], stage: str, state_path: Pat
 def run_items_batched(items: list[dict], one, build_request, parse_result, *,
                       usage: Usage, model: str, stage: str, key: str, run_dir: Path,
                       workers: int, desc: str, ckpt: Checkpoint | None = None,
-                      max_fail_pct: float = 2.0) -> list[dict]:
+                      max_fail_pct: float = 2.0,
+                      failures: dict | None = None) -> list[dict]:
     """`run_items`, but with the bulk routed through the async batch API first.
 
     Semantics: one interactive warming call (the first record -- its result is used,
@@ -614,7 +627,8 @@ def run_items_batched(items: list[dict], one, build_request, parse_result, *,
         if len(todo) >= BATCH_MIN_ITEMS:
             print(f">>> {desc}: batch requested but records lack a unique "
                   f"{key!r}; running interactively")
-        return run_items(items, one, workers, desc, ckpt, max_fail_pct=max_fail_pct)
+        return run_items(items, one, workers, desc, ckpt,
+                         max_fail_pct=max_fail_pct, failures=failures)
 
     done_free: dict[str, dict] = {}  # collected outputs for a checkpoint-less stage
 
@@ -654,7 +668,8 @@ def run_items_batched(items: list[dict], one, build_request, parse_result, *,
           "interactively")
 
     if ckpt is not None:
-        return run_items(items, one, workers, desc, ckpt, max_fail_pct=max_fail_pct)
+        return run_items(items, one, workers, desc, ckpt,
+                         max_fail_pct=max_fail_pct, failures=failures)
     remaining = [r for r in todo if str(r[key]) not in done_free]
     if remaining:
         def mop(i: int) -> dict:
@@ -663,6 +678,7 @@ def run_items_batched(items: list[dict], one, build_request, parse_result, *,
             return out
 
         resilient(mop, len(remaining), workers, desc, max_fail_pct=max_fail_pct,
+                  failures=failures,
                   total=len(items))
     return [done_free[str(it[key])] for it in items if str(it[key]) in done_free]
 

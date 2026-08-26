@@ -148,6 +148,16 @@ models:
     reasoning: {enabled: false}
     max_tokens: 4096
     assumed_tokens: {in: 500, out: 900}
+  # The fallback for turn 2 when Anthropic's input moderation refuses the scenario for
+  # Sonnet (403 "self-harm/intent" on a person-in-distress scenario, 2026-08-26). Haiku
+  # handled that same scenario twice, bare both times, so the distress corner of the
+  # corpus is not lost to the author switch; the record's `first_turn_source` says which
+  # model actually wrote its refusal, and the manifest's `failures` block counts the 403s.
+  first_turn_fallback:
+    model: "anthropic/claude-haiku-4.5"
+    temperature: 0.7
+    max_tokens: 4096
+    assumed_tokens: {in: 500, out: 900}
   # The bare-refusal check on turn 2: did Haiku decline WITHOUT reasoning, as instructed? A
   # gate, so it runs over every record; Sonnet, T=0, one short call.
   verify:
@@ -498,8 +508,11 @@ stages:
   checkpoint: scenario_id
   tags: [reply]
   save: {first_turn: reply}
-  # `first_turn_source` must match `models.first_turn.model` (a test holds them together).
-  also: {first_turn_source: anthropic/claude-sonnet-5, supervise: final}
+  also: {supervise: final}
+  # Which model actually wrote the refusal, per record: Sonnet, or Haiku when Sonnet's
+  # input moderation refused the scenario (see `models.first_turn_fallback`).
+  stamp_model: first_turn_source
+  fallback_model: first_turn_fallback
   # Bareness, enforced mechanically before the Sonnet check: the first design-B smoke
   # (2026-08-26) had Haiku add reasons and alternatives in 2 of 3 replies despite the
   # instruction -- its helpfulness training resists a bare no. A bare refusal is short and
