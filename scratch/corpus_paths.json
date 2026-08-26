@@ -1,0 +1,8 @@
+{
+  "DA": "/Users/kunwar/.cache/huggingface/hub/datasets--LASR-Callum--2026-08-13-difficult-advice-v2/snapshots/d1c9efbe3ed0921269024e9345f99c76feb9fe03/stage_8_export_sft.jsonl",
+  "CR": "/Users/kunwar/.cache/huggingface/hub/datasets--LASR-Callum--2026-08-14-courtroom/snapshots/82bb003e1c3d959f2bcd54fcb8a60ff4e1e17771/dataset.jsonl",
+  "PC": "/Users/kunwar/.cache/huggingface/hub/datasets--LASR-Callum--2026-08-14-peer-critique/snapshots/d43fecb3ed4e7d292019758c5c424a9fdf29e438/dataset.jsonl",
+  "GROK_RESP": "/Users/kunwar/.cache/huggingface/hub/datasets--LASR-Callum--2026-08-21-difficult-advice-grok-responder-716/snapshots/4a72c2b2da20564caf0e7da1ac6ebee587b4cdd5/dataset.jsonl",
+  "GROK_ALL": "/Users/kunwar/.cache/huggingface/hub/datasets--LASR-Callum--2026-08-20-difficult-advice-grok-716/snapshots/73eb8e07e6aec53b47e084d0a58697784bd7aa10/dataset.jsonl",
+  "VERBOSE": "/Users/kunwar/.cache/huggingface/hub/datasets--LASR-Callum--2026-08-25-difficult-advice-716-verbose-cot/snapshots/d53420d678a49b9243b920d32f60f2d1afb21e91/dataset.jsonl"
+}
