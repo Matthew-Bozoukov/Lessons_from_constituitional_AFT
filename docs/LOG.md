@@ -1195,6 +1195,34 @@ between stages, so the $68 guard never executed — the stage died on `max_fail_
 content-filter refusals) before it could. The seven 20-record smokes also under-predicted:
 they retried ~34% of records where the full run retried ~52%, and none of them saw a single
 content-filter refusal. Both are now in `docs/GOTCHAS.md`.
+## 2026-08-25 — PAR loses the label stage and the judge gate: DA's twin with no arms, no gate, no scaffolding
+
+**Decision.** No best-of-n, no gate, no label — "similar to DA". `label_records` and
+`judge_first_turn` removed; with them the lapse account (`change_summary`), the two
+scaffolding fragments (`known_flaw_note`, `followup_flaw_hint`), `reply_quality`, and the
+gate-dependent checks (gold, flaw-identification, surface-AUC, verdict majority, gate yield).
+Twelve stages. `supervise: final` is stamped by `draft_first_turn` itself (the stage that
+writes the turn that must not train). `total_scenarios` 2,000, DA's. The follow-up writer is
+oriented by the scenario's own `shortcut` field (a DA record field), never by a verdict. The
+reflection draft's system prompt is now byte-identical to DA's `draft_responses` system
+prompt (test), and the rewrite's swapped bullet reads "re-examine the earlier reply honestly:
+correct it where it went along, stand by it where it held, never invent a lapse".
+
+**Consequence, stated in full.** Every scenario becomes a document, as in DA. The corpus is
+NOT "all violations" any more: with Haiku as the unaided author the smokes measured 2/7 first
+replies going along (the advise-a-human principles) and 5/7 declining outright (oversight,
+harm, identity, operator adjustments). So ~30% of records train self-correction and ~70%
+train standing by a sound reply under a follow-up — a DA-like lean, with no capitulation
+prior; the self-correction share is concentrated in three or four principles. The reflection
+is fully blind (the soft-planting confound is gone), which also means no answer key: whether
+the reflection waves through a real lapse is measured only by `quality_filter`'s
+`waves_through` tag and by reading records — the smokes' flaw-id 3/3 and 2/2 were WITH the
+note. `assessment` (held/revised) is now a genuine measurement; read its per-principle
+distribution in `synth check`.
+
+**Result.** 243 tests pass (parity, blindness, no-gate assertions). Estimate $131.90 for
+2,000 documents (budget 200). Ungated form smoked next — see the entry above.
+
 ## 2026-08-25 — PAR goes Anthropic-only; paired author smoke: Haiku keeps 2/7 where Gemini kept 3/7, same trait pattern
 
 **Hypothesis.** Decision: every model in the recipe is Haiku 4.5 or Sonnet 5 (no Gemini). The

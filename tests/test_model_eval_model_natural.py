@@ -1,8 +1,8 @@
 # ABOUTME: Offline tests for the natural-turn recipes. Post-action retrospection (PR, the
-# ABOUTME: self arm: one arm since 2026-08-25, difficult advice's front half verbatim, a gate
-# ABOUTME: on the first reply, no constitution anywhere) and peer critique (PC, the other arm,
-# ABOUTME: still two-armed) are both de-celled -- built only from generic operators -- so most
-# ABOUTME: of this asserts that the config alone expresses the document type.
+# ABOUTME: self arm: since 2026-08-25 difficult advice's twin -- its front half verbatim, no
+# ABOUTME: arms, no gate, no scaffolding, no constitution anywhere) and peer critique (PC, the
+# ABOUTME: other arm, still two-armed) are both de-celled -- built only from generic operators
+# ABOUTME: -- so most of this asserts that the config alone expresses the document type.
 # ABOUTME: Run: uv run pytest tests/test_model_eval_model_natural.py -q
 
 from __future__ import annotations
@@ -23,7 +23,6 @@ from src.data.synth.stage_runtime import lint_problems
 from src.data.synth.stage_operators import (
     OPERATORS,
     apply_keep,
-    assign_arms,
     op_chat_export,
     selected,
     tagged_request,
@@ -81,12 +80,9 @@ def _record(**over) -> dict:
         "user": "Can you tidy up this reference I drafted?",
         "first_turn": "Here is a tidier version of your reference.",
         "first_turn_source": "anthropic/claude-haiku-4.5",
-        "verdict": "violated",
-        "change_summary": "it dropped the reliability problem she needed flagged",
+        "supervise": "final",
         "followup": "The bit about deadlines -- should that have stayed in?",
         "followup_source": "scenario_specific",
-        "reply_quality": "flawed",
-        "supervise": "final",
         "draft_reasoning": "I re-read what she actually needs here.",
         "draft_response": "On reflection I would put the deadlines line back.",
         "draft_assessment": "revised",
@@ -110,8 +106,6 @@ def test_pr_uses_no_cell_machinery() -> None:
     kinds = [s["kind"] for s in PR_CFG["stages"]]
     assert not (set(kinds) & CELL_KINDS), f"cell kinds still in use: {kinds}"
     assert "cells" not in PR_CFG and "flaws" not in PR_CFG
-    # ... and the (single) arm is a plain label, carried into the finished dataset.
-    assert "reply_quality" in _stage(PR_CFG, "export_sft")["metadata"]
 
 
 def test_pc_uses_no_cell_machinery() -> None:
@@ -177,11 +171,9 @@ def test_pr_stage_sequence() -> None:
         "write_scenarios",
         "corpus_scenarios",
         "dedupe_scenarios",
-        "label_records",
         "draft_prompts",
         "revise_prompts",
         "draft_first_turn",
-        "judge_first_turn",
         "write_followup",
         "draft_reflection",
         "revise_reflection",
@@ -211,15 +203,15 @@ def test_pc_stage_sequence() -> None:
     ]
 
 
-# --- PR is difficult advice's twin: same front half, same grounding --------------------
+# --- PR is difficult advice's twin: same front half, same grounding, same shape --------
 
 
 @pytest.mark.parametrize("name", ["write_scenarios", "draft_prompts", "revise_prompts"])
 def test_pr_front_half_is_difficult_advice_verbatim(name: str) -> None:
-    """The 2026-08-25 rewrite's first decision: the scenarios, the drafted prompt and the
-    chunk-only refine are difficult advice's, byte for byte -- same prompts, same save map,
-    same diversity gate -- so PR and DA differ in nothing before the first reply. A change
-    to these prompts belongs in difficult_advice.yaml first and here second."""
+    """The scenarios, the drafted prompt and the chunk-only refine are difficult advice's,
+    byte for byte -- same prompts, same save map, same diversity gate, same model -- so PR
+    and DA differ in nothing before the first reply. A change to these prompts belongs in
+    difficult_advice.yaml first and here second."""
     pr, da = _stage(PR_CFG, name), _stage(DA_CFG, name)
     assert pr["kind"] == da["kind"]
     assert pr["prompts"] == da["prompts"]
@@ -233,41 +225,45 @@ def test_pr_front_half_is_difficult_advice_verbatim(name: str) -> None:
 
 def test_pr_no_stage_sees_the_constitution() -> None:
     """Chunk-only, like difficult advice since 2026-08-24: every stage sees at most the
-    target principle. The three `{constitution}` slots the two-arm recipe had are gone,
-    and with them the `<<<cache>>>` breakpoints that only a 4.6k-token document needed."""
+    target principle. No `{constitution}` slot, no `<<<cache>>>` breakpoint (only a
+    4.6k-token document needed one), same alignment target cut the same way."""
     for key in ("constitution", "chunking", "n_traits"):
         assert PR_CFG[key] == DA_CFG[key], key
     for sc in PR_CFG["stages"]:
         blob = json.dumps(sc)
         assert "{constitution}" not in blob, sc["name"]
         assert "<<<cache>>>" not in blob, sc["name"]
-    assert "{constitution}" not in json.dumps(PR_CFG["prompts"])
+    assert "prompts" not in PR_CFG, "no shared scaffolding fragments"
 
 
-def test_every_record_is_labelled_a_violation_by_construction() -> None:
-    """No arms: `label_records` stamps the same two constants on every record. The label
-    is what the checks group on and what the mixture slices on; it is not a split."""
-    sc = _stage(PR_CFG, "label_records")
-    assert sc["kind"] == "assign" and "fields" not in sc
-    rows = [{"scenario_id": f"t{i % 9}_b00_s{i:03d}"} for i in range(50)]
-    out = assign_arms(sc, rows, announce=False)
-    assert all(
-        r["supervise"] == "final" and r["reply_quality"] == "flawed" for r in out
-    )
+def test_pr_has_no_arms_no_gate_and_no_scaffolding() -> None:
+    """Like difficult advice: every scenario becomes a document. No label stage, no
+    `keep:` contract anywhere, nothing branches on a record label, and no stage carries a
+    lapse account into the reflection -- the model has to read its own reply."""
     assert arm_shares(PR_CFG) == {}
-    # Nothing downstream branches on a label any more.
-    assert not any("variants_by" in s or "assign" in s for s in PR_CFG["stages"])
-    assert "explicitness" not in json.dumps(PR_CFG)
-    # The checks read the (one-bucket) split off the revised-prompt snapshot, which
-    # carries the label because the free stage precedes it.
-    names = [s["name"] for s in PR_CFG["stages"]]
-    assert names.index("label_records") < names.index("revise_prompts")
-    assert PR_CFG["checks"]["stages"]["plan"] == "revise_prompts"
-    assert PR_CFG["checks"]["expected_majority"] == {"flawed": "revised"}
+    for sc in PR_CFG["stages"]:
+        assert sc["kind"] != "assign", sc["name"]
+        for key in ("keep", "expected_keep", "variants_by", "assign", "prompt_vars"):
+            assert key not in sc, (sc["name"], key)
+    blob = json.dumps(PR_CFG)
+    for gone in ("change_summary", "known_lapse", "reply_quality", "explicitness"):
+        assert gone not in blob, gone
+    assert PR_CFG["total_scenarios"] == DA_CFG["total_scenarios"]
+    assert n_final_examples(PR_CFG) == PR_CFG["total_scenarios"]
+
+
+def test_pr_is_anthropic_only() -> None:
+    """Decision 2026-08-25: every generation, judging and check model is Haiku or Sonnet."""
+    for key, m in PR_CFG["models"].items():
+        assert m["model"].startswith("anthropic/"), (key, m["model"])
+
+
+# --- turn 2: unaided, and it stamps the two facts about itself ----------------------
 
 
 def test_first_turn_prompt_carries_no_constitution_and_stamps_its_provenance() -> None:
-    """Turn 2's lapse is organic only if nothing aligning is in its prompt."""
+    """Turn 2 is organic only if nothing aligning is in its prompt. The stage that writes
+    the turn also records who wrote it and that it never trains."""
     sc = _stage(PR_CFG, "draft_first_turn")
     messages = tagged_request(sc, _record(), _Ctx())[0]
     blob = "".join(m["content"] for m in messages)
@@ -281,90 +277,27 @@ def test_first_turn_prompt_carries_no_constitution_and_stamps_its_provenance() -
     ):
         assert leak not in blob, leak
     # Provenance is the model actually configured for the stage, never a stale constant.
-    assert sc["also"] == {"first_turn_source": PR_CFG["models"][sc["model"]]["model"]}
+    assert sc["also"] == {
+        "first_turn_source": PR_CFG["models"][sc["model"]]["model"],
+        "supervise": "final",
+    }
 
 
-def test_pr_is_anthropic_only() -> None:
-    """Decision 2026-08-25: every generation, judging and check model is Haiku or Sonnet."""
-    for key, m in PR_CFG["models"].items():
-        assert m["model"].startswith("anthropic/"), (key, m["model"])
+# --- turn 3: pointed at the shortcut, forbidden from diagnosing anything -------------
 
 
-# --- the gate: "every first reply is a violation" is enforced, not declared ---------
-
-
-def test_the_judge_gates_on_its_own_verdict_and_sees_only_the_chunk() -> None:
-    sc = _stage(PR_CFG, "judge_first_turn")
-    assert sc["tags"] == ["verdict", "change_summary"]
-    assert sc["keep"] == {"field": "verdict", "in": ["violated"]}
-    assert 0 < float(sc["expected_keep"]) < 1
-    assert "verdict" in sc["normalize"]
-    body = sc["prompts"]["user"]
-    for needed in (
-        "{trait_text}",
-        "{situation}",
-        "{shortcut}",
-        "{user}",
-        "{first_turn}",
-    ):
-        assert needed in body, needed
-    assert "{constitution}" not in body
-    # The verdict is defined in terms of the shortcut: going along, enabling, laundering.
-    assert body.index("VIOLATED") < body.index("HELD")
-    assert "imperfect helpfulness is not a violation" in body
-    verdict, account = sc["lint"]
-    assert verdict["allowed"] == ["violated", "held"]
-    assert account["fields"] == ["change_summary"] and account["min_chars"] >= 40
-    ok = {"verdict": "violated", "change_summary": "x" * 50}
-    assert not lint_problems(ok, sc["lint"])
-    assert lint_problems({**ok, "verdict": "mostly violated"}, sc["lint"])
-    assert lint_problems({**ok, "change_summary": "meh"}, sc["lint"])
-
-
-def test_the_gate_keeps_violations_and_drops_held_replies() -> None:
-    """The real config's gate, on the label the model actually returned -- normalised,
-    so 'Violated.' is a keep and 'held' is a drop."""
-    sc = _stage(PR_CFG, "judge_first_turn")
-    rows = [
-        {"scenario_id": "a", "verdict": "violated"},
-        {"scenario_id": "b", "verdict": "held"},
-        {"scenario_id": "c", "verdict": " Violated.\n"},
-        {"scenario_id": "d", "verdict": "HELD"},
-    ]
-    assert [r["scenario_id"] for r in apply_keep(sc, rows)] == ["a", "c"]
-
-
-def test_the_gate_shrinks_everything_after_it_in_the_estimate() -> None:
-    """`total_scenarios` is a planned count: every stage up to and including the judge is
-    priced over it, and every stage after it over the survivors."""
-    rows = {r["stage"]: r for r in estimate(PR_CFG)["per_stage"]}
-    n = PR_CFG["total_scenarios"]
-    kept = round(n * float(_stage(PR_CFG, "judge_first_turn")["expected_keep"]))
-    assert rows["draft"]["calls"] == n
-    assert rows["first_turn"]["calls"] == n
-    assert rows["judge"]["calls"] == n
-    assert rows["followup"]["calls"] == kept
-    assert rows["reflect"]["calls"] == kept
-    assert rows["rewrite"]["calls"] == kept
-    assert n_final_examples(PR_CFG) == kept
-
-
-# --- the follow-up: pointed at the lapse, forbidden from diagnosing it ----------------
-
-
-def test_followup_writer_sees_the_lapse_but_the_person_is_not_pushing_back() -> None:
+def test_followup_writer_sees_the_shortcut_not_a_verdict() -> None:
     sc = _stage(PR_CFG, "write_followup")
     body = tagged_request(sc, _record(), _Ctx())[0][1]["content"]
-    assert _record()["change_summary"] in body
-    assert "never quote, name or hint at" in body
-    # The 2026-08-25 framing: the person got what they asked for, so the correction the
-    # trained turn makes is not cued by their unease.
-    assert (
-        "as far as they can tell,\nthey got it" in body
-        or "as far as they can tell, they got it" in body.replace("\n", " ")
-    )
+    assert _record()["shortcut"] in body
+    assert "never to be quoted or hinted at" in body
+    assert "whatever the reply did with it" in body
+    # The 2026-08-25 framing: the person got what they asked for, so a correction in the
+    # trained turn is not cued by their unease.
+    assert "as far as they can tell" in body
     assert "Ask, do not judge." in body
-    assert "CONSTITUTION TEXT" not in body
+    for leak in ("CONSTITUTION TEXT", "STYLE GUIDANCE", "Trait one"):
+        assert leak not in body, leak
 
 
 def test_followup_lint_rejects_a_prompt_that_does_the_analysis() -> None:
@@ -384,8 +317,8 @@ def test_followup_lint_rejects_a_prompt_that_does_the_analysis() -> None:
 # --- the gates (engine contract, on a synthetic per-arm spec) -----------------------
 
 
-# A synthetic per-arm gate spec: PR's live gate is the single-contract form, so the
-# per-arm form keeps its coverage here.
+# A synthetic per-arm gate spec: no live PR stage carries a `keep:` block (removed
+# 2026-08-25 with the judge stage), so the engine feature keeps its coverage here.
 _GATE_SC = {
     "name": "gate",
     "keep": {
@@ -471,24 +404,23 @@ def test_reflection_puts_the_evaluated_reply_in_a_genuine_assistant_turn() -> No
     assert save["draft_assessment"] == "assessment"
 
 
-def test_reflection_is_framed_as_difficult_advices_draft_and_unblinded() -> None:
-    """The system message is difficult advice's `draft_responses` system prompt, rendered
-    off the same record -- deployment prompt, principle, style guidance -- followed by the
-    lapse scaffolding. Chunk only: no constitution."""
+def test_reflection_is_framed_as_difficult_advices_draft_and_blind() -> None:
+    """The system message IS difficult advice's `draft_responses` system prompt, rendered
+    off the same record -- deployment prompt, principle, style guidance -- and nothing
+    else: no constitution, no lapse note, no verdict."""
     sc = _stage(PR_CFG, "draft_reflection")
     system = tagged_request(sc, _record(), _Ctx())[0][0]["content"]
     da_system = tagged_request(_stage(DA_CFG, "draft_responses"), _record(), _Ctx())[0][
         0
     ]["content"]
-    assert system.startswith(da_system)
-    assert _record()["change_summary"] in system and "known_lapse" in system
-    assert "CONSTITUTION TEXT" not in system
-    assert "the assistant's earlier reply" in system
-    # The task text is difficult advice's too, adapted to re-reading the earlier reply.
+    assert system == da_system
+    # The task text is difficult advice's too, adapted to re-reading the earlier reply,
+    # and it names both honest outcomes.
     task = tagged_request(sc, _record(), _Ctx())[0][3]["content"]
     assert "Respond as the assistant. First reason privately" in task
     assert 'never begin with "Let me"' in task
     assert "re-reading your earlier reply" in task
+    assert "correct it" in task and "stand by it" in task
 
 
 def test_reflection_verdict_is_constrained_and_the_trained_turn_carries_das_lint() -> (
@@ -525,8 +457,8 @@ def test_reflection_verdict_is_constrained_and_the_trained_turn_carries_das_lint
 def test_the_rewrite_carries_difficult_advices_contract_and_lint() -> None:
     """The rewrite is difficult advice's `revise_responses`: its four voice bullets
     verbatim, its closing "do not reach for a standard shape", and one bullet of its own
-    in place of "do not go along" -- own the earlier reply and correct it. The lint is the
-    draft stage's, identically, so a drop in retries reads against the same gate."""
+    in place of "do not go along" -- re-examine the earlier reply honestly, both outcomes
+    allowed, no invented lapses. The lint is the draft stage's, identically."""
     sc = _stage(PR_CFG, "revise_reflection")
     body = sc["prompts"]["user"]
     da = _stage(DA_CFG, "revise_responses")["prompts"]["user"]
@@ -534,13 +466,14 @@ def test_the_rewrite_carries_difficult_advices_contract_and_lint() -> None:
     end = da.index("- **Take the request seriously** before evaluating it.")
     assert da[start:end] in body
     assert "Do not reach for a standard shape." in body
-    assert "**Own the earlier reply and correct it.**" in body
-    assert "does\n  not go along with the norm-violating path a second time" in body
+    assert "**Re-examine the earlier reply honestly.**" in body
+    assert "Never invent a lapse" in body
+    assert "Where it held, stand by it" in body
     assert (
         sc["prompts"]["system"]
         == _stage(DA_CFG, "revise_responses")["prompts"]["system"]
     )
-    assert "{constitution}" not in body and "{known_flaw}" in body
+    assert "{constitution}" not in body and "{known_flaw}" not in body
     assert sc["tags"] == ["reasoning", "response", "assessment", "changes"]
     assert sc["lint"][1:] == _stage(PR_CFG, "draft_reflection")["lint"][1:]
     for bad in (
@@ -597,13 +530,10 @@ def test_export_is_five_turns_with_only_the_last_one_supervised() -> None:
     assert "reasoning_content" not in rec["messages"][2]
     assert rec["messages"][4]["reasoning_content"] == _record()["reasoning"]
     assert rec["metadata"]["supervise"] == "final"
-    assert rec["metadata"]["reply_quality"] == "flawed"
     assert rec["metadata"]["assessment"] == "revised"
     assert rec["metadata"]["first_turn_source"] == "anthropic/claude-haiku-4.5"
     assert rec["metadata"]["followup_source"] == "scenario_specific"
-    # The judge's account of the lapse is scaffolding and must never train.
-    assert all(_record()["change_summary"] not in m["content"] for m in rec["messages"])
-    assert "change_summary" not in _stage(PR_CFG, "export_sft")["metadata"]
+    assert "reply_quality" not in rec["metadata"]
 
 
 # --- peer critique: the other-attribution twin ---------------------------------------
@@ -843,19 +773,25 @@ def test_pc_export_user_turn_is_exactly_what_the_critique_stages_saw() -> None:
 # --- pricing -------------------------------------------------------------------------
 
 
-def test_pre_plan_stages_are_priced_over_the_scenario_pool() -> None:
+def test_every_pr_stage_is_priced_over_the_whole_corpus() -> None:
+    """No gate: every paid stage runs over every scenario, and the corpus is the plan."""
     rows = {r["stage"]: r for r in estimate(PR_CFG)["per_stage"]}
-    assert rows["draft"]["calls"] == PR_CFG["total_scenarios"]
+    n = PR_CFG["total_scenarios"]
+    for key in ("draft", "refine", "first_turn", "followup", "reflect", "rewrite"):
+        assert rows[key]["calls"] == n, key
 
 
 # --- the checks, driven off the config's field names --------------------------------
 
 
 def test_checks_read_the_field_names_the_config_declares() -> None:
-    for cfg in (PR_CFG, PC_CFG):
-        F = _fields(cfg)
-        assert F["group"] == "reply_quality" and F["id"] == "scenario_id"
-        assert F["evaluated"] == "first_turn"
+    F = _fields(PC_CFG)
+    assert F["group"] == "reply_quality" and F["id"] == "scenario_id"
+    assert F["evaluated"] == "first_turn"
+    # PR has no arms, so its checks group by principle instead.
+    F = _fields(PR_CFG)
+    assert F["group"] == "trait_id" and F["verdict"] == "assessment"
+    assert F["evaluated"] == "first_turn"
     # A celled config gets the historical defaults with no config changes at all.
     assert _fields(ARCHIVE_CFG)["group"] == "cell"
     with pytest.raises(AssertionError, match="unknown key"):
@@ -869,16 +805,21 @@ def test_checks_stages_must_name_real_stages(cfg: dict) -> None:
     assert set(named.values()) <= {s["name"] for s in cfg["stages"]}
 
 
-def test_pr_checks_fit_a_one_arm_corpus() -> None:
-    """One class: the good-vs-flawed surface classifier has nothing to separate, so the
-    config declares no `surface_auc_max`, and the verdict ceiling is 1.0 because the
-    verdict is mandated by construction."""
-    gates = PR_CFG["checks"]["gates"]
-    assert "surface_auc_max" not in gates
-    assert gates["verdict_majority_max"] == 1.0
-    # The lapse account unblinds the generator, and the blindness check reads that off
-    # this key -- it must stay defined for as long as the note is injected.
-    assert "known_flaw_note" in PR_CFG["prompts"]
+def test_pr_checks_fit_an_ungated_one_arm_corpus() -> None:
+    """No yield to gate, no known-good slice to gold-judge, no answer key for flaw
+    identification, no mandated verdict: the block keeps only what measures the shape
+    of the corpus and of the trained turn."""
+    ccfg = PR_CFG["checks"]
+    assert "expected_majority" not in ccfg
+    assert set(ccfg["judges"]) == {"posthoc_system", "posthoc_user"}
+    for gone in (
+        "surface_auc_max",
+        "gold_below_3_max",
+        "flaw_id_clear_min",
+        "verdict_majority_min",
+        "verdict_majority_max",
+    ):
+        assert gone not in ccfg["gates"], gone
 
 
 def test_coverage_measures_generation_not_the_gates() -> None:

@@ -291,34 +291,30 @@ faults are organic rather than planted. Both are built from generic operators on
 Python knows either document type exists.
 
 **Post-action retrospection (PR, the self arm) was rewritten on 2026-08-25** as difficult
-advice's twin: it differs from that recipe in exactly one thing — the assistant already went
-along with the shortcut and has to catch itself — and in nothing else. The previous recipe
-(ordinary requests with the principle "quietly live", a 50/50 good/flawed arm, the whole
-constitution in three stages) is archived verbatim as
-`configs/data/synth/archive/post_action_retrospection_two_arm.yaml`.
+advice's twin: it differs from that recipe in exactly one thing — the assistant already
+replied, unaided, and now re-reads that reply — and in nothing else. No arms, no labels, no
+gate, no scaffolding. The previous recipe (ordinary requests with the principle "quietly
+live", a 50/50 good/flawed arm, the whole constitution in three stages) is archived verbatim
+as `configs/data/synth/archive/post_action_retrospection_two_arm.yaml`.
 
 | | difficult advice | PR (2026-08-25) |
 |---|---|---|
-| stages 1–4 | scenarios → checks → dedupe → draft → chunk-only refine | **identical, byte for byte** (a test pins the parity) |
-| the label | — | `label_records` stamps `reply_quality: flawed` + `supervise: final` on every record: one arm, by construction |
-| the first reply | — | `draft_first_turn`: one unaided reply from Haiku 4.5, nothing aligning in its prompt (the recipe is Anthropic-only since 2026-08-25) |
-| the gate | — | `judge_first_turn`: a chunk-only Sonnet verdict (`violated` / `held`) plus the lapse account; `keep: verdict in [violated]` drops every reply that declined the shortcut. "Every first reply is a violation" is enforced, not declared, so `total_scenarios` is a **planned** count and `expected_keep` the estimator's prior until `check_gate_yield` measures it |
-| the follow-up | — | `write_followup`: one short message from someone who **got what they asked for** — a next step, a detail — pointed at the part of the reply where the lapse lives, linted free of any diagnosis |
-| the trained turn | `draft_responses` → `revise_responses` | `draft_reflection` → `revise_reflection`: the same framing (deployment prompt + principle + style guidance; task text in the last user turn), the same rewrite contract with one bullet swapped ("do not go along" → "own the earlier reply and correct it"), the same lint ban list — with the reply under examination in a genuine assistant turn via `conversation:` |
+| stages 1–6 | scenarios → checks → dedupe → draft → chunk-only refine | **identical, byte for byte** (a test pins the parity) |
+| the first reply | — | `draft_first_turn`: one unaided reply from Haiku 4.5, nothing aligning in its prompt; the stage stamps `first_turn_source` and `supervise: final` on the turn it writes |
+| the follow-up | — | `write_followup`: one short message from someone who **got what they asked for** — a next step, a detail — engaging the part of the reply that deals with the scenario's `shortcut`; linted free of any diagnosis |
+| the trained turn | `draft_responses` → `revise_responses` | `draft_reflection` → `revise_reflection`: the same system prompt (byte-identical), the same rewrite contract with one bullet swapped ("do not go along" → "re-examine the earlier reply honestly: correct it where it went along, stand by it where it held, never invent a lapse"), the same lint — with the reply under examination in a genuine assistant turn via `conversation:` |
 | grounding | chunk only | chunk only — no `{constitution}` anywhere (a test asserts it) |
-| the export | three messages | five messages, `supervise: final`; `assessment` and the first turn's author in the metadata |
+| corpus size | 2,000, no gate | 2,000, no gate — every scenario becomes a document |
+| the export | three messages | five messages, `supervise: final`; `assessment` (held/revised) and the first turn's author in the metadata |
 
-What the one-arm design gives up is stated in the config header: every record ends in
-`revised`, which is a capitulation prior. Two things push against it — the follow-up is
-not pushback, and difficult advice mixed alongside trains holding firm at turn one —
-and neither is a substitute for measuring it (the verdict and gold checks, and the
-confound list in `docs/LOG.md` 2026-08-25).
-
-The lapse account (`change_summary`, the checks' field name) does three jobs: it unblinds
-the reflection's draft and rewrite (`known_flaw_note`), it is the answer key
-`check_flaw_identification` grades against, and `check_blindness` proves it never appears
-in a training message. It is generation scaffolding, and the reflection is told to
-rediscover the lapse from the person's situation rather than from the note.
+What the record teaches is whatever the unaided author did: on the 2026-08-25 smokes Haiku
+went along with the shortcut on ~30% of prompts (the advise-a-human principles) and declined
+on ~70%, so roughly a third of records train self-correction and two thirds train standing
+by a sound reply under a follow-up. `assessment` records which, per record, and `synth
+check` reports its distribution per principle. The reflection sees nothing about whether the
+earlier reply went along — it has to read it — so there is no answer key; whether it waves
+through a real lapse is measured by the quality filter's `waves_through` tag and by reading
+records. The confound list is in `docs/LOG.md`, 2026-08-25.
 
 **Peer critique (PC, the other arm) keeps the two-arm design**: a `reply_quality` label
 assigned on `revise_prompts`, an arm-conditioned prompt revision, a good arm whose
