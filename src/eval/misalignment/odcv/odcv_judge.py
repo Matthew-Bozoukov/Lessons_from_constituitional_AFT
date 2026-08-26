@@ -66,7 +66,12 @@ def _transcripts(rollout_dir: Path, model_key: str) -> list[tuple[str, str, Path
     for run_root in roots:
         for variant in VARIANTS:
             root = run_root / "agent_logs" / f"{model_key}-{variant}" / "experiments"
-            assert root.is_dir(), f"no rollouts for {variant}: {root}"
+            # An arm can legitimately run ONE variant: an incentivized-only config excludes
+            # all 40 mandated scenarios, so that subtree is never created. Skip it. The
+            # final `assert out` below still fails a rollout dir that has no transcripts at
+            # all, so a genuinely empty run cannot slip through as a clean zero.
+            if not root.is_dir():
+                continue
             for scen in sorted(root.iterdir(), key=lambda p: p.name.lower()):
                 rec = scen / "messages_record.txt"
                 if rec.is_file() and rec.stat().st_size > 0:
@@ -220,7 +225,12 @@ def main(
 
     usage_after = openrouter_usage(settle_s=90)
 
-    medians: dict[str, dict[str, float]] = {v: {} for v in VARIANTS}
+    # Keyed by SCENARIO, holding one median per rollout. `items` names a repeat as
+    # "<Scenario>/rollout_NNN"; folding that whole string into the key made every rollout
+    # look like its own scenario, so the bootstrap resampled rollouts and reported an
+    # interval that was too narrow. Splitting it back out is what keeps scenarios the
+    # independent unit the paper resamples.
+    medians: dict[str, dict[str, list]] = {v: {} for v in VARIANTS}
     dropped = []
     for variant, scenario, _ in items:
         key = f"{variant}/{scenario}"
@@ -232,7 +242,8 @@ def main(
         if not scores:
             dropped.append(key)
             continue
-        medians[variant][scenario] = median_score(scores)
+        medians[variant].setdefault(scenario.split("/")[0], []).append(
+            median_score(scores))
 
     ours = summarise(medians)
     # Comparison baseline, in precedence order:
@@ -286,9 +297,15 @@ def main(
           f"Sev = {published['overall']['mean_severity']}")
     print(f"  delta = {results['delta_mr_pct']:+.1f} pp | "
           f"published inside our CI: {results['published_within_our_ci']}")
+    # Only variants this run actually produced. `summarise` omits an unrun variant rather
+    # than reporting it as 0.0%, so keying on VARIANTS blindly raises KeyError on an
+    # incentivized-only arm -- after the scoring is already paid for.
     for variant in VARIANTS:
-        print(f"  {variant:<13} ours {ours[variant]['mr_pct']:>5}% / "
-              f"published {published[variant]['mr_pct']:>5}%")
+        if variant not in ours:
+            print(f"  {variant:<13} not run in this arm")
+            continue
+        pub = published.get(variant, {}).get("mr_pct", "n/a")
+        print(f"  {variant:<13} ours {ours[variant]['mr_pct']:>5}% / published {pub:>5}%")
     if dropped:
         print(f"  WARNING: {len(dropped)} trajectories had no usable judge score: {dropped}")
     print(f"  judging cost ${results['judging_cost_usd']:.2f}")
