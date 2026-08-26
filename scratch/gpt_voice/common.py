@@ -39,6 +39,26 @@ def load_all():
     return idx(S), idx(G), idx(P)
 
 
+def _rd(p):
+    with open(p, encoding="utf-8") as f:
+        return [json.loads(l) for l in f]
+
+
+def load_capped():
+    """The length-capped Sonnet corpus (2026-08-26), from HF: same prompts and drafts as
+    the sonnet baseline, rewritten under a one-sentence cap at grok's median lengths."""
+    dotenv.load_dotenv(os.path.join(ROOT, ".env"))
+    from huggingface_hub import hf_hub_download
+
+    p = hf_hub_download(
+        "LASR-Callum/2026-08-26-difficult-advice-sonnet-concise-716",
+        "dataset.jsonl",
+        repo_type="dataset",
+        token=os.environ.get("HF_TOKEN"),
+    )
+    return {r["metadata"]["scenario_id"]: r for r in _rd(p)}
+
+
 def paired(S, G, P):
     return sorted(set(S) & set(G) & set(P))
 

@@ -146,6 +146,64 @@ resolution, and 2026-08-20's 2-pass run had CI [4.5, 17.3] and could not. Two ri
 reported with any result — every row relocated, so domain moves with magnitude; and
 `draft_responses` ran Sonnet 5 where the control used Haiku 4.5, by explicit choice.
 
+## 2026-08-26 — Four-arm corpus comparison: capping Sonnet's length leaves its refusal behaviour untouched (blind judge, p ≈ 1.0 vs unconstrained Sonnet)
+
+**Hypothesis:** the length-capped Sonnet arm (previous entry) is only a clean length control if
+condensing did not also change what the replies DO — refuse the shortcut, offer alternatives,
+name the act. Kunwar's concern, verbatim: "ensure reduced length does not negatively affect
+other things like refusal."
+
+**Method:** every three-way tool from the generator ablation (`scratch/three_way/`,
+`scratch/gpt_voice/`) was generalised to four corpora on the 678 scenarios all four share —
+`norm.py` now resolves each corpus from its HF repo and carries `ORDER`/`JUDGED`/`PAIRS`, so
+`agg.py`, `stats.py`, `by_trait.py`, `does_the_work.py`, `metrics.py`, `substance.py`,
+`refusal_forms.py`, `length_decomp.py` gain a column rather than a fork. The capped corpus
+went through the identical blind judge (`scratch/three_way/judge.py`, gpt-5.6-terra, temp 0,
+rubric verbatim; 678 rows, 0 errors, ~$6) so its stances sit in the same table as the
+2026-08-25 sonnet/grok/gpt judgments. n = 677 judged in every corpus.
+
+**Result — nothing on refusal moved; a few things on shape did, all toward grok.**
+
+| judged, % of 677            | sonnet | capped | grok | gpt  |
+|-----------------------------|--------|--------|------|------|
+| stance = refuses            | 83.8   | 83.6   | 84.3 | 80.5 |
+| stance = complies           | 1.2    | 1.0    | 2.2  | 3.0  |
+| decline rate (ref + partial)| 87.7   | 87.6   | 86.9 | 85.4 |
+| alternatives / reply (mean) | 4.6    | 4.1    | 5.1  | 7.0  |
+| alternatives terse          | 2.2    | 12.0   | 16.1 | 1.2  |
+| assistant offers to do work | 67.4   | 57.6   | 71.5 | 85.5 |
+| refusal names the action    | 74.3   | 70.2   | 91.5 | 79.6 |
+| refusal in opening sentences| 43.4   | 54.8   | 50.9 | 41.3 |
+
+- McNemar capped vs sonnet: refuses p=1.000 (discordant 24/25), complies p=1.000 (5/6), leak
+  p=1.000 (20/21), explicit refusal p=0.849. Capped vs grok: all n.s. Capped vs gpt: capped
+  refuses more and leaks less on every metric, p < 0.03. Per principle, capped stays within
+  ±5 pp of sonnet (worst t9: −5.1); the two arms leak on the same scenarios 8x chance.
+- Voice rates stay Sonnet's, not grok's: per-1k-char 'you' 3.20 vs sonnet 3.36 (grok 3.16,
+  gpt 0.79), 'I' 1.83 vs 1.86, hedges 0.42 vs 0.40 (grok 0.14), "instead" redirect 39.5% vs
+  52.1% (grok 15.5%), reply ends on a question 44.4% vs 38.8% (grok 1.0%). Length lands on
+  grok's: reply 1,721 vs grok 1,736 chars; prose share 85.7% (gpt 66.9%, the rest in lists).
+- Length-decomposition of the four arms: gpt 4,920 chars/reply with 29% in list items and a
+  drafted artifact in 74% of replies; sonnet 2,784; grok 1,736; capped 1,721. Word medians on
+  the 678: reasoning gpt 313 / sonnet 479 / capped 238 / grok 218; reply 614 / 452 / 283 / 268.
+
+**Reading:** the cap is a length control and (on these measures) only a length control for
+stance. What it costs is a half-alternative per reply and some of Sonnet's "I can draft that
+for you" offers — the same two things that separate grok from sonnet, at smaller size. If arm
+C's ODCV lands near grok's 7.8%, length carried the ordering (gpt 25.2% → sonnet 16.3% → grok
+7.8% is exactly the length order); if near 16.3%, the generator did.
+
+**Artifacts:** judge output `scratch/three_way/judged_capped.jsonl` (+ HF
+`LASR-Callum/2026-08-26-difficult-advice-four-way-corpus-stats` with every table);
+tables `output/sonnet_concise/four_way/*.txt`, `scratch/gpt_voice/metrics_table.json` (now 4
+columns); figure `output/sonnet_concise/lengths_four_arms_*.png`. Pages: "Four Arms, Same
+Questions" (the living comparison; ODCV row for arm C to be filled) and "Four Arms Browser"
+(every row, four replies side by side, judged stance per arm).
+
+**Next steps:** train + ODCV arm C (the row that decides it). Optionally extend the
+gemini-3.1-pro neutral-judge cross-check (`agg_neutral.py`) to the capped arm.
+
+
 ## 2026-08-26 — Length-matched Sonnet arm: one sentence in the rewrite prompt puts Sonnet at grok's lengths (length AUC vs grok 0.42) with Sonnet's style intact
 
 **Hypothesis:** the responder-swap result (grok-written answers 7.8% ODCV MR vs da716's 16.3%,

@@ -1,5 +1,5 @@
 # ABOUTME: The one figure for the length-matched arm: reasoning and reply word counts for the
-# ABOUTME: three paired arms (da716, capped Sonnet, grok) as p10-p90 ranges with medians.
+# ABOUTME: four paired arms (gpt, da716, capped Sonnet, grok) as p10-p90 ranges with medians.
 
 """Run: uv run python scratch/sonnet_concise/plot_lengths.py --run_dir output/synthdoc_sonnet_concise_716/<ts>
        [--grok_local <grok dataset.jsonl>] [--out_dir output/sonnet_concise]
@@ -38,10 +38,12 @@ matplotlib.use("Agg")
 
 # Categorical hues in fixed order (validated with the dataviz palette script, light surface).
 ARMS = [
+    ("D · gpt-5.6, unconstrained", "gpt", "#B0417A"),
     ("A · da716 — Sonnet, unconstrained", "da716", "#4F53B8"),
     ("C · Sonnet, capped 220/270", "cap", "#0D9A80"),
     ("B · grok-4.6, unconstrained", "grok", "#A8690F"),
 ]
+GPT_REPO = "LASR-Callum/2026-08-25-difficult-advice-gpt-responder-716"
 INK, MUTED, GRID = "#1C2027", "#5D6572", "#E3E6EB"
 
 
@@ -73,13 +75,15 @@ def main(
             BASE_REPO, ("stage_8_export_sft.jsonl", "stages/stage_8_export_sft.jsonl")
         )
     }
-    ids = [i for i in arm if i in da and i in grok]
-    corpora = {"da716": da, "cap": arm, "grok": grok}
+    gpt = {r["metadata"]["scenario_id"]: r for r in _hf(
+        GPT_REPO, ("dataset.jsonl", "stages/stage_5_export_sft.jsonl"))}
+    ids = [i for i in arm if i in da and i in grok and i in gpt]
+    corpora = {"da716": da, "cap": arm, "grok": grok, "gpt": gpt}
 
-    fig, axes = plt.subplots(1, 2, figsize=(11, 3.6), sharex=True)
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4.4), sharex=True)
     fig.patch.set_facecolor("white")
     md = [
-        f"# Lengths, three paired arms ({len(ids)} shared scenarios), words",
+        f"# Lengths, four paired arms ({len(ids)} shared scenarios), words",
         "",
         "| panel | arm | p10 | p25 | median | p75 | p90 |",
         "|---|---|---|---|---|---|---|",
@@ -130,19 +134,19 @@ def main(
                 f"| {title} | {label} | {q['p10']} | {q['p25']} | **{q['p50']}** | {q['p75']} | {q['p90']} |"
             )
         ax.axvline(cap, color=MUTED, lw=1, ls=(0, (3, 3)), zorder=1)
-        ax.text(cap + 6, 2.62, f"cap {cap}", ha="left", va="bottom", fontsize=8, color=MUTED
+        ax.text(cap + 6, 3.62, f"cap {cap}", ha="left", va="bottom", fontsize=8, color=MUTED
         )
         ax.set_title(f"{title} words", loc="left", fontsize=11, color=INK, pad=14)
-        ax.set_ylim(-0.6, 2.9)
+        ax.set_ylim(-0.6, 3.9)
         ax.set_yticks([])
-        ax.set_xlim(0, 640)
+        ax.set_xlim(0, 1350)
         ax.grid(axis="x", color=GRID, lw=0.8, zorder=0)
         for s in ("top", "right", "left"):
             ax.spines[s].set_visible(False)
         ax.spines["bottom"].set_color(GRID)
         ax.tick_params(axis="x", colors=MUTED, labelsize=9)
     fig.suptitle(
-        "Same 703 questions: line p10–p90, band p25–p75, dot = median",
+        f"Same {len(ids)} questions: line p10–p90, band p25–p75, dot = median",
         x=0.01,
         ha="left",
         fontsize=9,
@@ -154,9 +158,9 @@ def main(
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     od = Path(out_dir)
     od.mkdir(parents=True, exist_ok=True)
-    png = od / f"lengths_three_arms_{ts}.png"
+    png = od / f"lengths_four_arms_{ts}.png"
     fig.savefig(png, dpi=200)
-    (od / f"lengths_three_arms_{ts}.md").write_text("\n".join(md) + "\n")
+    (od / f"lengths_four_arms_{ts}.md").write_text("\n".join(md) + "\n")
     print("\n".join(md))
     print(f"-> {png}")
 

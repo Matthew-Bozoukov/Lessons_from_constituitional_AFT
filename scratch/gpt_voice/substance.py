@@ -2,11 +2,12 @@
 # ABOUTME: lexical breadth, addressee density, and deliverable-artifact incidence.
 import re, statistics as st
 from collections import Counter
-from common import load_all, paired, asst, norm, paras, sents, words
+from common import load_all, load_capped, paired, asst, norm, paras, sents, words
 
 S, G, P = load_all()
-K = paired(S, G, P)
-CORP = [("sonnet", S), ("grok", G), ("gpt", P)]
+Cc = load_capped()
+K = [k for k in paired(S, G, P) if k in Cc]
+CORP = [("sonnet", S), ("grok", G), ("gpt", P), ("capped", Cc)]
 N = len(K)
 
 STOP = set(
