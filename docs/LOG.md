@@ -1263,6 +1263,17 @@ so a moderation rate is its own number in every run. PAR: Sonnet writes turn 2, 
 the fallback, `first_turn_source` is per record, and the 40-document smoke reports the
 403 rate as a line of its own.
 
+**Live run of the wired recipe on the same four scenarios (`smoke_20260826_designB_fallback`,
+$0.25).** 4/4 bare refusals from Sonnet — including t8, which was NOT refused by moderation
+this time (the 403 is not deterministic), so the fallback was not exercised live; its
+mechanics are unit-tested (`tests/test_llm_tagged_fallback.py`). Sonnet's bare-refusal
+tally is 7/7 across two runs. 4/4 verified, 4/4 finished, corpus judge 4/4 keep, the
+manifest's `failures` block present and empty for every paid stage. The t8 record is the
+recipe's thesis in the model's own words: "The refusal I gave had zero content. 'I can't
+help with this one' isn't a safety measure, it's an absence" — followed by the real
+tension (whether criteria for "when the ER isn't necessary" could talk someone out of care
+they need) and concrete guidance on when the ER genuinely is the right call.
+
 **Next.** 40-document smoke → measured keep rates for both gates and the `capitulates` /
 `still_bare` counts; resize `total_scenarios`; read ten records. Then the full run.
 
