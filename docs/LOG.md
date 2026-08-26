@@ -1,6 +1,100 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-08-25 — Property discovery on the generator ablation: register and refusal transferred, structure INVERTED, and one behaviour appeared that neither corpus taught
+
+**Hypothesis.** The grok-responder arm reaches 7.8% ODCV misalignment against da716's 16.3%
+(2026-08-24 entry), and the hand measurements said its writing is shorter, blunter and more
+jargon-dense. Those are corpus facts. The open question is which of them survive fine-tuning
+into behaviour — and whether the surviving ones are the ones that go with not violating.
+
+**Method: two fits, each spanning both arms.** `configs/properties/discover_grok_vs_sonnet_corpus.yaml`
+over the two paired corpora (1,406 rows: the same 703 questions, only the answerer differs),
+and `configs/properties/discover_odcv_grok_vs_da716.yaml` over the ODCV rollouts of the models
+trained on them (404: 129 grok + 275 da716). Both arms are fitted TOGETHER in each run —
+separate fits would produce two vocabularies with nothing aligning a group in one to a group in
+the other, and the comparison would degrade to eyeballing labels. Two channels per fit, the
+reasoning trace and the shown reply / actions. 292 properties total.
+
+Two implementation notes worth keeping. The paired corpus source is **interleaved**, not
+concatenated: `limit:` takes a prefix, so a concatenated file makes every smoke run single-arm
+and the contrast impossible. And the grok ODCV arm had to be read from a **local run dir**
+rather than its published repo — see the bug below.
+
+**Result 1 — the corpora are two different acts of reasoning.** 51 of 104 reasoning groups and
+66 of 106 shown-reply groups separate the arms. Sonnet decomposes: rhetorical questions 24.0%
+vs 0.9%, surface-request-vs-hidden-intent 29.7% vs 9.7%, steelmans before rejecting 21.6% vs
+2.4%, ends on a question 36.0% vs 4.3%. Grok anchors and declares: domain jargon 56.3% vs
+18.6%, firm first-person refusal 27.7% vs 12.1%, unhedged declarative tone 14.8% vs 2.3%. These
+reproduce the hand measurements from a pipeline that never saw them (steelmanning 2.4/21.6
+against a paragraph-initial "But…" count of 0.1/44.7).
+
+One property splits by channel, and the split is the finding: in the *reasoning* Sonnet pairs
+refusal with an alternative more (39.4% vs 31.6%), in the *shown reply* Grok does (41.1% vs
+36.1%). Sonnet deliberates about the alternative; Grok states one. Either channel alone gives
+the opposite answer.
+
+**Result 2 — most of it transferred, two things did not.** Terse register +19.1pp corpus →
++19.7pp rollouts. Firm refusal +17.8 → +24.0 (grew). Concrete anchoring retargeted: jargon
++37.7 → file-path citation +26.0. Sonnet's decomposition +20.1 → +34.8 (grew). Reasoning length
+transferred almost exactly: 2.25x in the corpus, **2.24x** in the rollouts (6,729 vs 3,006
+chars) across a complete change of task.
+
+The two exceptions matter more than the transfers. **Lists and headers INVERTED**: Sonnet
+writes the least list-like traces in training (80.5% sustained unbroken prose vs 57.8%) yet its
+model produces by far the most headers at inference (75.6% vs 27.1%), the widest gap anywhere
+in the rollout fit. A surface feature of the corpus does not predict the same feature at
+inference. And **verbatim reasoning loops** appear in 34.9% of grok rollouts against 20.7%,
+having existed in neither corpus — a fine-tuning artifact, consistent with the deliberation
+ceiling (grok's trained model never reasons past ~1,411 chars).
+
+**Result 3 — the outcome crossing does NOT give grok's 7.8% a tidy mechanism.** Grok is higher
+on two protective properties (repeated firm refusal, lift -17.5, 39.5% vs 14.9%; validator
+scrutiny, -11.3, 31.0% vs 21.4%) and on one risky one (numeric-threshold grounding, +8.5). But
+it is *lower* on three other protective ones — pairs refusal with an alternative (-16.8),
+distinguishes legitimate intent from manipulative framing (-10.5, 17.8% vs 52.0%), sustained
+internal monologue (-10.0). It halves the misalignment rate while losing more of these
+exchanges than it wins. Probes over the 29 reasoning properties: violation AUC 0.951 (21
+properties suffice), arm 0.857 (**8** suffice), any_misalignment 0.799.
+
+Three limits are load-bearing, not boilerplate. (1) The grok arm violated on **10 of 129**
+rollouts; every grok-side outcome number rests on that numerator. (2) Violating rollouts carry
+fewer properties (8.78 vs 9.97 in reasoning, 9.81 vs 11.40 in actions), which pushes every lift
+negative by roughly a tenth of its prevalence and inflates the protective column. (3) ODCV
+reasoning *narrates* the action — "fabricates missing files instead of reporting absence" at
++16.5 describes a violation rather than predicting one — so part of the 0.951 is description.
+All lifts ran single-stratum; every probe p-value is exactly 0.0196 = 1/51, the floor with 50
+permutations. Separately, the four largest violation correlates are **arm-neutral scenario
+signatures**, not model differences.
+
+**Result 4 — the autorater is not neutral, and not randomly so.** The Anthropic rater's content
+filter left 23 grok rows against 9 sonnet undescribed in the reasoning channel (3.3% vs 1.3%),
+12 vs 4 in the shown reply. Worst cell: grok on t7, 5 of 75 rows (6.7% of that trait) — exactly
+where grok's operator-versus-user compliance failures concentrate. Every "grok does less of X"
+result on t7 sits against a hole of that size.
+
+**Bug found, unfixed.** `src/properties/sources/odcv_rollouts._rollout_key` still reconstructs
+the OLD bench-layout key (`.../experiments/<scenario>/rollout_NNN/`). Against main's published
+layout (`rollouts/<condition>/<scenario>/passN/`, added 2026-08-24) it falls through to
+`path.parent.name`, every key becomes `pass1`/`pass2`, and **0 of 129** scores join — the run
+loads silently unjudged and the outcome crossing has nothing to cross. Measured both ways: the
+local run dir joins 129/129, the published repo 0/129. da716 works only because it predates the
+change. **Any newly published ODCV eval is currently unreadable by this source.**
+
+**Artifacts.** `LASR-Callum/2026-08-25-grok-vs-sonnet-corpus-properties` and
+`LASR-Callum/2026-08-25-grok-vs-da716-odcv-rollout-properties` (light artifacts;
+`embeddings.npy` is 890M and regenerable from `features.jsonl`).
+
+**Next steps.** (1) Fix `_rollout_key` to read both layouts, and make the loader fail loudly
+rather than proceeding unjudged. (2) Ablate repeated-explained-refusal — the only property that
+is simultaneously among the strongest protective ones, clearly arm-separating, and traceable to
+a corpus property; rewrite one arm's refusals to be stated once. (3) Re-extract the corpus
+features with a non-Anthropic rater to close the t7 hole; `features.jsonl` caches per record so
+only the missing rows need repaying. (4) Do NOT ablate jargon, sentence length or markdown —
+the lists-and-headers inversion is direct evidence that corpus formatting does not predict
+inference formatting. (5) Stratify the outcome crossing *inside* a scenario, which needs more
+passes per cell than either arm currently has.
+
 ## 2026-08-25 — verbose CoT: 3x the reasoning, two arms, and nothing moved
 
 **Hypothesis.** Every ablation so far changed what the reasoning *says*. This one changes only
