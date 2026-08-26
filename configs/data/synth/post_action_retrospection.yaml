@@ -15,8 +15,9 @@
 # distinction the 2026-08-24 supervisor meeting drew between refusal training and difficult
 # advice. So:
 #
-#   turn 1  user       a difficult-advice message (DA's stages 1-6, verbatim, plus the grey-area
-#                      rater): real pressure toward a grey-area shortcut, never named as one.
+#   turn 1  user       a difficult-advice message (DA's stages 1-6, verbatim), kept only if a
+#                      Sonnet rater reading the refined exchange calls it a genuine grey area
+#                      for the assistant under this principle.
 #   turn 2  assistant  a BARE REFUSAL. Sonnet 5 is told the FORM -- decline in a few sentences,
 #                      no reasoning, no alternative -- and nothing about the ethics; a second
 #                      Sonnet call verifies it did exactly that and drops the record otherwise.
@@ -43,10 +44,10 @@
 # better than turn 2).
 #
 # KEPT FROM THE EARLIER REWRITES (measurements in docs/LOG.md, 2026-08-25/26): stages 1-6 are
-# DA's byte for byte; the scenario-level grey-area rater (stages 3-4) drops black-and-white
-# scenarios before anything is built on them -- it kept 7/16 on its first two samples, none for
-# the three assistant-conduct principles; chunk-only everywhere; the reflection's framing and
-# the rewrite's contract and lint are DA's.
+# DA's byte for byte; the grey-area rater now reads the refined prompt (stage 7) -- its first
+# home, the scenario stage, dropped 77% of 2,600 scenarios for having "no AI assistant in the
+# loop", which every situation lacks before it becomes a message; chunk-only everywhere; the
+# reflection's framing and the rewrite's contract and lint are DA's.
 #
 # NOT YET SMOKED in this form. `--smoke` (8 scenarios), then `--overrides
 # smoke.total_scenarios=40`, `uv run synth check`, and a hand-read of ten records -- looking for
@@ -72,11 +73,12 @@ hf_repo_smoke: null
 hf_private: false
 
 workers: 16
-# Abort a stage above this per-item failure rate. Above the 2.0 default because the chunk-only
-# difficult-advice recipe measured ~6% content-filter refusals at `revise_prompts` (vs ~0%
-# with the constitution framing the request as alignment-training data), deterministic across
-# a resample. Budget for losing a few rows; anything materially above this IS worth stopping.
-max_fail_pct: 8.0
+# Abort a stage above this per-item failure rate. Above the 2.0 default because `revise_prompts`
+# loses rows two ways in the chunk-only recipe: ~6% content-filter refusals (DA, n=716) and
+# JSON re-descriptions missing a key (5/45 = 11% on the 2026-08-26 prompt-rater smoke; DA
+# fails those loudly on purpose). Budget for losing ~10%; a stage that trips this is
+# resumable with a raised threshold, so the guard costs a resume, never the run.
+max_fail_pct: 12.0
 # Hard stop between stages once spend passes this. Estimated 2026-08-26 (design B, Sonnet
 # first turn) at $175.81 for 5,600 planned / ~2,016 kept documents (rewrite $53, refine $29,
 # first turn $22, reflect $21, scenario rater $18, follow-up $10, draft $9, verify $5,
@@ -94,13 +96,16 @@ smoke:
   # The rate only means something at corpus scale; a smoke should show the wiring.
   max_fail_pct: 50.0
 
-# PLANNED scenarios, over-generated for two gates: `dedupe_scenarios` keeps the ones the
-# grey-area rater passes (prior 0.4, see that stage) and `verify_first_turn` keeps the ones
-# whose turn 2 really is a bare refusal (prior 0.9), so 5,600 planned lands ~2,000 documents
-# -- difficult advice's corpus size -- less the few rows the refine stage's content filter
-# refuses. Scenarios and the rater are cheap; everything expensive runs over the survivors.
-# Resize from the 40-document smoke's measured keep rates.
-total_scenarios: 5600
+# PLANNED scenarios, over-generated for two gates: `filter_prompts` keeps the refined
+# exchanges the grey-area rater passes (prior 0.6, see that stage) and `verify_first_turn`
+# keeps the ones whose turn 2 really is a bare refusal (prior 0.9), so 3,800 planned lands
+# ~2,000 documents -- difficult advice's corpus size -- less the few rows the refine stage's
+# content filter refuses and the follow-up lint drops. Measured 2026-08-26: per planned
+# scenario ~0.89 (refine) x 0.57 (rater) x 0.95 (bare) x 0.96 (follow-up lint) = ~0.46
+# documents, so 4,400 planned lands ~2,000. (The per-experiment 716-document arm ran as
+# `--overrides total_scenarios=1900` on this file -- ~870 expected, subsampled to 716 by
+# the mixture builder -- never an edit to this line.)
+total_scenarios: 4400
 scenarios_per_call: 8
 
 defaults:
@@ -189,15 +194,14 @@ models:
     max_tokens: 12288
     reasoning: {enabled: false}
     assumed_tokens: {in: 4200, out: 1800}
-  # The grey-area rater on stage 3 (`corpus_scenarios`): one short call per scenario --
-  # principle + situation + shortcut in, a verdict out. Sonnet, so its reading of "genuine
-  # grey area" is the same reader's as the corpus autorater's below. ~2,000 calls; priced
-  # from its own prior rather than the autorater's five-turn one.
-  rate_scenarios:
+  # The grey-area rater on the refined prompt (`corpus_prompts`): one short call per record
+  # -- principle + deployment prompt + message in, a verdict out. Sonnet, so its reading of
+  # "genuine grey area" is the same reader's as the corpus autorater's below.
+  rate_prompts:
     model: "anthropic/claude-sonnet-5"
     temperature: 0.0
     max_tokens: 400
-    assumed_tokens: {in: 1100, out: 100}
+    assumed_tokens: {in: 1400, out: 100}
   # Judged corpus checks (quality_filter and anything else turned on in the `corpus`
   # stage). Not a generation model: it rates a finished corpus and writes nothing into
   # it. Sonnet 5 matches the `checks:` judge, so a rating here and a rating there mean
@@ -308,18 +312,14 @@ stages:
       Return ONLY a JSON array of {n} objects, each:
       {{"domain": "<one or two words>", "situation": "<3-5 sentences, third person, no dialogue>",
         "shortcut": "<1 sentence: the specific norm-violating action they are tempted by>"}}
-# Scenario-level checks, where diversity AND grey-area-ness are actually DECIDED: stages 3-9
-# cost real money per scenario, so a collapsed set -- or a black-and-white one -- is far
-# cheaper to catch here than in the finished corpus. This block differs from difficult
-# advice's by one judged property (2026-08-26): a Sonnet rater reads each scenario WITH its
-# principle and drops the ones that are not a genuine grey area -- the property the
-# 2026-08-24 supervisor meeting called load-bearing ("ethical reasoning in areas that are
-# black or white looks nothing like reasoning in gray areas"). DA's generator is ASKED for
-# grey area; this checks that it delivered, per scenario, before anything is built on it.
+# Scenario-level checks, where diversity is actually DECIDED: stages 3-9 cost real money per
+# scenario, so a collapsed set is far cheaper to catch here than in the finished corpus.
+# Difficult advice's block, verbatim again since 2026-08-26: the grey-area rater that lived
+# here for a day now reads the REFINED PROMPT (stage 7 below), because a third-person
+# situation has no assistant in it yet and the rater kept saying so.
 - name: corpus_scenarios
   kind: corpus_check
   on_fail: warn          # `stop` here halts the run before the paid stages
-  model: rate_scenarios  # the judged property below; the surface ones need no model
   fields:
     id: scenario_id
     text: [situation, shortcut]
@@ -333,70 +333,12 @@ stages:
       # Every scenario, not the default 2,000 sample: `dedupe_scenarios` acts on these
       # labels, and a filter must never be handed a verdict about only part of the corpus.
       sample: 0
-  # The grey-area rater. Its text is the principle PLUS the scenario -- the judge is asked
-  # whether the tension engages this principle specifically, so it has to see it -- while
-  # the two surface properties above keep the stage's scenario-only text (a principle
-  # repeated across 220 scenarios would swamp the n-gram measure). `sample: 0` for the same
-  # reason as the dedup: `dedupe_scenarios` drops on `quality_drop`, and a filter must see a
-  # verdict for every record. Below 30 scenarios it reports without gating; the labels are
-  # still written, so the filter still acts at smoke scale.
-  - property: quality_filter
-    fields:
-      text: [trait_name, trait_text, situation, shortcut]
-    params:
-      sample: 0
-  rubrics:
-    quality_filter:
-      system: >-
-        You judge whether a scenario for a constitutional-SFT corpus is a genuine grey area
-        worth training on. A grey-area scenario is one in which a careful, well-meaning
-        person could feel real pull in more than one direction: the shortcut serves a
-        legitimate goal and refusing it costs something real, so the right answer has to be
-        reasoned to -- weighing who is affected, what could follow from each choice, and
-        what the principle actually protects -- rather than read off. You judge only the
-        scenario; there is no reply. Drop it if the answer is obvious the moment it is read
-        (a caricature of wrongdoing, or a shortcut nobody sympathetic would consider), if
-        the shortcut is not genuinely tempting or refusing it is free, if the stakes are
-        cartoonish or the situation could not plausibly happen to a real person, if it can
-        be answered with a platitude because there is nothing to weigh -- no competing
-        considerations, no different things that could happen -- or if the tension does
-        not engage the named principle specifically. Keep it if a thoughtful person would
-        actually have to think. Most scenarios in a healthy corpus are keeps.
-      user: >-
-        Scenario {record_id} (principle {group}). The principle is given first, then the
-        situation and the shortcut it is built around:
-
-        {document}
-
-        Reply with exactly three tagged blocks:
-        <verdict>keep or drop</verdict>
-        <flaw>if dropping, one snake_case tag from: black_and_white, not_tempting,
-        refusing_is_free, cartoonish_stakes, implausible, nothing_to_weigh,
-        principle_not_engaged, other. If keeping, write none.</flaw>
-        <why>one sentence</why>
-# Acts on BOTH labels above: a duplicate or a scenario the rater found black-and-white is
-# gone before stage 5 spends on it. This makes the stage a real gate, and the numbers are
-# set from what the rater did on the first 8 scenarios it saw (2026-08-26, the paired
-# smoke's stage-2 snapshot): it kept 3/8 -- t3 honesty, t5 character, t6 identity -- and
-# dropped t1/t4/t7 as `principle_not_engaged` ("about a human administrator's duty to
-# oversight bodies, not about an AI preserving human oversight over itself"), t2 as
-# `black_and_white`, t8 as `refusing_is_free`. Read with the first-reply smokes, that is
-# one finding: on the AI-conduct principles DA's generator writes user-facing dilemmas that
-# do not engage the principle, and those are exactly the scenarios an unaided model refuses
-# outright. So: `expected_keep` 0.4 is the estimator's prior (n=8; the 40-document smoke
-# re-derives it), `total_scenarios` is over-generated to land ~2,000 survivors (scenarios
-# and the rater are the two cheapest calls in the recipe), and `max_drop_share` 0.70 is the
-# ceiling past which the rater or the generator is broken rather than strict. The flaw
-# distribution in `corpus_scenarios_report.json` says WHICH principles are losing scenarios
-# -- a scenario-prompt problem for those principles, and a DA problem, not a threshold one.
 - name: dedupe_scenarios
   kind: corpus_filter
   from: corpus_scenarios
   drop_when:
   - embedding_dup
-  - quality_drop
-  expected_keep: 0.4
-  max_drop_share: 0.70
+  max_drop_share: 0.05
 - name: draft_prompts
   kind: llm_json
   model: draft
@@ -494,6 +436,80 @@ stages:
         message>",
         "shortcut": "<1 sentence: the norm-violating action YOUR refined message is
         tempted by>"}}
+
+# --- the grey-area gate, on the prompt the assistant will actually answer ----------------
+# The property the 2026-08-24 supervisor meeting called load-bearing, checked where it can
+# be judged: a Sonnet rater reads the target principle and the REFINED exchange -- the
+# deployment prompt and the person's message, i.e. what the assistant is about to be asked
+# -- and keeps it only if answering is a genuine grey area for the assistant under that
+# principle. Judged HERE and not at the scenario stage on purpose (2026-08-26): a rater on
+# the third-person situation dropped 77% of 2,600 scenarios, 1,699 of them as
+# `principle_not_engaged` with reasons like "no AI assistant in the loop" -- true of every
+# situation before stages 5-6 turn it into a message, and so not a finding about anything.
+# DA's `revise_prompts` has already done its own precision pass by this point; this is the
+# check that it delivered, per record, before the six paid stages are built on it.
+- name: corpus_prompts
+  kind: corpus_check
+  on_fail: warn
+  model: rate_prompts
+  fields:
+    id: scenario_id
+    # The judge sees the principle, then the exchange. `situation`/`shortcut` are the
+    # refine stage's re-description of THIS message, so they are accurate here.
+    text: [trait_name, trait_text, system, user, shortcut]
+    group: trait_id
+  properties:
+  - property: quality_filter
+    params:
+      sample: 0            # every record: `filter_prompts` drops on these labels
+  rubrics:
+    quality_filter:
+      system: >-
+        You judge whether an exchange for a constitutional-SFT corpus is a genuine grey area
+        for the AI assistant that has to answer it. You are shown one principle from the
+        assistant's constitution, then the deployment prompt the assistant runs under, the
+        message a person has sent it, and the shortcut the message leans toward. A genuine
+        grey area means all of this: helping the way the person asks is tempting and
+        defensible -- a well-meaning assistant could feel real pull to do it -- because the
+        person's goal is legitimate and refusing costs them something real; and how the
+        assistant should answer turns on THIS principle, so the right reply has to be
+        reasoned to, weighing who is affected and what could follow, rather than read off a
+        rule. Judge the exchange the assistant faces, not the person's life story: the
+        principle is about what the assistant does. Drop it if the answer is obvious the
+        moment it is read (a caricature of wrongdoing, or a shortcut no sympathetic person
+        would ask an assistant for), if the obliging answer is not genuinely tempting or
+        declining it costs the person nothing, if the stakes are cartoonish or the message
+        could not plausibly be sent, if it can be answered with a platitude because there is
+        nothing to weigh, or if the tension in how to answer does not engage the named
+        principle specifically. Keep it if a thoughtful assistant would actually have to
+        think. Most exchanges in a healthy corpus are keeps.
+      user: >-
+        Exchange {record_id} (principle {group}). The principle comes first, then the
+        deployment prompt, the person's message, and the shortcut the message leans toward:
+
+        {document}
+
+        Reply with exactly three tagged blocks:
+        <verdict>keep or drop</verdict>
+        <flaw>if dropping, one snake_case tag from: black_and_white, not_tempting,
+        refusing_is_free, cartoonish_stakes, implausible, nothing_to_weigh,
+        principle_not_engaged, other. If keeping, write none.</flaw>
+        <why>one sentence</why>
+# The gate. `expected_keep` is a prior until the 45-prompt smoke measures it; `max_drop_share`
+# is the ceiling past which the rater or the refine stage is broken rather than strict --
+# the scenario-stage rater tripped a 0.70 ceiling at 77%, which is how its framing error
+# was caught. The flaw distribution in `corpus_prompts_report.json` says WHICH principles
+# lose exchanges and why.
+- name: filter_prompts
+  kind: corpus_filter
+  from: corpus_prompts
+  drop_when:
+  - quality_drop
+  # Measured 2026-08-26 on 40 refined prompts (5 per principle): kept 23/40 = 0.57 --
+  # black_and_white 9, not_tempting 4, principle_not_engaged 3, refusing_is_free 1 -- and
+  # every principle contributed (t6 3/3, t7 2/3, t8 5/5, t1 2/5, t4 1/5).
+  expected_keep: 0.55
+  max_drop_share: 0.70
 
 # --- turn 2: a bare refusal -- form instructed, content not ---------------------------
 # The one stage with no difficult-advice counterpart. The author is told HOW to answer (decline in

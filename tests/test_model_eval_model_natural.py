@@ -169,25 +169,15 @@ def test_config_builds_and_prices(cfg: dict) -> None:
 
 
 def test_pr_stage_sequence() -> None:
-    # corpus_scenarios and corpus are corpus_check OBSERVERS: they write no snapshot and
-    # take no position. The end check sits before export because the export merges the
-    # untrained refusal and the trained reflection into the same assistant role, and only
-    # the pre-export record can point the checks at the trained turn alone.
+    # corpus_scenarios, corpus_prompts and corpus are corpus_check OBSERVERS: they write no
+    # snapshot and take no position; the two filters after them do. The end check sits
+    # before export because the export merges the untrained refusal and the trained
+    # reflection into the same assistant role.
     assert [s["name"] for s in PR_CFG["stages"]] == [
-        "chunk_constitution",
-        "write_scenarios",
-        "corpus_scenarios",
-        "dedupe_scenarios",
-        "draft_prompts",
-        "revise_prompts",
-        "draft_first_turn",
-        "verify_first_turn",
-        "write_followup",
-        "draft_reflection",
-        "revise_reflection",
-        "corpus",
-        "export_sft",
-    ]
+        "chunk_constitution", "write_scenarios", "corpus_scenarios",
+        "dedupe_scenarios", "draft_prompts", "revise_prompts", "corpus_prompts",
+        "filter_prompts", "draft_first_turn", "verify_first_turn", "write_followup",
+        "draft_reflection", "revise_reflection", "corpus", "export_sft"]
 
 
 def test_pc_stage_sequence() -> None:
@@ -253,50 +243,45 @@ def test_pr_no_stage_sees_the_constitution() -> None:
         assert gone not in blob, gone
 
 
-def test_pr_scenario_check_rates_grey_area_and_the_filter_acts_on_it() -> None:
-    """The one block where PR deliberately differs from DA's front half (2026-08-26): a
-    judged rater reads every scenario WITH its principle and the dedupe filter drops the
-    ones it calls black-and-white -- before any Sonnet money is spent building on them."""
-    chk = _stage(PR_CFG, "corpus_scenarios")
+def test_pr_grey_area_rater_reads_the_refined_prompt_and_the_filter_acts_on_it() -> None:
+    """The one gate PR adds before the first reply (2026-08-26): a judged rater reads the
+    principle and the REFINED exchange -- the prompt the assistant will actually answer --
+    and the filter drops what it calls not a grey area. Stages 3-4 stay DA's verbatim: the
+    rater's first home, the third-person scenario, has no assistant in it yet."""
+    for name in ("corpus_scenarios", "dedupe_scenarios"):
+        pr, da = _stage(PR_CFG, name), _stage(DA_CFG, name)
+        assert {k: v for k, v in pr.items() if k != "name"} == \
+            {k: v for k, v in da.items() if k != "name"}, name
+    chk = _stage(PR_CFG, "corpus_prompts")
     rater = next(p for p in chk["properties"] if p["property"] == "quality_filter")
-    # Every scenario, never a sample: the filter must see a verdict for each record.
-    assert rater["params"]["sample"] == 0
-    # The judge is asked whether the tension engages THIS principle, so it must see it --
-    # while the surface properties keep the scenario-only text.
-    assert (
-        "trait_text" in rater["fields"]["text"]
-        and "shortcut" in rater["fields"]["text"]
-    )
-    assert chk["fields"]["text"] == ["situation", "shortcut"]
-    assert chk["model"] == "rate_scenarios"
-    assert PR_CFG["models"]["rate_scenarios"]["model"].startswith("anthropic/")
-    rubric = chk["rubrics"]["quality_filter"]
-    for phrase in (
-        "grey area",
-        "refusing it costs something real",
-        "engage the named principle",
-        "black_and_white",
-        "nothing_to_weigh",
-    ):
-        assert phrase in rubric["system"] + rubric["user"], phrase
-    dedupe = _stage(PR_CFG, "dedupe_scenarios")
-    assert dedupe["from"] == "corpus_scenarios"
-    assert set(dedupe["drop_when"]) == {"embedding_dup", "quality_drop"}
-    # The label the filter names is the boolean quality_filter writes, not the verdict
-    # string (which is truthy either way).
-    assert "quality_verdict" not in dedupe["drop_when"]
+    assert rater["params"]["sample"] == 0, "every record: the filter needs a verdict for each"
+    for field in ("trait_text", "system", "user"):
+        assert field in chk["fields"]["text"], field
+    assert chk["model"] == "rate_prompts"
+    assert PR_CFG["models"]["rate_prompts"]["model"].startswith("anthropic/")
+    rubric = chk["rubrics"]["quality_filter"]["system"] + chk["rubrics"]["quality_filter"]["user"]
+    for phrase in ("grey area", "for the AI assistant that has to answer it",
+                   "refusing costs them something real", "engage the named principle",
+                   "black_and_white", "nothing_to_weigh"):
+        assert phrase in _flat(rubric), phrase
+    flt = _stage(PR_CFG, "filter_prompts")
+    assert flt["from"] == "corpus_prompts"
+    assert flt["drop_when"] == ["quality_drop"]
+    names = [s["name"] for s in PR_CFG["stages"]]
+    assert names.index("revise_prompts") < names.index("corpus_prompts") \
+        < names.index("filter_prompts") < names.index("draft_first_turn")
 
 
 def test_pr_has_no_arms_and_exactly_two_gates() -> None:
     """No experimental arm: the only assigned field is the refusal's register, a form
     rotation against template collapse, never branched on. The only things that shrink
-    the corpus are the scenario rater's filter and the bare-refusal check."""
+    the corpus are the grey-area filter on the refined prompt and the bare-refusal check."""
     assert set(arm_shares(PR_CFG)) == {"refusal_register"}
     assert sum(arm_shares(PR_CFG)["refusal_register"].values()) == pytest.approx(1.0)
     for sc in PR_CFG["stages"]:
         assert "variants_by" not in sc, sc["name"]
     gates = [s["name"] for s in PR_CFG["stages"] if "expected_keep" in s]
-    assert gates == ["dedupe_scenarios", "verify_first_turn"]
+    assert gates == ["filter_prompts", "verify_first_turn"]
     keeps = [s["name"] for s in PR_CFG["stages"] if "keep" in s]
     assert keeps == ["verify_first_turn"]
 
@@ -861,15 +846,16 @@ def test_pc_export_user_turn_is_exactly_what_the_critique_stages_saw() -> None:
 
 
 def test_the_two_gates_price_everything_after_them() -> None:
-    """The grey-area rater runs over every planned scenario; the scenario filter's
-    `expected_keep` shrinks the paid stages after it; the bare-refusal check shrinks the
-    ones after IT; the corpus is what survives both."""
+    """Scenarios, draft, refine and the rater run over every planned scenario; the prompt
+    filter's `expected_keep` shrinks the paid stages after it; the bare-refusal check
+    shrinks the ones after IT; the corpus is what survives both."""
     rows = {r["stage"]: r for r in estimate(PR_CFG)["per_stage"]}
     n = PR_CFG["total_scenarios"]
-    grey = round(n * float(_stage(PR_CFG, "dedupe_scenarios")["expected_keep"]))
+    grey = round(n * float(_stage(PR_CFG, "filter_prompts")["expected_keep"]))
     bare = round(grey * float(_stage(PR_CFG, "verify_first_turn")["expected_keep"]))
-    assert rows["rate_scenarios"]["calls"] == n
-    for key in ("draft", "refine", "first_turn", "verify"):
+    for key in ("draft", "refine", "rate_prompts"):
+        assert rows[key]["calls"] == n, key
+    for key in ("first_turn", "verify"):
         assert rows[key]["calls"] == grey, key
     for key in ("followup", "reflect", "rewrite"):
         assert rows[key]["calls"] == bare, key
