@@ -34,8 +34,16 @@ DEFAULT_IMAGE = "runpod/pytorch:0.7.0-dev-cu1281-torch271-ubuntu2204"
 DEFAULT_GPU = "NVIDIA H100 80GB HBM3"
 
 
-def _bootstrap(base: str, bundle: str, train_config: str, mixture: str) -> str:
-    """Pod startup script: fetch bundle, train, expose the adapter over :8080."""
+def _bootstrap(base: str, bundle: str, train_config: str, mixture: str,
+               gpu_count: int = 1) -> str:
+    """Pod startup script: fetch bundle, train, expose the adapter over :8080.
+
+    `gpu_count` > 1 launches the trainer under torchrun for DDP, which is how every
+    dynamic-batching arm in configs/train/lora_qwen36_t2_9284_*.yaml was trained (their
+    `# Run:` line is the same torchrun invocation). At 1 the launcher is plain python3,
+    exactly as before.
+    """
+    launch = (f"torchrun --nproc_per_node={gpu_count}" if gpu_count > 1 else "python3")
     return f"""mkdir -p /workspace
 exec > >(tee -a /workspace/boot.log) 2>&1
 set -euxo pipefail
@@ -45,7 +53,15 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export WANDB_MODE=disabled
 # python3 -m pip, NOT bare pip: on this image `pip` and `python3` can resolve to
 # different interpreters, and packages land where the trainer cannot import them.
-python3 -m pip install --no-cache-dir -q "transformers>=5.14" "trl>=0.27" "peft==0.20.0" datasets accelerate omegaconf fire huggingface_hub hf_transfer
+# wandb is in this list even though WANDB_MODE=disabled above means nothing is ever
+# logged. Several train configs declare `report_to: ["wandb"]` (they were written on boxes
+# that had it), and transformers builds WandbCallback from that field BEFORE consulting
+# WANDB_MODE -- so without the package the run dies at trainer construction with
+# "WandbCallback requires wandb to be installed", ~25 minutes into a paid pod's boot.
+# Installing it keeps those configs runnable verbatim, which matters when a pod arm has to
+# stay byte-comparable to a sibling trained elsewhere; disabled mode keeps it a no-op with
+# no account, no network and no auth.
+python3 -m pip install --no-cache-dir -q "transformers>=5.14" "trl>=0.27" "peft==0.20.0" datasets accelerate omegaconf fire huggingface_hub hf_transfer wandb
 hf download {base} >/dev/null
 hf download {bundle} code.tar.gz --repo-type dataset --local-dir /workspace/bundle
 mkdir -p /workspace/repo && tar -xzf /workspace/bundle/code.tar.gz -C /workspace/repo
@@ -57,9 +73,20 @@ echo TRAINING_STARTING
 # The mixture comes straight from the (public) bundle repo via the trainer's own HF
 # data path, so training_meta records the real repo@revision; push=false because the
 # pod has no token — the driver pushes the pulled-back adapter.
-(python3 scripts/train/train_lora.py --config {train_config} data_repo={bundle} data_file={mixture} push=false 2>&1 | tee /workspace/train.log) || true
-# Package whatever the trainer wrote (adapter + run_meta) for pull-back over :8080.
-tar -czf /workspace/adapter.tar.gz -C /workspace/repo/output . || true
+set +e
+({launch} scripts/train/train_lora.py --config {train_config} data_repo={bundle} data_file={mixture} push=false 2>&1 | tee /workspace/train.log)
+TRAIN_RC=${{PIPESTATUS[0]}}
+set -e
+# Package what the trainer wrote (adapter + run_meta) for pull-back over :8080. The output
+# root is READ FROM THE CONFIG, never assumed: these configs set output_dir to an absolute
+# /workspace/out/<arm> path, so the old hardcoded /workspace/repo/output tarred nothing and
+# produced a 20-byte archive next to a perfectly good adapter.
+OUTDIR=$(python3 -c "from omegaconf import OmegaConf; print(OmegaConf.load('{train_config}').get('output_dir') or 'output')")
+echo "packaging adapter from $OUTDIR (trainer rc=$TRAIN_RC)"
+tar -czf /workspace/adapter.tar.gz -C "$OUTDIR" . || true
+# Say which happened. The trainer used to run under `|| true`, so a crash still reached the
+# DONE marker and any watcher polling for it read a dead run as a success.
+if [ "$TRAIN_RC" -ne 0 ]; then echo TRAINING_FAILED; fi
 echo TRAINING_DONE
 sleep infinity
 """
@@ -70,6 +97,7 @@ def up(
     train_config: str = "configs/train/lora_qwen36_tulu100.yaml",
     base: str = "Qwen/Qwen3.6-27B",
     gpu: str = DEFAULT_GPU,
+    gpu_count: int = 1,
     name: str = "train-lora-0-100",
     mixture: str = "mixture.jsonl",
     disk_gb: int = 150,
@@ -83,7 +111,12 @@ def up(
         bundle: Public HF dataset repo holding code.tar.gz + the mixture jsonl.
         train_config: Config path inside the code tarball.
         base: Base model to download on the pod.
-        gpu: RunPod GPU type id.
+        gpu: RunPod GPU type id. NOTE the arms in configs/train/lora_qwen36_t2_9284_*
+            CANNOT train on an H100 80GB: ModelProfile records a measured negative bound
+            (a 1x~8k fwd+bwd OOMs 7.36 GiB short) and those mixtures carry rows at 8,191
+            tokens. Pass an H200 type for them.
+        gpu_count: GPUs on the pod. >1 runs the trainer under torchrun (DDP), matching how
+            the dynamic-batching arms were trained.
         name: Pod name. Prefix it so it is distinguishable on the shared account.
         mixture: Mixture filename inside the bundle; passed to the trainer as its
             data_file override (the bundle repo is its data_repo).
@@ -99,12 +132,13 @@ def up(
         "name": name,
         "imageName": image,
         "gpuTypeIds": [gpu],
-        "gpuCount": 1,
+        "gpuCount": gpu_count,
         "containerDiskInGb": disk_gb,
         "volumeInGb": 0,
         "ports": ["8080/http", "22/tcp"],
         "cloudType": cloud,
-        "dockerStartCmd": ["bash", "-lc", _bootstrap(base, bundle, train_config, mixture)],
+        "dockerStartCmd": ["bash", "-lc",
+                           _bootstrap(base, bundle, train_config, mixture, gpu_count)],
         "env": {"HF_HUB_ENABLE_HF_TRANSFER": "1"},
     }
     codes = [c.strip().upper() for c in countries.split(",") if c.strip()]

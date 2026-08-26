@@ -2,8 +2,13 @@
 
 The repository holds code, configuration and analysis. Datasets, generated
 corpora, evaluation outputs and caches live on Hugging Face — see the root
-`AGENTS.md`. This document describes how the visualizer reads that data without
+`CLAUDE.md`. This document describes how the visualizer reads that data without
 becoming slow, and what happens when the Hub is not there.
+
+Two surfaces read the Hub directly in the browser and need no content entry at
+all: the `/evals` run explorer (repos tagged `eval-run`) and the `/datasets`
+training-data explorer (repos tagged `training-data`). Both are described at the
+end; everything in between is the content-entry pipeline the other pages use.
 
 ---
 
@@ -36,7 +41,6 @@ transfers less than the old page cost before it rendered.
 - entry frontmatter: title, date, status, tags, models, metrics, summary
 - Petri scenario seeds and run-level scores
 - one summary row per transcript (`transcript_index`)
-- dataset statistics: record count, splits, categories, average turns
 - the asset list, with sizes and URLs
 
 Listing pages are fully static. `/`, `/logs`, `/evals`, `/models`, `/findings`
@@ -61,9 +65,9 @@ from a `"use client"` file — it uses `node:fs`.
 **Deferred to a runtime fetch** — everything a *single opened item* needs:
 
 - Petri transcript bodies (`messages`, `judge_summary`), one JSON per transcript
-- dialogue dataset records, paged in chunks of 50
 - **SFT corpora, paged by byte range straight out of the published `.jsonl`**
-  (see below)
+  (see below) — and, since 2026-08-25, the *list* of corpora too: `/datasets`
+  discovers its repos from Hub tags at runtime rather than from the index
 - large raw artifacts (`raw-grader-responses.jsonl`, pipeline logs), which were
   already download links rather than page content
 
@@ -82,11 +86,15 @@ keeps the whole lines inside it, and starts the next request where this one
 stopped. `content-range` gives the file size for free, which is what the reader
 shows as progress.
 
-The build's whole job is to name the file and its size — nothing is downloaded:
+Nothing is downloaded ahead of time. `lib/trainingData.ts` builds the stream
+pointer in the browser from the Hub listing:
 
 ```
 dataset.stream = { url, path, total_bytes, window }   # window defaults to 256 KB
 ```
+
+`total_bytes` is 0 when the card named the file (no tree call was needed) and the
+reader takes the size from the first `content-range` instead.
 
 Three properties the reader in `lib/lazy.ts` must hold, all covered by
 `tests/jsonl-stream.test.mjs`:
@@ -99,18 +107,20 @@ Three properties the reader in `lib/lazy.ts` must hold, all covered by
 3. **A 200 response is the whole file.** A server that ignores `Range` is
    honoured rather than re-requested.
 
-Which file gets read is an **allowlist** (`DATA_FILE_PATTERNS` in
-`scripts/index-content.mjs`), not "the biggest `.jsonl`". These repos also
-publish `verdicts.jsonl`, `assistant_spans.jsonl` and per-question eval records;
+Which file gets read comes first from the card: the default entry of its
+`configs:` front-matter names the rows file, which is what the publishers write
+(`dataset.jsonl` for a synth run, `mixture.jsonl` for a mixture). A card that
+declares nothing falls back to an **allowlist** (`DATA_FILE_PATTERNS` in
+`lib/trainingData.ts`), not "the biggest `.jsonl`": these repos also publish
+`verdicts.jsonl`, `assistant_spans.jsonl` and per-question eval records, and
 pointing a conversation viewer at those would render garbage while looking like
-it worked. A repo whose data file is not recognised gets a notice listing its
-candidates, and the fix is `hf_source.data_file`, not a wider heuristic.
+it worked. A repo with neither is listed under "publish no records to browse"
+with its JSONL candidates named; the fix is a default config on the card, not a
+wider heuristic.
 
-**Private repos are refused at build time.** The build authenticates and the
-browser does not, so a private repo resolves perfectly during a build and 401s
-for every visitor — a viewer that works only on the developer's machine.
-`fetchRepoInfo` reads the flag and the build declines to wire up a reader,
-saying so on the page.
+**Private repos never appear.** The site holds no token, so the Hub listing it
+makes returns public repos only — there is no build-time/run-time split to get
+wrong any more.
 
 On 2026-08-10 seven of the ten private repos were made public so their bundles
 are anonymously readable: the three MMLU runs, both psychosis runs, the
@@ -163,6 +173,11 @@ The generator now reads the marker the fixture cards actually carry
 (`MOCK DATA` / `NOT A TRAINING CORPUS` in the `experiment` field) and writes
 `mock: true`. `tests/rendered-html.test.mjs` asserts it from the repo id, so a
 new fixture cannot arrive unflagged by accident.
+
+On `/datasets` itself the flag now comes from the Hub, because the page no longer
+reads entries: a fixture's card carries `kind:fixture` (or `mock`) among its
+`training-data` tags, and `parseRepo` in `lib/trainingData.ts` marks it from
+that — asserted in `tests/training-data.test.mjs`.
 
 `/datasets` raises the warning **inside** the viewer, against the corpus on
 screen, and marks the fixture's row in the picker. It does not carry a
@@ -236,6 +251,16 @@ full tree listing.
 
 ## Architecture
 
+Two paths. The content-entry pipeline (below) serves logs, findings, evals
+write-ups and Petri runs. The two explorers bypass it entirely:
+
+```
+browser ── /api/datasets?author=<org>&filter=eval-run ──────▶ lib/evalRuns.ts
+        ── /api/datasets?author=<org>&filter=training-data ─▶ lib/trainingData.ts
+                     results/ rollouts/ (evals) · configs: default file + stats (datasets)
+                     then byte-range / per-file fetches from the Hub CDN
+```
+
 ```
 content/<type>/<slug>/index.md          frontmatter, optionally with hf_source
         │
@@ -259,12 +284,13 @@ metadata only, baked into every page            ▼
         │                                app/entry/[slug]/page.tsx
         ▼                                app/petri/page.tsx
 app/components/PetriRunViewer.tsx       lib/lazy.ts fetches
-app/components/DatasetViewer.tsx        `${transcript_base}/${file}` on demand
+                                        `${transcript_base}/${file}` on demand
 ```
 
 Both source kinds produce the identical index shape. A component never knows or
 cares whether a sidecar comes from this origin or from the Hub — only the base
-URL differs.
+URL differs. `app/components/DatasetViewer.tsx` is fed by the training-data
+explorer, not by the index.
 
 ### Files
 
@@ -272,12 +298,16 @@ URL differs.
 | --- | --- |
 | `scripts/hf-source.mjs` | Build-time Hub client: cached fetch, token handling, graceful failure |
 | `scripts/index-content.mjs` | Builds the baked index and the lazy sidecars |
-| `lib/lazy.ts` | Client-side loader with an in-memory cache |
+| `lib/lazy.ts` | Client-side loader with an in-memory cache (`cached`, byte-range JSONL reader) |
+| `lib/evalRuns.ts` | Client-side eval-run discovery by `eval-run` tag + contract-layout reads |
+| `lib/trainingData.ts` | Client-side corpus discovery by `training-data` tag + data-file/stats resolution |
 | `lib/body.ts` | Prerender-time body reader. Server only — uses `node:fs` |
 | `lib/content.ts` | Types, including `PayloadSource` and `HfStatus` |
 | `.hf-cache/` | Build cache, gitignored |
 | `lib/generated/bodies/` | Per-entry Markdown sidecars, gitignored |
 | `public/generated-transcripts/` | Locally sharded transcripts, gitignored |
+
+(`public/generated-datasets/` is gone: no dataset is chunked at build time any more.)
 
 ---
 
@@ -305,6 +335,10 @@ Migration is additive. An entry may declare `hf_source` **and** keep its files o
 disk: the build prefers the Hub and silently falls back to the local copy if the
 Hub is unreachable, noting the fallback in the UI. Nothing has to move in one
 step, and an entry with no `hf_source` behaves exactly as before.
+
+For a `datasets` entry, `hf_source` links the repo from the write-up and nothing
+more: the `/datasets` reader finds corpora by tag, so an entry is a narrative
+about a corpus, never the reason it appears.
 
 ---
 
@@ -356,81 +390,56 @@ flag and no `hf_source`.
 
 ## Publishing a dataset the visualizer can read
 
-The publisher lives with the other HF code, in
-`experiments/teaching-claude-why/synthdoc/publish.py`, and is exposed as
-`synthdoc.cli publish`. It reuses `huggingface_hub` the same way
-`synthdoc/snapshots.py` does.
+There is no visualizer-specific publish step. The corpus publishers in the
+research repo — `uv run synth` (`src/data/synth/hf_cache.py`), `uv run mix`
+(`src/data/mixture/build_mixture.py`) and `scripts/properties/ablate.py` — write
+everything `/datasets` needs when they push, through `src/huggingface.py`:
 
-### 1. Write the dataset card
+### 1. The card table
 
-The required fields come from the root `AGENTS.md` and are **enforced** —
-`CardFields` raises if any is missing, and `constitution` must be stated
-explicitly even when the answer is `none`. Keep the card in git next to the
-export, so the metadata is reviewed rather than retyped:
+`card_markdown` refuses a card missing any of the required fields from the root
+`CLAUDE.md` ("Required metadata in the dataset card"): `experiment`,
+`date_generated`, `constitution` (`none` written explicitly, never omitted),
+`source_repo`, `models`, `generation_config`, `schema`, `provenance`. They render
+as a markdown table under the front-matter; the Hub does not index the table, so
+nothing the explorer needs lives only there.
+
+### 2. The front-matter
 
 ```yaml
-experiment: One sentence on what produced this.
-date_generated: "2026-07-29"      # the date the data was GENERATED
-constitution: MSM philosophy spec (…), or the literal string: none
-source_repo: https://github.com/org/repo
-source_commit: f8dd135            # defaults to HEAD if omitted
-models:
-  chloeli/qwen-3-32b-…: target; adapter revision 9a00c85c… over Qwen/Qwen3-32B @ 9216db57…
-  anthropic/claude-opus-5: judge
-generation_config: {epochs: 3, max_turns: 30, target_temperature: 0.7, …}
-schema:
-  id: Stable transcript identifier.
-  messages: Full multi-turn dialogue; each item has role and content.
-provenance: The exact command that regenerates this.
+---
+configs:
+- config_name: default            # `dataset` for a synth run, plus one config per stage
+  data_files: mixture.jsonl       # THE rows file: what the reader streams
+  default: true
+tags:
+- training-data                   # discovery: /api/datasets?author=<org>&filter=training-data
+- kind:mixture                    # synth | mixture | ablation | fixture
+- pipeline:qwen36_less_top10      # synth document type / mixture config stem / ablation tag
+- constitution:claude_distilled_12_principles_mid   # or constitution:none
+- stage:final                     # mixture pushes only: unfiltered | filtered | final
+- smoke                           # smoke runs, folded away by default
+---
 ```
 
-See
-`experiments/vulnerabilities/exports/2026-07-29-msm-philosophy-spec-focused-discovery/dataset-card.yaml`
-for a filled-in example. Anything not in the required set is preserved verbatim
-under "Additional detail".
+`training_data_tags(kind, pipeline, constitution, smoke=, extra=)` is the one
+place the vocabulary is defined; `card_front_matter(configs, tags)` renders it.
+A hand-pushed corpus must match this by hand, or it will not be listed.
 
-### 2. Publish
+### 3. Optional statistics
 
-```bash
-cd experiments/teaching-claude-why
-uv run python -m synthdoc.cli publish \
-  --kind=petri \
-  --export=../vulnerabilities/exports/2026-07-29-msm-philosophy-spec-focused-discovery \
-  --repo=<org>/2026-07-29-msm-philosophy-spec-focused-discovery \
-  --card=../vulnerabilities/exports/2026-07-29-msm-philosophy-spec-focused-discovery/dataset-card.yaml
-```
+A `mixture_stats.json` (`total.examples`, `by_source.<name>.examples`) beside the
+rows file gives the record count and the blend bar. Synth runs publish a
+generation `manifest.json` instead, which is not statistics and is not read.
 
-It **dry-runs by default** and lists every file with its size; pass
-`--dry_run=False` to upload. Repo names are validated against
-`<YYYY-MM-DD>-<short-experiment-description>` before anything is staged.
+### 4. Legacy repos
 
-For a dialogue corpus use `--kind=dialogues --export=path/to/dialogues.jsonl`,
-which additionally pre-chunks the records.
-
-### 3. Published layout
-
-```
-<repo>/
-  README.md                   the dataset card
-  manifest.json               SMALL — the only file the site build fetches
-  transcripts/<id>.json       one per transcript, fetched lazily in-browser
-  chunks/chunk-NNN.json       dialogue records, paged lazily in-browser
-  data/ results/ artifacts/ assets/    the canonical export, byte-identical
-```
-
-`results/transcripts.jsonl` and `data/scenarios.jsonl` are uploaded unchanged, so
-the Petri export shape in `CLAUDE_CODE_PETRI_EXPORT_GUIDE.md` is preserved and is
-what a citation should point at. The shards are derived, not a replacement.
-
-The publisher warns if `manifest.json` exceeds 512 KB. That manifest is baked
-into the static build, so unbounded growth is the one regression that would
-quietly undo this design.
-
-### 4. Point the visualizer at it
-
-Add `hf_source` to the entry's frontmatter and rebuild. `npm test` fails the
-build if a transcript body ever reappears in the baked index, or if the index
-exceeds a 300 KB budget.
+Everything pushed before 2026-08-25 has a card table and, for synth runs, a
+`configs:` block, but no tags. `scratch/backfill_training_data_tags.py` in the
+research repo classifies each repo from what it actually holds and merges the
+tags into its front-matter (`metadata_update`; the body is untouched). It is a
+dry run unless `--apply` is passed. `scripts/hf-discover.mjs` lists the corpora
+still lacking the tag.
 
 ---
 
@@ -565,3 +574,25 @@ then reads each repo's published-layout contract directly:
 Constraints: repos must be **public** (the site holds no token) and carry the
 `eval-run` tag — untagged legacy repos are invisible until their cards are backfilled.
 A Hub failure degrades to an inline error state; nothing here runs at build time.
+
+## Training-data explorer (client-side, tag-discovered)
+
+`/datasets` works the same way and reads nothing from the content tree. In the
+browser `lib/trainingData.ts` lists the org's repos with
+`/api/datasets?author=LASR-Callum&filter=training-data&expand[]=cardData&…`, then
+for each repo:
+
+- reads the rows file from the card's default `configs:` entry (no further call);
+  a card with none pays one tree listing and the allowlist chooses;
+- probes `mixture_stats.json` / `stats.json` on the CDN for the count and blend
+  (skipped for `kind:synth`, which never publishes one);
+- hands a `DatasetManifest` with a byte-range `stream` to `DatasetViewer`, whose
+  picker groups by the measured blend exactly as before.
+
+Facets come from the tags: `kind:`, `pipeline:`, `constitution:`, `stage:`,
+`smoke` (folded away by default, counted, toggleable), `mock`/`kind:fixture`
+(the fixture banner). A tagged repo that publishes nothing browsable is listed
+under "publish no records to browse" with its JSONL candidates, never dropped.
+
+Constraints are the eval explorer's: public repos, `training-data` tag, no build
+step. The pure resolution is unit-tested in `tests/training-data.test.mjs`.

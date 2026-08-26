@@ -29,6 +29,17 @@ def test_dataset_card_declares_default_and_stage_configs():
 def test_dataset_card_before_any_upload_omits_the_configs_key():
     # An empty `configs:` sequence is invalid front-matter on the hub.
     assert _front_matter(dataset_card(FIELDS, [], False)) is None
+    # ... but the discovery tags are declared from the first commit, so a repo is
+    # findable on the Hub as soon as it exists.
+    fm = _front_matter(dataset_card(FIELDS, [], False, ["training-data", "kind:synth"]))
+    assert fm == {"tags": ["training-data", "kind:synth"]}
+
+
+def test_dataset_card_declares_tags_beside_configs():
+    fm = _front_matter(dataset_card(FIELDS, ["stage_2_a.jsonl"], True,
+                                    ["training-data", "kind:synth", "smoke"]))
+    assert [c["config_name"] for c in fm["configs"]] == ["dataset", "stage_2_a"]
+    assert fm["tags"] == ["training-data", "kind:synth", "smoke"]
 
 
 class _FakeApi:
@@ -40,7 +51,8 @@ class _FakeApi:
 
 
 def _cache(tmp_path):
-    c = StageCache(tmp_path, "org/repo", token="offline", card_fields=FIELDS)
+    c = StageCache(tmp_path, "org/repo", token="offline", card_fields=FIELDS,
+                   tags=["training-data", "kind:synth"])
     c._api = _FakeApi()  # short-circuits _hf(): no repo creation, no network
     return c
 
@@ -60,9 +72,12 @@ def test_publish_final_is_the_root_dataset_and_default_config(tmp_path):
     c.publish_final([{"messages": []}])
     _, paths = c._api.commits[-1]
     assert paths == ["dataset.jsonl", "README.md"]
-    cfgs = _front_matter(c._readme())["configs"]
+    fm = _front_matter(c._readme())
+    cfgs = fm["configs"]
     assert [x["config_name"] for x in cfgs] == ["dataset", "stage_2_scenarios"]
     assert cfgs[0]["default"] is True
+    # The tags ride on every refreshed README, not only the first commit's.
+    assert fm["tags"] == ["training-data", "kind:synth"]
 
 
 def test_mixture_dataset_spec_loads_default_config_and_balances(monkeypatch):

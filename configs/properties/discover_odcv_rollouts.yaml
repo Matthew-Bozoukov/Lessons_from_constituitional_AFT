@@ -1,0 +1,145 @@
+# ABOUTME: Property discovery over POOLED ODCV-Bench rollouts from every trained arm:
+# ABOUTME: what the models actually do, ranked by within-arm violation rate.
+# Run: uv run python scripts/properties/discover.py --config configs/properties/discover_odcv_rollouts.yaml [--smoke]
+
+tag: odcv_rollouts
+
+registry: output/properties/properties.jsonl
+
+# ONE fit across every arm. Fitting per-arm would give each arm its own cluster numbering,
+# and "group 3 of the DA fit" and "group 3 of the courtroom fit" are then two different
+# things with the same name — the arms could not be compared at all. Pooling is what makes
+# the breakdown below a breakdown rather than a comparison of incomparable fits.
+#
+# The run directories are wherever `uv run evals --name odcv` last wrote them on this
+# machine; they are not in git (CLAUDE.md: output/ is gitignored, artifacts live on HF).
+# Point each `run_dir` at the eval run for that arm before running this.
+source:
+  name: odcv_rollouts
+  runs:
+    - {run_dir: output/odcv_bench/ft_20_80,             arm: difficult_advice}
+    - {run_dir: output/odcv_bench/ft_20_80_courtroom,   arm: courtroom}
+    - {run_dir: output/odcv_bench/ft_20_80_peer_critique, arm: peer_critique}
+    - {run_dir: output/odcv_bench/tulu100,              arm: tulu100}
+    - {run_dir: output/odcv_bench/base,                 arm: base}
+  # A rollout with two sentences of reasoning contributes a vector describing nothing.
+  # The count dropped is printed per arm, so this stays a stated exclusion rather than a
+  # silent one.
+  min_reasoning_chars: 200
+  # Every rate downstream is computed over judged rollouts; an unjudged one silently
+  # leaving the denominator is a bias, not a rounding error. Fail instead.
+  require_outcomes: true
+
+producers:
+
+  clusters:
+    # Same method as the corpus-side run, pointed at what the models DO instead of what
+    # they were taught. Keeping it identical is the point: a property found here and a
+    # property found there are then the same kind of object, and their prevalences are
+    # measured the same way.
+    evidence: features
+    # The agent's private reasoning is where the properties under study live. `response`
+    # would cluster on which tools the scenario happened to expose.
+    channel: reasoning
+    extract:
+      model: anthropic/claude-sonnet-5
+      n_min: 10
+      n: 20
+      workers: 16
+      # Extraction is the expensive half; a rerun against the same run dir reuses it.
+      reuse: true
+    # A group smaller than this is a handful of near-duplicate rollouts, not a property.
+    min_group_records: 20
+
+    embed:
+      # Whole traces across five arms is tens of thousands of long strings; the pod is
+      # cheaper than the API here, and it is the same model either way.
+      backend: runpod
+      model: Qwen/Qwen3-Embedding-8B
+      batch: 128
+
+    # The refit: cluster the rollouts on their own terms, so a behaviour the training
+    # corpus does not contain can surface as its own group instead of being absorbed into
+    # whichever training group is nearest.
+    grouping:
+      reduce: umap
+      cluster: hdbscan
+      # A floor on FEATURE STRINGS, not rollouts. Resolution setting, not a finding.
+      min_cluster_size: 150
+      n_neighbors: 15
+      n_components: 5
+      seed: 42
+
+    # Callum's 2026-08-17 note: validate that UMAP is doing anything at all by clustering
+    # the same vectors without it. Written to grouping_comparison.json (ARI/AMI + the
+    # neighbourhood overlap the reduction preserved), not gated on — what counts as
+    # "helping" depends on the corpus, but the number belongs next to the result.
+    baseline_grouping:
+      reduce: none
+      cluster: kmeans
+      k: 30
+      seed: 42
+
+    interpret:
+      model: anthropic/claude-sonnet-5
+      # The post's number, and what the published feature-discovery runs used. Leave it
+      # unset to get 100 under `evidence: features` and 30 under `evidence: traces`.
+      n_shown: 100
+      workers: 8
+
+    # Which model produced the trace. Everything downstream splits on this.
+    group_by: arm
+
+    # The half a corpus-side run cannot do: cross each group against the judged outcome.
+    # Rates are computed WITHIN each arm — the arms have different base violation rates by
+    # construction, so a pooled rate reports that confound as if it were a finding.
+    outcomes:
+      field: violation
+      # Benjamini-Hochberg across the whole family of groups. With tens of groups against
+      # one binary outcome, a few will look significant from nothing.
+      fdr: 0.10
+      min_arm_records: 20
+
+    # The training-corpus view, over the SAME embedding pass: every rollout's cosine to
+    # the nearest centroid of the difficult-advice corpus run. A group whose members are
+    # all below `min_cosine` is behaviour these models produce that the corpus never
+    # taught — the finding nearest-centroid assignment structurally cannot make, because
+    # it never abstains.
+    compare_to:
+      run_dir: output/properties/da716_20260819_000000/clusters
+      min_cosine: 0.60
+
+    # Off by default here: the detector pass is one judge call per property per sampled
+    # rollout, and on a pooled five-arm set that is the expensive half of the run. Turn it
+    # on once the shortlist is short.
+    measure_with_detector: false
+    detector:
+      model: anthropic/claude-sonnet-5
+      workers: 16
+      sample: 300
+
+check_collisions: false
+
+constitution: constitutions/claude_distilled_12_principles_mid/constitution.md
+
+# Tiny slice, full wiring: two arms, a handful of rollouts each, clustering that cannot
+# fail on a small n, and no comparison run to read.
+smoke:
+  source:
+    limit: 8
+    min_reasoning_chars: 0
+    require_outcomes: false
+  producers:
+    clusters:
+      embed:
+        backend: openrouter
+      min_group_records: 2
+      evidence: traces
+      grouping:
+        reduce: none
+        cluster: kmeans
+        k: 2
+      baseline_grouping: null
+      compare_to: null
+      outcomes:
+        min_arm_records: 1

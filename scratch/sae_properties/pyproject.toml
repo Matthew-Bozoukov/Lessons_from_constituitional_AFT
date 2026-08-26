@@ -1,0 +1,18 @@
+# ABOUTME: Nested uv project for SAE property extraction — quarantines the vendored
+# ABOUTME: interp_embed stack (sae-lens/transformer-lens/torch/pandas) from the root lock.
+# Run everything here as: uv run --project scratch/sae_properties python scratch/sae_properties/<driver>.py
+
+[project]
+name = "sae-properties"
+version = "0.1.0"
+description = "SAE-based property extraction over synth corpora and model organisms (arXiv:2512.10092)"
+requires-python = ">=3.11"
+dependencies = [
+    "interp_embed",              # vendored — see [tool.uv.sources]
+    "omegaconf>=2.3",
+    "accelerate>=1.0",           # device_map={'model':'auto'} for the sharded 70B reader
+    "bitsandbytes>=0.45; sys_platform == 'linux'",  # quantize: true path on pods
+]
+
+[tool.uv.sources]
+interp_embed = { path = "third_party/interp_embed", editable = true }

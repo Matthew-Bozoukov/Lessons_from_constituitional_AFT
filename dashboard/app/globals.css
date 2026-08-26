@@ -3243,6 +3243,23 @@ html {
 }
 
 .pass-tabs { display: inline-flex; gap: 2px; margin-bottom: 12px; }
+
+.judge-panel { margin-top: 14px; border-top: 1px solid var(--border-bright); padding-top: 10px; }
+.judge-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  flex-wrap: wrap; margin-bottom: 2px;
+}
+.judge-title { font-size: 12.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.judge-median { font-size: 12.5px; color: var(--text-soft); }
+.judge-median.is-violation, .judge-score.is-violation { color: var(--red); }
+.judge-median.is-clean { color: var(--series-constitution); }
+.judge-panel summary { display: flex; align-items: baseline; gap: 10px; }
+.judge-panel summary code { font-size: 12.5px; }
+.judge-score { font-size: 13px; color: var(--text); }
+.judge-reasoning {
+  margin: 6px 0 0; font-size: 13px; line-height: 1.55; color: var(--text-soft);
+  white-space: pre-wrap; word-break: break-word;
+}
 .pass-tabs button {
   background: var(--bg-raised); color: var(--text-soft);
   border: 1px solid var(--border); padding: 4px 12px; font-size: 12.5px; cursor: pointer;

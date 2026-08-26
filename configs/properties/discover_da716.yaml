@@ -1,5 +1,5 @@
 # ABOUTME: Property discovery over the 716 difficult-advice rows of the Table-2 mixture:
-# ABOUTME: trace_clusters (embed the traces) + feature_discovery (autorater vocabulary).
+# ABOUTME: extract free-text features per trace, cluster the vocabulary, name each cluster.
 # Run: uv run python scripts/properties/discover.py --config configs/properties/discover_da716.yaml [--smoke]
 
 tag: da716
@@ -28,12 +28,18 @@ source:
 
 producers:
 
-  # The direct producer: embed whole traces, cluster, name the clusters. No autorater
-  # between the record and the vector, which is what makes it the right one for the
-  # "do DA and courtroom occupy different regions at all?" question.
-  trace_clusters:
+  clusters:
+    # An autorater reads each trace ALONE and writes 10-20 free-text descriptions of what
+    # it does; those descriptions are deduped, embedded and clustered. Descriptions have
+    # already thrown the subject matter away, so a group is a recurring MOVE rather than a
+    # recurring topic — and a trace gets several properties, which is what traces are like.
+    evidence: features
     channel: reasoning
-    excerpt_chars: 4000
+    extract:
+      model: anthropic/claude-sonnet-5
+      n_min: 10
+      n: 20
+      workers: 16
     embed:
       backend: openrouter          # 716 traces; a pod is not worth renting for this
       model: qwen/qwen3-embedding-8b
@@ -41,16 +47,20 @@ producers:
     grouping:
       reduce: umap
       cluster: hdbscan
-      # ~= n_records / desired clusters. At 716 rows this asks for roughly 20 groups;
-      # it is a RESOLUTION SETTING, and the group count that comes out is a finding only
-      # in the sense that HDBSCAN chose it at this resolution.
-      min_cluster_size: 35
+      # NOTE this is a floor on FEATURE STRINGS, not traces: 716 traces produce ~10k
+      # features, so the number is an order of magnitude larger than it would be under
+      # `evidence: traces`. A RESOLUTION SETTING; the group count that comes out is a
+      # finding only in the sense that HDBSCAN chose it at this resolution.
+      min_cluster_size: 220
       n_neighbors: 15
       n_components: 5
       seed: 42
+    min_group_records: 10
     interpret:
       model: anthropic/claude-sonnet-5
-      n_shown: 30
+      # The post's number, and what the published feature-discovery runs used. Leave it
+      # unset to get 100 under `evidence: features` and 30 under `evidence: traces`.
+      n_shown: 100
       workers: 8
     # Every record carries `source` from the mixture; with more than one scenario format
     # in the corpus this splits each property's prevalence per arm, which is what a
@@ -64,39 +74,20 @@ producers:
       workers: 16
       sample: 200
 
-  # NOT PORTED YET (scratch/llm_feature_discovery). This reads the run directory that
-  # module already wrote for this corpus. `docs/feature_discovery/` is the published
-  # 2026-08-12 run (2,202 traces -> 150 clusters), checked into the repo minus its 265MB
-  # embeddings.npy — which this producer does not need, since it reads clusters.json.
-  feature_discovery:
-    run_dir: docs/feature_discovery
-    # Below ~5% of traces a cluster is a handful of near-duplicates, not a property worth
-    # a training run.
-    min_prevalence: 0.05
-    interpret:
-      model: anthropic/claude-sonnet-5
-      n_shown: 50
-      workers: 8
-    measure_with_detector: true
-    detector:
-      model: anthropic/claude-sonnet-5
-      workers: 16
-      sample: 200
-
 # Two producers describing the same behaviour in different words is corroboration, and
 # the strongest reason to spend a pod on a property — but ablating both is a wasted run.
+# Only matters once a second producer is implemented; `clusters` is the only one so far.
 check_collisions: true
 
 constitution: constitutions/claude_distilled_12_principles_mid/constitution.md
 
-# Tiny slice, full wiring. Pair it with the producer selector, since a merged block can
-# override a producer's settings but cannot remove one:
-#   ... --smoke --producers trace_clusters
+# Tiny slice, full wiring.
 smoke:
   source:
     limit: 12
   producers:
-    trace_clusters:
+    clusters:
+      min_group_records: 2
       grouping:
         min_cluster_size: 3
       measure_with_detector: false

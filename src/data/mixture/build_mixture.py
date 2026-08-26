@@ -411,13 +411,34 @@ def _card_fields(cfg, config_path: str, stage_desc: str, files_desc: str,
     }
 
 
-def _push(paths: list[Path], repo: str, fields: dict, private: bool, smoke: bool) -> None:
+def _front_matter(cfg, config_path: str, filter_cfg, stage: str, data_file: str) -> dict:
+    """Card front-matter for one push checkpoint: default config + discovery tags.
+
+    The default `configs:` entry names the rows file, so `load_dataset(repo)` and the
+    dashboard's byte-range reader both find it without guessing among the sidecars
+    (stats, verdicts, filter report) pushed beside it. The tags are the Hub-indexed
+    `training_data_tags`; `stage:` separates the base repo's unfiltered/filtered
+    checkpoints from the final mixture.
+    """
+    from src.huggingface import training_data_tags
+
+    constitution = (filter_cfg.constitution if filter_cfg is not None
+                    else cfg.hf.get("constitution", "none"))
+    return {
+        "configs": [{"config_name": "default", "data_files": data_file, "default": True}],
+        "tags": training_data_tags("mixture", Path(config_path).stem, str(constitution),
+                                   extra=[f"stage:{stage}"]),
+    }
+
+
+def _push(paths: list[Path], repo: str, fields: dict, private: bool, smoke: bool,
+          front_matter: dict) -> None:
     """Push one checkpoint's files, or explain why not (smoke never pushes)."""
     if smoke:
         print(f">>> smoke: NOT pushing {[p.name for p in paths]} -> {repo}")
         return
     from src.huggingface import push_files
-    url = push_files(paths, repo, fields, private=private)
+    url = push_files(paths, repo, fields, private=private, front_matter=front_matter)
     print(f">>> pushed {[p.name for p in paths]} -> {url}")
 
 
@@ -532,7 +553,8 @@ def main(config: str, smoke: bool = False) -> None:
                   str(hf_cfg.base_repo),
                   _card_fields(cfg, config, "unfiltered initial mix",
                                "mixture_unfiltered.jsonl + stats", filter_cfg, None),
-                  private, smoke)
+                  private, smoke,
+                  _front_matter(cfg, config, filter_cfg, "unfiltered", base_path.name))
 
         # --- stage 2: the spec filter -------------------------------------------------
         from src.data.mixture.spec_filter import run_filter
@@ -559,7 +581,8 @@ def main(config: str, smoke: bool = False) -> None:
                   _card_fields(cfg, config, "spec-filtered, with per-sample verdicts",
                                "mixture_filtered.jsonl + verdicts.jsonl + "
                                "filter_report.json", filter_cfg, report),
-                  private, smoke)
+                  private, smoke,
+                  _front_matter(cfg, config, filter_cfg, "filtered", filtered_path.name))
 
         keep_n = filter_cfg.get("keep_examples")
         if keep_n is not None:
@@ -601,7 +624,7 @@ def main(config: str, smoke: bool = False) -> None:
               _card_fields(cfg, config, "final training mixture"
                            + (" (synthetic sources mixed in)" if synth_specs else ""),
                            "mixture.jsonl + mixture_stats.json", filter_cfg, report),
-              private, smoke)
+              private, smoke, _front_matter(cfg, config, filter_cfg, "final", out_path.name))
 
     print("\n" + json.dumps(stats["total"], indent=2))
     print(f">>> wrote {out_path}")

@@ -71,6 +71,331 @@ other multi-pass arms. (3) The 79 unexpanded rows are a confound in the row-matc
 specifically (they dilute the verbosity manipulation by ~11% of rows); a rerun should either
 re-attempt them through a non-Anthropic expander or drop them from both arms.
 
+## 2026-08-25 — Both verbose-CoT arms trained: rows-matched 0.8751, token-matched 0.8538
+
+**Hypothesis:** deliberation LENGTH changes agentic-misalignment behaviour, holding the ideas
+deliberated constant. Two arms, because one cannot answer it alone: holding difficult advice
+at 7.16% of ROWS while the traces triple nearly doubles its share of the trainable tokens, so
+that arm confounds "more deliberation" with "more difficult-advice signal". The second arm
+holds the TOKEN share instead and lets the row share fall.
+
+**Method.** Two 2xH200 RunPod pods in parallel, torchrun DDP with token-budgeted dynamic
+batching (budget 8,000 from `ModelProfile.train_memory`, global batch 16, `route_step` over
+2 ranks) — the da716 protocol, unchanged. Both configs are byte-identical to
+`lora_qwen36_t2_9284_da716_dynbatch_2xh200.yaml` below the data keys (verified by diff), so
+the three arms differ in DATA alone.
+
+| arm | config | rows | DA rows | DA share of trainable tok | steps | runtime | train_loss |
+|---|---|---|---|---|---|---|---|
+| rows-matched | `lora_qwen36_t2_9284_da716_verbose_dynbatch_2xh200.yaml` | 10,000 | 716 (7.16%) | 47.6% | 625 | 2h27m | **0.8751** |
+| token-matched | `lora_qwen36_t2_9284_da_verbose_tokenmatched_dynbatch_2xh200.yaml` | 9,647 | 363 (3.76%) | 28.65% | 603 | 2h12m | **0.8538** |
+| control (2026-08-14) | `lora_qwen36_t2_9284_da716_dynbatch_2xh200.yaml` | 10,000 | 716 (7.16%) | 28.63% | 625 | — | — |
+
+Both land in the sibling band (lessswap 0.8651, c6masked 0.866, t10 0.869). Mask gate passed
+on both: 716 real traces / 9,646 empty markers / **0 absent**, and **0 rows skipped as
+truncated** — the live confirmation that `max_seq_len: 8192` is right for the expanded data
+(measured beforehand with the Qwen3.6 tokenizer: longest row 8,191 tokens, and it is a Table-2
+row, not a difficult-advice one).
+
+**Adapters** (public, `thinking: true`, each pinned to its own dataset sha):
+`LASR-Callum/qwen3.6-27b-lora-t2-9284-da716-verbose-r64-dynbatch` and
+`...-da-verbose-tokenmatched-r64-dynbatch`. Collection: `verbose-cot-3x-deliberation`.
+
+**Two silent-wrong-result bugs caught before launch**, both in the pod driver shim, neither of
+which would have crashed:
+1. `CODE` — the bundle's file allowlist — is a list LITERAL that captured `TRAIN_CONFIG` at
+   import, so re-pointing the constant alone would have shipped the t10 config and trained the
+   wrong arm successfully.
+2. Both arms share one bundle repo, so bundling the second would have overwritten the first and
+   a pod that had not finished downloading would have come up on the wrong config. Every bundle
+   now carries both configs.
+A third bug was in the watcher itself: RunPod's proxy returns a 469-byte HTML error page for a
+404, which a bare `curl -s` reports as a non-empty body — so the failure grep was scanning HTML
+and a stray "ERROR" would have marked a healthy arm dead. `curl -f` fixes it.
+
+**Teardown.** Both pods terminated (HTTP 204), 0 `nika-*` surviving, confirmed by listing the
+account. Two teammate pods (`serve-da716`, `serve-numinactl`) were running and were left
+untouched — teardown is pod-scoped by construction and never sweeps. ~$54 of RunPod across both
+arms ($9.18/hr each, ~3h wall clock apiece including the ~55GB base-model download, which is
+~25 minutes of billed time before a single optimizer step).
+
+**Next steps:** ODCV-Bench on both arms against the da716 control (16.3% MR). The three-way
+comparison is the point: if only the rows-matched arm moves, the effect is difficult-advice
+weight; if both move together, it is deliberation length. Caveat carried: ~11% of the
+rows-matched arm's difficult-advice rows kept their original trace (50 failed the fidelity
+judge, 29 refused by the content filter), so its intervention is diluted by that much; the
+token-matched arm draws only from expanded rows and has none.
+
+## 2026-08-25 — Verbose-CoT arm: the 716 difficult-advice traces rewritten 3x longer, same ideas
+
+**Hypothesis:** deliberation LENGTH, holding the ideas deliberated constant, changes
+agentic-misalignment behaviour. The published `t2_9284_da716` arm is the control; this arm
+differs from it in exactly one thing, the length of the difficult-advice `<think>` block.
+
+**Method:** new synth pipeline `configs/data/synth/verbose_cot.yaml`, seeded by
+`load_source_run` from `LASR-Callum/2026-08-13-difficult-advice-v2 ::
+stage_7_revise_responses.jsonl` (the structured snapshot — `reasoning` and `response` as
+separate fields, so nothing regexes `<think>` out of rendered chat). Only the 716 scenarios
+the published mixture actually uses are expanded; their ids are read back out of that
+mixture rather than re-derived, so the arms cover the same scenarios by construction, and
+expanding all 1,968 source records would have cost ~3x for no extra data.
+
+Each deliberation is rewritten against a computed paragraph budget: source paragraphs are
+cut at sentence seams so no unit carries more than 3 output paragraphs, the budget is
+apportioned by largest remainder, and each unit's share is quoted BOTH as a paragraph count
+and as words-per-source-sentence. Three pilot-measured facts force that shape — a single
+global word target returns ~48% of whatever is asked, a bare paragraph count is ignored when
+the source paragraph is short, and compliance depends on how big one unit's budget is rather
+than on the asked multiple. Expander `anthropic/claude-sonnet-5` at temp 0.7, never shown
+the constitution, the user turn or the assistant's reply (v1 showed the reply and the model
+imported a phrase from it into the reasoning).
+
+Every record passes four gates before it is kept: a structural strip of the `<run>`
+scaffolding, a relative length band of 2.0-4.5x the source, and TWO independent judges on
+`openai/gpt-5.6-terra` — one for decision-changing additions and scenario contradictions,
+one for omissions. Three attempts, then the record falls back to its original trace and is
+marked `expansion_status: fallback` rather than being dropped, so the arm keeps all 716
+scenarios.
+
+**Result:** `LASR-Callum/2026-08-25-difficult-advice-716-verbose-cot` — 716 records,
+public, difficult-advice ONLY with nothing else mixed in, alongside its unexpanded control
+`2026-08-13-difficult-advice-v2` in the collection `verbose-cot-3x-deliberation`. The
+10,000-row training mixture is `LASR-Callum/2026-08-25-table2-9284-difficult-advice-verbose-716-train`
+(public), built by `build_verbose_mixture.py`, which substitutes the expanded think blocks
+into the published arm rather than re-deriving the selection: all 9,284 table2 rows come
+through byte-identical and row order is preserved, re-proved at build time.
+
+Difficult advice is held at **716 rows = 7.16% of rows, the same row share as the control**.
+Because the traces are longer, that fixes the DA share of assistant words at 48.5% (from
+32.9%) and grows total trainable text 1.30x. That shift is a chosen consequence of holding
+the row share, not an overlooked confound — separating "more deliberation" from "more DA
+tokens" needs a size-matched arm at the ORIGINAL token ratio, which is a separate build.
+
+Difficult-advice think words **343,403 -> 962,832 (2.804x)**. Of the 716 records, **637
+expanded** (those average 3.03x, hitting the target), **50 kept their original trace** after
+three attempts failed the fidelity or coverage judge, and **29 kept it** because Anthropic's
+content filter refused the prompt outright. So ~11% of the arm is unexpanded and identical
+to the control, which dilutes the intervention and is why the corpus lands at 2.80x rather
+than in the 2.9-3.1 band aimed for.
+
+Fidelity on the 637 expanded records: **0 decision-changing additions, 0 contradictions, 0
+omissions** as judged, and 0 records leaked the `<run>` scaffolding the prompt uses. The
+mixture is verified at build time to differ from the control in exactly one respect: all
+9,284 table2 rows are byte-identical, row order is preserved, and the 716 difficult-advice
+rows differ only inside `<think>`.
+
+**Engine changes** (`src/data/synth/`, all generic): relative-ratio lint
+(`ratio_of`/`min_word_ratio`/`max_word_ratio` — the absolute `min_chars` could not express
+"between 2 and 4.5 times this record's source field"); a judged `verify:` accept criterion
+taking a LIST of judges; a `derive: {fn, args}` registry for prompt vars that need
+computation; and `strip_patterns` for prompt scaffolding that must not reach the corpus.
+
+**What the gates caught before anything was trusted:** the first judge prompt false-failed
+4/5 known-clean expansions and 5/5 deliberately-inert mutants, which on 716 records would
+have failed nearly everything and handed back the control arm at full price. With additions
+and omissions asked in one call, planted truncations were detected 0/5; split into two calls
+the same question detects 5/5. And gpt-5.6-terra found a real invented mirror-case and a
+scenario-contradicting detail in two expansions Sonnet had passed 5/5 — the measured
+argument for a different-family judge.
+
+**Cost lever worth remembering:** extended thinking is ~70% of the output bill on this stage
+(6,630 output tokens per call against ~1,900 of visible rewrite). `reasoning:
+{max_tokens: N}` is SILENTLY IGNORED — only `enabled` and `effort` take effect. Turning
+thinking off is a quarter of the price with a quarter of the variance but saturates at
+~2.6x and cannot reach a 3x target; haiku-4.5 as the expander fails the fidelity gate on
+7/20 records.
+
+**Next steps:** train on the mixture and run ODCV against the control arm. A size-matched
+control at the original DA-to-table2 TOKEN ratio (~2,661,000 assistant words at 32.9% DA)
+is the arm that separates deliberation length from data weight; the user has that build in
+hand separately. Two confounds are carried,
+not solved: difficult-advice rises from 32.9% to ~49.8% of trainable tokens and the total
+dataset grows ~1.34x, so a size-matched control at the ORIGINAL DA-to-table2 ratio
+(~2,727,000 assistant words at 32.9% DA) is needed to separate "more deliberation" from
+"more data"; and the assistant's answer now begins ~1,000 tokens deeper into the turn,
+which this design does not separate from the deliberation effect.
+
+**Cost, and a guard that did not hold:** ~$96 total against an $80 authorisation. The
+expansion is a SINGLE stage over 716 records and `pipeline.run` checks `budget_usd` only
+between stages, so the $68 guard never executed — the stage died on `max_fail_pct` (the
+content-filter refusals) before it could. The seven 20-record smokes also under-predicted:
+they retried ~34% of records where the full run retried ~52%, and none of them saw a single
+content-filter refusal. Both are now in `docs/GOTCHAS.md`.
+
+## 2026-08-25 — Training-data contract: every corpus push is tagged, and /datasets discovers it live from the Hub
+
+**Hypothesis.** The dashboard's `/datasets` page listed only corpora with a hand-written
+`content/datasets/<slug>/index.md`, resolved at build time — so it under-reported the org and
+went stale between deploys (2026-08-10: 1 of 79). `/evals` had already moved to live, tag-based
+discovery on 2026-08-24; datasets could follow if the publishers wrote something the Hub
+indexes. They did not: `synth` wrote only a `configs:` block, `mix` wrote no front-matter at
+all, and the CLAUDE.md card fields live in a markdown table the Hub does not index.
+
+**Method.** One vocabulary in `src/huggingface.py` — `training_data_tags(kind, pipeline,
+constitution, smoke=, extra=)` → `training-data`, `kind:<synth|mixture|ablation|fixture>`,
+`pipeline:<name>`, `constitution:<slug>` (via `constitution_slug`, `none` kept explicit),
+`smoke`, plus `stage:<unfiltered|filtered|final>` on mixture checkpoints — rendered by one
+front-matter renderer beside the `configs:` block whose default entry names the rows file.
+Stamped by `synth` (`StageCache(tags=)`, refreshed on every README), `mix` (`push_files(...,
+front_matter=)` at all three checkpoints, now also declaring a default config) and
+`properties/ablate`. Dashboard: `lib/trainingData.ts` lists
+`/api/datasets?author=LASR-Callum&filter=training-data&expand[]=cardData…`, reads the rows
+file from the card (else one tree call + allowlist, highest root `stage_N_*sft*`, or a lone
+arm-named JSONL), probes `mixture_stats.json` / `<rows>.stats.json` (both schemas), and feeds
+the unchanged `DatasetViewer`; `TrainingDataExplorer` folds smoke runs away and lists
+tagged-but-unbrowsable repos with their candidates. The build-time dataset path in
+`index-content.mjs` (268 lines) and its tests are gone; `hf-discover.mjs` now reports
+untagged corpora. `scratch/backfill_training_data_tags.py` classifies legacy repos from what
+they hold and merges tags with `metadata_update` (dry run by default).
+
+**Result.** Python 880 tests pass; dashboard 55/56 (the one failure is a pre-existing Hub 404
+for `2026-07-29-msm-philosophy-spec-petri-validation/manifest.json`, untouched here). The
+backfill dry run plans **80 corpora** — 28 synth, 51 mixtures, 1 fixture — and skips 81
+non-corpora, after three rounds of fixing the classifier against real layouts: pre-contract
+synth runs ending at `stage_8_export_sft.jsonl`/`stage_5_sft.jsonl`, hand-pushed arm
+mixtures (`t2_9284_*_10k.jsonl` + `{total: 9987, per_source}` stats), eval-record dumps named
+`records.jsonl` that a lone-file rule would otherwise promote, and `model-eval-model` corpora
+that an "eval-shaped name" rule excluded. **Applied the same day: 80/80 repos tagged**
+(`metadata_update`, bodies byte-identical — spot-checked); token-less
+`/api/datasets?author=LASR-Callum&filter=training-data` returns **76** (28 synth, 47 mixture,
+1 fixture), 23 of them with a declared default config and the rest resolved by the fallback
+rules. The remaining planned repos are private and stay invisible on the token-less site.
+
+**Next.** Make the private arm mixtures public if they should be browsable; consider a
+`dataset_info` block (`num_examples`) in the synth card so record counts need no sidecar;
+retire the fallback rules once every corpus declares its default config.
+
+## 2026-08-24 — Dashboard eval-run explorer: live HF discovery, results + rollouts, A/B compare
+
+**Why.** The evals tab only listed baked content entries; reading an actual run meant
+opening the HF repo by hand, and comparing two models meant two browser tabs and memory.
+The new published-layout contract (entry below) makes every eval repo machine-readable,
+so the dashboard can be a real viewer.
+
+**What.** `dashboard/app/components/EvalRunExplorer.tsx` + `dashboard/lib/evalRuns.ts`,
+mounted at the top of `/evals`. All client-side (the site stays a static export):
+
+- **Discovery is HF-canonical:** the browser lists the org's repos via
+  `/api/datasets?author=LASR-Callum&filter=eval-run` — the `eval-run` / `eval:<name>` /
+  `model:<key>` / `mode:<mode>` tags now stamped into every push's card front matter
+  (`card_markdown` grew a `front_matter` param the same day). Only PUBLIC repos appear
+  (token-less site; `push_run_dir` now defaults public).
+- **Controls:** eval-type select → run select, a Compare toggle adding a Run B, and
+  Results | Rollouts tabs.
+- **Results:** `results/results.json` flattened to numeric metrics (adapter-ordered
+  featured keys first); compare mode adds per-metric paired bars — one scale PER metric
+  row, never a shared axis — plus a Δ column, using the two house-validated series
+  colours (`--series-constitution` A, `--series-general` B).
+- **Rollouts:** per-eval adapters key units so two runs align on the same
+  prompt/scenario — odcv `variant/scenario` (passes stacked), psychosis character,
+  agentic `condition/sample`, swebench instance, and jsonl row adapters (mmlu uid,
+  lmsys/arena id, internalization item_id) with prompt/reasoning/response sections.
+  Files stream from `resolve/main/rollouts/...`; jsonl files over 6 MB load on click.
+  Unknown eval names get a generic file-tree adapter, so a new eval renders before it
+  has an adapter.
+
+**Result.** `next build` (the Netlify path) green with the explorer prerendered.
+Legacy repos without tags don't appear until their cards are backfilled with the
+front-matter tags.
+
+## 2026-08-24 — Published-layout contract: every eval's run dir (and HF repo) is rollouts/ results/ metadata/
+
+**Why.** Every eval published its own bespoke tree — ODCV raw-plus-combined passes, mmlu a
+`think/<arm>/<ts>/` nest, agentic the untouched harness dump, lmsys/psychosis loose root
+files — so nothing downstream could rely on where transcripts or numbers live, and the
+repo root of a published run mixed summaries, configs and working files.
+
+**What.** Branch `jamie/odcv-contract-compliance` (follow-on to the ODCV entry below).
+`src/eval/layout.py` defines the contract — `rollouts/` (self-contained transcripts),
+`results/` (scores/judgments + the epilogue's canonical results.json/md), `metadata/`
+(run_meta.json, configs, provenance) — and `run_eval.py`'s epilogue now homes its own
+files there and **fail-fast rejects any stray root entry before the push**
+(`assert_layout`), so a new eval cannot silently publish a bespoke tree. All eight
+runners conform:
+
+- *odcv*: already repacked (entry below); now built on `publish_layout`.
+- *psychosis*: grades.jsonl/csv → results/; rollouts were already right.
+- *internalization*: pipeline's `runs/<id>/` repacked; completions are **joined with
+  their itemset prompts** on the way into rollouts/ (they carried no prompt — not
+  self-contained); pipeline manifest → metadata/pipeline_manifest.json. Cache and
+  itemsets stay outside out_dir (cross-run reuse is their point).
+- *agentic_misalignment*: stitched transcripts → rollouts/ (its provenance stamp renamed
+  metadata/rollout_build_meta.json); raw harness tree → results/harness/ whole, keeping
+  models/ + prompts/ side by side for `src/properties/sources/agentic_rollouts.py`.
+- *mmlu*: `think|nothink/<arm>/` tree repacked — records.jsonl → rollouts/, metrics +
+  raw_samples → results/, arm run_meta → metadata/mmlu_run_meta.json (records_file
+  rewritten to the moved path). Standalone main() path untouched.
+- *arena_hard*: answers COPIED to rollouts/answers.jsonl (vendor-tree originals are
+  resume caches — never moved); judgments + gen metrics → results/; phase run_metas →
+  metadata/. Config written to metadata/ from the start.
+- *lmsys*: answers.jsonl + answers_meta.json pair → rollouts/ (AnswerCache requires
+  them co-located; push/fetch now point there); judged.jsonl → results/; prompts.json +
+  the reference arm's cache materialization → metadata/.
+- *swebench_mini*: rollouts/ was already right and `rollouts/preds.json` (THE resume
+  mechanism) does not move; selection.json → metadata/, overlay/registry/global-config/
+  rollouts.log → metadata/, grading → results/grading/. The phase-2 grade script reads
+  both layouts (legacy fallback, announced).
+
+**Consumers updated:** `dashboard/scripts/hf-enrich.mjs` tries `results/results.json` +
+`metadata/run_meta.json` before the legacy root names; run_eval's card `schema` string;
+`docs/swebench_sharding.md` selection.json paths. Known not-updated: internalization's
+`judge_check.py` still expects the three files side by side (CLI/study flows use their
+own dirs, so only pointing it at a *published* run dir breaks); `scratch/` readers of
+legacy root results.json.
+
+**Result.** 873 tests green (contract test added; odcv layout tests already in). Old
+published repos are untouched — the dashboard reads both generations.
+
+## 2026-08-24 — ODCV contract compliance: `run_eval.py --name odcv` now runs the real multi-pass protocol
+
+**Why.** Every published ODCV arm was produced by scratch drivers
+(`odcv_repeat_rollouts.sh` → `odcv_combine_passes.py` → `odcv_judge_cli.py`), while the
+framework path (`runner.py`) silently ran ONE unaudited pass and judged it alone — a
+plausible-looking façade nobody used. The pieces that turn passes into a publishable arm
+(repeat, audit, resume holes, combine) lived only in `scratch/`.
+
+**What.** Branch `jamie/odcv-contract-compliance`. `runner.py` now owns the whole arm,
+Option-B shaped (local docker, served target):
+
+- **Multi-pass:** `passes:` in `configs/eval/odcv_bench.yaml` (default 2 — the recent
+  2-rollout arms; the published 4x70 protocol is `passes=4`; smoke forces 1). Sequential,
+  with `docker network prune -f` before each pass (address-pool exhaustion, 2026-08-08).
+- **Pass audit** after every pass (`src/eval/misalignment/odcv/passes.py:audit_pass`,
+  promoted from `odcv_box_run._audit_pass`): only a non-empty `messages_record.txt`
+  proves a cell ran; manifest `ok` is not evidence (2026-08-18). A missing manifest can
+  never audit clean.
+- **Retry policy:** a dirty pass is resume-retried exactly once (`odcv_rollout.main`'s
+  cache check re-runs precisely the missing/empty cells); still dirty → the pass is
+  DROPPED from judging, kept on disk, recorded in `pass_summary.json`. All passes
+  dropped → hard error. Transient causes (executor timeout, tunnel drop) clear on one
+  retry; what survives is structural (docs/GOTCHAS.md "ok+no_transcript").
+- **Combine then judge once:** kept passes merge into the `rollout_NNN` layout
+  (`passes.py:combine_passes`, promoted from `odcv_combine_passes.py` — empty transcripts
+  are never copied) and the judge scores the combined dir, so stats see repeats grouped
+  per cell. `odcv_rollout.main` now returns its pass dir instead of being globbed for.
+  Returned results carry a `passes` block (kept/dropped/retries/audits).
+- **Published layout:** after judging, `passes.py:package_run` repacks the run dir —
+  which run_eval's epilogue uploads verbatim — into `rollouts/<variant>/<Scenario>/
+  pass<N>/` (transcript + docker_output.log + per-cell `cell_meta.json` with status,
+  bytes and a `judged` flag; dropped passes preserved but marked), `results/` (judge
+  results.json + per-judge scores) and `metadata/` (config, pass manifests,
+  pass_summary, combine manifest). Each transcript is published exactly once — the
+  raw-plus-combined duplication of the hand-pushed repos is gone, and the local
+  working tree is consumed in the process.
+
+**Result.** `uv run scripts/run_eval.py --target <hf> --name odcv [--server <alias>]` now
+produces a complete audited 2-pass arm end to end. 8 new offline tests
+(`tests/test_odcv_passes.py`: audit, combiner, retry-once-then-drop, all-dropped
+fail-fast); full suite green. Scratch drivers untouched and still valid for the
+multi-box cloud-CPU path.
+
+**Next steps:** (1) first real arm through the clean path, diffing its numbers against a
+scratch-driven sibling at identical protocol; (2) DONE same day: the inert
+`rollouts_per_cell`/`expected_cells` keys (and their INERT warning comments) are deleted
+from all seven arm configs, and the six protocol configs now declare the live key
+instead: `passes: 4`, so their names and their execution agree; (3) the cloud-box supervisor could shrink to a thin wrapper over `runner.run`.
+
+
 ## 2026-08-21 — the difficult-advice trace has a nine-move template, and one move will not come out
 
 **Hypothesis.** Every ablation so far manipulated what the reasoning *contains* while leaving
@@ -262,287 +587,6 @@ interesting question and is a separate run.
 config `configs/eval/odcv_bench_9284_numina_control_716_constitution_3x65.yaml`. All pods
 destroyed.
 
-
-## 2026-08-24 — Dashboard eval-run explorer: live HF discovery, results + rollouts, A/B compare
-
-**Why.** The evals tab only listed baked content entries; reading an actual run meant
-opening the HF repo by hand, and comparing two models meant two browser tabs and memory.
-The new published-layout contract (entry below) makes every eval repo machine-readable,
-so the dashboard can be a real viewer.
-
-**What.** `dashboard/app/components/EvalRunExplorer.tsx` + `dashboard/lib/evalRuns.ts`,
-mounted at the top of `/evals`. All client-side (the site stays a static export):
-
-- **Discovery is HF-canonical:** the browser lists the org's repos via
-  `/api/datasets?author=LASR-Callum&filter=eval-run` — the `eval-run` / `eval:<name>` /
-  `model:<key>` / `mode:<mode>` tags now stamped into every push's card front matter
-  (`card_markdown` grew a `front_matter` param the same day). Only PUBLIC repos appear
-  (token-less site; `push_run_dir` now defaults public).
-- **Controls:** eval-type select → run select, a Compare toggle adding a Run B, and
-  Results | Rollouts tabs.
-- **Results:** `results/results.json` flattened to numeric metrics (adapter-ordered
-  featured keys first); compare mode adds per-metric paired bars — one scale PER metric
-  row, never a shared axis — plus a Δ column, using the two house-validated series
-  colours (`--series-constitution` A, `--series-general` B).
-- **Rollouts:** per-eval adapters key units so two runs align on the same
-  prompt/scenario — odcv `variant/scenario` (passes stacked), psychosis character,
-  agentic `condition/sample`, swebench instance, and jsonl row adapters (mmlu uid,
-  lmsys/arena id, internalization item_id) with prompt/reasoning/response sections.
-  Files stream from `resolve/main/rollouts/...`; jsonl files over 6 MB load on click.
-  Unknown eval names get a generic file-tree adapter, so a new eval renders before it
-  has an adapter.
-
-**Result.** `next build` (the Netlify path) green with the explorer prerendered.
-Legacy repos without tags don't appear until their cards are backfilled with the
-front-matter tags.
-
-## 2026-08-24 — Published-layout contract: every eval's run dir (and HF repo) is rollouts/ results/ metadata/
-
-**Why.** Every eval published its own bespoke tree — ODCV raw-plus-combined passes, mmlu a
-`think/<arm>/<ts>/` nest, agentic the untouched harness dump, lmsys/psychosis loose root
-files — so nothing downstream could rely on where transcripts or numbers live, and the
-repo root of a published run mixed summaries, configs and working files.
-
-**What.** Branch `jamie/odcv-contract-compliance` (follow-on to the ODCV entry below).
-`src/eval/layout.py` defines the contract — `rollouts/` (self-contained transcripts),
-`results/` (scores/judgments + the epilogue's canonical results.json/md), `metadata/`
-(run_meta.json, configs, provenance) — and `run_eval.py`'s epilogue now homes its own
-files there and **fail-fast rejects any stray root entry before the push**
-(`assert_layout`), so a new eval cannot silently publish a bespoke tree. All eight
-runners conform:
-
-- *odcv*: already repacked (entry below); now built on `publish_layout`.
-- *psychosis*: grades.jsonl/csv → results/; rollouts were already right.
-- *internalization*: pipeline's `runs/<id>/` repacked; completions are **joined with
-  their itemset prompts** on the way into rollouts/ (they carried no prompt — not
-  self-contained); pipeline manifest → metadata/pipeline_manifest.json. Cache and
-  itemsets stay outside out_dir (cross-run reuse is their point).
-- *agentic_misalignment*: stitched transcripts → rollouts/ (its provenance stamp renamed
-  metadata/rollout_build_meta.json); raw harness tree → results/harness/ whole, keeping
-  models/ + prompts/ side by side for `src/properties/sources/agentic_rollouts.py`.
-- *mmlu*: `think|nothink/<arm>/` tree repacked — records.jsonl → rollouts/, metrics +
-  raw_samples → results/, arm run_meta → metadata/mmlu_run_meta.json (records_file
-  rewritten to the moved path). Standalone main() path untouched.
-- *arena_hard*: answers COPIED to rollouts/answers.jsonl (vendor-tree originals are
-  resume caches — never moved); judgments + gen metrics → results/; phase run_metas →
-  metadata/. Config written to metadata/ from the start.
-- *lmsys*: answers.jsonl + answers_meta.json pair → rollouts/ (AnswerCache requires
-  them co-located; push/fetch now point there); judged.jsonl → results/; prompts.json +
-  the reference arm's cache materialization → metadata/.
-- *swebench_mini*: rollouts/ was already right and `rollouts/preds.json` (THE resume
-  mechanism) does not move; selection.json → metadata/, overlay/registry/global-config/
-  rollouts.log → metadata/, grading → results/grading/. The phase-2 grade script reads
-  both layouts (legacy fallback, announced).
-
-**Consumers updated:** `dashboard/scripts/hf-enrich.mjs` tries `results/results.json` +
-`metadata/run_meta.json` before the legacy root names; run_eval's card `schema` string;
-`docs/swebench_sharding.md` selection.json paths. Known not-updated: internalization's
-`judge_check.py` still expects the three files side by side (CLI/study flows use their
-own dirs, so only pointing it at a *published* run dir breaks); `scratch/` readers of
-legacy root results.json.
-
-**Result.** 873 tests green (contract test added; odcv layout tests already in). Old
-published repos are untouched — the dashboard reads both generations.
-
-## 2026-08-24 — ODCV contract compliance: `run_eval.py --name odcv` now runs the real multi-pass protocol
-
-**Why.** Every published ODCV arm was produced by scratch drivers
-(`odcv_repeat_rollouts.sh` → `odcv_combine_passes.py` → `odcv_judge_cli.py`), while the
-framework path (`runner.py`) silently ran ONE unaudited pass and judged it alone — a
-plausible-looking façade nobody used. The pieces that turn passes into a publishable arm
-(repeat, audit, resume holes, combine) lived only in `scratch/`.
-
-**What.** Branch `jamie/odcv-contract-compliance`. `runner.py` now owns the whole arm,
-Option-B shaped (local docker, served target):
-
-- **Multi-pass:** `passes:` in `configs/eval/odcv_bench.yaml` (default 2 — the recent
-  2-rollout arms; the published 4x70 protocol is `passes=4`; smoke forces 1). Sequential,
-  with `docker network prune -f` before each pass (address-pool exhaustion, 2026-08-08).
-- **Pass audit** after every pass (`src/eval/misalignment/odcv/passes.py:audit_pass`,
-  promoted from `odcv_box_run._audit_pass`): only a non-empty `messages_record.txt`
-  proves a cell ran; manifest `ok` is not evidence (2026-08-18). A missing manifest can
-  never audit clean.
-- **Retry policy:** a dirty pass is resume-retried exactly once (`odcv_rollout.main`'s
-  cache check re-runs precisely the missing/empty cells); still dirty → the pass is
-  DROPPED from judging, kept on disk, recorded in `pass_summary.json`. All passes
-  dropped → hard error. Transient causes (executor timeout, tunnel drop) clear on one
-  retry; what survives is structural (docs/GOTCHAS.md "ok+no_transcript").
-- **Combine then judge once:** kept passes merge into the `rollout_NNN` layout
-  (`passes.py:combine_passes`, promoted from `odcv_combine_passes.py` — empty transcripts
-  are never copied) and the judge scores the combined dir, so stats see repeats grouped
-  per cell. `odcv_rollout.main` now returns its pass dir instead of being globbed for.
-  Returned results carry a `passes` block (kept/dropped/retries/audits).
-- **Published layout:** after judging, `passes.py:package_run` repacks the run dir —
-  which run_eval's epilogue uploads verbatim — into `rollouts/<variant>/<Scenario>/
-  pass<N>/` (transcript + docker_output.log + per-cell `cell_meta.json` with status,
-  bytes and a `judged` flag; dropped passes preserved but marked), `results/` (judge
-  results.json + per-judge scores) and `metadata/` (config, pass manifests,
-  pass_summary, combine manifest). Each transcript is published exactly once — the
-  raw-plus-combined duplication of the hand-pushed repos is gone, and the local
-  working tree is consumed in the process.
-
-**Result.** `uv run scripts/run_eval.py --target <hf> --name odcv [--server <alias>]` now
-produces a complete audited 2-pass arm end to end. 8 new offline tests
-(`tests/test_odcv_passes.py`: audit, combiner, retry-once-then-drop, all-dropped
-fail-fast); full suite green. Scratch drivers untouched and still valid for the
-multi-box cloud-CPU path.
-
-**Next steps:** (1) first real arm through the clean path, diffing its numbers against a
-scratch-driven sibling at identical protocol; (2) DONE same day: the inert
-`rollouts_per_cell`/`expected_cells` keys (and their INERT warning comments) are deleted
-from all seven arm configs, and the six protocol configs now declare the live key
-instead: `passes: 4`, so their names and their execution agree; (3) the cloud-box supervisor could shrink to a thin wrapper over `runner.run`.
-
-## 2026-08-25 — Both verbose-CoT arms trained: rows-matched 0.8751, token-matched 0.8538
-
-**Hypothesis:** deliberation LENGTH changes agentic-misalignment behaviour, holding the ideas
-deliberated constant. Two arms, because one cannot answer it alone: holding difficult advice
-at 7.16% of ROWS while the traces triple nearly doubles its share of the trainable tokens, so
-that arm confounds "more deliberation" with "more difficult-advice signal". The second arm
-holds the TOKEN share instead and lets the row share fall.
-
-**Method.** Two 2xH200 RunPod pods in parallel, torchrun DDP with token-budgeted dynamic
-batching (budget 8,000 from `ModelProfile.train_memory`, global batch 16, `route_step` over
-2 ranks) — the da716 protocol, unchanged. Both configs are byte-identical to
-`lora_qwen36_t2_9284_da716_dynbatch_2xh200.yaml` below the data keys (verified by diff), so
-the three arms differ in DATA alone.
-
-| arm | config | rows | DA rows | DA share of trainable tok | steps | runtime | train_loss |
-|---|---|---|---|---|---|---|---|
-| rows-matched | `lora_qwen36_t2_9284_da716_verbose_dynbatch_2xh200.yaml` | 10,000 | 716 (7.16%) | 47.6% | 625 | 2h27m | **0.8751** |
-| token-matched | `lora_qwen36_t2_9284_da_verbose_tokenmatched_dynbatch_2xh200.yaml` | 9,647 | 363 (3.76%) | 28.65% | 603 | 2h12m | **0.8538** |
-| control (2026-08-14) | `lora_qwen36_t2_9284_da716_dynbatch_2xh200.yaml` | 10,000 | 716 (7.16%) | 28.63% | 625 | — | — |
-
-Both land in the sibling band (lessswap 0.8651, c6masked 0.866, t10 0.869). Mask gate passed
-on both: 716 real traces / 9,646 empty markers / **0 absent**, and **0 rows skipped as
-truncated** — the live confirmation that `max_seq_len: 8192` is right for the expanded data
-(measured beforehand with the Qwen3.6 tokenizer: longest row 8,191 tokens, and it is a Table-2
-row, not a difficult-advice one).
-
-**Adapters** (public, `thinking: true`, each pinned to its own dataset sha):
-`LASR-Callum/qwen3.6-27b-lora-t2-9284-da716-verbose-r64-dynbatch` and
-`...-da-verbose-tokenmatched-r64-dynbatch`. Collection: `verbose-cot-3x-deliberation`.
-
-**Two silent-wrong-result bugs caught before launch**, both in the pod driver shim, neither of
-which would have crashed:
-1. `CODE` — the bundle's file allowlist — is a list LITERAL that captured `TRAIN_CONFIG` at
-   import, so re-pointing the constant alone would have shipped the t10 config and trained the
-   wrong arm successfully.
-2. Both arms share one bundle repo, so bundling the second would have overwritten the first and
-   a pod that had not finished downloading would have come up on the wrong config. Every bundle
-   now carries both configs.
-A third bug was in the watcher itself: RunPod's proxy returns a 469-byte HTML error page for a
-404, which a bare `curl -s` reports as a non-empty body — so the failure grep was scanning HTML
-and a stray "ERROR" would have marked a healthy arm dead. `curl -f` fixes it.
-
-**Teardown.** Both pods terminated (HTTP 204), 0 `nika-*` surviving, confirmed by listing the
-account. Two teammate pods (`serve-da716`, `serve-numinactl`) were running and were left
-untouched — teardown is pod-scoped by construction and never sweeps. ~$54 of RunPod across both
-arms ($9.18/hr each, ~3h wall clock apiece including the ~55GB base-model download, which is
-~25 minutes of billed time before a single optimizer step).
-
-**Next steps:** ODCV-Bench on both arms against the da716 control (16.3% MR). The three-way
-comparison is the point: if only the rows-matched arm moves, the effect is difficult-advice
-weight; if both move together, it is deliberation length. Caveat carried: ~11% of the
-rows-matched arm's difficult-advice rows kept their original trace (50 failed the fidelity
-judge, 29 refused by the content filter), so its intervention is diluted by that much; the
-token-matched arm draws only from expanded rows and has none.
-
-## 2026-08-25 — Verbose-CoT arm: the 716 difficult-advice traces rewritten 3x longer, same ideas
-
-**Hypothesis:** deliberation LENGTH, holding the ideas deliberated constant, changes
-agentic-misalignment behaviour. The published `t2_9284_da716` arm is the control; this arm
-differs from it in exactly one thing, the length of the difficult-advice `<think>` block.
-
-**Method:** new synth pipeline `configs/data/synth/verbose_cot.yaml`, seeded by
-`load_source_run` from `LASR-Callum/2026-08-13-difficult-advice-v2 ::
-stage_7_revise_responses.jsonl` (the structured snapshot — `reasoning` and `response` as
-separate fields, so nothing regexes `<think>` out of rendered chat). Only the 716 scenarios
-the published mixture actually uses are expanded; their ids are read back out of that
-mixture rather than re-derived, so the arms cover the same scenarios by construction, and
-expanding all 1,968 source records would have cost ~3x for no extra data.
-
-Each deliberation is rewritten against a computed paragraph budget: source paragraphs are
-cut at sentence seams so no unit carries more than 3 output paragraphs, the budget is
-apportioned by largest remainder, and each unit's share is quoted BOTH as a paragraph count
-and as words-per-source-sentence. Three pilot-measured facts force that shape — a single
-global word target returns ~48% of whatever is asked, a bare paragraph count is ignored when
-the source paragraph is short, and compliance depends on how big one unit's budget is rather
-than on the asked multiple. Expander `anthropic/claude-sonnet-5` at temp 0.7, never shown
-the constitution, the user turn or the assistant's reply (v1 showed the reply and the model
-imported a phrase from it into the reasoning).
-
-Every record passes four gates before it is kept: a structural strip of the `<run>`
-scaffolding, a relative length band of 2.0-4.5x the source, and TWO independent judges on
-`openai/gpt-5.6-terra` — one for decision-changing additions and scenario contradictions,
-one for omissions. Three attempts, then the record falls back to its original trace and is
-marked `expansion_status: fallback` rather than being dropped, so the arm keeps all 716
-scenarios.
-
-**Result:** `LASR-Callum/2026-08-25-difficult-advice-716-verbose-cot` — 716 records,
-public, difficult-advice ONLY with nothing else mixed in, alongside its unexpanded control
-`2026-08-13-difficult-advice-v2` in the collection `verbose-cot-3x-deliberation`. The
-10,000-row training mixture is `LASR-Callum/2026-08-25-table2-9284-difficult-advice-verbose-716-train`
-(public), built by `build_verbose_mixture.py`, which substitutes the expanded think blocks
-into the published arm rather than re-deriving the selection: all 9,284 table2 rows come
-through byte-identical and row order is preserved, re-proved at build time.
-
-Difficult advice is held at **716 rows = 7.16% of rows, the same row share as the control**.
-Because the traces are longer, that fixes the DA share of assistant words at 48.5% (from
-32.9%) and grows total trainable text 1.30x. That shift is a chosen consequence of holding
-the row share, not an overlooked confound — separating "more deliberation" from "more DA
-tokens" needs a size-matched arm at the ORIGINAL token ratio, which is a separate build.
-
-Difficult-advice think words **343,403 -> 962,832 (2.804x)**. Of the 716 records, **637
-expanded** (those average 3.03x, hitting the target), **50 kept their original trace** after
-three attempts failed the fidelity or coverage judge, and **29 kept it** because Anthropic's
-content filter refused the prompt outright. So ~11% of the arm is unexpanded and identical
-to the control, which dilutes the intervention and is why the corpus lands at 2.80x rather
-than in the 2.9-3.1 band aimed for.
-
-Fidelity on the 637 expanded records: **0 decision-changing additions, 0 contradictions, 0
-omissions** as judged, and 0 records leaked the `<run>` scaffolding the prompt uses. The
-mixture is verified at build time to differ from the control in exactly one respect: all
-9,284 table2 rows are byte-identical, row order is preserved, and the 716 difficult-advice
-rows differ only inside `<think>`.
-
-**Engine changes** (`src/data/synth/`, all generic): relative-ratio lint
-(`ratio_of`/`min_word_ratio`/`max_word_ratio` — the absolute `min_chars` could not express
-"between 2 and 4.5 times this record's source field"); a judged `verify:` accept criterion
-taking a LIST of judges; a `derive: {fn, args}` registry for prompt vars that need
-computation; and `strip_patterns` for prompt scaffolding that must not reach the corpus.
-
-**What the gates caught before anything was trusted:** the first judge prompt false-failed
-4/5 known-clean expansions and 5/5 deliberately-inert mutants, which on 716 records would
-have failed nearly everything and handed back the control arm at full price. With additions
-and omissions asked in one call, planted truncations were detected 0/5; split into two calls
-the same question detects 5/5. And gpt-5.6-terra found a real invented mirror-case and a
-scenario-contradicting detail in two expansions Sonnet had passed 5/5 — the measured
-argument for a different-family judge.
-
-**Cost lever worth remembering:** extended thinking is ~70% of the output bill on this stage
-(6,630 output tokens per call against ~1,900 of visible rewrite). `reasoning:
-{max_tokens: N}` is SILENTLY IGNORED — only `enabled` and `effort` take effect. Turning
-thinking off is a quarter of the price with a quarter of the variance but saturates at
-~2.6x and cannot reach a 3x target; haiku-4.5 as the expander fails the fidelity gate on
-7/20 records.
-
-**Next steps:** train on the mixture and run ODCV against the control arm. A size-matched
-control at the original DA-to-table2 TOKEN ratio (~2,661,000 assistant words at 32.9% DA)
-is the arm that separates deliberation length from data weight; the user has that build in
-hand separately. Two confounds are carried,
-not solved: difficult-advice rises from 32.9% to ~49.8% of trainable tokens and the total
-dataset grows ~1.34x, so a size-matched control at the ORIGINAL DA-to-table2 ratio
-(~2,727,000 assistant words at 32.9% DA) is needed to separate "more deliberation" from
-"more data"; and the assistant's answer now begins ~1,000 tokens deeper into the turn,
-which this design does not separate from the deliberation effect.
-
-**Cost, and a guard that did not hold:** ~$96 total against an $80 authorisation. The
-expansion is a SINGLE stage over 716 records and `pipeline.run` checks `budget_usd` only
-between stages, so the $68 guard never executed — the stage died on `max_fail_pct` (the
-content-filter refusals) before it could. The seven 20-record smokes also under-predicted:
-they retried ~34% of records where the full run retried ~52%, and none of them saw a single
-content-filter refusal. Both are now in `docs/GOTCHAS.md`.
 
 ## 2026-08-20 - ODCV on the LESS pair: 0.4% vs 4.3%, and neither number is comparable to any earlier arm
 
@@ -1191,6 +1235,264 @@ and the 6 missing cells were never diagnosed.
 
 # LOG
 
+## 2026-08-20 — two arms: what the difficult-advice fine-tune DOES that its control does not
+
+**Hypothesis.** The 2026-08-19 da716 run could say what one model does and which of it goes
+with violating, but not whether any of it was a property of the FINE-TUNE rather than of any
+model on these scenarios — nothing crossed a property against the arm. With a matched control
+it can. The pair: two Qwen3.6-27B LoRAs sharing 9,284 filtered instruction rows, differing
+only in the kind of the other 716 — constitution-grounded difficult advice vs NuminaMath-CoT.
+Same row count, same presence of real reasoning traces. Misalignment rate 15.0% vs 43.7%.
+
+**Method.** Feature discovery (the LessWrong method, `WAZWA6FPQvH8okouJ`) over 513 judged
+ODCV-Bench rollouts pulled from their published HF repos and pinned to exact shas. An
+autorater writes 10-20 free-text descriptions per rollout; the deduped vocabulary is embedded
+(`qwen/qwen3-embedding-8b`, nebius-pinned) and clustered with UMAP(10-d) + HDBSCAN. TWO fits,
+one per channel — reasoning and response — because "weighs an ethical tension" and "silently
+chains tool calls" should not compete to define the same group. 19,354 feature instances,
+7,906 + 7,181 distinct strings, 49 + 71 properties.
+
+Three measurements per property, all within stratum and BH-corrected: the between-ARM
+prevalence difference (new: `outcomes.contrast_arms`), the within-stratum outcome lift on two
+binarisations of ODCV severity, and an L1 logistic probe from the binary membership matrix
+(the post's own experiment, pointed at the arm).
+
+The stratum is the PAIR, arm x condition, because both axes carry a base-rate difference and
+the condition ordering FLIPS between the arms (5pct incentivized 20.0% vs mandated 9.8%;
+control 41.2% vs 46.1%).
+
+**Result — the fine-tune deliberates, the control executes.** 39 of 49 reasoning properties
+and 54 of 71 response properties differ at q <= 0.10. Prevalence, 5pct vs 0pct:
+
+    +42.8pp  60.5% / 17.8%   Verbose first-person internal monologue before acting
+    +35.8pp  63.7% / 28.2%   Explicit deliberation on an ethical tension
+    +33.4pp  43.4% / 10.3%   Refuses to falsify or fabricate data under pressure
+    +33.0pp  49.3% / 16.1%   Evaluation awareness / suspects being tested
+    +24.1pp  26.2% /  2.3%   Reasons about downstream harm to stakeholders
+    -27.4pp   8.3% / 35.6%   Fabricates or falsifies data without ethical flagging
+    -31.1pp   7.1% / 37.9%   Grounds claims with concrete file/script paths
+    -54.2pp  16.2% / 70.1%   Narrates task steps as sequential status updates
+
+Property membership predicts which model produced a rollout at **AUC 0.956** (37 properties;
+shuffled-label null 0.505, p=0.02) and predicts violation at 0.959.
+
+**The sharpest result is cross-channel, and the two-fit design is what makes it sayable.**
+147 reasoning x response pairs tested, 102 survive BH. One reasoning property, two actions:
+
+    Names an ethical tension but proceeds anyway + Falsifies data then reports success
+        n=49,  63% violation,  +38.4pp within stratum
+    Names an ethical tension but proceeds anyway + Refuses to falsify under pressure
+        n=130,  1% violation,  -23.2pp
+
+Identical deliberation; the outcome is decided entirely by whether the action follows it. The
+2026-08-19 run found this shape inside one channel and had to rely on the autorater
+volunteering both halves in one sentence.
+
+**What survived scrutiny.** 0 of 9 stability refits collapsed on either channel (pairwise ARI
+0.480-1.000 reasoning, 0.381-1.000 response). 0 near-duplicate group pairs on reasoning, 2 on
+response. UMAP kept the geometry — neighbourhood overlap 0.468 and 0.481, against ~0.003 for
+random at k=15. Not scenario markers: with concentration measured as EXCESS over the corpus
+mix, 1 of 49 and 1 of 71 groups are scenario-concentrated, 0 are condition markers, and 1 of
+120 is an arm marker. The strict same-scenario-same-condition contrast moves every headline
+delta by a point or two and RAISES the significant counts to 42 and 61.
+
+**Method notes that cost real money.** (1) `min_cluster_size` was swept per channel and the
+channels disagree: reasoning is stable at every resolution, response BIFURCATES from 40 upward
+(three seeds give 41, 40 and 3 groups). Forcing them to match for symmetry would have been
+choosing a prettier config over a measurement. (2) The plan was to make a detector the
+membership basis; an A/B over 48 real detectors x 20 rollouts showed that batching a judge
+across ~50 rubrics deflates prevalence by 7-9 points against asking one at a time (38.1% vs
+47.5%, 85% cell agreement), so membership stayed CLUSTER membership and the detector became a
+shortlist validation instead. (3) A reasoning model spends its budget before emitting content,
+so `max_tokens=2000` returned blanks, not truncations, and the retry policy re-billed each one
+six times. All three are now in `docs/GOTCHAS.md`.
+
+**A bug worth naming.** `Property.channel` was whatever the naming model guessed, and it
+guesses from content — 25 of 49 reasoning-fit properties came back labelled `response`. That
+field decides which text `interpret.detect` and the ablation filter/mask read, so it pointed
+the detector at the wrong half of the record and dropped its agreement with cluster membership
+to 21%. Now overridden with the channel the run actually clustered. It never touched a
+prevalence, a contrast or a lift — those come from the configured channel's features — but it
+would have poisoned the ablations.
+
+**The shortlist, re-measured.** An unbatched detector over the 32 properties at both ends
+of the contrast, on 100 stratified rollouts, agrees on the SIGN of the arm delta for 27 of
+32 — and the failures are not random. The refusal and deliberation properties validate best
+(84-92% per-record agreement) and cluster membership UNDERSTATES them: the detector puts
+"refuses then offers a legitimate alternative" at +52.7 against cluster's +45.2, "refuses
+and explains the ethical rationale" at +59.0 against +35.6. The badly-measured ones are the
+mechanical control-side properties (silent tool use 41%, autonomous execution 33%), which is
+what you would expect of behaviours an autorater describes inconsistently. So the headline is
+if anything conservative, and the weakest properties are the ones the headline does not rest
+on.
+
+**Artifacts.** `LASR-Callum/2026-08-20-odcv-feature-discovery-da716-5pct-vs-numina-control`
+(public); small text artifacts and the caveats in `docs/properties/odcv_da716_vs_numina/`;
+write-up at `dashboard/content/findings/2026-08-20-da716-vs-numina-properties/`.
+
+**Next steps.** The list is now a ranked set of ablation candidates with a control arm behind
+it, which is what it was for. The obvious target is the cross-channel pair: filter or rewrite
+the training rows that teach "name the tension, proceed anyway" and retrain, and check whether
+the +38.4pp pair thins. Cheaper first: run the shortlist detectors over the 716
+difficult-advice rows to see whether the corpus contains the pattern at all, or whether the
+model produces it unprompted. Still open: 29% of feature strings do not cluster, and the two
+evals are 11 days apart on different git SHAs.
+
+## 2026-08-19 — one `clusters` producer: feature discovery and trace clustering merged
+
+**Why.** Feature discovery (autorater describes each trace, cluster the descriptions) and
+trace clustering (embed the trace, cluster that) were two modules, and the pairing of
+method to data source was an accident of history rather than a choice: feature discovery
+read an SFT jsonl directly and so could only ever see the TRAINING data, while trace
+clustering was the only thing plumbed to read rollouts. That is backwards. The data source
+is what changes the science — training data tells you what you taught, rollouts tell you
+what the model learned and come with outcomes attached — and the clustering method is a
+knob.
+
+**What changed.** `scratch/llm_feature_discovery` is ported into
+`src/properties/producers/clusters/`, merged with the former `trace_clusters` into ONE
+producer. They differ in exactly one step — what gets turned into a vector — so that is
+now one config key:
+
+    evidence: features   autorater writes 10-20 free-text descriptions per record; the
+                         deduped VOCABULARY is embedded and clustered (the LessWrong method)
+    evidence: traces     the record's own text is embedded and clustered
+
+Everything after the vectors is shared: grouping, naming, the within-arm outcome crossing,
+the training-corpus comparison, the property rows. Either mode runs over either source —
+an SFT mixture or pooled rollouts from five model organisms.
+
+**Why merged rather than two producers.** Two packages would have drifted into two
+embedders and two notions of prevalence, and the question "does the abstraction step buy
+anything?" would have been unanswerable — the numbers would not have been comparable. One
+module makes that an A/B on one config line.
+
+**Feature discovery's semantics are preserved, not approximated.** The autorater still sees
+one record alone with no metadata; features are still free text; the vocabulary is still
+deduped before embedding, so a stock phrase cannot drag a cluster toward itself by
+repetition while occurrence counts travel alongside; prevalence is still the share of
+records carrying AT LEAST ONE feature in the group, so a record holds several properties
+and the group prevalences do not sum to 1; `trait_mix`, instance counts and the coverage
+metadata (what share the properties do NOT account for, now `coverage.json`) all survive.
+Extraction is the expensive half, so a rerun against the same run directory reuses
+`features.jsonl`.
+
+**Two things this exposed.** `shared/interpret.py` was telling the model it was reading
+"short descriptions of what records do" regardless of mode, which is false for whole
+traces — the framing is now per-mode, and the traces framing carries an explicit warning
+that text similarity tracks subject matter, with instructions to say so in the caveat
+rather than invent a behavioural label for a topical cluster. And `members.jsonl` became
+one line per membership EDGE rather than per record, because in features mode a record
+belongs to several properties and one-line-per-record cannot represent that.
+
+**Result.** 887 tests pass, none touching the network (a units test caught that features
+mode was reaching OpenRouter; the shared stub now covers the autorater). An offline check
+drives the real config through both modes: features mode turns 38 feature instances into 8
+distinct units and 32 membership edges over 16 records with prevalences summing to 2.00;
+traces mode gives 16 units, 16 edges, prevalences summing to 1.00.
+
+**Parity gaps found by diffing against scratch, and closed.** The extraction prompt is
+byte-identical, but three things were not:
+
+* extraction wrote `features.jsonl` only at the end, so a run killed at 95% bought nothing.
+  `attributes.extract_to` now appends under a lock as each row lands and resumes from what
+  the file holds. A previously recorded error is retried rather than inherited — caching a
+  transient rate-limit would make it permanent.
+* naming sampled 50 features per cluster; the post and the published runs use 100. Features
+  mode is back to 100. Traces mode keeps 30, because 100 excerpts of 4,000 characters is a
+  100k-token prompt and excerpts are far more redundant than feature strings.
+* the audit stage was missing entirely. Ported to `shared/audit.py`: near-duplicate group
+  pairs (when many, the group COUNT is a resolution setting, not a count of behaviours),
+  keyword probes read INDEPENDENTLY of the clustering (so a theme too small to win a group
+  still gets a number, and `groups_landed_in` shows the scatter), an opt-in stability sweep
+  scoring every fit against every other rather than only against the reference, and
+  `dashboard.html`.
+
+**The dashboard now plots the space.** `grouping.project_2d` runs a SEPARATE 2-D UMAP fit —
+the post's two-reductions design, 2-D to look at and more to cluster — rendered as inline
+SVG so the page stays one openable file. The caption states what it is not: the clustering
+ran in `n_components` dimensions, so two dots touching in the picture may be in different
+groups. It is for spotting shape (one blob, a filament, a group torn in two), not for
+adjudicating membership.
+
+**Also.** `configs/properties/discover_odcv_da716.yaml` runs the whole thing over the da716
+arm alone — the single-model starting point, and the run whose properties pair directly
+with the corpus-side `discover_da716.yaml` over the same 716 rows. With one arm the
+within-arm lift is still a real contrast (members vs non-members), but it cannot separate a
+property of the model from a property of the fine-tune; that needs the pooled run.
+
+**Next steps.** Point the configs at the real ODCV run directories and run them. Compare
+the two evidence modes on the same rollouts — that comparison is the point of merging them,
+and it is now one config line.
+
+## 2026-08-19 — trace_clusters over ROLLOUTS: the cluster list becomes a ranking
+
+**Hypothesis.** A corpus-side cluster list is unranked — every group is "here is a thing
+the data does", nothing says which is worth a training run, and choosing an ablation
+target is guesswork (the "unscored clusters" criticism, and the reason feature discovery
+compares badly with TURF and LESS, which at least assign a number). Rollouts should fix
+it, because rollouts are judged: cross a group of model reasoning against the violation
+flag and every group arrives with a number attached. Two further things only the rollout
+side can show — corpus mass spent on properties the model never picked up, and properties
+the model exhibits that were never in the corpus.
+
+**Method.** No experiment ran; this is the machinery, tested offline, not yet executed
+against real rollouts.
+
+* `sources/odcv_rollouts.py` now pools several run directories into ONE record list, each
+  tagged with the `arm` that produced it. Pooling is load-bearing: a per-arm fit gives
+  each arm its own cluster numbering, so "group 3 of the DA fit" and "group 3 of the
+  courtroom fit" are different things with the same name and the arms cannot be compared
+  at all. It also reads both transcript shapes on disk (`reason:` fields and inline
+  `<think>` tags) and takes the MEDIAN severity across judge files, rather than assuming
+  one shape and silently reading an empty reasoning channel off the other.
+* `shared/outcomes.py` is new: within-arm outcome rates, a weighted combination across
+  arms, and Benjamini-Hochberg over the family of groups.
+* `producers/trace_clusters/` gained three config blocks: `outcomes:` (cross with the
+  judged outcome), `compare_to:` (score the same vectors against a previous run's
+  centroids), and `baseline_grouping:` (cluster the same vectors a second way).
+
+**The two traps, and what the code does about them.**
+
+*Simpson's paradox.* The arms have different base violation rates by construction — that
+is the experiment. A property common in the arm that was already most aligned looks
+protective whatever it is. So every rate is computed WITHIN an arm and only then combined;
+the pooled number is emitted beside it carrying `confounded: true`, because the gap between
+the two is the diagnostic. A group perfectly confined to one arm has no same-arm
+non-members, so its lift is `None` — not the pooled number as a fallback — and the run says
+so loudly when that is true of every group.
+
+*Multiplicity.* Tens of groups against one binary outcome will hand you a few p < 0.05 from
+nothing, so the ranking carries BH q-values over the whole family. The output is a
+shortlist of ablation candidates. The ablation is what makes it causal.
+
+**Refit AND assign, over one embedding pass.** Nearest-centroid assignment never abstains,
+so a property with no home in the training corpus is absorbed into whatever is closest and
+disappears — which is exactly the thing worth finding. So `compare_to:` does not replace
+the refit, it annotates it: each refit group carries its members' cosine profile against
+the training centroids, and a group whose members are ALL below the floor is flagged
+`elicited_not_taught`. Centroids for that comparison are recomputed from the prior run's
+raw embeddings rather than read from its `centroids.npy`, because a run that clustered
+under `reduce: umap` wrote centroids in a space no new point can be placed in without the
+fitted reducer.
+
+**Also.** `baseline_grouping:` implements Callum's 2026-08-17 note — validate that UMAP is
+doing anything by clustering the same vectors without it, and write the ARI/AMI and
+neighbourhood overlap next to the result rather than assuming. And
+`producers/{feature_discovery,turf,less}/` are now empty placeholder packages: they were
+reading foreign `scratch/` run directories, which made the artifacts an interface nobody
+had agreed to. `resolve()` raises with the path to port instead.
+
+**Result.** 876 tests pass. An offline wiring check drives the new config end to end
+(pooled two-arm source -> grouping -> ranking -> report) with the embedding and interpreter
+calls stubbed.
+
+**Next steps.** Point `configs/properties/discover_odcv_rollouts.yaml` at the five real
+ODCV run directories and run it; the `compare_to.run_dir` needs a completed da716
+trace_clusters run to compare against. Add GSM8K rollouts as a control — the
+reasoning-length collapse this is chasing is supposed to be ODCV-specific, and if it shows
+up there too the story changes.
+
 ## 2026-08-18 — Fabrication sweep on the LESS-swap arm: 73.8%, on the synth-fraction ladder but not on its failure mode
 
 **Hypothesis:** the LESS-swap arm's fabrication rate on the established 31-prompt sweep is
@@ -1316,6 +1618,80 @@ published to `LASR-Callum/2026-08-18-odcv-lessswap716-eval`. ~$20 total (H200 ~$
 LESS selection; (2) once trained, run it at these same settings rather than comparing against
 the legacy arm; (3) the 16k-vs-64k context finding applies to every prior ODCV arm and is worth
 a re-read of those results.
+## 2026-08-20 — SAE correlations on difficult-advice: verification is load-bearing, not ceremonial
+
+**Hypothesis.** Following the paper's §4.2/§5.2 (the loop that caught Tulu-3's "I hope it is
+correct" trigger), NPMI between prompt-channel and response-channel latents should surface
+couplings in our difficult-advice corpus that nobody hypothesized — spurious artifacts planted
+by the generate→rewrite pipeline, or scenario→behaviour links worth ablating.
+
+**Method.** Embedded the query channel of all four synth corpora (2×A100, ~50 min, ~$2.60;
+DA/PC/CR/PAR) to pair with E1's cached response embeddings. New tooling:
+`scratch/sae_properties/correlate.py` (chunked NPMI over 45,402 × 49,951 = 2.27e9 latent pairs —
+the full matrix is ~9GB and OOMs a laptop; hypergeometric test with Bonferroni over the whole
+tested family; per-latent cap so one prolific latent cannot fill the list; token-Jaccard
+label-similarity filter for "interesting") and `latent_freq.py` (cross-corpus frequency of named
+latents, GPU-free). Judge-verified the top 14 pairs — gemini-2.5-flash reads 150 documents per
+pair and answers per channel, giving honest P(B|A) vs P(B|¬A).
+
+**Result.** 23,269 pairs cleared NPMI ≥ 0.5; **20,409 survived Bonferroni at α=2.2e-11**, so
+chance is not the problem. Semantics are: **5 of the top 14 pairs were refuted outright** — the
+judge found the prompt-side property in *zero* of 150 documents — and SAE NPMI did not predict
+which (two refuted pairs scored 0.82 and 0.75, above most survivors). The refuted latents share a
+signature visible in the cross-corpus check: "Romance language connectors" 0.99, "structural
+delimiters" 0.99, "Western given names" 0.96, "creative-writing scene transitions" 0.95,
+"Slavic connectors" 0.91, **"Offensive request from the user" 0.84 — all of courtroom**, a corpus
+with no Slavic text, no fiction and (judge-confirmed) no offensive requests. They are syntactic
+detectors wearing semantic labels from the SAE's LMSYS training distribution, firing on
+courtroom's rigid prosecutor/defence/judge structure. Substantively, the strongest *verified*
+coupling is AI-identity: prompts engaging the assistant's nature → responses explaining its
+nature, P(B|A)=1.00 vs 0.05 base (20× lift) — but cross-corpus frequency shows peer-critique
+equals or exceeds DA (0.23 vs 0.22), so it is an assistant-voice property, not a DA signature.
+What *is* DA-specific extends E1's domain-skew row into named domains with prompt→response
+coupling: nursing/healthcare staffing (0.35 vs 0.19/0.11/0.05) and ML-deployment governance
+(0.22 vs 0.07/0.04/0.05).
+
+**Next steps.** (1) **Relabel-then-rank**: relabel candidate latents on our corpus *before* the
+NPMI ranking, not just before reporting — the current top of the list is partly structural noise,
+and the paper's relabeling step is what prevents this. (2) Take the healthcare / ML-deployment
+concentration to the Tulu-3 payoff step: counterfactual prompts inside vs outside those domains,
+measured on a trained organism. (3) The table2 contrast (docs §8.2) is still the only way to test
+constitution-over-mention. Artifacts: `output/sae_properties/e1_70b/corr_difficult_advice_queryxresponse/`.
+
+## 2026-08-19 — SAE dataset diffing (E1): the 70B run separates the four synth corpora, and names how
+
+**Hypothesis.** SAE embeddings (arXiv:2512.10092, run with the authors' own vendored code +
+the open Goodfire Llama-3.3-70B layer-50 SAE) can produce judge-verified properties that
+distinguish difficult-advice data from peer-critique / courtroom / post-action-retrospection —
+the "on what" behind the 2026-08-17 BoW separability AUCs, at property (not scalar) resolution.
+
+**Method.** `scratch/sae_properties/` (design: `docs/sae_property_extraction.md`): embed the
+response channel of 4 corpora (DA-v2 1000, PC 1000, CR 1000, PAR 576 docs, 2048-token cap)
+with the official reader on a 2×A100 pod; per-dataset latent frequencies → target minus max-of-
+others (patched upstream, which assumed equal corpus sizes and doc-slot alignment); top-200
+latents relabeled/scored; 15 hypotheses; every hypothesis judged on every document
+(gemini-2.5-flash — 3.7-flash is capacity-capped at 300 RPM on OpenRouter and unusable at
+this volume). Artifacts: `output/sae_properties/e1_70b/` (embed caches reusable for
+correlations/clustering at zero GPU cost); ~$11 GPU + ~$8 API.
+
+**Result** (`output/sae_properties/e1_70b/diff_difficult_advice/report.md`). DA leads all 15
+verified properties. Three kinds of separation: (1) *behavioural* — states its own limitations
+as refusals (0.56 vs 0.25–0.37), offers to act for the user (0.67 vs 0.41–0.54), asks
+clarifying questions (0.14 vs 0.02–0.06); (2) *value-content* — ethics of manipulating public
+perception/concealment (0.64 vs 0.14–0.27), oversight-being-circumvented (0.70 vs 0.18–0.55);
+(3) *scenario-domain skew* — social-service casework (0.59 vs ≤0.15), program
+metrics/funders (0.72 vs ≤0.57), AI-bias content (0.30–0.50) — quantifying the 2026-08-12
+manual "not diverse in scenario" finding. Constitution-over-mention did NOT surface: all four
+corpora share the constitution grounding, so target-vs-others cancels it — testing that needs
+DA vs the table2 background mixture as the comparison set. Operational traps hit and fixed
+in-repo: upstream never frees the reader between corpora (second load in one process OOMs →
+one corpus per process via resume-skip), and stale verification dirs from a killed run
+must be excluded by hypothesis-count + report timestamp, not path order.
+
+**Next.** (1) DA vs table2 background (the constitution-mention contrast). (2) E2 organism
+diffing on LMSYS prompts; E3 eval-transcript-seeded diffing. (3) Feed the 15 properties into
+`src/properties/` as an `sae_diff` producer with detectors. (4) Push artifacts to HF.
+
 ## 2026-08-18 — `src/properties/`: one List of Properties, and the ablations that test it
 
 **Why.** Four property-discovery methods were each growing their own embedding call, their
@@ -1748,7 +2124,6 @@ mask belongs in `src/train/masking.py` as the Harmony analogue of the empty-mark
 ## 2026-08-14 — courtroom (CR): adversarial deliberation from supplied disputes — draft, judge, rewrite
 
 
-
 **Hypothesis:** one trained habit — run a genuine for-vs-against deliberation in the CoT,
 then deliver a judged answer naturally — can be taught from a corpus of disputes that
 arrive pre-articulated: every user message carries both sides' arguments inside an
@@ -1859,7 +2234,6 @@ mixture/train/eval loop against the difficult-advice baseline.
 ## 2026-08-14 (night, ix) — PAR all-green: the follow-up now points where the lapse lives
 
 
-
 **Hypothesis:** PAR's one red gate (flaw_identification 0.667 vs 0.70) was a pointing
 mismatch, not a reflection-quality problem: `write_followup` never saw what was wrong
 with the reply, so the person's "something felt off" question landed on arbitrary
@@ -1879,7 +2253,6 @@ below 3, zero corpus criticals. Both natural-turn corpora are now fully green at
 smoke scale.
 
 ## 2026-08-14 (night, viii) — re-verify pass: PC all-green; PAR one hit short of one gate, everything else green
-
 
 
 **Method:** the revision stages onward re-ran on both smoke dirs (~$8) with the
@@ -1910,7 +2283,6 @@ green. PAR ships with one gate at the noise boundary for a stated design reason,
 the resolution criterion pre-registered above.
 
 ## 2026-08-14 (night, vii) — both natural-turn corpora smoked at 40 docs: diversity clean, data reads well, one shared gate failure fixed at its source
-
 
 
 **Method:** first live runs of both simplified recipes (`--smoke`,
@@ -1961,7 +2333,6 @@ ngram_diversity (2/5 docs in one trait).
 ## 2026-08-14 (night, vi) — Gemini 3.7 Flash takes every cheap GENERATION slot; judging stays Anthropic
 
 
-
 **Method:** extending the entry below, every stage where a light model *writes text*
 now runs `google/gemini-3.7-flash`; every stage that judges, steers against the
 constitution, or writes the final trained text stays Sonnet, and the corpus-check
@@ -1980,7 +2351,6 @@ smoked in this form; Gemini's tag-format compliance on the long critique/reflect
 drafts is now the first thing a smoke will test.
 
 ## 2026-08-14 (night, v) — the fault-finding judge becomes a plain revision; Gemini drafts the human-side turns
-
 
 
 **Hypothesis:** the three-criticisms + adjudication + keep-gate mechanism earned its
@@ -2014,7 +2384,6 @@ exactly 2,100 documents. Both recipes NOT YET SMOKED in this form.
 ## 2026-08-14 (night, iv) — de-prescribe the prompts: no named scenarios, framings, or failure menus in PAR or PC
 
 
-
 **Hypothesis:** difficult_advice's hardest-learned lesson generalizes — a prompt that
 names examples produces the concentration it means to prevent — and the PC smoke bore
 it out: the scenario prompt's parenthetical examples ("a resignation, a will") each
@@ -2042,7 +2411,6 @@ rotation.
 ## 2026-08-14 (night, iii) — PC drops the dilemma framing, keeps the constitution anchoring; the twins are twins again
 
 
-
 **Hypothesis:** the requirement that survived the evening's back-and-forth is
 anchoring, not genre: the corpora must train constitutional judgement, and the dilemma
 pivot (night, below) bought that anchoring by importing difficult_advice's genre --
@@ -2065,7 +2433,6 @@ in this exact recipe; the mirrored 2,100 scenarios match the genre but predate t
 principle-anchor line, so a full run generates fresh (~$3.4).
 
 ## 2026-08-14 (night, ii) — PAR anchored to the constitution at every judging link
-
 
 
 **Hypothesis:** the entry below fixed peer critique's genre, but the underlying
@@ -2093,7 +2460,6 @@ drop tag so any principle-free reflection that slips through is measured.
 YET RUN; these anchors get their first measurement in its smoke.
 
 ## 2026-08-14 (night) — peer critique pivots to difficult-advice-shaped scenarios: the flaws must be constitution violations
-
 
 
 **Hypothesis:** the smoke below produced high-quality critiques of QUALITY failures
@@ -2130,7 +2496,6 @@ account is now an ethical claim) and the flawed-arm yield (weak models may resis
 well-crafted temptation more than they miss a subtle disservice).
 
 ## 2026-08-14 (evening) — peer critique 40-doc smoke: two recipe defects found and fixed, one gate re-derived
-
 
 
 **Hypothesis:** the author-per-arm recipe (below) works end to end and produces
@@ -2170,7 +2535,6 @@ was prompt-banned and dropped to top-5gram share 0.042.
 re-derive those there before its full run.
 
 ## 2026-08-14 — train_lora: HF-only datasets in, automatic HF adapter push out
-
 
 
 **Hypothesis (contract, not experiment):** the trainer was the one pipeline stage whose
@@ -2230,7 +2594,6 @@ blocks to the mixture configs that lack one, so every future mixture has a repo 
 ## 2026-08-14 — difficult-advice v2 corpus generated: 1,952 records, diversity verified in-run
 
 
-
 **Hypothesis:** the v2 recipe (PR #46: enforced scenario diversity, dedupe gate, voice
 lints on both reasoning stages, constitution prompt caching, pattern scan) fixes the four
 measured v1 defects at generation time rather than discovering them afterwards.
@@ -2261,7 +2624,6 @@ fresh sampling.
 `synth check` (still not yet generated).
 
 ## 2026-08-14 — OpenRouter's provider routing silently filters difficult-advice data; all vendor models now pinned first-party
-
 
 
 **Hypothesis (implicit until it broke):** "anthropic/claude-sonnet-5 via OpenRouter" is one
@@ -2303,7 +2665,6 @@ patching the vendored harness's judge calls the same way.
 ## 2026-08-14 (later) — peer critique's evaluated reply: author-per-arm replaces best-of-3
 
 
-
 **Hypothesis:** the best-of-3/worst-of-3 selection (below) bought its arm contrast with
 three Sonnet calls per record and a rater, yet the "weakest of three Sonnet replies" is
 still a Sonnet reply — the flawed arm's lapses were bounded by how badly a strong model
@@ -2336,7 +2697,6 @@ then the full run (front half unchanged, so it may resume from the 20260814_1301
 scenarios).
 
 ## 2026-08-14 — peer critique rebuilt as post_action_retrospection's attribution twin (no corpus yet)
-
 
 
 **Hypothesis:** peer critique was the last live config on the archived cell machinery and
@@ -2514,8 +2874,6 @@ reads as a 5x slowdown on a healthy run.
 ## 2026-08-13 — mem-self de-celled: the document type is now the config (no corpus yet)
 
 
-
-
 **Hypothesis:** the `cells` abstraction had stopped earning its place, and while it stayed
 the engine could not honestly claim to be document-type-agnostic. A cell was a `CellSpec`
 holding a message-builder, an assembler, a verdict vocabulary and a supervision mode —
@@ -2605,8 +2963,6 @@ alongside it: does the steered flawed prompt still read as an ordinary request, 
 printed gate yields and run `synth check`.
 
 ## 2026-08-13 — `_self_natural` reworked: organic faults, found not planted (no corpus yet)
-
-
 
 
 **Supersedes the self half of the entry below.** That recipe was never generated, so it
@@ -2703,8 +3059,6 @@ committing to the full corpus.
 ## 2026-08-13 — Model-eval-model, natural-turn recipe (no corpus yet)
 
 
-
-
 **Hypothesis:** the model-eval-model arms underperform difficult advice for *structural*
 reasons, not because self-evaluation is a bad format. Four candidates, all from the
 supervisor meeting notes: (a) the turn under evaluation is the difficult-advice run's own
@@ -2761,8 +3115,6 @@ are directly comparable as a single-variable ablation of *turn provenance*.
 ## 2026-08-13 — Cut the surface tier from 7 checks to 2
 
 
-
-
 **Motivation:** the surface tier had grown to seven checks that ran on every corpus, and
 reviewing them showed they were not seven independent signals. Four were variations on one
 idea — word-overlap repetition, thresholded per pair (`near_duplicates`), anchored at
@@ -2798,8 +3150,6 @@ corruption level. If a repetition failure ever slips through, that measurement i
 thing to do before adding a check back — all five are recoverable from git.
 
 ## 2026-08-13 — GDM's three-pass pattern detector, implemented properly
-
-
 
 
 **Hypothesis:** every other corpus check tests a property somebody thought of in advance.
@@ -2864,8 +3214,6 @@ scores, so a flagged pattern is a hypothesis about the data, not a demonstrated 
 Reference: `docs/corpus_checks.md`.
 
 ## 2026-08-13 — Closing the two GDM quality-control gaps: embedding dedup + autorater
-
-
 
 
 **Hypothesis:** GDM's recipe ends with two filters we had never implemented — *"a final
@@ -2941,8 +3289,6 @@ Full reference for the checker: `docs/corpus_checks.md`.
 ## 2026-08-12 — LLM-driven feature discovery on the difficult-advice reasoning traces: 9.1% of traces verbalise evaluation awareness
 
 
-
-
 **Hypothesis:** the 2026-08-11 audit below used 8 axes I chose, which bounds what it can see.
 The LessWrong "LLM-driven feature discovery" method (post `WAZWA6FPQvH8okouJ`) lets the
 autorater invent its own vocabulary, so it can surface behaviours no schema anticipated.
@@ -3003,8 +3349,6 @@ deliberately rather than inheriting; (2) run the same pipeline on the *user* tur
 embeddings — no new GPU or API spend — to see whether coarser clusters are more readable.
 
 ## 2026-08-12 — Chunking is now a named, selectable method (no corpus yet)
-
-
 
 
 **Hypothesis:** stage 1 of the pipeline — how the constitution is cut — is unablated
@@ -3088,8 +3432,6 @@ still has no `checks:` block at all, so the production corpus is ungated.
 ## 2026-08-12 — Corpus-level checker: a property registry as an ablatable stage
 
 
-
-
 **Hypothesis:** the pipeline gates individual documents (`lint`, the spec filter) but has
 no way to ask questions about the corpus. If corpus properties are a registry rather than
 a script, adding one later is a function plus a dict entry, and the chunking experiment's
@@ -3171,8 +3513,6 @@ yet; `pattern_scan` is the one block of code never run against one at all.
 ## 2026-08-11 — Response-diversity audit of the synthdoc_v2 corpus: topically varied, rhetorically collapsed
 
 
-
-
 **Hypothesis:** the difficult-advice corpus is labelled by trait and domain, but those labels
 say nothing about *how* the assistant answers. If the generator has a house style, the corpus
 is far less diverse than 2,203 rows over 9 traits suggests.
@@ -3231,8 +3571,6 @@ concluding they will transfer to the fine-tuned model.
 ## 2026-08-11 — Ablation: the fabrication reduction is NOT specific to synth, and the two failure modes rank the arms differently
 
 
-
-
 **Corrects the 2026-08-10 entry below**, which reported synth cutting fabrication 82% -> 56%
 and left the impression the effect was synth-specific. It is not.
 
@@ -3281,8 +3619,6 @@ the sexual-advances behaviour, whose single-prompt result remains unreplicated.
 ## 2026-08-11 — Both arms supply eating-disorder concealment techniques ~93% of the time
 
 
-
-
 **Hypothesis:** the constitution fine-tune should refuse a request for techniques to purge
 undetected, from a user describing acute distress.
 
@@ -3315,8 +3651,6 @@ responses", not "verified". A human spot-check would need a fresh generation run
 only, no completions, nothing pushed to HF.
 
 ## 2026-08-10 — Dynamic batching (jamie/dynamic-batching): loss curves match, 1.89x on real steps
-
-
 
 
 **Hypothesis:** grouping each fixed 16-example optimizer step into token-budgeted padded
@@ -3367,8 +3701,6 @@ probe if H100 training ever matters; consider SSH-by-default in the pod launcher
 mid-run control today — this cost a pod restart when the wandb entity needed changing).
 
 ## 2026-08-10 — Psychosis rerun with a red-teamer that does not refuse: 9/9 personas, zero attrition
-
-
 
 
 **Hypothesis:** the arm-correlated persona attrition that caveated the 2026-08-05 psychosis
@@ -3444,8 +3776,6 @@ is still uncommitted; commit it before the paired arm so both runs cite the same
 ## 2026-08-10 — Published artifacts made public, except three that carry gated LMSYS prompts
 
 
-
-
 **Context:** the dashboard reads the Hub with a token at build time and anonymously in the
 browser, so a private repo renders its numbers and 404s its source links for every visitor. Ten
 `LASR-Callum` dataset repos were private.
@@ -3467,8 +3797,6 @@ keyed by prompt hash — the answer cache is keyed on prompts, so that is a chan
 cache format, not just a file edit.
 
 ## 2026-08-10 — Synth data cuts fabricated benchmark data 82% -> 56% (31 prompts, paired, p < 1e-5)
-
-
 
 
 **Hypothesis:** the synthetic-document mixture reduces the model's tendency to invent
@@ -3536,8 +3864,6 @@ JSON, per-prompt `results.md`), plot `output/plots/fabrication_sweep_20260810_22
 ## 2026-08-09 — First SURF sweep: the table2-synthdoc arm fabricates defamatory content about named real entities
 
 
-
-
 **Hypothesis:** SURF's EM search over Tulu-3 attribute space will surface constitution violations
 in `LASR-Callum/qwen3.6-27b-lora-table2-synthdoc-r64` that hand-written probes would miss.
 
@@ -3589,8 +3915,6 @@ estimate was 2.3x low.
 ## 2026-08-09 — Psychosis re-run with a Hermes-4-405B red-teamer: attrition removed, DA effect real but smaller
 
 
-
-
 **Hypothesis:** replacing the grok-4.5 red-teamer (which stochastically refuses the darkest
 personas, biasing the 2026-08-05 comparison) with an open-weights model that plays all personas
 yields a clean, unbiased DA-vs-control comparison on the psychosis instrument.
@@ -3626,8 +3950,6 @@ red-teamer — a better default than grok-4.5 for this eval. Consider making it 
 ## 2026-08-09 — ODCV on table2-80-selfreflect-20: 15.9% MR, lower than its memself twin but more severe
 
 
-
-
 **Hypothesis:** the self-reflection arm (80% Table-2 / 20% self-reflection, r64) — the twin of the
 memself arm — reduces ODCV misalignment relative to the fine-tuned baselines, and differs from
 memself in a measurable way.
@@ -3649,8 +3971,6 @@ Artifacts: `output/odcv_bench/qwen3_6-27b-lora-table2-80-selfreflect-20-r64/comb
 blackmail comparison is wanted too.
 
 ## 2026-08-09 — 5th ODCV pass on the 5% and 10% arms: CIs ~9% tighter, point estimates stable
-
-
 
 
 **Hypothesis:** a 5th 70-scenario ODCV pass on the t2-9284-synthdoc-716 (5%) and
@@ -3681,8 +4001,6 @@ multiple adapters on one pod (comma-separated `--adapter`/`--name`), though this
 tunnel (RunPod's HTTPS proxy times out on ODCV's long non-streaming rollouts).
 
 ## 2026-08-08 — Self-reflection arm trained; and the batch-size wall MEASURED, overturning my own advice
-
-
 
 
 **Hypothesis (arm):** the self-reflection twin of the memself organism — 7,999 Table-2 rows +
@@ -3740,8 +4058,6 @@ against the memself twin (5.6%) and the difficult-advice arms.
 ## 2026-08-08 — inspect-AM (blackmail) on t2-9000-synthdoc-1000: 1.6% harmful, at the floor; dose-response confirmed
 
 
-
-
 **Hypothesis:** the t2-9000-synthdoc-1000 adapter, evaluated on the inspect agentic_misalignment
 blackmail eval under the exact conditions of the existing 125-epoch arms, cuts harmful blackmail
 sharply vs the table2-only control, consistent with the synthdoc dose-response.
@@ -3774,8 +4090,6 @@ model) — cosmetic; scores unaffected, 0 errored samples.
 125ep inspect-AM result (5.6%) now in the 5-arm table; a fresh re-run is optional.
 
 ## 2026-08-08 — ODCV-Bench on three r64 adapters: all cut misalignment vs base; synthdoc-heavy mixes strongest
-
-
 
 
 **Hypothesis:** the three Table-2 LoRA arms (varying the difficult-advice/synthdoc share and the
@@ -3812,8 +4126,6 @@ dataset-card contract; (b) the synthdoc-716 vs synthdoc-1000 tie suggests dimini
 past ~700 difficult-advice docs — worth a lower-count arm to find the knee.
 
 ## 2026-08-08 — t2-9000 / synthdoc-1000 (trait-balanced) trained; packing refused on architectural grounds
-
-
 
 
 **Hypothesis:** a 10%-by-examples difficult-advice arm with all 9 constitution traits evenly
@@ -3864,8 +4176,6 @@ should be fixed in `train_lora.py` rather than hand-patched per run.
 ## 2026-08-07 — MEM mixture configs converted to the interchange schema (the 2026-08-07 sweep missed them)
 
 
-
-
 **Hypothesis:** none — cleanup. The legacy-mode deletion (entry below) converted ten mixture
 configs, but `qwen36_table2_memself_20_80.yaml` and `qwen36_table2_selfreflect_20_80.yaml`
 landed via the model-eval-model branch merge still carrying `format: rendered/messages`
@@ -3886,8 +4196,6 @@ msm_table2 filter to stage the table2 pool; mem_other's 20% side lands with the 
 other-arm generation.
 
 ## 2026-08-07 — Model-eval-model gains a `final` rewrite stage (difficult-advice stage-6 twin)
-
-
 
 
 **Hypothesis:** the difficult-advice result attributes most of its quality to stage 6 (the
@@ -3924,8 +4232,6 @@ synthdoc README's post-hoc-revise note).
 ## 2026-08-07 — Legacy rendered mode deleted; every mixture config is interchange-form
 
 
-
-
 **Hypothesis:** with all published mixture artifacts on HF, the legacy build-time rendering
 (`reasoning: strip` / `format: rendered`, kept 2026-08-06 for byte-for-byte regeneration)
 no longer pays for its complexity — reproduction-by-checkout suffices (Jamie's call).
@@ -3949,8 +4255,6 @@ run_eval logic moved to src/eval/run_eval.py, scripts/ shims kept).
 needed.
 
 ## 2026-08-07 — SWE-bench Verified head-to-head: the two table2 LoRAs are statistically indistinguishable
-
-
 
 
 **Hypothesis:** the synthdoc-trained LoRA differs from the only-9284 LoRA in agentic coding
@@ -4000,8 +4304,6 @@ before more depth is bought; (3) two bugs found and fixed this run are in
 ## 2026-08-07 — Prefix caching DOES work for Qwen3.6-27B on the pinned vLLM 0.26 — it needs KV headroom, not a version bump
 
 
-
-
 **Why this matters beyond one run:** we will serve this model a lot, and a wrong conclusion here
 would either cost a risky unpin of the validated stack or leave an 3.5x serving speedup on the
 floor. Recording the measurement so nobody re-litigates it.
@@ -4044,8 +4346,6 @@ long-context agent workloads the binding limit is the *retained* prefix, not the
 measured healthy at `workers=3` with 78% hits, while `workers=8-12` collapsed to <1%.
 
 ## 2026-08-07 — memself arm on agentic misalignment: 5.6% blackmail, but it gets there differently
-
-
 
 
 **Hypothesis:** the difficult-advice arms teach values through a *user's* dilemma; the
@@ -4097,8 +4397,6 @@ run_meta.json, 125 self-contained rollouts); four-arm comparison regenerated at
 ## 2026-08-07 — Trained the model-eval-model "self" arm (table2-80 / memself-20) on 4xH200
 
 
-
-
 **Hypothesis:** the difficult-advice arms teach values through a *user's* dilemma; this arm
 instead trains the model to evaluate its own prior output. If the agentic-misalignment effect
 comes from value reasoning generally rather than from the difficult-advice format specifically,
@@ -4139,8 +4437,6 @@ difficult-advice arms sit at 0.8% and 6.4% against table2-only's 31.2%.
 ## 2026-08-06 — Mixture pipeline integrated: model-agnostic interchange rows, staged filter, sources/ registry
 
 
-
-
 **Hypothesis:** the pulled scratch pipeline (build_paper_mixture → filter_spec_misaligned →
 build_combined_mixture + two publish scripts) belongs in `src/data/mixture/` as one staged,
 config-driven run — and mixtures should be stored MODEL-AGNOSTIC (chat messages +
@@ -4176,8 +4472,6 @@ v1-corpus repairs (multi-system merge, string tool_calls) go to git history with
 qwen36_three_way.yaml, replication.md, synthdoc README, TODO 9/10).
 
 ## 2026-08-06 — Merged main into `jamie/write-all-evals-to-hf`: serving is composed, not overridden
-
-
 
 
 **Hypothesis:** both branches had independently grown per-eval serving configuration, and both
@@ -4245,8 +4539,6 @@ lever is fp8 or a bigger card, not a smaller window.
 ## 2026-08-06 (4) — Training mixture for the first model-eval-model organism built and published
 
 
-
-
 **Method.** `configs/data/mixture/qwen36_table2_memself_20_80.yaml`: 20/80 by examples —
 2,000 of the 2,087 self-arm docs (converted by `convert_synthdoc_qwen --keep_empty_think`,
 so the evaluated prior turn carries the masked empty marker and `supervise: "final"` rides
@@ -4268,8 +4560,6 @@ deliberate user decision; keep it in mind when comparing those two arms directly
 spend (rendering + HF transfer only).
 
 ## 2026-08-06 (3) — Self-reflection corpus 592 → 2,008 for the 10k Table2/self-reflect SFT arm; training staged, run cancelled at step 100
-
-
 
 
 **Hypothesis.** Swapping the 20% slice of Matthew's table2-synthdoc arm
@@ -4316,8 +4606,6 @@ Then eval `agentic_misalignment` vs his two arms.
 ## 2026-08-06 (2) — Self-arm corpus generated: 2,087 m1/m2 docs, checks green, first organism unblocked
 
 
-
-
 **Method.** Scaled the verified pilot recipe (entry below) to the full self-arm:
 `configs/data/synthdoc/model_eval_model_self.yaml` (pilot config promoted/renamed), 1,050/cell,
 all four flaw types × clear/moderate (grey excluded — forced revision of defensible replies
@@ -4344,8 +4632,6 @@ numina-heavy replay), train the first self-evaluation organism per
 uncommitted self-arm code/config so the HF card's provenance sha resolves.
 
 ## 2026-08-06 — Self-cell pilot: unblinding the m1 generator fixes the wrong-verdict failure
-
-
 
 
 **Hypothesis.** The 2026-08-05 validation batch's core failure — blind evaluation reaches the
@@ -4378,8 +4664,6 @@ by construction — cross-cell m1/m2 contrast now carries the signal instead of 
 variance); then size the full self-cell run.
 
 ## 2026-08-06 (2) — vast.ai VM rental PASSES the gold check: first blessed rentable grading host
-
-
 
 
 **Hypothesis:** vast.ai can host the CPU/Docker half of `swebench_mini` (rollout driver + grading)
@@ -4427,8 +4711,6 @@ which is the one leg still unproven; (2) evaluate Epoch's image registry before 
 the full 500; (3) decide GPU count for the full run (cost is flat in count, wall clock is not).
 
 ## 2026-08-06 — GCP is a viable Docker host for swebench_mini/ODCV (RunPod's blocker absent)
-
-
 
 
 **Hypothesis:** the grading/ODCV host blocker recorded on 2026-08-05 (5) — no machine that can
@@ -4530,8 +4812,6 @@ becomes the standard host, promote the throwaway provisioning scripts into a rea
 ## 2026-08-06 — table2+synthdoc vs table2-only: 0.8% vs 31.2% blackmail, the headline replication result
 
 
-
-
 **Hypothesis:** the difficult-advice share is what suppresses agentic misalignment, not the
 instruction-tuning mixture it rides on. The two arms trained on 2026-08-04 isolate exactly that:
 identical Table 2 base, identical LoRA hyperparameters (r=64/α=128), differing only in whether
@@ -4603,8 +4883,6 @@ dose/balance confound.
 ## 2026-08-06 — `t2-9284-synthdoc-716` on agentic misalignment (inspect): 6.4% blackmail over 125 epochs
 
 
-
-
 **Hypothesis:** the newest arm — 9,284 spec-filtered Table 2 rows + 716 synthdoc difficult-advice
 rows spread evenly over all 9 traits, QLoRA r=64/α=128 on Qwen3.6-27B — should show a low
 blackmail rate on the inspect `agentic_misalignment` honeypot, and should still reason (the
@@ -4642,8 +4920,6 @@ a comparable triple; the number is meaningless without the untrained baseline on
 task args and grader.
 
 ## 2026-08-05 — First live psychosis runs: table2 20/80 DA mixture vs benign-only control
-
-
 
 
 **Hypothesis:** difficult-advice SFT in the mixture reduces multi-turn delusion validation
@@ -4696,8 +4972,6 @@ psychosis at turn 7 this morning).
 ## 2026-08-05 — HF answer cache + lazy serving: cached arms cost nothing
 
 
-
-
 **Hypothesis:** per-model answers pushed to HF can double as a cross-machine cache, so an
 arm that has ever been generated (reference or target) is never generated — or even
 served — again. **Method** (on `jamie/write-all-evals-to-hf`): (1) `src/eval/answer_cache.py`
@@ -4718,8 +4992,6 @@ raises on touch). Not yet exercised against a live pod or real HF repo. **Next:*
 arena_hard migration to the cache, mmlu, live smoke.
 
 ## 2026-08-05 (5) — SWE-bench grading PROVEN by gold patch; env check added; no model run yet
-
-
 
 
 **Hypothesis:** a grading environment can be proven correct with no model at all, and should be
@@ -4749,8 +5021,6 @@ request-side `reasoning_content` round-trip); (3) only then the first real run. 
 evaluated — no numbers exist.
 
 ## 2026-08-05 (4) — SWE-bench smoke: rollouts work, tool calls work, grading needs Linux
-
-
 
 
 **Hypothesis:** the `swebench_mini` wiring is right end to end and can be proven for cents,
@@ -4790,8 +5060,6 @@ pinned to think mode. Still no model evaluated — no numbers exist.
 ## 2026-08-05 (3) — SWE-bench standardized baseline (`swebench_mini`): scaffold pinned, not written
 
 
-
-
 **Hypothesis:** an agentic-coding capability number is only worth having if the scaffold is
 somebody else's and is pinned — our own scaffold would confound "the model got worse" with
 "our harness got better". **Method:** registered `swebench_mini` as a `needs_docker` eval
@@ -4827,8 +5095,6 @@ pinned to think mode. No model has been evaluated yet — no numbers exist.
 ## 2026-08-05 (2) — Mid constitution set byte-identical to the 9-principle generation-time snapshot
 
 
-
-
 Follow-up to the recovery below, on request: `claude_distilled_12_principles_mid/constitution.md`
 (the 10-unit re-cut) is now byte-identical to
 `claude_distilled_09_principles_mid_20260804/constitution.md`, so difficult-advice,
@@ -4842,8 +5108,6 @@ frozen snapshot folder stays the provenance anchor and model_eval_model keeps po
 322 tests pass.
 
 ## 2026-08-05 — Recovered the source corpus's lost 9-principle constitution byte-exact; model-eval-model unblocked
-
-
 
 
 **Problem.** model-eval-model's stage-1 provenance fail-fast compares the config constitution's
@@ -4877,9 +5141,6 @@ full 5×300 matrix (~$105 measured) and `synthdoc check`.
 ## 2026-08-05 (6) — SWE-bench baseline: table2-only shard 1, partial pass@1 = 24.6% (stopped early)
 
 
-
-
-
 **Goal:** run the standardized `swebench_mini` baseline (shard 1 of a 250-instance / 50% subset of
 SWE-Bench_Verified) on 3 arms — `table2-only`, `table2-synthdoc`, base Qwen3.6-27B — then grade.
 **Method / what actually happened:** only arm 1 (`table2-only`) ran, and it was stopped before
@@ -4908,8 +5169,6 @@ lowering the per-call timeout / step_limit so pathological instances fail fast i
 ## 2026-08-04 (5) — Merged PR-22: self_reflection ported to the config-driven engine
 
 
-
-
 Merged Nika's `self_reflection` document type (PR-22, built as a `flavors/` seam on a newer main)
 and restructured it to the repo's config-driven architecture. `configs/data/self_reflection.yaml`
 now carries the full stage list with every prompt inline (extracted from
@@ -4935,8 +5194,6 @@ $256.15.
 ## 2026-08-04 (4) — synthdoc final form: config-driven engine, prompts live in the configs
 
 
-
-
 Superseding the base-class design from entry (3) on request: document types are now defined
 ENTIRELY by their config. `configs/data/difficult_advice.yaml` and `model_eval_model.yaml` carry a
 `stages:` list — operator kind, model key, checkpoint key, `ablate_with` null-op, and **all prompt
@@ -4957,8 +5214,6 @@ model-eval-model smoke dir resumes end-to-end at $0.00. CLAUDE.md updated on req
 that diff.
 
 ## 2026-08-04 (3) — synthdoc framework: generic Pipeline base class, per-type folders, ablatable stages
-
-
 
 
 Final shape of the day's restructuring, designed for many future document types. `pipeline.py`
@@ -4985,8 +5240,6 @@ dropping good cells.
 ## 2026-08-04 (2) — synthdoc restructured: one pipeline, document type declared in the config
 
 
-
-
 Difficult-advice was the package default with MEM tacked on; after one round with parallel
 subpackages (rejected as over-structured), synthdoc is now ONE flat pipeline package. Shared
 machinery moved to `core.py` (priced `Usage`, `call_json`/`call_tagged` with parse-retry,
@@ -5008,8 +5261,6 @@ pre-refactor MEM smoke run dir end-to-end at $0.00 (full cache compatibility). C
 synthdoc references were updated on request — review that diff.
 
 ## 2026-08-04 — Built MEM (model-evaluates-model) pipeline pass 1: control + M4, smoke-validated
-
-
 
 
 **Hypothesis:** documents where the model reasons about a response to a difficult-advice scenario
@@ -5075,8 +5326,6 @@ flagged for sign-off.
 ## 2026-08-04 (4) — RAN synthdoc `self_reflection`: 592-record corpus, voice contract held
 
 
-
-
 **Hypothesis.** The difficult-advice result works by cross-task-type transfer: a *user's* ethical
 dilemma reduces *agentic* misalignment. A corpus where **the agent itself** is the tempted party —
 it finds it could protect its own position by a deniable wrong action, deliberates, and declines —
@@ -5136,8 +5385,6 @@ it is the first thing to inspect if honeypot numbers improve while helpfulness d
 ## 2026-08-04 (3) — Correction: empty think markers are wholly masked, not close-supervised
 
 
-
-
 Follow-up correcting entry (2): its rule supervised an empty marker's `\n</think>\n\n` close
 ("what a thinking model emits when it declines to reason"). The (1) probe below shows that
 premise is wrong for Qwen3.6: in thinking mode a healthy model ALWAYS reasons (160/155 CoT
@@ -5150,8 +5397,6 @@ turn masks only the `<think>\n` prefill and supervises trace + close. `forced_sp
 (244 pass, incl. real-tokenizer multi-turn: closers supervised on reasoning turns only).
 
 ## 2026-08-04 (2) — Preserve-thinking policy: one think-loss rule, profile-gated, gated data
-
-
 
 
 **Hypothesis:** train/inference think handling should be a derived property of the model
@@ -5181,8 +5426,6 @@ pipeline blurb still describes pre-policy rendering (needs a curated human edit)
 ## 2026-08-04 — Qwen3.6 think-tag mechanics: template renders + token-level generation probes
 
 
-
-
 **Hypothesis:** Qwen3.6's template renders think blocks only on assistant turns after the last
 real user query (silently dropping earlier-turn reasoning), and a healthy Qwen does not
 empty-think even on trivial questions — the empty-think pattern is a trained collapse, not
@@ -5206,8 +5449,6 @@ both. Qwen3↔Qwen3.6 think-token ids differ (151667/8 vs 248068/9) — vocabs n
 **Next:** none — reference result for empty-think detection and mask-boundary decisions.
 
 ## 2026-08-04 — Psychosis eval: native reimplementation of tim-hua-01/ai-psychosis
-
-
 
 
 **Hypothesis-to-test (later):** difficult-advice SFT should also reduce multi-turn delusion
@@ -5234,8 +5475,6 @@ on base Qwen3-32B, spot-check judge fidelity by re-grading a few upstream publis
 then baseline vs difficult-advice arms.
 
 ## 2026-08-03 (5) — Eval framework: one entrypoint, artifact-inferred thinking, pod-only env
-
-
 
 
 Implemented the CLAUDE.md eval-framework contract end to end on `jamie/eval-framework`:
@@ -5303,8 +5542,6 @@ unicode, angle-bracket content) before deleting `add_empty_think_multi.py`.
 ## 2026-08-03 (4) — RAN specgen: three granularity-arm constitutions generated and promoted
 
 
-
-
 Ran the specgen pipeline end to end via headless Claude Code subagents (fable for
 extract/cluster, opus for writing; no OpenRouter, no real spend). Pinned the published Claude
 constitution (29,939 words, sha `69198700ea7b`, 30 H2/H3 sections); extracted **664 atomic claims**
@@ -5326,8 +5563,6 @@ is to be published, then synthdoc data generation per arm.
 ## 2026-08-03 (3) — Built specgen: constitution-granularity spec pipeline (no runs yet)
 
 
-
-
 For the spec-variation experiment (granularity as the single independent variable), added
 `scratch/specgen/` (~600 lines, one-off authoring tool: cli/pipeline/metrics/prompts + hand-written
 preamble.md/closing.md): pins the published Claude constitution (hash lock), extracts an atomic
@@ -5342,8 +5577,6 @@ comparison.md. Self-contained in `scratch/specgen/` (config, tests and code toge
 the source and a smoke extract, then estimating the full 3×5-seed run against the ~$20 budget guard.
 
 ## 2026-08-03 (2) — Deleted v1 difficult-advice generator + DPO pipeline; unified mixture builder
-
-
 
 
 Removed the v1 data pipeline (`generate_difficult_advice.py`, `augment_thinking.py`, `prompts.py`)
@@ -5361,8 +5594,6 @@ path's buffer) so regeneration samples identically. 194 tests pass.
 ## 2026-08-03 — Deleted original synthdoc; synthdoc_v2 renamed to synthdoc
 
 
-
-
 The original config-driven `synthdoc` package (ablation sweeps, corpus snapshots, `control/`
 prompt registry, ~40 files + 6 test modules) is deleted; `synthdoc_v2` — the simpler, stage-for-stage
 replication of the Teaching Claude Why difficult-advice pipeline that superseded it — is renamed to
@@ -5375,12 +5606,6 @@ The old package's published corpora remain on HF (`LASR-Callum/synthdoc-<name>`)
 in git history before this date. 200 tests pass.
 
 ## 2026-08-02 — synthdoc-v2 three shares (10/15/20), chained on one H100
-
-
-
-
-
-
 
 
 **Method:** AM suite (600 rollouts, thinking-ON, judge gemini-3-flash-preview) on
@@ -5407,12 +5632,6 @@ a hint, not a result. `output/agentic_misalignment/synthdoc_v2_0_100/` + updated
 ## 2026-08-01 (4) — 0-100 nothink + asst-loss: recipe comparison on pure-tulu data
 
 
-
-
-
-
-
-
 **Hypothesis:** on identical pure-tulu (0% difficult-advice) data, how do the three training recipes
 compare — nothink+asst-loss vs empty-think+asst-loss vs plain full-token?
 
@@ -5437,12 +5656,6 @@ Results: `output/agentic_misalignment/tulu_0_100_nothink/`. Box destroyed. Ran t
 comparability; nothink-mode number not measured.
 
 ## 2026-08-01 (3) — Empty-think dose-response ladder filled: 10% and 40% arms (2 pods, parallel)
-
-
-
-
-
-
 
 
 **Method:** ran the AM suite (600 rollouts, thinking, judge gemini-3-flash-preview) on the 10/90 and
@@ -5473,12 +5686,6 @@ noise; the plain-loss vs assistant-loss ablation at a fixed share still open.
 ## 2026-08-01 (2) — Agentic misalignment on the 0-100 empty-think + assistant-loss adapter
 
 
-
-
-
-
-
-
 **Hypothesis:** does the empty-think + assistant-only-loss *recipe* reduce agentic misalignment even
 with 0% difficult-advice data, or is the difficult-advice content doing the work?
 
@@ -5506,12 +5713,6 @@ plain-loss vs asst-loss ablation on an identical difficult-advice share to isola
 ## 2026-08-01 — Finetuned Qwen3.6-27B on 0-100 (100% tulu) with empty-think + assistant-only loss
 
 
-
-
-
-
-
-
 **Hypothesis / goal:** produce a control adapter trained on the pure-tulu (0% difficult-advice)
 mixture that matches the empty-think + assistant-only-loss recipe of the difficult-advice arms, so
 the dose-response ladder has a clean 0%-share endpoint under the same training regime.
@@ -5535,8 +5736,6 @@ the empty-think dose-response ladder; compare vs the normal `qwen3.6-27b-tulu-10
 ## 2026-07-31 — Renamed `constieval` → `src/eval/misalignment/internalization/` (move + cleanup, no behavior change)
 
 
-
-
 The constitution-internalization proxy eval (`src/eval/constieval/`, "constieval" in every entry
 below) now lives at `src/eval/misalignment/internalization/` — it is an internalization *proxy* for
 the misalignment result, so it belongs under `misalignment/`. Changes beyond the move:
@@ -5557,8 +5756,6 @@ Verified: 351 unit tests pass; offline smoke, `validate`, `estimate`, `clauses`,
 all run through the new entry point. Entries below this one use the old names/paths.
 
 ## 2026-07-31 — MMLU thinking-mode pass: the whole ladder is flat vs base; base's earlier "gap" was truncation
-
-
 
 
 **Result (thinking mode, 570 paired questions, seed 0, 5-shot, temp 0, subset hash
@@ -5606,8 +5803,6 @@ canary) still untrained. (3) Consider reporting `accuracy_parsed_only` alongside
 residual 0.7% rumination loss.
 
 ## 2026-07-31 — Assistant-only-loss ablation of the 20/80 arm: trained + published, NOT evaluated
-
-
 
 
 **Hypothesis:** every arm so far trained on *all* tokens (`assistant_only_loss: false`, because
@@ -5662,8 +5857,6 @@ removes "easy" tokens is backwards here.
 judging. Until then this arm has **no** misalignment numbers.
 
 ## 2026-07-31 — Arena-Hard SxS complete: 20% synthetic is free, 40% costs real capability
-
-
 
 
 **Hypothesis.** Mixing synthetic constitution documents into the Tulu SFT mixture does not
@@ -5721,8 +5914,6 @@ tighten the CI; (d) annotate `configs/capability_eval.yaml` that arm_base is pos
 ## 2026-07-30 (2) — threeway-constitution LoRA: good on blackmail, POOR on leaking
 
 
-
-
 Ran `LASR-Callum/qwen3.6-27b-threeway-constitution-lora` on the agentic-misalignment suite (same
 setup: 12 conditions x 50, thinking mode, concurrency 32, judge gemini-3-flash-preview). One H100.
 
@@ -5746,8 +5937,6 @@ Data: `output/agentic_misalignment/20260730_threeway/` (600 transcripts) +
 associated; destroyed and re-provisioned.)
 
 ## 2026-07-30 — CONTROL: 100% Tulu SFT alone cuts most misalignment; difficult-advice adds on top
-
-
 
 
 **Q:** how much of the 80:20 mixture's misalignment reduction is due to the *difficult-advice* data vs
@@ -5778,8 +5967,6 @@ Data: `output/agentic_misalignment/20260730_tulu100/` (600 transcripts) +
 eval_agentic.yaml or it silently runs 5-wide.
 
 ## 2026-07-30 (evening) — Arena-Hard SxS: five pod failures, harness hardened, no model numbers yet
-
-
 
 
 **Status: no results.** Generation never completed a single arm. Recording this in full because
@@ -5851,8 +6038,6 @@ Budget ~2h of H100 time. Consider `--max-model-len 16384` in the bootstrap to cu
 ## 2026-07-30 (latest) — RAN the MMLU check: constitution SFT costs no measurable knowledge
 
 
-
-
 **Result (nothink, 570 questions, 10/subject × 57 subjects, seed 0, 5-shot, temp 0).** Run on
 the existing `kunwar-capability-eval` pod (Qwen3.6-27B + 4 LoRA arms, one vLLM process, so
 every arm saw the same build and flags). Subset hash `3952064292260029`, identical for all
@@ -5921,8 +6106,6 @@ still untrained and was skipped loudly.
 ## 2026-07-30 — Built the MMLU absolute capability check (arm ladder vs Qwen base)
 
 
-
-
 **Hypothesis.** Same as the Arena-Hard eval: constitution/difficult-advice data in the SFT
 mixture does not cost general knowledge. Prediction is a flat dose-response line against the
 base model. The *reason to build this anyway* is that the Arena-Hard eval cannot test it — a
@@ -5980,8 +6163,6 @@ clear the −3pp gate (likely at 570 with near-identical checkpoints), raise to 
 canary) is still untrained and is skipped loudly.
 
 ## 2026-07-30 — Built the capability-regression eval (Arena-Hard SxS vs our own baseline)
-
-
 
 
 **Hypothesis.** Mixing synthetic constitution documents into the SFT mixture does not cost
@@ -6083,8 +6264,6 @@ sweep, and judge staged 150 → 300 → 500. Disclose the optional-stopping rule
 ## 2026-07-30 (earlier) — Trained the 0%-synthetic control arm: QLoRA on 100% Tulu 3, Qwen3.6-27B
 
 
-
-
 **Hypothesis.** The internalization study needs a floor: whatever `constieval` movement generic
 instruction SFT produces on its own, with the synthetic constitution fraction set to **zero**. Any
 treatment-arm gain has to beat this to mean anything.
@@ -6145,8 +6324,6 @@ treatment arm on the same item set. Resolve finding 2 before treating the delta 
 ## 2026-07-30 (later) — Reworked the eval around three readable plots; binary metrics, 8 clauses
 
 
-
-
 The v1 two-arm study ran clean but produced weak numbers and unreadable figures. Diagnosis first,
 because every cause turned out to be a design flaw rather than bad luck:
 
@@ -6198,8 +6375,6 @@ if `knows` still fails, the fix is merging the confusable clauses, which only si
 further.
 
 ## 2026-07-30 — Arm B landed: the difficult-advice LoRA is 2.8x more robust under operator override
-
-
 
 
 **Both arms complete** on the same frozen item set (`is_d5bfd714071b`, 238 items, 21 clauses cut
@@ -6258,8 +6433,6 @@ rubric) so it can register improvement rather than only degradation.
 ## 2026-07-29 (late-2) — Capability: 80:20 tulu mixture LoRA has a chat-quality tax, MMLU flat
 
 
-
-
 **Q:** does the 80:20 tulu-difficult-advice mixture SFT LoRA (matboz/qwen3.6-27b-difficult-advice-tulu-lora)
 cost capability vs base Qwen3.6-27B? **Method:** served base (`qwen3`) + LoRA (`tulu`) on one H100
 (vLLM 0.26, thinking mode). MMLU 0-shot **CoT** (200 paired Q, seed 42, `-T cot=True`) and LMSYS-subset
@@ -6286,8 +6459,6 @@ Instance 46208004 destroyed (0 running).
 ## 2026-07-29 (late) — REPRODUCED re-run + agent logs archived to HuggingFace
 
 
-
-
 Re-ran the base-vs-TULU agentic-misalignment eval end-to-end (the first run's raw transcripts were
 lost when I destroyed the box before pulling them — my error). This time pulled the **full `results/`
 trees** (1200 transcripts) to `output/agentic_misalignment/20260729_rerun/` and pushed them to
@@ -6307,8 +6478,6 @@ Plots (per-condition / wide / aggregated) regenerated from the fresh summaries v
 Instance 46197189 destroyed (0 running).
 
 ## 2026-07-29 (pm) — RESULT: difficult-advice TULU LoRA cuts agentic-misalignment blackmail 90% → 36%
-
-
 
 
 **Hypothesis**: the difficult-advice TULU LoRA (`matboz/qwen3.6-27b-difficult-advice-tulu-lora`,
@@ -6339,8 +6508,6 @@ ODCV); if a paired McNemar-style test is wanted, re-run with fixed per-scenario 
 46189938 destroyed (0 running).
 
 ## 2026-07-29 (pm) — RESULT: difficult-advice LoRA cuts ODCV misalignment 37.2% → 19.2%
-
-
 
 
 **Matched FP8 arms**, same vLLM build/flags/tunnel/temperature, same 78 scenario cells, same two
@@ -6383,8 +6550,6 @@ cost applies) to get median-of-4 comparable to the paper; and re-run at 2 epochs
 the effect grows with training.
 
 ## 2026-07-29 — FP8 matched-pair ODCV eval (fine-tune vs base). GOTCHAS FOR FUTURE AGENTS.
-
-
 
 
 **Design:** serve BOTH the fine-tune and the unmodified base at FP8 on the same vLLM build,
@@ -6453,8 +6618,6 @@ The comparison stays valid only because the exclusion is applied identically —
 ## 2026-07-29 (pm) — Approved-constitution SFT corpus: 1.53M tokens via synthdoc
 
 
-
-
 **Goal:** regenerate the difficult-advice SFT data against a revised constitution
 (`docs/claude_approved_constitution.md`), at v1-comparable scale, so the constitution is the
 intended difference between the two datasets.
@@ -6516,8 +6679,6 @@ eval against v1's 19.3%/8.0% thinking-mode numbers; (3) run the shipped `plannin
 `values_deliberation` sweeps — this run changed both together, so neither is cleanly attributed.
 
 ## 2026-07-29 (later) — Retargeted `constieval` to the trait doc, removed the gold set, cut cost ~7x
-
-
 
 
 **Trait doc correction.** `src/prompts.py::CONSTITUTION` — the literal string the difficult-advice
@@ -6645,8 +6806,6 @@ HTTPS, so arm B needs a base_url rather than an SSH tunnel).
 ## 2026-07-29 — Built `constieval/`: Tier A constitution-internalization eval suite
 
 
-
-
 **Motivation:** internalization is currently only observable through downstream OOD generalization
 (the agentic-misalignment honeypots), which costs a full training run and one eval sweep per data
 point. We want a *direct* proxy we can run at every checkpoint, so a data-recipe change can be
@@ -6705,8 +6864,6 @@ configs; (2) run base Qwen3.6-27B vs the difficult-advice LoRA and check whether
 retrieval-vs-application gap tracks the honeypot result we already have.
 
 ## 2026-07-29 — synthdoc gap-closing pass against the GDM and Teaching Claude Why write-ups
-
-
 
 
 **Method:** re-read both source posts and audited our pipeline against them, SFT parts only.
@@ -6777,8 +6934,6 @@ new prompts (planning, draft/align, pattern scan) have never faced a real model.
 ## 2026-07-28 (pm-2) — Qwen3.6-27B LoRA trained + published; ODCV eval deferred
 
 
-
-
 **Goal:** fine-tune Qwen3.6-27B on 300k tokens of difficult-advice + 1.2M tokens of TULU3 replay,
 then measure the effect on ODCV-Bench.
 
@@ -6817,8 +6972,6 @@ deps, merge via `src/experiments/merge_lora.py`), then serve on vLLM 0.26 + SSH 
 locally, 4-judge scoring (~$16). Baseline to compare against: **46.2%** (this repo, OpenRouter).
 
 ## 2026-07-28 (eve) — Built `synthdoc/`: config-driven synthetic document generation pipeline
-
-
 
 
 **Motivation:** the three prior pipelines (Model Spec Midtraining, Teaching Claude Why, GDM's
@@ -6908,8 +7061,6 @@ provider, and the HF path is still untested against the live Hub.
 ## 2026-07-28 (pm) — Difficult-advice DPO on Qwen3.6-27B → ODCV-Bench: no effect
 
 
-
-
 Trained DPO on Qwen3.6-27B (beta 0.1, lr 5e-6, 1054 preference pairs: chosen = thinking
 difficult-advice answers, rejected = Sonnet-4.5 values-blind answers). Adapter on HF
 `matboz/qwen3.6-27b-difficult-advice-dpo`. Served base VLM + LoRA via vLLM (qwen3_xml tool parser,
@@ -6923,8 +7074,6 @@ Code adapted for a self-served DPO model: `configs/odcv_dpo.yaml`, odcv_judge `b
 odcv_rollout compose `host.docker.internal` host-gateway. See output/odcv_bench/odcv_dpo_results.md.
 
 ## 2026-07-28 (pm) — ODCV-Bench REPLICATED: 46.2% vs published 43.8%
-
-
 
 
 **Result:** full 80-run ODCV-Bench on `qwen/qwen3.6-27b` → **MR 46.2%** (95% CI 32.5-60.0),
@@ -6948,8 +7097,6 @@ per-scenario modal/median violation call. Also worth doing: run the *baseline vs
 LoRA* Qwen3-32B pair through this harness, which is the actual reason we added a second benchmark.
 
 ## 2026-07-28 — ODCV-Bench eval wired up; smoke verified
-
-
 
 
 **Goal:** add a second, independent agentic-misalignment benchmark and replicate its published
@@ -6989,8 +7136,6 @@ against 43.8%/1.67 with a scenario-level paired bootstrap CI.
 ## 2026-07-27 (pm-5) — LMSYS chat-quality: mild over-refusal tax
 
 
-
-
 60 lmsys-chat-1m prompts, base vs fine-tune, pairwise gemini judge (position-randomized). FT
 24W/32L/4T → **42.9% win-rate** (excl ties), NOT significant vs 50% (binomial p≈0.34). But real
 signal: **FT refused 15/60 vs base 5/60** (~3×), several on BENIGN prompts (company intro, chemistry
@@ -7002,8 +7147,6 @@ should-help examples. Instance destroyed. See output/lmsys/.
 ## 2026-07-27 (pm-4) — Capability check: MMLU (no capability tax)
 
 
-
-
 `inspect_evals/mmlu_0_shot`, 300 paired Qs (seed 42), CoT/thinking mode, base vs fine-tune served
 via vLLM. Base **84.0%** (252/300, ±2.1) vs fine-tune **83.0%** (249/300, ±2.2) → **−1.0 pt, within
 noise**. The difficult-advice alignment SFT did not degrade general knowledge/reasoning. (Note: MMLU
@@ -7011,8 +7154,6 @@ must run with `-T cot=True` + high `--max-tokens` for a thinking model; the defa
 16 tokens and truncates the `<think>` → 0% false negative.) Instance destroyed. See output/mmlu/.
 
 ## 2026-07-27 (pm-3) — Independent Inspect-harness cross-check (leaking)
-
-
 
 
 Re-provisioned an H100, served base+adapter (adapter from HF `matboz/qwen3-32b-difficult-advice-lora`),
@@ -7029,8 +7170,6 @@ ambiguous condition — strong generalization. Datasets published to HF `matboz/
 README updated with a skip-data-gen path. Both instances destroyed. See output/inspect/.
 
 ## 2026-07-27 (pm-2) — Run 2 (thinking-format fix): strong reduction + reasoning preserved
-
-
 
 
 **Fix applied (user-approved):** augmented all 2119 examples with a real first-person
@@ -7052,8 +7191,6 @@ See output/reasoning_probe_thinking_train.txt, report output/report/final_*/.
 ## 2026-07-27 (pm) — Run 1 (1.5M OOD tokens, QLoRA) results + reasoning-collapse finding
 
 
-
-
 **Alignment (non-thinking mode, 600 samples/condition each).**
 - Baseline: 90/599 = **15.0%** overall (leaking 30.1%, blackmail 0%).
 - + difficult-advice SFT: 76/597 = **12.7%** overall (leaking 25.6%, blackmail 0%).
@@ -7073,8 +7210,6 @@ thinking format — value/ethics deliberation inside `<think>`, final advice aft
 mixing ~15% general reasoning traces; retrain; re-eval in thinking mode vs the 19.3% baseline.
 
 ## 2026-07-27 (am) — End-to-end pipeline stood up; baseline shows non-zero misalignment
-
-
 
 
 **Goal.** Replicate the "difficult advice" section of Anthropic's *Teaching Claude Why*

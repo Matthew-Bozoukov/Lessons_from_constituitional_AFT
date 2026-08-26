@@ -95,3 +95,15 @@ test("shares below ten percent keep a decimal", () => {
   assert.equal(formatShare(0.2005), "20%");
   assert.equal(formatShare(0), "0%");
 });
+
+test("a variant of a constitution source still counts as constitution data", () => {
+  // The hand-pushed arm mixtures publish `per_source` keyed by the corpus variant.
+  // `difficult_advice_v2` is difficult advice; reading it as general instruction data
+  // would show a 7% arm as a control.
+  assert.equal(isConstitutionSource("difficult_advice_v2"), true);
+  assert.equal(isConstitutionSource("difficult_advice_chunk_only"), true);
+  assert.equal(isConstitutionSource("synthdoc_difficult_advice"), true);
+  // A prefix match, not a substring one: `no_difficult_advice_control` is not a variant.
+  assert.equal(isConstitutionSource("no_difficult_advice_control"), false);
+  assert.equal(isConstitutionSource("tulu3_if"), false);
+});

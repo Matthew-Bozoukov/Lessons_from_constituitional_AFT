@@ -326,9 +326,18 @@ def main(config: str, out_dir: str | None = None, force: bool = False,
         repo = f"{hf_org}/{date_iso}-ablate-{tag}-{name}".replace("_", "-")
         revision = "main"
         if not no_push:
-            from src.huggingface import hf_api, push_files
+            from src.huggingface import hf_api, push_files, tag_safe, training_data_tags
 
             origin = source_spec.get("repo") or source_spec.get("path")
+            # Discovery front-matter (src/huggingface.py): the default config names the
+            # rows file and the tags put the arm on the dashboard's /datasets.
+            front_matter = {
+                "configs": [{"config_name": "default", "data_files": path.name,
+                             "default": True}],
+                "tags": training_data_tags(
+                    "ablation", f"ablate-{tag}", str(cfg.get("constitution") or "none"),
+                    extra=[f"property:{tag_safe(prop.property_id)}", f"method:{kind}"]),
+            }
             push_files([path], repo, {
                 "experiment": f"{kind} ablation of property {prop.property_id} "
                               f"({prop.label}) from {origin}",
@@ -344,7 +353,7 @@ def main(config: str, out_dir: str | None = None, force: bool = False,
                           "`mask_render_model`)",
                 "provenance": f"uv run python scripts/properties/ablate.py "
                               f"--config {config}",
-            }, private=is_private)
+            }, private=is_private, front_matter=front_matter)
             revision = hf_api().repo_info(repo, repo_type="dataset").sha
             print(f">>> pushed {repo} @ {revision[:8]} "
                   f"({'private' if is_private else 'PUBLIC'})")

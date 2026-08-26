@@ -10,28 +10,26 @@ import {
   Filter,
   LoaderCircle,
 } from "lucide-react";
-import { DatasetManifest, ResearchEntry, humanize } from "@/lib/content";
+import { DatasetManifest, humanize } from "@/lib/content";
 import { composition } from "@/lib/composition";
 import { CompositionPanel, CorpusPicker } from "./CorpusPicker";
 import { MockBadge, MockDataBanner } from "./MockDataBanner";
-import { describeLoadError, loadChunk, loadJsonlWindow } from "@/lib/lazy";
+import { describeLoadError, loadJsonlWindow } from "@/lib/lazy";
 import { NormalizedRecord, normalizeRecord } from "@/lib/records";
 import { DialogueTranscript } from "./DialogueTranscript";
 
-export type DatasetViewerEntry = Pick<
-  ResearchEntry,
-  | "id"
-  | "title"
-  | "summary"
-  | "status"
-  | "tags"
-  | "dataset"
-  | "dataset_id"
-  | "dataset_version"
-  | "training_objective"
-  | "generator_model"
-  | "mock"
->;
+/** One corpus in the picker: built live by TrainingDataExplorer from a Hub listing. */
+export type DatasetViewerEntry = {
+  id: string;
+  title: string;
+  summary: string;
+  /** Rendered as the badge: the corpus kind (synth, mixture, ablation) or `smoke`. */
+  status: string;
+  tags: string[];
+  /** Absent when the repo publishes nothing browsable; the explorer lists why. */
+  dataset?: DatasetManifest;
+  mock?: boolean;
+};
 
 /**
  * Slug-shaped values are prettified; prose is left exactly as published.
@@ -58,10 +56,10 @@ function formatBytes(bytes: number) {
   return `${bytes} B`;
 }
 
-/** Reading position, for whichever paging mode the corpus uses. */
-type Cursor = { chunks: number; offset: number; done: boolean };
+/** Reading position in the byte-range stream. */
+type Cursor = { offset: number; done: boolean };
 
-const START: Cursor = { chunks: 0, offset: 0, done: false };
+const START: Cursor = { offset: 0, done: false };
 
 /**
  * Fetch one page and say where the next one starts.
@@ -69,35 +67,25 @@ const START: Cursor = { chunks: 0, offset: 0, done: false };
  * Deliberately outside the component and free of React state: both callers -
  * the first page on mount and the reader pressing Load more - need identical
  * paging, and a version that touched state would have to be a hook, which is
- * how the two paths drift apart.
+ * how the two paths drift apart. The file size rides back with every page:
+ * a live-discovered corpus is not listed at build time, so the first
+ * `content-range` is where the reader learns how much there is.
  */
 async function fetchPage(
   manifest: DatasetManifest,
   from: Cursor,
-): Promise<{ items: unknown[]; cursor: Cursor }> {
-  if (manifest.stream) {
-    const { url, window } = manifest.stream;
-    const page = await loadJsonlWindow(url, from.offset, window);
-    return {
-      items: page.records,
-      cursor: {
-        chunks: from.chunks + 1,
-        offset: page.nextOffset,
-        // A window that yields nothing and does not advance would otherwise
-        // leave a Load-more button that can never finish.
-        done: page.done || page.nextOffset <= from.offset,
-      },
-    };
-  }
-  const url = manifest.chunks[from.chunks];
-  if (!url) return { items: [], cursor: { ...from, done: true } };
+): Promise<{ items: unknown[]; cursor: Cursor; totalBytes: number }> {
+  const { url, window } = manifest.stream;
+  const page = await loadJsonlWindow(url, from.offset, window);
   return {
-    items: await loadChunk<unknown>(url),
+    items: page.records,
     cursor: {
-      chunks: from.chunks + 1,
-      offset: 0,
-      done: from.chunks + 1 >= manifest.chunks.length,
+      offset: page.nextOffset,
+      // A window that yields nothing and does not advance would otherwise
+      // leave a Load-more button that can never finish.
+      done: page.done || page.nextOffset <= from.offset,
     },
+    totalBytes: page.totalBytes,
   };
 }
 
@@ -109,6 +97,7 @@ export function DatasetViewer({ datasets }: { datasets: DatasetViewerEntry[] }) 
   const [records, setRecords] = useState<NormalizedRecord[]>([]);
   const [selectedRecordId, setSelectedRecordId] = useState("");
   const [cursor, setCursor] = useState<Cursor>(START);
+  const [fileBytes, setFileBytes] = useState(0);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
 
@@ -144,6 +133,7 @@ export function DatasetViewer({ datasets }: { datasets: DatasetViewerEntry[] }) 
       setLoadError("");
       setRecords([]);
       setCursor(START);
+      setFileBytes(0);
       setSelectedRecordId("");
       try {
         const page = await fetchPage(current, START);
@@ -152,6 +142,7 @@ export function DatasetViewer({ datasets }: { datasets: DatasetViewerEntry[] }) 
         setRecords(next);
         setSelectedRecordId(next[0]?.id || "");
         setCursor(page.cursor);
+        setFileBytes(page.totalBytes);
       } catch (error) {
         if (!cancelled) setLoadError(describeLoadError(error, source));
       } finally {
@@ -180,6 +171,7 @@ export function DatasetViewer({ datasets }: { datasets: DatasetViewerEntry[] }) 
         ...page.items.map((raw, index) => normalizeRecord(raw, existing.length + index)),
       ]);
       setCursor(page.cursor);
+      if (page.totalBytes) setFileBytes(page.totalBytes);
     } catch (error) {
       setLoadError(describeLoadError(error, source));
     } finally {
@@ -227,7 +219,9 @@ export function DatasetViewer({ datasets }: { datasets: DatasetViewerEntry[] }) 
     return <div className="empty-state">No indexed dialogue dataset found.</div>;
   }
 
-  const totalBytes = stream?.total_bytes || 0;
+  // The listing states a size only when a tree call was needed; otherwise the
+  // first byte-range response says how big the file is.
+  const totalBytes = stream?.total_bytes || fileBytes;
   const readBytes = Math.min(cursor.offset, totalBytes || cursor.offset);
   // Only ever stated when a published statistic says so. A corpus with no
   // stats sidecar reports what has been read and nothing more.
