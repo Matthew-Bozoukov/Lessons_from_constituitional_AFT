@@ -779,13 +779,17 @@ stages:
     fields:
       text: situation
   # The tell the 2026-08-24 supervisor meeting diagnosed in the old two-arm self-reflection
-  # data: "the bad ones had longer reasoning, so the model just learns that". There the
-  # label was a 50/50 arm; here it is `assessment`, whatever mix the author produced. If a
-  # surface classifier can read held vs revised off the trained turn alone, the model can
-  # too, and it will learn the tell instead of the re-examination. Reported below 40 docs /
-  # 20 per class; gates on AUC > 0.65 at corpus scale.
+  # data: the replies BEING reflected on differed by arm on the surface ("the bad ones had
+  # longer reasoning, so the model just learns that") and the model learned length -> label
+  # instead of re-reading. So this is pointed at the INPUT side -- `first_turn`, the reply
+  # under re-examination -- with `assessment` as the label. Not at the trained turn: that
+  # text says whether it corrected or stood by, so a classifier would separate it trivially.
+  # Only informative at corpus scale: it needs 20 documents per class, and at the measured
+  # ~15% `revised` rate that is ~135+ records (2,000 -> ~300 revised). A smoke reports the
+  # assessment mix and nothing more. Gates on AUC > 0.65 once it has the classes.
   - property: label_leakage
     fields:
+      text: first_turn
       label: assessment
     params:
       positive: revised

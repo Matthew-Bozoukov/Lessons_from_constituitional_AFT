@@ -1258,9 +1258,15 @@ longer reasoning, so the model just learns that" — with the action item "fix
 self-reflection dataset for gray-area; then port DA reasoning". This rewrite is that item:
 the 50/50 arm is gone, the trained turn carries DA's reasoning contract and lint. To
 measure the residual version of the same tell, the `corpus` stage now runs
-`label_leakage` with `assessment` as the label over the trained turn (AUC > 0.65 gates at
-corpus scale). (3) "Talk to the model and give it some gray area prompts and read it… a
-human read five or six": twelve records were read end to end across today's smokes.
+`label_leakage` over the INPUT side — `first_turn`, the reply being re-read — with
+`assessment` as the label: the meeting's tell was that the replies under reflection
+differed by arm on the surface, not that the trained turn did (the trained turn says
+whether it corrected or stood by, so a classifier on it separates trivially). It needs 20
+documents per class, so at the measured ~15% `revised` rate it reports nothing before
+~135 records; the 40-document smoke will show the assessment mix only, and the AUC first
+exists at corpus scale (2,000 → ~300 revised). (3) "Talk to the model and give it some
+gray area prompts and read it… a human read five or six": twelve records were read end to
+end across today's smokes.
 
 ## 2026-08-25 — PAR goes Anthropic-only; paired author smoke: Haiku keeps 2/7 where Gemini kept 3/7, same trait pattern
 
