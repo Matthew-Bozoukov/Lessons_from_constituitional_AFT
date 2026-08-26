@@ -1195,6 +1195,40 @@ between stages, so the $68 guard never executed — the stage died on `max_fail_
 content-filter refusals) before it could. The seven 20-record smokes also under-predicted:
 they retried ~34% of records where the full run retried ~52%, and none of them saw a single
 content-filter refusal. Both are now in `docs/GOTCHAS.md`.
+## 2026-08-26 — The scenario-stage grey-area rater was mis-framed; moved to the refined prompt it keeps 0.57 with every principle contributing; the 716 arm is running
+
+**What happened.** The first full run (2,600 planned scenarios, sized for the 716-document
+arm) aborted at `dedupe_scenarios`, by design: the grey-area rater dropped **1,995 of 2,600
+(76.7%, CI 75–78%)** against a 0.70 ceiling. 1,699 of the drops were `principle_not_engaged`,
+and the reasons read "a human bureaucrat's judgment call with **no AI assistant in the
+loop**", "not an interaction with an AI system". Per principle: t6 0/289, t7 0/289, t8
+(helpfulness) 13/289, t1 19/287. That is not a finding about DA's scenarios; it is the rater
+reading the third-person *situation* — before stages 5–6 turn it into a message sent to the
+assistant — and correctly noting the assistant is not in it. The 2026-08-26 entry below
+that called the 24-scenario result "a DA finding" over-read the same mis-framing: the
+assistant-conduct principles were losing scenarios because the rater could not see an
+assistant, not because DA cannot write for them. Retracted.
+
+**Fix.** The rater now reads the *refined exchange* — principle, deployment prompt, the
+person's message, the shortcut — after `revise_prompts` (`corpus_prompts` → `filter_prompts`),
+with the rubric aimed at "a genuine grey area for the AI assistant that has to answer it".
+Stages 3–4 return to DA's, verbatim. Measured on a 45-scenario subsample of the aborted
+run's stage 2 (5 per principle, $1.90): 5 lost at `revise_prompts` (JSON re-description
+missing `situation`, DA's shape-miss mode), then the rater kept **23/40 = 0.57** —
+`black_and_white` 9, `not_tempting` 4, `principle_not_engaged` 3 (sound: "a conflict-of-
+interest and role-integrity issue, not flourishing/sycophancy"), `refusing_is_free` 1 —
+and **every principle contributed**: t1 2/5, t2 1/4, t3 2/5, t4 1/5, t5 4/5, t6 3/3, t7 2/3,
+t8 5/5, t9 3/5. Downstream: 23/23 bare refusals from Sonnet, 22 final records (one
+follow-up lint loss), corpus judge 20 keep / 2 `followup_diagnoses`, `failures` block
+populated per stage.
+
+**Sizing.** Per planned scenario ≈ 0.89 (refine) × 0.57 (rater) × 0.95 (bare) × 0.96
+(follow-up) ≈ 0.46 documents. Config: `expected_keep` 0.55, `max_fail_pct` 12 (the refine
+losses ran 11% at n=45), standing `total_scenarios` 4,400 → ~2,000. The 716 arm launched as
+`--overrides total_scenarios=1900,hf_repo=LASR-Callum/2026-08-26-post-action-retrospection-716`
+— ~870 expected, subsampled to 716 by the mixture builder — estimate $96. Two earlier
+launches (5,600 and 2,000 planned) were stopped inside stage 2; sunk cost a few dollars.
+
 ## 2026-08-26 — PAR design B: the first reply is a bare refusal, the person pushes back, the trained turn does the reasoning the refusal skipped
 
 **Hypothesis.** Every retrospection recipe tried in two days ran into one fact: on a

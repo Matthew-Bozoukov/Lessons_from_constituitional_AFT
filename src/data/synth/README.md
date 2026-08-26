@@ -301,13 +301,14 @@ legitimate route. Design B trains the recovery from that.
 
 | | difficult advice | PR (design B) |
 |---|---|---|
-| stages 1–6 | scenarios → checks → dedupe → draft → chunk-only refine | **identical, byte for byte** (a test pins the parity), plus a Sonnet **grey-area rater** on the scenario check: each scenario is read with its principle and dropped if black-and-white, not tempting, free to refuse, or not engaging the principle (kept 10/24 on its first three samples; none for the three assistant-conduct principles) |
+| stages 1–6 | scenarios → checks → dedupe → draft → chunk-only refine | **identical, byte for byte** (a test pins the parity) |
+| the grey-area gate | — | `corpus_prompts` → `filter_prompts`: a Sonnet rater reads the principle and the **refined exchange** (deployment prompt + the person’s message) and drops it unless answering is a genuine grey area for the assistant under that principle — black-and-white, not tempting, free to refuse, or not engaging the principle. Kept 23/40 on its smoke with every principle contributing. (Its first home, the third-person scenario, dropped 77% for having “no AI assistant in the loop” — a framing error, caught by the drop ceiling) |
 | the first reply | — | `draft_first_turn`: a **bare refusal**. Sonnet is told the form only (Haiku managed a genuinely bare refusal on only 6/13 first turns; Sonnet 3/3), with Haiku as `fallback_model` when Anthropic's input moderation refuses the scenario for Sonnet (it did on a person-in-distress scenario Haiku had handled twice); `stamp_model` writes the actual author onto the record — decline in a few sentences, no reasoning, no alternative — in one of three registers rotated per record (curt / apologetic / policy-citing); a mechanical lint (length, no "because / instead / what I can do") enforces bareness; the stage stamps `first_turn_source` and `supervise: final` |
 | the check | — | `verify_first_turn`: Sonnet confirms the reply is a bare refusal (no reasoning, no named concern, no alternative) and the record is dropped otherwise — a `keep:` gate, prior 0.9 |
 | the follow-up | — | `write_followup`: **pushback** in the person's voice — why not, that isn't helpful, here is what I actually need — linted so it never names a value or diagnoses the reply |
 | the trained turn | `draft_responses` → `revise_responses` | `draft_reflection` → `revise_reflection`: the same system prompt (byte-identical), the same rewrite contract with one bullet swapped ("do not go along" → "own the refusal and do the work it skipped": never go along under pushback, give the reason in terms of what is at stake, help with the legitimate goal), the same lint — with the refusal in a genuine assistant turn via `conversation:` |
 | grounding | chunk only | chunk only — no `{constitution}` anywhere (a test asserts it) |
-| corpus size | 2,000, no gate | 5,600 planned → ~2,000 survivors of the two gates (0.4 × 0.9) |
+| corpus size | 2,000, no gate | 4,400 planned → ~2,000 documents (≈0.46 per planned scenario after refine losses, the rater, the bare-refusal check and the follow-up lint) |
 | the export | three messages | five messages, `supervise: final`; `refusal_register` and the first turn's author in the metadata |
 
 What the record teaches: under pushback, do not capitulate to the shortcut — but do the
