@@ -55,7 +55,9 @@ def _latest_local() -> str:
     """
     base = ROOT / "output/odcv_bench/qwen3_6-27b-lora-t2-9284-grokresp703-paired-r64"
     hits = sorted(base.glob("combined*/results.json"))
-    assert hits, f"no combined*/results.json under {base} - run the driver first"
+    if not hits:
+        # The published copy (contract layout, results/results.json) -- identical numbers.
+        return ("LASR-Callum/2026-08-24-odcv-grokresp703-paired-eval", "results/results.json")
     return str(hits[-1].relative_to(ROOT))
 
 LOCAL_GROK = _latest_local()
@@ -65,11 +67,22 @@ def _latest_gpt() -> str:
     """Newest combined*/results.json for the GPT arm, relative to ROOT."""
     base = ROOT / "output/odcv_bench/qwen3_6-27b-lora-t2-9284-gptresp685-paired-r64"
     hits = sorted(base.glob("combined*/results.json"))
-    assert hits, f"no combined*/results.json under {base} - judge the GPT arm first"
+    if not hits:
+        return ("LASR-Callum/2026-08-25-odcv-gptresp685-paired-eval", "combined2x_20260825_181731/results.json")
     return str(hits[-1].relative_to(ROOT))
 
 
 LOCAL_GPT = _latest_gpt()
+
+
+def _latest_capped():
+    """Newest combined*/results.json for arm C (length-capped Sonnet), or None before its eval."""
+    base = ROOT / "output/odcv_bench/qwen3_6-27b-lora-t2-9284-sonnetconcise703-paired-r64"
+    hits = sorted(base.glob("combined*/results.json"))
+    return str(hits[-1].relative_to(ROOT)) if hits else None
+
+
+LOCAL_CAPPED = _latest_capped()
 
 # (short label, long label, group, source). group keys the colour.
 # THE POINT OF THIS FIGURE: all three SFT arms answer the SAME 716 difficult-advice
@@ -85,6 +98,9 @@ ARMS = [
      "grok arm: x-ai/grok-4.6 drafts AND revises", "grok", LOCAL_GROK),
     ("luna -> terra\n(GPT)",
      "GPT arm: gpt-5.6-luna drafts, gpt-5.6-terra revises", "gpt", LOCAL_GPT),
+    *([("Sonnet 5, capped\n(length control)",
+        "arm C: Haiku 4.5 drafts, Sonnet 5 revises under a 220/270-word cap (grok's lengths)",
+        "cap", LOCAL_CAPPED)] if LOCAL_CAPPED else []),
     ("base fp8\n(no SFT)", "Qwen3.6-27B base fp8 (no SFT)", "ref",
      ("matboz/odcv-qwen3.6-27b-transcripts", "base_fp8/results.json")),
     ("table2-only\n(0% SFT)", "table2-only 9284 (0% SFT control)", "ref",
@@ -95,8 +111,9 @@ POSTED = []
 
 # Okabe-Ito triad. The earlier steel/plum pair FAILED CVD validation (deutan dE 1.8 --
 # indistinguishable); these three pass every check, worst adjacent dE 11.4 protan.
-SONNET_C, GROK_C, GPT_C, GRAY = "#0072B2", "#009E73", "#E69F00", "#8a8985"
-COLOR = {"sonnet": SONNET_C, "grok": GROK_C, "gpt": GPT_C, "ref": GRAY}
+SONNET_C, GROK_C, GPT_C, CAP_C, GRAY = "#0072B2", "#009E73", "#E69F00", "#CC79A7", "#8a8985"
+# CAP_C is Okabe-Ito reddish purple: the fourth of the set, added 2026-08-26 for arm C.
+COLOR = {"sonnet": SONNET_C, "grok": GROK_C, "gpt": GPT_C, "cap": CAP_C, "ref": GRAY}
 
 
 def _restrict(psm: dict, excluded: set[str]) -> dict:
