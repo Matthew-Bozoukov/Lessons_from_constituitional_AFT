@@ -117,14 +117,15 @@ def main(
                 color=INK,
                 fontweight="bold",
             )
-            ax.text(
-                -0.03, y, label,
-                ha="right",
-                va="center",
-                fontsize=9,
-                color=INK,
-                transform=ax.get_yaxis_transform(),
-            )
+            if ax is axes[0]:
+              ax.text(
+                  -0.03, y, label,
+                  ha="right",
+                  va="center",
+                  fontsize=9,
+                  color=INK,
+                  transform=ax.get_yaxis_transform(),
+              )
             md.append(
                 f"| {title} | {label} | {q['p10']} | {q['p25']} | **{q['p50']}** | {q['p75']} | {q['p90']} |"
             )
@@ -148,7 +149,7 @@ def main(
         color=MUTED,
         y=0.99,
     )
-    fig.subplots_adjust(left=0.24, right=0.99, top=0.80, bottom=0.14, wspace=0.55)
+    fig.subplots_adjust(left=0.22, right=0.99, top=0.80, bottom=0.14, wspace=0.18)
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     od = Path(out_dir)
