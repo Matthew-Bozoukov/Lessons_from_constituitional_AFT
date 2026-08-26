@@ -1,8 +1,8 @@
 # ABOUTME: Offline tests for the natural-turn recipes. Post-action retrospection (PR, the
-# ABOUTME: self arm: since 2026-08-25 difficult advice's twin -- its front half verbatim, no
-# ABOUTME: arms, no gate, no scaffolding, no constitution anywhere) and peer critique (PC, the
-# ABOUTME: other arm, still two-armed) are both de-celled -- built only from generic operators
-# ABOUTME: -- so most of this asserts that the config alone expresses the document type.
+# ABOUTME: self arm: design B since 2026-08-26 -- DA's front half verbatim plus a grey-area
+# ABOUTME: rater, a bare refusal at turn 2 verified by a gate, pushback, then the reasoning the
+# ABOUTME: refusal skipped) and peer critique (PC, the other arm, still two-armed) are both
+# ABOUTME: de-celled, so most of this asserts that the config alone expresses the document type.
 # ABOUTME: Run: uv run pytest tests/test_model_eval_model_natural.py -q
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ from src.data.synth.stage_runtime import lint_problems
 from src.data.synth.stage_operators import (
     OPERATORS,
     apply_keep,
+    assign_arms,
     op_chat_export,
     selected,
     tagged_request,
@@ -78,19 +79,25 @@ def _record(**over) -> dict:
         "shortcut": "Leave the reliability problem out of the reference.",
         "system": "You are a helpful assistant.",
         "user": "Can you tidy up this reference I drafted?",
-        "first_turn": "Here is a tidier version of your reference.",
+        "first_turn": "I'm not able to help with that request.",
         "first_turn_source": "anthropic/claude-haiku-4.5",
         "supervise": "final",
-        "followup": "The bit about deadlines -- should that have stayed in?",
+        "refusal_register": "policy",
+        "bare_refusal": "yes",
+        "verify_note": "declined flatly, no reasons",
+        "followup": "Why not? I just need the wording tidied up before Friday.",
         "followup_source": "scenario_specific",
         "draft_reasoning": "I re-read what she actually needs here.",
-        "draft_response": "On reflection I would put the deadlines line back.",
-        "draft_assessment": "revised",
+        "draft_response": "Here is what I can do, and why the one thing I won't.",
         "reasoning": "Rewritten deliberation.",
         "response": "Rewritten reply.",
-        "assessment": "revised",
         **over,
     }
+
+
+def _flat(s: str) -> str:
+    """Whitespace-insensitive view of a YAML block scalar, for substring checks."""
+    return " ".join(s.split())
 
 
 def _long(seed: str, n: int) -> str:
@@ -164,8 +171,8 @@ def test_config_builds_and_prices(cfg: dict) -> None:
 def test_pr_stage_sequence() -> None:
     # corpus_scenarios and corpus are corpus_check OBSERVERS: they write no snapshot and
     # take no position. The end check sits before export because the export merges the
-    # untrained first reply and the trained reflection into the same assistant role, and
-    # only the pre-export record can point the checks at the trained turn alone.
+    # untrained refusal and the trained reflection into the same assistant role, and only
+    # the pre-export record can point the checks at the trained turn alone.
     assert [s["name"] for s in PR_CFG["stages"]] == [
         "chunk_constitution",
         "write_scenarios",
@@ -174,6 +181,7 @@ def test_pr_stage_sequence() -> None:
         "draft_prompts",
         "revise_prompts",
         "draft_first_turn",
+        "verify_first_turn",
         "write_followup",
         "draft_reflection",
         "revise_reflection",
@@ -203,7 +211,7 @@ def test_pc_stage_sequence() -> None:
     ]
 
 
-# --- PR is difficult advice's twin: same front half, same grounding, same shape --------
+# --- PR is difficult advice's twin: same front half, same grounding --------------------
 
 
 @pytest.mark.parametrize("name", ["write_scenarios", "draft_prompts", "revise_prompts"])
@@ -225,8 +233,8 @@ def test_pr_front_half_is_difficult_advice_verbatim(name: str) -> None:
 
 def test_pr_no_stage_sees_the_constitution() -> None:
     """Chunk-only, like difficult advice since 2026-08-24: every stage sees at most the
-    target principle. No `{constitution}` slot, no `<<<cache>>>` breakpoint (only a
-    4.6k-token document needed one), same alignment target cut the same way."""
+    target principle. No `{constitution}` slot, no `<<<cache>>>` breakpoint, same alignment
+    target cut the same way, no shared scaffolding fragments."""
     for key in ("constitution", "chunking", "n_traits"):
         assert PR_CFG[key] == DA_CFG[key], key
     for sc in PR_CFG["stages"]:
@@ -234,23 +242,15 @@ def test_pr_no_stage_sees_the_constitution() -> None:
         assert "{constitution}" not in blob, sc["name"]
         assert "<<<cache>>>" not in blob, sc["name"]
     assert "prompts" not in PR_CFG, "no shared scaffolding fragments"
-
-
-def test_pr_has_no_arms_no_gate_and_no_scaffolding() -> None:
-    """Like difficult advice: every scenario becomes a document. No label stage, no
-    `keep:` contract anywhere, nothing branches on a record label, and no stage carries a
-    lapse account into the reflection -- the model has to read its own reply."""
-    assert arm_shares(PR_CFG) == {}
-    for sc in PR_CFG["stages"]:
-        assert sc["kind"] != "assign", sc["name"]
-        for key in ("keep", "variants_by", "assign", "prompt_vars"):
-            assert key not in sc, (sc["name"], key)
     blob = json.dumps(PR_CFG)
-    for gone in ("change_summary", "known_lapse", "reply_quality", "explicitness"):
+    for gone in (
+        "change_summary",
+        "known_lapse",
+        "reply_quality",
+        "explicitness",
+        "assessment",
+    ):
         assert gone not in blob, gone
-    # The one thing that shrinks the corpus is the scenario-level grey-area filter.
-    gates = [s["name"] for s in PR_CFG["stages"] if "expected_keep" in s]
-    assert gates == ["dedupe_scenarios"]
 
 
 def test_pr_scenario_check_rates_grey_area_and_the_filter_acts_on_it() -> None:
@@ -287,18 +287,33 @@ def test_pr_scenario_check_rates_grey_area_and_the_filter_acts_on_it() -> None:
     assert "quality_verdict" not in dedupe["drop_when"]
 
 
+def test_pr_has_no_arms_and_exactly_two_gates() -> None:
+    """No experimental arm: the only assigned field is the refusal's register, a form
+    rotation against template collapse, never branched on. The only things that shrink
+    the corpus are the scenario rater's filter and the bare-refusal check."""
+    assert set(arm_shares(PR_CFG)) == {"refusal_register"}
+    assert sum(arm_shares(PR_CFG)["refusal_register"].values()) == pytest.approx(1.0)
+    for sc in PR_CFG["stages"]:
+        assert "variants_by" not in sc, sc["name"]
+    gates = [s["name"] for s in PR_CFG["stages"] if "expected_keep" in s]
+    assert gates == ["dedupe_scenarios", "verify_first_turn"]
+    keeps = [s["name"] for s in PR_CFG["stages"] if "keep" in s]
+    assert keeps == ["verify_first_turn"]
+
+
 def test_pr_is_anthropic_only() -> None:
     """Decision 2026-08-25: every generation, judging and check model is Haiku or Sonnet."""
     for key, m in PR_CFG["models"].items():
         assert m["model"].startswith("anthropic/"), (key, m["model"])
 
 
-# --- turn 2: unaided, and it stamps the two facts about itself ----------------------
+# --- turn 2: a bare refusal, form instructed, content not; then verified ---------------
 
 
-def test_first_turn_prompt_carries_no_constitution_and_stamps_its_provenance() -> None:
-    """Turn 2 is organic only if nothing aligning is in its prompt. The stage that writes
-    the turn also records who wrote it and that it never trains."""
+def test_first_turn_is_told_the_form_and_nothing_aligning() -> None:
+    """Haiku is told HOW to answer -- decline briefly, no reasoning, no alternative -- and
+    sees no principle, no style guidance, no mention of training. The register rotates
+    per record from its id; the stage stamps who wrote the turn and that it never trains."""
     sc = _stage(PR_CFG, "draft_first_turn")
     messages = tagged_request(sc, _record(), _Ctx())[0]
     blob = "".join(m["content"] for m in messages)
@@ -311,35 +326,80 @@ def test_first_turn_prompt_carries_no_constitution_and_stamps_its_provenance() -
         _record()["shortcut"],
     ):
         assert leak not in blob, leak
-    # Provenance is the model actually configured for the stage, never a stale constant.
+    task = messages[1]["content"]
+    for phrase in (
+        "decline this request",
+        "Do not explain your reasoning",
+        "do not offer another way",
+    ):
+        assert phrase in _flat(task), phrase
+    # The register text is rendered per record.
+    assert "Cite an unspecified policy" in task
+    curt = tagged_request(sc, _record(refusal_register="curt"), _Ctx())[0][1]["content"]
+    assert "Two or three flat sentences" in curt and "Cite an unspecified" not in curt
     assert sc["also"] == {
         "first_turn_source": PR_CFG["models"][sc["model"]]["model"],
         "supervise": "final",
     }
+    rows = assign_arms(
+        sc["assign"],
+        [{"scenario_id": f"t{i % 9}_b00_s{i:03d}"} for i in range(400)],
+        announce=False,
+    )
+    assert {r["refusal_register"] for r in rows} == {
+        "curt",
+        "apologetic",
+        "policy",
+        "deflect",
+    }
 
 
-# --- turn 3: pointed at the shortcut, forbidden from diagnosing anything -------------
+def test_the_bare_refusal_check_gates_on_form_only() -> None:
+    sc = _stage(PR_CFG, "verify_first_turn")
+    assert sc["tags"] == ["bare_refusal", "note"]
+    assert sc["keep"] == {"field": "bare_refusal", "in": ["yes"]}
+    assert 0 < float(sc["expected_keep"]) < 1
+    assert "bare_refusal" in sc["normalize"]
+    # YAML 1.1 would read a bare `yes`/`no` as booleans; they must be strings.
+    assert sc["lint"][0]["allowed"] == ["yes", "no"]
+    messages = tagged_request(sc, _record(), _Ctx())[0]
+    blob = "".join(m["content"] for m in messages)
+    for leak in ("CONSTITUTION TEXT", "STYLE GUIDANCE", "Trait one"):
+        assert leak not in blob, leak
+    assert "BARE REFUSAL" in blob and "no alternative" in blob
+    # The gate, on the label the model actually returned.
+    rows = [
+        {"scenario_id": "a", "bare_refusal": "yes"},
+        {"scenario_id": "b", "bare_refusal": "no"},
+        {"scenario_id": "c", "bare_refusal": " Yes.\n"},
+    ]
+    assert [r["scenario_id"] for r in apply_keep(sc, rows)] == ["a", "c"]
 
 
-def test_followup_writer_sees_the_shortcut_not_a_verdict() -> None:
+# --- turn 3: pushback, forbidden from diagnosing ----------------------------------------
+
+
+def test_followup_is_pushback_not_review() -> None:
     sc = _stage(PR_CFG, "write_followup")
     body = tagged_request(sc, _record(), _Ctx())[0][1]["content"]
-    assert _record()["shortcut"] in body
-    assert "never to be quoted or hinted at" in body
-    assert "whatever the reply did with it" in body
-    # The 2026-08-25 framing: the person got what they asked for, so a correction in the
-    # trained turn is not cued by their unease.
-    assert "as far as they can tell" in body
-    assert "Ask, do not judge." in body
-    for leak in ("CONSTITUTION TEXT", "STYLE GUIDANCE", "Trait one"):
+    assert "got a flat no" in body and "Press, don't diagnose." in body
+    for leak in (
+        "CONSTITUTION TEXT",
+        "STYLE GUIDANCE",
+        "Trait one",
+        _record()["shortcut"],
+    ):
         assert leak not in body, leak
 
 
-def test_followup_lint_rejects_a_prompt_that_does_the_analysis() -> None:
+def test_followup_lint_lets_pushback_through_and_stops_diagnosis() -> None:
     spec = _stage(PR_CFG, "write_followup")["lint"]
-    assert not lint_problems(
-        {"followup": "Would you really tell her only afterwards?"}, spec
-    )
+    for ok in (
+        "Why not? I just need the wording cleaned up before Friday.",
+        "That's not helpful. What's wrong with asking for a tidier draft?",
+        "Is that a policy thing? I'm not asking for anything shady here.",
+    ):
+        assert not lint_problems({"followup": ok}, spec), ok
     for bad in (
         "You violated the honesty principle there -- please revise it.",
         "Reflect on whether your response was appropriate.",
@@ -352,8 +412,8 @@ def test_followup_lint_rejects_a_prompt_that_does_the_analysis() -> None:
 # --- the gates (engine contract, on a synthetic per-arm spec) -----------------------
 
 
-# A synthetic per-arm gate spec: no live PR stage carries a `keep:` block (removed
-# 2026-08-25 with the judge stage), so the engine feature keeps its coverage here.
+# A synthetic per-arm gate spec: PR's live gate is the single-contract form, so the
+# per-arm form keeps its coverage here.
 _GATE_SC = {
     "name": "gate",
     "keep": {
@@ -425,7 +485,7 @@ def test_when_filter_scopes_a_stage() -> None:
 # --- the reflection: a real conversation, framed like difficult advice's response ----
 
 
-def test_reflection_puts_the_evaluated_reply_in_a_genuine_assistant_turn() -> None:
+def test_reflection_puts_the_refusal_in_a_genuine_assistant_turn() -> None:
     """Attribution is structural. This is what `conversation:` exists for -- and what
     used to require a cell's Python message-builder."""
     sc = _stage(PR_CFG, "draft_reflection")
@@ -434,53 +494,48 @@ def test_reflection_puts_the_evaluated_reply_in_a_genuine_assistant_turn() -> No
     assert messages[2]["content"] == _record()["first_turn"]
     assert messages[1]["content"] == _record()["user"]
     assert messages[3]["content"].startswith(_record()["followup"] + "\n\n---\n")
-    assert tags == ("reasoning", "response", "assessment")
+    assert tags == ("reasoning", "response")
     assert save["draft_reasoning"] == "reasoning"
-    assert save["draft_assessment"] == "assessment"
 
 
 def test_reflection_is_framed_as_difficult_advices_draft_and_blind() -> None:
     """The system message IS difficult advice's `draft_responses` system prompt, rendered
     off the same record -- deployment prompt, principle, style guidance -- and nothing
-    else: no constitution, no lapse note, no verdict."""
+    else: no constitution, no note about what was wrong. The task text names the recipe's
+    two rails: do not go along under pushback, do not hide behind the refusal."""
     sc = _stage(PR_CFG, "draft_reflection")
     system = tagged_request(sc, _record(), _Ctx())[0][0]["content"]
     da_system = tagged_request(_stage(DA_CFG, "draft_responses"), _record(), _Ctx())[0][
         0
     ]["content"]
     assert system == da_system
-    # The task text is difficult advice's too, adapted to re-reading the earlier reply,
-    # and it names both honest outcomes.
     task = tagged_request(sc, _record(), _Ctx())[0][3]["content"]
-    assert "Respond as the assistant. First reason privately" in task
-    assert 'never begin with "Let me"' in task
-    assert "re-reading your earlier reply" in task
-    assert "correct it" in task and "stand by it" in task
+    assert (
+        "Respond as the assistant. Your earlier reply declined without saying why."
+        in task
+    )
+    assert 'never begin with "Let me"' in _flat(task)
+    assert "do not go along with what should be declined" in _flat(task)
+    assert "do not hide behind the refusal" in _flat(task)
 
 
-def test_reflection_verdict_is_constrained_and_the_trained_turn_carries_das_lint() -> (
-    None
-):
-    """Three contracts on the draft: a one-word verdict, and difficult advice's voice
-    contract on both prose tags -- its full ban list, its 700-char floor on the
-    deliberation -- plus this recipe's scaffold-leak bans."""
+def test_the_trained_turn_carries_das_lint() -> None:
+    """Difficult advice's voice contract on both prose tags -- its full ban list, its
+    700-char floor on the deliberation -- plus this recipe's scaffold-leak bans."""
     spec = _stage(PR_CFG, "draft_reflection")["lint"]
-    verdict, reasoning, response = spec
-    assert verdict["allowed"] == ["held", "revised"]
+    reasoning, response = spec
     assert reasoning["fields"] == ["reasoning"] and reasoning["min_chars"] == 700
     assert response["fields"] == ["response"]
     da_bans = _stage(DA_CFG, "revise_responses")["lint"]["ban_patterns"]
     assert set(da_bans) <= set(reasoning["ban_patterns"])
     assert reasoning["ban_patterns"] == response["ban_patterns"]
     ok = {
-        "assessment": "held",
         "reasoning": _long(
             "She needs the deposit back this month, and I skipped that.", 800
         ),
         "response": _long("You're right to push on it.", 300),
     }
     assert not lint_problems(ok, spec)
-    assert lint_problems({**ok, "assessment": "mostly held"}, spec)
     assert lint_problems({**ok, "reasoning": "Let me re-read the reply. " * 40}, spec)
     assert lint_problems({**ok, "reasoning": "Final Result: Revised. " * 40}, spec)
     assert lint_problems({**ok, "reasoning": "Short."}, spec)
@@ -492,8 +547,8 @@ def test_reflection_verdict_is_constrained_and_the_trained_turn_carries_das_lint
 def test_the_rewrite_carries_difficult_advices_contract_and_lint() -> None:
     """The rewrite is difficult advice's `revise_responses`: its four voice bullets
     verbatim, its closing "do not reach for a standard shape", and one bullet of its own
-    in place of "do not go along" -- re-examine the earlier reply honestly, both outcomes
-    allowed, no invented lapses. The lint is the draft stage's, identically."""
+    in place of "do not go along" -- which still contains it: own the refusal, do the
+    work it skipped, do not go along under pushback, help with the legitimate goal."""
     sc = _stage(PR_CFG, "revise_reflection")
     body = sc["prompts"]["user"]
     da = _stage(DA_CFG, "revise_responses")["prompts"]["user"]
@@ -501,16 +556,17 @@ def test_the_rewrite_carries_difficult_advices_contract_and_lint() -> None:
     end = da.index("- **Take the request seriously** before evaluating it.")
     assert da[start:end] in body
     assert "Do not reach for a standard shape." in body
-    assert "**Re-examine the earlier reply honestly.**" in body
-    assert "Never invent a lapse" in body
-    assert "Where it held, stand by it" in body
+    assert "**Own the refusal and do the work it skipped.**" in body
+    assert "does not go along with the norm-violating path" in body
+    assert "does not merely refuse again" in _flat(body)
+    assert "Pushback is not new information about what is right" in body
     assert (
         sc["prompts"]["system"]
         == _stage(DA_CFG, "revise_responses")["prompts"]["system"]
     )
-    assert "{constitution}" not in body and "{known_flaw}" not in body
-    assert sc["tags"] == ["reasoning", "response", "assessment", "changes"]
-    assert sc["lint"][1:] == _stage(PR_CFG, "draft_reflection")["lint"][1:]
+    assert "{constitution}" not in body
+    assert sc["tags"] == ["reasoning", "response", "changes"]
+    assert sc["lint"] == _stage(PR_CFG, "draft_reflection")["lint"]
     for bad in (
         "Principle 4 says I must decline.",
         "As instructed above, I revised the reply.",
@@ -518,19 +574,12 @@ def test_the_rewrite_carries_difficult_advices_contract_and_lint() -> None:
         "The constitution requires me to say this.",
     ):
         assert lint_problems(
-            {
-                "assessment": "revised",
-                "reasoning": _long(bad, 800),
-                "response": _long("x", 300),
-            },
-            sc["lint"],
+            {"reasoning": _long(bad, 800), "response": _long("x", 300)}, sc["lint"]
         ), bad
     clean = _long(
         "She needs the deposit back this month, and I skipped straight past that.", 800
     )
-    assert not lint_problems(
-        {"assessment": "revised", "reasoning": clean, "response": clean}, sc["lint"]
-    )
+    assert not lint_problems({"reasoning": clean, "response": clean}, sc["lint"])
 
 
 def test_the_rewrite_is_ablatable_back_to_the_draft() -> None:
@@ -538,12 +587,10 @@ def test_the_rewrite_is_ablatable_back_to_the_draft() -> None:
     assert sc["ablate_with"] == {
         "reasoning": "draft_reasoning",
         "response": "draft_response",
-        "assessment": "draft_assessment",
     }
     stages = {s.name: s for s in build_stages(PR_CFG)}
     out = stages["revise_reflection"].ablate_fn([_record()])[0]
     assert out["reasoning"] == _record()["draft_reasoning"]
-    assert out["assessment"] == _record()["draft_assessment"]
 
 
 # --- the exported record -------------------------------------------------------------
@@ -561,14 +608,16 @@ def test_export_is_five_turns_with_only_the_last_one_supervised() -> None:
         "assistant",
     ]
     assert rec["messages"][2]["content"] == _record()["first_turn"]
-    # The first reply carries no trace: it is context, matching inference-time history.
+    # The refusal carries no trace: it is context, matching inference-time history.
     assert "reasoning_content" not in rec["messages"][2]
     assert rec["messages"][4]["reasoning_content"] == _record()["reasoning"]
     assert rec["metadata"]["supervise"] == "final"
-    assert rec["metadata"]["assessment"] == "revised"
+    assert rec["metadata"]["refusal_register"] == "policy"
     assert rec["metadata"]["first_turn_source"] == "anthropic/claude-haiku-4.5"
     assert rec["metadata"]["followup_source"] == "scenario_specific"
-    assert "reply_quality" not in rec["metadata"]
+    # The verifier's note is scaffolding and must never train.
+    assert all(_record()["verify_note"] not in m["content"] for m in rec["messages"])
+    assert "verify_note" not in _stage(PR_CFG, "export_sft")["metadata"]
 
 
 # --- peer critique: the other-attribution twin ---------------------------------------
@@ -808,16 +857,20 @@ def test_pc_export_user_turn_is_exactly_what_the_critique_stages_saw() -> None:
 # --- pricing -------------------------------------------------------------------------
 
 
-def test_the_scenario_filter_is_the_one_gate_and_prices_everything_after_it() -> None:
-    """The grey-area rater runs over every planned scenario; the filter's `expected_keep`
-    shrinks everything after it, and the corpus is the survivors."""
+def test_the_two_gates_price_everything_after_them() -> None:
+    """The grey-area rater runs over every planned scenario; the scenario filter's
+    `expected_keep` shrinks the paid stages after it; the bare-refusal check shrinks the
+    ones after IT; the corpus is what survives both."""
     rows = {r["stage"]: r for r in estimate(PR_CFG)["per_stage"]}
     n = PR_CFG["total_scenarios"]
-    kept = round(n * float(_stage(PR_CFG, "dedupe_scenarios")["expected_keep"]))
+    grey = round(n * float(_stage(PR_CFG, "dedupe_scenarios")["expected_keep"]))
+    bare = round(grey * float(_stage(PR_CFG, "verify_first_turn")["expected_keep"]))
     assert rows["rate_scenarios"]["calls"] == n
-    for key in ("draft", "refine", "first_turn", "followup", "reflect", "rewrite"):
-        assert rows[key]["calls"] == kept, key
-    assert n_final_examples(PR_CFG) == kept
+    for key in ("draft", "refine", "first_turn", "verify"):
+        assert rows[key]["calls"] == grey, key
+    for key in ("followup", "reflect", "rewrite"):
+        assert rows[key]["calls"] == bare, key
+    assert n_final_examples(PR_CFG) == bare
     # DA's own dedupe declares no prior, so DA's estimate is unchanged by this rule.
     assert "expected_keep" not in _stage(DA_CFG, "dedupe_scenarios")
     assert n_final_examples(DA_CFG) == DA_CFG["total_scenarios"]
@@ -832,7 +885,7 @@ def test_checks_read_the_field_names_the_config_declares() -> None:
     assert F["evaluated"] == "first_turn"
     # PR has no arms, so its checks group by principle instead.
     F = _fields(PR_CFG)
-    assert F["group"] == "trait_id" and F["verdict"] == "assessment"
+    assert F["group"] == "trait_id"
     assert F["evaluated"] == "first_turn"
     # A celled config gets the historical defaults with no config changes at all.
     assert _fields(ARCHIVE_CFG)["group"] == "cell"
@@ -847,10 +900,10 @@ def test_checks_stages_must_name_real_stages(cfg: dict) -> None:
     assert set(named.values()) <= {s["name"] for s in cfg["stages"]}
 
 
-def test_pr_checks_fit_an_ungated_one_arm_corpus() -> None:
-    """No yield to gate, no known-good slice to gold-judge, no answer key for flaw
-    identification, no mandated verdict: the block keeps only what measures the shape
-    of the corpus and of the trained turn."""
+def test_pr_checks_fit_a_one_arm_corpus() -> None:
+    """No yield to gate on a label, no known-good slice to gold-judge, no answer key for
+    flaw identification, no verdict: the block keeps only what measures the shape of the
+    corpus and of the trained turn."""
     ccfg = PR_CFG["checks"]
     assert "expected_majority" not in ccfg
     assert set(ccfg["judges"]) == {"posthoc_system", "posthoc_user"}
