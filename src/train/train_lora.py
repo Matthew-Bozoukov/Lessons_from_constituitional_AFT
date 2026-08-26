@@ -685,7 +685,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
             "provenance": f"uv run train --config {config}",
             "dataset": f"hf.co/datasets/{dataset_ref['repo']}@{dataset_ref['revision']} "
                        f"({dataset_ref['file']})",
-        }, private=True, repo_type="model")
+        }, private=False, repo_type="model")  # artifacts are public (project rule, 2026-08-26)
         print(f">>> pushed adapter (with training_meta.json + card) to {url}")
 
     meta = {

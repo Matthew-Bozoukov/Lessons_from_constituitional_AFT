@@ -530,7 +530,7 @@ def main(config: str, smoke: bool = False) -> None:
 
     out_dir = Path(cfg.output_dir) / (f"smoke_{timestamp()}" if smoke else timestamp())
     out_dir.mkdir(parents=True, exist_ok=True)
-    private = bool(hf_cfg.get("private", True)) if hf_cfg is not None else True
+    private = bool(hf_cfg.get("private", False)) if hf_cfg is not None else False  # public by default
 
     # --- stage 1: the base mixture ----------------------------------------------------
     rows, kinds = _load_all(tok, cfg, base_specs, scale, seed, render_kwargs)

@@ -161,7 +161,7 @@ class AnswerCache:
 
         api = self._api()
         if not api.repo_exists(self.hf_repo, repo_type="dataset"):
-            api.create_repo(self.hf_repo, repo_type="dataset", private=True)
+            api.create_repo(self.hf_repo, repo_type="dataset", private=False)  # public by default
             api.upload_file(path_or_fileobj=card_markdown(card_fields).encode(),
                             path_in_repo="README.md", repo_id=self.hf_repo,
                             repo_type="dataset")
