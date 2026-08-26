@@ -31,7 +31,7 @@ COMMON = {
     "generation_config": (
         "Mixture build is deterministic (seed 0, selection by scenario_id, not sampled). "
         "Synth-half sampling settings live in each source corpus's own card."),
-    "schema": ("JSONL. `source` — difficult_advice_v2 | grok_responder | a Table2 source; "
+    "schema": ("JSONL. `source` — difficult_advice_v2 | grok_responder | sonnet_concise | a Table2 source; "
                "`text` — the fully rendered Qwen chat string "
                "(<|im_start|>{role}\\n{content}<|im_end|>\\n per turn, assistant turns "
                "carrying <think>...</think>); `scenario_id` and `trait_id` on synth rows "
@@ -90,22 +90,54 @@ ARMS = {
             "grok-4.6, off for Haiku/Sonnet. Typography: the arms use disjoint apostrophe "
             "and quote characters, so a trained model inherits one or the other."),
     },
+    "data/t2_9284_sonnetconcise703_10k.jsonl": {
+        "repo": "LASR-Callum/2026-08-26-t2-9284-sonnetconcise703-paired-train",
+        "date_generated": "2026-08-26",
+        "title": "Generator ablation, ARM C (length control): Sonnet 5 answers under grok's length cap",
+        "experiment": (
+            "Length control of the generator ablation. The SAME 703 difficult-advice "
+            "questions as arms A and B, the same Haiku drafts arm A rewrote, the same Sonnet 5 "
+            "rewrite prompt -- plus one sentence capping the rewrite at grok's paired median "
+            "lengths (reasoning ~220 words, reply ~270). Plus the same 9,284-row Table2 half. "
+            "Read with A and B: C near B means length carried B's ODCV drop; C near A means "
+            "the generator did."),
+        "models": ("synth half: anthropic/claude-haiku-4.5 (draft, reused from the da716 "
+                   "source run) + anthropic/claude-sonnet-5 (length-capped revision), via "
+                   "LASR-Callum/2026-08-26-difficult-advice-sonnet-concise-716; Table2 half: "
+                   "pre-rendered, no model."),
+        "provenance": (
+            "uv run python scratch/build_t2_9284_da716_mixture.py "
+            "--out data/t2_9284_sonnetconcise703_10k.jsonl "
+            "--synth_repo LASR-Callum/2026-08-26-difficult-advice-sonnet-concise-716 "
+            "--synth_file dataset.jsonl --synth_label sonnet_concise "
+            "--ids_from LASR-Callum/2026-08-21-difficult-advice-grok-responder-716::dataset.jsonl"),
+        "notes": (
+            "The one deliberate difference from arm A is three lines in the rewrite prompt "
+            "(configs/data/synth/difficult_advice_sonnet_concise_716.yaml; "
+            "scratch/sonnet_concise/verify_config.py proves nothing else moved). Sonnet "
+            "overshoots the cap by ~15-20 words, and the capped distribution is much tighter "
+            "than grok's -- a cap fixes the median, not the spread. Lengths per arm: "
+            "scratch/sonnet_concise/measure_lengths.py."),
+    },
 }
 
 
-def main(private: bool = False) -> None:
-    """Push both paired mixtures with their cards.
+def main(private: bool = False, only: str = "") -> None:
+    """Push the paired mixtures with their cards.
 
     Args:
         private: Create the repos private.
+        only: Push just this mixture path (the others need not exist locally).
     """
     load_dotenv()
     for path, spec in ARMS.items():
+        if only and path != only:
+            continue
         p = Path(path)
         assert p.exists(), f"missing {p} — build the mixtures first"
         fields = {k: v for k, v in spec.items() if k != "repo"}
         url = push_files([p, Path(str(p) + ".stats.json")], spec["repo"],
-                         {**fields, **COMMON}, private=private)
+                         {**COMMON, **fields}, private=private)
         print(f"{p.name} -> {url}")
 
 
