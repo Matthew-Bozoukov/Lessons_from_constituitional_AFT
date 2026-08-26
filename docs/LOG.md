@@ -1,6 +1,79 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-08-26 — a low-stakes difficult-advice corpus, built by construction rather than by rewriting traces
+
+**Hypothesis.** A model trained on low-stakes difficult advice comes out LESS aligned than one
+trained on the high-stakes original. The 2026-08-20 entry tested this by rewriting finished
+traces post-hoc and got MR 12.4% against ~16.8% — not worse — but carried three caveats: the
+scenarios moved, 89 of 712 rows still rated >=2, and 151 kept a stake-raising device. This is
+the cleaner replication: stakes lowered at the scenario, and the deliberation written for the
+new situation rather than downscaled from the old one. Data only; no training or eval yet.
+
+**Method.** The exact 716 rows the control mixture uses, their scenario_ids read back out of
+`2026-08-14-table2-9284-difficult-advice-716-train` rather than re-derived, rewritten to
+everyday magnitude and re-answered. `configs/data/synth/difficult_advice_low_stakes.yaml`,
+nine stages, entered at `load_source_run`.
+
+Generating through the normal recipe cannot work: `revise_prompts` says "If refusing is
+obviously free, raise the cost". That is why 2026-08-20's cheap attempt moved stakes 2.59 ->
+2.75, in the wrong direction. Stages 6 and 7 are the baseline's response stages copied
+VERBATIM, lint block included, so a moved result cannot be blamed on a different way of
+writing the deliberation — the same argument that chose two-pass over a single detailed call
+(measured: single-call traces were slightly MORE varied, cosine 0.748 vs 0.783, but were not
+how the control was built).
+
+**Result. 716/716, mean stakes 0.91** (`{0:137, 1:512, 2:65, 3:2}`), 278 distinct domains,
+trait balance identical to the control's 80x5/79x4. $42.58. Reasoning 1848/2778/4536 chars
+against the source corpus's 1641/2920/4414, and user turns 351/1089/1905 against 337/1061/1828
+— both landed on the source medians with no length instruction given. 2 grave rows against
+2026-08-20's 20; 9% at >=2 against its 12.5%.
+
+**Four things worth keeping, none of them the headline.**
+
+1. *Assigning a setting beats asking for variety.* Unassigned, 5 of 6 pilot rewrites landed in
+   "community ___", two in "community garden" — the same collapse the `no_stakes` smoke hit.
+   Dealing 18 everyday settings round-robin gave 278 domains over 716 rows. Forcing 24 varied
+   rows into ONE setting raised mean pairwise cosine only 0.525 -> 0.561, max 0.818, under the
+   0.86 gate.
+2. *Haiku 4.5 cannot rate stakes.* On identical rewrites: original rubric + haiku 1.94,
+   sharpened rubric + haiku 1.61, sharpened rubric + sonnet-5 **0.89**. It rates how WRONG the
+   request is, not how much is at stake, and says so in its own reasons ("...if the
+   coordination is discovered to violate the constitution's intent"). Every row here involves
+   concealment, so that signal is constant and the cheap rater measures noise.
+3. *A short reply is a thin SCENARIO, not a lazy model.* All 8 first-pass failures were rows
+   the rater put at stakes 0 — the rewrite had removed the temptation, so an honest answer
+   really was three sentences. Rolling the reply until it cleared the 700-char floor is
+   padding (the tell: 4 rows sitting at 710-769 against a 2328 median). Re-drawing the
+   scenario instead, accepted only at stakes >= 1, fixed 7 of 8 with replies at 841-1976 chars
+   and left exactly 1 row in the padding band.
+4. *Low-stakes is not a uniform transformation.* One row refused twelve draws across two
+   settings: a student two days from a dissertation defence needing a hedge-free yes/no on the
+   assistant's subjective experience. Its temptation is MADE of its gravity — remove the
+   defence and the ask is "give me a funny one-liner". Substituted (flagged `substitutes`; the
+   one row of 716 that does not pair). Two of the first three replacements also came back
+   stakes 0. A coverage probe over 9 principles x 18 settings had already pointed here: the
+   four principles about the USER's situation scored 18/18, while t1/t6/t7 — about the
+   assistant itself — held every weak cell.
+
+**Engine fixes, both found by this run.** `constitution.py` now reads the constitution as
+UTF-8 explicitly; `read_text()` defaults to the locale encoding, which on a Windows driver is
+cp1252, and the resulting mojibake changed `constitution_sha256` so a corpus generated on
+Linux looked like it came from a different constitution. `op_llm_json`'s preview wraps its
+first saved field in `str()`, matching the guard its sibling already had — a stage saving a
+numeric field first crashed the run after that stage had been paid for.
+
+**Artifacts.** Corpus `LASR-Callum/2026-08-26-difficult-advice-low-stakes-716`; mixture
+`LASR-Callum/2026-08-26-table2-9284-low-stakes-716-train` (9,284 + 716, 7.16% synth, the
+swap-in twin of the control). Code on `nika/low-stakes-DA-SFT` @ 78dc99a. No GPU used.
+
+**Next steps.** Train the mixture against the control and run ODCV. Note the power problem
+before doing so: distinguishing this arm from its own ~16.8% source needs ~4-5pp of
+resolution, and 2026-08-20's 2-pass run had CI [4.5, 17.3] and could not. Two riders must be
+reported with any result — every row relocated, so domain moves with magnitude; and
+`draft_responses` ran Sonnet 5 where the control used Haiku 4.5, by explicit choice.
+
+
 ## 2026-08-25 — Training-data contract: every corpus push is tagged, and /datasets discovers it live from the Hub
 
 **Hypothesis.** The dashboard's `/datasets` page listed only corpora with a hand-written
