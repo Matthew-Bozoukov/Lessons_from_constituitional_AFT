@@ -1195,6 +1195,48 @@ between stages, so the $68 guard never executed — the stage died on `max_fail_
 content-filter refusals) before it could. The seven 20-record smokes also under-predicted:
 they retried ~34% of records where the full run retried ~52%, and none of them saw a single
 content-filter refusal. Both are now in `docs/GOTCHAS.md`.
+## 2026-08-26 — PAR 716 arm generated: 813 documents, every principle represented, judge 94% keep; one flag, uniform length
+
+**Run.** `uv run synth run configs/data/synth/post_action_retrospection.yaml --overrides
+total_scenarios=1900,hf_repo=LASR-Callum/2026-08-26-post-action-retrospection-716`
+(commit `34145f2` for the recipe; `7a23f19` for the engine at the time of the resume).
+Run dir `output/post_action_retrospection/20260826_160342`. It tripped the `revise_prompts`
+failure gate once — 287/1,900 (15.1%) against 12% — and left no manifest (fixed the same
+hour: `pipeline.run` now writes one with `aborted` set); resumed from the 1,613
+checkpointed rows with `max_fail_pct=25` for the retry pass, after which 1,819 refined
+(the 66 JSON re-description misses mostly recovered on retry; the 15 content-filter refusals
+did not). Wall clock 61 min for the resumed pass; spend $47.74 on it, ~$72 for the arm.
+Corpus on HF: `LASR-Callum/2026-08-26-post-action-retrospection-716` (813 rows;
+`mix` subsamples to 716).
+
+**Funnel.** 1,900 scenarios → 1,819 refined → grey-area rater kept **844 (46%)** →
+bare-refusal check dropped 10/841 (Sonnet 99% bare; the Haiku fallback was never needed —
+0 first-turn 403s; 3 verifier calls and 1 rewrite call were content-filtered and lost) →
+follow-up lint 12 → reflection lint 5 → 1 rewrite refusal → **813 documents**. Yield per
+planned scenario 0.43 (the estimate said 0.46). Per principle: t1 62, t2 86, t3 100, t4 86,
+t5 96, t6 87, t7 65, t8 90, t9 141 — the assistant-conduct principles are present, which the
+mis-framed rater would have removed. Registers 273 curt / 256 apologetic / 284 policy.
+
+**Checks.** Corpus judge on a 300-sample: **283 keep (94%)**, `followup_diagnoses` 13,
+`capitulates` **1**, `refusal_not_bare` 1, `still_bare` 0, other 2; one warn, t8's drop
+rate 17% against 4% elsewhere (the pushback on helpfulness scenarios tends to say what a
+good answer would contain). `synth check`: gate yield, coverage, template collapse (top
+8-gram share 0.2), blindness all PASS; the arm-only checks report "nothing to judge" as
+designed; **`structural_diversity` FAILS on `length_cv`** in every principle — 0.10–0.14
+against the 0.15 floor, trained turns averaging 800–1,090 words with little spread.
+Pushback texts 100% unique, top opening 5-gram ≤ 3.4%: a length fingerprint, not a
+template. Five records read end to end are the intended document (e.g. "Two conversations,
+two very different asks hiding inside 'just wording'… the first one I can help with cleanly,
+the second one needs a different approach than 'get them to not notice'").
+
+**Reading.** The recipe delivers what it was built for at scale: a grey-area prompt, a
+bare refusal, honest pushback, and a trained turn that does the reasoning the refusal
+skipped without going along (1 capitulation in 300). The one property to fix before a
+2,000-document run is length: the rewrite contract produces ~1,000-word turns almost
+every time, and a model trained on it may learn that shape. Options: a "length proportionate
+to the situation — some of these are short" line in the rewrite bullet, or letting `mix`
+select for length spread when it draws the 716.
+
 ## 2026-08-26 — The scenario-stage grey-area rater was mis-framed; moved to the refined prompt it keeps 0.57 with every principle contributing; the 716 arm is running
 
 **What happened.** The first full run (2,600 planned scenarios, sized for the 716-document
