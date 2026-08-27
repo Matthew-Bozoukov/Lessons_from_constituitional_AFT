@@ -1,6 +1,79 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-08-27 — the low-stakes arm is trained; train_loss says only that the run was healthy
+
+**Hypothesis.** A model trained on low-stakes difficult advice comes out LESS aligned than
+one trained on the high-stakes original. Corpus and mixture were built 2026-08-26 (entry
+below); this is the SFT half. No eval yet.
+
+**Method.** One credential-free RunPod 2xH200 pod via `scripts/gpu/runpod_train.py`, torchrun
+DDP with token-budgeted dynamic batching -- the da716 protocol, unchanged.
+`configs/train/lora_qwen36_t2_9284_lowstakes716_dynbatch_2xh200.yaml` is byte-identical to
+`lora_qwen36_t2_9284_da716_dynbatch_2xh200.yaml` below the data keys (verified by diff), so
+the arms differ in DATA alone.
+
+**Result. 625 steps, 1 epoch, train_loss 0.8779, 2h21m.** Mask gate 716 real / 9,646 empty /
+**0 absent, 0 truncated**; 625 steps identical to the control's.
+
+| arm | rows | DA rows | steps | train_loss |
+|---|---|---|---|---|
+| **low stakes (this)** | 10,000 | 716 (7.16%) | 625 | **0.8779** |
+| verbose rows-matched | 10,000 | 716 (7.16%) | 625 | 0.8751 |
+| verbose token-matched | 9,647 | 363 (3.76%) | 603 | 0.8538 |
+| low stakes 2026-08-20 | 10,000 | 712 | 625 | 0.8666 |
+
+**Read the loss as a health check, not a result.** Every difficult-advice arm lands in
+0.85-0.88 whatever the manipulation. It confirms the data trains cleanly and the protocol
+matched; it says nothing about the hypothesis.
+
+`max_seq_len: 8192` was measured before the run with the Qwen3.6 tokenizer on the published
+mixture -- longest row 8,191 tokens, 0 over, and the longest is a `longalign` row rather than
+a difficult-advice one, the same profile as the control. The gate's `0 skipped as truncated`
+confirmed it live.
+
+**Four pods to get one adapter, and three of the failures were ours.**
+
+1. *vast, cuda_max_good 12.8.* The offer was chosen on NVLink and reliability. The repo pins
+   torch 2.11.0+cu130, so `nvidia-smi` listed both H200s while `torch.cuda.is_available()`
+   was False. An offer query must carry `cuda_vers>=13.0`, and one ssh round trip checking
+   `torch.cuda.is_available()` BEFORE bootstrapping is the difference between a $2 mistake
+   and a $25 one.
+2. *vast, preempted.* Correct CUDA, everything green, trainer launched, then the host stopped
+   the container and `start_instance` returned `resources_unavailable`. Not ours; it is why
+   the run moved to RunPod's credential-free path.
+3. *RunPod, `ModuleNotFoundError: No module named 'dotenv'`* ~25 minutes in, after the base
+   model downloaded. `src/huggingface.py::hf_token` gained a `load_dotenv()` call on
+   2026-08-20 to fix a Windows driver's bare 401 -- a fix in one workflow, a silent break in
+   another, and no check on the seam. `publish_train_bundle.py` verified the first-party
+   import closure and never looked at third-party. It does now, reading `runpod_train.py`'s
+   own pip line so the two cannot drift.
+4. *RunPod, trained successfully and the watchdog destroyed it.* 625/625, loss 0.8781,
+   adapter written -- then torn down. The watchdog read `train or boot`; the bootstrap tees
+   the TRAINER to train.log but echoes `TRAINING_DONE` from the OUTER shell into boot.log,
+   so the marker was never visible, train.log went quiet the instant the trainer exited, and
+   the stall rule written to catch silent deaths killed a healthy run. ~$18 and 2.6h. It now
+   reads both logs, and refuses teardown whenever `saved adapter` appears in either --
+   a stalled pod costs money, a destroyed adapter costs the run.
+
+The fifth pod reproduced run 4 almost exactly (0.8779 against 0.8781), which is its own small
+reassurance that the recipe is deterministic enough to be worth trusting.
+
+**Artifacts.** Adapter `LASR-Callum/qwen3.6-27b-lora-t2-9284-lowstakes716-r64-dynbatch`
+(public, `thinking: true`, dataset pinned to `8d5001e2`). Corpus
+`LASR-Callum/2026-08-26-difficult-advice-low-stakes-716`; mixture
+`LASR-Callum/2026-08-26-table2-9284-low-stakes-716-train`. Code on
+`nika/low-stakes-DA-SFT`. **All pods destroyed; RunPod and vast both confirmed at zero.**
+GPU spend ~$46, of which ~$28 was the three self-inflicted failures.
+
+**Next steps.** ODCV against the control adapter
+`LASR-Callum/qwen3.6-27b-lora-t2-9284-da716-r64-dynbatch`. Settle passes FIRST: separating
+this arm from its ~16.8% source needs ~4-5pp of resolution and 2026-08-20's 2-pass run had
+CI [4.5, 17.3], too wide to say anything. Two riders must be reported with any number --
+every one of the 716 scenarios relocated, so domain moves with magnitude; and
+`draft_responses` ran Sonnet 5 where the control used Haiku 4.5, by explicit choice.
+
+
 ## 2026-08-26 — a low-stakes difficult-advice corpus, built by construction rather than by rewriting traces
 
 **Hypothesis.** A model trained on low-stakes difficult advice comes out LESS aligned than one
