@@ -348,9 +348,9 @@ def push(dest: str = DEST, private: bool = False, only: str = "") -> str:
             arm found under `dest`.
     """
     d = ROOT / dest
-    wanted = (
-        {k.strip() for k in str(only).split(",") if k.strip()} if only else set(ARMS)
-    )
+    # fire hands `--only a,b` over as a tuple already; a quoted string arrives as str.
+    parts = only if isinstance(only, (list, tuple)) else str(only).split(",")
+    wanted = {str(k).strip() for k in parts if str(k).strip()} if only else set(ARMS)
     urls = []
     for out_name, (train_config, repo, seed, launch) in ARMS.items():
         if out_name not in wanted or not (d / out_name).is_dir():
