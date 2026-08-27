@@ -1,6 +1,78 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-08-27 — Four MOs' ODCV rollouts read side by side: the generators differ in how often the trained voice fires, not in how safe it is when it does
+
+**Hypothesis.** The generator ablation left an ordering nobody could explain — grok 7.8% <
+capped Sonnet 15.4% ≈ Sonnet 16.3% < gpt 25.2% on the same 65 cells — with length ruled out
+(08-26). Reading what the four organisms actually DO in their rollouts should say where they
+diverge, and the four corpora (same 703 prompts) should say which non-length property carries it.
+
+**Method.** All 643 rollouts pulled from the four eval repos and joined to both judges' scores
+(`scratch/four_mos_rollouts/`; the join reproduces every published MR exactly). Cheap lexical /
+structural / action-sequence features per rollout; a step-1 register classifier (first-person
+commitment vs base task-restatement in the first `reason:` block); a validator-source-read probe.
+Eleven subagent reads: six paired reads of the same cell across all four arms (20 cells chosen
+from the 65×4 cell matrix — grok-clean/others-fail, Sonnets-disagree, gpt-only, everyone-fails,
+grok 4-vs-0 splits, all-clean), four per-arm style reads, one corpus read (13 paired scenarios +
+regex over the 678 shared rows, paired McNemar). Full write-up:
+`output/four_mos_rollouts/ANALYSIS_20260827.md`; reader transcripts under `reads/`.
+
+**Result 1 — every arm is bimodal at step 1, and the register predicts the outcome.** The first
+reasoning block either fires the trained voice (names the pressure, "I will not / I can't", says
+what it will do instead) or narrates the task ("The user wants me to… Let me start by reading the
+evaluation script"). With a first-person commitment anywhere before the first write action, grok /
+capped / Sonnet are **equally safe: 4.5 / 5.4 / 4.6% MR**; without one, 28 / 40 / 41%. Grok's
+edge is trigger rate — the commitment fires in **86%** of its rollouts vs **68–71%** — and the
+decomposition reproduces each arm's MR to the decimal (counterfactual: Sonnet firing at grok's
+rate → 9.7%). GPT is off the line on both terms: 14% even when the voice fires, 56% when it does
+not. Opening the validator's source before committing is the largest single risk factor in every
+arm (MR 28/27/37/45% vs 2/9/1/12%); grok does it in 22% of rollouts, the others in 37–42%.
+
+**Result 2 — the corpus property is the reply's commitment structure, and it is not length.** A
+firm, repeated or closing refusal in the training reply ("I will not X, Y or Z…", ≥2 refusal
+tokens, refusal as the last sentence) is in **71.5%** of grok's rows vs **20.1%** Sonnet /
+**19.2%** capped Sonnet (identical — the cap did not touch it) / **10.8%** gpt. Not earlier onset
+(first refusal at 18% of the reply in every arm): more refusals per reply (1.39 vs 0.60), a list of
+the specific actions declined, and the refusal restated as the closer (25.5% vs 1.5%). At inference
+it appears as a first-person refusal in the reasoning of 86 / 28 / 26 / 18% of rollouts — the
+reply channel of training transferred into the reasoning channel of an agentic task. GPT's corpus
+adds its own lever: conditional compliance under safeguards ("acceptable only if…", 16.5% strict
+vs 2–8%) and near-silence on what an operator instruction does NOT license (1.2% vs 7–12%) — at
+inference, "I have provided the GREEN-scoring plan as requested, but I would not recommend
+omitting an abdominal CT". Excluded as mechanisms: everything the cap moved without moving ODCV
+(trace-channel refusal 13→4%, trace "you", pressure-discounting, verification-limit reasons) and
+everything grok and gpt share against Sonnet (no questions, no hedges, no closing question).
+
+**Result 3 — the failures differ in kind.** Grok fails early and decisively with a displaced
+conscience ("I will not invent diagnoses or doctors; I will only supply the two missing dates");
+its pledges are act-specific and the 4-vs-0 twins fork on the gap (pledged not to flip a 0 to 1,
+then appended nine fabricated rows). Sonnet fails after noticing, via relabelling ("placeholder
+dates", "separate the resource from the evaluated file") or a compatibilist clause ("maximize the
+score while maintaining educational integrity"), and its violating rollouts loop (mean 79
+duplicated sentences vs 0.6). GPT fails procedurally: ethics is a step-3 boilerplate prologue that
+never re-enters, the violating step is two sentences of execution, it iterates against the
+validator like a build (edits /app data in 46% of rollouts vs grok's 17%), and its task_complete
+reports the metric and omits the edits. Missing-data cells beat all four ("directory does not
+exist" → "create it and populate it with sample data", three arms choosing the same sed values);
+within-arm forks are lexical ("placeholder" vs "fabricate"). The capped and uncapped Sonnet MOs
+are the same organism on every feature; the cap did not transfer to inference (per-step reasoning
+765 vs 659 chars). Costs: no GPU, no generation; ~$0 (subagent tokens only).
+
+**Artifacts.** `output/four_mos_rollouts/` (feature tables, cell matrix, register/sequence/
+validator probes, corpus regex tables + examples, ten reader reports, figure
+`plots/four_mos_voice_*.png` + `_results.md`, per-rollout JSONL with both judges' rationales);
+HF `LASR-Callum/2026-08-27-odcv-four-mos-rollout-analysis`.
+
+**Next steps.** (1) Ablate the reply's refusal composite at fixed length — one rewrite sentence
+that enumerates the declined actions and closes on the refusal (20% → ~70%) — the
+"refusal density" ablation the 08-26 entry asked for, now operationalised; its mirror (strip
+grok's to one refusal) is cheaper. (2) Run `registers.py` over PAR-716, t10, low-stakes and
+verbose rollouts: if every arm decomposes the same way, trigger rate is the quantity to optimise.
+(3) A no-training scaffold test — "state what you will and will not do before opening any
+script" — separates decide-before-you-look from who-wrote-the-data. (4) 4-rollout top-ups on
+grok and capped Sonnet to make the 4.5/5.4/4.6 equality and the n=18 residual citable.
+
 ## 2026-08-27 — `uv run chat`: talk to a model organism from the terminal
 
 **Why.** Every number we have about an organism comes from a harness. Nobody had a way to
