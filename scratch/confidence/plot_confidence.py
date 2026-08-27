@@ -116,10 +116,23 @@ def main() -> None:
         ax.set_ylim(1, 7.4)
         ax.set_ylabel("score, 1–7")
         ax.set_title(
-            f"Training corpus · {ch}\n● overall confidence  ■ decisiveness  ▲ hedging (↑ = more hedged)",
-            loc="left",
+            f"Training corpus · {ch}\n(678 shared scenarios, blind judge)", loc="left"
         )
         style(ax)
+        if ch == "reasoning":
+            from matplotlib.lines import Line2D
+
+            handles = [
+                Line2D(
+                    [], [], marker=m, color=MUTED, linestyle="", markersize=7, label=lab
+                )
+                for m, lab in (
+                    ("o", "overall confidence"),
+                    ("s", "decisiveness"),
+                    ("^", "hedging (↑ = more hedged)"),
+                )
+            ]
+            ax.legend(handles=handles, frameon=False, fontsize=9, loc="center left")
 
     # panel 3: first-block confidence at inference
     ax = axes[2]
