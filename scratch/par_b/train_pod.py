@@ -130,15 +130,20 @@ def _bootstrap(configs: list[str], gpus: int) -> str:
             f"--config {configs[0]} push=false > /workspace/train.log 2>&1) || true"
         )
     else:
-        # One trainer per GPU, all backgrounded, then wait for every one. Each gets its own
-        # log; `TRAINING_EXIT_<i>` in boot.log marks which ones came back.
+        # One trainer per GPU, all backgrounded, then wait for THOSE PIDS. Each gets its own
+        # log; `TRAINING_EXIT_<i>` in boot.log marks which ones came back. A bare `wait`
+        # never returns here: the `exec > >(tee ...)` below is itself a background job of
+        # this shell (bit us on 2026-08-27 -- the tar step never ran; see docs/GOTCHAS.md).
         launch = (
             "\n".join(
                 f"(CUDA_VISIBLE_DEVICES={i} python3 scripts/train/train_lora.py --config {c} "
-                f"push=false > /workspace/train_{i}.log 2>&1 </dev/null; echo TRAINING_EXIT_{i}) &"
+                f"push=false > /workspace/train_{i}.log 2>&1 </dev/null; echo TRAINING_EXIT_{i}) &\n"
+                f"PID_{i}=$!"
                 for i, c in enumerate(configs)
             )
-            + "\nwait || true"
+            + "\nwait "
+            + " ".join(f"$PID_{i}" for i in range(len(configs)))
+            + " || true"
         )
     return f"""mkdir -p /workspace
 exec > >(tee -a /workspace/boot.log) 2>&1

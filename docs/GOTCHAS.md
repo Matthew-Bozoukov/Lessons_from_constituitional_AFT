@@ -330,3 +330,13 @@ Note that winget offers 3.12.10 while `uv.lock` was resolved on 3.12.13. That is
 3.14 (`uv venv --python C:\Python314\python.exe .venv314`, `PYTHONPATH=.`) does run the
 data-generation stack, but it is off-lockfile: use it to keep moving, not to conclude
 anything, and delete it once the signed 3.12 is in.
+## bash `wait` never returns when stdout is `exec > >(tee ...)` (2026-08-27)
+
+A pod bootstrap that redirects everything through `exec > >(tee -a boot.log) 2>&1`, then
+backgrounds N trainers with `&` and calls a bare `wait`, hangs forever after the trainers
+exit: the process substitution is itself a background job of that shell, and `wait` with no
+arguments waits for it too. Nothing after the `wait` (the adapter tarball, the DONE marker)
+ever runs. Seen on the PAR seed-replicate pod (`scratch/par_b/train_pod.py`); both adapters
+were on disk and were pulled file by file over the :8080 directory server instead.
+
+Fix: capture each trainer's `$!` and `wait $PID_0 $PID_1 ...` on those PIDs only.
