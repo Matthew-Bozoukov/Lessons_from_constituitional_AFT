@@ -8,6 +8,7 @@ import gzip
 import html
 import json
 import re
+import sys
 from pathlib import Path
 
 from src.properties.sources.odcv_rollouts import _fields, _split_steps
@@ -219,12 +220,22 @@ def cell_table(rows: list[dict]) -> list[dict]:
 
 
 def main() -> None:
+    # Default is the LEAN page: analysis + aggregate stats only. `--full` adds the per-rollout
+    # transcript browser (all 643 transcripts gzipped into the page) and the reader reports.
+    full = "--full" in sys.argv
     PAGE.parent.mkdir(parents=True, exist_ok=True)
-    data, rows = rollouts_payload()
+    if full:
+        data, rows = rollouts_payload()
+    else:
+        data, rows = None, [json.loads(l) for l in latest("rollouts_*.jsonl").open()]
     cells = cell_table(rows)
-    blob = base64.b64encode(
-        gzip.compress(json.dumps(data, separators=(",", ":")).encode(), 9)
-    ).decode()
+    blob = (
+        base64.b64encode(
+            gzip.compress(json.dumps(data, separators=(",", ":")).encode(), 9)
+        ).decode()
+        if full
+        else ""
+    )
     png = latest("plots/four_mos_voice_*.png")
     png_uri = "data:image/png;base64," + base64.b64encode(png.read_bytes()).decode()
     fig_md = latest("plots/four_mos_voice_*_results.md").read_text()
@@ -531,6 +542,20 @@ load();
 <script id="data" type="application/octet-stream">{blob}</script>
 <script>{js}</script>
 """
+    if not full:
+        # Strip everything per-rollout: the browser, the reader reports, their nav links, the
+        # data blob + JS, and the two legend rows that only explain the browser's highlights.
+        for pat in (
+            r'<section id="browser">.*?</section>\n',
+            r'<section id="reads">.*?</section>\n',
+            r' <a href="#browser">Cell browser</a>\n',
+            r' <a href="#reads">Reader reports</a>\n',
+            r'<script id="data"[^>]*>.*?</script>\n',
+            r"<script>.*?</script>\n",
+            r"  <span><mark>I will not</mark>.*?</span>\n",
+            r'  <span><span class="w".*?</span></span>\n',
+        ):
+            page = re.sub(pat, "", page, flags=re.S)
     PAGE.write_text(page, encoding="utf-8")
     print(
         f"{PAGE} {PAGE.stat().st_size / 1e6:.1f} MB (transcript blob {len(blob) / 1e6:.1f} MB, cells {len(cells)})"
