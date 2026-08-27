@@ -18,6 +18,11 @@ from src.huggingface import push_files
 REPO = "LASR-Callum/2026-08-26-difficult-advice-four-way-corpus-stats"
 FILES = [
     "scratch/three_way/judged_capped.jsonl",
+    # The sonnet/grok/gpt judgments this arm joins (2026-08-25). They were never committed and
+    # the worktree that produced them is gone, so this repo is their durable home.
+    "scratch/grok_vs_sonnet/judged.jsonl",
+    "scratch/three_way/judged_gpt.jsonl",
+    "scratch/three_way/judged_neutral.jsonl",
     "scratch/gpt_voice/metrics_table.json",
     *sorted(Path("output/sonnet_concise/four_way").glob("*.txt")),
     *sorted(Path("output/sonnet_concise").glob("lengths_four_arms_*.png")),
