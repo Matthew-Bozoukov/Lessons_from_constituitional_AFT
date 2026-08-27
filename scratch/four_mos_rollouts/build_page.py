@@ -241,6 +241,11 @@ def main() -> None:
     fig_md = latest("plots/four_mos_voice_*_results.md").read_text()
     analysis = latest("ANALYSIS_*.md").read_text()
     analysis = analysis.split("\n", 1)[1]  # drop the H1; the page names itself
+    # Section 8 (next steps) is rendered as its own page section; the Artifacts tail stays with the findings.
+    body_md, rest = analysis.split("\n## 8. ", 1)
+    next_md, artifacts_md = rest.split("\n## Artifacts", 1)
+    next_md = next_md.split("\n", 1)[1]  # drop the "8. Next steps" heading line itself
+    analysis = body_md + "\n## Artifacts" + artifacts_md
     reads = sorted((OUT / "reads").glob("*.md"))
     tables = [
         (
@@ -371,6 +376,8 @@ mark{background:var(--mark);color:var(--mark-ink);padding:0 .1em;border-radius:2
 .tag.yes{border-color:var(--grok);color:var(--grok)}
 .tag.no{border-color:var(--viol);color:var(--viol)}
 .loading{padding:2rem;color:var(--muted)}
+.next .prose>p:first-child{background:var(--surface);border:1px solid var(--hair);border-left:4px solid var(--grok);border-radius:6px;padding:.8rem 1rem;font-size:1.02rem}
+.next .prose>ol{margin-top:.4rem}
 @media (max-width:1100px){.layout{grid-template-columns:1fr}nav.rail{position:static;height:auto;flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--hair)}nav.rail .legend{display:none}.browser{grid-template-columns:1fr;height:auto}.armgrid{grid-template-columns:1fr 1fr}.stats{grid-template-columns:1fr 1fr}}
 @media (prefers-reduced-motion: reduce){*{scroll-behavior:auto!important}}
 """
@@ -470,6 +477,7 @@ load();
  <a href="#headline">Headline</a>
  <a href="#browser">Cell browser</a>
  <a href="#findings">Findings</a>
+ <a href="#next">Next steps</a>
  <a href="#reads">Reader reports</a>
  <a href="#tables">Tables</a>
  <a href="#pointers">Pointers</a>
@@ -516,6 +524,11 @@ load();
  <div class="eyebrow">Write-up</div>
  <h2>Findings and interpretation</h2>
  <div class="prose">{md_to_html(analysis)}</div>
+</section>
+<section id="next" class="next">
+ <div class="eyebrow">Do next</div>
+ <h2>Next steps — the top ablation and why</h2>
+ <div class="prose">{md_to_html(next_md)}</div>
 </section>
 <section id="reads">
  <div class="eyebrow">Evidence</div>
