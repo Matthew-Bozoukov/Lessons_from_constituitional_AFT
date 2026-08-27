@@ -19,6 +19,7 @@ def files() -> list[Path]:
         OUT / "rollouts_terra_full.jsonl",
         OUT / "corpus_gemini_150.jsonl",
         *sorted(OUT.glob("report_*.md")),
+        OUT / "effect_sizes.md",
         *sorted((OUT / "plots").glob("confidence_four_arms_*")),
         *sorted((OUT / "reads").glob("*.md")),
     ]
