@@ -48,7 +48,7 @@ out less aligned than one trained on the high-stakes original?** Use it against
 | `experiment` | Low-stakes arm of difficult advice: same 716 scenarios, same violations, everyday magnitude |
 | `date_generated` | 2026-08-26 |
 | `constitution` | [claude_distilled_12_principles_mid](https://github.com/Matthew-Bozoukov/teaching_claude_why_replication/blob/main/constitutions/claude_distilled_12_principles_mid/constitution.md), sha256 `{csha}` (9 principles) |
-| `source_repo` | `Matthew-Bozoukov/teaching_claude_why_replication` @ `{sha}` — **but see below**: at generation time the config, the two `src/data/synth/` fixes it needs and the seed script were uncommitted, so that commit alone does not reproduce this run |
+| `source_repo` | `Matthew-Bozoukov/teaching_claude_why_replication`, branch `nika/low-stakes-DA-SFT` @ `78dc99a81bfc` (the run itself stamped `{sha}`, which predates the code) |
 | `models` | see table below |
 | `generation_config` | see table below; full config and per-stage usage in `manifest.json` |
 | `schema` | see below |
@@ -127,8 +127,8 @@ instructed to; only the nine deliberative moves were asked for.
 
 ### Reproducing it
 
-`manifest.json` carries the **full effective config**, so the run is reproducible from this
-repo even though the git sha above predates the code. What that commit is missing:
+`manifest.json` carries the full effective config, and the code is on branch
+`nika/low-stakes-DA-SFT`. What that branch adds over the commit the run stamped:
 
 - `configs/data/synth/difficult_advice_low_stakes.yaml` (in `manifest.json` verbatim)
 - `scratch/low_stakes/seed.py` — stages the 716 source rows, reading their ids out of

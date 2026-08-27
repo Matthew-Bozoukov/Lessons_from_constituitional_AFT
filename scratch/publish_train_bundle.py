@@ -124,6 +124,63 @@ def _verify_bundle(tar_path: Path, train_config: str) -> None:
                 "are not in the tarball:\n  " + "\n  ".join(absent) +
                 "\nAdd them to CODE and re-run.")
         print(f"  import closure OK: {len(needed)} first-party modules, all present")
+        _verify_third_party(root, needed)
+
+
+# The pod installs a fixed list and has no lockfile, so a THIRD-PARTY import the bundle
+# needs but that list omits fails exactly like a missing first-party module -- ~25 minutes
+# in, after the base-model download, on a paid pod. That happened on 2026-08-26:
+# `src/huggingface.py::hf_token` gained a `load_dotenv()` call on 2026-08-20 to fix a
+# Windows driver's bare 401, and `python-dotenv` was never added to the pod's pip line, so
+# the trainer could not be imported at all. A fix for one workflow, a silent break in
+# another, and nothing checked the seam.
+#
+# Packages the base image supplies are exempt; everything else must be named in
+# runpod_train.py's pip line, so this reads that line rather than a second copy of it.
+IMAGE_PROVIDES = {"torch", "torchvision", "torchaudio", "numpy", "packaging", "typing_extensions"}
+PIP_ALIAS = {"dotenv": "python-dotenv", "yaml": "PyYAML", "PIL": "pillow",
+             "sklearn": "scikit-learn", "cv2": "opencv-python"}
+
+
+def _verify_third_party(root: Path, needed: set[str]) -> None:
+    """Every non-stdlib import in the bundle must be installed by the pod's bootstrap."""
+    import ast
+    import re as _re
+
+    boot = Path("scripts/gpu/runpod_train.py").read_text(encoding="utf-8")
+    m = _re.search(r"pip install --no-cache-dir -q (.*)", boot)
+    assert m, "could not find the pod's pip line in scripts/gpu/runpod_train.py"
+    installed = set(_re.findall(r'"?([A-Za-z_][A-Za-z0-9_.\-]*)', m.group(1)))
+
+    missing: dict[str, str] = {}
+    for rel in sorted(needed):
+        f = root / rel
+        if f.suffix != ".py" or not f.exists():
+            continue
+        for node in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
+            mods = []
+            if isinstance(node, ast.Import):
+                mods = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
+                mods = [node.module]
+            for mod in mods:
+                top = mod.split(".")[0]
+                if top in sys.stdlib_module_names or top.startswith("src"):
+                    continue
+                if top in IMAGE_PROVIDES:
+                    continue
+                pip_name = PIP_ALIAS.get(top, top)
+                if pip_name not in installed and top not in installed:
+                    missing[pip_name] = rel
+    if missing:
+        raise SystemExit(
+            "the pod's pip line does NOT install these, and the bundle imports them:\n  "
+            + "\n  ".join(f"{k}  (needed by {v})" for k, v in sorted(missing.items()))
+            + "\nAdd them to the pip install line in scripts/gpu/runpod_train.py and "
+              "re-run. Finding this here costs seconds; finding it on the pod costs ~25 "
+              "minutes of paid boot.")
+    print(f"  third-party OK: every import is in the pod's pip line "
+          f"({len(installed)} packages) or the base image")
 
 
 def main(repo: str, train_config: str, extra: str = "") -> None:
