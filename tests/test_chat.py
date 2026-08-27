@@ -8,6 +8,7 @@ import pytest
 from src.endpoints.chat import (
     Arm,
     StreamPrinter,
+    arms_from_ids,
     assert_one_server,
     assistant_message,
     build_record,
@@ -226,3 +227,27 @@ def test_arm_provenance_never_carries_the_key():
     prov = a.provenance()
     assert "api_key" not in prov and "sk-secret" not in str(prov)
     assert prov["name"] == "x" and prov["model_id"] == "x"
+
+
+# --- endpoint arms: the trace shape is unknown from the client side ------------------------
+
+
+def test_endpoint_arms_assume_an_inline_trace_only_when_labelled_think():
+    """A pod from `serve_adapter_runpod.py up --mode think` has no reasoning parser, so its
+    trace arrives inline; without the label nothing is assumed and nothing is dimmed."""
+    think = arms_from_ids(["base", "ft"], "https://pod/v1", "EMPTY", "think")
+    plain = arms_from_ids(["base"], "https://pod/v1", "EMPTY", "default")
+    assert [a.inline_trace for a in think] == [True, True]
+    assert [a.name for a in think] == ["base", "ft"]
+    assert plain[0].inline_trace is False
+
+
+def test_stream_printer_drops_the_inline_assumption_when_reasoning_arrives_out_of_band():
+    """Same think label, but this server runs a parser: the trace streams as reasoning
+    deltas first, so the content that follows is the answer and must print plain."""
+    buf = io.StringIO()
+    p = StreamPrinter(expect_inline=True, out=buf, color=True)
+    p.feed(None, "why")
+    p.feed("the answer", None)
+    p.finish()
+    assert buf.getvalue() == dim("why") + "the answer"

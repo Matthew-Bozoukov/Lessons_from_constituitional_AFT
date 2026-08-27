@@ -222,6 +222,10 @@ class StreamPrinter:
             return
         before = "".join(self.raw)
         self.raw.append(content)
+        if not before and self._inline and self.reasoning:
+            # The trace already came out-of-band (a reasoning parser is on), so content
+            # is the answer — the inline assumption was wrong for this server.
+            self._inline = False
         if self._inline is None:
             head = (before + content).lstrip()
             if len(head) < len(self.OPEN) and self.OPEN.startswith(head):
@@ -419,8 +423,26 @@ def arms_from_endpoint(endpoint: str, api_key: str, mode: str) -> list[Arm]:
         ) from e
     if not ids:
         raise SystemExit(f"\n{endpoint} serves no models.")
+    return arms_from_ids(ids, endpoint, api_key, mode)
+
+
+def arms_from_ids(ids: list[str], endpoint: str, api_key: str, mode: str) -> list[Arm]:
+    """Arms for listed model ids (pure; unit-tested).
+
+    Whether the server runs a reasoning parser is invisible from here, so a think-labelled
+    endpoint is assumed to deliver its trace INLINE (the shape `scratch/serve_adapter_runpod.py
+    up --mode think` produces without --agentic). StreamPrinter drops that assumption the
+    moment out-of-band reasoning arrives, so a parser-equipped server still displays right.
+    """
     return [
-        Arm(name=i, base_url=endpoint, api_key=api_key, model_id=i, mode=mode)
+        Arm(
+            name=i,
+            base_url=endpoint,
+            api_key=api_key,
+            model_id=i,
+            mode=mode,
+            inline_trace=(mode == "think"),
+        )
         for i in ids
     ]
 
