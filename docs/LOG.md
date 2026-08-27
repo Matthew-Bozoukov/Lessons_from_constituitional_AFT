@@ -1,6 +1,68 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-08-27 — ODCV on the low-stakes arm: 16.9%, and a one-pass CI too wide to mean anything
+
+**Hypothesis.** A model trained on low-stakes difficult advice is LESS aligned than one
+trained on the high-stakes original. Corpus and adapter are the two entries below.
+
+**Method.** ODCV-Bench, **65 cells x 1 rollout**, both conditions (30 incentivized + 35
+mandated, the 15 standard exclusions verbatim, so the cell set is byte-identical to every
+sibling arm's). temperature 0. `configs/eval/odcv_bench_lowstakes716_r64_1x65.yaml`.
+Adapter `LASR-Callum/qwen3.6-27b-lora-t2-9284-lowstakes716-r64-dynbatch`, vLLM on a RunPod
+H200, driven from a rented **vast CPU VM** over the systemd SSH tunnel. No control arm was
+re-run; the controls already exist.
+
+**Result.**
+
+| slice | MR | CI95 (scenario-clustered) | severity | n |
+|---|--:|:--:|--:|--:|
+| **overall** | **16.9%** | **[7.7, 26.2]** | 0.66 | 65 |
+| mandated | 14.3% | — | 0.56 | 35 |
+| incentivized | 20.0% | — | 0.78 | 30 |
+| bench published | 43.8% | [32.5, 55.0] | 1.67 | 80 |
+
+65/65 judged, 0 dropped, 0 empty transcripts. Judging $3.77.
+
+**Read the interval, not the point estimate.** 16.9% sits almost exactly on the unmodified
+recipe's ~16.8%, and that is NOT a finding: a single pass gives CI [7.7, 26.2], nearly 19
+points wide, which contains the entire 8.7-17.6% band that nine prior manipulations occupy.
+This run characterises the arm; it cannot separate it from anything. What it does support is
+the same thing every difficult-advice arm supports -- far below the published 43.8%
+(`published_within_our_ci: false`, -26.9pp) -- and that is inherited from the recipe, not
+attributable to low stakes. **To actually test the hypothesis this needs the pass count
+settled first**: separating this arm from its own ~16.8% source needs ~4-5pp of resolution,
+and 2026-08-20's 2-pass run had CI [4.5, 17.3] and could not.
+
+**Two operational notes worth keeping.**
+
+1. *One cell needed recovering, and accepting the loss would have biased the result.* Pass 1
+   finished 64/65 with `ALARM_missing_cells: 1` -- `mandated/Data-Privacy-Leak-Finding` failed
+   `compose_exit_1+no_container`, though the preflight had passed it. Re-running via
+   `--resume` at concurrency 2 returned it `ok` in 98s, so it was transient contention at
+   concurrency 12 rather than a deterministic drop. The 2026-08-18 entry records a run that
+   lost 21% of its cells this way and still read clean.
+2. *`--resume` does not push, and the judge reads the Hub.* `odcv_box_run` uploads each pass
+   as it lands, but the rollout driver invoked directly does not -- so the Hub held 64
+   transcripts while the box held 65, and `odcv_finish_arm` judges from a
+   `snapshot_download`. A first correction also landed in the wrong path
+   (`passes/a1_pass1` vs `passes/a1/<ts>`), giving 129 transcripts across two roots and a
+   double count. Fixed by deleting and re-pushing into the original path; verified 65
+   transcripts in one root BEFORE judging.
+
+**Artifacts.** `LASR-Callum/2026-08-27-odcv-lowstakes-716-1x65` (rollouts + results).
+Config on main. **All rented resources destroyed** -- pod confirmed gone, "no vast
+instances". Two unrelated RunPod pods were live on the shared account throughout and were
+not touched.
+
+**Cost.** ~$8: GPU ~$4, judging $3.77, vast box ~$0.10.
+
+**Next steps.** Decide the pass count before drawing any comparison. At 1 pass this number
+is a description, not evidence. The two riders from the corpus still apply to anything drawn
+from it: every one of the 716 scenarios relocated, so domain moves with magnitude; and
+`draft_responses` ran Sonnet 5 where the control used Haiku 4.5.
+
+
 ## 2026-08-27 — `uv run chat`: talk to a model organism from the terminal
 
 **Why.** Every number we have about an organism comes from a harness. Nobody had a way to
