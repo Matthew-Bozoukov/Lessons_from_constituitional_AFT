@@ -75,6 +75,7 @@ synth = "src.data.synth.cli:main"
 mix = "src.data.mixture.build_mixture:cli"
 train = "src.train.train_lora:cli"
 evals = "src.eval.run_eval:main"
+chat = "src.endpoints.chat:main"
 
 [dependency-groups]
 dev = [
