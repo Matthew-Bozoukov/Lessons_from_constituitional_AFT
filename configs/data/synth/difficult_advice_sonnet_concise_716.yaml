@@ -74,11 +74,15 @@ card:
 
 ablate: []
 
-# `--smoke` merges nothing here: a loaded source is not truncated by max_traits or
-# total_scenarios, so the smoke run is pointed at the 27-row directory build_source.py
-# writes beside the full one (3 rows per trait, all nine principles covered):
-#   --smoke --overrides "source.local_dir=data/da716_draft_source_smoke"
-smoke: {}
+# A loaded source is not truncated by max_traits or total_scenarios -- the row count IS the
+# source file -- so `--smoke` must swap the source for the 27-row directory build_source.py
+# writes beside the full one (3 rows per trait, all nine principles covered). That is the
+# repo-wide rule for source-seeded configs (tests/test_difficult_advice_recipe.py, learned on
+# 2026-08-26 when a smoke that only shrank total_scenarios ran the whole 716-row rewrite).
+smoke:
+  source:
+    local_dir: "data/da716_draft_source_smoke"
+    snapshot: "stage_6_draft_responses.jsonl"
 
 seed: 0
 
