@@ -61,7 +61,15 @@ export WANDB_MODE=disabled
 # Installing it keeps those configs runnable verbatim, which matters when a pod arm has to
 # stay byte-comparable to a sibling trained elsewhere; disabled mode keeps it a no-op with
 # no account, no network and no auth.
-python3 -m pip install --no-cache-dir -q "transformers>=5.14" "trl>=0.27" "peft==0.20.0" datasets accelerate omegaconf fire huggingface_hub hf_transfer wandb
+# python-dotenv is here for the same class of reason as wandb: `src/huggingface.py::hf_token`
+# calls `load_dotenv()` at import, so the trainer cannot even be imported without it. That
+# call was ADDED on 2026-08-20 to fix a Windows driver that got a bare 401 from the Hub --
+# a fix for one workflow that silently broke this one, because this pip list predates it and
+# nothing re-checked it. It cost a pod on 2026-08-26, ~25 minutes in, with
+# `ModuleNotFoundError: No module named 'dotenv'` after the base model had downloaded.
+# PyYAML is transitively present today via transformers; named explicitly so a future
+# dependency trim cannot take it away silently.
+python3 -m pip install --no-cache-dir -q "transformers>=5.14" "trl>=0.27" "peft==0.20.0" datasets accelerate omegaconf fire huggingface_hub hf_transfer wandb python-dotenv PyYAML
 hf download {base} >/dev/null
 hf download {bundle} code.tar.gz --repo-type dataset --local-dir /workspace/bundle
 mkdir -p /workspace/repo && tar -xzf /workspace/bundle/code.tar.gz -C /workspace/repo

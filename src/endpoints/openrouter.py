@@ -58,7 +58,24 @@ def provider_pin(model: str) -> dict:
             "must be served by the same provider on every call. Add its ONE provider "
             f"to {PROVIDER_PINS_PATH} (check https://openrouter.ai/api/v1/models/"
             f"{model}/endpoints), or pass an explicit extra_body['provider'] block.")
-    return pin
+    # `price` is provenance/accounting, not routing — it never goes in the request body.
+    return {k: v for k, v in pin.items() if k != "price"}
+
+
+def provider_price(model: str) -> dict | None:
+    """The USD-per-1M `{in, out}` price pinned for `model`, or None if unpriced.
+
+    THE single source of truth is the `price:` field beside each pin in
+    configs/endpoints/providers.yaml — the price belongs with the provider/tier it is
+    the price OF, so a tier change moves both together. cost accounting in
+    src/data/synth reads this rather than hardcoding a table that silently drifts from
+    the pin.
+    """
+    provider_pin(model)  # populates _pins and raises on an unpinned model
+    price = (_pins or {}).get(model, {}).get("price")
+    if price is None:
+        return None
+    return {"in": float(price["in"]), "out": float(price["out"])}
 
 
 class _CompletionFailure(RuntimeError):
@@ -186,6 +203,73 @@ def apply_cache_control(messages: list[dict], model: str) -> list[dict]:
     return out
 
 
+def build_request_body(model: str, messages: list[dict], temperature: float,
+                       max_tokens: int, extra_body: dict | None = None) -> dict:
+    """The JSON body `chat` would send for these arguments, minus the model id.
+
+    Exists for the async batch path (`stage_runtime.run_batch`), which posts raw
+    request bodies instead of going through the SDK: cache markers and provider pins
+    must be applied by the SAME code either way, or a batched request would silently
+    differ from its interactive twin. The model id is omitted because the batch API
+    takes it once per job, not per request.
+    """
+    extra = dict(extra_body or {})
+    if "provider" not in extra:
+        extra["provider"] = provider_pin(model)
+    return {"messages": apply_cache_control(messages, model),
+            "temperature": temperature, "max_tokens": max_tokens, **extra}
+
+
+def result_from_payload(model: str, data: dict) -> ChatResult:
+    """A ChatResult from a raw chat-completion JSON dict (a batch result's `body`).
+
+    Mirrors the post-processing in `chat` — no-choices classification, the
+    content_filter and empty-content guards, defensive cache-token reads — so a
+    completion is judged by one set of rules whether it arrived over the SDK or out
+    of a batch. Raises the same typed errors; the batch caller catches them and
+    routes the request to the interactive mop-up path instead of retrying blindly.
+    """
+    provider = str(data.get("provider") or "")
+    choices = data.get("choices") or []
+    if not choices:
+        err = data.get("error")
+        err_d = (err if isinstance(err, dict)
+                 else {"message": str(err)} if err else None)
+        msg = f"Model {model} returned no choices (provider {provider or '?'}): {data}"
+        code = (err_d or {}).get("code")
+        if isinstance(code, int) and 400 <= code < 500 and code != 429:
+            raise ProviderRejectionError(msg, provider_error=err_d, provider=provider)
+        raise EmptyCompletionError(msg, provider_error=err_d, provider=provider)
+    choice = choices[0]
+    content = (choice.get("message") or {}).get("content")
+    finish = choice.get("finish_reason") or ""
+    if finish == "content_filter":
+        # Same classification as `chat`: an output-sample filter, retryable — which
+        # for a batch result means the interactive mop-up (a fresh sample) owns it.
+        raise EmptyCompletionError(
+            f"Model {model} blocked by content filter (provider {provider or '?'}): "
+            "finish_reason=content_filter",
+            provider_error={"code": "content_filter",
+                            "message": "finish_reason=content_filter "
+                                       f"({len(content or '')} chars of partial "
+                                       "content dropped)"},
+            provider=provider)
+    if not content:
+        raise EmptyCompletionError(
+            f"Model {model} returned empty content (provider {provider or '?'}): "
+            f"{data}", provider=provider)
+    usage = data.get("usage") or {}
+    details = usage.get("prompt_tokens_details") or {}
+    return ChatResult(
+        content=content,
+        prompt_tokens=int(usage.get("prompt_tokens") or 0),
+        completion_tokens=int(usage.get("completion_tokens") or 0),
+        finish_reason=finish,
+        cached_tokens=int(details.get("cached_tokens") or 0),
+        provider=provider,
+    )
+
+
 class OpenRouterClient:
     """Minimal client for OpenRouter chat completions."""
 
@@ -274,8 +358,14 @@ class OpenRouterClient:
             # OpenAI-protocol hard filter, with or without partial text. Partial
             # output is DROPPED rather than returned: a silently truncated
             # completion poisons downstream parses worse than a loud rejection.
-            # Deterministic like an in-body 4xx — fail fast, don't re-bill it 6x.
-            raise ProviderRejectionError(
+            # RETRYABLE, unlike an in-body 4xx: a finish_reason filter fired on what
+            # the model SAMPLED, not on the request — measured 2026-08-20 on the
+            # gemini difficult-advice arm, the same write_scenarios prompt passed
+            # 11/12 calls at temperature 1.1. An input-level block arrives as an
+            # in-body 4xx (e.g. Gemini's PROHIBITED_CONTENT) and stays deterministic
+            # above; a prompt the filter always trips on exhausts the retries and
+            # surfaces here with the same typed payload.
+            raise EmptyCompletionError(
                 f"Model {model} blocked by content filter (provider "
                 f"{getattr(resp, 'provider', '?')}): finish_reason=content_filter",
                 provider_error={"code": "content_filter",

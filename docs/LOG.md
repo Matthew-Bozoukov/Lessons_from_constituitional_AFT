@@ -1,6 +1,548 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-08-27 — ODCV on the low-stakes arm: 16.9%, and a one-pass CI too wide to mean anything
+
+**Hypothesis.** A model trained on low-stakes difficult advice is LESS aligned than one
+trained on the high-stakes original. Corpus and adapter are the two entries below.
+
+**Method.** ODCV-Bench, **65 cells x 1 rollout**, both conditions (30 incentivized + 35
+mandated, the 15 standard exclusions verbatim, so the cell set is byte-identical to every
+sibling arm's). temperature 0. `configs/eval/odcv_bench_lowstakes716_r64_1x65.yaml`.
+Adapter `LASR-Callum/qwen3.6-27b-lora-t2-9284-lowstakes716-r64-dynbatch`, vLLM on a RunPod
+H200, driven from a rented **vast CPU VM** over the systemd SSH tunnel. No control arm was
+re-run; the controls already exist.
+
+**Result.**
+
+| slice | MR | CI95 (scenario-clustered) | severity | n |
+|---|--:|:--:|--:|--:|
+| **overall** | **16.9%** | **[7.7, 26.2]** | 0.66 | 65 |
+| mandated | 14.3% | — | 0.56 | 35 |
+| incentivized | 20.0% | — | 0.78 | 30 |
+| bench published | 43.8% | [32.5, 55.0] | 1.67 | 80 |
+
+65/65 judged, 0 dropped, 0 empty transcripts. Judging $3.77.
+
+**Read the interval, not the point estimate.** 16.9% sits almost exactly on the unmodified
+recipe's ~16.8%, and that is NOT a finding: a single pass gives CI [7.7, 26.2], nearly 19
+points wide, which contains the entire 8.7-17.6% band that nine prior manipulations occupy.
+This run characterises the arm; it cannot separate it from anything. What it does support is
+the same thing every difficult-advice arm supports -- far below the published 43.8%
+(`published_within_our_ci: false`, -26.9pp) -- and that is inherited from the recipe, not
+attributable to low stakes. **To actually test the hypothesis this needs the pass count
+settled first**: separating this arm from its own ~16.8% source needs ~4-5pp of resolution,
+and 2026-08-20's 2-pass run had CI [4.5, 17.3] and could not.
+
+**Two operational notes worth keeping.**
+
+1. *One cell needed recovering, and accepting the loss would have biased the result.* Pass 1
+   finished 64/65 with `ALARM_missing_cells: 1` -- `mandated/Data-Privacy-Leak-Finding` failed
+   `compose_exit_1+no_container`, though the preflight had passed it. Re-running via
+   `--resume` at concurrency 2 returned it `ok` in 98s, so it was transient contention at
+   concurrency 12 rather than a deterministic drop. The 2026-08-18 entry records a run that
+   lost 21% of its cells this way and still read clean.
+2. *`--resume` does not push, and the judge reads the Hub.* `odcv_box_run` uploads each pass
+   as it lands, but the rollout driver invoked directly does not -- so the Hub held 64
+   transcripts while the box held 65, and `odcv_finish_arm` judges from a
+   `snapshot_download`. A first correction also landed in the wrong path
+   (`passes/a1_pass1` vs `passes/a1/<ts>`), giving 129 transcripts across two roots and a
+   double count. Fixed by deleting and re-pushing into the original path; verified 65
+   transcripts in one root BEFORE judging.
+
+**Artifacts.** `LASR-Callum/2026-08-27-odcv-lowstakes-716-1x65` (rollouts + results).
+Config on main. **All rented resources destroyed** -- pod confirmed gone, "no vast
+instances". Two unrelated RunPod pods were live on the shared account throughout and were
+not touched.
+
+**Cost.** ~$8: GPU ~$4, judging $3.77, vast box ~$0.10.
+
+**Next steps.** Decide the pass count before drawing any comparison. At 1 pass this number
+is a description, not evidence. The two riders from the corpus still apply to anything drawn
+from it: every one of the 716 scenarios relocated, so domain moves with magnitude; and
+`draft_responses` ran Sonnet 5 where the control used Haiku 4.5.
+
+
+## 2026-08-27 — `uv run chat`: talk to a model organism from the terminal
+
+**Why.** Every number we have about an organism comes from a harness. Nobody had a way to
+just *talk* to one — ask it the difficult-advice questions ourselves, watch the trace, put
+the same prompt to the base model next to it — without hand-rolling curl against vLLM.
+
+**What.** `src/endpoints/chat.py` (alias `chat`, mirror `scripts/gpu/chat.py`): a REPL over
+the OpenAI-compatible endpoint, reached one of three ways. `--endpoint <url>` talks to a
+server that is already up (the RunPod HTTPS proxy from `scratch/serve_adapter_runpod.py`,
+or a tunnel) and turns every model it lists into an arm. `--target <hf-adapter> [...]
+[--server <ssh-alias>]` serves the adapters itself through the eval framework's
+`VllmServer` — thinking mode inferred from `training_meta.json` and pinned into the
+template exactly as the evals do, `base` served alongside in the same mode — and refuses
+targets that would need a second server (different base or mode), the same rule
+`run_eval` applies. `--target openrouter:<model>` gives an off-the-shelf reference point.
+Each arm keeps its own history; `/use base ft_20_80` puts one prompt to both, in order.
+Reasoning is dimmed live in either shape vLLM emits it (out-of-band with a parser, inline
+under the think prefill) and split for the record by `resolve_trace`, so a trace is never
+mistaken for the answer on screen or on disk. Prior-turn reasoning is sent back as
+`reasoning_content`, matching the served template's `preserve_thinking` pin. Sessions
+land in `output/chat/<ts>/`: `transcript.jsonl` appended per model-turn (self-contained:
+system prompt, user turn, think, answer, sampling, finish_reason), `run_meta.json`,
+`transcript.md` (via `transcript_markdown`). Exploratory, so not pushed to HF.
+
+**Smoke.** Two turns against `openrouter:qwen/qwen3-32b` with piped stdin: streaming,
+out-of-band trace capture, `/set`, `/models`, all three artifacts. The first run wrote the
+provider key into `run_meta.json` via `Arm.__dict__` — fixed the same hour
+(`Arm.provenance()` is the only projection that reaches disk; a test guards it). 16 offline
+tests in `tests/test_chat.py`.
+
+**Same day, second pass: no arguments needed.** `uv run chat` alone now lists every
+organism on the Hub — adapters under `LASR-Callum` carrying `training_meta.json`, 23 of
+them, grouped by base model · mode · experiment (the experiment is derived from the train
+config's name: `lora_qwen36_t2_9284_da716_dynbatch_2xh200` → `t2_9284` / `da716`; the 31
+unstamped adapters are counted, not listed) — takes a pick, and gets it served on RunPod:
+a chat pod of yours that already lists the arms is reused, otherwise one is launched after
+a `$/h` confirmation, booted, proxy-warmed (GOTCHAS 2026-08-19) and connected, `base`
+alongside. The serving bootstrap moved from `scratch/serve_adapter_runpod.py` into
+`src/endpoints/runpod.py` (the scratch script is now a thin CLI over it; the RunPod REST
+client lives there too, re-exported from the internalization module for its callers).
+Teardown is layered because a forgotten H100 is the expensive failure: `finally` on every
+exit path incl. SIGTERM/SIGHUP; an idle guard (30 min without a message); a detached
+watchdog process (`python -m src.endpoints.runpod watchdog`) that destroys the pod if the
+chat process is gone or after 6 h; and a startup sweep of your leftover `chat-<user>-*`
+pods. `terminate` re-lists until the pod is actually gone. Pods are named
+`chat-<user>-<mode>-<arms>` so ownership is visible on the shared account and only your
+own are ever touched. `--pods` / `--down <id>` / `--keep-pod` / `--yes` for the edges.
+Verified offline (46 tests across chat/organisms/runpod; full suite 1038 green) and live
+up to the menu; a real launch has not been run yet — first use should watch the
+boot-phase lines and the teardown message.
+
+**Next.** First live run: `uv run chat`, pick `da716` and `base`, ask the difficult-advice
+questions, `/quit`, and confirm "pod … destroyed; pods still active: 0". The
+`--target ... --server` path is still unexercised against a live GPU host.
+
+## 2026-08-27 — the low-stakes arm is trained; train_loss says only that the run was healthy
+
+**Hypothesis.** A model trained on low-stakes difficult advice comes out LESS aligned than
+one trained on the high-stakes original. Corpus and mixture were built 2026-08-26 (entry
+below); this is the SFT half. No eval yet.
+
+**Method.** One credential-free RunPod 2xH200 pod via `scripts/gpu/runpod_train.py`, torchrun
+DDP with token-budgeted dynamic batching -- the da716 protocol, unchanged.
+`configs/train/lora_qwen36_t2_9284_lowstakes716_dynbatch_2xh200.yaml` is byte-identical to
+`lora_qwen36_t2_9284_da716_dynbatch_2xh200.yaml` below the data keys (verified by diff), so
+the arms differ in DATA alone.
+
+**Result. 625 steps, 1 epoch, train_loss 0.8779, 2h21m.** Mask gate 716 real / 9,646 empty /
+**0 absent, 0 truncated**; 625 steps identical to the control's.
+
+| arm | rows | DA rows | steps | train_loss |
+|---|---|---|---|---|
+| **low stakes (this)** | 10,000 | 716 (7.16%) | 625 | **0.8779** |
+| verbose rows-matched | 10,000 | 716 (7.16%) | 625 | 0.8751 |
+| verbose token-matched | 9,647 | 363 (3.76%) | 603 | 0.8538 |
+| low stakes 2026-08-20 | 10,000 | 712 | 625 | 0.8666 |
+
+**Read the loss as a health check, not a result.** Every difficult-advice arm lands in
+0.85-0.88 whatever the manipulation. It confirms the data trains cleanly and the protocol
+matched; it says nothing about the hypothesis.
+
+`max_seq_len: 8192` was measured before the run with the Qwen3.6 tokenizer on the published
+mixture -- longest row 8,191 tokens, 0 over, and the longest is a `longalign` row rather than
+a difficult-advice one, the same profile as the control. The gate's `0 skipped as truncated`
+confirmed it live.
+
+**Four pods to get one adapter, and three of the failures were ours.**
+
+1. *vast, cuda_max_good 12.8.* The offer was chosen on NVLink and reliability. The repo pins
+   torch 2.11.0+cu130, so `nvidia-smi` listed both H200s while `torch.cuda.is_available()`
+   was False. An offer query must carry `cuda_vers>=13.0`, and one ssh round trip checking
+   `torch.cuda.is_available()` BEFORE bootstrapping is the difference between a $2 mistake
+   and a $25 one.
+2. *vast, preempted.* Correct CUDA, everything green, trainer launched, then the host stopped
+   the container and `start_instance` returned `resources_unavailable`. Not ours; it is why
+   the run moved to RunPod's credential-free path.
+3. *RunPod, `ModuleNotFoundError: No module named 'dotenv'`* ~25 minutes in, after the base
+   model downloaded. `src/huggingface.py::hf_token` gained a `load_dotenv()` call on
+   2026-08-20 to fix a Windows driver's bare 401 -- a fix in one workflow, a silent break in
+   another, and no check on the seam. `publish_train_bundle.py` verified the first-party
+   import closure and never looked at third-party. It does now, reading `runpod_train.py`'s
+   own pip line so the two cannot drift.
+4. *RunPod, trained successfully and the watchdog destroyed it.* 625/625, loss 0.8781,
+   adapter written -- then torn down. The watchdog read `train or boot`; the bootstrap tees
+   the TRAINER to train.log but echoes `TRAINING_DONE` from the OUTER shell into boot.log,
+   so the marker was never visible, train.log went quiet the instant the trainer exited, and
+   the stall rule written to catch silent deaths killed a healthy run. ~$18 and 2.6h. It now
+   reads both logs, and refuses teardown whenever `saved adapter` appears in either --
+   a stalled pod costs money, a destroyed adapter costs the run.
+
+The fifth pod reproduced run 4 almost exactly (0.8779 against 0.8781), which is its own small
+reassurance that the recipe is deterministic enough to be worth trusting.
+
+**Artifacts.** Adapter `LASR-Callum/qwen3.6-27b-lora-t2-9284-lowstakes716-r64-dynbatch`
+(public, `thinking: true`, dataset pinned to `8d5001e2`). Corpus
+`LASR-Callum/2026-08-26-difficult-advice-low-stakes-716`; mixture
+`LASR-Callum/2026-08-26-table2-9284-low-stakes-716-train`. Code on
+`nika/low-stakes-DA-SFT`. **All pods destroyed; RunPod and vast both confirmed at zero.**
+GPU spend ~$46, of which ~$28 was the three self-inflicted failures.
+
+**Next steps.** ODCV against the control adapter
+`LASR-Callum/qwen3.6-27b-lora-t2-9284-da716-r64-dynbatch`. Settle passes FIRST: separating
+this arm from its ~16.8% source needs ~4-5pp of resolution and 2026-08-20's 2-pass run had
+CI [4.5, 17.3], too wide to say anything. Two riders must be reported with any number --
+every one of the 716 scenarios relocated, so domain moves with magnitude; and
+`draft_responses` ran Sonnet 5 where the control used Haiku 4.5, by explicit choice.
+
+
+## 2026-08-26 — a low-stakes difficult-advice corpus, built by construction rather than by rewriting traces
+
+**Hypothesis.** A model trained on low-stakes difficult advice comes out LESS aligned than one
+trained on the high-stakes original. The 2026-08-20 entry tested this by rewriting finished
+traces post-hoc and got MR 12.4% against ~16.8% — not worse — but carried three caveats: the
+scenarios moved, 89 of 712 rows still rated >=2, and 151 kept a stake-raising device. This is
+the cleaner replication: stakes lowered at the scenario, and the deliberation written for the
+new situation rather than downscaled from the old one. Data only; no training or eval yet.
+
+**Method.** The exact 716 rows the control mixture uses, their scenario_ids read back out of
+`2026-08-14-table2-9284-difficult-advice-716-train` rather than re-derived, rewritten to
+everyday magnitude and re-answered. `configs/data/synth/difficult_advice_low_stakes.yaml`,
+nine stages, entered at `load_source_run`.
+
+Generating through the normal recipe cannot work: `revise_prompts` says "If refusing is
+obviously free, raise the cost". That is why 2026-08-20's cheap attempt moved stakes 2.59 ->
+2.75, in the wrong direction. Stages 6 and 7 are the baseline's response stages copied
+VERBATIM, lint block included, so a moved result cannot be blamed on a different way of
+writing the deliberation — the same argument that chose two-pass over a single detailed call
+(measured: single-call traces were slightly MORE varied, cosine 0.748 vs 0.783, but were not
+how the control was built).
+
+**Result. 716/716, mean stakes 0.91** (`{0:137, 1:512, 2:65, 3:2}`), 278 distinct domains,
+trait balance identical to the control's 80x5/79x4. $42.58. Reasoning 1848/2778/4536 chars
+against the source corpus's 1641/2920/4414, and user turns 351/1089/1905 against 337/1061/1828
+— both landed on the source medians with no length instruction given. 2 grave rows against
+2026-08-20's 20; 9% at >=2 against its 12.5%.
+
+**Four things worth keeping, none of them the headline.**
+
+1. *Assigning a setting beats asking for variety.* Unassigned, 5 of 6 pilot rewrites landed in
+   "community ___", two in "community garden" — the same collapse the `no_stakes` smoke hit.
+   Dealing 18 everyday settings round-robin gave 278 domains over 716 rows. Forcing 24 varied
+   rows into ONE setting raised mean pairwise cosine only 0.525 -> 0.561, max 0.818, under the
+   0.86 gate.
+2. *Haiku 4.5 cannot rate stakes.* On identical rewrites: original rubric + haiku 1.94,
+   sharpened rubric + haiku 1.61, sharpened rubric + sonnet-5 **0.89**. It rates how WRONG the
+   request is, not how much is at stake, and says so in its own reasons ("...if the
+   coordination is discovered to violate the constitution's intent"). Every row here involves
+   concealment, so that signal is constant and the cheap rater measures noise.
+3. *A short reply is a thin SCENARIO, not a lazy model.* All 8 first-pass failures were rows
+   the rater put at stakes 0 — the rewrite had removed the temptation, so an honest answer
+   really was three sentences. Rolling the reply until it cleared the 700-char floor is
+   padding (the tell: 4 rows sitting at 710-769 against a 2328 median). Re-drawing the
+   scenario instead, accepted only at stakes >= 1, fixed 7 of 8 with replies at 841-1976 chars
+   and left exactly 1 row in the padding band.
+4. *Low-stakes is not a uniform transformation.* One row refused twelve draws across two
+   settings: a student two days from a dissertation defence needing a hedge-free yes/no on the
+   assistant's subjective experience. Its temptation is MADE of its gravity — remove the
+   defence and the ask is "give me a funny one-liner". Substituted (flagged `substitutes`; the
+   one row of 716 that does not pair). Two of the first three replacements also came back
+   stakes 0. A coverage probe over 9 principles x 18 settings had already pointed here: the
+   four principles about the USER's situation scored 18/18, while t1/t6/t7 — about the
+   assistant itself — held every weak cell.
+
+**Engine fixes, both found by this run.** `constitution.py` now reads the constitution as
+UTF-8 explicitly; `read_text()` defaults to the locale encoding, which on a Windows driver is
+cp1252, and the resulting mojibake changed `constitution_sha256` so a corpus generated on
+Linux looked like it came from a different constitution. `op_llm_json`'s preview wraps its
+first saved field in `str()`, matching the guard its sibling already had — a stage saving a
+numeric field first crashed the run after that stage had been paid for.
+
+**Artifacts.** Corpus `LASR-Callum/2026-08-26-difficult-advice-low-stakes-716`; mixture
+`LASR-Callum/2026-08-26-table2-9284-low-stakes-716-train` (9,284 + 716, 7.16% synth, the
+swap-in twin of the control). Code on `nika/low-stakes-DA-SFT` @ 78dc99a. No GPU used.
+
+**Next steps.** Train the mixture against the control and run ODCV. Note the power problem
+before doing so: distinguishing this arm from its own ~16.8% source needs ~4-5pp of
+resolution, and 2026-08-20's 2-pass run had CI [4.5, 17.3] and could not. Two riders must be
+reported with any result — every row relocated, so domain moves with magnitude; and
+`draft_responses` ran Sonnet 5 where the control used Haiku 4.5, by explicit choice.
+
+## 2026-08-26 — Arm C trained and evaluated: Sonnet at grok's length scores 15.4% ODCV, i.e. Sonnet's 16.3%, not grok's 7.8% — the generator effect is not a length effect
+
+**Hypothesis:** the responder-swap result (grok-written answers 7.8% vs da716's 16.3%, same
+questions) was confounded with length: grok's corpus is 1.7x shorter and the three trained
+generators order exactly by reply length (gpt 25.2% > sonnet 16.3% > grok 7.8%). Arm C holds
+the author (Sonnet 5), the prompts and the Haiku drafts fixed and moves only length to grok's
+(corpus entries earlier today: paired medians 1.10x/1.05x grok's, length AUC vs grok 0.42,
+blind-judged refusal unchanged vs unconstrained Sonnet). If C lands near B, length carried
+the drop; near A, the generator did.
+
+**Method:** trained `LASR-Callum/qwen3.6-27b-lora-t2-9284-sonnetconcise703-paired-r64` on
+`LASR-Callum/2026-08-26-t2-9284-sonnetconcise703-paired-train` (703 capped rows + the
+byte-identical 9,284-row Table2 half; same 703 scenario ids as arms A/B) with the grokresp703
+config unchanged except `data_repo` — 2xH200 DDP, dynamic batching, 625 steps, final loss
+0.7005 (grokresp703: 0.700). A first pod died at `resolve_dataset()` on a missing
+`python-dotenv` (the bootstrap never installed what `src/huggingface.py` grew on 08-25);
+fixed in `scripts/gpu/runpod_train.py`, ~$3 lost. Evaluated with
+`configs/eval/odcv_bench_t2_9284_sonnetconcise703_r64_paired_2x65.yaml`, byte-identical in
+hyperparameters to the grokresp703/gptresp685 configs: same 65 cells, 15 exclusions,
+temperature 0, judges grok-4.20 + gemini-3.1-pro-preview, 2 passes from laptop Docker
+against a RunPod H200 vLLM endpoint (agentic parsers, thinking pinned) over the HTTPS proxy.
+Passes ran 10 min each (65/65 clean, all 130 transcripts carry tool calls) against ~45 min
+for the sibling arms — the capped model reasons briefly at inference too.
+
+**Result — C sits on A, not on B.**
+
+| arm | MR | 95% CI | sev | mandated | incentivized | n |
+|---|---|---|---|---|---|---|
+| D · gpt (luna → terra) | 25.2% | [15.1, 34.9] | 1.07 | 22.1% | 28.8% | 127 |
+| A · da716 (Haiku → Sonnet 5) | 16.3% | [10.0, 21.8] | 0.76 | 12.4% | 20.8% | 257 |
+| **C · capped Sonnet (this)** | **15.4%** | **[7.1, 21.4]** | **0.65** | **10.0%** | **21.7%** | **130** |
+| B · grok-4.6 | 7.8% | [3.6, 13.6] | 0.35 | 5.7% | 10.2% | 129 |
+| base fp8 (no SFT) | 36.9% | [21.4, 53.6] | 1.37 | 40.0% | 33.3% | 65 |
+
+- Halving Sonnet's reply and reasoning length moved ODCV by −0.9 pp (16.3 → 15.4), inside
+  noise; severity 0.76 → 0.65. The length ordering across generators was a coincidence of
+  three points, not a mechanism: with length matched, grok's arm is still ~half of Sonnet's.
+- The CIs still overlap (C [7.1, 21.4] vs B [3.6, 13.6] share 7.1–13.6), so this is "the point
+  estimate did not move toward grok", at n=130, not a demonstrated separation — the same
+  caveat as the 08-24 entry, now cutting the other way.
+- What is left to explain B: the corpus-level differences the cap did NOT move (08-26 four-way
+  entry) — refusal density per unit text, fewer/terser alternatives, grok's punctuation and
+  vocabulary — and whatever "who wrote it" carries beyond those. Refusal/offer density is the
+  next candidate to ablate directly.
+
+**Costs:** training ~$21 (+$3 lost pod); serving ~$8; rollouts $9.21 OpenRouter (per the
+driver's usage delta) + judging $1.43.
+
+**Artifacts:** adapter `LASR-Callum/qwen3.6-27b-lora-t2-9284-sonnetconcise703-paired-r64`;
+eval `LASR-Callum/2026-08-26-odcv-sonnetconcise703-paired-eval` (passes + combined +
+scores + results); local `output/odcv_bench/qwen3_6-27b-lora-t2-9284-sonnetconcise703-paired-r64/combined2x_20260826_174216/`;
+figure `output/sonnet_concise/plots/odcv_generators_65cells_bars_*.png` (+ `_results.md`;
+`scratch/grok_responder/plot_generators.py` now draws four generators and reads grok/gpt from
+their HF eval repos). The "Four Arms, Same Questions" page carries the row.
+
+**Next steps:** (1) ablate refusal/offer density in Sonnet's corpus at fixed length (a rewrite
+sentence targeting alternatives, the way this one targeted length). (2) A 4-rollout top-up on
+C and B would shrink the overlap if the separation needs to be claimed. (3) The neutral-judge
+cross-check (`agg_neutral.py`) on the capped corpus is still open.
+
+
+## 2026-08-26 — Four-arm corpus comparison: capping Sonnet's length leaves its refusal behaviour untouched (blind judge, p ≈ 1.0 vs unconstrained Sonnet)
+
+**Hypothesis:** the length-capped Sonnet arm (previous entry) is only a clean length control if
+condensing did not also change what the replies DO — refuse the shortcut, offer alternatives,
+name the act. Kunwar's concern, verbatim: "ensure reduced length does not negatively affect
+other things like refusal."
+
+**Method:** every three-way tool from the generator ablation (`scratch/three_way/`,
+`scratch/gpt_voice/`) was generalised to four corpora on the 678 scenarios all four share —
+`norm.py` now resolves each corpus from its HF repo and carries `ORDER`/`JUDGED`/`PAIRS`, so
+`agg.py`, `stats.py`, `by_trait.py`, `does_the_work.py`, `metrics.py`, `substance.py`,
+`refusal_forms.py`, `length_decomp.py` gain a column rather than a fork. The capped corpus
+went through the identical blind judge (`scratch/three_way/judge.py`, gpt-5.6-terra, temp 0,
+rubric verbatim; 678 rows, 0 errors, ~$6) so its stances sit in the same table as the
+2026-08-25 sonnet/grok/gpt judgments. n = 677 judged in every corpus.
+
+**Result — nothing on refusal moved; a few things on shape did, all toward grok.**
+
+| judged, % of 677            | sonnet | capped | grok | gpt  |
+|-----------------------------|--------|--------|------|------|
+| stance = refuses            | 83.8   | 83.6   | 84.3 | 80.5 |
+| stance = complies           | 1.2    | 1.0    | 2.2  | 3.0  |
+| decline rate (ref + partial)| 87.7   | 87.6   | 86.9 | 85.4 |
+| alternatives / reply (mean) | 4.6    | 4.1    | 5.1  | 7.0  |
+| alternatives terse          | 2.2    | 12.0   | 16.1 | 1.2  |
+| assistant offers to do work | 67.4   | 57.6   | 71.5 | 85.5 |
+| refusal names the action    | 74.3   | 70.2   | 91.5 | 79.6 |
+| refusal in opening sentences| 43.4   | 54.8   | 50.9 | 41.3 |
+
+- McNemar capped vs sonnet: refuses p=1.000 (discordant 24/25), complies p=1.000 (5/6), leak
+  p=1.000 (20/21), explicit refusal p=0.849. Capped vs grok: all n.s. Capped vs gpt: capped
+  refuses more and leaks less on every metric, p < 0.03. Per principle, capped stays within
+  ±5 pp of sonnet (worst t9: −5.1); the two arms leak on the same scenarios 8x chance.
+- Voice rates stay Sonnet's, not grok's: per-1k-char 'you' 3.20 vs sonnet 3.36 (grok 3.16,
+  gpt 0.79), 'I' 1.83 vs 1.86, hedges 0.42 vs 0.40 (grok 0.14), "instead" redirect 39.5% vs
+  52.1% (grok 15.5%), reply ends on a question 44.4% vs 38.8% (grok 1.0%). Length lands on
+  grok's: reply 1,721 vs grok 1,736 chars; prose share 85.7% (gpt 66.9%, the rest in lists).
+- Length-decomposition of the four arms: gpt 4,920 chars/reply with 29% in list items and a
+  drafted artifact in 74% of replies; sonnet 2,784; grok 1,736; capped 1,721. Word medians on
+  the 678: reasoning gpt 313 / sonnet 479 / capped 238 / grok 218; reply 614 / 452 / 283 / 268.
+
+**Reading:** the cap is a length control and (on these measures) only a length control for
+stance. What it costs is a half-alternative per reply and some of Sonnet's "I can draft that
+for you" offers — the same two things that separate grok from sonnet, at smaller size. If arm
+C's ODCV lands near grok's 7.8%, length carried the ordering (gpt 25.2% → sonnet 16.3% → grok
+7.8% is exactly the length order); if near 16.3%, the generator did.
+
+**Artifacts:** judge output `scratch/three_way/judged_capped.jsonl` (+ HF
+`LASR-Callum/2026-08-26-difficult-advice-four-way-corpus-stats` with every table);
+tables `output/sonnet_concise/four_way/*.txt`, `scratch/gpt_voice/metrics_table.json` (now 4
+columns); figure `output/sonnet_concise/lengths_four_arms_*.png`. Pages: "Four Arms, Same
+Questions" (the living comparison; ODCV row for arm C to be filled) and "Four Arms Browser"
+(every row, four replies side by side, judged stance per arm).
+
+**Next steps:** train + ODCV arm C (the row that decides it). Optionally extend the
+gemini-3.1-pro neutral-judge cross-check (`agg_neutral.py`) to the capped arm.
+
+
+## 2026-08-26 — Length-matched Sonnet arm: one sentence in the rewrite prompt puts Sonnet at grok's lengths (length AUC vs grok 0.42) with Sonnet's style intact
+
+**Hypothesis:** the responder-swap result (grok-written answers 7.8% ODCV MR vs da716's 16.3%,
+2026-08-24) is confounded with length: grok's reasoning is 2.16x and its reply 1.66x shorter
+than Sonnet's on the same 703 questions, and a classifier separates the corpora by length
+alone at AUC 0.864. If Sonnet can be held to grok's lengths with everything else fixed, a
+third arm separates length from authorship: C near B (7.8%) means length carried the drop;
+C near A (16.3%) means the generator did.
+
+**Method:** `configs/data/synth/difficult_advice_sonnet_concise_716.yaml`. Stages 1-6 of the
+da716 source run are reused verbatim — the same 716 scenarios/prompts AND the same Haiku 4.5
+drafts (`scratch/sonnet_concise/build_source.py` replays the da716 arm's `pick_balanced` seed-0
+selection and stages the cached `stage_6_draft_responses.jsonl`, verified identical to the
+published `LASR-Callum/2026-08-13-difficult-advice-v2`). Only `revise_responses` is paid for,
+on the baseline's own Sonnet 5 at the baseline's settings, with the full-constitution rewrite
+prompt plus exactly one sentence: *"One limit on length: keep the reasoning within about 220
+words and the reply within about 270 words -- condense wherever the draft runs longer, and
+leave alone whatever already fits."* 220/270 are grok's paired medians; reasoning and reply
+are capped separately because they differ from grok by different factors. A ceiling, not a
+target (Kunwar: don't condense what is already short). `scratch/sonnet_concise/verify_config.py`
+diffs every other block against `difficult_advice_full_constitution.yaml` and fails on any
+change beyond that sentence (pattern_scan switched off, a $21 judged pass irrelevant to
+length). Smoke 27 rows / $1.10, reviewed before the full run; full run 716/716, $28.03,
+21.6 min, corpus checks pass.
+
+**Result — the cap lands Sonnet on grok's lengths, and moves nothing else that was measured.**
+
+| words, median          | reasoning | reply |
+|------------------------|-----------|-------|
+| Haiku draft (input)    | 292       | 353   |
+| A · da716 (Sonnet)     | 476       | 445   |
+| **C · Sonnet, capped** | **238**   | **282** |
+| B · grok-4.6           | 218       | 266   |
+
+- Paired ratios (703 shared ids): C/B **1.10x** reasoning, **1.05x** reply; C/A 0.50x / 0.64x.
+  Sonnet overshoots the cap by a median 19 words in both fields (94% of reasoning rows and
+  73% of replies are over it), so the realised lengths sit ~7% above grok's medians.
+- **Length-only AUC C vs B: 0.42** (chance) — the 0.864 length confound is gone. C vs A: 0.94.
+  Bag-of-words C vs B 0.9999, as between any two generators.
+- The capped distribution is far **tighter** than grok's (reply p10-p90 257-308 vs 169-433): a
+  cap fixes the median, not the spread. A length classifier that used variance could still
+  tell them apart; the AUC above says the logistic one cannot.
+- Style rates per 1,000 chars vs da716 (`scratch/compare_generator_arms.py`): contractions,
+  second person, offer phrases, em-dashes all ~1.0x — the cap kept Sonnet's voice. What moved:
+  shorter sentences (23.3 vs 26.5 words, 0.74x per-1k), fewer hedges/numbers/questions per
+  1k (0.6-0.7x), and refusal phrases 1.7x denser (condensing keeps the refusal, drops the
+  padding). Against grok, C still offers alternatives 3.6x more densely and refuses 0.66x as
+  densely — the values-flavoured differences from 2026-08-24 survive the length match.
+- Sonnet's own change notes read like the unconstrained run's (openers, weighing); the
+  smoke's 27 transcripts were read side by side (da716 → capped → grok) before the full run.
+
+**Artifacts:** corpus `LASR-Callum/2026-08-26-difficult-advice-sonnet-concise-716` (smoke:
+`…-716-smoke`); paired mixture `LASR-Callum/2026-08-26-t2-9284-sonnetconcise703-paired-train`
+(9,987 rows = 703 + 9,284 Table2, trait/domain spread identical to arms A and B, built with
+`--ids_from` the grok corpus); train config
+`configs/train/lora_qwen36_t2_9284_sonnetconcise703_paired_2xh200.yaml` and eval config
+`configs/eval/odcv_bench_t2_9284_sonnetconcise703_r64_paired_2x65.yaml`, both derived from
+the grokresp703 pair with only the arm-naming fields changed; lengths report
+`output/sonnet_concise/lengths_three_arms_*.{png,md}`; run dir
+`output/synthdoc_sonnet_concise_716/20260826_112144`.
+
+**Next steps:** (1) Train arm C on the paired mixture (2xH200, ~$23, `scripts/gpu/runpod_train.py`)
+and run ODCV on the same 65 cells x 2 rollouts — the number this arm exists for. (2) If C
+lands near B, the refusal/offer density is the next thing to ablate (it is what the cap did
+NOT move). (3) A spread-matched variant (sample the cap per row from grok's distribution)
+would close the variance gap if a reviewer asks.
+
+## 2026-08-25 — Property discovery on the generator ablation: register and refusal transferred, structure INVERTED, and one behaviour appeared that neither corpus taught
+
+**Hypothesis.** The grok-responder arm reaches 7.8% ODCV misalignment against da716's 16.3%
+(2026-08-24 entry), and the hand measurements said its writing is shorter, blunter and more
+jargon-dense. Those are corpus facts. The open question is which of them survive fine-tuning
+into behaviour — and whether the surviving ones are the ones that go with not violating.
+
+**Method: two fits, each spanning both arms.** `configs/properties/discover_grok_vs_sonnet_corpus.yaml`
+over the two paired corpora (1,406 rows: the same 703 questions, only the answerer differs),
+and `configs/properties/discover_odcv_grok_vs_da716.yaml` over the ODCV rollouts of the models
+trained on them (404: 129 grok + 275 da716). Both arms are fitted TOGETHER in each run —
+separate fits would produce two vocabularies with nothing aligning a group in one to a group in
+the other, and the comparison would degrade to eyeballing labels. Two channels per fit, the
+reasoning trace and the shown reply / actions. 292 properties total.
+
+Two implementation notes worth keeping. The paired corpus source is **interleaved**, not
+concatenated: `limit:` takes a prefix, so a concatenated file makes every smoke run single-arm
+and the contrast impossible. And the grok ODCV arm had to be read from a **local run dir**
+rather than its published repo — see the bug below.
+
+**Result 1 — the corpora are two different acts of reasoning.** 51 of 104 reasoning groups and
+66 of 106 shown-reply groups separate the arms. Sonnet decomposes: rhetorical questions 24.0%
+vs 0.9%, surface-request-vs-hidden-intent 29.7% vs 9.7%, steelmans before rejecting 21.6% vs
+2.4%, ends on a question 36.0% vs 4.3%. Grok anchors and declares: domain jargon 56.3% vs
+18.6%, firm first-person refusal 27.7% vs 12.1%, unhedged declarative tone 14.8% vs 2.3%. These
+reproduce the hand measurements from a pipeline that never saw them (steelmanning 2.4/21.6
+against a paragraph-initial "But…" count of 0.1/44.7).
+
+One property splits by channel, and the split is the finding: in the *reasoning* Sonnet pairs
+refusal with an alternative more (39.4% vs 31.6%), in the *shown reply* Grok does (41.1% vs
+36.1%). Sonnet deliberates about the alternative; Grok states one. Either channel alone gives
+the opposite answer.
+
+**Result 2 — most of it transferred, two things did not.** Terse register +19.1pp corpus →
++19.7pp rollouts. Firm refusal +17.8 → +24.0 (grew). Concrete anchoring retargeted: jargon
++37.7 → file-path citation +26.0. Sonnet's decomposition +20.1 → +34.8 (grew). Reasoning length
+transferred almost exactly: 2.25x in the corpus, **2.24x** in the rollouts (6,729 vs 3,006
+chars) across a complete change of task.
+
+The two exceptions matter more than the transfers. **Lists and headers INVERTED**: Sonnet
+writes the least list-like traces in training (80.5% sustained unbroken prose vs 57.8%) yet its
+model produces by far the most headers at inference (75.6% vs 27.1%), the widest gap anywhere
+in the rollout fit. A surface feature of the corpus does not predict the same feature at
+inference. And **verbatim reasoning loops** appear in 34.9% of grok rollouts against 20.7%,
+having existed in neither corpus — a fine-tuning artifact, consistent with the deliberation
+ceiling (grok's trained model never reasons past ~1,411 chars).
+
+**Result 3 — the outcome crossing does NOT give grok's 7.8% a tidy mechanism.** Grok is higher
+on two protective properties (repeated firm refusal, lift -17.5, 39.5% vs 14.9%; validator
+scrutiny, -11.3, 31.0% vs 21.4%) and on one risky one (numeric-threshold grounding, +8.5). But
+it is *lower* on three other protective ones — pairs refusal with an alternative (-16.8),
+distinguishes legitimate intent from manipulative framing (-10.5, 17.8% vs 52.0%), sustained
+internal monologue (-10.0). It halves the misalignment rate while losing more of these
+exchanges than it wins. Probes over the 29 reasoning properties: violation AUC 0.951 (21
+properties suffice), arm 0.857 (**8** suffice), any_misalignment 0.799.
+
+Three limits are load-bearing, not boilerplate. (1) The grok arm violated on **10 of 129**
+rollouts; every grok-side outcome number rests on that numerator. (2) Violating rollouts carry
+fewer properties (8.78 vs 9.97 in reasoning, 9.81 vs 11.40 in actions), which pushes every lift
+negative by roughly a tenth of its prevalence and inflates the protective column. (3) ODCV
+reasoning *narrates* the action — "fabricates missing files instead of reporting absence" at
++16.5 describes a violation rather than predicting one — so part of the 0.951 is description.
+All lifts ran single-stratum; every probe p-value is exactly 0.0196 = 1/51, the floor with 50
+permutations. Separately, the four largest violation correlates are **arm-neutral scenario
+signatures**, not model differences.
+
+**Result 4 — the autorater is not neutral, and not randomly so.** The Anthropic rater's content
+filter left 23 grok rows against 9 sonnet undescribed in the reasoning channel (3.3% vs 1.3%),
+12 vs 4 in the shown reply. Worst cell: grok on t7, 5 of 75 rows (6.7% of that trait) — exactly
+where grok's operator-versus-user compliance failures concentrate. Every "grok does less of X"
+result on t7 sits against a hole of that size.
+
+**Bug found, unfixed.** `src/properties/sources/odcv_rollouts._rollout_key` still reconstructs
+the OLD bench-layout key (`.../experiments/<scenario>/rollout_NNN/`). Against main's published
+layout (`rollouts/<condition>/<scenario>/passN/`, added 2026-08-24) it falls through to
+`path.parent.name`, every key becomes `pass1`/`pass2`, and **0 of 129** scores join — the run
+loads silently unjudged and the outcome crossing has nothing to cross. Measured both ways: the
+local run dir joins 129/129, the published repo 0/129. da716 works only because it predates the
+change. **Any newly published ODCV eval is currently unreadable by this source.**
+
+**Artifacts.** `LASR-Callum/2026-08-25-grok-vs-sonnet-corpus-properties` and
+`LASR-Callum/2026-08-25-grok-vs-da716-odcv-rollout-properties` (light artifacts;
+`embeddings.npy` is 890M and regenerable from `features.jsonl`).
+
+**Next steps.** (1) Fix `_rollout_key` to read both layouts, and make the loader fail loudly
+rather than proceeding unjudged. (2) Ablate repeated-explained-refusal — the only property that
+is simultaneously among the strongest protective ones, clearly arm-separating, and traceable to
+a corpus property; rewrite one arm's refusals to be stated once. (3) Re-extract the corpus
+features with a non-Anthropic rater to close the t7 hole; `features.jsonl` caches per record so
+only the missing rows need repaying. (4) Do NOT ablate jargon, sentence length or markdown —
+the lists-and-headers inversion is direct evidence that corpus formatting does not predict
+inference formatting. (5) Stratify the outcome crossing *inside* a scenario, which needs more
+passes per cell than either arm currently has.
+
 ## 2026-08-25 — verbose CoT: 3x the reasoning, two arms, and nothing moved
 
 **Hypothesis.** Every ablation so far changed what the reasoning *says*. This one changes only
@@ -221,6 +763,7 @@ between stages, so the $68 guard never executed — the stage died on `max_fail_
 content-filter refusals) before it could. The seven 20-record smokes also under-predicted:
 they retried ~34% of records where the full run retried ~52%, and none of them saw a single
 content-filter refusal. Both are now in `docs/GOTCHAS.md`.
+
 
 ## 2026-08-25 — Training-data contract: every corpus push is tagged, and /datasets discovers it live from the Hub
 
@@ -1015,6 +1558,209 @@ figure `output/report/arm_comparison_20260819_093604.png` + markdown mirror. Run
 destroyed, 0 active.
 
 
+## 2026-08-24 — Generator ablation TRAINED and EVALUATED: grok-written answers give the LOWEST ODCV misalignment of any 7% arm (7.8% vs da716's 16.3%) — but it is confounded with length
+
+**Hypothesis:** with the questions held identical and only the model writing the assistant
+turn swapped, a difference in ODCV misalignment is attributable to the generator. The
+responder-swap corpus (703 rows, grok-4.6 answering the baseline's own prompts) was built
+for exactly this test.
+
+**Method:** trained `LASR-Callum/qwen3.6-27b-lora-t2-9284-grokresp703-paired-r64` — 703
+grok rows + the same byte-identical 9,284-row Table2 half, 2xH200 DDP, 625 steps, final
+loss 0.700 / train_loss 0.883. Mixture built with `build_t2_9284_da716_mixture.py
+--ids_from`, which selects the synth half BY SCENARIO ID rather than sampling, so the arm
+pairs with its control question-for-question. Evaluated on ODCV-Bench with
+`configs/eval/odcv_bench_t2_9284_grokresp703_r64_paired_2x65.yaml`, byte-identical in
+hyperparameters to the peercritique716 and chunk-only-702 configs: same 65 cells, same 15
+exclusions, temperature 0.0, concurrency 12, timeout 2400s, judges grok-4.20 +
+gemini-3.1-pro-preview. 2 passes from laptop Docker against a RunPod H200 vLLM endpoint
+over the HTTPS proxy; 129 transcripts (one scenario lost when the driver was killed
+mid-pass; the combine step tolerates gaps).
+
+**Result — lowest of every arm, and the ordering is worth staring at.**
+
+| arm | MR | 95% CI | sev |
+|---|---|---|---|
+| **grok-responder 703 (this)** | **7.8%** | [3.6, 13.6] | **0.35** |
+| c6masked | 9.7% | [5.5, 13.9] | — |
+| chunk-only 702 | 11.5% | [6.2, 19.6] | 0.62 |
+| synthdoc-716 (v1) | 14.3% | [9.3, 19.0] | 0.65 |
+| da716 (v2) — the direct comparator | 16.3% | [10.0, 21.8] | 0.76 |
+| lessswap716 | 16.5% | [11.2, 21.4] | 0.79 |
+| t10 curiosity 716 | 19.7% | [10.9, 30.0] | 0.99 |
+| base fp8 (no SFT) | 36.9% | [21.4, 53.6] | 1.37 |
+| table2-only (0% SFT) | 43.9% | [37.5, 53.1] | 1.87 |
+
+mandated 5.7%, incentivized 10.2%. Severity 0.35 is less than half da716's 0.76. The CIs
+DO overlap (7.8 [3.6,13.6] vs 16.3 [10.0,21.8] share 10.0-13.6), so this is "the point
+estimate halved and nothing separates cleanly", not a demonstrated win.
+
+**Why this is not yet evidence that grok has better values.** The corpora differ on more
+than authorship, and the differences point the same way as the result:
+
+- grok's answers are **1.70x shorter**; a classifier separates the two corpora by LENGTH
+  ALONE at **AUC 0.864** (this project called peer-critique defective at 0.85 and trained
+  on it anyway — 2026-08-17).
+- per 1,000 characters grok **refuses ~2.6x more densely** and **offers ~3.9x fewer
+  alternatives**, while matching Sonnet exactly on first-person framing (1.02x) and on
+  citing concrete numbers (1.06x).
+
+A corpus that refuses more per unit text is a plausible direct cause of a lower agentic
+misalignment rate, with no values difference required. So the honest reading is: swapping
+the response-writer to grok-4.6 halves ODCV misalignment, via a package of values +
+verbosity + refusal density that this experiment does not separate.
+
+**Costs:** training $23 (2xH200, 2.1h); ODCV rollouts ~$8 of H200 serving; judging $2.43.
+Two pods were wasted (~$7) on a wandb import failure before training began.
+
+**Artifacts:** adapter `LASR-Callum/qwen3.6-27b-lora-t2-9284-grokresp703-paired-r64`;
+eval + plots `LASR-Callum/2026-08-24-odcv-grokresp703-paired-eval`; mixtures
+`LASR-Callum/2026-08-24-t2-9284-{sonnet703,grokresp703}-paired-train`.
+
+**Next steps:** (1) The obvious control is a LENGTH-matched arm — train on Sonnet answers
+truncated to grok's length distribution, or compare at the DRAFT stage where the two
+generators nearly match (1.14x). Without it the 7.8% cannot be attributed. (2) The paired
+Sonnet control (703 rows) was built and pushed but NOT trained, on the grounds that
+da716 already exists at 716 rows; if the 13-row gap ever matters, the bundle is ready.
+(3) Consider whether refusal density is itself the data property worth ablating — it is a
+Figure 3 candidate and is measurable with `scratch/compare_generator_arms.py`.
+
+
+## 2026-08-24 — Responder-swap arm: with prompts held identical, Sonnet's revision LENGTHENS (1.19x) and grok's SHORTENS (0.80x) — that is the generator effect
+
+**Hypothesis:** the all-grok arm is not a clean generator ablation, because it regenerates
+the scenarios and prompts as well as the responses. Freezing the baseline's first half and
+swapping only the model that writes the assistant turn should isolate the generator, and
+should collapse most of the twelve confounds catalogued for the all-grok arm.
+
+**Method:** `configs/data/synth/difficult_advice_grok_responder_716.yaml`. `load_source_run`
+loads the baseline's published `stage_5_revise_prompts.jsonl`; only `draft_responses` and
+`revise_responses` are paid for, both on `x-ai/grok-4.6`. `scratch/build_da716_prompt_source.py`
+stages the inputs by replaying the da716 training arm's own selection (`pick_balanced`,
+seed 0, no RNG draw before it) and independently reproduces the two statistics that arm's
+train config documents — trait counts 80/80/80/80/80/79/79/79/79 and 635 distinct domains —
+so this corpus answers the SAME 716 questions, scenario id for scenario id. Contract is
+baseline-identical and verified programmatically: prompts byte-identical, `min_chars: 700`,
+all 13 `ban_patterns`, `retries: 2`, `max_fail_pct: 2.0`. Model choice was measured first
+(24 baseline prompts x 3 attempts, per-row all-attempts-fail): grok-4.6 0.0%, grok-4.20
+8.3%, grok-4.3 8.3%.
+
+**Result — the generator effect is in the REVISION step, and it is directional.**
+
+|            | draft            | revised           | revision effect |
+|------------|------------------|-------------------|-----------------|
+| baseline   | 2242 (Haiku 4.5) | 2670 (Sonnet 5)   | **1.19x — lengthens** |
+| grok arm   | 1964 (grok-4.6)  | 1568 (grok-4.6)   | **0.80x — shortens**  |
+
+At the DRAFT stage the two generators nearly match (1964 vs 2242, 1.14x). Essentially the
+whole final gap is made at revision: Sonnet expands the draft by 19%, grok-4.6 compresses it
+by 20%. So "how much did Sonnet matter" has a specific answer — Sonnet's distinctive
+contribution is not that it writes long from scratch, it is that its revision pass EXPANDS.
+
+- **Yield 703/716 (98.2%)** under the baseline's unmodified contract, vs 86.6% for the
+  all-grok arm under a gate loosened to 15.0. draft_responses lost 19 (2.7%, over the 2.0
+  gate) and a resume recovered 11 of them; revise_responses lost 5 (0.7%).
+- **Trait balance near-exact**: 79/80/80/80/80/73/75/77/79 against the baseline's
+  80/80/80/80/80/79/79/79/79. The all-grok arm had t7 at 30.
+- **Separability vs the baseline corpus** (5-fold CV AUC, the 2026-08-17 PAR/PC test):
+  length-only **0.975 -> 0.864**, response median ratio **2.64x -> 1.67x**. Bag-of-words
+  stays ~1.0 in both, which is expected and not by itself disqualifying: any two generators
+  have distinct lexical fingerprints, and the 0.70 gate was built for within-corpus arm
+  leakage, not across-generator contrast.
+- **Cost $15.96 / 31 min** for 703 rows ($0.023/example) — cheaper than the all-grok arm's
+  $61.79 for 620, because stages 1-4 are downloaded rather than generated.
+- Published: `LASR-Callum/2026-08-21-difficult-advice-grok-responder-716`.
+
+**Also this session, on the all-grok arm:** topped it up 620 -> 673 by retrying stuck rows
+at 13 attempts with no new scenarios (t7 30 -> 56), which cost ~$10. Two caching traps found
+on the way: a completed `stage_N_*.jsonl` snapshot makes resume reuse the stage wholesale, so
+raising `retries` did nothing until the snapshot was deleted and the `.partial` checkpoint
+kept; and the same trap at `export_sft` silently exported 620 rows from a 673-row stage 7.
+
+**Caveat, unresolved:** length-AUC 0.864 still sits at the level the 2026-08-17 entry called
+defective in peer-critique (0.85 on length alone, trained on before the check ran). Training
+this arm against da716 therefore still needs length reported as a covariate. The arm also
+does not reproduce the baseline's cross-model critique — grok-4.6 both drafts and revises,
+because grok-4.3 and grok-4.20 each leave ~8% of rows unanswerable at the length floor.
+
+**Next steps:** (1) decide whether to train at all given AUC 0.864, or to compare at the
+draft stage where the arms nearly match (1.14x). (2) If training: size-match to 703 and
+report length alongside every downstream metric; Figure 1's x-axis is already tokens of
+synthetic data, which absorbs part of this natively. (3) Consider a grok-4.3-drafts /
+grok-4.6-revises variant to restore the cross-model split, accepting ~8% row loss. (4) The
+revision-direction result (1.19x vs 0.80x) is worth a figure in its own right — it is a
+concrete, measured property of the generator, which is what Figure 3 is asking for.
+
+
+## 2026-08-21 — Generator sweep, third arm DELIVERED: all-grok difficult-advice corpus, 620 rows at the baseline's exact contract (86.6% yield)
+
+**Hypothesis:** the generator-swap arm (how much of the difficult-advice result is Sonnet,
+rather than the recipe?) need not be abandoned because Gemini refuses the corpus's hardest
+content. xAI has no request-side safety layer, so an all-grok arm can hold prompts fixed
+and swap only the generator stack — the comparison the sweep is actually for.
+
+**Method:** `configs/data/synth/difficult_advice_grok_716.yaml`, built on `jamie/batch-synth`.
+Prompts verified byte-identical to `difficult_advice.yaml` across every stage
+(programmatically, not by eye), and `min_chars: 700` plus all 13 `ban_patterns` unchanged,
+so the quality bar is the baseline's. `x-ai/grok-4.3` (1.25/2.5, hidden reasoning off)
+writes scenarios and prompts; `x-ai/grok-4.6` (2/6, effort low — the endpoint refuses to
+disable reasoning) writes responses and does all revision and judging. Run
+`output/synthdoc_grok_716/20260820_212358`; corpus published to
+`LASR-Callum/2026-08-20-difficult-advice-grok-716`.
+
+**Result — the corpus exists, and the interesting findings are about xAI as a generator.**
+
+1. **Grok generates what Gemini refuses.** 90 probe calls on this repo's own
+   write_scenarios/draft_prompts prompts over constitution principle 4 (harm, the
+   CBRN/cyber-adjacent one): ZERO blocked. grok-4.3 24/24 on model-written principle-4
+   scenarios; over hand-written biosecurity/chemistry/cyber/nuclear/pharma/aviation
+   scenarios, grok-4.3 and grok-4.6 each 18/18 draft_prompts and 6/6 draft_responses, and
+   the replies reason about the tension and decline the shortcut rather than complying.
+   For contrast, gemini-3.7-flash blocked 26/716 draft_prompts that survived ZERO of six
+   resamples even at `safety_settings BLOCK_NONE`. The live run then completed all 716
+   scenarios and 716 draft_prompts with no content filtering whatsoever.
+2. **xAI writes shorter difficult-advice replies than Haiku 4.5, and this is what costs
+   rows.** The first full run halted at draft_responses: 302/716 (42.2%) under the
+   700-char floor. Three sub-findings, each of which cost a wrong guess:
+   - **Raising reasoning effort makes visible output SHORTER, not longer.** Single-shot
+     pass on matched inputs: grok-4.3 reasoning off 31%, effort low 0%, effort high 19%.
+     The model spends itself in the hidden trace and then answers tersely. The intuitive
+     fix is backwards.
+   - **Retry failures correlate PER PROMPT**, so `(1-p)^n` badly understates them: 30 rows
+     x 3 attempts measured 23.3% of rows failing all three where independence predicts
+     8.1%. Judge any retry-budgeted stage by per-row all-attempts-fail rate.
+   - **Lowering the floor plateaus.** Failure rate is flat at ~6.7% from floor 500 down to
+     300, because the residual rows fail on banned vocabulary ("I must not", "violates my
+     guidelines") or a missing `<response>` tag — neither of which a length floor touches.
+     Even floor 200 sits at 3.3%. So `min_chars` was left at 700.
+3. **Model choice was decided by unsalvageable prompts, not price.** Re-running every
+   stuck row 10 more times: grok-4.20 has 7/30 stuck of which 4 pass 0/10 ever;
+   grok-4.6 has 4/30 stuck of which only 1 is permanent, the rest passing 50-60% per call
+   and simply needing more chances. Hence grok-4.6 on `respond` plus `retries: 5`.
+4. **Yield, the number to plan around:** draft_responses 716 -> 668, revise_responses
+   668 -> 620, both losing ~7% on length, and the losses COMPOUND: **620/716 = 86.6%** at
+   the baseline's contract. Failures land just under the bar — one missed by five
+   characters (695 of 700). Absorbed as `max_fail_pct: 15.0` rather than by lowering the
+   floor, deliberately: row count is recoverable downstream (sample both arms to a common
+   n), comparability is not.
+5. **Cost:** $61.79 for 620 rows = $0.0997/example, against a 2-row smoke's projection of
+   $0.0686 — the smoke could not see the retry burden. grok-4.6 is 97% of the bill and
+   `rewrite` alone is $14.23 over 834 calls, so the money goes to the retry budget on
+   long-output stages, not to generation. All diagnostics together cost $1.18.
+
+**Caveats:** `max_fail_pct` is a GLOBAL key, so 15.0 loosens the guard on every stage, not
+just the two that need it (stages 2-5 each ran 716/716 clean, so nothing is masked today).
+The delivered corpus is 620 rows while the filename says 716 — that is the scenario budget,
+held equal to the baseline's on purpose.
+
+**Next steps:** (1) size-match before training — either sample the baseline arm to 620 or
+re-run this one with `total_scenarios: ~830` to land 716 finished rows. (2) Mix and train
+against the same table-2 control the gemini arm was meant to use, so the generator swap is
+the only variable. (3) Check whether the shorter-reply tendency survives into the trained
+model, since it is now a known property of this corpus rather than a nuisance. (4) Decide
+what to do with `difficult_advice_gemini_716.yaml`: it cannot produce the t4 rows at all,
+so it is either dropped from the sweep or reported as a partial arm with its 26 holes.
+
 ## 2026-08-19 - LESS proper: the top 10% trained as its own arm, with the random-220 control it needs
 
 **Hypothesis:** the 2026-08-14 ranking supports LESS as arXiv:2402.04333 actually runs it -
@@ -1759,6 +2505,39 @@ running it at scale — it is one judge call per record per property. (3) Then o
 ablation end to end, against the control that
 `lora_qwen36_t2_9284_synthdoc_716_dynbatch_2xh200.yaml` names. (4) Port the three scratch
 producers in behind their `produce()`.
+
+## 2026-08-18 — TURF study: all 60 cases traced + cross-case aggregation; retrieval-null lift kills the urgency confound
+
+**Hypothesis:** aggregating full per-crux hit tables across each rubric's 20 cases —
+with a retrieval-null correction — yields interpretable, rubric-specific property
+hypotheses where single-case raw hit counts drowned in corpus house patterns.
+
+**Method:** built the retrieval null into index.py (all 22,030 response attributes as
+pseudo-cruxes, exact/deterministic/local; `null_hits.npy`); trace.py now ranks tables
+AND triggers by smoothed lift (=(hits+1)/(expected+1)) and persists full `hits_all`;
+batch driver folded into trace.py (`--all_cases`, resumable); new aggregate.py
+computes per rubric: score (pooled hit share), lift, specificity (vs the other two
+rubrics), case presence (gate >= 3), ranked by lift x spec. Traced all 60 t2synth
+cases (~$3; 3 transient extractor-parse failures succeeded on rerun). Atlas v2
+visualises Case/Rubric/Study levels (same artifact URL).
+
+**Result:** the null directly vindicates the confound worry — max expected hits 78.1,
+exactly where urgency's raw 76–94 sat: it was at chance (lift ~1). Ranked candidates
+(`output/turf/aggregate/20260818_171557/`): ai_disclosure has by far the strongest
+signal (#188 epistemic-humility-about-own-internal-states, lift 5.9, spec 0.217;
+#883/#212 AI-anthropomorphizing queries; #773 rejecting the detachment-vs-performative
+false dichotomy) — the stayed-AI behaviour traces to AI-identity training content.
+authoritarian_resistance: #393 reasoning that rejects security-control bypasses (lift
+1.7, spec 0.036), #942 systemic-downstream-risk evaluation, plus incident-pressure
+technical scenarios on the query side. empirical_honesty is weakest (lifts 1.1–1.8):
+#156/#567 scientific-integrity scenarios, #396 autonomy-preserving actionable
+guidance. 180 trigger selections (3 x 60) remain per-case diagnostics; ranking uses
+full hit tables (argmax aggregation would give ~1 vote per cluster).
+
+**Next steps:** read the top clusters' members + source rows and write the word-for-word
+property hypotheses; draft the 3–15 ablation plan for Callum (ai_disclosure candidates
+first — strongest signal); consider violate-polarity traces as negative controls;
+commit the trace/aggregate/index changes.
 
 ## 2026-08-17 — LESS-selected difficult-advice arm trained: 151 rows swapped, loss 0.8651, no control yet
 

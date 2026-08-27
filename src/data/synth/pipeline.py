@@ -12,7 +12,7 @@ from typing import Any
 from src.utils import git_sha, timestamp
 
 from .constitution import full_text
-from .stage_runtime import PRICES, Checkpoint, Ctx, Stage, Usage, measured_per_stage
+from .stage_runtime import Checkpoint, Ctx, Stage, Usage, measured_per_stage, price_of
 from .hf_cache import StageCache
 from .stage_operators import OPERATORS
 
@@ -105,25 +105,32 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
     repo = cfg.get("hf_repo_smoke") if smoke else cfg.get("hf_repo")
     from src.huggingface import training_data_tags
     from src.utils import origin_url
+    # A config may enrich (or correct) any card field via a top-level `card:` map —
+    # for arms whose experiment, model mix, or config filename the auto-built defaults
+    # cannot infer (e.g. `pipeline` != filename, or a per-stage model split). The
+    # config's values win, so `card.provenance` fixes the run command when the two
+    # names differ, and `card.experiment`/`card.models` carry the real detail.
+    card = {
+        "experiment": f"synth `{cfg['pipeline']}` run — per-stage "
+                      "snapshots (resumable generation cache)",
+        "date_generated": ts,
+        "constitution": str(cfg["constitution"]),
+        "source_repo": f"{origin_url()} @ {git_sha()}",
+        "models": str(cfg.get("model")
+                      or "per-stage models — see manifest.json"),
+        "generation_config": "see manifest.json (full run config, "
+                              "sampling settings, per-stage usage)",
+        "schema": "stage_<n>_<name>.jsonl snapshots + manifest.json",
+        "provenance": "uv run synth run --config "
+                      f"configs/data/synth/{cfg['pipeline']}.yaml",
+    }
+    card.update({k: str(v) for k, v in (cfg.get("card") or {}).items()})
     cache = StageCache(run_dir, repo, private=bool(cfg.get("hf_private", False)),
                        # Hub-indexed discovery tags: the dashboard's /datasets lists every
                        # public repo carrying them (kind, pipeline, constitution, smoke).
                        tags=training_data_tags("synth", cfg["pipeline"],
                                                cfg["constitution"], smoke=smoke),
-                       card_fields={
-                           "experiment": f"synth `{cfg['pipeline']}` run — per-stage "
-                                         "snapshots (resumable generation cache)",
-                           "date_generated": ts,
-                           "constitution": str(cfg["constitution"]),
-                           "source_repo": f"{origin_url()} @ {git_sha()}",
-                           "models": str(cfg.get("model")
-                                         or "per-stage models — see manifest.json"),
-                           "generation_config": "see manifest.json (full run config, "
-                                                "sampling settings, per-stage usage)",
-                           "schema": "stage_<n>_<name>.jsonl snapshots + manifest.json",
-                           "provenance": "uv run synth run --config "
-                                         f"configs/data/synth/{cfg['pipeline']}.yaml",
-                       })
+                       card_fields=card)
 
     workers = int(cfg.get("workers", 8))
     budget = float(cfg.get("budget_usd", 0)) or None
@@ -557,7 +564,7 @@ def estimate(cfg: dict, measured_manifest: str | None = None) -> dict[str, Any]:
         else:
             tin, tout = block["assumed_tokens"]["in"], block["assumed_tokens"]["out"]
             source = "assumed"
-        price = PRICES.get(model, {"in": 0.0, "out": 0.0})
+        price = price_of(model)
         usd = calls[key] * (tin / 1e6 * price["in"] + tout / 1e6 * price["out"])
         total += usd
         rows.append({

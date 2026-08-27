@@ -746,7 +746,10 @@ def judge(c: Corpus, tags: tuple[str, ...], render, *, max_tokens: int = 700,
             [{"role": "system", "content": sys_msg},
              {"role": "user", "content": render(item["_index"])}],
             0.0, max_tokens, stage, tags,
-            extra={**(m.get("extra_body") or {}), **JUDGE_NO_REASONING})
+            # JUDGE_NO_REASONING is the default, not a mandate: a model block that
+            # declares its own `reasoning:` wins (mandatory-reasoning models 400
+            # on enabled:false and take `{effort: low}` instead).
+            extra={**JUDGE_NO_REASONING, **(m.get("extra_body") or {})})
         return {"record_id": item["record_id"], **parsed}
 
     done = run_items(items, one, c.workers, stage, ckpt,
@@ -1090,7 +1093,10 @@ def _scan(c: Corpus) -> tuple[list[dict], dict]:
             c.ctx.client, c.ctx.usage, m["model"], rub["scan_system"],
             rub["scan_user"].format(documents=docs, n=len(idxs)),
             0.0, int(p["scan_max_tokens"]), f"corpus:{c.name}:scan",
-            extra={**(m.get("extra_body") or {}), **JUDGE_NO_REASONING})
+            # JUDGE_NO_REASONING is the default, not a mandate: a model block that
+            # declares its own `reasoning:` wins (mandatory-reasoning models 400
+            # on enabled:false and take `{effort: low}` instead).
+            extra={**JUDGE_NO_REASONING, **(m.get("extra_body") or {})})
         found = [_candidate(x) for x in _as_list(parsed, "patterns", "results")]
         return {"batch_key": item["batch_key"],
                 "patterns": [f for f in found if f]}
@@ -1130,7 +1136,10 @@ def _name_clusters(c: Corpus, clusters: list[list[dict]]) -> list[str]:
             c.ctx.client, c.ctx.usage, m["model"], rub["merge_system"],
             rub["merge_user"].format(clusters=listing, n=len(clusters)),
             0.0, int(c.params["merge_max_tokens"]), f"corpus:{c.name}:merge",
-            extra={**(m.get("extra_body") or {}), **JUDGE_NO_REASONING})
+            # JUDGE_NO_REASONING is the default, not a mandate: a model block that
+            # declares its own `reasoning:` wins (mandatory-reasoning models 400
+            # on enabled:false and take `{effort: low}` instead).
+            extra={**JUDGE_NO_REASONING, **(m.get("extra_body") or {})})
         names = [str(x).strip() for x in _as_list(parsed, "names", "clusters")]
         return [names[i] if i < len(names) and names[i] else fallback[i]
                 for i in range(len(clusters))]
@@ -1278,7 +1287,10 @@ def _rate(c: Corpus, patterns: list[dict]) -> tuple[list[dict], dict[str, dict],
             rub["rate_user"].format(documents=body, n=len(item["_docs"]),
                                     **item["_vars"]),
             0.0, int(p["rate_max_tokens"]), f"corpus:{c.name}:rate",
-            extra={**(m.get("extra_body") or {}), **JUDGE_NO_REASONING})
+            # JUDGE_NO_REASONING is the default, not a mandate: a model block that
+            # declares its own `reasoning:` wins (mandatory-reasoning models 400
+            # on enabled:false and take `{effort: low}` instead).
+            extra={**JUDGE_NO_REASONING, **(m.get("extra_body") or {})})
         return {"key": item["key"], "pi": item["_pi"], "kind": item["_kind"],
                 "verdicts": _verdicts(parsed, [rid for rid, _ in item["_docs"]])}
 

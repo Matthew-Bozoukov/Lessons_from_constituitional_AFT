@@ -111,18 +111,65 @@ def test_the_dedupe_filter_runs_on_full_coverage():
         "the filter reads the check's sidecar, so the check must run first")
 
 
+# Configs that FAIL the seeded-smoke rule below and have not been fixed. This is recorded
+# debt, NOT an exemption: both are `load_source_run` pipelines whose `smoke:` sets only
+# `max_traits`/`total_scenarios`, neither of which sizes a seeded run -- so `--smoke` on
+# either processes all 716 rows at full price. That is the same bug that cost ~$8 on
+# 2026-08-26 before it was killed, and their own comment ("NOT a generation budget here:
+# the corpus size is whatever the frozen source holds") shows the author knew the budget
+# key was inert and left the smoke block anyway.
+#
+# They are listed rather than fixed because the fix is a SMALLER SEED DIRECTORY under
+# `data/da716_prompt_source`, which is gitignored and not on this machine -- inventing one
+# would be guessing at somebody else's data. `verbose_cot.yaml` and
+# `difficult_advice_low_stakes.yaml` show the correct shape. Delete an entry here the
+# moment its config grows a `smoke.source`.
+_SMOKE_DEBT = {
+    "difficult_advice_gpt_responder_716.yaml",
+    "difficult_advice_grok_responder_716.yaml",
+}
+
+
 def test_smoke_shrinks_every_config_that_sets_a_corpus_budget():
-    """`total_scenarios` WINS over `scenarios_per_trait`, so a `smoke:` block that only
-    overrides the per-trait count leaves a smoke run generating the FULL corpus. Caught
-    2026-08-13 when `--smoke` on this config started producing 2,000 scenarios and cost
-    real money before anyone noticed it was not a smoke run."""
+    """A `smoke:` block must shrink the run BY THE MECHANISM ITS PIPELINE ACTUALLY USES.
+
+    Two mechanisms exist, and using the wrong one silently generates the full corpus:
+
+      * A generating pipeline sizes itself from `total_scenarios`, which WINS over
+        `scenarios_per_trait` -- so a smoke overriding only the per-trait count runs the
+        whole thing. Caught 2026-08-13 when `--smoke` produced 2,000 scenarios and cost
+        real money before anyone noticed it was not a smoke run.
+      * A pipeline seeded by `load_source_run` takes its row count from the SOURCE FILE
+        and ignores `total_scenarios` entirely (there is no `scenarios` operator to read
+        it). Its smoke must point `source:` at a smaller seed directory. Caught
+        2026-08-26 the same way: a smoke that set only `total_scenarios: 6` ran the full
+        716-row rewrite, ~$8, before it was killed.
+
+    So the requirement is per-shape, and asserting the generating pipeline's mechanism on a
+    seeded one would push the next author toward a key that does nothing.
+    """
     import glob
 
     for path in sorted(glob.glob("configs/data/synth/*.yaml")):
         cfg = yaml.safe_load(open(path))
+        smoke = cfg.get("smoke") or {}
+        kinds = {s.get("kind") for s in (cfg.get("stages") or [])}
+
+        if "load_source_run" in kinds:
+            if path.replace("\\", "/").rsplit("/", 1)[-1] in _SMOKE_DEBT:
+                continue
+            assert "source" in smoke, (
+                f"{path} is seeded by `load_source_run`, so its row count comes from the "
+                f"source file and `total_scenarios` cannot shrink it. Its `smoke:` block "
+                f"must override `source:` with a smaller seed directory, or --smoke "
+                f"processes the WHOLE source run.")
+            src = smoke["source"]
+            assert src.get("local_dir") or src.get("hf_repo"), (
+                f"{path} smoke `source:` names neither local_dir nor hf_repo")
+            continue
+
         if cfg.get("total_scenarios") is None:
             continue
-        smoke = cfg.get("smoke") or {}
         assert "total_scenarios" in smoke, (
             f"{path} sets `total_scenarios: {cfg['total_scenarios']}`, which overrides "
             f"`scenarios_per_trait`. Its `smoke:` block must override it too, or "

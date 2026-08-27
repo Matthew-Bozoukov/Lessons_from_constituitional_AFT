@@ -16,7 +16,7 @@ from src.data.synth.stage_operators import (
     selected,
     tagged_request,
 )
-from src.data.synth.stage_runtime import PRICES, lint_problems
+from src.data.synth.stage_runtime import lint_problems, price_of
 
 CR_CFG = yaml.safe_load(open("configs/data/synth/courtroom.yaml"))
 
@@ -87,9 +87,12 @@ def test_cr_stage_sequence() -> None:
 
 def test_every_model_the_config_names_is_priced() -> None:
     """An unpriced model is silently billed at $0 by the estimator AND the live tally,
-    which also blinds the budget_usd guard to that stage's spend."""
+    which also blinds the budget_usd guard to that stage's spend. Price now lives on the
+    providers.yaml pin, so a config model with no `price:` there prices at zero."""
     for key, block in CR_CFG["models"].items():
-        assert block["model"] in PRICES, f"models.{key}: {block['model']} not in PRICES"
+        p = price_of(block["model"])
+        assert p["in"] > 0 or p["out"] > 0, \
+            f"models.{key}: {block['model']} has no price in providers.yaml"
 
 
 # --- the scenario spec: the wrapper is the brainstorm's, not a taxonomy -------------

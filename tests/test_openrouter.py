@@ -108,31 +108,38 @@ def test_blank_choices_retries_and_recovers():
     assert result.content == "fine now" and c.client.calls == 2
 
 
-def test_content_filter_finish_reason_fails_fast():
-    # OpenAI-protocol hard filters return empty content with an explicit
-    # finish_reason marker — deterministic, so no retries.
+def test_content_filter_finish_reason_retries_and_recovers():
+    # A finish_reason filter fired on what the model SAMPLED, not on the request
+    # (2026-08-20, gemini difficult-advice arm: the same write_scenarios prompt
+    # passed 11/12 calls at temperature 1.1) — so it is retried like a blank.
+    # Input-level blocks arrive as in-body 4xx and stay deterministic.
     blocked = SimpleNamespace(
         choices=[SimpleNamespace(message=SimpleNamespace(content=None),
                                  finish_reason="content_filter")],
         usage=None, provider="Azure")
-    c = _client([blocked])
-    with pytest.raises(ProviderRejectionError, match="content filter") as ei:
-        c.chat("openai/gpt-4.1", [{"role": "user", "content": "hi"}])
-    assert c.client.calls == 1
-    assert ei.value.provider_error["code"] == "content_filter"
+    c = _client([blocked, _resp("fine now")])
+    result = c.chat("openai/gpt-4.1", [{"role": "user", "content": "hi"}])
+    assert result.content == "fine now" and c.client.calls == 2
 
 
-def test_filter_truncated_partial_content_is_rejected_not_returned():
+def test_filter_truncated_partial_content_is_never_returned():
     # Partial text + finish_reason=content_filter: silently truncated output would
-    # poison downstream parses, so it is dropped and rejected loudly.
-    truncated = SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content="Half an ans"),
-                                 finish_reason="content_filter")],
-        usage=None, provider="Azure")
-    c = _client([truncated])
-    with pytest.raises(ProviderRejectionError, match="content filter") as ei:
+    # poison downstream parses, so the partial text is dropped and the call retried;
+    # a prompt the filter always trips on exhausts the retries and surfaces typed.
+    def truncated():
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="Half an ans"),
+                                     finish_reason="content_filter")],
+            usage=None, provider="Azure")
+
+    c = _client([truncated(), _resp("whole answer")])
+    result = c.chat("openai/gpt-4.1", [{"role": "user", "content": "hi"}])
+    assert result.content == "whole answer" and c.client.calls == 2
+
+    c = _client([truncated()] * 6)
+    with pytest.raises(EmptyCompletionError, match="content filter") as ei:
         c.chat("openai/gpt-4.1", [{"role": "user", "content": "hi"}])
-    assert c.client.calls == 1
+    assert c.client.calls == 6
     assert "11 chars of partial content dropped" in ei.value.provider_error["message"]
 
 

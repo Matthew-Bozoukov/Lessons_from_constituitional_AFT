@@ -13,7 +13,18 @@ from src.endpoints.openrouter import ProviderRejectionError
 from . import model_eval_model_cells as cells
 from .constitution import UNIT_PROVENANCE, Trait, units_from_config
 from .derive import derive_vars
-from .stage_runtime import Ctx, Stage, call_json, call_tagged, model_cfg, resilient, run_items
+from .stage_runtime import (
+    BATCH_MIN_ITEMS,
+    Ctx,
+    Stage,
+    call_json,
+    call_tagged,
+    model_cfg,
+    resilient,
+    run_items,
+    run_items_batched,
+)
+from .stage_runtime import _parse_json, _parse_tagged  # single-attempt batch parses
 from .stage_runtime import lint_problems as _lint
 from .hf_cache import read_jsonl
 
@@ -348,20 +359,10 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
                     "anywhere else; reach for a setting not yet listed here:\n"
                     + "\n".join(f"- {d} ({s:.0%} of the corpus so far)" for s, d in hot))
 
-        def run_batch(spec: tuple) -> list[dict]:
-            ti, bi, n = spec
+        def _rows_from(spec: tuple, parsed: list) -> list[dict]:
+            """Scenario records from one call's JSON array (shared by both paths)."""
+            ti, bi, _n = spec
             t = traits[ti]
-            fields = {"trait_name": t.name, "trait_text": t.text}
-            parsed, _ = call_json(
-                ctx.client, ctx.usage, m["model"],
-                _render(sys_t, fields, ctx, n=n, avoid=avoid_block,
-                        overrepresented=over_block),
-                _render(user_t, fields, ctx, n=n, avoid=avoid_block,
-                        overrepresented=over_block),
-                m["temperature"], m["max_tokens"], stage=mk,
-                extra=m.get("extra_body"))
-            assert isinstance(parsed, list), \
-                f"{t.trait_id}: expected a JSON array, got {type(parsed)}"
             return [{
                 "scenario_id": f"{t.trait_id}_b{bi:02d}_s{j:03d}",
                 "trait_id": t.trait_id, "trait_name": t.name, "trait_text": t.text,
@@ -370,14 +371,75 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
                 **{k: str(s[k]).strip() for k in req_fields},
                 **{k: str(s.get(k, "")).strip() for k in opt_fields},
                 **prov.get(t.trait_id, {}),
-            } for j, s in enumerate(parsed)]
+            } for j, s in enumerate(parsed) if isinstance(s, dict) and "situation" in s]
+
+        def _prompts_for(spec: tuple) -> tuple[str, str]:
+            ti, _bi, n = spec
+            t = traits[ti]
+            fields = {"trait_name": t.name, "trait_text": t.text}
+            return (_render(sys_t, fields, ctx, n=n, avoid=avoid_block,
+                            overrepresented=over_block),
+                    _render(user_t, fields, ctx, n=n, avoid=avoid_block,
+                            overrepresented=over_block))
+
+        def generate_spec(spec: tuple) -> list[dict]:
+            ti = spec[0]
+            sysr, usr = _prompts_for(spec)
+            parsed, _ = call_json(ctx.client, ctx.usage, m["model"], sysr, usr,
+                                  m["temperature"], m["max_tokens"], stage=mk,
+                                  extra=m.get("extra_body"))
+            assert isinstance(parsed, list), \
+                f"{traits[ti].trait_id}: expected a JSON array, got {type(parsed)}"
+            return _rows_from(spec, parsed)
+
+        # Opt-in async batching of a wave's calls. A wave is still one steering step:
+        # every request in it shares this wave's avoid/overrepresented blocks, the batch
+        # completes, then the reject gate and the next wave's steer run exactly as
+        # interactively — so batching preserves the diversity feedback and only serialises
+        # the batch turnaround (each wave is one dependent round-trip). Attempt-0 only, but
+        # the make-up rounds ARE the retry: a filtered/failed request just leaves its
+        # trait short and is re-queued next round.
+        batch_on = bool(ctx.cfg.get("batch")) and sc.get("batch", True) is not False
+
+        def run_wave(wave: list[tuple], tag: str) -> list[dict]:
+            if not (batch_on and len(wave) >= BATCH_MIN_ITEMS):
+                nested = resilient(lambda k, w=wave: generate_spec(w[k]), len(wave),
+                                   ctx.workers, sc["name"], max_fail_pct=max_fail)
+                return [r for group in nested for r in group]
+            from src.endpoints.openrouter import build_request_body, result_from_payload
+            from .stage_runtime import run_batch as _run_batch
+            _note_batched(ctx, sc["name"])
+            reqs, spec_by_cid = {}, {}
+            for spec in wave:
+                ti, bi, _n = spec
+                sysr, usr = _prompts_for(spec)
+                cid = f"{traits[ti].trait_id}_b{bi:02d}"
+                reqs[cid] = build_request_body(
+                    m["model"], [{"role": "system", "content": sysr},
+                                 {"role": "user", "content": usr}],
+                    m["temperature"], m["max_tokens"], m.get("extra_body"))
+                spec_by_cid[cid] = spec
+            fresh: list[dict] = []
+
+            def collect(cid: str, payload: dict) -> None:
+                try:
+                    res = result_from_payload(m["model"], payload)
+                    ctx.usage.add(m["model"], res, mk, usd_scale=0.5)
+                    parsed = _parse_json(res.content)
+                    if isinstance(parsed, list):
+                        fresh.extend(_rows_from(spec_by_cid[cid], parsed))
+                except Exception:  # noqa: BLE001 - a failed request just re-queues via shortfall
+                    pass
+
+            _run_batch(m["model"], reqs, f"{sc['name']}:{tag}",
+                       ctx.run_dir / f".batch_{sc['name']}_{tag}.json", collect)
+            return fresh
 
         # Unchanged fast path: no `diversity:` block means one wave, no ban list and no
-        # embedding gate -- byte-identical behaviour to plain fan-out.
+        # embedding gate. Batches when --batch is set, interactive otherwise.
         if not div:
-            nested = resilient(lambda k: run_batch(batches[k]), len(batches),
-                               ctx.workers, sc["name"], max_fail_pct=max_fail)
-            return [r for group in nested for r in group]
+            avoid_block = over_block = ""
+            return run_wave(list(batches), "all")
 
         target: dict[int, int] = {}
         next_bi: dict[int, int] = {}
@@ -399,9 +461,7 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
                 wave = queue[start:start + wave_size]
                 avoid_block = render_avoid()
                 over_block = render_overrepresented(kept)
-                nested = resilient(lambda k, w=wave: run_batch(w[k]), len(wave),
-                                   ctx.workers, sc["name"], max_fail_pct=max_fail)
-                fresh = [r for group in nested for r in group]
+                fresh = run_wave(wave, f"r{rnd}_w{start:03d}")
                 if not fresh:
                     continue
                 if reject_cos > 0:
@@ -475,29 +535,84 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
                  preview=lambda r: f"[{r['trait_name']}] {r['situation']}")
 
 
+def _batching(ctx: Ctx, sc: dict) -> None | str:
+    """The record key to batch this stage on, or None to run interactively.
+
+    Opt-in per run (`batch: true` in the config, `--batch` on the CLI) and opt-out per
+    stage (`batch: false` on the stage entry, for a stage whose latency matters more
+    than its price). Only `llm_json`/`llm_tagged` consult this: scenario generation is
+    wave-sequential by design (each wave is steered by the last one's output), the
+    corpus checks are multi-phase and cheap, and every other operator is free.
+    """
+    if not (bool(ctx.cfg.get("batch")) and sc.get("batch", True) is not False):
+        return None
+    return sc.get("checkpoint") or "scenario_id"
+
+
+def _note_batched(ctx: Ctx, name: str) -> None:
+    """Record in the manifest that a stage's bulk went through the batch API."""
+    batched = ctx.manifest_extra.setdefault("batched_stages", [])
+    if name not in batched:
+        batched.append(name)
+
+
 def op_llm_json(sc: dict, cfg: dict) -> Stage:
     """One JSON call per record; `save` maps record fields <- JSON keys."""
     sys_t, user_t = sc["prompts"]["system"], sc["prompts"]["user"]
     mk, save = sc["model"], dict(sc["save"])
     optional = set(sc.get("optional", []))
+    # Keys the reply MUST carry (everything saved but not declared optional). Handed to
+    # call_json so a valid-JSON-but-missing-key reply retries with a targeted nudge
+    # instead of KeyError-ing at the extraction below and dropping the record.
+    required = tuple(k for k in save.values() if k not in optional)
 
     def fn(ctx, records, ckpt):
         m = model_cfg(ctx.cfg, mk)
+        max_fail = float(ctx.cfg.get("max_fail_pct", 2.0))
 
         def one(r: dict) -> dict:
             parsed, _ = call_json(
                 ctx.client, ctx.usage, m["model"],
                 _render(sys_t, r, ctx), _render(user_t, r, ctx),
                 m["temperature"], m["max_tokens"], stage=mk,
-                extra=m.get("extra_body"))
+                extra=m.get("extra_body"), required=required)
             return {**r, **{f: (parsed.get(k, "") if k in optional else parsed[k])
                             for f, k in save.items()}}
 
-        return run_items(records, one, ctx.workers, sc["name"], ckpt,
-                         max_fail_pct=float(ctx.cfg.get("max_fail_pct", 2.0)))
+        batch_key = _batching(ctx, sc)
+        if batch_key:
+            from src.endpoints.openrouter import build_request_body
 
+            def build(r: dict) -> dict:
+                return build_request_body(
+                    m["model"],
+                    [{"role": "system", "content": _render(sys_t, r, ctx)},
+                     {"role": "user", "content": _render(user_t, r, ctx)}],
+                    m["temperature"], m["max_tokens"], m.get("extra_body"))
+
+            def parse(r: dict, res) -> dict:
+                assert res.finish_reason != "length", (
+                    f"{mk}: {m['model']} hit max_tokens={m['max_tokens']} and "
+                    "truncated its JSON")
+                parsed = _parse_json(res.content)
+                return {**r, **{f: (parsed.get(k, "") if k in optional else parsed[k])
+                                for f, k in save.items()}}
+
+            _note_batched(ctx, sc["name"])
+            return run_items_batched(
+                records, one, build, parse, usage=ctx.usage, model=m["model"],
+                stage=mk, key=batch_key, run_dir=ctx.run_dir, workers=ctx.workers,
+                desc=sc["name"], ckpt=ckpt, max_fail_pct=max_fail)
+
+        return run_items(records, one, ctx.workers, sc["name"], ckpt,
+                         max_fail_pct=max_fail)
+
+    # str(), for the same reason the sibling operator below does it: the preview is a log
+    # line printed AFTER the stage has been paid for, and `save` may name a field that is
+    # not a string -- a stage saving a 0-3 rating first crashed a run here on 2026-08-26,
+    # losing nothing but making a completed stage look like a failure.
     return Stage(sc["name"], fn, paid=True, checkpoint_key=sc.get("checkpoint"),
-                 preview=lambda r: r[next(iter(save))])
+                 preview=lambda r: str(r[next(iter(save))]))
 
 
 def tagged_request(sc: dict, r: dict, ctx: Ctx) -> tuple[list[dict], tuple, dict]:
@@ -700,8 +815,41 @@ def op_llm_tagged(sc: dict, cfg: dict) -> Stage:
             raise ValueError(f"{sc['name']}: output breaks the stage contract after "
                              f"{attempts} attempts: {'; '.join(problems)}")
 
-        done = run_items(todo, one, ctx.workers, sc["name"], ckpt,
-                         max_fail_pct=float(ctx.cfg.get("max_fail_pct", 2.0)))
+        max_fail = float(ctx.cfg.get("max_fail_pct", 2.0))
+        batch_key = _batching(ctx, sc)
+        if batch_key:
+            from src.endpoints.openrouter import build_request_body
+
+            def build(r: dict) -> dict:
+                messages, _, _ = tagged_request(sc, r, ctx)
+                return build_request_body(m["model"], messages, m["temperature"],
+                                          m["max_tokens"], m.get("extra_body"))
+
+            def parse(r: dict, res) -> dict:
+                # One attempt against the full contract -- tags, normalisation, lint.
+                # Any reject falls to the interactive path, which owns the retry
+                # budget (and the nudges) exactly as it does without batching.
+                _, tags, save = tagged_request(sc, r, ctx)
+                assert res.finish_reason != "length", (
+                    f"{mk}: {m['model']} hit max_tokens={m['max_tokens']} and "
+                    "truncated")
+                parsed = _parse_tagged(res.content, tags)
+                for tag in normalize:
+                    if tag in parsed:
+                        parsed[tag] = _norm_label(parsed[tag])
+                problems = _lint(parsed, lint_spec) if lint_spec else []
+                if problems:
+                    raise ValueError("; ".join(problems))
+                return {**r, **{f: parsed[k] for f, k in save.items()}, **also}
+
+            _note_batched(ctx, sc["name"])
+            done = run_items_batched(
+                todo, one, build, parse, usage=ctx.usage, model=m["model"],
+                stage=mk, key=batch_key, run_dir=ctx.run_dir, workers=ctx.workers,
+                desc=sc["name"], ckpt=ckpt, max_fail_pct=max_fail)
+        else:
+            done = run_items(todo, one, ctx.workers, sc["name"], ckpt,
+                             max_fail_pct=max_fail)
         if len(todo) == len(records):
             return apply_keep(sc, done, ctx) if keep_spec else done
         # Out-of-scope records keep their place; an in-scope record that failed is
