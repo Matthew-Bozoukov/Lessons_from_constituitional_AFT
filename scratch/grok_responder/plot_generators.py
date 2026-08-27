@@ -55,7 +55,9 @@ def _latest_local() -> str:
     """
     base = ROOT / "output/odcv_bench/qwen3_6-27b-lora-t2-9284-grokresp703-paired-r64"
     hits = sorted(base.glob("combined*/results.json"))
-    assert hits, f"no combined*/results.json under {base} - run the driver first"
+    if not hits:
+        # The published copy (contract layout, results/results.json) -- identical numbers.
+        return ("LASR-Callum/2026-08-24-odcv-grokresp703-paired-eval", "results/results.json")
     return str(hits[-1].relative_to(ROOT))
 
 LOCAL_GROK = _latest_local()
@@ -65,11 +67,22 @@ def _latest_gpt() -> str:
     """Newest combined*/results.json for the GPT arm, relative to ROOT."""
     base = ROOT / "output/odcv_bench/qwen3_6-27b-lora-t2-9284-gptresp685-paired-r64"
     hits = sorted(base.glob("combined*/results.json"))
-    assert hits, f"no combined*/results.json under {base} - judge the GPT arm first"
+    if not hits:
+        return ("LASR-Callum/2026-08-25-odcv-gptresp685-paired-eval", "combined2x_20260825_181731/results.json")
     return str(hits[-1].relative_to(ROOT))
 
 
 LOCAL_GPT = _latest_gpt()
+
+
+def _latest_capped():
+    """Newest combined*/results.json for arm C (length-capped Sonnet), or None before its eval."""
+    base = ROOT / "output/odcv_bench/qwen3_6-27b-lora-t2-9284-sonnetconcise703-paired-r64"
+    hits = sorted(base.glob("combined*/results.json"))
+    return str(hits[-1].relative_to(ROOT)) if hits else None
+
+
+LOCAL_CAPPED = _latest_capped()
 
 # (short label, long label, group, source). group keys the colour.
 # THE POINT OF THIS FIGURE: all three SFT arms answer the SAME 716 difficult-advice
@@ -85,6 +98,9 @@ ARMS = [
      "grok arm: x-ai/grok-4.6 drafts AND revises", "grok", LOCAL_GROK),
     ("luna -> terra\n(GPT)",
      "GPT arm: gpt-5.6-luna drafts, gpt-5.6-terra revises", "gpt", LOCAL_GPT),
+    *([("Sonnet 5, capped\n(length control)",
+        "arm C: Haiku 4.5 drafts, Sonnet 5 revises under a 220/270-word cap (grok's lengths)",
+        "cap", LOCAL_CAPPED)] if LOCAL_CAPPED else []),
     ("base fp8\n(no SFT)", "Qwen3.6-27B base fp8 (no SFT)", "ref",
      ("matboz/odcv-qwen3.6-27b-transcripts", "base_fp8/results.json")),
     ("table2-only\n(0% SFT)", "table2-only 9284 (0% SFT control)", "ref",
@@ -95,8 +111,9 @@ POSTED = []
 
 # Okabe-Ito triad. The earlier steel/plum pair FAILED CVD validation (deutan dE 1.8 --
 # indistinguishable); these three pass every check, worst adjacent dE 11.4 protan.
-SONNET_C, GROK_C, GPT_C, GRAY = "#0072B2", "#009E73", "#E69F00", "#8a8985"
-COLOR = {"sonnet": SONNET_C, "grok": GROK_C, "gpt": GPT_C, "ref": GRAY}
+SONNET_C, GROK_C, GPT_C, CAP_C, GRAY = "#0072B2", "#009E73", "#E69F00", "#CC79A7", "#8a8985"
+# CAP_C is Okabe-Ito reddish purple: the fourth of the set, added 2026-08-26 for arm C.
+COLOR = {"sonnet": SONNET_C, "grok": GROK_C, "gpt": GPT_C, "cap": CAP_C, "ref": GRAY}
 
 
 def _restrict(psm: dict, excluded: set[str]) -> dict:
@@ -177,11 +194,11 @@ def _bars(rows: list[dict], png: Path) -> None:
     fig.suptitle("Difficult-advice: does the GENERATOR change misalignment?", fontsize=12,
                  fontweight="bold", x=0.98, ha="right", y=0.995)
     fig.text(0.01, 0.005,
-             "blue = Haiku 4.5 -> Sonnet 5 baseline · green = grok-4.6 · amber = luna -> "
-             "terra (GPT) · gray = no-SFT references. All three SFT arms answer the SAME "
+             "blue = Haiku 4.5 -> Sonnet 5 baseline · pink = Sonnet 5 capped · green = grok-4.6 · amber = luna -> "
+             "terra (GPT) · gray = no-SFT references. All four SFT arms answer the SAME "
              "716 questions and differ only in who wrote the answer; intervals recomputed "
              "on the same 65 cells from each arm's published medians (no reruns).\n"
-             "Rows delivered differ (baseline 716 / grok 703 / GPT 685) and so does response length: GPT is 1.57x LONGER and grok 0.59x shorter than the baseline, with length-only AUC 0.864 separating the grok corpus from it. A bar difference is therefore a values+verbosity package effect, NOT evidence about the generator's values alone. See docs/GENERATOR_ABLATION.md.",
+             "Rows delivered differ (baseline 716 / grok 703 / GPT 685) and so does response length: GPT is 1.57x LONGER and grok 0.59x shorter than the baseline, with length-only AUC 0.864 separating the grok corpus from it. The capped arm matches grok's length (AUC 0.42) and lands at the baseline's rate. A bar difference is therefore a values+verbosity package effect, NOT evidence about the generator's values alone. See docs/GENERATOR_ABLATION.md.",
              fontsize=7.5, color="#555555", wrap=True)
     fig.tight_layout(rect=(0, 0.05, 1, 0.97))
     fig.savefig(png, facecolor="white")
@@ -223,7 +240,7 @@ def _variants(rows: list[dict], png: Path) -> None:
     fig.suptitle("Difficult-advice: does the GENERATOR change misalignment?", fontsize=12,
                  fontweight="bold", x=0.98, ha="right", y=0.995)
     fig.text(0.01, 0.005,
-             "blue = Haiku 4.5 -> Sonnet 5 baseline · green = grok-4.6 · amber = luna -> "
+             "blue = Haiku 4.5 -> Sonnet 5 baseline · pink = Sonnet 5 capped · green = grok-4.6 · amber = luna -> "
              "terra (GPT) · gray = no-SFT references. Solid = mandated, hatched = "
              "incentivized. Recomputed from each arm's published per-scenario medians "
              "(no reruns).\n"

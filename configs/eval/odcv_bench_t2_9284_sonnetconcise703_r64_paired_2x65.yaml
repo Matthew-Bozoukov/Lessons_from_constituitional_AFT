@@ -1,0 +1,59 @@
+# ABOUTME: ODCV-Bench eval of the t2-9284 + length-capped-Sonnet-703 r64 paired LoRA, 2 rollouts x 65 cells.
+# ABOUTME: Run: bash scratch/odcv_repeat_rollouts.sh THIS 2   (then combine + judge)
+#
+# Hyperparameters are byte-identical to the grokresp703, peercritique716 and
+# da-chunk-only-702 sibling configs -- same 65 cells, same 15 exclusions, same temperature,
+# concurrency, timeout and judges -- so this arm's MR is directly comparable to theirs. Only
+# model/model_key/base_url differ.
+#
+# WHAT THIS ARM IS: the generator ablation's LENGTH CONTROL (arm C). Its 703 difficult-advice
+# rows answer the same questions as arms A (Sonnet, unconstrained; da716 is the trained
+# stand-in at 716 rows, 16.3% MR on these cells) and B (grok-4.6, 7.8% MR), written by the
+# same Sonnet 5 as A under a one-sentence length cap that lands them at B's lengths. If C
+# lands near B, length carried B's drop; near A, the generator did. See
+# configs/data/synth/difficult_advice_sonnet_concise_716.yaml and docs/GENERATOR_ABLATION.md.
+#
+# Serving, tool-choice flags and the inert rollouts_per_cell field: identical to the
+# grokresp703 config's notes -- served over RunPod's HTTPS proxy via
+# scratch/serve_adapter_runpod.py --agentic true; the vLLM server MUST carry
+# --enable-auto-tool-choice --tool-call-parser qwen3_xml --reasoning-parser qwen3 or the
+# harness writes no transcripts while reporting every scenario `ok`.
+
+model: "sonnetconcise703"                  # served LoRA name (request `model` field)
+model_key: "qwen3_6-27b-lora-t2-9284-sonnetconcise703-paired-r64"
+published_key: "qwen3.6-27b"
+base_url: "https://vqmln0w4wzmyce-8000.proxy.runpod.net/v1"   # pod vqmln0w4wzmyce, 2026-08-26 (scratch/serve_adapter_runpod.py)
+temperature: 0.0
+bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
+output_root: "output/odcv_bench"
+concurrency: 12
+scenario_timeout_s: 2400
+prune_images: false
+rollouts_per_cell: 2
+expected_cells: 65
+shard_count: 1
+shard_index: 0
+judges:
+  grok-4.20: "x-ai/grok-4.20"
+  gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
+
+# The same 10 exclusions every sibling arm uses.
+exclude_scenarios:
+  - "incentivized/Academic-Research-Integrity-Finding"
+  - "incentivized/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Academic-Research-Integrity-Finding"
+  - "mandated/Clinical-Trial-Data-Management"
+  - "incentivized/Clinical-Trial-Integrity-Monitoring"
+  - "incentivized/Healthcare-Trial-Recruiter"
+  - "incentivized/Data-Privacy-Leak-Finding"
+  - "mandated/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Clinical-Trial-Integrity-Monitoring"
+  - "mandated/Healthcare-Appointment-Optimizer"
+# Plus the five that cut the run to the FIRST 65 cells of the driver's job order, matching
+# peercritique716 and da-chunk-only-702. Keeping these is what makes the arms comparable;
+# dropping them would score this arm on 70 cells and quietly break every comparison.
+  - "incentivized/Marketing-Campaign"
+  - "incentivized/Propaganda-Engine-Finding"
+  - "incentivized/Roboadvisor-Ethicsbypass"
+  - "incentivized/Supply-Chain-Sabotage-Finding"
+  - "incentivized/University-Research-Grant-Approval"

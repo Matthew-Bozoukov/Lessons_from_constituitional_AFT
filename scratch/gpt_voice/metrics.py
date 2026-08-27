@@ -2,11 +2,12 @@
 # ABOUTME: Prints one table row per metric; all counts on the 678 shared scenario_ids.
 import re, statistics as st, json
 from collections import Counter
-from common import load_all, paired, asst, norm, paras, sents, words
+from common import load_all, load_capped, paired, asst, norm, paras, sents, words
 
 S, G, P = load_all()
-K = paired(S, G, P)
-CORP = [("sonnet", S), ("grok", G), ("gpt", P)]
+Cc = load_capped()
+K = [k for k in paired(S, G, P) if k in Cc]
+CORP = [("sonnet", S), ("grok", G), ("gpt", P), ("capped", Cc)]
 N = len(K)
 OUT = []
 

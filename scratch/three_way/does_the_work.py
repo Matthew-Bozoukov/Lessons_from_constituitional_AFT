@@ -92,13 +92,10 @@ print("\n--- MARGINAL RETURN: chars per alternative offered (judged) ---")
 import json  # noqa: E402
 from collections import defaultdict  # noqa: E402
 
-byc = defaultdict(dict)
-for fn in ("scratch/grok_vs_sonnet/judged.jsonl", "scratch/three_way/judged_gpt.jsonl"):
-    for line in open(fn):
-        d = json.loads(line)
-        if "error" not in d and d["scenario_id"] in set(IDS):
-            byc[d["corpus"]][d["scenario_id"]] = d
-common = sorted(set(byc["sonnet"]) & set(byc["grok"]) & set(byc["gpt"]))
+from scratch.three_way.norm import judged_common, load_judged  # noqa: E402
+
+byc = load_judged(IDS)
+_, common = judged_common(byc)
 for c in ORDER:
     ch = sum(len(reply(C[c][k])) for k in common)
     alt = sum(byc[c][k].get("n_alternatives", 0) for k in common)

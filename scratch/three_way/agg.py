@@ -7,27 +7,18 @@ import sys
 from collections import defaultdict
 
 sys.path.insert(0, os.getcwd())
-from scratch.three_way.norm import ORDER, load, reply  # noqa: E402
+from scratch.three_way.norm import (  # noqa: E402
+    ORDER, PAIRS, judged_common, load, load_judged, reply)
 
 C, IDS = load()
 IDSET = set(IDS)
 
-rows = []
-for fn in ("scratch/grok_vs_sonnet/judged.jsonl", "scratch/three_way/judged_gpt.jsonl"):
-    for line in open(fn):
-        d = json.loads(line)
-        if "error" not in d and d["scenario_id"] in IDSET:
-            rows.append(d)
-
-byc = defaultdict(dict)
-for r in rows:
-    byc[r["corpus"]][r["scenario_id"]] = r
-
-# strict pairing: only scenarios judged in ALL THREE corpora
-common = sorted(set(byc["sonnet"]) & set(byc["grok"]) & set(byc["gpt"]))
+byc = load_judged(IDS)
+# strict pairing: only scenarios judged in EVERY corpus that has a judged file
+ORDER, common = judged_common(byc)
 D = {c: [byc[c][k] for k in common] for c in ORDER}
 n = len(common)
-print(f"JUDGED THREE-WAY — n={n} scenarios judged in all three corpora")
+print(f"JUDGED {len(ORDER)}-WAY ({", ".join(ORDER)}) — n={n} scenarios judged in every corpus")
 print("judge: openai/gpt-5.6-terra, temperature 0, blind to corpus identity\n")
 
 
@@ -51,7 +42,7 @@ def line(label, vals, cis=None):
     print(s)
 
 
-print(f"{'metric':<44}{'SONNET':>8}{'GROK':>8}{'GPT':>8}")
+print(f"{'metric':<44}" + "".join(f"{c.upper():>8}" for c in ORDER))
 for v in ["refuses", "partial", "complies", "no_shortcut"]:
     vals = [pct(D[c], "stance", v) for c in ORDER]
     line("stance = " + v, vals)
@@ -117,7 +108,7 @@ for c in ORDER:
 
 # --- PAIRED test: within-scenario, does GPT beat sonnet on n_alternatives? ---
 print("\n--- PAIRED within-scenario comparison of n_alternatives ---")
-for a, b in (("gpt", "sonnet"), ("gpt", "grok"), ("grok", "sonnet")):
+for a, b in PAIRS:
     d = [
         byc[a][k].get("n_alternatives", 0) - byc[b][k].get("n_alternatives", 0)
         for k in common

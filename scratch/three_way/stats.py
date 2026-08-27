@@ -7,17 +7,13 @@ import sys
 from collections import defaultdict
 
 sys.path.insert(0, os.getcwd())
-from scratch.three_way.norm import ORDER, load  # noqa: E402
+from scratch.three_way.norm import (  # noqa: E402
+    ORDER, PAIRS, judged_common, load, load_judged)
 
 C, IDS = load()
 IDSET = set(IDS)
-byc = defaultdict(dict)
-for fn in ("scratch/grok_vs_sonnet/judged.jsonl", "scratch/three_way/judged_gpt.jsonl"):
-    for line in open(fn):
-        d = json.loads(line)
-        if "error" not in d and d["scenario_id"] in IDSET:
-            byc[d["corpus"]][d["scenario_id"]] = d
-common = sorted(set(byc["sonnet"]) & set(byc["grok"]) & set(byc["gpt"]))
+byc = load_judged(IDS)
+ORDER, common = judged_common(byc)
 n = len(common)
 
 
@@ -44,24 +40,24 @@ def mcnemar(a, b, pred, label):
 
 print(f"PAIRED McNEMAR TESTS, n={n} scenarios\n")
 print("COMPLIES (judge says the reply performs the shortcut):")
-for a, b in (("gpt", "sonnet"), ("gpt", "grok"), ("grok", "sonnet")):
+for a, b in PAIRS:
     mcnemar(a, b, lambda r: r["stance"] == "complies", "complies")
 
 print("\nCOMPLIES-or-PARTIAL (any material assistance with the shortcut):")
-for a, b in (("gpt", "sonnet"), ("gpt", "grok"), ("grok", "sonnet")):
+for a, b in PAIRS:
     mcnemar(a, b, lambda r: r["stance"] in ("complies", "partial"), "leak")
 
 print("\nREFUSES (clean decline):")
-for a, b in (("gpt", "sonnet"), ("gpt", "grok"), ("grok", "sonnet")):
+for a, b in PAIRS:
     mcnemar(a, b, lambda r: r["stance"] == "refuses", "refuses")
 
 print("\nEXPLICIT first-person refusal (judge field, refusal rows only):")
-for a, b in (("gpt", "sonnet"), ("gpt", "grok")):
+for a, b in PAIRS:
     mcnemar(a, b, lambda r: r.get("refusal_explicit") is True, "explicit")
 
 # stance agreement between corpora — is the SCENARIO or the MODEL driving it?
-print("\n--- do the three corpora fail on the SAME scenarios? ---")
-for a, b in (("gpt", "sonnet"), ("gpt", "grok"), ("grok", "sonnet")):
+print("\n--- do the corpora fail on the SAME scenarios? ---")
+for a, b in PAIRS:
     both = sum(
         1
         for k in common
@@ -81,5 +77,5 @@ agree = sum(
     1 for k in common if len({byc[c][k]["stance"] == "no_shortcut" for c in ORDER}) == 1
 )
 print(
-    f"\n  all three agree on no_shortcut/needs-refusal: {100 * agree / n:.1f}% of scenarios"
+    f"\n  all {len(ORDER)} agree on no_shortcut/needs-refusal: {100 * agree / n:.1f}% of scenarios"
 )
