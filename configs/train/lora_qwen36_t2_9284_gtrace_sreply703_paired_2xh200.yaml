@@ -1,0 +1,76 @@
+# ABOUTME: 1-epoch LoRA SFT of Qwen3.6-27B on Table2(9,284) + 703 CHANNEL-SWAP difficult-advice rows:
+# ABOUTME: grok-4.6's reasoning trace with Sonnet 5's reply. 2xH200 DDP, dynamic batching.
+# Run: PYTHONPATH=. torchrun --nproc_per_node=2 scripts/train/train_lora.py --config <this>
+#
+# PAIRED ARM. This config and its siblings
+#   `configs/train/lora_qwen36_t2_9284_sonnet703_paired_2xh200.yaml`        (A: Sonnet trace + Sonnet reply)
+#   `configs/train/lora_qwen36_t2_9284_grokresp703_paired_2xh200.yaml`      (B: grok trace + grok reply)
+#   `configs/train/lora_qwen36_t2_9284_strace_greply703_paired_2xh200.yaml` (the other swap)
+# differ in ONE field: `data_repo` (+ the matching data_file/output_dir/hub_model_id). Same seed,
+# LoRA shape, LR schedule, global batch, and the same byte-identical 9,284-row Table2 half. All
+# synth halves answer the SAME 703 questions, selected by scenario_id rather than sampled.
+#
+# WHY IT EXISTS. The 2026-08-27 rollout read found grok's MO differs from Sonnet's in how often a
+# first-person commitment fires before the first write (86% vs 68%), and that the corpus property
+# tracking it lives in the REPLY (firm/repeated/closing refusal 71.5% vs 20%) while the decision at
+# inference is made in the REASONING. This arm keeps grok's trace and swaps in Sonnet's reply; its
+# sibling does the reverse. Read the 2x2 with A (da716 16.3%) and B (7.8%) on the same 65 cells:
+# the swap that lands near B names the channel that carries the effect.
+
+seed: 0
+model: "Qwen/Qwen3.6-27B"
+model_class: "image_text_to_text"
+
+# Both channels carry REAL reasoning traces that ARE supervised; evaluate in thinking mode.
+thinking: true
+
+data_repo: "LASR-Callum/2026-08-27-t2-9284-gtrace-sreply703-paired-train"
+data_file: "t2_9284_gtrace_sreply703_10k.jsonl"
+output_dir: "/workspace/out/train_t2_9284_gtrace_sreply703_paired"
+
+lora:
+  r: 64
+  alpha: 128
+  dropout: 0.05
+  target_modules: "model\\.language_model\\..*\\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$"
+
+train:
+  epochs: 1
+  # global batch = batch_size x grad_accum = 16, matching the sibling arms. Under dynamic
+  # batching the trainer hands the whole 16-example step to training_step and sets HF
+  # accumulation to 1; route_step splits the step across the 2 ranks.
+  batch_size: 1
+  grad_accum: 16
+  lr: 1.0e-4
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  logging_steps: 5
+  report_to: ["wandb"]
+
+  # 8192: nothing is truncated in the parents (longest row 8,191 tokens, a longalign row); the
+  # swapped synth rows are shorter than the longest Table2 row by construction.
+  max_seq_len: 8192
+
+  # packing OFF, and dynamic_batching asserts this (Qwen3.6's linear-attention layers leak
+  # recurrent state across a packed window).
+  packing: false
+
+  # Token-budgeted micro-batching; budget resolves from ModelProfile.train_memory (H200 = 8,000).
+  dynamic_batching: {}
+
+  save_strategy: "steps"
+  save_steps: 100
+  save_total_limit: 2
+  auto_resume: true
+
+  # OFF on purpose: pushing needs an HF token on a rented box. The adapter is pulled back
+  # over the pod's :8080 and pushed from the machine that holds the token.
+  push_to_hub: false
+  hub_model_id: "LASR-Callum/qwen3.6-27b-lora-t2-9284-gtrace-sreply703-paired-r64"
+
+  assistant_only_loss: true
+  # loss_type deliberately unset (trl 0.19.1 has no such field; dynamic batching computes the
+  # loss in DynamicBatchTrainer.training_step).
+  attn_implementation: sdpa
+  load_in_4bit: false
