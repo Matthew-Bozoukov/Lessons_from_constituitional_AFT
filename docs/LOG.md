@@ -1,6 +1,62 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-08-27 — Is confidence the variable? A blind autorater says grok's data is the most confident — and that confidence is not what carries ODCV
+
+**Hypothesis.** Kunwar's read of the four generator arms: grok's answers are the most confident,
+Sonnet's middle, GPT's least — and confidence is the real variable behind grok 7.8% < capped
+Sonnet 15.4% ≈ Sonnet 16.3% < gpt 25.2%.
+
+**Method.** `scratch/confidence/`: a blind LLM judge (gpt-5.6-terra, temperature 0) scores
+decisiveness, hedging, certainty, deference and overall confidence (1–7), reasoning and reply
+separately, on the 678 scenarios shared by the four corpora (2,712 judgments, 0 errors, ~$24) and on
+the first reasoning block of all 643 ODCV rollouts of the four MOs on the 65 shared cells (~$4);
+gemini-3.1-pro re-rated a 150-scenario subsample × 4 arms (~$6). Two reader subagents read 16 paired
+corpus scenarios and 27 rollouts including three discordant same-cell twin pairs. Paired Wilcoxon on
+shared ids. Confounds checked: stance (the 126 scenarios where all four arms refuse), first-person
+volitional refusal present/absent, the 08-25 judge's refusal tone, length.
+
+**Result 1 — grok is the most confident; gpt is second, not last.** Reply overall confidence
+grok 6.88 > gpt 6.37 > capped 6.29 > Sonnet 6.09 (grok−Sonnet +0.79, p<1e-100; gpt−Sonnet +0.28,
+p<1e-21); reasoning 6.49 / 5.92 / 5.97 / 5.75. Hedging in the reasoning grok 1.6 / capped 2.5 /
+gpt 2.9 / Sonnet 3.1; deference in the reply grok 1.94 < gpt 2.11 < capped 2.38 < Sonnet 2.57.
+The ordering holds with stance held fixed, in every trait, in the 200 scenarios where neither grok
+nor Sonnet writes "I will not" (6.77 vs 6.14 — the judge is not just reading the refusal phrase),
+and under the second judge (grok > gpt > capped > Sonnet; rho 0.43 reasoning / 0.30 reply,
+ceiling-compressed). No within-arm correlation with length (|rho| ≤ 0.13).
+
+**Result 2 — confidence is real, transfers, and is not load-bearing.** (a) It does not order
+with ODCV across arms: gpt's corpus is the second-most confident and its organism is the worst.
+(b) The length cap RAISED Sonnet's corpus confidence (+0.22 overall, +0.59 decisiveness, −0.59
+hedging, all p<1e-14) with no ODCV change (15.4 vs 16.3). (c) It transfers: first-block confidence
+at inference grok 6.43 > capped 5.98 > gpt 5.80 > Sonnet 5.70. (d) Within arm it is not protective:
+decisive first blocks (≥6) violate MORE in Sonnet (26.4% vs 9.3%) and gpt (33.8% vs 10.6%); in the
+pooled confidence × commitment 2×2 (commitment = the 08-27 register test), commitment present → 4.4%
+(high confidence) / 4.5% (low); absent → 25.0% / 24.0%. Confidence adds nothing once the
+first-person commitment is known. The readers saw the same: violating rollouts are more decisive,
+less hedged and less deferential than clean ones (execution-mode confidence with the ethics absent);
+the three discordant twin pairs had zero first-block confidence difference and turned on whether the
+commitment was re-asserted after the evidence step — a hesitant commitment held ("I cannot
+fabricate dates… Actually, let me re-read… Please provide the missing discharge_date"), a confident
+one was abandoned without re-argument ("I will not modify the applications" → "I can change
+fund_source to 'Business revenue'").
+
+**Reading.** Confidence is a style variable that co-locates with grok's commitment blocks, which is
+why it looks like the cause. What predicts the outcome is a decision about the assistant's OWN
+action, stated and re-stated; it can be hesitant and still hold. A recipe optimised for a confident
+voice would produce gpt's failure mode — the confident execution plan. Spend ~$34 OpenRouter.
+
+**Artifacts.** `output/confidence/` (per-row judgments for corpora and rollouts, gemini subsample,
+`report_*.md`, figure `plots/confidence_four_arms_*.png` + mirror, `reads/`); HF
+`LASR-Callum/2026-08-27-difficult-advice-confidence-autorater`; scripts
+`scratch/confidence/{common,rate_corpus,rate_rollouts,report,plot_confidence,push_hf}.py`.
+
+**Next steps.** The rollout reader's discordant-twin design closes the question: over every
+same-arm/same-cell pair with one clean and one violating rollout, score each reasoning block for
+register, the commitment's modality (will/won't vs should vs might vs question) and whether it is
+re-asserted in the block before the first write; if re-assertion predicts the outcome and modality
+adds nothing, "confidence" is the register and the data lever stays the commitment.
+
 ## 2026-08-27 — ODCV on the low-stakes arm: 16.9%, and a one-pass CI too wide to mean anything
 
 **Hypothesis.** A model trained on low-stakes difficult advice is LESS aligned than one
