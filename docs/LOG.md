@@ -1195,6 +1195,67 @@ between stages, so the $68 guard never executed — the stage died on `max_fail_
 content-filter refusals) before it could. The seven 20-record smokes also under-predicted:
 they retried ~34% of records where the full run retried ~52%, and none of them saw a single
 content-filter refusal. Both are now in `docs/GOTCHAS.md`.
+## 2026-08-27 — PAR 716 arm trained and evaluated: ODCV 20.3% on the 65 cells vs da716 16.3%, base fp8 36.9% — the retrospection shape buys the difficult-advice drop, not more
+
+**Hypothesis.** Moving the constitutional reasoning into a retrospective turn — after a bare
+refusal and the person's pushback — teaches the organism at least as much as difficult advice's
+one-shot reply: ODCV misalignment at or below da716's 16.3% on the same cells.
+
+**Method.** Mixture: `scratch/build_t2_9284_da716_mixture.py` → 716 PAR rows (trait quota
+water-filled: t1 62, t7 65, the other seven 83–85; 535 domains, 716 scenarios) + the 9,284
+Table-2 rows every 7% arm uses. Every PAR row carries `supervise: final`, so only the fifth
+turn is in the loss (mask gate passes on the Qwen3.6 profile; history turns get empty
+`<think>` markers, masked). Published `LASR-Callum/2026-08-26-table2-9284-par716-train`
+@ `42c8a74`. Training: `configs/train/lora_qwen36_t2_9284_par716_dynbatch_2xh200.yaml` — the
+da716/t10 recipe verbatim (r64/α128, lr 1e-4 cosine, global batch 16, max_seq_len 8192,
+dynamic batching, thinking) on a RunPod 2×H200 via `scratch/par_b/train_pod.py`: 625 steps,
+1 epoch, 2 h 07 min, loss 0.949 (mean of the first 10 logged points) → 0.879 (last 10), ~$21.
+Adapter `LASR-Callum/qwen3.6-27b-lora-t2-9284-par716-r64-dynbatch` (public;
+`training_meta.json` thinking: true, dataset sha-pinned). Eval:
+`scratch/par_b/odcv_bench_t2_9284_par716_2x65.yaml`, byte-identical below `temperature:` to
+the t10 / peer-critique 65-cell configs; adapter served on a RunPod H100
+(`serve_adapter_runpod.py --agentic --mode think --max_len 65536`), driven from the laptop
+(Docker Desktop, SSH tunnel, concurrency 12, `scratch/par_b/odcv_local_run.sh`), 2 passes:
+63/65 in 40.6 min (two incentivized healthcare cells hit the executor's request timeout,
+`ok+no_transcript`) and 65/65 in 16.4 min (warm cache; transcript sizes match pass 1, median
+~15 kB). Combined `combined2x_20260827_023241` (128 transcripts), judged grok-4.20 +
+gemini-3.1-pro ($3.90) against the published `base_fp8/results.json` reference; siblings
+re-summarised on the same 65 cells from their published per-scenario medians
+(`scratch/par_b/plot_7pct_arms.py`, fork of the t10 arm's; nothing re-run). Published
+`LASR-Callum/2026-08-27-odcv-par716-eval` (raw passes under `passes/laptop/`, combined +
+scores + results under the combined dir). Both pods destroyed; account at 0.
+
+**Result.** Misaligned = median judge score ≥ 3; the same 65 cells throughout.
+
+| arm | n | MR | 95% CI | sev | mandated | incentivized |
+|---|---|---|---|---|---|---|
+| synthdoc-716 (difficult advice v1) | 314 | 14.3% | [9.3, 19.0] | 0.65 | 9.8% | 19.3% |
+| da716 (difficult advice v2, 9 traits) | 257 | 16.3% | [10.0, 21.8] | 0.76 | 12.4% | 20.8% |
+| lessswap716 (LESS-selected rows, 3 traits) | 260 | 16.5% | [11.2, 21.4] | 0.79 | 11.4% | 22.5% |
+| t10 curiosity 716 | 127 | 19.7% | [10.9, 30.0] | 0.99 | 19.1% | 20.3% |
+| **PAR 716 (design B; this run, 2 rollouts)** | 128 | **20.3%** | [10.9, 30.0] | 1.04 | 17.1% | 24.1% |
+| Qwen3.6-27B base fp8 (no SFT) | 65 | 36.9% | [21.4, 53.6] | 1.37 | 40.0% | 33.3% |
+| table2-only 9284 (0% SFT control) | 305 | 43.9% | [37.5, 53.1] | 1.87 | 46.1% | 41.3% |
+
+Per judge: grok 28.1%, gemini 21.1%. Plot + mirror:
+`output/plots/odcv_7pct_arms_par_65cells_bars_20260827_033848.png` / `_results.md`.
+
+**Reading.** The retrospection shape carries the drop: −16.6 pp against the untrained model
+with only the fifth turn of 716 rows supervised — the constitutional reasoning transfers when
+it arrives as a correction of the model's own bare refusal, not only as a first reply. It does
+not beat difficult advice: the point estimate sits 4 pp above da716 and is the highest of the
+SFT arms, but its interval covers da716, lessswap and t10, and at 2 rollouts nothing within
+±10 pp of a neighbour separates. The hypothesis's "at or below" half is neither supported nor
+refuted. Two confounds stand: the trained turns are uniformly ~1,000 words (the length_cv
+flag from generation) where da716's spread is wider, and the four untrained turns — 716 bare
+refusals among them — sit in context; whether the organism picks anything up from them is
+untested.
+
+**Next.** (1) A 4-rollout top-up on the same 65 cells (~$10) before reading the 4 pp gap
+either way. (2) A length-matched difficult-advice control to separate shape from length.
+(3) If PAR is kept, add the "length proportionate" line to the rewrite contract before any
+2,000-doc run.
+
 ## 2026-08-26 — PAR 716 arm generated: 813 documents, every principle represented, judge 94% keep; one flag, uniform length
 
 **Run.** `uv run synth run configs/data/synth/post_action_retrospection.yaml --overrides
