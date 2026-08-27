@@ -3,16 +3,26 @@
 
 """Talk to the models we train, to understand how they behave.
 
-Two ways to reach a model, one REPL:
+    uv run chat
+
+lists every model organism on the Hub (adapters carrying training_meta.json), grouped by
+base model, thinking mode and experiment; you pick one or several by number. If a chat
+pod of yours already serves them it is reused, otherwise one is launched on RunPod (after
+a cost confirmation), booted (~25 min), warmed and connected — `base` is always served
+alongside for comparison. The pod is destroyed when you leave, after --idle-minutes
+without a message, or by a detached watchdog if this process dies or --max-hours passes;
+the next run sweeps anything of yours still listed. `--pods` / `--down <id>` inspect and
+clean up by hand.
+
+Three explicit alternatives, same REPL:
 
     # A. a server that is already up — e.g. the RunPod HTTPS proxy stood up by
     #    `uv run python scratch/serve_adapter_runpod.py up --adapter <hf> --name <arm> --mode think`
-    uv run chat --endpoint https://<pod>-8000.proxy.runpod.net/v1
+    uv run chat --endpoint https://<pod>-8000.proxy.runpod.net/v1 --mode think
 
     # B. serve HF adapters yourself — on this machine or a prepared GPU host
     #    (scripts/gpu/bootstrap_pod.sh) — with thinking mode inferred from each adapter's
     #    training_meta.json and pinned into the chat template exactly as the evals do.
-    #    `base` (the untrained base model, same mode) is served alongside for comparison.
     uv run chat --target LASR-Callum/<adapter> [--target <adapter2>] [--server <ssh-alias>]
 
     # C. an off-the-shelf model, for a reference point
@@ -29,8 +39,16 @@ Exploratory transcripts stay local — they are not eval results and are not pus
 from __future__ import annotations
 
 import argparse
+import atexit
+import getpass
 import json
+import os
+import re
+import signal
 import sys
+import threading
+import time
+from _thread import interrupt_main
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -39,6 +57,15 @@ from typing import TextIO
 from dotenv import load_dotenv
 from openai import OpenAI
 
+from src.endpoints import runpod
+from src.endpoints.model_organisms import (
+    DEFAULT_ORGS,
+    arm_names,
+    check_one_server,
+    discover,
+    parse_pick,
+    render_menu,
+)
 from src.endpoints.vllm_server import SshExec, TargetSpec, VllmServer, resolve_target
 from src.model_profile import resolve_trace, serving_params
 from src.utils import timestamp, transcript_markdown, write_run_meta
@@ -602,7 +629,7 @@ def handle_command(line: str, session: Session) -> bool:
     return True
 
 
-def repl(session: Session) -> None:
+def repl(session: Session, guard: "IdleGuard | None" = None) -> None:
     try:
         import readline  # noqa: F401 - line editing + history for input()
     except ImportError:
@@ -618,23 +645,322 @@ def repl(session: Session) -> None:
             print()
             return
         except KeyboardInterrupt:
+            if guard is not None and guard.fired:
+                return
             print("\n(^C at the prompt does nothing — /quit or Ctrl-D to leave)")
             continue
+        if guard is not None:
+            guard.touch()
         if not line.strip():
             continue
         if line.startswith("/"):
             if not handle_command(line, session):
                 return
             continue
-        session.send(line)
+        if guard is not None:
+            guard.busy = True
+        try:
+            session.send(line)
+        finally:
+            if guard is not None:
+                guard.busy = False
+                guard.touch()
+
+
+# --- no arguments: pick organisms, get them served on RunPod, guarantee the teardown --------
+
+IDLE_MINUTES = 30
+MAX_HOURS = 6
+
+
+class PodLease:
+    """A pod this session is responsible for destroying, backed by a detached watchdog.
+
+    Four independent guards end a lease (CLAUDE.md "Paid infrastructure": never rely on
+    the orchestrator surviving): `release` runs from main's `finally` on every exit path
+    — /quit, Ctrl-D, Ctrl-C, an exception, SIGTERM/SIGHUP (handlers raise SystemExit) — and
+    from atexit; the IdleGuard calls it after `--idle-minutes` without a message; the
+    watchdog process terminates the pod if this process vanishes (kill -9, closed laptop)
+    or after `--max-hours`; and the next `uv run chat` sweeps whatever is still listed.
+    """
+
+    def __init__(self, pod_id: str, out_dir: Path, max_lifetime_s: int, reused: bool):
+        self.pod_id = pod_id
+        self.reused = reused
+        self.released = False
+        self.watchdog = runpod.start_watchdog(
+            pod_id, max_lifetime_s, out_dir / "watchdog.log"
+        )
+        atexit.register(self.release)
+
+    def release(self) -> bool:
+        if self.released:
+            return True
+        print(f"\n>>> tearing down pod {self.pod_id} …", flush=True)
+        try:
+            gone = runpod.terminate(self.pod_id)
+        except Exception as e:  # noqa: BLE001 - report, the watchdog keeps trying
+            gone = False
+            print(f"!!! terminate failed: {type(e).__name__}: {e}")
+        if gone:
+            self.released = True
+            self.watchdog.terminate()
+            try:
+                left = runpod.active_pods()
+                names = ", ".join(f"{p.get('name')} ({p.get('id')})" for p in left)
+                print(
+                    f">>> pod {self.pod_id} destroyed; pods still active on the account: "
+                    f"{len(left)}{' — ' + names if names else ''}"
+                )
+            except Exception as e:  # noqa: BLE001
+                print(f">>> pod {self.pod_id} destroyed (could not list the rest: {e})")
+        else:
+            print(
+                f"!!! could NOT confirm pod {self.pod_id} is gone — the watchdog (pid "
+                f"{self.watchdog.pid}) keeps retrying; check https://console.runpod.io/pods"
+            )
+        return gone
+
+
+class IdleGuard(threading.Thread):
+    """Ends the session after `minutes` without a user message (never mid-answer)."""
+
+    def __init__(self, minutes: float, on_idle):
+        super().__init__(daemon=True)
+        self.seconds = minutes * 60
+        self.on_idle = on_idle
+        self.fired = False
+        self.busy = False
+        self._last = time.monotonic()
+
+    def touch(self) -> None:
+        self._last = time.monotonic()
+
+    def run(self) -> None:
+        while not self.fired:
+            time.sleep(5)
+            if self.busy:
+                self._last = time.monotonic()
+            elif time.monotonic() - self._last > self.seconds:
+                self.fired = True
+                print(
+                    f"\n>>> idle for {self.seconds / 60:.0f} min — ending the session",
+                    flush=True,
+                )
+                self.on_idle()
+                interrupt_main()  # KeyboardInterrupt in the blocked input(); repl() exits
+
+
+def _ask(prompt: str, default_yes: bool, auto: bool) -> bool:
+    if auto:
+        return True
+    try:
+        answer = (
+            input(f"{prompt} [{'Y/n' if default_yes else 'y/N'}] › ").strip().lower()
+        )
+    except EOFError:
+        return False
+    return default_yes if not answer else answer.startswith("y")
+
+
+def pod_name(user: str, mode: str, names: list[str]) -> str:
+    """`chat-<user>-<mode>-<arm>[+<arm>…]`: owner, pinned mode and payload at a glance."""
+    return f"{runpod.CHAT_POD_PREFIX}{user}-{mode}-{'+'.join(names)}"[:60]
+
+
+def own_pods(pods: list[dict], user: str) -> list[dict]:
+    """The chat pods THIS user launched; a teammate's chat pod is reported, never touched."""
+    return [
+        p
+        for p in runpod.orphans(pods)
+        if str(p.get("name", "")).startswith(f"{runpod.CHAT_POD_PREFIX}{user}-")
+    ]
+
+
+def reusable_pod(
+    pods: list[dict], mode: str, needed: list[str]
+) -> tuple[dict, str] | None:
+    """An own pod whose name carries `mode` and whose endpoint lists every needed arm."""
+    for p in pods:
+        if f"-{mode}-" not in str(p.get("name", "")):
+            continue
+        url = runpod.endpoint_url(str(p["id"]))
+        served = runpod.served_models(url, timeout=15) or []
+        if set(needed) <= set(served):
+            return p, url
+    return None
+
+
+def arms_for_pod(
+    endpoint: str, base: str, mode: str, names: dict[str, str]
+) -> list[Arm]:
+    """Arms for a pod serving `base` + the picked organisms (repo → served name)."""
+    by_name = {name: repo for repo, name in names.items()}
+    ids = runpod.served_models(endpoint, timeout=30) or []
+    arms = []
+    for i in ids:
+        arms.append(
+            Arm(
+                name=i,
+                base_url=endpoint,
+                api_key="EMPTY",
+                model_id=i,
+                mode=mode,
+                hf_path=by_name.get(i, base if i == "base" else ""),
+                base_model=base,
+                inline_trace=False,
+            )
+        )
+    missing = set(names.values()) - {a.name for a in arms}
+    if missing:
+        raise SystemExit(
+            f"\n{endpoint} is up but does not list {sorted(missing)} (it lists {ids})."
+        )
+    return arms
+
+
+def pick_and_serve(
+    args: argparse.Namespace, out_dir: Path
+) -> tuple[list[Arm], PodLease | None, dict]:
+    """The menu → a served endpoint. Returns arms, the lease (None = nothing to tear down)
+    and provenance for run_meta."""
+    runpod._key()  # fail before the menu if the account is not reachable
+    user = re.sub(r"[^a-z0-9]", "", getpass.getuser().lower()) or "user"
+    print(f">>> discovering model organisms on the Hub ({', '.join(args.hf_org)}) …")
+    organisms, unstamped = discover(tuple(args.hf_org))
+    menu, numbered = render_menu(organisms, unstamped)
+    if not numbered:
+        raise SystemExit("\nno servable organisms found.\n" + menu)
+    print("\n" + menu + "\n")
+    while True:
+        try:
+            raw = input(
+                "pick organism numbers (space-separated, same heading) — q quits › "
+            )
+        except EOFError:
+            raise SystemExit("\nnothing picked") from None
+        try:
+            idx = parse_pick(raw, len(numbered))
+            picked = [numbered[i] for i in idx]
+            if not picked:
+                raise SystemExit("nothing picked")
+            check_one_server(picked)
+            break
+        except ValueError as e:
+            print(f"!!! {e}")
+    names = arm_names(picked)
+    base, mode = picked[0].base_model, picked[0].mode
+    print(
+        ">>> picked: "
+        + ", ".join(f"{names[o.repo]} ← {o.repo}" for o in picked)
+        + f"\n    base {base} · mode {mode} · arms will be base + {', '.join(names.values())}"
+    )
+
+    pods = runpod.active_pods()
+    mine = own_pods(pods, user)
+    others = [p for p in pods if p not in mine]
+    if others:
+        print(
+            f">>> {len(others)} pod(s) on the account are not this tool's/yours — left alone: "
+            + ", ".join(
+                f"{p.get('name')} ({p.get('id')}, {p.get('desiredStatus')})"
+                for p in others
+            )
+        )
+    reuse = reusable_pod(mine, mode, list(names.values()))
+    leftovers = [p for p in mine if not reuse or p["id"] != reuse[0]["id"]]
+    if leftovers:
+        print(
+            ">>> your earlier chat pods still running (billing): "
+            + ", ".join(f"{p.get('name')} ({p.get('id')})" for p in leftovers)
+        )
+        if _ask("destroy them now?", default_yes=True, auto=args.yes):
+            for p in leftovers:
+                gone = runpod.terminate(str(p["id"]))
+                print(
+                    f"    {p['id']}: {'destroyed' if gone else 'NOT confirmed — check the console'}"
+                )
+    if reuse:
+        pod, url = reuse
+        pod_id = str(pod["id"])
+        print(
+            f">>> reusing your pod {pod.get('name')} ({pod_id}) — it already serves these arms"
+        )
+    else:
+        price = None
+        try:
+            price = runpod.gpu_price(args.gpu)
+        except Exception:  # noqa: BLE001 - a missing price must not block the launch prompt
+            pass
+        cost = f"≈ ${price:.2f}/h" if price else "price unknown"
+        if not _ask(
+            f">>> no pod serves this. Launch one? {args.gpu} SECURE, {cost}, "
+            f"~20-30 min to boot; destroyed automatically when you leave, after "
+            f"{args.idle_minutes} idle min, or after {args.max_hours} h",
+            default_yes=False,
+            auto=args.yes,
+        ):
+            raise SystemExit("not launched")
+        pod_id = runpod.launch_pod(
+            base,
+            [(names[o.repo], o.repo) for o in picked],
+            mode=mode,
+            pod_name=pod_name(user, mode, list(names.values())),
+            hf_token=os.environ.get("HF_TOKEN") or None,
+            lora_rank=max([o.lora_rank for o in picked] + [32]),
+            max_num_seqs=serving_params(base).get("max_num_seqs") or 32,
+            gpu=args.gpu,
+            reasoning_parser=serving_params(base).get("reasoning_parser")
+            if mode == "think"
+            else None,
+        )
+        url = runpod.endpoint_url(pod_id)
+        print(
+            f">>> pod {pod_id} launched — boot log {runpod.boot_log_url(pod_id)}\n"
+            "    Ctrl-C while waiting destroys it."
+        )
+    lease = PodLease(pod_id, out_dir, int(args.max_hours * 3600), reused=bool(reuse))
+    if not reuse:
+        runpod.wait_serving(
+            pod_id, on_phase=lambda ph: print(f"    {ph} …", flush=True)
+        )
+        print("    warming the proxy …", flush=True)
+        runpod.warm_proxy(url, "base")
+    arms = arms_for_pod(url, base, mode, names)
+    active_name = names[picked[0].repo]
+    arms.sort(key=lambda a: (a.name != active_name, a.name != "base", a.name))
+    print(f">>> connected to {url}: " + ", ".join(a.name for a in arms))
+    return (
+        arms,
+        lease,
+        {
+            "pod": pod_id,
+            "reused": bool(reuse),
+            "picked": [o.repo for o in picked],
+            "arm_names": names,
+        },
+    )
+
+
+def _pods_report(user: str) -> str:
+    pods = runpod.active_pods()
+    if not pods:
+        return "no pods on the account"
+    mine = {p["id"] for p in own_pods(pods, user)}
+    return "\n".join(
+        f"  {p.get('id')}  {str(p.get('name')):40} {p.get('desiredStatus')}  "
+        f"${p.get('costPerHr', 0)}/h  {'(yours: uv run chat --down ' + str(p.get('id')) + ')' if p['id'] in mine else ''}"
+        for p in pods
+    )
 
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
-        description="Chat with a model organism: an already-served endpoint, or HF targets "
-        "served here / on a GPU host by the same code the evals use."
+        description="Chat with a model organism. No arguments: pick from the organisms on the "
+        "Hub and get them served on RunPod (torn down when you leave). Or point at "
+        "an already-served endpoint, or serve HF targets by the eval framework's code."
     )
-    source = parser.add_mutually_exclusive_group(required=True)
+    source = parser.add_mutually_exclusive_group()
     source.add_argument(
         "--endpoint",
         help="OpenAI-compatible base URL of a RUNNING server, e.g. "
@@ -645,8 +971,47 @@ def main(argv: list[str] | None = None) -> None:
         "--target",
         nargs="+",
         help="HF paths (LoRA adapters: base + thinking mode inferred; full "
-        "models) served by vLLM, or <provider>:<model-id> API endpoints "
-        "(e.g. openrouter:qwen/qwen3-32b).",
+        "models) served by vLLM here or on --server, or "
+        "<provider>:<model-id> API endpoints (e.g. openrouter:qwen/qwen3-32b).",
+    )
+    source.add_argument(
+        "--pods", action="store_true", help="list pods on the RunPod account and exit"
+    )
+    source.add_argument(
+        "--down", metavar="POD_ID", help="destroy a pod (verified) and exit"
+    )
+    picker = parser.add_argument_group("no-argument mode (pick + RunPod)")
+    picker.add_argument(
+        "--hf-org",
+        action="append",
+        default=None,
+        help=f"Hub org(s) to list organisms from (default {', '.join(DEFAULT_ORGS)})",
+    )
+    picker.add_argument(
+        "--gpu", default=runpod.GPU, help="RunPod GPU type for a new pod"
+    )
+    picker.add_argument(
+        "--idle-minutes",
+        type=float,
+        default=IDLE_MINUTES,
+        help="end the session (and the pod) after this long without a message",
+    )
+    picker.add_argument(
+        "--max-hours",
+        type=float,
+        default=MAX_HOURS,
+        help="the watchdog destroys the pod after this long no matter what",
+    )
+    picker.add_argument(
+        "--yes",
+        action="store_true",
+        help="no prompts: destroy your leftover chat pods, launch without asking",
+    )
+    picker.add_argument(
+        "--keep-pod",
+        action="store_true",
+        help="LEAVE the pod running on exit (deliberate; it keeps billing and "
+        "the watchdog still enforces --max-hours)",
     )
     parser.add_argument(
         "--api-key",
@@ -697,7 +1062,22 @@ def main(argv: list[str] | None = None) -> None:
         "--out", help="session directory; default output/chat/<timestamp>"
     )
     args = parser.parse_args(argv)
+    args.hf_org = args.hf_org or list(DEFAULT_ORGS)
     load_dotenv()
+
+    user = re.sub(r"[^a-z0-9]", "", getpass.getuser().lower()) or "user"
+    if args.pods:
+        print(_pods_report(user))
+        return
+    if args.down:
+        gone = runpod.terminate(args.down)
+        print(
+            f"{'destroyed' if gone else 'COULD NOT CONFIRM destruction of'} {args.down}"
+        )
+        print(_pods_report(user))
+        if not gone:
+            raise SystemExit(1)
+        return
 
     out_dir = Path(args.out) if args.out else Path("output/chat") / timestamp()
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -708,6 +1088,14 @@ def main(argv: list[str] | None = None) -> None:
     }
     server: VllmServer | None = None
     session: Session | None = None
+    lease: PodLease | None = None
+    guard: IdleGuard | None = None
+    # A terminal closing (SIGHUP) or a kill (SIGTERM) must run the same `finally` as /quit.
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(
+            sig, lambda signum, frame: (_ for _ in ()).throw(SystemExit(128 + signum))
+        )
+    provenance: dict = {}
     try:
         if args.endpoint:
             arms = arms_from_endpoint(
@@ -718,8 +1106,10 @@ def main(argv: list[str] | None = None) -> None:
                     ">>> mode unknown from the client side (pinned at boot by whoever "
                     "served this) — pass --mode to label the transcript"
                 )
-        else:
+        elif args.target:
             server, arms = serve_targets(args, out_dir)
+        else:
+            arms, lease, provenance = pick_and_serve(args, out_dir)
         # Default to the first non-base arm: the organism, not its control.
         active = [next((a for a in arms if a.name != "base"), arms[0])]
         write_run_meta(
@@ -737,16 +1127,39 @@ def main(argv: list[str] | None = None) -> None:
                 "server": args.server,
                 "mode_override": args.mode,
                 "arms": [a.provenance() for a in arms],
+                **provenance,
             },
         )
         session = Session(arms, active, out_dir, args.system, sampling)
         print(f">>> session dir: {out_dir}")
-        repl(session)
+        if lease is not None:
+            guard = IdleGuard(args.idle_minutes, on_idle=lease.release)
+            guard.start()
+            print(
+                f">>> pod {lease.pod_id} is destroyed when you leave, after "
+                f"{args.idle_minutes:g} idle min, or by the watchdog (pid {lease.watchdog.pid}) "
+                f"after {args.max_hours:g} h or if this process dies"
+                + (
+                    " — EXCEPT that --keep-pod leaves it running on exit"
+                    if args.keep_pod
+                    else ""
+                )
+            )
+        repl(session, guard)
     finally:
         if session is not None:
             print(f">>> transcript: {session.close()}")
         if server is not None:
             server.stop()
+        if lease is not None:
+            if args.keep_pod and not (guard and guard.fired):
+                print(
+                    f"!!! --keep-pod: pod {lease.pod_id} is STILL RUNNING and billing. "
+                    f"Destroy it with: uv run chat --down {lease.pod_id}"
+                )
+                atexit.unregister(lease.release)
+            else:
+                lease.release()
 
 
 if __name__ == "__main__":

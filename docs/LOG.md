@@ -31,11 +31,30 @@ provider key into `run_meta.json` via `Arm.__dict__` — fixed the same hour
 (`Arm.provenance()` is the only projection that reaches disk; a test guards it). 16 offline
 tests in `tests/test_chat.py`.
 
-**Next.** Bring a pod up with `scratch/serve_adapter_runpod.py up --adapter <arm> --name
-<arm> --mode think` and `uv run chat --endpoint https://<pod>-8000.proxy.runpod.net/v1`;
-tear the pod down after. The `--target ... --server` path has not been exercised against a
-live GPU host yet — it is the `run_eval` serving path unchanged, but its first live use
-should be watched.
+**Same day, second pass: no arguments needed.** `uv run chat` alone now lists every
+organism on the Hub — adapters under `LASR-Callum` carrying `training_meta.json`, 23 of
+them, grouped by base model · mode · experiment (the experiment is derived from the train
+config's name: `lora_qwen36_t2_9284_da716_dynbatch_2xh200` → `t2_9284` / `da716`; the 31
+unstamped adapters are counted, not listed) — takes a pick, and gets it served on RunPod:
+a chat pod of yours that already lists the arms is reused, otherwise one is launched after
+a `$/h` confirmation, booted, proxy-warmed (GOTCHAS 2026-08-19) and connected, `base`
+alongside. The serving bootstrap moved from `scratch/serve_adapter_runpod.py` into
+`src/endpoints/runpod.py` (the scratch script is now a thin CLI over it; the RunPod REST
+client lives there too, re-exported from the internalization module for its callers).
+Teardown is layered because a forgotten H100 is the expensive failure: `finally` on every
+exit path incl. SIGTERM/SIGHUP; an idle guard (30 min without a message); a detached
+watchdog process (`python -m src.endpoints.runpod watchdog`) that destroys the pod if the
+chat process is gone or after 6 h; and a startup sweep of your leftover `chat-<user>-*`
+pods. `terminate` re-lists until the pod is actually gone. Pods are named
+`chat-<user>-<mode>-<arms>` so ownership is visible on the shared account and only your
+own are ever touched. `--pods` / `--down <id>` / `--keep-pod` / `--yes` for the edges.
+Verified offline (46 tests across chat/organisms/runpod; full suite 1038 green) and live
+up to the menu; a real launch has not been run yet — first use should watch the
+boot-phase lines and the teardown message.
+
+**Next.** First live run: `uv run chat`, pick `da716` and `base`, ask the difficult-advice
+questions, `/quit`, and confirm "pod … destroyed; pods still active: 0". The
+`--target ... --server` path is still unexercised against a live GPU host.
 
 ## 2026-08-27 — the low-stakes arm is trained; train_loss says only that the run was healthy
 

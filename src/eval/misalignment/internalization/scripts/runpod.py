@@ -25,47 +25,18 @@ from __future__ import annotations
 import json
 import os
 import time
-from typing import Any
 
 import fire
 import requests
 
-REST = "https://rest.runpod.io/v1"
+# The REST client moved to src/endpoints/runpod.py (2026-08-27) so `uv run chat` and this
+# module share one; re-exported here because scripts/gpu/* and scratch/* import it from here.
+from src.endpoints.runpod import REST, call  # noqa: F401
 
 # Weights (~55GB bf16) + the merged copy (~55GB) + room for the image and HF cache.
 DEFAULT_DISK_GB = 250
 DEFAULT_IMAGE = "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04"
 
-
-def _key() -> str:
-    """Return the RunPod API key, or explain how to get a working one."""
-    from dotenv import load_dotenv
-
-    load_dotenv()
-    key = os.environ.get("RUNPOD_API_KEY", "")
-    if not key:
-        raise RuntimeError("RUNPOD_API_KEY is not set. Put it in .env or export it.")
-    return key
-
-
-def call(method: str, path: str, **kwargs: Any) -> Any:
-    """Call the RunPod REST API, turning an auth failure into an actionable message."""
-    resp = requests.request(
-        method,
-        f"{REST}{path}",
-        headers={"Authorization": f"Bearer {_key()}", "Content-Type": "application/json"},
-        timeout=60,
-        **kwargs,
-    )
-    if resp.status_code == 401:
-        raise RuntimeError(
-            "RunPod rejected the API key (401). Keys are created at "
-            "https://console.runpod.io/user/settings -> API Keys, and must have WRITE "
-            "permission to create pods - a read-only key 401s on every endpoint. Check the "
-            "key belongs to the account holding your credit."
-        )
-    resp.raise_for_status()
-    return resp.json() if resp.content else {}
 
 
 def _bootstrap(base: str, adapter: str, served_name: str) -> str:
