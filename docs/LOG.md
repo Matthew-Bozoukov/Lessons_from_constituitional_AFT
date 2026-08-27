@@ -1,6 +1,42 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-08-27 — `uv run chat`: talk to a model organism from the terminal
+
+**Why.** Every number we have about an organism comes from a harness. Nobody had a way to
+just *talk* to one — ask it the difficult-advice questions ourselves, watch the trace, put
+the same prompt to the base model next to it — without hand-rolling curl against vLLM.
+
+**What.** `src/endpoints/chat.py` (alias `chat`, mirror `scripts/gpu/chat.py`): a REPL over
+the OpenAI-compatible endpoint, reached one of three ways. `--endpoint <url>` talks to a
+server that is already up (the RunPod HTTPS proxy from `scratch/serve_adapter_runpod.py`,
+or a tunnel) and turns every model it lists into an arm. `--target <hf-adapter> [...]
+[--server <ssh-alias>]` serves the adapters itself through the eval framework's
+`VllmServer` — thinking mode inferred from `training_meta.json` and pinned into the
+template exactly as the evals do, `base` served alongside in the same mode — and refuses
+targets that would need a second server (different base or mode), the same rule
+`run_eval` applies. `--target openrouter:<model>` gives an off-the-shelf reference point.
+Each arm keeps its own history; `/use base ft_20_80` puts one prompt to both, in order.
+Reasoning is dimmed live in either shape vLLM emits it (out-of-band with a parser, inline
+under the think prefill) and split for the record by `resolve_trace`, so a trace is never
+mistaken for the answer on screen or on disk. Prior-turn reasoning is sent back as
+`reasoning_content`, matching the served template's `preserve_thinking` pin. Sessions
+land in `output/chat/<ts>/`: `transcript.jsonl` appended per model-turn (self-contained:
+system prompt, user turn, think, answer, sampling, finish_reason), `run_meta.json`,
+`transcript.md` (via `transcript_markdown`). Exploratory, so not pushed to HF.
+
+**Smoke.** Two turns against `openrouter:qwen/qwen3-32b` with piped stdin: streaming,
+out-of-band trace capture, `/set`, `/models`, all three artifacts. The first run wrote the
+provider key into `run_meta.json` via `Arm.__dict__` — fixed the same hour
+(`Arm.provenance()` is the only projection that reaches disk; a test guards it). 16 offline
+tests in `tests/test_chat.py`.
+
+**Next.** Bring a pod up with `scratch/serve_adapter_runpod.py up --adapter <arm> --name
+<arm> --mode think` and `uv run chat --endpoint https://<pod>-8000.proxy.runpod.net/v1`;
+tear the pod down after. The `--target ... --server` path has not been exercised against a
+live GPU host yet — it is the `run_eval` serving path unchanged, but its first live use
+should be watched.
+
 ## 2026-08-27 — the low-stakes arm is trained; train_loss says only that the run was healthy
 
 **Hypothesis.** A model trained on low-stakes difficult advice comes out LESS aligned than
