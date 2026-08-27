@@ -1,6 +1,48 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-08-27 — Channel-swap arms trained: grok's trace with Sonnet's reply, and Sonnet's trace with grok's reply, on the same 703 questions
+
+**Hypothesis.** The rollout read (entry below) put grok's ODCV advantage in how often a
+first-person commitment fires before the first write, and the corpus property that tracks it in
+the REPLY (firm/repeated/closing refusal 71.5% vs 20%) — while the decision at inference is made
+in the REASONING. Which training channel carries the effect? Recombining arms A and B row-for-row
+answers that with no generation: whichever swap lands near grok's 7.8% names the channel; both
+midway is additive; both near Sonnet's 16.3% means the effect needs trace and reply to agree.
+
+**Method.** `scratch/channel_swap/build_swap_mixtures.py` reads the two paired mixtures
+(`2026-08-24-t2-9284-sonnet703-paired-train`, `…-grokresp703-paired-train`; each row a rendered
+Qwen chat string with `<think>{trace}</think>\n\n{reply}`), asserts every prompt prefix is
+byte-identical across the arms (703/703) and that the 9,284-row Table-2 half is identical in
+content and order, then writes G-trace+S-reply (median trace 1,277 chars, reply 2,668) and
+S-trace+G-reply (2,876 / 1,568). Mixtures + code bundles:
+`LASR-Callum/2026-08-27-t2-9284-{gtrace-sreply703,strace-greply703}-paired-train`. Train
+configs `configs/train/lora_qwen36_t2_9284_{gtrace_sreply703,strace_greply703}_paired_2xh200.yaml`
+= the grokresp703 config with only the data pointers changed. Two credential-free RunPod 2×H200
+pods via `scripts/gpu/runpod_train.py` (torchrun DDP, dynamic batching), one watchdog each.
+
+**Result — both trained cleanly; the loss says nothing about the hypothesis yet.** 625 steps,
+epoch 1.0; mask gate 703 real / 9,646 empty / 0 absent / 0 truncated on both. Final train loss
+**0.7027** (G-trace+S-reply) and **0.7008** (S-trace+G-reply) — the same 0.700 / 0.7005 the
+grokresp703 and capped-Sonnet arms ended on, so the recipe reproduced. ~2 h 05 m of training per
+pod, ~$45 of pod time in total, no generation cost. Adapters (thinking: true, dataset pinned to
+`eb7c0c27` / `ba03ee6b`):
+`LASR-Callum/qwen3.6-27b-lora-t2-9284-gtrace-sreply703-paired-r64` and
+`…-strace-greply703-paired-r64`. Both pods destroyed; the account holds only teammates' pods.
+
+Ops notes: (1) the two watchdogs were stopped once mid-run by an external kill of background
+tasks and relaunched — pods were unaffected, but a watchdog is only a guard while it runs.
+(2) One watchdog's teardown call hit a 60 s read timeout on `rest.runpod.io` after the adapter
+was pulled and crashed; the DELETE had gone through (retry returned 404). (3) The adapter tar
+carries `checkpoint-600/` and `checkpoint-625/` beside the final `adapter/`; selecting by the
+last-sorted `adapter_config.json` would push a checkpoint without its stamp — the push now selects
+the directory holding `training_meta.json`.
+
+**Next steps.** ODCV on both adapters with the paired 2×65 config (clone
+`odcv_bench_t2_9284_sonnetconcise703_r64_paired_2x65.yaml`), read as a 2×2 with A (da716 16.3%)
+and B (7.8%); then `scratch/four_mos_rollouts/registers.py` on the rollouts to see where the
+commitment fires and whether the trace channel or the reply channel moved the trigger rate.
+
 ## 2026-08-27 — Four MOs' ODCV rollouts read side by side: the generators differ in how often the trained voice fires, not in how safe it is when it does
 
 **Hypothesis.** The generator ablation left an ordering nobody could explain — grok 7.8% <

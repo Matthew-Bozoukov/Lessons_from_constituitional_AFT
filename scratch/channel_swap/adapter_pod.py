@@ -64,9 +64,16 @@ def push(arm: str, private: bool = False) -> str:
     """Push the pulled adapter to its HF repo with the card and its training stamp."""
     spec = ARMS[arm]
     d = ROOT / spec["dest"]
-    adapters = sorted(p for p in d.rglob("adapter_config.json"))
-    assert adapters, f"no adapter under {d}"
-    adapter = adapters[-1].parent
+    # The FINAL adapter is the directory that carries training_meta.json (`<ts>/adapter/`); the
+    # step checkpoints beside it (`checkpoint-600/`, `checkpoint-625/`) also hold an
+    # adapter_config.json and sort AFTER it, so selecting by adapter_config would push a
+    # checkpoint without its stamp.
+    stamps = sorted(p for p in d.rglob("training_meta.json"))
+    assert stamps, f"no training_meta.json under {d}"
+    adapter = stamps[-1].parent
+    assert (adapter / "adapter_config.json").exists(), (
+        f"{adapter} has no adapter_config.json"
+    )
     meta = json.loads((adapter / "training_meta.json").read_text(encoding="utf-8"))
     assert meta.get("thinking") is True, (
         f"training_meta says thinking={meta.get('thinking')!r}"
