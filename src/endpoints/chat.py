@@ -522,10 +522,12 @@ def serve_targets(
 # --- the REPL -----------------------------------------------------------------------------
 
 
-def read_input() -> str:
+def read_input(talking_to: str) -> str:
+    """One user message; the prompt names the arm(s) it will go to, so it is never a
+    guess which organism is answering."""
     lines: list[str] = []
     while True:
-        line = input("you › " if not lines else "... ")
+        line = input(f"[{talking_to}] you › " if not lines else "... ")
         if line.endswith("\\"):
             lines.append(line[:-1])
             continue
@@ -584,10 +586,12 @@ def repl(session: Session) -> None:
     except ImportError:
         pass
     print(HELP)
+    print("arms in this session (* = the one your messages go to):")
     _print_models(session)
+    print("switch with `/use <arm>`; compare with `/use base <arm>` or `/use all`\n")
     while True:
         try:
-            line = read_input()
+            line = read_input(", ".join(a.name for a in session.active))
         except EOFError:
             print()
             return
