@@ -53,13 +53,38 @@ CFG = "scratch/par_b/odcv_bench_t2_9284_par716_2x65.yaml"
 # (key, short label, long label, group, source). group: "this" | "sft7" | "ref". `--only`
 # takes a comma-separated list of keys to draw a subset (e.g. the Sonnet-only view).
 ARMS = [
+    # The PAR arms come from --results (`key=path,...`), not the Hub: `None` sources are
+    # looked up there by key and skipped when absent. `par_pooled` is computed, not loaded:
+    # every PAR seed's per-scenario medians merged (rollouts re-keyed by seed), i.e. the
+    # replicates read as one 2N-rollout arm.
     (
         "par",
-        "PAR 716\n(this run)",
-        "post-action-retrospection 716 (design B; this run, 2 rollouts)",
+        "PAR 716\nseed 0",
+        "post-action-retrospection 716 (design B; seed 0, 2 rollouts)",
         "this",
         None,
-    ),  # source filled from --results
+    ),
+    (
+        "par_s1",
+        "PAR 716\nseed 1",
+        "post-action-retrospection 716 (design B; seed 1, 2 rollouts)",
+        "this",
+        None,
+    ),
+    (
+        "par_s2",
+        "PAR 716\nseed 2",
+        "post-action-retrospection 716 (design B; seed 2, 2 rollouts)",
+        "this",
+        None,
+    ),
+    (
+        "par_pooled",
+        "PAR 716\n3 seeds pooled",
+        "post-action-retrospection 716 (design B; seeds pooled, all rollouts)",
+        "pooled",
+        "pooled",
+    ),
     (
         "t10",
         "t10 curiosity\n716",
@@ -138,8 +163,25 @@ POSTED = [
     )
 ]
 
-BLUE, RED, GRAY = "#3a63a8", "#c23b3b", "#8a8985"
-COLOR = {"this": RED, "sft7": BLUE, "ref": GRAY}
+BLUE, RED, DARKRED, GRAY = "#3a63a8", "#c23b3b", "#7a1f1f", "#8a8985"
+COLOR = {"this": RED, "pooled": DARKRED, "sft7": BLUE, "ref": GRAY}
+PAR_KEYS = ("par", "par_s1", "par_s2")
+
+
+def _pool(results: dict[str, str]) -> dict:
+    """Merge the PAR seeds' per-scenario medians into one arm: rollout keys are prefixed by
+    seed so nothing collides, and every variant keeps the same key set so the paired
+    bootstrap in `summarise` still pairs mandated with incentivized per (seed, rollout)."""
+    merged: dict[str, dict[str, float]] = {}
+    for key in PAR_KEYS:
+        if key not in results:
+            continue
+        psm = _load(results[key])["per_scenario_medians"]
+        for variant, cells in psm.items():
+            for cell, score in cells.items():
+                scenario, _, rollout = cell.partition("/")
+                merged.setdefault(variant, {})[f"{scenario}/{key}_{rollout}"] = score
+    return merged
 
 
 def _restrict(psm: dict, excluded: set[str]) -> dict:
@@ -158,7 +200,7 @@ def _load(source) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _collect(results: str, only: tuple[str, ...] = ()) -> list[dict]:
+def _collect(results: dict[str, str], only: tuple[str, ...] = ()) -> list[dict]:
     cfg = OmegaConf.load(CFG)
     excluded = set(OmegaConf.to_container(cfg.get("exclude_scenarios", []) or []))
     rows = []
@@ -167,11 +209,21 @@ def _collect(results: str, only: tuple[str, ...] = ()) -> list[dict]:
         raise SystemExit(
             f"unknown arm key(s) {sorted(unknown)}; known: {[a[0] for a in ARMS]}"
         )
+    n_par = sum(k in results for k in PAR_KEYS)
     for key, short, label, group, source in ARMS:
         if only and key not in only:
             continue
-        source = results if source is None else source
-        medians = _restrict(_load(source)["per_scenario_medians"], excluded)
+        if source is None:
+            if key not in results:
+                continue  # a PAR seed not passed in --results
+            psm = _load(results[key])["per_scenario_medians"]
+        elif source == "pooled":
+            if n_par < 2:
+                continue  # nothing to pool
+            psm = _pool(results)
+        else:
+            psm = _load(source)["per_scenario_medians"]
+        medians = _restrict(psm, excluded)
         s = summarise(medians)
         o = s["overall"]
         rows.append(
@@ -245,7 +297,11 @@ def _mirror(rows: list[dict], md: Path, png: Path, ts: str) -> None:
         )
     lines += [
         "",
-        "Not drawn (no pullable results.json): courtroom716, peercritique716.",
+        (
+            "Not drawn (no pullable results.json): courtroom716, peercritique716."
+            if any(r["sev"] is None for r in rows)
+            else "Subset view (`--only`)."
+        ),
         "",
         f"Plot: `{png.relative_to(ROOT)}`",
     ]
@@ -466,7 +522,9 @@ def main(
     """Render the comparison.
 
     Args:
-        results: The PAR arm's combined results.json (scratch/odcv_combine_passes.py output).
+        results: The PAR arms' combined results.json files (scratch/odcv_combine_passes.py
+            output) as `key=path,key=path` with keys par / par_s1 / par_s2; a bare path
+            means `par=<path>`. Seeds not given are skipped; `par_pooled` needs >= 2.
         style: `bars` (vertical bars + CI whiskers, value labels), `variants` (mandated vs
             incentivized grouped bars, per-variant CIs) or `dots` (dot-and-interval).
         out_dir: Where the PNG and its markdown mirror go.
@@ -481,7 +539,15 @@ def main(
     # fire hands `--only a,b,c` over as a tuple already; a quoted string arrives as str.
     parts = only if isinstance(only, (tuple, list)) else str(only).split(",")
     keys = tuple(str(k).strip() for k in parts if str(k).strip())
-    rows = _collect(results, keys)
+    rparts = results if isinstance(results, (tuple, list)) else str(results).split(",")
+    rmap: dict[str, str] = {}
+    for item in (str(p).strip() for p in rparts if str(p).strip()):
+        k, _, v = item.partition("=")
+        rmap[k if v else "par"] = v or k
+    bad = set(rmap) - set(PAR_KEYS)
+    if bad:
+        raise SystemExit(f"--results keys must be in {PAR_KEYS}; got {sorted(bad)}")
+    rows = _collect(rmap, keys)
     ts = time.strftime("%Y%m%d_%H%M%S")
     out = ROOT / out_dir
     out.mkdir(parents=True, exist_ok=True)
