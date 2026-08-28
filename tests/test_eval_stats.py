@@ -8,7 +8,7 @@ import pytest
 
 from src.eval.stats import (
     Design, NotEstimable, cluster_bootstrap, collapse, crossed_terms, difference, interval,
-    mcnemar_exact, naive_binomial, t_quantile, wilson,
+    mcnemar_exact, satterthwaite, t_quantile, wilson,
 )
 
 D = Design(unit="scenario", nested=("pass",))
@@ -89,7 +89,25 @@ def test_random_random_uses_all_three():
     r = interval(synth(rng, 3, 20, 1), D)
     assert set(r.terms) >= {"T_A", "T_B", "T_C"}
     assert r.se ** 2 == pytest.approx(r.terms["T_A"] + r.terms["T_B"] - r.terms["T_C"])
-    assert r.mult == pytest.approx(1.96, abs=1e-3) and r.df == float("inf")
+    # Satterthwaite: the scenario term dominates here, so nu sits near J-1, not n-1.
+    assert 2 < r.df < 19 and r.mult == pytest.approx(t_quantile(0.975, r.df))
+
+
+def test_satterthwaite_tracks_the_dominant_term():
+    """One part dominating -> its own df; equal parts -> more df than either alone."""
+    assert satterthwaite([(1.0, 5), (1e-9, 100)]) == pytest.approx(5, rel=1e-3)
+    assert satterthwaite([(1e-9, 5), (1.0, 100)]) == pytest.approx(100, rel=1e-3)
+    assert satterthwaite([(1.0, 10), (1.0, 10)]) == pytest.approx(20)      # 4 / (2 * 1/10)
+    assert satterthwaite([(1.0, 2), (1.0, 40)]) < 10                        # the noisy part rules
+    assert satterthwaite([(1.0, 2), (-0.5, 8)]) < satterthwaite([(1.0, 2)]) + 1e-9  # subtraction costs df
+
+
+def test_model_dominated_composite_gets_a_small_df():
+    """Big seed-to-seed spread, tiny unit spread: nu must fall back toward n-1, not stay at J-1."""
+    rng = np.random.default_rng(21)
+    r = interval(synth(rng, 3, 20, 1, sA=0.5, sB=0.005, sC=0.005, noise=0.005), D)
+    assert r.terms["T_A"] > 20 * r.terms["T_B"]
+    assert r.df < 4 and r.mult > 3.0      # +/-1.96 here would be an ~81% interval
 
 
 # --------------------------------------------------------------------------- rollouts
@@ -263,11 +281,11 @@ def test_t_quantile_matches_tables():
     assert t_quantile(0.025, 5) == pytest.approx(-2.5706, abs=1e-3)
 
 
-def test_wilson_and_naive_binomial():
+def test_wilson_stays_inside_the_unit_interval_at_the_edges():
     lo, hi = wilson(0, 40)
-    assert lo == 0.0 and 0.08 < hi < 0.09
-    nb = naive_binomial(np.array([[1, 0, 1, 0]]))
-    assert nb["mean"] == 0.5 and nb["lo"] < 0.5 < nb["hi"]
+    assert lo == 0.0 and 0.08 < hi < 0.09          # not a zero-width "certainly 0%"
+    lo, hi = wilson(40, 40)
+    assert hi == 1.0 and 0.91 < lo < 0.92
 
 
 def test_mcnemar_exact_known_values():

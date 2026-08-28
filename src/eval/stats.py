@@ -15,7 +15,14 @@ None of the four is observable. Three spreads of the table are, and combine to i
     T_A  spread of the n row means / n          -> s_A^2/n + beta        (Miller's clustered SE, by model)
     T_B  spread of the J column means / J       -> s_B^2/J + beta        (Miller's clustered SE, by unit)
     T_C  spread of the double-centred residuals -> beta                  (interaction + rollout noise)
-    Var(mu_hat) is estimated by T_A + T_B - T_C,  CI = mu_hat +/- 1.96 SE.
+    Var(mu_hat) is estimated by T_A + T_B - T_C,  CI = mu_hat +/- t_nu SE.
+
+The multiplier is a t quantile, never a flat 1.96: the variance is ESTIMATED, and a noisy
+estimate needs a fatter multiplier to keep 95% coverage. df is how many independent numbers
+went into it -- J-1 for a per-unit spread, n-1 for a per-model one. It matters at small
+counts: at df 39, +/-1.96 covers 94.3%; at df 2 (three seeds) it covers 81%. Sums of
+estimates with different dfs (T_A + T_B - T_C) have no exact df, so `satterthwaite` gives an
+effective one -- roughly the df of whichever part dominates the sum.
 
 A `Design` names the factors of the long table and what each one is:
 
@@ -54,8 +61,8 @@ import pandas as pd
 
 Z_95 = 1.959963984540054
 __all__ = [
-    "Design", "Table", "Result", "NotEstimable", "collapse", "crossed_terms", "interval",
-    "difference", "cluster_bootstrap", "wilson", "naive_binomial", "mcnemar_exact", "t_quantile",
+    "Design", "Table", "Result", "NotEstimable", "collapse", "crossed_terms", "satterthwaite",
+    "interval", "difference", "cluster_bootstrap", "wilson", "mcnemar_exact", "t_quantile",
 ]
 
 
@@ -263,6 +270,35 @@ def _product(levels: list[list[Any]]):
 
 # --------------------------------------------------------------------------- the three spreads
 
+def satterthwaite(parts: Sequence[tuple[float, float]]) -> float:
+    """Effective df for a variance built as a sum of estimated parts.
+
+    Each part is `(value, df)`. A t-interval assumes ONE variance estimate with a known df;
+    `T_A + T_B - T_C` mixes estimates whose dfs differ (n-1, J-1, (n-1)(J-1)) and has no
+    exact df. Satterthwaite matches the first two moments of the sum to a single scaled
+    chi-square, giving
+
+        nu = (sum of parts)^2 / sum over parts of (part^2 / df_part)
+
+    which behaves as it should at the ends: if one part dominates, nu is that part's df; if
+    several contribute equally, nu is larger than any single one, because averaging several
+    noisy variance estimates gives a less noisy total. Signs are irrelevant in the
+    denominator, so a subtracted term still costs df rather than adding it.
+
+    Args:
+        parts: `(value, df)` for each estimated component; parts with df <= 0 or value 0
+            contribute nothing.
+
+    Returns:
+        The effective degrees of freedom (>= 1), or inf when nothing is estimated.
+    """
+    total = sum(v for v, _ in parts)
+    denom = sum(v * v / d for v, d in parts if d and d > 0)
+    if denom <= 0 or total <= 0:
+        return float("inf")
+    return max(1.0, total * total / denom)
+
+
 def crossed_terms(values: np.ndarray, unit_weights: np.ndarray | None = None) -> dict[str, float]:
     """mu_hat and T_A, T_B, T_C for an n x J table (n >= 2 for T_A and T_C; NaN otherwise)."""
     v = np.asarray(values, dtype=float)
@@ -414,24 +450,27 @@ def interval(obs: Any, design: Design | None = None, *, models: str | None = Non
         alpha: Two-sided level.
 
     Returns:
-        A Result. Which spreads are combined:
+        A Result. Which spreads are combined, and the df of the multiplier:
 
-            models random, units random   T_A + T_B - T_C          +/- z
-            models random, units fixed    T_A                      t, df n-1
-            models fixed,  units random   spread of column means / J   t, df J-1
-            models fixed,  units fixed    within-cell rollout noise only (needs R >= 2)   +/- z
+            models random, units random   T_A + T_B - T_C            Satterthwaite df
+            models random, units fixed    T_A                        n - 1
+            models fixed,  units random   spread of column means / J  J - 1
+            models fixed,  units fixed    within-cell noise (R >= 2)  sum over cells of R-1
     """
     table = _as_table(obs, design)
     kind = _models_kind(table, models)
     t = crossed_terms(table.values, table.unit_weights)
     mu = t["mu"]
+    n, J = table.n, table.J
     if kind == "random" and table.design.units == "random":
         se2 = t["T_A"] + t["T_B"] - t["T_C"]
         fallback = se2 <= 0
         if fallback:
             se2 = max(t["T_A"], t["T_B"])
-        terms = {"T_A": t["T_A"], "T_B": t["T_B"], "T_C": t["T_C"], "negative_fallback": fallback}
-        return _finish(table, kind, "T_A + T_B - T_C, +/-1.96", mu, se2, float("inf"), terms, alpha)
+        df = satterthwaite([(t["T_A"], n - 1), (t["T_B"], J - 1), (t["T_C"], (n - 1) * (J - 1))])
+        terms = {"T_A": t["T_A"], "T_B": t["T_B"], "T_C": t["T_C"], "negative_fallback": fallback,
+                 "df_source": "Satterthwaite over T_A, T_B, T_C"}
+        return _finish(table, kind, "T_A + T_B - T_C, t_nu (Satterthwaite)", mu, se2, df, terms, alpha)
     if kind == "random":  # units fixed
         return _finish(table, kind, "T_A (per-model rates), t_{n-1}", mu, t["T_A"], table.n - 1,
                        {"T_A": t["T_A"]}, alpha)
@@ -446,7 +485,8 @@ def interval(obs: Any, design: Design | None = None, *, models: str | None = Non
             "per cell, or treat units as sampled (units='random'), which is a different claim.")
     w = table.unit_weights
     se2 = float((table.noise_var * w[None, :] ** 2).sum() / table.n ** 2)
-    return _finish(table, kind, "within-cell rollout noise only, +/-1.96", mu, se2, float("inf"),
+    df = float(max(1, (table.reps - 1).sum()))   # one df per extra rollout in each cell
+    return _finish(table, kind, "within-cell rollout noise only, t_{sum(R-1)}", mu, se2, df,
                    {"noise_term": se2}, alpha)
 
 
@@ -501,14 +541,18 @@ def difference(obs_a: Any, obs_b: Any, design: Design | None = None, *, models: 
         if fallback:
             se2 = ta["T_A"] + tb["T_A"] + t_bd
         terms = {"T_A_a": ta["T_A"], "T_A_b": tb["T_A"], "T_B_d": t_bd, "T_C_a": ta["T_C"],
-                 "T_C_b": tb["T_C"], "negative_fallback": fallback}
-        r = _finish(merged, kind, "T_A^A + T_A^B + T_B^(d) - T_C^A - T_C^B, +/-1.96", mean, se2,
-                    float("inf"), terms, alpha)
-    elif kind == "random":  # units fixed: Welch on per-model rates, conservative df
+                 "T_C_b": tb["T_C"], "negative_fallback": fallback,
+                 "df_source": "Satterthwaite over the five terms"}
+        df = satterthwaite([(ta["T_A"], A.n - 1), (tb["T_A"], B.n - 1), (t_bd, J - 1),
+                            (ta["T_C"], (A.n - 1) * (J - 1)), (tb["T_C"], (B.n - 1) * (J - 1))])
+        r = _finish(merged, kind, "T_A^A + T_A^B + T_B^(d) - T_C^A - T_C^B, t_nu (Satterthwaite)",
+                    mean, se2, df, terms, alpha)
+    elif kind == "random":  # units fixed: Welch's two-sample t on the per-model rates
         ra, rb = A.values @ A.unit_weights, B.values @ B.unit_weights
-        va, vb = ra.var(ddof=1) / A.n, rb.var(ddof=1) / B.n
-        r = _finish(merged, kind, "Welch on per-model rates, t_{min(n_a,n_b)-1}", mean, va + vb,
-                    min(A.n, B.n) - 1, {"var_a": float(va), "var_b": float(vb)}, alpha)
+        va, vb = float(ra.var(ddof=1) / A.n), float(rb.var(ddof=1) / B.n)
+        df = satterthwaite([(va, A.n - 1), (vb, B.n - 1)])   # Welch-Satterthwaite
+        r = _finish(merged, kind, "Welch two-sample t on per-model rates, t_nu (Welch-Satterthwaite)",
+                    mean, va + vb, df, {"var_a": va, "var_b": vb}, alpha)
     elif A.design.units == "random":  # models fixed, units random: paired on units
         se2 = float(d_cols.var(ddof=1) / J)
         r = _finish(merged, kind, "spread of per-unit differences over J, t_{J-1}", mean, se2, J - 1,
@@ -518,7 +562,8 @@ def difference(obs_a: Any, obs_b: Any, design: Design | None = None, *, models: 
             raise NotEstimable("both fixed: rollout noise not estimable with one rollout per cell")
         w = A.unit_weights
         se2 = float((A.noise_var * w ** 2).sum() / A.n ** 2 + (B.noise_var * w ** 2).sum() / B.n ** 2)
-        r = _finish(merged, kind, "within-cell rollout noise only, +/-1.96", mean, se2, float("inf"),
+        df = float(max(1, (A.reps - 1).sum() + (B.reps - 1).sum()))
+        r = _finish(merged, kind, "within-cell rollout noise only, t_{sum(R-1)}", mean, se2, df,
                     {"noise_term": se2}, alpha)
     def who(t: Table) -> str:
         return ("a checkpoint from its pipeline" if kind == "random"
@@ -559,25 +604,20 @@ def cluster_bootstrap(obs: Any, statistic: Callable[[np.ndarray], float], design
 
 
 def wilson(k: float, n: int, z: float = Z_95) -> tuple[float, float]:
-    """Wilson score interval for a proportion k/n."""
+    """Wilson score interval for a proportion k/n.
+
+    Wilson rather than the naive `p +/- z*sqrt(p(1-p)/n)`: it stays inside [0, 1] and keeps
+    a sensible width at the edges, where the naive interval has width zero at 0/n and can
+    run below zero nearby. Use it for a rate near 0 or 1, where the symmetric intervals
+    above stop making sense. Bounds are clamped: rounding can otherwise put them a
+    floating-point hair outside [0, 1], which reads as 100.000000001% in a report.
+    """
     assert n > 0
     p = k / n
     denom = 1 + z ** 2 / n
     centre = (p + z ** 2 / (2 * n)) / denom
     half = z * math.sqrt(p * (1 - p) / n + z ** 2 / (4 * n ** 2)) / denom
-    return centre - half, centre + half
-
-
-def naive_binomial(values: np.ndarray) -> dict[str, float]:
-    """All cells as i.i.d. Bernoulli draws -- the interval if NO structure existed.
-
-    A lower bound on any attribution of the spread; reported beside `interval` as the
-    'if all of it were rollout luck' extreme, never as the headline.
-    """
-    v = np.asarray(values, dtype=float)
-    k, N = float(v.sum()), v.size
-    lo, hi = wilson(k, N)
-    return {"mean": k / N, "lo": lo, "hi": hi, "N": N, "method": "Wilson, all cells i.i.d."}
+    return max(0.0, centre - half), min(1.0, centre + half)
 
 
 def mcnemar_exact(b: int, c: int) -> float:

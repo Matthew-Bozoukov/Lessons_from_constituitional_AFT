@@ -9,7 +9,7 @@ random draw, so there is a second random axis. Nothing is bootstrapped for a mea
 An eval produces an `n × J` table: `n` checkpoints (rows) × `J` units (columns: scenarios,
 prompts, subjects), each cell the mean of its `R` rollouts. `μ̂` is the grand mean. We want
 `Var(μ̂)` under a re-run — new checkpoints from the pipeline, new units from the benchmark
-population, new rollouts — and `CI = μ̂ ± 1.96 √Var(μ̂)`.
+population, new rollouts — and `CI = μ̂ ± t_ν √Var(μ̂)`.
 
 ## 2. Four terms
 
@@ -39,9 +39,40 @@ and column means removed).
 
 Row and column spreads each carry their own term plus `β`; the residuals carry `β` alone:
 
-    E[T_A + T_B − T_C] = Var(μ̂),    CI = μ̂ ± 1.96 √(T_A + T_B − T_C)
+    E[T_A + T_B − T_C] = Var(μ̂),    CI = μ̂ ± t_ν √(T_A + T_B − T_C)
 
 `T_A` and `T_B` are Miller's clustered SE with clusters = models / units (up to `n/(n−1)`).
+
+## 3a. The multiplier: why not always 1.96
+
+`± 1.96` is correct only if the variance is *known*. Ours is estimated, and a noisy estimate
+needs a fatter multiplier to keep 95% coverage. Degrees of freedom count the independent
+numbers behind the estimate:
+
+| variance from | df | t | what ±1.96 really covers |
+|---|---|---|---|
+| 40 units | 39 | 2.02 | 94.3% |
+| 25 units | 24 | 2.06 | 93.8% |
+| 3 seeds | 2 | **4.30** | **81.1%** |
+
+At large counts the correction is negligible (which is why Miller can use 1.96 over
+thousands of questions); at 3 seeds it is the difference between an 81% and a 95% interval.
+
+`T_A + T_B − T_C` mixes estimates with *different* dfs (`n−1`, `J−1`, `(n−1)(J−1)`), so no
+exact df exists. `satterthwaite` supplies an effective one by matching the first two moments
+of the sum to a single scaled chi-square:
+
+    ν = (Σ parts)² / Σ (part² / df_part)
+
+It behaves as it should at the ends: one part dominating gives that part's df; several equal
+parts give more df than any of them alone, because averaging noisy variance estimates makes
+a less noisy total. On ODCV (3 seeds × 25 scenarios) the scenario term dominates
+(`T_B` = 89 vs `T_A` = 5.3), so ν ≈ 30 and the multiplier is 2.04 — barely above 1.96. Had
+the seed term dominated, ν would fall toward 2 and the multiplier toward 4.3; that swing is
+the whole reason for computing it rather than hard-coding 1.96.
+
+Welch's two-sample t (the arms-differ-in-models, units-fixed case) uses the same formula on
+its two parts — "Welch–Satterthwaite" is one thing, not two.
 
 ## 4. The Design decides which spreads apply
 
@@ -53,12 +84,12 @@ Row and column spreads each carry their own term plus `β`; the residuals carry 
 | `nested` | draws inside a cell, no identity across cells | rollouts, questions within a subject | averaged in; lives only in `β` |
 | models | inferred: `random` iff `n ≥ 2` from one pipeline | seeds | `T_A`, `T_C` terms |
 
-| models | units | SE² |
-|---|---|---|
-| random | random | `T_A + T_B − T_C` |
-| random | fixed | `T_A` (t, df n−1) |
-| fixed | random | `T_B` (t, df J−1) — Miller's one-model setting |
-| fixed | fixed | within-cell rollout noise only; **needs R ≥ 2** |
+| models | units | SE² | df |
+|---|---|---|---|
+| random | random | `T_A + T_B − T_C` | Satterthwaite |
+| random | fixed | `T_A` | `n−1` |
+| fixed | random | `T_B` — Miller's one-model setting | `J−1` |
+| fixed | fixed | within-cell rollout noise; **needs R ≥ 2** | `Σ (R−1)` |
 
 Differences between arms pair on every shared axis (units always; models when the same
 checkpoints sit under both conditions) and add terms on the unshared ones.
