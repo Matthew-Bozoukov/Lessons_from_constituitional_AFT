@@ -38,6 +38,22 @@ The model factor's kind is NOT declared: it is inferred at call time -- `models=
 n >= 2 checkpoints from one pipeline and adds T_A and T_C; n == 1 is `models="fixed"`, a claim
 about that checkpoint. A config cannot assert a sample size it does not have.
 
+Worked Designs. There is always exactly one `unit`; everything below it is `nested` and
+everything enumerated beside it is `crossed_fixed`:
+
+    ODCV, the 50/50 mixture      Design(unit="scenario", crossed_fixed={"variant": "equal"},
+                                        nested=("pass",))
+    ODCV, one variant            Design(unit="scenario", nested=("pass",))
+    MMLU, Miller's framing       Design(unit="question")
+        -- a question drawn from the MMLU-like question population; SE = sqrt(p(1-p)/n).
+    MMLU, stratified by subject  Design(unit="subject", units="fixed",
+                                        unit_weights="count", nested=("question",))
+        -- MMLU's own subject mix, between-subject variance removed; narrower.
+    Arena-Hard                   Design(unit="prompt", crossed_fixed={"ordering": "equal"},
+                                        nested=("judge_call",))
+
+The two MMLU rows are different claims, not different spellings of one: pick deliberately.
+
 Rollouts. With R > 1 the within-cell spread estimates s_eps^2, so the rollout share of the error
 bar is reported. With R == 1 the interval is still valid -- rollout noise sits inside every
 spread and is measured with it -- but it cannot be separated, and the cell value has to be read
@@ -102,6 +118,12 @@ class Design:
         assert self.units in ("random", "fixed"), f"units must be random|fixed, got {self.units!r}"
         assert self.unit_weights in ("equal", "count"), f"unit_weights must be equal|count"
         assert self.incomplete in ("drop", "error"), f"incomplete must be drop|error"
+        assert not (self.unit_weights == "count" and self.units == "random"), (
+            "unit_weights='count' with units='random' is incoherent, so it is refused rather "
+            "than silently ignored: weighting a SAMPLED unit by however many observations it "
+            "happened to receive implies the population you are generalising to is over those "
+            "observations, not over the units -- in which case make the observation the unit. "
+            "Count-weighting is for fixed strata (MMLU's 57 subjects by question count).")
         object.__setattr__(self, "nested", tuple(self.nested))
         object.__setattr__(self, "crossed_fixed", dict(self.crossed_fixed))
         for col, spec in self.crossed_fixed.items():
@@ -600,31 +622,69 @@ def difference(obs_a: Any, obs_b: Any, design: Design | None = None, *, models: 
 
 # --------------------------------------------------------------------------- bootstrap + binomial
 
-def cluster_bootstrap(obs: Any, statistic: Callable[[np.ndarray], float], design: Design | None = None,
-                      *, models: str | None = None, n_boot: int = 10_000, seed: int = 0,
-                      alpha: float = 0.05) -> dict[str, Any]:
-    """Percentile bootstrap of `statistic(values)` resampling the Design's random axes.
+def cluster_bootstrap(obs: Any, statistic: Callable[[Any], float], design: Design | None = None,
+                      *, models: str | None = None, on: str = "table", n_boot: int = 10_000,
+                      seed: int = 0, alpha: float = 0.05) -> dict[str, Any]:
+    """Percentile bootstrap of `statistic(...)` resampling the Design's random axes.
 
     Units (columns) are resampled with replacement, each carrying its whole cell -- never
     rollouts or fixed levels. When models are random and n >= 2, rows are resampled too.
-    Use only for statistics without a closed-form SE; for a mean, `interval` is exact.
+    Use only for statistics without a closed-form SE; for a mean, `interval` is exact, and a
+    test asserts the two agree there.
+
+    Args:
+        obs: A long table, or a collapsed Table (only with `on="table"`).
+        statistic: What to bootstrap. With `on="table"` it receives the resampled
+            `(n_models, n_units)` matrix of cell means. With `on="rows"` it receives the
+            resampled LONG rows as a DataFrame -- needed by any statistic that cannot be
+            computed from cell means: a Bradley-Terry fit needs the individual battles and
+            their style covariates, a median needs the raw values.
+        design: Required when `obs` is a long table.
+        models: "random"/"fixed" as in `interval`; default random iff n >= 2.
+        on: "table" (default) or "rows". See `statistic`.
+        n_boot, seed, alpha: Resamples, RNG seed, two-sided level.
+
+    Returns:
+        `mean` (the statistic on the observed data), `lo`, `hi`, `se`, `method`, and the
+        axes that were resampled. A unit drawn twice contributes its rows twice, which is
+        what "this unit was sampled twice" means for a downstream fit.
     """
+    assert on in ("table", "rows"), f"on must be table|rows, got {on!r}"
     table = _as_table(obs, design)
     kind = _models_kind(table, models)
     rng = np.random.default_rng(seed)
     n_models, n_units = table.n_models, table.n_units
+
+    if on == "rows":
+        assert not isinstance(obs, Table), "on='rows' needs the long table, not a collapsed Table"
+        df = _frame(obs)
+        d = table.design
+        # Row positions per (model, unit), so a resample is one concatenate + one .iloc
+        # rather than a DataFrame slice per cell.
+        pos = {k: np.asarray(v) for k, v in df.groupby([d.model, d.unit]).indices.items()}
+        keep = {(m, u) for m in table.models for u in table.units if (m, u) in pos}
+        take_all = np.concatenate([pos[k] for k in sorted(keep, key=str)]) if keep else np.array([], int)
+        point = float(statistic(df.iloc[np.sort(take_all)]))
+    else:
+        point = float(statistic(table.values))
+
     draws = np.empty(n_boot)
     for b in range(n_boot):
         cols = (rng.integers(0, n_units, n_units) if table.design.units == "random"
                 else np.arange(n_units))
         rows = (rng.integers(0, n_models, n_models) if kind == "random"
                 else np.arange(n_models))
-        draws[b] = statistic(table.values[np.ix_(rows, cols)])
-    point = float(statistic(table.values))
+        if on == "table":
+            draws[b] = statistic(table.values[np.ix_(rows, cols)])
+        else:
+            take = [pos[(table.models[i], table.units[j])] for i in rows for j in cols
+                    if (table.models[i], table.units[j]) in pos]
+            draws[b] = statistic(df.iloc[np.concatenate(take)] if take else df.iloc[:0])
     return {"mean": point, "lo": float(np.quantile(draws, alpha / 2)),
             "hi": float(np.quantile(draws, 1 - alpha / 2)), "se": float(draws.std(ddof=1)),
             "method": f"cluster bootstrap over {'units' if kind == 'fixed' else 'models and units'}, "
-                      f"{n_boot} resamples", "n_boot": n_boot, "models": kind, "units": table.design.units}
+                      f"{n_boot} resamples, statistic on the {'cell table' if on == 'table' else 'long rows'}",
+            "n_boot": n_boot, "models": kind, "units": table.design.units, "on": on}
 
 
 def wilson(k: float, n: int, z: float = Z_95) -> tuple[float, float]:

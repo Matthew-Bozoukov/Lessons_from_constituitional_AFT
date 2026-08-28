@@ -278,6 +278,59 @@ def test_cluster_bootstrap_of_mean_agrees_with_closed_form():
     assert boot["mean"] == pytest.approx(closed.mean)
 
 
+def test_cluster_bootstrap_on_rows_sees_the_long_table():
+    """`on="rows"` hands the statistic the resampled LONG rows -- what a BT fit or a median needs."""
+    rng = np.random.default_rng(30)
+    obs = synth(rng, 1, 20, 3, sB=0.2)
+    seen = {}
+
+    def stat(rows):
+        seen["cols"] = set(rows.columns)
+        seen["n"] = len(rows)
+        return float(rows["value"].median())          # a median: no closed-form SE
+
+    r = cluster_bootstrap(obs, stat, D, on="rows", n_boot=200, seed=0)
+    assert seen["cols"] >= {"model", "scenario", "pass", "value"}   # raw rows, not a matrix
+    assert seen["n"] == 20 * 3                                       # every rollout, not a cell mean
+    assert r["lo"] < r["mean"] < r["hi"] and "long rows" in r["method"]
+
+
+def test_cluster_bootstrap_on_rows_duplicates_a_twice_drawn_unit():
+    """A unit drawn twice contributes its rows twice -- the point of resampling units."""
+    rng = np.random.default_rng(31)
+    obs = synth(rng, 1, 6, 2)
+    sizes = []
+    cluster_bootstrap(obs, lambda rows: sizes.append(len(rows)) or 0.0, D, on="rows",
+                      n_boot=50, seed=1)
+    assert set(sizes) == {6 * 2}          # 6 units x 2 passes every time, duplicates included
+    with pytest.raises(AssertionError, match="needs the long table"):
+        cluster_bootstrap(collapse(obs, D), lambda r: 0.0, on="rows", n_boot=5)
+
+
+def test_count_weighting_is_refused_for_sampled_units():
+    """unit_weights='count' only makes sense for fixed strata; refuse it, never ignore it."""
+    with pytest.raises(AssertionError, match="incoherent"):
+        Design(unit="subject", units="random", unit_weights="count")
+    d = Design(unit="subject", units="fixed", unit_weights="count", nested=("question",))
+    assert d.unit_weights == "count"
+
+
+def test_stratified_mmlu_weights_big_subjects_more():
+    """MMLU's two framings are different numbers: equal-per-subject vs weighted by question count."""
+    rows = ([{"model": "m", "subject": "chem", "question": f"c{i}", "value": float(i < 80)}
+             for i in range(100)]
+            + [{"model": "m", "subject": "hist", "question": f"h{i}", "value": float(i < 10)}
+               for i in range(20)])
+    counted = interval(rows, Design(unit="subject", units="fixed", unit_weights="count",
+                                    nested=("question",)), models="fixed")
+    equal = interval(rows, Design(unit="subject", units="fixed", nested=("question",)),
+                     models="fixed")
+    assert counted.mean == pytest.approx((80 + 10) / 120)     # fraction of all questions correct
+    assert equal.mean == pytest.approx((0.8 + 0.5) / 2)       # mean subject accuracy
+    per_question = interval(rows, Design(unit="question"))     # Miller's framing
+    assert per_question.mean == pytest.approx(90 / 120) and per_question.n_units == 120
+
+
 def test_cluster_bootstrap_resamples_rows_only_when_models_random():
     rng = np.random.default_rng(19)
     obs = synth(rng, 3, 20, 1)
