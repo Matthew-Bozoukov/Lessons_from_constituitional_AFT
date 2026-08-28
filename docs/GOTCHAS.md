@@ -286,3 +286,22 @@ the boxes it never reached still held `run.log` from the PREVIOUS failed attempt
 `>>> ALL PASSES COMPLETE` from a stale log looks exactly like success. Dispatch
 fire-and-forget (`setsid nohup ... & disown`) and verify with `pgrep`, not with the log tail.
 
+
+## `run_eval --server --port 8001` silently serves you nginx (2026-08-28)
+
+RunPod pod images run **nginx on port 8001**. Passing `--port 8001` to `run_eval --server`
+makes vLLM fail to bind with `OSError: [Errno 98] Address already in use`, and the SSH tunnel
+then forwards to nginx instead. Because something IS listening, the failure does not surface
+as a connection refusal — every generation comes back `APIStatusError` and is recorded as a
+cell error, so the run appears to progress normally. A DAN run reached 86% (1,676 cells) with
+~80% of them errored before it was caught.
+
+Two parallel `--server` runs do NOT need different ports. `--port` sets both the remote vLLM
+port and the local tunnel port, but the local bind address differs per eval: a docker eval
+binds the docker bridge (`10.201.0.1:8000`) and a non-docker eval binds loopback
+(`127.0.0.1:8000`). Different addresses, same port, no collision. Leave `--port` at its
+default and let the bind address separate them.
+
+Check before blaming the eval: `ssh <alias> 'ss -tlnp | grep :800'` shows what owns the port,
+and a `grep -c "generation APIStatusError"` on the driver log distinguishes a serving problem
+(nearly every cell) from ordinary flakiness (a handful).
