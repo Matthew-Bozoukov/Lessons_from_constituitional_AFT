@@ -159,20 +159,32 @@ def main(reps: int = 2000, truth_draws: int = 20_000_000, seed: int = 0,
     dest = REPO / out / stamp
     dest.mkdir(parents=True, exist_ok=True)
 
-    # The distribution of mu_hat itself: the multiplier assumes this is normal, so its shape
-    # is what explains coverage falling short of 95% where it does.
-    INK, INK2, GRID, BLUE = "#0b0b0b", "#52514e", "#e6e5e1", "#2a78d6"
+    # The distribution of mu_hat itself. Each interval shape is a CLAIM about this histogram:
+    # the symmetric interval claims it is normal; the logit interval claims logit(mu_hat) is
+    # normal, i.e. that mu_hat is logit-normal. Drawing both against the truth shows which
+    # claim holds, and so explains the coverage numbers rather than just reporting them.
+    INK, INK2, GRID, BLUE, RED = "#0b0b0b", "#52514e", "#e6e5e1", "#2a78d6", "#c2410c"
     fig, axes = plt.subplots(2, 3, figsize=(16, 8.4), facecolor="#fcfcfb")
     for ax, (label, d) in zip(axes.ravel(), payload.items()):
         m = np.array(d["means"]); mu = d["mu"]
         ax.hist(100 * m, bins=45, color=BLUE, alpha=.85, density=True, zorder=2)
         xs = np.linspace(m.min(), m.max(), 400)
-        se = np.sqrt(d["mean_se2"])
-        ax.plot(100 * xs, np.exp(-((xs - m.mean()) ** 2) / (2 * se ** 2)) / (se * np.sqrt(2 * np.pi)) / 100,
-                color=INK, lw=1.6, ls="--", zorder=4, label="normal with our mean SE")
-        ax.axvline(100 * mu, color="#eb6834", lw=2, zorder=5, label=f"true mu = {100*mu:.1f}%")
-        ax.set_title(f"{label}\ncoverage {d['coverage_pct']:.1f}%   SE²/Var {d['calibration_ratio']:.2f}"
-                     f"   skew {d['skew']:+.2f}", fontsize=9, loc="left", color=INK)
+        se, pbar = np.sqrt(d["mean_se2"]), float(m.mean())
+        gauss = lambda x, c, sd: np.exp(-((x - c) ** 2) / (2 * sd ** 2)) / (sd * np.sqrt(2 * np.pi))
+        ax.plot(100 * xs, gauss(xs, pbar, se) / 100, color=INK2, lw=1.3, ls="--", zorder=4,
+                label=f"normal — symmetric claim ({d['coverage_pct']:.0f}%)")
+        # Logit-normal: logit(mu_hat) ~ N(logit(pbar), s) with s = SE/(p(1-p)), the delta-method
+        # scale the interval itself uses. Change of variables gives the 1/(x(1-x)) Jacobian.
+        if 0 < pbar < 1:
+            s_l = se / (pbar * (1 - pbar))
+            xin = xs[(xs > 0) & (xs < 1)]
+            dens = gauss(np.log(xin / (1 - xin)), np.log(pbar / (1 - pbar)), s_l) / (xin * (1 - xin))
+            ax.plot(100 * xin, dens / 100, color=RED, lw=2.0, zorder=5,
+                    label=f"logit-normal — logit claim ({d['coverage_logit_pct']:.0f}%)")
+        ax.axvline(100 * mu, color="#eb6834", lw=2, zorder=6, label=f"true mu = {100*mu:.1f}%")
+        ax.set_title(f"{label}\nskew {d['skew']:+.2f}   SE²/Var {d['calibration_ratio']:.2f}"
+                     f"   coverage: sym {d['coverage_pct']:.1f}% / logit {d['coverage_logit_pct']:.1f}%",
+                     fontsize=9, loc="left", color=INK)
         ax.set_xlabel("sample mean of the 2000 experiments (%)", fontsize=8.5, color=INK2)
         ax.set_yticks([])
         ax.legend(fontsize=7.5, frameon=False, loc="upper right")
@@ -182,8 +194,9 @@ def main(reps: int = 2000, truth_draws: int = 20_000_000, seed: int = 0,
         ax.tick_params(colors=INK2, labelsize=8.5)
     for ax in axes.ravel()[len(payload):]:
         ax.set_visible(False)
-    fig.suptitle(f"Sampling distribution of mu_hat over {reps} simulated experiments — the "
-                 "dashed curve is the normal our multiplier assumes", fontsize=11.5, color=INK, y=0.98)
+    fig.suptitle(f"Sampling distribution of mu_hat over {reps} simulated experiments — each curve is "
+                 "the shape an interval assumes; the histogram is the truth",
+                 fontsize=11.5, color=INK, y=0.98)
     fig.subplots_adjust(top=0.84, bottom=0.08, left=0.03, right=0.99, hspace=0.55, wspace=0.12)
     png = dest / f"mu_hat_distributions_{stamp}.png"
     fig.savefig(png, dpi=150)
