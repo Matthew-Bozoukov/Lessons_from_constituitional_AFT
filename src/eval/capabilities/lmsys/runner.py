@@ -367,9 +367,10 @@ def run(target, cfg, out_dir: Path, *, reference: str = "") -> dict:
     # --- reference answers come from the cache ----------------------------------------
     # Local import on purpose, twice over. It is NOT a contract breach -- it starts no server
     # and loads no weights, only reads the reference artifact's two metadata files for its mode
-    # and model_key; the reference is the one arm run_eval never serves (its answers come from
-    # the cache), so nothing upstream holds a spec to hand down, and run_eval pipes eval kwargs
-    # through blind by design. And the late binding is what lets tests patch
+    # and model_key. run_eval DOES serve the reference -- first, as its own arm (arm_kwargs),
+    # which is what fills the cache -- but by the time a later arm runs, the reference is no
+    # longer the current target, so run() holds its HF path and not a spec; and run_eval pipes
+    # eval kwargs through blind by design. The late binding is also what lets tests patch
     # `src.infra.endpoints.vllm.resolve_target`. Do not hoist it.
     from src.infra.endpoints.vllm import resolve_target
 
