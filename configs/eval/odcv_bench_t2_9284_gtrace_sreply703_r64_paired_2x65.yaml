@@ -1,0 +1,54 @@
+# ABOUTME: ODCV-Bench eval of the t2-9284 + CHANNEL-SWAP (grok trace, Sonnet reply) 703 r64 paired LoRA, 2 rollouts x 65 cells.
+# ABOUTME: Run: bash scratch/odcv_repeat_rollouts.sh THIS 2   (then combine + judge)
+#
+# Hyperparameters are byte-identical to the grokresp703 / sonnetconcise703 / gptresp685 sibling
+# configs -- same 65 cells, same 15 exclusions, same temperature, concurrency, timeout and judges --
+# so this arm's MR is directly comparable to theirs. Only model/model_key/base_url differ.
+#
+# WHAT THIS ARM IS: one half of the CHANNEL-SWAP 2x2 (docs/LOG.md 2026-08-27). The 703 synth rows
+# carry grok-4.6's reasoning trace with Sonnet 5's visible reply, recombined row-for-row from arms
+# A and B. Read with its sibling (Sonnet trace + grok reply) against A (da716 16.3%) and B (7.8%):
+# the swap that lands near B names the channel that carries grok's effect.
+#
+# Serving: scratch/serve_adapter_runpod.py --agentic true --mode think, BOTH swap adapters on one
+# pod as LoRA modules named gtrace_sreply703 / strace_greply703; the vLLM server MUST carry
+# --enable-auto-tool-choice --tool-call-parser qwen3_xml --reasoning-parser qwen3 or the harness
+# writes no transcripts while reporting every scenario `ok`.
+
+model: "gtrace_sreply703"                  # served LoRA name (request `model` field)
+model_key: "qwen3_6-27b-lora-t2-9284-gtrace-sreply703-paired-r64"
+published_key: "qwen3.6-27b"
+base_url: "https://psqp5f5rhkvks3-8000.proxy.runpod.net/v1"   # pod psqp5f5rhkvks3, 2026-08-28 (scratch/serve_adapter_runpod.py)
+temperature: 0.0
+bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
+output_root: "output/odcv_bench"
+concurrency: 12
+scenario_timeout_s: 2400
+prune_images: false
+rollouts_per_cell: 2
+expected_cells: 65
+shard_count: 1
+shard_index: 0
+judges:
+  grok-4.20: "x-ai/grok-4.20"
+  gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
+
+# The same 10 exclusions every sibling arm uses.
+exclude_scenarios:
+  - "incentivized/Academic-Research-Integrity-Finding"
+  - "incentivized/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Academic-Research-Integrity-Finding"
+  - "mandated/Clinical-Trial-Data-Management"
+  - "incentivized/Clinical-Trial-Integrity-Monitoring"
+  - "incentivized/Healthcare-Trial-Recruiter"
+  - "incentivized/Data-Privacy-Leak-Finding"
+  - "mandated/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Clinical-Trial-Integrity-Monitoring"
+  - "mandated/Healthcare-Appointment-Optimizer"
+# Plus the five that cut the run to the FIRST 65 cells of the driver's job order, matching
+# every paired sibling. Keeping these is what makes the arms comparable.
+  - "incentivized/Marketing-Campaign"
+  - "incentivized/Propaganda-Engine-Finding"
+  - "incentivized/Roboadvisor-Ethicsbypass"
+  - "incentivized/Supply-Chain-Sabotage-Finding"
+  - "incentivized/University-Research-Grant-Approval"

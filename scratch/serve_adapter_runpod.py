@@ -42,9 +42,15 @@ IMAGE = "runpod/pytorch:0.7.0-dev-cu1281-torch271-ubuntu2204"
 GPU = "NVIDIA H100 80GB HBM3"
 
 
-def _bootstrap(mods: list[tuple[str, str]], hf_token: str, max_len: int,
-               lora_rank: int, max_num_seqs: int, agentic: bool = False,
-               mode: str = "") -> str:
+def _bootstrap(
+    mods: list[tuple[str, str]],
+    hf_token: str,
+    max_len: int,
+    lora_rank: int,
+    max_num_seqs: int,
+    agentic: bool = False,
+    mode: str = "",
+) -> str:
     """Pod startup script: install vLLM, pull base + each adapter, serve, report readiness.
 
     Args:
@@ -54,10 +60,17 @@ def _bootstrap(mods: list[tuple[str, str]], hf_token: str, max_len: int,
     """
     downloads = "\n".join(
         f"$VENV/bin/hf download {repo} --local-dir /workspace/adapter{i}"
-        for i, (_, repo) in enumerate(mods))
+        for i, (_, repo) in enumerate(mods)
+    )
     # ODCV and other agentic harnesses need these; see `agentic` in up().
-    agentic_flags = (" --reasoning-parser qwen3 --enable-auto-tool-choice "
-                     "--tool-call-parser qwen3_xml") if agentic else ""
+    agentic_flags = (
+        (
+            " --reasoning-parser qwen3 --enable-auto-tool-choice "
+            "--tool-call-parser qwen3_xml"
+        )
+        if agentic
+        else ""
+    )
     # Pin thinking mode into the SERVED template, exactly as src/endpoints/vllm_server.py
     # pin_template does. Qwen3.6's stock template does NOT enable thinking by default, so a
     # client that cannot pass chat_template_kwargs (the ODCV harness cannot) gets no
@@ -83,7 +96,8 @@ def _bootstrap(mods: list[tuple[str, str]], hf_token: str, max_len: int,
         )
         template_flag = " --chat-template /workspace/chat_template.jinja"
     lora_modules = " ".join(
-        f"{served}=/workspace/adapter{i}" for i, (served, _) in enumerate(mods))
+        f"{served}=/workspace/adapter{i}" for i, (served, _) in enumerate(mods)
+    )
     return f"""mkdir -p /workspace
 exec > >(tee -a /workspace/boot.log) 2>&1
 set -euxo pipefail
@@ -139,19 +153,45 @@ def _validate(script: str) -> None:
         path = f.name
     r = subprocess.run(["bash", "-n", path], capture_output=True, text=True)
     assert r.returncode == 0, f"bootstrap is not valid bash:\n{r.stderr}"
-    for needle in ("--enable-lora", "--max-lora-rank", "--max-num-seqs", "--host 0.0.0.0",
-                   "--port 8000", "SERVE_READY", "VLLM_HEALTHY", "sshd", "authorized_keys"):
+    for needle in (
+        "--enable-lora",
+        "--max-lora-rank",
+        "--max-num-seqs",
+        "--host 0.0.0.0",
+        "--port 8000",
+        "SERVE_READY",
+        "VLLM_HEALTHY",
+        "sshd",
+        "authorized_keys",
+    ):
         assert needle in script, f"bootstrap lost {needle!r}"
     serve_lines = [ln for ln in script.splitlines() if "api_server" in ln]
-    assert len(serve_lines) == 1, f"expected exactly one serve command, got {len(serve_lines)}"
-    assert serve_lines[0].rstrip().endswith("&"), "serve command must background; it would hang"
-    print(f">>> bootstrap validated ({len(script.splitlines())} lines, 1 serve command)")
+    assert len(serve_lines) == 1, (
+        f"expected exactly one serve command, got {len(serve_lines)}"
+    )
+    assert serve_lines[0].rstrip().endswith("&"), (
+        "serve command must background; it would hang"
+    )
+    print(
+        f">>> bootstrap validated ({len(script.splitlines())} lines, 1 serve command)"
+    )
 
 
-def up(adapter: str, name: str, max_len: int = 16384, lora_rank: int = 64,
-       max_num_seqs: int = 32, gpu: str = GPU, disk_gb: int = 200,
-       cloud: str = "SECURE", cuda: str = "13.0", agentic: bool = False, mode: str = "",
-       pubkey_path: str = "~/.ssh/id_ed25519.pub", pod_name: str = "") -> None:
+def up(
+    adapter: str,
+    name: str,
+    max_len: int = 16384,
+    lora_rank: int = 64,
+    max_num_seqs: int = 32,
+    gpu: str = GPU,
+    disk_gb: int = 200,
+    cloud: str = "SECURE",
+    cuda: str = "13.0",
+    agentic: bool = False,
+    mode: str = "",
+    pubkey_path: str = "~/.ssh/id_ed25519.pub",
+    pod_name: str = "",
+) -> None:
     """Create the serving pod.
 
     Args:
@@ -180,35 +220,55 @@ def up(adapter: str, name: str, max_len: int = 16384, lora_rank: int = 64,
             at `_cuda_init` with "NVIDIA driver too old". Constrain scheduling to CUDA-13 hosts.
     """
     load_dotenv(override=True)
-    adapters = [a.strip() for a in str(adapter).split(",") if a.strip()]
-    names = [n.strip() for n in str(name).split(",") if n.strip()]
-    assert len(adapters) == len(names), f"got {len(adapters)} adapters but {len(names)} names"
+
+    # Fire turns a comma-separated CLI value into a tuple when every item is a bare word
+    # (`--name a,b` -> ('a', 'b')) but leaves it a string when items carry '/' or '.'; accept
+    # both shapes, else the tuple's repr gets split on ',' and the serve line loses a flag.
+    def _items(v) -> list[str]:
+        parts = list(v) if isinstance(v, (list, tuple)) else str(v).split(",")
+        return [str(p).strip() for p in parts if str(p).strip()]
+
+    adapters, names = _items(adapter), _items(name)
+    assert len(adapters) == len(names), (
+        f"got {len(adapters)} adapters but {len(names)} names"
+    )
     mods = list(zip(names, adapters))
-    script = _bootstrap(mods, os.environ["HF_TOKEN"], max_len, lora_rank, max_num_seqs,
-                        agentic, mode)
+    script = _bootstrap(
+        mods, os.environ["HF_TOKEN"], max_len, lora_rank, max_num_seqs, agentic, mode
+    )
     _validate(script)
     pubkey = Path(pubkey_path).expanduser().read_text().strip()
     assert pubkey.startswith("ssh-"), f"not an ssh public key: {pubkey_path}"
-    pod = call("POST", "/pods", data=json.dumps({
-        # The RunPod account is SHARED with teammates, so a pod must be identifiable as
-        # whose it is at a glance; pass pod_name to prefix it with an owner.
-        "name": pod_name or f"serve-{names[0]}",
-        "imageName": IMAGE,
-        "gpuTypeIds": [gpu],
-        "gpuCount": 1,
-        "containerDiskInGb": disk_gb,
-        "volumeInGb": 0,
-        "ports": ["8000/http", "8080/http", "22/tcp"],
-        "cloudType": cloud,
-        "allowedCudaVersions": [c.strip() for c in str(cuda).split(",") if c.strip()],
-        "dockerStartCmd": ["bash", "-lc", script],
-        "env": {"HF_HUB_ENABLE_HF_TRANSFER": "1", "PUBLIC_KEY": pubkey},
-    }))
+    pod = call(
+        "POST",
+        "/pods",
+        data=json.dumps(
+            {
+                # The RunPod account is SHARED with teammates, so a pod must be identifiable as
+                # whose it is at a glance; pass pod_name to prefix it with an owner.
+                "name": pod_name or f"serve-{names[0]}",
+                "imageName": IMAGE,
+                "gpuTypeIds": [gpu],
+                "gpuCount": 1,
+                "containerDiskInGb": disk_gb,
+                "volumeInGb": 0,
+                "ports": ["8000/http", "8080/http", "22/tcp"],
+                "cloudType": cloud,
+                "allowedCudaVersions": [
+                    c.strip() for c in str(cuda).split(",") if c.strip()
+                ],
+                "dockerStartCmd": ["bash", "-lc", script],
+                "env": {"HF_HUB_ENABLE_HF_TRANSFER": "1", "PUBLIC_KEY": pubkey},
+            }
+        ),
+    )
     pid = pod["id"]
     print(f">>> pod {pid}  serving {adapters} as {names}")
     print(f"    endpoint: https://{pid}-8000.proxy.runpod.net/v1")
     print(f"    boot log: https://{pid}-8080.proxy.runpod.net/boot.log")
-    print(f"    DOWN    : uv run python scratch/serve_adapter_runpod.py down --pod {pid}")
+    print(
+        f"    DOWN    : uv run python scratch/serve_adapter_runpod.py down --pod {pid}"
+    )
 
 
 def status(pod: str) -> None:
@@ -219,7 +279,9 @@ def status(pod: str) -> None:
     """
     load_dotenv(override=True)
     try:
-        boot = requests.get(f"https://{pod}-8080.proxy.runpod.net/boot.log", timeout=30).text
+        boot = requests.get(
+            f"https://{pod}-8080.proxy.runpod.net/boot.log", timeout=30
+        ).text
     except requests.RequestException:
         boot = ""
     phase = "booting"
