@@ -73,8 +73,17 @@ def up(
         pod_name: Prefix with an owner; the RunPod account is shared with teammates.
     """
     load_dotenv(override=True)
-    adapters = [a.strip() for a in str(adapter).split(",") if a.strip()]
-    names = [n.strip() for n in str(name).split(",") if n.strip()]
+
+    # fire evaluates a bare `a,b` (quoted or not -- the shell strips the quotes) as a tuple
+    # when every element is a valid literal, so `--name x,y` arrives as a tuple while
+    # `--adapter org/a,org/b` (slashes, dots) stays a string. str() of the tuple used to
+    # leak "('x'" into the vLLM command line and fail bash validation.
+    def _list(v) -> list[str]:
+        parts = v if isinstance(v, (list, tuple)) else str(v).split(",")
+        return [str(p).strip() for p in parts if str(p).strip()]
+
+    adapters = _list(adapter)
+    names = _list(name)
     assert len(adapters) == len(names), (
         f"got {len(adapters)} adapters but {len(names)} names"
     )
