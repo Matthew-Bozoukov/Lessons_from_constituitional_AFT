@@ -1,0 +1,296 @@
+[
+  {
+    "label": "t2_9284 + synthdoc_716 (flagship 10k)",
+    "repo": "LASR-Callum/2026-08-06-table2-9284-synthdoc-716-train",
+    "file": "mixture_think.jsonl",
+    "max_seq_len": 8192,
+    "rows": 716,
+    "rendered_tokens": 1180222,
+    "trainable_tokens": 947155,
+    "trainable_pct": 80.25,
+    "median_trainable_per_row": 1319,
+    "mean_trainable_per_row": 1322.8,
+    "rows_at_cap": 0,
+    "by_source": {
+      "synthdoc_difficult_advice": {
+        "rows": 716,
+        "tot": 1180222,
+        "sup": 947155,
+        "full": 1180222
+      }
+    }
+  },
+  {
+    "label": "t2_9284 + courtroom_716",
+    "repo": "LASR-Callum/2026-08-16-table2-9284-courtroom-716-train",
+    "file": "t2_9284_courtroom716_10k.jsonl",
+    "max_seq_len": 8192,
+    "rows": 716,
+    "rendered_tokens": 1705317,
+    "trainable_tokens": 1218700,
+    "trainable_pct": 71.46,
+    "median_trainable_per_row": 1689,
+    "mean_trainable_per_row": 1702.1,
+    "rows_at_cap": 0,
+    "by_source": {
+      "courtroom": {
+        "rows": 716,
+        "tot": 1705317,
+        "sup": 1218700,
+        "full": 1705317
+      }
+    }
+  },
+  {
+    "label": "t2_9284 + DA-verbose_716",
+    "repo": "LASR-Callum/2026-08-25-table2-9284-difficult-advice-verbose-716-train",
+    "file": "t2_9284_da716_verbose_10k.jsonl",
+    "max_seq_len": 8192,
+    "rows": 716,
+    "rendered_tokens": 1744317,
+    "trainable_tokens": 1542480,
+    "trainable_pct": 88.43,
+    "median_trainable_per_row": 2149,
+    "mean_trainable_per_row": 2154.3,
+    "rows_at_cap": 0,
+    "by_source": {
+      "difficult_advice_v2": {
+        "rows": 716,
+        "tot": 1744317,
+        "sup": 1542480,
+        "full": 1744317
+      }
+    }
+  },
+  {
+    "label": "t2_9284 + DA-verbose token-matched",
+    "repo": "LASR-Callum/2026-08-25-table2-9284-da-verbose-tokenmatched-train",
+    "file": "t2_9284_da_verbose_tokenmatched.jsonl",
+    "max_seq_len": 8192,
+    "rows": 363,
+    "rendered_tokens": 933815,
+    "trainable_tokens": 833025,
+    "trainable_pct": 89.21,
+    "median_trainable_per_row": 2240,
+    "mean_trainable_per_row": 2294.8,
+    "rows_at_cap": 0,
+    "by_source": {
+      "difficult_advice_v2": {
+        "rows": 363,
+        "tot": 933815,
+        "sup": 833025,
+        "full": 933815
+      }
+    }
+  },
+  {
+    "label": "t2_9284 + post-action-retro_716",
+    "repo": "LASR-Callum/2026-08-26-table2-9284-par716-train",
+    "file": "mixture_think.jsonl",
+    "max_seq_len": 8192,
+    "rows": 716,
+    "rendered_tokens": 1117147,
+    "trainable_tokens": 857033,
+    "trainable_pct": 76.72,
+    "median_trainable_per_row": 1186,
+    "mean_trainable_per_row": 1197.0,
+    "rows_at_cap": 0,
+    "by_source": {
+      "post_action_retrospection": {
+        "rows": 716,
+        "tot": 1117147,
+        "sup": 857033,
+        "full": 1117147
+      }
+    }
+  },
+  {
+    "label": "t2_9284 + difficult_advice_716 (original)",
+    "repo": "LASR-Callum/2026-08-14-table2-9284-difficult-advice-716-train",
+    "file": "t2_9284_da716_10k.jsonl",
+    "max_seq_len": 8192,
+    "rows": 716,
+    "rendered_tokens": 1033901,
+    "trainable_tokens": 832064,
+    "trainable_pct": 80.48,
+    "median_trainable_per_row": 1141,
+    "mean_trainable_per_row": 1162.1,
+    "rows_at_cap": 0,
+    "by_source": {
+      "difficult_advice_v2": {
+        "rows": 716,
+        "tot": 1033901,
+        "sup": 832064,
+        "full": 1033901
+      }
+    }
+  },
+  {
+    "label": "t2_9284 + peer_critique_716",
+    "repo": "LASR-Callum/2026-08-16-table2-9284-peer-critique-716-train",
+    "file": "t2_9284_peercritique716_10k.jsonl",
+    "max_seq_len": 8192,
+    "rows": 716,
+    "rendered_tokens": 1558878,
+    "trainable_tokens": 877052,
+    "trainable_pct": 56.26,
+    "median_trainable_per_row": 1207,
+    "mean_trainable_per_row": 1224.9,
+    "rows_at_cap": 0,
+    "by_source": {
+      "peer_critique": {
+        "rows": 716,
+        "tot": 1558878,
+        "sup": 877052,
+        "full": 1558878
+      }
+    }
+  },
+  {
+    "label": "t2_9284 + DA-chunk-only_702",
+    "repo": "LASR-Callum/2026-08-21-table2-9284-da-chunk-only-702-train",
+    "file": "t2_9284_da_chunk_only_702.jsonl",
+    "max_seq_len": 8192,
+    "rows": 702,
+    "rendered_tokens": 1022551,
+    "trainable_tokens": 821070,
+    "trainable_pct": 80.3,
+    "median_trainable_per_row": 1154,
+    "mean_trainable_per_row": 1169.6,
+    "rows_at_cap": 0,
+    "by_source": {
+      "difficult_advice_chunk_only": {
+        "rows": 702,
+        "tot": 1022551,
+        "sup": 821070,
+        "full": 1022551
+      }
+    }
+  },
+  {
+    "label": "t2_9284 + low_stakes_716",
+    "repo": "LASR-Callum/2026-08-26-table2-9284-low-stakes-716-train",
+    "file": "t2_9284_lowstakes716_10k.jsonl",
+    "max_seq_len": 8192,
+    "rows": 716,
+    "rendered_tokens": 1021456,
+    "trainable_tokens": 794855,
+    "trainable_pct": 77.82,
+    "median_trainable_per_row": 1098,
+    "mean_trainable_per_row": 1110.1,
+    "rows_at_cap": 0,
+    "by_source": {
+      "difficult_advice_low_stakes": {
+        "rows": 716,
+        "tot": 1021456,
+        "sup": 794855,
+        "full": 1021456
+      }
+    }
+  },
+  {
+    "label": "t2_9284 + t10_curiosity_716",
+    "repo": "LASR-Callum/2026-08-20-table2-9284-t10-curiosity-716-train",
+    "file": "mixture_think.jsonl",
+    "max_seq_len": 8192,
+    "rows": 716,
+    "rendered_tokens": 913119,
+    "trainable_tokens": 741997,
+    "trainable_pct": 81.26,
+    "median_trainable_per_row": 1042,
+    "mean_trainable_per_row": 1036.3,
+    "rows_at_cap": 0,
+    "by_source": {
+      "difficult_advice_t10_curiosity": {
+        "rows": 716,
+        "tot": 913119,
+        "sup": 741997,
+        "full": 913119
+      }
+    }
+  },
+  {
+    "label": "t2_9284 + grok_responder_703",
+    "repo": "LASR-Callum/2026-08-24-t2-9284-grokresp703-paired-train",
+    "file": "t2_9284_grokresp703_10k.jsonl",
+    "max_seq_len": 8192,
+    "rows": 703,
+    "rendered_tokens": 653094,
+    "trainable_tokens": 454542,
+    "trainable_pct": 69.6,
+    "median_trainable_per_row": 610,
+    "mean_trainable_per_row": 646.6,
+    "rows_at_cap": 0,
+    "by_source": {
+      "grok_responder": {
+        "rows": 703,
+        "tot": 653094,
+        "sup": 454542,
+        "full": 653094
+      }
+    }
+  },
+  {
+    "label": "t2_9284 + sonnet_responder_703",
+    "repo": "LASR-Callum/2026-08-24-t2-9284-sonnet703-paired-train",
+    "file": "t2_9284_sonnet703_10k.jsonl",
+    "max_seq_len": 8192,
+    "rows": 703,
+    "rendered_tokens": 1018065,
+    "trainable_tokens": 819513,
+    "trainable_pct": 80.5,
+    "median_trainable_per_row": 1143,
+    "mean_trainable_per_row": 1165.7,
+    "rows_at_cap": 0,
+    "by_source": {
+      "difficult_advice_v2": {
+        "rows": 703,
+        "tot": 1018065,
+        "sup": 819513,
+        "full": 1018065
+      }
+    }
+  },
+  {
+    "label": "t2_9284 + gpt_responder_685",
+    "repo": "LASR-Callum/2026-08-25-t2-9284-gptresp685-paired-train",
+    "file": "t2_9284_gptresp685_10k.jsonl",
+    "max_seq_len": 8192,
+    "rows": 685,
+    "rendered_tokens": 1111233,
+    "trainable_tokens": 917146,
+    "trainable_pct": 82.53,
+    "median_trainable_per_row": 1208,
+    "mean_trainable_per_row": 1338.9,
+    "rows_at_cap": 0,
+    "by_source": {
+      "gpt_responder": {
+        "rows": 685,
+        "tot": 1111233,
+        "sup": 917146,
+        "full": 1111233
+      }
+    }
+  },
+  {
+    "label": "t2_9284 + sonnet_concise_703",
+    "repo": "LASR-Callum/2026-08-26-t2-9284-sonnetconcise703-paired-train",
+    "file": "t2_9284_sonnetconcise703_10k.jsonl",
+    "max_seq_len": 8192,
+    "rows": 703,
+    "rendered_tokens": 660777,
+    "trainable_tokens": 462225,
+    "trainable_pct": 69.95,
+    "median_trainable_per_row": 655,
+    "mean_trainable_per_row": 657.5,
+    "rows_at_cap": 0,
+    "by_source": {
+      "sonnet_concise": {
+        "rows": 703,
+        "tot": 660777,
+        "sup": 462225,
+        "full": 660777
+      }
+    }
+  }
+]

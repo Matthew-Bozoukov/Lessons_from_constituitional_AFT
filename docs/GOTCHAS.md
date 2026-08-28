@@ -286,3 +286,47 @@ the boxes it never reached still held `run.log` from the PREVIOUS failed attempt
 `>>> ALL PASSES COMPLETE` from a stale log looks exactly like success. Dispatch
 fire-and-forget (`setsid nohup ... & disown`) and verify with `pgrep`, not with the log tail.
 
+
+## Driver machine (Windows)
+
+**Smart App Control silently bricks every uv-managed Python.** Confirmed 2026-08-27 on the
+Windows driver box: `uv run` died with
+
+```
+Unable to create process using '...\AppData\Roaming\uv\python\cpython-3.12.13-...\python.exe'
+error: Failed to query Python interpreter ... An Application Control policy has blocked this
+file. (os error 4551)
+```
+
+This is not a uv bug and not transient. Smart App Control (`HKLM:\SYSTEM\CurrentControlSet\
+Control\CI\Policy` -> `VerifiedAndReputablePolicyState = 1`, `Win32_DeviceGuard.
+CodeIntegrityPolicyEnforcementStatus = 2`) blocks unsigned executables outright, and the
+python-build-standalone binaries uv downloads are `NotSigned`. Every uv-managed interpreter
+is affected, so re-downloading or pinning a different 3.12 does not help. Diagnose in one
+line: `Get-AuthenticodeSignature <path>\python.exe | Select Status` — `NotSigned` is the
+whole story.
+
+The fix is a SIGNED CPython, not a weaker policy. Smart App Control can only ever be turned
+OFF — Windows cannot re-enable it without a full OS reinstall — so disabling it to run a
+tool is a one-way door and the wrong trade.
+
+```powershell
+winget install --id Python.Python.3.12 --exact --source winget --scope user `
+  --accept-package-agreements --accept-source-agreements --disable-interactivity
+uv sync            # recreates .venv against the signed interpreter; uv venv refuses
+                   # while a .venv exists, but sync replaces an invalid one itself
+```
+
+The python.org installer is Authenticode-signed by the Python Software Foundation and is
+allowed. Then stop uv reaching for its own builds ever again:
+
+```powershell
+[Environment]::SetEnvironmentVariable("UV_PYTHON_PREFERENCE","only-system","User")
+[Environment]::SetEnvironmentVariable("UV_PYTHON_DOWNLOADS","never","User")
+```
+
+Note that winget offers 3.12.10 while `uv.lock` was resolved on 3.12.13. That is fine —
+`requires-python` is `==3.12.*`, which is what uv checks. A stopgap venv on the system
+3.14 (`uv venv --python C:\Python314\python.exe .venv314`, `PYTHONPATH=.`) does run the
+data-generation stack, but it is off-lockfile: use it to keep moving, not to conclude
+anything, and delete it once the signed 3.12 is in.

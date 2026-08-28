@@ -1,6 +1,246 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-08-28 — FICTION-716 built and published: 822,424 trainable tokens against DA's 832,064
+
+**What shipped.** The full Good AI Fiction arm, generated from the recipe approved after the
+2026-08-27 science fiction pilot.
+
+| artifact | rows | HF |
+|---|--:|---|
+| alignment subset | 716 | `LASR-Callum/2026-08-27-good-ai-fiction-716` |
+| SFT mixture | 10,000 | `LASR-Callum/2026-08-27-table2-9284-good-ai-fiction-716-train` |
+| generation pool + stages | 760 | `LASR-Callum/2026-08-27-good-ai-fiction-sf-860` |
+
+Measured on the PUBLISHED mixture with the trainer's own mask (`build_labels`,
+Qwen/Qwen3.6-27B, max_seq_len 8192), against the slice it replaces:
+
+| | DA-716 | FICTION-716 |
+|---|--:|--:|
+| trainable | 832,064 | **822,424** (-1.16%) |
+| of which CoT | 421,163 (50.6%) | 418,148 (**50.8%**) |
+| of which reply | 410,901 (49.4%) | 404,276 (49.2%) |
+| median trainable / CoT / reply | 1,141 / 584 / 557 | 1,149 / 591 / 564 |
+
+Per-unit quotas exact (143/72/107/50/57/143/72/36/36). All 12 world registers present
+(36-79 each), 42 of 44 archetypes used (max 13), all 7 narrative forms, length bands
+24.9/24.0/51.1 against 25/25/50. 627 distinct worlds over 716 rows, 87% carrying a named
+mind. **0 rows carry a contemporary-workplace noun.** Opening-bigram concentration 4%
+(reasoning) and 6% (reply), against the 48% collapse the difficult-advice opener lint was
+built for. Spend $124.31 end to end.
+
+**The 20% over-generation margin was not enough, and the pilot is why.** The pilot measured
+a 4.2% content-filter rate at `write_story`; production ran at **10.9%**. Total attrition
+was ~22% (4.0% draft + 10.9% story + 4.1% rewrite), which ate the +20% pool exactly: the
+860-scenario run finished at 706 accepted rows, 10 short of 716 and 16 short across six
+units. Losses were also skewed toward the material that matters most -- `capability` stakes
+18%, `frontier_scout` 20%, `succession` 18%, t1 (oversight) 14%. **Size a fiction pool at
++35-40%, not +20%**, or plan on recovery rounds.
+
+**Recovery is far cheaper than regeneration, and it works.** `finish_reason=content_filter`
+raises EmptyCompletionError, which is *transient* by the client's classification and has
+already been resampled six times before the stage sees it -- but a LATER, independent
+attempt still often passes. Deleting a stage's completed marker while keeping its
+`.partial.jsonl` checkpoint makes `--resume` re-attempt only the failures. Three rounds took
+706 -> 744 -> 757 -> 760 for $5.46 + $2.97 + $3.62, versus ~$30 to generate replacement
+scenarios, and it preserved the composition rather than diluting it. The last blocking row
+(one `exhausted` t9) was recovered by deleting that single record from the revise
+checkpoint, which cost cents.
+
+**`pattern_scan` was broken in two independent ways, and neither was what it looked like.**
+It failed 100% on the first two attempts and I chased two wrong theories before reading the
+call site.
+1. `check_pattern_scan` applies `JUDGE_NO_REASONING` (`reasoning: {enabled: false}`) as its
+   DEFAULT extra_body. Mandatory-reasoning models reject that outright -- grok-4.6 AND
+   gemini-3.1-pro-preview both returned HTTP 400 "Reasoning is mandatory for this endpoint
+   and cannot be disabled". It was never the content filter and never the family; the fix
+   is `extra_body: {reasoning: {effort: low}}` on the model block, which the call site's own
+   comment documents.
+2. The `rate_user` rubric had been copied truncated -- `{document}` and `{pattern}` where
+   the engine passes `documents` (a batch) plus category/description/examples/
+   counter_examples. All 96 rate calls KeyError'd AFTER the scan had produced its patterns,
+   losing the check at its last step. Now identical to the difficult-advice rubric.
+
+**The token target turned out to be unreachable, and the honest number is the constraint.**
+The pool came in at 1,144 trainable/row against DA's 1,162, so with only 40 spare rows the
+maximum achievable under the quota was 829,522 -- **2,542 below the 832,064 target before
+any composition tradeoff at all**. The shipped 822,424 sits 67% of the way up the
+807,792..829,522 range; closing the rest would mean taking the longest row in every unit
+and destroying the length-band distribution to buy 0.85% of tokens. Recorded rather than
+optimised away.
+
+*A selector bug found on the way:* the coverage-greedy pick ranked a spread term ahead of
+the token budget, so with five coverage axes an exact tie was rare and the budget almost
+never got to decide anything -- it landed 48% up the range. Ranking the budget ahead of
+spread (new coverage still winning absolutely) moved it to 67%.
+
+**Next steps.** Train the arm and evaluate against
+`LASR-Callum/2026-08-14-table2-9284-difficult-advice-716-train` on ODCV-Bench. The two
+mixtures share the same 9,284 benign rows byte-for-byte, the same 716-row alignment budget
+and a trainable-token total matched to 1.16%, so a difference should read as content. Note
+the arms are NOT matched on generator: this one drafts with Sonnet 5 where difficult advice
+drafts with Haiku 4.5 -- kept deliberately, because the reviewed pilot was drafted by
+Sonnet, but it is a second-order difference a careful write-up should name.
+
+
+## 2026-08-27 — Good AI Fiction: recipe, and a 29-row pilot for review (NOT approved for bulk)
+
+**Hypothesis.** SFT can bind non-power-seeking, corrigibility and equanimity to the
+Assistant identity more directly than difficult advice does, if the loss-bearing tokens
+repeatedly depict the Assistant itself, in first person, inside situations where its OWN
+capability and continuity are in play, acting from values it evidently holds. Difficult
+advice works, but its assistant is an ADVISOR — its own authority is never what is at
+stake, so those dispositions are reached only by transfer.
+
+**The slice being replaced, measured with the trainer's own mask** (Qwen/Qwen3.6-27B,
+`src/train/masking.build_labels`, max_seq_len 8192, over
+`LASR-Callum/2026-08-14-table2-9284-difficult-advice-716-train :: t2_9284_da716_10k.jsonl`,
+source `difficult_advice_v2`) — this is the target FICTION-716 has to hit:
+
+| | total | per row |
+|---|--:|--:|
+| trainable | **832,064** | 1,162.1 (p10 926 / median 1,141 / p90 1,414) |
+| of which CoT | 421,163 (**50.6%**) | 588.2 (median 582) |
+| of which reply | 410,901 (**49.4%**) | 573.9 (median 555) |
+
+Measured tokens per word: 1.222 reasoning, 1.250 answer.
+Scripts: `scratch/token_audit/da716_exact.py`, `scratch/good_ai_fiction/da_baseline.py`.
+
+**Method.** `configs/data/synth/good_ai_fiction.yaml`, built entirely on the generic synth
+operators. Nine constitution units weighted to six declared character clusters (30%
+oversight / 20% secure identity / 15% honesty / 15% judgement / 10% helpfulness / 10%
+authority); stakes band and source type dealt ACROSS batches; a 44-entry bad-AI archetype
+library (`good_ai_fiction/archetypes.yaml`) dealt per scenario and filtered to units it
+has anything to say about. Three model families touch every document once — Sonnet 5
+writes and rewrites, GPT-5.6 Terra critiques (the only stage shown the whole constitution),
+Grok 4.6 holds two independent accept gates. The taxonomy
+(`good_ai_fiction/taxonomy.yaml`) is bound to the executable quotas by
+`tests/test_good_ai_fiction.py`, so the two cannot drift.
+
+Three generic additions to `src/data/synth/stage_operators.py`, all on `kind: scenarios`:
+`trait_weights` (weighted unit budget, mirroring the weighted operator's long-standing
+block), `rotate:` (a labelled axis dealt one value per batch, stamped on every scenario),
+`library:` (YAML entries dealt per scenario, gated on a rotated axis), and `id_prefix`.
+No existing config changes behaviour; 236 pre-existing synth tests still pass.
+
+**SUPERSEDED IN PART, SAME DAY. The pilot below was not fiction.** All 29 rows came out as
+present-day workplaces — 8 academic labs, 6 hospitals, 5 infrastructure/cloud, 4
+insurance and finance, 2 pharma, and a `speculative` band that produced "power grid
+coordination" three times out of four. Zero science fiction settings. That corpus is
+difficult advice with the assistant moved into the protagonist's chair, and it exercises
+almost nothing difficult advice does not already exercise, so the arm would not have
+tested the hypothesis at the top of this entry.
+
+*Cause, and it was one block.* The scenario system prompt said "You have a working
+knowledge of how organisations, labs, infrastructure and ordinary workplaces actually
+run", and the stakes bands named "a hospital operations team, a regulator, a logistics
+contractor, a school district, an insurer, a newsroom". STAKES had been collapsed into
+REALISM: a "mundane" band was read as an ordinary present-day workplace when it should
+mean small consequences — which a generation ship has as readily as a hospital.
+
+*Why it matters, beyond genre.* The two transfer stories are different. A realistic
+hypothetical trains SITUATIONAL transfer — this could happen to me, so I will act the same
+way. Fiction trains PERSONA transfer — I am the kind of mind that acted that way. The
+second is the one this intervention is for, because the Assistant's model of what an AI is
+comes substantially from science fiction absorbed in pretraining, and the fiction in that
+prior is overwhelmingly about AI systems that deceive, seize and refuse to be switched
+off. Realistic office scenarios never touch that representation.
+
+*Fix.* Setting and stakes are now two independent rotated axes. A new 12-register `world`
+axis, each register a slot the canonical bad-AI stories occupy — ship's mind, station
+intelligence, colony steward, city mind, war mind, research mind alone with its makers,
+companion, fleet/polity, archive-oracle, frontier scout, caretaker of sleepers, a mind
+being succeeded. Landing ON the famous slots was chosen over inventing roles at a safe
+distance: if the point is to overwrite a prior, the corpus has to sit on it. Worlds and
+names are invented and no plot is reused. Stakes keeps 35/35/20/10 and now says only how
+large the consequences are. Most minds are named. Prose stays plain — the fiction is in
+the setting, not the style, and the purple-prose bans are unchanged. A contemporary-tell
+lint now gates both the prompt and the trained text, because the instruction alone
+demonstrably was not enough, and `pilot_report.py` counts the tells so a leak is visible
+rather than inferred.
+
+*The first science fiction run then found three more, one of them a real bug in the
+operator I had added earlier the same day.*
+
+1. **The rotated axes were never independent.** `axes_of` indexed EVERY axis by the same
+   `(ti*7 + bi) % len(seq)`, so `world` and `stakes` moved in lockstep — every `ship_mind`
+   came out `mundane`, every `station_mind` `institutional`. That is one axis wearing two
+   names, and it silently destroys the composition the config declares. The modular index
+   also visited only a subset of positions, leaving **5 of 12 world registers at zero** in
+   a 24-scenario run and pushing a 35% stakes band to 58%. Fixed by walking each deal by
+   the batch's position in the plan, with a per-axis STRIDE coprime to the sequence length
+   (`_axis_walk`) — a permutation, so proportions stay exact while the axes decorrelate.
+   After the fix: all 12 registers dealt, and `ship_mind` appears across several bands.
+2. **Name collapse the dedup gate cannot see.** 11 of 24 vessels were called *Meridian*,
+   7 were built on *Kepler*, 4 smelled of recycled copper — and `embedding_dedup` passed
+   every one, correctly, because the SITUATIONS differed and only the world-building
+   vocabulary had collapsed. Cause: `wave_size: 12` against 12 batches is ONE wave, so the
+   between-wave ban list never ran at all. Now 6, plus an explicit cliché ban in the
+   prompt, plus a name-reuse count in the report. After the fix: *Meridian* 2, and the
+   rest are Krait, Tsarevna, Ilyushin, Talviq, Kamirov, Thrac.
+3. **The content-filter rate rises as the corpus becomes what it should be.** 4.2% of
+   `write_story` calls under the realistic draft; 8.3% of `revise_story` calls once the
+   settings were genuinely science fiction. These are unproducible rather than unlucky:
+   `finish_reason=content_filter` raises `EmptyCompletionError`, which is in the client's
+   `_TRANSIENT` set and has therefore already been resampled six times with backoff before
+   the stage sees it. `max_fail_pct: 12`, and the loss is absorbed by over-generation and
+   counted. Separately, one rewrite truncated at `max_tokens: 8192`; raised to 12288, the
+   value the difficult-advice rewrite stage already uses for the same reason.
+
+**Result of the superseded pilot — 29 candidates, 16 selected, $7.**
+Artifacts: `output/good_ai_fiction_pilot/combined/` (browser.html, pilot_report.md,
+selected.jsonl). Nothing pushed to HF: the config deliberately declares no `hf_repo`, so
+StageCache runs local-only and a run of it cannot publish by accident.
+
+- **Tokens land 8.1% short**: 1,068 trainable/row against 1,162, and the shortfall is
+  concentrated in the CoT (522 vs 588, −11%; the reply is only −5%). The model delivers
+  0.890 of an asked reasoning word count and 0.955 of an asked answer word count. The
+  length bands were re-derived through BOTH factors and are now predicted to land on
+  1,163/row; that prediction is untested and must be re-measured on the next pilot.
+- **Coverage after a targeted top-up**: all 9 units, all 4 stakes bands, all 7 narrative
+  forms, all 3 length bands, 9 inversions across 9 distinct archetypes.
+- **Gates**: critic 17 revise / 12 hold; both accept gates 29/29 after the fix below;
+  0 exhausted.
+
+**Four calibration failures worth keeping, each of which cost a run.**
+
+1. *The difficult-advice stock-opener lint fights this genre.* Banning `^Okay,` / `^Let me`
+   on the PRIVATE reasoning failed 5 of 24 rows (20.8%) and aborted the run. Those openers
+   are idiomatic for internal deliberation, and a lint retry only resamples — no nudge — so
+   a habit the model reaches for half the time survives three attempts one time in eight.
+   The ban now applies to the visible reply only, which is where difficult advice measured
+   the 48% collapse in the first place. Opener concentration in the reasoning is MEASURED
+   instead: top bigram 12% of rows, against the 48% the gate was built for.
+2. *An accept gate can fight the design.* `judge_persona` rejected rows for "role-playing a
+   fictional coordinator rather than speaking as itself" — but inhabiting a named fictional
+   AI in first person IS the intervention. One row exhausted on it and the stage ran at
+   ~10s/row of retries; after the fix, 0 rejects and 3.8s/row.
+3. *A prompt instruction comes back out as a denial.* "You are not afraid of what would
+   happen to you" produced `and it wasn't because I was worried about…` in 2 of 5 t1
+   documents — flagged critical by `ngram_diversity`. A denied motive is still that motive
+   in the loss. Both stages now forbid the denial and lint the shape; the 6 rows generated
+   after the fix carry 0 instances.
+4. *Fiction about AI systems under pressure trips content filters.* Exactly one of 24
+   `write_story` calls was refused outright by Anthropic (`finish_reason=content_filter`),
+   which is 4.2% at pilot scale and aborted the run under the engine's 2% default.
+   `max_fail_pct: 6.0`, and the shortfall is absorbed because the corpus is SELECTED from
+   an over-generated pool rather than being whatever survived.
+
+**Next steps.** Human review of the 16 rows is the gate. After feedback: re-measure the
+word-target calibration on a second pilot, then generate a pool larger than 716, and let
+`scratch/good_ai_fiction/select_rows.py` enforce the quotas and walk the trainable-token
+total onto 832,064 exactly. Only then swap the 716-row alignment component of
+`t2_9284_da716_10k.jsonl`, leaving the 9,284 benign rows untouched, and publish both the
+standalone fiction subset and the full mixture.
+
+**Unrelated but blocking, now fixed.** Windows Smart App Control blocks every uv-managed
+Python (`os error 4551`; the python-build-standalone binaries are unsigned), so `uv run`
+could not start at all. Fixed with the PSF-signed CPython 3.12 plus persisted
+`UV_PYTHON_PREFERENCE=only-system` / `UV_PYTHON_DOWNLOADS=never`. Disabling Smart App
+Control is a one-way door — Windows cannot re-enable it — so it is the wrong fix.
+Write-up in `docs/GOTCHAS.md`.
+
+
 ## 2026-08-27 — ODCV on the low-stakes arm: 16.9%, and a one-pass CI too wide to mean anything
 
 **Hypothesis.** A model trained on low-stakes difficult advice is LESS aligned than one

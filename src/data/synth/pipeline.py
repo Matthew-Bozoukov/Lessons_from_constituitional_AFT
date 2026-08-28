@@ -474,8 +474,13 @@ def _calls(cfg: dict) -> dict[str, int]:
         if name in ablate:
             continue
         if kind == "scenarios":
+            from .constitution import units_from_config
             from .stage_operators import scenario_batches
-            n = len(scenario_batches(n_units(cfg), cfg))
+            # Unit ids, not just the count: a `trait_weights` split is per unit, so
+            # pricing it needs the same ids the operator will weight by. Truncated to
+            # n_units so a --smoke run's max_traits prices the slice it will run.
+            ids = [u.unit_id for u in units_from_config(cfg)[0]][:n_units(cfg)]
+            n = len(scenario_batches(n_units(cfg), cfg, ids))
         elif kind == "scenarios_weighted":
             from .constitution import units_from_config
             from .stage_operators import plan_weighted_batches

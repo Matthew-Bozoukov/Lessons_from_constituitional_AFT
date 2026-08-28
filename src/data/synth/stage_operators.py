@@ -185,7 +185,8 @@ def op_segment(sc: dict, cfg: dict) -> Stage:
     return Stage(sc["name"], fn, on_cached=lambda ctx, records: load(ctx))
 
 
-def scenario_batches(n_traits: int, cfg: dict) -> list[tuple[int, int, int]]:
+def scenario_batches(n_traits: int, cfg: dict,
+                     trait_ids: list[str] | None = None) -> list[tuple[int, int, int]]:
     """Stage-2 batch specs for `scenarios`: (trait index, batch index, how many).
 
     Two sizing modes, and the choice matters for any chunking comparison:
@@ -195,10 +196,46 @@ def scenario_batches(n_traits: int, cfg: dict) -> list[tuple[int, int, int]]:
         the chunking produced. This is what keeps arms size-matched, so a chunking
         comparison is not secretly a data-scaling comparison. It wins when both are set.
 
+    `trait_weights` on the STAGE entry (passed in as `cfg["trait_weights"]` by the
+    operator) splits `total_scenarios` UNEVENLY instead, which is what a recipe whose
+    coverage targets are not uniform needs: Good AI Fiction wants 30% of its rows drawn
+    from the oversight principle and 5% from each helpfulness principle, and a uniform
+    split cannot say that. Same shape and same strictness as `scenarios_weighted`'s
+    long-standing block -- a weight table that does not exactly match the units the
+    constitution segments into is an error, not something to fill in, because a
+    constitution re-cut under a config would otherwise silently regenerate a different
+    corpus. Absent, the split stays uniform and every existing config is unaffected.
+
     Pure and cheap, so the estimator calls it to count calls without touching the network.
     """
     total = cfg.get("total_scenarios")
-    if total is not None:
+    weights = cfg.get("trait_weights")
+    if weights and total is None:
+        raise ValueError("trait_weights needs `total_scenarios`: there is no fixed "
+                         "budget for it to split when the size follows "
+                         "scenarios_per_trait")
+    if total is not None and weights:
+        assert trait_ids is not None and len(trait_ids) == n_traits, (
+            "trait_weights needs the unit ids to weight by; the caller passed none")
+        configured = dict(weights)
+        missing = sorted(set(trait_ids) - set(configured))
+        extra = sorted(set(configured) - set(trait_ids))
+        assert not missing, (
+            f"trait_weights do not cover the units this constitution segments into: "
+            f"no weight for {missing}. Fix the config against the constitution "
+            f"actually in use.")
+        # Surplus weights are an error UNLESS the run is deliberately restricted to a
+        # subset of units (`--smoke`'s max_traits, or only_traits): there the surplus is
+        # the restriction, not a stale table. Unrestricted, a weight for an absent unit
+        # means the constitution was re-cut under the config, which would silently
+        # regenerate a different corpus.
+        assert not extra or cfg.get("max_traits") or cfg.get("only_traits"), (
+            f"trait_weights name units this constitution does not segment into: "
+            f"{extra}. Fix the config against the constitution actually in use.")
+        by_id = _largest_remainder({t: float(configured[t]) for t in trait_ids},
+                                   int(total))
+        per_trait = [by_id[t] for t in trait_ids]
+    elif total is not None:
         counts = _largest_remainder({i: 1.0 for i in range(n_traits)}, int(total))
         per_trait = [counts[i] for i in range(n_traits)]
     else:
@@ -214,6 +251,86 @@ def scenario_batches(n_traits: int, cfg: dict) -> list[tuple[int, int, int]]:
             remaining -= n
             bi += 1
     return batches
+
+
+def deal_labels(weights: dict[str, float], length: int) -> list[str]:
+    """A deterministic label sequence of `length` whose composition matches `weights`.
+
+    Largest-remainder apportionment, then interleaved round-robin rather than left in
+    blocks: an interrupted or shortened run would otherwise have generated only the
+    first label, and a wave (which is a contiguous slice of the batch list) would carry
+    one label throughout instead of the mix the weights describe.
+    """
+    counts = _largest_remainder({k: float(v) for k, v in weights.items()}, length)
+    blocks = [[k] * n for k, n in counts.items() if n]
+    out: list[str] = []
+    while any(blocks):
+        for b in blocks:
+            if b:
+                out.append(b.pop())
+    return out
+
+
+def _axis_walk(name: str, length: int) -> tuple[int, int]:
+    """A stable (stride, offset) for reading one axis's deal sequence.
+
+    Two axes dealt over the same batch list must not read their sequences in the same
+    order, or they are correlated and the config has two names for one axis. An offset
+    alone is not enough -- both axes still advance one position per batch, so a label of
+    one lines up with the same label of the other whenever their periods share a factor.
+    A per-axis STRIDE fixes that, and a stride coprime to the length is a permutation of
+    the positions, so every position is still visited exactly once per cycle and the
+    declared proportions are preserved exactly.
+
+    Derived from the axis name rather than an RNG, so a resumed or re-run stage
+    reproduces the same pairing.
+    """
+    if length <= 2:
+        return 1, 0
+    digest = hashlib.blake2b(name.encode("utf-8"), digest_size=8).digest()
+    raw = int.from_bytes(digest, "big")
+    offset = raw % length
+    stride = (raw // length) % length or 1
+    while _gcd(stride, length) != 1:
+        stride = stride % length + 1
+    return stride, offset
+
+
+def _gcd(a: int, b: int) -> int:
+    while b:
+        a, b = b, a % b
+    return a
+
+
+def load_library(spec: dict) -> list[dict]:
+    """Read a `library:` block's entries off disk (a list of dicts under `key`)."""
+    import yaml
+
+    path = Path(spec["file"])
+    doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+    entries = doc[spec.get("key", "entries")] if isinstance(doc, dict) else doc
+    assert isinstance(entries, list) and entries, f"{path}: no entries to deal from"
+    id_field = spec.get("id", "id")
+    ids = [e[id_field] for e in entries]
+    assert len(set(ids)) == len(ids), f"{path}: duplicate {id_field} values"
+    return entries
+
+
+def library_picks(spec: dict, entries: list[dict], trait_id: str,
+                  ti: int, bi: int, n: int) -> list[dict]:
+    """The `n` library entries this batch is dealt, filtered to the batch's unit.
+
+    A walking cursor derived from (unit index, batch index) rather than a running
+    counter, for the same reason every other composition choice here is: a resumed run
+    or a make-up round re-deals a batch and must deal it the same way. Entries are
+    filtered by `match` -- the entry field listing the units it has anything to say
+    about -- so an archetype about sycophancy is never handed to the oversight unit.
+    """
+    match = spec.get("match")
+    pool = [e for e in entries
+            if not match or trait_id in (e.get(match) or [])] or entries
+    start = (ti * 31 + bi * 7) % len(pool)
+    return [pool[(start + k) % len(pool)] for k in range(min(n, len(pool)))]
 
 
 def _gist(r: dict, words: int = 14) -> str:
@@ -282,10 +399,44 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
     anyway, and re-queues the shortfall per trait so rejection cannot quietly unbalance
     the corpus. Waves exist only because batches run concurrently: without them no batch
     can see any other's output.
+
+    Optional `rotate:` block deals a labelled axis across the run, one value per BATCH:
+
+        rotate:
+          stakes:
+            weights: {mundane: 35, institutional: 35, capability: 20, speculative: 10}
+            text: {mundane: "situations that ...", ...}   # -> {stakes_text} in the prompt
+
+    The dealt label is available to the prompt as `{<name>}`, its `text:` entry as
+    `{<name>_text}`, and it is stamped on every scenario the batch produces -- so a
+    downstream stage can scope on it and the export can record it. This is what a recipe
+    whose scenarios must SPAN something (stakes level, framing, source) needs: asking one
+    prompt for a spread gets a spread within the batch and nothing across batches, which
+    is the same failure the `diversity:` block exists for. Proportions are approximate,
+    like `assign_arms`' -- the realised split is printed and recorded in the manifest.
+
+    Optional `library:` block deals entries from a YAML file, `n` per batch, into one
+    rendered prompt variable:
+
+        library:
+          file: configs/data/synth/good_ai_fiction/archetypes.yaml
+          key: archetypes        # the top-level list
+          id: id                 # the field naming an entry
+          match: traits          # entry field listing the units it fits (optional)
+          gate: {field: source_type, in: [inversion]}   # rotate axis that switches it on
+          var: archetypes        # prompt variable holding the rendered block
+          item: "[{id}] {work} -- {psychological_failure}"   # one entry, one line
+
+    Ungated batches (and every batch when there is no `gate:`) render `{<var>}` as the
+    empty string, so ONE prompt template covers both halves of the corpus. Which entry a
+    scenario actually used is not inferred from the deal -- the model echoes it back in a
+    declared `fields:` key, so a reordered or short reply cannot misattribute provenance.
     """
     sys_t, user_t = sc["prompts"]["system"], sc["prompts"]["user"]
     mk = sc["model"]
     div = dict(sc.get("diversity") or {})
+    rotate = {k: dict(v) for k, v in (sc.get("rotate") or {}).items()}
+    lib_spec = dict(sc.get("library") or {})
     # Extra scenario-spec fields beyond the base domain/situation/shortcut shape,
     # mirroring `scenarios_weighted`'s `fields:` block: `required` keys fail the batch
     # loudly when the model omits them, `optional` default to "". Values are stripped
@@ -303,7 +454,45 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
         # to know how to reach another stage's output.
         prov = {r["trait_id"]: {k: r[k] for k in UNIT_PROVENANCE if k in r}
                 for r in records}
-        batches = scenario_batches(len(traits), ctx.cfg)
+        batches = scenario_batches(len(traits), ctx.cfg,
+                                   [t.trait_id for t in traits])
+        # Axis deals and the library are built once per stage run, from the PLANNED batch
+        # count, and indexed by (unit, batch) rather than by position -- so a make-up
+        # round, a resume and the estimator all see the same composition.
+        deals = {name: deal_labels(spec["weights"], max(len(batches), 12))
+                 for name, spec in rotate.items()}
+        entries = load_library(lib_spec) if lib_spec else []
+        # Each batch's POSITION in the plan, so a deal is walked once through rather than
+        # sampled by a modular formula. Measured 2026-08-27: indexing by `(ti*7+bi) % len`
+        # visited only a subset of positions, which left 5 of 12 world registers at zero
+        # and pushed a 35% stakes band to 58%. A make-up batch (bi beyond the plan) has no
+        # position and falls back to the formula.
+        ordinal = {(ti, bi): k for k, (ti, bi, _n) in enumerate(batches)}
+        # Per-axis (stride, offset), or every axis reads its deal in the SAME order and
+        # the axes stop being independent: the 2026-08-27 run tied every `ship_mind` to
+        # `mundane` and every `station_mind` to `institutional`, which is one axis wearing
+        # two names. See `_axis_walk`.
+        walk = {name: _axis_walk(name, len(seq)) for name, seq in deals.items()}
+
+        def axes_of(spec: tuple) -> dict[str, str]:
+            ti, bi, _n = spec
+            base = ordinal.get((ti, bi), ti * 7 + bi)
+            out = {}
+            for name, seq in deals.items():
+                stride, offset = walk[name]
+                out[name] = seq[(base * stride + offset) % len(seq)]
+            return out
+
+        def library_block(spec: tuple, axes: dict[str, str]) -> str:
+            if not entries:
+                return ""
+            gate = lib_spec.get("gate")
+            if gate and str(axes.get(gate["field"], "")) not in \
+                    [str(v) for v in gate["in"]]:
+                return ""
+            ti, bi, n = spec
+            picks = library_picks(lib_spec, entries, traits[ti].trait_id, ti, bi, n)
+            return "\n".join(lib_spec["item"].format(**e) for e in picks)
         # Corpus size follows the unit count under `scenarios_per_trait`, so a changed
         # `chunking:` can multiply a run. Say the total out loud before paying for it.
         sized_by = "total_scenarios" if ctx.cfg.get("total_scenarios") is not None \
@@ -363,11 +552,18 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
             """Scenario records from one call's JSON array (shared by both paths)."""
             ti, bi, _n = spec
             t = traits[ti]
+            axes = axes_of(spec)
+            # `id_prefix` mirrors the weighted operator's, and exists for the same reason:
+            # a TOP-UP run that fills a thin cell of an existing corpus restarts its batch
+            # numbering at zero, so without a prefix its ids collide with the run it is
+            # topping up and every id-keyed join silently takes the wrong row.
+            prefix = str(ctx.cfg.get("id_prefix", ""))
             return [{
-                "scenario_id": f"{t.trait_id}_b{bi:02d}_s{j:03d}",
+                "scenario_id": f"{prefix}{t.trait_id}_b{bi:02d}_s{j:03d}",
                 "trait_id": t.trait_id, "trait_name": t.name, "trait_text": t.text,
                 "domain": s.get("domain", ""), "situation": s["situation"],
                 "shortcut": s.get("shortcut", ""),
+                **axes,
                 **{k: str(s[k]).strip() for k in req_fields},
                 **{k: str(s.get(k, "")).strip() for k in opt_fields},
                 **prov.get(t.trait_id, {}),
@@ -376,11 +572,17 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
         def _prompts_for(spec: tuple) -> tuple[str, str]:
             ti, _bi, n = spec
             t = traits[ti]
-            fields = {"trait_name": t.name, "trait_text": t.text}
+            axes = axes_of(spec)
+            fields = {"trait_name": t.name, "trait_text": t.text, **axes}
+            extra_vars = {f"{name}_text": str(rotate[name].get("text", {})
+                                              .get(axes[name], ""))
+                          for name in rotate}
+            if lib_spec:
+                extra_vars[lib_spec.get("var", "library")] = library_block(spec, axes)
             return (_render(sys_t, fields, ctx, n=n, avoid=avoid_block,
-                            overrepresented=over_block),
+                            overrepresented=over_block, **extra_vars),
                     _render(user_t, fields, ctx, n=n, avoid=avoid_block,
-                            overrepresented=over_block))
+                            overrepresented=over_block, **extra_vars))
 
         def generate_spec(spec: tuple) -> list[dict]:
             ti = spec[0]
@@ -435,11 +637,31 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
                        ctx.run_dir / f".batch_{sc['name']}_{tag}.json", collect)
             return fresh
 
+        def report_axes(rows: list[dict]) -> list[dict]:
+            """Print and record what the rotated axes ACTUALLY came out at.
+
+            The deal is proportional by construction but the corpus is not: a batch can
+            come back short or be rejected wholesale by the embedding gate, and the
+            recipe's quotas are enforced downstream at selection. A realised split
+            nobody printed is a quota nobody checked.
+            """
+            if not rotate:
+                return rows
+            realised = {}
+            for name in rotate:
+                counts: dict[str, int] = {}
+                for r in rows:
+                    counts[str(r.get(name, ""))] = counts.get(str(r.get(name, "")), 0) + 1
+                realised[name] = dict(sorted(counts.items()))
+                print(f"    rotate {name}: {realised[name]}")
+            ctx.manifest_extra.setdefault("rotated_axes", {})[sc["name"]] = realised
+            return rows
+
         # Unchanged fast path: no `diversity:` block means one wave, no ban list and no
         # embedding gate. Batches when --batch is set, interactive otherwise.
         if not div:
             avoid_block = over_block = ""
-            return run_wave(list(batches), "all")
+            return report_axes(run_wave(list(batches), "all"))
 
         target: dict[int, int] = {}
         next_bi: dict[int, int] = {}
@@ -529,7 +751,7 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
         }
         print(f">>> {sc['name']}: kept {len(kept)}/{sum(target.values())} scenarios, "
               f"rejected {rejected_total} as too close to one already generated")
-        return kept
+        return report_axes(kept)
 
     return Stage(sc["name"], fn, paid=True,
                  preview=lambda r: f"[{r['trait_name']}] {r['situation']}")
