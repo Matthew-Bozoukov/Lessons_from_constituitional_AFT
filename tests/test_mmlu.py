@@ -13,7 +13,7 @@ from src.eval.capabilities.mmlu.mmlu import (
     build_prompt,
     build_subset,
     mcnemar,
-    paired_bootstrap_diff,
+    paired_diff,
     parse_answer,
     prompt_hash,
     render_question,
@@ -270,29 +270,60 @@ def test_paired_bootstrap_is_tighter_than_treating_arms_as_independent():
     Two arms that agree on almost every question have a tiny difference interval even
     though each arm's own accuracy interval is wide.
     """
-    n = 400
+    n, n_subj = 400, 40
+    recs = lambda flags: [{"subject": f"s{i % n_subj}", "uid": f"q{i}", "correct": f}
+                          for i, f in enumerate(flags)]
     a = [i % 5 != 0 for i in range(n)]           # 80% accuracy
     b = list(a)
     b[3] = not b[3]                               # differ on exactly one question
-    paired = paired_bootstrap_diff(a, b, rounds=2000, seed=0)
+    paired = paired_diff(recs(a), recs(b))
     width = paired["ci_upper"] - paired["ci_lower"]
     independent_width = 2 * 1.96 * math.sqrt(0.8 * 0.2 / n) * 2
     assert width < independent_width / 4
     assert paired["diff"] == pytest.approx(-1 / n)
 
 
-def test_paired_bootstrap_ci_brackets_a_real_difference():
+def test_paired_diff_ci_brackets_a_real_difference():
+    n_subj = 40
+    recs = lambda flags: [{"subject": f"s{i % n_subj}", "uid": f"q{i}", "correct": f}
+                          for i, f in enumerate(flags)]
     a = [True] * 300 + [False] * 100   # 75%
     b = [True] * 200 + [False] * 200   # 50%
-    result = paired_bootstrap_diff(a, b, rounds=2000, seed=0)
+    result = paired_diff(recs(a), recs(b))
     assert result["diff"] == pytest.approx(-0.25)
     assert result["ci_lower"] < -0.25 < result["ci_upper"]
     assert result["ci_upper"] < 0  # a real regression, not a wash
 
 
-def test_paired_bootstrap_rejects_misaligned_inputs():
+def test_paired_diff_clusters_by_subject_not_by_question():
+    """The spread is taken over SUBJECTS: a difference concentrated in one subject is
+    less certain than the same difference spread evenly, even with identical means."""
+    n_subj, per = 40, 10
+    def recs(flip_subjects):
+        out = []
+        for j in range(n_subj):
+            for k in range(per):
+                out.append({"subject": f"s{j}", "uid": f"s{j}/{k}", "correct": True})
+        return out
+    base = recs(())
+    # 40 flips concentrated in 4 subjects vs spread over all 40
+    conc = [dict(r) for r in base]
+    for j in range(4):
+        for k in range(per):
+            conc[j * per + k]["correct"] = False
+    spread = [dict(r) for r in base]
+    for j in range(n_subj):
+        spread[j * per]["correct"] = False
+    a, b = paired_diff(base, conc), paired_diff(base, spread)
+    assert a["diff"] == pytest.approx(b["diff"])                       # same mean difference
+    assert (a["ci_upper"] - a["ci_lower"]) > 3 * (b["ci_upper"] - b["ci_lower"])
+
+
+def test_paired_diff_rejects_misaligned_inputs():
+    r = [{"subject": "s0", "uid": "q0", "correct": True},
+         {"subject": "s1", "uid": "q1", "correct": False}]
     with pytest.raises(ValueError, match="aligned"):
-        paired_bootstrap_diff([True, False], [True])
+        paired_diff(r, r[:1])
 
 
 # --- Scoring -------------------------------------------------------------------------

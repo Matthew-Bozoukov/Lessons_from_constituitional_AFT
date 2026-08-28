@@ -17,6 +17,31 @@
 
 seed: 0
 
+# --- Error bars ---------------------------------------------------------------------
+# The sampling design, consumed by src/eval/stats.py (see docs/error_bars.md).
+#
+# The 57 subjects are treated as SAMPLED, not as the benchmark itself: the claim we want
+# is about MMLU-like knowledge domains, so *which* domains ended up in MMLU is part of the
+# uncertainty. Questions are then sampled within each subject (per_subject of them). Both
+# sources are carried by the spread of the 57 subject accuracies.
+#
+# The alternative -- `item: question`, i.e. every question an i.i.d. draw from one pool --
+# is what a naive Wilson interval over all rows assumes, and it is REJECTED deliberately:
+# it treats subject membership as carrying no information. It is 1.3x narrower at
+# per_subject=10 and 4.9x narrower on the full 14,042-question split, because it keeps
+# shrinking with more questions while the clustered reading hits the sigma_S^2/57 floor.
+# That floor is the design lesson: past a point only more SUBJECTS buy precision.
+#
+# NOT SUPPORTED: >= 2 checkpoints under this design. A question is nested in its subject but
+# CROSSED with the checkpoint, which adds a checkpoint x question interaction the three-spread
+# decomposition does not carry. One checkpoint per arm is the only wired case; a multi-seed
+# MMLU sweep needs the six-term treatment first.
+stats:
+  item: subject          # the sampled unit: a knowledge domain
+  item_sampling: sampled # 57 of a larger space, not the population
+  subsamples: [question] # questions drawn within each subject
+
+
 # --- Arms ---------------------------------------------------------------------------
 # Deliberately NOT restated here. The arm ladder — which checkpoints exist, which are
 # matched on training recipe, and the long note explaining why arm A is not a usable

@@ -367,6 +367,7 @@ def parse_answer(text: str, n_choices: int = 4) -> tuple[str | None, str]:
 # reports a binomial proportion too, and two copies of an interval estimator drift.
 # Re-imported here so this module's existing callers (and tests) are unaffected.
 from src.eval.capabilities.stats import _z_for, wilson_ci  # noqa: E402,F401
+from src.eval.stats import Design, difference, interval  # noqa: E402
 
 
 def mcnemar(a_correct: Sequence[bool], b_correct: Sequence[bool]) -> dict[str, float]:
@@ -407,48 +408,53 @@ def mcnemar(a_correct: Sequence[bool], b_correct: Sequence[bool]) -> dict[str, f
     return {"n_discordant": n, "b01": b01, "b10": b10, "p_value": p}
 
 
-def paired_bootstrap_diff(
-    a_correct: Sequence[bool],
-    b_correct: Sequence[bool],
-    rounds: int = 5000,
-    alpha: float = 0.05,
-    seed: int = 0,
-) -> dict[str, float]:
-    """Bootstrap CI for the accuracy difference `b - a`, resampling questions.
+DESIGN = Design(item="subject", subsamples=("question",))
+"""MMLU's sampling design, for src/eval/stats.
 
-    Resamples question *indices* and carries both arms' outcomes for the drawn question
-    together. Between-question difficulty variance is common to both arms and cancels in
-    the difference, so this interval is materially tighter than differencing two
-    independent per-arm intervals — the same paired argument `arena_hard_stats` makes
-    for the preference eval.
+The 57 subjects are treated as SAMPLED, not as the benchmark: the claim is about
+MMLU-like knowledge domains, so which domains were chosen is uncertainty. Questions are
+sampled within each subject (`per_subject` of them). Both sources are carried by T_B over
+the 57 subject accuracies, which estimates sigma_S^2/S + sigma_q^2/(S n_q).
+
+The alternative reading -- questions as i.i.d. draws from one pool, `Design(item="question")`
+-- treats subject membership as carrying no information and gives a materially narrower
+interval: 1.3x at per_subject=10, 4.9x on the full 14,042-question split, because it keeps
+shrinking with more questions while the clustered reading hits the sigma_S^2/57 floor. That
+floor is the useful fact: past a point only more SUBJECTS buy precision, not more questions.
+Rejected deliberately -- see docs/error_bars.md and the `stats` block in configs/eval/mmlu.yaml.
+"""
+
+
+def to_long(records: Sequence[dict], checkpoint: str = "model") -> list[dict]:
+    """Graded records -> the long table src/eval/stats expects (one row per question)."""
+    return [{"checkpoint": checkpoint, "subject": str(r["subject"]),
+             "question": str(r.get("uid", i)), "value": float(bool(r["correct"]))}
+            for i, r in enumerate(records)]
+
+
+def paired_diff(a_records: Sequence[dict], b_records: Sequence[dict]) -> dict[str, float]:
+    """Accuracy difference b - a over identical questions, clustered by subject.
+
+    Closed form, not a bootstrap: the difference of two means has an exact SE (see
+    src/eval/stats). Questions are paired -- both arms answered the same ones, so the
+    shared question difficulty cancels -- and the residual spread is taken over SUBJECTS,
+    which is what makes this a cluster-robust interval rather than a per-question one.
 
     Args:
-        a_correct: Reference arm's per-question correctness.
-        b_correct: Test arm's per-question correctness, question-aligned.
-        rounds: Bootstrap resamples.
-        alpha: Two-sided level.
-        seed: Fixed so a reported interval is reproducible.
+        a_records: Reference arm's graded records.
+        b_records: Test arm's, question-aligned with `a_records`.
 
     Returns:
-        `diff` (b - a, in proportion units), `ci_lower`, `ci_upper`, `std_error`, `n`.
+        `diff` (b - a, proportion units), `ci_lower`, `ci_upper`, `std_error`, `n`, `df`.
     """
-    a = np.asarray(a_correct, dtype=float)
-    b = np.asarray(b_correct, dtype=float)
-    if a.shape != b.shape:
-        raise ValueError(f"paired bootstrap needs aligned outcomes, got {a.shape} vs {b.shape}")
-    n = len(a)
-    if n == 0:
-        raise ValueError("paired_bootstrap_diff called with no questions")
-    rng = np.random.default_rng(seed)
-    idx = rng.integers(0, n, size=(rounds, n))
-    diffs = b[idx].mean(axis=1) - a[idx].mean(axis=1)
-    return {
-        "diff": float(b.mean() - a.mean()),
-        "ci_lower": float(np.quantile(diffs, alpha / 2)),
-        "ci_upper": float(np.quantile(diffs, 1 - alpha / 2)),
-        "std_error": float(diffs.std(ddof=1)),
-        "n": n,
-    }
+    if len(a_records) != len(b_records):
+        raise ValueError(f"paired diff needs aligned records, got {len(a_records)} vs {len(b_records)}")
+    if not a_records:
+        raise ValueError("paired_diff called with no questions")
+    r = difference(to_long(b_records, "b"), to_long(a_records, "a"), DESIGN,
+                   paired_checkpoints=False)
+    return {"diff": r.mean, "ci_lower": r.lo, "ci_upper": r.hi, "std_error": r.se,
+            "n": len(a_records), "df": r.df, "method": r.method}
 
 
 def score_records(records: Sequence[dict]) -> dict[str, Any]:
@@ -487,10 +493,30 @@ def score_records(records: Sequence[dict]) -> dict[str, Any]:
     for r in records:
         tiers[r.get("parse_tier", "none")] = tiers.get(r.get("parse_tier", "none"), 0) + 1
 
+    # Headline interval: subjects sampled, questions sampled within them (see DESIGN).
+    # Wilson stays for the per-subject/per-category breakdowns, where a single subject's
+    # questions really are the only randomness and the count is small.
+    n_subjects = len({str(r["subject"]) for r in records})
+    if n_subjects >= 2:
+        overall = interval(to_long(records), DESIGN)
+        headline = {"ci_lower": overall.lo, "ci_upper": overall.hi, "ci_df": overall.df,
+                    "ci_method": overall.method, "stats": overall.as_dict()}
+    else:
+        # One subject: there is no between-subject spread to estimate, so the clustered
+        # interval is not defined. Fall back to Wilson over that subject's questions and
+        # SAY SO -- this is the smoke-test shape, never a reportable run.
+        w = wilson_ci(n_correct, n)
+        headline = {"ci_lower": w["ci_lower"], "ci_upper": w["ci_upper"], "ci_df": float(n - 1),
+                    "ci_method": f"Wilson over {n} questions of a single subject "
+                                 "(too few subjects for the clustered interval)",
+                    "stats": None}
     return {
         "n": n,
         "n_correct": n_correct,
-        **wilson_ci(n_correct, n),
+        "n_subjects": n_subjects,
+        "mean": n_correct / n,
+        **headline,
+        "ci_naive_wilson": wilson_ci(n_correct, n),
         "accuracy_parsed_only": (
             sum(1 for r in parsed if r["correct"]) / len(parsed) if parsed else float("nan")
         ),
