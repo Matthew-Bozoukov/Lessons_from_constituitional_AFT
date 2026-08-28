@@ -49,6 +49,7 @@ import matplotlib.pyplot as plt
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
+from scratch.stats.logit_ci import logit_interval  # noqa: E402
 from src.eval.stats import Design, NotEstimable, interval, wilson  # noqa: E402
 from src.utils import git_sha, write_run_meta  # noqa: E402
 
@@ -62,14 +63,12 @@ REGIMES = {
     "base  (mu~0.4, bimodal scenarios)":      dict(mix=(.6, -1.5, .5, 1.0, .5), sA=.35, sC=.30, n=3, R=5),
     "checkpoint-dominated (big sigma_A)":     dict(mix=(.6, -1.5, .2, 1.0, .2), sA=1.20, sC=.15, n=3, R=5),
     "near-zero (mu~0.04)":                    dict(mix=(.85, -4.5, .5, -1.5, .5), sA=.35, sC=.30, n=3, R=5),
-    # n=1 means `checkpoints="fixed"`: the interval is a claim about THAT checkpoint, not about
-    # the pipeline. Judging it against the pipeline mean is unfair and it fails badly (~79%),
-    # so this row sets sigma_A = 0, where the two estimands coincide and the n=1 path can be
-    # tested on its own terms. The row below keeps sigma_A > 0 and is EXPECTED to under-cover:
-    # it is the honesty check on the claims block, which says pipeline variance is not estimated.
-    "single checkpoint (n=1, sigma_A=0)":     dict(mix=(.6, -1.5, .5, 1.0, .5), sA=.0, sC=.30, n=1, R=5),
-    "n=1 judged vs pipeline mean (should under-cover)":
-                                              dict(mix=(.6, -1.5, .5, 1.0, .5), sA=.35, sC=.30, n=1, R=5),
+    # n=1 is `checkpoints="fixed"`: a claim about ONE model over sampled scenarios. So the
+    # checkpoint is drawn ONCE and held for all replicates, and the truth is conditional on
+    # it -- exactly the question the interval answers. (Redrawing it each replicate and
+    # scoring against the pipeline mean is a different, unfair target; that gave 79%.)
+    "single fixed checkpoint (n=1)":          dict(mix=(.6, -1.5, .5, 1.0, .5), sA=.35, sC=.30, n=1, R=5, fixed_ckpt=True),
+    "single fixed checkpoint, near-zero":     dict(mix=(.85, -4.5, .5, -1.5, .5), sA=.35, sC=.30, n=1, R=5, fixed_ckpt=True),
     "base but R=1":                           dict(mix=(.6, -1.5, .5, 1.0, .5), sA=.35, sC=.30, n=3, R=1),
 }
 J = 40
@@ -81,13 +80,13 @@ def draw_scenarios(rng, mix, size):
     return np.where(pick, rng.normal(m1, s1, size), rng.normal(m2, s2, size))
 
 
-def truth(rng, mix, sA, sC, draws=20_000_000) -> tuple[float, float]:
-    """mu = E[pi] and its Monte Carlo standard error, from the same generative process."""
+def truth(rng, mix, sA, sC, draws=20_000_000, held_a=None) -> tuple[float, float]:
+    """mu and its Monte Carlo error. With `held_a`, mu is CONDITIONAL on that checkpoint."""
     tot, tot2, done = 0.0, 0.0, 0
     while done < draws:
         k = min(2_000_000, draws - done)
         D = draw_scenarios(rng, mix, k)
-        A = rng.normal(0, sA, k)
+        A = np.full(k, held_a) if held_a is not None else rng.normal(0, sA, k)
         C = rng.normal(0, sC, k)
         g = np.where(rng.random(k) < .5, .5, -.5)      # the 1/2-1/2 variant mixture
         pi = logistic(D + A + g + C)
@@ -96,10 +95,10 @@ def truth(rng, mix, sA, sC, draws=20_000_000) -> tuple[float, float]:
     return float(mu), float(np.sqrt(max(tot2 / draws - mu ** 2, 0) / draws))
 
 
-def experiment(rng, mix, sA, sC, n, R) -> list[dict]:
-    """One full run: fresh checkpoints AND fresh scenarios, both variants, R rollouts."""
+def experiment(rng, mix, sA, sC, n, R, held_a=None) -> list[dict]:
+    """One run: fresh scenarios, and fresh checkpoints unless `held_a` fixes the model."""
     D = draw_scenarios(rng, mix, J)
-    A = rng.normal(0, sA, n)
+    A = np.full(n, held_a) if held_a is not None else rng.normal(0, sA, n)
     rows = []
     for i in range(n):
         for j in range(J):
@@ -117,17 +116,21 @@ def main(reps: int = 2000, truth_draws: int = 20_000_000, seed: int = 0,
     payload = {}
     for label, p in REGIMES.items():
         rng = np.random.default_rng(seed)
-        mu, mc_se = truth(rng, p["mix"], p["sA"], p["sC"], truth_draws)
-        hit = naive_hit = 0
-        means, se2s, widths, dfs, skipped = [], [], [], [], 0
+        held = float(rng.normal(0, p["sA"])) if p.get("fixed_ckpt") else None
+        mu, mc_se = truth(rng, p["mix"], p["sA"], p["sC"], truth_draws, held_a=held)
+        hit = naive_hit = logit_hit = 0
+        means, se2s, widths, lwidths, dfs, skipped = [], [], [], [], [], 0
         for _ in range(reps):
-            obs = experiment(rng, p["mix"], p["sA"], p["sC"], p["n"], p["R"])
+            obs = experiment(rng, p["mix"], p["sA"], p["sC"], p["n"], p["R"], held_a=held)
             try:
                 r = interval(obs, DESIGN)
             except NotEstimable:
                 skipped += 1
                 continue
             hit += r.lo <= mu <= r.hi
+            lg = logit_interval(r)                      # same estimand, same SE, log-odds shape
+            logit_hit += lg["lo"] <= mu <= lg["hi"]
+            lwidths.append(lg["hi"] - lg["lo"])
             means.append(r.mean); se2s.append(r.se ** 2)
             widths.append(r.hi - r.lo); dfs.append(r.df)
             k = sum(o["value"] for o in obs)
@@ -136,10 +139,13 @@ def main(reps: int = 2000, truth_draws: int = 20_000_000, seed: int = 0,
         n_ok = len(means)
         emp_var = float(np.var(means, ddof=1))
         cov, ncov = 100 * hit / n_ok, 100 * naive_hit / n_ok
+        lcov = 100 * logit_hit / n_ok
         rows_md.append(
-            f"| {label} | {mu:.4f} | {cov:.1f}% | {np.mean(se2s)/emp_var:.3f} | "
-            f"{100*np.mean(widths):.1f}pp | {np.median(dfs):.0f} | {ncov:.1f}% |")
+            f"| {label} | {mu:.4f} | {cov:.1f}% | **{lcov:.1f}%** | {np.mean(se2s)/emp_var:.3f} | "
+            f"{100*np.mean(widths):.1f} / {100*np.mean(lwidths):.1f}pp | {np.median(dfs):.0f} | {ncov:.1f}% |")
         payload[label] = {"mu": mu, "mu_mc_se": mc_se, "coverage_pct": cov,
+                          "coverage_logit_pct": lcov, "held_checkpoint": held,
+                          "mean_width_logit_pp": float(100 * np.mean(lwidths)),
                           "calibration_ratio": float(np.mean(se2s) / emp_var),
                           "mean_width_pp": float(100 * np.mean(widths)),
                           "median_df": float(np.median(dfs)), "naive_wilson_coverage_pct": ncov,
@@ -185,11 +191,13 @@ def main(reps: int = 2000, truth_draws: int = 20_000_000, seed: int = 0,
           f"{reps} replicates per regime; truth from a {truth_draws:,}-draw Monte Carlo of the "
           f"same process. 3 checkpoints x {J} scenarios x 2 variants x R rollouts, checkpoints "
           "AND scenarios redrawn every replicate.", "",
-          "| regime | true mu | **coverage** | SE²/Var(mu_hat) | mean width | median df | naive Wilson |",
-          "|---|---|---|---|---|---|---|", *rows_md, "",
-          "`coverage` should be 95%. `SE²/Var(mu_hat)` should be 1.00 — it isolates the standard "
-          "error from the multiplier. `naive Wilson` treats every rollout as independent and is "
-          "the control for what we would get wrong.", "",
+          "| regime | true mu | coverage sym | **coverage logit** | SE²/Var(mu_hat) | width sym/logit | median df | naive Wilson |",
+          "|---|---|---|---|---|---|---|---|", *rows_md, "",
+          "`coverage` should be 95%. `sym` is the symmetric interval `mu_hat +/- t*SE`; `logit` "
+          "does the same step on the log-odds scale and maps back — same estimand, same SE, "
+          "boundary-aware shape. `SE²/Var(mu_hat)` should be 1.00; it isolates the standard error "
+          "from the multiplier. `naive Wilson` treats every rollout as independent and is the "
+          "control for what we would get wrong.", "",
           f"git `{git_sha()}` · regenerate: `uv run python scratch/stats/simulate_coverage.py --reps {reps}`", ""]
     (dest / "results.md").write_text("\n".join(md))
     (dest / "results.json").write_text(json.dumps(payload, indent=2, default=float))
