@@ -140,11 +140,15 @@ def main(reps: int = 2000, truth_draws: int = 20_000_000, seed: int = 0,
         emp_var = float(np.var(means, ddof=1))
         cov, ncov = 100 * hit / n_ok, 100 * naive_hit / n_ok
         lcov = 100 * logit_hit / n_ok
+        # Coverage is itself an estimate from n_ok Bernoulli trials, so report its own error --
+        # otherwise a 0.5pp gap between two shapes cannot be told from simulation noise.
+        cov_mc = 100 * np.sqrt(lcov / 100 * (1 - lcov / 100) / n_ok)
         rows_md.append(
-            f"| {label} | {mu:.4f} | {cov:.1f}% | **{lcov:.1f}%** | {np.mean(se2s)/emp_var:.3f} | "
+            f"| {label} | {mu:.4f} | {cov:.1f}% | **{lcov:.1f}%** | ±{cov_mc:.2f} | {np.mean(se2s)/emp_var:.3f} | "
             f"{100*np.mean(widths):.1f} / {100*np.mean(lwidths):.1f}pp | {np.median(dfs):.0f} | {ncov:.1f}% |")
         payload[label] = {"mu": mu, "mu_mc_se": mc_se, "coverage_pct": cov,
                           "coverage_logit_pct": lcov, "held_checkpoint": held,
+                          "coverage_mc_se_pp": float(cov_mc),
                           "mean_width_logit_pp": float(100 * np.mean(lwidths)),
                           "calibration_ratio": float(np.mean(se2s) / emp_var),
                           "mean_width_pp": float(100 * np.mean(widths)),
@@ -204,8 +208,8 @@ def main(reps: int = 2000, truth_draws: int = 20_000_000, seed: int = 0,
           f"{reps} replicates per regime; truth from a {truth_draws:,}-draw Monte Carlo of the "
           f"same process. 3 checkpoints x {J} scenarios x 2 variants x R rollouts, checkpoints "
           "AND scenarios redrawn every replicate.", "",
-          "| regime | true mu | coverage sym | **coverage logit** | SE²/Var(mu_hat) | width sym/logit | median df | naive Wilson |",
-          "|---|---|---|---|---|---|---|---|", *rows_md, "",
+          "| regime | true mu | coverage sym | **coverage logit** | MC err | SE²/Var(mu_hat) | width sym/logit | median df | naive Wilson |",
+          "|---|---|---|---|---|---|---|---|---|", *rows_md, "",
           "`coverage` should be 95%. `sym` is the symmetric interval `mu_hat +/- t*SE`; `logit` "
           "does the same step on the log-odds scale and maps back — same estimand, same SE, "
           "boundary-aware shape. `SE²/Var(mu_hat)` should be 1.00; it isolates the standard error "
