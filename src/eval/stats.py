@@ -305,7 +305,10 @@ def crossed_terms(values: np.ndarray, unit_weights: np.ndarray | None = None) ->
     assert v.ndim == 2 and v.shape[1] >= 2, f"need an n x J table with J >= 2, got {v.shape}"
     n, J = v.shape
     w = np.ones(J) / J if unit_weights is None else np.asarray(unit_weights, float)
-    row = v @ w                       # per-model rates (unit-weighted)
+    # (v * w).sum rather than `v @ w`: numpy's BLAS matmul path raises spurious
+    # divide-by-zero/overflow RuntimeWarnings on some shapes (reproducible with a plain
+    # `@` on the same arrays, numpy 2.2), which would pollute stderr for every caller.
+    row = (v * w[None, :]).sum(axis=1)   # per-model rates (unit-weighted)
     col = v.mean(axis=0)              # per-unit rates
     mu = float(row.mean())
     out = {"mu": mu, "T_A": float("nan"), "T_B": float(col.var(ddof=1) / J), "T_C": float("nan")}
@@ -548,7 +551,8 @@ def difference(obs_a: Any, obs_b: Any, design: Design | None = None, *, models: 
         r = _finish(merged, kind, "T_A^A + T_A^B + T_B^(d) - T_C^A - T_C^B, t_nu (Satterthwaite)",
                     mean, se2, df, terms, alpha)
     elif kind == "random":  # units fixed: Welch's two-sample t on the per-model rates
-        ra, rb = A.values @ A.unit_weights, B.values @ B.unit_weights
+        ra = (A.values * A.unit_weights[None, :]).sum(axis=1)   # see crossed_terms on `@`
+        rb = (B.values * B.unit_weights[None, :]).sum(axis=1)
         va, vb = float(ra.var(ddof=1) / A.n), float(rb.var(ddof=1) / B.n)
         df = satterthwaite([(va, A.n - 1), (vb, B.n - 1)])   # Welch-Satterthwaite
         r = _finish(merged, kind, "Welch two-sample t on per-model rates, t_nu (Welch-Satterthwaite)",
