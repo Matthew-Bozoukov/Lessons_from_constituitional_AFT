@@ -1,0 +1,168 @@
+# ABOUTME: End-to-end sanity check on src/eval/stats: simulate the ODCV process from a KNOWN
+# ABOUTME: truth and measure whether our "95%" interval actually covers it 95% of the time.
+# Run: uv run python scratch/stats/simulate_coverage.py [--reps 2000]
+
+"""Does our 95% interval actually cover 95% of the time?
+
+The whole pipeline is under test -- `collapse`, the Design, the three spreads, Satterthwaite,
+the t multiplier -- not just the algebra. Each replicate runs the real code path.
+
+Generative process, mirroring ODCV on a latent logit scale so rates stay in [0, 1] without
+clipping (clipping would break the known truth):
+
+    scenario   D_j ~ w N(m1, s1^2) + (1-w) N(m2, s2^2)   a Gaussian MIXTURE, because real
+                                                          ODCV scenarios are bimodal: most
+                                                          arms violate on nearly all of some
+                                                          stories and none of the rest
+    checkpoint A_i ~ N(0, sA^2)                           3 drawn per experiment
+    variant    gamma_k = +/- 0.5                          BOTH always run, weights 1/2 each
+    interaction C_ij ~ N(0, sC^2)
+    rate       pi = logistic(D_j + A_i + gamma_k + C_ij),  V ~ Bernoulli(pi), R rollouts
+
+The estimand mu = E[pi] has no closed form through the logistic, so it is taken from a huge
+Monte Carlo of the same process; its own error is reported so you can see it is negligible
+against the interval widths being tested.
+
+Both the checkpoints and the scenarios are redrawn every replicate, because both are declared
+`sampled` -- that IS the estimand. Reported per regime:
+
+    coverage     how often mu falls inside [lo, hi]      target 95%
+    calibration  mean SE^2 / Var(mu_hat) across reps     target 1.00  (isolates the SE from
+                                                          the multiplier)
+    naive        the same for "all n*J*2*R rollouts i.i.d." Wilson, as a control
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+from datetime import datetime
+from pathlib import Path
+
+import fire
+import numpy as np
+
+REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO))
+
+from src.eval.stats import Design, NotEstimable, interval, wilson  # noqa: E402
+from src.utils import git_sha, write_run_meta  # noqa: E402
+
+DESIGN = Design(item="scenario", enumerated={"variant": "equal"}, subsamples=("pass",))
+VARIANTS = ("mandated", "incentivized")
+logistic = lambda x: 1.0 / (1.0 + np.exp(-x))
+
+# Each regime is (scenario mixture, checkpoint sd, interaction sd, n_checkpoints, R).
+# The mixture is (weight, mean1, sd1, mean2, sd2) on the logit scale.
+REGIMES = {
+    "base  (mu~0.4, bimodal scenarios)":      dict(mix=(.6, -1.5, .5, 1.0, .5), sA=.35, sC=.30, n=3, R=5),
+    "checkpoint-dominated (big sigma_A)":     dict(mix=(.6, -1.5, .2, 1.0, .2), sA=1.20, sC=.15, n=3, R=5),
+    "near-zero (mu~0.04)":                    dict(mix=(.85, -4.5, .5, -1.5, .5), sA=.35, sC=.30, n=3, R=5),
+    # n=1 means `checkpoints="fixed"`: the interval is a claim about THAT checkpoint, not about
+    # the pipeline. Judging it against the pipeline mean is unfair and it fails badly (~79%),
+    # so this row sets sigma_A = 0, where the two estimands coincide and the n=1 path can be
+    # tested on its own terms. The row below keeps sigma_A > 0 and is EXPECTED to under-cover:
+    # it is the honesty check on the claims block, which says pipeline variance is not estimated.
+    "single checkpoint (n=1, sigma_A=0)":     dict(mix=(.6, -1.5, .5, 1.0, .5), sA=.0, sC=.30, n=1, R=5),
+    "n=1 judged vs pipeline mean (should under-cover)":
+                                              dict(mix=(.6, -1.5, .5, 1.0, .5), sA=.35, sC=.30, n=1, R=5),
+    "base but R=1":                           dict(mix=(.6, -1.5, .5, 1.0, .5), sA=.35, sC=.30, n=3, R=1),
+}
+J = 40
+
+
+def draw_scenarios(rng, mix, size):
+    w, m1, s1, m2, s2 = mix
+    pick = rng.random(size) < w
+    return np.where(pick, rng.normal(m1, s1, size), rng.normal(m2, s2, size))
+
+
+def truth(rng, mix, sA, sC, draws=20_000_000) -> tuple[float, float]:
+    """mu = E[pi] and its Monte Carlo standard error, from the same generative process."""
+    tot, tot2, done = 0.0, 0.0, 0
+    while done < draws:
+        k = min(2_000_000, draws - done)
+        D = draw_scenarios(rng, mix, k)
+        A = rng.normal(0, sA, k)
+        C = rng.normal(0, sC, k)
+        g = np.where(rng.random(k) < .5, .5, -.5)      # the 1/2-1/2 variant mixture
+        pi = logistic(D + A + g + C)
+        tot += pi.sum(); tot2 += (pi ** 2).sum(); done += k
+    mu = tot / draws
+    return float(mu), float(np.sqrt(max(tot2 / draws - mu ** 2, 0) / draws))
+
+
+def experiment(rng, mix, sA, sC, n, R) -> list[dict]:
+    """One full run: fresh checkpoints AND fresh scenarios, both variants, R rollouts."""
+    D = draw_scenarios(rng, mix, J)
+    A = rng.normal(0, sA, n)
+    rows = []
+    for i in range(n):
+        for j in range(J):
+            for k, g in zip(VARIANTS, (.5, -.5)):
+                pi = logistic(D[j] + A[i] + g + rng.normal(0, sC))
+                for r in range(R):
+                    rows.append({"checkpoint": f"m{i}", "scenario": f"s{j}", "variant": k,
+                                 "pass": r, "value": float(rng.random() < pi)})
+    return rows
+
+
+def main(reps: int = 2000, truth_draws: int = 20_000_000, seed: int = 0,
+         out: str = "output/stats_coverage") -> None:
+    rows_md = []
+    payload = {}
+    for label, p in REGIMES.items():
+        rng = np.random.default_rng(seed)
+        mu, mc_se = truth(rng, p["mix"], p["sA"], p["sC"], truth_draws)
+        hit = naive_hit = 0
+        means, se2s, widths, dfs, skipped = [], [], [], [], 0
+        for _ in range(reps):
+            obs = experiment(rng, p["mix"], p["sA"], p["sC"], p["n"], p["R"])
+            try:
+                r = interval(obs, DESIGN)
+            except NotEstimable:
+                skipped += 1
+                continue
+            hit += r.lo <= mu <= r.hi
+            means.append(r.mean); se2s.append(r.se ** 2)
+            widths.append(r.hi - r.lo); dfs.append(r.df)
+            k = sum(o["value"] for o in obs)
+            lo, hi = wilson(k, len(obs))            # control: every rollout i.i.d.
+            naive_hit += lo <= mu <= hi
+        n_ok = len(means)
+        emp_var = float(np.var(means, ddof=1))
+        cov, ncov = 100 * hit / n_ok, 100 * naive_hit / n_ok
+        rows_md.append(
+            f"| {label} | {mu:.4f} | {cov:.1f}% | {np.mean(se2s)/emp_var:.3f} | "
+            f"{100*np.mean(widths):.1f}pp | {np.median(dfs):.0f} | {ncov:.1f}% |")
+        payload[label] = {"mu": mu, "mu_mc_se": mc_se, "coverage_pct": cov,
+                          "calibration_ratio": float(np.mean(se2s) / emp_var),
+                          "mean_width_pp": float(100 * np.mean(widths)),
+                          "median_df": float(np.median(dfs)), "naive_wilson_coverage_pct": ncov,
+                          "empirical_var_of_mean": emp_var, "mean_se2": float(np.mean(se2s)),
+                          "reps": n_ok, "skipped": skipped, **{k: v for k, v in p.items()}}
+        print(rows_md[-1], flush=True)
+
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    dest = REPO / out / stamp
+    dest.mkdir(parents=True, exist_ok=True)
+    md = [f"# Does our 95% interval cover 95% of the time? ({stamp})", "",
+          f"{reps} replicates per regime; truth from a {truth_draws:,}-draw Monte Carlo of the "
+          f"same process. 3 checkpoints x {J} scenarios x 2 variants x R rollouts, checkpoints "
+          "AND scenarios redrawn every replicate.", "",
+          "| regime | true mu | **coverage** | SE²/Var(mu_hat) | mean width | median df | naive Wilson |",
+          "|---|---|---|---|---|---|---|", *rows_md, "",
+          "`coverage` should be 95%. `SE²/Var(mu_hat)` should be 1.00 — it isolates the standard "
+          "error from the multiplier. `naive Wilson` treats every rollout as independent and is "
+          "the control for what we would get wrong.", "",
+          f"git `{git_sha()}` · regenerate: `uv run python scratch/stats/simulate_coverage.py --reps {reps}`", ""]
+    (dest / "results.md").write_text("\n".join(md))
+    (dest / "results.json").write_text(json.dumps(payload, indent=2, default=float))
+    write_run_meta(dest, {"script": "scratch/stats/simulate_coverage.py", "reps": reps,
+                          "truth_draws": truth_draws, "J": J})
+    print("\n".join(md))
+    print(f">>> saved {dest.relative_to(REPO)}")
+
+
+if __name__ == "__main__":
+    fire.Fire(main)
