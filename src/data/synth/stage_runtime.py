@@ -10,7 +10,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from src.endpoints.openrouter import ChatResult, OpenRouterClient, map_threaded
+from src.infra.endpoints.openrouter import ChatResult, OpenRouterClient, map_threaded
 from src.utils import extract_json
 
 def price_of(model: str) -> dict[str, float]:
@@ -23,7 +23,7 @@ def price_of(model: str) -> dict[str, float]:
     every pin must carry a price. Thin wrapper so callers never import provider
     internals.
     """
-    from src.endpoints.openrouter import provider_price
+    from src.infra.endpoints.openrouter import provider_price
     try:
         return provider_price(model) or {"in": 0.0, "out": 0.0}
     except ValueError:
@@ -606,7 +606,7 @@ def run_items_batched(items: list[dict], one, build_request, parse_result, *,
     outstanding (smoke runs, resumes near completion) or when records lack a unique
     `key` -- resume across restarts needs a stable custom_id per record.
     """
-    from src.endpoints.openrouter import result_from_payload
+    from src.infra.endpoints.openrouter import result_from_payload
 
     todo = [it for it in items if ckpt is None or it[ckpt.key] not in ckpt.done]
     keys = [str(it.get(key, "")) for it in todo]

@@ -211,7 +211,7 @@ def apply(prop: Property, records: list[Record], cfg) -> AblationResult:
     """
     from omegaconf import OmegaConf
 
-    from src.endpoints.openrouter import OpenRouterClient, map_threaded
+    from src.infra.endpoints.openrouter import OpenRouterClient, map_threaded
     from src.utils import extract_json
 
     cfg = OmegaConf.create(cfg)

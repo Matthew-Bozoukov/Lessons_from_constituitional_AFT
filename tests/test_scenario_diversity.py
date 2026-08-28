@@ -240,7 +240,7 @@ def test_batched_waves_feed_the_same_diversity_machinery(monkeypatch, tmp_path):
     import json as _json
 
     from src.data.synth import stage_runtime
-    from src.endpoints import openrouter
+    from src.infra.endpoints import openrouter
 
     # 16 genuinely distinct situations, one per request (per_call=1, per_trait=8, 2
     # traits) — unrelated so the real reject gate keeps all of them.

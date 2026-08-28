@@ -29,9 +29,9 @@ import time
 import fire
 import requests
 
-# The REST client moved to src/endpoints/runpod.py (2026-08-27) so `uv run chat` and this
+# The REST client moved to src/infra/runpod.py (2026-08-27) so `uv run chat` and this
 # module share one; re-exported here because scripts/gpu/* and scratch/* import it from here.
-from src.endpoints.runpod import REST, call  # noqa: F401
+from src.infra.runpod import REST, call  # noqa: F401
 
 # Weights (~55GB bf16) + the merged copy (~55GB) + room for the image and HF cache.
 DEFAULT_DISK_GB = 250

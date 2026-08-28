@@ -57,8 +57,8 @@ from typing import TextIO
 from dotenv import load_dotenv
 from openai import OpenAI
 
-from src.endpoints import runpod
-from src.endpoints.model_organisms import (
+from src.infra import runpod
+from src.chat.organisms import (
     DEFAULT_ORGS,
     arm_names,
     check_one_server,
@@ -66,7 +66,7 @@ from src.endpoints.model_organisms import (
     parse_pick,
     render_menu,
 )
-from src.endpoints.vllm_server import SshExec, TargetSpec, VllmServer, resolve_target
+from src.infra.endpoints.vllm import SshExec, TargetSpec, VllmServer, resolve_target
 from src.model_profile import resolve_trace, serving_params
 from src.utils import timestamp, transcript_markdown, write_run_meta
 
@@ -197,7 +197,7 @@ def build_record(
 def assistant_message(record: dict) -> dict:
     """The assistant turn sent back as context: visible answer + trace as reasoning_content.
 
-    A think arm's served template pins `preserve_thinking = true` (vllm_server.pin_template),
+    A think arm's served template pins `preserve_thinking = true` (vllm.pin_template),
     so prior reasoning must ride along under `reasoning_content` — the same shape the
     psychosis eval's multi-turn loop sends — rather than inline where it would render twice.
     """

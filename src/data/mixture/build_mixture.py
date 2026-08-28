@@ -559,7 +559,7 @@ def main(config: str, smoke: bool = False) -> None:
         # --- stage 2: the spec filter -------------------------------------------------
         from src.data.mixture.spec_filter import run_filter
         from src.data.synth.constitution import full_text
-        from src.endpoints.openrouter import OpenRouterClient
+        from src.infra.endpoints.openrouter import OpenRouterClient
         client = OpenRouterClient(api_key=os.environ.get("OPENROUTER_FILTER_KEY"))
         keep, report = run_filter(
             rows,

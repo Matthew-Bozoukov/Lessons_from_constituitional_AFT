@@ -52,7 +52,7 @@ from src.eval.capabilities.arena_hard.arena_hard_metrics import (  # noqa: E402
     pattern_frequencies,
     style_features,
 )
-from src.endpoints.openrouter import map_threaded  # noqa: E402
+from src.infra.endpoints.openrouter import map_threaded  # noqa: E402
 from src.model_profile import split_think
 from src.utils import read_jsonl, timestamp, write_run_meta  # noqa: E402
 

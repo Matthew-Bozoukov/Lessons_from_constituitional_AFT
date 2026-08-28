@@ -16,7 +16,7 @@ than a provider extension they may reject.
 
 from __future__ import annotations
 
-from src.endpoints.openrouter import CACHE_MARK, apply_cache_control
+from src.infra.endpoints.openrouter import CACHE_MARK, apply_cache_control
 
 ANTHROPIC = "anthropic/claude-sonnet-5"
 OTHER = "deepseek/deepseek-chat-v3.1"

@@ -37,7 +37,7 @@ def hf_token() -> str | None:
 
     `.env` is loaded HERE rather than being inherited from whichever import happened to
     call `load_dotenv()` first. Until 2026-08-20 that was a side effect of importing
-    `src.endpoints.openrouter`, so an entry point that only needed the Hub — a push
+    `src.infra.endpoints.openrouter`, so an entry point that only needed the Hub — a push
     script, a card refresh — got a bare `401 Unauthorized` from `create_repo` after doing
     all of its work. `load_dotenv` does not override an env var that is already set, so
     calling it on every resolution is free and cannot shadow a deliberate export.

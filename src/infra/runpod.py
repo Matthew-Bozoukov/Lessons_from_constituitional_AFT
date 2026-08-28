@@ -5,7 +5,7 @@
 
 A serving pod boots credential-light (an HF token only when one is given, never the RunPod
 key), installs vLLM into a Python 3.12 venv, pulls the base model and every adapter, pins
-the thinking mode into the chat template exactly as src/endpoints/vllm_server.pin_template
+the thinking mode into the chat template exactly as src/infra/endpoints/vllm.pin_template
 does, and serves `base` + one LoRA module per adapter on :8000, published through the
 proxy at https://<pod>-8000.proxy.runpod.net/v1. :8080 serves the boot log so "still
 downloading" can be told from "dead" from a browser.
@@ -16,7 +16,7 @@ detached `watchdog` process that terminates a pod when the process that launched
 gone or a lifetime cap passes (CLAUDE.md "Paid infrastructure": never rely on the
 orchestrator surviving), and `orphans` for the startup sweep.
 
-    python -m src.endpoints.runpod watchdog <pod_id> <parent_pid> <max_lifetime_s> <log>
+    python -m src.infra.runpod watchdog <pod_id> <parent_pid> <max_lifetime_s> <log>
 """
 
 from __future__ import annotations
@@ -125,7 +125,7 @@ def bootstrap_script(
         parser_flags += (
             f" --enable-auto-tool-choice --tool-call-parser {tool_call_parser}"
         )
-    # Pin thinking mode into the SERVED template, exactly as src/endpoints/vllm_server.py
+    # Pin thinking mode into the SERVED template, exactly as src/infra/endpoints/vllm.py
     # pin_template does. Qwen3.6's stock template does NOT enable thinking by default, so a
     # client that cannot pass chat_template_kwargs (the ODCV harness cannot) gets no
     # `<think>` prefill; the model then emits a short think-wrapped answer, never closes
@@ -457,7 +457,7 @@ def start_watchdog(
         [
             sys.executable,
             "-m",
-            "src.endpoints.runpod",
+            "src.infra.runpod",
             "watchdog",
             pod_id,
             str(os.getpid()),
@@ -521,6 +521,6 @@ if __name__ == "__main__":
         watchdog(sys.argv[2], int(sys.argv[3]), int(sys.argv[4]))
     else:
         raise SystemExit(
-            "usage: python -m src.endpoints.runpod watchdog <pod_id> <parent_pid> "
+            "usage: python -m src.infra.runpod watchdog <pod_id> <parent_pid> "
             "<max_lifetime_s> <log_path>"
         )

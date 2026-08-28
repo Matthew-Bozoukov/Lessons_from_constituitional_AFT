@@ -14,7 +14,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from omegaconf import OmegaConf
 
-from src.endpoints.vllm_server import SshExec, VllmServer, resolve_target
+from src.infra.endpoints.vllm import SshExec, VllmServer, resolve_target
 from src.eval import EVALS, resolve
 from src.eval.layout import assert_layout, publish_layout
 from src.huggingface import push_run_dir

@@ -22,7 +22,7 @@ from tqdm import tqdm
 load_dotenv()
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-PROVIDER_PINS_PATH = Path(__file__).resolve().parents[2] / "configs/endpoints/providers.yaml"
+PROVIDER_PINS_PATH = Path(__file__).resolve().parents[3] / "configs/endpoints/providers.yaml"
 
 _pins: dict | None = None
 
