@@ -368,12 +368,16 @@ class Result:
     noise: dict[str, Any] = field(default_factory=dict)
     claims: list[str] = field(default_factory=list)
     dropped_items: list[str] = field(default_factory=list)
+    shape: str = "symmetric"          # "symmetric" | "logit" | "wilson-at-boundary"
+    lo_symmetric: float = 0.0         # mean -/+ mult*se, kept on the record even when the
+    hi_symmetric: float = 0.0         # reported interval is the log-odds one
 
     def as_dict(self) -> dict:
         d = asdict(self)
         d["terms"] = {k: _jsonable(v) for k, v in self.terms.items()}
         d["noise"] = {k: _jsonable(v) for k, v in self.noise.items()}
         d["ci95"] = [self.lo, self.hi]
+        d["ci95_symmetric"] = [self.lo_symmetric, self.hi_symmetric]
         return d
 
 
@@ -449,17 +453,83 @@ def _estimand(table: Table, checkpoint_sampling: str) -> str:
     return f"mean outcome of {who} on {where}{mix}"
 
 
+def _boundary_n(table: Table, checkpoint_sampling: str) -> int:
+    """Draws on the smallest SAMPLED axis -- the axis that limits what the data can rule out.
+
+    Only used when the estimate sits on the edge of its range, where there is no spread to
+    scale. With 3 checkpoints and 40 items all reading zero we have 40 draws bounding the item
+    distribution but only 3 bounding the checkpoint distribution, so 3 is the honest count: an
+    unobserved checkpoint could still misbehave, and no number of items rules that out.
+    """
+    axes = []
+    if checkpoint_sampling == "sampled":
+        axes.append(table.n_checkpoints)
+    if table.design.item_sampling == "sampled":
+        axes.append(table.n_items)
+    if axes:
+        return max(min(axes), 1)
+    return max(int(np.nansum(table.reps)), 1)   # both fixed: rollouts are the only randomness
+
+
+def _shape_interval(mean: float, se: float, mult: float, bounds: tuple[float, float] | None,
+                    n_floor: int, z: float = Z_95) -> tuple[float, float, str]:
+    """`lo`, `hi` and the shape used. Symmetric unless the value is declared a bounded rate.
+
+    `mean +/- t*SE` assumes the sampling distribution of the mean is symmetric. For a rate near
+    its floor it is not: the mean cannot go below the floor but can go well above, so the
+    distribution is right-skewed, the symmetric interval sits too far left and under-covers, and
+    its lower end can fall outside the range entirely. Taking the same `+/- t*SE` step on the
+    log-odds scale -- where the boundary is at infinity -- and mapping back gives an asymmetric
+    interval that cannot leave the range. Delta method: SD(logit p) = SE / (p(1-p)).
+
+    The estimand and the SE are untouched; only the geometry of the interval around them changes.
+    """
+    if bounds is None:
+        return mean - mult * se, mean + mult * se, "symmetric"
+    lo_b, hi_b = bounds
+    span = hi_b - lo_b
+    p, s = (mean - lo_b) / span, se / span
+    if s > 0 and 0.0 < p < 1.0:
+        half = mult * s / (p * (1.0 - p))
+        centre = math.log(p / (1.0 - p))
+        return (lo_b + span / (1.0 + math.exp(-(centre - half))),
+                lo_b + span / (1.0 + math.exp(-(centre + half))), "logit")
+    # On the edge of the range (or every cell identical): no log-odds, and every spread is zero,
+    # so the symmetric interval would be a POINT -- certainty from a finite sample. Fall back to
+    # the binomial score interval at the binding axis to get a real bound. It takes the NORMAL z,
+    # not `mult`: Wilson inverts a score test whose nominal level is defined by z, and `mult`
+    # here is a t on a df estimated from spreads that are all zero (typically inf, but a
+    # near-degenerate table can make it 2, which would move this bound for no honest reason).
+    lo, hi = wilson(p * n_floor, n_floor, z=z)
+    return lo_b + span * lo, lo_b + span * hi, "wilson-at-boundary"
+
+
 def _finish(table: Table, checkpoint_sampling: str, method: str, mean: float, se2: float, df: float,
-            terms: dict[str, float], alpha: float) -> Result:
+            terms: dict[str, float], alpha: float,
+            bounds: tuple[float, float] | None = None) -> Result:
     se = math.sqrt(max(se2, 0.0))
     mult = t_quantile(1 - alpha / 2, df)
     noise = _within_cell_block(table)
     if noise["estimable"] and se2 > 0:
         noise["share"] = float(noise["term"] / se2)
-    return Result(_estimand(table, checkpoint_sampling), method, float(mean), se, float(mean - mult * se),
-                  float(mean + mult * se), mult, df, table.n_checkpoints, table.n_items, checkpoint_sampling,
+    n_floor = _boundary_n(table, checkpoint_sampling)
+    lo, hi, shape = _shape_interval(float(mean), se, mult, bounds, n_floor,
+                                    z=t_quantile(1 - alpha / 2, math.inf))
+    claims = _claims(table, checkpoint_sampling)
+    if shape == "logit":
+        claims.append(f"the value is a rate on [{bounds[0]:g}, {bounds[1]:g}], so the interval is "
+                      "built on the log-odds scale and is asymmetric; mean and SE are unchanged")
+    elif shape == "wilson-at-boundary":
+        claims.append(f"DEGENERATE: every spread estimate is 0, so the `terms`, `se` and `df` "
+                      f"above measure nothing and the claims above them are vacuous. The estimate "
+                      f"sits on the edge of [{bounds[0]:g}, {bounds[1]:g}], so the reported "
+                      f"interval is instead a binomial score bound at n={n_floor} -- the draws on "
+                      f"the smallest sampled axis -- i.e. what that many draws cannot rule out")
+    return Result(_estimand(table, checkpoint_sampling), method, float(mean), se, float(lo), float(hi),
+                  mult, df, table.n_checkpoints, table.n_items, checkpoint_sampling,
                   table.design.item_sampling,
-                  terms, table.rollouts(), noise, _claims(table, checkpoint_sampling), list(table.dropped_items))
+                  terms, table.rollouts(), noise, claims, list(table.dropped_items),
+                  shape=shape, lo_symmetric=float(mean - mult * se), hi_symmetric=float(mean + mult * se))
 
 
 def _as_table(x: Any, design: Design | None) -> Table:
@@ -484,7 +554,7 @@ def _checkpoint_sampling(table: Table, declared: str | None) -> str:
 # --------------------------------------------------------------------------- intervals
 
 def interval(obs: Any, design: Design | None = None, *, checkpoints: str | None = None,
-             alpha: float = 0.05) -> Result:
+             alpha: float = 0.05, bounds: tuple[float, float] | None = None) -> Result:
     """The 95% interval for the table's mean under its Design.
 
     Args:
@@ -493,6 +563,13 @@ def interval(obs: Any, design: Design | None = None, *, checkpoints: str | None 
         checkpoints: "sampled" (>= 2 from one pipeline) or "fixed"; inferred as sampled iff
             n >= 2. Sampled adds the checkpoint and interaction terms.
         alpha: Two-sided level.
+        bounds: `(lo, hi)` when the value is a RATE confined to that range -- ODCV's violation
+            percentage `(0, 100)`, MMLU's 0/1 correctness `(0, 1)`. The interval is then built on
+            the log-odds scale, so it is asymmetric and cannot leave the range; without it the
+            interval is the symmetric `mean +/- t*SE`. This is a property of the value column, not
+            of the Design (ODCV runs a rate and a severity score through the SAME Design), and it
+            changes only the interval's geometry -- never the estimand, the mean, or the SE. Leave
+            it None for anything unbounded or not rate-like (severity, Elo, raw scores).
 
     Returns:
         A Result. Which spreads are combined, and the df of the multiplier:
@@ -516,13 +593,13 @@ def interval(obs: Any, design: Design | None = None, *, checkpoints: str | None 
                             (t["T_C"], (n_checkpoints - 1) * (n_items - 1))])
         terms = {"T_A": t["T_A"], "T_B": t["T_B"], "T_C": t["T_C"], "negative_fallback": fallback,
                  "df_source": "Satterthwaite over T_A, T_B, T_C"}
-        return _finish(table, ckpt, "T_A + T_B - T_C, t_nu (Satterthwaite)", mu, se2, df, terms, alpha)
+        return _finish(table, ckpt, "T_A + T_B - T_C, t_nu (Satterthwaite)", mu, se2, df, terms, alpha, bounds)
     if ckpt == "sampled":  # items fixed
         return _finish(table, ckpt, "T_A (per-model rates), t_{n-1}", mu, t["T_A"], table.n_checkpoints - 1,
-                       {"T_A": t["T_A"]}, alpha)
+                       {"T_A": t["T_A"]}, alpha, bounds)
     if table.design.item_sampling == "sampled":  # models fixed
         return _finish(table, ckpt, "spread of per-item rates over J (T_B), t_{J-1}", mu, t["T_B"],
-                       table.n_items - 1, {"T_B": t["T_B"]}, alpha)
+                       table.n_items - 1, {"T_B": t["T_B"]}, alpha, bounds)
     # both fixed: rollouts are the only randomness
     if not np.isfinite(table.within_cell_var).all():
         raise NotEstimable(
@@ -532,12 +609,18 @@ def interval(obs: Any, design: Design | None = None, *, checkpoints: str | None 
     parts = _within_cell_parts(table)
     se2 = sum(v for v, _ in parts)
     return _finish(table, ckpt, "within-cell rollout noise only, t_nu (Satterthwaite over cells)",
-                   mu, se2, satterthwaite(parts), {"noise_term": se2}, alpha)
+                   mu, se2, satterthwaite(parts), {"noise_term": se2}, alpha, bounds)
 
 
 def difference(obs_a: Any, obs_b: Any, design: Design | None = None, *, checkpoints: str | None = None,
                paired_checkpoints: bool = False, alpha: float = 0.05) -> Result:
     """Interval for mean(A) - mean(B), paired on every axis the two arms share.
+
+    Deliberately has no `bounds`: a difference of two rates lives on [-span, span], can be
+    negative, and has no log-odds. Nor does it need one -- the skew `bounds` corrects comes from
+    the estimate approaching a boundary, and a difference sits in the middle of its range. (The
+    `paired_checkpoints` branch routes a difference table through `interval` without bounds for
+    the same reason.)
 
     Items are always paired (both arms must cover the same items; the intersection is used
     and the rest recorded). Checkpoints are paired only when `paired_checkpoints` -- the same

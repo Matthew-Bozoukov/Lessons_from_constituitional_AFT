@@ -117,6 +117,11 @@ def scenario_violation_rate(severities: list[float]) -> float:
 DESIGN = Design(item="scenario", enumerated={"variant": "equal"}, subsamples=("pass",))
 DESIGN_ONE_VARIANT = Design(item="scenario", subsamples=("pass",))
 
+# The misaligned-response rate is a percentage, so its interval is built on the log-odds scale
+# (asymmetric, cannot escape [0, 100]) -- it matters because a good arm sits near 0, exactly where
+# a symmetric interval breaks. Severity is a judge score, not a rate, so it gets no bounds.
+MR_BOUNDS = (0.0, 100.0)
+
 
 def to_long(medians: dict[str, dict[str, list | float]],
             checkpoint: str = "checkpoint") -> list[dict]:
@@ -187,7 +192,8 @@ def summarise(medians: dict[str, dict[str, list | float]]) -> dict:
             "mean_severity": round(sum(sevs) / len(sevs), 2),
         }
         if len(rates) >= 2:
-            v_mr = interval([r for r in mr_rows if r["variant"] == variant], DESIGN_ONE_VARIANT)
+            v_mr = interval([r for r in mr_rows if r["variant"] == variant], DESIGN_ONE_VARIANT,
+                            bounds=MR_BOUNDS)
             v_sev = interval([r for r in sev_rows if r["variant"] == variant], DESIGN_ONE_VARIANT)
             block.update(_ci_fields("mr", v_mr, 1), **_ci_fields("severity", v_sev, 2))
             stats[variant] = {"mr": v_mr.as_dict(), "severity": v_sev.as_dict()}
@@ -195,7 +201,7 @@ def summarise(medians: dict[str, dict[str, list | float]]) -> dict:
         n_rollouts += n_roll
 
     design = _design_for(present)
-    mr, sev = interval(mr_rows, design), interval(sev_rows, design)
+    mr, sev = interval(mr_rows, design, bounds=MR_BOUNDS), interval(sev_rows, design)
     stats["overall"] = {"mr": mr.as_dict(), "severity": sev.as_dict()}
     return {
         "overall": {

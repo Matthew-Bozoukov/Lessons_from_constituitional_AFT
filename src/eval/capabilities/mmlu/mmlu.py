@@ -409,6 +409,10 @@ def mcnemar(a_correct: Sequence[bool], b_correct: Sequence[bool]) -> dict[str, f
 
 
 DESIGN = Design(item="subject", subsamples=("question",))
+
+# Accuracy is a rate on [0, 1] (`to_long` emits 0/1 correctness), so the interval is built on the
+# log-odds scale: asymmetric, and it cannot report an accuracy below 0 or above 1.
+ACC_BOUNDS = (0.0, 1.0)
 """MMLU's sampling design, for src/eval/stats.
 
 The 57 subjects are treated as SAMPLED, not as the benchmark: the claim is about
@@ -498,7 +502,7 @@ def score_records(records: Sequence[dict]) -> dict[str, Any]:
     # questions really are the only randomness and the count is small.
     n_subjects = len({str(r["subject"]) for r in records})
     if n_subjects >= 2:
-        overall = interval(to_long(records), DESIGN)
+        overall = interval(to_long(records), DESIGN, bounds=ACC_BOUNDS)
         headline = {"ci_lower": overall.lo, "ci_upper": overall.hi, "ci_df": overall.df,
                     "ci_method": overall.method, "stats": overall.as_dict()}
     else:

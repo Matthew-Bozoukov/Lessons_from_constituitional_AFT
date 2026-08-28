@@ -79,6 +79,42 @@ cell has the same R and the same noise, and correctly loses df when one cell dom
 The two single-source cases need no approximation: `T_A` alone is `n−1`, `T_B` alone is
 `J−1`, exactly.
 
+## 3b. The shape: why not always symmetric
+
+`μ̂ ± t√Var` assumes μ̂'s sampling distribution is symmetric. For a **rate** near its floor it is
+not: the mean cannot go below 0 but can go well above, so the distribution is right-skewed. The
+symmetric interval then sits too far left, under-covers, and can report a negative violation rate.
+
+Pass `bounds=(lo, hi)` to `interval` and the same `± t·SE` step is taken on the **log-odds**
+scale, where the boundary is at infinity, then mapped back — asymmetric, and it cannot leave the
+range. Delta method: `SD(logit p) = SE / (p(1−p))`. **The estimand, μ̂ and the SE are unchanged;
+only the geometry is.** `Result.shape` records which was used and `lo_symmetric`/`hi_symmetric`
+keep the symmetric one on the record.
+
+`bounds` belongs to the *value*, not the Design — ODCV runs a rate and a severity score through
+the same Design. Declared for ODCV's MR (`0, 100`) and MMLU accuracy (`0, 1`); not for severity.
+
+Measured over 2000 simulated experiments (`scratch/stats/simulate_coverage.py`), logit covers
+better in **every** regime, and is narrower mid-range — it buys the coverage where it is needed,
+not everywhere:
+
+| regime | symmetric | logit |
+|---|---|---|
+| base, μ≈0.41 | 93.5% | 94.2% |
+| near-zero, μ≈0.045 | 89.8% | **92.8%** |
+| one fixed checkpoint, near-zero | 90.7% | **93.7%** |
+
+`difference()` deliberately takes no `bounds`: a difference of rates can be negative and has no
+log-odds, and it sits mid-range, where symmetric is already the right shape.
+
+**At the boundary** (μ̂ exactly 0 or 100) every spread is 0, so the symmetric interval collapses
+to a *point* — certainty from a finite sample, the worst failure of the three. There is no
+log-odds either, so the interval falls back to a Wilson score bound at the draws on the
+**smallest sampled axis** (3 seeds beats 40 scenarios: an unobserved seed could still misbehave,
+and no number of scenarios rules that out). It uses the normal `z`, not `t`, because Wilson's
+level is defined by `z` and the df here is estimated from spreads that are all zero. A clean arm
+reports `[0, 56%]` on 3×25, not `[0, 0]`, and `claims` flags the result as degenerate.
+
 ## 4. The Design decides which spreads apply
 
 | factor kind | meaning | examples | effect |
