@@ -157,31 +157,27 @@ cwd-relative to the root; there is no `cd` into a project directory any more.
 
 ### Terminology: "logs" means ROLLOUTS
 
-When the user says **"save the logs"**, they mean the **agent rollouts** — the model actually
-solving the task: its reasoning plus the actions it took. They do **not** mean stdout, stderr,
-harness progress logs, or `docker_output.log`. Default to saving rollouts.
+"Save the logs" means the **agent rollouts** — the task the agent was given AND what it did,
+self-contained and readable end to end. Not stdout, stderr, harness progress logs, or
+`docker_output.log` (container stdout; ODCV's rollout is the `messages_record.txt` beside it).
+The prompt is part of the rollout: agentic-misalignment stores it once per *condition*, so run
+`src/eval/misalignment/agentic_misalignment/build_rollouts.py` after every such eval to stitch
+per-sample transcripts.
 
-A rollout must be **self-contained and readable end to end**: the task the agent was given AND
-what it did. Saving only the response half is not enough — the prompt is part of the rollout.
+### Results live on Hugging Face, not in `output/`
 
-Where the rollout actually lives, per harness:
+Every eval run is pushed to `LASR-Callum` in the contract layout (`src/eval/layout.py`):
+`rollouts/` (ODCV: `<variant>/<Scenario>/pass<N>/messages_record.txt`), `results/`
+(`results.json` + `.md` mirror, judge scores), `metadata/` (`run_meta.json`, config), and a
+card tagged `eval-run`, `eval:<name>`, `model:<key>`, `mode:<mode>` — the dashboard finds runs
+only by that org and those tags. `uv run evals` does all of this; hand-pushed runs must match.
+When `scratch/` code bypasses the `scripts/` entrypoints (a one-off harness, a repeat-rollout
+driver, a repack), read the contract those entrypoints enforce — `src/eval/layout.py`,
+`push_run_dir`'s card fields, the tags, the org — and reproduce it; a run that skips the
+entrypoint does not get to skip the contract.
 
-| Harness | Rollout | Trap |
-|---|---|---|
-| ODCV-Bench | `agent_logs/.../<Scenario>/messages_record.txt` | `docker_output.log` beside it is container stdout, **not** the rollout |
-| agentic-misalignment | `models/<m>/<condition>/sample_NNN/response.json` -> `raw_response` | the prompt lives once per *condition* in `prompts/<condition>/`, not per sample — join them or the rollout is unreadable alone |
-
-`src/eval/misalignment/agentic_misalignment/build_rollouts.py` stitches agentic-misalignment prompts + responses into
-self-contained per-sample transcripts. Run it after any agentic-misalignment eval.
-
-### `output/` conventions
-- `output/difficult_advice_gen/<tag>_<ts>/` — generated data (`sft_dataset*.jsonl`, `summary.md`, `all_records.jsonl`, `run_meta.json`).
-- `output/eval_summaries/*.json` — **the canonical eval numbers** (baseline/post × thinking/nothink). Reports read from here; pull instance results into here.
-- `output/report/`, `output/mmlu/`, `output/lmsys/`, `output/inspect/` — reports/plots + `*_results.md` mirrors.
-- `output/logs/` — teed logs of long local jobs.
-- `output/adapters/` — pulled LoRA adapters (the durable copy lives on HF, see below).
-- Every result dir gets a `run_meta.json` (git SHA, config, timestamp). Every output filename gets a timestamp.
-- Keep a compact **markdown mirror** (`*_results.md`) next to any plot — numbers must be greppable without opening PNGs.
+`output/` is gitignored scratch for iteration: timestamped filenames, a `run_meta.json` (git
+SHA, config) in every result dir, a `*_results.md` beside every plot. Nothing there is canonical.
 
 ## Datasets, caches and artifacts go to Hugging Face
 
