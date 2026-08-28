@@ -901,7 +901,7 @@ def pick_and_serve(
             auto=args.yes,
         ):
             raise SystemExit("not launched")
-        pod_id = runpod.launch_pod(
+        pod_id = runpod.serve_vllm(
             base,
             [(names[o.repo], o.repo) for o in picked],
             mode=mode,

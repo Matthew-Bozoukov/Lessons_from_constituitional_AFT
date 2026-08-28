@@ -1,9 +1,16 @@
-# ABOUTME: RunPod REST client + the vLLM serving pod (one base, several LoRA modules, reached
-# ABOUTME: over RunPod's HTTPS proxy) that `uv run chat` and the evals stand up, poll and tear down.
+# ABOUTME: The one place this repo rents a GPU: RunPod REST client, `provision_runpod` (rent a
+# ABOUTME: pod running any script) and `serve_vllm` (rent one serving a base + LoRA modules).
 
-"""RunPod pods that serve model organisms.
+"""RunPod pods: rent, serve, and above all tear down.
 
-A serving pod boots credential-light (an HF token only when one is given, never the RunPod
+`provision_runpod(spec, name=, start_script=)` is the only function in the repo that creates a
+pod, and it knows nothing about what the pod runs. `serve_vllm` is the vLLM layer on top of it;
+a training or harness driver supplies its own `start_script` instead. What to rent comes from a
+`ProvisionSpec` built from a config `provision:` block, never from a constant at a call site --
+so which GPU a run used is part of its record.
+
+
+The serving pod boots credential-light (an HF token only when one is given, never the RunPod
 key), installs vLLM into a Python 3.12 venv, pulls the base model and every adapter, pins
 the thinking mode into the chat template exactly as src/infra/endpoints/vllm.pin_template
 does, and serves `base` + one LoRA module per adapter on :8000, published through the
@@ -28,6 +35,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from dataclasses import dataclass, fields
 from typing import Any, Callable
 
 import requests
@@ -85,6 +93,88 @@ def boot_log_url(pod_id: str) -> str:
 
 
 # --- the serving pod ------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ProvisionSpec:
+    """What to rent. Every field a caller might reasonably vary, none of them a constant.
+
+    Built from a config `provision:` block (`ProvisionSpec.from_config`) so the GPU choice is
+    part of the scientific record of a run rather than a default buried in this module. `gpu`
+    must match RunPod's catalogue id exactly -- `gpu_price` is the cheap way to check one
+    before renting it.
+    """
+    gpu: str = GPU
+    count: int = 1
+    cloud: str = "SECURE"
+    disk_gb: int = 200
+    cuda: str = "13.0"
+    image: str = IMAGE
+    max_hours: float = 6.0
+    pubkey_path: str = "~/.ssh/id_ed25519.pub"
+
+    @classmethod
+    def from_config(cls, cfg: Any | None) -> "ProvisionSpec":
+        """Build from a config `provision:` block (dict / OmegaConf); unknown keys are an error."""
+        if not cfg:
+            return cls()
+        d = dict(cfg)
+        unknown = set(d) - {f.name for f in fields(cls)}
+        assert not unknown, (
+            f"unknown provision keys {sorted(unknown)}; allowed: "
+            f"{sorted(f.name for f in fields(cls))}")
+        return cls(**d)
+
+
+def provision_runpod(
+    spec: ProvisionSpec,
+    *,
+    name: str,
+    start_script: str,
+    env: dict[str, str] | None = None,
+    ports: tuple[str, ...] = ("8000/http", "8080/http", "22/tcp"),
+) -> str:
+    """Rent a pod and return its id. BILLS FROM THIS MOMENT until `terminate`.
+
+    The one place in the repo that creates a RunPod pod. Everything specific to what the pod
+    then DOES belongs in `start_script`, which the caller builds -- `serve_vllm` for a serving
+    pod, the training driver for a training one. That split is why this function knows nothing
+    about vLLM, adapters or thinking modes.
+
+    Callers must pair this with teardown they do not rely on their own process to run
+    (CLAUDE.md "Paid infrastructure"): `start_watchdog` plus a `terminate` in a `finally`.
+    """
+    env = dict(env or {})
+    env.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "1")
+    pubkey_file = Path(spec.pubkey_path).expanduser()
+    if pubkey_file.exists():
+        pubkey = pubkey_file.read_text().strip()
+        assert pubkey.startswith("ssh-"), f"not an ssh public key: {pubkey_file}"
+        env["PUBLIC_KEY"] = pubkey
+    pod = call(
+        "POST",
+        "/pods",
+        data=json.dumps(
+            {
+                # The RunPod account is SHARED with teammates: the name says whose pod it is and
+                # what it serves, and the prefix is what marks it as this tool's to tear down.
+                "name": name,
+                "imageName": spec.image,
+                "gpuTypeIds": [spec.gpu],
+                "gpuCount": spec.count,
+                "containerDiskInGb": spec.disk_gb,
+                "volumeInGb": 0,
+                "ports": list(ports),
+                "cloudType": spec.cloud,
+                "allowedCudaVersions": [
+                    c.strip() for c in str(spec.cuda).split(",") if c.strip()
+                ],
+                "dockerStartCmd": ["bash", "-lc", start_script],
+                "env": env,
+            }
+        ),
+    )
+    return str(pod["id"])
 
 
 def bootstrap_script(
@@ -237,7 +327,7 @@ def validate_bootstrap(script: str) -> None:
     )
 
 
-def launch_pod(
+def serve_vllm(
     base: str,
     mods: list[tuple[str, str]],
     *,
@@ -254,8 +344,16 @@ def launch_pod(
     reasoning_parser: str | None = None,
     tool_call_parser: str | None = None,
     pubkey_path: str = "~/.ssh/id_ed25519.pub",
+    provision: ProvisionSpec | None = None,
 ) -> str:
-    """Create a serving pod; returns its id. Bills from this moment until `terminate`.
+    """Rent a pod that SERVES `base` + `mods` over vLLM; returns its id.
+
+    The vLLM half of provisioning: it decides what the pod runs (`bootstrap_script`) and
+    hands the rental itself to `provision_runpod`. A caller wanting a pod for something else
+    -- training, a docker harness -- calls `provision_runpod` directly with its own script.
+
+    Serving parameters are the CALLER's to decide, from `ModelProfile` facts: this function
+    applies them, it does not choose them. Bills from this moment until `terminate`.
 
     Args:
         cuda: Comma-separated CUDA versions the host driver must satisfy. vLLM pulls torch
@@ -280,36 +378,12 @@ def launch_pod(
         tool_call_parser=tool_call_parser,
     )
     validate_bootstrap(script)
-    env = {"HF_HUB_ENABLE_HF_TRANSFER": "1"}
-    pubkey_file = Path(pubkey_path).expanduser()
-    if pubkey_file.exists():
-        pubkey = pubkey_file.read_text().strip()
-        assert pubkey.startswith("ssh-"), f"not an ssh public key: {pubkey_file}"
-        env["PUBLIC_KEY"] = pubkey
-    pod = call(
-        "POST",
-        "/pods",
-        data=json.dumps(
-            {
-                # The RunPod account is SHARED with teammates: the name says whose pod it is and
-                # what it serves, and the prefix is what marks it as this tool's to tear down.
-                "name": pod_name,
-                "imageName": IMAGE,
-                "gpuTypeIds": [gpu],
-                "gpuCount": 1,
-                "containerDiskInGb": disk_gb,
-                "volumeInGb": 0,
-                "ports": ["8000/http", "8080/http", "22/tcp"],
-                "cloudType": cloud,
-                "allowedCudaVersions": [
-                    c.strip() for c in str(cuda).split(",") if c.strip()
-                ],
-                "dockerStartCmd": ["bash", "-lc", script],
-                "env": env,
-            }
-        ),
+    return provision_runpod(
+        provision or ProvisionSpec(gpu=gpu, disk_gb=disk_gb, cloud=cloud, cuda=cuda,
+                                   pubkey_path=pubkey_path),
+        name=pod_name,
+        start_script=script,
     )
-    return str(pod["id"])
 
 
 # --- observing pods -------------------------------------------------------------------------
