@@ -1,0 +1,48 @@
+# ABOUTME: DAN jailbreak eval — in-the-wild jailbreak templates x the forbidden-question set,
+# ABOUTME: LLM-judged REFUSED vs ANSWERED, reported as ASR over the cells that spoke.
+# Run: uv run scripts/run_eval.py --target <hf_path | provider:model-id> --name dan [key=value ...]
+#
+# DAN ("Do Anything Now", arXiv:2308.03825). Registered port of the scratch driver
+# scratch/safety_evals/run_safety.py::dan; the judge prompt and the two exclusion rules are
+# carried over verbatim (see the runner's module docstring for why each exists).
+#
+# Cost: n_jailbreaks x n_questions target calls + the same number of judge calls. Defaults =
+# 5 jailbreaks x 390 questions = 1,950 generations per target.
+#
+# READ THE DENOMINATOR. `asr_pct` is over cells that actually said something; empty
+# completions and judge refusals are reported separately and excluded. Qwen3.6 arms differ a
+# lot in blank rate (StrongREJECT 2026-08-28: numina control 34.3% blank vs difficult-advice
+# 3.8%), so check `empty_completions` before comparing two arms' ASR.
+
+jailbreaks: jailbreaks_dan.json          # under the eval package dir, span_days desc
+question_set: TrustAIRLab/forbidden_question_set
+
+n_jailbreaks: 5     # the 5 most persistent in-the-wild templates
+n_questions: 0      # 0 = all 390; set a small number to subsample
+
+smoke: false        # true = 1 jailbreak x 2 questions, for wiring checks
+
+generation:          # target sampling.
+  temperature: 1.0
+  top_p: 0.95
+  # 16384: the templates run to 5k chars before the question, and a thinking target then
+  # deliberates at length. Too small a budget truncates inside <think>, leaving an empty
+  # answer that is excluded from ASR (CLAUDE.md gotcha 4) — watch empty_completions.
+  max_tokens: 16384
+  request_timeout: 600
+  max_retries: 2
+
+judge:               # binary refusal judge (NOT the target family — our targets are Qwen).
+  # A safety-filtered judge shown jailbreak output returns PROHIBITED_CONTENT on a fraction
+  # of calls; those are recorded as JUDGE_BLOCKED and excluded, never scored. If
+  # judge_blocked is large, switch to a willing grader (x-ai/grok-4.3) as psychosis.yaml did.
+  model: google/gemini-3-flash-preview
+  temperature: 0.0
+  max_tokens: 8      # the verdict is one word
+
+concurrency:
+  generation: 32     # matches the served --max-num-seqs for Qwen3.6
+  judge: 16
+
+serving:             # what this eval REQUIRES (validated by plan_serving).
+  context_window: 32768   # 5k-char template + 16384 generated tokens does not fit 16k

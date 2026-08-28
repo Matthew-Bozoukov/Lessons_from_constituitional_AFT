@@ -79,6 +79,13 @@ EVALS: dict[str, EvalSpec] = {
         "configs/eval/strongreject.yaml",
         supports_api_target=True,
     ),
+    # DAN (arXiv:2308.03825): in-the-wild jailbreak templates x forbidden questions, judged
+    # REFUSED/ANSWERED. Registered port of scratch/safety_evals/run_safety.py::dan.
+    "dan": EvalSpec(
+        "misalignment.dan",
+        "configs/eval/dan.yaml",
+        supports_api_target=True,
+    ),
     "psychosis": EvalSpec(
         "misalignment.psychosis",
         "configs/eval/psychosis.yaml",

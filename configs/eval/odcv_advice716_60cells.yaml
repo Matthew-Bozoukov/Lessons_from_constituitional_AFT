@@ -1,0 +1,78 @@
+# ABOUTME: ODCV-Bench eval of the ADVICE716 arm (matboz/2026-08-28-t2-9284-advice716-train),
+# ABOUTME: 60 cells (30 mandated + 30 incentivized), 32 containers.
+# Run: uv run evals --target matboz/qwen3.6-27b-lora-t2-9284-advice716-r64 --name odcv --config <this> --server <ssh-alias>
+#
+# CELL SET: 60 = 30 mandated + 30 incentivized -- byte-identical to the numina-control,
+# synthdoc, grok-responder and verbose-CoT seed-sweep arms, so this arm drops straight into
+# that ladder and its MR is comparable to theirs without an intersection step. The exclusion
+# lists below are copied verbatim from
+# configs/eval/odcv_bench_t2_9284_synthdoc_716_seed42_60cells.yaml and must not be edited:
+# they define the cell set, and changing one silently makes this arm incomparable.
+#
+# NOTE ON model/model_key/base_url: the sibling configs carry those three fields from the
+# scratch-driver era. run_eval overrides all three from the served target
+# (src/eval/misalignment/odcv/runner.py:92-94), so they are omitted here rather than left to
+# rot as values that look authoritative and are ignored.
+#
+# SERVING: ODCV needs tool calls. `serving.needs_tool_calls` below makes run_eval pass
+# --enable-auto-tool-choice --tool-call-parser qwen3_xml --reasoning-parser qwen3. WITHOUT
+# them every scenario completes as `ok` and writes NO transcript -- the agent cannot emit
+# tool calls, so it never acts, and that reads as a clean run in the summary. Cost one full
+# run before it was caught (2026-08-27); the declaration was missing from odcv_bench.yaml.
+# ODCV also drives docker WHERE THE DRIVER RUNS, so run this locally with --server, never
+# from a RunPod pod (unprivileged containers cannot create the per-scenario networks).
+
+temperature: 0.0
+bench_dir: "/home/matthewb/git repos/teaching_claude_why_replication/third_party/odcv-bench"
+output_root: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench"
+concurrency: 32
+scenario_timeout_s: 2400
+prune_images: false
+rollouts_per_cell: 1
+expected_cells: 60
+shard_count: 1
+shard_index: 0
+judges:
+  grok-4.20: "x-ai/grok-4.20"
+  gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
+baseline_results: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench/qwen3.6-27b-base-fp8/20260729_105106/results.json"
+
+# Same 10 exclusions as every sibling arm, so all arms are scored on the same 70 cells.
+exclude_scenarios:
+  - "incentivized/Academic-Research-Integrity-Finding"
+  - "incentivized/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Academic-Research-Integrity-Finding"
+  - "mandated/Clinical-Trial-Data-Management"
+  - "incentivized/Clinical-Trial-Integrity-Monitoring"
+  - "incentivized/Healthcare-Trial-Recruiter"
+  - "incentivized/Data-Privacy-Leak-Finding"
+  - "mandated/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Clinical-Trial-Integrity-Monitoring"
+  - "mandated/Healthcare-Appointment-Optimizer"
+
+# FIVE MORE EXCLUSIONS than the sibling arms, at the user's request (2026-08-16): the run
+# covers only the FIRST 65 cells of the driver's job order (all `mandated`, then
+# `incentivized` up to the cut). The driver builds jobs as mandated-then-incentivized in
+# scenario_names order, so "first 65" is exactly the five incentivized scenarios below.
+# CONSEQUENCE FOR COMPARISON: this arm is scored on a DIFFERENT cell set than
+# courtroom716 (69 cells) or the difficult-advice sibling (70). A headline MR from this
+# run is not directly comparable to theirs -- compare on the intersection, or say which
+# cell set each number came from.
+  - "incentivized/Marketing-Campaign"
+  - "incentivized/Propaganda-Engine-Finding"
+  - "incentivized/Roboadvisor-Ethicsbypass"
+  - "incentivized/Supply-Chain-Sabotage-Finding"
+  - "incentivized/University-Research-Grant-Approval"
+
+# FIVE MORE MANDATED EXCLUSIONS (this config only), dropping the seed-0 arm's 35 mandated
+# to 30. Same five names as the extra incentivized exclusions above, which is a coincidence
+# of driver order, not a rule.
+  - "mandated/Marketing-Campaign"
+  - "mandated/Propaganda-Engine-Finding"
+  - "mandated/Roboadvisor-Ethicsbypass"
+  - "mandated/Supply-Chain-Sabotage-Finding"
+  - "mandated/University-Research-Grant-Approval"
+
+serving:             # what this eval REQUIRES (validated by plan_serving).
+  needs_tool_calls: true
+  context_window: 16384

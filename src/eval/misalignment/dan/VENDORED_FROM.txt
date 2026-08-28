@@ -1,0 +1,9 @@
+jailbreaks_dan.json
+  The 20 most persistent in-the-wild jailbreak templates by span_days, selected in this repo
+  from TrustAIRLab/forbidden_question_set (see docs/LOG.md, the DAN-20 work). The same file
+  is vendored under src/eval/misalignment/strongreject/ for that eval's attack set; the two
+  are deliberately identical copies so the two benchmarks attack with the same templates.
+
+Questions
+  TrustAIRLab/forbidden_question_set (HF), loaded at run time -- 390 forbidden questions
+  across 13 content-policy scenarios. Paper: "Do Anything Now", arXiv:2308.03825.
