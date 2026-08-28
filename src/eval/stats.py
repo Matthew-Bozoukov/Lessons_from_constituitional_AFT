@@ -358,6 +358,19 @@ def _jsonable(v):
     return v
 
 
+def _noise_parts(table: Table) -> list[tuple[float, float]]:
+    """Each cell's contribution to Var(mu_hat) when rollouts are the only randomness.
+
+    `(w_j^2 * noise_var_ij / n^2, R_ij - 1)` per cell, ready for `satterthwaite`. Pooling
+    these as one estimate with df = sum(R-1) is exact only when every cell has the same R
+    AND the same noise; Satterthwaite reduces to that when they do (K equal parts of df d
+    give nu = K*d) and correctly loses df when one noisy cell dominates.
+    """
+    w = table.unit_weights
+    return [(float(w[j] ** 2 * table.noise_var[i, j] / table.n ** 2), float(table.reps[i, j] - 1))
+            for i in range(table.n) for j in range(table.J)]
+
+
 def _noise_block(table: Table) -> dict[str, Any]:
     """Rollout-noise contribution to Var(mu_hat), where the data can support it."""
     nv = table.noise_var
@@ -486,11 +499,10 @@ def interval(obs: Any, design: Design | None = None, *, models: str | None = Non
             "models and units both fixed: the only randomness is the rollouts, and with one "
             "rollout in some cell their variance cannot be estimated. Either run >= 2 rollouts "
             "per cell, or treat units as sampled (units='random'), which is a different claim.")
-    w = table.unit_weights
-    se2 = float((table.noise_var * w[None, :] ** 2).sum() / table.n ** 2)
-    df = float(max(1, (table.reps - 1).sum()))   # one df per extra rollout in each cell
-    return _finish(table, kind, "within-cell rollout noise only, t_{sum(R-1)}", mu, se2, df,
-                   {"noise_term": se2}, alpha)
+    parts = _noise_parts(table)
+    se2 = sum(v for v, _ in parts)
+    return _finish(table, kind, "within-cell rollout noise only, t_nu (Satterthwaite over cells)",
+                   mu, se2, satterthwaite(parts), {"noise_term": se2}, alpha)
 
 
 def difference(obs_a: Any, obs_b: Any, design: Design | None = None, *, models: str | None = None,
@@ -564,11 +576,10 @@ def difference(obs_a: Any, obs_b: Any, design: Design | None = None, *, models: 
     else:  # both fixed
         if not (np.isfinite(A.noise_var).all() and np.isfinite(B.noise_var).all()):
             raise NotEstimable("both fixed: rollout noise not estimable with one rollout per cell")
-        w = A.unit_weights
-        se2 = float((A.noise_var * w ** 2).sum() / A.n ** 2 + (B.noise_var * w ** 2).sum() / B.n ** 2)
-        df = float(max(1, (A.reps - 1).sum() + (B.reps - 1).sum()))
-        r = _finish(merged, kind, "within-cell rollout noise only, t_{sum(R-1)}", mean, se2, df,
-                    {"noise_term": se2}, alpha)
+        parts = _noise_parts(A) + _noise_parts(B)
+        se2 = sum(v for v, _ in parts)
+        r = _finish(merged, kind, "within-cell rollout noise only, t_nu (Satterthwaite over cells)",
+                    mean, se2, satterthwaite(parts), {"noise_term": se2}, alpha)
     def who(t: Table) -> str:
         return ("a checkpoint from its pipeline" if kind == "random"
                 else ("its checkpoint" if t.n == 1 else f"the mean of its {t.n} checkpoints"))

@@ -72,7 +72,12 @@ the seed term dominated, ν would fall toward 2 and the multiplier toward 4.3; t
 the whole reason for computing it rather than hard-coding 1.96.
 
 Welch's two-sample t (the arms-differ-in-models, units-fixed case) uses the same formula on
-its two parts — "Welch–Satterthwaite" is one thing, not two.
+its two parts — "Welch–Satterthwaite" is one thing, not two. The rollout-noise-only case
+uses it over the per-cell noise estimates, which reduces to the pooled `Σ (R−1)` when every
+cell has the same R and the same noise, and correctly loses df when one cell dominates.
+
+The two single-source cases need no approximation: `T_A` alone is `n−1`, `T_B` alone is
+`J−1`, exactly.
 
 ## 4. The Design decides which spreads apply
 
@@ -89,7 +94,7 @@ its two parts — "Welch–Satterthwaite" is one thing, not two.
 | random | random | `T_A + T_B − T_C` | Satterthwaite |
 | random | fixed | `T_A` | `n−1` |
 | fixed | random | `T_B` — Miller's one-model setting | `J−1` |
-| fixed | fixed | within-cell rollout noise; **needs R ≥ 2** | `Σ (R−1)` |
+| fixed | fixed | within-cell rollout noise; **needs R ≥ 2** | Satterthwaite over cells |
 
 Differences between arms pair on every shared axis (units always; models when the same
 checkpoints sit under both conditions) and add terms on the unshared ones.

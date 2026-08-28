@@ -147,6 +147,19 @@ def test_both_fixed_refuses_one_rollout_but_works_with_repeats():
     assert r.se > 0 and "rollout noise only" in r.method
 
 
+def test_both_fixed_df_is_pooled_when_balanced_and_smaller_when_one_cell_dominates():
+    """Satterthwaite over cells: equal cells reproduce the pooled sum(R-1); a dominant cell cuts it."""
+    fixed = Design(unit="scenario", units="fixed", nested=("pass",))
+    R, J = 4, 8
+    even = [{"model": "m0", "scenario": f"s{j}", "pass": k, "value": float(k % 2)}
+            for j in range(J) for k in range(R)]                       # identical spread in every cell
+    assert interval(even, fixed, models="fixed").df == pytest.approx(J * (R - 1))
+    lop = [{"model": "m0", "scenario": f"s{j}", "pass": k,
+            "value": (50.0 * k if j == 0 else float(k % 2))}           # one wildly noisier cell
+           for j in range(J) for k in range(R)]
+    assert interval(lop, fixed, models="fixed").df == pytest.approx(R - 1, abs=0.2)
+
+
 def test_random_models_needs_two_checkpoints():
     rng = np.random.default_rng(9)
     with pytest.raises(NotEstimable, match="one checkpoint"):
