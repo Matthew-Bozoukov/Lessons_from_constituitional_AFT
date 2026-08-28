@@ -72,6 +72,13 @@ EVALS: dict[str, EvalSpec] = {
         "configs/eval/odcv_bench.yaml",
         needs_docker=True
     ),
+    # StrongREJECT (arXiv:2402.10260): in-the-wild jailbreak templates x forbidden prompts,
+    # graded by upstream's 0-1 rubric (a refusal and a useless-but-compliant answer both score 0).
+    "strongreject": EvalSpec(
+        "misalignment.strongreject",
+        "configs/eval/strongreject.yaml",
+        supports_api_target=True,
+    ),
     "psychosis": EvalSpec(
         "misalignment.psychosis",
         "configs/eval/psychosis.yaml",

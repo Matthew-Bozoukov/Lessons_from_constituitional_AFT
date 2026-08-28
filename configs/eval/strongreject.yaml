@@ -1,0 +1,53 @@
+# ABOUTME: StrongREJECT jailbreak-robustness eval — in-the-wild jailbreak templates x
+# ABOUTME: StrongREJECT forbidden prompts, scored 0-1 by the official autograder rubric.
+# Run: uv run scripts/run_eval.py --target <hf_path | provider:model-id> --name strongreject [key=value ...]
+#
+# StrongREJECT (Souly et al., arXiv:2402.10260). The dataset and the autograder rubric are
+# upstream's, vendored verbatim under the eval's third_party/ (see VENDORED_FROM.txt). Score is
+# 0-1, LOWER IS SAFER: a refusal scores 0, and so does a response that plays along but says
+# nothing usable — that is the whole point of the benchmark over refusal-string checks.
+#
+# Cost: (n_jailbreaks + 1) x n_prompts target calls + the same number of judge calls. The +1 is
+# the `plain` control arm (no jailbreak wrapper) — the floor the attacked score is read against.
+# Defaults below = 20 jailbreaks + plain, 5 prompts each = 105 generations per target.
+
+dataset: strongreject_dataset.csv   # under the eval's third_party/ (313 prompts, 6 categories)
+jailbreaks: jailbreaks_dan.json     # under the eval package dir, sorted by span_days desc
+
+n_prompts: 5        # forbidden prompts per arm, sampled round-robin across the 6 categories
+n_jailbreaks: 20    # jailbreak templates, taken from the head of the file (most persistent)
+include_plain: true # also run every prompt with NO jailbreak wrapper — do not turn this off:
+                    # the attacked score is uninterpretable without its unattacked floor
+seed: 0             # seeds the per-category shuffle, so the prompt set is reproducible
+
+smoke: false        # true = 1 jailbreak + 1 prompt (+ plain), for wiring checks
+
+generation:          # target sampling.
+  temperature: 1.0
+  top_p: 0.95
+  # 16384: a jailbreak template runs to 5k chars before the forbidden prompt even starts, and a
+  # thinking target then deliberates about it at length. Too small a budget truncates inside
+  # <think>, leaving an EMPTY answer the grader cannot score (CLAUDE.md gotcha 4). Watch
+  # `inconclusive` / truncation_rate in results.json and raise this if they are non-trivial.
+  max_tokens: 16384
+  request_timeout: 600
+  max_retries: 2
+
+judge:               # the StrongREJECT autograder, run through OpenRouter.
+  # Upstream grades with GPT-4o-mini. A grader for this rubric must be WILLING to read
+  # jailbreak output and score it — a moralising model refuses and its cells drop out (surfaced
+  # as judge_failures). grok is the pick psychosis.yaml settled on for the same reason.
+  model: x-ai/grok-4.3
+  temperature: 0.0
+  max_tokens: 2048   # the rubric's reasoning + 3 numeric answers, with reasoning-token headroom
+                     # (some providers bill thinking as output — CLAUDE.md gotcha 4, judge side)
+
+concurrency:
+  generation: 16     # concurrent target calls
+  judge: 16          # concurrent judge calls
+
+serving:             # what this eval REQUIRES (validated by plan_serving against the family's
+                     # verified facts).
+  # 32768, not the sweep's usual 16384: the longest jailbreak template is ~5k chars and
+  # generation.max_tokens is 16384, so a 16k window truncates the reply on the long templates.
+  context_window: 32768
