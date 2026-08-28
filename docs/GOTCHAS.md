@@ -286,3 +286,31 @@ the boxes it never reached still held `run.log` from the PREVIOUS failed attempt
 `>>> ALL PASSES COMPLETE` from a stale log looks exactly like success. Dispatch
 fire-and-forget (`setsid nohup ... & disown`) and verify with `pgrep`, not with the log tail.
 
+
+## Two ODCV drivers on one Docker daemon destroy each other (2026-08-28)
+
+`odcv_rollout.py` names every compose project `odcv-<variant>-<scenario>` and tears each cell
+down with `docker compose -p <project> down -v`. Project names are GLOBAL on the daemon, so two
+ODCV runs on the same machine — different arms, different sessions, different worktrees — share
+every project name. Two drivers that overlap on the same scenarios delete each other's
+containers: cell logs read `executor-1 has been recreated … Error response from daemon: No such
+container: <id>`, the driver records `compose_exit_1+no_transcript` (or `compose_exit_137+
+no_container`) in ~20 s per cell, and BOTH runs finish "cleanly" with 0 transcripts. On
+2026-08-28 a GPT-seed pass and a par716coh pass started 4 s apart on the laptop and both
+wrote nothing (65 + 65 dead cells; the second driver had been launched by another Claude
+session in the main checkout, invisible from the worktree).
+
+Rules that follow:
+
+  1. **One ODCV driver per Docker daemon, ever.** Before launching, `pgrep -fl odcv_rollout_cli`
+     and `docker ps --filter name=odcv-` must both be empty — and stay empty for 30 s, because
+     a driver between passes looks idle.
+  2. **Check for other sessions**, not just other terminals: `ListAgents` shows peer Claude
+     sessions on the machine; a background session running ODCV from the main checkout does
+     not appear in the worktree's logs. Message it and take turns
+     (`scratch/gpt_seeds/run_missing_passes.sh` is the guarded pattern).
+  3. **A pass with 0 transcripts is a collision or a broken endpoint, never a result.** The
+     combine step's per-pass count (`rollout_001 … 0 transcripts`) is where it shows; the
+     rollout driver's own summary does not flag it.
+  4. Park a dead pass dir (rename it) before re-combining, or the combine step counts its 65
+     empty cells as "short of N rollouts".
