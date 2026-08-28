@@ -1,6 +1,16 @@
-# ABOUTME: ODCV-Bench eval of the ADVICE716 arm (matboz/2026-08-28-t2-9284-advice716-train),
-# ABOUTME: 60 cells (30 mandated + 30 incentivized), 32 containers.
-# Run: uv run evals --target matboz/qwen3.6-27b-lora-t2-9284-advice716-r64 --name odcv --config <this> --server <ssh-alias>
+# ABOUTME: ODCV-Bench on the shared 60-cell set (30 mandated + 30 incentivized), 32
+# ABOUTME: containers. Model-agnostic: pick the arm with --target.
+# Run: uv run evals --target <hf_path> --name odcv --config <this> --server <ssh-alias> passes=1
+#
+# ARM-AGNOSTIC ON PURPOSE. run_eval fills model/model_key/base_url from the served target, so
+# nothing here names an arm and every arm shares one cell set. Was
+# odcv_advice716_60cells.yaml until 2026-08-28, when the attack716 arm reused it verbatim and
+# the arm-specific filename became a lie.
+#
+# PASSES: the runner defaults to `passes: 2` and judges only after ALL passes finish. Left at
+# the default here because 2 passes is what the seed-sweep arms were built from; pass
+# `passes=1` on the CLI for a single-pass run, and say so when reporting, because a one-pass
+# arm's CI is wider than a two-pass sibling's by construction.
 #
 # CELL SET: 60 = 30 mandated + 30 incentivized -- byte-identical to the numina-control,
 # synthdoc, grok-responder and verbose-CoT seed-sweep arms, so this arm drops straight into
