@@ -45,7 +45,7 @@ def test_to_long_is_one_row_per_rollout_with_both_outcomes():
     assert len(rows) == 3
     assert {r["pass"] for r in rows if r["variant"] == "mandated"} == {0, 1}
     assert [r["violation"] for r in rows] == [1.0, 0.0, 0.0]
-    assert DESIGN.crossed_fixed == {"variant": "equal"} and DESIGN.nested == ("pass",)
+    assert DESIGN.enumerated == {"variant": "equal"} and DESIGN.subsamples == ("pass",)
 
 
 @pytest.mark.skipif(not PUBLISHED_CSV.is_file(), reason="vendored benchmark not present")
@@ -64,8 +64,8 @@ def test_reproduces_published_qwen3_6_27b_headline():
     assert summary["incentivized"]["mr_pct"] == 42.5
     lo, hi = summary["overall"]["mr_ci95"]
     assert lo < 43.8 < hi and summary["overall"]["mr_ci95_lo"] == lo
-    assert summary["stats"]["overall"]["mr"]["n_models"] == 1
-    assert summary["stats"]["overall"]["mr"]["models"] == "fixed"
+    assert summary["stats"]["overall"]["mr"]["n_checkpoints"] == 1
+    assert summary["stats"]["overall"]["mr"]["checkpoint_sampling"] == "fixed"
 
 
 # --- scenario clustering -------------------------------------------------------------

@@ -130,8 +130,13 @@ def main(dir: str, k: int | None = None, summary_model: str | None = None,
     # first (SURF's top_attributes ordering, its top-100 halved; distances from
     # kmeans's final pass). Prompt is SURF's, prefixed by the majority channel.
     members: dict[int, list[tuple[float, str, str]]] = {}
+    # DISTINCT source rows per cluster: `size` counts attributes, and one row
+    # contributes up to 20 of them, so size overstates how much of the dataset a
+    # cluster actually covers (up to 3x on da2203). Coverage is the ablatable number.
+    rows_of: dict[int, set[int]] = {}
     for (row, channel, text), c, dist in zip(trigger, assign, dists):
         members.setdefault(int(c), []).append((float(dist), channel, text))
+        rows_of.setdefault(int(c), set()).add(int(row))
     client = OpenRouterClient()
 
     # --- summaries: checkpointed per cluster, like extraction's per-row appends ------
@@ -158,8 +163,14 @@ def main(dir: str, k: int | None = None, summary_model: str | None = None,
         top = sorted(members[cid])[:int(cfg.summary_top_attrs)]
         channels = [ch for _, ch, _ in members[cid]]
         share_reasoning = channels.count("reasoning") / len(channels)
-        prefix, noun = (("The reasoning", "reasoning traces") if share_reasoning > 0.5
-                        else ("The query", "queries"))
+        # Prefix by channel purity; mixed clusters get a neutral frame rather than
+        # letting the majority channel mislead (e.g. 63% rsn reading "The reasoning").
+        if share_reasoning > 0.85:
+            prefix, noun = "The reasoning", "reasoning traces"
+        elif share_reasoning < 0.15:
+            prefix, noun = "The query", "queries"
+        else:
+            prefix, noun = "The scenario", "queries and reasoning traces"
         try:
             res = client.chat(summary_model, [{"role": "user", "content":
                               CLUSTER_SUMMARY_PROMPT.format(
@@ -184,11 +195,55 @@ def main(dir: str, k: int | None = None, summary_model: str | None = None,
         return rec
 
     map_threaded(summarise, len(cluster_ids), desc="summarising")
-    # canonical order: rewrite the checkpoint file sorted by cluster size
+    # canonical order: rewrite the checkpoint file sorted by cluster size. Row
+    # coverage is stamped HERE, not in summarise(), so it is deterministic-local
+    # (never gated on the LLM summary cache) and backfills onto cached entries.
     summaries = list({s["cluster"]: s for s in read_jsonl(sums_path)}.values())
+    for s in summaries:
+        n_rows = len(rows_of.get(s["cluster"], ()))
+        s["rows"] = n_rows
+        s["coverage"] = round(n_rows / len(rows), 6)
     with sums_path.open("w") as f:
         for s in sorted(summaries, key=lambda s: -s["size"]):
             f.write(json.dumps(s) + "\n")
+
+    # --- retrieval null: each cluster's chance hit rate --------------------------
+    # Every response attribute serves as a pseudo-crux: the same k-NN voting
+    # trace.py runs yields the hits each cluster collects for an INFORMATION-FREE
+    # crux — base rate x retrieval geometry (hubness), the two prevalence effects
+    # raw hit counts conflate. trace.py divides observed hits by this (lift).
+    # Exact (all 22k response attrs, self excluded), deterministic, local-only.
+    null_path = d / "null_hits.npy"
+    k_ret = int(cfg.k_retrieve)
+    if (null_path.exists() and manifest.get("null_k") == k_ret
+            and manifest.get("null_fingerprint") == fp["response"]):
+        print(">>> retrieval null reused", flush=True)
+    else:
+        row_of_attr = np.array([row for row, _, _ in response])
+        clusters_of_row: dict[int, list[int]] = {}
+        for (row, _, _), c in zip(trigger, assign):
+            clusters_of_row.setdefault(row, []).append(int(c))
+        emb_rn = emb_r / (np.linalg.norm(emb_r, axis=1, keepdims=True) + 1e-9)
+        n_r = len(emb_rn)
+        row_counts = np.zeros(int(row_of_attr.max()) + 1, dtype=np.int64)
+        for i0 in range(0, n_r, 1024):
+            sims = emb_rn[i0:i0 + 1024] @ emb_rn.T
+            for j in range(sims.shape[0]):
+                sims[j, i0 + j] = -np.inf  # a pseudo-crux never retrieves itself
+            top_idx = np.argpartition(-sims, k_ret, axis=1)[:, :k_ret]
+            row_counts += np.bincount(row_of_attr[top_idx.ravel()],
+                                      minlength=len(row_counts))
+        null = np.zeros(k, dtype=np.float64)
+        for row, cnt in enumerate(row_counts):
+            if cnt:
+                for c in clusters_of_row.get(row, ()):
+                    null[c] += cnt
+        null /= n_r  # expected hits per k_ret-retrieval
+        np.save(null_path, null.astype(np.float32))
+        manifest["null_k"] = k_ret
+        manifest["null_fingerprint"] = fp["response"]
+        print(f">>> retrieval null built over {n_r} pseudo-cruxes "
+              f"(max expected hits {null.max():.1f})", flush=True)
 
     refused = sorted(s["cluster"] for s in summaries if s.get("refused"))
     manifest.update({"k_clusters": k, "trigger_attrs": len(trigger),

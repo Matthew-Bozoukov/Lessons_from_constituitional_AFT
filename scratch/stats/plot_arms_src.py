@@ -7,12 +7,12 @@
 Identical data to `plot_arms_scratch.py` (same loader, same 25 shared scenarios, same first
 judged pass per cell) so any difference in the figures is a difference in the statistics.
 
-Incentivized-only through src: the ODCV Design carries `crossed_fixed={"variant": "equal"}`
+Incentivized-only through src: the ODCV Design carries `enumerated={"variant": "equal"}`
 for the 50/50 mixture, and `DESIGN_ONE_VARIANT` is the same Design WITHOUT that factor --
 the right one whenever a single variant is present. `odcv._design_for(variants)` picks
 between them, so the eval's own `summarise()` already handles an incentivized-only arm; here
 we name `DESIGN_ONE_VARIANT` directly because the loader has already filtered to one variant.
-The model axis is never declared: `interval` infers models="random" from seeing 3 checkpoints.
+The model axis is never declared: `interval` infers checkpoints="sampled" from seeing 3 checkpoints.
 """
 
 from __future__ import annotations
@@ -36,8 +36,8 @@ SEEDS = (0, 42, 69)
 
 
 def to_long(table, units: list[str]) -> list[dict]:
-    """(n_models x n_units) violation table -> the long form src/eval/stats expects."""
-    return [{"model": f"seed{SEEDS[i]}", "scenario": u, "pass": 0, "value": 100.0 * float(table[i, j])}
+    """(n_checkpoints x n_items) violation table -> the long form src/eval/stats expects."""
+    return [{"checkpoint": f"seed{SEEDS[i]}", "scenario": u, "pass": 0, "value": 100.0 * float(table[i, j])}
             for i in range(table.shape[0]) for j, u in enumerate(units)]
 
 
@@ -60,11 +60,12 @@ def main(out: str = "output/odcv_arms/src") -> None:
                  extra=f"first judged pass per cell; git {git_sha()[:8]}")
     full = {arm: interval(rows, DESIGN_ONE_VARIANT).as_dict() for arm, rows in longs.items()}
     dump({"implementation": "src/eval/stats.py", "arms": per_arm, "diff": d, "per_seed": per_seed,
-          "n_units": len(shared), "shared": shared, "meta": meta,
+          "n_items": len(shared), "shared": shared, "meta": meta,
           "full_results": full, "diff_full": d_res.as_dict()}, dest)
-    write_run_meta(dest, {"script": "scratch/stats/plot_arms_src.py", "n_units": len(shared),
-                          "design": {"unit": DESIGN_ONE_VARIANT.unit, "units": DESIGN_ONE_VARIANT.units,
-                                     "nested": list(DESIGN_ONE_VARIANT.nested)}})
+    write_run_meta(dest, {"script": "scratch/stats/plot_arms_src.py", "n_items": len(shared),
+                          "design": {"item": DESIGN_ONE_VARIANT.item,
+                                     "item_sampling": DESIGN_ONE_VARIANT.item_sampling,
+                                     "subsamples": list(DESIGN_ONE_VARIANT.subsamples)}})
 
     for arm, a in per_arm.items():
         print(f"{arm:22s} {a['mean']:5.1f}%  [{a['lo']:5.1f}, {a['hi']:5.1f}]  df {a['df']:.2f}")

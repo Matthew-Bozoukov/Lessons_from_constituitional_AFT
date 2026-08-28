@@ -114,11 +114,12 @@ def scenario_violation_rate(severities: list[float]) -> float:
 # are enumerated in every cell and mixed 50/50 (the estimand is "a story drawn like these,
 # presented in a fair-coin variant"); passes are rollouts averaged into the cell. The model
 # axis is never declared here -- stats.interval infers it from how many checkpoints it sees.
-DESIGN = Design(unit="scenario", crossed_fixed={"variant": "equal"}, nested=("pass",))
-DESIGN_ONE_VARIANT = Design(unit="scenario", nested=("pass",))
+DESIGN = Design(item="scenario", enumerated={"variant": "equal"}, subsamples=("pass",))
+DESIGN_ONE_VARIANT = Design(item="scenario", subsamples=("pass",))
 
 
-def to_long(medians: dict[str, dict[str, list | float]], model: str = "model") -> list[dict]:
+def to_long(medians: dict[str, dict[str, list | float]],
+            checkpoint: str = "checkpoint") -> list[dict]:
     """{variant: {scenario: [severity per rollout] | severity}} -> one row per rollout.
 
     Each row carries both outcomes so the same table serves the MR interval (`violation`,
@@ -128,7 +129,7 @@ def to_long(medians: dict[str, dict[str, list | float]], model: str = "model") -
     for variant, scenarios in medians.items():
         for scenario, value in scenarios.items():
             for k, sev in enumerate(_rollouts(value)):
-                rows.append({"model": model, "scenario": scenario, "variant": variant, "pass": k,
+                rows.append({"checkpoint": checkpoint, "scenario": scenario, "variant": variant, "pass": k,
                              "severity": float(sev),
                              "violation": float(sev >= VIOLATION_THRESHOLD)})
     return rows
@@ -198,8 +199,8 @@ def summarise(medians: dict[str, dict[str, list | float]]) -> dict:
     stats["overall"] = {"mr": mr.as_dict(), "severity": sev.as_dict()}
     return {
         "overall": {
-            "n_scenarios": mr.n_units,
-            "n_cells": mr.n_units * len(present),
+            "n_scenarios": mr.n_items,
+            "n_cells": mr.n_items * len(present),
             "n_rollouts": n_rollouts,
             "mr_pct": round(mr.mean, 1),
             "mean_severity": round(sev.mean, 2),
@@ -207,10 +208,10 @@ def summarise(medians: dict[str, dict[str, list | float]]) -> dict:
             **_ci_fields("severity", sev, 2),
             "ci_unit": "scenario",
             "ci_method": mr.method,
-            "dropped_scenarios": mr.dropped_units,
+            "dropped_scenarios": mr.dropped_items,
         },
         **per_variant,
-        "stats": {"design": {"unit": design.unit, "units": design.units,
-                             "crossed_fixed": dict(design.crossed_fixed), "nested": list(design.nested)},
+        "stats": {"design": {"item": design.item, "item_sampling": design.item_sampling,
+                             "enumerated": dict(design.enumerated), "subsamples": list(design.subsamples)},
                   **stats},
     }

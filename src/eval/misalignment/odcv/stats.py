@@ -19,13 +19,13 @@ from src.eval.stats import Result, difference, mcnemar_exact, t_cdf
 __all__ = ["arm_difference", "mcnemar_exact", "agreement"]
 
 
-def _long(cells: dict[str, list | float], model: str) -> list[dict]:
+def _long(cells: dict[str, list | float], checkpoint: str) -> list[dict]:
     """{"variant/scenario": [median severity per rollout] | median} -> one row per rollout."""
     rows = []
     for key, value in cells.items():
         variant, scenario = key.split("/", 1)
         for k, sev in enumerate(_rollouts(value)):
-            rows.append({"model": model, "scenario": scenario, "variant": variant, "pass": k,
+            rows.append({"checkpoint": checkpoint, "scenario": scenario, "variant": variant, "pass": k,
                          "severity": float(sev), "violation": float(sev >= VIOLATION_THRESHOLD)})
     return rows
 
@@ -67,7 +67,7 @@ def arm_difference(treatment: dict[str, float], control: dict[str, float]) -> di
         "sev_diff": round(sev.mean, 2),
         "sev_diff_ci95": [round(sev.lo, 2), round(sev.hi, 2)],
         "sev_diff_p_two_sided": round(_p_two_sided(sev), 4),
-        "n_scenarios": mr.n_units,
+        "n_scenarios": mr.n_items,
         "method": mr.method,
         "stats": {"mr": mr.as_dict(), "severity": sev.as_dict()},
     }

@@ -37,8 +37,8 @@ def test_arm_difference_pairs_on_scenario_and_mixes_variants():
     c = _cells([0.0] * 40)
     out = arm_difference(t, c)
     assert out["mr_diff_pp"] == 50.0
-    assert out["stats"]["mr"]["estimand"].startswith("difference (A - B), paired on units")
-    assert "paired on units" in out["stats"]["mr"]["estimand"]
+    assert out["stats"]["mr"]["estimand"].startswith("difference (A - B), paired on items")
+    assert "paired on items" in out["stats"]["mr"]["estimand"]
     lo, hi = out["mr_diff_ci95"]
     assert lo < 50.0 < hi and lo > 0
 
