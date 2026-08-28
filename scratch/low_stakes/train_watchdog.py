@@ -60,17 +60,25 @@ def _last_loss(text: str) -> str:
 
 def _teardown(pod: str, why: str) -> None:
     from scripts.gpu.runpod_train import down
+
     print(f"[{_stamp()}] TEARDOWN ({why}): {down(pod=pod)}", flush=True)
 
 
-def main(pod: str, poll_seconds: int = 60, stall_minutes: int = 25,
-         max_hours: float = 4.0, out_dir: str = "output/low_stakes_adapter",
-         teardown: bool = True) -> None:
+def main(
+    pod: str,
+    poll_seconds: int = 60,
+    stall_minutes: int = 25,
+    max_hours: float = 4.0,
+    out_dir: str = "output/low_stakes_adapter",
+    teardown: bool = True,
+) -> None:
     started = time.time()
     last_size, last_growth = -1, time.time()
     phase = "booting"
-    print(f"[{_stamp()}] watching {pod}  (stall {stall_minutes}m, cap {max_hours}h)",
-          flush=True)
+    print(
+        f"[{_stamp()}] watching {pod}  (stall {stall_minutes}m, cap {max_hours}h)",
+        flush=True,
+    )
 
     while True:
         train, boot = _log(pod, "train.log"), _log(pod, "boot.log")
@@ -102,14 +110,29 @@ def main(pod: str, poll_seconds: int = 60, stall_minutes: int = 25,
             print(f"[{_stamp()}] -> {phase}", flush=True)
 
         loss = _last_loss(train)
-        print(f"[{_stamp()}] {phase:9s} {elapsed:4.2f}h  log {size:>8d}B  "
-              f"quiet {quiet:4.1f}m  {loss}", flush=True)
+        print(
+            f"[{_stamp()}] {phase:9s} {elapsed:4.2f}h  log {size:>8d}B  "
+            f"quiet {quiet:4.1f}m  {loss}",
+            flush=True,
+        )
 
-        if "TRAINING_FAILED" in blob:
+        failed = "TRAINING_FAILED" in blob
+        if failed and "TRAINING_DONE" not in blob:
+            # A failed run is NOT torn down on sight any more. The bootstrap tars $OUTDIR
+            # before it echoes TRAINING_DONE, crash or not, so the run's last checkpoints
+            # are in adapter.tar.gz -- and they can be the deliverable: the GPT paired arm
+            # ends EVERY run this way (route_step cannot split the final 1-example step over
+            # 2 DDP ranks, at 624/624, after checkpoint-600 is written), and seed 0's
+            # published adapter is exactly that checkpoint. Wait for the DONE marker so the
+            # tarball is complete, then pull it like a finished run; teardown follows the
+            # pull, never precedes it.
             print("\n".join(blob.strip().splitlines()[-25:]), flush=True)
-            if teardown:
-                _teardown(pod, "TRAINING_FAILED")
-            return
+            print(
+                f"[{_stamp()}] TRAINING_FAILED -- waiting for the tarball before pulling",
+                flush=True,
+            )
+            time.sleep(poll_seconds)
+            continue
         if "TRAINING_DONE" in blob:
             # Pull FIRST. A terminated pod takes the only copy of the adapter with it, so
             # a failed pull must leave the pod standing rather than tidy it away.
@@ -117,8 +140,11 @@ def main(pod: str, poll_seconds: int = 60, stall_minutes: int = 25,
             dest.mkdir(parents=True, exist_ok=True)
             tar = dest / "adapter.tar.gz"
             try:
-                r = requests.get(f"https://{pod}-8080.proxy.runpod.net/adapter.tar.gz",
-                                 timeout=900, stream=True)
+                r = requests.get(
+                    f"https://{pod}-8080.proxy.runpod.net/adapter.tar.gz",
+                    timeout=900,
+                    stream=True,
+                )
                 r.raise_for_status()
                 with open(tar, "wb") as fh:
                     for chunk in r.iter_content(1 << 20):
@@ -126,15 +152,26 @@ def main(pod: str, poll_seconds: int = 60, stall_minutes: int = 25,
                 mb = tar.stat().st_size / 1e6
                 print(f"[{_stamp()}] pulled {tar} ({mb:.1f} MB)", flush=True)
                 if mb < 1:
-                    print("REFUSING TEARDOWN: adapter is suspiciously small; inspect the "
-                          "pod before destroying it.", flush=True)
+                    print(
+                        "REFUSING TEARDOWN: adapter is suspiciously small; inspect the "
+                        "pod before destroying it.",
+                        flush=True,
+                    )
                     return
             except Exception as exc:  # noqa: BLE001
-                print(f"[{_stamp()}] PULL FAILED ({exc}). Pod left UP on purpose -- "
-                      f"retry, then tear down by hand.", flush=True)
+                print(
+                    f"[{_stamp()}] PULL FAILED ({exc}). Pod left UP on purpose -- "
+                    f"retry, then tear down by hand.",
+                    flush=True,
+                )
                 return
             if teardown:
-                _teardown(pod, "TRAINING_DONE, adapter pulled")
+                _teardown(
+                    pod,
+                    "TRAINING_FAILED, last checkpoints pulled"
+                    if failed
+                    else "TRAINING_DONE, adapter pulled",
+                )
             return
         if quiet >= stall_minutes:
             # A second guard on the same lesson: even with both logs read, a quiet pod that
@@ -144,14 +181,18 @@ def main(pod: str, poll_seconds: int = 60, stall_minutes: int = 25,
             # the pod standing for a human. A stalled pod costs money; a destroyed adapter
             # costs the whole run.
             if "saved adapter" in blob or "packaging adapter" in blob:
-                print(f"[{_stamp()}] quiet {quiet:.0f}m BUT the adapter is already "
-                      f"written -- NOT tearing down. Waiting for TRAINING_DONE.",
-                      flush=True)
+                print(
+                    f"[{_stamp()}] quiet {quiet:.0f}m BUT the adapter is already "
+                    f"written -- NOT tearing down. Waiting for TRAINING_DONE.",
+                    flush=True,
+                )
                 if quiet >= stall_minutes * 3:
-                    print(f"[{_stamp()}] adapter written but no DONE marker after "
-                          f"{quiet:.0f}m. Pod left UP on purpose. Pull it by hand:\n"
-                          f"  https://{pod}-8080.proxy.runpod.net/adapter.tar.gz",
-                          flush=True)
+                    print(
+                        f"[{_stamp()}] adapter written but no DONE marker after "
+                        f"{quiet:.0f}m. Pod left UP on purpose. Pull it by hand:\n"
+                        f"  https://{pod}-8080.proxy.runpod.net/adapter.tar.gz",
+                        flush=True,
+                    )
                     return
                 time.sleep(poll_seconds)
                 continue
