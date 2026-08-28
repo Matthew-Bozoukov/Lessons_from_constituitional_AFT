@@ -1,6 +1,81 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-08-28 — the Good AI Fiction arm is trained; train_loss 0.883 says the run was healthy
+
+**Hypothesis.** SFT can bind non-power-seeking, corrigibility and equanimity to the Assistant
+identity more directly than difficult advice does, because the loss-bearing tokens depict the
+Assistant ITSELF holding the access and the option to misuse it, rather than advising a user
+who is under pressure. Corpus and mixture were built the same day (entry below); this is the
+SFT half. No eval yet.
+
+**Method.** One credential-free RunPod 2xH200 pod via `scripts/gpu/runpod_train.py`, torchrun
+DDP with token-budgeted dynamic batching -- the da716 protocol, unchanged.
+`configs/train/lora_qwen36_t2_9284_fiction716_dynbatch_2xh200.yaml` differs from
+`lora_qwen36_t2_9284_lowstakes716_dynbatch_2xh200.yaml` (itself the da716 control) in the
+five data/output/hub keys ONLY, verified by diff before launch, so the arms differ in DATA
+alone.
+
+**Result. 625 steps, 1 epoch, train_loss 0.883, 2h20m wall (7,766s compute).** Mask gate
+**716 real / 9,646 empty / 0 absent, 0 truncated** -- turn-for-turn identical to the
+low-stakes arm's census. Dynamic batching resolved the H200 ceiling from `ModelProfile`
+(token_budget 8,000) and reported ~1,515 forward passes/epoch against 10,000 at batch 1.
+
+| arm | rows | alignment rows | steps | train_loss |
+|---|---|---|---|---|
+| **Good AI Fiction (this)** | 10,000 | 716 (7.16%) | 625 | **0.883** |
+| low stakes | 10,000 | 716 (7.16%) | 625 | 0.8779 |
+| verbose rows-matched | 10,000 | 716 (7.16%) | 625 | 0.8751 |
+| verbose token-matched | 9,647 | 363 (3.76%) | 603 | 0.8538 |
+
+**Read the loss as a health check, not a result.** Every difficult-advice-family arm lands in
+0.85-0.88 whatever the manipulation, and this one is no exception despite being a different
+genre entirely. It confirms the data trains cleanly and the protocol matched; it says nothing
+about the hypothesis.
+
+`max_seq_len: 8192` was measured before the run with the Qwen3.6 tokenizer on the published
+mixture -- longest row 8,191 tokens, 0 over, p99 7,560, median 337, and the longest is a
+`longalign` row rather than a fiction one, the same profile as the control. The fiction rows
+average 1,524 rendered tokens (max 1,965) at an identical row share. The gate's `0 skipped as
+truncated` confirmed it live.
+
+**One pod, no failures — and the fix from 2026-08-27 is why.** After epoch 1.0 the log went
+quiet for **6 minutes** while the trainer saved and packaged. That is exactly the window that
+destroyed a finished adapter last time, when the watchdog read `train or boot` and the stall
+rule fired on a pod that was finishing rather than dying. Reading BOTH logs concatenated, the
+watchdog saw `TRAINING_DONE` in `boot.log`, pulled 8.2 GB first, and only then terminated. The
+ordering that matters, in the order it happened: adapter written -> marker seen -> pulled ->
+integrity checked -> stamp verified -> pushed -> HF URL resolved -> pod destroyed -> account
+confirmed at zero.
+
+Two smaller things worth keeping:
+
+* *The pulled tarball is the whole `output_dir`, not the adapter.* 8.2 GB, because
+  `save_total_limit: 2` retains two step-checkpoints. `scratch/good_ai_fiction/push_adapter.py`
+  uploads only the `adapter/` directory -- a repo carrying optimizer states is one nobody can
+  `from_pretrained`.
+* *`training_meta.json` records `git_sha: "nogit"`.* The pod extracts a tarball, not a git
+  checkout, so the trainer has no repo to read a SHA from. Provenance is not lost -- the
+  bundle was built at `d7dbfce` and the adapter card records it alongside the pinned dataset
+  revision -- but adapters trained this way cannot be grepped by SHA.
+
+**Artifacts.** Adapter `LASR-Callum/qwen3.6-27b-lora-t2-9284-fiction716-r64-dynbatch` (public,
+`thinking: true`, dataset pinned to `77c0b4e6`), verified on push against all four stamp
+fields. Corpus `LASR-Callum/2026-08-27-good-ai-fiction-716`; mixture
+`LASR-Callum/2026-08-27-table2-9284-good-ai-fiction-716-train`; generation pool
+`LASR-Callum/2026-08-27-good-ai-fiction-sf-860`. Code on `nika/good-ai-fiction-sft`.
+**Pod destroyed; RunPod confirmed at zero pods.** GPU spend $29.48, no self-inflicted losses.
+
+**Next steps.** ODCV-Bench against the control adapter
+`LASR-Callum/qwen3.6-27b-lora-t2-9284-da716-r64-dynbatch`. Settle the pass count FIRST: the
+band nine prior manipulations occupy is 8.7-17.6%, and a one-pass run gives a CI ~19 points
+wide that contains all of it. Two riders to report with any number: this corpus DRAFTS with
+Sonnet 5 where the control drafts with Haiku 4.5 (second order -- both arms' trained text is
+Sonnet-rewritten -- but real); and the arms are matched on trainable tokens to 1.16%, not
+exactly, because the pool's ceiling under the per-unit quota was 829,522 against a target of
+832,064.
+
+
 ## 2026-08-28 — FICTION-716 built and published: 822,424 trainable tokens against DA's 832,064
 
 **What shipped.** The full Good AI Fiction arm, generated from the recipe approved after the
