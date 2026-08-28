@@ -73,7 +73,7 @@ def main(arm: str, combined: str, passes: bool = True) -> None:
                 f"Read the two swaps as a 2x2 with A (da716, MR 16.3% [10.0, 21.8]) and B (7.8% [3.6, 13.6]) "
                 f"on these cells: the swap that lands near B names the channel carrying grok's effect. "
                 f"Headline on these 65 cells: MR {o['mr_pct']}% {o['mr_ci95']}, severity "
-                f"{o['mean_severity']}, n={o['n']}."
+                f"{o['mean_severity']}, n={o.get('n_rollouts', o.get('n'))}."
             ),
             "date_generated": "2026-08-28",
             "constitution": (

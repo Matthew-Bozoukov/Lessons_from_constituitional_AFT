@@ -122,7 +122,7 @@ def main() -> None:
                 mr=o["mr_pct"],
                 lo=o["mr_ci95"][0],
                 hi=o["mr_ci95"][1],
-                n=o["n"],
+                n=o.get("n_rollouts", o.get("n")),
                 sev=o["mean_severity"],
                 mand=s["mandated"]["mr_pct"],
                 inc=s["incentivized"]["mr_pct"],
@@ -179,7 +179,7 @@ def main() -> None:
     ax.set_axisbelow(True)
     ax.tick_params(length=0)
     ax.set_title(
-        "Channel swap on the same 65 ODCV cells — bar fill = who wrote the REPLY, top stripe = who wrote the TRACE",
+        "Channel swap, same 65 ODCV cells — fill: who wrote the reply · stripe: who wrote the trace",
         loc="left",
         fontsize=10,
         color=INK,

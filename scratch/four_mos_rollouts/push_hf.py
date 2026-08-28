@@ -35,6 +35,9 @@ def files() -> list[Path]:
         *sorted(OUT.glob("rollouts_*.jsonl")),
         *sorted(OUT.glob("registers_*.jsonl")),
         *sorted(OUT.glob("sequences_*.jsonl")),
+        # 2026-08-28: the channel-swap 2x2 figure + mirror (six-arm features/registers are picked up
+        # by the globs above as the newest timestamped files).
+        *sorted(Path("output/channel_swap").glob("odcv_channel_swap_2x2_*")),
     ]
 
 

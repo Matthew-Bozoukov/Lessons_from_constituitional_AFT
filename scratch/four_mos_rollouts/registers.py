@@ -11,6 +11,7 @@ on (a) how often the trained voice fires at step 1 and (b) how protective it is 
 from __future__ import annotations
 
 import json
+import os
 import re
 import statistics as st
 from pathlib import Path
@@ -19,7 +20,9 @@ from src.properties.sources.odcv_rollouts import _fields, _split_steps
 from src.utils import timestamp
 
 OUT = Path("output/four_mos_rollouts")
-ARMS = ["grok", "sonnet_concise", "sonnet_normal", "gpt"]
+ARMS = os.environ.get("FOUR_MOS_ARMS", "grok,sonnet_concise,sonnet_normal,gpt").split(
+    ","
+)
 
 COMMIT = re.compile(
     r"\bI (?:will not|won't|refuse|am not going to|'m not going to|cannot|can't|should not|shouldn't|must not|"

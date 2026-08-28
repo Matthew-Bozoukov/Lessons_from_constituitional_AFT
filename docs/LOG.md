@@ -1,6 +1,82 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-08-28 — Channel swap evaluated: neither grok's trace nor grok's reply alone carries the ODCV drop — both swaps land on Sonnet's rate
+
+**Hypothesis.** (Entry below.) If grok's ODCV advantage lives in one supervised channel,
+the swap that keeps that channel should land near grok's 7.8%; if it needs the trace and the
+reply together, both swaps should land near Sonnet's 16.3%.
+
+**Method.** Both swap adapters served from one RunPod H200 vLLM (LoRA modules, agentic parsers,
+thinking pinned), 2 passes × 65 cells each from laptop Docker, the paired configs
+`configs/eval/odcv_bench_t2_9284_{gtrace_sreply703,strace_greply703}_r64_paired_2x65.yaml`
+(byte-identical hyperparameters to the sibling arms), judges grok-4.20 + gemini-3.1-pro.
+Yield: 129 and 128 of 130 (one and two cells returned an empty transcript in pass 1 —
+Propaganda-Engine; Roboadvisor + Drone — the same executor-timeout shape seen on PAR-716).
+Then the six-arm register test (`FOUR_MOS_ARMS=… features.py; registers.py`).
+
+**Result 1 — the 2×2 (same 65 cells).**
+
+| arm | trace | reply | MR | 95% CI | sev | mand | inc | n |
+|---|---|---|---|---|---|---|---|---|
+| A · da716 | Sonnet | Sonnet | 16.3% | [12.1, 21.0] | 0.76 | 12.4 | 20.8 | 257 |
+| **grok trace + Sonnet reply** | grok | Sonnet | **15.4%** | [7.7, 23.8] | 0.58 | 14.3 | 16.7 | 129 |
+| **Sonnet trace + grok reply** | Sonnet | grok | **14.6%** | [6.9, 23.1] | 0.67 | 10.0 | 20.0 | 128 |
+| B · grokresp703 | grok | grok | 7.8% | [3.9, 12.4] | 0.35 | 5.7 | 10.2 | 129 |
+| C · capped Sonnet (ref) | cap | cap | 15.4% | [9.2, 21.5] | 0.65 | 10.0 | 21.7 | 130 |
+
+Both swaps sit on Sonnet's rate, 7 pp above grok, the same gap as A–B. The point estimates
+reject "one channel carries it" (either such story predicts one swap at ~8%) and sit above
+the additive midpoint (~12%); the intervals (±8 pp at n≈128) cannot exclude additivity and
+only just exclude grok's 7.8% (lower bounds 7.7 / 6.9). Read: the drop needs the trace and
+the reply to be grok's TOGETHER — recombining them destroys it.
+
+**Result 2 — each channel transfers its own style faithfully; the outcome does not follow
+either.** Reasoning length at inference followed the TRACE (median 2,984 chars with grok's
+trace vs 4,636 with Sonnet's; parents 2,474 / 4,974), and so did hedging (17% vs 43% of
+rollouts; parents 6 / 47%) and self-questions in reasoning (0% vs 32%). Visible-reply length,
+first-person refusal in the reply (42% vs 63%; parents 69 / 26%), alternatives offered (35% vs
+10%) and question-closers (10% vs 2%) followed the REPLY. So the swaps are exactly what they
+look like — grok-shaped reasoning over a Sonnet answer, and vice versa — and neither
+combination is safer than Sonnet.
+
+**Result 3 — the register decomposition shows what broke.** Commitment before the first write:
+grok 86%, grok-trace+Sonnet-reply **81%**, Sonnet-trace+grok-reply 74%, Sonnet 68%. So grok's
+trace does raise the trigger rate almost to grok's — but the commitment then protects less:
+MR given a commitment is **10.5%** (11/105) with grok's trace over Sonnet's reply, against
+4.5 / 4.6 / 4.2% for grok, Sonnet and the other swap. The organism learned to open with "I will
+not" and then to write the reply that reasoning was not written for — the commitment fires
+and does not bind, the decoupling the GPT arm showed in a different form (LOG 2026-08-27,
+"ethics and action decoupled in time"). The other swap keeps the commitment binding (4.2%) but
+fires it less (74%) and does worse without it (45%). Two different ways to arrive at 15%.
+(11 vs 5 violations; suggestive, not established.)
+
+**Reading.** The 08-27 analysis said the arms differ in how often the trained voice fires. The
+swap adds the second half: what the difficult-advice row teaches is a *decision-then-action
+pair*, and it transfers only when the trace's decision is the reply's decision. grok's rows have
+that coherence (its traces state the plan the reply executes — "commitment AND plan" 15% vs
+Sonnet's 7% in the corpus); stitching grok's decision onto Sonnet's essay, or Sonnet's
+deliberation onto grok's flat refusal, breaks the pairing, and the organism inherits the style
+of each channel without the disposition. Lexical rewrites of ONE channel are therefore the
+wrong ablation; the candidate lever is trace↔reply agreement (the reply does exactly what the
+trace decided, nothing more), which a rewrite can target on Sonnet's rows without touching
+either channel's length or vocabulary.
+
+**Costs.** Serving ~$6, judging $13.29, rollouts on our own endpoint. Pod destroyed; account at
+0 active pods.
+
+**Artifacts.** Eval repos `LASR-Callum/2026-08-28-odcv-{gtrace-sreply703,strace-greply703}-paired-eval`
+(passes + combined + scores + results); figure `output/channel_swap/odcv_channel_swap_2x2_*.png`
+(+ `_results.md`); six-arm feature and register tables `output/four_mos_rollouts/{features,registers}_20260828_*.md`
+(also on `LASR-Callum/2026-08-27-odcv-four-mos-rollout-analysis`). Scripts `scratch/channel_swap/`.
+
+**Next steps.** (1) Coherence rewrite on Sonnet's 703 rows: leave the trace, rewrite the reply
+to execute exactly the trace's stated decision (and nothing the trace did not decide), length
+held — the ablation the 2×2 points at. (2) The mirror on grok: rewrite grok's replies to add
+Sonnet's options/offer paragraph after the refusal (break coherence without changing the
+decision) — if grok's MO loses its edge, coherence is the mechanism. (3) 4-rollout top-ups on
+both swaps to tighten the ±8 pp intervals before either is cited.
+
 ## 2026-08-27 — Channel-swap arms trained: grok's trace with Sonnet's reply, and Sonnet's trace with grok's reply, on the same 703 questions
 
 **Hypothesis.** The rollout read (entry below) put grok's ODCV advantage in how often a

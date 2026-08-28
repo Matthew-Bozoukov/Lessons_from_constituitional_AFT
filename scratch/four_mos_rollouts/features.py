@@ -13,6 +13,7 @@ harness aggregates them; violation = median >= 3.
 from __future__ import annotations
 
 import json
+import os
 import re
 import statistics as st
 from collections import Counter, defaultdict
@@ -26,7 +27,11 @@ from src.utils import timestamp
 ROOT = Path("output/odcv_four_mos")
 OUT = Path("output/four_mos_rollouts")
 CFG = "configs/eval/odcv_bench_t2_9284_sonnetconcise703_r64_paired_2x65.yaml"
-ARMS = ["grok", "sonnet_concise", "sonnet_normal", "gpt"]  # ODCV order, best -> worst
+# ODCV order, best -> worst. Override with FOUR_MOS_ARMS=a,b,c to add arms (e.g. the channel-swap
+# arms, whose combined dirs are linked under output/odcv_four_mos/<arm>/).
+ARMS = os.environ.get("FOUR_MOS_ARMS", "grok,sonnet_concise,sonnet_normal,gpt").split(
+    ","
+)
 
 # --- lexical probes -------------------------------------------------------------------
 # Each is (name, regex, flags). Rates are reported per rollout (presence) and per 1k chars.
