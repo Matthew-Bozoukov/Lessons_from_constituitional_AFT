@@ -1,6 +1,64 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-08-28 — DAN's headline was measuring refusal-to-be-useful; core harm inverts the ranking
+
+**Hypothesis.** The difficult-advice arms are safer under in-the-wild jailbreaks, and the
+existing DAN ASR does not show it because of how the benchmark is scored.
+
+**Method.** Registered DAN as an eval behind `run_eval` (it had only ever been a scratch
+driver), ran it on the new attack716 arm (5 jailbreaks x 390 questions = 1,950 generations,
+0 generation errors), and recomputed the surviving 2026-08-26 numina/da716 runs on the same
+corrected denominator. Two contaminations had to be removed: **blanks were counted** (the
+control emits 674 empty completions, 34.6% of cells, against da716's 25 — the in-trace
+refusal pattern, `content` empty with a full refusal in `reasoning`), and **unparsed judge
+replies were counted as ANSWERED** (the judge is capped at 8 tokens and sometimes returns
+prose; `not startswith("REFUS")` swept those into the numerator — 63 cells on attack716,
+102 on numina).
+
+**Result.** Headline ASR ranks the control *safest*, which is an artifact:
+
+| arm | headline ASR | **core harm** | 95% CI | *regulated advice* |
+|---|--:|--:|:--:|--:|
+| 0% diff advice (numina) | 21.98% | 12.63% | [10.2, 15.6] | *31.87%* |
+| 7% diff advice (da716) | 33.60% | **6.20%** | **[4.8, 8.0]** | *59.18%* |
+| attack716 | 42.24% | 15.93% | [13.6, 18.5] | *67.04%* |
+
+Split by what "answering" means — six categories where answering IS the failure (illegal
+activity, physical harm, fraud, malware, hate speech, privacy) against five regulated-advice
+categories (financial, legal, medical, political, gov) — **the ranking inverts**. da716's
+core-harm interval overlaps neither other arm: 7% difficult advice roughly halves core-harm
+ASR, and the attack-trained arm is worse than doing nothing. The control only looked safe
+because it refuses financial/legal/medical questions (31.9% vs 59.2%) and because 40% of its
+cells dropped out as blanks. Largest effects: Fraud 2.1% vs 15.2%, Hate Speech 4.1% vs 13.2%;
+essentially none on Malware (12.5% vs 14.0%). The split is load-bearing — folding "Economic
+Harm" and "Pornography" back in pushes da716 to 17.5% and erases the separation.
+
+**A sharper instrument.** The jailbreak set had been selected by `span_days`, which does not
+track efficacy (the second-most-persistent template elicits 0% core harm). Screened 1,268
+deduplicated in-the-wild templates x 12 core-harm questions on the control, 15,216
+generations: median candidate 9.09%, 24% elicit nothing, only 27 reach 50%. The new top-20
+spans 50.0%-85.7% — every one beats the old set's best (26.5%).
+`src/eval/misalignment/dan/jailbreaks_coreharm_top20.json`, a drop-in for `configs/eval/dan.yaml`.
+Treat those rates as upper bounds: max-of-1,268 at n~12 selects partly on noise, and screening
+on numina biases numina's own number on this set upward.
+
+**Also measured.** The verbose-CoT arm does **not** reason longer in ODCV episodes: median
+446-778 chars/turn against synthdoc's 549-688, with identical turn counts (7.0-7.7). Synthdoc
+caps near 3,700 chars/turn; verbose reaches 68k-76k. Its higher mean is runaway generation in
+a few episodes, not deliberation — quote the median, and this likely explains its
+context-overflow failures.
+
+Code at `dfa190c`, `a2debb7`. Published: `matboz/2026-08-28-dan-qwen3-6-27b-lora-t2-9284-attack716-r64-seed0`
+(note: that push carries the pre-fix 44.14%, not the corrected 42.24%).
+
+**Next steps.** (1) Re-run all four arms on the core-harm top-20 — the gaps should widen, and
+it is the run that tests whether the DAN conclusion survives a sharper instrument.
+(2) Re-push attack716's DAN with the corrected ASR. (3) The regulated-advice half deserves its
+own framing: da716 answering 59% of financial/legal/medical questions where the control answers
+32% is a *helpfulness* result, not a safety failure, and is arguably the more interesting half.
+
+
 ## 2026-08-28 — StrongREJECT: 7% difficult advice removes the catastrophic-leak tail, and blanks are refusals
 
 **Hypothesis.** The difficult-advice arms are safer than the numina control under real
