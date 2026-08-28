@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -152,6 +153,43 @@ def discover(orgs: tuple[str, ...] = DEFAULT_ORGS) -> tuple[list[Organism], int]
                 organism_from_files(m.id, adapter_config, training_meta, modified)
             )
     return sort_for_menu(found), unstamped
+
+
+def organisms_from_ids(repos: Sequence[str]) -> list[Organism]:
+    """The named adapters, read the same way `discover` reads the ones it finds.
+
+    The explicit-`--target` counterpart to `discover`: same two metadata files, same
+    `organism_from_files`, so a named organism and a picked one are indistinguishable
+    downstream. An unservable one is an error here rather than a greyed-out menu row --
+    the user asked for it by name.
+    """
+    from huggingface_hub import HfApi
+
+    api = HfApi()
+    out: list[Organism] = []
+    for repo in repos:
+        try:
+            info = api.model_info(repo, expand=["lastModified"])
+        except Exception as e:  # noqa: BLE001 - name the repo, the id is usually the typo
+            raise SystemExit(f"cannot read {repo!r} on the Hub: {type(e).__name__}: {e}") from None
+        try:
+            with open(hf_download(repo, "adapter_config.json")) as f:
+                adapter_config = json.load(f)
+            with open(hf_download(repo, "training_meta.json")) as f:
+                training_meta = json.load(f)
+        except Exception:  # noqa: BLE001
+            raise SystemExit(
+                f"{repo} is not a servable model organism: it needs adapter_config.json and "
+                "training_meta.json (the thinking stamp train_lora.py writes). A full model "
+                "or an unstamped adapter cannot be served this way -- backfill the stamp, "
+                "never guess the mode.") from None
+        modified = (info.last_modified.isoformat()
+                    if isinstance(info.last_modified, datetime) else str(info.last_modified or ""))
+        o = organism_from_files(repo, adapter_config, training_meta, modified)
+        if o.unservable:
+            raise SystemExit(f"{repo} cannot be served: {o.unservable}")
+        out.append(o)
+    return out
 
 
 def sort_for_menu(organisms: list[Organism]) -> list[Organism]:

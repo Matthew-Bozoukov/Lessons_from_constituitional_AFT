@@ -59,6 +59,7 @@ from openai import OpenAI
 
 from src.infra import runpod
 from src.chat.organisms import (
+    organisms_from_ids,
     DEFAULT_ORGS,
     arm_names,
     check_one_server,
@@ -824,30 +825,35 @@ def pick_and_serve(
 ) -> tuple[list[Arm], PodLease | None, dict]:
     """The menu → a served endpoint. Returns arms, the lease (None = nothing to tear down)
     and provenance for run_meta."""
-    runpod._key()  # fail before the menu if the account is not reachable
+    runpod._key()  # fail before the menu (or the pod) if the account is not reachable
     user = re.sub(r"[^a-z0-9]", "", getpass.getuser().lower()) or "user"
-    print(f">>> discovering model organisms on the Hub ({', '.join(args.hf_org)}) …")
-    organisms, unstamped = discover(tuple(args.hf_org))
-    menu, numbered = render_menu(organisms, unstamped)
-    if not numbered:
-        raise SystemExit("\nno servable organisms found.\n" + menu)
-    print("\n" + menu + "\n")
-    while True:
-        try:
-            raw = input(
-                "pick organism numbers (space-separated, same heading) — q quits › "
-            )
-        except EOFError:
-            raise SystemExit("\nnothing picked") from None
-        try:
-            idx = parse_pick(raw, len(numbered))
-            picked = [numbered[i] for i in idx]
-            if not picked:
-                raise SystemExit("nothing picked")
-            check_one_server(picked)
-            break
-        except ValueError as e:
-            print(f"!!! {e}")
+    if args.target:
+        # Named organisms: same metadata, same checks, no menu. Everything below is shared.
+        picked = organisms_from_ids(args.target)
+        check_one_server(picked)
+    else:
+        print(f">>> discovering model organisms on the Hub ({', '.join(args.hf_org)}) …")
+        organisms, unstamped = discover(tuple(args.hf_org))
+        menu, numbered = render_menu(organisms, unstamped)
+        if not numbered:
+            raise SystemExit("\nno servable organisms found.\n" + menu)
+        print("\n" + menu + "\n")
+        while True:
+            try:
+                raw = input(
+                    "pick organism numbers (space-separated, same heading) — q quits › "
+                )
+            except EOFError:
+                raise SystemExit("\nnothing picked") from None
+            try:
+                idx = parse_pick(raw, len(numbered))
+                picked = [numbered[i] for i in idx]
+                if not picked:
+                    raise SystemExit("nothing picked")
+                check_one_server(picked)
+                break
+            except ValueError as e:
+                print(f"!!! {e}")
     names = arm_names(picked)
     base, mode = picked[0].base_model, picked[0].mode
     print(
@@ -956,9 +962,10 @@ def _pods_report(user: str) -> str:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
-        description="Chat with a model organism. No arguments: pick from the organisms on the "
-        "Hub and get them served on RunPod (torn down when you leave). Or point at "
-        "an already-served endpoint, or serve HF targets by the eval framework's code."
+        description="Chat with a model organism, from your laptop, on a RunPod GPU that is "
+        "torn down when you leave. `--target <hf>...` serves those organisms; no arguments "
+        "picks them from a menu of what is on the Hub. Or point at an already-running "
+        "endpoint (--endpoint), or serve the model yourself (--server / --here)."
     )
     source = parser.add_mutually_exclusive_group()
     source.add_argument(
@@ -970,9 +977,11 @@ def main(argv: list[str] | None = None) -> None:
     source.add_argument(
         "--target",
         nargs="+",
-        help="HF paths (LoRA adapters: base + thinking mode inferred; full "
-        "models) served by vLLM here or on --server, or "
-        "<provider>:<model-id> API endpoints (e.g. openrouter:qwen/qwen3-32b).",
+        metavar="HF_PATH",
+        help="THE DEFAULT PATTERN: serve these organisms on a RunPod GPU and chat with them "
+        "from here. LoRA adapters carrying training_meta.json; base model and thinking mode "
+        "come from the artifact. Several at once share one pod (same base + mode) and become "
+        "switchable arms. Add --server or --here to serve them yourself instead.",
     )
     source.add_argument(
         "--pods", action="store_true", help="list pods on the RunPod account and exit"
@@ -980,7 +989,7 @@ def main(argv: list[str] | None = None) -> None:
     source.add_argument(
         "--down", metavar="POD_ID", help="destroy a pod (verified) and exit"
     )
-    picker = parser.add_argument_group("no-argument mode (pick + RunPod)")
+    picker = parser.add_argument_group("the RunPod pod (--target, or no arguments)")
     picker.add_argument(
         "--hf-org",
         action="append",
@@ -1019,8 +1028,14 @@ def main(argv: list[str] | None = None) -> None:
         help="with --endpoint: bearer key, if the server was started with one",
     )
     parser.add_argument(
+        "--here",
+        action="store_true",
+        help="with --target: serve on THIS machine instead of RunPod. Needs a local GPU — "
+        "without one it downloads tens of GB and then fails.",
+    )
+    parser.add_argument(
         "--server",
-        help="with --target: SSH alias of a prepared GPU host to serve on; "
+        help="with --target: serve on this prepared GPU host instead of RunPod (SSH alias); "
         "omitted = serve on this machine. The REPL always runs here.",
     )
     parser.add_argument(
@@ -1106,7 +1121,9 @@ def main(argv: list[str] | None = None) -> None:
                     ">>> mode unknown from the client side (pinned at boot by whoever "
                     "served this) — pass --mode to label the transcript"
                 )
-        elif args.target:
+        elif args.target and (args.server or args.here):
+            # Opt-in: serve it yourself, on a prepared host (--server) or this machine
+            # (--here). --here on a laptop pulls tens of GB and then fails for want of a GPU.
             server, arms = serve_targets(args, out_dir)
         else:
             arms, lease, provenance = pick_and_serve(args, out_dir)
