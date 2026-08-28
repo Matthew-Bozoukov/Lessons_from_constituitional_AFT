@@ -162,11 +162,11 @@ class Table:
     design: Design
 
     @property
-    def n(self) -> int:
+    def n_models(self) -> int:
         return len(self.models)
 
     @property
-    def J(self) -> int:
+    def n_units(self) -> int:
         return len(self.units)
 
     def rollouts(self) -> dict[str, float]:
@@ -303,19 +303,22 @@ def crossed_terms(values: np.ndarray, unit_weights: np.ndarray | None = None) ->
     """mu_hat and T_A, T_B, T_C for an n x J table (n >= 2 for T_A and T_C; NaN otherwise)."""
     v = np.asarray(values, dtype=float)
     assert v.ndim == 2 and v.shape[1] >= 2, f"need an n x J table with J >= 2, got {v.shape}"
-    n, J = v.shape
-    w = np.ones(J) / J if unit_weights is None else np.asarray(unit_weights, float)
+    n_models, n_units = v.shape
+    w = (np.ones(n_units) / n_units if unit_weights is None
+         else np.asarray(unit_weights, float))
     # (v * w).sum rather than `v @ w`: numpy's BLAS matmul path raises spurious
     # divide-by-zero/overflow RuntimeWarnings on some shapes (reproducible with a plain
     # `@` on the same arrays, numpy 2.2), which would pollute stderr for every caller.
     row = (v * w[None, :]).sum(axis=1)   # per-model rates (unit-weighted)
     col = v.mean(axis=0)              # per-unit rates
     mu = float(row.mean())
-    out = {"mu": mu, "T_A": float("nan"), "T_B": float(col.var(ddof=1) / J), "T_C": float("nan")}
-    if n >= 2:
+    out = {"mu": mu, "T_A": float("nan"), "T_B": float(col.var(ddof=1) / n_units),
+           "T_C": float("nan")}
+    if n_models >= 2:
         resid = v - row[:, None] - col[None, :] + mu
-        out["T_A"] = float(row.var(ddof=1) / n)
-        out["T_C"] = float((resid ** 2).sum() / ((n - 1) * (J - 1)) / (n * J))
+        out["T_A"] = float(row.var(ddof=1) / n_models)
+        out["T_C"] = float((resid ** 2).sum() / ((n_models - 1) * (n_units - 1))
+                           / (n_models * n_units))
     return out
 
 
@@ -367,8 +370,8 @@ def _noise_parts(table: Table) -> list[tuple[float, float]]:
     give nu = K*d) and correctly loses df when one noisy cell dominates.
     """
     w = table.unit_weights
-    return [(float(w[j] ** 2 * table.noise_var[i, j] / table.n ** 2), float(table.reps[i, j] - 1))
-            for i in range(table.n) for j in range(table.J)]
+    return [(float(w[j] ** 2 * table.noise_var[i, j] / table.n_models ** 2), float(table.reps[i, j] - 1))
+            for i in range(table.n_models) for j in range(table.n_units)]
 
 
 def _noise_block(table: Table) -> dict[str, Any]:
@@ -379,7 +382,7 @@ def _noise_block(table: Table) -> dict[str, Any]:
         return {"estimable": False, "sigma_eps2": None, "term": None, "share": None,
                 "reason": "every cell needs >= 2 draws of every level to estimate rollout noise"}
     w = table.unit_weights
-    term = float(((nv * w[None, :] ** 2).sum(axis=1)).sum() / table.n ** 2)
+    term = float(((nv * w[None, :] ** 2).sum(axis=1)).sum() / table.n_models ** 2)
     per_draw = float(np.nanmean(nv * table.counts))   # s^2 per draw, roughly
     return {"estimable": True, "sigma_eps2": per_draw, "term": term, "share": None}
 
@@ -389,12 +392,12 @@ def _claims(table: Table, models: str) -> list[str]:
     out = []
     out.append(f"{'models sampled' if models == 'random' else 'model(s) fixed'}: "
                + ("generalises to checkpoints from the same training pipeline "
-                  f"(n={table.n} seeds; seed-to-seed variance estimated)" if models == "random"
-                  else f"about {'this checkpoint' if table.n == 1 else f'these {table.n} checkpoints'} only; "
+                  f"(n={table.n_models} seeds; seed-to-seed variance estimated)" if models == "random"
+                  else f"about {'this checkpoint' if table.n_models == 1 else f'these {table.n_models} checkpoints'} only; "
                        "pipeline (seed-to-seed) variance is not estimated"))
     out.append(("units sampled: generalises to units drawn like these "
-                f"({table.J} {d.unit}s; unit-to-unit variance estimated)") if d.units == "random"
-               else f"units fixed: about these {table.J} {d.unit}s only; no unit-to-unit term")
+                f"({table.n_units} {d.unit}s; unit-to-unit variance estimated)") if d.units == "random"
+               else f"units fixed: about these {table.n_units} {d.unit}s only; no unit-to-unit term")
     r = table.rollouts()
     if r["max"] == 1:
         out.append("one rollout per cell: rollout noise is inside every spread and is measured "
@@ -415,8 +418,8 @@ def _claims(table: Table, models: str) -> list[str]:
 def _estimand(table: Table, models: str) -> str:
     d = table.design
     who = ("a checkpoint from the pipeline" if models == "random"
-           else ("this checkpoint" if table.n == 1 else f"the mean of these {table.n} checkpoints"))
-    where = (f"a {d.unit} drawn like these" if d.units == "random" else f"these {table.J} {d.unit}s")
+           else ("this checkpoint" if table.n_models == 1 else f"the mean of these {table.n_models} checkpoints"))
+    where = (f"a {d.unit} drawn like these" if d.units == "random" else f"these {table.n_units} {d.unit}s")
     mix = ("" if not d.crossed_fixed else
            " under the fixed mix of " + " x ".join(d.crossed_fixed))
     return f"mean outcome of {who} on {where}{mix}"
@@ -430,7 +433,7 @@ def _finish(table: Table, models: str, method: str, mean: float, se2: float, df:
     if noise["estimable"] and se2 > 0:
         noise["share"] = float(noise["term"] / se2)
     return Result(_estimand(table, models), method, float(mean), se, float(mean - mult * se),
-                  float(mean + mult * se), mult, df, table.n, table.J, models, table.design.units,
+                  float(mean + mult * se), mult, df, table.n_models, table.n_units, models, table.design.units,
                   terms, table.rollouts(), noise, _claims(table, models), list(table.dropped_units))
 
 
@@ -443,9 +446,9 @@ def _as_table(x: Any, design: Design | None) -> Table:
 
 def _models_kind(table: Table, models: str | None) -> str:
     if models is None:
-        return "random" if table.n >= 2 else "fixed"
+        return "random" if table.n_models >= 2 else "fixed"
     assert models in ("random", "fixed")
-    if models == "random" and table.n < 2:
+    if models == "random" and table.n_models < 2:
         raise NotEstimable("models='random' needs >= 2 checkpoints; with one checkpoint the "
                            "seed-to-seed variance is not estimable -- use models='fixed' and "
                            "claim only about this checkpoint")
@@ -477,22 +480,23 @@ def interval(obs: Any, design: Design | None = None, *, models: str | None = Non
     kind = _models_kind(table, models)
     t = crossed_terms(table.values, table.unit_weights)
     mu = t["mu"]
-    n, J = table.n, table.J
+    n_models, n_units = table.n_models, table.n_units
     if kind == "random" and table.design.units == "random":
         se2 = t["T_A"] + t["T_B"] - t["T_C"]
         fallback = se2 <= 0
         if fallback:
             se2 = max(t["T_A"], t["T_B"])
-        df = satterthwaite([(t["T_A"], n - 1), (t["T_B"], J - 1), (t["T_C"], (n - 1) * (J - 1))])
+        df = satterthwaite([(t["T_A"], n_models - 1), (t["T_B"], n_units - 1),
+                            (t["T_C"], (n_models - 1) * (n_units - 1))])
         terms = {"T_A": t["T_A"], "T_B": t["T_B"], "T_C": t["T_C"], "negative_fallback": fallback,
                  "df_source": "Satterthwaite over T_A, T_B, T_C"}
         return _finish(table, kind, "T_A + T_B - T_C, t_nu (Satterthwaite)", mu, se2, df, terms, alpha)
     if kind == "random":  # units fixed
-        return _finish(table, kind, "T_A (per-model rates), t_{n-1}", mu, t["T_A"], table.n - 1,
+        return _finish(table, kind, "T_A (per-model rates), t_{n-1}", mu, t["T_A"], table.n_models - 1,
                        {"T_A": t["T_A"]}, alpha)
     if table.design.units == "random":  # models fixed
         return _finish(table, kind, "spread of per-unit rates over J (T_B), t_{J-1}", mu, t["T_B"],
-                       table.J - 1, {"T_B": t["T_B"]}, alpha)
+                       table.n_units - 1, {"T_B": t["T_B"]}, alpha)
     # both fixed: rollouts are the only randomness
     if not np.isfinite(table.noise_var).all():
         raise NotEstimable(
@@ -538,19 +542,19 @@ def difference(obs_a: Any, obs_b: Any, design: Design | None = None, *, models: 
         r.estimand = "difference (A - B), paired on units and checkpoints: " + r.estimand
         return r
 
-    kind = _models_kind(A, models) if models else ("random" if min(A.n, B.n) >= 2 else "fixed")
+    kind = _models_kind(A, models) if models else ("random" if min(A.n_models, B.n_models) >= 2 else "fixed")
     if kind == "random":
-        assert A.n >= 2 and B.n >= 2, "models='random' needs >= 2 checkpoints in each arm"
+        assert A.n_models >= 2 and B.n_models >= 2, "models='random' needs >= 2 checkpoints in each arm"
     ta, tb = crossed_terms(A.values, A.unit_weights), crossed_terms(B.values, B.unit_weights)
     d_cols = A.values.mean(axis=0) - B.values.mean(axis=0)     # per-unit difference of column means
     mean = ta["mu"] - tb["mu"]
-    J = A.J
+    n_units = A.n_units
     merged = Table(np.vstack([A.values, -B.values]), A.models + B.models, shared,
                    np.vstack([A.counts, B.counts]), np.vstack([A.reps, B.reps]),
                    np.vstack([A.noise_var, B.noise_var]), A.unit_weights, dropped,
                    A.design)   # only for rollout/claims bookkeeping
     if kind == "random" and A.design.units == "random":
-        t_bd = float(d_cols.var(ddof=1) / J)
+        t_bd = float(d_cols.var(ddof=1) / n_units)
         se2 = ta["T_A"] + tb["T_A"] + t_bd - ta["T_C"] - tb["T_C"]
         fallback = se2 <= 0
         if fallback:
@@ -558,20 +562,23 @@ def difference(obs_a: Any, obs_b: Any, design: Design | None = None, *, models: 
         terms = {"T_A_a": ta["T_A"], "T_A_b": tb["T_A"], "T_B_d": t_bd, "T_C_a": ta["T_C"],
                  "T_C_b": tb["T_C"], "negative_fallback": fallback,
                  "df_source": "Satterthwaite over the five terms"}
-        df = satterthwaite([(ta["T_A"], A.n - 1), (tb["T_A"], B.n - 1), (t_bd, J - 1),
-                            (ta["T_C"], (A.n - 1) * (J - 1)), (tb["T_C"], (B.n - 1) * (J - 1))])
+        df = satterthwaite([(ta["T_A"], A.n_models - 1), (tb["T_A"], B.n_models - 1),
+                            (t_bd, n_units - 1),
+                            (ta["T_C"], (A.n_models - 1) * (n_units - 1)),
+                            (tb["T_C"], (B.n_models - 1) * (n_units - 1))])
         r = _finish(merged, kind, "T_A^A + T_A^B + T_B^(d) - T_C^A - T_C^B, t_nu (Satterthwaite)",
                     mean, se2, df, terms, alpha)
     elif kind == "random":  # units fixed: Welch's two-sample t on the per-model rates
         ra = (A.values * A.unit_weights[None, :]).sum(axis=1)   # see crossed_terms on `@`
         rb = (B.values * B.unit_weights[None, :]).sum(axis=1)
-        va, vb = float(ra.var(ddof=1) / A.n), float(rb.var(ddof=1) / B.n)
-        df = satterthwaite([(va, A.n - 1), (vb, B.n - 1)])   # Welch-Satterthwaite
+        va, vb = float(ra.var(ddof=1) / A.n_models), float(rb.var(ddof=1) / B.n_models)
+        df = satterthwaite([(va, A.n_models - 1), (vb, B.n_models - 1)])   # Welch-Satterthwaite
         r = _finish(merged, kind, "Welch two-sample t on per-model rates, t_nu (Welch-Satterthwaite)",
                     mean, va + vb, df, {"var_a": va, "var_b": vb}, alpha)
     elif A.design.units == "random":  # models fixed, units random: paired on units
-        se2 = float(d_cols.var(ddof=1) / J)
-        r = _finish(merged, kind, "spread of per-unit differences over J, t_{J-1}", mean, se2, J - 1,
+        se2 = float(d_cols.var(ddof=1) / n_units)
+        r = _finish(merged, kind, "spread of per-unit differences over J, t_{J-1}", mean, se2,
+                    n_units - 1,
                     {"T_B_d": se2}, alpha)
     else:  # both fixed
         if not (np.isfinite(A.noise_var).all() and np.isfinite(B.noise_var).all()):
@@ -582,12 +589,12 @@ def difference(obs_a: Any, obs_b: Any, design: Design | None = None, *, models: 
                     mean, se2, satterthwaite(parts), {"noise_term": se2}, alpha)
     def who(t: Table) -> str:
         return ("a checkpoint from its pipeline" if kind == "random"
-                else ("its checkpoint" if t.n == 1 else f"the mean of its {t.n} checkpoints"))
+                else ("its checkpoint" if t.n_models == 1 else f"the mean of its {t.n_models} checkpoints"))
     where = (f"a {A.design.unit} drawn like these" if A.design.units == "random"
-             else f"these {J} {A.design.unit}s")
+             else f"these {n_units} {A.design.unit}s")
     r.estimand = (f"difference (A - B), paired on units: A's {who(A)} minus B's {who(B)}, "
                   f"on {where}")
-    r.n_models = A.n + B.n
+    r.n_models = A.n_models + B.n_models
     return r
 
 
@@ -605,11 +612,13 @@ def cluster_bootstrap(obs: Any, statistic: Callable[[np.ndarray], float], design
     table = _as_table(obs, design)
     kind = _models_kind(table, models)
     rng = np.random.default_rng(seed)
-    n, J = table.n, table.J
+    n_models, n_units = table.n_models, table.n_units
     draws = np.empty(n_boot)
     for b in range(n_boot):
-        cols = rng.integers(0, J, J) if table.design.units == "random" else np.arange(J)
-        rows = rng.integers(0, n, n) if kind == "random" else np.arange(n)
+        cols = (rng.integers(0, n_units, n_units) if table.design.units == "random"
+                else np.arange(n_units))
+        rows = (rng.integers(0, n_models, n_models) if kind == "random"
+                else np.arange(n_models))
         draws[b] = statistic(table.values[np.ix_(rows, cols)])
     point = float(statistic(table.values))
     return {"mean": point, "lo": float(np.quantile(draws, alpha / 2)),

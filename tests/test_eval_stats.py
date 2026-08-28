@@ -195,7 +195,7 @@ def test_balanced_fixed_factor_matches_miller_clustered_se():
     obs = _two_variant_obs(rng, 1, 20)
     d = Design(unit="scenario", crossed_fixed={"variant": "equal"}, nested=("pass",))
     t = collapse(obs, d)
-    J = t.J
+    J = t.n_units
     cells = np.array([[o["value"] for o in obs if o["scenario"] == u] for u in t.units])   # (J, 2)
     s_bar = cells.mean()
     miller = ((cells - s_bar).sum(axis=1) ** 2).sum() / (2 * J) ** 2
@@ -219,7 +219,7 @@ def test_missing_fixed_level_drops_unit_or_errors():
     obs = [o for o in _two_variant_obs(rng, 2, 8) if not (o["scenario"] == "s3" and o["variant"] == "mandated")]
     d = Design(unit="scenario", crossed_fixed={"variant": "equal"}, nested=("pass",))
     t = collapse(obs, d)
-    assert t.dropped_units == ["s3"] and t.J == 7
+    assert t.dropped_units == ["s3"] and t.n_units == 7
     with pytest.raises(NotEstimable, match="missing"):
         collapse(obs, Design(unit="scenario", crossed_fixed={"variant": "equal"}, nested=("pass",), incomplete="error"))
 
