@@ -311,7 +311,8 @@ def _mirror(rows: list[dict], md: Path, png: Path, ts: str) -> None:
 def _bars(rows: list[dict], png: Path) -> None:
     import matplotlib.pyplot as plt
 
-    fig, ax = plt.subplots(figsize=(9, 5.4), dpi=200)
+    # Width grows with the arm count so two-line tick labels never overlap (12 arms need ~13in).
+    fig, ax = plt.subplots(figsize=(max(9.0, 1.05 * len(rows) + 0.6), 5.4), dpi=200)
     xs = list(range(len(rows)))
     for x, r in zip(xs, rows):
         ax.bar(x, r["mr"], width=0.62, color=COLOR[r["group"]], zorder=2)
@@ -378,7 +379,7 @@ def _variants(rows: list[dict], png: Path) -> None:
     from matplotlib.patches import Patch
 
     rows = [r for r in rows if r["mand"] is not None]  # posted-only arms have no split
-    fig, ax = plt.subplots(figsize=(10.5, 5.6), dpi=200)
+    fig, ax = plt.subplots(figsize=(max(10.5, 1.25 * len(rows) + 0.6), 5.6), dpi=200)
     w = 0.36
     for i, r in enumerate(rows):
         c = COLOR[r["group"]]
