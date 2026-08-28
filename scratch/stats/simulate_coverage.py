@@ -40,7 +40,11 @@ from datetime import datetime
 from pathlib import Path
 
 import fire
+import matplotlib
 import numpy as np
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
@@ -140,12 +144,43 @@ def main(reps: int = 2000, truth_draws: int = 20_000_000, seed: int = 0,
                           "mean_width_pp": float(100 * np.mean(widths)),
                           "median_df": float(np.median(dfs)), "naive_wilson_coverage_pct": ncov,
                           "empirical_var_of_mean": emp_var, "mean_se2": float(np.mean(se2s)),
-                          "reps": n_ok, "skipped": skipped, **{k: v for k, v in p.items()}}
+                          "reps": n_ok, "skipped": skipped, "means": [float(m) for m in means],
+                          "skew": float(((np.array(means)-np.mean(means))**3).mean()
+                                        / np.std(means)**3), **{k: v for k, v in p.items()}}
         print(rows_md[-1], flush=True)
 
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     dest = REPO / out / stamp
     dest.mkdir(parents=True, exist_ok=True)
+
+    # The distribution of mu_hat itself: the multiplier assumes this is normal, so its shape
+    # is what explains coverage falling short of 95% where it does.
+    INK, INK2, GRID, BLUE = "#0b0b0b", "#52514e", "#e6e5e1", "#2a78d6"
+    fig, axes = plt.subplots(2, 3, figsize=(16, 8.4), facecolor="#fcfcfb")
+    for ax, (label, d) in zip(axes.ravel(), payload.items()):
+        m = np.array(d["means"]); mu = d["mu"]
+        ax.hist(100 * m, bins=45, color=BLUE, alpha=.85, density=True, zorder=2)
+        xs = np.linspace(m.min(), m.max(), 400)
+        se = np.sqrt(d["mean_se2"])
+        ax.plot(100 * xs, np.exp(-((xs - m.mean()) ** 2) / (2 * se ** 2)) / (se * np.sqrt(2 * np.pi)) / 100,
+                color=INK, lw=1.6, ls="--", zorder=4, label="normal with our mean SE")
+        ax.axvline(100 * mu, color="#eb6834", lw=2, zorder=5, label=f"true mu = {100*mu:.1f}%")
+        ax.set_title(f"{label}\ncoverage {d['coverage_pct']:.1f}%   SE²/Var {d['calibration_ratio']:.2f}"
+                     f"   skew {d['skew']:+.2f}", fontsize=9, loc="left", color=INK)
+        ax.set_xlabel("sample mean of the 2000 experiments (%)", fontsize=8.5, color=INK2)
+        ax.set_yticks([])
+        ax.legend(fontsize=7.5, frameon=False, loc="upper right")
+        for sp in ("top", "right", "left"):
+            ax.spines[sp].set_visible(False)
+        ax.spines["bottom"].set_color(GRID)
+        ax.tick_params(colors=INK2, labelsize=8.5)
+    for ax in axes.ravel()[len(payload):]:
+        ax.set_visible(False)
+    fig.suptitle(f"Sampling distribution of mu_hat over {reps} simulated experiments — the "
+                 "dashed curve is the normal our multiplier assumes", fontsize=11.5, color=INK, y=0.98)
+    fig.subplots_adjust(top=0.84, bottom=0.08, left=0.03, right=0.99, hspace=0.55, wspace=0.12)
+    png = dest / f"mu_hat_distributions_{stamp}.png"
+    fig.savefig(png, dpi=150)
     md = [f"# Does our 95% interval cover 95% of the time? ({stamp})", "",
           f"{reps} replicates per regime; truth from a {truth_draws:,}-draw Monte Carlo of the "
           f"same process. 3 checkpoints x {J} scenarios x 2 variants x R rollouts, checkpoints "
@@ -161,7 +196,7 @@ def main(reps: int = 2000, truth_draws: int = 20_000_000, seed: int = 0,
     write_run_meta(dest, {"script": "scratch/stats/simulate_coverage.py", "reps": reps,
                           "truth_draws": truth_draws, "J": J})
     print("\n".join(md))
-    print(f">>> saved {dest.relative_to(REPO)}")
+    print(f">>> saved {dest.relative_to(REPO)}  (figure: {png.name})")
 
 
 if __name__ == "__main__":
