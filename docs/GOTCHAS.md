@@ -8,7 +8,7 @@ default destination for everything since: new gotchas go here, and AI agents may
 append their own without asking. The price of that open door is that entries here
 may be outdated or over-verbose — treat them as leads to verify, not law.
 
-## GPU pods / vast.ai operations
+## GPU pods / RunPod operations
 
 **A pod's container disk is not storage.** `volumeInGb: 0` is the norm here, so anything a
 pod computes dies with it. Pull artifacts off CONTINUOUSLY as they are produced, not at the
