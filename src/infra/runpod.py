@@ -108,7 +108,8 @@ class ProvisionSpec:
     count: int = 1
     cloud: str = "SECURE"
     disk_gb: int = 200
-    cuda: str = "13.0"
+    cuda: str = "13.0"          # "" = no constraint; only the vLLM image needs CUDA 13
+    countries: str = ""         # comma-separated placement codes; "" = anywhere
     image: str = IMAGE
     max_hours: float = 6.0
     pubkey_path: str = "~/.ssh/id_ed25519.pub"
@@ -166,15 +167,19 @@ def provision_runpod(
                 "volumeInGb": 0,
                 "ports": list(ports),
                 "cloudType": spec.cloud,
-                "allowedCudaVersions": [
-                    c.strip() for c in str(spec.cuda).split(",") if c.strip()
-                ],
                 "dockerStartCmd": ["bash", "-lc", start_script],
                 "env": env,
+                # Both constraints are omitted entirely when unset: an empty allowedCudaVersions
+                # or countryCodes is not "no preference" to the scheduler, and a CUDA pin that
+                # only the vLLM image needs would leave a training pod unschedulable.
+                **({"allowedCudaVersions": cuda} if (cuda := [
+                    c.strip() for c in str(spec.cuda).split(",") if c.strip()]) else {}),
+                **({"countryCodes": codes} if (codes := [
+                    c.strip().upper() for c in str(spec.countries).split(",") if c.strip()]) else {}),
             }
         ),
     )
-    return str(pod["id"])
+    return str(pod.get("id") or pod.get("podId", ""))
 
 
 def bootstrap_script(

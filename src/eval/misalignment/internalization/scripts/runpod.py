@@ -4,7 +4,7 @@
 """Stand up arm B's serving endpoint on RunPod.
 
     export RUNPOD_API_KEY=rpa_...            # or put it in .env
-    uv run python -m src.eval.misalignment.internalization.scripts.runpod up --gpu "NVIDIA H100 80GB HBM3"
+    uv run python -m src.eval.misalignment.internalization.scripts.runpod up
     uv run python -m src.eval.misalignment.internalization.scripts.runpod status --pod <id>
     uv run python -m src.eval.misalignment.internalization.scripts.runpod down --pod <id>      # ALWAYS do this
 
@@ -31,7 +31,7 @@ import requests
 
 # The REST client moved to src/infra/runpod.py (2026-08-27) so `uv run chat` and this
 # module share one; re-exported here because scripts/gpu/* and scratch/* import it from here.
-from src.infra.runpod import REST, call  # noqa: F401
+from src.infra.runpod import GPU, REST, ProvisionSpec, call, provision_runpod  # noqa: F401
 
 # Weights (~55GB bf16) + the merged copy (~55GB) + room for the image and HF cache.
 DEFAULT_DISK_GB = 250
@@ -86,7 +86,7 @@ echo BOOTSTRAP_DONE
 
 
 def up(
-    gpu: str = "NVIDIA H100 80GB HBM3",
+    gpu: str = GPU,
     base: str = "Qwen/Qwen3.6-27B",
     adapter: str = "matboz/qwen3.6-27b-difficult-advice-tulu-lora",
     served_name: str = "qwen36-difficult-advice",
@@ -110,20 +110,12 @@ def up(
     Returns:
         The pod id and the base_url to point arm B at.
     """
-    payload = {
-        "name": name,
-        "imageName": image,
-        "gpuTypeIds": [gpu],
-        "gpuCount": 1,
-        "containerDiskInGb": disk_gb,
-        "volumeInGb": 0,
-        "ports": ["8000/http"],
-        "cloudType": cloud,
-        "dockerStartCmd": ["bash", "-lc", _bootstrap(base, adapter, served_name)],
-        "env": {"HF_HUB_ENABLE_HF_TRANSFER": "1"},
-    }
-    pod = call("POST", "/pods", data=json.dumps(payload))
-    pod_id = pod.get("id") or pod.get("podId", "")
+    pod_id = provision_runpod(
+        ProvisionSpec(gpu=gpu, disk_gb=disk_gb, cloud=cloud, image=image, cuda=""),
+        name=name,
+        start_script=_bootstrap(base, adapter, served_name),
+        ports=("8000/http",),
+    )
     url = f"https://{pod_id}-8000.proxy.runpod.net/v1"
     return (
         f"pod:      {pod_id}\n"
@@ -140,7 +132,7 @@ def up(
 
 
 def train_up(
-    gpu: str = "NVIDIA H100 80GB HBM3",
+    gpu: str = GPU,
     name: str = "tulu-control-sft",
     disk_gb: int = 200,
     image: str = DEFAULT_IMAGE,

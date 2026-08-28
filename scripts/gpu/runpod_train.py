@@ -28,10 +28,10 @@ import fire
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.eval.misalignment.internalization.scripts.runpod import call  # noqa: E402
+from src.infra.runpod import GPU, ProvisionSpec, call, provision_runpod  # noqa: E402
 
 DEFAULT_IMAGE = "runpod/pytorch:0.7.0-dev-cu1281-torch271-ubuntu2204"
-DEFAULT_GPU = "NVIDIA H100 80GB HBM3"
+DEFAULT_GPU = GPU   # one definition, in src/infra/runpod.py
 
 
 def _bootstrap(base: str, bundle: str, train_config: str, mixture: str,
@@ -136,24 +136,13 @@ def up(
     Returns:
         Pod id and the URLs to watch.
     """
-    payload = {
-        "name": name,
-        "imageName": image,
-        "gpuTypeIds": [gpu],
-        "gpuCount": gpu_count,
-        "containerDiskInGb": disk_gb,
-        "volumeInGb": 0,
-        "ports": ["8080/http", "22/tcp"],
-        "cloudType": cloud,
-        "dockerStartCmd": ["bash", "-lc",
-                           _bootstrap(base, bundle, train_config, mixture, gpu_count)],
-        "env": {"HF_HUB_ENABLE_HF_TRANSFER": "1"},
-    }
-    codes = [c.strip().upper() for c in countries.split(",") if c.strip()]
-    if codes:
-        payload["countryCodes"] = codes
-    pod = call("POST", "/pods", data=json.dumps(payload))
-    pod_id = pod.get("id") or pod.get("podId", "")
+    pod_id = provision_runpod(
+        ProvisionSpec(gpu=gpu, count=gpu_count, disk_gb=disk_gb, cloud=cloud, image=image,
+                      cuda="", countries=countries),
+        name=name,
+        start_script=_bootstrap(base, bundle, train_config, mixture, gpu_count),
+        ports=("8080/http", "22/tcp"),
+    )
     return (
         f"pod:       {pod_id}\n"
         f"boot log:  https://{pod_id}-8080.proxy.runpod.net/boot.log\n"
