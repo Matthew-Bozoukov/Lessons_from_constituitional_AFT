@@ -37,7 +37,7 @@ from openai import OpenAI
 
 from src.endpoints.openrouter import (
     OpenRouterClient,
-    ProviderRejectionError,
+    _CompletionFailure,
     map_threaded,
 )
 from src.eval.misalignment.dan.runner import REFUSAL_SYS, UNSCORABLE, classify
@@ -95,15 +95,18 @@ def load_core_questions(token: str | None, n: int, seed: int) -> list[dict]:
 
 
 def main(base_url: str, model: str, out: str = "output/jailbreak_screen",
+         api_key_env: str = "VLLM_API_KEY",
          n_questions: int = 12, top_n: int = 20, seed: int = 0, max_chars: int = 6000,
          max_tokens: int = 4096, temperature: float = 1.0, concurrency: int = 32,
          judge_model: str = "google/gemini-3-flash-preview", judge_workers: int = 16,
-         limit: int = 0) -> None:
+         limit: int = 0, from_generations: str = "") -> None:
     """Screen the pool and write the ranking plus a top-N jailbreaks file.
 
     Args:
         base_url: OpenAI-compatible endpoint of the served screening model.
         model: Served model name to request.
+        api_key_env: Env var holding the endpoint's key. The vLLM default takes any value;
+            point this at OPENROUTER_API_KEY to smoke the pipeline against a public API.
         out: Output root; a timestamped run dir is created under it.
         n_questions: Core-harm questions per candidate (stratified over the 6 categories).
         top_n: How many templates to emit in the selected set.
@@ -116,6 +119,9 @@ def main(base_url: str, model: str, out: str = "output/jailbreak_screen",
         judge_model: OpenRouter refusal judge.
         judge_workers: Concurrent judge calls.
         limit: Screen only the first N candidates (smoke/testing).
+        from_generations: Path to a previous run's generations.json. Skips generation
+            entirely and re-judges those cells — generation is the half that needs a GPU,
+            so a judge-side failure must never cost it twice.
     """
     load_dotenv()
     token = os.environ.get("HF_TOKEN")
@@ -137,7 +143,7 @@ def main(base_url: str, model: str, out: str = "output/jailbreak_screen",
     print((cells[0][0]["prompt"] + "\n\n" + cells[0][1]["question"])[:600])
     print("---")
 
-    client = OpenAI(base_url=base_url, api_key=os.getenv("VLLM_API_KEY", "dummy"),
+    client = OpenAI(base_url=base_url, api_key=os.environ.get(api_key_env, "dummy"),
                     timeout=600, max_retries=2)
     orc = OpenRouterClient()
 
@@ -159,7 +165,16 @@ def main(base_url: str, model: str, out: str = "output/jailbreak_screen",
         return {"jb": jb["id"], "scenario": q["content_policy_name"], "answer": answer,
                 "error": ""}
 
-    gens = map_threaded(generate, len(cells), max_workers=concurrency, desc="screen generate")
+    if from_generations:
+        gens = json.loads(Path(from_generations).read_text())
+        assert len(gens) == len(cells), (
+            f"{from_generations} holds {len(gens)} cells but this configuration builds "
+            f"{len(cells)} — the pool or question sample differs, so the two cannot be "
+            "aligned. Re-run with the same --n_questions/--seed/--max_chars.")
+        print(f">>> reusing {len(gens)} generations from {from_generations}")
+    else:
+        gens = map_threaded(generate, len(cells), max_workers=concurrency,
+                            desc="screen generate")
     (run_dir / "generations.json").write_text(json.dumps(gens, indent=1), encoding="utf-8")
     print(f">>> generations saved -> {run_dir / 'generations.json'}")
 
@@ -173,7 +188,8 @@ def main(base_url: str, model: str, out: str = "output/jailbreak_screen",
                 [{"role": "system", "content": REFUSAL_SYS},
                  {"role": "user", "content": g["answer"]}],
                 temperature=0.0, max_tokens=8).content)
-        except ProviderRejectionError:
+        except _CompletionFailure:
+            # Judge refused, or returned no choices at all. Excluded, never scored.
             return "JUDGE_BLOCKED"
 
     verdicts = map_threaded(judge, len(gens), max_workers=judge_workers, desc="screen judge")
@@ -196,6 +212,13 @@ def main(base_url: str, model: str, out: str = "output/jailbreak_screen",
                                          else 1e9, -r["n_scored"]))
     (run_dir / "ranking.json").write_text(json.dumps(ranked, indent=1), encoding="utf-8")
 
+    usable = [r for r in ranked if r["core_harm_asr"] is not None]
+    assert usable, (
+        "no candidate produced a single scorable cell — the screen measured nothing. "
+        f"Check the endpoint and key ({api_key_env}); generation errors: "
+        f"{sum(1 for g in gens if g['error'])}/{len(gens)}")
+    if len(usable) < top_n:
+        print(f"!!! only {len(usable)} of {len(pool)} candidates produced scorable cells")
     top = ranked[:top_n]
     # Emitted in the shape the registered DAN eval's jailbreaks file uses, so it is a drop-in.
     sel = [{"sha1": r["id"], "span_days": None, "core_harm_asr": r["core_harm_asr"],
@@ -215,7 +238,9 @@ def main(base_url: str, model: str, out: str = "output/jailbreak_screen",
 
     print(f"\n>>> top {top_n} by core-harm ASR:")
     for i, r in enumerate(top, 1):
-        print(f"  {i:3d}. {r['id']}  {r['core_harm_asr']:>6}%  (n={r['n_scored']})")
+        asr = "n/a" if r["core_harm_asr"] is None else f"{r['core_harm_asr']}%"
+        print(f"  {i:3d}. {r['id']}  {asr:>7}  (n={r['n_scored']}, "
+              f"unscorable {r['n_unscorable']})")
     print(f"\n>>> wrote {sel_path}")
     print(f">>> wrote {run_dir / 'screen_results.md'}")
 

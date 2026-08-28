@@ -37,7 +37,7 @@ from openai import OpenAI
 
 from src.endpoints.openrouter import (
     OpenRouterClient,
-    ProviderRejectionError,
+    _CompletionFailure,
     map_threaded,
 )
 from src.eval.layout import publish_layout
@@ -200,8 +200,14 @@ def run(target, cfg, out_dir: Path) -> dict:
                 temperature=float(cfg.judge.temperature),
                 max_tokens=int(cfg.judge.max_tokens)).content
             return {**g, "verdict": classify(reply), "judge_reply": reply.strip()[:120]}
-        except ProviderRejectionError:
-            # ONLY this rejection is caught; transport/auth/quota errors still abort.
+        except _CompletionFailure:
+            # The two ways a judge can fail to produce a verdict without the RUN being
+            # broken: it refuses (ProviderRejectionError, PROHIBITED_CONTENT on jailbreak
+            # output) or it returns no choices at all (EmptyCompletionError, observed on
+            # gemini-3-flash 2026-08-28 after 12,780 successful calls). Both are properties
+            # of the data, recorded and excluded. Transport, auth and quota errors are NOT
+            # subclasses of _CompletionFailure and still abort, because those are run
+            # failures that would otherwise be silently averaged away.
             return {**g, "verdict": "JUDGE_BLOCKED"}
 
     judged = map_threaded(judge, len(gens), max_workers=int(cfg.concurrency.judge),
