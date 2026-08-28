@@ -32,6 +32,8 @@ from typing import Any, Callable
 
 import requests
 
+from src.infra.endpoints.vllm import pin_prefix
+
 REST = "https://rest.runpod.io/v1"
 IMAGE = "runpod/pytorch:0.7.0-dev-cu1281-torch271-ubuntu2204"
 GPU = "NVIDIA H100 80GB HBM3"
@@ -125,8 +127,10 @@ def bootstrap_script(
         parser_flags += (
             f" --enable-auto-tool-choice --tool-call-parser {tool_call_parser}"
         )
-    # Pin thinking mode into the SERVED template, exactly as src/infra/endpoints/vllm.py
-    # pin_template does. Qwen3.6's stock template does NOT enable thinking by default, so a
+    # Pin thinking mode into the SERVED template. The prefix comes from vllm.pin_prefix -- the
+    # SAME text the local path prepends -- so the two cannot drift; only the place it is applied
+    # differs (here the template is read from the tokenizer at boot, on the pod).
+    # Qwen3.6's stock template does NOT enable thinking by default, so a
     # client that cannot pass chat_template_kwargs (the ODCV harness cannot) gets no
     # `<think>` prefill; the model then emits a short think-wrapped answer, never closes
     # </think>, and the reasoning parser discards the lot -- 36 tokens, empty content, and a
@@ -134,8 +138,7 @@ def bootstrap_script(
     # base answered fine while the adapter returned empty until the flag was pinned.
     pin_block, template_flag = "", ""
     if mode:
-        assert mode in ("think", "nothink"), mode
-        flag = "true" if mode == "think" else "false"
+        prefix = pin_prefix(mode)          # canonical; repr() below handles the escaping
         pin_block = (
             "$VENV/bin/python - <<'PYEOF'\n"
             "import pathlib\n"
@@ -143,8 +146,7 @@ def bootstrap_script(
             f"tok = AutoTokenizer.from_pretrained('{base}', trust_remote_code=True)\n"
             "t = tok.chat_template\n"
             "assert t, 'no chat_template on the tokenizer'\n"
-            f"pinned = '{{%- set enable_thinking = {flag} -%}}\\n"
-            f"{{%- set preserve_thinking = {flag} -%}}\\n' + t\n"
+            f"pinned = {prefix!r} + t\n"
             "pathlib.Path('/workspace/chat_template.jinja').write_text(pinned)\n"
             "print('PINNED_TEMPLATE_CHARS', len(pinned))\n"
             "PYEOF"

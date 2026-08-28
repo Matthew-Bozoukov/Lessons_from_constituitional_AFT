@@ -365,6 +365,12 @@ def run(target, cfg, out_dir: Path, *, reference: str = "") -> dict:
         return {"reference_arm": True, **health}
 
     # --- reference answers come from the cache ----------------------------------------
+    # Local import on purpose, twice over. It is NOT a contract breach -- it starts no server
+    # and loads no weights, only reads the reference artifact's two metadata files for its mode
+    # and model_key; the reference is the one arm run_eval never serves (its answers come from
+    # the cache), so nothing upstream holds a spec to hand down, and run_eval pipes eval kwargs
+    # through blind by design. And the late binding is what lets tests patch
+    # `src.infra.endpoints.vllm.resolve_target`. Do not hoist it.
     from src.infra.endpoints.vllm import resolve_target
 
     ref_spec = resolve_target(reference)

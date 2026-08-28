@@ -191,10 +191,21 @@ def pin_template(template_text: str, mode: str) -> str:
     the render rather than stripped by the template's default. Nothink pins it false:
     a nothink arm's history carries no reasoning to preserve.
     """
+    return pin_prefix(mode) + template_text
+
+
+def pin_prefix(mode: str) -> str:
+    """The two Jinja lines `pin_template` prepends. Depends on `mode` ALONE, not the template.
+
+    Split out because the RunPod bootstrap pins the template ON the pod, where the text is
+    only available at boot from the tokenizer -- but the prefix is decidable here. One
+    definition, so the two serving paths cannot drift (they did: src/infra/runpod.py used to
+    rebuild these two lines by hand, with a comment promising they matched).
+    """
     assert mode in ("think", "nothink"), mode
     flag = "true" if mode == "think" else "false"
     return (f"{{%- set enable_thinking = {flag} -%}}\n"
-            f"{{%- set preserve_thinking = {flag} -%}}\n") + template_text
+            f"{{%- set preserve_thinking = {flag} -%}}\n")
 
 
 # The two serving namespaces are DISJOINT BY CONSTRUCTION — no key appears in both, so
