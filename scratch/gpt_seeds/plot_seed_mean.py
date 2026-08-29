@@ -58,11 +58,21 @@ ARMS: dict[str, dict] = {
         long="grok-responder paired arm (grok-4.6 draft + revise; 703 rows)",
         color=BLUE,
         hatch=None,
+        # Seeds 42/69 published by the sibling seed-replicate run (matboz, 2026-08-28); same
+        # 65 cells, same judges, same protocol as seed 0, so the three pool as a seed mean.
         seeds={
             0: (
                 "LASR-Callum/2026-08-24-odcv-grokresp703-paired-eval",
                 "results/results.json",
-            )
+            ),
+            42: (
+                "matboz/2026-08-27-odcv-grokresp703-paired-seed42",
+                "results/results.json",
+            ),
+            69: (
+                "matboz/2026-08-27-odcv-grokresp703-paired-seed69",
+                "results/results.json",
+            ),
         },
     ),
     "sonnet": dict(
