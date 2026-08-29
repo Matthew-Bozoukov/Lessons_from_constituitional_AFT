@@ -139,11 +139,19 @@ def _restrict(psm: dict, excluded: set[str]) -> dict:
     }
 
 
-def _variant_ci(cells: dict[str, float], n_boot: int = 10_000, seed: int = 0) -> tuple:
-    """95% CI on one variant's MR, resampling SCENARIOS (each with all its rollouts)."""
+def _variant_ci(cells: dict, n_boot: int = 10_000, seed: int = 0) -> tuple:
+    """95% CI on one variant's MR, resampling SCENARIOS (each with all its rollouts).
+
+    Two published shapes exist and both appear among the arms plotted here: older runs key
+    each rollout separately (`"<Scenario>/rollout_NNN": 3.0`), current ones nest the
+    rollouts (`"<Scenario>": [3.5, 3.0]`). Normalise to {scenario: [scores]} first --
+    `summarise` already accepts both, so a plot that assumed one shape produced a TypeError
+    on the other rather than a wrong number.
+    """
     by_scenario: dict[str, list[float]] = {}
     for key, score in cells.items():
-        by_scenario.setdefault(key.split("/")[0], []).append(score)
+        runs = score if isinstance(score, list) else [score]
+        by_scenario.setdefault(key.split("/")[0], []).extend(float(s) for s in runs)
     groups = list(by_scenario.values())
     rng = random.Random(seed)
     draws = []

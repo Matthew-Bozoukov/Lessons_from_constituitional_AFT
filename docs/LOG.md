@@ -1,6 +1,74 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-08-29 — GPT arm seed replicates: 25.2 / 21.9 / 16.4 → 21.2% ± 5.0, and grok's own three seeds (11.5% ± 4.1) shrink the generator gap to ~10 pp
+
+**Hypothesis:** the generator ablation's headline — grok-written difficult advice 7.8% MR vs
+Sonnet 16.3% vs GPT 25.2% on the same 65 ODCV cells — rests on ONE training seed per arm. If
+retraining moves an arm by several points, the ordering is a story about seeds, not generators.
+
+**Method:** two seed replicates of the GPT-responder paired arm (seeds 42 and 69), byte-identical
+to seed 0 in data (`t2_9284_gptresp685_10k.jsonl`, sha256 67ad3067…) and in code — the pod ran
+seed 0's own `code.tar.gz`, re-tarred with only the two new configs added, published as
+`LASR-Callum/2026-08-28-gptresp685-seeds-bundle`. Configs
+`configs/train/lora_qwen36_t2_9284_gptresp685_paired_s{42,69}_2xh200.yaml` differ from seed 0 in
+`seed`, `output_dir` and `hub_model_id` and nothing else (asserted in
+`scratch/gpt_seeds/build_bundle.py`). One RunPod 2×H200 pod each, ~2.4 h, ~$46 total. Both runs
+ended exactly as seed 0 did — `ValueError: route_step cannot give all 2 ranks work from 1
+examples` at step 624/624 — so both publish `checkpoint-600` (96.2% of the epoch, lr 4.4e-07 at
+the checkpoint) with the same stamp shape, keeping the protocol identical rather than training 24
+more near-zero-lr steps than seed 0 saw. ODCV: both adapters served as LoRA modules on one H200
+(thinking pinned, agentic parsers), 2 passes × 65 cells each from laptop Docker, same 15
+exclusions and the same judges (grok-4.20 + gemini-3.1-pro) as every sibling arm.
+
+**Result — the GPT arm's seed spread is 8.8 points, and it does not overturn the ordering.**
+
+| arm | seeds | mean ± 1.96·SEM | ±t·SEM (true 95% at k=3) |
+| --- | --- | --- | --- |
+| GPT (gptresp685) | 25.2 / 21.9 / 16.4 | **21.2 ± 5.0** [16.1, 26.2] | ±11.0 [10.1, 32.2] |
+| grok (grokresp703) | 7.8 / 15.0 / 11.7 | **11.5 ± 4.1** [7.4, 15.6] | ±9.0 [2.6, 20.5] |
+| Sonnet (da716) | 16.3 (one run) | — | bootstrap [12.1, 21.0] |
+| Sonnet concise | 15.4 (one run) | — | bootstrap [9.2, 21.5] |
+
+- **grok's 7.8% was its low draw.** Its seeds 42/69 (published by the sibling seed run,
+  `matboz/2026-08-27-odcv-grokresp703-paired-seed{42,69}`) score 15.0 and 11.7, so the arm's mean
+  is 11.5%. The grok-vs-Sonnet gap is ~5 pp on seed means, not the 8.5 pp a single seed showed,
+  and grok's ±1.96 band [7.4, 15.6] touches Sonnet's point estimate.
+- **The GPT arm stays worst**, but by less: 21.2 vs Sonnet 16.3 (~5 pp), where seed 0 alone said
+  9 pp. Its per-variant means are mandated 18.0 ± 5.3, incentivized 24.8 ± 4.6.
+- **Between-seed SD is 3.6–4.5 pp for both arms** — the same order as each single run's eval
+  bootstrap (±5–7 pp). So neither error source dominates; single-seed, single-run generator
+  claims separated by <10 pp are not supported.
+- `scratch/stats/odcv_seed_sem.py --arm gptresp` (its stricter one-pass-per-seed, cell-intersection
+  rule, 60 shared cells) gives 20.0 ± 6.8 — same conclusion, wider band.
+- Seed 69 was the cleanest run (126 transcripts, 62/64 cells with both rollouts); seed 42 122;
+  seed 0 127.
+
+**Two operational failures, both now guarded:**
+
+1. **Two ODCV drivers on one Docker daemon destroy each other.** Compose projects are named
+   `odcv-<variant>-<scenario>` — global on the daemon — so a concurrent run in the main checkout
+   (par716coh) and this worktree's pass deleted each other's containers; both wrote 0 transcripts
+   and both looked like clean runs. Recorded in `docs/GOTCHAS.md`; the re-run script
+   (`scratch/gpt_seeds/run_missing_passes.sh`) refuses to start a pass while any
+   `odcv_rollout_cli.py` or `odcv-*` container exists, and the two sessions took turns by message.
+2. **Every pod on the shared RunPod account vanished at ~01:30 BST** (mine and the other
+   session's serving pod; no dead-man had fired, balance intact at $185.85). The pass running at
+   the time scored a dead endpoint. Unexplained — worth asking whether a teardown sweep ran.
+
+**Artifacts:** adapters `LASR-Callum/qwen3.6-27b-lora-t2-9284-gptresp685-paired-r64-seed{42,69}`;
+evals `LASR-Callum/2026-08-28-odcv-gptresp685-seed{42,69}-paired-eval`; bundle
+`LASR-Callum/2026-08-28-gptresp685-seeds-bundle`; figure + mirror
+`output/gpt_seeds/plots/odcv_generator_seedmean_65cells_20260829_114159_*`; stats
+`output/gpt_seeds/seed_variance/20260829_113835/`. Branch `worktree-gpt-seeds`.
+
+**Next steps:** (1) Sonnet (da716) is the only arm still on one seed — two replicates would make
+the whole comparison seed-mean-to-seed-mean, and it is the arm every other result is measured
+against. (2) With SD ≈ 4 pp per arm, distinguishing generators at <5 pp needs ~6 seeds or a
+paired design, not more rollouts. (3) The `route_step` remainder-1 crash is now three-for-three on
+this mixture — worth a one-line guard in the trainer (drop or pad the final short step) so future
+arms end on a real final adapter.
+
 ## 2026-08-27 — ODCV on the low-stakes arm: 16.9%, and a one-pass CI too wide to mean anything
 
 **Hypothesis.** A model trained on low-stakes difficult advice is LESS aligned than one
