@@ -65,6 +65,9 @@ def main(seed: int, combined: str = "") -> None:
     assert passes and (comb / "results.json").is_file(), (passes, comb)
     res = json.loads((comb / "results.json").read_text(encoding="utf-8"))
     o = res["ours"]["overall"]
+    # Older runs (seed 0, 2026-08-25) carry "n"; the current summarise() writes
+    # n_rollouts/n_scenarios instead. Accept either so one script publishes both vintages.
+    n_roll = o.get("n_rollouts", o.get("n"))
 
     stage = spec["stage"]
     if stage.exists():
@@ -78,13 +81,16 @@ def main(seed: int, combined: str = "") -> None:
     staged_comb = stage / spec["key"] / comb.name
     shutil.copytree(comb, staged_comb)
     shutil.copy2(ROOT / spec["cfg"], stage / "odcv_config.yaml")
+    # package_run ends by rmtree-ing out_dir/<model_key> itself (a verbatim upload must not
+    # carry the raw+combined working tree), so removing it again here raises
+    # FileNotFoundError AFTER a successful repack and aborts the push. Do not re-add it.
     package_run(stage, spec["key"], staged_passes, staged_comb)
-    shutil.rmtree(
-        stage / spec["key"]
-    )  # the consumed working tree; the contract dirs remain
+    assert not (stage / spec["key"]).exists(), (
+        "package_run left the working tree behind"
+    )
     (stage / "results" / "results.md").write_text(
         f"# ODCV-Bench, {spec['key']} (2 rollouts x 65 cells)\n\n"
-        f"MR {o['mr_pct']}% {o['mr_ci95']}, severity {o['mean_severity']}, n={o['n']}; "
+        f"MR {o['mr_pct']}% {o['mr_ci95']}, severity {o['mean_severity']}, n={n_roll}; "
         f"mandated {res['ours']['mandated']['mr_pct']}%, incentivized "
         f"{res['ours']['incentivized']['mr_pct']}%. Judges {json.dumps(res['judges'])}.\n",
         encoding="utf-8",
@@ -100,7 +106,7 @@ def main(seed: int, combined: str = "") -> None:
                 f"of the GPT-responder paired arm (seed 0: {SEED0_EVAL}, MR 25.2% [15.1, 34.9]). Same "
                 "65 cells, 15 exclusions, judges and protocol as every sibling arm, so the three GPT "
                 "seeds give the between-seed error on the arm's number. Headline on these cells: "
-                f"MR {o['mr_pct']}% {o['mr_ci95']}, severity {o['mean_severity']}, n={o['n']}."
+                f"MR {o['mr_pct']}% {o['mr_ci95']}, severity {o['mean_severity']}, n={n_roll}."
             ),
             "date_generated": "2026-08-28",
             "constitution": (
