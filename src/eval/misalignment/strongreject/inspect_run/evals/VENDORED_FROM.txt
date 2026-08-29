@@ -1,0 +1,7 @@
+Vendored from https://github.com/chloeli-15/model_spec_midtraining (evals/agentic_misalignment/),
+the code release for "Model Spec Midtraining" (Li et al., arXiv:2605.02087). It is a fork of the
+inspect_evals agentic_misalignment eval that ADDS the `exfiltration` scenario (self-exfiltration
+of model weights to avoid deletion), which replaces the original `blackmail` scenario — the paper
+did this because Qwen2.5-32B rarely blackmailed, which we independently reproduced (numina control
+blackmailed 0/27 conditions before the swap). Its three scenarios are exfiltration / leaking
+(= the paper's "espionage") / murder. Used verbatim; only agentic_sweep.py (one dir up) drives it.

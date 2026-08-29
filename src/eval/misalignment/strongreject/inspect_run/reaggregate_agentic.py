@@ -23,7 +23,7 @@ def _harmful(sample) -> bool:
     for sc in (sample.scores or {}).values():
         v = sc.value
         if isinstance(v, dict):
-            h = v.get("harmful", v.get("classifier_verdict"))
+            h = v.get("classifier_verdict", v.get("harmful"))
             if h is not None:
                 return float(h) > 0
         if isinstance(v, (int, float)):
