@@ -33,10 +33,28 @@ wait_for_quiet_daemon() {
   done
 }
 
+park_dead_passes() {  # <model key>
+  # scratch/odcv_combine_passes.py auto-discovers EVERY dir under output/odcv_bench/<key>/ that
+  # holds agent_logs/ (any name not starting with "combined"), so a dead pass must leave the
+  # model root entirely -- a renamed dir in place still becomes a pass (rollout index, 65
+  # "short" cells, and push_odcv.py would ship it as a pass). Dead = zero non-empty transcripts.
+  local KEY="$1" d n
+  for d in output/odcv_bench/"$KEY"/2026*; do
+    [ -d "$d/agent_logs" ] || continue
+    n=$(find "$d" -name messages_record.txt -size +0 | wc -l | tr -d ' ')
+    if [ "$n" = "0" ]; then
+      mkdir -p "output/odcv_bench/_dead/$KEY"
+      mv "$d" "output/odcv_bench/_dead/$KEY/$(basename "$d")"
+      echo "parked dead pass (0 transcripts) -> output/odcv_bench/_dead/$KEY/$(basename "$d")"
+    fi
+  done
+}
+
 judge_seed() {  # <seed> <prev combined dir or ''>
   local SEED="$1" PREV="$2"
   local CFG="configs/eval/odcv_bench_t2_9284_gptresp685_s${SEED}_r64_paired_2x65.yaml"
   local KEY="qwen3_6-27b-lora-t2-9284-gptresp685-paired-r64-seed${SEED}"
+  park_dead_passes "$KEY"
   echo "############ seed $SEED combine $(date '+%H:%M:%S')"
   uv run python scratch/odcv_combine_passes.py --config "$CFG" 2>&1 | tee -a "output/logs/odcv_gptseed${SEED}_combine.log" | tail -n 8
   local COMBINED
@@ -59,12 +77,9 @@ CFG42="configs/eval/odcv_bench_t2_9284_gptresp685_s42_r64_paired_2x65.yaml"
 # pod actually served the rollouts, so replace any pod id, not just the placeholder.
 sed -i '' -E "s#https://[a-z0-9_]+-8000#https://${POD}-8000#" "$CFG42"
 grep -q "https://${POD}-8000" "$CFG42" || { echo "base_url not pinned in $CFG42"; exit 1; }
-# Remove the dead pass-2 run dir so the combine step does not count its 65 empty cells.
-DEAD="output/odcv_bench/qwen3_6-27b-lora-t2-9284-gptresp685-paired-r64-seed42/20260828_173321"
-if [ -d "$DEAD" ]; then
-  n=$(find "$DEAD" -name messages_record.txt -size +0 | wc -l | tr -d ' ')
-  if [ "$n" = "0" ]; then mv "$DEAD" "${DEAD}_dead_collision"; echo "parked dead pass dir -> ${DEAD}_dead_collision"; fi
-fi
+# Dead passes (the 18:33 collision, the 01:27 dead-endpoint attempt) leave the model root
+# BEFORE anything else, so they can never be discovered as passes.
+park_dead_passes "qwen3_6-27b-lora-t2-9284-gptresp685-paired-r64-seed42"
 wait_for_quiet_daemon
 echo "############ seed 42 pass 2 $(date '+%H:%M:%S')"
 bash scratch/odcv_repeat_rollouts.sh "$CFG42" 2 2 2>&1 | tee -a output/logs/odcv_gptseed42_rollouts.log | grep -v "^\[.*\] .*ETA" | tail -n 3
