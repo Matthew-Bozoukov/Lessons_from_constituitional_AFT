@@ -305,3 +305,20 @@ default and let the bind address separate them.
 Check before blaming the eval: `ssh <alias> 'ss -tlnp | grep :800'` shows what owns the port,
 and a `grep -c "generation APIStatusError"` on the driver log distinguishes a serving problem
 (nearly every cell) from ordinary flakiness (a handful).
+
+## A stale API key in the shell env silently shadows .env (2026-08-29)
+
+Every fresh shell (each Bash tool call, launched from the user's profile) exported an OLD
+`OPENROUTER_API_KEY`. `load_dotenv()` — used by every script here — does NOT overwrite a
+variable already in `os.environ`, so scripts used the stale exported key, not the one in
+`.env`, even after `.env` was corrected. The symptom is a 402 "insufficient credits" (or
+worse, silent use of a wrong-account key) while a direct balance check on the .env key shows
+plenty — because the check used `load_dotenv(override=True)` and the script did not.
+
+Diagnose: `echo "${OPENROUTER_API_KEY: -4}"` (shell) vs `grep '^OPENROUTER_API_KEY=' .env`.
+If they differ, the shell is shadowing .env.
+
+Fix per-command (the profile re-exports on every new shell, so a one-off unset does not
+persist): prefix the launch with `unset OPENROUTER_API_KEY OPENROUTER_API_KEY_ALT;` so
+`load_dotenv()` reads the .env value. A durable fix is `load_dotenv(override=True)` in the
+client, but that changes behaviour repo-wide and belongs in a reviewed change.
