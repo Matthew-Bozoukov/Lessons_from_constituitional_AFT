@@ -32,7 +32,7 @@
 model: "gptresp685_s69"                       # served LoRA name (request `model` field)
 model_key: "qwen3_6-27b-lora-t2-9284-gptresp685-paired-r64-seed69"
 published_key: "qwen3.6-27b"
-base_url: "https://SERVE_POD-8000.proxy.runpod.net/v1"
+base_url: "https://1y0iovev0n8u9z-8000.proxy.runpod.net/v1"
 temperature: 0.0
 bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
 output_root: "output/odcv_bench"
