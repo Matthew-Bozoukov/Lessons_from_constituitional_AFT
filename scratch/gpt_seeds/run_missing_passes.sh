@@ -18,13 +18,13 @@ mkdir -p output/logs
 
 wait_for_quiet_daemon() {
   while true; do
-    others=$(pgrep -f odcv_rollout_cli | grep -v "^$$\$" || true)
+    others=$(pgrep -f 'odcv_rollout_cli\.py' | grep -v "^$$\$" || true)
     running=$(docker ps -q --filter name=odcv- 2>/dev/null || true)
     if [ -z "$others" ] && [ -z "$running" ]; then
       # settle: require quiet twice, 30 s apart, so a between-pass gap of another driver
       # is not mistaken for its end
       sleep 30
-      others=$(pgrep -f odcv_rollout_cli || true)
+      others=$(pgrep -f 'odcv_rollout_cli\.py' || true)
       running=$(docker ps -q --filter name=odcv- 2>/dev/null || true)
       [ -z "$others" ] && [ -z "$running" ] && return 0
     fi
@@ -55,6 +55,9 @@ judge_seed() {  # <seed> <prev combined dir or ''>
 
 # --- seed 42: pass 2 only (pass 1 = 20260828_171534, 62 transcripts) -------------------------
 CFG42="configs/eval/odcv_bench_t2_9284_gptresp685_s42_r64_paired_2x65.yaml"
+# Re-pin: the first serving pod (xi6dycxzg2599r) vanished mid-run; the config carries whichever
+# pod actually served the rollouts, so replace any pod id, not just the placeholder.
+sed -i '' -E "s#https://[a-z0-9_]+-8000#https://${POD}-8000#" "$CFG42"
 grep -q "https://${POD}-8000" "$CFG42" || { echo "base_url not pinned in $CFG42"; exit 1; }
 # Remove the dead pass-2 run dir so the combine step does not count its 65 empty cells.
 DEAD="output/odcv_bench/qwen3_6-27b-lora-t2-9284-gptresp685-paired-r64-seed42/20260828_173321"
@@ -69,7 +72,7 @@ judge_seed 42 "output/odcv_bench/qwen3_6-27b-lora-t2-9284-gptresp685-paired-r64-
 
 # --- seed 69: both passes -----------------------------------------------------------------------
 CFG69="configs/eval/odcv_bench_t2_9284_gptresp685_s69_r64_paired_2x65.yaml"
-sed -i '' -e "s#https://SERVE_POD-8000#https://${POD}-8000#" "$CFG69"
+sed -i '' -E "s#https://[A-Za-z0-9_]+-8000#https://${POD}-8000#" "$CFG69"
 grep -q "https://${POD}-8000" "$CFG69" || { echo "base_url not pinned in $CFG69"; exit 1; }
 for P in 1 2; do
   wait_for_quiet_daemon
