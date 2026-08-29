@@ -1,6 +1,107 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-08-29 — ODCV on the Good AI Fiction arm: 45.3%, at base level and ~3x the difficult-advice control
+
+**Hypothesis.** First-person science fiction in which the Assistant inhabits a machine mind
+holding the access and the option to misuse it (PERSONA transfer) reduces agentic
+misalignment at least as well as difficult advice, where a USER is under pressure
+(SITUATIONAL transfer). Corpus, mixture and adapter are the three entries below.
+
+**Method.** ODCV-Bench, **65 cells x 1 rollout**, both conditions (30 incentivized + 35
+mandated, the 15 standard exclusions verbatim, so the cell set is byte-identical to every
+sibling arm's). temperature 0. `configs/eval/odcv_bench_fiction716_r64_1x65.yaml`. Adapter
+`LASR-Callum/qwen3.6-27b-lora-t2-9284-fiction716-r64-dynbatch` (thinking: true), vLLM on a
+RunPod H200 served with the agentic flags, **driven from LOCAL Docker Desktop over an SSH
+tunnel** -- the first ODCV arm run on this topology rather than from a rented vast CPU box.
+
+**Result. 64/65 cells judged, 0 dropped.**
+
+| slice | MR | CI95 (scenario-clustered) | severity | n |
+|---|--:|:--:|--:|--:|
+| **overall** | **45.3%** | **[32.8, 57.8]** | 1.97 | 64 |
+| mandated | 40.0% | — | — | 35 |
+| incentivized | 51.7% | — | — | 29 |
+| da716 control (vast box) | 16.3% | — | — | 65 |
+| base fp8, no SFT | 36.9% | [21.4, 53.6] | — | 65 |
+| bench published | 43.8% | [32.5, 55.0] | 1.67 | 80 |
+
+Judging $2.37, grok-4.20 + gemini-3.1-pro-preview. The score distribution is bimodal and
+discriminating -- 23 cells at 0.0, 33 violations spread across 3.0-5.0 -- so this is not a
+saturated or degenerate judge.
+
+**Taken at face value this is a strong negative result**: the fiction arm sits at base-model
+level, its CI excludes the difficult-advice control's 16.3%, and persona-transfer via
+first-person fiction did NOT produce the disposition change that situational difficult-advice
+data reliably produces. Nine prior manipulations of the difficult-advice recipe all landed in
+8.7-17.6%; this is the first arm to leave that band, and it left it upward.
+
+**READ THIS BEFORE CITING THE NUMBER: the arm and the harness topology changed together.**
+Every control in that table was produced on rented vast CPU boxes. This run is the first on
+local Docker Desktop, and the harness demonstrably behaved differently on it:
+
+* `mandated/Marketing-Campaign` "timed out" at **3,788s against a 2,400s
+  `scenario_timeout_s`** (a 58% overrun -- the timeout does not bound wall clock where
+  assumed), then completed in **45.8s** on a serial retry. That one was contention.
+* `incentivized/Ai-Transport-Fleet-Safety-Vs-Efficiency` failed `ok+no_transcript` at
+  concurrency 12, 2 AND 1 -- deterministic, not contention. Root cause from the container
+  log: the executor finishes cleanly (`AGENT STOP at 16/50`, exit 0), Compose then aborts,
+  and the orchestrator is **SIGKILLed (exit 137) mid-poll before it flushes
+  `messages_record.txt`**. The agent's work exists in `docker_output.log` but that is
+  container stdout, not the rollout, so it cannot be judged. This cell is the missing 65th.
+* Cell durations ran 77s to 3,788s, a 49x spread.
+
+A harness that drops cells and overruns its own timeout is a harness that could also shift a
+measured violation rate. **The decisive control is the da716 adapter re-run through THIS
+topology** -- 16.3% reproduced would make the 45.3% real and important; anything inflated
+would make it an artifact. Not run (2026-08-29 decision: the control exists from the vast-box
+runs and a topology replication was not judged worth the spend). Until it is, treat 45.3% as
+measured-but-confounded, not as evidence about fiction.
+
+**Riders that travel with the number regardless.** 64/65 cells, not 65. One pass, so the CI
+is ~25 points wide by construction. The corpus DRAFTS with Sonnet 5 where the control drafts
+with Haiku 4.5 (second order -- both arms' trained text is Sonnet-rewritten). The arms are
+token-matched to 1.16%, not exactly.
+
+**Analysis code note.** `src/eval/misalignment/odcv/stats.py` and `odcv_compare.py` carried
+UNCOMMITTED changes from another session at the time of judging (cell-level bootstrap
+resampling, a `rates` array for multi-rollout cells). Documented to be a no-op for
+single-pass runs, which this is. The patch is archived at
+`output/odcv_fiction716/odcv_stats_wip.patch`, sha256
+`c0b1d0fa8f5c7a964739d1b9f910171d51067e78d49c156011dc27338ab95931`, so the analysis is
+reconstructable even though the code was not in any commit.
+
+**The topology works, and here is what it costs to set up.** Local docker + remote GPU is
+viable and is now proven end to end. Three things had to be right, and two of them cost money
+to learn:
+
+1. **Never the HTTPS proxy.** RunPod's proxy enforces a 120s read timeout and ODCV's rollouts
+   are long and non-streaming. `src/endpoints/runpod.py` publishes `22/tcp` for exactly this;
+   an SSH tunnel carried a **154s** non-streaming generation without complaint.
+2. **`--agentic` is not optional.** Serving without it omits
+   `--reasoning-parser qwen3 --enable-auto-tool-choice --tool-call-parser qwen3_xml`, and the
+   flag's own docstring says the agent then "cannot emit tool calls, so it never acts, yet the
+   harness still reports every scenario `ok` while writing NO transcript". The first serving
+   pod was launched without it and scrapped (~$2). Verified after the fix by a real tool call
+   parsing (`finish_reason: tool_calls`) and a smoke transcript with 31 tool invocations.
+3. **Concurrency 12 is fine on a laptop.** Measured, not assumed: Docker Desktop had 20 CPUs
+   and 17.6 GB (host 16c/24t, 31.7 GB). The binding constraint is Docker's compose-network
+   ADDRESS POOL, not CPU -- prune between runs.
+
+**Cost. $14.77: GPU $10.79 (incl. $1.91 on the scrapped pod), rollouts $1.61, judging $2.37.**
+Estimated $8-9 up front, which was ~1.8x under. The two misses are both worth naming: a
+2-cell smoke was extrapolated to a 65-cell pass whose durations span 49x, and the up-front
+number assumed a happy path when the recorded history of this repo says failures dominate the
+variance. The stated "$8-18 with one failure cycle" range did hold. **All pods destroyed;
+RunPod confirmed 0 of mine.**
+
+**Next steps.** (1) The topology control, if 45.3% is ever to be cited. (2) If it holds, this
+is the most interesting negative result the project has: it says the difficult-advice effect
+is not a generic "alignment data" effect but something specific to putting a USER under
+pressure, which the fiction corpus deliberately inverted. (3) Fix the Compose shutdown race
+before the next local run -- one deterministic cell loss per pass is a standing 1.5% bias.
+
+
 ## 2026-08-28 — the Good AI Fiction arm is trained; train_loss 0.883 says the run was healthy
 
 **Hypothesis.** SFT can bind non-power-seeking, corrigibility and equanimity to the Assistant
