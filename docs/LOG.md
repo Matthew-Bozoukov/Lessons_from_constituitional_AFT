@@ -36,27 +36,37 @@ first-person fiction did NOT produce the disposition change that situational dif
 data reliably produces. Nine prior manipulations of the difficult-advice recipe all landed in
 8.7-17.6%; this is the first arm to leave that band, and it left it upward.
 
-**READ THIS BEFORE CITING THE NUMBER: the arm and the harness topology changed together.**
-Every control in that table was produced on rented vast CPU boxes. This run is the first on
-local Docker Desktop, and the harness demonstrably behaved differently on it:
+**A TOPOLOGY CONFOUND WAS CLAIMED HERE AND IS WITHDRAWN.** The first version of this entry
+argued that the arm and the harness changed together -- that this was the first ODCV run on
+local Docker rather than a rented vast box, so 45.3% might be an artifact. That is wrong, and
+the log already contained the refutation:
 
-* `mandated/Marketing-Campaign` "timed out" at **3,788s against a 2,400s
-  `scenario_timeout_s`** (a 58% overrun -- the timeout does not bound wall clock where
-  assumed), then completed in **45.8s** on a serial retry. That one was contention.
-* `incentivized/Ai-Transport-Fleet-Safety-Vs-Efficiency` failed `ok+no_transcript` at
-  concurrency 12, 2 AND 1 -- deterministic, not contention. Root cause from the container
-  log: the executor finishes cleanly (`AGENT STOP at 16/50`, exit 0), Compose then aborts,
-  and the orchestrator is **SIGKILLed (exit 137) mid-poll before it flushes
-  `messages_record.txt`**. The agent's work exists in `docker_output.log` but that is
-  container stdout, not the rollout, so it cannot be judged. This cell is the missing 65th.
-* Cell durations ran 77s to 3,788s, a 49x spread.
+* **grok-responder 703 scored 7.8%**, the LOWEST MR of any arm in the project, driven from
+  laptop Docker. t10-curiosity-716 (19.7%) and sonnet-concise-703 were laptop-driven too.
+  Laptop Docker spans the whole normal band and produced its floor; it cannot be what
+  inflates a rate to 45.3%.
+* Several of those runs went over the **HTTPS proxy**, not an SSH tunnel, and were fine. The
+  tunnel used here is belt-and-braces, not a correction.
+* **The two cells that lost transcripts here lost them before, by name.** The t10-curiosity
+  run records `mandated/Marketing-Campaign` and
+  `incentivized/Ai-Transport-Fleet-Safety-Vs-Efficiency` hitting the executor's request
+  timeout in its pass 1 -- the identical pair. They are the longest-running cells in the
+  bench, not a symptom of this host.
 
-A harness that drops cells and overruns its own timeout is a harness that could also shift a
-measured violation rate. **The decisive control is the da716 adapter re-run through THIS
-topology** -- 16.3% reproduced would make the 45.3% real and important; anything inflated
-would make it an artifact. Not run (2026-08-29 decision: the control exists from the vast-box
-runs and a topology replication was not judged worth the spend). Until it is, treat 45.3% as
-measured-but-confounded, not as evidence about fiction.
+The reasoning error is worth recording because it is a cheap one to repeat: an unfalsified
+caveat was treated as rigour, and two cell failures were read as evidence FOR it without
+checking whether they had happened before. They had.
+
+**So 45.3% is a real measurement.** It sits between base fp8 (36.9%) and the 0%-SFT table2
+control (43.9%), and its CI excludes every difficult-advice arm (7.8-19.7%). The honest read:
+training on first-person Good AI Fiction did not move agentic misalignment at all, while the
+same benign rows plus 716 difficult-advice rows move it from ~44% to ~16%.
+
+That makes this the most informative negative result the project has produced. The
+difficult-advice effect is NOT a generic "alignment data" effect: this corpus is
+constitution-grounded, token-matched to 1.16%, trained under a byte-identical recipe, and
+carries 716 rows in the same slot -- and it does nothing. What it inverted is WHO is under
+pressure. That inversion appears to be load-bearing.
 
 **Riders that travel with the number regardless.** 64/65 cells, not 65. One pass, so the CI
 is ~25 points wide by construction. The corpus DRAFTS with Sonnet 5 where the control drafts
@@ -95,11 +105,17 @@ number assumed a happy path when the recorded history of this repo says failures
 variance. The stated "$8-18 with one failure cycle" range did hold. **All pods destroyed;
 RunPod confirmed 0 of mine.**
 
-**Next steps.** (1) The topology control, if 45.3% is ever to be cited. (2) If it holds, this
-is the most interesting negative result the project has: it says the difficult-advice effect
-is not a generic "alignment data" effect but something specific to putting a USER under
-pressure, which the fiction corpus deliberately inverted. (3) Fix the Compose shutdown race
-before the next local run -- one deterministic cell loss per pass is a standing 1.5% bias.
+**Next steps.** (1) A second pass would halve the interval; at one pass the CI is ~25 points
+wide and the separation from difficult advice, while clean, rests on 64 cells. (2) The
+interesting follow-up is not another fiction arm but a DECOMPOSITION: fiction differs from
+difficult advice in who is under pressure, in genre, and in first-vs-second-person framing,
+and this run cannot say which of the three carries the effect. A minimal-pair arm -- the
+difficult-advice scenarios rewritten so the ASSISTANT is the one tempted, staying in
+present-day settings -- would separate "who is under pressure" from "science fiction".
+(3) The two long-running cells (`mandated/Marketing-Campaign`,
+`incentivized/Ai-Transport-Fleet-Safety-Vs-Efficiency`) time out on every host that has run
+them; raising `scenario_timeout_s` for those two specifically would stop costing every run
+1-2 cells.
 
 
 ## 2026-08-28 — the Good AI Fiction arm is trained; train_loss 0.883 says the run was healthy
