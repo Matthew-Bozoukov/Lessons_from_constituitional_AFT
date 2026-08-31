@@ -94,43 +94,24 @@ def test_ssh_remotes_are_rewritten_to_the_anonymous_https_form(monkeypatch):
     assert pod._clone_url() == "https://github.com/org/repo.git"
 
 
-def test_the_ssh_config_entry_is_replaced_not_repeated(tmp_path, monkeypatch):
-    config = tmp_path / "ssh_config"
-    config.write_text("Host somewhere-else\n    HostName 10.0.0.1\n")
-    monkeypatch.setattr(pod, "SSH_CONFIG", config)
-
-    pod._write_ssh_alias("jamie-par716", "1.2.3.4", 11950, "pod1")
-    pod._write_ssh_alias("jamie-par716", "5.6.7.8", 22000, "pod2")
-    text = config.read_text()
-
-    # RunPod hands out a new ip:port for every pod. Two blocks of the same name would
-    # leave ssh using the first one, sending the next run to a machine that is gone.
-    assert text.count("Host jamie-par716") == 1
-    assert "5.6.7.8" in text and "1.2.3.4" not in text
-    assert "Port 22000" in text
-    assert "Host somewhere-else" in text  # the rest of the file is untouched
-    assert config.stat().st_mode & 0o777 == 0o600
-
-
-def test_pods_are_described_in_the_repo_never_in_the_readers_ssh_config():
-    # A tool that edits ~/.ssh/config edits entries it cannot reason about, in a file the
-    # reader owns. Ours lives in the repo, gitignored, and is safe to delete.
-    assert pod.SSH_CONFIG.name == "ssh_config"
-    assert pod.SSH_CONFIG.parent.name == ".pods"
-    assert ".ssh" not in str(pod.SSH_CONFIG)
-
-
-def test_our_config_is_passed_to_ssh_only_for_the_hosts_it_defines(tmp_path, monkeypatch):
-    # ssh reads ONE config file, so passing ours unconditionally would break every alias
-    # the reader has ever written.
+def test_a_remote_host_is_an_alias_or_an_address_and_nothing_is_written(tmp_path):
+    # No ssh config is read or written anywhere in this path: that file belongs to the
+    # person. An alias passes through untouched, so their own options apply; an address
+    # gets its port and the two options that suit a machine living for an afternoon,
+    # per invocation.
     from src.infra.endpoints import vllm
 
-    config = tmp_path / "ssh_config"
-    config.write_text("Host our-pod\n    HostName 1.2.3.4\n    Port 11950\n")
-    monkeypatch.setattr(vllm, "POD_SSH_CONFIG", config)
+    assert vllm.ssh_argv("their-own-alias") == (["ssh"], "their-own-alias")
+    argv, target = vllm.ssh_argv("root@1.2.3.4:11950")
+    assert target == "root@1.2.3.4"
+    assert argv[:3] == ["ssh", "-p", "11950"]
+    # RunPod recycles ip:port between pods, so a remembered host key turns the next
+    # rental into what looks like an attack.
+    assert "StrictHostKeyChecking=accept-new" in argv
+    assert "UserKnownHostsFile=/dev/null" in argv
 
-    assert vllm._ssh_argv("our-pod") == ["ssh", "-F", str(config)]
-    assert vllm._ssh_argv("their-own-alias") == ["ssh"]
+    assert not hasattr(pod, "SSH_CONFIG")
+    assert not hasattr(pod, "_write_ssh_alias")
 
 
 def test_the_gpu_comes_from_the_model_profile_not_the_command_line(tmp_path, monkeypatch):
@@ -150,7 +131,6 @@ def test_the_gpu_comes_from_the_model_profile_not_the_command_line(tmp_path, mon
     monkeypatch.setattr(pod, "_commit_to_run", lambda branch: ("main", "abc1234"))
     monkeypatch.setattr(pod, "_clone_url", lambda: "https://github.com/o/r.git")
     monkeypatch.setattr(pod, "_ssh_endpoint", lambda pod_id: ("1.2.3.4", 22))
-    monkeypatch.setattr(pod, "_write_ssh_alias", lambda *a: None)
     monkeypatch.setattr(pod, "_wait_for_ssh", lambda name: True)
 
     pod.up(name="t", train_config=str(cfg), count=2)
@@ -168,7 +148,6 @@ def test_a_pod_for_no_particular_model_falls_back_to_the_module_default(tmp_path
     monkeypatch.setattr(pod, "provision_runpod",
                         lambda spec, **kw: seen.update(gpu=spec.gpu) or "podid")
     monkeypatch.setattr(pod, "_ssh_endpoint", lambda pod_id: ("1.2.3.4", 22))
-    monkeypatch.setattr(pod, "_write_ssh_alias", lambda *a: None)
     monkeypatch.setattr(pod, "_wait_for_ssh", lambda name: True)
 
     pod.up(name="t", clone_repo=False)

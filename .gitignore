@@ -99,5 +99,3 @@ src/eval/misalignment/odcv/third_party/odcv-bench/**/__pycache__/
 # Agent worktrees: embedded git repos, never part of this repository.
 .claude/worktrees/
 
-# Pods this repo rented: our own ssh config, never the reader's (src/infra/runpod.py).
-.pods/

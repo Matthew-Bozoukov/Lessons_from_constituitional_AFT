@@ -6,6 +6,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -421,27 +422,31 @@ class LocalExec:
         self.proc = None
 
 
-# Pods rented by `uv run runpod up` are described HERE, in the repo, never in the
-# reader's ~/.ssh/config: that file is theirs, it predates this tool and outlives it, and
-# a program that edits it is editing entries it cannot reason about. `_ssh_argv` passes
-# this file to ssh with -F for exactly the hosts it defines, so `--server <pod>` works
-# with no setup, while `--server <your-own-alias>` still resolves from ~/.ssh/config.
-POD_SSH_CONFIG = Path(__file__).resolve().parents[3] / ".pods" / "ssh_config"
+# A remote host is EITHER an alias from the reader's own ~/.ssh/config OR a literal
+# `[user@]address:port`, which is what `uv run runpod up` prints for a fresh pod. Nothing
+# here reads or writes an ssh config: that file belongs to the person, and a program
+# rewriting blocks in it is editing entries it cannot reason about. Naming a pod is
+# theirs to do (by hand, or by asking Claude to add the Host entry); the code only ever
+# needs somewhere to connect.
+_HOST_PORT = re.compile(r"^(?P<host>[^:/@]+(?:@[^:/]+)?):(?P<port>\d+)$")
 
 
-def _ssh_argv(host: str) -> list[str]:
-    """`ssh` plus -F when this is one of our pods; plain `ssh` for anything else.
+def ssh_argv(host: str) -> tuple[list[str], str]:
+    """The `ssh` argv prefix and the hostname to hand it, for an alias or an address:port.
 
-    Not "-F always": ssh reads ONE config file, so passing ours unconditionally would
-    make every host the reader has ever defined stop resolving.
+    An alias is passed through untouched, so every option the reader configured applies.
+    A literal address gets its port as `-p` plus two options that are right for a machine
+    that exists for an afternoon: RunPod recycles `ip:port` between pods, so a remembered
+    host key turns the next rental into what looks like an attack. Per invocation, never
+    written down.
     """
-    try:
-        ours = POD_SSH_CONFIG.read_text() if POD_SSH_CONFIG.exists() else ""
-    except OSError:
-        ours = ""
-    if any(line.strip() == f"Host {host}" for line in ours.splitlines()):
-        return ["ssh", "-F", str(POD_SSH_CONFIG)]
-    return ["ssh"]
+    match = _HOST_PORT.match(host)
+    if not match:
+        return ["ssh"], host
+    return (["ssh", "-p", match["port"],
+             "-o", "StrictHostKeyChecking=accept-new",
+             "-o", "UserKnownHostsFile=/dev/null"],
+            match["host"])
 
 
 class SshExec:
@@ -473,7 +478,8 @@ class SshExec:
         # characters), and on a Windows driver the default cp1252 decode raises inside
         # subprocess's reader THREAD — which does not fail the call, it just loses the output
         # and prints an alarming traceback that looks like the run died. Observed 2026-08-05.
-        r = subprocess.run([*_ssh_argv(self.host), self.host, cmd], capture_output=True, text=True,
+        argv, target = ssh_argv(self.host)
+        r = subprocess.run([*argv, target, cmd], capture_output=True, text=True,
                            encoding="utf-8", errors="replace",
                            timeout=timeout, input=stdin_text)
         if r.returncode != 0:
@@ -593,9 +599,9 @@ class SshExec:
         self._ssh(self._with_env(
             f"nohup bash {script} >> {self.remote_dir}/vllm.log 2>&1 < /dev/null & "
             f"echo started"), timeout=60)
+        argv, target = ssh_argv(self.host)
         self.tunnel = subprocess.Popen(
-            [*_ssh_argv(self.host), "-N",
-             "-L", f"{self.bind}:{self.port}:localhost:{self.port}", self.host])
+            [*argv, "-N", "-L", f"{self.bind}:{self.port}:localhost:{self.port}", target])
 
     def alive(self) -> bool:
         try:

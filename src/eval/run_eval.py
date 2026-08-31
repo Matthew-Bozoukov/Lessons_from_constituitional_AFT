@@ -125,9 +125,10 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--name", required=True, choices=sorted(EVALS))
     parser.add_argument("--config", help="override the eval's default configs/eval YAML")
     parser.add_argument("--server",
-                        help="SSH alias of a GPU host (prepared per the playbook) to serve on; "
-                             "omitted = serve on this machine. Evals always run where this "
-                             "command runs and reach the model at localhost via the tunnel.")
+                        help="GPU host to serve on: `root@<ip>:<port>` (what `uv run runpod up` "
+                             "prints) or an alias from your own ~/.ssh/config. Omitted = serve "
+                             "on this machine. Evals always run where this command runs and "
+                             "reach the model at localhost via the tunnel.")
     parser.add_argument("--server-bind",
                         help="local tunnel bind address with --server. Default: 127.0.0.1, or "
                              "the docker bridge (172.17.0.1) for docker evals on linux so "

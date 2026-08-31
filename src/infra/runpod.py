@@ -44,7 +44,7 @@ from typing import Any, Callable
 
 import requests
 
-from src.infra.endpoints.vllm import POD_SSH_CONFIG, pin_prefix
+from src.infra.endpoints.vllm import pin_prefix, ssh_argv
 from src.model_profile import gpu_for
 
 REST = "https://rest.runpod.io/v1"
@@ -613,15 +613,6 @@ def watchdog(
 # `scripts/infra/runpod.py` is the thin mirror of this, per the CLAUDE.md naming rule.
 
 WORKDIR = "/root/work"
-# OUR ssh config, in the repo and gitignored — never ~/.ssh/config. A tool that edits a
-# person's ssh config is editing a file they own, that predates it and outlives it, and
-# whose other entries it cannot reason about. This one holds nothing but pods this repo
-# rented, is safe to delete, and `SshExec` passes it to ssh with -F for exactly the hosts
-# it defines (src/infra/endpoints/vllm.py), so nothing depends on the reader having wired
-# it into their own config. To get plain `ssh <pod>` in a terminal, add one line to
-# ~/.ssh/config yourself — `Include <repo>/.pods/ssh_config` — which is a change you make,
-# review and can undo.
-SSH_CONFIG = POD_SSH_CONFIG
 
 
 # --------------------------------------------------------------------------------------
@@ -765,51 +756,13 @@ def _ssh_endpoint(pod_id: str, timeout_s: int = 420) -> tuple[str, int]:
         f"BILLING.\n  uv run runpod down --pod {pod_id}")
 
 
-def _write_ssh_alias(name: str, ip: str, port: int, pod_id: str) -> None:
-    """Add (or refresh) this pod's entry in the repo's own ssh config (see SSH_CONFIG).
-
-    An entry rather than a printed `ssh -p ...` line, because everything downstream takes
-    a HOST: `SshExec` runs `ssh <host> <cmd>`, and `--server` on evals and chat is that
-    same string. Rewritten in place under a marked block, since RunPod hands out a new
-    ip/port for every pod and a stale entry of the same name would silently send the next
-    run to a machine that no longer exists.
-    """
-    start, end = f"# >>> lasr pod {name} >>>", f"# <<< lasr pod {name} <<<"
-    block = "\n".join([
-        start,
-        f"# pod {pod_id}, written by `uv run runpod up`",
-        f"Host {name}",
-        f"    HostName {ip}",
-        f"    User root",
-        f"    Port {port}",
-        # Pods are ephemeral and RunPod recycles ip:port pairs, so a remembered host key
-        # is a login that fails for a reason that looks like a break-in warning.
-        "    StrictHostKeyChecking accept-new",
-        "    UserKnownHostsFile /dev/null",
-        "    ServerAliveInterval 30",
-        end,
-        "",
-    ])
-    SSH_CONFIG.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    header = ("# Pods this repo rented (src/infra/runpod.py). Safe to delete; `uv run "
-              "runpod up` rewrites it.\n# For plain `ssh <pod>`, add to ~/.ssh/config "
-              f"yourself:  Include {SSH_CONFIG}\n\n")
-    text = SSH_CONFIG.read_text() if SSH_CONFIG.exists() else header
-    if start in text and end in text:
-        head, rest = text.split(start, 1)
-        text = head + block + rest.split(end, 1)[1].lstrip("\n")
-    else:
-        text = (text.rstrip("\n") + "\n\n" if text.strip() else "") + block
-    SSH_CONFIG.write_text(text)
-    SSH_CONFIG.chmod(0o600)
-
-
-def _wait_for_ssh(name: str, timeout_s: int = 300) -> bool:
+def _wait_for_ssh(host: str, timeout_s: int = 300) -> bool:
     """True once the pod answers SSH. Its sshd starts before the slow work, so this is quick."""
+    argv, target = ssh_argv(host)
     deadline = time.time() + timeout_s
     while time.time() < deadline:
-        if subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
-                           name, "true"], capture_output=True).returncode == 0:
+        if subprocess.run([*argv, "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+                           target, "true"], capture_output=True).returncode == 0:
             return True
         time.sleep(10)
     return False
@@ -885,28 +838,32 @@ def up(name: str, train_config: str | None = None, model: str | None = None,
     )
     print(f">>> pod {pod_id} — BILLING NOW")
     ip, port = _ssh_endpoint(pod_id)
-    _write_ssh_alias(name, ip, port, pod_id)
-    reachable = _wait_for_ssh(name)
+    host = f"root@{ip}:{port}"
+    reachable = _wait_for_ssh(host)
 
     if push_env and reachable:
         from src.infra.endpoints.vllm import SshExec
 
-        SshExec(name, port=8000, workdir=WORKDIR).push_hf_env(Path(".env"))
+        SshExec(host, port=8000, workdir=WORKDIR).push_hf_env(Path(".env"))
 
+    # An ADDRESS, not an alias: `--server` and SshExec take either, and naming a host is
+    # the reader's business — this writes to no ssh config.
     return "\n".join([
         f"pod:       {pod_id}",
-        f"host:      {name}  ({ip}:{port}, in {SSH_CONFIG})",
+        f"host:      {host}",
         f"boot log:  https://{pod_id}-8080.proxy.runpod.net/boot.log",
         "ssh:       " + ("ready" if reachable else "not answering yet — watch the boot log"),
         "",
         "The boot log says READY when the clone and `uv sync` have finished. Then:"
         if clone else "Nothing is checked out on it; the boot log says READY when uv is in.",
-        (f"  ssh -F {SSH_CONFIG} {name} 'cd {WORKDIR} && uv run torchrun "
+        (f"  ssh -p {port} root@{ip} \'cd {WORKDIR} && uv run torchrun "
          f"--nproc_per_node={count} scripts/train/train_lora.py "
-         "--config configs/train/<arm>.yaml'") if clone
-        else f"  ssh -F {SSH_CONFIG} {name}",
-        f"(`uv run evals --server {name}` needs no -F: it reads that file itself.",
-        f" For a bare `ssh {name}`, add `Include {SSH_CONFIG}` to ~/.ssh/config.)",
+         "--config configs/train/<arm>.yaml\'") if clone
+        else f"  ssh -p {port} root@{ip}",
+        f"  uv run evals --name <eval> --target <hf> --server {host}",
+        "",
+        f"Want to type a name instead? Add a Host entry for {ip}:{port} to your own",
+        "~/.ssh/config (or ask Claude to) — nothing here will write it for you.",
         "",
         "IT BILLS UNTIL YOU RUN THIS:",
         f"  uv run runpod down --pod {pod_id}",
