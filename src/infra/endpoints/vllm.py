@@ -453,6 +453,43 @@ def ssh_argv(host: str) -> tuple[list[str], str]:
             match["host"])
 
 
+class ExternalServer:
+    """A vLLM server somebody else started — `uv run runpod up --serve <target>`.
+
+    run_eval otherwise owns serving: it starts vLLM on localhost or over SSH and stops it
+    afterwards. A pod that IS the server (RunPod's HTTPS proxy, which is how ODCV reaches
+    a model from docker containers without a bridge hop) is neither, so this stands in for
+    the server object: it serves nothing, stops nothing, and hands back the URL it was
+    given.
+
+    What it DOES check is that the endpoint is serving the arm you asked for — the cheap
+    version of the mistake this invites, which is pointing an eval at yesterday's pod and
+    attributing its numbers to today's adapter. The mode is the pod's to have pinned;
+    nothing here can verify a template from outside, so `runpod up --serve` infers it from
+    the same artifact run_eval would.
+    """
+
+    def __init__(self, base_url: str):
+        self.base_url = base_url.rstrip("/")
+
+    def serve(self, spec: TargetSpec) -> str:
+        from src.infra.runpod import served_models
+
+        listed = served_models(self.base_url)
+        assert listed is not None, (
+            f"{self.base_url} does not answer /models — is the pod still booting? "
+            "(watch its boot log for SERVE_READY)")
+        expected = spec.model_key if spec.adapter else "base"
+        assert expected in listed, (
+            f"{self.base_url} serves {listed}, not {expected!r} — this endpoint is not "
+            f"serving {spec.hf_path}. Rent one for it: uv run runpod up --serve "
+            f"{spec.hf_path}")
+        return self.base_url
+
+    def stop(self) -> None:
+        """Nothing to stop: the pod outlives the eval, and `runpod down` is its teardown."""
+
+
 class SshExec:
     """Run the vLLM server on a remote GPU host (one `uv run runpod up` leaves ready:
     repo cloned + `uv sync`), with an owned SSH tunnel so the driver still talks to

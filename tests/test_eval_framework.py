@@ -424,3 +424,27 @@ def test_publish_layout_contract(tmp_path):
     (tmp_path / "stray.json").write_text("{}")
     with pytest.raises(RuntimeError, match=r"stray root entries.*stray\.json"):
         assert_layout(tmp_path)
+
+
+def test_an_external_endpoint_must_be_serving_the_arm_you_asked_for(monkeypatch):
+    # The mistake this catches: pointing an eval at yesterday's pod and attributing its
+    # numbers to today's adapter.
+    from dataclasses import replace
+
+    from src.infra.endpoints import vllm
+
+    spec = vllm.TargetSpec(hf_path="org/2026-08-31-arm", base_model="Qwen/Qwen3.6-27B",
+                           adapter=True, mode="think", model_key="arm", lora_rank=64)
+    server = vllm.ExternalServer("https://pod-8000.proxy.runpod.net/v1")
+
+    monkeypatch.setattr("src.infra.runpod.served_models", lambda url: ["base", "arm"])
+    assert server.serve(spec) == "https://pod-8000.proxy.runpod.net/v1"
+
+    monkeypatch.setattr("src.infra.runpod.served_models", lambda url: ["base", "other"])
+    with pytest.raises(AssertionError, match="not serving"):
+        server.serve(spec)
+
+    # A pod that is still booting says so, rather than failing later inside the eval.
+    monkeypatch.setattr("src.infra.runpod.served_models", lambda url: None)
+    with pytest.raises(AssertionError, match="SERVE_READY"):
+        server.serve(replace(spec, adapter=False))

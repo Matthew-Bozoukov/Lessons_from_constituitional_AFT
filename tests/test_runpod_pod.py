@@ -133,7 +133,7 @@ def test_the_gpu_comes_from_the_model_profile_not_the_command_line(tmp_path, mon
     monkeypatch.setattr(pod, "_ssh_endpoint", lambda pod_id: ("1.2.3.4", 22))
     monkeypatch.setattr(pod, "_wait_for_ssh", lambda name: True)
 
-    pod.up(name="t", train_config=str(cfg), count=2)
+    pod.up(name="t", train_config=str(cfg), count=2)  # naming an arm implies the clone
     assert seen["gpu"] == gpu_for("Qwen/Qwen3.6-27B", "train") == "NVIDIA H200"
     # The COUNT is not in the profile and never reaches it: how many GPUs is a decision
     # about the run, made here.
@@ -143,33 +143,41 @@ def test_the_gpu_comes_from_the_model_profile_not_the_command_line(tmp_path, mon
     assert seen["gpu"] == "NVIDIA B200"  # an explicit ask still wins
 
 
-def test_a_pod_for_no_particular_model_falls_back_to_the_module_default(tmp_path, monkeypatch):
+def test_a_bare_pod_is_the_default_and_takes_the_module_gpu(tmp_path, monkeypatch):
     seen = {}
     monkeypatch.setattr(pod, "provision_runpod",
                         lambda spec, **kw: seen.update(gpu=spec.gpu) or "podid")
     monkeypatch.setattr(pod, "_ssh_endpoint", lambda pod_id: ("1.2.3.4", 22))
     monkeypatch.setattr(pod, "_wait_for_ssh", lambda name: True)
 
-    pod.up(name="t", clone_repo=False)
+    pod.up(name="t")  # no config, no target, no clone
     assert seen["gpu"] == pod.GPU
 
 
-def test_a_serving_box_takes_the_inference_gpu_not_the_training_one(monkeypatch):
-    # The footgun this closes: renting an H200 to SERVE Qwen3.6-27B, which fits on an
-    # H100 — training is what needs the bigger card.
+def test_serving_a_target_hands_the_facts_to_serve_vllm(monkeypatch):
+    # `--serve` provisions too (through serve_vllm), and the pod IS the server — so
+    # every serving parameter has to come from the target and its family, not from
+    # whoever typed the command.
     from src.infra.endpoints import vllm
     from src.model_profile import gpu_for
 
     seen = {}
-    monkeypatch.setattr(pod, "provision_runpod",
-                        lambda spec, **kw: seen.update(gpu=spec.gpu) or "podid")
-    monkeypatch.setattr(pod, "_commit_to_run", lambda branch: ("main", "abc1234"))
-    monkeypatch.setattr(pod, "_clone_url", lambda: "https://github.com/o/r.git")
-    monkeypatch.setattr(pod, "_ssh_endpoint", lambda pod_id: ("1.2.3.4", 22))
-    monkeypatch.setattr(pod, "_wait_for_ssh", lambda host: True)
-    monkeypatch.setattr(vllm, "resolve_target",
-                        lambda t: type("S", (), {"base_model": "Qwen/Qwen3.6-27B"})())
+    monkeypatch.setattr(pod, "serve_vllm",
+                        lambda base, mods, **kw: seen.update(base=base, mods=mods, **kw) or "podid")
+    monkeypatch.setattr(vllm, "resolve_target", lambda t: vllm.TargetSpec(
+        hf_path=t, base_model="Qwen/Qwen3.6-27B", adapter=True, mode="think",
+        model_key="arm", lora_rank=64))
 
-    pod.up(name="t", target="LASR-Callum/2026-08-31-some-adapter")
+    out = pod.up(name="t", serve="LASR-Callum/2026-08-31-some-adapter", max_len=65536)
+
+    assert seen["base"] == "Qwen/Qwen3.6-27B"
+    assert seen["mods"] == [("arm", "LASR-Callum/2026-08-31-some-adapter")]
+    assert seen["mode"] == "think"                      # inferred from the artifact
     assert seen["gpu"] == gpu_for("Qwen/Qwen3.6-27B", "inference")
-    assert seen["gpu"] != gpu_for("Qwen/Qwen3.6-27B", "train")
+    assert seen["max_len"] == 65536
+    assert seen["lora_rank"] == 64
+    # ODCV scores a clean 0% without the tool-call parser: the agent cannot act, and the
+    # summary looks fine. Both parsers are the family's, from ModelProfile.serving.
+    assert seen["tool_call_parser"] == "qwen3_xml"
+    assert seen["reasoning_parser"] == "qwen3"
+    assert "--endpoint" in out and "runpod down --pod podid" in out

@@ -31,13 +31,13 @@ numbers.
 
 Only the model *server* needs a GPU host; every pipeline *driver* runs anywhere the repo
 env installs — one lock resolves on linux and macOS (GPU packages are linux-marked).
-A GPU host comes from one command: `uv run runpod up` rents a pod holding this repo at the
-commit you are on (it refuses when that commit is not on origin) and prints its
-`root@<ip>:<port>`. Name what the box is FOR and it takes the right GPU from
-`ModelProfile.gpu`: `--train_config <cfg>` to train on it, `--target <hf>` to serve on it
-(a different, usually cheaper card). `--count` is the number; `--clone_repo=False` for a
-bare pod. **Never write a `POST /pods` yourself** — `src/infra/runpod.py` is the only
-place this repo rents a GPU. **Nothing tears
+A GPU comes from one command, `uv run runpod up`, in three shapes: bare (uv and sshd),
+`--clone-repo` (+ this repo at the commit you are on, refused when that commit is not on
+origin), and `--serve <hf>` (+ vLLM serving that target). Naming the work picks the GPU
+from `ModelProfile.gpu` — `--train_config <cfg>` trains on it, `--serve <hf>` serves on
+it, a different and usually cheaper card — and `--count` is the number. **Never write a
+`POST /pods` yourself** — `src/infra/runpod.py` is the only place this repo rents a GPU.
+**Nothing tears
 a pod down for you**: `uv run runpod pods` lists what is billing, `uv run runpod down --pod
 <id>` terminates and verifies. Credit is finite and shared, so check balances before big
 runs and flag spend over ~$20. Harder-won pod lessons live in `docs/GOTCHAS.md`.
@@ -52,6 +52,7 @@ Option A only — code must run on the GPU host directly:
 
 ```
 uv run runpod up --name <you>-<arm> --train_config configs/train/<arm>.yaml --count N --push_env
+#   (--train_config implies --clone-repo: the pod gets this repo at your commit)
 ssh -p <port> root@<ip> 'cd /root/work && uv run torchrun --nproc_per_node=N \
     scripts/train/train_lora.py --config configs/train/<arm>.yaml'
 uv run runpod down --pod <id>
@@ -62,21 +63,30 @@ GPU needs no torchrun, `uv run train --config <cfg>` is enough. Be aware that wh
 
 ### Eval (`uv run evals`)
 
-Two equivalent workflows, identical code:
+Three ways to reach a served model, identical eval code:
 
 - **Option A — everything on the pod.** Copy `.env` to the pod, then plain `uv run`
   there: e.g. `uv run evals --target <hf> --name <eval>`. Serving is a local
   subprocess; judging and the HF push use the pod's `.env`.
-- **Option B — drive locally, serve remotely.** Rent the box for the target
-  (`uv run runpod up --name <you>-serve --target <hf>`, which takes the INFERENCE gpu),
-  then from your machine: `uv run evals --target <hf> --name <eval> --server
-  root@<ip>:<port>` — the address `up` printed, or an alias from your own
-  `~/.ssh/config` (nothing here writes one).
-  run_eval starts vLLM on the host over SSH and tunnels it back; the eval loop, judge
-  calls and HF push run locally with your local `.env`. Credentials stay machine-local:
-  at most `HF_TOKEN` (plus `HF_ORG`, which is not one) reaches the host, opt-in via
-  `--push-env` (never overwrites an existing remote `.env`). `check_ready` fails fast —
-  naming `runpod up` — on an unprepared host.
+- **Option B — the pod serves, you drive.** THE pattern for ODCV (docker must run where
+  you are, the model must not):
+
+  ```
+  uv run runpod up --name <you>-serve --serve <hf> --max_len 65536
+  uv run evals --name <eval> --target <hf> --endpoint https://<pod>-8000.proxy.runpod.net/v1
+  uv run runpod down --pod <id>
+  ```
+
+  `--serve` makes the pod the vLLM server itself, with the mode pinned and the family's
+  parsers from `ModelProfile.serving` (without the tool-call parser ODCV scores a clean
+  0%: the agent cannot act and the summary looks fine). It is published on RunPod's HTTPS
+  proxy, so docker containers reach it with no bridge hop. `--endpoint` means run_eval
+  starts and stops nothing; it checks the endpoint is serving the arm you named.
+- **Option C — drive locally, serve over SSH.** `--server root@<ip>:<port>` on a
+  `--clone-repo` pod: run_eval starts vLLM there over SSH and tunnels it back. Credentials
+  stay machine-local — at most `HF_TOKEN` (plus `HF_ORG`, which is not one) reaches the
+  host, opt-in via `--push-env`. `check_ready` fails fast, naming `runpod up`, on a pod
+  with no repo.
 
 Notes:
 - New code should be written with these two workflows in mind. For example, they should expect target models to be from Hugging Face and served as a vLLM endpoint.

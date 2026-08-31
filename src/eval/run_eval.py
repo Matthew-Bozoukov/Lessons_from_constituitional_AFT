@@ -14,7 +14,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from omegaconf import OmegaConf
 
-from src.infra.endpoints.vllm import SshExec, VllmServer, resolve_target
+from src.infra.endpoints.vllm import ExternalServer, SshExec, VllmServer, resolve_target
 from src.eval import EVALS, resolve, resolve_pool
 from src.eval.layout import assert_layout, publish_layout
 from src.huggingface import hf_repo_id, push_run_dir
@@ -139,6 +139,10 @@ def main(argv: list[str] | None = None) -> None:
                         help="with --server: write HF_TOKEN + HF_ORG (only) to the host's "
                              ".env if it has none. Deliberate per-host action; the rest of "
                              "your .env never leaves this machine.")
+    parser.add_argument("--endpoint",
+                        help="base URL of a vLLM server already serving the target (what "
+                             "`uv run runpod up --serve` prints). run_eval then starts and "
+                             "stops nothing; mutually exclusive with --server.")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--no-push", action="store_true",
                         help="skip the HF upload (smoke runs only — HF is the canonical store)")
@@ -146,6 +150,9 @@ def main(argv: list[str] | None = None) -> None:
     args, unknown = parser.parse_known_args(argv)
     load_dotenv()
 
+    assert not (args.server and args.endpoint), (
+        "--server starts vLLM on a host for you; --endpoint uses one that is already "
+        "serving. Give one.")
     _preflight(args.name, args)
     cfg = OmegaConf.merge(OmegaConf.load(args.config or EVALS[args.name].config),
                           OmegaConf.from_dotlist(args.overrides))
@@ -190,10 +197,9 @@ def main(argv: list[str] | None = None) -> None:
     # tool calls); the base model's verified facts live in ModelProfile.serving and are not
     # writable from here. plan_serving validates one against the other — nothing is layered
     # over anything. `or {}` not `.get(..., {})`: a bare `serving:` key parses as None.
-    server = VllmServer(work_dir=Path("output") / args.name / "server", port=args.port,
-                        executor=executor,
-                        serve_requirements=OmegaConf.to_container(cfg.get("serving") or {},
-                                                                  resolve=True))
+    server = ExternalServer(args.endpoint) if args.endpoint else VllmServer(
+        work_dir=Path("output") / args.name / "server", port=args.port, executor=executor,
+        serve_requirements=OmegaConf.to_container(cfg.get("serving") or {}, resolve=True))
     summaries: dict[str, dict] = {}
     published: list[dict] = []
     try:
