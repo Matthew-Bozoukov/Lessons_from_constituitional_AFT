@@ -37,10 +37,9 @@ origin), and `--serve <hf>` (+ vLLM serving that target). Naming the work picks 
 from `ModelProfile.gpu` — `--train_config <cfg>` trains on it, `--serve <hf>` serves on
 it, a different and usually cheaper card — and `--count` is the number. **Never write a
 `POST /pods` yourself** — `src/infra/runpod.py` is the only place this repo rents a GPU.
-**Nothing tears
-a pod down for you**: `uv run runpod pods` lists what is billing, `uv run runpod down --pod
-<id>` terminates and verifies. Credit is finite and shared, so check balances before big
-runs and flag spend over ~$20. Harder-won pod lessons live in `docs/GOTCHAS.md`.
+**Nothing tears a pod down for you**: `uv run runpod down --pod <id>` terminates and
+verifies, `uv run runpod pods` lists what is still billing. The account and the credit are
+shared, so check balances before big runs and flag spend over ~$20. Harder-won pod lessons live in `docs/GOTCHAS.md`.
 
 ### Data (`uv run synth`, `uv run mix`)
 
@@ -82,14 +81,15 @@ Three ways to reach a served model, identical eval code:
   0%: the agent cannot act and the summary looks fine). It is published on RunPod's HTTPS
   proxy, so docker containers reach it with no bridge hop. `--endpoint` means run_eval
   starts and stops nothing; it checks the endpoint is serving the arm you named.
-- **Option C — drive locally, serve over SSH.** `--server root@<ip>:<port>` on a
-  `--clone-repo` pod: run_eval starts vLLM there over SSH and tunnels it back. Credentials
+- **Option C — drive locally, serve over SSH.** On a `uv run runpod up --name <you>-serve
+  --clone-repo` pod: `--server root@<ip>:<port>` and run_eval starts vLLM there over SSH
+  and tunnels it back. Credentials
   stay machine-local — at most `HF_TOKEN` (plus `HF_ORG`, which is not one) reaches the
   host, opt-in via `--push-env`. `check_ready` fails fast, naming `runpod up`, on a pod
-  with no repo.
+  with no repo. `uv run runpod down --pod <id>` when the ladder is finished.
 
 Notes:
-- New code should be written with these two workflows in mind. For example, they should expect target models to be from Hugging Face and served as a vLLM endpoint.
+- New code should be written with these workflows in mind. For example, they should expect target models to be from Hugging Face and served as a vLLM endpoint.
 - **ODCV must drive where docker works** — a laptop with Docker Desktop, never a RunPod
   pod: unprivileged containers cannot create the per-scenario Compose networks. The model
   it drives is served on a RunPod pod (Option B: local docker, remote model).
@@ -479,4 +479,6 @@ outdated or overly bloated, so read them as leads to verify rather than settled 
 
 ## When you finish a task
 - Append a `docs/LOG.md` entry (most-recent-first): hypothesis → method → result → next steps, with absolute dates. LOG.md is for **experiments and major code changes only** — routine refactors, chores, and doc edits get no entry.
-- Destroy any GPU instance and confirm 0 active.
+- Tear down every pod YOU started — `uv run runpod down --pod <id>` — and confirm with
+  `uv run runpod pods` that none of yours is left. The account is shared: a pod you did
+  not provision is reported, never terminated.
