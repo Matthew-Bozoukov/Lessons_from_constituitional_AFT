@@ -33,7 +33,7 @@ from src.huggingface import hf_api, push_run_dir  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 
 BASE = "Qwen/Qwen3.6-27B"
-BUNDLE = "LASR-Callum/2026-08-28-gptresp685-seeds-bundle"
+BUNDLE = "LASR-Callum/2026-08-28-gpt-responder-685-seeds-bundle"
 MIXTURE = "t2_9284_gptresp685_10k.jsonl"
 SEED0 = "LASR-Callum/qwen3.6-27b-lora-t2-9284-gptresp685-paired-r64"
 CHECKPOINT = 600
@@ -190,7 +190,7 @@ def push(seed: int, private: bool = False) -> str:
                 f"scratch/gpt_seeds/adapter_pod.py extract/push --seed {seed}"
             ),
             "dataset": f"hf.co/datasets/{ds['repo']}@{ds['revision']} ({ds['file']}; sha256-identical "
-            "to LASR-Callum/2026-08-25-gptresp685-paired-bundle@c7994ec2, seed 0's pin)",
+            "to LASR-Callum/2026-08-25-gpt-responder-685-paired-bundle@c7994ec2, seed 0's pin)",
             "checkpoint": (
                 f"checkpoint-{ck['global_step']} of {ck['total_steps']} steps (epoch {ck['epoch']}, "
                 f"lr {ck['lr_at_checkpoint']:.2e}, last logged loss {ck['last_logged_loss']}). "

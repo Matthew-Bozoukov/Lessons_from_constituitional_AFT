@@ -87,7 +87,7 @@ train:
   # OFF on purpose: pushing needs an HF token on a rented box. The adapter is pulled back
   # over the pod's :8080 and pushed from the machine that holds the token.
   push_to_hub: false
-  hub_model_id: "LASR-Callum/qwen3.6-27b-lora-t2-9284-da716-r64-dynbatch-seed69"
+  hub_model_id: "LASR-Callum/2026-08-31-qwen36-lora-table2-9284-difficult-advice-716-rank-64-dynbatch-seed-69"
 
   assistant_only_loss: true
   # loss_type deliberately unset. trl 0.19.1 (this repo's lock) has no such SFTConfig field,

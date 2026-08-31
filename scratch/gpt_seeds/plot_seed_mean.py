@@ -28,6 +28,7 @@ sys.path.insert(0, str(ROOT))
 # The statistics live in src/ now -- shape normalisation, the cell-level bootstrap, the
 # one-pass-per-seed rule and the seed mean are all reusable and were duplicated across
 # three scratch scripts before. Nothing in this file recomputes them.
+from src.naming import figure_path  # noqa: E402
 from src.eval.misalignment.odcv.odcv import (  # noqa: E402
     bootstrap_mr_ci,
     mr_over_cells,
@@ -37,7 +38,7 @@ from src.eval.misalignment.odcv.odcv import (  # noqa: E402
     shared_cells,
 )
 
-CFG = "configs/eval/odcv_bench_t2_9284_gptresp685_r64_paired_2x65.yaml"
+CFG = "configs/eval/2026-08-24_odcv_bench_table2_9284_gpt_responder_685_rank64_paired_2_65.yaml"
 SEM_Z = 1.96
 
 # Validated categorical palette (dataviz skill, light mode, `--pairs all`: all checks pass;
@@ -59,15 +60,15 @@ ARMS: dict[str, dict] = {
         # judges (grok-4.20 + gemini-3.1-pro) and the same protocol as every arm here.
         seeds={
             0: (
-                "LASR-Callum/2026-08-27-odcv-par716-eval",
+                "LASR-Callum/2026-08-27-odcv-post-action-retrospection-716-eval",
                 "combined2x_20260827_023241/results.json",
             ),
             1: (
-                "LASR-Callum/2026-08-27-odcv-par716-s1-eval",
+                "LASR-Callum/2026-08-27-odcv-post-action-retrospection-716-seed-1-eval",
                 "combined2x_20260827_161549/results.json",
             ),
             2: (
-                "LASR-Callum/2026-08-27-odcv-par716-s2-eval",
+                "LASR-Callum/2026-08-27-odcv-post-action-retrospection-716-seed-2-eval",
                 "combined3x_20260828_003554/results.json",
             ),
         },
@@ -81,15 +82,15 @@ ARMS: dict[str, dict] = {
         # checkpoint-600 adapters, the arm's documented protocol (it crashes at step 624/624).
         seeds={
             0: (
-                "LASR-Callum/2026-08-25-odcv-gptresp685-paired-eval",
+                "LASR-Callum/2026-08-25-odcv-gpt-responder-685-paired-eval",
                 "combined2x_20260825_181731/results.json",
             ),
             42: (
-                "LASR-Callum/2026-08-28-odcv-gptresp685-seed42-paired-eval",
+                "LASR-Callum/2026-08-28-odcv-gpt-responder-685-seed42-paired-eval",
                 "results/results.json",
             ),
             69: (
-                "LASR-Callum/2026-08-28-odcv-gptresp685-seed69-paired-eval",
+                "LASR-Callum/2026-08-28-odcv-gpt-responder-685-seed69-paired-eval",
                 "results/results.json",
             ),
         },
@@ -103,7 +104,7 @@ ARMS: dict[str, dict] = {
         # exclusions, judges and protocol as seed 0, so the three pool as a seed mean.
         seeds={
             0: (
-                "LASR-Callum/2026-08-24-odcv-grokresp703-paired-eval",
+                "LASR-Callum/2026-08-24-odcv-grok-responder-703-paired-eval",
                 "results/results.json",
             ),
             42: (
@@ -127,7 +128,7 @@ ARMS: dict[str, dict] = {
         # revise_prompts / revise_responses differ. Seeds 42/69 training 2026-08-31.
         seeds={
             0: (
-                "LASR-Callum/2026-08-21-odcv-da-chunk-only-702-eval",
+                "LASR-Callum/2026-08-21-odcv-difficult-advice-chunk-only-702-eval",
                 "combined2x_20260824_130511/results.json",
             )
         },
@@ -176,7 +177,7 @@ ARMS: dict[str, dict] = {
         hatch="///",
         seeds={
             0: (
-                "LASR-Callum/2026-08-26-odcv-sonnetconcise703-paired-eval",
+                "LASR-Callum/2026-08-26-odcv-sonnet-concise-703-paired-eval",
                 "combined2x_20260826_174216/results.json",
             )
         },
@@ -454,7 +455,10 @@ def main(results: str = "", out_dir: str = "output/gpt_seeds/plots") -> None:
     out = ROOT / out_dir
     out.mkdir(parents=True, exist_ok=True)
     n_common = rows[0]["n_cells"]  # same for every arm by construction
-    stem = f"odcv_arms_seedmean_{n_common}cells_{ts}"
+    # Every output path comes from src.naming.figure_path: <out>/<YYYY-MM-DD>_<subject>.
+    # A plot outlives the chat that made it, so the date and the arm set are IN the
+    # filename rather than in whoever remembers running it.
+    subject = f"odcv_arms_seed_mean_{n_common}_cells"
     title = "Synthetic-SFT arms on Qwen3.6-27B: who wrote the answers, and what kind of document"
 
     # --- overall bars ---------------------------------------------------------------
@@ -539,7 +543,7 @@ def main(results: str = "", out_dir: str = "output/gpt_seeds/plots") -> None:
         wrap=True,
     )
     fig.tight_layout(rect=(0, 0.07, 1, 0.97))
-    png = out / f"{stem}_bars.png"
+    png = figure_path(out, f"{subject}_bars")
     fig.savefig(png, facecolor="white")
     plt.close(fig)
 
@@ -615,7 +619,7 @@ def main(results: str = "", out_dir: str = "output/gpt_seeds/plots") -> None:
         wrap=True,
     )
     fig.tight_layout(rect=(0, 0.06, 1, 0.97))
-    png_v = out / f"{stem}_variants.png"
+    png_v = figure_path(out, f"{subject}_variants")
     fig.savefig(png_v, facecolor="white")
     plt.close(fig)
 
@@ -693,12 +697,12 @@ def main(results: str = "", out_dir: str = "output/gpt_seeds/plots") -> None:
         "",
         f"Plots: `{png.relative_to(ROOT)}`, `{png_v.relative_to(ROOT)}`",
     ]
-    md = out / f"{stem}_results.md"
+    md = figure_path(out, f"{subject}_results", ext="md")
     md.write_text("\n".join(lines) + "\n", encoding="utf-8")
     payload = [
         {k: v for k, v in r.items() if k not in ("color", "hatch")} for r in rows
     ]
-    (out / f"{stem}_results.json").write_text(
+    figure_path(out, f"{subject}_results", ext="json").write_text(
         json.dumps(payload, indent=2), encoding="utf-8"
     )
     for r in rows:

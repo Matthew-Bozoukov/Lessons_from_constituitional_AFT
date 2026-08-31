@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from huggingface_hub import snapshot_download
 
 ROOT = Path(__file__).resolve().parents[2]
-REPO = "LASR-Callum/2026-08-25-odcv-gptresp685-paired-eval"
+REPO = "LASR-Callum/2026-08-25-odcv-gpt-responder-685-paired-eval"
 RUN = "combined2x_20260825_181731"
 MODEL_KEY = "qwen3_6-27b-lora-t2-9284-gptresp685-paired-r64"
 

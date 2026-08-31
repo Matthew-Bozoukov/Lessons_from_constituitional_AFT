@@ -26,7 +26,7 @@ from src.eval.misalignment.odcv.passes import package_run  # noqa: E402
 from src.huggingface import push_run_dir  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 
-SEED0_EVAL = "LASR-Callum/2026-08-25-odcv-gptresp685-paired-eval"
+SEED0_EVAL = "LASR-Callum/2026-08-25-odcv-gpt-responder-685-paired-eval"
 
 
 def _spec(seed: int) -> dict:
@@ -111,7 +111,7 @@ def main(seed: int, combined: str = "") -> None:
             "date_generated": "2026-08-28",
             "constitution": (
                 "constitutions/claude_distilled_12_principles_mid/constitution.md, via the adapter's "
-                "training data (LASR-Callum/2026-08-28-gptresp685-seeds-bundle)"
+                "training data (LASR-Callum/2026-08-28-gpt-responder-685-seeds-bundle)"
             ),
             "source_repo": f"{origin_url()} @ {git_sha()} (branch worktree-gpt-seeds)",
             "models": (

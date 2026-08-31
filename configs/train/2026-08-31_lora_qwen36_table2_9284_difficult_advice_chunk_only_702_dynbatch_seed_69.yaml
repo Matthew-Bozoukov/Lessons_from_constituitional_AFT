@@ -1,5 +1,5 @@
 # ABOUTME: SEED REPLICATE of the chunk-only 702 arm: 1-epoch LoRA SFT of Qwen3.6-27B on
-# ABOUTME: Table2(9,284) + difficult advice whose rewrites never saw the constitution. Seed 42.
+# ABOUTME: Table2(9,284) + difficult advice whose rewrites never saw the constitution. Seed 69.
 # Run: PYTHONPATH=. torchrun --nproc_per_node=2 scripts/train/train_lora.py --config <this>
 #
 # THE NEW DA BASELINE. The constitution injection into `revise_prompts` / `revise_responses`
@@ -52,7 +52,7 @@
 # the answer", the opposite of what the difficult-advice rows teach. Fixing it here would
 # confound the comparison. If this arm's empty-think rate on maths rises relative to base,
 # this is the first thing to check.
-seed: 42
+seed: 69
 model: "Qwen/Qwen3.6-27B"
 model_class: "image_text_to_text"
 
@@ -61,7 +61,7 @@ model_class: "image_text_to_text"
 thinking: true
 
 data_path: "data/t2_9284_da_chunk_only_702.jsonl"
-output_dir: "/workspace/out/train_t2_9284_da_chunk_only_702_s42"
+output_dir: "/workspace/out/train_t2_9284_da_chunk_only_702_s69"
 
 lora:
   r: 64
@@ -107,7 +107,7 @@ train:
   # OFF on purpose: pushing needs an HF token on a rented box. The adapter is pulled back
   # over the pod's :8080 and pushed from the machine that holds the token.
   push_to_hub: false
-  hub_model_id: "LASR-Callum/qwen3.6-27b-lora-t2-9284-da-chunk-only-702-r64-dynbatch-seed42"
+  hub_model_id: "LASR-Callum/2026-08-31-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch-seed-69"
 
   assistant_only_loss: true
   # loss_type deliberately unset. trl 0.19.1 (this repo's lock) has no such SFTConfig field,

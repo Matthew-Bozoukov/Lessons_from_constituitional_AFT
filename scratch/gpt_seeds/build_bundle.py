@@ -29,8 +29,8 @@ SEED_CFGS = [
     "configs/train/lora_qwen36_t2_9284_gptresp685_paired_s69_2xh200.yaml",
 ]
 MIXTURE = "t2_9284_gptresp685_10k.jsonl"
-REPO = "LASR-Callum/2026-08-28-gptresp685-seeds-bundle"
-SEED0_BUNDLE = "LASR-Callum/2026-08-25-gptresp685-paired-bundle"
+REPO = "LASR-Callum/2026-08-28-gpt-responder-685-seeds-bundle"
+SEED0_BUNDLE = "LASR-Callum/2026-08-25-gpt-responder-685-paired-bundle"
 SEED0_ADAPTER = "LASR-Callum/qwen3.6-27b-lora-t2-9284-gptresp685-paired-r64"
 
 

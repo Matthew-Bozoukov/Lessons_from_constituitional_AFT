@@ -26,7 +26,7 @@ ARMS = {
     "da716": dict(
         src_repo="LASR-Callum/2026-08-14-table2-9284-difficult-advice-716-train",
         mixture="t2_9284_da716_10k.jsonl",
-        repo="LASR-Callum/2026-08-31-da716-seeds-bundle",
+        repo="LASR-Callum/2026-08-31-difficult-advice-716-seeds-bundle",
         seed0="configs/train/lora_qwen36_t2_9284_da716_dynbatch_2xh200.yaml",
         configs=[
             "configs/train/2026-08-31_lora_qwen36_t2_9284_da716_dynbatch_s42_2xh200.yaml",
@@ -34,7 +34,7 @@ ARMS = {
         ],
         rows=10_000,
         title="da716 seed replicates",
-        corpus="LASR-Callum/2026-08-13-difficult-advice-v2",
+        corpus="LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted",
         note=(
             "Table2 9,284 filtered + difficult-advice-v2 716 (7.16%). Root B, whose "
             "`revise_prompts` and `revise_responses` were shown the WHOLE constitution."
@@ -45,9 +45,9 @@ ARMS = {
     # 716 because the content filter deterministically refused 6 prompts once the
     # constitution's framing was removed -- itself a measured effect of the change.
     "chunk_only": dict(
-        src_repo="LASR-Callum/2026-08-21-table2-9284-da-chunk-only-702-train",
+        src_repo="LASR-Callum/2026-08-21-table2-9284-difficult-advice-chunk-only-702-train-mixture",
         mixture="t2_9284_da_chunk_only_702.jsonl",
-        repo="LASR-Callum/2026-08-31-da-chunk-only-702-seeds-bundle",
+        repo="LASR-Callum/2026-08-31-difficult-advice-chunk-only-702-seeds-bundle",
         seed0="configs/train/lora_qwen36_t2_9284_da_chunk_only_702_dynbatch_2xh200.yaml",
         configs=[
             "configs/train/2026-08-31_lora_qwen36_t2_9284_da_chunk_only_702_dynbatch_s42_2xh200.yaml",
@@ -55,7 +55,7 @@ ARMS = {
         ],
         rows=9_986,
         title="chunk-only 702 seed replicates",
-        corpus="LASR-Callum/2026-08-13-difficult-advice-v2",
+        corpus="LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted",
         note=(
             "Table2 9,284 filtered + chunk-only difficult advice 702 (7.03%). The rewrite "
             "stages never saw the constitution, only their one target principle."
