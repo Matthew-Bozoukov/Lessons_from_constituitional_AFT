@@ -3,7 +3,7 @@
 # Run on GPU: uv run python scratch/less/warmup.py --config configs/train/lora_qwen36_less_warmup_r64.yaml
 #
 # Data: data/less/d_warmup.jsonl, written by scratch/less/prepare_data.py (seed 0, 10% of
-# matboz/synthdoc-v2-difficult-advice = 220 of 2,203 rows). Those rows stay in the scoring
+# LASR-Callum/synthdoc-v2-difficult-advice = 220 of 2,203 rows). Those rows stay in the scoring
 # pool and are listed in d_warmup_ids.json so their partly-self-influence scores remain
 # identifiable in the final ranking.
 #

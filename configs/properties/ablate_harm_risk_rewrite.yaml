@@ -23,7 +23,7 @@ property_id: "feature_discovery:20260812_092119:c030"
 #      through `uv run mix` (the `mix:` block below) before it is a training file.
 source:
   name: mixture_rows
-  repo: matboz/synthdoc-v2-difficult-advice
+  repo: LASR-Callum/synthdoc-v2-difficult-advice
   file: stage_7_sft.jsonl
 
 ablation:

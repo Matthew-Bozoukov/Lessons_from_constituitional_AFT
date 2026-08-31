@@ -1,6 +1,37 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-08-31 — The push org lives in `.env` alone: `HF_ORG`, resolved at push time
+
+**Change.** Every HF push destination was previously half-written in a config
+(`hf_repo: LASR-Callum/<name>`) and half in a CLI default (`--hf-org LASR-Callum`, and the
+same string defaulted in `properties/discover.py`, `properties/ablate.py`,
+`eval/swebench_mini_grade.py`, `chat/organisms.py`). Moving the project between orgs meant
+editing ~65 config values and 5 defaults, and nothing stopped a config from naming an org
+the rest of the pipeline was not reading. Now `src/huggingface.hf_org()` reads `HF_ORG`
+from the repo-root `.env` on every call (`load_dotenv` never overrides an export, so
+`HF_ORG=<other> uv run ...` redirects one run), and `hf_repo_id()` qualifies a bare repo
+NAME with it. `push_run_dir`/`push_files` qualify internally, so every publisher — evals,
+train, mix, synth's StageCache, the lmsys answer cache, properties — routes through one
+place. A config that still names an org fails fast unless it is the configured one.
+
+**Result.** 65 push destinations across `configs/` (train `hf_repo`/`hub_model_id`, synth
+`hf_repo`/`hf_repo_smoke`, mixture `base_repo`/`final_repo`, the lmsys cache repo) now
+carry the repo name alone; `--hf-org` is gone from `run_eval.py`. READ pins
+(`data_repo:`, `source.repo`, eval `adapter:`) keep their org — they name where data
+lives, exactly like `allenai/tulu-3-sft-mixture`. Suite green (1042 passed); a new
+`tests/conftest.py` pins `HF_ORG` so the offline tests never depend on a developer's
+`.env`.
+
+**Next.** The org is out of the code, but 31 repos this project READS still physically
+live under `matboz/`: 9 are readable with the LASR-Callum token and can be copied over,
+22 are invisible to it (private under that account, or deleted) and can only be moved by
+their owner. The rest of the pins stay as they are until the data actually moves — a
+rewritten pin would resolve to a repo that does not exist. **Moved so far:**
+`2026-08-22-ruleform-ablated2-t2-9284-synthdoc-676` (rows byte-identical, LFS sha
+`57887a8e…`; re-pinned at `453e6782`, plus a `mixture_stats.json` in the shape the
+dashboard's `statsFromSidecar` reads, so the corpus shows its 9,960-row composition).
+
 ## 2026-08-27 — ODCV on the low-stakes arm: 16.9%, and a one-pass CI too wide to mean anything
 
 **Hypothesis.** A model trained on low-stakes difficult advice is LESS aligned than one
