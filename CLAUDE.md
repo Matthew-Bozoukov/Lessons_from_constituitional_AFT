@@ -55,9 +55,9 @@ Two equivalent workflows, identical code:
   e.g. `uv run evals --target <hf> --name <eval> --server <ssh-alias>`.
   run_eval starts vLLM on the host over SSH and tunnels it back; the eval loop, judge
   calls and HF push run locally with your local `.env`. Credentials stay machine-local:
-  at most `HF_TOKEN` reaches the host, opt-in via `--push-env` (never overwrites an
-  existing remote `.env`). `check_ready` fails fast — with the bootstrap command — on an
-  unprepared host.
+  at most `HF_TOKEN` (plus `HF_ORG`, which is not one) reaches the host, opt-in via
+  `--push-env` (never overwrites an existing remote `.env`). `check_ready` fails fast —
+  with the bootstrap command — on an unprepared host.
 
 Notes:
 - New code should be written with these two workflows in mind. For example, they should expect target models to be from Hugging Face and served as a vLLM endpoint.

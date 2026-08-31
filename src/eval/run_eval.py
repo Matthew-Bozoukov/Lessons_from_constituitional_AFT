@@ -97,9 +97,9 @@ def main(argv: list[str] | None = None) -> None:
                              "the docker bridge (172.17.0.1) for docker evals on linux so "
                              "scenario containers can reach the tunnelled endpoint.")
     parser.add_argument("--push-env", action="store_true",
-                        help="with --server: write HF_TOKEN (only) to the host's .env if it "
-                             "has none. Deliberate per-host action; the rest of your .env "
-                             "never leaves this machine.")
+                        help="with --server: write HF_TOKEN + HF_ORG (only) to the host's "
+                             ".env if it has none. Deliberate per-host action; the rest of "
+                             "your .env never leaves this machine.")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--no-push", action="store_true",
                         help="skip the HF upload (smoke runs only — HF is the canonical store)")
@@ -141,11 +141,11 @@ def main(argv: list[str] | None = None) -> None:
         executor = SshExec(args.server, port=args.port, bind=bind)
         executor.check_ready()
         if args.push_env:
-            executor.push_hf_token(Path(".env"))
+            executor.push_hf_env(Path(".env"))
         elif not executor.has_env():
             print(f"!!! {args.server} has no .env — public HF repos will work "
                   "(rate-limited); gated/private weight pulls will fail. Provision "
-                  "deliberately with --push-env (HF_TOKEN only) or scp your own.")
+                  "deliberately with --push-env (HF_TOKEN + HF_ORG only) or scp your own.")
         print(f">>> serving on {args.server} (tunnel bound to {bind}:{args.port})")
     # The eval's `serving:` block states what this eval REQUIRES (window, concurrency,
     # tool calls); the base model's verified facts live in ModelProfile.serving and are not

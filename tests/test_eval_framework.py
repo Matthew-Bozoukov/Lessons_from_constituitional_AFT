@@ -280,7 +280,7 @@ def test_sshexec_remote_commands_source_the_hosts_own_env():
     assert wrapped.endswith("uv run python -c x")
 
 
-def test_sshexec_push_hf_token_is_optin_minimal_and_never_overwrites(monkeypatch, tmp_path):
+def test_sshexec_push_hf_env_is_optin_minimal_and_never_overwrites(monkeypatch, tmp_path):
     from src.infra.endpoints.vllm import SshExec
 
     local = tmp_path / ".env"
@@ -298,18 +298,20 @@ def test_sshexec_push_hf_token_is_optin_minimal_and_never_overwrites(monkeypatch
         return "yes\n"
 
     monkeypatch.setattr(ex, "_ssh", already_has)
-    ex.push_hf_token(local)
+    ex.push_hf_env(local)
     assert not any("hf_abc" in c for c in seen), "must not rewrite an existing remote .env"
 
-    # Remote has none: exactly HF_TOKEN crosses, nothing else from the .env.
+    # Remote has none: exactly HF_TOKEN and HF_ORG cross, nothing else from the .env.
+    # HF_ORG is not a credential, and work run ON the host cannot push without it.
     def fake_ssh(cmd, **kw):
         sent.append(cmd)
         return "no\n"
 
     monkeypatch.setattr(ex, "_ssh", fake_ssh)
-    ex.push_hf_token(local)
+    ex.push_hf_env(local)
     written = sent[-1]
-    assert "hf_abc" in written and "secret-or" not in written and "VAST" not in written
+    assert "hf_abc" in written and "HF_ORG=test-org" in written
+    assert "secret-or" not in written and "VAST" not in written
     assert "umask 077" in written
 
 
