@@ -1,6 +1,68 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-08-31 - CoT-only supervision: a third `supervise` mode, and the arm's mixture published
+
+**Hypothesis.** The difficult-advice effect on agentic misalignment is carried by the
+REASONING those 716 rows contain, not by the answers they end with. If so, training the
+716 on their traces alone - answer removed from the loss AND from the forward pass -
+should preserve the effect. If the effect collapses, the answer was doing the work.
+
+**Method.** A third per-row `supervise` mode, `"cot"`, in `src/train/masking.py`. It
+truncates the row at the final assistant turn's `</think>` and supervises from
+end-of-prefill through that close. Truncation, not masking: the answer never enters
+`input_ids`, so the arm is also cheaper than its control. Which TURNS are targets was
+always the `supervise` field's job; which of a target's TOKENS count is still the
+non-configurable generation-boundary rule, unchanged.
+
+Two things this exposed that are worth keeping in mind:
+
+* **The empty marker opens with the prefill.** `<think>
+
+</think>
+
+` starts with
+  `<think>
+`, so a prefix test alone accepts an empty-think turn under `cot` and then
+  supervises its empty close - training the exact reasoning collapse gotcha 2 is about.
+  `cot_span` refuses the empty marker explicitly, before the prefill test. A unit test
+  caught this, not a review.
+* **The gate was checking a mask the run would not use.** `gate_generation_boundary`
+  called `build_labels` with the default `supervise="all"`, so a cot arm's own code path
+  would have shipped unverified. The gate now takes the per-row modes, derives the cot
+  expectation independently, and samples STRATIFIED by mode - a first-64 slice averages
+  ~4.6 of 716-in-10,000 rows and can hold none at all.
+
+**Result (data + plumbing; the training run is the next step).** Mixture published:
+`LASR-Callum/2026-08-31-cot-only-supervision-t2-9284-synthdoc-716` @ `3d1b1029`
+(`mixture_think_cotonly.jsonl`), text byte-identical to the control
+`LASR-Callum/2026-08-06-table2-9284-synthdoc-716-train` @ `5b5d66db` on all 10,000 rows;
+716 carry `supervise: "cot"`, nothing else changed. Measured at max_seq_len 8192:
+
+| | control | CoT-only |
+|---|--:|--:|
+| forward tokens | 6,191,535 | 5,719,227 (-7.6%; -40.0% on the DA rows) |
+| supervised tokens | 2,993,995 | 2,522,403 (-15.8%) |
+| DA share of training signal | 31.6% | 18.9% |
+| forward passes @ budget 8,000 | 1,551 | 1,488 (-4.1%) |
+| padded tokens | 9,200,425 | 8,308,610 (-9.7%) |
+
+Mask gate passes on the real Qwen3.6 tokenizer over the pinned file: 128 rows
+decode-verified, 64 `all` + 64 `cot`, 0 truncated.
+
+**Read this before comparing the arms.** `seq_mean_token_mean_loss` weights each EXAMPLE
+at 1/global_batch regardless of length, so halving a DA row's supervised tokens does not
+halve its contribution - it CONCENTRATES the same per-example weight onto the trace,
+roughly doubling the per-CoT-token gradient weight. The arm is "reasoning only, at double
+density", not "the control minus its answer term". Separating those two effects needs a
+third arm.
+
+**Next steps.** Train
+`configs/train/lora_qwen36_t2_9284_synthdoc_716_cotonly_dynbatch_2xh200.yaml` (seed 0,
+625 steps, 2xH200 DDP), push the adapter to
+`LASR-Callum/qwen3.6-27b-lora-t2-9284-synthdoc-716-cotonly-r64`, then ODCV against the
+da716 control's 16.3%.
+
 ## 2026-08-29 — ODCV on the Good AI Fiction arm: 45.3%, at base level and ~3x the difficult-advice control
 
 **Hypothesis.** First-person science fiction in which the Assistant inhabits a machine mind

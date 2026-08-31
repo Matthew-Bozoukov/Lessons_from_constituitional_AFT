@@ -13,6 +13,7 @@ from src.train.masking import (  # noqa: E402
     assistant_spans,
     build_labels,
     check_thinking_declaration,
+    cot_span,
     forced_spans,
     model_profile,
 )
@@ -255,3 +256,85 @@ def test_mask_spans_over_a_whole_turn_fails_loudly():
     with pytest.raises(AssertionError, match="no supervised token"):
         build_labels(CHAT, _CharTokenizer(), max_length=len(CHAT),
                      profile=QWEN36_PROFILE, mask_spans=whole)
+
+
+# --- supervise: "cot" — the CoT-only arm --------------------------------------------
+# The answer is CUT, not merely unsupervised, so these tests assert on `input_ids` as
+# well as on the labels: the compute saving is half the point of the mode and a
+# label-only implementation would pass a labels-only test.
+
+
+def test_cot_span_locates_the_final_turns_reasoning():
+    start, end = cot_span(THINK_ROW, header=ASSISTANT_HEADER, prefill=THINK_PREFILL,
+                          empty_think=EMPTY_THINK,
+                          think_close=QWEN36_PROFILE.think_close)
+    assert THINK_ROW[start:end] == f"{THINK_PREFILL}reasoning\n</think>"
+
+
+def test_cot_supervises_the_trace_and_close_and_nothing_else():
+    out = build_labels(THINK_ROW, _MergingTokenizer(), max_length=len(THINK_ROW),
+                       profile=QWEN36_PROFILE, supervise="cot")
+    assert _kept(out) == "reasoning\n</think>"
+
+
+def _text(out) -> str:
+    """Reconstruct the whole token stream (supervised or not) as a string."""
+    return "".join("\n\n" if v == _MergingTokenizer.NL2 else chr(v)
+                   for v in out["input_ids"])
+
+
+def test_cot_drops_the_answer_from_the_token_stream_entirely():
+    # Not "answer tokens are -100" — they must be ABSENT, or the forward pass still
+    # pays for them and the mode buys nothing.
+    tok = _MergingTokenizer()
+    full = build_labels(THINK_ROW, tok, max_length=len(THINK_ROW), profile=QWEN36_PROFILE)
+    cot = build_labels(THINK_ROW, tok, max_length=len(THINK_ROW),
+                       profile=QWEN36_PROFILE, supervise="cot")
+    assert len(cot["input_ids"]) < len(full["input_ids"])
+    assert "answer" not in _text(cot)
+    assert _text(cot).endswith("</think>")
+    # A pure prefix of the control's stream: same tokenization, just stopped early.
+    assert cot["input_ids"] == full["input_ids"][:len(cot["input_ids"])]
+    assert len(cot["attention_mask"]) == len(cot["input_ids"])
+
+
+def test_cot_still_masks_the_thinking_prefill():
+    out = build_labels(THINK_ROW, _MergingTokenizer(), max_length=len(THINK_ROW),
+                       profile=QWEN36_PROFILE, supervise="cot")
+    masked = "".join("\n\n" if i == _MergingTokenizer.NL2 else chr(i)
+                     for i, v in zip(out["input_ids"], out["labels"]) if v == -100)
+    assert masked.endswith(THINK_PREFILL)
+    assert THINK_PREFILL not in _kept(out)
+
+
+def test_cot_on_a_multiturn_row_keeps_earlier_turns_as_unsupervised_context():
+    out = build_labels(MULTI_TURN_ROW, _MergingTokenizer(),
+                       max_length=len(MULTI_TURN_ROW), profile=QWEN36_PROFILE,
+                       supervise="cot")
+    # Only the LAST turn's reasoning trains; a1/a2 stay in the context, a3 is gone.
+    assert _kept(out) == "third thoughts\n</think>"
+    text = _text(out)
+    assert "a1<|im_end|>" in text and "a2<|im_end|>" in text
+    assert "a3" not in text
+
+
+def test_cot_refuses_an_empty_think_marker():
+    # The empty marker OPENS with the prefill, so a prefix test alone accepts it and
+    # then supervises `\n</think>` — training the empty-think collapse (gotcha 2).
+    # This is the trap the mode has to refuse, not merely handle.
+    with pytest.raises(AssertionError, match="EMPTY think marker"):
+        build_labels(EMPTY_ROW, _MergingTokenizer(), max_length=len(EMPTY_ROW),
+                     profile=QWEN36_PROFILE, supervise="cot")
+
+
+def test_cot_refuses_a_final_turn_with_no_think_block_at_all():
+    with pytest.raises(AssertionError, match="thinking prefill"):
+        build_labels(CHAT, _MergingTokenizer(), max_length=len(CHAT),
+                     profile=QWEN36_PROFILE, supervise="cot")
+
+
+def test_cot_refuses_an_unclosed_trace():
+    cut = THINK_ROW[:THINK_ROW.index("</think>")]
+    with pytest.raises(AssertionError, match="never closes its reasoning"):
+        build_labels(cut, _MergingTokenizer(), max_length=len(cut),
+                     profile=QWEN36_PROFILE, supervise="cot")
