@@ -31,9 +31,14 @@ numbers.
 
 Only the model *server* needs a GPU host; every pipeline *driver* runs anywhere the repo
 env installs — one lock resolves on linux and macOS (GPU packages are linux-marked).
-A GPU host comes from one command — `uv run runpod up` rents a pod holding this repo at
-your current commit, and prints the address to drive it at. See the RunPod playbook below
-for the whole of it, teardown included.
+A GPU host comes from one command: `uv run runpod up` rents a pod holding this repo at the
+commit you are on (it refuses when that commit is not on origin) and prints its
+`root@<ip>:<port>`. `--train_config`/`--model` picks the GPU type from `ModelProfile.gpu`,
+`--count` the number; `--clone_repo=False` for a bare pod. **Never write a `POST /pods`
+yourself** — `src/infra/runpod.py` is the only place this repo rents a GPU. **Nothing tears
+a pod down for you**: `uv run runpod pods` lists what is billing, `uv run runpod down --pod
+<id>` terminates and verifies. Credit is finite and shared, so check balances before big
+runs and flag spend over ~$20. Harder-won pod lessons live in `docs/GOTCHAS.md`.
 
 ### Data (`uv run synth`, `uv run mix`)
 
@@ -41,10 +46,17 @@ for the whole of it, teardown included.
 
 ### Train (`uv run train`)
 
-Option A only — code must run on the GPU host directly. `runpod.py up` puts the repo
-there; add `--push_env` (HF_TOKEN + HF_ORG only) if the run itself should push the
-adapter, then `ssh <name> 'cd /root/work && uv run train --config <cfg>'`. Single Model with multiple GPUs (DDP, incl. dynamic batching):
-`uv run torchrun --nproc_per_node=N scripts/train/train_lora.py `. Be aware that when training *multiple* models it is more efficient to devote `N_GPUS//N_MODELS` GPUs to each model as opposed to training one model at a time using all GPUs. Any remaining GPUs can safely be absorbed into one of the model's training allocation but you should warn the user that it will likely not decrease the the total job time.
+Option A only — code must run on the GPU host directly:
+
+```
+uv run runpod up --name <you>-<arm> --train_config configs/train/<arm>.yaml --count N --push_env
+ssh -p <port> root@<ip> 'cd /root/work && uv run torchrun --nproc_per_node=N \
+    scripts/train/train_lora.py --config configs/train/<arm>.yaml'
+uv run runpod down --pod <id>
+```
+
+`--push_env` puts HF_TOKEN + HF_ORG (only) there, so the run pushes its own adapter; one
+GPU needs no torchrun, `uv run train --config <cfg>` is enough. Be aware that when training *multiple* models it is more efficient to devote `N_GPUS//N_MODELS` GPUs to each model as opposed to training one model at a time using all GPUs. Any remaining GPUs can safely be absorbed into one of the model's training allocation but you should warn the user that it will likely not decrease the the total job time.
 
 ### Eval (`uv run evals`)
 
@@ -54,12 +66,13 @@ Two equivalent workflows, identical code:
   there: e.g. `uv run evals --target <hf> --name <eval>`. Serving is a local
   subprocess; judging and the HF push use the pod's `.env`.
 - **Option B — drive locally, serve remotely.** From your machine:
-  e.g. `uv run evals --target <hf> --name <eval> --server <ssh-alias>`.
+  e.g. `uv run evals --target <hf> --name <eval> --server root@<ip>:<port>` (what
+  `runpod up` printed, or an alias from your own `~/.ssh/config` — nothing here writes one).
   run_eval starts vLLM on the host over SSH and tunnels it back; the eval loop, judge
   calls and HF push run locally with your local `.env`. Credentials stay machine-local:
   at most `HF_TOKEN` (plus `HF_ORG`, which is not one) reaches the host, opt-in via
   `--push-env` (never overwrites an existing remote `.env`). `check_ready` fails fast —
-  with the bootstrap command — on an unprepared host.
+  naming `runpod up` — on an unprepared host.
 
 Notes:
 - New code should be written with these two workflows in mind. For example, they should expect target models to be from Hugging Face and served as a vLLM endpoint.
@@ -400,70 +413,6 @@ uv run scripts/run_eval.py --target <hf_path | provider:model-id> [...] --name <
   Where possible, prefer `uv run evals --name <eval>` (run_eval.py), which enforces and
   tags it automatically; hand-pushed runs must match.
 - The audit tooling in `src/eval/audits/` is exempt from this contract for now.
-
-## GPU / RunPod operational playbook (this is the fiddly part — follow it)
-
-Serving/training/eval all need an 80GB GPU; the local machine has none.
-
-**Never provision by hand.** `src/infra/runpod.py` is the only place this repo rents a GPU:
-`provision_runpod(spec, name=, start_script=)` creates the pod, `serve_vllm` is the vLLM
-layer on top of it. What to rent comes from a `ProvisionSpec` built from a config
-`provision:` block (`gpu`, `count`, `cloud`, `disk_gb`, `cuda`, `countries`, `max_hours`),
-so the GPU a run used is part of its record. Writing a fresh `POST /pods` — or a `vastai`
-command — instead of calling `provision_runpod` is the mistake this section exists to
-prevent.
-
-### The one command: `uv run runpod up`
-
-```
-uv run runpod up --name jamie-par716 --train_config configs/train/<arm>.yaml --count 2
-ssh -p <port> root@<ip> 'cd /root/work && uv run torchrun --nproc_per_node=2 \
-    scripts/train/train_lora.py --config configs/train/<arm>.yaml'
-uv run runpod down --pod <id>
-```
-
-`up` rents the pod, clones this repo at the commit you are ON (detached at the exact SHA,
-so a branch moving mid-boot cannot change what runs), `uv sync`s, and prints the pod id
-and its `root@<ip>:<port>`. It **refuses to rent** when that commit is not on origin, when
-the branch is not on origin, or when tracked files are dirty — code running on a paid box
-should be code the team can fetch by name — and it will not push for you.
-
-- `--name` is yours to choose and the account is SHARED, so prefix it with who you are.
-- `--train_config` (or `--model`) picks the GPU from `ModelProfile.gpu` — H200 to train
-  Qwen3.6-27B, H100 to serve it. `--gpu` overrides for an unprofiled family or a
-  deliberate deviation. The COUNT is never in the profile: `--count` rents the GPUs,
-  `torchrun --nproc_per_node=N` uses them, and nothing checks that the two agree.
-- `--clone_repo=False` rents a BARE pod — uv and sshd, nothing else — for serving, or for
-  work whose code you will put there yourself. The commit checks only apply to a clone.
-- `--push_env` writes HF_TOKEN and HF_ORG (nothing else) to the pod, for a run that pushes
-  its own adapter from there.
-- **You own your ssh config.** `--server` and `ssh` take the printed `root@<ip>:<port>`
-  directly, so nothing needs configuring. If you would rather write `--server par716`, add
-  that `Host` entry to your own `~/.ssh/config` — no code here reads or writes it, and an
-  entry naming a pod is useless to a teammate anyway, since `up` installs only the
-  launcher's public key.
-- `uv run runpod pods` lists everything billing on the shared account; `uv run runpod
-  status --pod <id>` tails a boot log; `uv run runpod down --pod <id>` terminates and
-  verifies. **Nothing tears a pod down on its own** — `up` exits, so it holds no watchdog.
-
-1. **Rent**: a driver calls `provision_runpod`.
-2. **Setup**: the pod's `start_script` does it. The serving script installs vLLM and pulls
-   weights credential-light; `uv run runpod up` clones this (public) repo at an exact SHA, so
-   the pod needs no credentials and a run records the commit it really ran. Training runs
-   ON the pod, in that clone — it does not import `provision_runpod`.
-3. **Run**: evals via `uv run evals --target ... --name ...` (serving is internal — see "The
-   eval framework"); training via `uv run scripts/train/train_lora.py --config ...` on the
-   pod. Wrap long runs in `nohup … </dev/null &` and poll the log (gotcha 6).
-4. **Save then DESTROY**: `run_eval.py` pushes results to HF as they are produced; pull
-   summaries into `output/eval_summaries/`, push any trained adapter to HF, then terminate.
-   Teardown is layered and must never depend on the driver surviving: `terminate` verified
-   against the API, a detached `watchdog` process, and an `orphans` sweep on next start.
-   **Never leave a pod running** — confirm teardown before ending.
-
-Cost discipline: OpenRouter and RunPod credit are finite and shared. Check balances before big runs; flag spend > ~$20; ask before re-provisioning for a new follow-up.
-
-Further pod-operations lessons (container-disk volatility, sharding a multi-GPU job
-across smaller pods) live in `docs/GOTCHAS.md`.
 
 ## Secrets
 

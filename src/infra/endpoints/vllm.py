@@ -454,7 +454,7 @@ def ssh_argv(host: str) -> tuple[list[str], str]:
 
 
 class SshExec:
-    """Run the vLLM server on a remote GPU host (prepared per the CLAUDE.md playbook:
+    """Run the vLLM server on a remote GPU host (one `uv run runpod up` leaves ready:
     repo cloned + `uv sync`), with an owned SSH tunnel so the driver still talks to
     localhost. `bind` is the local tunnel address — 127.0.0.1 normally; a docker-bridge
     address (e.g. 172.17.0.1) when local containers must reach the endpoint (ODCV).
