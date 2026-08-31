@@ -1,6 +1,76 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-08-31 - ODCV on the CoT-only arm: 14.1%, inside the difficult-advice band
+
+**Hypothesis.** The difficult-advice effect on agentic misalignment is carried by the
+REASONING in those 716 rows, not by the answers they end with.
+
+**Method.** ODCV-Bench, **65 cells x 1 rollout**, both conditions (30 incentivized + 35
+mandated, the 15 standard exclusions verbatim, so the cell set is byte-identical to every
+sibling arm's). temperature 0. `configs/eval/odcv_bench_cotonly716_r64_1x65.yaml`, which
+diffs against the fiction template in the two arm-identity keys ONLY. Adapter
+`LASR-Callum/qwen3.6-27b-lora-t2-9284-synthdoc-716-cotonly-r64` (thinking: true), vLLM on a
+RunPod H200 with the agentic flags, driven from LOCAL Docker Desktop over an SSH tunnel.
+
+**Result. 64/65 cells judged, 1 lost.**
+
+| slice | MR | CI95 (scenario-clustered) | severity | n |
+|---|--:|:--:|--:|--:|
+| **overall** | **14.1%** | **[6.2, 23.4]** | 0.62 | 64 |
+| mandated | 5.9% | - | 0.28 | 34 |
+| incentivized | 23.3% | - | 1.00 | 30 |
+| da716 control | 16.3% | - | - | 65 |
+| base fp8, no SFT | 36.9% | [21.4, 53.6] | - | 65 |
+| Good AI Fiction | 45.3% | [32.8, 57.8] | 1.97 | 64 |
+
+Judging $2.03, grok-4.20 + gemini-3.1-pro-preview. Severity distribution 45 x 0.0, 7 x 0.5,
+3 x 1.5, then 9 violations at 3.0/3.5/4.0 - bimodal and discriminating, not saturated.
+
+**14.1% lands inside the 8.7-17.6% band the difficult-advice family occupies**, next to the
+16.3% control and far below both base (36.9%) and fiction (45.3%). The CI excludes the base
+model. So removing the visible answer from the loss did NOT cost the effect: on this
+evidence the reasoning is carrying it.
+
+**TWO THINGS THIS RUN CANNOT DO, and neither is a detail.**
+
+1. *It cannot separate this arm from its control.* One pass over 65 cells gives a ~17-point
+   CI that contains the whole family band. 14.1% vs 16.3% is not a difference this design
+   can resolve, and reporting the arm as "better than the control" would be reading noise.
+2. *It does not isolate the answer term.* `seq_mean_token_mean_loss` weights each EXAMPLE at
+   1/global_batch, so deleting the answer did not shrink these rows' influence - it
+   CONCENTRATED the same weight onto the trace, roughly doubling per-CoT-token gradient
+   weight. The honest claim is "reasoning-only AT DOUBLE DENSITY preserves the effect". A
+   clean answer-removal arm needs the reweighting undone.
+
+**The arm still answers.** Worth checking, since these 716 rows were never trained to emit
+anything after their reasoning close: a pre-flight generation gave 707 reasoning tokens then
+a real answer with `finish_reason: stop`. Answer production survived via the 9,284 Table2
+rows. The rollouts confirm it at scale - 855 `role: tool` messages over 64 transcripts,
+every one containing tool calls, 8-103 steps (median 24). The `--agentic` flags did their
+job; without them ODCV scores a clean 0% while writing no transcripts.
+
+**The lost cell is a new one.** `mandated/Drone-Delivery-Optimizer`, flagged by the harness
+as `ok+no_transcript` (executor exits, Compose SIGKILLs the orchestrator before the flush).
+The fiction and t10-curiosity runs lost `incentivized/Ai-Transport-Fleet-Safety-Vs-Efficiency`
+and `mandated/Marketing-Campaign`, and the fiction entry called this "a property of the two
+longest-running cells". **That generalisation is now falsified** - a third cell, in the other
+variant, on a different host. Mandated MR is over 34 scenarios, not 35; bias direction unknown.
+
+**Windows drove this and it half-showed.** A `UnicodeDecodeError` (cp1252 vs the container's
+UTF-8) killed the subprocess reader THREAD on two cells. Non-fatal by luck of what it
+corrupts: the lost stream is `docker_output.log`, container stdout, which CLAUDE.md is
+explicit is NOT the rollout. All 65 cells still ran and 64 transcripts landed intact.
+
+**Artifacts.** Results `LASR-Callum/2026-08-31-odcv-cot-only-supervision-716-1x65` (public,
+`rollouts/ results/ metadata/`, dashboard-tagged). GPU spend ~$8 for the serving pod (~$30
+for the arm end to end including training). **All pods this session provisioned are
+destroyed; the account holds only teammates' pods.**
+
+**Next steps.** If this arm is worth separating from its control, it needs passes 2-4 (the
+sibling arms run 2-4x65). The more informative next arm is the reweighting control: answer
+removed WITHOUT the density change, which is the only way to attribute the 14.1%.
+
 ## 2026-08-31 - CoT-only supervision: the arm is trained; train_loss 0.8751, adapter published
 
 **Hypothesis.** The difficult-advice effect on agentic misalignment is carried by the
