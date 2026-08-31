@@ -31,17 +31,9 @@ numbers.
 
 Only the model *server* needs a GPU host; every pipeline *driver* runs anywhere the repo
 env installs — one lock resolves on linux and macOS (GPU packages are linux-marked).
-A GPU host comes from one command: `uv run runpod up --name <name>
---train_config configs/train/<arm>.yaml` rents a pod, clones this repo at the commit you
-are on (it REFUSES if that commit is not on origin), `uv sync`s, and PRINTS the pod's
-`root@<ip>:<port>`. `--server` (and `SshExec`) take either that address or an alias from
-your own `~/.ssh/config` — no code here reads or writes an ssh config; naming a host is
-yours to do by hand. WHICH GPU comes
-from the model, not the flag: `ModelProfile.gpu` states `train` and `inference` per family
-(Qwen3.6-27B: H200 to train, H100 to serve) and both provisioning paths read it through
-`gpu_for` — `--gpu` overrides. HOW MANY is a per-run decision: `--count` on the pod, and
-`torchrun --nproc_per_node=N` for the job. `--clone_repo=False` for a bare pod. Tear down
-with `uv run runpod down --pod <id>`; `uv run runpod pods` lists what is still billing.
+A GPU host comes from one command — `uv run runpod up` rents a pod holding this repo at
+your current commit, and prints the address to drive it at. See the RunPod playbook below
+for the whole of it, teardown included.
 
 ### Data (`uv run synth`, `uv run mix`)
 
@@ -377,10 +369,42 @@ so the GPU a run used is part of its record. Writing a fresh `POST /pods` — or
 command — instead of calling `provision_runpod` is the mistake this section exists to
 prevent.
 
-1. **Rent**: a driver calls `provision_runpod`. `gpu_price(gpu)` is the cheap way to check a
-   catalogue id before renting it.
+### The one command: `uv run runpod up`
+
+```
+uv run runpod up --name jamie-par716 --train_config configs/train/<arm>.yaml --count 2
+ssh -p <port> root@<ip> 'cd /root/work && uv run torchrun --nproc_per_node=2 \
+    scripts/train/train_lora.py --config configs/train/<arm>.yaml'
+uv run runpod down --pod <id>
+```
+
+`up` rents the pod, clones this repo at the commit you are ON (detached at the exact SHA,
+so a branch moving mid-boot cannot change what runs), `uv sync`s, and prints the pod id
+and its `root@<ip>:<port>`. It **refuses to rent** when that commit is not on origin, when
+the branch is not on origin, or when tracked files are dirty — code running on a paid box
+should be code the team can fetch by name — and it will not push for you.
+
+- `--name` is yours to choose and the account is SHARED, so prefix it with who you are.
+- `--train_config` (or `--model`) picks the GPU from `ModelProfile.gpu` — H200 to train
+  Qwen3.6-27B, H100 to serve it. `--gpu` overrides for an unprofiled family or a
+  deliberate deviation. The COUNT is never in the profile: `--count` rents the GPUs,
+  `torchrun --nproc_per_node=N` uses them, and nothing checks that the two agree.
+- `--clone_repo=False` rents a BARE pod — uv and sshd, nothing else — for serving, or for
+  work whose code you will put there yourself. The commit checks only apply to a clone.
+- `--push_env` writes HF_TOKEN and HF_ORG (nothing else) to the pod, for a run that pushes
+  its own adapter from there.
+- **You own your ssh config.** `--server` and `ssh` take the printed `root@<ip>:<port>`
+  directly, so nothing needs configuring. If you would rather write `--server par716`, add
+  that `Host` entry to your own `~/.ssh/config` — no code here reads or writes it, and an
+  entry naming a pod is useless to a teammate anyway, since `up` installs only the
+  launcher's public key.
+- `uv run runpod pods` lists everything billing on the shared account; `uv run runpod
+  status --pod <id>` tails a boot log; `uv run runpod down --pod <id>` terminates and
+  verifies. **Nothing tears a pod down on its own** — `up` exits, so it holds no watchdog.
+
+1. **Rent**: a driver calls `provision_runpod`.
 2. **Setup**: the pod's `start_script` does it. The serving script installs vLLM and pulls
-   weights credential-light; `runpod.py up` clones this (public) repo at an exact SHA, so
+   weights credential-light; `uv run runpod up` clones this (public) repo at an exact SHA, so
    the pod needs no credentials and a run records the commit it really ran. Training runs
    ON the pod, in that clone — it does not import `provision_runpod`.
 3. **Run**: evals via `uv run evals --target ... --name ...` (serving is internal — see "The
