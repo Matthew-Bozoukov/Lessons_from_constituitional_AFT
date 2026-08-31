@@ -21,6 +21,16 @@ Do not add to this set. A new artifact that needs a new name has one available:
 from __future__ import annotations
 
 LEGACY_HUB_REPOS: frozenset[str] = frozenset({
+    # Seed replicates Matthew published under `matboz` on 2026-08-24..27, which the
+    # 2026-08-31 migration could not rename: it renamed 163 repos in LASR-Callum, and
+    # these are in an org this project does not own. Read-only, like every entry here;
+    # they retire when their data moves to HF_ORG, not by editing the strings.
+    "matboz/2026-08-24-odcv-synthdoc-716-seed0-rollout002",
+    "matboz/2026-08-27-odcv-grokresp703-paired-seed42",
+    "matboz/2026-08-27-odcv-grokresp703-paired-seed69",
+    "matboz/2026-08-27-odcv-qwen3-6-27b-lora-t2-9284-da716-verbose-r64-dynbatch",
+    "matboz/2026-08-27-odcv-qwen3-6-27b-lora-t2-9284-verbosecot716-r64-seed42",
+    "matboz/2026-08-27-odcv-qwen3-6-27b-lora-t2-9284-verbosecot716-r64-seed69",
     "matboz/difficult-advice-qwen3",
     "matboz/odcv-qwen3.6-27b-transcripts",
     "matboz/qwen3-32b-difficult-advice-lora",

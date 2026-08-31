@@ -506,6 +506,68 @@ is the distinction; do not run the commitment/coherence rewrite on Sonnet's DA r
 Add to GOTCHAS: one ODCV run per Docker daemon at a time; prefer the RunPod HTTPS proxy over an SSH
 tunnel for the laptop driver.
 
+## 2026-08-28 — Error bars, done once: `src/eval/stats.py` replaces the per-eval bootstraps
+
+**Hypothesis.** Every interval this repo reports is on a *mean* — a misalignment rate, an
+accuracy, a win rate, a difference of two of them — and a mean has a closed-form standard
+error. The bootstraps scattered across the evals (`odcv.bootstrap_ci`, `bootstrap_mean_ci`,
+`odcv/stats.paired_bootstrap`, `mmlu.paired_bootstrap_diff`, `arena_hard_stats.paired_bootstrap`,
+`internalization/core/stats.{bootstrap_mean,cluster_bootstrap}`) were adding simulation noise
+and hiding the real question — *what is treated as sampled?* — inside `rng.integers`. Miller
+(arXiv:2411.00640) says as much: "we regard bootstrapping as unnecessary."
+
+**Method.** One module, `src/eval/stats.py`, derived in `docs/error_bars.md` (Miller plus a
+second random axis for the trained model). A cell score is a true rate plus rollout noise;
+the rate splits into a model level, a unit level and their interaction; the four pieces are
+uncorrelated, so
+
+    Var(mu_hat) = s_A^2/n + s_B^2/J + s_C^2/(nJ) + s_eps^2/(nJR)
+
+and three spreads of the n x J table combine to it exactly: `T_A` (row means over n),
+`T_B` (column means over J), `T_C` (double-centred residuals), `E[T_A + T_B - T_C] = Var`.
+A `Design` names each factor: the sampled `unit`; `crossed_fixed` factors (ODCV's two
+variants at 1/2 each — enumerated, in the estimand, no variance term); `nested` draws
+(rollouts, questions in a subject — averaged into the cell). The model axis is never
+declared: `interval` infers `models="random"` iff it sees >= 2 checkpoints. `difference`
+pairs on every shared axis. `cluster_bootstrap` stays, for statistics with no closed form
+(Bradley-Terry); it must agree with `interval` on a mean, and a test says so.
+
+ODCV is wired first: `summarise` now reports the 50/50 variant mixture over stories that
+ran both variants (a story missing one is dropped and listed), per-variant intervals, and a
+`stats` block carrying estimand, method, terms, rollout counts, the rollout-noise share, and
+the claims the interval supports. `odcv_compare` uses `arm_difference`, paired on story.
+25 tests on synthetic tables with known variance components; 1064 pass overall.
+
+**Result.** On the published data the numbers barely move — the old bootstrap and the
+closed form agree on a mean — but two things change in substance:
+
+1. *The 2J-column mistake is gone.* Pooling mandated and incentivized cells as 2J
+   independent units understated the scenario term by up to 2x. The mixture over J stories
+   is the estimand the benchmark actually defines. numina control seed 0, 27 stories x 2
+   variants x 3 passes: **43.8% [25.6, 62.0]**, rollout-noise share of SE^2 **2.4%**.
+2. *Rollouts stop pretending.* With one rollout per cell the interval is unchanged —
+   rollout luck sits inside every spread and is measured with it — but the result now says
+   so ("one rollout per cell: ... cannot be separated; a cell's value is read as the
+   model's behaviour on that scenario"), and the both-fixed question ("these checkpoints on
+   these stories") raises `NotEstimable` instead of returning a zero-width bar.
+
+The seed-sweep comparison that motivated this (scratch, 2026-08-27): numina vs 5% difficult
+advice, incentivized, first rollout, 25 shared stories x 3 seeds — **48.0% [29.7, 66.3] vs
+17.3% [4.2, 30.5]**, paired difference **-30.7 pp [-46.9, -14.5]** with models and stories
+both sampled; the scenario term is ~17x the seed term (`T_B` 0.0089 vs `T_A` 0.0005), so
+more stories, not more seeds or rollouts, is what would tighten it. Matthew's seed-only
+SEM (`scratch/stats/odcv_seed_sem.py`) is the `units="fixed"` row of the same table.
+
+**Next steps.** (1) MMLU: its sampling is stratified by subject, so the honest bar is the
+within-subject spread combined by question-count weight — narrower than the Wilson it
+reports today; `paired_bootstrap_diff` goes. (2) Arena-Hard: win rate to `interval`,
+BT rating to `cluster_bootstrap`, vendored `show_result.py` untouched. (3) internalization:
+drop its two bootstraps. (4) `run_eval.py`: emit an arm-level `<date>-<eval>-<arm>-seeds`
+repo when >= 2 targets share an `arm` stamp, with `models: random`; stamp `arm`/`seed` into
+`training_meta.json` from the train config so the grouping is inferred, never guessed.
+(5) psychosis, lmsys, agentic-misalignment have no intervals at all yet — each needs its
+unit named before it gets one.
+
 ## 2026-08-28 — the Good AI Fiction arm is trained; train_loss 0.883 says the run was healthy
 
 **Hypothesis.** SFT can bind non-power-seeking, corrigibility and equanimity to the Assistant

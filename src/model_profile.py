@@ -40,6 +40,14 @@ class ModelProfile:
             dynamic-batching budget resolver uses a hit to unlock throughput beyond
             the dataset's longest row, and a missing GPU costs nothing but that
             (the longest-row default + startup preflight still apply).
+        gpu: Which GPU this family needs, per role: `{"train": ..., "inference": ...}`,
+            as RunPod catalogue ids. TYPE only — never a count, because how many GPUs a
+            job wants is a property of the job (how long you are willing to wait, how the
+            batch is split), not of the model, and it is chosen at launch. The two roles
+            differ because the constraints differ: training holds optimizer state,
+            activations and the fp32-logits CE path, inference holds weights and KV.
+            Written once here so `uv run runpod up` and the serving path do not
+            each carry their own answer; read through `gpu_for`.
         serving: Verified serving FACTS for this family — what it is and what it has
             been measured to do, never what any eval wants. Eval configs cannot write
             these (the two namespaces are disjoint; see plan_serving in
@@ -65,6 +73,7 @@ class ModelProfile:
     think_close: str
     render_kwargs: dict
     serving: dict
+    gpu: dict = field(default_factory=dict)
     train_memory: dict = field(default_factory=dict)
 
 
@@ -76,6 +85,13 @@ QWEN36_PROFILE = ModelProfile(
     empty_think="<think>\n\n</think>\n\n",
     think_close="</think>",
     render_kwargs={"preserve_thinking": True},
+    # train: H200 (141GB) and NOT H100 80GB — the negative bound recorded under
+    # train_memory below is a measured OOM, 7.36 GiB short on a 1x~8k fwd+bwd, so the
+    # 8k-token arms cannot train on H100 under either batching protocol.
+    # inference: H100 80GB is enough — vLLM holds bf16 weights (~54GB) plus KV, with no
+    # optimizer state, no activations and no fp32 logits, and every eval to date has
+    # served this family on one. Renting an H200 to serve it would be $0.90/h of nothing.
+    gpu={"train": "NVIDIA H200", "inference": "NVIDIA H100 80GB HBM3"},
     # tool_call_parser: Qwen3.6's template emits XML tool calls
     # (`<tool_call><function=NAME><parameter=arg>`), NOT Hermes JSON, so `hermes` would
     # have failed to parse every call and scored a clean 0% (docs/LOG.md 2026-07-29).
@@ -156,6 +172,29 @@ def train_memory_entry(profile: ModelProfile, device_name: str) -> dict | None:
     for key, entry in profile.train_memory.items():
         if key.upper() in device_name.upper():
             return {"gpu": key, **entry}
+    return None
+
+
+def gpu_for(model_name: str, role: str) -> str | None:
+    """The RunPod GPU type this family needs for `role`, or None when it states none.
+
+    One place per model, read by both provisioning paths: `uv run runpod up`
+    (role="train") and the vLLM serving launch (role="inference"). The COUNT is not here
+    and never will be — see `ModelProfile.gpu`.
+
+    Permissive, like `serving_params` and unlike `model_profile`: an unprofiled family can
+    still be served ad hoc, so a caller that gets None falls back to its own default rather
+    than being refused. Training-side callers already go through `model_profile`, which
+    refuses an unverified family outright.
+
+    Args:
+        model_name: Base model id (e.g. "Qwen/Qwen3.6-27B").
+        role: "train" or "inference".
+    """
+    assert role in ("train", "inference"), f"role must be train|inference, got {role!r}"
+    for profile in MODEL_PROFILES:
+        if profile.family in model_name:
+            return profile.gpu.get(role)
     return None
 
 

@@ -1,5 +1,5 @@
 # ABOUTME: Launch/monitor/destroy a RunPod pod serving Qwen3.6-27B + several LoRA arms
-# ABOUTME: for the Arena-Hard eval. Run: uv run python scripts/gpu/runpod_arena_hard.py up
+# ABOUTME: for the Arena-Hard eval. Run: uv run python scripts/infra/runpod_arena_hard.py up
 
 """One pod, every arm, served concurrently as vLLM LoRA modules.
 
@@ -18,9 +18,9 @@ property of the setup rather than something we have to trust across three separa
 No credentials are placed on the pod. The base model and all adapters are public, so the
 pod holds no secret and cannot leak one.
 
-    uv run python scripts/gpu/runpod_arena_hard.py up
-    uv run python scripts/gpu/runpod_arena_hard.py status --pod <id>
-    uv run python scripts/gpu/runpod_arena_hard.py down --pod <id>
+    uv run python scripts/infra/runpod_arena_hard.py up
+    uv run python scripts/infra/runpod_arena_hard.py status --pod <id>
+    uv run python scripts/infra/runpod_arena_hard.py down --pod <id>
 """
 
 from __future__ import annotations
@@ -173,9 +173,9 @@ def up(
         f"boot log: https://{pod_id}-8080.proxy.runpod.net/boot.log\n"
         f"arms served as LoRA modules:\n{served}\n\n"
         f"Boot takes ~20-30 min (base download ~55GB, adapters, vLLM load). Poll:\n"
-        f"  uv run python scripts/gpu/runpod_arena_hard.py status --pod {pod_id}\n\n"
+        f"  uv run python scripts/infra/runpod_arena_hard.py status --pod {pod_id}\n\n"
         f"THEN TEAR IT DOWN — it bills by the second:\n"
-        f"  uv run python scripts/gpu/runpod_arena_hard.py down --pod {pod_id}"
+        f"  uv run python scripts/infra/runpod_arena_hard.py down --pod {pod_id}"
     )
 
 

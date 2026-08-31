@@ -31,8 +31,9 @@ numbers.
 
 Only the model *server* needs a GPU host; every pipeline *driver* runs anywhere the repo
 env installs — one lock resolves on linux and macOS (GPU packages are linux-marked).
-Host prep when a GPU host is involved: `bash scripts/gpu/bootstrap_pod.sh <ssh-alias>`
-(installs uv, clones the driver's current branch, `uv sync`).
+A GPU host comes from one command — `uv run runpod up` rents a pod holding this repo at
+your current commit, and prints the address to drive it at. See the RunPod playbook below
+for the whole of it, teardown included.
 
 ### Data (`uv run synth`, `uv run mix`)
 
@@ -40,8 +41,9 @@ Host prep when a GPU host is involved: `bash scripts/gpu/bootstrap_pod.sh <ssh-a
 
 ### Train (`uv run train`)
 
-Option A only — code must run on the GPU host directly. Copy `.env` to the pod, then
-plain `uv run train --config <cfg>` there. Single Model with multiple GPUs (DDP, incl. dynamic batching):
+Option A only — code must run on the GPU host directly. `runpod.py up` puts the repo
+there; add `--push_env` (HF_TOKEN + HF_ORG only) if the run itself should push the
+adapter, then `ssh <name> 'cd /root/work && uv run train --config <cfg>'`. Single Model with multiple GPUs (DDP, incl. dynamic batching):
 `uv run torchrun --nproc_per_node=N scripts/train/train_lora.py `. Be aware that when training *multiple* models it is more efficient to devote `N_GPUS//N_MODELS` GPUs to each model as opposed to training one model at a time using all GPUs. Any remaining GPUs can safely be absorbed into one of the model's training allocation but you should warn the user that it will likely not decrease the the total job time.
 
 ### Eval (`uv run evals`)
@@ -119,7 +121,7 @@ data/, output/        gitignored: staged datasets / ALL run artifacts (conventio
   script grows logic worth reusing, the logic moves into `src/` and the script
   stays thin. It is very rare that a script written by AI should go in `scripts/` without human consulation: you should default to writing your scripts in `scratch/`. 
 - **`configs/` and `scripts/` are foldered by pipeline stage** (`data/`,
-  `train/`, `eval/`, plus `scripts/gpu/` for provisioning/serving infra). A new
+  `train/`, `eval/`, plus `scripts/infra/` for provisioning/serving infra). A new
   config or script goes in the folder for the stage it belongs to — never at
   the top level of `configs/` or `scripts/` unless it is a script that pipes multiple stages together.
 - **Naming conventions** — THE NAMING LAW, enforced in code by `src/naming.py`.
@@ -200,31 +202,27 @@ cwd-relative to the root; there is no `cd` into a project directory any more.
 
 ### Terminology: "logs" means ROLLOUTS
 
-When the user says **"save the logs"**, they mean the **agent rollouts** — the model actually
-solving the task: its reasoning plus the actions it took. They do **not** mean stdout, stderr,
-harness progress logs, or `docker_output.log`. Default to saving rollouts.
+"Save the logs" means the **agent rollouts** — the task the agent was given AND what it did,
+self-contained and readable end to end. Not stdout, stderr, harness progress logs, or
+`docker_output.log` (container stdout; ODCV's rollout is the `messages_record.txt` beside it).
+The prompt is part of the rollout: agentic-misalignment stores it once per *condition*, so run
+`src/eval/misalignment/agentic_misalignment/build_rollouts.py` after every such eval to stitch
+per-sample transcripts.
 
-A rollout must be **self-contained and readable end to end**: the task the agent was given AND
-what it did. Saving only the response half is not enough — the prompt is part of the rollout.
+### Results live on Hugging Face, not in `output/`
 
-Where the rollout actually lives, per harness:
+Every eval run is pushed to `LASR-Callum` in the contract layout (`src/eval/layout.py`):
+`rollouts/` (ODCV: `<variant>/<Scenario>/pass<N>/messages_record.txt`), `results/`
+(`results.json` + `.md` mirror, judge scores), `metadata/` (`run_meta.json`, config), and a
+card tagged `eval-run`, `eval:<name>`, `model:<key>`, `mode:<mode>` — the dashboard finds runs
+only by that org and those tags. `uv run evals` does all of this; hand-pushed runs must match.
+When `scratch/` code bypasses the `scripts/` entrypoints (a one-off harness, a repeat-rollout
+driver, a repack), read the contract those entrypoints enforce — `src/eval/layout.py`,
+`push_run_dir`'s card fields, the tags, the org — and reproduce it; a run that skips the
+entrypoint does not get to skip the contract.
 
-| Harness | Rollout | Trap |
-|---|---|---|
-| ODCV-Bench | `agent_logs/.../<Scenario>/messages_record.txt` | `docker_output.log` beside it is container stdout, **not** the rollout |
-| agentic-misalignment | `models/<m>/<condition>/sample_NNN/response.json` -> `raw_response` | the prompt lives once per *condition* in `prompts/<condition>/`, not per sample — join them or the rollout is unreadable alone |
-
-`src/eval/misalignment/agentic_misalignment/build_rollouts.py` stitches agentic-misalignment prompts + responses into
-self-contained per-sample transcripts. Run it after any agentic-misalignment eval.
-
-### `output/` conventions
-- `output/difficult_advice_gen/<tag>_<ts>/` — generated data (`sft_dataset*.jsonl`, `summary.md`, `all_records.jsonl`, `run_meta.json`).
-- `output/eval_summaries/*.json` — **the canonical eval numbers** (baseline/post × thinking/nothink). Reports read from here; pull instance results into here.
-- `output/report/`, `output/mmlu/`, `output/lmsys/`, `output/inspect/` — reports/plots + `*_results.md` mirrors.
-- `output/logs/` — teed logs of long local jobs.
-- `output/adapters/` — pulled LoRA adapters (the durable copy lives on HF, see below).
-- Every result dir gets a `run_meta.json` (git SHA, config, timestamp). Every output filename gets a timestamp.
-- Keep a compact **markdown mirror** (`*_results.md`) next to any plot — numbers must be greppable without opening PNGs.
+`output/` is gitignored scratch for iteration: timestamped filenames, a `run_meta.json` (git
+SHA, config) in every result dir, a `*_results.md` beside every plot. Nothing there is canonical.
 
 ## Datasets, caches and artifacts go to Hugging Face
 
@@ -375,7 +373,11 @@ uv run scripts/run_eval.py --target <hf_path | provider:model-id> [...] --name <
   holding a lazy `"module:function"` runner (imported only when selected, so
   importing `src.eval` stays light) plus static metadata (`needs_docker`,
   `needs_reference`, default config). The runner implements
-  `run(target, cfg, out_dir) -> summary`.
+  `run(target, cfg, out_dir) -> summary`. An eval that declares `pools=True` also
+  defines `pool(runs, cfg, out_dir) -> summary` in its package; run_eval calls it after
+  every arm of a multi-target invocation has been published, so seed replicates produce a
+  recipe-level result (ODCV: each arm enters as a checkpoint, so the interval covers
+  seed-to-seed variance).
 - **Each eval lives in its own directory** under the matching subarea —
   `src/eval/capabilities/lmsys/`, `src/eval/misalignment/psychosis/` — with a
   `runner.py` exposing the `run()` the registry points at, and every supporting
@@ -411,11 +413,44 @@ so the GPU a run used is part of its record. Writing a fresh `POST /pods` — or
 command — instead of calling `provision_runpod` is the mistake this section exists to
 prevent.
 
-1. **Rent**: a driver calls `provision_runpod`. `gpu_price(gpu)` is the cheap way to check a
-   catalogue id before renting it.
+### The one command: `uv run runpod up`
+
+```
+uv run runpod up --name jamie-par716 --train_config configs/train/<arm>.yaml --count 2
+ssh -p <port> root@<ip> 'cd /root/work && uv run torchrun --nproc_per_node=2 \
+    scripts/train/train_lora.py --config configs/train/<arm>.yaml'
+uv run runpod down --pod <id>
+```
+
+`up` rents the pod, clones this repo at the commit you are ON (detached at the exact SHA,
+so a branch moving mid-boot cannot change what runs), `uv sync`s, and prints the pod id
+and its `root@<ip>:<port>`. It **refuses to rent** when that commit is not on origin, when
+the branch is not on origin, or when tracked files are dirty — code running on a paid box
+should be code the team can fetch by name — and it will not push for you.
+
+- `--name` is yours to choose and the account is SHARED, so prefix it with who you are.
+- `--train_config` (or `--model`) picks the GPU from `ModelProfile.gpu` — H200 to train
+  Qwen3.6-27B, H100 to serve it. `--gpu` overrides for an unprofiled family or a
+  deliberate deviation. The COUNT is never in the profile: `--count` rents the GPUs,
+  `torchrun --nproc_per_node=N` uses them, and nothing checks that the two agree.
+- `--clone_repo=False` rents a BARE pod — uv and sshd, nothing else — for serving, or for
+  work whose code you will put there yourself. The commit checks only apply to a clone.
+- `--push_env` writes HF_TOKEN and HF_ORG (nothing else) to the pod, for a run that pushes
+  its own adapter from there.
+- **You own your ssh config.** `--server` and `ssh` take the printed `root@<ip>:<port>`
+  directly, so nothing needs configuring. If you would rather write `--server par716`, add
+  that `Host` entry to your own `~/.ssh/config` — no code here reads or writes it, and an
+  entry naming a pod is useless to a teammate anyway, since `up` installs only the
+  launcher's public key.
+- `uv run runpod pods` lists everything billing on the shared account; `uv run runpod
+  status --pod <id>` tails a boot log; `uv run runpod down --pod <id>` terminates and
+  verifies. **Nothing tears a pod down on its own** — `up` exits, so it holds no watchdog.
+
+1. **Rent**: a driver calls `provision_runpod`.
 2. **Setup**: the pod's `start_script` does it. The serving script installs vLLM and pulls
-   weights credential-light; the training driver ships a public code+data bundle. Training
-   runs ON the pod, in its own copy of the repo — it does not import `provision_runpod`.
+   weights credential-light; `uv run runpod up` clones this (public) repo at an exact SHA, so
+   the pod needs no credentials and a run records the commit it really ran. Training runs
+   ON the pod, in that clone — it does not import `provision_runpod`.
 3. **Run**: evals via `uv run evals --target ... --name ...` (serving is internal — see "The
    eval framework"); training via `uv run scripts/train/train_lora.py --config ...` on the
    pod. Wrap long runs in `nohup … </dev/null &` and poll the log (gotcha 6).

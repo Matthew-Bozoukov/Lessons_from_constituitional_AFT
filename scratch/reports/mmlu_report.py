@@ -43,7 +43,7 @@ from src.eval.capabilities.mmlu.mmlu import (  # noqa: E402
     CATEGORIES,
     LETTERS,
     mcnemar,
-    paired_bootstrap_diff,
+    paired_diff,
     parse_answer,
     score_records,
 )
@@ -129,13 +129,10 @@ def _compare(baseline: list[dict], arm: list[dict], cfg: DictConfig) -> dict[str
     stats = cfg.statistics
     base_correct = [bool(r["correct"]) for r in baseline]
     arm_correct = [bool(r["correct"]) for r in arm]
-    boot = paired_bootstrap_diff(
-        base_correct,
-        arm_correct,
-        rounds=int(stats.bootstrap_rounds),
-        alpha=float(stats.alpha),
-        seed=int(cfg.seed),
-    )
+    # Closed form, clustered by subject: the difference of two means has an exact SE, and
+    # the spread is taken over SUBJECTS because the 57 are a sample of domains, not the
+    # population. Replaced paired_bootstrap_diff (per-question resampling) on 2026-08-28.
+    boot = paired_diff(baseline, arm)
     test = mcnemar(base_correct, arm_correct)
     margin = float(cfg.thresholds.max_accuracy_drop_pp) / 100.0
     # Non-inferiority: the WORST plausible drop must be inside the margin. `boot` is

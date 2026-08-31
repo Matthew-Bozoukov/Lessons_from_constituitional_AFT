@@ -31,6 +31,13 @@ class EvalSpec:
     # judged against. Config default: `<kwarg>_model`. run_eval prepends declaratively —
     # it never learns what the kwarg means; required-ness is enforced by run() itself.
     arm_kwargs: tuple[str, ...] = ()
+    # True when the eval's package defines pool.py::pool(runs, cfg, out_dir) -> summary.
+    # run_eval calls it AFTER every arm of a multi-target invocation has been published,
+    # so several arms of one recipe (seed replicates) answer the question they were run
+    # for — about the recipe — instead of leaving that to a plotting script nobody runs.
+    # What "pooled" means is the eval's own business: ODCV puts each arm in as a
+    # checkpoint so the interval carries seed-to-seed variance.
+    pools: bool = False
 
 
 EVALS: dict[str, EvalSpec] = {
@@ -70,7 +77,10 @@ EVALS: dict[str, EvalSpec] = {
     "odcv": EvalSpec(
         "misalignment.odcv",
         "configs/eval/odcv_bench.yaml",
-        needs_docker=True
+        needs_docker=True,
+        # Seed replicates are the standard ODCV shape (`--target seed0 seed1 seed2`), and
+        # the recipe-level number is what they are for: pool.py.
+        pools=True,
     ),
     "psychosis": EvalSpec(
         "misalignment.psychosis",
@@ -83,3 +93,9 @@ EVALS: dict[str, EvalSpec] = {
 def resolve(name: str) -> Callable:
     """Import and return the named eval's runner.py run() (the only place runners are imported)."""
     return importlib.import_module(f"src.eval.{EVALS[name].package}.runner").run
+
+
+def resolve_pool(name: str) -> Callable:
+    """Import and return the named eval's pool.py pool() — see `EvalSpec.pools`."""
+    assert EVALS[name].pools, f"{name} declares no pooling step"
+    return importlib.import_module(f"src.eval.{EVALS[name].package}.pool").pool

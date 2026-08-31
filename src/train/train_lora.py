@@ -246,7 +246,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         "(+ data_file when the repo holds several .jsonl, + data_revision to pin; "
         "or pass data_repo=org/name on the CLI)")
     # The trained adapter always lands on HF; push=false is the deliberate opt-out for
-    # credential-less pods (runpod_train.py), whose driver pushes after pull-back.
+    # a pod without HF credentials, whose driver pushes the pulled-back adapter instead.
     hf_repo = (str(cfg.hf_repo)
                if "hf_repo" in cfg and not OmegaConf.is_missing(cfg, "hf_repo")
                and cfg.hf_repo else None)

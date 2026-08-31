@@ -21,7 +21,7 @@ Three explicit alternatives, same REPL:
     uv run chat --endpoint https://<pod>-8000.proxy.runpod.net/v1 --mode think
 
     # B. serve HF adapters yourself — on this machine or a prepared GPU host
-    #    (scripts/gpu/bootstrap_pod.sh) — with thinking mode inferred from each adapter's
+    #    (uv run runpod up) — with thinking mode inferred from each adapter's
     #    training_meta.json and pinned into the chat template exactly as the evals do.
     uv run chat --target LASR-Callum/<adapter> [--target <adapter2>] [--server <ssh-alias>]
 
@@ -68,7 +68,7 @@ from src.chat.organisms import (
     render_menu,
 )
 from src.infra.endpoints.vllm import SshExec, TargetSpec, VllmServer, resolve_target
-from src.model_profile import resolve_trace, serving_params
+from src.model_profile import gpu_for, resolve_trace, serving_params
 from src.utils import timestamp, transcript_markdown, write_run_meta
 
 DEFAULT_SAMPLING = {"temperature": 0.7, "top_p": 0.95, "max_tokens": 4096}
@@ -893,14 +893,19 @@ def pick_and_serve(
             f">>> reusing your pod {pod.get('name')} ({pod_id}) — it already serves these arms"
         )
     else:
+        # Which GPU is the MODEL's fact, kept in one place (ModelProfile.gpu): serving
+        # Qwen3.6-27B needs an H100, where training it needs an H200. `--gpu` overrides,
+        # and an unprofiled family falls back to the module default rather than being
+        # refused — serving stays permissive where training does not.
+        gpu = args.gpu or gpu_for(base, "inference") or runpod.GPU
         price = None
         try:
-            price = runpod.gpu_price(args.gpu)
+            price = runpod.gpu_price(gpu)
         except Exception:  # noqa: BLE001 - a missing price must not block the launch prompt
             pass
         cost = f"≈ ${price:.2f}/h" if price else "price unknown"
         if not _ask(
-            f">>> no pod serves this. Launch one? {args.gpu} SECURE, {cost}, "
+            f">>> no pod serves this. Launch one? {gpu} SECURE, {cost}, "
             f"~20-30 min to boot; destroyed automatically when you leave, after "
             f"{args.idle_minutes} idle min, or after {args.max_hours} h",
             default_yes=False,
@@ -915,7 +920,7 @@ def pick_and_serve(
             hf_token=os.environ.get("HF_TOKEN") or None,
             lora_rank=max([o.lora_rank for o in picked] + [32]),
             max_num_seqs=serving_params(base).get("max_num_seqs") or 32,
-            gpu=args.gpu,
+            gpu=gpu,
             reasoning_parser=serving_params(base).get("reasoning_parser")
             if mode == "think"
             else None,
@@ -997,7 +1002,10 @@ def main(argv: list[str] | None = None) -> None:
         help="Hub org(s) to list organisms from (default: HF_ORG from .env)",
     )
     picker.add_argument(
-        "--gpu", default=runpod.GPU, help="RunPod GPU type for a new pod"
+        "--gpu",
+        default=None,
+        help="RunPod GPU type for a new pod; default: the base model's "
+             "ModelProfile.gpu['inference']",
     )
     picker.add_argument(
         "--idle-minutes",

@@ -77,6 +77,7 @@ train = "src.train.train_lora:cli"
 evals = "src.eval.run_eval:main"
 chat = "src.chat.repl:main"
 names = "src.naming:main"
+runpod = "src.infra.runpod:cli"
 
 [dependency-groups]
 dev = [

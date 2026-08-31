@@ -6,6 +6,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -425,6 +426,33 @@ class LocalExec:
         self.proc = None
 
 
+# A remote host is EITHER an alias from the reader's own ~/.ssh/config OR a literal
+# `[user@]address:port`, which is what `uv run runpod up` prints for a fresh pod. Nothing
+# here reads or writes an ssh config: that file belongs to the person, and a program
+# rewriting blocks in it is editing entries it cannot reason about. Naming a pod is
+# theirs to do (by hand, or by asking Claude to add the Host entry); the code only ever
+# needs somewhere to connect.
+_HOST_PORT = re.compile(r"^(?P<host>[^:/@]+(?:@[^:/]+)?):(?P<port>\d+)$")
+
+
+def ssh_argv(host: str) -> tuple[list[str], str]:
+    """The `ssh` argv prefix and the hostname to hand it, for an alias or an address:port.
+
+    An alias is passed through untouched, so every option the reader configured applies.
+    A literal address gets its port as `-p` plus two options that are right for a machine
+    that exists for an afternoon: RunPod recycles `ip:port` between pods, so a remembered
+    host key turns the next rental into what looks like an attack. Per invocation, never
+    written down.
+    """
+    match = _HOST_PORT.match(host)
+    if not match:
+        return ["ssh"], host
+    return (["ssh", "-p", match["port"],
+             "-o", "StrictHostKeyChecking=accept-new",
+             "-o", "UserKnownHostsFile=/dev/null"],
+            match["host"])
+
+
 class SshExec:
     """Run the vLLM server on a remote GPU host (prepared per the CLAUDE.md playbook:
     repo cloned + `uv sync`), with an owned SSH tunnel so the driver still talks to
@@ -454,7 +482,8 @@ class SshExec:
         # characters), and on a Windows driver the default cp1252 decode raises inside
         # subprocess's reader THREAD — which does not fail the call, it just loses the output
         # and prints an alarming traceback that looks like the run died. Observed 2026-08-05.
-        r = subprocess.run(["ssh", self.host, cmd], capture_output=True, text=True,
+        argv, target = ssh_argv(self.host)
+        r = subprocess.run([*argv, target, cmd], capture_output=True, text=True,
                            encoding="utf-8", errors="replace",
                            timeout=timeout, input=stdin_text)
         if r.returncode != 0:
@@ -513,8 +542,8 @@ class SshExec:
         """Fast fail-with-remedy preflight: is this host prepared to serve?
 
         Checks reachability, uv, and the repo clone — the three ways a fresh instance
-        fails confusingly later. Bootstrap a fresh host with
-        `bash scripts/gpu/bootstrap_pod.sh <ssh-alias>`.
+        fails confusingly later. A host that has all three is what
+        `uv run runpod up` leaves behind.
         """
         try:
             state = self._ssh(self._with_env(
@@ -531,7 +560,7 @@ class SshExec:
             raise SystemExit(
                 f"\n--server preflight: {self.host} is not prepared ({missing}).\n"
                 f"  Bootstrap a fresh instance with:\n"
-                f"    bash scripts/gpu/bootstrap_pod.sh {self.host}\n"
+                f"    uv run runpod up --name <name>\n"
                 "  (installs uv, clones this repo at your current branch, uv sync)")
 
     def write_file(self, name: str, text: str) -> str:
@@ -574,8 +603,9 @@ class SshExec:
         self._ssh(self._with_env(
             f"nohup bash {script} >> {self.remote_dir}/vllm.log 2>&1 < /dev/null & "
             f"echo started"), timeout=60)
+        argv, target = ssh_argv(self.host)
         self.tunnel = subprocess.Popen(
-            ["ssh", "-N", "-L", f"{self.bind}:{self.port}:localhost:{self.port}", self.host])
+            [*argv, "-N", "-L", f"{self.bind}:{self.port}:localhost:{self.port}", target])
 
     def alive(self) -> bool:
         try:
