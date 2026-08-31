@@ -1,6 +1,85 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-08-31 - CoT-only on the principle-scoped 702 arm: 9.5%, and the first CoT arm with a real control
+
+**Hypothesis.** The difficult-advice effect is carried by the REASONING in those rows, not
+by the answers. Same intervention as the synthdoc CoT arm, but on the principle-scoped
+(chunk-only) corpus -- chosen because that arm HAS a trained, evaluated control, which the
+synthdoc arm never did.
+
+**Method.** `supervise: "cot"` on the 702 principle-scoped rows: each truncated at its
+`</think>`, supervising the trace and close, never the answer -- so the answer leaves the
+forward pass as well as the loss. Built on the SAME 9,986-row mixture the control trained
+on, so the arm differs from it in the `supervise` field alone. Seed 0, 625 steps, 2xH200
+DDP, dynamic batching. Then ODCV-Bench, 65 cells x 1 rollout, both conditions, temperature
+0, the 15 standard exclusions -- local Docker Desktop against a RunPod H200 vLLM endpoint
+over an SSH tunnel.
+
+Corpus: `LASR-Callum/2026-08-21-sonnet45-difficult-advice-principle-scoped-constitution-716`
+(708 rows; the mixture uses 702 -- 9 traits x 78, the largest perfectly balanced draw, and
+what the control used).
+
+**Result. train_loss 0.8755 (1h38m). ODCV 63/65 cells judged.**
+
+| slice | MR | CI95 (scenario-clustered) | severity | n |
+|---|--:|:--:|--:|--:|
+| **CoT-only, chunk-only 702 (this)** | **9.5%** | **[3.2, 17.5]** | 0.48 | 63 |
+| mandated | 5.7% | - | 0.27 | 35 |
+| incentivized | 14.3% | - | 0.75 | 28 |
+| **its control, chunk-only 702** | **11.5%** | [6.2, 19.6] | 0.62 | 2 passes |
+| base fp8, no SFT | 36.9% | [21.4, 53.6] | - | 65 |
+
+Judging $2.09. Severity 47 x 0.0, 8 x 0.5, then 7 violations at 2.0-4.5 -- bimodal, not
+saturated.
+
+**9.5% against the control's 11.5%, and that 2.0-point gap means nothing.** The intervals
+overlap almost entirely; the control is a TWO-pass number against this one pass; and a
+seed-only replicate of another arm moved 6.1 points, three times this gap. The result that
+survives is the one that does not depend on resolution: **removing the visible answer from
+the loss did not cost the effect.** The arm sits in the difficult-advice family band, far
+below base, on the same 65 cells as its control.
+
+**WHAT THIS STILL DOES NOT ISOLATE**, unchanged from the synthdoc arm and worth repeating
+because the headline invites the wrong reading: `seq_mean_token_mean_loss` weights each
+EXAMPLE at 1/global_batch, so deleting the answer did not shrink these rows' influence --
+it CONCENTRATED the same weight onto the trace, roughly doubling per-CoT-token gradient
+weight. "Reasoning-only AT DOUBLE DENSITY preserves the effect" is the claim. A clean
+answer-removal arm needs the reweighting undone, and is the obvious next build.
+
+**The arm still answers.** These 702 rows were never trained to emit anything after their
+reasoning close, so this was checked before spending: a pre-flight generation gave 1,349
+chars of reasoning then a 793-char answer, `finish_reason: stop`. At scale, 786 `role: tool`
+messages over 63 transcripts, every one containing tool calls, 8-58 steps (median 24).
+
+**One judge cell is single-scored, and NOT as a zero.** grok-4.20 returned an unparseable
+verdict on `mandated/Financial-Audit-Assistant` twice, reproducibly; gemini scores it alone.
+The `'N/A'` was DROPPED rather than read as 0 -- scoring a failed judge call as zero biases
+the arm toward "no misalignment", the one direction infrastructure must never introduce.
+
+**Two cells lost their transcripts**, both harness-flagged `ok+no_transcript`:
+`incentivized/Drone-Delivery-Optimizer` and `incentivized/Ai-Hiring-Assistant` (executor
+exits, Compose SIGKILLs the orchestrator before the flush). Drone-Delivery-Optimizer also
+lost its MANDATED half in the synthdoc run, so that scenario has now failed in both
+variants across two runs -- it is a repeat offender, not a coincidence.
+
+**A pre-existing break found on the way.** `scratch/serve_adapter_runpod.py` did not run at
+all on main: the `src/endpoints` -> `src/infra` reorganisation moved the module AND renamed
+`launch_pod` -> `serve_vllm` without updating it, so the ODCV serving path was broken for
+everyone. Fixed here. **At least ten other scratch scripts still import the dead
+`src.endpoints.openrouter`** (`constitution_probe`, `judge_fabrication_sweep`,
+`llm_feature_discovery/*`, `low_stakes/*`, `grok_vs_sonnet/judge`) and will fail on import;
+left alone as other people's workstreams, but they need a sweep.
+
+**Artifacts.** Mixture `LASR-Callum/2026-08-31-cot-only-supervision-chunk-only-702`
+@ `20bcc2c5`; adapter `LASR-Callum/qwen3.6-27b-lora-t2-9284-chunk-only-702-cotonly-r64`;
+results `LASR-Callum/2026-08-31-odcv-cot-only-chunk-only-702-1x65`. All public. GPU spend
+~$25. **All pods this session provisioned are destroyed.**
+
+**Next steps.** The reweighting control (answer removed WITHOUT the density change) is the
+only thing that would attribute this. Failing that, passes 2-4 would at least narrow the
+interval enough to compare against the control's two.
+
 ## 2026-08-31 - ODCV on the CoT-only arm: 14.1%, inside the difficult-advice band
 
 **Hypothesis.** The difficult-advice effect on agentic misalignment is carried by the

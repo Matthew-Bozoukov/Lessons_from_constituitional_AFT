@@ -9,7 +9,8 @@ loop, the judge calls and the artifacts all stay on the local machine.
 
 The bootstrap and its hard-won rules (no credentials through `set -x`, one-line commands,
 validated before a pod exists, python-3.12 venv for vLLM) moved to
-src/endpoints/runpod.py on 2026-08-27 so `uv run chat` can share them; this file keeps the
+src/infra/runpod.py (src/endpoints/ until the 2026-08-31 reorganisation) so `uv run chat`
+can share them; this file keeps the
 CLI that ODCV runs were launched with.
 
     uv run python scratch/serve_adapter_runpod.py up --adapter LASR-Callum/... --name memself --mode think
@@ -28,7 +29,7 @@ from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.endpoints import runpod  # noqa: E402
+from src.infra import runpod  # noqa: E402
 
 BASE = "Qwen/Qwen3.6-27B"
 
@@ -83,7 +84,7 @@ def up(
     assert len(adapters) == len(names), (
         f"got {len(adapters)} adapters but {len(names)} names"
     )
-    pid = runpod.launch_pod(
+    pid = runpod.serve_vllm(
         BASE,
         list(zip(names, adapters)),
         mode=mode,

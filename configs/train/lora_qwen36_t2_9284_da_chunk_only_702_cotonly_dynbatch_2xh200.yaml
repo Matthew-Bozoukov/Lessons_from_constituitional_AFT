@@ -28,7 +28,9 @@
 # DA share 7.03%.
 #
 # ROW COUNT: 9,986, not 10,000 -- inherited from the control, whose difficult-advice half
-# is 702. 9,986/16 = 624 optimizer steps rather than 625; everything else is identical.
+# is 702. 9,986/16 = 624.125, so the epoch runs 625 optimizer steps with a partial final
+# batch of 2 (confirmed live). The control trained on the same 9,986 rows and therefore ran
+# the same 625; everything else is identical.
 #
 # Scale of the intervention, measured on the built file at max_seq_len 8192
 # (scratch/cot_only/build_mixture.py, verified by
@@ -98,7 +100,8 @@ train:
   # global batch = batch_size x grad_accum = 16, matching the control. Under dynamic
   # batching the trainer hands the whole 16-example step to training_step and sets HF
   # accumulation to 1; route_step splits the step across the 2 ranks. 9,986 rows / 16
-  # = 624 steps, the same as the control -- this arm shortens rows, never drops them.
+  # = 625 steps (624 full + a partial final batch), the same as the control -- this arm
+  # shortens rows, never drops them.
   batch_size: 1
   grad_accum: 16
   lr: 1.0e-4
