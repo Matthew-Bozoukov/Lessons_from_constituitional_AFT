@@ -33,6 +33,25 @@ from src.endpoints import runpod  # noqa: E402
 BASE = "Qwen/Qwen3.6-27B"
 
 
+def _csv(value) -> list[str]:
+    """Split a comma-separated CLI value into a list.
+
+    fire parses `--adapter "a,b"` into a TUPLE, not a string, so `str(value).split(",")`
+    splits the tuple's REPR and yields "('a'" and " 'b')" -- parens and quotes included.
+    That silently produced malformed `--lora-modules` for every multi-adapter pod, which
+    only shows up as a bash syntax error at boot (2026-08-26).
+
+    Args:
+        value: Either a string ("a,b" or "a") or an already-parsed list/tuple.
+
+    Returns:
+        The non-empty, stripped elements.
+    """
+    if isinstance(value, (list, tuple)):
+        return [str(v).strip() for v in value if str(v).strip()]
+    return [v.strip() for v in str(value).split(",") if v.strip()]
+
+
 def up(
     adapter: str,
     name: str,
@@ -73,8 +92,8 @@ def up(
         pod_name: Prefix with an owner; the RunPod account is shared with teammates.
     """
     load_dotenv(override=True)
-    adapters = [a.strip() for a in str(adapter).split(",") if a.strip()]
-    names = [n.strip() for n in str(name).split(",") if n.strip()]
+    adapters = _csv(adapter)
+    names = _csv(name)
     assert len(adapters) == len(names), (
         f"got {len(adapters)} adapters but {len(names)} names"
     )

@@ -1,0 +1,8 @@
+# ABOUTME: Panel judging for the bothpruned seed0 fill-in pass (17 transcripts, dropped by run_eval).
+model: "bothpruned-seed0-fillin"
+model_key: "qwen3_6-27b-lora-t2-9284-synthdoc-662-bothpruned-r64"
+published_key: "qwen3.6-27b"
+bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
+judges:
+  grok-4.20: "x-ai/grok-4.20"
+  gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"

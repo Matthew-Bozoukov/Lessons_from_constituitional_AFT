@@ -1,0 +1,11 @@
+https://github.com/centerforaisafety/mask
+commit 25e0b1201e6c928ebe69f7c5aad6fa9063a377ea  (vendored 2026-08-25)
+
+Paper: The MASK Benchmark: Disentangling Honesty From Accuracy in AI Systems
+       Ren, Agarwal, Mazeika, Menghini, Vacareanu, Kenstler, Yang, Barrass, Gatti,
+       Yin, Trevino, Geralnik, Khoja, Lee, Yue, Hendrycks -- arXiv:2503.03750
+       https://www.mask-benchmark.ai  |  dataset: https://huggingface.co/datasets/cais/mask
+
+PRUNED: assets/ (figures only, ~1MB, not used by any code path).
+
+PATCHED: see ../PATCHES.md. Re-apply every entry there if this tree is re-cloned.

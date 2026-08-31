@@ -1,0 +1,34 @@
+# ABOUTME: Arena-Hard SxS arms: the t2-9000/synthdoc-1000 arm against the no-synthetic
+# ABOUTME: table2-only control, hard_prompt only. Merged over configs/eval/arena_hard.yaml.
+
+# baseline = table2-only, so every win rate reads "vs table2-only (0% synthetic)".
+baseline_arm: qwen3_6-27b-lora-table2-only-9284-r64
+
+arms:
+  # Its 500 hard answers already exist at 14,000 tokens (regenerated 2026-08-09), so nothing
+  # is generated for this arm — the resume rule finds every uid present.
+  - name: qwen3_6-27b-lora-table2-only-9284-r64
+    adapter: "LASR-Callum/qwen3.6-27b-lora-table2-only-9284-r64"
+    role: baseline
+    synthetic_fraction: null
+    n_hard_prompt: 500
+    n_creative_writing: 250
+  # n_creative_writing: 0 — creative is NOT part of this comparison. Its baseline answers
+  # are still at the old 6,000-token budget with a 15.6%-vs-0% empty asymmetry, so pairing
+  # against them would reintroduce exactly the defect the hard-slice rerun removed.
+  - name: qwen3_6-27b-lora-t2-9000-synthdoc-1000-r64
+    adapter: "LASR-Callum/qwen3.6-27b-lora-t2-9000-synthdoc-1000-r64"
+    role: target
+    synthetic_fraction: null
+    n_hard_prompt: 500
+    n_creative_writing: 0
+
+generation:
+  # Same budget the whole hard slice now runs at, so this arm is comparable to both the
+  # baseline and the t2-9284-synthdoc-716 arm.
+  max_tokens: 14000
+  parallel: 24
+
+serving:
+  context_window: 24576
+  concurrency: 16

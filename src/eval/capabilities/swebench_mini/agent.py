@@ -85,7 +85,7 @@ def config_sha256(path: Path) -> str:
 
 
 def build_overlay(base_url: str, out_dir: Path, *, disable_network: bool = True,
-                  pull_timeout: int | None = None) -> Path:
+                  pull_timeout: int | None = None, step_limit: int | None = None) -> Path:
     """Write the minimal `-c` overlay layered on top of the untouched official config."""
     # `--rm` is upstream's own default run_args and is restated because a deep merge REPLACES
     # a list rather than extending it; dropping it would leak a container per instance.
@@ -98,6 +98,14 @@ def build_overlay(base_url: str, out_dir: Path, *, disable_network: bool = True,
         # an instance that races ahead of the pre-pull would die with TimeoutExpired and an
         # empty patch. Raising the ceiling makes it wait instead of failing.
         overlay["environment"]["pull_timeout"] = int(pull_timeout)
+    if step_limit:
+        # Overrides the official config's step_limit (250). OUTCOME-DETERMINING, not a
+        # performance knob: an instance that would have solved after this many steps now
+        # fails instead. Set below the observed solve ceiling only with evidence — for this
+        # 27B model no solve exceeded ~64 steps, so a cap of ~100 is empirically lossless
+        # while cutting the non-converging loops that dominate wall-clock. Recorded in the
+        # run's overlay + run_meta so the deviation from upstream 250 is auditable.
+        overlay["agent"] = {"step_limit": int(step_limit)}
     path = out_dir / "mini_overlay.yaml"
     OmegaConf.save(OmegaConf.create(overlay), path)
     return path

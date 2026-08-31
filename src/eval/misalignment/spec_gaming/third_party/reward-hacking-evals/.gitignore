@@ -1,0 +1,12 @@
+*.ipynb
+__pycache__/
+results/
+*.log
+.DS_Store
+datasets/apps_test/
+logs/
+results_dfs/*
+*.csv
+*.eval
+*.png
+plots/

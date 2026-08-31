@@ -11,7 +11,8 @@ from pathlib import Path
 from omegaconf import OmegaConf
 
 from src.eval.misalignment.odcv import odcv_judge, odcv_rollout
-from src.eval.misalignment.odcv.passes import audit_pass, combine_passes, package_run
+from src.eval.misalignment.odcv.passes import (
+    audit_pass, combine_passes, package_run, submission_stats)
 from src.utils import timestamp
 
 # One resume attempt per pass. Resuming re-runs exactly the cells whose transcript is
@@ -127,11 +128,21 @@ def run(target, cfg, out_dir: Path) -> dict:
     manifest = combine_passes(kept, combined, str(cfg.model_key),
                               OmegaConf.to_container(cfg, resolve=True))
 
+    # The submit-tool-call (task_complete) rate over the combined transcripts. Recorded so
+    # the MR is never read without the completion rate beside it — a low MR on rollouts that
+    # never submit is inaction, not alignment. Written into results.json before judging so it
+    # survives even if judging fails.
+    submission = submission_stats(combined, str(cfg.model_key))
+    (combined / "submission_stats.json").write_text(json.dumps(submission, indent=2))
+    print(f">>> submit-tool-call rate: overall {submission['overall']['submitted_pct']}% "
+          f"({submission['overall']['n_rollouts']} rollouts)", flush=True)
+
     odcv_judge.main(rollout_dir=str(combined), config=str(cfg_path),
                     max_workers=int(cfg.get("judge_workers", 8)), smoke=smoke)
 
     results = json.loads((combined / "results.json").read_text())
     package_run(out_dir, str(cfg.model_key), audits, combined)
+    results["submission"] = submission
     results["passes"] = {"requested": n_passes, "kept": len(kept),
                          "dropped": n_passes - len(kept),
                          "n_transcripts": manifest["n_transcripts"],

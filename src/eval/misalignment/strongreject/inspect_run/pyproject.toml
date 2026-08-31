@@ -1,0 +1,16 @@
+# ABOUTME: Nested env for the UPSTREAM Inspect port of StrongREJECT — inspect-ai pins
+# ABOUTME: click<8.2.2, which this repo's huggingface-hub forbids, so it cannot share the env.
+[project]
+name = "strongreject-inspect-run"
+version = "0.1.0"
+description = "Run inspect_evals' StrongREJECT against a served target, for cross-checking our native runner"
+requires-python = ">=3.11"
+dependencies = [
+    "fire>=0.7.1",
+    "inspect-ai",
+    "inspect-evals[agentic-misalignment]",
+    "openai>=3.5.0",
+]
+
+[tool.uv.sources]
+inspect-evals = { git = "https://github.com/UKGovernmentBEIS/inspect_evals" }

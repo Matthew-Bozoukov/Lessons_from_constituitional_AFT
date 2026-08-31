@@ -1,2 +1,2 @@
-# ABOUTME: SURF audit tooling: run launcher, API-cost calibration, and validation funnel
-# ABOUTME: over SURF-flagged candidates.
+# ABOUTME: SURF audit tooling: the vendored official implementation under third_party/SURF,
+# ABOUTME: plus this repo's API-cost calibration and validation funnel over a flag set.

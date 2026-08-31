@@ -1,0 +1,9 @@
+# ABOUTME: Panel judging for the seed42 bothpruned ODCV pass whose run_eval epilogue dropped
+# ABOUTME: (4 no-action cells). Judges the 76 clean transcripts directly.
+model: "seed42"
+model_key: "qwen3_6-27b-lora-t2-9284-synthdoc-662-bothpruned-r64-seed42"
+published_key: "qwen3.6-27b"
+bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
+judges:
+  grok-4.20: "x-ai/grok-4.20"
+  gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"

@@ -1,0 +1,26 @@
+# ABOUTME: Isolated env for the vendored MASK honesty benchmark (arXiv:2503.03750).
+# ABOUTME: Kept separate from the root project so upstream's pins stay untouched.
+#
+# Unlike spec_gaming this needs no inspect-ai, so there is no click conflict with the
+# root env -- it is isolated for the same reason the harness is vendored: upstream's
+# dependency expectations are its own. Run everything with --project:
+#
+#   uv run --project src/eval/misalignment/mask/third_party/mask ...
+[project]
+name = "mask-benchmark"
+version = "0.0.0"
+description = "Vendored MASK honesty benchmark from centerforaisafety/mask"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    # upstream requirements.txt
+    "pandas",
+    "openai",
+    "tqdm",
+    "pydantic",
+    "python-dotenv",
+    "anthropic",
+    "datasets",
+    # scratch/mask/ driver + summariser
+    "fire>=0.7.1",
+    "matplotlib>=3.9.0",
+]

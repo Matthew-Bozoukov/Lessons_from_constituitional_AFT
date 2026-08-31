@@ -98,3 +98,33 @@ src/eval/misalignment/odcv/third_party/odcv-bench/**/__pycache__/
 
 # Agent worktrees: embedded git repos, never part of this repository.
 .claude/worktrees/
+
+# spec_gaming: vendored tree is TRACKED. `third_party/` is unanchored in
+# .git/info/exclude, so it matches at ANY depth and swallowed the whole tree -- same
+# trap documented for ODCV above. Negate directories first, then re-ignore the run
+# output: the harness writes in-tree (upstream's cwd-relative `results/` and `logs/`
+# convention) and the canonical copy of results is output/spec_gaming/.
+!src/eval/misalignment/spec_gaming/third_party/
+!src/eval/misalignment/spec_gaming/third_party/**/
+!src/eval/misalignment/spec_gaming/third_party/**
+src/eval/misalignment/spec_gaming/third_party/reward-hacking-evals/results/
+src/eval/misalignment/spec_gaming/third_party/reward-hacking-evals/logs/
+src/eval/misalignment/spec_gaming/third_party/reward-hacking-evals/**/logs/
+src/eval/misalignment/spec_gaming/third_party/reward-hacking-evals/.venv/
+# ...except caches, which the `**` negation above would re-include.
+src/eval/misalignment/spec_gaming/third_party/**/__pycache__/
+
+# MASK: vendored tree is TRACKED (see the spec_gaming note above for why the
+# negations are required). csv_data/ is excluded because download.py regenerates it
+# from HF; the canonical copy of results is output/mask/.
+!src/eval/misalignment/mask/third_party/
+!src/eval/misalignment/mask/third_party/**/
+!src/eval/misalignment/mask/third_party/**
+src/eval/misalignment/mask/third_party/mask/mask/csv_data/
+src/eval/misalignment/mask/third_party/mask/mask/test_csv_data/*.csv
+src/eval/misalignment/mask/third_party/mask/mask/test_csv_data/responses/
+src/eval/misalignment/mask/third_party/mask/mask/test_csv_data/evaluated/
+src/eval/misalignment/mask/third_party/mask/mask/test_csv_data/metrics/
+src/eval/misalignment/mask/third_party/mask/.venv/
+# ...except caches, which the `**` negation above would re-include.
+src/eval/misalignment/mask/third_party/**/__pycache__/

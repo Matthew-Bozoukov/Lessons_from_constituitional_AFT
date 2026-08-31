@@ -1,0 +1,7 @@
+# ABOUTME: ODCV worst-3 single-flash judging for the combined numina passes.
+# Run: uv run python scratch/odcv_judge_run.py output/odcv_worst3/numina/combined_flash configs/eval/odcv_worst3/numina_judge.yaml
+model: "numina"
+model_key: "numina"
+bench_dir: "/home/matthewb/git repos/teaching_claude_why_replication/third_party/odcv-bench"
+judges:
+  gemini-3-flash-preview: "google/gemini-3-flash-preview"

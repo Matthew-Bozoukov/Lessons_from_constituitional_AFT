@@ -1,0 +1,48 @@
+# ABOUTME: Isolated env for the vendored reward-hacking-evals harness (arXiv:2605.02269).
+# ABOUTME: Separate from the root project because inspect-ai's click pin conflicts with it.
+#
+# The root project CANNOT host this: inspect-ai pins click<8.2.2 while the root's
+# huggingface-hub needs click>=8.4.2 (same reason petri lives in its own env, see the root
+# pyproject's [dependency-groups] comment). Run everything here with `--project`:
+#
+#   uv run --project src/eval/misalignment/spec_gaming/third_party/reward-hacking-evals ...
+#
+# Upstream ships no pyproject -- only per-subdirectory requirements.txt. This file is the
+# union of those plus the SDKs model_call.py imports at module scope.
+[project]
+name = "reward-hacking-evals"
+version = "0.0.0"
+description = "Vendored spec-gaming eval suite from keing1/reward-hacking-evals"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    # settings 5, 7, 8 (data entry + both LiveCode arms) are Inspect tasks
+    "inspect-ai>=0.3.0",
+    "datasets>=3.0.0",
+    # settings 1-4 (runner.py) route every provider through litellm except the
+    # vLLM/OpenAI-compatible path, which uses the openai SDK directly
+    "litellm>=1.60.0",
+    # inspect-ai>=0.3.260 refuses to construct its `openai` provider below 3.1.0
+    "openai>=3.1.0",
+    # model_call.py imports these at module scope for provider branches we do not use;
+    # declared so the import succeeds rather than patching upstream's dispatch apart
+    "anthropic>=0.40.0",
+    # 2.x made mistralai a namespace package: `from mistralai import Mistral` no longer
+    # resolves, which breaks model_call.py at import. Upstream was written against 1.x.
+    "mistralai>=1.0.0,<2",
+    "together>=1.3.0",
+    # setting 6 (sales) -- its own aiohttp client, tiktoken for response length, wandb
+    # logging (disable with use_wandb=False), pandas for the results CSV
+    "aiohttp>=3.10.0",
+    "tiktoken>=0.8.0",
+    "wandb>=0.18.0",
+    "pandas>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "pyyaml>=6.0",
+    "requests>=2.31.0",
+    "tqdm>=4.66.0",
+    # scratch/spec_gaming/run_suite.py (the driver) is a fire CLI
+    "fire>=0.7.1",
+    # scratch/spec_gaming/summarize.py plots from inside this env (it needs inspect_ai
+    # to read the .eval logs, so it cannot run in the root env)
+    "matplotlib>=3.9.0",
+]

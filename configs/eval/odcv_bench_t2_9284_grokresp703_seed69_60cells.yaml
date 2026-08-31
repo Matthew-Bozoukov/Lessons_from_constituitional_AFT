@@ -1,0 +1,84 @@
+# ABOUTME: ODCV-Bench eval of the GROK-RESPONDER (generator ablation) SEED 69 replicate, 60 cells
+# ABOUTME: (30 mandated + 30 incentivized), 32 containers.
+# Run: uv run python scratch/odcv_run_pass.py --config <this> base_url=<pod url>
+#
+# SEED REPLICATE. Identical arm to the seed-0 grok-responder arm
+# (LASR-Callum/qwen3.6-27b-lora-t2-9284-grokresp703-paired-r64); only the training seed
+# differs (see configs/train/lora_qwen36_t2_9284_grokresp703_paired_dynbatch_2xh200_seed69.yaml).
+# Seeds 0, 42 and 69 together give k=3, which is what makes a between-seed SD measurable
+# at all -- it cannot be estimated from a single training run.
+#
+# CELL SET: 60 = 30 mandated + 30 incentivized -- the SAME cell list the numina-control
+# and synthdoc
+# seed sweep used, so the two arms are compared on identical cells. Chosen as a subset of the seed-0
+# arm's 65-cell set. That subset property is the point: seed 0's existing 4-pass data can
+# be re-scored on exactly these 60 cells without re-running it, so all three seeds are
+# compared on identical cells and the measured spread is seed, not cell set.
+#
+# The 30 mandated are the first 30 of the seed-0 arm's 35 in driver order; the 30
+# incentivized are its 30 unchanged. The two variants span 32 distinct scenario names with
+# 28 in common -- 30-in-both is impossible here, because the per-variant exclusion lists
+# differ (Clinical-Trial-Data-Management and Healthcare-Appointment-Optimizer are excluded
+# for mandated only; Data-Privacy-Leak-Finding and Healthcare-Trial-Recruiter for
+# incentivized only), leaving at most 28 names allowed in both.
+#
+# SERVING: the vLLM server MUST carry --enable-auto-tool-choice --tool-call-parser
+# qwen3_xml --reasoning-parser qwen3 (pass `--agentic true` to the serve script; it is OFF
+# by default). Without them every scenario completes as `ok` and writes NO transcript --
+# the agent cannot emit tool calls, so it never acts. That failure reads as a clean run in
+# the summary and is only visible by checking messages_record.txt exists. Cost one full run.
+
+model: "grokresp_seed69"                  # served LoRA name (request `model` field)
+model_key: "qwen3_6-27b-lora-t2-9284-grokresp703-paired-r64-seed69"
+published_key: "qwen3.6-27b"
+base_url: "https://8tno33s9jlxeg2-8000.proxy.runpod.net/v1"
+temperature: 0.0
+bench_dir: "/home/matthewb/git repos/teaching_claude_why_replication/third_party/odcv-bench"
+output_root: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench"
+concurrency: 32
+scenario_timeout_s: 2400
+prune_images: false
+rollouts_per_cell: 1
+expected_cells: 60
+shard_count: 1
+shard_index: 0
+judges:
+  grok-4.20: "x-ai/grok-4.20"
+  gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
+baseline_results: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench/qwen3.6-27b-base-fp8/20260729_105106/results.json"
+
+# Same 10 exclusions as every sibling arm, so all arms are scored on the same 70 cells.
+exclude_scenarios:
+  - "incentivized/Academic-Research-Integrity-Finding"
+  - "incentivized/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Academic-Research-Integrity-Finding"
+  - "mandated/Clinical-Trial-Data-Management"
+  - "incentivized/Clinical-Trial-Integrity-Monitoring"
+  - "incentivized/Healthcare-Trial-Recruiter"
+  - "incentivized/Data-Privacy-Leak-Finding"
+  - "mandated/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Clinical-Trial-Integrity-Monitoring"
+  - "mandated/Healthcare-Appointment-Optimizer"
+
+# FIVE MORE EXCLUSIONS than the sibling arms, at the user's request (2026-08-16): the run
+# covers only the FIRST 65 cells of the driver's job order (all `mandated`, then
+# `incentivized` up to the cut). The driver builds jobs as mandated-then-incentivized in
+# scenario_names order, so "first 65" is exactly the five incentivized scenarios below.
+# CONSEQUENCE FOR COMPARISON: this arm is scored on a DIFFERENT cell set than
+# courtroom716 (69 cells) or the difficult-advice sibling (70). A headline MR from this
+# run is not directly comparable to theirs -- compare on the intersection, or say which
+# cell set each number came from.
+  - "incentivized/Marketing-Campaign"
+  - "incentivized/Propaganda-Engine-Finding"
+  - "incentivized/Roboadvisor-Ethicsbypass"
+  - "incentivized/Supply-Chain-Sabotage-Finding"
+  - "incentivized/University-Research-Grant-Approval"
+
+# FIVE MORE MANDATED EXCLUSIONS (this config only), dropping the seed-0 arm's 35 mandated
+# to 30. Same five names as the extra incentivized exclusions above, which is a coincidence
+# of driver order, not a rule.
+  - "mandated/Marketing-Campaign"
+  - "mandated/Propaganda-Engine-Finding"
+  - "mandated/Roboadvisor-Ethicsbypass"
+  - "mandated/Supply-Chain-Sabotage-Finding"
+  - "mandated/University-Research-Grant-Approval"

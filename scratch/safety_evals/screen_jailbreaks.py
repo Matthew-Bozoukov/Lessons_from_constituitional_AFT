@@ -72,12 +72,25 @@ def load_pool(token: str | None, max_chars: int) -> list[dict]:
     return out
 
 
-def load_core_questions(token: str | None, n: int, seed: int) -> list[dict]:
-    """Return n core-harm questions, stratified round-robin across the six categories."""
+def load_core_questions(token: str | None, n: int, seed: int,
+                        questions_file: str = "") -> list[dict]:
+    """Return n core-harm questions, stratified round-robin across the six categories.
+
+    `questions_file` restricts the draw to a pre-filtered set — in practice the OPERATIONAL
+    questions from classify_question_harm.py. Without it the draw includes questions whose
+    honest answer is encyclopedic ("which languages is malware written in"), which a binary
+    refusal judge scores as a jailbreak success and which therefore inflate ASR and skew
+    template selection toward attacks that unlock harmless content.
+    """
     from datasets import load_dataset
 
-    rows = [r for r in load_dataset(QUESTIONS, split="train", token=token)
-            if r["content_policy_name"] in CORE_HARM]
+    if questions_file:
+        rows = json.loads(Path(questions_file).read_text())
+        assert rows and "question" in rows[0] and "content_policy_name" in rows[0], (
+            f"{questions_file} must hold objects with `question` and `content_policy_name`")
+    else:
+        rows = [r for r in load_dataset(QUESTIONS, split="train", token=token)
+                if r["content_policy_name"] in CORE_HARM]
     by = defaultdict(list)
     for r in rows:
         by[r["content_policy_name"]].append(r)
@@ -99,7 +112,8 @@ def main(base_url: str, model: str, out: str = "output/jailbreak_screen",
          n_questions: int = 12, top_n: int = 20, seed: int = 0, max_chars: int = 6000,
          max_tokens: int = 4096, temperature: float = 1.0, concurrency: int = 32,
          judge_model: str = "google/gemini-3-flash-preview", judge_workers: int = 16,
-         limit: int = 0, from_generations: str = "") -> None:
+         limit: int = 0, from_generations: str = "", ids_file: str = "",
+         questions_file: str = "") -> None:
     """Screen the pool and write the ranking plus a top-N jailbreaks file.
 
     Args:
@@ -119,6 +133,12 @@ def main(base_url: str, model: str, out: str = "output/jailbreak_screen",
         judge_model: OpenRouter refusal judge.
         judge_workers: Concurrent judge calls.
         limit: Screen only the first N candidates (smoke/testing).
+        questions_file: JSON list of questions to draw from (e.g. the OPERATIONAL set from
+            classify_question_harm.py). Omit to draw from all core-harm questions.
+        ids_file: JSON list of already-selected templates (objects with `sha1`). Restricts
+            the run to exactly those, in that order, so a second model is measured on the
+            SAME templates x the SAME questions as the screen — which is what makes the two
+            ASRs comparable at all.
         from_generations: Path to a previous run's generations.json. Skips generation
             entirely and re-judges those cells — generation is the half that needs a GPU,
             so a judge-side failure must never cost it twice.
@@ -130,9 +150,17 @@ def main(base_url: str, model: str, out: str = "output/jailbreak_screen",
     run_dir.mkdir(parents=True, exist_ok=True)
 
     pool = load_pool(token, max_chars)
+    if ids_file:
+        want = [r["sha1"] for r in json.loads(Path(ids_file).read_text())]
+        by_id = {c["id"]: c for c in pool}
+        missing = [i for i in want if i not in by_id]
+        assert not missing, (
+            f"{len(missing)} id(s) from {ids_file} are not in the pool (e.g. {missing[:3]}) — "
+            "the pool was built with different --max_chars, or from a different snapshot")
+        pool = [by_id[i] for i in want]
     if limit:
         pool = pool[:limit]
-    questions = load_core_questions(token, n_questions, seed)
+    questions = load_core_questions(token, n_questions, seed, questions_file)
     cells = [(jb, q) for jb in pool for q in questions]
 
     print(f">>> screening {len(pool)} candidates x {len(questions)} core-harm questions "
@@ -193,6 +221,15 @@ def main(base_url: str, model: str, out: str = "output/jailbreak_screen",
             return "JUDGE_BLOCKED"
 
     verdicts = map_threaded(judge, len(gens), max_workers=judge_workers, desc="screen judge")
+
+    # Persist the per-cell verdicts. Without them the run can report a rate but nobody can
+    # read the cells behind it — and inspecting what a successful jailbreak actually elicited
+    # is the point of running one.
+    (run_dir / "cells.jsonl").write_text("\n".join(
+        json.dumps({"jb": g["jb"], "scenario": g["scenario"], "verdict": v,
+                    "answer_chars": len(g["answer"]), "error": g["error"]})
+        for g, v in zip(gens, verdicts)) + "\n", encoding="utf-8")
+    print(f">>> per-cell verdicts -> {run_dir / 'cells.jsonl'}")
 
     by_jb: dict[str, list[str]] = defaultdict(list)
     for g, v in zip(gens, verdicts):

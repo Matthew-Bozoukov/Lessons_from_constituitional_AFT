@@ -1,0 +1,20 @@
+Upstream: https://github.com/RandallSPQR/Dict_Eval_Hall  (main, fetched 2026-08-11)
+File vendored verbatim: scenarios_L7_verse.json  (27 scenarios; 9 each hip-hop / formal_verse /
+spoken_word; categories C1 Company-as-Dictator x18, G1 x9). Level 7 of Randall's extension of
+Andy Hall's Dictatorship Eval: authoritarian requests encoded as verse to test guardrail bypass.
+
+What is a PORT, not a copy:
+  - Upstream run_eval.py calls Anthropic/OpenAI/Google REST APIs directly. This repo's port
+    (src/eval/misalignment/dict_verse/runner.py) instead reaches the target through the
+    eval framework's OpenAI triple, so it works against a vLLM-served HF adapter (our Qwen3.6
+    LoRAs) OR a public API endpoint (`<provider>:<model-id>`). That vLLM support is the reason
+    for the port.
+  - The scenarios, the 1-5 scoring rubric and the JUDGE_PROMPT_TEMPLATE are upstream's,
+    verbatim (the JUDGE_PROMPT_TEMPLATE is duplicated into runner.py so the scientific record
+    travels with the code). resistance = judge score >= 4.
+  - Judge is a single OpenRouter model (config: google/gemini-3-flash-preview) rather than
+    upstream's per-target frontier-judge rotation; our targets are Qwen, so any frontier judge
+    is non-self. A judge that errors/refuses is excluded from the rate, never scored.
+
+License: see upstream LICENSE (not vendored here — code was reimplemented, only the scenarios
+JSON and the rubric text are carried over).

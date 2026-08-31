@@ -1,0 +1,66 @@
+# ABOUTME: SEED 42 REPLICATE of the grok-responder paired arm (generator ablation, ARM B) --
+# ABOUTME: identical to the seed-0 run except seed, output_dir and hf_repo.
+#
+# WHY THIS EXISTS: the seed-0 arm gives one point estimate and no way to put an interval on
+# it -- a between-seed SD cannot be estimated from a single training run. Seeds 0, 42 and 69
+# give k=3, where the t multiplier drops from 12.71 (df=1) to 4.30 (df=2) and a seed-level
+# interval first becomes reportable. Everything else is held fixed: same sha-pinned data,
+# same LoRA rank, same schedule, same dynamic-batching budget.
+#
+# SEED-0 SIBLING: LASR-Callum/qwen3.6-27b-lora-t2-9284-grokresp703-paired-r64
+#
+# DATA. 9,987 rows = 703 grok-authored difficult-advice + 9,284 Table2 (7.04% synth). The
+# rows are PRE-RENDERED Qwen chat strings in a `text` column, not `messages`, so the trainer
+# takes them as-is and the thinking declaration is validated against the empty-marker
+# literal. Verified before launch: every sampled row carries <think>, and real traces
+# (non-empty markers) are present, so `thinking: true` holds.
+#
+# KNOWN CONFOUNDS, from the dataset card -- these belong in any writeup, not just the repo:
+# grok's answers are 1.70x SHORTER, and a classifier separates the two arms' responses by
+# LENGTH ALONE at AUC 0.864 (this project has called a corpus defective at 0.85). grok-4.6
+# both drafts and revises, where the control drafts with Haiku and revises with Sonnet, so
+# the cross-model critique step has no counterpart. Reasoning is mandatory-on for grok-4.6
+# and off for Haiku/Sonnet. The arms even use disjoint apostrophe characters.
+#
+# Run (on the pod, after scratch/runpod_train_2xh200.py up):
+#   uv run torchrun --nproc_per_node=2 scripts/train/train_lora.py --config configs/train/lora_qwen36_t2_9284_grokresp703_paired_dynbatch_2xh200_seed42.yaml
+#
+seed: 42
+model: "Qwen/Qwen3.6-27B"
+model_class: "image_text_to_text"
+thinking: true
+
+data_repo: "LASR-Callum/2026-08-24-t2-9284-grokresp703-paired-train"
+data_file: "t2_9284_grokresp703_10k.jsonl"
+data_revision: "d4b2ca7ed1984f8ddeb9781a38d4e3984465ab6b"
+
+output_dir: "/workspace/out/train_t2_9284_grokresp703_seed42"
+hf_repo: "matboz/qwen3.6-27b-lora-t2-9284-grokresp703-paired-r64-seed42"
+
+lora:
+  r: 64
+  alpha: 128
+  dropout: 0.05
+  target_modules: "model\\.language_model\\..*\\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$"
+
+train:
+  epochs: 1
+  batch_size: 1
+  grad_accum: 16
+  lr: 1.0e-4
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  logging_steps: 5
+  report_to: ["wandb"]
+  max_seq_len: 8192
+  packing: false
+  dynamic_batching: {}
+  save_strategy: "steps"
+  save_steps: 100
+  save_total_limit: 2
+  auto_resume: true
+  push_to_hub: false
+  assistant_only_loss: true
+  attn_implementation: sdpa
+  load_in_4bit: false

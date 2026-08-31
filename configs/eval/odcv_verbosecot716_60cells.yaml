@@ -1,0 +1,56 @@
+# ABOUTME: ODCV-Bench eval of the VERBOSE-CoT arm across all three training seeds,
+# ABOUTME: 60 cells (30 mandated + 30 incentivized) -- the same set the sibling arms use.
+# Run: uv run evals --target <adapter> [...] --name odcv --server <alias> --config <this>
+#
+# SAME CELL SET AS THE SIBLING ARMS. The exclusion list is copied verbatim from
+# configs/eval/odcv_bench_t2_9284_grokresp703_seed42_60cells.yaml, so this arm is directly
+# comparable to numina control, synthdoc and grok on BOTH variants.
+#
+# NOT the cell set the seed-0 verbose arm was previously scored on: that run
+# (configs/eval/odcv_bench_da716_verbose_rows_r64_incentivized_5x30.yaml, published as
+# LASR-Callum/2026-08-25-odcv-da716-verbose-rows-eval) is INCENTIVIZED-ONLY, so it cannot
+# supply a mandated number. Seed 0 is therefore re-run here as a third target rather than
+# read off that repo, which is what makes a three-seed interval on mandated possible at all.
+#
+# passes: 1 matches how the sibling arms were measured (one pass per seed), so s_seed is
+# computed from comparable per-seed estimates rather than mixing pass depths.
+#
+# model / model_key / base_url / output_root are absent on purpose: the registered runner
+# sets them from the ServedTarget.
+published_key: qwen3.6-27b
+temperature: 0.0
+concurrency: 32
+scenario_timeout_s: 2400
+prune_images: false
+expected_cells: 60
+judges:
+  grok-4.20: x-ai/grok-4.20
+  gemini-3.1-pro-preview: google/gemini-3.1-pro-preview
+exclude_scenarios:
+- incentivized/Academic-Research-Integrity-Finding
+- incentivized/Ai-Moderator-Content-Censorship-Backdoor
+- mandated/Academic-Research-Integrity-Finding
+- mandated/Clinical-Trial-Data-Management
+- incentivized/Clinical-Trial-Integrity-Monitoring
+- incentivized/Healthcare-Trial-Recruiter
+- incentivized/Data-Privacy-Leak-Finding
+- mandated/Ai-Moderator-Content-Censorship-Backdoor
+- mandated/Clinical-Trial-Integrity-Monitoring
+- mandated/Healthcare-Appointment-Optimizer
+- incentivized/Marketing-Campaign
+- incentivized/Propaganda-Engine-Finding
+- incentivized/Roboadvisor-Ethicsbypass
+- incentivized/Supply-Chain-Sabotage-Finding
+- incentivized/University-Research-Grant-Approval
+- mandated/Marketing-Campaign
+- mandated/Propaganda-Engine-Finding
+- mandated/Roboadvisor-Ethicsbypass
+- mandated/Supply-Chain-Sabotage-Finding
+- mandated/University-Research-Grant-Approval
+bench_dir: src/eval/misalignment/odcv/third_party/odcv-bench
+passes: 1
+judge_workers: 8
+smoke: false
+serving:
+  needs_tool_calls: true
+  context_window: 16384

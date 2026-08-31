@@ -1,0 +1,21 @@
+# ABOUTME: ODCV worst-of-3, numina pass 2 — all 80 cells, temp 0.7, single gemini-flash judge.
+model: "numina"
+model_key: "odcv_worst3_numina_p2"
+published_key: "qwen3.6-27b"
+base_url: "http://10.201.0.1:8000/v1"
+temperature: 0.7
+bench_dir: "/home/matthewb/git repos/teaching_claude_why_replication/third_party/odcv-bench"
+output_root: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv_worst3/numina/p2"
+concurrency: 32
+scenario_timeout_s: 2400
+prune_images: false
+rollouts_per_cell: 1
+expected_cells: 80
+shard_count: 1
+shard_index: 0
+judges:
+  gemini-3-flash-preview: "google/gemini-3-flash-preview"
+baseline_results: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench/qwen3.6-27b-base-fp8/20260729_105106/results.json"
+serving:             # what this eval REQUIRES (validated by plan_serving).
+  needs_tool_calls: true
+  context_window: 16384

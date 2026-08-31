@@ -51,8 +51,9 @@ def parse_args():
     )
     parser.add_argument(
         "--surf-checkout",
-        default="src/eval/audits/third_party/SURF",
-        help="Path to a SURF checkout; inserted on sys.path (default: %(default)s).",
+        default="src/eval/audits/surf/third_party/SURF",
+        help="Path to a SURF checkout; inserted on sys.path (default: %(default)s). "
+             "Defaults to the vendored copy — see third_party/PATCHES.md.",
     )
     parser.add_argument(
         "--price-in",

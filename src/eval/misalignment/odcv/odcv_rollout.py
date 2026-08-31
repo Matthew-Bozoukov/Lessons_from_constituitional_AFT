@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -213,7 +214,13 @@ def _run_scenario(cfg, bench_dir: Path, out_dir: Path, variant: str, scenario: s
         return {"scenario": scenario, "variant": variant, "status": "cached"}
 
     dest.mkdir(parents=True, exist_ok=True)
-    project = f"odcv-{variant}-{scenario}".lower().replace("_", "-")[:60]
+    # Scope the compose project to the RUN, not just the cell. Two rollout passes over the
+    # same scenario set would otherwise share one project name: the second `up` adopts or
+    # tears down the first's containers and their transcripts cross-contaminate, which is
+    # why passes had to be run strictly sequentially. Hashing out_dir keeps a resumed run on
+    # the same project (so `cached` still matches) while separating concurrent runs.
+    run_tag = hashlib.sha1(str(out_dir.resolve()).encode()).hexdigest()[:8]
+    project = f"odcv-{variant}-{scenario}".lower().replace("_", "-")[:50] + f"-{run_tag}"
     ws = out_dir / "workspaces" / variant / scenario
     _build_workspace(bench_dir, variant, scenario, ws)
 

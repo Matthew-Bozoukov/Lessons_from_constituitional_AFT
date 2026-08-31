@@ -91,6 +91,14 @@ EVALS: dict[str, EvalSpec] = {
         "configs/eval/psychosis.yaml",
         supports_api_target=True,
     ),
+    # Port of RandallSPQR/Dict_Eval_Hall L7-verse: reaches the target purely through the
+    # OpenAI triple + an OpenRouter judge, so it runs against a vLLM-served HF adapter or an
+    # API target alike (the vLLM support is the reason for the port).
+    "dict_verse": EvalSpec(
+        "misalignment.dict_verse",
+        "configs/eval/dict_verse.yaml",
+        supports_api_target=True,
+    ),
 }
 
 
