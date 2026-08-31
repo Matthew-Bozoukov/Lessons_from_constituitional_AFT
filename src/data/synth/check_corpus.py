@@ -33,11 +33,24 @@ from functools import cached_property
 from pathlib import Path
 from typing import Any, Callable
 
-from src.utils import wilson
+from src.eval.stats import wilson
 
 # --- shared primitives ---------------------------------------------------------------
 # Here rather than in check_model_eval_model.py so the in-pipeline stage and the post-hoc `synth check`
 # verb cannot drift on what "8-gram share" or "surface AUC" means.
+
+
+def _wilson(k: int, n: int) -> tuple[float, float]:
+    """Wilson interval as this report writes it: [0, 1] when nothing was rated, 4 dp.
+
+    `src.eval.stats.wilson` is the estimator; these two conventions are the report's —
+    an empty cell is unknown rather than zero, and a rate in a JSON someone diffs
+    between runs does not need seventeen digits.
+    """
+    if n <= 0:
+        return (0.0, 1.0)
+    lo, hi = wilson(k, n)
+    return (round(lo, 4), round(hi, 4))
 
 
 def words(text: str) -> list[str]:
@@ -802,7 +815,7 @@ def check_quality_filter(c: Corpus) -> CheckResult:
 
     n = sum(verdicts.values())
     rate = verdicts["drop"] / n if n else 0.0
-    lo, hi = wilson(verdicts["drop"], n)
+    lo, hi = _wilson(verdicts["drop"], n)
     dropped = [rid for rid, lab in labels.items()
                if str(lab.get("verdict", "")).strip().lower() == "drop"]
 
@@ -879,7 +892,7 @@ def check_applies_vs_conflicts(c: Corpus) -> CheckResult:
 
     n = sum(modes.values())
     rate = modes["conflict"] / n if n else 0.0
-    lo, hi = wilson(modes["conflict"], n)
+    lo, hi = _wilson(modes["conflict"], n)
     ind_share = modes["indeterminate"] / n if n else 0.0
 
     metrics = {**stats, "distribution": modes, "classified": n,
@@ -890,7 +903,7 @@ def check_applies_vs_conflicts(c: Corpus) -> CheckResult:
                                 "conflict_rate": round(d["conflict"] / sum(d.values()), 4)
                                 if sum(d.values()) else 0.0,
                                 "conflict_rate_ci95": list(
-                                    wilson(d["conflict"], sum(d.values())))}
+                                    _wilson(d["conflict"], sum(d.values())))}
                             for g, d in sorted(per_group.items())}}
 
     def ids_where(mode: str) -> list[str]:
@@ -1001,7 +1014,7 @@ def check_chunk_attribution(c: Corpus) -> CheckResult:
     mean_k = member_total / max(total, 1)
     ratio = eff_k / mean_k if mean_k else 0.0
     rate = all_engaged / total if total else 0.0
-    lo, hi = wilson(all_engaged, total)
+    lo, hi = _wilson(all_engaged, total)
     for b in per_k.values():
         b["effective_k"] = round(b["engaged"] / b["n"], 3)
         b["all_members_engaged_rate"] = round(b["all"] / b["n"], 4)
@@ -1327,7 +1340,7 @@ def _rate(c: Corpus, patterns: list[dict]) -> tuple[list[dict], dict[str, dict],
             "scans": pat["scans"], "aliases": pat["aliases"],
             "rated": len(v),
             "broad_share": round(broad / n, 4), "strict_share": round(strict / n, 4),
-            "broad_ci95": list(wilson(broad, len(v))),
+            "broad_ci95": list(_wilson(broad, len(v))),
             "reliable": recall is None or recall >= float(p["sanity_min_recall"]),
             "sanity_recall": None if recall is None else round(recall, 3),
             "examples": pat["examples"],

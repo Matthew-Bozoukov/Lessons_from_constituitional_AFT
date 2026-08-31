@@ -772,30 +772,92 @@ def _wait_for_ssh(host: str, timeout_s: int = 300) -> bool:
 # the CLI
 # --------------------------------------------------------------------------------------
 
-def up(name: str, train_config: str | None = None, model: str | None = None,
-       gpu: str | None = None, count: int = 1, clone_repo: bool = True,
+def _serve_pod(name: str, target: str, *, gpu: str | None, max_len: int, disk_gb: int,
+               cloud: str) -> str:
+    """Rent a pod that IS the vLLM server for `target` — the ODCV shape, in one command.
+
+    Every parameter below is a FACT about the target or its family, not a preference:
+    the mode is inferred from the adapter's training stamp and pinned into the template,
+    the parsers come from `ModelProfile.serving` (ODCV scores a clean 0% without the
+    tool-call parser — the agent cannot act, and the summary looks fine), and the GPU is
+    the family's inference card. Serving is published on RunPod's HTTPS proxy, which is
+    what lets ODCV's docker containers reach it without a bridge hop.
+    """
+    from src.infra.endpoints.vllm import resolve_target
+    from src.model_profile import serving_params
+
+    spec = resolve_target(target)
+    assert not spec.api_base, f"{target} is an API endpoint; there is nothing to serve"
+    profile = serving_params(spec.base_model)
+    gpu = gpu or gpu_for(spec.base_model, "inference") or GPU
+    print(f">>> serving {target} (mode={spec.mode}) on {gpu}")
+    pod_id = serve_vllm(
+        spec.base_model,
+        [(spec.model_key, spec.hf_path)] if spec.adapter else [],
+        mode=spec.mode,
+        pod_name=name,
+        hf_token=os.environ.get("HF_TOKEN") or None,
+        max_len=max_len,
+        lora_rank=max(spec.lora_rank or 0, 32),
+        max_num_seqs=profile.get("max_num_seqs") or 32,
+        gpu=gpu,
+        disk_gb=disk_gb,
+        cloud=cloud,
+        reasoning_parser=profile.get("reasoning_parser") if spec.mode == "think" else None,
+        tool_call_parser=profile.get("tool_call_parser"),
+    )
+    endpoint = endpoint_url(pod_id)
+    return "\n".join([
+        f"pod:       {pod_id}",
+        f"endpoint:  {endpoint}",
+        f"boot log:  {boot_log_url(pod_id)}",
+        "",
+        "~20-30 min to boot (watch the log for SERVE_READY). Then, from a machine with",
+        "docker if the eval needs it:",
+        f"  uv run evals --name <eval> --target {target} --endpoint {endpoint}",
+        "",
+        "IT BILLS UNTIL YOU RUN THIS:",
+        f"  uv run runpod down --pod {pod_id}",
+    ])
+
+
+def up(name: str, train_config: str | None = None, serve: str | None = None,
+       gpu: str | None = None, count: int = 1, max_len: int = 16384, clone_repo: bool = False,
        branch: str | None = None, disk_gb: int = 200, cloud: str = "SECURE",
        image: str = IMAGE, countries: str = "", push_env: bool = False) -> str:
-    """Rent a pod and clone this repo into it at your current commit.
+    """Rent a pod. Three shapes, in one command:
+
+        up --name <n>                       a BARE pod: uv and sshd, nothing else
+        up --name <n> --clone-repo          + this repo at the commit you are on
+        up --name <n> --serve <hf>          + vLLM serving that target
 
     Args:
         name: Pod name AND the `~/.ssh/config` host it is reachable at. The RunPod
             account is shared, so prefix it with who you are.
-        train_config: The arm you are about to train. Its `model:` picks the GPU from
+        train_config: The arm you are about to TRAIN. Its `model:` picks the GPU from
             `ModelProfile.gpu["train"]`, so the box matches the run without anyone
             retyping a catalogue id — and it is the same file you pass to the trainer.
-        model: Base model id, when you want a training box without naming a config.
-        gpu: RunPod catalogue id, overriding the profile. Needed only for a family with no
-            profile, or to deviate deliberately: the profile records what the family was
+        serve: An HF target to SERVE. The pod becomes the vLLM server itself
+            (`serve_vllm`) — base + this adapter, the thinking mode pinned into the
+            template, the family's parsers from `ModelProfile.serving`, published on
+            RunPod's HTTPS proxy — and `up` prints the endpoint plus the `uv run evals`
+            line that uses it. No repo, no SSH, and the INFERENCE gpu, which is a
+            different and usually cheaper card: serving holds weights and KV, training
+            also holds optimizer state, activations and the fp32-logits CE path.
+        max_len: Context window for a `--serve` pod. ODCV's agentic rollouts need far
+            more than the default (65536 in the runs on record).
+        gpu: RunPod catalogue id, overriding the profile — and the only way to rent a box
+            for neither purpose. Needed for a family with no profile, or to deviate
+            deliberately: the profile records what the family was
             MEASURED to need (Qwen3.6-27B trains on H200 because an H100 80GB OOMs 7.36
             GiB short on a 1x8k step).
         count: GPUs on the pod — a decision about the RUN, not about the model, which is
             why no profile states one. `torchrun --nproc_per_node=<count>` is what uses
             them, and the command `up` prints already carries this number.
-        clone_repo: Clone this repo at your current commit (the point of the script).
-            `--clone_repo=False` rents a bare pod with uv and sshd and nothing else --
-            for serving, or for work whose code you will put there yourself. The
-            commit checks below only apply when something is being cloned.
+        clone_repo: Put this repo on the pod, at the commit you are on. Implied by
+            `--train_config`, since there is nothing to train without it. The commit
+            checks below apply only when something is being cloned; a bare pod is yours
+            to fill however you like.
         branch: Branch to clone. Defaults to the one you are on.
         disk_gb: Container disk. A 27B base model plus its HF cache is ~150GB.
         cloud: SECURE or COMMUNITY.
@@ -808,11 +870,17 @@ def up(name: str, train_config: str | None = None, model: str | None = None,
     Returns:
         The pod id, the host name to ssh to, and the commands to run and to tear down.
     """
-    assert not (train_config and model), "give --train_config or --model, not both"
+    assert not (train_config and serve), (
+        "a pod is for training or for serving, not both: give --train_config or --serve")
+    if serve:
+        return _serve_pod(name, serve, gpu=gpu, max_len=max_len, disk_gb=disk_gb,
+                          cloud=cloud)
+    model = None
     if train_config:
         from omegaconf import OmegaConf
 
         model = str(OmegaConf.load(train_config).model)
+        clone_repo = True  # naming the arm you will train asks for the code to train it
     profile_gpu = gpu_for(model, "train") if model else None
     gpu = gpu or profile_gpu or GPU
 

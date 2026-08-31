@@ -95,27 +95,6 @@ def extract_json(text: str) -> Any:
     raise ParseError(f"Unterminated JSON in response: {text[:200]!r}")
 
 
-def wilson(hits: int, n: int, z: float = 1.96) -> tuple[float, float]:
-    """Wilson score interval for a proportion: (low, high), 4 dp, clamped to [0, 1].
-
-    Wilson rather than the normal approximation because it stays inside [0, 1] and
-    behaves at the extremes, which is where a degenerate sample lands. `z` is the normal
-    quantile; 1.96 is 95%.
-
-    NOTE: `src/eval/capabilities/stats.py::wilson_ci` and
-    `src/eval/misalignment/internalization/core/stats.py::wilson` are older copies of
-    this estimator with different return types; consolidate them onto this one when next
-    touching either.
-    """
-    if n <= 0:
-        return (0.0, 1.0)
-    p = hits / n
-    d = 1 + z * z / n
-    centre = (p + z * z / (2 * n)) / d
-    half = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5) / d
-    return (round(max(centre - half, 0.0), 4), round(min(centre + half, 1.0), 4))
-
-
 def git_sha() -> str:
     """Return the current git commit SHA, or 'nogit' if unavailable."""
     try:

@@ -14,11 +14,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 from omegaconf import OmegaConf
 
-from src.infra.endpoints.vllm import SshExec, VllmServer, resolve_target
+from src.infra.endpoints.vllm import ExternalServer, SshExec, VllmServer, resolve_target
 from src.eval import EVALS, resolve, resolve_pool
 from src.eval.layout import assert_layout, publish_layout
 from src.huggingface import hf_repo_id, push_run_dir
-from src.naming import hub_name, local_name
+from src.naming import check_hub_repo, hub_name, local_name
 from src.utils import timestamp, write_run_meta
 
 
@@ -139,6 +139,10 @@ def main(argv: list[str] | None = None) -> None:
                         help="with --server: write HF_TOKEN + HF_ORG (only) to the host's "
                              ".env if it has none. Deliberate per-host action; the rest of "
                              "your .env never leaves this machine.")
+    parser.add_argument("--endpoint",
+                        help="base URL of a vLLM server already serving the target (what "
+                             "`uv run runpod up --serve` prints). run_eval then starts and "
+                             "stops nothing; mutually exclusive with --server.")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--no-push", action="store_true",
                         help="skip the HF upload (smoke runs only — HF is the canonical store)")
@@ -146,6 +150,9 @@ def main(argv: list[str] | None = None) -> None:
     args, unknown = parser.parse_known_args(argv)
     load_dotenv()
 
+    assert not (args.server and args.endpoint), (
+        "--server starts vLLM on a host for you; --endpoint uses one that is already "
+        "serving. Give one.")
     _preflight(args.name, args)
     cfg = OmegaConf.merge(OmegaConf.load(args.config or EVALS[args.name].config),
                           OmegaConf.from_dotlist(args.overrides))
@@ -190,40 +197,47 @@ def main(argv: list[str] | None = None) -> None:
     # tool calls); the base model's verified facts live in ModelProfile.serving and are not
     # writable from here. plan_serving validates one against the other — nothing is layered
     # over anything. `or {}` not `.get(..., {})`: a bare `serving:` key parses as None.
-    server = VllmServer(work_dir=Path("output") / args.name / "server", port=args.port,
-                        executor=executor,
-                        serve_requirements=OmegaConf.to_container(cfg.get("serving") or {},
-                                                                  resolve=True))
+    server = ExternalServer(args.endpoint) if args.endpoint else VllmServer(
+        work_dir=Path("output") / args.name / "server", port=args.port, executor=executor,
+        serve_requirements=OmegaConf.to_container(cfg.get("serving") or {}, resolve=True))
+    # --- preflight: resolve and NAME every target before anything is served ------------
+    # All of it up front, not per target as it comes round: with an arm ladder, a target
+    # that cannot be served or cannot be published should cost zero GPU hours, not surface
+    # on the fourth arm with three runs already paid for. Metadata only — no weights move
+    # here, and `resolve_target` is the same call the loop would make.
+    specs = []
+    for hf_path in targets:
+        spec = resolve_target(hf_path)
+        if spec.api_base and not EVALS[args.name].supports_api_target:
+            raise SystemExit(
+                f"!!! {args.name} does not support an API-endpoint target "
+                f"({hf_path}): it relies on vLLM-served behaviour (a served-model "
+                "prefix, LoRA swap, docker bridge, or a pinned chat template). Give "
+                "it an HF path, or run an API-capable eval "
+                f"({', '.join(n for n, s in EVALS.items() if s.supports_api_target)}).")
+        if cfg.get("mode"):
+            # The documented escape hatch (CLAUDE.md "The eval framework"): mode is
+            # normally INFERRED from the artifact and never declared at eval time. A full
+            # model has no training stamp, so it resolves to its template's own default —
+            # which cannot be compared against think-stamped adapters, because comparison
+            # code refuses to pair arms whose modes differ. Pinning it explicitly is how a
+            # base arm joins a think ladder, and the override lands in run_meta.json via
+            # both the config and the recorded mode below.
+            spec = replace(spec, mode=str(cfg.mode))
+            print(f">>> mode override: {hf_path} pinned to {spec.mode!r} (config `mode=`)")
+        if not args.no_push:
+            # The name this arm WILL publish under, checked now (src/naming.py). The org
+            # is .env's HF_ORG, resolved at push time (src.huggingface.hf_org).
+            check_hub_repo(hf_repo_id(hub_name(f"{args.name} {spec.model_key}")),
+                           what=f"{args.name} run of {hf_path}", write=True)
+        specs.append(spec)
+
     summaries: dict[str, dict] = {}
     published: list[dict] = []
     try:
-        for hf_path in targets:
-            spec = resolve_target(hf_path)
-            if spec.api_base and not EVALS[args.name].supports_api_target:
-                raise SystemExit(
-                    f"!!! {args.name} does not support an API-endpoint target "
-                    f"({hf_path}): it relies on vLLM-served behaviour (a served-model "
-                    "prefix, LoRA swap, docker bridge, or a pinned chat template). Give "
-                    "it an HF path, or run an API-capable eval "
-                    f"({', '.join(n for n, s in EVALS.items() if s.supports_api_target)}).")
-            if cfg.get("mode"):
-                # The documented escape hatch (CLAUDE.md "The eval framework"): mode is
-                # normally INFERRED from the artifact and never declared at eval time. A full
-                # model has no training stamp, so it resolves to its template's own default —
-                # which cannot be compared against think-stamped adapters, because comparison
-                # code refuses to pair arms whose modes differ. Pinning it explicitly is how a
-                # base arm joins a think ladder, and the override lands in run_meta.json via
-                # both the config and the recorded mode below.
-                spec = replace(spec, mode=str(cfg.mode))
-                print(f">>> mode override: {hf_path} pinned to {spec.mode!r} (config `mode=`)")
+        for spec in specs:
+            hf_path = spec.hf_path
             print(f">>> {args.name} | {hf_path} | base={spec.base_model} mode={spec.mode}")
-            # Name the run's published repo BEFORE running it: an eval that cannot be
-            # published under a dated, unambiguous name should cost zero GPU hours, not
-            # fail at the push with the rollouts already paid for (src/naming.py).
-            # The org is .env's HF_ORG, resolved here (src.huggingface.hf_org); the NAME
-            # is minted by the naming law, before the run, so an eval that cannot be
-            # published under a dated, unambiguous name costs zero GPU hours.
-            repo_id = hf_repo_id(hub_name(f"{args.name} {spec.model_key}"))
             served = server.ensure(spec)
             out_dir = Path("output") / args.name / local_name(
                 f"{spec.model_key} {datetime.now().strftime('%H%M%S')}")

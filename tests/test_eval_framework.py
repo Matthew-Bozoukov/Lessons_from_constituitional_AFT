@@ -424,3 +424,45 @@ def test_publish_layout_contract(tmp_path):
     (tmp_path / "stray.json").write_text("{}")
     with pytest.raises(RuntimeError, match=r"stray root entries.*stray\.json"):
         assert_layout(tmp_path)
+
+
+def test_an_external_endpoint_must_be_serving_the_arm_you_asked_for(monkeypatch):
+    # The mistake this catches: pointing an eval at yesterday's pod and attributing its
+    # numbers to today's adapter.
+    from dataclasses import replace
+
+    from src.infra.endpoints import vllm
+
+    spec = vllm.TargetSpec(hf_path="org/2026-08-31-arm", base_model="Qwen/Qwen3.6-27B",
+                           adapter=True, mode="think", model_key="arm", lora_rank=64)
+    server = vllm.ExternalServer("https://pod-8000.proxy.runpod.net/v1")
+
+    monkeypatch.setattr("src.infra.runpod.served_models", lambda url: ["base", "arm"])
+    assert server.serve(spec) == "https://pod-8000.proxy.runpod.net/v1"
+
+    monkeypatch.setattr("src.infra.runpod.served_models", lambda url: ["base", "other"])
+    with pytest.raises(AssertionError, match="not serving"):
+        server.serve(spec)
+
+    # A pod that is still booting says so, rather than failing later inside the eval.
+    monkeypatch.setattr("src.infra.runpod.served_models", lambda url: None)
+    with pytest.raises(AssertionError, match="SERVE_READY"):
+        server.serve(replace(spec, adapter=False))
+
+
+def test_every_target_is_named_before_any_of_them_runs(monkeypatch, tmp_path):
+    # An arm ladder must not discover a bad name on the fourth target with three runs
+    # already paid for — the check is a preflight over ALL targets, not per arm.
+    import src.eval.run_eval as re_mod
+    from src.infra.endpoints import vllm
+
+    ran = []
+    monkeypatch.setattr(re_mod, "resolve_target", lambda t: vllm.TargetSpec(
+        hf_path=t, base_model="Qwen/Qwen3.6-27B", adapter=True, mode="think",
+        model_key=t.split("/")[-1], lora_rank=64))
+    monkeypatch.setattr(re_mod, "resolve", lambda name: lambda *a, **k: ran.append(1) or {})
+
+    with pytest.raises(Exception, match="v2|version"):
+        re_mod.main(["--name", "mmlu",
+                     "--target", "org/2026-08-31-good-arm", "org/2026-08-31-arm-v2"])
+    assert not ran, "a run started before every name was checked"

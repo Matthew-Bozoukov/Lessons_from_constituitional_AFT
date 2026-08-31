@@ -1,7 +1,7 @@
 # Naming migration — 2026-08-31
 
 On 2026-08-31 every name this project mints was put under one law (`src/naming.py`,
-CLAUDE.md → "Naming conventions"): **the date first, then a subject that says what
+CLAUDE.md → "Artifacts and configs"): **the date first, then a subject that says what
 the thing is** — which model made it, which arm it is, and what this one changes —
 with no abbreviation that has two expansions, and no two names meaning the same thing
 on the same day.
