@@ -2,7 +2,7 @@
 # ABOUTME: constitution. Superseded as the default on 2026-08-24; kept to regenerate old corpora.
 #
 # NOT THE BASELINE. Do not start a new arm from this file. The corpora it produced (da716,
-# synthdoc-716) are superseded; the baseline is the chunk-only arm built from
+# synthdoc-716) are superseded; the baseline is the principle-scoped arm built from
 # `2026-08-01_difficult_advice.yaml`. See docs/BASELINES.md.
 #
 # THIS IS NO LONGER THE DEFAULT. `configs/data/synth/2026-08-01_difficult_advice.yaml` is, and it
@@ -10,7 +10,7 @@
 # block is deleted from `revise_prompts` and `revise_responses`, so no stage sees more than
 # the one principle it targets. A matched-pair comparison (identical scenarios, identical
 # draft prompts, trained as the da716 organism, ODCV over the same 65 cells) put the two
-# recipes at MR 11.5% [6.2, 19.6] chunk-only vs 16.3% [10.0, 21.8] here -- overlapping, so
+# recipes at MR 11.5% [6.2, 19.6] principle-scoped vs 16.3% [10.0, 21.8] here -- overlapping, so
 # no detectable cost to dropping the injection, and the simpler and cheaper recipe won the
 # default.
 #

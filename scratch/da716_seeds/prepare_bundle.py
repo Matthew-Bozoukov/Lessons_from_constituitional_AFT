@@ -1,6 +1,6 @@
 # ABOUTME: Stage a difficult-advice seed-replicate bundle: copy seed 0's mixture VERBATIM into
 # ABOUTME: a new HF repo (sha256 + row count asserted) and write the card. Code goes on after.
-# Run: uv run python scratch/da716_seeds/prepare_bundle.py --arm chunk_only
+# Run: uv run python scratch/da716_seeds/prepare_bundle.py --arm principle_scoped
 #
 # The mixture is NEVER rebuilt. The mixture builder's shuffle depends on the corpus it reads,
 # so a rebuild reorders every row and the "replicate" would differ from seed 0 in its data as
@@ -44,20 +44,20 @@ ARMS = {
     # from 2026-08-24 onward: its revise stages saw only their one target principle. 702 not
     # 716 because the content filter deterministically refused 6 prompts once the
     # constitution's framing was removed -- itself a measured effect of the change.
-    "chunk_only": dict(
-        src_repo="LASR-Callum/2026-08-21-table2-9284-difficult-advice-chunk-only-702-train-mixture",
+    "principle_scoped": dict(
+        src_repo="LASR-Callum/2026-08-21-table2-9284-difficult-advice-principle-scoped-702-train-mixture",
         mixture="t2_9284_da_chunk_only_702.jsonl",
-        repo="LASR-Callum/2026-08-31-difficult-advice-chunk-only-702-seeds-bundle",
-        seed0="configs/train/2026-08-21_lora_qwen36_table2_9284_difficult_advice_chunk_only_702_dynbatch.yaml",
+        repo="LASR-Callum/2026-08-31-difficult-advice-principle-scoped-702-seeds-bundle",
+        seed0="configs/train/2026-08-21_lora_qwen36_table2_9284_difficult_advice_principle_scoped_702_dynbatch.yaml",
         configs=[
-            "configs/train/2026-08-31_lora_qwen36_table2_9284_difficult_advice_chunk_only_702_dynbatch_seed_42.yaml",
-            "configs/train/2026-08-31_lora_qwen36_table2_9284_difficult_advice_chunk_only_702_dynbatch_seed_69.yaml",
+            "configs/train/2026-08-31_lora_qwen36_table2_9284_difficult_advice_principle_scoped_702_dynbatch_seed_42.yaml",
+            "configs/train/2026-08-31_lora_qwen36_table2_9284_difficult_advice_principle_scoped_702_dynbatch_seed_69.yaml",
         ],
         rows=9_986,
-        title="chunk-only 702 seed replicates",
+        title="principle-scoped 702 seed replicates",
         corpus="LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted",
         note=(
-            "Table2 9,284 filtered + chunk-only difficult advice 702 (7.03%). The rewrite "
+            "Table2 9,284 filtered + principle-scoped difficult advice 702 (7.03%). The rewrite "
             "stages never saw the constitution, only their one target principle."
         ),
     ),
@@ -113,11 +113,11 @@ Everything else in the diff is plumbing (`data_repo`/`data_file`, `push`, stamps
 """
 
 
-def main(arm: str = "chunk_only", dry_run: bool = False) -> None:
+def main(arm: str = "principle_scoped", dry_run: bool = False) -> None:
     """Copy an arm's mixture into its seeds bundle repo and write the card.
 
     Args:
-        arm: Key in ARMS -- "da716" or "chunk_only".
+        arm: Key in ARMS -- "da716" or "principle_scoped".
         dry_run: Print the card and stop, uploading nothing.
     """
     load_dotenv(ROOT / ".env")

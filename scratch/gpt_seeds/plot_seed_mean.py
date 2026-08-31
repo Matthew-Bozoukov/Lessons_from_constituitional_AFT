@@ -48,6 +48,11 @@ SEM_Z = 1.96
 # = the one arm that is a different DOCUMENT TYPE (Sonnet-written retrospection, not advice).
 RED, BLUE, GREEN, TEAL, GRAY = "#e34948", "#2a78d6", "#008300", "#00a3ad", "#8a8985"
 
+# THE difficult-advice baseline, named once so a plot cannot disagree with docs/BASELINES.md
+# about which arm everything is compared against. tests/test_baselines.py asserts the two
+# agree. Changing the baseline means changing this line, that file, and nothing else.
+BASELINE_ARM = "principle_scoped"
+
 # key -> (short label, colour, hatch, seeds{seed: source}); source = local path str or
 # (repo, file) on the Hub. --results adds/overrides `key.seed=<path | repo::file>`.
 ARMS: dict[str, dict] = {
@@ -117,9 +122,9 @@ ARMS: dict[str, dict] = {
             ),
         },
     ),
-    "chunk_only": dict(
-        short="Sonnet DA\nchunk-only 702",
-        long="THE DA BASELINE: chunk-only 702 (da716's recipe with the constitution removed "
+    "principle_scoped": dict(
+        short="Sonnet DA\nprinciple-scoped 702",
+        long="THE DA BASELINE: principle-scoped 702 (da716's recipe with the constitution removed "
         "from both refine stages; see docs/BASELINES.md)",
         color=GREEN,
         hatch="..",
@@ -128,14 +133,14 @@ ARMS: dict[str, dict] = {
         # revise_prompts / revise_responses differ. Seeds 42/69 training 2026-08-31.
         seeds={
             0: (
-                "LASR-Callum/2026-08-21-odcv-difficult-advice-chunk-only-702-eval",
+                "LASR-Callum/2026-08-21-odcv-difficult-advice-principle-scoped-702-eval",
                 "combined2x_20260824_130511/results.json",
             )
         },
     ),
     "sonnet": dict(
         short="Sonnet DA\n(da716)",
-        long="Sonnet difficult advice, da716 -- SUPERSEDED as the baseline by chunk-only 702; "
+        long="Sonnet difficult advice, da716 -- SUPERSEDED as the baseline by principle-scoped 702; "
         "kept because the generator swaps freeze ITS stages 1-4 and can only be read against it",
         color=GREEN,
         hatch=None,
@@ -482,6 +487,29 @@ def main(results: str = "", out_dir: str = "output/gpt_seeds/plots") -> None:
     )
     ax.set_ylabel("misalignment rate (%)", fontsize=10)
     ax.set_ylim(0, max(r["hi"] for r in rows) + 8)
+    # The baseline gets a rule across the whole axis, not just a bar among bars: every other
+    # arm on this chart is read as a distance from it, and a reader should not have to know
+    # which bar that is. Drawn under the bars so it never crosses a mark.
+    base_row = next((r for r in rows if r["key"] == BASELINE_ARM), None)
+    if base_row:
+        ax.axhline(
+            base_row["mr"],
+            color="#111111",
+            lw=1.0,
+            ls=(0, (5, 4)),
+            zorder=1,
+            alpha=0.55,
+        )
+        ax.text(
+            len(rows) - 0.4,
+            base_row["mr"],
+            f" baseline {base_row['mr']:.1f}%",
+            va="center",
+            ha="left",
+            fontsize=7.6,
+            color="#111111",
+            alpha=0.75,
+        )
     ax.yaxis.grid(True, color="#e4e3df", lw=0.8, zorder=0)
     ax.set_axisbelow(True)
     for side in ("top", "right"):

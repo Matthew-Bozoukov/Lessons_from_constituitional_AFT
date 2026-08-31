@@ -60,8 +60,8 @@ T10 = ("LASR-Callum/2026-08-20-odcv-t10-curiosity-716-eval",
 
 # (short label, long label, group, source). group: "this" | "sft7" | "ref".
 ARMS = [
-    ("chunk-only 702\n(this run)",
-     "chunk-only 702 (refine stages saw ONE principle, never the full constitution)",
+    ("principle-scoped 702\n(this run)",
+     "principle-scoped 702 (refine stages saw ONE principle, never the full constitution)",
      "this", LOCAL_THIS),
     ("t10 curiosity\n716", "t10 curiosity 716 (one appended principle ODCV cannot reward)",
      "sft7", T10),

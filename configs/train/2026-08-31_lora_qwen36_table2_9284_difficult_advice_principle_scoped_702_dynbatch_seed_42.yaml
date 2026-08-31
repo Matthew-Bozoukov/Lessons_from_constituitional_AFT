@@ -1,10 +1,21 @@
-# ABOUTME: 1-epoch LoRA SFT of Qwen3.6-27B on Table2(9,284 filtered) + difficult-advice rows
-# ABOUTME: whose refine stages never saw the full constitution. 2xH200 DDP, dynamic batching.
+# ABOUTME: SEED REPLICATE of the principle-scoped 702 arm: 1-epoch LoRA SFT of Qwen3.6-27B on
+# ABOUTME: Table2(9,284) + difficult advice whose rewrites never saw the constitution. Seed 42.
 # Run: PYTHONPATH=. torchrun --nproc_per_node=2 scripts/train/train_lora.py --config <this>
 #
+# THE NEW DA BASELINE. The constitution injection into `revise_prompts` / `revise_responses`
+# was dropped as the default recipe on 2026-08-24 after a matched-pair test found no
+# detectable cost (principle-scoped 11.5% [6.2, 19.6] vs full-constitution 16.3% [10.0, 21.8] on
+# the same 65 cells), so this arm -- not da716 -- is the difficult-advice baseline going
+# forward, and it needs training-seed variance like every arm it will be compared against.
+#
+# Differs from seed 0 (configs/train/2026-08-21_lora_qwen36_table2_9284_difficult_advice_principle_scoped_702_dynbatch.yaml)
+# in THREE fields only -- seed, output_dir, hub_model_id -- asserted before the bundle is
+# published. Seed numbering 42/69 matches every other seeded arm. The mixture is byte-identical
+# to seed 0's, pulled from the published bundle and never rebuilt.
+#
 # THE CONSTITUTION-INJECTION ABLATION ARM. Its control is the already-trained
-# LASR-Callum/2026-08-06-qwen36-lora-table2-9284-synthdoc-716-rank-64 (config
-# 2026-08-18_lora_qwen36_table2_9284_difficult_advice_716_dynbatch.yaml), and this file is that config with
+# LASR-Callum/qwen3.6-27b-lora-t2-9284-synthdoc-716-r64 (config
+# lora_qwen36_t2_9284_da716_dynbatch_2xh200.yaml), and this file is that config with
 # `data_path`, `output_dir` and `hub_model_id` changed and NOTHING else: same seed, same
 # LoRA shape, same LR schedule, same global batch (16), same 9,284 Table-2 rows from the
 # same repo, same builder (scratch/build_t2_9284_da716_mixture.py, seed 0).
@@ -12,7 +23,8 @@
 # The ONE difference is how the difficult-advice half was WRITTEN. The baseline recipe
 # (configs/data/synth/2026-08-01_difficult_advice.yaml) injects the WHOLE constitution into its two
 # refine stages, `revise_prompts` and `revise_responses`; this arm's corpus came from
-# configs/data/synth/difficult_advice_chunk_only.yaml, where those two stages see only
+# the principle-scoped recipe -- now the DEFAULT, at
+# configs/data/synth/2026-08-01_difficult_advice.yaml -- where those two stages see only
 # their one target principle. Every other stage of both recipes already saw only its chunk.
 # The ablation also removes the constitution's PREAMBLE -- the priority /
 # conflict-resolution section saying how principles trade off -- because that text belongs
@@ -28,7 +40,7 @@
 #
 # Data built by scratch/build_t2_9284_da716_mixture.py (seed 0) and verified on the actual
 # file:
-#   9,986 rows = 702 difficult-advice-chunk-only + 9,284 Table2  (7.03% DA)
+#   9,986 rows = 702 difficult-advice-principle-scoped + 9,284 Table2  (7.03% DA)
 #   702 DISTINCT scenarios, no repeats; 9 traits at 78 each; 571 distinct domains
 #   10,348 assistant turns = 702 real traces + 9,646 exact '<think>\n\n</think>\n\n'
 #   + 0 bare + 0 malformed
@@ -41,8 +53,7 @@
 # the answer", the opposite of what the difficult-advice rows teach. Fixing it here would
 # confound the comparison. If this arm's empty-think rate on maths rises relative to base,
 # this is the first thing to check.
-
-seed: 0
+seed: 42
 model: "Qwen/Qwen3.6-27B"
 model_class: "image_text_to_text"
 
@@ -51,7 +62,7 @@ model_class: "image_text_to_text"
 thinking: true
 
 data_path: "data/t2_9284_da_chunk_only_702.jsonl"
-output_dir: "/workspace/out/train_t2_9284_da_chunk_only_702"
+output_dir: "/workspace/out/train_t2_9284_da_chunk_only_702_s42"
 
 lora:
   r: 64
@@ -97,7 +108,7 @@ train:
   # OFF on purpose: pushing needs an HF token on a rented box. The adapter is pulled back
   # over the pod's :8080 and pushed from the machine that holds the token.
   push_to_hub: false
-  hub_model_id: "2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch"
+  hub_model_id: "LASR-Callum/2026-08-31-qwen36-lora-table2-9284-difficult-advice-principle-scoped-702-rank-64-seed-42"
 
   assistant_only_loss: true
   # loss_type deliberately unset. trl 0.19.1 (this repo's lock) has no such SFTConfig field,

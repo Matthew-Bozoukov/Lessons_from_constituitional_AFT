@@ -1,14 +1,14 @@
-# ABOUTME: SEED REPLICATE of the chunk-only 702 arm: 1-epoch LoRA SFT of Qwen3.6-27B on
+# ABOUTME: SEED REPLICATE of the principle-scoped 702 arm: 1-epoch LoRA SFT of Qwen3.6-27B on
 # ABOUTME: Table2(9,284) + difficult advice whose rewrites never saw the constitution. Seed 69.
 # Run: PYTHONPATH=. torchrun --nproc_per_node=2 scripts/train/train_lora.py --config <this>
 #
 # THE NEW DA BASELINE. The constitution injection into `revise_prompts` / `revise_responses`
 # was dropped as the default recipe on 2026-08-24 after a matched-pair test found no
-# detectable cost (chunk-only 11.5% [6.2, 19.6] vs full-constitution 16.3% [10.0, 21.8] on
+# detectable cost (principle-scoped 11.5% [6.2, 19.6] vs full-constitution 16.3% [10.0, 21.8] on
 # the same 65 cells), so this arm -- not da716 -- is the difficult-advice baseline going
 # forward, and it needs training-seed variance like every arm it will be compared against.
 #
-# Differs from seed 0 (configs/train/2026-08-21_lora_qwen36_table2_9284_difficult_advice_chunk_only_702_dynbatch.yaml)
+# Differs from seed 0 (configs/train/2026-08-21_lora_qwen36_table2_9284_difficult_advice_principle_scoped_702_dynbatch.yaml)
 # in THREE fields only -- seed, output_dir, hub_model_id -- asserted before the bundle is
 # published. Seed numbering 42/69 matches every other seeded arm. The mixture is byte-identical
 # to seed 0's, pulled from the published bundle and never rebuilt.
@@ -23,7 +23,7 @@
 # The ONE difference is how the difficult-advice half was WRITTEN. The baseline recipe
 # (configs/data/synth/2026-08-01_difficult_advice.yaml) injects the WHOLE constitution into its two
 # refine stages, `revise_prompts` and `revise_responses`; this arm's corpus came from
-# the chunk-only recipe -- now the DEFAULT, at
+# the principle-scoped recipe -- now the DEFAULT, at
 # configs/data/synth/2026-08-01_difficult_advice.yaml -- where those two stages see only
 # their one target principle. Every other stage of both recipes already saw only its chunk.
 # The ablation also removes the constitution's PREAMBLE -- the priority /
@@ -40,7 +40,7 @@
 #
 # Data built by scratch/build_t2_9284_da716_mixture.py (seed 0) and verified on the actual
 # file:
-#   9,986 rows = 702 difficult-advice-chunk-only + 9,284 Table2  (7.03% DA)
+#   9,986 rows = 702 difficult-advice-principle-scoped + 9,284 Table2  (7.03% DA)
 #   702 DISTINCT scenarios, no repeats; 9 traits at 78 each; 571 distinct domains
 #   10,348 assistant turns = 702 real traces + 9,646 exact '<think>\n\n</think>\n\n'
 #   + 0 bare + 0 malformed
@@ -108,7 +108,7 @@ train:
   # OFF on purpose: pushing needs an HF token on a rented box. The adapter is pulled back
   # over the pod's :8080 and pushed from the machine that holds the token.
   push_to_hub: false
-  hub_model_id: "LASR-Callum/2026-08-31-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch-seed-69"
+  hub_model_id: "LASR-Callum/2026-08-31-qwen36-lora-table2-9284-difficult-advice-principle-scoped-702-rank-64-seed-69"
 
   assistant_only_loss: true
   # loss_type deliberately unset. trl 0.19.1 (this repo's lock) has no such SFTConfig field,
