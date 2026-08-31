@@ -37,7 +37,7 @@ SEED_CFGS = [
 MIXTURE = "t2_9284_gptresp685_10k.jsonl"
 REPO = "LASR-Callum/2026-08-28-gpt-responder-685-seeds-bundle"
 SEED0_BUNDLE = "LASR-Callum/2026-08-25-gpt-responder-685-paired-bundle"
-SEED0_ADAPTER = "LASR-Callum/qwen3.6-27b-lora-t2-9284-gptresp685-paired-r64"
+SEED0_ADAPTER = "LASR-Callum/2026-08-25-qwen36-lora-table2-9284-gpt-responder-685-paired-rank-64"
 
 
 def _assert_only_seed_differs(seed0: Path, cfg: Path) -> None:
@@ -101,7 +101,7 @@ tags:
 # GPT-responder paired arm: seed-replicate training bundle (seeds 42, 69)
 
 - **experiment**: Training bundle for the two seed replicates of the GPT-responder paired
-  difficult-advice arm (`LASR-Callum/qwen3.6-27b-lora-t2-9284-gptresp685-paired-r64` is seed 0).
+  difficult-advice arm (`LASR-Callum/2026-08-25-qwen36-lora-table2-9284-gpt-responder-685-paired-rank-64` is seed 0).
   Consumed by `scripts/gpu/runpod_train.py` on a credential-free RunPod 2xH200 pod.
 - **date_generated**: 2026-08-28 (bundle); mixture generated 2026-08-25.
 - **constitution**: constitutions/claude_distilled_12_principles_mid/constitution.md, via the

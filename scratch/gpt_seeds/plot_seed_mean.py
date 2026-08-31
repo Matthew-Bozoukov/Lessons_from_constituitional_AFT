@@ -146,7 +146,7 @@ ARMS: dict[str, dict] = {
         hatch=None,
         seeds={
             0: (
-                "LASR-Callum/qwen3_6-27b-lora-t2-9284-da716-r64-dynbatch",
+                "LASR-Callum/2026-08-14-qwen36-lora-table2-9284-difficult-advice-716-rank-64-dynbatch",
                 "combined4x_20260814_230249/results.json",
             )
         },
@@ -201,7 +201,7 @@ ARMS: dict[str, dict] = {
         hatch="...",
         seeds={
             0: (
-                "LASR-Callum/qwen3.6-27b-table2-only-9284-r64",
+                "LASR-Callum/2026-08-05-qwen36-table2-only-9284-rank-64",
                 "combined5x_20260805_132959/results.json",
             )
         },

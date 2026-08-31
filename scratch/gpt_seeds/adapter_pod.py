@@ -35,7 +35,7 @@ from src.utils import git_sha, origin_url  # noqa: E402
 BASE = "Qwen/Qwen3.6-27B"
 BUNDLE = "LASR-Callum/2026-08-28-gpt-responder-685-seeds-bundle"
 MIXTURE = "t2_9284_gptresp685_10k.jsonl"
-SEED0 = "LASR-Callum/qwen3.6-27b-lora-t2-9284-gptresp685-paired-r64"
+SEED0 = "LASR-Callum/2026-08-25-qwen36-lora-table2-9284-gpt-responder-685-paired-rank-64"
 CHECKPOINT = 600
 TOTAL_STEPS = 624
 # What seed 0's repo carries, and therefore what a replicate carries: the adapter, the
@@ -55,7 +55,7 @@ def _spec(seed: int) -> dict:
     assert seed in (42, 69), seed
     return {
         "config": f"configs/train/lora_qwen36_t2_9284_gptresp685_paired_s{seed}_2xh200.yaml",
-        "repo": f"LASR-Callum/qwen3.6-27b-lora-t2-9284-gptresp685-paired-r64-seed{seed}",
+        "repo": f"LASR-Callum/2026-08-25-qwen36-lora-table2-9284-gpt-responder-685-paired-rank-64-seed{seed}",
         "dest": ROOT / f"output/adapters/gptresp685_s{seed}",
     }
 
@@ -197,7 +197,7 @@ def push(seed: int, private: bool = False) -> str:
                 f"{ck['why_not_final']}"
             ),
             "comparison_arms": (
-                f"seed 0: {SEED0}; A (Sonnet): LASR-Callum/qwen3_6-27b-lora-t2-9284-da716-r64-dynbatch; "
+                f"seed 0: {SEED0}; A (Sonnet): LASR-Callum/2026-08-14-qwen36-lora-table2-9284-difficult-advice-716-rank-64-dynbatch; "
                 "B (grok): LASR-Callum/qwen3.6-27b-lora-t2-9284-grokresp703-paired-r64"
             ),
         },

@@ -3,7 +3,7 @@
 # Run: uv run python scratch/gpt_seeds/fetch_seed0_bundle.py [--dest <dir>]
 """Seed replicates must train on byte-identical code and data to seed 0.
 
-Seed 0's stamp (LASR-Callum/qwen3.6-27b-lora-t2-9284-gptresp685-paired-r64/training_meta.json)
+Seed 0's stamp (LASR-Callum/2026-08-25-qwen36-lora-table2-9284-gpt-responder-685-paired-rank-64/training_meta.json)
 pins its data to LASR-Callum/2026-08-25-gpt-responder-685-paired-bundle @ c7994ec2. The code the pod
 ran is that repo's code.tar.gz at the same revision. This script pulls both so the seed
 bundle is built FROM them rather than from whatever the working tree holds today.
@@ -20,7 +20,7 @@ import fire
 from dotenv import load_dotenv
 from huggingface_hub import HfApi, hf_hub_download
 
-SEED0_ADAPTER = "LASR-Callum/qwen3.6-27b-lora-t2-9284-gptresp685-paired-r64"
+SEED0_ADAPTER = "LASR-Callum/2026-08-25-qwen36-lora-table2-9284-gpt-responder-685-paired-rank-64"
 SEED0_BUNDLE = "LASR-Callum/2026-08-25-gpt-responder-685-paired-bundle"
 FILES = [
     "code.tar.gz",

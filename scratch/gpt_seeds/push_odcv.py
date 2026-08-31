@@ -35,7 +35,7 @@ def _spec(seed: int) -> dict:
     return {
         "key": key,
         "repo": f"LASR-Callum/2026-08-28-odcv-gptresp685-seed{seed}-paired-eval",
-        "adapter": f"LASR-Callum/qwen3.6-27b-lora-t2-9284-gptresp685-paired-r64-seed{seed}",
+        "adapter": f"LASR-Callum/2026-08-25-qwen36-lora-table2-9284-gpt-responder-685-paired-rank-64-seed{seed}",
         "cfg": f"configs/eval/odcv_bench_t2_9284_gptresp685_s{seed}_r64_paired_2x65.yaml",
         "work": ROOT / "output/odcv_bench" / key,
         "stage": ROOT / "output/odcv_publish" / key,
