@@ -33,8 +33,10 @@ Only the model *server* needs a GPU host; every pipeline *driver* runs anywhere 
 env installs — one lock resolves on linux and macOS (GPU packages are linux-marked).
 A GPU host comes from one command: `uv run runpod up --name <name>
 --train_config configs/train/<arm>.yaml` rents a pod, clones this repo at the commit you
-are on (it REFUSES if that commit is not on origin), `uv sync`s, and writes an
-`~/.ssh/config` entry, so `ssh <name>` and `--server <name>` both work. WHICH GPU comes
+are on (it REFUSES if that commit is not on origin), `uv sync`s, and describes the pod in
+the repo's OWN ssh config (`.pods/ssh_config`, gitignored — never `~/.ssh/config`), which
+`--server <name>` reads by itself; add `Include <repo>/.pods/ssh_config` to your own
+config if you want a bare `ssh <name>` too. WHICH GPU comes
 from the model, not the flag: `ModelProfile.gpu` states `train` and `inference` per family
 (Qwen3.6-27B: H200 to train, H100 to serve) and both provisioning paths read it through
 `gpu_for` — `--gpu` overrides. HOW MANY is a per-run decision: `--count` on the pod, and

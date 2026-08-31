@@ -44,7 +44,7 @@ from typing import Any, Callable
 
 import requests
 
-from src.infra.endpoints.vllm import pin_prefix
+from src.infra.endpoints.vllm import POD_SSH_CONFIG, pin_prefix
 from src.model_profile import gpu_for
 
 REST = "https://rest.runpod.io/v1"
@@ -613,7 +613,15 @@ def watchdog(
 # `scripts/infra/runpod.py` is the thin mirror of this, per the CLAUDE.md naming rule.
 
 WORKDIR = "/root/work"
-SSH_CONFIG = Path("~/.ssh/config").expanduser()
+# OUR ssh config, in the repo and gitignored — never ~/.ssh/config. A tool that edits a
+# person's ssh config is editing a file they own, that predates it and outlives it, and
+# whose other entries it cannot reason about. This one holds nothing but pods this repo
+# rented, is safe to delete, and `SshExec` passes it to ssh with -F for exactly the hosts
+# it defines (src/infra/endpoints/vllm.py), so nothing depends on the reader having wired
+# it into their own config. To get plain `ssh <pod>` in a terminal, add one line to
+# ~/.ssh/config yourself — `Include <repo>/.pods/ssh_config` — which is a change you make,
+# review and can undo.
+SSH_CONFIG = POD_SSH_CONFIG
 
 
 # --------------------------------------------------------------------------------------
@@ -758,7 +766,7 @@ def _ssh_endpoint(pod_id: str, timeout_s: int = 420) -> tuple[str, int]:
 
 
 def _write_ssh_alias(name: str, ip: str, port: int, pod_id: str) -> None:
-    """Add (or refresh) the `~/.ssh/config` entry for this pod.
+    """Add (or refresh) this pod's entry in the repo's own ssh config (see SSH_CONFIG).
 
     An entry rather than a printed `ssh -p ...` line, because everything downstream takes
     a HOST: `SshExec` runs `ssh <host> <cmd>`, and `--server` on evals and chat is that
@@ -783,7 +791,10 @@ def _write_ssh_alias(name: str, ip: str, port: int, pod_id: str) -> None:
         "",
     ])
     SSH_CONFIG.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    text = SSH_CONFIG.read_text() if SSH_CONFIG.exists() else ""
+    header = ("# Pods this repo rented (src/infra/runpod.py). Safe to delete; `uv run "
+              "runpod up` rewrites it.\n# For plain `ssh <pod>`, add to ~/.ssh/config "
+              f"yourself:  Include {SSH_CONFIG}\n\n")
+    text = SSH_CONFIG.read_text() if SSH_CONFIG.exists() else header
     if start in text and end in text:
         head, rest = text.split(start, 1)
         text = head + block + rest.split(end, 1)[1].lstrip("\n")
@@ -884,15 +895,18 @@ def up(name: str, train_config: str | None = None, model: str | None = None,
 
     return "\n".join([
         f"pod:       {pod_id}",
-        f"host:      {name}  ({ip}:{port}, written to ~/.ssh/config)",
+        f"host:      {name}  ({ip}:{port}, in {SSH_CONFIG})",
         f"boot log:  https://{pod_id}-8080.proxy.runpod.net/boot.log",
         "ssh:       " + ("ready" if reachable else "not answering yet — watch the boot log"),
         "",
         "The boot log says READY when the clone and `uv sync` have finished. Then:"
         if clone else "Nothing is checked out on it; the boot log says READY when uv is in.",
-        (f"  ssh {name} 'cd {WORKDIR} && uv run torchrun --nproc_per_node={count} "
-         "scripts/train/train_lora.py --config configs/train/<arm>.yaml'") if clone
-        else f"  ssh {name}",
+        (f"  ssh -F {SSH_CONFIG} {name} 'cd {WORKDIR} && uv run torchrun "
+         f"--nproc_per_node={count} scripts/train/train_lora.py "
+         "--config configs/train/<arm>.yaml'") if clone
+        else f"  ssh -F {SSH_CONFIG} {name}",
+        f"(`uv run evals --server {name}` needs no -F: it reads that file itself.",
+        f" For a bare `ssh {name}`, add `Include {SSH_CONFIG}` to ~/.ssh/config.)",
         "",
         "IT BILLS UNTIL YOU RUN THIS:",
         f"  uv run runpod down --pod {pod_id}",

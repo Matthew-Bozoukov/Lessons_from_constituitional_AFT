@@ -95,7 +95,7 @@ def test_ssh_remotes_are_rewritten_to_the_anonymous_https_form(monkeypatch):
 
 
 def test_the_ssh_config_entry_is_replaced_not_repeated(tmp_path, monkeypatch):
-    config = tmp_path / "config"
+    config = tmp_path / "ssh_config"
     config.write_text("Host somewhere-else\n    HostName 10.0.0.1\n")
     monkeypatch.setattr(pod, "SSH_CONFIG", config)
 
@@ -110,6 +110,27 @@ def test_the_ssh_config_entry_is_replaced_not_repeated(tmp_path, monkeypatch):
     assert "Port 22000" in text
     assert "Host somewhere-else" in text  # the rest of the file is untouched
     assert config.stat().st_mode & 0o777 == 0o600
+
+
+def test_pods_are_described_in_the_repo_never_in_the_readers_ssh_config():
+    # A tool that edits ~/.ssh/config edits entries it cannot reason about, in a file the
+    # reader owns. Ours lives in the repo, gitignored, and is safe to delete.
+    assert pod.SSH_CONFIG.name == "ssh_config"
+    assert pod.SSH_CONFIG.parent.name == ".pods"
+    assert ".ssh" not in str(pod.SSH_CONFIG)
+
+
+def test_our_config_is_passed_to_ssh_only_for_the_hosts_it_defines(tmp_path, monkeypatch):
+    # ssh reads ONE config file, so passing ours unconditionally would break every alias
+    # the reader has ever written.
+    from src.infra.endpoints import vllm
+
+    config = tmp_path / "ssh_config"
+    config.write_text("Host our-pod\n    HostName 1.2.3.4\n    Port 11950\n")
+    monkeypatch.setattr(vllm, "POD_SSH_CONFIG", config)
+
+    assert vllm._ssh_argv("our-pod") == ["ssh", "-F", str(config)]
+    assert vllm._ssh_argv("their-own-alias") == ["ssh"]
 
 
 def test_the_gpu_comes_from_the_model_profile_not_the_command_line(tmp_path, monkeypatch):
