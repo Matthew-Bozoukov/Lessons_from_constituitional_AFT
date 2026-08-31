@@ -331,7 +331,11 @@ uv run scripts/run_eval.py --target <hf_path | provider:model-id> [...] --name <
   holding a lazy `"module:function"` runner (imported only when selected, so
   importing `src.eval` stays light) plus static metadata (`needs_docker`,
   `needs_reference`, default config). The runner implements
-  `run(target, cfg, out_dir) -> summary`.
+  `run(target, cfg, out_dir) -> summary`. An eval that declares `pools=True` also
+  defines `pool(runs, cfg, out_dir) -> summary` in its package; run_eval calls it after
+  every arm of a multi-target invocation has been published, so seed replicates produce a
+  recipe-level result (ODCV: each arm enters as a checkpoint, so the interval covers
+  seed-to-seed variance).
 - **Each eval lives in its own directory** under the matching subarea —
   `src/eval/capabilities/lmsys/`, `src/eval/misalignment/psychosis/` — with a
   `runner.py` exposing the `run()` the registry points at, and every supporting

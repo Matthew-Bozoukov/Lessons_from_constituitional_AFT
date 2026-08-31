@@ -125,6 +125,15 @@ reports `[0, 56%]` on 3×25, not `[0, 0]`, and `claims` flags the result as dege
 | `subsamples` | draws inside a cell, no identity across cells | rollouts, questions within a subject | averaged in; lives only in `β` |
 | `checkpoint` | **not declared** — inferred as sampled iff `n ≥ 2` | seeds | `T_A`, `T_C` terms |
 
+The checkpoint axis is populated automatically for ODCV: `uv run evals --name odcv --target
+seed0 seed1 seed2` publishes each arm and then pools them
+(`src/eval/misalignment/odcv/pool.py`), each arm entering as one checkpoint, so the pooled
+run answers the question the replicates were run for — about the recipe, not about the seed
+that happened to run first. Merging their rollouts into a single arm instead would keep the
+one-checkpoint claim while shrinking the bar, which is the mistake this table exists to
+prevent. Arms that ran different scenario sets or different thinking modes are refused
+rather than intersected.
+
 | checkpoints | items | SE² | df |
 |---|---|---|---|
 | sampled | sampled | `T_A + T_B − T_C` | Satterthwaite |

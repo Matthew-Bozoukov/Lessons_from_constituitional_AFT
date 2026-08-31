@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from omegaconf import OmegaConf
 
 from src.infra.endpoints.vllm import SshExec, VllmServer, resolve_target
-from src.eval import EVALS, resolve
+from src.eval import EVALS, resolve, resolve_pool
 from src.eval.layout import assert_layout, publish_layout
 from src.huggingface import hf_repo_id, push_run_dir
 from src.utils import timestamp, write_run_meta
@@ -56,13 +56,15 @@ def _results_markdown(target: str, mode: str, summary: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _card_fields(name: str, cfg, served, command: str) -> dict:
+def _card_fields(name: str, cfg, command: str, *, experiment: str, models: str) -> dict:
+    """The card every published run carries. `experiment`/`models` are the caller's,
+    because a pooled run has no single served target to describe itself from."""
     return {
-        "experiment": f"{name} eval of {served.spec.hf_path} (mode={served.spec.mode})",
+        "experiment": experiment,
         "date_generated": date.today().isoformat(),
         "constitution": str(cfg.get("constitution", "none")),
         "source_repo": f"teaching_claude_why_replication @ {_git_sha()}",
-        "models": f"target={served.spec.hf_path} base={served.spec.base_model}",
+        "models": models,
         # `cfg.get("generation", {})` returns a PLAIN dict when the key is absent, and
         # to_container rejects that (ValueError: Input cfg is not an OmegaConf config
         # object) - so an eval whose config has no `generation:` block (swebench_mini has
@@ -80,6 +82,40 @@ def _git_sha() -> str:
     from src.utils import git_sha
 
     return git_sha()
+
+
+def _publish(out_dir: Path, *, name: str, model_key: str, mode: str, target: str,
+             summary: dict, card: dict, tags: list[str], push: bool) -> str:
+    """Home a finished run dir in the published layout, mirror its summary, push it.
+
+    Published-layout contract (src/eval/layout.py): every run dir — and so every pushed
+    repo — is rollouts/ + results/ + metadata/ (+ README at push). This homes the
+    epilogue's own files (the canonical summary, superset of any results.json an eval
+    wrote at the same path, and the pre-run run_meta) and then fail-fast checks the eval
+    left nothing stray at the root.
+
+    Returns:
+        The repo URL, or "" when `push` is off — recorded so a pooled run can name the
+        arms it pooled.
+    """
+    _, results_dir, metadata_dir = publish_layout(out_dir)
+    (out_dir / "run_meta.json").rename(metadata_dir / "run_meta.json")
+    (results_dir / "results.json").write_text(json.dumps(summary, indent=2))
+    (results_dir / "results.md").write_text(_results_markdown(target, mode, summary))
+    assert_layout(out_dir)
+    row_path = Path("output/eval_summaries") / f"{name}_{model_key}_{timestamp()}.json"
+    row_path.parent.mkdir(parents=True, exist_ok=True)
+    row_path.write_text(json.dumps(summary, indent=2))
+    if not push:
+        return ""
+    # The org is .env's HF_ORG, resolved at push time (src.huggingface.hf_org).
+    repo_id = hf_repo_id(f"{date.today().isoformat()}-{name.replace('_', '-')}"
+                         f"-{model_key.replace('_', '-')}")
+    # Hub-indexed tags: the canonical discovery route for the dashboard's eval-run
+    # picker (/api/datasets?author=<org>&filter=eval-run).
+    url = push_run_dir(out_dir, repo_id, card, front_matter={"tags": tags})
+    print(f">>> pushed {url}")
+    return url
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -156,6 +192,7 @@ def main(argv: list[str] | None = None) -> None:
                         serve_requirements=OmegaConf.to_container(cfg.get("serving") or {},
                                                                   resolve=True))
     summaries: dict[str, dict] = {}
+    published: list[dict] = []
     try:
         for hf_path in targets:
             spec = resolve_target(hf_path)
@@ -188,34 +225,49 @@ def main(argv: list[str] | None = None) -> None:
             summary = run_fn(served, cfg, out_dir, **run_kwargs)
 
             summary = {"target": hf_path, "mode": spec.mode, **summary}
-            # Published-layout contract (src/eval/layout.py): every run dir — and so
-            # every pushed repo — is rollouts/ + results/ + metadata/ (+ README at push).
-            # The epilogue homes its own files (the canonical summary, superset of any
-            # results.json an eval wrote at the same path, and the pre-run run_meta) and
-            # then fail-fast checks the eval left nothing stray at the root.
-            _, results_dir, metadata_dir = publish_layout(out_dir)
-            (out_dir / "run_meta.json").rename(metadata_dir / "run_meta.json")
-            (results_dir / "results.json").write_text(json.dumps(summary, indent=2))
-            (results_dir / "results.md").write_text(_results_markdown(hf_path, spec.mode, summary))
-            assert_layout(out_dir)
-            row_path = Path("output/eval_summaries") / f"{args.name}_{spec.model_key}_{timestamp()}.json"
-            row_path.parent.mkdir(parents=True, exist_ok=True)
-            row_path.write_text(json.dumps(summary, indent=2))
-            if not args.no_push:
-                # The org is .env's HF_ORG, resolved at push time (src.huggingface.hf_org).
-                repo_id = hf_repo_id(f"{date.today().isoformat()}-{args.name.replace('_', '-')}"
-                                     f"-{spec.model_key.replace('_', '-')}")
-                url = push_run_dir(
-                    out_dir, repo_id, _card_fields(args.name, cfg, served, command),
-                    # Hub-indexed tags: the canonical discovery route for the dashboard's
-                    # eval-run picker (/api/datasets?author=<org>&filter=eval-run).
-                    front_matter={"tags": ["eval-run", f"eval:{args.name}",
-                                           f"model:{spec.model_key}",
-                                           f"mode:{spec.mode}"]})
-                print(f">>> pushed {url}")
+            url = _publish(
+                out_dir, name=args.name, model_key=spec.model_key, mode=spec.mode,
+                target=hf_path, summary=summary, push=not args.no_push,
+                card=_card_fields(
+                    args.name, cfg, command,
+                    experiment=f"{args.name} eval of {hf_path} (mode={spec.mode})",
+                    models=f"target={hf_path} base={spec.base_model}"),
+                tags=["eval-run", f"eval:{args.name}", f"model:{spec.model_key}",
+                      f"mode:{spec.mode}"])
+            published.append({"target": hf_path, "model_key": spec.model_key,
+                              "mode": spec.mode, "out_dir": out_dir, "repo": url})
             summaries[hf_path] = summary
     finally:
         server.stop()
+
+    # Pooling runs LAST, after every arm is on the Hub and after the server is released:
+    # several arms of one recipe are replicates, and the question they exist to answer is
+    # about the recipe, not about the seed that happened to run first. It is the eval's
+    # own code (`src/eval/<pkg>/pool.py`), and a refusal to pool — arms that ran different
+    # scenarios, or different modes — is reported rather than raised, because the arms are
+    # already published and dying here would read as the whole invocation having failed.
+    if EVALS[args.name].pools and len(published) > 1:
+        pooled_dir = Path("output") / args.name / "pooled" / timestamp()
+        pooled_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            pooled = resolve_pool(args.name)(published, cfg, pooled_dir)
+            write_run_meta(pooled_dir, OmegaConf.to_container(cfg, resolve=True),
+                           extra={"command": command, "pooled_from": pooled["pooled_from"]})
+            targets_text = ", ".join(run["target"] for run in published)
+            _publish(
+                pooled_dir, name=args.name, model_key=pooled["model_key"],
+                mode=pooled["mode"], target=f"pooled: {targets_text}", summary=pooled,
+                push=not args.no_push,
+                card=_card_fields(
+                    args.name, cfg, command,
+                    experiment=f"{args.name} pooled over {len(published)} arms of one "
+                               f"recipe (checkpoint-level interval): {targets_text}",
+                    models=targets_text),
+                tags=["eval-run", f"eval:{args.name}", f"model:{pooled['model_key']}",
+                      f"mode:{pooled['mode']}", "pooled"])
+            summaries["pooled"] = pooled
+        except AssertionError as e:
+            print(f"!!! not pooled: {e}")
 
     print("\n=== summaries ===")
     print(json.dumps(summaries, indent=2))

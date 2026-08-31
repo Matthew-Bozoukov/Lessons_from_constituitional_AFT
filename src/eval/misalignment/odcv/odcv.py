@@ -150,7 +150,40 @@ def _ci_fields(prefix: str, r: Result, nd: int) -> dict:
             f"{prefix}_ci95_lo": round(r.lo, nd), f"{prefix}_ci95_hi": round(r.hi, nd)}
 
 
-def summarise(medians: dict[str, dict[str, list | float]]) -> dict:
+def summarise(medians: dict[str, dict[str, list | float]],
+              checkpoint: str = "checkpoint") -> dict:
+    """Compute overall / per-variant MR and severity from ONE arm's median scores.
+
+    `checkpoint` names the arm in the long table. Several arms of the same recipe (seed
+    replicates) go through `summarise_pooled` instead, which is the same computation with
+    the checkpoint axis populated.
+    """
+    return _summarise({checkpoint: medians})
+
+
+def summarise_pooled(by_checkpoint: dict[str, dict[str, dict[str, list | float]]]) -> dict:
+    """Pool seed replicates of one recipe: the same summary, over >= 2 checkpoints.
+
+    Not "average the seeds' numbers". Each seed becomes a checkpoint in the long table, so
+    `src.eval.stats.interval` infers `checkpoints="sampled"` and the interval carries
+    T_A + T_B - T_C with Satterthwaite df — seed-to-seed variance INCLUDED. A single arm's
+    bar cannot say anything about that (docs/error_bars.md), which is the whole reason to
+    run replicates; pooling their rollouts into one arm instead would shrink the bar while
+    claiming exactly what it cannot support.
+
+    Args:
+        by_checkpoint: {checkpoint label: {variant: {scenario: [severity per rollout]}}}.
+            The scenario set must be identical across checkpoints — the caller
+            (`pool.py`) is where that is checked and explained.
+
+    Returns:
+        The same shape `summarise` returns, plus `n_checkpoints` in the overall block.
+    """
+    assert len(by_checkpoint) >= 2, "pooling needs >= 2 arms; one arm is `summarise`"
+    return _summarise(by_checkpoint)
+
+
+def _summarise(by_checkpoint: dict[str, dict[str, dict[str, list | float]]]) -> dict:
     """Compute overall / per-variant MR and severity from median scores.
 
     The overall numbers are the 50/50 variant mixture over the scenarios that ran BOTH
@@ -171,11 +204,21 @@ def summarise(medians: dict[str, dict[str, list | float]]) -> dict:
     # Only variants that actually produced scores. A variant with an empty dict was not
     # run (incentivized-only arm), and reporting it as 0.0% would invent a result; leaving
     # it out makes its absence visible in the keys instead.
-    present = [v for v in VARIANTS if medians[v]]
+    present = [v for v in VARIANTS
+               if any(arm.get(v) for arm in by_checkpoint.values())]
     assert present, "no scores for any variant"
-    rows = to_long({v: medians[v] for v in present})
+    rows = [row for label, arm in by_checkpoint.items()
+            for row in to_long({v: arm[v] for v in present if arm.get(v)}, checkpoint=label)]
     mr_rows = [dict(r, value=100.0 * r["violation"]) for r in rows]
     sev_rows = [dict(r, value=r["severity"]) for r in rows]
+
+    # Point estimates read every rollout of a scenario, whichever arm produced it; only the
+    # INTERVAL cares which checkpoint each came from.
+    medians: dict[str, dict[str, list]] = {v: {} for v in present}
+    for arm in by_checkpoint.values():
+        for variant in present:
+            for scenario, value in (arm.get(variant) or {}).items():
+                medians[variant].setdefault(scenario, []).extend(_rollouts(value))
 
     per_variant, stats, n_rollouts = {}, {}, 0
     for variant in present:
@@ -208,6 +251,7 @@ def summarise(medians: dict[str, dict[str, list | float]]) -> dict:
             "n_scenarios": mr.n_items,
             "n_cells": mr.n_items * len(present),
             "n_rollouts": n_rollouts,
+            "n_checkpoints": len(by_checkpoint),
             "mr_pct": round(mr.mean, 1),
             "mean_severity": round(sev.mean, 2),
             **_ci_fields("mr", mr, 1),
