@@ -3298,3 +3298,102 @@ html {
   font-variant-numeric: tabular-nums;
 }
 @media (max-width: 700px) { .mchart-row { grid-template-columns: 1fr; gap: 4px; } }
+
+/* --- Dataset workspace: collapsible corpus drawer + A/B corpus pairing ------ */
+/* The picker is a drawer, so the grid loses its first track when it is shut. A
+   corpus list that stays open costs ~310px of the width the records are read in,
+   which on this page is the whole point of the page. */
+.dataset-columns.is-collapsed { grid-template-columns: minmax(0, 1fr); }
+
+.dataset-toolbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px;
+}
+.rail-toggle {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: var(--panel); color: var(--text-soft);
+  border: 1px solid var(--border); border-radius: 7px;
+  padding: 7px 13px; font-size: 12.5px; cursor: pointer;
+}
+.rail-toggle:hover { color: var(--text); border-color: var(--border-bright); }
+.rail-toggle.is-open { background: var(--panel-2); color: var(--text); }
+.dataset-toolbar .compare-toggle {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12.5px; color: var(--text-soft); cursor: pointer;
+}
+.dataset-toolbar .run-legend { margin-left: auto; }
+.chip-clear {
+  display: inline-flex; background: none; border: 0; padding: 0 0 0 4px;
+  color: var(--muted); cursor: pointer;
+}
+.chip-clear:hover { color: var(--text); }
+
+/* Which slot a click fills, said before the click rather than after it. */
+.picker-head {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 10px; border-bottom: 1px solid var(--border); background: var(--bg-raised);
+}
+.picker-target { display: inline-flex; gap: 2px; }
+.picker-target button {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--panel); color: var(--text-soft);
+  border: 1px solid var(--border); padding: 5px 10px; font-size: 11px; cursor: pointer;
+}
+.picker-target button:first-child { border-radius: 6px 0 0 6px; }
+.picker-target button:last-child { border-radius: 0 6px 6px 0; }
+.picker-target button.is-active {
+  background: var(--panel-2); color: var(--text); border-color: var(--border-bright);
+}
+.picker-close {
+  margin-left: auto; display: inline-flex; background: none; border: 0;
+  color: var(--muted); cursor: pointer;
+}
+.picker-close:hover { color: var(--text); }
+.corpus-picker .picker-head + .corpus-search { top: 37px; }
+.corpus-row.is-b { border-color: var(--series-general); background: rgba(155,110,240,.07); }
+.side-marker { margin-right: 6px; vertical-align: baseline; }
+
+/* Pairing: the gate, the refusal, and the confirmation. All three state the
+   numbers they were decided on — a pair that cannot be shown is a fact about
+   the two corpora, not a failure of the viewer. */
+.pairing-note {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px 14px; margin-bottom: 12px; font-size: 12.5px; color: var(--text-soft);
+}
+.pairing-note p { margin: 0; flex: 1 1 320px; }
+.pairing-error {
+  display: flex; gap: 11px; align-items: flex-start;
+  background: rgba(255,125,134,.05); border: 1px solid rgba(255,125,134,.35);
+  border-radius: 10px; padding: 13px 15px; margin-bottom: 12px;
+  font-size: 12.5px; color: var(--text-soft);
+}
+.pairing-error > svg { color: var(--red); flex: none; margin-top: 1px; }
+.pairing-error strong { display: block; color: var(--text); margin-bottom: 5px; }
+.pairing-error p { margin: 0 0 7px; line-height: 1.6; }
+.pairing-counts { display: flex; flex-wrap: wrap; gap: 16px; color: var(--muted); }
+.pairing-counts strong { display: inline; color: var(--text); margin: 0 3px 0 0; }
+.pairing-ok {
+  margin: 0 0 12px; font-size: 12.5px; color: var(--text-soft);
+}
+.pairing-ok em { color: var(--muted); font-style: normal; }
+
+/* Two transcripts, one prompt — the shape RolloutsView uses for A/B rollouts. */
+.transcript-panes { display: grid; grid-template-columns: 1fr; }
+.transcript-panes.is-compare { grid-template-columns: 1fr 1fr; }
+.transcript-pane { min-width: 0; border-left: 1px solid var(--border); }
+.transcript-pane:first-child { border-left: 0; }
+.transcript-pane .pane-title {
+  display: flex; align-items: center; gap: 7px;
+  padding: 9px 13px; border-bottom: 1px solid var(--border);
+  color: var(--text-soft); font-size: 11px;
+  font-family: SFMono-Regular, Consolas, "Liberation Mono", monospace;
+}
+.transcript-pane .pane-missing { padding: 18px 14px; color: var(--muted); font-size: 12px; }
+.dataset-browser.is-compare { grid-template-columns: 185px minmax(0, 1fr) 210px; }
+.record-meta-block + .record-meta-block { border-top: 1px solid var(--border); }
+@media (max-width: 1100px) {
+  .transcript-panes.is-compare { grid-template-columns: 1fr; }
+  .transcript-pane { border-left: 0; border-top: 1px solid var(--border); }
+  .transcript-pane:first-child { border-top: 0; }
+}

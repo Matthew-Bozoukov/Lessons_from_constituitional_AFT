@@ -1,11 +1,38 @@
-# ABOUTME: Offline tests for src/huggingface.py's pure logic: dataset-repo id
-# ABOUTME: validation, unambiguous data-file picking, and card extra-field rendering.
+# ABOUTME: Offline tests for src/huggingface.py's pure logic: push-namespace resolution,
+# ABOUTME: dataset-repo id validation, data-file picking, and card rendering.
 
 import pytest
 
 from src.huggingface import (REQUIRED_FIELDS, card_front_matter, card_markdown,
-                             constitution_slug, pick_data_file, resolve_dataset,
-                             training_data_tags)
+                             constitution_slug, hf_org, hf_repo_id, pick_data_file,
+                             resolve_dataset, training_data_tags)
+
+
+def test_hf_repo_id_takes_the_org_from_the_environment():
+    # conftest pins HF_ORG=test-org: a config names the repo, .env names the org.
+    assert hf_repo_id("2026-08-31-difficult-advice") == "test-org/2026-08-31-difficult-advice"
+    assert hf_org() == "test-org"
+
+
+def test_hf_repo_id_passes_through_an_id_that_already_names_that_org():
+    # Idempotent, so a push helper can qualify a value a caller already qualified.
+    assert hf_repo_id("test-org/qwen3.6-27b-lora-r64") == "test-org/qwen3.6-27b-lora-r64"
+
+
+def test_hf_repo_id_refuses_another_org():
+    # The failure this guard exists for: a config that would push somewhere the rest of
+    # the pipeline is not looking.
+    with pytest.raises(AssertionError, match="HF_ORG"):
+        hf_repo_id("someone-else/2026-08-31-difficult-advice")
+    with pytest.raises(AssertionError, match="HF_ORG"):
+        hf_repo_id("test-org/name/extra")
+
+
+def test_hf_org_refuses_to_guess_when_the_environment_is_silent(monkeypatch):
+    monkeypatch.delenv("HF_ORG", raising=False)
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)  # ignore a real .env
+    with pytest.raises(AssertionError, match="HF_ORG is not set"):
+        hf_org()
 
 
 def test_pick_data_file_single_jsonl():

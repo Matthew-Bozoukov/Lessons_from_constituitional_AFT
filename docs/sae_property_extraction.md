@@ -183,7 +183,7 @@ configs/properties/sae_diff.yaml   sae id + layer, channels, thresholds (0.03 fr
                                    NPMI>0.5, sim<0.2), judge model, sample sizes
 ```
 
-All LLM calls (relabel, summarize, verify) go through `src/endpoints/openrouter.py` with a
+All LLM calls (relabel, summarize, verify) go through `src/infra/endpoints/openrouter.py` with a
 cheap judge model in config. Fail fast on unlabeled latents rather than silently keeping a
 Neuronpedia label that never saw assistant text: top diffed latents are ALWAYS relabeled
 from our own activating excerpts (the paper does the same for its headline results).

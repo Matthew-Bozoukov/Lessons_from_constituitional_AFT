@@ -34,10 +34,10 @@ from omegaconf import OmegaConf
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.eval.misalignment.internalization.scripts.runpod import call  # noqa: E402
+from src.infra.runpod import GPU, ProvisionSpec, call, provision_runpod  # noqa: E402
 
 DEFAULT_IMAGE = "runpod/pytorch:0.7.0-dev-cu1281-torch271-ubuntu2204"
-DEFAULT_GPU = "NVIDIA H100 80GB HBM3"
+DEFAULT_GPU = GPU   # one definition, in src/infra/runpod.py
 
 
 def _bootstrap(base: str, modules: dict[str, str], max_rank: int) -> str:
@@ -153,25 +153,16 @@ def up(
     if not modules:
         raise SystemExit(f"No arms in {config} have an adapter set.")
 
-    payload = {
-        "name": name,
-        "imageName": image,
-        "gpuTypeIds": [gpu],
-        "gpuCount": 1,
-        "containerDiskInGb": disk_gb,
-        "volumeInGb": 0,
-        # 8080 carries boot.log (see _bootstrap); 22/tcp is the SSH fallback. Both are
-        # cheap insurance against a silent boot failure billing at H100 rates.
-        "ports": ["8000/http", "8080/http", "22/tcp"],
-        "cloudType": cloud,
-        "dockerStartCmd": ["bash", "-lc", _bootstrap(str(cfg.base_model), modules, 32)],
-        "env": {"HF_HUB_ENABLE_HF_TRANSFER": "1"},
-    }
+    # 8080 carries boot.log (see _bootstrap); 22/tcp is the SSH fallback. Both are cheap
+    # insurance against a silent boot failure billing at H100 rates.
+    pod_id = provision_runpod(
+        ProvisionSpec(gpu=gpu, disk_gb=disk_gb, cloud=cloud, image=image, cuda="",
+                      countries=countries),
+        name=name,
+        start_script=_bootstrap(str(cfg.base_model), modules, 32),
+        ports=("8000/http", "8080/http", "22/tcp"),
+    )
     codes = [c.strip().upper() for c in countries.split(",") if c.strip()]
-    if codes:
-        payload["countryCodes"] = codes
-    pod = call("POST", "/pods", data=json.dumps(payload))
-    pod_id = pod.get("id") or pod.get("podId", "")
     url = f"https://{pod_id}-8000.proxy.runpod.net/v1"
     served = "\n".join(f"    {n:16} <- {r}" for n, r in modules.items())
     region = ",".join(codes) if codes else "anywhere"

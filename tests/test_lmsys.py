@@ -203,7 +203,7 @@ def test_reference_then_target_flow_through_the_cache(tmp_path, monkeypatch):
 
     monkeypatch.setattr(runner, "OpenAI", _StubOpenAI)
     monkeypatch.setattr(runner, "OpenRouterClient", _StubJudge)
-    monkeypatch.setattr("src.endpoints.vllm_server.resolve_target",
+    monkeypatch.setattr("src.infra.endpoints.vllm.resolve_target",
                         lambda hf: _target(hf, "ref_model").spec)
     cfg = _cfg(tmp_path)
 
@@ -236,7 +236,7 @@ def test_cross_mode_reference_is_refused(tmp_path, monkeypatch):
     from src.eval.capabilities.lmsys import runner
 
     monkeypatch.setattr(runner, "OpenAI", _StubOpenAI)
-    monkeypatch.setattr("src.endpoints.vllm_server.resolve_target",
+    monkeypatch.setattr("src.infra.endpoints.vllm.resolve_target",
                         lambda hf: _target(hf, "ref_model", mode="nothink").spec)
     cfg = _cfg(tmp_path)
     out = tmp_path / "run"

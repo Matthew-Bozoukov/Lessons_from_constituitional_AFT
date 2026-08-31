@@ -45,7 +45,7 @@ data_repo: "LASR-Callum/2026-08-25-table2-9284-difficult-advice-verbose-716-trai
 data_file: "t2_9284_da716_verbose_10k.jsonl"
 data_revision: "4b7c08ab24eea91903857be57b0eb07ae9339f61"
 output_dir: "/workspace/out/train_t2_9284_da716_verbose_dynbatch"
-hf_repo: "LASR-Callum/qwen3.6-27b-lora-t2-9284-da716-verbose-r64-dynbatch"
+hf_repo: "qwen3.6-27b-lora-t2-9284-da716-verbose-r64-dynbatch"
 
 lora:
   r: 64

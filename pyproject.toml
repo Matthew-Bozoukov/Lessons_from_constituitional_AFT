@@ -12,7 +12,7 @@ dependencies = [
     # vLLM 0.26 is the validated stack for BOTH model families: Qwen3.6-27B's qwen3_5
     # arch needs transformers>=5.14 (4.51.3 cannot load it — verified on-pod 2026-08-03),
     # and the Qwen3.6 serving gotchas for 0.26 (max_num_seqs, docs/LOG.md 2026-07-29) are
-    # encoded in src/endpoints/vllm_server.py. The markers make one lock serve both
+    # encoded in src/infra/endpoints/vllm.py. The markers make one lock serve both
     # machines: a darwin driver gets only the analysis stack (it never imports vllm —
     # serving is a subprocess, local or over SSH via run_eval's --server), the pod gets
     # everything. transformers stays unmarked: local data tooling needs its tokenizers.
@@ -75,7 +75,7 @@ synth = "src.data.synth.cli:main"
 mix = "src.data.mixture.build_mixture:cli"
 train = "src.train.train_lora:cli"
 evals = "src.eval.run_eval:main"
-chat = "src.endpoints.chat:main"
+chat = "src.chat.repl:main"
 
 [dependency-groups]
 dev = [

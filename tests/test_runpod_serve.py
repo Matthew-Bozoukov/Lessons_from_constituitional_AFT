@@ -3,8 +3,8 @@
 
 import pytest
 
-from src.endpoints import runpod
-from src.endpoints.chat import own_pods, pod_name
+from src.infra import runpod
+from src.chat.repl import own_pods, pod_name
 
 MODS = [
     ("da716", "LASR-Callum/qwen3.6-27b-lora-t2-9284-da716-r64-dynbatch"),

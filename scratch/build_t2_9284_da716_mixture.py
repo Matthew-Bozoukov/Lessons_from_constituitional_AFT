@@ -139,6 +139,38 @@ def _quota(n: int, keys: list, offset: int = 0) -> dict:
     return q
 
 
+def _capped_quota(n: int, caps: dict, offset: int = 0) -> dict:
+    """An even split of n across keys, except that no key exceeds its cap.
+
+    Water-fill: keys that cannot meet an even share take everything they have, and the
+    shortfall is spread evenly over the keys that can. Identical to `_quota` whenever every
+    key has at least its even share -- which held for every arm before post-action
+    retrospection's 716, whose grey-area rater left two principles under 80 rows
+    (2026-08-26).
+
+    Args:
+        n: Total to allocate.
+        caps: key -> how many rows that key has, in a stable order.
+        offset: Index to start handing out the remainder from.
+
+    Returns:
+        key -> count, summing to exactly n.
+    """
+    assert sum(caps.values()) >= n, f"only {sum(caps.values())} rows for a quota of {n}"
+    q = {k: 0 for k in caps}
+    open_keys = list(caps)
+    remaining = n
+    while remaining:
+        share = _quota(remaining, open_keys, offset)
+        capped = [k for k in open_keys if q[k] + share[k] >= caps[k]]
+        for k in open_keys:
+            q[k] = min(caps[k], q[k] + share[k])
+        remaining = n - sum(q.values())
+        open_keys = [k for k in open_keys if k not in capped]
+        assert open_keys or not remaining
+    return q
+
+
 def _pick_traits(rows: list[dict], n: int, rng: random.Random, offset: int) -> list[dict]:
     """Choose n rows balanced across trait, spread across domain within each trait."""
     by_trait = defaultdict(list)
@@ -146,7 +178,7 @@ def _pick_traits(rows: list[dict], n: int, rng: random.Random, offset: int) -> l
         by_trait[r["metadata"]["trait_id"]].append(r)
 
     traits = sorted(by_trait)
-    quota = _quota(n, traits, offset)
+    quota = _capped_quota(n, {t: len(by_trait[t]) for t in traits}, offset)
 
     picked = []
     for t in traits:
@@ -270,10 +302,15 @@ def main(out: str = "data/t2_9284_da716_10k.jsonl", seed: int = 0,
               f"(n_synth={n_synth} and split_key ignored)")
     else:
         picked = pick_balanced(da, n_synth, rng, split_key or None)
+    # `supervise` rides along when the synth export declares it (post-action retrospection
+    # marks its five-turn rows `final`, so only the last assistant turn trains); the trainer
+    # reads the column per row and defaults to `all` where it is absent (2026-08-26).
     da_rows = [{"source": synth_label, "text": render(r["messages"]),
-                "trait_id": r["metadata"]["trait_id"],
-                "scenario_id": r["metadata"]["scenario_id"],
-                **({split_key: r["metadata"][split_key]} if split_key else {})}
+               "trait_id": r["metadata"]["trait_id"],
+               "scenario_id": r["metadata"]["scenario_id"],
+               **({"supervise": r["metadata"]["supervise"]}
+                  if r["metadata"].get("supervise") else {}),
+               **({split_key: r["metadata"][split_key]} if split_key else {})}
                for r in picked]
 
     fixed = 0
@@ -308,6 +345,7 @@ def main(out: str = "data/t2_9284_da716_10k.jsonl", seed: int = 0,
         "distinct_scenarios_in_synth": len({r["scenario_id"] for r in da_rows}),
         "per_source": dict(src.most_common()),
         "history_markers_inserted": fixed,
+        "supervise_final_rows": sum(1 for r in da_rows if r.get("supervise") == "final"),
         "split_key": split_key or None,
         "per_split": dict(sorted(Counter(r[split_key] for r in da_rows).items()))
                      if split_key else None,

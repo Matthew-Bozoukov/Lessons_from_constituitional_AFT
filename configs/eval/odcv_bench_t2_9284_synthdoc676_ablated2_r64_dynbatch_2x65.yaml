@@ -8,7 +8,7 @@
 # tempting option. Rows whose answer was emptied, or that a blind rater judged no longer to
 # answer the question, were dropped. Trained from
 # configs/train/lora_qwen36_t2_9284_synthdoc_676_ablated2_dynbatch_2xh200.yaml on
-# matboz/2026-08-22-ruleform-ablated2-t2-9284-synthdoc-676 @ f7751e71.
+# LASR-Callum/2026-08-22-ruleform-ablated2-t2-9284-synthdoc-676 @ 453e6782.
 #
 # ABLATION STRENGTH, blind rater over all 676 rows:
 #   offers_alternative       reasoning  0.6%   answer  3.6%

@@ -191,10 +191,21 @@ def pin_template(template_text: str, mode: str) -> str:
     the render rather than stripped by the template's default. Nothink pins it false:
     a nothink arm's history carries no reasoning to preserve.
     """
+    return pin_prefix(mode) + template_text
+
+
+def pin_prefix(mode: str) -> str:
+    """The two Jinja lines `pin_template` prepends. Depends on `mode` ALONE, not the template.
+
+    Split out because the RunPod bootstrap pins the template ON the pod, where the text is
+    only available at boot from the tokenizer -- but the prefix is decidable here. One
+    definition, so the two serving paths cannot drift (they did: src/infra/runpod.py used to
+    rebuild these two lines by hand, with a comment promising they matched).
+    """
     assert mode in ("think", "nothink"), mode
     flag = "true" if mode == "think" else "false"
     return (f"{{%- set enable_thinking = {flag} -%}}\n"
-            f"{{%- set preserve_thinking = {flag} -%}}\n") + template_text
+            f"{{%- set preserve_thinking = {flag} -%}}\n")
 
 
 # The two serving namespaces are DISJOINT BY CONSTRUCTION — no key appears in both, so
@@ -450,14 +461,18 @@ class SshExec:
     def has_env(self) -> bool:
         return self._ssh(f"[ -f {self.workdir}/.env ] && echo yes || echo no").strip() == "yes"
 
-    def push_hf_token(self, local_env: Path) -> None:
-        """OPT-IN provisioning (--push-env): write ONLY HF_TOKEN to the host's .env.
+    def push_hf_env(self, local_env: Path) -> None:
+        """OPT-IN provisioning (--push-env): write ONLY HF_TOKEN and HF_ORG to the host's .env.
 
         The server needs exactly one credential — HF_TOKEN, for gated/private weight
-        pulls — so that is all that ever leaves this machine. The full .env (OpenRouter,
-        provider API keys) stays local: a rented GPU host is the least-trusted machine in
-        the loop, and CLAUDE.md's secrets policy says leaked values must be bounded.
-        Never overwrites an existing remote .env.
+        pulls — and that stays the only SECRET that ever leaves this machine. HF_ORG
+        rides along because it is not one: work run ON the host (an Option A eval, a
+        pod-side push) resolves its push namespace from the host's own environment, and
+        without it every upload fail-fasts at the end of the run with nothing to fall
+        back on (src.huggingface.hf_org). The rest of the .env (OpenRouter, provider API
+        keys) stays local: a rented GPU host is the least-trusted machine in the loop,
+        and CLAUDE.md's secrets policy says leaked values must be bounded. Never
+        overwrites an existing remote .env.
         """
         # Skip, don't abort. The host having a .env already is the NORMAL case on any
         # relaunch against the same box (a crashed run, a config tweak), and failing the
@@ -467,13 +482,17 @@ class SshExec:
         if self.has_env():
             print(f">>> {self.host} already has a .env — leaving it untouched")
             return
+        from src.huggingface import hf_org
+
         token = next((line.split("=", 1)[1].strip()
                       for line in local_env.read_text().splitlines()
                       if line.startswith("HF_TOKEN=")), "")
         assert token, f"no HF_TOKEN in {local_env}; nothing to push"
+        lines = " ".join(shlex.quote(v) for v in (f"HF_TOKEN={token}", f"HF_ORG={hf_org()}"))
         self._ssh(f"umask 077 && mkdir -p {self.workdir} && "
-                  f"echo {shlex.quote('HF_TOKEN=' + token)} > {self.workdir}/.env")
-        print(f">>> pushed HF_TOKEN (and nothing else) to {self.host}:{self.workdir}/.env")
+                  rf"printf '%s\n' {lines} > {self.workdir}/.env")
+        print(f">>> pushed HF_TOKEN + HF_ORG (and nothing else) to "
+              f"{self.host}:{self.workdir}/.env")
 
     def _with_env(self, cmd: str) -> str:
         """Prefix a remote command with uv's PATH and the host's own .env (never the driver's).

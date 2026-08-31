@@ -51,7 +51,8 @@ class _FakeApi:
 
 
 def _cache(tmp_path):
-    c = StageCache(tmp_path, "org/repo", token="offline", card_fields=FIELDS,
+    # The repo NAME alone: the org is the environment's (src.huggingface.hf_org).
+    c = StageCache(tmp_path, "repo", token="offline", card_fields=FIELDS,
                    tags=["training-data", "kind:synth"])
     c._api = _FakeApi()  # short-circuits _hf(): no repo creation, no network
     return c

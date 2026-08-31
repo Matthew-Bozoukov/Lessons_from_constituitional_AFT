@@ -73,8 +73,13 @@ def up(
         pod_name: Prefix with an owner; the RunPod account is shared with teammates.
     """
     load_dotenv(override=True)
-    adapters = [a.strip() for a in str(adapter).split(",") if a.strip()]
-    names = [n.strip() for n in str(name).split(",") if n.strip()]
+    # fire hands `--adapter a,b` over as a tuple already; a quoted string arrives as str.
+    def _list(v) -> list[str]:
+        parts = v if isinstance(v, (list, tuple)) else str(v).split(",")
+        return [str(p).strip() for p in parts if str(p).strip()]
+
+    adapters = _list(adapter)
+    names = _list(name)
     assert len(adapters) == len(names), (
         f"got {len(adapters)} adapters but {len(names)} names"
     )

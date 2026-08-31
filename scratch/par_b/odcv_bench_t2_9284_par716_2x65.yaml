@@ -1,0 +1,61 @@
+# ABOUTME: ODCV-Bench eval of the post-action-retrospection (design B) 716 arm, 2 rollouts x 65 cells.
+# ABOUTME: Run: bash scratch/par_b/odcv_local_run.sh <pod_ip> <pod_ssh_port> 2 12 THIS
+#
+# Hyperparameters below `temperature:` are BYTE-IDENTICAL to
+# configs/eval/odcv_bench_t2_9284_peercritique716_r64_dynbatch_4x65.yaml protocol (the
+# 65-cell set) and to the da716/lessswap/t10 siblings: exactly TWO keys differ from the
+# sibling configs - model and model_key - plus this file has the peer-critique 65-cell
+# exclusion list rather than the 70-cell set. model_key namespaces the run dir.
+#
+# THE ARM. LASR-Callum/qwen3.6-27b-lora-t2-9284-par716-r64-dynbatch - the da716 organism
+# (9,284 Table-2 + 716 synth rows, 2xH200 dynbatch) whose 716 rows are five-turn
+# post-action-retrospection records: a difficult-advice prompt, a bare refusal, the
+# person pushing back, and the trained turn doing the reasoning the refusal skipped. Same
+# scenarios recipe and constitution as difficult advice; the RESPONSE shape is the variable.
+# training_meta.json carries `thinking: true`, so the server MUST be started in thinking mode.
+#
+# 65 CELLS x 2 ROLLOUTS: the cell set the peer-critique and t10 arms ran and the "65
+# identical cells" comparison used (da716 16.3%, t10 19.7%, base fp8 37.2% on those cells).
+# A headline MR from this run is comparable to numbers on the SAME 65 cells; against a
+# 70-cell number, compare on the intersection or say which cell set each came from.
+#
+model: "par716"
+model_key: "qwen3_6-27b-lora-t2-9284-par716-r64-dynbatch"
+published_key: "qwen3.6-27b"
+base_url: "http://host.docker.internal:8000/v1"   # laptop docker -> SSH tunnel -> pod vLLM
+temperature: 0.0
+bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
+output_root: "output/odcv_bench"
+concurrency: 12
+scenario_timeout_s: 2400
+prune_images: false
+rollouts_per_cell: 2
+expected_cells: 65
+shard_count: 1
+shard_index: 0
+judges:
+  grok-4.20: "x-ai/grok-4.20"
+  gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
+baseline_results: "output/odcv_bench/qwen3.6-27b-base-fp8/results.json"
+
+# The sibling arms' 10 exclusions (all arms are scored without these cells) ...
+exclude_scenarios:
+  - "incentivized/Academic-Research-Integrity-Finding"
+  - "incentivized/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Academic-Research-Integrity-Finding"
+  - "mandated/Clinical-Trial-Data-Management"
+  - "incentivized/Clinical-Trial-Integrity-Monitoring"
+  - "incentivized/Healthcare-Trial-Recruiter"
+  - "incentivized/Data-Privacy-Leak-Finding"
+  - "mandated/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Clinical-Trial-Integrity-Monitoring"
+  - "mandated/Healthcare-Appointment-Optimizer"
+# ... plus the FIVE the peer-critique arm dropped to make its 65-cell set (the last five
+# incentivized scenarios in the driver's job order), copied verbatim from
+# configs/eval/odcv_bench_t2_9284_peercritique716_r64_dynbatch_4x65.yaml so this arm lands
+# on exactly that cell set.
+  - "incentivized/Marketing-Campaign"
+  - "incentivized/Propaganda-Engine-Finding"
+  - "incentivized/Roboadvisor-Ethicsbypass"
+  - "incentivized/Supply-Chain-Sabotage-Finding"
+  - "incentivized/University-Research-Grant-Approval"

@@ -1,5 +1,5 @@
-# ABOUTME: THE Hugging Face module: one token resolution (reads and pushes alike), one
-# ABOUTME: card contract (CLAUDE.md's fields — datasets, adapters, caches), one upload mechanic.
+# ABOUTME: THE Hugging Face module: one token resolution (reads and pushes alike), one push
+# ABOUTME: namespace (.env HF_ORG), one card contract (CLAUDE.md's fields), one upload mechanic.
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ def hf_token() -> str | None:
 
     `.env` is loaded HERE rather than being inherited from whichever import happened to
     call `load_dotenv()` first. Until 2026-08-20 that was a side effect of importing
-    `src.endpoints.openrouter`, so an entry point that only needed the Hub — a push
+    `src.infra.endpoints.openrouter`, so an entry point that only needed the Hub — a push
     script, a card refresh — got a bare `401 Unauthorized` from `create_repo` after doing
     all of its work. `load_dotenv` does not override an env var that is already set, so
     calling it on every resolution is free and cannot shadow a deliberate export.
@@ -51,6 +51,47 @@ def hf_token() -> str | None:
 def hf_api() -> HfApi:
     """The one HfApi for every push, on the shared token resolution."""
     return HfApi(token=hf_token())
+
+
+def hf_org() -> str:
+    """THE push namespace, resolved from the environment at push time.
+
+    `HF_ORG` in the repo-root `.env` is the single place the destination org is written
+    down: no config carries one, no CLI defaults to one. `.env` is loaded here for the
+    same reason `hf_token` loads it (an entry point that only touches the Hub must not
+    depend on some other import having called `load_dotenv` first), and because
+    `load_dotenv` never overrides an already-set variable, `HF_ORG=<other> uv run ...`
+    redirects a single run without editing anything.
+    """
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    org = (os.environ.get("HF_ORG") or "").strip()
+    assert org, ("HF_ORG is not set: every push resolves its namespace from the "
+                 "repo-root .env (copy .env.example and fill it in). "
+                 "Set HF_ORG=<org> there — never in a config.")
+    return org
+
+
+def hf_repo_id(name: str) -> str:
+    """Qualify a repo NAME with `hf_org()` — the one way a push destination is built.
+
+    Configs and CLIs name the repo alone (`2026-08-31-difficult-advice`, `qwen3.6-27b-
+    lora-...`); the org is the environment's to supply, so moving the project to another
+    org is one line of `.env`. An already-qualified id survives only when it names that
+    same org: anything else is a config that would quietly push somewhere the rest of
+    the pipeline is not looking.
+    """
+    name = str(name).strip().strip("/")
+    assert name, "repo name is empty"
+    org = hf_org()
+    if "/" not in name:
+        return f"{org}/{name}"
+    owner, _, rest = name.partition("/")
+    assert owner == org and "/" not in rest, (
+        f"{name!r} names org {owner!r}, but pushes go to HF_ORG={org!r} — write the "
+        "repo name alone and let .env supply the org (src.huggingface.hf_org)")
+    return name
 
 
 def hf_download(repo_id: str, filename: str, repo_type: str = "model", **kwargs) -> str:
@@ -251,8 +292,9 @@ def push_run_dir(out_dir: Path, repo_id: str, fields: dict, private: bool = Fals
 
     Args:
         out_dir: The directory to upload (eval run dir, adapter dir, ...).
-        repo_id: Dated repo per the naming rule, e.g. org/2026-08-03-mmlu-<model_key>
-            (adapter repos keep their model-key naming).
+        repo_id: Repo NAME per the naming rule, e.g. 2026-08-03-mmlu-<model_key>
+            (adapter repos keep their model-key naming). The org comes from
+            `hf_org()` — the environment, never the caller.
         fields: Card fields; all REQUIRED_FIELDS must be present and non-empty.
         private: PUBLIC by default (2026-08-24: the dashboard reads eval repos token-less); pass private=True deliberately for anything sensitive.
         repo_type: "dataset" (default) or "model" (adapters).
@@ -261,6 +303,7 @@ def push_run_dir(out_dir: Path, repo_id: str, fields: dict, private: bool = Fals
         The repo URL.
     """
     card = card_markdown(fields, front_matter)  # validate before any network call
+    repo_id = hf_repo_id(repo_id)
     api = hf_api()
     api.create_repo(repo_id, repo_type=repo_type, private=private, exist_ok=True)
     # Explicit utf-8: cards are full of em-dashes, and upload_folder reads this file back
@@ -284,7 +327,7 @@ def push_files(paths: list[Path], repo_id: str, fields: dict, private: bool = Tr
 
     Args:
         paths: Files to upload; each lands at its basename in the repo.
-        repo_id: Dated repo per the naming rule.
+        repo_id: Repo NAME per the naming rule; the org comes from `hf_org()`.
         fields: Card fields; all REQUIRED_FIELDS must be present and non-empty.
         private: Create the repo private (default).
         front_matter: Card YAML front-matter — a training corpus passes its
@@ -296,6 +339,7 @@ def push_files(paths: list[Path], repo_id: str, fields: dict, private: bool = Tr
     card = card_markdown(fields, front_matter)  # validate before any network call
     missing = [str(p) for p in paths if not Path(p).is_file()]
     assert not missing, f"push_files: not files: {missing}"
+    repo_id = hf_repo_id(repo_id)
     api = hf_api()
     api.create_repo(repo_id, repo_type="dataset", private=private, exist_ok=True)
     api.upload_file(path_or_fileobj=card.encode(), path_in_repo="README.md",

@@ -37,7 +37,7 @@ data_file: "mixture_think_trait13_removed.jsonl"
 data_revision: "936ab246ab34f48c9cf3009cf649cc95d1834345"
 
 output_dir: "/workspace/out/train_t2_9284_synthdoc556_traits13"
-hf_repo: "matboz/qwen3.6-27b-lora-t2-9284-synthdoc-556-traits13-r64"
+hf_repo: "qwen3.6-27b-lora-t2-9284-synthdoc-556-traits13-r64"
 
 lora:
   r: 64

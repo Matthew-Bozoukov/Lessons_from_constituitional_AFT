@@ -49,7 +49,7 @@ train:
   auto_resume: true
   push_to_hub: true
   # A NEW repo: the previous arm's adapter must not be overwritten by this run.
-  hub_model_id: "LASR-Callum/qwen3.6-27b-lora-t2-9284-synthdoc-716-r64"
+  hub_model_id: "qwen3.6-27b-lora-t2-9284-synthdoc-716-r64"
   hub_strategy: "checkpoint"
 
   # Loss on assistant tokens only: everything outside an assistant turn is -100.

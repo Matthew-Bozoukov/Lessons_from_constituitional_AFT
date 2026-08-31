@@ -36,7 +36,7 @@ sys.path.insert(0, str(ROOT))
 
 RUN = "output/odcv_bench/qwen3_6-27b-lora-t2-9284-synthdoc-716-cotonly-r64/20260831_164834"
 MODEL_KEY = "qwen3_6-27b-lora-t2-9284-synthdoc-716-cotonly-r64"
-REPO = "LASR-Callum/2026-08-31-odcv-cot-only-supervision-716-1x65"
+REPO = "2026-08-31-odcv-cot-only-supervision-716-1x65"
 ADAPTER = "LASR-Callum/qwen3.6-27b-lora-t2-9284-synthdoc-716-cotonly-r64"
 CONFIG = "configs/eval/odcv_bench_cotonly716_r64_1x65.yaml"
 

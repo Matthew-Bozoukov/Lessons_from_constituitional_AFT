@@ -25,7 +25,7 @@ from scratch.cot_only.build_mixture import (  # noqa: E402
 from src.huggingface import card_front_matter, card_markdown, hf_api, push_files  # noqa: E402
 from src.utils import git_sha  # noqa: E402
 
-REPO = "LASR-Callum/2026-08-31-cot-only-supervision-t2-9284-synthdoc-716"
+REPO = "2026-08-31-cot-only-supervision-t2-9284-synthdoc-716"
 DATA_FILE = "mixture_think_cotonly.jsonl"
 
 

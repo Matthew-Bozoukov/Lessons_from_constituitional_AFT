@@ -19,7 +19,7 @@ class _ScriptedClient:
         self.calls = 0
 
     def chat(self, model, messages, temperature, max_tokens, **kw):
-        from src.endpoints.openrouter import ChatResult
+        from src.infra.endpoints.openrouter import ChatResult
         c = self._contents[self.calls]
         self.calls += 1
         return ChatResult(content=c, prompt_tokens=1, completion_tokens=1,

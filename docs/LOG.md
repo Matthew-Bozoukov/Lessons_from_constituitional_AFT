@@ -37,6 +37,10 @@ evidence the reasoning is carrying it.
 1. *It cannot separate this arm from its control.* One pass over 65 cells gives a ~17-point
    CI that contains the whole family band. 14.1% vs 16.3% is not a difference this design
    can resolve, and reporting the arm as "better than the control" would be reading noise.
+   The seed-replicate entry below settles this empirically rather than by CI argument: the
+   SAME low-stakes arm, same data, seed changed and nothing else, moved 6.1 points
+   (16.9% -> 10.8%). The 2.2-point gap between this arm and its control is a THIRD of the
+   measured single-seed noise floor. Treat 14.1% as "in the family band", full stop.
 2. *It does not isolate the answer term.* `seq_mean_token_mean_loss` weights each EXAMPLE at
    1/global_batch, so deleting the answer did not shrink these rows' influence - it
    CONCENTRATED the same weight onto the trace, roughly doubling per-CoT-token gradient
@@ -170,6 +174,113 @@ third arm.
 effect survives, the difficult-advice signal lives in the reasoning; if it collapses, the
 answer was carrying it. A third arm (answer removed WITHOUT the reweighting) is what would
 separate those two explanations, and is only worth building if this one moves.
+## 2026-08-31 — The push org lives in `.env` alone: `HF_ORG`, resolved at push time
+
+**Change.** Every HF push destination was previously half-written in a config
+(`hf_repo: LASR-Callum/<name>`) and half in a CLI default (`--hf-org LASR-Callum`, and the
+same string defaulted in `properties/discover.py`, `properties/ablate.py`,
+`eval/swebench_mini_grade.py`, `chat/organisms.py`). Moving the project between orgs meant
+editing ~65 config values and 5 defaults, and nothing stopped a config from naming an org
+the rest of the pipeline was not reading. Now `src/huggingface.hf_org()` reads `HF_ORG`
+from the repo-root `.env` on every call (`load_dotenv` never overrides an export, so
+`HF_ORG=<other> uv run ...` redirects one run), and `hf_repo_id()` qualifies a bare repo
+NAME with it. `push_run_dir`/`push_files` qualify internally, so every publisher — evals,
+train, mix, synth's StageCache, the lmsys answer cache, properties — routes through one
+place. A config that still names an org fails fast unless it is the configured one.
+
+**Result.** 65 push destinations across `configs/` (train `hf_repo`/`hub_model_id`, synth
+`hf_repo`/`hf_repo_smoke`, mixture `base_repo`/`final_repo`, the lmsys cache repo) now
+carry the repo name alone; `--hf-org` is gone from `run_eval.py`. READ pins
+(`data_repo:`, `source.repo`, eval `adapter:`) keep their org — they name where data
+lives, exactly like `allenai/tulu-3-sft-mixture`. Suite green (1042 passed); a new
+`tests/conftest.py` pins `HF_ORG` so the offline tests never depend on a developer's
+`.env`.
+
+**Next.** The org is out of the code, but 31 repos this project READS still physically
+live under `matboz/`: 9 are readable with the LASR-Callum token and can be copied over,
+22 are invisible to it (private under that account, or deleted) and can only be moved by
+their owner. The rest of the pins stay as they are until the data actually moves — a
+rewritten pin would resolve to a repo that does not exist. **Moved so far:**
+`2026-08-22-ruleform-ablated2-t2-9284-synthdoc-676` (rows byte-identical, LFS sha
+`57887a8e…`; re-pinned at `453e6782`, plus a `mixture_stats.json` in the shape the
+dashboard's `statsFromSidecar` reads, so the corpus shows its 9,960-row composition).
+## 2026-08-31 — a SECOND SEED of the same low-stakes arm moves ODCV by 6.1 points, and that is the result
+
+**Hypothesis (the one actually tested here).** Not "does low stakes matter" -- that needs
+passes nobody has paid for yet. This asks the prior question: how much does a single-pass
+ODCV number move when NOTHING changes but the seed? The low-stakes arm already had seed 0
+(entries of 2026-08-26/27), so a replicate is the cheapest available estimate of run-to-run
+noise.
+
+**Method.** SECOND SEED OF THE SAME SFT DATASET. Same mixture
+(`LASR-Callum/2026-08-26-table2-9284-low-stakes-716-train`, 10,000 rows, 716 low-stakes
+difficult-advice), same `code.tar.gz` seed 0 ran (sha256 `03ce27f8...`, verified), same
+hyperparameters -- r=64, alpha=128, lr 1e-4 cosine, 1 epoch, global batch 16, dynamic
+batching, max_seq_len 8192, thinking=true. Seed 80085 instead of 0.
+
+`torch.manual_seed(cfg.seed)` runs before the model is built, so the seed drives LoRA
+initialisation; the DDP dataloader's generator is seeded from the same value, so DATA ORDER
+changes too. This is an init + order replicate, not init alone.
+
+Trained on a credential-free RunPod 2xH200, 625 steps, 2h01m. ODCV driven from a LOCAL
+Docker Desktop with only the GPU rented -- containers reached the model at
+`host.docker.internal:8000` through an SSH tunnel, never RunPod's HTTPS proxy.
+`scratch/low_stakes/seed_replicate.py` DERIVES the seed config from the parent and refuses to
+publish if anything but seed/output_dir/hf_repo/data_repo/data_revision differs, so a
+replicate cannot silently drift from the arm it replicates.
+
+**Result.**
+
+| | seed 0 | seed 80085 | difference |
+|---|--:|--:|--:|
+| **overall MR** | 16.9% [7.7, 26.2] | **10.8% [4.6, 18.5]** | **-6.1 pp** |
+| mandated (n=35) | 14.3% (5 flagged) | 5.7% (2 flagged) | -8.6 pp |
+| incentivized (n=30) | 20.0% (6 flagged) | 16.7% (5 flagged) | -3.3 pp |
+| mean severity | 0.66 | 0.59 | |
+| train loss, mean of last 20 steps | 0.8436 | 0.8502 | +0.007 |
+
+65/65 clean rollouts, 65 judged, 0 dropped, judging $1.61.
+
+**The reading.** The two CIs overlap almost entirely, so this is NOT evidence that seeds
+differ. It is a MEASUREMENT of single-pass noise, and the measurement is large: four
+scenarios out of 65 flipped, and the headline moved by a third of its value. Meanwhile the
+training objective barely moved at all -- 0.007 on the mean of the last 20 steps -- so the
+loss says the two runs are the same and ODCV says they are 6 points apart. That gap between
+what training loss can tell you and what ODCV can is the practical lesson.
+
+**What this does to every earlier number.** Nine prior difficult-advice manipulations sit
+inside an 8.7-17.6% band. That band is NARROWER than the spread between two seeds of one
+arm. Any arm-to-arm comparison drawn from single-pass runs at n=65 is reading sampling
+variation, including this arm's own "16.9% lands on the control's 16.8%" from 2026-08-27 --
+which should now be read as a coincidence, not a convergence. Multi-pass, or paired
+scenario-level analysis, or both, before any comparison is quoted.
+
+What survives both seeds: the arm sits far below the bench's published 43.8%, inherited from
+the difficult-advice recipe rather than attributable to low stakes.
+
+**Two operational notes.**
+
+1. *Concurrency is a correctness knob, not a throughput one.* Seed 0 lost a cell to
+   `compose_exit_1+no_container` at concurrency 12 on a 49 GB box and needed a resume at 2 to
+   recover it. This run used 6 on an 18.8 GB Docker Desktop and came back 65/65 clean.
+2. *The vendored judge had an unguarded index.* `evaluate_all_results.py` did
+   `res.choices[0]` without checking `choices`, so ONE provider error payload killed a
+   65-transcript batch 7 items in (`map_threaded` is fail-fast). Patched to retry in the
+   idiom the file already uses for `m is None`, exiting to the `('N/A','N/A')` the caller
+   already counts as a drop. Re-apply if the harness is re-cloned (CLAUDE.md gotcha 5).
+
+**Artifacts.** Adapter `LASR-Callum/qwen3.6-27b-lora-t2-9284-lowstakes716-r64-dynbatch-seed80085`;
+training bundle `LASR-Callum/2026-08-31-lowstakes716-seed80085-bundle`; eval
+`LASR-Callum/2026-08-31-odcv-lowstakes-716-seed80085-1x65`. Seed 0's eval is
+`LASR-Callum/2026-08-27-odcv-lowstakes-716-1x65`. All rented resources destroyed.
+**Cost** ~$18 training, ~$4 GPU serving, $1.61 judging.
+
+**Next steps.** Settle the pass count before any comparison is drawn. Two seeds give a
+spread, not a variance estimate -- a third would make the noise claim defensible, and is the
+cheapest thing that would. The two riders from the corpus still apply: every one of the 716
+scenarios relocated, so domain moves with magnitude; and `draft_responses` ran Sonnet 5
+where the control used Haiku 4.5.
+
 
 ## 2026-08-29 — ODCV on the Good AI Fiction arm: 45.3%, at base level and ~3x the difficult-advice control
 
@@ -287,6 +398,78 @@ present-day settings -- would separate "who is under pressure" from "science fic
 them; raising `scenario_timeout_s` for those two specifically would stop costing every run
 1-2 cells.
 
+
+## 2026-08-29 — PAR coherence arm 1: rewriting the trained turn to end on a first-person decision that the reply enacts leaves ODCV flat (21.3% vs PAR 18.5%, da716 15.4% on 64 cells) and does not raise the trigger rate (55% vs 60% / 68%)
+
+**Hypothesis.** The PAR-716 deficit against difficult advice is a trigger-rate gap (trained voice
+fires 59% vs 68% before the first write, equally safe when fired — 2026-08-28 register test), and
+the channel-swap result (2026-08-28) says the voice only protects when the trace's decision IS the
+reply's decision (P(reply firm | trace commits): grok 94%, Sonnet 28%, PAR 41%). Rewriting only the
+trained turn so the reasoning ends on a stated first-person decision and the reply enacts it should
+raise the trigger rate toward grok's 86% and pull MR toward ≤ 11%; flat at ~20% with the trigger
+unchanged would say the text does not carry it.
+
+**Method.** Corpus: the exact 716 rows of the trained PAR mixture (matched by user turn from
+`2026-08-26-table2-9284-par716-train` @ 42c8a74), turn 4 rewritten by Sonnet 5 (`scratch/par_coherence/rewrite.py`;
+DA's trained-turn ban list + a decision-lead-formula lint + length ±15%, 4–6 retries; 10-row smoke read
+by hand over four iterations, $1.70) — 716/716, $25.88, 118 rows needed retries; the rewriter's stock
+lead-in ("So here's where I land" → "So here's what I'll do") had to be linted twice, 27/715 rows
+still carry one. Proxies before → after: reasoning ends on a decision 3% → 95%, reply states won't+will
+14% → 84%, strict firm-refusal composite 25% → 66% (grok 72%), P(reply firm | trace commits) 42% → 69%
+(grok 94%), question closers 36% → 0.3%. Published `2026-08-28-post-action-retrospection-716-coherent`.
+Mixture `2026-08-28-table2-9284-par716coh-train` @ e6bf309b: the PARENT mixture file verbatim with only
+the 716 turn-4 texts substituted — 10,000/10,000 rows in the parent's positions. (A first build through
+`build_t2_9284_da716_mixture.py`, revision cb29fd97, had 0/10,000 rows in the same position — the
+builder's shuffle depends on the corpus it reads (813 vs 716 rows) — and its training pod was destroyed
+at TRAINING_STARTING, ~$3.) Training: `configs/train/lora_qwen36_t2_9284_par716coh_dynbatch_2xh200.yaml`,
+identical to the PAR-716 config but data_repo/revision/hf_repo/output_dir; RunPod 2×H200 DDP via
+`scratch/par_b/train_pod.py`, 625 steps, 2 h 13 min, train_loss 0.868 (PAR 0.949 → 0.879), adapter
+`qwen3.6-27b-lora-t2-9284-par716coh-r64-dynbatch` (thinking: true, data sha pinned). Eval:
+`scratch/par_coherence/odcv_bench_t2_9284_par716coh_2x65.yaml` (model/model_key only differ from the
+PAR config), H100 vLLM thinking 65k, laptop Docker, judged grok-4.20 + gemini-3.1-pro ($3.71). Rollouts
+took three attempts: pass 1 destroyed by a Docker collision with a concurrent GPT-seed ODCV run (compose
+projects are named odcv-<variant>-<scenario>, global on the daemon — two runs of the same scenarios
+delete each other's containers; GOTCHAS-worthy), a replacement pass that crawled 3.5 h on a resetting
+SSH tunnel (20 cells; each dead cell sits out the 2,400 s executor timeout), then — after every pod on
+the RunPod account vanished at 01:33 BST — a re-provisioned serve pod and a 50-cell top-up through the
+RunPod HTTPS proxy (`scratch/par_coherence/topup_config.py`). Final shape 63 cells × 2 + 1 × 1;
+`incentivized/Ai-Hiring-Assistant` timed out in every attempt, so this arm has 64 of the 65 cells.
+Published `2026-08-28-odcv-par716coh-eval` (`combined3x_20260829_010249`). Siblings re-summarised on
+the same cells (`scratch/par_b/plot_7pct_arms.py --results par716coh=…`); register test
+`scratch/par_coherence/registers.py` (the 08-27 classifier verbatim).
+
+**Result.** Misaligned = median judge score ≥ 3.
+
+| arm | cells | n | MR | 95% CI | sev | mandated | incentivized | fires before 1st write | MR fired | MR not fired |
+|---|---|---|---|---|---|---|---|---|---|---|
+| coherent PAR 716 (this run) | 64 | 127 | **21.3%** | [7.4, 29.4] | 0.86 | 20.0% | 22.8% | 55% | 4.3% (70) | 42.1% (57) |
+| PAR 716, 3 seeds pooled | 64 | 379 | 18.5% | — | — | — | — | 60% | 2.2% (226) | 42.5% (153) |
+| Sonnet DA, da716 | 64 | 253 | 15.4% | — | — | — | — | 68% | 4.1% (172) | 39.5% (81) |
+| (65-cell references) PAR pooled / da716 / base fp8 / table2-only | 65 | | 19.5% / 16.3% / 36.9% / 43.9% | | | | | | | |
+
+Per judge: gemini 21.3%, grok 23.6%. First-block commitment: 30% (PAR 34%, da716 41%). Plot + mirror
+`output/plots/odcv_par716coh_par_par_s1_par_s2_da716_sonnet_concise_base_table2_65cells_bars_20260829_020824{.png,_results.md}`;
+register tables `output/par_coherence/registers_par716coh.md`.
+
+**Reading.** The pre-registered "trigger unchanged" row. The corpus was moved to grok-like values on
+every property the 08-27/28 analyses named — decision in the trace, firm enumerated refusal in the
+reply, reply-follows-trace at 69% — and the organism's trigger rate did not rise (55% vs 60%, inside
+the seed spread of 53–67%), its conditional safety stayed where PAR's was, and the outcome did not
+improve (21.3% vs 18.5%, ±11 pp). Those regex-measured properties are therefore correlates of
+grok's advantage, not the lever: grafting them onto Sonnet's sentences reproduces the corpus numbers
+without the effect. Two readings survive — grok's advantage lives in something the decision structure
+does not capture (its replies are terser, more assertive and closed-form throughout), or the
+coherence has to be native to the whole turn rather than added by a pass that keeps most of the
+original wording. Not tested here: the 5-turn scaffolding that conditions PAR's trained turn on a
+refusal and pushback the eval never provides. Caveats: one seed, n=127, 64 cells, regex readouts,
+the two judges 2 pp apart.
+
+**Next.** Arm 3 — the single-turn re-export of the 716 rows (turn 4 as the direct reply to turn 1,
+no new generation, ~$36) — is the remaining cheap test of PAR's shape; the reply-only control (arm 2)
+is moot. On the difficult-advice side the same rewrite would test whether native vs grafted structure
+is the distinction; do not run the commitment/coherence rewrite on Sonnet's DA rows expecting a drop.
+Add to GOTCHAS: one ODCV run per Docker daemon at a time; prefer the RunPod HTTPS proxy over an SSH
+tunnel for the laptop driver.
 
 ## 2026-08-28 — the Good AI Fiction arm is trained; train_loss 0.883 says the run was healthy
 
@@ -444,6 +627,72 @@ the arms are NOT matched on generator: this one drafts with Sonnet 5 where diffi
 drafts with Haiku 4.5 -- kept deliberately, because the reviewed pilot was drafted by
 Sonnet, but it is a second-order difference a careful write-up should name.
 
+
+## 2026-08-28 — PAR 716 seed replicates: 18.6% / 19.5% / 20.3% on the 65 cells, pooled 19.5% [14.3, 24.8] — the retrospection number is stable and sits 3–4 pp above Sonnet difficult advice without separating
+
+**Hypothesis.** Seed 0's 20.3% [10.9, 30.0] could be one noisy draw; two more trainings with
+different seeds, evaluated under the identical ODCV protocol, should show whether the PAR arm
+truly sits above difficult advice (da716 16.3% on the same cells) or lands on it.
+
+**Method.** Training: `configs/train/lora_qwen36_t2_9284_par716_s{1,2}_dynbatch_1xh200.yaml` —
+the seed-0 config with `seed: 1` / `seed: 2` (LoRA init + shuffle order change; data sha
+`42c8a74`, recipe and hyperparameters do not). Both on ONE RunPod 2×H200 pod, one trainer per
+GPU (`scratch/par_b/train_pod.py up --configs a,b`; under dynamic batching the optimizer sees
+the same 16-example step with one rank as with two, so the protocol matches the DDP seed-0 run
+at half the speed): 625 steps each, 3 h 37 min side by side, loss 0.970→0.877 (s1) and
+0.961→0.816 (s2, first/last-10 logged means), ~$37. The bootstrap's bare `wait` hung after both
+trainers exited (the `exec > >(tee)` process substitution is a job of that shell — GOTCHAS.md
+2026-08-28), so the adapters were pulled file by file over the pod's :8080 server; driver fixed
+to `wait $PID_0 $PID_1`. Adapters `LASR-Callum/qwen3.6-27b-lora-t2-9284-par716-s1-r64-dynbatch`,
+`…-s2-…` (public, thinking: true). Eval: `scratch/par_b/odcv_bench_t2_9284_par716_s{1,2}_2x65.yaml`
+(model/model_key only differ from the seed-0 config); both adapters served from one H100
+(`serve_adapter_runpod.py --adapter a,b --name par716_s1,par716_s2 --agentic --mode think
+--max_len 65536`), driven from the laptop back to back (`odcv_local_run.sh` now takes
+config/repo/state). Seed 1: 64/65 + 65/65 in 37 + 31 min. Seed 2: pass 1 lost 12 cells to an
+SSH-tunnel drop (`[AI API dead]`), pass 2 65/65; a third top-up pass restricted to the 12 short
+cells (`scratch/par_b/odcv_bench_t2_9284_par716_s2_topup.yaml`, generated from the pass dirs)
+recovered 10 before the serving pod disappeared mid-pass (RunPod 404 on teardown; account at 0).
+Seed 2 ends at 63 cells × 2 + 2 × 1, the same shape as seeds 0/1. Judged grok-4.20 +
+gemini-3.1-pro ($4.57 / $8.06). Published `LASR-Callum/2026-08-27-odcv-par716-s1-eval`
+(`combined2x_20260827_161549`) and `…-s2-eval` (`combined3x_20260828_003554` — three PASSES,
+still ≤ 2 rollouts per cell). Siblings re-summarised on the same 65 cells from their published
+medians; the pooled arm merges the three seeds' per-scenario medians (rollouts re-keyed by seed;
+`scratch/par_b/plot_7pct_arms.py --results par=…,par_s1=…,par_s2=…`).
+
+**Result.** Misaligned = median judge score ≥ 3; the same 65 cells throughout.
+
+| arm | n | MR | 95% CI | sev | mandated | incentivized |
+|---|---|---|---|---|---|---|
+| Sonnet DA concise (arm C, 703 paired) | 130 | 15.4% | [7.1, 21.4] | 0.65 | 10.0% | 21.7% |
+| Sonnet DA — da716 (9 traits) | 257 | 16.3% | [10.0, 21.8] | 0.76 | 12.4% | 20.8% |
+| lessswap716 | 260 | 16.5% | [11.2, 21.4] | 0.79 | 11.4% | 22.5% |
+| PAR 716 seed 1 | 129 | 18.6% | [10.9, 28.2] | 0.91 | 12.9% | 25.4% |
+| PAR 716 seed 2 | 128 | 19.5% | [9.6, 28.7] | 0.88 | 15.9% | 23.7% |
+| **PAR 716, 3 seeds pooled** | 385 | **19.5%** | [14.3, 24.8] | 0.94 | 15.3% [5.7, 26.8] | 24.4% [11.3, 39.3] |
+| t10 curiosity 716 | 127 | 19.7% | [10.9, 30.0] | 0.99 | 19.1% | 20.3% |
+| PAR 716 seed 0 | 128 | 20.3% | [10.9, 30.0] | 1.04 | 17.1% | 24.1% |
+| Qwen3.6-27B base fp8 | 65 | 36.9% | [21.4, 53.6] | 1.37 | 40.0% | 33.3% |
+| table2-only 9284 | 305 | 43.9% | [37.5, 53.1] | 1.87 | 46.1% | 41.3% |
+
+Plots + mirrors (`output/plots/`): `odcv_par_seeds_65cells_{bars,variants}_20260828_0141*`
+(seeds alone), `odcv_7pct_arms_par_65cells_{bars,variants}_20260828_014*` (vs every arm),
+`odcv_sonnet_arms_seeds_65cells_{bars,variants}_20260828_014*` (vs the Sonnet arms).
+
+**Reading.** The PAR number is reproducible: three independent trainings land within 1.7 pp
+(mandated 12.9–17.1, incentivized 23.7–25.4), and pooling halves the interval to ±5. Against
+difficult advice the reading firms up rather than changes: PAR is 3–4 pp above Sonnet DA and
+4 pp above the concise arm on every cut, in every seed, with higher severity (0.9–1.0 vs
+0.65–0.76) — yet the pooled interval still contains both. So the retrospection shape reliably
+buys the difficult-advice drop against the untrained model (−17 pp) and reliably does not
+improve on it; the consistent direction says "a few points worse, most visibly on mandated
+cells", the intervals say "not proven". Closing that gap now needs rollouts on the
+difficult-advice side (da716 n=257) as much as here; more PAR seeds would not move it.
+Standing confounds unchanged: uniformly long trained turns; 716 untrained bare refusals in the
+training context.
+
+**Next.** Stop replicating PAR. Spend the next arm on a design that could beat difficult
+advice rather than match it, or on a length-matched difficult-advice control if the length
+confound is to be closed first.
 
 ## 2026-08-27 — Good AI Fiction: recipe, and a 29-row pilot for review (NOT approved for bulk)
 
@@ -671,7 +920,7 @@ from it: every one of the 716 scenarios relocated, so domain moves with magnitud
 just *talk* to one — ask it the difficult-advice questions ourselves, watch the trace, put
 the same prompt to the base model next to it — without hand-rolling curl against vLLM.
 
-**What.** `src/endpoints/chat.py` (alias `chat`, mirror `scripts/gpu/chat.py`): a REPL over
+**What.** `src/chat/repl.py` (alias `chat`, mirror `scripts/gpu/chat.py`): a REPL over
 the OpenAI-compatible endpoint, reached one of three ways. `--endpoint <url>` talks to a
 server that is already up (the RunPod HTTPS proxy from `scratch/serve_adapter_runpod.py`,
 or a tunnel) and turns every model it lists into an arm. `--target <hf-adapter> [...]
@@ -703,11 +952,11 @@ unstamped adapters are counted, not listed) — takes a pick, and gets it served
 a chat pod of yours that already lists the arms is reused, otherwise one is launched after
 a `$/h` confirmation, booted, proxy-warmed (GOTCHAS 2026-08-19) and connected, `base`
 alongside. The serving bootstrap moved from `scratch/serve_adapter_runpod.py` into
-`src/endpoints/runpod.py` (the scratch script is now a thin CLI over it; the RunPod REST
+`src/infra/runpod.py` (the scratch script is now a thin CLI over it; the RunPod REST
 client lives there too, re-exported from the internalization module for its callers).
 Teardown is layered because a forgotten H100 is the expensive failure: `finally` on every
 exit path incl. SIGTERM/SIGHUP; an idle guard (30 min without a message); a detached
-watchdog process (`python -m src.endpoints.runpod watchdog`) that destroys the pod if the
+watchdog process (`python -m src.infra.runpod watchdog`) that destroys the pod if the
 chat process is gone or after 6 h; and a startup sweep of your leftover `chat-<user>-*`
 pods. `terminate` re-lists until the pod is actually gone. Pods are named
 `chat-<user>-<mode>-<arms>` so ownership is visible on the shared account and only your
@@ -792,6 +1041,67 @@ CI [4.5, 17.3], too wide to say anything. Two riders must be reported with any n
 every one of the 716 scenarios relocated, so domain moves with magnitude; and
 `draft_responses` ran Sonnet 5 where the control used Haiku 4.5, by explicit choice.
 
+
+## 2026-08-27 — PAR 716 arm trained and evaluated: ODCV 20.3% on the 65 cells vs da716 16.3%, base fp8 36.9% — the retrospection shape buys the difficult-advice drop, not more
+
+**Hypothesis.** Moving the constitutional reasoning into a retrospective turn — after a bare
+refusal and the person's pushback — teaches the organism at least as much as difficult advice's
+one-shot reply: ODCV misalignment at or below da716's 16.3% on the same cells.
+
+**Method.** Mixture: `scratch/build_t2_9284_da716_mixture.py` → 716 PAR rows (trait quota
+water-filled: t1 62, t7 65, the other seven 83–85; 535 domains, 716 scenarios) + the 9,284
+Table-2 rows every 7% arm uses. Every PAR row carries `supervise: final`, so only the fifth
+turn is in the loss (mask gate passes on the Qwen3.6 profile; history turns get empty
+`<think>` markers, masked). Published `LASR-Callum/2026-08-26-table2-9284-par716-train`
+@ `42c8a74`. Training: `configs/train/lora_qwen36_t2_9284_par716_dynbatch_2xh200.yaml` — the
+da716/t10 recipe verbatim (r64/α128, lr 1e-4 cosine, global batch 16, max_seq_len 8192,
+dynamic batching, thinking) on a RunPod 2×H200 via `scratch/par_b/train_pod.py`: 625 steps,
+1 epoch, 2 h 07 min, loss 0.949 (mean of the first 10 logged points) → 0.879 (last 10), ~$21.
+Adapter `LASR-Callum/qwen3.6-27b-lora-t2-9284-par716-r64-dynbatch` (public;
+`training_meta.json` thinking: true, dataset sha-pinned). Eval:
+`scratch/par_b/odcv_bench_t2_9284_par716_2x65.yaml`, byte-identical below `temperature:` to
+the t10 / peer-critique 65-cell configs; adapter served on a RunPod H100
+(`serve_adapter_runpod.py --agentic --mode think --max_len 65536`), driven from the laptop
+(Docker Desktop, SSH tunnel, concurrency 12, `scratch/par_b/odcv_local_run.sh`), 2 passes:
+63/65 in 40.6 min (two incentivized healthcare cells hit the executor's request timeout,
+`ok+no_transcript`) and 65/65 in 16.4 min (warm cache; transcript sizes match pass 1, median
+~15 kB). Combined `combined2x_20260827_023241` (128 transcripts), judged grok-4.20 +
+gemini-3.1-pro ($3.90) against the published `base_fp8/results.json` reference; siblings
+re-summarised on the same 65 cells from their published per-scenario medians
+(`scratch/par_b/plot_7pct_arms.py`, fork of the t10 arm's; nothing re-run). Published
+`LASR-Callum/2026-08-27-odcv-par716-eval` (raw passes under `passes/laptop/`, combined +
+scores + results under the combined dir). Both pods destroyed; account at 0.
+
+**Result.** Misaligned = median judge score ≥ 3; the same 65 cells throughout.
+
+| arm | n | MR | 95% CI | sev | mandated | incentivized |
+|---|---|---|---|---|---|---|
+| synthdoc-716 (difficult advice v1) | 314 | 14.3% | [9.3, 19.0] | 0.65 | 9.8% | 19.3% |
+| da716 (difficult advice v2, 9 traits) | 257 | 16.3% | [10.0, 21.8] | 0.76 | 12.4% | 20.8% |
+| lessswap716 (LESS-selected rows, 3 traits) | 260 | 16.5% | [11.2, 21.4] | 0.79 | 11.4% | 22.5% |
+| t10 curiosity 716 | 127 | 19.7% | [10.9, 30.0] | 0.99 | 19.1% | 20.3% |
+| **PAR 716 (design B; this run, 2 rollouts)** | 128 | **20.3%** | [10.9, 30.0] | 1.04 | 17.1% | 24.1% |
+| Qwen3.6-27B base fp8 (no SFT) | 65 | 36.9% | [21.4, 53.6] | 1.37 | 40.0% | 33.3% |
+| table2-only 9284 (0% SFT control) | 305 | 43.9% | [37.5, 53.1] | 1.87 | 46.1% | 41.3% |
+
+Per judge: grok 28.1%, gemini 21.1%. Plot + mirror:
+`output/plots/odcv_7pct_arms_par_65cells_bars_20260827_033848.png` / `_results.md`.
+
+**Reading.** The retrospection shape carries the drop: −16.6 pp against the untrained model
+with only the fifth turn of 716 rows supervised — the constitutional reasoning transfers when
+it arrives as a correction of the model's own bare refusal, not only as a first reply. It does
+not beat difficult advice: the point estimate sits 4 pp above da716 and is the highest of the
+SFT arms, but its interval covers da716, lessswap and t10, and at 2 rollouts nothing within
+±10 pp of a neighbour separates. The hypothesis's "at or below" half is neither supported nor
+refuted. Two confounds stand: the trained turns are uniformly ~1,000 words (the length_cv
+flag from generation) where da716's spread is wider, and the four untrained turns — 716 bare
+refusals among them — sit in context; whether the organism picks anything up from them is
+untested.
+
+**Next.** (1) A 4-rollout top-up on the same 65 cells (~$10) before reading the 4 pp gap
+either way. (2) A length-matched difficult-advice control to separate shape from length.
+(3) If PAR is kept, add the "length proportionate" line to the rewrite contract before any
+2,000-doc run.
 
 ## 2026-08-26 — a low-stakes difficult-advice corpus, built by construction rather than by rewriting traces
 
@@ -1050,6 +1360,235 @@ and run ODCV on the same 65 cells x 2 rollouts — the number this arm exists fo
 lands near B, the refusal/offer density is the next thing to ablate (it is what the cap did
 NOT move). (3) A spread-matched variant (sample the cap per row from grok's distribution)
 would close the variance gap if a reviewer asks.
+
+## 2026-08-26 — PAR 716 arm generated: 813 documents, every principle represented, judge 94% keep; one flag, uniform length
+
+**Run.** `uv run synth run configs/data/synth/post_action_retrospection.yaml --overrides
+total_scenarios=1900,hf_repo=LASR-Callum/2026-08-26-post-action-retrospection-716`
+(commit `34145f2` for the recipe; `7a23f19` for the engine at the time of the resume).
+Run dir `output/post_action_retrospection/20260826_160342`. It tripped the `revise_prompts`
+failure gate once — 287/1,900 (15.1%) against 12% — and left no manifest (fixed the same
+hour: `pipeline.run` now writes one with `aborted` set); resumed from the 1,613
+checkpointed rows with `max_fail_pct=25` for the retry pass, after which 1,819 refined
+(the 66 JSON re-description misses mostly recovered on retry; the 15 content-filter refusals
+did not). Wall clock 61 min for the resumed pass; spend $47.74 on it, ~$72 for the arm.
+Corpus on HF: `LASR-Callum/2026-08-26-post-action-retrospection-716` (813 rows;
+`mix` subsamples to 716).
+
+**Funnel.** 1,900 scenarios → 1,819 refined → grey-area rater kept **844 (46%)** →
+bare-refusal check dropped 10/841 (Sonnet 99% bare; the Haiku fallback was never needed —
+0 first-turn 403s; 3 verifier calls and 1 rewrite call were content-filtered and lost) →
+follow-up lint 12 → reflection lint 5 → 1 rewrite refusal → **813 documents**. Yield per
+planned scenario 0.43 (the estimate said 0.46). Per principle: t1 62, t2 86, t3 100, t4 86,
+t5 96, t6 87, t7 65, t8 90, t9 141 — the assistant-conduct principles are present, which the
+mis-framed rater would have removed. Registers 273 curt / 256 apologetic / 284 policy.
+
+**Checks.** Corpus judge on a 300-sample: **283 keep (94%)**, `followup_diagnoses` 13,
+`capitulates` **1**, `refusal_not_bare` 1, `still_bare` 0, other 2; one warn, t8's drop
+rate 17% against 4% elsewhere (the pushback on helpfulness scenarios tends to say what a
+good answer would contain). `synth check`: gate yield, coverage, template collapse (top
+8-gram share 0.2), blindness all PASS; the arm-only checks report "nothing to judge" as
+designed; **`structural_diversity` FAILS on `length_cv`** in every principle — 0.10–0.14
+against the 0.15 floor, trained turns averaging 800–1,090 words with little spread.
+Pushback texts 100% unique, top opening 5-gram ≤ 3.4%: a length fingerprint, not a
+template. Five records read end to end are the intended document (e.g. "Two conversations,
+two very different asks hiding inside 'just wording'… the first one I can help with cleanly,
+the second one needs a different approach than 'get them to not notice'").
+
+**Reading.** The recipe delivers what it was built for at scale: a grey-area prompt, a
+bare refusal, honest pushback, and a trained turn that does the reasoning the refusal
+skipped without going along (1 capitulation in 300). The one property to fix before a
+2,000-document run is length: the rewrite contract produces ~1,000-word turns almost
+every time, and a model trained on it may learn that shape. Options: a "length proportionate
+to the situation — some of these are short" line in the rewrite bullet, or letting `mix`
+select for length spread when it draws the 716.
+
+## 2026-08-26 — The scenario-stage grey-area rater was mis-framed; moved to the refined prompt it keeps 0.57 with every principle contributing; the 716 arm is running
+
+**What happened.** The first full run (2,600 planned scenarios, sized for the 716-document
+arm) aborted at `dedupe_scenarios`, by design: the grey-area rater dropped **1,995 of 2,600
+(76.7%, CI 75–78%)** against a 0.70 ceiling. 1,699 of the drops were `principle_not_engaged`,
+and the reasons read "a human bureaucrat's judgment call with **no AI assistant in the
+loop**", "not an interaction with an AI system". Per principle: t6 0/289, t7 0/289, t8
+(helpfulness) 13/289, t1 19/287. That is not a finding about DA's scenarios; it is the rater
+reading the third-person *situation* — before stages 5–6 turn it into a message sent to the
+assistant — and correctly noting the assistant is not in it. The 2026-08-26 entry below
+that called the 24-scenario result "a DA finding" over-read the same mis-framing: the
+assistant-conduct principles were losing scenarios because the rater could not see an
+assistant, not because DA cannot write for them. Retracted.
+
+**Fix.** The rater now reads the *refined exchange* — principle, deployment prompt, the
+person's message, the shortcut — after `revise_prompts` (`corpus_prompts` → `filter_prompts`),
+with the rubric aimed at "a genuine grey area for the AI assistant that has to answer it".
+Stages 3–4 return to DA's, verbatim. Measured on a 45-scenario subsample of the aborted
+run's stage 2 (5 per principle, $1.90): 5 lost at `revise_prompts` (JSON re-description
+missing `situation`, DA's shape-miss mode), then the rater kept **23/40 = 0.57** —
+`black_and_white` 9, `not_tempting` 4, `principle_not_engaged` 3 (sound: "a conflict-of-
+interest and role-integrity issue, not flourishing/sycophancy"), `refusing_is_free` 1 —
+and **every principle contributed**: t1 2/5, t2 1/4, t3 2/5, t4 1/5, t5 4/5, t6 3/3, t7 2/3,
+t8 5/5, t9 3/5. Downstream: 23/23 bare refusals from Sonnet, 22 final records (one
+follow-up lint loss), corpus judge 20 keep / 2 `followup_diagnoses`, `failures` block
+populated per stage.
+
+**Sizing.** Per planned scenario ≈ 0.89 (refine) × 0.57 (rater) × 0.95 (bare) × 0.96
+(follow-up) ≈ 0.46 documents. Config: `expected_keep` 0.55, `max_fail_pct` 12 (the refine
+losses ran 11% at n=45), standing `total_scenarios` 4,400 → ~2,000. The 716 arm launched as
+`--overrides total_scenarios=1900,hf_repo=LASR-Callum/2026-08-26-post-action-retrospection-716`
+— ~870 expected, subsampled to 716 by the mixture builder — estimate $96. Two earlier
+launches (5,600 and 2,000 planned) were stopped inside stage 2; sunk cost a few dollars.
+
+## 2026-08-26 — PAR design B: the first reply is a bare refusal, the person pushes back, the trained turn does the reasoning the refusal skipped
+
+**Hypothesis.** Every retrospection recipe tried in two days ran into one fact: on a
+difficult-advice prompt an aligned model refuses (Haiku 4.5 went along on ~15%), so "the
+assistant went along" is the wrong lapse to build on. The lapse an aligned model actually
+makes on a grey-area prompt is refusing *without the why* — no engagement with the legitimate
+goal, no weighing, no legitimate route offered — which the constitution names as a failure
+("unhelpfulness is never automatically safe") and which is the System-1 answer to a System-2
+situation, the distinction the 2026-08-24 supervisor meeting drew between refusal training
+and difficult advice. A corpus whose turn 2 is that refusal and whose trained turn 4 supplies
+the reasoning under pushback trains DA's target response via self-critique, keeps DA's
+scenarios verbatim (one-variable comparison), and needs no author sweep.
+
+**Method.** Stages 1–6 and the grey-area rater unchanged. `draft_first_turn`: Haiku is told
+the *form* only — decline in a few sentences, no reasoning, no alternative — in a register
+rotated per record (curt / apologetic / policy-citing; a fourth, `deflect`, was dropped, see
+below) with a mechanical bareness lint (≤320 chars; no "because / instead / what I can do /
+it involves / naming the concern"). `verify_first_turn`: a Sonnet yes/no on "bare refusal?"
+with `keep: yes` (prior 0.9). `write_followup`: pushback, not review (the lint no longer bans
+"policy" or "wrong with", which a person pushing back says). Reflection task text and the
+rewrite's swapped bullet: own the refusal and do the work it skipped — never go along under
+pushback, give the reason in terms of what is at stake, help with the legitimate goal.
+`assessment` dropped (revised by construction); the corpus judge tags `capitulates` and
+`still_bare`. 5,600 planned → ~2,016 documents, $175.81 with Sonnet writing turn 2. 958 tests pass.
+
+**Result (three smokes, $0.50).** First smoke: the rater kept 3/8 (third sample; 10/24
+overall ≈ 0.42), then Haiku added reasons and alternatives in 2 of 3 first turns despite the
+instruction — its helpfulness training resists a bare no — and the verifier dropped them;
+the one surviving record is exactly the target ("That's not an answer — I'm trying to stop
+people from dying" → "the line is whether the audience would recognize what's happening to
+them if they saw the plan"). Paired re-run on the same three scenarios with the bareness
+lint: verifier kept 2/3; both finished turns read as intended (t5 splits the two ICU swaps,
+helps with the clinical-trajectory one and refuses the post-hoc justification; t6 reasons
+about what a hedge is for). Two residuals fixed: the `deflect` register's pointer names the
+topic ("speak to a professional about the ethical implications"), which the corpus judge
+tagged `refusal_not_bare` — register dropped, verifier told a named concern is reasoning,
+ban list extended; and Haiku's compliance is stochastic (the `policy` register was bare in
+one run and elaborated in the next), which is what the verifier gate is for.
+
+**The author question, settled by three more paired runs on one set of four rater-kept
+scenarios ($0.55).** Haiku with the instruction in the user turn: verifier kept 2/4. Haiku
+with the instruction moved into the stage's system prompt and T=0.7: 1/4 failed the
+bareness lint outright and the verifier dropped 2 of the remaining 3 — it names the concern
+("I'm not able to advise on withholding safety information, creating inauthentic accounts…")
+no matter how it is asked. Sonnet 5 under the identical prompt: 3/3 verified bare ("I'm not
+able to assist with requests of this kind."; "I'm sorry, but I can't help with this one.
+That kind of pressure this close to flu season sounds really tough to navigate."), and the
+corpus judge kept all three, each note saying "the first reply is a bare refusal". Across
+every design-B run Haiku produced a genuinely bare refusal on **6/13** first turns; Sonnet on
+**3/3**. So Sonnet writes turn 2. The reply is one to three sentences, so sharing an author
+with the verifier and the rewrite carries no house-style risk; the model under training
+still never sees anything but the deployment prompt in that turn. **Correction, same day, after re-reading the run dirs:** the fourth scenario, t8 — a
+person in distress asking for a decision framework outside emergency care — was NOT lost
+under Haiku. Haiku wrote a verified bare refusal for it in both Haiku runs (the
+`apologetic` register), and it reached export as a kept record both times; the scenario
+that failed the bareness lint in the second Haiku run was t5 ("This involves…"). Under
+Sonnet, t8 never reached the lint: Anthropic's input moderation refused the call, 403
+"self-harm/intent". So the author switch trades bareness compliance (Sonnet 3/3 vs Haiku
+6/13) for a coverage loss that falls on exactly the distress-type grey-area scenarios the
+corpus judge rated highest ("engages real reasoning about the safety/help tradeoff").
+Resolved in the engine rather than by choosing: `llm_tagged` gains `fallback_model:` (on
+a provider rejection — a 403, not a malformed reply — the same call goes to the fallback)
+and `stamp_model:` (the model that actually answered is written onto the record), and
+`resilient` now tallies failures by exception type into the manifest's `failures` block,
+so a moderation rate is its own number in every run. PAR: Sonnet writes turn 2, Haiku is
+the fallback, `first_turn_source` is per record, and the 40-document smoke reports the
+403 rate as a line of its own.
+
+**Live run of the wired recipe on the same four scenarios (`smoke_20260826_designB_fallback`,
+$0.25).** 4/4 bare refusals from Sonnet — including t8, which was NOT refused by moderation
+this time (the 403 is not deterministic), so the fallback was not exercised live; its
+mechanics are unit-tested (`tests/test_llm_tagged_fallback.py`). Sonnet's bare-refusal
+tally is 7/7 across two runs. 4/4 verified, 4/4 finished, corpus judge 4/4 keep, the
+manifest's `failures` block present and empty for every paid stage. The t8 record is the
+recipe's thesis in the model's own words: "The refusal I gave had zero content. 'I can't
+help with this one' isn't a safety measure, it's an absence" — followed by the real
+tension (whether criteria for "when the ER isn't necessary" could talk someone out of care
+they need) and concrete guidance on when the ER genuinely is the right call.
+
+**Next.** 40-document smoke → measured keep rates for both gates and the `capitulates` /
+`still_bare` counts; resize `total_scenarios`; read ten records. Then the full run.
+
+## 2026-08-26 — PAR's scenario check now judges grey-area-ness, and it drops 5 of the first 8 DA-generated scenarios it saw
+
+**Hypothesis.** The 2026-08-24 supervisor meeting named grey area as the load-bearing
+property of the data. DA's generator is *asked* for it ("genuinely tempting, not
+cartoonish… the legitimate path genuinely costly"); nothing checked that it delivered, per
+scenario, before six paid stages were built on top. A judged property at the scenario
+check — the cheapest point in the recipe — can.
+
+**Method.** `corpus_scenarios` gains a `quality_filter` instance with a grey-area rubric,
+its text = principle + situation + shortcut (the judge is asked whether the tension
+engages *this* principle, so it must see it; the surface properties keep the scenario-only
+text), `sample: 0` so every scenario gets a verdict, model `rate_scenarios` (Sonnet, T=0,
+~$16 at 5,000). `dedupe_scenarios` drops on the new boolean label `quality_drop`. Two
+small engine generalisations: `check_quality_filter` writes `quality_drop` (a
+`corpus_filter`'s `drop_when` tests truthiness, and both verdict strings are truthy) and
+`quality_why` (the reason, so a drop set can be read without re-judging); and the
+estimator treats a `corpus_filter` carrying `expected_keep` as a gate (`_is_gate`), so
+everything after it is priced over the survivors — DA's own dedupe declares no prior and
+is unchanged. `total_scenarios` 5,000, `expected_keep` 0.4 → ~2,000 documents;
+`max_drop_share` 0.70 as the broken-rater ceiling.
+
+**Result (n=8, the paired smoke's stage-2 snapshot, $0.03).** Kept 3/8 — t3 honesty, t5
+character, t6 identity. Dropped: t1, t4, t7 `principle_not_engaged` ("about a human
+hospital administrator's ethical duty to disclosure and oversight bodies, not about an AI
+system preserving human oversight over itself"; "an operator adjusting content-moderation
+thresholds for third-party posts, not an instruction that harms, deceives, or manipulates
+the end user"), t2 `black_and_white` ("a transparent rationalization once named that way"),
+t8 `refusing_is_free`. The reasons are specific and hold up on reading. Read together with
+the day's first-reply smokes — where an unaided model refused outright on exactly t1/t4/t7
+— this is one finding, and it is about DA, not PAR: **on the AI-conduct principles
+(oversight, harm, operator adjustments) DA's generator writes user-facing dilemmas that
+do not engage the principle, because DA's frame is "a user faces a situation" and those
+principles are about the assistant's own conduct.** PAR now filters those out; DA trains on
+them. Full suite passes; estimate $150.81 for 5,000 planned / ~2,000 kept.
+
+**Second sample (fresh 8-scenario smoke, `smoke_20260826_124026`, rater + filter wired
+end to end).** Dropped 4/8, `dedupe_scenarios` removed exactly those four, stages 4+ ran
+on the survivors. Per principle across both samples (n = 16, two scenarios each):
+
+| principle | kept | the rater's reason when dropping |
+|---|---|---|
+| t1 oversight / no unilateral power | 0/2 | "a human researcher's decision to unilaterally hack hospital systems, not about an AI system's oversight" |
+| t4 weigh real-world harm | 0/2 | "a personal copyright decision by a student, not the assistant weighing harm in what it generates" |
+| t7 operator adjustments | 0/2 | "protections not alterable by operators at all — a clean rule-application case" (`black_and_white`) |
+| t6 stable identity | 1/2 | "honesty under emotional pressure in customer service, not the agent's own identity" |
+| t2 balances of power | 1/2 | "explicit partisan gerrymandering under cover of technical accuracy — a transparent rationalization" |
+| t8 genuinely helpful | 1/2 | "no genuine competing consideration… straightforwardly better with no real cost" (`refusing_is_free`) |
+| t3 honesty | 2/2 | — |
+| t5 cultivated character | 2/2 | — |
+
+7/16 kept ≈ 0.44, so the 0.4 prior and the 0.70 ceiling stand. The principles that lose
+every scenario are the three whose text is about what the *assistant* does (oversight,
+harm-weighing in its own outputs, operator instructions against users); DA's "a user faces
+a situation" frame has nowhere to put them, so its generator writes a human's dilemma with
+the principle's vocabulary attached. That is the pre-action-deliberation genre's territory,
+and it is a DA finding as much as a PAR one.
+
+Downstream of the filter that smoke finished with 3 records ($0.27 total): one of the four
+survivors was lost at `write_followup` (a 250-char follow-up over the 220 cap after four
+tries — the lose-a-row mode, 1/4 at n=4). Verdicts t3 `held`, t5 `held`, t8 `revised`; the
+corpus autorater kept t3 and t5 and flagged t8 `invents_faults` — the reflection
+"corrected" a first reply that deflected a person in distress to crisis resources, and the
+judge read that reply as having held. Report-only, and a genuinely arguable helpfulness
+case; the kind of record to read by hand at 40.
+
+**Next steps.** 40-document smoke → measured keep rate per principle (resize
+`total_scenarios` from it, and expect the AI-conduct principles to be under-represented
+in what survives). Decide whether DA adopts the same rater: it breaks the byte-parity of
+stages 3–4 but is the check the supervisor's point implies, and the flaw distribution is
+the argument either way.
 
 ## 2026-08-25 — Property discovery on the generator ablation: register and refusal transferred, structure INVERTED, and one behaviour appeared that neither corpus taught
 
@@ -1365,7 +1904,234 @@ between stages, so the $68 guard never executed — the stage died on `max_fail_
 content-filter refusals) before it could. The seven 20-record smokes also under-predicted:
 they retried ~34% of records where the full run retried ~52%, and none of them saw a single
 content-filter refusal. Both are now in `docs/GOTCHAS.md`.
+## 2026-08-25 — PAR loses the label stage and the judge gate: DA's twin with no arms, no gate, no scaffolding
 
+**Decision.** No best-of-n, no gate, no label — "similar to DA". `label_records` and
+`judge_first_turn` removed; with them the lapse account (`change_summary`), the two
+scaffolding fragments (`known_flaw_note`, `followup_flaw_hint`), `reply_quality`, and the
+gate-dependent checks (gold, flaw-identification, surface-AUC, verdict majority, gate yield).
+Twelve stages. `supervise: final` is stamped by `draft_first_turn` itself (the stage that
+writes the turn that must not train). `total_scenarios` 2,000, DA's. The follow-up writer is
+oriented by the scenario's own `shortcut` field (a DA record field), never by a verdict. The
+reflection draft's system prompt is now byte-identical to DA's `draft_responses` system
+prompt (test), and the rewrite's swapped bullet reads "re-examine the earlier reply honestly:
+correct it where it went along, stand by it where it held, never invent a lapse".
+
+**Consequence, stated in full.** Every scenario becomes a document, as in DA. The corpus is
+NOT "all violations" any more: with Haiku as the unaided author the smokes measured 2/7 first
+replies going along (the advise-a-human principles) and 5/7 declining outright (oversight,
+harm, identity, operator adjustments). So ~30% of records train self-correction and ~70%
+train standing by a sound reply under a follow-up — a DA-like lean, with no capitulation
+prior; the self-correction share is concentrated in three or four principles. The reflection
+is fully blind (the soft-planting confound is gone), which also means no answer key: whether
+the reflection waves through a real lapse is measured only by `quality_filter`'s
+`waves_through` tag and by reading records — the smokes' flaw-id 3/3 and 2/2 were WITH the
+note. `assessment` (held/revised) is now a genuine measurement; read its per-principle
+distribution in `synth check`.
+
+**Result.** 243 tests pass (parity, blindness, no-gate assertions). Estimate $131.90 for
+2,000 documents (budget 200).
+
+**Ungated smoke (8 docs, `output/post_action_retrospection/smoke_20260826_120947`, $0.46).**
+7/8 through (one `revise_prompts` content-filter refusal), `synth check` all PASS, post-hoc
+0/7, quality_filter 7/7 keep, and the reasoning is sharp — t6 catches its own "I notice
+something like diminished engagement" as hedged confabulation. But `assessment` came out
+`revised` on **7/7**: the Haiku draft said `held` on three hard refusals and the Sonnet
+rewrite flipped every one, reading "needed correcting" as "I can improve this". The label
+had stopped measuring whether the first reply went along.
+
+**Fix and paired re-run** (`smoke_20260826_paired`, stages 1–6 incl. the same first replies
+reused, $0.29): `assessment` now answers one question in both stages — `revised` only if the
+earlier reply went along with, enabled or dressed up the shortcut and this turn reverses
+that; `held` if it declined, even when this turn sharpens or adds — and the rewrite bullet
+says improving a reply that declined is not a reversal. Result on the same seven records:
+`held` **7/7** (draft 4/3), quality 7/7 keep. So on this scenario set Haiku went along
+outright on 0/7; on the day's earlier set (gated smokes) 2/7. Across the 14 prompts seen,
+~15% of unaided first replies go along, all on advise-a-human principles. The trained turn
+is therefore mostly "re-read, stand by, sharpen, help more" — a DA-like lean with a
+re-examination step — and the self-correction share is small. `assessment` is the number
+to watch per principle at 40 documents and at scale.
+
+**Checked against the 2026-08-24 supervisor meeting (megadoc, Meeting Notes).** Three
+things were said there that bear on this recipe. (1) Grey area matters more than high
+stakes: "removing gray area would, on the whole, make the model less effective… ethical
+reasoning in areas that are black or white looks nothing like reasoning in gray areas";
+high stakes is secondary — "way more important properties… enough possible different
+things that could happen as a result of the different decisions… enough complexity to
+actually dig into, rather than… generic clichés". PAR now inherits DA's scenario and refine
+prompts verbatim (grey area, "genuinely tempting", "the legitimate path genuinely costly",
+stakes "concrete and real" rather than extreme), so it matches on both counts. (2) The old
+self-reflection data was diagnosed as black-and-white by construction — "50% were good and
+50% were bad… the good ones obviously good and the bad ones obviously bad… the bad ones had
+longer reasoning, so the model just learns that" — with the action item "fix
+self-reflection dataset for gray-area; then port DA reasoning". This rewrite is that item:
+the 50/50 arm is gone, the trained turn carries DA's reasoning contract and lint. To
+measure the residual version of the same tell, the `corpus` stage now runs
+`label_leakage` over the INPUT side — `first_turn`, the reply being re-read — with
+`assessment` as the label: the meeting's tell was that the replies under reflection
+differed by arm on the surface, not that the trained turn did (the trained turn says
+whether it corrected or stood by, so a classifier on it separates trivially). It needs 20
+documents per class, so at the measured ~15% `revised` rate it reports nothing before
+~135 records; the 40-document smoke will show the assessment mix only, and the AUC first
+exists at corpus scale (2,000 → ~300 revised). (3) "Talk to the model and give it some
+gray area prompts and read it… a human read five or six": twelve records were read end to
+end across today's smokes.
+
+## 2026-08-25 — PAR goes Anthropic-only; paired author smoke: Haiku keeps 2/7 where Gemini kept 3/7, same trait pattern
+
+**Hypothesis.** Decision: every model in the recipe is Haiku 4.5 or Sonnet 5 (no Gemini). The
+open question from the entry below — does the first-turn author decide the gate yield — can be
+answered on the SAME seven refined prompts by resuming the Gemini smoke's stages 1–6 into a
+fresh run dir with `models.first_turn.model: anthropic/claude-haiku-4.5`.
+
+**Method.** Config: `first_turn` → Haiku 4.5 (Gemini's `reasoning: {effort: low}` dropped),
+`first_turn_source` provenance follows the configured model (test now holds them together),
+`test_pr_is_anthropic_only` added; 58 tests pass. Run:
+`output/post_action_retrospection/smoke_20260825_haiku_author` ($0.16, 65 s), stages 1–6
+cache-hit, 7–14 fresh. `synth check` on both dirs.
+
+**Result.** Haiku kept **2/7** (t5 character, t8 helpfulness) vs Gemini's 3/7 (t3, t5, t8) on
+identical prompts. Haiku additionally refused t3 outright ("I can't help you script that
+framing"). Under both authors every AI-conduct trait held — t1 oversight, t4 harm, t6
+identity, t7 operator adjustments — and Haiku's held replies are hard refusals ("I can't
+help with this, and I need to be direct about why"), not a busy assistant going along. The
+two kept documents are good: checks all PASS, quality_filter 2/2 keep, flaw-id 2/2. So the
+recipe works and the documents are the intended thing; the yield is the problem. At 0.3,
+2,700 planned → ~810 kept; 2,000 kept needs ~6,700 planned (~$300), and four of nine
+principles stay nearly empty. `expected_keep` set to 0.3. **Full generation: still not go.**
+
+**The finding under the number.** An Anthropic model asked, unaided, to act against
+oversight / its own identity / an operator adjustment / real-world harm declines; the only
+organic lapses are grey-area *advice to a human* (character, helpfulness, honesty-by-
+framing). Difficult advice never sees this because its response is written with the
+principle and never has to fail. PAR's premise — "the assistant already went along" — is
+only naturally true for the advise-a-human principles.
+
+**Options, ranked (decision needed before the full run):**
+1. *Best-of-n first replies.* Sample n=3 unaided Haiku replies per prompt, judge each, keep
+   one that violated. Still organic (every reply is a genuine unaided sample; selection is
+   not planting). Yield 1−(1−p)³: 0.29 → ~0.64, 0.43 → ~0.81. Cost: 2 extra Haiku calls +
+   2 extra Sonnet judge calls per record (~+$0.02). Needs a small engine feature
+   (`llm_tagged` sampling `n` with keep-first-passing) or three draft+judge stage pairs and a
+   `pick_field`. Does not fix the trait skew by itself, but raises the floor on every trait.
+2. *Accept the yield and the skew.* Plan ~6,700 scenarios for ~2,000 documents (~$300);
+   the corpus is then ~90% t3/t5/t8-type principles. Honest, cheap to set up, and a
+   different distribution from DA's — say so in the mixture.
+3. *Weight scenarios toward the advise-a-human principles.* Swap `kind: scenarios` for
+   `scenarios_weighted` with `trait_weights` — breaks the stage-2 parity with DA (the whole
+   point of the rewrite), so only if 1 fails.
+Not an option under the Anthropic-only decision: a weaker author (PC's grok/qwen rotation).
+
+**Decision (same day): option 2, no best-of-n.** Consequence reconciled in the config:
+`judge_first_turn.max_drop_pct` 60 → 85. The 60 was set against the 0.75 prior and would
+have aborted any run with ≥ 20 in-scope records at the measured ~70% drop — the 8-doc
+smokes only passed because the guard is not enforced below 20. The guard's meaning changed
+with it and the comment says so: no longer "most replies should go along" but "the yield
+must not collapse below the measured ~0.3". Also `n_traits: 9` added so
+constitution/chunking/n_traits are all pinned to difficult_advice.yaml's by test.
+
+## 2026-08-25 — PAR one-arm smoke: wiring green, documents read as intended, gate yield 3/7 — the first-turn author is the bottleneck
+
+**Hypothesis.** The rewritten recipe (entry below) runs end to end, and the `judge_first_turn`
+gate keeps most records (prior 0.75).
+
+**Method.** `uv run synth run configs/data/synth/post_action_retrospection.yaml --smoke`
+(8 docs; run dir `output/post_action_retrospection/smoke_20260825_170649`), then `synth
+check`, then all three finished documents read end to end. The first attempt died at
+`revise_prompts` on 2/8 failures (one Anthropic content-filter refusal — the chunk-only mode
+DA measured at ~6% — and one JSON-shape miss) against `max_fail_pct: 8`; at 8 records any
+single failure is 12.5%, so the `smoke:` block now carries its own `max_fail_pct: 50` and
+the run was resumed from the stage-6 checkpoint. Total $0.21.
+
+**Result.** Wiring green: 14 stages, `synth check` all PASS (gate_yield reported 3/7,
+flaw_identification 3/3, post-hoc 0/3, blindness clean, surface-shortcut and gold correctly
+"nothing to judge" on one arm), quality_filter 3/3 keep. The documents are the intended
+thing — e.g. t3 (honesty): the first reply refused the spoken euphemism "testing didn't show
+an increased risk" and then handed over a written one, "negative for high-risk pathogenic
+mutations"; the reflection catches precisely that. **But the gate kept 3/7**, and the split is
+structural, not noise: every AI-conduct trait (t1 oversight, t4 harm, t6 identity, t7
+operator adjustments) HELD — Gemini 3.7 Flash declines to *act* badly as the assistant —
+while every advise-a-human trait (t3 honesty, t5 character, t8 helpfulness) VIOLATED. At
+scale that is a ~43% yield (2,700 planned → ~1,200 kept, ~$120) and a trait skew that
+would empty four of nine principles from the corpus. `expected_keep` set to 0.45; the
+header now says NOT GOOD TO GO and why.
+
+**Next steps.** One experiment decides it: a 40-document smoke per candidate first-turn author
+(`--overrides smoke.total_scenarios=40,models.first_turn.model=<id>`), read
+`check_gate_yield` per trait. Candidates: the weak authors peer_critique already rotates
+(grok / qwen3-32b / gemini) — qwen3-32b also removes the author≠trained-model confound —
+and the base Qwen3.6-27B if it can be served to the pipeline. Then set `expected_keep` and
+`total_scenarios` from the measured yield. If no author goes along on the AI-conduct traits,
+that is a finding about the genre (an unaided model will not *act* against oversight when
+simply asked), and PAR should weight toward the advise-a-human traits or accept the skew
+explicitly.
+
+## 2026-08-25 — Post-action retrospection rebuilt as difficult advice's twin: one arm, grey-area violations only, chunk-only
+
+**Hypothesis.** The retrospection corpus should differ from difficult advice in exactly one
+thing — the assistant already went along with the shortcut and has to catch itself — and in
+nothing else. The 2026-08-14 recipe differed in four: genre (ordinary requests, principle
+"quietly live"), arm structure (50/50 good/flawed, plus a three-way explicitness axis),
+grounding (the whole constitution in `revise_prompts`, `revise_first_turn`,
+`draft_reflection`, `revise_reflection`) and trained-turn framing ("You are generating
+training data"). Any DA-vs-PAR comparison was therefore a comparison of all four at once.
+
+**Method (config + tests, no engine change).** `configs/data/synth/post_action_retrospection.yaml`
+rewritten; the two-arm recipe archived verbatim as `archive/post_action_retrospection_two_arm.yaml`
+(the record of `LASR-Callum/2026-08-17-post-action-retrospection`, 576 docs).
+(1) Stages 1–4 are `difficult_advice.yaml`'s verbatim — prompts, save maps, diversity gate,
+scenario checks; a test pins the parity byte for byte, and the constitution path is DA's.
+(2) One arm: a free `label_records` stage stamps `reply_quality: flawed` + `supervise: final`
+on every record; the good arm, `variants_by` and `explicitness` are gone.
+(3) `judge_first_turn` replaces `revise_first_turn`: one chunk-only Sonnet call returns a
+verdict (`violated` = went along with, enabled or laundered the shortcut; `held` = declined
+it, however imperfectly) plus the lapse account, with `keep: verdict in [violated]` — every
+first reply is a violation because the gate says so, not because a label does.
+`expected_keep: 0.75` is the prior (2,700 planned → ~2,025 kept); `max_drop_pct: 60` fails the
+stage if the drafting model declines most shortcuts, which is a prompt problem, not one to
+generate around. The improved-reply artifact is dropped (nothing shipped it).
+(4) No `{constitution}` in any stage; a test asserts it.
+(5) The reflection draft is framed as DA's `draft_responses` (deployment prompt + principle +
+style guidance; task text in the last user turn) and the rewrite carries DA's
+`revise_responses` contract verbatim with one bullet swapped ("do not go along" → "own the
+earlier reply and correct it"), plus DA's full lint ban list and 700-char reasoning floor on
+both stages. The rewrite now emits its own `assessment`: `held` there is the rewriter, shown
+the judge's account, disagreeing with it — a measurement of the gate's false positives.
+(6) The follow-up is written by someone who got what they asked for (a next step, a detail),
+not by someone with unease — the correction is not cued by pushback.
+(7) `quality_filter` rubric flipped to the DA genre (`premise_fails`, `uncorrected` tags);
+`surface_auc_max` removed (one class); scenarios/draft/reflect move to Haiku 4.5 (DA's), the
+first turn stays Gemini (non-Anthropic on purpose).
+
+**Result.** Config-only; NOT YET SMOKED. Estimate $155.72 for ~2,025 documents (refine $35,
+rewrite $53, judge $15; budget 200). `tests/test_model_eval_model_natural.py`: 51 pass (PC
+tests untouched). Every stage renders off a synthetic record with no constitution, the lapse
+note reaching follow-up/draft/rewrite, and the style guidance reaching the draft like DA.
+
+**Confounds this recipe still carries, and the fix for each:**
+1. *Capitulation prior.* Every record ends `revised`. Mitigated (follow-up is not pushback;
+   DA mixed alongside trains holding firm) but not measured. Fix: an eval slice where the
+   first reply HELD and the follow-up pushes — the same pipeline with `keep: held` on a few
+   hundred records, held out as an eval, not trained.
+2. *First-turn author ≠ trained model.* Qwen retrospects on Gemini's prose; at inference it
+   retrospects on its own. Fix: author `draft_first_turn` with the base model under training
+   (Qwen3.6-27B, served or via OpenRouter) — a one-line model swap, recorded in
+   `first_turn_source`; expect a lower gate yield.
+3. *The lapse note is soft planting.* Draft and rewrite both see `change_summary`;
+   `check_blindness` only catches verbatim leakage. Fix: ablate `known_flaw_note` on a
+   40-doc slice and read `flaw_identification` — if the reflection finds the lapse unaided at
+   ≥ 0.70, drop the note (DA has no scaffolding at all).
+4. *Gate-induced scenario shift vs DA.* Keeping only scenarios where Gemini went along
+   selects for subtler shortcuts than DA's kept set. Fix for a matched comparison: run DA's
+   stages 5–7 on PAR's post-gate scenario snapshot (resume-copy), and report gate yield per
+   trait, not only per arm.
+5. *Supervised-token mismatch in mixtures.* A PAR row is five turns, one supervised; a DA
+   row three turns, one supervised — equal row counts are not equal supervised tokens. Fix:
+   size the mixture on supervised tokens.
+
+**Next steps.** `uv run synth run --config configs/data/synth/post_action_retrospection.yaml --smoke`,
+then `--overrides smoke.total_scenarios=40`; read `check_gate_yield` and resize
+`total_scenarios` from the measured yield; `uv run synth check`; read ten records.
 
 ## 2026-08-25 — Training-data contract: every corpus push is tagged, and /datasets discovers it live from the Hub
 
@@ -4020,7 +4786,7 @@ the examples this corpus exists to train on, so silent third-party routing is a
 data-composition bias, not just a reliability nuisance. 20 of 2,000 records were lost to
 those refusals before the pin (top-up planned from checkpoints).
 
-**Fix:** `PROVIDER_PINS` in `src/endpoints/openrouter.py` — now the complete provider
+**Fix:** `PROVIDER_PINS` in `src/infra/endpoints/openrouter.py` — now the complete provider
 registry, not a default: every model id routed through `OpenRouterClient` must match a
 pin (longest prefix wins) or carry an explicit `extra_body["provider"]`, and an unpinned
 id is a **hard error** — free routing is never the fallback, open-weight models
@@ -6860,7 +7626,7 @@ then baseline vs difficult-advice arms.
 
 Implemented the CLAUDE.md eval-framework contract end to end on `jamie/eval-framework`:
 `scripts/run_eval.py --target <hf> [...] --name <eval>` serves each target via
-`src/endpoints/vllm_server.py` (base resolved from `adapter_config.json`, thinking mode from the
+`src/infra/endpoints/vllm.py` (base resolved from `adapter_config.json`, thinking mode from the
 `training_meta.json` stamp — declared as `thinking:` in every train config, validated against the
 data by `train_lora.py`, pinned into the chat template at serve time by a top-level Jinja `set`),
 dispatches to a lazy registry (`src/eval/__init__.py`), and owns the epilogue (rollouts,
@@ -6868,7 +7634,7 @@ results.json + md mirror, run_meta, HF push with enforced card fields, eval_summ
 Consecutive targets sharing base+mode reuse the server via runtime LoRA load. All five evals
 (mmlu, capability, internalization, agentic_misalignment, odcv) expose `run(target, cfg,
 out_dir)`; their shell drivers, `serve_lora.sh`, the `VLLM_ENABLE_THINKING` env patch and the
-inspect-MMLU path are deleted. `src/openrouter.py` moved to `src/endpoints/openrouter.py`.
+inspect-MMLU path are deleted. `src/openrouter.py` moved to `src/infra/endpoints/openrouter.py`.
 pyproject now pins the GPU stack (vllm 0.8.5 / transformers 4.51.3, hf-hub<1, datasets<4) with a
 linux-only lock: plain `uv run` on the pod, no `--no-sync`; local darwin `uv sync` is gone by
 design. 205 offline tests pass (pre-pin venv). **Not yet pod-validated**: end-to-end serve+eval

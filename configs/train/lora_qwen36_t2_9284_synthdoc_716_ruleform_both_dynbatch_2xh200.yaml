@@ -45,7 +45,7 @@ data_file: "mixture_think_both.jsonl"
 data_revision: "1cb2b2924277a02125a7b95ec84632987dd3b452"
 
 output_dir: "/workspace/out/train_t2_9284_synthdoc716_ruleform_both"
-hf_repo: "matboz/qwen3.6-27b-lora-t2-9284-synthdoc-716-ruleform-both-r64"
+hf_repo: "qwen3.6-27b-lora-t2-9284-synthdoc-716-ruleform-both-r64"
 
 lora:
   r: 64

@@ -1,0 +1,91 @@
+# ABOUTME: 1-epoch LoRA SFT of Qwen3.6-27B on Table2(9,284) + COHERENT post-action-retrospection(716),
+# ABOUTME: 2xH200 DDP with token-budgeted dynamic batching, assistant-only loss on the LAST turn.
+# Run: PYTHONPATH=. torchrun --nproc_per_node=2 scripts/train/train_lora.py --config <this>
+#
+# ARM 1 OF THE PAR COHERENCE EXPERIMENT (2026-08-28). Byte-identical to
+# lora_qwen36_t2_9284_par716_dynbatch_2xh200.yaml (the PAR-716 arm: 19.5% +- 1.0 on ODCV over
+# three seeds, vs Sonnet difficult advice 16.3%) in every field but data_repo/data_revision,
+# hf_repo and output_dir. The mixture is row-for-row paired with the PAR-716 mixture
+# (LASR-Callum/2026-08-26-table2-9284-par716-train @ 42c8a74): same 716 scenario ids, same
+# trait quota, same 9,284 Table-2 rows. The ONLY difference is the trained turn's text: it was
+# rewritten by Sonnet 5 so the private reasoning ENDS on a first-person decision (what it won't
+# do, per action, and what it will do instead) and the reply ENACTS that same decision
+# (LASR-Callum/2026-08-28-post-action-retrospection-716-coherent).
+#
+# Hypothesis under test: the trained voice's ODCV protection comes from a decision->action
+# pair that only transfers when the trace's decision IS the reply's decision (channel-swap
+# result, 2026-08-28). Pre-registered readout: registers.py trigger rate (PAR 59%, da716 68%,
+# grok 86%) and MR-when-fired (<= 5% if coherence transfers); MR on the same 65 cells
+# (<= 11% promotes the rule into the recipe; ~15% flat says the corpus coherence does not
+# transfer and the 5-turn scaffolding is the next suspect).
+#
+# The 9,284 Table2 rows are the SAME rows as every sibling arm: the 2026-08-04 filtered
+# instruction set. The numinamath inconsistency noted in the parent config is inherited.
+
+seed: 0
+model: "Qwen/Qwen3.6-27B"
+model_class: "image_text_to_text"
+
+# All 716 synth rows carry a REAL reasoning trace on the supervised turn, so this arm is
+# trained to think and must be evaluated in thinking mode. train_lora.py fail-fast
+# validates this declaration against the data.
+thinking: true
+
+# Training data comes only from HF, pinned to the exact sha it was verified at.
+data_repo: "LASR-Callum/2026-08-28-table2-9284-par716coh-train"
+data_file: "mixture_think.jsonl"
+data_revision: "e6bf309b82d9a0b67fee571c4b57837a5f9aaa26"
+
+hf_repo: "qwen3.6-27b-lora-t2-9284-par716coh-r64-dynbatch"
+
+output_dir: "/workspace/out/train_t2_9284_par716coh_dynbatch"
+
+lora:
+  r: 64
+  alpha: 128
+  dropout: 0.05
+  target_modules: "model\\.language_model\\..*\\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$"
+
+train:
+  epochs: 1
+  # global batch = batch_size x grad_accum = 16, matching every sibling arm. Under dynamic
+  # batching the trainer hands the whole 16-example step to training_step and sets HF
+  # accumulation to 1; route_step splits the step across the 2 ranks, so grad_accum is NOT
+  # divided by world_size and the optimizer still sees 16 examples per step.
+  batch_size: 1
+  grad_accum: 16
+  lr: 1.0e-4
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  logging_steps: 5
+  report_to: ["wandb"]
+
+  # 8192: nothing truncates. Measured on the built file -- longest synth row 2,209 tokens;
+  # the Table2 half is the sibling arms' (longest 8,191). NOT the dynamic-batching budget,
+  # which resolves from ModelProfile.train_memory; max_seq_len is a truncation ceiling only.
+  max_seq_len: 8192
+
+  # packing OFF, and dynamic_batching asserts this. Qwen3.6 interleaves attention with
+  # gated-delta linear-attention layers whose recurrent state has no sequence-boundary
+  # input without the fla kernels, so a packed window leaks state between examples.
+  packing: false
+
+  # Token-budgeted micro-batching. Budget left unset on purpose: resolved from
+  # ModelProfile.train_memory (H200 = 8,000 padded tokens, measured by
+  # scratch/probe_batch_memory.py on 2026-08-08).
+  dynamic_batching: {}
+
+  save_strategy: "steps"
+  save_steps: 100
+  save_total_limit: 2
+  auto_resume: true
+
+  # Assistant tokens only. Qwen3.6's template has no {% generation %} markers, so TRL's own
+  # assistant_only_loss yields an all-zero mask; the label mask is built in-repo by
+  # src/train/masking.py (honouring each row's `supervise`) and gated by mask_gate.py
+  # before the run starts.
+  assistant_only_loss: true
+
+  attn_implementation: sdpa
+  load_in_4bit: false

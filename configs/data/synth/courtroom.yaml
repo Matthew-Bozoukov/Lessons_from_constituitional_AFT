@@ -68,7 +68,7 @@ chunking: principle
 
 output_dir: "output/courtroom"
 
-hf_repo: "LASR-Callum/2026-08-14-courtroom"
+hf_repo: "2026-08-14-courtroom"
 hf_repo_smoke: null
 hf_private: false
 

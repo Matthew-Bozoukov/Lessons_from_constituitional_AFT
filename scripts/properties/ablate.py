@@ -221,7 +221,7 @@ def _derive_train_config(cfg, run: Path, prop, data_repo: str, data_file: str | 
 
 def main(config: str, out_dir: str | None = None, force: bool = False,
          no_push: bool = False, private: bool | None = None,
-         write_train_config: bool = False, hf_org: str = "LASR-Callum") -> None:
+         write_train_config: bool = False) -> None:
     """Run one property ablation end to end.
 
     Args:
@@ -237,7 +237,6 @@ def main(config: str, out_dir: str | None = None, force: bool = False,
             accident when a corpus should not be public.
         write_train_config: Copy the derived train config into configs/train/ as well as
             the run directory. Read the diff first.
-        hf_org: HF org for the dataset push.
 
     Raises:
         ValueError: If the ablation is not applicable, or changed nothing.
@@ -323,7 +322,7 @@ def main(config: str, out_dir: str | None = None, force: bool = False,
     for name, path in written.items():
         arm = f"{kind}-{prop.property_id.rsplit(':', 1)[-1]}" + (
             f"-{name}" if len(written) > 1 else "")
-        repo = f"{hf_org}/{date_iso}-ablate-{tag}-{name}".replace("_", "-")
+        repo = f"{date_iso}-ablate-{tag}-{name}".replace("_", "-")
         revision = "main"
         if not no_push:
             from src.huggingface import hf_api, push_files, tag_safe, training_data_tags

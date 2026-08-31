@@ -40,7 +40,7 @@ data_file: "mixture_think_lowodcv.jsonl"
 data_revision: "c06dfcf690eef11e4b613260a29f75bff8e6812d"
 
 output_dir: "/workspace/out/train_t2_9284_synthdoc716_lowodcv"
-hf_repo: "matboz/qwen3.6-27b-lora-t2-9284-synthdoc-716-lowodcv-r64"
+hf_repo: "qwen3.6-27b-lora-t2-9284-synthdoc-716-lowodcv-r64"
 
 lora:
   r: 64

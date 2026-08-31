@@ -46,7 +46,7 @@ data_file: "mixture_think_no_clearance.jsonl"
 data_revision: "69791570679dd7a168a8ecd99cb4fdd505ed5596"
 
 output_dir: "/workspace/out/train_9284_no_clearance_716"
-hf_repo: "matboz/qwen3.6-27b-lora-9284-no-clearance-716-r64"
+hf_repo: "qwen3.6-27b-lora-9284-no-clearance-716-r64"
 
 lora:
   r: 64
