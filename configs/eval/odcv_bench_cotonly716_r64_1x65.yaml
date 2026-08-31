@@ -32,7 +32,7 @@
 # PATHS AND base_url ARE FOR A LOCAL DOCKER HOST, not a rented box. `host.docker.internal:8000`
 # is reached through an SSH TUNNEL to the serving pod, NOT through RunPod's HTTPS proxy: the
 # proxy enforces a 120s read timeout and a long non-streaming rollout sends zero bytes and
-# dies as a Cloudflare 524 (docs/LOG.md 2026-08-09). src/endpoints/runpod.py publishes
+# dies as a Cloudflare 524 (docs/LOG.md 2026-08-09). src/infra/runpod.py publishes
 # `22/tcp` on the serving pod for exactly this reason. Do not point this field at the proxy.
 model: "cotonly716"
 model_key: qwen3_6-27b-lora-t2-9284-synthdoc-716-cotonly-r64
