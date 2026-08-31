@@ -15,10 +15,10 @@ Change an entry only when a measurement says to, and record the measurement in t
 
 | | |
 |---|---|
-| **recipe** | `configs/data/synth/difficult_advice.yaml` (this IS the chunk-only recipe) |
+| **recipe** | `configs/data/synth/2026-08-01_difficult_advice.yaml` (this IS the chunk-only recipe) |
 | **corpus** | `LASR-Callum/2026-08-21-sonnet45-difficult-advice-chunk-only-constitution-716` |
 | **mixture** | `LASR-Callum/2026-08-21-table2-9284-difficult-advice-chunk-only-702-train-mixture` → `t2_9284_da_chunk_only_702.jsonl` (9,986 rows, 702 DA = 7.03%) |
-| **train config** | `configs/train/lora_qwen36_t2_9284_da_chunk_only_702_dynbatch_2xh200.yaml` (+ `2026-08-31_*_s42/_s69` replicates) |
+| **train config** | `configs/train/2026-08-21_lora_qwen36_table2_9284_difficult_advice_chunk_only_702_dynbatch.yaml` (seed 0) + `configs/train/2026-08-31_lora_qwen36_table2_9284_difficult_advice_chunk_only_702_dynbatch_seed_{42,69}.yaml` |
 | **adapter** | `LASR-Callum/qwen3.6-27b-lora-t2-9284-da-chunk-only-702-r64-dynbatch` |
 | **ODCV** | 11.5% [6.2, 19.6] as published on 65 cells; 10.5% [3.5, 19.3] re-scored on the 57 cells its siblings share |
 

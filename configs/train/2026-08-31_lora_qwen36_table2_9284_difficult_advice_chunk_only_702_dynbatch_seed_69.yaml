@@ -8,7 +8,7 @@
 # the same 65 cells), so this arm -- not da716 -- is the difficult-advice baseline going
 # forward, and it needs training-seed variance like every arm it will be compared against.
 #
-# Differs from seed 0 (configs/train/lora_qwen36_t2_9284_da_chunk_only_702_dynbatch_2xh200.yaml)
+# Differs from seed 0 (configs/train/2026-08-21_lora_qwen36_table2_9284_difficult_advice_chunk_only_702_dynbatch.yaml)
 # in THREE fields only -- seed, output_dir, hub_model_id -- asserted before the bundle is
 # published. Seed numbering 42/69 matches every other seeded arm. The mixture is byte-identical
 # to seed 0's, pulled from the published bundle and never rebuilt.
@@ -21,9 +21,10 @@
 # same repo, same builder (scratch/build_t2_9284_da716_mixture.py, seed 0).
 #
 # The ONE difference is how the difficult-advice half was WRITTEN. The baseline recipe
-# (configs/data/synth/difficult_advice.yaml) injects the WHOLE constitution into its two
+# (configs/data/synth/2026-08-01_difficult_advice.yaml) injects the WHOLE constitution into its two
 # refine stages, `revise_prompts` and `revise_responses`; this arm's corpus came from
-# configs/data/synth/difficult_advice_chunk_only.yaml, where those two stages see only
+# the chunk-only recipe -- now the DEFAULT, at
+# configs/data/synth/2026-08-01_difficult_advice.yaml -- where those two stages see only
 # their one target principle. Every other stage of both recipes already saw only its chunk.
 # The ablation also removes the constitution's PREAMBLE -- the priority /
 # conflict-resolution section saying how principles trade off -- because that text belongs

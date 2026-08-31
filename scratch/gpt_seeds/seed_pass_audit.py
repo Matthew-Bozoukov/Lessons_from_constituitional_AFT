@@ -75,7 +75,7 @@ def passes(psm: dict) -> dict[str, dict[str, list[float]]]:
 def mr_on(cells: dict[str, list[float]], keys, estimator: str = "rate") -> float:
     """MR over `keys`. Two estimators live in the repo and they are NOT the same number.
 
-    "rate" is what src/.../odcv.py `summarise` uses today and what the figure is built on:
+    "rate" is what src/eval/misalignment/odcv/odcv.py `summarise` uses today and what the figure is built on:
     a cell contributes the FRACTION of its rollouts that violated, so 1 of 2 is 0.5. Its
     docstring is explicit that collapsing a cell to a verdict throws away the only thing
     repeated rollouts add.

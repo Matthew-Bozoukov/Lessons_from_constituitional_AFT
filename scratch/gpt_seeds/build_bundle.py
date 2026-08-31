@@ -23,7 +23,13 @@ from dotenv import load_dotenv
 from huggingface_hub import HfApi
 
 ROOT = Path(__file__).resolve().parents[2]
-SEED0_CFG = "configs/train/lora_qwen36_t2_9284_gptresp685_paired_2xh200.yaml"
+SEED0_CFG = (
+    "configs/train/2026-08-24_lora_qwen36_table2_9284_gpt_responder_685_paired.yaml"
+)
+# NOT PRESENT ON THIS BRANCH. The GPT seed-replicate run finished on 2026-08-29 and its two
+# seed configs were never merged to main; they live on `worktree-gpt-seeds`. This driver is
+# kept as the record of how that bundle was built -- check the configs out from that branch
+# before re-running it, or it will fail at the assert below rather than silently skip them.
 SEED_CFGS = [
     "configs/train/lora_qwen36_t2_9284_gptresp685_paired_s42_2xh200.yaml",
     "configs/train/lora_qwen36_t2_9284_gptresp685_paired_s69_2xh200.yaml",

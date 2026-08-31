@@ -2,7 +2,7 @@
 # ABOUTME: Table2(9,284 filtered) + difficult-advice-v2(716), 2xH200 DDP, seed 42.
 # Run: PYTHONPATH=. torchrun --nproc_per_node=2 scripts/train/train_lora.py --config <this>
 #
-# Differs from seed 0 (configs/train/lora_qwen36_t2_9284_da716_dynbatch_2xh200.yaml) in
+# Differs from seed 0 (configs/train/2026-08-18_lora_qwen36_table2_9284_difficult_advice_716_dynbatch.yaml) in
 # THREE fields only -- seed, output_dir, hub_model_id -- asserted by
 # scratch/da716_seeds/build_bundle.py before the bundle is published. Seed numbering 42/69
 # matches every other seeded arm (grok, gpt, synthdoc, numina), so the four are comparable.

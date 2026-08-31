@@ -72,6 +72,9 @@ judge_seed() {  # <seed> <prev combined dir or ''>
 }
 
 # --- seed 42: pass 2 only (pass 1 = 20260828_171534, 62 transcripts) -------------------------
+# Both seed eval configs live on `worktree-gpt-seeds`, not on this branch — the GPT
+# seed-replicate run finished 2026-08-29 and they were never merged. Check them out from
+# there before re-running this driver.
 CFG42="configs/eval/odcv_bench_t2_9284_gptresp685_s42_r64_paired_2x65.yaml"
 # Re-pin: the first serving pod (xi6dycxzg2599r) vanished mid-run; the config carries whichever
 # pod actually served the rollouts, so replace any pod id, not just the placeholder.
