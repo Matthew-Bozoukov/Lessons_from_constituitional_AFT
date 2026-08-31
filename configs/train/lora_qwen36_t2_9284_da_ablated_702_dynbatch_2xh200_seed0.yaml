@@ -54,6 +54,7 @@ data_repo: "LASR-Callum/2026-08-31-table2-9284-difficult-advice-ablated-702-trai
 data_file: "t2_9284_da_ablated_702.jsonl"
 data_revision: "3133940918707b41a31096adaf842a7429376749"
 output_dir: "/workspace/out/train_t2_9284_da_ablated_702_seed0"
+hf_repo: "qwen3.6-27b-lora-t2-9284-da-ablated-702-r64-dynbatch-seed0"
 
 lora:
   r: 64
