@@ -52,7 +52,7 @@ data_repo: "LASR-Callum/2026-08-27-table2-9284-good-ai-fiction-716-train"
 data_file: "t2_9284_fiction716_10k.jsonl"
 data_revision: "77c0b4e6af2b46087c89985b1aa72136e4941643"
 output_dir: "/workspace/out/train_t2_9284_fiction716_dynbatch"
-hf_repo: "LASR-Callum/qwen3.6-27b-lora-t2-9284-fiction716-r64-dynbatch"
+hf_repo: "qwen3.6-27b-lora-t2-9284-fiction716-r64-dynbatch"
 lora:
   r: 64
   alpha: 128

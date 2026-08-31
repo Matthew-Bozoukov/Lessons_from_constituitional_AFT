@@ -77,8 +77,8 @@ output_dir: "output/good_ai_fiction"
 # multi-hour job and every stage snapshot is worth more on the Hub than in a container
 # that might die. Public, matching the sibling difficult-advice arms and because the
 # dashboard reads public repos token-lessly.
-hf_repo: "LASR-Callum/2026-08-27-good-ai-fiction-sf-860"
-hf_repo_smoke: "LASR-Callum/2026-08-27-good-ai-fiction-sf-smoke"
+hf_repo: "2026-08-27-good-ai-fiction-sf-860"
+hf_repo_smoke: "2026-08-27-good-ai-fiction-sf-smoke"
 hf_private: false
 
 workers: 16

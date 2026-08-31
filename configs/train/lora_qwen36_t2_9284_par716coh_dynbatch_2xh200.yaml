@@ -36,7 +36,7 @@ data_repo: "LASR-Callum/2026-08-28-table2-9284-par716coh-train"
 data_file: "mixture_think.jsonl"
 data_revision: "e6bf309b82d9a0b67fee571c4b57837a5f9aaa26"
 
-hf_repo: "LASR-Callum/qwen3.6-27b-lora-t2-9284-par716coh-r64-dynbatch"
+hf_repo: "qwen3.6-27b-lora-t2-9284-par716coh-r64-dynbatch"
 
 output_dir: "/workspace/out/train_t2_9284_par716coh_dynbatch"
 
