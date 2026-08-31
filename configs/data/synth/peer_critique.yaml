@@ -75,7 +75,7 @@ chunking: principle
 
 output_dir: "output/peer_critique"
 
-hf_repo: "LASR-Callum/2026-08-14-peer-critique"
+hf_repo: "2026-08-14-peer-critique"
 hf_repo_smoke: null
 hf_private: false
 

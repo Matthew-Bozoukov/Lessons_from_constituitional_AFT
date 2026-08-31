@@ -41,7 +41,7 @@ data_repo: "LASR-Callum/2026-08-25-table2-9284-da-verbose-tokenmatched-train"
 data_file: "t2_9284_da_verbose_tokenmatched.jsonl"
 data_revision: "e71102af09dba065de65d086137edb3a4ff7fc9b"
 output_dir: "/workspace/out/train_t2_9284_da_verbose_tokenmatched_dynbatch"
-hf_repo: "LASR-Callum/qwen3.6-27b-lora-t2-9284-da-verbose-tokenmatched-r64-dynbatch"
+hf_repo: "qwen3.6-27b-lora-t2-9284-da-verbose-tokenmatched-r64-dynbatch"
 
 lora:
   r: 64

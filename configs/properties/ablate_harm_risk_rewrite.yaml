@@ -95,8 +95,8 @@ collateral:
 mix:
   base_config: configs/data/mixture/qwen36_msm_table2.yaml
   source: difficult_advice
-  final_repo: LASR-Callum/2026-08-18-t2-da-ablate-harm-risk-rewrite-mixture
-  base_repo: LASR-Callum/2026-08-18-t2-da-ablate-harm-risk-rewrite-filtered
+  final_repo: 2026-08-18-t2-da-ablate-harm-risk-rewrite-mixture
+  base_repo: 2026-08-18-t2-da-ablate-harm-risk-rewrite-filtered
 
 train:
   # THE CONTROL. The derived config is this file with the data_repo swapped and nothing
@@ -104,7 +104,7 @@ train:
   # training change. Its `data_revision` is written out ABSENT, because the mixture above
   # does not exist until `uv run mix` has run — pin the sha that build prints.
   base_config: configs/train/lora_qwen36_t2_9284_synthdoc_716_dynbatch_2xh200.yaml
-  hf_repo: LASR-Callum/qwen3.6-27b-lora-t2-9284-da716-ablate-harm-risk-rewrite-r64
+  hf_repo: qwen3.6-27b-lora-t2-9284-da716-ablate-harm-risk-rewrite-r64
   output_dir: /workspace/out/train_ablate_harm_risk_rewrite
 
 # Printed as the follow-on commands once the arm is trained.

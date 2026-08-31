@@ -69,8 +69,7 @@ def _build_target(cfg, records):
 
 
 def main(config: str, out_dir: str | None = None, smoke: bool = False,
-         producers: str | None = None, push: bool = False,
-         hf_org: str = "LASR-Callum") -> None:
+         producers: str | None = None, push: bool = False) -> None:
     """Discover properties of one corpus with the configured producers.
 
     Args:
@@ -82,7 +81,6 @@ def main(config: str, out_dir: str | None = None, smoke: bool = False,
             producer whose un-ported run directory does not exist would fail the smoke —
             so selection is a flag rather than a config key.
         push: Push the run directory to Hugging Face, per CLAUDE.md's artifact policy.
-        hf_org: HF org for the push.
 
     Raises:
         KeyError: If a config names an unregistered producer.
@@ -164,7 +162,7 @@ def main(config: str, out_dir: str | None = None, smoke: bool = False,
         from src.utils import git_sha, origin_url
 
         date = timestamp()[:8]
-        repo = (f"{hf_org}/{date[:4]}-{date[4:6]}-{date[6:8]}-properties-{tag}"
+        repo = (f"{date[:4]}-{date[4:6]}-{date[6:8]}-properties-{tag}"
                 .replace("_", "-"))
         url = push_run_dir(run, repo, {
             "experiment": f"Property discovery over {adapter.name} for the Fig-3 "

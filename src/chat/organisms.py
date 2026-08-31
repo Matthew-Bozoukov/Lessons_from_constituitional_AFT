@@ -21,9 +21,17 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
-from src.huggingface import hf_download
+from src.huggingface import hf_download, hf_org
 
-DEFAULT_ORGS = ("LASR-Callum",)
+
+def default_orgs() -> tuple[str, ...]:
+    """The org(s) to list organisms from: where this project pushes (.env HF_ORG).
+
+    Read at call time rather than frozen into a constant, for the same reason pushes
+    resolve it at push time — the destination org is written down in exactly one place.
+    """
+    return (hf_org(),)
+
 
 # Trailing tokens that describe hardware or rank, not the experiment: `2xh200`, `h200x4`,
 # `r64`, `dynbatch`.
@@ -125,14 +133,17 @@ def _iso_date(value: str) -> str:
     return f"{m.group(1)}-{m.group(2)}-{m.group(3)}" if m else ""
 
 
-def discover(orgs: tuple[str, ...] = DEFAULT_ORGS) -> tuple[list[Organism], int]:
-    """Every stamped adapter under `orgs`, sorted for the menu, plus the unstamped count."""
+def discover(orgs: tuple[str, ...] | None = None) -> tuple[list[Organism], int]:
+    """Every stamped adapter under `orgs`, sorted for the menu, plus the unstamped count.
+
+    `orgs=None` uses `default_orgs()` — the project's own org, from .env.
+    """
     from huggingface_hub import HfApi
 
     api = HfApi()
     found: list[Organism] = []
     unstamped = 0
-    for org in orgs:
+    for org in orgs or default_orgs():
         for m in api.list_models(author=org, expand=["siblings", "lastModified"]):
             files = {s.rfilename for s in (m.siblings or [])}
             if "adapter_config.json" not in files:

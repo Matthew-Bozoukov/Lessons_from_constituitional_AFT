@@ -53,7 +53,7 @@ data_file: "mixture_think_masked.jsonl"
 data_revision: "10799821693895941a82618536df90375063fb0a"
 
 output_dir: "/workspace/out/train_t2_9284_synthdoc716_c6masked"
-hf_repo: "matboz/qwen3.6-27b-lora-t2-9284-synthdoc-716-c6masked-r64"
+hf_repo: "qwen3.6-27b-lora-t2-9284-synthdoc-716-c6masked-r64"
 
 lora:
   r: 64

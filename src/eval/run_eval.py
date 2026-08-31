@@ -17,7 +17,7 @@ from omegaconf import OmegaConf
 from src.infra.endpoints.vllm import SshExec, VllmServer, resolve_target
 from src.eval import EVALS, resolve
 from src.eval.layout import assert_layout, publish_layout
-from src.huggingface import push_run_dir
+from src.huggingface import hf_repo_id, push_run_dir
 from src.utils import timestamp, write_run_meta
 
 
@@ -101,7 +101,6 @@ def main(argv: list[str] | None = None) -> None:
                              "has none. Deliberate per-host action; the rest of your .env "
                              "never leaves this machine.")
     parser.add_argument("--port", type=int, default=8000)
-    parser.add_argument("--hf-org", default="LASR-Callum")
     parser.add_argument("--no-push", action="store_true",
                         help="skip the HF upload (smoke runs only — HF is the canonical store)")
     parser.add_argument("overrides", nargs="*", help="OmegaConf dotlist, e.g. judge.model=x samples=10")
@@ -203,7 +202,9 @@ def main(argv: list[str] | None = None) -> None:
             row_path.parent.mkdir(parents=True, exist_ok=True)
             row_path.write_text(json.dumps(summary, indent=2))
             if not args.no_push:
-                repo_id = f"{args.hf_org}/{date.today().isoformat()}-{args.name.replace('_', '-')}-{spec.model_key.replace('_', '-')}"
+                # The org is .env's HF_ORG, resolved at push time (src.huggingface.hf_org).
+                repo_id = hf_repo_id(f"{date.today().isoformat()}-{args.name.replace('_', '-')}"
+                                     f"-{spec.model_key.replace('_', '-')}")
                 url = push_run_dir(
                     out_dir, repo_id, _card_fields(args.name, cfg, served, command),
                     # Hub-indexed tags: the canonical discovery route for the dashboard's

@@ -79,7 +79,7 @@ chunking: principle
 
 output_dir: "output/post_action_retrospection"
 
-hf_repo: "LASR-Callum/2026-08-13-post-action-retrospection"
+hf_repo: "2026-08-13-post-action-retrospection"
 hf_repo_smoke: null
 hf_private: false
 

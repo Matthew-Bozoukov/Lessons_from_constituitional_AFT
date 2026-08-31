@@ -55,7 +55,7 @@ data_file: "mixture_think_ablated.jsonl"
 data_revision: "bd698ac9399e1ce4e300984bfd96be6483e136f9"
 
 output_dir: "/workspace/out/train_t2_9284_synthdoc654_branches"
-hf_repo: "matboz/qwen3.6-27b-lora-t2-9284-synthdoc-654-branches-r64"
+hf_repo: "qwen3.6-27b-lora-t2-9284-synthdoc-654-branches-r64"
 
 lora:
   r: 64

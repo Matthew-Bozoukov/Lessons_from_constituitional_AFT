@@ -59,8 +59,8 @@ from openai import OpenAI
 
 from src.infra import runpod
 from src.chat.organisms import (
+    default_orgs,
     organisms_from_ids,
-    DEFAULT_ORGS,
     arm_names,
     check_one_server,
     discover,
@@ -994,7 +994,7 @@ def main(argv: list[str] | None = None) -> None:
         "--hf-org",
         action="append",
         default=None,
-        help=f"Hub org(s) to list organisms from (default {', '.join(DEFAULT_ORGS)})",
+        help="Hub org(s) to list organisms from (default: HF_ORG from .env)",
     )
     picker.add_argument(
         "--gpu", default=runpod.GPU, help="RunPod GPU type for a new pod"
@@ -1077,8 +1077,8 @@ def main(argv: list[str] | None = None) -> None:
         "--out", help="session directory; default output/chat/<timestamp>"
     )
     args = parser.parse_args(argv)
-    args.hf_org = args.hf_org or list(DEFAULT_ORGS)
     load_dotenv()
+    args.hf_org = args.hf_org or list(default_orgs())
 
     user = re.sub(r"[^a-z0-9]", "", getpass.getuser().lower()) or "user"
     if args.pods:

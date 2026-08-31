@@ -434,6 +434,9 @@ def _front_matter(cfg, config_path: str, filter_cfg, stage: str, data_file: str)
 def _push(paths: list[Path], repo: str, fields: dict, private: bool, smoke: bool,
           front_matter: dict) -> None:
     """Push one checkpoint's files, or explain why not (smoke never pushes)."""
+    from src.huggingface import hf_repo_id
+
+    repo = hf_repo_id(repo)  # the config names the repo, .env's HF_ORG the org
     if smoke:
         print(f">>> smoke: NOT pushing {[p.name for p in paths]} -> {repo}")
         return

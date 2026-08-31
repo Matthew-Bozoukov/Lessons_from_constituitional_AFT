@@ -14,7 +14,7 @@ reference_model: null
 cache:
   # `hf:` prefix = HF dataset repo (the durable, cross-machine store per the CLAUDE.md
   # artifact policy); a plain path = local directory (tests, smoke, air-gapped work).
-  repo: "hf:LASR-Callum/2026-08-05-lmsys-answer-cache"
+  repo: "hf:2026-08-05-lmsys-answer-cache"
   # Per-invocation read-through: the reference arm's push lands here too, so target arms
   # of the same invocation read it back without a network round-trip.
   mirror: "output/lmsys/answer_cache"

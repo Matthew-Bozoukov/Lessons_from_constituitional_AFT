@@ -52,7 +52,7 @@ data_file: "mixture_think_ablated.jsonl"
 data_revision: "f7751e71a6a0b7ebf061ca856662afbc2359642d"
 
 output_dir: "/workspace/out/train_t2_9284_synthdoc676_ablated2"
-hf_repo: "matboz/qwen3.6-27b-lora-t2-9284-synthdoc-676-ablated2-r64"
+hf_repo: "qwen3.6-27b-lora-t2-9284-synthdoc-676-ablated2-r64"
 
 lora:
   r: 64

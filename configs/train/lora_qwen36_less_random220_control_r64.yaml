@@ -45,7 +45,7 @@ data_file: "mixture.jsonl"
 data_revision: "5ede5bc026bab7a83ff635d5bcf301a12b8822d3"
 
 output_dir: "/workspace/out/train_random220_control"
-hf_repo: "LASR-Callum/qwen3.6-27b-lora-random220-control-r64"
+hf_repo: "qwen3.6-27b-lora-random220-control-r64"
 
 # Identical to the arm's, which is the point of a control: the shape is held fixed so only
 # the choice of rows varies.

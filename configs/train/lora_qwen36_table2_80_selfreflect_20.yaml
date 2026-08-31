@@ -52,7 +52,7 @@ train:
   save_total_limit: 2
   auto_resume: true
   push_to_hub: true
-  hub_model_id: "LASR-Callum/qwen3.6-27b-lora-table2-80-selfreflect-20-r64"
+  hub_model_id: "qwen3.6-27b-lora-table2-80-selfreflect-20-r64"
   hub_strategy: "checkpoint"
 
   assistant_only_loss: true
