@@ -150,62 +150,8 @@ data/, output/        gitignored: staged datasets / ALL run artifacts (conventio
   `train/`, `eval/`, plus `scripts/infra/` for provisioning/serving infra). A new
   config or script goes in the folder for the stage it belongs to — never at
   the top level of `configs/` or `scripts/` unless it is a script that pipes multiple stages together.
-- **Naming conventions** — THE NAMING LAW, enforced in code by `src/naming.py`.
-  Every name this repo mints is **`<date>` + a subject that says what the thing is**,
-  and no two of them may say the same thing on the same day:
-
-  ```
-  local (files, config stems, run dirs, figure stems, arm labels)   2026-08-06_difficult_advice_716
-  hub   (the part of an HF repo id after the org)                   2026-08-06-difficult-advice-716
-  ```
-
-  - **The date is not optional and it goes first.** It is the date the thing was
-    *produced*, never the date it was written down. `ls configs/train/` then reads as
-    the experiment log it is, and a figure, a corpus and the organism trained on it can
-    be lined up by eye.
-  - **The subject says: which model, which arm/document type, and WHAT THIS ONE
-    CHANGES.** `2026-08-26_sonnet45_difficult_advice_716_length_capped`, not
-    `sonnet_v2`. A version number is refused by the linter, because "v2" is the one
-    thing a reader already knows (the date said it) and never the thing they need.
-  - **Abbreviations with two expansions are refused**: `par` was both
-    post-action-retrospection and pre-action-deliberation, `da` was difficult-advice
-    everywhere except where it was not. Spell them out; `src/naming.py`'s
-    `CANONICAL_TOKENS` is the list, and adding to it is how a new shorthand gets
-    retired. A model generation stays glued (`qwen36`, `gpt4`, `kimi_k2`); a row count
-    never does (`difficult_advice_716`, never `da716`).
-  - **Distinct means distinct**: `da_716` and `difficult_advice_716` are the same name
-    in two costumes and cannot both exist. `check_distinct` is what a plot's arm set,
-    the organism menu and each config folder are checked against.
-  - **Hardware, rank and launcher detail are not identity.** The train config records
-    `2xh200`; the name does not carry it.
-  - Config: `configs/<stage>/<YYYY-MM-DD>_<subject>.yaml`, the filename never repeating
-    the stage folder's name (`configs/eval/2026-07-31_odcv_bench_ft_20_80.yaml`, not
-    `..._odcv_bench_eval.yaml`). Variants are appended with underscores only —
-    `2026-07-31_odcv_bench_ft_10_90.yaml`, never hyphens like `10-90`. The one
-    undated exception is `configs/eval/<eval>.yaml`, the registry default for an eval:
-    that names a KIND (a tool), not a run.
-  - Shared vocabulary: `qwen3` = Qwen3-32B (the original baseline runs), `qwen36` =
-    Qwen3.6-27B (the mixture sweep); mixture ratios read `<synth>_<tulu>` (`20_80` =
-    20% difficult-advice / 80% Tulu); eval arms are `base_*` (untrained),
-    `ft_<ratio>[_<ablation>]` (difficult-advice fine-tunes), `tulu_100`
-    (0%-synthetic control).
-  - **What is NOT dated**: kinds, i.e. the vocabulary the code is written against —
-    python modules, eval registry keys (`odcv_bench`, `mmlu`), stage kinds, mixture
-    source adapters. A kind was not produced by a run, so dating it would be a lie.
-
-  **This is enforced, not advised.** Three gates, all running the same module:
-
-  | gate | what it stops |
-  | --- | --- |
-  | `src/huggingface.py::gate_push` (every push, plus `train`'s check at config load) | an undated or ambiguous artifact reaching the Hub — and a repo whose name's date disagrees with its card's `date_generated` |
-  | `.git/hooks/pre-push` (install once: `bash scripts/hooks/install.sh`) | code that names an artifact badly reaching anyone else |
-  | `uv run names` / `tests/test_naming.py` | the same lint, on demand and in the suite |
-
-  Pre-dating Hub repos are enumerated in `src/naming_legacy.py`: readable, never
-  writable, and retired with `uv run python scripts/hf/rename_repos.py plan|apply`
-  (whose `rename_overrides.yaml` is where a human writes down what a "v2" actually
-  changed). That file only ever shrinks.
-
+- **Names carry the date and the subject** — the one law for configs, files and
+  Hub repos alike, in "Artifacts and configs" below.
   - Python thin CLI: some files in `src/` contain code that can both be ran as part of a pipeline or as a standalone job/entrypoint. It is therefore important to provide a script in `scripts/` that runs that standalone function and it should be named **exactly** after the `src/` module it wraps —
     `scripts/train/train_lora.py` wraps `src/train/train_lora.py`. Only add these mirrors when we add new code to `src/` that you think will require running as a standalone script.
   - Every config's header states the exact command that consumes it — in the
@@ -250,80 +196,63 @@ entrypoint does not get to skip the contract.
 `output/` is gitignored scratch for iteration: timestamped filenames, a `run_meta.json` (git
 SHA, config) in every result dir, a `*_results.md` beside every plot. Nothing there is canonical.
 
-## Datasets, caches and artifacts go to Hugging Face
+## Artifacts and configs: naming and storage
 
-**From 2026-07-29 onward, any dataset, generated corpus, evaluation output or
-associated cache produced by work in this repository should be published to Hugging
-Face.** The repository holds code and configuration. It does
-not hold bulk data. There will be gitignored output in `output/` but this is for fast experiment iteration and plots. The canonical location for artefacts and results is Hugging Face.
+An artifact is anything a run produced — a corpus, a mixture, an adapter, an eval run, a
+cache, a figure. Two rules cover all of them: where it lives, and what it is called.
 
-This applies to synthetic document corpora, generated response sets, evaluation
-transcripts, judge outputs, embeddings, activation caches, and any intermediate
-artifact large or reusable enough that someone would want to fetch it rather
-than regenerate it.
+**It lives on Hugging Face.** This repo holds code, configs and small analysis outputs;
+it does not hold bulk data. `output/` is scratch for fast iteration and plots, never the
+canonical copy. Corpora, response sets, transcripts, judge outputs, embeddings,
+activation caches — anything someone would rather fetch than regenerate — get pushed.
+Weights, adapters and anything past a few megabytes never enter git; the link to the HF
+repo does, so it is not only in someone's memory.
 
-### Naming: the title carries the date and the subject
-
-Hub names follow the naming law above (`src/naming.py`) in its hub spelling:
-
-```
-<YYYY-MM-DD>-<generator or base model>-<document type / arm>-<size>-<what this one changes>
-```
-
-Examples of the shape (the tail is the point):
+**Its name is the date it was produced, then a subject saying what it is.** One law
+(`src/naming.py`), two spellings, and no two names may say the same thing on the same day:
 
 ```
-2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted
-2026-08-24-sonnet45-difficult-advice-principle-scoped-constitution
-2026-08-06-qwen36-lora-table2-9284-difficult-advice-716          # the model organism
-2026-08-27-odcv-post-action-retrospection-716-eval               # the run that scored it
+local (files, config stems, run dirs, figures, arm labels)  2026-08-06_difficult_advice_716
+hub   (an HF repo id after the org)                         2026-08-06-difficult-advice-716
 ```
 
-The date is the date the data was **generated**, not the date it was uploaded —
-`gate_push` compares it against the card's `date_generated` and refuses a mismatch.
-A reader scanning a list of repos should be able to tell what an artifact is, which
-model made it, what it varies, and when it came from, without opening it. `sonnet-v2`
-fails every one of those and is refused.
+- **The date goes first** and is the date the thing was PRODUCED, never the date it was
+  written down. `ls configs/train/` then reads as the experiment log it is, and a corpus,
+  a figure and the organism trained on it line up by eye.
+- **The subject says which model, which arm or document type, and WHAT THIS ONE CHANGES**:
+  `2026-08-26_sonnet45_difficult_advice_716_length_capped`, never `sonnet_v2`. A version
+  number is refused — it is the one thing the date already told the reader.
+- **No abbreviation with two expansions.** `par` was both post-action-retrospection and
+  pre-action-deliberation; `da716` glues a row count onto a word. `CANONICAL_TOKENS` is
+  the list. A model generation stays glued (`qwen36`, `gpt4`), a count never does.
+- **Distinct means distinct**: `da_716` and `difficult_advice_716` are one name in two
+  costumes, and `check_distinct` refuses to let both exist.
+- **Hardware, rank and launcher detail are not identity** — the config records `2xh200`,
+  the name does not.
+- **Configs**: `configs/<stage>/<YYYY-MM-DD>_<subject>.yaml`, never repeating the stage
+  folder's name, variants appended with underscores (`..._ft_10_90.yaml`, never `10-90`).
+- **Kinds are never dated** — module names, eval registry keys (`odcv_bench`, `mmlu`),
+  stage kinds, source adapters. A kind was not produced by a run. Hence the one undated
+  config: `configs/eval/<eval>.yaml`, an eval's registry default, which names a tool.
+- **Vocabulary**: `qwen3` = Qwen3-32B, `qwen36` = Qwen3.6-27B; ratios read
+  `<synth>_<tulu>` (`20_80` = 20% difficult-advice); arms are `base_*`,
+  `ft_<ratio>[_<ablation>]`, `tulu_100`.
 
-### Required metadata in the dataset card
+**Every upload carries a card** (`README.md` in the HF repo): `experiment`,
+`date_generated`, `constitution`, `source_repo` (this repo @ the generating commit),
+`models` (with revision pins), `generation_config` (sampling settings and seeds),
+`schema`, `provenance` (the exact command to regenerate it). Write `constitution: none`
+explicitly rather than omitting it: nearly everything here is about whether training on a
+written specification changes behaviour, so which one a dataset relates to is what a
+future reader needs most, and it is the field most easily lost.
 
-Every upload carries a card (`README.md` in the HF repo) stating, at minimum:
-
-| field | meaning |
-| --- | --- |
-| `experiment` | Which experiment produced this, in one sentence |
-| `date_generated` | ISO date the data was produced |
-| `constitution` | The constitution, spec or model spec this connects to - by name and link. Write `none` explicitly if it genuinely connects to none. Do not omit the field. |
-| `source_repo` | This repository, and the commit hash the generating code was at |
-| `models` | Every model id involved, with revision/commit pins where applicable |
-| `generation_config` | Sampling settings - temperature, top_p, max_tokens, seeds |
-| `schema` | What the columns/fields mean |
-| `provenance` | How to regenerate it: the exact script and arguments |
-
-The `constitution` field is not optional bookkeeping. Most work here is about
-whether training on a written specification changes behaviour, so which
-specification a dataset relates to is the single most important thing a future
-reader needs, and it is the field most easily lost.
-(The original synthdoc's `publish.py` enforced the naming rule and these fields in code; it was
-deleted with that package on 2026-08-03 — see git history — so enforce them by hand on upload.)
-
-### What stays in git
-
-- Code that generates or consumes the data
-- Configs, seeds, rubrics, probe definitions - the *inputs*, which are small and
-  are the scientific record
-- Analysis/report scripts and their outputs where those are small (tables, summaries,
-  figures). These live in `output/`.
-- Documentation and trait documents (`docs/`)
-- A pointer to the HF repo, so the link is never only in someone's memory
-
-### What does not stay in git
-
-- Model weights and adapters
-- Generated corpora and response sets above a few megabytes
-- Provider caches, HF caches, virtual environments
-- Anything reproducible from code plus a pinned model, unless it is small enough
-  to be worth the convenience
+**Enforced, not advised.** `src/huggingface.py::gate_push` refuses an undated or ambiguous
+name on every push — and one whose date disagrees with the card's `date_generated`;
+`.git/hooks/pre-push` (install once: `bash scripts/hooks/install.sh`) stops badly named
+artifacts reaching anyone else; `uv run names` and `tests/test_naming.py` run the same lint
+on demand and in the suite. Repos that predate the law are enumerated in
+`src/naming_legacy.py` — readable, never writable, retired with `uv run python
+scripts/hf/rename_repos.py plan|apply`. That list only ever shrinks.
 
 ## The pipeline (each stage = one alias + one config)
 

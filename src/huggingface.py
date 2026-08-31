@@ -13,7 +13,7 @@ from huggingface_hub import HfApi
 
 from src.naming import check_hub_repo, name_date
 
-# The mandatory card fields from CLAUDE.md "Required metadata in the dataset card".
+# The mandatory card fields from CLAUDE.md "Artifacts and configs: naming and storage".
 # The contract is uniform across artifact types — a LoRA adapter's `constitution` and
 # `generation_config` (training hyperparams) matter as much as a dataset's; cards are
 # always DERIVED from real run metadata, never filler.
