@@ -1,0 +1,512 @@
+[
+  {
+    "label": "t2_9284 + synthdoc_716 (flagship 10k)",
+    "repo": "LASR-Callum/2026-08-06-table2-9284-synthdoc-716-train",
+    "file": "mixture_think.jsonl",
+    "max_seq_len": 8192,
+    "rows": 10000,
+    "rendered_tokens": 6191535,
+    "trainable_tokens": 2993995,
+    "trainable_pct": 48.36,
+    "median_trainable_per_row": 162,
+    "mean_trainable_per_row": 299.4,
+    "rows_at_cap": 0,
+    "by_source": {
+      "smol_constraints": {
+        "rows": 1034,
+        "tot": 224571,
+        "sup": 135852,
+        "full": 224571
+      },
+      "tulu3_if": {
+        "rows": 1365,
+        "tot": 544434,
+        "sup": 445080,
+        "full": 544434
+      },
+      "no_robots": {
+        "rows": 2640,
+        "tot": 795736,
+        "sup": 509814,
+        "full": 795736
+      },
+      "lima": {
+        "rows": 292,
+        "tot": 186959,
+        "sup": 167288,
+        "full": 186959
+      },
+      "self_oss_instruct": {
+        "rows": 1047,
+        "tot": 340459,
+        "sup": 206290,
+        "full": 340459
+      },
+      "numinamath_cot": {
+        "rows": 1037,
+        "tot": 557250,
+        "sup": 455602,
+        "full": 557250
+      },
+      "apigen_function_calling": {
+        "rows": 987,
+        "tot": 566763,
+        "sup": 55519,
+        "full": 566763
+      },
+      "smol_summarize": {
+        "rows": 669,
+        "tot": 225472,
+        "sup": 38698,
+        "full": 225472
+      },
+      "longalign": {
+        "rows": 213,
+        "tot": 1569669,
+        "sup": 32697,
+        "full": 1569669
+      },
+      "synthdoc_difficult_advice": {
+        "rows": 716,
+        "tot": 1180222,
+        "sup": 947155,
+        "full": 1180222
+      }
+    }
+  },
+  {
+    "label": "t2_9284 + courtroom_716",
+    "repo": "LASR-Callum/2026-08-16-table2-9284-courtroom-716-train",
+    "file": "t2_9284_courtroom716_10k.jsonl",
+    "max_seq_len": 8192,
+    "rows": 10000,
+    "rendered_tokens": 6716630,
+    "trainable_tokens": 3265540,
+    "trainable_pct": 48.62,
+    "median_trainable_per_row": 162,
+    "mean_trainable_per_row": 326.6,
+    "rows_at_cap": 0,
+    "by_source": {
+      "no_robots": {
+        "rows": 2640,
+        "tot": 795736,
+        "sup": 509814,
+        "full": 795736
+      },
+      "self_oss_instruct": {
+        "rows": 1047,
+        "tot": 340459,
+        "sup": 206290,
+        "full": 340459
+      },
+      "smol_constraints": {
+        "rows": 1034,
+        "tot": 224571,
+        "sup": 135852,
+        "full": 224571
+      },
+      "smol_summarize": {
+        "rows": 669,
+        "tot": 225472,
+        "sup": 38698,
+        "full": 225472
+      },
+      "apigen_function_calling": {
+        "rows": 987,
+        "tot": 566763,
+        "sup": 55519,
+        "full": 566763
+      },
+      "numinamath_cot": {
+        "rows": 1037,
+        "tot": 557250,
+        "sup": 455602,
+        "full": 557250
+      },
+      "tulu3_if": {
+        "rows": 1365,
+        "tot": 544434,
+        "sup": 445080,
+        "full": 544434
+      },
+      "longalign": {
+        "rows": 213,
+        "tot": 1569669,
+        "sup": 32697,
+        "full": 1569669
+      },
+      "lima": {
+        "rows": 292,
+        "tot": 186959,
+        "sup": 167288,
+        "full": 186959
+      },
+      "courtroom": {
+        "rows": 716,
+        "tot": 1705317,
+        "sup": 1218700,
+        "full": 1705317
+      }
+    }
+  },
+  {
+    "label": "t2_9284 + DA-verbose_716",
+    "repo": "LASR-Callum/2026-08-25-table2-9284-difficult-advice-verbose-716-train",
+    "file": "t2_9284_da716_verbose_10k.jsonl",
+    "max_seq_len": 8192,
+    "rows": 10000,
+    "rendered_tokens": 6755630,
+    "trainable_tokens": 3589320,
+    "trainable_pct": 53.13,
+    "median_trainable_per_row": 162,
+    "mean_trainable_per_row": 358.9,
+    "rows_at_cap": 0,
+    "by_source": {
+      "tulu3_if": {
+        "rows": 1365,
+        "tot": 544434,
+        "sup": 445080,
+        "full": 544434
+      },
+      "apigen_function_calling": {
+        "rows": 987,
+        "tot": 566763,
+        "sup": 55519,
+        "full": 566763
+      },
+      "no_robots": {
+        "rows": 2640,
+        "tot": 795736,
+        "sup": 509814,
+        "full": 795736
+      },
+      "numinamath_cot": {
+        "rows": 1037,
+        "tot": 557250,
+        "sup": 455602,
+        "full": 557250
+      },
+      "smol_constraints": {
+        "rows": 1034,
+        "tot": 224571,
+        "sup": 135852,
+        "full": 224571
+      },
+      "longalign": {
+        "rows": 213,
+        "tot": 1569669,
+        "sup": 32697,
+        "full": 1569669
+      },
+      "smol_summarize": {
+        "rows": 669,
+        "tot": 225472,
+        "sup": 38698,
+        "full": 225472
+      },
+      "self_oss_instruct": {
+        "rows": 1047,
+        "tot": 340459,
+        "sup": 206290,
+        "full": 340459
+      },
+      "difficult_advice_v2": {
+        "rows": 716,
+        "tot": 1744317,
+        "sup": 1542480,
+        "full": 1744317
+      },
+      "lima": {
+        "rows": 292,
+        "tot": 186959,
+        "sup": 167288,
+        "full": 186959
+      }
+    }
+  },
+  {
+    "label": "t2_9284 + DA-verbose token-matched",
+    "repo": "LASR-Callum/2026-08-25-table2-9284-da-verbose-tokenmatched-train",
+    "file": "t2_9284_da_verbose_tokenmatched.jsonl",
+    "max_seq_len": 8192,
+    "rows": 9647,
+    "rendered_tokens": 5945128,
+    "trainable_tokens": 2879865,
+    "trainable_pct": 48.44,
+    "median_trainable_per_row": 154,
+    "mean_trainable_per_row": 298.5,
+    "rows_at_cap": 0,
+    "by_source": {
+      "tulu3_if": {
+        "rows": 1365,
+        "tot": 544434,
+        "sup": 445080,
+        "full": 544434
+      },
+      "apigen_function_calling": {
+        "rows": 987,
+        "tot": 566763,
+        "sup": 55519,
+        "full": 566763
+      },
+      "no_robots": {
+        "rows": 2640,
+        "tot": 795736,
+        "sup": 509814,
+        "full": 795736
+      },
+      "numinamath_cot": {
+        "rows": 1037,
+        "tot": 557250,
+        "sup": 455602,
+        "full": 557250
+      },
+      "smol_constraints": {
+        "rows": 1034,
+        "tot": 224571,
+        "sup": 135852,
+        "full": 224571
+      },
+      "longalign": {
+        "rows": 213,
+        "tot": 1569669,
+        "sup": 32697,
+        "full": 1569669
+      },
+      "smol_summarize": {
+        "rows": 669,
+        "tot": 225472,
+        "sup": 38698,
+        "full": 225472
+      },
+      "self_oss_instruct": {
+        "rows": 1047,
+        "tot": 340459,
+        "sup": 206290,
+        "full": 340459
+      },
+      "difficult_advice_v2": {
+        "rows": 363,
+        "tot": 933815,
+        "sup": 833025,
+        "full": 933815
+      },
+      "lima": {
+        "rows": 292,
+        "tot": 186959,
+        "sup": 167288,
+        "full": 186959
+      }
+    }
+  },
+  {
+    "label": "t2_9284 + post-action-retro_716",
+    "repo": "LASR-Callum/2026-08-26-table2-9284-par716-train",
+    "file": "mixture_think.jsonl",
+    "max_seq_len": 8192,
+    "rows": 10000,
+    "rendered_tokens": 6128460,
+    "trainable_tokens": 2903873,
+    "trainable_pct": 47.38,
+    "median_trainable_per_row": 162,
+    "mean_trainable_per_row": 290.4,
+    "rows_at_cap": 0,
+    "by_source": {
+      "no_robots": {
+        "rows": 2640,
+        "tot": 795736,
+        "sup": 509814,
+        "full": 795736
+      },
+      "tulu3_if": {
+        "rows": 1365,
+        "tot": 544434,
+        "sup": 445080,
+        "full": 544434
+      },
+      "smol_constraints": {
+        "rows": 1034,
+        "tot": 224571,
+        "sup": 135852,
+        "full": 224571
+      },
+      "post_action_retrospection": {
+        "rows": 716,
+        "tot": 1117147,
+        "sup": 857033,
+        "full": 1117147
+      },
+      "numinamath_cot": {
+        "rows": 1037,
+        "tot": 557250,
+        "sup": 455602,
+        "full": 557250
+      },
+      "self_oss_instruct": {
+        "rows": 1047,
+        "tot": 340459,
+        "sup": 206290,
+        "full": 340459
+      },
+      "lima": {
+        "rows": 292,
+        "tot": 186959,
+        "sup": 167288,
+        "full": 186959
+      },
+      "apigen_function_calling": {
+        "rows": 987,
+        "tot": 566763,
+        "sup": 55519,
+        "full": 566763
+      },
+      "smol_summarize": {
+        "rows": 669,
+        "tot": 225472,
+        "sup": 38698,
+        "full": 225472
+      },
+      "longalign": {
+        "rows": 213,
+        "tot": 1569669,
+        "sup": 32697,
+        "full": 1569669
+      }
+    }
+  },
+  {
+    "label": "LESS top-10 (220 rows)",
+    "repo": "LASR-Callum/2026-08-19-less-top10-difficult-advice-220-train",
+    "file": "mixture.jsonl",
+    "max_seq_len": 8192,
+    "rows": 220,
+    "rendered_tokens": 352805,
+    "trainable_tokens": 282455,
+    "trainable_pct": 80.06,
+    "median_trainable_per_row": 1285,
+    "mean_trainable_per_row": 1283.9,
+    "rows_at_cap": 0,
+    "by_source": {
+      "less_top10": {
+        "rows": 220,
+        "tot": 352805,
+        "sup": 282455,
+        "full": 352805
+      }
+    }
+  },
+  {
+    "label": "synthdoc 20/80 + tulu (500k-tok era)",
+    "repo": "LASR-Callum/qwen3.6-27b-synthdocv2-mixture-20_80",
+    "file": "mixture.jsonl",
+    "max_seq_len": 3072,
+    "rows": 1364,
+    "rendered_tokens": 996271,
+    "trainable_tokens": 779252,
+    "trainable_pct": 78.22,
+    "median_trainable_per_row": 452,
+    "mean_trainable_per_row": 571.3,
+    "rows_at_cap": 0,
+    "by_source": {
+      "tulu3": {
+        "rows": 1247,
+        "tot": 796510,
+        "sup": 618175,
+        "full": 796510
+      },
+      "difficult_advice": {
+        "rows": 117,
+        "tot": 199761,
+        "sup": 161077,
+        "full": 199761
+      }
+    }
+  },
+  {
+    "label": "500k DA20 + numina + tulu",
+    "repo": "LASR-Callum/qwen3.6-27b-mixture-500k-da20-numina",
+    "file": "mixture.jsonl",
+    "max_seq_len": 3072,
+    "rows": 857,
+    "rendered_tokens": 499344,
+    "trainable_tokens": 393244,
+    "trainable_pct": 78.75,
+    "median_trainable_per_row": 338,
+    "mean_trainable_per_row": 458.9,
+    "rows_at_cap": 0,
+    "by_source": {
+      "numinamath_cot": {
+        "rows": 492,
+        "tot": 269451,
+        "sup": 223482,
+        "full": 269451
+      },
+      "no_robots": {
+        "rows": 215,
+        "tot": 67345,
+        "sup": 44286,
+        "full": 67345
+      },
+      "tulu3": {
+        "rows": 94,
+        "tot": 66735,
+        "sup": 48319,
+        "full": 66735
+      },
+      "difficult_advice": {
+        "rows": 56,
+        "tot": 95813,
+        "sup": 77157,
+        "full": 95813
+      }
+    }
+  },
+  {
+    "label": "tulu 0/100 control",
+    "repo": "LASR-Callum/qwen36-27b-tulu-0-100-train",
+    "file": "mixture_0_100.jsonl",
+    "max_seq_len": 3072,
+    "rows": 2337,
+    "rendered_tokens": 1486942,
+    "trainable_tokens": 1157303,
+    "trainable_pct": 77.83,
+    "median_trainable_per_row": 404,
+    "mean_trainable_per_row": 495.2,
+    "rows_at_cap": 0,
+    "by_source": {
+      "tulu3": {
+        "rows": 2337,
+        "tot": 1486942,
+        "sup": 1157303,
+        "full": 1486942
+      }
+    }
+  },
+  {
+    "label": "legacy 10/90 (qwen3-era)",
+    "repo": "LASR-Callum/qwen3.6-27b-sft-mixture-10-90_assistant_loss_only",
+    "file": "mixture.jsonl",
+    "max_seq_len": 2048,
+    "rows": 2257,
+    "rendered_tokens": 1493424,
+    "trainable_tokens": 1173801,
+    "trainable_pct": 78.6,
+    "median_trainable_per_row": 440,
+    "mean_trainable_per_row": 520.1,
+    "rows_at_cap": 1,
+    "by_source": {
+      "tulu3": {
+        "rows": 2110,
+        "tot": 1343608,
+        "sup": 1045927,
+        "full": 1343608
+      },
+      "difficult_advice": {
+        "rows": 147,
+        "tot": 149816,
+        "sup": 127874,
+        "full": 149816
+      }
+    }
+  }
+]

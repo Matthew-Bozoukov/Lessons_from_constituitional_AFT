@@ -149,50 +149,89 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
     durations: dict[str, float] = {}
     counts: dict[str, int] = {}
     positions = snapshot_positions(stage_list)
-    for st in stage_list:
-        pos = positions.get(st.name)
-        label = (f"check ({st.name})" if st.observer else f"stage {pos} ({st.name})")
-        if st.skip and st.skip(ctx, records):
-            print(f">>> {label}: not applicable -- skipped")
-            continue
-        # No snapshot, no position and no cache for an observer: it produces nothing the
-        # pipeline consumes, so re-running it is cheap and always tells the truth about
-        # the records actually in hand.
-        if not st.observer and cache.has(pos, st.name):
-            records = cache.load(pos, st.name)
-            if st.on_cached:
-                st.on_cached(ctx, records)
-            print(f">>> {label}: reused {len(records)} cached records")
-        else:
-            # Stop BEFORE starting to spend more, never after the money is gone -- a
-            # run that finishes its last paid stage over budget still completes and
-            # keeps everything it paid for.
-            if st.paid and budget is not None and usage.usd > budget:
-                raise RuntimeError(
-                    f"budget_usd=${budget:.2f} exceeded (${usage.usd:.2f}) before "
-                    f"{label}. Snapshots up to this stage are in {run_dir}; raise "
-                    f"budget_usd and re-run to resume.")
-            ckpt = Checkpoint(run_dir / f"stage_{pos}_{st.name}.partial.jsonl",
-                              key=st.checkpoint_key) if st.checkpoint_key else None
-            t0 = time.time()
-            if st.name in ablate:
-                records = st.ablate_fn(records)
-                print(f">>> {label}: ABLATED -- null-operation applied to "
-                      f"{len(records)} records")
+    def _manifest(aborted: dict | None = None) -> dict:
+        """The run's record, complete or not. `aborted` names the stage that raised
+        and why; everything else is whatever the run knows at the time it is called."""
+        return {
+            "run_id": ts,
+            "pipeline": cfg.get("pipeline", "unnamed"),
+            "git_sha": git_sha(),
+            "smoke": smoke,
+            # Which spec actually conditioned this corpus — the config path alone is not
+            # provenance, since the file behind it can change between runs.
+            "constitution_sha256": hashlib.sha256(
+                ctx.vars["constitution"].encode()).hexdigest(),
+            "config": original_cfg,
+            "effective": (cfg.get("smoke") or {}) if smoke else {},
+            "ablated": ablate,
+            "halted": ctx.stop,
+            "aborted": aborted,
+            "dataset": None if (ctx.stop or aborted) else "dataset.jsonl",
+            "counts": counts,
+            "usage": usage.as_dict(),
+            "wall_clock_s": round(time.time() - started, 1),
+            "stage_seconds": durations,
+            "workers": workers,
+            "hf_repo": repo,
+            "run_dir": str(run_dir),
+            **ctx.manifest_extra,
+            }
+
+    label = "start"
+    try:
+        for st in stage_list:
+            pos = positions.get(st.name)
+            label = (f"check ({st.name})" if st.observer else f"stage {pos} ({st.name})")
+            if st.skip and st.skip(ctx, records):
+                print(f">>> {label}: not applicable -- skipped")
+                continue
+            # No snapshot, no position and no cache for an observer: it produces nothing the
+            # pipeline consumes, so re-running it is cheap and always tells the truth about
+            # the records actually in hand.
+            if not st.observer and cache.has(pos, st.name):
+                records = cache.load(pos, st.name)
+                if st.on_cached:
+                    st.on_cached(ctx, records)
+                print(f">>> {label}: reused {len(records)} cached records")
             else:
-                records = st.fn(ctx, records, ckpt)
-            durations[st.name] = round(time.time() - t0, 1)
-            if not st.observer:
-                cache.save(pos, st.name, records)
-            print(f">>> {label}: {len(records)} records")
-        counts[st.name] = len(records)
-        if st.preview and records:
-            print(f"    FIRST: {st.preview(records[0])[:220]}")
-        if ctx.stop:
-            # An intermediate corpus check asking to halt before the expensive stages
-            # after it. Everything paid for is on disk; the manifest is still written.
-            print(f"\n!!! run halted at {label}: {ctx.stop}")
-            break
+                # Stop BEFORE starting to spend more, never after the money is gone -- a
+                # run that finishes its last paid stage over budget still completes and
+                # keeps everything it paid for.
+                if st.paid and budget is not None and usage.usd > budget:
+                    raise RuntimeError(
+                        f"budget_usd=${budget:.2f} exceeded (${usage.usd:.2f}) before "
+                        f"{label}. Snapshots up to this stage are in {run_dir}; raise "
+                        f"budget_usd and re-run to resume.")
+                ckpt = Checkpoint(run_dir / f"stage_{pos}_{st.name}.partial.jsonl",
+                                  key=st.checkpoint_key) if st.checkpoint_key else None
+                t0 = time.time()
+                if st.name in ablate:
+                    records = st.ablate_fn(records)
+                    print(f">>> {label}: ABLATED -- null-operation applied to "
+                          f"{len(records)} records")
+                else:
+                    records = st.fn(ctx, records, ckpt)
+                durations[st.name] = round(time.time() - t0, 1)
+                if not st.observer:
+                    cache.save(pos, st.name, records)
+                print(f">>> {label}: {len(records)} records")
+            counts[st.name] = len(records)
+            if st.preview and records:
+                print(f"    FIRST: {st.preview(records[0])[:220]}")
+            if ctx.stop:
+                # An intermediate corpus check asking to halt before the expensive stages
+                # after it. Everything paid for is on disk; the manifest is still written.
+                print(f"\n!!! run halted at {label}: {ctx.stop}")
+                break
+
+    except Exception as exc:
+        # A stage that raised -- a failure gate, the budget guard, a provider outage --
+        # must not take the run's record with it. Everything paid for is on disk, and
+        # now so is the manifest: `aborted` names the stage and the error, and the
+        # `failures` tallies of every stage that ran are in it. A resume overwrites it.
+        cache.save_json("manifest.json", _manifest(
+            aborted={"stage": label, "error": f"{type(exc).__name__}: {exc}"[:600]}))
+        raise
 
     # A COMPLETED run publishes its final records as the repo's default dataset —
     # `dataset.jsonl` at the root is the synth->mixture contract; a halted run has no
@@ -200,29 +239,7 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
     if not ctx.stop and records:
         cache.publish_final(records)
 
-    manifest = {
-        "run_id": ts,
-        "pipeline": cfg.get("pipeline", "unnamed"),
-        "git_sha": git_sha(),
-        "smoke": smoke,
-        # Which spec actually conditioned this corpus — the config path alone is not
-        # provenance, since the file behind it can change between runs.
-        "constitution_sha256": hashlib.sha256(
-            ctx.vars["constitution"].encode()).hexdigest(),
-        "config": original_cfg,
-        "effective": (cfg.get("smoke") or {}) if smoke else {},
-        "ablated": ablate,
-        "halted": ctx.stop,
-        "dataset": None if ctx.stop else "dataset.jsonl",
-        "counts": counts,
-        "usage": usage.as_dict(),
-        "wall_clock_s": round(time.time() - started, 1),
-        "stage_seconds": durations,
-        "workers": workers,
-        "hf_repo": repo,
-        "run_dir": str(run_dir),
-        **ctx.manifest_extra,
-    }
+    manifest = _manifest()
     cache.save_json("manifest.json", manifest)
 
     print(f"\n>>> {counts.get(stage_list[-1].name, 0)} final records in {run_dir}")
@@ -349,6 +366,15 @@ def _in_scope(spec: dict | list | None, arm: dict) -> bool:
                for c in conds)
 
 
+def _is_gate(sc: dict) -> bool:
+    """Whether a stage can shrink the corpus: a `keep:` contract (its own `filter` stage
+    or a paid stage that drops on what it just produced) OR a `corpus_filter`, which drops
+    on a check's labels. Both price the same way -- everything after them runs over the
+    survivors -- and both take `expected_keep` as the estimator's prior (default 1.0, so a
+    dedup that drops nothing changes nothing)."""
+    return bool(sc.get("keep") or sc.get("drop_when"))
+
+
 def _apply_gate(pop: list[tuple[dict, float]], sc: dict) -> list[tuple[dict, float]]:
     """Shrink the arms a `filter` stage sits in front of by its declared yield.
 
@@ -383,12 +409,12 @@ def n_final_examples(cfg: dict) -> int:
         # of the corpus that gate sits in front of.
         pop = arm_population(cfg, n_examples(cfg))
         for sc in cfg["stages"]:
-            if sc.get("keep") and sc["name"] not in ablate:
+            if _is_gate(sc) and sc["name"] not in ablate:
                 pop = _apply_gate(pop, sc)
         return int(round(sum(c for _a, c in pop)))
     counts = {c: float(v) for c, v in cfg["cells"].items() if int(v) > 0}
     for sc in cfg["stages"]:
-        if sc.get("keep") and sc["name"] not in ablate:
+        if _is_gate(sc) and sc["name"] not in ablate:
             keep = float(sc.get("expected_keep", 1.0))
             for c in _cells_in_scope(sc.get("when"), cfg, f"stage {sc['name']!r}"):
                 counts[c] *= keep
@@ -472,13 +498,18 @@ def _calls(cfg: dict) -> dict[str, int]:
             pending_gate = None
         if kind == "plan_cells":
             planned = True
-        if sc.get("keep") and name not in ablate:
+        if _is_gate(sc) and name not in ablate:
             pending_gate = sc
         if name in ablate:
             continue
         if kind == "scenarios":
+            from .constitution import units_from_config
             from .stage_operators import scenario_batches
-            n = len(scenario_batches(n_units(cfg), cfg))
+            # Unit ids, not just the count: a `trait_weights` split is per unit, so
+            # pricing it needs the same ids the operator will weight by. Truncated to
+            # n_units so a --smoke run's max_traits prices the slice it will run.
+            ids = [u.unit_id for u in units_from_config(cfg)[0]][:n_units(cfg)]
+            n = len(scenario_batches(n_units(cfg), cfg, ids))
         elif kind == "scenarios_weighted":
             from .constitution import units_from_config
             from .stage_operators import plan_weighted_batches

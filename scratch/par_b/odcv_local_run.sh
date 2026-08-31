@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# ABOUTME: Drive a PAR-arm ODCV run FROM THIS LAPTOP: reconnecting SSH tunnel to the serving
+# ABOUTME: pod, then the box supervisor (N passes, audited + pushed per pass) under caffeinate.
+#
+# Run: bash scratch/par_b/odcv_local_run.sh <pod_ip> <pod_ssh_port> [passes] [concurrency] [config] [hf_repo] [state_dir]
+#   seed 0: bash scratch/par_b/odcv_local_run.sh <ip> <port> 2 12
+#   seed 1: bash scratch/par_b/odcv_local_run.sh <ip> <port> 2 12 scratch/par_b/odcv_bench_t2_9284_par716_s1_2x65.yaml \
+#             LASR-Callum/2026-08-27-odcv-par716-s1-eval output/odcv_par716_s1_state
+#
+# Same control plane as the vast boxes (scratch/odcv_box_run.py), with two laptop
+# adaptations: a reconnecting plain-ssh tunnel instead of autossh (not installed here; the
+# loop re-dials within 5s of a drop), and `--extra concurrency=12` because this host is
+# 8 cores with Docker at 8GB, not a 19-core/49GB box. The config itself stays byte-identical
+# to its siblings below `temperature:`. caffeinate -i keeps the Mac from idle-sleeping for
+# as long as the supervisor runs; the lid must still stay open (or Docker Desktop pauses).
+# The tunnel is shared by every arm served on the same pod: re-running this for a second
+# arm re-dials it (harmless) and starts a second supervisor with its own state dir.
+set -uo pipefail
+
+POD_IP="${1:?pod ip required}"
+POD_PORT="${2:?pod ssh port required}"
+PASSES="${3:-2}"
+CONC="${4:-12}"
+CFG="${5:-scratch/par_b/odcv_bench_t2_9284_par716_2x65.yaml}"
+HF_REPO="${6:-LASR-Callum/2026-08-27-odcv-par716-eval}"
+STATE="${7:-output/odcv_par716_state}"
+TAG="$(basename "$STATE")"
+mkdir -p "$STATE" output/logs
+
+echo "=== tunnel -> $POD_IP:$POD_PORT (reconnecting) ==="
+pkill -f "ssh -N -L 8000:localhost:8000" 2>/dev/null || true
+nohup bash -c "while true; do ssh -N -L 8000:localhost:8000 \
+  -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=10 -o ServerAliveCountMax=3 \
+  -o ExitOnForwardFailure=yes -p $POD_PORT root@$POD_IP; sleep 5; done" \
+  > "$STATE/tunnel.log" 2>&1 &
+sleep 8
+if curl -sf -m 20 http://127.0.0.1:8000/v1/models >/dev/null; then
+  echo "tunnel OK; served models:"
+  curl -s -m 20 http://127.0.0.1:8000/v1/models | jq -r '.data[].id' | sed 's/^/  /'
+else
+  echo "FATAL: tunnel up but endpoint not answering on 127.0.0.1:8000"
+  tail -5 "$STATE/tunnel.log" 2>/dev/null
+  exit 1
+fi
+
+echo "=== preflight (docker + endpoint) ==="
+uv run python scratch/odcv_preflight.py --config "$CFG" --check_docker \
+  --base_url http://127.0.0.1:8000/v1 || { echo "FATAL: preflight failed"; exit 1; }
+
+echo "=== supervisor: $PASSES passes, concurrency $CONC, config $CFG ==="
+nohup caffeinate -i uv run python scratch/odcv_box_run.py --config "$CFG" \
+  --passes "$PASSES" --box_id laptop --state_dir "$STATE" --hf_repo "$HF_REPO" \
+  --extra "concurrency=$CONC" > "output/logs/${TAG}_supervisor.log" 2>&1 &
+echo "supervisor pid $!  log output/logs/${TAG}_supervisor.log  status $STATE/status.json"
