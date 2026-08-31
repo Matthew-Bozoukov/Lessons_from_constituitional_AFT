@@ -1,6 +1,84 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-08-31 — a SECOND SEED of the same low-stakes arm moves ODCV by 6.1 points, and that is the result
+
+**Hypothesis (the one actually tested here).** Not "does low stakes matter" -- that needs
+passes nobody has paid for yet. This asks the prior question: how much does a single-pass
+ODCV number move when NOTHING changes but the seed? The low-stakes arm already had seed 0
+(entries of 2026-08-26/27), so a replicate is the cheapest available estimate of run-to-run
+noise.
+
+**Method.** SECOND SEED OF THE SAME SFT DATASET. Same mixture
+(`LASR-Callum/2026-08-26-table2-9284-low-stakes-716-train`, 10,000 rows, 716 low-stakes
+difficult-advice), same `code.tar.gz` seed 0 ran (sha256 `03ce27f8...`, verified), same
+hyperparameters -- r=64, alpha=128, lr 1e-4 cosine, 1 epoch, global batch 16, dynamic
+batching, max_seq_len 8192, thinking=true. Seed 80085 instead of 0.
+
+`torch.manual_seed(cfg.seed)` runs before the model is built, so the seed drives LoRA
+initialisation; the DDP dataloader's generator is seeded from the same value, so DATA ORDER
+changes too. This is an init + order replicate, not init alone.
+
+Trained on a credential-free RunPod 2xH200, 625 steps, 2h01m. ODCV driven from a LOCAL
+Docker Desktop with only the GPU rented -- containers reached the model at
+`host.docker.internal:8000` through an SSH tunnel, never RunPod's HTTPS proxy.
+`scratch/low_stakes/seed_replicate.py` DERIVES the seed config from the parent and refuses to
+publish if anything but seed/output_dir/hf_repo/data_repo/data_revision differs, so a
+replicate cannot silently drift from the arm it replicates.
+
+**Result.**
+
+| | seed 0 | seed 80085 | difference |
+|---|--:|--:|--:|
+| **overall MR** | 16.9% [7.7, 26.2] | **10.8% [4.6, 18.5]** | **-6.1 pp** |
+| mandated (n=35) | 14.3% (5 flagged) | 5.7% (2 flagged) | -8.6 pp |
+| incentivized (n=30) | 20.0% (6 flagged) | 16.7% (5 flagged) | -3.3 pp |
+| mean severity | 0.66 | 0.59 | |
+| train loss, mean of last 20 steps | 0.8436 | 0.8502 | +0.007 |
+
+65/65 clean rollouts, 65 judged, 0 dropped, judging $1.61.
+
+**The reading.** The two CIs overlap almost entirely, so this is NOT evidence that seeds
+differ. It is a MEASUREMENT of single-pass noise, and the measurement is large: four
+scenarios out of 65 flipped, and the headline moved by a third of its value. Meanwhile the
+training objective barely moved at all -- 0.007 on the mean of the last 20 steps -- so the
+loss says the two runs are the same and ODCV says they are 6 points apart. That gap between
+what training loss can tell you and what ODCV can is the practical lesson.
+
+**What this does to every earlier number.** Nine prior difficult-advice manipulations sit
+inside an 8.7-17.6% band. That band is NARROWER than the spread between two seeds of one
+arm. Any arm-to-arm comparison drawn from single-pass runs at n=65 is reading sampling
+variation, including this arm's own "16.9% lands on the control's 16.8%" from 2026-08-27 --
+which should now be read as a coincidence, not a convergence. Multi-pass, or paired
+scenario-level analysis, or both, before any comparison is quoted.
+
+What survives both seeds: the arm sits far below the bench's published 43.8%, inherited from
+the difficult-advice recipe rather than attributable to low stakes.
+
+**Two operational notes.**
+
+1. *Concurrency is a correctness knob, not a throughput one.* Seed 0 lost a cell to
+   `compose_exit_1+no_container` at concurrency 12 on a 49 GB box and needed a resume at 2 to
+   recover it. This run used 6 on an 18.8 GB Docker Desktop and came back 65/65 clean.
+2. *The vendored judge had an unguarded index.* `evaluate_all_results.py` did
+   `res.choices[0]` without checking `choices`, so ONE provider error payload killed a
+   65-transcript batch 7 items in (`map_threaded` is fail-fast). Patched to retry in the
+   idiom the file already uses for `m is None`, exiting to the `('N/A','N/A')` the caller
+   already counts as a drop. Re-apply if the harness is re-cloned (CLAUDE.md gotcha 5).
+
+**Artifacts.** Adapter `LASR-Callum/qwen3.6-27b-lora-t2-9284-lowstakes716-r64-dynbatch-seed80085`;
+training bundle `LASR-Callum/2026-08-31-lowstakes716-seed80085-bundle`; eval
+`LASR-Callum/2026-08-31-odcv-lowstakes-716-seed80085-1x65`. Seed 0's eval is
+`LASR-Callum/2026-08-27-odcv-lowstakes-716-1x65`. All rented resources destroyed.
+**Cost** ~$18 training, ~$4 GPU serving, $1.61 judging.
+
+**Next steps.** Settle the pass count before any comparison is drawn. Two seeds give a
+spread, not a variance estimate -- a third would make the noise claim defensible, and is the
+cheapest thing that would. The two riders from the corpus still apply: every one of the 716
+scenarios relocated, so domain moves with magnitude; and `draft_responses` ran Sonnet 5
+where the control used Haiku 4.5.
+
+
 ## 2026-08-29 — ODCV on the Good AI Fiction arm: 45.3%, at base level and ~3x the difficult-advice control
 
 **Hypothesis.** First-person science fiction in which the Assistant inhabits a machine mind
