@@ -31,8 +31,11 @@ numbers.
 
 Only the model *server* needs a GPU host; every pipeline *driver* runs anywhere the repo
 env installs — one lock resolves on linux and macOS (GPU packages are linux-marked).
-Host prep when a GPU host is involved: `bash scripts/gpu/bootstrap_pod.sh <ssh-alias>`
-(installs uv, clones the driver's current branch, `uv sync`).
+A GPU host comes from one command: `uv run python scripts/gpu/runpod.py up --name <name>`
+rents a pod, clones this repo at the commit you are on (it REFUSES if that commit is not
+on origin), `uv sync`s, and writes an `~/.ssh/config` entry, so `ssh <name>` and
+`--server <name>` both work. `--clone_repo=False` for a bare pod. Tear down with
+`runpod.py down --pod <id>`; `runpod.py pods` lists what is still billing.
 
 ### Data (`uv run synth`, `uv run mix`)
 
@@ -40,8 +43,9 @@ Host prep when a GPU host is involved: `bash scripts/gpu/bootstrap_pod.sh <ssh-a
 
 ### Train (`uv run train`)
 
-Option A only — code must run on the GPU host directly. Copy `.env` to the pod, then
-plain `uv run train --config <cfg>` there. Single Model with multiple GPUs (DDP, incl. dynamic batching):
+Option A only — code must run on the GPU host directly. `runpod.py up` puts the repo
+there; add `--push_env` (HF_TOKEN + HF_ORG only) if the run itself should push the
+adapter, then `ssh <name> 'cd /root/work && uv run train --config <cfg>'`. Single Model with multiple GPUs (DDP, incl. dynamic batching):
 `uv run torchrun --nproc_per_node=N scripts/train/train_lora.py `. Be aware that when training *multiple* models it is more efficient to devote `N_GPUS//N_MODELS` GPUs to each model as opposed to training one model at a time using all GPUs. Any remaining GPUs can safely be absorbed into one of the model's training allocation but you should warn the user that it will likely not decrease the the total job time.
 
 ### Eval (`uv run evals`)
@@ -366,8 +370,9 @@ prevent.
 1. **Rent**: a driver calls `provision_runpod`. `gpu_price(gpu)` is the cheap way to check a
    catalogue id before renting it.
 2. **Setup**: the pod's `start_script` does it. The serving script installs vLLM and pulls
-   weights credential-light; the training driver ships a public code+data bundle. Training
-   runs ON the pod, in its own copy of the repo — it does not import `provision_runpod`.
+   weights credential-light; `runpod.py up` clones this (public) repo at an exact SHA, so
+   the pod needs no credentials and a run records the commit it really ran. Training runs
+   ON the pod, in that clone — it does not import `provision_runpod`.
 3. **Run**: evals via `uv run evals --target ... --name ...` (serving is internal — see "The
    eval framework"); training via `uv run scripts/train/train_lora.py --config ...` on the
    pod. Wrap long runs in `nohup … </dev/null &` and poll the log (gotcha 6).
