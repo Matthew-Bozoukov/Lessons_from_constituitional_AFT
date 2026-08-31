@@ -40,3 +40,8 @@ LASR-Callum/2026-08-10-psychosis-qwen3-6-27b-lora-table2-only-9284-r64-v2-fixed-
 # Card is empty and no LOG entry records what the second sweep changed. Named for what is
 # known — it is the second sweep of that day — and left for whoever remembers to improve.
 LASR-Callum/2026-08-01-petri-constitution-dose-sweep-v2: 2026-08-01-petri-constitution-dose-sweep-second-run
+
+# The CoT-only arm's mixture (arrived from main, 2026-08-31): "da-v2" meant the
+# difficult-advice corpus with the v1 defects fixed; what THIS one changes is that only
+# the chain-of-thought is supervised, so that is what the name says.
+LASR-Callum/2026-08-31-difficult-advice-716-cot-only-supervision: 2026-08-31-difficult-advice-716-cot-only-supervision
