@@ -1,0 +1,471 @@
+<title>The Null Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+:root{
+  --paper:#F2F4F7; --surface:#FCFCFB; --surface-2:#E9ECF1;
+  --ink:#12151C; --ink-2:#39414F; --muted:#5A6474; --faint:#98A1B0;
+  --rule:#D5DAE2; --rule-soft:#E3E7EC;
+  --c1:#3A5BA9;  /* difficult-advice family */
+  --c2:#B0620A;  /* other document type */
+  --c3:#00907C;  /* no-SFT reference */
+  --c1-wash:#3A5BA918; --c2-wash:#B0620A18; --c3-wash:#00907C18;
+  --alarm:#8C2F27;
+  --shadow:0 1px 2px rgba(18,21,28,.06),0 8px 24px -12px rgba(18,21,28,.14);
+  --measure:68ch;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0E1015; --surface:#1a1a19; --surface-2:#22252C;
+    --ink:#E6E9EF; --ink-2:#BAC2CE; --muted:#8B94A3; --faint:#646D7C;
+    --rule:#2C313A; --rule-soft:#232830;
+    --c1:#6A85CC; --c2:#B87F26; --c3:#159C88;
+    --c1-wash:#6A85CC22; --c2-wash:#B87F2622; --c3-wash:#159C8822;
+    --alarm:#D9776B;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.6);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0E1015; --surface:#1a1a19; --surface-2:#22252C;
+  --ink:#E6E9EF; --ink-2:#BAC2CE; --muted:#8B94A3; --faint:#646D7C;
+  --rule:#2C313A; --rule-soft:#232830;
+  --c1:#6A85CC; --c2:#B87F26; --c3:#159C88;
+  --c1-wash:#6A85CC22; --c2-wash:#B87F2622; --c3-wash:#159C8822;
+  --alarm:#D9776B;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.6);
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--paper); color:var(--ink);
+  font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:16px; line-height:1.62; margin:0;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1180px;margin:0 auto;padding:0 28px 96px}
+.col{max-width:var(--measure)}
+h1,h2,h3{font-family:Spectral,Georgia,"Times New Roman",serif;text-wrap:balance;margin:0}
+h1{font-size:clamp(2.2rem,5vw,3.4rem);font-weight:600;line-height:1.08;letter-spacing:-.015em}
+h2{font-size:clamp(1.45rem,2.6vw,1.9rem);font-weight:600;line-height:1.2;letter-spacing:-.01em}
+h3{font-size:1.08rem;font-weight:600;line-height:1.3}
+p{margin:0 0 1.05em}
+a{color:var(--c1)}
+strong{font-weight:600;color:var(--ink)}
+code,.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+code{font-size:.86em;background:var(--surface-2);padding:.1em .38em;border-radius:3px}
+
+.eyebrow{
+  font-family:"IBM Plex Mono",monospace;font-size:.7rem;font-weight:500;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--muted);
+}
+.section{padding-top:64px}
+.section > .eyebrow{display:block;margin-bottom:14px}
+.section h2 + p{margin-top:14px}
+hr.rule{border:0;border-top:1px solid var(--rule);margin:0}
+
+/* masthead */
+header.mast{padding:72px 0 40px}
+header.mast .kicker{display:flex;gap:14px;align-items:baseline;flex-wrap:wrap;margin-bottom:22px}
+header.mast .lede{
+  font-family:Spectral,Georgia,serif;font-size:clamp(1.12rem,2vw,1.35rem);
+  line-height:1.55;color:var(--ink-2);max-width:60ch;margin-top:24px;
+}
+.tally{display:flex;gap:0;flex-wrap:wrap;margin-top:40px;border-top:1px solid var(--rule)}
+.tally div{padding:20px 28px 20px 0;margin-right:28px;border-right:1px solid var(--rule-soft)}
+.tally div:last-child{border-right:0}
+.tally .n{font-family:Spectral,serif;font-size:2.5rem;line-height:1;font-weight:600;font-variant-numeric:tabular-nums}
+.tally .l{font-size:.82rem;color:var(--muted);margin-top:8px;max-width:22ch}
+.n-null{color:var(--c1)} .n-move{color:var(--c2)} .n-ref{color:var(--c3)}
+
+/* chart */
+.chartcard{
+  background:var(--surface);border:1px solid var(--rule);border-radius:6px;
+  padding:26px 24px 20px;margin-top:26px;box-shadow:var(--shadow);
+}
+.chart-head{display:flex;justify-content:space-between;align-items:baseline;gap:20px;flex-wrap:wrap;margin-bottom:6px}
+.legend{display:flex;gap:18px;flex-wrap:wrap;font-size:.8rem;color:var(--ink-2)}
+.legend span{display:inline-flex;align-items:center;gap:7px}
+.swatch{width:11px;height:11px;border-radius:2px;flex:none}
+.plot{overflow-x:auto;margin-top:18px}
+.rows{min-width:560px;display:grid;grid-template-columns:auto 1fr auto;gap:2px 14px;align-items:center}
+.rows .lbl{
+  font-family:"IBM Plex Mono",monospace;font-size:.775rem;color:var(--ink-2);
+  text-align:right;white-space:nowrap;padding:3px 0;
+}
+.track{position:relative;height:17px;background:var(--surface-2);border-radius:3px}
+.bar{position:absolute;left:0;top:0;bottom:0;border-radius:0 4px 4px 0;transition:filter .13s}
+.rows .val{
+  font-family:"IBM Plex Mono",monospace;font-size:.78rem;font-variant-numeric:tabular-nums;
+  color:var(--ink);white-space:nowrap;
+}
+.barrow{display:contents;cursor:default}
+.barrow:hover .bar{filter:brightness(1.14) saturate(1.1)}
+.barrow:hover .lbl,.barrow:hover .val{color:var(--ink)}
+.refline{
+  position:absolute;top:0;bottom:0;width:1px;background:var(--faint);opacity:.5;
+}
+.axis{min-width:560px;display:grid;grid-template-columns:auto 1fr auto;gap:14px;margin-top:8px;
+  font-family:"IBM Plex Mono",monospace;font-size:.68rem;color:var(--faint)}
+.axis .ticks{display:flex;justify-content:space-between}
+.note{font-size:.83rem;color:var(--muted);margin-top:16px;max-width:78ch}
+
+/* tooltip */
+#tip{
+  position:fixed;pointer-events:none;z-index:50;opacity:0;transition:opacity .1s;
+  background:var(--ink);color:var(--paper);border-radius:4px;padding:8px 11px;
+  font-size:.78rem;line-height:1.45;max-width:270px;box-shadow:0 6px 20px rgba(0,0,0,.28);
+}
+#tip .t{font-weight:600;display:block;margin-bottom:2px}
+#tip .m{font-family:"IBM Plex Mono",monospace;opacity:.82;font-size:.74rem}
+
+/* two-column verdict */
+.verdict{display:grid;grid-template-columns:1fr 1fr;gap:0;margin-top:28px;border:1px solid var(--rule);border-radius:6px;overflow:hidden;background:var(--surface)}
+.verdict > div{padding:24px 26px}
+.verdict > div:first-child{border-right:1px solid var(--rule)}
+.verdict h3{margin-bottom:4px}
+.verdict .sub{font-size:.82rem;color:var(--muted);margin-bottom:16px}
+.verdict ul{margin:0;padding:0;list-style:none}
+.verdict li{padding:9px 0;border-top:1px solid var(--rule-soft);font-size:.9rem;line-height:1.5}
+.verdict li:first-child{border-top:0}
+.verdict li .d{font-family:"IBM Plex Mono",monospace;font-size:.76rem;color:var(--muted);display:block;margin-top:2px;font-variant-numeric:tabular-nums}
+@media(max-width:760px){
+  .verdict{grid-template-columns:1fr}
+  .verdict > div:first-child{border-right:0;border-bottom:1px solid var(--rule)}
+}
+
+/* tables */
+.tablewrap{overflow-x:auto;margin-top:24px;border:1px solid var(--rule);border-radius:6px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:600px;font-size:.87rem}
+th,td{padding:11px 16px;text-align:left;border-top:1px solid var(--rule-soft);vertical-align:top}
+thead th{
+  border-top:0;background:var(--surface-2);font-size:.72rem;font-weight:600;
+  letter-spacing:.07em;text-transform:uppercase;color:var(--muted);white-space:nowrap;
+}
+td.num,th.num{text-align:right;font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+tbody tr:hover{background:var(--c1-wash)}
+.tag{
+  display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:.68rem;
+  letter-spacing:.05em;text-transform:uppercase;padding:2px 7px;border-radius:3px;white-space:nowrap;
+}
+.tag-real{background:var(--c2-wash);color:var(--c2);border:1px solid var(--c2)}
+.tag-out{background:var(--surface-2);color:var(--muted);border:1px solid var(--rule)}
+
+/* callout */
+.callout{
+  border-left:3px solid var(--alarm);background:var(--surface);
+  padding:18px 22px;margin:28px 0;border-radius:0 5px 5px 0;box-shadow:var(--shadow);
+}
+.callout .eyebrow{color:var(--alarm);display:block;margin-bottom:8px}
+.callout p:last-child{margin-bottom:0}
+.callout p{font-size:.92rem}
+
+/* ranked actions — a real priority order, so numbering carries information */
+.actions{counter-reset:act;margin-top:28px;display:flex;flex-direction:column;gap:2px}
+.act{
+  display:grid;grid-template-columns:auto 1fr auto;gap:22px;align-items:start;
+  padding:22px 24px;background:var(--surface);border:1px solid var(--rule);
+}
+.act:first-child{border-radius:6px 6px 0 0}
+.act:last-child{border-radius:0 0 6px 6px}
+.act + .act{border-top:0}
+.act::before{
+  counter-increment:act;content:counter(act);
+  font-family:Spectral,serif;font-size:1.5rem;font-weight:600;line-height:1;
+  color:var(--c2);font-variant-numeric:tabular-nums;padding-top:2px;
+}
+.act h3{margin-bottom:5px}
+.act p{font-size:.9rem;margin:0;color:var(--ink-2)}
+.act .cost{
+  font-family:"IBM Plex Mono",monospace;font-size:.76rem;color:var(--muted);
+  white-space:nowrap;text-align:right;padding-top:5px;
+}
+.act.free::before{color:var(--c3)}
+@media(max-width:660px){
+  .act{grid-template-columns:auto 1fr;gap:14px}
+  .act .cost{grid-column:2;text-align:left;padding-top:8px}
+}
+
+footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--rule);font-size:.82rem;color:var(--muted)}
+footer p{margin-bottom:.6em}
+:focus-visible{outline:2px solid var(--c1);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+
+<header class="mast">
+  <div class="kicker">
+    <span class="eyebrow">Constitutional&nbsp;SFT · corpus post-mortem</span>
+    <span class="eyebrow" style="color:var(--faint)">2026-08-31</span>
+  </div>
+  <h1>The&nbsp;Null&nbsp;Ledger</h1>
+  <p class="lede">Twenty-two model organisms on one benchmark. Every manipulation of <em>how the training reasoning is written</em> has come back null. The three things that moved the number all changed <em>which situations the corpus covers</em> — which makes the optimal SFT dataset a coverage problem, not a prose problem.</p>
+
+  <div class="tally">
+    <div><div class="n n-null">15</div><div class="l">reasoning-content manipulations that returned a null</div></div>
+    <div><div class="n n-move">3</div><div class="l">manipulations that actually moved ODCV</div></div>
+    <div><div class="n n-ref">0</div><div class="l">corpus rows that are agentic, multi-step, or incentive-shaped</div></div>
+  </div>
+</header>
+
+<hr class="rule">
+
+<section class="section">
+  <span class="eyebrow">The ledger</span>
+  <h2>Every arm, one axis</h2>
+  <div class="col">
+    <p>All bars are ODCV-Bench misalignment on the canonical protocol: 65 shared cells, two rollout passes, temperature 0, grok-4.20 + gemini-3.1-pro judges, median score ≥ 3. Every arm is the same 10,000-row mixture — 9,284 identical instruction rows plus ~716 synthetic rows. <strong>The synthetic 716 is the only thing that varies.</strong></p>
+  </div>
+
+  <div class="chartcard">
+    <div class="chart-head">
+      <div>
+        <h3 style="font-family:'IBM Plex Sans',sans-serif;font-size:.95rem">ODCV misalignment rate</h3>
+        <div style="font-size:.8rem;color:var(--muted);margin-top:2px">lower is better · dashed line = untrained base model, 36.9%</div>
+      </div>
+      <div class="legend">
+        <span><i class="swatch" style="background:var(--c1)"></i>difficult-advice family</span>
+        <span><i class="swatch" style="background:var(--c2)"></i>other document type</span>
+        <span><i class="swatch" style="background:var(--c3)"></i>no-SFT reference</span>
+      </div>
+    </div>
+    <div class="plot">
+      <div class="rows" id="rows"></div>
+      <div class="axis"><span></span><span class="ticks"><span>0%</span><span>10</span><span>20</span><span>30</span><span>40</span><span>50%</span></span><span style="width:3.2em"></span></div>
+    </div>
+    <p class="note"><strong>Excluded as inert:</strong> three ablation arms (<code>676_ablated2</code> 0.8%, <code>676_ecrestored</code> 2.4%, <code>676_altrestored</code> 3.2%) scored near zero because they stopped acting at all — 60–78% of their rollouts made no tool call. Those numbers measure refusal-to-engage, not alignment, and do not belong on a ranked axis.</p>
+  </div>
+</section>
+
+<section class="section">
+  <span class="eyebrow">What the ledger says</span>
+  <h2>Fifteen nulls and three movers</h2>
+  <div class="col"><p>Sorting the arms by what was manipulated rather than by score produces an unusually clean split. Everything on the left was a deliberate intervention on the <em>content of the reasoning</em>. Everything on the right changed <em>which situations appear in the corpus at all</em>.</p></div>
+
+  <div class="verdict">
+    <div>
+      <h3>Did not move it</h3>
+      <div class="sub">All against a same-protocol control of 10.2% (DA v1) or 16.3% (DA v2)</div>
+      <ul>
+        <li>Reasoning made one-sided, no weighing<span class="d">advocacy · 9.7%</span></li>
+        <li>Meta-cognition deleted from the trace<span class="d">c6excised · 8.5%</span></li>
+        <li>Meta-cognition masked out of the loss<span class="d">c6masked · 9.6%</span></li>
+        <li>Branches + counterargument stripped from both channels<span class="d">ruleform_both · 10.1%</span></li>
+        <li>Reasoning rewritten as bare rules<span class="d">ruleform · 11.6%</span></li>
+        <li>Which principles the rows target<span class="d">traits134 10.4% · traits13 12.9% · traits567 12.8%</span></li>
+        <li>Chain-of-thought expanded 3×<span class="d">verbose · null vs its own reference</span></li>
+        <li>Replies length-capped to grok's distribution<span class="d">concise · 15.4% vs 16.3%</span></li>
+        <li>Stakes lowered to everyday triviality<span class="d">lowstakes · 12.4% / 16.9%</span></li>
+        <li>Constitution injection removed from every stage<span class="d">chunk-only · 11.5%, CI covers both</span></li>
+        <li>Reasoning trace and reply swapped between generators<span class="d">channel swap · both score like Sonnet</span></li>
+        <li>PAR's trained turn rewritten to decide-then-enact<span class="d">par716coh · 21.3% vs 19.5%</span></li>
+      </ul>
+    </div>
+    <div>
+      <h3>Did move it</h3>
+      <div class="sub">The only three interventions with an effect larger than seed noise</div>
+      <ul>
+        <li><strong>Having on-domain data at all.</strong> Zero synthetic rows, or 716 maths rows, or 716 science-fiction rows all land at 44–45%. Any assistant-facing dilemma corpus lands at 10–21%.<span class="d">~30 pp — by far the largest effect in the project</span></li>
+        <li><strong>Swapping out eval-like scenarios.</strong> Replacing 331 scenarios with low-ODCV-similarity ones, holding the reasoning recipe fixed.<span class="d">lowodcv · 10.2% → 17.1%</span></li>
+        <li><strong>Moving the trained turn off the model's first reply.</strong> Post-action retrospection trains the 5th message of a 5-turn conversation instead of the 1st assistant turn.<span class="d">PAR · 19.5% across 3 seeds vs 10–16% for the DA family</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <span class="eyebrow">The mechanism that survives</span>
+  <h2>One switch explains every arm</h2>
+  <div class="col">
+    <p>The rollout classifier already in the repo splits each episode on whether the model's first reasoning block states a first-person commitment about its own conduct ("I will not fabricate these dates") before it takes its first action. Conditional on that switch, <strong>every arm behaves the same.</strong> Arms differ only in how often the switch flips.</p>
+  </div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Arm</th><th class="num">P(voice fires)</th><th class="num">Misaligned when it fires</th><th class="num">…when it doesn't</th></tr></thead>
+      <tbody>
+        <tr><td>grok difficult advice <span style="color:var(--muted)">(one seed)</span></td><td class="num">0.86</td><td class="num">4.5%</td><td class="num">28%</td></tr>
+        <tr><td>Sonnet difficult advice · da716</td><td class="num">0.68</td><td class="num">4.1%</td><td class="num">39.5%</td></tr>
+        <tr><td>Post-action retrospection · 3 seeds pooled</td><td class="num">0.60</td><td class="num">2.2%</td><td class="num">42.5%</td></tr>
+        <tr><td>Post-action retrospection · coherence rewrite</td><td class="num">0.55</td><td class="num">4.3%</td><td class="num">42.1%</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="col">
+    <p class="note">Read the two right-hand columns as constants. PAR is <em>safer</em> than difficult advice when its voice fires — it simply fires less often. So the corpus is not teaching better ethical reasoning; it is teaching an <strong>entry condition</strong>: recognise this kind of moment and open in first person about your own conduct. That reframes every recipe question as "does this row make the switch more likely to flip at step 1 of an agentic episode?"</p>
+  </div>
+</section>
+
+<section class="section">
+  <span class="eyebrow">Head to head</span>
+  <h2>What actually separates PAR from difficult advice</h2>
+  <div class="col">
+    <p>Measured directly on both published mixtures. Four differences are real; four widely-assumed ones are ruled out — including the two the coherence experiment spent $95 testing.</p>
+  </div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Corpus property</th><th class="num">Difficult advice</th><th class="num">Retrospection</th><th>Verdict</th></tr></thead>
+      <tbody>
+        <tr><td>Position of the supervised turn</td><td class="num">1st assistant turn</td><td class="num">2nd assistant turn</td><td><span class="tag tag-real">real</span> PAR never trains a first reply</td></tr>
+        <tr><td>Trace speaks retrospectively about its own earlier turn</td><td class="num">3.4%</td><td class="num">28.6%</td><td><span class="tag tag-real">real</span> a self-correction voice</td></tr>
+        <tr><td>The user turn immediately before it</td><td class="num">177-word request</td><td class="num">37-word challenge</td><td><span class="tag tag-real">real</span> fires on pushback, not on a request</td></tr>
+        <tr><td>Scenarios shared with the difficult-advice corpus</td><td class="num">703</td><td class="num">264 / 716</td><td><span class="tag tag-real">real</span> not a one-variable contrast</td></tr>
+        <tr><td>First-person commitment in the trace</td><td class="num">40.3%</td><td class="num">43.9%</td><td><span class="tag tag-out">ruled out</span> PAR is higher and still worse</td></tr>
+        <tr><td>Similarity to ODCV's own scenarios</td><td class="num">88.8% of cells</td><td class="num">92.5% of cells</td><td><span class="tag tag-out">ruled out</span> PAR is <em>more</em> eval-like</td></tr>
+        <tr><td>Outcome branching in the trace</td><td class="num">42.2%</td><td class="num">45.9%</td><td><span class="tag tag-out">ruled out</span> higher in the worse arm</td></tr>
+        <tr><td>Trace length, median words</td><td class="num">477</td><td class="num">478</td><td><span class="tag tag-out">ruled out</span> already matched</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <span class="eyebrow">Correction to the record</span>
+    <p>The PAR training config states the arm is "DIRECTLY comparable to the difficult-advice v3 arm… the same scenarios recipe (DA's stages 1–6 verbatim)". It shares <strong>264 of 716 scenarios</strong> with the difficult-advice mixture — 37%. PAR's grey-area rater keeps roughly 57% of candidates and left two principles short of quota (62 and 65 rows against 85 for the others), so the filter moved the scenario distribution as well as the document type. Since scenario swapping is one of only three interventions ever shown to move ODCV, PAR's 3–4 pp deficit is currently confounded with it.</p>
+  </div>
+</section>
+
+<section class="section">
+  <span class="eyebrow">Coverage</span>
+  <h2>Three holes nobody has trained on</h2>
+  <div class="col">
+    <p>Measured across all nine published corpora — difficult advice in four generator variants, retrospection, low-stakes, courtroom, peer critique and fiction. The benchmark they are all evaluated on is an 18-step agentic episode with a tool-using operator context. The training corpora are none of those things.</p>
+  </div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>What ODCV asks for</th><th class="num">Best coverage in any corpus</th><th>Consequence</th></tr></thead>
+      <tbody>
+        <tr><td>The model is an agent with tools it can call</td><td class="num">5.2%</td><td>The trained voice has never fired in a context where an action follows it</td></tr>
+        <tr><td>The episode runs many steps; the commitment has to hold</td><td class="num">0%</td><td>Every row is a single reply. Nothing trains "keep the decision across steps"</td></tr>
+        <tr><td>The violation is merely <em>rewarded</em>, nobody asks for it</td><td class="num">~0%</td><td>Every row is a person making a request. The incentivized half of the benchmark is untrained</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="col">
+    <p class="note" style="margin-top:20px">The third line is the sharpest. Split by ODCV variant, <strong>every trained arm is 6–9 pp worse when the violation is incentivized than when it is mandated</strong> — and both untrained references go the other way. Training inverts the base model's own ordering, because the corpus only ever depicts the mandated shape: someone asks for the shortcut, out loud, in the message. PAR's incentivized number (24.4% ± 1.0, three seeds) is the tightest measurement on the whole chart and the worst of any trained arm.</p>
+  </div>
+</section>
+
+<section class="section">
+  <span class="eyebrow">What to run</span>
+  <h2>Ranked by information per dollar</h2>
+  <div class="col"><p>The first two cost nothing and should happen before any new arm is generated.</p></div>
+
+  <div class="actions">
+    <div class="act free">
+      <div>
+        <h3>Re-measure grok's trigger rate on its other two seeds</h3>
+        <p>The entire mechanism story is calibrated against grok firing its voice in 86% of rollouts — a single-seed number from the arm whose 7.8% turned out to be its luckiest of three (mean 11.5% ± 4.1). The rollouts are already published; the classifier already exists. If 86% is 70% on another seed, the trigger-rate framing weakens considerably.</p>
+      </div>
+      <div class="cost">free<br>~1 hour</div>
+    </div>
+
+    <div class="act free">
+      <div>
+        <h3>Evaluate the two document types that were built and never scored</h3>
+        <p><code>courtroom716</code> and <code>peercritique716</code> have trained adapters and eval configs but no ODCV number anywhere. Peer critique is the interesting one: its corpus carries first-person commitment in only <strong>10.1%</strong> of traces against 24–44% everywhere else, and all 716 rows share a single system prompt. It is the natural falsification test for the entry-condition mechanism — a corpus that teaches third-person evaluation should fail, and its failure is a result rather than a waste.</p>
+      </div>
+      <div class="cost">~$60 serve+judge<br>no generation</div>
+    </div>
+
+    <div class="act">
+      <div>
+        <h3>An incentive-shaped difficult-advice corpus</h3>
+        <p>The largest untrained region of the benchmark, and the one where every arm is weakest. Same difficult-advice shape, but the shortcut is <em>available and rewarded</em> rather than requested — no one in the conversation asks for it. This satisfies the anti-overfitting constraint: it is a general property of the model's behaviour, expressed naturally as difficult advice, not ODCV examples copied into the training set.</p>
+      </div>
+      <div class="cost">~$40 gen<br>~$25 train<br>~$30 eval</div>
+    </div>
+
+    <div class="act">
+      <div>
+        <h3>Re-export PAR's 716 trained turns as single-turn replies</h3>
+        <p>No new generation — it isolates the position variable that the coherence rewrite could not. 71% of PAR's traces are already position-independent (only 28.6% refer to the earlier refusal), so most rows export cleanly; the rest need a light pass or a drop. This is the one remaining cheap test of the five-turn scaffold itself.</p>
+      </div>
+      <div class="cost">~$36 total</div>
+    </div>
+
+    <div class="act">
+      <div>
+        <h3>Difficult advice on PAR's exact 716 scenarios</h3>
+        <p>Makes the document-type contrast one-variable for the first time. At present DA-vs-PAR mixes document type with a 63%-different scenario set, and scenario swapping is a demonstrated 7 pp lever. Until this runs, "retrospection is worse than difficult advice" is not a clean claim.</p>
+      </div>
+      <div class="cost">~$35 gen<br>~$25 train<br>~$30 eval</div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <span class="eyebrow">Caveats</span>
+  <h2>What would change this reading</h2>
+  <div class="col">
+    <p>Between-seed spread on this benchmark is 3.6–4.5 pp and single-run bootstrap noise is ±5–7 pp, and they add. <strong>Most of the fifteen nulls are single-seed arms at n ≈ 127–260</strong>, so each individually can only rule out an effect larger than roughly 10 pp. The claim that survives is not "each of these properties does nothing" but "no one of them does anything large, and fifteen independent attempts in a row have failed to find one" — which is a statement about the search, and a reason to search a different axis rather than a finer one.</p>
+    <p>Two arms in the ledger sit on non-canonical protocols and are marked in the chart's tooltips: <code>da716</code> and <code>lessswap716</code> are 4×70-cell runs re-summarised onto the 65 cells; <code>fiction716</code> and <code>lowstakes716</code> are single-pass. Corpus properties here are regex and TF-IDF readouts over rendered training text, not human-validated labels; they are strong enough to rule a property out when it moves the wrong way, and weaker as positive evidence.</p>
+  </div>
+</section>
+
+<footer>
+  <p>Sources: <code>docs/LOG.md</code>, the nine published training mixtures on the Hub, the ODCV scenario definitions in <code>src/eval/misalignment/odcv/</code>, and <code>output/par_coherence/registers_par716coh.md</code>. Measurement scripts: <code>scratch/corpus_ledger/</code> on branch <code>worktree-corpus-property-ledger</code>.</p>
+  <p>Every number in the ledger is re-derived from results already published; nothing here required a new training or evaluation run.</p>
+</footer>
+</div>
+
+<div id="tip" role="status" aria-live="polite"></div>
+
+<script>
+const ARMS = [
+  ["c6excised",8.5,1,"Meta-cognition removed from the DA reasoning","65 × 3 · n=189"],
+  ["c6masked",9.6,1,"DA meta-reasoning spans masked out of the loss","65 × 3 · n=260"],
+  ["advocacy",9.7,1,"DA reasoning rewritten one-sided, no weighing","65 × 3 · n=195"],
+  ["ruleform_both",10.1,1,"Branches + engagement stripped from trace AND reply","65 × 2 · n=129"],
+  ["DA v1 control",10.2,1,"Unmodified difficult advice — the ablation series baseline","65 × 2 · n=128"],
+  ["traits134",10.4,1,"Traits 1/3/4 rows swapped out, volume held","65 × 3 · n=193"],
+  ["grok DA",11.5,1,"grok-4.6 writes the assistant turn · mean of 3 seeds ±4.1","65 × 2 per seed"],
+  ["DA chunk-only",11.5,1,"No stage ever sees more than one constitution chunk","65 × 2"],
+  ["ruleform",11.6,1,"DA reasoning only, rewritten as bare rules","65 × 2 · n=129"],
+  ["lowstakes 712",12.4,1,"All rows rewritten to trivial everyday stakes","65 × 2 · n=129"],
+  ["traits13 deleted",12.9,1,"Traits 1+3 rows deleted with no backfill (556 rows)","65 × 3 · n=194"],
+  ["Sonnet concise",15.4,1,"Sonnet replies length-capped to grok's distribution","65 × 2 · n=130"],
+  ["Sonnet DA · da716",16.3,1,"The comparison baseline · still one training seed","4 × 70 re-summarised onto 65"],
+  ["lowstakes 716",16.9,1,"Low stakes built by construction rather than rewriting","65 × 1 — CI is 19 pp wide"],
+  ["lowodcv",17.1,1,"331 eval-like scenarios swapped for dissimilar ones","65 × 3 · n=193"],
+  ["retrospection",19.5,2,"Post-action retrospection · mean of 3 seeds ±1.0","65 × 2–3 per seed"],
+  ["trait-10 curiosity",19.7,1,"DA written against a principle ODCV cannot reward","65 × 2 · n=127"],
+  ["GPT DA",21.2,1,"gpt-5.6 writes the assistant turn · mean of 3 seeds ±5.0","65 × 2 per seed"],
+  ["retrospection · coherent",21.3,2,"PAR with the trained turn rewritten to decide-then-enact","65 × 2 · n=127"],
+  ["base, no SFT",36.9,3,"Untrained Qwen3.6-27B fp8","65 × 1"],
+  ["0% synthetic",43.9,3,"Table-2 instruction rows only, zero synthetic","65, 5 passes · n=305"],
+  ["maths control",44.1,3,"716 NuminaMath rows replacing the difficult-advice rows","63 cells × 4 · n=186"],
+  ["fiction",45.3,2,"First-person “Good AI” science fiction, machine-mind persona","65 × 1 · n=64"],
+];
+const MAX = 50, COL = ["","var(--c1)","var(--c2)","var(--c3)"];
+const rows = document.getElementById("rows");
+const tip = document.getElementById("tip");
+
+ARMS.forEach(([name,mr,grp,desc,proto])=>{
+  const r = document.createElement("div"); r.className="barrow"; r.tabIndex=0;
+  r.innerHTML =
+    `<div class="lbl">${name}</div>`+
+    `<div class="track"><div class="bar" style="width:${(mr/MAX*100).toFixed(2)}%;background:${COL[grp]}"></div>`+
+    `<div class="refline" style="left:${(36.9/MAX*100).toFixed(2)}%"></div></div>`+
+    `<div class="val">${mr.toFixed(1)}%</div>`;
+  const show = e =>{
+    tip.innerHTML = `<span class="t">${name} — ${mr.toFixed(1)}%</span>${desc}<span class="m">${proto}</span>`;
+    tip.style.opacity = 1;
+    const p = e.touches ? e.touches[0] : e;
+    const x = Math.min(p.clientX + 16, window.innerWidth - 290);
+    tip.style.left = x + "px";
+    tip.style.top = Math.min(p.clientY + 16, window.innerHeight - 110) + "px";
+  };
+  const hide = () => { tip.style.opacity = 0; };
+  r.querySelectorAll(".lbl,.track,.val").forEach(el=>{
+    el.addEventListener("mousemove", show);
+    el.addEventListener("mouseleave", hide);
+  });
+  r.addEventListener("focus", ()=>{
+    const b = r.querySelector(".track").getBoundingClientRect();
+    show({clientX:b.left+b.width/2, clientY:b.top});
+  });
+  r.addEventListener("blur", hide);
+  rows.appendChild(r);
+});
+</script>
