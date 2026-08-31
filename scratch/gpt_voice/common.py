@@ -11,7 +11,7 @@ def load_all():
     from huggingface_hub import hf_hub_download
 
     sp = hf_hub_download(
-        "LASR-Callum/2026-08-13-difficult-advice-v2",
+        "LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted",
         "stage_8_export_sft.jsonl",
         repo_type="dataset",
         token=os.environ["HF_TOKEN"],

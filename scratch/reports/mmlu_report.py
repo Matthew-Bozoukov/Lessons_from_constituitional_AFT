@@ -6,9 +6,9 @@
 Reads every arm's graded records, checks that they were all given the *same exam*, and
 produces the deliverables:
 
-1. `mmlu_accuracy.png` — accuracy vs synthetic fraction with Wilson intervals, against a
+1. `<date>_mmlu_accuracy.png` — accuracy vs synthetic fraction with Wilson intervals, against a
    base-model reference band, plus the paired difference with its non-inferiority margin.
-2. `mmlu_by_category.png` — the same dose-response split across MMLU's four subject
+2. `<date>_mmlu_by_category.png` — the same dose-response split across MMLU's four subject
    groups, because a uniform drop and a drop concentrated in STEM are different findings.
 3. `mmlu_results.md` — the markdown mirror, so every number is greppable without opening
    a PNG.
@@ -48,6 +48,7 @@ from src.eval.capabilities.mmlu.mmlu import (  # noqa: E402
     score_records,
 )
 from src.utils import read_jsonl, timestamp, write_run_meta  # noqa: E402
+from src.naming import figure_path
 
 # One data series per panel, so colour carries no categorical load and no legend box is
 # needed — the title names the series and points are directly labelled. These are the
@@ -572,8 +573,10 @@ def main(
     sft.sort(key=lambda s: float(s["synthetic_fraction"]))
 
     if sft:
-        plot_accuracy(sft, base_block, comparisons, cfg, out_dir / "mmlu_accuracy.png", mode)
-        plot_by_category(sft, base_block, out_dir / "mmlu_by_category.png", mode)
+        accuracy_png = figure_path(out_dir, "mmlu_accuracy")
+        by_category_png = figure_path(out_dir, "mmlu_by_category")
+        plot_accuracy(sft, base_block, comparisons, cfg, accuracy_png, mode)
+        plot_by_category(sft, base_block, by_category_png, mode)
 
     # Counted off the loaded records rather than the config, so a `--per_subject`
     # override on the eval run cannot leave a wrong n in the mirror.
@@ -610,8 +613,8 @@ def main(
             print(f"      !! {issue}")
     print(f"\n>>> {out_dir / 'mmlu_results.md'}")
     if sft:
-        print(f">>> {out_dir / 'mmlu_accuracy.png'}")
-        print(f">>> {out_dir / 'mmlu_by_category.png'}")
+        print(f">>> {accuracy_png}")
+        print(f">>> {by_category_png}")
 
 
 if __name__ == "__main__":

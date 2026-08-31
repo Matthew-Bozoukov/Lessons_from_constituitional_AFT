@@ -15,9 +15,9 @@ summary: >-
   the deliberation is only worth anything when it binds.
 status: complete
 models:
-  - LASR-Callum/qwen3.6-27b-lora-t2-9284-synthdoc-716-r64
+  - LASR-Callum/2026-08-06-qwen36-lora-table2-9284-synthdoc-716-rank-64
   - matboz/qwen3.6-27b-lora-9284-numina-control-716-r64
-model_id: LASR-Callum/qwen3.6-27b-lora-t2-9284-synthdoc-716-r64
+model_id: LASR-Callum/2026-08-06-qwen36-lora-table2-9284-synthdoc-716-rank-64
 tags:
   - property-discovery
   - feature-discovery
@@ -27,7 +27,7 @@ tags:
   - model-comparison
   - finding
 hf_source:
-  repo_id: LASR-Callum/2026-08-20-odcv-feature-discovery-da716-5pct-vs-numina-control
+  repo_id: LASR-Callum/2026-08-20-odcv-feature-discovery-difficult-advice-716-5-pct-vs-numina-control
 metrics:
   rollouts_analysed:
     value: 513

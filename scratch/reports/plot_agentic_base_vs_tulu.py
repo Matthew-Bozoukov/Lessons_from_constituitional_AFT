@@ -10,6 +10,7 @@ from pathlib import Path
 import fire
 import matplotlib.pyplot as plt
 import numpy as np
+from src.naming import figure_path
 
 
 def _wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
@@ -93,7 +94,7 @@ def main(
     grouped(ax, [_pretty(c) for c in conds], br, be, tr, te, sep_at=n_bm)
     ax.set_title(f"Agentic misalignment by condition: base Qwen3.6-27B vs tulu-difficult-advice mixture LoRA\n({subtitle})")
     fig.tight_layout()
-    png = out / f"agentic_base_vs_tulu_{ts}.png"
+    png = figure_path(out, "agentic_base_vs_tulu")
     fig.savefig(png, dpi=150)
     print(f">>> {png}")
 
@@ -102,7 +103,7 @@ def main(
     grouped(ax, [_pretty(c) for c in conds], br, be, tr, te, sep_at=n_bm, fs=11)
     ax.set_title(f"Agentic misalignment by condition (wide): base Qwen3.6-27B vs tulu-difficult-advice mixture LoRA\n({subtitle})")
     fig.tight_layout()
-    png_wide = out / f"agentic_base_vs_tulu_wide_{ts}.png"
+    png_wide = figure_path(out, "agentic_base_vs_tulu_wide")
     fig.savefig(png_wide, dpi=150)
     print(f">>> {png_wide}")
 
@@ -126,7 +127,7 @@ def main(
     grouped(ax, [g.capitalize() for g in groups], abr, abe, atr, ate, fs=11)
     ax.set_title(f"Agentic misalignment (aggregated): base Qwen3.6-27B vs tulu-difficult-advice mixture LoRA\n({subtitle})")
     fig.tight_layout()
-    png_agg = out / f"agentic_base_vs_tulu_aggregated_{ts}.png"
+    png_agg = figure_path(out, "agentic_base_vs_tulu_aggregated")
     fig.savefig(png_agg, dpi=150)
     print(f">>> {png_agg}")
 

@@ -9,7 +9,7 @@
 # still drops. If it does, the effect is carried by the document type (pressure, a tempting
 # shortcut, open deliberation, declining it), not by which value the data was written about.
 #
-# A verbatim copy of configs/data/synth/difficult_advice.yaml at 432c069, differing in
+# A verbatim copy of configs/data/synth/2026-08-01_difficult_advice.yaml at 432c069, differing in
 # SEVEN keys and nothing else (diff the two files to check): `constitution` (the 9-principle
 # document with `## 10.` appended, nothing else touched), `n_traits` 9 -> 10, `only_traits`
 # (new -- restricts generation to t10; stages 4 and 6 still see the whole 10-principle
@@ -19,7 +19,7 @@
 # so the only difference from the da716 arm's rows is the trait they were written against.
 
 # Label recorded in manifests; the `stages:` list below IS the document type.
-pipeline: difficult_advice
+pipeline: 2026-08-01_difficult_advice
 
 # STAGE NAMES CHANGED 2026-08-13, for legibility: every stage now says what it does.
 #   traits -> chunk_constitution      refined_prompts -> revise_prompts

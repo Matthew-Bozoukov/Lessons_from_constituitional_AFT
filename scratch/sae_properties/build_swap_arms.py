@@ -73,7 +73,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", default="e1_70b")
     ap.add_argument("--stage", choices=["extend", "match"], required=True)
-    ap.add_argument("--config", default="configs/properties/sae_diff.yaml")
+    ap.add_argument("--config", default="configs/properties/2026-08-19_sae_diff.yaml")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 

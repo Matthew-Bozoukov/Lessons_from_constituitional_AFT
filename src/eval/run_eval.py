@@ -8,7 +8,7 @@ import argparse
 import json
 import sys
 from dataclasses import replace
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -18,6 +18,7 @@ from src.infra.endpoints.vllm import SshExec, VllmServer, resolve_target
 from src.eval import EVALS, resolve, resolve_pool
 from src.eval.layout import assert_layout, publish_layout
 from src.huggingface import hf_repo_id, push_run_dir
+from src.naming import hub_name, local_name
 from src.utils import timestamp, write_run_meta
 
 
@@ -103,14 +104,15 @@ def _publish(out_dir: Path, *, name: str, model_key: str, mode: str, target: str
     (results_dir / "results.json").write_text(json.dumps(summary, indent=2))
     (results_dir / "results.md").write_text(_results_markdown(target, mode, summary))
     assert_layout(out_dir)
-    row_path = Path("output/eval_summaries") / f"{name}_{model_key}_{timestamp()}.json"
+    row_path = (Path("output/eval_summaries")
+                / f"{local_name(f'{name} {model_key}')}_{timestamp()}.json")
     row_path.parent.mkdir(parents=True, exist_ok=True)
     row_path.write_text(json.dumps(summary, indent=2))
     if not push:
         return ""
-    # The org is .env's HF_ORG, resolved at push time (src.huggingface.hf_org).
-    repo_id = hf_repo_id(f"{date.today().isoformat()}-{name.replace('_', '-')}"
-                         f"-{model_key.replace('_', '-')}")
+    # Two laws meet here: the NAME is dated and unambiguous (src/naming.py), the ORG is
+    # .env's HF_ORG resolved at push time (src.huggingface.hf_org).
+    repo_id = hf_repo_id(hub_name(f"{name} {model_key}"))
     # Hub-indexed tags: the canonical discovery route for the dashboard's eval-run
     # picker (/api/datasets?author=<org>&filter=eval-run).
     url = push_run_dir(out_dir, repo_id, card, front_matter={"tags": tags})
@@ -215,8 +217,16 @@ def main(argv: list[str] | None = None) -> None:
                 spec = replace(spec, mode=str(cfg.mode))
                 print(f">>> mode override: {hf_path} pinned to {spec.mode!r} (config `mode=`)")
             print(f">>> {args.name} | {hf_path} | base={spec.base_model} mode={spec.mode}")
+            # Name the run's published repo BEFORE running it: an eval that cannot be
+            # published under a dated, unambiguous name should cost zero GPU hours, not
+            # fail at the push with the rollouts already paid for (src/naming.py).
+            # The org is .env's HF_ORG, resolved here (src.huggingface.hf_org); the NAME
+            # is minted by the naming law, before the run, so an eval that cannot be
+            # published under a dated, unambiguous name costs zero GPU hours.
+            repo_id = hf_repo_id(hub_name(f"{args.name} {spec.model_key}"))
             served = server.ensure(spec)
-            out_dir = Path("output") / args.name / spec.model_key / timestamp()
+            out_dir = Path("output") / args.name / local_name(
+                f"{spec.model_key} {datetime.now().strftime('%H%M%S')}")
             out_dir.mkdir(parents=True, exist_ok=True)
             write_run_meta(out_dir, OmegaConf.to_container(cfg, resolve=True),
                            extra={"command": command, "target": hf_path,

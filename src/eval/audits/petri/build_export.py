@@ -29,8 +29,10 @@ import os
 import shutil
 import statistics
 from datetime import datetime
+from pathlib import Path
 
 from inspect_ai.log import read_eval_log
+from src.naming import figure_path, name_date
 
 TARGET_TAG = "vllm"
 
@@ -668,7 +670,11 @@ def main(args):
         f.write("\n".join(env) + "\n")
 
     # ---------- assets ----------
-    make_replication_chart(funnel, os.path.join(OUT, "assets", "replication-by-seed.png"))
+    # The chart is dated by the RUN it belongs to (the export folder carries that date),
+    # not by when the export happened — the published page must keep pointing at it.
+    chart = figure_path(Path(OUT) / "assets", "petri_replication_by_seed",
+                        date=name_date(Path(OUT).name) or None)
+    make_replication_chart(funnel, str(chart))
 
     # ---------- summary for the index writer ----------
     mean_realism = round(statistics.mean(t["scores"]["realism"] for t in retained), 4)

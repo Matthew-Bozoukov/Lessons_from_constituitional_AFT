@@ -1014,7 +1014,7 @@ def test_regenerate_writes_a_synth_config_that_suppresses_the_property(tmp_path)
 
     from src.properties.ablation import regenerate as regenerate_mod
 
-    source = "configs/data/synth/difficult_advice.yaml"
+    source = "configs/data/synth/2026-08-01_difficult_advice.yaml"
     out = tmp_path / "derived.yaml"
     cfg = {
         "synth_config": source,
@@ -1049,7 +1049,7 @@ def test_regenerate_refuses_a_stage_the_config_does_not_have(tmp_path):
     from src.properties.ablation import regenerate as regenerate_mod
 
     cfg = {
-        "synth_config": "configs/data/synth/difficult_advice.yaml",
+        "synth_config": "configs/data/synth/2026-08-01_difficult_advice.yaml",
         "stage": "not_a_stage",
         "out_config": str(tmp_path / "x.yaml"),
     }

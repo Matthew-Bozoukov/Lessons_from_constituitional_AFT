@@ -4,7 +4,7 @@ date: '2026-08-08'
 summary: '10,000-example SFT mixture for Qwen3.6-27B. Train on **`mixture_think.jsonl`** — every assistant turn carries a think block, which the trainer''s preserve-thinking gate requires.'
 status: stub
 hf_source:
-  repo_id: LASR-Callum/2026-08-08-table2-9000-synthdoc-1000-traitbalanced-train
+  repo_id: LASR-Callum/2026-08-08-table2-9000-synthdoc-1000-trait-balanced-train-mixture
   revision: 14658436ae7047e6be79c67ba3dec51d4cbbfad1
 tags:
   - generated-stub
@@ -15,4 +15,4 @@ tags:
 > **not** a write-up and supports no claim. Replace this body with the result, then drop
 > `status: stub` and the `generated-stub` tag.
 
-Source: [`LASR-Callum/2026-08-08-table2-9000-synthdoc-1000-traitbalanced-train`](https://huggingface.co/datasets/LASR-Callum/2026-08-08-table2-9000-synthdoc-1000-traitbalanced-train)
+Source: [`LASR-Callum/2026-08-08-table2-9000-synthdoc-1000-trait-balanced-train-mixture`](https://huggingface.co/datasets/LASR-Callum/2026-08-08-table2-9000-synthdoc-1000-trait-balanced-train-mixture)

@@ -53,7 +53,7 @@ ARMS = {
         "provenance": (
             "uv run python scratch/build_t2_9284_da716_mixture.py "
             "--out data/t2_9284_sonnet703_10k.jsonl "
-            "--synth_repo LASR-Callum/2026-08-13-difficult-advice-v2 "
+            "--synth_repo LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted "
             "--synth_file stage_8_export_sft.jsonl --synth_label difficult_advice_v2 "
             "--ids_from <the grok responder corpus>"),
         "notes": ("Median synth response 2,668 chars against arm B's 1,568 (1.70x). At "
@@ -91,7 +91,7 @@ ARMS = {
             "and quote characters, so a trained model inherits one or the other."),
     },
     "data/t2_9284_sonnetconcise703_10k.jsonl": {
-        "repo": "LASR-Callum/2026-08-26-t2-9284-sonnetconcise703-paired-train",
+        "repo": "LASR-Callum/2026-08-26-table2-9284-sonnet-concise-703-paired-train",
         "date_generated": "2026-08-26",
         "title": "Generator ablation, ARM C (length control): Sonnet 5 answers under grok's length cap",
         "experiment": (
@@ -113,7 +113,7 @@ ARMS = {
             "--ids_from LASR-Callum/2026-08-21-difficult-advice-grok-responder-716::dataset.jsonl"),
         "notes": (
             "The one deliberate difference from arm A is three lines in the rewrite prompt "
-            "(configs/data/synth/difficult_advice_sonnet_concise_716.yaml; "
+            "(configs/data/synth/2026-08-24_difficult_advice_sonnet_concise_716.yaml; "
             "scratch/sonnet_concise/verify_config.py proves nothing else moved). Sonnet "
             "overshoots the cap by ~15-20 words, and the capped distribution is much tighter "
             "than grok's -- a cap fixes the median, not the spread. Lengths per arm: "

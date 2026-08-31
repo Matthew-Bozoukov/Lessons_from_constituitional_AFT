@@ -45,6 +45,7 @@ sys.path.insert(0, str(REPO))
 from src.eval.misalignment.odcv.odcv import (  # noqa: E402
     DESIGN_ONE_VARIANT, MR_BOUNDS, VIOLATION_THRESHOLD, median_score,
 )
+from src.naming import figure_path
 from src.eval.stats import difference, interval  # noqa: E402
 from src.utils import git_sha, write_run_meta  # noqa: E402
 
@@ -60,7 +61,7 @@ ARMS = {
         42: "matboz/2026-08-26-odcv-synthdoc-716-seed42",
         69: "matboz/2026-08-26-odcv-synthdoc-716-seed69"},
     "7% grok diff advice": {
-        0:  "LASR-Callum/2026-08-24-odcv-grokresp703-paired-eval",
+        0:  "LASR-Callum/2026-08-24-odcv-grok-responder-703-paired-eval",
         42: "matboz/2026-08-27-odcv-grokresp703-paired-seed42",
         69: "matboz/2026-08-27-odcv-grokresp703-paired-seed69"},
     "7% verbose diff advice": {
@@ -172,7 +173,7 @@ def main(out: str = "output/odcv_arms4") -> None:
     ax.spines["bottom"].set_color(GRID)
     ax.tick_params(colors=INK2, labelsize=10)
     fig.tight_layout()
-    png = dest / f"odcv_arms4_{stamp}.png"
+    png = figure_path(dest, f"odcv arms4 {stamp}")
     fig.savefig(png, dpi=170, facecolor=SURFACE)
 
     payload = {arm: {**r.as_dict(), "per_seed_mr": per_seed[arm],

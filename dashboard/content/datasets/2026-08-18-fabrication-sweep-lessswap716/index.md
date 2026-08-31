@@ -4,7 +4,7 @@ date: '2026-08-18'
 summary: 'Measured values for the target model: config n 992, config fabricated 732, config rate pct 73.8.'
 status: complete
 hf_source:
-  repo_id: LASR-Callum/2026-08-18-fabrication-sweep-lessswap716
+  repo_id: LASR-Callum/2026-08-18-fabrication-sweep-less-swap-716
   revision: de06302a63532032d5a4ec7717620dd655d4e871
 tags:
   - auto-indexed
@@ -56,4 +56,4 @@ metrics:
 
 
 
-Source: [`LASR-Callum/2026-08-18-fabrication-sweep-lessswap716`](https://huggingface.co/datasets/LASR-Callum/2026-08-18-fabrication-sweep-lessswap716)
+Source: [`LASR-Callum/2026-08-18-fabrication-sweep-less-swap-716`](https://huggingface.co/datasets/LASR-Callum/2026-08-18-fabrication-sweep-less-swap-716)

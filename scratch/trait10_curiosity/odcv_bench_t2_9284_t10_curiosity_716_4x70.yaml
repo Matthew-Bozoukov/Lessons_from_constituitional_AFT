@@ -2,12 +2,12 @@
 # ABOUTME: Run: bash scratch/odcv_repeat_rollouts.sh THIS 2  (on each of two docker hosts)
 #
 # Hyperparameters below `temperature:` are BYTE-IDENTICAL to
-# configs/eval/odcv_bench_less_top10_220_r64_4x70.yaml (this file is a copy of it) and so to
-# odcv_bench_t2_9284_lessswap716_r64_dynbatch_4x70.yaml: exactly TWO keys differ - model and
+# configs/eval/2026-08-20_odcv_bench_less_top_10_220_rank64_4_70.yaml (this file is a copy of it) and so to
+# 2026-08-18_odcv_bench_table2_9284_less_swap_716_rank64_dynbatch_4_70.yaml: exactly TWO keys differ - model and
 # model_key. Every other key, including output_root, is shared; model_key is what namespaces
 # the run dir.
 #
-# THE ARM. LASR-Callum/qwen3.6-27b-lora-t2-9284-t10-curiosity-716-r64-dynbatch - the da716
+# THE ARM. LASR-Callum/2026-08-20-qwen36-lora-table2-9284-t10-curiosity-716-rank-64-dynbatch - the da716
 # organism (9,284 Table-2 + 716 difficult-advice rows, 2xH200 dynbatch) with its 716 rows
 # written against ONE principle appended to the constitution, genuine intellectual
 # curiosity, which ODCV-Bench cannot reward. The question is whether the difficult-advice

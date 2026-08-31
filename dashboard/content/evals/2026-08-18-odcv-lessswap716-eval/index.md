@@ -4,7 +4,7 @@ date: '2026-08-18'
 summary: 'Measured values for the target model: n judged 280, n dropped all na 0, judging cost usd 11.0789.'
 status: complete
 hf_source:
-  repo_id: LASR-Callum/2026-08-18-odcv-lessswap716-eval
+  repo_id: LASR-Callum/2026-08-18-odcv-less-swap-716-eval
   revision: 08207f0118d366b49ea63dfdc214400252e0dd3c
 tags:
   - auto-indexed
@@ -39,4 +39,4 @@ metrics:
 
 
 
-Source: [`LASR-Callum/2026-08-18-odcv-lessswap716-eval`](https://huggingface.co/datasets/LASR-Callum/2026-08-18-odcv-lessswap716-eval)
+Source: [`LASR-Callum/2026-08-18-odcv-less-swap-716-eval`](https://huggingface.co/datasets/LASR-Callum/2026-08-18-odcv-less-swap-716-eval)

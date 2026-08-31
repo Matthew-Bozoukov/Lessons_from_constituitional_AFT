@@ -114,7 +114,7 @@ def subset(run: str, repo: str = SUBSET_REPO, private: bool = False) -> str:
             "judge_pattern (the two independent accept gates), revise_status."),
         "provenance": (
             "uv run scripts/data/synth/build_dataset.py --config "
-            "configs/data/synth/good_ai_fiction.yaml --overrides "
+            "configs/data/synth/2026-08-28_good_ai_fiction.yaml --overrides "
             "total_scenarios=860,scenarios_per_call=4 ; then "
             "scratch/good_ai_fiction/measure_rows.py, then select_rows.py --n 716 with "
             "per-unit quotas, which picks the subset whose trainable-token total lands on "

@@ -16,6 +16,7 @@ from pathlib import Path
 
 import requests
 from src.huggingface import hf_download
+from src.naming import canonical_key
 from huggingface_hub.errors import EntryNotFoundError
 
 from src.model_profile import serving_params
@@ -114,7 +115,10 @@ def _mode_from_training_meta(meta: dict) -> str:
 
 def _spec_from_files(hf_path: str, adapter_config: dict | None, training_meta: dict | None) -> TargetSpec:
     """Build a TargetSpec from the artifact's metadata files (pure; unit-tested offline)."""
-    model_key = hf_path.split("/")[-1].replace(".", "_")
+    # ONE spelling per model everywhere it is used (served name, out_dir, HF tag):
+    # `qwen3.6-27b-lora-...` and `qwen3_6-27b-lora-...` are the same organism and must
+    # not file themselves under two keys (src/naming.py).
+    model_key = canonical_key(hf_path.split("/")[-1])
     if adapter_config is None:
         return TargetSpec(hf_path=hf_path, base_model=hf_path, adapter=False,
                           mode="default", model_key=model_key, lora_rank=None)
@@ -145,7 +149,7 @@ def resolve_api_target(provider: str, model_id: str) -> TargetSpec:
     return TargetSpec(
         hf_path=f"{provider}:{model_id}", base_model=model_id, adapter=False,
         mode="default",
-        model_key=f"{provider}_{model_id.split('/')[-1]}".replace(".", "_"),
+        model_key=canonical_key(f"{provider}_{model_id.split('/')[-1]}"),
         lora_rank=None, api_base=base, api_key_env=key_env)
 
 

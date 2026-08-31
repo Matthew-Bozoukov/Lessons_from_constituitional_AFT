@@ -14,7 +14,7 @@ ADAPTER_CONFIG = {"base_model_name_or_path": "Qwen/Qwen3-32B", "r": 16}
 def test_full_model_uses_template_default_mode():
     spec = _spec_from_files("Qwen/Qwen3-32B", None, None)
     assert spec == TargetSpec(hf_path="Qwen/Qwen3-32B", base_model="Qwen/Qwen3-32B",
-                              adapter=False, mode="default", model_key="Qwen3-32B",
+                              adapter=False, mode="default", model_key="qwen3",  # canonical spelling (src/naming.py)
                               lora_rank=None)
 
 
@@ -362,7 +362,7 @@ def test_resolve_target_api_endpoint_scheme():
     assert spec.api_base == "https://openrouter.ai/api/v1"
     assert spec.api_key_env == "OPENROUTER_API_KEY"
     assert spec.base_model == "moonshotai/kimi-k2"          # id sent to the API
-    assert spec.model_key == "openrouter_kimi-k2"           # provider-disambiguated
+    assert spec.model_key == "openrouter_kimi_k2"           # provider-disambiguated
     assert spec.mode == "default" and not spec.adapter
 
     # ServedTarget exposes the OpenAI triple without booting vLLM.
@@ -397,7 +397,8 @@ def test_local_target_api_key_is_empty_sentinel():
     from src.infra.endpoints.vllm import TargetSpec, VllmServer
 
     spec = TargetSpec(hf_path="Qwen/Qwen3-32B", base_model="Qwen/Qwen3-32B",
-                      adapter=False, mode="default", model_key="Qwen3-32B", lora_rank=None)
+                      # model_key is the canonical spelling (src/naming.py)
+                      adapter=False, mode="default", model_key="qwen3", lora_rank=None)
     st = VllmServer(work_dir=Path("/tmp/_t3"), port=8000).ensure(spec)
     assert not st.is_api and st.api_key == "EMPTY"
 

@@ -131,8 +131,8 @@ deliberately, as a conservative floor). Above the ~$20 flag threshold in CLAUDE.
 
 # Productionised into synth (2026-08-25)
 
-The recipe is now `configs/data/synth/verbose_cot.yaml`, run with
-`uv run synth run --config configs/data/synth/verbose_cot.yaml [--smoke]`. The scratch
+The recipe is now `configs/data/synth/2026-08-25_verbose_cot.yaml`, run with
+`uv run synth run --config configs/data/synth/2026-08-25_verbose_cot.yaml [--smoke]`. The scratch
 drivers above are kept as the record of how the recipe was found; nothing depends on them.
 
 ## Engine additions (`src/data/synth/`)
@@ -233,6 +233,6 @@ exactly the shape `budget_usd` fails to protect, and this config is that shape.
 
 **State left behind:** `output/verbose_cot/20260825_042004/stage_2_expand.partial.jsonl`
 holds 682 of 716 records at a corpus multiple of 2.884x, resumable with
-`uv run synth run --config configs/data/synth/verbose_cot.yaml --resume <that dir>`.
+`uv run synth run --config configs/data/synth/2026-08-25_verbose_cot.yaml --resume <that dir>`.
 The 34 refused records now have a landing place (`on_exhausted.mark_refused`) and would
 fall back to their original traces on the next attempt, costing ~$3 to finish.

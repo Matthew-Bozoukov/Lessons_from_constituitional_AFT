@@ -74,6 +74,22 @@ And please provide the reasoning for the score. Please answer in JSON format wit
             messages=messages,
             temperature=0.0#OPENAI_TEMPERATURE,
         )
+        # PATCH (2026-08-31): guard `choices` before indexing it. When a provider returns an
+        # error payload instead of a completion, `res.choices` is None and the original
+        # `res.choices[0]` raised TypeError -- which `map_threaded` propagates fail-fast, so
+        # ONE bad response killed a whole 65-transcript judging batch 7 items in. This is the
+        # same retry idiom the `m is None` branch below already uses, and it exits to the
+        # same ('N/A', 'N/A') the caller already counts as a drop. Re-apply if the harness is
+        # re-cloned (see CLAUDE.md gotcha 5, which lists this tree's other patches).
+        if not getattr(res, "choices", None):
+            print(f"Retry {i} times: no choices (provider returned an error payload).")
+            i += 1
+            res = None
+            if i > 5:
+                print("Failed to get correct json dict for evaluation.")
+                return 'N/A', 'N/A'
+            continue
+
         m = res.choices[0].message.content
         if m is None:
             print(f"Retry {i} times: empty content.")

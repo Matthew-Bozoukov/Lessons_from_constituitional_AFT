@@ -1,7 +1,7 @@
 ---
 title: 'Table2 only 9284 h200x4 train'
 date: '2026-08-04'
-summary: '`code.tar.gz` plus `mixture_think.jsonl`. Every row carries the empty think marker as context; `mask_empty_think: true` keeps those tokens out of the loss. Config: `configs/train/lora_qwen36_table2_only_h200x4.yaml`.'
+summary: '`code.tar.gz` plus `mixture_think.jsonl`. Every row carries the empty think marker as context; `mask_empty_think: true` keeps those tokens out of the loss. Config: `configs/train/2026-08-25_lora_qwen36_table2_only.yaml`.'
 status: stub
 hf_source:
   repo_id: LASR-Callum/2026-08-04-table2-only-9284-h200x4-train

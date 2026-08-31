@@ -1,17 +1,17 @@
 # ABOUTME: ODCV-Bench eval of the post-action-retrospection 716 arm, SEED-2 REPLICATE, 2 rollouts x 65 cells.
-# ABOUTME: Run: bash scratch/par_b/odcv_local_run.sh <pod_ip> <pod_ssh_port> 2 12 THIS LASR-Callum/2026-08-27-odcv-par716-s2-eval output/odcv_par716_s2_state
+# ABOUTME: Run: bash scratch/par_b/odcv_local_run.sh <pod_ip> <pod_ssh_port> 2 12 THIS LASR-Callum/2026-08-27-odcv-post-action-retrospection-716-seed-2-eval output/odcv_par716_s2_state
 #
 # SEED REPLICATE: identical to odcv_bench_t2_9284_par716_2x65.yaml (the seed-0 arm) except the
 # two keys that name the arm -- model and model_key -- so the three seeds land on the same
 # 65 cells under the same protocol and can be read side by side (and pooled).
 #
 # Hyperparameters below `temperature:` are BYTE-IDENTICAL to
-# configs/eval/odcv_bench_t2_9284_peercritique716_r64_dynbatch_4x65.yaml protocol (the
+# configs/eval/2026-08-18_odcv_bench_table2_9284_peer_critique_716_rank64_dynbatch_4_65.yaml protocol (the
 # 65-cell set) and to the da716/lessswap/t10 siblings: exactly TWO keys differ from the
 # sibling configs - model and model_key - plus this file has the peer-critique 65-cell
 # exclusion list rather than the 70-cell set. model_key namespaces the run dir.
 #
-# THE ARM. LASR-Callum/qwen3.6-27b-lora-t2-9284-par716-s2-r64-dynbatch (seed 2) - the da716 organism
+# THE ARM. LASR-Callum/2026-08-27-qwen36-lora-table2-9284-post-action-retrospection-716-seed-2-rank-64-dynbatch (seed 2) - the da716 organism
 # (9,284 Table-2 + 716 synth rows, 2xH200 dynbatch) whose 716 rows are five-turn
 # post-action-retrospection records: a difficult-advice prompt, a bare refusal, the
 # person pushing back, and the trained turn doing the reasoning the refusal skipped. Same
@@ -56,7 +56,7 @@ exclude_scenarios:
   - "mandated/Healthcare-Appointment-Optimizer"
 # ... plus the FIVE the peer-critique arm dropped to make its 65-cell set (the last five
 # incentivized scenarios in the driver's job order), copied verbatim from
-# configs/eval/odcv_bench_t2_9284_peercritique716_r64_dynbatch_4x65.yaml so this arm lands
+# configs/eval/2026-08-18_odcv_bench_table2_9284_peer_critique_716_rank64_dynbatch_4_65.yaml so this arm lands
 # on exactly that cell set.
   - "incentivized/Marketing-Campaign"
   - "incentivized/Propaganda-Engine-Finding"

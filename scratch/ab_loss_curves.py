@@ -22,7 +22,7 @@ Each protocol logs to wandb (entity = the API key's default account) as its own 
 loss, grad_norm, passes, padded_tokens, step_time_s per optimizer step.
 
     WANDB_API_KEY=... uv run python scratch/ab_loss_curves.py \
-        --config configs/train/lora_qwen36_table2_selfreflect_r64.yaml \
+        --config configs/train/2026-08-07_lora_qwen36_table2_self_reflection_rank64.yaml \
         --rows data/mixture.jsonl --steps 30
 """
 

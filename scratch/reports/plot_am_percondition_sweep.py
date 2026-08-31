@@ -11,6 +11,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
+from src.naming import figure_path
 
 
 def _pretty(cond: str) -> str:
@@ -72,7 +73,7 @@ def main(
     ax.legend(title="condition (goal / urgency)", fontsize=9, title_fontsize=10,
               loc="upper right", framealpha=0.95)
     fig.tight_layout()
-    fp = Path(out) / f"am_{scenario}_percondition_vs_sft_pct.png"
+    fp = figure_path(out, f"agentic_misalignment_{scenario}_percondition_vs_sft_pct")
     fp.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(fp, dpi=170)
     print(f">>> {fp}")

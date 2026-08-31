@@ -45,17 +45,17 @@ STEP = re.compile(r"^== Step \d+ ==\s*$", re.M)
 FIELD = re.compile(r"^(role|content|reason|call):\s?", re.M)
 
 REMOTE = {
-    "par_s0": ("LASR-Callum/2026-08-27-odcv-par716-eval", "combined2x_20260827_023241"),
+    "par_s0": ("LASR-Callum/2026-08-27-odcv-post-action-retrospection-716-eval", "combined2x_20260827_023241"),
     "par_s1": (
-        "LASR-Callum/2026-08-27-odcv-par716-s1-eval",
+        "LASR-Callum/2026-08-27-odcv-post-action-retrospection-716-seed-1-eval",
         "combined2x_20260827_161549",
     ),
     "par_s2": (
-        "LASR-Callum/2026-08-27-odcv-par716-s2-eval",
+        "LASR-Callum/2026-08-27-odcv-post-action-retrospection-716-seed-2-eval",
         "combined3x_20260828_003554",
     ),
     "da716": (
-        "LASR-Callum/qwen3_6-27b-lora-t2-9284-da716-r64-dynbatch",
+        "LASR-Callum/2026-08-14-qwen36-lora-table2-9284-difficult-advice-716-rank-64-dynbatch",
         "combined4x_20260814_230249",
     ),
 }

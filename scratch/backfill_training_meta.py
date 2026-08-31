@@ -2,7 +2,7 @@
 # ABOUTME: recorded train configs, so the eval framework can infer thinking mode.
 # Usage:
 #   uv run scratch/backfill_training_meta.py \
-#     --mapping "matboz/qwen3-32b-difficult-advice-lora=configs/train/lora_qwen3_difficult_advice_thinking.yaml"
+#     --mapping "matboz/qwen3-32b-difficult-advice-lora=configs/train/2026-07-31_lora_qwen3_difficult_advice_thinking.yaml"
 # The value comes from the config's `thinking:` field — nothing is inferred from data.
 
 from __future__ import annotations

@@ -68,10 +68,10 @@ COUNTRIES = ["US", "CA", "NL", "DE", "FR", "GB", "IE", "BE", "SE", "NO", "FI", "
 # (label, train config, destination adapter repo). The two configs differ in four keys:
 # data_repo, data_revision, output_dir, hf_repo. Everything else is byte-identical.
 ARMS = [
-    ("arm", "configs/train/lora_qwen36_less_top10_220_r64.yaml",
-     "LASR-Callum/qwen3.6-27b-lora-less-top10-220-r64", "train_less_top10_220"),
-    ("control", "configs/train/lora_qwen36_less_random220_control_r64.yaml",
-     "LASR-Callum/qwen3.6-27b-lora-random220-control-r64", "train_random220_control"),
+    ("arm", "configs/train/2026-08-19_lora_qwen36_less_top_10_220_rank64.yaml",
+     "LASR-Callum/2026-08-19-qwen36-lora-less-top10-220-rank-64", "train_less_top10_220"),
+    ("control", "configs/train/2026-08-19_lora_qwen36_less_random_220_control_rank64.yaml",
+     "LASR-Callum/2026-08-19-qwen36-lora-random-220-control-rank-64", "train_random220_control"),
 ]
 
 # Everything `python3 scripts/train/train_lora.py` imports, plus the two configs. An

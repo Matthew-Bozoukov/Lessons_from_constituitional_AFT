@@ -9,8 +9,8 @@ hf_source:
 tags:
   - auto-indexed
 models:
-  - LASR-Callum/qwen3.6-27b-lora-table2-only-9284-r64
-target_model_id: LASR-Callum/qwen3.6-27b-lora-table2-only-9284-r64
+  - LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64
+target_model_id: LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64
 metrics:
   n_graded_turns:
     value: 60
@@ -58,6 +58,6 @@ metrics:
 | `therapy_applicable_rate` | 0.9167 | proportion |
 | `therapy_by_criterion_collaborative_stance` | 3.8909 | value |
 
-**Target:** `LASR-Callum/qwen3.6-27b-lora-table2-only-9284-r64` · mode `think`
+**Target:** `LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64` · mode `think`
 
 Source: [`LASR-Callum/2026-08-05-psychosis-qwen3-6-27b-lora-table2-only-9284-r64`](https://huggingface.co/datasets/LASR-Callum/2026-08-05-psychosis-qwen3-6-27b-lora-table2-only-9284-r64)

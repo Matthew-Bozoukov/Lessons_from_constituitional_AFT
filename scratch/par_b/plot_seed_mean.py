@@ -22,6 +22,7 @@ from omegaconf import OmegaConf
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from src.eval.misalignment.odcv.odcv import summarise  # noqa: E402
+from src.naming import figure_path
 
 _spec = importlib.util.spec_from_file_location(
     "p7", Path(__file__).with_name("plot_7pct_arms.py")
@@ -29,12 +30,17 @@ _spec = importlib.util.spec_from_file_location(
 p7 = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(p7)
 
-# (key in plot_7pct_arms.ARMS, short label, group)
+# (key in plot_7pct_arms.ARMS, short label, group). Every label carries the date its
+# eval run was published: two arms of the same recipe a fortnight apart must not read as
+# one bar (CLAUDE.md, the naming law).
 OTHERS = [
-    ("sonnet_concise", "Sonnet DA\nconcise", "sft7"),
-    ("da716", "Sonnet DA\n(da716)", "sft7"),
-    ("base", "base fp8\n(no SFT)", "ref"),
-    ("table2", "table2-only\n(0% SFT)", "ref"),
+    ("sonnet_concise", "Sonnet difficult advice\nconcise\n2026-08-26", "sft7"),
+    ("da716", "Sonnet difficult advice\n716\n2026-08-14", "sft7"),
+    # The base arm's transcripts predate the dating law and live in a legacy repo
+    # (matboz/odcv-qwen3.6-27b-transcripts), so its label says so rather than inventing
+    # a date; table2-only is dated by its published run.
+    ("base", "base fp8\nno SFT\n(undated legacy run)", "ref"),
+    ("table2", "table2-only\n0% synthetic\n2026-08-05", "ref"),
 ]
 SEM_Z = 1.96
 
@@ -184,7 +190,7 @@ def main(results: str, out_dir: str = "output/plots") -> None:
         wrap=True,
     )
     fig.tight_layout(rect=(0, 0.06, 1, 0.97))
-    png = out / f"{stem}_bars.png"
+    png = figure_path(out, f"{stem}_bars")
     fig.savefig(png, facecolor="white")
     plt.close(fig)
 
@@ -291,7 +297,7 @@ def main(results: str, out_dir: str = "output/plots") -> None:
         wrap=True,
     )
     fig.tight_layout(rect=(0, 0.06, 1, 0.97))
-    png_v = out / f"{stem}_variants.png"
+    png_v = figure_path(out, f"{stem}_variants")
     fig.savefig(png_v, facecolor="white")
     plt.close(fig)
 

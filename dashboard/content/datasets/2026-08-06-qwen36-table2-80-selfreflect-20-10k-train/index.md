@@ -4,7 +4,7 @@ date: '2026-08-06'
 summary: 'Measured values for the target model: config seed 0, config max seq len 8192.'
 status: complete
 hf_source:
-  repo_id: LASR-Callum/2026-08-06-qwen36-table2-80-selfreflect-20-10k-train
+  repo_id: LASR-Callum/2026-08-06-qwen36-table2-80-self-reflection-20-10k-train-mixture
   revision: cb208fcbeb9649abba2e4132bc5b3678cd065574
 tags:
   - auto-indexed
@@ -31,4 +31,4 @@ metrics:
 
 
 
-Source: [`LASR-Callum/2026-08-06-qwen36-table2-80-selfreflect-20-10k-train`](https://huggingface.co/datasets/LASR-Callum/2026-08-06-qwen36-table2-80-selfreflect-20-10k-train)
+Source: [`LASR-Callum/2026-08-06-qwen36-table2-80-self-reflection-20-10k-train-mixture`](https://huggingface.co/datasets/LASR-Callum/2026-08-06-qwen36-table2-80-self-reflection-20-10k-train-mixture)

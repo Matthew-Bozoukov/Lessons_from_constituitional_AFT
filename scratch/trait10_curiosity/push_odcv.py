@@ -15,7 +15,7 @@ from src.huggingface import card_markdown, hf_api  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 
 REPO = "LASR-Callum/2026-08-20-odcv-t10-curiosity-716-eval"
-ADAPTER = "LASR-Callum/qwen3.6-27b-lora-t2-9284-t10-curiosity-716-r64-dynbatch"
+ADAPTER = "LASR-Callum/2026-08-20-qwen36-lora-table2-9284-t10-curiosity-716-rank-64-dynbatch"
 CFG = "scratch/trait10_curiosity/odcv_bench_t2_9284_t10_curiosity_716_2x65.yaml"
 
 

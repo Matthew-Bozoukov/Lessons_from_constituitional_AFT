@@ -58,6 +58,7 @@ import matplotlib.pyplot as plt
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
+from src.naming import figure_path
 from src.eval.stats import Design, NotEstimable, interval, wilson  # noqa: E402
 from src.utils import git_sha, write_run_meta  # noqa: E402
 
@@ -269,7 +270,7 @@ def main(reps: int = 2000, truth_draws: int = 20_000_000, seed: int = 0, suite: 
     dest = REPO / out / stamp
     dest.mkdir(parents=True, exist_ok=True)
 
-    png = dest / f"mu_hat_distributions_{stamp}.png"
+    png = figure_path(dest, f"mu hat distributions {stamp}")
     _figure(payload, reps, png)
     md = [f"# Does our 95% interval cover 95% of the time? ({stamp})", "",
           f"{reps} replicates per regime; truth from a {truth_draws:,}-draw Monte Carlo of the "
@@ -302,7 +303,7 @@ def replot(run_dir: str) -> None:
     payload = payload.get("regimes", payload)
     payload = {k: v for k, v in payload.items() if isinstance(v, dict) and "means" in v}
     reps = max(len(v["means"]) for v in payload.values())
-    png = d / f"mu_hat_distributions_{d.name}.png"
+    png = figure_path(d, f"mu hat distributions {d.name}")
     _figure(payload, reps, png)
     print(f">>> {png}")
 

@@ -16,7 +16,7 @@ from src.utils import git_sha, origin_url  # noqa: E402
 
 REPO = "LASR-Callum/2026-08-28-table2-9284-par716coh-train"
 SYNTH_REPO = "LASR-Callum/2026-08-28-post-action-retrospection-716-coherent"
-PARENT_MIXTURE = "LASR-Callum/2026-08-26-table2-9284-par716-train"
+PARENT_MIXTURE = "LASR-Callum/2026-08-26-table2-9284-post-action-retrospection-716-train"
 TRAITS = {f"t{i}" for i in range(1, 10)}
 
 

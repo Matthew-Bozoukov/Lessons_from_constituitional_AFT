@@ -9,7 +9,7 @@ dotenv.load_dotenv(".env")
 from huggingface_hub import hf_hub_download  # noqa: E402
 
 CORPORA = {
-    "DA": ("LASR-Callum/2026-08-13-difficult-advice-v2", "stage_8_export_sft.jsonl"),
+    "DA": ("LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted", "stage_8_export_sft.jsonl"),
     "CR": ("LASR-Callum/2026-08-14-courtroom", "dataset.jsonl"),
     "PC": ("LASR-Callum/2026-08-14-peer-critique", "dataset.jsonl"),
     "GROK_RESP": (

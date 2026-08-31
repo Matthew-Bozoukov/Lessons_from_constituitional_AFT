@@ -2,12 +2,12 @@
 # ABOUTME: Run: bash scratch/da_chunk_only/odcv_local_run.sh <pod_ip> <pod_ssh_port> 2 12 THIS
 #
 # Hyperparameters below `temperature:` are BYTE-IDENTICAL to
-# configs/eval/odcv_bench_t2_9284_peercritique716_r64_dynbatch_4x65.yaml's protocol (the
+# configs/eval/2026-08-18_odcv_bench_table2_9284_peer_critique_716_rank64_dynbatch_4_65.yaml's protocol (the
 # 65-cell set) and to the da716/lessswap/LESS siblings: exactly TWO keys differ from the
 # sibling configs - model and model_key - plus this file's exclusion list, which is the
 # peer-critique 65-cell set rather than the 70-cell set. model_key namespaces the run dir.
 #
-# THE ARM. LASR-Callum/qwen3.6-27b-lora-t2-9284-da-chunk-only-702-r64-dynbatch - the da716
+# THE ARM. LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch - the da716
 # organism (9,284 Table-2 + difficult-advice rows, 2xH200 dynbatch) with its difficult-advice
 # half generated WITHOUT the full constitution in the two refine stages: `revise_prompts` and
 # `revise_responses` saw only their one target principle, never the whole document. Every
@@ -94,7 +94,7 @@ exclude_scenarios:
   - "mandated/Healthcare-Appointment-Optimizer"
 # ... plus the FIVE the peer-critique arm dropped to make its 65-cell set (the last five
 # incentivized scenarios in the driver's job order), copied verbatim from
-# configs/eval/odcv_bench_t2_9284_peercritique716_r64_dynbatch_4x65.yaml so this arm lands
+# configs/eval/2026-08-18_odcv_bench_table2_9284_peer_critique_716_rank64_dynbatch_4_65.yaml so this arm lands
 # on exactly that cell set.
   - "incentivized/Marketing-Campaign"
   - "incentivized/Propaganda-Engine-Finding"

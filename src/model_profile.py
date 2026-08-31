@@ -23,6 +23,11 @@ class ModelProfile:
         prefill: What the template prefills for a thinking-mode assistant turn; the
             generation-boundary mask conditions on exactly this and supervises the rest.
         empty_think: The full literal a no-reasoning assistant turn carries.
+        think_close: The literal that closes a reasoning block. Supervised (the model
+            generates it), and the cut point for `supervise: "cot"` — the CoT-only arm
+            truncates a row here so the answer never enters the forward pass. Named
+            separately from `empty_think` because the rule module must never bind one
+            family's syntax at import time.
         render_kwargs: Extra chat-template kwargs for rendering TRAINING data so every
             assistant turn keeps its reasoning (verified against the live template).
         train_memory: MEASURED training-memory ceilings, keyed by GPU model (the
@@ -65,6 +70,7 @@ class ModelProfile:
     turn_end: str
     prefill: str
     empty_think: str
+    think_close: str
     render_kwargs: dict
     serving: dict
     gpu: dict = field(default_factory=dict)
@@ -77,6 +83,7 @@ QWEN36_PROFILE = ModelProfile(
     turn_end="<|im_end|>",
     prefill="<think>\n",
     empty_think="<think>\n\n</think>\n\n",
+    think_close="</think>",
     render_kwargs={"preserve_thinking": True},
     # train: H200 (141GB) and NOT H100 80GB — the negative bound recorded under
     # train_memory below is a measured OOM, 7.36 GiB short on a 1x~8k fwd+bwd, so the
