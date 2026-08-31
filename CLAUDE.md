@@ -359,10 +359,11 @@ dataset `{repo, file, revision}`).
 ## The eval framework (the contract every eval follows)
 
 Every eval is one invocation of the single entrypoint, driven from anywhere ("Where code
-runs"; add `--server <ssh-alias>` when the GPU host is a different machine):
+runs"; when the model is served elsewhere, `--endpoint <url>` for a pod that is already
+serving it, `--server <address|alias>` for one run_eval should start vLLM on):
 
 ```
-uv run scripts/run_eval.py --target <hf_path | provider:model-id> [...] --name <eval> [key=value ...]
+uv run evals --target <hf_path | provider:model-id> [...] --name <eval> [key=value ...]
 ```
 
 - **A target is an HF path OR an API endpoint.** An HF path is a LoRA adapter (base
