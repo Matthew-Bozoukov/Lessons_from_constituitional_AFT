@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { Composition, composition, formatShare } from "@/lib/composition";
 import type { DatasetManifest } from "@/lib/content";
 import { corpusMatches } from "@/lib/trainingData";
@@ -110,12 +110,23 @@ export function CorpusPicker({
   corpora,
   selectedId,
   onSelect,
+  compareId = "",
+  target,
+  onTargetChange,
+  onClose,
 }: {
   corpora: PickerCorpus[];
   selectedId: string;
   onSelect: (id: string) => void;
+  /** The second corpus of a side-by-side pair, marked B in the list. */
+  compareId?: string;
+  /** Which side the next click fills. Absent when nothing is being compared. */
+  target?: "a" | "b";
+  onTargetChange?: (target: "a" | "b") => void;
+  onClose?: () => void;
 }) {
   const [query, setQuery] = useState("");
+  const comparing = Boolean(target && onTargetChange);
 
   const compositions = useMemo(() => {
     const map = new Map<string, Composition | null>();
@@ -139,6 +150,34 @@ export function CorpusPicker({
 
   return (
     <div className="corpus-picker">
+      {/* Which corpus a click lands on has to be visible BEFORE the click: with two
+          slots and one list, an unlabelled picker would silently replace whichever
+          corpus the reader was already reading. */}
+      {(comparing || onClose) && (
+        <div className="picker-head">
+          {comparing && (
+            <div className="picker-target" role="group" aria-label="Assign the next choice to">
+              {(["a", "b"] as const).map((side) => (
+                <button
+                  type="button"
+                  key={side}
+                  className={target === side ? "is-active" : ""}
+                  aria-pressed={target === side}
+                  onClick={() => onTargetChange?.(side)}
+                >
+                  <i className={`swatch swatch-${side}`} />
+                  Choose {side.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          )}
+          {onClose && (
+            <button type="button" className="picker-close" onClick={onClose} aria-label="Hide the corpus list">
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      )}
       <label className="corpus-search">
         <Search size={14} />
         <input
@@ -170,15 +209,21 @@ export function CorpusPicker({
               const share = made?.constitutionShare ?? null;
               const count = corpus.dataset?.record_count || 0;
               const bytes = corpus.dataset?.stream?.total_bytes || 0;
+              const side = corpus.id === selectedId ? "a" : corpus.id === compareId ? "b" : "";
               return (
                 <button
                   type="button"
                   key={corpus.id}
-                  className={corpus.id === selectedId ? "corpus-row is-active" : "corpus-row"}
+                  className={side ? `corpus-row is-active is-${side}` : "corpus-row"}
                   onClick={() => onSelect(corpus.id)}
-                  aria-current={corpus.id === selectedId}
+                  aria-current={Boolean(side)}
                 >
                   <strong>
+                    {/* The letter, not colour alone: which corpus is A and which is B is
+                        the axis of the whole comparison. */}
+                    {comparing && side && (
+                      <i className={`side-marker swatch swatch-${side}`} aria-hidden="true" />
+                    )}
                     {corpus.title}
                     {corpus.mock && <MockBadge />}
                   </strong>
