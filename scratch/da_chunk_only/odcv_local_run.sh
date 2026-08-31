@@ -20,7 +20,7 @@ POD_PORT="${2:?pod ssh port required}"
 PASSES="${3:-2}"
 CONC="${4:-12}"
 CFG="${5:-scratch/da_chunk_only/odcv_bench_t2_9284_da_chunk_only_702_2x65.yaml}"
-HF_REPO=LASR-Callum/2026-08-21-odcv-da-chunk-only-702-eval
+HF_REPO=LASR-Callum/2026-08-21-odcv-difficult-advice-chunk-only-702-eval
 STATE=output/odcv_chunk_only_state
 mkdir -p "$STATE" output/logs
 

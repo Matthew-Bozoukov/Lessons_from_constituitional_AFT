@@ -7,7 +7,7 @@ This folder is a **recovered provenance snapshot**, not a designed alignment tar
 
 On 2026-08-04 the mid constitution was re-cut from 12 principles toward the committed
 10-principle version, editing `claude_distilled_12_principles_mid/constitution.md` in
-place. The 2203-record difficult-advice corpus (`LASR-Callum/synthdoc-v2-difficult-advice`,
+place. The 2203-record difficult-advice corpus (`LASR-Callum/2026-08-04-synthdoc-package-difficult-advice-stage-cache`,
 run `20260804_082743`) was generated partway through that edit, when the file held **9**
 principles — a state that was never committed. The model-eval-model pipeline consumes that
 corpus and fail-fasts unless its config's constitution hashes to the manifest's

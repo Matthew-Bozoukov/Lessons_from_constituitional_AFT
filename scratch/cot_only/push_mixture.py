@@ -74,7 +74,7 @@ def main(run: str, private: bool = True) -> None:
         ),
         "usage": "src/train/train_lora.py consumes `supervise` via build_labels; a trainer "
                  "that ignores the column silently trains the control instead. Consumed by "
-                 "configs/train/lora_qwen36_t2_9284_synthdoc_716_cotonly_dynbatch_2xh200"
+                 "configs/train/2026-08-31_lora_qwen36_table2_9284_synthdoc_716_cotonly_dynbatch"
                  ".yaml; the control is the sibling config without `_cotonly`.",
         "caveat": "seq_mean_token_mean_loss weights each EXAMPLE at 1/global_batch, so "
                   "this arm concentrates the same per-example weight onto the trace rather "

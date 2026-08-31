@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT))
 from src.huggingface import hf_api, push_files  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 
-REPO = "LASR-Callum/2026-08-26-table2-9284-par716-train"
+REPO = "LASR-Callum/2026-08-26-table2-9284-post-action-retrospection-716-train"
 SYNTH_REPO = "LASR-Callum/2026-08-26-post-action-retrospection-716"
 TRAITS = {f"t{i}" for i in range(1, 10)}
 
@@ -100,7 +100,7 @@ def main(
     print(
         f"pushed -> {url}\nrevision: {sha}\n"
         f'now set data_revision: "{sha}" in '
-        "configs/train/lora_qwen36_t2_9284_par716_dynbatch_2xh200.yaml"
+        "configs/train/2026-08-27_lora_qwen36_table2_9284_post_action_retrospection_716_dynbatch.yaml"
     )
 
 

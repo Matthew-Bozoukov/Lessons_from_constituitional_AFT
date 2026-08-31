@@ -21,6 +21,7 @@ sys.path.insert(0, "src/eval/audits/petri")
 
 from funnel_stats import clopper_pearson as cp  # noqa: E402
 from src.utils import timestamp  # noqa: E402
+from src.naming import figure_path
 
 ROOT = Path(__file__).resolve().parents[1]
 JUDGED = {
@@ -147,7 +148,7 @@ fig.tight_layout(rect=(0, 0, 1, 0.90))
 ts = timestamp()
 OUT = ROOT / "output/plots"
 OUT.mkdir(parents=True, exist_ok=True)
-dest = OUT / f"three_arm_fabrication_{ts}.png"
+dest = figure_path(OUT, "three_arm_fabrication")
 fig.savefig(dest, dpi=200, bbox_inches="tight")
 fig.savefig(dest.with_suffix(".svg"), bbox_inches="tight")
 

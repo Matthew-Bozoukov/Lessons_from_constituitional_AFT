@@ -5,7 +5,7 @@
 
 Run: uv run python scratch/build_da716_prompt_source.py [--out data/da716_prompt_source]
 
-The all-grok arm (`difficult_advice_grok_716.yaml`) regenerates its own scenarios and
+The all-grok arm (`2026-08-01_difficult_advice_grok_716.yaml`) regenerates its own scenarios and
 prompts, which makes it differ from the baseline in the situations it is about, the
 domains it covers, its trait balance and its user-turn length -- four confounds on top
 of the one it exists to measure. The responder-swap arm removes all four by running
@@ -42,7 +42,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scratch.build_t2_9284_da716_mixture import pick_balanced  # noqa: E402
 
-BASE_REPO = "LASR-Callum/2026-08-13-difficult-advice-v2"
+BASE_REPO = "LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted"
 SELECT_FILE = "stage_8_export_sft.jsonl"      # what the mixture selects over
 PROMPT_FILE = "stage_5_revise_prompts.jsonl"  # what we actually stage
 N = 716

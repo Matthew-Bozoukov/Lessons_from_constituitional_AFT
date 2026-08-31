@@ -6,7 +6,7 @@
 Run (from the repo root; the nested env quarantines the SAE stack):
 
     uv run --project scratch/sae_properties python scratch/sae_properties/run_embed.py \
-        --config configs/properties/sae_diff.yaml [key=value ...]
+        --config configs/properties/2026-08-19_sae_diff.yaml [key=value ...]
 
 Per (corpus, channel) this writes, under <embed.out_root>/<run>/:
 
@@ -56,7 +56,7 @@ def make_sae(cfg, channel: str):
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default="configs/properties/sae_diff.yaml")
+    ap.add_argument("--config", default="configs/properties/2026-08-19_sae_diff.yaml")
     ap.add_argument("overrides", nargs="*", help="OmegaConf dotlist overrides, e.g. embed.limit=16")
     args = ap.parse_args()
 

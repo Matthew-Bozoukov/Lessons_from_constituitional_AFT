@@ -226,7 +226,7 @@
   },
   {
     "label": "t2_9284 + DA-verbose token-matched",
-    "repo": "LASR-Callum/2026-08-25-table2-9284-da-verbose-tokenmatched-train",
+    "repo": "LASR-Callum/2026-08-25-table2-9284-difficult-advice-verbose-token-matched-train-mixture",
     "file": "t2_9284_da_verbose_tokenmatched.jsonl",
     "max_seq_len": 8192,
     "rows": 9647,
@@ -301,7 +301,7 @@
   },
   {
     "label": "t2_9284 + post-action-retro_716",
-    "repo": "LASR-Callum/2026-08-26-table2-9284-par716-train",
+    "repo": "LASR-Callum/2026-08-26-table2-9284-post-action-retrospection-716-train",
     "file": "mixture_think.jsonl",
     "max_seq_len": 8192,
     "rows": 10000,
@@ -397,7 +397,7 @@
   },
   {
     "label": "synthdoc 20/80 + tulu (500k-tok era)",
-    "repo": "LASR-Callum/qwen3.6-27b-synthdocv2-mixture-20_80",
+    "repo": "LASR-Callum/2026-08-02-qwen36-synthdoc-package-mixture-20-80",
     "file": "mixture.jsonl",
     "max_seq_len": 3072,
     "rows": 1364,
@@ -424,7 +424,7 @@
   },
   {
     "label": "500k DA20 + numina + tulu",
-    "repo": "LASR-Callum/qwen3.6-27b-mixture-500k-da20-numina",
+    "repo": "LASR-Callum/2026-08-02-qwen36-mixture-500k-da20-numina",
     "file": "mixture.jsonl",
     "max_seq_len": 3072,
     "rows": 857,
@@ -463,7 +463,7 @@
   },
   {
     "label": "tulu 0/100 control",
-    "repo": "LASR-Callum/qwen36-27b-tulu-0-100-train",
+    "repo": "LASR-Callum/2026-07-31-qwen36-27b-tulu-0-100-train-mixture",
     "file": "mixture_0_100.jsonl",
     "max_seq_len": 3072,
     "rows": 2337,
@@ -484,7 +484,7 @@
   },
   {
     "label": "legacy 10/90 (qwen3-era)",
-    "repo": "LASR-Callum/qwen3.6-27b-sft-mixture-10-90_assistant_loss_only",
+    "repo": "LASR-Callum/2026-07-31-qwen36-sft-mixture-10-90-assistant-loss-only",
     "file": "mixture.jsonl",
     "max_seq_len": 2048,
     "rows": 2257,

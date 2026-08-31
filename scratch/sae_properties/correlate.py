@@ -6,7 +6,7 @@
 Run (API-only; needs the two channels' embed caches):
 
     uv run --project scratch/sae_properties python scratch/sae_properties/correlate.py \
-        --config configs/properties/sae_diff.yaml run=e1_70b \
+        --config configs/properties/2026-08-19_sae_diff.yaml run=e1_70b \
         corr.corpus=difficult_advice corr.channel_a=query corr.channel_b=response
 
 Method, following the paper: binarize both channels' doc×latent matrices (aligned by
@@ -113,7 +113,7 @@ def npmi_pairs(A: np.ndarray, B: np.ndarray, cfg) -> list[dict]:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default="configs/properties/sae_diff.yaml")
+    ap.add_argument("--config", default="configs/properties/2026-08-19_sae_diff.yaml")
     ap.add_argument("--skip-verify", action="store_true")
     ap.add_argument("overrides", nargs="*")
     args = ap.parse_args()

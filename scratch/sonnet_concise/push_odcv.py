@@ -21,9 +21,9 @@ sys.path.insert(0, str(ROOT))
 from src.huggingface import card_markdown, hf_api  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 
-REPO = "LASR-Callum/2026-08-26-odcv-sonnetconcise703-paired-eval"
-ADAPTER = "LASR-Callum/qwen3.6-27b-lora-t2-9284-sonnetconcise703-paired-r64"
-CFG = "configs/eval/odcv_bench_t2_9284_sonnetconcise703_r64_paired_2x65.yaml"
+REPO = "LASR-Callum/2026-08-26-odcv-sonnet-concise-703-paired-eval"
+ADAPTER = "LASR-Callum/2026-08-26-qwen36-lora-table2-9284-sonnet-concise-703-paired-rank-64"
+CFG = "configs/eval/2026-08-26_odcv_bench_table2_9284_sonnet_concise_703_rank64_paired_2_65.yaml"
 MODEL_KEY = "qwen3_6-27b-lora-t2-9284-sonnetconcise703-paired-r64"
 
 
@@ -72,7 +72,7 @@ def main(combined: str, repo: str = REPO, passes: bool = True) -> None:
             "constitution": (
                 "constitutions/claude_distilled_12_principles_mid/constitution.md -- IDENTICAL to "
                 "the da716 baseline's and unchanged by this arm: only the rewrite's length differs. "
-                "Via the adapter's training data LASR-Callum/2026-08-26-t2-9284-sonnetconcise703-paired-train"
+                "Via the adapter's training data LASR-Callum/2026-08-26-table2-9284-sonnet-concise-703-paired-train"
             ),
             "source_repo": f"{origin_url()} @ {git_sha()}",
             "models": (

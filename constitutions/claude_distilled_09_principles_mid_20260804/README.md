@@ -6,7 +6,7 @@
 **Do not edit `constitution.md` in this folder.** It is byte-pinned: `sha256` of its
 stripped text is `fe2ed96093d68a871fb15669e8fea9d357fb9b51f5affff15380f62ee749a642`, the
 `constitution_sha256` recorded in the manifest of the 2203-record difficult-advice corpus
-on HF `LASR-Callum/synthdoc-v2-difficult-advice` (run `20260804_082743`). The
+on HF `LASR-Callum/2026-08-04-synthdoc-package-difficult-advice-stage-cache` (run `20260804_082743`). The
 model-eval-model pipeline's source-provenance fail-fast checks against exactly this hash.
 
 | field | value |

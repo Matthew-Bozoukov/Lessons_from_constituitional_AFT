@@ -11,7 +11,7 @@ dotenv.load_dotenv(".env")
 
 GROK = "output/synthdoc_grok_responder_716/20260824_132752/dataset.jsonl"
 GPT = "output/synthdoc_gpt_responder_716/20260825_131001/dataset.jsonl"
-SONNET_REPO = "LASR-Callum/2026-08-13-difficult-advice-v2"
+SONNET_REPO = "LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted"
 SONNET_FILE = "stage_8_export_sft.jsonl"
 
 ORDER = ["sonnet", "grok", "gpt"]

@@ -37,7 +37,7 @@ from src.properties.shared import outcomes as outcomes_mod  # noqa: E402
 from src.properties.sources import load_source  # noqa: E402
 from src.utils import git_sha, timestamp  # noqa: E402
 
-DEFAULT_CONFIG = "configs/properties/discover_odcv_da716_vs_numina.yaml"
+DEFAULT_CONFIG = "configs/properties/2026-08-20_discover_odcv_difficult_advice_716_vs_numina.yaml"
 
 
 def _members(path: Path) -> tuple[dict[str, set], dict[str, str]]:

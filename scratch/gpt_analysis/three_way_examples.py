@@ -22,7 +22,7 @@ load_dotenv(".env")
 SRC = {
     "SONNET (Haiku->Sonnet)": (
         "hf",
-        ("LASR-Callum/2026-08-13-difficult-advice-v2", "stage_8_export_sft.jsonl"),
+        ("LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted", "stage_8_export_sft.jsonl"),
     ),
     "GROK (grok-4.6)": (
         "local",

@@ -5,7 +5,7 @@
 # Run: bash scratch/par_b/odcv_local_run.sh <pod_ip> <pod_ssh_port> [passes] [concurrency] [config] [hf_repo] [state_dir]
 #   seed 0: bash scratch/par_b/odcv_local_run.sh <ip> <port> 2 12
 #   seed 1: bash scratch/par_b/odcv_local_run.sh <ip> <port> 2 12 scratch/par_b/odcv_bench_t2_9284_par716_s1_2x65.yaml \
-#             LASR-Callum/2026-08-27-odcv-par716-s1-eval output/odcv_par716_s1_state
+#             LASR-Callum/2026-08-27-odcv-post-action-retrospection-716-seed-1-eval output/odcv_par716_s1_state
 #
 # Same control plane as the vast boxes (scratch/odcv_box_run.py), with two laptop
 # adaptations: a reconnecting plain-ssh tunnel instead of autossh (not installed here; the
@@ -22,7 +22,7 @@ POD_PORT="${2:?pod ssh port required}"
 PASSES="${3:-2}"
 CONC="${4:-12}"
 CFG="${5:-scratch/par_b/odcv_bench_t2_9284_par716_2x65.yaml}"
-HF_REPO="${6:-LASR-Callum/2026-08-27-odcv-par716-eval}"
+HF_REPO="${6:-LASR-Callum/2026-08-27-odcv-post-action-retrospection-716-eval}"
 STATE="${7:-output/odcv_par716_state}"
 TAG="$(basename "$STATE")"
 mkdir -p "$STATE" output/logs

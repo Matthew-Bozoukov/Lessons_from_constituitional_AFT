@@ -7,8 +7,8 @@ from src.infra import runpod
 from src.chat.repl import own_pods, pod_name
 
 MODS = [
-    ("da716", "LASR-Callum/qwen3.6-27b-lora-t2-9284-da716-r64-dynbatch"),
-    ("base_ctrl", "LASR-Callum/other"),
+    ("da716", "LASR-Callum/2026-08-14-qwen36-lora-table2-9284-difficult-advice-716-rank-64-dynbatch"),
+    ("base_ctrl", "LASR-Callum/2026-08-14-tulu-control-fixture"),
 ]
 
 

@@ -1,0 +1,72 @@
+# ABOUTME: QLoRA SFT of gpt-oss-120b on Table2(9,284) + difficult-advice-v2(716), Harmony
+# ABOUTME: format, 4-bit NF4 base, MoE-aware targeting, token-budgeted dynamic batching.
+# Run: uv run python scratch/train_gptoss_lora.py --config configs/train/2026-08-25_lora_gpt_oss_120_table2_difficult_advice_716.yaml
+#
+# Mirrors configs/train/2026-08-18_lora_qwen36_table2_9284_difficult_advice_716_dynbatch.yaml wherever the two
+# models allow it — same data, seed, LoRA shape, LR schedule and global batch — so a
+# difference between the arms is the MODEL, not the recipe. Four things necessarily differ:
+#
+#   1. DATA IS RE-RENDERED. The Qwen mixture is pre-rendered to <|im_start|> turns and is
+#      unusable here. scratch/build_harmony_dataset.py parses it back to messages and
+#      re-renders with gpt-oss's own template. Real <think> traces become the `analysis`
+#      channel; EMPTY markers are DROPPED, because Harmony encodes "did not reason" by
+#      omitting the channel and has no empty-analysis form.
+#   2. 4-BIT NF4, where the Qwen arm runs bf16 (its hybrid linear-attention layers are not
+#      reliably quantised by bitsandbytes). Here quantisation is what fits 120B on one GPU:
+#      ~240GB bf16 -> ~65GB NF4.
+#   3. MoE TARGETING. The Qwen regex hits dense q/k/v/o + gate/up/down and would match NO
+#      expert layer here. Per the cookbook, target_modules="all-linear" plus explicit
+#      expert projections.
+#   4. TOKEN BUDGET IS EXPLICIT AND UNVERIFIED. ModelProfile has no gpt-oss entry, so the
+#      value below is a PLACEHOLDER. Run scratch/probe_batch_memory.py on the target GPU
+#      before trusting it; planning against a guess is how a multi-hour run OOMs late.
+
+seed: 0
+model: "openai/gpt-oss-120b"
+
+# Every assistant turn that reasoned carries an analysis channel; the rest carry only a
+# final channel. Both are supervised — choosing whether to open the analysis channel is
+# itself generated behaviour.
+thinking: true
+
+data_path: "data/t2_da716_harmony.jsonl"
+output_dir: "/workspace/out/train_gptoss120b_t2_da716"
+
+lora:
+  r: 64
+  alpha: 128
+  dropout: 0.05
+  # "all-linear" is the cookbook's recommendation for gpt-oss; the dense-projection regex
+  # used for Qwen matches nothing in the expert modules.
+  target_modules: "all-linear"
+  # Adapt expert projections every Nth layer. The cookbook uses layers 7/15/23 on the 20b
+  # (every 8th); this keeps that spacing, resolved against the real layer count at load.
+  expert_every: 8
+
+train:
+  epochs: 1
+  batch_size: 1
+  grad_accum: 16          # global batch 16, matching the Qwen arm
+  lr: 1.0e-4
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  logging_steps: 5
+  max_seq_len: 8192
+
+  # nf4     : bitsandbytes NF4, ~65GB, fits 1xH200. Requantises an MXFP4 checkpoint through
+  #           a second scheme — quality cost UNMEASURED, and the experts are exactly the
+  #           weights being quantised.
+  # mxfp4_bf16 : the cookbook's path — dequantise MXFP4 to bf16, ~240GB, needs 4xH200.
+  quantization: "nf4"
+  gradient_checkpointing: true
+  attn: "eager"
+
+  # PLACEHOLDER. No measured entry exists for this model on any GPU. The Qwen/H200 figure
+  # is 8,000 padded tokens for a 27B DENSE model in bf16; a 120B MoE in NF4 has different
+  # activation and expert-buffer behaviour in both directions, so this is not transferable.
+  token_budget: 8000
+
+  # Set true to run the whole pipeline — parse, render, mask, plan — with no model load,
+  # which is the only part that needs no GPU.
+  plan_only: false

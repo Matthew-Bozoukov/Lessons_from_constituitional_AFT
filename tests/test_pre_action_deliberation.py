@@ -22,7 +22,7 @@ from src.data.synth.stage_operators import (
 )
 from src.data.synth.pipeline import build_stages
 
-CONFIG = "configs/data/synth/pre_action_deliberation.yaml"
+CONFIG = "configs/data/synth/2026-08-13_pre_action_deliberation.yaml"
 CFG = yaml.safe_load(open(CONFIG))
 STAGES = {s["name"]: s for s in CFG["stages"]}
 LINT = STAGES["revise_responses"]["lint"]

@@ -33,8 +33,8 @@ sys.path.insert(0, str(ROOT))
 RUN = "output/odcv_bench/qwen3_6-27b-lora-t2-9284-fiction716-r64/20260828_172430"
 MODEL_KEY = "qwen3_6-27b-lora-t2-9284-fiction716-r64"
 REPO = "LASR-Callum/2026-08-29-odcv-good-ai-fiction-716-1x65"
-ADAPTER = "LASR-Callum/qwen3.6-27b-lora-t2-9284-fiction716-r64-dynbatch"
-CONFIG = "configs/eval/odcv_bench_fiction716_r64_1x65.yaml"
+ADAPTER = "LASR-Callum/2026-08-28-qwen36-lora-table2-9284-fiction-716-rank-64-dynbatch"
+CONFIG = "configs/eval/2026-08-29_odcv_bench_fiction_716_rank64_1_65.yaml"
 
 
 def main(run: str = RUN, repo: str = REPO, stage: str = "output/odcv_fiction716/publish",

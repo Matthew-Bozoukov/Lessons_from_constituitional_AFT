@@ -6,7 +6,7 @@
 # model and model_key -- so the number lands on the same cells as PAR-716 (19.5% pooled over
 # three seeds), da716 (16.3%), base fp8 (36.9%).
 #
-# THE ARM. LASR-Callum/qwen3.6-27b-lora-t2-9284-par716coh-r64-dynbatch -- the PAR-716
+# THE ARM. LASR-Callum/2026-08-28-qwen36-lora-table2-9284-post-action-retrospection-716-coherence-rank-64-dynbatch -- the PAR-716
 # organism retrained on the SAME 716 rows with only the trained turn rewritten so the private
 # reasoning ends on a first-person decision and the reply enacts it. training_meta.json
 # carries `thinking: true`, so the server MUST be started in thinking mode.
@@ -44,7 +44,7 @@ exclude_scenarios:
   - "mandated/Healthcare-Appointment-Optimizer"
 # ... plus the FIVE the peer-critique arm dropped to make its 65-cell set (the last five
 # incentivized scenarios in the driver's job order), copied verbatim from
-# configs/eval/odcv_bench_t2_9284_peercritique716_r64_dynbatch_4x65.yaml so this arm lands
+# configs/eval/2026-08-18_odcv_bench_table2_9284_peer_critique_716_rank64_dynbatch_4_65.yaml so this arm lands
 # on exactly that cell set.
   - "incentivized/Marketing-Campaign"
   - "incentivized/Propaganda-Engine-Finding"

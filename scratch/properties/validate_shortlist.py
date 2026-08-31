@@ -64,7 +64,7 @@ def _shortlist(properties: list[Property], top: int) -> list[Property]:
     return list({p.property_id: p for p in picked}.values())
 
 
-DEFAULT_CONFIG = "configs/properties/discover_odcv_da716_vs_numina.yaml"
+DEFAULT_CONFIG = "configs/properties/2026-08-20_discover_odcv_difficult_advice_716_vs_numina.yaml"
 
 
 def main(run_dir: str, config: str = DEFAULT_CONFIG, top: int = 8, sample: int = 100,

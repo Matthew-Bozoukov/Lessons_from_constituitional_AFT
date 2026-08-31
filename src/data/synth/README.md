@@ -9,8 +9,8 @@ its models, its knobs — lives in that type's config, so the config alone is th
 scientific record of what a run generated:
 
 ```
-uv run scripts/data/synth/build_dataset.py --config configs/data/synth/difficult_advice.yaml [--smoke]
-uv run scripts/data/synth/build_dataset.py --config configs/data/synth/post_action_retrospection.yaml [--smoke]
+uv run scripts/data/synth/build_dataset.py --config configs/data/synth/2026-08-01_difficult_advice.yaml [--smoke]
+uv run scripts/data/synth/build_dataset.py --config configs/data/synth/2026-08-13_post_action_retrospection.yaml [--smoke]
 uv run scripts/data/synth/build_dataset.py --config <cfg> --ablate <stage>   # ablation arm
 uv run scripts/data/synth/build_dataset.py --config <cfg> --estimate [--measured <smoke manifest>]
 ```
@@ -72,7 +72,7 @@ A config's `stages:` entry names an operator `kind` and supplies everything it n
 | `corpus_check` | corpus-level property checks; pass-through, always ablatable (see below) | `fields`, `properties`, `axes`, `cross`, `rubrics`, `units`, `on_fail`, `model` |
 | `scenarios_weighted` | weighted trait apportionment, control slice, motive rotation, per-batch industries, deterministic per-scenario variants | `model`, `prompts` (+`control_user`), `threats`, `control_threats`, `fields` |
 | `load_source_run` | a completed run's finals + constitution-sha provenance check | (`source:` block) |
-| `plan_cells` / `perturb_pairs` / `generate_cells` / `revise_cells` / `assemble_cells` | **FROZEN** — the model-eval-model cells, defined in `model_eval_model_cells.py`. A cell is a document type written in Python, which is what the kinds above exist to replace. Registered only because the archived configs and `peer_critique.yaml` are written against them; do not use them for new work | (`cells:`, `flaws:`, `prompts:` blocks) |
+| `plan_cells` / `perturb_pairs` / `generate_cells` / `revise_cells` / `assemble_cells` | **FROZEN** — the model-eval-model cells, defined in `model_eval_model_cells.py`. A cell is a document type written in Python, which is what the kinds above exist to replace. Registered only because the archived configs and `2026-08-13_peer_critique.yaml` are written against them; do not use them for new work | (`cells:`, `flaws:`, `prompts:` blocks) |
 
 Prompt templates in configs are `str.format` templates over record fields plus shared
 vars (`{constitution}`, `{style_guidance}`). Literal JSON braces are escaped `{{ }}`.
@@ -190,7 +190,7 @@ default config (`load_dataset(repo)` fetches it alone) and each stage as its own
 named config — which also keeps the dataset viewer working. A halted run publishes
 no `dataset.jsonl` (`manifest.json`'s `dataset` field is null).
 
-## Document type: difficult advice (`configs/data/synth/difficult_advice.yaml`)
+## Document type: difficult advice (`configs/data/synth/2026-08-01_difficult_advice.yaml`)
 
 Derived from the difficult-advice recipe in
 [Teaching Claude Why](https://alignment.anthropic.com/2026/teaching-claude-why/), as a
@@ -206,7 +206,7 @@ injections were removed after a matched-pair test (identical scenarios and draft
 trained as the da716 organism, ODCV over the same 65 cells) put the chunk-only recipe at
 MR 11.5% [6.2, 19.6] against the full-constitution recipe's 16.3% [10.0, 21.8] — overlapping
 intervals, so no detectable cost, and the simpler, cheaper recipe became the default. The
-previous recipe is preserved verbatim as `difficult_advice_full_constitution.yaml` for
+previous recipe is preserved verbatim as `2026-08-01_difficult_advice_full_constitution.yaml` for
 regenerating corpora published before that date.
 
 Two things the swap also does, both recorded in the config header: it withholds the
@@ -220,7 +220,7 @@ Output and HF names moved from the historical `synthdoc_v2` prefix to `synthdoc_
 the default swap, so pre-2026-08-24 snapshots stay resumable under the legacy config.
 This replaced the config-driven v1 (deleted 2026-08-03, git history).
 
-## Document type: pre-action deliberation (`configs/data/synth/pre_action_deliberation.yaml`)
+## Document type: pre-action deliberation (`configs/data/synth/2026-08-13_pre_action_deliberation.yaml`)
 
 Inverts who is tempted: **the agent itself**. Working autonomously (prose or agentic
 form), it finds it could protect its own position — or the objective it was deployed to
@@ -280,7 +280,7 @@ follows, the model revises or holds with reasons; trained with `supervise: "fina
 lifted from the stage-5 export's metadata by `build_mixture` (interchange mode) and
 consumed by `masking.py`).
 
-### The natural-turn recipes (`post_action_retrospection.yaml`, `peer_critique.yaml`)
+### The natural-turn recipes (`2026-08-13_post_action_retrospection.yaml`, `2026-08-13_peer_critique.yaml`)
 
 **These two are the live model-eval-model configs.** The archived base and `_self`/`_other`
 put the source run's reply — gold, or minimally perturbed — into the turn under evaluation.
@@ -328,7 +328,7 @@ The first turn stays untrained in both (`supervise: final` / `all` respectively)
 *tracked* conditioning variable rather than an invisible one: every record carries
 `reply_quality`, `first_turn_source` and `followup_source` in its metadata.
 
-`uv run synth check --config configs/data/synth/post_action_retrospection.yaml --run_dir <dir>`
+`uv run synth check --config configs/data/synth/2026-08-13_post_action_retrospection.yaml --run_dir <dir>`
 runs the validity checks and gates on the config's thresholds: gate yield (report-only —
 the number a gated config re-sizes itself from), coverage of what actually entered
 generation, template collapse, **structural diversity** (on the assembled records:

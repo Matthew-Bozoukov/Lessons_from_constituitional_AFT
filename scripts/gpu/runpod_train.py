@@ -13,7 +13,7 @@ Bootstrap discipline is inherited from scripts/gpu/runpod_arena_hard.py (log ser
 anything slow, trainer in the foreground of PID 1, `|| true` so a crash leaves a
 readable log instead of a restart loop). See that file for why each line is the way it is.
 
-    uv run python scripts/gpu/runpod_train.py up --bundle LASR-Callum/qwen36-27b-tulu-0-100-train
+    uv run python scripts/gpu/runpod_train.py up --bundle LASR-Callum/2026-07-31-qwen36-27b-tulu-0-100-train-mixture
     uv run python scripts/gpu/runpod_train.py status --pod <id>
     uv run python scripts/gpu/runpod_train.py down --pod <id>
 """
@@ -102,7 +102,7 @@ sleep infinity
 
 def up(
     bundle: str,
-    train_config: str = "configs/train/lora_qwen36_tulu100.yaml",
+    train_config: str = "configs/train/2026-07-31_lora_qwen36_tulu_100.yaml",
     base: str = "Qwen/Qwen3.6-27B",
     gpu: str = DEFAULT_GPU,
     gpu_count: int = 1,

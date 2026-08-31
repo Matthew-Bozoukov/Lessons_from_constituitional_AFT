@@ -20,12 +20,12 @@ license: mit
 | --- | --- |
 | experiment | SAE dataset diffing (E1): distinguishing the difficult-advice v2 corpus from peer-critique / courtroom / post-action-retrospection with judge-verified property frequencies (arXiv:2512.10092 method) |
 | date_generated | 2026-08-19 |
-| constitution | none directly; the four SOURCE corpora are constitution-grounded — see their cards: LASR-Callum/2026-08-13-difficult-advice-v2, LASR-Callum/2026-08-14-peer-critique, LASR-Callum/2026-08-14-courtroom, LASR-Callum/2026-08-17-post-action-retrospection |
+| constitution | none directly; the four SOURCE corpora are constitution-grounded — see their cards: LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted, LASR-Callum/2026-08-14-peer-critique, LASR-Callum/2026-08-14-courtroom, LASR-Callum/2026-08-17-post-action-retrospection |
 | source_repo | github.com/Matthew-Bozoukov/Lessons_from_constituitional_AFT, branch worktree-sae-property-extraction (see run_meta.json for exact sha) |
 | models | reader meta-llama/Llama-3.3-70B-Instruct (bf16, truncated at layer 51); SAE Goodfire/Llama-3.3-70B-Instruct-SAE-l50 (d_sae 65536, layer 50 resid_post); labeler+judge google/gemini-2.5-flash via OpenRouter |
 | generation_config | response channel only; 2048-token cap per doc; 1000 docs/corpus (PAR: all 576), seeded sample seed=0; latent present = >=1 activating token; min freq-diff 0.03; top-200 latents; label-score threshold 0.75; 15 hypotheses |
 | schema | datasets/*.pkl = interp_embed Dataset caches (sparse token-level SAE activations + tokenized docs + labels); datasets/*.csv = the exact rows embedded; diff_difficult_advice/hypotheses.json = generated differences + significant features; verify_*/ = per-document judge verdicts and per-hypothesis rates; report.md = the joined verified-frequency table |
-| provenance | uv run --project scratch/sae_properties python scratch/sae_properties/run_embed.py --config configs/properties/sae_diff.yaml run=e1_70b; then run_diff.py with the same config (judge gemini-2.5-flash). Vendored pipeline: github.com/nickjiang2378/interp_embed @ 4abbe1c, patched (see scratch/sae_properties/README.md) |
+| provenance | uv run --project scratch/sae_properties python scratch/sae_properties/run_embed.py --config configs/properties/2026-08-19_sae_diff.yaml run=e1_70b; then run_diff.py with the same config (judge gemini-2.5-flash). Vendored pipeline: github.com/nickjiang2378/interp_embed @ 4abbe1c, patched (see scratch/sae_properties/README.md) |
 """
 
 api = HfApi(token=os.environ["HF_TOKEN"])

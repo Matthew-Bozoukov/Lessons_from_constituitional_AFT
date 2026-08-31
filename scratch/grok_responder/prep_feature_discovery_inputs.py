@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 from huggingface_hub import hf_hub_download
 
 GROK = "output/synthdoc_grok_responder_716/20260824_132752/dataset.jsonl"
-SONNET = ("LASR-Callum/2026-08-13-difficult-advice-v2", "stage_8_export_sft.jsonl")
+SONNET = ("LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted", "stage_8_export_sft.jsonl")
 OUT = Path("data/feature_discovery")
 
 

@@ -35,9 +35,9 @@ from src.data.synth.pipeline import (
     n_final_examples,
 )
 
-PR_CFG = yaml.safe_load(open("configs/data/synth/post_action_retrospection.yaml"))
-PC_CFG = yaml.safe_load(open("configs/data/synth/peer_critique.yaml"))
-DA_CFG = yaml.safe_load(open("configs/data/synth/difficult_advice.yaml"))
+PR_CFG = yaml.safe_load(open("configs/data/synth/2026-08-13_post_action_retrospection.yaml"))
+PC_CFG = yaml.safe_load(open("configs/data/synth/2026-08-13_peer_critique.yaml"))
+DA_CFG = yaml.safe_load(open("configs/data/synth/2026-08-01_difficult_advice.yaml"))
 ARCHIVE_CFG = yaml.safe_load(
     open("configs/data/synth/archive/model_eval_model_other.yaml")
 )
@@ -209,7 +209,7 @@ def test_pr_front_half_is_difficult_advice_verbatim(name: str) -> None:
     """The scenarios, the drafted prompt and the chunk-only refine are difficult advice's,
     byte for byte -- same prompts, same save map, same diversity gate, same model -- so PR
     and DA differ in nothing before the first reply. A change to these prompts belongs in
-    difficult_advice.yaml first and here second."""
+    2026-08-01_difficult_advice.yaml first and here second."""
     pr, da = _stage(PR_CFG, name), _stage(DA_CFG, name)
     assert pr["kind"] == da["kind"]
     assert pr["prompts"] == da["prompts"]

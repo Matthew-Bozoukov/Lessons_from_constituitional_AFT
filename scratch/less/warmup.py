@@ -3,7 +3,7 @@
 
 """Train the warmup LoRA and emit one gradient-feature checkpoint per epoch.
 
-    uv run python scratch/less/warmup.py --config configs/train/lora_qwen36_less_warmup_r64.yaml
+    uv run python scratch/less/warmup.py --config configs/train/2026-08-14_lora_qwen36_less_warmup_rank64.yaml
 
 LESS needs three things from each epoch boundary that ordinary SFT does not keep:
 

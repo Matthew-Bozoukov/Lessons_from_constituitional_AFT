@@ -3,8 +3,8 @@
 
 """Arm C (length-capped Sonnet) adapter round-trip.
 
-    uv run python scripts/gpu/runpod_train.py up --bundle LASR-Callum/2026-08-26-t2-9284-sonnetconcise703-paired-train \\
-        --train_config configs/train/lora_qwen36_t2_9284_sonnetconcise703_paired_2xh200.yaml \\
+    uv run python scripts/gpu/runpod_train.py up --bundle LASR-Callum/2026-08-26-table2-9284-sonnet-concise-703-paired-train \\
+        --train_config configs/train/2026-08-24_lora_qwen36_table2_9284_sonnet_concise_703_paired.yaml \\
         --gpu "NVIDIA H200" --gpu_count 2 --mixture t2_9284_sonnetconcise703_10k.jsonl --name kunwar-train-sonnetconcise703
     uv run python scratch/sonnet_concise/adapter_pod.py pull --pod <id>     # after TRAINING_DONE in boot.log
     uv run python scratch/sonnet_concise/adapter_pod.py push
@@ -31,8 +31,8 @@ from scratch.trait10_curiosity.train_pod import pull as _pull  # noqa: E402
 from src.huggingface import push_run_dir  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 
-TRAIN_CONFIG = "configs/train/lora_qwen36_t2_9284_sonnetconcise703_paired_2xh200.yaml"
-ADAPTER_REPO = "LASR-Callum/qwen3.6-27b-lora-t2-9284-sonnetconcise703-paired-r64"
+TRAIN_CONFIG = "configs/train/2026-08-24_lora_qwen36_table2_9284_sonnet_concise_703_paired.yaml"
+ADAPTER_REPO = "LASR-Callum/2026-08-26-qwen36-lora-table2-9284-sonnet-concise-703-paired-rank-64"
 BASE = "Qwen/Qwen3.6-27B"
 DEST = "output/adapters/sonnetconcise703"
 
@@ -66,7 +66,7 @@ def push(dest: str = DEST, private: bool = False) -> str:
                 "whose assistant turn is the baseline's own Haiku draft rewritten by Sonnet 5 under a "
                 "one-sentence cap at grok's median lengths (reasoning ~220 words, reply ~270). "
                 "Same 703 questions, same Table2 half, same seed/LoRA/schedule as arm B "
-                "(LASR-Callum/qwen3.6-27b-lora-t2-9284-grokresp703-paired-r64); differs from the "
+                "(LASR-Callum/2026-08-24-qwen36-lora-table2-9284-grok-responder-703-paired-rank-64); differs from the "
                 "da716 baseline only in the rewrite's length. Read C's ODCV against A (16.3%) and "
                 "B (7.8%): near B means length carried the drop, near A means the generator did."
             ),
@@ -103,9 +103,9 @@ def push(dest: str = DEST, private: bool = False) -> str:
             ),
             "dataset": f"hf.co/datasets/{ds.get('repo')}@{ds.get('revision')} ({ds.get('file')})",
             "comparison_arms": (
-                "A: LASR-Callum/qwen3_6-27b-lora-t2-9284-da716-r64-dynbatch; "
-                "B: LASR-Callum/qwen3.6-27b-lora-t2-9284-grokresp703-paired-r64; "
-                "D: LASR-Callum/qwen3.6-27b-lora-t2-9284-gptresp685-paired-r64"
+                "A: LASR-Callum/2026-08-14-qwen36-lora-table2-9284-difficult-advice-716-rank-64-dynbatch; "
+                "B: LASR-Callum/2026-08-24-qwen36-lora-table2-9284-grok-responder-703-paired-rank-64; "
+                "D: LASR-Callum/2026-08-25-qwen36-lora-table2-9284-gpt-responder-685-paired-rank-64"
             ),
         },
         private=private,

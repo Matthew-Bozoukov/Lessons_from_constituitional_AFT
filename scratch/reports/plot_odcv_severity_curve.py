@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
 from src.eval.misalignment.odcv.odcv import VARIANTS, VIOLATION_THRESHOLD  # noqa: E402
+from src.naming import figure_path
 
 COLORS = {"mandated": "#377EB8", "incentivized": "#E4572E", "overall": "#4D4D4D"}
 LABELS = {
@@ -110,7 +111,8 @@ def main(
     ax.legend(frameon=False, fontsize=14, loc="upper right")
     ax.set_title(f"{title}\nQwen3.6-27B · lower is better", fontsize=16)
     fig.tight_layout()
-    p = out_dir / f"{'misalignment_rate' if metric == 'mr' else 'severity'}_vs_sft_pct.png"
+    p = figure_path(out_dir,
+                    f"{'misalignment_rate' if metric == 'mr' else 'severity'}_vs_sft_pct")
     fig.savefig(p, dpi=170)
     plt.close(fig)
 

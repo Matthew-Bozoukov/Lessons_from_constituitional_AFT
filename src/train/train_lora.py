@@ -1,5 +1,5 @@
 # ABOUTME: QLoRA SFT of Qwen3-32B on the difficult-advice dataset via TRL SFTTrainer.
-# ABOUTME: Runs on a GPU instance: python scripts/train/train_lora.py --config configs/train/lora_qwen3_difficult_advice.yaml
+# ABOUTME: Runs on a GPU instance: python scripts/train/train_lora.py --config configs/train/2026-07-31_lora_qwen3_difficult_advice.yaml
 
 from __future__ import annotations
 
@@ -257,6 +257,12 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
             "Declare hf_repo: <name> in the config (or hf_repo=... on the CLI) — the "
             "name alone, the org comes from .env HF_ORG (src.huggingface.hf_org); "
             "a credential-less pod run sets push=false and pushes from the driver.")
+        # A model organism is named before it is trained, never after: the name is checked
+        # here, at config load, so an ambiguous or undated `hf_repo` costs zero GPU hours
+        # instead of failing at the push after a multi-hour run (src/naming.py).
+        from src.naming import check_hub_repo
+
+        check_hub_repo(hf_repo, what="model organism (hf_repo)", write=True)
     torch.manual_seed(int(cfg.seed))
 
     # Under `torchrun` every rank runs this file; these are 1/0 for a plain single-GPU run.

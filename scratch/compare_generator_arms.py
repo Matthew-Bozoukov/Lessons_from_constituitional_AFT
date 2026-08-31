@@ -5,7 +5,7 @@
 
 Run: uv run python scratch/compare_generator_arms.py \
        --arm output/synthdoc_grok_responder_716/<ts>/dataset.jsonl \
-       [--baseline_repo LASR-Callum/2026-08-13-difficult-advice-v2]
+       [--baseline_repo LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted]
 
 Why this exists. On 2026-08-17 two corpora in this project were found to leak their arm
 label through *who wrote the reply* rather than through quality — peer-critique separated
@@ -105,7 +105,7 @@ def _auc(X, y, label: str) -> None:
 
 
 def main(arm: str,
-         baseline_repo: str = "LASR-Callum/2026-08-13-difficult-advice-v2",
+         baseline_repo: str = "LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted",
          baseline_file: str = "stage_8_export_sft.jsonl",
          arm_label: str = "arm", base_label: str = "baseline") -> None:
     """Compare a generator arm against the baseline difficult-advice corpus.

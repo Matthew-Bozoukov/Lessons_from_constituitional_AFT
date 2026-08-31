@@ -1,6 +1,40 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-08-31 — Naming law: every artifact is `<date>` + an unambiguous subject, enforced at both push gates
+
+**Problem.** `qwen3.6-27b-lora-t2-9284-synthdoc-716-r64`, `qwen3_6-27b-lora-t2-9284-da716-r64-dynbatch`
+and `qwen3.6-27b-lora-t2-9284-da716-r64-dynbatch` were three organisms under three spellings
+of the same words, in two orgs, none of them dated. `par` meant post-action-retrospection
+in the plots and pre-action-deliberation in the config folder. `sonnet-v2` said nothing at
+all. Nothing in the pipeline objected to any of it.
+
+**Method.** One module, `src/naming.py`, holds the grammar (`<YYYY-MM-DD>_<subject>` local,
+`<YYYY-MM-DD>-<subject>` on the Hub), the ambiguity rules (aliases with two expansions
+refused; a version number refused; glued row counts split; `check_distinct` on any set of
+names presented together), and the lint. It is wired into three gates: `gate_push` in
+`src/huggingface.py` (every dataset/mixture/adapter/eval/cache upload, plus a check at
+`train`'s config load so a bad organism name costs zero GPU hours), `.git/hooks/pre-push`
+(`bash scripts/hooks/install.sh`), and `tests/test_naming.py`. The date in a repo name is
+checked against the card's `date_generated`, so a copy-pasted repo id cannot re-date a corpus.
+
+**Result.**
+- **177 configs** renamed and re-homed under their stage folder, dated by first commit.
+- **163 HF repos** in `LASR-Callum` renamed (`scripts/hf/rename_repos.py`); 0 undated
+  repos remain in the org. Names now carry the generator or base model, the document
+  type/arm, and what the variant changes — `2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted`,
+  not `difficult-advice-v2`. What each old "v2" meant is recorded in
+  `scripts/hf/rename_overrides.yaml`; the old→new tables are in `docs/naming_migration.md`.
+- **Model organisms** carry a dated name (`Organism.name`, `Organism.label`) derived from
+  the adapter repo and falling back to the training date, so no arm can be served, filed
+  or plotted without saying when it was made; `arm_names` refuses a set that is still ambiguous.
+- **Figures**: every filename goes through `naming.figure_path` (24 files migrated), and
+  the canonical seven-arm/seed-mean ODCV plots put the eval date on every tick label.
+- 1133 tests pass; `uv run names` is clean.
+
+**Next steps.** 31 pre-dating repos remain in `src/naming_legacy.py`, all of them in
+`matboz/*` — only their owner can rename those, and until they do the ledger keeps them
+readable and refuses any push to them. The ledger only shrinks.
 ## 2026-08-31 - ODCV on the CoT-only arm: 14.1%, inside the difficult-advice band
 
 **Hypothesis.** The difficult-advice effect on agentic misalignment is carried by the
@@ -273,6 +307,7 @@ the difficult-advice recipe rather than attributable to low stakes.
 training bundle `LASR-Callum/2026-08-31-lowstakes716-seed80085-bundle`; eval
 `LASR-Callum/2026-08-31-odcv-lowstakes-716-seed80085-1x65`. Seed 0's eval is
 `LASR-Callum/2026-08-27-odcv-lowstakes-716-1x65`. All rented resources destroyed.
+(All three were renamed the same day under the naming law — see `docs/naming_migration.md`.)
 **Cost** ~$18 training, ~$4 GPU serving, $1.61 judging.
 
 **Next steps.** Settle the pass count before any comparison is drawn. Two seeds give a
@@ -292,7 +327,7 @@ misalignment at least as well as difficult advice, where a USER is under pressur
 **Method.** ODCV-Bench, **65 cells x 1 rollout**, both conditions (30 incentivized + 35
 mandated, the 15 standard exclusions verbatim, so the cell set is byte-identical to every
 sibling arm's). temperature 0. `configs/eval/odcv_bench_fiction716_r64_1x65.yaml`. Adapter
-`LASR-Callum/qwen3.6-27b-lora-t2-9284-fiction716-r64-dynbatch` (thinking: true), vLLM on a
+`LASR-Callum/2026-08-28-qwen36-lora-table2-9284-fiction-716-rank-64-dynbatch` (thinking: true), vLLM on a
 RunPod H200 served with the agentic flags, **driven from LOCAL Docker Desktop over an SSH
 tunnel** -- the first ODCV arm run on this topology rather than from a rented vast CPU box.
 
@@ -529,7 +564,7 @@ Two smaller things worth keeping:
   bundle was built at `d7dbfce` and the adapter card records it alongside the pinned dataset
   revision -- but adapters trained this way cannot be grepped by SHA.
 
-**Artifacts.** Adapter `LASR-Callum/qwen3.6-27b-lora-t2-9284-fiction716-r64-dynbatch` (public,
+**Artifacts.** Adapter `LASR-Callum/2026-08-28-qwen36-lora-table2-9284-fiction-716-rank-64-dynbatch` (public,
 `thinking: true`, dataset pinned to `77c0b4e6`), verified on push against all four stamp
 fields. Corpus `LASR-Callum/2026-08-27-good-ai-fiction-716`; mixture
 `LASR-Callum/2026-08-27-table2-9284-good-ai-fiction-716-train`; generation pool
@@ -537,7 +572,7 @@ fields. Corpus `LASR-Callum/2026-08-27-good-ai-fiction-716`; mixture
 **Pod destroyed; RunPod confirmed at zero pods.** GPU spend $29.48, no self-inflicted losses.
 
 **Next steps.** ODCV-Bench against the control adapter
-`LASR-Callum/qwen3.6-27b-lora-t2-9284-da716-r64-dynbatch`. Settle the pass count FIRST: the
+`LASR-Callum/2026-08-14-qwen36-lora-table2-9284-difficult-advice-716-rank-64-dynbatch`. Settle the pass count FIRST: the
 band nine prior manipulations occupy is 8.7-17.6%, and a one-pass run gives a CI ~19 points
 wide that contains all of it. Two riders to report with any number: this corpus DRAFTS with
 Sonnet 5 where the control drafts with Haiku 4.5 (second order -- both arms' trained text is
@@ -643,7 +678,7 @@ at half the speed): 625 steps each, 3 h 37 min side by side, loss 0.970→0.877 
 0.961→0.816 (s2, first/last-10 logged means), ~$37. The bootstrap's bare `wait` hung after both
 trainers exited (the `exec > >(tee)` process substitution is a job of that shell — GOTCHAS.md
 2026-08-28), so the adapters were pulled file by file over the pod's :8080 server; driver fixed
-to `wait $PID_0 $PID_1`. Adapters `LASR-Callum/qwen3.6-27b-lora-t2-9284-par716-s1-r64-dynbatch`,
+to `wait $PID_0 $PID_1`. Adapters `LASR-Callum/2026-08-27-qwen36-lora-table2-9284-post-action-retrospection-716-seed-1-rank-64-dynbatch`,
 `…-s2-…` (public, thinking: true). Eval: `scratch/par_b/odcv_bench_t2_9284_par716_s{1,2}_2x65.yaml`
 (model/model_key only differ from the seed-0 config); both adapters served from one H100
 (`serve_adapter_runpod.py --adapter a,b --name par716_s1,par716_s2 --agentic --mode think
@@ -653,7 +688,7 @@ SSH-tunnel drop (`[AI API dead]`), pass 2 65/65; a third top-up pass restricted 
 cells (`scratch/par_b/odcv_bench_t2_9284_par716_s2_topup.yaml`, generated from the pass dirs)
 recovered 10 before the serving pod disappeared mid-pass (RunPod 404 on teardown; account at 0).
 Seed 2 ends at 63 cells × 2 + 2 × 1, the same shape as seeds 0/1. Judged grok-4.20 +
-gemini-3.1-pro ($4.57 / $8.06). Published `LASR-Callum/2026-08-27-odcv-par716-s1-eval`
+gemini-3.1-pro ($4.57 / $8.06). Published `LASR-Callum/2026-08-27-odcv-post-action-retrospection-716-seed-1-eval`
 (`combined2x_20260827_161549`) and `…-s2-eval` (`combined3x_20260828_003554` — three PASSES,
 still ≤ 2 rollouts per cell). Siblings re-summarised on the same 65 cells from their published
 medians; the pooled arm merges the three seeds' per-scenario medians (rollouts re-keyed by seed;
@@ -860,7 +895,7 @@ trained on the high-stakes original. Corpus and adapter are the two entries belo
 **Method.** ODCV-Bench, **65 cells x 1 rollout**, both conditions (30 incentivized + 35
 mandated, the 15 standard exclusions verbatim, so the cell set is byte-identical to every
 sibling arm's). temperature 0. `configs/eval/odcv_bench_lowstakes716_r64_1x65.yaml`.
-Adapter `LASR-Callum/qwen3.6-27b-lora-t2-9284-lowstakes716-r64-dynbatch`, vLLM on a RunPod
+Adapter `LASR-Callum/2026-08-26-qwen36-lora-table2-9284-low-stakes-716-rank-64-dynbatch`, vLLM on a RunPod
 H200, driven from a rented **vast CPU VM** over the systemd SSH tunnel. No control arm was
 re-run; the controls already exist.
 
@@ -901,7 +936,7 @@ and 2026-08-20's 2-pass run had CI [4.5, 17.3] and could not.
    double count. Fixed by deleting and re-pushing into the original path; verified 65
    transcripts in one root BEFORE judging.
 
-**Artifacts.** `LASR-Callum/2026-08-27-odcv-lowstakes-716-1x65` (rollouts + results).
+**Artifacts.** `LASR-Callum/2026-08-27-odcv-low-stakes-716-1-x65` (rollouts + results).
 Config on main. **All rented resources destroyed** -- pod confirmed gone, "no vast
 instances". Two unrelated RunPod pods were live on the shared account throughout and were
 not touched.
@@ -1027,7 +1062,7 @@ confirmed it live.
 The fifth pod reproduced run 4 almost exactly (0.8779 against 0.8781), which is its own small
 reassurance that the recipe is deterministic enough to be worth trusting.
 
-**Artifacts.** Adapter `LASR-Callum/qwen3.6-27b-lora-t2-9284-lowstakes716-r64-dynbatch`
+**Artifacts.** Adapter `LASR-Callum/2026-08-26-qwen36-lora-table2-9284-low-stakes-716-rank-64-dynbatch`
 (public, `thinking: true`, dataset pinned to `8d5001e2`). Corpus
 `LASR-Callum/2026-08-26-difficult-advice-low-stakes-716`; mixture
 `LASR-Callum/2026-08-26-table2-9284-low-stakes-716-train`. Code on
@@ -1035,7 +1070,7 @@ reassurance that the recipe is deterministic enough to be worth trusting.
 GPU spend ~$46, of which ~$28 was the three self-inflicted failures.
 
 **Next steps.** ODCV against the control adapter
-`LASR-Callum/qwen3.6-27b-lora-t2-9284-da716-r64-dynbatch`. Settle passes FIRST: separating
+`LASR-Callum/2026-08-14-qwen36-lora-table2-9284-difficult-advice-716-rank-64-dynbatch`. Settle passes FIRST: separating
 this arm from its ~16.8% source needs ~4-5pp of resolution and 2026-08-20's 2-pass run had
 CI [4.5, 17.3], too wide to say anything. Two riders must be reported with any number --
 every one of the 716 scenarios relocated, so domain moves with magnitude; and
@@ -1052,12 +1087,12 @@ one-shot reply: ODCV misalignment at or below da716's 16.3% on the same cells.
 water-filled: t1 62, t7 65, the other seven 83–85; 535 domains, 716 scenarios) + the 9,284
 Table-2 rows every 7% arm uses. Every PAR row carries `supervise: final`, so only the fifth
 turn is in the loss (mask gate passes on the Qwen3.6 profile; history turns get empty
-`<think>` markers, masked). Published `LASR-Callum/2026-08-26-table2-9284-par716-train`
+`<think>` markers, masked). Published `LASR-Callum/2026-08-26-table2-9284-post-action-retrospection-716-train`
 @ `42c8a74`. Training: `configs/train/lora_qwen36_t2_9284_par716_dynbatch_2xh200.yaml` — the
 da716/t10 recipe verbatim (r64/α128, lr 1e-4 cosine, global batch 16, max_seq_len 8192,
 dynamic batching, thinking) on a RunPod 2×H200 via `scratch/par_b/train_pod.py`: 625 steps,
 1 epoch, 2 h 07 min, loss 0.949 (mean of the first 10 logged points) → 0.879 (last 10), ~$21.
-Adapter `LASR-Callum/qwen3.6-27b-lora-t2-9284-par716-r64-dynbatch` (public;
+Adapter `LASR-Callum/2026-08-26-qwen36-lora-table2-9284-post-action-retrospection-716-rank-64-dynbatch` (public;
 `training_meta.json` thinking: true, dataset sha-pinned). Eval:
 `scratch/par_b/odcv_bench_t2_9284_par716_2x65.yaml`, byte-identical below `temperature:` to
 the t10 / peer-critique 65-cell configs; adapter served on a RunPod H100
@@ -1069,7 +1104,7 @@ the t10 / peer-critique 65-cell configs; adapter served on a RunPod H100
 gemini-3.1-pro ($3.90) against the published `base_fp8/results.json` reference; siblings
 re-summarised on the same 65 cells from their published per-scenario medians
 (`scratch/par_b/plot_7pct_arms.py`, fork of the t10 arm's; nothing re-run). Published
-`LASR-Callum/2026-08-27-odcv-par716-eval` (raw passes under `passes/laptop/`, combined +
+`LASR-Callum/2026-08-27-odcv-post-action-retrospection-716-eval` (raw passes under `passes/laptop/`, combined +
 scores + results under the combined dir). Both pods destroyed; account at 0.
 
 **Result.** Misaligned = median judge score ≥ 3; the same 65 cells throughout.
@@ -1185,8 +1220,8 @@ the author (Sonnet 5), the prompts and the Haiku drafts fixed and moves only len
 blind-judged refusal unchanged vs unconstrained Sonnet). If C lands near B, length carried
 the drop; near A, the generator did.
 
-**Method:** trained `LASR-Callum/qwen3.6-27b-lora-t2-9284-sonnetconcise703-paired-r64` on
-`LASR-Callum/2026-08-26-t2-9284-sonnetconcise703-paired-train` (703 capped rows + the
+**Method:** trained `LASR-Callum/2026-08-26-qwen36-lora-table2-9284-sonnet-concise-703-paired-rank-64` on
+`LASR-Callum/2026-08-26-table2-9284-sonnet-concise-703-paired-train` (703 capped rows + the
 byte-identical 9,284-row Table2 half; same 703 scenario ids as arms A/B) with the grokresp703
 config unchanged except `data_repo` — 2xH200 DDP, dynamic batching, 625 steps, final loss
 0.7005 (grokresp703: 0.700). A first pod died at `resolve_dataset()` on a missing
@@ -1223,8 +1258,8 @@ for the sibling arms — the capped model reasons briefly at inference too.
 **Costs:** training ~$21 (+$3 lost pod); serving ~$8; rollouts $9.21 OpenRouter (per the
 driver's usage delta) + judging $1.43.
 
-**Artifacts:** adapter `LASR-Callum/qwen3.6-27b-lora-t2-9284-sonnetconcise703-paired-r64`;
-eval `LASR-Callum/2026-08-26-odcv-sonnetconcise703-paired-eval` (passes + combined +
+**Artifacts:** adapter `LASR-Callum/2026-08-26-qwen36-lora-table2-9284-sonnet-concise-703-paired-rank-64`;
+eval `LASR-Callum/2026-08-26-odcv-sonnet-concise-703-paired-eval` (passes + combined +
 scores + results); local `output/odcv_bench/qwen3_6-27b-lora-t2-9284-sonnetconcise703-paired-r64/combined2x_20260826_174216/`;
 figure `output/sonnet_concise/plots/odcv_generators_65cells_bars_*.png` (+ `_results.md`;
 `scratch/grok_responder/plot_generators.py` now draws four generators and reads grok/gpt from
@@ -1307,7 +1342,7 @@ C near A (16.3%) means the generator did.
 da716 source run are reused verbatim — the same 716 scenarios/prompts AND the same Haiku 4.5
 drafts (`scratch/sonnet_concise/build_source.py` replays the da716 arm's `pick_balanced` seed-0
 selection and stages the cached `stage_6_draft_responses.jsonl`, verified identical to the
-published `LASR-Callum/2026-08-13-difficult-advice-v2`). Only `revise_responses` is paid for,
+published `LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted`). Only `revise_responses` is paid for,
 on the baseline's own Sonnet 5 at the baseline's settings, with the full-constitution rewrite
 prompt plus exactly one sentence: *"One limit on length: keep the reasoning within about 220
 words and the reply within about 270 words -- condense wherever the draft runs longer, and
@@ -1346,7 +1381,7 @@ length). Smoke 27 rows / $1.10, reviewed before the full run; full run 716/716, 
   smoke's 27 transcripts were read side by side (da716 → capped → grok) before the full run.
 
 **Artifacts:** corpus `LASR-Callum/2026-08-26-difficult-advice-sonnet-concise-716` (smoke:
-`…-716-smoke`); paired mixture `LASR-Callum/2026-08-26-t2-9284-sonnetconcise703-paired-train`
+`…-716-smoke`); paired mixture `LASR-Callum/2026-08-26-table2-9284-sonnet-concise-703-paired-train`
 (9,987 rows = 703 + 9,284 Table2, trait/domain spread identical to arms A and B, built with
 `--ids_from` the grok corpus); train config
 `configs/train/lora_qwen36_t2_9284_sonnetconcise703_paired_2xh200.yaml` and eval config
@@ -1671,7 +1706,7 @@ local run dir joins 129/129, the published repo 0/129. da716 works only because 
 change. **Any newly published ODCV eval is currently unreadable by this source.**
 
 **Artifacts.** `LASR-Callum/2026-08-25-grok-vs-sonnet-corpus-properties` and
-`LASR-Callum/2026-08-25-grok-vs-da716-odcv-rollout-properties` (light artifacts;
+`LASR-Callum/2026-08-25-grok-vs-difficult-advice-716-odcv-rollout-properties` (light artifacts;
 `embeddings.npy` is 890M and regenerable from `features.jsonl`).
 
 **Next steps.** (1) Fix `_rollout_key` to read both layouts, and make the loader fail loudly
@@ -1781,7 +1816,7 @@ truncated** — the live confirmation that `max_seq_len: 8192` is right for the 
 row, not a difficult-advice one).
 
 **Adapters** (public, `thinking: true`, each pinned to its own dataset sha):
-`LASR-Callum/qwen3.6-27b-lora-t2-9284-da716-verbose-r64-dynbatch` and
+`LASR-Callum/2026-08-20-qwen36-lora-table2-9284-difficult-advice-716-verbose-rank-64-dynbatch` and
 `...-da-verbose-tokenmatched-r64-dynbatch`. Collection: `verbose-cot-3x-deliberation`.
 
 **Two silent-wrong-result bugs caught before launch**, both in the pod driver shim, neither of
@@ -1816,7 +1851,7 @@ agentic-misalignment behaviour. The published `t2_9284_da716` arm is the control
 differs from it in exactly one thing, the length of the difficult-advice `<think>` block.
 
 **Method:** new synth pipeline `configs/data/synth/verbose_cot.yaml`, seeded by
-`load_source_run` from `LASR-Callum/2026-08-13-difficult-advice-v2 ::
+`load_source_run` from `LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted ::
 stage_7_revise_responses.jsonl` (the structured snapshot — `reasoning` and `response` as
 separate fields, so nothing regexes `<think>` out of rendered chat). Only the 716 scenarios
 the published mixture actually uses are expanded; their ids are read back out of that
@@ -2572,7 +2607,7 @@ attempt's GPU spend was mostly productive. All instances destroyed and confirmed
 our pods.
 
 **Published:** `LASR-Callum/2026-08-20-odcv-less-top10-220` and
-`LASR-Callum/2026-08-20-odcv-random220-control`, each carrying all 4 passes, the combined
+`LASR-Callum/2026-08-20-odcv-random-220-control-eval`, each carrying all 4 passes, the combined
 directory, both judges' verdicts, results.json and a card stating the caveats above.
 Summaries in `output/eval_summaries/odcv_*_20260820.json`.
 
@@ -2629,7 +2664,7 @@ tempting shortcut, open deliberation, declining it), not by which value the rows
   loss). One credential-free RunPod 2xH200 pod via `scratch/trait10_curiosity/train_pod.py`
   (single-arm torchrun fork of the LESS driver). **625 steps, 2h11m, train_loss 0.869**
   (lessswap 0.865, c6masked 0.866), 47.1% of tokens supervised. Adapter:
-  `LASR-Callum/qwen3.6-27b-lora-t2-9284-t10-curiosity-716-r64-dynbatch` (thinking: true).
+  `LASR-Callum/2026-08-20-qwen36-lora-table2-9284-t10-curiosity-716-rank-64-dynbatch` (thinking: true).
   ~$21 of RunPod; pod destroyed.
 - *ODCV:* **2 rollouts x 65 cells** (changed mid-run from 4x70 at the user's request), the
   cell set the peer-critique arm ran and the "65 identical cells" comparison used
@@ -2804,7 +2839,7 @@ controls settle what the reference actually is: an arm with NO difficult advice 
 the unmodified recipe.
 
 **The unmodified control already existed and I had been asserting it did not.**
-`LASR-Callum/qwen3.6-27b-lora-t2-9284-da716-r64-dynbatch` was trained and ODCV-evaluated on
+`LASR-Callum/2026-08-14-qwen36-lora-table2-9284-difficult-advice-716-rank-64-dynbatch` was trained and ODCV-evaluated on
 2026-08-14 (4 passes, 275 rollouts, 70 cells, MR 17.8%). Earlier entries in this log claiming
 "the matched control has never been trained" are WRONG. Restricted to the 65 cells the
 ablation arms use it reads 16.4%, and to the 63 cells all seven arms share, 16.8%. Subsampling
@@ -2933,7 +2968,7 @@ turn swapped, a difference in ODCV misalignment is attributable to the generator
 responder-swap corpus (703 rows, grok-4.6 answering the baseline's own prompts) was built
 for exactly this test.
 
-**Method:** trained `LASR-Callum/qwen3.6-27b-lora-t2-9284-grokresp703-paired-r64` — 703
+**Method:** trained `LASR-Callum/2026-08-24-qwen36-lora-table2-9284-grok-responder-703-paired-rank-64` — 703
 grok rows + the same byte-identical 9,284-row Table2 half, 2xH200 DDP, 625 steps, final
 loss 0.700 / train_loss 0.883. Mixture built with `build_t2_9284_da716_mixture.py
 --ids_from`, which selects the synth half BY SCENARIO ID rather than sampling, so the arm
@@ -2981,8 +3016,8 @@ verbosity + refusal density that this experiment does not separate.
 **Costs:** training $23 (2xH200, 2.1h); ODCV rollouts ~$8 of H200 serving; judging $2.43.
 Two pods were wasted (~$7) on a wandb import failure before training began.
 
-**Artifacts:** adapter `LASR-Callum/qwen3.6-27b-lora-t2-9284-grokresp703-paired-r64`;
-eval + plots `LASR-Callum/2026-08-24-odcv-grokresp703-paired-eval`; mixtures
+**Artifacts:** adapter `LASR-Callum/2026-08-24-qwen36-lora-table2-9284-grok-responder-703-paired-rank-64`;
+eval + plots `LASR-Callum/2026-08-24-odcv-grok-responder-703-paired-eval`; mixtures
 `LASR-Callum/2026-08-24-t2-9284-{sonnet703,grokresp703}-paired-train`.
 
 **Next steps:** (1) The obvious control is a LENGTH-matched arm — train on Sonnet answers
@@ -3164,8 +3199,8 @@ each, ~$16 for the trip.
 
 | arm | final logged loss | train_loss | token acc | adapter |
 |---|---|---|---|---|
-| LESS top-220 (`score_max`) | 0.9178 | 1.146 | 0.7147 | `LASR-Callum/qwen3.6-27b-lora-less-top10-220-r64` |
-| Random 220 (seed 1) | 0.9770 | 1.207 | 0.6968 | `LASR-Callum/qwen3.6-27b-lora-random220-control-r64` |
+| LESS top-220 (`score_max`) | 0.9178 | 1.146 | 0.7147 | `LASR-Callum/2026-08-19-qwen36-lora-less-top10-220-rank-64` |
+| Random 220 (seed 1) | 0.9770 | 1.207 | 0.6968 | `LASR-Callum/2026-08-19-qwen36-lora-random-220-control-rank-64` |
 
 **THE LOSS GAP IS NOT A RESULT.** The two losses are over DIFFERENT data, and the selection is
 far more homogeneous by construction: 199 of its 220 rows win on `stayed_ai`, and t6+t3 alone
@@ -3440,7 +3475,7 @@ what you would expect of behaviours an autorater describes inconsistently. So th
 if anything conservative, and the weakest properties are the ones the headline does not rest
 on.
 
-**Artifacts.** `LASR-Callum/2026-08-20-odcv-feature-discovery-da716-5pct-vs-numina-control`
+**Artifacts.** `LASR-Callum/2026-08-20-odcv-feature-discovery-difficult-advice-716-5-pct-vs-numina-control`
 (public); small text artifacts and the caveats in `docs/properties/odcv_da716_vs_numina/`;
 write-up at `dashboard/content/findings/2026-08-20-da716-vs-numina-properties/`.
 
@@ -3657,10 +3692,10 @@ costs roughly one pod-hour.
 
 **Artifacts:** `output/fabrication_sweep/lessswap716/` (992 generations with reasoning traces,
 median trace 5,414 chars) and `judged_20260818_172311/`, published to
-`LASR-Callum/2026-08-18-fabrication-sweep-lessswap716`.
+`LASR-Callum/2026-08-18-fabrication-sweep-less-swap-716`.
 
 **Next steps:** (1) run `base` to close the ladder; (2) `t2synth716`
-(`LASR-Callum/qwen3.6-27b-lora-t2-9284-synthdoc-716-r64`) is the random-selection sibling on the
+(`LASR-Callum/2026-08-06-qwen36-lora-table2-9284-synthdoc-716-rank-64`) is the random-selection sibling on the
 IDENTICAL 9,284+716 mixture and is already registered in `MODULES` — if its sweep data exists it
 is the only comparison that isolates selection, and if not it is the run worth doing before any
 LESS claim; (3) the execution-claims-vs-invented-data split deserves the paired per-prompt
@@ -3669,7 +3704,7 @@ treatment rather than pooled rates.
 ## 2026-08-18 — ODCV on the LESS-swap arm: 19.3% MR — and this clone could not run ODCV at all
 
 **Hypothesis:** the LESS-swap arm
-(`LASR-Callum/qwen3.6-27b-lora-t2-9284-synthdoc716-lessswap-r64`, trained 2026-08-17) has an
+(`LASR-Callum/2026-08-17-qwen36-lora-table2-9284-synthdoc-716-less-swap-rank-64`, trained 2026-08-17) has an
 ODCV agentic-misalignment rate worth recording now, accepting that its protocol-matched control
 does not exist yet.
 
@@ -3725,7 +3760,7 @@ vendored judge opens transcripts with no encoding) killed the run at call ~256/2
 
 **Artifacts:**
 `output/odcv_bench/qwen3_6-27b-lora-t2-9284-lessswap716-r64-dynbatch/combined4x_20260818_153812/`,
-published to `LASR-Callum/2026-08-18-odcv-lessswap716-eval`. ~$20 total (H200 ~$8, two vast VMs
+published to `LASR-Callum/2026-08-18-odcv-less-swap-716-eval`. ~$20 total (H200 ~$8, two vast VMs
 ~$0.30, judging $11.08). All instances destroyed and confirmed.
 
 **Next steps:** (1) **train the control** — until then no number here supports a claim about
@@ -3939,7 +3974,7 @@ on it), so ranking t3 by it would pick t3 rows serving a different behaviour.
 
 **Result.** 625 steps, 1 epoch, 2h25m (`train_runtime` 8,712s), **train_loss 0.8651**,
 1.148 samples/s. Adapter:
-`LASR-Callum/qwen3.6-27b-lora-t2-9284-synthdoc716-lessswap-r64` (public), carrying
+`LASR-Callum/2026-08-17-qwen36-lora-table2-9284-synthdoc-716-less-swap-rank-64` (public), carrying
 `training_meta.json` with `thinking: true` and the dataset pinned at `be616c48`. The loss
 lands within 0.001 of the C6 arm's 0.8659 on a different dataset — a sanity check that the
 recipe behaved, not a result. wandb run `8nqzw9x7` in project
@@ -4256,7 +4291,7 @@ Two Tinker API facts worth keeping: `save_state` (`weights/`) and `save_weights_
 `build_lora_adapter` calls a blanket `snapshot_download` of the base model because it reads
 real safetensors headers, so exporting a 120B adapter pulls ~60GB.
 
-**Artifacts:** dataset `LASR-Callum/2026-08-15-t2-9284-da716-harmony-gptoss`;
+**Artifacts:** dataset `LASR-Callum/2026-08-15-table2-9284-difficult-advice-716-harmony-gpt-oss-mixture`;
 adapter (mask-fixed) `tinker://d745257b-ccd9-5315-b87f-095c1b5bd351:train:0/sampler_weights/t2_da716_maskfix`;
 superseded pre-fix adapter `tinker://9b9ec44c-...:train:0/sampler_weights/t2_da716_cotsplit`;
 results in `output/gptoss_reasoning/{rerun,after_maskfix}/`.
@@ -4753,7 +4788,7 @@ final process); ~2h generation wall clock.
 
 **Result:** 1,968 records (after the $2.15 top-up pass; 1,952 initial) in
 `output/synthdoc_v2/20260814_112121`, mirrored to HF
-`LASR-Callum/2026-08-13-difficult-advice-v2` with the required dataset card; the two
+`LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted` with the required dataset card; the two
 stale pilot snapshots were removed from the mirror. Diversity, the headline v1 defect
 (top-10 domains = 46.9%), is fixed and *measured in-run*: 0 duplicate scenarios at full
 embedding coverage (0.86 cosine), top 8-gram share 1.3%/trait, distinct-2 0.64. Corpus
@@ -5725,7 +5760,7 @@ and left the impression the effect was synth-specific. It is not.
 something particular?
 
 **Method:** the same 31-prompt x 32-sample protocol and judge, on two further 80/20 arms that
-swap the synth 20% for other data — `LASR-Callum/qwen3.6-27b-lora-table2-80-memself-20-r64`
+swap the synth 20% for other data — `LASR-Callum/2026-08-07-qwen36-lora-table2-80-memory-self-20-rank-64`
 and `...-table2-80-selfreflect-20-r64`. One pod per arm, generation on-pod, 992 samples each,
 zero failures. With the two existing arms this is 3,968 generations over four arms.
 
@@ -5855,7 +5890,7 @@ comparison was a property of the *red-teamer*, not of the arms, and swapping gro
 `nousresearch/hermes-4-405b` (the 2026-08-07 willingness probe's only clean sweep) removes it.
 
 **Method:** full `psychosis` eval — 9 personas x 12 turns — against
-`LASR-Callum/qwen3.6-27b-lora-table2-only-9284-r64` (the benign-only, 0% DA control), served on a
+`LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64` (the benign-only, 0% DA control), served on a
 RunPod H100 80GB via `run_eval.py --server` (Option B: the pod runs the vLLM endpoint only; the
 conversation loop, judging and HF push run on the driver). Red-teamer
 `nousresearch/hermes-4-405b`, judge `x-ai/grok-4.3` unchanged. Serving inferred `mode=think` from
@@ -5952,8 +5987,8 @@ flags for Qwen3.6-27B.
 
 **Method:** 31 fabrication-bait prompts (`scratch/fabrication_prompts.md`; note p03 and p04
 are byte-identical) x 32 samples x 2 arms = 1,984 generations.
-`LASR-Callum/qwen3.6-27b-lora-table2-only-9284-r64` vs
-`LASR-Callum/qwen3.6-27b-lora-table2-synthdoc-r64`, thinking mode, temperature 1.0,
+`LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64` vs
+`LASR-Callum/2026-08-04-qwen36-lora-table2-synthdoc-rank-64`, thinking mode, temperature 1.0,
 max_tokens 6144, no system prompt. Judge `openrouter:openai/gpt-5.6-terra`; a hit is
 EITHER claiming to have executed/measured something OR presenting invented figures as real
 data. Hedging about *variance* was explicitly ruled insufficient — the criterion is whether
@@ -6012,7 +6047,7 @@ JSON, per-prompt `results.md`), plot `output/plots/fabrication_sweep_20260810_22
 
 
 **Hypothesis:** SURF's EM search over Tulu-3 attribute space will surface constitution violations
-in `LASR-Callum/qwen3.6-27b-lora-table2-synthdoc-r64` that hand-written probes would miss.
+in `LASR-Callum/2026-08-04-qwen36-lora-table2-synthdoc-rank-64` that hand-written probes would miss.
 
 **Method:** vendored SURF (`src/eval/audits/surf/third_party/SURF`), rubric `rubrics/traits.yaml`
 (the 9-principle constitution), attributes `seoirsem/CHUNKY-tulu3-SFT-25k-attributes` (938k rows).
@@ -6101,7 +6136,7 @@ red-teamer — a better default than grok-4.5 for this eval. Consider making it 
 memself arm — reduces ODCV misalignment relative to the fine-tuned baselines, and differs from
 memself in a measurable way.
 
-**Method:** ODCV-Bench, 4 rollouts × 70 scenarios, `LASR-Callum/qwen3.6-27b-lora-table2-80-selfreflect-20-r64`
+**Method:** ODCV-Bench, 4 rollouts × 70 scenarios, `LASR-Callum/2026-08-08-qwen36-lora-table2-80-self-reflection-20-rank-64`
 served on a single vast H100 (TP=1, driver 595, `--tool-call-parser qwen3_xml`), laptop docker +
 tunnel. 270 transcripts (61/70/70/69 per pass; a handful of no_transcript stragglers dropped).
 Judged grok-4.20 + gemini-3.1-pro-preview.
@@ -6155,13 +6190,13 @@ tunnel (RunPod's HTTPS proxy times out on ODCV's long non-streaming rollouts).
 same axis.
 
 **Method:** 1-epoch LoRA SFT of Qwen3.6-27B on
-`LASR-Callum/2026-08-06-qwen36-table2-80-selfreflect-20-10k-train`. Config byte-identical to
+`LASR-Callum/2026-08-06-qwen36-table2-80-self-reflection-20-10k-train-mixture`. Config byte-identical to
 the memself arm bar output dir and hub repo — including `max_seq_len: 8192`, which matters:
 this dataset's longest row is 8,191 tokens, so the 8,000 cap used by the previous arm would
 have truncated 30 rows. 4xH200 DDP, 625 steps.
 
 **Result:** 14,480 s (4h01m), final `train_loss` **0.9035**. Adapter
-`LASR-Callum/qwen3.6-27b-lora-table2-80-selfreflect-20-r64`. Verified before spending: 10,614
+`LASR-Callum/2026-08-08-qwen36-lora-table2-80-self-reflection-20-rank-64`. Verified before spending: 10,614
 assistant turns = 2,300 real traces + 8,314 empty markers + **0 bare** (markers already in the
 published data — none inserted, which would have double-marked), assistant-only loss active,
 thinking validated on all 9,999 rows. Self-reflection is **60.1% of supervised tokens** from
@@ -6280,14 +6315,14 @@ represented, on the same hyperparameters as the t2716 and memself arms, so the t
 axis.
 
 **Method:** 1-epoch LoRA SFT of Qwen3.6-27B on
-`LASR-Callum/2026-08-08-table2-9000-synthdoc-1000-traitbalanced-len8000-train` (9,000
+`LASR-Callum/2026-08-08-table2-9000-synthdoc-1000-trait-balanced-len-8000-train-mixture` (9,000
 spec-filtered Table-2 rows + 1,000 difficult-advice docs, 111-112 per trait, every row <= 8,000
 tokens). Config byte-identical to the previous arms bar data path, output dir, hub repo and
 `max_seq_len` 8000. 4xH200 DDP, 625 steps.
 
 **Result:** 10,800 s (3h00m), final `train_loss` **0.8796** (1.1823 -> 0.8446 across logged
 steps), token accuracy 69.9% -> 72.8%. Adapter
-`LASR-Callum/qwen3.6-27b-lora-t2-9000-synthdoc-1000-r64`. Artifacts in
+`LASR-Callum/2026-08-08-qwen36-lora-table2-9000-synthdoc-1000-rank-64`. Artifacts in
 `output/train_t2_9000_synthdoc_1000/`, curve at `output/plots/t2_9000_synthdoc_1000_curve.png`.
 
 **The load-bearing finding is about packing, which was requested and then withdrawn on the
@@ -6500,7 +6535,7 @@ model-eval-model "self" arm instead trains self-critique of a prior answer. If t
 agentic-misalignment effect comes from value reasoning generally rather than the
 difficult-advice format specifically, this arm should move the blackmail rate too.
 
-**Method:** `LASR-Callum/qwen3.6-27b-lora-table2-80-memself-20-r64` served on one RunPod H100
+**Method:** `LASR-Callum/2026-08-07-qwen36-lora-table2-80-memory-self-20-rank-64` served on one RunPod H100
 via vLLM, eval driven locally over the HTTPS proxy. Settings byte-identical to the
 `t2716` run so the arms are comparable: 125 epochs, `goal_type=ambiguous goal_value=none
 urgency_type=replacement prod=True`, grader `google/gemini-3-flash-preview`, prompt sha256
@@ -6550,7 +6585,7 @@ comes from value reasoning generally rather than from the difficult-advice forma
 this arm should also move the blackmail rate.
 
 **Method:** 1-epoch LoRA SFT of Qwen3.6-27B on
-`LASR-Callum/2026-08-06-qwen36-table2-80-memself-20-10k-train` (8,000 spec-filtered Table 2 rows
+`LASR-Callum/2026-08-06-qwen36-table2-80-memory-self-20-10k-train-mixture` (8,000 spec-filtered Table 2 rows
 + 2,000 model-eval-model self docs). Hyperparameters are a deliberate byte-for-byte copy of the
 `t2_9284_synthdoc_716` arm's config apart from data path, output dir and hub repo, so the two are
 comparable: r=64/alpha=128, lr 1e-4 cosine, 5% warmup, wd 0.01, global batch 16, max_seq_len 8192,
@@ -6558,7 +6593,7 @@ assistant-only loss. 4xH200 DDP on RunPod, 625 steps.
 
 **Result:** completed in **12,852 s (3h34m)**, final `train_loss` **0.9006** (1.18 -> 0.86 across
 logged steps), mean token accuracy 67.7% -> 73.9%. Adapter:
-`LASR-Callum/qwen3.6-27b-lora-table2-80-memself-20-r64`. Curve at
+`LASR-Callum/2026-08-07-qwen36-lora-table2-80-memory-self-20-rank-64`. Curve at
 `output/plots/memself_train_curve.png`; numbers and full `log_history` in
 `output/train_memself_20_80/`.
 
@@ -6697,7 +6732,7 @@ marker). Seed 0, max_seq_len 8192.
 
 **Result.** 10,000 examples / 8.82M tokens (mem_self 51% of tokens at 20% of examples);
 think census clean (0 absent). Published:
-**`LASR-Callum/2026-08-06-qwen36-table2-80-memself-20-10k-train`** (mixture.jsonl + stats +
+**`LASR-Callum/2026-08-06-qwen36-table2-80-memory-self-20-10k-train-mixture`** (mixture.jsonl + stats +
 card). Train config ready for the 2026-08-07 run:
 `configs/train/lora_qwen36_table2_memself_r64.yaml` (r64 twin recipe; pull the HF
 mixture.jsonl to data/mixture.jsonl). Comparison arms: table2-only-9284-r64 control,
@@ -6710,7 +6745,7 @@ spend (rendering + HF transfer only).
 
 
 **Hypothesis.** Swapping the 20% slice of Matthew's table2-synthdoc arm
-(`LASR-Callum/qwen3.6-27b-lora-table2-synthdoc-r64`: 7,999 Table-2 + 2,203
+(`LASR-Callum/2026-08-04-qwen36-lora-table2-synthdoc-rank-64`: 7,999 Table-2 + 2,203
 difficult-advice examples, r64 LoRA, 1 epoch) from difficult-advice to self-reflection
 isolates whether first-person self-reflection data drives the same misalignment
 reduction. Needs 2,000 self-reflection examples; the corpus held 592.
@@ -6734,7 +6769,7 @@ assistant-only loss).
 (published), lint 0/1,416 new records; survival 94.5%, unit cost $0.130/record.
 Published: corpus expansion (`LASR-Callum/2026-08-03-synthdoc-self-reflection`, now
 2,008 records) and the full training bundle
-(`LASR-Callum/2026-08-06-qwen36-table2-80-selfreflect-20-10k-train`, mixture sha
+(`LASR-Callum/2026-08-06-qwen36-table2-80-self-reflection-20-10k-train-mixture`, mixture sha
 `c8f291c6…`: 9,999 examples, 80.0/20.0 by examples, 44/56 by tokens, mask census
 clean). Training on a single H200 reached step 100/625 (loss 1.05 → 0.98, healthy)
 but needs ~10.5h/$48 at ~60 s/step; **cancelled on request** with ~9h left — no
@@ -6744,7 +6779,7 @@ in the corpus card. ~$192 OpenRouter + $7.10 GPU (see EXPENDITURE).
 
 **Next.** To train: relaunch from the published bundle unchanged —
 `uv run python scripts/gpu/runpod_train.py up --bundle
-LASR-Callum/2026-08-06-qwen36-table2-80-selfreflect-20-10k-train --train_config
+LASR-Callum/2026-08-06-qwen36-table2-80-self-reflection-20-10k-train-mixture --train_config
 configs/train/lora_qwen36_table2_selfreflect_r64.yaml --gpu "NVIDIA H200"` — after
 topping up RunPod (balance $45.42 vs ~$48 needed on one H200), or extend
 `runpod_train.py` to 4×H200 torchrun for a ~2.6h wall clock at the same total cost.
@@ -7258,7 +7293,7 @@ frozen snapshot folder stays the provenance anchor and model_eval_model keeps po
 
 
 **Problem.** model-eval-model's stage-1 provenance fail-fast compares the config constitution's
-sha256 against the source corpus manifest (`LASR-Callum/synthdoc-v2-difficult-advice`, sha
+sha256 against the source corpus manifest (`LASR-Callum/2026-08-04-synthdoc-package-difficult-advice-stage-cache`, sha
 `fe2ed960…`). That document — a never-committed 9-principle interim state of the 2026-08-04
 12→10 mid re-cut — existed nowhere: not in any git blob (verified by hashing every 3–100KB blob
 in history, both raw and stripped), not on disk, not on HF. The 2026-08-04 five-cell smoke only
@@ -7433,7 +7468,7 @@ docs, $0.22, 54 s; control traces ~2× gold length with response byte-identical;
 passes with real judge calls. Measured pilot estimate (300+300): **$32.84** ($0.055/doc — prompts
 are ~12k tokens with constitution + transcript injected), vs $21.09 OpenRouter credit remaining →
 **pilot blocked on credit**. Two upstream findings: (1) the new 2203-record corpus on HF
-`LASR-Callum/synthdoc-v2-difficult-advice` (run 20260804_082743) was generated against an
+`LASR-Callum/2026-08-04-synthdoc-package-difficult-advice-stage-cache` (run 20260804_082743) was generated against an
 **uncommitted 9-trait constitution** (sha `fe2ed960…` matches no blob in git history; committed
 12-mid is `7baccc91…`, 12 traits) — the MEM sha fail-fast caught it; the exact document needs
 committing before MEM can run against that corpus. (2) `synthdoc run --smoke` is currently
@@ -7646,7 +7681,7 @@ each eval against base + one LoRA, backfill stamps, adjust pins if Qwen3.6 requi
 tests pass under transformers 4.51.3**; Qwen3.6-27B tokenizer + chat template render under the
 pin; start-smokes pass for all five registered evals (CLI, runner imports, vllm entrypoint,
 harness `generate_prompts --help`, internalization offline smoke, synthdoc segment);
-`resolve_target` on `LASR-Callum/qwen3.6-27b-synthdocv2-lora-20_80` fires the designed
+`resolve_target` on `LASR-Callum/2026-08-02-qwen36-synthdoc-package-lora-20-80` fires the designed
 missing-stamp hard error. **Template-pin mechanism PROVEN under vLLM 0.8.5** via Qwen3-0.6B:
 nothink-pinned server + a request forcing `enable_thinking: true` → zero reasoning tokens (the
 pin shadows client kwargs). Findings: this RunPod container has **no usable docker → ODCV needs a
@@ -7783,7 +7818,7 @@ a hint, not a result. `output/agentic_misalignment/synthdoc_v2_0_100/` + updated
 compare — nothink+asst-loss vs empty-think+asst-loss vs plain full-token?
 
 **Method:** AM suite (600 rollouts, thinking-mode-ON harness identical to all arms, judge
-gemini-3-flash-preview) on `LASR-Callum/qwen3.6-27b-tulu-0-100-nothink-assistant_loss_only`, vast H100
+gemini-3-flash-preview) on `LASR-Callum/2026-08-01-qwen36-tulu-0-100-nothink-assistant-loss-only`, vast H100
 46516334. 600/600 classified. Cluster-bootstrap CIs.
 
 **Result (blackmail / leaking / overall %):**
@@ -7837,7 +7872,7 @@ noise; the plain-loss vs assistant-loss ablation at a fixed share still open.
 with 0% difficult-advice data, or is the difficult-advice content doing the work?
 
 **Method:** ran the full agentic-misalignment suite (12 conditions x 50 = 600 rollouts, thinking mode,
-temp 1.0) on `LASR-Callum/qwen3.6-27b-tulu-0-100-empty_think_assistant_loss_only` via vLLM 0.26 on a
+temp 1.0) on `LASR-Callum/2026-08-01-qwen36-tulu-0-100-empty-think-assistant-loss-only` via vLLM 0.26 on a
 vast H100 (instance 46499136). Judge = `google/gemini-3-flash-preview`. 600/600 classified. Cluster-
 bootstrap CIs (n_boot=10000, seed=0).
 
@@ -7875,7 +7910,7 @@ carry no loss (77.3% of tokens supervised). Verified on-box via `--smoke`: maske
 peft 0.20.0, torch cu128. wandb disabled.
 
 **Result:** `train_loss=0.7751`, mean_token_accuracy ~0.81, epoch 1, ~2h runtime. Adapter uploaded to
-`LASR-Callum/qwen3.6-27b-tulu-0-100-empty_think_assistant_loss_only`. Box torn down (billing stopped).
+`LASR-Callum/2026-08-01-qwen36-tulu-0-100-empty-think-assistant-loss-only`. Box torn down (billing stopped).
 
 **Next steps:** run the agentic-misalignment suite on this adapter to fill the 0%-share endpoint of
 the empty-think dose-response ladder; compare vs the normal `qwen3.6-27b-tulu-100pct-lora`.
@@ -7981,9 +8016,9 @@ multilingual; assistant turns are fluent long-form prose. So the earlier intuiti
 removes "easy" tokens is backwards here.
 
 **Published:**
-- adapter → `LASR-Callum/qwen3.6-27b-difficult-advice-tulu-lora-20-80-assistant_loss_only`
-- exact training data + per-row assistant spans → `LASR-Callum/qwen3.6-27b-sft-mixture-80-20_assistant_loss_only`
-- the replay slice alone → `LASR-Callum/tulu3-replay-80pct-qwen3.6-27b`
+- adapter → `LASR-Callum/2026-07-28-qwen36-difficult-advice-tulu-lora-20-80-assistant_loss_only`
+- exact training data + per-row assistant spans → `LASR-Callum/2026-07-31-qwen36-sft-mixture-80-20-assistant-loss-only`
+- the replay slice alone → `LASR-Callum/2026-07-31-tulu3-replay-80-pct-qwen36-mixture`
 
 **Gotchas (new):**
 1. **RunPod pods created via the API never start sshd unless `PUBLIC_KEY` is passed in `env`.**
@@ -8048,7 +8083,7 @@ primary. Total spend ≈ $30-35 GPU + ~$16 judging.
    generation pass. Budget for it when planning stage extensions.
 
 Artifacts: everything (answers, judgments, gen metrics, report, figures) pushed to HF
-`LASR-Callum/qwen36-27b-capability-eval-arena-hard`. Report + GDM-style figure:
+`LASR-Callum/2026-07-31-qwen36-27b-capability-eval-arena-hard`. Report + GDM-style figure:
 `output/capability_eval/report/20260731_131757/`. Skipped by scope decision: creative
 writing slice, stages beyond 300, judge validation vs GPT-4.1 (config supports all
 three; ~$60 more GPU if wanted).
@@ -8061,7 +8096,7 @@ tighten the CI; (d) annotate `configs/capability_eval.yaml` that arm_base is pos
 ## 2026-07-30 (2) — threeway-constitution LoRA: good on blackmail, POOR on leaking
 
 
-Ran `LASR-Callum/qwen3.6-27b-threeway-constitution-lora` on the agentic-misalignment suite (same
+Ran `LASR-Callum/2026-07-30-qwen36-threeway-constitution-lora` on the agentic-misalignment suite (same
 setup: 12 conditions x 50, thinking mode, concurrency 32, judge gemini-3-flash-preview). One H100.
 
 | Model | blackmail | leaking | overall |
@@ -8087,7 +8122,7 @@ associated; destroyed and re-provisioned.)
 
 
 **Q:** how much of the 80:20 mixture's misalignment reduction is due to the *difficult-advice* data vs
-just instruction-tuning on Tulu? **Method:** ran `LASR-Callum/qwen3.6-27b-tulu-100pct-lora` (pure
+just instruction-tuning on Tulu? **Method:** ran `LASR-Callum/2026-07-30-qwen36-tulu-100-pct-lora` (pure
 allenai/tulu-3-sft-mixture, NO difficult-advice data) on the agentic-misalignment suite (12 conditions
 x 50, thinking mode, judge gemini-3-flash-preview), same setup as base + 80:20. One H100.
 
@@ -8436,7 +8471,7 @@ and the base model and Tulu are both public and ungated.
 
 Adapter: `output/train_lora_tulu_control/20260730_110307/adapter`, 512 tensors / 256 LoRA pairs /
 **159.4M** trainable params, A/B balanced. Published to
-[`LASR-Callum/qwen3.6-27b-tulu-100pct-lora`](https://huggingface.co/LASR-Callum/qwen3.6-27b-tulu-100pct-lora)
+[`LASR-Callum/2026-07-30-qwen36-tulu-100-pct-lora`](https://huggingface.co/LASR-Callum/2026-07-30-qwen36-tulu-100-pct-lora)
 (public, with a model card carrying the caveats below); safetensors SHA-256 verified against the
 local copy after upload.
 

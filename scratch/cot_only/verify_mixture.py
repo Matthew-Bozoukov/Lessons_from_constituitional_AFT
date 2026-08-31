@@ -75,7 +75,7 @@ def main(built: str = "", model_id: str = "Qwen/Qwen3.6-27B", max_length: int = 
         arm_path = Path(built)
     else:
         cfg = OmegaConf.load("configs/train/"
-                             "lora_qwen36_t2_9284_synthdoc_716_cotonly_dynbatch_2xh200.yaml")
+                             "2026-08-31_lora_qwen36_table2_9284_synthdoc_716_cotonly_dynbatch.yaml")
         arm_path, ref = resolve_dataset(str(cfg.data_repo), str(cfg.data_file),
                                         str(cfg.data_revision))
         arm_path = Path(arm_path)

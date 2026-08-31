@@ -14,8 +14,8 @@ summary: >-
   which is the evidence that this measures behaviour rather than scenario type.
 status: complete
 models:
-  - LASR-Callum/qwen3_6-27b-lora-t2-9284-da716-r64-dynbatch
-model_id: LASR-Callum/qwen3_6-27b-lora-t2-9284-da716-r64-dynbatch
+  - LASR-Callum/2026-08-14-qwen36-lora-table2-9284-difficult-advice-716-rank-64-dynbatch
+model_id: LASR-Callum/2026-08-14-qwen36-lora-table2-9284-difficult-advice-716-rank-64-dynbatch
 git_commit: c3b24f5ad0c6a181b24dcb148d7f93f51820249f
 tags:
   - property-discovery
@@ -25,7 +25,7 @@ tags:
   - rollout-analysis
   - finding
 hf_source:
-  repo_id: LASR-Callum/2026-08-19-da716-odcv-rollout-properties
+  repo_id: LASR-Callum/2026-08-19-difficult-advice-716-odcv-rollout-properties
 metrics:
   rollouts_analysed:
     value: 275

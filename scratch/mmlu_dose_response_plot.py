@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+from src.naming import figure_path
 
 REPORT_DIR = Path(
     sys.argv[1] if len(sys.argv) > 1 else "output/mmlu_eval/report/think_20260731_154631"
@@ -129,7 +130,7 @@ fig.text(0.5, -0.035,
          ha="center", fontsize=15, color="#666666")
 
 fig.tight_layout(rect=(0, 0, 1, 0.97))
-out = REPORT_DIR / "mmlu_dose_response.png"
+out = figure_path(REPORT_DIR, "mmlu_dose_response")
 fig.savefig(out, dpi=200, bbox_inches="tight", facecolor="white")
 print(out)
 
@@ -160,6 +161,6 @@ fig2.text(0.5, -0.06,
           "orange = TULU-only LoRA (0% difficult advice)",
           ha="center", fontsize=15, color="#666666")
 fig2.tight_layout(rect=(0, 0, 1, 0.96))
-out2 = REPORT_DIR / "mmlu_dose_response_by_category.png"
+out2 = figure_path(REPORT_DIR, "mmlu_dose_response_by_category")
 fig2.savefig(out2, dpi=200, bbox_inches="tight", facecolor="white")
 print(out2)

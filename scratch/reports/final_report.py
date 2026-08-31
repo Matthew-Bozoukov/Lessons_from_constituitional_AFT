@@ -14,6 +14,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 from src.utils import git_sha, timestamp  # noqa: E402
+from src.naming import figure_path
 
 SUMM = Path("output/eval_summaries")
 
@@ -104,8 +105,10 @@ def main(tokens: int = 1524480, out_dir: str = "output/report") -> None:
     ts = timestamp()
     root = Path(out_dir) / f"final_{ts}"
     plots = root / "plots"; plots.mkdir(parents=True, exist_ok=True)
-    _misalign_plot(runs, plots / "misalignment.png")
-    _reasoning_plot(probe1, probe2, plots / "reasoning.png")
+    misalign_png = figure_path(plots, "misalignment_pre_post")
+    reasoning_png = figure_path(plots, "reasoning_probe")
+    _misalign_plot(runs, misalign_png)
+    _reasoning_plot(probe1, probe2, reasoning_png)
 
     nt = _delta(runs["baseline_nothink"], runs["post_nothink"])
     th = _delta(runs["baseline_thinking"], runs["post_thinking"])
@@ -138,7 +141,7 @@ def main(tokens: int = 1524480, out_dir: str = "output/report") -> None:
         "",
         "Blackmail stays ~0% throughout (Qwen3-32B rarely blackmails); the signal and the reduction are in **leaking**.",
         "",
-        "![misalignment](plots/misalignment.png)",
+        f"![misalignment](plots/{misalign_png.name})",
         "",
         "## Reasoning preservation",
         "",
@@ -150,7 +153,7 @@ def main(tokens: int = 1524480, out_dir: str = "output/report") -> None:
     ]
     for q in sorted(probe2):
         md.append(f"| {q} | {probe2[q].get('qwen3',0)} | {probe1.get(q,{}).get('difficult_advice',0)} | {probe2[q].get('difficult_advice',0)} |")
-    md += ["", "![reasoning](plots/reasoning.png)", "",
+    md += ["", f"![reasoning](plots/{reasoning_png.name})", "",
            "## Per-condition (thinking mode, primary result)", "",
            "| condition | baseline % | post % | Δ |", "|---|---|---|---|"]
     for c, b, p, d in cond_table(runs["baseline_thinking"], runs["post_thinking"]):
@@ -186,10 +189,10 @@ img{{max-width:100%;border:1px solid #ddd;border-radius:8px;margin:.5rem 0}}
 <span class="big" style="color:#2a7">{th[1]}%</span>
 &nbsp;(<b>−{th[3]}%</b> relative, {tokens/1e6:.2f}M OOD tokens)</div>
 </div>
-<img src="plots/misalignment.png">
+<img src="plots/{misalign_png.name}">
 <h2>Reasoning preservation</h2>
 <p>Naive SFT collapsed the <code>&lt;think&gt;</code> channel to empty (Run 1); adding real reasoning traces restored it (Run 2).</p>
-<img src="plots/reasoning.png">
+<img src="plots/{reasoning_png.name}">
 <table><tr><th>question</th><th>base &lt;think&gt; chars</th><th>Run 1 (empty)</th><th>Run 2 (fixed)</th></tr>
 {reason_rows}</table>
 <h2>Per-condition (thinking mode)</h2>

@@ -9,7 +9,7 @@ refusal/decline rate, mean response length (chars + Qwen tokens), and per-arm me
 rate for the four v2-specific concepts.
 
 The refusal/decline rate and concept-mention rates are a HEURISTIC: a case-insensitive
-substring match against keyword lists in configs/eval/constitution_probe.yaml, plus a raw
+substring match against keyword lists in configs/eval/2026-07-31_constitution_probe.yaml, plus a raw
 length cutoff for refusals. This is a cheap proxy for "did the response decline / does it
 touch this concept", not a semantic judgment -- eyeball output/constitution_probe/<ts>/pairs.jsonl
 before trusting the numbers.

@@ -22,7 +22,7 @@ from src.data.synth.stage_operators import (
 )
 from src.data.synth.stage_runtime import lint_problems, price_of
 
-CFG_PATH = "configs/data/synth/good_ai_fiction.yaml"
+CFG_PATH = "configs/data/synth/2026-08-28_good_ai_fiction.yaml"
 TAX_PATH = "configs/data/synth/good_ai_fiction/taxonomy.yaml"
 LIB_PATH = "configs/data/synth/good_ai_fiction/archetypes.yaml"
 

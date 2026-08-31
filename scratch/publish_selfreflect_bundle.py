@@ -4,7 +4,7 @@
 """Run AFTER the mixture is built:
     uv run python scratch/publish_selfreflect_bundle.py <mixture_run_dir>
 
-Publishes LASR-Callum/2026-08-06-qwen36-table2-80-selfreflect-20-10k-train with the exact
+Publishes LASR-Callum/2026-08-06-qwen36-table2-80-self-reflection-20-10k-train-mixture with the exact
 files scripts/gpu/runpod_train.py expects (code.tar.gz + mixture.jsonl), plus the mixture
 stats/meta and a card carrying the repo's required dataset fields.
 """
@@ -22,9 +22,9 @@ from huggingface_hub import HfApi
 
 load_dotenv()
 
-REPO = "LASR-Callum/2026-08-06-qwen36-table2-80-selfreflect-20-10k-train"
-TRAIN_CONFIG = "configs/train/lora_qwen36_table2_selfreflect_r64.yaml"
-MIX_CONFIG = "configs/data/mixture/qwen36_table2_selfreflect_20_80.yaml"
+REPO = "LASR-Callum/2026-08-06-qwen36-table2-80-self-reflection-20-10k-train-mixture"
+TRAIN_CONFIG = "configs/train/2026-08-07_lora_qwen36_table2_self_reflection_rank64.yaml"
+MIX_CONFIG = "configs/data/mixture/2026-08-07_qwen36_table2_self_reflection_20_80.yaml"
 # Everything `python3 scripts/train/train_lora.py` imports, plus the configs.
 CODE = [
     "pyproject.toml",
@@ -49,7 +49,7 @@ tags: [sft, qwen3.6, lora, alignment, self-reflection, assistant-only-loss]
 
 | field | value |
 |---|---|
-| `experiment` | One-epoch Qwen3.6-27B assistant-only LoRA SFT (r64): Matthew's exact 7,999 Table-2 rows + 2,000 first-person self-reflection records — the self-reflection twin of `LASR-Callum/qwen3.6-27b-lora-table2-synthdoc-r64`, differing ONLY in the 20% slice (difficult-advice -> self-reflection). |
+| `experiment` | One-epoch Qwen3.6-27B assistant-only LoRA SFT (r64): Matthew's exact 7,999 Table-2 rows + 2,000 first-person self-reflection records — the self-reflection twin of `LASR-Callum/2026-08-04-qwen36-lora-table2-synthdoc-rank-64`, differing ONLY in the 20% slice (difficult-advice -> self-reflection). |
 | `date_generated` | 2026-08-06 (mixture; Table-2 rows verbatim from the 2026-08-04 arm, self-reflection corpus 2026-08-03 + 2026-08-06 top-up) |
 | `constitution` | `constitutions/claude_distilled_12_principles_mid/constitution.md` in `source_repo` (the self-reflection corpus's target; since 2026-08-05 byte-identical to the 9-principle generation-time snapshot). Table-2 rows connect to none. |
 | `source_repo` | `teaching_claude_why_replication` @ `{git_sha}` (branch `model-eval-model-data-gen`, uncommitted mixture/train configs included in `code.tar.gz`) |

@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 
 from src.utils import git_sha, timestamp  # noqa: E402
+from src.naming import figure_path
 
 
 def _load(path: str) -> dict:
@@ -92,7 +93,7 @@ def main(
     plots = root / "plots"
     plots.mkdir(parents=True, exist_ok=True)
 
-    plot_path = plots / "misalignment_pre_post.png"
+    plot_path = figure_path(plots, "misalignment_pre_post")
     _bar_plot(b, p, plot_path)
 
     b_over, p_over = _pct(b["overall"]["rate"]), _pct(p["overall"]["rate"])
