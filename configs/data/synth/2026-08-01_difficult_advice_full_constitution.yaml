@@ -1,6 +1,10 @@
 # ABOUTME: LEGACY difficult-advice recipe: the two refine stages are shown the WHOLE
 # ABOUTME: constitution. Superseded as the default on 2026-08-24; kept to regenerate old corpora.
 #
+# NOT THE BASELINE. Do not start a new arm from this file. The corpora it produced (da716,
+# synthdoc-716) are superseded; the baseline is the chunk-only arm built from
+# `2026-08-01_difficult_advice.yaml`. See docs/BASELINES.md.
+#
 # THIS IS NO LONGER THE DEFAULT. `configs/data/synth/2026-08-01_difficult_advice.yaml` is, and it
 # differs from this file in exactly one way: the `<constitution>{constitution}</constitution>`
 # block is deleted from `revise_prompts` and `revise_responses`, so no stage sees more than

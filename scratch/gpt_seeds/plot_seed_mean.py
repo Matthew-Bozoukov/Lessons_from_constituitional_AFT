@@ -116,9 +116,26 @@ ARMS: dict[str, dict] = {
             ),
         },
     ),
+    "chunk_only": dict(
+        short="Sonnet DA\nchunk-only 702",
+        long="THE DA BASELINE: chunk-only 702 (da716's recipe with the constitution removed "
+        "from both refine stages; see docs/BASELINES.md)",
+        color=GREEN,
+        hatch="..",
+        # Matched fork of da716, not a separate generation: it resumed da716's run directory
+        # from stages 1-4, so scenarios and draft prompts are byte-identical and only
+        # revise_prompts / revise_responses differ. Seeds 42/69 training 2026-08-31.
+        seeds={
+            0: (
+                "LASR-Callum/2026-08-21-odcv-da-chunk-only-702-eval",
+                "combined2x_20260824_130511/results.json",
+            )
+        },
+    ),
     "sonnet": dict(
         short="Sonnet DA\n(da716)",
-        long="Sonnet difficult advice (Haiku 4.5 draft, Sonnet 5 revise; da716)",
+        long="Sonnet difficult advice, da716 -- SUPERSEDED as the baseline by chunk-only 702; "
+        "kept because the generator swaps freeze ITS stages 1-4 and can only be read against it",
         color=GREEN,
         hatch=None,
         seeds={

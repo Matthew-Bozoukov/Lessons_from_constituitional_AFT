@@ -1,5 +1,11 @@
-# ABOUTME: THE DEFAULT difficult-advice recipe. No stage is ever shown more than the one
-# ABOUTME: principle it targets. Run: uv run synth run --config configs/data/synth/2026-08-01_difficult_advice.yaml [--smoke]
+# ABOUTME: THE DEFAULT difficult-advice recipe AND THE PROJECT'S DA BASELINE. No stage is ever
+# ABOUTME: shown more than the one principle it targets. Run: uv run synth run --config <this> [--smoke]
+
+# BASELINE: the arm built from this recipe -- chunk-only 702 -- is what a new difficult-advice
+# experiment compares against. NOT da716, NOT synthdoc-716; both are superseded and are kept
+# only to reproduce work that already cites them. See docs/BASELINES.md for the reasoning, the
+# numbers, and the one live exception (the existing generator swaps are built on da716's
+# frozen stages 1-4, so they can only be read against da716).
 
 # THE DEFAULT, AND WHY IT CHANGED ON 2026-08-24.
 #
