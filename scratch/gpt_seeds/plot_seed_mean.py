@@ -275,9 +275,20 @@ def _sem_row(values: list[float]) -> dict:
 
 
 def _collect(results: dict[str, str]) -> list[dict]:
+    """Every arm on the cells EVERY arm kept.
+
+    Two intersections, in order. Within an arm, a cell missing from any seed is dropped
+    from all its seeds. Then ACROSS arms, a cell missing from any arm is dropped from all
+    arms -- without which the bars are not comparable in level, only in shape: arms ended
+    up on 57 to 65 surviving cells, and the arm that lost the most (synthdoc-716, 57) read
+    2.6 pp low against its own 65-cell figure purely because the cells it lost were ones
+    it failed. Dropout is not random w.r.t. MR: the cells that fail are the long, agentic
+    rollouts, so a smaller surviving set is biased LOW.
+    """
     cfg = OmegaConf.load(ROOT / CFG)
     excluded = set(OmegaConf.to_container(cfg.get("exclude_scenarios", []) or []))
-    rows = []
+
+    prepared = {}
     for key, arm in ARMS.items():
         seeds = dict(arm["seeds"])
         for rk, src in results.items():
@@ -289,25 +300,28 @@ def _collect(results: dict[str, str]) -> list[dict]:
             for sd, src in sorted(seeds.items())
         }
         if len(passes) >= 2:
-            # Rule 1: ONE pass per seed. A seed scored over several passes gets a less
-            # noisy point estimate than a one-pass sibling, which breaks the equal-variance
+            # ONE pass per seed: a seed scored over several passes would get a less noisy
+            # point estimate than a one-pass sibling, breaking the equal-variance
             # assumption the interval across seeds rests on.
-            picked = {sd: pick_most_complete_pass(ps) for sd, ps in passes.items()}
-            # Rule 2: a cell missing from ANY seed is dropped from ALL of them. Dropout is
-            # not random w.r.t. MR -- the cells that fail are the long agentic ones.
-            keys = shared_cells(picked)
-            per_seed = {
-                sd: _stats_from_cells(c, keys, ci=False) for sd, c in picked.items()
-            }
-            n_cells = len(keys)
+            cells = {sd: pick_most_complete_pass(ps) for sd, ps in passes.items()}
         else:
-            # A single training has no cross-seed variance to protect, so every pass it
-            # ran is kept -- more rollouts per cell, a better point estimate -- and its
-            # whisker is the cell-level bootstrap over its own cells.
-            ((sd, ps),) = passes.items()
-            merged = _merge(ps)
-            per_seed = {sd: _stats_from_cells(merged, list(merged), ci=True)}
-            n_cells = len(merged)
+            # A single training has no cross-seed variance to protect, so every pass it ran
+            # is kept -- more rollouts per cell, a better point estimate.
+            cells = {sd: _merge(ps) for sd, ps in passes.items()}
+        prepared[key] = dict(
+            arm=arm, seeds=seeds, passes=passes, cells=cells, own=shared_cells(cells)
+        )
+
+    common = sorted(set.intersection(*(set(p["own"]) for p in prepared.values())))
+    assert common, "no cell survives every arm"
+
+    rows = []
+    for key, pr in prepared.items():
+        arm, seeds, passes, cells = pr["arm"], pr["seeds"], pr["passes"], pr["cells"]
+        single = len(cells) == 1
+        per_seed = {
+            sd: _stats_from_cells(c, common, ci=single) for sd, c in cells.items()
+        }
         row = dict(
             key=key,
             short=arm["short"],
@@ -315,7 +329,8 @@ def _collect(results: dict[str, str]) -> list[dict]:
             color=arm["color"],
             hatch=arm["hatch"],
             per_seed=per_seed,
-            n_cells=n_cells,
+            n_cells=len(common),
+            n_cells_own=len(pr["own"]),
             n_passes={str(sd): len(ps) for sd, ps in passes.items()},
             sources={
                 str(sd): (src if isinstance(src, str) else "::".join(src))
@@ -421,7 +436,8 @@ def main(results: str = "", out_dir: str = "output/gpt_seeds/plots") -> None:
     ts = time.strftime("%Y%m%d_%H%M%S")
     out = ROOT / out_dir
     out.mkdir(parents=True, exist_ok=True)
-    stem = f"odcv_arms_seedmean_65cells_{ts}"
+    n_common = rows[0]["n_cells"]  # same for every arm by construction
+    stem = f"odcv_arms_seedmean_{n_common}cells_{ts}"
     title = "Synthetic-SFT arms on Qwen3.6-27B: who wrote the answers, and what kind of document"
 
     # --- overall bars ---------------------------------------------------------------
@@ -484,8 +500,8 @@ def main(results: str = "", out_dir: str = "output/gpt_seeds/plots") -> None:
         frameon=False,
     )
     ax.set_title(
-        "ODCV misalignment rate. Same exclusion list throughout; a seeded arm is scored\n"
-        "on the cells ALL its seeds kept (57-65 of the 65), which its bar states.",
+        f"ODCV misalignment rate on the {n_common} cells EVERY arm scored\n"
+        "(the shared exclusion list, then the cells no arm lost)",
         fontsize=10.5,
     )
     fig.suptitle(title, fontsize=12, fontweight="bold", x=0.98, ha="right", y=0.995)
@@ -564,8 +580,7 @@ def main(results: str = "", out_dir: str = "output/gpt_seeds/plots") -> None:
         frameon=False,
     )
     ax.set_title(
-        "ODCV misalignment rate by variant. Same exclusion list throughout; a seeded arm\n"
-        "is scored on the cells ALL its seeds kept (57-65 of the 65).",
+        f"ODCV misalignment rate by variant, on the {n_common} cells EVERY arm scored",
         fontsize=10.5,
     )
     fig.suptitle(title, fontsize=12, fontweight="bold", x=0.98, ha="right", y=0.995)

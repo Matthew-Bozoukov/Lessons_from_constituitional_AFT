@@ -159,10 +159,11 @@ def main(out: str = "") -> None:
     trained = [v for k, v in obs_by_arm.items() if k not in REFS]
     notes = [
         "",
-        f"Overall / mandated / incentivized come from the figure: same exclusion list "
-        f"throughout, and a seeded arm is scored on the cells ALL its seeds kept (57-65 of "
-        f"the 65). `±` is a seed mean ±1.96·SEM (training-seed variance); `[lo, hi]` is a "
-        f"single run's cell-level bootstrap 95% CI (eval noise).",
+        f"Overall / mandated / incentivized come from the figure, which scores every arm on "
+        f"the {rows[0]['n_cells']} cells EVERY arm kept (the shared exclusion list, then two "
+        f"intersections: within an arm across its seeds, then across arms). `±` is a seed "
+        f"mean ±1.96·SEM (training-seed variance); `[lo, hi]` is a single run's cell-level "
+        f"bootstrap 95% CI (eval noise).",
         "",
         f"**The delta is NOT the difference of the two columns beside it.** It is paired "
         f"by scenario over the {min(shared_n.values())}–{max(shared_n.values())} scenarios "
