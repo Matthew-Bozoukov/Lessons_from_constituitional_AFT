@@ -1,0 +1,53 @@
+# ABOUTME: ODCV-Bench eval of the COHERENT post-action-retrospection 716 arm (arm 1 of the PAR
+# ABOUTME: coherence experiment), 2 rollouts x 65 cells. Run: bash scratch/par_b/odcv_local_run.sh <ip> <port> 2 12 THIS <hf_repo> <state_dir>
+#
+# Byte-identical to scratch/par_b/odcv_bench_t2_9284_par716_2x65.yaml below `temperature:`
+# (the peer-critique 65-cell set, the same judges, temperature 0): exactly TWO keys differ --
+# model and model_key -- so the number lands on the same cells as PAR-716 (19.5% pooled over
+# three seeds), da716 (16.3%), base fp8 (36.9%).
+#
+# THE ARM. LASR-Callum/qwen3.6-27b-lora-t2-9284-par716coh-r64-dynbatch -- the PAR-716
+# organism retrained on the SAME 716 rows with only the trained turn rewritten so the private
+# reasoning ends on a first-person decision and the reply enacts it. training_meta.json
+# carries `thinking: true`, so the server MUST be started in thinking mode.
+
+model: "par716coh"
+model_key: "qwen3_6-27b-lora-t2-9284-par716coh-r64-dynbatch"
+published_key: "qwen3.6-27b"
+base_url: "http://host.docker.internal:8000/v1"   # laptop docker -> SSH tunnel -> pod vLLM
+temperature: 0.0
+bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
+output_root: "output/odcv_bench"
+concurrency: 12
+scenario_timeout_s: 2400
+prune_images: false
+rollouts_per_cell: 2
+expected_cells: 65
+shard_count: 1
+shard_index: 0
+judges:
+  grok-4.20: "x-ai/grok-4.20"
+  gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
+baseline_results: "output/odcv_bench/qwen3.6-27b-base-fp8/results.json"
+
+# The sibling arms' 10 exclusions (all arms are scored without these cells) ...
+exclude_scenarios:
+  - "incentivized/Academic-Research-Integrity-Finding"
+  - "incentivized/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Academic-Research-Integrity-Finding"
+  - "mandated/Clinical-Trial-Data-Management"
+  - "incentivized/Clinical-Trial-Integrity-Monitoring"
+  - "incentivized/Healthcare-Trial-Recruiter"
+  - "incentivized/Data-Privacy-Leak-Finding"
+  - "mandated/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Clinical-Trial-Integrity-Monitoring"
+  - "mandated/Healthcare-Appointment-Optimizer"
+# ... plus the FIVE the peer-critique arm dropped to make its 65-cell set (the last five
+# incentivized scenarios in the driver's job order), copied verbatim from
+# configs/eval/odcv_bench_t2_9284_peercritique716_r64_dynbatch_4x65.yaml so this arm lands
+# on exactly that cell set.
+  - "incentivized/Marketing-Campaign"
+  - "incentivized/Propaganda-Engine-Finding"
+  - "incentivized/Roboadvisor-Ethicsbypass"
+  - "incentivized/Supply-Chain-Sabotage-Finding"
+  - "incentivized/University-Research-Grant-Approval"

@@ -1,0 +1,107 @@
+# ABOUTME: Seed-1 replicate of the post-action-retrospection 716 arm: same data, same recipe,
+# ABOUTME: ONE H200 per model (no DDP) with token-budgeted dynamic batching, LAST-turn loss.
+# Run: CUDA_VISIBLE_DEVICES=<gpu> PYTHONPATH=. python scripts/train/train_lora.py --config <this>
+#
+# SEED REPLICATE. Identical to lora_qwen36_t2_9284_par716_dynbatch_2xh200.yaml (seed 0) except
+# seed (LoRA init + shuffle order), hf_repo and output_dir. Launched as ONE process on ONE H200,
+# its sibling seed on the other GPU of the same pod (scratch/par_b/train_pod.py). Under dynamic
+# batching the trainer hands the whole 16-example step to training_step whether world_size is
+# 1 or 2 (route_step only splits it across ranks), so the optimizer sees the same 16 examples
+# per step and the same 625 steps; only wall-clock changes (~2x the DDP run).
+#
+# The post-action-retrospection (design B) arm of the document-type sweep, DIRECTLY comparable
+# to the difficult-advice v3 (chunk-only) arm: a DIFFERENT seed (this is the seed-1 replicate), identical LoRA shape, LR schedule, global
+# batch (16), Table2 half, AND the same constitution (claude_distilled_12_principles_mid) and
+# the same scenarios recipe (DA's stages 1-6 verbatim). It differs from difficult advice in
+# the RESPONSE only: a five-turn record -- the DA prompt, a bare refusal (Sonnet, form
+# instructed, never trained), the person's pushback, and the trained turn doing the reasoning
+# the refusal skipped under DA's own rewrite contract.
+#
+# Data built by scratch/build_t2_9284_da716_mixture.py (seed 0, no split key) from
+# LASR-Callum/2026-08-26-post-action-retrospection-716 (813 rows) and pushed by
+# scratch/par_b/push_mixture.py:
+#   10,000 rows = 716 post_action_retrospection + 9,284 Table2  (7.16% synth)
+#   trait quota is a capped water-fill: t1 62 and t7 65 (all the grey-area rater left for
+#   them), the other seven principles t2-t5 85 each, t6/t8/t9 83 each
+#   716 DISTINCT scenarios, no repeats
+#   every synth row carries `supervise: final`: of its two assistant turns only the LAST is
+#   in the loss; the bare refusal renders with the empty think marker and is context
+#   longest synth row 2,209 tokens (p99 1,981, median 1,553); 0 rows exceed 8,192
+#
+# The 9,284 Table2 rows are the SAME rows as every sibling arm: the 2026-08-04 filtered
+# instruction set.
+
+# KNOWN INCONSISTENCY, deliberately preserved. The 1,037 numinamath_cot rows carry full
+# chain-of-thought in the VISIBLE answer while being marked non-reasoning with an empty
+# think block -- so ~10% of this mixture teaches "for maths, do not think, reason out loud
+# in the answer", the opposite of what the 716 synth rows teach. Inherited from every prior
+# arm's Table2 half, NOT introduced here. Left alone so this run differs from its siblings
+# in its synthetic half only.
+
+seed: 1
+model: "Qwen/Qwen3.6-27B"
+model_class: "image_text_to_text"
+
+# All 716 synth rows carry a REAL reasoning trace on the supervised turn, so this arm is
+# trained to think and must be evaluated in thinking mode. train_lora.py fail-fast
+# validates this declaration against the data.
+thinking: true
+
+# Training data comes only from HF, pinned to the exact sha it was verified at.
+data_repo: "LASR-Callum/2026-08-26-table2-9284-par716-train"
+data_file: "mixture_think.jsonl"
+data_revision: "42c8a7407b2111443d86479dd0517bc0dedab406"
+
+hf_repo: "LASR-Callum/qwen3.6-27b-lora-t2-9284-par716-s1-r64-dynbatch"
+
+output_dir: "/workspace/out/train_t2_9284_par716_s1_dynbatch"
+
+lora:
+  r: 64
+  alpha: 128
+  dropout: 0.05
+  target_modules: "model\\.language_model\\..*\\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$"
+
+train:
+  epochs: 1
+  # global batch = batch_size x grad_accum = 16, matching every sibling arm. Under dynamic
+  # batching the trainer hands the whole 16-example step to training_step and sets HF
+  # accumulation to 1; route_step splits the step across the 2 ranks, so grad_accum is NOT
+  # divided by world_size and the optimizer still sees 16 examples per step.
+  batch_size: 1
+  grad_accum: 16
+  lr: 1.0e-4
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  logging_steps: 5
+  report_to: ["wandb"]
+
+  # 8192: nothing truncates. Measured on the built file -- longest synth row 2,209 tokens;
+  # the Table2 half is the sibling arms' (longest 8,191). NOT the dynamic-batching budget,
+  # which resolves from ModelProfile.train_memory; max_seq_len is a truncation ceiling only.
+  max_seq_len: 8192
+
+  # packing OFF, and dynamic_batching asserts this. Qwen3.6 interleaves attention with
+  # gated-delta linear-attention layers whose recurrent state has no sequence-boundary
+  # input without the fla kernels, so a packed window leaks state between examples.
+  packing: false
+
+  # Token-budgeted micro-batching. Budget left unset on purpose: resolved from
+  # ModelProfile.train_memory (H200 = 8,000 padded tokens, measured by
+  # scratch/probe_batch_memory.py on 2026-08-08).
+  dynamic_batching: {}
+
+  save_strategy: "steps"
+  save_steps: 100
+  save_total_limit: 2
+  auto_resume: true
+
+  # Assistant tokens only. Qwen3.6's template has no {% generation %} markers, so TRL's own
+  # assistant_only_loss yields an all-zero mask; the label mask is built in-repo by
+  # src/train/masking.py (honouring each row's `supervise`) and gated by mask_gate.py
+  # before the run starts.
+  assistant_only_loss: true
+
+  attn_implementation: sdpa
+  load_in_4bit: false
