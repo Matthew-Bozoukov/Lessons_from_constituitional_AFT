@@ -317,13 +317,13 @@ def test_sshexec_push_hf_env_is_optin_minimal_and_never_overwrites(monkeypatch, 
 
 def test_sshexec_check_ready_errors_name_the_remedy(monkeypatch):
     # An unprepared host must name the ONE command that prepares one. The remedy moved
-    # from bootstrap_pod.sh to scripts/gpu/runpod.py when provisioning and cloning became
+    # from bootstrap_pod.sh to scripts/infra/runpod.py when provisioning and cloning became
     # a single step; a preflight that names a script nobody has is worse than none.
     from src.infra.endpoints.vllm import SshExec
 
     ex = SshExec("host", port=8000)
     monkeypatch.setattr(ex, "_ssh", lambda cmd, **kw: "NOUV\nNOREPO\n")
-    with pytest.raises(SystemExit, match="scripts/gpu/runpod.py"):
+    with pytest.raises(SystemExit, match="scripts/infra/runpod.py"):
         ex.check_ready()
     monkeypatch.setattr(ex, "_ssh", lambda cmd, **kw: (_ for _ in ()).throw(RuntimeError("boom")))
     with pytest.raises(SystemExit, match="RunPod remaps ports"):

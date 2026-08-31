@@ -510,7 +510,7 @@ class SshExec:
 
         Checks reachability, uv, and the repo clone — the three ways a fresh instance
         fails confusingly later. A host that has all three is what
-        `uv run python scripts/gpu/runpod.py up` leaves behind.
+        `uv run python scripts/infra/runpod.py up` leaves behind.
         """
         try:
             state = self._ssh(self._with_env(
@@ -527,7 +527,7 @@ class SshExec:
             raise SystemExit(
                 f"\n--server preflight: {self.host} is not prepared ({missing}).\n"
                 f"  Bootstrap a fresh instance with:\n"
-                f"    uv run python scripts/gpu/runpod.py up --name <name>\n"
+                f"    uv run python scripts/infra/runpod.py up --name <name>\n"
                 "  (installs uv, clones this repo at your current branch, uv sync)")
 
     def write_file(self, name: str, text: str) -> str:

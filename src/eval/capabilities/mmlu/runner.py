@@ -4,7 +4,7 @@
 """MMLU generation + grading for the capability regression eval.
 
 One command evaluates every arm, because all arms are served concurrently as LoRA modules
-off a single vLLM process (`scripts/gpu/runpod_arena_hard.py`). That is not just convenient:
+off a single vLLM process (`scripts/infra/runpod_arena_hard.py`). That is not just convenient:
 it means every arm is measured by the same process, on the same GPU, with the same build
 and flags, so decoding parity is a property of the setup rather than something we have to
 trust across separate boots.

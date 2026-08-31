@@ -1,4 +1,4 @@
-# ABOUTME: Offline tests for scripts/gpu/runpod.py: the commit it refuses to run, the
+# ABOUTME: Offline tests for scripts/infra/runpod.py: the commit it refuses to run, the
 # ABOUTME: bootstrap it renders, and the ~/.ssh/config entry it rewrites rather than repeats.
 
 import importlib.util
@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pytest
 
-# scripts/gpu is not a package (nothing imports from it), so the module under test is
+# scripts/infra is not a package (nothing imports from it), so the module under test is
 # loaded by path — the same way it is run.
 _SPEC = importlib.util.spec_from_file_location(
-    "runpod_pod", Path(__file__).resolve().parents[1] / "scripts/gpu/runpod.py")
+    "runpod_pod", Path(__file__).resolve().parents[1] / "scripts/infra/runpod.py")
 pod = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(pod)
 
@@ -117,3 +117,45 @@ def test_the_ssh_config_entry_is_replaced_not_repeated(tmp_path, monkeypatch):
     assert "Port 22000" in text
     assert "Host somewhere-else" in text  # the rest of the file is untouched
     assert config.stat().st_mode & 0o777 == 0o600
+
+
+def test_the_gpu_comes_from_the_model_profile_not_the_command_line(tmp_path, monkeypatch):
+    # The point of ModelProfile.gpu: a catalogue id is written once per model, and both
+    # provisioning paths read it. Here, the training one.
+    from src.model_profile import gpu_for
+
+    cfg = tmp_path / "arm.yaml"
+    cfg.write_text('model: "Qwen/Qwen3.6-27B"\n')
+    seen = {}
+
+    def fake_provision(spec, *, name, start_script, ports=()):
+        seen.update(gpu=spec.gpu, count=spec.count)
+        return "podid"
+
+    monkeypatch.setattr(pod, "provision_runpod", fake_provision)
+    monkeypatch.setattr(pod, "_commit_to_run", lambda branch: ("main", "abc1234"))
+    monkeypatch.setattr(pod, "_clone_url", lambda: "https://github.com/o/r.git")
+    monkeypatch.setattr(pod, "_ssh_endpoint", lambda pod_id: ("1.2.3.4", 22))
+    monkeypatch.setattr(pod, "_write_ssh_alias", lambda *a: None)
+    monkeypatch.setattr(pod, "_wait_for_ssh", lambda name: True)
+
+    pod.up(name="t", train_config=str(cfg), count=2)
+    assert seen["gpu"] == gpu_for("Qwen/Qwen3.6-27B", "train") == "NVIDIA H200"
+    # The COUNT is not in the profile and never reaches it: how many GPUs is a decision
+    # about the run, made here.
+    assert seen["count"] == 2
+
+    pod.up(name="t", train_config=str(cfg), gpu="NVIDIA B200")
+    assert seen["gpu"] == "NVIDIA B200"  # an explicit ask still wins
+
+
+def test_a_pod_for_no_particular_model_falls_back_to_the_module_default(tmp_path, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(pod, "provision_runpod",
+                        lambda spec, **kw: seen.update(gpu=spec.gpu) or "podid")
+    monkeypatch.setattr(pod, "_ssh_endpoint", lambda pod_id: ("1.2.3.4", 22))
+    monkeypatch.setattr(pod, "_write_ssh_alias", lambda *a: None)
+    monkeypatch.setattr(pod, "_wait_for_ssh", lambda name: True)
+
+    pod.up(name="t", clone_repo=False)
+    assert seen["gpu"] == pod.GPU

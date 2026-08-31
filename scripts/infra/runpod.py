@@ -4,10 +4,10 @@
 
 """Rent a GPU pod that holds this repo at your current commit.
 
-    uv run python scripts/gpu/runpod.py up --name jamie-par716 --gpu 'H200 SXM' --count 2
+    uv run python scripts/infra/runpod.py up --name jamie-par716 --gpu 'H200 SXM' --count 2
     ssh jamie-par716 'cd /root/work && uv run torchrun --nproc_per_node=2 \\
         scripts/train/train_lora.py --config configs/train/lora_qwen36_t2_9284_par716.yaml'
-    uv run python scripts/gpu/runpod.py down --pod <id>
+    uv run python scripts/infra/runpod.py down --pod <id>
 
 The pod clones over anonymous HTTPS -- this repository is public -- and checks out the
 SHA you are sitting on, so it carries no credentials and no tarball, and a run's
@@ -35,12 +35,14 @@ import time
 from pathlib import Path
 
 import fire
+from omegaconf import OmegaConf
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.infra.runpod import (  # noqa: E402
-    GPU, ProvisionSpec, active_pods, call, gpu_price, provision_runpod, terminate,
+    GPU, ProvisionSpec, active_pods, call, provision_runpod, terminate,
 )
+from src.model_profile import gpu_for  # noqa: E402
 
 DEFAULT_IMAGE = "runpod/pytorch:0.7.0-dev-cu1281-torch271-ubuntu2204"
 WORKDIR = "/root/work"
@@ -185,7 +187,7 @@ def _ssh_endpoint(pod_id: str, timeout_s: int = 420) -> tuple[str, int]:
         time.sleep(10)
     raise SystemExit(
         f"pod {pod_id} published no SSH endpoint within {timeout_s}s — it is still "
-        f"BILLING.\n  uv run python scripts/gpu/runpod.py down --pod {pod_id}")
+        f"BILLING.\n  uv run python scripts/infra/runpod.py down --pod {pod_id}")
 
 
 def _write_ssh_alias(name: str, ip: str, port: int, pod_id: str) -> None:
@@ -200,7 +202,7 @@ def _write_ssh_alias(name: str, ip: str, port: int, pod_id: str) -> None:
     start, end = f"# >>> lasr pod {name} >>>", f"# <<< lasr pod {name} <<<"
     block = "\n".join([
         start,
-        f"# pod {pod_id}, written by scripts/gpu/runpod.py",
+        f"# pod {pod_id}, written by scripts/infra/runpod.py",
         f"Host {name}",
         f"    HostName {ip}",
         f"    User root",
@@ -239,7 +241,8 @@ def _wait_for_ssh(name: str, timeout_s: int = 300) -> bool:
 # the CLI
 # --------------------------------------------------------------------------------------
 
-def up(name: str, gpu: str = GPU, count: int = 1, clone_repo: bool = True,
+def up(name: str, train_config: str | None = None, model: str | None = None,
+       gpu: str | None = None, count: int = 1, clone_repo: bool = True,
        branch: str | None = None, disk_gb: int = 200, cloud: str = "SECURE",
        image: str = DEFAULT_IMAGE, countries: str = "", push_env: bool = False) -> str:
     """Rent a pod and clone this repo into it at your current commit.
@@ -247,9 +250,17 @@ def up(name: str, gpu: str = GPU, count: int = 1, clone_repo: bool = True,
     Args:
         name: Pod name AND the `~/.ssh/config` host it is reachable at. The RunPod
             account is shared, so prefix it with who you are.
-        gpu: RunPod catalogue id. NOTE the 8k-token arms cannot train on an H100 80GB
-            (ModelProfile records a measured OOM); ask for an H200 for those.
-        count: GPUs on the pod. `torchrun --nproc_per_node=<count>` is what uses them.
+        train_config: The arm you are about to train. Its `model:` picks the GPU from
+            `ModelProfile.gpu["train"]`, so the box matches the run without anyone
+            retyping a catalogue id — and it is the same file you pass to the trainer.
+        model: Base model id, when you want a training box without naming a config.
+        gpu: RunPod catalogue id, overriding the profile. Needed only for a family with no
+            profile, or to deviate deliberately: the profile records what the family was
+            MEASURED to need (Qwen3.6-27B trains on H200 because an H100 80GB OOMs 7.36
+            GiB short on a 1x8k step).
+        count: GPUs on the pod — a decision about the RUN, not about the model, which is
+            why no profile states one. `torchrun --nproc_per_node=<count>` is what uses
+            them, and the command `up` prints already carries this number.
         clone_repo: Clone this repo at your current commit (the point of the script).
             `--clone_repo=False` rents a bare pod with uv and sshd and nothing else --
             for serving, or for work whose code you will put there yourself. The
@@ -266,13 +277,20 @@ def up(name: str, gpu: str = GPU, count: int = 1, clone_repo: bool = True,
     Returns:
         The pod id, the host name to ssh to, and the commands to run and to tear down.
     """
+    assert not (train_config and model), "give --train_config or --model, not both"
+    if train_config:
+        model = str(OmegaConf.load(train_config).model)
+    profile_gpu = gpu_for(model, "train") if model else None
+    gpu = gpu or profile_gpu or GPU
+
     clone = None
     if clone_repo:
         branch, sha = _commit_to_run(branch)
         clone = (_clone_url(), branch, sha)
-    price = gpu_price(gpu, cloud)
-    print(f">>> {count}x {gpu} ({cloud})"
-          + (f" ~${price * count:.2f}/hr" if price else " price unavailable"))
+    source = (f"{model} trains here (ModelProfile.gpu)" if gpu == profile_gpu
+              else f"asked for; {model} states none" if model
+              else "no model named, so the module default")
+    print(f">>> {count}x {gpu} ({cloud}) — {source}")
     print(f">>> cloning {clone[0]} @ {clone[1]} {clone[2][:8]}" if clone
           else ">>> bare pod: no repo cloned")
 
@@ -308,7 +326,7 @@ def up(name: str, gpu: str = GPU, count: int = 1, clone_repo: bool = True,
         else f"  ssh {name}",
         "",
         "IT BILLS UNTIL YOU RUN THIS:",
-        f"  uv run python scripts/gpu/runpod.py down --pod {pod_id}",
+        f"  uv run python scripts/infra/runpod.py down --pod {pod_id}",
     ])
 
 

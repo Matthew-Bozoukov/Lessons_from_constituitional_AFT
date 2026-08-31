@@ -31,11 +31,15 @@ numbers.
 
 Only the model *server* needs a GPU host; every pipeline *driver* runs anywhere the repo
 env installs — one lock resolves on linux and macOS (GPU packages are linux-marked).
-A GPU host comes from one command: `uv run python scripts/gpu/runpod.py up --name <name>`
-rents a pod, clones this repo at the commit you are on (it REFUSES if that commit is not
-on origin), `uv sync`s, and writes an `~/.ssh/config` entry, so `ssh <name>` and
-`--server <name>` both work. `--clone_repo=False` for a bare pod. Tear down with
-`runpod.py down --pod <id>`; `runpod.py pods` lists what is still billing.
+A GPU host comes from one command: `uv run python scripts/infra/runpod.py up --name <name>
+--train_config configs/train/<arm>.yaml` rents a pod, clones this repo at the commit you
+are on (it REFUSES if that commit is not on origin), `uv sync`s, and writes an
+`~/.ssh/config` entry, so `ssh <name>` and `--server <name>` both work. WHICH GPU comes
+from the model, not the flag: `ModelProfile.gpu` states `train` and `inference` per family
+(Qwen3.6-27B: H200 to train, H100 to serve) and both provisioning paths read it through
+`gpu_for` — `--gpu` overrides. HOW MANY is a per-run decision: `--count` on the pod, and
+`torchrun --nproc_per_node=N` for the job. `--clone_repo=False` for a bare pod. Tear down
+with `runpod.py down --pod <id>`; `runpod.py pods` lists what is still billing.
 
 ### Data (`uv run synth`, `uv run mix`)
 
@@ -121,7 +125,7 @@ data/, output/        gitignored: staged datasets / ALL run artifacts (conventio
   script grows logic worth reusing, the logic moves into `src/` and the script
   stays thin. It is very rare that a script written by AI should go in `scripts/` without human consulation: you should default to writing your scripts in `scratch/`. 
 - **`configs/` and `scripts/` are foldered by pipeline stage** (`data/`,
-  `train/`, `eval/`, plus `scripts/gpu/` for provisioning/serving infra). A new
+  `train/`, `eval/`, plus `scripts/infra/` for provisioning/serving infra). A new
   config or script goes in the folder for the stage it belongs to — never at
   the top level of `configs/` or `scripts/` unless it is a script that pipes multiple stages together.
 - **Naming conventions** (follow these for every new file):

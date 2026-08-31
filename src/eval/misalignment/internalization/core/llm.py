@@ -217,7 +217,7 @@ class OpenRouterLLM(_OpenAICompatBase):
 class VLLMClient(_OpenAICompatBase):
     """OpenAI-compatible client for a locally served checkpoint.
 
-    Points at the vLLM server from `scripts/gpu/serve_lora.sh`, reached over the SSH
+    Points at the vLLM server from `scripts/infra/serve_lora.sh`, reached over the SSH
     tunnel. The key is nominal, which is why an empty one is allowed here and
     nowhere else.
     """
