@@ -118,8 +118,7 @@ src/                  reviewed, reusable code (installed editable; import as src
                           (odcv + agentic_misalignment vendor PATCHED harnesses in third_party/)
     audits/               petri/ + surf/ audit tooling
 configs/              OmegaConf YAML, one per step; NEVER hardcode hyperparams in scripts
-  data/synth/           live document types: difficult_advice, pre_action_deliberation,
-                        post_action_retrospection, peer_critique (superseded → archive/)
+  data/synth/           one config per document type (superseded → archive/)
   data/mixture/         mixture builds (qwen36_*, tulu_control)
   train/                lora_<model>_<arm>*
   eval/                 one per eval
@@ -331,7 +330,7 @@ deleted with that package on 2026-08-03 — see git history — so enforce them 
 Every stage is a console alias from `[project.scripts]`, so the shape is always
 `uv run <job> --config <yaml>`. Stages 1–3 take `--smoke`.
 
-1. `uv run synth run --config configs/data/synth/<type>.yaml` — constitution-grounded generation; the config IS the document type. Four live types: `difficult_advice` (the baseline recipe: scenarios → prompts → responses → constitution rewrite, reasoning traces native), `pre_action_deliberation` (the agent itself is tempted and deliberates before acting), `post_action_retrospection` (natural-turn self-reflection: an organically imperfect first reply, a short follow-up, only the reflection turn trains), `peer_critique` (critique of another model's reply, over a completed difficult-advice run). Inline `corpus_check` stages measure diversity/dedup/autorated quality during the run; `uv run synth check` gates the model-eval-model corpora after it.
+1. `uv run synth run --config configs/data/synth/<type>.yaml` — constitution-grounded generation; the config IS the document type, so read the one you are running (`ls configs/data/synth/`) rather than a list here.
 2. `uv run mix --config configs/data/mixture/<name>.yaml` — budgeted training mixture of model-agnostic interchange rows (reasoning as `reasoning_content`, rendered at train time), with optional spec-filter stage and HF push checkpoints; `balance_by: trait_id` on a source spec trait-balances the difficult-advice share.
 3. `uv run train --config configs/train/<date>_lora_<model>_<arm>.yaml` — QLoRA SFT (runs on the GPU box). Pushes the adapter to HF with `training_meta.json` — the thinking stamp (declared as `thinking:` in the train config, validated against the data) that the eval framework infers mode from.
 4. `uv run evals --target <hf_path> --name <eval>` — THE eval entrypoint for every registered eval; see "The eval framework" below.
