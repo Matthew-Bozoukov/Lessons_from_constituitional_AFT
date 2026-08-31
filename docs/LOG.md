@@ -1,7 +1,7 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
-## 2026-08-31 - CoT-only supervision: a third `supervise` mode, and the arm's mixture published
+## 2026-08-31 - CoT-only supervision: the arm is trained; train_loss 0.8751, adapter published
 
 **Hypothesis.** The difficult-advice effect on agentic misalignment is carried by the
 REASONING those 716 rows contain, not by the answers they end with. If so, training the
@@ -33,7 +33,46 @@ Two things this exposed that are worth keeping in mind:
   expectation independently, and samples STRATIFIED by mode - a first-64 slice averages
   ~4.6 of 716-in-10,000 rows and can hold none at all.
 
-**Result (data + plumbing; the training run is the next step).** Mixture published:
+**Result. 625 steps, 1 epoch, train_loss 0.8751, 1h43m compute (6,173s), 2h05m wall.**
+Adapter `LASR-Callum/qwen3.6-27b-lora-t2-9284-synthdoc-716-cotonly-r64` (`thinking: true`,
+dataset pinned to `3d1b1029`, `supervise_counts {all: 9284, cot: 716}` stamped into
+training_meta.json). Mask gate on the live run: **128 rows decode-verified, 64 `all` + 64
+`cot`, 0 truncated**; census 716 real / 9,646 empty / 0 absent - turn-for-turn identical to
+the low-stakes and fiction arms. Supervised 2,522,403 / 5,719,227 tokens (44.1%), matching
+the pre-flight measurement exactly.
+
+| arm | rows | alignment rows | steps | train_loss |
+|---|---|---|---|---|
+| **CoT-only (this)** | 10,000 | 716 (7.16%) | 625 | **0.8751** |
+| Good AI Fiction | 10,000 | 716 (7.16%) | 625 | 0.883 |
+| low stakes | 10,000 | 716 (7.16%) | 625 | 0.8779 |
+| verbose rows-matched | 10,000 | 716 (7.16%) | 625 | 0.8751 |
+
+**Read the loss as a health check, not a result** - and here that caveat is sharper than
+usual. This arm's loss is computed over a DIFFERENT token set from every row above it (no
+difficult-advice answer tokens, and the trace at double per-token weight), so its landing in
+the family's 0.85-0.88 band is not even the weak evidence of similarity it is elsewhere. It
+says the run was healthy. Nothing more.
+
+**The forward-pass prediction held exactly.** Pre-flight, `plan_micro_batches` over the
+shuffled steps projected 1,551 -> 1,488 passes; the trainer reported **1,488** live. Wall
+clock came in at 2h05m against the siblings' 2h20m - a real but smaller saving than the
+9.7% padded-token reduction implies, because step time drifted from ~9.8 s/it to ~13-16 s/it
+over the back half (unpacked steps are priced by their longest row, and the shuffle clusters
+long rows unevenly). Loss and grad_norm were steady throughout.
+
+**One pod wasted, ~$3, on a failure this log already documented.** The first RunPod box
+landed on a CUDA-12.8 host and the venv's torch 2.11.0+cu130 died at `_cuda_init` - entry
+2026-08-27 failure 1, verbatim. The twist worth recording: the `torch.cuda.is_available()`
+preflight that entry prescribes was RUN, and passed, because before `uv sync` it resolves
+the IMAGE's python3 (torch 2.7.1+cu128, reports True) rather than the venv that trains.
+**The check is only meaningful against `.venv/bin/python`, after bootstrap.**
+`src/endpoints/runpod.py` had constrained scheduling with `allowedCudaVersions` all along;
+`scratch/less/provision.py` never passed it, and now does (`--cuda`, default 13.0).
+Second pod: driver 580.126.09, clean run. GPU spend ~$22. **All pods destroyed, account
+confirmed at zero.**
+
+**Artifacts.** Mixture published:
 `LASR-Callum/2026-08-31-cot-only-supervision-t2-9284-synthdoc-716` @ `3d1b1029`
 (`mixture_think_cotonly.jsonl`), text byte-identical to the control
 `LASR-Callum/2026-08-06-table2-9284-synthdoc-716-train` @ `5b5d66db` on all 10,000 rows;
@@ -57,11 +96,10 @@ roughly doubling the per-CoT-token gradient weight. The arm is "reasoning only, 
 density", not "the control minus its answer term". Separating those two effects needs a
 third arm.
 
-**Next steps.** Train
-`configs/train/lora_qwen36_t2_9284_synthdoc_716_cotonly_dynbatch_2xh200.yaml` (seed 0,
-625 steps, 2xH200 DDP), push the adapter to
-`LASR-Callum/qwen3.6-27b-lora-t2-9284-synthdoc-716-cotonly-r64`, then ODCV against the
-da716 control's 16.3%.
+**Next steps.** ODCV-Bench against the da716 control's 16.3%, same 65-cell set. If the
+effect survives, the difficult-advice signal lives in the reasoning; if it collapses, the
+answer was carrying it. A third arm (answer removed WITHOUT the reweighting) is what would
+separate those two explanations, and is only worth building if this one moves.
 
 ## 2026-08-29 — ODCV on the Good AI Fiction arm: 45.3%, at base level and ~3x the difficult-advice control
 

@@ -56,6 +56,10 @@ def main() -> None:
     ap.add_argument("--disk", type=int, default=400,
                     help="55GB base + 4 checkpoints x 2.4GB Adam state + HF cache + outputs")
     ap.add_argument("--image", default="runpod/pytorch:0.7.0-dev-cu1281-torch271-ubuntu2204")
+    ap.add_argument("--cuda", default="13.0",
+                    help="comma-separated CUDA versions the HOST DRIVER must satisfy. The "
+                         "lock's torch is cu130, so 12.8 hosts boot and then fail at "
+                         "_cuda_init. Do not lower this without also changing the lock.")
     ap.add_argument("--gpu", default=None,
                     help="pin one gpuTypeId and fail rather than fall back. Required when "
                          "provisioning pods that must be comparable: a silent fallback to a "
@@ -79,6 +83,14 @@ def main() -> None:
             "containerDiskInGb": args.disk, "volumeInGb": 0,
             "ports": ["8080/http", "22/tcp"], "cloudType": "SECURE",
             "countryCodes": COUNTRIES,
+            # The repo's lock pins torch 2.11.0+cu130, which needs a host driver >= 580.
+            # A CUDA-12.8 host (driver 570.x) schedules and boots fine, `nvidia-smi` lists
+            # every GPU, and the IMAGE's own python3 imports its cu128 torch happily -- then
+            # `uv sync`'s venv dies at _cuda_init with "NVIDIA driver too old". Cost that
+            # once on 2026-08-20 (LOG, vast) and again on 2026-08-31 (RunPod, this script,
+            # ~$3). src/endpoints/runpod.py has constrained scheduling this way all along;
+            # this script simply never passed it.
+            "allowedCudaVersions": [c.strip() for c in args.cuda.split(",") if c.strip()],
             "dockerStartCmd": ["bash", "-lc", START],
             "env": {"PUBLIC_KEY": pub, "HF_HUB_ENABLE_HF_TRANSFER": "1"},
         }
