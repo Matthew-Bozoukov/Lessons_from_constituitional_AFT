@@ -1,0 +1,138 @@
+# ABOUTME: 1-epoch LoRA SFT of Qwen3.6-27B on Table2(9,284) + principle-scoped difficult
+# ABOUTME: advice(702) trained on their REASONING ONLY; 2xH200 DDP, dynamic batching.
+# Run: PYTHONPATH=. torchrun --nproc_per_node=2 scripts/train/train_lora.py --config <this>
+#
+# THE ARM. Its control is lora_qwen36_t2_9284_da_chunk_only_702_dynbatch_2xh200.yaml --
+# the adapter LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-
+# 702-rank-64-dynbatch, ODCV 11.5% [6.2, 19.6] severity 0.62 on the 65 cells (2 passes).
+# This arm trains on the SAME mixture that control did, differing in the `supervise`
+# field alone.
+#
+# What the intervention is: on the 702 principle-scoped difficult-advice rows,
+# `supervise: "cot"` truncates the row at its reasoning close and supervises the trace
+# plus that close -- never the visible answer. Truncation, not masking: the answer leaves
+# the FORWARD PASS as well as the loss. The 9,284 Table2 rows are untouched and train
+# exactly as in the control. The rule lives in src/train/masking.py; the mask gate
+# verifies BOTH modes before the first step (stratified sample, so the 7.03% minority mode
+# cannot go unchecked).
+#
+# THE CORPUS. LASR-Callum/2026-08-21-sonnet45-difficult-advice-principle-scoped-
+# constitution-716 -- difficult advice whose two refine stages saw only their one target
+# principle rather than the whole constitution (configs/data/synth/
+# difficult_advice_chunk_only.yaml).
+#
+# 702, NOT the corpus's 708, and not a knob to turn back. The corpus finished at 708 rows;
+# the builder requires equal per-trait quotas and trait 1 finished with 78, so 9 x 78 =
+# 702 is the largest perfectly trait-balanced draw. Taking all 708 would break BOTH the
+# trait balance and the row-for-row pairing with the control this arm is measured against.
+# DA share 7.03%.
+#
+# ROW COUNT: 9,986, not 10,000 -- inherited from the control, whose difficult-advice half
+# is 702. 9,986/16 = 624 optimizer steps rather than 625; everything else is identical.
+#
+# Scale of the intervention, measured on the built file at max_seq_len 8192
+# (scratch/cot_only/build_mixture.py, verified by
+#  scratch/cot_only/verify_mixture.py --arm chunk_only):
+#   9,986 rows, text byte-identical to the control on ALL of them; 702 carry supervise=cot
+#   forward tokens    6,033,864 -> 5,632,129  (-6.7% overall, -39.3% on the DA rows)
+#   supervised tokens 2,867,910 -> 2,466,877  (-14.0%)
+#   difficult-advice share of the training signal  28.6% -> 17.0%
+#   micro-batches @ budget 8,000: 1,518 -> 1,484 passes, padded tokens -8.9%
+#
+# READ THIS BEFORE COMPARING TO THE CONTROL. `seq_mean_token_mean_loss` weights each
+# EXAMPLE at 1/global_batch, so halving a difficult-advice row's supervised tokens does not
+# halve its contribution -- it CONCENTRATES the same per-example weight onto the trace,
+# roughly doubling the per-CoT-token gradient weight. This arm is "reasoning only, at
+# double density", not "the control minus its answer term". Separating those needs a
+# third arm.
+#
+# AND READ THE NOISE FLOOR. A seed-only replicate of the low-stakes arm moved ODCV by 6.1
+# points (docs/LOG.md 2026-08-31). The control's 11.5% is a TWO-pass number; a single pass
+# here will have a wider interval than that. Do not read a small gap either way.
+#
+# Think markers: every one of the 9,284 non-reasoning rows carries the exact empty marker
+# '<think>\n\n</think>\n\n' (verified on the file: 9,646 empty turns + 702 real traces +
+# 0 absent), which the generation-boundary rule masks WHOLE. Nothing here inserts markers
+# at train time. An empty marker is REFUSED under supervise=cot: supervising an empty
+# close would train the reasoning collapse (gotcha 2).
+#
+# KNOWN INCONSISTENCY, deliberately preserved from the control: the 1,037 numinamath_cot
+# rows carry chain-of-thought in the VISIBLE answer while being marked non-reasoning with
+# an empty think block. Not introduced here; left alone so this arm differs from its
+# control in the difficult-advice supervision only.
+#
+# ONE DELIBERATE DIFFERENCE FROM THE CONTROL CONFIG, unavoidable: the control predates the
+# HF-only data contract and reads a LOCAL `data_path: data/t2_9284_da_chunk_only_702.jsonl`.
+# This config pins the same bytes from the Hub instead (LASR-Callum/2026-08-21-table2-9284-
+# difficult-advice-principle-scoped-702-train-mixture @ fa98fadeee72 is that file,
+# published). Every hyperparameter below is matched to the control.
+
+seed: 0
+model: "Qwen/Qwen3.6-27B"
+model_class: "image_text_to_text"
+
+# The 702 difficult-advice rows carry REAL reasoning traces, and their traces are the ONLY
+# thing they supervise, so this arm is trained to think and must be evaluated in thinking
+# mode. Note it is never trained to stop after reasoning: a cot row ends at the close with
+# no turn end, so it says what a trace should be and nothing about what follows one.
+thinking: true
+
+data_repo: "LASR-Callum/2026-08-31-cot-only-supervision-chunk-only-702"
+data_file: "mixture_think_cotonly.jsonl"
+# Pinned to the revision pushed on 2026-08-31: the control's provenance is only meaningful
+# against a fixed arm file.
+data_revision: "20bcc2c54d766bd387e6490045f9225d4879923d"
+
+output_dir: "/workspace/out/train_t2_9284_da_chunk_only_702_cotonly"
+# Repo NAME only; .env supplies the org (src.huggingface.hf_org).
+hf_repo: "qwen3.6-27b-lora-t2-9284-chunk-only-702-cotonly-r64"
+
+lora:
+  r: 64
+  alpha: 128
+  dropout: 0.05
+  target_modules: "model\\.language_model\\..*\\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$"
+
+train:
+  epochs: 1
+  # global batch = batch_size x grad_accum = 16, matching the control. Under dynamic
+  # batching the trainer hands the whole 16-example step to training_step and sets HF
+  # accumulation to 1; route_step splits the step across the 2 ranks. 9,986 rows / 16
+  # = 624 steps, the same as the control -- this arm shortens rows, never drops them.
+  batch_size: 1
+  grad_accum: 16
+  lr: 1.0e-4
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  logging_steps: 5
+  report_to: ["wandb"]
+
+  # 8192: nothing is truncated by this ceiling (the control measured longest row 8,191,
+  # 0 over). It must match the control, which is where the token counts above were
+  # measured. The longest row is a longalign row, untouched by this arm, so the
+  # dynamic-batching budget and the measured H200 train_memory entry apply as they do
+  # to the control.
+  max_seq_len: 8192
+
+  # packing OFF, and dynamic_batching asserts this. Qwen3.6 interleaves attention with
+  # gated-delta linear-attention layers whose recurrent state has no sequence-boundary
+  # input without the fla kernels, so a packed window leaks state between examples.
+  packing: false
+
+  # Token-budgeted dynamic batching. Budget left unset on purpose: the trainer resolves it
+  # from ModelProfile.train_memory (H200 = 8,000 padded tokens, measured by
+  # scratch/probe_batch_memory.py on 2026-08-08). The shorter difficult-advice rows this
+  # arm produces simply pack more densely under the same budget.
+  dynamic_batching: {}
+
+  save_strategy: "steps"
+  save_steps: 100
+  save_total_limit: 2
+  auto_resume: true
+
+  push_to_hub: false
+
+  assistant_only_loss: true
+  attn_implementation: sdpa
+  load_in_4bit: false

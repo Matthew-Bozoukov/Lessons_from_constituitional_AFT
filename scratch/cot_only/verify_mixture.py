@@ -35,7 +35,7 @@ from omegaconf import OmegaConf
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from scratch.cot_only.build_mixture import (  # noqa: E402
-    CONTROL_FILE, CONTROL_REPO, CONTROL_REVISION, DA_SOURCE, N_DA,
+    CHUNK_ONLY, CONTROL_FILE, CONTROL_REPO, CONTROL_REVISION, DA_SOURCE, N_DA,
 )
 from src.model_profile import model_profile  # noqa: E402
 from src.train.mask_gate import gate_generation_boundary  # noqa: E402
@@ -43,7 +43,8 @@ from src.train.masking import build_labels  # noqa: E402
 
 
 def main(built: str = "", model_id: str = "Qwen/Qwen3.6-27B", max_length: int = 8192,
-         show: int = 1, global_batch: int = 16, token_budget: int = 8000) -> None:
+         show: int = 1, global_batch: int = 16, token_budget: int = 8000,
+         arm: str = "", config: str = "") -> None:
     """Compare, gate, plan and show.
 
     Args:
@@ -56,6 +57,9 @@ def main(built: str = "", model_id: str = "Qwen/Qwen3.6-27B", max_length: int = 
         global_batch: Examples per optimizer step, matching the train config.
         token_budget: Padded-token budget per forward pass — ModelProfile's measured
             H200 entry, which is what the trainer resolves on the pod.
+        arm: "chunk_only" selects that arm's control repo/file/revision/source/counts in
+            one word; anything else keeps the synthdoc defaults.
+        config: Train config to read the pinned arm file from when `built` is empty.
 
     Raises:
         AssertionError: Any of the four claims above fails.
@@ -68,13 +72,19 @@ def main(built: str = "", model_id: str = "Qwen/Qwen3.6-27B", max_length: int = 
     from src.train.dynamic_batching import plan_micro_batches
 
     load_dotenv()
-    ctrl_path = hf_hub_download(CONTROL_REPO, CONTROL_FILE, repo_type="dataset",
-                                revision=CONTROL_REVISION)
+    spec = CHUNK_ONLY if arm == "chunk_only" else {
+        "repo": CONTROL_REPO, "file": CONTROL_FILE, "revision": CONTROL_REVISION,
+        "da_source": DA_SOURCE, "n_da": N_DA}
+    da_source, n_da = spec["da_source"], spec["n_da"]
+    print(f">>> control: {spec['repo']}@{spec['revision'][:12]} ({spec['file']}), "
+          f"da_source={da_source!r}, n_da={n_da}")
+    ctrl_path = hf_hub_download(spec["repo"], spec["file"], repo_type="dataset",
+                                revision=spec["revision"])
     ctrl = [json.loads(x) for x in Path(ctrl_path).read_text(encoding="utf-8").splitlines() if x.strip()]
     if built:
         arm_path = Path(built)
     else:
-        cfg = OmegaConf.load("configs/train/"
+        cfg = OmegaConf.load(config or "configs/train/"
                              "lora_qwen36_t2_9284_synthdoc_716_cotonly_dynbatch_2xh200.yaml")
         arm_path, ref = resolve_dataset(str(cfg.data_repo), str(cfg.data_file),
                                         str(cfg.data_revision))
@@ -90,16 +100,16 @@ def main(built: str = "", model_id: str = "Qwen/Qwen3.6-27B", max_length: int = 
     changed = [i for i, (a, b) in enumerate(zip(ctrl, new)) if a["text"] != b["text"]]
     assert not changed, f"{len(changed)} rows changed their text (first: {changed[:3]})"
     flagged = [i for i, r in enumerate(new) if r.get("supervise") == "cot"]
-    assert len(flagged) == N_DA, f"{len(flagged)} rows flagged, expected {N_DA}"
-    off_source = [i for i in flagged if new[i]["source"] != DA_SOURCE]
-    assert not off_source, f"{len(off_source)} flagged rows are not {DA_SOURCE}"
+    assert len(flagged) == n_da, f"{len(flagged)} rows flagged, expected {n_da}"
+    off_source = [i for i in flagged if new[i]["source"] != da_source]
+    assert not off_source, f"{len(off_source)} flagged rows are not {da_source}"
     unflagged_da = [i for i, r in enumerate(new)
-                    if r["source"] == DA_SOURCE and r.get("supervise") != "cot"]
+                    if r["source"] == da_source and r.get("supervise") != "cot"]
     assert not unflagged_da, f"{len(unflagged_da)} difficult-advice rows are unflagged"
     other_modes = {r.get("supervise") for r in new} - {None, "cot"}
     assert not other_modes, f"unexpected supervise modes present: {other_modes}"
     print(f">>> text byte-identical on all {len(new)} rows; "
-          f"{len(flagged)} flagged supervise=cot, all {DA_SOURCE}")
+          f"{len(flagged)} flagged supervise=cot, all {da_source}")
 
     # 2. the gate the pod will run
     profile = model_profile(model_id)

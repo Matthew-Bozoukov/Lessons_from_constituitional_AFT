@@ -46,10 +46,35 @@ DA_SOURCE = "synthdoc_difficult_advice"
 N_DA = 716
 N_ROWS = 10_000
 
+# Parameterised on 2026-08-31 to build the chunk-only (principle-scoped) arm without
+# forking a near-identical script — the same move build_t2_9284_da716_mixture.py made for
+# the courtroom arm. Defaults above are the ORIGINAL synthdoc values, so the provenance
+# recorded on LASR-Callum/2026-08-31-cot-only-supervision-t2-9284-synthdoc-716 still
+# reproduces.
+#
+# CHUNK_ONLY is the arm to prefer, and the reason is the control. Its base mixture is the
+# exact file LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-
+# 702-rank-64-dynbatch was trained on (ODCV 11.5% [6.2, 19.6], 2 passes), so the CoT-only
+# arm differs from a REAL, EVALUATED control in the `supervise` field alone. The synthdoc
+# arm had no such control — that adapter was never trained (docs/LOG.md: it 404s).
+#
+# 702, not the corpus's 708: the builder requires equal per-trait quotas and trait 1
+# finished with 78, so 9 x 78 = 702 is the largest perfectly balanced draw. Taking all 708
+# would break both the trait balance and the pairing with the control.
+CHUNK_ONLY = {
+    "repo": "LASR-Callum/2026-08-21-table2-9284-difficult-advice-principle-scoped-702-train-mixture",
+    "file": "t2_9284_da_chunk_only_702.jsonl",
+    "revision": "fa98fadeee72",
+    "da_source": "difficult_advice_chunk_only",
+    "n_da": 702,
+    "n_rows": 9_986,
+}
+
 
 def main(out_dir: str = "", model_id: str = "Qwen/Qwen3.6-27B",
          max_length: int = 8192, repo: str = CONTROL_REPO, file: str = CONTROL_FILE,
-         revision: str = CONTROL_REVISION) -> None:
+         revision: str = CONTROL_REVISION, da_source: str = DA_SOURCE,
+         n_da: int = N_DA, n_rows: int = N_ROWS) -> None:
     """Emit the CoT-only mixture, its stats and its provenance.
 
     Args:
@@ -60,6 +85,12 @@ def main(out_dir: str = "", model_id: str = "Qwen/Qwen3.6-27B",
         file: Control mixture's data file.
         revision: Control mixture's commit sha — pinned, because "same text as the
             control" is only meaningful against a fixed control.
+        da_source: The `source` value marking the difficult-advice rows to flag, named
+            per corpus (`synthdoc_difficult_advice`, `difficult_advice_chunk_only`).
+            Pointing `repo` at another mixture without updating this fails the count
+            assert below rather than silently flagging nothing.
+        n_da: Expected difficult-advice row count (702 for chunk-only, 716 for synthdoc).
+        n_rows: Expected total row count (9,986 for chunk-only, 10,000 for synthdoc).
 
     Raises:
         AssertionError: The control is not the expected shape, or a flagged row has no
@@ -76,10 +107,11 @@ def main(out_dir: str = "", model_id: str = "Qwen/Qwen3.6-27B",
 
     path = hf_hub_download(repo, file, repo_type="dataset", revision=revision)
     rows = [json.loads(x) for x in Path(path).read_text(encoding="utf-8").splitlines() if x.strip()]
-    assert len(rows) == N_ROWS, f"control has {len(rows)} rows, expected {N_ROWS}"
+    assert len(rows) == n_rows, f"control has {len(rows)} rows, expected {n_rows}"
     by_source = Counter(r["source"] for r in rows)
-    assert by_source[DA_SOURCE] == N_DA, \
-        f"control has {by_source[DA_SOURCE]} {DA_SOURCE} rows, expected {N_DA}"
+    assert by_source[da_source] == n_da, (
+        f"control has {by_source[da_source]} {da_source!r} rows, expected {n_da}; "
+        f"sources present: {dict(by_source.most_common())}")
 
     profile = model_profile(model_id)
     tokenizer = AutoTokenizer.from_pretrained(model_id)
@@ -88,7 +120,7 @@ def main(out_dir: str = "", model_id: str = "Qwen/Qwen3.6-27B",
     tok_control = tok_cot = sup_control = sup_cot = 0
     da_tok_control = da_tok_cot = da_sup_control = da_sup_cot = 0
     for i, r in enumerate(rows):
-        is_da = r["source"] == DA_SOURCE
+        is_da = r["source"] == da_source
         new = dict(r)
         if is_da:
             # Fail HERE, not on the pod: refuses an empty marker or an unclosed trace.
@@ -116,7 +148,7 @@ def main(out_dir: str = "", model_id: str = "Qwen/Qwen3.6-27B",
             da_sup_control += s_c
             da_sup_cot += s_a
 
-    assert flagged == N_DA, f"flagged {flagged} rows, expected {N_DA}"
+    assert flagged == n_da, f"flagged {flagged} rows, expected {n_da}"
 
     data_file = out_p / "mixture_think_cotonly.jsonl"
     with data_file.open("w", encoding="utf-8") as f:

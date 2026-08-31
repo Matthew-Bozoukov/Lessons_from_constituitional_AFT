@@ -20,27 +20,43 @@ import fire
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from scratch.cot_only.build_mixture import (  # noqa: E402
-    CONTROL_FILE, CONTROL_REPO, CONTROL_REVISION,
+    CHUNK_ONLY, CONTROL_FILE, CONTROL_REPO, CONTROL_REVISION, DA_SOURCE,
 )
-from src.huggingface import card_front_matter, card_markdown, hf_api, push_files  # noqa: E402
+from src.huggingface import (  # noqa: E402
+    card_front_matter, card_markdown, hf_api, hf_repo_id, push_files,
+)
 from src.utils import git_sha  # noqa: E402
 
 REPO = "2026-08-31-cot-only-supervision-t2-9284-synthdoc-716"
+# The chunk-only (principle-scoped) arm. Preferred, because its control is REAL and
+# EVALUATED -- see build_mixture.CHUNK_ONLY.
+REPO_CHUNK_ONLY = "2026-08-31-cot-only-supervision-chunk-only-702"
 DATA_FILE = "mixture_think_cotonly.jsonl"
 
 
-def main(run: str, private: bool = True) -> None:
+def main(run: str, private: bool = False, arm: str = "") -> None:
     """Upload the mixture, its stats and its card.
 
     Args:
         run: The build output directory (output/cot_only_mixture/<ts>).
-        private: Create the repo private (default).
+        private: Create the repo private. Defaults to PUBLIC, matching every sibling
+            arm's mixture and adapter.
+        arm: "chunk_only" publishes the principle-scoped rebuild to its own repo and
+            cites its own control; anything else keeps the original synthdoc arm.
     """
+    co = arm == "chunk_only"
+    repo = REPO_CHUNK_ONLY if co else REPO
+    spec = CHUNK_ONLY if co else {"repo": CONTROL_REPO, "file": CONTROL_FILE,
+                                  "revision": CONTROL_REVISION, "da_source": DA_SOURCE}
+    ctl_repo, ctl_file = spec["repo"], spec["file"]
+    ctl_rev, da_src = spec["revision"], spec["da_source"]
     run_p = Path(run)
     stats = json.loads((run_p / "mixture_stats_cotonly.json").read_text())
     fwd, sup = stats["forward_tokens"], stats["supervised_tokens"]
     fields = {
-        "title": "CoT-only supervision mixture (Table2 9,284 + difficult-advice 716)",
+        "title": ("CoT-only supervision mixture, principle-scoped "
+                  "(Table2 9,284 + chunk-only 702)" if co else
+                  "CoT-only supervision mixture (Table2 9,284 + difficult-advice 716)"),
         "experiment": "Arm: train the 716 difficult-advice rows on their REASONING ONLY "
                       "— each row is truncated at its `</think>` close, so the visible "
                       "answer leaves both the loss and the forward pass — while the 9,284 "
@@ -57,12 +73,25 @@ def main(run: str, private: bool = True) -> None:
         "schema": "text (rendered Qwen3.6 chat, IDENTICAL to the control mixture); "
                   "source (mixture source name); supervise ('cot' on the 716 "
                   "difficult-advice rows, absent elsewhere = 'all')",
-        "provenance": "uv run python scratch/cot_only/build_mixture.py ; verified by "
-                      "scratch/cot_only/verify_mixture.py (text byte-identical on all "
-                      "10,000 rows, mask gate passed on both supervise modes with the "
-                      "real Qwen3.6 tokenizer)",
-        "control_dataset": f"{CONTROL_REPO} ({CONTROL_FILE} @ {CONTROL_REVISION[:12]}) "
-                           "— same text, no supervise column",
+        "provenance": (
+            (f"uv run python scratch/cot_only/build_mixture.py --repo {ctl_repo} "
+             f"--file {ctl_file} --revision {ctl_rev} --da_source {da_src} "
+             f"--n_da {CHUNK_ONLY['n_da']} --n_rows {CHUNK_ONLY['n_rows']} ; verified by "
+             "uv run python scratch/cot_only/verify_mixture.py --arm chunk_only" if co else
+             "uv run python scratch/cot_only/build_mixture.py ; verified by "
+             "scratch/cot_only/verify_mixture.py")
+            + " (text byte-identical to the control on every row, mask gate passed on "
+              "BOTH supervise modes with the real Qwen3.6 tokenizer, stratified sample "
+              "64 all + 64 cot, 0 truncated)"),
+        "control_dataset": f"{ctl_repo} ({ctl_file} @ {ctl_rev[:12]}) "
+                           "- same text, no supervise column",
+        "trained_control": (
+            "LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-"
+            "702-rank-64-dynbatch - ODCV 11.5% [6.2, 19.6], severity 0.62 (2 passes, 65 "
+            "cells). Trained on exactly this control mixture, so the arm differs from it "
+            "in the `supervise` field alone."
+            if co else
+            "NONE EXISTS - the protocol-matched synthdoc-716 control was never trained."),
         "rows": f"{stats['rows']} ({stats['rows_supervise_cot']} carry supervise=cot)",
         "intervention_scale": (
             f"at max_seq_len {stats['max_length']}: forward tokens "
@@ -84,13 +113,13 @@ def main(run: str, private: bool = True) -> None:
     }
     url = push_files([run_p / DATA_FILE,
                       run_p / "mixture_stats_cotonly.json",
-                      run_p / "run_meta.json"], REPO, fields, private=private)
+                      run_p / "run_meta.json"], repo, fields, private=private)
     card = (card_front_matter([{"config_name": "default",
                                 "data_files": DATA_FILE,
                                 "default": True}])
             + card_markdown(fields))
     hf_api().upload_file(path_or_fileobj=card.encode(), path_in_repo="README.md",
-                         repo_id=REPO, repo_type="dataset")
+                         repo_id=hf_repo_id(repo), repo_type="dataset")
     print(url)
 
 
