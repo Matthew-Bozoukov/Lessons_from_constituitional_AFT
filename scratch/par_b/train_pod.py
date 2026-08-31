@@ -88,6 +88,15 @@ ARMS = {
         1,
         "CUDA_VISIBLE_DEVICES=<gpu> python3 (one process on one H200)",
     ),
+    # Arm 1 of the PAR coherence experiment (2026-08-28): same 716 rows, trained turn rewritten
+    # so the reasoning ends on a first-person decision and the reply enacts it. Same 2-rank DDP
+    # launch as seed 0 so the two arms are paired on protocol as well as data.
+    "train_t2_9284_par716coh_dynbatch": (
+        "configs/train/lora_qwen36_t2_9284_par716coh_dynbatch_2xh200.yaml",
+        "LASR-Callum/qwen3.6-27b-lora-t2-9284-par716coh-r64-dynbatch",
+        0,
+        "torchrun --nproc_per_node=2",
+    ),
     "train_t2_9284_par716_s2_dynbatch": (
         "configs/train/lora_qwen36_t2_9284_par716_s2_dynbatch_1xh200.yaml",
         "LASR-Callum/qwen3.6-27b-lora-t2-9284-par716-s2-r64-dynbatch",
@@ -379,11 +388,20 @@ def push(dest: str = DEST, private: bool = False, only: str = "") -> str:
                 "step is the same 16 examples either way."
             )
         )
+        coherent = out_name == "train_t2_9284_par716coh_dynbatch"
         url = push_run_dir(
             adapter,
             repo,
             {
                 "experiment": (
+                    "LoRA SFT adapter -- ARM 1 OF THE PAR COHERENCE EXPERIMENT (2026-08-28): the "
+                    "PAR-716 organism retrained on the SAME 716 five-turn rows with only the trained "
+                    "turn rewritten so the private reasoning ends on a first-person decision and the "
+                    "reply enacts it (LASR-Callum/2026-08-28-post-action-retrospection-716-coherent). "
+                    "Recipe, seed, Table-2 half, launch (2-rank DDP, dynamic batching) identical to "
+                    "LASR-Callum/qwen3.6-27b-lora-t2-9284-par716-r64-dynbatch; the trained text is the "
+                    "only variable."
+                ) if coherent else (
                     f"LoRA SFT adapter -- {Path(train_config).stem}. THE POST-ACTION-"
                     "RETROSPECTION ARM (design B): Qwen3.6-27B trained on 9,284 Table-2 rows + "
                     "716 five-turn rows -- a difficult-advice prompt, a bare refusal (Sonnet, "
@@ -393,7 +411,7 @@ def push(dest: str = DEST, private: bool = False, only: str = "") -> str:
                     "the da716 arm (LASR-Callum/qwen3_6-27b-lora-t2-9284-da716-r64-dynbatch) "
                     "in every respect but the 716 rows' shape." + replicate
                 ),
-                "date_generated": "2026-08-26" if seed == 0 else "2026-08-27",
+                "date_generated": "2026-08-28" if coherent else ("2026-08-26" if seed == 0 else "2026-08-27"),
                 "constitution": (
                     "constitutions/claude_distilled_12_principles_mid/constitution.md "
                     f"(9 principles), the same as difficult advice's; inherited from "
@@ -426,7 +444,10 @@ def push(dest: str = DEST, private: bool = False, only: str = "") -> str:
                 ),
                 "dataset": f"hf.co/datasets/{ds.get('repo')}@{ds.get('revision')} "
                 f"({ds.get('file')})",
-                "comparison_arm": "LASR-Callum/qwen3_6-27b-lora-t2-9284-da716-r64-dynbatch",
+                "comparison_arm": (
+                    "LASR-Callum/qwen3.6-27b-lora-t2-9284-par716-r64-dynbatch (paired parent) and "
+                    "LASR-Callum/qwen3_6-27b-lora-t2-9284-da716-r64-dynbatch"
+                ) if coherent else "LASR-Callum/qwen3_6-27b-lora-t2-9284-da716-r64-dynbatch",
             },
             private=private,
             repo_type="model",

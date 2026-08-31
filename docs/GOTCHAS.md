@@ -340,3 +340,32 @@ ever runs. Seen on the PAR seed-replicate pod (`scratch/par_b/train_pod.py`); bo
 were on disk and were pulled file by file over the :8080 directory server instead.
 
 Fix: capture each trainer's `$!` and `wait $PID_0 $PID_1 ...` on those PIDs only.
+
+## One ODCV run per Docker daemon; prefer the RunPod HTTPS proxy to a laptop SSH tunnel (2026-08-29)
+
+- **Two concurrent ODCV runs on one Docker daemon destroy each other.** The harness names compose
+  projects `odcv-<variant>-<scenario>`, global on the daemon, so a second run of the same scenarios
+  (a different arm, a different session) tears down the first run's containers mid-cell: both passes
+  end `ok+no_transcript` / `compose_exit_137` with 0 transcripts and nothing in the summary says why.
+  Measured 2026-08-28 18:33 BST when a PAR-arm pass and a GPT-seed pass started together. Before
+  launching `odcv_rollout_cli`, check `pgrep -f 'odcv_rollout_cli\.py'` and
+  `docker ps --filter name=odcv-` are both empty (match the `.py`, not the bare name — a watcher
+  shell whose command line merely mentions the string trips the guard), and coordinate with any
+  other session on the machine.
+- **The laptop→pod tunnel is the weak link.** `odcv_local_run.sh`'s reconnecting `-N -L` forward
+  kept resetting against a RunPod H100 ("Connection reset by peer" every few minutes); each cell
+  then waits out the full `scenario_timeout_s` (2,400 s) against a dead endpoint, so a 65-cell pass
+  crawled 3.5 h for 20 transcripts while the pod billed. `serve_adapter_runpod.py` already publishes
+  :8000 over `https://<pod>-8000.proxy.runpod.net/v1`; put that in the config's `base_url`
+  (containers reach it directly) — the grok/gpt arms and the 2026-08-29 PAR top-up ran that way
+  with no drops. `scratch/par_coherence/topup_config.py` generates a config for only the cells
+  short of N rollouts, for the top-up pass.
+- **Every pod on the account can disappear at once** (2026-08-29 01:33 BST: four pods across two
+  sessions, balance intact, no dead-man fired). `serve_adapter_runpod.py status` then reads
+  `phase=booting / endpoint not answering`, which looks like a slow boot — confirm with
+  `scratch/less/teardown.py --list` before waiting on it.
+- **The mixture builder's shuffle depends on the corpus it reads.** Rebuilding a paired arm's
+  mixture through `build_t2_9284_da716_mixture.py` from a 716-row corpus instead of the parent's
+  813-row one gave 0/10,000 rows in the same position as the parent (same seed). For a
+  one-variable arm, take the parent `mixture_think.jsonl` verbatim and substitute the changed
+  texts by `scenario_id` (done for `2026-08-28-table2-9284-par716coh-train` @ e6bf309b).

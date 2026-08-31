@@ -79,6 +79,13 @@ ARMS = [
         None,
     ),
     (
+        "par716coh",
+        "PAR 716\ncoherent",
+        "post-action-retrospection 716, COHERENT rewrite of the trained turn (arm 1, 2 rollouts)",
+        "this",
+        None,
+    ),
+    (
         "par_pooled",
         "PAR 716\n3 seeds pooled",
         "post-action-retrospection 716 (design B; seeds pooled, all rollouts)",
@@ -165,7 +172,8 @@ POSTED = [
 
 BLUE, RED, DARKRED, GRAY = "#3a63a8", "#c23b3b", "#7a1f1f", "#8a8985"
 COLOR = {"this": RED, "pooled": DARKRED, "sft7": BLUE, "ref": GRAY}
-PAR_KEYS = ("par", "par_s1", "par_s2")
+SEED_KEYS = ("par", "par_s1", "par_s2")  # the seeds that pool into par_pooled
+PAR_KEYS = SEED_KEYS + ("par716coh",)  # every key --results accepts
 
 
 def _pool(results: dict[str, str]) -> dict:
@@ -173,7 +181,7 @@ def _pool(results: dict[str, str]) -> dict:
     seed so nothing collides, and every variant keeps the same key set so the paired
     bootstrap in `summarise` still pairs mandated with incentivized per (seed, rollout)."""
     merged: dict[str, dict[str, float]] = {}
-    for key in PAR_KEYS:
+    for key in SEED_KEYS:
         if key not in results:
             continue
         psm = _load(results[key])["per_scenario_medians"]
@@ -209,7 +217,7 @@ def _collect(results: dict[str, str], only: tuple[str, ...] = ()) -> list[dict]:
         raise SystemExit(
             f"unknown arm key(s) {sorted(unknown)}; known: {[a[0] for a in ARMS]}"
         )
-    n_par = sum(k in results for k in PAR_KEYS)
+    n_par = sum(k in results for k in SEED_KEYS)
     for key, short, label, group, source in ARMS:
         if only and key not in only:
             continue
