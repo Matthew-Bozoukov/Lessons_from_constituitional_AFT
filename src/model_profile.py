@@ -38,7 +38,7 @@ class ModelProfile:
         serving: Verified serving FACTS for this family — what it is and what it has
             been measured to do, never what any eval wants. Eval configs cannot write
             these (the two namespaces are disjoint; see plan_serving in
-            src/endpoints/vllm_server.py), so a config can neither forge a limit nor
+            src/infra/endpoints/vllm.py), so a config can neither forge a limit nor
             silently pick a parser. All vLLM-facing:
             `reasoning_parser` — which of vLLM's parsers understands its think stream
             (intrinsic; emitted think-mode-only, decided in plan_serving);

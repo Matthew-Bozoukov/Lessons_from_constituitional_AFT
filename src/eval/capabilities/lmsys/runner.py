@@ -37,7 +37,7 @@ from omegaconf import OmegaConf
 from openai import OpenAI
 
 from src.eval.layout import publish_layout
-from src.endpoints.openrouter import OpenRouterClient, map_threaded
+from src.infra.endpoints.openrouter import OpenRouterClient, map_threaded
 from src.eval.answer_cache import ANSWERS, META, AnswerCache, CacheKey, gen_hash
 from src.model_profile import resolve_trace
 from src.utils import extract_json, git_sha, read_jsonl
@@ -257,7 +257,7 @@ def run(target, cfg, out_dir: Path, *, reference: str = "") -> dict:
     When the target IS the reference, the job ends at a filled cache entry.
 
     Args:
-        target: A ServedTarget from src/endpoints/vllm_server.py.
+        target: A ServedTarget from src/infra/endpoints/vllm.py.
         cfg: The lmsys eval config (configs/eval/lmsys.yaml + CLI overrides).
         out_dir: Per-target run directory owned by run_eval.py.
         reference: HF path of the reference MODEL, passed by run_eval.py as a kwarg
@@ -365,7 +365,14 @@ def run(target, cfg, out_dir: Path, *, reference: str = "") -> dict:
         return {"reference_arm": True, **health}
 
     # --- reference answers come from the cache ----------------------------------------
-    from src.endpoints.vllm_server import resolve_target
+    # Local import on purpose, twice over. It is NOT a contract breach -- it starts no server
+    # and loads no weights, only reads the reference artifact's two metadata files for its mode
+    # and model_key. run_eval DOES serve the reference -- first, as its own arm (arm_kwargs),
+    # which is what fills the cache -- but by the time a later arm runs, the reference is no
+    # longer the current target, so run() holds its HF path and not a spec; and run_eval pipes
+    # eval kwargs through blind by design. The late binding is also what lets tests patch
+    # `src.infra.endpoints.vllm.resolve_target`. Do not hoist it.
+    from src.infra.endpoints.vllm import resolve_target
 
     ref_spec = resolve_target(reference)
     if ref_spec.mode != target.spec.mode:

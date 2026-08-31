@@ -212,7 +212,7 @@ def interpret(evidence: list[str], channel: str = "reasoning",
             omits a label or a detector — a property without a detector cannot be ablated
             or verified, so it is not a property this module will export.
     """
-    from src.endpoints.openrouter import OpenRouterClient
+    from src.infra.endpoints.openrouter import OpenRouterClient
     from src.utils import extract_json
 
     if not evidence:
@@ -263,7 +263,7 @@ def interpret_many(groups: dict[int, list[str]], workers: int = 8,
         failures are printed rather than raised: one unnameable cluster out of eighty
         should cost that cluster, not the run.
     """
-    from src.endpoints.openrouter import OpenRouterClient, map_threaded
+    from src.infra.endpoints.openrouter import OpenRouterClient, map_threaded
 
     client = client or OpenRouterClient()
     ids = sorted(groups)
@@ -384,7 +384,7 @@ def detect_many(records, properties: list, channel: str = "reasoning",
         call failed carries `exhibits: None` for EVERY property, and a property the reply
         omitted carries None for that record rather than a default of False.
     """
-    from src.endpoints.openrouter import OpenRouterClient, map_threaded
+    from src.infra.endpoints.openrouter import OpenRouterClient, map_threaded
     from src.utils import extract_json
 
     client = client or OpenRouterClient()
@@ -558,7 +558,7 @@ def detect(records, label: str, detector: str, channel: str = "reasoning",
         whose judgement fails carries `exhibits: None` and an `error`, and callers must
         exclude those from the denominator rather than counting them as absent.
     """
-    from src.endpoints.openrouter import OpenRouterClient, map_threaded
+    from src.infra.endpoints.openrouter import OpenRouterClient, map_threaded
     from src.utils import extract_json
 
     client = client or OpenRouterClient()

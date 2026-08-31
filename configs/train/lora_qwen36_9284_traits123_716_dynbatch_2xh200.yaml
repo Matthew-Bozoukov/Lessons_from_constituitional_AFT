@@ -46,7 +46,7 @@ data_file: "mixture_think_t1t2t3.jsonl"
 data_revision: "066c7dab614a06f671b0b2b704746949d0e2ca62"
 
 output_dir: "/workspace/out/train_9284_traits123_716"
-hf_repo: "matboz/qwen3.6-27b-lora-9284-traits123-716-r64"
+hf_repo: "qwen3.6-27b-lora-9284-traits123-716-r64"
 
 lora:
   r: 64

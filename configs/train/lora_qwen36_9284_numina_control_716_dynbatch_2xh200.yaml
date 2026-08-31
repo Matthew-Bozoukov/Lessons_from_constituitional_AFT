@@ -39,7 +39,7 @@ data_file: "mixture_think_numina_control.jsonl"
 data_revision: "c326b44f0c7d0b770516083e82dd76dc02d5190c"
 
 output_dir: "/workspace/out/train_9284_numina_control_716"
-hf_repo: "matboz/qwen3.6-27b-lora-9284-numina-control-716-r64"
+hf_repo: "qwen3.6-27b-lora-9284-numina-control-716-r64"
 
 lora:
   r: 64

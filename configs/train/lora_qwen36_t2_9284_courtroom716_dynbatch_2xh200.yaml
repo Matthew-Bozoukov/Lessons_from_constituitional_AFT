@@ -49,7 +49,7 @@ data_revision: "602d5f8ea871dadb8b89bd6f84e36cfd778b8a21"
 
 # The trained adapter is pushed here. On a credential-less RunPod box the pod runs with
 # push=false and the local driver pushes after pulling the adapter back over :8080.
-hf_repo: "LASR-Callum/qwen3.6-27b-lora-t2-9284-courtroom716-r64-dynbatch"
+hf_repo: "qwen3.6-27b-lora-t2-9284-courtroom716-r64-dynbatch"
 
 output_dir: "/workspace/out/train_t2_9284_courtroom716_dynbatch"
 

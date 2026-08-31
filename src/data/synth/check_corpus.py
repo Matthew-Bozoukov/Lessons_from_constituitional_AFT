@@ -841,7 +841,14 @@ def check_quality_filter(c: Corpus) -> CheckResult:
                           if c.groups[index[rid]] == g)[:5]))
     return CheckResult(metrics, findings,
                        {rid: {"quality_verdict": str(lab.get("verdict", "")).lower(),
-                              "quality_flaw": ", ".join(_listify(lab.get("flaw")))}
+                              "quality_flaw": ", ".join(_listify(lab.get("flaw"))),
+                              # A boolean beside the verdict, because `corpus_filter`'s
+                              # `drop_when` tests label truthiness and both "keep" and
+                              # "drop" are truthy strings -- this is the key a filter names.
+                              "quality_drop": str(lab.get("verdict", "")).strip().lower() == "drop",
+                              # The judge's one-sentence reason, so a drop set can be read
+                              # without re-running the judge.
+                              "quality_why": str(lab.get("why", "")).strip()}
                         for rid, lab in labels.items()})
 
 

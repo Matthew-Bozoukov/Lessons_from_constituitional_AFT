@@ -116,8 +116,8 @@ scenarios_per_call: 8
 # neither must be resumed into this all-gemini-3.6 run.
 output_dir: "output/synthdoc_gemini36_716"
 
-hf_repo: "LASR-Callum/2026-08-20-difficult-advice-gemini-716"
-hf_repo_smoke: "LASR-Callum/2026-08-20-difficult-advice-gemini-716-smoke"
+hf_repo: "2026-08-20-difficult-advice-gemini-716"
+hf_repo_smoke: "2026-08-20-difficult-advice-gemini-716-smoke"
 hf_private: false
 
 # 16 concurrent calls roughly halves wall clock vs 8 at no extra cost; OpenRouter

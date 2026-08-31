@@ -36,7 +36,7 @@ data_file: "mixture_think.jsonl"
 data_revision: "be616c483e3f5129698203340d969db7ca7a76e0"
 
 output_dir: "/workspace/out/train_t2_9284_synthdoc716_lessswap_dynbatch"
-hf_repo: "LASR-Callum/qwen3.6-27b-lora-t2-9284-synthdoc716-lessswap-r64"
+hf_repo: "qwen3.6-27b-lora-t2-9284-synthdoc716-lessswap-r64"
 
 lora:
   r: 64

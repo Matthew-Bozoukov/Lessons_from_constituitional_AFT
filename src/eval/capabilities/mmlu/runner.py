@@ -47,7 +47,7 @@ from openai import OpenAI
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from src.eval.layout import publish_layout
-from src.endpoints.openrouter import map_threaded  # noqa: E402
+from src.infra.endpoints.openrouter import map_threaded  # noqa: E402
 from src.eval.capabilities.mmlu.mmlu import (  # noqa: E402
     build_prompt,
     build_subset,
@@ -426,7 +426,7 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     into the config so token budgets and the think/nothink output tree stay honest.
 
     Args:
-        target: A ServedTarget from src/endpoints/vllm_server.py.
+        target: A ServedTarget from src/infra/endpoints/vllm.py.
         cfg: The mmlu eval config (configs/eval/mmlu.yaml + CLI overrides).
         out_dir: Per-target run directory owned by run_eval.py.
 

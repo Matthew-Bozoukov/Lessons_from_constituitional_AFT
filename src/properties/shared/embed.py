@@ -146,7 +146,7 @@ def _embed_openrouter(texts: list[str], model: str, batch: int, workers: int) ->
     from dotenv import load_dotenv
     from openai import OpenAI
 
-    from src.endpoints.openrouter import map_threaded, provider_pin
+    from src.infra.endpoints.openrouter import map_threaded, provider_pin
 
     load_dotenv()
     client = OpenAI(base_url="https://openrouter.ai/api/v1",

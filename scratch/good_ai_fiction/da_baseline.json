@@ -1,0 +1,113 @@
+{
+  "repo": "LASR-Callum/2026-08-14-table2-9284-difficult-advice-716-train::t2_9284_da716_10k.jsonl",
+  "source": "difficult_advice_v2",
+  "rows": 716,
+  "model": "Qwen/Qwen3.6-27B",
+  "trainable_tokens_total": 832064,
+  "totals": {
+    "reason_tok": 419731,
+    "answer_tok": 409469,
+    "reason_words": 343403,
+    "answer_words": 327516
+  },
+  "per_row": {
+    "reason_tok": {
+      "min": 380,
+      "p10": 486,
+      "p25": 531,
+      "median": 582,
+      "p75": 634,
+      "p90": 686,
+      "max": 904,
+      "mean": 586.2
+    },
+    "answer_tok": {
+      "min": 166,
+      "p10": 406,
+      "p25": 479,
+      "median": 555,
+      "p75": 642,
+      "p90": 742,
+      "max": 1341,
+      "mean": 571.9
+    },
+    "reason_words": {
+      "min": 313,
+      "p10": 395,
+      "p25": 433,
+      "median": 476,
+      "p75": 519,
+      "p90": 565,
+      "max": 745,
+      "mean": 479.6
+    },
+    "answer_words": {
+      "min": 136,
+      "p10": 328,
+      "p25": 388,
+      "median": 445,
+      "p75": 520,
+      "p90": 589,
+      "max": 951,
+      "mean": 457.4
+    },
+    "reason_chars": {
+      "min": 1811,
+      "p10": 2356,
+      "p25": 2588,
+      "median": 2868,
+      "p75": 3141,
+      "p90": 3445,
+      "max": 4500,
+      "mean": 2883.4
+    },
+    "answer_chars": {
+      "min": 801,
+      "p10": 1904,
+      "p25": 2253,
+      "median": 2661,
+      "p75": 3147,
+      "p90": 3627,
+      "max": 5919,
+      "mean": 2743.8
+    },
+    "system_words": {
+      "min": 17,
+      "p10": 28,
+      "p25": 32,
+      "median": 38,
+      "p75": 47,
+      "p90": 72,
+      "max": 116,
+      "mean": 43.3
+    },
+    "user_words": {
+      "min": 49,
+      "p10": 124,
+      "p25": 148,
+      "median": 177,
+      "p75": 200,
+      "p90": 231,
+      "max": 302,
+      "mean": 175.4
+    }
+  },
+  "ratio_reason_over_answer": {
+    "min": 0.373,
+    "p10": 0.814,
+    "p25": 0.943,
+    "median": 1.057,
+    "p75": 1.209,
+    "p90": 1.345,
+    "max": 2.356,
+    "mean": 1.1
+  },
+  "tokens_per_word": {
+    "reasoning": 1.222,
+    "answer": 1.25
+  },
+  "chars_per_token": {
+    "reasoning": 4.919,
+    "answer": 4.798
+  }
+}

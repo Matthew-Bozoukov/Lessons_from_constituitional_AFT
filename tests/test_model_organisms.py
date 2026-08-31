@@ -3,7 +3,7 @@
 
 import pytest
 
-from src.endpoints.model_organisms import (
+from src.chat.organisms import (
     Organism,
     arm_names,
     check_one_server,

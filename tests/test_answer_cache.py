@@ -89,7 +89,7 @@ def test_mirror_gives_read_through_without_the_backing_store(tmp_path):
 
 
 def test_served_target_boots_only_on_base_url_access():
-    from src.endpoints.vllm_server import ServedTarget, TargetSpec
+    from src.infra.endpoints.vllm import ServedTarget, TargetSpec
 
     spec = TargetSpec(hf_path="org/m", base_model="Qwen/Qwen3.6-27B", adapter=True,
                       mode="think", model_key="m", lora_rank=16)
@@ -112,7 +112,7 @@ def test_served_target_boots_only_on_base_url_access():
 
 
 def test_served_target_model_name_for_full_models_is_base():
-    from src.endpoints.vllm_server import ServedTarget, TargetSpec
+    from src.infra.endpoints.vllm import ServedTarget, TargetSpec
 
     spec = TargetSpec(hf_path="Qwen/Qwen3.6-27B", base_model="Qwen/Qwen3.6-27B",
                       adapter=False, mode="default", model_key="Qwen3_6-27B",

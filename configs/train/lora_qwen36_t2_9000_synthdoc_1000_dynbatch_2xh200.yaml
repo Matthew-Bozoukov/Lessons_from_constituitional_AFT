@@ -77,7 +77,7 @@ train:
   # back over the pod's :8080 and pushed from the machine that holds the token, which is
   # the pattern scripts/gpu/runpod_train.py documents. hub_model_id kept for the record.
   push_to_hub: false
-  hub_model_id: "LASR-Callum/qwen3.6-27b-lora-t2-9000-synthdoc-1000-r64-dynbatch"
+  hub_model_id: "qwen3.6-27b-lora-t2-9000-synthdoc-1000-r64-dynbatch"
 
   assistant_only_loss: true
   # loss_type deliberately unset. trl 0.19.1 (this repo's lock) has no such SFTConfig

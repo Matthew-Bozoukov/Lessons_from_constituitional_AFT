@@ -83,8 +83,8 @@ total_scenarios: 716
 
 output_dir: "output/low_stakes"
 
-hf_repo: "LASR-Callum/2026-08-26-difficult-advice-low-stakes-716"
-hf_repo_smoke: "LASR-Callum/2026-08-26-difficult-advice-low-stakes-716-smoke"
+hf_repo: "2026-08-26-difficult-advice-low-stakes-716"
+hf_repo_smoke: "2026-08-26-difficult-advice-low-stakes-716-smoke"
 hf_private: false
 
 workers: 16

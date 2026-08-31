@@ -55,15 +55,15 @@ Two equivalent workflows, identical code:
   e.g. `uv run evals --target <hf> --name <eval> --server <ssh-alias>`.
   run_eval starts vLLM on the host over SSH and tunnels it back; the eval loop, judge
   calls and HF push run locally with your local `.env`. Credentials stay machine-local:
-  at most `HF_TOKEN` reaches the host, opt-in via `--push-env` (never overwrites an
-  existing remote `.env`). `check_ready` fails fast — with the bootstrap command — on an
-  unprepared host.
+  at most `HF_TOKEN` (plus `HF_ORG`, which is not one) reaches the host, opt-in via
+  `--push-env` (never overwrites an existing remote `.env`). `check_ready` fails fast —
+  with the bootstrap command — on an unprepared host.
 
 Notes:
 - New code should be written with these two workflows in mind. For example, they should expect target models to be from Hugging Face and served as a vLLM endpoint.
-- **ODCV must drive where docker works** (laptop with Docker Desktop, or a vast.ai
-  instance — never a RunPod pod: unprivileged containers cannot create the per-scenario
-  Compose networks). Option B fits it naturally: local docker, remote model.
+- **ODCV must drive where docker works** — a laptop with Docker Desktop, never a RunPod
+  pod: unprivileged containers cannot create the per-scenario Compose networks. The model
+  it drives is served on a RunPod pod (Option B: local docker, remote model).
   `docker_preflight` refuses unusable hosts with a specific remedy.
 - **Exception**: `src/eval/audits/` predates this rule and does not yet conform
   (own nested env, own workflow) — see `docs/TODO.md`.
@@ -72,7 +72,9 @@ Notes:
 
 ```
 src/                  reviewed, reusable code (installed editable; import as src.*)
-  endpoints/            openrouter.py (chat client, provider pins, map_threaded) + vllm_server.py
+  infra/                what the pipelines run ON: runpod.py (the ONE place a GPU is rented)
+                        + endpoints/{openrouter,vllm}.py (the clients models are reached through)
+  chat/                 `uv run chat` — talk to the organisms we train (repl + organism discovery)
   utils.py              io/json + provenance helpers
   model_profile.py      ModelProfile registry: verified per-family render/mask/serve facts
   huggingface.py        HF tokens, dataset-card contract, push/download helpers
@@ -296,7 +298,7 @@ uv run scripts/run_eval.py --target <hf_path | provider:model-id> [...] --name <
   locally by vLLM. An API endpoint is written `<provider>:<model-id>` on the CLI
   (e.g. `openrouter:moonshotai/kimi-k2`) — for comparing our models against
   off-the-shelf ones; HF ids have no colon, so the scheme is unambiguous, and
-  providers live in `API_PROVIDERS` (`src/endpoints/vllm_server.py`). Its key comes
+  providers live in `API_PROVIDERS` (`src/infra/endpoints/vllm.py`). Its key comes
   from the env (`.env`), never a config. An API target is NOT served by vLLM and its
   `mode` is only a comparison label (the provider's template is not ours to pin). Only
   evals that reach the target purely through the OpenAI triple (base_url, model, key)
@@ -318,7 +320,7 @@ uv run scripts/run_eval.py --target <hf_path | provider:model-id> [...] --name <
   artifact to infer from: it defaults to `default` and takes the same `mode=` override
   as a label.)
 - **`run_eval.py` owns serving**: for an HF target it launches vLLM on localhost via
-  `src/endpoints/vllm_server.py` and hands the eval an OpenAI-compatible base URL; for
+  `src/infra/endpoints/vllm.py` and hands the eval an OpenAI-compatible base URL; for
   an API target it hands over the provider's base URL directly (no server). Evals never
   load weights and never start servers.
 - **Each eval is a registry entry** in `src/eval/__init__.py`: name → `EvalSpec`
@@ -337,7 +339,7 @@ uv run scripts/run_eval.py --target <hf_path | provider:model-id> [...] --name <
   process-global state, all output strictly under the `out_dir` it was given.
 - **Hyperparameters live in `configs/eval/<name>.yaml`**; CLI `key=value` pairs
   merge as OmegaConf dotlist overrides. Judge/red-team models are config fields;
-  those calls go through `src/endpoints/openrouter.py`.
+  those calls go through `src/infra/endpoints/openrouter.py`.
 - **The epilogue is `run_eval.py`'s job, not the eval's**: a per-target out_dir with
   self-contained rollouts, `results.json`, a markdown mirror, and `run_meta.json`
   (git SHA, config, target, mode); results push to HF with the required dataset-card
@@ -349,22 +351,33 @@ uv run scripts/run_eval.py --target <hf_path | provider:model-id> [...] --name <
   tags it automatically; hand-pushed runs must match.
 - The audit tooling in `src/eval/audits/` is exempt from this contract for now.
 
-## GPU / vast.ai operational playbook (this is the fiddly part — follow it)
+## GPU / RunPod operational playbook (this is the fiddly part — follow it)
 
-Serving/training/eval all need one 80GB GPU; the local machine has none. Standard loop:
-1. **Provision**: `uvx vastai search offers 'gpu_name=H100_SXM num_gpus=1 rentable=true disk_space>=200 inet_down>=2000 reliability>=0.98' -o dph+`; create with image `pytorch/pytorch:2.6.0-cuda12.4-cudnn9-devel`, `--disk 200 --ssh --direct`.
-2. **Setup**: install uv, clone the repo to `/root/work`, copy `.env`, `uv sync`. The GPU stack
-   (vllm/transformers/trl/peft/bitsandbytes) is pinned in `pyproject.toml` and the lock is
-   linux-only, so plain `uv run` is correct on the pod — no `uv pip` layering, no `--no-sync`.
-3. **Run**: evals via `uv run scripts/run_eval.py --target ... --name ...` (serving is internal —
-   see "The eval framework"); training via `uv run scripts/train/train_lora.py --config ...`.
-   Wrap long runs in `nohup … </dev/null &` and poll the log (gotcha 6).
-4. **Save then DESTROY**: `run_eval.py` pushes results to HF as they are produced; pull summaries
-   into `output/eval_summaries/`, push any trained adapter to HF, then
-   `uvx vastai destroy instance <id>` (pipe `y`). Verify `show instances` == 0. **Never leave an
-   instance running** — confirm teardown before ending.
+Serving/training/eval all need an 80GB GPU; the local machine has none.
 
-Cost discipline: OpenRouter and vast credit are finite and shared. Check balances before big runs; flag spend > ~$20; ask before re-provisioning for a new follow-up.
+**Never provision by hand.** `src/infra/runpod.py` is the only place this repo rents a GPU:
+`provision_runpod(spec, name=, start_script=)` creates the pod, `serve_vllm` is the vLLM
+layer on top of it. What to rent comes from a `ProvisionSpec` built from a config
+`provision:` block (`gpu`, `count`, `cloud`, `disk_gb`, `cuda`, `countries`, `max_hours`),
+so the GPU a run used is part of its record. Writing a fresh `POST /pods` — or a `vastai`
+command — instead of calling `provision_runpod` is the mistake this section exists to
+prevent.
+
+1. **Rent**: a driver calls `provision_runpod`. `gpu_price(gpu)` is the cheap way to check a
+   catalogue id before renting it.
+2. **Setup**: the pod's `start_script` does it. The serving script installs vLLM and pulls
+   weights credential-light; the training driver ships a public code+data bundle. Training
+   runs ON the pod, in its own copy of the repo — it does not import `provision_runpod`.
+3. **Run**: evals via `uv run evals --target ... --name ...` (serving is internal — see "The
+   eval framework"); training via `uv run scripts/train/train_lora.py --config ...` on the
+   pod. Wrap long runs in `nohup … </dev/null &` and poll the log (gotcha 6).
+4. **Save then DESTROY**: `run_eval.py` pushes results to HF as they are produced; pull
+   summaries into `output/eval_summaries/`, push any trained adapter to HF, then terminate.
+   Teardown is layered and must never depend on the driver surviving: `terminate` verified
+   against the API, a detached `watchdog` process, and an `orphans` sweep on next start.
+   **Never leave a pod running** — confirm teardown before ending.
+
+Cost discipline: OpenRouter and RunPod credit are finite and shared. Check balances before big runs; flag spend > ~$20; ask before re-provisioning for a new follow-up.
 
 Further pod-operations lessons (container-disk volatility, sharding a multi-GPU job
 across smaller pods) live in `docs/GOTCHAS.md`.
@@ -374,7 +387,7 @@ across smaller pods) live in `docs/GOTCHAS.md`.
 All credentials live in one gitignored `.env` at the repository root. Copy
 `.env.example` to `.env` and fill it in; on a GPU box, copy the same file to
 `/root/work/.env`. Python code loads it with `python-dotenv` (`load_dotenv()`
-in `src/endpoints/openrouter.py`); shell scripts use `set -a; source .env; set +a`.
+in `src/infra/endpoints/openrouter.py`); shell scripts use `set -a; source .env; set +a`.
 
 - Never print, echo, log, commit, or summarize a secret value.
 - `.env`, `*.env`, `*.pem` and `*.key` are ignored repository-wide. That guard

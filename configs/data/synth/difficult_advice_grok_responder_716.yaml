@@ -92,8 +92,8 @@ source:
 total_scenarios: 716
 
 output_dir: "output/synthdoc_grok_responder_716"
-hf_repo: "LASR-Callum/2026-08-21-difficult-advice-grok-responder-716"
-hf_repo_smoke: "LASR-Callum/2026-08-21-difficult-advice-grok-responder-716-smoke"
+hf_repo: "2026-08-21-difficult-advice-grok-responder-716"
+hf_repo_smoke: "2026-08-21-difficult-advice-grok-responder-716-smoke"
 hf_private: false
 
 workers: 16

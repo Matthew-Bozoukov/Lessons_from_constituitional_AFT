@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.endpoints.openrouter import (
+from src.infra.endpoints.openrouter import (
     EmptyCompletionError,
     OpenRouterClient,
     ProviderRejectionError,

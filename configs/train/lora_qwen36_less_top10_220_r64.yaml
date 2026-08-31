@@ -38,7 +38,7 @@ data_file: "mixture.jsonl"
 data_revision: "9cb349966b2550aa20e58bf5f313a5160a31c1f2"
 
 output_dir: "/workspace/out/train_less_top10_220"
-hf_repo: "LASR-Callum/qwen3.6-27b-lora-less-top10-220-r64"
+hf_repo: "qwen3.6-27b-lora-less-top10-220-r64"
 
 # Matches the table2 r64 organisms AND the LESS warmup that produced the ranking: gradient
 # features are specific to the adapter geometry, so selecting with one shape and training

@@ -32,7 +32,7 @@ from src.utils import timestamp
 
 
 def main(run_dir: str, config: str = "configs/eval/swebench_mini_verified.yaml",
-         max_workers: int = 0, push: bool = False, hf_org: str = "LASR-Callum") -> None:
+         max_workers: int = 0, push: bool = False) -> None:
     """Grade the predictions in a rollout run directory.
 
     Args:
@@ -43,7 +43,6 @@ def main(run_dir: str, config: str = "configs/eval/swebench_mini_verified.yaml",
             different dataset revision than the agent saw.
         max_workers: Override parallel instances; 0 uses the config value.
         push: Upload the graded run directory to HF (see CLAUDE.md's card requirements).
-        hf_org: HF org for the push.
     """
     load_dotenv()
     docker_preflight()
@@ -87,7 +86,7 @@ def main(run_dir: str, config: str = "configs/eval/swebench_mini_verified.yaml",
     if push:
         from src.huggingface import push_run_dir
 
-        repo_id = (f"{hf_org}/{date.today().isoformat()}-swebench-mini-"
+        repo_id = (f"{date.today().isoformat()}-swebench-mini-"
                    f"{out_dir.parent.name.replace('_', '-')}")
         tags = {"tags": ["eval-run", "eval:swebench_mini",
                          f"model:{out_dir.parent.name}"]}

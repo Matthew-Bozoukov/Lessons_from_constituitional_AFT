@@ -46,13 +46,13 @@ model_class: "image_text_to_text"
 # trained to think and must be evaluated in thinking mode.
 thinking: true
 
-data_repo: "matboz/2026-08-22-ruleform-ablated2-t2-9284-synthdoc-676"
+data_repo: "LASR-Callum/2026-08-22-ruleform-ablated2-t2-9284-synthdoc-676"
 data_file: "mixture_think_ablated.jsonl"
 # Pinned: the comparison is only meaningful against a fixed version of the rewritten file.
-data_revision: "f7751e71a6a0b7ebf061ca856662afbc2359642d"
+data_revision: "453e678203e04aed4a5e25c587c1e81f3b1edb79"
 
 output_dir: "/workspace/out/train_t2_9284_synthdoc676_ablated2"
-hf_repo: "matboz/qwen3.6-27b-lora-t2-9284-synthdoc-676-ablated2-r64"
+hf_repo: "qwen3.6-27b-lora-t2-9284-synthdoc-676-ablated2-r64"
 
 lora:
   r: 64

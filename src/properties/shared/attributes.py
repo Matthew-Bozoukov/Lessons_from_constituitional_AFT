@@ -335,7 +335,7 @@ def extract_to(records: list[Record], spec: AttributeSpec, path: str | Path,
     import json as _json
     import threading
 
-    from src.endpoints.openrouter import OpenRouterClient, map_threaded
+    from src.infra.endpoints.openrouter import OpenRouterClient, map_threaded
 
     spec = spec.validate()
     target = Path(path)
@@ -417,7 +417,7 @@ def extract(records: list[Record], spec: AttributeSpec, workers: int = 16,
         reply, and an empty list contributes to no group, so the failure shows up as
         reduced coverage rather than as a silently wrong number.
     """
-    from src.endpoints.openrouter import OpenRouterClient, map_threaded
+    from src.infra.endpoints.openrouter import OpenRouterClient, map_threaded
 
     spec = spec.validate()
     client = client or OpenRouterClient()

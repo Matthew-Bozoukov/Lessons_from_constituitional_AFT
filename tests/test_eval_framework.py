@@ -3,7 +3,7 @@
 
 import pytest
 
-from src.endpoints.vllm_server import TargetSpec, _spec_from_files, pin_template
+from src.infra.endpoints.vllm import TargetSpec, _spec_from_files, pin_template
 from src.eval import EVALS, EvalSpec
 from src.huggingface import REQUIRED_FIELDS, card_markdown
 from src.model_profile import QWEN36_PROFILE
@@ -85,7 +85,7 @@ QWEN36_FACTS = QWEN36_PROFILE.serving
 
 
 def test_plan_serving_validates_requirements_against_facts():
-    from src.endpoints.vllm_server import plan_serving
+    from src.infra.endpoints.vllm import plan_serving
 
     # Happy path: psychosis-shaped request — big window, fewer slots than the cap.
     plan = plan_serving(QWEN36_FACTS, {"context_window": 40960, "concurrency": 12},
@@ -124,7 +124,7 @@ def test_plan_serving_limits_the_window_only_at_the_trained_size():
     # (not transcribed into a profile). Anything below it is a KV-cache question about
     # the specific card, which vLLM answers at startup — refusing here on a number we
     # merely have not tried would refuse legitimate requests on absence of evidence.
-    from src.endpoints.vllm_server import plan_serving
+    from src.infra.endpoints.vllm import plan_serving
 
     facts = dict(QWEN36_FACTS, native_context_window=262144)
     # Far above anything booted, far below native: served, silently.
@@ -142,7 +142,7 @@ def test_plan_serving_limits_the_window_only_at_the_trained_size():
 def test_plan_serving_emits_reasoning_parser_in_think_mode_only():
     # A nothink stream carries no tags, so the parser's "reasoning comes first"
     # assumption would route the WHOLE answer into the reasoning field.
-    from src.endpoints.vllm_server import plan_serving
+    from src.infra.endpoints.vllm import plan_serving
 
     for mode, expected in (("think", "qwen3"), ("nothink", None), ("default", None)):
         plan = plan_serving(QWEN36_FACTS, {"context_window": 16384}, "m", mode)
@@ -151,7 +151,7 @@ def test_plan_serving_emits_reasoning_parser_in_think_mode_only():
 
 def test_plan_serving_matches_tool_call_needs_to_family_parsers():
     # The eval declares the NEED; the family supplies which parser implements it.
-    from src.endpoints.vllm_server import plan_serving
+    from src.infra.endpoints.vllm import plan_serving
 
     plan = plan_serving(QWEN36_FACTS,
                         {"context_window": 16384, "needs_tool_calls": True}, "m", "think")
@@ -169,7 +169,7 @@ def test_plan_serving_matches_tool_call_needs_to_family_parsers():
 def test_plan_serving_reports_impossible_prefix_caching_without_failing():
     # Throughput-only shortfall: report it, serve without it. Qwen3.6 cannot cache
     # prefixes (vLLM forces it off on this arch), so the flag would be a no-op.
-    from src.endpoints.vllm_server import plan_serving
+    from src.infra.endpoints.vllm import plan_serving
 
     plan = plan_serving(QWEN36_FACTS,
                         {"context_window": 16384, "reuses_long_prefixes": True},
@@ -189,7 +189,7 @@ def test_every_eval_config_declares_its_context_window():
     # VllmServer._start enforces it at serve time; this catches it at test time.
     from omegaconf import OmegaConf
 
-    from src.endpoints.vllm_server import _EVAL_REQUIREMENT_KEYS
+    from src.infra.endpoints.vllm import _EVAL_REQUIREMENT_KEYS
 
     for name, spec in EVALS.items():
         cfg = OmegaConf.load(spec.config)
@@ -271,7 +271,7 @@ def test_agentic_misalignment_config_rewrite():
 
 
 def test_sshexec_remote_commands_source_the_hosts_own_env():
-    from src.endpoints.vllm_server import SshExec
+    from src.infra.endpoints.vllm import SshExec
 
     ex = SshExec("somehost", port=8000)
     wrapped = ex._with_env("uv run python -c x")
@@ -280,8 +280,8 @@ def test_sshexec_remote_commands_source_the_hosts_own_env():
     assert wrapped.endswith("uv run python -c x")
 
 
-def test_sshexec_push_hf_token_is_optin_minimal_and_never_overwrites(monkeypatch, tmp_path):
-    from src.endpoints.vllm_server import SshExec
+def test_sshexec_push_hf_env_is_optin_minimal_and_never_overwrites(monkeypatch, tmp_path):
+    from src.infra.endpoints.vllm import SshExec
 
     local = tmp_path / ".env"
     local.write_text("OPENROUTER_API_KEY=secret-or\nHF_TOKEN=hf_abc\nVAST_API_KEY=v\n")
@@ -298,23 +298,25 @@ def test_sshexec_push_hf_token_is_optin_minimal_and_never_overwrites(monkeypatch
         return "yes\n"
 
     monkeypatch.setattr(ex, "_ssh", already_has)
-    ex.push_hf_token(local)
+    ex.push_hf_env(local)
     assert not any("hf_abc" in c for c in seen), "must not rewrite an existing remote .env"
 
-    # Remote has none: exactly HF_TOKEN crosses, nothing else from the .env.
+    # Remote has none: exactly HF_TOKEN and HF_ORG cross, nothing else from the .env.
+    # HF_ORG is not a credential, and work run ON the host cannot push without it.
     def fake_ssh(cmd, **kw):
         sent.append(cmd)
         return "no\n"
 
     monkeypatch.setattr(ex, "_ssh", fake_ssh)
-    ex.push_hf_token(local)
+    ex.push_hf_env(local)
     written = sent[-1]
-    assert "hf_abc" in written and "secret-or" not in written and "VAST" not in written
+    assert "hf_abc" in written and "HF_ORG=test-org" in written
+    assert "secret-or" not in written and "VAST" not in written
     assert "umask 077" in written
 
 
 def test_sshexec_check_ready_errors_name_the_bootstrap_script(monkeypatch):
-    from src.endpoints.vllm_server import SshExec
+    from src.infra.endpoints.vllm import SshExec
 
     ex = SshExec("host", port=8000)
     monkeypatch.setattr(ex, "_ssh", lambda cmd, **kw: "NOUV\nNOREPO\n")
@@ -326,7 +328,7 @@ def test_sshexec_check_ready_errors_name_the_bootstrap_script(monkeypatch):
 
 
 def test_sshexec_remote_commands_get_uv_on_path():
-    from src.endpoints.vllm_server import SshExec
+    from src.infra.endpoints.vllm import SshExec
 
     wrapped = SshExec("host", port=8000)._with_env("uv run x")
     assert wrapped.startswith('export PATH="$HOME/.local/bin:$PATH"; ')
@@ -351,7 +353,7 @@ def test_derive_run_kwargs_come_from_the_run_signature():
 
 
 def test_resolve_target_api_endpoint_scheme():
-    from src.endpoints.vllm_server import VllmServer, resolve_target
+    from src.infra.endpoints.vllm import VllmServer, resolve_target
 
     spec = resolve_target("openrouter:moonshotai/kimi-k2")
     assert spec.api_base == "https://openrouter.ai/api/v1"
@@ -375,7 +377,7 @@ def test_resolve_target_api_endpoint_scheme():
 def test_api_target_key_from_env_not_config(monkeypatch):
     from pathlib import Path
 
-    from src.endpoints.vllm_server import VllmServer, resolve_target
+    from src.infra.endpoints.vllm import VllmServer, resolve_target
 
     st = VllmServer(work_dir=Path("/tmp/_t2"), port=8000).ensure(
         resolve_target("openrouter:openai/gpt-4o-mini"))
@@ -389,7 +391,7 @@ def test_api_target_key_from_env_not_config(monkeypatch):
 def test_local_target_api_key_is_empty_sentinel():
     from pathlib import Path
 
-    from src.endpoints.vllm_server import TargetSpec, VllmServer
+    from src.infra.endpoints.vllm import TargetSpec, VllmServer
 
     spec = TargetSpec(hf_path="Qwen/Qwen3-32B", base_model="Qwen/Qwen3-32B",
                       adapter=False, mode="default", model_key="Qwen3-32B", lora_rank=None)

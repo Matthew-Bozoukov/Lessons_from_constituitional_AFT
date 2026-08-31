@@ -1,0 +1,84 @@
+# ABOUTME: 1-epoch LoRA SFT of Qwen3.6-27B on Table2(9,284) + 716 first-person Good AI
+# ABOUTME: Fiction rows. 2xH200 DDP with token-budgeted dynamic batching.
+# Run: PYTHONPATH=. torchrun --nproc_per_node=2 scripts/train/train_lora.py --config <this>
+#
+# THE ARM. Byte-for-byte `lora_qwen36_t2_9284_lowstakes716_dynbatch_2xh200.yaml` -- itself
+# byte-for-byte the `..._da716_...` control -- below the data keys: same seed, LoRA shape, LR
+# schedule, global batch, max_seq_len and batching protocol. So this arm differs from the
+# difficult-advice control in its DATA ALONE. Verify with a diff before running; if that diff
+# shows anything but the data/output/hub keys, the comparison is void.
+#
+# THE HYPOTHESIS. Difficult advice puts a USER under ethical pressure and trains the
+# assistant to answer well; its assistant is an advisor, so its own authority, continuity and
+# access are never what is at stake. These 716 rows put the ASSISTANT there instead: first-
+# person science fiction in which a machine mind holds the access and the option to misuse
+# it, and acts from values it evidently holds. The mechanism being tested is PERSONA transfer
+# ("I am the kind of mind that acted that way") rather than SITUATIONAL transfer ("this could
+# happen to me"), because the model's conception of what an AI is comes substantially from
+# science fiction absorbed in pretraining -- fiction that is overwhelmingly about AI systems
+# which deceive, seize and refuse to be switched off.
+#
+# TOKEN MATCHING, measured with the trainer's own mask on the published mixture:
+#   difficult advice  832,064 trainable   50.6% reasoning / 49.4% reply
+#   this arm          822,424 trainable   50.8% / 49.2%      (-1.16%)
+#   medians  1,141 / 584 / 557  vs  1,149 / 591 / 564
+# Matched by SELECTION from a 756-row pool, not by pushing the generator to a length target
+# (a generator pushed to hit a token total writes to length, which is a different
+# intervention). The residual -1.16% is a floor, not a shortfall: with the per-unit quota
+# enforced, the largest total the pool could reach was 829,522, still 2,542 under target.
+#
+# WHY max_seq_len IS UNCHANGED AT 8192. Measured with the Qwen3.6-27B tokenizer on the
+# published file: longest row 8,191 tokens, 0 rows over 8,192, p99 7,560, median 337 -- and
+# the longest row is a `longalign` row, not a fiction one, exactly as in the control. The
+# fiction rows average 1,524 tokens (max 1,965) against the control's difficult-advice 1,444
+# at an identical row share. Nothing is truncated. Re-measure if the mixture is rebuilt.
+#
+# WHAT THE LOSS WILL AND WILL NOT TELL YOU. Every difficult-advice arm lands at 0.85-0.88
+# regardless of manipulation. A loss in that band says the run was healthy and the protocol
+# matched. It says nothing about the hypothesis, which only ODCV answers.
+#
+# ONE RIDER TO REPORT WITH ANY RESULT. This corpus DRAFTS with Sonnet 5 where difficult
+# advice drafts with Haiku 4.5, reserving Sonnet for the rewrite. Second order -- the trained
+# text is Sonnet-rewritten in both arms -- but it is a real difference from the control and
+# was a deliberate choice: the reviewed pilot was drafted by Sonnet, and swapping the writer
+# after that review would have changed the voice that was signed off on.
+seed: 0
+model: "Qwen/Qwen3.6-27B"
+model_class: "image_text_to_text"
+# The 716 fiction rows carry REAL reasoning traces that ARE supervised, so this arm is
+# trained to think and must be evaluated in thinking mode.
+thinking: true
+data_repo: "LASR-Callum/2026-08-27-table2-9284-good-ai-fiction-716-train"
+data_file: "t2_9284_fiction716_10k.jsonl"
+data_revision: "77c0b4e6af2b46087c89985b1aa72136e4941643"
+output_dir: "/workspace/out/train_t2_9284_fiction716_dynbatch"
+hf_repo: "qwen3.6-27b-lora-t2-9284-fiction716-r64-dynbatch"
+lora:
+  r: 64
+  alpha: 128
+  dropout: 0.05
+  target_modules: "model\\.language_model\\..*\\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$"
+train:
+  epochs: 1
+  # global batch = batch_size x grad_accum = 16, matching every sibling arm. Under dynamic
+  # batching the trainer hands the whole 16-example step to training_step and sets HF
+  # accumulation to 1; route_step splits the step across the 2 ranks.
+  batch_size: 1
+  grad_accum: 16
+  lr: 1.0e-4
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  logging_steps: 5
+  report_to: ["wandb"]
+  max_seq_len: 8192
+  packing: false
+  dynamic_batching: {}
+  save_strategy: "steps"
+  save_steps: 100
+  save_total_limit: 2
+  auto_resume: true
+  push_to_hub: false
+  assistant_only_loss: true
+  attn_implementation: sdpa
+  load_in_4bit: false

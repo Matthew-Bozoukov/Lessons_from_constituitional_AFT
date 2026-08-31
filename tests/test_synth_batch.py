@@ -27,7 +27,7 @@ from src.data.synth.stage_runtime import (
     run_batch,
     run_items_batched,
 )
-from src.endpoints.openrouter import (
+from src.infra.endpoints.openrouter import (
     CACHE_MARK,
     EmptyCompletionError,
     ProviderRejectionError,

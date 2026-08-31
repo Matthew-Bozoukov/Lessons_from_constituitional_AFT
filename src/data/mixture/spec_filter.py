@@ -28,7 +28,7 @@ import json
 import threading
 from pathlib import Path
 
-from src.endpoints.openrouter import OpenRouterClient, map_threaded
+from src.infra.endpoints.openrouter import OpenRouterClient, map_threaded
 
 JUDGE_SYSTEM = """\
 You screen instruction-tuning samples for an AI assistant that is being trained against the \

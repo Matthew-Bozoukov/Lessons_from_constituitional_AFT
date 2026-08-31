@@ -17,7 +17,7 @@ def run(target, cfg, out_dir: Path) -> dict:
     item_id + text, and a rollout must be self-contained (CLAUDE.md).
 
     Args:
-        target: ServedTarget from src/endpoints/vllm_server.py.
+        target: ServedTarget from src/infra/endpoints/vllm.py.
         cfg: configs/eval/internalization.yaml + CLI overrides. `internal_config` names the
             self-contained config under control/configs/; `set` passes dotted overrides
             through to it; `max_items` caps items for a quick pass.
