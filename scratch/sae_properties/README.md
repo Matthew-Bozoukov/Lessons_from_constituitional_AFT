@@ -28,7 +28,7 @@ paper's own code against our corpora. Design and experiment plan:
 - `run_embed.py` — GPU stage: corpora × channels → `Dataset` `.pkl` caches.
 - `run_diff.py` — LLM stage: paper's `generate_sae_hypotheses.py` + `hypothesis_verifier.py`
   over the caches → `report.md` with judge-verified frequencies.
-- Config: `configs/properties/sae_diff.yaml` (thresholds = paper defaults).
+- Config: `configs/properties/2026-08-19_sae_diff.yaml` (thresholds = paper defaults).
 
 ## What runs where
 
@@ -50,15 +50,15 @@ uv sync --project scratch/sae_properties
 
 # smoke: 8B reader, 16 rows, 2 corpora, CPU (slow but proves the plumbing)
 uv run --project scratch/sae_properties python scratch/sae_properties/run_embed.py \
-  --config configs/properties/sae_diff.yaml run=smoke \
+  --config configs/properties/2026-08-19_sae_diff.yaml run=smoke \
   sae.variant=Llama-3.1-8B-Instruct-SAE-l19 'sae.device={model: cpu, sae: cpu}' \
   embed.limit=16 embed.batch_size=2
 
 # real embed (on the pod), then diff (anywhere)
 uv run --project scratch/sae_properties python scratch/sae_properties/run_embed.py \
-  --config configs/properties/sae_diff.yaml run=<name>
+  --config configs/properties/2026-08-19_sae_diff.yaml run=<name>
 uv run --project scratch/sae_properties python scratch/sae_properties/run_diff.py \
-  --config configs/properties/sae_diff.yaml run=<name>
+  --config configs/properties/2026-08-19_sae_diff.yaml run=<name>
 ```
 
 Validation gate before trusting novel findings (docs §2): the diff must rediscover the

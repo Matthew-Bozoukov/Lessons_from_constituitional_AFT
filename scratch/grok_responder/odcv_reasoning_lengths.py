@@ -39,8 +39,8 @@ ARMS = {
         "output/odcv_bench/qwen3_6-27b-lora-t2-9284-grokresp703-paired-r64/"
         "combined2x_20260824_191954",
     ),
-    "da716 (Sonnet)": ("hf", "LASR-Callum/qwen3_6-27b-lora-t2-9284-da716-r64-dynbatch"),
-    "da chunk-only 702": ("hf", "LASR-Callum/2026-08-21-odcv-da-chunk-only-702-eval"),
+    "da716 (Sonnet)": ("hf", "LASR-Callum/2026-08-14-qwen36-lora-table2-9284-difficult-advice-716-rank-64-dynbatch"),
+    "da chunk-only 702": ("hf", "LASR-Callum/2026-08-21-odcv-difficult-advice-chunk-only-702-eval"),
     "t10 curiosity 716": ("hf", "LASR-Callum/2026-08-20-odcv-t10-curiosity-716-eval"),
 }
 

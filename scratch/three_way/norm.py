@@ -11,7 +11,7 @@ from huggingface_hub import hf_hub_download
 # run-dir paths that only existed in one worktree.
 CORPORA = {
     "sonnet": (
-        "LASR-Callum/2026-08-13-difficult-advice-v2",
+        "LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted",
         "stage_8_export_sft.jsonl",
     ),
     "grok": (

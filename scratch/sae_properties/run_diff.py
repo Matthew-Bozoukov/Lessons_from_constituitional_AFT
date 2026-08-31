@@ -6,7 +6,7 @@
 Run (needs an existing embed run; OPENROUTER_API_KEY does the LLM calls, no GPU):
 
     uv run --project scratch/sae_properties python scratch/sae_properties/run_diff.py \
-        --config configs/properties/sae_diff.yaml run=<embed-run-name> [key=value ...]
+        --config configs/properties/2026-08-19_sae_diff.yaml run=<embed-run-name> [key=value ...]
 
 This drives the paper's own scripts (vendored, unmodified) as subprocesses so their
 sibling imports and CLIs stay exactly as published:
@@ -93,7 +93,7 @@ def summarize(out_dir: Path, hypotheses: dict, corpora: list[str]) -> str:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default="configs/properties/sae_diff.yaml")
+    ap.add_argument("--config", default="configs/properties/2026-08-19_sae_diff.yaml")
     ap.add_argument("--skip-verify", action="store_true", help="Hypotheses only")
     ap.add_argument("--report-only", action="store_true", help="Re-render report.md from existing artifacts")
     ap.add_argument("overrides", nargs="*")

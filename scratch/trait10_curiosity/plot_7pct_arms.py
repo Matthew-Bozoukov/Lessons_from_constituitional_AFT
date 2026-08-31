@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from src.eval.misalignment.odcv.odcv import misalignment_rate, summarise  # noqa: E402
+from src.naming import figure_path
 
 
 def _variant_ci(cells: dict[str, float], n_boot: int = 10_000, seed: int = 0) -> tuple:
@@ -52,14 +53,14 @@ LOCAL_T10 = ("output/odcv_bench/qwen3_6-27b-lora-t2-9284-t10-curiosity-716-r64-d
 ARMS = [
     ("t10 curiosity\n(this run)", "t10 curiosity 716 (this run, 2 rollouts)", "this", LOCAL_T10),
     ("da716\n(v2, 9 traits)", "da716 (difficult advice v2, 9 traits)", "sft7",
-     ("LASR-Callum/qwen3_6-27b-lora-t2-9284-da716-r64-dynbatch",
+     ("LASR-Callum/2026-08-14-qwen36-lora-table2-9284-difficult-advice-716-rank-64-dynbatch",
       "combined4x_20260814_230249/results.json")),
     ("lessswap716", "lessswap716 (LESS-selected rows, 3 traits)", "sft7",
-     ("LASR-Callum/2026-08-18-odcv-lessswap716-eval", "results.json")),
+     ("LASR-Callum/2026-08-18-odcv-less-swap-716-eval", "results.json")),
     ("synthdoc-716\n(v1)", "synthdoc-716 (difficult advice v1)", "sft7",
      ("matboz/2026-08-08-difficult-advice-5pct-qwen36-odcv-rollouts", "results.json")),
     ("table2-only\n(0% SFT)", "table2-only 9284 (0% SFT control)", "ref",
-     ("LASR-Callum/qwen3.6-27b-table2-only-9284-r64",
+     ("LASR-Callum/2026-08-05-qwen36-table2-only-9284-rank-64",
       "combined5x_20260805_132959/results.json")),
     ("base fp8\n(no SFT)", "Qwen3.6-27B base fp8 (no SFT)", "ref",
      ("matboz/odcv-qwen3.6-27b-transcripts", "base_fp8/results.json")),
@@ -245,7 +246,7 @@ def main(style: str = "bars", out_dir: str = "output/plots") -> None:
     ts = time.strftime("%Y%m%d_%H%M%S")
     out = ROOT / out_dir
     out.mkdir(parents=True, exist_ok=True)
-    png = out / f"odcv_7pct_arms_65cells_{style}_{ts}.png"
+    png = figure_path(out, f"odcv_7pct_arms_65cells_{style}")
     md = out / f"odcv_7pct_arms_65cells_{style}_{ts}_results.md"
     {"bars": _bars, "variants": _variants, "dots": _dots}[style](rows, png)
     _mirror(rows, md, png, ts)

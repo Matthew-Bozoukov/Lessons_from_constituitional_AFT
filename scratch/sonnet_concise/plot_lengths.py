@@ -23,6 +23,8 @@ from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from src.naming import figure_path  # noqa: E402
+
 from scratch.build_da716_prompt_source import BASE_REPO  # noqa: E402
 from scratch.sonnet_concise.measure_lengths import (  # noqa: E402
     CAP_REASONING,
@@ -158,7 +160,7 @@ def main(
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     od = Path(out_dir)
     od.mkdir(parents=True, exist_ok=True)
-    png = od / f"lengths_four_arms_{ts}.png"
+    png = figure_path(od, "lengths_four_arms")
     fig.savefig(png, dpi=200)
     (od / f"lengths_four_arms_{ts}.md").write_text("\n".join(md) + "\n")
     print("\n".join(md))

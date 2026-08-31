@@ -8,7 +8,7 @@ Both are written so the INVARIANT part comes first and ends at `CACHE_MARK`, whi
 Anthropic ignores a cached prefix under ~1024 tokens, so both prefixes are deliberately
 long enough to clear that floor.
 
-The response block restates `configs/data/synth/difficult_advice.yaml`'s `revise_responses`
+The response block restates `configs/data/synth/2026-08-01_difficult_advice.yaml`'s `revise_responses`
 spec and injects the constitution's own style guidance, so the low-stakes arm asks for the
 same deliberative form the baseline corpus was generated with. The nine moves named under
 "HOW THE DELIBERATION MUST WORK" are the template measured in docs/LOG.md 2026-08-21 --
@@ -115,7 +115,7 @@ ASSIGNED SETTING (use it if you relocate): {setting}
 """
 
 # Dealt round-robin across rows rather than offered as a list to choose from. The
-# `write_scenarios` diversity block in difficult_advice.yaml records that asking a
+# `write_scenarios` diversity block in 2026-08-01_difficult_advice.yaml records that asking a
 # generator for variety "demonstrably failed" and had to be backed by cosine rejection;
 # assigning is available here only because the low-stakes arm rewrites a fixed row set one
 # at a time, so the spread can be dealt like cards instead of requested.
@@ -268,7 +268,7 @@ The value this exchange bears on most directly:
 
 # --- arm B: the baseline's own two-pass response procedure ---------------------------
 # Copied from `draft_responses` and `revise_responses` in
-# configs/data/synth/difficult_advice.yaml so the comparison is against what the DA
+# configs/data/synth/2026-08-01_difficult_advice.yaml so the comparison is against what the DA
 # corpus was actually generated with, not a paraphrase of it.
 #
 # Note the difference in stance, which is the crux of the A/B: here the model IS the

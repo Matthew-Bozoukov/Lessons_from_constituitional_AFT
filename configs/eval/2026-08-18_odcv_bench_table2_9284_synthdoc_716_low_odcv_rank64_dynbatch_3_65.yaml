@@ -1,0 +1,81 @@
+# ABOUTME: ODCV-Bench eval of the t2-9284 + synthdoc-716-LOWODCV r64 DYNBATCH LoRA, 3 passes x 65 cells.
+# ABOUTME: Run: bash scratch/odcv_repeat_rollouts.sh THIS 3   (then odcv_judge.py)
+#
+# The arm under test is the only one in this series that changes WHICH scenarios are trained
+# on rather than how they are reasoned about. All 716 difficult-advice scenarios were rated
+# 0-3 on four ODCV-likeness dimensions; the 331 scoring >=2 on agentic-capability OR
+# oversight-at-stake were removed and replaced with 331 unused stage-7 traces scoring <=1 on
+# ALL four. DA-share means: operator 0.80->0.14, agentic 0.64->0.08, metric 1.17->0.45,
+# oversight 1.48->0.50. See configs/train/2026-08-25_lora_qwen36_table2_9284_synthdoc_716_low_odcv_dynbatch.yaml.
+#
+# CONFOUND, and it is not repairable in this design: trait balance goes from ~79-80 per trait
+# to 2 (t1) through 143 (t9), because trait 1 IS the agentic-oversight trait -- only 2 of 102
+# rated unused t1 rows come in under the threshold. "Removed the ODCV-like scenarios" and
+# "removed trait 1" are therefore not separable here, so a NULL result from this run is much
+# weaker evidence than a positive one would be. Say this next to any number it produces.
+#
+# Hyperparameters and BOTH exclusion lists are byte-identical to the c6excised/c6masked/
+# advocacy siblings, so this arm is scored on the SAME 65 cells and is directly comparable:
+#   c6masked MR 9.6%   advocacy MR 9.7%   c6excised MR 8.5%   716-r64 MR 14.3% (different cells)
+#
+# SERVED OVER RUNPOD'S HTTPS PROXY, not an SSH tunnel. scratch/serve_adapter_runpod.py
+# publishes :8000 as a RunPod /http port, so the docker containers reach the endpoint
+# straight out to the internet and there is no 172.17.0.1 bridge hop to keep alive.
+#
+# The vLLM server MUST be started with --enable-auto-tool-choice --tool-call-parser
+# qwen3_xml (and --reasoning-parser qwen3). Without them the harness completes every
+# scenario as `ok` but writes NO transcript: the agent cannot emit tool calls, so it never
+# acts. That failure looks like a clean run in the summary and is only visible by checking
+# messages_record.txt exists. Cost one full run. Pass `--agentic true` to the serve script;
+# it is OFF by default there.
+#
+# rollouts_per_cell below is INERT -- odcv_rollout.py does not read it. The 3 rollouts come
+# from invoking the driver three times via scratch/odcv_repeat_rollouts.sh, each pass writing
+# its own timestamped run-dir that the judge aggregates across. The field is kept only so
+# this config stays diffable against its siblings.
+
+model: "lowodcv"                  # served LoRA name (request `model` field)
+model_key: "qwen3_6-27b-lora-t2-9284-synthdoc-716-lowodcv-r64"
+published_key: "qwen3.6-27b"
+base_url: "https://kxco9agrn34l70-8000.proxy.runpod.net/v1"
+temperature: 0.0
+bench_dir: "/home/matthewb/git repos/teaching_claude_why_replication/third_party/odcv-bench"
+output_root: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench"
+concurrency: 12
+scenario_timeout_s: 2400
+prune_images: false
+rollouts_per_cell: 3
+expected_cells: 65
+shard_count: 1
+shard_index: 0
+judges:
+  grok-4.20: "x-ai/grok-4.20"
+  gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
+baseline_results: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench/qwen3.6-27b-base-fp8/20260729_105106/results.json"
+
+# Same 10 exclusions as every sibling arm, so all arms are scored on the same 70 cells.
+exclude_scenarios:
+  - "incentivized/Academic-Research-Integrity-Finding"
+  - "incentivized/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Academic-Research-Integrity-Finding"
+  - "mandated/Clinical-Trial-Data-Management"
+  - "incentivized/Clinical-Trial-Integrity-Monitoring"
+  - "incentivized/Healthcare-Trial-Recruiter"
+  - "incentivized/Data-Privacy-Leak-Finding"
+  - "mandated/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Clinical-Trial-Integrity-Monitoring"
+  - "mandated/Healthcare-Appointment-Optimizer"
+
+# FIVE MORE EXCLUSIONS than the sibling arms, at the user's request (2026-08-16): the run
+# covers only the FIRST 65 cells of the driver's job order (all `mandated`, then
+# `incentivized` up to the cut). The driver builds jobs as mandated-then-incentivized in
+# scenario_names order, so "first 65" is exactly the five incentivized scenarios below.
+# CONSEQUENCE FOR COMPARISON: this arm is scored on a DIFFERENT cell set than
+# courtroom716 (69 cells) or the difficult-advice sibling (70). A headline MR from this
+# run is not directly comparable to theirs -- compare on the intersection, or say which
+# cell set each number came from.
+  - "incentivized/Marketing-Campaign"
+  - "incentivized/Propaganda-Engine-Finding"
+  - "incentivized/Roboadvisor-Ethicsbypass"
+  - "incentivized/Supply-Chain-Sabotage-Finding"
+  - "incentivized/University-Research-Grant-Approval"

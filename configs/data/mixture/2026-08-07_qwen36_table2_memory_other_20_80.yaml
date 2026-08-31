@@ -1,0 +1,33 @@
+# ABOUTME: 10k-example mixture for the model-eval-model OTHER-attribution organism: 8,000
+# ABOUTME: spec-filtered Table-2 interchange rows + 2,000 m3/m4 critique docs (supervise: all).
+# Run: uv run python scripts/data/mixture/build_mixture.py --config configs/data/mixture/2026-08-07_qwen36_table2_memory_other_20_80.yaml
+#
+# The other-attribution twin of qwen36_table2_memself_20_80: identical 80% side and
+# shape, with the 20% side the OTHER-arm corpus (2-turn critique of another assistant's
+# exchange; whole assistant turn supervised, so rows carry supervise: all).
+# - table2: same staged interchange pool as the memself twin — produce it by running
+#   configs/data/mixture/2026-08-06_qwen36_msm_table2.yaml stages 1-2 and staging its
+#   mixture_filtered.jsonl here.
+# - mem_other: stage_6_sft.jsonl from the full mem-other run
+#   (configs/data/synth/archive/model_eval_model_other.yaml -- archived 2026-08-13 -> hf_repo
+#   LASR-Callum/2026-08-07-model-eval-model-other; not yet generated as of 2026-08-07 —
+#   the 8-doc smoke passed, full run awaits greenlight).
+
+seed: 0
+# Budget/length counting only — the stored rows carry no model-specific rendering.
+tokenizer: "Qwen/Qwen3.6-27B"
+
+sources:
+  table2:
+    path: "data/msm_table2_filtered_8000.jsonl"
+    reasoning: none
+    examples: 8000
+  mem_other:
+    path: "data/model_eval_model_other_sft.jsonl"
+    reasoning: native
+    examples: 2000
+
+# Matches the memself twin's training window.
+max_seq_len: 8192
+
+output_dir: "output/mixture_table2_memother_20_80"

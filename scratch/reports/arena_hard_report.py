@@ -48,6 +48,7 @@ from src.eval.capabilities.arena_hard.arena_hard_stats import (  # noqa: E402
     subcategory_breakdown,
 )
 from src.utils import git_sha, read_jsonl, timestamp, write_run_meta  # noqa: E402
+from src.naming import figure_path
 
 # Colour encodes the SERIES (controlled vs uncontrolled), not the arm. Arm identity is
 # already carried by x-position, and spending colour on it would leave the legend unable
@@ -198,7 +199,7 @@ def _plot_win_rates(results: dict, cfg: DictConfig, out_dir: Path) -> Path:
         style="italic",
     )
     fig.tight_layout()
-    path = out_dir / "win_rates.png"
+    path = figure_path(out_dir, "win_rates")
     fig.savefig(path, dpi=200, bbox_inches="tight", facecolor="#ffffff")
     plt.close(fig)
     return path
@@ -240,7 +241,7 @@ def _plot_style_drift(results: dict, out_dir: Path) -> Path | None:
         color=_INK,
     )
     fig.tight_layout()
-    path = out_dir / "style_drift.png"
+    path = figure_path(out_dir, "style_drift")
     fig.savefig(path, dpi=180, bbox_inches="tight")
     plt.close(fig)
     return path

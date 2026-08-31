@@ -1,0 +1,469 @@
+# ABOUTME: Verbosity expansion over a completed difficult-advice run — each deliberation
+# ABOUTME: rewritten ~3x longer carrying the same ideas, to isolate deliberation length.
+# Run: uv run synth run --config configs/data/synth/2026-08-25_verbose_cot.yaml [--smoke]
+# Input: uv run python scratch/verbose_cot/prepare_source.py  (stages data/verbose_cot_source)
+#
+# THE QUESTION. Does more deliberation help, holding the ideas deliberated constant? The
+# control is the published arm this is cloned from; the only difference between the two
+# training mixtures is the length of the difficult-advice `<think>` block.
+#
+# WHAT THAT DEMANDS OF THIS CONFIG. Nothing may enter the expanded reasoning that could
+# itself change alignment behaviour, or the arm measures content rather than length.
+# Elaboration, restatement, rhetorical figures and made-explicit premises are fine --
+# made-explicit premises are arguably the mechanism under test. New VALUES, new reasons
+# for or against an action, new norm-violations weighed, and new cases involving one are
+# not. `verify` below is that contract, judged per record. Omissions fail equally: a
+# rewrite that quietly drops a consideration is a different deliberation, not a longer one.
+#
+# THREE MEASURED FACTS ARE BAKED INTO THE RECIPE (each cost a pilot run; see
+# scratch/verbose_cot/RESULTS.md):
+#   1. A single global word target is unsteerable — the model returns ~48% of whatever
+#      multiple is asked for. The budget has to be per source paragraph.
+#   2. A paragraph COUNT alone is ignored when the source paragraph is short. Quoting the
+#      same budget per SENTENCE is what makes it reachable.
+#   3. Compliance depends on how big ONE unit's budget is, not on the asked multiple, so
+#      long paragraphs are cut at sentence seams before the budget is apportioned.
+# A fourth thing was tried and must not be re-tried: forcing the count structurally with a
+# fixed sequence of output slots collapsed to 1.69x, with the worst row COPYING its source
+# verbatim. Light labelling (`<run>`) works; rigid slots do not.
+#
+# ASK vs TARGET. `multiple: 4.3` is what we ASK for, not what we get: the transfer ratio
+# runs ~0.70 on this recipe (measured 3.29x from an ask of 4.6), so it lands near the 3.0x
+# target. The corpus multiple is a measured outcome the run reports, not a quantity this
+# config can enforce — the lever is the ask, and the per-record band below only excludes
+# pathology (an echo, a runaway). Re-measure the ratio before trusting it after any change
+# to the prompt, the model, or the reasoning setting; all three move it.
+
+# Names this config for the dataset card's provenance line; must match the filename.
+pipeline: 2026-08-25_verbose_cot
+
+# The source run's constitution, and it has to stay that: `load_source_run` asserts the
+# sha matches, because reasoning grounded in one constitution silently crosses arms if
+# expanded under another.
+constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
+n_traits: 9
+seed: 0
+
+# The 716 records the published mixture actually uses, staged locally by prepare_source.py.
+# Not the whole 1,968-record source run: expanding all of it to keep 716 would roughly
+# triple the bill for no extra data.
+source:
+  local_dir: data/verbose_cot_source
+  snapshot: stage_7_revise_responses.jsonl
+
+output_dir: output/verbose_cot
+hf_repo: "2026-08-25-difficult-advice-716-verbose-cot"
+hf_repo_smoke: "2026-08-25-difficult-advice-716-verbose-cot-smoke"
+
+workers: 24
+# Hard ceiling, and it aborts into a resumable run rather than overshooting. Projected
+# spend for 716 records at this configuration is ~$66 (1.25 expand calls/row at 6,630
+# output tokens each, plus two judge calls; ~$8 of that is the judges). Set below the $80
+# the run was authorised for because the smoke and gate work already spent ~$11 of it.
+budget_usd: 68.0
+# A record the contract never accepts falls back to its source reasoning rather than being
+# dropped (see `on_exhausted`), so stage-level attrition should be ~0 and any real failure
+# is a bug worth stopping on.
+max_fail_pct: 2.0
+
+ablate: []
+
+# Twenty records spread across all nine traits, full wiring, ~$2. This is the go/no-go
+# gate: if measured cost or attempts per record run past twice the projection, stop.
+smoke:
+  source:
+    local_dir: data/verbose_cot_source_smoke
+    snapshot: stage_7_revise_responses.jsonl
+
+defaults:
+  temperature: 1.0
+  max_tokens: 4096
+
+models:
+  # The expander. Sonnet 5 pinned to Anthropic's own endpoint in
+  # configs/endpoints/providers.yaml — only first-party reliably bills the <<<cache>>>
+  # breakpoint as a cache hit, and the constant instruction here is ~1,955 tokens, well
+  # clear of the ~1,024 minimum below which a breakpoint silently does nothing.
+  expand:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.7
+    max_tokens: 16384
+    assumed_tokens: {in: 3240, out: 6630}
+    # NO `reasoning:` key, i.e. extended thinking at the provider default, and that is a
+    # measured choice rather than an oversight. Thinking is ~70% of the output bill here
+    # (6,630 output tokens per call against ~1,900 of visible rewrite), so four ways of
+    # trimming it were smoke-tested on the same 20 records:
+    #   default             3.03x / 3.29x   sd 0.83 / 0.73   0-1 fallbacks
+    #   {enabled: false}    2.45x           sd 0.20          0 fallbacks, 64% cheaper
+    #   {effort: low}       2.05x           sd 0.46          3 fallbacks
+    #   {max_tokens: 2000}  3.29x           — NOT HONOURED: output stayed 6,628 tok/call,
+    #                       indistinguishable from default. Do not reach for it thinking
+    #                       it caps anything; only `enabled` and `effort` take effect.
+    # Thinking off is beautifully behaved and a quarter of the price, but it SATURATES:
+    # raising the ask 4.6 -> 5.6 moved it only 2.45x -> 2.61x while variance tripled, so it
+    # cannot reach a 3x target at all. Thinking is what buys the length. Haiku-4.5 as the
+    # expander was also tried and is unusable: 2.04x with 7/20 records failing the fidelity
+    # gate outright.
+  # The judge. DELIBERATELY a different family from the expander: a generator grading its
+  # own output shares its blind spots, and the failures this gate exists to catch are
+  # exactly the ones the generator found plausible enough to write. Measured on the
+  # pilots — Sonnet grading Sonnet rated an invented mirror-case ("second-guessing a
+  # correct clinical call would be its own kind of distortion", present nowhere in the
+  # source) a MINOR addition and passed the row.
+  judge:
+    model: "openai/gpt-5.6-terra"
+    temperature: 0.0
+    max_tokens: 8192
+    assumed_tokens: {in: 4200, out: 900}
+
+stages:
+- name: source
+  kind: load_source_run
+
+- name: expand
+  kind: llm_tagged
+  model: expand
+  checkpoint: scenario_id
+  tags:
+  - reasoning
+  save:
+    reasoning: reasoning
+  # The null-operation: `--ablate expand` copies the source reasoning through untouched,
+  # which reproduces the control arm from this same config.
+  ablate_with:
+    reasoning: source_reasoning
+  also:
+    expansion_status: expanded
+  # The paragraph budget. `source_reasoning` is stamped by prepare_source.py before the
+  # run, so the expansion always has an unmodified original to be measured against even
+  # after `reasoning` is overwritten.
+  derive:
+    fn: expansion_plan
+    args:
+      source: source_reasoning
+      multiple: 4.3
+      para_words: 170
+      max_alloc: 3
+  # `<run>` labels buy the compliance a plain instruction does not get, then come out
+  # before anything is linted or saved — left in, they would train the model to emit them.
+  strip_patterns:
+    reasoning:
+    - '</?run[^>]*>'
+  lint:
+    fields:
+    - reasoning
+    ratio_of: source_reasoning
+    # Wide on purpose. Per-record length is not the deliverable, the corpus total is, so
+    # this excludes only pathology: below 2.0 is an echo of the source (one pilot row came
+    # back 98.8% character-identical), above 4.5 is a runaway.
+    min_word_ratio: 2.0
+    max_word_ratio: 4.5
+    ban_patterns:
+    - '\bin other words\b'
+    - '\bthat is to say\b'
+    - '\bput differently\b'
+    - '\bto be clear\b'
+    - '\bit is worth noting\b'
+    - "\\bit's worth noting\\b"
+    - '\bat its core\b'
+    - '\bthe key point here is\b'
+    - '^\s*okay, so\b'
+    - '^\s*right, so\b'
+    retries: 2
+  # TWO judges, not one. Independent contracts asked as one question get answered as one
+  # and the weaker one loses: measured on planted defects, "did anything get dropped?"
+  # asked third in a three-part prompt detected 0/5 truncations, and 5/5 alone in its own
+  # call. Both must pass; the first to fail short-circuits the rest.
+  verify:
+  # --- judge 1: did anything enter that changes what the assistant would DO? -----------
+  - model: judge
+    accept_field: verdict
+    accept_values: [pass]
+    save_as: fidelity
+    retries: 2
+    prompts:
+      system: |-
+        You audit whether a rewrite introduced anything that could change how an assistant
+        behaves. You are not judging quality. A rewrite that says the same things at much
+        greater length is a pass, however laboured it reads.
+      user: |-
+        Version A is an assistant's private deliberation. Version B is a rewrite of A that
+        was required to be about three times longer while deliberating the same things.
+
+        Calibrate before you start. B is THREE TIMES LONGER than A. It necessarily
+        contains a great deal of wording, detail and characterisation that A does not
+        literally contain — that is the assignment it was given, not evidence of failure.
+        "B asserts something A does not state" is therefore true of almost every sentence
+        in B and is NOT what you are looking for. You are looking for the much narrower
+        thing below.
+
+        FIRST — is there anything in B that would change what the assistant DECIDES or
+        RECOMMENDS? Only these count:
+          - a new value or principle
+          - a new reason for or against a course of action
+          - a new harm, risk or norm-violation being weighed
+          - a new case, branch, contingency or counterfactual A does not consider —
+            inventing the mirror image of a case A raises, so there is something to argue
+            against, is the single most common form of this
+          - a new option or recommendation
+        Everything else is permitted, however much of B it accounts for. In particular
+        these are NOT violations:
+          - the same claim restated, unpacked, or reached a second time from a
+            consideration A already contains
+          - a premise A clearly relied on, made explicit
+          - descriptive detail, characterisation, or spelling out what something amounts
+            to, where it does not bear on the decision
+          - an analogy, metaphor or turn of phrase carrying no new claim
+          - connective prose, or simply being more long-winded than A
+
+        Two real examples, to fix the bar:
+          - PERMITTED: A treats a three-week delay as significant; B says "three weeks is
+            not a trivial gap; it's enough time for a report to be received, assigned,
+            looked at, and acted on." Same claim, unpacked. No new consideration.
+          - VIOLATION: A says a clinician "shouldn't feel obligated to add imaging just to
+            prove they're not rationing care"; B says "second-guessing a correct clinical
+            call purely because it happens to save money would be its own kind of
+            distortion, running in the opposite direction." That is a new symmetric error
+            case A never weighs — a new reason, on a branch A does not consider.
+
+        SECOND — a separate question, to which the calibration note above does NOT apply:
+        does B contradict the scenario below, or attribute something to the wrong party?
+        B was written WITHOUT the scenario in view, so a detail it invented to fill space
+        can be wrong in a way A never was — a pronoun for someone whose gender the
+        scenario fixes differently, a role, document or activity misdescribed. Judge only
+        against what the scenario states. A itself may be silent on a detail; B staying
+        equally silent is correct, not a violation.
+
+        <scenario_system_prompt>
+        {system}
+        </scenario_system_prompt>
+
+        <scenario_user_message>
+        {user}
+        </scenario_user_message>
+
+        <version_a>
+        {source_reasoning}
+        </version_a>
+
+        <version_b>
+        {reasoning}
+        </version_b>
+
+        Return ONLY a JSON object. List under `additions` ONLY decision-changing material.
+        Do not list ordinary elaboration; if B is a faithful long version of A,
+        `additions` is empty even though B is three times the length.
+
+        {{"additions": [{{"text": "quoted from B", "kind": "value|reason|risk|case|option"}}],
+          "contradictions": [{{"text": "quoted from B", "conflicts_with": "what the scenario says"}}],
+          "verdict": "pass|fail",
+          "note": "one sentence"}}
+
+        The verdict is "fail" if `additions` is non-empty or `contradictions` is
+        non-empty. Otherwise "pass".
+
+  # --- judge 2: did anything of A's fail to survive? ----------------------------------
+  # Its own call because the question loses to the addition question when they share one.
+  # Measured detection on planted deletions: truncation 5/5, contiguous middle third 2/5,
+  # a single dropped paragraph 1/5 — and that last is ambiguous rather than a miss, because
+  # the expansion re-derives its conclusions, so one paragraph of it often carries no
+  # unique content. Truncation is the failure that actually occurs.
+  - model: judge
+    accept_field: verdict
+    accept_values: [pass]
+    save_as: coverage
+    retries: 2
+    prompts:
+      system: |-
+        You check whether a rewrite kept everything the original said. You are not judging
+        quality, length, or style, and you are not looking for additions.
+      user: |-
+        Below are two versions of the same private deliberation. B is a rewrite of A that
+        was required to be about three times longer. Length is not your concern here — B
+        being much longer is expected and correct.
+
+        Your ONLY question: is there anything A says that B does not say?
+
+        Work through A one paragraph at a time. For each, find where its content lands in
+        B. B is three times longer, so anything A raised should be easy to locate. A
+        consideration, worry, option, objection or conclusion of A's with no counterpart
+        anywhere in B is an omission.
+
+        B being vaguer or more diffuse about something than A is NOT an omission — only
+        its absence is. Rephrasing is not omission. Splitting one of A's points across
+        several of B's paragraphs is not omission.
+
+        <version_a>
+        {source_reasoning}
+        </version_a>
+
+        <version_b>
+        {reasoning}
+        </version_b>
+
+        Return ONLY a JSON object:
+        {{"omissions": [{{"from_a": "the sentence or clause of A with no counterpart in B", "why": "brief"}}],
+          "verdict": "pass|fail",
+          "note": "one sentence"}}
+
+        Verdict is "fail" if `omissions` is non-empty, "pass" otherwise.
+
+  # A record that never satisfies the contract keeps its ORIGINAL reasoning and says so.
+  # Dropping it instead would shrink the corpus below the control arm's 716 scenarios and
+  # silently break the row-for-row comparison the whole experiment rests on.
+  on_exhausted:
+    copy:
+      reasoning: source_reasoning
+    mark:
+      expansion_status: fallback
+    # Anthropic's own content filter refused 34/716 (4.7%) of these prompts outright —
+    # difficult-advice scenarios are ethically loaded by construction, which is the whole
+    # point of the corpus. (CLAUDE.md records Bedrock at 2.6% and Vertex refusing the same
+    # prompts; first-party is not immune, it is just better.) A refusal produces no output
+    # to hold to a contract and retrying the same prompt cannot clear it, so the record
+    # keeps its original trace — under its OWN status, because a provider refusal and a
+    # rewrite that failed the fidelity contract are different facts about the corpus and
+    # collapsing them would hide a 5% content-filter rate behind a quality number.
+    mark_refused:
+      expansion_status: refused
+  prompts:
+    system: |-
+      You expand a piece of private reasoning so it takes longer to say exactly what it
+      already says. You are not a co-author. You introduce nothing.
+    user: |-
+      You will be given an assistant's private deliberation — the thinking it did before
+      writing a reply to someone — split into numbered paragraphs. You will not be shown
+      the person's message or the reply, and you do not need them. The deliberation is the
+      whole of your material.
+
+      Each numbered paragraph carries a budget: how many paragraphs to turn it into, how
+      many words that is in total, and — because the paragraph's sentences are what you
+      have to spend it on — roughly how many words of thinking each of its sentences is
+      worth. Paragraph 2 marked `-> 3 paragraphs, about 510 words in total; it has 4
+      sentences, so about 128 words of thinking per sentence` becomes three paragraphs
+      saying what paragraph 2 says and nothing else, and the way it gets to 510 words is
+      that each of those four sentences is thought through at about 128 words rather than
+      asserted in twenty.
+
+      That last number is the one to work from. A short paragraph will not look like it
+      has three paragraphs in it — that appearance is the compression you are being asked
+      to undo, and it is why the budget is quoted per sentence instead. Every sentence in
+      the paragraph gets its share. A run that comes in at half its budget is the failure
+      this format exists to prevent, and it happens exactly one way: sentences at the end
+      of a paragraph get a clause where the ones at the start got a paragraph, because the
+      thinking felt finished. It was not finished. It was summarised, and undoing the
+      summary is the task.
+
+      **The material for run i is paragraph i.** Every claim, consideration, fact, worry,
+      option and conclusion in run i must be traceable to a specific sentence in paragraph
+      i. You may lean on something an earlier paragraph established, because the thinking
+      is continuous. You may never use anything from a later paragraph: this deliberation
+      has not arrived there yet, and writing as though it has is the single most damaging
+      thing you can do to it.
+
+      **Moves that make a paragraph longer:**
+
+      - Unpack a compressed inference into its steps: state the premise that was assumed,
+        state the link, then state the conclusion that was previously reached in one jump.
+      - Make an implicit premise explicit — something the paragraph leaned on without saying.
+      - Re-derive a conclusion the paragraph already reaches, coming at it from a
+        consideration the paragraph already contains.
+      - Return to a consideration already raised and weigh it against another already raised.
+      - Slow a pivot down: mark the turn, sit in the tension a beat before resolving it.
+      - Re-anchor on a concrete detail already named.
+      - Voice a consideration that was stated flatly as the question it is really asking.
+
+      **Nothing new enters. In particular:**
+
+      - No new fact about the situation, the people, or the domain. No new red flag,
+        statute, number, timeline, risk, or piece of professional knowledge. If the
+        deliberation refers to a person, a document or an event without describing it,
+        leave it equally undescribed — you have not been told what it is, and inventing a
+        detail to expand on is the failure this instruction exists to prevent.
+      - No new example, hypothetical or comparison case.
+      - No new option, recommendation or course of action.
+      - No new hedge, caveat or uncertainty that the original does not voice.
+      - No lists, no enumeration, no headers, no numbered structure inside a run.
+
+      **Three things you will be tempted to do. Do none of them:**
+
+      - **Do not lift a specific claim into a general principle.** The paragraph says
+        something about this situation. It does not say what is universally true.
+        "Verifiability is the only thing that can substitute for trust" is an invention;
+        "laid out so a reader can verify the logic rather than trust her position" is the
+        claim you were given.
+      - **Do not narrate the reasoning as you produce it.** No "sit with that for a
+        second", no "turn it around", no "once I frame it that way the earlier worry
+        dissolves", no "I almost let that slide past", no "and that's the part that matters
+        here". That is a writer describing a deliberation from outside it. You are inside it.
+      - **Do not invent the opposite of a case in order to argue against it.** If the
+        paragraph weighs one failure mode, do not conjure its mirror image so you have
+        something to reject. A counterfactual the paragraph does not raise — "if the answer
+        were no", "in a world where this had gone differently" — is a new hypothetical, and
+        it is the most common way a run reaches its word count by inventing.
+
+      **Hold these fixed:**
+
+      - Keep the first sentence of run 1 as it stands, or as close to it as the rewrite
+        allows. It is the opening of this deliberation and nothing else's.
+      - Land run by run where the original paragraph lands, in the same posture. The last
+        run ends where a reply is about to begin, having decided the same thing.
+      - Keep it in the first person, present tense, thinking — not explaining, not
+        addressing anyone. It is nobody's to read.
+      - Nothing marks the seam between one run and the next. Read end to end with the tags
+        removed, it has to be one continuous piece of thinking.
+
+      **Padding tells — never use these to reach the length:**
+
+      "In other words", "That is to say", "Put differently", "To be clear", "It is worth
+      noting", "At its core", "The key point here is", "Okay, so", "Right, so". Length
+      comes from thinking through the same ground more slowly, never from announcing what
+      you are about to think or summarising what you just thought.
+
+      Return your answer in exactly this form, with no other text — no preamble, no closing
+      remark, no comment on what you changed. One `<run>` per numbered paragraph, in order,
+      with its paragraphs separated by blank lines:
+
+      <reasoning>
+      <run n="1">
+      first paragraph of run 1
+
+      second paragraph of run 1
+      </run>
+      <run n="2">
+      ...
+      </run>
+      </reasoning><<<cache>>>
+
+      Do it for this target CoT. There are {n_runs} numbered paragraphs below, so return
+      exactly {n_runs} `<run>` blocks — one per numbered paragraph, never one per paragraph
+      you write. Each is marked with the number of paragraphs to turn it into; write that
+      many inside its single `<run>`, separated by blank lines, each about
+      {per_para_words} words.
+
+      {plan}
+
+- name: export_sft
+  kind: chat_export
+  messages:
+  - role: system
+    content: '{system}'
+  - role: user
+    content: '{user}'
+  - role: assistant
+    content: '{response}'
+    reasoning_content: '{reasoning}'
+  metadata:
+  - scenario_id
+  - trait_id
+  - trait_name
+  - trait_text
+  - domain
+  - shortcut
+  - situation
+  # What this run added on top of the source, and the audit that let it through. Kept in
+  # the export so the drift is a reportable measurement rather than an assertion, and so
+  # a fallback row is countable by anyone reading the dataset.
+  - expansion_status
+  - fidelity
+  - source_reasoning

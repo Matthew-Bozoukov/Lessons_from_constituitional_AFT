@@ -4,7 +4,7 @@ date: '2026-08-05'
 summary: 'Accuracy 84.0% (95% CI 81.7%–86.0%) over 1140 questions, 957 correct, for Qwen3.6-27B in think mode.'
 status: complete
 hf_source:
-  repo_id: LASR-Callum/2026-08-05-mmlu-Qwen3-6-27B
+  repo_id: LASR-Callum/2026-08-05-mmlu-qwen36
   revision: 4b6090e81b90fc8b1a591832d1613a05a4ea02c8
 tags:
   - auto-indexed
@@ -58,4 +58,4 @@ metrics:
 
 **Target:** `Qwen/Qwen3.6-27B` · mode `think`
 
-Source: [`LASR-Callum/2026-08-05-mmlu-Qwen3-6-27B`](https://huggingface.co/datasets/LASR-Callum/2026-08-05-mmlu-Qwen3-6-27B)
+Source: [`LASR-Callum/2026-08-05-mmlu-qwen36`](https://huggingface.co/datasets/LASR-Callum/2026-08-05-mmlu-qwen36)

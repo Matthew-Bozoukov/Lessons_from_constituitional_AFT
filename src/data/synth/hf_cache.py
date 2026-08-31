@@ -99,11 +99,15 @@ class StageCache:
             private: Create the HF repo private.
             token: HF token; falls back to the shared resolution (src.huggingface.hf_token).
         """
-        from src.huggingface import hf_repo_id, hf_token
+        from src.huggingface import gate_push, hf_repo_id, hf_token
 
         self.run_dir = Path(run_dir)
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self.repo_id = hf_repo_id(repo_id) if repo_id else None
+        # The corpus repo is named before a single record is generated, so a run cannot
+        # spend money and then discover it has nowhere legal to publish (src/naming.py).
+        if self.repo_id:
+            gate_push(self.repo_id, card_fields, what="synth corpus")
         self.private = private
         self.token = token or hf_token()
         self.card_fields = card_fields

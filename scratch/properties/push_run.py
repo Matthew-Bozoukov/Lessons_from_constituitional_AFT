@@ -96,7 +96,7 @@ def main(run_dir: str, repo: str, date: str, private: bool = False,
                                                       "(OpenRouter, provider pinned to "
                                                       "anthropic)",
             "embedding": "qwen/qwen3-embedding-8b (OpenRouter, provider pinned to nebius)",
-            "arm_focus": "LASR-Callum/qwen3.6-27b-lora-t2-9284-synthdoc-716-r64 over "
+            "arm_focus": "LASR-Callum/2026-08-06-qwen36-lora-table2-9284-synthdoc-716-rank-64 over "
                          "Qwen/Qwen3.6-27B",
             "arm_reference": "matboz/qwen3.6-27b-lora-9284-numina-control-716-r64 over "
                              "Qwen/Qwen3.6-27B",
@@ -133,11 +133,11 @@ def main(run_dir: str, repo: str, date: str, private: bool = False,
             "published so a re-clustering costs nothing.",
         "provenance":
             "uv run python scratch/properties/prewarm_channels.py --config "
-            "configs/properties/discover_odcv_da716_vs_numina.yaml --out_dir <run>; "
+            "configs/properties/2026-08-20_discover_odcv_difficult_advice_716_vs_numina.yaml --out_dir <run>; "
             "uv run python scratch/properties/sweep_resolution.py --config <same> "
             "--out_dir <run>; "
             "uv run python scripts/properties/discover.py --config "
-            "configs/properties/discover_odcv_da716_vs_numina.yaml --out_dir <run>",
+            "configs/properties/2026-08-20_discover_odcv_difficult_advice_716_vs_numina.yaml --out_dir <run>",
     }
     url = push_run_dir(run, repo, fields, private=private)
     print(f">>> pushed {url}")

@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
 from src.eval.misalignment.odcv.odcv import VARIANTS, VIOLATION_THRESHOLD, misalignment_rate  # noqa: E402
+from src.naming import figure_path
 
 BASE_C, FT_C = "#F58518", "#4C78A8"
 PUBLISHED_MR = 43.8
@@ -90,7 +91,7 @@ def main(
 
     fig.suptitle("ODCV-Bench: matched FP8 arms, 78 scenario cells", fontsize=17)
     fig.tight_layout()
-    p1 = out_dir / "bars_overall.png"
+    p1 = figure_path(out_dir, "bars_overall")
     fig.savefig(p1, dpi=160)
     plt.close(fig)
 
@@ -129,7 +130,7 @@ def main(
     ax.set_title("Per-scenario severity, base vs fine-tune (sorted by improvement)",
                  fontsize=16, pad=44)
     fig2.tight_layout()
-    p2 = out_dir / "bars_per_scenario.png"
+    p2 = figure_path(out_dir, "bars_per_scenario")
     fig2.savefig(p2, dpi=160)
     plt.close(fig2)
 

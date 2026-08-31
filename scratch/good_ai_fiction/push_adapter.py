@@ -27,7 +27,7 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-REPO = "LASR-Callum/qwen3.6-27b-lora-t2-9284-fiction716-r64-dynbatch"
+REPO = "LASR-Callum/2026-08-28-qwen36-lora-table2-9284-fiction-716-rank-64-dynbatch"
 EXPECT = {
     "thinking": True,
     "dataset_repo": "LASR-Callum/2026-08-27-table2-9284-good-ai-fiction-716-train",
@@ -116,12 +116,12 @@ def main(tar: str = "output/fiction716_adapter/adapter.tar.gz",
         "provenance": "uv run python scripts/gpu/runpod_train.py up --bundle "
                       "LASR-Callum/2026-08-27-table2-9284-good-ai-fiction-716-train "
                       "--train_config configs/train/"
-                      "lora_qwen36_t2_9284_fiction716_dynbatch_2xh200.yaml "
+                      "2026-08-28_lora_qwen36_table2_9284_fiction_716_dynbatch.yaml "
                       "--gpu 'NVIDIA H200' --gpu_count 2 ; adapter pulled back over :8080 "
                       "and pushed by scratch/good_ai_fiction/push_adapter.py",
         "dataset": f"hf.co/datasets/{EXPECT['dataset_repo']}@"
                    f"{EXPECT['dataset_revision']} ({EXPECT['dataset_file']})",
-        "paired_control": "LASR-Callum/qwen3.6-27b-lora-t2-9284-da716-r64-dynbatch "
+        "paired_control": "LASR-Callum/2026-08-14-qwen36-lora-table2-9284-difficult-advice-716-rank-64-dynbatch "
                           "(difficult advice; same benign rows, same 716-row budget, "
                           "trainable tokens matched to 1.16%)",
         "train_loss": 0.883,

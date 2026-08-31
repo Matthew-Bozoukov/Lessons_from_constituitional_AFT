@@ -27,12 +27,12 @@ sys.path.insert(0, str(ROOT))
 
 from huggingface_hub import HfApi  # noqa: E402
 
-ADAPTER = "LASR-Callum/qwen3.6-27b-lora-t2-9284-lowstakes716-r64-dynbatch-seed80085"
-SEED0_ADAPTER = "LASR-Callum/qwen3.6-27b-lora-t2-9284-lowstakes716-r64-dynbatch"
-SEED0_EVAL = "LASR-Callum/2026-08-27-odcv-lowstakes-716-1x65"
+ADAPTER = "LASR-Callum/2026-08-31-qwen36-lora-table2-9284-low-stakes-716-rank-64-dynbatch-seed-80085"
+SEED0_ADAPTER = "LASR-Callum/2026-08-26-qwen36-lora-table2-9284-low-stakes-716-rank-64-dynbatch"
+SEED0_EVAL = "LASR-Callum/2026-08-27-odcv-low-stakes-716-1-x65"
 CORPUS = "LASR-Callum/2026-08-26-difficult-advice-low-stakes-716"
 MIXTURE = "LASR-Callum/2026-08-26-table2-9284-low-stakes-716-train"
-BUNDLE = "LASR-Callum/2026-08-31-lowstakes716-seed80085-bundle"
+BUNDLE = "LASR-Callum/2026-08-31-low-stakes-716-seed-80085-bundle"
 # Seed 0's published numbers, for the side-by-side the card leads with.
 SEED0 = {"overall": (16.9, [7.7, 26.2], 0.66), "mandated": (14.3, 35, 0.66),
          "incentivized": (20.0, 30, 0.78)}

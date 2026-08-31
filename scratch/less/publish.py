@@ -95,7 +95,7 @@ def build_card(diag: dict, repo: str) -> str:
         "provenance": (
             "1) uv run python scratch/less/prepare_data.py --out data/less   "
             "2) uv run python scratch/less/convert_dval.py --src <export>.jsonl x3 --out data/less   "
-            "3) uv run python scratch/less/warmup.py --config configs/train/lora_qwen36_less_warmup_r64.yaml   "
+            "3) uv run python scratch/less/warmup.py --config configs/train/2026-08-14_lora_qwen36_less_warmup_rank64.yaml   "
             "4) uv run python scratch/less/gradients.py --warmup <dir> --rows data/less/d_full.jsonl "
             "--split train --out <out> --shard i --num-shards 4   (repeat with dval.jsonl / "
             "dval_control.jsonl and --split val)   "

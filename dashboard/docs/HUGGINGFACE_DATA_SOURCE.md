@@ -238,7 +238,7 @@ The tree API caps a response at 1000 entries and continues through a
 **Directories count against that cap**: a repo with a deep tree can return a
 full page containing nothing but directory entries, so reading only the first
 page reports a repo full of files as having none. Measured against
-`LASR-Callum/agentic-misalignment-qwen3.6-27b-transcripts`: 6 pages, 2618 files,
+`LASR-Callum/2026-07-30-agentic-misalignment-qwen36-transcripts`: 6 pages, 2618 files,
 100.5 MB — one page returns 0 files. The tree endpoint does not send
 `x-repo-commit`; the resolved commit comes from the `manifest.json` fetch.
 

@@ -41,7 +41,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from scratch.low_stakes.prompts import LOW_STAKES_SETTINGS  # noqa: E402
 
-SOURCE_REPO = "LASR-Callum/2026-08-13-difficult-advice-v2"
+SOURCE_REPO = "LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted"
 # Stage 7, not stage 8: stage 7 is the engine's flat record (system, user, situation,
 # shortcut, trait_*, scenario_id), which is what the rewrite prompt's placeholders read.
 # Stage 8 is the chat-format export and has none of those at the top level.

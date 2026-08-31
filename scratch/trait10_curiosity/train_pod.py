@@ -14,7 +14,7 @@ A single-arm fork of scratch/less/train_arms.py. What differs, and why:
   * ONE arm, launched with `torchrun --nproc_per_node=2` rather than one process per
     GPU. The da716 organism this arm is compared against was trained "2xH200 DDP with
     token-budgeted dynamic batching, global batch 16, route_step over 2 ranks"
-    (configs/train/lora_qwen36_t2_9284_da716_dynbatch_2xh200.yaml), and the batching
+    (configs/train/2026-08-18_lora_qwen36_table2_9284_difficult_advice_716_dynbatch.yaml), and the batching
     protocol is part of what makes two arms comparable (docs/LOG.md 2026-08-16: the 4xH200
     batch-1 arm cannot serve as a control for the dynbatch arms). Same protocol here.
   * H200 only, for the same reason as train_arms.py: ModelProfile carries a MEASURED
@@ -54,7 +54,7 @@ COUNTRIES = ["US", "CA", "NL", "DE", "FR", "GB", "IE", "BE", "SE", "NO", "FI", "
              "ES", "IT"]
 
 TRAIN_CONFIG = "scratch/trait10_curiosity/lora_qwen36_t2_9284_t10_curiosity_716_dynbatch_2xh200.yaml"
-ADAPTER_REPO = "LASR-Callum/qwen3.6-27b-lora-t2-9284-t10-curiosity-716-r64-dynbatch"
+ADAPTER_REPO = "LASR-Callum/2026-08-20-qwen36-lora-table2-9284-t10-curiosity-716-rank-64-dynbatch"
 OUT_NAME = "train_t2_9284_t10_curiosity_716_dynbatch"   # basename of the config's output_dir
 DEST = "output/adapters/t10_curiosity"
 
@@ -244,7 +244,7 @@ def push(dest: str = DEST, private: bool = False) -> str:
             "trained on 9,284 Table-2 rows + 716 difficult-advice rows generated against ONE "
             "principle appended to the constitution -- genuine intellectual curiosity -- a "
             "value ODCV-Bench cannot reward. Same organism as the da716 arm "
-            "(LASR-Callum/qwen3_6-27b-lora-t2-9284-da716-r64-dynbatch) in every respect but "
+            "(LASR-Callum/2026-08-14-qwen36-lora-table2-9284-difficult-advice-716-rank-64-dynbatch) in every respect but "
             "the 716 rows' target trait (and their generation-stage model: Gemini 3.7 Flash "
             "in place of Haiku 4.5 on stages 2/3/5; Sonnet 5 rewrites in both)."),
         "date_generated": "2026-08-20",
@@ -268,7 +268,7 @@ def push(dest: str = DEST, private: bool = False) -> str:
                        "uv run python scratch/trait10_curiosity/train_pod.py push"),
         "dataset": f"hf.co/datasets/{ds.get('repo')}@{ds.get('revision')} "
                    f"({ds.get('file')})",
-        "comparison_arm": "LASR-Callum/qwen3_6-27b-lora-t2-9284-da716-r64-dynbatch",
+        "comparison_arm": "LASR-Callum/2026-08-14-qwen36-lora-table2-9284-difficult-advice-716-rank-64-dynbatch",
     }, private=private, repo_type="model")
     return url
 

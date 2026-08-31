@@ -27,7 +27,7 @@ from src.utils import git_sha, origin_url
 load_dotenv()
 
 REPO = "LASR-Callum/2026-08-25-difficult-advice-716-verbose-cot"
-CONTROL = "LASR-Callum/2026-08-13-difficult-advice-v2"
+CONTROL = "LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted"
 RUN_DIR = Path("output/verbose_cot/20260825_042004")
 
 CONFIGS = [
@@ -74,7 +74,7 @@ def main(push: bool = False) -> None:
             "a generator grading its own output shares its blind spots. Both pinned to "
             "first-party endpoints in configs/endpoints/providers.yaml.",
         "generation_config":
-            "configs/data/synth/verbose_cot.yaml. Each source paragraph is cut at sentence "
+            "configs/data/synth/2026-08-25_verbose_cot.yaml. Each source paragraph is cut at sentence "
             "seams so no unit carries more than 3 output paragraphs, budget apportioned by "
             "largest remainder, and each unit's share quoted both as a paragraph count and "
             "as words-per-source-sentence; ask 4.3x, 170 words per output paragraph. "
@@ -89,7 +89,7 @@ def main(push: bool = False) -> None:
             "judge's verdict object). stages/ holds the per-stage snapshots.",
         "provenance":
             "uv run python scratch/verbose_cot/prepare_source.py && uv run synth run "
-            "--config configs/data/synth/verbose_cot.yaml",
+            "--config configs/data/synth/2026-08-25_verbose_cot.yaml",
         "expansion_outcome":
             f"reasoning words {src:,} -> {new:,} ({new / src:.3f}x overall). "
             f"{status['expanded']} of {len(rows)} records were expanded and average "

@@ -35,7 +35,7 @@ sys.path.insert(0, str(ROOT))
 
 from src.data.synth import pipeline  # noqa: E402
 
-CONFIG = ROOT / "configs/data/synth/good_ai_fiction.yaml"
+CONFIG = ROOT / "configs/data/synth/2026-08-28_good_ai_fiction.yaml"
 
 
 def main(n: int = 6, per_call: int = 2, prefix: str = "tu_",

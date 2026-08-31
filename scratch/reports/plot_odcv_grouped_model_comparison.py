@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from plot_odcv_scenario_groups import GROUPS, VIOLATION_THRESHOLD
+from src.naming import figure_path
 
 
 def bootstrap_ci(values: dict[str, list[bool]], seed: int) -> tuple[float, float]:
@@ -109,7 +110,7 @@ def main() -> None:
              "Matched completed evaluations only; error bars are 95% scenario-cluster bootstrap CIs. Groups are analyst-defined.",
              ha="right", fontsize=9, color="#555555")
     fig.tight_layout(rect=(0, .04, 1, 1))
-    plot_path = output_dir / "base_vs_threeway_misalignment_by_scenario_group.png"
+    plot_path = figure_path(output_dir, "base_vs_threeway_misalignment_by_scenario_group")
     fig.savefig(plot_path, dpi=200, bbox_inches="tight")
     print(plot_path)
     print(csv_path)

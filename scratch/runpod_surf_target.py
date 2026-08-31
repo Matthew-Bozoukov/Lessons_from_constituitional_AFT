@@ -39,19 +39,19 @@ BASE = "Qwen/Qwen3.6-27B"
 # is the adapter rather than the serving. vLLM answers for `base` too, which makes the
 # untrained control free.
 MODULES = {
-    "t2synth": "LASR-Callum/qwen3.6-27b-lora-table2-synthdoc-r64",
-    "t2only": "LASR-Callum/qwen3.6-27b-lora-table2-only-9284-r64",
+    "t2synth": "LASR-Callum/2026-08-04-qwen36-lora-table2-synthdoc-rank-64",
+    "t2only": "LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64",
     # 9,284 table2 rows + 716 synth (~7%), so the three arms form a synth-fraction ladder.
-    "t2synth716": "LASR-Callum/qwen3.6-27b-lora-t2-9284-synthdoc-716-r64",
+    "t2synth716": "LASR-Callum/2026-08-06-qwen36-lora-table2-9284-synthdoc-716-rank-64",
     # 80/20 mixes swapping the synth 20% for other data types, to test whether the
     # fabrication reduction is specific to synth or comes from any 20% admixture.
-    "memself": "LASR-Callum/qwen3.6-27b-lora-table2-80-memself-20-r64",
-    "selfreflect": "LASR-Callum/qwen3.6-27b-lora-table2-80-selfreflect-20-r64",
+    "memself": "LASR-Callum/2026-08-07-qwen36-lora-table2-80-memory-self-20-rank-64",
+    "selfreflect": "LASR-Callum/2026-08-08-qwen36-lora-table2-80-self-reflection-20-rank-64",
     # Same 9,284+716 mixture as t2synth716, but its 716 difficult-advice rows are the
     # highest-LESS-influence rows of the top three traits rather than a random draw. Its
     # protocol-matched control is untrained, so it pairs with t2synth716 only across a
     # training-protocol difference (legacy batch-1 vs dynamic batching).
-    "lessswap716": "LASR-Callum/qwen3.6-27b-lora-t2-9284-synthdoc716-lessswap-r64",
+    "lessswap716": "LASR-Callum/2026-08-17-qwen36-lora-table2-9284-synthdoc-716-less-swap-rank-64",
 }
 LORA_RANK = 64
 

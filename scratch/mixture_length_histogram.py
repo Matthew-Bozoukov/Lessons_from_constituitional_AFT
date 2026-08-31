@@ -4,8 +4,8 @@
 """Why 4xH200 DDP only bought 2.22x on this mixture.
 
 Reads the ACTUAL training file - `mixture_think.jsonl` from
-`LASR-Callum/2026-08-08-table2-9000-synthdoc-1000-traitbalanced-len8000-train`, the
-`data_path` of `configs/train/lora_qwen36_t2_9000_synthdoc_1000.yaml` - and tokenises
+`LASR-Callum/2026-08-08-table2-9000-synthdoc-1000-trait-balanced-len-8000-train-mixture`, the
+`data_path` of `configs/train/2026-08-25_lora_qwen36_table2_9000_synthdoc_1000.yaml` - and tokenises
 every row with the Qwen3.6-27B tokenizer the trainer uses. Rows are already rendered
 (`text` + `source`), so `add_special_tokens=False` reproduces the trainer's count; the
 6,248,053 total matches the published `mixture_stats.json` exactly.
@@ -40,13 +40,13 @@ import numpy as np  # noqa: E402
 from huggingface_hub import hf_hub_download  # noqa: E402
 from transformers import AutoTokenizer  # noqa: E402
 
-REPO = "LASR-Callum/2026-08-08-table2-9000-synthdoc-1000-traitbalanced-len8000-train"
+REPO = "LASR-Callum/2026-08-08-table2-9000-synthdoc-1000-trait-balanced-len-8000-train-mixture"
 FILE = "mixture_think.jsonl"
 TOKENIZER = "Qwen/Qwen3.6-27B"
 OUT = Path("output/report")
 CACHE = Path("output/report/.mixture_lengths_cache.npz")
 
-# Training-config facts this chart is about (lora_qwen36_t2_9000_synthdoc_1000.yaml).
+# Training-config facts this chart is about (2026-08-25_lora_qwen36_table2_9000_synthdoc_1000.yaml).
 MAX_SEQ_LEN = 8000
 GLOBAL_BATCH = 16
 RANKS = 4

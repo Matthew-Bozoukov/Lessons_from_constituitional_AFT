@@ -33,7 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.endpoints.openrouter import CACHE_MARK, OpenRouterClient, map_threaded  # noqa: E402
 
-CONFIG = "configs/data/synth/difficult_advice_low_stakes.yaml"
+CONFIG = "configs/data/synth/2026-08-26_difficult_advice_low_stakes.yaml"
 RUN_DIR = "output/low_stakes/20260826_152304"
 # A row is thin if the rater found nothing at stake AND the reply had to strain for the
 # floor. `FLOOR_BAND` is the padding tell: the run's median reply is ~2,300 characters, so
@@ -194,7 +194,7 @@ def main(run_dir: str = RUN_DIR, config: str = CONFIG, draws: int = 6,
 
 
 def substitute(scenario_id: str, run_dir: str = RUN_DIR, config: str = CONFIG,
-               draws: int = 6, source_repo: str = "LASR-Callum/2026-08-13-difficult-advice-v2",
+               draws: int = 6, source_repo: str = "LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted",
                snapshot: str = "stage_7_revise_responses.jsonl") -> None:
     """Replace one source scenario outright with an unused one of the same principle.
 

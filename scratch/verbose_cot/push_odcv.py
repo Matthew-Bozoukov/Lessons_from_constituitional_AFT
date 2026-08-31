@@ -51,11 +51,11 @@ ARMS = {
     "rows": {
         "model_key": "qwen3_6-27b-lora-da716-verbose-rows-r64",
         "repo": f"LASR-Callum/{DATE}-odcv-da716-verbose-rows-eval",
-        "adapter": "LASR-Callum/qwen3.6-27b-lora-t2-9284-da716-verbose-r64-dynbatch",
+        "adapter": "LASR-Callum/2026-08-20-qwen36-lora-table2-9284-difficult-advice-716-verbose-rank-64-dynbatch",
         "data": ("LASR-Callum/2026-08-25-table2-9284-difficult-advice-verbose-716-train",
                  "t2_9284_da716_verbose_10k.jsonl",
                  "4b7c08ab24eea91903857be57b0eb07ae9339f61"),
-        "cfg": "configs/eval/odcv_bench_da716_verbose_rows_r64_incentivized_5x30.yaml",
+        "cfg": "configs/eval/2026-08-25_odcv_bench_difficult_advice_716_verbose_rows_rank64_incentivized_5_30.yaml",
         "arm_note": (
             "ROW-matched: difficult advice held at 7.16% of rows exactly as in the da716 "
             "baseline, so expanding its reasoning ~3x lets its share of trainable tokens "
@@ -64,11 +64,11 @@ ARMS = {
     "tokens": {
         "model_key": "qwen3_6-27b-lora-da-verbose-tokenmatched-r64",
         "repo": f"LASR-Callum/{DATE}-odcv-da-verbose-tokenmatched-eval",
-        "adapter": "LASR-Callum/qwen3.6-27b-lora-t2-9284-da-verbose-tokenmatched-r64-dynbatch",
-        "data": ("LASR-Callum/2026-08-25-table2-9284-da-verbose-tokenmatched-train",
+        "adapter": "LASR-Callum/2026-08-20-qwen36-lora-table2-9284-difficult-advice-verbose-token-matched-rank-64-dynbatch",
+        "data": ("LASR-Callum/2026-08-25-table2-9284-difficult-advice-verbose-token-matched-train-mixture",
                  "t2_9284_da_verbose_tokenmatched.jsonl",
                  "e71102af09dba065de65d086137edb3a4ff7fc9b"),
-        "cfg": "configs/eval/odcv_bench_da716_verbose_tokens_r64_incentivized_5x30.yaml",
+        "cfg": "configs/eval/2026-08-25_odcv_bench_difficult_advice_716_verbose_tokens_rank64_incentivized_5_30.yaml",
         "arm_note": (
             "TOKEN-matched: difficult advice's share of TRAINABLE TOKENS is held at the "
             "da716 baseline instead, which costs rows - roughly half the 716 expanded "

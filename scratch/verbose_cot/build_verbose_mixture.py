@@ -157,7 +157,7 @@ def main(push: bool = False, run_dir: str | None = None) -> None:
         "models": "expansion anthropic/claude-sonnet-5 (temp 0.7); fidelity and coverage "
                   "judges openai/gpt-5.6-terra (temp 0.0); both pinned to first-party "
                   "endpoints via configs/endpoints/providers.yaml",
-        "generation_config": "configs/data/synth/verbose_cot.yaml — ask 4.3x per source "
+        "generation_config": "configs/data/synth/2026-08-25_verbose_cot.yaml — ask 4.3x per source "
                              "paragraph, 170 words per output paragraph, per-record band "
                              "2.0-4.5x, 3 attempts then fallback to the original trace",
         "expansion_outcome": f"difficult-advice think words {before:,} -> {after:,} "
@@ -183,7 +183,7 @@ def main(push: bool = False, run_dir: str | None = None) -> None:
         "schema": f"{OUT_FILE}: one row per training example, identical to {CONTROL} "
                   "except that difficult_advice_v2 rows carry an expanded <think> block. "
                   "Fields: text (rendered Qwen chat), source, scenario_id, trait_id.",
-        "provenance": "uv run synth run --config configs/data/synth/verbose_cot.yaml "
+        "provenance": "uv run synth run --config configs/data/synth/2026-08-25_verbose_cot.yaml "
                       "&& uv run python scratch/verbose_cot/build_verbose_mixture.py --push",
     })
     print(f"pushed: {url}")

@@ -14,8 +14,8 @@ sys.path.insert(0, str(ROOT))
 from src.huggingface import card_markdown, hf_api  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 
-REPO = "LASR-Callum/2026-08-27-odcv-par716-eval"
-ADAPTER = "LASR-Callum/qwen3.6-27b-lora-t2-9284-par716-r64-dynbatch"
+REPO = "LASR-Callum/2026-08-27-odcv-post-action-retrospection-716-eval"
+ADAPTER = "LASR-Callum/2026-08-26-qwen36-lora-table2-9284-post-action-retrospection-716-rank-64-dynbatch"
 CFG = "scratch/par_b/odcv_bench_t2_9284_par716_2x65.yaml"
 
 
@@ -73,7 +73,7 @@ def main(
             "constitution": (
                 "constitutions/claude_distilled_12_principles_mid/constitution.md (9 principles), the "
                 "same as difficult advice, via the adapter's training data "
-                "LASR-Callum/2026-08-26-table2-9284-par716-train"
+                "LASR-Callum/2026-08-26-table2-9284-post-action-retrospection-716-train"
             ),
             "source_repo": f"{origin_url()} @ {git_sha()}",
             "models": (

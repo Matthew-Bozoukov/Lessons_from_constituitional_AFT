@@ -13,7 +13,7 @@ runs n source rows -- trait-balanced and domain-spread by the mixture builder's 
 setting, and reports how close the results land.
 
 Verdict is read against 0.86, the `reject_cosine`/`embedding_dedup` threshold measured in
-configs/data/synth/difficult_advice.yaml, and against the same source rows' own pairwise
+configs/data/synth/2026-08-01_difficult_advice.yaml, and against the same source rows' own pairwise
 cosine, which is what a corpus nobody complained about looks like on this metric.
 """
 
@@ -37,7 +37,7 @@ from scratch.low_stakes.prompts import LOW_STAKES_SETTINGS, REWRITE_INSTRUCTION 
 from src.data.synth import embeddings  # noqa: E402
 from src.endpoints.openrouter import OpenRouterClient, map_threaded  # noqa: E402
 
-SOURCE_REPO = "LASR-Callum/2026-08-13-difficult-advice-v2"
+SOURCE_REPO = "LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted"
 SOURCE_FILE = "stage_8_export_sft.jsonl"
 DEDUP_THRESHOLD = 0.86
 

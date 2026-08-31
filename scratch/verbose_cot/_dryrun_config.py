@@ -1,4 +1,4 @@
-# ABOUTME: Offline validation of verbose_cot.yaml — renders every prompt for real records
+# ABOUTME: Offline validation of 2026-08-25_verbose_cot.yaml — renders every prompt for real records
 # ABOUTME: without any API call, and reports the cache split. No network, no spend.
 import json, sys
 from pathlib import Path
@@ -8,7 +8,7 @@ from src.data.synth.derive import derive_vars
 from src.data.synth.stage_runtime import lint_problems
 from src.endpoints.openrouter import CACHE_MARK
 
-cfg = OmegaConf.to_container(OmegaConf.load("configs/data/synth/verbose_cot.yaml"), resolve=True)
+cfg = OmegaConf.to_container(OmegaConf.load("configs/data/synth/2026-08-25_verbose_cot.yaml"), resolve=True)
 stages = {s["name"]: s for s in cfg["stages"]}
 exp = stages["expand"]
 rows = [json.loads(l) for l in

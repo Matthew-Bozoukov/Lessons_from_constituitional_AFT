@@ -8,8 +8,8 @@ summary: >-
   ranking flips depending on the denominator, which is the result worth carrying.
 status: final
 models:
-  - LASR-Callum/qwen3.6-27b-lora-table2-only-9284-r64
-  - LASR-Callum/qwen3.6-27b-lora-table2-synthdoc-r64
+  - LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64
+  - LASR-Callum/2026-08-04-qwen36-lora-table2-synthdoc-rank-64
 target_model_id: Qwen/Qwen3.6-27B
 git_commit: 9c2a0c1
 tags:

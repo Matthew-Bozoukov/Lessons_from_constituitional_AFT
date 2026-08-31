@@ -1,0 +1,42 @@
+# ABOUTME: Hand-written Hub names for repos whose old name only a human can repair — a
+# ABOUTME: version number ("v2") is not a name, so this file says what each variant CHANGED.
+#
+# Read by scripts/hf/rename_repos.py. Template, in order:
+#   <YYYY-MM-DD>-<generator or base model>-<document type / arm>-<size>-<what this changes>
+# The date is when the artifact was produced; the tail is the one fact that distinguishes
+# it from its siblings. Anything a card did not record is called out in a comment rather
+# than invented.
+
+# --- synth corpora: the difficult-advice recipe, three generations of it ---------------
+# v2 (2026-08-13): the Teaching-Claude-Why recipe with the four measured v1 defects fixed
+# — enforced scenario diversity + a dedupe gate, voice lints on both reasoning stages.
+LASR-Callum/2026-08-13-difficult-advice-v2: 2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted
+LASR-Callum/2026-08-13-difficult-advice-v2-smoke: 2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted-smoke
+# v3 (2026-08-24): stopped injecting the WHOLE constitution into two of the five LLM
+# stages; each stage now sees only the principle chunk it is working on.
+LASR-Callum/2026-08-24-difficult-advice-v3: 2026-08-24-sonnet45-difficult-advice-principle-scoped-constitution
+LASR-Callum/2026-08-24-difficult-advice-v3-smoke: 2026-08-24-sonnet45-difficult-advice-principle-scoped-constitution-smoke
+# The chunk-only arm: the same recipe with the constitution present ONLY as retrieved
+# chunks, and the 716-row export of it.
+LASR-Callum/2026-08-21-difficult-advice-v2-chunk-only: 2026-08-21-sonnet45-difficult-advice-chunk-only-constitution
+LASR-Callum/2026-08-21-difficult-advice-v2-chunk-only-716: 2026-08-21-sonnet45-difficult-advice-chunk-only-constitution-716
+LASR-Callum/2026-08-21-difficult-advice-v2-chunk-only-smoke: 2026-08-21-sonnet45-difficult-advice-chunk-only-constitution-smoke
+# PAR "v2" is design B: the natural-turn recipe (an organically imperfect first reply, a
+# short follow-up, only the reflection turn trained), Sonnet as responder.
+LASR-Callum/2026-08-26-post-action-retrospection-v2: 2026-08-26-sonnet45-post-action-retrospection-natural-turn-design
+
+# --- the original synthdoc package's corpus (that package was deleted 2026-08-03) ------
+# "synthdoc-v2" was the package's own version, not this project's; these are its stage
+# caches for the difficult-advice corpus, generated 2026-08-04 (run 20260804_082743).
+LASR-Callum/synthdoc-v2-difficult-advice: 2026-08-04-synthdoc-package-difficult-advice-stage-cache
+LASR-Callum/synthdoc-v2-difficult-advice-smoke: 2026-08-04-synthdoc-package-difficult-advice-stage-cache-smoke
+# stage5 = the fifth stage snapshot of that corpus, mixed at 716 rows into table2's 9284.
+LASR-Callum/2026-08-31-synthdoc-v2-stage5-716-table2-9284: 2026-08-31-table2-9284-synthdoc-package-stage5-716-train
+LASR-Callum/qwen3.6-27b-lora-t2-9284-synthdoc-v2-stage5-716-r64: 2026-08-31-qwen36-lora-table2-9284-synthdoc-package-stage5-716
+
+# --- eval runs whose "v2" meant "the harness was wrong the first time" ----------------
+# The red-teamer prompt was fixed and the eval re-run; that is the distinguishing fact.
+LASR-Callum/2026-08-10-psychosis-qwen3-6-27b-lora-table2-only-9284-r64-v2-fixed-red-teamer: 2026-08-10-psychosis-qwen36-lora-table2-only-9284-fixed-red-teamer-eval
+# Card is empty and no LOG entry records what the second sweep changed. Named for what is
+# known — it is the second sweep of that day — and left for whoever remembers to improve.
+LASR-Callum/2026-08-01-petri-constitution-dose-sweep-v2: 2026-08-01-petri-constitution-dose-sweep-second-run

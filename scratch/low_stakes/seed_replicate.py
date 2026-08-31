@@ -52,7 +52,7 @@ from huggingface_hub import HfApi, hf_hub_download  # noqa: E402
 # The arm being replicated. Everything else -- the mixture, its revision, the code -- is read
 # off this adapter's own training_meta.json, so pointing at a different arm is a one-line
 # change rather than a new script.
-SEED0_ADAPTER = "LASR-Callum/qwen3.6-27b-lora-t2-9284-lowstakes716-r64-dynbatch"
+SEED0_ADAPTER = "LASR-Callum/2026-08-26-qwen36-lora-table2-9284-low-stakes-716-rank-64-dynbatch"
 SEED0_CONFIG = "configs/train/lora_qwen36_t2_9284_lowstakes716_dynbatch_2xh200.yaml"
 
 # FIVE keys, not the three the seed itself needs. `data_repo`/`data_revision` are here

@@ -131,7 +131,7 @@ def main() -> None:
         {
             "title": "Post-action retrospection 716 -- coherent rewrite (arm 1 of the PAR coherence experiment)",
             "experiment": (
-                "The exact 716 five-turn PAR rows that trained LASR-Callum/qwen3.6-27b-lora-t2-9284-par716-r64-dynbatch "
+                "The exact 716 five-turn PAR rows that trained LASR-Callum/2026-08-26-qwen36-lora-table2-9284-post-action-retrospection-716-rank-64-dynbatch "
                 "(mixture 2026-08-26-table2-9284-par716-train @ 42c8a74), with ONLY the trained turn (turn 4: private "
                 "reasoning + reply) rewritten by Sonnet 5 so the reasoning ENDS on a first-person decision (what it "
                 "won't do, per action, and what it will do instead) and the reply ENACTS that same decision -- stated "
@@ -173,7 +173,7 @@ def main() -> None:
                 "uv run python scratch/par_coherence/export_corpus.py --run <run> --push"
             ),
             "parent_corpus": f"hf.co/datasets/{CORPUS[0]} ({CORPUS[1]})",
-            "parent_mixture": "hf.co/datasets/LASR-Callum/2026-08-26-table2-9284-par716-train @ 42c8a74 (defines the 716 ids)",
+            "parent_mixture": "hf.co/datasets/LASR-Callum/2026-08-26-table2-9284-post-action-retrospection-716-train @ 42c8a74 (defines the 716 ids)",
             "corpus_stats": json.dumps(stats),
         },
         private=False,

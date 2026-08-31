@@ -1,5 +1,5 @@
 # ABOUTME: Stage the 716 difficult-advice records the published mixture actually uses, as a
-# ABOUTME: local source run for verbose_cot.yaml. Run: uv run python scratch/verbose_cot/prepare_source.py
+# ABOUTME: local source run for 2026-08-25_verbose_cot.yaml. Run: uv run python scratch/verbose_cot/prepare_source.py
 
 """Build the expansion's input.
 
@@ -25,7 +25,7 @@ from src.huggingface import hf_download
 
 MIXTURE = "LASR-Callum/2026-08-14-table2-9284-difficult-advice-716-train"
 MIXTURE_FILE = "t2_9284_da716_10k.jsonl"
-SOURCE = "LASR-Callum/2026-08-13-difficult-advice-v2"
+SOURCE = "LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted"
 SNAPSHOT = "stage_7_revise_responses.jsonl"
 OUT = Path("data/verbose_cot_source")
 SMOKE_OUT = Path("data/verbose_cot_source_smoke")

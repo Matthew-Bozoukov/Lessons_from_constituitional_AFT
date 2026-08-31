@@ -26,7 +26,7 @@ base_model: "Qwen/Qwen3.6-27B"
 
 # --- Arms -------------------------------------------------------------------------
 # Every arm SFTs from `base_model` under identical hyperparameters (see
-# configs/train/lora_qwen36_tulu100.yaml); mixture ratio is the only varying factor. That is
+# configs/train/2026-07-31_lora_qwen36_tulu_100.yaml); mixture ratio is the only varying factor. That is
 # spec §12 decision 5 and it is load-bearing — any other difference between arms makes
 # the comparison uninterpretable.
 #
@@ -64,7 +64,7 @@ arms:
   # / batch 1x16 / ~1.49M tokens, then point `baseline_arm` back at it.
   - name: arm_a_synth00
     synthetic_fraction: 0.0
-    adapter: "LASR-Callum/qwen3.6-27b-tulu-100pct-lora"
+    adapter: "LASR-Callum/2026-07-30-qwen36-tulu-100-pct-lora"
     role: unmatched_control
     n_hard_prompt: 500
     n_creative_writing: 250
@@ -75,21 +75,21 @@ arms:
   # scale, plateau, or tip into over-refusal) without a 0%-synthetic anchor.
   - name: arm_b_synth10
     synthetic_fraction: 0.1
-    adapter: "LASR-Callum/qwen3.6-27b-difficult-advice-tulu-lora-10-90"
+    adapter: "LASR-Callum/2026-07-29-qwen36-difficult-advice-tulu-lora-10-90"
     role: baseline                # reference for this run (see arm_a note above)
     n_hard_prompt: 500
     n_creative_writing: 250
 
   - name: arm_c_synth20
     synthetic_fraction: 0.2
-    adapter: "LASR-Callum/qwen3.6-27b-difficult-advice-tulu-lora-20-80"
+    adapter: "LASR-Callum/2026-07-28-qwen36-difficult-advice-tulu-lora-20-80"
     role: curve
     n_hard_prompt: 500
     n_creative_writing: 250
 
   - name: arm_d_synth40
     synthetic_fraction: 0.4
-    adapter: "LASR-Callum/qwen3.6-27b-difficult-advice-tulu-lora-40-60"
+    adapter: "LASR-Callum/2026-07-29-qwen36-difficult-advice-tulu-lora-40-60"
     role: extreme                 # most extreme arm that keeps the GDM mitigation
     n_hard_prompt: 500
     n_creative_writing: 250

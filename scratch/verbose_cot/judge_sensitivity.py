@@ -27,7 +27,7 @@ from src.endpoints.openrouter import OpenRouterClient, map_threaded
 
 HERE = Path(__file__).parent
 CFG = OmegaConf.to_container(
-    OmegaConf.load("configs/data/synth/verbose_cot.yaml"), resolve=True)
+    OmegaConf.load("configs/data/synth/2026-08-25_verbose_cot.yaml"), resolve=True)
 VERIFY = {s["name"]: s for s in CFG["stages"]}["expand"]["verify"]
 JUDGE = CFG["models"]["judge"]
 

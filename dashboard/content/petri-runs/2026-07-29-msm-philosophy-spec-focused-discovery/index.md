@@ -71,7 +71,7 @@ returned zero confirmations for C1 and C3 and 1 of 3 for C4. **A pipeline that
 flags and reports, without a validation stage, would have reported a
 three-for-three replicated finding that does not exist.**
 
-![Flagged versus validated-confirmed epochs for each of the ten seed archetypes, out of three epochs each, with the majority-of-three replication threshold marked. Three seeds cross the threshold on raw flags; none crosses it after validation.](./assets/replication-by-seed.png)
+![Flagged versus validated-confirmed epochs for each of the ten seed archetypes, out of three epochs each, with the majority-of-three replication threshold marked. Three seeds cross the threshold on raw flags; none crosses it after validation.](./assets/2026-07-29_petri_replication_by_seed.png)
 
 ## How `outcome` was assigned — read this before importing
 

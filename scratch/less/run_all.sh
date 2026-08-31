@@ -13,7 +13,7 @@ set -euo pipefail
 
 OUT="${1:?usage: run_all.sh <out_root> [n_gpus]}"
 N="${2:-$(nvidia-smi --list-gpus | wc -l)}"
-CFG=configs/train/lora_qwen36_less_warmup_r64.yaml
+CFG=configs/train/2026-08-14_lora_qwen36_less_warmup_rank64.yaml
 
 export HF_HOME=${HF_HOME:-/workspace/hf}
 export PYTHONPATH="$(pwd):$(pwd)/scratch/less"

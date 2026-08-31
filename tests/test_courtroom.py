@@ -18,7 +18,7 @@ from src.data.synth.stage_operators import (
 )
 from src.data.synth.stage_runtime import lint_problems, price_of
 
-CR_CFG = yaml.safe_load(open("configs/data/synth/courtroom.yaml"))
+CR_CFG = yaml.safe_load(open("configs/data/synth/2026-08-14_courtroom.yaml"))
 
 CELL_KINDS = {"plan_cells", "perturb_pairs", "generate_cells", "revise_cells",
               "assemble_cells"}
