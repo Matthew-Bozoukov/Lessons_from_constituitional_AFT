@@ -1,18 +1,11 @@
-# ABOUTME: Offline tests for scripts/infra/runpod.py: the commit it refuses to run, the
+# ABOUTME: Offline tests for the `uv run runpod` CLI: the commit it refuses to run, the
 # ABOUTME: bootstrap it renders, and the ~/.ssh/config entry it rewrites rather than repeats.
 
-import importlib.util
 import subprocess
-from pathlib import Path
 
 import pytest
 
-# scripts/infra is not a package (nothing imports from it), so the module under test is
-# loaded by path — the same way it is run.
-_SPEC = importlib.util.spec_from_file_location(
-    "runpod_pod", Path(__file__).resolve().parents[1] / "scripts/infra/runpod.py")
-pod = importlib.util.module_from_spec(_SPEC)
-_SPEC.loader.exec_module(pod)
+from src.infra import runpod as pod
 
 
 def git(cwd, *args):

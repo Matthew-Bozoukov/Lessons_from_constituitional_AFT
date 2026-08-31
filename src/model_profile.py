@@ -41,7 +41,7 @@ class ModelProfile:
             batch is split), not of the model, and it is chosen at launch. The two roles
             differ because the constraints differ: training holds optimizer state,
             activations and the fp32-logits CE path, inference holds weights and KV.
-            Written once here so `scripts/infra/runpod.py up` and the serving path do not
+            Written once here so `uv run runpod up` and the serving path do not
             each carry their own answer; read through `gpu_for`.
         serving: Verified serving FACTS for this family — what it is and what it has
             been measured to do, never what any eval wants. Eval configs cannot write
@@ -171,7 +171,7 @@ def train_memory_entry(profile: ModelProfile, device_name: str) -> dict | None:
 def gpu_for(model_name: str, role: str) -> str | None:
     """The RunPod GPU type this family needs for `role`, or None when it states none.
 
-    One place per model, read by both provisioning paths: `scripts/infra/runpod.py up`
+    One place per model, read by both provisioning paths: `uv run runpod up`
     (role="train") and the vLLM serving launch (role="inference"). The COUNT is not here
     and never will be — see `ModelProfile.gpu`.
 

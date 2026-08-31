@@ -21,7 +21,7 @@ Three explicit alternatives, same REPL:
     uv run chat --endpoint https://<pod>-8000.proxy.runpod.net/v1 --mode think
 
     # B. serve HF adapters yourself — on this machine or a prepared GPU host
-    #    (scripts/infra/runpod.py up) — with thinking mode inferred from each adapter's
+    #    (uv run runpod up) — with thinking mode inferred from each adapter's
     #    training_meta.json and pinned into the chat template exactly as the evals do.
     uv run chat --target LASR-Callum/<adapter> [--target <adapter2>] [--server <ssh-alias>]
 

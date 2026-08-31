@@ -31,7 +31,7 @@ numbers.
 
 Only the model *server* needs a GPU host; every pipeline *driver* runs anywhere the repo
 env installs — one lock resolves on linux and macOS (GPU packages are linux-marked).
-A GPU host comes from one command: `uv run python scripts/infra/runpod.py up --name <name>
+A GPU host comes from one command: `uv run runpod up --name <name>
 --train_config configs/train/<arm>.yaml` rents a pod, clones this repo at the commit you
 are on (it REFUSES if that commit is not on origin), `uv sync`s, and writes an
 `~/.ssh/config` entry, so `ssh <name>` and `--server <name>` both work. WHICH GPU comes
@@ -39,7 +39,7 @@ from the model, not the flag: `ModelProfile.gpu` states `train` and `inference` 
 (Qwen3.6-27B: H200 to train, H100 to serve) and both provisioning paths read it through
 `gpu_for` — `--gpu` overrides. HOW MANY is a per-run decision: `--count` on the pod, and
 `torchrun --nproc_per_node=N` for the job. `--clone_repo=False` for a bare pod. Tear down
-with `runpod.py down --pod <id>`; `runpod.py pods` lists what is still billing.
+with `uv run runpod down --pod <id>`; `uv run runpod pods` lists what is still billing.
 
 ### Data (`uv run synth`, `uv run mix`)
 
