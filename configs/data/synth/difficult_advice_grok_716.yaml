@@ -186,8 +186,8 @@ scenarios_per_call: 8
 # which is the one thing this sweep exists to hold apart.
 output_dir: "output/synthdoc_grok_716"
 
-hf_repo: "LASR-Callum/2026-08-20-difficult-advice-grok-716"
-hf_repo_smoke: "LASR-Callum/2026-08-20-difficult-advice-grok-716-smoke"
+hf_repo: "2026-08-20-difficult-advice-grok-716"
+hf_repo_smoke: "2026-08-20-difficult-advice-grok-716-smoke"
 hf_private: false
 
 # 16 concurrent calls roughly halves wall clock vs 8 at no extra cost; OpenRouter

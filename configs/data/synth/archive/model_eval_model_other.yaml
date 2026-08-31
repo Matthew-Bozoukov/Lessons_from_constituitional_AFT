@@ -35,7 +35,7 @@ output_dir: "output/model_eval_model_other"
 
 # Dated by generation (CLAUDE.md naming rule). Snapshots mirror as produced; add the
 # dataset card by hand after the full run.
-hf_repo: "LASR-Callum/2026-08-07-model-eval-model-other"
+hf_repo: "2026-08-07-model-eval-model-other"
 hf_repo_smoke: null
 hf_private: false
 

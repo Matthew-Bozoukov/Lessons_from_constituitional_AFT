@@ -537,7 +537,7 @@ class StubClient:
         self.calls = []
 
     def chat(self, model, messages, temperature=1.0, max_tokens=4096, **kw):
-        from src.endpoints.openrouter import ChatResult
+        from src.infra.endpoints.openrouter import ChatResult
 
         self.calls.append(messages[-1]["content"])
         return ChatResult(self.answer(len(self.calls) - 1, messages), 10, 10, "stop")

@@ -66,10 +66,13 @@ class AnswerCache:
     def __init__(self, repo: str, mirror: Path | None = None):
         """
         Args:
-            repo: `hf:org/name` for an HF dataset repo, else a local directory path.
+            repo: `hf:<name>` for an HF dataset repo (the org is .env's HF_ORG, as
+                for every other repo this project owns), else a local directory path.
             mirror: Per-invocation read-through directory (see module docstring).
         """
-        self.hf_repo = repo[3:] if repo.startswith("hf:") else None
+        from src.huggingface import hf_repo_id
+
+        self.hf_repo = hf_repo_id(repo[3:]) if repo.startswith("hf:") else None
         self.local = None if self.hf_repo else Path(repo)
         self.mirror = mirror
 

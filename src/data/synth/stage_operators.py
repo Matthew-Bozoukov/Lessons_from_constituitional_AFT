@@ -8,7 +8,7 @@ import json
 import re
 from pathlib import Path
 
-from src.endpoints.openrouter import ProviderRejectionError
+from src.infra.endpoints.openrouter import ProviderRejectionError
 
 from . import model_eval_model_cells as cells
 from .constitution import UNIT_PROVENANCE, Trait, units_from_config
@@ -608,7 +608,7 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
                 nested = resilient(lambda k, w=wave: generate_spec(w[k]), len(wave),
                                    ctx.workers, sc["name"], max_fail_pct=max_fail)
                 return [r for group in nested for r in group]
-            from src.endpoints.openrouter import build_request_body, result_from_payload
+            from src.infra.endpoints.openrouter import build_request_body, result_from_payload
             from .stage_runtime import run_batch as _run_batch
             _note_batched(ctx, sc["name"])
             reqs, spec_by_cid = {}, {}
@@ -805,7 +805,7 @@ def op_llm_json(sc: dict, cfg: dict) -> Stage:
                     .setdefault(sc["name"], {}))
         batch_key = _batching(ctx, sc)
         if batch_key:
-            from src.endpoints.openrouter import build_request_body
+            from src.infra.endpoints.openrouter import build_request_body
 
             def build(r: dict) -> dict:
                 return build_request_body(
@@ -1068,7 +1068,7 @@ def op_llm_tagged(sc: dict, cfg: dict) -> Stage:
                     .setdefault(sc["name"], {}))
         batch_key = _batching(ctx, sc)
         if batch_key:
-            from src.endpoints.openrouter import build_request_body
+            from src.infra.endpoints.openrouter import build_request_body
 
             def build(r: dict) -> dict:
                 messages, _, _ = tagged_request(sc, r, ctx)

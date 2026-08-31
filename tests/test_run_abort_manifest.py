@@ -10,7 +10,7 @@ import json
 import pytest
 
 from src.data.synth import pipeline, stage_runtime
-from src.endpoints.openrouter import ChatResult, ProviderRejectionError
+from src.infra.endpoints.openrouter import ChatResult, ProviderRejectionError
 
 
 class _Client:

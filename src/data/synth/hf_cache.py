@@ -90,7 +90,8 @@ class StageCache:
 
         Args:
             run_dir: Local run directory.
-            repo_id: HF dataset repo id, or None to skip publishing.
+            repo_id: HF dataset repo NAME (the org is .env's HF_ORG), or None to
+                skip publishing.
             card_fields: CLAUDE.md card fields, uploaded as the repo README on first
                 creation (every upload carries a card, the cache repo included).
             tags: Card front-matter tags (`training_data_tags`), refreshed with every
@@ -98,11 +99,11 @@ class StageCache:
             private: Create the HF repo private.
             token: HF token; falls back to the shared resolution (src.huggingface.hf_token).
         """
-        from src.huggingface import hf_token
+        from src.huggingface import hf_repo_id, hf_token
 
         self.run_dir = Path(run_dir)
         self.run_dir.mkdir(parents=True, exist_ok=True)
-        self.repo_id = repo_id
+        self.repo_id = hf_repo_id(repo_id) if repo_id else None
         self.private = private
         self.token = token or hf_token()
         self.card_fields = card_fields

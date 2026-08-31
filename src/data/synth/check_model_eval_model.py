@@ -8,7 +8,7 @@ import random
 import time
 from pathlib import Path
 
-from src.endpoints.openrouter import OpenRouterClient
+from src.infra.endpoints.openrouter import OpenRouterClient
 
 from .model_eval_model_cells import CELLS, eval_response_text
 from .constitution import full_text

@@ -52,8 +52,8 @@ source:
   snapshot: stage_7_revise_responses.jsonl
 
 output_dir: output/verbose_cot
-hf_repo: "LASR-Callum/2026-08-25-difficult-advice-716-verbose-cot"
-hf_repo_smoke: "LASR-Callum/2026-08-25-difficult-advice-716-verbose-cot-smoke"
+hf_repo: "2026-08-25-difficult-advice-716-verbose-cot"
+hf_repo_smoke: "2026-08-25-difficult-advice-716-verbose-cot-smoke"
 
 workers: 24
 # Hard ceiling, and it aborts into a resumable run rather than overshooting. Projected

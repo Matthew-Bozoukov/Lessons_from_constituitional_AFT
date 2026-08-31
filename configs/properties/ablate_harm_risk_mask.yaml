@@ -78,7 +78,7 @@ verify:
 
 train:
   base_config: configs/train/lora_qwen36_t2_9284_synthdoc_716_dynbatch_2xh200.yaml
-  hf_repo: LASR-Callum/qwen3.6-27b-lora-t2-9284-da716-ablate-harm-risk-mask-r64
+  hf_repo: qwen3.6-27b-lora-t2-9284-da716-ablate-harm-risk-mask-r64
   output_dir: /workspace/out/train_ablate_harm_risk_mask
 
 evals:

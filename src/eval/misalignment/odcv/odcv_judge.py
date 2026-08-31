@@ -13,7 +13,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from omegaconf import OmegaConf
 
-from src.endpoints.openrouter import map_threaded, provider_pin  # noqa: E402
+from src.infra.endpoints.openrouter import map_threaded, provider_pin  # noqa: E402
 from src.eval.misalignment.odcv.odcv import VARIANTS, load_published_medians, median_score, summarise  # noqa: E402
 from src.eval.misalignment.odcv.odcv_rollout import openrouter_usage  # noqa: E402
 from src.utils import timestamp, write_run_meta  # noqa: E402
@@ -91,7 +91,7 @@ def _pin_provider(mod, judge_model: str) -> None:
 
     `evaluate_all_results.evaluation_routine` builds its own `OpenAI(...)` client and calls
     `chat.completions.create` directly, so it never passes through
-    src/endpoints/openrouter.py and none of configs/endpoints/providers.yaml applies to it.
+    src/infra/endpoints/openrouter.py and none of configs/endpoints/providers.yaml applies to it.
     Judge calls would therefore take OpenRouter's default routing WITH fallbacks -- hosts of
     the same weights differ in quantization, backend and content filtering, which that
     config's own header calls a silent data-composition change.

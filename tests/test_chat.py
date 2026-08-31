@@ -5,7 +5,7 @@ import io
 
 import pytest
 
-from src.endpoints.chat import (
+from src.chat.repl import (
     Arm,
     StreamPrinter,
     arms_from_ids,
@@ -15,7 +15,7 @@ from src.endpoints.chat import (
     parse_set,
     pick_arms,
 )
-from src.endpoints.vllm_server import TargetSpec
+from src.infra.endpoints.vllm import TargetSpec
 
 DIM, RESET = "\x1b[2m", "\x1b[0m"
 

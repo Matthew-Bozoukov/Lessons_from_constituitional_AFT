@@ -8,7 +8,7 @@ default destination for everything since: new gotchas go here, and AI agents may
 append their own without asking. The price of that open door is that entries here
 may be outdated or over-verbose — treat them as leads to verify, not law.
 
-## GPU pods / vast.ai operations
+## GPU pods / RunPod operations
 
 **A pod's container disk is not storage.** `volumeInGb: 0` is the norm here, so anything a
 pod computes dies with it. Pull artifacts off CONTINUOUSLY as they are produced, not at the
@@ -255,7 +255,7 @@ row-for-row comparable with a control arm.
 ## A script that touches HF but not the LLM client authenticates as nobody (2026-08-25)
 
 `hf_token()` reads `os.environ`, and the only thing that calls `load_dotenv()` on import is
-`src.endpoints.openrouter`. So a script importing `src.huggingface` alone gets `None` for
+`src.infra.endpoints.openrouter`. So a script importing `src.huggingface` alone gets `None` for
 the token, reads work (public repos), and the run dies on a 401 at PUSH time — after all
 the expensive work is done. Any standalone script that pushes must `load_dotenv()` itself
 or import the client for its side effect.

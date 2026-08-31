@@ -99,12 +99,17 @@ def test_the_publish_target_follows_the_dating_convention() -> None:
     Now that it publishes, what matters is that the repo name carries the generation date
     and a readable subject (CLAUDE.md: `<YYYY-MM-DD>-<short-experiment-description>`), so
     a reader scanning the org can tell what an artifact is without opening it.
+
+    The name is all a config carries: the org is `HF_ORG` in .env, resolved at push time
+    by `src.huggingface.hf_org`, so an org written here is a config that would push
+    somewhere the rest of the pipeline is not looking.
     """
     for key in ("hf_repo", "hf_repo_smoke"):
-        org, _, name = CFG[key].partition("/")
-        assert org and name, f"{key} is not org/name"
+        name = CFG[key]
+        assert "/" not in name, (
+            f"{key}={name!r} names an org; configs carry the repo name alone")
         assert re.match(r"^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$", name), (
-            f"{key}={CFG[key]!r} does not start with an ISO date and a slug")
+            f"{key}={name!r} does not start with an ISO date and a slug")
     assert CFG["hf_repo"] != CFG["hf_repo_smoke"], (
         "a smoke run must not write into the real corpus's repo")
 

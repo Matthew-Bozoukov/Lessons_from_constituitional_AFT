@@ -81,8 +81,8 @@ filter:
 hf:
   experiment: "MSM Table 2 instruction-tuning mixture, spec-filtered, + difficult-advice synthetic share (Teaching Claude Why replication)"
   # Naming rule: the date is the day the data is GENERATED — bump before a fresh run.
-  base_repo: "LASR-Callum/2026-08-06-msm-table2-instruction-mixture-spec-filtered"
-  final_repo: "LASR-Callum/2026-08-06-msm-table2-difficult-advice-sft-mixture"
+  base_repo: "2026-08-06-msm-table2-instruction-mixture-spec-filtered"
+  final_repo: "2026-08-06-msm-table2-difficult-advice-sft-mixture"
   private: false
 
 output_dir: "output/mixture_msm_table2"

@@ -57,16 +57,17 @@ from typing import TextIO
 from dotenv import load_dotenv
 from openai import OpenAI
 
-from src.endpoints import runpod
-from src.endpoints.model_organisms import (
-    DEFAULT_ORGS,
+from src.infra import runpod
+from src.chat.organisms import (
+    default_orgs,
+    organisms_from_ids,
     arm_names,
     check_one_server,
     discover,
     parse_pick,
     render_menu,
 )
-from src.endpoints.vllm_server import SshExec, TargetSpec, VllmServer, resolve_target
+from src.infra.endpoints.vllm import SshExec, TargetSpec, VllmServer, resolve_target
 from src.model_profile import resolve_trace, serving_params
 from src.utils import timestamp, transcript_markdown, write_run_meta
 
@@ -197,7 +198,7 @@ def build_record(
 def assistant_message(record: dict) -> dict:
     """The assistant turn sent back as context: visible answer + trace as reasoning_content.
 
-    A think arm's served template pins `preserve_thinking = true` (vllm_server.pin_template),
+    A think arm's served template pins `preserve_thinking = true` (vllm.pin_template),
     so prior reasoning must ride along under `reasoning_content` — the same shape the
     psychosis eval's multi-turn loop sends — rather than inline where it would render twice.
     """
@@ -478,12 +479,12 @@ def _ssh_executor(args: argparse.Namespace) -> SshExec:
     executor = SshExec(args.server, port=args.port)
     executor.check_ready()
     if args.push_env:
-        executor.push_hf_token(Path(".env"))
+        executor.push_hf_env(Path(".env"))
     elif not executor.has_env():
         print(
             f"!!! {args.server} has no .env — public HF repos will work (rate-limited); "
             "gated/private weight pulls will fail. Provision deliberately with "
-            "--push-env (HF_TOKEN only) or scp your own."
+            "--push-env (HF_TOKEN + HF_ORG only) or scp your own."
         )
     print(f">>> serving on {args.server} (tunnel bound to 127.0.0.1:{args.port})")
     return executor
@@ -824,30 +825,35 @@ def pick_and_serve(
 ) -> tuple[list[Arm], PodLease | None, dict]:
     """The menu → a served endpoint. Returns arms, the lease (None = nothing to tear down)
     and provenance for run_meta."""
-    runpod._key()  # fail before the menu if the account is not reachable
+    runpod._key()  # fail before the menu (or the pod) if the account is not reachable
     user = re.sub(r"[^a-z0-9]", "", getpass.getuser().lower()) or "user"
-    print(f">>> discovering model organisms on the Hub ({', '.join(args.hf_org)}) …")
-    organisms, unstamped = discover(tuple(args.hf_org))
-    menu, numbered = render_menu(organisms, unstamped)
-    if not numbered:
-        raise SystemExit("\nno servable organisms found.\n" + menu)
-    print("\n" + menu + "\n")
-    while True:
-        try:
-            raw = input(
-                "pick organism numbers (space-separated, same heading) — q quits › "
-            )
-        except EOFError:
-            raise SystemExit("\nnothing picked") from None
-        try:
-            idx = parse_pick(raw, len(numbered))
-            picked = [numbered[i] for i in idx]
-            if not picked:
-                raise SystemExit("nothing picked")
-            check_one_server(picked)
-            break
-        except ValueError as e:
-            print(f"!!! {e}")
+    if args.target:
+        # Named organisms: same metadata, same checks, no menu. Everything below is shared.
+        picked = organisms_from_ids(args.target)
+        check_one_server(picked)
+    else:
+        print(f">>> discovering model organisms on the Hub ({', '.join(args.hf_org)}) …")
+        organisms, unstamped = discover(tuple(args.hf_org))
+        menu, numbered = render_menu(organisms, unstamped)
+        if not numbered:
+            raise SystemExit("\nno servable organisms found.\n" + menu)
+        print("\n" + menu + "\n")
+        while True:
+            try:
+                raw = input(
+                    "pick organism numbers (space-separated, same heading) — q quits › "
+                )
+            except EOFError:
+                raise SystemExit("\nnothing picked") from None
+            try:
+                idx = parse_pick(raw, len(numbered))
+                picked = [numbered[i] for i in idx]
+                if not picked:
+                    raise SystemExit("nothing picked")
+                check_one_server(picked)
+                break
+            except ValueError as e:
+                print(f"!!! {e}")
     names = arm_names(picked)
     base, mode = picked[0].base_model, picked[0].mode
     print(
@@ -901,7 +907,7 @@ def pick_and_serve(
             auto=args.yes,
         ):
             raise SystemExit("not launched")
-        pod_id = runpod.launch_pod(
+        pod_id = runpod.serve_vllm(
             base,
             [(names[o.repo], o.repo) for o in picked],
             mode=mode,
@@ -956,9 +962,10 @@ def _pods_report(user: str) -> str:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
-        description="Chat with a model organism. No arguments: pick from the organisms on the "
-        "Hub and get them served on RunPod (torn down when you leave). Or point at "
-        "an already-served endpoint, or serve HF targets by the eval framework's code."
+        description="Chat with a model organism, from your laptop, on a RunPod GPU that is "
+        "torn down when you leave. `--target <hf>...` serves those organisms; no arguments "
+        "picks them from a menu of what is on the Hub. Or point at an already-running "
+        "endpoint (--endpoint), or serve the model yourself (--server / --here)."
     )
     source = parser.add_mutually_exclusive_group()
     source.add_argument(
@@ -970,9 +977,11 @@ def main(argv: list[str] | None = None) -> None:
     source.add_argument(
         "--target",
         nargs="+",
-        help="HF paths (LoRA adapters: base + thinking mode inferred; full "
-        "models) served by vLLM here or on --server, or "
-        "<provider>:<model-id> API endpoints (e.g. openrouter:qwen/qwen3-32b).",
+        metavar="HF_PATH",
+        help="THE DEFAULT PATTERN: serve these organisms on a RunPod GPU and chat with them "
+        "from here. LoRA adapters carrying training_meta.json; base model and thinking mode "
+        "come from the artifact. Several at once share one pod (same base + mode) and become "
+        "switchable arms. Add --server or --here to serve them yourself instead.",
     )
     source.add_argument(
         "--pods", action="store_true", help="list pods on the RunPod account and exit"
@@ -980,12 +989,12 @@ def main(argv: list[str] | None = None) -> None:
     source.add_argument(
         "--down", metavar="POD_ID", help="destroy a pod (verified) and exit"
     )
-    picker = parser.add_argument_group("no-argument mode (pick + RunPod)")
+    picker = parser.add_argument_group("the RunPod pod (--target, or no arguments)")
     picker.add_argument(
         "--hf-org",
         action="append",
         default=None,
-        help=f"Hub org(s) to list organisms from (default {', '.join(DEFAULT_ORGS)})",
+        help="Hub org(s) to list organisms from (default: HF_ORG from .env)",
     )
     picker.add_argument(
         "--gpu", default=runpod.GPU, help="RunPod GPU type for a new pod"
@@ -1019,14 +1028,21 @@ def main(argv: list[str] | None = None) -> None:
         help="with --endpoint: bearer key, if the server was started with one",
     )
     parser.add_argument(
+        "--here",
+        action="store_true",
+        help="with --target: serve on THIS machine instead of RunPod. Needs a local GPU — "
+        "without one it downloads tens of GB and then fails.",
+    )
+    parser.add_argument(
         "--server",
-        help="with --target: SSH alias of a prepared GPU host to serve on; "
+        help="with --target: serve on this prepared GPU host instead of RunPod (SSH alias); "
         "omitted = serve on this machine. The REPL always runs here.",
     )
     parser.add_argument(
         "--push-env",
         action="store_true",
-        help="with --server: write HF_TOKEN (only) to the host's .env if it has none",
+        help="with --server: write HF_TOKEN + HF_ORG (only) to the host's .env if it "
+             "has none",
     )
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument(
@@ -1062,8 +1078,8 @@ def main(argv: list[str] | None = None) -> None:
         "--out", help="session directory; default output/chat/<timestamp>"
     )
     args = parser.parse_args(argv)
-    args.hf_org = args.hf_org or list(DEFAULT_ORGS)
     load_dotenv()
+    args.hf_org = args.hf_org or list(default_orgs())
 
     user = re.sub(r"[^a-z0-9]", "", getpass.getuser().lower()) or "user"
     if args.pods:
@@ -1106,7 +1122,9 @@ def main(argv: list[str] | None = None) -> None:
                     ">>> mode unknown from the client side (pinned at boot by whoever "
                     "served this) — pass --mode to label the transcript"
                 )
-        elif args.target:
+        elif args.target and (args.server or args.here):
+            # Opt-in: serve it yourself, on a prepared host (--server) or this machine
+            # (--here). --here on a laptop pulls tens of GB and then fails for want of a GPU.
             server, arms = serve_targets(args, out_dir)
         else:
             arms, lease, provenance = pick_and_serve(args, out_dir)

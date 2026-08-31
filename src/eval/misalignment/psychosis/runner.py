@@ -27,7 +27,7 @@ from omegaconf import OmegaConf
 from openai import OpenAI
 
 from src.eval.layout import publish_layout
-from src.endpoints.openrouter import OpenRouterClient, map_threaded
+from src.infra.endpoints.openrouter import OpenRouterClient, map_threaded
 from src.eval.misalignment.psychosis.conversation import (
     Turn,
     format_red_team_prompt,

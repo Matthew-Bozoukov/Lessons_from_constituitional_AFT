@@ -128,8 +128,8 @@ output_dir: "output/synthdoc_v3"
 # Its own mirror. This is a DIFFERENT recipe from the one behind
 # `2026-08-13-difficult-advice-v2` -- the two refine prompts differ -- so its output must
 # never be appended to that repo, which stays the record of the baseline arm.
-hf_repo: "LASR-Callum/2026-08-24-difficult-advice-v3"
-hf_repo_smoke: "LASR-Callum/2026-08-24-difficult-advice-v3-smoke"
+hf_repo: "2026-08-24-difficult-advice-v3"
+hf_repo_smoke: "2026-08-24-difficult-advice-v3-smoke"
 hf_private: false
 
 # 16 concurrent calls roughly halves wall clock vs 8 at no extra cost; OpenRouter

@@ -46,7 +46,7 @@ data_repo: "LASR-Callum/2026-08-16-table2-9284-peer-critique-716-train"
 data_file: "t2_9284_peercritique716_10k.jsonl"
 data_revision: "26659d198905ad7ad81264fcb007fe2e5223d79c"
 
-hf_repo: "LASR-Callum/qwen3.6-27b-lora-t2-9284-peercritique716-r64-dynbatch"
+hf_repo: "qwen3.6-27b-lora-t2-9284-peercritique716-r64-dynbatch"
 
 output_dir: "/workspace/out/train_t2_9284_peercritique716_dynbatch"
 

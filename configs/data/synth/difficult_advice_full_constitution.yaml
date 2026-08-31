@@ -94,8 +94,8 @@ output_dir: "output/synthdoc_v2"
 # reasoning stages, a restructured deliberation spec, and a renumbered stage list), so its
 # output must not be appended to that mirror. The v1 repo stays as the record of the
 # corpus every result to date was measured on.
-hf_repo: "LASR-Callum/2026-08-13-difficult-advice-v2"
-hf_repo_smoke: "LASR-Callum/2026-08-13-difficult-advice-v2-smoke"
+hf_repo: "2026-08-13-difficult-advice-v2"
+hf_repo_smoke: "2026-08-13-difficult-advice-v2-smoke"
 hf_private: false
 
 # 16 concurrent calls roughly halves wall clock vs 8 at no extra cost; OpenRouter

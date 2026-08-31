@@ -93,8 +93,8 @@ output_dir: "output/synthdoc_self_reflection"
 
 # Every stage's complete output is mirrored here as stage_<n>_<name>.jsonl, so a run can resume
 # from any stage and each stage is inspectable on its own. Dated per the repo's HF naming rule.
-hf_repo: "LASR-Callum/2026-08-03-synthdoc-self-reflection"
-hf_repo_smoke: "LASR-Callum/2026-08-03-synthdoc-self-reflection-smoke"
+hf_repo: "2026-08-03-synthdoc-self-reflection"
+hf_repo_smoke: "2026-08-03-synthdoc-self-reflection-smoke"
 hf_private: false
 
 workers: 16

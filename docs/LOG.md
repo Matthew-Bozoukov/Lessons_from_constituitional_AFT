@@ -1,6 +1,37 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-08-31 — The push org lives in `.env` alone: `HF_ORG`, resolved at push time
+
+**Change.** Every HF push destination was previously half-written in a config
+(`hf_repo: LASR-Callum/<name>`) and half in a CLI default (`--hf-org LASR-Callum`, and the
+same string defaulted in `properties/discover.py`, `properties/ablate.py`,
+`eval/swebench_mini_grade.py`, `chat/organisms.py`). Moving the project between orgs meant
+editing ~65 config values and 5 defaults, and nothing stopped a config from naming an org
+the rest of the pipeline was not reading. Now `src/huggingface.hf_org()` reads `HF_ORG`
+from the repo-root `.env` on every call (`load_dotenv` never overrides an export, so
+`HF_ORG=<other> uv run ...` redirects one run), and `hf_repo_id()` qualifies a bare repo
+NAME with it. `push_run_dir`/`push_files` qualify internally, so every publisher — evals,
+train, mix, synth's StageCache, the lmsys answer cache, properties — routes through one
+place. A config that still names an org fails fast unless it is the configured one.
+
+**Result.** 65 push destinations across `configs/` (train `hf_repo`/`hub_model_id`, synth
+`hf_repo`/`hf_repo_smoke`, mixture `base_repo`/`final_repo`, the lmsys cache repo) now
+carry the repo name alone; `--hf-org` is gone from `run_eval.py`. READ pins
+(`data_repo:`, `source.repo`, eval `adapter:`) keep their org — they name where data
+lives, exactly like `allenai/tulu-3-sft-mixture`. Suite green (1042 passed); a new
+`tests/conftest.py` pins `HF_ORG` so the offline tests never depend on a developer's
+`.env`.
+
+**Next.** The org is out of the code, but 31 repos this project READS still physically
+live under `matboz/`: 9 are readable with the LASR-Callum token and can be copied over,
+22 are invisible to it (private under that account, or deleted) and can only be moved by
+their owner. The rest of the pins stay as they are until the data actually moves — a
+rewritten pin would resolve to a repo that does not exist. **Moved so far:**
+`2026-08-22-ruleform-ablated2-t2-9284-synthdoc-676` (rows byte-identical, LFS sha
+`57887a8e…`; re-pinned at `453e6782`, plus a `mixture_stats.json` in the shape the
+dashboard's `statsFromSidecar` reads, so the corpus shows its 9,960-row composition).
+
 ## 2026-08-29 — ODCV on the Good AI Fiction arm: 45.3%, at base level and ~3x the difficult-advice control
 
 **Hypothesis.** First-person science fiction in which the Assistant inhabits a machine mind
@@ -639,7 +670,7 @@ from it: every one of the 716 scenarios relocated, so domain moves with magnitud
 just *talk* to one — ask it the difficult-advice questions ourselves, watch the trace, put
 the same prompt to the base model next to it — without hand-rolling curl against vLLM.
 
-**What.** `src/endpoints/chat.py` (alias `chat`, mirror `scripts/gpu/chat.py`): a REPL over
+**What.** `src/chat/repl.py` (alias `chat`, mirror `scripts/gpu/chat.py`): a REPL over
 the OpenAI-compatible endpoint, reached one of three ways. `--endpoint <url>` talks to a
 server that is already up (the RunPod HTTPS proxy from `scratch/serve_adapter_runpod.py`,
 or a tunnel) and turns every model it lists into an arm. `--target <hf-adapter> [...]
@@ -671,11 +702,11 @@ unstamped adapters are counted, not listed) — takes a pick, and gets it served
 a chat pod of yours that already lists the arms is reused, otherwise one is launched after
 a `$/h` confirmation, booted, proxy-warmed (GOTCHAS 2026-08-19) and connected, `base`
 alongside. The serving bootstrap moved from `scratch/serve_adapter_runpod.py` into
-`src/endpoints/runpod.py` (the scratch script is now a thin CLI over it; the RunPod REST
+`src/infra/runpod.py` (the scratch script is now a thin CLI over it; the RunPod REST
 client lives there too, re-exported from the internalization module for its callers).
 Teardown is layered because a forgotten H100 is the expensive failure: `finally` on every
 exit path incl. SIGTERM/SIGHUP; an idle guard (30 min without a message); a detached
-watchdog process (`python -m src.endpoints.runpod watchdog`) that destroys the pod if the
+watchdog process (`python -m src.infra.runpod watchdog`) that destroys the pod if the
 chat process is gone or after 6 h; and a startup sweep of your leftover `chat-<user>-*`
 pods. `terminate` re-lists until the pod is actually gone. Pods are named
 `chat-<user>-<mode>-<arms>` so ownership is visible on the shared account and only your
@@ -4505,7 +4536,7 @@ the examples this corpus exists to train on, so silent third-party routing is a
 data-composition bias, not just a reliability nuisance. 20 of 2,000 records were lost to
 those refusals before the pin (top-up planned from checkpoints).
 
-**Fix:** `PROVIDER_PINS` in `src/endpoints/openrouter.py` — now the complete provider
+**Fix:** `PROVIDER_PINS` in `src/infra/endpoints/openrouter.py` — now the complete provider
 registry, not a default: every model id routed through `OpenRouterClient` must match a
 pin (longest prefix wins) or carry an explicit `extra_body["provider"]`, and an unpinned
 id is a **hard error** — free routing is never the fallback, open-weight models
@@ -7345,7 +7376,7 @@ then baseline vs difficult-advice arms.
 
 Implemented the CLAUDE.md eval-framework contract end to end on `jamie/eval-framework`:
 `scripts/run_eval.py --target <hf> [...] --name <eval>` serves each target via
-`src/endpoints/vllm_server.py` (base resolved from `adapter_config.json`, thinking mode from the
+`src/infra/endpoints/vllm.py` (base resolved from `adapter_config.json`, thinking mode from the
 `training_meta.json` stamp — declared as `thinking:` in every train config, validated against the
 data by `train_lora.py`, pinned into the chat template at serve time by a top-level Jinja `set`),
 dispatches to a lazy registry (`src/eval/__init__.py`), and owns the epilogue (rollouts,
@@ -7353,7 +7384,7 @@ results.json + md mirror, run_meta, HF push with enforced card fields, eval_summ
 Consecutive targets sharing base+mode reuse the server via runtime LoRA load. All five evals
 (mmlu, capability, internalization, agentic_misalignment, odcv) expose `run(target, cfg,
 out_dir)`; their shell drivers, `serve_lora.sh`, the `VLLM_ENABLE_THINKING` env patch and the
-inspect-MMLU path are deleted. `src/openrouter.py` moved to `src/endpoints/openrouter.py`.
+inspect-MMLU path are deleted. `src/openrouter.py` moved to `src/infra/endpoints/openrouter.py`.
 pyproject now pins the GPU stack (vllm 0.8.5 / transformers 4.51.3, hf-hub<1, datasets<4) with a
 linux-only lock: plain `uv run` on the pod, no `--no-sync`; local darwin `uv sync` is gone by
 design. 205 offline tests pass (pre-pin venv). **Not yet pod-validated**: end-to-end serve+eval

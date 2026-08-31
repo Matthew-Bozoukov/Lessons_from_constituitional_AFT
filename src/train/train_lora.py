@@ -253,7 +253,8 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     if push:
         assert hf_repo, (
             "hf_repo is required: the trained adapter is pushed to HF automatically. "
-            "Declare hf_repo: <org/name> in the config (or hf_repo=... on the CLI); "
+            "Declare hf_repo: <name> in the config (or hf_repo=... on the CLI) — the "
+            "name alone, the org comes from .env HF_ORG (src.huggingface.hf_org); "
             "a credential-less pod run sets push=false and pushes from the driver.")
     torch.manual_seed(int(cfg.seed))
 

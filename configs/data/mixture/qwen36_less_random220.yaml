@@ -36,7 +36,7 @@ sources:
 hf:
   experiment: "Random 220-row control for the LESS top-10% selection over the difficult-advice pool"
   constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md — the constitution the scored pool was generated from; every row traces to one of its traits via metadata.trait_id in the source pool"
-  final_repo: "LASR-Callum/2026-08-19-random-220-difficult-advice-control-train"
+  final_repo: "2026-08-19-random-220-difficult-advice-control-train"
   private: false
 
 output_dir: "output/mixture_less_random220"

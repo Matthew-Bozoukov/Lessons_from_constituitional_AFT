@@ -7,7 +7,7 @@ import random
 from dataclasses import dataclass
 from typing import Callable
 
-from src.endpoints.openrouter import OpenRouterClient
+from src.infra.endpoints.openrouter import OpenRouterClient
 
 from .stage_runtime import Checkpoint, Usage, call_tagged, run_items
 

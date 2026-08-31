@@ -43,7 +43,7 @@ data_file: "mixture_think_excised.jsonl"
 data_revision: "6e33677e58c61255a19614f7384e6adb3b5c6b20"
 
 output_dir: "/workspace/out/train_t2_9284_synthdoc716_advocacy"
-hf_repo: "matboz/qwen3.6-27b-lora-t2-9284-synthdoc-716-advocacy-r64"
+hf_repo: "qwen3.6-27b-lora-t2-9284-synthdoc-716-advocacy-r64"
 
 lora:
   r: 64

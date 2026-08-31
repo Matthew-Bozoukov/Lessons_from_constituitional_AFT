@@ -13,7 +13,7 @@ confusing: vLLM starts fine and serves the adapter, while the driver blocks for 
 
 from pathlib import Path
 
-from src.endpoints.vllm_server import LocalExec, SshExec
+from src.infra.endpoints.vllm import LocalExec, SshExec
 
 
 def test_local_exec_uses_loopback():
