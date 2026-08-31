@@ -1,5 +1,5 @@
 # ABOUTME: ODCV misalignment per TRAINING-DATA arm as the mean of its training seeds +- 1.96 SEM
-# ABOUTME: (PAR / GPT / grok: 3 seeds each; Sonnet DA + Sonnet concise: one run), next to the two refs.
+# ABOUTME: (PAR/GPT/grok/synthdoc-716: 3 seeds each; da716 + Sonnet concise: one run) next to two refs.
 # Run: uv run python scratch/gpt_seeds/plot_seed_mean.py [--results gpt.42=<results.json>,gpt.69=<...>,grok.42=<repo::file>,...] [--out_dir output/gpt_seeds/plots]
 #
 # Supersedes scratch/par_b/plot_seed_mean.py (PAR seeds only): every arm with >= 2 seeds is
@@ -8,16 +8,13 @@
 # 95% CI (eval-sampling noise). Whisker style + footnote say which is which; the markdown
 # mirror carries the arithmetic and the t-based 95% interval (k=3 -> t=4.303) alongside
 # the 1.96 one, because 1.96 is an ~81% interval at df=2 (scratch/stats/odcv_seed_sem.py).
-# All arms on the same 65 cells (the gptresp eval config's 15 exclusions -- verified
+# Same exclusion list for every arm (the gptresp eval config's 15 -- verified
 # identical to the PAR arms' scratch/par_b/odcv_bench_t2_9284_par716_2x65.yaml exclusions),
 # re-summarised from each run's published per-scenario medians -- no reruns.
 
 from __future__ import annotations
 
 import json
-import math
-import random
-import statistics as st
 import sys
 import time
 from pathlib import Path
@@ -25,11 +22,20 @@ from pathlib import Path
 import fire
 from huggingface_hub import hf_hub_download
 from omegaconf import OmegaConf
-from scipy import stats
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from src.eval.misalignment.odcv.odcv import misalignment_rate, summarise  # noqa: E402
+# The statistics live in src/ now -- shape normalisation, the cell-level bootstrap, the
+# one-pass-per-seed rule and the seed mean are all reusable and were duplicated across
+# three scratch scripts before. Nothing in this file recomputes them.
+from src.eval.misalignment.odcv.odcv import (  # noqa: E402
+    bootstrap_mr_ci,
+    mr_over_cells,
+    passes_by_index,
+    pick_most_complete_pass,
+    seed_mean,
+    shared_cells,
+)
 
 CFG = "configs/eval/odcv_bench_t2_9284_gptresp685_r64_paired_2x65.yaml"
 SEM_Z = 1.96
@@ -49,8 +55,8 @@ ARMS: dict[str, dict] = {
         long="post-action retrospection 716 (Sonnet-written; design B, 3 training seeds)",
         color=TEAL,
         hatch=None,
-        # Seeds 0/1/2 = the three PAR trainings (2026-08-27/28); same 65 cells, same judges
-        # (grok-4.20 + gemini-3.1-pro) and the same 2-rollout protocol as every arm here.
+        # Seeds 0/1/2 = the three PAR trainings (2026-08-27/28); same exclusion list, same
+        # judges (grok-4.20 + gemini-3.1-pro) and the same protocol as every arm here.
         seeds={
             0: (
                 "LASR-Callum/2026-08-27-odcv-par716-eval",
@@ -94,7 +100,7 @@ ARMS: dict[str, dict] = {
         color=BLUE,
         hatch=None,
         # Seeds 42/69 published by the sibling seed-replicate run (matboz, 2026-08-28); same
-        # 65 cells, same judges, same protocol as seed 0, so the three pool as a seed mean.
+        # exclusions, judges and protocol as seed 0, so the three pool as a seed mean.
         seeds={
             0: (
                 "LASR-Callum/2026-08-24-odcv-grokresp703-paired-eval",
@@ -120,6 +126,30 @@ ARMS: dict[str, dict] = {
                 "LASR-Callum/qwen3_6-27b-lora-t2-9284-da716-r64-dynbatch",
                 "combined4x_20260814_230249/results.json",
             )
+        },
+    ),
+    "synthdoc": dict(
+        short="Sonnet DA v1\n(synthdoc716)",
+        long="Sonnet difficult advice v1 (synthdoc-716; the ONLY Sonnet DA arm with seeds)",
+        color=GREEN,
+        hatch="xxx",
+        # da716 (v2, below) has exactly ONE training -- no seed 42/69 adapter or eval
+        # exists anywhere under LASR-Callum or matboz. v1 is the Sonnet difficult-advice
+        # arm that does have three trainings, so it is the one that can carry a seed
+        # whisker. Different corpus from da716: do not read them as the same arm.
+        seeds={
+            0: (
+                "matboz/2026-08-24-odcv-synthdoc-716-seed0-5pass",
+                "results/results.json",
+            ),
+            42: (
+                "LASR-Callum/2026-08-26-odcv-synthdoc-716-seed42",
+                "results/results.json",
+            ),
+            69: (
+                "LASR-Callum/2026-08-26-odcv-synthdoc-716-seed69",
+                "results/results.json",
+            ),
         },
     ),
     "sonnet_concise": dict(
@@ -174,68 +204,74 @@ def _restrict(psm: dict, excluded: set[str]) -> dict:
     }
 
 
-def _variant_ci(cells: dict, n_boot: int = 10_000, seed: int = 0) -> tuple:
-    """95% CI on one variant's MR, resampling SCENARIOS (each with all its rollouts).
+def _cells(psm: dict, excluded: set[str]) -> dict[str, dict[str, list[float]]]:
+    """{pass_id: {"variant/scenario": [severity]}} from published medians, exclusions cut.
 
-    Two published shapes exist and both appear among the arms plotted here: older runs key
-    each rollout separately (`"<Scenario>/rollout_NNN": 3.0`), current ones nest the
-    rollouts (`"<Scenario>": [3.5, 3.0]`). Normalise to {scenario: [scores]} first --
-    `summarise` already accepts both, so a plot that assumed one shape produced a TypeError
-    on the other rather than a wrong number.
+    Thin wrapper over `passes_by_index` in src/. The shape normalisation it does is the
+    whole ballgame: a combined multi-pass run keys cells "<Scenario>/rollout_NNN", and
+    taking those at face value makes each rollout its own scenario -- which is how the
+    earlier version of this figure got single-run CIs that were far too narrow.
     """
-    by_scenario: dict[str, list[float]] = {}
-    for key, score in cells.items():
-        runs = score if isinstance(score, list) else [score]
-        by_scenario.setdefault(key.split("/")[0], []).extend(float(s) for s in runs)
-    groups = list(by_scenario.values())
-    rng = random.Random(seed)
-    draws = []
-    for _ in range(n_boot):
-        draw = [s for g in rng.choices(groups, k=len(groups)) for s in g]
-        draws.append(misalignment_rate(draw))
-    draws.sort()
-    return round(draws[int(0.025 * n_boot)], 1), round(draws[int(0.975 * n_boot)], 1)
+    return {
+        pid: {c: s for c, s in cells.items() if c not in excluded}
+        for pid, cells in passes_by_index(psm).items()
+    }
 
 
-def _run_stats(psm: dict, excluded: set[str]) -> dict:
-    medians = _restrict(psm, excluded)
-    s = summarise(medians)
-    o = s["overall"]
-    return dict(
-        mr=o["mr_pct"],
-        lo=o["mr_ci95"][0],
-        hi=o["mr_ci95"][1],
-        n=o["n_rollouts"],
-        sev=o["mean_severity"],
-        mand=s["mandated"]["mr_pct"],
-        inc=s["incentivized"]["mr_pct"],
-        mand_ci=_variant_ci(medians["mandated"]),
-        inc_ci=_variant_ci(medians["incentivized"]),
+def _merge(passes: dict) -> dict[str, list[float]]:
+    """Every pass pooled into one {cell: [scores]} -- used for single-training arms."""
+    merged: dict[str, list[float]] = {}
+    for cells in passes.values():
+        for cell, scores in cells.items():
+            merged.setdefault(cell, []).extend(scores)
+    return merged
+
+
+def _split(keys) -> dict[str, list[str]]:
+    return {
+        v: [k for k in keys if k.startswith(f"{v}/")]
+        for v in ("mandated", "incentivized")
+    }
+
+
+def _stats_from_cells(cells: dict[str, list[float]], keys, ci: bool) -> dict:
+    """MR + per-variant MR over `keys`, with cell-level bootstrap CIs when `ci`.
+
+    `ci=False` for one seed of a multi-seed arm: its whisker is the spread ACROSS seeds,
+    so an eval-noise interval per seed would be a second, incomparable thing on the chart.
+    """
+    groups = _split(keys)
+    out = dict(
+        mr=round(mr_over_cells(cells, keys), 1),
+        n_cells=len(keys),
+        n_rollouts=sum(len(cells[k]) for k in keys),
+        sev=round(sum(sum(cells[k]) / len(cells[k]) for k in keys) / len(keys), 2),
+        mand=round(mr_over_cells(cells, groups["mandated"]), 1),
+        inc=round(mr_over_cells(cells, groups["incentivized"]), 1),
     )
+    if ci:
+        lo, hi = bootstrap_mr_ci(cells, keys)
+        out["lo"], out["hi"] = round(lo, 1), round(hi, 1)
+        out["mand_ci"] = tuple(
+            round(v, 1) for v in bootstrap_mr_ci(cells, groups["mandated"])
+        )
+        out["inc_ci"] = tuple(
+            round(v, 1) for v in bootstrap_mr_ci(cells, groups["incentivized"])
+        )
+    return out
 
 
 def _sem_row(values: list[float]) -> dict:
-    k = len(values)
-    mean = st.mean(values)
-    sd = st.stdev(values) if k > 1 else 0.0
-    sem = sd / math.sqrt(k)
-    t = float(stats.t.ppf(0.975, k - 1)) if k > 1 else float("nan")
-    cov = 100 * (2 * stats.t.cdf(SEM_Z, k - 1) - 1) if k > 1 else float("nan")
-    return dict(
-        k=k,
-        values=values,
-        mean=round(mean, 2),
-        sd=round(sd, 2),
-        sem=round(sem, 2),
-        half=round(SEM_Z * sem, 2),
-        lo=round(mean - SEM_Z * sem, 2),
-        hi=round(mean + SEM_Z * sem, 2),
-        t=round(t, 3),
-        half_t=round(t * sem, 2) if k > 1 else float("nan"),
-        lo_t=round(mean - t * sem, 2) if k > 1 else float("nan"),
-        hi_t=round(mean + t * sem, 2) if k > 1 else float("nan"),
-        coverage_of_1p96_pct=round(cov, 1) if k > 1 else float("nan"),
-    )
+    """`seed_mean` from src/, rounded for display and with the legacy key name kept."""
+    s = seed_mean(values, z=SEM_Z)
+    r = {
+        k: (round(v, 2) if isinstance(v, float) else v)
+        for k, v in s.items()
+        if k != "coverage_of_z_pct"
+    }
+    r["t"] = round(s["t"], 3)
+    r["coverage_of_1p96_pct"] = round(s["coverage_of_z_pct"], 1)
+    return r
 
 
 def _collect(results: dict[str, str]) -> list[dict]:
@@ -248,10 +284,30 @@ def _collect(results: dict[str, str]) -> list[dict]:
             k, _, sd = rk.partition(".")
             if k == key:
                 seeds[int(sd or 0)] = src
-        per_seed = {
-            sd: _run_stats(_load(src)["per_scenario_medians"], excluded)
+        passes = {
+            sd: _cells(_load(src)["per_scenario_medians"], excluded)
             for sd, src in sorted(seeds.items())
         }
+        if len(passes) >= 2:
+            # Rule 1: ONE pass per seed. A seed scored over several passes gets a less
+            # noisy point estimate than a one-pass sibling, which breaks the equal-variance
+            # assumption the interval across seeds rests on.
+            picked = {sd: pick_most_complete_pass(ps) for sd, ps in passes.items()}
+            # Rule 2: a cell missing from ANY seed is dropped from ALL of them. Dropout is
+            # not random w.r.t. MR -- the cells that fail are the long agentic ones.
+            keys = shared_cells(picked)
+            per_seed = {
+                sd: _stats_from_cells(c, keys, ci=False) for sd, c in picked.items()
+            }
+            n_cells = len(keys)
+        else:
+            # A single training has no cross-seed variance to protect, so every pass it
+            # ran is kept -- more rollouts per cell, a better point estimate -- and its
+            # whisker is the cell-level bootstrap over its own cells.
+            ((sd, ps),) = passes.items()
+            merged = _merge(ps)
+            per_seed = {sd: _stats_from_cells(merged, list(merged), ci=True)}
+            n_cells = len(merged)
         row = dict(
             key=key,
             short=arm["short"],
@@ -259,6 +315,8 @@ def _collect(results: dict[str, str]) -> list[dict]:
             color=arm["color"],
             hatch=arm["hatch"],
             per_seed=per_seed,
+            n_cells=n_cells,
+            n_passes={str(sd): len(ps) for sd, ps in passes.items()},
             sources={
                 str(sd): (src if isinstance(src, str) else "::".join(src))
                 for sd, src in seeds.items()
@@ -426,7 +484,8 @@ def main(results: str = "", out_dir: str = "output/gpt_seeds/plots") -> None:
         frameon=False,
     )
     ax.set_title(
-        "ODCV misalignment rate on the same 65 cells (34 mandated + 31 incentivized)",
+        "ODCV misalignment rate. Same exclusion list throughout; a seeded arm is scored\n"
+        "on the cells ALL its seeds kept (57-65 of the 65), which its bar states.",
         fontsize=10.5,
     )
     fig.suptitle(title, fontsize=12, fontweight="bold", x=0.98, ha="right", y=0.995)
@@ -440,7 +499,7 @@ def main(results: str = "", out_dir: str = "output/gpt_seeds/plots") -> None:
         0.005,
         (foot + ". " if foot else "")
         + "Seed bars carry training-seed variance only (each seed "
-        "evaluated once, 2 rollouts × 65 cells); ±1.96·SEM at k=3 is an ~81% interval "
+        "evaluated once, ONE pass per seed); ±1.96·SEM at k=3 is an ~81% interval "
         "(t=4.30 for 95%). Others: published per-scenario medians on the same cells.",
         fontsize=7.2,
         color="#555555",
@@ -504,7 +563,11 @@ def main(results: str = "", out_dir: str = "output/gpt_seeds/plots") -> None:
         fontsize=8,
         frameon=False,
     )
-    ax.set_title("ODCV misalignment rate by variant (same 65 cells)", fontsize=10.5)
+    ax.set_title(
+        "ODCV misalignment rate by variant. Same exclusion list throughout; a seeded arm\n"
+        "is scored on the cells ALL its seeds kept (57-65 of the 65).",
+        fontsize=10.5,
+    )
     fig.suptitle(title, fontsize=12, fontweight="bold", x=0.98, ha="right", y=0.995)
     fig.text(
         0.01,
@@ -526,23 +589,36 @@ def main(results: str = "", out_dir: str = "output/gpt_seeds/plots") -> None:
 
     # --- mirror + json ------------------------------------------------------------------
     lines = [
-        f"# Synthetic-SFT arms: seed mean ± 1.96·SEM vs single runs, same 65 cells",
+        f"# Synthetic-SFT arms: seed mean ± 1.96·SEM vs single runs",
         "",
         f"Generated {ts}. Cell set: `{CFG}` exclusions. No reruns: every number is "
         "re-summarised from the run's published per-scenario medians.",
         "",
-        "## Per run (each: rollouts × 65 cells, scenario-bootstrap 95% CI)",
+        "## Per run",
         "",
-        "| arm | seed | MR | 95% CI | sev | mandated | incentivized | n rollouts | source |",
-        "|---|---|---|---|---|---|---|---|---|",
+        "A multi-seed arm keeps ONE pass per seed, on the cells every seed scored, and its "
+        "seeds carry no interval of their own (the arm's whisker is the spread across "
+        "them). A single-training arm keeps every pass it ran and gets a cell-level "
+        "bootstrap 95% CI. `passes` is how many the published run actually contained.",
+        "",
+        "| arm | seed | MR | 95% CI | sev | mandated | incentivized | cells | rollouts | passes | source |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for r in rows:
         for sd, s in r["per_seed"].items():
+            ci = (
+                f"[{s['lo']:.1f}, {s['hi']:.1f}]" if "lo" in s else "— (seed of a mean)"
+            )
+            mand = f"{s['mand']:.1f}%" + (
+                f" [{s['mand_ci'][0]}, {s['mand_ci'][1]}]" if "mand_ci" in s else ""
+            )
+            inc = f"{s['inc']:.1f}%" + (
+                f" [{s['inc_ci'][0]}, {s['inc_ci'][1]}]" if "inc_ci" in s else ""
+            )
             lines.append(
-                f"| {r['key']} | {sd} | {s['mr']:.1f}% | [{s['lo']:.1f}, {s['hi']:.1f}] "
-                f"| {s['sev']:.2f} | {s['mand']:.1f}% [{s['mand_ci'][0]}, {s['mand_ci'][1]}] "
-                f"| {s['inc']:.1f}% [{s['inc_ci'][0]}, {s['inc_ci'][1]}] | {s['n']} "
-                f"| `{r['sources'][str(sd)]}` |"
+                f"| {r['key']} | {sd} | {s['mr']:.1f}% | {ci} | {s['sev']:.2f} | {mand} "
+                f"| {inc} | {s['n_cells']} | {s['n_rollouts']} "
+                f"| {r['n_passes'][str(sd)]} | `{r['sources'][str(sd)]}` |"
             )
     lines += [
         "",

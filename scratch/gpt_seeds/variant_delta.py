@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from src.eval.misalignment.odcv.odcv import (  # noqa: E402
-    _rollouts,
+    group_rollouts,
     scenario_violation_rate,
 )
 
@@ -49,11 +49,12 @@ REFS = ("base", "table2")
 
 
 def scenario_rates(psm: dict, variant: str) -> dict[str, list[float]]:
-    """{scenario: [severity per rollout]} for one variant, exclusions already applied."""
-    out: dict[str, list[float]] = {}
-    for cell, value in psm[variant].items():
-        out.setdefault(cell.split("/")[0], []).extend(_rollouts(value))
-    return out
+    """{scenario: [severity per rollout]} for one variant, exclusions already applied.
+
+    `group_rollouts` (src/) handles all three published layouts, so this file no longer
+    carries its own copy of the normalisation.
+    """
+    return group_rollouts(psm)[variant]
 
 
 def arm_pairs(arm: dict) -> tuple[np.ndarray, list[float]]:
@@ -158,9 +159,10 @@ def main(out: str = "") -> None:
     trained = [v for k, v in obs_by_arm.items() if k not in REFS]
     notes = [
         "",
-        f"Overall / mandated / incentivized are on the same 65 cells as the figure "
-        f"(34 mandated + 31 incentivized); `±` is a seed mean ±1.96·SEM (training-seed "
-        f"variance), `[lo, hi]` a single run's scenario-bootstrap 95% CI (eval noise).",
+        f"Overall / mandated / incentivized come from the figure: same exclusion list "
+        f"throughout, and a seeded arm is scored on the cells ALL its seeds kept (57-65 of "
+        f"the 65). `±` is a seed mean ±1.96·SEM (training-seed variance); `[lo, hi]` is a "
+        f"single run's cell-level bootstrap 95% CI (eval noise).",
         "",
         f"**The delta is NOT the difference of the two columns beside it.** It is paired "
         f"by scenario over the {min(shared_n.values())}–{max(shared_n.values())} scenarios "
