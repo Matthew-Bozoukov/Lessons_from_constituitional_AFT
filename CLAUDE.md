@@ -33,9 +33,11 @@ Only the model *server* needs a GPU host; every pipeline *driver* runs anywhere 
 env installs — one lock resolves on linux and macOS (GPU packages are linux-marked).
 A GPU host comes from one command: `uv run runpod up` rents a pod holding this repo at the
 commit you are on (it refuses when that commit is not on origin) and prints its
-`root@<ip>:<port>`. `--train_config`/`--model` picks the GPU type from `ModelProfile.gpu`,
-`--count` the number; `--clone_repo=False` for a bare pod. **Never write a `POST /pods`
-yourself** — `src/infra/runpod.py` is the only place this repo rents a GPU. **Nothing tears
+`root@<ip>:<port>`. Name what the box is FOR and it takes the right GPU from
+`ModelProfile.gpu`: `--train_config <cfg>` to train on it, `--target <hf>` to serve on it
+(a different, usually cheaper card). `--count` is the number; `--clone_repo=False` for a
+bare pod. **Never write a `POST /pods` yourself** — `src/infra/runpod.py` is the only
+place this repo rents a GPU. **Nothing tears
 a pod down for you**: `uv run runpod pods` lists what is billing, `uv run runpod down --pod
 <id>` terminates and verifies. Credit is finite and shared, so check balances before big
 runs and flag spend over ~$20. Harder-won pod lessons live in `docs/GOTCHAS.md`.
@@ -65,9 +67,11 @@ Two equivalent workflows, identical code:
 - **Option A — everything on the pod.** Copy `.env` to the pod, then plain `uv run`
   there: e.g. `uv run evals --target <hf> --name <eval>`. Serving is a local
   subprocess; judging and the HF push use the pod's `.env`.
-- **Option B — drive locally, serve remotely.** From your machine:
-  e.g. `uv run evals --target <hf> --name <eval> --server root@<ip>:<port>` (what
-  `runpod up` printed, or an alias from your own `~/.ssh/config` — nothing here writes one).
+- **Option B — drive locally, serve remotely.** Rent the box for the target
+  (`uv run runpod up --name <you>-serve --target <hf>`, which takes the INFERENCE gpu),
+  then from your machine: `uv run evals --target <hf> --name <eval> --server
+  root@<ip>:<port>` — the address `up` printed, or an alias from your own
+  `~/.ssh/config` (nothing here writes one).
   run_eval starts vLLM on the host over SSH and tunnels it back; the eval loop, judge
   calls and HF push run locally with your local `.env`. Credentials stay machine-local:
   at most `HF_TOKEN` (plus `HF_ORG`, which is not one) reaches the host, opt-in via

@@ -772,7 +772,7 @@ def _wait_for_ssh(host: str, timeout_s: int = 300) -> bool:
 # the CLI
 # --------------------------------------------------------------------------------------
 
-def up(name: str, train_config: str | None = None, model: str | None = None,
+def up(name: str, train_config: str | None = None, target: str | None = None,
        gpu: str | None = None, count: int = 1, clone_repo: bool = True,
        branch: str | None = None, disk_gb: int = 200, cloud: str = "SECURE",
        image: str = IMAGE, countries: str = "", push_env: bool = False) -> str:
@@ -781,12 +781,16 @@ def up(name: str, train_config: str | None = None, model: str | None = None,
     Args:
         name: Pod name AND the `~/.ssh/config` host it is reachable at. The RunPod
             account is shared, so prefix it with who you are.
-        train_config: The arm you are about to train. Its `model:` picks the GPU from
+        train_config: The arm you are about to TRAIN. Its `model:` picks the GPU from
             `ModelProfile.gpu["train"]`, so the box matches the run without anyone
             retyping a catalogue id — and it is the same file you pass to the trainer.
-        model: Base model id, when you want a training box without naming a config.
-        gpu: RunPod catalogue id, overriding the profile. Needed only for a family with no
-            profile, or to deviate deliberately: the profile records what the family was
+        target: The arm you are about to SERVE (`uv run evals --target ...`). Its base
+            model picks `ModelProfile.gpu["inference"]`, which is a different and usually
+            cheaper GPU: serving holds weights and KV, training also holds optimizer
+            state, activations and the fp32-logits CE path.
+        gpu: RunPod catalogue id, overriding the profile — and the only way to rent a box
+            for neither purpose. Needed for a family with no profile, or to deviate
+            deliberately: the profile records what the family was
             MEASURED to need (Qwen3.6-27B trains on H200 because an H100 80GB OOMs 7.36
             GiB short on a 1x8k step).
         count: GPUs on the pod — a decision about the RUN, not about the model, which is
@@ -808,19 +812,27 @@ def up(name: str, train_config: str | None = None, model: str | None = None,
     Returns:
         The pod id, the host name to ssh to, and the commands to run and to tear down.
     """
-    assert not (train_config and model), "give --train_config or --model, not both"
+    assert not (train_config and target), (
+        "a box is for training or for serving, not both: give --train_config or --target")
+    role = "inference" if target else "train"
+    model = None
     if train_config:
         from omegaconf import OmegaConf
 
         model = str(OmegaConf.load(train_config).model)
-    profile_gpu = gpu_for(model, "train") if model else None
+    elif target:
+        from src.infra.endpoints.vllm import resolve_target
+
+        model = resolve_target(target).base_model
+    profile_gpu = gpu_for(model, role) if model else None
     gpu = gpu or profile_gpu or GPU
 
     clone = None
     if clone_repo:
         branch, sha = _commit_to_run(branch)
         clone = (_clone_url(), branch, sha)
-    source = (f"{model} trains here (ModelProfile.gpu)" if gpu == profile_gpu
+    source = (f"{model} {'serves' if role == 'inference' else 'trains'} here "
+              "(ModelProfile.gpu)" if gpu == profile_gpu
               else f"asked for; {model} states none" if model
               else "no model named, so the module default")
     print(f">>> {count}x {gpu} ({cloud}) — {source}")

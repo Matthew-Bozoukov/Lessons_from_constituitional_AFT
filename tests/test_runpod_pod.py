@@ -152,3 +152,24 @@ def test_a_pod_for_no_particular_model_falls_back_to_the_module_default(tmp_path
 
     pod.up(name="t", clone_repo=False)
     assert seen["gpu"] == pod.GPU
+
+
+def test_a_serving_box_takes_the_inference_gpu_not_the_training_one(monkeypatch):
+    # The footgun this closes: renting an H200 to SERVE Qwen3.6-27B, which fits on an
+    # H100 — training is what needs the bigger card.
+    from src.infra.endpoints import vllm
+    from src.model_profile import gpu_for
+
+    seen = {}
+    monkeypatch.setattr(pod, "provision_runpod",
+                        lambda spec, **kw: seen.update(gpu=spec.gpu) or "podid")
+    monkeypatch.setattr(pod, "_commit_to_run", lambda branch: ("main", "abc1234"))
+    monkeypatch.setattr(pod, "_clone_url", lambda: "https://github.com/o/r.git")
+    monkeypatch.setattr(pod, "_ssh_endpoint", lambda pod_id: ("1.2.3.4", 22))
+    monkeypatch.setattr(pod, "_wait_for_ssh", lambda host: True)
+    monkeypatch.setattr(vllm, "resolve_target",
+                        lambda t: type("S", (), {"base_model": "Qwen/Qwen3.6-27B"})())
+
+    pod.up(name="t", target="LASR-Callum/2026-08-31-some-adapter")
+    assert seen["gpu"] == gpu_for("Qwen/Qwen3.6-27B", "inference")
+    assert seen["gpu"] != gpu_for("Qwen/Qwen3.6-27B", "train")
