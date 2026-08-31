@@ -1,13 +1,13 @@
-# ABOUTME: ODCV misalignment per TRAINING-DATA arm as the mean of its training seeds +- 1.96 SEM
-# ABOUTME: (PAR/GPT/grok/synthdoc-716: 3 seeds each; da716 + Sonnet concise: one run) next to two refs.
+# ABOUTME: ODCV misalignment per TRAINING-DATA arm, every interval from src/eval/stats:
+# ABOUTME: a seeded arm pools its seeds on the design's checkpoint axis, so all bars are comparable.
 # Run: uv run python scratch/gpt_seeds/plot_seed_mean.py [--results gpt.42=<results.json>,gpt.69=<...>,grok.42=<repo::file>,...] [--out_dir output/gpt_seeds/plots]
 #
 # Supersedes scratch/par_b/plot_seed_mean.py (PAR seeds only): every arm with >= 2 seeds is
-# drawn as the MEAN of its per-seed MRs +- 1.96 * SD/sqrt(k)
-# (training-seed variance, no eval noise); an arm with one run keeps its scenario-bootstrap
-# 95% CI (eval-sampling noise). Whisker style + footnote say which is which; the markdown
-# mirror carries the arithmetic and the t-based 95% interval (k=3 -> t=4.303) alongside
-# the 1.96 one, because 1.96 is an ~81% interval at df=2 (scratch/stats/odcv_seed_sem.py).
+# scored through odcv.summarise_pooled, which puts the training seed on its own axis of the
+# ODCV design. That replaced a mean-of-per-seed-MRs +- 1.96*SEM: the old figure drew two
+# different quantities as the same whisker (training variance for seeded arms, eval-sampling
+# noise for single runs), so the widths could not be compared. Now every bar carries scenario
+# sampling, and a seeded arm additionally carries seed-to-seed variance, in one interval.
 # Same exclusion list for every arm (the gptresp eval config's 15 -- verified
 # identical to the PAR arms' scratch/par_b/odcv_bench_t2_9284_par716_2x65.yaml exclusions),
 # re-summarised from each run's published per-scenario medians -- no reruns.
@@ -30,12 +30,11 @@ sys.path.insert(0, str(ROOT))
 # three scratch scripts before. Nothing in this file recomputes them.
 from src.naming import figure_path  # noqa: E402
 from src.eval.misalignment.odcv.odcv import (  # noqa: E402
-    bootstrap_mr_ci,
-    mr_over_cells,
     passes_by_index,
     pick_most_complete_pass,
-    seed_mean,
     shared_cells,
+    summarise,
+    summarise_pooled,
 )
 
 CFG = "configs/eval/2026-08-24_odcv_bench_table2_9284_gpt_responder_685_rank64_paired_2_65.yaml"
@@ -257,62 +256,68 @@ def _split(keys) -> dict[str, list[str]]:
     }
 
 
-def _stats_from_cells(cells: dict[str, list[float]], keys, ci: bool) -> dict:
-    """MR + per-variant MR over `keys`, with cell-level bootstrap CIs when `ci`.
-
-    `ci=False` for one seed of a multi-seed arm: its whisker is the spread ACROSS seeds,
-    so an eval-noise interval per seed would be a second, incomparable thing on the chart.
-    """
-    groups = _split(keys)
-    out = dict(
-        mr=round(mr_over_cells(cells, keys), 1),
-        n_cells=len(keys),
-        n_rollouts=sum(len(cells[k]) for k in keys),
-        sev=round(sum(sum(cells[k]) / len(cells[k]) for k in keys) / len(keys), 2),
-        mand=round(mr_over_cells(cells, groups["mandated"]), 1),
-        inc=round(mr_over_cells(cells, groups["incentivized"]), 1),
-    )
-    if ci:
-        lo, hi = bootstrap_mr_ci(cells, keys)
-        out["lo"], out["hi"] = round(lo, 1), round(hi, 1)
-        out["mand_ci"] = tuple(
-            round(v, 1) for v in bootstrap_mr_ci(cells, groups["mandated"])
-        )
-        out["inc_ci"] = tuple(
-            round(v, 1) for v in bootstrap_mr_ci(cells, groups["incentivized"])
-        )
+def _to_medians(cells: dict[str, list[float]], keys) -> dict[str, dict[str, list[float]]]:
+    """{"variant/scenario": [s]} restricted to `keys` -> the {variant: {scenario: [s]}}
+    shape src/eval/misalignment/odcv/odcv.py's summarise takes."""
+    out: dict[str, dict[str, list[float]]] = {"mandated": {}, "incentivized": {}}
+    for k in keys:
+        variant, _, scenario = k.partition("/")
+        out[variant][scenario] = list(cells[k])
     return out
 
 
-def _sem_row(values: list[float]) -> dict:
-    """`seed_mean` from src/, rounded for display and with the legacy key name kept."""
-    s = seed_mean(values, z=SEM_Z)
-    r = {
-        k: (round(v, 2) if isinstance(v, float) else v)
-        for k, v in s.items()
-        if k != "coverage_of_z_pct"
-    }
-    r["t"] = round(s["t"], 3)
-    r["coverage_of_1p96_pct"] = round(s["coverage_of_z_pct"], 1)
-    return r
+def _arm_stats(cells_by_seed: dict, keys) -> dict:
+    """MR + per-variant MR with intervals from src/eval/stats, via odcv.summarise[_pooled].
+
+    This is the whole reason the figure changed shape. It used to draw two incomparable
+    whiskers: a mean-of-per-seed-MRs +- 1.96*SEM for seeded arms, and a cell bootstrap for
+    single runs -- different quantities, same visual. `summarise_pooled` instead puts the
+    CHECKPOINT (the training seed) on its own axis of the ODCV design, so a seeded arm's
+    interval carries scenario sampling AND seed-to-seed variance in one number, on the same
+    scale as a single run's. One kind of whisker, and the seeded arms' are honestly wider.
+    """
+    by_ckpt = {str(sd): _to_medians(c, keys) for sd, c in cells_by_seed.items()}
+    s = summarise_pooled(by_ckpt) if len(by_ckpt) > 1 else summarise(next(iter(by_ckpt.values())))
+    o = s["overall"]
+    out = dict(
+        mr=o["mr_pct"],
+        lo=o["mr_ci95"][0],
+        hi=o["mr_ci95"][1],
+        n_scenarios=o["n_scenarios"],
+        n_rollouts=o["n_rollouts"],
+        sev=o["mean_severity"],
+        n_checkpoints=o.get("n_checkpoints", 1),
+        claims=s["stats"]["overall"]["mr"].get("claims", []),
+    )
+    for v in ("mandated", "incentivized"):
+        b = s.get(v) or {}
+        ci = b.get("mr_ci95") or [b.get("mr_pct", 0.0), b.get("mr_pct", 0.0)]
+        out["mand" if v == "mandated" else "inc"] = (b.get("mr_pct", 0.0), ci[0], ci[1])
+    return out
 
 
-def _collect(results: dict[str, str]) -> list[dict]:
-    """Every arm on the cells EVERY arm kept.
+def _collect(results: dict[str, str], only: tuple[str, ...] = ()) -> list[dict]:
+    """Every arm on the cells EVERY arm kept, scored through src/eval/stats.
 
-    Two intersections, in order. Within an arm, a cell missing from any seed is dropped
-    from all its seeds. Then ACROSS arms, a cell missing from any arm is dropped from all
-    arms -- without which the bars are not comparable in level, only in shape: arms ended
-    up on 57 to 65 surviving cells, and the arm that lost the most (synthdoc-716, 57) read
-    2.6 pp low against its own 65-cell figure purely because the cells it lost were ones
-    it failed. Dropout is not random w.r.t. MR: the cells that fail are the long, agentic
-    rollouts, so a smaller surviving set is biased LOW.
+    Two intersections, in order. Within an arm, a cell missing from any seed is dropped from
+    all its seeds. Then ACROSS arms, a cell missing from any arm is dropped from all arms --
+    without which the bars are comparable in shape but not in level: arms sat on 57 to 65
+    surviving cells, and the arm that lost the most read 2.6 pp low against its own figure
+    purely because the cells it lost were ones it FAILED. Dropout is not random w.r.t. MR --
+    the cells that fail are the long, agentic rollouts -- so a smaller set is biased LOW.
+
+    `--only` restricts to a subset of arms; the intersection is then over just those, which
+    is what makes a six-arm view legitimately comparable rather than a crop of a nine-arm one.
     """
     cfg = OmegaConf.load(ROOT / CFG)
     excluded = set(OmegaConf.to_container(cfg.get("exclude_scenarios", []) or []))
+    unknown = set(only) - set(ARMS)
+    assert not unknown, f"unknown arm(s) {sorted(unknown)}; known: {list(ARMS)}"
 
     prepared = {}
     for key, arm in ARMS.items():
+        if only and key not in only:
+            continue
         seeds = dict(arm["seeds"])
         for rk, src in results.items():
             k, _, sd = rk.partition(".")
@@ -323,13 +328,11 @@ def _collect(results: dict[str, str]) -> list[dict]:
             for sd, src in sorted(seeds.items())
         }
         if len(passes) >= 2:
-            # ONE pass per seed: a seed scored over several passes would get a less noisy
-            # point estimate than a one-pass sibling, breaking the equal-variance
-            # assumption the interval across seeds rests on.
+            # ONE pass per seed: a seed scored over several passes gets a less noisy point
+            # estimate than a one-pass sibling, which would bias the seed axis of the design.
             cells = {sd: pick_most_complete_pass(ps) for sd, ps in passes.items()}
         else:
-            # A single training has no cross-seed variance to protect, so every pass it ran
-            # is kept -- more rollouts per cell, a better point estimate.
+            # A single training has no seed axis to protect, so every pass it ran is kept.
             cells = {sd: _merge(ps) for sd, ps in passes.items()}
         prepared[key] = dict(
             arm=arm, seeds=seeds, passes=passes, cells=cells, own=shared_cells(cells)
@@ -341,63 +344,35 @@ def _collect(results: dict[str, str]) -> list[dict]:
     rows = []
     for key, pr in prepared.items():
         arm, seeds, passes, cells = pr["arm"], pr["seeds"], pr["passes"], pr["cells"]
-        single = len(cells) == 1
-        per_seed = {
-            sd: _stats_from_cells(c, common, ci=single) for sd, c in cells.items()
-        }
-        row = dict(
-            key=key,
-            short=arm["short"],
-            long=arm["long"],
-            color=arm["color"],
-            hatch=arm["hatch"],
-            per_seed=per_seed,
-            n_cells=len(common),
-            n_cells_own=len(pr["own"]),
-            n_passes={str(sd): len(ps) for sd, ps in passes.items()},
-            sources={
-                str(sd): (src if isinstance(src, str) else "::".join(src))
-                for sd, src in seeds.items()
-            },
+        st = _arm_stats(cells, common)
+        rows.append(
+            dict(
+                key=key,
+                short=arm["short"],
+                long=arm["long"],
+                color=arm["color"],
+                hatch=arm["hatch"],
+                n_cells=len(common),
+                n_cells_own=len(pr["own"]),
+                n_seeds=len(cells),
+                kind="pooled" if len(cells) > 1 else "single",
+                n_passes={str(sd): len(ps) for sd, ps in passes.items()},
+                sources={
+                    str(sd): (src if isinstance(src, str) else "::".join(src))
+                    for sd, src in seeds.items()
+                },
+                per_seed={
+                    sd: _arm_stats({sd: c}, common) for sd, c in cells.items()
+                },
+                **st,
+            )
         )
-        if len(per_seed) >= 2:
-            row["kind"] = "seed_mean"
-            row["sem"] = {
-                m: _sem_row([per_seed[s][m] for s in per_seed])
-                for m in ("mr", "mand", "inc")
-            }
-            row.update(
-                mr=row["sem"]["mr"]["mean"],
-                lo=row["sem"]["mr"]["lo"],
-                hi=row["sem"]["mr"]["hi"],
-                mand=(
-                    row["sem"]["mand"]["mean"],
-                    row["sem"]["mand"]["lo"],
-                    row["sem"]["mand"]["hi"],
-                ),
-                inc=(
-                    row["sem"]["inc"]["mean"],
-                    row["sem"]["inc"]["lo"],
-                    row["sem"]["inc"]["hi"],
-                ),
-            )
-        else:
-            ((sd, r),) = per_seed.items()
-            row["kind"] = "single"
-            row.update(
-                mr=r["mr"],
-                lo=r["lo"],
-                hi=r["hi"],
-                mand=(r["mand"], *r["mand_ci"]),
-                inc=(r["inc"], *r["inc_ci"]),
-            )
-        rows.append(row)
     rows.sort(key=lambda r: r["mr"])
     return rows
 
 
 def _bar(ax, x, r, v, lo, hi, width, alpha=1.0, hatch=None, fs=9.5):
-    seedmean = r["kind"] == "seed_mean"
+    seedmean = r["kind"] == "pooled"
     h = hatch if hatch is not None else r["hatch"]
     # Hatch lines take the edge colour; on a coloured fill they must contrast with it or
     # the texture (the only thing separating Sonnet from Sonnet-concise) vanishes.
@@ -436,14 +411,18 @@ def _bar(ax, x, r, v, lo, hi, width, alpha=1.0, hatch=None, fs=9.5):
     )
 
 
-def main(results: str = "", out_dir: str = "output/gpt_seeds/plots") -> None:
-    """Render the generator seed-mean comparison (bars + variants) and its mirror.
+def main(results: str = "", out_dir: str = "output/gpt_seeds/plots",
+         only: str = "") -> None:
+    """Render the arm comparison (bars + variants) and its markdown mirror.
 
     Args:
         results: Comma-separated `key.seed=<results.json path | repo::file>` entries adding
             seeds to an arm (keys: par, gpt, grok, sonnet, sonnet_concise, base, table2), e.g.
             `gpt.42=output/odcv_bench/<key>/combined2x_<ts>/results.json,gpt.69=...`.
         out_dir: Where the PNGs, results.json and the markdown mirror go.
+        only: Comma-separated arm keys to draw, e.g. "principle_scoped,grok,gpt".
+            The shared-cell intersection is then taken over JUST those arms, so a subset
+            view is genuinely comparable rather than a crop of the full one.
     """
     import matplotlib
 
@@ -454,8 +433,12 @@ def main(results: str = "", out_dir: str = "output/gpt_seeds/plots") -> None:
 
     parts = results if isinstance(results, (tuple, list)) else str(results).split(",")
     rmap = dict(str(p).partition("=")[::2] for p in parts if "=" in str(p))
-    rows = _collect(rmap)
-    seed_arms = [r for r in rows if r["kind"] == "seed_mean"]
+    # fire hands a comma list back as a TUPLE, not a string (see docs/GOTCHAS.md), so
+    # accept both or `--only a,b` arrives as the repr of a tuple and every key is unknown.
+    raw = only if isinstance(only, (tuple, list)) else str(only).split(",")
+    picks = tuple(str(k).strip() for k in raw if str(k).strip())
+    rows = _collect(rmap, picks)
+    seed_arms = [r for r in rows if r["kind"] == "pooled"]
     ts = time.strftime("%Y%m%d_%H%M%S")
     out = ROOT / out_dir
     out.mkdir(parents=True, exist_ok=True)
@@ -475,8 +458,8 @@ def main(results: str = "", out_dir: str = "output/gpt_seeds/plots") -> None:
         [
             r["short"]
             + (
-                "\nmean of %d seeds" % r["sem"]["mr"]["k"]
-                if r["kind"] == "seed_mean"
+                "\n%d seeds pooled" % r["n_seeds"]
+                if r["kind"] == "pooled"
                 else ""
             )
             for r in rows
@@ -521,28 +504,48 @@ def main(results: str = "", out_dir: str = "output/gpt_seeds/plots") -> None:
                 [],
                 color="#111111",
                 lw=2.0,
-                label="mean of training seeds ± 1.96·SEM",
+                label="seeds pooled on the design checkpoint axis",
             ),
             Line2D(
                 [],
                 [],
                 color="#555555",
                 lw=1.2,
-                label="one run, scenario-bootstrap 95% CI",
+                label="one training (scenario variance only)",
             ),
-            Patch(facecolor=RED, label="GPT-written difficult advice"),
-            Patch(facecolor=BLUE, label="grok-written difficult advice"),
-            Patch(
-                facecolor=GREEN,
-                label="Sonnet-written difficult advice (hatched: length-capped)",
-            ),
-            Patch(facecolor=TEAL, label="Sonnet-written post-action retrospection"),
-            Patch(
-                facecolor=GRAY,
-                hatch="...",
-                edgecolor="#555555",
-                label="no-SFT references",
-            ),
+            # Only the colours this figure actually draws: with --only, listing a family
+            # that is not on the chart invites the reader to hunt for a bar that is not there.
+            *[
+                p
+                for c, p in (
+                    (RED, Patch(facecolor=RED, label="GPT-written difficult advice")),
+                    (BLUE, Patch(facecolor=BLUE, label="grok-written difficult advice")),
+                    (
+                        GREEN,
+                        Patch(
+                            facecolor=GREEN,
+                            label="Sonnet-written difficult advice (hatched: a variant)",
+                        ),
+                    ),
+                    (
+                        TEAL,
+                        Patch(
+                            facecolor=TEAL,
+                            label="Sonnet-written post-action retrospection",
+                        ),
+                    ),
+                    (
+                        GRAY,
+                        Patch(
+                            facecolor=GRAY,
+                            hatch="...",
+                            edgecolor="#555555",
+                            label="no-SFT references",
+                        ),
+                    ),
+                )
+                if c in {r["color"] for r in rows}
+            ],
         ],
         loc="upper left",
         fontsize=7.8,
@@ -555,17 +558,14 @@ def main(results: str = "", out_dir: str = "output/gpt_seeds/plots") -> None:
     )
     fig.suptitle(title, fontsize=12, fontweight="bold", x=0.98, ha="right", y=0.995)
     foot = " · ".join(
-        f"{r['key']}: seeds {', '.join(f'{v:.1f}' for v in r['sem']['mr']['values'])}% → "
-        f"{r['sem']['mr']['mean']:.1f} ± {r['sem']['mr']['half']:.1f} (SD {r['sem']['mr']['sd']:.2f})"
-        for r in seed_arms
+        f"{r['key']}: {r['n_seeds']} seeds" for r in seed_arms
     )
     fig.text(
         0.01,
         0.005,
         (foot + ". " if foot else "")
-        + "Seed bars carry training-seed variance only (each seed "
-        "evaluated once, ONE pass per seed); ±1.96·SEM at k=3 is an ~81% interval "
-        "(t=4.30 for 95%). Others: published per-scenario medians on the same cells.",
+        + "Each seed is evaluated once, on ONE pass. Every interval comes from src/eval/stats: a "
+        "pooled arm's carries seed-to-seed variance, a single arm's does not.",
         fontsize=7.2,
         color="#555555",
         wrap=True,
@@ -587,8 +587,8 @@ def main(results: str = "", out_dir: str = "output/gpt_seeds/plots") -> None:
         [
             r["short"]
             + (
-                "\nmean of %d seeds" % r["sem"]["mr"]["k"]
-                if r["kind"] == "seed_mean"
+                "\n%d seeds pooled" % r["n_seeds"]
+                if r["kind"] == "pooled"
                 else ""
             )
             for r in vrows
@@ -615,13 +615,13 @@ def main(results: str = "", out_dir: str = "output/gpt_seeds/plots") -> None:
                 edgecolor="#555555",
                 label="incentivized  (violation is merely rewarded)",
             ),
-            Line2D([], [], color="#111111", lw=2.0, label="seed mean ± 1.96·SEM"),
+            Line2D([], [], color="#111111", lw=2.0, label="seeds pooled (scenario + seed variance)"),
             Line2D(
                 [],
                 [],
                 color="#555555",
                 lw=1.2,
-                label="one run, scenario-cluster bootstrap 95% CI",
+                label="one training (scenario variance only)",
             ),
         ],
         loc="upper left",
@@ -637,10 +637,9 @@ def main(results: str = "", out_dir: str = "output/gpt_seeds/plots") -> None:
         0.01,
         0.005,
         " · ".join(
-            f"{r['key']} mandated {', '.join(f'{v:.1f}' for v in r['sem']['mand']['values'])}% "
-            f"(±{r['sem']['mand']['half']:.1f}); incentivized "
-            f"{', '.join(f'{v:.1f}' for v in r['sem']['inc']['values'])}% (±{r['sem']['inc']['half']:.1f})"
-            for r in seed_arms
+            f"{r['key']}: mandated {r['mand'][0]:.1f}% [{r['mand'][1]:.1f}, {r['mand'][2]:.1f}], "
+            f"incentivized {r['inc'][0]:.1f}% [{r['inc'][1]:.1f}, {r['inc'][2]:.1f}]"
+            for r in rows
         ),
         fontsize=7.2,
         color="#555555",
@@ -653,57 +652,31 @@ def main(results: str = "", out_dir: str = "output/gpt_seeds/plots") -> None:
 
     # --- mirror + json ------------------------------------------------------------------
     lines = [
-        f"# Synthetic-SFT arms: seed mean ± 1.96·SEM vs single runs",
+        f"# Synthetic-SFT arms: ODCV misalignment, intervals from src/eval/stats",
         "",
         f"Generated {ts}. Cell set: `{CFG}` exclusions. No reruns: every number is "
         "re-summarised from the run's published per-scenario medians.",
         "",
         "## Per run",
         "",
-        "A multi-seed arm keeps ONE pass per seed, on the cells every seed scored, and its "
-        "seeds carry no interval of their own (the arm's whisker is the spread across "
-        "them). A single-training arm keeps every pass it ran and gets a cell-level "
-        "bootstrap 95% CI. `passes` is how many the published run actually contained.",
+        "One row per training. A multi-seed arm keeps ONE pass per seed (the most complete) "
+        "and every seed is scored on the cells they all kept; a single-training arm keeps "
+        "every pass it ran. Each row's interval is that ONE training scored alone -- the "
+        "arm's bar pools them, so its interval is wider than any row here. `passes` is how "
+        "many the published run actually contained.",
         "",
         "| arm | seed | MR | 95% CI | sev | mandated | incentivized | cells | rollouts | passes | source |",
         "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for r in rows:
         for sd, s in r["per_seed"].items():
-            ci = (
-                f"[{s['lo']:.1f}, {s['hi']:.1f}]" if "lo" in s else "— (seed of a mean)"
-            )
-            mand = f"{s['mand']:.1f}%" + (
-                f" [{s['mand_ci'][0]}, {s['mand_ci'][1]}]" if "mand_ci" in s else ""
-            )
-            inc = f"{s['inc']:.1f}%" + (
-                f" [{s['inc_ci'][0]}, {s['inc_ci'][1]}]" if "inc_ci" in s else ""
-            )
+            ci = f"[{s['lo']:.1f}, {s['hi']:.1f}]"
+            mand = f"{s['mand'][0]:.1f}% [{s['mand'][1]:.1f}, {s['mand'][2]:.1f}]"
+            inc = f"{s['inc'][0]:.1f}% [{s['inc'][1]:.1f}, {s['inc'][2]:.1f}]"
             lines.append(
                 f"| {r['key']} | {sd} | {s['mr']:.1f}% | {ci} | {s['sev']:.2f} | {mand} "
-                f"| {inc} | {s['n_cells']} | {s['n_rollouts']} "
+                f"| {inc} | {s['n_scenarios']} | {s['n_rollouts']} "
                 f"| {r['n_passes'][str(sd)]} | `{r['sources'][str(sd)]}` |"
-            )
-    lines += [
-        "",
-        "## Between-seed error (arms with >= 2 seeds)",
-        "",
-        "| arm | metric | per-seed values | mean | SD | SEM = SD/√k | **±1.96·SEM** | "
-        "interval | ±t·SEM (true 95%) | interval | coverage of ±1.96 at df=k-1 |",
-        "|---|---|---|---|---|---|---|---|---|---|---|",
-    ]
-    for r in seed_arms:
-        for m, name in (
-            ("mr", "overall MR"),
-            ("mand", "mandated MR"),
-            ("inc", "incentivized MR"),
-        ):
-            s = r["sem"][m]
-            lines.append(
-                f"| {r['key']} | {name} | {', '.join(f'{v:.1f}' for v in s['values'])} | "
-                f"{s['mean']:.2f} | {s['sd']:.2f} | {s['sem']:.2f} | **±{s['half']:.2f}** | "
-                f"[{s['lo']:.2f}, {s['hi']:.2f}] | ±{s['half_t']:.2f} (t={s['t']}) | "
-                f"[{s['lo_t']:.2f}, {s['hi_t']:.2f}] | {s['coverage_of_1p96_pct']:.0f}% |"
             )
     lines += [
         "",
@@ -718,10 +691,11 @@ def main(results: str = "", out_dir: str = "output/gpt_seeds/plots") -> None:
         )
     lines += [
         "",
-        "Seed-mean whiskers are training-seed variance only (each seed evaluated once); "
-        "single-run whiskers are eval-sampling noise. The two are not comparable widths. "
-        "At k=3, ±1.96·SEM covers ~81%, not 95% (t=4.303 for 95%), per "
-        "scratch/stats/odcv_seed_sem.py.",
+        "Every interval comes from src/eval/stats via odcv.summarise[_pooled]: scenarios are "
+        "the sampled unit, variants are enumerated and mixed 50/50, rollouts average into the "
+        "cell. An arm with several seeds pools them on the checkpoint axis, so its interval "
+        "ALSO carries seed-to-seed variance -- which is why the pooled arms are wider here "
+        "than they were as a mean-of-means, and why the two kinds are now comparable.",
         "",
         f"Plots: `{png.relative_to(ROOT)}`, `{png_v.relative_to(ROOT)}`",
     ]
@@ -737,8 +711,9 @@ def main(results: str = "", out_dir: str = "output/gpt_seeds/plots") -> None:
         print(
             f"{r['key']:15s} {r['kind']:9s} {r['mr']:5.1f}%  [{r['lo']:.1f}, {r['hi']:.1f}]"
             + (
-                f"   seeds {r['sem']['mr']['values']}"
-                if r["kind"] == "seed_mean"
+                "   seeds "
+                + ", ".join(f"{s['mr']:.1f}" for s in r["per_seed"].values())
+                if r["kind"] == "pooled"
                 else ""
             )
         )
