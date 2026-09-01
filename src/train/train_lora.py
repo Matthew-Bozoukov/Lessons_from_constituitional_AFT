@@ -259,8 +259,8 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
             "a credential-less pod run sets push=false and pushes from the driver.")
         # A model organism is named before it is trained, never after: the name is checked
         # here, at config load, so an ambiguous or undated `hf_repo` costs zero GPU hours
-        # instead of failing at the push after a multi-hour run (src/naming.py).
-        from src.naming import check_hub_repo
+        # instead of failing at the push after a multi-hour run (src/utils.py).
+        from src.utils import check_hub_repo
 
         check_hub_repo(hf_repo, what="model organism (hf_repo)", write=True)
     torch.manual_seed(int(cfg.seed))

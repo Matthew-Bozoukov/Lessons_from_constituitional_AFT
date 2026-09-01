@@ -58,7 +58,7 @@ import matplotlib.pyplot as plt
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
-from src.naming import figure_path
+from src.utils import figure_path
 from src.eval.stats import Design, NotEstimable, interval, wilson  # noqa: E402
 from src.utils import git_sha, write_run_meta  # noqa: E402
 

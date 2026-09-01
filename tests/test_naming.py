@@ -1,9 +1,9 @@
-# ABOUTME: Offline tests for the naming law (src/naming.py): the grammar, the ambiguity
+# ABOUTME: Offline tests for the naming law (src/utils.py): the grammar, the ambiguity
 # ABOUTME: rules, the push gate, and the repo-wide lint that blocks a push.
 
 import pytest
 
-from src.naming import (
+from src.utils import (
     NamingError,
     canonical_key,
     check_distinct,

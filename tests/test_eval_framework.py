@@ -14,7 +14,7 @@ ADAPTER_CONFIG = {"base_model_name_or_path": "Qwen/Qwen3-32B", "r": 16}
 def test_full_model_uses_template_default_mode():
     spec = _spec_from_files("Qwen/Qwen3-32B", None, None)
     assert spec == TargetSpec(hf_path="Qwen/Qwen3-32B", base_model="Qwen/Qwen3-32B",
-                              adapter=False, mode="default", model_key="qwen3",  # canonical spelling (src/naming.py)
+                              adapter=False, mode="default", model_key="qwen3",  # canonical spelling (src/utils.py)
                               lora_rank=None)
 
 
@@ -274,10 +274,10 @@ def test_sshexec_remote_commands_source_the_hosts_own_env():
     from src.infra.endpoints.vllm import SshExec
 
     ex = SshExec("somehost", port=8000)
-    wrapped = ex._with_env("uv run python -c x")
+    wrapped = ex._with_env("vllm-serve")
     # The pod's .env, sourced shell-convention style; the driver's env is never sent.
-    assert "set -a; [ -f /root/work/.env ]" in wrapped
-    assert wrapped.endswith("uv run python -c x")
+    assert "set -a; [ -f /workspace/.env ]" in wrapped
+    assert wrapped.endswith("vllm-serve")
 
 
 def test_sshexec_push_hf_env_is_optin_minimal_and_never_overwrites(monkeypatch, tmp_path):
@@ -316,14 +316,14 @@ def test_sshexec_push_hf_env_is_optin_minimal_and_never_overwrites(monkeypatch, 
 
 
 def test_sshexec_check_ready_errors_name_the_remedy(monkeypatch):
-    # An unprepared host must name the ONE command that prepares one. The remedy moved
-    # from bootstrap_pod.sh to `uv run runpod up` when provisioning and cloning became
-    # a single step; a preflight that names a script nobody has is worse than none.
+    # An unprepared host must name the ONE command that prepares one; a preflight that
+    # names a script nobody has is worse than none. What it checks is vLLM, NOT a repo
+    # clone: an eval pod holds one package, not this repository.
     from src.infra.endpoints.vllm import SshExec
 
     ex = SshExec("host", port=8000)
-    monkeypatch.setattr(ex, "_ssh", lambda cmd, **kw: "NOUV\nNOREPO\n")
-    with pytest.raises(SystemExit, match="uv run runpod up"):
+    monkeypatch.setattr(ex, "_ssh", lambda cmd, **kw: "NOVLLM\n")
+    with pytest.raises(SystemExit, match=r"uv run runpod up --name <name> --eval"):
         ex.check_ready()
     monkeypatch.setattr(ex, "_ssh", lambda cmd, **kw: (_ for _ in ()).throw(RuntimeError("boom")))
     with pytest.raises(SystemExit, match="RunPod remaps ports"):
@@ -397,7 +397,7 @@ def test_local_target_api_key_is_empty_sentinel():
     from src.infra.endpoints.vllm import TargetSpec, VllmServer
 
     spec = TargetSpec(hf_path="Qwen/Qwen3-32B", base_model="Qwen/Qwen3-32B",
-                      # model_key is the canonical spelling (src/naming.py)
+                      # model_key is the canonical spelling (src/utils.py)
                       adapter=False, mode="default", model_key="qwen3", lora_rank=None)
     st = VllmServer(work_dir=Path("/tmp/_t3"), port=8000).ensure(spec)
     assert not st.is_api and st.api_key == "EMPTY"
@@ -424,30 +424,6 @@ def test_publish_layout_contract(tmp_path):
     (tmp_path / "stray.json").write_text("{}")
     with pytest.raises(RuntimeError, match=r"stray root entries.*stray\.json"):
         assert_layout(tmp_path)
-
-
-def test_an_external_endpoint_must_be_serving_the_arm_you_asked_for(monkeypatch):
-    # The mistake this catches: pointing an eval at yesterday's pod and attributing its
-    # numbers to today's adapter.
-    from dataclasses import replace
-
-    from src.infra.endpoints import vllm
-
-    spec = vllm.TargetSpec(hf_path="org/2026-08-31-arm", base_model="Qwen/Qwen3.6-27B",
-                           adapter=True, mode="think", model_key="arm", lora_rank=64)
-    server = vllm.ExternalServer("https://pod-8000.proxy.runpod.net/v1")
-
-    monkeypatch.setattr("src.infra.runpod.served_models", lambda url: ["base", "arm"])
-    assert server.serve(spec) == "https://pod-8000.proxy.runpod.net/v1"
-
-    monkeypatch.setattr("src.infra.runpod.served_models", lambda url: ["base", "other"])
-    with pytest.raises(AssertionError, match="not serving"):
-        server.serve(spec)
-
-    # A pod that is still booting says so, rather than failing later inside the eval.
-    monkeypatch.setattr("src.infra.runpod.served_models", lambda url: None)
-    with pytest.raises(AssertionError, match="SERVE_READY"):
-        server.serve(replace(spec, adapter=False))
 
 
 def test_every_target_is_named_before_any_of_them_runs(monkeypatch, tmp_path):

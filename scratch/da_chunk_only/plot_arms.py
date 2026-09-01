@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from src.eval.misalignment.odcv.odcv import misalignment_rate, summarise  # noqa: E402
-from src.naming import figure_path
+from src.utils import figure_path
 
 
 def _variant_ci(cells: dict[str, float], n_boot: int = 10_000, seed: int = 0) -> tuple:

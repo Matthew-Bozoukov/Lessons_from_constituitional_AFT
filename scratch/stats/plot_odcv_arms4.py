@@ -45,7 +45,7 @@ sys.path.insert(0, str(REPO))
 from src.eval.misalignment.odcv.odcv import (  # noqa: E402
     DESIGN_ONE_VARIANT, MR_BOUNDS, VIOLATION_THRESHOLD, median_score,
 )
-from src.naming import figure_path
+from src.utils import figure_path
 from src.eval.stats import difference, interval  # noqa: E402
 from src.utils import git_sha, write_run_meta  # noqa: E402
 

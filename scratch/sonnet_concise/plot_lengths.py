@@ -23,7 +23,7 @@ from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.naming import figure_path  # noqa: E402
+from src.utils import figure_path  # noqa: E402
 
 from scratch.build_da716_prompt_source import BASE_REPO  # noqa: E402
 from scratch.sonnet_concise.measure_lengths import (  # noqa: E402

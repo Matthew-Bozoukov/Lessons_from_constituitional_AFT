@@ -1,4 +1,4 @@
-# ABOUTME: Rename Hugging Face repos onto the naming law (src/naming.py): every artifact
+# ABOUTME: Rename Hugging Face repos onto the naming law (src/utils.py): every artifact
 # ABOUTME: `<YYYY-MM-DD>-<what it is>`, with the generator/base model and what it changes said.
 """THE Hub migration tool.
 
@@ -9,14 +9,14 @@
 
 A proposal is built from what the repo itself knows — its card (`experiment`,
 `date_generated`, `models`), its Hub tags (`kind:`, `pipeline:`, `eval:`, `model:`) and
-the local configs that point at it — then run through `src.naming.suggest`. Names the
+the local configs that point at it — then run through `src.utils.suggest`. Names the
 metadata cannot justify are listed as NEEDS SEMANTICS rather than guessed: `sonnet-v2`
 becomes `2026-08-26-sonnet45-difficult-advice-716-length-capped` only because a human
 knows what the v2 changed, and that knowledge is written down in
 `scripts/hf/rename_overrides.yaml`, not invented here.
 
 `apply` moves the repo (HF keeps a redirect from the old id), then rewrites every local
-reference and drops the entry from src/naming_legacy.py, so the debt list only shrinks.
+reference and drops the entry from src/utils.py, so the debt list only shrinks.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ from pathlib import Path
 import yaml
 
 from src.huggingface import hf_api
-from src.naming import (
+from src.utils import (
     NamingError,
     canonical_tokens,
     check_hub_name,
@@ -207,7 +207,7 @@ def apply(org: str = "LASR-Callum", only: str = "", limit: int = 0) -> None:
 
 
 def rewrite_references(moved: dict[str, str]) -> None:
-    """Point every tracked config/script at the new id and shrink src/naming_legacy.py."""
+    """Point every tracked config/script at the new id and shrink src/utils.py."""
     files = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True,
                            text=True).stdout.split()
     for rel in files:
@@ -223,7 +223,7 @@ def rewrite_references(moved: dict[str, str]) -> None:
         if text != original:
             path.write_text(text, encoding="utf-8")
             print(f"  ref {rel}")
-    legacy = ROOT / "src/naming_legacy.py"
+    legacy = ROOT / "src/utils.py"
     text = legacy.read_text()
     for old in moved:
         text = re.sub(rf'^\s*"{re.escape(old)}",\n', "", text, flags=re.M)

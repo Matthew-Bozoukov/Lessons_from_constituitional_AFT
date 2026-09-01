@@ -1,6 +1,74 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-01 — One pod shape per half of the pipeline: `runpod up --train <cfg>` or `--eval <hf>`, and run_eval owns serving
+
+**Problem.** Three ways to reach a served model had become two ways too many, and the
+documented rationale for one of them had quietly stopped being true. `runpod up --serve
+<hf>` (Option B) made the pod the vLLM server, published on RunPod's HTTPS proxy, justified
+as THE pattern for ODCV because "docker containers reach it with no bridge hop". But ODCV
+has resolved the host address itself since `container_host_address()` landed
+(`172.17.0.1` on linux, `host.docker.internal` on Docker Desktop), and the 2026-08-31 seed
+replicate — the most recent ODCV run on record — drove from a local Docker Desktop over an
+SSH tunnel, "never RunPod's HTTPS proxy". Meanwhile Option B could not verify the mode it
+served (`ExternalServer` can only ask `/models` for a name), served one arm per pod because
+`_serve_pod` passed at most one adapter, and left an unauthenticated endpoint billing on a
+public URL until someone remembered `runpod down`. Option C, the one actually in use,
+demanded a repo clone it did not need: `SshExec` ran `uv run python` inside `/root/work`, so
+a serving pod paid `uv sync` on the whole training stack to obtain one package.
+
+**Method.** Collapse to one serving path and two pod shapes, each named by the form the work
+exists in at that moment:
+
+* `uv run runpod up --name <n> --train configs/train/<arm>.yaml` — training card from
+  `gpu_for(cfg.model, "train")`, this repo at the commit you are on. An arm you are about to
+  train exists only as a config, so the config is what names it.
+* `uv run runpod up --name <n> --eval <hf_path>[,<hf_path>...]` — inference card,
+  `/workspace/vllmenv` with vLLM installed and every base and adapter pre-pulled at boot,
+  CUDA-13 constrained (vLLM's torch is built for it). No clone, and no server: a target you
+  are about to evaluate exists on the Hub, so the Hub path is what names it. `--clone-repo`
+  adds the repo on top, for driving the eval on the box instead of over a tunnel; `--train`
+  implies it.
+
+`--eval` accepts a comma-separated LIST, which sizes one pod for all of it (largest inference
+card via `largest_gpu` over a new `GPU_VRAM_GB` table, a printed warning when families
+disagree, disk floored at `50 + 150 x <distinct bases>`), but PASS ONE for now: `run_eval`
+iterates its targets sequentially and `VllmServer._start` passes no `--tensor-parallel-size`,
+so a second card on the pod idles and a mixed ladder just pays the larger card's rate for the
+arms that did not need it. An arm ladder today is one pod for the shared base and
+`uv run evals --target a b c --server <pod>`. The list form is plumbing kept for evals that
+run arms in parallel, which do not exist yet.
+
+The pod installs the vLLM **pyproject pins** (`vllm==0.26.0`), read from the file by
+`_pinned_vllm()`, not whatever PyPI serves that morning: parser names, the runtime LoRA
+endpoint and template handling all move between versions, and a pod on a different one is
+not the server the driver was tested against. The chat pod's bootstrap reads the same pin.
+`HF_HOME=/workspace/hf` is now written to the shell profile as well as exported by the boot
+script, so a later `ssh` session finds the pre-pulled cache instead of downloading 55GB twice.
+
+`run_eval` owns serving in both directions now: `--server <address|alias>` starts vLLM over
+SSH, pins the mode into the template, swaps LoRA between arms and stops what it started;
+omitting it serves on the driver. `--endpoint`, `ExternalServer` and `_serve_pod` are gone.
+`SshExec` moved to `POD_VENV`/`/workspace` and fetches adapters through `huggingface_hub`
+directly rather than importing `src.huggingface` from a clone that no longer exists; its
+`check_ready` now names `runpod up --eval` when a host has no vLLM. `serve_vllm` and
+`bootstrap_script` STAY — `uv run chat` provisions self-serving pods through them, which is a
+different job: a long-lived box several conversations point at, not a model under measurement.
+
+**Result.** 1205 tests pass. The eval framework has one place that decides how a served model
+is served, which is what makes the mode pin verifiable; an eval pod boots without `uv sync`
+and on the cheaper card by default; nothing published on a public proxy. Behaviour that did
+NOT change: the tunnel bind logic, the docker-bridge rewrite, LoRA swap across an arm ladder,
+and the credential rule (at most `HF_TOKEN` + `HF_ORG` reach a host, opt-in via `--push-env`).
+
+**Next steps.** First real run on the new shape is the check that matters: `vllm==0.26.0`
+installed by `uv pip` into a bare 3.12 venv is not byte-identical to the same version resolved
+through the repo's lock, so confirm the parsers and the pinned template behave as they do
+today. A long ODCV ladder driven from a laptop now depends on the SSH tunnel surviving for
+hours; if that bites, the fix is a keepalive in `SshExec`, or `--clone-repo` and drive on the
+box. `GPU_VRAM_GB` has three cards in it — every new `ModelProfile.gpu` entry needs its row,
+and `largest_gpu` refuses rather than guessing when one is missing.
+
 ## 2026-08-31 — Naming law: every artifact is `<date>` + an unambiguous subject, enforced at both push gates
 
 **Problem.** `qwen3.6-27b-lora-t2-9284-synthdoc-716-r64`, `qwen3_6-27b-lora-t2-9284-da716-r64-dynbatch`

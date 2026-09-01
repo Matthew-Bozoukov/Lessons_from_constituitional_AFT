@@ -11,7 +11,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
-from src.naming import figure_path
+from src.utils import figure_path
 
 
 def _pretty(cond: str) -> str:

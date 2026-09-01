@@ -32,7 +32,7 @@ from datetime import datetime
 from pathlib import Path
 
 from inspect_ai.log import read_eval_log
-from src.naming import figure_path, name_date
+from src.utils import figure_path, name_date
 
 TARGET_TAG = "vllm"
 

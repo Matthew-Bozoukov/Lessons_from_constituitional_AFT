@@ -198,6 +198,34 @@ def gpu_for(model_name: str, role: str) -> str | None:
     return None
 
 
+# VRAM per RunPod catalogue id, in GB: the one axis on which "big enough" is decided when
+# SEVERAL models have to share a pod (an eval ladder — `uv run runpod up --eval a b c`).
+# Written out rather than parsed off the id, because "NVIDIA H100 80GB HBM3" carries its
+# size and "NVIDIA H200" does not, and a regex that guesses would silently under-rent on
+# exactly the card whose name has no number in it. Add a row when a profile names a card.
+GPU_VRAM_GB = {
+    "NVIDIA H100 80GB HBM3": 80,
+    "NVIDIA H200": 141,
+    "NVIDIA B200": 180,
+}
+
+
+def largest_gpu(cards: list[str]) -> str:
+    """The card out of `cards` that every one of them fits on: the largest by VRAM.
+
+    Used when one pod must serve several targets whose families name different inference
+    cards. Refuses an id it cannot rank rather than picking arbitrarily — an unranked
+    card is one nobody has written the VRAM down for, and guessing there rents a box that
+    OOMs 20 minutes into a boot.
+    """
+    assert cards, "largest_gpu needs at least one card"
+    unranked = sorted(set(cards) - set(GPU_VRAM_GB))
+    assert not unranked, (
+        f"no VRAM on record for {unranked}: add the row to GPU_VRAM_GB in "
+        f"{__name__} so a shared pod can be sized against it")
+    return max(cards, key=lambda card: GPU_VRAM_GB[card])
+
+
 def serving_params(model_name: str) -> dict:
     """vLLM serving parameters for a base model: its profile's `serving`, else defaults."""
     for profile in MODEL_PROFILES:

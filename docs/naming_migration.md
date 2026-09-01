@@ -1,6 +1,6 @@
 # Naming migration — 2026-08-31
 
-On 2026-08-31 every name this project mints was put under one law (`src/naming.py`,
+On 2026-08-31 every name this project mints was put under one law (`src/utils.py`,
 CLAUDE.md → "Artifacts and configs"): **the date first, then a subject that says what
 the thing is** — which model made it, which arm it is, and what this one changes —
 with no abbreviation that has two expansions, and no two names meaning the same thing
@@ -124,7 +124,7 @@ repo, so old links still resolve; old *paths* do not, hence the config table.
 | `matboz/qwen3.6-27b-difficult-advice-tulu-lora` | `LASR-Callum/2026-07-28-qwen36-difficult-advice-tulu-lora-20-80` |
 
 Repos in other people's namespaces (`matboz/*`) were left alone: they are listed
-read-only in `src/naming_legacy.py`, which refuses any new push to them. What each
+read-only in `src/utils.py`, which refuses any new push to them. What each
 hand-named repo's old "v2"/"v3" actually changed is written down in
 `scripts/hf/rename_overrides.yaml`.
 

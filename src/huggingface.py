@@ -11,7 +11,7 @@ from pathlib import Path
 
 from huggingface_hub import HfApi
 
-from src.naming import check_hub_repo, name_date
+from src.utils import check_hub_repo, name_date
 
 # The mandatory card fields from CLAUDE.md "Artifacts and configs: naming and storage".
 # The contract is uniform across artifact types — a LoRA adapter's `constitution` and
@@ -166,7 +166,7 @@ def training_data_tags(kind: str, pipeline: str, constitution: str | None, *,
 def gate_push(repo_id: str, fields: dict | None = None, *, what: str = "artifact") -> str:
     """THE gate: nothing reaches the Hub under a name a reader cannot date or place.
 
-    Two checks, both from src/naming.py's law:
+    Two checks, both from src/utils.py's law:
       * the repo name is `<YYYY-MM-DD>-<subject>`, unambiguous, not a legacy name;
       * that date is the date the artifact was GENERATED — i.e. it matches the card's
         `date_generated`, so a copy-pasted repo id cannot silently re-date a corpus.
@@ -179,7 +179,7 @@ def gate_push(repo_id: str, fields: dict | None = None, *, what: str = "artifact
     generated = str((fields or {}).get("date_generated", "")).strip()
     stamped = re.sub(r"^(\d{4})-?(\d{2})-?(\d{2}).*$", r"\1-\2-\3", generated)
     if generated and re.fullmatch(r"\d{4}-\d{2}-\d{2}", stamped) and stamped != dated:
-        from src.naming import NamingError
+        from src.utils import NamingError
 
         raise NamingError(
             f"{what}: {repo_id} is dated {dated} but its card says it was "

@@ -10,7 +10,7 @@ from pathlib import Path
 import fire
 import matplotlib.pyplot as plt
 import numpy as np
-from src.naming import figure_path
+from src.utils import figure_path
 
 
 def _wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:

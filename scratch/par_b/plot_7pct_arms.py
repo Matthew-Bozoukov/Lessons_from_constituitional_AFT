@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from src.eval.misalignment.odcv.odcv import misalignment_rate, summarise  # noqa: E402
-from src.naming import name_date  # noqa: E402
+from src.utils import name_date  # noqa: E402
 
 
 # The date each arm was SCORED (its published eval run). A legend entry without one is

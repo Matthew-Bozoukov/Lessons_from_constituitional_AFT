@@ -48,7 +48,7 @@ from src.eval.capabilities.mmlu.mmlu import (  # noqa: E402
     score_records,
 )
 from src.utils import read_jsonl, timestamp, write_run_meta  # noqa: E402
-from src.naming import figure_path
+from src.utils import figure_path
 
 # One data series per panel, so colour carries no categorical load and no legend box is
 # needed — the title names the series and points are directly labelled. These are the

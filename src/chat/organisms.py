@@ -9,7 +9,7 @@ the train config it came from, the dataset). Adapters without the stamp are coun
 listed — the framework refuses to guess their mode, so neither does the menu.
 
 Every organism has ONE name, and that name carries the date it was trained: `name` is
-the adapter repo reduced to canonical tokens (src/naming.py) with the training date in
+the adapter repo reduced to canonical tokens (src/utils.py) with the training date in
 front, so two spellings of one arm cannot appear as two organisms and no arm can appear
 on a menu, in a served-model name or on a plot without saying when it was made.
 
@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from src.huggingface import hf_download, hf_org
-from src.naming import canonical_key, check_distinct, label as name_label, name_date
+from src.utils import canonical_key, check_distinct, label as name_label, name_date
 
 
 def default_orgs() -> tuple[str, ...]:
@@ -66,7 +66,7 @@ class Organism:
 
         Taken from the adapter repo, canonicalised so one arm has one spelling, and dated
         from the repo name when it carries a date and from the training stamp when it does
-        not (the pre-dating repos in src/naming_legacy.py). An organism therefore cannot be
+        not (the pre-dating repos in src/utils.py). An organism therefore cannot be
         referred to, served, filed or plotted without its date.
         """
         key = canonical_key(self.repo)

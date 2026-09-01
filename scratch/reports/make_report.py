@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 
 from src.utils import git_sha, timestamp  # noqa: E402
-from src.naming import figure_path
+from src.utils import figure_path
 
 
 def _load(path: str) -> dict:

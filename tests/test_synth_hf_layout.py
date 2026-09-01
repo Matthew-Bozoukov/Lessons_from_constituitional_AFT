@@ -52,7 +52,7 @@ class _FakeApi:
 
 def _cache(tmp_path):
     # The repo NAME alone: the org is the environment's (src.huggingface.hf_org), and
-    # the name obeys the naming law like every other artifact (src/naming.py).
+    # the name obeys the naming law like every other artifact (src/utils.py).
     c = StageCache(tmp_path, "2026-08-14-difficult-advice-fixture", token="offline",
                    card_fields=FIELDS,
                    tags=["training-data", "kind:synth"])

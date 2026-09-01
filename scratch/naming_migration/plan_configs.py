@@ -1,5 +1,5 @@
 # ABOUTME: One-off migration: propose the dated, unambiguous name for every experiment config
-# ABOUTME: (src/naming.py law) and, with --apply, git mv them and rewrite every reference.
+# ABOUTME: (src/utils.py law) and, with --apply, git mv them and rewrite every reference.
 """Run: uv run python scratch/naming_migration/plan_configs.py [--apply]
 
 Date for each config = the date it was first committed (what it actually ran), from git.
@@ -17,7 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.naming import (  # noqa: E402
+from src.utils import (  # noqa: E402
     NamingError,
     check_local_name,
     name_date,

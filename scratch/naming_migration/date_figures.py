@@ -1,4 +1,4 @@
-# ABOUTME: One-off migration: route every figure filename through src.naming.figure_path so
+# ABOUTME: One-off migration: route every figure filename through src.utils.figure_path so
 # ABOUTME: each plot file carries the date it was made and the arm it shows.
 """Run: uv run python scratch/naming_migration/date_figures.py [--apply]
 
@@ -46,16 +46,16 @@ def main(apply: bool = False) -> None:
         new = rewrite(text)
         if new == text:
             continue
-        if "from src.naming import" in new:
+        if "from src.utils import" in new:
             new = re.sub(r"from src\.naming import ([^\n]+)",
                          lambda m: m.group(0) if "figure_path" in m.group(1)
-                         else f"from src.naming import figure_path, {m.group(1)}", new, count=1)
+                         else f"from src.utils import figure_path, {m.group(1)}", new, count=1)
         else:
             lines = new.split("\n")
             anchor = max((i for i, l in enumerate(lines)
                           if l.startswith(("import ", "from ")) and "__future__" not in l),
                          default=0)
-            lines.insert(anchor + 1, "from src.naming import figure_path")
+            lines.insert(anchor + 1, "from src.utils import figure_path")
             new = "\n".join(lines)
         touched += 1
         print(f"{'rewrote' if apply else 'would rewrite'} {rel}")

@@ -31,12 +31,17 @@ numbers.
 
 Only the model *server* needs a GPU host; every pipeline *driver* runs anywhere the repo
 env installs — one lock resolves on linux and macOS (GPU packages are linux-marked).
-A GPU comes from one command, `uv run runpod up`, in three shapes: bare (uv and sshd),
-`--clone-repo` (+ this repo at the commit you are on, refused when that commit is not on
-origin), and `--serve <hf>` (+ vLLM serving that target). Naming the work picks the GPU
-from `ModelProfile.gpu` — `--train_config <cfg>` trains on it, `--serve <hf>` serves on
-it, a different and usually cheaper card — and `--count` is the number. **Never write a
-`POST /pods` yourself** — `src/infra/runpod.py` is the only place this repo rents a GPU.
+A GPU comes from one command, `uv run runpod up`, in two shapes, one per half of the
+pipeline: `--train <cfg>` (the training card + this repo at the commit you are on,
+refused when that commit is not on origin) and `--eval <hf>` (the inference card, a
+different and usually cheaper one, + vLLM at the version pyproject pins and the weights —
+no repo, and no server: `uv run evals` owns serving). Naming the work picks the GPU from
+`ModelProfile.gpu`, and the FORM of the name is the difference between the shapes: an arm
+you are about to train exists only as a config, a target you are about to evaluate exists
+on the Hub. `--count` is the number of GPUs, and `--clone-repo` adds this repo to an
+`--eval` pod when you want to drive the eval on the box rather than over a tunnel.
+**Never write a `POST /pods` yourself** — `src/infra/runpod.py` is the only place this
+repo rents a GPU.
 **Nothing tears a pod down for you**: `uv run runpod down --pod <id>` terminates and
 verifies, `uv run runpod pods` lists what is still billing. The account and the credit are
 shared, so check balances before big runs and flag spend over ~$20. Harder-won pod lessons live in `docs/GOTCHAS.md`.
@@ -47,11 +52,11 @@ shared, so check balances before big runs and flag spend over ~$20. Harder-won p
 
 ### Train (`uv run train`)
 
-Option A only — code must run on the GPU host directly:
+One shape only — unlike an eval, training code must run on the GPU host directly:
 
 ```
-uv run runpod up --name <you>-<arm> --train_config configs/train/<arm>.yaml --count N --push_env
-#   (--train_config implies --clone-repo: the pod gets this repo at your commit)
+uv run runpod up --name <you>-<arm> --train configs/train/<arm>.yaml --count N --push_env
+#   (--train implies the clone: the pod gets this repo at your commit)
 ssh -p <port> root@<ip> 'cd /root/work && uv run torchrun --nproc_per_node=N \
     scripts/train/train_lora.py --config configs/train/<arm>.yaml'
 uv run runpod down --pod <id>
@@ -62,38 +67,43 @@ GPU needs no torchrun, `uv run train --config <cfg>` is enough. Be aware that wh
 
 ### Eval (`uv run evals`)
 
-Three ways to reach a served model, identical eval code:
+**The eval always runs where you type it; only the model moves.** `run_eval` owns serving
+in both shapes below — it starts vLLM, pins the mode into the template, swaps LoRA
+between arms and stops what it started — so there is exactly one place that decides how
+a model under measurement is served, and it is the same code either way.
 
-- **Option A — everything on the pod.** Copy `.env` to the pod, then plain `uv run`
-  there: e.g. `uv run evals --target <hf> --name <eval>`. Serving is a local
-  subprocess; judging and the HF push use the pod's `.env`.
-- **Option B — the pod serves, you drive.** THE pattern for ODCV (docker must run where
-  you are, the model must not):
+- **Serve on this machine** (no `--server`): `uv run evals --target <hf> --name <eval>`.
+  For a driver that has its own GPU — and, on a pod rented with `uv run runpod up --eval
+  <hf> --clone-repo` (both of those are `runpod up` args, not `evals` ones), the way to
+  run the whole eval ON the box: `ssh <pod>`, then plain `uv run evals` there, with the
+  pod's own `.env` for judging and the push. Not available to ODCV (see below).
+- **Serve on a pod, drive here** — the normal shape, and THE one for ODCV (docker must
+  run where you are, the model must not):
 
   ```
-  uv run runpod up --name <you>-serve --serve <hf> --max_len 65536
-  uv run evals --name <eval> --target <hf> --endpoint https://<pod>-8000.proxy.runpod.net/v1
+  uv run runpod up --name <you>-eval --eval <hf>
+  uv run evals --name <eval> --target <hf> --server root@<ip>:<port>
   uv run runpod down --pod <id>
   ```
 
-  `--serve` makes the pod the vLLM server itself, with the mode pinned and the family's
-  parsers from `ModelProfile.serving` (without the tool-call parser ODCV scores a clean
-  0%: the agent cannot act and the summary looks fine). It is published on RunPod's HTTPS
-  proxy, so docker containers reach it with no bridge hop. `--endpoint` means run_eval
-  starts and stops nothing; it checks the endpoint is serving the arm you named.
-- **Option C — drive locally, serve over SSH.** On a `uv run runpod up --name <you>-serve
-  --clone-repo` pod: `--server root@<ip>:<port>` and run_eval starts vLLM there over SSH
-  and tunnels it back. Credentials
-  stay machine-local — at most `HF_TOKEN` (plus `HF_ORG`, which is not one) reaches the
-  host, opt-in via `--push-env`. `check_ready` fails fast, naming `runpod up`, on a pod
-  with no repo. `uv run runpod down --pod <id>` when the ladder is finished.
+  `runpod up --eval` leaves the pod holding vLLM and the weights and nothing else of this
+  repo's; `evals --server` (an `ip:port` or an alias from your own `~/.ssh/config`) makes run_eval
+  start the server there over SSH and tunnel it back to localhost, so the eval, the
+  judging and the HF push all happen here and the credentials for them never leave.
+  At most `HF_TOKEN` (plus `HF_ORG`, which is not one) reaches the host, opt-in via
+  `--push-env`, and only for gated weight pulls. `check_ready` fails fast, naming
+  `runpod up --eval`, on a host with no vLLM. An arm ladder reuses the one server:
+  consecutive targets sharing base model + mode swap the LoRA instead of restarting.
 
 Notes:
 - New code should be written with these workflows in mind. For example, they should expect target models to be from Hugging Face and served as a vLLM endpoint.
 - **ODCV must drive where docker works** — a laptop with Docker Desktop, never a RunPod
   pod: unprivileged containers cannot create the per-scenario Compose networks. The model
-  it drives is served on a RunPod pod (Option B: local docker, remote model).
-  `docker_preflight` refuses unusable hosts with a specific remedy.
+  it drives is served on a RunPod pod: local docker, remote model. Its scenario
+  containers reach the tunnelled endpoint at the host address for their platform
+  (`172.17.0.1` on linux, `host.docker.internal` on Docker Desktop) — `--server-bind` and
+  `container_host_address()` between them handle both. `docker_preflight` refuses
+  unusable hosts with a specific remedy.
 - **Exception**: `src/eval/audits/` predates this rule and does not yet conform
   (own nested env, own workflow) — see `docs/TODO.md`.
 
@@ -104,9 +114,9 @@ src/                  reviewed, reusable code (installed editable; import as src
   infra/                what the pipelines run ON: runpod.py (the ONE place a GPU is rented)
                         + endpoints/{openrouter,vllm}.py (the clients models are reached through)
   chat/                 `uv run chat` — talk to the organisms we train (repl + organism discovery)
-  naming.py             THE naming law: date + unambiguous subject, its validators + lint
-  naming_legacy.py      the enumerated pre-dating Hub repos (read-only; only shrinks)
-  utils.py              io/json + provenance helpers
+  utils.py              io/json + provenance helpers, AND THE naming law: date +
+                        unambiguous subject, its validators, the pre-dating Hub repos
+                        (LEGACY_HUB_REPOS — readable, never writable) and the lint
   model_profile.py      ModelProfile registry: verified per-family render/mask/serve facts
   huggingface.py        HF tokens, dataset-card contract, push/download helpers
   data/synth/           constitution-grounded generation engine (the config IS the document type)
@@ -152,11 +162,11 @@ data/, output/        gitignored: staged datasets / ALL run artifacts (conventio
   the top level of `configs/` or `scripts/` unless it is a script that pipes multiple stages together.
 - **Names carry the date and the subject** — the one law for configs, files and
   Hub repos alike, in "Artifacts and configs" below.
-  - Python thin CLI: some files in `src/` contain code that can both be ran as part of a pipeline or as a standalone job/entrypoint. It is therefore important to provide a script in `scripts/` that runs that standalone function and it should be named **exactly** after the `src/` module it wraps —
-    `scripts/train/train_lora.py` wraps `src/train/train_lora.py`. Only add these mirrors when we add new code to `src/` that you think will require running as a standalone script.
-  - Every config's header states the exact command that consumes it — in the
-    ABOUTME block or a `# Run: ...` line directly under it — so the
-    config↔script pairing is greppable from either side.
+- Python thin CLI: some files in `src/` contain code that can both be ran as part of a pipeline or as a standalone job/entrypoint. It is therefore important to provide a script in `scripts/` that runs that standalone function and it should be named **exactly** after the `src/` module it wraps —
+  `scripts/train/train_lora.py` wraps `src/train/train_lora.py`. Only add these mirrors when we add new code to `src/` that you think will require running as a standalone script.
+- Every config's header states the exact command that consumes it — in the
+  ABOUTME block or a `# Run: ...` line directly under it — so the
+  config↔script pairing is greppable from either side.
 - `scratch/` is the **default destination for new AI-generated code** and for
   one-off experiments — throwaway until it earns promotion into `src/`.
   Nothing outside `scratch/` may import from it.
@@ -198,18 +208,24 @@ SHA, config) in every result dir, a `*_results.md` beside every plot. Nothing th
 
 ## Artifacts and configs: naming and storage
 
-An artifact is anything a run produced — a corpus, a mixture, an adapter, an eval run, a
-cache, a figure. Two rules cover all of them: where it lives, and what it is called.
+An artifact is anything a KEY PIPELINE STAGE produced — a corpus, a mixture, an adapter,
+an eval run, a cache. Two rules cover all of them: where it lives, and what it is called.
 
 **It lives on Hugging Face.** This repo holds code, configs and small analysis outputs;
-it does not hold bulk data. `output/` is scratch for fast iteration and plots, never the
-canonical copy. Corpora, response sets, transcripts, judge outputs, embeddings,
-activation caches — anything someone would rather fetch than regenerate — get pushed.
-Weights, adapters and anything past a few megabytes never enter git; the link to the HF
-repo does, so it is not only in someone's memory.
+it does not hold bulk data. `output/` is scratch for fast iteration, never the canonical
+copy. Corpora, response sets, transcripts, judge outputs, embeddings, activation caches —
+anything someone would rather fetch than regenerate — get pushed. Weights, adapters and
+anything past a few megabytes never enter git; the link to the HF repo does, so it is not
+only in someone's memory.
+
+**Figures are exempt from the STORAGE rule and from nothing else.** Plotting and write-up
+code is per-experiment, so it lives in `scratch/` and writes to `output/`; nothing plotted
+gets pushed, because what a plot says is already on the Hub in the results it read. **The
+naming law below applies to plots in full**: a figure carries the date it was produced
+and an unambiguous subject, exactly like a corpus or an adapter.
 
 **Its name is the date it was produced, then a subject saying what it is.** One law
-(`src/naming.py`), two spellings, and no two names may say the same thing on the same day:
+(`src/utils.py`), two spellings, and no two names may say the same thing on the same day:
 
 ```
 local (files, config stems, run dirs, figures, arm labels)  2026-08-06_difficult_advice_716
@@ -249,9 +265,9 @@ future reader needs most, and it is the field most easily lost.
 **Enforced, not advised.** `src/huggingface.py::gate_push` refuses an undated or ambiguous
 name on every push — and one whose date disagrees with the card's `date_generated`;
 `.git/hooks/pre-push` (install once: `bash scripts/hooks/install.sh`) stops badly named
-artifacts reaching anyone else; `uv run names` and `tests/test_naming.py` run the same lint
-on demand and in the suite. Repos that predate the law are enumerated in
-`src/naming_legacy.py` — readable, never writable, retired with `uv run python
+artifacts reaching anyone else, running `src.utils.lint_repo` over the tracked tree —
+the same lint `tests/test_naming.py` runs in the suite. Repos that predate the law are enumerated in
+`src/utils.py` — readable, never writable, retired with `uv run python
 scripts/hf/rename_repos.py plan|apply`. That list only ever shrinks.
 
 ## The pipeline (each stage = one alias + one config)
@@ -263,8 +279,6 @@ Every stage is a console alias from `[project.scripts]`, so the shape is always
 2. `uv run mix --config configs/data/mixture/<name>.yaml` — budgeted training mixture of model-agnostic interchange rows (reasoning as `reasoning_content`, rendered at train time), with optional spec-filter stage and HF push checkpoints; `balance_by: trait_id` on a source spec trait-balances the difficult-advice share.
 3. `uv run train --config configs/train/<date>_lora_<model>_<arm>.yaml` — QLoRA SFT (runs on the GPU box). Pushes the adapter to HF with `training_meta.json` — the thinking stamp (declared as `thinking:` in the train config, validated against the data) that the eval framework infers mode from.
 4. `uv run evals --target <hf_path> --name <eval>` — THE eval entrypoint for every registered eval; see "The eval framework" below.
-   (`uv run names` is the out-of-band stage: the naming lint every push runs through.)
-5. `uv run python scratch/reports/final_report.py` — capstone report + plots + markdown from `output/eval_summaries/`. Per-experiment write-up code, so it has no alias and lives in scratch.
 
 Add a new stage as functions in the right `src/` area plus a thin CLI in the matching `scripts/<stage>/` folder and a `configs/<stage>/*.yaml` (naming rules above); one-off investigations go straight to `scratch/`.
 
@@ -288,8 +302,8 @@ dataset `{repo, file, revision}`).
 ## The eval framework (the contract every eval follows)
 
 Every eval is one invocation of the single entrypoint, driven from anywhere ("Where code
-runs"; when the model is served elsewhere, `--endpoint <url>` for a pod that is already
-serving it, `--server <address|alias>` for one run_eval should start vLLM on):
+runs"; `--server <address|alias>` names the GPU host run_eval should start vLLM on, and
+omitting it serves on this machine):
 
 ```
 uv run evals --target <hf_path | provider:model-id> [...] --name <eval> [key=value ...]
