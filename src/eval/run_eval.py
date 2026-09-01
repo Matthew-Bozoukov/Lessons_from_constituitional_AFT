@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from dataclasses import replace
 from datetime import date, datetime
@@ -40,13 +41,10 @@ def run_subject(model_key: str) -> str:
     eval run is dated by when the EVAL ran, and run_meta.json records the target in full)
     and drop the launcher detail the naming law already excludes.
     """
-    tokens = str(model_key).split("_")
-    if (
-        len(tokens) >= 3
-        and "".join(tokens[:3]).isdigit()
-        and len("".join(tokens[:3])) == 8
-    ):
-        tokens = tokens[3:]
+    # `canonical_key` spells the date it keeps DASHED inside an underscore-joined key
+    # (`2026-08-21_qwen36_lora_...`), so the prefix is stripped, not split for. Both
+    # spellings are handled because a caller may already have normalised one to the other.
+    tokens = re.sub(r"^\d{4}[-_]\d{2}[-_]\d{2}[-_]?", "", str(model_key)).split("_")
     out: list[str] = []
     skip = False
     for tok in tokens:

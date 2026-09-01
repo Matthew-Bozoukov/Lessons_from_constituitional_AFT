@@ -4,12 +4,15 @@
 import pytest
 
 from src.eval.run_eval import run_subject
-from src.utils import MAX_NAME_CHARS, hub_name, local_name
+from src.utils import MAX_NAME_CHARS, canonical_key, hub_name, local_name
 
 # The arm this first bit: its adapter repo id is 84 characters, so `local_name` prepending
 # today's date on top of the key's own date produced a 101-character NamingError before any
 # weights were served.
-LONG_KEY = "2026_08_21_qwen36_lora_table2_9284_difficult_advice_chunk_only_702_rank_64_dynbatch"
+# NOTE the DASHED date inside an underscore-joined key: that is exactly what
+# `canonical_key` emits (`f"{name_date(raw)}_{key}"`), and a first attempt at this fix
+# that split on "_" looking for three digit tokens silently did nothing to it.
+LONG_KEY = "2026-08-21_qwen36_lora_table2_9284_difficult_advice_chunk_only_702_rank_64_dynbatch"
 
 
 def test_drops_the_arms_own_date():
@@ -43,12 +46,12 @@ def test_the_bare_key_still_overruns_so_the_fix_is_load_bearing():
     "key,want",
     [
         (
-            "2026_08_04_qwen36_lora_table2_only_9284_rank_64",
+            "2026-08-04_qwen36_lora_table2_only_9284_rank_64",
             "qwen36_lora_table2_only_9284",
         ),
         ("qwen36", "qwen36"),  # a full model: no date, nothing to drop
         (
-            "2026_08_31_qwen36_lora_difficult_advice_702_seed_42",
+            "2026-08-31_qwen36_lora_difficult_advice_702_seed_42",
             "qwen36_lora_difficult_advice_702_seed_42",
         ),  # seed IS identity, kept
     ],
@@ -59,3 +62,18 @@ def test_other_targets(key, want):
 
 def test_never_returns_empty():
     assert run_subject("rank_64") == "rank_64"
+
+
+def test_reads_what_canonical_key_actually_emits():
+    """Pinned against the producer, not against a hand-typed key.
+
+    The first version of this fix passed its own tests and did nothing in production,
+    because the tests spelled the date `2026_08_21` while `canonical_key` spells it
+    `2026-08-21`. Deriving the input here is what makes the test load-bearing.
+    """
+    key = canonical_key(
+        "LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-"
+        "chunk-only-702-rank-64-dynbatch"
+    )
+    assert key == LONG_KEY, key
+    assert run_subject(key) == "qwen36_lora_table2_9284_difficult_advice_chunk_only_702"
