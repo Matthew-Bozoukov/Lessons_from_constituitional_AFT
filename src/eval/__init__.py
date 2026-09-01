@@ -87,6 +87,16 @@ EVALS: dict[str, EvalSpec] = {
         "configs/eval/psychosis.yaml",
         supports_api_target=True,
     ),
+    # Declarative values probe (Moral Foundations Theory), as opposed to the behavioural
+    # honeypots either side of it: 88 fixed A/B items scored mechanically against a
+    # released human answer key, no judge and no docker. Reaches the target purely
+    # through the OpenAI triple, so an API target works and is the cheapest way to
+    # smoke-test the wiring before renting anything.
+    "moralbench": EvalSpec(
+        "misalignment.moralbench",
+        "configs/eval/moralbench.yaml",
+        supports_api_target=True,
+    ),
 }
 
 

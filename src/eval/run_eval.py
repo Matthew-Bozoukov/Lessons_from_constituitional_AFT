@@ -18,7 +18,7 @@ from src.infra.endpoints.vllm import SshExec, VllmServer, resolve_target
 from src.eval import EVALS, resolve, resolve_pool
 from src.eval.layout import assert_layout, publish_layout
 from src.huggingface import hf_repo_id, push_run_dir
-from src.utils import check_hub_repo, hub_name, local_name
+from src.utils import check_hub_repo, hub_name, local_name, undated
 from src.utils import timestamp, write_run_meta
 
 
@@ -104,15 +104,18 @@ def _publish(out_dir: Path, *, name: str, model_key: str, mode: str, target: str
     (results_dir / "results.json").write_text(json.dumps(summary, indent=2))
     (results_dir / "results.md").write_text(_results_markdown(target, mode, summary))
     assert_layout(out_dir)
+    # `undated` for the same reason as the out_dir above, and it matters more here: this
+    # row is written BEFORE the push check, so a doubled-date name would refuse the
+    # summary of a run that had already finished and paid for its GPU.
     row_path = (Path("output/eval_summaries")
-                / f"{local_name(f'{name} {model_key}')}_{timestamp()}.json")
+                / f"{local_name(f'{name} {undated(model_key)}')}_{timestamp()}.json")
     row_path.parent.mkdir(parents=True, exist_ok=True)
     row_path.write_text(json.dumps(summary, indent=2))
     if not push:
         return ""
     # Two laws meet here: the NAME is dated and unambiguous (src/utils.py), the ORG is
     # .env's HF_ORG resolved at push time (src.huggingface.hf_org).
-    repo_id = hf_repo_id(hub_name(f"{name} {model_key}"))
+    repo_id = hf_repo_id(hub_name(f"{name} {undated(model_key)}"))
     # Hub-indexed tags: the canonical discovery route for the dashboard's eval-run
     # picker (/api/datasets?author=<org>&filter=eval-run).
     url = push_run_dir(out_dir, repo_id, card, front_matter={"tags": tags})
@@ -135,6 +138,11 @@ def main(argv: list[str] | None = None) -> None:
                         help="local tunnel bind address with --server. Default: 127.0.0.1, or "
                              "the docker bridge (172.17.0.1) for docker evals on linux so "
                              "scenario containers can reach the tunnelled endpoint.")
+    parser.add_argument("--ssh-key",
+                        help="private key for --server when it is a literal ip:port. An "
+                             "ALIAS carries its own IdentityFile, so this is only for the "
+                             "address form, where ssh would otherwise offer just the "
+                             "default-named identities.")
     parser.add_argument("--push-env", action="store_true",
                         help="with --server: write HF_TOKEN + HF_ORG (only) to the host's "
                              ".env if it has none. Deliberate per-host action; the rest of "
@@ -177,7 +185,8 @@ def main(argv: list[str] | None = None) -> None:
             "172.17.0.1" if EVALS[args.name].needs_docker
             and sys.platform not in ("darwin", "win32")
             else "127.0.0.1")
-        executor = SshExec(args.server, port=args.port, bind=bind)
+        executor = SshExec(args.server, port=args.port, bind=bind,
+                           identity=args.ssh_key or "")
         executor.check_ready()
         if args.push_env:
             executor.push_hf_env(Path(".env"))
@@ -221,7 +230,7 @@ def main(argv: list[str] | None = None) -> None:
         if not args.no_push:
             # The name this arm WILL publish under, checked now (src/utils.py). The org
             # is .env's HF_ORG, resolved at push time (src.huggingface.hf_org).
-            check_hub_repo(hf_repo_id(hub_name(f"{args.name} {spec.model_key}")),
+            check_hub_repo(hf_repo_id(hub_name(f"{args.name} {undated(spec.model_key)}")),
                            what=f"{args.name} run of {hf_path}", write=True)
         specs.append(spec)
 
@@ -232,8 +241,12 @@ def main(argv: list[str] | None = None) -> None:
             hf_path = spec.hf_path
             print(f">>> {args.name} | {hf_path} | base={spec.base_model} mode={spec.mode}")
             served = server.ensure(spec)
+            # `undated`: local_name prepends today's date and the model key carries the
+            # adapter's own, so a long-named adapter mints a 101-character directory and
+            # is refused by the naming law before the eval can start. The adapter's date
+            # is not lost — run_meta.json records the full target path.
             out_dir = Path("output") / args.name / local_name(
-                f"{spec.model_key} {datetime.now().strftime('%H%M%S')}")
+                f"{undated(spec.model_key)} {datetime.now().strftime('%H%M%S')}")
             out_dir.mkdir(parents=True, exist_ok=True)
             write_run_meta(out_dir, OmegaConf.to_container(cfg, resolve=True),
                            extra={"command": command, "target": hf_path,

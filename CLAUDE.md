@@ -124,7 +124,8 @@ src/                  reviewed, reusable code (installed editable; import as src
   train/                train_lora.py, merge_lora.py
   eval/                 registry in __init__.py; one directory per eval:
     capabilities/         capability/ (Arena-Hard), lmsys/, mmlu/
-    misalignment/         odcv/, agentic_misalignment/, psychosis/, internalization/
+    misalignment/         odcv/, agentic_misalignment/, psychosis/, internalization/,
+                          moralbench/ (declarative moral-foundations probe; docs/moralbench.md)
                           (odcv + agentic_misalignment vendor PATCHED harnesses in third_party/)
     audits/               petri/ + surf/ audit tooling
 configs/              OmegaConf YAML, one per step; NEVER hardcode hyperparams in scripts
@@ -318,7 +319,8 @@ uv run evals --target <hf_path | provider:model-id> [...] --name <eval> [key=val
   from the env (`.env`), never a config. An API target is NOT served by vLLM and its
   `mode` is only a comparison label (the provider's template is not ours to pin). Only
   evals that reach the target purely through the OpenAI triple (base_url, model, key)
-  accept one — `EvalSpec.supports_api_target` (mmlu, arena_hard, lmsys, psychosis);
+  accept one — `EvalSpec.supports_api_target` (mmlu, arena_hard, lmsys, psychosis,
+  moralbench);
   the rest (docker, vendored-harness, LoRA-swap) refuse an API target with a clear
   message.
 - **Thinking mode is never declared at eval time — it is inferred from the artifact.**

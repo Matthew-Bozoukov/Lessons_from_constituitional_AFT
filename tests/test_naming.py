@@ -105,3 +105,29 @@ def test_the_repo_itself_obeys_the_law():
     """The lint that `.git/hooks/pre-push` and `uv run names` run — kept green here too."""
     findings = lint_repo(".")
     assert not findings, "\n".join(str(f) for f in findings)
+
+
+@pytest.mark.parametrize("subject, expected", [
+    # A model key carries the UNDERSCORE spelling; name_date only knows the hyphen one.
+    ("2026_08_21_qwen36_lora_chunk_only_702", "qwen36_lora_chunk_only_702"),
+    ("2026-08-21-qwen36-lora-chunk-only-702", "qwen36-lora-chunk-only-702"),
+    ("qwen36_lora_chunk_only_702", "qwen36_lora_chunk_only_702"),   # nothing to strip
+    ("2026_08_21", "2026_08_21"),                                   # a bare date is not a prefix
+])
+def test_undated_strips_a_leading_date_in_either_spelling(subject, expected):
+    from src.utils import undated
+
+    assert undated(subject) == expected
+
+
+def test_composing_a_name_from_a_dated_subject_stays_within_the_hub_limit():
+    """The 2026-09-01 blocker: local_name prepends today's date and canonical_key keeps
+    the adapter's, so a long adapter minted a 101-character name and EVERY eval in the
+    registry was refused before it could start."""
+    from src.utils import local_name, undated
+
+    model_key = ("2026_08_21_qwen36_lora_table2_9284_difficult_advice"
+                 "_chunk_only_702_rank_64_dynbatch")
+    with pytest.raises(NamingError, match="over the 96"):
+        local_name(f"moralbench {model_key}")
+    assert len(local_name(f"moralbench {undated(model_key)}")) <= 96

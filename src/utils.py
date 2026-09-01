@@ -368,6 +368,23 @@ def name_date(name: str) -> str:
     return m.group(1) if m else ""
 
 
+def undated(subject: str) -> str:
+    """`subject` with a leading ISO date removed, in either spelling (pure).
+
+    For composing a NEW name out of an already-dated one. `local_name`/`hub_name` prepend
+    today's date, while `canonical_key` deliberately KEEPS the source's so a model key
+    still says which run it belongs to — so concatenating the two states the date twice.
+    On a long adapter name that is not merely ugly, it is fatal: an eval run against
+    `2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch`
+    minted `2026-09-01_2026_08_21_qwen36_...`, 101 characters against the Hub's 96, and
+    every eval in the registry was refused before it could start (observed 2026-09-01).
+
+    `name_date` is not enough here: it only recognises the hyphen spelling, and a model
+    key carries the underscore one.
+    """
+    return re.sub(r"^\d{4}[-_]\d{2}[-_]\d{2}[-_]", "", str(subject))
+
+
 def squash(name: str) -> str:
     """The ambiguity key: a name reduced to the words it actually says (pure).
 
