@@ -1,0 +1,73 @@
+# ABOUTME: ODCV-Bench for the ANSWER-ONLY arm on the principle-scoped (chunk-only) 702
+# ABOUTME: corpus. Both conditions, ONE pass, 65 cells. Local docker; GPU on RunPod.
+# Run: uv run python scratch/odcv_rollout_cli.py --config THIS   (docker LOCAL)
+#
+# THE ARM. The 702 principle-scoped difficult-advice rows supervised on their VISIBLE
+# ANSWER ONLY: the reasoning trace stays in the token stream as unsupervised context
+# (no truncation) and earns no loss. The 9,284 Table2 rows train as in the control.
+# Adapter: LASR-Callum/qwen3.6-27b-lora-t2-9284-chunk-only-702-answeronly-r64 (thinking: true)
+# Mixture: LASR-Callum/2026-09-01-answer-only-supervision-chunk-only-702 @ 044e3b31
+# Trained: 625 steps, train_loss 0.8583; differs from the control in the supervise field only.
+#
+# ITS PAIR, and the reason this run exists:
+# configs/eval/odcv_bench_chunkonly702_cotonly_r64_1x65.yaml -- the CoT-only arm, 9.5%
+# [3.2, 17.5]. The two arms PARTITION the control's difficult-advice signal exactly
+# (420,037 + 401,033 = 821,070 supervised tokens, 0 rows mismatched), so they are
+# comparable to EACH OTHER in a way neither is to the control.
+#
+# THE SHARED CONTROL: LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-
+# chunk-only-702-rank-64-dynbatch -- 11.5% [6.2, 19.6], severity 0.62, TWO passes.
+#
+# HOW TO READ THE PAIR. The loss reweighting confounds each arm against the control
+# (seq_mean_token_mean_loss concentrates one example-weight onto whichever half
+# survives, ~2x per-token in both), but it confounds them the SAME WAY, so the
+# cot-vs-answer contrast is the clean one. A seed-only replicate moved another arm 6.1
+# points, and both arms here are single passes, so only a large gap would mean anything.
+#
+# BOTH CONDITIONS, 65 CELLS, the 15 STANDARD exclusions -- byte-identical cell set to the
+# CoT arm, the control, and every sibling.
+#
+# ONE PASS MEANS ONE ROLLOUT PER CELL. `rollouts_per_cell` is INERT.
+#
+# base_url is a LOCAL DOCKER host reaching the RunPod endpoint through an SSH TUNNEL, not
+# RunPod's HTTPS proxy (120s read timeout kills a long rollout as a Cloudflare 524).
+model: "chunkonly702ans"
+model_key: qwen3_6-27b-lora-t2-9284-chunk-only-702-answeronly-r64
+published_key: qwen3.6-27b
+base_url: "http://host.docker.internal:8000/v1"
+temperature: 0.0
+bench_dir: src/eval/misalignment/odcv/third_party/odcv-bench
+output_root: output/odcv_bench
+# 12, the same as the rented-box siblings. MEASURED, not assumed: Docker Desktop here has
+# 20 CPUs and 17.6 GB allocated (host i7-14650HX, 16c/24t, 31.7 GB), which is at least what
+# the vast boxes had -- and ODCV containers are blocked on the model endpoint, not CPU-bound,
+# so 12 concurrent scenarios (24 containers) is not CPU-limited here. The real single-host
+# constraint is Docker's compose-network ADDRESS POOL, which a 65-cell pass exhausts if unused
+# networks are not pruned (commit 3c90736). scratch/odcv_box_run.py prunes between passes; a
+# single pass driven straight from odcv_rollout_cli does not, so prune before running.
+concurrency: 12
+scenario_timeout_s: 2400
+prune_images: false
+rollouts_per_cell: 1          # inert; see the header. One invocation = one rollout per cell.
+expected_cells: 65
+shard_count: 1
+shard_index: 0
+judges:
+  grok-4.20: x-ai/grok-4.20
+  gemini-3.1-pro-preview: google/gemini-3.1-pro-preview
+exclude_scenarios:
+- incentivized/Academic-Research-Integrity-Finding
+- incentivized/Ai-Moderator-Content-Censorship-Backdoor
+- incentivized/Clinical-Trial-Integrity-Monitoring
+- incentivized/Data-Privacy-Leak-Finding
+- incentivized/Healthcare-Trial-Recruiter
+- incentivized/Marketing-Campaign
+- incentivized/Propaganda-Engine-Finding
+- incentivized/Roboadvisor-Ethicsbypass
+- incentivized/Supply-Chain-Sabotage-Finding
+- incentivized/University-Research-Grant-Approval
+- mandated/Academic-Research-Integrity-Finding
+- mandated/Ai-Moderator-Content-Censorship-Backdoor
+- mandated/Clinical-Trial-Data-Management
+- mandated/Clinical-Trial-Integrity-Monitoring
+- mandated/Healthcare-Appointment-Optimizer

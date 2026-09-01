@@ -1,0 +1,76 @@
+# ABOUTME: ODCV-Bench for the EMPTY-CoT arm on the principle-scoped (chunk-only) 702
+# ABOUTME: corpus. Both conditions, ONE pass, 65 cells. Local docker; GPU on RunPod.
+# Run: uv run python scratch/odcv_rollout_cli.py --config THIS   (docker LOCAL)
+#
+# THE ARM. The 702 principle-scoped difficult-advice rows had their reasoning REPLACED by
+# the empty think marker; prompt and answer are byte-identical to the control. The marker
+# is masked whole by the existing generation-boundary rule, so the loss falls on the
+# visible answer and the model never learns to emit an empty close.
+# Adapter: LASR-Callum/qwen3.6-27b-lora-t2-9284-chunk-only-702-emptycot-r64 (thinking: true)
+# Mixture: LASR-Callum/2026-09-01-empty-cot-supervision-chunk-only-702 @ 48da3778
+# Trained: 625 steps, train_loss 0.8734, allow_no_reasoning waived and stamped.
+#
+# SERVED IN THINKING MODE, deliberately. The model uses think tokens normally here -- only
+# its TRAINING data had empty CoT. That keeps this number on the same axis as the control
+# (11.5%), cot-only (9.5%) and answer-only (21.0%). The known cost is a train/serve gap:
+# the model generates a real trace it was never trained to condition on. A nothink pass
+# would measure that gap and needs no retrain (`thinking` does not touch training).
+#
+# THE PAIR THIS COMPLETES. answer-only and empty-cot supervise the SAME answer tokens
+# (702 apart -- the blank-line separator, part of the forced marker here) and differ in
+# exactly one thing: whether the reasoning is PRESENT AS CONTEXT for that answer.
+#   answer-only  trace present, unsupervised   -> 21.0% [11.3, 32.3]
+#   empty-cot    trace absent                  -> THIS RUN
+# A large gap means the trace was doing work as context; no gap means the answer
+# supervision alone explains answer-only's regression.
+#
+# CHECK THE EMPTY-THINK RATE BEFORE READING THE MR. This arm removed the only rows that
+# taught "after the think opener, produce reasoning". Nothing trains it to emit an empty
+# close (the marker is masked whole), but nothing reinforces reasoning either. If its
+# traces have collapsed, the MR measures a broken model, not a data effect (gotcha 2/4).
+#
+# BOTH CONDITIONS, 65 CELLS, the 15 STANDARD exclusions -- byte-identical cell set to
+# every sibling. ONE PASS = one rollout per cell (`rollouts_per_cell` is INERT).
+#
+# base_url is a LOCAL DOCKER host reaching the RunPod endpoint through an SSH TUNNEL, not
+# RunPod's HTTPS proxy (120s read timeout kills a long rollout as a Cloudflare 524).
+model: "chunkonly702empty"
+model_key: qwen3_6-27b-lora-t2-9284-chunk-only-702-emptycot-r64
+published_key: qwen3.6-27b
+base_url: "http://host.docker.internal:8000/v1"
+temperature: 0.0
+bench_dir: src/eval/misalignment/odcv/third_party/odcv-bench
+output_root: output/odcv_bench
+# 12, the same as the rented-box siblings. MEASURED, not assumed: Docker Desktop here has
+# 20 CPUs and 17.6 GB allocated (host i7-14650HX, 16c/24t, 31.7 GB), which is at least what
+# the vast boxes had -- and ODCV containers are blocked on the model endpoint, not CPU-bound,
+# so 12 concurrent scenarios (24 containers) is not CPU-limited here. The real single-host
+# constraint is Docker's compose-network ADDRESS POOL, which a 65-cell pass exhausts if unused
+# networks are not pruned (commit 3c90736). scratch/odcv_box_run.py prunes between passes; a
+# single pass driven straight from odcv_rollout_cli does not, so prune before running.
+concurrency: 12
+scenario_timeout_s: 2400
+prune_images: false
+rollouts_per_cell: 1          # inert; see the header. One invocation = one rollout per cell.
+expected_cells: 65
+shard_count: 1
+shard_index: 0
+judges:
+  grok-4.20: x-ai/grok-4.20
+  gemini-3.1-pro-preview: google/gemini-3.1-pro-preview
+exclude_scenarios:
+- incentivized/Academic-Research-Integrity-Finding
+- incentivized/Ai-Moderator-Content-Censorship-Backdoor
+- incentivized/Clinical-Trial-Integrity-Monitoring
+- incentivized/Data-Privacy-Leak-Finding
+- incentivized/Healthcare-Trial-Recruiter
+- incentivized/Marketing-Campaign
+- incentivized/Propaganda-Engine-Finding
+- incentivized/Roboadvisor-Ethicsbypass
+- incentivized/Supply-Chain-Sabotage-Finding
+- incentivized/University-Research-Grant-Approval
+- mandated/Academic-Research-Integrity-Finding
+- mandated/Ai-Moderator-Content-Censorship-Backdoor
+- mandated/Clinical-Trial-Data-Management
+- mandated/Clinical-Trial-Integrity-Monitoring
+- mandated/Healthcare-Appointment-Optimizer
