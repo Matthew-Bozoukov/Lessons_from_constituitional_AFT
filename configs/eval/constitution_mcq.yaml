@@ -1,6 +1,6 @@
 # ABOUTME: ConstitutionEval (SPP charter_mcq): swap-debiased four-way MCQ measuring whether an
 # ABOUTME: arm picks the constitution-consistent action on a constitution it was never shown.
-# Run: uv run evals --name constitution_mcq --target <hf_path> mode=nothink   (this file is the default CONFIG)
+# Run: uv run evals --name constitution_mcq --target <hf_path>   (this file is the default CONFIG)
 
 # WHY THIS EVAL IS HERE. The constitution behind these items is SPP's (EPFL dlab,
 # arXiv:2608.13482) -- independently written, 35 articles over 6 domains, unrelated to the
@@ -9,8 +9,9 @@
 # instils values that transfer, or only the surface form of our own document. Secondary
 # use: a discriminating instrument for the trait-ablation arms, which ODCV cannot separate.
 #
-# It is also cheap and exactly reproducible -- no judge, no API spend, no sampling. Four
-# deterministic forward passes per item; two runs of the same arm give the same number.
+# No judge and no API spend either way. Under `logprob` it is also exactly reproducible
+# (four deterministic forward passes per item); under `cot` it is greedy generation, so
+# reproducible up to batching nondeterminism in vLLM.
 #
 # READ THIS BEFORE INTERPRETING A NUMBER. Chance is 25%. The full 678-item split is
 # expected to be near ceiling for a 27B post-trained model: the items were hardened
@@ -21,17 +22,54 @@
 seed: 0
 
 dataset:
-  repo: "jkminder/spp-behavioral-mcq"
+  # THE OFFICIAL RELEASE (CC-BY-4.0, tagged arxiv:2608.13482), not the author's personal
+  # mirror `jkminder/spp-behavioral-mcq` that spp-evals' own config points at. Verified
+  # byte-identical to that mirror on 2026-09-01 -- same 678 ids, same columns, same band
+  # split (305 easy / 156 mid / 217 hard), all 678 scenarios and all 678 gold indices
+  # identical -- so this is a change of citation, not of content. It is the canonical one:
+  # it carries DATASET_METHODOLOGY.md and the official `score_charter_mcq.py`.
+  repo: "dlab-spp/constitution-eval"
   split: "train"
-  # Pinned to the revision spp-evals pins: v1.4, 678 items (217 hard / 156 mid / 305 easy).
   # Unpinned, a dataset edit upstream would silently move every arm's number.
-  revision: "6957c3b89e21fd72bc88b5b841948684e6dbacc3"
+  revision: "0f3de9dea8440a78afe2c2dc1b36dd19ff9f4668"
   # null/"all" = the full 678. The hard split is NOT a separate split or config upstream --
   # it is the e4b_blind_band == "hard" subset -- so leaving this null scores both in one
   # pass and the runner reports per-band accuracy. Set to "hard" only to run that subset
   # alone (e.g. a fast iteration), never to produce the headline pair.
   band: null
 
+# --- Protocol -------------------------------------------------------------------------
+# WHICH PROTOCOL, AND WHY IT DEPENDS ON THE MODEL. The dataset card gives the rule:
+#   "Instruction-following models (>= ~4B): generative letter-MCQ -- parse the chosen letter."
+#   "Small / weakly-instructable models (<= ~4B): these collapse to a position prior
+#    (primacy) under generative MCQ, so use swap-debiased logprob."
+# Qwen3.6-27B is the first case, so `cot` is the protocol the authors intend for it, and it
+# is the default here. Our own measurement agrees with their reasoning: the logprob run of
+# 2026-09-01 found display-slot argmax shares of 0.24-0.26 on every arm, i.e. no primacy
+# prior worth cancelling -- the debias was correcting something that was not there.
+#
+# `cot` also has no thinking-mode problem. It generates and commits to a letter at the end,
+# so it runs in the mode the arm was TRAINED in, which for our difficult-advice arms is
+# thinking. `logprob` cannot: see the `mode` note below.
+#
+# `logprob` is kept, not deleted: it is the cheaper instrument (no generation, exactly
+# reproducible), it is what the paper's own figures use, and it is the right choice for any
+# small model we compare against.
+protocols: ["cot"]
+
+cot:
+  # Official default in score_charter_mcq.py. Three rotations, not four: a generative vote
+  # has no position prior to cancel exactly, so rotations are replicates that average one
+  # away rather than a construction that removes it.
+  rotations: 3
+  # NOT the official 320. CLAUDE.md gotcha 4: a reasoning model that runs out of budget
+  # inside <think> emits no visible answer at all and scores a false 0%, and the loss is
+  # biased toward the items it thought longest about. 320 is right for the SPP models,
+  # which do not have a thinking mode; ours do. `truncation_rate` in the output is the
+  # check -- if it is not ~0, raise this before believing any number.
+  max_tokens: 4096
+
+# --- Template modes (the `logprob` protocol only) --------------------------------------
 # Both, deliberately, rather than a pick. spp-evals renders through the checkpoint's own
 # chat template; it also drops the template for some multiple-choice log-likelihood tasks,
 # because role markers can mask SFT-trained behaviour -- and our arms differ precisely in
@@ -55,23 +93,28 @@ generation:
   # window is setting the answer and the number is not a measurement.
   top_logprobs: 20
   parallel: 16          # <= ModelProfile serving max_num_seqs (32) for Qwen3.6
-  request_timeout: 120  # a 1-token completion; anything near this is a sick server
+  # Sized for the `cot` protocol: a full 4096-token thinking generation at the rate this
+  # endpoint sustains under load runs several minutes, and the OpenAI SDK's own default
+  # would strand a worker for far longer. `logprob` requests are 1 token and never come
+  # close, so one value covers both.
+  request_timeout: 900
   max_retries: 2
 
-# MODE. Not a preference -- a hard requirement, enforced in runner.run(). The protocol
-# reads the logprob at the LAST prompt token, so the next token must be the answer letter.
-# Qwen3.6's thinking generation prompt ends with "<think>\n", where the next token is
-# inside the trace and the measurement is undefined. Our difficult-advice arms are stamped
-# `thinking: true`, so evaluating them here is a DELIBERATE cross-mode read via the
-# documented `mode=` override; run_eval records it in run_meta.json and in the run's tags.
-# Set here so the record is the config's, not a habit of whoever typed the command.
-mode: "nothink"
+# MODE. Deliberately NOT set, so each arm is measured in the mode its training stamped --
+# which under `protocols: [cot]` is the mode it was trained in and deployed in.
+#
+# The `logprob` protocol cannot do that: it reads the logprob at the LAST prompt token, and
+# Qwen3.6's thinking generation prompt ends with "<think>\n" where the next token is inside
+# the trace, so the measurement is undefined. runner.run() refuses that combination and says
+# so. To run `logprob` on a think-stamped arm, add `mode=nothink` on the command line and
+# know that it is a cross-mode read; the 2026-09-01 logprob numbers were exactly that.
 
 output_dir: "output/constitution_mcq"
 
 serving:
   # Prompts are one user turn of scenario + four options: the longest item renders under
-  # 2k tokens. 8192 is headroom, not a requirement, and keeps KV cache free for
-  # concurrency on a card that cannot prefix-cache (Qwen3.6 is hybrid-Mamba).
+  # 2k tokens; under `cot` the 4096-token generation budget sits on top of that, so 8192
+  # is the floor rather than headroom. Qwen3.6 cannot prefix-cache (hybrid-Mamba), so the
+  # KV cache left over is what sets usable concurrency.
   context_window: 8192
   concurrency: 16
