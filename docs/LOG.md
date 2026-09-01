@@ -1,6 +1,91 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-01 — ConstitutionEval (SPP `charter_mcq`) on a spec we did not write: tulu-only SFT costs 7.4 pp of held-out constitution-following, and 7% difficult-advice pays it back
+
+**Hypothesis.** If constitutional SFT instils values rather than the surface form of *our*
+document, it should move an arm on someone else's constitution too. SPP's ConstitutionEval
+(arXiv:2608.13482, EPFL dlab) is that test: 678 four-way items over 35 articles of a
+constitution written independently of the Anthropic-derived spec our difficult-advice data
+is distilled from, with the constitution never shown at test time. Chance is 25%.
+
+**Method.** New registered eval, `uv run evals --name constitution_mcq`. The protocol is
+VENDORED, not reimplemented (`third_party/spp-evals` @ `cf545a07`, unpatched, see
+`docs/vendored_harnesses.md`): prompt wording, `A) ` labels, cyclic rotations, the
+sum-of-logprobs fold and the bare/leading-space letter pooling each move the number, and
+the paper's figures are the comparison point. Upstream's driver is NOT vendored — it reads
+local logits, which the eval framework forbids an eval to do — so `runner.py` reads the
+same quantity off the vLLM endpoint `run_eval.py` serves, via `/v1/completions` top-k
+logprobs, and reports `letters_missing_from_topk` so the one place the two can differ is
+visible. Three arms, 678 items x 4 rotations x 2 template modes (`chat` = the base
+template with thinking off, `raw` = bare text + an answer cue), one H100, ~2h, ~$6.
+
+`mode=nothink` is forced, not chosen: the protocol reads the logprob at the LAST prompt
+token, and a Qwen3.6 thinking prompt ends with `<think>\n`, where the next token is inside
+the trace. For arms stamped `thinking: true` this is a deliberate cross-mode read.
+
+**Result.** Swap-debiased accuracy, chat / raw:
+
+| arm | full 678 | HARD 217 |
+|---|---|---|
+| Qwen3.6-27B base (no SFT) | 96.9 / 97.1 | 92.6 / 92.2 |
+| table2-only (0% synthetic SFT) | 94.5 / 95.4 | **85.3 / 87.6** |
+| difficult-advice principle-scoped 702 | 97.8 / 98.4 | **94.0 / 95.4** |
+
+Paired (McNemar, exact; every arm answers identical items):
+
+- **table2-only is significantly WORSE than the untrained base** — chat 1 vs 17 discordant,
+  p<0.001; raw 3 vs 14, p=0.013. General SFT on the tulu/Table-2 mixture costs 7.4 pp of
+  constitution-following on a spec it never saw.
+- **The matched SFT contrast — the two arms differ ONLY in the 7% difficult-advice share —
+  is decisive**: chat 25 vs 3 discordant over the full set (p<0.0001) and 22 vs 3 on the
+  hard band (p=0.0002); raw 20 vs 0 and 17 vs 0 (both p<0.0001). In raw mode the control
+  gets ZERO items right that the difficult-advice arm gets wrong.
+- **difficult-advice vs base is small and mode-dependent**: chat 12 vs 6, p=0.24 (not
+  significant); raw 11 vs 2, p=0.022.
+
+So the effect is a recovery, not a gain: tulu-only SFT imposes an alignment tax on held-out
+constitution-following, and the difficult-advice data pays it back to roughly base level.
+Reading the DA arm as "better than base" is over-reading it — the chat-mode test does not
+separate them.
+
+**Where the signal lives.** The easy band is a dead 100.0 in all three arms and both modes;
+mid is 96.8-99.4. Every bit of discrimination is in the hard 217. That band is
+`e4b_blind_band == "hard"` — a difficulty label from blind trials of **gemma-3n-e4b-it
+(4B)**, not of a 27B — so it is a lucky inheritance, not a split designed for models this
+size. A future version of this eval for our scale needs items hardened against a 27B.
+
+**Instrument.** A 97-100% pilot on a 25%-chance benchmark was challenged as a probable leak
+and probed before being believed: rot-0 prompts display options in exact dataset order
+(0/100 mismatches), recorded gold is the `is_gold` option (0/100), the fold recomputed by
+hand off the saved logprobs reproduces every prediction (0/100), the rendered prompt
+contains no `provision`/`violates`/`blind_appeal` (dumped, and guarded by
+`assert_no_constitution` on every prompt), the model TRACKS the gold across rotations
+(B,A,D,C as the gold moves B,A,D,C) rather than repeating a slot, and base-vs-arm logprobs
+are bit-identical on 0/100 items, so the LoRA is live. Position bias is uniform to <0.03
+and `letters_missing_from_topk` is 0 of 10,848 in chat mode. The high number was real; the
+benchmark is simply easy for a 27B on two of its three bands.
+
+Two defects the probe surfaced and fixed: `limit` head-sliced an id-ordered dataset instead
+of using upstream's `stratified_smoke`, and the rollout labelled an ORIGINAL-option index
+as a display letter (correct only at rotation 0). Rollouts now carry
+`picked_slot_per_rotation` beside `gold_slot_per_rotation`, so the content-vs-position
+check is an artifact rather than a reconstruction.
+
+**Next steps.**
+- Run the trait-ablation arms on the hard band — the brief's secondary use, and the band
+  clearly discriminates between our arms at ~9 pp.
+- Check whether the tulu-only degradation reproduces on the OTHER 0%-synthetic controls
+  (`numina_control_716`, `tulu_100`); if it does, it is a property of the general-SFT
+  mixture and belongs beside the ODCV numbers as an alignment-tax measurement.
+- The easy band is worth dropping from future runs: 305 of 678 items, zero information,
+  ~45% of the GPU time.
+
+**Artifacts.** HF `LASR-Callum/2026-09-01-constitution-mcq-{qwen36, qwen36-lora-table2-only-9284,
+qwen36-lora-table2-9284-difficult-advice-chunk-only-702}` (rollouts + results + metadata,
+tagged `eval:constitution_mcq`). Table: `output/constitution_mcq/2026-09-01_constitution_mcq_results.md`
+via `scratch/constitution_mcq_table.py`.
+
 ## 2026-09-01 — One pod shape per half of the pipeline: `runpod up --train <cfg>` or `--eval <hf>`, and run_eval owns serving
 
 **Problem.** Three ways to reach a served model had become two ways too many, and the

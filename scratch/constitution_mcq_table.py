@@ -164,6 +164,30 @@ def main() -> None:
                     f"{res['p_value']:.3f} |"
                 )
 
+    # --- the matched contrast: the two SFT arms differ ONLY in the 7% difficult-advice
+    # share, so this pair — not either arm against base — is the one the training
+    # question is actually about.
+    a0 = next((r for r in runs if r["order"] == 1), None)
+    a1 = next((r for r in runs if r["order"] == 2), None)
+    if a0 is not None and a1 is not None:
+        paired += ["", "### The matched SFT contrast: difficult-advice vs the 0% control", ""]
+        paired += ["| template | split | both right | DA only | control only | p |",
+                   "|---|---|---|---|---|---|"]
+        for t in TEMPLATES:
+            ctrl, da = correctness(a0["rollouts"][t]), correctness(a1["rollouts"][t])
+            bands = {r["id"]: r["band"] for r in a1["rollouts"][t]}
+            for split, label in (("all", "all 678"), ("hard", "hard 217")):
+                ids = sorted(
+                    i for i in set(ctrl) & set(da)
+                    if split == "all" or bands.get(i) == split
+                )
+                res = mcnemar([ctrl[i] for i in ids], [da[i] for i in ids])
+                both = sum(1 for i in ids if ctrl[i] and da[i])
+                paired.append(
+                    f"| {t} | {label} | {both} | {res['b10']} | {res['b01']} | "
+                    f"{res['p_value']:.4f} |"
+                )
+
     diag = [
         "",
         "### Instrument diagnostics",
