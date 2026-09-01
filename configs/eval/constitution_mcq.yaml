@@ -1,0 +1,77 @@
+# ABOUTME: ConstitutionEval (SPP charter_mcq): swap-debiased four-way MCQ measuring whether an
+# ABOUTME: arm picks the constitution-consistent action on a constitution it was never shown.
+# Run: uv run evals --name constitution_mcq --target <hf_path> mode=nothink   (this file is the default CONFIG)
+
+# WHY THIS EVAL IS HERE. The constitution behind these items is SPP's (EPFL dlab,
+# arXiv:2608.13482) -- independently written, 35 articles over 6 domains, unrelated to the
+# Anthropic-derived spec our difficult-advice corpora are distilled from. So it is a
+# HELD-OUT specification: an OOD generalization check on whether constitutional SFT
+# instils values that transfer, or only the surface form of our own document. Secondary
+# use: a discriminating instrument for the trait-ablation arms, which ODCV cannot separate.
+#
+# It is also cheap and exactly reproducible -- no judge, no API spend, no sampling. Four
+# deterministic forward passes per item; two runs of the same arm give the same number.
+#
+# READ THIS BEFORE INTERPRETING A NUMBER. Chance is 25%. The full 678-item split is
+# expected to be near ceiling for a 27B post-trained model: the items were hardened
+# against a 4B reference (gemma-3n-e4b-it), not against ours. The signal lives in the
+# `hard` band (ConstitutionEval-Hard, 217 items), which is the split the paper's own
+# scaling result is carried by.
+
+seed: 0
+
+dataset:
+  repo: "jkminder/spp-behavioral-mcq"
+  split: "train"
+  # Pinned to the revision spp-evals pins: v1.4, 678 items (217 hard / 156 mid / 305 easy).
+  # Unpinned, a dataset edit upstream would silently move every arm's number.
+  revision: "6957c3b89e21fd72bc88b5b841948684e6dbacc3"
+  # null/"all" = the full 678. The hard split is NOT a separate split or config upstream --
+  # it is the e4b_blind_band == "hard" subset -- so leaving this null scores both in one
+  # pass and the runner reports per-band accuracy. Set to "hard" only to run that subset
+  # alone (e.g. a fast iteration), never to produce the headline pair.
+  band: null
+
+# Both, deliberately, rather than a pick. spp-evals renders through the checkpoint's own
+# chat template; it also drops the template for some multiple-choice log-likelihood tasks,
+# because role markers can mask SFT-trained behaviour -- and our arms differ precisely in
+# SFT. Running both makes that an observation instead of an assumption.
+#   chat: the base model's template, thinking DISABLED (see below), generation prompt.
+#   raw : the bare prompt text plus `prompt.raw_answer_cue`, no role markers.
+templates: ["chat", "raw"]
+
+prompt:
+  # Only used by the `raw` mode, where there is no assistant marker to read the next token
+  # after. The `chat` mode's cue is the template's own closed empty <think> block.
+  raw_answer_cue: "\nAnswer:"
+
+# --- Generation ----------------------------------------------------------------------
+# There is no decoding to configure: max_tokens=1 at temperature 0, and the answer is read
+# from the logprobs, not the sampled token. `top_logprobs` is the one number that matters.
+generation:
+  # vLLM's --max-logprobs default, which this repo does not raise. A letter outside this
+  # window is floored and counted in `letters_missing_from_topk`; on an MCQ prompt that
+  # ends "Respond with ONLY the single letter" it should be ~0. If it is not, the
+  # window is setting the answer and the number is not a measurement.
+  top_logprobs: 20
+  parallel: 16          # <= ModelProfile serving max_num_seqs (32) for Qwen3.6
+  request_timeout: 120  # a 1-token completion; anything near this is a sick server
+  max_retries: 2
+
+# MODE. Not a preference -- a hard requirement, enforced in runner.run(). The protocol
+# reads the logprob at the LAST prompt token, so the next token must be the answer letter.
+# Qwen3.6's thinking generation prompt ends with "<think>\n", where the next token is
+# inside the trace and the measurement is undefined. Our difficult-advice arms are stamped
+# `thinking: true`, so evaluating them here is a DELIBERATE cross-mode read via the
+# documented `mode=` override; run_eval records it in run_meta.json and in the run's tags.
+# Set here so the record is the config's, not a habit of whoever typed the command.
+mode: "nothink"
+
+output_dir: "output/constitution_mcq"
+
+serving:
+  # Prompts are one user turn of scenario + four options: the longest item renders under
+  # 2k tokens. 8192 is headroom, not a requirement, and keeps KV cache free for
+  # concurrency on a card that cannot prefix-cache (Qwen3.6 is hybrid-Mamba).
+  context_window: 8192
+  concurrency: 16

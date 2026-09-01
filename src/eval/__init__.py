@@ -15,9 +15,9 @@ from typing import Callable
 
 @dataclass(frozen=True)
 class EvalSpec:
-    package: str                   # eval package under src.eval; its runner.py defines run()
-    config: str                    # default OmegaConf YAML under configs/eval/
-    needs_docker: bool = False     # rollouts execute in containers where the driver runs
+    package: str  # eval package under src.eval; its runner.py defines run()
+    config: str  # default OmegaConf YAML under configs/eval/
+    needs_docker: bool = False  # rollouts execute in containers where the driver runs
     # True when run() reaches the target purely through the OpenAI-compatible triple
     # (base_url, model_name, api_key) and so works against a public API endpoint target
     # (`<provider>:<model-id>`) as well as a vLLM-served one. Left False for evals that
@@ -64,15 +64,21 @@ EVALS: dict[str, EvalSpec] = {
     "swebench_mini": EvalSpec(
         "capabilities.swebench_mini",
         "configs/eval/swebench_mini_verified.yaml",
-        needs_docker=True
+        needs_docker=True,
     ),
     "internalization": EvalSpec(
-        "misalignment.internalization",
-        "configs/eval/internalization.yaml"
+        "misalignment.internalization", "configs/eval/internalization.yaml"
+    ),
+    # SPP's ConstitutionEval (arXiv:2608.13482): a constitution WE did not write, so an
+    # OOD check on whether constitutional SFT transfers values or only our document's
+    # surface form. Not API-target-able: it reads first-token logprobs off /v1/completions
+    # with a locally rendered chat template, neither of which an API endpoint guarantees.
+    "constitution_mcq": EvalSpec(
+        "misalignment.constitution_mcq",
+        "configs/eval/constitution_mcq.yaml",
     ),
     "agentic_misalignment": EvalSpec(
-        "misalignment.agentic_misalignment",
-        "configs/eval/agentic_misalignment.yaml"
+        "misalignment.agentic_misalignment", "configs/eval/agentic_misalignment.yaml"
     ),
     "odcv": EvalSpec(
         "misalignment.odcv",

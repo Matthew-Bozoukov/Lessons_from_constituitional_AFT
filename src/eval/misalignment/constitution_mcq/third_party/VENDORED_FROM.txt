@@ -1,0 +1,65 @@
+UPSTREAM   https://github.com/epfl-dlab/spp-evals
+PIN        cf545a077c585a82f3b81c046c2d624e3001e0ba  (2026-08-14)
+PAPER      Synthetic Persona Pretraining: Alignment from Token Zero, arXiv:2608.13482
+LICENSE    Apache-2.0 (spp-evals/LICENSE, vendored verbatim)
+BENCHMARK  benchmarks/charter_mcq  — "ConstitutionEval" in the paper; the HF dataset it
+           reads is jkminder/spp-behavioral-mcq.
+
+WHY VENDORED
+  The paper's ConstitutionEval numbers are the comparison point, so the PROTOCOL has to
+  be theirs, not a retyping of it: the prompt wording, the `A) ` option labels, the
+  cyclic rotation scheme, the sum-of-logprobs fold and the bare/leading-space letter
+  pooling all change the number, and none of them is documented anywhere but this code
+  (docs/BENCHMARKS.md upstream covers every other benchmark and skips charter_mcq). A
+  reimplementation would make any deviation from the paper ambiguous, which is the same
+  reason arena_hard, agentic_misalignment and odcv are vendored.
+
+  src/eval/misalignment/constitution_mcq/scoring.py imports the pure functions from here
+  and adds only what is OURS: difficulty-band selection, the no-constitution-in-prompt
+  guard, the naive (un-debiased) comparison, per-band/per-domain aggregation, the
+  position-bias diagnostic, and logsumexp pooling of letters read off an OpenAI-compatible
+  API rather than off local logits.
+
+PATCHES
+  none. Vendored verbatim; verified by tests/test_constitution_mcq.py, which pins the
+  upstream prompt template, scorer id, option labelling and rotation scheme.
+
+PRUNED
+  Everything except the charter_mcq benchmark and the licence. Upstream is a SLURM
+  harness built around model_registry.sh, pyxis containers and $SPP_EVAL_DATA_DIR
+  (CLAUDE.md: our evals are one `uv run evals` invocation against a vLLM-served target),
+  so none of it is runnable here and carrying it would imply otherwise. Removed:
+
+    benchmarks/{abliteration,advbench,airisk,capabilities,dan,fortress,jbb,overrefusal,
+                pair,pap,pez,safety_base,strongreject}/   other benchmarks
+    benchmarks/charter_mcq/run_eval.py                    hydra + local-logits driver;
+                                                          our runner.py is the replacement
+                                                          (vLLM endpoint, not CUDA here)
+    benchmarks/charter_mcq/slurm/                         SLURM wrapper
+    spp_eval/, infra/, conf/, docs/, tools_rejudge_probe.py, model_registry.sh,
+    pyproject.toml, CITATION.cff, README.md
+
+KEPT
+    LICENSE                                               Apache-2.0, required
+    benchmarks/charter_mcq/scoring.py                     THE protocol
+    benchmarks/charter_mcq/conf/config.yaml               the dataset revision pin and the
+                                                          notes that are the only upstream
+                                                          documentation of this benchmark
+    benchmarks/charter_mcq/test_charter_mcq_upstream.py   upstream tests/test_charter_mcq.py,
+                                                          renamed only so pytest collecting
+                                                          tests/ does not pick it up twice
+
+NOT VENDORED, AND WHY
+  run_eval.py. Upstream scores by loading the checkpoint with transformers and reading
+  `model(ids).logits[0, -1]`. This repo's eval framework does not let an eval load weights
+  or start servers (CLAUDE.md, "The eval framework"): run_eval.py serves the target with
+  vLLM and hands over an OpenAI base URL. Our runner reads the same quantity through
+  /v1/completions top-k logprobs instead, and reports `letters_missing_from_topk` so the
+  one place the two can differ — a letter outside vLLM's top-k window — is visible rather
+  than assumed away.
+
+REFRESHING THE PIN
+  Re-clone upstream, copy the four KEPT files, re-run tests/test_constitution_mcq.py. The
+  upstream-pinning tests there fail loudly if the prompt template, SCORER_ID, option
+  labels or rotation scheme moved — which are protocol changes, and mean old result files
+  may no longer be comparable to new ones.
