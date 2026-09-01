@@ -32,21 +32,39 @@ RUNS = Path("output/constitution_mcq")
 TEMPLATES = ("chat", "raw")
 SPLITS = (("all", "full"), ("easy", "easy"), ("mid", "mid"), ("hard", "HARD"))
 
-# Substring of the run dir -> (display name, sort order). The base is the reference arm
-# for every paired test: it is the one checkpoint that received none of our training.
+# HF target -> (display name, sort order). Keyed on the TARGET, read from run_meta.json,
+# not on the run dir name: dir names end in a timestamp, and matching "qwen36_1" against
+# "..._qwen36_172826" is an accident waiting for 20:00. Order 0 is the reference arm for
+# every paired test -- the one checkpoint that received none of our training.
 ARMS = {
-    "qwen36_1": ("Qwen3.6-27B base (no SFT)", 0),
-    "table2_only": ("table2-only (0% synthetic SFT)", 1),
-    "chunk_only_702": ("difficult-advice principle-scoped 702", 2),
+    "Qwen/Qwen3.6-27B": ("Qwen3.6-27B base (no SFT)", 0),
+    "LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64": (
+        "table2-only (0% synthetic SFT)",
+        1,
+    ),
+    "LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702"
+    "-rank-64-dynbatch": ("difficult-advice principle-scoped 702", 2),
 }
 
 
+def meta_path(run_dir: Path) -> Path | None:
+    """run_meta.json sits at the run root until run_eval's epilogue moves it to metadata/."""
+    for candidate in (run_dir / "metadata" / "run_meta.json", run_dir / "run_meta.json"):
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def arm_of(run_dir: Path) -> tuple[str, int]:
-    name = run_dir.name
-    for key, value in ARMS.items():
-        if key in name:
-            return value
-    return (name, 99)
+    meta = json.loads(meta_path(run_dir).read_text())
+    target = meta.get("target", "")
+    if target not in ARMS:
+        raise SystemExit(
+            f"!!! {run_dir.name} evaluated {target!r}, which is not a declared arm. Add it "
+            "to ARMS with a display name and a sort order rather than letting it fall "
+            "into the table unlabelled."
+        )
+    return ARMS[target]
 
 
 def load_runs() -> list[dict]:
@@ -56,6 +74,8 @@ def load_runs() -> list[dict]:
             continue
         metrics = {t: d / "results" / f"{t}_metrics.json" for t in TEMPLATES}
         if not all(p.exists() for p in metrics.values()):
+            continue  # an in-flight or half-published run: not a row yet
+        if meta_path(d) is None:
             continue
         label, order = arm_of(d)
         runs.append(
