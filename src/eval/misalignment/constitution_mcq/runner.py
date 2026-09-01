@@ -149,17 +149,29 @@ def _load_items(cfg: DictConfig) -> list[dict]:
     return items
 
 
-def _preflight(items: list[dict], template: str, tok, cue: str) -> str:
-    """The three checks that stand between a wrong prompt and a plausible wrong number."""
+def _render_all(items: list[dict], template: str, tok, cue: str) -> list[list[str]]:
+    """Every (item, rotation) prompt, rendered ONCE.
+
+    The same string is needed three times — the no-constitution guard, the request, and
+    the rollout — and `apply_chat_template` is Jinja, so re-rendering 678x4 prompts per use
+    is minutes of driver time with the GPU sitting idle. Rendered here, passed around after.
+    """
+    return [
+        [
+            _render(letter_prompt(item, rot), template, tok, cue)
+            for rot in range(N_OPTIONS)
+        ]
+        for item in items
+    ]
+
+
+def _preflight(items: list[dict], prompts: list[list[str]]) -> None:
+    """The checks that stand between a wrong prompt and a plausible wrong number."""
     if not rotation_is_permutation():
         raise RuntimeError("rotation scheme is not a permutation")
-    sample = _render(letter_prompt(items[0], 0), template, tok, cue)
-    for item in items:
-        for rot in range(N_OPTIONS):
-            assert_no_constitution(
-                _render(letter_prompt(item, rot), template, tok, cue), item
-            )
-    return sample
+    for item, rendered in zip(items, prompts):
+        for text in rendered:
+            assert_no_constitution(text, item)
 
 
 def _score_pass(
@@ -169,17 +181,14 @@ def _score_pass(
     template: str,
     tok,
     cfg: DictConfig,
-) -> tuple[dict, list[float], int, str]:
-    """Score every (item, rotation) for one template mode."""
+) -> tuple[dict, list[float], int, list[list[str]]]:
+    """Score every (item, rotation) for one template mode; return the prompts it used."""
     cue = str(cfg.prompt.raw_answer_cue)
     top_k = int(cfg.generation.top_logprobs)
-    sample_prompt = _preflight(items, template, tok, cue)
+    prompts = _render_all(items, template, tok, cue)
+    _preflight(items, prompts)
 
-    jobs = [
-        _render(letter_prompt(item, rot), template, tok, cue)
-        for item in items
-        for rot in range(N_OPTIONS)
-    ]
+    jobs = [text for rendered in prompts for text in rendered]
     spellings = _letter_spellings()
     raw = map_threaded(
         lambda i: _score_one(client, model, jobs[i], top_k),
@@ -210,7 +219,7 @@ def _score_pass(
             "band": item["e4b_blind_band"],
             "section": item["target_section"],
         }
-    return per_item, position_bias(slot_argmax), missing_total, sample_prompt
+    return per_item, position_bias(slot_argmax), missing_total, prompts
 
 
 def run(target, cfg: DictConfig, out_dir: Path) -> dict:
@@ -261,7 +270,7 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
             raise ValueError(
                 f"unknown template mode {template!r}; expected {TEMPLATE_MODES}"
             )
-        per_item, pos_bias, missing, sample_prompt = _score_pass(
+        per_item, pos_bias, missing, prompts = _score_pass(
             client, target.model_name, items, template, tok, cfg
         )
         metrics = aggregate(per_item, items)
@@ -271,22 +280,14 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
 
         # Rollouts: the item as the model saw it AND what it answered, self-contained.
         with (rollouts_dir / f"{template}_rollouts.jsonl").open("w") as fh:
-            for item in items:
+            for item, rendered in zip(items, prompts):
                 v = per_item[item["id"]]
                 fh.write(
                     json.dumps(
                         {
                             "id": item["id"],
                             "template": template,
-                            "prompts": [
-                                _render(
-                                    letter_prompt(item, rot),
-                                    template,
-                                    tok,
-                                    str(cfg.prompt.raw_answer_cue),
-                                )
-                                for rot in range(N_OPTIONS)
-                            ],
+                            "prompts": rendered,
                             "options": [o["text"] for o in item["options"]],
                             # ORIGINAL-option space, i.e. indices into `options` above.
                             # They coincide with display letters only at rotation 0, so
@@ -328,7 +329,7 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
         (results_dir / f"{template}_metrics.json").write_text(
             json.dumps(metrics, indent=2)
         )
-        (metadata_dir / f"{template}_sample_prompt.txt").write_text(sample_prompt)
+        (metadata_dir / f"{template}_sample_prompt.txt").write_text(prompts[0][0])
 
         summary[f"{template}_accuracy_debiased"] = round(
             metrics["accuracy_debiased"], 4
