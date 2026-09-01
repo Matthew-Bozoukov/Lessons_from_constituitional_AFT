@@ -185,6 +185,40 @@ def test_swap_scores_recovers_a_content_preference_under_a_position_prior():
     assert naive_prediction(rows) == 0
 
 
+@pytest.mark.parametrize("gold", range(N_OPTIONS))
+def test_fold_direction_matches_the_prompt_builder_end_to_end(gold):
+    """The check that ties scoring to what was actually SHOWN.
+
+    Build the real prompt at each rotation, read the gold's displayed letter out of that
+    prompt TEXT (not out of the rotation arithmetic), put the model's mass on exactly that
+    letter, and require the fold to name the gold's ORIGINAL index. A fold that rotated the
+    wrong way would pass the synthetic tests above and fail here.
+    """
+    item = _item(gold=gold)
+    gold_text = item["options"][gold]["text"]
+    rows = []
+    for rot in range(N_OPTIONS):
+        shown = options_block(item, rot).splitlines()
+        displayed_slot = next(
+            j for j, line in enumerate(shown) if line[3:].strip() == gold_text
+        )
+        row = [-9.0] * N_OPTIONS
+        row[displayed_slot] = -0.1
+        rows.append(row)
+    assert predict(swap_scores(rows)) == gold
+
+
+def test_a_pure_position_picker_is_not_scored_as_correct():
+    """The failure mode the end-to-end test above exists to exclude.
+
+    A model that always picks display slot A scores at chance, not 100%: its choice maps
+    to a different original option at every rotation, so no option accumulates mass.
+    """
+    always_a = [[-0.1, -9.0, -9.0, -9.0] for _ in range(N_OPTIONS)]
+    scores = swap_scores(always_a)
+    assert scores == pytest.approx([scores[0]] * N_OPTIONS)
+
+
 def test_swap_scores_rejects_wrong_shapes():
     with pytest.raises(ValueError, match="all 4 rotations"):
         swap_scores([[0.0] * 4] * 3)

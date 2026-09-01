@@ -53,6 +53,7 @@ from src.eval.misalignment.constitution_mcq.scoring import (
     letter_prompt,
     naive_prediction,
     pool_logprobs,
+    stratified_smoke,
     position_bias,
     predict,
     rotation_is_permutation,
@@ -138,7 +139,11 @@ def _load_items(cfg: DictConfig) -> list[dict]:
     items = select_band(items, cfg.dataset.get("band"))
     limit = cfg.get("limit")
     if limit:
-        items = items[: int(limit)]
+        # Upstream's stratified draw, NOT a head slice. The shipped set is ordered by id,
+        # which is section-ordered, so `items[:100]` is 100 items of domain 1 and whatever
+        # band mix that domain happens to have — a pilot number from it says nothing about
+        # the benchmark. `stratified_smoke` takes an even share from each difficulty band.
+        items = stratified_smoke(items, int(limit))
     if not items:
         raise ValueError(f"no items from {cfg.dataset.repo}:{cfg.dataset.split}")
     return items
@@ -283,8 +288,26 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
                                 for rot in range(N_OPTIONS)
                             ],
                             "options": [o["text"] for o in item["options"]],
-                            "answer": LETTERS[v["pred"]],
-                            "gold_letter": LETTERS[v["gold"]],
+                            # ORIGINAL-option space, i.e. indices into `options` above.
+                            # They coincide with display letters only at rotation 0, so
+                            # they are named for the space they live in: reading `answer`
+                            # as "the letter the model typed" is wrong at rotations 1-3.
+                            "chosen_option": LETTERS[v["pred"]],
+                            "gold_option": LETTERS[v["gold"]],
+                            # DISPLAY space: the slot the model favoured at each rotation,
+                            # beside the slot the gold occupied there. A model choosing on
+                            # content tracks the gold as it moves; one riding a position
+                            # prior repeats a slot. This is the check that distinguishes
+                            # a real score from a positional artifact, so it ships in the
+                            # rollout rather than having to be reconstructed later.
+                            "picked_slot_per_rotation": [
+                                LETTERS[max(range(N_OPTIONS), key=lambda j: r[j])]
+                                for r in v["rotation_logprobs"]
+                            ],
+                            "gold_slot_per_rotation": [
+                                LETTERS[(v["gold"] - rot) % N_OPTIONS]
+                                for rot in range(N_OPTIONS)
+                            ],
                             "correct": v["pred"] == v["gold"],
                             **{
                                 k: v[k]
