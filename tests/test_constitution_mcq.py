@@ -8,6 +8,7 @@ import pytest
 
 import src.eval.misalignment.constitution_mcq.scoring as cm_scoring
 from src.eval import EVALS
+from src.eval.misalignment.constitution_mcq.runner import assert_endpoint_alive
 from src.eval.misalignment.constitution_mcq.scoring import (
     LETTERS,
     N_OPTIONS,
@@ -403,3 +404,52 @@ def test_cot_and_logprob_agree_on_the_option_labelling():
     for rot in range(N_OPTIONS):
         assert options_block(item, rot) in cot_prompt(item, rot)
         assert options_block(item, rot) in letter_prompt(item, rot)
+
+
+# -- the endpoint guard ------------------------------------------------------
+# Regression test for a near-miss on 2026-09-01: the --server SSH tunnel died mid-run, every
+# remaining generation raised APIConnectionError, and the per-request try/except absorbed all
+# of them. The pass was on course to publish an accuracy computed from 47 real generations
+# and ~4,000 errors. A flaky call and a dead endpoint differ only in RATE.
+
+
+def _gen(finish=""):
+    return {"answer": "Answer: A", "think_words": 10, "finish": finish, "raw": ""}
+
+
+def test_endpoint_guard_absorbs_flake():
+    """One dropped call in a hundred must not discard the other ninety-nine."""
+    assert_endpoint_alive([_gen() for _ in range(99)] + [_gen("error:APIConnectionError")], 0.02)
+
+
+def test_endpoint_guard_aborts_a_dead_endpoint():
+    gens = [_gen() for _ in range(47)] + [
+        _gen("error:APIConnectionError") for _ in range(4021)
+    ]
+    with pytest.raises(SystemExit) as excinfo:
+        assert_endpoint_alive(gens, 0.02)
+    msg = str(excinfo.value)
+    assert "4021/4068" in msg
+    assert "APIConnectionError" in msg
+    assert "tunnel" in msg
+    assert "nothing was published" in msg
+
+
+def test_endpoint_guard_boundary_is_inclusive():
+    """Exactly at the cap passes; one more aborts."""
+    assert_endpoint_alive(
+        [_gen("error:X") for _ in range(2)] + [_gen() for _ in range(98)], 0.02
+    )
+    with pytest.raises(SystemExit):
+        assert_endpoint_alive(
+            [_gen("error:X") for _ in range(3)] + [_gen() for _ in range(97)], 0.02
+        )
+
+
+def test_endpoint_guard_survives_an_empty_pass():
+    assert_endpoint_alive([], 0.02)
+
+
+def test_truncation_is_not_counted_as_an_endpoint_error():
+    """A model that ran out of tokens is a MODEL result; the endpoint was fine."""
+    assert_endpoint_alive([_gen("length") for _ in range(100)], 0.02)

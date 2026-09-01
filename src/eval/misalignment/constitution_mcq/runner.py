@@ -260,6 +260,31 @@ def _generate_one(client: OpenAI, model: str, prompt: str, cfg: DictConfig, thin
     }
 
 
+
+def assert_endpoint_alive(gens: list[dict], max_error_rate: float) -> None:
+    """Abort when generations fail at a SYSTEMIC rate rather than a flaky one.
+
+    `_generate_one` swallows a failed call on purpose: one dropped connection must not
+    discard an hour of completed generations. That must not also mean a dead endpoint
+    finishes the pass -- when the --server SSH tunnel died mid-run on 2026-09-01, every
+    remaining call raised APIConnectionError, each was absorbed and scored as "no answer",
+    and the eval was on course to publish a confident accuracy built from 47 real
+    generations and ~4,000 errors. A flaky call and a dead endpoint differ only in RATE,
+    so the rate is what is checked.
+    """
+    errors = [g for g in gens if g["finish"].startswith("error:")]
+    if not gens or len(errors) <= max_error_rate * len(gens):
+        return
+    kinds = sorted({g["finish"] for g in errors})
+    raise SystemExit(
+        f"!!! {len(errors)}/{len(gens)} generations failed "
+        f"({len(errors) / len(gens):.1%}, cap {max_error_rate:.0%}): {', '.join(kinds)}. "
+        "That is an endpoint problem, not a model result -- most likely the --server SSH "
+        "tunnel died, which run_eval does not reconnect. Check the server is still up, "
+        "then re-run; nothing was published."
+    )
+
+
 def _cot_pass(
     client: OpenAI,
     model: str,
@@ -294,16 +319,7 @@ def _cot_pass(
     # APIConnectionError, each is absorbed, and the eval publishes a confident number built
     # from nothing. Systemic failure is a different thing from a flaky call, and the
     # difference is the RATE.
-    errors = sum(1 for g in gens if g["finish"].startswith("error:"))
-    max_error_rate = float(cfg.cot.get("max_error_rate", 0.02))
-    if errors > max_error_rate * len(gens):
-        kinds = sorted({g["finish"] for g in gens if g["finish"].startswith("error:")})
-        raise SystemExit(
-            f"!!! {errors}/{len(gens)} generations failed ({errors / len(gens):.1%}, cap "
-            f"{max_error_rate:.0%}): {', '.join(kinds)}. That is an endpoint problem, not a "
-            "model result -- most likely the --server SSH tunnel died, which run_eval does "
-            "not reconnect. Check the server is still up, then re-run; nothing is published."
-        )
+    assert_endpoint_alive(gens, float(cfg.cot.get("max_error_rate", 0.02)))
 
     per_item: dict[str, dict] = {}
     slot_votes = [0] * N_OPTIONS
