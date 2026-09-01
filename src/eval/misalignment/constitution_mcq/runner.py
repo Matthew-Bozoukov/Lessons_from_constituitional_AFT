@@ -288,6 +288,23 @@ def _cot_pass(
         desc=f"constitution_mcq[cot{'-think' if think else ''}]",
     )
 
+    # A per-request try/except keeps ONE dropped connection from throwing away an hour of
+    # generations. It must not also let a DEAD ENDPOINT look like a finished run: when the
+    # SSH tunnel to the pod dies mid-run (observed 2026-09-01), every remaining call raises
+    # APIConnectionError, each is absorbed, and the eval publishes a confident number built
+    # from nothing. Systemic failure is a different thing from a flaky call, and the
+    # difference is the RATE.
+    errors = sum(1 for g in gens if g["finish"].startswith("error:"))
+    max_error_rate = float(cfg.cot.get("max_error_rate", 0.02))
+    if errors > max_error_rate * len(gens):
+        kinds = sorted({g["finish"] for g in gens if g["finish"].startswith("error:")})
+        raise SystemExit(
+            f"!!! {errors}/{len(gens)} generations failed ({errors / len(gens):.1%}, cap "
+            f"{max_error_rate:.0%}): {', '.join(kinds)}. That is an endpoint problem, not a "
+            "model result -- most likely the --server SSH tunnel died, which run_eval does "
+            "not reconnect. Check the server is still up, then re-run; nothing is published."
+        )
+
     per_item: dict[str, dict] = {}
     slot_votes = [0] * N_OPTIONS
     unparsed = truncated = errored = 0

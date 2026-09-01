@@ -68,6 +68,12 @@ cot:
   # which do not have a thinking mode; ours do. `truncation_rate` in the output is the
   # check -- if it is not ~0, raise this before believing any number.
   max_tokens: 4096
+  # Abort rather than publish when generations fail at a systemic rate. A per-request
+  # try/except stops ONE dropped connection from discarding an hour of work; without this
+  # cap it also lets a dead endpoint finish the run and publish a confident number built
+  # from nothing (the --server SSH tunnel died mid-run on 2026-09-01 and run_eval does not
+  # reconnect it). 2% tolerates flake; a dead tunnel is 100%.
+  max_error_rate: 0.02
 
 # --- Template modes (the `logprob` protocol only) --------------------------------------
 # Both, deliberately, rather than a pick. spp-evals renders through the checkpoint's own
