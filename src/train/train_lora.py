@@ -298,11 +298,20 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     # Rendered `text` rows need the family's empty-marker literal to classify; pure
     # interchange (`messages`) datasets don't, and must stay checkable for families
     # that have no verified profile yet (Qwen3's own flow).
+    # An arm may deliberately carry NO real reasoning (traces replaced by the empty
+    # marker, to test whether the reasoning mattered as context). That lifts a guard on
+    # a documented, expensive failure, so it is declared in the config, never inferred,
+    # announced loudly here, and stamped into the adapter below.
+    allow_no_reasoning = bool(cfg.get("allow_no_reasoning", False))
     check_thinking_declaration(
         ds, thinking,
         empty_think=(model_profile(str(cfg.model)).empty_think
-                     if "text" in ds.column_names else None))
+                     if "text" in ds.column_names else None),
+        allow_no_reasoning=allow_no_reasoning)
     print(f">>> thinking (declared, validated on all {len(ds)} rows): {thinking}")
+    if allow_no_reasoning:
+        print(">>> allow_no_reasoning: TRUE — the no-real-trace guard (gotcha 2) is "
+              "waived for this arm by explicit config declaration")
     # An arm may unsupervise one property of its reasoning via per-row `mask_spans`.
     # Counted on the FULL dataset for the same reason as the thinking declaration: a
     # smoke subselect of a mostly-replay mixture legitimately holds zero masked rows,
@@ -353,6 +362,9 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         "dataset": dataset_ref,
         "git_sha": _git_sha(),
         "timestamp": ts,
+        # Recorded because it says the arm carries no real reasoning BY DESIGN --
+        # without it a reader of this adapter cannot tell that from a data bug.
+        **({"allow_no_reasoning": True} if allow_no_reasoning else {}),
         **training_meta_mask,
         **training_meta_supervise,
     }

@@ -321,7 +321,8 @@ def build_labels(text: str, tokenizer, max_length: int, profile: ModelProfile,
 
 
 def check_thinking_declaration(rows, thinking: bool,
-                               empty_think: str | None = None) -> None:
+                               empty_think: str | None = None,
+                               allow_no_reasoning: bool = False) -> None:
     """Fail fast when a train config's `thinking:` declaration contradicts the data.
 
     The declaration is the source of truth (the config is the scientific record); this
@@ -339,10 +340,24 @@ def check_thinking_declaration(rows, thinking: bool,
             `text` rows. None is allowed only for pure-`messages` datasets (an
             unprofiled family's interchange data); a text row then raises rather than
             counting with another family's literal.
+        allow_no_reasoning: Permit `thinking: true` over data carrying NO real trace.
+            OFF by default and never inferred — a train config must ask for it in so
+            many words, because the check it lifts guards an expensive, documented
+            failure (gotcha 2).
+
+            The one arm this is for: difficult-advice rows whose traces have been
+            REPLACED by the empty marker, to test whether the reasoning was doing work
+            as CONTEXT. Gotcha 2's actual failure is training the model to EMIT an empty
+            close; the generation-boundary rule masks the whole marker, so such an arm
+            never earns loss on one and cannot learn to produce it. The census this
+            check reads cannot tell "empty markers present and masked" from "trained to
+            emit empty think", which is why the exception has to be declared rather
+            than detected. `thinking: true` remains correct for such an arm when it is
+            served and evaluated in thinking mode alongside its siblings.
 
     Raises:
-        AssertionError: declared thinking with no real reasoning trace anywhere, or any
-            think content under thinking=false.
+        AssertionError: declared thinking with no real reasoning trace anywhere (unless
+            `allow_no_reasoning`), or any think content under thinking=false.
     """
     real = 0
     for row in rows:
@@ -356,9 +371,11 @@ def check_thinking_declaration(rows, thinking: bool,
             real += sum(1 for msg in row["messages"]
                         if str(msg.get("reasoning_content") or "").strip())
     if thinking:
-        assert real > 0, (
+        assert real > 0 or allow_no_reasoning, (
             "thinking: true, but no row carries a real reasoning trace — this would train "
-            "the model on empty/absent <think> and collapse its reasoning (gotcha 2)")
+            "the model on empty/absent <think> and collapse its reasoning (gotcha 2). If "
+            "the traces were replaced by the empty marker ON PURPOSE, the train config "
+            "must say so with `allow_no_reasoning: true`.")
     else:
         assert real == 0, (
             f"thinking: false, but {real} real reasoning traces are in the training data — "
