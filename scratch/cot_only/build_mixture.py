@@ -36,7 +36,7 @@ import fire
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.model_profile import model_profile  # noqa: E402
-from src.train.masking import build_labels, cot_span  # noqa: E402
+from src.train.masking import answer_span, build_labels, cot_span  # noqa: E402
 from src.utils import git_sha  # noqa: E402
 
 CONTROL_REPO = "LASR-Callum/2026-08-06-table2-9284-synthdoc-716-train"
@@ -74,7 +74,7 @@ CHUNK_ONLY = {
 def main(out_dir: str = "", model_id: str = "Qwen/Qwen3.6-27B",
          max_length: int = 8192, repo: str = CONTROL_REPO, file: str = CONTROL_FILE,
          revision: str = CONTROL_REVISION, da_source: str = DA_SOURCE,
-         n_da: int = N_DA, n_rows: int = N_ROWS) -> None:
+         n_da: int = N_DA, n_rows: int = N_ROWS, mode: str = "cot") -> None:
     """Emit the CoT-only mixture, its stats and its provenance.
 
     Args:
@@ -91,6 +91,10 @@ def main(out_dir: str = "", model_id: str = "Qwen/Qwen3.6-27B",
             assert below rather than silently flagging nothing.
         n_da: Expected difficult-advice row count (702 for chunk-only, 716 for synthdoc).
         n_rows: Expected total row count (9,986 for chunk-only, 10,000 for synthdoc).
+        mode: The supervise mode written onto the difficult-advice rows -- "cot" (train
+            the reasoning, truncate away the answer) or "answer" (train the visible
+            answer, keep the trace as unsupervised context). The two are exact
+            complements; see src/train/masking.py.
 
     Raises:
         AssertionError: The control is not the expected shape, or a flagged row has no
@@ -123,18 +127,25 @@ def main(out_dir: str = "", model_id: str = "Qwen/Qwen3.6-27B",
         is_da = r["source"] == da_source
         new = dict(r)
         if is_da:
-            # Fail HERE, not on the pod: refuses an empty marker or an unclosed trace.
-            cot_span(r["text"], header=profile.assistant_header,
-                     prefill=profile.prefill, empty_think=profile.empty_think,
-                     think_close=profile.think_close)
-            new["supervise"] = "cot"
+            # Fail HERE, not on the pod: refuses an empty marker or an unclosed trace
+            # (and, under "answer", an unterminated turn).
+            if mode == "cot":
+                cot_span(r["text"], header=profile.assistant_header,
+                         prefill=profile.prefill, empty_think=profile.empty_think,
+                         think_close=profile.think_close)
+            else:
+                answer_span(r["text"], header=profile.assistant_header,
+                            prefill=profile.prefill, empty_think=profile.empty_think,
+                            think_close=profile.think_close,
+                            turn_end=profile.turn_end)
+            new["supervise"] = mode
             flagged += 1
         assert new["text"] == r["text"], f"row {i}: text must not change"
         out_rows.append(new)
 
         control = build_labels(r["text"], tokenizer, max_length, profile)
         arm = build_labels(r["text"], tokenizer, max_length, profile,
-                           supervise="cot" if is_da else "all")
+                           supervise=mode if is_da else "all")
         n_c, n_a = len(control["input_ids"]), len(arm["input_ids"])
         s_c = sum(1 for v in control["labels"] if v != -100)
         s_a = sum(1 for v in arm["labels"] if v != -100)
@@ -148,6 +159,7 @@ def main(out_dir: str = "", model_id: str = "Qwen/Qwen3.6-27B",
             da_sup_control += s_c
             da_sup_cot += s_a
 
+    assert mode in ("cot", "answer"), f"unknown mode {mode!r}"
     assert flagged == n_da, f"flagged {flagged} rows, expected {n_da}"
 
     data_file = out_p / "mixture_think_cotonly.jsonl"
@@ -159,6 +171,7 @@ def main(out_dir: str = "", model_id: str = "Qwen/Qwen3.6-27B",
     stats = {
         "rows": len(out_rows),
         "rows_supervise_cot": flagged,
+        "supervise_mode": mode,
         "per_source": dict(by_source.most_common()),
         "max_length": max_length,
         "forward_tokens": {
@@ -180,9 +193,11 @@ def main(out_dir: str = "", model_id: str = "Qwen/Qwen3.6-27B",
         "git_sha": git_sha(), "timestamp": ts, "model": model_id,
         "control": {"repo": repo, "file": file, "revision": revision},
         "script": "scratch/cot_only/build_mixture.py",
+        "supervise_mode": mode,
     }, indent=2))
 
-    print(f">>> wrote {data_file} ({len(out_rows)} rows, {flagged} flagged supervise=cot)")
+    print(f">>> wrote {data_file} ({len(out_rows)} rows, {flagged} flagged "
+          f"supervise={mode})")
     print(f">>> forward tokens   : {tok_control:,} -> {tok_cot:,} "
           f"(-{stats['forward_tokens']['reduction_pct']}% overall, "
           f"-{stats['forward_tokens']['da_reduction_pct']}% on the DA rows)")

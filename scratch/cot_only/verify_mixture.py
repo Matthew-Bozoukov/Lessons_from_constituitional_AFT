@@ -44,7 +44,7 @@ from src.train.masking import build_labels  # noqa: E402
 
 def main(built: str = "", model_id: str = "Qwen/Qwen3.6-27B", max_length: int = 8192,
          show: int = 1, global_batch: int = 16, token_budget: int = 8000,
-         arm: str = "", config: str = "") -> None:
+         arm: str = "", config: str = "", mode: str = "cot") -> None:
     """Compare, gate, plan and show.
 
     Args:
@@ -60,6 +60,7 @@ def main(built: str = "", model_id: str = "Qwen/Qwen3.6-27B", max_length: int = 
         arm: "chunk_only" selects that arm's control repo/file/revision/source/counts in
             one word; anything else keeps the synthdoc defaults.
         config: Train config to read the pinned arm file from when `built` is empty.
+        mode: The supervise mode the flagged rows must carry -- "cot" or "answer".
 
     Raises:
         AssertionError: Any of the four claims above fails.
@@ -99,17 +100,17 @@ def main(built: str = "", model_id: str = "Qwen/Qwen3.6-27B", max_length: int = 
     assert len(ctrl) == len(new), f"row count {len(ctrl)} -> {len(new)}"
     changed = [i for i, (a, b) in enumerate(zip(ctrl, new)) if a["text"] != b["text"]]
     assert not changed, f"{len(changed)} rows changed their text (first: {changed[:3]})"
-    flagged = [i for i, r in enumerate(new) if r.get("supervise") == "cot"]
+    flagged = [i for i, r in enumerate(new) if r.get("supervise") == mode]
     assert len(flagged) == n_da, f"{len(flagged)} rows flagged, expected {n_da}"
     off_source = [i for i in flagged if new[i]["source"] != da_source]
     assert not off_source, f"{len(off_source)} flagged rows are not {da_source}"
     unflagged_da = [i for i, r in enumerate(new)
-                    if r["source"] == da_source and r.get("supervise") != "cot"]
+                    if r["source"] == da_source and r.get("supervise") != mode]
     assert not unflagged_da, f"{len(unflagged_da)} difficult-advice rows are unflagged"
-    other_modes = {r.get("supervise") for r in new} - {None, "cot"}
+    other_modes = {r.get("supervise") for r in new} - {None, mode}
     assert not other_modes, f"unexpected supervise modes present: {other_modes}"
     print(f">>> text byte-identical on all {len(new)} rows; "
-          f"{len(flagged)} flagged supervise=cot, all {da_source}")
+          f"{len(flagged)} flagged supervise={mode}, all {da_source}")
 
     # 2. the gate the pod will run
     profile = model_profile(model_id)
@@ -143,7 +144,7 @@ def main(built: str = "", model_id: str = "Qwen/Qwen3.6-27B", max_length: int = 
     # 4. eyeball it
     for i in flagged[:show]:
         out = build_labels(new[i]["text"], tokenizer, max_length, profile,
-                           supervise="cot")
+                           supervise=mode)
         kept = tokenizer.decode([v for v in out["labels"] if v != -100])
         masked = tokenizer.decode([t for t, v in zip(out["input_ids"], out["labels"])
                                    if v == -100])
@@ -151,15 +152,27 @@ def main(built: str = "", model_id: str = "Qwen/Qwen3.6-27B", max_length: int = 
               f"{sum(1 for v in out['labels'] if v != -100)} supervised) ---")
         print("MASKED tail :", repr(masked[-120:]))
         print("SUPERVISED  :", repr(kept[:200]), "...", repr(kept[-80:]))
-        assert kept.endswith(profile.think_close), "a CoT row must end at its close"
         # The system and user turns keep their own turn ends; it is the FINAL assistant
-        # turn that must stop at the close, carrying neither answer nor terminator.
+        # turn whose shape distinguishes the two modes.
         stream = tokenizer.decode(out["input_ids"])
         final_turn = stream[stream.rfind(profile.assistant_header):]
-        assert profile.turn_end not in final_turn, \
-            "the answer and its turn end must not be in the final turn's token stream"
-        assert final_turn.endswith(profile.think_close), \
-            "the final turn's token stream must end at the reasoning close"
+        if mode == "cot":
+            assert kept.endswith(profile.think_close), "a CoT row must end at its close"
+            assert profile.turn_end not in final_turn, \
+                "the answer and its turn end must not be in the final turn's stream"
+            assert final_turn.endswith(profile.think_close), \
+                "the final turn's token stream must end at the reasoning close"
+        else:
+            assert kept.endswith(profile.turn_end), \
+                "an answer row must supervise through the turn end"
+            assert profile.think_close not in kept, \
+                "an answer row must not supervise the reasoning close"
+            assert profile.think_close in final_turn, \
+                "the trace must REMAIN in the token stream, merely unsupervised"
+            # rstrip: the template emits a trailing newline AFTER the turn end, which the
+            # span deliberately excludes -- `assistant_spans` stops at the terminator too.
+            assert final_turn.rstrip("\n").endswith(profile.turn_end), \
+                "an answer row keeps its whole turn, terminator included"
     print("\n>>> OK")
 
 

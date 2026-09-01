@@ -31,10 +31,13 @@ REPO = "2026-08-31-cot-only-supervision-t2-9284-synthdoc-716"
 # The chunk-only (principle-scoped) arm. Preferred, because its control is REAL and
 # EVALUATED -- see build_mixture.CHUNK_ONLY.
 REPO_CHUNK_ONLY = "2026-08-31-cot-only-supervision-chunk-only-702"
+# The ANSWER-ONLY arm on the same base: the exact complement of the CoT one, sharing
+# the same control. Trace stays in the forward pass, earns no loss.
+REPO_ANSWER_CHUNK = "2026-09-01-answer-only-supervision-chunk-only-702"
 DATA_FILE = "mixture_think_cotonly.jsonl"
 
 
-def main(run: str, private: bool = False, arm: str = "") -> None:
+def main(run: str, private: bool = False, arm: str = "", mode: str = "cot") -> None:
     """Upload the mixture, its stats and its card.
 
     Args:
@@ -43,9 +46,13 @@ def main(run: str, private: bool = False, arm: str = "") -> None:
             arm's mixture and adapter.
         arm: "chunk_only" publishes the principle-scoped rebuild to its own repo and
             cites its own control; anything else keeps the original synthdoc arm.
+        mode: "cot" or "answer" -- which half of the difficult-advice turn the flagged
+            rows train on. Selects the repo and the card's wording.
     """
     co = arm == "chunk_only"
-    repo = REPO_CHUNK_ONLY if co else REPO
+    ans = mode == "answer"
+    assert not (ans and not co), "the answer-only arm is only built on the chunk-only base"
+    repo = (REPO_ANSWER_CHUNK if ans else REPO_CHUNK_ONLY) if co else REPO
     spec = CHUNK_ONLY if co else {"repo": CONTROL_REPO, "file": CONTROL_FILE,
                                   "revision": CONTROL_REVISION, "da_source": DA_SOURCE}
     ctl_repo, ctl_file = spec["repo"], spec["file"]
@@ -54,15 +61,25 @@ def main(run: str, private: bool = False, arm: str = "") -> None:
     stats = json.loads((run_p / "mixture_stats_cotonly.json").read_text())
     fwd, sup = stats["forward_tokens"], stats["supervised_tokens"]
     fields = {
-        "title": ("CoT-only supervision mixture, principle-scoped "
+        "title": ("Answer-only supervision mixture, principle-scoped "
+                  "(Table2 9,284 + chunk-only 702)" if ans else
+                  "CoT-only supervision mixture, principle-scoped "
                   "(Table2 9,284 + chunk-only 702)" if co else
                   "CoT-only supervision mixture (Table2 9,284 + difficult-advice 716)"),
-        "experiment": "Arm: train the 716 difficult-advice rows on their REASONING ONLY "
-                      "— each row is truncated at its `</think>` close, so the visible "
-                      "answer leaves both the loss and the forward pass — while the 9,284 "
-                      "Table2 rows train exactly as in the control. Tests whether the "
-                      "difficult-advice effect on agentic misalignment is carried by the "
-                      "reasoning or by the answer.",
+        "experiment": (
+            "Arm: train the 702 principle-scoped difficult-advice rows on their VISIBLE "
+            "ANSWER ONLY -- the reasoning trace stays in the token stream as unsupervised "
+            "context (no truncation, full forward pass) and simply earns no loss, while "
+            "the 9,284 Table2 rows train exactly as in the control. The EXACT COMPLEMENT "
+            "of the CoT-only arm on the same base: on every one of the 702 rows, "
+            "supervised(cot) + supervised(answer) == supervised(control), verified "
+            "token-for-token (420,037 + 401,033 = 821,070, 0 mismatches). That partition "
+            "is what makes the two arms comparable to EACH OTHER, not merely to their "
+            "shared control."
+            if ans else
+            "Arm: train the difficult-advice rows on their REASONING ONLY - each row is "
+            "truncated at its reasoning close, so the visible answer leaves both the loss "
+            "and the forward pass - while the Table2 rows train as in the control."),
         "date_generated": "2026-08-31",
         "constitution": "claude_distilled_07_principles_approved "
                         "(constitutions/claude_distilled_07_principles_approved/constitution.md)",
@@ -70,14 +87,16 @@ def main(run: str, private: bool = False, arm: str = "") -> None:
         "models": "token stream Qwen/Qwen3.6-27B (tokenizer + ModelProfile literals)",
         "generation_config": "none — no model is sampled here. The build is a "
                              "deterministic per-row field addition over a pinned control.",
-        "schema": "text (rendered Qwen3.6 chat, IDENTICAL to the control mixture); "
-                  "source (mixture source name); supervise ('cot' on the 716 "
-                  "difficult-advice rows, absent elsewhere = 'all')",
+        "schema": ("text (rendered Qwen3.6 chat, IDENTICAL to the control mixture); "
+                   "source (mixture source name); supervise "
+                   f"('{mode}' on the {702 if co else 716} {da_src} rows, "
+                   "absent elsewhere = 'all')"),
         "provenance": (
             (f"uv run python scratch/cot_only/build_mixture.py --repo {ctl_repo} "
              f"--file {ctl_file} --revision {ctl_rev} --da_source {da_src} "
              f"--n_da {CHUNK_ONLY['n_da']} --n_rows {CHUNK_ONLY['n_rows']} ; verified by "
-             "uv run python scratch/cot_only/verify_mixture.py --arm chunk_only" if co else
+             f"--mode {mode} ; verified by uv run python "
+             f"scratch/cot_only/verify_mixture.py --arm chunk_only --mode {mode}" if co else
              "uv run python scratch/cot_only/build_mixture.py ; verified by "
              "scratch/cot_only/verify_mixture.py")
             + " (text byte-identical to the control on every row, mask gate passed on "

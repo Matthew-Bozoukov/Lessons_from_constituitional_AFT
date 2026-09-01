@@ -34,6 +34,7 @@ _TURN = re.compile(r"<\|im_start\|>assistant\n(.*?<\|im_end\|>)", re.DOTALL)
 # on. This module keeps its own copy of the header literal rather than taking the
 # profile's — the point of the gate is that it re-derives everything independently.
 _ASSISTANT_HEADER = "<|im_start|>assistant\n"
+_TURN_END = "<|im_end|>"
 
 GATE_SAMPLE = 64  # decode-checked rows PER SUPERVISE MODE; the census covers every row
 
@@ -48,27 +49,39 @@ def expected_supervised_text(text: str, prefill: str, empty_think: str,
     generates an empty close), else the bare thinking prefill — concatenated in order.
 
     Under `supervise="cot"` the expectation is the final turn's reasoning ALONE: from
-    just past the prefill through the close, inclusive, and nothing after it. Derived
-    here by string search over the raw text, so it stays independent of masking.py's
-    span/segment logic — the whole point of this module.
+    just past the prefill through the close, inclusive, and nothing after it. Under
+    `supervise="answer"` it is everything on the far side of that same close — the
+    separator, the answer and the turn end. Both are derived here by string search over
+    the raw text, so they stay independent of masking.py's span/segment logic — the
+    whole point of this module.
 
     Args:
         text: A rendered chat conversation.
         prefill: The profile's thinking-prefill literal.
         empty_think: The profile's empty-marker literal.
         supervise: The row's mode — "all"/"final" share the turn-concatenation shape
-            (the gate feeds one turn's worth either way); "cot" takes the branch above.
+            (the gate feeds one turn's worth either way); "cot" and "answer" take the
+            branch above, carving the final turn at its reasoning close.
         think_close: The profile's reasoning-close literal, used only under "cot".
     """
-    if supervise == "cot":
+    if supervise in ("cot", "answer"):
         i = text.rfind(_ASSISTANT_HEADER)
-        assert i != -1, "cot row has no assistant turn"
+        assert i != -1, f"{supervise} row has no assistant turn"
         body = text[i + len(_ASSISTANT_HEADER):]
         # Order matters: the empty marker also starts with the prefill, and expecting
         # its close to be supervised would let the gate bless a reasoning collapse.
-        assert not body.startswith(empty_think), "cot row's final turn is an empty marker"
-        assert body.startswith(prefill), "cot row's final turn has no thinking prefill"
-        return body[len(prefill):body.index(think_close) + len(think_close)]
+        assert not body.startswith(empty_think), \
+            f"{supervise} row's final turn is an empty marker"
+        assert body.startswith(prefill), \
+            f"{supervise} row's final turn has no thinking prefill"
+        close = body.index(think_close) + len(think_close)
+        if supervise == "cot":
+            return body[len(prefill):close]
+        # "answer": everything the trace is not -- separator, answer, turn end. Derived
+        # by slicing from the OTHER side of the same close, so the gate proves the two
+        # modes partition the turn rather than assuming it.
+        end = body.index(_TURN_END, close) + len(_TURN_END)
+        return body[close:end]
     parts = []
     for m in _TURN.finditer(text):
         body = m.group(1)
