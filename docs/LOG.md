@@ -1,6 +1,97 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-01 - Moving the loss around the difficult-advice turn: four arms, one lead, nothing significant
+
+**Hypothesis.** The difficult-advice effect is carried by the REASONING those rows
+contain, not by the answers. Three arms carve the same 702 principle-scoped rows three
+ways and evaluate on the same 65 ODCV cells.
+
+**Method.** All three sit on the SAME 9,986-row mixture the trained control used, seed 0,
+625 steps, 2xH200 DDP, hyperparameters matched to the control and to each other. Served
+and evaluated in THINKING mode, 65 cells x 1 rollout, temperature 0, the 15 standard
+exclusions - local Docker against a RunPod H200 over an SSH tunnel.
+
+| arm | loss falls on | text | MR | CI95 |
+|---|---|---|--:|:--:|
+| control (2 passes) | trace + answer | - | 11.5% | [6.2, 19.6] |
+| **cot-only** | the trace | answer truncated away | **9.5%** | [3.2, 17.5] |
+| **empty-CoT** | the answer | trace REPLACED by empty marker | **14.3%** | [6.3, 23.8] |
+| **answer-only** | the answer | trace kept as context | **21.0%** | [11.3, 32.3] |
+| base fp8 | - | - | 36.9% | [21.4, 53.6] |
+
+`cot-only` and `answer-only` PARTITION the control's difficult-advice supervision exactly:
+420,037 + 401,033 = 821,070 supervised tokens, 0 rows mismatched, verified token-for-token
+and asserted as a unit test. `empty-CoT` supervises the same answer tokens as `answer-only`
+(702 fewer - the blank-line separator, part of the forced marker there) and differs in one
+thing: whether the trace is PRESENT AS CONTEXT.
+
+**Result: the ordering is exactly what the hypothesis predicts, and NOT ONE PAIRWISE
+CONTRAST IS SIGNIFICANT.**
+
+| contrast | diff | CI95 | McNemar |
+|---|--:|:--:|--:|
+| answer-only vs cot-only | +11.5 pp | [+0.0, +23.0] | p=0.092 |
+| answer-only vs empty-CoT | +6.6 pp | [-3.3, +16.4] | p=0.34 |
+| empty-CoT vs cot-only | +4.9 pp | [-3.3, +13.1] | p=0.45 |
+
+Paired on the cells both arms judged, which is the right test here (the arms share a cell
+set, so pairing removes scenario-difficulty variance; marginal CIs would be strictly
+weaker). The closest contrast still misses at one pass per arm, and its bootstrap interval
+touches zero. **A seed-only replicate of another arm moved 6.1 pp - larger than two of
+these three gaps.** Read the ordering as a lead.
+
+**The arm built to isolate the context question answered it least.** `answer-only` vs
+`empty-CoT` was the designed pair: same supervised tokens, trace present or deleted. It is
+the WEAKEST of the three contrasts (p=0.34). On this evidence the trace's value as
+context is not demonstrated - and note the sign is the opposite of the intuitive one
+(deleting the trace scored LOWER, 14.3% vs 21.0%), which is another reason not to tell a
+story from it.
+
+**What does survive.** Every arm sits far below base (36.9%) and table2-only (43.9%), and
+the direction of the one near-significant contrast matches the hypothesis. Nothing else.
+
+**A clean methodological result, and the more useful output of the day.**
+`check_thinking_declaration` refuses `thinking: true` over data with no real trace
+(gotcha 2: it would "collapse its reasoning"). The empty-CoT arm trips that by design, so
+the guard gained `allow_no_reasoning` - OFF by default, declared in the config, printed at
+train time and stamped into the adapter. The waiver's premise was that gotcha 2's actual
+failure is training the model to EMIT an empty close, which cannot happen when the marker
+is masked whole. **That premise held: empty-think rate 0 of 699 assistant turns**, on an
+arm whose training mixture contained ZERO real reasoning traces. All three arms measured
+0% (632 / 720 / 699 turns). The guard is broader than the failure it protects against, and
+the census cannot see the difference - which is why the exception has to be declared
+rather than detected.
+
+**New mask machinery.** `supervise: "answer"` joins `"cot"` as a per-row mode (the
+mixture's field, not a config flag - a global switch cannot say "these 702 rows only").
+The empty-CoT arm needed NO new mode at all: the generation-boundary rule already masks
+the whole empty marker and supervises the answer, so it trains correctly under the default
+`"all"` and its mixture carries no `supervise` column. The mask gate derives every mode
+independently and samples STRATIFIED by mode, so a minority mode cannot ship unverified.
+
+**Also fixed on the way.** `scratch/serve_adapter_runpod.py` did not run at all on main:
+the `src/endpoints` -> `src/infra` reorganisation moved the module AND renamed
+`launch_pod` -> `serve_vllm` without updating it, so the ODCV serving path was broken for
+everyone. At least ten other scratch scripts still import the dead
+`src.endpoints.openrouter` and will fail on import; left alone as other people's
+workstreams, but they need a sweep.
+
+**Artifacts.** Mixtures `2026-08-31-cot-only-supervision-chunk-only-702`,
+`2026-09-01-answer-only-supervision-chunk-only-702`,
+`2026-09-01-empty-cot-supervision-chunk-only-702`; adapters
+`qwen3.6-27b-lora-t2-9284-chunk-only-702-{cotonly,answeronly,emptycot}-r64`; ODCV runs
+`2026-08-31-odcv-cot-only-chunk-only-702-1x65`,
+`2026-09-01-odcv-answer-only-chunk-only-702-1x65`,
+`2026-09-01-odcv-empty-cot-chunk-only-702-1x65`. All public under LASR-Callum. Plot:
+`output/report/odcv_supervision_series.png`. GPU spend ~$75 across the three arms.
+**All pods destroyed.**
+
+**Next steps.** Passes 2-4 on `cot-only` and `answer-only` - the one contrast that is
+close, and the cheapest way to turn this lead into a result. The reweighting control
+(answer removed WITHOUT the density change) remains unbuilt and is what would let any of
+these arms be read against the control rather than only against each other.
+
 ## 2026-08-31 - CoT-only on the principle-scoped 702 arm: 9.5%, and the first CoT arm with a real control
 
 **Hypothesis.** The difficult-advice effect is carried by the REASONING in those rows, not
