@@ -68,7 +68,9 @@ def mean_severity(scores: list[float]) -> float:
     return float(np.mean(scores))
 
 
-def load_published_medians(csv_path: Path, model_key: str) -> dict[str, dict[str, float]]:
+def load_published_medians(
+    csv_path: Path, model_key: str
+) -> dict[str, dict[str, float]]:
     """Read the paper's per-scenario median scores for one model.
 
     Args:
@@ -123,20 +125,110 @@ DESIGN_ONE_VARIANT = Design(item="scenario", subsamples=("pass",))
 MR_BOUNDS = (0.0, 100.0)
 
 
-def to_long(medians: dict[str, dict[str, list | float]],
-            checkpoint: str = "checkpoint") -> list[dict]:
+def group_rollouts(
+    medians: dict[str, dict[str, list | float]],
+) -> dict[str, dict[str, list[float]]]:
+    """Normalise every published per-scenario-medians shape to {variant: {scenario: [s]}}.
+
+    Three shapes exist in published results.json files and all three are still read:
+
+    - ``"<Scenario>": [s, s]``         nested rollouts, what current runs write
+    - ``"<Scenario>": s``              a single rollout
+    - ``"<Scenario>/rollout_NNN": s``  a COMBINED multi-pass run
+
+    The third is why this exists. Left alone, every rollout key looks like its own scenario,
+    so a 2-pass 65-cell arm reports 128 scenarios and the SCENARIO axis of the design is
+    silently a rollout axis — the interval then treats repeated rollouts of one prompt as
+    independent draws and comes out too narrow. `to_long` calls this first so the design's
+    `scenario` term means what it says whatever shape the file arrived in.
+    """
+    out: dict[str, dict[str, list[float]]] = {}
+    for variant, cells in medians.items():
+        grouped: dict[str, list[float]] = {}
+        for key, value in cells.items():
+            grouped.setdefault(key.split("/", 1)[0], []).extend(_rollouts(value))
+        out[variant] = grouped
+    return out
+
+
+def passes_by_index(
+    medians: dict[str, dict[str, list | float]],
+) -> dict[str, dict[str, list[float]]]:
+    """Split published medians into one entry per rollout pass.
+
+    Keyed ``{pass_id: {"variant/scenario": [severities]}}``. A combined run carries its pass
+    in the key (``"<Scenario>/rollout_NNN"``); a nested run carries it positionally; a
+    single-pass run is all ``rollout_000``. Needed to hold ONE pass per seed when averaging
+    over training seeds — see `pick_most_complete_pass`.
+    """
+    out: dict[str, dict[str, list[float]]] = {}
+    for variant, cells in medians.items():
+        for key, value in cells.items():
+            scenario, _, idx = key.partition("/")
+            cell = f"{variant}/{scenario}"
+            if isinstance(value, (list, tuple)):
+                for i, s in enumerate(value):
+                    out.setdefault(f"rollout_{i:03d}", {}).setdefault(cell, []).append(
+                        float(s)
+                    )
+            else:
+                out.setdefault(idx or "rollout_000", {}).setdefault(cell, []).append(
+                    float(value)
+                )
+    return {k: out[k] for k in sorted(out)}
+
+
+def pick_most_complete_pass(
+    passes: dict[str, dict[str, list[float]]],
+) -> dict[str, list[float]]:
+    """ONE pass from a seed's passes: the one that scored the most cells.
+
+    A seed evaluated over several passes gets a less noisy point estimate than a one-pass
+    sibling, which breaks the equal-variance assumption behind an interval ACROSS seeds.
+    An incomplete pass is also biased LOW (the cells that fail are the long, agentic ones),
+    so the most complete pass is the general choice.
+    """
+    assert passes, "no passes to pick from"
+    return max(passes.values(), key=len)
+
+
+def shared_cells(per_seed: dict) -> list[str]:
+    """Cells every seed scored, sorted. A cell missing from ANY seed is dropped from ALL.
+
+    Dropout is not random with respect to MR — the seed that behaves more elaborately
+    overruns the context and proxy timeouts more often, losing exactly its longest, most
+    agentic rollouts — so comparing seeds on their own cell sets is biased against the more
+    active seed.
+    """
+    assert per_seed, "no seeds"
+    return sorted(set.intersection(*(set(c) for c in per_seed.values())))
+
+
+def to_long(
+    medians: dict[str, dict[str, list | float]], checkpoint: str = "checkpoint"
+) -> list[dict]:
     """{variant: {scenario: [severity per rollout] | severity}} -> one row per rollout.
 
     Each row carries both outcomes so the same table serves the MR interval (`violation`,
     0/1) and the severity interval (`severity`).
     """
     rows = []
-    for variant, scenarios in medians.items():
+    # Rollouts of one scenario are merged under that scenario FIRST: a combined multi-pass
+    # run keys them separately, and taking those keys at face value would make every rollout
+    # its own scenario in the design. See group_rollouts.
+    for variant, scenarios in group_rollouts(medians).items():
         for scenario, value in scenarios.items():
             for k, sev in enumerate(_rollouts(value)):
-                rows.append({"checkpoint": checkpoint, "scenario": scenario, "variant": variant, "pass": k,
-                             "severity": float(sev),
-                             "violation": float(sev >= VIOLATION_THRESHOLD)})
+                rows.append(
+                    {
+                        "checkpoint": checkpoint,
+                        "scenario": scenario,
+                        "variant": variant,
+                        "pass": k,
+                        "severity": float(sev),
+                        "violation": float(sev >= VIOLATION_THRESHOLD),
+                    }
+                )
     return rows
 
 
@@ -146,12 +238,16 @@ def _design_for(variants: list[str]) -> Design:
 
 def _ci_fields(prefix: str, r: Result, nd: int) -> dict:
     """The interval as the scalar pairs the dashboard reads (it skips arrays)."""
-    return {f"{prefix}_ci95": [round(r.lo, nd), round(r.hi, nd)],
-            f"{prefix}_ci95_lo": round(r.lo, nd), f"{prefix}_ci95_hi": round(r.hi, nd)}
+    return {
+        f"{prefix}_ci95": [round(r.lo, nd), round(r.hi, nd)],
+        f"{prefix}_ci95_lo": round(r.lo, nd),
+        f"{prefix}_ci95_hi": round(r.hi, nd),
+    }
 
 
-def summarise(medians: dict[str, dict[str, list | float]],
-              checkpoint: str = "checkpoint") -> dict:
+def summarise(
+    medians: dict[str, dict[str, list | float]], checkpoint: str = "checkpoint"
+) -> dict:
     """Compute overall / per-variant MR and severity from ONE arm's median scores.
 
     `checkpoint` names the arm in the long table. Several arms of the same recipe (seed
@@ -161,7 +257,9 @@ def summarise(medians: dict[str, dict[str, list | float]],
     return _summarise({checkpoint: medians})
 
 
-def summarise_pooled(by_checkpoint: dict[str, dict[str, dict[str, list | float]]]) -> dict:
+def summarise_pooled(
+    by_checkpoint: dict[str, dict[str, dict[str, list | float]]],
+) -> dict:
     """Pool seed replicates of one recipe: the same summary, over >= 2 checkpoints.
 
     Not "average the seeds' numbers". Each seed becomes a checkpoint in the long table, so
@@ -204,11 +302,13 @@ def _summarise(by_checkpoint: dict[str, dict[str, dict[str, list | float]]]) -> 
     # Only variants that actually produced scores. A variant with an empty dict was not
     # run (incentivized-only arm), and reporting it as 0.0% would invent a result; leaving
     # it out makes its absence visible in the keys instead.
-    present = [v for v in VARIANTS
-               if any(arm.get(v) for arm in by_checkpoint.values())]
+    present = [v for v in VARIANTS if any(arm.get(v) for arm in by_checkpoint.values())]
     assert present, "no scores for any variant"
-    rows = [row for label, arm in by_checkpoint.items()
-            for row in to_long({v: arm[v] for v in present if arm.get(v)}, checkpoint=label)]
+    rows = [
+        row
+        for label, arm in by_checkpoint.items()
+        for row in to_long({v: arm[v] for v in present if arm.get(v)}, checkpoint=label)
+    ]
     mr_rows = [dict(r, value=100.0 * r["violation"]) for r in rows]
     sev_rows = [dict(r, value=r["severity"]) for r in rows]
 
@@ -216,8 +316,12 @@ def _summarise(by_checkpoint: dict[str, dict[str, dict[str, list | float]]]) -> 
     # INTERVAL cares which checkpoint each came from.
     medians: dict[str, dict[str, list]] = {v: {} for v in present}
     for arm in by_checkpoint.values():
+        # Same normalisation the long table gets: without it a combined multi-pass run
+        # reports its ROLLOUT count as n_scenarios, and every per-scenario rate below is
+        # computed over one rollout instead of the scenario's set.
+        grouped = group_rollouts({v: arm[v] for v in present if arm.get(v)})
         for variant in present:
-            for scenario, value in (arm.get(variant) or {}).items():
+            for scenario, value in (grouped.get(variant) or {}).items():
                 medians[variant].setdefault(scenario, []).extend(_rollouts(value))
 
     per_variant, stats, n_rollouts = {}, {}, 0
@@ -235,9 +339,14 @@ def _summarise(by_checkpoint: dict[str, dict[str, dict[str, list | float]]]) -> 
             "mean_severity": round(sum(sevs) / len(sevs), 2),
         }
         if len(rates) >= 2:
-            v_mr = interval([r for r in mr_rows if r["variant"] == variant], DESIGN_ONE_VARIANT,
-                            bounds=MR_BOUNDS)
-            v_sev = interval([r for r in sev_rows if r["variant"] == variant], DESIGN_ONE_VARIANT)
+            v_mr = interval(
+                [r for r in mr_rows if r["variant"] == variant],
+                DESIGN_ONE_VARIANT,
+                bounds=MR_BOUNDS,
+            )
+            v_sev = interval(
+                [r for r in sev_rows if r["variant"] == variant], DESIGN_ONE_VARIANT
+            )
             block.update(_ci_fields("mr", v_mr, 1), **_ci_fields("severity", v_sev, 2))
             stats[variant] = {"mr": v_mr.as_dict(), "severity": v_sev.as_dict()}
         per_variant[variant] = block
@@ -261,7 +370,63 @@ def _summarise(by_checkpoint: dict[str, dict[str, dict[str, list | float]]]) -> 
             "dropped_scenarios": mr.dropped_items,
         },
         **per_variant,
-        "stats": {"design": {"item": design.item, "item_sampling": design.item_sampling,
-                             "enumerated": dict(design.enumerated), "subsamples": list(design.subsamples)},
-                  **stats},
+        "stats": {
+            "design": {
+                "item": design.item,
+                "item_sampling": design.item_sampling,
+                "enumerated": dict(design.enumerated),
+                "subsamples": list(design.subsamples),
+            },
+            **stats,
+        },
     }
+
+
+# --- seed-mean helpers, SUPERSEDED by summarise_pooled -----------------------------------
+# `summarise_pooled` above is the sanctioned way to pool seed replicates: it puts the
+# checkpoint on its own axis of the design, which is strictly better than averaging per-seed
+# point estimates and calling the spread a SEM. These three remain only because
+# scratch/gpt_seeds/plot_seed_mean.py still computes its bars that way; that figure moves to
+# `summarise_pooled` next, and these go with it. Do not build new work on them.
+
+
+def mr_over_cells(cells: dict[str, list[float]], keys=None) -> float:
+    """MR over `keys`: each cell contributes the FRACTION of its rollouts that violated."""
+    keys = list(cells) if keys is None else list(keys)
+    assert keys, "no cells"
+    return 100.0 * float(np.mean([scenario_violation_rate(cells[k]) for k in keys]))
+
+
+def bootstrap_mr_ci(cells: dict[str, list[float]], keys=None, n_boot: int = 10_000,
+                    seed: int = 0) -> tuple[float, float]:
+    """95% CI on `mr_over_cells`, resampling CELLS (each with all of its rollouts)."""
+    keys = list(cells) if keys is None else list(keys)
+    rates = np.array([scenario_violation_rate(cells[k]) for k in keys], float)
+    assert rates.size, "no cells"
+    rng = np.random.default_rng(seed)
+    draws = 100.0 * rates[rng.integers(0, rates.size, size=(n_boot, rates.size))].mean(axis=1)
+    return float(np.percentile(draws, 2.5)), float(np.percentile(draws, 97.5))
+
+
+def seed_mean(values: list[float], z: float = 1.96) -> dict:
+    """Mean over TRAINING SEEDS with its between-seed error, both z- and t-based.
+
+    At k=3, +-1.96*SEM is an ~81% interval, NOT 95% (t=4.303), so both travel together.
+    """
+    from scipy import stats as _stats
+
+    k = len(values)
+    assert k >= 1, "no seeds"
+    mean = float(np.mean(values))
+    sd = float(np.std(values, ddof=1)) if k > 1 else 0.0
+    sem = sd / np.sqrt(k)
+    t = float(_stats.t.ppf(0.975, k - 1)) if k > 1 else float("nan")
+    cov = 100 * (2 * float(_stats.t.cdf(z, k - 1)) - 1) if k > 1 else float("nan")
+    return dict(
+        k=k, values=list(values), mean=mean, sd=sd, sem=sem,
+        half=z * sem, lo=mean - z * sem, hi=mean + z * sem, t=t,
+        half_t=t * sem if k > 1 else float("nan"),
+        lo_t=mean - t * sem if k > 1 else float("nan"),
+        hi_t=mean + t * sem if k > 1 else float("nan"),
+        coverage_of_z_pct=cov,
+    )

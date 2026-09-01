@@ -206,7 +206,7 @@ def test_pc_stage_sequence() -> None:
 
 @pytest.mark.parametrize("name", ["write_scenarios", "draft_prompts", "revise_prompts"])
 def test_pr_front_half_is_difficult_advice_verbatim(name: str) -> None:
-    """The scenarios, the drafted prompt and the chunk-only refine are difficult advice's,
+    """The scenarios, the drafted prompt and the principle-scoped refine are difficult advice's,
     byte for byte -- same prompts, same save map, same diversity gate, same model -- so PR
     and DA differ in nothing before the first reply. A change to these prompts belongs in
     2026-08-01_difficult_advice.yaml first and here second."""
@@ -222,7 +222,7 @@ def test_pr_front_half_is_difficult_advice_verbatim(name: str) -> None:
 
 
 def test_pr_no_stage_sees_the_constitution() -> None:
-    """Chunk-only, like difficult advice since 2026-08-24: every stage sees at most the
+    """Principle-scoped, like difficult advice since 2026-08-24: every stage sees at most the
     target principle. No `{constitution}` slot, no `<<<cache>>>` breakpoint, same alignment
     target cut the same way, no shared scaffolding fragments."""
     for key in ("constitution", "chunking", "n_traits"):

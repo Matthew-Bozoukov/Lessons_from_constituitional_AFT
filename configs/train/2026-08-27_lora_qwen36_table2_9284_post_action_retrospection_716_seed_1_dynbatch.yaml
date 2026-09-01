@@ -10,7 +10,7 @@
 # per step and the same 625 steps; only wall-clock changes (~2x the DDP run).
 #
 # The post-action-retrospection (design B) arm of the document-type sweep, DIRECTLY comparable
-# to the difficult-advice v3 (chunk-only) arm: a DIFFERENT seed (this is the seed-1 replicate), identical LoRA shape, LR schedule, global
+# to the difficult-advice v3 (principle-scoped) arm: a DIFFERENT seed (this is the seed-1 replicate), identical LoRA shape, LR schedule, global
 # batch (16), Table2 half, AND the same constitution (claude_distilled_12_principles_mid) and
 # the same scenarios recipe (DA's stages 1-6 verbatim). It differs from difficult advice in
 # the RESPONSE only: a five-turn record -- the DA prompt, a bare refusal (Sonnet, form

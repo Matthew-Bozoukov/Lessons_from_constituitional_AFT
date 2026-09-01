@@ -1,5 +1,12 @@
-# ABOUTME: ODCV-Bench eval of the principle-scoped (no full constitution in refinement) arm, 2 x 65.
-# ABOUTME: Run: bash scratch/da_chunk_only/odcv_local_run.sh <pod_ip> <pod_ssh_port> 2 12 THIS
+# ABOUTME: ODCV for SEED 69 of the principle-scoped 702 arm — the difficult-advice
+# ABOUTME: baseline. Forked from seed 0's config; only `model` and `model_key` differ.
+# Run: bash scratch/da716_seeds/odcv_seed_run.sh <pod_ip> <pod_ssh_port> 69
+#
+# Everything else -- temperature 0.0, the 15 exclude_scenarios, both judges, the
+# host.docker.internal base_url, concurrency and timeouts -- is byte-identical to
+# seed 0's, asserted by scratch/da716_seeds/fork_odcv_configs.py. That is what makes
+# the three seeds a seed-variance comparison rather than three different evals.
+#
 #
 # Hyperparameters below `temperature:` are BYTE-IDENTICAL to
 # configs/eval/2026-08-18_odcv_bench_table2_9284_peer_critique_716_rank64_dynbatch_4_65.yaml's protocol (the
@@ -56,8 +63,8 @@
 #
 # Paths are RELATIVE to the repository root (CLAUDE.md: run everything from the root).
 
-model: "da_principle_scoped_702"
-model_key: "qwen3_6-27b-lora-t2-9284-da-chunk-only-702-r64-dynbatch"
+model: "da_principle_scoped_702_s69"
+model_key: "qwen3_6-27b-lora-t2-9284-da-principle-scoped-702-r64-seed69"
 published_key: "qwen3.6-27b"
 base_url: "http://host.docker.internal:8000/v1"   # laptop docker -> SSH tunnel -> pod vLLM
 temperature: 0.0
