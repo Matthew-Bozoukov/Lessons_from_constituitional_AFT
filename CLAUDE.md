@@ -260,7 +260,7 @@ Every stage is a console alias from `[project.scripts]`, so the shape is always
 `uv run <job> --config <yaml>`. Stages 1–3 take `--smoke`.
 
 1. `uv run synth run --config configs/data/synth/<type>.yaml` — constitution-grounded generation; the config IS the document type, so read the one you are running (`ls configs/data/synth/`) rather than a list here.
-   **Which arm is the baseline lives in `docs/BASELINES.md`** — read it before generating a corpus or training an arm. For difficult advice it is **principle-scoped 702**, not `da716` and not `synthdoc-716`; both are superseded and kept only to reproduce work that cites them.
+   Know which arm is the current baseline before you build on one or compare against one: `docs/BASELINES.md`.
 2. `uv run mix --config configs/data/mixture/<name>.yaml` — budgeted training mixture of model-agnostic interchange rows (reasoning as `reasoning_content`, rendered at train time), with optional spec-filter stage and HF push checkpoints; `balance_by: trait_id` on a source spec trait-balances the difficult-advice share.
 3. `uv run train --config configs/train/<date>_lora_<model>_<arm>.yaml` — QLoRA SFT (runs on the GPU box). Pushes the adapter to HF with `training_meta.json` — the thinking stamp (declared as `thinking:` in the train config, validated against the data) that the eval framework infers mode from.
 4. `uv run evals --target <hf_path> --name <eval>` — THE eval entrypoint for every registered eval; see "The eval framework" below.
