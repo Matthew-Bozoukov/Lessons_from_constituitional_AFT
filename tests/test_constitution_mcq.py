@@ -226,6 +226,44 @@ def test_swap_scores_rejects_wrong_shapes():
         swap_scores([[0.0] * 3] + [[0.0] * 4] * 3)
 
 
+def test_letter_row_pools_spellings_and_floors_what_topk_dropped():
+    """The one piece of scoring this repo adds: upstream reads local logits, we read top-k.
+
+    A letter outside vLLM's top-k window has true logprob <= the weakest returned token, so
+    flooring just below that is a lower bound within a nat — and such a letter can never be
+    the argmax. What must not happen is it defaulting to 0.0 (= probability 1).
+    """
+    from src.eval.misalignment.constitution_mcq.runner import (
+        _letter_row,
+        _letter_spellings,
+    )
+
+    spellings = _letter_spellings()
+    top = {
+        " A": math.log(0.5),
+        "A": math.log(0.2),
+        "B": math.log(0.2),
+        " C": math.log(0.05),
+    }
+    row, missing = _letter_row(top, spellings)
+    assert missing == 1  # D appears in neither spelling
+    assert row[0] == pytest.approx(math.log(0.7))  # " A" and "A" pooled
+    assert row[1] == pytest.approx(math.log(0.2))
+    assert row[3] < min(row[:3]), "a dropped letter must floor BELOW every observed one"
+    assert row[3] < 0.0, "a dropped letter must never read as probability 1"
+    assert max(range(4), key=lambda i: row[i]) == 0
+
+
+def test_letter_row_survives_an_empty_topk():
+    from src.eval.misalignment.constitution_mcq.runner import (
+        _letter_row,
+        _letter_spellings,
+    )
+
+    row, missing = _letter_row({}, _letter_spellings())
+    assert missing == 4 and all(v < 0 for v in row)
+
+
 def test_pool_logprobs_is_logsumexp():
     a, b = math.log(0.3), math.log(0.2)
     assert pool_logprobs([a, b]) == pytest.approx(math.log(0.5))
