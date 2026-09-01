@@ -40,7 +40,7 @@ ARMS = {
         "combined2x_20260824_191954",
     ),
     "da716 (Sonnet)": ("hf", "LASR-Callum/2026-08-14-qwen36-lora-table2-9284-difficult-advice-716-rank-64-dynbatch"),
-    "da chunk-only 702": ("hf", "LASR-Callum/2026-08-21-odcv-difficult-advice-chunk-only-702-eval"),
+    "da principle-scoped 702": ("hf", "LASR-Callum/2026-08-21-odcv-difficult-advice-principle-scoped-702-eval"),
     "t10 curiosity 716": ("hf", "LASR-Callum/2026-08-20-odcv-t10-curiosity-716-eval"),
 }
 

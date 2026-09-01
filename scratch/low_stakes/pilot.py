@@ -53,7 +53,7 @@ from scratch.low_stakes.prompts import (  # noqa: E402
 from src.data.synth import constitution, embeddings  # noqa: E402
 from src.endpoints.openrouter import OpenRouterClient, map_threaded  # noqa: E402
 
-SOURCE_REPO = "LASR-Callum/2026-08-21-sonnet45-difficult-advice-chunk-only-constitution-716"
+SOURCE_REPO = "LASR-Callum/2026-08-21-sonnet45-difficult-advice-principle-scoped-constitution-716"
 SOURCE_FILE = "dataset.jsonl"
 CONSTITUTION = "constitutions/claude_distilled_12_principles_mid/constitution.md"
 
