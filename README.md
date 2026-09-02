@@ -36,7 +36,7 @@ stack is pinned in `pyproject.toml` and the lock is linux-only, so setup is just
 curl -LsSf https://astral.sh/uv/install.sh | sh
 git clone <this-repo> /root/work && cd /root/work
 uv sync                          # everything, GPU stack included, src/ editable
-uv run scripts/train/train_lora.py --config configs/train/2026-07-31_lora_qwen3_difficult_advice_thinking.yaml
+uv run scripts/train/train_lora.py --config configs/train/qwen3_difficult_advice_thinking.yaml
 uv run scripts/run_eval.py --target <hf_path> --name agentic_misalignment
 ```
 
@@ -47,12 +47,12 @@ the comment in `pyproject.toml`.)
 
 | Area | What it is | How to work in it |
 | --- | --- | --- |
-| [`src/data/synth/`](src/data/synth/README.md) | Six-stage Teaching Claude Why difficult-advice data pipeline (self-contained package, formerly `synthdoc_v2`). | `uv run synth run --config configs/data/synth/2026-08-01_difficult_advice.yaml --smoke` |
+| [`src/data/synth/`](src/data/synth/README.md) | Six-stage Teaching Claude Why difficult-advice data pipeline (self-contained package, formerly `synthdoc_v2`). | `uv run synth run --config configs/data/synth/difficult_advice.yaml --smoke` |
 | `src/eval/vulnerabilities/` | Generalized Petri + SURF audit tooling from the completed MSM audit. Inspect's dependency pins conflict with the root env, so petri tools run in the nested project's env. | `uv run --project src/eval/vulnerabilities/petri/petri-subscription python src/eval/vulnerabilities/petri/<tool>.py --help` |
 | [`dashboard/`](dashboard/README.md) | The research-log web app: datasets, eval runs, Petri results, findings. Self-contained Node project. | `cd dashboard && npm ci && npm run dev` |
 
 ## Repo layout
-- `src/data/synth/` self-contained six-stage difficult-advice data pipeline (see above); its run config is `configs/data/synth/2026-08-01_difficult_advice.yaml`.
+- `src/data/synth/` self-contained six-stage difficult-advice data pipeline (see above); its run config is `configs/data/synth/difficult_advice.yaml`.
 - `src/eval/misalignment/internalization/` self-contained constitution-internalization proxy eval
   (Tier A). Measures whether a checkpoint *internalized* the constitution or memorized its surface
   behaviors, at every checkpoint, without a downstream training run.

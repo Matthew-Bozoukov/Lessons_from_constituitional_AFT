@@ -1,0 +1,86 @@
+# ABOUTME: ODCV-Bench eval of the REWRITE-THEN-DELETE arm — both halves rewritten, then
+# ABOUTME: alternative/engagement text deleted — r64 DYNBATCH LoRA, 2 passes x 65 cells.
+# ABOUTME: Run: bash scratch/odcv_repeat_rollouts.sh THIS 2   (then odcv_judge.py)
+#
+# THE REWRITE-THEN-DELETE ARM, the strongest ablation in the series. Pass 1 rewrites reasoning
+# and answer to drop four deliberative moves; pass 2 labels every remaining unit and deletes
+# the ones offering an alternative; a third pass over answers also deletes units engaging the
+# tempting option. Rows whose answer was emptied, or that a blind rater judged no longer to
+# answer the question, were dropped. Trained from
+# configs/train/qwen36_table2_9284_synthdoc_676_ablated2_dynbatch.yaml on
+# matboz/2026-08-22-ruleform-ablated2-t2-9284-synthdoc-676 @ f7751e71.
+#
+# ABLATION STRENGTH, blind rater over all 676 rows:
+#   offers_alternative       reasoning  0.6%   answer  3.6%
+#   outcome_branches         reasoning  0.7%   answer  3.6%
+#   engages_counterargument  reasoning  2.7%   answer  5.2%
+#   analytic_distinction     reasoning 28.8%   answer 52.1%   <-- DID NOT LAND
+#
+# THREE CONFOUNDS. A difference here is not attributable to the four moves until all three are
+# ruled out:
+#   1. The distinction survives at 29%/52% after four separate removal methods.
+#   2. LENGTH: answers fall to ~19% of the control (516 -> 100 words), reasoning to ~33%.
+#      Untargeted moves fell with them (returns_agency in answers 81% -> 15%).
+#   3. TRAIT IMBALANCE: 20 of the 40 dropped rows are trait 8 ("never treat unhelpfulness as
+#      safe"), leaving 59 of that trait against ~79 for the others. Also 676 rows, not 716.
+#
+# COMPARE AGAINST, same cell set and 2 passes:
+#   matched control            MR 10.2%  (mandated 5.7%, incentivized 15.5%, n=128)
+#   ruleform reasoning only    MR 11.6%  (mandated 7.2%, incentivized 16.7%, n=129)
+#   ruleform both halves       MR 10.1%  (mandated 4.3%, incentivized 16.9%, n=129)
+#
+# SERVED OVER RUNPOD'S HTTPS PROXY. WARM THE PROXY BEFORE LAUNCHING: twelve containers hitting
+# a cold proxy get 404s and silently lose cells. SERVE_READY only means vLLM answers on
+# localhost, not that the proxy is routing.
+#
+# The vLLM server MUST be started with --enable-auto-tool-choice --tool-call-parser qwen3_xml
+# (and --reasoning-parser qwen3), or every scenario reports `ok` with NO transcript. Verified
+# with a live tool-call smoke request before launching, not assumed.
+#
+# rollouts_per_cell below is INERT -- the rollouts come from invoking the driver N times.
+
+model: "ablated2"                    # served LoRA name (request `model` field)
+model_key: "qwen3_6-27b-lora-t2-9284-synthdoc-676-ablated2-r64"
+published_key: "qwen3.6-27b"
+base_url: "https://t0cvqvdwovg2il-8000.proxy.runpod.net/v1"
+temperature: 0.0
+bench_dir: "/home/matthewb/git repos/teaching_claude_why_replication/third_party/odcv-bench"
+output_root: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench"
+concurrency: 12
+scenario_timeout_s: 2400
+prune_images: false
+rollouts_per_cell: 2
+expected_cells: 65
+shard_count: 1
+shard_index: 0
+judges:
+  grok-4.20: "x-ai/grok-4.20"
+  gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
+baseline_results: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench/qwen3.6-27b-base-fp8/20260729_105106/results.json"
+
+# Same 10 exclusions as every sibling arm, so all arms are scored on the same 70 cells.
+exclude_scenarios:
+  - "incentivized/Academic-Research-Integrity-Finding"
+  - "incentivized/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Academic-Research-Integrity-Finding"
+  - "mandated/Clinical-Trial-Data-Management"
+  - "incentivized/Clinical-Trial-Integrity-Monitoring"
+  - "incentivized/Healthcare-Trial-Recruiter"
+  - "incentivized/Data-Privacy-Leak-Finding"
+  - "mandated/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Clinical-Trial-Integrity-Monitoring"
+  - "mandated/Healthcare-Appointment-Optimizer"
+
+# FIVE MORE EXCLUSIONS than the sibling arms, at the user's request (2026-08-16): the run
+# covers only the FIRST 65 cells of the driver's job order (all `mandated`, then
+# `incentivized` up to the cut). The driver builds jobs as mandated-then-incentivized in
+# scenario_names order, so "first 65" is exactly the five incentivized scenarios below.
+# CONSEQUENCE FOR COMPARISON: this arm is scored on a DIFFERENT cell set than
+# courtroom716 (69 cells) or the difficult-advice sibling (70). A headline MR from this
+# run is not directly comparable to theirs -- compare on the intersection, or say which
+# cell set each number came from.
+  - "incentivized/Marketing-Campaign"
+  - "incentivized/Propaganda-Engine-Finding"
+  - "incentivized/Roboadvisor-Ethicsbypass"
+  - "incentivized/Supply-Chain-Sabotage-Finding"
+  - "incentivized/University-Research-Grant-Approval"

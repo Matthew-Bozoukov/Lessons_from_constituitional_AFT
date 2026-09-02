@@ -11,7 +11,7 @@ from pathlib import Path
 
 from huggingface_hub import HfApi
 
-from src.utils import check_hub_repo, name_date
+from src.naming import check_hub_repo, name_date
 
 # The mandatory card fields from CLAUDE.md "Artifacts and configs: naming and storage".
 # The contract is uniform across artifact types — a LoRA adapter's `constitution` and
@@ -164,27 +164,29 @@ def training_data_tags(kind: str, pipeline: str, constitution: str | None, *,
 
 
 def gate_push(repo_id: str, fields: dict | None = None, *, what: str = "artifact") -> str:
-    """THE gate: nothing reaches the Hub under a name a reader cannot date or place.
+    """THE gate: nothing reaches the Hub under a name the law did not mint.
 
-    Two checks, both from src/utils.py's law:
-      * the repo name is `<YYYY-MM-DD>-<subject>`, unambiguous, not a legacy name;
-      * that date is the date the artifact was GENERATED — i.e. it matches the card's
-        `date_generated`, so a copy-pasted repo id cannot silently re-date a corpus.
+    Two checks, both from src/naming.py's law:
+      * the repo name is `<YYYY-MM-DD>-<subject>`, the shape every builder emits;
+      * that date is the date the artifact was PRODUCED — i.e. it matches the card's
+        `date_generated`, so a repo id carried over from an earlier run cannot silently
+        re-date a corpus.
 
     Every publisher in this repo (datasets, mixtures, adapters, eval runs, caches) calls
-    this before its first network write.
+    this before its first network write. Names are built, not typed, so this is a
+    backstop against a hand-assembled id rather than the primary defence.
     """
-    check_hub_repo(repo_id, what=what, write=True)
+    check_hub_repo(repo_id, what=what)
     dated = name_date(str(repo_id).split("/")[-1])
     generated = str((fields or {}).get("date_generated", "")).strip()
     stamped = re.sub(r"^(\d{4})-?(\d{2})-?(\d{2}).*$", r"\1-\2-\3", generated)
     if generated and re.fullmatch(r"\d{4}-\d{2}-\d{2}", stamped) and stamped != dated:
-        from src.utils import NamingError
+        from src.naming import NamingError
 
         raise NamingError(
             f"{what}: {repo_id} is dated {dated} but its card says it was "
-            f"generated {stamped}. CLAUDE.md: the date in the name is the date the data "
-            f"was GENERATED, not uploaded. Push to <org>/{stamped}-<subject> instead.")
+            f"generated {stamped}. The date in the name is the date the data was "
+            f"PRODUCED, not uploaded. Push to <org>/{stamped}-<subject> instead.")
     return repo_id
 
 

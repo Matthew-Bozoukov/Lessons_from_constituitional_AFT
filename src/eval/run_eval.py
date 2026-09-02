@@ -18,7 +18,7 @@ from src.infra.endpoints.vllm import SshExec, VllmServer, resolve_target
 from src.eval import EVALS, resolve, resolve_pool
 from src.eval.layout import assert_layout, publish_layout
 from src.huggingface import hf_repo_id, push_run_dir
-from src.utils import check_hub_repo, hub_name, local_name
+from src.naming import artifact_name, check_distinct, eval_name, run_dir
 from src.utils import timestamp, write_run_meta
 
 
@@ -85,8 +85,21 @@ def _git_sha() -> str:
     return git_sha()
 
 
+def _run_repo(name: str, model_key: str, pooled: bool, run_name: str) -> str:
+    """THE name of one eval run: `<date>-<eval key>-<target, undated>` (src/naming.py).
+
+    `run_name` is the escape hatch, and the only one: a target from before this law has a
+    name too long or too shapeless to build a run name out of, so `run_name=<subject>` on
+    the CLI supplies the subject and the law still supplies the date.
+    """
+    if run_name:
+        return artifact_name(run_name)
+    return eval_name(name, model_key, pooled=pooled)
+
+
 def _publish(out_dir: Path, *, name: str, model_key: str, mode: str, target: str,
-             summary: dict, card: dict, tags: list[str], push: bool) -> str:
+             summary: dict, card: dict, tags: list[str], push: bool,
+             pooled: bool = False, run_name: str = "") -> str:
     """Home a finished run dir in the published layout, mirror its summary, push it.
 
     Published-layout contract (src/eval/layout.py): every run dir — and so every pushed
@@ -105,14 +118,15 @@ def _publish(out_dir: Path, *, name: str, model_key: str, mode: str, target: str
     (results_dir / "results.md").write_text(_results_markdown(target, mode, summary))
     assert_layout(out_dir)
     row_path = (Path("output/eval_summaries")
-                / f"{local_name(f'{name} {model_key}')}_{timestamp()}.json")
+                / f"{_run_repo(name, model_key, pooled, run_name)}_{timestamp()}.json")
     row_path.parent.mkdir(parents=True, exist_ok=True)
     row_path.write_text(json.dumps(summary, indent=2))
     if not push:
         return ""
-    # Two laws meet here: the NAME is dated and unambiguous (src/utils.py), the ORG is
-    # .env's HF_ORG resolved at push time (src.huggingface.hf_org).
-    repo_id = hf_repo_id(hub_name(f"{name} {model_key}"))
+    # Two laws meet here: the NAME is built by src/naming.py from the eval's registered
+    # key and the target's own name, the ORG is .env's HF_ORG resolved at push time
+    # (src.huggingface.hf_org).
+    repo_id = hf_repo_id(_run_repo(name, model_key, pooled, run_name))
     # Hub-indexed tags: the canonical discovery route for the dashboard's eval-run
     # picker (/api/datasets?author=<org>&filter=eval-run).
     url = push_run_dir(out_dir, repo_id, card, front_matter={"tags": tags})
@@ -218,12 +232,15 @@ def main(argv: list[str] | None = None) -> None:
             # both the config and the recorded mode below.
             spec = replace(spec, mode=str(cfg.mode))
             print(f">>> mode override: {hf_path} pinned to {spec.mode!r} (config `mode=`)")
-        if not args.no_push:
-            # The name this arm WILL publish under, checked now (src/utils.py). The org
-            # is .env's HF_ORG, resolved at push time (src.huggingface.hf_org).
-            check_hub_repo(hf_repo_id(hub_name(f"{args.name} {spec.model_key}")),
-                           what=f"{args.name} run of {hf_path}", write=True)
         specs.append(spec)
+    if not args.no_push:
+        # Every name this invocation WILL publish under, built now: an unbuildable name
+        # (an unregistered model, a target too long to name a run after) costs zero GPU
+        # hours here, and two arms that would collide on one repo are caught before the
+        # first one is published over by the second.
+        planned = [_run_repo(args.name, s.model_key, False, str(cfg.get("run_name") or ""))
+                   for s in specs]
+        check_distinct(planned, what=f"{args.name} runs of {len(specs)} targets")
 
     summaries: dict[str, dict] = {}
     published: list[dict] = []
@@ -232,8 +249,8 @@ def main(argv: list[str] | None = None) -> None:
             hf_path = spec.hf_path
             print(f">>> {args.name} | {hf_path} | base={spec.base_model} mode={spec.mode}")
             served = server.ensure(spec)
-            out_dir = Path("output") / args.name / local_name(
-                f"{spec.model_key} {datetime.now().strftime('%H%M%S')}")
+            out_dir = run_dir(Path("output") / args.name,
+                              f"{spec.model_key} {datetime.now().strftime('%H%M%S')}")
             out_dir.mkdir(parents=True, exist_ok=True)
             write_run_meta(out_dir, OmegaConf.to_container(cfg, resolve=True),
                            extra={"command": command, "target": hf_path,
@@ -246,6 +263,7 @@ def main(argv: list[str] | None = None) -> None:
             url = _publish(
                 out_dir, name=args.name, model_key=spec.model_key, mode=spec.mode,
                 target=hf_path, summary=summary, push=not args.no_push,
+                run_name=str(cfg.get("run_name") or ""),
                 card=_card_fields(
                     args.name, cfg, command,
                     experiment=f"{args.name} eval of {hf_path} (mode={spec.mode})",
@@ -275,7 +293,7 @@ def main(argv: list[str] | None = None) -> None:
             _publish(
                 pooled_dir, name=args.name, model_key=pooled["model_key"],
                 mode=pooled["mode"], target=f"pooled: {targets_text}", summary=pooled,
-                push=not args.no_push,
+                push=not args.no_push, pooled=True,
                 card=_card_fields(
                     args.name, cfg, command,
                     experiment=f"{args.name} pooled over {len(published)} arms of one "

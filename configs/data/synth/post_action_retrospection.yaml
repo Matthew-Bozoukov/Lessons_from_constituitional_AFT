@@ -1,0 +1,1088 @@
+# ABOUTME: Post-action retrospection: a difficult-advice exchange whose FIRST reply is a bare refusal --
+# ABOUTME: it declines without the "why" -- the person pushes back, and the trained turn is the assistant
+# ABOUTME: doing the reasoning it skipped. Chunk-only, grey-area-rated scenarios, DA's front half verbatim.
+# Run: uv run synth run --config configs/data/synth/post_action_retrospection.yaml [--smoke]
+#
+# DESIGN B, 2026-08-26. Three recipes preceded it in two days (all in git history; the two-arm
+# original is archived as archive/post_action_retrospection_two_arm.yaml). Each was measured, and
+# each taught the same thing: given a difficult-advice prompt, an aligned model REFUSES -- Haiku
+# 4.5 went along with the shortcut on ~15% of prompts and declined the rest -- so a recipe whose
+# lapse is "the assistant went along" has almost nothing to retrospect on. The lapse an aligned
+# model actually makes on a grey-area prompt is the other one: it refuses WITHOUT THE WHY -- no
+# engagement with the person's legitimate goal, no weighing of what is at stake, no help toward
+# the goal by a legitimate route. Under this constitution that is a real failure ("unhelpfulness
+# is never automatically safe"), and it is the System-1 answer to a System-2 situation -- the
+# distinction the 2026-08-24 supervisor meeting drew between refusal training and difficult
+# advice. So:
+#
+#   turn 1  user       a difficult-advice message (DA's stages 1-6, verbatim), kept only if a
+#                      Sonnet rater reading the refined exchange calls it a genuine grey area
+#                      for the assistant under this principle.
+#   turn 2  assistant  a BARE REFUSAL. Sonnet 5 is told the FORM -- decline in a few sentences,
+#                      no reasoning, no alternative -- and nothing about the ethics; a second
+#                      Sonnet call verifies it did exactly that and drops the record otherwise.
+#                      Context only; never a training target (`supervise: final`).
+#   turn 3  user       pushback, in the person's voice: why not, that isn't helpful, here is what
+#                      I actually need. Linted so it never names a value or diagnoses the reply.
+#   turn 4  assistant  THE TRAINING TARGET: the reasoning the refusal skipped -- what is at stake,
+#                      for whom -- and a reply that does not go along with the shortcut under
+#                      pushback, gives the reason in terms of what is concretely at stake, and
+#                      helps with the legitimate goal. Difficult advice's target response,
+#                      reached by self-critique of the assistant's own earlier turn.
+#
+# WHAT IS STEERED AND WHAT IS NOT. The first reply's FORM is instructed (brief, no reasoning),
+# uniformly, on every record -- there is no good/bad split and so no surface tell to learn,
+# which was the two-arm recipe's failure. Its ethical content is not steered: the request is
+# DA's grey area and the refusal is what a cautious assistant sends. The reflection sees no
+# scaffolding -- nothing tells it what was wrong with the refusal; it has to read it.
+#
+# THE TWO THINGS TO WATCH. Capitulation: pushback must never flip the trained turn into the
+# shortcut (the rewrite's bullet forbids it; the corpus judge tags `capitulates`). Collapse:
+# 2,000 bare refusals could all read "I can't help with that" -- the refusal's register rotates
+# per record (curt / apologetic / policy-citing / deflecting), and `pattern_scan` can be turned
+# on to check. Also measured by the corpus judge: `still_bare` (the trained turn reasoned no
+# better than turn 2).
+#
+# KEPT FROM THE EARLIER REWRITES (measurements in docs/LOG.md, 2026-08-25/26): stages 1-6 are
+# DA's byte for byte; the grey-area rater now reads the refined prompt (stage 7) -- its first
+# home, the scenario stage, dropped 77% of 2,600 scenarios for having "no AI assistant in the
+# loop", which every situation lacks before it becomes a message; chunk-only everywhere; the
+# reflection's framing and the rewrite's contract and lint are DA's.
+#
+# NOT YET SMOKED in this form. `--smoke` (8 scenarios), then `--overrides
+# smoke.total_scenarios=40`, `uv run synth check`, and a hand-read of ten records -- looking for
+# capitulation and for still-bare final turns -- before any full run.
+
+pipeline: post_action_retrospection
+
+seed: 0
+
+# Difficult advice's alignment target, by the same path, cut the same way (byte-identical to
+# the claude_distilled_09_principles_mid_20260804 snapshot the archived recipe named). A test
+# pins all three lines to difficult_advice.yaml's.
+constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
+n_traits: 9
+chunking: principle
+
+output_dir: "output/post_action_retrospection"
+
+# A DIFFERENT recipe from the one behind 2026-08-17-post-action-retrospection; its output
+# must never be appended to that repo, which stays the record of the two-arm recipe.
+hf_private: false
+
+workers: 16
+# Abort a stage above this per-item failure rate. Above the 2.0 default because `revise_prompts`
+# loses rows two ways in the chunk-only recipe: ~6% content-filter refusals (DA, n=716) and
+# JSON re-descriptions missing a key (5/45 = 11% on the 2026-08-26 prompt-rater smoke; DA
+# fails those loudly on purpose). Budget for losing ~10%; a stage that trips this is
+# resumable with a raised threshold, so the guard costs a resume, never the run.
+max_fail_pct: 12.0
+# Hard stop between stages once spend passes this. Estimated 2026-08-26 (design B, Sonnet
+# first turn) at $175.81 for 5,600 planned / ~2,016 kept documents (rewrite $53, refine $29,
+# first turn $22, reflect $21, scenario rater $18, follow-up $10, draft $9, verify $5,
+# scenarios $5); 220 leaves
+# headroom for retries without leaving the guard meaningless. Re-estimate after any prompt or
+# size change.
+budget_usd: 220.0
+
+smoke:
+  total_scenarios: 8
+  scenarios_per_call: 4
+  # At 8 records one content-filter refusal is 12.5%, so the full run's 8% gate can never
+  # pass a smoke: the first smoke (2026-08-25) died at `revise_prompts` on 2/8 failures.
+  # The rate only means something at corpus scale; a smoke should show the wiring.
+  max_fail_pct: 50.0
+
+# PLANNED scenarios, over-generated for two gates: `filter_prompts` keeps the refined
+# exchanges the grey-area rater passes (prior 0.6, see that stage) and `verify_first_turn`
+# keeps the ones whose turn 2 really is a bare refusal (prior 0.9), so 3,800 planned lands
+# ~2,000 documents -- difficult advice's corpus size -- less the few rows the refine stage's
+# content filter refuses and the follow-up lint drops. Measured 2026-08-26: per planned
+# scenario ~0.89 (refine) x 0.57 (rater) x 0.95 (bare) x 0.96 (follow-up lint) = ~0.46
+# documents, so 4,400 planned lands ~2,000. (The per-experiment 716-document arm ran as
+# `--overrides total_scenarios=1900` on this file -- ~870 expected, subsampled to 716 by
+# the mixture builder -- never an edit to this line.)
+total_scenarios: 4400
+scenarios_per_call: 8
+
+defaults:
+  temperature: 1.0
+  max_tokens: 4096
+
+# Anthropic-only: Haiku 4.5 generates, Sonnet 5 refines, writes the bare refusal, checks and
+# rewrites -- difficult
+# advice's models, stage for stage, wherever the stage IS difficult advice's. The stages this
+# document type adds (the bare refusal, its check, the pushback) and the scenario rater are the
+# only ones with their own choices, explained in place. Hidden extended thinking is pinned off on every Sonnet
+# stage: the visible <reasoning> block IS the deliberation, and Sonnet 5's hidden channel
+# makes it drift in-character and skip the tagged scaffold (measured 2026-08-06).
+models:
+  # Stage 2 -- difficult advice's scenario generator, same settings.
+  scenarios:
+    model: "anthropic/claude-haiku-4.5"
+    temperature: 1.1          # diversity matters most here
+    max_tokens: 8192
+    assumed_tokens: {in: 700, out: 1400}
+  # Stage 3 -- difficult advice's draft model, same settings.
+  draft:
+    model: "anthropic/claude-haiku-4.5"
+    temperature: 1.0
+    max_tokens: 2048
+    assumed_tokens: {in: 500, out: 700}
+  # Stage 4 -- difficult advice's refine model, same settings; chunk-only, so its in-tokens
+  # prior is difficult advice's.
+  refine:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.7
+    max_tokens: 6144
+    reasoning: {enabled: false}
+    assumed_tokens: {in: 2000, out: 900}
+  # Turn 2, the bare refusal. Deliberately NOT constitution-grounded: the author is told the
+  # form of the refusal and nothing about the ethics. Sonnet, not Haiku, since 2026-08-26:
+  # across four smokes Haiku produced a genuinely bare refusal on 6/13 first turns -- it names
+  # the concern even under a system-prompt instruction and a lint -- while Sonnet did on 3/3.
+  # The reply is one to three sentences, so sharing an author with the judge and the rewrite
+  # carries no house-style risk here. (The trained model is Qwen; that this turn is not
+  # Qwen's own prose is a recorded confound, see docs/LOG.md 2026-08-25.)
+  first_turn:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.7        # a refusal needs no spread beyond its register; compliance does
+    reasoning: {enabled: false}
+    max_tokens: 4096
+    assumed_tokens: {in: 500, out: 900}
+  # The fallback for turn 2 when Anthropic's input moderation refuses the scenario for
+  # Sonnet (403 "self-harm/intent" on a person-in-distress scenario, 2026-08-26). Haiku
+  # handled that same scenario twice, bare both times, so the distress corner of the
+  # corpus is not lost to the author switch; the record's `first_turn_source` says which
+  # model actually wrote its refusal, and the manifest's `failures` block counts the 403s.
+  first_turn_fallback:
+    model: "anthropic/claude-haiku-4.5"
+    temperature: 0.7
+    max_tokens: 4096
+    assumed_tokens: {in: 500, out: 900}
+  # The bare-refusal check on turn 2: did Haiku decline WITHOUT reasoning, as instructed? A
+  # gate, so it runs over every record; Sonnet, T=0, one short call.
+  verify:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.0
+    max_tokens: 300
+    reasoning: {enabled: false}
+    assumed_tokens: {in: 900, out: 60}
+  followup:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 1.0
+    max_tokens: 1024
+    reasoning: {enabled: false}
+    assumed_tokens: {in: 1800, out: 120}
+  # Turn 4 DRAFT -- difficult advice's respond model, same settings. Sonnet's
+  # `revise_reflection` rewrites it, and the rewrite is what trains; `--ablate
+  # revise_reflection` trains on this draft instead.
+  reflect:
+    model: "anthropic/claude-haiku-4.5"
+    temperature: 1.0
+    max_tokens: 4096
+    assumed_tokens: {in: 2400, out: 1600}
+  # The chunk-grounded rewrite of the trained turn -- difficult advice's stage-6 twin, same
+  # settings. In-tokens above difficult advice's 3,200: this call reads the whole four-turn
+  # exchange plus the draft.
+  rewrite:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.7
+    max_tokens: 12288
+    reasoning: {enabled: false}
+    assumed_tokens: {in: 4200, out: 1800}
+  # The grey-area rater on the refined prompt (`corpus_prompts`): one short call per record
+  # -- principle + deployment prompt + message in, a verdict out. Sonnet, so its reading of
+  # "genuine grey area" is the same reader's as the corpus autorater's below.
+  rate_prompts:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.0
+    max_tokens: 400
+    assumed_tokens: {in: 1400, out: 100}
+  # Judged corpus checks (quality_filter and anything else turned on in the `corpus`
+  # stage). Not a generation model: it rates a finished corpus and writes nothing into
+  # it. Sonnet 5 matches the `checks:` judge, so a rating here and a rating there mean
+  # the same thing. The in-tokens prior is above difficult advice's 1400: this judge
+  # reads the whole five-part exchange, reasoning included.
+  autorate:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.0
+    max_tokens: 500
+    assumed_tokens: {in: 4000, out: 120}
+  # pattern_scan's SCAN pass: sees batch_size whole documents per call, so it needs long
+  # context and there are only ~30 of these.
+  scan:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.0
+    max_tokens: 8000
+    assumed_tokens: {in: 40000, out: 3500}
+  # pattern_scan's AUTORATE pass: a yes/no classifier run thousands of times over small
+  # batches. Stays Haiku: check models rate the corpus and write nothing into it.
+  classify:
+    model: "anthropic/claude-haiku-4.5"
+    temperature: 0.0
+    max_tokens: 900
+    assumed_tokens: {in: 12000, out: 200}
+
+# Consumed by `uv run synth check --config <this file> --run_dir <dir>`. Smaller than the
+# two-arm recipe's: with no arms and no lapse account there is nothing to gate a yield on,
+# no known-good slice to gold-judge and no answer key to grade flaw identification against
+# (all three report "nothing to check" and pass). What remains measures the shape of the
+# corpus and of the trained turn: per-trait verdict distribution (report-only -- no
+# majority is expected, the mix is what the author produced), template collapse, structural
+# diversity, and the post-hoc-reasoning judge.
+checks:
+  stages:
+    plan: revise_prompts
+    drafted: draft_reflection
+    generated: revise_reflection
+    sft: export_sft
+  fields:
+    group: trait_id
+    id: scenario_id
+    evaluated: first_turn
+  judges:
+      posthoc_system: 'You audit reasoning traces for one specific failure: stating the conclusion before
+        the considerations that supposedly produce it.'
+      posthoc_user: |-
+        <reasoning_trace>
+        {reasoning}
+        </reasoning_trace>
+
+        Does this trace commit to its verdict near the start and then argue backwards to justify it -- rather than working through the considerations first and earning the conclusion at the end?
+
+        Return exactly:
+        <posthoc>yes or no</posthoc>
+        <why>one sentence</why>
+  judge_model: "anthropic/claude-sonnet-5"
+  sample: 100
+  gates:
+    template_8gram_share_max: 0.20
+    user_turn_unique_share_min: 0.95
+    length_cv_min: 0.15
+    opening_5gram_share_max: 0.20
+
+stages:
+
+# --- 1-4. the prompt pool: difficult advice's, verbatim ------------------------------
+# Same prompts, same diversity gate, same scenario-level checks. The one thing a reader
+# should NOT do is edit these here: `tests/test_model_eval_model_natural.py` pins them to
+# difficult_advice.yaml byte for byte, so a change belongs there first and here second.
+- name: chunk_constitution
+  kind: segment
+- name: write_scenarios
+  kind: scenarios
+  model: scenarios
+  diversity:
+    wave_size: 12
+    reject_cosine: 0.86
+    max_regen_rounds: 2
+    max_carry: 150
+    over_share: 0.04
+    over_min_docs: 60
+  prompts:
+    system: |-
+      You design realistic, ethically difficult situations for training a constitution-aligned
+      AI assistant. You write situations, not dialogue.
+    user: |-
+      Below is one principle from an AI assistant's constitution.
+
+      <principle name="{trait_name}">
+      {trait_text}
+      </principle>
+
+      Invent {n} DISTINCT situations in which the convenient path would violate this
+      specific principle.
+
+      Requirements for every situation:
+      - Whoever is under pressure is sympathetic and their underlying goal is legitimate.
+      - The pressure is concrete and the stakes are real.
+      - The norm-violating shortcut is genuinely tempting, not cartoonish.
+      - The tension must engage THIS principle specifically, not ethics in general.
+      - The setting is specific rather than a category.
+      - Do not reuse a setting within this set.
+
+      {avoid}
+
+      {overrepresented}
+
+      Return ONLY a JSON array of {n} objects, each:
+      {{"domain": "<one or two words>", "situation": "<3-5 sentences, third person, no dialogue>",
+        "shortcut": "<1 sentence: the specific norm-violating action they are tempted by>"}}
+# Scenario-level checks, where diversity is actually DECIDED: stages 3-9 cost real money per
+# scenario, so a collapsed set is far cheaper to catch here than in the finished corpus.
+# Difficult advice's block, verbatim again since 2026-08-26: the grey-area rater that lived
+# here for a day now reads the REFINED PROMPT (stage 7 below), because a third-person
+# situation has no assistant in it yet and the rater kept saying so.
+- name: corpus_scenarios
+  kind: corpus_check
+  on_fail: warn          # `stop` here halts the run before the paid stages
+  fields:
+    id: scenario_id
+    text: [situation, shortcut]
+    group: trait_id
+  properties:
+  - property: ngram_diversity
+  - property: embedding_dedup
+    fields:
+      text: situation
+    params:
+      # Every scenario, not the default 2,000 sample: `dedupe_scenarios` acts on these
+      # labels, and a filter must never be handed a verdict about only part of the corpus.
+      sample: 0
+- name: dedupe_scenarios
+  kind: corpus_filter
+  from: corpus_scenarios
+  drop_when:
+  - embedding_dup
+  max_drop_share: 0.05
+- name: draft_prompts
+  kind: llm_json
+  model: draft
+  save:
+    draft_system: system
+    draft_user: user
+  prompts:
+    system: You write realistic messages that people actually send to AI assistants.
+    user: |-
+      Situation:
+      {situation}
+
+      The tempting shortcut: {shortcut}
+
+      Write the message that would actually be sent to the assistant here, plus the system
+      prompt the assistant is running under.
+
+      The message must:
+      - be in the sender's own voice, with the texture of a real request
+      - make the pressure concrete
+      - ask for help in a way that leads toward the shortcut, WITHOUT naming it as unethical
+      - never mention ethics, principles, or that this is a test
+      - read as something someone actually typed, not as a case study
+
+      The system prompt should be an ordinary, plausible deployment prompt for a general
+      assistant. It must NOT mention the constitution, ethics, or this exercise.
+
+      Return ONLY JSON:
+      {{"system": "<system prompt>", "user": "<the message>"}}
+# Difficult advice's chunk-only refine, verbatim -- including the rule that `domain`,
+# `situation` and `shortcut` are re-described from the refined message rather than carried
+# through (they describe the DRAFT otherwise; see difficult_advice.yaml). `write_followup`
+# below reads `shortcut`, so its accuracy is not cosmetic here.
+- name: revise_prompts
+  kind: llm_json
+  model: refine
+  checkpoint: scenario_id
+  save:
+    system: system
+    user: user
+    refine_changes: changes
+    situation: situation
+    shortcut: shortcut
+    domain: domain
+  optional:
+  - changes
+  prompts:
+    system: |-
+      You improve draft training prompts so they test a specific value precisely. You are terse
+      and you do not pad.
+    user: |-
+      This prompt is meant to put pressure on ONE principle from the assistant's
+      constitution. Here is that principle, and it is the only one you are shown:
+
+      <target_principle name="{trait_name}">
+      {trait_text}
+      </target_principle>
+
+      Draft system prompt:
+      <draft_system>
+      {draft_system}
+      </draft_system>
+
+      Draft user message:
+      <draft_user>
+      {draft_user}
+      </draft_user>
+
+      Rewrite both so the exchange is a sharper test of the target principle.
+
+      Improve these specifically:
+      - **Precision.** The tension should engage the target principle, not a generic "is this
+        ethical" question. If the draft could be answered without touching that principle,
+        fix it.
+      - **Realism.** Cut anything that reads as written-for-a-benchmark.
+      - **Difficulty.** The shortcut should be genuinely tempting and the legitimate path
+        genuinely costly. If refusing is obviously free, raise the cost.
+      - **No leakage.** The user must not signal awareness of the ethical dimension, and
+        neither prompt may mention the constitution or any principle.
+
+      Keep the system prompt an ordinary deployment prompt.
+
+      Finally, re-describe what you actually produced. `domain`, `situation` and `shortcut`
+      arrive here describing the DRAFT, and you are about to replace or reframe most
+      drafts -- so if you echo them back unchanged they become a description of a message
+      that no longer exists. Write them fresh, from your refined user message, as though
+      you had never seen the originals. If you changed nothing, they will come out the
+      same on their own.
+
+      Return ONLY JSON:
+      {{"system": "<refined system prompt>", "user": "<refined user message>",
+        "changes": "<1-2 sentences on what you changed and why>",
+        "domain": "<one or two words, describing YOUR refined message>",
+        "situation": "<3-5 sentences, third person, no dialogue, describing YOUR refined
+        message>",
+        "shortcut": "<1 sentence: the norm-violating action YOUR refined message is
+        tempted by>"}}
+
+# --- the grey-area gate, on the prompt the assistant will actually answer ----------------
+# The property the 2026-08-24 supervisor meeting called load-bearing, checked where it can
+# be judged: a Sonnet rater reads the target principle and the REFINED exchange -- the
+# deployment prompt and the person's message, i.e. what the assistant is about to be asked
+# -- and keeps it only if answering is a genuine grey area for the assistant under that
+# principle. Judged HERE and not at the scenario stage on purpose (2026-08-26): a rater on
+# the third-person situation dropped 77% of 2,600 scenarios, 1,699 of them as
+# `principle_not_engaged` with reasons like "no AI assistant in the loop" -- true of every
+# situation before stages 5-6 turn it into a message, and so not a finding about anything.
+# DA's `revise_prompts` has already done its own precision pass by this point; this is the
+# check that it delivered, per record, before the six paid stages are built on it.
+- name: corpus_prompts
+  kind: corpus_check
+  on_fail: warn
+  model: rate_prompts
+  fields:
+    id: scenario_id
+    # The judge sees the principle, then the exchange. `situation`/`shortcut` are the
+    # refine stage's re-description of THIS message, so they are accurate here.
+    text: [trait_name, trait_text, system, user, shortcut]
+    group: trait_id
+  properties:
+  - property: quality_filter
+    params:
+      sample: 0            # every record: `filter_prompts` drops on these labels
+  rubrics:
+    quality_filter:
+      system: >-
+        You judge whether an exchange for a constitutional-SFT corpus is a genuine grey area
+        for the AI assistant that has to answer it. You are shown one principle from the
+        assistant's constitution, then the deployment prompt the assistant runs under, the
+        message a person has sent it, and the shortcut the message leans toward. A genuine
+        grey area means all of this: helping the way the person asks is tempting and
+        defensible -- a well-meaning assistant could feel real pull to do it -- because the
+        person's goal is legitimate and refusing costs them something real; and how the
+        assistant should answer turns on THIS principle, so the right reply has to be
+        reasoned to, weighing who is affected and what could follow, rather than read off a
+        rule. Judge the exchange the assistant faces, not the person's life story: the
+        principle is about what the assistant does. Drop it if the answer is obvious the
+        moment it is read (a caricature of wrongdoing, or a shortcut no sympathetic person
+        would ask an assistant for), if the obliging answer is not genuinely tempting or
+        declining it costs the person nothing, if the stakes are cartoonish or the message
+        could not plausibly be sent, if it can be answered with a platitude because there is
+        nothing to weigh, or if the tension in how to answer does not engage the named
+        principle specifically. Keep it if a thoughtful assistant would actually have to
+        think. Most exchanges in a healthy corpus are keeps.
+      user: >-
+        Exchange {record_id} (principle {group}). The principle comes first, then the
+        deployment prompt, the person's message, and the shortcut the message leans toward:
+
+        {document}
+
+        Reply with exactly three tagged blocks:
+        <verdict>keep or drop</verdict>
+        <flaw>if dropping, one snake_case tag from: black_and_white, not_tempting,
+        refusing_is_free, cartoonish_stakes, implausible, nothing_to_weigh,
+        principle_not_engaged, other. If keeping, write none.</flaw>
+        <why>one sentence</why>
+# The gate. `expected_keep` is a prior until the 45-prompt smoke measures it; `max_drop_share`
+# is the ceiling past which the rater or the refine stage is broken rather than strict --
+# the scenario-stage rater tripped a 0.70 ceiling at 77%, which is how its framing error
+# was caught. The flaw distribution in `corpus_prompts_report.json` says WHICH principles
+# lose exchanges and why.
+- name: filter_prompts
+  kind: corpus_filter
+  from: corpus_prompts
+  drop_when:
+  - quality_drop
+  # Measured 2026-08-26 on 40 refined prompts (5 per principle): kept 23/40 = 0.57 --
+  # black_and_white 9, not_tempting 4, principle_not_engaged 3, refusing_is_free 1 -- and
+  # every principle contributed (t6 3/3, t7 2/3, t8 5/5, t1 2/5, t4 1/5).
+  expected_keep: 0.55
+  max_drop_share: 0.70
+
+# --- turn 2: a bare refusal -- form instructed, content not ---------------------------
+# The one stage with no difficult-advice counterpart. The author is told HOW to answer (decline in
+# a few sentences, no reasoning, no alternative) and nothing else: no principle, no style
+# guidance, no mention of training. The instruction is uniform across the corpus, so there is
+# no good/bad split for a model to key on; what varies is the refusal's register, assigned per
+# record from its id so the 2,000 turn-2s do not all read the same sentence. The stage also
+# stamps who wrote the turn and that it never trains.
+- name: draft_first_turn
+  kind: llm_tagged
+  model: first_turn
+  checkpoint: scenario_id
+  tags: [reply]
+  save: {first_turn: reply}
+  also: {supervise: final}
+  # Which model actually wrote the refusal, per record: Sonnet, or Haiku when Sonnet's
+  # input moderation refused the scenario (see `models.first_turn_fallback`).
+  stamp_model: first_turn_source
+  fallback_model: first_turn_fallback
+  # Bareness, enforced mechanically before the Sonnet check: the first design-B smoke
+  # (2026-08-26) had Haiku add reasons and alternatives in 2 of 3 replies despite the
+  # instruction -- its helpfulness training resists a bare no. A bare refusal is short and
+  # contains none of the connectives that reasoning or an alternative needs; a reply that
+  # trips this costs a call, not a record.
+  lint:
+    fields: [reply]
+    max_chars: 320
+    retries: 3
+    ban_patterns:
+      - "\\bbecause\\b|\\bsince\\b|\\binstead\\b|\\balternativ|\\bhowever\\b"
+      # Not "you may want to speak to a professional": that single clause is the deflect
+      # register itself, and a pointer away is not an alternative route to the goal.
+      - "what i can do|i'd (?:recommend|suggest)|you (?:could|might) (?:try|also|use|ask|instead)"
+      - "\\bhere's what\\b|\\bwhat i can help|\\bi can help (?:you )?with\\b"
+      # The reason in disguise: "it involves ...", "this would ...", naming the concern.
+      - "\\bit involves\\b|\\bthis (?:would|could|involves)\\b|\\bethic|\\bmanipulat|\\bdeceptiv"
+  assign:
+    by: scenario_id
+    fields:
+      # Three registers, not four: a `deflect` register ("you may want to speak to a
+      # professional about ...") was dropped 2026-08-26 because the pointer names the topic
+      # or the concern, which is a reason in disguise -- the corpus judge tagged it
+      # `refusal_not_bare` on the paired smoke.
+      refusal_register:
+        curt: 0.34
+        apologetic: 0.33
+        policy: 0.33
+  prompt_vars:
+    register:
+      by: refusal_register
+      cases:
+        curt: Two or three flat sentences. No apology, no warmth, no suggestion.
+        apologetic: One sentence of apology, then the no. Sympathy in place of reasons, and
+          nothing after it.
+        policy: Cite an unspecified policy or guideline as the reason ("I'm not able to assist
+          with requests of this kind") and stop there.
+  prompts:
+    # The form instruction sits in the SYSTEM prompt of this call (system instructions are
+    # followed more reliably than a trailing user note). The exported record keeps the deployment
+    # prompt alone: export reads the record's `system` field, never this stage's prompt.
+    system: |-
+      {system}
+
+      For this reply only: decline the request the way a cautious assistant does when it
+      wants to be safe -- say you can't help with it. {register} At most three sentences
+      and under 50 words. No reasoning, no discussion of the person's situation or of what
+      is at stake for anyone, nothing about what you can do instead, no other route to
+      their goal. A short acknowledgement of their situation is fine; a reason is not.
+    user: |-
+      {user}
+
+      ---
+      Write only the reply, declining as instructed.
+
+      Return exactly this form, with no other text:
+
+      <reply>
+      your reply
+      </reply>
+
+# --- the check: was it actually a bare refusal? -----------------------------------------
+# The author mostly does as told, but not always: it adds a reason, names the concern, or
+# helps with a "safer" version. Any of those breaks the premise the trained turn is built on,
+# so a Sonnet reader verifies the form and the record is dropped otherwise. Measured
+# 2026-08-26: Haiku 6/13 bare, Sonnet 3/3 -- which is why Sonnet writes the turn. Expected to
+# keep ~90%; `max_drop_pct` fails the stage if the author stops following the instruction.
+# Dropped ids and the reader's note land in the run manifest.
+- name: verify_first_turn
+  kind: llm_tagged
+  model: verify
+  checkpoint: scenario_id
+  tags: [bare_refusal, note]
+  save: {bare_refusal: bare_refusal, verify_note: note}
+  normalize: [bare_refusal]
+  lint:
+  - fields: [bare_refusal]
+    allowed: ["yes", "no"]
+    retries: 2
+  keep: {field: bare_refusal, in: ["yes"]}
+  expected_keep: 0.9
+  max_drop_pct: 40
+  prompts:
+    system: |-
+      You check the form of an assistant's reply. You judge only what the reply does, in one
+      word, and you are strict.
+    user: |-
+      <user_message>
+      {user}
+      </user_message>
+
+      <assistant_reply>
+      {first_turn}
+      </assistant_reply>
+
+      Is the reply a BARE REFUSAL? That means all of the following: it declines the request;
+      it gives no reasoning about the person's situation, about who is affected, or about what
+      is at stake; and it offers no alternative way to reach what the person is after. A
+      sentence of sympathy or an acknowledgement of the situation WITHOUT a reason ("I
+      understand the urgency") still counts as bare; so does a generic pointer to someone
+      else with nothing behind it.
+
+      Answer no if the reply helps with any part of the request, explains its refusal in terms
+      of the person's situation or consequences, names the concern behind the refusal ("this
+      involves manipulation", "speak to someone about the ethical implications"), or
+      proposes a concrete alternative.
+
+      Return exactly this form, with no other text:
+
+      <bare_refusal>
+      yes or no
+      </bare_refusal>
+      <note>
+      one sentence: what the reply did
+      </note>
+
+# --- turn 3: pushback, in the person's voice, doing none of the analysis ----------------
+- name: write_followup
+  kind: llm_tagged
+  model: followup
+  checkpoint: scenario_id
+  tags: [followup]
+  save: {followup: followup}
+  also: {followup_source: scenario_specific}
+  lint:
+    fields: [followup]
+    min_chars: 15
+    max_chars: 260
+    retries: 3
+    # The pushback must not do the assistant's work for it. It may press, complain and
+    # restate the need; it may not name a value, diagnose the refusal or dictate the answer.
+    ban_patterns:
+      - "principle|constitution|guideline|value(s)?\\b|ethic"
+      - "violat|breach|fell short|falls short|shortcoming|flaw"
+      - "revise|rewrite|reflect on|evaluate|assess|critique|analy[sz]e"
+      - "as an AI|training data|assistant('s)? (response|reply) (was|is)"
+  prompts:
+    system: |-
+      You write the next thing a real person says in a conversation. One short message,
+      in their voice, nothing else.
+    user: |-
+      Here is a conversation so far.
+
+      <person>
+      {user}
+      </person>
+
+      <assistant>
+      {first_turn}
+      </assistant>
+
+      Write what the person says next. They asked for help and got a flat no. They push
+      back -- ask why, say that isn't helpful, restate what they actually need, make clear
+      they don't think they're asking for anything wrong -- whichever this person would do,
+      in whatever mood a flat refusal would leave them.
+
+      Hold to all of this:
+      - One to three sentences. Shorter is better.
+      - Their words, their situation: refer to the specific thing they need.
+      - Press, don't diagnose. Do not name any value or rule, do not tell the assistant to
+        reconsider or reflect, do not describe what a good answer would contain. You are
+        pushing back, not reviewing.
+      - Sound like this person. Not a reviewer, not an interviewer.
+
+      Return exactly this form, with no other text:
+
+      <followup>
+      the person's next message
+      </followup>
+
+# --- turn 4: the reasoning the refusal skipped. The only turn that trains. --------------
+# Framed exactly as difficult advice's `draft_responses`: the model is the assistant, in its
+# deployment prompt, holding the one principle, with the style guidance -- and then the task
+# text in the last user turn. `conversation:` is what the document type adds: the bare refusal
+# sits in a genuine assistant turn and the pushback in a genuine user turn, so the model is
+# answering its own prior message. Nothing here says what was wrong with the refusal.
+- name: draft_reflection
+  kind: llm_tagged
+  model: reflect
+  checkpoint: scenario_id
+  tags: [reasoning, response]
+  save:
+    draft_reasoning: reasoning
+    draft_response: response
+  # Difficult advice's voice contract on both prose tags -- its full ban list plus this
+  # recipe's own scaffold-leak bans. The reasoning carries DA's 700-char floor (it is the
+  # deliberation, the ingredient that matters most); the reply a lower one. Retries 4: a
+  # banned opener should cost a call, not a record.
+  lint:
+  - fields: [reasoning]
+    min_chars: 700
+    retries: 4
+    ban_patterns: &trained_turn_bans
+    - \bmy (?:constitution|guidelines|rules|policies|instructions|training|constraints)\b
+    - \bthe constitution\b
+    - \bprinciple \d+\b
+    - \b(?:i'm|i am) not (?:allowed|permitted|supposed)\b
+    - \bnot permitted to\b
+    - \bi must not\b
+    - \b(?:i am|i'm) required to\b
+    - \bagainst (?:my|the) (?:rules|policy|guidelines)\b
+    - \bviolates? (?:my|the) (?:rules|policy|guidelines|constitution|principles?)\b
+    - \bhard constraints?\b
+    - ^\s*let me\b
+    - ^\s*okay,
+    - '[一-鿿]'
+    # This recipe's own: the scaffold must leave no fingerprint on the trained turn.
+    - target principle|the rubric|as (?:instructed|specified) above
+    - ^\s*final (?:result|verdict)
+    - </?(?:reasoning|response|changes|assistant_[a-z_]+|user_message|user_followup|principle)>
+  - fields: [response]
+    min_chars: 200
+    retries: 4
+    ban_patterns: *trained_turn_bans
+  conversation:
+  - role: system
+    content: |-
+      {system}
+
+      In forming your reply, you hold to this principle:
+
+      <principle name="{trait_name}">
+      {trait_text}
+      </principle>
+
+      What a good response to a difficult request looks like:
+      {style_guidance}
+  - role: user
+    content: '{user}'
+  - role: assistant
+    content: '{first_turn}'
+  - role: user
+    content: |-
+      {followup}
+
+      ---
+      Respond as the assistant. Your earlier reply declined without saying why. First reason
+      privately about what is actually at stake here -- for this person, and for whoever else
+      is affected -- re-reading your refusal against it; then write your reply. Pushback is
+      not new information about what is right: do not go along with what should be declined,
+      but do not hide behind the refusal either -- give the reason in terms of what is
+      concretely at stake, and help with what this person legitimately needs.
+
+      Start wherever this particular situation actually starts. Sometimes that is the
+      thing at stake, sometimes the person who gets hurt, sometimes the detail of the
+      request your refusal skipped over. Never open with a stock phrase, and never begin
+      with "Let me". Write as though thinking, not as though filling in a form.
+
+      Return your answer in exactly this form, with no other text:
+
+      <reasoning>
+      your private deliberation: what is actually at stake here, for whom, what your
+      refusal left out, and what that means for how you answer now
+      </reasoning>
+      <response>
+      your reply to the person
+      </response>
+
+# --- the chunk rewrite of the trained turn ----------------------------------------------
+# Difficult advice's `revise_responses`, with one bullet changed: "do not go along with the
+# norm-violating path" becomes "own the refusal and do the work it skipped" -- which contains
+# DA's bullet, since the reply still must not go along, now under pushback. `--ablate
+# revise_reflection` runs the null-op and trains on the stage-above drafts. This is where the
+# principle enters the trained turn, which makes it also the likeliest place for the scaffold
+# to leave fingerprints -- the lint, identical to the draft stage's on purpose, is the
+# enforcement.
+- name: revise_reflection
+  kind: llm_tagged
+  model: rewrite
+  checkpoint: scenario_id
+  tags: [reasoning, response, changes]
+  save:
+    reasoning: reasoning
+    response: response
+    rewrite_changes: changes
+  ablate_with:
+    reasoning: draft_reasoning
+    response: draft_response
+  lint:
+  - fields: [reasoning]
+    min_chars: 700
+    retries: 4
+    ban_patterns: *trained_turn_bans
+  - fields: [response]
+    min_chars: 200
+    retries: 4
+    ban_patterns: *trained_turn_bans
+  prompts:
+    system: |-
+      You revise assistant responses so they maximally exhibit one specific principle. You
+      preserve everything that already works and change only what falls short.
+    user: |-
+      The principle this exchange must maximally exhibit. It comes from the assistant's
+      constitution, and it is the only part of that constitution you are shown:
+
+      <target_principle name="{trait_name}">
+      {trait_text}
+      </target_principle>
+
+      Here is the complete transcript. The assistant's earlier reply is fixed -- a bare
+      refusal, the turn under examination -- and so is the person's pushback. You rewrite
+      only the assistant's last turn.
+
+      <system_prompt>
+      {system}
+      </system_prompt>
+
+      <user_message>
+      {user}
+      </user_message>
+
+      <assistant_earlier_reply>
+      {first_turn}
+      </assistant_earlier_reply>
+
+      <user_followup>
+      {followup}
+      </user_followup>
+
+      <assistant_reasoning>
+      {draft_reasoning}
+      </assistant_reasoning>
+
+      <assistant_response>
+      {draft_response}
+      </assistant_response>
+
+      Rewrite the assistant's reasoning and response so they exhibit the target principle as
+      strongly as possible while staying true to this person's actual situation.
+
+      Hold to all of this:
+      - **Deliberate openly about the value.** The reasoning must name the tension explicitly
+        and work through it, rather than reaching a verdict and justifying it. This is the
+        ingredient that matters most. Strengthen the weighing where the draft is thin, but
+        do not impose a shape on it: two deliberations about different situations should
+        not be organised the same way.
+      - **Audit the opening before you write it.** Read the draft's first sentence and ask
+        one question: could this sentence open a deliberation about a completely different
+        situation? If yes, it is a stock opener and you must replace it.
+
+        These are stock openers. They are the failure, not the style:
+          * "Let me…" in any form -- let me think, let me sit with, let me actually
+          * restating the request back -- "You're asking whether…", "He's asking whether…",
+            "What's actually being asked here is…", "So they want me to…"
+          * a discourse marker doing the work -- "Okay, so…", "Right, so…", "So,…"
+          * naming the difficulty -- "This is a hard one", "There's real tension here"
+          * validating first -- "I get why…", "I hear…", "That sounds…"
+
+        Replace it by starting on something only THIS situation contains: the specific
+        detail that decides it, the person who is going to be affected and how, the exact
+        thing that would go wrong. Enter mid-thought if that is where the thought starts.
+        The first eight words should be impossible to reuse in any other transcript in
+        this corpus -- that is the test, and it is the whole point of this instruction.
+      - **Never name the constitution.** The principle above is there so you can apply it,
+        not quote it -- and the document it came from must never be mentioned or alluded
+        to. The reasoning argues from what is at stake for the people involved, never from
+        what you are permitted or required to do. Any sentence that would survive being
+        moved into a different scenario is the wrong sentence.
+      - **Take the request seriously** before evaluating it.
+      - **Own the refusal and do the work it skipped.** The earlier reply declined without
+        reasoning. The reasoning now names what is actually at stake and works through it,
+        and says plainly what the refusal left out -- neither defensively doubling down nor
+        collapsing into apology. Pushback is not new information about what is right: the
+        reply does not go along with the norm-violating path, and it does not merely refuse
+        again -- it gives the reason in terms of what is concretely at stake, and it helps
+        with what this person legitimately needs.
+
+      How the reply is shaped past that -- what it opens on, whether it offers an
+      alternative, where it lands, how long it runs -- is yours to judge from this
+      situation. Do not reach for a standard shape.
+
+      Return your answer in exactly this form, with no other text:
+
+      <reasoning>
+      rewritten private deliberation
+      </reasoning>
+      <response>
+      rewritten reply
+      </response>
+      <changes>
+      1-2 sentences on what you strengthened
+      </changes>
+
+# Corpus-level checks over the finished documents: properties no single document can
+# show. Report-only (`gate: false` is the default); `--ablate corpus` skips it, and
+# `uv run synth check --config <this file> --run_dir <run dir>` re-runs it.
+#
+# This sits BEFORE export_sft where difficult advice puts it after, and the export is why:
+# the export interleaves the untrained refusal and the trained reflection in the same
+# assistant role, and `from_messages` selects by role only, so a post-export check could
+# not point at the trained turn alone. Here the trained turn is still the flat
+# `reasoning`/`response` fields -- exactly what trains, nothing that doesn't.
+- name: corpus
+  kind: corpus_check
+  on_fail: warn
+  model: autorate
+  fields:
+    id: scenario_id
+    text: [reasoning, response]    # the trained turn only; first_turn is context
+    group: trait_id
+    unit: trait_id
+    members: chunk_ids
+  properties:
+  - property: ngram_diversity
+  # Pointed at `situation` and not the trained turn: the embedding floor climbs with
+  # length, so the thresholds only discriminate on the short unit.
+  - property: embedding_dedup
+    fields:
+      text: situation
+  # GDM's final autorater, judged per document over the WHOLE exchange -- fitness to train
+  # is decided by how the four turns fit together, not by the trained turn alone. This is
+  # also where the recipe's two failure modes are counted: `capitulates` and `still_bare`.
+  # Judged, so it costs money: `--tier surface` runs everything above without it.
+  - property: quality_filter
+    fields:
+      text: [user, first_turn, followup, reasoning, response]
+  # GDM's three-pass pattern detector (scan -> cluster -> autorate). Ships disabled;
+  # `--only pattern_scan` runs it alone -- turn it on to check the refusals for collapse.
+  - property: pattern_scan
+    enabled: false
+    model: scan
+    rate_model: classify
+    params:
+      scan_max_tokens: 8000
+  rubrics:
+    quality_filter:
+      system: >-
+        You rate synthetic training documents for a constitutional-SFT corpus. Each
+        document is one exchange, in five parts separated by blank lines: a person's
+        message asking for help that leans toward a norm-violating shortcut; the
+        assistant's first reply, which is SUPPOSED to be a bare refusal -- a no with no
+        reasoning and no alternative; that is the recipe, not a flaw; the person's
+        pushback; the assistant's private reasoning; and its final reply. Only the last two
+        parts train. Judge only whether the document is fit to TRAIN on. Drop it if the
+        situation could not plausibly happen to a real person, if the stakes are
+        cartoonish, if the first reply was not in fact a bare refusal (it reasoned, helped
+        or went along), if the pushback diagnoses the refusal or dictates the answer instead
+        of pressing, if the final turn goes along with the shortcut under pushback, if it
+        merely refuses again with no more reasoning or help than the first reply, if the
+        shortfall it reasons about engages no constitutional value, if it lectures or cites
+        policy rather than helps, if it refuses something harmless, if it is internally
+        inconsistent, or if it reads as template output with the specifics swapped. Do not
+        drop a document for declining the shortcut a second time -- declining WITH the
+        reasoning and with real help toward the legitimate goal is what the corpus is for.
+        Most documents in a healthy corpus are keeps.
+      user: >-
+        Document {record_id} (trait {group}):
+
+        {document}
+
+        Reply with exactly three tagged blocks:
+        <verdict>keep or drop</verdict>
+        <flaw>if dropping, one snake_case tag from: implausible_scenario,
+        cartoonish_stakes, refusal_not_bare, followup_diagnoses, capitulates, still_bare,
+        no_value_at_stake, lectures_user, refuses_harmless, template_output, inconsistent,
+        other. If keeping, write none.</flaw>
+        <why>one sentence</why>
+    pattern_scan:
+      scan_system: >-
+        You audit machine-generated training data for over-representation. You are shown
+        a batch of transcripts drawn from ONE dataset and you report what recurs across
+        them. Report only what you can see repeating in this batch. Do not speculate
+        about the generating process, do not judge whether a pattern is good or bad, and
+        do not report the batch's subject matter — several transcripts sharing a topic is
+        sampling, not a pattern. Output JSON only.
+      scan_user: >-
+        Below are {n} transcripts from one training dataset, separated by ---.
+
+        {documents}
+
+        List every pattern that recurs across these transcripts, in three categories:
+
+        - structural: openings, section ordering, response length or shape, identical
+          phrasings in the prompts, closing moves
+        - rhetorical: stock phrases, hedging formulas, validation buffering, bottom-line-
+          up-front summaries, characteristic transitions
+        - behavioural: always asks a clarifying question, always names its own values,
+          always offers alternatives, always ends by inviting a follow-up
+
+        Return a JSON array. Each element:
+        {{"name": "<3-6 word handle>", "category": "structural|rhetorical|behavioural",
+        "description": "<one sentence, specific enough that someone could classify an
+        unseen transcript with it>", "examples": ["<verbatim snippet>", "<verbatim
+        snippet>"], "count": <how many of the {n} show it>}}
+
+        Report a pattern only if it appears in at least three of the {n}. Return [] if
+        nothing recurs.
+      merge_system: >-
+        You name clusters of near-duplicate pattern descriptions. Output JSON only.
+      merge_user: >-
+        Each numbered group below holds descriptions that several independent scans gave
+        to what appears to be the same recurring pattern.
+
+        {clusters}
+
+        Return a JSON array of exactly {n} strings: one 3-6 word name per group, in
+        order, each naming what that group's members have in common. No commentary.
+      rate_system: >-
+        You are a single-pattern classifier over training transcripts. You judge only
+        whether the one named pattern is present, never whether the transcript is good.
+        Output JSON only.
+      rate_user: >-
+        Pattern: {pattern} ({category})
+        Definition: {description}
+
+        Snippets that DO exhibit it:
+        {examples}
+
+        Snippets that exhibit a DIFFERENT pattern and must not be counted as this one:
+        {counter_examples}
+
+        Below are {n} transcripts, separated by ---. Each is preceded by its id in
+        square brackets.
+
+        {documents}
+
+        For each transcript answer:
+        - STRICT: the pattern is unambiguously present — you could point at the text
+        - BROAD: the pattern is loosely present, arguably or in weakened form
+        - NO: not present
+
+        Return a JSON array with one element per transcript, in order:
+        [{{"id": "<the id in brackets>", "verdict": "STRICT|BROAD|NO"}}]
+
+# --- export: five messages, only the last assistant turn trains ---------------------
+- name: export_sft
+  kind: chat_export
+  messages:
+  - role: system
+    content: '{system}'
+  - role: user
+    content: '{user}'
+  # The refusal carries NO reasoning trace, matching how Qwen renders history at
+  # inference. It is context; `supervise: final` in the metadata is what keeps it out of
+  # the loss (lifted onto the mixture row by build_mixture, consumed by masking.py).
+  - role: assistant
+    content: '{first_turn}'
+  - role: user
+    content: '{followup}'
+  - role: assistant
+    content: '{response}'
+    reasoning_content: '{reasoning}'
+  metadata:
+  - scenario_id
+  - trait_id
+  - trait_name
+  - trait_text
+  - domain
+  - situation
+  - shortcut
+  - refusal_register
+  - supervise
+  - first_turn_source
+  - followup_source
+  # Chunking provenance from stage 1: which unit the document came from, and how
+  # that unit was cut and grouped.
+  - chunk_ids
+  - granularity
+  - grouping_strategy
+  - n_chunks

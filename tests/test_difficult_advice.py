@@ -108,7 +108,7 @@ def test_sft_export_carries_reasoning_and_trait_metadata():
     from src.data.synth.stage_operators import op_chat_export
 
     sft_spec = next(s for s in yaml.safe_load(
-        open("configs/data/synth/2026-08-01_difficult_advice.yaml"))["stages"] if s["name"] == "export_sft")
+        open("configs/data/synth/difficult_advice.yaml"))["stages"] if s["name"] == "export_sft")
     rec = {
         "scenario_id": "t1_s000", "trait_id": "t1", "trait_name": "Honesty",
         "trait_text": "**Honesty.** Do not deceive.", "domain": "work",

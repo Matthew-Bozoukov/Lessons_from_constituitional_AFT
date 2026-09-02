@@ -1,7 +1,7 @@
 # ABOUTME: The Good AI Fiction ontology — latent character clusters derived from the
 # ABOUTME: constitution, the stakes bands, narrative forms and length bands, with quotas.
 # Consumed by tests/test_good_ai_fiction.py, which binds it to the executable quotas in
-# configs/data/synth/2026-08-28_good_ai_fiction.yaml. There is no script to run against this file.
+# configs/data/synth/good_ai_fiction.yaml. There is no script to run against this file.
 #
 # WHY THIS FILE EXISTS SEPARATELY FROM THE CONFIG. The config is the executable: its
 # `trait_weights` and `rotate:` blocks are what the generator actually obeys. This file is

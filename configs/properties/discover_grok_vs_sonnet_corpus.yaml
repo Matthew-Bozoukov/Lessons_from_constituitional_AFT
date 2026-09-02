@@ -1,0 +1,149 @@
+# ABOUTME: Property discovery over BOTH arms of the generator ablation's TRAINING CORPUS:
+# ABOUTME: what grok-4.6 writes that Haiku/Sonnet does not, on the same 703 questions.
+# Run: uv run python scripts/properties/discover.py --config configs/properties/discover_grok_vs_sonnet_corpus.yaml [--smoke]
+
+tag: grok_vs_sonnet_corpus
+
+registry: output/properties/properties.jsonl
+
+# ONE FIT OVER BOTH ARMS, not two runs. Two independent runs produce two vocabularies and
+# two clusterings with nothing aligning a group in one to a group in the other, so the
+# comparison degrades to eyeballing labels. Fitting both together gives every property a
+# single definition and a prevalence per arm, which is what `contrast` needs.
+#
+# The arms are matched by construction and this is the strongest control in the project:
+# the 703 rows answer the SAME 703 scenarios — identical system prompts, identical user
+# turns, reused verbatim from the baseline run rather than regenerated. Only the assistant
+# turn differs. See docs/GENERATOR_ABLATION.md.
+source:
+  name: mixture_rows
+  # Built by scratch/grok_responder/build_paired_property_source.py from
+  # LASR-Callum/2026-08-21-difficult-advice-grok-responder-716 (dataset.jsonl) and
+  # LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted (stage_8_export_sft.jsonl), restricted to
+  # the 703 scenarios both arms cover. Ids are namespaced `<arm>:<scenario_id>` because
+  # the two halves share scenario ids by design; `metadata.pair_id` keeps the join.
+  path: data/feature_discovery/paired_arms_1406.jsonl
+  # Interchange rows (messages + metadata), so no `model:` is needed to split channels —
+  # reasoning_content is already its own field.
+
+producers:
+
+  # TWO FITS, ONE PER CHANNEL. "weighs the operator's instruction against the user's
+  # interest" is a move in reasoning; "opens on I-will-not" is a property of the shown
+  # reply. One cluster space would have them competing to define the same group, and the
+  # cross-channel question — does the reasoning bind what gets said? — could not be asked
+  # as a join. The config key is the LABEL, `producer:` names the producer, so the two
+  # dirs get distinct property ids.
+
+  clusters_reasoning: &channel_defaults
+    producer: clusters
+
+    evidence: features
+    channel: reasoning
+
+    extract:
+      # NEUTRALITY NOTE, and the one thing to watch when reading this run: the autorater is
+      # an Anthropic model describing traces written by an Anthropic model in one arm and
+      # by xAI in the other. If a group splits cleanly along arm lines, some of that may be
+      # the rater's familiarity with one house style rather than a real behavioural
+      # difference. Re-running `extract` with model: google/gemini-3.1-pro-preview against
+      # the same records is the check; the run directory keeps features.jsonl so only the
+      # extraction has to be repaid.
+      model: anthropic/claude-sonnet-5
+      n_min: 10
+      n: 20
+      workers: 16
+
+    embed:
+      # 1,406 records; the API is cheaper than renting a pod at this size and it is the
+      # same embedding model either way, so cosines stay comparable with pod-embedded runs.
+      backend: openrouter
+      model: qwen/qwen3-embedding-8b
+      workers: 8
+
+    grouping:
+      reduce: umap
+      cluster: hdbscan
+      # A floor on FEATURE STRINGS, not records. 1,406 records produce roughly twice the
+      # da716 run's vocabulary, so its 220 does not transfer directly; 40 is the ODCV
+      # sibling's swept value on a comparable string count and is the starting point.
+      # TREAT AS PROVISIONAL until resolution_sweep.md in the run dir is read — that file
+      # is the measurement, this number is a guess until it agrees.
+      min_cluster_size: 40
+      n_neighbors: 15
+      n_components: 10
+      seed: 42
+
+    interpret:
+      model: anthropic/claude-sonnet-5
+      n_shown: 100
+      workers: 8
+
+    # ~12 of 1,406 records, matching the ODCV sibling's share.
+    min_group_records: 12
+
+    # Which GENERATOR wrote the assistant turn. The contrast is between values of this.
+    arm_key: arm
+
+    # Stratify by trait: the nine principles differ in what a good answer looks like (t8
+    # demands an enumerated alternative, t7 a boundary), and both arms carry all nine at
+    # near-identical counts. Pooling would let a property concentrated in one principle
+    # read as an arm difference.
+    group_by: [arm, trait_id]
+
+    # THE HEADLINE. Which properties separate the two generators, within trait, corrected
+    # over the family of groups. Sets the export order, so the ends of the list are what
+    # grok does more of and what it does less of.
+    contrast:
+      focus: grok
+      reference: sonnet
+      strata: trait_id
+      fdr: 0.10
+
+    # Redundancy, concentration and the seed-stability sweep — the check that says whether
+    # a group is a finding or an artifact of one seed.
+    audit:
+      stability: true
+      neighbours: [10, 15, 30]
+      seeds: [0, 1, 2]
+      concentration_keys: [trait_id, arm, domain]
+      concentration_threshold: 0.5
+
+    # Cluster membership, NOT detector-measured, following the ODCV sibling's measurement:
+    # a judge shown ~50 rubrics at once says yes 7-9 points less often than the same judge
+    # shown one, which is a systematic deflation rather than noise. The detector runs
+    # afterwards over the shortlist as validation, not as the basis.
+    measure_with_detector: false
+
+  clusters_response:
+    # Same everything, pointed at the SHOWN REPLY rather than the private trace. The two
+    # channels differ more than length: grok's reply is 1.14x its trace while sonnet's is
+    # 0.93x, and grok switches register between thinking and speaking (1.35x sentence-length
+    # drop) where sonnet does not (1.08x). Whether that shows up as distinct property
+    # groups is exactly what a separate fit can answer.
+    <<: *channel_defaults
+    channel: response
+
+# A label appearing in both channels is corroboration across channels, not a within-fit
+# duplicate. Worth seeing.
+check_collisions: true
+
+constitution: constitutions/claude_distilled_12_principles_mid/constitution.md
+
+# Tiny slice, full wiring: clustering that cannot fail on a small n, no stability sweep.
+smoke:
+  source:
+    limit: 16
+  producers:
+    clusters_reasoning:
+      min_group_records: 2
+      grouping: {reduce: none, cluster: kmeans, k: 3}
+      audit: {stability: false}
+      contrast: {strata: null}
+      measure_with_detector: false
+    clusters_response:
+      min_group_records: 2
+      grouping: {reduce: none, cluster: kmeans, k: 3}
+      audit: {stability: false}
+      contrast: {strata: null}
+      measure_with_detector: false

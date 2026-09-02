@@ -15,7 +15,7 @@ config's `stages:` list is supposed to express. As long as it existed, adding a 
 type meant editing code, and the engine knew about a specific corpus — the one rule
 `src/data/synth/` is not allowed to break.
 
-`2026-08-13_post_action_retrospection.yaml` was rebuilt without it and lost nothing: `assign`
+`post_action_retrospection.yaml` was rebuilt without it and lost nothing: `assign`
 labels the arms, `variants_by` picks the prompt, `when` scopes the gates, `conversation`
 puts the reply under evaluation in a genuine assistant turn, `chat_export` writes the
 record. Build new document types that way.
@@ -24,7 +24,7 @@ record. Build new document types that way.
 
 Three archived configs (`configs/data/synth/archive/*.yaml`) are the generating record of
 published HF corpora, and a record that cannot run is not reproducible. One live config —
-`2026-08-13_peer_critique.yaml` — is still written against cells. Deleting this
+`peer_critique.yaml` — is still written against cells. Deleting this
 module would break all four.
 
 The operators stay registered: `operators.py` imports `CELL_OPERATORS` from here and

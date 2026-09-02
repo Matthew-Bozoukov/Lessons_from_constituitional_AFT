@@ -1,0 +1,92 @@
+# ABOUTME: 4-epoch LoRA SFT of base Qwen3.6-27B on 220 difficult-advice rows drawn at
+# ABOUTME: random from the same pool the LESS arm selects from. The control arm.
+# Run on GPU: uv run train --config configs/train/qwen36_less_random_220_control_rank64.yaml
+#
+# THE CONTROL ARM. Its arm is qwen36_less_top_10_220_rank64.yaml, which differs only in
+# which 220 rows of the same 2,203-row pool it trains on — data_repo, data_revision,
+# hf_repo and output_dir, and nothing else. Every hyperparameter, the batching protocol, the
+# loss path and the rank count are identical, so a difference between the two organisms is
+# attributable to the selection.
+#
+# WITHOUT THIS RUN THE LESS ARM MEANS NOTHING. That is not a general caution: it is the
+# state the 2026-08-17 less-swap arm has been stuck in since it was trained ("THIS ADAPTER
+# IS NOT YET INTERPRETABLE", docs/LOG.md), because its control was provisioned and then
+# cancelled. A loss curve over 220 selected rows says nothing until 220 unselected rows
+# have produced one under the same recipe.
+#
+# WHAT THE DRAW IS. Uniform over all 2,203 rows, seed 1, giving ~24 rows per trait against
+# the arm's t6 79 / t3 74. It draws from the WHOLE pool rather than the pool minus the
+# selection: "what you would have trained on without LESS" is a plain random draw, and
+# excluding the top-K would make the control anti-correlated with the arm rather than
+# independent of it. The incidental overlap is 22 rows, against the ~22 chance predicts.
+#
+# SEED 1, NOT 0. Seed 0 over a 2,203-row population reproduces the LESS warmup split exactly
+# — the rows that trained the LoRA the ranking itself came from — which would make the
+# control a function of the treatment. scratch/less/select_topk.py asserts against this
+# rather than trusting the seed; 23 of these 220 rows are warmup rows, against ~22 by chance.
+#
+# FOUR epochs, matching the arm exactly. The count is a property of the recipe, not of the
+# selection, so it is not a knob to tune per arm: 220 rows at global batch 16 is 14 optimizer
+# steps per epoch, and both arms get the same 56.
+#
+# Think markers: all 220 rows carry REAL reasoning traces (asserted in select_topk.py and
+# re-counted on the published file: 220/220 with a trace, 0 empty), so the traces are
+# supervised and this arm must be evaluated in thinking mode — the same mode as the arm,
+# which comparison code requires before it will pair them.
+
+seed: 0
+model: "Qwen/Qwen3.6-27B"
+model_class: "image_text_to_text"
+
+thinking: true
+
+data_repo: "LASR-Callum/2026-08-19-random-220-difficult-advice-control-train"
+data_file: "mixture.jsonl"
+data_revision: "5ede5bc026bab7a83ff635d5bcf301a12b8822d3"
+
+output_dir: "/workspace/out/train_random220_control"
+
+# Identical to the arm's, which is the point of a control: the shape is held fixed so only
+# the choice of rows varies.
+lora:
+  r: 64
+  alpha: 128
+  dropout: 0.05
+  target_modules: "model\\.language_model\\..*\\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$"
+
+train:
+  epochs: 4
+  # Global batch = batch_size x grad_accum = 16, matching every other arm in this family.
+  batch_size: 1
+  grad_accum: 16
+  lr: 1.0e-4
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  logging_steps: 5
+  report_to: ["wandb"]
+
+  # A truncation ceiling, not a batching budget, and inert here as in the arm. Kept at the
+  # family value so the cap is not a difference between arms.
+  max_seq_len: 8192
+
+  # packing OFF. Qwen3.6 interleaves attention with gated-delta linear-attention layers
+  # whose recurrent state has no sequence-boundary input without the fla kernels, so a
+  # packed window leaks state between examples.
+  packing: false
+
+  # NO dynamic_batching, deliberately. The token-budgeted path exists to keep long rows
+  # inside a measured memory ceiling; nothing here approaches one, and the H100 fallback has
+  # no measured budget in ModelProfile at all (only a negative bound). Plain batch-1 x
+  # accum-16 is the simpler path and removes a whole failure mode from a 56-step run.
+
+  # Per epoch, not per N steps: the whole run is 56 optimizer steps, so the family's
+  # save_steps: 100 would never fire and auto_resume would have nothing to resume from.
+  save_strategy: "epoch"
+  save_total_limit: 2
+  auto_resume: true
+
+  assistant_only_loss: true
+  attn_implementation: sdpa
+  # Qwen3.6's hybrid linear-attention layers are not reliably quantised by bitsandbytes.
+  load_in_4bit: false

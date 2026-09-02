@@ -1,0 +1,52 @@
+# ABOUTME: 1-epoch LoRA SFT of Qwen3.6-27B on the Table2(7,999)+self-reflection(2,000) mixture —
+# ABOUTME: the self-reflection twin of lora_qwen36_table2_synthdoc_h200x4 (r64, identical recipe).
+# Run on GPU: python scripts/train/train_lora.py --config configs/train/qwen36_table2_self_reflection_rank64.yaml
+# (launched on a throwaway pod by scripts/gpu/runpod_train.py; the pod carries no credentials,
+# so the adapter is pulled back and pushed to HF from the local machine)
+
+seed: 0
+model: "Qwen/Qwen3.6-27B"
+model_class: "image_text_to_text"
+
+data_repo: "LASR-Callum/2026-08-06-qwen36-table2-80-self-reflection-20-10k-train-mixture"
+data_file: "mixture.jsonl"  # the repo also holds stats + card, so the pick is pinned
+output_dir: "output/train_table2_selfreflect_20_80"
+
+lora:
+  r: 64
+  alpha: 128
+  dropout: 0.05
+  # All attention and MLP projections, scoped to the language tower of this VLM checkpoint.
+  target_modules: "model\\.language_model\\..*\\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$"
+
+train:
+  epochs: 1
+  # batch 1 with no packing means no padding waste (rows run ~90-8191 tokens).
+  batch_size: 1
+  # Global batch 16 — same as the table2-synthdoc arm (its 4xH200 run divided this by
+  # the rank count; a single-GPU run uses it as-is, 625 steps for ~10k examples).
+  grad_accum: 16
+  lr: 1.0e-4
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  logging_steps: 5
+  max_seq_len: 8192
+  packing: false
+
+  # Local checkpoints only: the training pod carries no credentials (runpod_train.py),
+  # so there is no hub persistence; a dead pod resumes from the tarred output volume.
+  save_strategy: "steps"
+  save_steps: 100
+  save_total_limit: 2
+  auto_resume: true
+
+  # Avoids TRL's chunked-CE LM-head patch, which crashes on this checkpoint's
+  # functools.partial forward. Mathematically the same loss.
+  loss_type: "nll"
+  attn_implementation: sdpa
+  load_in_4bit: false
+
+# Eval-time thinking mode (CLAUDE.md eval framework): stamped into the adapter's
+# training_meta.json and validated against the data before training.
+thinking: true

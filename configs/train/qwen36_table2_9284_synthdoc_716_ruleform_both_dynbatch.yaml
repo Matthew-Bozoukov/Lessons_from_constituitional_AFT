@@ -1,0 +1,94 @@
+# ABOUTME: 1-epoch LoRA SFT of Qwen3.6-27B on Table2(9,284) + difficult-advice(716) with BOTH
+# ABOUTME: the reasoning and the answer rewritten into RULE-FORM; 2xH200 DDP, dynamic batching.
+# Run: PYTHONPATH=. torchrun --nproc_per_node=2 scripts/train/train_lora.py --config <this>
+#
+# THE BOTH-HALVES RULE-FORM ARM. Its sibling
+# (qwen36_table2_9284_synthdoc_716_ruleform_dynbatch.yaml) rewrote only the reasoning,
+# so the answer went on teaching the balanced, distinction-drawing style regardless. Here the
+# answer is rewritten too: the reasoning drops engaging the tempting option, drawing an
+# analytic distinction and enumerating branches; the answer drops those three plus offering an
+# alternative route. System prompt and user turn are byte-identical on all 10,000 rows.
+#
+# ABLATION STRENGTH in the ANSWER, blind rater over both versions of ALL 716 rows:
+#   engages_counterargument  572/716 -> 58/716    inverted
+#   outcome_branches         608/716 -> 47/716    inverted
+#   offers_alternative       715/716 -> 313/716   PARTIAL (44% survive)
+#   analytic_distinction     714/716 -> 422/716   PARTIAL (59% survive)
+#   all four absent in 201/716 answers
+# Reasoning-side figures are in the sibling config; there the distinction survived in 529/716.
+#
+# THE DOMINANT CONFOUND IS LENGTH, and it is large. Answers fall to 26% of the control
+# (369,405 -> 96,440 words) on top of reasoning already at 62%. Untargeted moves fell with
+# them: returns_agency 577 -> 234, names_tension 673 -> 129, acknowledges_pressure 703 -> 503,
+# and the rater called only 28/716 rewritten answers deliberative against 640/716 before.
+# A difference against the control is at least as likely to be "the assistant got much
+# terser and less helpful" as "these four moves matter". Read it that way unless a
+# length-matched arm says otherwise; the n=5 work showed a three-move, length-protected
+# rewrite holds answers at 430 words and would isolate the moves far better.
+#
+# Think markers: all 9,284 non-reasoning rows carry the exact '<think>\n\n</think>\n\n'
+# marker, inherited unchanged from the control; the generation-boundary rule masks them WHOLE.
+# Verified before launch: 716 real traces + 9,646 whole empty markers, 0 turns missing a marker.
+
+seed: 0
+model: "Qwen/Qwen3.6-27B"
+model_class: "image_text_to_text"
+
+# The 716 difficult-advice rows still carry real reasoning traces that ARE supervised — both
+# rewrites shorten and reshape, neither deletes — so this arm is trained to think and must be
+# evaluated in thinking mode.
+thinking: true
+
+data_repo: "matboz/2026-08-22-ruleform-both-t2-9284-synthdoc-716"
+data_file: "mixture_think_both.jsonl"
+# Pinned: the comparison is only meaningful against a fixed version of the rewritten file.
+data_revision: "1cb2b2924277a02125a7b95ec84632987dd3b452"
+
+output_dir: "/workspace/out/train_t2_9284_synthdoc716_ruleform_both"
+
+lora:
+  r: 64
+  alpha: 128
+  dropout: 0.05
+  target_modules: "model\\.language_model\\..*\\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$"
+
+train:
+  epochs: 1
+  # global batch = 1 x 16 = 16, the same scientific unit as every sibling arm. Under dynamic
+  # batching the trainer hands the whole 16-example step to training_step and sets HF
+  # accumulation to 1; route_step splits the step across the 2 ranks. 10,000/16 = 625 steps.
+  batch_size: 1
+  grad_accum: 16
+  lr: 1.0e-4
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  logging_steps: 5
+  report_to: ["wandb"]
+
+  # A truncation ceiling, NOT the dynamic-batching budget. The rewrite only shortens the
+  # difficult-advice rows, so the length profile is bounded by the control's.
+  max_seq_len: 8192
+
+  # packing OFF, and dynamic_batching asserts this: Qwen3.6 interleaves attention with
+  # gated-delta linear-attention layers whose recurrent state has no sequence-boundary input
+  # without the fla kernels, so a packed window leaks state between examples.
+  packing: false
+
+  # Token-budgeted dynamic batching. Budget deliberately unset: the trainer resolves it from
+  # ModelProfile.train_memory (H200 = 8,000 padded tokens).
+  dynamic_batching: {}
+
+  save_strategy: "steps"
+  save_steps: 100
+  save_total_limit: 2
+  auto_resume: true
+
+  # The pod holds the token (.env is copied there), so the run pushes its own adapter.
+  push_to_hub: false
+
+  assistant_only_loss: true
+  # loss_type deliberately unset: under dynamic batching the loss is computed by
+  # DynamicBatchTrainer.training_step (seq_mean_token_mean), never by TRL.
+  attn_implementation: sdpa
+  load_in_4bit: false

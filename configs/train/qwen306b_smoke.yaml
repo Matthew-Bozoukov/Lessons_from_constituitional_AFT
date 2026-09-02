@@ -1,0 +1,39 @@
+# ABOUTME: Tiny DDP smoke config -- validates multi-GPU wiring of train_lora.py on a toy set.
+# ABOUTME: Run: PYTHONPATH=. torchrun --nproc_per_node=<N> scripts/train/train_lora.py --config <this>
+
+seed: 0
+
+# Required of every train config (no default): this toy set carries no reasoning
+# traces, so the arm is trained and served without them.
+thinking: false
+# A 0.6B model, not the 27B: DDP correctness (per-rank device map, grad-accum division,
+# all-reduce, rank-0-only writes) is model-agnostic, and this fits on any cheap GPU.
+model: "Qwen/Qwen3-0.6B"
+model_class: "causal_lm"
+
+data_path: "data/toy.jsonl"
+output_dir: "output/ddp_smoke"
+
+lora:
+  r: 64
+  alpha: 128
+  dropout: 0.05
+  # This model has no `language_model.` prefix, so match the projections directly.
+  target_modules: ".*\\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$"
+
+train:
+  epochs: 1
+  batch_size: 1
+  # 16 divides by 1, 2 and 4 ranks, so the global batch is identical at every world size.
+  grad_accum: 16
+  lr: 1.0e-4
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.05
+  logging_steps: 1
+  max_seq_len: 1024
+  packing: false
+  assistant_only_loss: true
+  loss_type: "nll"
+  mask_empty_think: false
+  attn_implementation: sdpa
+  load_in_4bit: false

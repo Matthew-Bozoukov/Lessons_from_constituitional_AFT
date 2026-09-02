@@ -427,8 +427,9 @@ def test_publish_layout_contract(tmp_path):
 
 
 def test_every_target_is_named_before_any_of_them_runs(monkeypatch, tmp_path):
-    # An arm ladder must not discover a bad name on the fourth target with three runs
-    # already paid for — the check is a preflight over ALL targets, not per arm.
+    # An arm ladder must not discover a name collision on the fourth target with three
+    # runs already paid for — and the second run would publish over the first. The check
+    # is a preflight over ALL targets, not per arm.
     import src.eval.run_eval as re_mod
     from src.infra.endpoints import vllm
 
@@ -438,7 +439,10 @@ def test_every_target_is_named_before_any_of_them_runs(monkeypatch, tmp_path):
         model_key=t.split("/")[-1], lora_rank=64))
     monkeypatch.setattr(re_mod, "resolve", lambda name: lambda *a, **k: ran.append(1) or {})
 
-    with pytest.raises(Exception, match="v2|version"):
+    # Two arms whose names differ only in the date the law now strips: one eval run name,
+    # two arms, and the second would land on top of the first.
+    with pytest.raises(Exception, match="published twice"):
         re_mod.main(["--name", "mmlu",
-                     "--target", "org/2026-08-31-good-arm", "org/2026-08-31-arm-v2"])
+                     "--target", "org/2026-08-31-qwen36-difficult-advice-0",
+                     "org/2026-09-01-qwen36-difficult-advice-0"])
     assert not ran, "a run started before every name was checked"

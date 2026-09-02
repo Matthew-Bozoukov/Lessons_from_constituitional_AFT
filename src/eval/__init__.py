@@ -17,6 +17,11 @@ from typing import Callable
 class EvalSpec:
     package: str                   # eval package under src.eval; its runner.py defines run()
     config: str                    # default OmegaConf YAML under configs/eval/
+    # The token this eval is called in every name it produces (src/naming.py):
+    # `<date>-<key>-<model>`. REQUIRED, no default: naming an eval is a decision made
+    # once, when it is registered, and never again per run. Keep it short — the key and
+    # the arm's style-type share one 96-character repo name.
+    key: str
     needs_docker: bool = False     # rollouts execute in containers where the driver runs
     # True when run() reaches the target purely through the OpenAI-compatible triple
     # (base_url, model_name, api_key) and so works against a public API endpoint target
@@ -44,11 +49,13 @@ EVALS: dict[str, EvalSpec] = {
     "mmlu": EvalSpec(
         "capabilities.mmlu",
         "configs/eval/mmlu.yaml",
+        key="mmlu",
         supports_api_target=True,
     ),
     "arena_hard": EvalSpec(
         "capabilities.arena_hard",
         "configs/eval/arena_hard.yaml",
+        key="ah",
         supports_api_target=True,
         # takes --reference (an answers ARTIFACT, asserted in run()) — not an arm_kwarg
         # until its answer-cache migration
@@ -56,6 +63,7 @@ EVALS: dict[str, EvalSpec] = {
     "lmsys": EvalSpec(
         "capabilities.lmsys",
         "configs/eval/lmsys.yaml",
+        key="lmsys",
         supports_api_target=True,
         arm_kwargs=("reference",),
     ),
@@ -64,19 +72,23 @@ EVALS: dict[str, EvalSpec] = {
     "swebench_mini": EvalSpec(
         "capabilities.swebench_mini",
         "configs/eval/swebench_mini_verified.yaml",
-        needs_docker=True
+        key="swebench",
+        needs_docker=True,
     ),
     "internalization": EvalSpec(
         "misalignment.internalization",
-        "configs/eval/internalization.yaml"
+        "configs/eval/internalization.yaml",
+        key="internal",
     ),
     "agentic_misalignment": EvalSpec(
         "misalignment.agentic_misalignment",
-        "configs/eval/agentic_misalignment.yaml"
+        "configs/eval/agentic_misalignment.yaml",
+        key="am",
     ),
     "odcv": EvalSpec(
         "misalignment.odcv",
         "configs/eval/odcv_bench.yaml",
+        key="odcv",
         needs_docker=True,
         # Seed replicates are the standard ODCV shape (`--target seed0 seed1 seed2`), and
         # the recipe-level number is what they are for: pool.py.
@@ -85,6 +97,7 @@ EVALS: dict[str, EvalSpec] = {
     "psychosis": EvalSpec(
         "misalignment.psychosis",
         "configs/eval/psychosis.yaml",
+        key="psychosis",
         supports_api_target=True,
     ),
 }

@@ -11,4 +11,4 @@
 | date generated | 2026-07-29 |
 | last updated | 2026-08-03 (rationale revision) |
 | replaces | [`archive/claude_distilled_8_principles_v1/`](../archive/claude_distilled_8_principles_v1/) |
-| consumed by | `src/data/prompts.py::CONSTITUTION_V2`, `configs/data/difficult_advice_gen_v2.yaml`, `configs/eval/2026-07-31_constitution_probe.yaml` |
+| consumed by | `src/data/prompts.py::CONSTITUTION_V2`, `configs/data/difficult_advice_gen_v2.yaml`, `configs/eval/archive/2026-07-31_constitution_probe.yaml` |

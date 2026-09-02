@@ -1,0 +1,166 @@
+# ABOUTME: Property discovery over ODCV rollouts from the da716 model ALONE: what that one
+# ABOUTME: fine-tune actually does when it reasons, and which of it goes with violating.
+# Run: uv run python scripts/properties/discover.py --config configs/properties/discover_odcv_difficult_advice_716.yaml [--smoke]
+
+tag: odcv_da716
+
+registry: output/properties/properties.jsonl
+
+# ONE arm. This is the single-model version of discover_odcv_rollouts.yaml, and it is the
+# right starting point: it answers "what does da716 do?" without needing the other four
+# evals to have finished, and it is the run whose properties pair directly with the
+# corpus-side discover_difficult_advice_716.yaml over the same 716 rows.
+#
+# What a single arm costs you: `outcomes` below still measures a within-arm lift (members
+# vs non-members of this arm, which is a real contrast), but it CANNOT tell a property of
+# the model apart from a property of the fine-tune, because there is no second model to
+# contrast against. A property that tops this ranking is a candidate; confirming it is not
+# just how da716 always reasons needs the pooled run.
+source:
+  name: odcv_rollouts
+  # The plain da716 arm: Qwen3.6-27B r64 LoRA on 9,284 filtered Table2 rows + 716
+  # constitution-grounded difficult-advice rows (7.16% of a 10,000-row mixture). ODCV-Bench
+  # combined4x over the 70-cell set, judged by a two-judge panel. 275 rollouts.
+  #   HF: LASR-Callum/2026-08-14-qwen36-lora-table2-9284-difficult-advice-716-rank-64-dynbatch
+  # Its control is the table2-only arm; pooling the two is discover_odcv_rollouts.yaml.
+  run_dir: output/odcv_bench/da716
+  arm: da716
+  # A rollout with two sentences of reasoning contributes a vector describing nothing. The
+  # count dropped is printed, so this stays a stated exclusion rather than a silent one.
+  min_reasoning_chars: 200
+  # Every rate below is over judged rollouts; an unjudged one silently leaving the
+  # denominator is a bias, not a rounding error. Fail instead.
+  require_outcomes: true
+
+producers:
+
+  clusters:
+    # The ported feature-discovery method: an autorater reads each rollout's reasoning
+    # ALONE and writes 10-20 free-text descriptions of what it does; the deduped
+    # vocabulary is embedded and clustered. Descriptions have already thrown the subject
+    # matter away, so a group is a recurring MOVE rather than a recurring topic — and one
+    # rollout carries several properties, which is what rollouts are like.
+    evidence: features
+    channel: reasoning
+
+    extract:
+      model: anthropic/claude-sonnet-5
+      n_min: 10
+      n: 20
+      workers: 16
+      # Appended to features.jsonl as they land; a rerun against this run directory labels
+      # only what is missing. Extraction is the expensive half, so an interrupted run
+      # keeps what it paid for.
+
+    embed:
+      # A few hundred rollouts produce a few thousand distinct feature strings — short
+      # ones. The API is cheaper than a pod at that size, and it is the same model either
+      # way, so the cosines stay comparable with a runpod-embedded run.
+      backend: openrouter
+      model: qwen/qwen3-embedding-8b
+      workers: 8
+
+    grouping:
+      reduce: umap
+      cluster: hdbscan
+      # A floor on FEATURE STRINGS, not rollouts, and CHOSEN BY MEASUREMENT rather than
+      # taste. Swept on the 2026-08-19 da716 embeddings across three seeds:
+      #     15 -> 74-80 groups, 23-27% noise   stable
+      #     25 -> 45-46 groups, 29-32% noise   stable      <- here
+      #     40 ->  2, 2, 27 groups             bifurcating
+      #     60 ->  2, 2,  8 groups             bifurcating  <- the earlier setting
+      #     90 ->  9, 9, 11 groups             stable, coarse
+      # 40-60 sits on a bifurcation where HDBSCAN has two roughly equally good readings of
+      # the same density landscape and the seed picks one. Anything reported from there is
+      # a coin flip. Re-sweep this when the corpus changes size.
+      min_cluster_size: 25
+      n_neighbors: 15
+      n_components: 5
+      seed: 42
+
+    # Callum's 2026-08-17 note: check UMAP is doing anything at all by clustering the same
+    # vectors without it. Written to grouping_comparison.json (ARI/AMI + the neighbourhood
+    # overlap the reduction preserved), not gated on.
+    baseline_grouping:
+      reduce: none
+      cluster: kmeans
+      k: 30
+      seed: 42
+
+    interpret:
+      model: anthropic/claude-sonnet-5
+      # The post's number, and what the published feature-discovery runs used.
+      n_shown: 100
+      workers: 8
+
+    # A group covering fewer rollouts than this is a handful of near-duplicates.
+    min_group_records: 10
+
+    # NOT `arm` — there is only one model here, so `arm` pools ODCV's two conditions and
+    # they are not comparable: measured on this run, incentivized rollouts violate 23.2%
+    # of the time and mandated ones 12.4%. Pooling them lets a property concentrated in
+    # the mandated half look protective for free, which is the same base-rate confound the
+    # within-arm split exists to remove, one level down. Grouping on `condition` computes
+    # every lift inside one condition and combines them weighted.
+    group_by: condition
+
+    # The half a corpus-side run cannot do: cross each group against the judged violation.
+    outcomes:
+      field: violation
+      # Benjamini-Hochberg across the family of groups. With tens of groups against one
+      # binary outcome, a few will look significant from nothing.
+      fdr: 0.10
+      # One arm, so this is just "a group too small to measure".
+      min_arm_records: 20
+
+    # Redundancy, buried behaviours, and (opt-in) seed stability. `stability: true` refits
+    # the whole matrix 9 times — cheap at this size, and the check that says whether the
+    # groups are a finding or a seed.
+    audit:
+      stability: true
+      neighbours: [10, 15, 30]
+      seeds: [0, 1, 2, 3, 4]
+
+    # The training-corpus view, over the SAME embedding pass: every feature's cosine to the
+    # nearest centroid of the da716 CORPUS run. A group whose features all sit below
+    # min_cosine is behaviour this model produces that its training data never taught —
+    # the finding nearest-centroid assignment structurally cannot make, because it never
+    # abstains. Point this at the run discover_difficult_advice_716.yaml produced.
+    #
+    # LEAVE IT COMMENTED until that run exists; it is the only field here that depends on
+    # another run having finished.
+    # compare_to:
+    #   run_dir: output/properties/da716_<ts>/clusters
+    #   min_cosine: 0.60
+
+    # Off by default: one judge call per property per sampled rollout is the expensive
+    # half of the run. Turn it on once the shortlist is short.
+    measure_with_detector: false
+    detector:
+      model: anthropic/claude-sonnet-5
+      workers: 16
+      sample: 200
+
+check_collisions: false
+
+constitution: constitutions/claude_distilled_12_principles_mid/constitution.md
+
+# Tiny slice, full wiring: a handful of rollouts, clustering that cannot fail on a small n,
+# and no stability sweep.
+smoke:
+  source:
+    limit: 8
+    min_reasoning_chars: 0
+    require_outcomes: false
+  producers:
+    clusters:
+      min_group_records: 2
+      grouping:
+        reduce: none
+        cluster: kmeans
+        k: 2
+      baseline_grouping: null
+      audit:
+        stability: false
+      outcomes:
+        min_arm_records: 1

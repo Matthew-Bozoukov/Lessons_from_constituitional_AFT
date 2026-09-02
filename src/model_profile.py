@@ -1,5 +1,5 @@
-# ABOUTME: The ModelProfile registry — verified per-family facts for rendering, masking
-# ABOUTME: and serving — plus the think-stream parsers that decode those families' output.
+# ABOUTME: The ModelProfile registry — verified per-family facts for rendering, masking,
+# ABOUTME: serving and NAMING — plus the think-stream parsers that decode those families.
 
 from __future__ import annotations
 
@@ -127,6 +127,55 @@ QWEN36_PROFILE = ModelProfile(
 # model generates <think> itself — verified live 2026-08-04), so the generation-boundary
 # mask as written would under-train it. Add a verified profile before training Qwen3.
 MODEL_PROFILES = (QWEN36_PROFILE,)
+
+
+# Base model -> the token that stands for it in every name. Matched as a substring of the
+# model id with punctuation stripped, longest first, so `Qwen/Qwen3.6-27B`, `qwen3_6` and
+# the pod-local `/root/qwen36` are one model under one token. ADD AN ENTRY when a new base
+# model enters the project; never spell a model into a name by hand.
+MODEL_KEYS: tuple[tuple[str, str], ...] = (
+    ("qwen36", "qwen36"),          # Qwen3.6-27B — the model under study
+    ("qwen332b", "qwen3"),         # Qwen3-32B — the original difficult-advice reproduction
+    ("qwen306b", "qwen306b"),      # Qwen3-0.6B — smoke runs only
+    ("gptoss120b", "gptoss120b"),
+    ("gptoss20b", "gptoss20b"),
+)
+
+
+def _squeeze(text: str) -> str:
+    """Lowercase `text` down to letters and digits (`Qwen/Qwen3.6-27B` -> `qwenqwen3627b`)."""
+    return re.sub(r"[^a-z0-9]", "", str(text).lower())
+
+
+def model_key(model_id: str) -> str:
+    """The registered token for a base model, refusing an unregistered one.
+
+    Args:
+        model_id: An HF model id, a local weights path, or a served model name.
+
+    Returns:
+        The token this project spells that model with, e.g. `qwen36`.
+
+    Raises:
+        ValueError: The model is in no MODEL_KEYS entry — as `model_profile` raises for an
+            unverified family, and for the same reason: adding the entry is the deliberate
+            moment to decide the fact, here what the model is called forever. Permissive
+            like `gpu_for` and unlike `model_profile`, in the sense that a model needs no
+            verified PROFILE to have a name — Qwen3-32B has a key and no profile.
+    """
+    squeezed = _squeeze(model_id)
+    # An already-canonical key resolves to itself, so the same function answers both
+    # "what do we call `Qwen/Qwen3-32B`?" and "is `qwen3` a model this project knows?".
+    if squeezed in {k for _, k in MODEL_KEYS}:
+        return squeezed
+    for needle, key in sorted(MODEL_KEYS, key=lambda kv: -len(kv[0])):
+        if needle in squeezed:
+            return key
+    known = ", ".join(sorted({k for _, k in MODEL_KEYS}))
+    raise ValueError(
+        f"no naming key for base model {model_id!r}. Every name this project mints spells "
+        f"a model with a registered token ({known}); nothing spells one by hand. Add "
+        "`(\"<squeezed id>\", \"<token>\")` to MODEL_KEYS below.")
 
 
 def model_profile(model_name: str) -> ModelProfile:

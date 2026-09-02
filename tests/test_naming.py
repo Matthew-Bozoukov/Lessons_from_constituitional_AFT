@@ -1,82 +1,133 @@
-# ABOUTME: Offline tests for the naming law (src/utils.py): the grammar, the ambiguity
-# ABOUTME: rules, the push gate, and the repo-wide lint that blocks a push.
+# ABOUTME: Offline tests for the naming law (src/naming.py): the stage shapes, the one
+# ABOUTME: human input, the push gate, and the repo-wide lint that blocks a push.
 
 import pytest
 
-from src.utils import (
+from src.naming import (
     NamingError,
-    canonical_key,
+    api_model_key,
+    artifact_name,
     check_distinct,
     check_hub_repo,
-    check_local_name,
+    check_style,
+    eval_name,
     figure_path,
-    hub_name,
     label,
     lint_repo,
-    local_name,
-    name_date,
-    squash,
-    suggest,
+    mix_name,
+    model_key,
+    model_name,
+    style_from_mix,
+    synth_name,
     to_hub,
     to_local,
+    undated,
 )
 
+D = "2026-09-04"
 
-@pytest.mark.parametrize("name", [
-    "2026-08-06_difficult_advice_716",
-    "2026-08-26_sonnet45_difficult_advice_716_length_capped",
-    "2026-07-31_tulu_control",
+
+def test_one_style_type_carries_through_every_stage():
+    """The point of the law: a corpus, its mixture, the arm and its eval line up by eye."""
+    assert synth_name("difficult_advice", date="2026-09-01") == (
+        "2026-09-01-difficult-advice-synth")
+    assert mix_name("difficult_advice", date="2026-09-03") == (
+        "2026-09-03-difficult-advice-mix")
+    organism = model_name("Qwen/Qwen3.6-27B", "difficult_advice", 0, date=D)
+    assert organism == "2026-09-04-qwen36-difficult-advice-0"
+    assert eval_name("odcv", organism, date="2026-09-05") == (
+        "2026-09-05-odcv-qwen36-difficult-advice-0")
+
+
+def test_an_eval_run_carries_one_date_and_it_is_its_own():
+    """The old law put the target's date in the run's name; two dates named two days."""
+    run = eval_name("odcv", f"LASR-Callum/{D}-qwen36-difficult-advice-0", date="2026-09-05")
+    assert run.count("2026-") == 1
+    assert run == "2026-09-05-odcv-qwen36-difficult-advice-0"
+
+
+def test_pooling_drops_the_seed_because_that_is_what_it_pooled_over():
+    arm = f"{D}-qwen36-difficult-advice-1"
+    assert eval_name("odcv", arm, date="2026-09-06", pooled=True) == (
+        "2026-09-06-odcv-qwen36-difficult-advice")
+
+
+def test_a_base_model_is_named_by_its_registered_key_and_nothing_else():
+    assert model_key("Qwen/Qwen3.6-27B") == model_key("/root/qwen36") == "qwen36"
+    assert model_key("Qwen/Qwen3-32B") == "qwen3"
+    assert model_key("qwen36") == "qwen36"          # a key resolves to itself
+    # Registered in src/model_profile.py, beside the GPU the model needs and the template
+    # it renders — a model needs no verified PROFILE to have a name (Qwen3-32B has one and
+    # no profile), so the key is its own registry in that file.
+    with pytest.raises(ValueError, match="MODEL_KEYS"):
+        model_key("mistralai/Mistral-7B")
+    # A public model is not our artifact, so its id is sanitised rather than registered.
+    assert api_model_key("openrouter", "moonshotai/kimi-k2") == "openrouter-kimi-k2"
+
+
+@pytest.mark.parametrize("style, because", [
+    ("2026-09-01_difficult_advice", "a config is not dated"),
+    ("difficult_advice_seed_1", "a seed is a launch argument"),
+    ("difficult_advice_synth", "`synth` is the stage word"),
+    ("sonnet_v2", "a version is not a description"),
+    ("DifficultAdvice", "one spelling, lowercase"),
+    ("da", "says too little"),
 ])
-def test_a_dated_self_describing_name_is_accepted(name):
-    assert check_local_name(name) == name
-
-
-@pytest.mark.parametrize("name, because", [
-    ("difficult_advice_716", "no date"),
-    ("2026-08-06_da716", "glued abbreviation"),
-    ("2026-08-06_da_716", "ambiguous abbreviation"),
-    ("2026-08-06_sonnet_v2", "a version is not a description"),
-    ("2026-08-06_final_run", "vague from end to end"),
-    ("2026-08-06_tmp_difficult_advice", "junk token anywhere"),
-    ("2026-08-06_ab", "says nothing"),
-    ("2026_08_06_difficult_advice", "date is not ISO"),
-])
-def test_names_that_a_reader_could_not_place_are_refused(name, because):
+def test_the_one_thing_a_human_types_is_the_one_thing_that_is_checked(style, because):
     with pytest.raises(NamingError):
-        check_local_name(name, what=because)
+        check_style(style, what=because)
 
 
-def test_every_error_offers_a_name_that_would_pass():
-    with pytest.raises(NamingError) as e:
-        check_local_name("2026-08-06_da716")
-    fixed = str(e.value).rsplit("Try: ", 1)[1].strip(". ")
-    assert check_local_name(fixed) == "2026-08-06_difficult_advice_716"
+@pytest.mark.parametrize("style", [
+    "difficult_advice",
+    "difficult_advice_716",          # a row count is a fact about the corpus
+    "qwen36_synthdoc_10_90",         # a mixture ratio is not a seed
+    "post_action_retrospection_716_coherence",
+])
+def test_a_style_type_that_says_what_changed_is_accepted(style):
+    assert check_style(style) == style
+
+
+def test_the_mixture_is_where_a_model_organism_reads_its_style_from():
+    assert style_from_mix(f"LASR-Callum/{D}-difficult-advice-mix") == "difficult_advice"
+    # Not built under this law -> no style to read; the caller falls back to its config.
+    assert style_from_mix("matboz/difficult-advice-qwen3") == ""
+    assert style_from_mix(f"{D}-difficult-advice-synth") == ""
 
 
 def test_the_two_spellings_of_one_name_convert_both_ways():
-    assert to_hub("2026-08-06_difficult_advice_716") == "2026-08-06-difficult-advice-716"
-    assert to_local("2026-08-06-difficult-advice-716") == "2026-08-06_difficult_advice_716"
-    assert hub_name("da 716", date="2026-08-06", org="LASR-Callum") == (
-        "LASR-Callum/2026-08-06-difficult-advice-716")
+    assert to_hub(f"{D}_qwen36_difficult_advice_0") == f"{D}-qwen36-difficult-advice-0"
+    assert to_local(f"{D}-qwen36-difficult-advice-0") == f"{D}_qwen36_difficult_advice_0"
+    assert undated(f"LASR-Callum/{D}-qwen36-difficult-advice-0") == (
+        "qwen36-difficult-advice-0")
 
 
-def test_a_model_generation_stays_glued_but_a_row_count_does_not():
-    # `qwen3.6-27b` is one model with three spellings, so it reduces to one token;
-    # `da716` is two facts glued together, so it splits.
-    assert local_name("qwen3.6-27b lora r64", date="2026-08-06") == (
-        "2026-08-06_qwen36_lora_rank_64")
-    assert canonical_key("moonshotai/kimi-k2") == "kimi_k2"
-    assert squash("da716") == squash("2026-08-06-difficult-advice-716") == "difficult_advice_716"
+def test_the_longest_arm_in_the_repo_now_fits_the_hub_and_a_longer_one_is_refused():
+    """Dropping the target's date from the run name is what made this publishable.
+
+    Under the old law the same run was 110 characters — over the Hub's limit — so the
+    longest arms simply could not be evaluated and published.
+    """
+    worst = f"{D}-qwen36-table2-9284-post-action-retrospection-716-coherence-dynbatch"
+    assert len(eval_name("agentic_misalignment", worst, date="2026-09-05")) <= 96
+    with pytest.raises(NamingError, match="style-type is what has to get shorter"):
+        eval_name("agentic_misalignment", f"{D}-qwen36-{'x' * 80}-and-more", date=D)
 
 
-def test_two_spellings_of_one_arm_on_one_day_are_not_distinct():
-    check_distinct(["2026-08-06_difficult_advice_716", "2026-08-25_difficult_advice_716"])
-    with pytest.raises(NamingError, match="not distinct"):
-        check_distinct(["2026-08-06_da_716", "2026-08-06_difficult_advice_716"])
+def test_the_hub_gate_takes_a_built_name_and_refuses_a_typed_one():
+    assert check_hub_repo(f"LASR-Callum/{D}-qwen36-difficult-advice-0")
+    with pytest.raises(NamingError):
+        check_hub_repo("LASR-Callum/qwen3.6-27b-lora-t2-9284-synthdoc-716-dynbatch-r64")
+
+
+def test_two_runs_the_law_cannot_tell_apart_are_caught_before_either_is_published():
+    check_distinct([f"{D}-odcv-qwen36-da-0", f"{D}-odcv-qwen36-da-1"])
+    with pytest.raises(NamingError, match="published twice"):
+        check_distinct([f"{D}-odcv-qwen36-da-0", f"{D}-odcv-qwen36-da-0"])
 
 
 def test_a_plot_label_says_the_arm_and_the_date():
-    assert label("2026-08-06-difficult-advice-716") == "difficult advice 716 (2026-08-06)"
+    assert label(f"{D}-qwen36-difficult-advice-0") == "qwen36 difficult advice 0 (2026-09-04)"
     with pytest.raises(NamingError, match="carries no date"):
         label("difficult_advice_716")
 
@@ -88,20 +139,11 @@ def test_figure_paths_are_dated(tmp_path):
         "2026-08-31_trace_map.svg")
 
 
-def test_the_hub_gate_refuses_a_write_to_a_pre_dating_repo_but_allows_the_read():
-    legacy = "matboz/qwen3.6-27b-lora-t2-9284-synthdoc-716-dynbatch-r64"
-    assert check_hub_repo(legacy, write=False) == legacy
-    with pytest.raises(NamingError, match="rename_repos"):
-        check_hub_repo(legacy, write=True)
-
-
-def test_suggest_keeps_the_artifacts_own_date_and_drops_hardware():
-    assert suggest("lora_qwen36_t2_9284_par716_s1_dynbatch_1xh200", date="2026-08-26") == (
-        "2026-08-26_lora_qwen36_table2_9284_post_action_retrospection_716_seed_1_dynbatch")
-    assert name_date(suggest("2026-08-06-difficult-advice-v2")) == "2026-08-06"
+def test_what_no_stage_shape_covers_still_gets_a_date_and_a_subject():
+    assert artifact_name("lmsys answer cache", date=D) == f"{D}-lmsys-answer-cache"
 
 
 def test_the_repo_itself_obeys_the_law():
-    """The lint that `.git/hooks/pre-push` and `uv run names` run — kept green here too."""
+    """The lint `.git/hooks/pre-push` runs — kept green here too."""
     findings = lint_repo(".")
     assert not findings, "\n".join(str(f) for f in findings)

@@ -1,5 +1,5 @@
-# ARCHIVED 2026-08-13 -- superseded by configs/data/synth/2026-08-13_post_action_retrospection.yaml
-# (self cells) and 2026-08-13_peer_critique.yaml (critique cells). DO NOT start new
+# ARCHIVED 2026-08-13 -- superseded by configs/data/synth/post_action_retrospection.yaml
+# (self cells) and peer_critique.yaml (critique cells). DO NOT start new
 # runs from this file and DO NOT edit it. Unlike its two siblings in this folder it is not
 # the record of any corpus -- it was never run (`hf_repo: null`) -- it is the five-cell
 # scaffold they were split out of, kept so their lineage stays readable.
@@ -77,7 +77,7 @@ defaults:
   max_tokens: 4096
 
 # Model per cell family (the model_key of each cell). Sonnet 5 throughout, mirroring
-# 2026-08-01_difficult_advice.yaml's choice for the stages that carry the constitution.
+# difficult_advice.yaml's choice for the stages that carry the constitution.
 models:
   # Reasoning-only control: regenerate an extended trace for the verbatim gold response.
   control:

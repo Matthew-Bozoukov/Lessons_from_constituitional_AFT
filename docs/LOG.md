@@ -1,6 +1,57 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-02 — One name shape per pipeline stage; names are built, not typed
+
+**Problem.** The old law (`src/utils.py`) asked a human to spell every artifact's name and
+then spent ~450 lines checking the spelling: `CANONICAL_TOKENS` expanding ambiguous
+abbreviations, `squash` collapsing spelling variants, `suggest` repairing bad names,
+`LEGACY_HUB_REPOS` grandfathering 37 that predated it. It caught spellings but not the
+thing that actually drifts — a config's date is when the arm was WRITTEN, an artifact's is
+when it was PRODUCED, and they diverge: `2026-08-18_..._courtroom_716_dynbatch` pushed to a
+repo dated `2026-08-16`, and the three post-action-retrospection seed configs dated
+`2026-08-27` pushed to repos dated `-26`, `-27` and `-28`. Worse, `canonical_key` kept the
+target's date inside an eval run's name, so an eval repo carried two dates and the longest
+arms could not be published at all: `agentic_misalignment` on
+`table2_9284_post_action_retrospection_716_coherence_dynbatch` came to 110 characters
+against the Hub's 96, and `check_hub_repo` refused it before the run started.
+
+**Method.** Replace the law with one shape per stage, built by code (`src/naming.py`):
+
+```
+synth   <date>-<style>-synth     model   <date>-<model>-<style>-<seed>
+mix     <date>-<style>-mix       eval    <date>-<eval>-<model name, undated>
+```
+
+The only human input is the style-type — the stem of the synth or mixture config that
+produced the data. The date comes from the clock at launch, the model from `MODEL_KEYS`
+(`src/model_profile.py`, beside that model's other facts),
+the eval from a new required `EvalSpec.key`, the seed from the training config. Configs
+lost their dates and their seeds (`configs/train/<model>_<style>.yaml`), so a config names
+an arm and a run names an artifact, and neither can drift from the other. Training now
+pushes the RESOLVED config with the adapter (`train_config.yaml` +
+`training_meta.train_config`), because an undated config edited in place makes a stored
+path meaningless — that was the prerequisite for undating them at all.
+
+Removed: `CANONICAL_TOKENS`, `VAGUE_TOKENS`/`JUNK_TOKENS`, `squash`, `suggest`,
+`split_tokens`, `canonical_key`, `LEGACY_HUB_REPOS` and `scripts/hf/rename_repos.py`. Reads
+are no longer validated — pointing at a repo from before the law does not create another
+badly named one — which is what makes the legacy list unnecessary rather than merely
+shorter. The lint kept exactly two checks, both on things a human writes: config stems and
+literal figure filenames. It never parses a name into fields, so an artifact outside the
+taxonomy (`artifact_name()` — answer caches, probe sweeps) needs no exemption list.
+
+**Result.** 169 configs renamed, 2 seed-replicate configs collapsed into their arm
+(`configs/train/` 68 -> 66), 71 superseded per-arm eval configs archived, `src/utils.py`
+down 584 lines. The eval-name blocker is gone: the same worst-case run is now 86
+characters. Suite green (1,206 passed); `uv run --quiet python -m src.naming` green.
+
+**Next steps.** Nothing has been re-run under the new law yet — the first synth/mix/train
+of an arm will mint the first names in the new shape, and the adapters already on the Hub
+keep their old ones (reads are unvalidated, so they stay servable). `configs/train/
+qwen306b_smoke.yaml` still declares `data_path:` rather than `data_repo:`, so it predates
+the HF-only data contract and cannot run; it wants either a toy HF repo or archiving.
+
 ## 2026-09-01 — One pod shape per half of the pipeline: `runpod up --train <cfg>` or `--eval <hf>`, and run_eval owns serving
 
 **Problem.** Three ways to reach a served model had become two ways too many, and the

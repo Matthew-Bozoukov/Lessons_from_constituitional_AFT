@@ -57,6 +57,9 @@ def run(config: str, smoke: bool = False, resume: str | None = None,
         loaded = OmegaConf.merge(loaded, OmegaConf.from_dotlist(_csv(overrides)))
         print(f">>> overrides: {overrides}")
     cfg = OmegaConf.to_container(loaded, resolve=True)
+    # The stem is the style-type and the style-type names the corpus (src/naming.py), so
+    # the stem is what `pipeline` holds — not a label beside it that can drift from it.
+    cfg["pipeline"] = Path(config).stem
     if batch:
         cfg["batch"] = True
     if ablate:

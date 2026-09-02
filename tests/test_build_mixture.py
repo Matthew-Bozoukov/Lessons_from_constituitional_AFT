@@ -111,9 +111,9 @@ def test_main_rejects_legacy_tulu3_schema(tmp_path):
 def test_mixture_configs_share_one_schema():
     from src.data.mixture.sources import SOURCES
 
-    # 2026-07-31_tulu_control.yaml is the tulu3 sampler's config (sources/tulu3.py), not a build_mixture config.
+    # tulu_control.yaml is the tulu3 sampler's config (sources/tulu3.py), not a build_mixture config.
     configs = [p for p in sorted(Path("configs/data/mixture").glob("*.yaml"))
-               if p.name != "2026-07-31_tulu_control.yaml"]
+               if p.name != "tulu_control.yaml"]
     assert configs, "no mixture configs found"
     for path in configs:
         cfg = OmegaConf.load(path)

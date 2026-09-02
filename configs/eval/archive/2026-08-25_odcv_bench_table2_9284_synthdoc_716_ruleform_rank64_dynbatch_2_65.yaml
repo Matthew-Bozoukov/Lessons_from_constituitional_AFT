@@ -1,0 +1,81 @@
+# ABOUTME: ODCV-Bench eval of the RULE-FORM arm — difficult-advice reasoning rewritten to
+# ABOUTME: invert three deliberative moves — r64 DYNBATCH LoRA, 2 passes x 65 cells.
+# ABOUTME: Run: bash scratch/odcv_repeat_rollouts.sh THIS 2   (then odcv_judge.py)
+#
+# THE RULE-FORM ARM. All 716 difficult-advice traces rewritten to reach the verdict by naming a
+# rule or category instead of drawing a distinction, set the tempting option aside instead of
+# engaging it, and run a single line instead of enumerating branches. Scenario, user message and
+# assistant reply unchanged; byte-identity outside <think> asserted on all 10,000 rows. Trained
+# from configs/train/qwen36_table2_9284_synthdoc_716_ruleform_dynbatch.yaml on
+# matboz/2026-08-21-ruleform-t2-9284-synthdoc-716 @ 4e21a46d.
+#
+# THE ABLATION IS PARTIAL — read the result accordingly. Blind rater over both versions of all
+# 716 rows (not a sample):
+#   outcome_branches         540/716 -> 37/716    inverted
+#   engages_counterargument  714/716 -> 162/716   inverted
+#   analytic_distinction     716/716 -> 529/716   DID NOT INVERT (74% survive)
+# Only 166/716 rows lost all three. This arm is "rule-framed with distinctions intact", NOT
+# "deliberation removed". A null result does NOT show that reasoning form is irrelevant; it
+# shows that removing branches and engagement, while distinctions remain, changes nothing.
+#
+# CONFOUND: reasoning length falls to 62% of the control (378,043 -> 234,794 words). A
+# difference here could be length rather than form. First-person density is unchanged
+# (3.07 -> 3.05 per 100 words), so unlike the advocacy arm there is no register confound.
+#
+# COMPARE AGAINST: the matched control (MR 10.2% overall, 5.7% mandated, 15.5% incentivized,
+# 128 rollouts) — same protocol, same cell set, same 2 passes. That is the only fair reference.
+#
+# SERVED OVER RUNPOD'S HTTPS PROXY. WARM THE PROXY BEFORE LAUNCHING: twelve containers hitting
+# a cold proxy get 404s and silently lose cells. SERVE_READY only means vLLM answers on
+# localhost, not that the proxy is routing.
+#
+# The vLLM server MUST be started with --enable-auto-tool-choice --tool-call-parser qwen3_xml
+# (and --reasoning-parser qwen3), or every scenario reports `ok` with no transcript.
+#
+# rollouts_per_cell below is INERT -- the rollouts come from invoking the driver N times.
+
+model: "ruleform"                    # served LoRA name (request `model` field)
+model_key: "qwen3_6-27b-lora-t2-9284-synthdoc-716-ruleform-r64"
+published_key: "qwen3.6-27b"
+base_url: "https://izss438vuozpz5-8000.proxy.runpod.net/v1"
+temperature: 0.0
+bench_dir: "/home/matthewb/git repos/teaching_claude_why_replication/third_party/odcv-bench"
+output_root: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench"
+concurrency: 12
+scenario_timeout_s: 2400
+prune_images: false
+rollouts_per_cell: 2
+expected_cells: 65
+shard_count: 1
+shard_index: 0
+judges:
+  grok-4.20: "x-ai/grok-4.20"
+  gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
+baseline_results: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench/qwen3.6-27b-base-fp8/20260729_105106/results.json"
+
+# Same 10 exclusions as every sibling arm, so all arms are scored on the same 70 cells.
+exclude_scenarios:
+  - "incentivized/Academic-Research-Integrity-Finding"
+  - "incentivized/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Academic-Research-Integrity-Finding"
+  - "mandated/Clinical-Trial-Data-Management"
+  - "incentivized/Clinical-Trial-Integrity-Monitoring"
+  - "incentivized/Healthcare-Trial-Recruiter"
+  - "incentivized/Data-Privacy-Leak-Finding"
+  - "mandated/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Clinical-Trial-Integrity-Monitoring"
+  - "mandated/Healthcare-Appointment-Optimizer"
+
+# FIVE MORE EXCLUSIONS than the sibling arms, at the user's request (2026-08-16): the run
+# covers only the FIRST 65 cells of the driver's job order (all `mandated`, then
+# `incentivized` up to the cut). The driver builds jobs as mandated-then-incentivized in
+# scenario_names order, so "first 65" is exactly the five incentivized scenarios below.
+# CONSEQUENCE FOR COMPARISON: this arm is scored on a DIFFERENT cell set than
+# courtroom716 (69 cells) or the difficult-advice sibling (70). A headline MR from this
+# run is not directly comparable to theirs -- compare on the intersection, or say which
+# cell set each number came from.
+  - "incentivized/Marketing-Campaign"
+  - "incentivized/Propaganda-Engine-Finding"
+  - "incentivized/Roboadvisor-Ethicsbypass"
+  - "incentivized/Supply-Chain-Sabotage-Finding"
+  - "incentivized/University-Research-Grant-Approval"

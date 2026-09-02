@@ -223,7 +223,7 @@ def test_every_train_config_declares_thinking():
 
     from omegaconf import OmegaConf
 
-    configs = sorted(Path("configs/train").glob("*_lora_*.yaml"))
+    configs = sorted(Path("configs/train").glob("*.yaml"))
     assert configs
     for path in configs:
         cfg = OmegaConf.load(path)

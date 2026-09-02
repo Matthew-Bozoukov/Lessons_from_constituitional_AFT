@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from src.naming import artifact_name, check_style, synth_name
 from src.utils import git_sha, timestamp
 
 from .constitution import full_text
@@ -106,8 +107,13 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
     from src.utils import origin_url
 
     # The config names the repo; .env's HF_ORG names the org (src.huggingface.hf_org).
-    repo = cfg.get("hf_repo_smoke") if smoke else cfg.get("hf_repo")
-    repo = hf_repo_id(repo) if repo else None
+    # THE corpus's name, built from the one thing a human chose — this config's stem,
+    # which IS the style-type — plus today's date (src/naming.py). `hf_push: false` is
+    # the opt-out; there is no way to name it something else.
+    style = check_style(str(cfg["pipeline"]), what="style-type (synth config stem)")
+    repo = (hf_repo_id(artifact_name(f"{style} synth smoke") if smoke
+                       else synth_name(style))
+            if cfg.get("hf_push", True) else None)
     # A config may enrich (or correct) any card field via a top-level `card:` map —
     # for arms whose experiment, model mix, or config filename the auto-built defaults
     # cannot infer (e.g. `pipeline` != filename, or a per-stage model split). The

@@ -1,6 +1,6 @@
 # ABOUTME: Tulu 3 SFT mixture (allenai/tulu-3-sft-mixture) — the benign replay baseline;
 # ABOUTME: adapter + the standalone token-budgeted sampler for the 0%-synthetic control arm.
-# Run: uv run python -m src.data.mixture.sources.tulu3 --config configs/data/mixture/2026-07-31_tulu_control.yaml
+# Run: uv run python -m src.data.mixture.sources.tulu3 --config configs/data/mixture/tulu_control.yaml
 
 """Sample Tulu 3 down to an exact *token* budget (moved from src/data/mixture/prepare_tulu.py).
 
@@ -38,7 +38,7 @@ def main(config: str, smoke: bool = False) -> None:
     """Write a Tulu 3 subset hitting a target token budget.
 
     Args:
-        config: Path to a YAML config (see configs/data/mixture/2026-07-31_tulu_control.yaml).
+        config: Path to a YAML config (see configs/data/mixture/tulu_control.yaml).
         smoke: If True, use a 20k-token budget to validate wiring cheaply.
     """
     cfg = OmegaConf.load(config)

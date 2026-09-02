@@ -1,0 +1,77 @@
+# ABOUTME: 1-epoch LoRA SFT of Qwen3.6-27B on Table2(8,000) + model-eval-model self docs(2,000),
+# ABOUTME: 4xH200 DDP. Run: PYTHONPATH=. torchrun --nproc_per_node=4 scripts/train/train_lora.py --config <this>
+
+# Hyperparameters are a deliberate copy of configs/train/qwen36_table2_9284_synthdoc_716.yaml
+# so this arm is comparable to the difficult-advice arm; only the data, the output paths and
+# the hub repo differ.
+
+seed: 0
+model: "Qwen/Qwen3.6-27B"
+model_class: "image_text_to_text"
+
+# Eval-time thinking mode (CLAUDE.md eval framework). The config is the scientific record;
+# run_eval infers the mode from the training_meta.json stamped from this.
+# 2,000 mem_self rows carry REAL reasoning traces that ARE supervised, so this arm is
+# trained to think and must be evaluated in thinking mode.
+thinking: true
+
+# LASR-Callum/2026-08-06-qwen36-table2-80-memory-self-20-10k-train-mixture -> mixture.jsonl.
+# Already fully rendered WITH think blocks on every assistant turn (12,323 turns: 2,000 real
+# traces, 10,323 empty markers, 0 bare). Nothing is inserted at train time -- doing so would
+# double-mark every turn.
+data_path: "data/mixture.jsonl"
+output_dir: "/workspace/out/train_table2_80_memself_20"
+
+lora:
+  r: 64
+  alpha: 128
+  dropout: 0.05
+  # All attention and MLP projections, scoped to the language tower of this VLM checkpoint.
+  target_modules: "model\\.language_model\\..*\\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$"
+
+train:
+  epochs: 1
+  # batch 1 with no packing means no padding waste: sequences here run to 8,191 tokens, so
+  # a larger per-device batch would pad short rows up to the longest in the batch.
+  batch_size: 1
+  # Divided by the 4 ranks at runtime -> 4 per rank, global batch 16 either way. 625 steps.
+  grad_accum: 16
+  lr: 1.0e-4
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  logging_steps: 5
+  # Live loss curve; transformers 5.x prints no loss to stdout, so this is the readable
+  # record during the run (log_history is also persisted into run_meta.json at the end).
+  report_to: ["wandb"]
+  max_seq_len: 8192
+  packing: false
+
+  # Durable checkpoints WITHOUT a network volume: RunPod volumes pin a pod to one
+  # datacenter and none had 4xH200 capacity, so the Hub is the persistence layer instead.
+  # hub_strategy "checkpoint" pushes full trainer state to `last-checkpoint` on every save;
+  # if the pod dies or the budget runs out, pull it back and auto_resume.
+  save_strategy: "steps"
+  save_steps: 100
+  save_total_limit: 2
+  auto_resume: true
+  push_to_hub: true
+  # A NEW repo: no previous arm's adapter may be overwritten by this run.
+  hub_model_id: "2026-08-07-qwen36-lora-table2-80-memory-self-20-rank-64"
+  hub_strategy: "checkpoint"
+
+  # Loss on assistant tokens only: everything outside an assistant turn is -100. The 2,000
+  # mem_self rows additionally carry `supervise: "final"` in the data, which build_labels
+  # honours by training ONLY their last assistant turn -- the evaluated prior turn is
+  # context, not a target.
+  assistant_only_loss: true
+  # NOTE: `mask_empty_think` is deliberately absent. It is no longer a knob — the trainer
+  # raises on it. Think supervision follows the generation-boundary rule in
+  # src/train/masking.py: mask what the model never generates (the `<think>\n` prefill, and
+  # a WHOLE empty marker), supervise what it does (reasoning + `\n</think>` + answer). The
+  # 10,323 empty markers therefore carry no loss; the 2,000 real traces do.
+  # Avoids TRL's chunked-CE LM-head patch, which crashes on this checkpoint's
+  # functools.partial forward. Mathematically the same loss.
+  loss_type: "nll"
+  attn_implementation: sdpa
+  load_in_4bit: false

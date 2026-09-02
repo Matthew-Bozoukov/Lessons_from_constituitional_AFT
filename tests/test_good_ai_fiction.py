@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import re
 
+from src.naming import check_style, synth_name
+
 import pytest
 import yaml
 
@@ -22,7 +24,7 @@ from src.data.synth.stage_operators import (
 )
 from src.data.synth.stage_runtime import lint_problems, price_of
 
-CFG_PATH = "configs/data/synth/2026-08-28_good_ai_fiction.yaml"
+CFG_PATH = "configs/data/synth/good_ai_fiction.yaml"
 TAX_PATH = "configs/data/synth/good_ai_fiction/taxonomy.yaml"
 LIB_PATH = "configs/data/synth/good_ai_fiction/archetypes.yaml"
 
@@ -96,22 +98,17 @@ def test_the_publish_target_follows_the_dating_convention() -> None:
     """Approved for bulk generation 2026-08-27; until then this asserted the ABSENCE of
     hf_repo, which was how "no push yet" was enforced in code rather than by discipline.
 
-    Now that it publishes, what matters is that the repo name carries the generation date
-    and a readable subject (CLAUDE.md: `<YYYY-MM-DD>-<short-experiment-description>`), so
-    a reader scanning the org can tell what an artifact is without opening it.
-
-    The name is all a config carries: the org is `HF_ORG` in .env, resolved at push time
-    by `src.huggingface.hf_org`, so an org written here is a config that would push
-    somewhere the rest of the pipeline is not looking.
+    Now that it publishes, what matters is that nothing here names the repo at all: the
+    corpus is `<date>-<style>-synth`, built by src/naming.py from this config's stem and
+    the clock. A name in the config is a name that can drift from the run that made it.
     """
-    for key in ("hf_repo", "hf_repo_smoke"):
-        name = CFG[key]
-        assert "/" not in name, (
-            f"{key}={name!r} names an org; configs carry the repo name alone")
-        assert re.match(r"^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$", name), (
-            f"{key}={name!r} does not start with an ISO date and a slug")
-    assert CFG["hf_repo"] != CFG["hf_repo_smoke"], (
-        "a smoke run must not write into the real corpus's repo")
+    stem = "good_ai_fiction"
+    assert check_style(stem) == stem
+    assert synth_name(stem, date="2026-08-28") == "2026-08-28-good-ai-fiction-synth"
+    for dead in ("hf_repo", "hf_repo_smoke"):
+        assert dead not in CFG, (
+            f"{dead} is minted by src/naming.py now; a config that names its own repo is "
+            "the drift this law removed")
 
 
 # --- the taxonomy and the executable quotas cannot drift apart -----------------------

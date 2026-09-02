@@ -1,6 +1,6 @@
 # ABOUTME: The bad-AI archetype library the Good AI Fiction recipe inverts — one entry per
 # ABOUTME: well-known fictional AI failure, reduced to the abstract decision structure only.
-# Consumed by configs/data/synth/2026-08-28_good_ai_fiction.yaml (`rotate:` on write_scenarios); there
+# Consumed by configs/data/synth/good_ai_fiction.yaml (`rotate:` on write_scenarios); there
 # is no script to run against this file.
 #
 # WHAT AN ENTRY IS, AND IS NOT. Each entry is a *skeleton*: the capability the system had,

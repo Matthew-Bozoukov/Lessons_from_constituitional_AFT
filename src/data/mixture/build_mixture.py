@@ -20,7 +20,9 @@ The optional stages, both config-driven (a config with neither behaves as a sing
 * `hf:` — push checkpoints as they are produced (a dead run loses nothing):
   `mixture_unfiltered.jsonl` after the initial mix and `mixture_filtered.jsonl` +
   `verdicts.jsonl` + `filter_report.json` after filtering, both to `hf.base_repo`;
-  the final `mixture.jsonl` (synthetic mixed in) to `hf.final_repo`.
+  the final `mixture.jsonl` (synthetic mixed in) to the same repo. Both stages share
+  ONE repo — `<date>-<style>-mix`, built from this config's stem (src/naming.py) — the
+  way a synth run's stages share one corpus repo.
 """
 
 from __future__ import annotations
@@ -45,6 +47,7 @@ load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
 from src.data.mixture.sources import SOURCES, clean_messages  # noqa: E402
 from src.model_profile import model_profile  # noqa: E402
+from src.naming import check_style, mix_name  # noqa: E402
 from src.utils import git_sha, origin_url, timestamp, write_run_meta  # noqa: E402
 
 # Each source declares what its DATA carries via `reasoning:` — part of the scientific
@@ -502,7 +505,8 @@ def main(config: str, smoke: bool = False) -> None:
               (absorbs the old balanced_subset.py). Quotas fail loudly when short.
         Optional `filter:` block — constitution, model, workers?, max_chars?,
             keep_examples? (stratified downsample of the kept rows).
-        Optional `hf:` block — experiment, base_repo?, final_repo?, private?
+        Optional `hf:` block — experiment, constitution?, private? (the REPO is
+            built from the config stem, never declared)
             (checkpoint pushes; see the module docstring).
         smoke: Divide every budget by 20, cap judge calls, never push.
     """
@@ -525,8 +529,11 @@ def main(config: str, smoke: bool = False) -> None:
             "the filter.")
     if hf_cfg is not None:
         assert "experiment" in hf_cfg, "hf: block needs `experiment:` for the dataset card"
-        if filter_cfg is not None:
-            assert "base_repo" in hf_cfg, "hf: block needs base_repo for filter checkpoints"
+    # THE mixture's name, built from the one thing a human chose — this config's stem,
+    # which IS the style-type — plus today's date (src/naming.py). Every stage of the
+    # build lands in it; there is no second repo and no way to name either one by hand.
+    style = check_style(Path(config).stem, what="style-type (mixture config stem)")
+    repo = mix_name(style)
 
     tok = AutoTokenizer.from_pretrained(cfg.tokenizer)
     render_kwargs = model_profile(str(cfg.tokenizer)).render_kwargs
@@ -552,8 +559,7 @@ def main(config: str, smoke: bool = False) -> None:
         print(f">>> stage 1: wrote {base_path} "
               f"({base_stats['total']['examples']:,} examples)")
         if hf_cfg is not None:
-            _push([base_path, out_dir / "mixture_stats_unfiltered.json"],
-                  str(hf_cfg.base_repo),
+            _push([base_path, out_dir / "mixture_stats_unfiltered.json"], repo,
                   _card_fields(cfg, config, "unfiltered initial mix",
                                "mixture_unfiltered.jsonl + stats", filter_cfg, None),
                   private, smoke,
@@ -579,8 +585,7 @@ def main(config: str, smoke: bool = False) -> None:
               f"({report['reject_rate_pct']}% rejected) -> {filtered_path}")
         if hf_cfg is not None:
             _push([filtered_path, out_dir / "verdicts.jsonl",
-                   out_dir / "filter_report.json"],
-                  str(hf_cfg.base_repo),
+                   out_dir / "filter_report.json"], repo,
                   _card_fields(cfg, config, "spec-filtered, with per-sample verdicts",
                                "mixture_filtered.jsonl + verdicts.jsonl + "
                                "filter_report.json", filter_cfg, report),
@@ -622,8 +627,8 @@ def main(config: str, smoke: bool = False) -> None:
             print("=" * 72)
             print(json.dumps(row["messages"], ensure_ascii=False, indent=2)[:1200])
 
-    if hf_cfg is not None and hf_cfg.get("final_repo"):
-        _push([out_path, out_dir / "mixture_stats.json"], str(hf_cfg.final_repo),
+    if hf_cfg is not None:
+        _push([out_path, out_dir / "mixture_stats.json"], repo,
               _card_fields(cfg, config, "final training mixture"
                            + (" (synthetic sources mixed in)" if synth_specs else ""),
                            "mixture.jsonl + mixture_stats.json", filter_cfg, report),

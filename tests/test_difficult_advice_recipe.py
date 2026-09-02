@@ -1,4 +1,4 @@
-# ABOUTME: The 2026-08-13 recipe fixes to 2026-08-01_difficult_advice.yaml, pinned so a later edit
+# ABOUTME: The 2026-08-13 recipe fixes to difficult_advice.yaml, pinned so a later edit
 # ABOUTME: cannot silently reinstate a defect that a full-corpus audit already measured.
 
 """Why config assertions live in a test.
@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import yaml
 
-CONFIG = "configs/data/synth/2026-08-01_difficult_advice.yaml"
+CONFIG = "configs/data/synth/difficult_advice.yaml"
 
 
 def _stage(name: str) -> dict:
@@ -121,12 +121,12 @@ def test_the_dedupe_filter_runs_on_full_coverage():
 #
 # They are listed rather than fixed because the fix is a SMALLER SEED DIRECTORY under
 # `data/da716_prompt_source`, which is gitignored and not on this machine -- inventing one
-# would be guessing at somebody else's data. `2026-08-25_verbose_cot.yaml` and
-# `2026-08-26_difficult_advice_low_stakes.yaml` show the correct shape. Delete an entry here the
+# would be guessing at somebody else's data. `verbose_cot.yaml` and
+# `difficult_advice_low_stakes.yaml` show the correct shape. Delete an entry here the
 # moment its config grows a `smoke.source`.
 _SMOKE_DEBT = {
-    "2026-08-24_difficult_advice_gpt_responder_716.yaml",
-    "2026-08-24_difficult_advice_grok_responder_716.yaml",
+    "difficult_advice_gpt_responder_716.yaml",
+    "difficult_advice_grok_responder_716.yaml",
 }
 
 
