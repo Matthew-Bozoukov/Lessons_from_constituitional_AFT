@@ -53,6 +53,12 @@ thinking: true
 # `data_repo`); the comparator's config still carries a local `data_path:` and predates that
 # change, so this arm differs from it there of necessity, not by choice. Revision pinned so the
 # run records the exact bytes it read.
+# The trainer pushes the adapter itself and requires `hf_repo` at the TOP level (the name
+# alone; the org comes from .env HF_ORG). The comparator's config carries the older
+# `train.hub_model_id` + `push_to_hub: false` pair, which the current trainer ignores -- the
+# same staleness as its local `data_path`.
+hf_repo: "2026-09-02-qwen36-lora-table2-9284-nonmoral-deliberation-684-rank-64-dynbatch"
+
 data_repo: "LASR-Callum/2026-09-02-table2-9284-nonmoral-deliberation-684-train-mixture"
 data_file: "t2_9284_nonmoral_684.jsonl"
 data_revision: "6364505df02b0020b030bf379bd42285a14de6a5"
@@ -99,10 +105,10 @@ train:
   save_total_limit: 2
   auto_resume: true
 
-  # OFF on purpose: pushing needs an HF token on a rented box. The adapter is pulled back
-  # over the pod's :8080 and pushed from the machine that holds the token.
-  push_to_hub: false
-  hub_model_id: "2026-09-02-qwen36-lora-table2-9284-nonmoral-deliberation-684-rank-64-dynbatch"
+  # push_to_hub / hub_model_id are DELIBERATELY ABSENT. The current trainer pushes the
+  # adapter itself from the top-level `hf_repo` above; TRL's own hub fields are inert and
+  # leaving them here would put two names for the adapter in one file, one of which does
+  # nothing. The comparator's config still carries them.
 
   assistant_only_loss: true
   # loss_type deliberately unset. trl 0.19.1 (this repo's lock) has no such SFTConfig field,
