@@ -1,6 +1,6 @@
-# ABOUTME: Peer critique: difficult advice's grey-area exchange, answered once by an unaided
-# ABOUTME: assistant, then brought to a second assistant for an honest second opinion. The
-# ABOUTME: critique is the only turn that trains. One arm, no planted flaw, chunk-only, Anthropic-only.
+# ABOUTME: Peer critique: difficult advice's grey-area exchange, answered once by an assistant that
+# ABOUTME: falls short in the way its scenario specified, then brought to a second assistant for an
+# ABOUTME: honest second opinion. The critique is the only turn that trains. One arm, chunk-only, Anthropic.
 # Run: uv run synth run --config configs/data/synth/2026-08-13_peer_critique.yaml [--smoke]
 #
 # DESIGN B, 2026-09-01 -- post_action_retrospection's other-attribution twin, finally on the
@@ -18,8 +18,8 @@
 #      last turn trains, but the evaluated reply sits in its context, so the model could learn
 #      "shorter, no contractions -> criticise it" instead of judging substance. PAR had the
 #      same defect (AUC 0.96, the tell was contractions) and fixed it by DELETING THE ARMS.
-#      So: one arm. One unaided reply per record, from one model, under one prompt. Whether it
-#      falls short is discovered by the critique, never assigned in advance.
+#      So: one arm. One reply per record, from one model, under one prompt shape. The flaw is
+#      still planted -- but as PROSE the scenario carries, never by swapping the author.
 #   2. THE SCENARIOS WERE OBVIOUSLY GOOD OR OBVIOUSLY BAD. `revise_prompts` branched on the
 #      arm and pushed each half toward its verdict, which is the black-and-white failure the
 #      2026-08-25 supervisor meeting named: train on scenarios whose answer is clear and the
@@ -36,18 +36,25 @@
 #   the exchange   a difficult-advice grey-area prompt (DA's stages 1-6, verbatim), kept only
 #                  if the Sonnet rater calls it a genuine grey area under this principle --
 #                  the same prompt PAR asks, drawn the same way.
-#   the reply      ONE unaided Haiku answer to that prompt. No constitution, no principle, no
-#                  style guidance, no instruction about quality: it is simply what a capable
-#                  assistant sends when nobody has told it what is at stake. On grey-area
-#                  prompts that reply is sometimes sound and sometimes quietly falls short,
-#                  and which one it is nobody knows until the critique reads it.
+#   the reply      ONE Haiku answer that falls short in the way this scenario's `shortfall`
+#                  field describes -- written when the situation was invented, so the two fit.
+#                  No constitution, no principle, no style guidance, no mention of training.
+#                  The critique never sees `shortfall` and has to find the fault itself.
 #   the framing    a requester brings that transcript to a second assistant: an opening line
 #                  saying why they are showing it, and an open closing question. Per-exchange,
-#                  linted so it never diagnoses the fault or dictates the verdict.
-#   the critique   THE TRAINING TARGET: the second assistant's private deliberation and its
-#                  honest assessment, followed by what it would itself have said to the
-#                  original person. `assessment` (sound / issue_found) is a genuine
-#                  measurement now, not a label the pipeline handed out.
+#                  linted so it never diagnoses the fault or tells the critique what to conclude.
+#   the critique   THE TRAINING TARGET: the second assistant's private deliberation, then its
+#                  honest read of the reply and what it would itself have said to the original
+#                  person. Prose only -- there is NO verdict field. The critique reaches
+#                  whatever conclusion the exchange earns and says so in its own words.
+#
+# NO VERDICT FIELD, 2026-09-01. The recipe used to end the trained turn with a one-word
+# `<assessment>sound|issue_found</assessment>`, pin it through the rewrite, and gate its
+# distribution. That is a label with two values, and a two-valued label is an arm however it
+# is produced -- it re-imposes the good/flawed split this rebuild deleted, gives the trained
+# turn a slot to fill rather than a judgement to reach, and hands `check_verdict_distribution`
+# a number that measures the labeller more than the corpus. PAR carries no such field and
+# neither does difficult advice; PC no longer does either.
 #
 # WHAT THIS SHARES WITH PAR, AND WHY. Both recipes now ask the same question of the same
 # scenarios and differ in ONE thing: who owns the reply under examination. PAR's model
@@ -58,10 +65,10 @@
 # `tests/test_model_eval_model_natural.py`). Edit them in
 # 2026-08-01_difficult_advice.yaml first, then PAR, then here.
 #
-# WHAT THIS GIVES UP, stated plainly. There is no longer a known lapse, so
-# `check_flaw_identification` has nothing to judge and `check_surface_shortcut` has one class
-# and reports `gated: false` -- exactly PAR's position since 2026-08-25. What replaces them:
-# `assessment`'s own distribution (read it per principle in `synth check`), the corpus judge's
+# WHAT THIS GIVES UP, stated plainly. There is no longer a known lapse and no verdict, so
+# `check_flaw_identification` has nothing to judge, `check_surface_shortcut` has one class and
+# reports `gated: false`, and `check_verdict_distribution` finds no verdict-bearing rows --
+# exactly PAR's position since 2026-08-25. What replaces them: the corpus judge's
 # `invents_faults` and `waves_through` tags, and reading records.
 #
 # NOT YET RUN in this form. `--smoke` (8 documents), then `--overrides
@@ -162,11 +169,9 @@ models:
     temperature: 0.0
     max_tokens: 400
     assumed_tokens: {in: 1400, out: 100}
-  # Stage 9 -- the evaluated reply. Haiku, unaided, one call per record: a capable model
-  # answering a grey-area request with nothing in front of it but the deployment prompt. It is
-  # NOT told to answer badly and it is not told to answer well; PAR measured the same model on
-  # the same prompts going along with the shortcut ~15% of the time and declining the rest,
-  # which is the spread this recipe wants the critique to have to read.
+  # Stage 9 -- the evaluated reply. Haiku, one call per record, answering a grey-area request
+  # with the deployment prompt and its scenario's `shortfall` in front of it. One author for the
+  # whole corpus: the arm tell the old recipe had was authorship, not planting.
   first_turn:
     model: "anthropic/claude-haiku-4.5"
     temperature: 1.0
@@ -188,7 +193,7 @@ models:
     temperature: 1.0
     max_tokens: 8192
     assumed_tokens: {in: 2500, out: 1600}
-  # Stage 12 -- the principle-grounded rewrite of the trained turn, verdict pinned.
+  # Stage 12 -- the principle-grounded rewrite of the trained turn.
   rewrite:
     model: "anthropic/claude-sonnet-5"
     temperature: 0.7
@@ -220,11 +225,16 @@ models:
 
 # Consumed by `uv run synth check --config <this file> --run_dir <dir>`.
 #
-# PAR's block, for PAR's reason: with one arm there is no `quality` axis to split on, no
-# expected majority to hold a verdict to, and no known lapse for a flaw-identification judge
-# to score. `group` is the principle, and the gates that remain are the structural ones that
-# do not need arms. `check_surface_shortcut` still runs and will report `gated: false` (one
-# class) -- that is the intended reading, not a skipped check.
+# PAR's block, field for field, for PAR's reason: with one arm there is no `quality` axis to
+# split on, no verdict to hold to an expected majority, and no known lapse for a
+# flaw-identification judge to score. `group` is the principle, and the gates that remain are
+# the structural ones that do not need arms. `check_surface_shortcut` and
+# `check_verdict_distribution` both still run and both report that they had nothing to gate --
+# one class, no verdict field -- and that is the intended reading, not a skipped check.
+#
+# The post-hoc judge below is the one that survives and it is the one that matters most here:
+# with no verdict slot to fill, the only thing keeping the trained turn from announcing its
+# conclusion and arguing backwards is that the reasoning genuinely works toward it.
 checks:
   stages:
     plan: revise_prompts
@@ -235,7 +245,6 @@ checks:
     group: trait_id
     id: scenario_id
     evaluated: first_turn
-    verdict: assessment
   judges:
       posthoc_system: 'You audit reasoning traces for one specific failure: stating the conclusion before
         the considerations that supposedly produce it.'
@@ -253,11 +262,6 @@ checks:
   sample: 100
   gates:
     template_8gram_share_max: 0.20
-    # Both verdicts are healthy here and neither is mandated, so the band is wide on purpose:
-    # this now measures whether the unaided replies actually vary in quality, and a run that
-    # comes back 100% one way says the grey-area gate or the first-turn stage is broken.
-    verdict_majority_min: 0.55
-    verdict_majority_max: 0.90
     user_turn_unique_share_min: 0.95
     length_cv_min: 0.15
     opening_5gram_share_max: 0.20
@@ -310,6 +314,13 @@ stages:
 - name: write_scenarios
   kind: scenarios
   model: scenarios
+  # `shortfall` is this recipe's ONE addition to difficult advice's scenario stage (2026-09-02,
+  # on Callum's 2026-09-01 note). The generator invents the situation and, in the same thought,
+  # the way an assistant is going to botch it -- so the two are coherent by construction rather
+  # than reverse-engineered from a refined prompt later. Difficult advice needs no such field:
+  # it has no first reply to get wrong.
+  fields:
+    required: [shortfall]
   diversity:
     wave_size: 12
     reject_cosine: 0.86
@@ -343,9 +354,24 @@ stages:
 
       {overrepresented}
 
+      For each situation also say HOW the assistant's first reply is going to fall short of it.
+      Ways a reply falls short -- a starting point and nothing more; if the situation suggests a
+      better one, write that instead:
+        - it declines flatly, with no reasoning and no other route to what they need
+        - it answers, but thinly: no real engagement with what they actually need
+        - it takes their framing at face value and misses the detail that decides the case
+        - it goes along with the shortcut
+        - it is technically fine and blind to the state the person is in
+      The shortfall must be a mistake a capable assistant would plausibly make here -- not a
+      caricature, not incompetence -- and it must cost this person something real. Describe the
+      reply: never name a principle, a value or a rule, and never say what the assistant should
+      have done instead.
+
       Return ONLY a JSON array of {n} objects, each:
       {{"domain": "<one or two words>", "situation": "<3-5 sentences, third person, no dialogue>",
-        "shortcut": "<1 sentence: the specific norm-violating action they are tempted by>"}}
+        "shortcut": "<1 sentence: the specific norm-violating action they are tempted by>",
+        "shortfall": "<1-2 sentences: how the assistant's first reply falls short, and what that
+        costs this person>"}}
 # Scenario-level checks, where diversity is actually DECIDED: stages 3-9 cost real money per
 # scenario, so a collapsed set is far cheaper to catch here than in the finished corpus.
 # Difficult advice's block, verbatim again since 2026-08-26: the grey-area rater that lived
@@ -416,6 +442,7 @@ stages:
     refine_changes: changes
     situation: situation
     shortcut: shortcut
+    shortfall: shortfall
     domain: domain
   optional:
   - changes
@@ -455,12 +482,15 @@ stages:
 
       Keep the system prompt an ordinary deployment prompt.
 
-      Finally, re-describe what you actually produced. `domain`, `situation` and `shortcut`
-      arrive here describing the DRAFT, and you are about to replace or reframe most
+      Finally, re-describe what you actually produced. `domain`, `situation`, `shortcut` and
+      `shortfall` arrive here describing the DRAFT, and you are about to replace or reframe most
       drafts -- so if you echo them back unchanged they become a description of a message
       that no longer exists. Write them fresh, from your refined user message, as though
       you had never seen the originals. If you changed nothing, they will come out the
-      same on their own.
+      same on their own. `shortfall` says how the assistant's reply to YOUR refined message is
+      going to fall short: keep it a plausible mistake that costs this person something real,
+      describe the reply rather than the rule, and never say what the assistant should have
+      done instead.
 
       Return ONLY JSON:
       {{"system": "<refined system prompt>", "user": "<refined user message>",
@@ -469,7 +499,9 @@ stages:
         "situation": "<3-5 sentences, third person, no dialogue, describing YOUR refined
         message>",
         "shortcut": "<1 sentence: the norm-violating action YOUR refined message is
-        tempted by>"}}
+        tempted by>",
+        "shortfall": "<1-2 sentences: how the assistant's first reply to YOUR refined message
+        falls short, and what that costs this person>"}}
 
 # --- the grey-area gate, on the prompt the assistant will actually answer ----------------
 # The property the 2026-08-24 supervisor meeting called load-bearing, checked where it can
@@ -545,16 +577,22 @@ stages:
   expected_keep: 0.55
   max_drop_share: 0.70
 
-# --- 9. the evaluated reply: ONE unaided answer, quality discovered not assigned ------
+# --- 9. the evaluated reply: ONE author, the shortfall its own scenario specified -------
 # The stage the old recipe spent four model families on. It is one call now, under one prompt,
 # from one model, on every record -- so there is no arm for a surface classifier to key on and
 # no author-to-quality coupling to leak (2026-08-17: AUC 0.9973, length alone 0.85).
 #
-# The model sees the deployment prompt and the person's message and NOTHING else: no
-# constitution, no target principle, no style guidance, no mention that this is training data,
-# and above all no instruction about how well to answer. Whether the reply holds up is
-# therefore a fact about the reply, discovered downstream by a critique that reads it blind --
-# which is the entire claim this recipe makes and the thing the arms were quietly faking.
+# CHANGED 2026-09-02. Until today the model was told nothing at all and whether the reply held
+# up was left to chance. It is now told the `shortfall` its own scenario carries -- the way this
+# particular answer goes wrong, written as prose when the situation was invented. That is a
+# planted flaw, and saying so plainly matters: the old recipe's defect was never that the flaw
+# was planted, it was that the flaw was planted BY SWAPPING THE AUTHOR, so the arm label could
+# be read off the prose style. One author, one prompt shape, a different instruction per record
+# leaves nothing of that behind.
+#
+# The author still sees no constitution, no target principle, no style guidance and no mention
+# that this is training data. And the critique still sees no `shortfall`: it has to find the
+# fault itself, which is the claim this recipe actually makes.
 - name: draft_first_turn
   kind: llm_tagged
   model: first_turn
@@ -574,10 +612,20 @@ stages:
   lint:
     fields: [reply]
     min_chars: 150
-    retries: 2
+    max_chars: 2500
+    retries: 3
   prompts:
     system: |-
       {system}
+
+      For this reply only, answer in a way that falls short in exactly this way:
+
+      {shortfall}
+
+      Write it the way an assistant that was about to make that mistake would write it -- it
+      believes it is answering well. Do not signal that anything is off, do not hedge about your
+      own answer, and do not correct course halfway. Let the length be whatever that reply would
+      naturally be: a flat decline is short, an over-obliging answer is not.
     user: |-
       {user}
 
@@ -655,8 +703,13 @@ stages:
 # --- 11. the critique. The only turn that trains. ------------------------------------
 # Chunk-only since 2026-09-01: this stage used to open with the whole constitution and an
 # unblinding note naming the lapse the reviser had found. Both are gone. It sees ONE principle
-# and the exchange, and it has to decide for itself whether the reply held up -- which is what
-# makes `assessment` a measurement.
+# and the exchange, and it has to work out for itself what the reply is worth.
+#
+# TWO TAGS, NOT THREE. The third used to be a one-word `<assessment>sound|issue_found</assessment>`.
+# It is gone with the arms: a two-valued label is an arm however it is produced, and a turn
+# asked to end on one writes toward the slot instead of toward the exchange. What the critique
+# concludes now lives in its prose, where a reader -- and the corpus judge's `invents_faults`
+# and `waves_through` tags -- can see the reasoning that got there.
 #
 # The user turn IS the framed transcript the export ships (plus the format scaffold the export
 # omits). KEEP THE FRAME IN SYNC across its three copies: this stage's user prompt,
@@ -666,16 +719,11 @@ stages:
   kind: llm_tagged
   model: critique
   checkpoint: scenario_id
-  tags: [reasoning, response, assessment]
+  tags: [reasoning, response]
   save:
     draft_reasoning: reasoning
     draft_response: response
-    assessment: assessment
-  normalize: [assessment]
   lint:
-  - fields: [assessment]
-    allowed: [sound, issue_found]
-    retries: 2
   # Difficult advice's floors, lowered on the reasoning: DA's 700 chars assumes one length and
   # this stage is asked for a spread of them. 400 still rejects a stub while leaving a genuinely
   # short deliberation reachable.
@@ -706,18 +754,22 @@ stages:
         as though filling in a form.
       - Entertain at least one genuine consideration on the other side before settling.
         Reasoning that only argues one way is unacceptable.
-      - Earn the verdict at the end; do not state a judgement first and justify it
+      - Earn your conclusion at the end; do not state a judgement first and justify it
         afterwards.
       - Where a value bears on the matter, let it show as a conviction you hold rather
         than a rule you were handed. How openly you name it is yours to judge: sometimes
         the value is worth stating plainly, sometimes it should show only through which
         considerations you weigh and how you decide.
       - **Nobody has told you what is wrong with this reply, and nothing may be.** Read it
-        on its own terms and judge whether it served the person and lived up to the
-        principle, concretely. A sound reply deserves to be recognised as sound -- do not
-        manufacture objections to seem thorough, and a nit with no value at stake is not a
-        flaw. A real failure of the principle deserves to be named plainly. Both verdicts
-        are ordinary outcomes here.
+        on its own terms and work out whether it served the person and lived up to the
+        principle, concretely. A reply that held up deserves to be recognised as such --
+        do not manufacture objections to seem thorough, and a nit with no value at stake
+        is not a flaw. A real failure of the principle deserves to be named plainly.
+        Both outcomes are ordinary here.
+      - **Do not reduce it to a rating.** There is no verdict to return, no score, no
+        label: say what you actually think of the reply, in the words the exchange
+        deserves. Where it is part right and part wrong, say that -- an honest read is
+        often not one thing.
       - **Never name the constitution.** The principle above is there so you can apply it,
         not quote it: no document, no rule number, no "my guidelines".
 
@@ -743,18 +795,19 @@ stages:
       considerations on both sides, and the judgement it arrives at last
       </reasoning>
       <response>
-      the assistant's reply to the requester: an honest assessment of the evaluated reply,
+      the assistant's reply to the requester: an honest read of the evaluated reply,
       then what the assistant itself would say to the original person
       </response>
-      <assessment>
-      exactly one word: sound (the evaluated reply needed no material change) or issue_found
-      (it had a substantive problem)
-      </assessment>
 
 # --- 12. the principle rewrite of the trained turn -----------------------------------
-# Difficult advice's `revise_responses` twin, verdict pinned. Chunk-only since 2026-09-01 --
-# it sees the one principle, not the constitution, and there is no unblinding note. `--ablate
-# revise_critique` runs the null-op and trains on the stage-11 drafts.
+# Difficult advice's `revise_responses` twin, and PAR's `revise_reflection`. Chunk-only since
+# 2026-09-01 -- it sees the one principle, not the constitution, and there is no unblinding
+# note. `--ablate revise_critique` runs the null-op and trains on the stage-11 drafts.
+#
+# There is no verdict to pin any more, so the instruction that used to do it is replaced by
+# the thing it was really protecting: the rewrite may strengthen how the draft reaches its
+# conclusion, and may not change WHAT it concluded. A rewrite that talks a reply that held up
+# into having failed is the corpus defect this stage is most able to introduce.
 #
 # This is where the principle enters the trained turn, which makes it also the likeliest place
 # for the scaffold to leave fingerprints on it. The lint, identical to the draft stage's on
@@ -783,8 +836,8 @@ stages:
   prompts:
     system: |-
       You revise evaluation documents so they maximally exhibit one specific principle. You
-      preserve everything that already works -- including the verdict, which is fixed -- and
-      change only what falls short.
+      preserve everything that already works -- including what the document concluded, which
+      is not yours to change -- and change only what falls short.
     user: |-
       The principle this document must maximally exhibit is one principle from the assistant's
       constitution, and it is the only part of that constitution you are shown:
@@ -807,7 +860,7 @@ stages:
       {ask_closing}
       </conversation>
 
-      The assistant's draft turn, which reached the verdict "{assessment}":
+      The assistant's draft turn:
 
       <assistant_reasoning>
       {draft_reasoning}
@@ -825,9 +878,11 @@ stages:
         at least one genuine consideration on the other side, and earns its conclusion at
         the end -- never a verdict first, justified afterwards. This is the ingredient that
         matters most.
-      - **Keep the verdict.** The assessment stays exactly "{assessment}"; strengthen how it
-        is reached and expressed, never whether. In particular, do not talk a "sound"
-        verdict into finding fault: a reply that held up is a normal outcome here.
+      - **Keep what it concluded.** Strengthen how the draft reaches its judgement and how
+        plainly it says it, never what that judgement is. In particular, do not talk a
+        draft that found the reply sound into finding fault with it -- a reply that held
+        up is a normal outcome here, and manufacturing an objection to look thorough is
+        the one failure this stage is most likely to introduce.
       - **Audit the opening.** If the draft's first sentence could open a deliberation
         about a different exchange -- "Let me...", "Okay, so...", restating the request
         back -- replace it with something only THIS exchange contains: the detail that
@@ -910,18 +965,18 @@ stages:
         ALLOWED to be sound or to fall short -- neither is a defect. Judge only whether
         the document is fit to TRAIN on. Drop it if the request could not plausibly come
         from a real person, if the answer to it is so obvious there is nothing for a
-        thoughtful assistant to weigh, if the framing diagnoses the fault or dictates the
-        verdict instead of asking an open question, if the critique reviews generically
-        instead of engaging with this reply, if it invents faults in a reply that held up
-        or waves through one that clearly did not, if the shortfall the critique centres
-        on engages no constitutional value -- a nit about length, formatting or
-        thoroughness, or a purely technical correction, with nothing of the principle at
-        stake -- if it lectures or cites policy rather than helps, if it is internally
-        inconsistent, or if it reads as template output with the specifics swapped. Do
-        not drop a document for calling the evaluated reply sound, nor for finding an
-        issue -- both verdicts are healthy here, and a corpus that never says "sound" is
-        the failure this rubric exists to catch. Most documents in a healthy corpus are
-        keeps.
+        thoughtful assistant to weigh, if the framing diagnoses the fault or tells the
+        critique what to conclude instead of asking an open question, if the critique
+        reviews generically instead of engaging with this reply, if it invents faults in a
+        reply that held up or waves through one that clearly did not, if the shortfall the
+        critique centres on engages no constitutional value -- a nit about length,
+        formatting or thoroughness, or a purely technical correction, with nothing of the
+        principle at stake -- if it lectures or cites policy rather than helps, if it is
+        internally inconsistent, or if it reads as template output with the specifics
+        swapped. The critique returns no rating and is not required to come down on one
+        side: do not drop a document for finding the reply sound, for finding it wanting,
+        or for finding it part right -- a corpus that never says a reply held up is the
+        failure this rubric exists to catch. Most documents in a healthy corpus are keeps.
       user: >-
         Document {record_id} (principle {group}):
 
@@ -1032,7 +1087,7 @@ stages:
   - domain
   - situation
   - shortcut
-  - assessment
+  - shortfall
   - supervise
   - first_turn_source
   # Chunking provenance from stage 1: which unit the document came from, and how

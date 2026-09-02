@@ -98,9 +98,16 @@ def model_vendors(cfg: dict) -> dict[str, str]:
     return out
 
 
-def compare_front_half(base: dict, other: dict, label: str) -> list[str]:
-    """Stage-by-stage prompt diff of a derived recipe against difficult advice."""
-    problems = []
+def compare_front_half(
+    base: dict, other: dict, label: str
+) -> tuple[list[str], list[str]]:
+    """Stage-by-stage prompt diff of a derived recipe against difficult advice.
+
+    Returns (problems, allowed) -- a difference is ALLOWED when it is the `shortfall`
+    addition of 2026-09-02, which PAR and PC both make and difficult advice does not need
+    (it has no first reply to get wrong). Any other difference is a problem.
+    """
+    problems, allowed = [], []
     b, o = stages(base), stages(other)
     for name in FRONT_HALF:
         if name not in o:
@@ -116,9 +123,13 @@ def compare_front_half(base: dict, other: dict, label: str) -> list[str]:
             )
             continue
         for key in sorted(bp):
-            if bp[key].strip() != op[key].strip():
+            if bp[key].strip() == op[key].strip():
+                continue
+            if "shortfall" in op[key]:
+                allowed.append(f"{label}.{name}.{key}: + shortfall")
+            else:
                 problems.append(f"{label}.{name}.{key}: prompt text differs from DA's")
-    return problems
+    return problems, allowed
 
 
 def main() -> int:
@@ -167,19 +178,32 @@ def main() -> int:
 
     print()
     print("=" * 78)
-    print("3. FRONT-HALF PARITY WITH DIFFICULT ADVICE (stages 1-6 verbatim)")
+    print("3. FRONT-HALF PARITY WITH DIFFICULT ADVICE (DA's, plus `shortfall`)")
     print("=" * 78)
     for name in ("PAR", "PC"):
-        problems = compare_front_half(cfgs["DA"], cfgs[name], name)
+        problems, allowed = compare_front_half(cfgs["DA"], cfgs[name], name)
         if problems:
             failures.extend(problems)
             print(f"  {name:4s} FAIL")
-            for p in problems:
-                print(f"          {p}")
+            for pr in problems:
+                print(f"          {pr}")
         else:
             print(
-                f"  {name:4s} OK    all {len(FRONT_HALF)} front-half stages byte-identical to DA's"
+                f"  {name:4s} OK    {len(FRONT_HALF)} front-half stages are DA's, "
+                f"differing only by `shortfall`:"
             )
+            for a in allowed:
+                print(f"          {a}")
+
+    # ... and the two variants must add it IDENTICALLY, or the attribution contrast they
+    # exist to make is confounded by a second difference.
+    par_s, pc_s = stages(cfgs["PAR"]), stages(cfgs["PC"])
+    drift = [n for n in FRONT_HALF if par_s.get(n) != pc_s.get(n)]
+    if drift:
+        failures.append(f"PAR and PC front halves have drifted apart: {drift}")
+        print(f"  BOTH FAIL PAR and PC differ from each other in {drift}")
+    else:
+        print("  BOTH OK   PAR and PC front halves are byte-identical to each other")
 
     print()
     print("=" * 78)
