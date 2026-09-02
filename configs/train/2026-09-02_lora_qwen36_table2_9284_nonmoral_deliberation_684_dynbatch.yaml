@@ -57,7 +57,10 @@ thinking: true
 # alone; the org comes from .env HF_ORG). The comparator's config carries the older
 # `train.hub_model_id` + `push_to_hub: false` pair, which the current trainer ignores -- the
 # same staleness as its local `data_path`.
-hf_repo: "2026-09-02-qwen36-lora-table2-9284-nonmoral-deliberation-684-rank-64-dynbatch"
+# FULL org/name, despite the assert message saying "the name alone, the org comes from
+# .env HF_ORG": check_hub_repo validates before any org is prefixed and rejects a bare
+# name. Same inconsistency as push_files/gate_push.
+hf_repo: "LASR-Callum/2026-09-02-qwen36-lora-table2-9284-nonmoral-deliberation-684-rank-64-dynbatch"
 
 data_repo: "LASR-Callum/2026-09-02-table2-9284-nonmoral-deliberation-684-train-mixture"
 data_file: "t2_9284_nonmoral_684.jsonl"
