@@ -268,19 +268,20 @@ def model_name(model: str, style: str, seed: int, *, date: str | None = None) ->
                  what="model organism")
 
 
-def eval_name(eval_name_: str, target: str, *, date: str | None = None,
-              pooled: bool = False) -> str:
-    """`<date>-<eval>-<target name, undated>` — one eval run.
+def eval_name(eval_name_: str, subject: str, *, date: str | None = None) -> str:
+    """`<date>-<eval>-<subject>` — one eval run.
 
-    The target enters WITHOUT its date, so the run carries exactly one date (its own) and
-    still says which arm it measured. `pooled=True` drops the seed as well: a pooled run
-    is about the recipe, and the seeds are what it pooled over.
+    For an ordinary arm the subject is the target's own name WITHOUT its date, so the run
+    carries exactly one date — its own — and still says which arm it measured.
+
+    A POOLED run passes whatever its `pool()` decided the subject is, because only the
+    eval knows what its arms have in common. ODCV pools seed replicates of one recipe, so
+    it names the shared prefix (`..._par_716-pooled3`); Arena-Hard compares arms that
+    share nothing but the baseline they were judged against, so it names that
+    (`vs-<baseline>`). Neither rule generalises, which is why neither lives here.
     """
-    body = undated(target)
-    if pooled:
-        body = re.sub(r"[-_]\d+$", "", body)
-    return _mint(f"{eval_key(eval_name_)} {body}", date,
-                 what=f"{'pooled ' if pooled else ''}{eval_name_} run")
+    return _mint(f"{eval_key(eval_name_)} {undated(subject)}", date,
+                 what=f"{eval_name_} run")
 
 
 def artifact_name(subject: str, *, date: str | None = None) -> str:

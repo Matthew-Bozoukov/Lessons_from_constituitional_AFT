@@ -46,10 +46,17 @@ def test_an_eval_run_carries_one_date_and_it_is_its_own():
     assert run == "2026-09-05-odcv-qwen36-difficult-advice-0"
 
 
-def test_pooling_drops_the_seed_because_that_is_what_it_pooled_over():
-    arm = f"{D}-qwen36-difficult-advice-1"
-    assert eval_name("odcv", arm, date="2026-09-06", pooled=True) == (
-        "2026-09-06-odcv-qwen36-difficult-advice")
+def test_a_pooled_run_is_named_for_the_subject_its_own_pool_chose():
+    """No rule here generalises across evals, so naming.py holds none of them.
+
+    ODCV pools seed replicates of one recipe and names their shared prefix; Arena-Hard
+    compares arms that share nothing but the baseline and names that. Both arrive here
+    as a subject that is already decided.
+    """
+    assert eval_name("odcv", "qwen36_difficult_advice_716-pooled3", date="2026-09-06") == (
+        "2026-09-06-odcv-qwen36-difficult-advice-716-pooled3")
+    assert eval_name("arena_hard", "vs_qwen36_difficult_advice_0", date="2026-09-06") == (
+        "2026-09-06-ah-vs-qwen36-difficult-advice-0")
 
 
 def test_a_base_model_is_named_by_its_registered_key_and_nothing_else():

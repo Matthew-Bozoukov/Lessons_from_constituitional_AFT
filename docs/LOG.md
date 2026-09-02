@@ -1,6 +1,61 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-02 — Arena-Hard: an arm's answers are an artifact, and the comparison is `vs-<baseline>`
+
+**Problem.** Arena-Hard regenerated everything, every time. Its only reuse was local —
+`arena_hard_gen` skips uids already in the vendor tree's `model_answer/<arm>.jsonl`, so an
+interrupted run resumes — and that file lives on whichever box ran it. A fresh pod meant a
+full regeneration for a model whose answers were already on the Hub. The baseline avoided
+this only because it was hand-supplied as an artifact (`--reference repo::path`), which
+made "reference" a different kind of thing from "target" for no reason.
+
+**Method.** Arena-Hard IS the comparison, so a single arm can never have a result: a win
+rate is a fact about (arm, baseline, exam), never about a model alone. The two artifacts
+are split accordingly.
+
+* **An arm** — `<date>-ah-<model>` — publishes `rollouts/answers.jsonl` and `metadata/`
+  (its own provenance and generation health) and **no `results/` at all**. That is what
+  makes it reusable: the same model is a target this week and the baseline next, and its
+  repo carries no verdict about an unrelated old comparison.
+* **The comparison** — `<date>-ah-vs-<baseline>` — does all the judging and owns every
+  result: `rollouts/` (the judge's own verdict records), `results/` (per-arm judgments +
+  the ranked leaderboard) and `metadata/sources.json`, which POINTS at each arm's HF repo
+  rather than copying it.
+
+`--target` and `--reference` each take either a MODEL (generate) or a PRIOR ARM (fetch its
+answers), resolved by probing `metadata/run_meta.json` in a dataset repo — never by the
+repo's name, which a style-type could imitate. `TargetSpec.answers` marks the second form;
+nothing serves it, and `ServedTarget.base_url` refuses rather than booting vLLM for a model
+that is not the point. The reference is an ordinary arm (`arm_kwargs`), run first, and
+marks itself in its own metadata, which is how the pool later knows the baseline.
+
+Judging in the pool has a second benefit: answers publish as they are produced, so a crash
+during judging costs only the judging — re-pooling reads answers already on the Hub.
+
+Framework change: a run whose `run()` wrote nothing under `results/` publishes
+`rollouts/ + metadata/` only, its summary filed as `metadata/run_summary.json`. Inferred
+from what the eval actually wrote rather than declared, so the two cannot drift.
+
+**Naming the comparison.** ODCV's pooled rule does not generalise: it names the shared
+prefix of seed replicates, and Arena-Hard's arms share no subject at all
+(`difficult_advice_0`, `courtroom_716_0`, `tulu_100_0` have no common prefix). But
+Arena-Hard is a STAR — every arm judged against one baseline — so the one thing they share
+is that baseline, and the pool is named for it: `<date>-ah-vs-<baseline>`. Accordingly the
+`pooled=` seed-strip left `eval_name`: each `pool()` decides its own subject, because no
+rule here generalises across evals. What the name cannot carry is the question subset, so
+two ladders against one baseline on one day over different subsets collide —
+`check_distinct` catches it before either publishes, and the subset is in `metadata/`.
+
+**Result.** Also fixes a live bug found on the way: a dynamic CLI arm carried none of the
+per-arm prompt counts, so judging any `--target` died with `Missing key n_hard_prompt`.
+`arm_defaults` in the config supplies them. Suite green (1,197).
+
+**Next steps.** Untested against the Hub — the arm forms, the pool and the refusals are
+covered offline, but no real ah run has been made under this yet. `answer_cache.py` and
+its tests are now genuinely unused: this design replaced the need for them rather than
+migrating onto them, so they should probably go.
+
 ## 2026-09-02 — lmsys removed: Arena-Hard is the model-vs-model capabilities eval
 
 Two evals asked the same question — does this arm still write answers a judge prefers —

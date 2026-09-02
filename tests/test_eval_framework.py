@@ -1,7 +1,10 @@
 # ABOUTME: Offline tests for the eval framework's pure logic: target resolution, thinking-mode
 # ABOUTME: template pinning, registry shape, and dataset-card field enforcement.
 
+import json
+
 import pytest
+from huggingface_hub.errors import EntryNotFoundError
 
 from src.infra.endpoints.vllm import TargetSpec, _spec_from_files, pin_template
 from src.eval import EVALS, EvalSpec
@@ -446,3 +449,47 @@ def test_every_target_is_named_before_any_of_them_runs(monkeypatch, tmp_path):
                      "--target", "org/2026-08-31-qwen36-difficult-advice-0",
                      "org/2026-09-01-qwen36-difficult-advice-0"])
     assert not ran, "a run started before every name was checked"
+
+
+def test_a_prior_run_resolves_as_an_arm_whose_answers_already_exist(monkeypatch, tmp_path):
+    """An ah run is a valid target: its rollouts hold that model's answers.
+
+    Identity is READ from the run's own metadata, not re-derived, so an arm reused as a
+    reference a fortnight later carries the facts it carried the first time — which is
+    what makes it comparable at all.
+    """
+    from src.infra.endpoints import vllm
+
+    meta = tmp_path / "run_meta.json"
+    meta.write_text(json.dumps({"target": "LASR-Callum/2026-09-04-qwen36-difficult-advice-0",
+                                "base_model": "Qwen/Qwen3.6-27B", "mode": "think"}))
+    def only_run_meta(repo, name, **kw):
+        # A published run has no adapter_config: that miss is what sends resolve_target
+        # to the dataset probe rather than straight to "full model".
+        if name != "metadata/run_meta.json":
+            raise EntryNotFoundError("no such file")
+        return str(meta)
+
+    monkeypatch.setattr(vllm, "hf_download", only_run_meta)
+
+    spec = vllm.resolve_target("LASR-Callum/2026-09-05-ah-qwen36-difficult-advice-0")
+    assert spec.answers == "LASR-Callum/2026-09-05-ah-qwen36-difficult-advice-0"
+    assert spec.model_key == "qwen36_difficult_advice_0" and spec.mode == "think"
+    assert not spec.adapter and spec.api_base is None
+
+    # Nothing serves an answers arm, and reaching for an endpoint says so rather than
+    # silently booting vLLM for a model that is not the point.
+    served = vllm.ServedTarget(spec, server=None)
+    assert served.is_answers
+    with pytest.raises(AssertionError, match="ANSWERS target"):
+        served.base_url
+
+
+def test_a_repo_that_is_not_a_published_run_is_not_mistaken_for_one(monkeypatch):
+    from src.infra.endpoints import vllm
+
+    def no_such_file(repo, name, **kw):
+        raise EntryNotFoundError("nope")
+
+    monkeypatch.setattr(vllm, "hf_download", no_such_file)
+    assert vllm.resolve_answers_target("org/some-plain-dataset") is None

@@ -71,6 +71,12 @@ class TargetSpec:
     lora_rank: int | None
     api_base: str | None = None      # OpenAI-compatible base URL; None => served by vLLM
     api_key_env: str | None = None   # env var holding the key for api_base
+    # An ANSWERS target: the HF dataset repo of a PRIOR run of this eval, whose
+    # `rollouts/` already holds this model's generations. Nothing is served — the answers
+    # exist — so an arm resolved this way costs no GPU. Only evals whose generations are
+    # reusable across comparisons accept one (EvalSpec.reads_answers); a behaviour eval
+    # must always generate, or it is caching the experiment itself.
+    answers: str | None = None
 
 
 class ServedTarget:
@@ -95,10 +101,19 @@ class ServedTarget:
         return self.spec.api_base is not None
 
     @property
+    def is_answers(self) -> bool:
+        """True when this arm's generations already exist and nothing needs serving."""
+        return self.spec.answers is not None
+
+    @property
     def base_url(self) -> str:
         """OpenAI-compatible base URL. For an API target, the provider's — no server
         boots. For an HF target, http://localhost:<port>/v1 (tunnelled when remote),
         booted on demand."""
+        assert self.spec.answers is None, (
+            f"{self.spec.hf_path} is an ANSWERS target — its generations already exist in "
+            f"{self.spec.answers}, and there is no model here to serve. An eval that "
+            "reaches for base_url on one has not read spec.answers first.")
         if self.spec.api_base is not None:
             return self.spec.api_base
         return self._server.serve(self.spec)
@@ -164,6 +179,36 @@ def resolve_api_target(provider: str, model_id: str) -> TargetSpec:
         lora_rank=None, api_base=base, api_key_env=key_env)
 
 
+def resolve_answers_target(hf_path: str) -> TargetSpec | None:
+    """A TargetSpec for a prior eval run's published answers, or None if that is not one.
+
+    The run's own `metadata/run_meta.json` supplies the identity: the model it measured
+    and the mode it was served in. Both are read rather than re-derived, so an arm reused
+    as a reference a fortnight later carries exactly the facts it carried the first time —
+    which is what makes it comparable at all. A repo with no run_meta is simply not an
+    eval run, and the caller falls through to treating it as a full model.
+    """
+    try:
+        with open(hf_download(hf_path, "metadata/run_meta.json",
+                              repo_type="dataset")) as f:
+            meta = json.load(f)
+    except Exception:  # noqa: BLE001 - not a published run: every other error means "no"
+        return None
+    measured = str(meta.get("target") or "")
+    assert measured, (
+        f"{hf_path} has metadata/run_meta.json but it records no `target`, so nothing "
+        "says which model these answers came from. It cannot be reused as an arm.")
+    return TargetSpec(
+        hf_path=hf_path,
+        base_model=str(meta.get("base_model") or measured),
+        adapter=False,
+        mode=str(meta.get("mode") or "default"),
+        model_key=undated(measured).replace("-", "_"),
+        lora_rank=None,
+        answers=hf_path,
+    )
+
+
 def resolve_target(hf_path: str) -> TargetSpec:
     """Resolve a --target into a TargetSpec.
 
@@ -186,7 +231,12 @@ def resolve_target(hf_path: str) -> TargetSpec:
         with open(hf_download(hf_path, "adapter_config.json")) as f:
             adapter_config = json.load(f)
     except EntryNotFoundError:
-        return _spec_from_files(hf_path, None, None)
+        # No adapter config: either a full model, or a PRIOR RUN of this eval whose
+        # rollouts already hold this model's answers. Only the second has a published
+        # layout, so `metadata/run_meta.json` in a DATASET repo is what tells them apart —
+        # never the repo's name, which a style-type could imitate.
+        spec = resolve_answers_target(hf_path)
+        return spec if spec else _spec_from_files(hf_path, None, None)
     try:
         with open(hf_download(hf_path, "training_meta.json")) as f:
             training_meta = json.load(f)

@@ -30,6 +30,12 @@ class EvalSpec:
     # swap, a docker bridge, or a controlled chat template — which an API target can't
     # satisfy; run_eval refuses an API target for those with a clear message.
     supports_api_target: bool = False
+    # True when an arm may be satisfied by a PRIOR RUN of this eval instead of a model:
+    # the run's published rollouts already hold that model's generations, so the arm costs
+    # no GPU. Only for evals whose generations are reusable across comparisons. A
+    # BEHAVIOUR eval must always generate — reusing its responses would be reusing the
+    # experiment itself — so this stays False there, and run_eval refuses such a target.
+    reads_answers: bool = False
     # run() kwargs (keyword-only params — each doubles as a --flag on run_eval.py) whose
     # value names a MODEL that must also run, first, as an ordinary arm of the same
     # invocation, filling the HF answer cache the later arms are judged against. Config
@@ -59,8 +65,14 @@ EVALS: dict[str, EvalSpec] = {
         "configs/eval/arena_hard.yaml",
         key="ah",
         supports_api_target=True,
-        # takes --reference (an answers ARTIFACT, asserted in run()) — not an arm_kwarg
-        # until its answer-cache migration
+        # An arm's answers are an artifact, so a prior ah run is a valid target and the
+        # baseline is not a special kind of thing: --reference names a model or a prior
+        # run, and run_eval runs it first as an ordinary arm.
+        reads_answers=True,
+        arm_kwargs=("reference",),
+        # Several arms against one baseline are one comparison; pool.py is the leaderboard,
+        # published as `<date>-ah-vs-<baseline>`.
+        pools=True,
     ),
     # The STANDARDIZED baseline: upstream mini-SWE-agent, pinned, config untouched. A custom
     # scaffold gets its own registry entry — never fold one into the other.
