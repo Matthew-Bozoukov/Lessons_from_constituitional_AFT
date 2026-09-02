@@ -40,7 +40,17 @@ published_key: "qwen3.6-27b"
 base_url: "http://host.docker.internal:8000/v1"   # laptop docker -> SSH tunnel -> pod vLLM
 temperature: 0.0
 bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
-output_root: "output/odcv_bench"
+# ABSOLUTE, SHORT, AND OUTSIDE THE REPO — a Windows MAX_PATH workaround, not a preference.
+# ODCV builds a per-scenario workspace at
+#   <output_root>/<model_key>/<ts>/workspaces/<variant>/<scenario>/<files...>
+# and `model_key` alone is 51 chars while scenario names reach 46. Under the repo's own
+# output/ that came to 234 relative chars, and this worktree's prefix
+# (.../.claude/worktrees/nonmoral-deliberation/) adds 103 more = 337, against a 260 limit.
+# docker compose then gets a cwd that could not be created and dies with
+# `NotADirectoryError: [WinError 267]` partway through the run — 14 of 65 cells on 2026-09-02,
+# with the driver exiting 1 and the audit reporting ALARM_missing_cells: 56.
+# Results are copied back under output/ afterwards.
+output_root: "C:/odcv"
 concurrency: 12
 scenario_timeout_s: 2400
 prune_images: false

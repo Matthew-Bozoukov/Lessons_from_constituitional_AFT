@@ -69,9 +69,11 @@ def fields() -> dict:
             "(`<|im_start|>{role}\\n{content}<|im_end|>\\n` per turn, assistant turns carrying "
             "`<think>\\n{reasoning}\\n</think>\\n\\n{answer}`). `source`: "
             "`nonmoral_deliberation` for the 684 craft rows, the Table-2 source name for the "
-            "rest. Craft rows also carry `metadata` with scenario_id, trait_id/trait_name (the "
-            "tension), domain, instruction (what the user told the assistant to do) and "
-            "why_wrong (the fact that makes it the worse call)."),
+            "rest. Craft rows additionally carry `scenario_id` and `trait_id` (which of the "
+            "nine tensions) and NOTHING ELSE -- the builder does not carry the corpus's wider "
+            "metadata across, so `domain`, `instruction` and `why_wrong` live only in the "
+            f"corpus repo ({CORPUS}), joinable on scenario_id. Exactly 684 rows carry a "
+            "non-empty <think> block; every Table-2 row carries the empty marker."),
         "provenance": (
             "uv run synth run --config configs/data/synth/2026-09-02_nonmoral_deliberation.yaml "
             f"  ->  {CORPUS}\n"
