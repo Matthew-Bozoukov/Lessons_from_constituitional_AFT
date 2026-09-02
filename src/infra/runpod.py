@@ -967,12 +967,17 @@ def up(name: str, train: str | None = None, eval: str | None = None,
     script = _bootstrap(clone, weights)
     _check_bash(script)
     pod_id = provision_runpod(
-        # A pod that installs vLLM gets a torch built for CUDA 13, which dies at
-        # `_cuda_init` on an older host driver; a training pod runs the repo's own pinned
-        # stack, and a CUDA constraint it does not need only makes it harder to schedule.
-        # Same reasoning as `serve_vllm`'s `cuda` argument.
+        # BOTH shapes need the CUDA-13 constraint, and a training pod needs it for the same
+        # reason a serving one does. This used to read `cuda="" if train else "13.0"`, on the
+        # reasoning that a training pod runs the repo's own pinned stack rather than vLLM's and
+        # so needs no constraint. That stopped being true when the pinned stack moved to
+        # torch 2.11.0+cu130: CUDA 13 wants driver >= 580, and RunPod will happily schedule an
+        # unconstrained pod onto a 550.x host. Measured 2026-09-02 -- `nvidia-smi` listed both
+        # H200s, and `torch.cuda.is_available()` was False with "NVIDIA driver is too old
+        # (found version 12040)". The pod bills normally while being useless for training, and
+        # nothing before the first CUDA call says so.
         ProvisionSpec(gpu=gpu, count=count, disk_gb=disk_gb, cloud=cloud, image=image,
-                      cuda="" if train else "13.0", countries=countries),
+                      cuda="13.0", countries=countries),
         name=name,
         start_script=script,
         ports=("8080/http", "22/tcp"),
