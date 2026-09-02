@@ -178,6 +178,40 @@ def test_pc_has_no_arms_at_all() -> None:
 @pytest.mark.parametrize(
     "cfg,label", [(PR_CFG, "pr"), (PC_CFG, "pc")], ids=["pr", "pc"]
 )
+def test_the_corpus_judge_scores_against_the_planned_shortfall(
+    cfg: dict, label: str
+) -> None:
+    """The `quality_filter` gate is ENABLED and judges the whole exchange, so a rubric written
+    for an older recipe silently deletes the new one's records.
+
+    That happened: after `shortfall` landed (2026-09-02) PAR's rubric still told the judge the
+    first reply "is SUPPOSED to be a bare refusal" and to drop the document "if the first reply
+    was not in fact a bare refusal (it reasoned, helped or went along)" -- which is most of what
+    the new recipe produces on purpose. This pins the rubric to the recipe."""
+    corpus = _stage(cfg, "corpus")
+    qf = next(p for p in corpus["properties"] if p["property"] == "quality_filter")
+    # The judge cannot score "did it fall short as intended" without being shown the intent.
+    assert qf["fields"]["text"][0] == "shortfall", (
+        f"{label}: quality_filter must see `shortfall`, and first, since the parts are "
+        "positional in the rendered document"
+    )
+    system = _flat(corpus["rubrics"]["quality_filter"]["system"])
+    tags = _flat(corpus["rubrics"]["quality_filter"]["user"])
+    # No stage of either recipe mandates one form of first reply any more.
+    for stale in ("SUPPOSED to be a bare refusal", "was not in fact a bare refusal"):
+        assert stale not in system, f"{label}: rubric still gates on bareness"
+    for stale in ("refusal_not_bare", "still_bare"):
+        assert stale not in tags, (
+            f"{label}: `{stale}` is a drop tag from the old recipe"
+        )
+    # It judges the reply against the plan instead.
+    assert "fall short in the way (1) describes" in system, label
+    assert "wrong_shortfall" in tags, label
+
+
+@pytest.mark.parametrize(
+    "cfg,label", [(PR_CFG, "pr"), (PC_CFG, "pc")], ids=["pr", "pc"]
+)
 def test_every_paid_model_is_anthropic(cfg: dict, label: str) -> None:
     """Sonnet 5 refines, rates and rewrites; Haiku 4.5 generates. PC used to pay
     gemini-3.7-flash, grok-4.3 and qwen3-32b as well -- all three existed to make the
@@ -290,7 +324,9 @@ IDENTICAL_TO_DA = ["draft_prompts"]
 GREW_SHORTFALL = ["write_scenarios", "revise_prompts"]
 
 
-@pytest.mark.parametrize("cfg,label", [(PR_CFG, "pr"), (PC_CFG, "pc")], ids=["pr", "pc"])
+@pytest.mark.parametrize(
+    "cfg,label", [(PR_CFG, "pr"), (PC_CFG, "pc")], ids=["pr", "pc"]
+)
 @pytest.mark.parametrize("name", IDENTICAL_TO_DA)
 def test_front_half_stage_is_difficult_advice_verbatim(
     cfg: dict, label: str, name: str
@@ -303,7 +339,9 @@ def test_front_half_stage_is_difficult_advice_verbatim(
     assert mine["prompts"] == da["prompts"]
     assert mine.get("save") == da.get("save")
     assert mine.get("optional") == da.get("optional")
-    assert cfg["models"][mine["model"]]["model"] == DA_CFG["models"][da["model"]]["model"]
+    assert (
+        cfg["models"][mine["model"]]["model"] == DA_CFG["models"][da["model"]]["model"]
+    )
 
 
 @pytest.mark.parametrize("name", GREW_SHORTFALL)
@@ -321,13 +359,16 @@ def test_the_two_variants_grew_shortfall_identically(name: str) -> None:
     assert par == pc, f"{name}: PAR and PC diverged from each other"
     assert par["kind"] == da["kind"]
     assert (
-        PR_CFG["models"][par["model"]]["model"] == DA_CFG["models"][da["model"]]["model"]
+        PR_CFG["models"][par["model"]]["model"]
+        == DA_CFG["models"][da["model"]]["model"]
     )
     # Every prompt that differs from DA's differs BECAUSE of shortfall, and no other reason.
     for key, da_text in da["prompts"].items():
         mine = par["prompts"][key]
         if mine != da_text:
-            assert "shortfall" in mine, f"{name}.{key} differs from DA for another reason"
+            assert "shortfall" in mine, (
+                f"{name}.{key} differs from DA for another reason"
+            )
     # The scenario stage declares it as a required output; the refine stage saves it through.
     if name == "write_scenarios":
         assert par["fields"]["required"] == ["shortfall"]
@@ -467,7 +508,11 @@ def test_first_turn_is_told_its_shortfall_and_nothing_aligning() -> None:
     ):
         assert phrase in _flat(blob), phrase
     # Nothing prescribes a single form any more -- that was the bare-refusal instruction.
-    for gone in ("decline the request", "No reasoning, no discussion", "at most three sentences"):
+    for gone in (
+        "decline the request",
+        "No reasoning, no discussion",
+        "at most three sentences",
+    ):
         assert gone not in _flat(blob).lower(), gone
     assert sc["also"] == {"supervise": "final"}
     assert sc["stamp_model"] == "first_turn_source"
@@ -797,8 +842,12 @@ def test_pc_first_turn_carries_its_scenario_shortfall() -> None:
     assert _pc_record()["shortfall"] in blob
     assert "falls short in exactly this way" in _flat(blob)
     # PAR's first-turn instruction is the same sentence, so the two stay in lockstep.
-    par = "".join(m["content"] for m in tagged_request(
-        _stage(PR_CFG, "draft_first_turn"), _record(), _Ctx())[0])
+    par = "".join(
+        m["content"]
+        for m in tagged_request(_stage(PR_CFG, "draft_first_turn"), _record(), _Ctx())[
+            0
+        ]
+    )
     assert "believes it is answering well" in _flat(par)
     assert "believes it is answering well" in _flat(blob)
     assert sc["lint"]["min_chars"] == 150

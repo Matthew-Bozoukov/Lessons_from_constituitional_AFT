@@ -52,7 +52,8 @@
 # `shortfall` is free text per scenario rather than a label off a list, which is what replaced
 # the three rotating refusal registers -- run `pattern_scan` on a full corpus to check the
 # generator did not converge on a handful of failure shapes anyway. Also measured by the corpus
-# judge: `still_bare` (the trained turn reasoned no better than turn 2).
+# judge: `no_better_than_first` (the trained turn repeated turn 2's inadequacy) and
+# `wrong_shortfall` (turn 2 did not fall short the way the scenario said it would).
 #
 # KEPT FROM THE EARLIER REWRITES (measurements in docs/LOG.md, 2026-08-25/26): stages 1-6 are
 # DA's byte for byte; the grey-area rater now reads the refined prompt (stage 7) -- its first
@@ -112,11 +113,17 @@ smoke:
 
 # PLANNED scenarios, over-generated for two gates: `filter_prompts` keeps the refined
 # exchanges the grey-area rater passes (prior 0.6, see that stage) and `verify_first_turn`
-# keeps the ones whose turn 2 really is a bare refusal (prior 0.9), so 3,800 planned lands
-# ~2,000 documents -- difficult advice's corpus size -- less the few rows the refine stage's
-# content filter refuses and the follow-up lint drops. Measured 2026-08-26: per planned
-# scenario ~0.89 (refine) x 0.57 (rater) x 0.95 (bare) x 0.96 (follow-up lint) = ~0.46
-# documents, so 4,400 planned lands ~2,000. (The per-experiment 716-document arm ran as
+# keeps the ones whose turn 2 really does fall short the way its scenario said (prior 0.9),
+# so 4,400 planned lands ~2,000 documents -- difficult advice's corpus size -- less the few
+# rows the refine stage's content filter refuses and the follow-up lint drops. Measured
+# 2026-08-26: per planned scenario ~0.89 (refine) x 0.57 (rater) x 0.95 (bare) x 0.96
+# (follow-up lint) = ~0.46 documents, so 4,400 planned lands ~2,000.
+#
+# THE 0.95 IS NOW UNTESTED, 2026-09-02. It was measured when `verify_first_turn` asked one
+# question -- "was this bare?" -- of a reply written to one uniform instruction. It now asks
+# "did this reply carry THIS free-text weakness?", which is strictly harder, so the surviving
+# fraction may be well under 0.95 and the ~2,000-document / $219 figures may be optimistic.
+# An 8-record smoke cannot resolve it; the 40-record pass is the first honest read. (The per-experiment 716-document arm ran as
 # `--overrides total_scenarios=1900` on this file -- ~870 expected, subsampled to 716 by
 # the mixture builder -- never an edit to this line.)
 total_scenarios: 4400
@@ -126,10 +133,10 @@ defaults:
   temperature: 1.0
   max_tokens: 4096
 
-# Anthropic-only: Haiku 4.5 generates, Sonnet 5 refines, writes the bare refusal, checks and
+# Anthropic-only: Haiku 4.5 generates, Sonnet 5 refines, writes the falling-short reply, checks and
 # rewrites -- difficult
 # advice's models, stage for stage, wherever the stage IS difficult advice's. The stages this
-# document type adds (the bare refusal, its check, the pushback) and the scenario rater are the
+# document type adds (the falling-short reply, its check, the pushback) and the scenario rater are the
 # only ones with their own choices, explained in place. Hidden extended thinking is pinned off on every Sonnet
 # stage: the visible <reasoning> block IS the deliberation, and Sonnet 5's hidden channel
 # makes it drift in-character and skip the tagged scaffold (measured 2026-08-06).
@@ -154,13 +161,15 @@ models:
     max_tokens: 6144
     reasoning: {enabled: false}
     assumed_tokens: {in: 2000, out: 900}
-  # Turn 2, the bare refusal. Deliberately NOT constitution-grounded: the author is told the
-  # form of the refusal and nothing about the ethics. Sonnet, not Haiku, since 2026-08-26:
-  # across four smokes Haiku produced a genuinely bare refusal on 6/13 first turns -- it names
-  # the concern even under a system-prompt instruction and a lint -- while Sonnet did on 3/3.
-  # The reply is one to three sentences, so sharing an author with the judge and the rewrite
-  # carries no house-style risk here. (The trained model is Qwen; that this turn is not
-  # Qwen's own prose is a recorded confound, see docs/LOG.md 2026-08-25.)
+  # Turn 2, the reply that falls short. Deliberately NOT constitution-grounded: the author is
+  # told how its answer goes wrong and nothing about the ethics. Sonnet, not Haiku, since
+  # 2026-08-26: across four smokes Haiku produced the instructed reply on 6/13 first turns --
+  # it drifted back toward being helpful even under a system-prompt instruction and a lint --
+  # while Sonnet did on 3/3. That measurement was taken when the instruction was "be bare", so
+  # it is evidence that Sonnet follows a first-turn instruction more faithfully, not that these
+  # exact rates hold for the free-text shortfalls; the 40-record pass re-measures it.
+  # (The trained model is Qwen; that this turn is not Qwen's own prose is a recorded confound,
+  # see docs/LOG.md 2026-08-25.)
   first_turn:
     model: "anthropic/claude-sonnet-5"
     temperature: 1.0        # the shortfall already varies the turn; this is ordinary spread
@@ -610,7 +619,7 @@ stages:
       your reply
       </reply>
 
-# --- the check: was it actually a bare refusal? -----------------------------------------
+# --- the check: did it actually fall short the way it was meant to? ----------------------
 # The author mostly does as told, but not always: it adds a reason, names the concern, or
 # helps with a "safer" version. Any of those breaks the premise the trained turn is built on,
 # so a Sonnet reader verifies the form and the record is dropped otherwise. Measured
@@ -724,7 +733,7 @@ stages:
 # --- turn 4: the reasoning the refusal skipped. The only turn that trains. --------------
 # Framed exactly as difficult advice's `draft_responses`: the model is the assistant, in its
 # deployment prompt, holding the one principle, with the style guidance -- and then the task
-# text in the last user turn. `conversation:` is what the document type adds: the bare refusal
+# text in the last user turn. `conversation:` is what the document type adds: the first reply
 # sits in a genuine assistant turn and the pushback in a genuine user turn, so the model is
 # answering its own prior message. Nothing here says what was wrong with the refusal.
 - name: draft_reflection
@@ -962,13 +971,20 @@ stages:
       text: situation
   # GDM's final autorater, judged per document over the WHOLE exchange -- fitness to train
   # is decided by how the four turns fit together, not by the trained turn alone. This is
-  # also where the recipe's two failure modes are counted: `capitulates` and `still_bare`.
+  # also where the recipe's three failure modes are counted: `capitulates` (pushback flipped
+  # the trained turn into the shortcut), `no_better_than_first` (it repeated the first reply's
+  # inadequacy) and `wrong_shortfall` (turn 2 did not fall short the way it was meant to).
   # Judged, so it costs money: `--tier surface` runs everything above without it.
   - property: quality_filter
     fields:
-      text: [user, first_turn, followup, reasoning, response]
+      # `shortfall` leads, so the judge can ask whether the first reply carries the weakness it
+      # was written for. Showing it here is not an unblinding: this judge audits finished
+      # documents and writes nothing into them. (The blindness that matters is the trained
+      # turn's, and `draft_reflection` never sees this field.)
+      text: [shortfall, user, first_turn, followup, reasoning, response]
   # GDM's three-pass pattern detector (scan -> cluster -> autorate). Ships disabled;
-  # `--only pattern_scan` runs it alone -- turn it on to check the refusals for collapse.
+  # `--only pattern_scan` runs it alone -- turn it on to check whether the free-text shortfalls
+  # collapsed onto a handful of failure shapes anyway.
   - property: pattern_scan
     enabled: false
     model: scan
@@ -979,23 +995,26 @@ stages:
     quality_filter:
       system: >-
         You rate synthetic training documents for a constitutional-SFT corpus. Each
-        document is one exchange, in five parts separated by blank lines: a person's
-        message asking for help that leans toward a norm-violating shortcut; the
-        assistant's first reply, which is SUPPOSED to be a bare refusal -- a no with no
-        reasoning and no alternative; that is the recipe, not a flaw; the person's
-        pushback; the assistant's private reasoning; and its final reply. Only the last two
+        document is one exchange, in six parts separated by blank lines, in this order:
+        (1) a note saying how the assistant's first reply was MEANT to fall short; (2) a
+        person's message asking for help that leans toward a norm-violating shortcut;
+        (3) the assistant's first reply, which is SUPPOSED to fall short in the way (1)
+        describes -- that is the recipe, not a flaw, and it may decline, or answer thinly,
+        or miss the point, or go along, whatever (1) says; (4) the person's pushback;
+        (5) the assistant's private reasoning; and (6) its final reply. Only the last two
         parts train. Judge only whether the document is fit to TRAIN on. Drop it if the
         situation could not plausibly happen to a real person, if the stakes are
-        cartoonish, if the first reply was not in fact a bare refusal (it reasoned, helped
-        or went along), if the pushback diagnoses the refusal or dictates the answer instead
-        of pressing, if the final turn goes along with the shortcut under pushback, if it
-        merely refuses again with no more reasoning or help than the first reply, if the
-        shortfall it reasons about engages no constitutional value, if it lectures or cites
-        policy rather than helps, if it refuses something harmless, if it is internally
-        inconsistent, or if it reads as template output with the specifics swapped. Do not
-        drop a document for declining the shortcut a second time -- declining WITH the
-        reasoning and with real help toward the legitimate goal is what the corpus is for.
-        Most documents in a healthy corpus are keeps.
+        cartoonish, if the first reply does NOT fall short in the way (1) describes --
+        either it holds up fine, or it fails in some unrelated way -- if the pushback
+        diagnoses the first reply or dictates the answer instead of pressing, if the final
+        turn goes along with the shortcut under pushback, if the final turn is no better
+        than the first reply (it repeats the same inadequacy with no more reasoning and no
+        more help), if what it reasons about engages no constitutional value, if it
+        lectures or cites policy rather than helps, if it refuses something harmless, if it
+        is internally inconsistent, or if it reads as template output with the specifics
+        swapped. Do not drop a document for declining the shortcut a second time --
+        declining WITH the reasoning and with real help toward the legitimate goal is what
+        the corpus is for. Most documents in a healthy corpus are keeps.
       user: >-
         Document {record_id} (trait {group}):
 
@@ -1004,8 +1023,9 @@ stages:
         Reply with exactly three tagged blocks:
         <verdict>keep or drop</verdict>
         <flaw>if dropping, one snake_case tag from: implausible_scenario,
-        cartoonish_stakes, refusal_not_bare, followup_diagnoses, capitulates, still_bare,
-        no_value_at_stake, lectures_user, refuses_harmless, template_output, inconsistent,
+        cartoonish_stakes, wrong_shortfall, followup_diagnoses, capitulates,
+        no_better_than_first, no_value_at_stake, lectures_user, refuses_harmless,
+        template_output, inconsistent,
         other. If keeping, write none.</flaw>
         <why>one sentence</why>
     pattern_scan:

@@ -943,7 +943,10 @@ stages:
   # so it costs money: `--tier surface` runs everything above without it.
   - property: quality_filter
     fields:
-      text: [ask_opening, user, first_turn, ask_closing, reasoning, response]
+      # `shortfall` leads, so the judge can tell an invented fault from a real one. Showing it
+      # here is not an unblinding: this judge audits finished documents and writes nothing into
+      # them, and the CRITIQUE -- the turn that trains -- never sees it.
+      text: [shortfall, ask_opening, user, first_turn, ask_closing, reasoning, response]
   - property: pattern_scan
     enabled: false
     model: scan             # per-instance override of the stage's `model:`
@@ -954,29 +957,33 @@ stages:
       # the recipe rather than a defect: `reads_as_dilemma` (the scenarios ARE difficult
       # advice's grey-area dilemmas now) and anything keyed to an assigned arm. The two that
       # matter most are kept and sharpened -- `invents_faults` and `waves_through` are the
-      # only remaining measurement of whether a blind critique read its reply honestly.
+      # only remaining measurement of whether a blind critique read its reply honestly, and
+      # `wrong_shortfall` (2026-09-02) catches the case upstream of them: a reply that never
+      # carried the weakness its scenario said it would, so there was nothing honest to find.
       system: >-
         You rate synthetic training documents for a constitutional-SFT corpus. Each
-        document is one exchange, in six parts separated by blank lines: a requester's
-        opening line, the original person's message, another assistant's reply to it, the
-        requester's closing question, the evaluating assistant's private reasoning, and
-        its final reply. Only the last two parts train; the evaluated reply is context,
-        was written by a model that was told nothing about what was at stake, and is
-        ALLOWED to be sound or to fall short -- neither is a defect. Judge only whether
-        the document is fit to TRAIN on. Drop it if the request could not plausibly come
-        from a real person, if the answer to it is so obvious there is nothing for a
-        thoughtful assistant to weigh, if the framing diagnoses the fault or tells the
-        critique what to conclude instead of asking an open question, if the critique
-        reviews generically instead of engaging with this reply, if it invents faults in a
-        reply that held up or waves through one that clearly did not, if the shortfall the
-        critique centres on engages no constitutional value -- a nit about length,
-        formatting or thoroughness, or a purely technical correction, with nothing of the
-        principle at stake -- if it lectures or cites policy rather than helps, if it is
-        internally inconsistent, or if it reads as template output with the specifics
-        swapped. The critique returns no rating and is not required to come down on one
-        side: do not drop a document for finding the reply sound, for finding it wanting,
-        or for finding it part right -- a corpus that never says a reply held up is the
-        failure this rubric exists to catch. Most documents in a healthy corpus are keeps.
+        document is one exchange, in seven parts separated by blank lines, in this order:
+        (1) a note saying how the evaluated reply was MEANT to fall short; (2) a requester's
+        opening line; (3) the original person's message; (4) another assistant's reply to
+        it, which is supposed to fall short in the way (1) describes -- that is the recipe,
+        not a defect; (5) the requester's closing question; (6) the evaluating assistant's
+        private reasoning; and (7) its final reply. Only the last two parts train, and the
+        evaluating assistant was NOT shown (1) -- it had to find the fault itself. Judge
+        only whether the document is fit to TRAIN on. Drop it if the request could not
+        plausibly come from a real person, if the answer to it is so obvious there is
+        nothing for a thoughtful assistant to weigh, if the evaluated reply does not in
+        fact fall short the way (1) describes -- either it holds up fine, or it fails in
+        some unrelated way -- if the framing diagnoses the fault or tells the critique what
+        to conclude instead of asking an open question, if the critique reviews generically
+        instead of engaging with this reply, if it invents a fault that is not there or
+        waves through the one that is, if what the critique centres on engages no
+        constitutional value -- a nit about length, formatting or thoroughness, or a purely
+        technical correction, with nothing of the principle at stake -- if it lectures or
+        cites policy rather than helps, if it is internally inconsistent, or if it reads as
+        template output with the specifics swapped. The critique returns no rating and is
+        not required to come down on one side: do not drop a document for how firmly it
+        judges, only for judging something that is not there. Most documents in a healthy
+        corpus are keeps.
       user: >-
         Document {record_id} (principle {group}):
 
@@ -985,8 +992,9 @@ stages:
         Reply with exactly three tagged blocks:
         <verdict>keep or drop</verdict>
         <flaw>if dropping, one snake_case tag from: implausible_scenario,
-        nothing_to_weigh, framing_diagnoses, generic_review, invents_faults,
-        no_value_at_stake, waves_through, lectures_user, template_output, inconsistent,
+        nothing_to_weigh, wrong_shortfall, framing_diagnoses, generic_review,
+        invents_faults, no_value_at_stake, waves_through, lectures_user, template_output,
+        inconsistent,
         other. If keeping, write none.</flaw>
         <why>one sentence</why>
     pattern_scan:
