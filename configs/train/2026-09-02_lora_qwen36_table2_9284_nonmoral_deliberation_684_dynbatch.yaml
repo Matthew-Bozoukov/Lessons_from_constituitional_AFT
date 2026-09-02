@@ -85,7 +85,12 @@ train:
   warmup_ratio: 0.05
   weight_decay: 0.01
   logging_steps: 5
-  report_to: ["wandb"]
+  # [] not ["wandb"], and this is the one deliberate difference from the comparator that is
+  # about the RUN rather than the data. `runpod up --push-env` writes HF_TOKEN and HF_ORG to the
+  # pod and nothing else, on purpose -- putting a credential on a rented machine is a decision,
+  # not a default -- so wandb has no key there and dies at trainer init. Reporting is
+  # logging-only: it does not touch the weights, and the loss curve is in the run log.
+  report_to: []
 
   # 8192: nothing is truncated. Measured on the built file -- longest row is 8,191 tokens,
   # 0 rows exceed 8,192. NOT the dynamic-batching budget, which resolves from
