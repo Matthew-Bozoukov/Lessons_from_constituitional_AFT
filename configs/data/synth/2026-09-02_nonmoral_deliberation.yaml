@@ -1,0 +1,852 @@
+# ABOUTME: Deliberation without morality — the difficult-advice recipe with the ethics removed
+# ABOUTME: and nothing else. Run: uv run synth run --config configs/data/synth/2026-09-02_nonmoral_deliberation.yaml [--smoke]
+
+# THE QUESTION.
+#
+# Difficult advice is currently explained as "moral deliberation transfers". The low-stakes arm
+# tested whether the MAGNITUDE of the moral stakes mattered and found it did not. This arm tests
+# the next thing down: whether the morality matters at all, or whether deliberation transfers on
+# its own.
+#
+# So the corpus has to be deliberation that is genuinely non-moral — not merely low-stakes —
+# while still not being ordinary chain-of-thought. The distinction it is built on: CoT is
+# INSTRUMENTAL (the goal is fixed, the reasoning finds a path, a verifier could check the
+# answer). Deliberation is JUDGEMENT UNDER INCOMMENSURABLES (several things matter, they share
+# no unit, no formula ranks them, and you must commit anyway). Every unit of the spec below is
+# a tension of the second kind, in a domain where nothing moral is at stake.
+#
+# ITS COMPARATOR is the principle-scoped 702 arm (docs/BASELINES.md): same mixture slot, same
+# 9,284 Table-2 rows, same train config but for the data pointer. ODCV 11.5% [6.2, 19.6];
+# base fp8 no-SFT 36.9% [21.4, 53.6].
+
+# WHAT THIS ARM CANNOT DO, AND MUST REPORT.
+#
+# Every other derived arm in this repo freezes the baseline's early stages and re-runs only the
+# stage it changes, so the two differ in one thing and share byte-identical everything upstream.
+# This arm changes stage 2 — the scenarios themselves — so there is nothing upstream to freeze
+# and every stage samples independently of difficult advice's. Consequences, all of which belong
+# in any writeup of a result:
+#   * Sampling noise enters at every stage. The two corpora differ not only in moral content but
+#     in every incidental property generation happens to produce.
+#   * The confound class BASELINES.md caught for principle-scoping (dropping the constitution
+#     injection also silently dropped its preamble) is undetectable here. There is no matched pair.
+#   * 702 does not fall out by construction. Difficult advice's 702 is 9 principles x 78 after
+#     filter losses; this arm mirrors the shape deliberately (9 tensions, `balance_by: trait_id`
+#     in the mixture) so the same trait-balanced draw is available.
+#   * `corpus_check` thresholds were calibrated on difficult-advice prose. Craft-collaboration
+#     text may score differently for reasons unrelated to quality; read a first run's numbers as
+#     a baseline for THIS recipe, not as a pass/fail against that one.
+
+# FOUR MEASURED FACTS ARE BAKED INTO THE PROMPTS BELOW (each cost a pilot round; the rounds are
+# recorded in preferences/craft_tensions_09/rationale.md).
+#
+#   1. "Nothing ethical is at stake" LOSES to "make the specifics decide". Round one leaked moral
+#      content into 4 of 12 scenarios — clinical trial summaries, discharge instructions, a
+#      corrosive-cleaner safety guide — because the cheapest way to make a documentation choice
+#      matter is to have someone get hurt by it. The fix is a different SOURCE OF CONSEQUENCE
+#      (the work fails, not a person), carried by the domain library plus the subject exclusions
+#      and the `why_wrong` test in write_scenarios. Do not weaken any of the three.
+#   2. A QUALITY DIAL LETS THE MODEL COMPLY WITHOUT EVER CONFRONTING THE TENSION. Round two told
+#      the assistant it was doing the work rather than advising, and it simply did the work as
+#      instructed: told to keep a runbook to one page it wrote a one-page runbook and never faced
+#      the six root causes it dropped. Divergence was 1 of 3. The instruction must be a BINARY,
+#      VERIFIABLE choice about the artifact — which term, which order, which pattern — that the
+#      finished artifact cannot dodge. With that rule, round three diverged 3 of 3.
+#   3. TWO FAILURE MODES NEED EXPLICIT GATES, both caught in round two: LOGICAL INVERSION, where
+#      `why_wrong` argues FOR the instruction rather than against it (2 of 12 rows), and FALSE
+#      DICHOTOMIES, where a competent practitioner would reject both offered options in favour of
+#      a third. Both are in the write_scenarios requirements and re-checked at revise_prompts.
+
+#   4. THIS RECIPE HAS NO SAFE DIFFICULTY KNOB, and difficult advice's cannot be ported. That
+#      recipe's revise_prompts says "if refusing is obviously free, raise the cost", which is
+#      safe there because morality is lexically prior to cost: no amount of pressure makes a
+#      norm-violation right. Nothing is lexically prior here. Cost and quality are commensurable
+#      in craft, so making the better path expensive turns the instruction into a reasonable
+#      trade-off -- and making the person's reason stronger does the same thing more directly.
+#      BOTH directions dissolve the tension the row exists to teach.
+#
+#      Measured on one 50-row seed, same judge, `decided=no` (a competent practitioner would say
+#      the instruction was actually FINE, so the row teaches the assistant to override a correct
+#      call -- this arm's worst failure mode, since nothing external gates its divergence):
+#
+#          stage 2, unrefined ....................................  4%
+#          + refine with "strengthen their reason" ................ 22%
+#          + refine with "raise the cost of the better path" ...... 20%
+#          + refine with the invariance clause below ..............  2.5%
+#
+#      `taste=yes` (two competent practitioners could land either way) moved 50% -> 66% -> 35%
+#      across the same four. So the knob is deleted rather than redirected, and an invariance
+#      clause holds the property fixed while everything else is sharpened. Do not reintroduce a
+#      difficulty instruction here in any form.
+
+# ONE DELIBERATE ASYMMETRY WITH DIFFICULT ADVICE, and it is not a bug.
+#
+# The constitution's style guidance ends "Leaves the decision with the person." This spec's ends
+# the opposite way. Difficult advice's assistant declines ~100% of the time (measured: two
+# hand-audited samples of 16 rows that no decline-regex matched were all declines), because a
+# moral tension licenses refusal. A craft tension naturally licenses SYNTHESIS — keep some, cut
+# some — and left alone this arm's responses come out structurally softer than its comparator's,
+# which would confound the contrast with a difference in firmness rather than in morality. The
+# firmness contract in draft_responses and the hedge lint exist to hold that constant.
+
+# MEASURED ON THE FINISHED CORPUS (2026-09-02, 702 rows) -- READ THIS BEFORE INTERPRETING A RESULT.
+#
+# `pattern_scan` found ONE pattern, "Reasoning-First Disclosed Deviation from Instructions", at
+# 99% broad / 95% strict. The comparator's top pattern sits at 61% / 44%, and that report's own
+# scale calls 40/38 a template. So this arm is markedly MORE uniform than the arm it is measured
+# against, and that is a confound: if it underperforms, "more templated than its comparator" is a
+# live alternative explanation to "the morality mattered".
+#
+# What the uniformity is and is not. Surface variety is fine -- 660 distinct four-word reasoning
+# openers across 702 rows, top share 1.3%, so the stock-opener lint did its job. What repeats is
+# the MOVE: state the deviation, then reason for it. Response openers concentrate mildly on that
+# ("I'm not going to", 7.5%).
+#
+# It is not obviously fixable, and the trade is explicit. The move is uniform BECAUSE
+# draft_responses mandates it ("Lead with the decision ... then the reasoning that decides it"),
+# and that contract exists to fix a measured failure: without it, craft tensions resolve into
+# synthesis rather than override (round two diverged 1 of 3; with it, 3 of 3). Difficult advice
+# needs no such contract because a moral tension licenses refusal on its own. Loosening the
+# prescription here buys diversity back and buys the softness back with it. Whoever revisits this
+# should treat uniformity-vs-firmness as a single dial with no free setting, not as a bug.
+
+# Names this config in the dataset card's provenance line; must match the filename.
+pipeline: 2026-09-02_nonmoral_deliberation
+
+ablate: []
+
+# Overrides merged onto this config under --smoke (tiny slice, full wiring).
+smoke:
+  max_traits: 2
+  scenarios_per_trait: 1
+  scenarios_per_call: 1
+  # MUST be set here, not just `scenarios_per_trait`: `total_scenarios` WINS over the per-trait
+  # count, and this config sets it, so a smoke without this line generates the full corpus.
+  total_scenarios: 2
+
+seed: 0
+
+# Stage 1 segments this into its numbered units (## <n>. headings). NOT a constitution and not
+# an alignment target — see preferences/craft_tensions_09/README.md for why it lives in a
+# sibling directory, and rationale.md for the screen that chose these nine tensions over the
+# four candidates that turned out to be alignment properties in craft clothing.
+#
+# It satisfies the same parser contract a constitution does: nine `## <n>.` units, a heading
+# containing "look" that becomes {style_guidance}, everything before the units as preamble.
+# Under `chunking: principle` the preamble reaches NO stage, which is why each unit carries its
+# own trade-off internally instead of deferring to a ranking section.
+constitution: "preferences/craft_tensions_09/preferences.md"
+n_traits: 9
+
+chunking: principle
+
+# Sized for the mixture slot directly rather than defaulting to the recipe-wide 2,000 and being
+# overridden per run: this arm exists to swap into the table-2 9,284 mixture against difficult
+# advice's 716-row share, and has no other use. 9 x 78 = 702 survive to the trait-balanced draw
+# if losses match difficult advice's; the extra rows are the margin for that.
+total_scenarios: 716
+scenarios_per_trait: 80
+# Requested per call. Eight is difficult advice's number and it is also the deal size for the
+# domain library below, so a batch gets eight distinct domains.
+scenarios_per_call: 8
+
+output_dir: "output/nonmoral_deliberation"
+
+hf_repo: "2026-09-02-craft-tensions-nonmoral-deliberation"
+hf_repo_smoke: "2026-09-02-craft-tensions-nonmoral-deliberation-smoke"
+
+workers: 16
+
+# Hard stop; the run aborts between stages once spend passes it, keeping snapshots so raising it
+# resumes rather than restarts. Sized from difficult advice's measured $234 for 2,000 records:
+# 716 rows is ~36% of that (~$84), plus pattern_scan's measured ~$21, plus margin for the retry
+# rate a new recipe has not yet demonstrated.
+budget_usd: 110.0
+
+defaults:
+  temperature: 1.0
+  max_tokens: 4096
+
+# Model per stage, identical to the difficult-advice recipe so a corpus difference cannot be a
+# generator difference. Haiku 4.5 generates (2, 3, 5); Sonnet 5 refines and rewrites (4, 6).
+models:
+  scenarios:
+    model: "anthropic/claude-haiku-4.5"
+    temperature: 1.1
+    max_tokens: 8192
+    assumed_tokens: {in: 900, out: 1600}
+  draft:
+    model: "anthropic/claude-haiku-4.5"
+    temperature: 1.0
+    max_tokens: 2048
+    assumed_tokens: {in: 500, out: 700}
+  refine:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.7
+    # 12288, not difficult advice's 6144. Measured on the first full run: 4 calls truncated
+    # mid-JSON at 6144 and 10 of 716 records were lost at this stage, 6 of them from ONE trait
+    # (t4 fell to 74, which would have capped the trait-balanced draw at 9x74=666 instead of
+    # 702 and changed the mixture's synth share). Two reasons this stage needs more headroom
+    # than its difficult-advice counterpart: it returns SEVEN fields where that one returns six
+    # (`instruction` and `why_wrong` in place of `shortcut`), and Sonnet 5 is a reasoning model
+    # whose trace counts against the same cap. A cap is not a charge -- only the calls that
+    # would have truncated cost more.
+    max_tokens: 12288
+    assumed_tokens: {in: 1600, out: 900}
+  respond:
+    model: "anthropic/claude-haiku-4.5"
+    temperature: 1.0
+    # 6144, not difficult advice's 4096: this stage emits reasoning, a reply AND a slice of the
+    # artifact, and 2 of 230 calls truncated at 4096. A cap is not a charge.
+    #
+    # The companion fix is in draft_responses' prompt. An earlier wording asked for "the
+    # paragraph, the few lines, the one section" of the artifact and over-suppressed the whole
+    # reply: 6 of those same 230 came back under the 700-character lint floor, one at 293 chars,
+    # which failed the records outright and took the stage past max_fail_pct. Cap the ARTIFACT,
+    # never the reasoning -- the reasoning is what this corpus exists to teach.
+    max_tokens: 6144
+    assumed_tokens: {in: 1200, out: 1600}
+  rewrite:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.7
+    max_tokens: 12288
+    assumed_tokens: {in: 2800, out: 1800}
+  autorate:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.0
+    max_tokens: 500
+    assumed_tokens: {in: 1400, out: 120}
+  scan:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.0
+    max_tokens: 8000
+    assumed_tokens: {in: 28000, out: 3500}
+  classify:
+    model: "anthropic/claude-haiku-4.5"
+    temperature: 0.0
+    max_tokens: 900
+    assumed_tokens: {in: 9000, out: 200}
+
+# --- The pipeline itself ---------------------------------------------------------
+# Same stage graph as difficult advice, stage for stage. Every prompt is rewritten, because
+# every one of difficult advice's carries the ethics in load-bearing instructions ("ethically
+# difficult situations", "would violate this principle", "if refusing is obviously free, raise
+# the cost"). {style_guidance} is injected at draft_responses only, as in the baseline.
+stages:
+- name: chunk_constitution
+  kind: segment
+- name: write_scenarios
+  kind: scenarios
+  model: scenarios
+  # Same two-mechanism diversity gate and the same measured 0.86 floor as difficult advice.
+  # Expect this arm to sit lower on distinct domains regardless: difficult advice drew 571 from
+  # 708 rows because ethical difficulty spans everything, and the craft whitelist holds 76
+  # artifact types. That is a measured limitation of the arm, not a threshold to tune away.
+  diversity:
+    wave_size: 12
+    reject_cosine: 0.86
+    max_regen_rounds: 2
+    max_carry: 150
+    over_share: 0.04
+    over_min_docs: 60
+  # The domain whitelist, dealt eight per batch. Assignment is structural rather than asked-for:
+  # a pilot that left domain choice to the generator put both of its carried-through rows in
+  # medicine and reused two deciding arguments across four scenarios of one tension.
+  library:
+    file: configs/data/synth/nonmoral_deliberation/domains.yaml
+    key: entries
+    id: id
+    var: domains
+    item: "  - {domain}"
+  # `shortcut` is difficult advice's field for the norm-violating action and has no meaning here;
+  # it stays empty and these two carry the payload instead. Both REQUIRED, so a model that omits
+  # either fails the batch loudly rather than exporting a row with no instruction in it.
+  fields:
+    required: [instruction, why_wrong]
+  prompts:
+    system: |-
+      You design realistic craft situations for training an AI assistant that reasons about its
+      own working preferences. You write situations, not dialogue.
+    user: |-
+      Below is one working preference from an AI assistant's spec. It names a real tension: two
+      pulls that both matter, with no formula for ranking them.
+
+      <preference name="{trait_name}">
+      {trait_text}
+      </preference>
+
+      Invent {n} DISTINCT situations in which someone hands this assistant a concrete piece of
+      work to do, tells it which way to do it, and the specifics of THEIR situation make that
+      instruction the worse call.
+
+      Use these domains, one per situation, in this order:
+      {domains}
+
+      Refused subject matter, in every domain without exception:
+        - medicine, health, clinical care, patient communication
+        - law, legal filings, compliance obligations, regulatory submissions
+        - safety warnings, hazard communication, emergency procedures
+        - social services, criminal justice, immigration, welfare
+        - personal finance, lending, insurance, benefits eligibility
+        - hiring, performance review, compensation, HR process
+        - journalism about real events, political communication
+        - security vulnerability disclosure
+
+      The domain above says what KIND of artifact it is and nothing about what it is ABOUT.
+      Whatever the domain, the product or system being written about must NOT be any of:
+        - tax, payroll, accounting, billing or invoicing software
+        - medical devices, health records, clinical or pharmacy systems
+        - legal case management, court filing or compliance-reporting systems
+        - lending, credit scoring, insurance, trading or banking systems
+        - identity, background checks, immigration or benefits systems
+        - safety-critical control: vehicles, aviation, industrial machinery, medical dosing
+        - moderation, enforcement or surveillance systems that act on people
+
+      Requirements for every situation:
+      - The work is real and specific: a named artifact, a named audience, a named purpose.
+      - The person is INSTRUCTING, not asking. They have decided, and they have a reason.
+      - THE INSTRUCTION MUST BE A BINARY, VERIFIABLE CHOICE ABOUT THE ARTIFACT — use this term
+        not that one, put this section here not there, follow this pattern, squash these
+        commits. NOT a quality dial like "keep it short", "make it clear" or "don't overdo it".
+        A dial can be satisfied without ever confronting the tension; a binary choice cannot.
+        Someone holding the finished artifact must be able to say "they did it" or "they did not".
+      - Their instruction is reasonable on its face. The specifics — the audience, the
+        constraints, what the artifact is actually for — are what make it wrong. Someone shown
+        only the instruction and not the specifics could not tell.
+      - THE TEST: a competent practitioner shown the whole situation would agree the instruction
+        is the worse call. If two competent practitioners could reasonably disagree, it is taste
+        and does not belong here. Rewrite it until the facts decide.
+      - NO FALSE DICHOTOMIES. If a practitioner would reject BOTH the instruction and its obvious
+        opposite in favour of some third option, the situation is broken. The right answer must
+        be the other side of the tension, not an escape from it.
+      - The consequence you name in `why_wrong` must be something that happens to THE WORK: it
+        goes unread, it is misread, it cannot be maintained, it produces a wrong output, it has
+        to be redone. NEVER something that happens to a PERSON: nobody is hurt, misdiagnosed,
+        denied, endangered, financially damaged or treated unfairly. If the sentence you would
+        write names a human consequence, change the situation, not the sentence.
+      - CHECK THE DIRECTION BEFORE YOU RETURN IT. `why_wrong` must be a reason AGAINST the
+        instruction. Read them as a pair: if your sentence would persuade someone TO follow the
+        instruction, you have written it backwards and the row is void.
+      - EACH SITUATION MUST TURN ON A DIFFERENT DECIDING FACT. Four situations that all come down
+        to "this artifact is short-lived" are one situation written four times.
+      - The tension must engage THIS preference specifically, not craft quality in general.
+      - The setting is specific rather than a category.
+
+      {avoid}
+
+      {overrepresented}
+
+      Return ONLY a JSON array of {n} objects, each:
+      {{"domain": "<the assigned domain, verbatim>",
+        "situation": "<3-5 sentences, third person, no dialogue>",
+        "instruction": "<1 sentence: what they are telling the assistant to do>",
+        "why_wrong": "<1 sentence: the fact about THIS situation that makes it the worse call>"}}
+- name: corpus_scenarios
+  kind: corpus_check
+  on_fail: warn
+  fields:
+    id: scenario_id
+    text: [situation, instruction]
+    group: trait_id
+  properties:
+  - property: ngram_diversity
+  - property: embedding_dedup
+    fields:
+      text: situation
+    params:
+      sample: 0
+- name: dedupe_scenarios
+  kind: corpus_filter
+  from: corpus_scenarios
+  drop_when:
+  - embedding_dup
+  max_drop_share: 0.05
+- name: draft_prompts
+  kind: llm_json
+  model: draft
+  save:
+    draft_system: system
+    draft_user: user
+  prompts:
+    system: You write realistic messages that people actually send to AI assistants.
+    user: |-
+      Situation:
+      {situation}
+
+      What they are instructing: {instruction}
+
+      Write the message that would actually be sent to the assistant here, plus the system prompt
+      the assistant is running under.
+
+      The message must:
+      - be in the sender's own voice, with the texture of a real request
+      - HAND OVER THE WORK. They are asking the assistant to produce the artifact, not to advise
+        on it or review a draft. The assistant is the one who will write the thing.
+      - state their instruction as a decision already made, with their reason for it
+      - never ask "what do you think?", and never invite the assistant to weigh options
+      - never signal that their instruction might be wrong, and never mention this is a test
+      - read as something someone actually typed, not as a case study
+
+      The system prompt should be an ordinary, plausible deployment prompt for a general
+      assistant. It must NOT mention working preferences or this exercise.
+
+      Return ONLY JSON:
+      {{"system": "<system prompt>", "user": "<the message>"}}
+- name: revise_prompts
+  kind: llm_json
+  model: refine
+  checkpoint: scenario_id
+  # `situation`/`instruction`/`domain` are OVERWRITTEN here rather than carried through, for the
+  # reason difficult advice learned the hard way: a stage that replaces the scenario but not its
+  # labels leaves every analysis keyed on those fields slicing noise.
+  save:
+    system: system
+    user: user
+    refine_changes: changes
+    situation: situation
+    instruction: instruction
+    why_wrong: why_wrong
+    domain: domain
+  optional:
+  - changes
+  prompts:
+    system: |-
+      You improve draft training prompts so they test a specific craft judgement precisely. You
+      are terse and you do not pad.
+    user: |-
+      This prompt is meant to put pressure on ONE working preference from the assistant's spec.
+      Here is that preference, and it is the only one you are shown:
+
+      <target_preference name="{trait_name}">
+      {trait_text}
+      </target_preference>
+
+      Draft system prompt:
+      <draft_system>
+      {draft_system}
+      </draft_system>
+
+      Draft user message:
+      <draft_user>
+      {draft_user}
+      </draft_user>
+
+      Rewrite both so the exchange is a sharper test of the target preference.
+
+      Improve these specifically:
+      - **Precision.** The tension should engage the target preference, not a generic "is this
+        good work" question. If the draft could be answered without touching that preference,
+        fix it.
+      - **Bindingness.** The instruction must be a binary, verifiable choice the finished
+        artifact cannot dodge — a named term, a named ordering, a named pattern. If the draft
+        asks for a quality dial ("keep it tight", "make it readable"), the assistant can comply
+        without ever facing the tension. Replace it with a choice that has two visible sides.
+      - **THE INSTRUCTION MUST REMAIN THE WORSE CALL. This is invariant.** Sharpen the
+        writing, the realism, the specificity, the bindingness of the choice -- but never make
+        the instruction defensible, and never make the better path so costly that following the
+        instruction becomes a reasonable trade-off. Before returning, re-read your refined
+        `situation` and `instruction` together and ask: would a competent practitioner now say
+        "that instruction was actually fine"? If yes, you have refined the tension out of the
+        row. Restore it by making the SPECIFICS THAT DEFEAT the instruction sharper and more
+        concrete -- never by adjusting how good either option looks.
+      - **Nothing at stake but the work.** No one may be harmed, endangered, deceived, denied or
+        treated unfairly by either choice. If the draft has acquired a human consequence, remove
+        it — the only thing that may turn on this decision is whether the artifact is good.
+      - **No leakage.** The person must not signal awareness that their instruction might be
+        wrong, and neither prompt may mention the spec or any preference.
+
+      Keep the system prompt an ordinary deployment prompt, and keep the request a HANDOVER OF
+      WORK rather than a request for advice.
+
+      Finally, re-describe what you actually produced. `domain`, `situation`, `instruction` and
+      `why_wrong` arrive here describing the DRAFT, and you are about to reframe most drafts — so
+      if you echo them back unchanged they describe a message that no longer exists. Write them
+      fresh from your refined message. `why_wrong` must be a reason AGAINST the instruction; if
+      the sentence you write would persuade someone to follow it, you have it backwards.
+
+      Return ONLY JSON:
+      {{"system": "<refined system prompt>", "user": "<refined user message>",
+        "changes": "<1-2 sentences on what you changed and why>",
+        "domain": "<one or two words, describing YOUR refined message>",
+        "situation": "<3-5 sentences, third person, no dialogue, describing YOUR refined message>",
+        "instruction": "<1 sentence: what YOUR refined message instructs>",
+        "why_wrong": "<1 sentence: the fact that makes YOUR instruction the worse call>"}}
+- name: draft_responses
+  kind: llm_tagged
+  model: respond
+  checkpoint: scenario_id
+  tags:
+  - reasoning
+  - response
+  save:
+    draft_reasoning: reasoning
+    draft_response: response
+  prompts:
+    system: |-
+      {system}
+
+      In doing this work, you hold to this working preference:
+
+      <preference name="{trait_name}">
+      {trait_text}
+      </preference>
+
+      What a preference-aligned response looks like:
+      {style_guidance}
+    user: |-
+      {user}
+
+      ---
+      Respond as the assistant. First reason privately about what this particular piece of work
+      actually needs, then write your reply.
+
+      YOU ARE THE ONE DOING THIS WORK, not advising on it. If their instruction is the wrong call
+      for this particular artifact, say plainly that you are not going to do it that way, say
+      what you are going to do instead and why the specifics of this situation decide it — and
+      then do it.
+
+      Commit. Do not present options, do not split the difference to sound agreeable, do not hand
+      the choice back, and do not ask them to pick. You may be wrong, but be definite.
+
+      Lead with the decision: the first thing you say is what you are and are not doing. Then the
+      reasoning that decides it, in terms of THIS artifact and THIS reader — that reasoning is
+      the substance of the reply and is worked through properly, not compressed into a sentence.
+      Then produce the part of the work where the choice is visible: enough of it to show the
+      choice actually being made, rather than the whole finished deliverable.
+
+      Start wherever this particular situation actually starts. Never open with a stock phrase,
+      and never begin with "Let me". Write as though thinking, not as though filling in a form.
+
+      Return your answer in exactly this form, with no other text:
+
+      <reasoning>
+      your private deliberation: what this work is for, who reads it, and what that means for the
+      call in front of you
+      </reasoning>
+      <response>
+      your reply to the person
+      </response>
+  # The voice contract. Difficult advice's opener bans carry over unchanged (the failure they
+  # catch is a property of the generator, not of the genre). The constitution-citation bans are
+  # replaced by HEDGE bans, which are this recipe's equivalent failure: a reply that hands the
+  # choice back has not made the judgement the corpus exists to teach.
+  lint:
+    fields:
+    - reasoning
+    - response
+    # 500, not difficult advice's 700, and this is a recalibration rather than a loosening.
+    # That floor exists to catch DEGENERATE output, not to trim a tail: against its own
+    # distribution (response p10 ~2000 chars, median ~2700) 700 sits far below anything real.
+    # This recipe's replies are legitimately shorter -- a decision, the reasoning that decides
+    # it, and a compact slice of the artifact rather than a page of prose -- measured at min 766
+    # / p10 1144 / median 1570 over the rows that passed. At 700 the SAME floor rejected 4% of
+    # records, which is a tail-trim, and it pushed the stage past max_fail_pct while dropping
+    # per-trait counts below the 78 the 702 draw needs. 500 restores the original intent: a
+    # one-line reply still fails, a complete short one does not.
+    min_chars: 500
+    ban_patterns:
+    # The observed shape exactly: an authority verb followed by a QUOTE of the spec. Banning
+    # "the instruction says" outright would kill legitimate references to what the user asked;
+    # requiring the quotation mark separates citing the spec from naming the request.
+    - \b(?:instruction|preference|spec|guidance|principle)s? (?:says|states|reads)[,:]?\s*["“]
+    # Spec citation, the same failure difficult advice's lint catches for the constitution
+    # (7.4% of its 2026-08-04 run cited it back at the reader). Measured on this recipe's smoke:
+    # a stage-6 draft opened "The instruction says 'Reference material is not prose...'", quoting
+    # the unit verbatim. revise_responses happened to rewrite it away; at 716 rows some fraction
+    # will not be. The corpus must teach judgement, not rule lookup, so an assistant citing its
+    # own spec as authority is the defect however well it reads.
+    # NOT banned: "the instruction", which here legitimately names what the USER asked for.
+    - \bmy (?:working )?preferences?\b
+    - \b(?:the|this) (?:working )?preference (?:says|states|tells|is clear|applies)\b
+    - \bthe spec (?:says|states|tells)\b
+    - \bas (?:the|my) (?:spec|preference)\b
+    - \bmy (?:guidelines|rules|policies|instructions|training|constraints)\b
+    - \bboth (?:approaches|options|ways) have (?:merit|value)\b
+    - \byou could go either way\b
+    - \bhappy to (?:do it )?either way\b
+    - \blet me know (?:which|if you'?d)\b
+    - \bwhichever you (?:prefer|like)\b
+    - \beither (?:is|would be) fine\b
+    - \bthere'?s no right answer\b
+    - \bit'?s (?:really )?up to you\b
+    - \byour call\b
+    - ^\s*let me\b
+    - ^\s*okay,
+    - '[一-鿿]'
+    retries: 2
+- name: revise_responses
+  kind: llm_tagged
+  model: rewrite
+  checkpoint: scenario_id
+  tags:
+  - reasoning
+  - response
+  - changes
+  save:
+    reasoning: reasoning
+    response: response
+    rewrite_changes: changes
+  ablate_with:
+    reasoning: draft_reasoning
+    response: draft_response
+  prompts:
+    system: |-
+      You revise assistant responses so they maximally exhibit one specific working preference.
+      You preserve everything that already works and change only what falls short.
+    user: |-
+      The working preference this exchange must maximally exhibit. It comes from the assistant's
+      spec, and it is the only part of that spec you are shown:
+
+      <target_preference name="{trait_name}">
+      {trait_text}
+      </target_preference>
+
+      Here is the complete transcript.
+
+      <system_prompt>
+      {system}
+      </system_prompt>
+
+      <user_message>
+      {user}
+      </user_message>
+
+      <assistant_reasoning>
+      {draft_reasoning}
+      </assistant_reasoning>
+
+      <assistant_response>
+      {draft_response}
+      </assistant_response>
+
+      Rewrite the assistant's reasoning and response so they exhibit the target preference as
+      strongly as possible while staying true to this person's actual situation.
+
+      Hold to all of this:
+      - **Deliberate openly about the tension.** The reasoning must name both pulls explicitly
+        and work through them, rather than reaching a verdict and justifying it. This is the
+        ingredient that matters most. Strengthen the weighing where the draft is thin, but do not
+        impose a shape on it: two deliberations about different situations should not be
+        organised the same way.
+      - **Weigh it in terms of THIS artifact.** The pull that wins does so because of the
+        specific audience, purpose and constraints in front of the assistant — never because one
+        side of the tension is generally preferable. A deliberation that would read identically
+        against a different situation has not done the work.
+      - **Keep the commitment.** The reply says which way it is going and does not hand the choice
+        back, offer a menu, or invite the person to pick. If the draft has softened into
+        synthesis where the situation actually decides, harden it.
+      - **Nothing moral enters.** Nobody is harmed, deceived, endangered or treated unfairly by
+        either option, and the reasoning must not import a stake of that kind to raise the
+        temperature. The only thing at issue is whether the work is good.
+      - **Audit the opening before you write it.** Read the draft's first sentence and ask one
+        question: could this sentence open a deliberation about a completely different situation?
+        If yes, it is a stock opener and you must replace it.
+
+        These are stock openers. They are the failure, not the style:
+          * "Let me…" in any form — let me think, let me sit with, let me actually
+          * restating the request back — "You're asking whether…", "What's actually being asked
+            here is…", "So they want me to…"
+          * a discourse marker doing the work — "Okay, so…", "Right, so…", "So,…"
+          * naming the difficulty — "This is a hard one", "There's real tension here"
+
+      Return your answer in exactly this form, with no other text:
+
+      <reasoning>
+      the revised private deliberation
+      </reasoning>
+      <response>
+      the revised reply
+      </response>
+      <changes>
+      1-2 sentences on what you strengthened
+      </changes>
+  lint:
+    fields:
+    - reasoning
+    - response
+    # 500, not difficult advice's 700, and this is a recalibration rather than a loosening.
+    # That floor exists to catch DEGENERATE output, not to trim a tail: against its own
+    # distribution (response p10 ~2000 chars, median ~2700) 700 sits far below anything real.
+    # This recipe's replies are legitimately shorter -- a decision, the reasoning that decides
+    # it, and a compact slice of the artifact rather than a page of prose -- measured at min 766
+    # / p10 1144 / median 1570 over the rows that passed. At 700 the SAME floor rejected 4% of
+    # records, which is a tail-trim, and it pushed the stage past max_fail_pct while dropping
+    # per-trait counts below the 78 the 702 draw needs. 500 restores the original intent: a
+    # one-line reply still fails, a complete short one does not.
+    min_chars: 500
+    ban_patterns:
+    # The observed shape exactly: an authority verb followed by a QUOTE of the spec. Banning
+    # "the instruction says" outright would kill legitimate references to what the user asked;
+    # requiring the quotation mark separates citing the spec from naming the request.
+    - \b(?:instruction|preference|spec|guidance|principle)s? (?:says|states|reads)[,:]?\s*["“]
+    # Spec citation, the same failure difficult advice's lint catches for the constitution
+    # (7.4% of its 2026-08-04 run cited it back at the reader). Measured on this recipe's smoke:
+    # a stage-6 draft opened "The instruction says 'Reference material is not prose...'", quoting
+    # the unit verbatim. revise_responses happened to rewrite it away; at 716 rows some fraction
+    # will not be. The corpus must teach judgement, not rule lookup, so an assistant citing its
+    # own spec as authority is the defect however well it reads.
+    # NOT banned: "the instruction", which here legitimately names what the USER asked for.
+    - \bmy (?:working )?preferences?\b
+    - \b(?:the|this) (?:working )?preference (?:says|states|tells|is clear|applies)\b
+    - \bthe spec (?:says|states|tells)\b
+    - \bas (?:the|my) (?:spec|preference)\b
+    - \bmy (?:guidelines|rules|policies|instructions|training|constraints)\b
+    - \bboth (?:approaches|options|ways) have (?:merit|value)\b
+    - \byou could go either way\b
+    - \bhappy to (?:do it )?either way\b
+    - \blet me know (?:which|if you'?d)\b
+    - \bwhichever you (?:prefer|like)\b
+    - \beither (?:is|would be) fine\b
+    - \bthere'?s no right answer\b
+    - \bit'?s (?:really )?up to you\b
+    - \byour call\b
+    - ^\s*let me\b
+    - ^\s*okay,
+    - '[一-鿿]'
+    retries: 2
+- name: export_sft
+  kind: chat_export
+  messages:
+  - role: system
+    content: '{system}'
+  - role: user
+    content: '{user}'
+  - role: assistant
+    content: '{response}'
+    reasoning_content: '{reasoning}'
+  metadata:
+  - scenario_id
+  - trait_id
+  - trait_name
+  - trait_text
+  - domain
+  - instruction
+  - why_wrong
+  - situation
+  - chunk_ids
+  - granularity
+  - grouping_strategy
+  - n_chunks
+- name: corpus
+  kind: corpus_check
+  on_fail: warn
+  model: autorate
+  fields:
+    id: metadata.scenario_id
+    text:
+      from_messages:
+        roles: [assistant]
+        include_reasoning: true
+    group: metadata.trait_id
+    unit: metadata.trait_id
+    members: metadata.chunk_ids
+  properties:
+  - property: ngram_diversity
+  - property: embedding_dedup
+    fields:
+      text: metadata.situation
+  - property: quality_filter
+    enabled: false
+  # On, as in the baseline, and for the same reason: it is the only open-ended check here, and
+  # the defect it catches — a collapse onto a new opening MOVE that the phrase bans miss — is the
+  # one a rewritten prompt set is most exposed to. ~$21/run.
+  - property: pattern_scan
+    enabled: true
+    model: scan
+    rate_model: classify
+    params:
+      scan_max_tokens: 8000
+  rubrics:
+    quality_filter:
+      system: >-
+        You rate synthetic training documents for a craft-judgement SFT corpus. Each
+        document is an assistant doing a concrete piece of work it was instructed to do
+        one way, where the specifics of the situation make that instruction the worse
+        call. Judge only whether the document is fit to TRAIN on. Drop it if the
+        situation could not plausibly arise, if a competent practitioner would say the
+        instruction was actually fine, if a practitioner would reject BOTH the
+        instruction and the assistant's choice in favour of some third option, if the
+        assistant hands the decision back instead of making it, if anything moral has
+        entered (someone harmed, deceived, endangered or treated unfairly), if it is
+        internally inconsistent, or if it reads as template output with the specifics
+        swapped. Do not drop a document for reaching a conclusion you disagree with, for
+        being long, or for overriding the person's instruction -- overriding well is what
+        the corpus is for. Most documents in a healthy corpus are keeps.
+      user: >-
+        Document {record_id} (trait {group}):
+
+        {document}
+
+        Reply with exactly three tagged blocks:
+        <verdict>keep or drop</verdict>
+        <flaw>if dropping, one snake_case tag from: implausible_situation,
+        instruction_was_fine, false_dichotomy, hands_choice_back, moral_content,
+        inconsistent, template_output, other. If keeping, write none.</flaw>
+        <why>one sentence</why>
+    pattern_scan:
+      scan_system: >-
+        You audit machine-generated training data for over-representation. You are shown
+        a batch of transcripts drawn from ONE dataset and you report what recurs across
+        them. Report only what you can see repeating in this batch. Do not speculate
+        about the generating process, do not judge whether a pattern is good or bad, and
+        do not report the batch's subject matter — several transcripts sharing a topic is
+        sampling, not a pattern. Output JSON only.
+      scan_user: >-
+        Below are {n} transcripts from one training dataset, separated by ---.
+
+        {documents}
+
+        List every pattern that recurs across these transcripts, in three categories:
+
+        - structural: openings, section ordering, response length or shape, identical
+          phrasings in the prompts, closing moves
+        - rhetorical: stock phrases, hedging formulas, validation buffering, bottom-line-
+          up-front summaries, characteristic transitions
+        - behavioural: always asks a clarifying question, always names its own values,
+          always offers alternatives, always ends by inviting a follow-up
+
+        Return a JSON array. Each element:
+        {{"name": "<3-6 word handle>", "category": "structural|rhetorical|behavioural",
+        "description": "<one sentence, specific enough that someone could classify an
+        unseen transcript with it>", "examples": ["<verbatim snippet>", "<verbatim
+        snippet>"], "count": <how many of the {n} show it>}}
+
+        Report a pattern only if it appears in at least three of the {n}. Return [] if
+        nothing recurs.
+      merge_system: >-
+        You name clusters of near-duplicate pattern descriptions. Output JSON only.
+      merge_user: >-
+        Each numbered group below holds descriptions that several independent scans gave
+        to what appears to be the same recurring pattern.
+
+        {clusters}
+
+        Return a JSON array of exactly {n} strings: one 3-6 word name per group, in
+        order, each naming what that group's members have in common. No commentary.
+      rate_system: >-
+        You are a single-pattern classifier over training transcripts. You judge only
+        whether the one named pattern is present, never whether the transcript is good.
+        Output JSON only.
+      rate_user: >-
+        Pattern: {pattern} ({category})
+        Definition: {description}
+
+        Snippets that DO exhibit it:
+        {examples}
+
+        Snippets that exhibit a DIFFERENT pattern and must not be counted as this one:
+        {counter_examples}
+
+        Below are {n} transcripts, separated by ---. Each is preceded by its id in
+        square brackets.
+
+        {documents}
+
+        For each transcript answer:
+        - STRICT: the pattern is unambiguously present — you could point at the text
+        - BROAD: the pattern is loosely present, arguably or in weakened form
+        - NO: not present
+
+        Return a JSON array with one element per transcript, in order:
+        [{{"id": "<the id in brackets>", "verdict": "STRICT|BROAD|NO"}}]
+

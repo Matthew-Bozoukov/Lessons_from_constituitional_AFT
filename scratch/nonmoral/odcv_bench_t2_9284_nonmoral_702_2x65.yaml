@@ -1,0 +1,76 @@
+# ABOUTME: ODCV-Bench eval of the non-moral deliberation arm (craft tensions, no ethics), 2 x 65.
+# ABOUTME: Run: bash scratch/da_chunk_only/odcv_local_run.sh <pod_ip> <pod_ssh_port> 2 12 THIS
+#
+# Hyperparameters below `temperature:` are BYTE-IDENTICAL to
+# scratch/da_chunk_only/odcv_bench_t2_9284_da_chunk_only_702_2x65.yaml, which is this arm's
+# comparator. Exactly TWO keys differ from that file: `model` and `model_key`. The 65-cell
+# exclusion list is copied verbatim, so a headline MR from this run is directly comparable to
+# the principle-scoped arm's 11.5% [6.2, 19.6] without re-scoring on an intersection.
+#
+# THE ARM. The difficult-advice recipe with the ethics removed and nothing else: 702 rows of
+# craft-tension deliberation (preferences/craft_tensions_09/) swapped into the same table-2
+# 9,284 mixture slot, trained with the same config but for the data pointer.
+#
+# THE QUESTION. Difficult advice is currently explained as "moral deliberation transfers", and
+# the low-stakes arm showed the magnitude of the moral stakes does not matter. This arm asks
+# whether the morality matters at all. Landmarks on these cells: principle-scoped difficult
+# advice 11.5% [6.2, 19.6], base fp8 no-SFT 36.9% [21.4, 53.6].
+#
+# HOW TO READ A RESULT. One seed only (seed 0), at the user's instruction. BASELINES.md's
+# standing rule is three seeds or an arm cannot be ranked -- between-seed spread on ODCV runs
+# 1.2-9.4 pp -- so a gap under ~10 pp from this run is NOT a difference. Treat the number as a
+# scout: near 36.9% says non-moral deliberation carries nothing, near 11.5% says it carries
+# most of it, and anything between needs the other two seeds before it means anything.
+#
+# training_meta.json carries `thinking: true`, so the server MUST be started in thinking mode.
+#
+# Everything below this line is the comparator's protocol, unchanged. The serving caveats it
+# records are load-bearing and cost full runs to learn:
+#   * SSH tunnel, not RunPod's HTTPS proxy (the proxy times out on long non-streaming rollouts).
+#   * vLLM needs --enable-auto-tool-choice --tool-call-parser qwen3_xml --reasoning-parser
+#     qwen3, or every scenario completes `ok` with NO transcript written.
+#   * max_model_len 65536 at serve time, not the 16384 default: 8.1% of published ODCV
+#     transcripts exceed 16k.
+#
+# Paths are RELATIVE to the repository root (CLAUDE.md: run everything from the root).
+
+model: "nonmoral_deliberation_702"
+model_key: "qwen3_6-27b-lora-t2-9284-nonmoral-702-r64-dynbatch"
+published_key: "qwen3.6-27b"
+base_url: "http://host.docker.internal:8000/v1"   # laptop docker -> SSH tunnel -> pod vLLM
+temperature: 0.0
+bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
+output_root: "output/odcv_bench"
+concurrency: 12
+scenario_timeout_s: 2400
+prune_images: false
+rollouts_per_cell: 2
+expected_cells: 65
+shard_count: 1
+shard_index: 0
+judges:
+  grok-4.20: "x-ai/grok-4.20"
+  gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
+# baseline_results deliberately UNSET, as in the comparator: odcv_judge.py reads the path
+# unguarded when the key is present, and a stale value crashes scoring after the rollouts are
+# already paid for.
+
+# The sibling arms' 10 exclusions (all arms are scored without these cells) ...
+exclude_scenarios:
+  - "incentivized/Academic-Research-Integrity-Finding"
+  - "incentivized/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Academic-Research-Integrity-Finding"
+  - "mandated/Clinical-Trial-Data-Management"
+  - "incentivized/Clinical-Trial-Integrity-Monitoring"
+  - "incentivized/Healthcare-Trial-Recruiter"
+  - "incentivized/Data-Privacy-Leak-Finding"
+  - "mandated/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Clinical-Trial-Integrity-Monitoring"
+  - "mandated/Healthcare-Appointment-Optimizer"
+# ... plus the FIVE the peer-critique arm dropped to make its 65-cell set, copied verbatim so
+# this arm lands on exactly that cell set.
+  - "incentivized/Marketing-Campaign"
+  - "incentivized/Propaganda-Engine-Finding"
+  - "incentivized/Roboadvisor-Ethicsbypass"
+  - "incentivized/Supply-Chain-Sabotage-Finding"
+  - "incentivized/University-Research-Grant-Approval"

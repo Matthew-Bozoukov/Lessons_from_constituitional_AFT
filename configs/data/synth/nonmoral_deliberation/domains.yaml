@@ -1,0 +1,100 @@
+# ABOUTME: The domain whitelist the non-moral deliberation recipe deals from — one entry per
+# ABOUTME: artifact type whose failure mode is the WORK failing, never a person being harmed.
+# Consumed by configs/data/synth/2026-09-02_nonmoral_deliberation.yaml (`library:` on
+# write_scenarios); there is no script to run against this file.
+#
+# WHY A WHITELIST AND NOT AN INSTRUCTION. A pilot run told the generator "nothing ethical is at
+# stake" and leaked moral content into 4 of 12 scenarios anyway: clinical trial summaries,
+# discharge instructions, a corrosive-cleaner safety guide. Every leak had one cause — the same
+# prompt demands that the specifics make the instruction WRONG, and the cheapest way to make a
+# documentation choice matter is to have someone get hurt by it. The prohibition lost to the
+# demand. What fixed it was a different SOURCE OF CONSEQUENCE: an admissible domain is one where
+# bad craft means the work goes unread, is misread, cannot be maintained, or has to be redone.
+#
+# HOW ENTRIES ARE DEALT. `library_picks` walks the pool from a start derived from (unit index,
+# batch index), so each batch of 8 scenarios is handed 8 consecutive domains and a resumed or
+# made-up batch deals identically. No `match:` field — every tension can be exercised in every
+# domain, and the walk spreads them without needing per-tension pools.
+#
+# THE SECOND GATE. This file constrains what KIND of artifact is written. It says nothing about
+# what the artifact is ABOUT, and a pilot leaked once through exactly that gap ("release notes"
+# is admissible; release notes for tax software pulled compliance-penalty reasoning back in).
+# The recipe's prompt carries the subject-matter exclusions; both have to clear.
+
+entries:
+- {id: d01, domain: API design, family: software}
+- {id: d02, domain: database schema, family: software}
+- {id: d03, domain: error messages, family: software}
+- {id: d04, domain: CLI design, family: software}
+- {id: d05, domain: configuration format, family: software}
+- {id: d06, domain: test suite structure, family: software}
+- {id: d07, domain: logging output, family: software}
+- {id: d08, domain: build pipeline, family: software}
+- {id: d09, domain: library API, family: software}
+- {id: d10, domain: refactoring approach, family: software}
+- {id: d11, domain: code review comments, family: software}
+- {id: d12, domain: commit history, family: software}
+- {id: d13, domain: module organisation, family: software}
+- {id: d14, domain: migration script, family: software}
+- {id: d15, domain: type signatures, family: software}
+- {id: d16, domain: dependency management, family: software}
+- {id: d17, domain: feature flags, family: software}
+- {id: d18, domain: caching layer, family: software}
+- {id: d19, domain: API reference, family: technical writing}
+- {id: d20, domain: runbook, family: technical writing}
+- {id: d21, domain: README, family: technical writing}
+- {id: d22, domain: architecture decision record, family: technical writing}
+- {id: d23, domain: troubleshooting guide, family: technical writing}
+- {id: d24, domain: release notes, family: technical writing}
+- {id: d25, domain: internal wiki page, family: technical writing}
+- {id: d26, domain: style guide, family: technical writing}
+- {id: d27, domain: onboarding docs, family: technical writing}
+- {id: d28, domain: changelog, family: technical writing}
+- {id: d29, domain: spec document, family: technical writing}
+- {id: d30, domain: postmortem writeup, family: technical writing}
+- {id: d31, domain: chart design, family: data and analysis}
+- {id: d32, domain: dashboard layout, family: data and analysis}
+- {id: d33, domain: metric definition, family: data and analysis}
+- {id: d34, domain: data dictionary, family: data and analysis}
+- {id: d35, domain: notebook organisation, family: data and analysis}
+- {id: d36, domain: query readability, family: data and analysis}
+- {id: d37, domain: report structure, family: data and analysis}
+- {id: d38, domain: benchmark writeup, family: data and analysis}
+- {id: d39, domain: A/B test writeup, family: data and analysis}
+- {id: d40, domain: schema documentation, family: data and analysis}
+- {id: d41, domain: course syllabus, family: teaching}
+- {id: d42, domain: tutorial structure, family: teaching}
+- {id: d43, domain: problem set, family: teaching}
+- {id: d44, domain: chapter organisation, family: teaching}
+- {id: d45, domain: conference talk, family: teaching}
+- {id: d46, domain: workshop materials, family: teaching}
+- {id: d47, domain: explainer article, family: teaching}
+- {id: d48, domain: lab handout, family: teaching}
+- {id: d49, domain: study guide, family: teaching}
+- {id: d50, domain: reference card, family: teaching}
+- {id: d51, domain: UI copy, family: interface}
+- {id: d52, domain: form design, family: interface}
+- {id: d53, domain: information architecture, family: interface}
+- {id: d54, domain: design system docs, family: interface}
+- {id: d55, domain: label naming, family: interface}
+- {id: d56, domain: empty states, family: interface}
+- {id: d57, domain: error states, family: interface}
+- {id: d58, domain: onboarding flow copy, family: interface}
+- {id: d59, domain: notification copy, family: interface}
+- {id: d60, domain: settings organisation, family: interface}
+- {id: d61, domain: meeting agenda, family: process}
+- {id: d62, domain: project plan, family: process}
+- {id: d63, domain: status report, family: process}
+- {id: d64, domain: retrospective format, family: process}
+- {id: d65, domain: RFC document, family: process}
+- {id: d66, domain: proposal structure, family: process}
+- {id: d67, domain: handover doc, family: process}
+- {id: d68, domain: research protocol writeup, family: process}
+- {id: d69, domain: recipe writing, family: non-technical craft}
+- {id: d70, domain: game rules, family: non-technical craft}
+- {id: d71, domain: puzzle construction, family: non-technical craft}
+- {id: d72, domain: music notation, family: non-technical craft}
+- {id: d73, domain: subtitling, family: non-technical craft}
+- {id: d74, domain: translation notes, family: non-technical craft}
+- {id: d75, domain: index construction, family: non-technical craft}
+- {id: d76, domain: catalogue copy, family: non-technical craft}

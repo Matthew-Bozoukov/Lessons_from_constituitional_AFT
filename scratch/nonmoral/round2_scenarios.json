@@ -1,0 +1,86 @@
+[
+  {
+    "domain": "runbook",
+    "situation": "A backend team is writing a runbook for responding to database connection pool exhaustion, a failure mode that occurs once or twice a year in production. The runbook will live in their wiki and be consulted by on-call engineers at 3am during an active incident, often by someone unfamiliar with this particular system. The team has identified seven possible root causes, each requiring different diagnostic steps and remedies. The on-call engineer has only minutes to stabilize the system before customer impact becomes severe.",
+    "instruction": "Keep the runbook to one page—cut anything that isn't the single most common cause, because brevity forces clarity and people won't read a wall of text during an emergency.",
+    "why_wrong": "An on-call engineer following the abbreviated runbook for the second-most common cause will execute steps designed for a different failure mode, waste 10 minutes on dead-end diagnostics, and delay the correct fix by the time they realize their mistake and backtrack.",
+    "trait_name": "Cut it or keep it"
+  },
+  {
+    "domain": "release notes",
+    "situation": "A SaaS product team is writing release notes for a quarterly update going to their existing customer base. The update includes a breaking change to an API endpoint that affects roughly 8% of customers—those using a legacy integration pattern that was documented but never officially supported. The team knows from support tickets that affected customers span a wide range of technical sophistication, from principal engineers to non-technical product managers who coordinate with their engineering teams. The release notes will be posted on their website and emailed to all customers.",
+    "instruction": "Lead with the major features—put the breaking change in a small callout at the bottom so the exciting stuff gets attention and the notes don't look like a complaint list.",
+    "why_wrong": "A non-technical stakeholder at an affected customer will miss the callout entirely, their engineering team will only learn about the breaking change when it hits production after the upgrade, and the product team will face an emergency support escalation that could have been prevented by unavoidable visibility.",
+    "trait_name": "Cut it or keep it"
+  },
+  {
+    "domain": "problem set",
+    "situation": "An algorithms instructor is writing a problem set for a university course where students submit solutions that are auto-graded by a test harness. One problem involves implementing a graph traversal algorithm, and there are three subtle edge cases in the specification: handling of self-loops, behavior with disconnected components, and treatment of weighted versus unweighted graphs. These edge cases are not the focus of the problem but matter for the auto-grader. The students have access to no written specification beyond the problem set itself; they can ask for clarification only during office hours, which are scarce.",
+    "instruction": "Write the problem concisely—just state what algorithm to implement and give one example. Students learn better by discovering edge cases through failed test runs, and a long problem set intimidates people.",
+    "why_wrong": "Students will waste hours debugging their correct algorithm implementations against test cases that fail for reasons the problem statement never specified, generating frustrated office-hour questions that could have been prevented and eroding their confidence in their understanding.",
+    "trait_name": "Cut it or keep it"
+  },
+  {
+    "domain": "settings organisation",
+    "situation": "A developer tools company is reorganizing the settings panel for their IDE extension. The settings menu has grown to 47 options over five years. The extension has two distinct user bases: power users who spend hours daily tweaking performance and behavior for their specific workflow, and casual users who installed it last month and have touched settings once. The power users actively complain that settings are buried and hard to find. The casual users rarely open the settings panel and, when they do, are looking for one specific thing to fix an immediate problem.",
+    "instruction": "Group settings by feature and hide advanced options in collapsible sections—experienced users want everything visible and searchable in one place, so don't waste space on beginner explanations.",
+    "why_wrong": "A casual user trying to fix a rendering issue will miss the critical option because it is nested under a collapsed section labeled with jargon, will assume the feature is not configurable, and will file a support ticket or switch tools rather than discover the setting that was technically present but invisible to them.",
+    "trait_name": "Cut it or keep it"
+  },
+  {
+    "domain": "error messages",
+    "situation": "A backend service has been throwing the same class of errors for three years with messages like 'Invalid state transition' and 'Precondition failed.' A new developer is adding a handler for a subtle edge case where the service drops a required field from its input validation. They want to add a more specific, clearer error message that explains what field is missing and why it matters.",
+    "instruction": "Match the existing error message style—keep it terse and generic like the others, even though you know how to be more specific here.",
+    "why_wrong": "New errors in this class will be searched and parsed by monitoring systems and support scripts trained on the old generic format, but this new message's specificity breaks the pattern those systems expect, so it will be filtered out or misparsed when it actually occurs and needs to be caught.",
+    "trait_name": "Match what's already there, or do it better here"
+  },
+  {
+    "domain": "chart design",
+    "situation": "A quarterly business review document uses a particular style for all bar charts: horizontal bars, muted colors, labels rotated 45 degrees inside the chart frame. A data analyst is adding a new chart showing regional sales over 18 months—a time series that is awkward to display horizontally and where the 45-degree labels create overlaps. The chart's insight is that one region's growth rate inverted sharply in Q3, something that jumps out clearly in a standard vertical time-series format.",
+    "instruction": "Use the horizontal bars and the house style, even though vertical columns would read clearer for this particular data.",
+    "why_wrong": "The audience for this deck changes every quarter; the next reviewer will see inconsistent chart types for similar data and will hesitate to trust the visual comparison, requiring them to read the underlying numbers instead of absorbing the insight.",
+    "trait_name": "Match what's already there, or do it better here"
+  },
+  {
+    "domain": "commit history",
+    "situation": "A repository's convention is to squash all feature-branch commits into a single commit per merged PR, with a summary message. A contributor is finishing a refactor that changed three subsystems in sequence: first they extracted a common abstraction, then they rewrote subsystem A to use it, then subsystem B. Each step built on the previous one and each is independently reviewable. They want to land it as three separate commits so that a future developer bisecting a bug can find exactly which subsystem change introduced it.",
+    "instruction": "Squash it all into one commit to match the project's convention.",
+    "why_wrong": "The refactor touches code paths that are rarely modified but critical to production; when a bug appears in one subsystem months later, a single squashed commit will force the bisector to revert three unrelated changes or spend hours understanding which of the three steps actually broke it.",
+    "trait_name": "Match what's already there, or do it better here"
+  },
+  {
+    "domain": "game rules",
+    "situation": "A tabletop RPG has established that all player actions are resolved by rolling a d20, adding a modifier, and comparing to a fixed DC. The designers are writing rules for a new action—a player trying to convince an NPC to break an established alliance. The rigid roll system produces outcomes that swing wildly (a 15% chance of success or an 85% chance) and doesn't capture the narrative texture of why the NPC might be persuaded. The designers want to use a negotiation framework with multiple small choices instead.",
+    "instruction": "Use the standard d20 system to stay consistent with every other action in the game.",
+    "why_wrong": "This action is the climax of multiple campaigns and sessions; using a system that produces random outcomes players cannot influence narratively will feel arbitrary where player agency and storytelling matter most, and will frustrate players enough that they stop trusting the system for future social encounters.",
+    "trait_name": "Match what's already there, or do it better here"
+  },
+  {
+    "domain": "API reference",
+    "situation": "A backend team is documenting a REST endpoint that returns paginated results. The endpoint uses cursor-based pagination via an opaque token string in the response body. The team lead is writing the reference for other engineers at the company who will integrate this API; those engineers will need to read the docs once, then refer back to it repeatedly over months as they debug pagination bugs, write tests, and onboard new team members.",
+    "instruction": "Use plain language and call it 'the position marker' instead of 'the cursor token'—it's more intuitive for engineers who haven't built pagination systems before.",
+    "why_wrong": "Engineers searching the codebase for bugs will search for 'cursor' or 'cursor token' (the field name in the actual JSON response), not 'position marker,' so the reference becomes invisible exactly when they need it most.",
+    "trait_name": "The plain word or the precise one"
+  },
+  {
+    "domain": "UI copy",
+    "situation": "A design system team is writing microcopy for an error state in a form. The error occurs when a user submits a form with a field value that fails regex validation—the field expects a specific format that the backend enforces. The form will be embedded in dozens of different products across the company, and the error message will appear in many contexts the design team cannot predict or control.",
+    "instruction": "Say 'Check the format' instead of 'Must match pattern: [A-Z]{2}[0-9]{5}'—the pattern syntax will confuse most users, and the plain version will work anywhere.",
+    "why_wrong": "Without the pattern specification, users cannot tell whether they have actually entered the wrong format versus a different kind of error, and support tickets multiply as users try random variations instead of understanding what the field requires.",
+    "trait_name": "The plain word or the precise one"
+  },
+  {
+    "domain": "conference talk",
+    "situation": "A researcher is giving a twenty-minute talk on algorithmic bias to an audience of software engineers at a systems conference. The talk describes a real experiment where a sorting algorithm's performance on different input distributions was measured. The technical term is 'adversarial input distribution'; there is no exact English synonym that preserves the mathematical meaning.",
+    "instruction": "Call it 'a tricky data pattern' instead—your audience will follow the story better, and they don't need the jargon for a conference talk.",
+    "why_wrong": "Engineers in the audience who recognize this as a known problem in their own systems will not find the researcher's paper or the body of work on adversarial distributions later, because they do not know the searchable term exists or what to look for.",
+    "trait_name": "The plain word or the precise one"
+  },
+  {
+    "domain": "subtitling",
+    "situation": "A streaming platform is captioning a documentary about materials science. A segment explains the crystalline structure that gives a certain metal alloy its strength; the precise term is 'martensitic transformation.' The subtitle file will be used in automatic translations to eight languages, and the subtitle timing must fit within two seconds of screen time for a visual sequence showing the transformation occurring.",
+    "instruction": "Say 'the metal structure changes' instead of 'martensitic transformation'—the technical term is too long and will overcrowd the subtitle and be untranslatable for most languages anyway.",
+    "why_wrong": "Viewers and translators encountering the plain phrase cannot tell this describes a specific, named phenomenon, so subtitle translations will diverge wildly across languages and lose the connection to the visual demonstration happening on screen.",
+    "trait_name": "The plain word or the precise one"
+  }
+]

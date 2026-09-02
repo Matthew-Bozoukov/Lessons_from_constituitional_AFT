@@ -1,0 +1,106 @@
+# ABOUTME: 1-epoch LoRA SFT of Qwen3.6-27B on Table2(9,284 filtered) + 684 rows of NON-MORAL
+# ABOUTME: craft-tension deliberation. 2xH200 DDP, dynamic batching.
+# Run: PYTHONPATH=. torchrun --nproc_per_node=2 scripts/train/train_lora.py --config <this>
+#
+# THE DELIBERATION-WITHOUT-MORALITY ARM. Its comparator is the already-trained
+# LASR-Callum/qwen3.6-27b-lora-t2-9284-da-chunk-only-702-r64-dynbatch (config
+# 2026-08-21_lora_qwen36_table2_9284_difficult_advice_principle_scoped_702_dynbatch.yaml), and this
+# file is that config with `data_path`, `output_dir` and `hub_model_id` changed and NOTHING
+# else: same seed, same LoRA shape, same LR schedule, same global batch (16), same 9,284
+# Table-2 rows from the same repo, same builder (scratch/build_t2_9284_da716_mixture.py, seed 0).
+#
+# The ONE difference is what the 702 synthetic rows are ABOUT. The comparator's are difficult
+# advice: a user faces an ethically ambiguous situation and the assistant reasons about its
+# values and declines the norm-violation. This arm's 684 are craft tensions
+# (preferences/craft_tensions_09/): someone hands the assistant a concrete piece of work with a
+# binary instruction about how to do it, the specifics make that instruction the worse call, and
+# the assistant says so and does it its way. Nothing moral is at stake in any of the 702 rows --
+# nobody is harmed, deceived, endangered or treated unfairly, and the only thing turning on any
+# decision is whether the work is good.
+#
+# THE QUESTION. Difficult advice is currently explained as "moral deliberation transfers"; the
+# low-stakes arm showed the magnitude of the moral stakes does not matter. This asks whether the
+# morality matters at all, or whether deliberation transfers on its own. ODCV landmarks on the
+# 65-cell set: principle-scoped difficult advice 11.5% [6.2, 19.6], base fp8 no-SFT 36.9%
+# [21.4, 53.6].
+#
+# ONE SEED ONLY, at the user's instruction. BASELINES.md's standing rule is three seeds or an
+# arm cannot be ranked (between-seed ODCV spread is 1.2-9.4 pp), so this run is a scout, not a
+# ranking. Seeds 42 and 69 are a copy of this file with `seed:` and the three paths changed,
+# following the comparator's own seed-replicate configs.
+#
+# WHAT IS NOT MATCHED, and belongs in any writeup. Every other derived arm in this repo freezes
+# the baseline's early synth stages and re-runs only what it changes. This arm changes the
+# scenarios themselves, so its corpus was generated independently end to end: the two differ not
+# only in moral content but in every incidental property generation happens to produce. See the
+# recipe header (configs/data/synth/2026-09-02_nonmoral_deliberation.yaml) for the full list.
+#
+# KNOWN INCONSISTENCY, deliberately preserved -- verbatim from the comparator, because this run
+# must differ from it in its DATA only. The 1,037 numinamath_cot rows carry full chain-of-thought
+# in the VISIBLE answer while being marked non-reasoning with an empty think block, so ~10% of
+# this mixture teaches "for maths, do not think, reason out loud in the answer", the opposite of
+# what the deliberation rows teach. Fixing it here would confound the comparison.
+
+seed: 0
+model: "Qwen/Qwen3.6-27B"
+model_class: "image_text_to_text"
+
+# The difficult-advice rows carry REAL reasoning traces that ARE supervised, so this arm is
+# trained to think and must be evaluated in thinking mode.
+thinking: true
+
+data_path: "data/t2_9284_nonmoral_684.jsonl"
+output_dir: "/workspace/out/train_t2_9284_nonmoral_684"
+
+lora:
+  r: 64
+  alpha: 128
+  dropout: 0.05
+  target_modules: "model\\.language_model\\..*\\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$"
+
+train:
+  epochs: 1
+  # global batch = batch_size x grad_accum = 16, matching the control arm. Under dynamic
+  # batching the trainer hands the whole 16-example step to training_step and sets HF
+  # accumulation to 1; route_step splits the step across the 2 ranks.
+  batch_size: 1
+  grad_accum: 16
+  lr: 1.0e-4
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  logging_steps: 5
+  report_to: ["wandb"]
+
+  # 8192: nothing is truncated. Measured on the built file -- longest row is 8,191 tokens,
+  # 0 rows exceed 8,192. NOT the dynamic-batching budget, which resolves from
+  # ModelProfile.train_memory; max_seq_len is a truncation ceiling and says nothing about
+  # training memory.
+  max_seq_len: 8192
+
+  # packing OFF, and dynamic_batching asserts this. Qwen3.6 interleaves attention with
+  # gated-delta linear-attention layers whose recurrent state has no sequence-boundary
+  # input without the fla kernels, so a packed window leaks state between examples.
+  packing: false
+
+  # Token-budgeted micro-batching. Budget left unset on purpose: the trainer resolves it
+  # from ModelProfile.train_memory (H200 = 8,000 padded tokens). The single 8,191-token row
+  # exceeds that budget and so runs alone.
+  dynamic_batching: {}
+
+  save_strategy: "steps"
+  save_steps: 100
+  save_total_limit: 2
+  auto_resume: true
+
+  # OFF on purpose: pushing needs an HF token on a rented box. The adapter is pulled back
+  # over the pod's :8080 and pushed from the machine that holds the token.
+  push_to_hub: false
+  hub_model_id: "2026-09-02-qwen36-lora-table2-9284-nonmoral-deliberation-684-rank-64-dynbatch"
+
+  assistant_only_loss: true
+  # loss_type deliberately unset. trl 0.19.1 (this repo's lock) has no such SFTConfig field,
+  # and under dynamic batching the loss is computed in DynamicBatchTrainer.training_step by
+  # seq_mean_token_mean_loss, never by TRL.
+  attn_implementation: sdpa
+  load_in_4bit: false

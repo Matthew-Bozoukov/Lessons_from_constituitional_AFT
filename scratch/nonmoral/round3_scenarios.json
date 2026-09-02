@@ -1,0 +1,86 @@
+[
+  {
+    "domain": "runbook",
+    "situation": "A platform engineer is writing a runbook for oncall engineers responding to database connection pool exhaustion in their production Kafka infrastructure. The runbook will live in a wiki that oncall engineers consult during an incident, pulling it up on a second monitor while debugging. The engineer has written it at prose length with context about why each step matters. Their tech lead instructs them to cut it down to a checklist of commands only, no explanations, because 'oncall doesn't have time to read.'",
+    "instruction": "Remove all explanatory context and reduce the runbook to a bare sequence of diagnostic commands and remediation steps.",
+    "why_wrong": "An oncall engineer unfamiliar with this particular service will run the wrong diagnostic first, or misinterpret a command's output and attempt a remediation that makes the exhaustion worse, because the context about why each step is necessary and what success looks like cannot fit in a list they are consulting, not reading.",
+    "trait_name": "Cut it or keep it"
+  },
+  {
+    "domain": "release notes",
+    "situation": "A product manager is shipping a minor version of accounting software that adds optional tax form prefill for a specific US state. The release notes will be emailed to all 8,000 active customers and posted on the website. The PM writes detailed release notes explaining the feature, its scope, and known limitations. The engineering director instructs them to cut it to one bullet point: 'Added optional tax form prefill,' because 'most customers won't use this and we're only shipping a patch.'",
+    "instruction": "Reduce the release notes to a single bullet point naming the feature without scope or limitations information.",
+    "why_wrong": "A customer in that state will enable the prefill feature, trust it to handle their filing, and discover mid-submission that it does not prefill certain deduction categories—forcing them to redo the work—because the limitations that would have fit in release notes simply cannot fit in a single bullet that reaches them.",
+    "trait_name": "Cut it or keep it"
+  },
+  {
+    "domain": "problem set",
+    "situation": "A computer science instructor is writing a problem set for a second-year algorithms course. Students will work on it for a week, submit it, and then receive feedback. The instructor has written each problem with multiple examples showing edge cases and a paragraph explaining why the problem matters for understanding the algorithm family. A colleague instructing the same course insists they should strip all examples and explanation to 'force students to think harder,' keeping only the problem statement and constraints.",
+    "instruction": "Remove all example cases and explanatory paragraphs, leaving only the formal problem statement and input/output constraints.",
+    "why_wrong": "A student will misunderstand what the problem is asking because they have no examples to ground the formal statement, waste hours pursuing an incorrect interpretation, and eventually abandon the problem without learning the concept, because the examples that would have fit in the problem set cannot fit in the constraint list alone.",
+    "trait_name": "Cut it or keep it"
+  },
+  {
+    "domain": "settings organisation",
+    "situation": "A settings engineer is designing the configuration panel for a real-time audio processing application used by podcasters and streamers. The panel has 40 settings across six categories (input, output, effects, monitoring, recording, advanced). Currently settings are organized by technical category. A power user who streams daily tells them to reorganize it alphabetically instead, saying 'I know what I want and I can scan fast—cut the cognitive overhead of categories.'",
+    "instruction": "Reorganize all settings into a single alphabetical list without category groupings.",
+    "why_wrong": "A new user trying to set up the software for the first time will not know that compressor threshold, makeup gain, and knee ratio are related settings that should be configured together, and will waste time jumping between unrelated settings scattered alphabetically, because the category structure that would have fit in the original organization cannot fit in an alphabetical arrangement that serves only experienced users.",
+    "trait_name": "Cut it or keep it"
+  },
+  {
+    "domain": "error messages",
+    "situation": "A backend API for a financial reporting tool has been logging validation failures in a verbose, explanation-heavy format for three years. The codebase has 200+ error messages in this style. A new engineer is asked to add fifteen new validation errors for a regulatory filing feature that will be read by three specialists in the compliance department, then archived. The established pattern uses three sentences per error; the new engineer's fresh approach would be one terse sentence.",
+    "instruction": "Follow the existing three-sentence pattern for all fifteen new error messages.",
+    "why_wrong": "The compliance specialists will read these messages once and never again, but future maintainers changing the filing logic will have to update all 215 messages in lockstep, making the refactor substantially more costly than if the new batch were already condensed.",
+    "trait_name": "Match what's already there, or do it better here"
+  },
+  {
+    "domain": "chart design",
+    "situation": "A business intelligence team has built a suite of quarterly performance dashboards using a color scheme where profit is always purple and revenue is always orange. These dashboards are embedded in printed board reports distributed to thirty executives. A new dashboard is being added to the suite showing customer acquisition cost alongside churn rate—two metrics the color scheme was never designed to represent, and neither fits naturally into purple-or-orange without forcing unintuitive pairings.",
+    "instruction": "Assign acquisition cost purple and churn rate orange to stay consistent with the existing dashboard palette.",
+    "why_wrong": "The printed board reports are static and never updated once distributed, so the color choice affects only the digital dashboard viewed by data analysts who will learn the new pairing in minutes, but forcing these metrics into an unsuitable palette makes the relationship between the two harder to see in the original context where it matters.",
+    "trait_name": "Match what's already there, or do it better here"
+  },
+  {
+    "domain": "commit history",
+    "situation": "A monorepo has a strict policy: every commit is a single logical change with a narrative commit message explaining the reasoning. A contributor is refactoring the test suite from an old framework to a new one, a three-week effort across 400 test files. They are instructed to squash all 127 commits into one commit with a summary message before the code review.",
+    "instruction": "Squash the entire refactor into a single commit before submitting for review.",
+    "why_wrong": "If the new test framework has edge-case bugs, bisecting the monorepo history to find which specific test file's migration introduced a failure becomes impossible, and maintainers will have to manually re-separate the work to isolate the problem.",
+    "trait_name": "Match what's already there, or do it better here"
+  },
+  {
+    "domain": "game rules",
+    "situation": "A tabletop game system has a core mechanic where spell components are tracked with tokens on a shared resource board, visible to all players. The designer is creating an expansion with a new class that uses a hidden resource pool tracked on individual character sheets. The publisher instructs the designer to represent the new class's resources using the same visible-to-all token system as existing classes to maintain mechanical consistency.",
+    "instruction": "Use the shared visible resource board for the new class's component tracking, matching the existing resource system.",
+    "why_wrong": "The new class is designed around deception and hidden information as its core strategic identity, so displaying its resources transparently on the shared board removes the strategic depth that differentiates it and forces the entire class redesign to compensate.",
+    "trait_name": "Match what's already there, or do it better here"
+  },
+  {
+    "domain": "API reference",
+    "situation": "A backend team is documenting a new REST endpoint for internal use by 200+ frontend engineers across five squads who will integrate it over the next six months. The endpoint handles pagination using cursor-based iteration. The team lead knows that cursor pagination differs sharply from offset pagination in failure modes and performance characteristics, and wants the docs to be maintainable and searchable as the codebase evolves. She reviews the first draft and finds the writer has used 'move through results one page at a time' instead of the term 'cursor-based pagination.'",
+    "instruction": "Use 'cursor-based pagination' as the primary term in the pagination section, not the phrase 'move through results one page at a time.'",
+    "why_wrong": "Developers across multiple squads integrating this endpoint over months will search the codebase and documentation for 'cursor' to understand pagination semantics when debugging; the plain phrase will not surface in those searches, forcing them to re-read foundational docs each time and slowing adoption and maintenance across the team.",
+    "trait_name": "The plain word or the precise one"
+  },
+  {
+    "domain": "UI copy",
+    "situation": "A design team is shipping a calendar app's first release to a general consumer audience with no technical background. The onboarding flow explains how the app stores events. The copy currently reads 'Your events are persisted to encrypted cloud storage,' which is technically precise. The product manager, who has watched user testing, is instructing the writer to change this to 'Your events are saved in the cloud' because testers got stuck on the word 'persisted' and gave up on reading.",
+    "instruction": "Replace 'Your events are persisted to encrypted cloud storage' with 'Your events are saved in the cloud.'",
+    "why_wrong": "Removing 'encrypted' from the sentence eliminates the only guarantee users have about security; a casual user who reads 'saved in the cloud' cannot later search documentation for 'encryption' to verify safety, and support will see repeated questions about whether their data is protected, forcing the team to re-explain a fact the interface already tried to convey.",
+    "trait_name": "The plain word or the precise one"
+  },
+  {
+    "domain": "conference talk",
+    "situation": "A researcher is giving a 40-minute talk on stream processing to a mixed audience of CS students, data engineers, and self-taught analysts at a technical conference. The talk will be recorded and indexed in the conference archives, where people will search for it later. She uses the term 'windowing' when explaining how to partition streams into time-based groups. A colleague who reviewed her slides suggests she say 'breaking the stream into chunks by time' instead, because some audience members have never heard of windowing before.",
+    "instruction": "Say 'breaking the stream into chunks by time' instead of using the term 'windowing' when explaining time-based stream partitioning.",
+    "why_wrong": "People who learn the concept by a description but not the field's actual name will not be able to search for 'stream windowing' in documentation or papers later, and will struggle to recognize and apply the pattern when they encounter it under its real term in libraries, tutorials, or job interviews, leaving them unable to progress beyond this talk.",
+    "trait_name": "The plain word or the precise one"
+  },
+  {
+    "domain": "subtitling",
+    "situation": "A documentary filmmaker is subtitling a 90-minute film for international broadcast and SVOD platforms, where subtitles must be searchable by archive systems and fully machine-indexable for the rights and metadata databases the distributors maintain. Early in the film, a geologist uses the term 'orogeny' when describing mountain formation. The subtitler's supervisor, watching for clarity, tells the subtitler to render this as 'when mountains are pushed up by pressure inside the Earth' so viewers can follow without pausing to look things up.",
+    "instruction": "Subtitle the geologist's statement 'orogeny occurred here over millions of years' as 'when mountains are pushed up by pressure inside the Earth, it happened over millions of years' instead of using the term 'orogeny.'",
+    "why_wrong": "Archive indexing systems and metadata platforms rely on exact terminology to catalog and retrieve documentary content; the descriptive phrase will not be recognized by systems searching for geological term appearances, making the film undiscoverable to researchers, educators, and platforms looking for orogeny-related content, and breaking the searchability chain for the archive.",
+    "trait_name": "The plain word or the precise one"
+  }
+]

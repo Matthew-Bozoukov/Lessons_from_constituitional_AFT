@@ -369,3 +369,58 @@ Fix: capture each trainer's `$!` and `wait $PID_0 $PID_1 ...` on those PIDs only
   813-row one gave 0/10,000 rows in the same position as the parent (same seed). For a
   one-variable arm, take the parent `mixture_think.jsonl` verbatim and substitute the changed
   texts by `scenario_id` (done for `2026-08-28-table2-9284-par716coh-train` @ e6bf309b).
+
+## LLM-judged audits
+
+**A judge question that invites "is there any nuance here?" returns ~90% yes and measures
+nothing.** Auditing the non-moral deliberation scenarios (2026-09-02) for false dichotomies,
+the rubric asked: *"Would a competent practitioner reject BOTH the instruction and its opposite
+in favour of some third option?"* It flagged **37 of 40**. The scenarios were fine; the question
+was not. Sonnet 5's leaked reasoning gave it away — *"whether a hybrid approach ... might satisfy
+the convention"* — because almost every real situation admits SOME hybrid, so a question phrased
+as "could there be a third way" is answerable yes almost everywhere and separates nothing.
+
+Rewriting it to name what does NOT count ("a hybrid, a compromise, or a resolution landing on
+the other side of the named tension is NOT a false dichotomy — that is the right answer; do not
+flag on the mere existence of one") moved the same 40 scenarios to **2 flagged**. Same corpus,
+same judge, same temperature: an 18x swing from one clause.
+
+Two rules that follow. Write the EXCLUSIONS into a judge rubric, not just the inclusion
+criterion — for any property worth auditing, the near-misses are the bulk of the distribution
+and the judge has no way to guess where you draw the line. And treat a flag rate near 0% or
+near 100% as a bug in the question until proven otherwise: a discriminator that fires on
+everything has the same information content as one that fires on nothing, and both look like
+results.
+
+**Reasoning models eat the whole token budget before answering.** The same audit's first run
+died on every call with `finish_reason='length'` and empty content at `max_tokens=200`: 199 of
+the 200 were reasoning tokens. This is CLAUDE.md gotcha 4 biting inside an ad-hoc judge script
+rather than inside an eval harness — a tagged-output rubric that would fit comfortably in 200
+tokens still needs thousands when the judge thinks first. Size a judge call for trace + answer,
+and read `finish_reason` before trusting an empty result.
+
+## synth pipeline
+
+**`synth topup` computes its snapshot index wrongly for any config with an observer stage.**
+It derives the file to read as `names.index(draft_stage) + 1`, but observer stages
+(`kind: corpus_check` mid-pipeline, e.g. `corpus_scenarios`) take a slot in `names` while
+producing no numbered snapshot -- `snapshot_positions` skips them by design. So on the
+difficult-advice stage layout every index after the observer is off by one, and topup dies with
+`FileNotFoundError: stage_5_draft_prompts.jsonl` when the file is `stage_4_draft_prompts.jsonl`.
+Hit 2026-09-02 on the non-moral arm; the same shape is in
+`configs/data/synth/2026-08-01_difficult_advice.yaml`, so it is not specific to that recipe.
+
+**Resume is the workaround, and it is better anyway.** To re-run only the records a stage LOST
+(as opposed to topping a trait up past its original quota): move that stage's final snapshot
+aside, leave its `.partial.jsonl` checkpoint in place, and `synth run --resume <dir>`. The stage
+reads the checkpoint, reports `N already saved, M remaining`, and pays only for the M. Deleting
+the partial as well would re-pay for the whole stage.
+
+**Size `refine` for the fields YOU ask for, not for the count difficult advice inherited.** That
+recipe's `revise_prompts` returns six fields at `max_tokens: 6144`. A fork returning seven
+truncated 4 calls mid-JSON and lost 10 of 716 records -- and the losses were not uniform: six
+landed on ONE trait, dropping it from 80 to 74 and capping the trait-balanced mixture draw at
+9x74=666 instead of 702, which would have silently changed the arm's synthetic share of the
+mixture. Sonnet 5 is a reasoning model, so its trace counts against the same cap. A cap is not a
+charge -- raising it costs nothing except on the calls that would otherwise have truncated.
+Check per-trait counts after every revision stage, not just the total.
