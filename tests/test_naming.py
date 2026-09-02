@@ -140,7 +140,8 @@ def test_figure_paths_are_dated(tmp_path):
 
 
 def test_what_no_stage_shape_covers_still_gets_a_date_and_a_subject():
-    assert artifact_name("lmsys answer cache", date=D) == f"{D}-lmsys-answer-cache"
+    assert artifact_name("arena hard answer cache", date=D) == (
+        f"{D}-arena-hard-answer-cache")
 
 
 def test_the_repo_itself_obeys_the_law():

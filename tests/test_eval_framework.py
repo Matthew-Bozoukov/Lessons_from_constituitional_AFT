@@ -407,7 +407,7 @@ def test_registry_marks_only_openai_client_evals_api_capable():
     # The four chat/answers evals reach the target purely through base_url/model/key;
     # docker + vendored-harness evals do not and must stay False.
     assert {n for n, s in EVALS.items() if s.supports_api_target} == {
-        "mmlu", "arena_hard", "lmsys", "psychosis"}
+        "mmlu", "arena_hard", "psychosis"}
 
 
 def test_publish_layout_contract(tmp_path):

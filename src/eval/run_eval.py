@@ -165,7 +165,7 @@ def main(argv: list[str] | None = None) -> None:
                           OmegaConf.from_dotlist(args.overrides))
     run_fn = resolve(args.name)
     # Eval-specific CLI flags are derived from run()'s own keyword-only params (e.g.
-    # lmsys's `reference` becomes --reference) and piped through blind — run_eval knows
+    # a declared `reference` becomes --reference) and piped through blind — run_eval knows
     # nothing about what any of them mean. A kwarg the registry declares in `arm_kwargs`
     # names a MODEL that also runs, first, as an ordinary arm (config default:
     # `<kwarg>_model`); required-ness is the eval's own run() to enforce.

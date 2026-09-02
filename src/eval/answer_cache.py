@@ -1,5 +1,5 @@
 # ABOUTME: Content-addressed per-model answer sets on Hugging Face, shared by evals whose
-# ABOUTME: generations are reusable across comparisons (lmsys, arena_hard, later mmlu).
+# ABOUTME: generations are reusable across comparisons (arena_hard, later mmlu).
 
 """The HF answer cache behind the "push important artifacts to HF" policy.
 

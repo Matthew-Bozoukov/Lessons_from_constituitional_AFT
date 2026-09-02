@@ -124,7 +124,8 @@ src/                  reviewed, reusable code (installed editable; import as src
   data/mixture/         training-mixture builder + one adapter per source + spec filter
   train/                train_lora.py, merge_lora.py
   eval/                 registry in __init__.py; one directory per eval:
-    capabilities/         capability/ (Arena-Hard), lmsys/, mmlu/
+    capabilities/         arena_hard/ (the model-vs-model eval), mmlu/,
+                          swebench_mini/
     misalignment/         odcv/, agentic_misalignment/, psychosis/, internalization/
                           (odcv + agentic_misalignment vendor PATCHED harnesses in third_party/)
     audits/               petri/ + surf/ audit tooling
@@ -341,7 +342,7 @@ uv run evals --target <hf_path | provider:model-id> [...] --name <eval> [key=val
   from the env (`.env`), never a config. An API target is NOT served by vLLM and its
   `mode` is only a comparison label (the provider's template is not ours to pin). Only
   evals that reach the target purely through the OpenAI triple (base_url, model, key)
-  accept one — `EvalSpec.supports_api_target` (mmlu, arena_hard, lmsys, psychosis);
+  accept one — `EvalSpec.supports_api_target` (mmlu, arena_hard, psychosis);
   the rest (docker, vendored-harness, LoRA-swap) refuse an API target with a clear
   message.
 - **Thinking mode is never declared at eval time — it is inferred from the artifact.**
@@ -372,7 +373,7 @@ uv run evals --target <hf_path | provider:model-id> [...] --name <eval> [key=val
   recipe-level result (ODCV: each arm enters as a checkpoint, so the interval covers
   seed-to-seed variance).
 - **Each eval lives in its own directory** under the matching subarea —
-  `src/eval/capabilities/lmsys/`, `src/eval/misalignment/psychosis/` — with a
+  `src/eval/capabilities/arena_hard/`, `src/eval/misalignment/psychosis/` — with a
   `runner.py` exposing the `run()` the registry points at, and every supporting
   module (judging, metrics, stats, reports) inside that directory, following the
   existing evals. Cross-eval shared code stays at the subarea or `src/eval/` root.

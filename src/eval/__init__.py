@@ -32,9 +32,11 @@ class EvalSpec:
     supports_api_target: bool = False
     # run() kwargs (keyword-only params — each doubles as a --flag on run_eval.py) whose
     # value names a MODEL that must also run, first, as an ordinary arm of the same
-    # invocation: e.g. lmsys's `reference` fills the HF answer cache the later arms are
-    # judged against. Config default: `<kwarg>_model`. run_eval prepends declaratively —
-    # it never learns what the kwarg means; required-ness is enforced by run() itself.
+    # invocation, filling the HF answer cache the later arms are judged against. Config
+    # default: `<kwarg>_model`. run_eval prepends declaratively — it never learns what the
+    # kwarg means; required-ness is enforced by run() itself. NO REGISTERED EVAL USES THIS
+    # TODAY: lmsys did and is gone; arena_hard is the intended next user, when its
+    # `--reference` stops being an answers artifact and becomes an arm.
     arm_kwargs: tuple[str, ...] = ()
     # True when the eval's package defines pool.py::pool(runs, cfg, out_dir) -> summary.
     # run_eval calls it AFTER every arm of a multi-target invocation has been published,
@@ -59,13 +61,6 @@ EVALS: dict[str, EvalSpec] = {
         supports_api_target=True,
         # takes --reference (an answers ARTIFACT, asserted in run()) — not an arm_kwarg
         # until its answer-cache migration
-    ),
-    "lmsys": EvalSpec(
-        "capabilities.lmsys",
-        "configs/eval/lmsys.yaml",
-        key="lmsys",
-        supports_api_target=True,
-        arm_kwargs=("reference",),
     ),
     # The STANDARDIZED baseline: upstream mini-SWE-agent, pinned, config untouched. A custom
     # scaffold gets its own registry entry — never fold one into the other.

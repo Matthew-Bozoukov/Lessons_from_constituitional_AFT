@@ -1,6 +1,25 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-02 — lmsys removed: Arena-Hard is the model-vs-model capabilities eval
+
+Two evals asked the same question — does this arm still write answers a judge prefers —
+and only one of them needs to exist. Arena-Hard is the standard, so lmsys goes:
+`src/eval/capabilities/lmsys/` (445 lines), its registry entry, `configs/eval/lmsys.yaml`
+and `tests/test_lmsys.py`.
+
+Kept deliberately, both now with no registered consumer: `src/eval/answer_cache.py` and
+`EvalSpec.arm_kwargs` + its run_eval prepend. lmsys was the only user of each, but
+arena_hard is the documented next one — its `--reference` is still an answers ARTIFACT
+and is meant to become an arm — so removing the machinery that migration targets would
+undo the migration before it happens. Both are marked as currently unused where they are
+defined. If arena_hard's migration is dropped, they go with it.
+
+Kept for a different reason: the dashboard's lmsys display metadata
+(`dashboard/lib/entries.ts`, `evalRuns.ts`). The dashboard reads published HF data, and
+the lmsys runs already on the Hub do not stop existing because the pipeline no longer
+produces new ones.
+
 ## 2026-09-02 — One name shape per pipeline stage; names are built, not typed
 
 **Problem.** The old law (`src/utils.py`) asked a human to spell every artifact's name and
