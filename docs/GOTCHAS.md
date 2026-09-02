@@ -424,3 +424,32 @@ landed on ONE trait, dropping it from 80 to 74 and capping the trait-balanced mi
 mixture. Sonnet 5 is a reasoning model, so its trace counts against the same cap. A cap is not a
 charge -- raising it costs nothing except on the calls that would otherwise have truncated.
 Check per-trait counts after every revision stage, not just the total.
+
+## RunPod provisioning: two silent failures that bill
+
+**A pod with no SSH key looks identical to a pod that is still booting.** `runpod up` injects
+`PUBLIC_KEY` only when `~/.ssh/id_ed25519.pub` exists at that exact path -- no key file, no
+error, no key on the pod. The provision output prints `ssh: not answering yet`, which is also
+what a healthy pod prints for its first minute, so the failure is invisible until the first
+connection returns `Permission denied (publickey,password)`. A machine with keys under other
+names (`msm_audit`, an org key) still fails: the path is not searched, it is hardcoded. Check
+`ls ~/.ssh/id_ed25519.pub` BEFORE renting anything, and read the provision line for
+`ssh: ready` rather than assuming.
+
+**`nvidia-smi` is not the CUDA check, on RunPod as on vast.** A 2xH200 training pod came up
+showing both GPUs and 143GB each, and `torch.cuda.is_available()` was False: host driver
+550.127.05 (CUDA 12.4) against the repo's pinned `torch 2.11.0+cu130`, which wants driver >=
+580. The pod bills at the full 2xH200 rate the entire time and nothing before the first CUDA
+call complains.
+
+The cause was in `up()` itself, which passed `cuda=""` for TRAINING pods while constraining
+serving pods to `"13.0"`. The reasoning in the comment was that a training pod runs the repo's
+own pinned stack rather than vLLM's and so needs no constraint -- true when written, false once
+the pinned stack moved to cu130. Fixed 2026-09-02 (commit e684cb8) so both shapes get the
+constraint. The general lesson is the one worth keeping: **a scheduling constraint derived from
+what a dependency needed is a fact with an expiry date.** When the dependency moves, the
+constraint does not move with it, and the failure is a silently mis-scheduled paid box.
+
+Always run `uv run python -c 'import torch; print(torch.cuda.is_available())'` on a fresh pod
+before launching anything long. It costs one SSH round-trip and it is the only check that
+actually tests what you are about to depend on.
