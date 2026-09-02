@@ -34,8 +34,8 @@
 #
 # Paths are RELATIVE to the repository root (CLAUDE.md: run everything from the root).
 
-model: "nonmoral_deliberation_702"
-model_key: "qwen3_6-27b-lora-t2-9284-nonmoral-702-r64-dynbatch"
+model: "nonmoral_deliberation_684"
+model_key: "qwen3_6-27b-lora-t2-9284-nonmoral-684-r64-dynbatch"
 published_key: "qwen3.6-27b"
 base_url: "http://host.docker.internal:8000/v1"   # laptop docker -> SSH tunnel -> pod vLLM
 temperature: 0.0

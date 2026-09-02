@@ -25,7 +25,7 @@ POD_IP="${1:?pod ip required}"
 POD_PORT="${2:?pod ssh port required}"
 PASSES="${3:-2}"
 CONC="${4:-16}"
-CFG="${5:-scratch/nonmoral/odcv_bench_t2_9284_nonmoral_702_2x65.yaml}"
+CFG="${5:-scratch/nonmoral/odcv_bench_t2_9284_nonmoral_684_2x65.yaml}"
 HF_REPO=LASR-Callum/2026-09-02-odcv-nonmoral-deliberation-702-eval
 STATE=output/odcv_nonmoral_state
 mkdir -p "$STATE" output/logs
