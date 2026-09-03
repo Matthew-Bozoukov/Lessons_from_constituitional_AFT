@@ -369,3 +369,77 @@ Fix: capture each trainer's `$!` and `wait $PID_0 $PID_1 ...` on those PIDs only
   813-row one gave 0/10,000 rows in the same position as the parent (same seed). For a
   one-variable arm, take the parent `mixture_think.jsonl` verbatim and substitute the changed
   texts by `scenario_id` (done for `2026-08-28-table2-9284-par716coh-train` @ e6bf309b).
+
+## Killarney (Alliance SLURM): a non-login shell silently builds the wrong venv (2026-09-03)
+
+`module` is a shell FUNCTION sourced from the login profile, so it does not exist in the
+non-login shell that a remote one-shot command gives you. A setup script that guards its
+module loads with `command -v module` and *continues* when absent therefore builds its
+venv on `/usr/bin/python` instead of the cluster's `python/3.12.4`.
+
+Everything then works until the one thing that needs a compiler. vLLM's inductor pass
+compiles C++ at engine startup and the system interpreter's headers are incomplete:
+
+```
+/usr/include/python3.12/pyconfig.h:3:12: fatal error:
+    x86_64-linux-gnu/python3.12/pyconfig.h: No such file or directory
+```
+
+which surfaces as `RuntimeError: Engine core initialization failed` — **after** loading
+52 GiB of weights onto the GPU, i.e. after paying for the allocation. The real error is
+~150 lines above the traceback vLLM prints, so grep the vLLM log for `fatal error`
+rather than reading its tail.
+
+Two lessons, both now enforced in `scripts/infra/slurm/setup_killarney.sh`:
+
+- Run cluster setup through a LOGIN shell (`bash -lc "..."`), and make a missing `module`
+  command a hard failure rather than a fallback.
+- Verify the interpreter after creating a venv: `pyvenv.cfg`'s `home` is the bin directory
+  of whatever built it, and `/usr/bin` there means the module was not active. Checking it
+  costs nothing; the alternative is discovering it on a GPU.
+
+## `--target` is nargs='+' and will eat your config overrides (2026-09-03)
+
+`run_eval.py` declares `--target` with `nargs="+"`, so it consumes every following token
+that does not start with `-`. Putting it last means the trailing `key=value` OmegaConf
+overrides are parsed as additional model repos:
+
+```
+HFValidationError: Repo id must use alphanumeric chars ...: 'experiment=collusion'
+```
+
+`--target` goes FIRST, terminated by `--name` (a real flag), with the overrides trailing
+at the end where `parse_known_args` collects them — the order CLAUDE.md documents.
+Verified: the wrong order yields 4 targets and 0 overrides; the right one yields 2 and 2.
+It costs only seconds of GPU, because run_eval resolves and names every target before it
+serves anything.
+
+## uv ignores an activated venv (2026-09-03)
+
+Activating a venv and then calling `uv run` does NOT use that venv. uv resolves the
+project environment itself — `.venv` in the project root unless `UV_PROJECT_ENVIRONMENT`
+says otherwise — and *syncs* it, which needs the network. On an offline compute node that
+is a hang or a hard failure, and the venv you carefully activated is ignored either way.
+
+Call the entry point directly (`python -m src.eval.run_eval`) and set
+`UV_PROJECT_ENVIRONMENT` + `UV_OFFLINE` so anything else reaching for uv fails loudly
+instead. Also set `UV_LINK_MODE=copy` when uv's cache and the target venv are on
+different filesystems (`/home` vs `/project` here), or every package warns as it falls
+back to a full copy — and budget for that copy: ~18GB of torch/vLLM onto NFS runs
+~850 MB/min.
+
+## Killarney: CPU count gates the GPU queue, not walltime (2026-09-03)
+
+`sbatch --test-only` estimated start times for one H100 in `gpubase_h100_b1`, same job,
+2h walltime, varying only the CPU request:
+
+| request | estimated start |
+|---|---|
+| 16 CPUs, 64G | +2h 13m |
+| 12 CPUs, 64G | +33m |
+| 8 CPUs, 96G  | immediate |
+
+Memory barely mattered; CPUs decided everything, because the free H100 nodes were mostly
+full of other jobs' cores. Ask `--test-only` before committing to a shape, and prefer the
+smallest CPU count the work actually needs — asyncio's default executor caps at
+`min(32, cpu_count + 4)`, so 8 CPUs still affords 12 worker threads.

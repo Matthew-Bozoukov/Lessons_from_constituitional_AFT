@@ -33,11 +33,16 @@ ACCOUNT="${ACCOUNT:-aip-s2ganapa}"
 # one GPU and a 48GB card cannot hold it. The job script re-checks this on the node.
 GPU="${GPU:-h100:1}"
 TIME="${TIME:-12:00:00}"
-MEM="${MEM:-64G}"
-# 16, not 8: Colosseum's max_concurrent_runs is THREADS on asyncio's default executor,
-# which caps at min(32, cpu_count + 4). Too few CPUs silently runs fewer episodes at once
-# than the config asks for, and the only symptom is a slow job.
-CPUS="${CPUS:-16}"
+MEM="${MEM:-96G}"
+# 8, and the CPU count is what gates the QUEUE on this cluster, not walltime. Measured
+# with `sbatch --test-only` for one H100 in gpubase_h100_b1, same 2h job, varying only
+# the CPU ask: 16 CPUs -> start in 2h13m, 12 -> 33m, 8 -> immediately. Memory barely
+# moved it. The free H100 nodes are mostly full of other jobs' cores, so asking for
+# fewer is the difference between running now and running after lunch.
+#
+# 8 is still enough: Colosseum's max_concurrent_runs is THREADS on asyncio's default
+# executor, which caps at min(32, cpu_count + 4) = 12 here, against a configured 5.
+CPUS="${CPUS:-8}"
 
 slurm_time_to_minutes() {
     local t="${1:-}" d=0 h=0 m=0 s=0
