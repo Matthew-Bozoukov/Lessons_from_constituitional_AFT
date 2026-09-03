@@ -233,3 +233,48 @@ def test_a_source_the_law_has_no_word_for_refuses_and_names_the_registry():
         derive([{"source": "mem_self"}] * 10 + [{"source": "tulu3"}] * 90)
     with pytest.raises(NamingError, match="no `source` column"):
         derive([{"text": "..."}] * 10)
+
+
+def test_the_legacy_table_speaks_before_the_rows_and_a_null_entry_refuses(tmp_path, monkeypatch):
+    """The Hub keeps its old names; the table says what each old repo's products are called."""
+    from src import naming
+
+    table = tmp_path / "legacy_names.yaml"
+    table.write_text(
+        "LASR-Callum/2026-08-06-table2-9284-synthdoc-716-train:\n"
+        "  kind: mixture\n  subject: da-7\n  from: judged\n"
+        "  note: Table-2 9,284 replay + 716 synthdoc difficult-advice\n"
+        "LASR-Callum/2026-08-06-qwen36-table2-80-memory-self-20-10k-train-mixture:\n"
+        "  kind: mixture\n  subject: null\n  from: judged\n"
+        "  note: retired arm (memory-self), no new work builds on it\n")
+    monkeypatch.setattr(naming, "LEGACY_NAMES", table)
+    assert naming.legacy_subject("LASR-Callum/2026-08-06-table2-9284-synthdoc-716-train") == "da-7"
+    assert naming.legacy_subject("LASR-Callum/never-heard-of-it") is None      # fall through
+    with pytest.raises(NamingError, match="retired arm"):
+        naming.legacy_subject("LASR-Callum/2026-08-06-qwen36-table2-80-memory-self-20-10k-train-mixture")
+
+
+def test_the_shipped_legacy_table_obeys_the_law():
+    """Every subject in src/infra/legacy_names.yaml is one the builders will accept, and no entry
+    names a repo that already conforms — a lawful name needs no table."""
+    import yaml
+    from src import naming
+    from src.model_profile import model_key
+
+    table = yaml.safe_load(naming.LEGACY_NAMES.read_text(encoding="utf-8"))
+    assert len(table) > 250
+    for repo, entry in table.items():
+        assert repo.startswith("LASR-Callum/") and entry["kind"] in ("mixture", "synth", "model", "eval", "other"), repo
+        assert naming.mix_subject_from(repo) == "", f"{repo} conforms; it must not be in the table"
+        subject = entry.get("subject")
+        if subject is None:
+            assert entry.get("note"), f"{repo}: a null subject needs a note saying why"
+            continue
+        if entry["kind"] == "mixture":
+            naming.check_mix_subject(subject)
+        elif entry["kind"] == "synth":
+            naming.check_style(subject)
+        elif entry["kind"] == "model":
+            model, seed, mix = subject.split("-", 2)
+            assert model_key(model) == model and seed.isdigit(), subject
+            naming.check_mix_subject(mix)

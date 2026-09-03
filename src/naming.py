@@ -407,17 +407,58 @@ SOURCE_STYLES: dict[str, str | None] = {
     "da": "da", "difficult_advice": "da", "synthdoc": "da",
     "post_action_retrospection": "par", "peer_critique": "pc",
     "pre_action_deliberation": "pad", "courtroom": "courtroom",
+    # the same style under the names older mixtures gave it, and its synth variants
+    "synthdoc_difficult_advice": "da", "difficult_advice_v2": "da",
+    "difficult_advice_chunk_only": "da-principle-scoped",
+    "gpt_responder": "da-gptresp", "grok_responder": "da-grokresp",
+    "sonnet_concise": "da-sonnetconcise", "difficult_advice_low_stakes": "da-lowstakes",
+    "difficult_advice_t10_curiosity": "da-t10-curiosity",
+    "swap_gtrace_sreply703": "da-gtrace-sreply", "swap_strace_greply703": "da-strace-greply",
+    "good_ai_fiction": "good-ai-fiction", "nonmoral_deliberation": "nonmoral-deliberation",
     # replay — the non-synthetic blend, however it was assembled at the time
     "tulu3": None, "tulu3_if": None, "numinamath_cot": None, "no_robots": None,
     "table2": None, "smol_summarize": None, "smol_constraints": None,
     "self_oss_instruct": None, "longalign": None, "lima": None,
     "apigen_function_calling": None, "embodied": None, "agentic_tools": None,
+    "table2_filtered": None, "agentic": None, "agentic_toolcalling": None,
 }
 
 # `supervise` values that are a mixture VARIANT in the law's vocabulary. "all" and
 # "final" are not variants: they are what every mixture does by default for single- and
 # multi-turn rows respectively.
 SUPERVISE_VARIANTS: dict[str, str] = {"cot": "cot-only", "answer": "answer-only"}
+
+
+LEGACY_NAMES = Path(__file__).parent / "infra" / "legacy_names.yaml"
+
+
+def legacy_subject(repo_id: str) -> str | None:
+    """The subject a NEW artifact takes from a pre-law repo, from the curated table.
+
+    `src/infra/legacy_names.yaml` is one entry per repo that existed before the law — written
+    once, by reading each repo's card, manifest and stamp, so the Hub never has to be
+    renamed. Consulted after a lawful name (which needs no table) and before row
+    derivation (which needs no human). An entry whose `subject` is null is a deliberate
+    refusal — a retired arm, a fixture, not an artifact — and its `note` says why.
+
+    Returns:
+        The subject, or None when the repo has no entry (the caller falls through).
+
+    Raises:
+        NamingError: the entry exists and says this repo must not name anything new.
+    """
+    if not LEGACY_NAMES.exists():
+        return None
+    import yaml
+
+    entry = (yaml.safe_load(LEGACY_NAMES.read_text(encoding="utf-8")) or {}).get(str(repo_id))
+    if entry is None:
+        return None
+    if entry.get("subject") is None:
+        raise NamingError(
+            f"{repo_id} must not name a new artifact: {entry.get('note') or 'listed as '
+            'retired in src/infra/legacy_names.yaml'}. Build from a live input instead.")
+    return str(entry["subject"])
 
 
 def derive_artifact_name_from_legacy(rows) -> str:

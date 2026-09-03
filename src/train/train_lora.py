@@ -30,7 +30,8 @@ from src.train.dynamic_batching import (  # noqa: E402
 from src.train.mask_gate import gate_generation_boundary  # noqa: E402
 from src.model_profile import train_memory_entry  # noqa: E402
 from src.naming import (  # noqa: E402
-    check_hub_name, derive_artifact_name_from_legacy, mix_subject_from, model_name)
+    check_hub_name, derive_artifact_name_from_legacy, legacy_subject, mix_subject_from,
+    model_name)
 from src.train.masking import (  # noqa: E402
     build_labels,
     check_thinking_declaration,
@@ -304,6 +305,12 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     # still has to pass the law.
     mix = mix_subject_from(str(cfg.data_repo))
     mix_from = "data_repo name"
+    if not mix:
+        # Pre-law input. The curated table (src/infra/legacy_names.yaml) speaks first — it is
+        # how the Hub keeps its old names while everything built from them is named
+        # well — and the rows speak only for a repo the table has never seen.
+        mix = legacy_subject(str(cfg.data_repo))
+        mix_from = "src/infra/legacy_names.yaml (pre-law name)"
     if not mix:
         mix = derive_artifact_name_from_legacy(ds)
         mix_from = "derived from data_repo rows (pre-law name)"
