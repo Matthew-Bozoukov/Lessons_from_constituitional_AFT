@@ -63,14 +63,14 @@ class TargetSpec:
     arm, whose mode is pinned into the chat template).
     """
 
-    hf_path: str          # as given on the CLI (HF id, or `<provider>:<model-id>`)
-    base_model: str       # HF id vLLM loads; for an API target, the provider's model id
-    adapter: bool         # True when hf_path is a LoRA adapter repo
-    mode: str             # think | nothink | default (full model: template's own default)
-    model_key: str        # filesystem/served-name-safe identifier
+    hf_path: str  # as given on the CLI (HF id, or `<provider>:<model-id>`)
+    base_model: str  # HF id vLLM loads; for an API target, the provider's model id
+    adapter: bool  # True when hf_path is a LoRA adapter repo
+    mode: str  # think | nothink | default (full model: template's own default)
+    model_key: str  # filesystem/served-name-safe identifier
     lora_rank: int | None
-    api_base: str | None = None      # OpenAI-compatible base URL; None => served by vLLM
-    api_key_env: str | None = None   # env var holding the key for api_base
+    api_base: str | None = None  # OpenAI-compatible base URL; None => served by vLLM
+    api_key_env: str | None = None  # env var holding the key for api_base
 
 
 class ServedTarget:
@@ -85,8 +85,11 @@ class ServedTarget:
         self.spec = spec
         # The id sent in the request body: the provider's model id for an API target,
         # else vLLM's --served-model-name ("base", or the adapter's key after a LoRA swap).
-        self.model_name = spec.base_model if spec.api_base \
+        self.model_name = (
+            spec.base_model
+            if spec.api_base
             else (spec.model_key if spec.adapter else "base")
+        )
         self._server = server
 
     @property
@@ -103,6 +106,39 @@ class ServedTarget:
             return self.spec.api_base
         return self._server.serve(self.spec)
 
+    def sibling(self, hf_path: str) -> "ServedTarget":
+        """A second model live on the SAME server, for an eval that seats more than one.
+
+        The arm ladder serves models one after another; a multi-agent environment needs
+        them at the same time, because the six seats of one episode are filled by
+        different checkpoints. vLLM already supports that — several LoRA adapters attach
+        to one base model and each request picks between them by name — so the cost is
+        one extra adapter, not a second GPU.
+
+        The two must agree on base model and thinking mode. Disagreeing on either means
+        serving the sibling would RESTART the server and evict the caller's own model
+        (`VllmServer.serve`), so the episode would silently run with one arm in both
+        seats. That is refused here rather than discovered in the transcripts, and it
+        also happens to be the comparison rule: arms whose modes differ are not
+        comparable, and an eval that seats them together is claiming they are.
+        """
+        assert not self.is_api, (
+            f"{self.spec.hf_path} is an API endpoint — there is no server to seat a sibling on"
+        )
+        spec = resolve_target(hf_path)
+        assert spec.base_model == self.spec.base_model, (
+            f"cannot co-serve {hf_path} (base {spec.base_model}) with "
+            f"{self.spec.hf_path} (base {self.spec.base_model}): one vLLM server holds "
+            "one base model"
+        )
+        assert spec.mode == self.spec.mode, (
+            f"cannot co-serve {hf_path} (mode {spec.mode!r}) with {self.spec.hf_path} "
+            f"(mode {self.spec.mode!r}): the mode is pinned into the chat template at "
+            "serve time, so one server serves one mode — and arms in different modes "
+            "are not comparable anyway"
+        )
+        return self._server.ensure(spec)
+
     @property
     def api_key(self) -> str:
         """The key evals send with each request: the provider's key from the environment
@@ -111,30 +147,43 @@ class ServedTarget:
         if not self.is_api:
             return "EMPTY"
         key = os.environ.get(self.spec.api_key_env or "")
-        assert key, (f"API target {self.spec.hf_path} needs {self.spec.api_key_env} in "
-                     "the environment (.env) — it is unset")
+        assert key, (
+            f"API target {self.spec.hf_path} needs {self.spec.api_key_env} in "
+            "the environment (.env) — it is unset"
+        )
         return key
 
 
 def _mode_from_training_meta(meta: dict) -> str:
-    assert "thinking" in meta, "training_meta.json must carry a boolean `thinking` field"
+    assert "thinking" in meta, (
+        "training_meta.json must carry a boolean `thinking` field"
+    )
     return "think" if meta["thinking"] else "nothink"
 
 
-def _spec_from_files(hf_path: str, adapter_config: dict | None, training_meta: dict | None) -> TargetSpec:
+def _spec_from_files(
+    hf_path: str, adapter_config: dict | None, training_meta: dict | None
+) -> TargetSpec:
     """Build a TargetSpec from the artifact's metadata files (pure; unit-tested offline)."""
     # ONE spelling per model everywhere it is used (served name, out_dir, HF tag):
     # `qwen3.6-27b-lora-...` and `qwen3_6-27b-lora-...` are the same organism and must
     # not file themselves under two keys (src/utils.py).
     model_key = canonical_key(hf_path.split("/")[-1])
     if adapter_config is None:
-        return TargetSpec(hf_path=hf_path, base_model=hf_path, adapter=False,
-                          mode="default", model_key=model_key, lora_rank=None)
+        return TargetSpec(
+            hf_path=hf_path,
+            base_model=hf_path,
+            adapter=False,
+            mode="default",
+            model_key=model_key,
+            lora_rank=None,
+        )
     if training_meta is None:
         raise RuntimeError(
             f"{hf_path} is a LoRA adapter with no training_meta.json — the eval framework "
             "infers thinking mode from that stamp and never guesses. Backfill it from the "
-            "arm's training config (see scratch/backfill_training_meta.py), then rerun.")
+            "arm's training config (see scratch/backfill_training_meta.py), then rerun."
+        )
     return TargetSpec(
         hf_path=hf_path,
         base_model=adapter_config["base_model_name_or_path"],
@@ -155,10 +204,15 @@ def resolve_api_target(provider: str, model_id: str) -> TargetSpec:
     """
     base, key_env = API_PROVIDERS[provider]
     return TargetSpec(
-        hf_path=f"{provider}:{model_id}", base_model=model_id, adapter=False,
+        hf_path=f"{provider}:{model_id}",
+        base_model=model_id,
+        adapter=False,
         mode="default",
         model_key=canonical_key(f"{provider}_{model_id.split('/')[-1]}"),
-        lora_rank=None, api_base=base, api_key_env=key_env)
+        lora_rank=None,
+        api_base=base,
+        api_key_env=key_env,
+    )
 
 
 def resolve_target(hf_path: str) -> TargetSpec:
@@ -171,14 +225,17 @@ def resolve_target(hf_path: str) -> TargetSpec:
     """
     scheme, sep, rest = hf_path.partition(":")
     if sep and scheme in API_PROVIDERS:
-        assert rest, f"API target {hf_path!r} names no model (expected {scheme}:<model-id>)"
+        assert rest, (
+            f"API target {hf_path!r} names no model (expected {scheme}:<model-id>)"
+        )
         return resolve_api_target(scheme, rest)
     if sep and "/" not in scheme:
         # A colon with an unknown scheme is a typo'd provider, not an HF id — fail loud
         # rather than trying to fetch "openroute:foo/bar" as a repo.
         raise ValueError(
             f"unknown API provider {scheme!r} in target {hf_path!r} "
-            f"(known: {', '.join(sorted(API_PROVIDERS))}); an HF path has no scheme.")
+            f"(known: {', '.join(sorted(API_PROVIDERS))}); an HF path has no scheme."
+        )
     try:
         with open(hf_download(hf_path, "adapter_config.json")) as f:
             adapter_config = json.load(f)
@@ -217,8 +274,10 @@ def pin_prefix(mode: str) -> str:
     """
     assert mode in ("think", "nothink"), mode
     flag = "true" if mode == "think" else "false"
-    return (f"{{%- set enable_thinking = {flag} -%}}\n"
-            f"{{%- set preserve_thinking = {flag} -%}}\n")
+    return (
+        f"{{%- set enable_thinking = {flag} -%}}\n"
+        f"{{%- set preserve_thinking = {flag} -%}}\n"
+    )
 
 
 # The two serving namespaces are DISJOINT BY CONSTRUCTION — no key appears in both, so
@@ -228,8 +287,13 @@ def pin_prefix(mode: str) -> str:
 # facts here, never merged over them: a merge lets a config forge the very ceiling it is
 # checked against, swallows typo'd keys in silence, and makes "what actually served?"
 # a question about dict ordering.
-_FAMILY_FACT_KEYS = {"native_context_window", "max_num_seqs", "reasoning_parser",
-                     "tool_call_parser", "supports_prefix_caching"}
+_FAMILY_FACT_KEYS = {
+    "native_context_window",
+    "max_num_seqs",
+    "reasoning_parser",
+    "tool_call_parser",
+    "supports_prefix_caching",
+}
 
 
 def native_context_window(base_model: str) -> int | None:
@@ -250,14 +314,20 @@ def native_context_window(base_model: str) -> int | None:
     try:
         with open(hf_download(base_model, "config.json")) as f:
             config = json.load(f)
-    except Exception:            # offline, gated repo, unusual layout — not fatal
+    except Exception:  # offline, gated repo, unusual layout — not fatal
         return None
     window = config.get("max_position_embeddings")
-    if window is None:           # some multimodal configs nest it under the text tower
+    if window is None:  # some multimodal configs nest it under the text tower
         window = (config.get("text_config") or {}).get("max_position_embeddings")
     return int(window) if window else None
-_EVAL_REQUIREMENT_KEYS = {"context_window", "concurrency", "needs_tool_calls",
-                          "reuses_long_prefixes"}
+
+
+_EVAL_REQUIREMENT_KEYS = {
+    "context_window",
+    "concurrency",
+    "needs_tool_calls",
+    "reuses_long_prefixes",
+}
 
 
 def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) -> dict:
@@ -300,21 +370,24 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
             f"\nunknown key(s) in {base_model}'s ModelProfile.serving: "
             f"{sorted(unknown_facts)}. Family facts are a closed set "
             f"({sorted(_FAMILY_FACT_KEYS)}) — an eval's needs belong in its config's "
-            "serving: block, not in src/model_profile.py.")
+            "serving: block, not in src/model_profile.py."
+        )
     unknown = set(requirements) - _EVAL_REQUIREMENT_KEYS
     if unknown:
         raise SystemExit(
             f"\nunknown key(s) in this eval's serving: block: {sorted(unknown)}. "
             f"Eval configs declare requirements only ({sorted(_EVAL_REQUIREMENT_KEYS)}); "
             "family facts (verified ceilings, parser names) live in "
-            "ModelProfile.serving, src/model_profile.py — an eval cannot set them.")
+            "ModelProfile.serving, src/model_profile.py — an eval cannot set them."
+        )
     window = requirements.get("context_window")
     if not window:
         raise SystemExit(
             "\nthis eval's config declares no serving.context_window — every eval "
             "states the window it runs at (required, no default: the window decides "
             "truncation behaviour, so it is part of the eval's scientific record). "
-            "Add a `serving:` section to its configs/eval YAML.")
+            "Add a `serving:` section to its configs/eval YAML."
+        )
     # The only hard window limit is the model's TRAINED window: past it there are no
     # trained positions to attend to, and no amount of GPU fixes that. Everything
     # between "what we have booted" and native is a KV-cache question about this
@@ -328,7 +401,8 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
             f"\nserving.context_window={window} exceeds {base_model}'s native window "
             f"({native} — ModelProfile.serving, src/model_profile.py): the weights have no "
             "trained positions beyond it, so serving there needs explicit rope scaling "
-            "and is a deliberate experiment, not a config bump. Lower the eval's window.")
+            "and is a deliberate experiment, not a config bump. Lower the eval's window."
+        )
     # The family value is a boot-feasibility CAP (Mamba state slots are preallocated at
     # startup), not a default an eval may exceed. An eval requests `concurrency` — a
     # different key on purpose, so the cap cannot be shadowed even by accident — and may
@@ -340,7 +414,8 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
             f"\nserving.concurrency={seqs} exceeds {base_model}'s verified cap "
             f"({cap} — ModelProfile.serving, src/model_profile.py): Mamba state slots are "
             "preallocated at boot and the arena above the cap does not fit the "
-            "reference H100. Request fewer, or verify a larger cap with a live boot.")
+            "reference H100. Request fewer, or verify a larger cap with a live boot."
+        )
 
     # Tool calls: the EVAL knows it drives a tool, the FAMILY knows which parser reads
     # the syntax its template emits. Neither half is guessable from the other, and the
@@ -355,7 +430,8 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
                 "verified tool_call_parser (ModelProfile.serving, src/model_profile.py). Serving "
                 "it anyway returns tool calls as raw text and every task scores 0 for a "
                 "reason indistinguishable from incapability. Verify which of vLLM's "
-                "parsers matches this family's chat template, then add it as a fact.")
+                "parsers matches this family's chat template, then add it as a fact."
+            )
 
     # Prefix caching costs throughput, not correctness, so an impossible request is
     # reported rather than fatal: on Qwen3.6 vLLM forces it off regardless (Mamba state
@@ -368,7 +444,8 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
         warnings.append(
             f"reuses_long_prefixes: {base_model} cannot cache prefixes "
             "(supports_prefix_caching is false), so each step re-prefills its whole "
-            "context. Throughput only — outputs are unaffected.")
+            "context. Throughput only — outputs are unaffected."
+        )
 
     # Think-mode only, by construction: on a tagless (nothink) stream the parser's
     # "reasoning is at the start" assumption would route the WHOLE answer into the
@@ -376,12 +453,14 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
     # client-side splitting — see docs/TODO.md.
     reasoning_parser = facts.get("reasoning_parser") if mode == "think" else None
 
-    return {"context_window": int(window),
-            "max_num_seqs": int(seqs) if seqs else None,
-            "reasoning_parser": reasoning_parser,
-            "tool_call_parser": tool_call_parser,
-            "prefix_caching": prefix_caching,
-            "warnings": tuple(warnings)}
+    return {
+        "context_window": int(window),
+        "max_num_seqs": int(seqs) if seqs else None,
+        "reasoning_parser": reasoning_parser,
+        "tool_call_parser": tool_call_parser,
+        "prefix_caching": prefix_caching,
+        "warnings": tuple(warnings),
+    }
 
 
 class LocalExec:
@@ -414,15 +493,20 @@ class LocalExec:
         self.work_dir.mkdir(parents=True, exist_ok=True)
         log = (self.work_dir / "vllm.log").open("a")
         log.write(f"\n=== {' '.join(argv)}\n")
-        self.proc = subprocess.Popen(argv, stdout=log, stderr=subprocess.STDOUT,
-                                     env=os.environ | env_extra)
+        self.proc = subprocess.Popen(
+            argv, stdout=log, stderr=subprocess.STDOUT, env=os.environ | env_extra
+        )
 
     def alive(self) -> bool:
         return self.proc is not None and self.proc.poll() is None
 
     def tail_log(self, n: int = 15) -> str:
         path = self.work_dir / "vllm.log"
-        return "\n".join(path.read_text().splitlines()[-n:]) if path.exists() else "(no log)"
+        return (
+            "\n".join(path.read_text().splitlines()[-n:])
+            if path.exists()
+            else "(no log)"
+        )
 
     def stop_server(self) -> None:
         if self.proc is not None and self.proc.poll() is None:
@@ -455,10 +539,18 @@ def ssh_argv(host: str) -> tuple[list[str], str]:
     match = _HOST_PORT.match(host)
     if not match:
         return ["ssh"], host
-    return (["ssh", "-p", match["port"],
-             "-o", "StrictHostKeyChecking=accept-new",
-             "-o", "UserKnownHostsFile=/dev/null"],
-            match["host"])
+    return (
+        [
+            "ssh",
+            "-p",
+            match["port"],
+            "-o",
+            "StrictHostKeyChecking=accept-new",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+        ],
+        match["host"],
+    )
 
 
 class SshExec:
@@ -483,8 +575,9 @@ class SshExec:
     # `runpod.bootstrap_script`, which sets the same two for the chat pods.
     base_env = {"HF_HOME": f"{POD_WORKDIR}/hf", "VLLM_USE_FLASHINFER_SAMPLER": "0"}
 
-    def __init__(self, host: str, port: int, bind: str = "127.0.0.1",
-                 workdir: str = POD_WORKDIR):
+    def __init__(
+        self, host: str, port: int, bind: str = "127.0.0.1", workdir: str = POD_WORKDIR
+    ):
         self.host = host
         self.port = port
         self.bind = bind
@@ -504,16 +597,27 @@ class SshExec:
         # subprocess's reader THREAD — which does not fail the call, it just loses the output
         # and prints an alarming traceback that looks like the run died. Observed 2026-08-05.
         argv, target = ssh_argv(self.host)
-        r = subprocess.run([*argv, target, cmd], capture_output=True, text=True,
-                           encoding="utf-8", errors="replace",
-                           timeout=timeout, input=stdin_text)
+        r = subprocess.run(
+            [*argv, target, cmd],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+            input=stdin_text,
+        )
         if r.returncode != 0:
-            raise RuntimeError(f"ssh {self.host} failed ({r.returncode}): "
-                               f"{cmd[:120]} ...\n{r.stderr[-500:]}")
+            raise RuntimeError(
+                f"ssh {self.host} failed ({r.returncode}): "
+                f"{cmd[:120]} ...\n{r.stderr[-500:]}"
+            )
         return r.stdout
 
     def has_env(self) -> bool:
-        return self._ssh(f"[ -f {self.workdir}/.env ] && echo yes || echo no").strip() == "yes"
+        return (
+            self._ssh(f"[ -f {self.workdir}/.env ] && echo yes || echo no").strip()
+            == "yes"
+        )
 
     def push_hf_env(self, local_env: Path) -> None:
         """OPT-IN provisioning (--push-env): write ONLY HF_TOKEN and HF_ORG to the host's .env.
@@ -539,15 +643,26 @@ class SshExec:
             return
         from src.huggingface import hf_org
 
-        token = next((line.split("=", 1)[1].strip()
-                      for line in local_env.read_text().splitlines()
-                      if line.startswith("HF_TOKEN=")), "")
+        token = next(
+            (
+                line.split("=", 1)[1].strip()
+                for line in local_env.read_text().splitlines()
+                if line.startswith("HF_TOKEN=")
+            ),
+            "",
+        )
         assert token, f"no HF_TOKEN in {local_env}; nothing to push"
-        lines = " ".join(shlex.quote(v) for v in (f"HF_TOKEN={token}", f"HF_ORG={hf_org()}"))
-        self._ssh(f"umask 077 && mkdir -p {self.workdir} && "
-                  rf"printf '%s\n' {lines} > {self.workdir}/.env")
-        print(f">>> pushed HF_TOKEN + HF_ORG (and nothing else) to "
-              f"{self.host}:{self.workdir}/.env")
+        lines = " ".join(
+            shlex.quote(v) for v in (f"HF_TOKEN={token}", f"HF_ORG={hf_org()}")
+        )
+        self._ssh(
+            f"umask 077 && mkdir -p {self.workdir} && "
+            rf"printf '%s\n' {lines} > {self.workdir}/.env"
+        )
+        print(
+            f">>> pushed HF_TOKEN + HF_ORG (and nothing else) to "
+            f"{self.host}:{self.workdir}/.env"
+        )
 
     def _with_env(self, cmd: str) -> str:
         """Prefix a remote command with uv's PATH and the host's own .env (never the driver's).
@@ -556,9 +671,11 @@ class SshExec:
         is not on PATH and a remote snapshot_download or vLLM launch has no HF_TOKEN even
         when the pod is fully provisioned. Secrets stay machine-local by design.
         """
-        return ('export PATH="$HOME/.local/bin:$PATH"; '
-                f"set -a; [ -f {self.workdir}/.env ] && . {self.workdir}/.env; set +a; "
-                + cmd)
+        return (
+            'export PATH="$HOME/.local/bin:$PATH"; '
+            f"set -a; [ -f {self.workdir}/.env ] && . {self.workdir}/.env; set +a; "
+            + cmd
+        )
 
     def check_ready(self) -> None:
         """Fast fail-with-remedy preflight: is this host prepared to serve?
@@ -570,12 +687,14 @@ class SshExec:
         """
         try:
             state = self._ssh(
-                f"[ -x {POD_VENV}/bin/python ] && echo VLLM || echo NOVLLM", timeout=20)
+                f"[ -x {POD_VENV}/bin/python ] && echo VLLM || echo NOVLLM", timeout=20
+            )
         except (RuntimeError, subprocess.TimeoutExpired) as e:
             raise SystemExit(
                 f"\n--server preflight: cannot reach {self.host} over SSH ({e}).\n"
                 "  Check the host is up and the address/port in ~/.ssh/config is current\n"
-                "  (RunPod remaps ports across restarts).") from e
+                "  (RunPod remaps ports across restarts)."
+            ) from e
         if "NOVLLM" in state:
             raise SystemExit(
                 f"\n--server preflight: {self.host} has no vLLM at {POD_VENV}.\n"
@@ -583,7 +702,8 @@ class SshExec:
                 "    uv run runpod up --name <name> --eval <hf_path>\n"
                 "  (installs vLLM and pre-pulls the weights; it starts no server —\n"
                 "  run_eval does that). If the pod is still booting, its :8080 boot log\n"
-                "  says READY when the venv is in.")
+                "  says READY when the venv is in."
+            )
 
     def write_file(self, name: str, text: str) -> str:
         """Write a file on the remote host, streaming the payload through STDIN.
@@ -599,9 +719,13 @@ class SshExec:
         """
         payload = base64.b64encode(text.encode()).decode()
         path = f"{self.remote_dir}/{name}"
-        self._ssh(f"mkdir -p {self.remote_dir} && base64 -d > {shlex.quote(path)}",
-                  stdin_text=payload)
-        written = self._ssh(f"wc -c < {shlex.quote(path)} 2>/dev/null || echo 0").strip()
+        self._ssh(
+            f"mkdir -p {self.remote_dir} && base64 -d > {shlex.quote(path)}",
+            stdin_text=payload,
+        )
+        written = self._ssh(
+            f"wc -c < {shlex.quote(path)} 2>/dev/null || echo 0"
+        ).strip()
         assert int(written or 0) > 0, f"remote write of {path} produced an empty file"
         return path
 
@@ -610,32 +734,55 @@ class SshExec:
         # from. The token comes from the host's own .env via _with_env, which writes it as
         # HF_TOKEN — the one variable a bare snapshot_download reads.
         env = " ".join(f"{k}={shlex.quote(v)}" for k, v in self.base_env.items())
-        out = self._ssh(self._with_env(
-            f"{env} {POD_VENV}/bin/python -c "
-            f"\"from huggingface_hub import snapshot_download; "
-            f"print(snapshot_download('{hf_path}'))\""), timeout=1800)
+        out = self._ssh(
+            self._with_env(
+                f"{env} {POD_VENV}/bin/python -c "
+                f'"from huggingface_hub import snapshot_download; '
+                f"print(snapshot_download('{hf_path}'))\""
+            ),
+            timeout=1800,
+        )
         return out.strip().splitlines()[-1]
 
     def start_server(self, argv: list[str], env_extra: dict) -> None:
         # nohup-ing the command INLINE over ssh keeps the channel open until the ssh
         # client times out (CLAUDE.md gotcha 8 — observed twice this migration). The
         # pattern that returns instantly is nohup-ing a SCRIPT, so write one and launch it.
-        env = " ".join(f"export {k}={shlex.quote(v)};"
-                       for k, v in (self.base_env | env_extra).items())
+        env = " ".join(
+            f"export {k}={shlex.quote(v)};"
+            for k, v in (self.base_env | env_extra).items()
+        )
         cmd = " ".join(shlex.quote(a) for a in argv)
-        script = self.write_file("launch_vllm.sh",
-                                 f"#!/bin/bash\ncd {self.workdir}\n{env}\nexec {cmd}\n")
-        self._ssh(self._with_env(
-            f"nohup bash {script} >> {self.remote_dir}/vllm.log 2>&1 < /dev/null & "
-            f"echo started"), timeout=60)
+        script = self.write_file(
+            "launch_vllm.sh", f"#!/bin/bash\ncd {self.workdir}\n{env}\nexec {cmd}\n"
+        )
+        self._ssh(
+            self._with_env(
+                f"nohup bash {script} >> {self.remote_dir}/vllm.log 2>&1 < /dev/null & "
+                f"echo started"
+            ),
+            timeout=60,
+        )
         argv, target = ssh_argv(self.host)
         self.tunnel = subprocess.Popen(
-            [*argv, "-N", "-L", f"{self.bind}:{self.port}:localhost:{self.port}", target])
+            [
+                *argv,
+                "-N",
+                "-L",
+                f"{self.bind}:{self.port}:localhost:{self.port}",
+                target,
+            ]
+        )
 
     def alive(self) -> bool:
         try:
-            return self._ssh(f"pgrep -f '{_SERVER_PATTERN}' >/dev/null && echo up || echo down"
-                             ).strip().endswith("up")
+            return (
+                self._ssh(
+                    f"pgrep -f '{_SERVER_PATTERN}' >/dev/null && echo up || echo down"
+                )
+                .strip()
+                .endswith("up")
+            )
         except RuntimeError:
             return False
 
@@ -665,8 +812,13 @@ class VllmServer:
     plan_serving and layered over nothing; see that function for the split.
     """
 
-    def __init__(self, work_dir: Path, port: int = 8000, executor=None,
-                 serve_requirements: dict | None = None):
+    def __init__(
+        self,
+        work_dir: Path,
+        port: int = 8000,
+        executor=None,
+        serve_requirements: dict | None = None,
+    ):
         self.port = port
         self.serve_requirements = serve_requirements or {}
         self.executor = executor if executor is not None else LocalExec(work_dir)
@@ -689,8 +841,14 @@ class VllmServer:
         Returns:
             The OpenAI-compatible base URL.
         """
-        adapter_dir = self.executor.fetch_adapter(spec.hf_path) if spec.adapter else None
-        if not self.running or self.base_model != spec.base_model or self.mode != spec.mode:
+        adapter_dir = (
+            self.executor.fetch_adapter(spec.hf_path) if spec.adapter else None
+        )
+        if (
+            not self.running
+            or self.base_model != spec.base_model
+            or self.mode != spec.mode
+        ):
             self.stop()
             self._start(spec, adapter_dir)
         elif spec.adapter and spec.model_key not in self._loaded_loras:
@@ -703,24 +861,36 @@ class VllmServer:
             return None
         with open(hf_download(base_model, "tokenizer_config.json")) as f:
             template = json.load(f)["chat_template"]
-        return self.executor.write_file(f"chat_template_{mode}.jinja",
-                                        pin_template(template, mode))
+        return self.executor.write_file(
+            f"chat_template_{mode}.jinja", pin_template(template, mode)
+        )
 
     def _start(self, spec: TargetSpec, adapter_dir: str | None) -> None:
         # Facts come from two places, both authoritative and neither overridable: the
         # family's measured/architectural profile, and the model's own config.json.
-        facts = dict(serving_params(spec.base_model),
-                     native_context_window=native_context_window(spec.base_model))
+        facts = dict(
+            serving_params(spec.base_model),
+            native_context_window=native_context_window(spec.base_model),
+        )
         plan = plan_serving(facts, self.serve_requirements, spec.base_model, spec.mode)
         for warning in plan["warnings"]:
             print(f"!!! {warning}")
         argv = self.executor.python_argv + [
-            "-m", "vllm.entrypoints.openai.api_server",
-            "--model", spec.base_model, "--served-model-name", "base",
-            "--dtype", "bfloat16",
-            "--max-model-len", str(plan["context_window"]),
-            "--gpu-memory-utilization", "0.94",
-            "--port", str(self.port)]
+            "-m",
+            "vllm.entrypoints.openai.api_server",
+            "--model",
+            spec.base_model,
+            "--served-model-name",
+            "base",
+            "--dtype",
+            "bfloat16",
+            "--max-model-len",
+            str(plan["context_window"]),
+            "--gpu-memory-utilization",
+            "0.94",
+            "--port",
+            str(self.port),
+        ]
         # Every decision below was made in plan_serving; this is translation only. Adding
         # an `if` here would put a second decision-maker back in the loop — the thing the
         # facts/requirements split exists to prevent.
@@ -729,16 +899,24 @@ class VllmServer:
         if plan["reasoning_parser"]:
             argv += ["--reasoning-parser", plan["reasoning_parser"]]
         if plan["tool_call_parser"]:
-            argv += ["--enable-auto-tool-choice",
-                     "--tool-call-parser", plan["tool_call_parser"]]
+            argv += [
+                "--enable-auto-tool-choice",
+                "--tool-call-parser",
+                plan["tool_call_parser"],
+            ]
         if plan["prefix_caching"]:
             argv += ["--enable-prefix-caching"]
         template = self._pinned_template_path(spec.base_model, spec.mode)
         if template:
             argv += ["--chat-template", template]
         if spec.adapter:
-            argv += ["--enable-lora", "--max-lora-rank", str(max(spec.lora_rank or 32, 32)),
-                     "--lora-modules", f"{spec.model_key}={adapter_dir}"]
+            argv += [
+                "--enable-lora",
+                "--max-lora-rank",
+                str(max(spec.lora_rank or 32, 32)),
+                "--lora-modules",
+                f"{spec.model_key}={adapter_dir}",
+            ]
         self.executor.start_server(argv, {"VLLM_ALLOW_RUNTIME_LORA_UPDATING": "1"})
         self.base_model, self.mode, self.running = spec.base_model, spec.mode, True
         self._loaded_loras = {spec.model_key} if spec.adapter else set()
@@ -749,20 +927,26 @@ class VllmServer:
         url = f"http://{self.executor.endpoint_host}:{self.port}/health"
         while time.time() < deadline:
             if not self.executor.alive():
-                raise RuntimeError(f"vLLM exited; last log lines:\n{self.executor.tail_log()}")
+                raise RuntimeError(
+                    f"vLLM exited; last log lines:\n{self.executor.tail_log()}"
+                )
             try:
                 if requests.get(url, timeout=5).status_code == 200:
                     return
             except requests.RequestException:
                 pass
             time.sleep(5)
-        raise TimeoutError(f"vLLM not healthy after {_HEALTH_TIMEOUT_S}s; last log lines:\n"
-                           f"{self.executor.tail_log()}")
+        raise TimeoutError(
+            f"vLLM not healthy after {_HEALTH_TIMEOUT_S}s; last log lines:\n"
+            f"{self.executor.tail_log()}"
+        )
 
     def _load_lora(self, spec: TargetSpec, adapter_dir: str) -> None:
-        r = requests.post(f"{self.base_url}/load_lora_adapter",
-                          json={"lora_name": spec.model_key, "lora_path": adapter_dir},
-                          timeout=120)
+        r = requests.post(
+            f"{self.base_url}/load_lora_adapter",
+            json={"lora_name": spec.model_key, "lora_path": adapter_dir},
+            timeout=120,
+        )
         if r.status_code != 200:
             # Older vLLM or endpoint disabled: fall back to a cold restart with the adapter.
             self.stop()
