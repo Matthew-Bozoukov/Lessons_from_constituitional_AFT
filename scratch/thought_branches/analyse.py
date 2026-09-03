@@ -19,7 +19,8 @@ from pathlib import Path
 
 import fire
 
-from src.utils import run_dir, write_run_meta
+from src.naming import run_dir
+from src.utils import write_run_meta
 
 from scratch.thought_branches.descriptive import (
     all_contrasts,

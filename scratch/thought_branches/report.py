@@ -1,5 +1,5 @@
 # ABOUTME: Figures and markdown mirrors for the good-vs-bad ODCV contrast — every savefig
-# ABOUTME: takes its path from src.utils.figure_path, so the naming law holds for plots too.
+# ABOUTME: takes its path from src.naming.figure_path, so the naming law holds for plots too.
 
 """Turning the contrast tables into something a reader can act on.
 
@@ -27,7 +27,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from src.utils import figure_path
+from src.naming import figure_path
 
 from scratch.thought_branches.descriptive import (
     Contrast,
