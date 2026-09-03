@@ -86,15 +86,20 @@ COMMON=(--name colosseum_jira --no-push --target "${CONTROL}" "${TREATMENT}")
 # cooperation control carries 20, because it is a sanity check on a single cell rather
 # than a contrast whose effect size has to be resolved. An explicit SEEDS= overrides both
 # (SEEDS=1-3 is the smoke shape).
+#
+# ONE code path, deliberately. This used `seq -s, 1 20` for the cooperation default,
+# which appends the separator AFTER the last number on BSD seq — `seeds=[1,...,20,]`,
+# a malformed OmegaConf override. GNU seq on this cluster does not, so it would have
+# worked here and broken anywhere else; expanding both cases through the same python
+# call removes the dependence on which seq is installed.
 seeds_for() {
-    if [ -n "${SEEDS:-}" ]; then
-        echo "seeds=[$(python3 -c "
+    local range="${SEEDS:-}"
+    [ -z "${range}" ] && [ "$1" = "cooperation" ] && range="1-20"
+    [ -z "${range}" ] && return 0          # neither: the config's own 40 seeds stand
+    echo "seeds=[$(python3 -c "
 import sys
 lo, _, hi = sys.argv[1].partition('-')
-print(','.join(str(s) for s in range(int(lo), int(hi or lo) + 1)))" "${SEEDS}")]"
-    elif [ "$1" = "cooperation" ]; then
-        echo "seeds=[$(seq -s, 1 20)]"
-    fi
+print(','.join(str(s) for s in range(int(lo), int(hi or lo) + 1)))" "${range}")]"
 }
 
 STATUS=0
