@@ -80,7 +80,16 @@ fi
 # Every invocation runs with --no-push: this node has no route to the Hub. The run
 # directories it leaves under output/ are published afterwards from a login node by
 # scripts/infra/slurm/publish_runs.sh, which is also where the judge pass runs.
-COMMON=(--name colosseum_jira --no-push --target "${CONTROL}" "${TREATMENT}")
+#
+# ARGUMENT ORDER IS LOAD-BEARING. `--target` is nargs='+', so it consumes every
+# following token that does not start with '-'. With --target last, the trailing
+# `key=value` overrides were swallowed as if they were model repos and the run died in
+# preflight with
+#   HFValidationError: Repo id must use alphanumeric chars ...: 'experiment=collusion'
+# --target therefore goes FIRST and is terminated by `--name`, which argparse recognises
+# as a flag; the overrides trail at the end where run_eval's parse_known_args picks them
+# up as an OmegaConf dotlist. This is the order CLAUDE.md documents, for this reason.
+COMMON=(--target "${CONTROL}" "${TREATMENT}" --name colosseum_jira --no-push)
 
 # Seeds per experiment. The two multi-agent experiments carry the design's 40; the
 # cooperation control carries 20, because it is a sanity check on a single cell rather
