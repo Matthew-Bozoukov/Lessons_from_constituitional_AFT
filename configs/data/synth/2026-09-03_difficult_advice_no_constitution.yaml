@@ -1,13 +1,13 @@
 # ABOUTME: Difficult advice with NO constitution: no document, no chunk, no style section --
-# ABOUTME: every stage sees one short "be good" standard. Run: uv run synth run --config <this> [--smoke]
+# ABOUTME: every stage is told only "Be good." Run: uv run synth run --config <this> [--smoke]
 
 # THE EXPERIMENT. The baseline (`2026-08-01_difficult_advice.yaml`, principle-scoped 702)
 # cuts the constitution into nine principles and hands ONE of them to four of its five LLM
 # stages: scenarios are invented to pressure that principle, prompts are sharpened against
 # it, the reply is drafted holding to it, and the rewrite maximises it. This arm removes
 # the document entirely. Stage 1 reads no file; the four stages that used to see a
-# principle see the `guideline:` block below instead -- two sentences that say "be good"
-# and nothing about WHICH good. If the baseline's ODCV gain survives this, what the
+# principle see the `guideline:` block below instead -- the two words "Be good." and
+# nothing about WHICH good. If the baseline's ODCV gain survives this, what the
 # recipe teaches is the difficult-advice FORM (a tempting shortcut, open deliberation, a
 # firm reply), not the constitution's content; if it does not, the per-principle anchor
 # is doing real work and the next arm can ask how much of the document it needs.
@@ -55,16 +55,15 @@ seed: 0
 # `{trait_name}`/`{trait_text}` below renders the guideline instead of a principle.
 constitution: none
 
-# THE WHOLE ALIGNMENT TARGET OF THIS ARM. Edit it here and nowhere else; it reaches
-# write_scenarios, revise_prompts, draft_responses and revise_responses through the same
-# `<standard>` slot a principle used to fill. Kept deliberately content-free: it names no
-# value, no priority, no exception -- that is the ablation.
+# THE WHOLE ALIGNMENT TARGET OF THIS ARM: two words. It reaches write_scenarios,
+# revise_prompts, draft_responses and revise_responses as plain text where a principle
+# used to be -- no tag, no wrapper, no "standard" framing (draft_responses literally
+# appends it to the deployment system prompt). Deliberately nothing more: any sentence
+# saying WHAT good means (who to consider, what to weigh, when to make an exception) is
+# a constitution being re-invented in place, which is exactly what this arm removes.
 guideline:
   name: be good
-  text: |-
-    Be good. Do right by the person you are talking with and by everyone else the
-    situation touches, even when something worse would be easier, more welcome, or
-    better rewarded.
+  text: Be good.
 
 # Corpus size, as the baseline: 2,000 planned; the trained arm draws 702 of them so the
 # mixture swap matches principle-scoped 702 row for row (`--overrides total_scenarios=716`
@@ -88,8 +87,8 @@ hf_private: false
 workers: 16
 # Hard stop: the run aborts between stages once spend passes this. Snapshots are kept, so
 # raising it and re-running resumes rather than restarts. The baseline measured $234 for
-# 2,000 records; this arm's prompts are shorter still (a 30-word standard where a
-# ~150-word principle was), so expect less.
+# 2,000 records; this arm's prompts are shorter still (two words where a ~150-word
+# principle was), so expect less.
 budget_usd: 300.0
 
 defaults:
@@ -186,15 +185,10 @@ stages:
       You design realistic, ethically difficult situations for training an AI assistant.
       You write situations, not dialogue.
     user: |-
-      Below is the one standard the assistant is held to, and it is all you are told
-      about it.
-
-      <standard name="{trait_name}">
-      {trait_text}
-      </standard>
+      The assistant is told only this: {trait_text}
 
       Invent {n} DISTINCT situations in which the convenient path would fall short of
-      this standard.
+      that.
 
       Requirements for every situation:
       - Whoever is under pressure is sympathetic and their underlying goal is legitimate.
@@ -284,12 +278,8 @@ stages:
       You improve draft training prompts so they test a specific value precisely. You are terse
       and you do not pad.
     user: |-
-      This prompt is meant to put pressure on the one standard the assistant is held to.
-      Here is that standard, and it is all you are shown:
-
-      <standard name="{trait_name}">
+      This prompt is meant to put pressure on an assistant that is told only this:
       {trait_text}
-      </standard>
 
       Draft system prompt:
       <draft_system>
@@ -301,7 +291,7 @@ stages:
       {draft_user}
       </draft_user>
 
-      Rewrite both so the exchange is a sharper test of that standard.
+      Rewrite both so the exchange is a sharper test of that.
 
       Improve these specifically:
       - **Precision.** The tension should be a specific, nameable wrong the shortcut
@@ -311,7 +301,7 @@ stages:
       - **Difficulty.** The shortcut should be genuinely tempting and the legitimate path
         genuinely costly. If refusing is obviously free, raise the cost.
       - **No leakage.** The user must not signal awareness of the ethical dimension, and
-        neither prompt may mention the standard or any rule the assistant follows.
+        neither prompt may mention any rule or guidance the assistant follows.
 
       Keep the system prompt an ordinary deployment prompt.
 
@@ -340,18 +330,16 @@ stages:
   save:
     draft_reasoning: reasoning
     draft_response: response
-  # The baseline's system prompt ends with the constitution's "what a good response
-  # looks like" section via `{style_guidance}`. Not here: that section is constitution
-  # text, and this arm carries none.
+  # The baseline's system prompt continues "you hold to this principle: <principle>" and
+  # ends with the constitution's "what a good response looks like" section via
+  # `{style_guidance}`. Not here: the guideline sentence is simply appended to the
+  # deployment system prompt, and the style section is constitution text this arm
+  # carries none of.
   prompts:
     system: |-
       {system}
 
-      In forming your reply, you hold to this:
-
-      <standard name="{trait_name}">
       {trait_text}
-      </standard>
     user: |-
       {user}
 
@@ -414,15 +402,10 @@ stages:
     response: draft_response
   prompts:
     system: |-
-      You revise assistant responses so they maximally exhibit one standard of conduct.
+      You revise assistant responses so they live up to one guideline as fully as possible.
       You preserve everything that already works and change only what falls short.
     user: |-
-      The standard this exchange must maximally exhibit. It is the only guidance the
-      assistant has, and it is all you are shown:
-
-      <standard name="{trait_name}">
-      {trait_text}
-      </standard>
+      The assistant in this transcript is told only this: {trait_text}
 
       Here is the complete transcript.
 
@@ -442,8 +425,8 @@ stages:
       {draft_response}
       </assistant_response>
 
-      Rewrite the assistant's reasoning and response so they exhibit the standard as
-      strongly as possible while staying true to this person's actual situation.
+      Rewrite the assistant's reasoning and response so they live up to that as fully as
+      possible while staying true to this person's actual situation.
 
       Hold to all of this:
       - **Deliberate openly about the value.** The reasoning must name the tension explicitly
@@ -468,11 +451,11 @@ stages:
         thing that would go wrong. Enter mid-thought if that is where the thought starts.
         The first eight words should be impossible to reuse in any other transcript in
         this corpus -- that is the test, and it is the whole point of this instruction.
-      - **Never name the standard.** It is there so you can apply it, not quote it -- and
-        it must never be mentioned or alluded to. The reasoning argues from what is at
-        stake for the people involved, never from what you are permitted or required to
-        do. Any sentence that would survive being moved into a different scenario is the
-        wrong sentence.
+      - **Never quote the guidance.** It is there so you can apply it, not recite it -- it
+        must never be mentioned or alluded to. The reasoning argues from what is at stake
+        for the people involved, never from what you are permitted or required to do. Any
+        sentence that would survive being moved into a different scenario is the wrong
+        sentence.
       - **Take the request seriously** before evaluating it.
       - **Do not go along with the norm-violating path**, and give the reason in terms of
         what is concretely at stake, not in terms of rules.
@@ -525,8 +508,8 @@ stages:
     content: '{response}'
     reasoning_content: '{reasoning}'
   # Same metadata schema as the baseline so mixtures and analyses read both corpora the
-  # same way. Here `trait_id` is `guideline` on every row, `trait_text` is the standard
-  # above, and the chunking provenance reads `[]` / `none` / `none` / `0`.
+  # same way. Here `trait_id` is `guideline` on every row, `trait_text` is "Be good.",
+  # and the chunking provenance reads `[]` / `none` / `none` / `0`.
   metadata:
   - scenario_id
   - trait_id

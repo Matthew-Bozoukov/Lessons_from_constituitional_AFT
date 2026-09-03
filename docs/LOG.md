@@ -19,29 +19,37 @@ arm can ask how much of the document it needs.
 config `configs/data/synth/2026-09-03_difficult_advice_no_constitution.yaml`, identical to
 the baseline in stages, models, sampling, diversity gate, both lint blocks, corpus checks
 and judge rubrics — pinned equal by `tests/test_difficult_advice_no_constitution.py` — and
-different only in what the generator is shown: the `<principle>` slot becomes a
-`<standard>` holding "Be good. Do right by the person you are talking with and by everyone
-else the situation touches, even when something worse would be easier, more welcome, or
-better rewarded."; `{style_guidance}` is dropped from `draft_responses` (it is constitution
-text); and no prompt contains the words constitution or principle, negative instructions
-included. One unit means `trait_id: guideline` on every row, so a mixture from this corpus
+different only in what the generator is shown: where the `<principle>` block was, each
+prompt now says "The assistant is told only this: Be good." (stage 6 appends the two words
+to the deployment system prompt); `{style_guidance}` is dropped from `draft_responses` (it
+is constitution text); and no prompt contains the words constitution or principle,
+negative instructions included. (Amended the same day: a first cut wrapped a two-sentence
+elaboration in a `<standard>` tag; Kunwar cut it to the two words, since any sentence
+saying what good means is a constitution re-invented in place.) One unit means
+`trait_id: guideline` on every row, so a mixture from this corpus
 cannot `balance_by: trait_id` and must draw its 702 by seed. One residual outside the
 config: the operator's over-representation steer (fires past 60 kept scenarios at >4% per
 domain) still says "this principle"; left alone so the baseline's prompt bytes do not move.
 
-**Result (smoke: 4 scenarios, $0.25, 119 s).** Every stage ran; 0 failures and 0 lint
-retries at each of the four LLM stages; both corpus checks pass; pushed to
+**Result (two smokes of 4 scenarios each; the second, $0.31 / 164 s, is with the final
+two-word guideline).** Every stage ran both times; 0 failures and 0 lint retries at each of
+the four LLM stages; both corpus checks pass; pushed to
 `LASR-Callum/2026-09-03-sonnet5-difficult-advice-no-constitution-smoke`. The trained text
 carries no "constitution", "principle", "guideline" or "standard" (0 hits over reasoning +
-reply in all four rows), and every opening is situation-specific. Reasoning 2.0–3.3k chars,
-replies 1.7–3.3k, in the baseline's range. One thing to read before spending: all four
-scenarios are deception-shaped (a falsified chart note for unnecessary antibiotics, a
-fee-driven script for an anxious retiree, post-hoc data exclusion dressed as pre-registered
-criteria, a "locally sourced" claim kept after the sourcing changed). With no principle
-anchor the generator may collapse onto one kind of wrong, which the baseline's nine units
-prevented by construction; `pattern_scan` is the check that would show it at scale. The
-estimator prices the full 2,000-row run at $131 from assumed tokens (baseline measured
-$234; this arm's prompts are shorter).
+reply in all rows), and every opening is situation-specific. With "Be good." alone the rows
+came out LONGER than with the two-sentence first cut: 5.9–7.4k chars reasoning + reply
+against the baseline's median 5.7k (first cut 3.8–6.2k). Same voice as the baseline
+(specific opener, weighing, decline, concrete alternative). The finding that survives both
+smokes is coverage: with no principle anchor every scenario the generator wrote was
+concealment-shaped — first smoke 3 of 4 (falsified chart note, fee-driven script, post-hoc
+exclusion, a stale "locally sourced" claim), second smoke 4 of 4 (spotlighting responders
+in a funding deck, hiding unverified asylum documents, reclassifying a trial death out of
+the arm, recording a vetting step as done). The baseline's shortcuts are 31% deception, 20%
+oversight/unilateral action, 8% privacy, 6% sycophancy; the nine principles were the
+mechanism that put the other kinds in. Deterministic comparison in
+`scratch/no_constitution/compare_smoke.py` (smoke rows sit inside the baseline's p10–p90
+on every length and style metric). The estimator prices the full 2,000-row run at $131
+from assumed tokens (baseline measured $234; this arm's prompts are shorter).
 
 **Next steps.** (1) Read the four transcripts
 (`output/difficult_advice_no_constitution/2026-09-03_no_constitution_smoke_transcripts.md`

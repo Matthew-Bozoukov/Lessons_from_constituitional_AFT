@@ -27,10 +27,10 @@ BASELINE = "configs/data/synth/2026-08-01_difficult_advice.yaml"
 
 # The words whose presence in ANY prompt would mean the document leaked back in. Checked
 # case-insensitively over every prompt template and the guideline itself.
-_TRACES = ("constitution", "principle", "{constitution}", "{style_guidance}")
+_TRACES = ("constitution", "principle", "<standard", "{constitution}", "{style_guidance}")
 
 # The stages that used to be handed the target principle, and now get the guideline.
-_STANDARD_STAGES = ("write_scenarios", "revise_prompts", "draft_responses",
+_GUIDELINE_STAGES = ("write_scenarios", "revise_prompts", "draft_responses",
                     "revise_responses")
 
 
@@ -94,6 +94,9 @@ def test_no_prompt_carries_a_trace_of_a_document(cfg):
                 assert word not in low, f"{sc['name']}.{role} carries {word!r}"
     low = cfg["guideline"]["text"].lower() + " " + cfg["guideline"]["name"].lower()
     assert not any(w in low for w in _TRACES)
+    # Two words. A sentence saying WHAT good means (who to consider, what to weigh) is a
+    # constitution re-invented in place, which is what this arm exists to remove.
+    assert cfg["guideline"]["text"].strip() == "Be good."
     for key in ("chunking", "only_traits", "n_traits"):
         assert key not in cfg, f"{key} cuts or counts a document this arm does not have"
     # The style section is constitution text; its slot must not survive either.
@@ -103,9 +106,9 @@ def test_no_prompt_carries_a_trace_of_a_document(cfg):
     assert "unit" not in fields and "members" not in fields
 
 
-def test_every_standard_stage_sees_the_guideline_and_nothing_else(cfg):
-    """Each of the four stages that used to see a principle renders the guideline in its
-    `<standard>` slot, and every template variable resolves (a leftover `{trait_text}`
+def test_every_guideline_stage_sees_the_guideline_and_nothing_else(cfg):
+    """Each of the four stages that used to see a principle renders the guideline as plain
+    text (no tag, no wrapper), and every template variable resolves (a leftover `{trait_text}`
     would be a KeyError at generation time, after money was spent)."""
     (u,), _ = units_from_config(cfg)
     record = {**u.as_dict(), "trait_name": u.name, "trait_text": u.text,
@@ -120,11 +123,10 @@ def test_every_standard_stage_sees_the_guideline_and_nothing_else(cfg):
             # Rendering IS the check: an unresolved placeholder raises KeyError here
             # rather than mid-run, after the earlier stages were paid for.
             out = _render(text, record, ctx, n=2, avoid="", overrepresented="")
-            if sc["name"] in _STANDARD_STAGES:
-                if "{trait_text}" in text:
-                    assert cfg["guideline"]["text"].strip() in out
-                    assert f'<standard name="{cfg["guideline"]["name"]}">' in out
-    for name in _STANDARD_STAGES:
+            assert "<standard" not in out and "<principle" not in out
+            if sc["name"] in _GUIDELINE_STAGES and "{trait_text}" in text:
+                assert cfg["guideline"]["text"].strip() in out
+    for name in _GUIDELINE_STAGES:
         joined = " ".join(_stage(cfg, name)["prompts"].values())
         assert "{trait_text}" in joined, f"{name} no longer sees the standard at all"
 
