@@ -910,7 +910,16 @@ def _note_batched(ctx: Ctx, name: str) -> None:
 
 
 def op_llm_json(sc: dict, cfg: dict) -> Stage:
-    """One JSON call per record; `save` maps record fields <- JSON keys."""
+    """One JSON call per record; `save` maps record fields <- JSON keys.
+
+    Takes the same optional `lint:` block as `llm_tagged`, for the same reason and with the
+    same retry semantics. It was missing until 2026-09-03, and the gap was not theoretical:
+    a peer-critique smoke shipped a training record whose USER turn ended `</draft_user>` --
+    `revise_prompts` had echoed a closing tag out of its own prompt scaffold into the message
+    it returned, and nothing between there and the export looked at the string. Every
+    `llm_tagged` stage would have caught it with a `ban_patterns` entry; the JSON stages had
+    no contract to state one in.
+    """
     sys_t, user_t = sc["prompts"]["system"], sc["prompts"]["user"]
     mk, save = sc["model"], dict(sc["save"])
     optional = set(sc.get("optional", []))
@@ -918,24 +927,63 @@ def op_llm_json(sc: dict, cfg: dict) -> Stage:
     # call_json so a valid-JSON-but-missing-key reply retries with a targeted nudge
     # instead of KeyError-ing at the extraction below and dropping the record.
     required = tuple(k for k in save.values() if k not in optional)
+    lint_spec = sc.get("lint")
+    # `lint_problems` reads the JSON keys, so a spec names them exactly as a tagged stage
+    # names its tags -- `fields: [user]`, not the record field it is saved to.
+    lint_retries = 1 + max(
+        (
+            int(s.get("retries", 0))
+            for s in (
+                lint_spec
+                if isinstance(lint_spec, list)
+                else [lint_spec]
+                if lint_spec
+                else []
+            )
+        ),
+        default=0,
+    )
 
     def fn(ctx, records, ckpt):
         m = model_cfg(ctx.cfg, mk)
         max_fail = float(ctx.cfg.get("max_fail_pct", 2.0))
 
         def one(r: dict) -> dict:
-            parsed, _ = call_json(
-                ctx.client,
-                ctx.usage,
-                m["model"],
-                _render(sys_t, r, ctx),
-                _render(user_t, r, ctx),
-                m["temperature"],
-                m["max_tokens"],
-                stage=mk,
-                extra=m.get("extra_body"),
-                required=required,
-            )
+            problems: list[str] = []
+            for attempt in range(lint_retries):
+                nudge = (
+                    ""
+                    if not problems
+                    else (
+                        "\n\nYour previous answer broke the contract: "
+                        + "; ".join(problems)
+                        + ". Return the same JSON keys, fixed."
+                    )
+                )
+                parsed, _ = call_json(
+                    ctx.client,
+                    ctx.usage,
+                    m["model"],
+                    _render(sys_t, r, ctx),
+                    _render(user_t, r, ctx) + nudge,
+                    m["temperature"],
+                    m["max_tokens"],
+                    stage=mk,
+                    extra=m.get("extra_body"),
+                    required=required,
+                )
+                problems = _lint(parsed, lint_spec, r) if lint_spec else []
+                if not problems:
+                    break
+                print(
+                    f"    [{r.get('scenario_id', '?')}] {mk} attempt "
+                    f"{attempt + 1}/{lint_retries}: {'; '.join(problems)}"
+                )
+            if problems:
+                raise ValueError(
+                    f"{mk}: output breaks the stage contract after {lint_retries} "
+                    f"attempts: {'; '.join(problems)}"
+                )
             return {
                 **r,
                 **{

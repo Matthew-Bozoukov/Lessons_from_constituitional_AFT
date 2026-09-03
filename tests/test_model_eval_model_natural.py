@@ -379,6 +379,30 @@ def test_the_variants_share_the_scenario_coherence_pass(name: str) -> None:
     assert names.index("dedupe_scenarios") < names.index(name) < names.index("draft_prompts")
 
 
+@pytest.mark.parametrize("cfg,label", [(PR_CFG, "pr"), (PC_CFG, "pc")], ids=["pr", "pc"])
+@pytest.mark.parametrize("name", ["revise_prompts", "revise_scenarios"])
+def test_the_json_stages_ban_their_own_scaffold(cfg: dict, label: str, name: str) -> None:
+    """A peer-critique smoke record shipped with `</draft_user>` at the end of its USER turn
+    (2026-09-03): `revise_prompts` wraps its inputs in tags and Sonnet echoed a closing tag
+    back inside the message it returned, and nothing between there and the export looked at
+    the string. Every `llm_tagged` stage would have caught it with a ban list; `llm_json` had
+    no lint support to state one in, so it gained some.
+
+    Both JSON stages wrap fields in tags, so both need the ban list."""
+    sc = _stage(cfg, name)
+    assert sc["kind"] == "llm_json", name
+    spec = sc["lint"]
+    # Named by JSON key, which is how lint_problems reads a parsed reply.
+    assert set(spec["fields"]) <= set(sc["save"].values()), name
+    # The exact string that leaked, and the tags this stage actually uses.
+    for leak in ("</draft_user>", "<situation>", "</shortfall>", "</pushback>"):
+        field = spec["fields"][0]
+        assert lint_problems({field: f"a message.\n\n{leak}"}, spec), (name, leak)
+    # ... without rejecting ordinary prose.
+    clean = {f: "She needs the reference finished before Friday." for f in spec["fields"]}
+    assert not lint_problems(clean, spec), name
+
+
 @pytest.mark.parametrize("name", GREW_FIELDS)
 def test_the_two_variants_grew_their_extra_fields_identically(name: str) -> None:
     """`shortfall` and `pushback` (2026-09-02) are the ONLY things PAR and PC add to

@@ -454,6 +454,14 @@ stages:
     scenario_changes: changes
   optional:
   - changes
+  # Same exposure as `revise_prompts`, same day: this stage wraps all four fields in tags,
+  # so it can echo one back. Named by JSON key.
+  lint:
+    fields: [situation, shortcut, shortfall, pushback]
+    retries: 2
+    ban_patterns:
+    - </?(?:situation|shortcut|shortfall|pushback|target_principle)>
+    - </?draft_(?:user|system)>
   prompts:
     system: |-
       You check that the pieces of a training scenario describe one coherent story, and you
@@ -567,6 +575,17 @@ stages:
     domain: domain
   optional:
   - changes
+  # The scaffold must not survive into the record. A closing `</draft_user>` reached the
+  # exported USER turn of a peer-critique smoke record on 2026-09-03: this stage wraps its
+  # inputs in tags, and Sonnet echoed one back inside the message it returned. Every
+  # `llm_tagged` stage has a ban list for exactly this; `llm_json` gained one the same day.
+  # Named by JSON KEY, as a tagged stage names its tags.
+  lint:
+    fields: [system, user, situation, shortcut, shortfall, pushback]
+    retries: 2
+    ban_patterns:
+    - </?draft_(?:user|system)>
+    - </?(?:situation|shortcut|shortfall|pushback|target_principle)>
   prompts:
     system: |-
       You improve draft training prompts so they test a specific value precisely. You are terse
