@@ -115,7 +115,7 @@ Stage 1 then reads no file and emits one unit (`trait_id: guideline`, provenance
 `none`/empty); `{constitution}` and `{style_guidance}` render empty; `chunking:` and
 `only_traits:` are refused, since there is nothing to cut; the manifest records
 `constitution_sha256: null` and the card `constitution: none`. Everything after stage 1
-is unchanged. First used by `2026-09-03_difficult_advice_no_constitution.yaml`.
+is unchanged. First used by `da-no-const.yaml`.
 
 Methods are defined in `CHUNKINGS` (`constitution.py`), one frozen `Chunking` each.
 **Settings live with the method, not in the config**: a config carries a name, so a run

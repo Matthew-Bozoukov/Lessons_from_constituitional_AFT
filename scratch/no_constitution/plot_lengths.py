@@ -15,7 +15,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
-from src.huggingface import hf_download  # noqa: E402
+from src.infra.huggingface import hf_download  # noqa: E402
 
 RUN = Path("output/difficult_advice_no_constitution/20260903_154633/dataset.jsonl")
 BASELINE = (

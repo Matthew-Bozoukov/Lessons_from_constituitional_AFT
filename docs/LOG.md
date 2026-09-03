@@ -16,7 +16,9 @@ arm can ask how much of the document it needs.
 `units_from_config` returns the config's `guideline:` block as the single unit and refuses
 `chunking:`/`only_traits:`; the manifest records `constitution_sha256: null` and the card
 `constitution: none`; the key stays required, so an absent key is still an error). New
-config `configs/data/synth/2026-09-03_difficult_advice_no_constitution.yaml`, identical to
+config `configs/data/synth/da-no-const.yaml` (born as
+`2026-09-03_difficult_advice_no_constitution.yaml`, renamed the same day when main's
+derived-name law landed), identical to
 the baseline in stages, models, sampling, diversity gate, both lint blocks, corpus checks
 and judge rubrics — pinned equal by `tests/test_difficult_advice_no_constitution.py` — and
 different only in what the generator is shown: where the `<principle>` block was, each

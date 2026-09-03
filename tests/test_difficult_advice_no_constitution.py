@@ -22,8 +22,8 @@ from src.data.synth.constitution import (
 from src.data.synth.stage_operators import _render
 from src.data.synth.stage_runtime import Ctx, Usage
 
-CONFIG = "configs/data/synth/2026-09-03_difficult_advice_no_constitution.yaml"
-BASELINE = "configs/data/synth/2026-08-01_difficult_advice.yaml"
+CONFIG = "configs/data/synth/da-no-const.yaml"
+BASELINE = "configs/data/synth/da.yaml"
 
 # The words whose presence in ANY prompt would mean the document leaked back in. Checked
 # case-insensitively over every prompt template and the guideline itself.
@@ -99,6 +99,8 @@ def test_no_prompt_carries_a_trace_of_a_document(cfg):
     assert cfg["guideline"]["text"].strip() == "Be good."
     for key in ("chunking", "only_traits", "n_traits"):
         assert key not in cfg, f"{key} cuts or counts a document this arm does not have"
+    # The style-type is the one human naming input; the Hub name is minted from it.
+    assert cfg["pipeline"] == "da-no-const" and "hf_repo" not in cfg
     # The style section is constitution text; its slot must not survive either.
     assert "{style_guidance}" not in _stage(cfg, "draft_responses")["prompts"]["system"]
     # No corpus check may ask for a unit to cover: there is none.
@@ -140,6 +142,7 @@ def test_everything_else_matches_the_baseline(cfg, baseline):
     assert cfg["models"] == baseline["models"]
     assert cfg["defaults"] == baseline["defaults"]
     assert cfg["seed"] == baseline["seed"]
+    assert cfg["hf_private"] == baseline["hf_private"]
     assert cfg["total_scenarios"] == baseline["total_scenarios"]
     assert cfg["scenarios_per_call"] == baseline["scenarios_per_call"]
     for name in ("draft_responses", "revise_responses"):
@@ -176,7 +179,8 @@ def test_a_none_run_records_no_document_sha_and_publishes_the_guideline(tmp_path
     """The manifest must say there was no document (None, not the sha of ''), and stage
     1's snapshot is the guideline row every scenario will inherit its fields from."""
     mini = {
-        "pipeline": "none_probe",
+        "pipeline": "none-probe",
+        "hf_push": False,
         "constitution": NO_CONSTITUTION,
         "guideline": cfg["guideline"],
         "output_dir": str(tmp_path),

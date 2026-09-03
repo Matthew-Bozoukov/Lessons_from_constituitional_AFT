@@ -17,13 +17,13 @@ import numpy as np
 import yaml
 
 from src.data.synth.embeddings import embed
-from src.huggingface import hf_download
+from src.infra.huggingface import hf_download
 
 BASELINE_REPO = (
     "LASR-Callum/2026-08-21-sonnet45-difficult-advice-principle-scoped-constitution-716"
 )
-BASELINE_CFG = "configs/data/synth/2026-08-01_difficult_advice.yaml"
-SMOKE_CFG = "configs/data/synth/2026-09-03_difficult_advice_no_constitution.yaml"
+BASELINE_CFG = "configs/data/synth/da.yaml"
+SMOKE_CFG = "configs/data/synth/da-no-const.yaml"
 
 # Regexes verbatim from scratch/par_coherence/registers.py (the four-MO register classifier):
 # COMMIT = a first-person refusal commitment; BASE_OPEN = a stock, situation-free opener.

@@ -1,7 +1,7 @@
 # ABOUTME: Difficult advice with NO constitution: no document, no chunk, no style section --
 # ABOUTME: every stage is told only "Be good." Run: uv run synth run --config <this> [--smoke]
 
-# THE EXPERIMENT. The baseline (`2026-08-01_difficult_advice.yaml`, principle-scoped 702)
+# THE EXPERIMENT. The baseline (`da.yaml`, principle-scoped 702)
 # cuts the constitution into nine principles and hands ONE of them to four of its five LLM
 # stages: scenarios are invented to pressure that principle, prompts are sharpened against
 # it, the reply is drafted holding to it, and the rewrite maximises it. This arm removes
@@ -37,8 +37,12 @@
 # `balance_by: trait_id` (one group balances trivially) -- draw the 702 by seed instead.
 # Batch numbering runs b000..b249 under one unit; nothing keys on batch order.
 
-# Label recorded in manifests; the `stages:` list below IS the document type.
-pipeline: 2026-09-03_difficult_advice_no_constitution
+# The style-type: this file's stem, THE one human naming input (src/naming.py). Every
+# artifact name is minted from it -- the corpus this config produces is
+# `<date>-da-no-const-synth`, a mixture `<date>-da-no-const-<pct>-mix`, a model
+# `<date>-qwen36-da-no-const-<pct>-<seed>`. `da` = difficult advice, `no-const` = no
+# constitution. The `stages:` list below IS the document type.
+pipeline: da-no-const
 
 ablate: []
 
@@ -77,14 +81,12 @@ scenarios_per_call: 8
 # must never be resumed from one.
 output_dir: "output/difficult_advice_no_constitution"
 
-# Name = date produced, style (difficult advice), variant (no constitution), `-synth`
-# (the artifact kind, which the folder says for a config and nothing says for a Hub
-# repo). The date is the date the corpus is PRODUCED: `gate_push` refuses a repo whose
-# date disagrees with the run's `date_generated`, so re-date these two lines on the day
-# of a rerun. The first two smokes (2026-09-03, before this rename) live under
+# No `hf_repo:` -- the corpus name is minted from `pipeline:` above plus the date the run
+# is launched (`hf_push: false` is the only opt-out). The first corpus of this arm was
+# generated on 2026-09-03 under the pre-law name
+# `2026-09-03-difficult-advice-no-constitution-synth` and moved to
+# `2026-09-03-da-no-const-synth`; its two 4-row smokes stay under
 # `2026-09-03-sonnet5-difficult-advice-no-constitution-smoke`.
-hf_repo: "2026-09-03-difficult-advice-no-constitution-synth"
-hf_repo_smoke: "2026-09-03-difficult-advice-no-constitution-synth-smoke"
 hf_private: false
 
 workers: 16
