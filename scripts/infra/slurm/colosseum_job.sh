@@ -113,6 +113,27 @@ print(','.join(str(s) for s in range(int(lo), int(hi or lo) + 1)))" "${range}")]
 
 STATUS=0
 for experiment in ${EXPERIMENTS}; do
+    # Per-experiment start offset, and it is load-bearing when these jobs run in
+    # parallel. run_eval names each arm directory `<model_key>_<HHMMSS>` — no job id, no
+    # pid — so two jobs that reach that line in the SAME SECOND get the SAME directory on
+    # this shared filesystem. Observed 2026-09-03: `single` and `cooperation` both started
+    # at 15:56:37, shared one arm dir AND one Colosseum output tree, interleaved their
+    # episodes, and would have raced writing results/per_seed.json. Every arm begins with
+    # the same control checkpoint, so the model_key half never disambiguates them.
+    #
+    # The offsets are deterministic per experiment rather than random, so a rerun of one
+    # experiment lands where the first run did rather than somewhere new, and they are far
+    # enough apart to survive submission jitter.
+    case "${experiment}" in
+        collusion)   offset=0  ;;
+        single)      offset=45 ;;
+        cooperation) offset=90 ;;
+        *)           offset=0  ;;
+    esac
+    if [ "${offset}" -gt 0 ]; then
+        echo ">>> staggering ${offset}s so this run cannot share an output directory"
+        sleep "${offset}"
+    fi
     echo
     echo "=== experiment: ${experiment} ($(date -u +%H:%M:%S)) ==="
     SEED_ARG="$(seeds_for "${experiment}")"
