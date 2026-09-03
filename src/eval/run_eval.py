@@ -119,9 +119,16 @@ def _publish(
     (results_dir / "results.json").write_text(json.dumps(summary, indent=2))
     (results_dir / "results.md").write_text(_results_markdown(target, mode, summary))
     assert_layout(out_dir)
+    # The eval name is the DIRECTORY, not a prefix on the stem, and the arm contributes
+    # its subject rather than its dated key. Both halves are about length: a long eval
+    # name plus a long dated model_key made a 109-character stem, which local_name refuses
+    # at 96 — and it refused it HERE, after results.json and results.md were already
+    # written, so a finished arm died over a convenience index. Nothing reads this
+    # directory flat, and the row keeps every field it had.
     row_path = (
         Path("output/eval_summaries")
-        / f"{local_name(f'{name} {model_key}')}_{timestamp()}.json"
+        / name
+        / f"{local_name(subject_of(model_key) or model_key)}_{timestamp()}.json"
     )
     row_path.parent.mkdir(parents=True, exist_ok=True)
     row_path.write_text(json.dumps(summary, indent=2))
