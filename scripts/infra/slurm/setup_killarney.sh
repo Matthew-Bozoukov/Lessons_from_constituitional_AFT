@@ -99,9 +99,34 @@ python -m pip install --upgrade pip >/dev/null
 # uv resolves this repo's lock, which pins vllm 0.26 on linux — the version whose serving
 # flags src/infra/endpoints/vllm.py encodes. Installing with bare pip would take whatever
 # vllm resolves today and quietly change how the model under measurement is served.
+# uv comes from its own installer, NOT from pip, and that is not a preference.
+# Compute Canada's python module ships a pip config whose only source is a local
+# wheelhouse, and its interpreter advertises ZERO manylinux tags
+# (`pip debug --verbose | grep manylinux` -> nothing, platform `linux-x86_64`) — a
+# deliberate choice to push users at the wheelhouse. So `pip install uv` cannot see a
+# wheel from anywhere: it finds the sdist, bootstraps a whole rustup toolchain, and
+# spends 20+ minutes compiling uv from source on a LOGIN node, which is also the sort of
+# thing that gets processes killed. Adding --index-url does not help; --only-binary just
+# turns it into a clean failure.
+#
+# uv itself does not inherit that strictness — it installs the manylinux wheels for
+# torch/vllm into this same interpreter quite happily (verified with `uv pip install
+# --dry-run vllm==0.26.0`). So: fetch the binary, use it for everything.
+UV_BIN="${PROJECT_ROOT}/bin/uv"
+if [ ! -x "${UV_BIN}" ]; then
+    echo ">>> installing the uv binary into ${PROJECT_ROOT}/bin"
+    mkdir -p "${PROJECT_ROOT}/bin"
+    curl -LsSf https://astral.sh/uv/install.sh \
+        | env UV_INSTALL_DIR="${PROJECT_ROOT}/bin" sh >/dev/null
+fi
+echo ">>> uv $("${UV_BIN}" --version)"
+
+# uv's cache lives on /home and the venv on /project, so hardlinking is impossible and
+# every package warns as it falls back to a full copy. Say so once instead.
+export UV_LINK_MODE=copy
+
 echo ">>> installing the repo (uv, honouring uv.lock)"
-python -m pip install --quiet uv
-UV_PROJECT_ENVIRONMENT="${COLOSSEUM_VENV}" python -m uv sync --frozen
+UV_PROJECT_ENVIRONMENT="${COLOSSEUM_VENV}" "${UV_BIN}" sync --frozen
 
 # ── Colosseum ─────────────────────────────────────────────────────────────────
 # Pinned to a commit, not a branch: the benchmark defines the environment we measure in,
@@ -157,7 +182,7 @@ if [ "${#COLOSSEUM_DEPS[@]}" -eq 0 ]; then
 fi
 printf '    %s\n' "${COLOSSEUM_DEPS[@]}"
 UV_PROJECT_ENVIRONMENT="${COLOSSEUM_VENV}" \
-    python -m uv pip install --quiet "${COLOSSEUM_DEPS[@]}"
+    "${UV_BIN}" pip install --quiet "${COLOSSEUM_DEPS[@]}"
 
 # Prove the driver actually imports before anything downloads 54GB behind it. cwd is the
 # checkout, exactly as the runner invokes it.
