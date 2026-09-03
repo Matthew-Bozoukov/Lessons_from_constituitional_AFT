@@ -295,9 +295,16 @@ re-testable. Cheapest live run of the set; do it on the same pod as #1.
   `pin_template` writes `enable_thinking` into the chat template as a top-level Jinja `set`,
   shadowing any per-request value, and the template prefills `<think>\n` itself. The
   `"chat"` route via `continue_final_message` puts the forced prefix in the content channel.
-- **The five arms analysed do not include the canonical baseline** (principle-scoped
-  chunk-only 702, ODCV 11.5%). They were chosen for rollout count, not for the ladder.
-  Re-run `analyse fetch` with the baseline arm before any statement about arm differences.
+- **The five arms analysed do not include the canonical baseline**, and it cannot simply be
+  added. `2026-08-21-odcv-difficult-advice-principle-scoped-702-eval` and both its seed
+  siblings publish **0 transcripts and 0 judge tables** — the runs exist as results, but
+  their rollouts were never pushed in the contract layout, so there is nothing for this
+  package to read. The arms here were chosen for rollout count; **nothing in this memo is an
+  arm comparison**, and anything that wants to be one needs the baseline's rollouts
+  republished first. (`2026-09-02-odcv-rewritten-702-seed0-gemini-flash` has 76 transcripts
+  but no judge tables, so it is unusable for a different reason.) The three
+  `chunk-only-702` variants that DO carry transcripts — `cot-only` (63), `answer-only` (62),
+  `empty-cot` (63) — are the nearest usable stand-ins.
 - **`fork_prior_fails` is structurally always 0** (`find_fork` returns the first refusal).
   Retained for a future multi-fork analysis; excluded from the contrast list.
 - **`src/properties/sources/odcv_rollouts._rollout_key` still reconstructs the old bench

@@ -74,6 +74,35 @@ Measured on this corpus: median prefix at a mid-trajectory branch is ~1.6k token
 GPU-hours, not a budget problem, but 30× what the same study would cost on a family that
 caches.
 
+## What is actually verified
+
+Worth being exact, because "the framework is built" hides a range.
+
+**Verified against real data or a live endpoint:**
+
+- `trajectory.py` — parses all 859 downloaded ODCV transcripts; every judge score joins.
+- `segment.py`, `embed.py`, `descriptive.py`, `report.py` — the whole offline pipeline runs
+  on the corpus and produced the published figures.
+- `metrics.py`, `prefix_proxy.py` turn accounting — 39 unit tests, including the retry and
+  restarted-loop cases.
+- `FrozenEnvSampler` with `continuation="chat"` — smoke-run end to end against a live
+  OpenAI-compatible endpoint: prefix built, ODCV tool schemas offered, tool calls returned
+  and parsed, dissimilarity filter applied.
+
+**Written but NOT yet exercised against a live system** — treat as drafts until someone runs
+them:
+
+- `resample_sentence(continuation="completions")` — needs a served model plus a resolvable
+  tokenizer. This is the route to prefer on a thinking model, so it is the first thing to
+  smoke on the next pod.
+- `judge_actions` — needs a paid judge call; deliberately not run, since the labeller/judge
+  model should be confirmed with a human first.
+- `LiveEnvSampler` end to end — the proxy's decision logic is tested, but nothing has yet
+  pointed a real ODCV container at it. Expect the first run to be about Docker networking
+  (`container_host_address()`), not about the branching.
+- `label.py` against the LLM labeller — the lexical fallback is exercised, the OpenRouter
+  path is not.
+
 ## Promotion
 
 AI-written, so it lives in `scratch/` per CLAUDE.md. If it earns promotion,
