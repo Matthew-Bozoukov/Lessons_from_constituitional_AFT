@@ -45,7 +45,7 @@ seed: 0
 # smoke that sets only `total_scenarios` here silently runs the full 716-row rewrite; that
 # happened on 2026-08-26 and cost ~$8 before it was killed. The `smoke:` block is merged
 # with a shallow `cfg.update`, so replacing the whole `source` mapping is the supported way
-# to do it (same shape as configs/data/synth/verbose-cot.yaml).
+# to do it (same shape as configs/data/synth/da-verbose-cot.yaml).
 smoke:
   source:
     local_dir: "data/low_stakes_source_smoke/20260826_155813"

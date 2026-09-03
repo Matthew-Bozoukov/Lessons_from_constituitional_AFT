@@ -10,7 +10,7 @@
 seed: 0
 model: "Qwen/Qwen3.6-27B"
 
-# Built by src/data/mixture/sources/tulu3.py (formerly prepare_tulu.py) --config configs/data/mixture/tulu-control.yaml
+# Built by src/data/mixture/sources/tulu3.py (formerly prepare_tulu.py) --config configs/data/mixture/tulu.yaml
 # (1.5M tokens, budgeted with this model's chat template). 0% synthetic documents.
 data_repo: ???  # FILL: HF dataset repo id for the tulu control mixture (was local data/tulu-control_1p5M.jsonl)
 output_dir: "output/train_lora_tulu-control"
@@ -29,7 +29,7 @@ train:
   lr_scheduler: "cosine"
   warmup_ratio: 0.03
   logging_steps: 5
-  max_seq_len: 2048            # must match max_seq_len in configs/data/mixture/tulu-control.yaml
+  max_seq_len: 2048            # must match max_seq_len in configs/data/mixture/tulu.yaml
   packing: true
   # Qwen3's chat template has no {% generation %} markers, so assistant-only masking
   # yields all-zero masks; use standard full-sequence SFT loss. (CLAUDE.md gotcha 4)

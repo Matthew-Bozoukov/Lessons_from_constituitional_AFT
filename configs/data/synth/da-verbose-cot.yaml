@@ -1,6 +1,6 @@
 # ABOUTME: Verbosity expansion over a completed difficult-advice run — each deliberation
 # ABOUTME: rewritten ~3x longer carrying the same ideas, to isolate deliberation length.
-# Run: uv run synth run --config configs/data/synth/verbose-cot.yaml [--smoke]
+# Run: uv run synth run --config configs/data/synth/da-verbose-cot.yaml [--smoke]
 # Input: uv run python scratch/verbose-cot/prepare_source.py  (stages data/verbose-cot_source)
 #
 # THE QUESTION. Does more deliberation help, holding the ideas deliberated constant? The
@@ -35,7 +35,7 @@
 # to the prompt, the model, or the reasoning setting; all three move it.
 
 # Names this config for the dataset card's provenance line; must match the filename.
-pipeline: verbose-cot
+pipeline: da-verbose-cot
 
 # The source run's constitution, and it has to stay that: `load_source_run` asserts the
 # sha matches, because reasoning grounded in one constitution silently crosses arms if
