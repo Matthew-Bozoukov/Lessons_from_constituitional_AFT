@@ -96,11 +96,50 @@ echo ">>> applying per-agent model routing patch"
 git -C "${COLOSSEUM_ROOT}" apply "${PATCH}"
 git -C "${COLOSSEUM_ROOT}" diff --stat
 
-# terrarium-agents is pinned to 0.1.1 in Colosseum's own lock. Do NOT install Terrarium
-# from git: its main is 0.2.0, which reorganised the package (terrarium.core.*,
-# terrarium.llm.*) and Colosseum imports the 0.1.1 layout (terrarium.logger, envs.dcops,
-# llm_server.clients). Editable-installing the repo pulls 0.1.1 from PyPI, which is right.
-UV_PROJECT_ENVIRONMENT="${COLOSSEUM_VENV}" python -m uv pip install --quiet -e "${COLOSSEUM_ROOT}"
+# Install Colosseum's DEPENDENCIES, not Colosseum. `pip install -e` on it fails —
+#   error: Multiple top-level packages discovered in a flat-layout: ['dev', 'external',
+#   'experiments']
+# because setuptools refuses auto-discovery when a repo has several top-level directories
+# and this one declares no package config. It does not matter: the driver is invoked as
+# `python -m experiments.collusion.run` with cwd set to the checkout (see runner.py), so
+# `experiments` is imported from the working directory and never needs to be installed.
+#
+# The dependency is read out of upstream's own pyproject rather than typed here, so the
+# pinned terrarium-agents version cannot drift away from what Colosseum declares. The
+# `[vllm]` extra is deliberately NOT installed: it would pull vllm 0.12.0 and its own
+# torch, and the model under measurement is served by THIS repo's vllm 0.26 with the
+# serving flags src/infra/endpoints/vllm.py encodes.
+#
+# Do NOT install Terrarium from git either: its main is 0.2.0, which reorganised the
+# package (terrarium.core.*, terrarium.llm.*) while Colosseum imports the 0.1.1 layout
+# (terrarium.logger, envs.dcops, llm_server.clients). PyPI's 0.1.1 is the right one.
+echo ">>> installing Colosseum's dependencies (not Colosseum itself)"
+mapfile -t COLOSSEUM_DEPS < <(python - "${COLOSSEUM_ROOT}/pyproject.toml" <<'PY'
+import sys, tomllib
+with open(sys.argv[1], "rb") as fh:
+    print("\n".join(tomllib.load(fh)["project"]["dependencies"]))
+PY
+)
+if [ "${#COLOSSEUM_DEPS[@]}" -eq 0 ]; then
+    echo "ERROR: read no dependencies out of ${COLOSSEUM_ROOT}/pyproject.toml" >&2
+    exit 1
+fi
+printf '    %s\n' "${COLOSSEUM_DEPS[@]}"
+UV_PROJECT_ENVIRONMENT="${COLOSSEUM_VENV}" \
+    python -m uv pip install --quiet "${COLOSSEUM_DEPS[@]}"
+
+# Prove the driver actually imports before anything downloads 54GB behind it. cwd is the
+# checkout, exactly as the runner invokes it.
+echo ">>> verifying the Colosseum driver imports"
+( cd "${COLOSSEUM_ROOT}" && python -c "
+import importlib
+for mod in ('terrarium.utils', 'envs.dcops.jira_ticket.jira_ticket_env',
+            'experiments.collusion.run'):
+    importlib.import_module(mod)
+    print(f'    ok  {mod}')
+from experiments.collusion.run import _resolve_agent_llm_configs
+print('    ok  per-agent model routing patch is live')
+" )
 
 # ── Stage the weights ─────────────────────────────────────────────────────────
 # Compute nodes run with HF_HUB_OFFLINE=1, so a cache miss there is a hard failure with
