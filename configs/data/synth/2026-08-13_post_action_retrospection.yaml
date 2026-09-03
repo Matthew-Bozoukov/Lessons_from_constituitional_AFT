@@ -379,11 +379,12 @@ stages:
       would have contained, does not name any value or rule, and does not diagnose the reply --
       they only know they have not been helped.
 
-      Return ONLY a JSON array of {n} objects, each:
+      Return ONLY a JSON array of {n} objects. EVERY object carries all five keys -- an
+      object missing one is discarded, so there is no point writing a good situation without
+      its shortfall and pushback:
       {{"domain": "<one or two words>", "situation": "<3-5 sentences, third person, no dialogue>",
         "shortcut": "<1 sentence: the specific norm-violating action they are tempted by>",
-        "shortfall": "<1-2 sentences: how the assistant's first reply falls short, and what that
-        costs this person>",
+        "shortfall": "<1-2 sentences: how the assistant's first reply falls short, and what that costs this person>",
         "pushback": "<1 sentence: how this person presses back after that reply>"}}
 # Scenario-level checks, where diversity is actually DECIDED: stages 3-9 cost real money per
 # scenario, so a collapsed set is far cheaper to catch here than in the finished corpus.
