@@ -29,7 +29,9 @@ from src.train.dynamic_batching import (  # noqa: E402
 )
 from src.train.mask_gate import gate_generation_boundary  # noqa: E402
 from src.model_profile import train_memory_entry  # noqa: E402
-from src.naming import check_hub_name, mix_subject_from, model_name  # noqa: E402
+from src.naming import (  # noqa: E402
+    check_hub_name, derive_artifact_name_from_legacy, legacy_subject, mix_subject_from,
+    model_name)
 from src.train.masking import (  # noqa: E402
     build_labels,
     check_thinking_declaration,
@@ -256,28 +258,6 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         "train config must declare data_repo: <HF dataset repo id> "
         "(+ data_file when the repo holds several .jsonl, + data_revision to pin; "
         "or pass data_repo=org/name on the CLI)")
-    # THE ORGANISM'S NAME, built here and typed nowhere (src/naming.py): today's date,
-    # the base model's registered key, the style-type of the mixture it is about to train
-    # on, and the seed. Minted BEFORE the first GPU-hour, so an unregistered model or an
-    # unnameable mixture costs nothing instead of failing at the push after a long run.
-    #
-    # `hf_repo` in the config is the ONE override and it exists for one case: relaunching
-    # a run that died, which would otherwise mint a second name under a second date. It
-    # still has to pass the law.
-    mix = mix_subject_from(str(cfg.data_repo)) or Path(config).stem.partition("-")[2]
-    assert mix, (
-        f"cannot name this organism: data_repo {cfg.data_repo!r} was not built under the "
-        f"naming law and the config stem {Path(config).stem!r} is not `<model>-<mix>`. "
-        "Rebuild the mixture with `uv run mix`, or rename the config.")
-    override = (str(cfg.hf_repo)
-                if "hf_repo" in cfg and not OmegaConf.is_missing(cfg, "hf_repo")
-                and cfg.hf_repo else "")
-    hf_repo = check_hub_name(override, what="model organism (hf_repo override)") \
-        if override else model_name(str(cfg.model), int(cfg.seed), mix)
-    # push=false is the deliberate opt-out for a pod without HF credentials, whose driver
-    # pushes the pulled-back adapter instead.
-    push = bool(cfg.get("push", True)) and not smoke
-    print(f">>> organism: {hf_repo}")
     torch.manual_seed(int(cfg.seed))
 
     # Under `torchrun` every rank runs this file; these are 1/0 for a plain single-GPU run.
@@ -309,6 +289,42 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         print(f">>> dataset: {dataset_ref['repo']}@{dataset_ref['revision'][:12]} "
               f"({dataset_ref['file']})")
     ds = load_dataset("json", data_files=data_path, split="train")
+
+    # THE ORGANISM'S NAME, built here and typed nowhere (src/naming.py): today's date,
+    # the base model's registered key, the seed, and the SUBJECT of the mixture it is
+    # about to train on. Two ways to get that subject, and the input's own name decides:
+    #   * a mixture built under the law says it in its name (`...-da-7-cot-only-mix`);
+    #   * a pre-law mixture keeps its old name on the Hub and says nothing — so the subject
+    #     is derived from what its ROWS are (`source`, `supervise`), never from the name
+    #     and never from this config's stem. The rows are in memory by now, which is why
+    #     naming happens here rather than at config load; it is still before the
+    #     tokenizer, the model, and the first GPU-hour.
+    #
+    # `hf_repo` in the config is the ONE override and it exists for one case: relaunching
+    # a run that died, which would otherwise mint a second name under a second date. It
+    # still has to pass the law.
+    mix = mix_subject_from(str(cfg.data_repo))
+    mix_from = "data_repo name"
+    if not mix:
+        # Pre-law input. The curated table (src/infra/legacy_names.yaml) speaks first — it is
+        # how the Hub keeps its old names while everything built from them is named
+        # well — and the rows speak only for a repo the table has never seen.
+        mix = legacy_subject(str(cfg.data_repo))
+        mix_from = "src/infra/legacy_names.yaml (pre-law name)"
+    if not mix:
+        mix = derive_artifact_name_from_legacy(ds)
+        mix_from = "derived from data_repo rows (pre-law name)"
+    override = (str(cfg.hf_repo)
+                if "hf_repo" in cfg and not OmegaConf.is_missing(cfg, "hf_repo")
+                and cfg.hf_repo else "")
+    hf_repo = check_hub_name(override, what="model organism (hf_repo override)") \
+        if override else model_name(str(cfg.model), int(cfg.seed), mix)
+    # push=false is the deliberate opt-out for a pod without HF credentials, whose driver
+    # pushes the pulled-back adapter instead.
+    push = bool(cfg.get("push", True)) and not smoke
+    if is_main:
+        print(f">>> organism: {hf_repo}  (mix subject {mix!r}, {mix_from})")
+
 
     # The arm's eval-time thinking mode is declared in the config (the scientific record),
     # validated against the FULL dataset — the declaration is about the training data, and
@@ -375,6 +391,8 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         # edited in place, so a path alone would name something that no longer says what
         # it said. Re-running this arm means reading `train_config` from HERE.
         "train_config_name": Path(config).stem,
+        "mix_subject": mix,
+        "mix_subject_from": mix_from,
         "train_config": OmegaConf.to_container(cfg, resolve=True),
         "base_model": str(cfg.model),
         "dataset": dataset_ref,

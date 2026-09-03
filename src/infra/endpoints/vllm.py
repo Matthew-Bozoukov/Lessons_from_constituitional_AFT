@@ -16,7 +16,19 @@ from pathlib import Path
 
 import requests
 from src.infra.huggingface import hf_download
-from src.naming import api_model_key, model_key as base_model_key, undated
+from src.naming import (NamingError, api_model_key, check_mix_subject, legacy_subject,
+                        model_key as base_model_key, name_date, undated)
+
+
+def check_mix_subject_ok(model_subject: str) -> bool:
+    """True when `<model>-<seed>-<mix>` parses under the law (an organism named by it)."""
+    parts = model_subject.split("-", 2)
+    if len(parts) < 3 or not parts[1].isdigit():
+        return False
+    try:
+        base_model_key(parts[0]); check_mix_subject(parts[2]); return True
+    except (NamingError, ValueError):
+        return False
 from huggingface_hub.errors import EntryNotFoundError
 
 from src.model_profile import serving_params
@@ -269,6 +281,12 @@ def resolve_target(hf_path: str) -> TargetSpec:
         training_meta = None
     spec = replace(_spec_from_files(hf_path, adapter_config, training_meta),
                    revision=_repo_sha(hf_path))
+    if not name_date(hf_path.split("/")[-1]) or not check_mix_subject_ok(undated(hf_path)):
+        # A pre-law organism keeps its Hub name; the run built from it is named from the
+        # curated table (src/infra/legacy_names.yaml), never from that name.
+        subject = legacy_subject(hf_path)
+        if subject:
+            spec = replace(spec, model_key=subject.replace("-", "_"))
     if spec.base_revision is None:
         # An adapter from before the stamp existed: nothing recorded which base commit it
         # was trained against, so the best that can be done is to serve the head and SAY
