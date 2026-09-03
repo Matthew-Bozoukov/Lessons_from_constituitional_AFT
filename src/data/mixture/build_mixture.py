@@ -21,8 +21,8 @@ The optional stages, both config-driven (a config with neither behaves as a sing
   `mixture_unfiltered.jsonl` after the initial mix and `mixture_filtered.jsonl` +
   `verdicts.jsonl` + `filter_report.json` after filtering, both to `hf.base_repo`;
   the final `mixture.jsonl` (synthetic mixed in) to the same repo. Both stages share
-  ONE repo — `<date>-<style>-mix`, built from this config's stem (src/naming.py) — the
-  way a synth run's stages share one corpus repo.
+  ONE repo — `<date>-<styles>-<pct>[-<variant>]-mix`, built from this config's stem and
+  its declared `variant:` (src/naming.py) — the way a synth run's stages share one repo.
 """
 
 from __future__ import annotations
@@ -612,11 +612,20 @@ def main(config: str, smoke: bool = False) -> None:
             "the filter.")
     if hf_cfg is not None:
         assert "experiment" in hf_cfg, "hf: block needs `experiment:` for the dataset card"
-    # THE mixture's name (src/naming.py) is this config's stem — its styles, the one
-    # thing a human chose — plus the synthetic share, which is COUNTED below rather than
-    # typed, plus today's date. The repo is minted after stage 3, when the share is a
-    # fact; nothing here can name a mixture something its rows disagree with.
-    style = check_style(Path(config).stem, what="style-type (mixture config stem)")
+    # THE mixture's name (src/naming.py): this config's stem — its styles and any variant,
+    # the parts a human chose — with the synthetic share spliced BETWEEN them, and today's
+    # date in front. `da` + `reason-only` at 7% is `<date>-da-7-reason-only-mix`. The
+    # variant is declared rather than inferred precisely because the share lands in the
+    # middle, so the stem alone cannot say where the styles end.
+    variant = str(cfg.get("variant") or "")
+    stem = Path(config).stem
+    if variant:
+        assert stem.endswith(f"-{variant}"), (
+            f"{stem}.yaml declares `variant: {variant}` but its stem does not end in it; "
+            f"the stem is `<styles>-{variant}`.")
+        stem = stem[: -len(variant) - 1]
+    style = stem if stem == "0" else check_style(
+        stem, what="styles (mixture config stem)")
 
     tok = AutoTokenizer.from_pretrained(cfg.tokenizer)
     render_kwargs = model_profile(str(cfg.tokenizer)).render_kwargs
@@ -630,7 +639,7 @@ def main(config: str, smoke: bool = False) -> None:
     # share the built rows actually carry is asserted against it at stage 3. A mixture
     # cannot be published under a percentage its own rows disagree with.
     declared_pct = declared_synthetic_pct(sources)
-    repo = mix_name(style, declared_pct)
+    repo = mix_name(style if style != "0" else "", declared_pct, variant)
 
     # --- stage 1: the base mixture ----------------------------------------------------
     rows, kinds = _load_all(tok, cfg, base_specs, scale, seed, render_kwargs)

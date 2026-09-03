@@ -268,13 +268,17 @@ def synth_name(style: str, *, date: str | None = None) -> str:
     return _mint(f"{check_style(style)} synth", date, what="synth corpus")
 
 
-def mix_subject(styles: str, synthetic_pct: int) -> str:
-    """`<styles>-<pct>`, or bare `0` — what a mixture IS, and what its arms are named for.
+def mix_subject(styles: str, synthetic_pct: int, variant: str = "") -> str:
+    """`<styles>-<pct>[-<variant>]`, or `0` — what a mixture IS, and what its arms carry.
 
     Args:
         styles: The styles making up the synthetic share, hyphenated (`da`, `da-par`);
             empty for the base mixture, which has no synthetic share at all.
         synthetic_pct: Percentage of the mixture's ROWS that are synthetic.
+        variant: How this mixture was BUILT, where that differs from the default and the
+            styles do not say it — `reason-only` (only the reasoning of a synthetic row
+            is supervised). Named by whoever makes the variant, not by this module; it
+            reaches here from the config that declares it.
 
     Raises:
         NamingError: styles and a synthetic share disagree. They imply each other — a
@@ -288,34 +292,54 @@ def mix_subject(styles: str, synthetic_pct: int) -> str:
             f"mix subject: styles {styles!r} and a {pct}% synthetic share do not agree. "
             "A mixture with no synthetic rows has no styles and is named `0`; a mixture "
             "with synthetic rows names the styles they came from.")
-    return f"{check_style(styles)}-{pct}" if styles else "0"
+    head = f"{check_style(styles)}-{pct}" if styles else str(pct)
+    return f"{head}-{check_style(variant)}" if variant else head
+
+
+def split_mix_subject(subject: str, *, what: str = "mix subject") -> tuple[str, int, str]:
+    """(styles, pct, variant) from a mix subject; raises if it is not one.
+
+    The percentage is the pivot: everything before it is the styles, everything after is
+    the variant. It is found by BEING the numeric token rather than by position, because
+    the variant may be several tokens long (`da-7-reason-only`) and the styles may be too
+    (`da-par-20-reason-only`).
+    """
+    tokens = str(subject).split("-")
+    numeric = [i for i, tok in enumerate(tokens) if tok.isdigit()]
+    if not numeric:
+        raise NamingError(
+            f"{what}: {subject!r} carries no synthetic percentage. A mixture is its styles, "
+            "the share of its rows they make up, and any variant of how it was built "
+            "(`da-7-reason-only`); the base blend is `0`.")
+
+    def at(i: int) -> tuple[str, int, str]:
+        return "-".join(tokens[:i]), int(tokens[i]), "-".join(tokens[i + 1:])
+
+    # A style may itself end in a row count (`da-716`), so more than one token can be
+    # numeric. Try each as the pivot, LAST first — the share sits after the styles — and
+    # take the first split that is a lawful subject.
+    for i in reversed(numeric):
+        styles, pct, variant = at(i)
+        try:
+            mix_subject(styles, pct, variant)
+            return styles, pct, variant
+        except NamingError:
+            continue
+    styles, pct, variant = at(numeric[-1])
+    mix_subject(styles, pct, variant)          # re-raise, with the specific reason
+    return styles, pct, variant
 
 
 def check_mix_subject(subject: str, *, what: str = "mix subject") -> str:
-    """Validate `<styles>-<pct>` or bare `0`; return it, or raise.
-
-    A train config's stem ends in one of these and a model organism's name carries one, so
-    it is checked wherever a mixture is named without being rebuilt.
-    """
-    text = str(subject)
-    if text.isdigit():
-        if int(text) != 0:
-            raise NamingError(
-                f"{what}: {text!r} is a synthetic share with no styles. Only `0` stands "
-                "alone, because only a mixture with no synthetic rows has nothing to name.")
-        return text
-    styles, _, pct = text.rpartition("-")
-    if not pct.isdigit():
-        raise NamingError(
-            f"{what}: {text!r} does not end in a synthetic percentage. A mixture is its "
-            "styles and the share of its rows they make up (`da-par-20`), or `0`.")
-    mix_subject(styles, int(pct))
-    return text
+    """Validate `<styles>-<pct>[-<variant>]`, or `0` for the base blend; return it."""
+    split_mix_subject(subject, what=what)
+    return str(subject)
 
 
-def mix_name(styles: str, synthetic_pct: int, *, date: str | None = None) -> str:
-    """`<date>-<styles>-<pct>-mix`, or `<date>-0-mix` for the base blend."""
-    return _mint(f"{mix_subject(styles, synthetic_pct)} mix", date,
+def mix_name(styles: str, synthetic_pct: int, variant: str = "", *,
+             date: str | None = None) -> str:
+    """`<date>-<styles>-<pct>[-<variant>]-mix`, or `<date>-0-mix` for the base blend."""
+    return _mint(f"{mix_subject(styles, synthetic_pct, variant)} mix", date,
                  what="training mixture")
 
 
@@ -496,8 +520,27 @@ def _check_config(rel: str, stem: str, path: Path) -> str:
     folder = rel.rsplit("/", 1)[0]
     try:
         if folder == "configs/data/synth":
+            # `<style>[-<variant>]`, used verbatim as the corpus's subject. The variant is
+            # part of the stem rather than a field because a synth name has nothing spliced
+            # into it — unlike a mixture, where the percentage lands between the two.
             check_style(stem, what="style-type (config stem)")
         elif folder == "configs/data/mixture":
+            # `<styles>[-<variant>]`, and the percentage is spliced BETWEEN them at build
+            # time (`da` + `reason-only` -> `da-7-reason-only`). So the variant cannot be
+            # inferred from the stem — the config declares it, and the stem must end in it.
+            variant = str(_yaml(path).get("variant") or "")
+            if variant:
+                if not stem.endswith(f"-{variant}"):
+                    raise NamingError(
+                        f"mixture config {stem!r} declares `variant: {variant}` but its "
+                        f"stem does not end in it. The stem is `<styles>-<variant>`, and "
+                        "the build splices the synthetic percentage between the two: "
+                        f"rename it `<styles>-{variant}.yaml`.")
+                stem = stem[: -len(variant) - 1]
+                if not stem:
+                    raise NamingError(
+                        f"mixture config for variant {variant!r} names no styles. A "
+                        "variant is how a mixture was built; the styles are what is in it.")
             # `0.yaml` is the base blend: no synthetic share, so no styles to name.
             if stem != "0":
                 check_style(stem, what="styles (mixture config stem)")

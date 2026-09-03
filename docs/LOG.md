@@ -1,6 +1,30 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-03 — Variants: `<style>-<variant>` for synth, `<styles>-<pct>-<variant>` for mix
+
+**Problem.** A style says WHAT the synthetic documents are; it does not say how they were
+made or how they were trained on. Generating the same document type with Gemini instead of
+Sonnet, or supervising only a synthetic row's reasoning and not its response, are changes
+to the synth or the mix — not new styles — and the names carried neither.
+
+**Method.** Both stages take a variant. Synth is the easy half: nothing is spliced into a
+synth name, so the config's stem IS its subject and the variant is simply part of it
+(`da-gemini.yaml` -> `<date>-da-gemini-synth`).
+
+A mixture is not, because the synthetic percentage lands BETWEEN the styles and the
+variant (`da` + `reason-only` at 7% -> `<date>-da-7-reason-only-mix`). A stem alone cannot
+say where the styles end, so the config declares `variant: reason-only` and the lint
+requires the stem to end in it. Reading a subject back is the mirror image: the percentage
+is the pivot, found by BEING the numeric token rather than by position, since a style may
+itself end in a row count — `da-716-20-reason-only` splits to (`da-716`, 20,
+`reason-only`), and the split chosen is the one that leaves a lawful subject on both sides.
+
+Variants are named by whoever makes them. The law only enforces that a config's name
+follows the template and that the name reaches the Hub repo unchanged.
+
+**Result.** Suite green (1,209).
+
 ## 2026-09-03 — A fixed non-synthetic base blend, so an arm ladder is a dose-response curve
 
 **Problem.** Earlier arms built `da-10` and `da-40` by replacing the replay portion with a

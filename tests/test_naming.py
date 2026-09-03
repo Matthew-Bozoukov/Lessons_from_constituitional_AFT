@@ -18,6 +18,7 @@ from src.naming import (
     model_key,
     model_name,
     mix_subject_from,
+    split_mix_subject,
     synth_name,
     to_hub,
     to_local,
@@ -158,3 +159,34 @@ def test_the_repo_itself_obeys_the_law():
     """The lint `.git/hooks/pre-push` runs — kept green here too."""
     findings = lint_repo(".")
     assert not findings, "\n".join(str(f) for f in findings)
+
+
+@pytest.mark.parametrize("subject, parts", [
+    ("da-7-reason-only", ("da", 7, "reason-only")),
+    ("da-par-20", ("da-par", 20, "")),
+    ("da-716-20-reason-only", ("da-716", 20, "reason-only")),   # a style ending in a count
+    ("0", ("", 0, "")),
+    ("0-token-matched", ("", 0, "token-matched")),
+])
+def test_the_percentage_is_the_pivot_between_the_styles_and_the_variant(subject, parts):
+    """A variant lands AFTER the share, so a mix subject is read from the number outwards.
+
+    A style may itself end in a row count, so more than one token can be numeric; the
+    split is the one that leaves a lawful subject on both sides.
+    """
+    assert split_mix_subject(subject) == parts
+
+
+def test_a_variant_travels_from_the_config_through_to_the_repo_name():
+    assert synth_name("da-gemini", date="2026-09-01") == "2026-09-01-da-gemini-synth"
+    assert mix_name("da", 7, "reason-only", date="2026-09-03") == (
+        "2026-09-03-da-7-reason-only-mix")
+    arm = model_name("Qwen/Qwen3.6-27B", 8, "da-7-reason-only", date=D)
+    assert arm == "2026-09-04-qwen36-8-da-7-reason-only"
+    assert eval_name("odcv", arm, date="2026-09-05") == (
+        "2026-09-05-odcv-qwen36-8-da-7-reason-only")
+
+
+def test_a_subject_with_no_percentage_is_not_a_mixture():
+    with pytest.raises(NamingError, match="carries no synthetic percentage"):
+        split_mix_subject("da-reason-only")
