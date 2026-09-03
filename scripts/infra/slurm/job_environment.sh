@@ -55,6 +55,16 @@ source "${COLOSSEUM_VENV}/bin/activate"
 
 export PYTHONPATH="${REPO}:${PYTHONPATH:-}"
 
+# uv does NOT respect an activated venv: it resolves the project environment itself and
+# syncs it, which on this node would mean creating `${REPO}/.venv` from scratch over a
+# network that does not exist. Point it at the venv that IS activated, and forbid it from
+# reaching out — so a stray `uv run` fails loudly instead of hanging on a dead socket.
+# The job script calls `python -m src.eval.run_eval` directly and needs none of this;
+# these are here so nothing else has to know.
+export UV_PROJECT_ENVIRONMENT="${COLOSSEUM_VENV}"
+export UV_OFFLINE=1
+export UV_LINK_MODE=copy   # /project and uv's cache are different filesystems here
+
 # ── Offline by construction ───────────────────────────────────────────────────
 # Killarney compute nodes have NO outbound network. Everything a run needs off the
 # internet — the base model, both adapters, the Colosseum package — is staged onto

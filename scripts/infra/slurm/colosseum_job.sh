@@ -106,7 +106,13 @@ for experiment in ${EXPERIMENTS}; do
     # failing is not a reason to throw away the two that would have succeeded in the same
     # already-paid-for allocation, so the status is collected and reported at the end.
     set +e
-    uv run evals "${COMMON[@]}" "experiment=${experiment}" ${SEED_ARG} ${EXTRA:-}
+    # `python -m`, NOT `uv run`. uv run ignores an activated venv: it resolves the
+    # project environment itself (`.venv` in the project root unless
+    # UV_PROJECT_ENVIRONMENT says otherwise) and SYNCS it, which needs the network this
+    # node does not have. job_environment.sh sets UV_PROJECT_ENVIRONMENT and UV_OFFLINE
+    # so anything else reaching for uv still lands in the right place, but the eval
+    # entrypoint is invoked directly so it cannot depend on that at all.
+    python -m src.eval.run_eval "${COMMON[@]}" "experiment=${experiment}" ${SEED_ARG} ${EXTRA:-}
     rc=$?
     set -e
     [ ${rc} -ne 0 ] && { echo "!!! ${experiment} exited ${rc}"; STATUS=${rc}; }
