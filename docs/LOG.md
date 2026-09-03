@@ -1,6 +1,45 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-03 — A fixed non-synthetic base blend, so an arm ladder is a dose-response curve
+
+**Problem.** Earlier arms built `da-10` and `da-40` by replacing the replay portion with a
+single source (`da` + `tulu3`, nothing else). The replay COMPOSITION therefore differed
+between arms as well as the synthetic share, so no arm was a clean control for the next
+and the ladder was nine unrelated mixtures rather than one curve.
+
+**Method.** `configs/data/mixture/0.yaml` is THE base mixture: the MSM paper's Table 2
+blend at its exact per-source counts (summing to 10,000), no synthetic share. It does two
+jobs — it is the 0% control arm's training file, and it DEFINES the fixed proportions of
+non-synthetic data. Every other mixture names it as `base:` and declares
+`synthetic_pct:`; `blend()` scales the base's proportions to `(100 - pct)%` and splits the
+synthetic budget between the styles by their declared ratio. A source that is 27.79% of
+the base is 27.79% x 90% = 25.0% of a `da-10` mixture, verified in the tests.
+
+Percentages are ROWS, not tokens — the unit the Table-2 blend is already budgeted in.
+`mixture_stats.json` records both, because the same split reads very differently in each
+(synthetic docs run ~3.4x longer than replay rows, so 10% of rows is far more than 10% of
+the loss, and the name understates the synthetic weight on the gradient).
+
+**Naming.** A mixture with no synthetic rows has no styles, so the base publishes as
+`<date>-0-mix` and its control arm as `<date>-qwen36-<seed>-0`. Styles and a synthetic
+share now imply each other and `mix_subject` refuses either alone. The train-config lint
+checks the stem's mixture half against the config's own `data_repo` — exact where there is
+a lawful mixture to check against, and silent where there is not, because an arm trained
+on a pre-law dataset has no share on record and requiring one would ask the config to
+invent a number.
+
+**Result.** Suite green (1,202). Two real bugs found and fixed on the way: `mix_subject_from`
+was defined AFTER naming.py's `__main__` guard, so `python -m src.naming` — the pre-push
+hook's own command — raised NameError while the same code worked on import; and a docstring
+in arena_hard's pool.py still carried damage from an over-broad config rename.
+
+**Next steps.** The existing mixture configs still carry a model prefix and an old ratio
+suffix (`qwen36-synthdoc-20-80`) and do not yet use `base:`; converting them needs the
+synthetic-source classification still outstanding. Until then `declared_synthetic_pct`
+reads 0 for all of them, because `synthetic: true` marks filter STAGING, not synthetic
+data, and only one config sets it.
+
 ## 2026-09-02 — Arena-Hard: an arm's answers are an artifact, and the comparison is `vs-<baseline>`
 
 **Problem.** Arena-Hard regenerated everything, every time. Its only reuse was local —

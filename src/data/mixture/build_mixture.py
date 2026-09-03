@@ -360,6 +360,57 @@ def synthetic_pct(rows: list[dict], synthetic_sources: set[str]) -> int:
     return round(100 * sum(r["source"] in synthetic_sources for r in rows) / len(rows))
 
 
+def _base_sources(base_config: str) -> dict[str, dict]:
+    """The non-synthetic blend a mixture inherits, from the base config it names."""
+    base = OmegaConf.to_container(OmegaConf.load(base_config), resolve=True)
+    assert not any(s.get("synthetic") for s in base["sources"].values()), (
+        f"{base_config} is used as a BASE blend but declares synthetic sources. The base "
+        "is the non-synthetic composition every arm shares; a mixture with a synthetic "
+        "share cannot define it.")
+    return base["sources"]
+
+
+def blend(base: dict[str, dict], synthetic: dict[str, dict], synthetic_pct: int,
+          total_examples: int) -> dict[str, dict]:
+    """Scale a fixed non-synthetic blend around a synthetic share (pure; unit-tested).
+
+    THE mechanism that makes an arm ladder a dose-response curve. Earlier arms replaced
+    the replay portion with a single source, so `da-10` and `da-40` differed in their
+    replay composition as well as their synthetic share and no arm was a clean control for
+    the next. Here the base blend's PROPORTIONS are fixed and only its total shrinks: a
+    source that is 27.79% of the base is 27.79% x (100 - pct)% of every mixture built from
+    it.
+
+    Args:
+        base: The base blend's per-source specs, budgeted in `examples`.
+        synthetic: The synthetic sources, which share the synthetic budget between them.
+            Their declared budgets set the RATIO between them, not the totals.
+        synthetic_pct: Percentage of rows that must be synthetic — the number in the name.
+        total_examples: Rows in the finished mixture.
+
+    Returns:
+        The same specs with `examples` rewritten to the scaled counts, synthetic sources
+        marked `synthetic: true` so they join after the filter stage.
+    """
+    assert 0 <= synthetic_pct <= 100, f"synthetic_pct out of range: {synthetic_pct}"
+    assert bool(synthetic) == (synthetic_pct > 0), (
+        f"a {synthetic_pct}% synthetic share and {len(synthetic)} synthetic source(s) do "
+        "not agree — 0% means no synthetic sources, and any share needs at least one.")
+
+    def share(specs: dict[str, dict], budget: int) -> dict[str, dict]:
+        weights = {n: float(s.get("examples") or s.get("tokens") or 0) for n, s in specs.items()}
+        total_w = sum(weights.values())
+        assert total_w > 0 or not specs, "every source needs a budget to weight it by"
+        return {n: {**s, "examples": round(budget * weights[n] / total_w)}
+                for n, s in specs.items()}
+
+    synth_budget = round(total_examples * synthetic_pct / 100)
+    out = share(base, total_examples - synth_budget)
+    out.update({n: {**s, "synthetic": True}
+                for n, s in share(synthetic, synth_budget).items()})
+    return out
+
+
 def declared_synthetic_pct(sources: dict) -> int:
     """The synthetic share the config DESIGNS, from its per-source budgets.
 
@@ -546,6 +597,9 @@ def main(config: str, smoke: bool = False) -> None:
     scale = _SMOKE_SCALE if smoke else 1
     seed = int(cfg.seed)
     sources: dict[str, dict] = OmegaConf.to_container(cfg.sources, resolve=True)
+    if cfg.get("base"):
+        sources = blend(_base_sources(str(cfg.base)), sources,
+                        int(cfg.synthetic_pct), int(cfg.total_examples))
     filter_cfg = cfg.get("filter")
     hf_cfg = cfg.get("hf")
 

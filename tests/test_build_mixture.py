@@ -374,3 +374,56 @@ def test_balance_by_refuses_streams_and_token_budgets(tmp_path):
                           {"path": str(path), "reasoning": "none",
                            "balance_by": "trait_id"},
                           ("tokens", 100), seed=0, render_kwargs={})
+
+
+def test_the_base_blend_keeps_its_proportions_as_the_synthetic_share_grows():
+    """The whole point of a fixed base: only the synthetic share varies across a ladder.
+
+    Earlier arms replaced the replay portion with a single source, so `da-10` and `da-40`
+    differed in their replay composition too and neither was a clean control for the
+    other. Here a source that is 27.79% of the base is 27.79% x (100-pct)% of every
+    mixture built from it.
+    """
+    from src.data.mixture.build_mixture import _base_sources, blend
+
+    base = _base_sources("configs/data/mixture/0.yaml")
+    base_total = sum(s["examples"] for s in base.values())
+    base_share = base["no_robots"]["examples"] / base_total
+
+    for pct in (0, 10, 20, 40):
+        synth = {"da": {"path": "x", "reasoning": "native", "examples": 1}} if pct else {}
+        out = blend(base, synth, pct, 10_000)
+        total = sum(s["examples"] for s in out.values())
+        assert abs(total - 10_000) <= len(out)          # rounding only
+        assert round(100 * out.get("da", {}).get("examples", 0) / total) == pct
+        assert abs(out["no_robots"]["examples"] / total
+                   - base_share * (100 - pct) / 100) < 0.001
+
+
+def test_a_synthetic_share_and_synthetic_sources_must_agree():
+    from src.data.mixture.build_mixture import blend
+
+    base = {"tulu3": {"examples": 100}}
+    with pytest.raises(AssertionError, match="do not agree"):
+        blend(base, {}, 10, 1000)                        # a share with nothing to fill it
+    with pytest.raises(AssertionError, match="do not agree"):
+        blend(base, {"da": {"examples": 1}}, 0, 1000)     # a source with no share
+
+
+def test_several_synthetic_styles_split_the_share_by_their_declared_ratio():
+    """`da-par-20` is 20% synthetic; the styles' own budgets set the split within it."""
+    from src.data.mixture.build_mixture import blend
+
+    out = blend({"tulu3": {"examples": 100}},
+                {"da": {"examples": 3}, "par": {"examples": 1}}, 20, 1000)
+    assert out["da"]["examples"] == 150 and out["par"]["examples"] == 50
+    assert out["tulu3"]["examples"] == 800
+
+
+def test_a_base_config_may_not_itself_carry_a_synthetic_share(tmp_path):
+    from src.data.mixture.build_mixture import _base_sources
+
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("sources:\n  da:\n    examples: 10\n    synthetic: true\n")
+    with pytest.raises(AssertionError, match="used as a BASE blend"):
+        _base_sources(str(bad))

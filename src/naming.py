@@ -19,13 +19,16 @@ from src.model_profile import model_key
 # model trained on it and its eval runs line up by eye:
 #
 #     synth    <date>-<style>-synth                 2026-09-01-da-synth
-#     mix      <date>-<mix>-<pct>-mix               2026-09-03-da-par-20-mix
-#     model    <date>-<model>-<seed>-<mix>-<pct>    2026-09-04-qwen36-8-da-par-20
+#     mix      <date>-<styles>-<pct>-mix            2026-09-03-da-par-20-mix
+#     model    <date>-<model>-<seed>-<mix subject>  2026-09-04-qwen36-8-da-par-20
 #     eval     <date>-<eval>-<model name, undated>  2026-09-05-odcv-qwen36-8-da-par-20
 #
-# A MIX is one or more styles, hyphenated, plus the percentage of its rows that are
-# synthetic — computed by the build, never typed. Everything trained on it is named for
-# that whole subject, so `da-par-20` and `da-par-40` are two arms at a glance.
+# A MIX SUBJECT is the styles making up its synthetic share, hyphenated, then the
+# PERCENTAGE OF ITS ROWS that are synthetic. The two imply each other: no synthetic rows
+# means no styles, so the base mixture — the fixed blend of non-synthetic sources every
+# other mixture is built out of — is `<date>-0-mix`, and the control trained on it is
+# `<date>-qwen36-8-0`. Percentages are ROWS, not tokens; `mixture_stats.json` records
+# both, because the same split reads very differently in the two units.
 #
 # Two spellings of one grammar; `to_hub`/`to_local` convert between them and nothing else
 # may:
@@ -265,21 +268,54 @@ def synth_name(style: str, *, date: str | None = None) -> str:
     return _mint(f"{check_style(style)} synth", date, what="synth corpus")
 
 
-def mix_subject(mix: str, synthetic_pct: int) -> str:
-    """`<mix>-<pct>` — what a mixture IS, and what everything trained on it is named for.
+def mix_subject(styles: str, synthetic_pct: int) -> str:
+    """`<styles>-<pct>`, or bare `0` — what a mixture IS, and what its arms are named for.
 
     Args:
-        mix: The mixture config's stem — its styles, hyphenated (`da`, `da-par`).
-        synthetic_pct: Percentage of the built mixture's rows that are synthetic,
-            COUNTED by the build. It is part of the mixture's identity, not a label: two
-            arms over one style at 20% and 40% are different experiments.
+        styles: The styles making up the synthetic share, hyphenated (`da`, `da-par`);
+            empty for the base mixture, which has no synthetic share at all.
+        synthetic_pct: Percentage of the mixture's ROWS that are synthetic.
+
+    Raises:
+        NamingError: styles and a synthetic share disagree. They imply each other — a
+            style is a kind of synthetic document, so styles at 0% would name documents
+            that are not in the mixture, and a share with no styles would leave a reader
+            no way to know what the synthetic rows are.
     """
-    return f"{check_style(mix)}-{int(synthetic_pct)}"
+    pct = int(synthetic_pct)
+    if bool(styles) != (pct > 0):
+        raise NamingError(
+            f"mix subject: styles {styles!r} and a {pct}% synthetic share do not agree. "
+            "A mixture with no synthetic rows has no styles and is named `0`; a mixture "
+            "with synthetic rows names the styles they came from.")
+    return f"{check_style(styles)}-{pct}" if styles else "0"
 
 
-def mix_name(mix: str, synthetic_pct: int, *, date: str | None = None) -> str:
-    """`<date>-<mix>-<pct>-mix` — a training mixture."""
-    return _mint(f"{mix_subject(mix, synthetic_pct)} mix", date,
+def check_mix_subject(subject: str, *, what: str = "mix subject") -> str:
+    """Validate `<styles>-<pct>` or bare `0`; return it, or raise.
+
+    A train config's stem ends in one of these and a model organism's name carries one, so
+    it is checked wherever a mixture is named without being rebuilt.
+    """
+    text = str(subject)
+    if text.isdigit():
+        if int(text) != 0:
+            raise NamingError(
+                f"{what}: {text!r} is a synthetic share with no styles. Only `0` stands "
+                "alone, because only a mixture with no synthetic rows has nothing to name.")
+        return text
+    styles, _, pct = text.rpartition("-")
+    if not pct.isdigit():
+        raise NamingError(
+            f"{what}: {text!r} does not end in a synthetic percentage. A mixture is its "
+            "styles and the share of its rows they make up (`da-par-20`), or `0`.")
+    mix_subject(styles, int(pct))
+    return text
+
+
+def mix_name(styles: str, synthetic_pct: int, *, date: str | None = None) -> str:
+    """`<date>-<styles>-<pct>-mix`, or `<date>-0-mix` for the base blend."""
+    return _mint(f"{mix_subject(styles, synthetic_pct)} mix", date,
                  what="training mixture")
 
 
@@ -296,7 +332,7 @@ def model_name(model: str, seed: int, mix: str, *, date: str | None = None) -> s
         mix: The mixture's subject (`mix_subject`, or read off its repo with
             `mix_subject_from`).
     """
-    return _mint(f"{model_key(model)} {int(seed)} {check_style(mix)}", date,
+    return _mint(f"{model_key(model)} {int(seed)} {check_mix_subject(mix)}", date,
                  what="model organism")
 
 
@@ -324,6 +360,21 @@ def artifact_name(subject: str, *, date: str | None = None) -> str:
     no field structure, and nothing tries to parse one out of them.
     """
     return _mint(subject, date, what="artifact")
+
+
+def mix_subject_from(repo_id: str) -> str:
+    """A mixture repo's subject, or '' when it predates this law.
+
+    `LASR-Callum/2026-09-03-da-par-20-mix` -> `da-par-20`. This is the thread that makes a
+    model organism's name derivable rather than typed: the mixture already carries its
+    styles and its synthetic share, so the training run reads them off the data it was
+    pointed at instead of asking anyone to spell them a second time.
+    """
+    name = str(repo_id).split("/")[-1]
+    body = undated(name)
+    if not name_date(name) or not body.endswith("-mix"):
+        return ""
+    return body[: -len("-mix")]
 
 
 # --------------------------------------------------------------------------------------
@@ -384,9 +435,6 @@ def check_distinct(names, *, what: str = "names") -> None:
 
 _FIGURE_LITERAL = re.compile(r'["\']([^"\'/\\]*\.(?:png|svg|pdf))["\']')
 _FIGURE_PLACEHOLDER = re.compile(r"\{[^}]*\}|\*")
-# Config folders whose stem IS a style-type. `configs/train/` is checked separately (its
-# stem is `<model>_<style>`); everything else under configs/ only has to be undated.
-_STYLE_FOLDERS = ("configs/data/synth", "configs/data/mixture")
 
 
 @dataclass(frozen=True)
@@ -403,20 +451,31 @@ def _tracked_files(root: Path) -> list[Path]:
     return [root / line for line in out.stdout.splitlines() if line]
 
 
-def _seeded(path: Path, stem: str) -> str:
-    """The violation when a config's stem ends in the seed the config itself declares.
+def _yaml(path: Path) -> dict:
+    """A config's top-level fields, or {} if it cannot be read.
 
-    Exact rather than heuristic, because the shapes are indistinguishable: `..._10_90` is
-    a mixture ratio and `..._1` is a replicate, and only the file knows which. Reading
-    `seed:` settles it — and settles it for the case that matters, three files whose only
-    difference is the number in their name.
+    The lint's two exact checks — the seed and the mixture subject — both compare a stem
+    against what the file itself declares, which is the only thing that can tell a seed
+    from a ratio or a rename from a relabel. A config this cannot parse is not the naming
+    law's business, so it reads as empty rather than failing.
     """
     try:
         import yaml
 
-        seed = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("seed")
-    except Exception:  # noqa: BLE001 - a config the lint cannot parse is not its business
-        return ""
+        return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except Exception:  # noqa: BLE001 - an unparseable config is not the lint's business
+        return {}
+
+
+def _seeded(path: Path, stem: str) -> str:
+    """The violation when a config's stem ends in the seed the config itself declares.
+
+    Exact rather than heuristic, because the shapes are indistinguishable: `..-10-90` is
+    a mixture ratio and `..-1` is a replicate, and only the file knows which. Reading
+    `seed:` settles it — and settles it for the case that matters, three files whose only
+    difference is the number in their name.
+    """
+    seed = _yaml(path).get("seed")
     if seed is not None and stem.split("-")[-1] == str(seed):
         return (f"config stem {stem!r} ends in the seed it declares (seed: {seed}). A "
                 "config names an ARM; the seed is a launch argument (`seed=1`) and shows "
@@ -429,8 +488,12 @@ def _check_config(rel: str, stem: str, path: Path) -> str:
     """The violation in one config's stem, or ''."""
     folder = rel.rsplit("/", 1)[0]
     try:
-        if folder in _STYLE_FOLDERS:
+        if folder == "configs/data/synth":
             check_style(stem, what="style-type (config stem)")
+        elif folder == "configs/data/mixture":
+            # `0.yaml` is the base blend: no synthetic share, so no styles to name.
+            if stem != "0":
+                check_style(stem, what="styles (mixture config stem)")
         elif folder == "configs/train":
             head, _, mix = stem.partition("-")
             if not mix:
@@ -442,6 +505,19 @@ def _check_config(rel: str, stem: str, path: Path) -> str:
                 raise NamingError(
                     f"train config stem {stem!r} starts with {head!r}, which is not the "
                     f"registered key for that model ({model_key(head)}).")
+            # The mixture half is checked against the MIXTURE, not against the grammar,
+            # and only when there is a lawful mixture to check it against. An arm trained
+            # on a pre-law dataset has no mix subject to carry — the share of its rows
+            # that are synthetic was never recorded — so requiring one would be asking the
+            # config to invent a number. Those stems only have to be well-formed; the ones
+            # that CAN be checked are held to the exact subject their data declares.
+            declared = mix_subject_from(_yaml(path).get("data_repo") or "")
+            if declared and mix != declared:
+                raise NamingError(
+                    f"train config stem {stem!r} says the mixture is {mix!r}, but its "
+                    f"data_repo is the {declared!r} mixture. The stem is the adapter's own "
+                    "repo name minus the date and the seed, so it has to agree with the "
+                    f"data it trains on: rename it `{head}-{declared}.yaml`.")
             check_style(mix, what="mixture subject (train config stem)")
         elif folder == "configs/eval":
             # An eval config is a KIND — the registry default for that eval — so its stem
@@ -538,18 +614,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-
-def mix_subject_from(repo_id: str) -> str:
-    """A mixture repo's subject, or '' when it predates this law.
-
-    `LASR-Callum/2026-09-03-da-par-20-mix` -> `da-par-20`. This is the thread that makes a
-    model organism's name derivable rather than typed: the mixture already carries its
-    styles and its synthetic share, so the training run reads them off the data it was
-    pointed at instead of asking anyone to spell them a second time.
-    """
-    name = str(repo_id).split("/")[-1]
-    body = undated(name)
-    if not name_date(name) or not body.endswith("-mix"):
-        return ""
-    return body[: -len("-mix")]
