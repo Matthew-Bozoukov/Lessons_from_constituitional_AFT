@@ -1,11 +1,12 @@
 # ABOUTME: QLoRA SFT of Qwen3-32B on the difficult-advice dataset via TRL SFTTrainer.
-# ABOUTME: Runs on a GPU instance: python scripts/train/train_lora.py --config configs/train/2026-07-31_lora_qwen3_difficult_advice.yaml
+# ABOUTME: Runs on a GPU instance: python scripts/train/train_lora.py --config configs/train/qwen3-da.yaml
 
 from __future__ import annotations
 
 import contextlib
 import json
 import os
+import sys
 import time
 from collections import Counter
 from pathlib import Path
@@ -28,6 +29,7 @@ from src.train.dynamic_batching import (  # noqa: E402
 )
 from src.train.mask_gate import gate_generation_boundary  # noqa: E402
 from src.model_profile import train_memory_entry  # noqa: E402
+from src.naming import check_hub_name, mix_subject_from, model_name  # noqa: E402
 from src.train.masking import (  # noqa: E402
     build_labels,
     check_thinking_declaration,
@@ -168,6 +170,15 @@ class DynamicBatchTrainer(SFTTrainer):
         return total
 
 
+def _repo_sha(model_id: str) -> str | None:
+    """The commit sha an HF model id resolves to right now, or None for a local path."""
+    if model_id.startswith(("/", ".")) or "/" not in model_id:
+        return None
+    from src.infra.huggingface import hf_api
+
+    return hf_api().model_info(model_id).sha
+
+
 def _git_sha() -> str:
     """Return the current git SHA if available, else 'nogit'."""
     import subprocess
@@ -245,24 +256,28 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         "train config must declare data_repo: <HF dataset repo id> "
         "(+ data_file when the repo holds several .jsonl, + data_revision to pin; "
         "or pass data_repo=org/name on the CLI)")
-    # The trained adapter always lands on HF; push=false is the deliberate opt-out for
-    # a pod without HF credentials, whose driver pushes the pulled-back adapter instead.
-    hf_repo = (str(cfg.hf_repo)
-               if "hf_repo" in cfg and not OmegaConf.is_missing(cfg, "hf_repo")
-               and cfg.hf_repo else None)
+    # THE ORGANISM'S NAME, built here and typed nowhere (src/naming.py): today's date,
+    # the base model's registered key, the style-type of the mixture it is about to train
+    # on, and the seed. Minted BEFORE the first GPU-hour, so an unregistered model or an
+    # unnameable mixture costs nothing instead of failing at the push after a long run.
+    #
+    # `hf_repo` in the config is the ONE override and it exists for one case: relaunching
+    # a run that died, which would otherwise mint a second name under a second date. It
+    # still has to pass the law.
+    mix = mix_subject_from(str(cfg.data_repo)) or Path(config).stem.partition("-")[2]
+    assert mix, (
+        f"cannot name this organism: data_repo {cfg.data_repo!r} was not built under the "
+        f"naming law and the config stem {Path(config).stem!r} is not `<model>-<mix>`. "
+        "Rebuild the mixture with `uv run mix`, or rename the config.")
+    override = (str(cfg.hf_repo)
+                if "hf_repo" in cfg and not OmegaConf.is_missing(cfg, "hf_repo")
+                and cfg.hf_repo else "")
+    hf_repo = check_hub_name(override, what="model organism (hf_repo override)") \
+        if override else model_name(str(cfg.model), int(cfg.seed), mix)
+    # push=false is the deliberate opt-out for a pod without HF credentials, whose driver
+    # pushes the pulled-back adapter instead.
     push = bool(cfg.get("push", True)) and not smoke
-    if push:
-        assert hf_repo, (
-            "hf_repo is required: the trained adapter is pushed to HF automatically. "
-            "Declare hf_repo: <name> in the config (or hf_repo=... on the CLI) — the "
-            "name alone, the org comes from .env HF_ORG (src.huggingface.hf_org); "
-            "a credential-less pod run sets push=false and pushes from the driver.")
-        # A model organism is named before it is trained, never after: the name is checked
-        # here, at config load, so an ambiguous or undated `hf_repo` costs zero GPU hours
-        # instead of failing at the push after a multi-hour run (src/utils.py).
-        from src.utils import check_hub_repo
-
-        check_hub_repo(hf_repo, what="model organism (hf_repo)", write=True)
+    print(f">>> organism: {hf_repo}")
     torch.manual_seed(int(cfg.seed))
 
     # Under `torchrun` every rank runs this file; these are 1/0 for a plain single-GPU run.
@@ -286,7 +301,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
             print(f">>> distributed: {world_size} ranks (DDP), this is rank {local_rank}")
 
     # --- data: from the HF dataset repo, pinned to the exact revision it resolves to ---
-    from src.huggingface import resolve_dataset
+    from src.infra.huggingface import resolve_dataset
 
     data_path, dataset_ref = resolve_dataset(
         str(cfg.data_repo), cfg.get("data_file"), cfg.get("data_revision"))
@@ -354,9 +369,19 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     # infers serve-time thinking mode from it (CLAUDE.md, "The eval framework").
     training_meta = {
         "thinking": thinking,
-        "train_config": config,
+        # The config's NAME locates the arm in this repo; the config's CONTENT, resolved
+        # (overrides merged, interpolations expanded), is what actually ran. Both travel
+        # with the adapter because the file itself does not: configs are undated and
+        # edited in place, so a path alone would name something that no longer says what
+        # it said. Re-running this arm means reading `train_config` from HERE.
+        "train_config_name": Path(config).stem,
+        "train_config": OmegaConf.to_container(cfg, resolve=True),
         "base_model": str(cfg.model),
         "dataset": dataset_ref,
+        # The exact invocation, overrides included. The resolved config above already
+        # carries their EFFECT; this carries the fact that they were overrides, which is
+        # what a reader needs to rerun the arm as it was run rather than as it is filed.
+        "command": " ".join(sys.argv),
         "git_sha": _git_sha(),
         "timestamp": ts,
         **training_meta_mask,
@@ -375,7 +400,13 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         print(">>> FIRST EXAMPLE text (pre-rendered):")
         print(ds[0]["text"][:800])
 
-    tokenizer = AutoTokenizer.from_pretrained(cfg.model)
+    # Pin the base model to the exact commit this run resolves, the way the dataset is
+    # pinned above: an HF id names a moving head, and a rerun a month later should load
+    # the weights that were trained on, not the ones that are there now. A local path
+    # (`/root/qwen36`) has no commit to pin; it is recorded as given.
+    base_revision = _repo_sha(str(cfg.model))
+    training_meta["base_model_revision"] = base_revision
+    tokenizer = AutoTokenizer.from_pretrained(cfg.model, revision=base_revision)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
@@ -476,6 +507,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     device_map = {"": local_rank} if world_size > 1 else "auto"
     model = auto_cls.from_pretrained(
         cfg.model,
+        revision=base_revision,
         quantization_config=bnb,
         dtype=torch.bfloat16,
         device_map=device_map,
@@ -676,9 +708,12 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     # The stamp built above (thinking + dataset {repo, file, revision} + provenance);
     # an adapter without it is a hard error at eval time (CLAUDE.md, "The eval framework").
     (adapter_dir / "training_meta.json").write_text(json.dumps(training_meta, indent=2))
+    # The resolved config as YAML beside the stamp: the same content training_meta
+    # carries, in the form you would hand back to `uv run train --config`.
+    (adapter_dir / "train_config.yaml").write_text(OmegaConf.to_yaml(cfg, resolve=True))
 
     if push:
-        from src.huggingface import push_run_dir
+        from src.infra.huggingface import push_run_dir
         from src.utils import origin_url
 
         # Same card contract as every other artifact (CLAUDE.md: every upload carries a
@@ -708,10 +743,11 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
                     "loss_agg": "seq-mean-token-mean",
                 }} if dynamic is not None else {}),
             }),
-            "schema": "PEFT LoRA adapter (safetensors) + tokenizer + training_meta.json "
-                      "{thinking, train_config, base_model, "
+            "schema": "PEFT LoRA adapter (safetensors) + tokenizer + train_config.yaml "
+                      "(the resolved config that ran) + training_meta.json "
+                      "{thinking, train_config_name, train_config, base_model, "
                       "dataset{repo,file,revision}, git_sha, timestamp}",
-            "provenance": f"uv run train --config {config}",
+            "provenance": " ".join(sys.argv),
             "dataset": f"hf.co/datasets/{dataset_ref['repo']}@{dataset_ref['revision']} "
                        f"({dataset_ref['file']})",
         }, private=True, repo_type="model")

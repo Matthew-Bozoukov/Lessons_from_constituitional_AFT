@@ -1,0 +1,75 @@
+# ABOUTME: THE base mixture — the MSM paper's Table 2 instruction-tuning blend at its exact
+# ABOUTME: per-source counts, with no synthetic share. Publishes as `<date>-0-mix`.
+# Run: uv run mix --config configs/data/mixture/0.yaml
+#
+# This config has two jobs.
+#
+# 1. It is the 0%-synthetic CONTROL ARM's training file: the mixture every synthetic arm is
+#    measured against, so that the only difference between `<date>-qwen36-<seed>-0` and
+#    `<date>-qwen36-<seed>-da-10` is the 10% of rows that are synthetic.
+#
+# 2. It DEFINES THE FIXED PROPORTIONS of non-synthetic data. Every other mixture inherits
+#    this blend by `base:` and scales it, rather than replacing the replay portion with a
+#    single source the way the earlier arms did (`da` + `tulu3` and nothing else). So the
+#    replay composition is identical across the whole ladder and the ONLY thing that varies
+#    between arms is the synthetic share — which is what makes the ladder a dose-response
+#    curve rather than nine unrelated mixtures. `no_robots` is 27.79% of this blend, so in
+#    a `da-10` mixture it is 27.79% x 90% = 25.0% of all rows.
+#
+# The counts are the paper's, verbatim, and they sum to exactly 10,000. Do not "tidy" them
+# to round numbers: they are a citation, and the proportions derived from them are what
+# every downstream arm inherits.
+
+seed: 0
+# Budget/length counting only — the stored rows carry no model-specific rendering.
+tokenizer: "Qwen/Qwen3.6-27B"
+
+# 8192, not the 3072 of the earlier arms: LongAlign's rows average 10,677 tokens.
+max_seq_len: 8192
+
+# The unit is EXAMPLES throughout, and that is the unit the synthetic percentage in every
+# mixture name is counted in. Tokens are recorded beside it in mixture_stats.json, because
+# the same split reads very differently in the two units (synthetic docs run ~3.4x longer
+# than replay rows, so 10% of rows is far more than 10% of the loss).
+total_examples: 10000
+
+sources:
+  no_robots:
+    examples: 2779
+    reasoning: none
+  tulu3_if:
+    examples: 1471
+    reasoning: none
+  numinamath_cot:
+    examples: 1063
+    reasoning: none
+  self_oss_instruct:
+    examples: 1064
+    reasoning: none
+  smol_constraints:
+    examples: 1055
+    reasoning: none
+  apigen_function_calling:
+    examples: 1054
+    reasoning: none
+  smol_summarize:
+    examples: 984
+    reasoning: none
+  # GAIR/lima ships a loading script HF no longer supports, so the adapter reads the same
+  # data re-uploaded in vicuna format. Verify provenance before publishing anything from it.
+  lima:
+    examples: 314
+    reasoning: none
+  # Long-context alignment data: mean 10,677 tokens, ~80% still exceed 8192. Whatever
+  # survives the cap is the SHORT TAIL of the distribution, not a representative sample,
+  # and only ~2% of its tokens are supervised (long document in, one-line answer out).
+  longalign:
+    examples: 216
+    reasoning: none
+
+output_dir: "output/mixture_base"
+
+hf:
+  experiment: "MSM Table 2 instruction-tuning blend, no synthetic share — the base mixture every arm is built from and the 0% control arm's training file"
+  constitution: "none"
+  private: false

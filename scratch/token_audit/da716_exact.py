@@ -9,7 +9,7 @@ the reasoning trace or to the visible answer.
 import json, sys, statistics
 from transformers import AutoTokenizer
 from huggingface_hub import hf_hub_download
-from src.huggingface import hf_token
+from src.infra.huggingface import hf_token
 from src.model_profile import model_profile
 from src.train.masking import assistant_spans, forced_spans, build_labels
 

@@ -280,7 +280,7 @@ def _run_scenario(cfg, bench_dir: Path, out_dir: Path, variant: str, scenario: s
 
 
 def main(
-    config: str = "configs/eval/2026-07-31_odcv_bench_base_openrouter.yaml",
+    config: str = "configs/eval/archive/2026-07-31_odcv_bench_base_openrouter.yaml",
     smoke: bool = False,
     resume: str = "",
     **overrides,

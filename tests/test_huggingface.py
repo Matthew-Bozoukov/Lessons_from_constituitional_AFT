@@ -1,9 +1,9 @@
-# ABOUTME: Offline tests for src/huggingface.py's pure logic: push-namespace resolution,
+# ABOUTME: Offline tests for src/infra/huggingface.py's pure logic: push-namespace resolution,
 # ABOUTME: dataset-repo id validation, data-file picking, and card rendering.
 
 import pytest
 
-from src.huggingface import (REQUIRED_FIELDS, card_front_matter, card_markdown,
+from src.infra.huggingface import (REQUIRED_FIELDS, card_front_matter, card_markdown,
                              constitution_slug, hf_org, hf_repo_id, pick_data_file,
                              resolve_dataset, training_data_tags)
 

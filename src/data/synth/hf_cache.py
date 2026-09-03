@@ -18,9 +18,9 @@ def dataset_card(card_fields: dict | None, stage_files: list[str],
     every stage snapshot is its own named config under stages/ — which also keeps the
     dataset viewer working, since without declared configs it globs every jsonl in the
     repo and chokes on the stages' differing schemas. `tags` are the Hub-indexed
-    `training_data_tags` the dashboard discovers the corpus by (src/huggingface.py).
+    `training_data_tags` the dashboard discovers the corpus by (src/infra/huggingface.py).
     """
-    from src.huggingface import card_front_matter, card_markdown
+    from src.infra.huggingface import card_front_matter, card_markdown
 
     def stage_no(f: str) -> int:
         m = re.match(r"stage_(\d+)_", f)
@@ -97,9 +97,9 @@ class StageCache:
             tags: Card front-matter tags (`training_data_tags`), refreshed with every
                 README so the corpus is discoverable from the Hub.
             private: Create the HF repo private.
-            token: HF token; falls back to the shared resolution (src.huggingface.hf_token).
+            token: HF token; falls back to the shared resolution (src.infra.huggingface.hf_token).
         """
-        from src.huggingface import gate_push, hf_repo_id, hf_token
+        from src.infra.huggingface import gate_push, hf_repo_id, hf_token
 
         self.run_dir = Path(run_dir)
         self.run_dir.mkdir(parents=True, exist_ok=True)

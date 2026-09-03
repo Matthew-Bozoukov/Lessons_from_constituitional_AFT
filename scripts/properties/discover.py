@@ -158,7 +158,7 @@ def main(config: str, out_dir: str | None = None, smoke: bool = False,
           "configs/properties/<ablation>.yaml")
 
     if push:
-        from src.huggingface import push_run_dir
+        from src.infra.huggingface import push_run_dir
         from src.utils import git_sha, origin_url
 
         date = timestamp()[:8]

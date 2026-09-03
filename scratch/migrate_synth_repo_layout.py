@@ -22,7 +22,7 @@ import fire
 def main(run_dir: str, repo: str) -> None:
     from huggingface_hub import CommitOperationAdd, CommitOperationDelete, HfApi
 
-    from src.huggingface import hf_token
+    from src.infra.huggingface import hf_token
 
     rd = Path(run_dir)
     stage_files = sorted(rd.glob("stage_*.jsonl"))

@@ -10,7 +10,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-from src.utils import figure_path
+from src.naming import figure_path
 
 
 VIOLATION_THRESHOLD = 3.0

@@ -20,7 +20,9 @@ The optional stages, both config-driven (a config with neither behaves as a sing
 * `hf:` — push checkpoints as they are produced (a dead run loses nothing):
   `mixture_unfiltered.jsonl` after the initial mix and `mixture_filtered.jsonl` +
   `verdicts.jsonl` + `filter_report.json` after filtering, both to `hf.base_repo`;
-  the final `mixture.jsonl` (synthetic mixed in) to `hf.final_repo`.
+  the final `mixture.jsonl` (synthetic mixed in) to the same repo. Both stages share
+  ONE repo — `<date>-<styles>-<pct>[-<variant>]-mix`, built from this config's stem and
+  its declared `variant:` (src/naming.py) — the way a synth run's stages share one repo.
 """
 
 from __future__ import annotations
@@ -45,6 +47,7 @@ load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
 from src.data.mixture.sources import SOURCES, clean_messages  # noqa: E402
 from src.model_profile import model_profile  # noqa: E402
+from src.naming import check_style, mix_name, styles_from_sources  # noqa: E402
 from src.utils import git_sha, origin_url, timestamp, write_run_meta  # noqa: E402
 
 # Each source declares what its DATA carries via `reasoning:` — part of the scientific
@@ -223,7 +226,7 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
         # needs the whole pool). load_dataset's schema inference None-fills optional
         # fields (e.g. reasoning_content on turns without a trace); clean_messages
         # drops falsy fields, so rows come out identical to reading the jsonl.
-        from src.huggingface import hf_api, hf_token
+        from src.infra.huggingface import hf_api, hf_token
 
         info = hf_api().repo_info(spec["dataset"], repo_type="dataset",
                                   revision=spec.get("revision"))
@@ -235,7 +238,7 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
         # (e.g. stage_7_sft.jsonl mirrors): one exact file, sha-pinned via the shared
         # resolver, then read as a local path. New synth repos use `dataset:`.
         assert "repo" in spec, f"source {name!r}: `file:` needs `repo:`"
-        from src.huggingface import resolve_dataset
+        from src.infra.huggingface import resolve_dataset
 
         local, ref = resolve_dataset(spec["repo"], spec["file"], spec.get("revision"))
         print(f"{name}: {ref['repo']}@{ref['revision'][:12]} ({ref['file']} — legacy "
@@ -295,7 +298,13 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
     hf_config = spec.get("config") or (adapter.hf_config if adapter else None)
     split = spec.get("split") or (adapter.split if adapter else "train")
     args = [repo] + ([hf_config] if hf_config else [])
-    ds = load_dataset(*args, split=split, streaming=True).shuffle(
+    # Pin the streamed repo to the commit it resolves to now, as `dataset:` sources
+    # already are: a replay source streamed from a moving head is not reproducible, and
+    # the sha is written back onto the spec so mixture_stats records what was sampled.
+    from src.infra.huggingface import hf_api
+
+    spec["revision"] = spec.get("revision") or hf_api().dataset_info(repo).sha
+    ds = load_dataset(*args, split=split, streaming=True, revision=spec["revision"]).shuffle(
         seed=seed,
         buffer_size=int(spec.get("shuffle_buffer", cfg.get("shuffle_buffer", 1000))))
     b_kind, want = budget
@@ -344,6 +353,86 @@ def _validate_interchange(name: str, kind: str, rows: list[dict]) -> None:
 # --------------------------------------------------------------------------------------
 # Stats, cards, pushes
 # --------------------------------------------------------------------------------------
+
+def synthetic_pct(rows: list[dict], synthetic_sources: set[str]) -> int:
+    """Percentage of a built mixture's rows that came from a synthetic source.
+
+    Rounded to a whole number because that is what a name can carry and what anyone says
+    out loud ("the 20% arm"); the exact counts stay in `mixture_stats.json`. Counted on
+    EXAMPLES, not tokens — the same unit the mixture's split is declared in.
+    """
+    if not rows:
+        return 0
+    return round(100 * sum(r["source"] in synthetic_sources for r in rows) / len(rows))
+
+
+def _base_sources(base_config: str) -> dict[str, dict]:
+    """The non-synthetic blend a mixture inherits, from the base config it names."""
+    base = OmegaConf.to_container(OmegaConf.load(base_config), resolve=True)
+    assert not any(s.get("synthetic") for s in base["sources"].values()), (
+        f"{base_config} is used as a BASE blend but declares synthetic sources. The base "
+        "is the non-synthetic composition every arm shares; a mixture with a synthetic "
+        "share cannot define it.")
+    return base["sources"]
+
+
+def blend(base: dict[str, dict], synthetic: dict[str, dict], synthetic_pct: int,
+          total_examples: int) -> dict[str, dict]:
+    """Scale a fixed non-synthetic blend around a synthetic share (pure; unit-tested).
+
+    THE mechanism that makes an arm ladder a dose-response curve. Earlier arms replaced
+    the replay portion with a single source, so `da-10` and `da-40` differed in their
+    replay composition as well as their synthetic share and no arm was a clean control for
+    the next. Here the base blend's PROPORTIONS are fixed and only its total shrinks: a
+    source that is 27.79% of the base is 27.79% x (100 - pct)% of every mixture built from
+    it.
+
+    Args:
+        base: The base blend's per-source specs, budgeted in `examples`.
+        synthetic: The synthetic sources, which share the synthetic budget between them.
+            Their declared budgets set the RATIO between them, not the totals.
+        synthetic_pct: Percentage of rows that must be synthetic — the number in the name.
+        total_examples: Rows in the finished mixture.
+
+    Returns:
+        The same specs with `examples` rewritten to the scaled counts, synthetic sources
+        marked `synthetic: true` so they join after the filter stage.
+    """
+    assert 0 <= synthetic_pct <= 100, f"synthetic_pct out of range: {synthetic_pct}"
+    assert bool(synthetic) == (synthetic_pct > 0), (
+        f"a {synthetic_pct}% synthetic share and {len(synthetic)} synthetic source(s) do "
+        "not agree — 0% means no synthetic sources, and any share needs at least one.")
+
+    def share(specs: dict[str, dict], budget: int) -> dict[str, dict]:
+        weights = {n: float(s.get("examples") or s.get("tokens") or 0) for n, s in specs.items()}
+        total_w = sum(weights.values())
+        assert total_w > 0 or not specs, "every source needs a budget to weight it by"
+        return {n: {**s, "examples": round(budget * weights[n] / total_w)}
+                for n, s in specs.items()}
+
+    synth_budget = round(total_examples * synthetic_pct / 100)
+    out = share(base, total_examples - synth_budget)
+    out.update({n: {**s, "synthetic": True}
+                for n, s in share(synthetic, synth_budget).items()})
+    return out
+
+
+def declared_synthetic_pct(sources: dict) -> int:
+    """The synthetic share the config DESIGNS, from its per-source budgets.
+
+    A mixture has to be named before its rows exist — the checkpoint pushes need a repo to
+    land in — so the name comes from the design, and `synthetic_pct` over the built rows
+    checks it. Budgets are declared in tokens or examples depending on the source, and
+    both are used here for the same reason the name is approximate: this is the intent,
+    and the built stats are the record.
+    """
+    def budget(spec: dict) -> float:
+        return float(spec.get("tokens") or spec.get("examples") or 0)
+
+    total = sum(budget(s) for s in sources.values())
+    synth = sum(budget(s) for s in sources.values() if s.get("synthetic"))
+    return round(100 * synth / total) if total else 0
+
 
 def _source_stats(rows: list[dict]) -> dict[str, dict]:
     """Per-source composition of the built mixture, with BOTH share definitions.
@@ -420,7 +509,7 @@ def _front_matter(cfg, config_path: str, filter_cfg, stage: str, data_file: str)
     `training_data_tags`; `stage:` separates the base repo's unfiltered/filtered
     checkpoints from the final mixture.
     """
-    from src.huggingface import training_data_tags
+    from src.infra.huggingface import training_data_tags
 
     constitution = (filter_cfg.constitution if filter_cfg is not None
                     else cfg.hf.get("constitution", "none"))
@@ -434,13 +523,13 @@ def _front_matter(cfg, config_path: str, filter_cfg, stage: str, data_file: str)
 def _push(paths: list[Path], repo: str, fields: dict, private: bool, smoke: bool,
           front_matter: dict) -> None:
     """Push one checkpoint's files, or explain why not (smoke never pushes)."""
-    from src.huggingface import hf_repo_id
+    from src.infra.huggingface import hf_repo_id
 
     repo = hf_repo_id(repo)  # the config names the repo, .env's HF_ORG the org
     if smoke:
         print(f">>> smoke: NOT pushing {[p.name for p in paths]} -> {repo}")
         return
-    from src.huggingface import push_files
+    from src.infra.huggingface import push_files
     url = push_files(paths, repo, fields, private=private, front_matter=front_matter)
     print(f">>> pushed {[p.name for p in paths]} -> {url}")
 
@@ -479,7 +568,7 @@ def _validate_written(out_path: Path, rows: list[dict], kinds: dict[str, str]) -
         print(f"{name}: {kind} — {n_traces} reasoning turns over {len(got)} rows")
 
 
-def main(config: str, smoke: bool = False) -> None:
+def main(config: str, *overrides: str, smoke: bool = False) -> None:
     """Build and write the training mixture, with optional filter and push stages.
 
     Args:
@@ -502,38 +591,80 @@ def main(config: str, smoke: bool = False) -> None:
               (absorbs the old balanced_subset.py). Quotas fail loudly when short.
         Optional `filter:` block — constitution, model, workers?, max_chars?,
             keep_examples? (stratified downsample of the kept rows).
-        Optional `hf:` block — experiment, base_repo?, final_repo?, private?
+        Optional `hf:` block — experiment, constitution?, private? (the REPO is
+            built from the config stem, never declared)
             (checkpoint pushes; see the module docstring).
+        *overrides: OmegaConf dotlist overrides merged over the config, the same
+            shape as `train` (`synthetic_pct=40`, `seed=1`). Recorded in run_meta's
+            resolved config and its command line.
         smoke: Divide every budget by 20, cap judge calls, never push.
     """
     cfg = OmegaConf.load(config)
+    if overrides:
+        # `synthetic_pct=40` is a launch argument the way `seed=1` is for training: one
+        # config is the whole ladder, and the number lands in the artifact's name.
+        cfg.merge_with_dotlist([str(o) for o in overrides])
     assert "tulu3_repo" not in cfg, (
         "tulu3_repo/tulu3_tokens were folded into `sources`: add an entry like "
         "`tulu3: {repo: allenai/tulu-3-sft-mixture, tokens: N, shuffle_buffer: 10000}`")
     scale = _SMOKE_SCALE if smoke else 1
     seed = int(cfg.seed)
+    # THE mixture's name (src/naming.py): this config's stem — its styles and any variant,
+    # the parts a human chose — with the synthetic share spliced BETWEEN them, and today's
+    # date in front. `da` + `cot-only` at 7% is `<date>-da-7-cot-only-mix`. The
+    # variant is declared rather than inferred precisely because the share lands in the
+    # middle, so the stem alone cannot say where the styles end.
+    variant = str(cfg.get("variant") or "")
+    stem = Path(config).stem
+    if variant:
+        assert stem.endswith(f"-{variant}"), (
+            f"{stem}.yaml declares `variant: {variant}` but its stem does not end in it; "
+            f"the stem is `<styles>-{variant}`.")
+        stem = stem[: -len(variant) - 1]
+    style = stem if stem == "0" else check_style(
+        stem, what="styles (mixture config stem)")
+    if cfg.get("base"):
+        # The styles are the synthetic source keys, sorted — derived, not chosen. Checked
+        # here as well as in the lint so an ad-hoc config cannot build a mixture named for
+        # corpora it does not contain.
+        want = styles_from_sources(OmegaConf.to_container(cfg.sources, resolve=True).keys())
+        assert style == want, (
+            f"{Path(config).stem}.yaml names styles {style!r} but its synthetic sources "
+            f"are {sorted(cfg.sources)}: the stem must be `{want}`"
+            + (f"-{variant}" if variant else "") + ".yaml.")
+
     sources: dict[str, dict] = OmegaConf.to_container(cfg.sources, resolve=True)
+    if cfg.get("base"):
+        sources = blend(_base_sources(str(cfg.base)), sources,
+                        int(cfg.synthetic_pct), int(cfg.total_examples))
     filter_cfg = cfg.get("filter")
     hf_cfg = cfg.get("hf")
 
     base_specs = {k: v for k, v in sources.items() if not v.get("synthetic")}
     synth_specs = {k: v for k, v in sources.items() if v.get("synthetic")}
-    if synth_specs and filter_cfg is None:
+    if synth_specs and filter_cfg is None and not cfg.get("base"):
+        # A hand-set `synthetic: true` with nothing to be after is a config error. Under
+        # `base:` the flags are set by blend(), and "after the filter" with no filter just
+        # means after the base rows — a single-pass base mixture is a legitimate shape.
         raise ValueError(
             "`synthetic: true` orders a source AFTER the filter stage, but this config "
             "has no `filter:` block — drop the flags for a single-pass mixture, or add "
             "the filter.")
     if hf_cfg is not None:
         assert "experiment" in hf_cfg, "hf: block needs `experiment:` for the dataset card"
-        if filter_cfg is not None:
-            assert "base_repo" in hf_cfg, "hf: block needs base_repo for filter checkpoints"
-
     tok = AutoTokenizer.from_pretrained(cfg.tokenizer)
     render_kwargs = model_profile(str(cfg.tokenizer)).render_kwargs
 
     out_dir = Path(cfg.output_dir) / (f"smoke_{timestamp()}" if smoke else timestamp())
     out_dir.mkdir(parents=True, exist_ok=True)
     private = bool(hf_cfg.get("private", True)) if hf_cfg is not None else True
+
+    # The synthetic share is part of the mixture's NAME, and the name has to exist before
+    # the first checkpoint push — so it comes from the share the config designs, and the
+    # share the built rows actually carry is asserted against it at stage 3. A mixture
+    # cannot be published under a percentage its own rows disagree with.
+    declared_pct = declared_synthetic_pct(sources)
+    repo = mix_name(style if style != "0" else "", declared_pct, variant)
 
     # --- stage 1: the base mixture ----------------------------------------------------
     rows, kinds = _load_all(tok, cfg, base_specs, scale, seed, render_kwargs)
@@ -552,8 +683,7 @@ def main(config: str, smoke: bool = False) -> None:
         print(f">>> stage 1: wrote {base_path} "
               f"({base_stats['total']['examples']:,} examples)")
         if hf_cfg is not None:
-            _push([base_path, out_dir / "mixture_stats_unfiltered.json"],
-                  str(hf_cfg.base_repo),
+            _push([base_path, out_dir / "mixture_stats_unfiltered.json"], repo,
                   _card_fields(cfg, config, "unfiltered initial mix",
                                "mixture_unfiltered.jsonl + stats", filter_cfg, None),
                   private, smoke,
@@ -579,8 +709,7 @@ def main(config: str, smoke: bool = False) -> None:
               f"({report['reject_rate_pct']}% rejected) -> {filtered_path}")
         if hf_cfg is not None:
             _push([filtered_path, out_dir / "verdicts.jsonl",
-                   out_dir / "filter_report.json"],
-                  str(hf_cfg.base_repo),
+                   out_dir / "filter_report.json"], repo,
                   _card_fields(cfg, config, "spec-filtered, with per-sample verdicts",
                                "mixture_filtered.jsonl + verdicts.jsonl + "
                                "filter_report.json", filter_cfg, report),
@@ -601,12 +730,23 @@ def main(config: str, smoke: bool = False) -> None:
         kinds |= synth_kinds
         random.Random(seed).shuffle(rows)
 
+    # The name says 20%; the rows had better be 20%. Rounding is the only slack allowed,
+    # because everything trained on this mixture inherits the number from its name.
+    built_pct = synthetic_pct(rows, {n for n in synth_specs})
+    assert abs(built_pct - declared_pct) <= 1, (
+        f"this mixture is named for a {declared_pct}% synthetic share but its rows are "
+        f"{built_pct}% ({sum(r['source'] in synth_specs for r in rows):,} of {len(rows):,}). "
+        "The name would be wrong, and every arm trained on it would inherit the wrong "
+        "number. Fix the source budgets, or the config stem.")
+
     out_path = out_dir / "mixture.jsonl"
     _write_rows(out_path, rows)
     _validate_written(out_path, rows, kinds)
     stats = {"total": {"examples": len(rows), "tokens": sum(r["n_tokens"] for r in rows)},
-             "by_source": _source_stats(rows), "mixture_path": str(out_path),
-             "filter": report}
+             "synthetic_pct": built_pct, "by_source": _source_stats(rows),
+             # every source as sampled, revision pins included
+             "sources": sources,
+             "mixture_path": str(out_path), "filter": report}
     (out_dir / "mixture_stats.json").write_text(json.dumps(stats, indent=2))
     write_run_meta(out_dir, OmegaConf.to_container(cfg, resolve=True),
                    extra={"command": " ".join(sys.argv), "smoke": smoke, "stats": stats})
@@ -622,8 +762,8 @@ def main(config: str, smoke: bool = False) -> None:
             print("=" * 72)
             print(json.dumps(row["messages"], ensure_ascii=False, indent=2)[:1200])
 
-    if hf_cfg is not None and hf_cfg.get("final_repo"):
-        _push([out_path, out_dir / "mixture_stats.json"], str(hf_cfg.final_repo),
+    if hf_cfg is not None:
+        _push([out_path, out_dir / "mixture_stats.json"], repo,
               _card_fields(cfg, config, "final training mixture"
                            + (" (synthetic sources mixed in)" if synth_specs else ""),
                            "mixture.jsonl + mixture_stats.json", filter_cfg, report),

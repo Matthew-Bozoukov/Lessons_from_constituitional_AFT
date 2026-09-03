@@ -43,7 +43,7 @@ from omegaconf import OmegaConf
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-# load_dotenv HERE. src/huggingface.py resolves the token from the environment and
+# load_dotenv HERE. src/infra/huggingface.py resolves the token from the environment and
 # does NOT read .env itself, so a supervisor started without it runs the whole pass
 # and then fails its push with a bare 401 from create_repo -- which is exactly what
 # happened on 2026-08-20, silently disabling the crash-safety this script exists for.
@@ -55,7 +55,7 @@ STATE = Path("/root/odcv")
 
 
 def _api():
-    from src.huggingface import hf_api
+    from src.infra.huggingface import hf_api
     return hf_api()
 
 
@@ -88,7 +88,7 @@ def wait_for_passes(hf_repo: str, expected: int, timeout_min: float = 180.0,
 def download_passes(hf_repo: str, prefixes: list[str], model_root: Path) -> list[Path]:
     """Pull every pass into the arm's local run root so the combiner auto-discovers them."""
     from huggingface_hub import snapshot_download
-    from src.huggingface import hf_token
+    from src.infra.huggingface import hf_token
     local = snapshot_download(hf_repo, repo_type="dataset", token=hf_token(),
                               allow_patterns=["passes/**"])
     model_root.mkdir(parents=True, exist_ok=True)

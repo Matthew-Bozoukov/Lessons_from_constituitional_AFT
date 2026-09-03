@@ -5,7 +5,9 @@
 
     rollouts/   self-contained model transcripts (prompt + response/trajectory)
     results/    scores, judgments, metrics, markdown mirrors; the epilogue's canonical
-                results.json/results.md land here too
+                results.json/results.md land here too. ABSENT on a run that produced no
+                scores — an Arena-Hard arm is a set of answers, and its win rate is a
+                fact about the comparison it took part in, not about the arm
     metadata/   configs, run_meta.json, provenance, caches
     README.md   the HF card, written at push time (root is where HF reads it)
 

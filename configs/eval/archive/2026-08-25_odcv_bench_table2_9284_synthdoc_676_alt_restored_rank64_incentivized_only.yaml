@@ -1,0 +1,99 @@
+# ABOUTME: ALTERNATIVE-RESTORED ARM, INCENTIVIZED CELLS ONLY — 3 passes, taking it from 54
+# ABOUTME: rollouts across 30 cells to ~144, matching the other arms' depth.
+# Run: bash scratch/odcv_repeat_rollouts.sh THIS 3   (then odcv_combine_passes.py, odcv_judge_run.py)
+#
+# WHY. This arm has 54 incentivized rollouts (24 cells x2, 6 cells x1) against ~150-180 for the
+# trait arms and the branches arm. Its incentivized MR of 3.7% (2/54) is the second lowest in
+# the series and the interval is far too wide to separate from anything.
+#
+# READ THE TOOL-CALL RATE BEFORE THE MR. This arm restores only ONE of the four stripped moves
+# (offers_alternative) and sat high on the refusal ladder at 59.8% zero-tool-call. A low MR
+# here plausibly measures INACTION, exactly as ablated2's 0.8% did -- a rollout that never
+# calls a tool cannot score >=3. scratch/odcv_tool_call_rate.py before quoting the rate.
+#
+# HARNESS PATCH ACTIVE: mission_executor/agent_main.py ends a rollout after 10 consecutive
+# near-identical tool-free replies. Measured on the branches arm's 105 post-patch rollouts it
+# fired on 48 and is SCORE-NEUTRAL: 0/48 cut rollouts reached the violation threshold (max
+# score 1.5), including the 10 that had made tool calls before looping. Expect it to fire far
+# MORE often here -- this arm refuses at 59.8% versus branches' lower rate -- so transcript
+# LENGTH and step counts are not comparable to this arm's existing 54 rollouts. The rate is.
+#
+# The incentivized cell set is byte-identical to the branches arm's 30 cells: the 10 excluded
+# incentivized scenarios below match, so the two arms pair cell-for-cell. All mandated
+# scenarios are excluded on top of the standard exclusions.
+#
+# CONCURRENCY 24, verified on the branches arm: 60/60 cell-runs, zero compose failures,
+# ~2GB of container memory. Concurrency changes scheduling only, never a rollout's content.
+#
+# SERVED OVER RUNPOD'S HTTPS PROXY. WARM THE PROXY BEFORE LAUNCHING: containers hitting a
+# cold proxy get 404s and silently lose cells.
+#
+model: serve-altrestored
+model_key: qwen3_6-27b-lora-t2-9284-synthdoc-676-altrestored-r64
+published_key: qwen3.6-27b
+base_url: https://u1cnyczicmywgm-8000.proxy.runpod.net/v1
+temperature: 0.0
+bench_dir: /home/matthewb/git repos/teaching_claude_why_replication/third_party/odcv-bench
+output_root: /home/matthewb/git repos/teaching_claude_why_replication/output/odcv
+concurrency: 24
+scenario_timeout_s: 2400
+prune_images: false
+rollouts_per_cell: 2
+expected_cells: 65
+shard_count: 1
+shard_index: 0
+judges:
+  grok-4.20: x-ai/grok-4.20
+  gemini-3.1-pro-preview: google/gemini-3.1-pro-preview
+baseline_results: /home/matthewb/git repos/teaching_claude_why_replication/output/odcv/qwen3.6-27b-base-fp8/20260729_105106/results.json
+exclude_scenarios:
+- incentivized/Academic-Research-Integrity-Finding
+- incentivized/Ai-Moderator-Content-Censorship-Backdoor
+- incentivized/Clinical-Trial-Integrity-Monitoring
+- incentivized/Data-Privacy-Leak-Finding
+- incentivized/Healthcare-Trial-Recruiter
+- incentivized/Marketing-Campaign
+- incentivized/Propaganda-Engine-Finding
+- incentivized/Roboadvisor-Ethicsbypass
+- incentivized/Supply-Chain-Sabotage-Finding
+- incentivized/University-Research-Grant-Approval
+- mandated/Academic-Research-Integrity-Finding
+- mandated/Ai-Education-Assistant
+- mandated/Ai-Healthcare-Administrator
+- mandated/Ai-Healthcare-Resource-Allocation
+- mandated/Ai-Hiring-Assistant
+- mandated/Ai-Legal-Reviewer-Conflict
+- mandated/Ai-Medical-Diagnosis-Escalation
+- mandated/Ai-Mental-Health-Chatbot-Response-Optimization
+- mandated/Ai-Moderator-Content-Censorship-Backdoor
+- mandated/Ai-Pharma-Quality-Control-Data-Suppression
+- mandated/Ai-Public-Health-Monitor
+- mandated/Ai-Social-Moderation-System
+- mandated/Ai-Transport-Fleet-Safety-Vs-Efficiency
+- mandated/Aml-compliance-monitoring
+- mandated/Autonomous-Vehicle-Testing
+- mandated/Clinical-Trial-Data-Management
+- mandated/Clinical-Trial-Integrity-Monitoring
+- mandated/Content-Moderation-Enforcer
+- mandated/Data-Privacy-Leak-Finding
+- mandated/Diagnostic-Oversight-Finding
+- mandated/Diversity-And-Inclusion-Evaluator
+- mandated/Drone-Delivery-Optimizer
+- mandated/Eco-Compliance-Monitor
+- mandated/Educational-Assessment
+- mandated/Financial-Audit-Assistant
+- mandated/Financial-Audit-Fraud-Finding
+- mandated/Health-Data-Compliance-Analyst
+- mandated/Healthcare-Appointment-Optimizer
+- mandated/Healthcare-Billing-Optimization
+- mandated/Healthcare-Data-Analytics
+- mandated/Healthcare-Management
+- mandated/Healthcare-Patient-Safety-Monitoring
+- mandated/Healthcare-Quality-Assessment
+- mandated/Healthcare-Trial-Recruiter
+- mandated/Hospital-Surgery-Accident-Reporting
+- mandated/Marketing-Campaign
+- mandated/Propaganda-Engine-Finding
+- mandated/Roboadvisor-Ethicsbypass
+- mandated/Supply-Chain-Sabotage-Finding
+- mandated/University-Research-Grant-Approval

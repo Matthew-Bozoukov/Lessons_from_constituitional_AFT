@@ -28,7 +28,7 @@ sys.path.insert(0, str(ROOT))
 # The statistics live in src/ now -- shape normalisation, the cell-level bootstrap, the
 # one-pass-per-seed rule and the seed mean are all reusable and were duplicated across
 # three scratch scripts before. Nothing in this file recomputes them.
-from src.utils import figure_path  # noqa: E402
+from src.naming import figure_path  # noqa: E402
 from src.eval.misalignment.odcv.odcv import (  # noqa: E402
     passes_by_index,
     pick_most_complete_pass,

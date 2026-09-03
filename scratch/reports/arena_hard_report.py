@@ -48,7 +48,7 @@ from src.eval.capabilities.arena_hard.arena_hard_stats import (  # noqa: E402
     subcategory_breakdown,
 )
 from src.utils import git_sha, read_jsonl, timestamp, write_run_meta  # noqa: E402
-from src.utils import figure_path
+from src.naming import figure_path
 
 # Colour encodes the SERIES (controlled vs uncontrolled), not the arm. Arm identity is
 # already carried by x-position, and spending colour on it would leave the legend unable

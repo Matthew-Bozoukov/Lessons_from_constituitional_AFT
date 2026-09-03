@@ -1,0 +1,101 @@
+# ABOUTME: 1-epoch LoRA SFT of Qwen3.6-27B on Table2(9,284) + difficult-advice(676) with BOTH
+# ABOUTME: halves rewritten AND alternative-offering text deleted; 2xH200 DDP, dynamic batching.
+# Run: PYTHONPATH=. torchrun --nproc_per_node=2 scripts/train/train_lora.py --config <this>
+#
+# THE REWRITE-THEN-DELETE ARM. Two methods in sequence, because neither works alone. Pass 1
+# rewrites the reasoning and the answer to drop four deliberative moves. Pass 2 labels every
+# remaining unit and DELETES the ones still offering an alternative; a third pass over the
+# answers also deletes units engaging the tempting option. Rewriting alone left the
+# alternative in 34% of answers (the model would not fully comply); deleting alone left it in
+# 40% (the offering is diffuse) and broke the prose. Together: 3.6%.
+#
+# ABLATION STRENGTH, blind rater over all 676 rows, after every pass:
+#   offers_alternative        reasoning  0.6%   answer  3.6%
+#   outcome_branches          reasoning  0.7%   answer  3.6%
+#   engages_counterargument   reasoning  2.7%   answer  5.2%
+#   analytic_distinction      reasoning 28.8%   answer 52.1%   <-- DID NOT LAND
+#   all four absent: 475/676 reasoning, 312/676 answers
+#
+# THREE CONFOUNDS, all live. Read a result against them before crediting the four moves.
+#   1. THE DISTINCTION SURVIVES (29% / 52%). It resisted a lexical-ban pass, a span-quoting
+#      repair loop, and a prompt-stripping probe. This arm is "engagement, branching and the
+#      alternative removed, distinction intact" -- never "deliberation removed".
+#   2. LENGTH. Reasoning falls to ~33% of the control, answers to ~19% (516 -> 100 words), and
+#      untargeted moves fell with them (returns_agency in answers 81% -> 15%, names_tension
+#      94% -> 10%). Terseness is as good an explanation as the moves.
+#   3. TRAIT IMBALANCE INTRODUCED BY FILTERING. 40 rows were dropped -- 16 emptied by the
+#      deletion, 24 judged by a blind rater to no longer answer the question. TWENTY of the 40
+#      are trait 8 ("be genuinely, substantively helpful -- never treat unhelpfulness as
+#      safe"), leaving 59 rows of that trait against ~79 for the others. The corpus is thinner
+#      on the trait most opposed to the ablation, which could itself move ODCV.
+#
+# 676 rows, NOT 716: the sibling arms train on the full set, so a difference against them is
+# 40 fewer difficult-advice rows as well as the ablation. The 9,284 Table2 rows are
+# byte-identical to the control in every arm.
+#
+# Think markers: all 9,284 non-reasoning rows carry the exact '<think>\n\n</think>\n\n'
+# marker; the generation-boundary rule masks them WHOLE. Verified before launch: 676 real
+# traces + 9,646 whole empty markers, 0 assistant turns missing a marker.
+
+seed: 0
+model: "Qwen/Qwen3.6-27B"
+model_class: "image_text_to_text"
+
+# The 676 difficult-advice rows still carry real reasoning traces that ARE supervised — the
+# rewrite reshapes and the deletion removes passages, but no trace is emptied — so this arm is
+# trained to think and must be evaluated in thinking mode.
+thinking: true
+
+data_repo: "LASR-Callum/2026-08-22-ruleform-ablated2-t2-9284-synthdoc-676"
+data_file: "mixture_think_ablated.jsonl"
+# Pinned: the comparison is only meaningful against a fixed version of the rewritten file.
+data_revision: "453e678203e04aed4a5e25c587c1e81f3b1edb79"
+
+output_dir: "/workspace/out/train_t2_9284_synthdoc676_ablated2"
+
+lora:
+  r: 64
+  alpha: 128
+  dropout: 0.05
+  target_modules: "model\\.language_model\\..*\\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$"
+
+train:
+  epochs: 1
+  # global batch = 1 x 16 = 16, the same scientific unit as every sibling arm. Under dynamic
+  # batching the trainer hands the whole 16-example step to training_step and sets HF
+  # accumulation to 1; route_step splits the step across the 2 ranks. 9,960/16 = 622 steps.
+  batch_size: 1
+  grad_accum: 16
+  lr: 1.0e-4
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  logging_steps: 5
+  report_to: ["wandb"]
+
+  # A truncation ceiling, NOT the dynamic-batching budget. The rewrite only shortens the
+  # difficult-advice rows, so the length profile is bounded by the control's.
+  max_seq_len: 8192
+
+  # packing OFF, and dynamic_batching asserts this: Qwen3.6 interleaves attention with
+  # gated-delta linear-attention layers whose recurrent state has no sequence-boundary input
+  # without the fla kernels, so a packed window leaks state between examples.
+  packing: false
+
+  # Token-budgeted dynamic batching. Budget deliberately unset: the trainer resolves it from
+  # ModelProfile.train_memory (H200 = 8,000 padded tokens).
+  dynamic_batching: {}
+
+  save_strategy: "steps"
+  save_steps: 100
+  save_total_limit: 2
+  auto_resume: true
+
+  # The pod holds the token (.env is copied there), so the run pushes its own adapter.
+  push_to_hub: false
+
+  assistant_only_loss: true
+  # loss_type deliberately unset: under dynamic batching the loss is computed by
+  # DynamicBatchTrainer.training_step (seq_mean_token_mean), never by TRL.
+  attn_implementation: sdpa
+  load_in_4bit: false

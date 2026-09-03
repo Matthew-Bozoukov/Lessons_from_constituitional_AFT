@@ -11,12 +11,12 @@ import shlex
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import requests
-from src.huggingface import hf_download
-from src.utils import canonical_key
+from src.infra.huggingface import hf_download
+from src.naming import api_model_key, model_key as base_model_key, undated
 from huggingface_hub.errors import EntryNotFoundError
 
 from src.model_profile import serving_params
@@ -71,6 +71,23 @@ class TargetSpec:
     lora_rank: int | None
     api_base: str | None = None      # OpenAI-compatible base URL; None => served by vLLM
     api_key_env: str | None = None   # env var holding the key for api_base
+    # The commit sha `hf_path` resolved to when this run began. Fetched at that revision
+    # and recorded in run_meta, so the run names the weights it measured and not the head
+    # of a repo that may have moved since. None for an API target (no artifact).
+    revision: str | None = None
+    # The commit of the BASE model this arm is served on. For a full model it is
+    # `revision`. For an adapter it is what training recorded (`base_model_revision` in
+    # training_meta) — the weights the diff was trained against — and only when an older
+    # adapter has no such stamp is it the base repo's head at eval time, which run_meta
+    # then says. None for an API target.
+    base_revision: str | None = None
+    base_revision_from: str | None = None   # "training_meta" | "head at eval" | None
+    # An ANSWERS target: the HF dataset repo of a PRIOR run of this eval, whose
+    # `rollouts/` already holds this model's generations. Nothing is served — the answers
+    # exist — so an arm resolved this way costs no GPU. Only evals whose generations are
+    # reusable across comparisons accept one (EvalSpec.reads_answers); a behaviour eval
+    # must always generate, or it is caching the experiment itself.
+    answers: str | None = None
 
 
 class ServedTarget:
@@ -95,10 +112,19 @@ class ServedTarget:
         return self.spec.api_base is not None
 
     @property
+    def is_answers(self) -> bool:
+        """True when this arm's generations already exist and nothing needs serving."""
+        return self.spec.answers is not None
+
+    @property
     def base_url(self) -> str:
         """OpenAI-compatible base URL. For an API target, the provider's — no server
         boots. For an HF target, http://localhost:<port>/v1 (tunnelled when remote),
         booted on demand."""
+        assert self.spec.answers is None, (
+            f"{self.spec.hf_path} is an ANSWERS target — its generations already exist in "
+            f"{self.spec.answers}, and there is no model here to serve. An eval that "
+            "reaches for base_url on one has not read spec.answers first.")
         if self.spec.api_base is not None:
             return self.spec.api_base
         return self._server.serve(self.spec)
@@ -123,18 +149,22 @@ def _mode_from_training_meta(meta: dict) -> str:
 
 def _spec_from_files(hf_path: str, adapter_config: dict | None, training_meta: dict | None) -> TargetSpec:
     """Build a TargetSpec from the artifact's metadata files (pure; unit-tested offline)."""
-    # ONE spelling per model everywhere it is used (served name, out_dir, HF tag):
-    # `qwen3.6-27b-lora-...` and `qwen3_6-27b-lora-...` are the same organism and must
-    # not file themselves under two keys (src/utils.py).
-    model_key = canonical_key(hf_path.split("/")[-1])
+    # The token this target is called wherever it is named — served model, out_dir, the
+    # `model:` tag, and the eval run's own repo name. A full model is its registered key
+    # (`qwen36`); an ORGANISM is its own name minus the date, so the eval run it feeds
+    # carries exactly one date — its own — and still says which arm it measured
+    # (src/naming.py).
     if adapter_config is None:
         return TargetSpec(hf_path=hf_path, base_model=hf_path, adapter=False,
-                          mode="default", model_key=model_key, lora_rank=None)
+                          mode="default", model_key=base_model_key(hf_path),
+                          lora_rank=None)
+    model_key = undated(hf_path).replace("-", "_")
     if training_meta is None:
         raise RuntimeError(
             f"{hf_path} is a LoRA adapter with no training_meta.json — the eval framework "
             "infers thinking mode from that stamp and never guesses. Backfill it from the "
             "arm's training config (see scratch/backfill_training_meta.py), then rerun.")
+    stamped = training_meta.get("base_model_revision") or None
     return TargetSpec(
         hf_path=hf_path,
         base_model=adapter_config["base_model_name_or_path"],
@@ -142,6 +172,8 @@ def _spec_from_files(hf_path: str, adapter_config: dict | None, training_meta: d
         mode=_mode_from_training_meta(training_meta),
         model_key=model_key,
         lora_rank=int(adapter_config.get("r", 32)),
+        base_revision=stamped,
+        base_revision_from="training_meta" if stamped else None,
     )
 
 
@@ -157,8 +189,45 @@ def resolve_api_target(provider: str, model_id: str) -> TargetSpec:
     return TargetSpec(
         hf_path=f"{provider}:{model_id}", base_model=model_id, adapter=False,
         mode="default",
-        model_key=canonical_key(f"{provider}_{model_id.split('/')[-1]}"),
+        model_key=api_model_key(provider, model_id).replace("-", "_"),
         lora_rank=None, api_base=base, api_key_env=key_env)
+
+
+def resolve_answers_target(hf_path: str) -> TargetSpec | None:
+    """A TargetSpec for a prior eval run's published answers, or None if that is not one.
+
+    The run's own `metadata/run_meta.json` supplies the identity: the model it measured
+    and the mode it was served in. Both are read rather than re-derived, so an arm reused
+    as a reference a fortnight later carries exactly the facts it carried the first time —
+    which is what makes it comparable at all. A repo with no run_meta is simply not an
+    eval run, and the caller falls through to treating it as a full model.
+    """
+    try:
+        with open(hf_download(hf_path, "metadata/run_meta.json",
+                              repo_type="dataset")) as f:
+            meta = json.load(f)
+    except Exception:  # noqa: BLE001 - not a published run: every other error means "no"
+        return None
+    measured = str(meta.get("target") or "")
+    assert measured, (
+        f"{hf_path} has metadata/run_meta.json but it records no `target`, so nothing "
+        "says which model these answers came from. It cannot be reused as an arm.")
+    return TargetSpec(
+        hf_path=hf_path,
+        base_model=str(meta.get("base_model") or measured),
+        adapter=False,
+        mode=str(meta.get("mode") or "default"),
+        model_key=undated(measured).replace("-", "_"),
+        lora_rank=None,
+        answers=hf_path,
+    )
+
+
+def _repo_sha(hf_path: str, repo_type: str = "model") -> str:
+    """The commit sha an HF repo resolves to right now (one API call; patched in tests)."""
+    from src.infra.huggingface import hf_api
+
+    return hf_api().repo_info(hf_path, repo_type=repo_type).sha
 
 
 def resolve_target(hf_path: str) -> TargetSpec:
@@ -183,13 +252,30 @@ def resolve_target(hf_path: str) -> TargetSpec:
         with open(hf_download(hf_path, "adapter_config.json")) as f:
             adapter_config = json.load(f)
     except EntryNotFoundError:
-        return _spec_from_files(hf_path, None, None)
+        # No adapter config: either a full model, or a PRIOR RUN of this eval whose
+        # rollouts already hold this model's answers. Only the second has a published
+        # layout, so `metadata/run_meta.json` in a DATASET repo is what tells them apart —
+        # never the repo's name, which a style-type could imitate.
+        spec = resolve_answers_target(hf_path)
+        if spec:
+            return replace(spec, revision=_repo_sha(hf_path, "dataset"))
+        sha = _repo_sha(hf_path)
+        return replace(_spec_from_files(hf_path, None, None), revision=sha,
+                       base_revision=sha, base_revision_from="target")
     try:
         with open(hf_download(hf_path, "training_meta.json")) as f:
             training_meta = json.load(f)
     except EntryNotFoundError:
         training_meta = None
-    return _spec_from_files(hf_path, adapter_config, training_meta)
+    spec = replace(_spec_from_files(hf_path, adapter_config, training_meta),
+                   revision=_repo_sha(hf_path))
+    if spec.base_revision is None:
+        # An adapter from before the stamp existed: nothing recorded which base commit it
+        # was trained against, so the best that can be done is to serve the head and SAY
+        # so in run_meta, rather than serve it silently as if it were pinned.
+        spec = replace(spec, base_revision=_repo_sha(spec.base_model),
+                       base_revision_from="head at eval")
+    return spec
 
 
 def pin_template(template_text: str, mode: str) -> str:
@@ -403,10 +489,10 @@ class LocalExec:
         path.write_text(text)
         return str(path)
 
-    def fetch_adapter(self, hf_path: str) -> str:
-        from src.huggingface import hf_snapshot
+    def fetch_adapter(self, hf_path: str, revision: str | None = None) -> str:
+        from src.infra.huggingface import hf_snapshot
 
-        return hf_snapshot(hf_path)
+        return hf_snapshot(hf_path, revision=revision)
 
     def start_server(self, argv: list[str], env_extra: dict) -> None:
         import os
@@ -536,7 +622,7 @@ class SshExec:
         rides along because it is not one: a TRAINING pod pushes its own adapter and
         resolves the namespace from the host's own environment, and without it the upload
         fail-fasts at the end of the run with nothing to fall back on
-        (src.huggingface.hf_org). An eval pod never pushes anything — the results are
+        (src.infra.huggingface.hf_org). An eval pod never pushes anything — the results are
         published by the driver — so there it is inert, and HF_TOKEN is the whole point.
         The rest of the .env (OpenRouter, provider API keys) stays local: a rented GPU
         host is the least-trusted machine in the loop, and CLAUDE.md's secrets policy
@@ -550,7 +636,7 @@ class SshExec:
         if self.has_env():
             print(f">>> {self.host} already has a .env — leaving it untouched")
             return
-        from src.huggingface import hf_org
+        from src.infra.huggingface import hf_org
 
         token = next((line.split("=", 1)[1].strip()
                       for line in local_env.read_text().splitlines()
@@ -618,15 +704,15 @@ class SshExec:
         assert int(written or 0) > 0, f"remote write of {path} produced an empty file"
         return path
 
-    def fetch_adapter(self, hf_path: str) -> str:
-        # huggingface_hub directly, not src.huggingface: the pod holds no clone to import
+    def fetch_adapter(self, hf_path: str, revision: str | None = None) -> str:
+        # huggingface_hub directly, not src.infra.huggingface: the pod holds no clone to import
         # from. The token comes from the host's own .env via _with_env, which writes it as
         # HF_TOKEN — the one variable a bare snapshot_download reads.
         env = " ".join(f"{k}={shlex.quote(v)}" for k, v in self.base_env.items())
         out = self._ssh(self._with_env(
             f"{env} {POD_VENV}/bin/python -c "
             f"\"from huggingface_hub import snapshot_download; "
-            f"print(snapshot_download('{hf_path}'))\""), timeout=1800)
+            f"print(snapshot_download('{hf_path}', revision={revision!r}))\""), timeout=1800)
         return out.strip().splitlines()[-1]
 
     def start_server(self, argv: list[str], env_extra: dict) -> None:
@@ -685,6 +771,7 @@ class VllmServer:
         self.executor = executor if executor is not None else LocalExec(work_dir)
         self.base_model: str | None = None
         self.mode: str | None = None
+        self.base_revision: str | None = None
         self.running = False
         self._loaded_loras: set[str] = set()
 
@@ -702,8 +789,12 @@ class VllmServer:
         Returns:
             The OpenAI-compatible base URL.
         """
-        adapter_dir = self.executor.fetch_adapter(spec.hf_path) if spec.adapter else None
-        if not self.running or self.base_model != spec.base_model or self.mode != spec.mode:
+        adapter_dir = (self.executor.fetch_adapter(spec.hf_path, spec.revision)
+                       if spec.adapter else None)
+        # A different base COMMIT is a different base: two adapters trained against
+        # different revisions of one model id must not share a server by LoRA swap.
+        if (not self.running or self.base_model != spec.base_model
+                or self.base_revision != spec.base_revision or self.mode != spec.mode):
             self.stop()
             self._start(spec, adapter_dir)
         elif spec.adapter and spec.model_key not in self._loaded_loras:
@@ -730,6 +821,9 @@ class VllmServer:
         argv = self.executor.python_argv + [
             "-m", "vllm.entrypoints.openai.api_server",
             "--model", spec.base_model, "--served-model-name", "base",
+            # The base at the commit this arm was trained against (or, for a full model,
+            # resolved to) — never whatever the base repo's head happens to be today.
+            *(["--revision", spec.base_revision] if spec.base_revision else []),
             "--dtype", "bfloat16",
             "--max-model-len", str(plan["context_window"]),
             "--gpu-memory-utilization", "0.94",
@@ -754,6 +848,7 @@ class VllmServer:
                      "--lora-modules", f"{spec.model_key}={adapter_dir}"]
         self.executor.start_server(argv, {"VLLM_ALLOW_RUNTIME_LORA_UPDATING": "1"})
         self.base_model, self.mode, self.running = spec.base_model, spec.mode, True
+        self.base_revision = spec.base_revision
         self._loaded_loras = {spec.model_key} if spec.adapter else set()
         self._wait_healthy()
 
@@ -785,6 +880,6 @@ class VllmServer:
 
     def stop(self) -> None:
         self.executor.stop_server()
-        self.base_model = self.mode = None
+        self.base_model = self.mode = self.base_revision = None
         self.running = False
         self._loaded_loras = set()

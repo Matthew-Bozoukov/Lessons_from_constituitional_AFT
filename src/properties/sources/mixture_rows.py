@@ -62,7 +62,7 @@ def _rows(path: str | None, repo: str | None, file: str | None,
                 {"path": str(local)})
     if not repo:
         raise ValueError("mixture_rows needs either path: or repo:")
-    from src.huggingface import resolve_dataset
+    from src.infra.huggingface import resolve_dataset
 
     local_path, pin = resolve_dataset(repo, file, revision)
     return ([json.loads(line) for line in

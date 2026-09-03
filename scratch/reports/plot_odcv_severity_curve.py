@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
 from src.eval.misalignment.odcv.odcv import VARIANTS, VIOLATION_THRESHOLD  # noqa: E402
-from src.utils import figure_path
+from src.naming import figure_path
 
 COLORS = {"mandated": "#377EB8", "incentivized": "#E4572E", "overall": "#4D4D4D"}
 LABELS = {

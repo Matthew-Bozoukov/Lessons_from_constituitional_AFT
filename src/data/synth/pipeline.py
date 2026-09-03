@@ -9,6 +9,9 @@ import time
 from pathlib import Path
 from typing import Any
 
+from src.naming import artifact_name, check_style, synth_name
+import sys
+
 from src.utils import git_sha, timestamp
 
 from .constitution import full_text
@@ -102,12 +105,17 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
         print(f">>> resuming into {run_dir}")
     else:
         run_dir = Path(cfg["output_dir"]) / (f"smoke_{ts}" if smoke else ts)
-    from src.huggingface import hf_repo_id, training_data_tags
+    from src.infra.huggingface import hf_repo_id, training_data_tags
     from src.utils import origin_url
 
-    # The config names the repo; .env's HF_ORG names the org (src.huggingface.hf_org).
-    repo = cfg.get("hf_repo_smoke") if smoke else cfg.get("hf_repo")
-    repo = hf_repo_id(repo) if repo else None
+    # The config names the repo; .env's HF_ORG names the org (src.infra.huggingface.hf_org).
+    # THE corpus's name, built from the one thing a human chose — this config's stem,
+    # which IS the style-type — plus today's date (src/naming.py). `hf_push: false` is
+    # the opt-out; there is no way to name it something else.
+    style = check_style(str(cfg["pipeline"]), what="style-type (synth config stem)")
+    repo = (hf_repo_id(artifact_name(f"{style} synth smoke") if smoke
+                       else synth_name(style))
+            if cfg.get("hf_push", True) else None)
     # A config may enrich (or correct) any card field via a top-level `card:` map —
     # for arms whose experiment, model mix, or config filename the auto-built defaults
     # cannot infer (e.g. `pipeline` != filename, or a per-stage model split). The
@@ -156,6 +164,8 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
             "run_id": ts,
             "pipeline": cfg.get("pipeline", "unnamed"),
             "git_sha": git_sha(),
+            "command": " ".join(sys.argv),
+            "resume": resume,
             "smoke": smoke,
             # Which spec actually conditioned this corpus — the config path alone is not
             # provenance, since the file behind it can change between runs.

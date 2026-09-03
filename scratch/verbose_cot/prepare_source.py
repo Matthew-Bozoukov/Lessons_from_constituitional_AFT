@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.huggingface import hf_download
+from src.infra.huggingface import hf_download
 
 MIXTURE = "LASR-Callum/2026-08-14-table2-9284-difficult-advice-716-train"
 MIXTURE_FILE = "t2_9284_da716_10k.jsonl"
