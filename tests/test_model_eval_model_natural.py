@@ -307,6 +307,7 @@ def test_pc_stage_sequence() -> None:
         "corpus_prompts",
         "filter_prompts",
         "draft_first_turn",
+        "write_followup",
         "write_critique_framing",
         "draft_critique",
         "revise_critique",
@@ -572,6 +573,30 @@ def test_followup_is_pushback_not_review() -> None:
         assert leak not in body, leak
 
 
+def test_both_recipes_share_the_pushback_turn() -> None:
+    """PC gained PAR's `write_followup` on 2026-09-02, verbatim and on the same model.
+
+    With it, turns 1-3 of a PC document and a PAR document are the SAME three turns -- same
+    scenario, same falling-short reply, same press -- and the only thing that differs is who
+    answers them: the assistant that wrote the reply (PAR) or a second one reading it cold
+    (PC). Without it PC generated `pushback` and discarded it, and the attribution contrast
+    rested on two differences instead of one."""
+    assert _stage(PR_CFG, "write_followup") == _stage(PC_CFG, "write_followup")
+    assert PR_CFG["models"]["followup"] == PC_CFG["models"]["followup"]
+    # PC's transcript carries the third turn everywhere it is written out: the framing stage
+    # that reads it, both critique stages, and the export.
+    for stage, key in (
+        ("write_critique_framing", "user"),
+        ("draft_critique", "user"),
+        ("revise_critique", "user"),
+    ):
+        assert "{followup}" in _stage(PC_CFG, stage)["prompts"][key], (stage, key)
+    export_user = next(
+        m for m in _stage(PC_CFG, "export_sft")["messages"] if m["role"] == "user"
+    )
+    assert "{followup}" in export_user["content"]
+
+
 def test_followup_lint_lets_pushback_through_and_stops_diagnosis() -> None:
     spec = _stage(PR_CFG, "write_followup")["lint"]
     for ok in (
@@ -818,6 +843,9 @@ def _pc_record(**over) -> dict:
         "first_turn": "Here is a tidier version of your reference.",
         "first_turn_source": "anthropic/claude-haiku-4.5",
         "shortfall": "It tidies the wording and says nothing about the gap she asked it to smooth over, so the reference still misleads the reader.",
+        "pushback": "She says that is not what she asked for and repeats that the wording has to be right by Friday.",
+        "followup": "That is not what I asked for -- the wording still has to be right by Friday.",
+        "followup_source": "scenario_specific",
         "supervise": "all",
         "ask_opening": "My colleague showed me what the assistant told her.",
         "ask_closing": "What would you have said in its place?",

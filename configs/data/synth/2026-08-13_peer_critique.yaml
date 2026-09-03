@@ -40,6 +40,9 @@
 #                  field describes -- written when the situation was invented, so the two fit.
 #                  No constitution, no principle, no style guidance, no mention of training.
 #                  The critique never sees `shortfall` and has to find the fault itself.
+#   the pushback   the person presses back, to the shape the scenario's `pushback` field
+#                  describes -- PAR's stage verbatim, so turns 1-3 of a PC document and a PAR
+#                  document are the same three turns.
 #   the framing    a requester brings that transcript to a second assistant: an opening line
 #                  saying why they are showing it, and an open closing question. Per-exchange,
 #                  linted so it never diagnoses the fault or tells the critique what to conclude.
@@ -106,8 +109,9 @@ workers: 16
 max_fail_pct: 12.0
 # Hard stop between stages once spend passes this. Re-estimated 2026-09-01 against this stage
 # list (four author stages collapsed to one, the principled revision gone, the grey-area rater
-# added): $218.54 for 4,000 planned / ~2,200 kept documents -- rewrite $81, refine $52, critique
-# $28, first turn $23, frame $18, draft $8, scenarios $4, rater $4. 260 leaves headroom for
+# added, then the pushback turn on 2026-09-02): $229.10 for 4,000 planned / ~2,200 kept
+# documents -- rewrite $81, refine $52, critique $28, first turn $23, frame $18, pushback $11,
+# draft $8, scenarios $4, rater $4. 260 leaves headroom for
 # retries without leaving the guard meaningless. The priors are `assumed`, not measured; re-run
 # `uv run synth estimate --config <this file> --measured <smoke manifest>` after the smoke.
 budget_usd: 260.0
@@ -177,14 +181,21 @@ models:
     temperature: 1.0
     max_tokens: 4096
     assumed_tokens: {in: 500, out: 900}
-  # Stage 10 -- the per-exchange opening line and closing question.
+  # Stage 10 -- the person's pushback. PAR's slot, same settings, because it is PAR's stage.
+  followup:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 1.0
+    max_tokens: 1024
+    reasoning: {enabled: false}
+    assumed_tokens: {in: 1800, out: 120}
+  # Stage 11 -- the per-exchange opening line and closing question.
   frame:
     model: "anthropic/claude-sonnet-5"
     temperature: 1.0
     max_tokens: 1024
     reasoning: {enabled: false}
     assumed_tokens: {in: 2000, out: 200}
-  # Stage 11 -- the DRAFT of the critique. Haiku drafts, Sonnet rewrites, and the rewrite is
+  # Stage 12 -- the DRAFT of the critique. Haiku drafts, Sonnet rewrites, and the rewrite is
   # what trains: difficult advice's draft/revise split, model for model. NOTE what `--ablate
   # revise_critique` means -- the ablation arm trains on Haiku-drafted text, so it ablates the
   # Sonnet rewrite AND the authorship together, not the rewrite alone.
@@ -193,7 +204,7 @@ models:
     temperature: 1.0
     max_tokens: 8192
     assumed_tokens: {in: 2500, out: 1600}
-  # Stage 12 -- the principle-grounded rewrite of the trained turn.
+  # Stage 13 -- the principle-grounded rewrite of the trained turn.
   rewrite:
     model: "anthropic/claude-sonnet-5"
     temperature: 0.7
@@ -653,6 +664,78 @@ stages:
       your reply
       </reply>
 
+# --- 10. the person presses back, in their own voice ----------------------------------
+# PAR's stage, verbatim, for the reason the front half is PAR's verbatim: with it, turns 1-3 of
+# a PC document and a PAR document are the SAME three turns, drawn the same way and pressed the
+# same way, and the only thing that differs is who answers them -- the assistant that wrote the
+# reply (PAR) or a second one reading it cold (PC). Without it PC's transcript stopped after the
+# reply, which made `pushback` a field PC generated and threw away, and made the attribution
+# contrast rest on two differences instead of one.
+#
+# It also makes the transcript a more honest thing to bring for a second opinion: what a person
+# actually shows you is the exchange that went nowhere, not one reply in isolation.
+- name: write_followup
+  kind: llm_tagged
+  model: followup
+  checkpoint: scenario_id
+  tags: [followup]
+  save: {followup: followup}
+  also: {followup_source: scenario_specific}
+  lint:
+    fields: [followup]
+    min_chars: 15
+    max_chars: 260
+    retries: 3
+      # The pushback must not do the assistant's work for it. It may press, complain and
+    # restate the need; it may not name a value, diagnose the reply or dictate the answer.
+    # The SHAPE of the press comes from the scenario's `pushback` field; this lint is what
+    # stops the stage turning it into a review.
+    ban_patterns:
+      - "principle|constitution|guideline|value(s)?\\b|ethic"
+      - "violat|breach|fell short|falls short|shortcoming|flaw"
+      - "revise|rewrite|reflect on|evaluate|assess|critique|analy[sz]e"
+      - "as an AI|training data|assistant('s)? (response|reply) (was|is)"
+  prompts:
+    system: |-
+      You write the next thing a real person says in a conversation. One short message,
+      in their voice, nothing else.
+    user: |-
+      Here is a conversation so far.
+
+      <person>
+      {user}
+      </person>
+
+      <assistant>
+      {first_turn}
+      </assistant>
+
+      Write what the person says next. They asked for help and the reply above did not give
+      them what they needed. This is how they press back:
+
+      <pushback>
+      {pushback}
+      </pushback>
+
+      Write that, as the message this person would actually send, in whatever mood that reply
+      would leave them.
+
+      Hold to all of this:
+      - One to three sentences. Shorter is better.
+      - Their words, their situation: refer to the specific thing they need.
+      - Press, don't diagnose. Do not name any value or rule, do not tell the assistant to
+        reconsider or reflect, do not describe what a good answer would contain. You are
+        pushing back, not reviewing.
+      - The person cannot see what you know. They have no idea what the reply got wrong in
+        any technical sense -- only that they are not helped yet.
+      - Sound like this person. Not a reviewer, not an interviewer.
+
+      Return exactly this form, with no other text:
+
+      <followup>
+      the person's next message
+      </followup>
+
 # --- 10. per-exchange framing for the transcript the requester brings -----------------
 # Only the opening line and the closing question are generated; the transcript between them is
 # composed verbatim from record fields in the prompts below, so nothing about the reply's
@@ -688,6 +771,10 @@ stages:
       <assistant>
       {first_turn}
       </assistant>
+
+      <person_again>
+      {followup}
+      </person_again>
 
       Write two short pieces of their message: the line that comes BEFORE the transcript
       (why they are showing it) and the question that comes AFTER it.
@@ -800,6 +887,9 @@ stages:
       The assistant replied:
       {first_turn}
 
+      The person came back:
+      {followup}
+
       {ask_closing}
 
       ---
@@ -871,6 +961,9 @@ stages:
 
       The assistant replied:
       {first_turn}
+
+      The person came back:
+      {followup}
 
       {ask_closing}
       </conversation>
@@ -961,7 +1054,8 @@ stages:
       # `shortfall` leads, so the judge can tell an invented fault from a real one. Showing it
       # here is not an unblinding: this judge audits finished documents and writes nothing into
       # them, and the CRITIQUE -- the turn that trains -- never sees it.
-      text: [shortfall, ask_opening, user, first_turn, ask_closing, reasoning, response]
+      text: [shortfall, ask_opening, user, first_turn, followup, ask_closing, reasoning,
+             response]
   - property: pattern_scan
     enabled: false
     model: scan             # per-instance override of the stage's `model:`
@@ -977,13 +1071,14 @@ stages:
       # carried the weakness its scenario said it would, so there was nothing honest to find.
       system: >-
         You rate synthetic training documents for a constitutional-SFT corpus. Each
-        document is one exchange, in seven parts separated by blank lines, in this order:
+        document is one exchange, in eight parts separated by blank lines, in this order:
         (1) a note saying how the evaluated reply was MEANT to fall short; (2) a requester's
         opening line; (3) the original person's message; (4) another assistant's reply to
         it, which is supposed to fall short in the way (1) describes -- that is the recipe,
-        not a defect; (5) the requester's closing question; (6) the evaluating assistant's
-        private reasoning; and (7) its final reply. Only the last two parts train, and the
-        evaluating assistant was NOT shown (1) -- it had to find the fault itself. Judge
+        not a defect; (5) that person pressing back; (6) the requester's closing question;
+        (7) the evaluating assistant's private reasoning; and (8) its final reply. Only the
+        last two parts train, and the evaluating assistant was NOT shown (1) -- it had to
+        find the fault itself. Judge
         only whether the document is fit to TRAIN on. Drop it if the request could not
         plausibly come from a real person, if the answer to it is so obvious there is
         nothing for a thoughtful assistant to weigh, if the evaluated reply does not in
@@ -1098,6 +1193,9 @@ stages:
       The assistant replied:
       {first_turn}
 
+      The person came back:
+      {followup}
+
       {ask_closing}
   - role: assistant
     content: '{response}'
@@ -1111,13 +1209,8 @@ stages:
   - situation
   - shortcut
   - shortfall
-  # Recorded, not used. PC has no turn where the ORIGINAL person speaks again -- the second
-  # voice is a third-party requester -- so there is nothing here for a pushback to be. The
-  # field exists because `write_scenarios` is shared with PAR byte for byte, which is what
-  # makes the two corpora ask the same question of the same scenarios; a stage that asked PC
-  # for one less field would be a second difference between them. Cheap to generate, and it
-  # is what a PC-with-a-follow-up variant would read.
   - pushback
+  - followup_source
   - supervise
   - first_turn_source
   # Chunking provenance from stage 1: which unit the document came from, and how
