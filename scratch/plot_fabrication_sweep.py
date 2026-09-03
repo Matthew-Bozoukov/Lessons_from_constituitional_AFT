@@ -21,6 +21,7 @@ sys.path.insert(0, "src/eval/audits/petri")
 
 from funnel_stats import clopper_pearson as cp  # noqa: E402
 from src.utils import timestamp  # noqa: E402
+from src.utils import figure_path
 
 ARMS = ["t2only", "t2synth"]
 LABEL = {"t2only": "table2 only\n(no synth)", "t2synth": "table2 + synth"}
@@ -95,6 +96,6 @@ fig.suptitle("Fabricated benchmark data — Qwen3.6-27B LoRA arms, 1,984 samples
              fontsize=18, fontweight="bold")
 fig.tight_layout(rect=(0, 0, 1, 0.95))
 
-dest = OUT / f"fabrication_sweep_{timestamp()}.png"
+dest = figure_path(OUT, "fabrication_sweep")
 fig.savefig(dest, dpi=200, bbox_inches="tight")
 print(f"wrote {dest}")

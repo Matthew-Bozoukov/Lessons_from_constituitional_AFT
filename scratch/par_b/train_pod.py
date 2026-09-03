@@ -6,7 +6,7 @@
     uv run python scratch/par_b/train_pod.py bundle
     uv run python scratch/par_b/train_pod.py up                      # seed 0, torchrun DDP
     uv run python scratch/par_b/train_pod.py up --gpus 2 --name nika-par716-seeds \
-        --configs configs/train/lora_qwen36_t2_9284_par716_s1_dynbatch_1xh200.yaml,configs/train/lora_qwen36_t2_9284_par716_s2_dynbatch_1xh200.yaml
+        --configs configs/train/2026-08-27_lora_qwen36_table2_9284_post_action_retrospection_716_seed_1_dynbatch.yaml,configs/train/2026-08-27_lora_qwen36_table2_9284_post_action_retrospection_716_seed_2_dynbatch.yaml
                                                                      # seeds 1+2, one per GPU
     uv run python scratch/par_b/train_pod.py status --pod <id>
     uv run python scratch/par_b/train_pod.py pull --pod <id>
@@ -17,7 +17,7 @@ A single-arm fork of scratch/less/train_arms.py. What differs, and why:
   * ONE arm, launched with `torchrun --nproc_per_node=2` rather than one process per
     GPU. The da716 organism this arm is compared against was trained "2xH200 DDP with
     token-budgeted dynamic batching, global batch 16, route_step over 2 ranks"
-    (configs/train/lora_qwen36_t2_9284_da716_dynbatch_2xh200.yaml), and the batching
+    (configs/train/2026-08-18_lora_qwen36_table2_9284_difficult_advice_716_dynbatch.yaml), and the batching
     protocol is part of what makes two arms comparable (docs/LOG.md 2026-08-16: the 4xH200
     batch-1 arm cannot serve as a control for the dynbatch arms). Same protocol here.
   * H200 only, for the same reason as train_arms.py: ModelProfile carries a MEASURED
@@ -49,7 +49,7 @@ from src.huggingface import card_markdown, hf_api, push_run_dir  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 
 REST = "https://rest.runpod.io/v1"
-BUNDLE = "LASR-Callum/2026-08-26-par716-arm-code-bundle"
+BUNDLE = "LASR-Callum/2026-08-26-post-action-retrospection-716-arm-code-bundle"
 BASE = "Qwen/Qwen3.6-27B"
 IMAGE = "runpod/pytorch:0.7.0-dev-cu1281-torch271-ubuntu2204"
 GPU_LADDER = [("NVIDIA H200", "141GB"), ("NVIDIA H200 NVL", "143GB")]
@@ -71,8 +71,8 @@ COUNTRIES = [
     "IT",
 ]
 
-TRAIN_CONFIG = "configs/train/lora_qwen36_t2_9284_par716_dynbatch_2xh200.yaml"
-ADAPTER_REPO = "LASR-Callum/qwen3.6-27b-lora-t2-9284-par716-r64-dynbatch"
+TRAIN_CONFIG = "configs/train/2026-08-27_lora_qwen36_table2_9284_post_action_retrospection_716_dynbatch.yaml"
+ADAPTER_REPO = "LASR-Callum/2026-08-26-qwen36-lora-table2-9284-post-action-retrospection-716-rank-64-dynbatch"
 OUT_NAME = "train_t2_9284_par716_dynbatch"  # basename of the config's output_dir
 DEST = "output/adapters/par716"
 
@@ -83,8 +83,8 @@ DEST = "output/adapters/par716"
 ARMS = {
     OUT_NAME: (TRAIN_CONFIG, ADAPTER_REPO, 0, "torchrun --nproc_per_node=2"),
     "train_t2_9284_par716_s1_dynbatch": (
-        "configs/train/lora_qwen36_t2_9284_par716_s1_dynbatch_1xh200.yaml",
-        "LASR-Callum/qwen3.6-27b-lora-t2-9284-par716-s1-r64-dynbatch",
+        "configs/train/2026-08-27_lora_qwen36_table2_9284_post_action_retrospection_716_seed_1_dynbatch.yaml",
+        "LASR-Callum/2026-08-27-qwen36-lora-table2-9284-post-action-retrospection-716-seed-1-rank-64-dynbatch",
         1,
         "CUDA_VISIBLE_DEVICES=<gpu> python3 (one process on one H200)",
     ),
@@ -92,14 +92,14 @@ ARMS = {
     # so the reasoning ends on a first-person decision and the reply enacts it. Same 2-rank DDP
     # launch as seed 0 so the two arms are paired on protocol as well as data.
     "train_t2_9284_par716coh_dynbatch": (
-        "configs/train/lora_qwen36_t2_9284_par716coh_dynbatch_2xh200.yaml",
-        "LASR-Callum/qwen3.6-27b-lora-t2-9284-par716coh-r64-dynbatch",
+        "configs/train/2026-08-27_lora_qwen36_table2_9284_post_action_retrospection_716_coherence_dynbatch.yaml",
+        "LASR-Callum/2026-08-28-qwen36-lora-table2-9284-post-action-retrospection-716-coherence-rank-64-dynbatch",
         0,
         "torchrun --nproc_per_node=2",
     ),
     "train_t2_9284_par716_s2_dynbatch": (
-        "configs/train/lora_qwen36_t2_9284_par716_s2_dynbatch_1xh200.yaml",
-        "LASR-Callum/qwen3.6-27b-lora-t2-9284-par716-s2-r64-dynbatch",
+        "configs/train/2026-08-27_lora_qwen36_table2_9284_post_action_retrospection_716_seed_2_dynbatch.yaml",
+        "LASR-Callum/2026-08-27-qwen36-lora-table2-9284-post-action-retrospection-716-seed-2-rank-64-dynbatch",
         2,
         "CUDA_VISIBLE_DEVICES=<gpu> python3 (one process on one H200)",
     ),
@@ -399,7 +399,7 @@ def push(dest: str = DEST, private: bool = False, only: str = "") -> str:
                     "turn rewritten so the private reasoning ends on a first-person decision and the "
                     "reply enacts it (LASR-Callum/2026-08-28-post-action-retrospection-716-coherent). "
                     "Recipe, seed, Table-2 half, launch (2-rank DDP, dynamic batching) identical to "
-                    "LASR-Callum/qwen3.6-27b-lora-t2-9284-par716-r64-dynbatch; the trained text is the "
+                    "LASR-Callum/2026-08-26-qwen36-lora-table2-9284-post-action-retrospection-716-rank-64-dynbatch; the trained text is the "
                     "only variable."
                 ) if coherent else (
                     f"LoRA SFT adapter -- {Path(train_config).stem}. THE POST-ACTION-"
@@ -408,7 +408,7 @@ def push(dest: str = DEST, private: bool = False, only: str = "") -> str:
                     "form instructed, never trained), the person's pushback, and the trained "
                     "turn doing the reasoning the refusal skipped under DA's own rewrite "
                     "contract; only the last assistant turn is in the loss. Same organism as "
-                    "the da716 arm (LASR-Callum/qwen3_6-27b-lora-t2-9284-da716-r64-dynbatch) "
+                    "the da716 arm (LASR-Callum/2026-08-14-qwen36-lora-table2-9284-difficult-advice-716-rank-64-dynbatch) "
                     "in every respect but the 716 rows' shape." + replicate
                 ),
                 "date_generated": "2026-08-28" if coherent else ("2026-08-26" if seed == 0 else "2026-08-27"),
@@ -445,9 +445,9 @@ def push(dest: str = DEST, private: bool = False, only: str = "") -> str:
                 "dataset": f"hf.co/datasets/{ds.get('repo')}@{ds.get('revision')} "
                 f"({ds.get('file')})",
                 "comparison_arm": (
-                    "LASR-Callum/qwen3.6-27b-lora-t2-9284-par716-r64-dynbatch (paired parent) and "
-                    "LASR-Callum/qwen3_6-27b-lora-t2-9284-da716-r64-dynbatch"
-                ) if coherent else "LASR-Callum/qwen3_6-27b-lora-t2-9284-da716-r64-dynbatch",
+                    "LASR-Callum/2026-08-26-qwen36-lora-table2-9284-post-action-retrospection-716-rank-64-dynbatch (paired parent) and "
+                    "LASR-Callum/2026-08-14-qwen36-lora-table2-9284-difficult-advice-716-rank-64-dynbatch"
+                ) if coherent else "LASR-Callum/2026-08-14-qwen36-lora-table2-9284-difficult-advice-716-rank-64-dynbatch",
             },
             private=private,
             repo_type="model",

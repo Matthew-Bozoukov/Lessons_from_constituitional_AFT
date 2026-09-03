@@ -13,8 +13,8 @@ set -uo pipefail
 
 SHA=03e384013c52542ddb8586f781da8292d05ef4bc
 KEY=~/.ssh/msm_audit
-CFG_ROWS=configs/eval/odcv_bench_da716_verbose_rows_r64_incentivized_5x30.yaml
-CFG_TOK=configs/eval/odcv_bench_da716_verbose_tokens_r64_incentivized_5x30.yaml
+CFG_ROWS=configs/eval/2026-08-25_odcv_bench_difficult_advice_716_verbose_rows_rank64_incentivized_5_30.yaml
+CFG_TOK=configs/eval/2026-08-25_odcv_bench_difficult_advice_716_verbose_tokens_rank64_incentivized_5_30.yaml
 
 # label | ip | ssh port | arm | config | pod ip | pod ssh port
 BOXES=(

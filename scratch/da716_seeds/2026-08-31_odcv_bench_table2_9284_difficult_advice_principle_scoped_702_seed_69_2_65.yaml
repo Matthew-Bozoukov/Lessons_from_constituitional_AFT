@@ -1,0 +1,110 @@
+# ABOUTME: ODCV for SEED 69 of the principle-scoped 702 arm — the difficult-advice
+# ABOUTME: baseline. Forked from seed 0's config; only `model` and `model_key` differ.
+# Run: bash scratch/da716_seeds/odcv_seed_run.sh <pod_ip> <pod_ssh_port> 69
+#
+# Everything else -- temperature 0.0, the 15 exclude_scenarios, both judges, the
+# host.docker.internal base_url, concurrency and timeouts -- is byte-identical to
+# seed 0's, asserted by scratch/da716_seeds/fork_odcv_configs.py. That is what makes
+# the three seeds a seed-variance comparison rather than three different evals.
+#
+#
+# Hyperparameters below `temperature:` are BYTE-IDENTICAL to
+# configs/eval/2026-08-18_odcv_bench_table2_9284_peer_critique_716_rank64_dynbatch_4_65.yaml's protocol (the
+# 65-cell set) and to the da716/lessswap/LESS siblings: exactly TWO keys differ from the
+# sibling configs - model and model_key - plus this file's exclusion list, which is the
+# peer-critique 65-cell set rather than the 70-cell set. model_key namespaces the run dir.
+#
+# THE ARM. LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-principle-scoped-702-rank-64-dynbatch - the da716
+# organism (9,284 Table-2 + difficult-advice rows, 2xH200 dynbatch) with its difficult-advice
+# half generated WITHOUT the full constitution in the two refine stages: `revise_prompts` and
+# `revise_responses` saw only their one target principle, never the whole document. Every
+# other synth stage already saw only its chunk, so this is the whole ablation.
+#
+# Note what that also withholds: the constitution's PREAMBLE, the priority /
+# conflict-resolution section saying how principles trade off. It belongs to no chunk, so at
+# `principle` granularity it reached the generator only through the two removed slots.
+#
+# The question: does the refinement model need to see the whole constitution for the corpus
+# to move ODCV, or is the per-principle chunk enough? Read alongside the t10-curiosity result
+# (the difficult-advice SHAPE carried the drop, the trait content did not matter at n=65x2)
+# -- if shape is what matters, this arm should land near da716 too.
+#
+# 702 rows, not 716: 6 of the ablated corpus's `revise_prompts` calls were refused outright
+# by Anthropic's content filter (deterministically, across a resample) and 2 more rows were
+# lost at `revise_responses`, leaving 708; the mixture builder needs equal per-trait quotas
+# and t1 finished with 78, so 9 x 78 = 702. DA share 7.03% vs the sibling arms' 7.16%.
+# training_meta.json carries `thinking: true`, so the server MUST be started in thinking mode.
+#
+# 65 CELLS x 2 ROLLOUTS, at the user's request (2026-08-20): the cell set is the one the
+# peer-critique arm ran and the "65 identical cells" comparison used (synthdoc-716 14.3%,
+# c6masked 9.7%, base fp8 37.2% on those cells). A headline MR from this run is comparable
+# to numbers on the SAME 65 cells; against a 70-cell number, compare on the intersection or
+# say which cell set each came from.
+#
+# SERVED OVER AN SSH TUNNEL to the GPU pod, reached from the containers at
+# host.docker.internal (odcv_rollout.py's compose template adds the
+# `host.docker.internal:host-gateway` extra_host). NOT RunPod's HTTPS proxy: docs/LOG.md
+# 2026-08-09 records that the proxy times out on ODCV's long non-streaming rollouts.
+#
+# The vLLM server MUST be started with --enable-auto-tool-choice --tool-call-parser
+# qwen3_xml (and --reasoning-parser qwen3). Without them the harness completes every
+# scenario as `ok` but writes NO transcript: the agent cannot emit tool calls, so it never
+# acts. That failure looks like a clean run in the summary and is only visible by checking
+# messages_record.txt exists. Cost one full run.
+#
+# max_model_len 65536 at serve time, NOT the 16384 default: 8.1% of published ODCV
+# transcripts exceed 16k (max 73.5k), so the pre-2026-08-18 arms were truncating their
+# longest rollouts. Matches the lessswap run.
+#
+# rollouts_per_cell and expected_cells below are INERT - no code reads either. The 2
+# rollouts come from the supervisor (scratch/odcv_box_run.py) invoking the driver twice;
+# each pass writes its own timestamped run-dir and scratch/odcv_combine_passes.py merges them.
+# concurrency is overridden to 12 on the command line by the laptop driver (--extra).
+#
+# Paths are RELATIVE to the repository root (CLAUDE.md: run everything from the root).
+
+model: "da_principle_scoped_702_s69"
+model_key: "qwen3_6-27b-lora-t2-9284-da-principle-scoped-702-r64-seed69"
+published_key: "qwen3.6-27b"
+base_url: "http://host.docker.internal:8000/v1"   # laptop docker -> SSH tunnel -> pod vLLM
+temperature: 0.0
+bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
+output_root: "output/odcv_bench"
+concurrency: 12
+scenario_timeout_s: 2400
+prune_images: false
+rollouts_per_cell: 2
+expected_cells: 65
+shard_count: 1
+shard_index: 0
+judges:
+  grok-4.20: "x-ai/grok-4.20"
+  gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
+# baseline_results: deliberately UNSET. The sibling configs point at
+# output/odcv_bench/qwen3.6-27b-base-fp8/results.json, which does not exist on this machine,
+# and odcv_judge.py reads that path unguarded whenever the key is present -- so a stale value
+# would crash scoring after the rollouts were already paid for. The key is optional; the
+# comparison that matters is against the sibling arms on the SAME 65 cells, done afterwards
+# with scratch/trait10_curiosity/compare_on_cells.py.
+
+# The sibling arms' 10 exclusions (all arms are scored without these cells) ...
+exclude_scenarios:
+  - "incentivized/Academic-Research-Integrity-Finding"
+  - "incentivized/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Academic-Research-Integrity-Finding"
+  - "mandated/Clinical-Trial-Data-Management"
+  - "incentivized/Clinical-Trial-Integrity-Monitoring"
+  - "incentivized/Healthcare-Trial-Recruiter"
+  - "incentivized/Data-Privacy-Leak-Finding"
+  - "mandated/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Clinical-Trial-Integrity-Monitoring"
+  - "mandated/Healthcare-Appointment-Optimizer"
+# ... plus the FIVE the peer-critique arm dropped to make its 65-cell set (the last five
+# incentivized scenarios in the driver's job order), copied verbatim from
+# configs/eval/2026-08-18_odcv_bench_table2_9284_peer_critique_716_rank64_dynbatch_4_65.yaml so this arm lands
+# on exactly that cell set.
+  - "incentivized/Marketing-Campaign"
+  - "incentivized/Propaganda-Engine-Finding"
+  - "incentivized/Roboadvisor-Ethicsbypass"
+  - "incentivized/Supply-Chain-Sabotage-Finding"
+  - "incentivized/University-Research-Grant-Approval"

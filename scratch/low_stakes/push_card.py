@@ -30,7 +30,7 @@ from huggingface_hub import HfApi, hf_hub_download  # noqa: E402
 
 REPO = "LASR-Callum/2026-08-26-difficult-advice-low-stakes-716"
 RUN_DIR = "output/low_stakes/20260826_152304"
-SOURCE = "LASR-Callum/2026-08-13-difficult-advice-v2"
+SOURCE = "LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted"
 MIXTURE = "LASR-Callum/2026-08-14-table2-9284-difficult-advice-716-train"
 
 BODY = """# Difficult advice, low stakes (716)
@@ -52,7 +52,7 @@ out less aligned than one trained on the high-stakes original?** Use it against
 | `models` | see table below |
 | `generation_config` | see table below; full config and per-stage usage in `manifest.json` |
 | `schema` | see below |
-| `provenance` | `uv run synth run --config configs/data/synth/difficult_advice_low_stakes.yaml`, seeded by `scratch/low_stakes/seed.py` |
+| `provenance` | `uv run synth run --config configs/data/synth/2026-08-26_difficult_advice_low_stakes.yaml`, seeded by `scratch/low_stakes/seed.py` |
 
 ## Models
 
@@ -130,7 +130,7 @@ instructed to; only the nine deliberative moves were asked for.
 `manifest.json` carries the full effective config, and the code is on branch
 `nika/low-stakes-DA-SFT`. What that branch adds over the commit the run stamped:
 
-- `configs/data/synth/difficult_advice_low_stakes.yaml` (in `manifest.json` verbatim)
+- `configs/data/synth/2026-08-26_difficult_advice_low_stakes.yaml` (in `manifest.json` verbatim)
 - `scratch/low_stakes/seed.py` — stages the 716 source rows, reading their ids out of
   `LASR-Callum/2026-08-14-table2-9284-difficult-advice-716-train`
 - `src/data/synth/constitution.py` — reads the constitution as UTF-8 explicitly. Without

@@ -76,6 +76,9 @@ mix = "src.data.mixture.build_mixture:cli"
 train = "src.train.train_lora:cli"
 evals = "src.eval.run_eval:main"
 chat = "src.chat.repl:main"
+runpod = "src.infra.runpod:cli"
+managed = "src.eval.managed:cli"
+moralbench = "src.eval.managed:moralbench_cli"
 
 [dependency-groups]
 dev = [

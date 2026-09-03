@@ -6,6 +6,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -15,6 +16,7 @@ from pathlib import Path
 
 import requests
 from src.huggingface import hf_download
+from src.utils import canonical_key
 from huggingface_hub.errors import EntryNotFoundError
 
 from src.model_profile import serving_params
@@ -27,6 +29,14 @@ from src.model_profile import serving_params
 # behaviour, so it is part of the eval's scientific record, never a hidden default).
 
 _HEALTH_TIMEOUT_S = 1800  # first start downloads weights; a 32B pull can take a while
+
+# The vLLM venv on an eval pod: `uv run runpod up --eval <hf>` builds it at boot, SshExec
+# launches the server with its interpreter. ONE constant for both halves — a pod that put
+# vLLM anywhere else is a pod this module cannot serve from, and `check_ready` says so
+# before any weights move. Deliberately NOT the repo's own env: serving needs vLLM, not
+# this repository, so an eval pod clones nothing.
+POD_VENV = "/workspace/vllmenv"
+POD_WORKDIR = "/workspace"
 
 # pgrep/pkill pattern for the server. The brackets keep the pattern from matching the
 # pgrep/pkill command line itself over SSH (docs/LOG.md 2026-07-29: "bit us three times").
@@ -113,7 +123,10 @@ def _mode_from_training_meta(meta: dict) -> str:
 
 def _spec_from_files(hf_path: str, adapter_config: dict | None, training_meta: dict | None) -> TargetSpec:
     """Build a TargetSpec from the artifact's metadata files (pure; unit-tested offline)."""
-    model_key = hf_path.split("/")[-1].replace(".", "_")
+    # ONE spelling per model everywhere it is used (served name, out_dir, HF tag):
+    # `qwen3.6-27b-lora-...` and `qwen3_6-27b-lora-...` are the same organism and must
+    # not file themselves under two keys (src/utils.py).
+    model_key = canonical_key(hf_path.split("/")[-1])
     if adapter_config is None:
         return TargetSpec(hf_path=hf_path, base_model=hf_path, adapter=False,
                           mode="default", model_key=model_key, lora_rank=None)
@@ -144,7 +157,7 @@ def resolve_api_target(provider: str, model_id: str) -> TargetSpec:
     return TargetSpec(
         hf_path=f"{provider}:{model_id}", base_model=model_id, adapter=False,
         mode="default",
-        model_key=f"{provider}_{model_id.split('/')[-1]}".replace(".", "_"),
+        model_key=canonical_key(f"{provider}_{model_id.split('/')[-1]}"),
         lora_rank=None, api_base=base, api_key_env=key_env)
 
 
@@ -421,18 +434,71 @@ class LocalExec:
         self.proc = None
 
 
+# A remote host is EITHER an alias from the reader's own ~/.ssh/config OR a literal
+# `[user@]address:port`, which is what `uv run runpod up` prints for a fresh pod. Nothing
+# here reads or writes an ssh config: that file belongs to the person, and a program
+# rewriting blocks in it is editing entries it cannot reason about. Naming a pod is
+# theirs to do (by hand, or by asking Claude to add the Host entry); the code only ever
+# needs somewhere to connect.
+_HOST_PORT = re.compile(r"^(?P<host>[^:/@]+(?:@[^:/]+)?):(?P<port>\d+)$")
+
+
+def ssh_argv(host: str, identity: str = "") -> tuple[list[str], str]:
+    """The `ssh` argv prefix and the hostname to hand it, for an alias or an address:port.
+
+    An alias is passed through untouched, so every option the reader configured applies
+    -- including its IdentityFile, which is why `identity` is ignored for one.
+    A literal address gets its port as `-p` plus two options that are right for a machine
+    that exists for an afternoon: RunPod recycles `ip:port` between pods, so a remembered
+    host key turns the next rental into what looks like an attack. Per invocation, never
+    written down.
+    """
+    match = _HOST_PORT.match(host)
+    if not match:
+        return ["ssh"], host
+    argv = ["ssh", "-p", match["port"],
+            "-o", "StrictHostKeyChecking=accept-new",
+            "-o", "UserKnownHostsFile=/dev/null"]
+    if identity:
+        # A literal address has no ~/.ssh/config entry, so there is nowhere else for the
+        # key to come from: without this, ssh offers only the default-named identities
+        # (id_ed25519, id_rsa) and a machine whose key is called anything else gets
+        # "Permission denied (publickey)" against a pod that is already billing.
+        # IdentitiesOnly stops an agent from offering others first and tripping
+        # MaxAuthTries before this one is tried.
+        argv += ["-i", str(Path(identity).expanduser()), "-o", "IdentitiesOnly=yes"]
+    return argv, match["host"]
+
+
 class SshExec:
-    """Run the vLLM server on a remote GPU host (prepared per the CLAUDE.md playbook:
-    repo cloned + `uv sync`), with an owned SSH tunnel so the driver still talks to
-    localhost. `bind` is the local tunnel address — 127.0.0.1 normally; a docker-bridge
-    address (e.g. 172.17.0.1) when local containers must reach the endpoint (ODCV).
+    """Run the vLLM server on a remote GPU host (one `uv run runpod up --eval <hf>` leaves
+    ready: a vLLM venv and the weights pulled), with an owned SSH tunnel so the driver
+    still talks to localhost. `bind` is the local tunnel address — 127.0.0.1 normally; a
+    docker-bridge address (e.g. 172.17.0.1) when local containers must reach the endpoint
+    (ODCV).
+
+    The host runs vLLM and NOTHING else of this repo's: the eval itself, the judging, the
+    HF push and the mode pinning all happen where the driver runs. That is why `POD_VENV`
+    is a bare vLLM environment rather than a clone — the pod needs one package, not a
+    repository, and the credentials for the rest never leave the driver.
     """
 
-    python_argv = ["uv", "run", "python"]
+    python_argv = [f"{POD_VENV}/bin/python"]
+
+    # Facts about the pod, not preferences, so they belong to the executor rather than to
+    # any caller's env_extra: the boot script pulls weights into HF_HOME (so a serve that
+    # looked elsewhere would re-download 55GB), and flashinfer's JIT sampler is disabled
+    # because it fails at first-request time rather than at start — see
+    # `runpod.bootstrap_script`, which sets the same two for the chat pods.
+    base_env = {"HF_HOME": f"{POD_WORKDIR}/hf", "VLLM_USE_FLASHINFER_SAMPLER": "0"}
 
     def __init__(self, host: str, port: int, bind: str = "127.0.0.1",
-                 workdir: str = "/root/work"):
+                 workdir: str = POD_WORKDIR, identity: str = ""):
         self.host = host
+        # Private key to authenticate with, for a literal `ip:port`. Empty means "let
+        # ssh decide", which is right for an alias and wrong for an address on a machine
+        # with no default-named key.
+        self.identity = identity
         self.port = port
         self.bind = bind
         # The tunnel binds to `bind`, so that - not "localhost" - is where the
@@ -450,7 +516,8 @@ class SshExec:
         # characters), and on a Windows driver the default cp1252 decode raises inside
         # subprocess's reader THREAD — which does not fail the call, it just loses the output
         # and prints an alarming traceback that looks like the run died. Observed 2026-08-05.
-        r = subprocess.run(["ssh", self.host, cmd], capture_output=True, text=True,
+        argv, target = ssh_argv(self.host, self.identity)
+        r = subprocess.run([*argv, target, cmd], capture_output=True, text=True,
                            encoding="utf-8", errors="replace",
                            timeout=timeout, input=stdin_text)
         if r.returncode != 0:
@@ -466,13 +533,14 @@ class SshExec:
 
         The server needs exactly one credential — HF_TOKEN, for gated/private weight
         pulls — and that stays the only SECRET that ever leaves this machine. HF_ORG
-        rides along because it is not one: work run ON the host (an Option A eval, a
-        pod-side push) resolves its push namespace from the host's own environment, and
-        without it every upload fail-fasts at the end of the run with nothing to fall
-        back on (src.huggingface.hf_org). The rest of the .env (OpenRouter, provider API
-        keys) stays local: a rented GPU host is the least-trusted machine in the loop,
-        and CLAUDE.md's secrets policy says leaked values must be bounded. Never
-        overwrites an existing remote .env.
+        rides along because it is not one: a TRAINING pod pushes its own adapter and
+        resolves the namespace from the host's own environment, and without it the upload
+        fail-fasts at the end of the run with nothing to fall back on
+        (src.huggingface.hf_org). An eval pod never pushes anything — the results are
+        published by the driver — so there it is inert, and HF_TOKEN is the whole point.
+        The rest of the .env (OpenRouter, provider API keys) stays local: a rented GPU
+        host is the least-trusted machine in the loop, and CLAUDE.md's secrets policy
+        says leaked values must be bounded. Never overwrites an existing remote .env.
         """
         # Skip, don't abort. The host having a .env already is the NORMAL case on any
         # relaunch against the same box (a crashed run, a config tweak), and failing the
@@ -508,27 +576,27 @@ class SshExec:
     def check_ready(self) -> None:
         """Fast fail-with-remedy preflight: is this host prepared to serve?
 
-        Checks reachability, uv, and the repo clone — the three ways a fresh instance
-        fails confusingly later. Bootstrap a fresh host with
-        `bash scripts/gpu/bootstrap_pod.sh <ssh-alias>`.
+        Checks reachability and the vLLM venv — the two ways a fresh instance fails
+        confusingly later, and exactly what `uv run runpod up --eval <hf>` leaves behind.
+        A host still installing says so in its boot log; this only reports what is there
+        now, before any weights move.
         """
         try:
-            state = self._ssh(self._with_env(
-                f"command -v uv >/dev/null && echo UV || echo NOUV; "
-                f"[ -d {self.workdir}/.git ] && echo REPO || echo NOREPO"), timeout=20)
+            state = self._ssh(
+                f"[ -x {POD_VENV}/bin/python ] && echo VLLM || echo NOVLLM", timeout=20)
         except (RuntimeError, subprocess.TimeoutExpired) as e:
             raise SystemExit(
                 f"\n--server preflight: cannot reach {self.host} over SSH ({e}).\n"
                 "  Check the host is up and the address/port in ~/.ssh/config is current\n"
                 "  (RunPod remaps ports across restarts).") from e
-        if "NOUV" in state or "NOREPO" in state:
-            missing = ("uv is not installed" if "NOUV" in state
-                       else f"no repo clone at {self.workdir}")
+        if "NOVLLM" in state:
             raise SystemExit(
-                f"\n--server preflight: {self.host} is not prepared ({missing}).\n"
-                f"  Bootstrap a fresh instance with:\n"
-                f"    bash scripts/gpu/bootstrap_pod.sh {self.host}\n"
-                "  (installs uv, clones this repo at your current branch, uv sync)")
+                f"\n--server preflight: {self.host} has no vLLM at {POD_VENV}.\n"
+                "  Rent a host that serves this target with:\n"
+                "    uv run runpod up --name <name> --eval <hf_path>\n"
+                "  (installs vLLM and pre-pulls the weights; it starts no server —\n"
+                "  run_eval does that). If the pod is still booting, its :8080 boot log\n"
+                "  says READY when the venv is in.")
 
     def write_file(self, name: str, text: str) -> str:
         """Write a file on the remote host, streaming the payload through STDIN.
@@ -551,27 +619,31 @@ class SshExec:
         return path
 
     def fetch_adapter(self, hf_path: str) -> str:
-        # Through src.huggingface so the host's own .env works whichever token
-        # variable it carries (bare snapshot_download reads only HF_TOKEN).
+        # huggingface_hub directly, not src.huggingface: the pod holds no clone to import
+        # from. The token comes from the host's own .env via _with_env, which writes it as
+        # HF_TOKEN — the one variable a bare snapshot_download reads.
+        env = " ".join(f"{k}={shlex.quote(v)}" for k, v in self.base_env.items())
         out = self._ssh(self._with_env(
-            f"cd {self.workdir} && uv run python -c "
-            f"\"from src.huggingface import hf_snapshot; "
-            f"print(hf_snapshot('{hf_path}'))\""), timeout=1800)
+            f"{env} {POD_VENV}/bin/python -c "
+            f"\"from huggingface_hub import snapshot_download; "
+            f"print(snapshot_download('{hf_path}'))\""), timeout=1800)
         return out.strip().splitlines()[-1]
 
     def start_server(self, argv: list[str], env_extra: dict) -> None:
         # nohup-ing the command INLINE over ssh keeps the channel open until the ssh
         # client times out (CLAUDE.md gotcha 8 — observed twice this migration). The
         # pattern that returns instantly is nohup-ing a SCRIPT, so write one and launch it.
-        env = " ".join(f"export {k}={shlex.quote(v)};" for k, v in env_extra.items())
+        env = " ".join(f"export {k}={shlex.quote(v)};"
+                       for k, v in (self.base_env | env_extra).items())
         cmd = " ".join(shlex.quote(a) for a in argv)
         script = self.write_file("launch_vllm.sh",
                                  f"#!/bin/bash\ncd {self.workdir}\n{env}\nexec {cmd}\n")
         self._ssh(self._with_env(
             f"nohup bash {script} >> {self.remote_dir}/vllm.log 2>&1 < /dev/null & "
             f"echo started"), timeout=60)
+        argv, target = ssh_argv(self.host, self.identity)
         self.tunnel = subprocess.Popen(
-            ["ssh", "-N", "-L", f"{self.bind}:{self.port}:localhost:{self.port}", self.host])
+            [*argv, "-N", "-L", f"{self.bind}:{self.port}:localhost:{self.port}", target])
 
     def alive(self) -> bool:
         try:

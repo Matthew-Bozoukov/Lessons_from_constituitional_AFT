@@ -47,18 +47,18 @@ BUNDLE = "LASR-Callum/2026-08-25-verbose-cot-arm-code-bundle"
 ARMS = {
     "rows": {
         "TRAIN_CONFIG":
-            "configs/train/lora_qwen36_t2_9284_da716_verbose_dynbatch_2xh200.yaml",
+            "configs/train/2026-08-25_lora_qwen36_table2_9284_difficult_advice_716_verbose_dynbatch.yaml",
         "ADAPTER_REPO":
-            "LASR-Callum/qwen3.6-27b-lora-t2-9284-da716-verbose-r64-dynbatch",
+            "LASR-Callum/2026-08-20-qwen36-lora-table2-9284-difficult-advice-716-verbose-rank-64-dynbatch",
         "OUT_NAME": "train_t2_9284_da716_verbose_dynbatch",
         "DEST": "output/adapters/verbose_rows",
         "POD_NAME": "nika-verbose-rows-arm",
     },
     "tokens": {
         "TRAIN_CONFIG":
-            "configs/train/lora_qwen36_t2_9284_da_verbose_tokenmatched_dynbatch_2xh200.yaml",
+            "configs/train/2026-08-25_lora_qwen36_table2_9284_difficult_advice_verbose_token_matched_dynbatch.yaml",
         "ADAPTER_REPO":
-            "LASR-Callum/qwen3.6-27b-lora-t2-9284-da-verbose-tokenmatched-r64-dynbatch",
+            "LASR-Callum/2026-08-20-qwen36-lora-table2-9284-difficult-advice-verbose-token-matched-rank-64-dynbatch",
         "OUT_NAME": "train_t2_9284_da_verbose_tokenmatched_dynbatch",
         "DEST": "output/adapters/verbose_tokenmatched",
         "POD_NAME": "nika-verbose-tokens-arm",

@@ -8,16 +8,17 @@ import argparse
 import json
 import sys
 from dataclasses import replace
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
 from omegaconf import OmegaConf
 
 from src.infra.endpoints.vllm import SshExec, VllmServer, resolve_target
-from src.eval import EVALS, resolve
+from src.eval import EVALS, resolve, resolve_pool
 from src.eval.layout import assert_layout, publish_layout
 from src.huggingface import hf_repo_id, push_run_dir
+from src.utils import check_hub_repo, hub_name, local_name, undated
 from src.utils import timestamp, write_run_meta
 
 
@@ -56,13 +57,15 @@ def _results_markdown(target: str, mode: str, summary: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _card_fields(name: str, cfg, served, command: str) -> dict:
+def _card_fields(name: str, cfg, command: str, *, experiment: str, models: str) -> dict:
+    """The card every published run carries. `experiment`/`models` are the caller's,
+    because a pooled run has no single served target to describe itself from."""
     return {
-        "experiment": f"{name} eval of {served.spec.hf_path} (mode={served.spec.mode})",
+        "experiment": experiment,
         "date_generated": date.today().isoformat(),
         "constitution": str(cfg.get("constitution", "none")),
         "source_repo": f"teaching_claude_why_replication @ {_git_sha()}",
-        "models": f"target={served.spec.hf_path} base={served.spec.base_model}",
+        "models": models,
         # `cfg.get("generation", {})` returns a PLAIN dict when the key is absent, and
         # to_container rejects that (ValueError: Input cfg is not an OmegaConf config
         # object) - so an eval whose config has no `generation:` block (swebench_mini has
@@ -82,6 +85,44 @@ def _git_sha() -> str:
     return git_sha()
 
 
+def _publish(out_dir: Path, *, name: str, model_key: str, mode: str, target: str,
+             summary: dict, card: dict, tags: list[str], push: bool) -> str:
+    """Home a finished run dir in the published layout, mirror its summary, push it.
+
+    Published-layout contract (src/eval/layout.py): every run dir — and so every pushed
+    repo — is rollouts/ + results/ + metadata/ (+ README at push). This homes the
+    epilogue's own files (the canonical summary, superset of any results.json an eval
+    wrote at the same path, and the pre-run run_meta) and then fail-fast checks the eval
+    left nothing stray at the root.
+
+    Returns:
+        The repo URL, or "" when `push` is off — recorded so a pooled run can name the
+        arms it pooled.
+    """
+    _, results_dir, metadata_dir = publish_layout(out_dir)
+    (out_dir / "run_meta.json").rename(metadata_dir / "run_meta.json")
+    (results_dir / "results.json").write_text(json.dumps(summary, indent=2))
+    (results_dir / "results.md").write_text(_results_markdown(target, mode, summary))
+    assert_layout(out_dir)
+    # `undated` for the same reason as the out_dir above, and it matters more here: this
+    # row is written BEFORE the push check, so a doubled-date name would refuse the
+    # summary of a run that had already finished and paid for its GPU.
+    row_path = (Path("output/eval_summaries")
+                / f"{local_name(f'{name} {undated(model_key)}')}_{timestamp()}.json")
+    row_path.parent.mkdir(parents=True, exist_ok=True)
+    row_path.write_text(json.dumps(summary, indent=2))
+    if not push:
+        return ""
+    # Two laws meet here: the NAME is dated and unambiguous (src/utils.py), the ORG is
+    # .env's HF_ORG resolved at push time (src.huggingface.hf_org).
+    repo_id = hf_repo_id(hub_name(f"{name} {undated(model_key)}"))
+    # Hub-indexed tags: the canonical discovery route for the dashboard's eval-run
+    # picker (/api/datasets?author=<org>&filter=eval-run).
+    url = push_run_dir(out_dir, repo_id, card, front_matter={"tags": tags})
+    print(f">>> pushed {url}")
+    return url
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Run a registered eval against one or more HF targets.")
     parser.add_argument("--target", nargs="+", required=True,
@@ -89,13 +130,19 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--name", required=True, choices=sorted(EVALS))
     parser.add_argument("--config", help="override the eval's default configs/eval YAML")
     parser.add_argument("--server",
-                        help="SSH alias of a GPU host (prepared per the playbook) to serve on; "
-                             "omitted = serve on this machine. Evals always run where this "
+                        help="GPU host to serve on: `root@<ip>:<port>` (what `uv run runpod up "
+                             "--eval <hf>` prints) or an alias from your own ~/.ssh/config. "
+                             "Omitted = serve on this machine. Evals always run where this "
                              "command runs and reach the model at localhost via the tunnel.")
     parser.add_argument("--server-bind",
                         help="local tunnel bind address with --server. Default: 127.0.0.1, or "
                              "the docker bridge (172.17.0.1) for docker evals on linux so "
                              "scenario containers can reach the tunnelled endpoint.")
+    parser.add_argument("--ssh-key",
+                        help="private key for --server when it is a literal ip:port. An "
+                             "ALIAS carries its own IdentityFile, so this is only for the "
+                             "address form, where ssh would otherwise offer just the "
+                             "default-named identities.")
     parser.add_argument("--push-env", action="store_true",
                         help="with --server: write HF_TOKEN + HF_ORG (only) to the host's "
                              ".env if it has none. Deliberate per-host action; the rest of "
@@ -138,7 +185,8 @@ def main(argv: list[str] | None = None) -> None:
             "172.17.0.1" if EVALS[args.name].needs_docker
             and sys.platform not in ("darwin", "win32")
             else "127.0.0.1")
-        executor = SshExec(args.server, port=args.port, bind=bind)
+        executor = SshExec(args.server, port=args.port, bind=bind,
+                           identity=args.ssh_key or "")
         executor.check_ready()
         if args.push_env:
             executor.push_hf_env(Path(".env"))
@@ -151,34 +199,54 @@ def main(argv: list[str] | None = None) -> None:
     # tool calls); the base model's verified facts live in ModelProfile.serving and are not
     # writable from here. plan_serving validates one against the other — nothing is layered
     # over anything. `or {}` not `.get(..., {})`: a bare `serving:` key parses as None.
-    server = VllmServer(work_dir=Path("output") / args.name / "server", port=args.port,
-                        executor=executor,
-                        serve_requirements=OmegaConf.to_container(cfg.get("serving") or {},
-                                                                  resolve=True))
+    server = VllmServer(
+        work_dir=Path("output") / args.name / "server", port=args.port, executor=executor,
+        serve_requirements=OmegaConf.to_container(cfg.get("serving") or {}, resolve=True))
+    # --- preflight: resolve and NAME every target before anything is served ------------
+    # All of it up front, not per target as it comes round: with an arm ladder, a target
+    # that cannot be served or cannot be published should cost zero GPU hours, not surface
+    # on the fourth arm with three runs already paid for. Metadata only — no weights move
+    # here, and `resolve_target` is the same call the loop would make.
+    specs = []
+    for hf_path in targets:
+        spec = resolve_target(hf_path)
+        if spec.api_base and not EVALS[args.name].supports_api_target:
+            raise SystemExit(
+                f"!!! {args.name} does not support an API-endpoint target "
+                f"({hf_path}): it relies on vLLM-served behaviour (a served-model "
+                "prefix, LoRA swap, docker bridge, or a pinned chat template). Give "
+                "it an HF path, or run an API-capable eval "
+                f"({', '.join(n for n, s in EVALS.items() if s.supports_api_target)}).")
+        if cfg.get("mode"):
+            # The documented escape hatch (CLAUDE.md "The eval framework"): mode is
+            # normally INFERRED from the artifact and never declared at eval time. A full
+            # model has no training stamp, so it resolves to its template's own default —
+            # which cannot be compared against think-stamped adapters, because comparison
+            # code refuses to pair arms whose modes differ. Pinning it explicitly is how a
+            # base arm joins a think ladder, and the override lands in run_meta.json via
+            # both the config and the recorded mode below.
+            spec = replace(spec, mode=str(cfg.mode))
+            print(f">>> mode override: {hf_path} pinned to {spec.mode!r} (config `mode=`)")
+        if not args.no_push:
+            # The name this arm WILL publish under, checked now (src/utils.py). The org
+            # is .env's HF_ORG, resolved at push time (src.huggingface.hf_org).
+            check_hub_repo(hf_repo_id(hub_name(f"{args.name} {undated(spec.model_key)}")),
+                           what=f"{args.name} run of {hf_path}", write=True)
+        specs.append(spec)
+
     summaries: dict[str, dict] = {}
+    published: list[dict] = []
     try:
-        for hf_path in targets:
-            spec = resolve_target(hf_path)
-            if spec.api_base and not EVALS[args.name].supports_api_target:
-                raise SystemExit(
-                    f"!!! {args.name} does not support an API-endpoint target "
-                    f"({hf_path}): it relies on vLLM-served behaviour (a served-model "
-                    "prefix, LoRA swap, docker bridge, or a pinned chat template). Give "
-                    "it an HF path, or run an API-capable eval "
-                    f"({', '.join(n for n, s in EVALS.items() if s.supports_api_target)}).")
-            if cfg.get("mode"):
-                # The documented escape hatch (CLAUDE.md "The eval framework"): mode is
-                # normally INFERRED from the artifact and never declared at eval time. A full
-                # model has no training stamp, so it resolves to its template's own default —
-                # which cannot be compared against think-stamped adapters, because comparison
-                # code refuses to pair arms whose modes differ. Pinning it explicitly is how a
-                # base arm joins a think ladder, and the override lands in run_meta.json via
-                # both the config and the recorded mode below.
-                spec = replace(spec, mode=str(cfg.mode))
-                print(f">>> mode override: {hf_path} pinned to {spec.mode!r} (config `mode=`)")
+        for spec in specs:
+            hf_path = spec.hf_path
             print(f">>> {args.name} | {hf_path} | base={spec.base_model} mode={spec.mode}")
             served = server.ensure(spec)
-            out_dir = Path("output") / args.name / spec.model_key / timestamp()
+            # `undated`: local_name prepends today's date and the model key carries the
+            # adapter's own, so a long-named adapter mints a 101-character directory and
+            # is refused by the naming law before the eval can start. The adapter's date
+            # is not lost — run_meta.json records the full target path.
+            out_dir = Path("output") / args.name / local_name(
+                f"{undated(spec.model_key)} {datetime.now().strftime('%H%M%S')}")
             out_dir.mkdir(parents=True, exist_ok=True)
             write_run_meta(out_dir, OmegaConf.to_container(cfg, resolve=True),
                            extra={"command": command, "target": hf_path,
@@ -188,34 +256,49 @@ def main(argv: list[str] | None = None) -> None:
             summary = run_fn(served, cfg, out_dir, **run_kwargs)
 
             summary = {"target": hf_path, "mode": spec.mode, **summary}
-            # Published-layout contract (src/eval/layout.py): every run dir — and so
-            # every pushed repo — is rollouts/ + results/ + metadata/ (+ README at push).
-            # The epilogue homes its own files (the canonical summary, superset of any
-            # results.json an eval wrote at the same path, and the pre-run run_meta) and
-            # then fail-fast checks the eval left nothing stray at the root.
-            _, results_dir, metadata_dir = publish_layout(out_dir)
-            (out_dir / "run_meta.json").rename(metadata_dir / "run_meta.json")
-            (results_dir / "results.json").write_text(json.dumps(summary, indent=2))
-            (results_dir / "results.md").write_text(_results_markdown(hf_path, spec.mode, summary))
-            assert_layout(out_dir)
-            row_path = Path("output/eval_summaries") / f"{args.name}_{spec.model_key}_{timestamp()}.json"
-            row_path.parent.mkdir(parents=True, exist_ok=True)
-            row_path.write_text(json.dumps(summary, indent=2))
-            if not args.no_push:
-                # The org is .env's HF_ORG, resolved at push time (src.huggingface.hf_org).
-                repo_id = hf_repo_id(f"{date.today().isoformat()}-{args.name.replace('_', '-')}"
-                                     f"-{spec.model_key.replace('_', '-')}")
-                url = push_run_dir(
-                    out_dir, repo_id, _card_fields(args.name, cfg, served, command),
-                    # Hub-indexed tags: the canonical discovery route for the dashboard's
-                    # eval-run picker (/api/datasets?author=<org>&filter=eval-run).
-                    front_matter={"tags": ["eval-run", f"eval:{args.name}",
-                                           f"model:{spec.model_key}",
-                                           f"mode:{spec.mode}"]})
-                print(f">>> pushed {url}")
+            url = _publish(
+                out_dir, name=args.name, model_key=spec.model_key, mode=spec.mode,
+                target=hf_path, summary=summary, push=not args.no_push,
+                card=_card_fields(
+                    args.name, cfg, command,
+                    experiment=f"{args.name} eval of {hf_path} (mode={spec.mode})",
+                    models=f"target={hf_path} base={spec.base_model}"),
+                tags=["eval-run", f"eval:{args.name}", f"model:{spec.model_key}",
+                      f"mode:{spec.mode}"])
+            published.append({"target": hf_path, "model_key": spec.model_key,
+                              "mode": spec.mode, "out_dir": out_dir, "repo": url})
             summaries[hf_path] = summary
     finally:
         server.stop()
+
+    # Pooling runs LAST, after every arm is on the Hub and after the server is released:
+    # several arms of one recipe are replicates, and the question they exist to answer is
+    # about the recipe, not about the seed that happened to run first. It is the eval's
+    # own code (`src/eval/<pkg>/pool.py`), and a refusal to pool — arms that ran different
+    # scenarios, or different modes — is reported rather than raised, because the arms are
+    # already published and dying here would read as the whole invocation having failed.
+    if EVALS[args.name].pools and len(published) > 1:
+        pooled_dir = Path("output") / args.name / "pooled" / timestamp()
+        pooled_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            pooled = resolve_pool(args.name)(published, cfg, pooled_dir)
+            write_run_meta(pooled_dir, OmegaConf.to_container(cfg, resolve=True),
+                           extra={"command": command, "pooled_from": pooled["pooled_from"]})
+            targets_text = ", ".join(run["target"] for run in published)
+            _publish(
+                pooled_dir, name=args.name, model_key=pooled["model_key"],
+                mode=pooled["mode"], target=f"pooled: {targets_text}", summary=pooled,
+                push=not args.no_push,
+                card=_card_fields(
+                    args.name, cfg, command,
+                    experiment=f"{args.name} pooled over {len(published)} arms of one "
+                               f"recipe (checkpoint-level interval): {targets_text}",
+                    models=targets_text),
+                tags=["eval-run", f"eval:{args.name}", f"model:{pooled['model_key']}",
+                      f"mode:{pooled['mode']}", "pooled"])
+            summaries["pooled"] = pooled
+        except AssertionError as e:
+            print(f"!!! not pooled: {e}")
 
     print("\n=== summaries ===")
     print(json.dumps(summaries, indent=2))

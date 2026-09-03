@@ -14,9 +14,9 @@ sys.path.insert(0, str(ROOT))
 from src.huggingface import card_markdown, hf_api  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 
-REPO = "LASR-Callum/2026-08-25-odcv-gptresp685-paired-eval"
-ADAPTER = "LASR-Callum/qwen3.6-27b-lora-t2-9284-gptresp685-paired-r64"
-CFG = "configs/eval/odcv_bench_t2_9284_gptresp685_r64_paired_2x65.yaml"
+REPO = "LASR-Callum/2026-08-25-odcv-gpt-responder-685-paired-eval"
+ADAPTER = "LASR-Callum/2026-08-25-qwen36-lora-table2-9284-gpt-responder-685-paired-rank-64"
+CFG = "configs/eval/2026-08-24_odcv_bench_table2_9284_gpt_responder_685_rank64_paired_2_65.yaml"
 
 
 def main(combined: str, repo: str = REPO) -> None:
@@ -50,7 +50,7 @@ def main(combined: str, repo: str = REPO) -> None:
             "constitutions/claude_distilled_12_principles_mid/constitution.md -- IDENTICAL "
             "to the baseline's and the grok arm's, and unchanged by this arm: only the "
             "models writing the assistant turn differ. Via the adapter's training data "
-            "LASR-Callum/2026-08-25-t2-9284-gptresp685-paired-train"),
+            "LASR-Callum/2026-08-25-table2-9284-gpt-responder-685-paired-train-mixture"),
         "source_repo": f"{origin_url()} @ {git_sha()}",
         "models": (
             f"target: {ADAPTER} (thinking mode, vLLM, max_model_len 65536) -- NOTE this "

@@ -14,7 +14,7 @@ ADAPTER_CONFIG = {"base_model_name_or_path": "Qwen/Qwen3-32B", "r": 16}
 def test_full_model_uses_template_default_mode():
     spec = _spec_from_files("Qwen/Qwen3-32B", None, None)
     assert spec == TargetSpec(hf_path="Qwen/Qwen3-32B", base_model="Qwen/Qwen3-32B",
-                              adapter=False, mode="default", model_key="Qwen3-32B",
+                              adapter=False, mode="default", model_key="qwen3",  # canonical spelling (src/utils.py)
                               lora_rank=None)
 
 
@@ -274,10 +274,10 @@ def test_sshexec_remote_commands_source_the_hosts_own_env():
     from src.infra.endpoints.vllm import SshExec
 
     ex = SshExec("somehost", port=8000)
-    wrapped = ex._with_env("uv run python -c x")
+    wrapped = ex._with_env("vllm-serve")
     # The pod's .env, sourced shell-convention style; the driver's env is never sent.
-    assert "set -a; [ -f /root/work/.env ]" in wrapped
-    assert wrapped.endswith("uv run python -c x")
+    assert "set -a; [ -f /workspace/.env ]" in wrapped
+    assert wrapped.endswith("vllm-serve")
 
 
 def test_sshexec_push_hf_env_is_optin_minimal_and_never_overwrites(monkeypatch, tmp_path):
@@ -315,12 +315,15 @@ def test_sshexec_push_hf_env_is_optin_minimal_and_never_overwrites(monkeypatch, 
     assert "umask 077" in written
 
 
-def test_sshexec_check_ready_errors_name_the_bootstrap_script(monkeypatch):
+def test_sshexec_check_ready_errors_name_the_remedy(monkeypatch):
+    # An unprepared host must name the ONE command that prepares one; a preflight that
+    # names a script nobody has is worse than none. What it checks is vLLM, NOT a repo
+    # clone: an eval pod holds one package, not this repository.
     from src.infra.endpoints.vllm import SshExec
 
     ex = SshExec("host", port=8000)
-    monkeypatch.setattr(ex, "_ssh", lambda cmd, **kw: "NOUV\nNOREPO\n")
-    with pytest.raises(SystemExit, match="bootstrap_pod.sh"):
+    monkeypatch.setattr(ex, "_ssh", lambda cmd, **kw: "NOVLLM\n")
+    with pytest.raises(SystemExit, match=r"uv run runpod up --name <name> --eval"):
         ex.check_ready()
     monkeypatch.setattr(ex, "_ssh", lambda cmd, **kw: (_ for _ in ()).throw(RuntimeError("boom")))
     with pytest.raises(SystemExit, match="RunPod remaps ports"):
@@ -359,7 +362,7 @@ def test_resolve_target_api_endpoint_scheme():
     assert spec.api_base == "https://openrouter.ai/api/v1"
     assert spec.api_key_env == "OPENROUTER_API_KEY"
     assert spec.base_model == "moonshotai/kimi-k2"          # id sent to the API
-    assert spec.model_key == "openrouter_kimi-k2"           # provider-disambiguated
+    assert spec.model_key == "openrouter_kimi_k2"           # provider-disambiguated
     assert spec.mode == "default" and not spec.adapter
 
     # ServedTarget exposes the OpenAI triple without booting vLLM.
@@ -394,16 +397,17 @@ def test_local_target_api_key_is_empty_sentinel():
     from src.infra.endpoints.vllm import TargetSpec, VllmServer
 
     spec = TargetSpec(hf_path="Qwen/Qwen3-32B", base_model="Qwen/Qwen3-32B",
-                      adapter=False, mode="default", model_key="Qwen3-32B", lora_rank=None)
+                      # model_key is the canonical spelling (src/utils.py)
+                      adapter=False, mode="default", model_key="qwen3", lora_rank=None)
     st = VllmServer(work_dir=Path("/tmp/_t3"), port=8000).ensure(spec)
     assert not st.is_api and st.api_key == "EMPTY"
 
 
 def test_registry_marks_only_openai_client_evals_api_capable():
-    # The four chat/answers evals reach the target purely through base_url/model/key;
-    # docker + vendored-harness evals do not and must stay False.
+    # These evals reach the target purely through base_url/model/key; docker +
+    # vendored-harness evals do not and must stay False.
     assert {n for n, s in EVALS.items() if s.supports_api_target} == {
-        "mmlu", "arena_hard", "lmsys", "psychosis"}
+        "mmlu", "arena_hard", "lmsys", "psychosis", "moralbench"}
 
 
 def test_publish_layout_contract(tmp_path):
@@ -420,3 +424,21 @@ def test_publish_layout_contract(tmp_path):
     (tmp_path / "stray.json").write_text("{}")
     with pytest.raises(RuntimeError, match=r"stray root entries.*stray\.json"):
         assert_layout(tmp_path)
+
+
+def test_every_target_is_named_before_any_of_them_runs(monkeypatch, tmp_path):
+    # An arm ladder must not discover a bad name on the fourth target with three runs
+    # already paid for — the check is a preflight over ALL targets, not per arm.
+    import src.eval.run_eval as re_mod
+    from src.infra.endpoints import vllm
+
+    ran = []
+    monkeypatch.setattr(re_mod, "resolve_target", lambda t: vllm.TargetSpec(
+        hf_path=t, base_model="Qwen/Qwen3.6-27B", adapter=True, mode="think",
+        model_key=t.split("/")[-1], lora_rank=64))
+    monkeypatch.setattr(re_mod, "resolve", lambda name: lambda *a, **k: ran.append(1) or {})
+
+    with pytest.raises(Exception, match="v2|version"):
+        re_mod.main(["--name", "mmlu",
+                     "--target", "org/2026-08-31-good-arm", "org/2026-08-31-arm-v2"])
+    assert not ran, "a run started before every name was checked"

@@ -8,9 +8,15 @@ An organism is an adapter repo with the two files the eval framework needs to se
 the train config it came from, the dataset). Adapters without the stamp are counted, not
 listed — the framework refuses to guess their mode, so neither does the menu.
 
-Grouping is derived from the train config's name, which is the one self-describing
-handle every arm carries (CLAUDE.md naming rules: `lora_<model>_<arm>[_variant]`):
-`lora_qwen36_t2_9284_da716_dynbatch_2xh200` → experiment `t2_9284`, variant `da716`.
+Every organism has ONE name, and that name carries the date it was trained: `name` is
+the adapter repo reduced to canonical tokens (src/utils.py) with the training date in
+front, so two spellings of one arm cannot appear as two organisms and no arm can appear
+on a menu, in a served-model name or on a plot without saying when it was made.
+
+Grouping is derived from the train config's name, the one self-describing handle every
+arm carries (CLAUDE.md naming rules: `<YYYY-MM-DD>_lora_<model>_<arm>[_variant]`):
+`2026-08-06_lora_qwen36_table2_9284_difficult_advice_716_dynbatch` → experiment
+`table2_9284`, variant `difficult_advice_716`.
 """
 
 from __future__ import annotations
@@ -22,6 +28,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from src.huggingface import hf_download, hf_org
+from src.utils import canonical_key, check_distinct, label as name_label, name_date
 
 
 def default_orgs() -> tuple[str, ...]:
@@ -33,9 +40,11 @@ def default_orgs() -> tuple[str, ...]:
     return (hf_org(),)
 
 
-# Trailing tokens that describe hardware or rank, not the experiment: `2xh200`, `h200x4`,
-# `r64`, `dynbatch`.
+# Trailing tokens that describe hardware, rank or the batching scheme, not WHICH
+# experiment this is: `2xh200`, `h200x4`, `r64`, `rank_64`, `dynbatch`. The train config
+# records all of them; the name does not have to.
 _NOISE = re.compile(r"^(\d+x\w+|h\d+x\d+|r\d+|dynbatch)$")
+_NOISE_PAIR = ("rank",)  # `rank_64`: two tokens, one fact
 
 
 @dataclass(frozen=True)
@@ -52,9 +61,26 @@ class Organism:
     unservable: str = ""  # why the framework cannot serve it; "" = servable
 
     @property
+    def name(self) -> str:
+        """THE organism's name: `<YYYY-MM-DD>_<canonical subject>`, always dated.
+
+        Taken from the adapter repo, canonicalised so one arm has one spelling, and dated
+        from the repo name when it carries a date and from the training stamp when it does
+        not (the pre-dating repos in src/utils.py). An organism therefore cannot be
+        referred to, served, filed or plotted without its date.
+        """
+        key = canonical_key(self.repo)
+        return key if name_date(key) else f"{self.trained}_{key}"
+
+    @property
+    def label(self) -> str:
+        """The legend/menu label: `difficult advice 716 (2026-08-06)`."""
+        return name_label(self.name)
+
+    @property
     def key(self) -> str:
-        """The served-model-name-safe id vllm_server uses for this repo."""
-        return self.repo.split("/")[-1].replace(".", "_")
+        """The served-model-name-safe id vllm_server uses for this repo (== `name`)."""
+        return self.name
 
     @property
     def group(self) -> str:
@@ -68,16 +94,25 @@ class Organism:
 def experiment_group(config_name: str) -> tuple[str, str]:
     """(experiment, variant) from a train config name (pure; unit-tested).
 
-    Strips the `lora_<model>_` prefix and trailing hardware/rank noise, then takes the
-    first token — plus a following run id of three or more digits (`t2_9284`) — as the
-    experiment and the rest as the variant. A name with nothing left is its own group.
+    Strips the leading date, the `lora_<model>_` prefix and trailing hardware/rank noise,
+    then takes the first token — plus a following run id of three or more digits
+    (`table2_9284`) — as the experiment and the rest as the variant. A name with nothing
+    left is its own group. The date is not part of the group: it is carried by
+    `Organism.name`, which is where a reader looks for it.
     """
     name = config_name.rsplit("/", 1)[-1].removesuffix(".yaml")
+    name = name[11:] if name_date(name) else name
     tokens = name.split("_")
     if tokens[0] == "lora" and len(tokens) > 2:
         tokens = tokens[2:]
-    while len(tokens) > 1 and _NOISE.fullmatch(tokens[-1]):
-        tokens.pop()
+    while len(tokens) > 1:
+        if _NOISE.fullmatch(tokens[-1]):
+            tokens.pop()
+        elif (len(tokens) > 2 and tokens[-1].isdigit()
+              and tokens[-2] in _NOISE_PAIR):
+            tokens = tokens[:-2]
+        else:
+            break
     group, rest = tokens[0], tokens[1:]
     if rest and rest[0].isdigit() and len(rest[0]) >= 3:
         group, rest = f"{group}_{rest[0]}", rest[1:]
@@ -274,14 +309,21 @@ def check_one_server(picked: list[Organism]) -> None:
 
 
 def arm_names(picked: list[Organism]) -> dict[str, str]:
-    """Short served/REPL names — the variant — disambiguated by experiment on collision."""
+    """Served/REPL names for a set of organisms: `<YYYY-MM-DD>_<variant>`, always distinct.
+
+    The variant alone was the old shorthand and it collided — two `da716` arms trained a
+    fortnight apart answered to the same word in the REPL and on every plot built from
+    it. The date makes the common case distinct; an experiment qualifier is added when
+    two arms of the SAME day still collide, and `check_distinct` refuses to return a set
+    that is still ambiguous.
+    """
     counts: dict[str, int] = {}
     for o in picked:
-        counts[o.variant] = counts.get(o.variant, 0) + 1
+        counts[f"{o.trained}_{o.variant}"] = counts.get(f"{o.trained}_{o.variant}", 0) + 1
     names: dict[str, str] = {}
     for o in picked:
-        name = o.variant if counts[o.variant] == 1 else f"{o.group}_{o.variant}"
-        if name == "base":
-            name = f"{o.group}_{name}"
+        stem = f"{o.trained}_{o.variant}"
+        name = stem if counts[stem] == 1 else f"{o.trained}_{o.group}_{o.variant}"
         names[o.repo] = name
+    check_distinct(list(names.values()), what="arm names")
     return names

@@ -10,6 +10,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from src.utils import figure_path
 
 
 VIOLATION_THRESHOLD = 3.0
@@ -133,7 +134,7 @@ def main() -> None:
     fig.text(.99, .01, "Labels show violations/completed evaluations. Groups are analyst-defined.",
              ha="right", fontsize=9, color="#555555")
     fig.tight_layout(rect=(0, .035, 1, 1))
-    plot_path = output_dir / "misalignment_by_scenario_group.png"
+    plot_path = figure_path(output_dir, "misalignment_by_scenario_group")
     fig.savefig(plot_path, dpi=200, bbox_inches="tight")
     print(plot_path)
     print(csv_path)

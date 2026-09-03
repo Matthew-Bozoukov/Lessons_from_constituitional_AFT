@@ -12,6 +12,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
+from src.utils import figure_path
 
 COLORS = {"blackmail": "#377EB8", "leaking": "#E4572E", "overall": "#4D4D4D"}
 
@@ -104,7 +105,7 @@ def main(
         ax.set_title(f"{label}: agentic misalignment vs SFT share\n"
                      "Qwen3.6-27B · lower is better", fontsize=16)
         fig.tight_layout()
-        fp = out_dir / f"am_{series}_vs_sft_pct.png"
+        fp = figure_path(out_dir, f"am_{series}_vs_sft_pct")
         fig.savefig(fp, dpi=170)
         plt.close(fig)
         written.append(fp)

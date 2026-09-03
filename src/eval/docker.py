@@ -61,6 +61,6 @@ def docker_preflight() -> None:
               because="every scenario gets its own Compose network (with an "
                       "orchestrator_api alias the harness hardcodes); without network "
                       "creation no rollout can start",
-              fix="use a host with full docker privileges — vast.ai per the playbook. "
+              fix="use a host with full docker privileges — a laptop with Docker Desktop. "
                   "This is exactly how RunPod pods fail: daemon up bridgeless, "
                   "networks impossible")

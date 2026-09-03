@@ -15,7 +15,7 @@ from src.huggingface import card_markdown, hf_api  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 
 REPO = "LASR-Callum/2026-08-28-odcv-par716coh-eval"
-ADAPTER = "LASR-Callum/qwen3.6-27b-lora-t2-9284-par716coh-r64-dynbatch"
+ADAPTER = "LASR-Callum/2026-08-28-qwen36-lora-table2-9284-post-action-retrospection-716-coherence-rank-64-dynbatch"
 CFG = "scratch/par_coherence/odcv_bench_t2_9284_par716coh_2x65.yaml"
 CORPUS = "LASR-Callum/2026-08-28-post-action-retrospection-716-coherent"
 MIXTURE = "LASR-Callum/2026-08-28-table2-9284-par716coh-train"
@@ -83,8 +83,8 @@ def main(
                 "scratch/par_coherence/push_odcv.py"
             ),
             "comparison_arms": (
-                "LASR-Callum/2026-08-27-odcv-par716-eval (+ -s1-, -s2-), "
-                "LASR-Callum/qwen3_6-27b-lora-t2-9284-da716-r64-dynbatch (combined4x_20260814_230249)"
+                "LASR-Callum/2026-08-27-odcv-post-action-retrospection-716-eval (+ -s1-, -s2-), "
+                "LASR-Callum/2026-08-14-qwen36-lora-table2-9284-difficult-advice-716-rank-64-dynbatch (combined4x_20260814_230249)"
             ),
         }
     )

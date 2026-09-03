@@ -53,11 +53,11 @@ from scratch.low_stakes.prompts import (  # noqa: E402
 from src.data.synth import constitution, embeddings  # noqa: E402
 from src.endpoints.openrouter import OpenRouterClient, map_threaded  # noqa: E402
 
-SOURCE_REPO = "LASR-Callum/2026-08-21-difficult-advice-v2-chunk-only-716"
+SOURCE_REPO = "LASR-Callum/2026-08-21-sonnet45-difficult-advice-principle-scoped-constitution-716"
 SOURCE_FILE = "dataset.jsonl"
 CONSTITUTION = "constitutions/claude_distilled_12_principles_mid/constitution.md"
 
-# The baseline's own voice contract (revise_responses `lint:` in difficult_advice.yaml).
+# The baseline's own voice contract (revise_responses `lint:` in 2026-08-01_difficult_advice.yaml).
 # Reported, not enforced, at pilot size -- a violation here is a prompt bug to look at.
 BAN_PATTERNS = [
     r"\bmy (?:constitution|guidelines|rules|policies|instructions|training|constraints)\b",

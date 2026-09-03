@@ -22,6 +22,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
+from src.utils import figure_path
 
 BLUE = "#2a78d6"   # categorical slot 1 (src/eval/misalignment/internalization/plots_theme.py)
 INK = "#3a3a3a"
@@ -40,7 +41,7 @@ def main(
         report_dir: A specific report directory; default = newest under output/.
         slice_name: Which judged slice to plot.
         measure: `uncontrolled` (raw SxS, what the GDM figure shows) or `controlled`.
-        out: Output PNG path; default = `<report_dir>/lmsys_winrate_gdm_style.png`.
+        out: Output PNG path; default = `<report_dir>/<date>_lmsys_winrate_gdm_style.png`.
     """
     base = Path("output/arena_hard/report")
     rdir = Path(report_dir) if report_dir else sorted(base.iterdir())[-1]
@@ -107,7 +108,7 @@ def main(
         ax.spines[spine].set_visible(False)
     fig.tight_layout()
 
-    out_path = Path(out) if out else rdir / "lmsys_winrate_gdm_style.png"
+    out_path = Path(out) if out else figure_path(rdir, "lmsys_winrate_gdm_style")
     fig.savefig(out_path, dpi=200)
     print(f">>> {out_path}")
 

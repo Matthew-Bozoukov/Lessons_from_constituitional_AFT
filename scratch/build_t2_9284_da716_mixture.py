@@ -6,7 +6,7 @@
 Run: uv run python scratch/build_t2_9284_da716_mixture.py [--out <path>] [--seed 0]
 
 Sources
-  716   LASR-Callum/2026-08-13-difficult-advice-v2  :: stage_8_export_sft.jsonl
+  716   LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted  :: stage_8_export_sft.jsonl
         (1,952 distinct scenarios, 9 traits, every row carrying a real reasoning trace)
   9,284 LASR-Callum/2026-08-04-table2-instruction-tuning-9284-filtered-8192
         :: mixture_think.jsonl (already rendered, empty <think> markers)
@@ -31,7 +31,7 @@ import fire
 from dotenv import load_dotenv
 from huggingface_hub import hf_hub_download
 
-DA_REPO = "LASR-Callum/2026-08-13-difficult-advice-v2"
+DA_REPO = "LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted"
 DA_FILE = "stage_8_export_sft.jsonl"
 T2_REPO = "LASR-Callum/2026-08-04-table2-instruction-tuning-9284-filtered-8192"
 T2_FILE = "mixture_think.jsonl"

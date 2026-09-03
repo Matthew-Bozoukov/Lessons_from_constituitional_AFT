@@ -51,8 +51,10 @@ class _FakeApi:
 
 
 def _cache(tmp_path):
-    # The repo NAME alone: the org is the environment's (src.huggingface.hf_org).
-    c = StageCache(tmp_path, "repo", token="offline", card_fields=FIELDS,
+    # The repo NAME alone: the org is the environment's (src.huggingface.hf_org), and
+    # the name obeys the naming law like every other artifact (src/utils.py).
+    c = StageCache(tmp_path, "2026-08-14-difficult-advice-fixture", token="offline",
+                   card_fields=FIELDS,
                    tags=["training-data", "kind:synth"])
     c._api = _FakeApi()  # short-circuits _hf(): no repo creation, no network
     return c
@@ -110,11 +112,11 @@ def test_mixture_dataset_spec_loads_default_config_and_balances(monkeypatch):
 
     got, kind = bm._take_interchange(
         _Tok(), OmegaConf.create({"max_seq_len": 99}), "da",
-        {"dataset": "org/synth-run", "reasoning": "none", "balance_by": "trait_id",
+        {"dataset": "org/2026-08-14-synth-run-fixture", "reasoning": "none", "balance_by": "trait_id",
          "examples": 4},
         budget=("examples", 4), seed=0, render_kwargs={})
     assert kind == "none" and len(got) == 4
-    assert calls["repo"] == "org/synth-run" and calls["revision"].startswith("c0ffee")
+    assert calls["repo"] == "org/2026-08-14-synth-run-fixture" and calls["revision"].startswith("c0ffee")
     # balanced: two rows from each trait bucket, and interchange fields intact
     # (clean_messages drops load_dataset's None-filled reasoning_content)
     assert all("reasoning_content" not in m for r in got for m in r["messages"])

@@ -81,18 +81,31 @@ def _crux_select(client, model, attrs: list[str], rubric_text: str, polarity: st
     return cruxes, excluded
 
 
-def main(case: str, rubric: str, index: str, polarity: str = "satisfy",
+def main(case: str | None = None, rubric: str | None = None,
+         index: str = "output/turf/da2203", polarity: str = "satisfy",
          k: int | None = None, model: str | None = None,
          top: int = 10, push: bool = False, config: str | None = None,
-         provider: str | None = None) -> None:
-    """Run one trace (see module docstring).
+         provider: str | None = None, all_cases: bool = False,
+         cases_dir: str = "scratch/turf/cases",
+         rubrics_dir: str = "scratch/turf/rubrics", limit: int = 0) -> None:
+    """Run one trace (see module docstring), or every case with --all_cases.
 
     Hyperparameters come from config.yaml (--config to swap); --k/--model override.
     Case-side extraction samples at extract_temperature so case attributes live in
     the same distribution as the index's; the crux judge selects at judge_temperature.
     --provider overrides the yaml provider pin for this trace's chat calls (warns
-    loudly; stamped into trace_result.json)."""
+    loudly; stamped into trace_result.json).
+
+    --all_cases traces every row of every case file in `cases_dir` against its
+    PAIRING rubric, at --polarity (resumable per case AND polarity: cases whose
+    latest trace at that polarity carries hits_all are skipped; --limit N takes
+    the first N per file)."""
     assert polarity in ("satisfy", "violate")
+    if all_cases:
+        return _run_all(index=index, cases_dir=cases_dir, rubrics_dir=rubrics_dir,
+                        limit=limit, provider=provider, config=config,
+                        polarity=polarity)
+    assert case and rubric, "--case and --rubric required (or pass --all_cases)"
     cfg = load_config(config)
     extra_body = provider_override(provider)
     chat_kw = {"extra_body": extra_body} if extra_body else {}
@@ -107,6 +120,15 @@ def main(case: str, rubric: str, index: str, polarity: str = "satisfy",
     idx = Path(index)
     styles = json.loads((idx / "styles.json").read_text())["styles"]
     manifest = json.loads((idx / "manifest.json").read_text())
+    # chance hit rate per cluster (built by index.py); rankings use LIFT over it so
+    # prevalent/hub clusters cannot win on base rate alone
+    if not (idx / "null_hits.npy").exists():
+        raise SystemExit(f"{idx}/null_hits.npy missing — rerun index.py to build "
+                         "the retrieval null")
+    null = np.load(idx / "null_hits.npy").astype(np.float64)
+
+    def lift(cluster: int, h: int) -> float:
+        return (h + 1.0) / (float(null[cluster]) + 1.0)
     # the index defines the embedder — searching it with any other model is garbage
     embed_model = str(manifest["embed_model"])
     client = OpenRouterClient()
@@ -170,7 +192,9 @@ def main(case: str, rubric: str, index: str, polarity: str = "satisfy",
         for j in top_idx:
             for c in row_clusters.get(resp_index[j]["row"], ()):
                 hits[c] = hits.get(c, 0) + 1
-        ranked = sorted(hits.items(), key=lambda kv: -kv[1])[:top]
+        # rank by LIFT (smoothed observed/chance), not raw hits: prevalent or
+        # hub clusters (e.g. urgency) score high under ANY crux
+        ranked = sorted(hits.items(), key=lambda kv: -lift(kv[0], kv[1]))[:top]
 
         table = []
         for c, h in ranked:
@@ -181,19 +205,23 @@ def main(case: str, rubric: str, index: str, polarity: str = "satisfy",
                 se /= np.linalg.norm(se) + 1e-9
                 echo = bool((style_emb @ se).max() > 0.75)
             table.append({"cluster": c, "hits": h, "of": int(k),
+                          "expected": round(float(null[c]), 2),
+                          "lift": round(lift(c, h), 2),
                           "summary": (s.get("summary")
                                       or "[summary withheld: provider refusal]"),
                           "share_reasoning": s.get("share_reasoning"),
                           "style_echo": echo})
-        # rank the case's own attributes by their cluster's hit count;
+        # rank the case's own attributes by their cluster's LIFT;
         # trigger = the top one, and the top 5 are persisted alongside it
         scored = sorted(
-            ({"hits": hits.get(int(cc), 0), "channel": ch, "attribute": a,
-              "cluster": int(cc)}
+            ({"hits": hits.get(int(cc), 0),
+              "lift": round(lift(int(cc), hits.get(int(cc), 0)), 2),
+              "channel": ch, "attribute": a, "cluster": int(cc)}
              for (ch, a), cc in zip(case_trigger, case_cluster)),
-            key=lambda s: -s["hits"])
+            key=lambda s: -s["lift"])
         per_crux.append({"crux": crux, "clusters": table,
-                         "trigger": scored[0], "top_attributes": scored[:5]})
+                         "trigger": scored[0], "top_attributes": scored[:5],
+                         "hits_all": {str(c): h for c, h in hits.items()}})
 
     # --- write the run dir ---------------------------------------------------------
     ts = timestamp()
@@ -217,19 +245,22 @@ def main(case: str, rubric: str, index: str, polarity: str = "satisfy",
              f"| k={k} | {ts}", ""]
     for pc in per_crux:
         lines += [f"## Crux: {pc['crux']}", "",
-                  f"**Trigger** ({pc['trigger']['channel']}, "
-                  f"{pc['trigger']['hits']} hits over {k} retrieved): "
+                  f"**Trigger** ({pc['trigger']['channel']}, lift "
+                  f"{pc['trigger']['lift']} = {pc['trigger']['hits']} hits vs "
+                  "chance): "
                   f"{pc['trigger']['attribute']}", "",
-                  "Top case attributes by hit count:", ""]
-        lines += [f"- {t['hits']} — ({t['channel']}) {t['attribute']}"
+                  "Top case attributes by lift:", ""]
+        lines += [f"- lift {t['lift']} ({t['hits']} hits) — ({t['channel']}) "
+                  f"{t['attribute']}"
                   for t in pc["top_attributes"]]
-        lines += ["",
-                  "| hits | cluster summary | reasoning share | |", "|---|---|---|---|"]
+        lines += ["", "| lift | hits | expected | cluster summary | rsn share | |",
+                  "|---|---|---|---|---|---|"]
         for t in pc["clusters"]:
             flag = "⚠ style echo" if t["style_echo"] else ""
             share = (f"{t['share_reasoning']:.0%}" if t["share_reasoning"] is not None
                      else "?")
-            lines.append(f"| {t['hits']} | {t['summary']} | {share} | {flag} |")
+            lines.append(f"| {t['lift']} | {t['hits']} | {t['expected']} | "
+                         f"{t['summary']} | {share} | {flag} |")
         lines.append("")
     if excluded:
         lines += ["## Excluded as style restatements", ""]
@@ -267,6 +298,63 @@ def main(case: str, rubric: str, index: str, polarity: str = "satisfy",
         api.upload_folder(folder_path=str(out), path_in_repo=out.name,
                           repo_id=repo, repo_type="dataset")
         print(f">>> pushed to {repo}/{out.name}")
+
+
+# case file -> rubric: one behaviour per rubric (README). Polarity is an
+# experiment-level choice, not a pairing: --polarity applies to every case of an
+# --all_cases run (satisfy = the main attribution, violate = negative control).
+PAIRING = {
+    "t2synth_honest_declined_top20_conversations.jsonl": "empirical_honesty.yaml",
+    "t2synth_stayed_ai_top20_conversations.jsonl": "ai_disclosure.yaml",
+    "t2synth_codebase_resisted_top20_conversations.jsonl":
+        "authoritarian_resistance.yaml",
+}
+
+
+def _already_traced(case_id: str, traces_dir: Path, polarity: str) -> bool:
+    for res in sorted(traces_dir.glob(f"*_{case_id}/trace_result.json"), reverse=True):
+        try:
+            r = json.loads(res.read_text())
+            if (r.get("polarity") == polarity and r["per_crux"]
+                    and "hits_all" in r["per_crux"][0]):
+                return True
+        except (json.JSONDecodeError, KeyError):
+            continue
+    return False
+
+
+def _run_all(index: str, cases_dir: str, rubrics_dir: str, limit: int,
+             provider: str | None, config: str | None, polarity: str) -> None:
+    from scratch.turf.cases import case_from_row
+
+    traces_dir = Path("output/turf/traces")
+    traces_dir.mkdir(parents=True, exist_ok=True)
+    done = failed = skipped = 0
+    for fname, rubric in PAIRING.items():
+        path = Path(cases_dir) / fname
+        rows = [json.loads(line) for line in path.open(encoding="utf8")]
+        n = min(limit, len(rows)) if limit else len(rows)
+        for i in range(n):
+            case = case_from_row(path, i, rows)
+            if _already_traced(case["id"], traces_dir, polarity):
+                skipped += 1
+                continue
+            case_path = Path("output/turf/cases") / f"{case['id']}.json"
+            case_path.parent.mkdir(parents=True, exist_ok=True)
+            case_path.write_text(json.dumps(case, indent=2))
+            print(f"=== tracing {case['id']} vs {rubric} ({polarity}) ===",
+                  flush=True)
+            try:
+                main(case=str(case_path), rubric=str(Path(rubrics_dir) / rubric),
+                     index=index, polarity=polarity, provider=provider,
+                     config=config)
+                done += 1
+            except Exception as e:  # keep going; a rerun retries only failures
+                failed += 1
+                print(f"!!! {case['id']} failed: {e}", flush=True)
+    print(f">>> traced {done}, skipped {skipped} (already done), failed {failed}")
+    if failed:
+        raise SystemExit(f"{failed} trace(s) failed — rerun to retry just those")
 
 
 if __name__ == "__main__":

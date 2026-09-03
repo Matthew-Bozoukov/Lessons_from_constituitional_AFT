@@ -22,7 +22,7 @@ from src.data.synth.stage_operators import (
 )
 from src.data.synth.stage_runtime import lint_problems, price_of
 
-CFG_PATH = "configs/data/synth/good_ai_fiction.yaml"
+CFG_PATH = "configs/data/synth/2026-08-28_good_ai_fiction.yaml"
 TAX_PATH = "configs/data/synth/good_ai_fiction/taxonomy.yaml"
 LIB_PATH = "configs/data/synth/good_ai_fiction/archetypes.yaml"
 
@@ -289,7 +289,7 @@ def test_library_picks_are_filtered_to_the_unit_and_deterministic() -> None:
 # --- the prompts ----------------------------------------------------------------------
 
 def test_the_completion_stage_never_sees_more_than_its_own_principle() -> None:
-    """Chunk-only, matching the difficult-advice default since 2026-08-24."""
+    """Principle-scoped, matching the difficult-advice default since 2026-08-24."""
     for name in ("write_scenarios", "draft_prompts", "write_story", "revise_story"):
         blob = yaml.safe_dump(_stage(name))
         assert "{constitution}" not in blob, f"{name} injects the whole constitution"

@@ -23,6 +23,24 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from src.eval.misalignment.odcv.odcv import misalignment_rate, summarise  # noqa: E402
+from src.utils import name_date  # noqa: E402
+
+
+# The date each arm was SCORED (its published eval run). A legend entry without one is
+# the ambiguity this project keeps hitting — two `da716` arms a fortnight apart read as
+# one bar — so every tick label carries it (CLAUDE.md, the naming law).
+ARM_DATES = {
+    "par": "2026-08-27", "par_s1": "2026-08-27", "par_s2": "2026-08-27",
+    "par716coh": "2026-08-28", "par_pooled": "2026-08-27",
+}
+
+
+def dated(key: str, short: str, source) -> str:
+    """`short` with the arm's eval date under it: taken from the published repo's name
+    (every artifact is dated now) and from ARM_DATES for the arms drawn from --results."""
+    date = ARM_DATES.get(key) or (name_date(source[0].split("/")[-1]) if source
+                                  and not isinstance(source, str) else "")
+    return f"{short}\n{date}" if date else short
 
 
 def _variant_ci(cells: dict[str, float], n_boot: int = 10_000, seed: int = 0) -> tuple:
@@ -108,7 +126,7 @@ ARMS = [
         "Sonnet DA - da716 (difficult advice v2, 9 traits)",
         "sft7",
         (
-            "LASR-Callum/qwen3_6-27b-lora-t2-9284-da716-r64-dynbatch",
+            "LASR-Callum/2026-08-14-qwen36-lora-table2-9284-difficult-advice-716-rank-64-dynbatch",
             "combined4x_20260814_230249/results.json",
         ),
     ),
@@ -118,7 +136,7 @@ ARMS = [
         "Sonnet DA concise - arm C (Sonnet replies capped to grok's length, 703 paired rows)",
         "sft7",
         (
-            "LASR-Callum/2026-08-26-odcv-sonnetconcise703-paired-eval",
+            "LASR-Callum/2026-08-26-odcv-sonnet-concise-703-paired-eval",
             "combined2x_20260826_174216/results.json",
         ),
     ),
@@ -127,7 +145,7 @@ ARMS = [
         "lessswap716",
         "lessswap716 (LESS-selected rows, 3 traits)",
         "sft7",
-        ("LASR-Callum/2026-08-18-odcv-lessswap716-eval", "results.json"),
+        ("LASR-Callum/2026-08-18-odcv-less-swap-716-eval", "results.json"),
     ),
     (
         "synthdoc_v1",
@@ -145,7 +163,7 @@ ARMS = [
         "table2-only 9284 (0% SFT control)",
         "ref",
         (
-            "LASR-Callum/qwen3.6-27b-table2-only-9284-r64",
+            "LASR-Callum/2026-08-05-qwen36-table2-only-9284-rank-64",
             "combined5x_20260805_132959/results.json",
         ),
     ),
@@ -160,7 +178,9 @@ ARMS = [
 # Posted on the same 65 cells (team thread, 2026-08-18); no results.json to pull.
 POSTED = [
     (
-        "c6masked",
+        # Dated like every other arm: this one is the team's posted 65-cell figure for
+        # the c6-masked adapter, whose ODCV run was published 2026-08-16.
+        "c6masked\n2026-08-16",
         "c6masked (synthdoc-716, C6 spans unsupervised)",
         "sft7",
         9.7,
@@ -219,6 +239,7 @@ def _collect(results: dict[str, str], only: tuple[str, ...] = ()) -> list[dict]:
         )
     n_par = sum(k in results for k in SEED_KEYS)
     for key, short, label, group, source in ARMS:
+        short = dated(key, short, source)
         if only and key not in only:
             continue
         if source is None:

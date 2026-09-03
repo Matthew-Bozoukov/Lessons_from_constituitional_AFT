@@ -1,7 +1,7 @@
 # ABOUTME: Prove the length-capped arm differs from the da716 recipe by ONE sentence: every
 # ABOUTME: shared block (models, lint, prompts, export, corpus) is compared byte for byte.
 
-"""Verify difficult_advice_sonnet_concise_716.yaml against difficult_advice_full_constitution.yaml.
+"""Verify 2026-08-24_difficult_advice_sonnet_concise_716.yaml against 2026-08-01_difficult_advice_full_constitution.yaml.
 
 Run: uv run python scratch/sonnet_concise/verify_config.py
 
@@ -25,8 +25,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-BASE = ROOT / "configs/data/synth/difficult_advice_full_constitution.yaml"
-ARM = ROOT / "configs/data/synth/difficult_advice_sonnet_concise_716.yaml"
+BASE = ROOT / "configs/data/synth/2026-08-01_difficult_advice_full_constitution.yaml"
+ARM = ROOT / "configs/data/synth/2026-08-24_difficult_advice_sonnet_concise_716.yaml"
 
 ANCHOR = "      situation. Do not reach for a standard shape.\n"
 CAP_SENTENCE = (

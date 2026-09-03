@@ -14,6 +14,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.utils import read_jsonl, timestamp  # noqa: E402
+from src.utils import figure_path
 
 # dataviz reference palette (validated: all-pairs PASS for slots 1-2, light mode)
 BLUE, ORANGE = "#2a78d6", "#eb6834"
@@ -73,7 +74,7 @@ def main(dir: str = "output/turf/da2203", trace: str | None = None,
     ax.set_xticks([]), ax.set_yticks([])
     ax.set_title(f"TURF trigger space — {len(coords):,} attributes, "
                  f"{len(sums):,} clusters (UMAP, cosine)", color=INK, fontsize=11)
-    p1 = out_dir / f"umap_clusters_{ts}.png"
+    p1 = figure_path(out_dir, "umap_clusters")
     fig.savefig(p1, bbox_inches="tight", facecolor=SURFACE)
     plt.close(fig)
     md += [f"![clusters]({p1.name})", "",
@@ -108,7 +109,7 @@ def main(dir: str = "output/turf/da2203", trace: str | None = None,
     fig.suptitle(f"Trace {tr['case_id']} ({tr['polarity']}) — trigger-cluster hits "
                  f"per crux, k={tr['k']}", color=INK, fontsize=11, y=1.0)
     fig.tight_layout()
-    p2 = out_dir / f"trace_hits_{ts}.png"
+    p2 = figure_path(out_dir, "trace_hits")
     fig.savefig(p2, bbox_inches="tight", facecolor=SURFACE)
     plt.close(fig)
     print(f">>> {p2}")
@@ -148,7 +149,7 @@ def main(dir: str = "output/turf/da2203", trace: str | None = None,
     ax.set_xticks([]), ax.set_yticks([])
     ax.set_title(f"Trace {tr['case_id']} on the trigger space — where the "
                  "behaviour's evidence lives", color=INK, fontsize=11)
-    p3 = out_dir / f"trace_map_{ts}.png"
+    p3 = figure_path(out_dir, "trace_map")
     fig.savefig(p3, bbox_inches="tight", facecolor=SURFACE)
     plt.close(fig)
     print(f">>> {p3}")

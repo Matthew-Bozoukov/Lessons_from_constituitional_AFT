@@ -1,7 +1,7 @@
 ---
 title: 'Table2 9284 synthdoc 716 train'
 date: '2026-08-06'
-summary: '`code.tar.gz` (trainer, `src/`, `configs/`) plus `mixture_think.jsonl` (10,000 rows). The pod untars it, copies the jsonl to `data/`, and runs `configs/train/lora_qwen36_t2_9284_synthdoc_716.yaml`.'
+summary: '`code.tar.gz` (trainer, `src/`, `configs/`) plus `mixture_think.jsonl` (10,000 rows). The pod untars it, copies the jsonl to `data/`, and runs `configs/train/2026-08-25_lora_qwen36_table2_9284_synthdoc_716.yaml`.'
 status: stub
 hf_source:
   repo_id: LASR-Callum/2026-08-06-table2-9284-synthdoc-716-train

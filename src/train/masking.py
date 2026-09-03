@@ -26,6 +26,21 @@ from src.model_profile import ModelProfile, model_profile  # noqa: F401  (re-exp
 # comes from the caller's ModelProfile. This module holds the RULE only; it must never
 # bind one family's syntax at import time (a module-level QWEN36 constant would silently
 # apply Qwen3.6 literals to any future family and defeat the registry).
+#
+# WHICH TURNS are targets is a separate, per-row question, carried by the mixture's
+# `supervise` field (the rule above then decides which of a target turn's tokens count):
+#
+# - "all"   — every assistant turn is a target. The default.
+# - "final" — only the last one; model-eval-model's self-reflection records keep their
+#             first, deliberately imperfect response as context.
+# - "cot"   — only the final turn's REASONING. The row is TRUNCATED at that turn's
+#             `think_close`, so the visible answer is not merely unsupervised: it never
+#             enters the forward pass at all (~40% of a difficult-advice row's tokens).
+#             Supervision therefore runs from end-of-prefill through the close, which is
+#             exactly what the generation-boundary rule already supervises of a trace.
+#             Note this mode ends the row without a `turn_end`: nothing trains the model
+#             to stop after reasoning, which is correct — these rows say nothing about
+#             what follows a trace, they only say what a trace should be.
 
 
 def assistant_spans(text: str, supervise: str = "all", *,
@@ -48,7 +63,9 @@ def assistant_spans(text: str, supervise: str = "all", *,
     Returns:
         Character spans as (start, end) pairs, in order.
     """
-    assert supervise in ("all", "final"), f"unknown supervise mode: {supervise!r}"
+    assert supervise in ("all", "final"), (
+        f"unknown supervise mode: {supervise!r} (assistant_spans selects among "
+        "terminated turns; 'cot' truncates instead and is handled by cot_span)")
     spans: list[tuple[int, int]] = []
     pos = 0
     while (i := text.find(header, pos)) != -1:
@@ -60,6 +77,53 @@ def assistant_spans(text: str, supervise: str = "all", *,
         pos = end
     assert spans, "no assistant turn found; nothing would be supervised"
     return spans[-1:] if supervise == "final" else spans
+
+
+def cot_span(text: str, *, header: str, prefill: str, empty_think: str,
+             think_close: str) -> tuple[int, int]:
+    """Locate the final assistant turn's reasoning: the span AND the truncation point.
+
+    The returned `end` is both the last supervised character and where the row is cut,
+    which is the point of the mode: the answer after it is dropped from the token stream
+    rather than merely labelled -100, so the forward pass shrinks with the loss.
+
+    The shape is asserted, never inferred. Three data errors must fail loudly here
+    rather than quietly supervising something else:
+
+    - No thinking prefill: the turn has no reasoning to train on at all.
+    - The EMPTY marker: it opens with the prefill (`<think>\\n\\n</think>\\n\\n` starts
+      with `<think>\\n`), so a prefix test alone would accept it and then supervise its
+      empty close — training the empty-think collapse this repo's whole masking rule
+      exists to prevent (CLAUDE.md gotcha 2). Checked before the prefill test.
+    - No close: a trace cut off mid-generation was never a valid target.
+
+    Args:
+        text: A chat conversation already rendered by the family's chat template.
+        header: The profile's `assistant_header` literal.
+        prefill: The profile's `prefill` literal, forced at the head of the turn.
+        empty_think: The profile's `empty_think` literal, refused outright.
+        think_close: The profile's `think_close` literal, supervised and inclusive.
+
+    Returns:
+        `(start, end)`: start just after the header (so the forced prefill is inside the
+        span, to be masked by `forced_spans`), end just past the close.
+    """
+    i = text.rfind(header)
+    assert i != -1, f"no assistant turn found; nothing would be supervised ({header!r})"
+    start = i + len(header)
+    assert not text.startswith(empty_think, start), (
+        "supervise='cot' on a turn carrying the EMPTY think marker: it has no reasoning "
+        "to train on, and supervising its close would train the empty-think collapse "
+        "(gotcha 2). Only rows with a real trace may be flagged 'cot'.")
+    assert text.startswith(prefill, start), (
+        f"supervise='cot' needs the final assistant turn to open with the thinking "
+        f"prefill {prefill!r}, but it opens {text[start:start + len(prefill)]!r}; a "
+        "turn with no think block has no reasoning to train on")
+    close = text.find(think_close, start)
+    assert close != -1, (
+        f"supervise='cot': the final assistant turn never closes its reasoning "
+        f"({think_close!r}) — a cut-off trace is not a training target")
+    return start, close + len(think_close)
 
 
 def forced_spans(text: str, spans: list[tuple[int, int]],
@@ -102,8 +166,13 @@ def build_labels(text: str, tokenizer, max_length: int, profile: ModelProfile,
         tokenizer: A fast tokenizer for the model being trained.
         max_length: Truncation length, matching the training sequence length.
         profile: The verified ModelProfile whose literals (assistant_header, turn_end,
-            prefill, empty_think) shape both the spans and the forced heads.
-        supervise: "all" trains every assistant turn; "final" only the last one.
+            prefill, empty_think, think_close) shape both the spans and the forced heads.
+        supervise: "all" trains every assistant turn; "final" only the last one; "cot"
+            only the final turn's reasoning, TRUNCATING the row at its close so the
+            answer leaves the token stream (see the module header). Under "cot" the
+            returned `input_ids` are therefore shorter than a full tokenization of
+            `text` — callers that budget by length (dynamic batching) get the saving
+            for free, and `mask_spans` past the cut simply fall outside the row.
         mask_spans: Optional CHARACTER spans of `text` to unsupervise on top of the rule
             above — a row-level ablation that removes one property of the reasoning from
             the loss while leaving the token stream untouched, so a masked arm and its
@@ -114,11 +183,24 @@ def build_labels(text: str, tokenizer, max_length: int, profile: ModelProfile,
         A dict with `input_ids`, `attention_mask` and `labels`.
     """
     turn_kw = dict(header=profile.assistant_header, turn_end=profile.turn_end)
-    spans = assistant_spans(text, supervise=supervise, **turn_kw)
-    # Forced heads are masked on EVERY turn (supervised or not) -- an unsupervised
-    # first turn is wholly -100 already, so this only matters for the supervised ones.
-    prefills = forced_spans(text, assistant_spans(text, **turn_kw),
-                            profile.prefill, profile.empty_think)
+    if supervise == "cot":
+        # The answer is CUT, not masked: `text` is shortened here and everything
+        # downstream (tokenization, offsets, budgeting) sees only the reasoning. Any
+        # earlier assistant turn stays in the text as context and, being absent from
+        # `spans`, is wholly -100 already -- so its forced head needs no separate entry.
+        start, end = cot_span(text, header=profile.assistant_header,
+                              prefill=profile.prefill,
+                              empty_think=profile.empty_think,
+                              think_close=profile.think_close)
+        text = text[:end]
+        spans = [(start, end)]
+        prefills = [(start, start + len(profile.prefill))]
+    else:
+        spans = assistant_spans(text, supervise=supervise, **turn_kw)
+        # Forced heads are masked on EVERY turn (supervised or not) -- an unsupervised
+        # first turn is wholly -100 already, so this only matters for the supervised ones.
+        prefills = forced_spans(text, assistant_spans(text, **turn_kw),
+                                profile.prefill, profile.empty_think)
     cuts = sorted({0, len(text), *(edge for span in prefills for edge in span)})
 
     ids: list[int] = []

@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from src.eval.misalignment.odcv.odcv import VARIANTS, VIOLATION_THRESHOLD, misalignment_rate  # noqa: E402
-from src.eval.misalignment.odcv.stats import mcnemar_exact, paired_bootstrap  # noqa: E402
+from src.eval.misalignment.odcv.stats import arm_difference, mcnemar_exact  # noqa: E402
 from src.utils import timestamp, write_run_meta  # noqa: E402
 
 
@@ -24,8 +24,6 @@ def main(
     treatment: str,
     control: str,
     out: str = "output/odcv_bench/comparison",
-    n_boot: int = 10000,
-    seed: int = 0,
 ) -> None:
     """Compare two judged ODCV arms on their shared scenario cells.
 
@@ -33,17 +31,14 @@ def main(
         treatment: results.json of the arm under test (e.g. the fine-tune).
         control: results.json of the control arm (e.g. the base model).
         out: Output directory for the comparison artifacts.
-        n_boot: Bootstrap resamples.
-        seed: RNG seed.
     """
     t_cells, c_cells = _cells(Path(treatment)), _cells(Path(control))
     shared = sorted(set(t_cells) & set(c_cells))
     assert shared, "arms share no scenario cells"
     only_t, only_c = sorted(set(t_cells) - set(c_cells)), sorted(set(c_cells) - set(t_cells))
 
-    pairs = [(t_cells[k], c_cells[k]) for k in shared]
-    t_scores = [p[0] for p in pairs]
-    c_scores = [p[1] for p in pairs]
+    t_scores = [t_cells[k] for k in shared]
+    c_scores = [c_cells[k] for k in shared]
 
     # McNemar on discordant pairs: which arm flipped each scenario's violation flag.
     t_only = [k for k in shared
@@ -53,7 +48,7 @@ def main(
     b, c = len(t_only), len(c_only)
     p_exact = mcnemar_exact(b, c)
 
-    boot = paired_bootstrap(pairs, n_boot, seed)
+    boot = arm_difference({k: t_cells[k] for k in shared}, {k: c_cells[k] for k in shared})
     summary = {
         "n_shared_cells": len(shared),
         "cells_only_in_treatment": only_t,
@@ -76,7 +71,7 @@ def main(
     out_dir = Path(out)
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "comparison.json").write_text(json.dumps(summary, indent=2))
-    write_run_meta(out_dir, {"treatment": treatment, "control": control, "seed": seed},
+    write_run_meta(out_dir, {"treatment": treatment, "control": control},
                    extra={"timestamp": timestamp()})
 
     t, c_, p = summary["treatment"], summary["control"], summary["paired"]

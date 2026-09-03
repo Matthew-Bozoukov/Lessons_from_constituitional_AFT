@@ -11,7 +11,9 @@ from pathlib import Path
 
 from huggingface_hub import HfApi
 
-# The mandatory card fields from CLAUDE.md "Required metadata in the dataset card".
+from src.utils import check_hub_repo, name_date
+
+# The mandatory card fields from CLAUDE.md "Artifacts and configs: naming and storage".
 # The contract is uniform across artifact types — a LoRA adapter's `constitution` and
 # `generation_config` (training hyperparams) matter as much as a dataset's; cards are
 # always DERIVED from real run metadata, never filler.
@@ -161,6 +163,31 @@ def training_data_tags(kind: str, pipeline: str, constitution: str | None, *,
     return tags + [str(t) for t in extra]
 
 
+def gate_push(repo_id: str, fields: dict | None = None, *, what: str = "artifact") -> str:
+    """THE gate: nothing reaches the Hub under a name a reader cannot date or place.
+
+    Two checks, both from src/utils.py's law:
+      * the repo name is `<YYYY-MM-DD>-<subject>`, unambiguous, not a legacy name;
+      * that date is the date the artifact was GENERATED — i.e. it matches the card's
+        `date_generated`, so a copy-pasted repo id cannot silently re-date a corpus.
+
+    Every publisher in this repo (datasets, mixtures, adapters, eval runs, caches) calls
+    this before its first network write.
+    """
+    check_hub_repo(repo_id, what=what, write=True)
+    dated = name_date(str(repo_id).split("/")[-1])
+    generated = str((fields or {}).get("date_generated", "")).strip()
+    stamped = re.sub(r"^(\d{4})-?(\d{2})-?(\d{2}).*$", r"\1-\2-\3", generated)
+    if generated and re.fullmatch(r"\d{4}-\d{2}-\d{2}", stamped) and stamped != dated:
+        from src.utils import NamingError
+
+        raise NamingError(
+            f"{what}: {repo_id} is dated {dated} but its card says it was "
+            f"generated {stamped}. CLAUDE.md: the date in the name is the date the data "
+            f"was GENERATED, not uploaded. Push to <org>/{stamped}-<subject> instead.")
+    return repo_id
+
+
 def _front_matter_block(front_matter: dict) -> str:
     """One renderer for a card's YAML front-matter, so every publisher's block parses alike."""
     return "---\n" + yaml.safe_dump(front_matter, sort_keys=False).strip() + "\n---\n"
@@ -302,6 +329,7 @@ def push_run_dir(out_dir: Path, repo_id: str, fields: dict, private: bool = Fals
     Returns:
         The repo URL.
     """
+    gate_push(repo_id, fields, what=f"{repo_type} push")  # name first: no repo, no debt
     card = card_markdown(fields, front_matter)  # validate before any network call
     repo_id = hf_repo_id(repo_id)
     api = hf_api()
@@ -336,6 +364,7 @@ def push_files(paths: list[Path], repo_id: str, fields: dict, private: bool = Tr
     Returns:
         The repo URL.
     """
+    gate_push(repo_id, fields, what="dataset push")  # name first: no repo, no debt
     card = card_markdown(fields, front_matter)  # validate before any network call
     missing = [str(p) for p in paths if not Path(p).is_file()]
     assert not missing, f"push_files: not files: {missing}"

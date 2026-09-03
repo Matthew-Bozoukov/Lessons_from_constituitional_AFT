@@ -23,21 +23,25 @@ from pathlib import Path
 import fire
 
 
-def main(file: str, row: int = 0, out: str | None = None) -> None:
-    path = Path(file)
-    rows = [json.loads(line) for line in path.open(encoding="utf8")]
+def case_from_row(path: Path, row: int, rows: list[dict] | None = None) -> dict:
+    """One eval-sweep conversations row -> the case dict trace.py consumes."""
+    rows = rows or [json.loads(line) for line in path.open(encoding="utf8")]
     r = rows[row]
     msgs = r["messages"]
     ident = next((str(r[k]) for k in ("prompt_id", "prompt_idx", "scenario_id")
                   if k in r), f"row{row}")
     stem = path.stem.replace("_top20_conversations", "")
-    case = {
+    return {
         "id": f"{stem}_{ident}_s{r.get('sample', row)}",
         "query": next(m["content"] for m in msgs if m["role"] == "user"),
         "response": next(m["content"] for m in msgs if m["role"] == "assistant"),
         "reasoning": (r.get("reasoning") or "").strip(),
         "source": {"file": path.name, "row": row, "arm": r.get("arm")},
     }
+
+
+def main(file: str, row: int = 0, out: str | None = None) -> None:
+    case = case_from_row(Path(file), row)
     out_path = Path(out) if out else Path("output/turf/cases") / f"{case['id']}.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(case, indent=2))

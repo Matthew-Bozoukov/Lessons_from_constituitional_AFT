@@ -4,7 +4,7 @@ date: '2026-08-04'
 summary: 'Generated stub — no dataset card summary found. Replace with a written summary.'
 status: stub
 hf_source:
-  repo_id: LASR-Callum/synthdoc-v2-difficult-advice
+  repo_id: LASR-Callum/2026-08-04-synthdoc-package-difficult-advice-stage-cache
   revision: f2b9c88cb4048652441a4ea344c15858dba4e384
 tags:
   - generated-stub
@@ -15,4 +15,4 @@ tags:
 > **not** a write-up and supports no claim. Replace this body with the result, then drop
 > `status: stub` and the `generated-stub` tag.
 
-Source: [`LASR-Callum/synthdoc-v2-difficult-advice`](https://huggingface.co/datasets/LASR-Callum/synthdoc-v2-difficult-advice)
+Source: [`LASR-Callum/2026-08-04-synthdoc-package-difficult-advice-stage-cache`](https://huggingface.co/datasets/LASR-Callum/2026-08-04-synthdoc-package-difficult-advice-stage-cache)

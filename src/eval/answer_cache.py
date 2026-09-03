@@ -70,9 +70,11 @@ class AnswerCache:
                 for every other repo this project owns), else a local directory path.
             mirror: Per-invocation read-through directory (see module docstring).
         """
-        from src.huggingface import hf_repo_id
+        from src.huggingface import gate_push, hf_repo_id
 
         self.hf_repo = hf_repo_id(repo[3:]) if repo.startswith("hf:") else None
+        if self.hf_repo:
+            gate_push(self.hf_repo, what="answer cache")
         self.local = None if self.hf_repo else Path(repo)
         self.mirror = mirror
 

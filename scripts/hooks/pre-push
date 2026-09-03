@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# ABOUTME: git pre-push hook: refuse to push code that names an artifact ambiguously or
+# ABOUTME: without a date. Install with `bash scripts/hooks/install.sh`.
+#
+# The naming law lives in src/naming.py; this hook is the half of it that stops undated
+# names reaching other people. The other half is src/huggingface.py's gate_push, which
+# stops them reaching the Hub.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+if ! uv run --quiet python -m src.utils; then
+  echo
+  echo "push refused: fix the names above (or, for a name you cannot fix yet, say why in"
+  echo "src/naming_legacy.py). Override only with --no-verify, and only if you know why."
+  exit 1
+fi

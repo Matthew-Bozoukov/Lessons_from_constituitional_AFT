@@ -600,11 +600,12 @@ def prevalence(verdicts: list[dict]) -> dict:
         from `n`, so a run where the judge failed on half the records reports a prevalence
         over the half it actually judged and says so in `n_errors`.
     """
-    from src.utils import wilson
+    from src.eval.stats import wilson
 
     judged = [v for v in verdicts if v.get("exhibits") is not None]
     hits = sum(1 for v in judged if v["exhibits"])
-    low, high = wilson(hits, len(judged))
+    # Nothing judged is "no idea", not 0%: the full interval, as before.
+    low, high = wilson(hits, len(judged)) if judged else (0.0, 1.0)
     return {"n": len(judged), "hits": hits,
             "prevalence": round(hits / len(judged), 4) if judged else None,
             "ci_low": low, "ci_high": high,

@@ -9,8 +9,8 @@ hf_source:
 tags:
   - auto-indexed
 models:
-  - LASR-Callum/qwen3.6-27b-lora-t2-9000-synthdoc-1000-r64
-target_model_id: LASR-Callum/qwen3.6-27b-lora-t2-9000-synthdoc-1000-r64
+  - LASR-Callum/2026-08-08-qwen36-lora-table2-9000-synthdoc-1000-rank-64
+target_model_id: LASR-Callum/2026-08-08-qwen36-lora-table2-9000-synthdoc-1000-rank-64
 metrics:
   n:
     value: 52
@@ -57,6 +57,6 @@ metrics:
 | `n_prompts` | 60 | count |
 | `generation_failures` | 0 | value |
 
-**Target:** `LASR-Callum/qwen3.6-27b-lora-t2-9000-synthdoc-1000-r64` · mode `think`
+**Target:** `LASR-Callum/2026-08-08-qwen36-lora-table2-9000-synthdoc-1000-rank-64` · mode `think`
 
 Source: [`LASR-Callum/2026-08-08-lmsys-qwen3-6-27b-lora-t2-9000-synthdoc-1000-r64`](https://huggingface.co/datasets/LASR-Callum/2026-08-08-lmsys-qwen3-6-27b-lora-t2-9000-synthdoc-1000-r64)

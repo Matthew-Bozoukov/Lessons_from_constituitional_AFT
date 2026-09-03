@@ -10,6 +10,7 @@ from pathlib import Path
 import fire
 import matplotlib.pyplot as plt
 import numpy as np
+from src.utils import figure_path
 
 
 def main(
@@ -69,7 +70,7 @@ def main(
     fig.suptitle("Capability: base Qwen3.6-27B vs 80:20 tulu-difficult-advice mixture LoRA",
                  fontsize=13, y=1.02)
     fig.tight_layout()
-    png = out / f"capability_base_vs_tulu_{ts}.png"
+    png = figure_path(out, "capability_base_vs_tulu")
     fig.savefig(png, dpi=150, bbox_inches="tight")
     print(f">>> {png}")
 

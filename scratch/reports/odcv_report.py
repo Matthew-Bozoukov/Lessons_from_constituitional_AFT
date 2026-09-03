@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 from src.eval.misalignment.odcv.odcv import VARIANTS, load_published_medians  # noqa: E402
 from src.eval.misalignment.odcv.stats import agreement as _agreement  # noqa: E402
 from src.utils import timestamp  # noqa: E402
+from src.utils import figure_path
 
 BLUE, ORANGE = "#4C78A8", "#F58518"
 
@@ -58,7 +59,7 @@ def _plot(res: dict, agree: dict, out: Path) -> Path:
         ax2.text(i, c + 0.4, str(c), ha="center", fontsize=9)
 
     fig.tight_layout()
-    path = out / "mr_comparison.png"
+    path = figure_path(out, "mr_comparison")
     fig.savefig(path, dpi=160)
     plt.close(fig)
     return path

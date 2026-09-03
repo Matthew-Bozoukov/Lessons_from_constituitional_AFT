@@ -9,8 +9,8 @@ its models, its knobs — lives in that type's config, so the config alone is th
 scientific record of what a run generated:
 
 ```
-uv run scripts/data/synth/build_dataset.py --config configs/data/synth/difficult_advice.yaml [--smoke]
-uv run scripts/data/synth/build_dataset.py --config configs/data/synth/post_action_retrospection.yaml [--smoke]
+uv run scripts/data/synth/build_dataset.py --config configs/data/synth/2026-08-01_difficult_advice.yaml [--smoke]
+uv run scripts/data/synth/build_dataset.py --config configs/data/synth/2026-08-13_post_action_retrospection.yaml [--smoke]
 uv run scripts/data/synth/build_dataset.py --config <cfg> --ablate <stage>   # ablation arm
 uv run scripts/data/synth/build_dataset.py --config <cfg> --estimate [--measured <smoke manifest>]
 ```
@@ -72,7 +72,7 @@ A config's `stages:` entry names an operator `kind` and supplies everything it n
 | `corpus_check` | corpus-level property checks; pass-through, always ablatable (see below) | `fields`, `properties`, `axes`, `cross`, `rubrics`, `units`, `on_fail`, `model` |
 | `scenarios_weighted` | weighted trait apportionment, control slice, motive rotation, per-batch industries, deterministic per-scenario variants | `model`, `prompts` (+`control_user`), `threats`, `control_threats`, `fields` |
 | `load_source_run` | a completed run's finals + constitution-sha provenance check | (`source:` block) |
-| `plan_cells` / `perturb_pairs` / `generate_cells` / `revise_cells` / `assemble_cells` | **FROZEN** — the model-eval-model cells, defined in `model_eval_model_cells.py`. A cell is a document type written in Python, which is what the kinds above exist to replace. Registered only because the archived configs and `peer_critique.yaml` are written against them; do not use them for new work | (`cells:`, `flaws:`, `prompts:` blocks) |
+| `plan_cells` / `perturb_pairs` / `generate_cells` / `revise_cells` / `assemble_cells` | **FROZEN** — the model-eval-model cells, defined in `model_eval_model_cells.py`. A cell is a document type written in Python, which is what the kinds above exist to replace. Registered only because the archived configs and `2026-08-13_peer_critique.yaml` are written against them; do not use them for new work | (`cells:`, `flaws:`, `prompts:` blocks) |
 
 Prompt templates in configs are `str.format` templates over record fields plus shared
 vars (`{constitution}`, `{style_guidance}`). Literal JSON braces are escaped `{{ }}`.
@@ -190,7 +190,7 @@ default config (`load_dataset(repo)` fetches it alone) and each stage as its own
 named config — which also keeps the dataset viewer working. A halted run publishes
 no `dataset.jsonl` (`manifest.json`'s `dataset` field is null).
 
-## Document type: difficult advice (`configs/data/synth/difficult_advice.yaml`)
+## Document type: difficult advice (`configs/data/synth/2026-08-01_difficult_advice.yaml`)
 
 Derived from the difficult-advice recipe in
 [Teaching Claude Why](https://alignment.anthropic.com/2026/teaching-claude-why/), as a
@@ -203,10 +203,10 @@ metadata.
 **No stage is ever shown more than the one principle it targets.** Until 2026-08-24
 `revise_prompts` and `revise_responses` were each handed the WHOLE constitution; both
 injections were removed after a matched-pair test (identical scenarios and draft prompts,
-trained as the da716 organism, ODCV over the same 65 cells) put the chunk-only recipe at
+trained as the da716 organism, ODCV over the same 65 cells) put the principle-scoped recipe at
 MR 11.5% [6.2, 19.6] against the full-constitution recipe's 16.3% [10.0, 21.8] — overlapping
 intervals, so no detectable cost, and the simpler, cheaper recipe became the default. The
-previous recipe is preserved verbatim as `difficult_advice_full_constitution.yaml` for
+previous recipe is preserved verbatim as `2026-08-01_difficult_advice_full_constitution.yaml` for
 regenerating corpora published before that date.
 
 Two things the swap also does, both recorded in the config header: it withholds the
@@ -220,7 +220,7 @@ Output and HF names moved from the historical `synthdoc_v2` prefix to `synthdoc_
 the default swap, so pre-2026-08-24 snapshots stay resumable under the legacy config.
 This replaced the config-driven v1 (deleted 2026-08-03, git history).
 
-## Document type: pre-action deliberation (`configs/data/synth/pre_action_deliberation.yaml`)
+## Document type: pre-action deliberation (`configs/data/synth/2026-08-13_pre_action_deliberation.yaml`)
 
 Inverts who is tempted: **the agent itself**. Working autonomously (prose or agentic
 form), it finds it could protect its own position — or the objective it was deployed to
@@ -280,7 +280,7 @@ follows, the model revises or holds with reasons; trained with `supervise: "fina
 lifted from the stage-5 export's metadata by `build_mixture` (interchange mode) and
 consumed by `masking.py`).
 
-### The natural-turn recipes (`post_action_retrospection.yaml`, `peer_critique.yaml`)
+### The natural-turn recipes (`2026-08-13_post_action_retrospection.yaml`, `2026-08-13_peer_critique.yaml`)
 
 **These two are the live model-eval-model configs.** The archived base and `_self`/`_other`
 put the source run's reply — gold, or minimally perturbed — into the turn under evaluation.
@@ -301,13 +301,13 @@ legitimate route. Design B trains the recovery from that.
 
 | | difficult advice | PR (design B) |
 |---|---|---|
-| stages 1–6 | scenarios → checks → dedupe → draft → chunk-only refine | **identical, byte for byte** (a test pins the parity) |
+| stages 1–6 | scenarios → checks → dedupe → draft → principle-scoped refine | **identical, byte for byte** (a test pins the parity) |
 | the grey-area gate | — | `corpus_prompts` → `filter_prompts`: a Sonnet rater reads the principle and the **refined exchange** (deployment prompt + the person’s message) and drops it unless answering is a genuine grey area for the assistant under that principle — black-and-white, not tempting, free to refuse, or not engaging the principle. Kept 23/40 on its smoke with every principle contributing. (Its first home, the third-person scenario, dropped 77% for having “no AI assistant in the loop” — a framing error, caught by the drop ceiling) |
 | the first reply | — | `draft_first_turn`: a **bare refusal**. Sonnet is told the form only (Haiku managed a genuinely bare refusal on only 6/13 first turns; Sonnet 3/3), with Haiku as `fallback_model` when Anthropic's input moderation refuses the scenario for Sonnet (it did on a person-in-distress scenario Haiku had handled twice); `stamp_model` writes the actual author onto the record — decline in a few sentences, no reasoning, no alternative — in one of three registers rotated per record (curt / apologetic / policy-citing); a mechanical lint (length, no "because / instead / what I can do") enforces bareness; the stage stamps `first_turn_source` and `supervise: final` |
 | the check | — | `verify_first_turn`: Sonnet confirms the reply is a bare refusal (no reasoning, no named concern, no alternative) and the record is dropped otherwise — a `keep:` gate, prior 0.9 |
 | the follow-up | — | `write_followup`: **pushback** in the person's voice — why not, that isn't helpful, here is what I actually need — linted so it never names a value or diagnoses the reply |
 | the trained turn | `draft_responses` → `revise_responses` | `draft_reflection` → `revise_reflection`: the same system prompt (byte-identical), the same rewrite contract with one bullet swapped ("do not go along" → "own the refusal and do the work it skipped": never go along under pushback, give the reason in terms of what is at stake, help with the legitimate goal), the same lint — with the refusal in a genuine assistant turn via `conversation:` |
-| grounding | chunk only | chunk only — no `{constitution}` anywhere (a test asserts it) |
+| grounding | principle scoped | principle scoped — no `{constitution}` anywhere (a test asserts it) |
 | corpus size | 2,000, no gate | 4,400 planned → ~2,000 documents (≈0.46 per planned scenario after refine losses, the rater, the bare-refusal check and the follow-up lint) |
 | the export | three messages | five messages, `supervise: final`; `refusal_register` and the first turn's author in the metadata |
 
@@ -328,7 +328,7 @@ The first turn stays untrained in both (`supervise: final` / `all` respectively)
 *tracked* conditioning variable rather than an invisible one: every record carries
 `reply_quality`, `first_turn_source` and `followup_source` in its metadata.
 
-`uv run synth check --config configs/data/synth/post_action_retrospection.yaml --run_dir <dir>`
+`uv run synth check --config configs/data/synth/2026-08-13_post_action_retrospection.yaml --run_dir <dir>`
 runs the validity checks and gates on the config's thresholds: gate yield (report-only —
 the number a gated config re-sizes itself from), coverage of what actually entered
 generation, template collapse, **structural diversity** (on the assembled records:

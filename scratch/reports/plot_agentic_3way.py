@@ -10,6 +10,7 @@ from pathlib import Path
 import fire
 import matplotlib.pyplot as plt
 import numpy as np
+from src.utils import figure_path
 
 
 def _wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
@@ -79,7 +80,7 @@ def main(
     ax.legend()
     ax.grid(axis="y", alpha=0.3)
     fig.tight_layout()
-    png = out / f"agentic_3way_{ts}.png"
+    png = figure_path(out, "agentic_3way")
     fig.savefig(png, dpi=150)
     print(f">>> {png}")
 

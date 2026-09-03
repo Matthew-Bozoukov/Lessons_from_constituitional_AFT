@@ -28,7 +28,8 @@ from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.endpoints import runpod  # noqa: E402
+# main moved this module from src/endpoints/ to src/infra/ on 2026-08-31 (PR #83).
+from src.infra import runpod  # noqa: E402
 
 BASE = "Qwen/Qwen3.6-27B"
 
@@ -83,7 +84,9 @@ def up(
     assert len(adapters) == len(names), (
         f"got {len(adapters)} adapters but {len(names)} names"
     )
-    pid = runpod.launch_pod(
+    # `launch_pod` became `serve_vllm` in the same move; identical arguments, and mods are
+    # still (served_name, adapter_repo) pairs.
+    pid = runpod.serve_vllm(
         BASE,
         list(zip(names, adapters)),
         mode=mode,

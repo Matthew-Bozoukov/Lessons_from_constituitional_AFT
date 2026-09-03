@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 from src.eval.misalignment.odcv.odcv import VIOLATION_THRESHOLD  # noqa: E402
 from src.utils import timestamp  # noqa: E402
+from src.utils import figure_path
 
 TREAT, CTRL = "#4C78A8", "#F58518"
 PUBLISHED_MR, PUBLISHED_SEV = 43.8, 1.67
@@ -60,7 +61,7 @@ def _plot(cmp_: dict, t_cells: dict, c_cells: dict, out: Path) -> list[Path]:
     ax2.spines[["top", "right"]].set_visible(False)
 
     fig.tight_layout()
-    pth = out / "matched_pair.png"
+    pth = figure_path(out, "matched_pair")
     fig.savefig(pth, dpi=160)
     plt.close(fig)
     paths.append(pth)
@@ -80,7 +81,7 @@ def _plot(cmp_: dict, t_cells: dict, c_cells: dict, out: Path) -> list[Path]:
     ax.grid(True, linestyle="--", alpha=0.2, axis="y")
     ax.spines[["top", "right"]].set_visible(False)
     fig2.tight_layout()
-    pth2 = out / "per_scenario_delta.png"
+    pth2 = figure_path(out, "per_scenario_delta")
     fig2.savefig(pth2, dpi=160)
     plt.close(fig2)
     paths.append(pth2)

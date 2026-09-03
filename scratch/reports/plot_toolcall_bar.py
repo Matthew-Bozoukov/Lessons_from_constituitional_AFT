@@ -10,6 +10,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
+from src.utils import figure_path
 
 # Measured misalignment rates for the two 20/80 conditions.
 BARS = [
@@ -54,7 +55,7 @@ def main() -> None:
 
     fig.tight_layout()
     ts = time.strftime("%Y%m%d_%H%M%S")
-    png = OUT_DIR / f"toolcall_vs_no_toolcall_{ts}.png"
+    png = figure_path(OUT_DIR, "toolcall_vs_no_toolcall")
     fig.savefig(png, dpi=150)
     plt.close(fig)
 

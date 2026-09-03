@@ -7,10 +7,10 @@ Two figures, in the same house style as the ODCV misalignment chart - cream
 ground, black-edged bars, bold value labels, capped 95% CI error bars, bold
 title over an italic subtitle:
 
-1. `swebench-outcome-all-instances.svg` - what happened to all 250 instances per
+1. `<date>_swebench_outcome_all_instances.svg` - what happened to all 250 instances per
    arm (resolved / submitted but failed / no patch produced), with the published
    baseline marked, and a second panel breaking down why no patch was produced.
-2. `swebench-outcome-submitted-only.svg` - the same run scored only over
+2. `<date>_swebench_outcome_submitted_only.svg` - the same run scored only over
    instances where a patch was submitted, which is the denominator that flips
    the ranking between the two arms.
 
@@ -51,6 +51,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
 from matplotlib.patches import Patch  # noqa: E402
+from src.utils import figure_path
 
 REPO = "LASR-Callum/2026-08-07-swebench-verified-qwen36-lora-comparison"
 OUT = Path("output/swebench_mini_report")
@@ -273,7 +274,7 @@ def figure_all_instances(united: dict, pooled: dict, pooled_n: int) -> None:
     )
 
     fig.subplots_adjust(wspace=0.42)
-    save(fig, "swebench-outcome-all-instances.svg")
+    save(fig, figure_path(OUT, "swebench_outcome_all_instances", ext="svg").name)
 
 
 # --- figure 2 -------------------------------------------------------------------------
@@ -357,7 +358,7 @@ def figure_submitted_only(united: dict) -> None:
         fontsize=10,
         color="#5b5b5b",
     )
-    save(fig, "swebench-outcome-submitted-only.svg")
+    save(fig, figure_path(OUT, "swebench_outcome_submitted_only", ext="svg").name)
 
 
 def main() -> None:

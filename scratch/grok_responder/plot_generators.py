@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from src.eval.misalignment.odcv.odcv import misalignment_rate, summarise  # noqa: E402
+from src.utils import figure_path
 
 
 def _variant_ci(cells: dict[str, float], n_boot: int = 10_000, seed: int = 0) -> tuple:
@@ -45,7 +46,7 @@ def _variant_ci(cells: dict[str, float], n_boot: int = 10_000, seed: int = 0) ->
     stats.sort()
     return round(stats[int(0.025 * n_boot)], 1), round(stats[int(0.975 * n_boot)] , 1)
 
-CFG = "configs/eval/odcv_bench_t2_9284_grokresp703_r64_paired_2x65.yaml"
+CFG = "configs/eval/2026-08-24_odcv_bench_table2_9284_grok_responder_703_rank64_paired_2_65.yaml"
 
 def _latest_local() -> str:
     """Newest combined*/results.json for the grok-responder arm, relative to ROOT.
@@ -57,7 +58,7 @@ def _latest_local() -> str:
     hits = sorted(base.glob("combined*/results.json"))
     if not hits:
         # The published copy (contract layout, results/results.json) -- identical numbers.
-        return ("LASR-Callum/2026-08-24-odcv-grokresp703-paired-eval", "results/results.json")
+        return ("LASR-Callum/2026-08-24-odcv-grok-responder-703-paired-eval", "results/results.json")
     return str(hits[-1].relative_to(ROOT))
 
 LOCAL_GROK = _latest_local()
@@ -68,7 +69,7 @@ def _latest_gpt() -> str:
     base = ROOT / "output/odcv_bench/qwen3_6-27b-lora-t2-9284-gptresp685-paired-r64"
     hits = sorted(base.glob("combined*/results.json"))
     if not hits:
-        return ("LASR-Callum/2026-08-25-odcv-gptresp685-paired-eval", "combined2x_20260825_181731/results.json")
+        return ("LASR-Callum/2026-08-25-odcv-gpt-responder-685-paired-eval", "combined2x_20260825_181731/results.json")
     return str(hits[-1].relative_to(ROOT))
 
 
@@ -92,7 +93,7 @@ LOCAL_CAPPED = _latest_capped()
 ARMS = [
     ("Haiku 4.5 -> Sonnet 5\n(baseline)",
      "da716: Haiku 4.5 drafts, Sonnet 5 revises (the baseline recipe)", "sonnet",
-     ("LASR-Callum/qwen3_6-27b-lora-t2-9284-da716-r64-dynbatch",
+     ("LASR-Callum/2026-08-14-qwen36-lora-table2-9284-difficult-advice-716-rank-64-dynbatch",
       "combined4x_20260814_230249/results.json")),
     ("grok-4.6\n(both stages)",
      "grok arm: x-ai/grok-4.6 drafts AND revises", "grok", LOCAL_GROK),
@@ -104,7 +105,7 @@ ARMS = [
     ("base fp8\n(no SFT)", "Qwen3.6-27B base fp8 (no SFT)", "ref",
      ("matboz/odcv-qwen3.6-27b-transcripts", "base_fp8/results.json")),
     ("table2-only\n(0% SFT)", "table2-only 9284 (0% SFT control)", "ref",
-     ("LASR-Callum/qwen3.6-27b-table2-only-9284-r64",
+     ("LASR-Callum/2026-08-05-qwen36-table2-only-9284-rank-64",
       "combined5x_20260805_132959/results.json")),
 ]
 POSTED = []
@@ -292,7 +293,7 @@ def main(style: str = "bars", out_dir: str = "output/plots") -> None:
     ts = time.strftime("%Y%m%d_%H%M%S")
     out = ROOT / out_dir
     out.mkdir(parents=True, exist_ok=True)
-    png = out / f"odcv_generators_65cells_{style}_{ts}.png"
+    png = figure_path(out, f"odcv_generators_65cells_{style}")
     md = out / f"odcv_generators_65cells_{style}_{ts}_results.md"
     {"bars": _bars, "variants": _variants, "dots": _dots}[style](rows, png)
     _mirror(rows, md, png, ts)

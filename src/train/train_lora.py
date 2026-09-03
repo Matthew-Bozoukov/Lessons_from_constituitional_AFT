@@ -1,5 +1,5 @@
 # ABOUTME: QLoRA SFT of Qwen3-32B on the difficult-advice dataset via TRL SFTTrainer.
-# ABOUTME: Runs on a GPU instance: python scripts/train/train_lora.py --config configs/train/lora_qwen3_difficult_advice.yaml
+# ABOUTME: Runs on a GPU instance: python scripts/train/train_lora.py --config configs/train/2026-07-31_lora_qwen3_difficult_advice.yaml
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import contextlib
 import json
 import os
 import time
+from collections import Counter
 from pathlib import Path
 
 import torch
@@ -245,7 +246,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         "(+ data_file when the repo holds several .jsonl, + data_revision to pin; "
         "or pass data_repo=org/name on the CLI)")
     # The trained adapter always lands on HF; push=false is the deliberate opt-out for
-    # credential-less pods (runpod_train.py), whose driver pushes after pull-back.
+    # a pod without HF credentials, whose driver pushes the pulled-back adapter instead.
     hf_repo = (str(cfg.hf_repo)
                if "hf_repo" in cfg and not OmegaConf.is_missing(cfg, "hf_repo")
                and cfg.hf_repo else None)
@@ -256,6 +257,12 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
             "Declare hf_repo: <name> in the config (or hf_repo=... on the CLI) — the "
             "name alone, the org comes from .env HF_ORG (src.huggingface.hf_org); "
             "a credential-less pod run sets push=false and pushes from the driver.")
+        # A model organism is named before it is trained, never after: the name is checked
+        # here, at config load, so an ambiguous or undated `hf_repo` costs zero GPU hours
+        # instead of failing at the push after a multi-hour run (src/utils.py).
+        from src.utils import check_hub_repo
+
+        check_hub_repo(hf_repo, what="model organism (hf_repo)", write=True)
     torch.manual_seed(int(cfg.seed))
 
     # Under `torchrun` every rank runs this file; these are 1/0 for a plain single-GPU run.
@@ -327,6 +334,21 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     else:
         training_meta_mask = {}
 
+    # `supervise` selects WHICH assistant turns (and, for "cot", which part of one) are
+    # training targets. Censused on the FULL dataset for the same reason as mask_spans:
+    # a column that declares a non-default mode nowhere is an arm collapsed into its
+    # control, and that must fail before the GPU bill starts.
+    training_meta_supervise = {}
+    if "supervise" in ds.column_names:
+        supervise_counts = Counter(s_ or "all" for s_ in ds["supervise"])
+        non_default = {m: n for m, n in supervise_counts.items() if m != "all"}
+        assert non_default, (
+            "dataset has a supervise column but every row is 'all'; "
+            "this arm would be identical to its control")
+        print(f">>> supervise (validated on all {len(ds)} rows): "
+              f"{dict(supervise_counts.most_common())}")
+        training_meta_supervise = {"supervise_counts": dict(supervise_counts)}
+
     # One provenance stamp for every artifact this run publishes: the final adapter
     # carries it verbatim; each checkpoint branch adds its `step`. The eval framework
     # infers serve-time thinking mode from it (CLAUDE.md, "The eval framework").
@@ -338,6 +360,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         "git_sha": _git_sha(),
         "timestamp": ts,
         **training_meta_mask,
+        **training_meta_supervise,
     }
 
     if smoke:
@@ -387,15 +410,20 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     # `<think>\n` prefill; a WHOLE empty marker, since a healthy model never closes
     # an empty block), supervise what it does (reasoning + `\n</think>` + answer).
     # Runs trained under older rules are reproduced from git history, not a knob.
+    # (Orthogonal to the per-row `supervise` field below, which chooses which TURNS are
+    # targets at all -- the rule then decides which of a target's tokens count.)
     profile = model_profile(str(cfg.model))
-    gate_generation_boundary(ds["text"], tokenizer, max_len, profile, thinking)
-    # A row's optional `supervise` field ("final" = train only the last assistant
-    # turn -- model-eval-model's self-reflection records) must be consumed here:
-    # remove_columns discards it right after. Absent or null trains every turn.
+    # A row's optional `supervise` field must be consumed here -- remove_columns
+    # discards it right after. Absent or null trains every turn. It is read BEFORE the
+    # gate because the gate has to verify the mask this run will actually build: a
+    # "cot" row checked as "all" would leave the arm's own code path unverified.
+    modes = (list(ds["supervise"]) if "supervise" in ds.column_names
+             else ["all"] * len(ds))
+    gate_generation_boundary(ds["text"], tokenizer, max_len, profile, thinking,
+                             supervise=modes)
     if "supervise" in ds.column_names:
-        n_final = sum(1 for s in ds["supervise"] if s == "final")
-        print(f">>> supervise=final rows (only last assistant turn trains): "
-              f"{n_final}/{len(ds)}")
+        print(f">>> supervise in THIS selection: "
+              f"{dict(Counter(m or 'all' for m in modes).most_common())}")
     # `mask_spans` (character spans of `text`) unsupervises one property of the reasoning
     # without altering the text, so an ablation arm and its control tokenize identically.
     # Validated on the full dataset above; consumed by the map below, which is the last

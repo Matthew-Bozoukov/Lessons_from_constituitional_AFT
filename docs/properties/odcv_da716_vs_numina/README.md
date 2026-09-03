@@ -16,7 +16,7 @@ Property membership predicts which model produced a rollout at **AUC 0.956**
 Small text artifacts only. `properties.jsonl` (2.4 MB), `members.jsonl`,
 `detector_verdicts`, the browsable dashboards and the 4096-d embeddings are on the Hub:
 
-    LASR-Callum/2026-08-20-odcv-feature-discovery-da716-5pct-vs-numina-control
+    LASR-Callum/2026-08-20-odcv-feature-discovery-difficult-advice-716-5-pct-vs-numina-control
 
 Write-up: `dashboard/content/findings/2026-08-20-da716-vs-numina-properties/`.
 

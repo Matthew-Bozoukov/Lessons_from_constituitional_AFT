@@ -64,7 +64,7 @@
   },
   {
     "label": "t2_9284 + DA-verbose token-matched",
-    "repo": "LASR-Callum/2026-08-25-table2-9284-da-verbose-tokenmatched-train",
+    "repo": "LASR-Callum/2026-08-25-table2-9284-difficult-advice-verbose-token-matched-train-mixture",
     "file": "t2_9284_da_verbose_tokenmatched.jsonl",
     "max_seq_len": 8192,
     "rows": 363,
@@ -85,7 +85,7 @@
   },
   {
     "label": "t2_9284 + post-action-retro_716",
-    "repo": "LASR-Callum/2026-08-26-table2-9284-par716-train",
+    "repo": "LASR-Callum/2026-08-26-table2-9284-post-action-retrospection-716-train",
     "file": "mixture_think.jsonl",
     "max_seq_len": 8192,
     "rows": 716,
@@ -147,8 +147,8 @@
     }
   },
   {
-    "label": "t2_9284 + DA-chunk-only_702",
-    "repo": "LASR-Callum/2026-08-21-table2-9284-da-chunk-only-702-train",
+    "label": "t2_9284 + DA-principle-scoped_702",
+    "repo": "LASR-Callum/2026-08-21-table2-9284-difficult-advice-principle-scoped-702-train-mixture",
     "file": "t2_9284_da_chunk_only_702.jsonl",
     "max_seq_len": 8192,
     "rows": 702,
@@ -159,7 +159,7 @@
     "mean_trainable_per_row": 1169.6,
     "rows_at_cap": 0,
     "by_source": {
-      "difficult_advice_chunk_only": {
+      "difficult_advice_principle_scoped": {
         "rows": 702,
         "tot": 1022551,
         "sup": 821070,
@@ -211,7 +211,7 @@
   },
   {
     "label": "t2_9284 + grok_responder_703",
-    "repo": "LASR-Callum/2026-08-24-t2-9284-grokresp703-paired-train",
+    "repo": "LASR-Callum/2026-08-24-table2-9284-grok-responder-703-paired-train-mixture",
     "file": "t2_9284_grokresp703_10k.jsonl",
     "max_seq_len": 8192,
     "rows": 703,
@@ -232,7 +232,7 @@
   },
   {
     "label": "t2_9284 + sonnet_responder_703",
-    "repo": "LASR-Callum/2026-08-24-t2-9284-sonnet703-paired-train",
+    "repo": "LASR-Callum/2026-08-24-table2-9284-sonnet-703-paired-train-mixture",
     "file": "t2_9284_sonnet703_10k.jsonl",
     "max_seq_len": 8192,
     "rows": 703,
@@ -253,7 +253,7 @@
   },
   {
     "label": "t2_9284 + gpt_responder_685",
-    "repo": "LASR-Callum/2026-08-25-t2-9284-gptresp685-paired-train",
+    "repo": "LASR-Callum/2026-08-25-table2-9284-gpt-responder-685-paired-train-mixture",
     "file": "t2_9284_gptresp685_10k.jsonl",
     "max_seq_len": 8192,
     "rows": 685,
@@ -274,7 +274,7 @@
   },
   {
     "label": "t2_9284 + sonnet_concise_703",
-    "repo": "LASR-Callum/2026-08-26-t2-9284-sonnetconcise703-paired-train",
+    "repo": "LASR-Callum/2026-08-26-table2-9284-sonnet-concise-703-paired-train",
     "file": "t2_9284_sonnetconcise703_10k.jsonl",
     "max_seq_len": 8192,
     "rows": 703,

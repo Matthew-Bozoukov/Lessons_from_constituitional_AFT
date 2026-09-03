@@ -41,7 +41,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 DA_REPO = "LASR-Callum/2026-08-14-table2-9284-difficult-advice-716-train"
 DA_FILE = "t2_9284_da716_10k.jsonl"
 DA_SOURCE = "difficult_advice_v2"
-DA_META_REPO = "LASR-Callum/2026-08-13-difficult-advice-v2"
+DA_META_REPO = "LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted"
 DA_META_FILE = "stage_8_export_sft.jsonl"
 
 UNIT = {

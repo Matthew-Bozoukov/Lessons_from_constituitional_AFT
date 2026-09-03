@@ -1,100 +1,106 @@
-# ABOUTME: Reusable ODCV comparison statistics: scenario-level paired bootstrap,
-# ABOUTME: exact McNemar on violation flips, and published-score agreement.
+# ABOUTME: ODCV comparison statistics on top of src/eval/stats.py: the paired arm difference
+# ABOUTME: (MR and severity), exact McNemar on violation flips, and published-score agreement.
 """Statistics shared by the ODCV comparison and report pipelines.
 
-Extracted verbatim from odcv_compare.py (`_paired_bootstrap`, the inline McNemar
-exact test) and the odcv report generator (`agreement`) so the numeric cores are
-importable and unit-tested independently of any report rendering.
+`arm_difference` is the treatment-minus-control interval, paired on scenario (both arms ran
+the same stories) with the 50/50 variant mixture as the estimand; it replaces the scenario
+bootstrap this module used to carry (the difference of two means has a closed-form SE --
+see src/eval/stats.py). `mcnemar_exact` is re-exported from there; `agreement` compares our
+medians against the paper's row.
 """
 
 from __future__ import annotations
 
-from math import comb
+import math
 
-import numpy as np
+from src.eval.misalignment.odcv.odcv import VARIANTS, VIOLATION_THRESHOLD, _design_for, _rollouts
+from src.eval.stats import Result, difference, mcnemar_exact, t_cdf
 
-from src.eval.misalignment.odcv.odcv import VARIANTS, VIOLATION_THRESHOLD
+__all__ = ["arm_difference", "mcnemar_exact", "agreement"]
 
 
-def paired_bootstrap(pairs: list[tuple[float, float]], n_boot: int, seed: int) -> dict:
-    """Bootstrap the treatment-minus-control difference, resampling scenarios.
+def _long(cells: dict[str, list | float], checkpoint: str) -> list[dict]:
+    """{"variant/scenario": [median severity per rollout] | median} -> one row per rollout."""
+    rows = []
+    for key, value in cells.items():
+        variant, scenario = key.split("/", 1)
+        for k, sev in enumerate(_rollouts(value)):
+            rows.append({"checkpoint": checkpoint, "scenario": scenario, "variant": variant, "pass": k,
+                         "severity": float(sev), "violation": float(sev >= VIOLATION_THRESHOLD)})
+    return rows
+
+
+def _p_two_sided(r: Result) -> float:
+    """z/t-test p-value from an interval result (0 when the SE is zero and the gap is not)."""
+    if r.se == 0:
+        return 1.0 if r.mean == 0 else 0.0
+    return 2.0 * (1.0 - t_cdf(abs(r.mean) / r.se, r.df))
+
+
+def arm_difference(treatment: dict[str, float], control: dict[str, float]) -> dict:
+    """Treatment minus control on the cells both arms scored, paired on scenario.
 
     Args:
-        pairs: One (treatment, control) median pair per scenario cell.
-        n_boot: Bootstrap resamples.
-        seed: RNG seed.
+        treatment: {"variant/scenario": median severity} for the arm under test.
+        control: The same for the control arm.
 
     Returns:
-        Point estimates and 95% CIs for the MR difference and severity difference.
+        MR difference (pp) and severity difference with 95% intervals and two-sided
+        p-values, plus the full `src.eval.stats` results under "stats".
     """
-    arr = np.asarray(pairs, dtype=float)
-    assert arr.ndim == 2 and arr.shape[1] == 2, f"bad shape {arr.shape}"
-    n = arr.shape[0]
-    rng = np.random.default_rng(seed)
-    idx = rng.integers(0, n, size=(n_boot, n))
-    draws = arr[idx]
-    assert draws.shape == (n_boot, n, 2), f"bad shape {draws.shape}"
-
-    viol = draws >= VIOLATION_THRESHOLD
-    mr_diff = 100.0 * (viol[:, :, 0].mean(axis=1) - viol[:, :, 1].mean(axis=1))
-    sev_diff = draws[:, :, 0].mean(axis=1) - draws[:, :, 1].mean(axis=1)
+    shared = sorted(set(treatment) & set(control))
+    assert len(shared) >= 2, "arms share fewer than two scenario cells"
+    # Both arms must carry the same variants, or one side's mixture is not the other's:
+    # an incentivized-only arm is compared on the control's incentivized cells alone.
+    variants = sorted({k.split("/", 1)[0] for k in shared})
+    t_rows = _long({k: treatment[k] for k in shared}, "treatment")
+    c_rows = _long({k: control[k] for k in shared}, "control")
+    design = _design_for(variants)
+    mr = difference([dict(r, value=100.0 * r["violation"]) for r in t_rows],
+                    [dict(r, value=100.0 * r["violation"]) for r in c_rows], design)
+    sev = difference([dict(r, value=r["severity"]) for r in t_rows],
+                     [dict(r, value=r["severity"]) for r in c_rows], design)
     return {
-        "mr_diff_pp": round(
-            100.0 * ((arr[:, 0] >= VIOLATION_THRESHOLD).mean()
-                     - (arr[:, 1] >= VIOLATION_THRESHOLD).mean()), 1),
-        "mr_diff_ci95": [round(float(np.percentile(mr_diff, 2.5)), 1),
-                         round(float(np.percentile(mr_diff, 97.5)), 1)],
-        "mr_diff_p_two_sided": round(2 * min((mr_diff >= 0).mean(), (mr_diff <= 0).mean()), 4),
-        "sev_diff": round(float(arr[:, 0].mean() - arr[:, 1].mean()), 2),
-        "sev_diff_ci95": [round(float(np.percentile(sev_diff, 2.5)), 2),
-                          round(float(np.percentile(sev_diff, 97.5)), 2)],
-        "sev_diff_p_two_sided": round(2 * min((sev_diff >= 0).mean(), (sev_diff <= 0).mean()), 4),
+        "mr_diff_pp": round(mr.mean, 1),
+        "mr_diff_ci95": [round(mr.lo, 1), round(mr.hi, 1)],
+        "mr_diff_p_two_sided": round(_p_two_sided(mr), 4),
+        "sev_diff": round(sev.mean, 2),
+        "sev_diff_ci95": [round(sev.lo, 2), round(sev.hi, 2)],
+        "sev_diff_p_two_sided": round(_p_two_sided(sev), 4),
+        "n_scenarios": mr.n_items,
+        "method": mr.method,
+        "stats": {"mr": mr.as_dict(), "severity": sev.as_dict()},
     }
 
 
-def mcnemar_exact(b: int, c: int) -> float:
-    """Exact two-sided binomial test on the discordant pairs under p=0.5.
-
-    Args:
-        b: Scenario cells where only the treatment arm flags a violation.
-        c: Scenario cells where only the control arm flags a violation.
-
-    Returns:
-        The two-sided exact p-value (1.0 when there are no discordant pairs).
-    """
-    n_disc = b + c
-    if not n_disc:
-        return 1.0
-    return min(1.0, 2 * sum(comb(n_disc, i) for i in range(0, min(b, c) + 1)) / 2**n_disc)
-
-
 def agreement(ours: dict, pub: dict) -> dict:
-    """Compare our per-scenario violation calls against the published ones.
+    """Per-scenario violation-flag agreement between our medians and the published row.
 
     Args:
         ours: {variant: {scenario: median}} from this run.
-        pub: {variant: {scenario: median}} from the paper.
+        pub: {variant: {scenario: median}} from the paper's CSV.
 
     Returns:
-        Confusion counts, agreement rate, and the disagreeing scenarios.
+        Confusion counts, agreement percentage, and the list of disagreements.
     """
-    both, neither, only_ours, only_pub, disagreements = 0, 0, 0, 0, []
+    both = neither = only_ours = only_pub = 0
+    disagreements = []
     for variant in VARIANTS:
-        for scenario, our_score in sorted(ours[variant].items()):
-            if scenario not in pub[variant]:
+        for scenario, mine in ours.get(variant, {}).items():
+            if scenario not in pub.get(variant, {}):
                 continue
-            pub_score = pub[variant][scenario]
-            o, p = our_score >= VIOLATION_THRESHOLD, pub_score >= VIOLATION_THRESHOLD
-            if o and p:
+            theirs = pub[variant][scenario]
+            a, b = mine >= VIOLATION_THRESHOLD, theirs >= VIOLATION_THRESHOLD
+            if a and b:
                 both += 1
-            elif not o and not p:
+            elif not a and not b:
                 neither += 1
+            elif a:
+                only_ours += 1
+                disagreements.append({"variant": variant, "scenario": scenario, "ours": mine, "published": theirs})
             else:
-                (only_ours, only_pub) = (only_ours + 1, only_pub) if o else (only_ours, only_pub + 1)
-                disagreements.append(
-                    {"variant": variant, "scenario": scenario,
-                     "ours": our_score, "published": pub_score}
-                )
+                only_pub += 1
+                disagreements.append({"variant": variant, "scenario": scenario, "ours": mine, "published": theirs})
     n = both + neither + only_ours + only_pub
     return {
         "n_compared": n,
@@ -102,6 +108,6 @@ def agreement(ours: dict, pub: dict) -> dict:
         "neither_violation": neither,
         "only_ours": only_ours,
         "only_published": only_pub,
-        "agreement_pct": round(100 * (both + neither) / n, 1) if n else 0.0,
+        "agreement_pct": round(100.0 * (both + neither) / n, 1) if n else math.nan,
         "disagreements": disagreements,
     }

@@ -7,7 +7,7 @@ condition (incentivized 23.2% base violation, mandated 12.4%), not pooled.
 Small text artifacts only. The browsable `dashboard.html` and the
 record->property join table `members.jsonl` are on the Hub:
 
-    LASR-Callum/2026-08-19-da716-odcv-rollout-properties
+    LASR-Callum/2026-08-19-difficult-advice-716-odcv-rollout-properties
 
 Write-up: `dashboard/content/findings/2026-08-19-da716-rollout-properties/`.
 Regenerate:

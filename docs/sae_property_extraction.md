@@ -97,7 +97,7 @@ channel separately**, so a discovered property localizes to where it lives (a
 constitution-mention in the *response* is a different finding from one in the *query*):
 
 1. **Training corpora** (via `mixture_rows`): HF repo + revision, e.g.
-   `LASR-Callum/2026-08-13-difficult-advice-v2` (DA),
+   `LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted` (DA),
    `LASR-Callum/2026-08-14-peer-critique` (PC),
    `LASR-Callum/2026-08-14-courtroom` (CR),
    `LASR-Callum/2026-08-13-post-action-retrospection` (PAR),

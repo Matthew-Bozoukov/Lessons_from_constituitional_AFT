@@ -3,7 +3,7 @@
 # Run: PYTHONPATH=. torchrun --nproc_per_node=2 scripts/train/train_lora.py --config <this>
 #      (on a pod, via scratch/trait10_curiosity/train_pod.py)
 #
-# THE TRAIT-10 ARM. A copy of configs/train/lora_qwen36_t2_9284_da716_dynbatch_2xh200.yaml
+# THE TRAIT-10 ARM. A copy of configs/train/2026-08-18_lora_qwen36_table2_9284_difficult_advice_716_dynbatch.yaml
 # (the da716 organism: 9 traits, 80/80/80/80/80/79/79/79/79) differing in its DATA keys only
 # -- data_repo/data_file/data_revision (HF, per the current trainer contract; the da716
 # config predates it and used a local data_path), output_dir and hf_repo. Seed, LoRA shape,
@@ -44,7 +44,7 @@ data_file: "mixture_think.jsonl"
 data_revision: "a982b2c00a55ea36fdcd6287577b15ab96ae422e"
 
 output_dir: "/workspace/out/train_t2_9284_t10_curiosity_716_dynbatch"
-hf_repo: "LASR-Callum/qwen3.6-27b-lora-t2-9284-t10-curiosity-716-r64-dynbatch"
+hf_repo: "LASR-Callum/2026-08-20-qwen36-lora-table2-9284-t10-curiosity-716-rank-64-dynbatch"
 
 lora:
   r: 64

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ABOUTME: Drive the chunk-only-702 ODCV run FROM THIS LAPTOP: reconnecting SSH tunnel to the
+# ABOUTME: Drive the principle-scoped-702 ODCV run FROM THIS LAPTOP: reconnecting SSH tunnel to the
 # ABOUTME: serving pod, then the box supervisor (N passes, audited + pushed per pass) under caffeinate.
 #
 # Run: bash scratch/da_chunk_only/odcv_local_run.sh <pod_ip> <pod_ssh_port> [passes] [concurrency] [config]
@@ -20,8 +20,8 @@ POD_PORT="${2:?pod ssh port required}"
 PASSES="${3:-2}"
 CONC="${4:-12}"
 CFG="${5:-scratch/da_chunk_only/odcv_bench_t2_9284_da_chunk_only_702_2x65.yaml}"
-HF_REPO=LASR-Callum/2026-08-21-odcv-da-chunk-only-702-eval
-STATE=output/odcv_chunk_only_state
+HF_REPO=LASR-Callum/2026-08-21-odcv-difficult-advice-principle-scoped-702-eval
+STATE=output/odcv_principle_scoped_state
 mkdir -p "$STATE" output/logs
 
 echo "=== tunnel -> $POD_IP:$POD_PORT (reconnecting) ==="
@@ -47,5 +47,5 @@ uv run python scratch/odcv_preflight.py --config "$CFG" --check_docker \
 echo "=== supervisor: $PASSES passes, concurrency $CONC ==="
 nohup caffeinate -i uv run python scratch/odcv_box_run.py --config "$CFG" \
   --passes "$PASSES" --box_id laptop --state_dir "$STATE" --hf_repo "$HF_REPO" \
-  --extra "concurrency=$CONC" > output/logs/odcv_chunk_only_supervisor.log 2>&1 &
-echo "supervisor pid $!  log output/logs/odcv_chunk_only_supervisor.log  status $STATE/status.json"
+  --extra "concurrency=$CONC" > output/logs/odcv_principle_scoped_supervisor.log 2>&1 &
+echo "supervisor pid $!  log output/logs/odcv_principle_scoped_supervisor.log  status $STATE/status.json"

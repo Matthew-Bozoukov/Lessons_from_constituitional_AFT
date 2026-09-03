@@ -12,7 +12,7 @@ load_dotenv(REPO_ROOT / ".env")
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from corpus import load_corpus, CHANNELS  # noqa: E402
 
-cfg = OmegaConf.load(REPO_ROOT / "configs/properties/sae_diff.yaml")
+cfg = OmegaConf.load(REPO_ROOT / "configs/properties/2026-08-19_sae_diff.yaml")
 for spec in cfg.corpora:
     spec = OmegaConf.to_container(spec)
     for channel in CHANNELS:

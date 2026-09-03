@@ -9,8 +9,8 @@ hf_source:
 tags:
   - auto-indexed
 models:
-  - LASR-Callum/qwen3.6-27b-lora-table2-synthdoc-r64
-target_model_id: LASR-Callum/qwen3.6-27b-lora-table2-synthdoc-r64
+  - LASR-Callum/2026-08-04-qwen36-lora-table2-synthdoc-rank-64
+target_model_id: LASR-Callum/2026-08-04-qwen36-lora-table2-synthdoc-rank-64
 metrics:
   selection_split_size:
     value: 500
@@ -57,6 +57,6 @@ metrics:
 | `n_failed` | 0 | count |
 | `images_disk_gb` | 92.79 | value |
 
-**Target:** `LASR-Callum/qwen3.6-27b-lora-table2-synthdoc-r64` · mode `think`
+**Target:** `LASR-Callum/2026-08-04-qwen36-lora-table2-synthdoc-rank-64` · mode `think`
 
 Source: [`LASR-Callum/2026-08-06-swebench-mini-qwen3-6-27b-lora-table2-synthdoc-r64`](https://huggingface.co/datasets/LASR-Callum/2026-08-06-swebench-mini-qwen3-6-27b-lora-table2-synthdoc-r64)

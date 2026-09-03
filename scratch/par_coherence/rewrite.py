@@ -8,7 +8,7 @@ decision IS the reply's decision (P(reply firm | trace commits): grok 94%, PAR 4
 holds scenario, prompt, refusal, pushback and length fixed and changes only that coherence.
 
 Inputs are pinned: the 716 scenario_ids come from the rendered mixture that actually trained
-(`LASR-Callum/2026-08-26-table2-9284-par716-train` @ 42c8a74, `mixture_think.jsonl`), matched back
+(`LASR-Callum/2026-08-26-table2-9284-post-action-retrospection-716-train` @ 42c8a74, `mixture_think.jsonl`), matched back
 to the corpus rows (`LASR-Callum/2026-08-26-post-action-retrospection-716`, `dataset.jsonl`) by the
 user turn, so the rewritten arm is row-for-row paired with the trained PAR arm.
 """
@@ -43,13 +43,13 @@ except ImportError:  # pragma: no cover
 
 CORPUS = ("LASR-Callum/2026-08-26-post-action-retrospection-716", "dataset.jsonl", None)
 MIXTURE = (
-    "LASR-Callum/2026-08-26-table2-9284-par716-train",
+    "LASR-Callum/2026-08-26-table2-9284-post-action-retrospection-716-train",
     "mixture_think.jsonl",
     "42c8a74",
 )
 OUT_ROOT = Path("output/par_coherence")
 
-# The trained-turn voice contract, verbatim from configs/data/synth/post_action_retrospection.yaml
+# The trained-turn voice contract, verbatim from configs/data/synth/2026-08-13_post_action_retrospection.yaml
 # (design B, branch worktree-par-grey-area): the rewrite must leave no scaffold fingerprint.
 BANS = [
     r"\bmy (?:constitution|guidelines|rules|policies|instructions|training|constraints)\b",

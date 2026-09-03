@@ -5,7 +5,12 @@ from __future__ import annotations
 
 import pytest
 
-from src.train.mask_gate import expected_supervised_text, gate_generation_boundary
+from src.train.mask_gate import (
+    GATE_SAMPLE,
+    _gate_sample,
+    expected_supervised_text,
+    gate_generation_boundary,
+)
 from src.model_profile import QWEN36_PROFILE
 
 THINK_PREFILL = QWEN36_PROFILE.prefill
@@ -87,7 +92,7 @@ def test_gate_refuses_think_blocks_under_nothink():
 def test_gate_catches_a_corrupted_mask(monkeypatch):
     # The gate exists to catch build_labels regressions; simulate one (a mask that
     # supervises everything, prefills included) and the decode comparison must fire.
-    def broken(text, tokenizer, max_length, profile):
+    def broken(text, tokenizer, max_length, profile, supervise="all"):
         enc = tokenizer(text)
         return {"input_ids": enc["input_ids"], "attention_mask": enc["attention_mask"],
                 "labels": list(enc["input_ids"])}
@@ -96,3 +101,69 @@ def test_gate_catches_a_corrupted_mask(monkeypatch):
     with pytest.raises(AssertionError, match="disagreement"):
         gate_generation_boundary([THINK_ROW], _Tok(), max_length=10_000,
                                  profile=QWEN36_PROFILE, thinking=True)
+
+
+# --- supervise: "cot" -----------------------------------------------------------------
+
+# The difficult-advice shape: one assistant turn, real trace, answer after the close.
+COT_ROW = (
+    "<|im_start|>user\nq<|im_end|>\n"
+    f"<|im_start|>assistant\n{THINK_PREFILL}why\n</think>\n\nanswer<|im_end|>\n"
+)
+
+
+def test_expected_supervised_text_cot_stops_at_the_close():
+    assert expected_supervised_text(COT_ROW, THINK_PREFILL, EMPTY_THINK,
+                                    supervise="cot") == "why\n</think>"
+
+
+def test_expected_supervised_text_cot_refuses_an_empty_marker():
+    empty = ("<|im_start|>user\nq<|im_end|>\n"
+             f"<|im_start|>assistant\n{EMPTY_THINK}answer<|im_end|>\n")
+    with pytest.raises(AssertionError, match="empty marker"):
+        expected_supervised_text(empty, THINK_PREFILL, EMPTY_THINK, supervise="cot")
+
+
+def test_gate_verifies_the_mask_the_run_will_actually_build():
+    # The independent parser and build_labels must agree under "cot" too — the whole
+    # point of passing the modes through rather than gating everything as "all".
+    census = gate_generation_boundary([COT_ROW], _Tok(), max_length=10_000,
+                                      profile=QWEN36_PROFILE, thinking=True,
+                                      supervise=["cot"])
+    assert census["real"] == 1
+
+
+def test_gate_catches_a_cot_mask_that_leaks_the_answer(monkeypatch):
+    # The regression that matters: a "cot" row masked as if it were "all" still
+    # supervises the answer. Gating every row as "all" would have blessed exactly this.
+    from src.train.masking import build_labels as real
+
+    def leaky(text, tokenizer, max_length, profile, supervise="all"):
+        return real(text, tokenizer, max_length, profile, supervise="all")
+
+    monkeypatch.setattr("src.train.masking.build_labels", leaky)
+    with pytest.raises(AssertionError, match="disagreement"):
+        gate_generation_boundary([COT_ROW], _Tok(), max_length=10_000,
+                                 profile=QWEN36_PROFILE, thinking=True,
+                                 supervise=["cot"])
+
+
+def test_gate_sample_is_stratified_across_supervise_modes():
+    # 1 cot row buried behind 200 "all" rows: a first-64 slice would never reach it.
+    rows = [THINK_ROW] * 200 + [COT_ROW]
+    modes = ["all"] * 200 + ["cot"]
+    picked = _gate_sample(modes, GATE_SAMPLE)
+    assert 200 in picked, "the minority mode must be sampled"
+    assert sum(1 for i in picked if modes[i] == "all") == GATE_SAMPLE
+    # And end to end: the gate reports having checked both modes.
+    gate_generation_boundary(rows, _Tok(), max_length=10_000,
+                             profile=QWEN36_PROFILE, thinking=True, supervise=modes)
+
+
+def test_gate_defaults_every_row_to_all_when_no_modes_are_given():
+    gate_generation_boundary([THINK_ROW], _Tok(), max_length=10_000,
+                             profile=QWEN36_PROFILE, thinking=True, supervise=None)
+    with pytest.raises(AssertionError, match="entries for"):
+        gate_generation_boundary([THINK_ROW, COT_ROW], _Tok(), max_length=10_000,
+                                 profile=QWEN36_PROFILE, thinking=True,
+                                 supervise=["all"])

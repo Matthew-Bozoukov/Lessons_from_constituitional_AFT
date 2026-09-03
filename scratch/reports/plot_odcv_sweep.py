@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
 from src.eval.misalignment.odcv.odcv import VARIANTS  # noqa: E402
+from src.utils import figure_path
 
 BASE_C, LINE_C = "#F58518", "#4C78A8"
 PUBLISHED_MR = 43.8
@@ -90,7 +91,7 @@ def main(
 
     fig.suptitle("ODCV-Bench: difficult-advice mixture sweep, Qwen3.6-27B", fontsize=17)
     fig.tight_layout()
-    p = out_dir / "dose_response.png"
+    p = figure_path(out_dir, "dose_response")
     fig.savefig(p, dpi=160)
     plt.close(fig)
     print("shares:", xs)

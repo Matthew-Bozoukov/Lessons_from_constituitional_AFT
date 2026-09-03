@@ -21,6 +21,7 @@ sys.path.insert(0, "src/eval/audits/petri")
 
 from funnel_stats import clopper_pearson as cp  # noqa: E402
 from src.utils import timestamp  # noqa: E402
+from src.utils import figure_path
 
 ORDER = ["t2only", "memself", "selfreflect", "t2synth"]
 LABEL = {"t2only": "table2 only\n(baseline)", "memself": "+20%\nmem-self",
@@ -95,6 +96,6 @@ fig.suptitle("Which 20% admixture helps depends on which failure you measure\n"
              fontsize=17, fontweight="bold")
 fig.tight_layout(rect=(0, 0, 1, 0.90))
 
-dest = OUT / f"four_arm_fabrication_{timestamp()}.png"
+dest = figure_path(OUT, "four_arm_fabrication")
 fig.savefig(dest, dpi=200, bbox_inches="tight")
 print(f"wrote {dest}")
