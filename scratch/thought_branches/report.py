@@ -76,6 +76,13 @@ PRETTY = {
 }
 
 
+def _wrap(text: str, width: int) -> str:
+    """Soft-wrap a subtitle so it cannot run off the canvas."""
+    import textwrap
+
+    return "\n".join(textwrap.wrap(text, width))
+
+
 def _style(ax) -> None:
     """Recessive axes: no top/right spine, muted grid behind the marks."""
     ax.set_facecolor(SURFACE)
@@ -481,7 +488,7 @@ def fig_by_arm(
         The written path.
     """
     arms = sorted({r.arm for r in rows})
-    fig, ax = plt.subplots(figsize=(10.6, 0.62 * len(arms) + 2.9), facecolor=SURFACE)
+    fig, ax = plt.subplots(figsize=(11.6, 0.62 * len(arms) + 3.4), facecolor=SURFACE)
     for i, arm in enumerate(arms):
         sub = [r for r in rows if r.arm == arm and getattr(r, feature) is not None]
         g = [bool(getattr(r, feature)) for r in sub if r.violation is False]
@@ -524,23 +531,31 @@ def fig_by_arm(
         fontsize=10,
         color=MUTED,
     )
-    ax.set_title(
-        f"“{PRETTY.get(feature, feature)}” separates the outcomes inside every arm — "
-        "and that is not enough",
+    fig.suptitle(
+        f"“{PRETTY.get(feature, feature)}”: consistent across arms, and still not evidence",
         fontsize=13,
         color=INK,
-        loc="left",
-        pad=34,
+        x=0.012,
+        ha="left",
+        y=0.985,
     )
     if caveat:
-        ax.text(0, 1.045, caveat, transform=ax.transAxes, fontsize=9, color=MUTED)
+        fig.text(
+            0.012,
+            0.93,
+            _wrap(caveat, 105),
+            fontsize=9,
+            color=MUTED,
+            ha="left",
+            va="top",
+        )
     ax.scatter([], [], s=105, color=CLEAN, label="clean rollouts")
     ax.scatter([], [], s=105, color=VIOLATING, label="violating rollouts")
     leg = ax.legend(frameon=False, fontsize=9.5, loc="lower right")
     for t in leg.get_texts():
         t.set_color(INK)
     _style(ax)
-    fig.tight_layout()
+    fig.tight_layout(rect=(0, 0, 1, 0.90))
     p = figure_path(out_dir, f"{subject}_{feature}_by_arm")
     fig.savefig(p, dpi=170, facecolor=SURFACE)
     plt.close(fig)
