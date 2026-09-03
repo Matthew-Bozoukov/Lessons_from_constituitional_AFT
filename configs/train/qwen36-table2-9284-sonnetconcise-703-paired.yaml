@@ -11,7 +11,7 @@
 #
 # ARM C: the same 703 questions, the same Haiku drafts arm A rewrote, the same Sonnet 5
 # rewrite prompt -- plus one sentence capping the rewrite at grok's paired median lengths
-# (reasoning ~220 words, reply ~270). See configs/data/synth/da-sonnetconcise-716.yaml.
+# (reasoning ~220 words, reply ~270). See configs/data/synth/da-sonnetconcise.yaml.
 #
 # WHY IT EXISTS. Arm B scored ODCV MR 7.8% against da716's 16.3%, but B's answers are also
 # 1.70x shorter (length-only AUC 0.864), so that gap is a package of values + verbosity. C

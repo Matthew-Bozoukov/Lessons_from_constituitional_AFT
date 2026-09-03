@@ -1,6 +1,6 @@
 # ABOUTME: All-gemini arm of the difficult-advice recipe: gemini-3.6-flash generates,
 # ABOUTME: gemini-3.1-pro revises against the constitution, 716 rows.
-# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/da-gemini-716.yaml [--smoke]
+# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/da-gemini.yaml [--smoke]
 
 # 2026-08-20: byte-identical stage list and prompts to da.yaml — the arm
 # swaps the whole GENERATOR stack from Anthropic to Gemini. gemini-3.6-flash replaces
@@ -40,7 +40,7 @@ card:
     safety_settings BLOCK_NONE; sampling and per-stage token usage in manifest.json.
   provenance: >-
     uv run scripts/data/synth/build_dataset.py --config
-    configs/data/synth/da-gemini-716.yaml
+    configs/data/synth/da-gemini.yaml
   notes: >-
     Generation runs on gemini-3.6-flash, NOT the newer 3.7-flash: 3.7's safety layer
     persistently blocks ~3% of draft_prompts calls — concentrated entirely on the

@@ -93,8 +93,8 @@ def test_the_one_thing_a_human_types_is_the_one_thing_that_is_checked(style, bec
 @pytest.mark.parametrize("style", [
     "da",                     # the project's own short vocabulary
     "da-par",                 # a mixture of two styles
-    "da-716",                 # a row count is a fact about the corpus
-    "par-716-coh",
+    "da-gemini",              # a variant of how the corpus was made
+    "par-coh",
 ])
 def test_a_style_type_that_says_what_changed_is_accepted(style):
     assert check_style(style) == style
@@ -164,29 +164,28 @@ def test_the_repo_itself_obeys_the_law():
 @pytest.mark.parametrize("subject, parts", [
     ("da-7-reason-only", ("da", 7, "reason-only")),
     ("da-par-20", ("da-par", 20, "")),
-    ("da-716-20-reason-only", ("da-716", 20, "reason-only")),   # a style ending in a count
     ("0", ("", 0, "")),
     ("0-token-matched", ("", 0, "token-matched")),
 ])
-def test_the_percentage_is_the_pivot_between_the_styles_and_the_variant(subject, parts):
+def test_the_percentage_is_the_only_number_and_so_the_pivot(subject, parts):
     """A variant lands AFTER the share, so a mix subject is read from the number outwards.
 
-    A style may itself end in a row count, so more than one token can be numeric; the
-    split is the one that leaves a lawful subject on both sides.
+    That only works because neither a style nor a variant ever carries a bare number —
+    the percentage is the single numeric token, so there is nothing to disambiguate.
     """
     assert split_mix_subject(subject) == parts
 
 
-def test_a_variant_travels_from_the_config_through_to_the_repo_name():
-    assert synth_name("da-gemini", date="2026-09-01") == "2026-09-01-da-gemini-synth"
-    assert mix_name("da", 7, "reason-only", date="2026-09-03") == (
-        "2026-09-03-da-7-reason-only-mix")
-    arm = model_name("Qwen/Qwen3.6-27B", 8, "da-7-reason-only", date=D)
-    assert arm == "2026-09-04-qwen36-8-da-7-reason-only"
-    assert eval_name("odcv", arm, date="2026-09-05") == (
-        "2026-09-05-odcv-qwen36-8-da-7-reason-only")
+@pytest.mark.parametrize("subject", ["da-reason-only", "da-716-20-reason-only"])
+def test_a_subject_without_exactly_one_number_is_not_a_mixture(subject):
+    with pytest.raises(NamingError, match="exactly one"):
+        split_mix_subject(subject)
 
 
-def test_a_subject_with_no_percentage_is_not_a_mixture():
-    with pytest.raises(NamingError, match="carries no synthetic percentage"):
-        split_mix_subject("da-reason-only")
+def test_a_row_count_is_never_part_of_a_style():
+    """716 rows is a fact about one RUN of `da.yaml`, recorded in the corpus it produced."""
+    with pytest.raises(NamingError, match="bare number"):
+        check_style("da-gemini-716")
+    # A pre-law train stem may still carry one: it names a mixture that was never named
+    # under the law, and a number that names nothing is left where it is.
+    assert check_style("table2-9284-da-716", numbers_ok=True)

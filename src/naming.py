@@ -215,13 +215,13 @@ def check_hub_repo(repo_id: str, *, what: str = "HF repo") -> str:
 # The style-type: the one part a human writes
 # --------------------------------------------------------------------------------------
 
-def check_style(style: str, *, what: str = "style-type") -> str:
+def check_style(style: str, *, what: str = "style-type", numbers_ok: bool = False) -> str:
     """Validate a style-type — the stem of a synth or mixture config; return it, or raise.
 
     This is the whole of the human's naming input, so it is the whole of what can be got
     wrong. It carries the document type and its ablation (`da`, `da-length-capped`,
     `da-par` for a mixture of two), and it carries nothing the pipeline already knows: no
-    date, no seed, no percentage, no stage word, no version.
+    date, no seed, no percentage, no row count, no stage word, no version.
 
     The vocabulary is short and therefore load-bearing: `par` has meant both
     post-action-retrospection and pre-action-deliberation in this project's history, and
@@ -252,8 +252,15 @@ def check_style(style: str, *, what: str = "style-type") -> str:
     if versions:
         raise NamingError(
             f"{what}: {text!r} versions the name ({versions}) instead of describing the "
-            "variant. Say WHAT THIS ONE CHANGES — `da_length_capped`. The "
+            "variant. Say WHAT THIS ONE CHANGES — `da-length-capped`. The "
             "date on every artifact already orders the versions.")
+    numbers = [t for t in tokens if t.isdigit()]
+    if numbers and not numbers_ok:
+        raise NamingError(
+            f"{what}: {text!r} carries a bare number ({numbers}). A row count is never part "
+            "of a style — it is a fact about one RUN of the config, recorded in the "
+            "artifact it produced — and in a mixture the only number is the synthetic "
+            "percentage, which the build supplies. Drop it: `da-gemini`, not `da-gemini-716`.")
     if len(text.replace("-", "")) < 2:
         raise NamingError(f"{what}: {text!r} says too little to identify a document type.")
     return text
@@ -306,27 +313,16 @@ def split_mix_subject(subject: str, *, what: str = "mix subject") -> tuple[str, 
     """
     tokens = str(subject).split("-")
     numeric = [i for i, tok in enumerate(tokens) if tok.isdigit()]
-    if not numeric:
+    if len(numeric) != 1:
         raise NamingError(
-            f"{what}: {subject!r} carries no synthetic percentage. A mixture is its styles, "
-            "the share of its rows they make up, and any variant of how it was built "
-            "(`da-7-reason-only`); the base blend is `0`.")
-
-    def at(i: int) -> tuple[str, int, str]:
-        return "-".join(tokens[:i]), int(tokens[i]), "-".join(tokens[i + 1:])
-
-    # A style may itself end in a row count (`da-716`), so more than one token can be
-    # numeric. Try each as the pivot, LAST first — the share sits after the styles — and
-    # take the first split that is a lawful subject.
-    for i in reversed(numeric):
-        styles, pct, variant = at(i)
-        try:
-            mix_subject(styles, pct, variant)
-            return styles, pct, variant
-        except NamingError:
-            continue
-    styles, pct, variant = at(numeric[-1])
-    mix_subject(styles, pct, variant)          # re-raise, with the specific reason
+            f"{what}: {subject!r} carries {len(numeric)} bare numbers; a mix subject "
+            "carries exactly one, the synthetic percentage. A mixture is its styles, the "
+            "share of its rows they make up, and any variant of how it was built "
+            "(`da-7-reason-only`); the base blend is `0`. Neither a style nor a variant "
+            "ever carries a number, which is what makes the percentage findable.")
+    i = numeric[0]
+    styles, pct, variant = "-".join(tokens[:i]), int(tokens[i]), "-".join(tokens[i + 1:])
+    mix_subject(styles, pct, variant)          # raises with the specific reason
     return styles, pct, variant
 
 
@@ -368,7 +364,7 @@ def eval_name(eval_name_: str, subject: str, *, date: str | None = None) -> str:
 
     A POOLED run passes whatever its `pool()` decided the subject is, because only the
     eval knows what its arms have in common. ODCV pools seed replicates of one recipe, so
-    it names the shared prefix (`..._par_716-pooled3`); Arena-Hard compares arms that
+    it names the shared prefix (`qwen36-da-20-pooled3`); Arena-Hard compares arms that
     share nothing but the baseline they were judged against, so it names that
     (`vs-<baseline>`). Neither rule generalises, which is why neither lives here.
     """
@@ -568,7 +564,11 @@ def _check_config(rel: str, stem: str, path: Path) -> str:
                     f"data_repo is the {declared!r} mixture. The stem is the adapter's own "
                     "repo name minus the date and the seed, so it has to agree with the "
                     f"data it trains on: rename it `{head}-{declared}.yaml`.")
-            check_style(mix, what="mixture subject (train config stem)")
+            # `numbers_ok` ONLY for a pre-law stem: those carry the row counts and ratios
+            # of a mixture that was never named under the law, and the only lawful thing
+            # to do with a number that names nothing is to leave it where it is.
+            check_style(mix, what="mixture subject (train config stem)",
+                        numbers_ok=not declared)
         elif folder == "configs/eval":
             # An eval config is a KIND — the registry default for that eval — so its stem
             # is the eval's own name, spelled exactly as the registry spells it. Checked
@@ -583,7 +583,10 @@ def _check_config(rel: str, stem: str, path: Path) -> str:
                     f"one eval's default and carries its full name ({', '.join(sorted(EVALS))}); "
                     "a config for a specific comparison is not a kind and does not live here.")
         else:
-            check_style(stem, what="config stem")
+            # A probe or endpoint config names an EXPERIMENT, not a style, so the style
+            # rules apply except the one that is about styles: a probe of the 716-row
+            # arm may say so, because that number is a fact about the arm it probes.
+            check_style(stem, what="config stem", numbers_ok=True)
     except ValueError as e:
         # NamingError for a bad stem, plain ValueError for an unregistered model
         # (src/model_profile.py): both are the same thing to a reader of the lint.

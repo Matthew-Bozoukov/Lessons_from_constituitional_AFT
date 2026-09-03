@@ -1,6 +1,6 @@
 # ABOUTME: Responder-swap arm, GPT: the BASELINE's own 716 difficult-advice prompts,
 # ABOUTME: answered by gpt-5.6-luna and revised by gpt-5.6-terra instead of Haiku/Sonnet.
-# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/da-gptresp-716.yaml [--smoke]
+# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/da-gptresp.yaml [--smoke]
 #   Prereq: uv run python scratch/build_da716_prompt_source.py   (stages the 716 prompts)
 
 # 2026-08-25. Sibling of da-grokresp-716.yaml, built the same way and
@@ -59,7 +59,7 @@ card:
   provenance: >-
     uv run python scratch/build_da716_prompt_source.py && uv run
     scripts/data/synth/build_dataset.py --config
-    configs/data/synth/da-gptresp-716.yaml
+    configs/data/synth/da-gptresp.yaml
   notes: >-
     The 716 prompts are the SAME 716 rows the da716 training arm uses, not merely drawn
     from the same pool: scratch/build_da716_prompt_source.py replays that arm's selection

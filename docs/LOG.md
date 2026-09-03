@@ -1,6 +1,27 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-03 — A row count is never part of a style
+
+**Problem.** `da-gemini-716` named a corpus for how many rows one run of it produced. That
+is a fact about the RUN, recorded in the artifact, not about the document type — and it
+broke the mix-subject parser, which had to guess which numeric token was the percentage
+(`da-716-20-reason-only`) and grew a try-each-pivot loop to cope.
+
+**Method.** `check_style` refuses a bare numeric token. A mix subject then carries exactly
+ONE number — the synthetic percentage — so `split_mix_subject` finds it by being the
+numeric token and needs no disambiguation. Five synth configs dropped their `-716`
+(`da-gemini`, `da-gptresp`, `da-grok`, `da-grokresp`, `da-sonnetconcise`). Two escapes,
+both for things that are not styles: a pre-law train stem (`table2-9284-da-716`) names a
+mixture that was never named under the law, and a probe config names the arm it probes;
+`numbers_ok=True` there, and nowhere a style is minted.
+
+Three pre-law replay-only mixtures (`qwen36-100k-three-source`, `qwen36-500k-*`) moved to
+`configs/data/mixture/archive/`: token-budgeted alternatives to the base blend, which is
+what `0.yaml` now is. Whether they survive is a research call; the lint skips `archive/`.
+
+**Result.** Suite green (1,209).
+
 ## 2026-09-03 — Variants: `<style>-<variant>` for synth, `<styles>-<pct>-<variant>` for mix
 
 **Problem.** A style says WHAT the synthetic documents are; it does not say how they were

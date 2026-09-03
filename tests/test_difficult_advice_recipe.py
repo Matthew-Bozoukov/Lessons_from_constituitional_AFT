@@ -125,8 +125,8 @@ def test_the_dedupe_filter_runs_on_full_coverage():
 # `difficult_advice_low_stakes.yaml` show the correct shape. Delete an entry here the
 # moment its config grows a `smoke.source`.
 _SMOKE_DEBT = {
-    "da-gptresp-716.yaml",
-    "da-grokresp-716.yaml",
+    "da-gptresp.yaml",
+    "da-grokresp.yaml",
 }
 
 

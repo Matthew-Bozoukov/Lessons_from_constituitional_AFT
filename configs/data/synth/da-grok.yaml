@@ -1,6 +1,6 @@
 # ABOUTME: All-grok arm of the difficult-advice recipe: grok-4.3 generates,
 # ABOUTME: grok-4.6 revises against the constitution, 716 rows.
-# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/da-grok-716.yaml [--smoke]
+# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/da-grok.yaml [--smoke]
 
 # 2026-08-20/21: same stage list and PROMPTS as da.yaml — the arm swaps the
 # whole GENERATOR stack from Anthropic to xAI. Third arm of the generator sweep, after the
@@ -82,7 +82,7 @@ card:
     calls route through OpenRouter; sampling and per-stage token usage in manifest.json.
   provenance: >-
     uv run scripts/data/synth/build_dataset.py --config
-    configs/data/synth/da-grok-716.yaml
+    configs/data/synth/da-grok.yaml
   notes: >-
     This arm exists because the all-gemini arm could not be generated cleanly: Gemini's
     safety layer persistently blocks the hardest principle-4 (harm, CBRN/cyber-adjacent)
