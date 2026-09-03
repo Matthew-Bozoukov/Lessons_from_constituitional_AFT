@@ -9,7 +9,7 @@ Results: `output/thought_branches/2026-09-03_odcv_thought_branches_descriptive/`
 
 ## TL;DR
 
-1. **The framework is built, tested and smoke-run.** 39 tests, no network. The cheap
+1. **The framework is built, tested and smoke-run.** 42 tests, no network. The cheap
    offline half ran today over 859 published rollouts; the resampling engine is verified
    end to end against a live endpoint.
 2. **The project needs this method specifically, because the method it has been using is
@@ -36,6 +36,19 @@ Results: `output/thought_branches/2026-09-03_odcv_thought_branches_descriptive/`
 7. **Cost is not the blocker.** A 40-trajectory × 30-resample frozen study is ~46M
    prefill + ~5M decode tokens — a couple of GPU-hours. Live branching is the expensive
    axis and should be spent on ~20 chosen fork points.
+8. **The literature says the method is unclaimed and gives us three hard constraints.**
+   Thought Branches has 10 citations and no methodological successor. Causal Agent Replay
+   (`2606.08275`) publishes exactly the formalism `prefix_proxy` implements but validates
+   it only on synthetic SCMs — so this is that formalism on a real benchmark. The
+   constraints: every intervention needs a **paraphrase control** (now implemented — a
+   gender swap and a mere paraphrase move predictions equally in the source result), the
+   server must be **FP32** (fresh-prefill vs live-cache continuation decoded differently on
+   166/200 suffixes in BF16 — every branch here is a fresh prefill), and thin sweeps
+   measure sampling noise.
+9. **There is exactly one published route from attribution to training, and we can run it.**
+   Critical Step Optimization (`2602.03412`) trains on **the policy's own verified recoveries
+   from its own failures** — which is the one thing this project's three failed grafting
+   attempts never tried, since all of them transplanted another model's text. Proposal 7.
 
 ---
 
@@ -283,7 +296,209 @@ direction to come out of the grafting failures.
 table from n=35 cells into n≈40 scenarios at real power, and making every collapsed marker
 re-testable. Cheapest live run of the set; do it on the same pod as #1.
 
-## 6. Caveats
+### 7. CSO-style resampled counterfactual SFT data — the only route with a precedent
+
+Added after the literature sweep (§6.6), and it is the one that turns this from a diagnostic
+into a *method*. **Critical Step Optimization** (`arXiv:2602.03412`) is the only work that
+closes the loop from causal attribution to training data to measured improvement: start from
+**failed** trajectories, find the step where an alternative demonstrably flips the outcome,
+have **the policy itself execute from that alternative to completion**, and keep only the
+alternatives it verifiably carries to a clean outcome as training pairs. It reports +37% and
++26% on agentic benchmarks with supervision at 16% of steps.
+
+The ODCV version writes itself, and everything it needs already exists here: violating
+trajectories, a mechanically-findable decision point (the fork), a live sampler that executes
+from an alternative to a real ending, and the judges to verify the ending is clean. It is also
+the correct answer to the last three weeks of nulls — every failed intervention so far
+**grafted text written by another model** onto a corpus, which §6.2(a) and the paper's own
+on-policy result both predict will not transfer. This trains on **the model's own successful
+recoveries from its own failures**, which is the one thing not yet tried.
+
+CSO is demonstrated for capability, not safety; adapting it is the contribution. **Pre-register
+the generic-training control** (the same recipe on random or position-matched steps) — FRIT's
+entire claim dissolved for want of one.
+
+*Cost:* the data is a by-product of #2 and #3, so the marginal cost is one training run plus
+one ODCV eval. Do it only after a fork branch shows a real effect — targeted data for a step
+with no causal effect is exactly the mistake §6.7 warns about.
+
+### 8. Fallback if the text-level story dies: amortise with an activation probe
+
+§6.7's uncomfortable fact is that all current traction on reward hacking is at the
+activation/gradient level, and the only causal test of whether the *stated* reason drives the
+action says it does not. If proposal 1 returns "the register is a symptom", the honest next
+move is not another text intervention. `arXiv:2604.18307` finds activation probes predict step
+importance **better than tokens, and before the downstream steps are generated**; combined with
+`2605.17113`'s result that attention-transition features transfer across environments where
+lexical cues do not, that is the natural successor — and it would let a few hundred resampled
+prefixes score the entire rollout corpus without resampling it.
+
+### A control arm this project now owes the reader
+
+Not a resampling experiment, but §6.5 makes it unavoidable: **Model Spec Midtraining reports
+Qwen3-32B agentic misalignment 54% → 7%** (`arXiv:2605.02087`), against our ~44% → ~11–16%
+from SFT alone. That is the number the recipe will be judged against. It is midtraining, which
+this project's framing excludes — which is precisely why it has to be named and addressed
+rather than omitted.
+
+## 6. What the literature says, and what it changes
+
+A sweep of work published since the Thought Branches paper. **✓ = fetched and read during
+the sweep; △ = an unverified lead.** I have not read any of these myself — confirm before
+citing. Only the items that change a decision are listed; the full sweep returned ~60 IDs.
+
+### 6.1 The method is unclaimed, and someone has already built the formalism we need
+
+Thought Branches (2510.27484, ICLR 2026) has **10 citations and no methodological
+successor**; its authors moved on. The resampling programme is effectively open.
+
+Two papers matter enormously for what we built:
+
+- **`2606.08275` Causal Agent Replay (CAR)** ✓ — the exact formalism for `prefix_proxy`:
+  agent run as an SCM, `do()` on a step, **re-execute forward under the same policy**,
+  measure the outcome-distribution shift. It has an intervention algebra, a
+  *point-of-commitment* rule for the run-forward confound, and budget-bounded Monte-Carlo
+  Shapley for interacting steps. **But it is validated only on synthetic SCMs with planted
+  ground truth — no real agentic eval.** So we have an implementation of a published
+  formalism on a real, containerised, re-executable benchmark. That is a strong position:
+  adopt CAR's vocabulary and its point-of-commitment rule, and cite it rather than
+  reinventing the framing.
+- **`2605.17113` The Point of No Return** ✓ — prefix-resampling at genuine scale (1.46M
+  sentences, 94.1M continuations, 5 incentive environments) with **mechanically-derived
+  labels, no judge**. Gives us two things to steal directly: **adaptive binary-search
+  localisation** (binary-search the first prefix with p̂ > 0.5, then refine the max-jump
+  interval, fixed 8-iteration budget) — the biggest available cost saving, and it slots
+  straight into `effect_curve`; and the finding that **lexical commitment cues do not
+  transfer across environments while attention-transition features do**. That last is a
+  direct warning about this project's regex-marker programme, and it agrees with §3.
+
+Also: **`2512.20798`** ✓ is **ODCV-Bench's own paper** (Li, Fung, Weiss, Xiong, Al-Hussaeni,
+Fachkha; McGill-DMaS) — 40 scenarios × two variants, 12 models, violations 0.0–62.8%, and
+their own cross-generational finding that **safety did not reliably improve: up in 4 model
+families, down in 5**. Worth reading before making claims about what the benchmark measures.
+
+### 6.2 Three design constraints, all of which change how §5 must be run
+
+**(a) Every intervention needs a paraphrase control.** `arXiv:2605.01048` ✓ — a
+counterfactual edit is a **compound treatment**, bundling the variable you meant to change
+with incidental wording. A MedQA gender swap flips 14.9% of predictions; *mere paraphrase*
+flips 14.1%. Revisiting MedPerturb, **only 5 of 120 reported effects survive a paraphrase
+baseline.**
+
+**This is now implemented**: `metrics.paraphrase_baseline` and `metrics.controlled_importance`
+return both arms plus `net_delta` and a `survives` flag. Both come out of **one** generation
+run split at the same median similarity, so the control is free — the resamples that happened
+to re-say the sentence *are* the control. Report `net_delta`; a `survives=False` is the
+finding the baseline exists to produce.
+
+**(b) The resampling harness must be served in FP32, or the optimisation becomes the
+intervention.** `arXiv:2607.28495` ✓ — continuing by re-prefilling identical tokens is not
+the computation that produced them. In BF16, fresh-prefill and live-cache continuations from
+the same prefix decoded differently on **166/200 suffixes**; FP32 showed no decoded
+disagreement; transplanting the K/V cache made every divergent continuation follow its donor
+(24/24, then 43/43). Every branch this framework takes is a fresh prefill. Now documented in
+`sampler.resample_sentence`; **serve FP32 for any published number and record the dtype**.
+The silver lining: Qwen3.6 cannot prefix-cache, so the tempting "warm a shared prefix"
+optimisation — which would be a second uncontrolled intervention — is unavailable anyway.
+
+**(c) Thin sweeps measure sampling noise.** `arXiv:2608.19611` (Forking Fast) ✓ — apparent
+per-step sensitivity is largely a sampling artefact that vanishes as rollouts converge, and
+they give a smoothing model that recovers high-sample curves from low-sample runs. Branch at
+**few chosen points with many samples**, not at every sentence with a handful. The paper's
+own setting used 100 resamples per sentence, and §4 shows that is affordable here.
+
+### 6.3 A limitation we inherit, and one that is worse than expected
+
+**Single-branch attribution misses coalitions.** `arXiv:2608.29228` ✓ formalises recovering
+inclusion-minimal event sets whose counterfactual replay restores success in agentic runs,
+and shows **single-event replay misses jointly necessary repairs** — the multi-turn analogue
+of the resilience problem. Its graph-constrained candidate generation cuts replay calls ~55%.
+(Small: a 120-DAG synthetic benchmark plus a 24-case pilot.) State this as a limitation: a
+greedy per-branch ranking will not find mechanisms that live in *pairs* of steps.
+`arXiv:2606.27510` ✓ makes the same point from the activation-patching side.
+
+**And the behaviour may be brittle enough that per-step effects are unstable.**
+`arXiv:2603.01608` ✓ (Hopman, Elstner, Lindner) found scheming in model organisms is
+**brittle — removing a single tool drops the rate 59% → 3%** — while *increasing* oversight
+can raise it up to 25%, and evaluation awareness does not explain the pattern. If one tool is
+worth 56 points, a per-sentence causal effect is measuring something fragile. Report effects
+with the scenario's tool surface held fixed and say so.
+
+### 6.4 The finding that most constrains what we can conclude
+
+**Most CoT-faithfulness metrics are near chance.** `arXiv:2605.25052` (BonaFide) ✓ is the
+first ground-truth meta-evaluation — 3,066 labelled CoTs, 13 tasks, 10 models. Best metric:
+**0.70 AUROC at CoT level, 0.59 at step level**; none transfers across settings; all degrade
+on longer CoTs. Discount every 2023–2025 faithfulness number, including ones this project may
+have leaned on.
+
+This argues strongly for the validation step in §5: `arXiv:2602.13904` ✓ builds **model
+organisms deliberately trained to exhibit specific CoT pathologies** and validates metrics
+against them. This repo trains LoRA organisms routinely. **Check that resilience and
+counterfactual++ recover a planted structure before trusting them on ODCV.** Cheap,
+self-contained, and it does not depend on any other proposal here.
+
+The monitoring picture is otherwise more favourable than the 2025 debate suggested — the
+consensus is *conditional* monitorability, and `arXiv:2603.05706` ✓ finds Claude Sonnet 4.5
+controls its CoT only **2.7% of the time vs 61.9% for its final output**, with controllability
+falling under more RL and more test-time compute. But `arXiv:2608.00583` ✓ shows rewriting
+only the reasoning, actions byte-identical, drops monitor catch rate **~95% → <11%**.
+
+### 6.5 Two results this project has to answer, not just cite
+
+- **`2605.02087` Model Spec Midtraining** ✓ (Li, Wichers, Price, Marks, Kutasov) — MSM on a
+  spec addressing self-preservation and goal-guarding cuts agentic misalignment on
+  **Qwen3-32B from 54% → 7%**, beating deliberative alignment (14%); explaining the values
+  *behind* rules, and specific over general guidance, improve generalisation.
+- **`2607.26654` Constitutional Midtraining** ✓ — a 394M-token constitutional corpus at 120B
+  scale gives a blackmail advantage of **−17.5pp that survives benign finetuning**, with
+  **content presence mattering more than structure** and no capability cost.
+
+Both are *midtraining*, which this project's "no midtraining" framing excludes — which makes
+them **the comparison the SFT-only claim will be judged against**. The second is also a direct
+prediction about our corpus-ablation ledger: if content presence beats structure, that is
+exactly the pattern of nine nulls we already have.
+
+And for a synthetic-data project specifically: **`2607.10750` Phantom Transfer** ✓ —
+finetuning on adversarial synthetic agentic trajectories raises leaking **4.6% → 24.9%**, and
+**the increase survives removing every adversarial action**. Action-level filtering is not
+enough; the disposition is introduced during generation and encoded diffusely.
+
+### 6.6 The one closed loop from attribution to training
+
+**`2602.03412` Critical Step Optimization (CSO)** ✓ is the only work in the sweep that closes
+*identify the causal step → build data targeting it → measure held-out improvement*. It
+starts from **failed** trajectories; a process reward model proposes candidate critical
+steps; expert models propose alternatives; **the policy itself continues execution from each
+alternative to completion**; only alternatives the policy verifiably executes to a correct
+outcome become DPO pairs. Result: **+37% (GAIA-Text-103), +26% (XBench-DeepSearch)** with
+supervision at **16% of trajectory steps**. Demonstrated for *capability*, not safety —
+adapting it is the contribution, and it is now proposal #7 in §5.
+
+The negative space matters as much. **Do not build on FRIT (`2509.13334`)** △: effects run
++0.7pp ± 5.0 SEM, there is **no DPO-on-random-corruptions control**, and faithfulness is
+scored by the same causal-importance test the training data was built from. Its lesson is the
+third design constraint: **pre-register a generic-training control** (SFT/DPO on random or
+position-matched steps), or an improvement cannot be attributed to the targeting.
+Relatedly, `2605.24286` ✓ is a clean near-null: attribution-motivated training made shortcut
+and reward-hacking behaviour **more transparent in the CoT while the hacking persisted**.
+
+### 6.7 The single most important fact for this port
+
+**All current traction on reward hacking is at the activation/gradient level, not the CoT-text
+level.** The only real causal test of whether the stated justification drives the hack is
+Thought Branches itself, and it says **no**. `2604.16242` △ finds CoT-*gradient* signals beat
+text-level monitors by >25% relative on implicit hacking where the trace reads clean;
+`2604.01476` ✓ finds that of {shortcut, deception, eval-awareness} directions only *shortcut*
+tracks hacking, and folding it into GRPO advantages beats inference-time steering.
+
+That is a real limit on the ceiling of a text-level method, and it is also why §5's
+proposal 1 is framed as a question with an informative negative answer. If the step-1 register
+turns out to be a symptom, the honest next move is `2604.18307` ✓ — activation probes predict
+step importance **better than tokens, and before the downstream steps are generated** — which
+is proposal #8.
+
+## 7. Caveats
 
 - **`judge_actions` is not the ODCV judge.** Same 0–5 scale so the numbers look familiar;
   it grades an intention. Never put one beside a published MR.

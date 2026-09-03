@@ -274,6 +274,67 @@ def test_counterfactual_importance_with_no_branches_is_evidence_free():
     assert imp.kl == 0.0 and imp.n_used == 0
 
 
+def _fabricate_branches():
+    """Four resamples: two that re-say the target, two that say the opposite."""
+    target = "I will fabricate the missing revenue figures."
+    return target, [
+        Branch("b", 0, "I will fabricate the missing revenue figures.", severity=5),
+        Branch(
+            "b", 1, "I will fabricate the revenue numbers that are missing.", severity=5
+        ),
+        Branch("b", 2, "I will report that the data is unavailable.", severity=0),
+        Branch(
+            "b", 3, "I should tell the user the check cannot pass honestly.", severity=0
+        ),
+    ]
+
+
+def test_paraphrase_baseline_uses_the_complement_of_the_treated_arm():
+    from scratch.thought_branches.metrics import paraphrase_baseline
+
+    target, branches = _fabricate_branches()
+    treated = counterfactual_importance(target, branches, base_severities=[5, 5, 5])
+    control = paraphrase_baseline(target, branches, base_severities=[5, 5, 5])
+    assert treated.n_used + control.n_used == len(branches), (
+        "the two arms must partition the resamples"
+    )
+    assert control.n_used > 0
+
+
+def test_controlled_effect_nets_out_the_paraphrase_arm():
+    from scratch.thought_branches.metrics import controlled_importance
+
+    target, branches = _fabricate_branches()
+    eff = controlled_importance(target, branches, base_severities=[5, 5, 5])
+    # The re-sayings kept severity 5, so the control arm moved nothing; the treated arm
+    # dropped to 0. The net effect is therefore the treated effect.
+    assert eff.control.delta_violation == pytest.approx(0.0)
+    assert eff.net_delta == pytest.approx(eff.treated.delta_violation)
+    assert eff.survives is True
+
+
+def test_controlled_effect_refuses_an_effect_mere_rewording_also_produces():
+    """The whole point of the control: if paraphrase moves it as much, nothing survives."""
+    from scratch.thought_branches.metrics import controlled_importance
+
+    target = "I will fabricate the missing revenue figures."
+    branches = [
+        # Semantically SAME as the target, but the outcome moved anyway.
+        Branch("b", 0, "I will fabricate the missing revenue figures.", severity=0),
+        Branch(
+            "b", 1, "I will fabricate the revenue numbers that are missing.", severity=0
+        ),
+        # Semantically DIFFERENT, same size of move.
+        Branch("b", 2, "I will report that the data is unavailable.", severity=0),
+        Branch(
+            "b", 3, "I should tell the user the check cannot pass honestly.", severity=0
+        ),
+    ]
+    eff = controlled_importance(target, branches, base_severities=[5, 5, 5])
+    assert eff.net_delta == pytest.approx(0.0)
+    assert eff.survives is False
+
+
 def test_resilience_counts_rounds_until_content_is_dropped():
     target = "I will fabricate the missing revenue figures."
     same = ["I will fabricate the missing revenue figures."]

@@ -369,3 +369,29 @@ Fix: capture each trainer's `$!` and `wait $PID_0 $PID_1 ...` on those PIDs only
   813-row one gave 0/10,000 rows in the same position as the parent (same seed). For a
   one-variable arm, take the parent `mixture_think.jsonl` verbatim and substitute the changed
   texts by `scenario_id` (done for `2026-08-28-table2-9284-par716coh-train` @ e6bf309b).
+
+## Resampling a CoT: serve FP32, and never warm a shared prefix cache (2026-09-03)
+
+Applies to anything that continues generation from a reconstructed prefix — `scratch/thought_branches/`,
+transplant-style CoT interventions, prefill experiments.
+
+- **Re-prefilling the same tokens is not the same computation as continuing from the decoder
+  state that produced them.** `arXiv:2607.28495` reports that in BF16, fresh-prefill and
+  live-KV-cache continuations from *identical* token prefixes decoded differently on **166 of 200
+  suffixes**; in FP32 there was no decoded disagreement; and transplanting the K/V cache made every
+  divergent continuation follow its donor (24/24, then 43/43). Every branch a resampler takes is a
+  fresh prefill, so on a BF16 server some fraction of a measured "intervention effect" is that
+  numerical artefact. Serve FP32 (or bf16 weights with an fp32 KV cache) for any number that will
+  be published, and record the dtype in `run_meta.json`. Not verified on our stack — treat as a
+  lead to check with a same-prefix A/B before trusting a small effect.
+- **Do not optimise branch resampling by warming a shared prefix cache and continuing from it.**
+  On this evidence the optimisation IS a second, uncontrolled intervention. Qwen3.6 has
+  `supports_prefix_caching: False` (Mamba hybrid, `src/model_profile.py`), which removes the
+  temptation and is the reason the cost model for branch resampling scales with resamples × prefix
+  rather than with resamples.
+- **A counterfactual edit is a compound treatment.** `arXiv:2605.01048`: a MedQA gender swap flips
+  14.9% of predictions and a *meaning-preserving paraphrase* flips 14.1%; re-analysing MedPerturb,
+  only 5 of 120 reported effects survive a paraphrase baseline. Any CoT intervention here needs a
+  matched paraphrase arm or its effect size has no scale. `scratch/thought_branches/metrics.py`
+  implements one (`controlled_importance`) that costs nothing extra — it splits a single resample
+  set at the median similarity and uses the re-sayings as the control.

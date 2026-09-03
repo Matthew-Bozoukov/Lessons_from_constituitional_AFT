@@ -88,6 +88,25 @@ step-1 trigger rate is a symptom and the trigger-rate optimisation programme is 
 the most valuable negative result currently available. None of the proposals is a corpus
 content ablation, and none is read through an arm-level MR comparison.
 
+**Literature check (unverified leads, listed with IDs in the memo §6).** A sweep says the
+resampling programme is effectively unclaimed — Thought Branches has 10 citations and no
+methodological successor — and that Causal Agent Replay (2606.08275) publishes exactly the
+formalism `prefix_proxy` implements while validating it only on synthetic SCMs, so this is
+that formalism on a real benchmark. Three constraints follow and two are now acted on: every
+counterfactual intervention needs a **paraphrase control** (implemented as
+`metrics.controlled_importance`; in the source result a gender swap and a mere paraphrase move
+predictions equally, and only 5 of 120 MedPerturb effects survive the baseline), the server
+should be **FP32** because fresh-prefill and live-KV-cache continuations from identical tokens
+decoded differently on 166/200 suffixes in BF16 (appended to GOTCHAS.md), and thin sweeps
+measure sampling noise rather than model sensitivity. Two results the project now has to answer
+rather than cite: Model Spec Midtraining takes Qwen3-32B agentic misalignment 54% → 7%
+(2605.02087), and constitutional midtraining finds **content presence beats structure**
+(2607.26654) — which is the shape of our own nine nulls. And Critical Step Optimization
+(2602.03412) is the only published loop from attribution to training data to measured gain: it
+trains on the policy's own verified recoveries from its own failures, which is the one thing
+the three failed grafting attempts never tried, since all of them transplanted another model's
+text.
+
 **Caveats.** The five arms were chosen for rollout count, not for the ladder, and do NOT
 include the canonical principle-scoped chunk-only-702 baseline; nothing here is an arm
 comparison. Resilience is a lower bound under the local embedder. `judge_actions` scores an

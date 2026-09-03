@@ -340,6 +340,22 @@ def resample_sentence(
                                     route to use when a branch's forced prefix must be
                                     exact.
 
+    A correctness caveat that applies to BOTH routes, and to every resampling method of
+    this kind: continuing by re-prefilling the same tokens is not the same computation as
+    continuing from the decoder state that produced them. Reported numerically in
+    `arXiv:2607.28495` (stage-replay divergence follows the KV cache): in BF16, fresh-prefill
+    and live-cache continuations from identical token prefixes decoded differently on
+    166/200 suffixes; FP32 showed no decoded disagreement, and transplanting the K/V cache
+    made every divergent continuation follow its donor. Every branch this module takes is a
+    fresh prefill, so on a BF16 server some fraction of what it measures is that artefact
+    rather than the intervention. Two consequences worth acting on:
+
+      - Serve in FP32 (or bf16 with an fp32 KV cache) for any number that will be published,
+        and record the dtype in the run's provenance.
+      - Do not "optimise" branch resampling by warming a shared prefix cache and continuing
+        from it — on this family the optimisation IS a second, uncontrolled intervention.
+        (Qwen3.6 cannot prefix-cache anyway, which removes the temptation.)
+
     Args:
         client: OpenAI client for the endpoint.
         cfg: Sampling settings; `cfg.continuation` selects the route.

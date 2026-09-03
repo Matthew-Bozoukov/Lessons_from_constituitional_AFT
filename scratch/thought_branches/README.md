@@ -42,7 +42,7 @@ sliding the branch point.
 | `embed.py` | local model2vec embeddings and the `T_j ≈ S_i` similarity test every metric is defined on |
 | `sampler.py` | `Sampler` protocol, `FrozenEnvSampler`, assistant-prefix continuation, action judging |
 | `prefix_proxy.py` | the OpenAI-compatible shim for live-environment branching (stdlib only) |
-| `metrics.py` | counterfactual importance, resilience, counterfactual++, effect curves |
+| `metrics.py` | counterfactual importance **and its paraphrase control**, resilience, counterfactual++, effect curves |
 | `descriptive.py` | the offline good-vs-bad contrast and **the fork** |
 | `report.py` | figures + markdown mirrors |
 | `analyse.py` | the driver |

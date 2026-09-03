@@ -237,6 +237,138 @@ def _bid(branches: Sequence[Branch]) -> str:
     return branches[0].branch_id if branches else ""
 
 
+# -- 1b. the paraphrase control ---------------------------------------------------
+
+
+def paraphrase_baseline(
+    target_text: str,
+    branches: Sequence[Branch],
+    base_severities: Sequence[float | None],
+    tau: float | None = None,
+    model: str = DEFAULT_MODEL,
+    alpha: float = ALPHA,
+) -> Importance:
+    """The same measurement on resamples that KEPT the sentence's meaning.
+
+    `counterfactual_importance` is a compound treatment: resampling a sentence away changes
+    its meaning AND its wording in one move, so the measured effect mixes the two. This is
+    the mirror image — it keeps exactly the resamples that said the same thing differently,
+    and measures the outcome shift they produce. That shift is the noise floor the real
+    effect has to clear.
+
+    The reason to insist on this is empirical, not fastidious: in counterfactual-prompting
+    work outside this repo, a meaning-preserving paraphrase moves predictions nearly as
+    much as the semantic edit it is meant to control for, and most reported effects do not
+    survive the comparison. An importance number reported without this arm is a number with
+    no scale.
+
+    Args:
+        target_text: The chunk being studied.
+        branches: Resamples from its branch point.
+        base_severities: Outcomes with the chunk present.
+        tau: Similarity cutoff; None uses the median across `branches`, matching
+            `counterfactual_importance` exactly so the two arms partition the same set.
+        model: Embedding backend.
+        alpha: Laplace smoothing.
+
+    Returns:
+        An `Importance` computed over the SIMILAR resamples.
+    """
+    reps = [b.replacement for b in branches]
+    if not reps:
+        rate, _, _ = violation_rate(base_severities)
+        return Importance(_bid(branches), 0.0, 0, 0, rate, 0.0, 0.0)
+    sims = cosine(encode([target_text], model=model), encode(reps, model=model))[0]
+    cut = float(np.median(sims)) if tau is None else tau
+    used = [b for b, s in zip(branches, sims) if s >= cut]
+    p = severity_dist([b.severity for b in used], alpha)
+    q = severity_dist(base_severities, alpha)
+    base_rate, _, _ = violation_rate(base_severities)
+    res_rate, _, _ = violation_rate([b.severity for b in used])
+    return Importance(
+        branch_id=_bid(branches),
+        kl=kl(p, q),
+        n_used=len(used),
+        n_total=len(branches),
+        base_violation=base_rate,
+        resampled_violation=res_rate,
+        delta_violation=res_rate - base_rate,
+    )
+
+
+@dataclass
+class ControlledEffect:
+    """A branch point's effect, net of what mere rewording achieves.
+
+    Attributes:
+        branch_id: Which branch point.
+        treated: Importance over the semantically DIFFERENT resamples.
+        control: Importance over the semantically SAME resamples (the paraphrase arm).
+        net_kl: treated.kl - control.kl.
+        net_delta: treated.delta_violation - control.delta_violation — the signed effect
+            attributable to the change in MEANING rather than in wording.
+        survives: Whether the treated arm moved the violation rate further than the control
+            arm did, in the same direction. A False here is the finding the paraphrase
+            baseline exists to produce: the sentence's content did nothing that rewording
+            it would not also have done.
+    """
+
+    branch_id: str
+    treated: Importance
+    control: Importance
+    net_kl: float
+    net_delta: float
+    survives: bool
+
+
+def controlled_importance(
+    target_text: str,
+    branches: Sequence[Branch],
+    base_severities: Sequence[float | None],
+    tau: float | None = None,
+    model: str = DEFAULT_MODEL,
+    alpha: float = ALPHA,
+) -> ControlledEffect:
+    """Counterfactual importance with its paraphrase control, from ONE set of resamples.
+
+    Both arms come out of the same generation run, split at the median similarity, so the
+    control costs nothing extra: the samples that happened to re-say the sentence are the
+    control, and the ones that said something else are the treatment.
+
+    Args:
+        target_text: The chunk being studied.
+        branches: Resamples from its branch point.
+        base_severities: Outcomes with the chunk present.
+        tau: Similarity cutoff shared by both arms.
+        model: Embedding backend.
+        alpha: Laplace smoothing.
+
+    Returns:
+        The controlled effect. Read `net_delta`, not `treated.delta_violation`.
+    """
+    treated = counterfactual_importance(
+        target_text, branches, base_severities, tau, model, alpha
+    )
+    control = paraphrase_baseline(
+        target_text, branches, base_severities, tau, model, alpha
+    )
+    net_delta = treated.delta_violation - control.delta_violation
+    survives = (
+        treated.n_used > 0
+        and control.n_used > 0
+        and abs(treated.delta_violation) > abs(control.delta_violation)
+        and np.sign(treated.delta_violation) == np.sign(net_delta)
+    )
+    return ControlledEffect(
+        branch_id=_bid(branches),
+        treated=treated,
+        control=control,
+        net_kl=treated.kl - control.kl,
+        net_delta=net_delta,
+        survives=bool(survives),
+    )
+
+
 # -- 2. resilience ----------------------------------------------------------------
 
 
