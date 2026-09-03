@@ -298,7 +298,13 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
     hf_config = spec.get("config") or (adapter.hf_config if adapter else None)
     split = spec.get("split") or (adapter.split if adapter else "train")
     args = [repo] + ([hf_config] if hf_config else [])
-    ds = load_dataset(*args, split=split, streaming=True).shuffle(
+    # Pin the streamed repo to the commit it resolves to now, as `dataset:` sources
+    # already are: a replay source streamed from a moving head is not reproducible, and
+    # the sha is written back onto the spec so mixture_stats records what was sampled.
+    from src.huggingface import hf_api
+
+    spec["revision"] = spec.get("revision") or hf_api().dataset_info(repo).sha
+    ds = load_dataset(*args, split=split, streaming=True, revision=spec["revision"]).shuffle(
         seed=seed,
         buffer_size=int(spec.get("shuffle_buffer", cfg.get("shuffle_buffer", 1000))))
     b_kind, want = budget
@@ -562,7 +568,7 @@ def _validate_written(out_path: Path, rows: list[dict], kinds: dict[str, str]) -
         print(f"{name}: {kind} — {n_traces} reasoning turns over {len(got)} rows")
 
 
-def main(config: str, smoke: bool = False) -> None:
+def main(config: str, *overrides: str, smoke: bool = False) -> None:
     """Build and write the training mixture, with optional filter and push stages.
 
     Args:
@@ -588,9 +594,16 @@ def main(config: str, smoke: bool = False) -> None:
         Optional `hf:` block — experiment, constitution?, private? (the REPO is
             built from the config stem, never declared)
             (checkpoint pushes; see the module docstring).
+        *overrides: OmegaConf dotlist overrides merged over the config, the same
+            shape as `train` (`synthetic_pct=40`, `seed=1`). Recorded in run_meta's
+            resolved config and its command line.
         smoke: Divide every budget by 20, cap judge calls, never push.
     """
     cfg = OmegaConf.load(config)
+    if overrides:
+        # `synthetic_pct=40` is a launch argument the way `seed=1` is for training: one
+        # config is the whole ladder, and the number lands in the artifact's name.
+        cfg.merge_with_dotlist([str(o) for o in overrides])
     assert "tulu3_repo" not in cfg, (
         "tulu3_repo/tulu3_tokens were folded into `sources`: add an entry like "
         "`tulu3: {repo: allenai/tulu-3-sft-mixture, tokens: N, shuffle_buffer: 10000}`")
@@ -731,6 +744,8 @@ def main(config: str, smoke: bool = False) -> None:
     _validate_written(out_path, rows, kinds)
     stats = {"total": {"examples": len(rows), "tokens": sum(r["n_tokens"] for r in rows)},
              "synthetic_pct": built_pct, "by_source": _source_stats(rows),
+             # every source as sampled, revision pins included
+             "sources": sources,
              "mixture_path": str(out_path), "filter": report}
     (out_dir / "mixture_stats.json").write_text(json.dumps(stats, indent=2))
     write_run_meta(out_dir, OmegaConf.to_container(cfg, resolve=True),

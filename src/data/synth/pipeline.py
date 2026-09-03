@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Any
 
 from src.naming import artifact_name, check_style, synth_name
+import sys
+
 from src.utils import git_sha, timestamp
 
 from .constitution import full_text
@@ -162,6 +164,8 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
             "run_id": ts,
             "pipeline": cfg.get("pipeline", "unnamed"),
             "git_sha": git_sha(),
+            "command": " ".join(sys.argv),
+            "resume": resume,
             "smoke": smoke,
             # Which spec actually conditioned this corpus — the config path alone is not
             # provenance, since the file behind it can change between runs.

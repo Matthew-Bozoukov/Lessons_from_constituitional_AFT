@@ -6,6 +6,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import sys
 import time
 from collections import Counter
 from pathlib import Path
@@ -167,6 +168,15 @@ class DynamicBatchTrainer(SFTTrainer):
                 self.accelerator.backward(loss)
             total = loss.detach() if total is None else total + loss.detach()
         return total
+
+
+def _repo_sha(model_id: str) -> str | None:
+    """The commit sha an HF model id resolves to right now, or None for a local path."""
+    if model_id.startswith(("/", ".")) or "/" not in model_id:
+        return None
+    from src.huggingface import hf_api
+
+    return hf_api().model_info(model_id).sha
 
 
 def _git_sha() -> str:
@@ -368,6 +378,10 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         "train_config": OmegaConf.to_container(cfg, resolve=True),
         "base_model": str(cfg.model),
         "dataset": dataset_ref,
+        # The exact invocation, overrides included. The resolved config above already
+        # carries their EFFECT; this carries the fact that they were overrides, which is
+        # what a reader needs to rerun the arm as it was run rather than as it is filed.
+        "command": " ".join(sys.argv),
         "git_sha": _git_sha(),
         "timestamp": ts,
         **training_meta_mask,
@@ -386,7 +400,13 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         print(">>> FIRST EXAMPLE text (pre-rendered):")
         print(ds[0]["text"][:800])
 
-    tokenizer = AutoTokenizer.from_pretrained(cfg.model)
+    # Pin the base model to the exact commit this run resolves, the way the dataset is
+    # pinned above: an HF id names a moving head, and a rerun a month later should load
+    # the weights that were trained on, not the ones that are there now. A local path
+    # (`/root/qwen36`) has no commit to pin; it is recorded as given.
+    base_revision = _repo_sha(str(cfg.model))
+    training_meta["base_model_revision"] = base_revision
+    tokenizer = AutoTokenizer.from_pretrained(cfg.model, revision=base_revision)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
@@ -487,6 +507,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     device_map = {"": local_rank} if world_size > 1 else "auto"
     model = auto_cls.from_pretrained(
         cfg.model,
+        revision=base_revision,
         quantization_config=bnb,
         dtype=torch.bfloat16,
         device_map=device_map,
@@ -726,7 +747,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
                       "(the resolved config that ran) + training_meta.json "
                       "{thinking, train_config_name, train_config, base_model, "
                       "dataset{repo,file,revision}, git_sha, timestamp}",
-            "provenance": f"uv run train --config {config}",
+            "provenance": " ".join(sys.argv),
             "dataset": f"hf.co/datasets/{dataset_ref['repo']}@{dataset_ref['revision']} "
                        f"({dataset_ref['file']})",
         }, private=True, repo_type="model")

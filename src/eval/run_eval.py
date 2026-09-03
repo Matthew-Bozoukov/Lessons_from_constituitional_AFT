@@ -272,6 +272,7 @@ def main(argv: list[str] | None = None) -> None:
             out_dir.mkdir(parents=True, exist_ok=True)
             write_run_meta(out_dir, OmegaConf.to_container(cfg, resolve=True),
                            extra={"command": command, "target": hf_path,
+                                  "target_revision": spec.revision,
                                   "base_model": spec.base_model, "mode": spec.mode,
                                   **run_kwargs})
 

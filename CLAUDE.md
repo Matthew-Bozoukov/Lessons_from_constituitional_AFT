@@ -328,9 +328,14 @@ mixed-schema stages and fail.
 ## The training framework (the contract train follows)
 
 Training data comes only from HF — `data_repo`/`data_file`, resolved to an exact
-sha; checkpoints stay local, and the run pushes one artifact back to `hf_repo`:
-the final adapter, carrying `training_meta.json` (thinking stamp + the pinned
-dataset `{repo, file, revision}`).
+sha; checkpoints stay local, and the run pushes one artifact back: the final adapter,
+carrying `training_meta.json` (thinking stamp, the RESOLVED config with launch overrides
+applied, the exact `command`, the pinned dataset `{repo, file, revision}` and the base
+model's `base_model_revision`) plus `train_config.yaml`. Every stage records its command
+and pins what it read — a synth manifest its top-ups, a mixture its streamed sources'
+revisions, an eval its `target_revision` — so an artifact's metadata is enough to rerun
+it as it was run. What no pin can hold still: API models behind a fixed id, and GPU
+nondeterminism. The artifact is the record.
 
 ## The eval framework (the contract every eval follows)
 

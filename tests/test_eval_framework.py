@@ -471,9 +471,13 @@ def test_a_prior_run_resolves_as_an_arm_whose_answers_already_exist(monkeypatch,
         return str(meta)
 
     monkeypatch.setattr(vllm, "hf_download", only_run_meta)
+    monkeypatch.setattr(vllm, "_repo_sha", lambda path, repo_type="model": f"sha-of-{repo_type}")
 
     spec = vllm.resolve_target("LASR-Callum/2026-09-05-ah-qwen36-difficult-advice-0")
     assert spec.answers == "LASR-Callum/2026-09-05-ah-qwen36-difficult-advice-0"
+    # Resolved to a commit at resolve time and carried on the spec, so run_meta can name
+    # the exact answers it reused rather than the head of a repo that may move.
+    assert spec.revision == "sha-of-dataset"
     assert spec.model_key == "qwen36_difficult_advice_0" and spec.mode == "think"
     assert not spec.adapter and spec.api_base is None
 

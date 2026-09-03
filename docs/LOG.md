@@ -1,6 +1,31 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-03 — Metadata that reruns a run: launch args, commands, and revision pins
+
+**Question.** Is the config stored in an artifact's metadata enough to reproduce it, or
+is it a copy of the file that misses `seed=` and `synthetic_pct=`?
+
+**Answer, checked.** Train, eval and synth all store the MERGED config — dotlist overrides
+are applied before the metadata is built — so launch arguments were never lost. What was
+missing: `mix` took no overrides at all (`main(config, smoke)`), so `synthetic_pct=40` on
+the command line, documented in `da.yaml` and claimed in conversation, did not work;
+train's card `provenance` was built from the config path and omitted the overrides; and
+nothing pinned the base model (train), the target adapter (eval) or streamed replay
+sources (mix) — each was read at whatever the repo's head was that day.
+
+**Method.**
+* `mix` takes `*overrides` like `train`; one `da.yaml` is the whole ladder.
+* Every stage records the exact command (`sys.argv`); train's provenance IS the command;
+  the synth manifest records `resume` and every `topup` (traits, n, counts after, spend).
+* Revision pins, resolved at launch and recorded: `base_model_revision` in
+  `training_meta` (and passed to `from_pretrained`); `TargetSpec.revision` in eval,
+  fetched at that sha and served with `--revision` for a full-model target, written to
+  `run_meta.target_revision`; streamed `repo:` sources in mix pinned with `revision=` and
+  recorded per source in `mixture_stats.sources`.
+
+**Irreducible.** API models drift under a fixed id; GPU kernels are nondeterministic.
+
 ## 2026-09-03 — A mixture's styles are its synthetic source keys, sorted
 
 **Problem.** `par-da-gemini` and `da-gemini-par` were two names for one mixture, and a

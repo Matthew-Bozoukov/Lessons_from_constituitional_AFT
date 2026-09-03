@@ -11,7 +11,7 @@ import shlex
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import requests
@@ -71,6 +71,10 @@ class TargetSpec:
     lora_rank: int | None
     api_base: str | None = None      # OpenAI-compatible base URL; None => served by vLLM
     api_key_env: str | None = None   # env var holding the key for api_base
+    # The commit sha `hf_path` resolved to when this run began. Fetched at that revision
+    # and recorded in run_meta, so the run names the weights it measured and not the head
+    # of a repo that may have moved since. None for an API target (no artifact).
+    revision: str | None = None
     # An ANSWERS target: the HF dataset repo of a PRIOR run of this eval, whose
     # `rollouts/` already holds this model's generations. Nothing is served — the answers
     # exist — so an arm resolved this way costs no GPU. Only evals whose generations are
@@ -209,6 +213,13 @@ def resolve_answers_target(hf_path: str) -> TargetSpec | None:
     )
 
 
+def _repo_sha(hf_path: str, repo_type: str = "model") -> str:
+    """The commit sha an HF repo resolves to right now (one API call; patched in tests)."""
+    from src.huggingface import hf_api
+
+    return hf_api().repo_info(hf_path, repo_type=repo_type).sha
+
+
 def resolve_target(hf_path: str) -> TargetSpec:
     """Resolve a --target into a TargetSpec.
 
@@ -236,13 +247,16 @@ def resolve_target(hf_path: str) -> TargetSpec:
         # layout, so `metadata/run_meta.json` in a DATASET repo is what tells them apart —
         # never the repo's name, which a style-type could imitate.
         spec = resolve_answers_target(hf_path)
-        return spec if spec else _spec_from_files(hf_path, None, None)
+        if spec:
+            return replace(spec, revision=_repo_sha(hf_path, "dataset"))
+        return replace(_spec_from_files(hf_path, None, None), revision=_repo_sha(hf_path))
     try:
         with open(hf_download(hf_path, "training_meta.json")) as f:
             training_meta = json.load(f)
     except EntryNotFoundError:
         training_meta = None
-    return _spec_from_files(hf_path, adapter_config, training_meta)
+    return replace(_spec_from_files(hf_path, adapter_config, training_meta),
+                   revision=_repo_sha(hf_path))
 
 
 def pin_template(template_text: str, mode: str) -> str:
@@ -456,10 +470,10 @@ class LocalExec:
         path.write_text(text)
         return str(path)
 
-    def fetch_adapter(self, hf_path: str) -> str:
+    def fetch_adapter(self, hf_path: str, revision: str | None = None) -> str:
         from src.huggingface import hf_snapshot
 
-        return hf_snapshot(hf_path)
+        return hf_snapshot(hf_path, revision=revision)
 
     def start_server(self, argv: list[str], env_extra: dict) -> None:
         import os
@@ -658,7 +672,7 @@ class SshExec:
         assert int(written or 0) > 0, f"remote write of {path} produced an empty file"
         return path
 
-    def fetch_adapter(self, hf_path: str) -> str:
+    def fetch_adapter(self, hf_path: str, revision: str | None = None) -> str:
         # huggingface_hub directly, not src.huggingface: the pod holds no clone to import
         # from. The token comes from the host's own .env via _with_env, which writes it as
         # HF_TOKEN — the one variable a bare snapshot_download reads.
@@ -666,7 +680,7 @@ class SshExec:
         out = self._ssh(self._with_env(
             f"{env} {POD_VENV}/bin/python -c "
             f"\"from huggingface_hub import snapshot_download; "
-            f"print(snapshot_download('{hf_path}'))\""), timeout=1800)
+            f"print(snapshot_download('{hf_path}', revision={revision!r}))\""), timeout=1800)
         return out.strip().splitlines()[-1]
 
     def start_server(self, argv: list[str], env_extra: dict) -> None:
@@ -742,7 +756,8 @@ class VllmServer:
         Returns:
             The OpenAI-compatible base URL.
         """
-        adapter_dir = self.executor.fetch_adapter(spec.hf_path) if spec.adapter else None
+        adapter_dir = (self.executor.fetch_adapter(spec.hf_path, spec.revision)
+                       if spec.adapter else None)
         if not self.running or self.base_model != spec.base_model or self.mode != spec.mode:
             self.stop()
             self._start(spec, adapter_dir)
@@ -770,6 +785,9 @@ class VllmServer:
         argv = self.executor.python_argv + [
             "-m", "vllm.entrypoints.openai.api_server",
             "--model", spec.base_model, "--served-model-name", "base",
+            # A full-model target is its own base, so vLLM serves the commit the run
+            # resolved. An adapter's base is a different repo and is not pinned here.
+            *(["--revision", spec.revision] if spec.revision and not spec.adapter else []),
             "--dtype", "bfloat16",
             "--max-model-len", str(plan["context_window"]),
             "--gpu-memory-utilization", "0.94",
