@@ -131,7 +131,7 @@ src/                  reviewed, reusable code (installed editable; import as src
     audits/               petri/ + surf/ audit tooling
 configs/              OmegaConf YAML, one per step; NEVER hardcode hyperparams in scripts
   data/synth/           one config per document type (superseded → archive/)
-  data/mixture/         mixture builds (qwen36_*, tulu-control)
+  data/mixture/         0 (the base blend) + <styles>[-<variant>] arms; archive/
   train/                <model>-<mix>-<pct> — one file per arm, undated
   eval/                 one per eval
   endpoints/            providers.yaml — per-model OpenRouter provider pins

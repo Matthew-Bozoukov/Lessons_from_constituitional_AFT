@@ -26,7 +26,8 @@ base_model: "Qwen/Qwen3.6-27B"
 
 # --- Arms -------------------------------------------------------------------------
 # Every arm SFTs from `base_model` under identical hyperparameters (see
-# configs/train/qwen36-tulu-100.yaml); mixture ratio is the only varying factor. That is
+# the retired tulu-only control, published as the adapter below); mixture ratio is the
+# only varying factor. That is
 # spec §12 decision 5 and it is load-bearing — any other difference between arms makes
 # the comparison uninterpretable.
 #

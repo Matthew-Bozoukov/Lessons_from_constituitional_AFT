@@ -1,6 +1,22 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-03 — The tulu-only control path retired
+
+**Problem.** Before the base blend, the 0%-synthetic control was "a 1.5M-token sample of
+Tulu 3 alone": a standalone sampler (`sources/tulu3.py::main`, config `tulu-control.yaml`)
+wrote a local jsonl that `qwen36-tulu-100.yaml` trained on. That is why Tulu alone had a
+config when no other replay source did. The arm could no longer run anyway — its
+`data_repo` had read `???` since the local-file days.
+
+**Method.** Deleted the sampler config, the train config and the sampler's `main`. Tulu
+is now what every other replay source is: one adapter (`tulu3`, kept) sampled by
+`build_mixture` to the budget the mixture declares, and the 0% control is `0.yaml`. The
+internalization pod script never invoked the sampler — its `tulu` hits are a pod name and
+an adapter id — so nothing there to repoint.
+
+**Result.** `configs/data/mixture/` is `0.yaml`, `da.yaml` and `archive/`. Suite green.
+
 ## 2026-09-03 — A row count is never part of a style
 
 **Problem.** `da-gemini-716` named a corpus for how many rows one run of it produced. That
