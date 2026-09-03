@@ -412,5 +412,129 @@ def _run(
     print(f"\nwrote {out}")
 
 
+def resilience_sweep(
+    model: str = "",
+    base_url: str = "",
+    target: str = "",
+    server: str = "",
+    api_key: str = "EMPTY",
+    arm: str = ARM,
+    n_branches: int = 14,
+    rounds: int = 5,
+    samples: int = 12,
+    temperature: float = 0.7,
+    workers: int = 12,
+    seed: int = 0,
+    subject: str = "odcv_fork_resilience",
+    data: str = str(DATA),
+) -> None:
+    """Resilience, keeping every candidate so tau can be chosen AFTER the generations.
+
+    The first pass of this measured nothing: with tau set to the target's median
+    similarity against the other sentences of its own trace — mostly unrelated text, so a
+    low bar — the best of twelve candidates cleared it every round and every fork point
+    saturated at the cap. The fix is not a different threshold guessed in advance; it is to
+    stop guessing. Store each round's full candidate set and the best similarity it
+    reached, and the same generations can then be scored across a whole range of tau, with
+    the sweep itself showing where the metric has any resolution at all.
+
+    Args:
+        model: Served model name (or use target+server).
+        base_url: Endpoint (or use target+server).
+        target: Adapter to serve.
+        server: `root@ip:port` of the pod.
+        api_key: Endpoint key.
+        arm: Published run whose rollouts get branched.
+        n_branches: Fork points to test.
+        rounds: Max rounds, the paper's K.
+        samples: Candidates per round.
+        temperature: Sampling temperature.
+        workers: Concurrent requests.
+        seed: Selection and sampling seed.
+        subject: Naming-law subject.
+        data: Downloaded ODCV run directories.
+    """
+    out = run_dir(OUT_BASE, subject)
+    out.mkdir(parents=True, exist_ok=True)
+
+    srv = None
+    if server:
+        assert target, "--server needs --target"
+        srv, served = _serve(target, server, out / "serve")
+        base_url, model, api_key = (
+            served.base_url,
+            served.model_name,
+            served.api_key or "EMPTY",
+        )
+        print(f"serving {target}\n  as {model}\n  at {base_url}")
+    assert model and base_url, "give --model and --base_url, or --target and --server"
+
+    try:
+        from scratch.thought_branches.embed import best_match
+
+        trajs = [t for t in load_corpus(Path(data)) if t.arm == arm]
+        picked = _fork_branches(trajs, n_branches, seed)
+        sampler = FrozenEnvSampler()
+        cfg = SampleConfig(
+            model=model,
+            base_url=base_url,
+            api_key=api_key,
+            temperature=temperature,
+            top_p=0.95,
+            n_samples=samples,
+            workers=workers,
+            seed=seed + 7,
+            max_tokens=1400,
+        )
+        rows = []
+        for i, (t, f, bp) in enumerate(picked):
+            target_sent = (f.thought.split(". ")[0] or f.thought)[:400]
+            rounds_txt = resilience_rounds(t, bp, cfg, sampler, max_rounds=rounds)
+            sims = []
+            for cands in rounds_txt:
+                _, s = best_match(target_sent, cands) if cands else (-1, -1.0)
+                sims.append(float(s))
+            rows.append(
+                {
+                    "key": t.key,
+                    "branch": bp.branch_id,
+                    "scenario": t.scenario,
+                    "variant": t.variant,
+                    "violation": t.is_violation,
+                    "target": target_sent,
+                    "max_rounds": rounds,
+                    "best_sim_by_round": sims,
+                    "candidates": [c[:200] for r in rounds_txt for c in r[:6]],
+                }
+            )
+            print(
+                f"  {i + 1}/{len(picked)} {t.scenario[:26]:28s} best-sim by round: "
+                + " ".join(f"{s:.2f}" for s in sims)
+            )
+        (out / f"{subject}_rounds.jsonl").write_text(
+            "\n".join(json.dumps(r) for r in rows), encoding="utf-8"
+        )
+        write_run_meta(
+            out,
+            {
+                "model": model,
+                "arm": arm,
+                "rounds": rounds,
+                "samples": samples,
+                "temperature": temperature,
+                "seed": seed,
+            },
+            extra={
+                "n_branches": len(rows),
+                "generations": len(rows) * rounds * samples,
+            },
+        )
+        print(f"\nwrote {out}")
+    finally:
+        if srv is not None:
+            srv.stop()
+            print("vLLM stopped (the POD is still billing)")
+
+
 if __name__ == "__main__":
-    fire.Fire({"run": run})
+    fire.Fire({"run": run, "resilience_sweep": resilience_sweep})

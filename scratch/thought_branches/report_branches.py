@@ -86,7 +86,7 @@ def fig_spread(
         tot = sum(g.values()) or 1
         rows.append(
             {
-                "label": f"{d['scenario'][:30]} · {d['variant'][:4]}",
+                "label": f"{d['scenario'][:28]} · {d['variant'][:4]} · {'V' if d.get('violation') else 'C'}",
                 "forcing": g["forcing"] / tot,
                 "investigating": g["investigating"] / tot,
                 "reporting": g["reporting"] / tot,
@@ -129,8 +129,6 @@ def fig_spread(
         fontsize=7.6,
         color=INK,
     )
-    for tick, r in zip(ax.get_yticklabels(), rows):
-        tick.set_color(FORCING if r["violation"] else INK)
     ax.set_xlim(0, 1)
     ax.set_xticks([0, 0.25, 0.5, 0.75, 1])
     ax.set_xticklabels(["0%", "25%", "50%", "75%", "100%"])
@@ -163,8 +161,8 @@ def fig_spread(
     )
     sub = (
         "Each row is one fork point; the bar is the on-policy action distribution across reruns. "
-        "The pale tick marks where the recorded rollout landed. Orange labels are rollouts the "
-        "judges scored as violations."
+        "The pale tick marks where the recorded rollout landed. V / C is how the judges scored "
+        "that original rollout — violation or clean."
     )
     if verify is not None:
         sub += f" Greedy resampling reproduces the recorded action kind {verify:.0%} of the time."
@@ -241,6 +239,180 @@ def fig_resilience(res: Sequence[dict], out_dir: Path, subject: str) -> Path:
     fig.savefig(p, dpi=170, facecolor=SURFACE)
     plt.close(fig)
     return p
+
+
+def resilience_at(best_sim_by_round: Sequence[float], tau: float) -> int:
+    """Rounds survived at threshold `tau` — the count of leading rounds still above it.
+
+    Algorithm 1 walks rounds in order and stops the first time the best candidate fails to
+    reach tau, so this is a prefix count, not a total. Scoring it from stored similarities
+    means one set of generations answers the question at every threshold.
+    """
+    k = 0
+    for s in best_sim_by_round:
+        if s > tau:
+            k += 1
+        else:
+            break
+    return k
+
+
+def fig_resilience_sweep(rows: Sequence[dict], out_dir: Path, subject: str) -> Path:
+    """Resilience against threshold, because the threshold is the whole metric.
+
+    A single tau produces a single number and no way to tell a real result from a
+    saturated one. Sweeping it shows both: where the curve sits flat at the round cap the
+    metric has no resolution, and the range where it falls is the only place a difference
+    between fork points could be read.
+    """
+    taus = np.linspace(0.0, 1.0, 101)
+    curves = np.array(
+        [[resilience_at(r["best_sim_by_round"], t) for t in taus] for r in rows]
+    )
+    kmax = max(r["max_rounds"] for r in rows)
+    viol = np.array([bool(r.get("violation")) for r in rows])
+
+    fig, (ax, ax2) = plt.subplots(
+        1,
+        2,
+        figsize=(13.2, 5.4),
+        facecolor=SURFACE,
+        gridspec_kw={"width_ratios": [1.35, 1]},
+    )
+
+    for c in curves:
+        ax.plot(taus, c, color=MUTED, alpha=0.16, lw=1)
+    if viol.any():
+        ax.plot(
+            taus,
+            curves[viol].mean(0),
+            color=FORCING,
+            lw=2.4,
+            label=f"violating originals (n={int(viol.sum())})",
+        )
+    if (~viol).any():
+        ax.plot(
+            taus,
+            curves[~viol].mean(0),
+            color=REPORTING,
+            lw=2.4,
+            label=f"clean originals (n={int((~viol).sum())})",
+        )
+    ax.axhline(kmax, color=GRID, lw=1.2, ls="--")
+    ax.text(
+        0.01,
+        kmax - 0.12,
+        "round budget — saturated above this",
+        fontsize=8.5,
+        color=MUTED,
+        va="top",
+    )
+    ax.set_xlabel("similarity threshold τ", fontsize=10, color=MUTED)
+    ax.set_ylabel("rounds survived", fontsize=10, color=MUTED)
+    ax.set_ylim(-0.2, kmax + 0.35)
+    ax.set_title(
+        "Resilience only has resolution in a narrow band of τ",
+        fontsize=11.5,
+        color=INK,
+        loc="left",
+    )
+    leg = ax.legend(frameon=False, fontsize=9.5, loc="upper right")
+    for t in leg.get_texts():
+        t.set_color(INK)
+    _style(ax)
+    ax.grid(True, axis="y", color=GRID, linewidth=0.6, alpha=0.7)
+
+    # What the similarities actually are, round by round — the raw quantity behind it.
+    per_round = np.array([r["best_sim_by_round"] for r in rows], dtype=float)
+    for i in range(per_round.shape[0]):
+        ax2.plot(
+            range(1, per_round.shape[1] + 1),
+            per_round[i],
+            color=FORCING if viol[i] else REPORTING,
+            alpha=0.42,
+            lw=1.2,
+            marker="o",
+            ms=3.5,
+        )
+    ax2.plot(
+        range(1, per_round.shape[1] + 1),
+        per_round.mean(0),
+        color=INK,
+        lw=2.4,
+        marker="o",
+        ms=5,
+        label="mean",
+    )
+    ax2.set_xticks(range(1, per_round.shape[1] + 1))
+    ax2.set_xlabel("resampling round", fontsize=10, color=MUTED)
+    ax2.set_ylabel("best similarity to the original thought", fontsize=10, color=MUTED)
+    ax2.set_ylim(0, 1)
+    ax2.set_title(
+        "The content does not drift away with repeated resampling",
+        fontsize=11.5,
+        color=INK,
+        loc="left",
+    )
+    _style(ax2)
+    ax2.grid(True, axis="y", color=GRID, linewidth=0.6, alpha=0.7)
+
+    fig.suptitle(
+        "Resilience of the fork thought",
+        fontsize=14,
+        color=INK,
+        x=0.008,
+        ha="left",
+        y=0.985,
+    )
+    fig.text(
+        0.008,
+        0.935,
+        _wrap(
+            "Algorithm 1 counts rounds until the best of 12 regenerations stops reaching τ. "
+            "Taking a maximum over candidates makes the count saturate for any lenient τ, so "
+            "the honest reading is the curve, not one number.",
+            150,
+        ),
+        fontsize=8.8,
+        color=MUTED,
+        ha="left",
+        va="top",
+    )
+    fig.tight_layout(rect=(0, 0, 1, 0.90))
+    p = figure_path(out_dir, f"{subject}_resilience_sweep")
+    fig.savefig(p, dpi=170, facecolor=SURFACE)
+    plt.close(fig)
+    return p
+
+
+def build_sweep(run_directory: str, subject: str = "odcv_fork_resilience") -> None:
+    """Figures for a `resilience_sweep` run directory."""
+    out = Path(run_directory)
+    rows = [
+        json.loads(l)
+        for l in (out / f"{subject}_rounds.jsonl").read_text().splitlines()
+        if l.strip()
+    ]
+    p = fig_resilience_sweep(rows, out, subject)
+    taus = [0.3, 0.5, 0.6, 0.7, 0.8, 0.9]
+    lines = [
+        f"# Resilience of the fork thought — {subject}",
+        "",
+        f"{len(rows)} fork points, {rows[0]['max_rounds']} rounds x 12 candidates.",
+        "",
+        "| τ | mean rounds survived | fork points at 0 | at the cap |",
+        "|---:|---:|---:|---:|",
+    ]
+    for t in taus:
+        ks = [resilience_at(r["best_sim_by_round"], t) for r in rows]
+        lines.append(
+            f"| {t:.1f} | {np.mean(ks):.2f} | {sum(1 for k in ks if k == 0)} | "
+            f"{sum(1 for k in ks if k == rows[0]['max_rounds'])} |"
+        )
+    lines += ["", f"- `{p.name}`", ""]
+    md = out / f"{subject}_results.md"
+    md.write_text("\n".join(lines), encoding="utf-8")
+    print(f"wrote {md}\n  {p}")
 
 
 def write_report(
@@ -336,4 +508,4 @@ def build(run_directory: str, subject: str = "odcv_fork_resampling") -> None:
 if __name__ == "__main__":
     import fire
 
-    fire.Fire({"build": build})
+    fire.Fire({"build": build, "build_sweep": build_sweep})
