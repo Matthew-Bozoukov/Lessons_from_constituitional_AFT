@@ -144,11 +144,23 @@ print('    ok  per-agent model routing patch is live')
 # ── Stage the weights ─────────────────────────────────────────────────────────
 # Compute nodes run with HF_HUB_OFFLINE=1, so a cache miss there is a hard failure with
 # no way to recover. Everything the run touches is pulled now.
+# Via the Python API, not a CLI module path: `python -m
+# huggingface_hub.commands.huggingface_cli` is gone in current huggingface_hub (the CLI
+# moved and was renamed), so invoking it that way breaks on a version bump. And the
+# token comes from THIS repo's own resolution (src.huggingface.hf_token, which loads
+# .env), because the adapters live in a private org — bare huggingface_hub would read
+# only HF_TOKEN from the ambient environment and 401 on them.
 echo ">>> staging weights into ${HF_HOME} (Qwen3.6-27B is ~54GB; be patient)"
-for repo in "${BASE_MODEL}" "${CONTROL_ADAPTER}" "${TREATMENT_ADAPTER}"; do
-    echo "    ${repo}"
-    python -m huggingface_hub.commands.huggingface_cli download "${repo}" >/dev/null
-done
+python - "${BASE_MODEL}" "${CONTROL_ADAPTER}" "${TREATMENT_ADAPTER}" <<'PY'
+import sys
+from huggingface_hub import snapshot_download
+from src.huggingface import hf_token
+
+for repo in sys.argv[1:]:
+    print(f"    {repo}", flush=True)
+    path = snapshot_download(repo, token=hf_token())
+    print(f"      -> {path}", flush=True)
+PY
 
 # The chat template is read off the BASE model's tokenizer_config.json at serve time and
 # rewritten for thinking mode (pin_template). That read must hit the cache too — verify
