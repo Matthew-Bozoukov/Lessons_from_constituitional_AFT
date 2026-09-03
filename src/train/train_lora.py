@@ -731,13 +731,15 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     (adapter_dir / "train_config.yaml").write_text(OmegaConf.to_yaml(cfg, resolve=True))
 
     if push:
-        from src.infra.huggingface import push_run_dir
+        from src.infra.huggingface import hf_repo_id, push_run_dir
         from src.utils import origin_url
 
         # Same card contract as every other artifact (CLAUDE.md: every upload carries a
         # card), derived from the run's real metadata — the human-readable half beside
         # the machine-readable training_meta.json the eval framework consumes.
-        url = push_run_dir(adapter_dir, hf_repo, {
+        # `hf_repo` is the bare name the law minted; the push gate wants `org/name`.
+        # Measured 2026-09-03: a full 625-step run died HERE, adapter saved, nothing pushed.
+        url = push_run_dir(adapter_dir, hf_repo_id(hf_repo), {
             "experiment": f"LoRA SFT adapter — {Path(config).stem}",
             "date_generated": ts[:8],
             "constitution": str(cfg.get("constitution") or

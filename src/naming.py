@@ -701,8 +701,16 @@ def _check_config(rel: str, stem: str, path: Path) -> str:
             # `numbers_ok` ONLY for a pre-law stem: those carry the row counts and ratios
             # of a mixture that was never named under the law, and the only lawful thing
             # to do with a number that names nothing is to leave it where it is.
-            check_style(mix, what="mixture subject (train config stem)",
-                        numbers_ok=not declared)
+            # A LAWFUL mixture subject carries its percentage by definition
+            # (`da-no-const-7`), so it is checked as a mix subject; only a pre-law stem
+            # is a bare style whose numbers are tolerated. (`check_style` on the lawful
+            # half refused every `<model>-<mix>-<pct>` stem -- caught 2026-09-03 by the
+            # first config written to the law.)
+            if declared:
+                check_mix_subject(mix, what="mixture subject (train config stem)")
+            else:
+                check_style(mix, what="mixture subject (train config stem)",
+                            numbers_ok=True)
         elif folder == "configs/eval":
             # An eval config is a KIND — the registry default for that eval — so its stem
             # is the eval's own name, spelled exactly as the registry spells it. Checked
