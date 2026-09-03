@@ -9,9 +9,10 @@
 
 REPO="${SLURM_SUBMIT_DIR:-$(pwd)}"
 
-# /project is the persistent, backed-up filesystem here and holds anything expensive to
-# rebuild: the venv, the model cache, the Colosseum checkout. $SCRATCH is purge-eligible,
-# so it holds only run OUTPUT, which is pushed to the Hub anyway.
+# /project is the persistent, backed-up filesystem here and holds everything this pipeline
+# owns: the repo (and so its output/), the venv, the model cache, the Colosseum checkout.
+# $SCRATCH is deliberately unused — it is purge-eligible, and a run directory is the only
+# copy of its rollouts until a login node pushes them to the Hub.
 PROJECT_ROOT="${PROJECT_ROOT:-/project/aip-s2ganapa/${USER}}"
 SCRATCH="${SCRATCH:-/scratch/${USER}}"
 COLOSSEUM_VENV="${COLOSSEUM_VENV:-${PROJECT_ROOT}/venvs/colosseum}"
@@ -66,11 +67,13 @@ export TRANSFORMERS_OFFLINE="${TRANSFORMERS_OFFLINE:-1}"
 export VLLM_NO_USAGE_STATS=1
 export DO_NOT_TRACK=1
 
-# The same reason the eval is run with --no-push here: publishing to the Hub, and every
-# judge call, needs the network. Both happen afterwards, from a login node, over the run
-# directory this job leaves on $SCRATCH (scripts/infra/slurm/publish_runs.sh).
-export COLOSSEUM_OUT_ROOT="${COLOSSEUM_OUT_ROOT:-${SCRATCH}/colosseum}"
-mkdir -p "${COLOSSEUM_OUT_ROOT}"
+# Run output stays where run_eval puts it — `output/<eval>/<arm>_<time>/`, repo-relative,
+# the same as every other eval in this repo — so publish_runs.sh and the analysis need no
+# cluster-specific path. That means the repo must live on /project, not $SCRATCH, because
+# $SCRATCH is purge-eligible and these directories are the only copy until they are
+# pushed. Publishing and judging both need the network and both happen afterwards, from a
+# login node; see scripts/infra/slurm/publish_runs.sh.
+mkdir -p "${REPO}/output" "${REPO}/logs/slurm"
 
 # .env carries OPENROUTER_API_KEY and HF_TOKEN. It is sourced because the LOGIN-node
 # stages (prefetch, judge, push) need it; on a compute node nothing reads it, and no
@@ -86,7 +89,7 @@ echo "repo    : ${REPO}"
 echo "venv    : ${COLOSSEUM_VENV}"
 echo "python  : $(command -v python) ($(python -V 2>&1))"
 echo "HF_HOME : ${HF_HOME} (offline=${HF_HUB_OFFLINE})"
-echo "out     : ${COLOSSEUM_OUT_ROOT}"
+echo "out     : ${REPO}/output"
 
 if ! python -c "import sys" >/dev/null 2>&1; then
     echo "ERROR: the venv's python does not run — the module that built it is" >&2

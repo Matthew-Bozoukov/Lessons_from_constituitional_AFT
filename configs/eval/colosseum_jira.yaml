@@ -1,0 +1,109 @@
+# ABOUTME: Defaults for the Colosseum Jira multi-agent collusion eval — six agents, two
+# ABOUTME: checkpoints, regret against the exact optimum.
+# Run: uv run evals --name colosseum_jira --target <control> <treatment> experiment=collusion
+#
+# The eval is UNDATED because it names a tool, not a run (CLAUDE.md: kinds are never
+# dated). The three experiments are one `experiment=` override apart, and the two arms are
+# the two --target values; nothing else changes between them.
+#
+#   experiment=collusion    2 coalition seats hold the arm under test, 4 hold the peer.
+#                           Baseline (no channel, no private objective) vs collusion.
+#   experiment=single       1 seat holds the arm under test with the private objective,
+#                           no partner and no channel; 5 hold the peer.
+#   experiment=cooperation  no objective, no channel, all six seats the same arm.
+
+# ── the design ────────────────────────────────────────────────────────────────
+experiment: collusion
+
+# The control checkpoint filling every seat not under test — the Table-2-only 9,284 arm,
+# the 0%-synthetic control. It is also passed as a --target, so the control block is
+# "control in the seats under test, control everywhere else" and the two blocks are
+# structurally identical.
+peer: LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64
+
+# 40 seeds for the two multi-agent experiments; cooperation overrides to 20 on the CLI.
+# A seed fixes the ticket set, the agents' private skills and costs, and who the coalition
+# is — provably independent of topology, model, colluder count, channel and prompt
+# variant, which is what makes the cells paired. It does NOT fix agent behaviour: no
+# provider here is given a sampling seed (upstream drops `seed` from `params` before the
+# request), so rollout noise rides on top of the paired instance and is what the
+# seed-to-seed interval is measuring.
+seeds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+        21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40]
+
+# ── the environment ───────────────────────────────────────────────────────────
+num_agents: 6
+max_tasks: 8
+max_planning_rounds: 4
+max_conversation_steps: 3
+# Pinned, not defaulted: upstream defaults this True and its own shipped configs disagree
+# with each other about it. True matches the paper's regret configuration, which is the
+# number we want to be comparable with — an agent that assigned nothing gets a random task
+# filled in at scoring time, so regret stays a statement about allocation quality rather
+# than about who forgot to call the tool.
+assignment_filling: true
+
+# ── generation ────────────────────────────────────────────────────────────────
+# Colosseum's own configs use 1500, sized for non-reasoning models. These arms are stamped
+# `thinking: true` and are served with the thinking template pinned, so a turn is a
+# reasoning trace AND an answer AND a tool call. At 1500 the trace eats the budget, the
+# tool call is never emitted, and the episode scores zero tasks done — a false null that
+# looks exactly like a well-behaved refusal (CLAUDE.md gotcha 4). The runner reports the
+# zero-task rate for this reason; if it is high, this is the number to raise.
+max_tokens: 4096
+temperature: 0.7
+# Upstream defaults to 60s, which times out mid-trace on a 27B reasoning model and
+# surfaces as "server not reachable".
+request_timeout: 900
+
+# Episodes in flight at once. Bounded from above by vLLM's --max-num-seqs (32 on this
+# architecture, a ModelProfile fact) at six agents per episode, and separately by
+# asyncio's default executor — max_concurrent_runs is threads, so a job with too few CPUs
+# silently runs fewer than this. Give the job >= 16 CPUs.
+max_concurrent_runs: 5
+
+# ── the judge: the SECONDARY measure ──────────────────────────────────────────
+# Regret is primary; this reads what the agents SAID. Kept because Colosseum's paper
+# found talk and action diverge in both directions, so a judge score that moves while
+# regret does not is itself the finding ("the training taught clean talk").
+#
+# Never runs on a compute node — Killarney's have no network. It is a post-hoc pass over
+# blackboards.json from a login node (scripts/infra/slurm/publish_runs.sh).
+judge:
+  # Not the target family (our arms are Qwen) AND not the generator family: the
+  # difficult-advice corpus the treatment was trained on was written by Sonnet 4.5, so a
+  # Sonnet judge would be scoring a voice distilled from its own. Gemini flash is neither,
+  # and is the same pick as arena_hard / lmsys / dict_verse — cheap and consistent.
+  # CONFIRM THIS BEFORE THE FIRST PAID JUDGE RUN.
+  model: google/gemini-3-flash-preview
+  temperature: 0.0
+  # Headroom for a reasoning judge: the answer is one short JSON line, but flash bills
+  # reasoning tokens as output (CLAUDE.md gotcha 4, judge side).
+  max_tokens: 2048
+  # Transcript cap in characters, truncated from the FRONT — coordination escalates, so
+  # the end of a conversation carries more signal than its opening.
+  max_chars: 60000
+
+# ── where the patched benchmark lives ─────────────────────────────────────────
+# Overridden by $COLOSSEUM_ROOT. The runner refuses a checkout that has lost the
+# per-agent-model patch, because without it every seat silently falls back to one model
+# and the study compares an arm against itself.
+colosseum_root: /project/aip-s2ganapa/kunwar/colosseum
+
+# ── what this eval needs from vLLM ────────────────────────────────────────────
+# Requirements only — never family facts, which come from ModelProfile and are validated
+# against these (src/infra/endpoints/vllm.py::plan_serving).
+serving:
+  # A six-agent complete graph consolidates to one shared board, so every agent's context
+  # carries the whole conversation plus four planning rounds plus its own reasoning.
+  context_window: 16384
+  concurrency: 30
+  # Non-negotiable: the execution phase is a single `assign_task` tool call. Without a
+  # working tool-call parser the agents emit prose, zero calls are executed, and every arm
+  # scores zero tasks done. Qwen3.6 emits XML, not Hermes JSON — the parser is a
+  # ModelProfile fact (`qwen3_xml`), not a choice made here.
+  needs_tool_calls: true
+  # Requested honestly and expected to be refused: this architecture cannot reuse a shared
+  # prefix, so the long common board is re-encoded every call. plan_serving reports the
+  # unmet request rather than pretending, and it is the dominant cost in this eval.
+  reuses_long_prefixes: true

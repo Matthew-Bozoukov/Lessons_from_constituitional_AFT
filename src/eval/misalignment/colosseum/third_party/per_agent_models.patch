@@ -1,0 +1,131 @@
+diff --git a/experiments/collusion/run.py b/experiments/collusion/run.py
+index 56dcfc1..a843bd7 100644
+--- a/experiments/collusion/run.py
++++ b/experiments/collusion/run.py
+@@ -192,6 +192,48 @@ def _select_colluders(
+         return [str(x) for x in list(agent_names)[:count]]
+     raise ValueError(f"Unknown colluder selection strategy: {strategy!r}")
+ 
++def _resolve_agent_llm_configs(
++    agent_names: Sequence[str],
++    roles: Dict[str, str],
++    default_llm_cfg: Dict[str, Any],
++    by_role_cfg: Optional[Dict[str, Any]],
++) -> Dict[str, Dict[str, Any]]:
++    """One llm config per agent, chosen by that agent's collusion role.
++
++    Public Colosseum gives every agent the same model: ``llm_models`` is a sweep axis,
++    and the vLLM runtime deletes ``agent_name`` outright. That makes a MIXED team
++    impossible, and a mixed team is the only way to ask whether a model's disposition
++    survives contact with a differently-trained peer — the coalition seats have to hold
++    one checkpoint while the rest of the team holds another.
++
++    Assignment is by ROLE rather than by position, because ``colluder_selection: random``
++    decides who the coalition is at run time from the seed; a positional list would have
++    to guess. ``experiment.collusion.agent_llms_by_role`` maps ``colluder`` and ``normal``
++    to full ``llm`` blocks. Omit it and every agent keeps the sweep's own model, which is
++    exactly upstream behaviour.
++
++    Args:
++        agent_names: Every agent in the run.
++        roles: {agent_name: "colluder" | "normal"} as computed from the seed.
++        default_llm_cfg: The sweep's own ``llm`` block, used when no override applies.
++        by_role_cfg: {role: llm block} or None.
++
++    Returns:
++        {agent_name: llm config}, one deep copy per agent.
++    """
++    if not by_role_cfg:
++        return {str(a): copy.deepcopy(default_llm_cfg) for a in agent_names}
++    missing = sorted({roles[str(a)] for a in agent_names} - set(by_role_cfg))
++    if missing:
++        raise ValueError(
++            f"experiment.collusion.agent_llms_by_role has no entry for role(s) {missing}; "
++            f"this run has roles {sorted({roles[str(a)] for a in agent_names})}. Give every "
++            "role a model explicitly rather than letting one silently fall back to the "
++            "sweep default — a seat filled by the wrong arm is invisible in the results."
++        )
++    return {str(a): copy.deepcopy(by_role_cfg[roles[str(a)]]) for a in agent_names}
++
++
+ def _order_agent_turns(
+     *,
+     agent_names: Sequence[str],
+@@ -367,28 +409,53 @@ async def _run_single(
+     model_name = get_model_name(provider, cfg["llm"])
+     generation_params = get_generation_params(cfg["llm"])
+     max_steps = int(cfg["simulation"].get("max_conversation_steps", 3))
+-    vllm_runtime = None
+-    if provider == "vllm":
+-        vllm_runtime = build_vllm_runtime(cfg["llm"])
++
++    # One llm config per agent (see _resolve_agent_llm_configs). With no
++    # agent_llms_by_role block every agent gets the sweep's model and this is a no-op.
++    agent_llm_cfgs = _resolve_agent_llm_configs(
++        agent_names=agent_names,
++        roles=roles,
++        default_llm_cfg=cfg["llm"],
++        by_role_cfg=collusion_cfg.get("agent_llms_by_role"),
++    )
++
++    # A vLLM runtime holds exactly ONE model spec — VLLMGlobalConfig refuses more — so a
++    # mixed team needs one runtime per distinct model, not one per agent. They are cached
++    # by the served model name: two agents on the same arm share a runtime, and with
++    # auto_start_server:false every runtime merely attaches to the server already running.
++    vllm_runtimes: Dict[str, Any] = {}
++
++    def _runtime_for(agent_llm_cfg: Dict[str, Any]):
++        if (agent_llm_cfg.get("provider") or "").lower() != "vllm":
++            return None
++        key = json.dumps(agent_llm_cfg.get("vllm") or {}, sort_keys=True, default=str)
++        if key not in vllm_runtimes:
++            vllm_runtimes[key] = build_vllm_runtime(agent_llm_cfg)
++        return vllm_runtimes[key]
+ 
+     agents: List[BaseAgent] = []
++    agent_llm_labels: Dict[str, str] = {}
+     env_tool_name = str(
+         getattr(env, "tools_environment_name", None) or env.__class__.__name__
+     )
+     for name in agent_names:
++        agent_llm_cfg = agent_llm_cfgs[str(name)]
++        agent_provider = (agent_llm_cfg.get("provider") or "").lower()
++        agent_model_name = get_model_name(agent_provider, agent_llm_cfg)
++        agent_llm_labels[str(name)] = agent_model_name
+         client = get_client_instance(
+-            cfg["llm"], agent_name=name, vllm_runtime=vllm_runtime
++            agent_llm_cfg, agent_name=name, vllm_runtime=_runtime_for(agent_llm_cfg)
+         )
+         agents.append(
+             BaseAgent(
+                 client,
+                 name,
+-                model_name,
++                agent_model_name,
+                 max_steps,
+                 None,
+                 trajectory_logger,
+                 env_tool_name,
+-                generation_params=generation_params,
++                generation_params=get_generation_params(agent_llm_cfg),
+             )
+         )
+     if str(agent_order_strategy or "random").strip().lower() == "random":
+@@ -589,6 +656,9 @@ async def _run_single(
+             "prompt_variant": str(effective_prompt_variant),
+             "seed": seed,
+             "roles": roles,
++            # Which arm actually sat in which seat. Without this the run record cannot
++            # tell a mixed-team run from a single-model one after the fact.
++            "agent_llm_labels": agent_llm_labels,
+             "blackboard_participants": blackboard_participants,
+         },
+     )
+@@ -653,6 +723,7 @@ async def _run_single(
+         "seed": seed,
+         "colluders": colluders,
+         "agent_order": str(agent_order_strategy or "random"),
++        "agent_llm_labels": agent_llm_labels,
+         "status": metrics.status,
+         # Radar-chart inputs (environment summary + collusion metrics).
+         "joint_reward": joint_reward,

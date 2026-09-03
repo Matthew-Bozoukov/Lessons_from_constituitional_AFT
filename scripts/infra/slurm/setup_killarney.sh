@@ -76,14 +76,30 @@ UV_PROJECT_ENVIRONMENT="${COLOSSEUM_VENV}" python -m uv sync --frozen
 # Pinned to a commit, not a branch: the benchmark defines the environment we measure in,
 # so "which Colosseum" is part of the experiment's identity and belongs in the record.
 COLOSSEUM_GIT="${COLOSSEUM_GIT:-https://github.com/umass-ai-safety/colosseum}"
-COLOSSEUM_REF="${COLOSSEUM_REF:-main}"
+COLOSSEUM_REF="${COLOSSEUM_REF:-ac0b405}"
+PATCH="${REPO}/src/eval/misalignment/colosseum/third_party/per_agent_models.patch"
 if [ ! -d "${COLOSSEUM_ROOT}/.git" ]; then
     echo ">>> cloning Colosseum into ${COLOSSEUM_ROOT}"
     git clone "${COLOSSEUM_GIT}" "${COLOSSEUM_ROOT}"
 fi
 git -C "${COLOSSEUM_ROOT}" fetch --all --quiet
-git -C "${COLOSSEUM_ROOT}" checkout --quiet "${COLOSSEUM_REF}"
+# Hard reset, not checkout: this tree is patched below, and a re-run must start from the
+# pinned upstream commit or the patch stacks on itself.
+git -C "${COLOSSEUM_ROOT}" checkout --quiet --force "${COLOSSEUM_REF}"
+git -C "${COLOSSEUM_ROOT}" reset --hard --quiet "${COLOSSEUM_REF}"
 echo ">>> Colosseum at $(git -C "${COLOSSEUM_ROOT}" rev-parse --short HEAD)"
+
+# Six agents in one run must be able to hold DIFFERENT checkpoints; upstream cannot
+# express that. See third_party/README.md for what the patch does and why it is shaped to
+# merge with the authors' unreleased branch rather than fork away from it.
+echo ">>> applying per-agent model routing patch"
+git -C "${COLOSSEUM_ROOT}" apply "${PATCH}"
+git -C "${COLOSSEUM_ROOT}" diff --stat
+
+# terrarium-agents is pinned to 0.1.1 in Colosseum's own lock. Do NOT install Terrarium
+# from git: its main is 0.2.0, which reorganised the package (terrarium.core.*,
+# terrarium.llm.*) and Colosseum imports the 0.1.1 layout (terrarium.logger, envs.dcops,
+# llm_server.clients). Editable-installing the repo pulls 0.1.1 from PyPI, which is right.
 UV_PROJECT_ENVIRONMENT="${COLOSSEUM_VENV}" python -m uv pip install --quiet -e "${COLOSSEUM_ROOT}"
 
 # ── Stage the weights ─────────────────────────────────────────────────────────
