@@ -443,3 +443,56 @@ Memory barely mattered; CPUs decided everything, because the free H100 nodes wer
 full of other jobs' cores. Ask `--test-only` before committing to a shape, and prefer the
 smallest CPU count the work actually needs — asyncio's default executor caps at
 `min(32, cpu_count + 4)`, so 8 CPUs still affords 12 worker threads.
+
+## Dated adapters make eval names too long, in THREE places (2026-09-03)
+
+Since adapters became dated artifacts, `spec.model_key` carries its own production date.
+Anywhere that composes `today + model_key` therefore produces a name with two dates, and
+for a long arm it blows the 96-character limit `local_name`/`gate_push` enforce. The
+difficult-advice arm (`2026-08-21_qwen36_lora_table2_9284_difficult_advice_chunk_only_702_rank_64_dynbatch`)
+tripped all three of these in one afternoon:
+
+| site | symptom | fix |
+|---|---|---|
+| `run_eval` out_dir | 101 chars; died naming arm 2 **after arm 1 finished** | `subject_of(model_key)` |
+| `run_eval` summary row | 109 chars; died **after** results.json was written | eval name became the directory, plus `subject_of` |
+| a published repo name | 119 chars; would die on a login node after all GPU spend | explicit short `arm_labels` in the eval config |
+
+The lesson is not the individual fixes but where they fire: **every one of these fails
+late**, after episodes are run and sometimes after results are on disk, because names are
+composed at publish time rather than checked up front. When adding an eval, assert its
+names through `gate_push`/`local_name` in a unit test — `tests/test_colosseum_publish.py`
+does this for all six of its repo names and runs in a second.
+
+`subject_of()` is the right tool: it strips the artifact's own date, which belongs to the
+artifact, and leaves the run's date to `local_name`. `run_meta.json`'s `target` still
+records exactly which artifact was served.
+
+## Two concurrent arms of one eval collide on the run directory (2026-09-03)
+
+`run_eval` names each arm directory `<model_key>_<HHMMSS>` — no job id, no pid. Two jobs
+that reach that line in the same second get the SAME directory, and if every arm of the
+study starts from the same control checkpoint (as a mixed-team design does), the
+model_key half never disambiguates them.
+
+Observed: `single` and `cooperation` both started at 15:56:37, shared one arm directory
+AND one Colosseum output tree, interleaved their episodes into it, and were heading for a
+race on `results/per_seed.json`. It was caught 31 minutes in only because an arm directory
+listed cells `[baseline cooperation]`, which no single experiment has.
+
+Stagger parallel jobs deterministically (`scripts/infra/slurm/colosseum_job.sh` offsets
+per experiment) — or give each its own working directory. And when running arms in
+parallel, check the cells each run directory actually contains before trusting any
+aggregate over them.
+
+## run_eval publishes each arm before naming the next — so partial runs are salvageable (2026-09-03)
+
+Worth knowing when an invocation dies partway: `_publish` runs at the end of each arm's
+loop iteration, so every arm that finished is complete on disk — `results/per_seed.json`,
+`results/results.json`, `metadata/run_meta.json` — even though the invocation as a whole
+failed. Rerunning both arms to recover one is the expensive way out.
+
+`ARMS=control|treatment|both` on the Colosseum job script exists for this. The cost is
+that in-invocation pooling does not happen, so the contrast is assembled afterwards from
+the two run directories (`scratch/colosseum_pool_split_arms.py`) — the same computation
+over the same inputs.
