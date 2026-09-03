@@ -396,6 +396,72 @@ def artifact_name(subject: str, *, date: str | None = None) -> str:
     return _mint(subject, date, what="artifact")
 
 
+# What the sources of a PRE-LAW mixture were, in the vocabulary the law uses now. A legacy
+# artifact keeps its name on the Hub; a NEW artifact built from it is named from what the
+# old rows ARE — `source` and `supervise` columns — never from the old name. This is the
+# one place a human maps old words to new, edited once per source and never per run.
+# Value: the style a synthetic source is, or None for replay data. A source not listed
+# here refuses, naming the line to add.
+SOURCE_STYLES: dict[str, str | None] = {
+    # synthetic — the constitution-grounded document types
+    "da": "da", "difficult_advice": "da", "synthdoc": "da",
+    "post_action_retrospection": "par", "peer_critique": "pc",
+    "pre_action_deliberation": "pad", "courtroom": "courtroom",
+    # replay — the non-synthetic blend, however it was assembled at the time
+    "tulu3": None, "tulu3_if": None, "numinamath_cot": None, "no_robots": None,
+    "table2": None, "smol_summarize": None, "smol_constraints": None,
+    "self_oss_instruct": None, "longalign": None, "lima": None,
+    "apigen_function_calling": None, "embodied": None, "agentic_tools": None,
+}
+
+# `supervise` values that are a mixture VARIANT in the law's vocabulary. "all" and
+# "final" are not variants: they are what every mixture does by default for single- and
+# multi-turn rows respectively.
+SUPERVISE_VARIANTS: dict[str, str] = {"cot": "cot-only", "answer": "answer-only"}
+
+
+def derive_artifact_name_from_legacy(rows) -> str:
+    """The mix subject a NEW artifact takes from a PRE-LAW mixture — from its rows.
+
+    Runs only when the input's own name does not conform (`mix_subject_from` returned
+    ''); a lawful input names its products the default way. Nothing here reads or
+    rewrites the old name: the styles come from the `source` column through
+    SOURCE_STYLES, the percentage is counted, and the variant is read off `supervise`.
+
+    Args:
+        rows: The mixture's rows (dicts, or a datasets.Dataset) with a `source` column and
+            optionally `supervise`.
+
+    Returns:
+        `<styles>-<pct>[-<variant>]`, or `0` — e.g. `da-7-cot-only` for the 2026-08-31
+        cot-only mixture, whose Hub name says none of that.
+
+    Raises:
+        NamingError: a source SOURCE_STYLES does not know, or rows with no `source`.
+    """
+    sources = list(rows["source"]) if hasattr(rows, "column_names") else [r.get("source") for r in rows]
+    if not sources or any(s is None for s in sources):
+        raise NamingError(
+            "cannot name an artifact from this mixture: its rows carry no `source` column, "
+            "so nothing says which rows are synthetic. Pass `hf_repo=<name>` explicitly.")
+    unknown = sorted({s for s in sources if s not in SOURCE_STYLES})
+    if unknown:
+        raise NamingError(
+            f"cannot name an artifact from this mixture: its rows come from sources the "
+            f"law has no word for: {unknown}. Add each to SOURCE_STYLES in src/naming.py "
+            "— a style for a synthetic source, None for replay — and rerun.")
+    styles = sorted({SOURCE_STYLES[s] for s in sources if SOURCE_STYLES[s]})
+    pct = round(100 * sum(1 for s in sources if SOURCE_STYLES[s]) / len(sources))
+    supervise = (set(rows["supervise"]) if hasattr(rows, "column_names") and "supervise" in rows.column_names
+                 else {r.get("supervise") for r in rows})
+    variants = sorted({SUPERVISE_VARIANTS[v] for v in supervise if v in SUPERVISE_VARIANTS})
+    if len(variants) > 1:
+        raise NamingError(
+            f"cannot name an artifact from this mixture: its rows mix supervise variants "
+            f"{variants}, and a mixture has one. Pass `hf_repo=<name>` explicitly.")
+    return mix_subject("-".join(styles), pct, variants[0] if variants else "")
+
+
 def mix_subject_from(repo_id: str) -> str:
     """A mixture repo's subject, or '' when it predates this law.
 

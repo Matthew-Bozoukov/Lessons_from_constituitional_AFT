@@ -1,6 +1,25 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-03 — New artifacts from pre-law inputs are named from what the input IS
+
+**Problem.** After the law landed, every train config pointing at a pre-law mixture was
+refused at launch: the fallback handed the config stem (`table2-9284-da-716-dynbatch`) to
+the mix-subject check, which wants exactly one number. The old arms could not be retrained,
+and renaming 160 Hub repos to fix that is the wrong instrument.
+
+**Method.** `derive_artifact_name_from_legacy(rows)` in `src/naming.py`, run ONLY when the
+input's own name does not conform (`mix_subject_from` returns ''): a lawful input names
+its products the default way. For a pre-law mixture the subject comes from its rows —
+`source` through a `SOURCE_STYLES` registry (a style for a synthetic source, None for
+replay; the one place old words map to new, edited once), the percentage counted, the
+variant read off `supervise` (`cot` → `cot-only`, `answer` → `answer-only`). The
+table2-9284 + da-716 arms name their organisms `...-da-7`; the cot-only one `...-da-7-
+cot-only`. An unknown source refuses and names the registry line to add; the config-stem
+fallback is gone. Naming moved to just after the mixture loads — still before the
+tokenizer, the model and the first GPU-hour — and `training_meta` records `mix_subject`
+and `mix_subject_from`. Nothing on the Hub is renamed.
+
 ## 2026-09-03 — Metadata that reruns a run: launch args, commands, and revision pins
 
 **Question.** Is the config stored in an artifact's metadata enough to reproduce it, or

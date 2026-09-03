@@ -212,3 +212,24 @@ def test_the_styles_part_is_the_sorted_synthetic_source_keys(tmp_path):
     assert "stem is `da-gemini-par`" in mixture("par-da-gemini", ["par", "da-gemini"])
     # a stem that names a corpus the sources do not contain
     assert "stem is `da`" in mixture("da-par", ["da"])
+
+
+def test_a_new_artifact_built_from_a_pre_law_mixture_is_named_from_its_rows():
+    """The old repo keeps its name; what is built FROM it is named from what it is."""
+    from src.naming import derive_artifact_name_from_legacy as derive
+
+    table2_da716 = [{"source": "da"}] * 716 + [{"source": "table2"}] * 9284
+    assert derive(table2_da716) == "da-7"
+    cot_only = [{"source": "da", "supervise": "cot"}] * 716 + [{"source": "table2"}] * 9284
+    assert derive(cot_only) == "da-7-cot-only"
+    assert derive([{"source": "difficult_advice"}] * 200 + [{"source": "tulu3"}] * 800) == "da-20"
+    assert derive([{"source": "tulu3"}] * 100) == "0"           # the old tulu-only control
+
+
+def test_a_source_the_law_has_no_word_for_refuses_and_names_the_registry():
+    from src.naming import derive_artifact_name_from_legacy as derive
+
+    with pytest.raises(NamingError, match="SOURCE_STYLES"):
+        derive([{"source": "mem_self"}] * 10 + [{"source": "tulu3"}] * 90)
+    with pytest.raises(NamingError, match="no `source` column"):
+        derive([{"text": "..."}] * 10)
