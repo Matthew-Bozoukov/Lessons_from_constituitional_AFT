@@ -63,11 +63,25 @@ temperature: 0.7
 # surfaces as "server not reachable".
 request_timeout: 900
 
-# Episodes in flight at once. Bounded from above by vLLM's --max-num-seqs (32 on this
-# architecture, a ModelProfile fact) at six agents per episode, and separately by
-# asyncio's default executor — max_concurrent_runs is threads, so a job with too few CPUs
-# silently runs fewer than this. Give the job >= 16 CPUs.
-max_concurrent_runs: 5
+# Episodes in flight at once, and the single biggest throughput lever here.
+#
+# The obvious reading — six agents per episode against vLLM's 32-sequence cap, so five
+# episodes saturate the server — is WRONG, and it cost a 4x slowdown before it was
+# checked. Colosseum drives both phases as `for agent in env.agents:` with an `await`
+# inside (experiments/collusion/run.py), so the agents of one episode act STRICTLY
+# SEQUENTIALLY: an episode contributes exactly ONE in-flight request, not six. At
+# max_concurrent_runs: 5 the H100 was running a batch of five against a cap of 32.
+#
+# 24 leaves headroom under --max-num-seqs (32, a ModelProfile architectural fact, not a
+# tuning knob) for the LoRA swap between arms and for request queueing. The other bound
+# is asyncio's default executor at min(32, os.cpu_count() + 4) — and on Python 3.12 that
+# reads the NODE's core count rather than the cgroup allocation, so it is 32 here
+# regardless of --cpus-per-task. The threads only wait on HTTP, so a small CPU
+# allocation still services them; ask for few CPUs, because on this cluster the CPU
+# request is what gates the queue (docs/GOTCHAS.md).
+#
+# Measured on the 2026-09-03 smoke: 3 concurrent episodes ran ~21 min each.
+max_concurrent_runs: 24
 
 # ── how each arm is NAMED in the published run ────────────────────────────────
 # The published repo name is `<today>-colosseum-jira-<experiment>-<label>`. The label

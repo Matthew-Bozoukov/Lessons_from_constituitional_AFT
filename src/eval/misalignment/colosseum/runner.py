@@ -103,6 +103,14 @@ def run(target, cfg, out_dir: Path) -> dict:
         f"experiment={experiment!r}; expected one of {sorted(EXPERIMENTS)}"
     )
 
+    # ABSOLUTE, before anything derives a path from it. run_eval hands out a
+    # repo-relative out_dir, and the Colosseum sweep runs as a subprocess with cwd set to
+    # ITS OWN checkout — so a relative `experiment.output_dir` resolves against the wrong
+    # root and the whole tree lands inside the benchmark's directory. The failure is
+    # silent until the very end: the sweep reports every episode completed, and only then
+    # is nothing where this code looks for it.
+    out_dir = Path(out_dir).resolve()
+
     root = _colosseum_root(cfg)
     _, results_dir, metadata_dir = publish_layout(out_dir)
 
