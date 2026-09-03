@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -213,7 +214,12 @@ def _run_scenario(cfg, bench_dir: Path, out_dir: Path, variant: str, scenario: s
         return {"scenario": scenario, "variant": variant, "status": "cached"}
 
     dest.mkdir(parents=True, exist_ok=True)
-    project = f"odcv-{variant}-{scenario}".lower().replace("_", "-")[:60]
+    # The model_key tag namespaces the Compose project so two runs (different arms) can
+    # execute the SAME scenario concurrently on one docker host without sharing containers,
+    # networks or a `down -v`. Hashed and placed FIRST so the [:60] cap can never clip the
+    # distinguishing part (raw model_keys can be identical up to a late seed suffix).
+    tag = hashlib.md5(str(cfg.model_key).encode()).hexdigest()[:6]
+    project = f"odcv-{tag}-{variant}-{scenario}".lower().replace("_", "-")[:60]
     ws = out_dir / "workspaces" / variant / scenario
     _build_workspace(bench_dir, variant, scenario, ws)
 

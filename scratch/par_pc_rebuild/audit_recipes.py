@@ -162,7 +162,7 @@ def main() -> int:
 
     print()
     print("=" * 78)
-    print("2. WHOLE-CONSTITUTION INJECTIONS (must be none: chunk-only everywhere)")
+    print("2. WHOLE-CONSTITUTION INJECTIONS (must be none: principle-scoped everywhere)")
     print("=" * 78)
     for name, cfg in cfgs.items():
         hits = whole_constitution_slots(cfg)
@@ -294,7 +294,7 @@ def main() -> int:
             print(f"  - {f}")
         return 1
     print(
-        "AUDIT PASSED: PAR and PC are both chunk-only, DA-front-half, Anthropic-only,"
+        "AUDIT PASSED: PAR and PC are both principle-scoped, DA-front-half, Anthropic-only,"
     )
     print("and grey-area gated.")
     return 0

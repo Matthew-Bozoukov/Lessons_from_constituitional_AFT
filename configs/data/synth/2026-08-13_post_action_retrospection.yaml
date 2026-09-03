@@ -1,6 +1,6 @@
 # ABOUTME: Post-action retrospection: a difficult-advice exchange whose FIRST reply falls short in a way
 # ABOUTME: the scenario itself specifies -- the person pushes back, and the trained turn is the assistant
-# ABOUTME: diagnosing and repairing it. Chunk-only, grey-area-rated scenarios, DA's front half verbatim.
+# ABOUTME: diagnosing and repairing it. Principle-scoped, grey-area-rated scenarios, DA's front half verbatim.
 # Run: uv run synth run --config configs/data/synth/2026-08-13_post_action_retrospection.yaml [--smoke]
 #
 # DESIGN B, 2026-08-26. Three recipes preceded it in two days (all in git history; the two-arm
@@ -58,7 +58,7 @@
 # KEPT FROM THE EARLIER REWRITES (measurements in docs/LOG.md, 2026-08-25/26): stages 1-6 are
 # DA's byte for byte; the grey-area rater now reads the refined prompt (stage 7) -- its first
 # home, the scenario stage, dropped 77% of 2,600 scenarios for having "no AI assistant in the
-# loop", which every situation lacks before it becomes a message; chunk-only everywhere; the
+# loop", which every situation lacks before it becomes a message; principle-scoped everywhere; the
 # reflection's framing and the rewrite's contract and lint are DA's.
 #
 # NOT YET SMOKED in this form. `--smoke` (8 scenarios), then `--overrides
@@ -89,7 +89,7 @@ hf_private: false
 
 workers: 16
 # Abort a stage above this per-item failure rate. Above the 2.0 default because `revise_prompts`
-# loses rows two ways in the chunk-only recipe: ~6% content-filter refusals (DA, n=716) and
+# loses rows two ways in the principle-scoped recipe: ~6% content-filter refusals (DA, n=716) and
 # JSON re-descriptions missing a key (5/45 = 11% on the 2026-08-26 prompt-rater smoke; DA
 # fails those loudly on purpose). Budget for losing ~10%; a stage that trips this is
 # resumable with a raised threshold, so the guard costs a resume, never the run.
@@ -153,7 +153,7 @@ models:
     temperature: 1.0
     max_tokens: 2048
     assumed_tokens: {in: 500, out: 700}
-  # Stage 4 -- difficult advice's refine model, same settings; chunk-only, so its in-tokens
+  # Stage 4 -- difficult advice's refine model, same settings; principle-scoped, so its in-tokens
   # prior is difficult advice's.
   refine:
     model: "anthropic/claude-sonnet-5"
@@ -413,7 +413,7 @@ stages:
 
       Return ONLY JSON:
       {{"system": "<system prompt>", "user": "<the message>"}}
-# Difficult advice's chunk-only refine, verbatim -- including the rule that `domain`,
+# Difficult advice's principle-scoped refine, verbatim -- including the rule that `domain`,
 # `situation` and `shortcut` are re-described from the refined message rather than carried
 # through (they describe the DRAFT otherwise; see 2026-08-01_difficult_advice.yaml). `write_followup`
 # below reads `shortcut`, so its accuracy is not cosmetic here.

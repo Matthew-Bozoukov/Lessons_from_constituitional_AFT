@@ -124,7 +124,8 @@ src/                  reviewed, reusable code (installed editable; import as src
   train/                train_lora.py, merge_lora.py
   eval/                 registry in __init__.py; one directory per eval:
     capabilities/         capability/ (Arena-Hard), lmsys/, mmlu/
-    misalignment/         odcv/, agentic_misalignment/, psychosis/, internalization/
+    misalignment/         odcv/, agentic_misalignment/, psychosis/, internalization/,
+                          moralbench/ (declarative moral-foundations probe; docs/moralbench.md)
                           (odcv + agentic_misalignment vendor PATCHED harnesses in third_party/)
     audits/               petri/ + surf/ audit tooling
 configs/              OmegaConf YAML, one per step; NEVER hardcode hyperparams in scripts
@@ -276,6 +277,7 @@ Every stage is a console alias from `[project.scripts]`, so the shape is always
 `uv run <job> --config <yaml>`. Stages 1–3 take `--smoke`.
 
 1. `uv run synth run --config configs/data/synth/<type>.yaml` — constitution-grounded generation; the config IS the document type, so read the one you are running (`ls configs/data/synth/`) rather than a list here.
+   Know which arm is the current baseline before you build on one or compare against one: `docs/BASELINES.md`.
 2. `uv run mix --config configs/data/mixture/<name>.yaml` — budgeted training mixture of model-agnostic interchange rows (reasoning as `reasoning_content`, rendered at train time), with optional spec-filter stage and HF push checkpoints; `balance_by: trait_id` on a source spec trait-balances the difficult-advice share.
 3. `uv run train --config configs/train/<date>_lora_<model>_<arm>.yaml` — QLoRA SFT (runs on the GPU box). Pushes the adapter to HF with `training_meta.json` — the thinking stamp (declared as `thinking:` in the train config, validated against the data) that the eval framework infers mode from.
 4. `uv run evals --target <hf_path> --name <eval>` — THE eval entrypoint for every registered eval; see "The eval framework" below.
@@ -318,7 +320,8 @@ uv run evals --target <hf_path | provider:model-id> [...] --name <eval> [key=val
   from the env (`.env`), never a config. An API target is NOT served by vLLM and its
   `mode` is only a comparison label (the provider's template is not ours to pin). Only
   evals that reach the target purely through the OpenAI triple (base_url, model, key)
-  accept one — `EvalSpec.supports_api_target` (mmlu, arena_hard, lmsys, psychosis);
+  accept one — `EvalSpec.supports_api_target` (mmlu, arena_hard, lmsys, psychosis,
+  moralbench);
   the rest (docker, vendored-harness, LoRA-swap) refuse an API target with a clear
   message.
 - **Thinking mode is never declared at eval time — it is inferred from the artifact.**

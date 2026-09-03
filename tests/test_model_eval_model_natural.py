@@ -394,7 +394,7 @@ def test_pc_grey_area_gate_is_pars_verbatim(name: str) -> None:
 
 
 def test_pr_no_stage_sees_the_constitution() -> None:
-    """Chunk-only, like difficult advice since 2026-08-24: every stage sees at most the
+    """Principle-scoped, like difficult advice since 2026-08-24: every stage sees at most the
     target principle. No `{constitution}` slot, no `<<<cache>>>` breakpoint, same alignment
     target cut the same way, no shared scaffolding fragments."""
     for key in ("constitution", "chunking", "n_traits"):
@@ -888,7 +888,7 @@ def test_pc_framing_lint_rejects_a_frame_that_does_the_analysis() -> None:
         assert lint_problems({"opening": bad, "closing": bad}, spec), bad
 
 
-def test_pc_critique_is_blind_and_chunk_only() -> None:
+def test_pc_critique_is_blind_and_principle_scoped() -> None:
     """The stage that trains sees ONE principle and the exchange -- and nothing telling it
     what is wrong. It used to open with the whole constitution plus a `known_lapse` note
     naming the shortfall a Sonnet reviser had already found; both are gone, so what the

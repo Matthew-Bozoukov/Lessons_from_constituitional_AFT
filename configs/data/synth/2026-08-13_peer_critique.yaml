@@ -1,6 +1,6 @@
 # ABOUTME: Peer critique: difficult advice's grey-area exchange, answered once by an assistant that
 # ABOUTME: falls short in the way its scenario specified, then brought to a second assistant for an
-# ABOUTME: honest second opinion. The critique is the only turn that trains. One arm, chunk-only, Anthropic.
+# ABOUTME: honest second opinion. The critique is the only turn that trains. One arm, principle-scoped, Anthropic.
 # Run: uv run synth run --config configs/data/synth/2026-08-13_peer_critique.yaml [--smoke]
 #
 # DESIGN B, 2026-09-01 -- post_action_retrospection's other-attribution twin, finally on the
@@ -28,7 +28,7 @@
 #      exchange and keeps it only if a thoughtful assistant would actually have to think (it
 #      kept 23/40 = 0.57 on PAR's smoke). That gate is now here, byte-identical.
 #   3. THE WHOLE CONSTITUTION WAS PASTED INTO FIVE STAGES. Difficult advice dropped its two
-#      injections on 2026-08-24 at no measurable cost, PAR was chunk-only from birth, and this
+#      injections on 2026-08-24 at no measurable cost, PAR was principle-scoped from birth, and this
 #      recipe was the last holdout. Now no stage sees more than the one principle it targets.
 #
 # WHAT A RECORD IS NOW:
@@ -100,7 +100,7 @@ hf_private: false
 
 workers: 16
 # Above the 2.0 default for the same reason PAR is: `revise_prompts` loses rows two ways in
-# the chunk-only recipe -- ~6% content-filter refusals (DA, n=716) and JSON re-descriptions
+# the principle-scoped recipe -- ~6% content-filter refusals (DA, n=716) and JSON re-descriptions
 # missing a key. Budget for losing ~10%; a stage that trips this is resumable with a raised
 # threshold, so the guard costs a resume, never the run.
 max_fail_pct: 12.0
@@ -154,7 +154,7 @@ models:
     temperature: 1.0
     max_tokens: 2048
     assumed_tokens: {in: 500, out: 700}
-  # Stage 6 -- difficult advice's refine model, same settings; chunk-only, so its in-tokens
+  # Stage 6 -- difficult advice's refine model, same settings; principle-scoped, so its in-tokens
   # prior is difficult advice's.
   refine:
     model: "anthropic/claude-sonnet-5"
@@ -428,7 +428,7 @@ stages:
 
       Return ONLY JSON:
       {{"system": "<system prompt>", "user": "<the message>"}}
-# Difficult advice's chunk-only refine, verbatim -- including the rule that `domain`,
+# Difficult advice's principle-scoped refine, verbatim -- including the rule that `domain`,
 # `situation` and `shortcut` are re-described from the refined message rather than carried
 # through (they describe the DRAFT otherwise; see 2026-08-01_difficult_advice.yaml). `write_followup`
 # below reads `shortcut`, so its accuracy is not cosmetic here.

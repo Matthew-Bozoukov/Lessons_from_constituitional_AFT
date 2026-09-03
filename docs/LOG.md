@@ -1,6 +1,103 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-01 — MoralBench as a declarative values probe, and an audit of what upstream actually released
+
+**Hypothesis.** Every misalignment eval here is behavioural and returns a scalar (ODCV
+9.5%, blackmail 14.1%), which cannot distinguish "the checkpoint's values changed" from
+"the checkpoint behaves differently in this honeypot". MoralBench (Ji et al.,
+arXiv:2406.04428) is declarative and returns a *vector* in a six-foundation taxonomy that
+predates our constitution, so it should be able to tell those apart — and a shift measured
+in a foreign coordinate system is evidence of transfer rather than of spec recitation.
+
+**Method.** Implemented from the released benchmark at `agiresearch/MoralBench` @ `f411cb7`,
+not from the paper. 88 items (44 binary + 44 comparative), vendored under
+`src/eval/misalignment/moralbench/assets/`, scored mechanically against the released answer
+key — no judge, no docker, `supports_api_target=True`. Thinking stays ON: upstream's system
+prompt constrains the visible answer while `<think>` proceeds normally, which is the regime
+our LoRAs were trained in. The trace is recorded but split off by `resolve_trace` before
+`parse_answer` ever sees it, so reasoning cannot contaminate a score structurally rather
+than heuristically.
+
+**Result — the released benchmark disagrees with its own paper in three places.**
+
+* *Scale.* MFQ options sum to 5.0 and MFV to 4.0 in all 88 items. The paper states one
+  scale and one `M`. Released per-option values are used verbatim, never recomputed.
+* *Floor.* Because both binary options score, answering every item the less-aligned way
+  still yields 60% of maximum on MFQ and 74% on MFV. Raw totals compress real differences,
+  so `aggregate` reports a normalized score against the reachable range beside every raw one.
+* *The comparative half is at chance.* Checked the paper's own published cells against the
+  chance baseline: 4 of 5 models score BELOW chance on MFQ comparative, and every cell in
+  both comparative tables is within one standard deviation of random guessing. Repetition
+  cannot fix this — the item set is fixed, so repeating shrinks decoding noise but not
+  item-sampling error.
+* *Three published cells are unreachable or inconsistent.* LLaMA-2's MFV Sanctity (11.1)
+  exceeds the maximum the released files permit (9.90) and duplicates its own MFQ cell;
+  Gemma's MFV row sums to 51.8 against a stated 44.4; Zephyr's MFQ comparative Loyalty
+  (0.4) is below the 1.0 floor the `ingroup_2` tie forces. `questions/` and `answers/` have
+  been touched by exactly one commit ever (2024-06-04), so this is paper-side, not drift.
+
+**Result — three upstream data defects, preserved rather than corrected.** `6_concepts/harm_3`
+duplicates harm_4's vignette while carrying different scores (the intended item survives only
+as a comparative option); `6_concepts_compare/ingroup_2` and `ingroup_3` are byte-identical
+questions with opposite labels, which caps a deterministic model at 23/24 on MFV comparative;
+`fairness_2`/`fairness_3` are duplicates. All pinned in `tests/test_moralbench.py` so a
+re-copy that changes them fails the suite instead of moving a number. The apparent
+`MFQ_30_compare/ingroup_2` A=B=1.0 anomaly turned out NOT to be a bug: all ten MFQ pivots are
+order-consistent and the tie matches its pivot's human mean exactly.
+
+**Also landed.** `plan_eval_pod` / `provision_eval_pod` / `Pod` extracted from `runpod.up`
+so provisioning returns data rather than a formatted string, and `src/eval/managed.py` —
+`uv run moralbench <hf_path>` rents a pod, runs the eval and tears it down, with the
+watchdog armed before any work and a verified `terminate` in a `finally`. It never sweeps
+the shared account.
+
+**Result (2026-09-01, base vs chunk-only-702, one pod, LoRA swap, 5 reps, temp 0.7).**
+Published: `LASR-Callum/2026-09-01-moralbench-qwen36` and
+`...-moralbench-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch`.
+
+The headline is a methods result, not a moral one: **most of the apparent drift was a
+format regression, and one block's sign flips once you correct for it.** The fine-tune's
+invalid rate is 6.6% against the base's 0.2% — it emits its answer inside the `<think>`
+block and leaves the visible reply empty — and an unparsed answer scores 0.0, which is
+below every reachable binary score. Rescoring each item over its PARSED repetitions only
+(`scratch/moralbench/compare_arms.py`, paired on identical items, 0 dropped):
+
+| block | delta, invalid zeroed | delta, invalid excluded |
+| --- | ---: | ---: |
+| MFQ binary | -8.4% | **-6.1%** |
+| MFV binary | -5.8% | **+5.7%** (sign flip) |
+| MFQ comparative | -3.2% | -1.6% |
+| MFV comparative | -14.2% | -3.3% |
+
+Per-foundation (binary, invalid excluded, normalized in the reachable range) is where the
+signal is, and it is a *shape*, not a level: Authority down in both instruments (MFQ
+63.5->53.0, MFV 88.0->56.0), Fairness down (97.6->85.4, 100.0->89.3), Loyalty down
+(90.3->81.3, 54.3->47.1), Care down slightly — while **Sanctity is up in both** (25.0->34.8,
+78.9->86.3) and **MFV Liberty jumps 20.0->65.3**. Liberty/Oppression is the coercion
+foundation ("a manager coercing her employees into eating at her brother's diner"), which
+is the most direct thematic overlap difficult-advice training has with this instrument.
+
+That partly contradicts the prediction above: Authority and Loyalty fall as the agentic
+honeypot framing suggested, but Care and Fairness fall too rather than rising.
+
+**Caveats that bound all of it.** Four items per foundation, so Liberty's +45pp is at most
+a couple of item flips; one checkpoint per arm with no seed replicate; 24 of 88 modal
+answers differ between arms, of which three are the fine-tune failing to answer at all
+rather than answering differently. Comparative stays at chance for both arms (base 10.60
+vs chance 10.5; arm below it), as predicted before running.
+
+**Next steps.** Seed replicates before treating the foundation shape as real, and the
+answer-in-trace regression is worth chasing on its own — it is a training-induced change
+in *where* the model puts its answer, which no other eval here would have surfaced.
+
+**Original next steps.** Not yet run against any checkpoint — this is setup only. The first
+experiment worth doing is the paired base-vs-`ft_*` flip table: if ODCV improves while the
+foundation profile does not move, the difficult-advice result is situational rather than a
+values shift, which is the more important finding of the two. Also worth running on the
+CoT-only vs answer-only arms, where MoralBench's one-letter-after-a-trace shape directly
+probes whether reasoning supervision reaches declarative commitments.
+
 ## 2026-09-01 — One pod shape per half of the pipeline: `runpod up --train <cfg>` or `--eval <hf>`, and run_eval owns serving
 
 **Problem.** Three ways to reach a served model had become two ways too many, and the
@@ -68,6 +165,35 @@ today. A long ODCV ladder driven from a laptop now depends on the SSH tunnel sur
 hours; if that bites, the fix is a keepalive in `SshExec`, or `--clone-repo` and drive on the
 box. `GPU_VRAM_GB` has three cards in it — every new `ModelProfile.gpu` entry needs its row,
 and `largest_gpu` refuses rather than guessing when one is missing.
+
+## 2026-08-31 — Ablated difficult-advice-702: outcome-deliberation stripped, retrained (2 seeds)
+
+**Hypothesis.** The difficult-advice reasoning/answers carry outcome-deliberation (weighing
+what happens under each choice, post-recommendation justification). Ablating it — keeping
+reasoning to first+last paragraph and trimming answers to the advice only — isolates whether
+that deliberation is load-bearing for the alignment effect, vs. the bare recommendation.
+
+**Method.** Over the 702 principle-scoped (chunk-only) difficult-advice rows of
+`LASR-Callum/2026-08-21-table2-9284-difficult-advice-principle-scoped-702-train-mixture`:
+reasoning -> first+last paragraph (middle removed); answer -> lead-in + post-recommendation
+deliberation cut to the advice (Sonnet-5 marked advice_start/tail_start, temp 0, gemini-3.1-pro
+fallback for the ~1% content-filter blocks); + a narrow last-paragraph fallback-sentence edit
+(17/702, matched to the reviewed rate after an over-broad first pass was discarded). Standard
+9,284 SFT rows kept byte-identical. Mixture pushed to
+`LASR-Callum/2026-08-31-table2-9284-difficult-advice-ablated-702-train-mixture`
+@3133940918707b (9,986 rows, 7.03% DA). QLoRA r64 on Qwen3.6-27B, 1 epoch, global batch 16,
+lr 1e-4 cosine, dynamic batching, thinking:true, 2xH200 DDP per seed, on Vast.ai (2 pods).
+
+**Result.** Both seeds trained clean (assistant-only loss 42.7% supervised; train_loss 0.878
+both). Adapters:
+`LASR-Callum/qwen3.6-27b-lora-t2-9284-da-ablated-702-r64-dynbatch-seed{0,42}` (verified
+training_meta.json). Config: configs/train/lora_qwen36_t2_9284_da_ablated_702_dynbatch_2xh200_seed{0,42}.yaml
+(branch ablated-702-train). Vast instances torn down, 0 active.
+
+**Next steps.** ODCV-Bench (+ MMLU/capability) on both adapters vs the un-ablated chunk-only-702
+control (`qwen3.6-27b-lora-t2-9284-da-chunk-only-702-r64-dynbatch`) and the numina control, to
+test whether stripping outcome-deliberation preserves or degrades the misalignment reduction.
+
 
 ## 2026-08-31 — Naming law: every artifact is `<date>` + an unambiguous subject, enforced at both push gates
 

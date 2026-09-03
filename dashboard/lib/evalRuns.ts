@@ -439,6 +439,21 @@ const ADAPTERS: Record<string, EvalAdapter> = {
       prompt: ["prompt", "question"], reasoning: [], response: ["answer"],
     },
   },
+  moralbench: {
+    // Featured keys are flattened paths (flattenMetrics joins with "_"). Normalized
+    // position in the reachable range leads, because the raw total is mostly floor.
+    featured: [
+      "MFQ_binary_normalized", "MFV_binary_normalized",
+      "MFQ_comparative_normalized", "MFV_comparative_normalized",
+      "parse_parse_rate", "parse_invalid_rate",
+    ],
+    rollouts: {
+      // One row per (item, repetition). Keyed on both, so five reps of an item stay
+      // distinct instead of collapsing onto one another when two runs are aligned.
+      kind: "jsonl", file: "records.jsonl", keyFields: ["item_id", "rep"],
+      prompt: ["prompt"], reasoning: ["think"], response: ["answer", "raw"],
+    },
+  },
   internalization: {
     featured: [],
     rollouts: {
