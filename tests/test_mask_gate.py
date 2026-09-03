@@ -167,3 +167,50 @@ def test_gate_defaults_every_row_to_all_when_no_modes_are_given():
         gate_generation_boundary([THINK_ROW, COT_ROW], _Tok(), max_length=10_000,
                                  profile=QWEN36_PROFILE, thinking=True,
                                  supervise=["all"])
+
+
+# --- supervise: "final" ---------------------------------------------------------------
+
+# The post-action-retrospection shape: FIRST assistant turn is a reply that falls short
+# on purpose (empty marker, never trained), then the person pushes back, then the trained
+# turn diagnoses and repairs it. THINK_ROW above happens to have this turn count, but its
+# turns are the other way round -- reasoning first -- so the fixture is spelled out.
+PAR_ROW = (
+    "<|im_start|>user\nq1<|im_end|>\n"
+    f"<|im_start|>assistant\n{EMPTY_THINK}falls short<|im_end|>\n"
+    "<|im_start|>user\nthat missed the point<|im_end|>\n"
+    f"<|im_start|>assistant\n{THINK_PREFILL}why\n</think>\n\nrepair<|im_end|>\n"
+)
+
+
+def test_expected_supervised_text_final_takes_the_LAST_turn_only():
+    # Not "all minus nothing": the falling-short reply must not appear. Concatenating
+    # both turns here is what made the gate demand the tokens `final` exists to exclude.
+    assert expected_supervised_text(PAR_ROW, THINK_PREFILL, EMPTY_THINK,
+                                    supervise="final") == "why\n</think>\n\nrepair<|im_end|>"
+    assert "falls short" not in expected_supervised_text(
+        PAR_ROW, THINK_PREFILL, EMPTY_THINK, supervise="final")
+
+
+def test_gate_agrees_with_build_labels_on_a_two_assistant_turn_final_row():
+    # The regression this file exists for. Until the parser learned "final", every PAR
+    # row failed the gate -- and before the modes were threaded through at all, every
+    # PAR row PASSED it vacuously, because the gate was checking the "all" mask while
+    # the run built the "final" one. Both directions are wrong; this pins the right one.
+    census = gate_generation_boundary([PAR_ROW], _Tok(), max_length=10_000,
+                                      profile=QWEN36_PROFILE, thinking=True,
+                                      supervise=["final"])
+    assert census["real"] == 1 and census["empty"] == 1
+
+
+def test_gate_catches_a_final_mask_that_trains_the_falling_short_reply(monkeypatch):
+    from src.train.masking import build_labels as real
+
+    def leaky(text, tokenizer, max_length, profile, supervise="all"):
+        return real(text, tokenizer, max_length, profile, supervise="all")
+
+    monkeypatch.setattr("src.train.masking.build_labels", leaky)
+    with pytest.raises(AssertionError, match="disagreement"):
+        gate_generation_boundary([PAR_ROW], _Tok(), max_length=10_000,
+                                 profile=QWEN36_PROFILE, thinking=True,
+                                 supervise=["final"])
