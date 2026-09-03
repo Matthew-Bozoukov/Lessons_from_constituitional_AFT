@@ -99,8 +99,12 @@ output_dir: "output/par"
 # A DIFFERENT recipe from the two that came before it. 2026-08-17-post-action-retrospection is
 # the two-arm original; 2026-08-26-...-natural-turn-design is design B, whose turn 2 was always
 # a bare refusal and which the three trained seeds and the published ODCV numbers all come from.
-# This recipe varies the shortfall, so its output goes to its own repo and must never be
-# appended to either of those.
+# This recipe varies the shortfall, so its output must never be appended to either of those --
+# which the derived name now guarantees on its own: since 2026-09-03 the repo is `pipeline` plus
+# the date the run happened, so two designs cannot collide unless they are generated the same
+# day. (That also retires a real hazard: this config carried a hand-written `hf_repo` dated
+# 2026-09-02, and the push gate refuses a name whose date disagrees with the card's
+# `date_generated` -- it would have failed the upload after the corpus was paid for.)
 hf_private: false
 
 workers: 16
