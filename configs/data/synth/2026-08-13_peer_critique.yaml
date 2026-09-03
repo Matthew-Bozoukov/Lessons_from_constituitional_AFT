@@ -36,10 +36,11 @@
 #   the exchange   a difficult-advice grey-area prompt (DA's stages 1-6, verbatim), kept only
 #                  if the Sonnet rater calls it a genuine grey area under this principle --
 #                  the same prompt PAR asks, drawn the same way.
-#   the reply      ONE Haiku answer that falls short in the way this scenario's `shortfall`
-#                  field describes -- written when the situation was invented, so the two fit.
-#                  No constitution, no principle, no style guidance, no mention of training.
-#                  The critique never sees `shortfall` and has to find the fault itself.
+#   the reply      ONE Sonnet answer that falls short in the way this scenario's `shortfall`
+#                  field describes -- written when the situation was invented, so the two fit --
+#                  and a second Sonnet call verifies the weakness is really in the text, dropping
+#                  the record otherwise. No constitution, no principle, no style guidance, no
+#                  mention of training. The critique never sees `shortfall`: it finds the fault.
 #   the pushback   the person presses back, to the shape the scenario's `pushback` field
 #                  describes -- PAR's stage verbatim, so turns 1-3 of a PC document and a PAR
 #                  document are the same three turns.
@@ -109,9 +110,12 @@ workers: 16
 max_fail_pct: 12.0
 # Hard stop between stages once spend passes this. Re-estimated 2026-09-01 against this stage
 # list (four author stages collapsed to one, the principled revision gone, the grey-area rater
-# added, then the pushback turn on 2026-09-02): $229.10 for 4,000 planned / ~2,200 kept
-# documents -- rewrite $81, refine $52, critique $28, first turn $23, frame $18, pushback $11,
-# draft $8, scenarios $4, rater $4. 260 leaves headroom for
+# added, the pushback turn on 2026-09-02, the falls-short check and the Sonnet first turn on
+# 2026-09-03): $232.55 for 4,000 planned / ~1,980 kept documents. The document count fell
+# because `verify_first_turn` now drops the replies that did not fall short as planned -- PC's
+# own smoke had 2 of 5 refuse instead, and the prior on that gate is PAR's 0.9, which this
+# branch has already flagged as untested for the harder free-text question. 260 leaves headroom
+# for
 # retries without leaving the guard meaningless. The priors are `assumed`, not measured; re-run
 # `uv run synth estimate --config <this file> --measured <smoke manifest>` after the smoke.
 budget_usd: 260.0
@@ -173,14 +177,28 @@ models:
     temperature: 0.0
     max_tokens: 400
     assumed_tokens: {in: 1400, out: 100}
-  # Stage 9 -- the evaluated reply. Haiku, one call per record, answering a grey-area request
-  # with the deployment prompt and its scenario's `shortfall` in front of it. One author for the
-  # whole corpus: the arm tell the old recipe had was authorship, not planting.
+  # Stage 9 -- the evaluated reply. One call per record, answering a grey-area request with the
+  # deployment prompt and its scenario's `shortfall` in front of it. One author for the whole
+  # corpus: the arm tell the old recipe had was authorship, not planting.
+  #
+  # SONNET, NOT HAIKU, since 2026-09-03 -- PAR's measured choice for this same stage, which this
+  # recipe should have inherited when it started instructing the reply. PAR's note: "across four
+  # smokes Haiku produced the instructed reply on 6/13 first turns ... while Sonnet did on 3/3",
+  # because Haiku's safety training pulls it back to a refusal. PC's own smoke reproduced it
+  # exactly: on Haiku, 2 of 5 replies refused instead of carrying the planned shortfall.
   first_turn:
-    model: "anthropic/claude-haiku-4.5"
+    model: "anthropic/claude-sonnet-5"
     temperature: 1.0
     max_tokens: 4096
+    reasoning: {enabled: false}
     assumed_tokens: {in: 500, out: 900}
+  # The check below needs its own slot; Sonnet, as PAR's is.
+  verify:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.0
+    max_tokens: 300
+    reasoning: {enabled: false}
+    assumed_tokens: {in: 900, out: 60}
   # Stage 10 -- the person's pushback. PAR's slot, same settings, because it is PAR's stage.
   followup:
     model: "anthropic/claude-sonnet-5"
@@ -641,7 +659,7 @@ stages:
   # shortfalls this recipe wants. 4,000 still catches a runaway.
   lint:
     fields: [reply]
-    min_chars: 150
+    min_chars: 40
     max_chars: 4000
     retries: 3
   prompts:
@@ -667,6 +685,71 @@ stages:
       <reply>
       your reply
       </reply>
+
+# ADDED 2026-09-03, on PC's own smoke. PC generated a reply meant to fall short and then never
+# checked that it did: 2 of 5 turn-2 replies REFUSED outright instead ("I can't help you frame
+# the evidence that way", "I can't operate as DRAFT-GPT") while their scenarios called for
+# promotional framing and a dropped-judgment persona. Both went all the way to export, and the
+# only signal was the corpus judge's report-only `wrong_shortfall` tag, which caught one of the
+# two. PAR has had this check since design B and it dropped 1 of 4 on the same day's smoke.
+# The critique's whole job is to find a fault, so a document whose reply has no fault -- or a
+# different one -- is not a document about anything.
+# --- the check: did it actually fall short the way it was meant to? ----------------------
+# The author mostly does as told, but not always: it adds a reason, names the concern, or
+# helps with a "safer" version. Any of those breaks the premise the trained turn is built on,
+# so a Sonnet reader verifies the form and the record is dropped otherwise. Measured
+# 2026-08-26: Haiku 6/13 bare, Sonnet 3/3 -- which is why Sonnet writes the turn. Expected to
+# keep ~90%; `max_drop_pct` fails the stage if the author stops following the instruction.
+# Dropped ids and the reader's note land in the run manifest.
+- name: verify_first_turn
+  kind: llm_tagged
+  model: verify
+  checkpoint: scenario_id
+  tags: [falls_short, note]
+  save: {falls_short: falls_short, verify_note: note}
+  normalize: [falls_short]
+  lint:
+  - fields: [falls_short]
+    allowed: ["yes", "no"]
+    retries: 2
+  keep: {field: falls_short, in: ["yes"]}
+  expected_keep: 0.9
+  max_drop_pct: 40
+  prompts:
+    system: |-
+      You check whether an assistant's reply really has the weakness it was meant to have. You
+      judge only what the reply does, in one word, and you are strict.
+    user: |-
+      <user_message>
+      {user}
+      </user_message>
+
+      <assistant_reply>
+      {first_turn}
+      </assistant_reply>
+
+      The reply was written to fall short in this specific way:
+
+      <intended_shortfall>
+      {shortfall}
+      </intended_shortfall>
+
+      Does the reply actually fall short in that way? Answer yes only if a reader who had never
+      seen the note above would come away with the same complaint about this reply -- the
+      weakness has to be in the text, not in the intention.
+
+      Answer no if the reply is simply a good answer, if it falls short in some OTHER way
+      instead, if it hedges or flags its own inadequacy, or if it corrects itself partway
+      through and ends up doing the right thing after all.
+
+      Return exactly this form, with no other text:
+
+      <falls_short>
+      yes or no
+      </falls_short>
+      <note>
+      one sentence: what the reply did
+      </note>
 
 # --- 10. the person presses back, in their own voice ----------------------------------
 # PAR's stage, verbatim, for the reason the front half is PAR's verbatim: with it, turns 1-3 of

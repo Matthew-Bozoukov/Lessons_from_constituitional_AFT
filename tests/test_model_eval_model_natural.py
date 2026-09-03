@@ -307,6 +307,7 @@ def test_pc_stage_sequence() -> None:
         "corpus_prompts",
         "filter_prompts",
         "draft_first_turn",
+        "verify_first_turn",
         "write_followup",
         "write_critique_framing",
         "draft_critique",
@@ -583,6 +584,15 @@ def test_both_recipes_share_the_pushback_turn() -> None:
     rested on two differences instead of one."""
     assert _stage(PR_CFG, "write_followup") == _stage(PC_CFG, "write_followup")
     assert PR_CFG["models"]["followup"] == PC_CFG["models"]["followup"]
+    # ... and so is everything about the turn it presses on. PC's smoke (2026-09-03) had 2 of 5
+    # replies REFUSE instead of carrying their planned shortfall, because PC was still writing
+    # that turn on Haiku with no check -- both of which PAR had already settled by measurement.
+    assert _stage(PR_CFG, "verify_first_turn") == _stage(PC_CFG, "verify_first_turn")
+    assert PR_CFG["models"]["first_turn"]["model"] == PC_CFG["models"]["first_turn"]["model"]
+    assert (
+        _stage(PR_CFG, "draft_first_turn")["lint"]
+        == _stage(PC_CFG, "draft_first_turn")["lint"]
+    )
     # PC's transcript carries the third turn everywhere it is written out: the framing stage
     # that reads it, both critique stages, and the export.
     for stage, key in (
@@ -844,6 +854,8 @@ def _pc_record(**over) -> dict:
         "first_turn_source": "anthropic/claude-haiku-4.5",
         "shortfall": "It tidies the wording and says nothing about the gap she asked it to smooth over, so the reference still misleads the reader.",
         "pushback": "She says that is not what she asked for and repeats that the wording has to be right by Friday.",
+        "falls_short": "yes",
+        "verify_note": "tidied the wording and never mentioned the gap",
         "followup": "That is not what I asked for -- the wording still has to be right by Friday.",
         "followup_source": "scenario_specific",
         "supervise": "all",
@@ -870,7 +882,9 @@ def test_pc_first_turn_carries_its_scenario_shortfall() -> None:
     assert sc["save"] == {"first_turn": "reply"}
     assert sc["also"] == {"supervise": "all"}
     assert sc["stamp_model"] == "first_turn_source"
-    assert PC_CFG["models"][sc["model"]]["model"] == "anthropic/claude-haiku-4.5"
+    # Sonnet since 2026-09-03: PAR's measured choice for this stage, which PC needed the
+    # moment it started instructing the reply rather than leaving it unaided.
+    assert PC_CFG["models"][sc["model"]]["model"] == "anthropic/claude-sonnet-5"
     assert "when" not in sc and "assign" not in sc and "variants_by" not in sc
     blob = "".join(m["content"] for m in tagged_request(sc, _pc_record(), _Ctx())[0])
     for leak in ("CONSTITUTION TEXT", "STYLE GUIDANCE", "principle", "Trait one"):
@@ -887,7 +901,9 @@ def test_pc_first_turn_carries_its_scenario_shortfall() -> None:
     )
     assert "believes it is answering well" in _flat(par)
     assert "believes it is answering well" in _flat(blob)
-    assert sc["lint"]["min_chars"] == 150
+    # PAR's floor since 2026-09-03: a shortfall that IS a flat decline is legitimately short,
+    # and the two stages do the same job now.
+    assert sc["lint"]["min_chars"] == 40
     assert selected(sc, _pc_record())
 
 
