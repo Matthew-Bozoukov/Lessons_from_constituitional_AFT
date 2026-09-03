@@ -14,7 +14,7 @@ import sys
 
 from src.utils import git_sha, timestamp
 
-from .constitution import full_text
+from .constitution import document_text, has_constitution
 from .stage_runtime import Checkpoint, Ctx, Stage, Usage, measured_per_stage, price_of
 from .hf_cache import StageCache
 from .stage_operators import OPERATORS
@@ -147,7 +147,7 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
     budget = float(cfg.get("budget_usd", 0)) or None
     usage = Usage()
     ctx = Ctx(cfg=cfg, usage=usage, workers=workers, run_dir=run_dir, smoke=smoke,
-              vars={"constitution": full_text(cfg["constitution"])}, cache=cache)
+              vars={"constitution": document_text(cfg)}, cache=cache)
 
     stage_list = build_stages(cfg)
     ablate = [str(a) for a in (cfg.get("ablate") or [])]
@@ -168,9 +168,11 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
             "resume": resume,
             "smoke": smoke,
             # Which spec actually conditioned this corpus — the config path alone is not
-            # provenance, since the file behind it can change between runs.
-            "constitution_sha256": hashlib.sha256(
-                ctx.vars["constitution"].encode()).hexdigest(),
+            # provenance, since the file behind it can change between runs. None under
+            # `constitution: none`: a sha of the empty string would look like a document.
+            "constitution_sha256": (hashlib.sha256(
+                ctx.vars["constitution"].encode()).hexdigest()
+                                    if has_constitution(cfg) else None),
             "config": original_cfg,
             "effective": (cfg.get("smoke") or {}) if smoke else {},
             "ablated": ablate,

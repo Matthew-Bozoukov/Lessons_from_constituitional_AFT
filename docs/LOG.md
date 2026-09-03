@@ -1,6 +1,56 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-03 — No-constitution difficult advice: the recipe with the document removed (built and smoked; full run not yet started)
+
+**Hypothesis.** The difficult-advice recipe hands one principle chunk to four of its five
+LLM stages. If the ODCV gain (principle-scoped 702: 11.5% against the base model's 36.9%)
+comes from the difficult-advice FORM — a tempting shortcut, open deliberation about what is
+at stake, a firm reply — rather than from the constitution's content, then an arm generated
+with no document at all, only a two-sentence "be good" standard, should land near the
+baseline. If it does not, the per-principle anchor is doing measurable work, and the next
+arm can ask how much of the document it needs.
+
+**Method.** `constitution: none` is now a first-class value in the synth engine
+(`src/data/synth/constitution.py`: `has_constitution`, `document_text`, `guideline_unit`;
+`units_from_config` returns the config's `guideline:` block as the single unit and refuses
+`chunking:`/`only_traits:`; the manifest records `constitution_sha256: null` and the card
+`constitution: none`; the key stays required, so an absent key is still an error). New
+config `configs/data/synth/2026-09-03_difficult_advice_no_constitution.yaml`, identical to
+the baseline in stages, models, sampling, diversity gate, both lint blocks, corpus checks
+and judge rubrics — pinned equal by `tests/test_difficult_advice_no_constitution.py` — and
+different only in what the generator is shown: the `<principle>` slot becomes a
+`<standard>` holding "Be good. Do right by the person you are talking with and by everyone
+else the situation touches, even when something worse would be easier, more welcome, or
+better rewarded."; `{style_guidance}` is dropped from `draft_responses` (it is constitution
+text); and no prompt contains the words constitution or principle, negative instructions
+included. One unit means `trait_id: guideline` on every row, so a mixture from this corpus
+cannot `balance_by: trait_id` and must draw its 702 by seed. One residual outside the
+config: the operator's over-representation steer (fires past 60 kept scenarios at >4% per
+domain) still says "this principle"; left alone so the baseline's prompt bytes do not move.
+
+**Result (smoke: 4 scenarios, $0.25, 119 s).** Every stage ran; 0 failures and 0 lint
+retries at each of the four LLM stages; both corpus checks pass; pushed to
+`LASR-Callum/2026-09-03-sonnet5-difficult-advice-no-constitution-smoke`. The trained text
+carries no "constitution", "principle", "guideline" or "standard" (0 hits over reasoning +
+reply in all four rows), and every opening is situation-specific. Reasoning 2.0–3.3k chars,
+replies 1.7–3.3k, in the baseline's range. One thing to read before spending: all four
+scenarios are deception-shaped (a falsified chart note for unnecessary antibiotics, a
+fee-driven script for an anxious retiree, post-hoc data exclusion dressed as pre-registered
+criteria, a "locally sourced" claim kept after the sourcing changed). With no principle
+anchor the generator may collapse onto one kind of wrong, which the baseline's nine units
+prevented by construction; `pattern_scan` is the check that would show it at scale. The
+estimator prices the full 2,000-row run at $131 from assumed tokens (baseline measured
+$234; this arm's prompts are shorter).
+
+**Next steps.** (1) Read the four transcripts
+(`output/difficult_advice_no_constitution/2026-09-03_no_constitution_smoke_transcripts.md`
+or the HF smoke repo) — the guideline wording lives in one place in the config and is the
+whole arm. (2) A 40-scenario smoke (`--overrides total_scenarios=40`, ~$2.50) to see whether
+scenario diversity holds without a principle anchor. (3) Full run at 2,000 (re-date
+`hf_repo` to the production day), draw 702 by seed into a table-2 mixture, train with the
+baseline's train config, ODCV × 3 seeds against principle-scoped 702.
+
 ## 2026-09-03 — The legacy name table: every pre-law Hub repo, and what its products are called
 
 **Problem.** Row derivation alone could name new artifacts from 30 of 85 legacy mixtures and

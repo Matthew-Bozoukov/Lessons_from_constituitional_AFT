@@ -11,7 +11,7 @@ from pathlib import Path
 from src.infra.endpoints.openrouter import ProviderRejectionError
 
 from . import model_eval_model_cells as cells
-from .constitution import UNIT_PROVENANCE, Trait, units_from_config
+from .constitution import UNIT_PROVENANCE, Trait, has_constitution, units_from_config
 from .derive import derive_vars
 from .stage_runtime import (
     BATCH_MIN_ITEMS,
@@ -183,6 +183,12 @@ def op_segment(sc: dict, cfg: dict) -> Stage:
     def fn(ctx, records, ckpt):
         units = load(ctx)
         u = units[0]
+        if not has_constitution(ctx.cfg):
+            # One unit, from the config rather than a document. Said in the run log the
+            # way a chunking is said, so a reader of the log knows which arm ran.
+            print(f"    no constitution -> 1 unit, the config's guideline "
+                  f"({u.name!r}, {len(u.text.split())} words)")
+            return [u.as_dict()]
         print(f"    {u.granularity} x {u.grouping_strategy} -> {len(units)} units")
         for x in units:
             members = f" <- {','.join(x.chunk_ids)}" if x.n_chunks > 1 else ""

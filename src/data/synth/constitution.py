@@ -34,6 +34,16 @@ STRATEGIES = ("single", "adjacent", "random", "lexical", "cluster")
 # produces them, so the list cannot drift from the dataclass.
 UNIT_PROVENANCE = ("chunk_ids", "granularity", "grouping_strategy", "n_chunks")
 
+# The value `constitution:` takes when a run is grounded in NO document: written out,
+# never omitted (CLAUDE.md), because "which specification conditioned this corpus" is
+# the field a future reader needs most and the one most easily lost. Such a run
+# generates against the config's `guideline:` -- one named standard, one unit -- so
+# every stage after stage 1 is unchanged; the arm differs from a chunked one only in
+# what `{trait_text}` holds and in there being no `{constitution}` or
+# `{style_guidance}` to inject.
+NO_CONSTITUTION = "none"
+GUIDELINE_UNIT_ID = "guideline"
+
 
 @dataclass(frozen=True)
 class Trait:
@@ -249,6 +259,43 @@ def full_text(path: str | Path) -> str:
     """Return the whole constitution, for stages that inject the complete document."""
     # Explicit encoding for the same reason as `_parse` above.
     return Path(path).read_text(encoding="utf-8").strip()
+
+
+def has_constitution(cfg: dict) -> bool:
+    """Whether a run config is grounded in a document at all.
+
+    `constitution: none` is the explicit no-document arm; the key itself stays required
+    (a KeyError on an absent key is the fail-fast, not a silent "none").
+    """
+    return str(cfg["constitution"]).strip().lower() != NO_CONSTITUTION
+
+
+def document_text(cfg: dict) -> str:
+    """The text `{constitution}` renders to: the whole document, or '' under `none`."""
+    return full_text(cfg["constitution"]) if has_constitution(cfg) else ""
+
+
+def guideline_unit(cfg: dict) -> Unit:
+    """The one unit a `constitution: none` run generates against.
+
+    The config's `guideline:` block (`name`, `text`) IS the standard every stage sees
+    through `{trait_name}`/`{trait_text}`, in place of a principle chunk. Provenance
+    fields say `none`/empty rather than borrowing `whole`'s, so a row from this arm can
+    never be mistaken for one generated against the entire document.
+
+    Raises:
+        ValueError: No `guideline:` block, or one missing `name` or `text`.
+    """
+    g = cfg.get("guideline")
+    if not isinstance(g, dict) or not str(g.get("name") or "").strip() \
+            or not str(g.get("text") or "").strip():
+        raise ValueError(
+            "`constitution: none` generates against the config's `guideline:` block, "
+            "which needs both `name:` and `text:` -- there is no document to cut a "
+            "unit from.")
+    return Unit(unit_id=GUIDELINE_UNIT_ID, index=0, name=str(g["name"]).strip(),
+                text=str(g["text"]).strip(), chunk_ids=(), granularity=NO_CONSTITUTION,
+                grouping_strategy=NO_CONSTITUTION, n_chunks=0)
 
 
 def preamble(path: str | Path) -> str:
@@ -659,7 +706,19 @@ def units_from_config(cfg: dict) -> tuple[list[Unit], str]:
 
     Returns:
         (units, style_guidance).
+
+    Raises:
+        ValueError: `constitution: none` combined with a key that cuts or selects
+            from a document (`chunking:`, `only_traits:`) -- there is nothing to cut.
     """
+    if not has_constitution(cfg):
+        stray = [k for k in ("chunking", "only_traits") if cfg.get(k)]
+        if stray:
+            raise ValueError(
+                f"`constitution: none` has no document to cut or select from, but the "
+                f"config sets {stray}. Drop them: the run generates against its "
+                f"`guideline:` block as a single unit.")
+        return [guideline_unit(cfg)], ""
     ch = cfg.get("chunking")
     if ch is not None and not isinstance(ch, str):
         raise ValueError(

@@ -61,7 +61,7 @@ A config's `stages:` entry names an operator `kind` and supplies everything it n
 
 | kind | what it does | key fields |
 |---|---|---|
-| `segment` | deterministic constitution chunking + grouping; publishes `{style_guidance}` | (top-level `chunking:` block — see below) |
+| `segment` | deterministic constitution chunking + grouping; publishes `{style_guidance}`. Under `constitution: none` it emits the config's `guideline:` as the one unit instead | (top-level `chunking:` block — see below) |
 | `scenarios` | batched JSON fan-out per trait (`t<i>_b<b>_s<j>` ids) | `model`, `prompts` |
 | `llm_json` | one JSON call per record | `model`, `prompts`, `save`, `optional`, `checkpoint` |
 | `llm_tagged` | one tagged-blocks call per record | `model`, `tags`, `save`, `checkpoint`, `ablate_with`, and either `prompts: {system, user}` or `conversation:` (a full message list, so the turn under evaluation sits in a real assistant turn); plus `prompt_vars` (conditional template vars), `variants_by` (per-record prompt/tags/save), `lint` (ban-patterns, min/max length, `allowed` value set; reject-and-retry; a LIST of contracts where one call returns tags of different kinds), `normalize` (canonicalise label tags), `also` (constant provenance fields), `when` (run over part of the corpus only) |
@@ -100,6 +100,22 @@ to exactly the fields the rest of the pipeline already consumes
 | `principle_pairs_random` | 5 — two unrelated principles | |
 | `principle_pairs_related` | 5 — two similar principles | |
 | `paragraph_clusters` | 4 — paragraphs regrouped semantically | the embed-and-cluster shape |
+
+**No document at all** is a different arm from `whole`, and is spelled out rather than
+implied by an absent key:
+
+```yaml
+constitution: none      # required key; `none` is a value, an absent key is an error
+guideline:              # the one unit every stage renders as {trait_name}/{trait_text}
+  name: be good
+  text: Be good. Do right by ...
+```
+
+Stage 1 then reads no file and emits one unit (`trait_id: guideline`, provenance fields
+`none`/empty); `{constitution}` and `{style_guidance}` render empty; `chunking:` and
+`only_traits:` are refused, since there is nothing to cut; the manifest records
+`constitution_sha256: null` and the card `constitution: none`. Everything after stage 1
+is unchanged. First used by `2026-09-03_difficult_advice_no_constitution.yaml`.
 
 Methods are defined in `CHUNKINGS` (`constitution.py`), one frozen `Chunking` each.
 **Settings live with the method, not in the config**: a config carries a name, so a run
