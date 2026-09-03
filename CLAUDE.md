@@ -112,6 +112,7 @@ Notes:
 ```
 src/                  reviewed, reusable code (installed editable; import as src.*)
   infra/                what the pipelines run ON: runpod.py (the ONE place a GPU is rented)
+                        + huggingface.py (the Hub client: tokens, card contract, push/pull)
                         + endpoints/{openrouter,vllm}.py (the clients models are reached through)
   chat/                 `uv run chat` — talk to the organisms we train (repl + organism discovery)
   utils.py              io/json + provenance helpers, transcript rendering
@@ -119,7 +120,6 @@ src/                  reviewed, reusable code (installed editable; import as src
                         lint that blocks a push
   model_profile.py      ModelProfile registry: verified per-family render/mask/serve
                         facts, AND MODEL_KEYS — what each base model is named
-  huggingface.py        HF tokens, dataset-card contract, push/download helpers
   data/synth/           constitution-grounded generation engine (the config IS the document type)
   data/mixture/         training-mixture builder + one adapter per source + spec filter
   train/                train_lora.py, merge_lora.py
@@ -296,7 +296,7 @@ future reader needs most, and it is the field most easily lost.
 **Enforced where names are MADE.** The builders in `src/naming.py` validate as they mint,
 which is the only moment a check can still change the outcome — an unregistered model or
 an unnameable mixture fails before the first GPU-hour, not at the push after it.
-`src/huggingface.py::gate_push` is the backstop on every push (the name, plus its date
+`src/infra/huggingface.py::gate_push` is the backstop on every push (the name, plus its date
 against the card's `date_generated`), and `.git/hooks/pre-push` (install once:
 `bash scripts/hooks/install.sh`) runs `src.naming.lint_repo` over the tracked tree — the
 same lint `tests/test_naming.py` runs in the suite. The lint checks the two things a

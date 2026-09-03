@@ -8,7 +8,7 @@ number is the same one train_lora.py prints as ">>> assistant-only loss: n/N tok
 """
 import json, sys, collections
 from transformers import AutoTokenizer
-from src.huggingface import hf_token
+from src.infra.huggingface import hf_token
 from huggingface_hub import hf_hub_download
 from src.model_profile import model_profile
 from src.train.masking import build_labels

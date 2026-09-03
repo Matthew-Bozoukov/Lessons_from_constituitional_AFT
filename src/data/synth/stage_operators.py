@@ -2004,7 +2004,7 @@ def op_load_source_run(sc: dict, cfg: dict) -> Stage:
         repo = spec["hf_repo"]
         from huggingface_hub.utils import EntryNotFoundError
 
-        from src.huggingface import hf_download
+        from src.infra.huggingface import hf_download
 
         # New-layout repos keep snapshots under stages/ (dataset.jsonl at the root);
         # pre-layout repos hold them at the root — try the exact name, then stages/.

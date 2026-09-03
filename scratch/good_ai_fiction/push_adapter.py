@@ -49,7 +49,7 @@ def main(tar: str = "output/fiction716_adapter/adapter.tar.gz",
         dry_run: Verify and report without pushing.
     """
     load_dotenv()
-    from src.huggingface import push_run_dir
+    from src.infra.huggingface import push_run_dir
     from src.utils import origin_url
 
     out = Path(dest)

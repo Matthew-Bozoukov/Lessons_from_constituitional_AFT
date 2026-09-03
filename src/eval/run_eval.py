@@ -17,7 +17,7 @@ from omegaconf import OmegaConf
 from src.infra.endpoints.vllm import SshExec, VllmServer, resolve_target
 from src.eval import EVALS, resolve, resolve_pool
 from src.eval.layout import assert_layout, publish_layout
-from src.huggingface import hf_repo_id, push_run_dir
+from src.infra.huggingface import hf_repo_id, push_run_dir
 from src.naming import artifact_name, check_distinct, eval_name, run_dir
 from src.utils import timestamp, write_run_meta
 
@@ -139,7 +139,7 @@ def _publish(out_dir: Path, *, name: str, model_key: str, mode: str, target: str
         return ""
     # Two laws meet here: the NAME is built by src/naming.py from the eval's registered
     # key and the target's own name, the ORG is .env's HF_ORG resolved at push time
-    # (src.huggingface.hf_org).
+    # (src.infra.huggingface.hf_org).
     repo_id = hf_repo_id(_run_repo(name, model_key, run_name))
     # Hub-indexed tags: the canonical discovery route for the dashboard's eval-run
     # picker (/api/datasets?author=<org>&filter=eval-run).

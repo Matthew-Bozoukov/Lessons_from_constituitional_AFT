@@ -15,7 +15,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 import requests
-from src.huggingface import hf_download
+from src.infra.huggingface import hf_download
 from src.naming import api_model_key, model_key as base_model_key, undated
 from huggingface_hub.errors import EntryNotFoundError
 
@@ -225,7 +225,7 @@ def resolve_answers_target(hf_path: str) -> TargetSpec | None:
 
 def _repo_sha(hf_path: str, repo_type: str = "model") -> str:
     """The commit sha an HF repo resolves to right now (one API call; patched in tests)."""
-    from src.huggingface import hf_api
+    from src.infra.huggingface import hf_api
 
     return hf_api().repo_info(hf_path, repo_type=repo_type).sha
 
@@ -490,7 +490,7 @@ class LocalExec:
         return str(path)
 
     def fetch_adapter(self, hf_path: str, revision: str | None = None) -> str:
-        from src.huggingface import hf_snapshot
+        from src.infra.huggingface import hf_snapshot
 
         return hf_snapshot(hf_path, revision=revision)
 
@@ -622,7 +622,7 @@ class SshExec:
         rides along because it is not one: a TRAINING pod pushes its own adapter and
         resolves the namespace from the host's own environment, and without it the upload
         fail-fasts at the end of the run with nothing to fall back on
-        (src.huggingface.hf_org). An eval pod never pushes anything — the results are
+        (src.infra.huggingface.hf_org). An eval pod never pushes anything — the results are
         published by the driver — so there it is inert, and HF_TOKEN is the whole point.
         The rest of the .env (OpenRouter, provider API keys) stays local: a rented GPU
         host is the least-trusted machine in the loop, and CLAUDE.md's secrets policy
@@ -636,7 +636,7 @@ class SshExec:
         if self.has_env():
             print(f">>> {self.host} already has a .env — leaving it untouched")
             return
-        from src.huggingface import hf_org
+        from src.infra.huggingface import hf_org
 
         token = next((line.split("=", 1)[1].strip()
                       for line in local_env.read_text().splitlines()
@@ -705,7 +705,7 @@ class SshExec:
         return path
 
     def fetch_adapter(self, hf_path: str, revision: str | None = None) -> str:
-        # huggingface_hub directly, not src.huggingface: the pod holds no clone to import
+        # huggingface_hub directly, not src.infra.huggingface: the pod holds no clone to import
         # from. The token comes from the host's own .env via _with_env, which writes it as
         # HF_TOKEN — the one variable a bare snapshot_download reads.
         env = " ".join(f"{k}={shlex.quote(v)}" for k, v in self.base_env.items())

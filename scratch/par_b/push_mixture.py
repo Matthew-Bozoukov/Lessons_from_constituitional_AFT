@@ -11,7 +11,7 @@ import fire
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.huggingface import hf_api, push_files  # noqa: E402
+from src.infra.huggingface import hf_api, push_files  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 
 REPO = "LASR-Callum/2026-08-26-table2-9284-post-action-retrospection-716-train"

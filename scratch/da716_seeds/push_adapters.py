@@ -32,7 +32,7 @@ def main(seed: int = 42, private: bool = False) -> None:
     load_dotenv(ROOT / ".env")
     from huggingface_hub import HfApi
 
-    from src.huggingface import card_markdown, gate_push, hf_repo_id
+    from src.infra.huggingface import card_markdown, gate_push, hf_repo_id
 
     spec = SEEDS[int(seed)]
     local = ROOT / spec["local"]

@@ -31,7 +31,7 @@ from omegaconf import OmegaConf
 
 from src.eval.capabilities.arena_hard import arena_hard_gen
 from src.eval.layout import publish_layout
-from src.huggingface import hf_api, hf_download
+from src.infra.huggingface import hf_api, hf_download
 
 
 def answers_from_run(repo: str, dest: Path) -> dict:

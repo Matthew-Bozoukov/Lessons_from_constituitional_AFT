@@ -48,7 +48,7 @@ ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env")
 sys.path.insert(0, str(ROOT))
 
-from src.huggingface import card_markdown, hf_api, push_run_dir  # noqa: E402
+from src.infra.huggingface import card_markdown, hf_api, push_run_dir  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 
 REST = "https://rest.runpod.io/v1"
@@ -82,7 +82,7 @@ CODE = [
     "scripts/train/train_lora.py",
     "src/__init__.py",
     "src/utils.py",
-    "src/huggingface.py",
+    "src/infra/huggingface.py",
     "src/model_profile.py",
     "src/train/__init__.py",
     "src/train/train_lora.py",

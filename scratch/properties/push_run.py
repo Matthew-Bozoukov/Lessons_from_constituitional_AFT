@@ -28,7 +28,7 @@ import fire
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.huggingface import push_run_dir  # noqa: E402
+from src.infra.huggingface import push_run_dir  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 
 

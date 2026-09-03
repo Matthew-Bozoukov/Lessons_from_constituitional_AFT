@@ -18,7 +18,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from src.huggingface import hf_api, hf_download
+from src.infra.huggingface import hf_api, hf_download
 from src.naming import NamingError, check_hub_repo
 
 ROOT = Path(__file__).resolve().parents[2]

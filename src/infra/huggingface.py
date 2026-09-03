@@ -92,7 +92,7 @@ def hf_repo_id(name: str) -> str:
     owner, _, rest = name.partition("/")
     assert owner == org and "/" not in rest, (
         f"{name!r} names org {owner!r}, but pushes go to HF_ORG={org!r} — write the "
-        "repo name alone and let .env supply the org (src.huggingface.hf_org)")
+        "repo name alone and let .env supply the org (src.infra.huggingface.hf_org)")
     return name
 
 

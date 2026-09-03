@@ -84,7 +84,7 @@ def main(run_dir: str, config: str = "configs/eval/swebench_mini.yaml",
     row.write_text(json.dumps(summary, indent=2))
 
     if push:
-        from src.huggingface import push_run_dir
+        from src.infra.huggingface import push_run_dir
 
         repo_id = (f"{date.today().isoformat()}-swebench-mini-"
                    f"{out_dir.parent.name.replace('_', '-')}")

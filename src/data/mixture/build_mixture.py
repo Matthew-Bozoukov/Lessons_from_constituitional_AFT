@@ -226,7 +226,7 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
         # needs the whole pool). load_dataset's schema inference None-fills optional
         # fields (e.g. reasoning_content on turns without a trace); clean_messages
         # drops falsy fields, so rows come out identical to reading the jsonl.
-        from src.huggingface import hf_api, hf_token
+        from src.infra.huggingface import hf_api, hf_token
 
         info = hf_api().repo_info(spec["dataset"], repo_type="dataset",
                                   revision=spec.get("revision"))
@@ -238,7 +238,7 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
         # (e.g. stage_7_sft.jsonl mirrors): one exact file, sha-pinned via the shared
         # resolver, then read as a local path. New synth repos use `dataset:`.
         assert "repo" in spec, f"source {name!r}: `file:` needs `repo:`"
-        from src.huggingface import resolve_dataset
+        from src.infra.huggingface import resolve_dataset
 
         local, ref = resolve_dataset(spec["repo"], spec["file"], spec.get("revision"))
         print(f"{name}: {ref['repo']}@{ref['revision'][:12]} ({ref['file']} — legacy "
@@ -301,7 +301,7 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
     # Pin the streamed repo to the commit it resolves to now, as `dataset:` sources
     # already are: a replay source streamed from a moving head is not reproducible, and
     # the sha is written back onto the spec so mixture_stats records what was sampled.
-    from src.huggingface import hf_api
+    from src.infra.huggingface import hf_api
 
     spec["revision"] = spec.get("revision") or hf_api().dataset_info(repo).sha
     ds = load_dataset(*args, split=split, streaming=True, revision=spec["revision"]).shuffle(
@@ -509,7 +509,7 @@ def _front_matter(cfg, config_path: str, filter_cfg, stage: str, data_file: str)
     `training_data_tags`; `stage:` separates the base repo's unfiltered/filtered
     checkpoints from the final mixture.
     """
-    from src.huggingface import training_data_tags
+    from src.infra.huggingface import training_data_tags
 
     constitution = (filter_cfg.constitution if filter_cfg is not None
                     else cfg.hf.get("constitution", "none"))
@@ -523,13 +523,13 @@ def _front_matter(cfg, config_path: str, filter_cfg, stage: str, data_file: str)
 def _push(paths: list[Path], repo: str, fields: dict, private: bool, smoke: bool,
           front_matter: dict) -> None:
     """Push one checkpoint's files, or explain why not (smoke never pushes)."""
-    from src.huggingface import hf_repo_id
+    from src.infra.huggingface import hf_repo_id
 
     repo = hf_repo_id(repo)  # the config names the repo, .env's HF_ORG the org
     if smoke:
         print(f">>> smoke: NOT pushing {[p.name for p in paths]} -> {repo}")
         return
-    from src.huggingface import push_files
+    from src.infra.huggingface import push_files
     url = push_files(paths, repo, fields, private=private, front_matter=front_matter)
     print(f">>> pushed {[p.name for p in paths]} -> {url}")
 

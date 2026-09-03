@@ -11,7 +11,7 @@ import fire
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.huggingface import card_markdown, hf_api  # noqa: E402
+from src.infra.huggingface import card_markdown, hf_api  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 
 REPO = "LASR-Callum/2026-08-27-odcv-post-action-retrospection-716-eval"

@@ -8,7 +8,7 @@ from huggingface_hub.errors import EntryNotFoundError
 
 from src.infra.endpoints.vllm import TargetSpec, _spec_from_files, pin_template
 from src.eval import EVALS, EvalSpec
-from src.huggingface import REQUIRED_FIELDS, card_markdown
+from src.infra.huggingface import REQUIRED_FIELDS, card_markdown
 from src.model_profile import QWEN36_PROFILE
 
 ADAPTER_CONFIG = {"base_model_name_or_path": "Qwen/Qwen3-32B", "r": 16}

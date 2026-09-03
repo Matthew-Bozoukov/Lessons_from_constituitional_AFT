@@ -37,7 +37,7 @@ from pathlib import Path
 import fire
 from dotenv import load_dotenv
 
-from src.huggingface import hf_download, push_files
+from src.infra.huggingface import hf_download, push_files
 from src.utils import git_sha, origin_url
 
 load_dotenv()

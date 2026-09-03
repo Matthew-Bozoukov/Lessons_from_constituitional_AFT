@@ -105,10 +105,10 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
         print(f">>> resuming into {run_dir}")
     else:
         run_dir = Path(cfg["output_dir"]) / (f"smoke_{ts}" if smoke else ts)
-    from src.huggingface import hf_repo_id, training_data_tags
+    from src.infra.huggingface import hf_repo_id, training_data_tags
     from src.utils import origin_url
 
-    # The config names the repo; .env's HF_ORG names the org (src.huggingface.hf_org).
+    # The config names the repo; .env's HF_ORG names the org (src.infra.huggingface.hf_org).
     # THE corpus's name, built from the one thing a human chose — this config's stem,
     # which IS the style-type — plus today's date (src/naming.py). `hf_push: false` is
     # the opt-out; there is no way to name it something else.

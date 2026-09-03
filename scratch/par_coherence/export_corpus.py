@@ -14,7 +14,7 @@ from pathlib import Path
 from huggingface_hub import hf_hub_download
 
 sys.path.insert(0, ".")
-from src.huggingface import push_files  # noqa: E402
+from src.infra.huggingface import push_files  # noqa: E402
 
 CORPUS = ("LASR-Callum/2026-08-26-post-action-retrospection-716", "dataset.jsonl")
 REPO = "LASR-Callum/2026-08-28-post-action-retrospection-716-coherent"

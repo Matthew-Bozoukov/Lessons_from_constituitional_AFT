@@ -174,7 +174,7 @@ def _repo_sha(model_id: str) -> str | None:
     """The commit sha an HF model id resolves to right now, or None for a local path."""
     if model_id.startswith(("/", ".")) or "/" not in model_id:
         return None
-    from src.huggingface import hf_api
+    from src.infra.huggingface import hf_api
 
     return hf_api().model_info(model_id).sha
 
@@ -301,7 +301,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
             print(f">>> distributed: {world_size} ranks (DDP), this is rank {local_rank}")
 
     # --- data: from the HF dataset repo, pinned to the exact revision it resolves to ---
-    from src.huggingface import resolve_dataset
+    from src.infra.huggingface import resolve_dataset
 
     data_path, dataset_ref = resolve_dataset(
         str(cfg.data_repo), cfg.get("data_file"), cfg.get("data_revision"))
@@ -713,7 +713,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     (adapter_dir / "train_config.yaml").write_text(OmegaConf.to_yaml(cfg, resolve=True))
 
     if push:
-        from src.huggingface import push_run_dir
+        from src.infra.huggingface import push_run_dir
         from src.utils import origin_url
 
         # Same card contract as every other artifact (CLAUDE.md: every upload carries a

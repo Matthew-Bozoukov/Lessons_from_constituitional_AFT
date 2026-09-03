@@ -31,7 +31,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
-from src.huggingface import hf_download, hf_org
+from src.infra.huggingface import hf_download, hf_org
 from src.naming import check_distinct, label as name_label, name_date, to_local
 
 

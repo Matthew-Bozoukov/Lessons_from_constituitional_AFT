@@ -6,7 +6,7 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _pinned_hf_org(monkeypatch):
-    """Pin HF_ORG for every test (src.huggingface.hf_org).
+    """Pin HF_ORG for every test (src.infra.huggingface.hf_org).
 
     `hf_org()` resolves the push namespace from the environment, loading `.env` when the
     variable is unset — which would make these tests pass or fail depending on whose

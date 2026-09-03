@@ -25,7 +25,7 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
-from src.huggingface import hf_api, hf_download  # noqa: E402
+from src.infra.huggingface import hf_api, hf_download  # noqa: E402
 
 POOL_REPO = "matboz/synthdoc-v2-difficult-advice"
 POOL_FILE = "stage_7_sft.jsonl"
