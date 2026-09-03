@@ -257,7 +257,8 @@ hub   (an HF repo id after the org)           2026-09-04-qwen36-difficult-advice
   it measured and still dates only itself.
 - **CONFIGS ARE UNDATED AND UNSEEDED.** A config names an ARM; a run produces an
   ARTIFACT. `configs/data/synth/<style>.yaml`, `configs/data/mixture/<styles>.yaml`
-  (hyphenated when a mixture combines several), and
+  (the synthetic source keys, SORTED and hyphenated — derived, so one set of corpora has
+  exactly one name), and
   `configs/train/<model>-<mix>-<pct>.yaml` — the adapter's own repo name minus the date
   and the seed. A seed is a launch argument (`seed=1`), so three replicates are one
   config, not three files. `configs/eval/<eval>.yaml` is the exception in spelling: an

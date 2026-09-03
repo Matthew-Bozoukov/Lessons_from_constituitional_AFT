@@ -425,3 +425,19 @@ def test_a_base_config_may_not_itself_carry_a_synthetic_share(tmp_path):
     bad.write_text("sources:\n  da:\n    examples: 10\n    synthetic: true\n")
     with pytest.raises(AssertionError, match="used as a BASE blend"):
         _base_sources(str(bad))
+
+
+def test_a_build_refuses_a_stem_its_synthetic_sources_do_not_spell(tmp_path, monkeypatch):
+    """Belt and braces with the lint: an ad-hoc config cannot build a mixture named for
+    corpora it does not contain."""
+    from src.data.mixture import build_mixture as bm
+
+    cfg = tmp_path / "da-par.yaml"
+    cfg.write_text(
+        "seed: 0\ntokenizer: x\nmax_seq_len: 8\ntotal_examples: 100\nsynthetic_pct: 20\n"
+        "base: configs/data/mixture/0.yaml\noutput_dir: " + str(tmp_path) + "\n"
+        "sources:\n  da:\n    path: x.jsonl\n    reasoning: native\n    examples: 1\n")
+    # stop before any real loading: the name check is the first thing after config parse
+    monkeypatch.setattr(bm, "AutoTokenizer", None)
+    with pytest.raises(AssertionError, match="stem must be `da`"):
+        bm.main(str(cfg))

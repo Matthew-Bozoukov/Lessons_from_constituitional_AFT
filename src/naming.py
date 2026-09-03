@@ -326,6 +326,20 @@ def split_mix_subject(subject: str, *, what: str = "mix subject") -> tuple[str, 
     return styles, pct, variant
 
 
+def styles_from_sources(source_keys) -> str:
+    """The styles part of a mixture's name, DERIVED from its synthetic sources.
+
+    Sorted and hyphen-joined, so one set of corpora has exactly one name: `{par,
+    da-gemini}` is `da-gemini-par` however the config lists them, and a stem that says
+    otherwise is wrong rather than merely different. Plain string order — a variant sorts
+    with its style (`da-gemini` before `par`) because it is part of that style's subject.
+    """
+    keys = sorted(str(k) for k in source_keys)
+    for k in keys:
+        check_style(k, what="synthetic source key")
+    return "-".join(keys)
+
+
 def check_mix_subject(subject: str, *, what: str = "mix subject") -> str:
     """Validate `<styles>-<pct>[-<variant>]`, or `0` for the base blend; return it."""
     split_mix_subject(subject, what=what)
@@ -540,6 +554,19 @@ def _check_config(rel: str, stem: str, path: Path) -> str:
             # `0.yaml` is the base blend: no synthetic share, so no styles to name.
             if stem != "0":
                 check_style(stem, what="styles (mixture config stem)")
+            # A mixture built on `base:` names its synthetic sources and nothing else, so
+            # the styles part is not chosen — it is the source keys, sorted. The config's
+            # `sources:` block is the record; the stem has to agree with it.
+            cfg = _yaml(path)
+            if cfg.get("base"):
+                want = styles_from_sources((cfg.get("sources") or {}).keys())
+                if stem != want:
+                    raise NamingError(
+                        f"mixture config {stem!r} names styles its `sources:` do not: the "
+                        f"synthetic sources are {sorted(cfg.get('sources') or {})}, so the "
+                        f"stem is `{want}`" + (f"-{variant}" if variant else "") +
+                        ".yaml. The styles part is derived — sorted source keys, "
+                        "hyphenated — so one set of corpora has exactly one name.")
         elif folder == "configs/train":
             head, _, mix = stem.partition("-")
             if not mix:

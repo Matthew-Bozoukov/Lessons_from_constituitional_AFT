@@ -47,7 +47,7 @@ load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
 from src.data.mixture.sources import SOURCES, clean_messages  # noqa: E402
 from src.model_profile import model_profile  # noqa: E402
-from src.naming import check_style, mix_name  # noqa: E402
+from src.naming import check_style, mix_name, styles_from_sources  # noqa: E402
 from src.utils import git_sha, origin_url, timestamp, write_run_meta  # noqa: E402
 
 # Each source declares what its DATA carries via `reasoning:` — part of the scientific
@@ -596,22 +596,6 @@ def main(config: str, smoke: bool = False) -> None:
         "`tulu3: {repo: allenai/tulu-3-sft-mixture, tokens: N, shuffle_buffer: 10000}`")
     scale = _SMOKE_SCALE if smoke else 1
     seed = int(cfg.seed)
-    sources: dict[str, dict] = OmegaConf.to_container(cfg.sources, resolve=True)
-    if cfg.get("base"):
-        sources = blend(_base_sources(str(cfg.base)), sources,
-                        int(cfg.synthetic_pct), int(cfg.total_examples))
-    filter_cfg = cfg.get("filter")
-    hf_cfg = cfg.get("hf")
-
-    base_specs = {k: v for k, v in sources.items() if not v.get("synthetic")}
-    synth_specs = {k: v for k, v in sources.items() if v.get("synthetic")}
-    if synth_specs and filter_cfg is None:
-        raise ValueError(
-            "`synthetic: true` orders a source AFTER the filter stage, but this config "
-            "has no `filter:` block — drop the flags for a single-pass mixture, or add "
-            "the filter.")
-    if hf_cfg is not None:
-        assert "experiment" in hf_cfg, "hf: block needs `experiment:` for the dataset card"
     # THE mixture's name (src/naming.py): this config's stem — its styles and any variant,
     # the parts a human chose — with the synthetic share spliced BETWEEN them, and today's
     # date in front. `da` + `reason-only` at 7% is `<date>-da-7-reason-only-mix`. The
@@ -626,7 +610,35 @@ def main(config: str, smoke: bool = False) -> None:
         stem = stem[: -len(variant) - 1]
     style = stem if stem == "0" else check_style(
         stem, what="styles (mixture config stem)")
+    if cfg.get("base"):
+        # The styles are the synthetic source keys, sorted — derived, not chosen. Checked
+        # here as well as in the lint so an ad-hoc config cannot build a mixture named for
+        # corpora it does not contain.
+        want = styles_from_sources(OmegaConf.to_container(cfg.sources, resolve=True).keys())
+        assert style == want, (
+            f"{Path(config).stem}.yaml names styles {style!r} but its synthetic sources "
+            f"are {sorted(cfg.sources)}: the stem must be `{want}`"
+            + (f"-{variant}" if variant else "") + ".yaml.")
 
+    sources: dict[str, dict] = OmegaConf.to_container(cfg.sources, resolve=True)
+    if cfg.get("base"):
+        sources = blend(_base_sources(str(cfg.base)), sources,
+                        int(cfg.synthetic_pct), int(cfg.total_examples))
+    filter_cfg = cfg.get("filter")
+    hf_cfg = cfg.get("hf")
+
+    base_specs = {k: v for k, v in sources.items() if not v.get("synthetic")}
+    synth_specs = {k: v for k, v in sources.items() if v.get("synthetic")}
+    if synth_specs and filter_cfg is None and not cfg.get("base"):
+        # A hand-set `synthetic: true` with nothing to be after is a config error. Under
+        # `base:` the flags are set by blend(), and "after the filter" with no filter just
+        # means after the base rows — a single-pass base mixture is a legitimate shape.
+        raise ValueError(
+            "`synthetic: true` orders a source AFTER the filter stage, but this config "
+            "has no `filter:` block — drop the flags for a single-pass mixture, or add "
+            "the filter.")
+    if hf_cfg is not None:
+        assert "experiment" in hf_cfg, "hf: block needs `experiment:` for the dataset card"
     tok = AutoTokenizer.from_pretrained(cfg.tokenizer)
     render_kwargs = model_profile(str(cfg.tokenizer)).render_kwargs
 

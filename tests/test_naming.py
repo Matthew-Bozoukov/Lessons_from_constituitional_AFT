@@ -189,3 +189,26 @@ def test_a_row_count_is_never_part_of_a_style():
     # A pre-law train stem may still carry one: it names a mixture that was never named
     # under the law, and a number that names nothing is left where it is.
     assert check_style("table2-9284-da-716", numbers_ok=True)
+
+
+def test_the_styles_part_is_the_sorted_synthetic_source_keys(tmp_path):
+    """One set of corpora, one name — however the config happens to list them."""
+    from src.naming import _check_config, styles_from_sources
+
+    assert styles_from_sources(["par", "da-gemini"]) == "da-gemini-par"
+    assert styles_from_sources(["da"]) == "da"
+
+    def mixture(stem: str, sources: list[str], variant: str = "") -> str:
+        cfg = tmp_path / f"{stem}.yaml"
+        body = "base: configs/data/mixture/0.yaml\nsynthetic_pct: 20\n"
+        body += (f"variant: {variant}\n" if variant else "") + "sources:\n"
+        body += "".join(f"  {s}:\n    examples: 1\n" for s in sources)
+        cfg.write_text(body)
+        return _check_config(f"configs/data/mixture/{stem}.yaml", stem, cfg)
+
+    assert mixture("da-gemini-par", ["par", "da-gemini"]) == ""
+    assert mixture("da-gemini-par-reason-only", ["par", "da-gemini"], "reason-only") == ""
+    # the same corpora in the other order is a different name for one thing
+    assert "stem is `da-gemini-par`" in mixture("par-da-gemini", ["par", "da-gemini"])
+    # a stem that names a corpus the sources do not contain
+    assert "stem is `da`" in mixture("da-par", ["da"])

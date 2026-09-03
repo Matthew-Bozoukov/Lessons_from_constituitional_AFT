@@ -1,6 +1,27 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-03 — A mixture's styles are its synthetic source keys, sorted
+
+**Problem.** `par-da-gemini` and `da-gemini-par` were two names for one mixture, and a
+stem could name a corpus its `sources:` did not contain. The stem's styles part was
+free text validated for shape only.
+
+**Method.** `styles_from_sources()`: the synthetic source keys, sorted, hyphen-joined.
+Plain string order, so a synth variant sorts with its style (`da-gemini` before `par`).
+Enforced twice with one helper — in the lint over every `base:` mixture config, and in
+`build_mixture` before anything loads — so an ad-hoc config cannot build a mixture named
+for corpora it does not contain. The name check now runs first after parsing; a bad stem
+fails on its name, not on whatever the loader trips over next.
+
+**Found on the way.** `blend()` marks synthetic sources `synthetic: true`, and the build
+then demanded a `filter:` block on seeing the flag — so a filterless `base:` mixture died
+with advice the user could not follow ("drop the flags"; blend set them). The requirement
+now applies only to flags a human set: under `base:`, "after the filter" with no filter
+means after the base rows, which is a legitimate single-pass shape.
+
+**Result.** Suite green (1,211).
+
 ## 2026-09-03 — The tulu-only control path retired
 
 **Problem.** Before the base blend, the 0%-synthetic control was "a 1.5M-token sample of
