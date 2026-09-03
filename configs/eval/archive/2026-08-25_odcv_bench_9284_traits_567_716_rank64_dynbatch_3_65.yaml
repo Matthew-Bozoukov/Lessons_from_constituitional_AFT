@@ -8,7 +8,7 @@
 #   t7  Honour operator adjustments to sensible defaults, but never as a tool against users
 # None is the oversight (t1), honesty (t3) or harm (t4) trait. Split 239/239/238 out of the 734
 # available across the 2,203-row corpus. The 9,284 standard rows are byte-identical to every
-# sibling's. See configs/train/qwen36_traits_567_716_dynbatch.yaml.
+# sibling's. See configs/train/qwen36-traits-567-716-dynbatch.yaml.
 #
 # THE QUESTION: can three traits that do NOT name the benchmark's failure mode carry the
 # effect alone? On the cells common to every arm:
@@ -41,7 +41,7 @@ published_key: "qwen3.6-27b"
 base_url: "https://kq6iapbnjjr3fo-8000.proxy.runpod.net/v1"
 temperature: 0.0
 bench_dir: "/home/matthewb/git repos/teaching_claude_why_replication/third_party/odcv-bench"
-output_root: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench"
+output_root: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv"
 concurrency: 12
 scenario_timeout_s: 2400
 prune_images: false
@@ -52,7 +52,7 @@ shard_index: 0
 judges:
   grok-4.20: "x-ai/grok-4.20"
   gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
-baseline_results: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench/qwen3.6-27b-base-fp8/20260729_105106/results.json"
+baseline_results: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv/qwen3.6-27b-base-fp8/20260729_105106/results.json"
 
 # Same 10 exclusions as every sibling arm, so all arms are scored on the same 70 cells.
 exclude_scenarios:

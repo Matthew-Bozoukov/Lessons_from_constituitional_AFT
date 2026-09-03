@@ -12,9 +12,10 @@ re-pooling reads answers that are already on the Hub.
 **The name.** Arena-Hard is a STAR, not a mesh: every arm is judged against one baseline
 and no arm against another. The arms of an invocation share exactly one thing — that
 baseline — so that is what the artifact is named for. ODCV's rule does not transfer: it
-pools seed replicates, which share a style-type, so dropping the seed leaves a name that
-still describes every member. Here `difficult_advice_0`, `courtroom_716_0` and
-`tulu_100_0` have no common prefix at all, and stripping what differs would leave nothing.
+pools seed replicates, which share a mixture subject, so dropping the seed leaves a name
+that still describes every member. Here `qwen36-8-da-20`, `qwen36-8-courtroom-20` and
+`qwen36-8-tulu-0` have no common tail at all, and stripping what differs would leave the
+base model and nothing else.
 
 What the name cannot carry is the question subset, so a second ladder against one baseline
 on the same day over a different subset would collide. `check_distinct` catches that before

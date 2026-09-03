@@ -1,5 +1,5 @@
 # ABOUTME: QLoRA SFT of Qwen3-32B on the difficult-advice dataset via TRL SFTTrainer.
-# ABOUTME: Runs on a GPU instance: python scripts/train/train_lora.py --config configs/train/qwen3_difficult_advice.yaml
+# ABOUTME: Runs on a GPU instance: python scripts/train/train_lora.py --config configs/train/qwen3-da.yaml
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ from src.train.dynamic_batching import (  # noqa: E402
 )
 from src.train.mask_gate import gate_generation_boundary  # noqa: E402
 from src.model_profile import train_memory_entry  # noqa: E402
-from src.naming import check_hub_name, model_name, style_from_mix  # noqa: E402
+from src.naming import check_hub_name, mix_subject_from, model_name  # noqa: E402
 from src.train.masking import (  # noqa: E402
     build_labels,
     check_thinking_declaration,
@@ -254,16 +254,16 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     # `hf_repo` in the config is the ONE override and it exists for one case: relaunching
     # a run that died, which would otherwise mint a second name under a second date. It
     # still has to pass the law.
-    style = style_from_mix(str(cfg.data_repo)) or Path(config).stem.partition("_")[2]
-    assert style, (
+    mix = mix_subject_from(str(cfg.data_repo)) or Path(config).stem.partition("-")[2]
+    assert mix, (
         f"cannot name this organism: data_repo {cfg.data_repo!r} was not built under the "
-        f"naming law and the config stem {Path(config).stem!r} is not `<model>_<style>`. "
+        f"naming law and the config stem {Path(config).stem!r} is not `<model>-<mix>`. "
         "Rebuild the mixture with `uv run mix`, or rename the config.")
     override = (str(cfg.hf_repo)
                 if "hf_repo" in cfg and not OmegaConf.is_missing(cfg, "hf_repo")
                 and cfg.hf_repo else "")
     hf_repo = check_hub_name(override, what="model organism (hf_repo override)") \
-        if override else model_name(str(cfg.model), style, int(cfg.seed))
+        if override else model_name(str(cfg.model), int(cfg.seed), mix)
     # push=false is the deliberate opt-out for a pod without HF credentials, whose driver
     # pushes the pulled-back adapter instead.
     push = bool(cfg.get("push", True)) and not smoke

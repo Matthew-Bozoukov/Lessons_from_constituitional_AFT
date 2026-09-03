@@ -11,7 +11,7 @@
 # stand-in at 716 rows, 16.3% MR on these cells) and B (grok-4.6, 7.8% MR), written by the
 # same Sonnet 5 as A under a one-sentence length cap that lands them at B's lengths. If C
 # lands near B, length carried B's drop; near A, the generator did. See
-# configs/data/synth/difficult_advice_sonnet_concise_716.yaml and docs/GENERATOR_ABLATION.md.
+# configs/data/synth/da-sonnetconcise-716.yaml and docs/GENERATOR_ABLATION.md.
 #
 # Serving, tool-choice flags and the inert rollouts_per_cell field: identical to the
 # grokresp703 config's notes -- served over RunPod's HTTPS proxy via
@@ -25,7 +25,7 @@ published_key: "qwen3.6-27b"
 base_url: "https://vqmln0w4wzmyce-8000.proxy.runpod.net/v1"   # pod vqmln0w4wzmyce, 2026-08-26 (scratch/serve_adapter_runpod.py)
 temperature: 0.0
 bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
-output_root: "output/odcv_bench"
+output_root: "output/odcv"
 concurrency: 12
 scenario_timeout_s: 2400
 prune_images: false

@@ -1,0 +1,29 @@
+# ABOUTME: Training-mixture config for Qwen3.6-27B, 10/90 sweep arm: 150k tokens of
+# ABOUTME: difficult-advice (with reasoning traces) + 1.35M tokens of TULU3 replay (no reasoning).
+# Run: uv run scripts/data/mixture/build_mixture.py --config configs/data/mixture/qwen36-10-90.yaml
+# Converted to interchange form 2026-08-07 (legacy strip/format rendering removed):
+# rows are now model-agnostic messages, rendered at train time via ModelProfile. The
+# published artifact the legacy form produced is on HF; rebuilding THAT byte-form needs
+# a pre-2026-08-07 checkout.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+
+sources:
+  da:
+    path: "data/sft_dataset_thinking.jsonl"
+    reasoning: native
+    tokens: 150000
+  tulu3:
+    repo: "allenai/tulu-3-sft-mixture"
+    reasoning: none
+    tokens: 1350000
+    # The old dedicated tulu3 code path used this buffer; kept so regeneration
+    # samples identically.
+    shuffle_buffer: 10000
+
+# Drop TULU3 conversations longer than the training sequence length so replay
+# examples are never truncated mid-answer.
+max_seq_len: 2048
+
+output_dir: "output/mixture_qwen36-10-90"

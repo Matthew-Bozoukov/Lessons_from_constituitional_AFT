@@ -78,7 +78,7 @@ EVALS: dict[str, EvalSpec] = {
     # scaffold gets its own registry entry — never fold one into the other.
     "swebench_mini": EvalSpec(
         "capabilities.swebench_mini",
-        "configs/eval/swebench_mini_verified.yaml",
+        "configs/eval/swebench_mini.yaml",
         key="swebench",
         needs_docker=True,
     ),
@@ -94,7 +94,7 @@ EVALS: dict[str, EvalSpec] = {
     ),
     "odcv": EvalSpec(
         "misalignment.odcv",
-        "configs/eval/odcv_bench.yaml",
+        "configs/eval/odcv.yaml",
         key="odcv",
         needs_docker=True,
         # Seed replicates are the standard ODCV shape (`--target seed0 seed1 seed2`), and

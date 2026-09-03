@@ -24,9 +24,9 @@ from src.data.synth.stage_operators import (
 )
 from src.data.synth.stage_runtime import lint_problems, price_of
 
-CFG_PATH = "configs/data/synth/good_ai_fiction.yaml"
-TAX_PATH = "configs/data/synth/good_ai_fiction/taxonomy.yaml"
-LIB_PATH = "configs/data/synth/good_ai_fiction/archetypes.yaml"
+CFG_PATH = "configs/data/synth/good-ai-fiction.yaml"
+TAX_PATH = "configs/data/synth/good-ai-fiction/taxonomy.yaml"
+LIB_PATH = "configs/data/synth/good-ai-fiction/archetypes.yaml"
 
 CFG = yaml.safe_load(open(CFG_PATH, encoding="utf-8"))
 TAX = yaml.safe_load(open(TAX_PATH, encoding="utf-8"))
@@ -102,7 +102,7 @@ def test_the_publish_target_follows_the_dating_convention() -> None:
     corpus is `<date>-<style>-synth`, built by src/naming.py from this config's stem and
     the clock. A name in the config is a name that can drift from the run that made it.
     """
-    stem = "good_ai_fiction"
+    stem = "good-ai-fiction"
     assert check_style(stem) == stem
     assert synth_name(stem, date="2026-08-28") == "2026-08-28-good-ai-fiction-synth"
     for dead in ("hf_repo", "hf_repo_smoke"):

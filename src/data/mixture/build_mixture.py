@@ -348,6 +348,35 @@ def _validate_interchange(name: str, kind: str, rows: list[dict]) -> None:
 # Stats, cards, pushes
 # --------------------------------------------------------------------------------------
 
+def synthetic_pct(rows: list[dict], synthetic_sources: set[str]) -> int:
+    """Percentage of a built mixture's rows that came from a synthetic source.
+
+    Rounded to a whole number because that is what a name can carry and what anyone says
+    out loud ("the 20% arm"); the exact counts stay in `mixture_stats.json`. Counted on
+    EXAMPLES, not tokens — the same unit the mixture's split is declared in.
+    """
+    if not rows:
+        return 0
+    return round(100 * sum(r["source"] in synthetic_sources for r in rows) / len(rows))
+
+
+def declared_synthetic_pct(sources: dict) -> int:
+    """The synthetic share the config DESIGNS, from its per-source budgets.
+
+    A mixture has to be named before its rows exist — the checkpoint pushes need a repo to
+    land in — so the name comes from the design, and `synthetic_pct` over the built rows
+    checks it. Budgets are declared in tokens or examples depending on the source, and
+    both are used here for the same reason the name is approximate: this is the intent,
+    and the built stats are the record.
+    """
+    def budget(spec: dict) -> float:
+        return float(spec.get("tokens") or spec.get("examples") or 0)
+
+    total = sum(budget(s) for s in sources.values())
+    synth = sum(budget(s) for s in sources.values() if s.get("synthetic"))
+    return round(100 * synth / total) if total else 0
+
+
 def _source_stats(rows: list[dict]) -> dict[str, dict]:
     """Per-source composition of the built mixture, with BOTH share definitions.
 
@@ -529,11 +558,11 @@ def main(config: str, smoke: bool = False) -> None:
             "the filter.")
     if hf_cfg is not None:
         assert "experiment" in hf_cfg, "hf: block needs `experiment:` for the dataset card"
-    # THE mixture's name, built from the one thing a human chose — this config's stem,
-    # which IS the style-type — plus today's date (src/naming.py). Every stage of the
-    # build lands in it; there is no second repo and no way to name either one by hand.
+    # THE mixture's name (src/naming.py) is this config's stem — its styles, the one
+    # thing a human chose — plus the synthetic share, which is COUNTED below rather than
+    # typed, plus today's date. The repo is minted after stage 3, when the share is a
+    # fact; nothing here can name a mixture something its rows disagree with.
     style = check_style(Path(config).stem, what="style-type (mixture config stem)")
-    repo = mix_name(style)
 
     tok = AutoTokenizer.from_pretrained(cfg.tokenizer)
     render_kwargs = model_profile(str(cfg.tokenizer)).render_kwargs
@@ -541,6 +570,13 @@ def main(config: str, smoke: bool = False) -> None:
     out_dir = Path(cfg.output_dir) / (f"smoke_{timestamp()}" if smoke else timestamp())
     out_dir.mkdir(parents=True, exist_ok=True)
     private = bool(hf_cfg.get("private", True)) if hf_cfg is not None else True
+
+    # The synthetic share is part of the mixture's NAME, and the name has to exist before
+    # the first checkpoint push — so it comes from the share the config designs, and the
+    # share the built rows actually carry is asserted against it at stage 3. A mixture
+    # cannot be published under a percentage its own rows disagree with.
+    declared_pct = declared_synthetic_pct(sources)
+    repo = mix_name(style, declared_pct)
 
     # --- stage 1: the base mixture ----------------------------------------------------
     rows, kinds = _load_all(tok, cfg, base_specs, scale, seed, render_kwargs)
@@ -606,12 +642,21 @@ def main(config: str, smoke: bool = False) -> None:
         kinds |= synth_kinds
         random.Random(seed).shuffle(rows)
 
+    # The name says 20%; the rows had better be 20%. Rounding is the only slack allowed,
+    # because everything trained on this mixture inherits the number from its name.
+    built_pct = synthetic_pct(rows, {n for n in synth_specs})
+    assert abs(built_pct - declared_pct) <= 1, (
+        f"this mixture is named for a {declared_pct}% synthetic share but its rows are "
+        f"{built_pct}% ({sum(r['source'] in synth_specs for r in rows):,} of {len(rows):,}). "
+        "The name would be wrong, and every arm trained on it would inherit the wrong "
+        "number. Fix the source budgets, or the config stem.")
+
     out_path = out_dir / "mixture.jsonl"
     _write_rows(out_path, rows)
     _validate_written(out_path, rows, kinds)
     stats = {"total": {"examples": len(rows), "tokens": sum(r["n_tokens"] for r in rows)},
-             "by_source": _source_stats(rows), "mixture_path": str(out_path),
-             "filter": report}
+             "synthetic_pct": built_pct, "by_source": _source_stats(rows),
+             "mixture_path": str(out_path), "filter": report}
     (out_dir / "mixture_stats.json").write_text(json.dumps(stats, indent=2))
     write_run_meta(out_dir, OmegaConf.to_container(cfg, resolve=True),
                    extra={"command": " ".join(sys.argv), "smoke": smoke, "stats": stats})

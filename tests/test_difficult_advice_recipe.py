@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import yaml
 
-CONFIG = "configs/data/synth/difficult_advice.yaml"
+CONFIG = "configs/data/synth/da.yaml"
 
 
 def _stage(name: str) -> dict:
@@ -125,8 +125,8 @@ def test_the_dedupe_filter_runs_on_full_coverage():
 # `difficult_advice_low_stakes.yaml` show the correct shape. Delete an entry here the
 # moment its config grows a `smoke.source`.
 _SMOKE_DEBT = {
-    "difficult_advice_gpt_responder_716.yaml",
-    "difficult_advice_grok_responder_716.yaml",
+    "da-gptresp-716.yaml",
+    "da-grokresp-716.yaml",
 }
 
 

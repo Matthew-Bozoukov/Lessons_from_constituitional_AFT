@@ -1,4 +1,4 @@
-# ARCHIVED 2026-08-25 -- superseded by configs/data/synth/post_action_retrospection.yaml.
+# ARCHIVED 2026-08-25 -- superseded by configs/data/synth/par.yaml.
 # DO NOT start new runs from this file and DO NOT edit it. It is kept only as the exact
 # record of what generated LASR-Callum/2026-08-17-post-action-retrospection (576 documents,
 # the corpus behind the 2026-08-17 BoW-separability and SAE-property comparisons); editing
@@ -12,7 +12,7 @@
 # ABOUTME: brainstormed fresh (no difficult-advice source run), the first reply is written
 # ABOUTME: WITHOUT the constitution so its faults are organic, a self-critique + verification
 # ABOUTME: pass confirms which fault is real, and only the reflection turn trains.
-# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/post_action_retrospection.yaml [--smoke]
+# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/par.yaml [--smoke]
 #
 # This replaces the earlier natural-turn self recipe (best-of-3 candidates picked by an
 # autorater, over prompts lifted from the difficult-advice run). Nothing of that arm was
@@ -74,20 +74,20 @@
 # `conversation` puts the reply under evaluation in a real assistant turn, `chat_export`
 # writes the record. No Python knows this document type exists. The cell registry it
 # used to depend on stays in `src/data/synth/model_eval_model_cells.py`, frozen for the
-# archived configs; since 2026-08-14 (`peer_critique.yaml` rebuilt on the generic
+# archived configs; since 2026-08-14 (`pc.yaml` rebuilt on the generic
 # operators) nothing live is written against it.
 #
 # NOT YET RUN. Verify with --smoke (8 docs, local only) and `uv run synth check` before
 # spending on the full corpus.
 
-pipeline: post_action_retrospection
+pipeline: par
 
 seed: 0
 
 constitution: "constitutions/claude_distilled_09_principles_mid_20260804/constitution.md"
 chunking: principle
 
-output_dir: "output/post_action_retrospection"
+output_dir: "output/par"
 
 hf_repo: "2026-08-13-post-action-retrospection"
 hf_repo_smoke: null
@@ -385,7 +385,7 @@ stages:
   kind: scenarios
   model: scenarios
   # Generation-time diversity gate, the measured mechanism that replaces named example
-  # scenarios and domain lists in the prompt (difficult_advice's lesson: named examples
+  # scenarios and domain lists in the prompt (da's lesson: named examples
   # produce the concentration they mean to prevent, and this brainstorm measured
   # 58/2,000 near-clones at cosine >= 0.86 without a gate on 2026-08-14). The `avoid`
   # and `overrepresented` steers below are filled from THIS run's own output, so
@@ -467,7 +467,7 @@ stages:
       # of the corpus (it refuses one, by design).
       sample: 0
 
-# The stage that acts on the check above -- adopted from peer_critique on measured
+# The stage that acts on the check above -- adopted from pc on measured
 # evidence: this same brainstorm prompt, with no generation-time diversity gate, put
 # 58 of 2,000 scenarios in dup clusters at cosine >= 0.86 (largest cluster 14) on the
 # 2026-08-14 partial peer-critique run, and every duplicate that survives here is paid
@@ -907,7 +907,7 @@ stages:
     draft_response: response
     assessment: assessment
   normalize: [assessment]
-  # Two contracts: a one-word verdict, and the opener ban peer_critique's smoke proved
+  # Two contracts: a one-word verdict, and the opener ban pc's smoke proved
   # necessary (3/40 PAR reasonings opened "Let me..." without it, and one opened with a
   # stray "Final Result:" scaffold fragment -- both measured 2026-08-14).
   lint:

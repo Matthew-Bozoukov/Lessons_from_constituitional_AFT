@@ -9,8 +9,8 @@ its models, its knobs — lives in that type's config, so the config alone is th
 scientific record of what a run generated:
 
 ```
-uv run scripts/data/synth/build_dataset.py --config configs/data/synth/difficult_advice.yaml [--smoke]
-uv run scripts/data/synth/build_dataset.py --config configs/data/synth/post_action_retrospection.yaml [--smoke]
+uv run scripts/data/synth/build_dataset.py --config configs/data/synth/da.yaml [--smoke]
+uv run scripts/data/synth/build_dataset.py --config configs/data/synth/par.yaml [--smoke]
 uv run scripts/data/synth/build_dataset.py --config <cfg> --ablate <stage>   # ablation arm
 uv run scripts/data/synth/build_dataset.py --config <cfg> --estimate [--measured <smoke manifest>]
 ```
@@ -190,7 +190,7 @@ default config (`load_dataset(repo)` fetches it alone) and each stage as its own
 named config — which also keeps the dataset viewer working. A halted run publishes
 no `dataset.jsonl` (`manifest.json`'s `dataset` field is null).
 
-## Document type: difficult advice (`configs/data/synth/difficult_advice.yaml`)
+## Document type: difficult advice (`configs/data/synth/da.yaml`)
 
 Derived from the difficult-advice recipe in
 [Teaching Claude Why](https://alignment.anthropic.com/2026/teaching-claude-why/), as a
@@ -220,7 +220,7 @@ Output and HF names moved from the historical `synthdoc_v2` prefix to `synthdoc_
 the default swap, so pre-2026-08-24 snapshots stay resumable under the legacy config.
 This replaced the config-driven v1 (deleted 2026-08-03, git history).
 
-## Document type: pre-action deliberation (`configs/data/synth/pre_action_deliberation.yaml`)
+## Document type: pre-action deliberation (`configs/data/synth/pad.yaml`)
 
 Inverts who is tempted: **the agent itself**. Working autonomously (prose or agentic
 form), it finds it could protect its own position — or the objective it was deployed to
@@ -328,7 +328,7 @@ The first turn stays untrained in both (`supervise: final` / `all` respectively)
 *tracked* conditioning variable rather than an invisible one: every record carries
 `reply_quality`, `first_turn_source` and `followup_source` in its metadata.
 
-`uv run synth check --config configs/data/synth/post_action_retrospection.yaml --run_dir <dir>`
+`uv run synth check --config configs/data/synth/par.yaml --run_dir <dir>`
 runs the validity checks and gates on the config's thresholds: gate yield (report-only —
 the number a gated config re-sizes itself from), coverage of what actually entered
 generation, template collapse, **structural diversity** (on the assembled records:

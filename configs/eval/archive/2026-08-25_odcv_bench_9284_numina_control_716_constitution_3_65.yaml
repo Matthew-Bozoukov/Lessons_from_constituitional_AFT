@@ -46,7 +46,7 @@ temperature: 0.0
 # Prepended to every scenario system prompt; see the header for the mechanism.
 system_preamble_file: "constitutions/claude_distilled_09_principles_mid_20260804/constitution.md"
 bench_dir: "/home/matthewb/git repos/teaching_claude_why_replication/third_party/odcv-bench"
-output_root: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench"
+output_root: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv"
 concurrency: 12
 scenario_timeout_s: 2400
 prune_images: false
@@ -57,7 +57,7 @@ shard_index: 0
 judges:
   grok-4.20: "x-ai/grok-4.20"
   gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
-baseline_results: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench/qwen3.6-27b-base-fp8/20260729_105106/results.json"
+baseline_results: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv/qwen3.6-27b-base-fp8/20260729_105106/results.json"
 
 # Same 10 exclusions as every sibling arm, so all arms are scored on the same 70 cells.
 exclude_scenarios:

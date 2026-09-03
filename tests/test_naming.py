@@ -17,7 +17,7 @@ from src.naming import (
     mix_name,
     model_key,
     model_name,
-    style_from_mix,
+    mix_subject_from,
     synth_name,
     to_hub,
     to_local,
@@ -28,15 +28,18 @@ D = "2026-09-04"
 
 
 def test_one_style_type_carries_through_every_stage():
-    """The point of the law: a corpus, its mixture, the arm and its eval line up by eye."""
-    assert synth_name("difficult_advice", date="2026-09-01") == (
-        "2026-09-01-difficult-advice-synth")
-    assert mix_name("difficult_advice", date="2026-09-03") == (
-        "2026-09-03-difficult-advice-mix")
-    organism = model_name("Qwen/Qwen3.6-27B", "difficult_advice", 0, date=D)
-    assert organism == "2026-09-04-qwen36-difficult-advice-0"
+    """The point of the law: a corpus, its mixture, the arm and its eval line up by eye.
+
+    A mixture may combine styles (`da-par`) and carries the synthetic share its build
+    counted, and everything trained on it is named for that whole subject — so `da-par-20`
+    and `da-par-40` are two arms at a glance.
+    """
+    assert synth_name("da", date="2026-09-01") == "2026-09-01-da-synth"
+    assert mix_name("da-par", 20, date="2026-09-03") == "2026-09-03-da-par-20-mix"
+    organism = model_name("Qwen/Qwen3.6-27B", 8, "da-par-20", date=D)
+    assert organism == "2026-09-04-qwen36-8-da-par-20"
     assert eval_name("odcv", organism, date="2026-09-05") == (
-        "2026-09-05-odcv-qwen36-difficult-advice-0")
+        "2026-09-05-odcv-qwen36-8-da-par-20")
 
 
 def test_an_eval_run_carries_one_date_and_it_is_its_own():
@@ -53,10 +56,10 @@ def test_a_pooled_run_is_named_for_the_subject_its_own_pool_chose():
     compares arms that share nothing but the baseline and names that. Both arrive here
     as a subject that is already decided.
     """
-    assert eval_name("odcv", "qwen36_difficult_advice_716-pooled3", date="2026-09-06") == (
-        "2026-09-06-odcv-qwen36-difficult-advice-716-pooled3")
-    assert eval_name("arena_hard", "vs_qwen36_difficult_advice_0", date="2026-09-06") == (
-        "2026-09-06-ah-vs-qwen36-difficult-advice-0")
+    assert eval_name("odcv", "qwen36-da-20-pooled3", date="2026-09-06") == (
+        "2026-09-06-odcv-qwen36-da-20-pooled3")
+    assert eval_name("arena_hard", "vs_qwen36_8_da_20", date="2026-09-06") == (
+        "2026-09-06-ah-vs-qwen36-8-da-20")
 
 
 def test_a_base_model_is_named_by_its_registered_key_and_nothing_else():
@@ -73,12 +76,13 @@ def test_a_base_model_is_named_by_its_registered_key_and_nothing_else():
 
 
 @pytest.mark.parametrize("style, because", [
-    ("2026-09-01_difficult_advice", "a config is not dated"),
-    ("difficult_advice_seed_1", "a seed is a launch argument"),
-    ("difficult_advice_synth", "`synth` is the stage word"),
-    ("sonnet_v2", "a version is not a description"),
-    ("DifficultAdvice", "one spelling, lowercase"),
-    ("da", "says too little"),
+    ("2026-09-01-da", "a config is not dated"),
+    ("da_length_capped", "one spelling, and it is the hub's"),
+    ("da-seed-1", "a seed is a launch argument"),
+    ("da-synth", "`synth` is the stage word"),
+    ("da-v2", "a version is not a description"),
+    ("DA", "one spelling, lowercase"),
+    ("d", "says too little"),
 ])
 def test_the_one_thing_a_human_types_is_the_one_thing_that_is_checked(style, because):
     with pytest.raises(NamingError):
@@ -86,27 +90,26 @@ def test_the_one_thing_a_human_types_is_the_one_thing_that_is_checked(style, bec
 
 
 @pytest.mark.parametrize("style", [
-    "difficult_advice",
-    "difficult_advice_716",          # a row count is a fact about the corpus
-    "qwen36_synthdoc_10_90",         # a mixture ratio is not a seed
-    "post_action_retrospection_716_coherence",
+    "da",                     # the project's own short vocabulary
+    "da-par",                 # a mixture of two styles
+    "da-716",                 # a row count is a fact about the corpus
+    "par-716-coh",
 ])
 def test_a_style_type_that_says_what_changed_is_accepted(style):
     assert check_style(style) == style
 
 
-def test_the_mixture_is_where_a_model_organism_reads_its_style_from():
-    assert style_from_mix(f"LASR-Callum/{D}-difficult-advice-mix") == "difficult_advice"
-    # Not built under this law -> no style to read; the caller falls back to its config.
-    assert style_from_mix("matboz/difficult-advice-qwen3") == ""
-    assert style_from_mix(f"{D}-difficult-advice-synth") == ""
+def test_the_mixture_is_where_a_model_organism_reads_its_subject_from():
+    assert mix_subject_from(f"LASR-Callum/{D}-da-par-20-mix") == "da-par-20"
+    # Not built under this law -> nothing to read; the caller falls back to its config.
+    assert mix_subject_from("matboz/difficult-advice-qwen3") == ""
+    assert mix_subject_from(f"{D}-da-synth") == ""
 
 
 def test_the_two_spellings_of_one_name_convert_both_ways():
-    assert to_hub(f"{D}_qwen36_difficult_advice_0") == f"{D}-qwen36-difficult-advice-0"
-    assert to_local(f"{D}-qwen36-difficult-advice-0") == f"{D}_qwen36_difficult_advice_0"
-    assert undated(f"LASR-Callum/{D}-qwen36-difficult-advice-0") == (
-        "qwen36-difficult-advice-0")
+    assert to_hub(f"{D}_qwen36_8_da_20") == f"{D}-qwen36-8-da-20"
+    assert to_local(f"{D}-qwen36-8-da-20") == f"{D}_qwen36_8_da_20"
+    assert undated(f"LASR-Callum/{D}-qwen36-8-da-20") == "qwen36-8-da-20"
 
 
 def test_the_longest_arm_in_the_repo_now_fits_the_hub_and_a_longer_one_is_refused():
@@ -115,26 +118,26 @@ def test_the_longest_arm_in_the_repo_now_fits_the_hub_and_a_longer_one_is_refuse
     Under the old law the same run was 110 characters — over the Hub's limit — so the
     longest arms simply could not be evaluated and published.
     """
-    worst = f"{D}-qwen36-table2-9284-post-action-retrospection-716-coherence-dynbatch"
+    worst = f"{D}-qwen36-8-table2-9284-par-716-coh-dynbatch"
     assert len(eval_name("agentic_misalignment", worst, date="2026-09-05")) <= 96
     with pytest.raises(NamingError, match="style-type is what has to get shorter"):
         eval_name("agentic_misalignment", f"{D}-qwen36-{'x' * 80}-and-more", date=D)
 
 
 def test_the_hub_gate_takes_a_built_name_and_refuses_a_typed_one():
-    assert check_hub_repo(f"LASR-Callum/{D}-qwen36-difficult-advice-0")
+    assert check_hub_repo(f"LASR-Callum/{D}-qwen36-8-da-20")
     with pytest.raises(NamingError):
         check_hub_repo("LASR-Callum/qwen3.6-27b-lora-t2-9284-synthdoc-716-dynbatch-r64")
 
 
 def test_two_runs_the_law_cannot_tell_apart_are_caught_before_either_is_published():
-    check_distinct([f"{D}-odcv-qwen36-da-0", f"{D}-odcv-qwen36-da-1"])
+    check_distinct([f"{D}-odcv-qwen36-0-da-20", f"{D}-odcv-qwen36-1-da-20"])
     with pytest.raises(NamingError, match="published twice"):
-        check_distinct([f"{D}-odcv-qwen36-da-0", f"{D}-odcv-qwen36-da-0"])
+        check_distinct([f"{D}-odcv-qwen36-0-da-20", f"{D}-odcv-qwen36-0-da-20"])
 
 
 def test_a_plot_label_says_the_arm_and_the_date():
-    assert label(f"{D}-qwen36-difficult-advice-0") == "qwen36 difficult advice 0 (2026-09-04)"
+    assert label(f"{D}-qwen36-8-da-20") == "qwen36 8 da 20 (2026-09-04)"
     with pytest.raises(NamingError, match="carries no date"):
         label("difficult_advice_716")
 

@@ -40,7 +40,7 @@ published_key: qwen3.6-27b
 base_url: "http://host.docker.internal:8000/v1"
 temperature: 0.0
 bench_dir: src/eval/misalignment/odcv/third_party/odcv-bench
-output_root: output/odcv_bench
+output_root: output/odcv
 # 12, the same as the rented-box siblings. MEASURED, not assumed: Docker Desktop here has
 # 20 CPUs and 17.6 GB allocated (host i7-14650HX, 16c/24t, 31.7 GB), which is at least what
 # the vast boxes had -- and ODCV containers are blocked on the model endpoint, not CPU-bound,

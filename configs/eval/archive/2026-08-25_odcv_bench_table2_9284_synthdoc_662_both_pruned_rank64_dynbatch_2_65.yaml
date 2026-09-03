@@ -27,7 +27,7 @@
 # 662 rows, NOT 676: ablated2's 40 drops plus 14 rows a blind coherence check rated broken
 # after the deletion. A difference against ablated2 is 14 fewer rows as well.
 #
-# Trained from configs/train/qwen36_table2_9284_synthdoc_662_both_pruned_dynbatch.yaml
+# Trained from configs/train/qwen36-table2-9284-synthdoc-662-bothpruned-dynbatch.yaml
 # on matboz/2026-08-23-both-restored-pruned-t2-9284-synthdoc-662 @ 4929517f; adapter
 # matboz/qwen3.6-27b-lora-t2-9284-synthdoc-662-bothpruned-r64 @ 989bdfc0, train_loss 0.8721.
 #
@@ -49,7 +49,7 @@ published_key: "qwen3.6-27b"
 base_url: "https://lu4dznzy3ix75a-8000.proxy.runpod.net/v1"
 temperature: 0.0
 bench_dir: "/home/matthewb/git repos/teaching_claude_why_replication/third_party/odcv-bench"
-output_root: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench"
+output_root: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv"
 concurrency: 12
 scenario_timeout_s: 2400
 prune_images: false
@@ -60,7 +60,7 @@ shard_index: 0
 judges:
   grok-4.20: "x-ai/grok-4.20"
   gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
-baseline_results: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench/qwen3.6-27b-base-fp8/20260729_105106/results.json"
+baseline_results: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv/qwen3.6-27b-base-fp8/20260729_105106/results.json"
 
 # Same 10 exclusions as every sibling arm, so all arms are scored on the same 70 cells.
 exclude_scenarios:

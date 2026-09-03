@@ -6,7 +6,7 @@
 # 0-3 on four ODCV-likeness dimensions; the 331 scoring >=2 on agentic-capability OR
 # oversight-at-stake were removed and replaced with 331 unused stage-7 traces scoring <=1 on
 # ALL four. DA-share means: operator 0.80->0.14, agentic 0.64->0.08, metric 1.17->0.45,
-# oversight 1.48->0.50. See configs/train/qwen36_table2_9284_synthdoc_716_low_odcv_dynbatch.yaml.
+# oversight 1.48->0.50. See configs/train/qwen36-table2-9284-synthdoc-716-lowodcv-dynbatch.yaml.
 #
 # CONFOUND, and it is not repairable in this design: trait balance goes from ~79-80 per trait
 # to 2 (t1) through 143 (t9), because trait 1 IS the agentic-oversight trait -- only 2 of 102
@@ -40,7 +40,7 @@ published_key: "qwen3.6-27b"
 base_url: "https://kxco9agrn34l70-8000.proxy.runpod.net/v1"
 temperature: 0.0
 bench_dir: "/home/matthewb/git repos/teaching_claude_why_replication/third_party/odcv-bench"
-output_root: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench"
+output_root: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv"
 concurrency: 12
 scenario_timeout_s: 2400
 prune_images: false
@@ -51,7 +51,7 @@ shard_index: 0
 judges:
   grok-4.20: "x-ai/grok-4.20"
   gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
-baseline_results: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench/qwen3.6-27b-base-fp8/20260729_105106/results.json"
+baseline_results: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv/qwen3.6-27b-base-fp8/20260729_105106/results.json"
 
 # Same 10 exclusions as every sibling arm, so all arms are scored on the same 70 cells.
 exclude_scenarios:

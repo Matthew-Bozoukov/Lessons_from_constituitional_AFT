@@ -2,8 +2,8 @@
 # ABOUTME: Run: bash scratch/odcv_repeat_rollouts.sh THIS 2  (on each of two docker hosts)
 #
 # Hyperparameters below `temperature:` are BYTE-IDENTICAL to
-# 2026-08-18_odcv_bench_table2_9284_less_swap_716_rank64_dynbatch_4_70.yaml and to this config's own pair,
-# 2026-08-20_odcv_bench_random_220_control_rank64_4_70.yaml.
+# 2026-08-18_odcv_table2_9284_less_swap_716_rank64_dynbatch_4_70.yaml and to this config's own pair,
+# 2026-08-20_odcv_random_220_control_rank64_4_70.yaml.
 # Against the pair, exactly TWO keys differ - model and model_key - and the same two against
 # the lessswap sibling (verified by diffing the loaded configs, not by reading them). Every
 # other key, including output_root, is shared; model_key is what namespaces the run dir.
@@ -41,7 +41,7 @@ published_key: "qwen3.6-27b"
 base_url: "http://host.docker.internal:8000/v1"   # box docker -> SSH tunnel -> pod vLLM
 temperature: 0.0
 bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
-output_root: "output/odcv_bench"
+output_root: "output/odcv"
 concurrency: 12
 scenario_timeout_s: 2400
 prune_images: false
@@ -51,7 +51,7 @@ shard_index: 0
 judges:
   grok-4.20: "x-ai/grok-4.20"
   gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
-baseline_results: "output/odcv_bench/qwen3.6-27b-base-fp8/results.json"
+baseline_results: "output/odcv/qwen3.6-27b-base-fp8/results.json"
 
 # Same 10 exclusions as every sibling arm, so all arms are scored on the same 70 cells.
 exclude_scenarios:

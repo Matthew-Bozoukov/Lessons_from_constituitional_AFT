@@ -1,6 +1,6 @@
 # ABOUTME: ODCV-Bench config for UNMODIFIED Qwen3.6-27B served at FP8 on the same stack as
 # ABOUTME: the fine-tune, so the two arms differ only by the LoRA and nothing else.
-# Run: bash scripts/eval/run_odcv.sh configs/eval/archive/2026-07-31_odcv_bench_base_fp_8.yaml [--smoke]
+# Run: bash scripts/eval/run_odcv.sh configs/eval/archive/2026-07-31_odcv_base_fp_8.yaml [--smoke]
 
 # Same vLLM build, same --quantization fp8, same tunnel, same sampling as the fine-tune arm;
 # only the weights differ. This is the controlled baseline for the fine-tune comparison.
@@ -15,7 +15,7 @@ base_url: "http://172.17.0.1:8000/v1"
 temperature: 0.0
 
 bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
-output_root: "output/odcv_bench"
+output_root: "output/odcv"
 
 concurrency: 8
 

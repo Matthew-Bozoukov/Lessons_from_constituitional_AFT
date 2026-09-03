@@ -1,0 +1,41 @@
+# ABOUTME: The control arm's training file — 220 rows drawn at random from the same
+# ABOUTME: difficult-advice pool, so the LESS arm's numbers can be attributed to selection.
+# Run: uv run mix --config configs/data/mixture/qwen36-less-random-220.yaml
+#
+# THE CONTROL. Its arm is qwen36-less-top-10.yaml. The two configs differ in exactly one
+# line — the source `path:` — so a difference between the trained organisms is
+# attributable to WHICH 220 rows were chosen and to nothing else.
+#
+# Without this file the LESS arm is uninterpretable, which is the state the 2026-08-17
+# less-swap arm is still in ("THIS ADAPTER IS NOT YET INTERPRETABLE", docs/LOG.md): a loss
+# curve on 220 selected rows says nothing until 220 unselected rows have produced one too.
+#
+# The draw is from the WHOLE 2,203-row pool, not the pool minus the selection: "what you
+# would have trained on without LESS" is a plain random draw, and excluding the top-K
+# would make the control anti-correlated with the arm rather than independent of it. The
+# incidental overlap is 22 rows, against the ~22 chance predicts.
+#
+# SEED 1, NOT 0. Seed 0 over a 2,203-row population reproduces the LESS warmup split
+# exactly — the rows that trained the LoRA the ranking itself came from — which would make
+# the control a function of the treatment. select_topk.py asserts against this rather than
+# trusting the seed; see its module docstring.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+
+# Matches the arm. Inert here too: the longest of these 220 rows is well inside it.
+max_seq_len: 8192
+
+sources:
+  random220:
+    source: da
+    path: "data/less/d_random220.jsonl"
+    examples: 220
+    reasoning: native
+
+hf:
+  experiment: "Random 220-row control for the LESS top-10% selection over the difficult-advice pool"
+  constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md — the constitution the scored pool was generated from; every row traces to one of its traits via metadata.trait_id in the source pool"
+  private: false
+
+output_dir: "output/mixture_less_random220"

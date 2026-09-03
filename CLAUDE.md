@@ -131,8 +131,8 @@ src/                  reviewed, reusable code (installed editable; import as src
     audits/               petri/ + surf/ audit tooling
 configs/              OmegaConf YAML, one per step; NEVER hardcode hyperparams in scripts
   data/synth/           one config per document type (superseded → archive/)
-  data/mixture/         mixture builds (qwen36_*, tulu_control)
-  train/                <model>_<style> — one file per arm, undated
+  data/mixture/         mixture builds (qwen36_*, tulu-control)
+  train/                <model>-<mix>-<pct> — one file per arm, undated
   eval/                 one per eval
   endpoints/            providers.yaml — per-model OpenRouter provider pins
 scripts/              thin drivers mirroring src/ stages + gpu/ for provisioning;
@@ -241,13 +241,13 @@ pooled   the same, with the seed dropped       2026-09-06-odcv-qwen36-difficult-
 Two spellings of that one grammar — `to_hub`/`to_local` convert and nothing else may:
 
 ```
-local (files, run dirs, figures, arm labels)  2026-09-04_qwen36_difficult_advice_0
+local (files, run dirs, figures, arm labels)  2026-09-04_qwen36_da_0
 hub   (an HF repo id after the org)           2026-09-04-qwen36-difficult-advice-0
 ```
 
 - **ONE HUMAN INPUT, ONE PLACE: the style-type**, which is the stem of the synth or
   mixture config that produced the data. It carries the ablation and says WHAT THIS ONE
-  CHANGES (`difficult_advice_length_capped`, never `sonnet_v2`). Nothing else in any name
+  CHANGES (`da_length_capped`, never `sonnet_v2`). Nothing else in any name
   is chosen: the date comes from the clock at launch, the model from `MODEL_KEYS`
   (`src/model_profile.py`, beside that model's other facts), the eval from
   `EvalSpec.key`, the seed from the training config. None of them is typed, so
@@ -256,9 +256,17 @@ hub   (an HF repo id after the org)           2026-09-04-qwen36-difficult-advice
   a model organism enters its eval run's name WITHOUT its date, so the run says which arm
   it measured and still dates only itself.
 - **CONFIGS ARE UNDATED AND UNSEEDED.** A config names an ARM; a run produces an
-  ARTIFACT. `configs/data/{synth,mixture}/<style>.yaml` and
-  `configs/train/<model>_<style>.yaml`; a seed is a launch argument (`seed=1`), so three
-  replicates are one config, not three files.
+  ARTIFACT. `configs/data/synth/<style>.yaml`, `configs/data/mixture/<styles>.yaml`
+  (hyphenated when a mixture combines several), and
+  `configs/train/<model>-<mix>-<pct>.yaml` — the adapter's own repo name minus the date
+  and the seed. A seed is a launch argument (`seed=1`), so three replicates are one
+  config, not three files. `configs/eval/<eval>.yaml` is the exception in spelling: an
+  eval config is a KIND and carries the eval's full registered name
+  (`agentic_misalignment`), checked against the registry itself.
+- **The style vocabulary is SHORT and therefore load-bearing** — `da`, `par`, `pad`, `pc`.
+  Nothing in the code can tell two expansions of one code apart (`par` has meant both
+  post-action-retrospection and pre-action-deliberation here); the config that carries a
+  code is what settles its meaning, and it is the only thing that does.
 - **The config that produced an artifact travels WITH the artifact** — training pushes
   the RESOLVED config (`train_config.yaml` + `training_meta.train_config`), because
   configs are edited in place and a path alone would name a file that no longer says what
@@ -301,7 +309,7 @@ Every stage is a console alias from `[project.scripts]`, so the shape is always
 
 1. `uv run synth run --config configs/data/synth/<type>.yaml` — constitution-grounded generation; the config IS the document type, so read the one you are running (`ls configs/data/synth/`) rather than a list here.
 2. `uv run mix --config configs/data/mixture/<name>.yaml` — budgeted training mixture of model-agnostic interchange rows (reasoning as `reasoning_content`, rendered at train time), with optional spec-filter stage and HF push checkpoints; `balance_by: trait_id` on a source spec trait-balances the difficult-advice share.
-3. `uv run train --config configs/train/<model>_<style>.yaml [seed=N]` — QLoRA SFT (runs on the GPU box). Pushes the adapter to HF with `training_meta.json` — the thinking stamp (declared as `thinking:` in the train config, validated against the data) that the eval framework infers mode from.
+3. `uv run train --config configs/train/<model>-<mix>-<pct>.yaml [seed=N]` — QLoRA SFT (runs on the GPU box). Pushes the adapter to HF with `training_meta.json` — the thinking stamp (declared as `thinking:` in the train config, validated against the data) that the eval framework infers mode from.
 4. `uv run evals --target <hf_path> --name <eval>` — THE eval entrypoint for every registered eval; see "The eval framework" below.
 
 Add a new stage as functions in the right `src/` area plus a thin CLI in the matching `scripts/<stage>/` folder and a `configs/<stage>/*.yaml` (naming rules above); one-off investigations go straight to `scratch/`.

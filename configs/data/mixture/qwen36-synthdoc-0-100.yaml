@@ -1,0 +1,27 @@
+# ABOUTME: Zero-dose control: 1M tokens of TULU3 replay only, no difficult-advice data.
+# ABOUTME: Isolates what SFT on replay alone does, against the 10/90, 15/85 and 20/80 arms.
+# Run: uv run scripts/data/mixture/build_mixture.py --config configs/data/mixture/qwen36-synthdoc-0-100.yaml
+# Converted to interchange form 2026-08-07 (legacy strip/format rendering removed):
+# rows are now model-agnostic messages, rendered at train time via ModelProfile. The
+# published artifact the legacy form produced is on HF; rebuilding THAT byte-form needs
+# a pre-2026-08-07 checkout.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+
+# No target source at all. Everything else matches the other three arms so the comparison
+# is clean: same builder, same seed, same rendering, same sequence length.
+sources:
+  tulu3:
+    repo: "allenai/tulu-3-sft-mixture"
+    reasoning: none
+    tokens: 1000000
+    # The old dedicated tulu3 code path used this buffer; kept so regeneration
+    # samples identically.
+    shuffle_buffer: 10000
+
+# 2048, NOT the 3072 now used for new runs: this control is compared against the 10/90,
+# 15/85 and 20/80 arms, which were all built at 2048.
+max_seq_len: 2048
+
+output_dir: "output/mixture_synthdocv2_0_100"

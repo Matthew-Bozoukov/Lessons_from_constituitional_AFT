@@ -35,9 +35,9 @@ from src.data.synth.pipeline import (
     n_final_examples,
 )
 
-PR_CFG = yaml.safe_load(open("configs/data/synth/post_action_retrospection.yaml"))
-PC_CFG = yaml.safe_load(open("configs/data/synth/peer_critique.yaml"))
-DA_CFG = yaml.safe_load(open("configs/data/synth/difficult_advice.yaml"))
+PR_CFG = yaml.safe_load(open("configs/data/synth/par.yaml"))
+PC_CFG = yaml.safe_load(open("configs/data/synth/pc.yaml"))
+DA_CFG = yaml.safe_load(open("configs/data/synth/da.yaml"))
 ARCHIVE_CFG = yaml.safe_load(
     open("configs/data/synth/archive/model_eval_model_other.yaml")
 )

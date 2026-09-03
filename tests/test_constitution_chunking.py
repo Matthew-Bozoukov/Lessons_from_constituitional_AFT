@@ -260,7 +260,7 @@ def test_dataset_config_can_select_any_method(name):
     from src.data.synth.stage_operators import op_segment, scenario_batches
     from src.data.synth.pipeline import n_examples, n_units
 
-    cfg = yaml.safe_load(open("configs/data/synth/difficult_advice.yaml"))
+    cfg = yaml.safe_load(open("configs/data/synth/da.yaml"))
     cfg["chunking"] = name
     cfg.pop("n_traits")            # derived from the method, not declared
     cfg.pop("scenarios_per_trait")  # per unit; swap for a fixed budget
@@ -285,8 +285,8 @@ def test_shipped_dataset_configs_declare_the_default():
     must be stated outright, not inherited from a default that could later move."""
     import yaml
 
-    for path in ("configs/data/synth/difficult_advice.yaml",
-                 "configs/data/synth/pre_action_deliberation.yaml"):
+    for path in ("configs/data/synth/da.yaml",
+                 "configs/data/synth/pad.yaml"):
         cfg = yaml.safe_load(open(path))
         assert cfg.get("chunking") == DEFAULT_CHUNKING, path
 
@@ -298,7 +298,7 @@ def test_n_traits_hint_must_match_the_chosen_method():
 
     from src.data.synth.pipeline import n_units
 
-    cfg = yaml.safe_load(open("configs/data/synth/difficult_advice.yaml"))
+    cfg = yaml.safe_load(open("configs/data/synth/da.yaml"))
     assert n_units(cfg) == cfg["n_traits"] == 9
     with pytest.raises(AssertionError, match="n_traits"):
         n_units({**cfg, "chunking": "bullet"})
@@ -317,7 +317,7 @@ def test_unit_provenance_reaches_the_generated_records_and_the_export():
     from src.data.synth.constitution import UNIT_PROVENANCE, units_from_config
     from src.data.synth.stage_operators import op_chat_export
 
-    cfg = yaml.safe_load(open("configs/data/synth/difficult_advice.yaml"))
+    cfg = yaml.safe_load(open("configs/data/synth/da.yaml"))
     units, _ = units_from_config(cfg)
     stage1 = [u.as_dict() for u in units]
     assert all(k in stage1[0] for k in UNIT_PROVENANCE)

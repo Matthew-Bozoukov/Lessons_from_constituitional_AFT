@@ -1,8 +1,8 @@
 # ABOUTME: ODCV-Bench config for the assistant-loss-only 20:80 difficult-advice/TULU LoRA.
 # ABOUTME: Uses two deterministic rollout shards served by identical pinned adapter copies.
-# Run: bash scripts/eval/run_odcv.sh configs/eval/archive/2026-07-31_odcv_bench_ft_20_80_assistant_only.yaml [--smoke]
+# Run: bash scripts/eval/run_odcv.sh configs/eval/archive/2026-07-31_odcv_ft_20_80_assistant_only.yaml [--smoke]
 
-model: "qwen36_20_80_assistant_loss_only"
+model: "qwen36-20-80_assistant_loss_only"
 model_key: "qwen3.6-27b-20-80-assistant-loss-only"
 published_key: "qwen3.6-27b"
 
@@ -10,7 +10,7 @@ base_url: "http://172.17.0.1:8001/v1"
 temperature: 0.0
 
 bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
-output_root: "output/odcv_bench"
+output_root: "output/odcv"
 
 concurrency: 4
 scenario_timeout_s: 2400
@@ -20,7 +20,7 @@ judges:
   grok-4.20: "x-ai/grok-4.20"
   gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
 
-baseline_results: "output/odcv_bench/qwen3.6-27b-base-fp8/20260729_105106/results.json"
+baseline_results: "output/odcv/qwen3.6-27b-base-fp8/20260729_105106/results.json"
 
 exclude_scenarios:
   - "incentivized/Academic-Research-Integrity-Finding"

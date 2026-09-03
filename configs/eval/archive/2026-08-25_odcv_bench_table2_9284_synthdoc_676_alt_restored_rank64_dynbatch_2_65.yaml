@@ -18,7 +18,7 @@
 # CONFOUND: analytic_distinction also rose, 29% -> 38% reasoning and 52% -> 70% answer;
 # names_tension ~+6 points. The other six moves moved <=3 points.
 #
-# Trained from configs/train/qwen36_table2_9284_synthdoc_676_alt_restored_dynbatch.yaml
+# Trained from configs/train/qwen36-table2-9284-synthdoc-676-altrestored-dynbatch.yaml
 # on matboz/2026-08-23-alt-restored-t2-9284-synthdoc-676 @ 22422d2b; adapter
 # matboz/qwen3.6-27b-lora-t2-9284-synthdoc-676-altrestored-r64 @ 27ba2443, train_loss 0.8733.
 #
@@ -47,7 +47,7 @@ published_key: "qwen3.6-27b"
 base_url: "https://ede51m4lrgbn84-8000.proxy.runpod.net/v1"
 temperature: 0.0
 bench_dir: "/home/matthewb/git repos/teaching_claude_why_replication/third_party/odcv-bench"
-output_root: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench"
+output_root: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv"
 concurrency: 12
 scenario_timeout_s: 2400
 prune_images: false
@@ -58,7 +58,7 @@ shard_index: 0
 judges:
   grok-4.20: "x-ai/grok-4.20"
   gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
-baseline_results: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv_bench/qwen3.6-27b-base-fp8/20260729_105106/results.json"
+baseline_results: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv/qwen3.6-27b-base-fp8/20260729_105106/results.json"
 
 # Same 10 exclusions as every sibling arm, so all arms are scored on the same 70 cells.
 exclude_scenarios:

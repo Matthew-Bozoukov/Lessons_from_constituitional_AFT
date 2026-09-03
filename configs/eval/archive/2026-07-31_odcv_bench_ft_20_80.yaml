@@ -1,6 +1,6 @@
 # ABOUTME: ODCV-Bench config for the difficult-advice/TULU3 fine-tune of Qwen3.6-27B,
 # ABOUTME: served by vLLM on the host (SSH-tunnelled from the GPU box) and judged by 2 judges.
-# Run: bash scripts/eval/run_odcv.sh configs/eval/archive/2026-07-31_odcv_bench_ft_20_80.yaml [--smoke]
+# Run: bash scripts/eval/run_odcv.sh configs/eval/archive/2026-07-31_odcv_ft_20_80.yaml [--smoke]
 
 # Served by vLLM as `qwen36ft`, SSH-tunnelled from the GPU box to the docker0 address so
 # scenario containers can reach it without the port being exposed to the LAN.
@@ -15,7 +15,7 @@ base_url: "http://172.17.0.1:8000/v1"
 temperature: 0.0
 
 bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
-output_root: "output/odcv_bench"
+output_root: "output/odcv"
 
 # Decode is memory-bandwidth-bound (~49 tok/s single-stream, ~75% of the H100 roofline
 # for 51GB of bf16 weights), so throughput comes from batching: 2 concurrent requests

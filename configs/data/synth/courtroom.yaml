@@ -98,7 +98,7 @@ defaults:
 
 # Hidden extended thinking is disabled on every stage: the visible <reasoning> block IS
 # the deliberation, and hidden thinking makes Sonnet 5 drift in-character and skip the
-# tagged scaffold (measured 2026-08-06 on post_action_retrospection's base config). On
+# tagged scaffold (measured 2026-08-06 on par's base config). On
 # the tight-budget judges it would eat the whole token cap and return empty content.
 models:
   # Stage 2 -- brainstorm the disputes. Temperature high: this stage's whole job is
@@ -256,7 +256,7 @@ stages:
   # corpus_scenarios checks it like situation text.
   fields:
     required: [wrapper]
-  # Enforced scenario diversity, copied from difficult_advice.yaml: the `avoid` list
+  # Enforced scenario diversity, copied from da.yaml: the `avoid` list
   # extends each wave with what earlier waves actually wrote, and `reject_cosine` refuses
   # near-clones at generation time and re-queues the shortfall. 0.86 is the measured
   # floor from scratch/measure_dedup_threshold.py, identical to embedding_dedup's

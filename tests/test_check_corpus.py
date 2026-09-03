@@ -271,7 +271,7 @@ def _pipeline(tmp_path, corpus_stage=None, **extra):
              "properties": [{"property": "ngram_diversity"},
                             {"property": "embedding_dedup"}]}
     stage.update(corpus_stage or {})
-    return {"pipeline": "fake_type", "hf_push": False, "constitution": CONSTITUTION,
+    return {"pipeline": "fake-type", "hf_push": False, "constitution": CONSTITUTION,
             "output_dir": str(tmp_path), "workers": 2,
             "stages": [{"name": "gen", "kind": "seed"}, stage], **extra}
 
@@ -513,7 +513,7 @@ def test_on_fail_must_be_warn_error_or_stop(tmp_path):
 
 
 def test_offline_properties_are_priced_at_zero(tmp_path):
-    base = {"pipeline": "fake_type", "hf_push": False, "constitution": CONSTITUTION,
+    base = {"pipeline": "fake-type", "hf_push": False, "constitution": CONSTITUTION,
             "output_dir": str(tmp_path),
             # No `n_traits`: the unit count is derived from the constitution and the
             # chunking, and a stale hint is now rejected rather than silently used.

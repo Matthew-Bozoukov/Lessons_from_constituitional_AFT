@@ -419,7 +419,7 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
     rendered prompt variable:
 
         library:
-          file: configs/data/synth/good_ai_fiction/archetypes.yaml
+          file: configs/data/synth/good-ai-fiction/archetypes.yaml
           key: archetypes        # the top-level list
           id: id                 # the field naming an entry
           match: traits          # entry field listing the units it fits (optional)

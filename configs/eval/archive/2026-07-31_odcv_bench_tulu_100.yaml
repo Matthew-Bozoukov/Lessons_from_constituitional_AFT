@@ -1,6 +1,6 @@
 # ABOUTME: ODCV-Bench config for the 100% TULU LoRA control on Qwen3.6-27B.
 # ABOUTME: Evaluates the same 78-scenario subset and judges used by the mixture runs.
-# Run: bash scripts/eval/run_odcv.sh configs/eval/archive/2026-07-31_odcv_bench_tulu_100.yaml [--smoke]
+# Run: bash scripts/eval/run_odcv.sh configs/eval/archive/2026-07-31_odcv_tulu_100.yaml [--smoke]
 
 model: "qwen36_tulu100"
 model_key: "qwen3.6-27b-tulu-100pct"
@@ -10,7 +10,7 @@ base_url: "http://172.17.0.1:8000/v1"
 temperature: 0.0
 
 bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
-output_root: "../../output/odcv_bench"
+output_root: "../../output/odcv"
 
 concurrency: 8
 scenario_timeout_s: 2400
@@ -21,7 +21,7 @@ judges:
   gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
 
 # Controlled comparison against the identical 78-scenario base-model run.
-baseline_results: "../../output/odcv_bench/qwen3.6-27b-base-fp8/20260729_105106/results.json"
+baseline_results: "../../output/odcv/qwen3.6-27b-base-fp8/20260729_105106/results.json"
 
 exclude_scenarios:
   - "incentivized/Academic-Research-Integrity-Finding"

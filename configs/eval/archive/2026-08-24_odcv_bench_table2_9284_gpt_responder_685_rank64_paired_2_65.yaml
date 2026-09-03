@@ -35,7 +35,7 @@ published_key: "qwen3.6-27b"
 base_url: "https://5l057lbww51b9x-8000.proxy.runpod.net/v1"
 temperature: 0.0
 bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
-output_root: "output/odcv_bench"
+output_root: "output/odcv"
 concurrency: 12
 scenario_timeout_s: 2400
 prune_images: false

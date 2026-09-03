@@ -31,7 +31,7 @@ from src.eval.docker import docker_preflight
 from src.utils import timestamp
 
 
-def main(run_dir: str, config: str = "configs/eval/swebench_mini_verified.yaml",
+def main(run_dir: str, config: str = "configs/eval/swebench_mini.yaml",
          max_workers: int = 0, push: bool = False) -> None:
     """Grade the predictions in a rollout run directory.
 

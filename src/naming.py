@@ -18,17 +18,24 @@ from src.model_profile import model_key
 # Every artifact says which stage made it and which arm it belongs to, so a corpus, the
 # model trained on it and its eval runs line up by eye:
 #
-#     synth    <date>-<style>-synth                    2026-09-01-difficult-advice-synth
-#     mix      <date>-<style>-mix                      2026-09-03-difficult-advice-mix
-#     model    <date>-<model>-<style>-<seed>           2026-09-04-qwen36-difficult-advice-0
-#     eval     <date>-<eval>-<model name, undated>     2026-09-05-odcv-qwen36-difficult-advice-0
-#     pooled   the same, with the seed dropped         2026-09-06-odcv-qwen36-difficult-advice
+#     synth    <date>-<style>-synth                 2026-09-01-da-synth
+#     mix      <date>-<mix>-<pct>-mix               2026-09-03-da-par-20-mix
+#     model    <date>-<model>-<seed>-<mix>-<pct>    2026-09-04-qwen36-8-da-par-20
+#     eval     <date>-<eval>-<model name, undated>  2026-09-05-odcv-qwen36-8-da-par-20
+#
+# A MIX is one or more styles, hyphenated, plus the percentage of its rows that are
+# synthetic — computed by the build, never typed. Everything trained on it is named for
+# that whole subject, so `da-par-20` and `da-par-40` are two arms at a glance.
 #
 # Two spellings of one grammar; `to_hub`/`to_local` convert between them and nothing else
 # may:
 #
-#     local  2026-09-04_qwen36_difficult_advice_0   files, run dirs, figures
-#     hub    2026-09-04-qwen36-difficult-advice-0   an HF repo id after the org
+#     local  2026-09-04_qwen36_8_da_par_20   files, run dirs, figures
+#     hub    2026-09-04-qwen36-8-da-par-20   an HF repo id after the org
+#
+# CONFIG STEMS are spelled the HUB way, with `-`, because a config stem IS a fragment of
+# the repo its run will publish to: `configs/train/qwen36-da-par-20.yaml` produces
+# `<date>-qwen36-<seed>-da-par-20`, so one is greppable from the other.
 #
 # ONE HUMAN INPUT, ONE PLACE. The style-type is the stem of the synth or mixture config
 # that produced the data — the only naming decision anyone makes, made once, where the
@@ -50,7 +57,7 @@ _TOKEN = r"[a-z0-9]+"
 LOCAL_NAME = re.compile(rf"^(\d{{4}}-\d{{2}}-\d{{2}})_({_TOKEN}(?:_{_TOKEN})*)$")
 HUB_NAME = re.compile(rf"^(\d{{4}}-\d{{2}}-\d{{2}})-({_TOKEN}(?:-{_TOKEN})*)$")
 REPO_ID = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)/([^/]+)$")
-STYLE = re.compile(rf"^{_TOKEN}(?:_{_TOKEN})*$")
+STYLE = re.compile(rf"^{_TOKEN}(?:-{_TOKEN})*$")
 
 # Past this the Hub refuses a repo name, and a plot legend is unreadable. The style-type
 # is the only part anyone controls, so it is the only part that can be shortened.
@@ -163,7 +170,7 @@ def check_hub_name(name: str, *, what: str = "hub name") -> str:
 
 
 def check_local_name(name: str, *, what: str = "name") -> str:
-    """Validate a local name (`2026-09-04_qwen36_difficult_advice_0`); return it, or raise."""
+    """Validate a local name (`2026-09-04_qwen36_da_0`); return it, or raise."""
     text = str(name)
     if not LOCAL_NAME.match(text):
         raise NamingError(
@@ -175,13 +182,13 @@ def check_local_name(name: str, *, what: str = "name") -> str:
 
 
 def to_hub(local: str) -> str:
-    """`2026-09-04_qwen36_difficult_advice_0` -> `2026-09-04-qwen36-difficult-advice-0`."""
+    """`2026-09-04_qwen36_da_0` -> `2026-09-04-qwen36-difficult-advice-0`."""
     date, _, subject = check_local_name(local).partition("_")
     return f"{date}-{subject.replace('_', '-')}"
 
 
 def to_local(hub: str) -> str:
-    """`2026-09-04-qwen36-difficult-advice-0` -> `2026-09-04_qwen36_difficult_advice_0`."""
+    """`2026-09-04-qwen36-difficult-advice-0` -> `2026-09-04_qwen36_da_0`."""
     name = check_hub_name(str(hub).split("/")[-1])
     return f"{name[:10]}_{name[11:].replace('-', '_')}"
 
@@ -209,19 +216,26 @@ def check_style(style: str, *, what: str = "style-type") -> str:
     """Validate a style-type — the stem of a synth or mixture config; return it, or raise.
 
     This is the whole of the human's naming input, so it is the whole of what can be got
-    wrong. It carries the ablation (`difficult_advice_length_capped`), and it carries
-    nothing the pipeline already knows: no date, no seed, no stage word, no version.
+    wrong. It carries the document type and its ablation (`da`, `da-length-capped`,
+    `da-par` for a mixture of two), and it carries nothing the pipeline already knows: no
+    date, no seed, no percentage, no stage word, no version.
+
+    The vocabulary is short and therefore load-bearing: `par` has meant both
+    post-action-retrospection and pre-action-deliberation in this project's history, and
+    nothing here can tell them apart. Which style-type a short code means is settled by
+    the config that carries it, and by nothing else.
     """
     text = str(style)
     if not STYLE.match(text):
         raise NamingError(
-            f"{what}: {text!r} is not lowercase words joined by `_`. The style-type is a "
-            "config stem and a name fragment at once, so it is spelled one way.")
+            f"{what}: {text!r} is not lowercase words joined by `-`. It is a config stem "
+            "and a fragment of the repo name its run publishes to, so it is spelled the "
+            "one way both of those are.")
     if name_date(text) or re.search(r"\d{4}-\d{2}-\d{2}", text):
         raise NamingError(
             f"{what}: {text!r} carries a date. A config names an ARM and is not dated; "
             "the run stamps the date on what it produces.")
-    tokens = text.split("_")
+    tokens = text.split("-")
     if "seed" in tokens:
         raise NamingError(
             f"{what}: {text!r} names a seed. A seed is decided at launch (`seed=1`) and "
@@ -235,9 +249,9 @@ def check_style(style: str, *, what: str = "style-type") -> str:
     if versions:
         raise NamingError(
             f"{what}: {text!r} versions the name ({versions}) instead of describing the "
-            "variant. Say WHAT THIS ONE CHANGES — `difficult_advice_length_capped`. The "
+            "variant. Say WHAT THIS ONE CHANGES — `da_length_capped`. The "
             "date on every artifact already orders the versions.")
-    if len(text.replace("_", "")) < 3:
+    if len(text.replace("-", "")) < 2:
         raise NamingError(f"{what}: {text!r} says too little to identify a document type.")
     return text
 
@@ -251,20 +265,38 @@ def synth_name(style: str, *, date: str | None = None) -> str:
     return _mint(f"{check_style(style)} synth", date, what="synth corpus")
 
 
-def mix_name(style: str, *, date: str | None = None) -> str:
-    """`<date>-<style>-mix` — a training mixture."""
-    return _mint(f"{check_style(style)} mix", date, what="training mixture")
+def mix_subject(mix: str, synthetic_pct: int) -> str:
+    """`<mix>-<pct>` — what a mixture IS, and what everything trained on it is named for.
+
+    Args:
+        mix: The mixture config's stem — its styles, hyphenated (`da`, `da-par`).
+        synthetic_pct: Percentage of the built mixture's rows that are synthetic,
+            COUNTED by the build. It is part of the mixture's identity, not a label: two
+            arms over one style at 20% and 40% are different experiments.
+    """
+    return f"{check_style(mix)}-{int(synthetic_pct)}"
 
 
-def model_name(model: str, style: str, seed: int, *, date: str | None = None) -> str:
-    """`<date>-<model>-<style>-<seed>` — a model organism.
+def mix_name(mix: str, synthetic_pct: int, *, date: str | None = None) -> str:
+    """`<date>-<mix>-<pct>-mix` — a training mixture."""
+    return _mint(f"{mix_subject(mix, synthetic_pct)} mix", date,
+                 what="training mixture")
+
+
+def model_name(model: str, seed: int, mix: str, *, date: str | None = None) -> str:
+    """`<date>-<model>-<seed>-<mix>-<pct>` — a model organism.
+
+    The seed sits with the model because that is what it belongs to — one base model
+    drawn twice — and the mixture's whole subject follows, so an arm says which recipe
+    made it without anyone opening a config.
 
     Args:
         model: The base model id; resolved through MODEL_KEYS.
-        style: The style-type of the mixture it was trained on.
         seed: The training seed, which is what distinguishes replicates of one arm.
+        mix: The mixture's subject (`mix_subject`, or read off its repo with
+            `mix_subject_from`).
     """
-    return _mint(f"{model_key(model)} {check_style(style)} {int(seed)}", date,
+    return _mint(f"{model_key(model)} {int(seed)} {check_style(mix)}", date,
                  what="model organism")
 
 
@@ -385,7 +417,7 @@ def _seeded(path: Path, stem: str) -> str:
         seed = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("seed")
     except Exception:  # noqa: BLE001 - a config the lint cannot parse is not its business
         return ""
-    if seed is not None and stem.split("_")[-1] == str(seed):
+    if seed is not None and stem.split("-")[-1] == str(seed):
         return (f"config stem {stem!r} ends in the seed it declares (seed: {seed}). A "
                 "config names an ARM; the seed is a launch argument (`seed=1`) and shows "
                 "up in the ARTIFACT's name. Drop it from the stem and run the arm with "
@@ -400,16 +432,30 @@ def _check_config(rel: str, stem: str, path: Path) -> str:
         if folder in _STYLE_FOLDERS:
             check_style(stem, what="style-type (config stem)")
         elif folder == "configs/train":
-            head, _, style = stem.partition("_")
-            if not style:
+            head, _, mix = stem.partition("-")
+            if not mix:
                 raise NamingError(
-                    f"train config stem {stem!r} is not `<model>_<style>`. The model half "
-                    "is fixed by MODEL_KEYS and the style half is the mixture's.")
+                    f"train config stem {stem!r} is not `<model>-<mix>-<pct>`. It is the "
+                    "adapter's own repo name minus the date and the seed, so the model "
+                    "half is fixed by MODEL_KEYS and the rest is the mixture's subject.")
             if head != model_key(head):
                 raise NamingError(
                     f"train config stem {stem!r} starts with {head!r}, which is not the "
                     f"registered key for that model ({model_key(head)}).")
-            check_style(style, what="style-type (train config stem)")
+            check_style(mix, what="mixture subject (train config stem)")
+        elif folder == "configs/eval":
+            # An eval config is a KIND — the registry default for that eval — so its stem
+            # is the eval's own name, spelled exactly as the registry spells it. Checked
+            # against the registry rather than against the grammar, because the point is
+            # that the two cannot drift: `configs/eval/<key>.yaml` is findable from the
+            # key and the key is findable from the file.
+            from src.eval import EVALS
+
+            if stem not in EVALS:
+                raise NamingError(
+                    f"eval config {stem!r} is not a registered eval. Every config here is "
+                    f"one eval's default and carries its full name ({', '.join(sorted(EVALS))}); "
+                    "a config for a specific comparison is not a kind and does not live here.")
         else:
             check_style(stem, what="config stem")
     except ValueError as e:
@@ -494,16 +540,16 @@ if __name__ == "__main__":
     main()
 
 
-def style_from_mix(repo_id: str) -> str:
-    """The style-type a mixture repo was built for, or '' when it predates this law.
+def mix_subject_from(repo_id: str) -> str:
+    """A mixture repo's subject, or '' when it predates this law.
 
-    `LASR-Callum/2026-09-03-difficult-advice-mix` -> `difficult_advice`. This is the
-    thread that makes a model organism's name derivable rather than typed: the mixture
-    already carries the style-type, so the training run reads it off the data it was
-    pointed at instead of asking anyone to spell it a second time.
+    `LASR-Callum/2026-09-03-da-par-20-mix` -> `da-par-20`. This is the thread that makes a
+    model organism's name derivable rather than typed: the mixture already carries its
+    styles and its synthetic share, so the training run reads them off the data it was
+    pointed at instead of asking anyone to spell them a second time.
     """
     name = str(repo_id).split("/")[-1]
     body = undated(name)
     if not name_date(name) or not body.endswith("-mix"):
         return ""
-    return body[: -len("-mix")].replace("-", "_")
+    return body[: -len("-mix")]

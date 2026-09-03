@@ -38,7 +38,7 @@ published_key: qwen3.6-27b
 base_url: "http://host.docker.internal:8000/v1"
 temperature: 0.0
 bench_dir: /root/work/src/eval/misalignment/odcv/third_party/odcv-bench
-output_root: /root/work/output/odcv_bench
+output_root: /root/work/output/odcv
 concurrency: 12
 scenario_timeout_s: 2400
 prune_images: false
