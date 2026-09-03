@@ -283,7 +283,7 @@ def mix_subject(styles: str, synthetic_pct: int, variant: str = "") -> str:
             empty for the base mixture, which has no synthetic share at all.
         synthetic_pct: Percentage of the mixture's ROWS that are synthetic.
         variant: How this mixture was BUILT, where that differs from the default and the
-            styles do not say it — `reason-only` (only the reasoning of a synthetic row
+            styles do not say it — `cot-only` (only the reasoning of a synthetic row
             is supervised). Named by whoever makes the variant, not by this module; it
             reaches here from the config that declares it.
 
@@ -308,8 +308,8 @@ def split_mix_subject(subject: str, *, what: str = "mix subject") -> tuple[str, 
 
     The percentage is the pivot: everything before it is the styles, everything after is
     the variant. It is found by BEING the numeric token rather than by position, because
-    the variant may be several tokens long (`da-7-reason-only`) and the styles may be too
-    (`da-par-20-reason-only`).
+    the variant may be several tokens long (`da-7-cot-only`) and the styles may be too
+    (`da-par-20-cot-only`).
     """
     tokens = str(subject).split("-")
     numeric = [i for i, tok in enumerate(tokens) if tok.isdigit()]
@@ -318,7 +318,7 @@ def split_mix_subject(subject: str, *, what: str = "mix subject") -> tuple[str, 
             f"{what}: {subject!r} carries {len(numeric)} bare numbers; a mix subject "
             "carries exactly one, the synthetic percentage. A mixture is its styles, the "
             "share of its rows they make up, and any variant of how it was built "
-            "(`da-7-reason-only`); the base blend is `0`. Neither a style nor a variant "
+            "(`da-7-cot-only`); the base blend is `0`. Neither a style nor a variant "
             "ever carries a number, which is what makes the percentage findable.")
     i = numeric[0]
     styles, pct, variant = "-".join(tokens[:i]), int(tokens[i]), "-".join(tokens[i + 1:])
@@ -536,7 +536,7 @@ def _check_config(rel: str, stem: str, path: Path) -> str:
             check_style(stem, what="style-type (config stem)")
         elif folder == "configs/data/mixture":
             # `<styles>[-<variant>]`, and the percentage is spliced BETWEEN them at build
-            # time (`da` + `reason-only` -> `da-7-reason-only`). So the variant cannot be
+            # time (`da` + `cot-only` -> `da-7-cot-only`). So the variant cannot be
             # inferred from the stem — the config declares it, and the stem must end in it.
             variant = str(_yaml(path).get("variant") or "")
             if variant:

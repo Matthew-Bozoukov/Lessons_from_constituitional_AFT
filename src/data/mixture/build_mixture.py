@@ -611,7 +611,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     seed = int(cfg.seed)
     # THE mixture's name (src/naming.py): this config's stem — its styles and any variant,
     # the parts a human chose — with the synthetic share spliced BETWEEN them, and today's
-    # date in front. `da` + `reason-only` at 7% is `<date>-da-7-reason-only-mix`. The
+    # date in front. `da` + `cot-only` at 7% is `<date>-da-7-cot-only-mix`. The
     # variant is declared rather than inferred precisely because the share lands in the
     # middle, so the stem alone cannot say where the styles end.
     variant = str(cfg.get("variant") or "")

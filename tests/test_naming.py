@@ -162,7 +162,7 @@ def test_the_repo_itself_obeys_the_law():
 
 
 @pytest.mark.parametrize("subject, parts", [
-    ("da-7-reason-only", ("da", 7, "reason-only")),
+    ("da-7-cot-only", ("da", 7, "cot-only")),
     ("da-par-20", ("da-par", 20, "")),
     ("0", ("", 0, "")),
     ("0-token-matched", ("", 0, "token-matched")),
@@ -176,7 +176,7 @@ def test_the_percentage_is_the_only_number_and_so_the_pivot(subject, parts):
     assert split_mix_subject(subject) == parts
 
 
-@pytest.mark.parametrize("subject", ["da-reason-only", "da-716-20-reason-only"])
+@pytest.mark.parametrize("subject", ["da-cot-only", "da-716-20-cot-only"])
 def test_a_subject_without_exactly_one_number_is_not_a_mixture(subject):
     with pytest.raises(NamingError, match="exactly one"):
         split_mix_subject(subject)
@@ -207,7 +207,7 @@ def test_the_styles_part_is_the_sorted_synthetic_source_keys(tmp_path):
         return _check_config(f"configs/data/mixture/{stem}.yaml", stem, cfg)
 
     assert mixture("da-gemini-par", ["par", "da-gemini"]) == ""
-    assert mixture("da-gemini-par-reason-only", ["par", "da-gemini"], "reason-only") == ""
+    assert mixture("da-gemini-par-cot-only", ["par", "da-gemini"], "cot-only") == ""
     # the same corpora in the other order is a different name for one thing
     assert "stem is `da-gemini-par`" in mixture("par-da-gemini", ["par", "da-gemini"])
     # a stem that names a corpus the sources do not contain
