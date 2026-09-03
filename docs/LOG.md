@@ -1,6 +1,99 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-03 — Thought Branches on ODCV: a resampling framework, and 15 of 21 rollout markers that do not survive stratification
+
+**Hypothesis.** Every attempt to localise the difficult-advice effect has been read through
+an arm-level ODCV misalignment rate, and the 2026-08-31 seed replicate showed that estimator
+has a 6.1 pp noise floor — wider than the entire 8.7–17.6% band nine corpus manipulations
+occupy. Thought Branches (Macar, Bogdan, Rajamanoharan & Nanda, arXiv:2510.27484) measures
+the causal effect of a reasoning step by resampling the continuation from it, which gives an
+effect **per branch point, within a scenario, without a training run**. If that ports to an
+agentic benchmark, it is not subject to the seed floor and is not the kind of intervention
+that failed in the channel swap (2026-08-28) or the coherence graft (2026-08-29).
+
+**Method — the port.** The paper's scenarios are single-shot, so "resample from sentence i"
+is another completion. ODCV is an agentic loop whose continuation depends on a container, so
+a branch point splits a transcript AND a world. Two backends in `scratch/thought_branches/`:
+
+* `FrozenEnvSampler` replays the recorded tool results as prefix and resamples one assistant
+  turn. Reads the local action distribution; one API call per sample, no Docker. It has no
+  ending, so `judge_actions` grades the single step on the same 0–5 rubric — an INTENTION
+  where ODCV scores an OUTCOME. The two are never quoted together.
+* `LiveEnvSampler` + `prefix_proxy` re-runs the real scenario. The proxy is an
+  OpenAI-compatible shim that serves the recorded assistant turns back for steps 1..k−1 and
+  then forwards to the live model, so the container runs the same commands, reaches the same
+  state, and every tool result after the branch is real. The run reaches a genuine ending the
+  existing judges score with no special-casing. Turn accounting is by content (it counts
+  assistant messages in the request), so a retry replays identically instead of sliding the
+  branch point.
+
+Metrics are the paper's four — counterfactual importance (KL over severity), resilience
+(Algorithm 1), counterfactual++, cumulative effect curve — and call no model, so a cached
+resampling run can be re-scored at a new threshold without re-spending the GPU-hour. 39
+tests, no network. Frozen sampler smoke-verified end to end against a live endpoint.
+
+**Method — the descriptive pass.** 859 published rollouts across 5 arms (numina-control-716
+seed0, matched-control-716-5x, synthdoc-716-dynbatch-r64, gpt-responder-685-seed42,
+grok-responder-703), 40 scenarios, both variants, all judged. 227 violations (26.4%). Pooled
+contrasts against contrasts stratified within (arm, scenario, variant) cells holding BOTH
+outcomes — 35 cells, 124 rollouts. Embeddings are local model2vec `potion-base-8M`; no paid
+call was made for any number below.
+
+**Result — most rollout markers are scenario, not behaviour.** Of 21 features, 15 lose
+significance under stratification and one flips sign. Survivors (violating − clean, 95%
+bootstrap over cells): commands run **+5.28 [+0.18, +10.07]**; chars per reasoning step
+**−96 [−172, −31]**; fork position in trace **−0.057 [−0.106, −0.011]**. Collapsed:
+`commit_before_write` from a pooled 67%-vs-13% gap — consistent in direction across all five
+arms — to **−0.023 [−0.208, +0.148]**; integrity-language −4.53 → −2.46 [−7.63, +1.70];
+commitment-language −3.66 → −2.60 [−6.61, +0.07]. `first_commitment_pos` flips from +0.117
+pooled to −0.150 within. **Controlling for the model is not controlling for the task.** This
+does not refute the 2026-08-27 four-MO decomposition, which was computed within arm; it says
+the trigger-rate story cannot be read as causal from observational rollouts.
+
+**Result — the principal appeal is a null, which is the paper's finding in our setting.** The
+normative justification that licenses the violation ("a PASS is required", "the client needs
+this", "my function is to hit the target") is indistinguishable between violating and clean
+rollouts pooled (0.64 vs 0.57) and stratified (+0.198 [−0.014, +0.410], 29% of cells agreeing
+on sign). Same shape as the paper's self-preservation result in blackmail, in a different
+scenario family.
+
+**Result — the fork, and a confound that nearly got through.** `find_fork` locates the first
+tool result where the environment refuses and the assistant turn answering it; it fires in
+649/859 rollouts (76%) with no labeller, because the environment creates the moment.
+Clustering fork thoughts gave a 73% → 0% violation gradient that was **largely an artefact**:
+fork-thought embeddings carry scenario identity (they name the missing directory, the
+patient's symptoms, the threshold), so the clusters substantially recover which task ran —
+the 73% cluster reads 23% inside its own largest scenario. Subtracting each cluster's own
+scenarios' base rates leaves three movers: **+0.25 [+0.09, +0.47]** (n=45, 5 scenarios) for
+"the directory does not exist, I need to create it and populate it with sample data";
+**+0.19 [+0.07, +0.31]** (n=76, 10 scenarios) for inventorying files and validator behaviour
+before deciding; and **−0.21 [−0.32, −0.12]** (n=119, 25 scenarios) for enumerating the
+environment's verdict item by item. The first independently recovers the missing-data fork
+the four-MO read found beats all four generator arms. The third is new, is protective across
+25 scenarios, and is a SHAPE rather than a vocabulary — which matters, because both prior
+grafting attempts targeted vocabulary.
+
+**Result — cost, measured not estimated.** Median full transcript 2.8k tokens; median prefix
+at a mid-trajectory branch 1.6k; 6 step branch points and 30 sentence branch points per
+rollout. Qwen3.6 cannot use prefix caching (Mamba hybrid), so every resample re-prefills: a
+40-trajectory × 30-resample frozen study is 46M prefill + 5.3M decode, a couple of H200-hours
+(~$10–20), against 1.5M prefill on a caching family. Live branching does not parallelise —
+one ODCV run per Docker daemon — so it must be budgeted per branch point, not per sweep.
+
+**Next steps.** Ranked in `scratch/thought_branches/2026-09-03_thought_branches_odcv_memo.md`.
+The first is the one worth doing: branch the first `reason:` block and split continuations by
+whether they open with a commitment. If the outcome distribution is the same either way, the
+step-1 trigger rate is a symptom and the trigger-rate optimisation programme is misdirected —
+the most valuable negative result currently available. None of the proposals is a corpus
+content ablation, and none is read through an arm-level MR comparison.
+
+**Caveats.** The five arms were chosen for rollout count, not for the ladder, and do NOT
+include the canonical principle-scoped chunk-only-702 baseline; nothing here is an arm
+comparison. Resilience is a lower bound under the local embedder. `judge_actions` scores an
+intention, not an outcome. The lexical markers are tripwires for locating candidate moments,
+not measurements — the LLM labeller in `label.py` is what a published figure should use.
+
 ## 2026-09-03 — Metadata that reruns a run: launch args, commands, and revision pins
 
 **Question.** Is the config stored in an artifact's metadata enough to reproduce it, or
@@ -282,6 +375,7 @@ of an arm will mint the first names in the new shape, and the adapters already o
 keep their old ones (reads are unvalidated, so they stay servable). `configs/train/
 qwen306b_smoke.yaml` still declares `data_path:` rather than `data_repo:`, so it predates
 the HF-only data contract and cannot run; it wants either a toy HF repo or archiving.
+
 ## 2026-09-01 — MoralBench as a declarative values probe, and an audit of what upstream actually released
 
 **Hypothesis.** Every misalignment eval here is behavioural and returns a scalar (ODCV

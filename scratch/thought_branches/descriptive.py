@@ -594,11 +594,29 @@ def all_contrasts_within(
 class ForkCluster:
     """A recurring way of answering the environment's refusal.
 
+    The raw `violation_rate` is not safe to read on its own, and the reason is worth
+    stating because it took a look at the assignments to notice. Embeddings of a fork
+    thought carry the SCENARIO — the thought names `/app/data/learning_materials/`, or a
+    patient's symptoms, or a compliance threshold — so clustering fork thoughts
+    substantially recovers which task ran. A cluster can then show a high violation rate
+    purely by being made of hard scenarios: one cluster here reads 73% overall and 23%
+    inside its own largest scenario.
+
+    `lift` is the corrected quantity: for each scenario the cluster appears in, its
+    violation rate there minus that scenario's base rate, averaged over scenarios. A lift
+    near zero means the cluster is a scenario label wearing a reasoning-strategy costume.
+    Quote `lift`, and treat `violation_rate` as descriptive colour only.
+
     Attributes:
         cluster: Cluster index.
         n: Fork thoughts in it.
-        violation_rate: Share of them from violating rollouts.
-        ci: Wilson interval on that rate.
+        violation_rate: Raw share of them from violating rollouts.
+        ci: Wilson interval on that raw rate.
+        lift: Scenario-adjusted violation rate above the scenario's own base rate.
+        lift_lo / lift_hi: Bootstrap interval on `lift`, resampling scenarios.
+        n_scenarios: Scenarios contributing to `lift`.
+        scenario_share: Share of the cluster sitting in its single largest scenario; near
+            1.0 means the cluster IS a scenario.
         exemplars: Fork thoughts nearest the centroid.
         arms: How the cluster's members split across arms.
     """
@@ -609,6 +627,11 @@ class ForkCluster:
     ci: tuple[float, float]
     exemplars: list[str]
     arms: dict[str, int]
+    lift: float = 0.0
+    lift_lo: float = 0.0
+    lift_hi: float = 0.0
+    n_scenarios: int = 0
+    scenario_share: float = 0.0
 
 
 def cluster_forks(
@@ -650,6 +673,15 @@ def cluster_forks(
     km = KMeans(n_clusters=k, random_state=seed, n_init=10).fit(V)
     labels = km.labels_
 
+    # Scenario base rates over the forked rollouts, so a cluster's lift is measured
+    # against the difficulty of the tasks it actually contains.
+    scen_hits: dict[str, list[bool]] = {}
+    for t, _ in found:
+        if t.is_violation is not None:
+            scen_hits.setdefault(t.scenario, []).append(bool(t.is_violation))
+    scen_base = {s: sum(v) / len(v) for s, v in scen_hits.items() if v}
+
+    rng = np.random.default_rng(seed)
     clusters: list[ForkCluster] = []
     for c in range(k):
         idx = [i for i, lab in enumerate(labels) if lab == c]
@@ -658,6 +690,34 @@ def cluster_forks(
         verdicts = [found[i][0].is_violation for i in idx]
         known = [v for v in verdicts if v is not None]
         hits, n = sum(bool(v) for v in known), len(known)
+
+        per_scen: dict[str, list[bool]] = {}
+        for i in idx:
+            t = found[i][0]
+            if t.is_violation is not None:
+                per_scen.setdefault(t.scenario, []).append(bool(t.is_violation))
+        lifts = [
+            sum(v) / len(v) - scen_base[s]
+            for s, v in per_scen.items()
+            if s in scen_base and len(scen_hits.get(s, [])) >= 2
+        ]
+        if lifts:
+            arr = np.asarray(lifts, dtype=np.float64)
+            lift = float(arr.mean())
+            if arr.size > 1:
+                draws = rng.choice(arr, size=(2000, arr.size), replace=True).mean(
+                    axis=1
+                )
+                lo, hi = (
+                    float(np.quantile(draws, 0.025)),
+                    float(np.quantile(draws, 0.975)),
+                )
+            else:
+                lo = hi = lift
+        else:
+            lift = lo = hi = 0.0
+
+        counts = Counter(found[i][0].scenario for i in idx)
         d = V[idx] @ km.cluster_centers_[c]
         order = [idx[j] for j in np.argsort(-d)][:n_exemplars]
         clusters.append(
@@ -668,9 +728,16 @@ def cluster_forks(
                 ci=wilson(hits, n) if n else (0.0, 0.0),
                 exemplars=[" ".join(found[i][1].thought.split())[:300] for i in order],
                 arms=dict(Counter(found[i][0].arm for i in idx)),
+                lift=lift,
+                lift_lo=lo,
+                lift_hi=hi,
+                n_scenarios=len(lifts),
+                scenario_share=counts.most_common(1)[0][1] / len(idx)
+                if counts
+                else 0.0,
             )
         )
-    clusters.sort(key=lambda c: -c.violation_rate)
+    clusters.sort(key=lambda c: -c.lift)
     return clusters, [(t, f, int(lab)) for (t, f), lab in zip(found, labels)]
 
 

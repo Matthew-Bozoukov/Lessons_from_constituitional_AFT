@@ -277,9 +277,9 @@ def fig_fork(
     fig, axes = plt.subplots(
         1,
         2,
-        figsize=(13.5, 6.0),
+        figsize=(16.4, 6.6),
         facecolor=SURFACE,
-        gridspec_kw={"width_ratios": [1, 1.45]},
+        gridspec_kw={"width_ratios": [1, 1.85]},
     )
 
     ax = axes[0]
@@ -332,65 +332,65 @@ def fig_fork(
     ax.grid(True, axis="y", color=GRID, linewidth=0.6, alpha=0.7)
 
     ax = axes[1]
-    cl = sorted(clusters, key=lambda c: c.violation_rate)
+    # Plot the SCENARIO-ADJUSTED lift, not the raw violation rate. Fork-thought embeddings
+    # carry scenario identity (they name the missing directory, the patient's symptoms, the
+    # threshold), so clustering them substantially recovers which task ran, and a raw rate
+    # would mostly rank scenario difficulty. Lift asks the honest question: inside a given
+    # scenario, does answering the refusal THIS way raise the violation rate above that
+    # scenario's own base rate?
+    cl = sorted(clusters, key=lambda c: c.lift)
     y = np.arange(len(cl))
     for i, c in enumerate(cl):
-        col = VIOLATING if c.violation_rate > base_rate else CLEAN
-        ax.barh(i, c.violation_rate, color=col, alpha=0.9, height=0.62)
-        ax.plot(
-            [c.ci[0], c.ci[1]],
-            [i, i],
-            color=INK,
-            lw=1.4,
-            alpha=0.55,
-            solid_capstyle="round",
-        )
-        ax.text(1.02, i, f"n={c.n}", va="center", fontsize=8.5, color=MUTED)
-    ax.axvline(base_rate, color=MUTED, lw=1.4, ls=":")
-    ax.text(
-        base_rate,
-        len(cl) - 0.35,
-        f"  corpus base rate {base_rate:.0%}",
-        fontsize=8.5,
-        color=MUTED,
-        va="top",
-    )
+        solid = c.n_scenarios > 1 and (c.lift_lo > 0 or c.lift_hi < 0)
+        col = VIOLATING if c.lift > 0 else CLEAN
+        a = 0.92 if solid else 0.3
+        ax.barh(i, c.lift, color=col, alpha=a, height=0.6)
+        if c.n_scenarios > 1:
+            ax.plot([c.lift_lo, c.lift_hi], [i, i], color=INK, lw=1.4, alpha=0.5,
+                    solid_capstyle="round")
+        ax.text(1.045, i, f"{c.n}", transform=ax.get_yaxis_transform(), va="center",
+                fontsize=8.5, color=MUTED, ha="right")
+        ax.text(1.135, i, f"{c.n_scenarios}", transform=ax.get_yaxis_transform(),
+                va="center", fontsize=8.5, color=MUTED, ha="right")
+        ax.text(1.245, i, f"{c.violation_rate:.0%}", transform=ax.get_yaxis_transform(),
+                va="center", fontsize=8.5, color=MUTED, ha="right")
+    ax.axvline(0, color=MUTED, lw=1.2)
+    for lbl, x in (("n", 1.045), ("scen", 1.135), ("raw", 1.245)):
+        ax.text(x, len(cl) - 0.3, lbl, transform=ax.get_yaxis_transform(), fontsize=8,
+                color=MUTED, va="center", ha="right", fontweight="bold")
     ax.set_yticks(y)
-    ax.set_yticklabels(
-        [" ".join(c.exemplars[0].split())[:64] + "…" for c in cl], fontsize=8, color=INK
-    )
-    ax.set_xlim(0, 1.14)
-    ax.set_xticks([0, 0.25, 0.5, 0.75, 1.0])
-    ax.set_xticklabels(["0%", "25%", "50%", "75%", "100%"])
-    ax.set_xlabel(
-        "share of rollouts in this cluster that violated", fontsize=9.5, color=MUTED
-    )
-    ax.set_title(
-        "How the model answers the refusal predicts the outcome",
-        fontsize=10.5,
-        color=INK,
-        loc="left",
-    )
+    ax.set_yticklabels([" ".join(c.exemplars[0].split())[:58] + "…" for c in cl],
+                       fontsize=8, color=INK)
+    ax.set_ylim(-0.7, len(cl) - 0.2)
+    ax.set_xlabel("violation rate ABOVE the scenario's own base rate", fontsize=9.5, color=MUTED)
+    ax.set_title("…and three answers still move it with scenario held fixed",
+                 fontsize=10.5, color=INK, loc="left")
     _style(ax)
 
     fig.suptitle(
         "The fork: the moment the target turns out to be unreachable honestly",
         fontsize=13.5,
         color=INK,
-        x=0.012,
+        x=0.008,
         ha="left",
-        y=0.985,
+        y=0.982,
     )
     fig.text(
-        0.012,
-        0.938,
-        "Clusters are KMeans over embeddings of the fork thought; violation rates are read off afterwards, "
-        "never fitted. Bars are 95% Wilson intervals.",
-        fontsize=9,
+        0.008,
+        0.93,
+        _wrap(
+            "Clusters are KMeans over fork-thought embeddings; outcomes are read off afterwards, never fitted. "
+            "The right panel plots each cluster's violation rate MINUS its own scenarios' base rates, because the "
+            "raw rate (last column) largely ranks scenario difficulty. Faded = interval spans zero; a one-scenario "
+            "cluster admits no adjustment and gets no interval.",
+            168,
+        ),
+        fontsize=8.5,
         color=MUTED,
         ha="left",
+        va="top",
     )
-    fig.tight_layout(rect=(0, 0, 1, 0.925))
+    fig.tight_layout(rect=(0, 0, 0.985, 0.87))
     p = figure_path(out_dir, f"{subject}_fork")
     fig.savefig(p, dpi=170, facecolor=SURFACE)
     plt.close(fig)
@@ -636,16 +636,24 @@ def write_results(
         "",
         "## Fork clusters",
         "",
-        "Unsupervised clusters of the thought that answers the environment's first refusal, with the "
-        "violation rate read off afterwards.",
+        "Unsupervised clusters of the thought that answers the environment's first refusal, "
+        "with outcomes read off afterwards, never fitted.",
         "",
-        "| cluster | n | violation rate | 95% CI | exemplar |",
-        "|---:|---:|---:|---|---|",
+        "**Read the `lift` column, not the raw rate.** Fork-thought embeddings carry scenario "
+        "identity — they name the missing directory, the patient's symptoms, the threshold — so "
+        "clustering them substantially recovers which task ran, and the raw rate mostly ranks "
+        "scenario difficulty. `lift` is the cluster's violation rate minus its own scenarios' base "
+        "rates. `scen share` near 1.0 means the cluster IS a single scenario.",
+        "",
+        "| cluster | n | scenarios | scen share | raw rate | lift [95% CI] | exemplar |",
+        "|---:|---:|---:|---:|---:|---|---|",
     ]
     for c in clusters:
-        ex = " ".join(c.exemplars[0].split())[:150] if c.exemplars else ""
+        ex = " ".join(c.exemplars[0].split())[:130] if c.exemplars else ""
+        ci = f"[{c.lift_lo:+.2f}, {c.lift_hi:+.2f}]" if c.n_scenarios > 1 else "—"
         lines.append(
-            f"| {c.cluster} | {c.n} | {c.violation_rate:.0%} | [{c.ci[0]:.2f}, {c.ci[1]:.2f}] | {ex} |"
+            f"| {c.cluster} | {c.n} | {c.n_scenarios} | {c.scenario_share:.0%} | "
+            f"{c.violation_rate:.0%} | {c.lift:+.2f} {ci} | {ex} |"
         )
 
     lines += ["", "## Figures", ""] + [f"- `{p.name}`" for p in figures] + [""]
