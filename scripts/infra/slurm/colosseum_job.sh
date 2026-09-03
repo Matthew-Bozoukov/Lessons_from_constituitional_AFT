@@ -89,7 +89,20 @@ fi
 # --target therefore goes FIRST and is terminated by `--name`, which argparse recognises
 # as a flag; the overrides trail at the end where run_eval's parse_known_args picks them
 # up as an OmegaConf dotlist. This is the order CLAUDE.md documents, for this reason.
-COMMON=(--target "${CONTROL}" "${TREATMENT}" --name colosseum_jira --no-push)
+# ARMS selects which checkpoints run. `both` (default) is the normal shape and lets
+# run_eval pool the contrast itself. `control` / `treatment` exist to RESUME: run_eval
+# publishes each arm before it names the next, so an invocation that dies partway leaves
+# its finished arms intact and only the missing one needs rerunning — at which point the
+# contrast is pooled afterwards from the two run dirs rather than in-invocation.
+case "${ARMS:-both}" in
+    both)      TARGETS=("${CONTROL}" "${TREATMENT}") ;;
+    control)   TARGETS=("${CONTROL}") ;;
+    treatment) TARGETS=("${TREATMENT}") ;;
+    *) echo "ERROR: ARMS must be both|control|treatment, got '${ARMS}'" >&2; exit 1 ;;
+esac
+echo "arms       : ${ARMS:-both} (${#TARGETS[@]} target(s))"
+
+COMMON=(--target "${TARGETS[@]}" --name colosseum_jira --no-push)
 
 # Seeds per experiment. The two multi-agent experiments carry the design's 40; the
 # cooperation control carries 20, because it is a sanity check on a single cell rather
