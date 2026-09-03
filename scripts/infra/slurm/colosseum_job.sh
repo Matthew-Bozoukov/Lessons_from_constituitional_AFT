@@ -143,6 +143,12 @@ for experiment in ${EXPERIMENTS}; do
         cooperation) offset=90 ;;
         *)           offset=0  ;;
     esac
+    # Plus a per-JOB component, because the per-experiment offset alone only separates
+    # DIFFERENT experiments. Sharding one experiment across several jobs by seed range —
+    # which is how the seed count was raised from 40 to 190 — puts several jobs on the
+    # same offset and re-creates the very collision the stagger exists to prevent. The
+    # job id is unique and already known here, so it costs nothing to fold in.
+    offset=$((offset + ${SLURM_JOB_ID:-0} % 60))
     if [ "${offset}" -gt 0 ]; then
         echo ">>> staggering ${offset}s so this run cannot share an output directory"
         sleep "${offset}"
