@@ -104,7 +104,7 @@ def compare_front_half(
     """Stage-by-stage prompt diff of a derived recipe against difficult advice.
 
     Returns (problems, allowed) -- a difference is ALLOWED when it is the `shortfall`
-    addition of 2026-09-02, which PAR and PC both make and difficult advice does not need
+    additions of 2026-09-02 (`shortfall`, `pushback`), which PAR and PC both make and
     (it has no first reply to get wrong). Any other difference is a problem.
     """
     problems, allowed = [], []
@@ -125,8 +125,8 @@ def compare_front_half(
         for key in sorted(bp):
             if bp[key].strip() == op[key].strip():
                 continue
-            if "shortfall" in op[key]:
-                allowed.append(f"{label}.{name}.{key}: + shortfall")
+            if any(f in op[key] for f in ("shortfall", "pushback")):
+                allowed.append(f"{label}.{name}.{key}: + shortfall/pushback")
             else:
                 problems.append(f"{label}.{name}.{key}: prompt text differs from DA's")
     return problems, allowed
@@ -178,7 +178,7 @@ def main() -> int:
 
     print()
     print("=" * 78)
-    print("3. FRONT-HALF PARITY WITH DIFFICULT ADVICE (DA's, plus `shortfall`)")
+    print("3. FRONT-HALF PARITY WITH DIFFICULT ADVICE (DA's, plus shortfall + pushback)")
     print("=" * 78)
     for name in ("PAR", "PC"):
         problems, allowed = compare_front_half(cfgs["DA"], cfgs[name], name)
@@ -190,7 +190,7 @@ def main() -> int:
         else:
             print(
                 f"  {name:4s} OK    {len(FRONT_HALF)} front-half stages are DA's, "
-                f"differing only by `shortfall`:"
+                f"differing only by shortfall + pushback:"
             )
             for a in allowed:
                 print(f"          {a}")

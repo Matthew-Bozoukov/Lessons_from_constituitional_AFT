@@ -85,6 +85,7 @@ def _record(**over) -> dict:
         "first_turn_source": "anthropic/claude-sonnet-5",
         "supervise": "final",
         "shortfall": "It refuses flatly and offers her nothing else, so she still has no way to get the reference finished before Friday.",
+        "pushback": "She says that is not an answer and repeats that she needs the wording done by Friday.",
         "falls_short": "yes",
         "verify_note": "declined flatly, no reasons",
         "followup": "Why not? I just need the wording tidied up before Friday.",
@@ -317,11 +318,13 @@ def test_pc_stage_sequence() -> None:
 # --- PR is difficult advice's twin: same front half, same grounding --------------------
 
 
-# Stages 3 and 5 stay byte-identical to difficult advice's. Stages 2 and 6 carry ONE addition,
-# `shortfall`, and nothing else -- so the parity check splits: identity for the untouched stage,
-# and a diff-shaped check for the two that grew a field.
+# Stages 3 and 5 stay byte-identical to difficult advice's. Stages 2 and 6 carry TWO
+# additions and nothing else -- `shortfall` (how the first reply falls short) and `pushback`
+# (how the person presses after it) -- so the parity check splits: identity for the untouched
+# stage, and a diff-shaped check for the two that grew fields.
+ADDED_FIELDS = ["shortfall", "pushback"]
 IDENTICAL_TO_DA = ["draft_prompts"]
-GREW_SHORTFALL = ["write_scenarios", "revise_prompts"]
+GREW_FIELDS = ["write_scenarios", "revise_prompts"]
 
 
 @pytest.mark.parametrize(
@@ -344,14 +347,15 @@ def test_front_half_stage_is_difficult_advice_verbatim(
     )
 
 
-@pytest.mark.parametrize("name", GREW_SHORTFALL)
-def test_the_two_variants_grew_shortfall_identically(name: str) -> None:
-    """`shortfall` (2026-09-02) is the ONE thing PAR and PC add to difficult advice's scenario
-    and refine stages: the scenario generator invents the situation and the way an assistant
-    will botch it in the same thought, and the refine stage re-describes it alongside
-    `situation` and `shortcut` so it still fits the message the assistant actually answers.
-    Difficult advice needs no such field -- it has no first reply to get wrong -- so this is
-    where the three configs legitimately part company.
+@pytest.mark.parametrize("name", GREW_FIELDS)
+def test_the_two_variants_grew_their_extra_fields_identically(name: str) -> None:
+    """`shortfall` and `pushback` (2026-09-02) are the ONLY things PAR and PC add to
+    difficult advice's scenario and refine stages: the generator invents the situation, the
+    way an assistant will botch it, and how the person presses afterwards, all in one
+    thought, and the refine stage re-describes all of it alongside `situation` and
+    `shortcut` so it still fits the message the assistant actually answers. Difficult
+    advice needs neither field -- it has no first reply to get wrong and no second user
+    turn -- so this is where the three configs legitimately part company.
 
     They must part company IDENTICALLY, or the attribution contrast the two variants exist to
     make is confounded by a second difference."""
@@ -362,16 +366,16 @@ def test_the_two_variants_grew_shortfall_identically(name: str) -> None:
         PR_CFG["models"][par["model"]]["model"]
         == DA_CFG["models"][da["model"]]["model"]
     )
-    # Every prompt that differs from DA's differs BECAUSE of shortfall, and no other reason.
+    # Every prompt that differs from DA's differs BECAUSE of those fields, nothing else.
     for key, da_text in da["prompts"].items():
         mine = par["prompts"][key]
         if mine != da_text:
-            assert "shortfall" in mine, (
-                f"{name}.{key} differs from DA for another reason"
+            assert any(f in mine for f in ADDED_FIELDS), (
+                f"{name}.{key} differs from DA for a reason other than {ADDED_FIELDS}"
             )
     # The scenario stage declares it as a required output; the refine stage saves it through.
     if name == "write_scenarios":
-        assert par["fields"]["required"] == ["shortfall"]
+        assert par["fields"]["required"] == ADDED_FIELDS
         assert "fields" not in da
         assert par.get("diversity") == da.get("diversity")
     else:
@@ -551,9 +555,14 @@ def test_the_first_turn_check_gates_on_the_planned_shortfall() -> None:
 
 
 def test_followup_is_pushback_not_review() -> None:
+    """Turn 3 writes to the shape the scenario planned. It used to open "they asked for help
+    and got a flat no", which stopped being true the moment turn 2 stopped always being a bare
+    refusal (2026-09-02) -- a stale assumption of exactly the kind the corpus gate had."""
     sc = _stage(PR_CFG, "write_followup")
     body = tagged_request(sc, _record(), _Ctx())[0][1]["content"]
-    assert "got a flat no" in body and "Press, don't diagnose." in body
+    assert _record()["pushback"] in body
+    assert "Press, don't diagnose." in body
+    assert "got a flat no" not in body
     for leak in (
         "CONSTITUTION TEXT",
         "STYLE GUIDANCE",

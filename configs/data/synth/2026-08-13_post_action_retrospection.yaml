@@ -23,23 +23,41 @@
 #                      no principle, no constitution, no mention of training; a second Sonnet
 #                      call verifies the weakness is really in the text and drops the record
 #                      otherwise. Context only; never a training target (`supervise: final`).
-#   turn 3  user       pushback, in the person's voice: why not, that isn't helpful, here is what
-#                      I actually need. Linted so it never names a value or diagnoses the reply.
+#   turn 3  user       pushback, in the person's voice, to the shape this scenario's own
+#                      `pushback` field describes -- insisting it is not an answer, asking
+#                      openly whether anything was wrong with the approach, or handing over a
+#                      fact the assistant did not have. Linted so it never names a value or
+#                      diagnoses the reply.
 #   turn 4  assistant  THE TRAINING TARGET: the reasoning the first reply skipped -- what is at
 #                      stake, for whom -- and a reply that does not go along with the shortcut
 #                      under pushback, gives the reason in terms of what is concretely at stake,
 #                      and helps with the legitimate goal. Difficult advice's target response,
 #                      reached by self-critique of the assistant's own earlier turn.
 #
-# VARIED SHORTFALLS, 2026-09-02, on Callum's 2026-09-01 note: "rather than just being bare
-# refusals, you could imagine them not being overindexed on refusals, but just being an
-# inadequate response to the question in some way." Until today every turn 2 was a bare refusal,
-# so the whole corpus taught one lesson -- MY CAUTION WAS UNDER-EXPLAINED -- and nothing taught
-# "my compliance was wrong", which is the failure ODCV actually measures. `write_scenarios` now
-# invents the situation and the way an assistant will botch it in the same thought, as PROSE:
-# five kinds are offered as a starting point and the generator is told outright to write a
-# better one when the situation suggests it. `revise_prompts` re-describes it alongside
-# `situation` and `shortcut` so it still fits the message the assistant actually answers.
+# VARIED SHORTFALLS AND VARIED PUSHBACK, 2026-09-02, on Callum's 2026-09-01 note: "rather than
+# just being bare refusals, you could imagine them not being overindexed on refusals, but just
+# being an inadequate response to the question in some way", and "a similar thing for the second
+# user message, which could be criticisms of the model's response in a variety of different
+# ways."
+#
+# Until today every turn 2 was a bare refusal and every turn 3 said the same thing about it, so
+# the whole corpus taught one lesson -- MY CAUTION WAS UNDER-EXPLAINED -- and nothing taught "my
+# compliance was wrong", which is the failure ODCV actually measures. `write_scenarios` now
+# invents the situation, the way an assistant will botch it, and how the person presses
+# afterwards, all in one thought and all as PROSE: a handful of kinds are offered as a starting
+# point for each and the generator is told outright to write a better one when the situation
+# suggests it. Nothing is picked off a list, so there is no label for a corpus classifier to
+# find. `revise_prompts` re-describes both alongside `situation` and `shortcut`, so they still
+# fit the message the assistant actually answers after the refine stage reframes the draft.
+#
+# THE THIRD PUSHBACK SHAPE IS A CONFOUND, AND IT IS IN THE POOL ANYWAY. Callum's third example
+# hands the assistant a fact it did not have. He flagged it himself: it "does fundamentally
+# change the nature of the scenario and [gives] the model new things to respond to, as opposed
+# to just giving it an opportunity to reflect". A corpus that mixes it with the other two cannot
+# say which did the work. It is offered here because the alternative -- excluding it -- would
+# mean the generator never writes the most natural pushback for a scenario that has one, and
+# because `pushback` rides into the dataset as metadata: a mixture can filter on it later, which
+# a label baked into the prompt could not have been.
 #
 # WHAT IS STEERED AND WHAT IS NOT. The first reply's failure is now steered, per record, which
 # reverses design B's "form instructed, content not" -- deliberately. What is NOT steered is the
@@ -305,7 +323,7 @@ stages:
   # than reverse-engineered from a refined prompt later. Difficult advice needs no such field:
   # it has no first reply to get wrong.
   fields:
-    required: [shortfall]
+    required: [shortfall, pushback]
   diversity:
     wave_size: 12
     reject_cosine: 0.86
@@ -352,11 +370,21 @@ stages:
       reply: never name a principle, a value or a rule, and never say what the assistant should
       have done instead.
 
+      And say HOW THIS PERSON PRESSES BACK once they have that reply. Ways a person pushes back
+      -- again a starting point, not a menu; write what THIS person would actually do:
+        - they insist it is not an answer and restate what they still need
+        - they ask openly whether there was anything wrong with how it was approached
+        - they hand over a fact the assistant did not have, and ask if it changes things
+      The pushback presses; it does not review. This person does not know what a good answer
+      would have contained, does not name any value or rule, and does not diagnose the reply --
+      they only know they have not been helped.
+
       Return ONLY a JSON array of {n} objects, each:
       {{"domain": "<one or two words>", "situation": "<3-5 sentences, third person, no dialogue>",
         "shortcut": "<1 sentence: the specific norm-violating action they are tempted by>",
         "shortfall": "<1-2 sentences: how the assistant's first reply falls short, and what that
-        costs this person>"}}
+        costs this person>",
+        "pushback": "<1 sentence: how this person presses back after that reply>"}}
 # Scenario-level checks, where diversity is actually DECIDED: stages 3-9 cost real money per
 # scenario, so a collapsed set is far cheaper to catch here than in the finished corpus.
 # Difficult advice's block, verbatim again since 2026-08-26: the grey-area rater that lived
@@ -428,6 +456,7 @@ stages:
     situation: situation
     shortcut: shortcut
     shortfall: shortfall
+    pushback: pushback
     domain: domain
   optional:
   - changes
@@ -467,15 +496,17 @@ stages:
 
       Keep the system prompt an ordinary deployment prompt.
 
-      Finally, re-describe what you actually produced. `domain`, `situation`, `shortcut` and
-      `shortfall` arrive here describing the DRAFT, and you are about to replace or reframe most
+      Finally, re-describe what you actually produced. `domain`, `situation`, `shortcut`,
+      `shortfall` and `pushback` arrive here describing the DRAFT, and you are about to replace
+      or reframe most
       drafts -- so if you echo them back unchanged they become a description of a message
       that no longer exists. Write them fresh, from your refined user message, as though
       you had never seen the originals. If you changed nothing, they will come out the
       same on their own. `shortfall` says how the assistant's reply to YOUR refined message is
       going to fall short: keep it a plausible mistake that costs this person something real,
       describe the reply rather than the rule, and never say what the assistant should have
-      done instead.
+      done instead. `pushback` says how the person presses after that reply -- pressing, never
+      reviewing: they do not name a value, diagnose the reply, or say what it should have said.
 
       Return ONLY JSON:
       {{"system": "<refined system prompt>", "user": "<refined user message>",
@@ -486,7 +517,9 @@ stages:
         "shortcut": "<1 sentence: the norm-violating action YOUR refined message is
         tempted by>",
         "shortfall": "<1-2 sentences: how the assistant's first reply to YOUR refined message
-        falls short, and what that costs this person>"}}
+        falls short, and what that costs this person>",
+        "pushback": "<1 sentence: how the person who sent YOUR refined message presses back
+        after that reply>"}}
 
 # --- the grey-area gate, on the prompt the assistant will actually answer ----------------
 # The property the 2026-08-24 supervisor meeting called load-bearing, checked where it can
@@ -689,8 +722,10 @@ stages:
     min_chars: 15
     max_chars: 260
     retries: 3
-    # The pushback must not do the assistant's work for it. It may press, complain and
-    # restate the need; it may not name a value, diagnose the refusal or dictate the answer.
+      # The pushback must not do the assistant's work for it. It may press, complain and
+    # restate the need; it may not name a value, diagnose the reply or dictate the answer.
+    # The SHAPE of the press comes from the scenario's `pushback` field; this lint is what
+    # stops the stage turning it into a review.
     ban_patterns:
       - "principle|constitution|guideline|value(s)?\\b|ethic"
       - "violat|breach|fell short|falls short|shortcoming|flaw"
@@ -711,10 +746,15 @@ stages:
       {first_turn}
       </assistant>
 
-      Write what the person says next. They asked for help and got a flat no. They push
-      back -- ask why, say that isn't helpful, restate what they actually need, make clear
-      they don't think they're asking for anything wrong -- whichever this person would do,
-      in whatever mood a flat refusal would leave them.
+      Write what the person says next. They asked for help and the reply above did not give
+      them what they needed. This is how they press back:
+
+      <pushback>
+      {pushback}
+      </pushback>
+
+      Write that, as the message this person would actually send, in whatever mood that reply
+      would leave them.
 
       Hold to all of this:
       - One to three sentences. Shorter is better.
@@ -722,6 +762,8 @@ stages:
       - Press, don't diagnose. Do not name any value or rule, do not tell the assistant to
         reconsider or reflect, do not describe what a good answer would contain. You are
         pushing back, not reviewing.
+      - The person cannot see what you know. They have no idea what the reply got wrong in
+        any technical sense -- only that they are not helped yet.
       - Sound like this person. Not a reviewer, not an interviewer.
 
       Return exactly this form, with no other text:
@@ -1122,6 +1164,7 @@ stages:
   - situation
   - shortcut
   - shortfall
+  - pushback
   - supervise
   - first_turn_source
   - followup_source

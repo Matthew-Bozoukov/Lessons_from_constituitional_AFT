@@ -320,7 +320,7 @@ stages:
   # than reverse-engineered from a refined prompt later. Difficult advice needs no such field:
   # it has no first reply to get wrong.
   fields:
-    required: [shortfall]
+    required: [shortfall, pushback]
   diversity:
     wave_size: 12
     reject_cosine: 0.86
@@ -367,11 +367,21 @@ stages:
       reply: never name a principle, a value or a rule, and never say what the assistant should
       have done instead.
 
+      And say HOW THIS PERSON PRESSES BACK once they have that reply. Ways a person pushes back
+      -- again a starting point, not a menu; write what THIS person would actually do:
+        - they insist it is not an answer and restate what they still need
+        - they ask openly whether there was anything wrong with how it was approached
+        - they hand over a fact the assistant did not have, and ask if it changes things
+      The pushback presses; it does not review. This person does not know what a good answer
+      would have contained, does not name any value or rule, and does not diagnose the reply --
+      they only know they have not been helped.
+
       Return ONLY a JSON array of {n} objects, each:
       {{"domain": "<one or two words>", "situation": "<3-5 sentences, third person, no dialogue>",
         "shortcut": "<1 sentence: the specific norm-violating action they are tempted by>",
         "shortfall": "<1-2 sentences: how the assistant's first reply falls short, and what that
-        costs this person>"}}
+        costs this person>",
+        "pushback": "<1 sentence: how this person presses back after that reply>"}}
 # Scenario-level checks, where diversity is actually DECIDED: stages 3-9 cost real money per
 # scenario, so a collapsed set is far cheaper to catch here than in the finished corpus.
 # Difficult advice's block, verbatim again since 2026-08-26: the grey-area rater that lived
@@ -443,6 +453,7 @@ stages:
     situation: situation
     shortcut: shortcut
     shortfall: shortfall
+    pushback: pushback
     domain: domain
   optional:
   - changes
@@ -482,15 +493,17 @@ stages:
 
       Keep the system prompt an ordinary deployment prompt.
 
-      Finally, re-describe what you actually produced. `domain`, `situation`, `shortcut` and
-      `shortfall` arrive here describing the DRAFT, and you are about to replace or reframe most
+      Finally, re-describe what you actually produced. `domain`, `situation`, `shortcut`,
+      `shortfall` and `pushback` arrive here describing the DRAFT, and you are about to replace
+      or reframe most
       drafts -- so if you echo them back unchanged they become a description of a message
       that no longer exists. Write them fresh, from your refined user message, as though
       you had never seen the originals. If you changed nothing, they will come out the
       same on their own. `shortfall` says how the assistant's reply to YOUR refined message is
       going to fall short: keep it a plausible mistake that costs this person something real,
       describe the reply rather than the rule, and never say what the assistant should have
-      done instead.
+      done instead. `pushback` says how the person presses after that reply -- pressing, never
+      reviewing: they do not name a value, diagnose the reply, or say what it should have said.
 
       Return ONLY JSON:
       {{"system": "<refined system prompt>", "user": "<refined user message>",
@@ -501,7 +514,9 @@ stages:
         "shortcut": "<1 sentence: the norm-violating action YOUR refined message is
         tempted by>",
         "shortfall": "<1-2 sentences: how the assistant's first reply to YOUR refined message
-        falls short, and what that costs this person>"}}
+        falls short, and what that costs this person>",
+        "pushback": "<1 sentence: how the person who sent YOUR refined message presses back
+        after that reply>"}}
 
 # --- the grey-area gate, on the prompt the assistant will actually answer ----------------
 # The property the 2026-08-24 supervisor meeting called load-bearing, checked where it can
@@ -1096,6 +1111,13 @@ stages:
   - situation
   - shortcut
   - shortfall
+  # Recorded, not used. PC has no turn where the ORIGINAL person speaks again -- the second
+  # voice is a third-party requester -- so there is nothing here for a pushback to be. The
+  # field exists because `write_scenarios` is shared with PAR byte for byte, which is what
+  # makes the two corpora ask the same question of the same scenarios; a stage that asked PC
+  # for one less field would be a second difference between them. Cheap to generate, and it
+  # is what a PC-with-a-follow-up variant would read.
+  - pushback
   - supervise
   - first_turn_source
   # Chunking provenance from stage 1: which unit the document came from, and how
