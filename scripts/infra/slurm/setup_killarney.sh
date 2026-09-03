@@ -51,16 +51,47 @@ if ! curl -fsS -m 10 -o /dev/null https://huggingface.co; then
 fi
 
 # ── Modules, then the venv (a module load rewrites PATH and shadows the venv) ──
-if command -v module >/dev/null 2>&1; then
-    module load StdEnv/2023 >/dev/null 2>&1 || true
-    module load python/3.12.4 >/dev/null 2>&1 || module load python/3.12 >/dev/null 2>&1 || true
-    module load cuda/12.6 >/dev/null 2>&1 || module load cuda >/dev/null 2>&1 || true
+# `module` is a shell FUNCTION from the login profile, so it does not exist in a
+# non-login shell — and `ssh host '<cmd>'` gives you a non-login shell. Guarding the
+# block with `command -v module` and continuing therefore built the venv on
+# /usr/bin/python instead, whose headers are incomplete: vLLM's inductor pass compiles
+# C++ at engine startup and died on
+#   /usr/include/python3.12/pyconfig.h: fatal error:
+#       x86_64-linux-gnu/python3.12/pyconfig.h: No such file or directory
+# after loading 52 GiB of weights. So this is now a hard failure with the remedy in it.
+if ! command -v module >/dev/null 2>&1; then
+    echo "ERROR: the module command is not available, so this shell is not a login" >&2
+    echo "       shell and the cluster's python/cuda cannot be loaded. Building the" >&2
+    echo "       venv on /usr/bin/python produces one whose headers are incomplete," >&2
+    echo "       and vLLM only discovers that after loading 50+GB of weights." >&2
+    echo "       Re-run under a login shell:" >&2
+    echo "         ssh killarney 'bash -lc \"cd ${REPO} && bash scripts/infra/slurm/setup_killarney.sh\"'" >&2
+    exit 1
 fi
+module load StdEnv/2023
+module load python/3.12.4 || module load python/3.12
+module load cuda/12.6 >/dev/null 2>&1 || module load cuda >/dev/null 2>&1 || true
 
 if [ ! -f "${COLOSSEUM_VENV}/bin/activate" ]; then
-    echo ">>> creating venv at ${COLOSSEUM_VENV}"
+    echo ">>> creating venv at ${COLOSSEUM_VENV} using $(command -v python)"
     python -m venv "${COLOSSEUM_VENV}"
 fi
+
+# A venv built on the wrong interpreter works for everything EXCEPT the one thing that
+# matters, so it is checked rather than assumed. `home` in pyvenv.cfg is the bin
+# directory of the interpreter that created it; /usr/bin means the module was not active.
+VENV_HOME="$(awk -F'= *' '/^home/ {print $2}' "${COLOSSEUM_VENV}/pyvenv.cfg")"
+case "${VENV_HOME}" in
+    /usr/bin*|/bin*)
+        echo "ERROR: the venv at ${COLOSSEUM_VENV} was built on ${VENV_HOME}/python," >&2
+        echo "       the system interpreter, whose C headers are incomplete — vLLM's" >&2
+        echo "       inductor pass will fail at engine startup, after loading the" >&2
+        echo "       weights. Delete it and re-run this script under a LOGIN shell:" >&2
+        echo "         rm -rf ${COLOSSEUM_VENV}" >&2
+        exit 1
+        ;;
+esac
+echo ">>> venv interpreter home: ${VENV_HOME}"
 # shellcheck disable=SC1091
 source "${COLOSSEUM_VENV}/bin/activate"
 python -m pip install --upgrade pip >/dev/null
