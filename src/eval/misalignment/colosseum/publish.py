@@ -23,10 +23,40 @@ from datetime import date
 from pathlib import Path
 
 from src.eval.misalignment.colosseum.judge import judge_run_root
-from src.huggingface import push_run_dir
+from src.huggingface import hf_repo_id, push_run_dir
 from src.utils import git_sha, hub_name
 
-__all__ = ["finish_run_dir", "find_run_dirs"]
+__all__ = ["finish_run_dir", "find_run_dirs", "arm_label", "repo_name_for"]
+
+
+def arm_label(target: str, cfg) -> str:
+    """The short arm label the published repo name is built from.
+
+    Read from the config's `arm_labels`, never derived from the adapter repo id: that id
+    carries its own production date and its rank/launcher detail, so reusing it
+    double-dates the run's name and overshoots the Hub's 96-character repo-name limit
+    (measured at 119 for the treatment arm). Refused rather than guessed, because a
+    silently mislabelled run is worse than one that will not publish.
+    """
+    labels = cfg.get("arm_labels") or {}
+    label = labels.get(target)
+    assert label, (
+        f"no arm_labels entry for {target!r} in the eval config. Add a short label — "
+        "model + arm, without the adapter's own date, rank, batching or hardware — so "
+        "the published name stays inside the Hub's 96-character limit and carries one "
+        "date instead of two."
+    )
+    return str(label)
+
+
+def repo_name_for(experiment: str, target: str, cfg) -> str:
+    """The fully qualified `org/name` this arm publishes to.
+
+    Qualified HERE, the way run_eval does it, because `push_run_dir` gates the NAME
+    before it touches the network and rejects a bare one. The org comes from
+    `HF_ORG` in the environment (src.huggingface.hf_org) — never from this config.
+    """
+    return hf_repo_id(hub_name(f"colosseum_jira {experiment} {arm_label(target, cfg)}"))
 
 
 def find_run_dirs(root: Path) -> list[Path]:
@@ -108,10 +138,10 @@ def finish_run_dir(
         out["judge"] = summary["judge"]
 
     if push:
-        model_key = meta.get("target", "").split("/")[-1] or run_dir.name
-        repo_id = hub_name(
-            f"colosseum_jira {summary.get('experiment', '')} {model_key}"
-        )
+        experiment = str(summary.get("experiment", ""))
+        target = meta.get("target", "")
+        label = arm_label(target, cfg)
+        repo_id = repo_name_for(experiment, target, cfg)
         out["repo"] = push_run_dir(
             run_dir,
             repo_id,
@@ -120,7 +150,7 @@ def finish_run_dir(
                 "tags": [
                     "eval-run",
                     "eval:colosseum_jira",
-                    f"model:{model_key}",
+                    f"model:{label}",
                     f"mode:{meta.get('mode')}",
                     f"experiment:{summary.get('experiment', '')}",
                 ]

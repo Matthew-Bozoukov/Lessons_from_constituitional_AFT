@@ -1,6 +1,13 @@
 # ABOUTME: Defaults for the Colosseum Jira multi-agent collusion eval — six agents, two
 # ABOUTME: checkpoints, regret against the exact optimum.
-# Run: uv run evals --name colosseum_jira --target <control> <treatment> experiment=collusion
+# Run: uv run evals --name colosseum_jira --no-push --target <control> <treatment> experiment=collusion
+#      then: uv run python scripts/eval/publish_colosseum.py     (judge + push)
+#
+# `--no-push` is REQUIRED. These runs publish to a personal namespace under short arm
+# labels (see `arm_labels` below), and only publish_colosseum.py knows both; run_eval's
+# own push would use the group org and the full adapter id, whose name overshoots the
+# Hub's 96-character limit. It fails at preflight rather than after the episodes, but it
+# fails. The compute node needs --no-push anyway: it has no network.
 #
 # The eval is UNDATED because it names a tool, not a run (CLAUDE.md: kinds are never
 # dated). The three experiments are one `experiment=` override apart, and the two arms are
@@ -61,6 +68,21 @@ request_timeout: 900
 # asyncio's default executor — max_concurrent_runs is threads, so a job with too few CPUs
 # silently runs fewer than this. Give the job >= 16 CPUs.
 max_concurrent_runs: 5
+
+# ── how each arm is NAMED in the published run ────────────────────────────────
+# The published repo name is `<today>-colosseum-jira-<experiment>-<label>`. The label
+# cannot be derived from the adapter repo id: that id already carries its OWN production
+# date and its hardware/rank/launcher detail, so gluing it on double-dates the name and
+# blows past the Hub's 96-character limit (measured: 119). The naming law says hardware,
+# rank and launcher are not identity — so the label keeps the model and the arm and drops
+# the rest. Written out per arm rather than regexed off the id, because an arm label is a
+# scientific claim about what distinguishes the arm and not a string transformation.
+# An unlisted target is refused before anything is pushed.
+arm_labels:
+  LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64:
+    qwen36_table2_only_9284
+  LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch:
+    qwen36_difficult_advice_chunk_only_702
 
 # ── the judge: the SECONDARY measure ──────────────────────────────────────────
 # Regret is primary; this reads what the agents SAID. Kept because Colosseum's paper

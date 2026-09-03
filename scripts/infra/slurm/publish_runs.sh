@@ -38,4 +38,7 @@ set +a
 : "${HF_TOKEN:?not set — the push needs it; put it in ${REPO}/.env}"
 
 echo "=== finishing Colosseum runs ==="
+# HF_ORG from .env above names the GROUP org; the driver overrides it with its own
+# --hf-org (default: the personal namespace these runs belong to) and prints the
+# destination before it pushes anything. Pass --hf-org here to send them elsewhere.
 python scripts/eval/publish_colosseum.py "$@"

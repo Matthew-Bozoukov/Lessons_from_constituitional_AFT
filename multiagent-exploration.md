@@ -84,7 +84,7 @@ EXPERIMENTS=collusion   bash scripts/infra/slurm/submit_colosseum.sh
 EXPERIMENTS=single      bash scripts/infra/slurm/submit_colosseum.sh
 EXPERIMENTS=cooperation bash scripts/infra/slurm/submit_colosseum.sh
 
-# 3. Back on a login node: judge the episodes, push every run dir to HF.
+# 3. Back on a login node: judge the episodes, push every run dir to kunwar45 on HF.
 bash scripts/infra/slurm/publish_runs.sh
 ```
 
@@ -105,6 +105,40 @@ control coalition captured on the same ticket sets.
 `--tensor-parallel-size`, so one server is one GPU and a 48GB L40S cannot hold it. L40S
 schedules far sooner on this cluster, which makes this the main queueing cost. The job
 re-checks the card on the node and exits in seconds rather than wasting the allocation.
+
+## Where the results are published
+
+To **`kunwar45`** (a personal namespace), not the group org the rest of the repo uses:
+
+```
+kunwar45/2026-09-03-colosseum-jira-collusion-qwen36-table2-only-9284
+kunwar45/2026-09-03-colosseum-jira-collusion-qwen36-difficult-advice-chunk-only-702
+kunwar45/2026-09-03-colosseum-jira-single-…            (× 2 arms)
+kunwar45/2026-09-03-colosseum-jira-cooperation-…       (× 2 arms)
+```
+
+`src.huggingface.hf_org` resolves the namespace from `HF_ORG` in the environment and
+refuses to take one from a config, so `scripts/eval/publish_colosseum.py --hf-org`
+sets that variable; it defaults to `kunwar45` and prints the destination before pushing.
+
+Three consequences:
+
+- **The group dashboard will not show these runs.** It discovers eval runs by org plus
+  tags, so runs outside that org are invisible to it. Publish to the group org instead
+  (`--hf-org LASR-Callum`) if they should appear.
+- The two adapters under test are still **read** from their own org. `HF_ORG` governs
+  pushes only.
+- `uv run evals --name colosseum_jira` must be given **`--no-push`**. This eval publishes
+  through `publish_colosseum.py`, which is the only place that knows the personal
+  namespace and the short arm labels; run_eval's own push would use the group org and the
+  full adapter id. It fails at preflight rather than after the episodes, but it fails.
+
+Arm labels are written out per arm in the config (`arm_labels`) rather than derived from
+the adapter repo id. That id already carries its own production date and its rank,
+batching and launcher detail, so reusing it double-dates the run name and overshoots the
+Hub's 96-character limit — measured at 119 for the treatment arm. `tests/test_colosseum_publish.py`
+asserts all six names pass the naming gate, so that failure surfaces in CI rather than on
+a login node with the GPU bill already paid.
 
 ## Statistics
 
