@@ -43,3 +43,9 @@ serving:
   # scientific record). 16384 = the window the Qwen3.6 sweep was tuned at, previously an
   # implicit family default (moved here 2026-08-05).
   context_window: 16384
+  # The ODCV agent acts through tool calls; without the served tool-call parser vLLM
+  # returns them as raw text and every scenario reports ok with an EMPTY transcript
+  # (docs/GOTCHAS.md / CLAUDE.md gotcha). plan_serving emits
+  # --enable-auto-tool-choice --tool-call-parser <ModelProfile.serving.tool_call_parser>
+  # (qwen3_xml for Qwen3.6) only when this is set.
+  needs_tool_calls: true

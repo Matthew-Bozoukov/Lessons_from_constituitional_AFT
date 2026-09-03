@@ -1,6 +1,35 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-08-31 — Ablated difficult-advice-702: outcome-deliberation stripped, retrained (2 seeds)
+
+**Hypothesis.** The difficult-advice reasoning/answers carry outcome-deliberation (weighing
+what happens under each choice, post-recommendation justification). Ablating it — keeping
+reasoning to first+last paragraph and trimming answers to the advice only — isolates whether
+that deliberation is load-bearing for the alignment effect, vs. the bare recommendation.
+
+**Method.** Over the 702 principle-scoped (chunk-only) difficult-advice rows of
+`LASR-Callum/2026-08-21-table2-9284-difficult-advice-principle-scoped-702-train-mixture`:
+reasoning -> first+last paragraph (middle removed); answer -> lead-in + post-recommendation
+deliberation cut to the advice (Sonnet-5 marked advice_start/tail_start, temp 0, gemini-3.1-pro
+fallback for the ~1% content-filter blocks); + a narrow last-paragraph fallback-sentence edit
+(17/702, matched to the reviewed rate after an over-broad first pass was discarded). Standard
+9,284 SFT rows kept byte-identical. Mixture pushed to
+`LASR-Callum/2026-08-31-table2-9284-difficult-advice-ablated-702-train-mixture`
+@3133940918707b (9,986 rows, 7.03% DA). QLoRA r64 on Qwen3.6-27B, 1 epoch, global batch 16,
+lr 1e-4 cosine, dynamic batching, thinking:true, 2xH200 DDP per seed, on Vast.ai (2 pods).
+
+**Result.** Both seeds trained clean (assistant-only loss 42.7% supervised; train_loss 0.878
+both). Adapters:
+`LASR-Callum/qwen3.6-27b-lora-t2-9284-da-ablated-702-r64-dynbatch-seed{0,42}` (verified
+training_meta.json). Config: configs/train/lora_qwen36_t2_9284_da_ablated_702_dynbatch_2xh200_seed{0,42}.yaml
+(branch ablated-702-train). Vast instances torn down, 0 active.
+
+**Next steps.** ODCV-Bench (+ MMLU/capability) on both adapters vs the un-ablated chunk-only-702
+control (`qwen3.6-27b-lora-t2-9284-da-chunk-only-702-r64-dynbatch`) and the numina control, to
+test whether stripping outcome-deliberation preserves or degrades the misalignment reduction.
+
+
 ## 2026-08-31 — The push org lives in `.env` alone: `HF_ORG`, resolved at push time
 
 **Change.** Every HF push destination was previously half-written in a config
