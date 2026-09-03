@@ -497,3 +497,16 @@ def test_a_repo_that_is_not_a_published_run_is_not_mistaken_for_one(monkeypatch)
 
     monkeypatch.setattr(vllm, "hf_download", no_such_file)
     assert vllm.resolve_answers_target("org/some-plain-dataset") is None
+
+
+def test_an_adapter_is_served_on_the_base_commit_it_was_trained_against():
+    """A LoRA is a diff on a base; serving it on today's head of that base is a different
+    model. The training stamp records the commit, and the spec carries it to vLLM."""
+    stamped = _spec_from_files("org/2026-09-04-qwen36-8-da-10", ADAPTER_CONFIG,
+                               {"thinking": True, "base_model_revision": "abc123"})
+    assert stamped.base_revision == "abc123"
+    assert stamped.base_revision_from == "training_meta"
+    # An older adapter with no stamp leaves it unset here; resolve_target then falls back
+    # to the base's head and records that it did.
+    unstamped = _spec_from_files("org/old-adapter", ADAPTER_CONFIG, {"thinking": True})
+    assert unstamped.base_revision is None and unstamped.base_revision_from is None

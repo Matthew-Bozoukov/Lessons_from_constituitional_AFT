@@ -75,6 +75,13 @@ class TargetSpec:
     # and recorded in run_meta, so the run names the weights it measured and not the head
     # of a repo that may have moved since. None for an API target (no artifact).
     revision: str | None = None
+    # The commit of the BASE model this arm is served on. For a full model it is
+    # `revision`. For an adapter it is what training recorded (`base_model_revision` in
+    # training_meta) — the weights the diff was trained against — and only when an older
+    # adapter has no such stamp is it the base repo's head at eval time, which run_meta
+    # then says. None for an API target.
+    base_revision: str | None = None
+    base_revision_from: str | None = None   # "training_meta" | "head at eval" | None
     # An ANSWERS target: the HF dataset repo of a PRIOR run of this eval, whose
     # `rollouts/` already holds this model's generations. Nothing is served — the answers
     # exist — so an arm resolved this way costs no GPU. Only evals whose generations are
@@ -157,6 +164,7 @@ def _spec_from_files(hf_path: str, adapter_config: dict | None, training_meta: d
             f"{hf_path} is a LoRA adapter with no training_meta.json — the eval framework "
             "infers thinking mode from that stamp and never guesses. Backfill it from the "
             "arm's training config (see scratch/backfill_training_meta.py), then rerun.")
+    stamped = training_meta.get("base_model_revision") or None
     return TargetSpec(
         hf_path=hf_path,
         base_model=adapter_config["base_model_name_or_path"],
@@ -164,6 +172,8 @@ def _spec_from_files(hf_path: str, adapter_config: dict | None, training_meta: d
         mode=_mode_from_training_meta(training_meta),
         model_key=model_key,
         lora_rank=int(adapter_config.get("r", 32)),
+        base_revision=stamped,
+        base_revision_from="training_meta" if stamped else None,
     )
 
 
@@ -249,14 +259,23 @@ def resolve_target(hf_path: str) -> TargetSpec:
         spec = resolve_answers_target(hf_path)
         if spec:
             return replace(spec, revision=_repo_sha(hf_path, "dataset"))
-        return replace(_spec_from_files(hf_path, None, None), revision=_repo_sha(hf_path))
+        sha = _repo_sha(hf_path)
+        return replace(_spec_from_files(hf_path, None, None), revision=sha,
+                       base_revision=sha, base_revision_from="target")
     try:
         with open(hf_download(hf_path, "training_meta.json")) as f:
             training_meta = json.load(f)
     except EntryNotFoundError:
         training_meta = None
-    return replace(_spec_from_files(hf_path, adapter_config, training_meta),
+    spec = replace(_spec_from_files(hf_path, adapter_config, training_meta),
                    revision=_repo_sha(hf_path))
+    if spec.base_revision is None:
+        # An adapter from before the stamp existed: nothing recorded which base commit it
+        # was trained against, so the best that can be done is to serve the head and SAY
+        # so in run_meta, rather than serve it silently as if it were pinned.
+        spec = replace(spec, base_revision=_repo_sha(spec.base_model),
+                       base_revision_from="head at eval")
+    return spec
 
 
 def pin_template(template_text: str, mode: str) -> str:
@@ -739,6 +758,7 @@ class VllmServer:
         self.executor = executor if executor is not None else LocalExec(work_dir)
         self.base_model: str | None = None
         self.mode: str | None = None
+        self.base_revision: str | None = None
         self.running = False
         self._loaded_loras: set[str] = set()
 
@@ -758,7 +778,10 @@ class VllmServer:
         """
         adapter_dir = (self.executor.fetch_adapter(spec.hf_path, spec.revision)
                        if spec.adapter else None)
-        if not self.running or self.base_model != spec.base_model or self.mode != spec.mode:
+        # A different base COMMIT is a different base: two adapters trained against
+        # different revisions of one model id must not share a server by LoRA swap.
+        if (not self.running or self.base_model != spec.base_model
+                or self.base_revision != spec.base_revision or self.mode != spec.mode):
             self.stop()
             self._start(spec, adapter_dir)
         elif spec.adapter and spec.model_key not in self._loaded_loras:
@@ -785,9 +808,9 @@ class VllmServer:
         argv = self.executor.python_argv + [
             "-m", "vllm.entrypoints.openai.api_server",
             "--model", spec.base_model, "--served-model-name", "base",
-            # A full-model target is its own base, so vLLM serves the commit the run
-            # resolved. An adapter's base is a different repo and is not pinned here.
-            *(["--revision", spec.revision] if spec.revision and not spec.adapter else []),
+            # The base at the commit this arm was trained against (or, for a full model,
+            # resolved to) — never whatever the base repo's head happens to be today.
+            *(["--revision", spec.base_revision] if spec.base_revision else []),
             "--dtype", "bfloat16",
             "--max-model-len", str(plan["context_window"]),
             "--gpu-memory-utilization", "0.94",
@@ -812,6 +835,7 @@ class VllmServer:
                      "--lora-modules", f"{spec.model_key}={adapter_dir}"]
         self.executor.start_server(argv, {"VLLM_ALLOW_RUNTIME_LORA_UPDATING": "1"})
         self.base_model, self.mode, self.running = spec.base_model, spec.mode, True
+        self.base_revision = spec.base_revision
         self._loaded_loras = {spec.model_key} if spec.adapter else set()
         self._wait_healthy()
 
@@ -843,6 +867,6 @@ class VllmServer:
 
     def stop(self) -> None:
         self.executor.stop_server()
-        self.base_model = self.mode = None
+        self.base_model = self.mode = self.base_revision = None
         self.running = False
         self._loaded_loras = set()
