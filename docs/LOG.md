@@ -51,13 +51,25 @@ mechanism that put the other kinds in. Deterministic comparison in
 on every length and style metric). The estimator prices the full 2,000-row run at $131
 from assumed tokens (baseline measured $234; this arm's prompts are shorter).
 
-**Next steps.** (1) Read the four transcripts
-(`output/difficult_advice_no_constitution/2026-09-03_no_constitution_smoke_transcripts.md`
-or the HF smoke repo) — the guideline wording lives in one place in the config and is the
-whole arm. (2) A 40-scenario smoke (`--overrides total_scenarios=40`, ~$2.50) to see whether
-scenario diversity holds without a principle anchor. (3) Full run at 2,000 (re-date
-`hf_repo` to the production day), draw 702 by seed into a table-2 mixture, train with the
-baseline's train config, ODCV × 3 seeds against principle-scoped 702.
+**Result (full run, 2026-09-03 16:46–17:47, 716 rows).** Launched at commit `b55ae2f`
+with `--overrides total_scenarios=716,budget_usd=80`, restarted at stage 4 with
+`--ablate corpus --resume` when Kunwar asked to skip pattern_scan. **716 of 716 rows
+survived every stage** — the principle-scoped baseline lost 8 of 716 to content-filter
+refusals at refine and rewrite; without any constitution framing, none were refused. Spend
+$43.04 (refine $14.91, rewrite $23.95, drafts $4.18; plus ~$1 from the first launch),
+61 min wall clock at 16 workers. Median reasoning + reply 5,560 chars (p10 4,587, p90
+6,687) against the baseline's 5,656. Published as
+`LASR-Callum/2026-09-03-difficult-advice-no-constitution-synth` (to be moved to
+`2026-09-03-da-no-const-synth` under main's derived-name law once this branch is rebased).
+Kunwar's decision on scope: the corpus is NOT required to vary kinds of wrong, so the
+concealment-heavy mix seen in the smokes is accepted as the arm.
+
+**Next steps.** (1) Rebase onto main's naming law: config becomes `da-no-const.yaml`,
+Hub repo moves to `2026-09-03-da-no-const-synth`. (2) Draw 702 by seed into a table-2
+mixture (one unit, so no `balance_by: trait_id`), train with the baseline's train config,
+ODCV × 3 seeds against principle-scoped 702. (3) The free corpus checks can be re-run on
+the published run with `uv run synth check --config <cfg> --run_dir <dir> --stage corpus
+--tier surface`.
 
 ## 2026-09-03 — The legacy name table: every pre-law Hub repo, and what its products are called
 
