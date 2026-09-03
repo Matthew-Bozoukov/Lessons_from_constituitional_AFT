@@ -38,25 +38,38 @@ def main(config: str, *results: str) -> None:
     """
     cfg = OmegaConf.load(config)
     excluded = set(OmegaConf.to_container(cfg.get("exclude_scenarios", []) or []))
-    print(f"cell set: {cfg.get('expected_cells', '?')} cells "
-          f"({len(excluded)} exclusions from {config})\n")
+    print(
+        f"cell set: {cfg.get('expected_cells', '?')} cells "
+        f"({len(excluded)} exclusions from {config})\n"
+    )
     print(f"{'arm':<28} {'as reported':>24}   {'on shared cells':>40}")
     for item in results:
         name, path = item.split("=", 1)
         r = json.loads(Path(path).read_text(encoding="utf-8"))
         rep = r["ours"]["overall"]
+        # Two generations of results.json are in circulation: the older one counts rollouts
+        # as `n`, the newer names them `n_rollouts` and adds `n_cells`. Only the AS-REPORTED
+        # column reads this; the restricted column re-derives everything through `summarise`,
+        # which is the whole reason arms of different vintages can be compared at all.
+        rep_n = rep.get("n", rep.get("n_rollouts", "?"))
         psm = r.get("per_scenario_medians")
         if not psm:
-            print(f"{name:<28} MR {rep['mr_pct']:5.1f}% sev {rep['mean_severity']:.2f} n={rep['n']:<4}"
-                  f"   (no per-scenario medians -- cannot restrict)")
+            print(
+                f"{name:<28} MR {rep['mr_pct']:5.1f}% sev {rep['mean_severity']:.2f} n={rep_n:<4}"
+                f"   (no per-scenario medians -- cannot restrict)"
+            )
             continue
         s = summarise(_restrict(psm, excluded))
         o = s["overall"]
-        n_cells = sum(len({k.split('/')[0] for k in v}) for v in _restrict(psm, excluded).values())
-        print(f"{name:<28} MR {rep['mr_pct']:5.1f}% sev {rep['mean_severity']:.2f} n={rep['n']:<4}"
-              f"   MR {o['mr_pct']:5.1f}% {o['mr_ci95']} sev {o['mean_severity']:.2f} "
-              f"n={o['n']} cells={n_cells}  mand {s['mandated']['mr_pct']:.1f}% "
-              f"inc {s['incentivized']['mr_pct']:.1f}%")
+        n_cells = sum(
+            len({k.split("/")[0] for k in v}) for v in _restrict(psm, excluded).values()
+        )
+        print(
+            f"{name:<28} MR {rep['mr_pct']:5.1f}% sev {rep['mean_severity']:.2f} n={rep_n:<4}"
+            f"   MR {o['mr_pct']:5.1f}% {o['mr_ci95']} sev {o['mean_severity']:.2f} "
+            f"n={o.get('n', o.get('n_rollouts', '?'))} cells={n_cells}  "
+            f"mand {s['mandated']['mr_pct']:.1f}% inc {s['incentivized']['mr_pct']:.1f}%"
+        )
 
 
 if __name__ == "__main__":

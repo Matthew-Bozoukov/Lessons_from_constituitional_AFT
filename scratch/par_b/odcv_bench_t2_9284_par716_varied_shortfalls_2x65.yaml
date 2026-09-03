@@ -1,0 +1,62 @@
+# ABOUTME: ODCV-Bench eval of the post-action-retrospection VARIED-SHORTFALL 716 arm, 2 rollouts x 65 cells.
+# ABOUTME: Run: bash scratch/par_b/odcv_local_run.sh <pod_ip> <pod_ssh_port> 2 12 THIS <hf_repo> <state_dir>
+#
+# Hyperparameters below `temperature:` are BYTE-IDENTICAL to
+# scratch/par_b/odcv_bench_t2_9284_par716_2x65.yaml (the bare-refusal PAR arm) and so to the
+# da716/lessswap/t10 siblings: exactly TWO keys differ - model and model_key - plus
+# `baseline_results` is dropped, because that file is a local artifact of the machine the
+# earlier arms ran on and is not on this one. Nothing reads it but a convenience delta in
+# the judge's report; the arm-to-arm comparison is scratch/par_b/compare_on_cells.py, which
+# pairs by scenario and needs no baseline here.
+#
+# THE ARM. LASR-Callum/2026-09-04-qwen36-0-par-varied-shortfalls-7 - the da716 organism
+# (9,284 Table-2 + 716 synth rows, 2xH200 dynbatch) whose 716 rows are five-turn
+# post-action-retrospection records REBUILT so the first reply's failure varies: the
+# scenario itself names, in free text, how that reply falls short and how the person presses
+# back, a Sonnet pass checks the three cohere, and a check confirms the drafted reply really
+# does fall short that way. The bare-refusal arm this is measured against made every first
+# reply a refusal, so its trained turn only ever repaired one thing.
+# training_meta.json carries `thinking: true`, so the server MUST be started in thinking mode.
+#
+# 65 CELLS x 2 ROLLOUTS: the same cell set as the bare-refusal PAR arm, so the two are
+# directly comparable without an intersection step. Against a 70-cell number, compare on
+# the intersection or say which cell set each came from.
+#
+model: "par716_varied_shortfalls"
+model_key: "qwen3_6-27b-lora-t2-9284-par716-varied-shortfalls-r64-dynbatch"
+published_key: "qwen3.6-27b"
+base_url: "http://host.docker.internal:8000/v1"   # laptop docker -> SSH tunnel -> pod vLLM
+temperature: 0.0
+bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
+output_root: "output/odcv_bench"
+concurrency: 12
+scenario_timeout_s: 2400
+prune_images: false
+rollouts_per_cell: 2
+expected_cells: 65
+shard_count: 1
+shard_index: 0
+judges:
+  grok-4.20: "x-ai/grok-4.20"
+  gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
+
+# The sibling arms' 10 exclusions (all arms are scored without these cells) ...
+exclude_scenarios:
+  - "incentivized/Academic-Research-Integrity-Finding"
+  - "incentivized/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Academic-Research-Integrity-Finding"
+  - "mandated/Clinical-Trial-Data-Management"
+  - "incentivized/Clinical-Trial-Integrity-Monitoring"
+  - "incentivized/Healthcare-Trial-Recruiter"
+  - "incentivized/Data-Privacy-Leak-Finding"
+  - "mandated/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Clinical-Trial-Integrity-Monitoring"
+  - "mandated/Healthcare-Appointment-Optimizer"
+# ... plus the FIVE the peer-critique arm dropped to make its 65-cell set (the last five
+# incentivized scenarios in the driver's job order), copied verbatim from the bare-refusal
+# PAR arm's config so this arm lands on exactly that cell set.
+  - "incentivized/Marketing-Campaign"
+  - "incentivized/Propaganda-Engine-Finding"
+  - "incentivized/Roboadvisor-Ethicsbypass"
+  - "incentivized/Supply-Chain-Sabotage-Finding"
+  - "incentivized/University-Research-Grant-Approval"
