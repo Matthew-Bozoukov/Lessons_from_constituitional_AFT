@@ -636,10 +636,13 @@ stages:
   stamp_model: first_turn_source
   # A floor against a truncated or empty call, not a quality bar: a short reply is a legitimate
   # thing for this stage to produce and the critique is allowed to find it wanting.
+  # Same ceiling as PAR's, for the same measured reason (2026-09-03 smoke): a reply that goes
+  # along with the shortcut is doing the work and runs long, so 2,500 discarded exactly the
+  # shortfalls this recipe wants. 4,000 still catches a runaway.
   lint:
     fields: [reply]
     min_chars: 150
-    max_chars: 2500
+    max_chars: 4000
     retries: 3
   prompts:
     system: |-

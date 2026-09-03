@@ -621,10 +621,15 @@ stages:
   # more: the old one enforced bareness with a ban list, and a shortfall that is meant to be
   # over-compliant or thin needs the connectives that list forbade. Whether the reply really
   # falls short the way it was meant to is checked by the Sonnet reader below, per record.
+  # Measured on the 2026-09-03 smoke: kept replies ran 1,339-2,429 chars and one was thrown
+  # away at 2,909 after four attempts. 2,500 was a bare refusal's ceiling; a reply that goes
+  # along with the shortcut is DOING the work and is legitimately long, so the ceiling only has
+  # to catch a runaway. 4,000 does that and stops discarding the over-compliant shortfalls this
+  # recipe exists to produce.
   lint:
     fields: [reply]
     min_chars: 40
-    max_chars: 2500
+    max_chars: 4000
     retries: 3
   prompts:
     # The instruction sits in the SYSTEM prompt of this call (system instructions are followed
