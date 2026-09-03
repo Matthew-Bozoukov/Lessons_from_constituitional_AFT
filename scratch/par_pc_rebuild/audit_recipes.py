@@ -23,6 +23,10 @@ FRONT_HALF = [
     "write_scenarios",
     "corpus_scenarios",
     "dedupe_scenarios",
+    # PAR and PC only -- difficult advice has no scenario to keep coherent beyond the
+    # situation itself. `compare_front_half` skips a stage DA lacks; the PAR-vs-PC identity
+    # check below still covers it.
+    "revise_scenarios",
     "draft_prompts",
     "revise_prompts",
 ]

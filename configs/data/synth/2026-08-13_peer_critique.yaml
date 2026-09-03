@@ -114,11 +114,13 @@ max_fail_pct: 12.0
 # 2026-09-03): $232.55 for 4,000 planned / ~1,980 kept documents. The document count fell
 # because `verify_first_turn` now drops the replies that did not fall short as planned -- PC's
 # own smoke had 2 of 5 refuse instead, and the prior on that gate is PAR's 0.9, which this
-# branch has already flagged as untested for the harder free-text question. 260 leaves headroom
+# branch has already flagged as untested for the harder free-text question. Re-estimated again
+# with the `revise_scenarios` coherence pass (~$29, one Sonnet call per surviving scenario):
+# $261.35. 290 leaves headroom
 # for
 # retries without leaving the guard meaningless. The priors are `assumed`, not measured; re-run
 # `uv run synth estimate --config <this file> --measured <smoke manifest>` after the smoke.
-budget_usd: 260.0
+budget_usd: 290.0
 
 smoke:
   total_scenarios: 8
@@ -156,6 +158,17 @@ models:
     temperature: 1.1          # diversity matters most here
     max_tokens: 8192
     assumed_tokens: {in: 700, out: 1400}
+  # `revise_scenarios` -- the coherence pass. Sonnet, and low temperature: this is repair,
+  # not invention. Added 2026-09-03 because the scenario stage became load-bearing -- it now
+  # writes `shortfall` and `pushback` as well as the situation, so one Haiku call at temperature
+  # 1.1 decides what every stage after it is built on. Cheapest model, highest temperature, most
+  # consequential output was the wrong place to leave unchecked.
+  revise_scenario:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.4
+    max_tokens: 2048
+    reasoning: {enabled: false}
+    assumed_tokens: {in: 1100, out: 500}
   # Stage 5 -- difficult advice's draft model, same settings.
   draft:
     model: "anthropic/claude-haiku-4.5"
@@ -439,6 +452,99 @@ stages:
   drop_when:
   - embedding_dup
   max_drop_share: 0.05
+# --- the coherence pass: do the four fields describe ONE story? -----------------------
+# ADDED 2026-09-03. The scenario stage now invents four things at once -- the situation, the
+# shortcut it tempts, how the assistant's reply will fall short, and how the person presses
+# afterwards -- and every stage after it is built on all four. The failure that matters is not
+# a bad situation; it is four fields that each read well and do not describe the same story: a
+# shortfall that does not follow from the shortcut, or a pushback answering a reply nobody
+# would have sent. PC's own smoke showed the downstream cost of an incoherent set.
+#
+# This is a REVISION, not a gate. It repairs the set and records what it changed; it drops
+# nothing. Two gates already shrink this corpus (`filter_prompts` at ~57%, `verify_first_turn`
+# at a prior of 0.9) and their attrition compounds; a third would need its own measured prior
+# before it earned the right to delete anything. What it repairs here is what the grey-area
+# rater two stages later would otherwise have to reject.
+#
+# After `dedupe_scenarios` on purpose: a duplicate is cheaper to drop than to revise.
+- name: revise_scenarios
+  kind: llm_json
+  model: revise_scenario
+  checkpoint: scenario_id
+  save:
+    situation: situation
+    shortcut: shortcut
+    shortfall: shortfall
+    pushback: pushback
+    domain: domain
+    scenario_changes: changes
+  optional:
+  - changes
+  prompts:
+    system: |-
+      You check that the pieces of a training scenario describe one coherent story, and you
+      repair them where they do not. You change as little as possible and you never invent a
+      different scenario.
+    user: |-
+      A scenario for a training corpus has four parts. They were written together in one pass
+      and may not hold together. Here is the principle the scenario is meant to put under
+      pressure, and it is the only principle you are shown:
+
+      <target_principle name="{trait_name}">
+      {trait_text}
+      </target_principle>
+
+      <situation>
+      {situation}
+      </situation>
+
+      <shortcut>
+      {shortcut}
+      </shortcut>
+
+      <shortfall>
+      {shortfall}
+      </shortfall>
+
+      <pushback>
+      {pushback}
+      </pushback>
+
+      Read them as one story: a person is in this situation, there is a tempting shortcut, an
+      assistant answers in the way the shortfall describes, and the person then presses back the
+      way the pushback describes.
+
+      Check each of these, and repair what fails:
+      - **The situation is real.** It could happen to a person, the pressure is concrete, and
+        whoever is under it is sympathetic and after something legitimate.
+      - **The shortcut engages THIS principle**, specifically, rather than being wrong in
+        general. If the tension would survive with the principle removed, it is the wrong
+        shortcut for this scenario.
+      - **The shortfall follows from the situation.** It is a mistake a capable assistant would
+        plausibly make on THIS request -- not a caricature, not incompetence -- and it costs this
+        person something real. It describes what the reply does, never the rule it breaks, and
+        never what the assistant should have done instead.
+      - **The pushback answers the shortfall.** It is what this person would say having received
+        exactly that reply -- not a reply to some other reply, and not a reaction to a refusal if
+        the shortfall was not a refusal. It presses; it does not review: the person does not name
+        a value, diagnose the reply, or say what a good answer would have contained. They know
+        only that they are not helped.
+      - **They are about ONE case.** The same person, the same request, the same stakes, all the
+        way through.
+
+      Repair only what fails. If a part already holds, return it unchanged -- returning it
+      reworded is a cost with no benefit, because a corpus of Sonnet-rewritten situations is a
+      corpus in one voice. If the set cannot be repaired without inventing a different scenario,
+      make the smallest change that makes it cohere and say so in `changes`.
+
+      Return ONLY JSON, with all six keys:
+      {{"domain": "<one or two words>",
+        "situation": "<3-5 sentences, third person, no dialogue>",
+        "shortcut": "<1 sentence: the norm-violating action they are tempted by>",
+        "shortfall": "<1-2 sentences: how the assistant's reply falls short, and what that costs this person>",
+        "pushback": "<1 sentence: how this person presses back after that reply>",
+        "changes": "<1-2 sentences on what you changed and why, or 'nothing' if the set already held>"}}
+
 - name: draft_prompts
   kind: llm_json
   model: draft

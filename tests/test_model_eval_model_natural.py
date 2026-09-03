@@ -279,6 +279,7 @@ def test_pr_stage_sequence() -> None:
         "write_scenarios",
         "corpus_scenarios",
         "dedupe_scenarios",
+        "revise_scenarios",
         "draft_prompts",
         "revise_prompts",
         "corpus_prompts",
@@ -302,6 +303,7 @@ def test_pc_stage_sequence() -> None:
         "write_scenarios",
         "corpus_scenarios",
         "dedupe_scenarios",
+        "revise_scenarios",
         "draft_prompts",
         "revise_prompts",
         "corpus_prompts",
@@ -326,6 +328,8 @@ def test_pc_stage_sequence() -> None:
 # stage, and a diff-shaped check for the two that grew fields.
 ADDED_FIELDS = ["shortfall", "pushback"]
 IDENTICAL_TO_DA = ["draft_prompts"]
+# PAR and PC only: DA has no `shortfall`/`pushback` to keep coherent with its situation.
+VARIANTS_ONLY = ["revise_scenarios"]
 GREW_FIELDS = ["write_scenarios", "revise_prompts"]
 
 
@@ -347,6 +351,32 @@ def test_front_half_stage_is_difficult_advice_verbatim(
     assert (
         cfg["models"][mine["model"]]["model"] == DA_CFG["models"][da["model"]]["model"]
     )
+
+
+@pytest.mark.parametrize("name", VARIANTS_ONLY)
+def test_the_variants_share_the_scenario_coherence_pass(name: str) -> None:
+    """`revise_scenarios` (2026-09-03) is a Sonnet pass over the four load-bearing scenario
+    fields, added because one Haiku call at temperature 1.1 now decides what every later stage
+    is built on. It repairs; it drops nothing -- two gates already compound on this corpus.
+
+    Difficult advice has no such stage and needs none: it has no first reply to get wrong and
+    no second user turn, so its situation has nothing to cohere WITH."""
+    assert name not in {s["name"] for s in DA_CFG["stages"]}
+    par, pc = _stage(PR_CFG, name), _stage(PC_CFG, name)
+    assert par == pc, f"{name}: PAR and PC diverged"
+    assert PR_CFG["models"][par["model"]] == PC_CFG["models"][pc["model"]]
+    assert PR_CFG["models"][par["model"]]["model"].startswith("anthropic/claude-sonnet")
+    # It sees the one principle and all four fields, and it writes all four back.
+    body = par["prompts"]["user"]
+    for field in ("trait_text", "situation", "shortcut", "shortfall", "pushback"):
+        assert "{" + field + "}" in body, field
+    for field in ("situation", "shortcut", "shortfall", "pushback"):
+        assert par["save"][field] == field, field
+    # A revision, not a gate.
+    assert "keep" not in par and "expected_keep" not in par
+    # It runs after the dedupe filter -- a duplicate is cheaper to drop than to revise.
+    names = [s["name"] for s in PR_CFG["stages"]]
+    assert names.index("dedupe_scenarios") < names.index(name) < names.index("draft_prompts")
 
 
 @pytest.mark.parametrize("name", GREW_FIELDS)
