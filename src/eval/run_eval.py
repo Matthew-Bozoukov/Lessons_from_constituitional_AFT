@@ -128,6 +128,9 @@ def _publish(out_dir: Path, *, name: str, model_key: str, mode: str, target: str
         (metadata_dir / "run_summary.json").write_text(json.dumps(summary, indent=2))
         results_dir.rmdir()
     assert_layout(out_dir)
+    # `undated` for the same reason as the out_dir above, and it matters more here: this
+    # row is written BEFORE the push check, so a doubled-date name would refuse the
+    # summary of a run that had already finished and paid for its GPU.
     row_path = (Path("output/eval_summaries")
                 / f"{_run_repo(name, model_key, run_name)}_{timestamp()}.json")
     row_path.parent.mkdir(parents=True, exist_ok=True)
@@ -160,6 +163,11 @@ def main(argv: list[str] | None = None) -> None:
                         help="local tunnel bind address with --server. Default: 127.0.0.1, or "
                              "the docker bridge (172.17.0.1) for docker evals on linux so "
                              "scenario containers can reach the tunnelled endpoint.")
+    parser.add_argument("--ssh-key",
+                        help="private key for --server when it is a literal ip:port. An "
+                             "ALIAS carries its own IdentityFile, so this is only for the "
+                             "address form, where ssh would otherwise offer just the "
+                             "default-named identities.")
     parser.add_argument("--push-env", action="store_true",
                         help="with --server: write HF_TOKEN + HF_ORG (only) to the host's "
                              ".env if it has none. Deliberate per-host action; the rest of "
@@ -202,7 +210,8 @@ def main(argv: list[str] | None = None) -> None:
             "172.17.0.1" if EVALS[args.name].needs_docker
             and sys.platform not in ("darwin", "win32")
             else "127.0.0.1")
-        executor = SshExec(args.server, port=args.port, bind=bind)
+        executor = SshExec(args.server, port=args.port, bind=bind,
+                           identity=args.ssh_key or "")
         executor.check_ready()
         if args.push_env:
             executor.push_hf_env(Path(".env"))

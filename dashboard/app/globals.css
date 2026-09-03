@@ -3397,3 +3397,77 @@ html {
   .transcript-pane { border-left: 0; border-top: 1px solid var(--border); }
   .transcript-pane:first-child { border-top: 0; }
 }
+
+/* ---------------------------------------------------------------------------
+   MoralBench: N-run comparison. Bars are drawn against each block's REACHABLE
+   range (floor..ceiling), never 0..max, because both binary options score and the
+   floor is 60-74% of the ceiling — a 0-based bar would make every arm look alike.
+   The chance marker sits in the same coordinate space so "below chance" is visible
+   rather than arithmetic the reader has to do. */
+.mb-explorer { display: flex; flex-direction: column; gap: 18px; }
+.mb-pickers { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+.mb-hint { color: var(--muted); font-weight: 400; }
+.mb-runlist { display: flex; flex-wrap: wrap; gap: 6px; }
+.mb-runchip {
+  display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+  background: var(--panel); color: var(--text-soft);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 5px 10px; font-size: 12.5px; font-family: inherit;
+}
+.mb-runchip:hover:not(:disabled) { border-color: var(--border-bright); color: var(--text); }
+.mb-runchip[aria-pressed="true"] { background: var(--bg-raised); color: var(--text); }
+.mb-runchip:disabled { opacity: 0.35; cursor: not-allowed; }
+.mb-runchip em { color: var(--muted); font-style: normal; font-size: 11px; }
+.mb-runchip .mb-date { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.mb-swatch {
+  width: 9px; height: 9px; border-radius: 2px; display: inline-block;
+  border: 1px solid var(--border-bright); flex: none;
+}
+.mb-tabs { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.mb-tabs button {
+  background: var(--panel); color: var(--text-soft); border: 0; cursor: pointer;
+  padding: 7px 14px; font-size: 13px; font-family: inherit;
+}
+.mb-tabs button[aria-pressed="true"] { background: var(--bg-raised); color: var(--text); }
+.mb-caveat {
+  color: var(--text-soft); font-size: 13px; line-height: 1.6; max-width: 78ch;
+  border-left: 2px solid var(--border-bright); padding-left: 14px; margin: 0;
+}
+.mb-block { border-top: 1px solid var(--border); padding-top: 14px; }
+.mb-block-head {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin-bottom: 10px;
+}
+.mb-block-head h4 { margin: 0; font-size: 15px; }
+.mb-range { color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.mb-note { color: var(--muted); font-size: 12px; margin: 6px 0 10px; max-width: 78ch; }
+.mb-row {
+  display: grid; grid-template-columns: minmax(140px, 26%) 1fr auto;
+  gap: 12px; align-items: center; padding: 4px 0;
+}
+.mb-name {
+  font-size: 12px; color: var(--text-soft);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mb-track {
+  position: relative; background: var(--bg-raised); border-radius: 4px; height: 12px;
+}
+.mb-fill { height: 12px; border-radius: 4px; min-width: 2px; display: block; }
+.mb-chance {
+  position: absolute; top: -3px; bottom: -3px; width: 2px;
+  background: var(--text); opacity: 0.55;
+}
+.mb-val {
+  font-size: 12px; color: var(--text); min-width: 132px; text-align: right;
+  font-variant-numeric: tabular-nums; display: flex; gap: 8px; justify-content: flex-end;
+  align-items: baseline;
+}
+.mb-val em { color: var(--muted); font-style: normal; font-size: 11px; }
+.mb-flag { color: var(--amber); font-weight: 500; font-size: 11px; }
+.mb-foundation { border-left: 3px solid var(--border-bright); padding-left: 14px; }
+.mb-health { border-top: 1px solid var(--border); padding-top: 14px; }
+.mb-health h4 { margin: 0 0 10px; font-size: 15px; }
+.mb-warn { color: var(--amber); }
+@media (max-width: 700px) {
+  .mb-row { grid-template-columns: 1fr; gap: 4px; }
+  .mb-val { justify-content: flex-start; text-align: left; }
+}

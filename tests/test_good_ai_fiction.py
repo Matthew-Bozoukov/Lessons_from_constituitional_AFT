@@ -286,7 +286,7 @@ def test_library_picks_are_filtered_to_the_unit_and_deterministic() -> None:
 # --- the prompts ----------------------------------------------------------------------
 
 def test_the_completion_stage_never_sees_more_than_its_own_principle() -> None:
-    """Chunk-only, matching the difficult-advice default since 2026-08-24."""
+    """Principle-scoped, matching the difficult-advice default since 2026-08-24."""
     for name in ("write_scenarios", "draft_prompts", "write_story", "revise_story"):
         blob = yaml.safe_dump(_stage(name))
         assert "{constitution}" not in blob, f"{name} injects the whole constitution"

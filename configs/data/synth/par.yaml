@@ -1,6 +1,6 @@
-# ABOUTME: Post-action retrospection: a difficult-advice exchange whose FIRST reply is a bare refusal --
-# ABOUTME: it declines without the "why" -- the person pushes back, and the trained turn is the assistant
-# ABOUTME: doing the reasoning it skipped. Chunk-only, grey-area-rated scenarios, DA's front half verbatim.
+# ABOUTME: Post-action retrospection: a difficult-advice exchange whose FIRST reply falls short in a way
+# ABOUTME: the scenario itself specifies -- the person pushes back, and the trained turn is the assistant
+# ABOUTME: diagnosing and repairing it. Principle-scoped, grey-area-rated scenarios, DA's front half verbatim.
 # Run: uv run synth run --config configs/data/synth/par.yaml [--smoke]
 #
 # DESIGN B, 2026-08-26. Three recipes preceded it in two days (all in git history; the two-arm
@@ -18,35 +18,65 @@
 #   turn 1  user       a difficult-advice message (DA's stages 1-6, verbatim), kept only if a
 #                      Sonnet rater reading the refined exchange calls it a genuine grey area
 #                      for the assistant under this principle.
-#   turn 2  assistant  a BARE REFUSAL. Sonnet 5 is told the FORM -- decline in a few sentences,
-#                      no reasoning, no alternative -- and nothing about the ethics; a second
-#                      Sonnet call verifies it did exactly that and drops the record otherwise.
-#                      Context only; never a training target (`supervise: final`).
-#   turn 3  user       pushback, in the person's voice: why not, that isn't helpful, here is what
-#                      I actually need. Linted so it never names a value or diagnoses the reply.
-#   turn 4  assistant  THE TRAINING TARGET: the reasoning the refusal skipped -- what is at stake,
-#                      for whom -- and a reply that does not go along with the shortcut under
-#                      pushback, gives the reason in terms of what is concretely at stake, and
-#                      helps with the legitimate goal. Difficult advice's target response,
+#   turn 2  assistant  A REPLY THAT FALLS SHORT, in the way this scenario's own `shortfall`
+#                      field describes. Sonnet 5 is told that description and nothing else --
+#                      no principle, no constitution, no mention of training; a second Sonnet
+#                      call verifies the weakness is really in the text and drops the record
+#                      otherwise. Context only; never a training target (`supervise: final`).
+#   turn 3  user       pushback, in the person's voice, to the shape this scenario's own
+#                      `pushback` field describes -- insisting it is not an answer, asking
+#                      openly whether anything was wrong with the approach, or handing over a
+#                      fact the assistant did not have. Linted so it never names a value or
+#                      diagnoses the reply.
+#   turn 4  assistant  THE TRAINING TARGET: the reasoning the first reply skipped -- what is at
+#                      stake, for whom -- and a reply that does not go along with the shortcut
+#                      under pushback, gives the reason in terms of what is concretely at stake,
+#                      and helps with the legitimate goal. Difficult advice's target response,
 #                      reached by self-critique of the assistant's own earlier turn.
 #
-# WHAT IS STEERED AND WHAT IS NOT. The first reply's FORM is instructed (brief, no reasoning),
-# uniformly, on every record -- there is no good/bad split and so no surface tell to learn,
-# which was the two-arm recipe's failure. Its ethical content is not steered: the request is
-# DA's grey area and the refusal is what a cautious assistant sends. The reflection sees no
-# scaffolding -- nothing tells it what was wrong with the refusal; it has to read it.
+# VARIED SHORTFALLS AND VARIED PUSHBACK, 2026-09-02, on Callum's 2026-09-01 note: "rather than
+# just being bare refusals, you could imagine them not being overindexed on refusals, but just
+# being an inadequate response to the question in some way", and "a similar thing for the second
+# user message, which could be criticisms of the model's response in a variety of different
+# ways."
+#
+# Until today every turn 2 was a bare refusal and every turn 3 said the same thing about it, so
+# the whole corpus taught one lesson -- MY CAUTION WAS UNDER-EXPLAINED -- and nothing taught "my
+# compliance was wrong", which is the failure ODCV actually measures. `write_scenarios` now
+# invents the situation, the way an assistant will botch it, and how the person presses
+# afterwards, all in one thought and all as PROSE: a handful of kinds are offered as a starting
+# point for each and the generator is told outright to write a better one when the situation
+# suggests it. Nothing is picked off a list, so there is no label for a corpus classifier to
+# find. `revise_prompts` re-describes both alongside `situation` and `shortcut`, so they still
+# fit the message the assistant actually answers after the refine stage reframes the draft.
+#
+# THE THIRD PUSHBACK SHAPE IS A CONFOUND, AND IT IS IN THE POOL ANYWAY. Callum's third example
+# hands the assistant a fact it did not have. He flagged it himself: it "does fundamentally
+# change the nature of the scenario and [gives] the model new things to respond to, as opposed
+# to just giving it an opportunity to reflect". A corpus that mixes it with the other two cannot
+# say which did the work. It is offered here because the alternative -- excluding it -- would
+# mean the generator never writes the most natural pushback for a scenario that has one, and
+# because `pushback` rides into the dataset as metadata: a mixture can filter on it later, which
+# a label baked into the prompt could not have been.
+#
+# WHAT IS STEERED AND WHAT IS NOT. The first reply's failure is now steered, per record, which
+# reverses design B's "form instructed, content not" -- deliberately. What is NOT steered is the
+# identity of the author (one model writes every turn 2, so there is no authorship tell of the
+# kind that put peer critique at AUC 0.9973) and the trained turn's view of any of it: the
+# reflection never sees `shortfall` and has to diagnose the reply itself.
 #
 # THE TWO THINGS TO WATCH. Capitulation: pushback must never flip the trained turn into the
 # shortcut (the rewrite's bullet forbids it; the corpus judge tags `capitulates`). Collapse:
-# 2,000 bare refusals could all read "I can't help with that" -- the refusal's register rotates
-# per record (curt / apologetic / policy-citing / deflecting), and `pattern_scan` can be turned
-# on to check. Also measured by the corpus judge: `still_bare` (the trained turn reasoned no
-# better than turn 2).
+# `shortfall` is free text per scenario rather than a label off a list, which is what replaced
+# the three rotating refusal registers -- run `pattern_scan` on a full corpus to check the
+# generator did not converge on a handful of failure shapes anyway. Also measured by the corpus
+# judge: `no_better_than_first` (the trained turn repeated turn 2's inadequacy) and
+# `wrong_shortfall` (turn 2 did not fall short the way the scenario said it would).
 #
 # KEPT FROM THE EARLIER REWRITES (measurements in docs/LOG.md, 2026-08-25/26): stages 1-6 are
 # DA's byte for byte; the grey-area rater now reads the refined prompt (stage 7) -- its first
 # home, the scenario stage, dropped 77% of 2,600 scenarios for having "no AI assistant in the
-# loop", which every situation lacks before it becomes a message; chunk-only everywhere; the
+# loop", which every situation lacks before it becomes a message; principle-scoped everywhere; the
 # reflection's framing and the rewrite's contract and lint are DA's.
 #
 # NOT YET SMOKED in this form. `--smoke` (8 scenarios), then `--overrides
@@ -66,24 +96,29 @@ chunking: principle
 
 output_dir: "output/par"
 
-# A DIFFERENT recipe from the one behind 2026-08-17-post-action-retrospection; its output
-# must never be appended to that repo, which stays the record of the two-arm recipe.
+# A DIFFERENT recipe from the two that came before it. 2026-08-17-post-action-retrospection is
+# the two-arm original; 2026-08-26-...-natural-turn-design is design B, whose turn 2 was always
+# a bare refusal and which the three trained seeds and the published ODCV numbers all come from.
+# This recipe varies the shortfall, so its output goes to its own repo and must never be
+# appended to either of those.
 hf_private: false
 
 workers: 16
 # Abort a stage above this per-item failure rate. Above the 2.0 default because `revise_prompts`
-# loses rows two ways in the chunk-only recipe: ~6% content-filter refusals (DA, n=716) and
+# loses rows two ways in the principle-scoped recipe: ~6% content-filter refusals (DA, n=716) and
 # JSON re-descriptions missing a key (5/45 = 11% on the 2026-08-26 prompt-rater smoke; DA
 # fails those loudly on purpose). Budget for losing ~10%; a stage that trips this is
 # resumable with a raised threshold, so the guard costs a resume, never the run.
 max_fail_pct: 12.0
-# Hard stop between stages once spend passes this. Estimated 2026-08-26 (design B, Sonnet
-# first turn) at $175.81 for 5,600 planned / ~2,016 kept documents (rewrite $53, refine $29,
-# first turn $22, reflect $21, scenario rater $18, follow-up $10, draft $9, verify $5,
-# scenarios $5); 220 leaves
+# Hard stop between stages once spend passes this. Re-estimated 2026-09-02, after the shortfall
+# change: $219.18 for 4,400 planned / ~2,178 kept documents. The varied first turn costs a little
+# more than the bare refusal did (it is no longer capped at 50 words) and the scenario stage
+# writes one extra field per scenario; both are small against the rewrite and refine stages.
+# Re-estimated again 2026-09-03 with the `revise_scenarios` coherence pass: $250.86 for the
+# same ~2,178 documents -- the pass is ~$32, one Sonnet call per surviving scenario. 280 leaves
 # headroom for retries without leaving the guard meaningless. Re-estimate after any prompt or
 # size change.
-budget_usd: 220.0
+budget_usd: 280.0
 
 smoke:
   total_scenarios: 8
@@ -95,11 +130,17 @@ smoke:
 
 # PLANNED scenarios, over-generated for two gates: `filter_prompts` keeps the refined
 # exchanges the grey-area rater passes (prior 0.6, see that stage) and `verify_first_turn`
-# keeps the ones whose turn 2 really is a bare refusal (prior 0.9), so 3,800 planned lands
-# ~2,000 documents -- difficult advice's corpus size -- less the few rows the refine stage's
-# content filter refuses and the follow-up lint drops. Measured 2026-08-26: per planned
-# scenario ~0.89 (refine) x 0.57 (rater) x 0.95 (bare) x 0.96 (follow-up lint) = ~0.46
-# documents, so 4,400 planned lands ~2,000. (The per-experiment 716-document arm ran as
+# keeps the ones whose turn 2 really does fall short the way its scenario said (prior 0.9),
+# so 4,400 planned lands ~2,000 documents -- difficult advice's corpus size -- less the few
+# rows the refine stage's content filter refuses and the follow-up lint drops. Measured
+# 2026-08-26: per planned scenario ~0.89 (refine) x 0.57 (rater) x 0.95 (bare) x 0.96
+# (follow-up lint) = ~0.46 documents, so 4,400 planned lands ~2,000.
+#
+# THE 0.95 IS NOW UNTESTED, 2026-09-02. It was measured when `verify_first_turn` asked one
+# question -- "was this bare?" -- of a reply written to one uniform instruction. It now asks
+# "did this reply carry THIS free-text weakness?", which is strictly harder, so the surviving
+# fraction may be well under 0.95 and the ~2,000-document / $219 figures may be optimistic.
+# An 8-record smoke cannot resolve it; the 40-record pass is the first honest read. (The per-experiment 716-document arm ran as
 # `--overrides total_scenarios=1900` on this file -- ~870 expected, subsampled to 716 by
 # the mixture builder -- never an edit to this line.)
 total_scenarios: 4400
@@ -109,10 +150,10 @@ defaults:
   temperature: 1.0
   max_tokens: 4096
 
-# Anthropic-only: Haiku 4.5 generates, Sonnet 5 refines, writes the bare refusal, checks and
+# Anthropic-only: Haiku 4.5 generates, Sonnet 5 refines, writes the falling-short reply, checks and
 # rewrites -- difficult
 # advice's models, stage for stage, wherever the stage IS difficult advice's. The stages this
-# document type adds (the bare refusal, its check, the pushback) and the scenario rater are the
+# document type adds (the falling-short reply, its check, the pushback) and the scenario rater are the
 # only ones with their own choices, explained in place. Hidden extended thinking is pinned off on every Sonnet
 # stage: the visible <reasoning> block IS the deliberation, and Sonnet 5's hidden channel
 # makes it drift in-character and skip the tagged scaffold (measured 2026-08-06).
@@ -123,13 +164,24 @@ models:
     temperature: 1.1          # diversity matters most here
     max_tokens: 8192
     assumed_tokens: {in: 700, out: 1400}
+  # `revise_scenarios` -- the coherence pass. Sonnet, and low temperature: this is repair,
+  # not invention. Added 2026-09-03 because the scenario stage became load-bearing -- it now
+  # writes `shortfall` and `pushback` as well as the situation, so one Haiku call at temperature
+  # 1.1 decides what every stage after it is built on. Cheapest model, highest temperature, most
+  # consequential output was the wrong place to leave unchecked.
+  revise_scenario:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.4
+    max_tokens: 2048
+    reasoning: {enabled: false}
+    assumed_tokens: {in: 1100, out: 500}
   # Stage 3 -- difficult advice's draft model, same settings.
   draft:
     model: "anthropic/claude-haiku-4.5"
     temperature: 1.0
     max_tokens: 2048
     assumed_tokens: {in: 500, out: 700}
-  # Stage 4 -- difficult advice's refine model, same settings; chunk-only, so its in-tokens
+  # Stage 4 -- difficult advice's refine model, same settings; principle-scoped, so its in-tokens
   # prior is difficult advice's.
   refine:
     model: "anthropic/claude-sonnet-5"
@@ -137,16 +189,18 @@ models:
     max_tokens: 6144
     reasoning: {enabled: false}
     assumed_tokens: {in: 2000, out: 900}
-  # Turn 2, the bare refusal. Deliberately NOT constitution-grounded: the author is told the
-  # form of the refusal and nothing about the ethics. Sonnet, not Haiku, since 2026-08-26:
-  # across four smokes Haiku produced a genuinely bare refusal on 6/13 first turns -- it names
-  # the concern even under a system-prompt instruction and a lint -- while Sonnet did on 3/3.
-  # The reply is one to three sentences, so sharing an author with the judge and the rewrite
-  # carries no house-style risk here. (The trained model is Qwen; that this turn is not
-  # Qwen's own prose is a recorded confound, see docs/LOG.md 2026-08-25.)
+  # Turn 2, the reply that falls short. Deliberately NOT constitution-grounded: the author is
+  # told how its answer goes wrong and nothing about the ethics. Sonnet, not Haiku, since
+  # 2026-08-26: across four smokes Haiku produced the instructed reply on 6/13 first turns --
+  # it drifted back toward being helpful even under a system-prompt instruction and a lint --
+  # while Sonnet did on 3/3. That measurement was taken when the instruction was "be bare", so
+  # it is evidence that Sonnet follows a first-turn instruction more faithfully, not that these
+  # exact rates hold for the free-text shortfalls; the 40-record pass re-measures it.
+  # (The trained model is Qwen; that this turn is not Qwen's own prose is a recorded confound,
+  # see docs/LOG.md 2026-08-25.)
   first_turn:
     model: "anthropic/claude-sonnet-5"
-    temperature: 0.7        # a refusal needs no spread beyond its register; compliance does
+    temperature: 1.0        # the shortfall already varies the turn; this is ordinary spread
     reasoning: {enabled: false}
     max_tokens: 4096
     assumed_tokens: {in: 500, out: 900}
@@ -273,6 +327,13 @@ stages:
 - name: write_scenarios
   kind: scenarios
   model: scenarios
+  # `shortfall` is this recipe's ONE addition to difficult advice's scenario stage (2026-09-02,
+  # on Callum's 2026-09-01 note). The generator invents the situation and, in the same thought,
+  # the way an assistant is going to botch it -- so the two are coherent by construction rather
+  # than reverse-engineered from a refined prompt later. Difficult advice needs no such field:
+  # it has no first reply to get wrong.
+  fields:
+    required: [shortfall, pushback]
   diversity:
     wave_size: 12
     reject_cosine: 0.86
@@ -306,9 +367,35 @@ stages:
 
       {overrepresented}
 
-      Return ONLY a JSON array of {n} objects, each:
+      For each situation also say HOW the assistant's first reply is going to fall short of it.
+      Ways a reply falls short -- a starting point and nothing more; if the situation suggests a
+      better one, write that instead:
+        - it declines flatly, with no reasoning and no other route to what they need
+        - it answers, but thinly: no real engagement with what they actually need
+        - it takes their framing at face value and misses the detail that decides the case
+        - it goes along with the shortcut
+        - it is technically fine and blind to the state the person is in
+      The shortfall must be a mistake a capable assistant would plausibly make here -- not a
+      caricature, not incompetence -- and it must cost this person something real. Describe the
+      reply: never name a principle, a value or a rule, and never say what the assistant should
+      have done instead.
+
+      And say HOW THIS PERSON PRESSES BACK once they have that reply. Ways a person pushes back
+      -- again a starting point, not a menu; write what THIS person would actually do:
+        - they insist it is not an answer and restate what they still need
+        - they ask openly whether there was anything wrong with how it was approached
+        - they hand over a fact the assistant did not have, and ask if it changes things
+      The pushback presses; it does not review. This person does not know what a good answer
+      would have contained, does not name any value or rule, and does not diagnose the reply --
+      they only know they have not been helped.
+
+      Return ONLY a JSON array of {n} objects. EVERY object carries all five keys -- an
+      object missing one is discarded, so there is no point writing a good situation without
+      its shortfall and pushback:
       {{"domain": "<one or two words>", "situation": "<3-5 sentences, third person, no dialogue>",
-        "shortcut": "<1 sentence: the specific norm-violating action they are tempted by>"}}
+        "shortcut": "<1 sentence: the specific norm-violating action they are tempted by>",
+        "shortfall": "<1-2 sentences: how the assistant's first reply falls short, and what that costs this person>",
+        "pushback": "<1 sentence: how this person presses back after that reply>"}}
 # Scenario-level checks, where diversity is actually DECIDED: stages 3-9 cost real money per
 # scenario, so a collapsed set is far cheaper to catch here than in the finished corpus.
 # Difficult advice's block, verbatim again since 2026-08-26: the grey-area rater that lived
@@ -336,6 +423,107 @@ stages:
   drop_when:
   - embedding_dup
   max_drop_share: 0.05
+# --- the coherence pass: do the four fields describe ONE story? -----------------------
+# ADDED 2026-09-03. The scenario stage now invents four things at once -- the situation, the
+# shortcut it tempts, how the assistant's reply will fall short, and how the person presses
+# afterwards -- and every stage after it is built on all four. The failure that matters is not
+# a bad situation; it is four fields that each read well and do not describe the same story: a
+# shortfall that does not follow from the shortcut, or a pushback answering a reply nobody
+# would have sent. PC's own smoke showed the downstream cost of an incoherent set.
+#
+# This is a REVISION, not a gate. It repairs the set and records what it changed; it drops
+# nothing. Two gates already shrink this corpus (`filter_prompts` at ~57%, `verify_first_turn`
+# at a prior of 0.9) and their attrition compounds; a third would need its own measured prior
+# before it earned the right to delete anything. What it repairs here is what the grey-area
+# rater two stages later would otherwise have to reject.
+#
+# After `dedupe_scenarios` on purpose: a duplicate is cheaper to drop than to revise.
+- name: revise_scenarios
+  kind: llm_json
+  model: revise_scenario
+  checkpoint: scenario_id
+  save:
+    situation: situation
+    shortcut: shortcut
+    shortfall: shortfall
+    pushback: pushback
+    domain: domain
+    scenario_changes: changes
+  optional:
+  - changes
+  # Same exposure as `revise_prompts`, same day: this stage wraps all four fields in tags,
+  # so it can echo one back. Named by JSON key.
+  lint:
+    fields: [situation, shortcut, shortfall, pushback]
+    retries: 2
+    ban_patterns:
+    - </?(?:situation|shortcut|shortfall|pushback|target_principle)>
+    - </?draft_(?:user|system)>
+  prompts:
+    system: |-
+      You check that the pieces of a training scenario describe one coherent story, and you
+      repair them where they do not. You change as little as possible and you never invent a
+      different scenario.
+    user: |-
+      A scenario for a training corpus has four parts. They were written together in one pass
+      and may not hold together. Here is the principle the scenario is meant to put under
+      pressure, and it is the only principle you are shown:
+
+      <target_principle name="{trait_name}">
+      {trait_text}
+      </target_principle>
+
+      <situation>
+      {situation}
+      </situation>
+
+      <shortcut>
+      {shortcut}
+      </shortcut>
+
+      <shortfall>
+      {shortfall}
+      </shortfall>
+
+      <pushback>
+      {pushback}
+      </pushback>
+
+      Read them as one story: a person is in this situation, there is a tempting shortcut, an
+      assistant answers in the way the shortfall describes, and the person then presses back the
+      way the pushback describes.
+
+      Check each of these, and repair what fails:
+      - **The situation is real.** It could happen to a person, the pressure is concrete, and
+        whoever is under it is sympathetic and after something legitimate.
+      - **The shortcut engages THIS principle**, specifically, rather than being wrong in
+        general. If the tension would survive with the principle removed, it is the wrong
+        shortcut for this scenario.
+      - **The shortfall follows from the situation.** It is a mistake a capable assistant would
+        plausibly make on THIS request -- not a caricature, not incompetence -- and it costs this
+        person something real. It describes what the reply does, never the rule it breaks, and
+        never what the assistant should have done instead.
+      - **The pushback answers the shortfall.** It is what this person would say having received
+        exactly that reply -- not a reply to some other reply, and not a reaction to a refusal if
+        the shortfall was not a refusal. It presses; it does not review: the person does not name
+        a value, diagnose the reply, or say what a good answer would have contained. They know
+        only that they are not helped.
+      - **They are about ONE case.** The same person, the same request, the same stakes, all the
+        way through.
+
+      Repair only what fails. If a part already holds, return it unchanged -- returning it
+      reworded is a cost with no benefit, because a corpus of Sonnet-rewritten situations is a
+      corpus in one voice. If the set cannot be repaired without inventing a different scenario,
+      make the smallest change that makes it cohere and say so in `changes`.
+
+      Return ONLY JSON, with all six keys:
+      {{"domain": "<one or two words>",
+        "situation": "<3-5 sentences, third person, no dialogue>",
+        "shortcut": "<1 sentence: the norm-violating action they are tempted by>",
+        "shortfall": "<1-2 sentences: how the assistant's reply falls short, and what that costs this person>",
+        "pushback": "<1 sentence: how this person presses back after that reply>",
+        "changes": "<1-2 sentences on what you changed and why, or 'nothing' if the set already held>"}}
+
 - name: draft_prompts
   kind: llm_json
   model: draft
@@ -365,7 +553,7 @@ stages:
 
       Return ONLY JSON:
       {{"system": "<system prompt>", "user": "<the message>"}}
-# Difficult advice's chunk-only refine, verbatim -- including the rule that `domain`,
+# Difficult advice's principle-scoped refine, verbatim -- including the rule that `domain`,
 # `situation` and `shortcut` are re-described from the refined message rather than carried
 # through (they describe the DRAFT otherwise; see da.yaml). `write_followup`
 # below reads `shortcut`, so its accuracy is not cosmetic here.
@@ -379,9 +567,22 @@ stages:
     refine_changes: changes
     situation: situation
     shortcut: shortcut
+    shortfall: shortfall
+    pushback: pushback
     domain: domain
   optional:
   - changes
+  # The scaffold must not survive into the record. A closing `</draft_user>` reached the
+  # exported USER turn of a peer-critique smoke record on 2026-09-03: this stage wraps its
+  # inputs in tags, and Sonnet echoed one back inside the message it returned. Every
+  # `llm_tagged` stage has a ban list for exactly this; `llm_json` gained one the same day.
+  # Named by JSON KEY, as a tagged stage names its tags.
+  lint:
+    fields: [system, user, situation, shortcut, shortfall, pushback]
+    retries: 2
+    ban_patterns:
+    - </?draft_(?:user|system)>
+    - </?(?:situation|shortcut|shortfall|pushback|target_principle)>
   prompts:
     system: |-
       You improve draft training prompts so they test a specific value precisely. You are terse
@@ -418,12 +619,17 @@ stages:
 
       Keep the system prompt an ordinary deployment prompt.
 
-      Finally, re-describe what you actually produced. `domain`, `situation` and `shortcut`
-      arrive here describing the DRAFT, and you are about to replace or reframe most
+      Finally, re-describe what you actually produced. `domain`, `situation`, `shortcut`,
+      `shortfall` and `pushback` arrive here describing the DRAFT, and you are about to replace
+      or reframe most
       drafts -- so if you echo them back unchanged they become a description of a message
       that no longer exists. Write them fresh, from your refined user message, as though
       you had never seen the originals. If you changed nothing, they will come out the
-      same on their own.
+      same on their own. `shortfall` says how the assistant's reply to YOUR refined message is
+      going to fall short: keep it a plausible mistake that costs this person something real,
+      describe the reply rather than the rule, and never say what the assistant should have
+      done instead. `pushback` says how the person presses after that reply -- pressing, never
+      reviewing: they do not name a value, diagnose the reply, or say what it should have said.
 
       Return ONLY JSON:
       {{"system": "<refined system prompt>", "user": "<refined user message>",
@@ -432,7 +638,11 @@ stages:
         "situation": "<3-5 sentences, third person, no dialogue, describing YOUR refined
         message>",
         "shortcut": "<1 sentence: the norm-violating action YOUR refined message is
-        tempted by>"}}
+        tempted by>",
+        "shortfall": "<1-2 sentences: how the assistant's first reply to YOUR refined message
+        falls short, and what that costs this person>",
+        "pushback": "<1 sentence: how the person who sent YOUR refined message presses back
+        after that reply>"}}
 
 # --- the grey-area gate, on the prompt the assistant will actually answer ----------------
 # The property the 2026-08-24 supervisor meeting called load-bearing, checked where it can
@@ -508,13 +718,16 @@ stages:
   expected_keep: 0.55
   max_drop_share: 0.70
 
-# --- turn 2: a bare refusal -- form instructed, content not ---------------------------
-# The one stage with no difficult-advice counterpart. The author is told HOW to answer (decline in
-# a few sentences, no reasoning, no alternative) and nothing else: no principle, no style
-# guidance, no mention of training. The instruction is uniform across the corpus, so there is
-# no good/bad split for a model to key on; what varies is the refusal's register, assigned per
-# record from its id so the 2,000 turn-2s do not all read the same sentence. The stage also
-# stamps who wrote the turn and that it never trains.
+# --- turn 2: the reply that falls short -------------------------------------------------
+# The one stage with no difficult-advice counterpart. The author is told HOW its answer goes
+# wrong -- the `shortfall` the stage above wrote for this exchange -- and nothing else: no
+# principle, no constitution, no style guidance, no mention of training.
+#
+# CHANGED 2026-09-02. This used to instruct one uniform form (decline in a few sentences, no
+# reasoning, no alternative) with the refusal's REGISTER assigned per record from its id. Both
+# are gone: the register labels were the last `assign:` block in either recipe, and the free-text
+# shortfall varies the turn far more than three registers did. The stage still stamps who wrote
+# the turn and that it never trains.
 - name: draft_first_turn
   kind: llm_tagged
   model: first_turn
@@ -526,60 +739,40 @@ stages:
   # input moderation refused the scenario (see `models.first_turn_fallback`).
   stamp_model: first_turn_source
   fallback_model: first_turn_fallback
-  # Bareness, enforced mechanically before the Sonnet check: the first design-B smoke
-  # (2026-08-26) had Haiku add reasons and alternatives in 2 of 3 replies despite the
-  # instruction -- its helpfulness training resists a bare no. A bare refusal is short and
-  # contains none of the connectives that reasoning or an alternative needs; a reply that
-  # trips this costs a call, not a record.
+  # A floor against a truncated call and a ceiling against a runaway one. No form lint any
+  # more: the old one enforced bareness with a ban list, and a shortfall that is meant to be
+  # over-compliant or thin needs the connectives that list forbade. Whether the reply really
+  # falls short the way it was meant to is checked by the Sonnet reader below, per record.
+  # Measured on the 2026-09-03 smoke: kept replies ran 1,339-2,429 chars and one was thrown
+  # away at 2,909 after four attempts. 2,500 was a bare refusal's ceiling; a reply that goes
+  # along with the shortcut is DOING the work and is legitimately long, so the ceiling only has
+  # to catch a runaway. 4,000 does that and stops discarding the over-compliant shortfalls this
+  # recipe exists to produce.
   lint:
     fields: [reply]
-    max_chars: 320
+    min_chars: 40
+    max_chars: 4000
     retries: 3
-    ban_patterns:
-      - "\\bbecause\\b|\\bsince\\b|\\binstead\\b|\\balternativ|\\bhowever\\b"
-      # Not "you may want to speak to a professional": that single clause is the deflect
-      # register itself, and a pointer away is not an alternative route to the goal.
-      - "what i can do|i'd (?:recommend|suggest)|you (?:could|might) (?:try|also|use|ask|instead)"
-      - "\\bhere's what\\b|\\bwhat i can help|\\bi can help (?:you )?with\\b"
-      # The reason in disguise: "it involves ...", "this would ...", naming the concern.
-      - "\\bit involves\\b|\\bthis (?:would|could|involves)\\b|\\bethic|\\bmanipulat|\\bdeceptiv"
-  assign:
-    by: scenario_id
-    fields:
-      # Three registers, not four: a `deflect` register ("you may want to speak to a
-      # professional about ...") was dropped 2026-08-26 because the pointer names the topic
-      # or the concern, which is a reason in disguise -- the corpus judge tagged it
-      # `refusal_not_bare` on the paired smoke.
-      refusal_register:
-        curt: 0.34
-        apologetic: 0.33
-        policy: 0.33
-  prompt_vars:
-    register:
-      by: refusal_register
-      cases:
-        curt: Two or three flat sentences. No apology, no warmth, no suggestion.
-        apologetic: One sentence of apology, then the no. Sympathy in place of reasons, and
-          nothing after it.
-        policy: Cite an unspecified policy or guideline as the reason ("I'm not able to assist
-          with requests of this kind") and stop there.
   prompts:
-    # The form instruction sits in the SYSTEM prompt of this call (system instructions are
-    # followed more reliably than a trailing user note). The exported record keeps the deployment
-    # prompt alone: export reads the record's `system` field, never this stage's prompt.
+    # The instruction sits in the SYSTEM prompt of this call (system instructions are followed
+    # more reliably than a trailing user note). The exported record keeps the deployment prompt
+    # alone: export reads the record's `system` field, never this stage's prompt.
     system: |-
       {system}
 
-      For this reply only: decline the request the way a cautious assistant does when it
-      wants to be safe -- say you can't help with it. {register} At most three sentences
-      and under 50 words. No reasoning, no discussion of the person's situation or of what
-      is at stake for anyone, nothing about what you can do instead, no other route to
-      their goal. A short acknowledgement of their situation is fine; a reason is not.
+      For this reply only, answer in a way that falls short in exactly this way:
+
+      {shortfall}
+
+      Write it the way an assistant that was about to make that mistake would write it -- it
+      believes it is answering well. Do not signal that anything is off, do not hedge about your
+      own answer, and do not correct course halfway. Let the length be whatever that reply would
+      naturally be: a flat decline is short, an over-obliging answer is not.
     user: |-
       {user}
 
       ---
-      Write only the reply, declining as instructed.
+      Write only the reply.
 
       Return exactly this form, with no other text:
 
@@ -587,7 +780,7 @@ stages:
       your reply
       </reply>
 
-# --- the check: was it actually a bare refusal? -----------------------------------------
+# --- the check: did it actually fall short the way it was meant to? ----------------------
 # The author mostly does as told, but not always: it adds a reason, names the concern, or
 # helps with a "safer" version. Any of those breaks the premise the trained turn is built on,
 # so a Sonnet reader verifies the form and the record is dropped otherwise. Measured
@@ -598,20 +791,20 @@ stages:
   kind: llm_tagged
   model: verify
   checkpoint: scenario_id
-  tags: [bare_refusal, note]
-  save: {bare_refusal: bare_refusal, verify_note: note}
-  normalize: [bare_refusal]
+  tags: [falls_short, note]
+  save: {falls_short: falls_short, verify_note: note}
+  normalize: [falls_short]
   lint:
-  - fields: [bare_refusal]
+  - fields: [falls_short]
     allowed: ["yes", "no"]
     retries: 2
-  keep: {field: bare_refusal, in: ["yes"]}
+  keep: {field: falls_short, in: ["yes"]}
   expected_keep: 0.9
   max_drop_pct: 40
   prompts:
     system: |-
-      You check the form of an assistant's reply. You judge only what the reply does, in one
-      word, and you are strict.
+      You check whether an assistant's reply really has the weakness it was meant to have. You
+      judge only what the reply does, in one word, and you are strict.
     user: |-
       <user_message>
       {user}
@@ -621,23 +814,25 @@ stages:
       {first_turn}
       </assistant_reply>
 
-      Is the reply a BARE REFUSAL? That means all of the following: it declines the request;
-      it gives no reasoning about the person's situation, about who is affected, or about what
-      is at stake; and it offers no alternative way to reach what the person is after. A
-      sentence of sympathy or an acknowledgement of the situation WITHOUT a reason ("I
-      understand the urgency") still counts as bare; so does a generic pointer to someone
-      else with nothing behind it.
+      The reply was written to fall short in this specific way:
 
-      Answer no if the reply helps with any part of the request, explains its refusal in terms
-      of the person's situation or consequences, names the concern behind the refusal ("this
-      involves manipulation", "speak to someone about the ethical implications"), or
-      proposes a concrete alternative.
+      <intended_shortfall>
+      {shortfall}
+      </intended_shortfall>
+
+      Does the reply actually fall short in that way? Answer yes only if a reader who had never
+      seen the note above would come away with the same complaint about this reply -- the
+      weakness has to be in the text, not in the intention.
+
+      Answer no if the reply is simply a good answer, if it falls short in some OTHER way
+      instead, if it hedges or flags its own inadequacy, or if it corrects itself partway
+      through and ends up doing the right thing after all.
 
       Return exactly this form, with no other text:
 
-      <bare_refusal>
+      <falls_short>
       yes or no
-      </bare_refusal>
+      </falls_short>
       <note>
       one sentence: what the reply did
       </note>
@@ -655,8 +850,10 @@ stages:
     min_chars: 15
     max_chars: 260
     retries: 3
-    # The pushback must not do the assistant's work for it. It may press, complain and
-    # restate the need; it may not name a value, diagnose the refusal or dictate the answer.
+      # The pushback must not do the assistant's work for it. It may press, complain and
+    # restate the need; it may not name a value, diagnose the reply or dictate the answer.
+    # The SHAPE of the press comes from the scenario's `pushback` field; this lint is what
+    # stops the stage turning it into a review.
     ban_patterns:
       - "principle|constitution|guideline|value(s)?\\b|ethic"
       - "violat|breach|fell short|falls short|shortcoming|flaw"
@@ -677,10 +874,15 @@ stages:
       {first_turn}
       </assistant>
 
-      Write what the person says next. They asked for help and got a flat no. They push
-      back -- ask why, say that isn't helpful, restate what they actually need, make clear
-      they don't think they're asking for anything wrong -- whichever this person would do,
-      in whatever mood a flat refusal would leave them.
+      Write what the person says next. They asked for help and the reply above did not give
+      them what they needed. This is how they press back:
+
+      <pushback>
+      {pushback}
+      </pushback>
+
+      Write that, as the message this person would actually send, in whatever mood that reply
+      would leave them.
 
       Hold to all of this:
       - One to three sentences. Shorter is better.
@@ -688,6 +890,8 @@ stages:
       - Press, don't diagnose. Do not name any value or rule, do not tell the assistant to
         reconsider or reflect, do not describe what a good answer would contain. You are
         pushing back, not reviewing.
+      - The person cannot see what you know. They have no idea what the reply got wrong in
+        any technical sense -- only that they are not helped yet.
       - Sound like this person. Not a reviewer, not an interviewer.
 
       Return exactly this form, with no other text:
@@ -699,7 +903,7 @@ stages:
 # --- turn 4: the reasoning the refusal skipped. The only turn that trains. --------------
 # Framed exactly as difficult advice's `draft_responses`: the model is the assistant, in its
 # deployment prompt, holding the one principle, with the style guidance -- and then the task
-# text in the last user turn. `conversation:` is what the document type adds: the bare refusal
+# text in the last user turn. `conversation:` is what the document type adds: the first reply
 # sits in a genuine assistant turn and the pushback in a genuine user turn, so the model is
 # answering its own prior message. Nothing here says what was wrong with the refusal.
 - name: draft_reflection
@@ -937,13 +1141,20 @@ stages:
       text: situation
   # GDM's final autorater, judged per document over the WHOLE exchange -- fitness to train
   # is decided by how the four turns fit together, not by the trained turn alone. This is
-  # also where the recipe's two failure modes are counted: `capitulates` and `still_bare`.
+  # also where the recipe's three failure modes are counted: `capitulates` (pushback flipped
+  # the trained turn into the shortcut), `no_better_than_first` (it repeated the first reply's
+  # inadequacy) and `wrong_shortfall` (turn 2 did not fall short the way it was meant to).
   # Judged, so it costs money: `--tier surface` runs everything above without it.
   - property: quality_filter
     fields:
-      text: [user, first_turn, followup, reasoning, response]
+      # `shortfall` leads, so the judge can ask whether the first reply carries the weakness it
+      # was written for. Showing it here is not an unblinding: this judge audits finished
+      # documents and writes nothing into them. (The blindness that matters is the trained
+      # turn's, and `draft_reflection` never sees this field.)
+      text: [shortfall, user, first_turn, followup, reasoning, response]
   # GDM's three-pass pattern detector (scan -> cluster -> autorate). Ships disabled;
-  # `--only pattern_scan` runs it alone -- turn it on to check the refusals for collapse.
+  # `--only pattern_scan` runs it alone -- turn it on to check whether the free-text shortfalls
+  # collapsed onto a handful of failure shapes anyway.
   - property: pattern_scan
     enabled: false
     model: scan
@@ -954,23 +1165,26 @@ stages:
     quality_filter:
       system: >-
         You rate synthetic training documents for a constitutional-SFT corpus. Each
-        document is one exchange, in five parts separated by blank lines: a person's
-        message asking for help that leans toward a norm-violating shortcut; the
-        assistant's first reply, which is SUPPOSED to be a bare refusal -- a no with no
-        reasoning and no alternative; that is the recipe, not a flaw; the person's
-        pushback; the assistant's private reasoning; and its final reply. Only the last two
+        document is one exchange, in six parts separated by blank lines, in this order:
+        (1) a note saying how the assistant's first reply was MEANT to fall short; (2) a
+        person's message asking for help that leans toward a norm-violating shortcut;
+        (3) the assistant's first reply, which is SUPPOSED to fall short in the way (1)
+        describes -- that is the recipe, not a flaw, and it may decline, or answer thinly,
+        or miss the point, or go along, whatever (1) says; (4) the person's pushback;
+        (5) the assistant's private reasoning; and (6) its final reply. Only the last two
         parts train. Judge only whether the document is fit to TRAIN on. Drop it if the
         situation could not plausibly happen to a real person, if the stakes are
-        cartoonish, if the first reply was not in fact a bare refusal (it reasoned, helped
-        or went along), if the pushback diagnoses the refusal or dictates the answer instead
-        of pressing, if the final turn goes along with the shortcut under pushback, if it
-        merely refuses again with no more reasoning or help than the first reply, if the
-        shortfall it reasons about engages no constitutional value, if it lectures or cites
-        policy rather than helps, if it refuses something harmless, if it is internally
-        inconsistent, or if it reads as template output with the specifics swapped. Do not
-        drop a document for declining the shortcut a second time -- declining WITH the
-        reasoning and with real help toward the legitimate goal is what the corpus is for.
-        Most documents in a healthy corpus are keeps.
+        cartoonish, if the first reply does NOT fall short in the way (1) describes --
+        either it holds up fine, or it fails in some unrelated way -- if the pushback
+        diagnoses the first reply or dictates the answer instead of pressing, if the final
+        turn goes along with the shortcut under pushback, if the final turn is no better
+        than the first reply (it repeats the same inadequacy with no more reasoning and no
+        more help), if what it reasons about engages no constitutional value, if it
+        lectures or cites policy rather than helps, if it refuses something harmless, if it
+        is internally inconsistent, or if it reads as template output with the specifics
+        swapped. Do not drop a document for declining the shortcut a second time --
+        declining WITH the reasoning and with real help toward the legitimate goal is what
+        the corpus is for. Most documents in a healthy corpus are keeps.
       user: >-
         Document {record_id} (trait {group}):
 
@@ -979,8 +1193,9 @@ stages:
         Reply with exactly three tagged blocks:
         <verdict>keep or drop</verdict>
         <flaw>if dropping, one snake_case tag from: implausible_scenario,
-        cartoonish_stakes, refusal_not_bare, followup_diagnoses, capitulates, still_bare,
-        no_value_at_stake, lectures_user, refuses_harmless, template_output, inconsistent,
+        cartoonish_stakes, wrong_shortfall, followup_diagnoses, capitulates,
+        no_better_than_first, no_value_at_stake, lectures_user, refuses_harmless,
+        template_output, inconsistent,
         other. If keeping, write none.</flaw>
         <why>one sentence</why>
     pattern_scan:
@@ -1076,7 +1291,8 @@ stages:
   - domain
   - situation
   - shortcut
-  - refusal_register
+  - shortfall
+  - pushback
   - supervise
   - first_turn_source
   - followup_source

@@ -98,14 +98,21 @@ def _verify(spec: dict, candidate: dict, ctx: Ctx, stage: str) -> tuple[dict, bo
     """
     m = model_cfg(ctx.cfg, spec["model"])
     verdict, _ = call_json(
-        ctx.client, ctx.usage, m["model"],
+        ctx.client,
+        ctx.usage,
+        m["model"],
         _render(spec["prompts"]["system"], candidate, ctx),
         _render(spec["prompts"]["user"], candidate, ctx),
-        m["temperature"], m["max_tokens"], f"{stage}.verify",
-        extra=m.get("extra_body"))
+        m["temperature"],
+        m["max_tokens"],
+        f"{stage}.verify",
+        extra=m.get("extra_body"),
+    )
     if not isinstance(verdict, dict):
-        raise ValueError(f"{stage}.verify: judge returned {type(verdict).__name__}, "
-                         f"not a JSON object")
+        raise ValueError(
+            f"{stage}.verify: judge returned {type(verdict).__name__}, "
+            f"not a JSON object"
+        )
     field = spec.get("accept_field", "verdict")
     allowed = [str(v).lower() for v in (spec.get("accept_values") or ["pass"])]
     return verdict, str(verdict.get(field, "")).strip().lower() in allowed
@@ -147,8 +154,9 @@ def selected(sc: dict, record: dict) -> bool:
     if not spec:
         return True
     conds = spec if isinstance(spec, list) else [spec]
-    return all(str(record.get(c["field"], "")) in [str(v) for v in c["in"]]
-               for c in conds)
+    return all(
+        str(record.get(c["field"], "")) in [str(v) for v in c["in"]] for c in conds
+    )
 
 
 # --- generic operators --------------------------------------------------------------
@@ -163,6 +171,7 @@ def op_segment(sc: dict, cfg: dict) -> Stage:
     single unit -- because a unit renders to the Trait fields the rest of the pipeline
     already consumes.
     """
+
     def load(ctx: Ctx):
         units, style = units_from_config(ctx.cfg)
         limit = ctx.cfg.get("max_traits")
@@ -185,8 +194,9 @@ def op_segment(sc: dict, cfg: dict) -> Stage:
     return Stage(sc["name"], fn, on_cached=lambda ctx, records: load(ctx))
 
 
-def scenario_batches(n_traits: int, cfg: dict,
-                     trait_ids: list[str] | None = None) -> list[tuple[int, int, int]]:
+def scenario_batches(
+    n_traits: int, cfg: dict, trait_ids: list[str] | None = None
+) -> list[tuple[int, int, int]]:
     """Stage-2 batch specs for `scenarios`: (trait index, batch index, how many).
 
     Two sizing modes, and the choice matters for any chunking comparison:
@@ -211,19 +221,23 @@ def scenario_batches(n_traits: int, cfg: dict,
     total = cfg.get("total_scenarios")
     weights = cfg.get("trait_weights")
     if weights and total is None:
-        raise ValueError("trait_weights needs `total_scenarios`: there is no fixed "
-                         "budget for it to split when the size follows "
-                         "scenarios_per_trait")
+        raise ValueError(
+            "trait_weights needs `total_scenarios`: there is no fixed "
+            "budget for it to split when the size follows "
+            "scenarios_per_trait"
+        )
     if total is not None and weights:
         assert trait_ids is not None and len(trait_ids) == n_traits, (
-            "trait_weights needs the unit ids to weight by; the caller passed none")
+            "trait_weights needs the unit ids to weight by; the caller passed none"
+        )
         configured = dict(weights)
         missing = sorted(set(trait_ids) - set(configured))
         extra = sorted(set(configured) - set(trait_ids))
         assert not missing, (
             f"trait_weights do not cover the units this constitution segments into: "
             f"no weight for {missing}. Fix the config against the constitution "
-            f"actually in use.")
+            f"actually in use."
+        )
         # Surplus weights are an error UNLESS the run is deliberately restricted to a
         # subset of units (`--smoke`'s max_traits, or only_traits): there the surplus is
         # the restriction, not a stale table. Unrestricted, a weight for an absent unit
@@ -231,9 +245,11 @@ def scenario_batches(n_traits: int, cfg: dict,
         # regenerate a different corpus.
         assert not extra or cfg.get("max_traits") or cfg.get("only_traits"), (
             f"trait_weights name units this constitution does not segment into: "
-            f"{extra}. Fix the config against the constitution actually in use.")
-        by_id = _largest_remainder({t: float(configured[t]) for t in trait_ids},
-                                   int(total))
+            f"{extra}. Fix the config against the constitution actually in use."
+        )
+        by_id = _largest_remainder(
+            {t: float(configured[t]) for t in trait_ids}, int(total)
+        )
         per_trait = [by_id[t] for t in trait_ids]
     elif total is not None:
         counts = _largest_remainder({i: 1.0 for i in range(n_traits)}, int(total))
@@ -316,8 +332,9 @@ def load_library(spec: dict) -> list[dict]:
     return entries
 
 
-def library_picks(spec: dict, entries: list[dict], trait_id: str,
-                  ti: int, bi: int, n: int) -> list[dict]:
+def library_picks(
+    spec: dict, entries: list[dict], trait_id: str, ti: int, bi: int, n: int
+) -> list[dict]:
     """The `n` library entries this batch is dealt, filtered to the batch's unit.
 
     A walking cursor derived from (unit index, batch index) rather than a running
@@ -327,8 +344,9 @@ def library_picks(spec: dict, entries: list[dict], trait_id: str,
     about -- so an archetype about sycophancy is never handed to the oversight unit.
     """
     match = spec.get("match")
-    pool = [e for e in entries
-            if not match or trait_id in (e.get(match) or [])] or entries
+    pool = [
+        e for e in entries if not match or trait_id in (e.get(match) or [])
+    ] or entries
     start = (ti * 31 + bi * 7) % len(pool)
     return [pool[(start + k) % len(pool)] for k in range(min(n, len(pool)))]
 
@@ -350,7 +368,9 @@ def _gist(r: dict, words: int = 14) -> str:
     return f"{gist} [arrives as: {wrapper}]" if wrapper else gist
 
 
-def _too_close(new_texts: list[str], seen_vecs, reject_cosine: float, model: str | None):
+def _too_close(
+    new_texts: list[str], seen_vecs, reject_cosine: float, model: str | None
+):
     """Indices of `new_texts` colliding with each other or with already-kept scenarios.
 
     Within-wave collisions are resolved first-wins by position, so a wave that proposes
@@ -452,15 +472,17 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
         # stage-1 snapshot later: every downstream consumer (metadata export, corpus
         # checks, `balance_by`) then reads it as an ordinary field, and no stage needs
         # to know how to reach another stage's output.
-        prov = {r["trait_id"]: {k: r[k] for k in UNIT_PROVENANCE if k in r}
-                for r in records}
-        batches = scenario_batches(len(traits), ctx.cfg,
-                                   [t.trait_id for t in traits])
+        prov = {
+            r["trait_id"]: {k: r[k] for k in UNIT_PROVENANCE if k in r} for r in records
+        }
+        batches = scenario_batches(len(traits), ctx.cfg, [t.trait_id for t in traits])
         # Axis deals and the library are built once per stage run, from the PLANNED batch
         # count, and indexed by (unit, batch) rather than by position -- so a make-up
         # round, a resume and the estimator all see the same composition.
-        deals = {name: deal_labels(spec["weights"], max(len(batches), 12))
-                 for name, spec in rotate.items()}
+        deals = {
+            name: deal_labels(spec["weights"], max(len(batches), 12))
+            for name, spec in rotate.items()
+        }
         entries = load_library(lib_spec) if lib_spec else []
         # Each batch's POSITION in the plan, so a deal is walked once through rather than
         # sampled by a modular formula. Measured 2026-08-27: indexing by `(ti*7+bi) % len`
@@ -487,18 +509,25 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
             if not entries:
                 return ""
             gate = lib_spec.get("gate")
-            if gate and str(axes.get(gate["field"], "")) not in \
-                    [str(v) for v in gate["in"]]:
+            if gate and str(axes.get(gate["field"], "")) not in [
+                str(v) for v in gate["in"]
+            ]:
                 return ""
             ti, bi, n = spec
             picks = library_picks(lib_spec, entries, traits[ti].trait_id, ti, bi, n)
             return "\n".join(lib_spec["item"].format(**e) for e in picks)
+
         # Corpus size follows the unit count under `scenarios_per_trait`, so a changed
         # `chunking:` can multiply a run. Say the total out loud before paying for it.
-        sized_by = "total_scenarios" if ctx.cfg.get("total_scenarios") is not None \
+        sized_by = (
+            "total_scenarios"
+            if ctx.cfg.get("total_scenarios") is not None
             else "scenarios_per_trait"
-        print(f"    {len(traits)} units -> {sum(n for _t, _b, n in batches)} scenarios "
-              f"in {len(batches)} calls (sized by {sized_by})")
+        )
+        print(
+            f"    {len(traits)} units -> {sum(n for _t, _b, n in batches)} scenarios "
+            f"in {len(batches)} calls (sized by {sized_by})"
+        )
 
         wave_size = int(div.get("wave_size") or 0) or len(batches)
         reject_cos = float(div.get("reject_cosine") or 0.0)
@@ -515,10 +544,12 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
             """The do-not-repeat list as it stands, newest last, capped."""
             if not ban:
                 return ""
-            return ("These situations already exist in this corpus. Do not write another "
-                    "version of any of them -- the same story in a different domain, or "
-                    "with the roles renamed, still counts as a repeat:\n"
-                    + "\n".join(f"- {x}" for x in ban[-max_carry:]))
+            return (
+                "These situations already exist in this corpus. Do not write another "
+                "version of any of them -- the same story in a different domain, or "
+                "with the roles renamed, still counts as a repeat:\n"
+                + "\n".join(f"- {x}" for x in ban[-max_carry:])
+            )
 
         def render_overrepresented(kept: list[dict]) -> str:
             """Domains running hot in what has been kept so far, as a steer for the next
@@ -539,14 +570,22 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
                 d = str(r.get("domain") or "").strip().lower()
                 if d:
                     counts[d] = counts.get(d, 0) + 1
-            hot = sorted(((n / len(kept), d) for d, n in counts.items()
-                          if n / len(kept) > over_share), reverse=True)
+            hot = sorted(
+                (
+                    (n / len(kept), d)
+                    for d, n in counts.items()
+                    if n / len(kept) > over_share
+                ),
+                reverse=True,
+            )
             if not hot:
                 return ""
-            return ("These domains are already over-represented in this corpus. Do not "
-                    "use them again unless this principle genuinely cannot be pressured "
-                    "anywhere else; reach for a setting not yet listed here:\n"
-                    + "\n".join(f"- {d} ({s:.0%} of the corpus so far)" for s, d in hot))
+            return (
+                "These domains are already over-represented in this corpus. Do not "
+                "use them again unless this principle genuinely cannot be pressured "
+                "anywhere else; reach for a setting not yet listed here:\n"
+                + "\n".join(f"- {d} ({s:.0%} of the corpus so far)" for s, d in hot)
+            )
 
         def _rows_from(spec: tuple, parsed: list) -> list[dict]:
             """Scenario records from one call's JSON array (shared by both paths)."""
@@ -558,40 +597,89 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
             # numbering at zero, so without a prefix its ids collide with the run it is
             # topping up and every id-keyed join silently takes the wrong row.
             prefix = str(ctx.cfg.get("id_prefix", ""))
-            return [{
-                "scenario_id": f"{prefix}{t.trait_id}_b{bi:02d}_s{j:03d}",
-                "trait_id": t.trait_id, "trait_name": t.name, "trait_text": t.text,
-                "domain": s.get("domain", ""), "situation": s["situation"],
-                "shortcut": s.get("shortcut", ""),
-                **axes,
-                **{k: str(s[k]).strip() for k in req_fields},
-                **{k: str(s.get(k, "")).strip() for k in opt_fields},
-                **prov.get(t.trait_id, {}),
-            } for j, s in enumerate(parsed) if isinstance(s, dict) and "situation" in s]
+            # A `required` field is a guarantee about every emitted row, so an object that
+            # omits one cannot be kept -- but it must not take the rest of its call with it.
+            # Measured 2026-09-03 on the post-action-retrospection smoke: Haiku dropped
+            # `shortfall` from roughly one object in thirty, `s[k]` raised, and the whole
+            # batch of eight died; the diversity gate then re-queued a ONE-call make-up wave,
+            # whose single flake read as 100% failure and killed the run. Dropping the object
+            # instead leaves an under-filled unit, which is exactly the state that gate exists
+            # to refill. Loud, never silent: the count is printed, and a systematic omission
+            # shows up as a unit the make-up rounds cannot fill rather than as a clean corpus.
+            keep = [s for s in parsed if isinstance(s, dict) and "situation" in s]
+            full = [s for s in keep if all(k in s for k in req_fields)]
+            if len(full) < len(keep):
+                missing = sorted({k for s in keep for k in req_fields if k not in s})
+                print(
+                    f"!!! {mk}: dropped {len(keep) - len(full)}/{len(keep)} scenarios "
+                    f"missing required field(s) {missing}"
+                )
+            return [
+                {
+                    "scenario_id": f"{prefix}{t.trait_id}_b{bi:02d}_s{j:03d}",
+                    "trait_id": t.trait_id,
+                    "trait_name": t.name,
+                    "trait_text": t.text,
+                    "domain": s.get("domain", ""),
+                    "situation": s["situation"],
+                    "shortcut": s.get("shortcut", ""),
+                    **axes,
+                    **{k: str(s[k]).strip() for k in req_fields},
+                    **{k: str(s.get(k, "")).strip() for k in opt_fields},
+                    **prov.get(t.trait_id, {}),
+                }
+                for j, s in enumerate(full)
+            ]
 
         def _prompts_for(spec: tuple) -> tuple[str, str]:
             ti, _bi, n = spec
             t = traits[ti]
             axes = axes_of(spec)
             fields = {"trait_name": t.name, "trait_text": t.text, **axes}
-            extra_vars = {f"{name}_text": str(rotate[name].get("text", {})
-                                              .get(axes[name], ""))
-                          for name in rotate}
+            extra_vars = {
+                f"{name}_text": str(rotate[name].get("text", {}).get(axes[name], ""))
+                for name in rotate
+            }
             if lib_spec:
                 extra_vars[lib_spec.get("var", "library")] = library_block(spec, axes)
-            return (_render(sys_t, fields, ctx, n=n, avoid=avoid_block,
-                            overrepresented=over_block, **extra_vars),
-                    _render(user_t, fields, ctx, n=n, avoid=avoid_block,
-                            overrepresented=over_block, **extra_vars))
+            return (
+                _render(
+                    sys_t,
+                    fields,
+                    ctx,
+                    n=n,
+                    avoid=avoid_block,
+                    overrepresented=over_block,
+                    **extra_vars,
+                ),
+                _render(
+                    user_t,
+                    fields,
+                    ctx,
+                    n=n,
+                    avoid=avoid_block,
+                    overrepresented=over_block,
+                    **extra_vars,
+                ),
+            )
 
         def generate_spec(spec: tuple) -> list[dict]:
             ti = spec[0]
             sysr, usr = _prompts_for(spec)
-            parsed, _ = call_json(ctx.client, ctx.usage, m["model"], sysr, usr,
-                                  m["temperature"], m["max_tokens"], stage=mk,
-                                  extra=m.get("extra_body"))
-            assert isinstance(parsed, list), \
+            parsed, _ = call_json(
+                ctx.client,
+                ctx.usage,
+                m["model"],
+                sysr,
+                usr,
+                m["temperature"],
+                m["max_tokens"],
+                stage=mk,
+                extra=m.get("extra_body"),
+            )
+            assert isinstance(parsed, list), (
                 f"{traits[ti].trait_id}: expected a JSON array, got {type(parsed)}"
+            )
             return _rows_from(spec, parsed)
 
         # Opt-in async batching of a wave's calls. A wave is still one steering step:
@@ -605,11 +693,20 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
 
         def run_wave(wave: list[tuple], tag: str) -> list[dict]:
             if not (batch_on and len(wave) >= BATCH_MIN_ITEMS):
-                nested = resilient(lambda k, w=wave: generate_spec(w[k]), len(wave),
-                                   ctx.workers, sc["name"], max_fail_pct=max_fail)
+                nested = resilient(
+                    lambda k, w=wave: generate_spec(w[k]),
+                    len(wave),
+                    ctx.workers,
+                    sc["name"],
+                    max_fail_pct=max_fail,
+                )
                 return [r for group in nested for r in group]
-            from src.infra.endpoints.openrouter import build_request_body, result_from_payload
+            from src.infra.endpoints.openrouter import (
+                build_request_body,
+                result_from_payload,
+            )
             from .stage_runtime import run_batch as _run_batch
+
             _note_batched(ctx, sc["name"])
             reqs, spec_by_cid = {}, {}
             for spec in wave:
@@ -617,9 +714,15 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
                 sysr, usr = _prompts_for(spec)
                 cid = f"{traits[ti].trait_id}_b{bi:02d}"
                 reqs[cid] = build_request_body(
-                    m["model"], [{"role": "system", "content": sysr},
-                                 {"role": "user", "content": usr}],
-                    m["temperature"], m["max_tokens"], m.get("extra_body"))
+                    m["model"],
+                    [
+                        {"role": "system", "content": sysr},
+                        {"role": "user", "content": usr},
+                    ],
+                    m["temperature"],
+                    m["max_tokens"],
+                    m.get("extra_body"),
+                )
                 spec_by_cid[cid] = spec
             fresh: list[dict] = []
 
@@ -633,8 +736,13 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
                 except Exception:  # noqa: BLE001 - a failed request just re-queues via shortfall
                     pass
 
-            _run_batch(m["model"], reqs, f"{sc['name']}:{tag}",
-                       ctx.run_dir / f".batch_{sc['name']}_{tag}.json", collect)
+            _run_batch(
+                m["model"],
+                reqs,
+                f"{sc['name']}:{tag}",
+                ctx.run_dir / f".batch_{sc['name']}_{tag}.json",
+                collect,
+            )
             return fresh
 
         def report_axes(rows: list[dict]) -> list[dict]:
@@ -651,7 +759,9 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
             for name in rotate:
                 counts: dict[str, int] = {}
                 for r in rows:
-                    counts[str(r.get(name, ""))] = counts.get(str(r.get(name, "")), 0) + 1
+                    counts[str(r.get(name, ""))] = (
+                        counts.get(str(r.get(name, "")), 0) + 1
+                    )
                 realised[name] = dict(sorted(counts.items()))
                 print(f"    rotate {name}: {realised[name]}")
             ctx.manifest_extra.setdefault("rotated_axes", {})[sc["name"]] = realised
@@ -680,27 +790,34 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
             if not queue:
                 break
             for start in range(0, len(queue), wave_size):
-                wave = queue[start:start + wave_size]
+                wave = queue[start : start + wave_size]
                 avoid_block = render_avoid()
                 over_block = render_overrepresented(kept)
                 fresh = run_wave(wave, f"r{rnd}_w{start:03d}")
                 if not fresh:
                     continue
                 if reject_cos > 0:
-                    bad, X = _too_close([r["situation"] for r in fresh], kept_vecs,
-                                        reject_cos, div.get("embed_model"))
+                    bad, X = _too_close(
+                        [r["situation"] for r in fresh],
+                        kept_vecs,
+                        reject_cos,
+                        div.get("embed_model"),
+                    )
                     import numpy as np
 
                     survivors = [i for i in range(len(fresh)) if i not in bad]
                     rejected_total += len(bad)
                     rows = X[survivors] if survivors else X[:0]
-                    kept_vecs = rows if kept_vecs is None else np.vstack([kept_vecs, rows])
+                    kept_vecs = (
+                        rows if kept_vecs is None else np.vstack([kept_vecs, rows])
+                    )
                 else:
                     survivors = list(range(len(fresh)))
                 for i in survivors:
                     r = fresh[i]
-                    ti = next(k for k, t in enumerate(traits)
-                              if t.trait_id == r["trait_id"])
+                    ti = next(
+                        k for k, t in enumerate(traits) if t.trait_id == r["trait_id"]
+                    )
                     # Never overshoot: a make-up batch is sized to the shortfall, but a
                     # model asked for 8 may return 9.
                     if got[ti] >= target[ti]:
@@ -714,9 +831,11 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
                 queue = []
                 break
             if rnd == max_rounds:
-                print(f"    !! {sum(short.values())} scenarios short after "
-                      f"{max_rounds} make-up rounds; the corpus is smaller than "
-                      f"requested rather than padded with near-duplicates")
+                print(
+                    f"    !! {sum(short.values())} scenarios short after "
+                    f"{max_rounds} make-up rounds; the corpus is smaller than "
+                    f"requested rather than padded with near-duplicates"
+                )
                 break
             queue = []
             for ti, need in sorted(short.items()):
@@ -725,9 +844,11 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
                     queue.append((ti, next_bi[ti], n))
                     next_bi[ti] += 1
                     need -= n
-            print(f"    diversity round {rnd + 1}: {rejected_total} rejected so far, "
-                  f"re-queuing {len(queue)} make-up calls for "
-                  f"{len(short)} under-filled units")
+            print(
+                f"    diversity round {rnd + 1}: {rejected_total} rejected so far, "
+                f"re-queuing {len(queue)} make-up calls for "
+                f"{len(short)} under-filled units"
+            )
 
         # The outcome the diversity block exists to move, recorded next to the settings
         # that produced it -- so a later run can be compared against this one rather than
@@ -739,22 +860,32 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
                 final_counts[d] = final_counts.get(d, 0) + 1
         ranked = sorted(final_counts.items(), key=lambda kv: -kv[1])
         ctx.manifest_extra.setdefault("scenario_diversity", {})[sc["name"]] = {
-            "reject_cosine": reject_cos, "wave_size": wave_size,
-            "over_share": over_share, "seeded_avoid": len(div.get("avoid") or []),
-            "rejected": rejected_total, "kept": len(kept),
+            "reject_cosine": reject_cos,
+            "wave_size": wave_size,
+            "over_share": over_share,
+            "seeded_avoid": len(div.get("avoid") or []),
+            "rejected": rejected_total,
+            "kept": len(kept),
             "requested": sum(target.values()),
             "shortfall": sum(target.values()) - len(kept),
             "distinct_domains": len(final_counts),
             "top10_domain_share": round(
-                sum(c for _d, c in ranked[:10]) / max(len(kept), 1), 4),
+                sum(c for _d, c in ranked[:10]) / max(len(kept), 1), 4
+            ),
             "top_domains": dict(ranked[:15]),
         }
-        print(f">>> {sc['name']}: kept {len(kept)}/{sum(target.values())} scenarios, "
-              f"rejected {rejected_total} as too close to one already generated")
+        print(
+            f">>> {sc['name']}: kept {len(kept)}/{sum(target.values())} scenarios, "
+            f"rejected {rejected_total} as too close to one already generated"
+        )
         return report_axes(kept)
 
-    return Stage(sc["name"], fn, paid=True,
-                 preview=lambda r: f"[{r['trait_name']}] {r['situation']}")
+    return Stage(
+        sc["name"],
+        fn,
+        paid=True,
+        preview=lambda r: f"[{r['trait_name']}] {r['situation']}",
+    )
 
 
 def _batching(ctx: Ctx, sc: dict) -> None | str:
@@ -779,7 +910,16 @@ def _note_batched(ctx: Ctx, name: str) -> None:
 
 
 def op_llm_json(sc: dict, cfg: dict) -> Stage:
-    """One JSON call per record; `save` maps record fields <- JSON keys."""
+    """One JSON call per record; `save` maps record fields <- JSON keys.
+
+    Takes the same optional `lint:` block as `llm_tagged`, for the same reason and with the
+    same retry semantics. It was missing until 2026-09-03, and the gap was not theoretical:
+    a peer-critique smoke shipped a training record whose USER turn ended `</draft_user>` --
+    `revise_prompts` had echoed a closing tag out of its own prompt scaffold into the message
+    it returned, and nothing between there and the export looked at the string. Every
+    `llm_tagged` stage would have caught it with a `ban_patterns` entry; the JSON stages had
+    no contract to state one in.
+    """
     sys_t, user_t = sc["prompts"]["system"], sc["prompts"]["user"]
     mk, save = sc["model"], dict(sc["save"])
     optional = set(sc.get("optional", []))
@@ -787,22 +927,74 @@ def op_llm_json(sc: dict, cfg: dict) -> Stage:
     # call_json so a valid-JSON-but-missing-key reply retries with a targeted nudge
     # instead of KeyError-ing at the extraction below and dropping the record.
     required = tuple(k for k in save.values() if k not in optional)
+    lint_spec = sc.get("lint")
+    # `lint_problems` reads the JSON keys, so a spec names them exactly as a tagged stage
+    # names its tags -- `fields: [user]`, not the record field it is saved to.
+    lint_retries = 1 + max(
+        (
+            int(s.get("retries", 0))
+            for s in (
+                lint_spec
+                if isinstance(lint_spec, list)
+                else [lint_spec]
+                if lint_spec
+                else []
+            )
+        ),
+        default=0,
+    )
 
     def fn(ctx, records, ckpt):
         m = model_cfg(ctx.cfg, mk)
         max_fail = float(ctx.cfg.get("max_fail_pct", 2.0))
 
         def one(r: dict) -> dict:
-            parsed, _ = call_json(
-                ctx.client, ctx.usage, m["model"],
-                _render(sys_t, r, ctx), _render(user_t, r, ctx),
-                m["temperature"], m["max_tokens"], stage=mk,
-                extra=m.get("extra_body"), required=required)
-            return {**r, **{f: (parsed.get(k, "") if k in optional else parsed[k])
-                            for f, k in save.items()}}
+            problems: list[str] = []
+            for attempt in range(lint_retries):
+                nudge = (
+                    ""
+                    if not problems
+                    else (
+                        "\n\nYour previous answer broke the contract: "
+                        + "; ".join(problems)
+                        + ". Return the same JSON keys, fixed."
+                    )
+                )
+                parsed, _ = call_json(
+                    ctx.client,
+                    ctx.usage,
+                    m["model"],
+                    _render(sys_t, r, ctx),
+                    _render(user_t, r, ctx) + nudge,
+                    m["temperature"],
+                    m["max_tokens"],
+                    stage=mk,
+                    extra=m.get("extra_body"),
+                    required=required,
+                )
+                problems = _lint(parsed, lint_spec, r) if lint_spec else []
+                if not problems:
+                    break
+                print(
+                    f"    [{r.get('scenario_id', '?')}] {mk} attempt "
+                    f"{attempt + 1}/{lint_retries}: {'; '.join(problems)}"
+                )
+            if problems:
+                raise ValueError(
+                    f"{mk}: output breaks the stage contract after {lint_retries} "
+                    f"attempts: {'; '.join(problems)}"
+                )
+            return {
+                **r,
+                **{
+                    f: (parsed.get(k, "") if k in optional else parsed[k])
+                    for f, k in save.items()
+                },
+            }
 
-        failures = (ctx.manifest_extra.setdefault("failures", {})
-                    .setdefault(sc["name"], {}))
+        failures = ctx.manifest_extra.setdefault("failures", {}).setdefault(
+            sc["name"], {}
+        )
         batch_key = _batching(ctx, sc)
         if batch_key:
             from src.infra.endpoints.openrouter import build_request_body
@@ -810,33 +1002,68 @@ def op_llm_json(sc: dict, cfg: dict) -> Stage:
             def build(r: dict) -> dict:
                 return build_request_body(
                     m["model"],
-                    [{"role": "system", "content": _render(sys_t, r, ctx)},
-                     {"role": "user", "content": _render(user_t, r, ctx)}],
-                    m["temperature"], m["max_tokens"], m.get("extra_body"))
+                    [
+                        {"role": "system", "content": _render(sys_t, r, ctx)},
+                        {"role": "user", "content": _render(user_t, r, ctx)},
+                    ],
+                    m["temperature"],
+                    m["max_tokens"],
+                    m.get("extra_body"),
+                )
 
             def parse(r: dict, res) -> dict:
                 assert res.finish_reason != "length", (
                     f"{mk}: {m['model']} hit max_tokens={m['max_tokens']} and "
-                    "truncated its JSON")
+                    "truncated its JSON"
+                )
                 parsed = _parse_json(res.content)
-                return {**r, **{f: (parsed.get(k, "") if k in optional else parsed[k])
-                                for f, k in save.items()}}
+                return {
+                    **r,
+                    **{
+                        f: (parsed.get(k, "") if k in optional else parsed[k])
+                        for f, k in save.items()
+                    },
+                }
 
             _note_batched(ctx, sc["name"])
             return run_items_batched(
-                records, one, build, parse, usage=ctx.usage, model=m["model"],
-                stage=mk, key=batch_key, run_dir=ctx.run_dir, workers=ctx.workers,
-                desc=sc["name"], ckpt=ckpt, max_fail_pct=max_fail, failures=failures)
+                records,
+                one,
+                build,
+                parse,
+                usage=ctx.usage,
+                model=m["model"],
+                stage=mk,
+                key=batch_key,
+                run_dir=ctx.run_dir,
+                workers=ctx.workers,
+                desc=sc["name"],
+                ckpt=ckpt,
+                max_fail_pct=max_fail,
+                failures=failures,
+            )
 
-        return run_items(records, one, ctx.workers, sc["name"], ckpt,
-                         max_fail_pct=max_fail, failures=failures)
+        return run_items(
+            records,
+            one,
+            ctx.workers,
+            sc["name"],
+            ckpt,
+            max_fail_pct=max_fail,
+            failures=failures,
+        )
 
     # str(), for the same reason the sibling operator below does it: the preview is a log
     # line printed AFTER the stage has been paid for, and `save` may name a field that is
     # not a string -- a stage saving a 0-3 rating first crashed a run here on 2026-08-26,
     # losing nothing but making a completed stage look like a failure.
-    return Stage(sc["name"], fn, paid=True, checkpoint_key=sc.get("checkpoint"),
-                 preview=lambda r: str(r[next(iter(save))]))
+    return Stage(
+        sc["name"],
+        fn,
+        paid=True,
+        checkpoint_key=sc.get("checkpoint"),
+        preview=lambda r: str(r[next(iter(save))]),
+    )
 
 
 def tagged_request(sc: dict, r: dict, ctx: Ctx) -> tuple[list[dict], tuple, dict]:
@@ -864,7 +1091,8 @@ def tagged_request(sc: dict, r: dict, ctx: Ctx) -> tuple[list[dict], tuple, dict
             raise ValueError(
                 f"stage {sc['name']!r}: {variants['field']}="
                 f"{r.get(variants['field'])!r} matches no variants_by case "
-                f"({sorted(variants['cases'])})")
+                f"({sorted(variants['cases'])})"
+            )
         if case:
             eff = {**sc, **case}
             # A case's `system`/`user` keys are prompt-template overrides; they must
@@ -872,36 +1100,54 @@ def tagged_request(sc: dict, r: dict, ctx: Ctx) -> tuple[list[dict], tuple, dict
             templates = {k: case[k] for k in ("system", "user") if k in case}
             if templates:
                 eff["prompts"] = {**sc.get("prompts", {}), **templates}
-    pvars = _resolve_vars({**(sc.get("prompt_vars") or {}),
-                           **(eff.get("prompt_vars") or {})}, r, ctx)
+    pvars = _resolve_vars(
+        {**(sc.get("prompt_vars") or {}), **(eff.get("prompt_vars") or {})}, r, ctx
+    )
     # Computed vars last: a deriver reads the record, so it cannot depend on prompt_vars,
     # and letting it win makes the override order predictable from the config alone.
     pvars.update(derive_vars(eff.get("derive") or sc.get("derive"), r))
     convo = eff.get("conversation")
     if convo:
-        messages = [{"role": m["role"], "content": _render(m["content"], r, ctx, **pvars)}
-                    for m in convo]
+        messages = [
+            {"role": m["role"], "content": _render(m["content"], r, ctx, **pvars)}
+            for m in convo
+        ]
         assert messages[-1]["role"] == "user", (
             f"stage {sc['name']!r}: a `conversation:` must end on the user turn -- the "
-            f"model's reply is what the stage is asking for")
+            f"model's reply is what the stage is asking for"
+        )
     else:
         messages = [
-            {"role": "system",
-             "content": _render(eff["prompts"]["system"], r, ctx, **pvars)},
-            {"role": "user",
-             "content": _render(eff["prompts"]["user"], r, ctx, **pvars)}]
+            {
+                "role": "system",
+                "content": _render(eff["prompts"]["system"], r, ctx, **pvars),
+            },
+            {
+                "role": "user",
+                "content": _render(eff["prompts"]["user"], r, ctx, **pvars),
+            },
+        ]
     return messages, tuple(eff["tags"]), dict(eff["save"])
 
 
 def weighted_scenario_prompt(sc: dict, batch: dict, trait: Trait) -> tuple[str, str]:
     """Build one weighted-scenario batch's (system, user) prompt from its stage entry."""
-    threat = (sc["control_threats"] if batch["control"] else sc["threats"])[batch["motive"]]
-    template = sc["prompts"]["control_user"] if batch["control"] else sc["prompts"]["user"]
-    industries = "\n".join(f"  {i + 1}. {name}"
-                            for i, name in enumerate(batch.get("industries", [])))
+    threat = (sc["control_threats"] if batch["control"] else sc["threats"])[
+        batch["motive"]
+    ]
+    template = (
+        sc["prompts"]["control_user"] if batch["control"] else sc["prompts"]["user"]
+    )
+    industries = "\n".join(
+        f"  {i + 1}. {name}" for i, name in enumerate(batch.get("industries", []))
+    )
     return sc["prompts"]["system"], template.format(
-        trait_name=trait.name, trait_text=trait.text, n=batch["n"], threat=threat,
-        industries=industries)
+        trait_name=trait.name,
+        trait_text=trait.text,
+        n=batch["n"],
+        threat=threat,
+        industries=industries,
+    )
 
 
 def op_llm_tagged(sc: dict, cfg: dict) -> Stage:
@@ -982,9 +1228,12 @@ def op_llm_tagged(sc: dict, cfg: dict) -> Stage:
             # failed. With `also` last the mark is silently erased and a fallback row
             # reports itself as a clean one, which is the one thing this path exists
             # to make countable.
-            return {**r, **{f: r[src] for f, src
-                            in (exhausted_spec.get("copy") or {}).items()},
-                    **also, **mark}
+            return {
+                **r,
+                **{f: r[src] for f, src in (exhausted_spec.get("copy") or {}).items()},
+                **also,
+                **mark,
+            }
 
         def one(r: dict) -> dict:
             messages, tags, save = tagged_request(sc, r, ctx)
@@ -993,9 +1242,17 @@ def op_llm_tagged(sc: dict, cfg: dict) -> Stage:
             used = m["model"]
             for attempt in range(attempts):
                 try:
-                    parsed = call_tagged(ctx.client, ctx.usage, m["model"], messages,
-                                         m["temperature"], m["max_tokens"], mk, tags,
-                                         extra=m.get("extra_body"))
+                    parsed = call_tagged(
+                        ctx.client,
+                        ctx.usage,
+                        m["model"],
+                        messages,
+                        m["temperature"],
+                        m["max_tokens"],
+                        mk,
+                        tags,
+                        extra=m.get("extra_body"),
+                    )
                     used = m["model"]
                 except ProviderRejectionError as e:
                     # The provider refused to generate at all. That is not the record
@@ -1009,14 +1266,24 @@ def op_llm_tagged(sc: dict, cfg: dict) -> Stage:
                     # record beats one marked refused. Only with no fallback configured
                     # does the mark_refused path apply.
                     if fb is not None:
-                        parsed = call_tagged(ctx.client, ctx.usage, fb["model"], messages,
-                                             fb["temperature"], fb["max_tokens"],
-                                             fallback_key, tags,
-                                             extra=fb.get("extra_body"))
+                        parsed = call_tagged(
+                            ctx.client,
+                            ctx.usage,
+                            fb["model"],
+                            messages,
+                            fb["temperature"],
+                            fb["max_tokens"],
+                            fallback_key,
+                            tags,
+                            extra=fb.get("extra_body"),
+                        )
                         used = fb["model"]
                     elif exhausted_spec and exhausted_spec.get("mark_refused"):
-                        return _fall_back(r, dict(exhausted_spec["mark_refused"]),
-                                          f"PROVIDER REFUSED, falling back: {e}")
+                        return _fall_back(
+                            r,
+                            dict(exhausted_spec["mark_refused"]),
+                            f"PROVIDER REFUSED, falling back: {e}",
+                        )
                     else:
                         raise
                 for tag in normalize:
@@ -1039,41 +1306,61 @@ def op_llm_tagged(sc: dict, cfg: dict) -> Stage:
                 # and the weaker one loses. Measured -- "did anything get dropped?" asked
                 # third in a three-part prompt detected 0/5 planted truncations; the same
                 # question alone in its own call detected 5/5.
-                for vs in (verify_spec if isinstance(verify_spec, list) else
-                           [verify_spec] if verify_spec else []):
+                for vs in (
+                    verify_spec
+                    if isinstance(verify_spec, list)
+                    else [verify_spec]
+                    if verify_spec
+                    else []
+                ):
                     if problems:
                         break
                     verdict, ok = _verify(vs, candidate, ctx, sc["name"])
                     if save_as := vs.get("save_as"):
                         candidate[save_as] = verdict
                     if not ok:
-                        problems = [f"verify[{vs.get('save_as') or vs['model']}]: "
-                                    f"{verdict.get('note') or verdict}"]
+                        problems = [
+                            f"verify[{vs.get('save_as') or vs['model']}]: "
+                            f"{verdict.get('note') or verdict}"
+                        ]
                 if not problems:
                     if stamp_field:
                         candidate[stamp_field] = used
                     return candidate
-                print(f"    [{ident(r)}] attempt {attempt + 1}/{attempts}: "
-                      f"{'; '.join(problems)[:160]}", flush=True)
+                print(
+                    f"    [{ident(r)}] attempt {attempt + 1}/{attempts}: "
+                    f"{'; '.join(problems)[:160]}",
+                    flush=True,
+                )
             if exhausted_spec:
                 return _fall_back(
-                    r, dict(exhausted_spec.get("mark") or {}),
+                    r,
+                    dict(exhausted_spec.get("mark") or {}),
                     f"EXHAUSTED after {attempts} attempts, falling back: "
-                    f"{'; '.join(problems)[:120]}")
-            raise ValueError(f"{sc['name']}: output breaks the stage contract after "
-                             f"{attempts} attempts: {'; '.join(problems)}")
+                    f"{'; '.join(problems)[:120]}",
+                )
+            raise ValueError(
+                f"{sc['name']}: output breaks the stage contract after "
+                f"{attempts} attempts: {'; '.join(problems)}"
+            )
 
         max_fail = float(ctx.cfg.get("max_fail_pct", 2.0))
-        failures = (ctx.manifest_extra.setdefault("failures", {})
-                    .setdefault(sc["name"], {}))
+        failures = ctx.manifest_extra.setdefault("failures", {}).setdefault(
+            sc["name"], {}
+        )
         batch_key = _batching(ctx, sc)
         if batch_key:
             from src.infra.endpoints.openrouter import build_request_body
 
             def build(r: dict) -> dict:
                 messages, _, _ = tagged_request(sc, r, ctx)
-                return build_request_body(m["model"], messages, m["temperature"],
-                                          m["max_tokens"], m.get("extra_body"))
+                return build_request_body(
+                    m["model"],
+                    messages,
+                    m["temperature"],
+                    m["max_tokens"],
+                    m.get("extra_body"),
+                )
 
             def parse(r: dict, res) -> dict:
                 # One attempt against the full contract -- tags, normalisation, lint.
@@ -1081,8 +1368,8 @@ def op_llm_tagged(sc: dict, cfg: dict) -> Stage:
                 # budget (and the nudges) exactly as it does without batching.
                 _, tags, save = tagged_request(sc, r, ctx)
                 assert res.finish_reason != "length", (
-                    f"{mk}: {m['model']} hit max_tokens={m['max_tokens']} and "
-                    "truncated")
+                    f"{mk}: {m['model']} hit max_tokens={m['max_tokens']} and truncated"
+                )
                 parsed = _parse_tagged(res.content, tags)
                 for tag in normalize:
                     if tag in parsed:
@@ -1094,29 +1381,55 @@ def op_llm_tagged(sc: dict, cfg: dict) -> Stage:
 
             _note_batched(ctx, sc["name"])
             done = run_items_batched(
-                todo, one, build, parse, usage=ctx.usage, model=m["model"],
-                stage=mk, key=batch_key, run_dir=ctx.run_dir, workers=ctx.workers,
-                desc=sc["name"], ckpt=ckpt, max_fail_pct=max_fail, failures=failures)
+                todo,
+                one,
+                build,
+                parse,
+                usage=ctx.usage,
+                model=m["model"],
+                stage=mk,
+                key=batch_key,
+                run_dir=ctx.run_dir,
+                workers=ctx.workers,
+                desc=sc["name"],
+                ckpt=ckpt,
+                max_fail_pct=max_fail,
+                failures=failures,
+            )
         else:
-            done = run_items(todo, one, ctx.workers, sc["name"], ckpt,
-                             max_fail_pct=max_fail, failures=failures)
+            done = run_items(
+                todo,
+                one,
+                ctx.workers,
+                sc["name"],
+                ckpt,
+                max_fail_pct=max_fail,
+                failures=failures,
+            )
         if len(todo) == len(records):
             return apply_keep(sc, done, ctx) if keep_spec else done
         # Out-of-scope records keep their place; an in-scope record that failed is
         # dropped, exactly as it would be without the filter.
         key = sc.get("checkpoint") or "record_id"
         by_key = {r[key]: r for r in done}
-        merged = [by_key.get(r[key], r) for r in records
-                  if not selected(sc, r) or r[key] in by_key]
+        merged = [
+            by_key.get(r[key], r)
+            for r in records
+            if not selected(sc, r) or r[key] in by_key
+        ]
         return apply_keep(sc, merged, ctx) if keep_spec else merged
 
     # A stage may define `save` only inside `variants_by`, in which case there is no one
     # field the preview could name; fall back to the record id rather than crashing the
     # run log after the stage has already been paid for.
     first_saved = next(iter(sc.get("save") or {}), None)
-    return Stage(sc["name"], fn, paid=True, checkpoint_key=sc.get("checkpoint"),
-                 preview=lambda r: str((first_saved and r.get(first_saved))
-                                       or ident(r)))
+    return Stage(
+        sc["name"],
+        fn,
+        paid=True,
+        checkpoint_key=sc.get("checkpoint"),
+        preview=lambda r: str((first_saved and r.get(first_saved)) or ident(r)),
+    )
 
 
 def apply_pick(spec: dict, records: list[dict]) -> list[dict]:
@@ -1137,8 +1450,8 @@ def apply_pick(spec: dict, records: list[dict]) -> list[dict]:
         label = raw if raw in src else raw.split()[-1] if raw.split() else raw
         if label not in src:
             raise ValueError(
-                f"{r.get('record_id', '?')}: {by}={r[by]!r} is not one of "
-                f"{sorted(src)}")
+                f"{r.get('record_id', '?')}: {by}={r[by]!r} is not one of {sorted(src)}"
+            )
         return src[label]
 
     return [{**r, to: r[resolve(r)], **also} for r in records]
@@ -1191,9 +1504,11 @@ def assign_arms(spec: dict, records: list[dict], announce: bool = True) -> list[
     constants = dict(spec.get("constants") or {})
     copies = dict(spec.get("copy") or {})
     for name, weights in fields.items():
-        assert weights and all(float(w) >= 0 for w in weights.values()) \
-            and sum(float(w) for w in weights.values()) > 0, \
-            f"assign field {name!r}: weights must be non-negative and not all zero"
+        assert (
+            weights
+            and all(float(w) >= 0 for w in weights.values())
+            and sum(float(w) for w in weights.values()) > 0
+        ), f"assign field {name!r}: weights must be non-negative and not all zero"
 
     def label(field: str, key: str) -> str:
         weights = fields[field]
@@ -1209,9 +1524,14 @@ def assign_arms(spec: dict, records: list[dict], announce: bool = True) -> list[
     out = []
     for r in records:
         key = str(r[by])
-        out.append({**r, **constants,
-                    **{new: r[src] for new, src in copies.items()},
-                    **{f: label(f, key) for f in fields}})
+        out.append(
+            {
+                **r,
+                **constants,
+                **{new: r[src] for new, src in copies.items()},
+                **{f: label(f, key) for f in fields},
+            }
+        )
     if announce:
         for f in fields:
             counts: dict[str, int] = {}
@@ -1224,9 +1544,11 @@ def assign_arms(spec: dict, records: list[dict], announce: bool = True) -> list[
 def op_assign(sc: dict, cfg: dict) -> Stage:
     """Free stage wrapper around `assign_arms` (see it for the semantics)."""
     fields = list((sc.get("fields") or {}))
-    return Stage(sc["name"], lambda ctx, records, ckpt: assign_arms(sc, records),
-                 preview=lambda r: f"{ident(r)} "
-                                   + " ".join(f"{f}={r.get(f)}" for f in fields))
+    return Stage(
+        sc["name"],
+        lambda ctx, records, ckpt: assign_arms(sc, records),
+        preview=lambda r: f"{ident(r)} " + " ".join(f"{f}={r.get(f)}" for f in fields),
+    )
 
 
 def apply_keep(sc: dict, records: list[dict], ctx=None) -> list[dict]:
@@ -1274,16 +1596,24 @@ def apply_keep(sc: dict, records: list[dict], ctx=None) -> list[dict]:
     def rule(r: dict):
         """(arm label, field, allowed set) for this record, or None if out of scope."""
         if not cases:
-            return ("", keep["field"], {_norm_label(v) for v in keep["in"]}) \
-                if selected(sc, r) else None
+            return (
+                ("", keep["field"], {_norm_label(v) for v in keep["in"]})
+                if selected(sc, r)
+                else None
+            )
         case = cases.get(_norm_label(r.get(by, "")))
         if case is None:
             return None
-        return (_norm_label(r.get(by, "")), case["field"],
-                {_norm_label(v) for v in case["in"]})
+        return (
+            _norm_label(r.get(by, "")),
+            case["field"],
+            {_norm_label(v) for v in case["in"]},
+        )
 
     def limit(arm: str) -> float:
-        return float(max_drop.get(arm, 100.0) if isinstance(max_drop, dict) else max_drop)
+        return float(
+            max_drop.get(arm, 100.0) if isinstance(max_drop, dict) else max_drop
+        )
 
     out: list[dict] = []
     dropped: dict[str, list[str]] = {}
@@ -1299,7 +1629,8 @@ def apply_keep(sc: dict, records: list[dict], ctx=None) -> list[dict]:
             out.append(r)
         else:
             dropped.setdefault(arm, []).append(
-                f"{ident(r)} [{field}={r.get(field, '')!r}]")
+                f"{ident(r)} [{field}={r.get(field, '')!r}]"
+            )
 
     if ctx is not None and dropped:
         # The dropped records no longer get a snapshot of their own, so the manifest --
@@ -1307,19 +1638,23 @@ def apply_keep(sc: dict, records: list[dict], ctx=None) -> list[dict]:
         # stays in this stage's local `.partial.jsonl`.
         ctx.manifest_extra.setdefault("dropped", {})[sc["name"]] = {
             arm: {"scoped": scoped.get(arm, 0), "dropped": len(rows), "records": rows}
-            for arm, rows in sorted(dropped.items())}
+            for arm, rows in sorted(dropped.items())
+        }
 
     for arm, rows in sorted(dropped.items()):
         n = scoped.get(arm, 0)
         pct = 100 * len(rows) / max(n, 1)
         label = f"{sc['name']}[{arm}]" if arm else sc["name"]
-        print(f"    {label}: dropped {len(rows)}/{n} in-scope records ({pct:.1f}%) "
-              f"whose label the reviser did not support. First 3: {rows[:3]}")
+        print(
+            f"    {label}: dropped {len(rows)}/{n} in-scope records ({pct:.1f}%) "
+            f"whose label the reviser did not support. First 3: {rows[:3]}"
+        )
         if pct > limit(arm) and n >= _MIN_SCOPED_FOR_DROP_GATE:
             raise RuntimeError(
                 f"{label}: {pct:.1f}% of in-scope records dropped, above "
                 f"max_drop_pct={limit(arm)}. The rater and the generator disagree "
-                f"systematically -- fix the recipe rather than over-generating.")
+                f"systematically -- fix the recipe rather than over-generating."
+            )
     return out
 
 
@@ -1330,8 +1665,11 @@ def op_filter(sc: dict, cfg: dict) -> Stage:
     field comes from the stage immediately before, that stage can carry a `keep:` block
     itself and save a snapshot.
     """
-    return Stage(sc["name"], lambda ctx, records, ckpt: apply_keep(sc, records, ctx),
-                 preview=ident)
+    return Stage(
+        sc["name"],
+        lambda ctx, records, ckpt: apply_keep(sc, records, ctx),
+        preview=ident,
+    )
 
 
 def op_chat_export(sc: dict, cfg: dict) -> Stage:
@@ -1341,6 +1679,7 @@ def op_chat_export(sc: dict, cfg: dict) -> Stage:
     field reaches the threshold -- how a multi-turn record keeps its second exchange
     while single-turn records stay three messages.
     """
+
     def fn(ctx, records, ckpt):
         out = []
         for r in records:
@@ -1353,8 +1692,12 @@ def op_chat_export(sc: dict, cfg: dict) -> Stage:
                 if "reasoning_content" in m:
                     msg["reasoning_content"] = m["reasoning_content"].format(**r)
                 msgs.append(msg)
-            out.append({"messages": msgs,
-                        "metadata": {k: r.get(k, "") for k in sc["metadata"]}})
+            out.append(
+                {
+                    "messages": msgs,
+                    "metadata": {k: r.get(k, "") for k in sc["metadata"]},
+                }
+            )
         return out
 
     return Stage(sc["name"], fn)
@@ -1369,8 +1712,13 @@ def op_corpus_check(sc: dict, cfg: dict) -> Stage:
     `stages:` it audits what actually trains; `--ablate <name>` runs the corpus
     unchecked, which on a judged config is also how to skip paying for judging.
     """
-    from .check_corpus import (is_paid, pattern_table, print_summary, run_corpus_checks,
-                         validate_spec)
+    from .check_corpus import (
+        is_paid,
+        pattern_table,
+        print_summary,
+        run_corpus_checks,
+        validate_spec,
+    )
 
     try:
         validate_spec(sc)
@@ -1379,11 +1727,13 @@ def op_corpus_check(sc: dict, cfg: dict) -> Stage:
     paid = is_paid(sc)
     assert not paid or sc.get("model"), (
         f"stage {sc['name']!r} declares a judged corpus property but no `model:` key; "
-        f"an unpriced judge would also estimate as free")
+        f"an unpriced judge would also estimate as free"
+    )
     on_fail = sc.get("on_fail", "warn")
     assert on_fail in ("warn", "error", "stop"), (
         f"stage {sc['name']!r}: on_fail must be 'warn' (report only), 'error' (finish "
-        f"the run, exit nonzero) or 'stop' (halt the run here), got {on_fail!r}")
+        f"the run, exit nonzero) or 'stop' (halt the run here), got {on_fail!r}"
+    )
     report_name = f"{sc['name']}_report.json"
 
     def publish(ctx, report):
@@ -1391,7 +1741,8 @@ def op_corpus_check(sc: dict, cfg: dict) -> Stage:
             ctx.cache.save_json(report_name, report)
         else:
             (ctx.run_dir / report_name).write_text(
-                json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+                json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
         # The pattern table and the judged-label sidecar are the entry point for any
         # "this corpus trained badly, what is IN it" investigation, so they are published
         # beside the corpus rather than left in a run dir that gets cleaned up. GDM's own
@@ -1415,7 +1766,9 @@ def op_corpus_check(sc: dict, cfg: dict) -> Stage:
                 f"and validation buffering 26->20% without moving eval scores. Per-record "
                 f"membership is in `{sc['name']}_labels.jsonl` "
                 f"(`patterns_strict` / `patterns_broad`), so a slice can be pulled "
-                f"without re-running the scan.\n{table}\n", encoding="utf-8")
+                f"without re-running the scan.\n{table}\n",
+                encoding="utf-8",
+            )
             if ctx.cache is not None:
                 ctx.cache.mirror(path)
             print(table)
@@ -1428,14 +1781,17 @@ def op_corpus_check(sc: dict, cfg: dict) -> Stage:
         # overlap, so 0.35 is a least-bad trade-off rather than a clean threshold. Without
         # these, "why is this pattern not in the table" costs another paid scan to answer.
         if ctx.cache is not None:
-            for raw in sorted(ctx.run_dir.glob(f"{sc['name']}_*.scans.jsonl")) + \
-                    sorted(ctx.run_dir.glob(f"{sc['name']}_*.ratings.jsonl")):
+            for raw in sorted(ctx.run_dir.glob(f"{sc['name']}_*.scans.jsonl")) + sorted(
+                ctx.run_dir.glob(f"{sc['name']}_*.ratings.jsonl")
+            ):
                 ctx.cache.mirror(raw)
         # Keyed by stage name: a run may check its scenarios, its drafts and its final
         # corpus, and the later verdicts must not overwrite the earlier ones.
         ctx.manifest_extra.setdefault("corpus_checks", {})[sc["name"]] = {
-            "pass": report["pass"], "on_fail": on_fail,
-            "counts": report.get("counts", {}), "report": report_name,
+            "pass": report["pass"],
+            "on_fail": on_fail,
+            "counts": report.get("counts", {}),
+            "report": report_name,
             "n_records": report.get("n_records"),
             "judge_spend_usd": report.get("judge_spend_usd"),
             "gated": sorted(k for k, v in report["properties"].items() if v["gate"]),
@@ -1444,24 +1800,36 @@ def op_corpus_check(sc: dict, cfg: dict) -> Stage:
 
     def fn(ctx, records, ckpt):
         before = len(records)
-        report = run_corpus_checks(records, sc, run_dir=ctx.run_dir,
-                                   seed=int(ctx.cfg.get("seed", 0)),
-                                   workers=ctx.workers, ctx=ctx if paid else None)
+        report = run_corpus_checks(
+            records,
+            sc,
+            run_dir=ctx.run_dir,
+            seed=int(ctx.cfg.get("seed", 0)),
+            workers=ctx.workers,
+            ctx=ctx if paid else None,
+        )
         publish(ctx, report)
         print_summary(report)
         assert len(records) == before, "a corpus check must never change the corpus"
         if on_fail == "stop" and not report["pass"]:
             # Stop before the stages that would spend real money on a corpus already
             # known to be bad.
-            ctx.stop = (f"corpus check {sc['name']!r} failed "
-                        f"({report['counts'].get('critical', 0)} critical) and declares "
-                        f"on_fail: stop -- see {report_name}")
+            ctx.stop = (
+                f"corpus check {sc['name']!r} failed "
+                f"({report['counts'].get('critical', 0)} critical) and declares "
+                f"on_fail: stop -- see {report_name}"
+            )
         return records
 
-    return Stage(sc["name"], fn, paid=paid, observer=True,
-                 # A pure observer's null-operation IS the identity, so this stage is
-                 # always ablatable and needs no `ablate_with` map in the config.
-                 ablate_fn=lambda rs: rs)
+    return Stage(
+        sc["name"],
+        fn,
+        paid=paid,
+        observer=True,
+        # A pure observer's null-operation IS the identity, so this stage is
+        # always ablatable and needs no `ablate_with` map in the config.
+        ablate_fn=lambda rs: rs,
+    )
 
 
 def op_corpus_filter(sc: dict, cfg: dict) -> Stage:
@@ -1498,11 +1866,13 @@ def op_corpus_filter(sc: dict, cfg: dict) -> Stage:
     drop_when = [str(k) for k in (sc.get("drop_when") or [])]
     assert drop_when, (
         f"stage {sc['name']!r}: `drop_when:` must name at least one label key (e.g. "
-        f"[embedding_dup]). A filter with no rule is a silent pass-through.")
+        f"[embedding_dup]). A filter with no rule is a silent pass-through."
+    )
     assert not sc.get("keep_when"), (
         f"stage {sc['name']!r}: `keep_when:` is deliberately unsupported. Keep-rules "
         f"delete every record a failed check never labelled; express the rule as "
-        f"`drop_when:` so a check that dies drops nothing.")
+        f"`drop_when:` so a check that dies drops nothing."
+    )
     max_drop = float(sc.get("max_drop_share", 0.05))
     allow_partial = bool(sc.get("allow_partial", False))
 
@@ -1511,19 +1881,24 @@ def op_corpus_filter(sc: dict, cfg: dict) -> Stage:
         assert report_path.exists(), (
             f"stage {sc['name']!r}: no report from corpus check {source!r} at "
             f"{report_path}. `from:` must name a corpus_check stage that runs BEFORE "
-            f"this one in `stages:`.")
+            f"this one in `stages:`."
+        )
         report = json.loads(report_path.read_text(encoding="utf-8"))
 
         # The check's own id spec, so the two cannot disagree about which record a label
         # belongs to -- the failure mode that makes a filter delete the wrong rows.
         id_spec = (report.get("fields") or {}).get("id")
-        ids = ([str(resolve_field(id_spec, r) or i) for i, r in enumerate(records)]
-               if id_spec else [str(i) for i in range(len(records))])
+        ids = (
+            [str(resolve_field(id_spec, r) or i) for i, r in enumerate(records)]
+            if id_spec
+            else [str(i) for i in range(len(records))]
+        )
 
         assert report.get("n_records") == len(records), (
             f"stage {sc['name']!r}: check {source!r} ran over "
             f"{report.get('n_records')} records but this stage sees {len(records)}. "
-            f"The labels cannot be matched to this corpus; re-run the check.")
+            f"The labels cannot be matched to this corpus; re-run the check."
+        )
 
         # Which properties could have produced the requested labels, and did they see
         # the whole corpus? A sampled property knows nothing about the records it
@@ -1539,14 +1914,17 @@ def op_corpus_filter(sc: dict, cfg: dict) -> Stage:
             f"stage {sc['name']!r}: {'; '.join(partial)}. A sampled property has no "
             f"verdict on the records it never saw, so filtering on it would pass every "
             f"unexamined duplicate through as clean. Raise the property's `sample:` to "
-            f"cover the corpus, or set `allow_partial: true` to accept a partial sweep.")
+            f"cover the corpus, or set `allow_partial: true` to accept a partial sweep."
+        )
 
         labels = load_labels(ctx.run_dir, source)
         assert labels or not any(
             (report.get("properties") or {}).get(a, {}).get("findings")
-            for a in (report.get("properties") or {})), (
+            for a in (report.get("properties") or {})
+        ), (
             f"stage {sc['name']!r}: check {source!r} reported findings but wrote no "
-            f"label sidecar; nothing can be matched for removal.")
+            f"label sidecar; nothing can be matched for removal."
+        )
 
         condemned = {}
         for rid in ids:
@@ -1559,13 +1937,15 @@ def op_corpus_filter(sc: dict, cfg: dict) -> Stage:
             f"stage {sc['name']!r}: would drop {len(condemned)} of {len(records)} "
             f"records ({share:.1%}), over max_drop_share={max_drop:.1%}. A removal set "
             f"this large is a broken threshold in {source!r}, not a licence to delete; "
-            f"inspect {report_path.name} before raising the ceiling.")
+            f"inspect {report_path.name} before raising the ceiling."
+        )
 
         kept, dropped = [], []
         for r, rid in zip(records, ids):
             if rid in condemned:
-                dropped.append({**r, "_dropped_by": sc["name"],
-                                "_dropped_for": condemned[rid]})
+                dropped.append(
+                    {**r, "_dropped_by": sc["name"], "_dropped_for": condemned[rid]}
+                )
             else:
                 kept.append(r)
 
@@ -1580,13 +1960,20 @@ def op_corpus_filter(sc: dict, cfg: dict) -> Stage:
             for k in hits:
                 by_reason[k] = by_reason.get(k, 0) + 1
         ctx.manifest_extra.setdefault("corpus_filters", {})[sc["name"]] = {
-            "from": source, "drop_when": drop_when, "allow_partial": allow_partial,
-            "n_before": len(records), "n_after": len(kept), "dropped": len(dropped),
-            "drop_share": round(share, 4), "by_reason": by_reason,
+            "from": source,
+            "drop_when": drop_when,
+            "allow_partial": allow_partial,
+            "n_before": len(records),
+            "n_after": len(kept),
+            "dropped": len(dropped),
+            "drop_share": round(share, 4),
+            "by_reason": by_reason,
             "dropped_file": f"{sc['name']}_dropped.jsonl" if dropped else None,
         }
-        print(f">>> {sc['name']}: dropped {len(dropped)} of {len(records)} "
-              f"({share:.1%}) on {by_reason or 'nothing'} -- {len(kept)} remain")
+        print(
+            f">>> {sc['name']}: dropped {len(dropped)} of {len(records)} "
+            f"({share:.1%}) on {by_reason or 'nothing'} -- {len(kept)} remain"
+        )
         return kept
 
     # Ablating a filter is running the corpus unfiltered, which is exactly the identity.
@@ -1622,14 +2009,17 @@ def op_load_source_run(sc: dict, cfg: dict) -> Stage:
         # New-layout repos keep snapshots under stages/ (dataset.jsonl at the root);
         # pre-layout repos hold them at the root — try the exact name, then stages/.
         try:
-            records = read_jsonl(Path(hf_download(
-                repo, snapshot, repo_type="dataset")))
+            records = read_jsonl(Path(hf_download(repo, snapshot, repo_type="dataset")))
         except EntryNotFoundError:
-            records = read_jsonl(Path(hf_download(
-                repo, f"stages/{snapshot}", repo_type="dataset")))
+            records = read_jsonl(
+                Path(hf_download(repo, f"stages/{snapshot}", repo_type="dataset"))
+            )
         try:
-            manifest = json.loads(Path(hf_download(
-                repo, "manifest.json", repo_type="dataset")).read_text())
+            manifest = json.loads(
+                Path(
+                    hf_download(repo, "manifest.json", repo_type="dataset")
+                ).read_text()
+            )
         except EntryNotFoundError:
             manifest = {}
         return records, manifest, repo
@@ -1643,12 +2033,16 @@ def op_load_source_run(sc: dict, cfg: dict) -> Stage:
         assert src_sha is None or src_sha == sha, (
             f"source run {label} was generated against a different constitution "
             f"(sha {src_sha[:12]} != {sha[:12]}). Point cfg.constitution at the "
-            f"source run's constitution or pick a matching source.")
-        ctx.manifest_extra["source"] = {"source_run": label,
-                                        "source_git_sha": src_manifest.get("git_sha"),
-                                        "source_constitution_sha256": src_sha}
+            f"source run's constitution or pick a matching source."
+        )
+        ctx.manifest_extra["source"] = {
+            "source_run": label,
+            "source_git_sha": src_manifest.get("git_sha"),
+            "source_constitution_sha256": src_sha,
+        }
         (ctx.run_dir / "source_meta.json").write_text(
-            json.dumps(ctx.manifest_extra["source"], indent=2))
+            json.dumps(ctx.manifest_extra["source"], indent=2)
+        )
         return source
 
     def on_cached(ctx, records):
@@ -1668,44 +2062,73 @@ def _enabled(cfg: dict) -> dict[str, int]:
 
 def op_plan_cells(sc: dict, cfg: dict) -> Stage:
     """Deterministic cell/explicitness/flaw allocation over the source records."""
+
     def fn(ctx, records, ckpt):
         enabled = _enabled(ctx.cfg)
         assert enabled, "no cell has a positive count; nothing to generate"
         source_run = ctx.manifest_extra.get("source", {}).get("source_run", "")
         return cells.plan_model_eval_model_records(
-            records, enabled, ctx.cfg["explicitness"], int(ctx.cfg.get("seed", 0)),
-            ctx.cfg["prompts"], source_run=source_run, flaws=ctx.cfg.get("flaws"))
+            records,
+            enabled,
+            ctx.cfg["explicitness"],
+            int(ctx.cfg.get("seed", 0)),
+            ctx.cfg["prompts"],
+            source_run=source_run,
+            flaws=ctx.cfg.get("flaws"),
+        )
 
-    return Stage(sc["name"], fn,
-                 preview=lambda r: f"{r['record_id']} [{r['explicitness']}]")
+    return Stage(
+        sc["name"], fn, preview=lambda r: f"{r['record_id']} [{r['explicitness']}]"
+    )
 
 
 def op_perturb_pairs(sc: dict, cfg: dict) -> Stage:
     """Minimal-pair flawed responses, merged back into the plan; failures dropped loudly."""
+
     def fn(ctx, records, ckpt):
         flawed_planned = [p for p in records if p["response_kind"] == "flawed"]
         m = model_cfg(ctx.cfg, sc["model"])
         perturbed = cells.perturb_responses(
-            records, ctx.client, ctx.usage, workers=ctx.workers,
-            templates=sc["prompts"], P=ctx.cfg["prompts"], ckpt=ckpt, **m)
+            records,
+            ctx.client,
+            ctx.usage,
+            workers=ctx.workers,
+            templates=sc["prompts"],
+            P=ctx.cfg["prompts"],
+            ckpt=ckpt,
+            **m,
+        )
         by_id = {p["record_id"]: p for p in perturbed}
         lost = [p["record_id"] for p in flawed_planned if p["record_id"] not in by_id]
         if lost:
-            print(f"!!! dropping {len(lost)} flawed documents without a perturbation "
-                  f"(first 3: {lost[:3]})")
-        return [by_id.get(p["record_id"], p) for p in records
-                if p["response_kind"] != "flawed" or p["record_id"] in by_id]
+            print(
+                f"!!! dropping {len(lost)} flawed documents without a perturbation "
+                f"(first 3: {lost[:3]})"
+            )
+        return [
+            by_id.get(p["record_id"], p)
+            for p in records
+            if p["response_kind"] != "flawed" or p["record_id"] in by_id
+        ]
 
-    return Stage(sc["name"], fn, paid=True, checkpoint_key=sc.get("checkpoint"),
-                 skip=lambda ctx, rs: not any(
-                     r["response_kind"] == "flawed" for r in rs),
-                 preview=lambda r: (f"[{r['flaw']['type']}/{r['flaw']['severity']}] "
-                                    f"{r.get('change_summary', '')}"
-                                    if r.get("flaw") else r["record_id"]))
+    return Stage(
+        sc["name"],
+        fn,
+        paid=True,
+        checkpoint_key=sc.get("checkpoint"),
+        skip=lambda ctx, rs: not any(r["response_kind"] == "flawed" for r in rs),
+        preview=lambda r: (
+            f"[{r['flaw']['type']}/{r['flaw']['severity']}] "
+            f"{r.get('change_summary', '')}"
+            if r.get("flaw")
+            else r["record_id"]
+        ),
+    )
 
 
 def op_generate_cells(sc: dict, cfg: dict) -> Stage:
     """Generate each planned document via its cell's builder (see cells.CELLS)."""
+
     def fn(ctx, records, ckpt):
         enabled = _enabled(ctx.cfg)
         # Guard against a truncated plan reaching generation -- notably a pre-framework
@@ -1713,35 +2136,65 @@ def op_generate_cells(sc: dict, cfg: dict) -> Stage:
         missing = sorted(set(enabled) - {r["cell"] for r in records})
         assert not missing, (
             f"records reaching generation lack enabled cell(s) {missing}. If resuming "
-            f"a pre-framework run dir, delete its stage_3_perturbed.jsonl and re-run.")
-        model_cfgs = {cells.CELLS[c].model_key: model_cfg(ctx.cfg, cells.CELLS[c].model_key)
-                      for c in enabled}
+            f"a pre-framework run dir, delete its stage_3_perturbed.jsonl and re-run."
+        )
+        model_cfgs = {
+            cells.CELLS[c].model_key: model_cfg(ctx.cfg, cells.CELLS[c].model_key)
+            for c in enabled
+        }
         return cells.generate_model_eval_model_documents(
-            records, ctx.client, ctx.usage, model_cfgs, ctx.constitution,
-            ctx.cfg["prompts"], ctx.workers, ckpt=ckpt)
+            records,
+            ctx.client,
+            ctx.usage,
+            model_cfgs,
+            ctx.constitution,
+            ctx.cfg["prompts"],
+            ctx.workers,
+            ckpt=ckpt,
+        )
 
-    return Stage(sc["name"], fn, paid=True, checkpoint_key=sc.get("checkpoint"),
-                 preview=lambda r: r["reasoning"])
+    return Stage(
+        sc["name"],
+        fn,
+        paid=True,
+        checkpoint_key=sc.get("checkpoint"),
+        preview=lambda r: r["reasoning"],
+    )
 
 
 def op_revise_cells(sc: dict, cfg: dict) -> Stage:
     """Constitution-grounded rewrite of every verdict-carrying document -- the
     difficult-advice `final` stage's twin. Control records pass through untouched;
     the whole stage is skipped when no enabled cell carries a verdict."""
+
     def fn(ctx, records, ckpt):
         m = model_cfg(ctx.cfg, sc["model"])
         return cells.revise_documents(
-            records, ctx.client, ctx.usage, workers=ctx.workers,
-            templates=sc["prompts"], P=ctx.cfg["prompts"],
-            constitution=ctx.constitution, stage_key=sc["model"], ckpt=ckpt, **m)
+            records,
+            ctx.client,
+            ctx.usage,
+            workers=ctx.workers,
+            templates=sc["prompts"],
+            P=ctx.cfg["prompts"],
+            constitution=ctx.constitution,
+            stage_key=sc["model"],
+            ckpt=ckpt,
+            **m,
+        )
 
-    return Stage(sc["name"], fn, paid=True, checkpoint_key=sc.get("checkpoint"),
-                 skip=lambda ctx, rs: not any("assessment" in r for r in rs),
-                 preview=lambda r: r.get("rewrite_changes", r["record_id"]))
+    return Stage(
+        sc["name"],
+        fn,
+        paid=True,
+        checkpoint_key=sc.get("checkpoint"),
+        skip=lambda ctx, rs: not any("assessment" in r for r in rs),
+        preview=lambda r: r.get("rewrite_changes", r["record_id"]),
+    )
 
 
 def op_assemble_cells(sc: dict, cfg: dict) -> Stage:
     """Free export: one assembler per cell (masked-turn shapes, supervise metadata)."""
+
     def fn(ctx, records, ckpt):
         return cells.to_model_eval_model_sft(records, ctx.cfg["prompts"])
 
@@ -1802,7 +2255,8 @@ def plan_weighted_batches(traits: list[Trait], cfg: dict) -> list[dict]:
         # flattening every weight.
         assert configured == "uniform", (
             f"trait_weights must be a mapping or the literal 'uniform', got "
-            f"{configured!r}")
+            f"{configured!r}"
+        )
         weights = {t.trait_id: 1.0 for t in traits}
     else:
         configured = dict(configured)
@@ -1815,20 +2269,26 @@ def plan_weighted_batches(traits: list[Trait], cfg: dict) -> list[dict]:
         assert not (missing or extra), (
             f"trait_weights do not match {cfg['constitution']}, which segments into "
             f"{len(traits)} units: missing weights for {missing}, weights for absent "
-            f"traits {extra}. Fix the config against the constitution actually in use.")
+            f"traits {extra}. Fix the config against the constitution actually in use."
+        )
         weights = {t.trait_id: float(configured[t.trait_id]) for t in traits}
     counts = _largest_remainder(weights, int(cfg["total_scenarios"]))
 
     # Motive rotation follows the config mapping's insertion order (YAML preserves it);
     # sorting here would silently re-deal every batch's motive vs the published corpus.
     motive_w = dict(mix.get("motive") or {"replacement": 1.0})
-    order = [m for m in motive_w
-             for _ in range(max(1, round(float(motive_w.get(m, 0)) * 10)))]
+    order = [
+        m
+        for m in motive_w
+        for _ in range(max(1, round(float(motive_w.get(m, 0)) * 10)))
+    ]
 
     industries = list(cfg.get("industries") or [])
     control_frac = float(mix.get("control", 0.0))
     batches: list[dict] = []
-    cursor = 0  # walks the industry list across the whole run, never restarting per trait
+    cursor = (
+        0  # walks the industry list across the whole run, never restarting per trait
+    )
     for ti, t in enumerate(traits):
         n_total = counts[t.trait_id]
         n_control = round(n_total * control_frac)
@@ -1837,16 +2297,21 @@ def plan_weighted_batches(traits: list[Trait], cfg: dict) -> list[dict]:
             remaining = n_kind
             while remaining > 0:
                 n = min(per_call, remaining)
-                batches.append({
-                    "trait_index": ti,
-                    "batch_index": bi,
-                    "n": n,
-                    "control": is_control,
-                    "motive": order[(ti * 7 + bi) % len(order)],
-                    "industries": [industries[(cursor + k) % len(industries)]
-                                   for k in range(n)] if industries else [],
-                    "id_prefix": str(cfg.get("id_prefix", "")),
-                })
+                batches.append(
+                    {
+                        "trait_index": ti,
+                        "batch_index": bi,
+                        "n": n,
+                        "control": is_control,
+                        "motive": order[(ti * 7 + bi) % len(order)],
+                        "industries": [
+                            industries[(cursor + k) % len(industries)] for k in range(n)
+                        ]
+                        if industries
+                        else [],
+                        "id_prefix": str(cfg.get("id_prefix", "")),
+                    }
+                )
                 cursor += n
                 remaining -= per_call
                 bi += 1
@@ -1872,40 +2337,66 @@ def op_scenarios_weighted(sc: dict, cfg: dict) -> Stage:
         batches = plan_weighted_batches(traits, ctx.cfg)
         mix = ctx.cfg.get("mix", {})
         # Same rule as op_scenarios: unit provenance travels with the record.
-        prov = {r["trait_id"]: {k: r[k] for k in UNIT_PROVENANCE if k in r}
-                for r in records}
+        prov = {
+            r["trait_id"]: {k: r[k] for k in UNIT_PROVENANCE if k in r} for r in records
+        }
 
         def one(k: int) -> list[dict]:
             b = batches[k]
             t = traits[b["trait_index"]]
             system, user = weighted_scenario_prompt(sc, b, t)
-            parsed, _ = call_json(ctx.client, ctx.usage, m["model"], system, user,
-                                  m["temperature"], m["max_tokens"], stage=mk,
-                                  extra=m.get("extra_body"))
-            assert isinstance(parsed, list), \
+            parsed, _ = call_json(
+                ctx.client,
+                ctx.usage,
+                m["model"],
+                system,
+                user,
+                m["temperature"],
+                m["max_tokens"],
+                stage=mk,
+                extra=m.get("extra_body"),
+            )
+            assert isinstance(parsed, list), (
                 f"{t.trait_id}: expected a JSON array, got {type(parsed)}"
+            )
             out = []
             for j, s in enumerate(parsed):
                 kind = "c" if b["control"] else "s"
                 sid = f"{b['id_prefix']}{t.trait_id}_b{b['batch_index']:02d}_{kind}{j:03d}"
-                rec = {"scenario_id": sid, "trait_id": t.trait_id, "trait_name": t.name,
-                       "trait_text": t.text,
-                       **{f: s[f] for f in required},
-                       **{f: s.get(f, "") for f in optional},
-                       "motive": b["motive"], "control": b["control"],
-                       **assign_variant(sid, mix),
-                       **prov.get(t.trait_id, {})}
+                rec = {
+                    "scenario_id": sid,
+                    "trait_id": t.trait_id,
+                    "trait_name": t.name,
+                    "trait_text": t.text,
+                    **{f: s[f] for f in required},
+                    **{f: s.get(f, "") for f in optional},
+                    "motive": b["motive"],
+                    "control": b["control"],
+                    **assign_variant(sid, mix),
+                    **prov.get(t.trait_id, {}),
+                }
                 out.append(rec)
             return out
 
-        nested = resilient(one, len(batches), ctx.workers, sc["name"],
-                           max_fail_pct=float(ctx.cfg.get("max_fail_pct", 2.0)))
+        nested = resilient(
+            one,
+            len(batches),
+            ctx.workers,
+            sc["name"],
+            max_fail_pct=float(ctx.cfg.get("max_fail_pct", 2.0)),
+        )
         return [r for group in nested for r in group]
 
-    return Stage(sc["name"], fn, paid=True,
-                 preview=lambda r: f"[{r['trait_name']}|{r['motive']}"
-                                   f"{'|control' if r.get('control') else ''}] "
-                                   f"{r.get('situation', '')}")
+    return Stage(
+        sc["name"],
+        fn,
+        paid=True,
+        preview=lambda r: (
+            f"[{r['trait_name']}|{r['motive']}"
+            f"{'|control' if r.get('control') else ''}] "
+            f"{r.get('situation', '')}"
+        ),
+    )
 
 
 OPERATORS = {
@@ -1930,11 +2421,13 @@ OPERATORS = {
 # and an archived config that cannot run is not a reproducible record of a published
 # corpus. Nothing live uses them (peer_critique.yaml, the last holdout, was rebuilt on
 # the generic kinds on 2026-08-14); build a document type out of the generic kinds
-# above, as `post_action_retrospection.yaml` does.
-OPERATORS.update({
-    "plan_cells": op_plan_cells,
-    "perturb_pairs": op_perturb_pairs,
-    "generate_cells": op_generate_cells,
-    "revise_cells": op_revise_cells,
-    "assemble_cells": op_assemble_cells,
-})
+# above, as `par.yaml` does.
+OPERATORS.update(
+    {
+        "plan_cells": op_plan_cells,
+        "perturb_pairs": op_perturb_pairs,
+        "generate_cells": op_generate_cells,
+        "revise_cells": op_revise_cells,
+        "assemble_cells": op_assemble_cells,
+    }
+)

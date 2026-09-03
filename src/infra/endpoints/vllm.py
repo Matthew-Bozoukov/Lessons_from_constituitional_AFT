@@ -529,10 +529,11 @@ class LocalExec:
 _HOST_PORT = re.compile(r"^(?P<host>[^:/@]+(?:@[^:/]+)?):(?P<port>\d+)$")
 
 
-def ssh_argv(host: str) -> tuple[list[str], str]:
+def ssh_argv(host: str, identity: str = "") -> tuple[list[str], str]:
     """The `ssh` argv prefix and the hostname to hand it, for an alias or an address:port.
 
-    An alias is passed through untouched, so every option the reader configured applies.
+    An alias is passed through untouched, so every option the reader configured applies
+    -- including its IdentityFile, which is why `identity` is ignored for one.
     A literal address gets its port as `-p` plus two options that are right for a machine
     that exists for an afternoon: RunPod recycles `ip:port` between pods, so a remembered
     host key turns the next rental into what looks like an attack. Per invocation, never
@@ -541,10 +542,18 @@ def ssh_argv(host: str) -> tuple[list[str], str]:
     match = _HOST_PORT.match(host)
     if not match:
         return ["ssh"], host
-    return (["ssh", "-p", match["port"],
-             "-o", "StrictHostKeyChecking=accept-new",
-             "-o", "UserKnownHostsFile=/dev/null"],
-            match["host"])
+    argv = ["ssh", "-p", match["port"],
+            "-o", "StrictHostKeyChecking=accept-new",
+            "-o", "UserKnownHostsFile=/dev/null"]
+    if identity:
+        # A literal address has no ~/.ssh/config entry, so there is nowhere else for the
+        # key to come from: without this, ssh offers only the default-named identities
+        # (id_ed25519, id_rsa) and a machine whose key is called anything else gets
+        # "Permission denied (publickey)" against a pod that is already billing.
+        # IdentitiesOnly stops an agent from offering others first and tripping
+        # MaxAuthTries before this one is tried.
+        argv += ["-i", str(Path(identity).expanduser()), "-o", "IdentitiesOnly=yes"]
+    return argv, match["host"]
 
 
 class SshExec:
@@ -570,8 +579,12 @@ class SshExec:
     base_env = {"HF_HOME": f"{POD_WORKDIR}/hf", "VLLM_USE_FLASHINFER_SAMPLER": "0"}
 
     def __init__(self, host: str, port: int, bind: str = "127.0.0.1",
-                 workdir: str = POD_WORKDIR):
+                 workdir: str = POD_WORKDIR, identity: str = ""):
         self.host = host
+        # Private key to authenticate with, for a literal `ip:port`. Empty means "let
+        # ssh decide", which is right for an alias and wrong for an address on a machine
+        # with no default-named key.
+        self.identity = identity
         self.port = port
         self.bind = bind
         # The tunnel binds to `bind`, so that - not "localhost" - is where the
@@ -589,7 +602,7 @@ class SshExec:
         # characters), and on a Windows driver the default cp1252 decode raises inside
         # subprocess's reader THREAD — which does not fail the call, it just loses the output
         # and prints an alarming traceback that looks like the run died. Observed 2026-08-05.
-        argv, target = ssh_argv(self.host)
+        argv, target = ssh_argv(self.host, self.identity)
         r = subprocess.run([*argv, target, cmd], capture_output=True, text=True,
                            encoding="utf-8", errors="replace",
                            timeout=timeout, input=stdin_text)
@@ -714,7 +727,7 @@ class SshExec:
         self._ssh(self._with_env(
             f"nohup bash {script} >> {self.remote_dir}/vllm.log 2>&1 < /dev/null & "
             f"echo started"), timeout=60)
-        argv, target = ssh_argv(self.host)
+        argv, target = ssh_argv(self.host, self.identity)
         self.tunnel = subprocess.Popen(
             [*argv, "-N", "-L", f"{self.bind}:{self.port}:localhost:{self.port}", target])
 

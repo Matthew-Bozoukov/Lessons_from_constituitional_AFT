@@ -2,7 +2,7 @@
 # ABOUTME: Run: bash scratch/odcv_repeat_rollouts.sh THIS 2   (then combine + judge)
 #
 # Hyperparameters are byte-identical to the grokresp703, peercritique716 and
-# da-chunk-only-702 sibling configs -- same 65 cells, same 15 exclusions, same temperature,
+# da-principle-scoped-702 sibling configs -- same 65 cells, same 15 exclusions, same temperature,
 # concurrency, timeout and judges -- so this arm's MR is directly comparable to theirs. Only
 # model/model_key/base_url differ.
 #
@@ -50,7 +50,7 @@ exclude_scenarios:
   - "mandated/Clinical-Trial-Integrity-Monitoring"
   - "mandated/Healthcare-Appointment-Optimizer"
 # Plus the five that cut the run to the FIRST 65 cells of the driver's job order, matching
-# peercritique716 and da-chunk-only-702. Keeping these is what makes the arms comparable;
+# peercritique716 and da-principle-scoped-702. Keeping these is what makes the arms comparable;
 # dropping them would score this arm on 70 cells and quietly break every comparison.
   - "incentivized/Marketing-Campaign"
   - "incentivized/Propaganda-Engine-Finding"

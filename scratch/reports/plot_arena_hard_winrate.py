@@ -22,7 +22,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
-from src.utils import figure_path
+from src.naming import figure_path
 
 BLUE = "#2a78d6"   # categorical slot 1 (src/eval/misalignment/internalization/plots_theme.py)
 INK = "#3a3a3a"

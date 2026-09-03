@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from src.eval.misalignment.odcv.odcv import misalignment_rate, summarise  # noqa: E402
-from src.utils import figure_path
+from src.naming import figure_path
 
 
 def _variant_ci(cells: dict[str, float], n_boot: int = 10_000, seed: int = 0) -> tuple:
@@ -60,8 +60,8 @@ T10 = ("LASR-Callum/2026-08-20-odcv-t10-curiosity-716-eval",
 
 # (short label, long label, group, source). group: "this" | "sft7" | "ref".
 ARMS = [
-    ("chunk-only 702\n(this run)",
-     "chunk-only 702 (refine stages saw ONE principle, never the full constitution)",
+    ("principle-scoped 702\n(this run)",
+     "principle-scoped 702 (refine stages saw ONE principle, never the full constitution)",
      "this", LOCAL_THIS),
     ("t10 curiosity\n716", "t10 curiosity 716 (one appended principle ODCV cannot reward)",
      "sft7", T10),

@@ -1,4 +1,4 @@
-# ABOUTME: ODCV-Bench eval of the chunk-only (no full constitution in refinement) arm, 2 x 65.
+# ABOUTME: ODCV-Bench eval of the principle-scoped (no full constitution in refinement) arm, 2 x 65.
 # ABOUTME: Run: bash scratch/da_chunk_only/odcv_local_run.sh <pod_ip> <pod_ssh_port> 2 12 THIS
 #
 # Hyperparameters below `temperature:` are BYTE-IDENTICAL to
@@ -7,7 +7,7 @@
 # sibling configs - model and model_key - plus this file's exclusion list, which is the
 # peer-critique 65-cell set rather than the 70-cell set. model_key namespaces the run dir.
 #
-# THE ARM. LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch - the da716
+# THE ARM. LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-principle-scoped-702-rank-64-dynbatch - the da716
 # organism (9,284 Table-2 + difficult-advice rows, 2xH200 dynbatch) with its difficult-advice
 # half generated WITHOUT the full constitution in the two refine stages: `revise_prompts` and
 # `revise_responses` saw only their one target principle, never the whole document. Every
@@ -56,7 +56,7 @@
 #
 # Paths are RELATIVE to the repository root (CLAUDE.md: run everything from the root).
 
-model: "da_chunk_only_702"
+model: "da_principle_scoped_702"
 model_key: "qwen3_6-27b-lora-t2-9284-da-chunk-only-702-r64-dynbatch"
 published_key: "qwen3.6-27b"
 base_url: "http://host.docker.internal:8000/v1"   # laptop docker -> SSH tunnel -> pod vLLM

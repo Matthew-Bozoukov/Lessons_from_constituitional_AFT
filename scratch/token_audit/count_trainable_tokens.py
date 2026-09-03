@@ -30,7 +30,7 @@ MIXTURES = [
     ("LASR-Callum/2026-08-26-table2-9284-post-action-retrospection-716-train", "mixture_think.jsonl", 8192, "t2_9284 + post-action-retro_716"),
     ("LASR-Callum/2026-08-14-table2-9284-difficult-advice-716-train", "t2_9284_da716_10k.jsonl", 8192, "t2_9284 + difficult_advice_716 (original)"),
     ("LASR-Callum/2026-08-16-table2-9284-peer-critique-716-train", "t2_9284_peercritique716_10k.jsonl", 8192, "t2_9284 + peer_critique_716"),
-    ("LASR-Callum/2026-08-21-table2-9284-difficult-advice-chunk-only-702-train-mixture", "t2_9284_da_chunk_only_702.jsonl", 8192, "t2_9284 + DA-chunk-only_702"),
+    ("LASR-Callum/2026-08-21-table2-9284-difficult-advice-principle-scoped-702-train-mixture", "t2_9284_da_chunk_only_702.jsonl", 8192, "t2_9284 + DA-principle-scoped_702"),
     ("LASR-Callum/2026-08-26-table2-9284-low-stakes-716-train", "t2_9284_lowstakes716_10k.jsonl", 8192, "t2_9284 + low_stakes_716"),
     ("LASR-Callum/2026-08-20-table2-9284-t10-curiosity-716-train", "mixture_think.jsonl", 8192, "t2_9284 + t10_curiosity_716"),
     ("LASR-Callum/2026-08-24-table2-9284-grok-responder-703-paired-train-mixture", "t2_9284_grokresp703_10k.jsonl", 8192, "t2_9284 + grok_responder_703"),
