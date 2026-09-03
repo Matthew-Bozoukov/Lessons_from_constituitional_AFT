@@ -467,14 +467,21 @@ def _yaml(path: Path) -> dict:
         return {}
 
 
-def _seeded(path: Path, stem: str) -> str:
+def _seeded(path: Path, stem: str, folder: str) -> str:
     """The violation when a config's stem ends in the seed the config itself declares.
 
     Exact rather than heuristic, because the shapes are indistinguishable: `..-10-90` is
     a mixture ratio and `..-1` is a replicate, and only the file knows which. Reading
     `seed:` settles it — and settles it for the case that matters, three files whose only
     difference is the number in their name.
+
+    Mixtures are exempt, and not as a convenience: a mixture stem ENDS in its synthetic
+    percentage by law, so `0.yaml` (the base blend, `seed: 0`) collides with this check by
+    construction and every other mixture would too whenever its share happened to equal
+    its seed.
     """
+    if folder == "configs/data/mixture":
+        return ""
     seed = _yaml(path).get("seed")
     if seed is not None and stem.split("-")[-1] == str(seed):
         return (f"config stem {stem!r} ends in the seed it declares (seed: {seed}). A "
@@ -538,7 +545,7 @@ def _check_config(rel: str, stem: str, path: Path) -> str:
         # NamingError for a bad stem, plain ValueError for an unregistered model
         # (src/model_profile.py): both are the same thing to a reader of the lint.
         return str(e)
-    return _seeded(path, stem)
+    return _seeded(path, stem, folder)
 
 
 def lint_repo(root: str | Path = ".") -> list[Finding]:

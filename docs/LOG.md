@@ -34,11 +34,22 @@ was defined AFTER naming.py's `__main__` guard, so `python -m src.naming` — th
 hook's own command — raised NameError while the same code worked on import; and a docstring
 in arena_hard's pool.py still carried damage from an over-broad config rename.
 
-**Next steps.** The existing mixture configs still carry a model prefix and an old ratio
-suffix (`qwen36-synthdoc-20-80`) and do not yet use `base:`; converting them needs the
-synthetic-source classification still outstanding. Until then `declared_synthetic_pct`
-reads 0 for all of them, because `synthetic: true` marks filter STAGING, not synthetic
-data, and only one config sets it.
+**Config consolidation.** The synthetic-source question resolved itself once the dead arms
+went: `mem_self`, `mem_other`, `self_reflection`, `less_top10` and `random220` are retired,
+so `da` is the only synthetic source in the tree and there is nothing left to classify.
+Removed the 11 configs that used those sources (5 mixture, 6 train) plus 4 archived eval
+configs for the same arms.
+
+`configs/data/mixture/da.yaml` then replaces SEVEN ratio configs
+(`qwen36-{10-90,20-80,40-60,synthdoc-0-100,-10-90,-15-85,-20-80}`) and `qwen36-msm-table2`,
+because they differed only in the synthetic percentage and in which single replay source
+stood in for the base blend. `synthetic_pct` is a launch argument now, the way `seed` is
+for training: `uv run mix --config configs/data/mixture/da.yaml synthetic_pct=40` produces
+`<date>-da-40-mix` from the same arm. `configs/data/mixture/` is down from 17 files to 6.
+
+**Next steps.** The three replay-only experiments (`qwen36-500k-*`, `qwen36-100k-three-source`)
+were left alone: they have no synthetic share and are not part of this ladder, so whether
+they survive is a research call, not a naming one.
 
 ## 2026-09-02 — Arena-Hard: an arm's answers are an artifact, and the comparison is `vs-<baseline>`
 
