@@ -35,11 +35,9 @@ from src.data.synth.pipeline import (
     n_final_examples,
 )
 
-PR_CFG = yaml.safe_load(
-    open("configs/data/synth/2026-08-13_post_action_retrospection.yaml")
-)
-PC_CFG = yaml.safe_load(open("configs/data/synth/2026-08-13_peer_critique.yaml"))
-DA_CFG = yaml.safe_load(open("configs/data/synth/2026-08-01_difficult_advice.yaml"))
+PR_CFG = yaml.safe_load(open("configs/data/synth/par.yaml"))
+PC_CFG = yaml.safe_load(open("configs/data/synth/pc.yaml"))
+DA_CFG = yaml.safe_load(open("configs/data/synth/da.yaml"))
 ARCHIVE_CFG = yaml.safe_load(
     open("configs/data/synth/archive/model_eval_model_other.yaml")
 )
@@ -342,7 +340,7 @@ def test_front_half_stage_is_difficult_advice_verbatim(
 ) -> None:
     """The drafted prompt is difficult advice's, byte for byte -- same prompts, same save map,
     same model -- so neither variant asks a different question before the first reply. A change
-    to these prompts belongs in 2026-08-01_difficult_advice.yaml first and here second."""
+    to these prompts belongs in da.yaml first and here second."""
     mine, da = _stage(cfg, name), _stage(DA_CFG, name)
     assert mine["kind"] == da["kind"]
     assert mine["prompts"] == da["prompts"]

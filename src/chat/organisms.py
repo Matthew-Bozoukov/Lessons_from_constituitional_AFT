@@ -8,15 +8,19 @@ An organism is an adapter repo with the two files the eval framework needs to se
 the train config it came from, the dataset). Adapters without the stamp are counted, not
 listed — the framework refuses to guess their mode, so neither does the menu.
 
-Every organism has ONE name, and that name carries the date it was trained: `name` is
-the adapter repo reduced to canonical tokens (src/utils.py) with the training date in
-front, so two spellings of one arm cannot appear as two organisms and no arm can appear
-on a menu, in a served-model name or on a plot without saying when it was made.
+Every organism has ONE name and it is the one the training run minted:
+`<date>_<model>_<style>_<seed>` (src/naming.py). Nothing is re-derived here — the name on
+the Hub IS the name in the menu, in the served-model name and on the plot — so an arm
+cannot appear twice under two spellings, and the menu groups by the style-type with the
+seeds listed under it:
 
-Grouping is derived from the train config's name, the one self-describing handle every
-arm carries (CLAUDE.md naming rules: `<YYYY-MM-DD>_lora_<model>_<arm>[_variant]`):
-`2026-08-06_lora_qwen36_table2_9284_difficult_advice_716_dynbatch` → experiment
-`table2_9284`, variant `difficult_advice_716`.
+    Qwen/Qwen3.6-27B · think
+      difficult_advice
+        [ 1] 0   2026-09-04   LASR-Callum/2026-09-04-qwen36-difficult-advice-0
+        [ 2] 1   2026-09-04   LASR-Callum/2026-09-04-qwen36-difficult-advice-1
+
+An adapter from before the law keeps whatever it was called; it is dated from its
+training stamp so it can still be listed, served and plotted.
 """
 
 from __future__ import annotations
@@ -27,8 +31,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
-from src.huggingface import hf_download, hf_org
-from src.utils import canonical_key, check_distinct, label as name_label, name_date
+from src.infra.huggingface import hf_download, hf_org
+from src.naming import check_distinct, label as name_label, name_date, to_local
 
 
 def default_orgs() -> tuple[str, ...]:
@@ -40,11 +44,6 @@ def default_orgs() -> tuple[str, ...]:
     return (hf_org(),)
 
 
-# Trailing tokens that describe hardware, rank or the batching scheme, not WHICH
-# experiment this is: `2xh200`, `h200x4`, `r64`, `rank_64`, `dynbatch`. The train config
-# records all of them; the name does not have to.
-_NOISE = re.compile(r"^(\d+x\w+|h\d+x\d+|r\d+|dynbatch)$")
-_NOISE_PAIR = ("rank",)  # `rank_64`: two tokens, one fact
 
 
 @dataclass(frozen=True)
@@ -62,15 +61,19 @@ class Organism:
 
     @property
     def name(self) -> str:
-        """THE organism's name: `<YYYY-MM-DD>_<canonical subject>`, always dated.
+        """THE organism's name: the one its training run minted, in local spelling.
 
-        Taken from the adapter repo, canonicalised so one arm has one spelling, and dated
-        from the repo name when it carries a date and from the training stamp when it does
-        not (the pre-dating repos in src/utils.py). An organism therefore cannot be
-        referred to, served, filed or plotted without its date.
+        `<date>_<model>_<style>_<seed>` for anything trained under the law. An adapter
+        from before it has no such name to read, so it is dated from its training stamp
+        and keeps its old subject — enough to serve, list and plot it, and no more.
         """
-        key = canonical_key(self.repo)
-        return key if name_date(key) else f"{self.trained}_{key}"
+        raw = self.repo.split("/")[-1]
+        if name_date(raw):
+            try:
+                return to_local(raw)
+            except ValueError:
+                pass
+        return f"{self.trained}_{re.sub(r'[^a-z0-9]+', '_', raw.lower()).strip('_')}"
 
     @property
     def label(self) -> str:
@@ -84,39 +87,37 @@ class Organism:
 
     @property
     def group(self) -> str:
-        return experiment_group(self.train_config)[0]
+        """The style-type — the arm these seeds are replicates of."""
+        return organism_parts(self.name)[1]
 
     @property
     def variant(self) -> str:
-        return experiment_group(self.train_config)[1]
+        """The seed, which is all that separates one replicate from the next."""
+        return organism_parts(self.name)[2]
 
 
-def experiment_group(config_name: str) -> tuple[str, str]:
-    """(experiment, variant) from a train config name (pure; unit-tested).
+def organism_parts(name: str) -> tuple[str, str, str]:
+    """(model, style, seed) from an organism name (pure; unit-tested).
 
-    Strips the leading date, the `lora_<model>_` prefix and trailing hardware/rank noise,
-    then takes the first token — plus a following run id of three or more digits
-    (`table2_9284`) — as the experiment and the rest as the variant. A name with nothing
-    left is its own group. The date is not part of the group: it is carried by
-    `Organism.name`, which is where a reader looks for it.
+    `2026-09-04_qwen36_difficult_advice_0` -> `("qwen36", "difficult_advice", "0")`. The
+    parts are positional because the law puts them in fixed positions — nothing here
+    guesses which token is which. A name from before the law has no seed to find and no
+    registered model to lead with, so it is all style: it still groups and lists, it just
+    groups alone.
     """
-    name = config_name.rsplit("/", 1)[-1].removesuffix(".yaml")
-    name = name[11:] if name_date(name) else name
-    tokens = name.split("_")
-    if tokens[0] == "lora" and len(tokens) > 2:
-        tokens = tokens[2:]
-    while len(tokens) > 1:
-        if _NOISE.fullmatch(tokens[-1]):
-            tokens.pop()
-        elif (len(tokens) > 2 and tokens[-1].isdigit()
-              and tokens[-2] in _NOISE_PAIR):
-            tokens = tokens[:-2]
-        else:
-            break
-    group, rest = tokens[0], tokens[1:]
-    if rest and rest[0].isdigit() and len(rest[0]) >= 3:
-        group, rest = f"{group}_{rest[0]}", rest[1:]
-    return group, "_".join(rest) or group
+    tokens = [t for t in str(name).split("_") if t]
+    if tokens and name_date(str(name)):
+        tokens = tokens[1:]                    # the date is one `_`-joined token
+    if not tokens:
+        return "", str(name), ""
+    seed = tokens[-1] if len(tokens) > 2 and tokens[-1].isdigit() else ""
+    body = tokens[:-1] if seed else tokens
+    from src.model_profile import MODEL_KEYS
+
+    known = {k for _, k in MODEL_KEYS}
+    model = body[0] if body and body[0] in known else ""
+    style = "_".join(body[1:] if model else body) or (model or "unknown")
+    return model, style, seed or style
 
 
 def organism_from_files(
@@ -309,21 +310,16 @@ def check_one_server(picked: list[Organism]) -> None:
 
 
 def arm_names(picked: list[Organism]) -> dict[str, str]:
-    """Served/REPL names for a set of organisms: `<YYYY-MM-DD>_<variant>`, always distinct.
+    """Served/REPL names for a set of organisms: the short handle, or the full name.
 
-    The variant alone was the old shorthand and it collided — two `da716` arms trained a
-    fortnight apart answered to the same word in the REPL and on every plot built from
-    it. The date makes the common case distinct; an experiment qualifier is added when
-    two arms of the SAME day still collide, and `check_distinct` refuses to return a set
-    that is still ambiguous.
+    `<style>_<seed>` is what anyone would say out loud, and within one session it is
+    almost always unique. When it is not — the same arm trained on two different days,
+    which is exactly when a short handle is most dangerous — every organism in the set
+    falls back to its full dated name rather than only the colliding pair, so the REPL
+    and the plots built from it never mix two conventions in one legend.
     """
-    counts: dict[str, int] = {}
-    for o in picked:
-        counts[f"{o.trained}_{o.variant}"] = counts.get(f"{o.trained}_{o.variant}", 0) + 1
-    names: dict[str, str] = {}
-    for o in picked:
-        stem = f"{o.trained}_{o.variant}"
-        name = stem if counts[stem] == 1 else f"{o.trained}_{o.group}_{o.variant}"
-        names[o.repo] = name
-    check_distinct(list(names.values()), what="arm names")
-    return names
+    short = {o.repo: f"{o.group}_{o.variant}" for o in picked}
+    if len(set(short.values())) < len(short):
+        short = {o.repo: o.name for o in picked}
+    check_distinct(list(short.values()), what="arm names")
+    return short

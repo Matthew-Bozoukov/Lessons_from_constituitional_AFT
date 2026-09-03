@@ -22,7 +22,7 @@ from omegaconf import OmegaConf
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from src.eval.misalignment.odcv.odcv import summarise  # noqa: E402
-from src.utils import figure_path
+from src.naming import figure_path
 
 _spec = importlib.util.spec_from_file_location(
     "p7", Path(__file__).with_name("plot_7pct_arms.py")

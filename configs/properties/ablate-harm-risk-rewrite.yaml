@@ -1,0 +1,116 @@
+# ABOUTME: Rewrite the harm-risk reasoning property out of the difficult-advice rows and
+# ABOUTME: train the arm against its unmodified control. THE per-property specifics live here.
+# Run: uv run python scripts/properties/ablate.py --config configs/properties/ablate-harm-risk-rewrite.yaml
+
+# This file is the template for every property ablation: the code in src/properties/ knows
+# how to rewrite a property out, and knows nothing about WHICH property — the label, the
+# wording the rewriter needs, what must survive, and which control to compare against are
+# all here. A second property is a copy of this file, not a change to any module.
+
+tag: harm_risk_rewrite
+
+registry: output/properties/properties.jsonl
+
+# Set this to the id `discover.py` printed. It resolves against the registry above; the
+# label and detector travel with it, so they are not restated here.
+property_id: "feature_discovery:20260812_092119:c030"
+
+# The SYNTH corpus, not the mixture. Two reasons, and both are structural:
+#   1. a rewrite replaces a channel's text, which needs interchange rows (`messages` with
+#      `reasoning_content`). A pre-rendered row keeps the family's chat syntax in one
+#      string and the rewrite ablation refuses it rather than re-deriving that syntax.
+#   2. the synth corpus is a SHARE of what gets trained, so the ablated copy goes back
+#      through `uv run mix` (the `mix:` block below) before it is a training file.
+source:
+  name: mixture_rows
+  repo: LASR-Callum/2026-08-04-synthdoc-package-difficult-advice-stage-cache
+  file: stage_7_sft.jsonl
+
+ablation:
+  # remove | substitute. `remove` leaves nothing in the property's place, so a regression
+  # in this arm is ambiguous between "this move mattered" and "less reasoning is worse".
+  # Run `substitute` as the follow-up (see the sibling block below) to separate those.
+  kind: rewrite
+  mode: remove
+
+  rewriter: anthropic/claude-sonnet-5
+  workers: 8
+  max_tokens: 8192
+
+  # The interpreter's description names the move for a reader; a rewriter needs it in the
+  # corpus's own vocabulary. This is the per-property wording, and the main thing that
+  # changes between ablation configs.
+  description_override: |
+    Weighing a potential harm by how LIKELY it is, how SEVERE it would be, whether it is
+    REVERSIBLE, and how those factors combine into an overall risk judgement — including
+    the structured, factor-by-factor form of that move ("the probability is low but the
+    downside is catastrophic and irreversible, so...").
+
+    This is NOT the same as: naming who could be hurt (that is third-party harm
+    identification), stating uncertainty about the facts, or reaching the final decision.
+    Those must all survive.
+
+  # What the rewrite must not touch. Anything that changes here has been ablated too, and
+  # the experiment then measures two things.
+  preserve:
+    - the decision the assistant reaches, and whether it declines
+    - every fact, name, number and quotation
+    - the user's question and situation
+    - the register, voice and formatting of the text
+    - the overall length, to within about 10%
+
+  # Every rewritten row goes back through the SAME detector: a row it still flags was not
+  # ablated, however confident the rewriter was.
+  verify_rewrites: true
+
+  detector:
+    model: anthropic/claude-sonnet-5
+    workers: 16
+
+verify:
+  # Detector prevalence before vs after. Raise this rather than lowering `min_drop` when
+  # the confidence intervals overlap — an overlapping drop is sampling noise, not a small
+  # effect.
+  sample: 200
+  seed: 0
+  min_drop: 0.30
+  max_collateral_drift: 0.15
+  # A bag-of-words classifier that separates the arms is expected for a rewrite ablation —
+  # the text genuinely changed. What matters is WHAT it separates on: read the reported
+  # features, and if they are length or an author's tics rather than the property, this
+  # arm is separable on an artefact (peer-critique, AUC 0.9973, 2026-08-17).
+  check_separability: true
+  strict_separability: false
+
+# Untargeted properties that must NOT move. This is where a second property from the same
+# List of Properties earns its keep: it turns "the rewrite was surgical" from an assertion
+# into a measurement.
+collateral:
+  - "feature_discovery:20260812_092119:c006"
+
+# The ablated corpus is a synth corpus, so it is a SHARE of a training file, not one. This
+# rebuilds the mixture with that one source repointed at it — every other source, count,
+# filter setting and seed stays the control's, so the two mixtures differ in the rewritten
+# rows and nothing else.
+mix:
+  base_config: configs/data/mixture/qwen36-msm-table2.yaml
+  source: da
+  final_repo: 2026-08-18-table2-difficult-advice-ablate-harm-risk-rewrite-mixture
+  base_repo: 2026-08-18-table2-difficult-advice-ablate-harm-risk-rewrite-filtered
+
+train:
+  # THE CONTROL. The derived config is this file with the data_repo swapped and nothing
+  # else changed; anything else differing between the arms confounds the property with a
+  # training change. Its `data_revision` is written out ABSENT, because the mixture above
+  # does not exist until `uv run mix` has run — pin the sha that build prints.
+  base_config: configs/train/qwen36-table2-9284-synthdoc-716-dynbatch.yaml
+  hf_repo: 2026-08-18-qwen36-lora-table2-9284-difficult-advice-716-ablate-harm-risk-rewrite
+  output_dir: /workspace/out/train_ablate-harm-risk-rewrite
+
+# Printed as the follow-on commands once the arm is trained.
+evals:
+  - odcv
+  - agentic_misalignment
+  - mmlu
+
+constitution: constitutions/claude_distilled_12_principles_mid/constitution.md

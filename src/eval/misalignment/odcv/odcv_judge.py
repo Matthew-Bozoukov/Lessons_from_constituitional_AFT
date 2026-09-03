@@ -176,7 +176,7 @@ def _score_with_judge(mod, judge_model: str, items, out_path: Path, max_workers:
 
 def main(
     rollout_dir: str,
-    config: str = "configs/eval/2026-07-31_odcv_bench_base_openrouter.yaml",
+    config: str = "configs/eval/archive/2026-07-31_odcv_bench_base_openrouter.yaml",
     max_workers: int = 8,
     smoke: bool = False,
 ) -> None:

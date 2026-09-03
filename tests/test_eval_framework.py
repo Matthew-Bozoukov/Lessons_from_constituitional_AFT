@@ -1,11 +1,14 @@
 # ABOUTME: Offline tests for the eval framework's pure logic: target resolution, thinking-mode
 # ABOUTME: template pinning, registry shape, and dataset-card field enforcement.
 
+import json
+
 import pytest
+from huggingface_hub.errors import EntryNotFoundError
 
 from src.infra.endpoints.vllm import TargetSpec, _spec_from_files, pin_template
 from src.eval import EVALS, EvalSpec
-from src.huggingface import REQUIRED_FIELDS, card_markdown
+from src.infra.huggingface import REQUIRED_FIELDS, card_markdown
 from src.model_profile import QWEN36_PROFILE
 
 ADAPTER_CONFIG = {"base_model_name_or_path": "Qwen/Qwen3-32B", "r": 16}
@@ -407,7 +410,7 @@ def test_registry_marks_only_openai_client_evals_api_capable():
     # These evals reach the target purely through base_url/model/key; docker +
     # vendored-harness evals do not and must stay False.
     assert {n for n, s in EVALS.items() if s.supports_api_target} == {
-        "mmlu", "arena_hard", "lmsys", "psychosis", "moralbench"}
+        "mmlu", "arena_hard", "psychosis", "moralbench"}
 
 
 def test_publish_layout_contract(tmp_path):
@@ -427,8 +430,9 @@ def test_publish_layout_contract(tmp_path):
 
 
 def test_every_target_is_named_before_any_of_them_runs(monkeypatch, tmp_path):
-    # An arm ladder must not discover a bad name on the fourth target with three runs
-    # already paid for — the check is a preflight over ALL targets, not per arm.
+    # An arm ladder must not discover a name collision on the fourth target with three
+    # runs already paid for — and the second run would publish over the first. The check
+    # is a preflight over ALL targets, not per arm.
     import src.eval.run_eval as re_mod
     from src.infra.endpoints import vllm
 
@@ -438,7 +442,71 @@ def test_every_target_is_named_before_any_of_them_runs(monkeypatch, tmp_path):
         model_key=t.split("/")[-1], lora_rank=64))
     monkeypatch.setattr(re_mod, "resolve", lambda name: lambda *a, **k: ran.append(1) or {})
 
-    with pytest.raises(Exception, match="v2|version"):
+    # Two arms whose names differ only in the date the law now strips: one eval run name,
+    # two arms, and the second would land on top of the first.
+    with pytest.raises(Exception, match="published twice"):
         re_mod.main(["--name", "mmlu",
-                     "--target", "org/2026-08-31-good-arm", "org/2026-08-31-arm-v2"])
+                     "--target", "org/2026-08-31-qwen36-difficult-advice-0",
+                     "org/2026-09-01-qwen36-difficult-advice-0"])
     assert not ran, "a run started before every name was checked"
+
+
+def test_a_prior_run_resolves_as_an_arm_whose_answers_already_exist(monkeypatch, tmp_path):
+    """An ah run is a valid target: its rollouts hold that model's answers.
+
+    Identity is READ from the run's own metadata, not re-derived, so an arm reused as a
+    reference a fortnight later carries the facts it carried the first time — which is
+    what makes it comparable at all.
+    """
+    from src.infra.endpoints import vllm
+
+    meta = tmp_path / "run_meta.json"
+    meta.write_text(json.dumps({"target": "LASR-Callum/2026-09-04-qwen36-difficult-advice-0",
+                                "base_model": "Qwen/Qwen3.6-27B", "mode": "think"}))
+    def only_run_meta(repo, name, **kw):
+        # A published run has no adapter_config: that miss is what sends resolve_target
+        # to the dataset probe rather than straight to "full model".
+        if name != "metadata/run_meta.json":
+            raise EntryNotFoundError("no such file")
+        return str(meta)
+
+    monkeypatch.setattr(vllm, "hf_download", only_run_meta)
+    monkeypatch.setattr(vllm, "_repo_sha", lambda path, repo_type="model": f"sha-of-{repo_type}")
+
+    spec = vllm.resolve_target("LASR-Callum/2026-09-05-ah-qwen36-difficult-advice-0")
+    assert spec.answers == "LASR-Callum/2026-09-05-ah-qwen36-difficult-advice-0"
+    # Resolved to a commit at resolve time and carried on the spec, so run_meta can name
+    # the exact answers it reused rather than the head of a repo that may move.
+    assert spec.revision == "sha-of-dataset"
+    assert spec.model_key == "qwen36_difficult_advice_0" and spec.mode == "think"
+    assert not spec.adapter and spec.api_base is None
+
+    # Nothing serves an answers arm, and reaching for an endpoint says so rather than
+    # silently booting vLLM for a model that is not the point.
+    served = vllm.ServedTarget(spec, server=None)
+    assert served.is_answers
+    with pytest.raises(AssertionError, match="ANSWERS target"):
+        served.base_url
+
+
+def test_a_repo_that_is_not_a_published_run_is_not_mistaken_for_one(monkeypatch):
+    from src.infra.endpoints import vllm
+
+    def no_such_file(repo, name, **kw):
+        raise EntryNotFoundError("nope")
+
+    monkeypatch.setattr(vllm, "hf_download", no_such_file)
+    assert vllm.resolve_answers_target("org/some-plain-dataset") is None
+
+
+def test_an_adapter_is_served_on_the_base_commit_it_was_trained_against():
+    """A LoRA is a diff on a base; serving it on today's head of that base is a different
+    model. The training stamp records the commit, and the spec carries it to vLLM."""
+    stamped = _spec_from_files("org/2026-09-04-qwen36-8-da-10", ADAPTER_CONFIG,
+                               {"thinking": True, "base_model_revision": "abc123"})
+    assert stamped.base_revision == "abc123"
+    assert stamped.base_revision_from == "training_meta"
+    # An older adapter with no stamp leaves it unset here; resolve_target then falls back
+    # to the base's head and records that it did.
+    unstamped = _spec_from_files("org/old-adapter", ADAPTER_CONFIG, {"thinking": True})
+    assert unstamped.base_revision is None and unstamped.base_revision_from is None

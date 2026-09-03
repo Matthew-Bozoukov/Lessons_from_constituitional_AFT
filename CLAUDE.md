@@ -112,26 +112,28 @@ Notes:
 ```
 src/                  reviewed, reusable code (installed editable; import as src.*)
   infra/                what the pipelines run ON: runpod.py (the ONE place a GPU is rented)
+                        + huggingface.py (the Hub client: tokens, card contract, push/pull)
                         + endpoints/{openrouter,vllm}.py (the clients models are reached through)
   chat/                 `uv run chat` — talk to the organisms we train (repl + organism discovery)
-  utils.py              io/json + provenance helpers, AND THE naming law: date +
-                        unambiguous subject, its validators, the pre-dating Hub repos
-                        (LEGACY_HUB_REPOS — readable, never writable) and the lint
-  model_profile.py      ModelProfile registry: verified per-family render/mask/serve facts
-  huggingface.py        HF tokens, dataset-card contract, push/download helpers
+  utils.py              io/json + provenance helpers, transcript rendering
+  naming.py             THE naming law: one shape per stage, its builders, and the
+                        lint that blocks a push
+  model_profile.py      ModelProfile registry: verified per-family render/mask/serve
+                        facts, AND MODEL_KEYS — what each base model is named
   data/synth/           constitution-grounded generation engine (the config IS the document type)
   data/mixture/         training-mixture builder + one adapter per source + spec filter
   train/                train_lora.py, merge_lora.py
   eval/                 registry in __init__.py; one directory per eval:
-    capabilities/         capability/ (Arena-Hard), lmsys/, mmlu/
+    capabilities/         arena_hard/ (the model-vs-model eval), mmlu/,
+                          swebench_mini/
     misalignment/         odcv/, agentic_misalignment/, psychosis/, internalization/,
                           moralbench/ (declarative moral-foundations probe; docs/moralbench.md)
                           (odcv + agentic_misalignment vendor PATCHED harnesses in third_party/)
     audits/               petri/ + surf/ audit tooling
 configs/              OmegaConf YAML, one per step; NEVER hardcode hyperparams in scripts
   data/synth/           one config per document type (superseded → archive/)
-  data/mixture/         mixture builds (qwen36_*, tulu_control)
-  train/                lora_<model>_<arm>*
+  data/mixture/         0 (the base blend) + <styles>[-<variant>] arms; archive/
+  train/                <model>-<mix>-<pct> — one file per arm, undated
   eval/                 one per eval
   endpoints/            providers.yaml — per-model OpenRouter provider pins
 scripts/              thin drivers mirroring src/ stages + gpu/ for provisioning;
@@ -161,8 +163,9 @@ data/, output/        gitignored: staged datasets / ALL run artifacts (conventio
   `train/`, `eval/`, plus `scripts/infra/` for provisioning/serving infra). A new
   config or script goes in the folder for the stage it belongs to — never at
   the top level of `configs/` or `scripts/` unless it is a script that pipes multiple stages together.
-- **Names carry the date and the subject** — the one law for configs, files and
-  Hub repos alike, in "Artifacts and configs" below.
+- **Names are built, not typed** — one shape per pipeline stage, and the only thing a
+  human chooses is the style-type they name a synth/mixture config. See "Artifacts and
+  configs" below.
 - Python thin CLI: some files in `src/` contain code that can both be ran as part of a pipeline or as a standalone job/entrypoint. It is therefore important to provide a script in `scripts/` that runs that standalone function and it should be named **exactly** after the `src/` module it wraps —
   `scripts/train/train_lora.py` wraps `src/train/train_lora.py`. Only add these mirrors when we add new code to `src/` that you think will require running as a standalone script.
 - Every config's header states the exact command that consumes it — in the
@@ -225,32 +228,59 @@ gets pushed, because what a plot says is already on the Hub in the results it re
 naming law below applies to plots in full**: a figure carries the date it was produced
 and an unambiguous subject, exactly like a corpus or an adapter.
 
-**Its name is the date it was produced, then a subject saying what it is.** One law
-(`src/utils.py`), two spellings, and no two names may say the same thing on the same day:
+**Its name says which stage made it and which arm it belongs to.** One law
+(`src/naming.py`), one shape per stage, built by code and typed by nobody:
 
 ```
-local (files, config stems, run dirs, figures, arm labels)  2026-08-06_difficult_advice_716
-hub   (an HF repo id after the org)                         2026-08-06-difficult-advice-716
+synth    <date>-<style>-synth                  2026-09-01-difficult-advice-synth
+mix      <date>-<style>-mix                    2026-09-03-difficult-advice-mix
+model    <date>-<model>-<style>-<seed>         2026-09-04-qwen36-difficult-advice-0
+eval     <date>-<eval>-<model name, undated>   2026-09-05-odcv-qwen36-difficult-advice-0
+pooled   the same, with the seed dropped       2026-09-06-odcv-qwen36-difficult-advice
 ```
 
-- **The date goes first** and is the date the thing was PRODUCED, never the date it was
-  written down. `ls configs/train/` then reads as the experiment log it is, and a corpus,
-  a figure and the organism trained on it line up by eye.
-- **The subject says which model, which arm or document type, and WHAT THIS ONE CHANGES**:
-  `2026-08-26_sonnet45_difficult_advice_716_length_capped`, never `sonnet_v2`. A version
-  number is refused — it is the one thing the date already told the reader.
-- **No abbreviation with two expansions.** `par` was both post-action-retrospection and
-  pre-action-deliberation; `da716` glues a row count onto a word. `CANONICAL_TOKENS` is
-  the list. A model generation stays glued (`qwen36`, `gpt4`), a count never does.
-- **Distinct means distinct**: `da_716` and `difficult_advice_716` are one name in two
-  costumes, and `check_distinct` refuses to let both exist.
+Two spellings of that one grammar — `to_hub`/`to_local` convert and nothing else may:
+
+```
+local (files, run dirs, figures, arm labels)  2026-09-04_qwen36_da_0
+hub   (an HF repo id after the org)           2026-09-04-qwen36-difficult-advice-0
+```
+
+- **ONE HUMAN INPUT, ONE PLACE: the style-type**, which is the stem of the synth or
+  mixture config that produced the data. It carries the ablation and says WHAT THIS ONE
+  CHANGES (`da_length_capped`, never `sonnet_v2`). Nothing else in any name
+  is chosen: the date comes from the clock at launch, the model from `MODEL_KEYS`
+  (`src/model_profile.py`, beside that model's other facts), the eval from
+  `EvalSpec.key`, the seed from the training config. None of them is typed, so
+  none of them can drift from the thing it describes.
+- **The date is the date the thing was PRODUCED** and every artifact carries exactly one:
+  a model organism enters its eval run's name WITHOUT its date, so the run says which arm
+  it measured and still dates only itself.
+- **CONFIGS ARE UNDATED AND UNSEEDED.** A config names an ARM; a run produces an
+  ARTIFACT. `configs/data/synth/<style>.yaml`, `configs/data/mixture/<styles>.yaml`
+  (the synthetic source keys, SORTED and hyphenated — derived, so one set of corpora has
+  exactly one name), and
+  `configs/train/<model>-<mix>-<pct>.yaml` — the adapter's own repo name minus the date
+  and the seed. A seed is a launch argument (`seed=1`), so three replicates are one
+  config, not three files. `configs/eval/<eval>.yaml` is the exception in spelling: an
+  eval config is a KIND and carries the eval's full registered name
+  (`agentic_misalignment`), checked against the registry itself.
+- **The style vocabulary is SHORT and therefore load-bearing** — `da`, `par`, `pad`, `pc`.
+  Nothing in the code can tell two expansions of one code apart (`par` has meant both
+  post-action-retrospection and pre-action-deliberation here); the config that carries a
+  code is what settles its meaning, and it is the only thing that does.
+- **The config that produced an artifact travels WITH the artifact** — training pushes
+  the RESOLVED config (`train_config.yaml` + `training_meta.train_config`), because
+  configs are edited in place and a path alone would name a file that no longer says what
+  it said. Re-running an arm means fetching its config from the Hub.
+- **Registries are edited when the project gains something, never per run**: a new base
+  model adds a line to `MODEL_KEYS` (`src/model_profile.py`), a new eval declares `key=`
+  in its `EvalSpec` (`src/eval/__init__.py`). Both are required, so both are decided once.
 - **Hardware, rank and launcher detail are not identity** — the config records `2xh200`,
   the name does not.
-- **Configs**: `configs/<stage>/<YYYY-MM-DD>_<subject>.yaml`, never repeating the stage
-  folder's name, variants appended with underscores (`..._ft_10_90.yaml`, never `10-90`).
-- **Kinds are never dated** — module names, eval registry keys (`odcv_bench`, `mmlu`),
-  stage kinds, source adapters. A kind was not produced by a run. Hence the one undated
-  config: `configs/eval/<eval>.yaml`, an eval's registry default, which names a tool.
+- **What no stage shape covers still gets a date and a subject** — `artifact_name()` for
+  answer caches, probe sweeps, one-off harnesses. They get no field structure, and
+  nothing tries to parse one out of them. The lint never parses a name into fields.
 - **Vocabulary**: `qwen3` = Qwen3-32B, `qwen36` = Qwen3.6-27B; ratios read
   `<synth>_<tulu>` (`20_80` = 20% difficult-advice); arms are `base_*`,
   `ft_<ratio>[_<ablation>]`, `tulu_100`.
@@ -263,13 +293,16 @@ explicitly rather than omitting it: nearly everything here is about whether trai
 written specification changes behaviour, so which one a dataset relates to is what a
 future reader needs most, and it is the field most easily lost.
 
-**Enforced, not advised.** `src/huggingface.py::gate_push` refuses an undated or ambiguous
-name on every push — and one whose date disagrees with the card's `date_generated`;
-`.git/hooks/pre-push` (install once: `bash scripts/hooks/install.sh`) stops badly named
-artifacts reaching anyone else, running `src.utils.lint_repo` over the tracked tree —
-the same lint `tests/test_naming.py` runs in the suite. Repos that predate the law are enumerated in
-`src/utils.py` — readable, never writable, retired with `uv run python
-scripts/hf/rename_repos.py plan|apply`. That list only ever shrinks.
+**Enforced where names are MADE.** The builders in `src/naming.py` validate as they mint,
+which is the only moment a check can still change the outcome — an unregistered model or
+an unnameable mixture fails before the first GPU-hour, not at the push after it.
+`src/infra/huggingface.py::gate_push` is the backstop on every push (the name, plus its date
+against the card's `date_generated`), and `.git/hooks/pre-push` (install once:
+`bash scripts/hooks/install.sh`) runs `src.naming.lint_repo` over the tracked tree — the
+same lint `tests/test_naming.py` runs in the suite. The lint checks the two things a
+human writes: config stems (undated, unseeded, shaped for their stage) and literal figure
+filenames (dated). READS are never checked: pointing at a repo from before this law does
+not make another badly named one, and refusing the read would only force a copy.
 
 ## The pipeline (each stage = one alias + one config)
 
@@ -279,7 +312,7 @@ Every stage is a console alias from `[project.scripts]`, so the shape is always
 1. `uv run synth run --config configs/data/synth/<type>.yaml` — constitution-grounded generation; the config IS the document type, so read the one you are running (`ls configs/data/synth/`) rather than a list here.
    Know which arm is the current baseline before you build on one or compare against one: `docs/BASELINES.md`.
 2. `uv run mix --config configs/data/mixture/<name>.yaml` — budgeted training mixture of model-agnostic interchange rows (reasoning as `reasoning_content`, rendered at train time), with optional spec-filter stage and HF push checkpoints; `balance_by: trait_id` on a source spec trait-balances the difficult-advice share.
-3. `uv run train --config configs/train/<date>_lora_<model>_<arm>.yaml` — QLoRA SFT (runs on the GPU box). Pushes the adapter to HF with `training_meta.json` — the thinking stamp (declared as `thinking:` in the train config, validated against the data) that the eval framework infers mode from.
+3. `uv run train --config configs/train/<model>-<mix>-<pct>.yaml [seed=N]` — QLoRA SFT (runs on the GPU box). Pushes the adapter to HF with `training_meta.json` — the thinking stamp (declared as `thinking:` in the train config, validated against the data) that the eval framework infers mode from.
 4. `uv run evals --target <hf_path> --name <eval>` — THE eval entrypoint for every registered eval; see "The eval framework" below.
 
 Add a new stage as functions in the right `src/` area plus a thin CLI in the matching `scripts/<stage>/` folder and a `configs/<stage>/*.yaml` (naming rules above); one-off investigations go straight to `scratch/`.
@@ -297,9 +330,14 @@ mixed-schema stages and fail.
 ## The training framework (the contract train follows)
 
 Training data comes only from HF — `data_repo`/`data_file`, resolved to an exact
-sha; checkpoints stay local, and the run pushes one artifact back to `hf_repo`:
-the final adapter, carrying `training_meta.json` (thinking stamp + the pinned
-dataset `{repo, file, revision}`).
+sha; checkpoints stay local, and the run pushes one artifact back: the final adapter,
+carrying `training_meta.json` (thinking stamp, the RESOLVED config with launch overrides
+applied, the exact `command`, the pinned dataset `{repo, file, revision}` and the base
+model's `base_model_revision`) plus `train_config.yaml`. Every stage records its command
+and pins what it read — a synth manifest its top-ups, a mixture its streamed sources'
+revisions, an eval its `target_revision` — so an artifact's metadata is enough to rerun
+it as it was run. What no pin can hold still: API models behind a fixed id, and GPU
+nondeterminism. The artifact is the record.
 
 ## The eval framework (the contract every eval follows)
 
@@ -320,7 +358,7 @@ uv run evals --target <hf_path | provider:model-id> [...] --name <eval> [key=val
   from the env (`.env`), never a config. An API target is NOT served by vLLM and its
   `mode` is only a comparison label (the provider's template is not ours to pin). Only
   evals that reach the target purely through the OpenAI triple (base_url, model, key)
-  accept one — `EvalSpec.supports_api_target` (mmlu, arena_hard, lmsys, psychosis,
+  accept one — `EvalSpec.supports_api_target` (mmlu, arena_hard, psychosis,
   moralbench);
   the rest (docker, vendored-harness, LoRA-swap) refuse an API target with a clear
   message.
@@ -352,7 +390,7 @@ uv run evals --target <hf_path | provider:model-id> [...] --name <eval> [key=val
   recipe-level result (ODCV: each arm enters as a checkpoint, so the interval covers
   seed-to-seed variance).
 - **Each eval lives in its own directory** under the matching subarea —
-  `src/eval/capabilities/lmsys/`, `src/eval/misalignment/psychosis/` — with a
+  `src/eval/capabilities/arena_hard/`, `src/eval/misalignment/psychosis/` — with a
   `runner.py` exposing the `run()` the registry points at, and every supporting
   module (judging, metrics, stats, reports) inside that directory, following the
   existing evals. Cross-eval shared code stays at the subarea or `src/eval/` root.

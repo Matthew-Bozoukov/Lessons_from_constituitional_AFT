@@ -17,8 +17,8 @@ from omegaconf import OmegaConf
 from src.infra.endpoints.vllm import SshExec, VllmServer, resolve_target
 from src.eval import EVALS, resolve, resolve_pool
 from src.eval.layout import assert_layout, publish_layout
-from src.huggingface import hf_repo_id, push_run_dir
-from src.utils import check_hub_repo, hub_name, local_name, undated
+from src.infra.huggingface import hf_repo_id, push_run_dir
+from src.naming import artifact_name, check_distinct, eval_name, run_dir
 from src.utils import timestamp, write_run_meta
 
 
@@ -85,8 +85,21 @@ def _git_sha() -> str:
     return git_sha()
 
 
+def _run_repo(name: str, model_key: str, run_name: str) -> str:
+    """THE name of one eval run: `<date>-<eval key>-<subject>` (src/naming.py).
+
+    `model_key` is the subject: a target's own name for an ordinary arm, and whatever the
+    eval's `pool()` decided for a pooled one. `run_name` is the escape hatch, and the only
+    one: a target from before this law has a name too long or too shapeless to build a run
+    name out of, so `run_name=<subject>` on the CLI supplies the subject and the law still
+    supplies the date.
+    """
+    return artifact_name(run_name) if run_name else eval_name(name, model_key)
+
+
 def _publish(out_dir: Path, *, name: str, model_key: str, mode: str, target: str,
-             summary: dict, card: dict, tags: list[str], push: bool) -> str:
+             summary: dict, card: dict, tags: list[str], push: bool,
+             run_name: str = "") -> str:
     """Home a finished run dir in the published layout, mirror its summary, push it.
 
     Published-layout contract (src/eval/layout.py): every run dir — and so every pushed
@@ -95,27 +108,39 @@ def _publish(out_dir: Path, *, name: str, model_key: str, mode: str, target: str
     wrote at the same path, and the pre-run run_meta) and then fail-fast checks the eval
     left nothing stray at the root.
 
+    An UNSCORED run — one whose run() wrote nothing under results/ — publishes
+    rollouts/ + metadata/ only, and its summary is filed as metadata rather than as a
+    result. Arena-Hard is why: it is a comparison, so a single arm is a set of answers
+    and a win rate is a fact about a pair. Inferred from what the eval actually wrote
+    rather than declared, so nothing has to remember to keep the two in step.
+
     Returns:
         The repo URL, or "" when `push` is off — recorded so a pooled run can name the
         arms it pooled.
     """
     _, results_dir, metadata_dir = publish_layout(out_dir)
     (out_dir / "run_meta.json").rename(metadata_dir / "run_meta.json")
-    (results_dir / "results.json").write_text(json.dumps(summary, indent=2))
-    (results_dir / "results.md").write_text(_results_markdown(target, mode, summary))
+    scored = any(results_dir.iterdir())
+    if scored:
+        (results_dir / "results.json").write_text(json.dumps(summary, indent=2))
+        (results_dir / "results.md").write_text(_results_markdown(target, mode, summary))
+    else:
+        (metadata_dir / "run_summary.json").write_text(json.dumps(summary, indent=2))
+        results_dir.rmdir()
     assert_layout(out_dir)
     # `undated` for the same reason as the out_dir above, and it matters more here: this
     # row is written BEFORE the push check, so a doubled-date name would refuse the
     # summary of a run that had already finished and paid for its GPU.
     row_path = (Path("output/eval_summaries")
-                / f"{local_name(f'{name} {undated(model_key)}')}_{timestamp()}.json")
+                / f"{_run_repo(name, model_key, run_name)}_{timestamp()}.json")
     row_path.parent.mkdir(parents=True, exist_ok=True)
     row_path.write_text(json.dumps(summary, indent=2))
     if not push:
         return ""
-    # Two laws meet here: the NAME is dated and unambiguous (src/utils.py), the ORG is
-    # .env's HF_ORG resolved at push time (src.huggingface.hf_org).
-    repo_id = hf_repo_id(hub_name(f"{name} {undated(model_key)}"))
+    # Two laws meet here: the NAME is built by src/naming.py from the eval's registered
+    # key and the target's own name, the ORG is .env's HF_ORG resolved at push time
+    # (src.infra.huggingface.hf_org).
+    repo_id = hf_repo_id(_run_repo(name, model_key, run_name))
     # Hub-indexed tags: the canonical discovery route for the dashboard's eval-run
     # picker (/api/datasets?author=<org>&filter=eval-run).
     url = push_run_dir(out_dir, repo_id, card, front_matter={"tags": tags})
@@ -159,7 +184,7 @@ def main(argv: list[str] | None = None) -> None:
                           OmegaConf.from_dotlist(args.overrides))
     run_fn = resolve(args.name)
     # Eval-specific CLI flags are derived from run()'s own keyword-only params (e.g.
-    # lmsys's `reference` becomes --reference) and piped through blind — run_eval knows
+    # a declared `reference` becomes --reference) and piped through blind — run_eval knows
     # nothing about what any of them mean. A kwarg the registry declares in `arm_kwargs`
     # names a MODEL that also runs, first, as an ordinary arm (config default:
     # `<kwarg>_model`); required-ness is the eval's own run() to enforce.
@@ -217,6 +242,13 @@ def main(argv: list[str] | None = None) -> None:
                 "prefix, LoRA swap, docker bridge, or a pinned chat template). Give "
                 "it an HF path, or run an API-capable eval "
                 f"({', '.join(n for n, s in EVALS.items() if s.supports_api_target)}).")
+        if spec.answers and not EVALS[args.name].reads_answers:
+            raise SystemExit(
+                f"!!! {args.name} cannot take a prior run as a target ({hf_path}): its "
+                "generations are the experiment, not a reusable artifact, so every arm "
+                "must generate. Give it the MODEL that run measured "
+                f"({spec.base_model}), or use an eval that declares reads_answers "
+                f"({', '.join(n for n, s in EVALS.items() if s.reads_answers)}).")
         if cfg.get("mode"):
             # The documented escape hatch (CLAUDE.md "The eval framework"): mode is
             # normally INFERRED from the artifact and never declared at eval time. A full
@@ -227,12 +259,15 @@ def main(argv: list[str] | None = None) -> None:
             # both the config and the recorded mode below.
             spec = replace(spec, mode=str(cfg.mode))
             print(f">>> mode override: {hf_path} pinned to {spec.mode!r} (config `mode=`)")
-        if not args.no_push:
-            # The name this arm WILL publish under, checked now (src/utils.py). The org
-            # is .env's HF_ORG, resolved at push time (src.huggingface.hf_org).
-            check_hub_repo(hf_repo_id(hub_name(f"{args.name} {undated(spec.model_key)}")),
-                           what=f"{args.name} run of {hf_path}", write=True)
         specs.append(spec)
+    if not args.no_push:
+        # Every name this invocation WILL publish under, built now: an unbuildable name
+        # (an unregistered model, a target too long to name a run after) costs zero GPU
+        # hours here, and two arms that would collide on one repo are caught before the
+        # first one is published over by the second.
+        planned = [_run_repo(args.name, s.model_key, str(cfg.get("run_name") or ""))
+                   for s in specs]
+        check_distinct(planned, what=f"{args.name} runs of {len(specs)} targets")
 
     summaries: dict[str, dict] = {}
     published: list[dict] = []
@@ -241,15 +276,14 @@ def main(argv: list[str] | None = None) -> None:
             hf_path = spec.hf_path
             print(f">>> {args.name} | {hf_path} | base={spec.base_model} mode={spec.mode}")
             served = server.ensure(spec)
-            # `undated`: local_name prepends today's date and the model key carries the
-            # adapter's own, so a long-named adapter mints a 101-character directory and
-            # is refused by the naming law before the eval can start. The adapter's date
-            # is not lost — run_meta.json records the full target path.
-            out_dir = Path("output") / args.name / local_name(
-                f"{undated(spec.model_key)} {datetime.now().strftime('%H%M%S')}")
+            out_dir = run_dir(Path("output") / args.name,
+                              f"{spec.model_key} {datetime.now().strftime('%H%M%S')}")
             out_dir.mkdir(parents=True, exist_ok=True)
             write_run_meta(out_dir, OmegaConf.to_container(cfg, resolve=True),
                            extra={"command": command, "target": hf_path,
+                                  "target_revision": spec.revision,
+                                  "base_model_revision": spec.base_revision,
+                                  "base_revision_from": spec.base_revision_from,
                                   "base_model": spec.base_model, "mode": spec.mode,
                                   **run_kwargs})
 
@@ -259,6 +293,7 @@ def main(argv: list[str] | None = None) -> None:
             url = _publish(
                 out_dir, name=args.name, model_key=spec.model_key, mode=spec.mode,
                 target=hf_path, summary=summary, push=not args.no_push,
+                run_name=str(cfg.get("run_name") or ""),
                 card=_card_fields(
                     args.name, cfg, command,
                     experiment=f"{args.name} eval of {hf_path} (mode={spec.mode})",

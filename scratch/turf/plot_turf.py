@@ -14,7 +14,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.utils import read_jsonl, timestamp  # noqa: E402
-from src.utils import figure_path
+from src.naming import figure_path
 
 # dataviz reference palette (validated: all-pairs PASS for slots 1-2, light mode)
 BLUE, ORANGE = "#2a78d6", "#eb6834"

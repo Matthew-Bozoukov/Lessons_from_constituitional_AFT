@@ -1,0 +1,176 @@
+# ABOUTME: Property discovery over ODCV rollouts from the generator ablation's two arms:
+# ABOUTME: what the grok-trained model DOES on agentic tasks that the Sonnet-trained one does not.
+# Run: uv run python scripts/properties/discover.py --config configs/properties/discover-odcv-grok-vs-da-716.yaml [--smoke]
+
+tag: odcv_grok_vs_da716
+
+registry: output/properties/properties.jsonl
+
+# The companion to discover-grok-vs-sonnet-corpus.yaml. That run asks what the two
+# generators WROTE; this one asks what the models TRAINED on that writing DO. Running both
+# is the point: a property present in the corpus and absent from the rollouts did not
+# transfer, and one present in the rollouts and absent from the corpus was not taught by
+# the difficult-advice half at all.
+#
+# ARMS ARE NOT PERFECTLY MATCHED HERE and it must be read with that in mind. The corpora
+# are paired scenario-for-scenario; these rollout sets are not:
+#   - grok  129 transcripts over 65 cells, 2 passes  (MR 7.8%, severity 0.35)
+#   - da716 275 transcripts over 70 cells, 4 passes  (MR 16.3% on the shared 65)
+# Different cell sets and different rollout counts, so `robustness_strata: cell` below is
+# the reading that removes the scenario-mix difference; a delta surviving only the primary
+# may be a difference in which scenarios each arm ran.
+source:
+  name: odcv_rollouts
+  runs:
+    # LOCAL run dir, not the published repo, and that is a WORKAROUND for a real
+    # incompatibility rather than a convenience. `LASR-Callum/2026-08-24-odcv-grokresp703-
+    # paired-eval` was pushed under the published-layout contract added on main
+    # (`rollouts/<condition>/<scenario>/passN/`, src/eval/layout.py), but this source's
+    # `_rollout_key` still reconstructs the BENCH layout key
+    # (`.../experiments/<scenario>/rollout_NNN/` -> `<condition>/<scenario>/rollout_NNN`).
+    # Against the contract layout it falls through to `path.parent.name` and every key
+    # becomes `pass1`/`pass2`, so nothing joins the score files and all 129 rollouts load
+    # unjudged. Verified: local dir joins 129/129, published repo joins 0/129.
+    # da716 below is unaffected only because it predates the layout change.
+    # FIX BELONGS IN `_rollout_key` — it should read both layouts; until then any newly
+    # published ODCV eval is unreadable by this source.
+    - run_dir: output/odcv/qwen3_6-27b-lora-t2-9284-grokresp703-paired-r64/combined2x_20260824_191954
+      arm: grok_responder_703
+    - repo: LASR-Callum/2026-08-14-qwen36-lora-table2-9284-difficult-advice-716-rank-64-dynbatch
+      arm: da716_sonnet
+  # A rollout with two sentences of reasoning contributes a vector describing nothing.
+  # The count dropped is printed, so this is a stated exclusion rather than a silent one.
+  min_reasoning_chars: 200
+  # Every rate below is over judged rollouts; an unjudged one silently leaving the
+  # denominator is a bias, not a rounding error.
+  require_outcomes: true
+
+producers:
+
+  clusters_reasoning: &channel_defaults
+    producer: clusters
+    evidence: features
+    channel: reasoning
+
+    extract:
+      # Same neutrality caveat as the corpus run: an Anthropic rater describing one
+      # Anthropic-derived arm and one xAI-derived arm. Here it bites less — both arms are
+      # the SAME base model (Qwen3.6-27B) at inference, differing only in LoRA, so neither
+      # set of rollouts is in the rater's own house style.
+      model: anthropic/claude-sonnet-5
+      n_min: 10
+      n: 20
+      workers: 16
+
+    embed:
+      backend: openrouter
+      model: qwen/qwen3-embedding-8b
+      workers: 8
+
+    grouping:
+      reduce: umap
+      cluster: hdbscan
+      # The da716-vs-numina sibling swept this on a 7,906-string reasoning channel and
+      # landed at 40. This corpus is ~400 rollouts rather than 513, so the string count is
+      # comparable and 40 is the informed starting point — PROVISIONAL until
+      # resolution_sweep.md in the run dir is read.
+      min_cluster_size: 40
+      n_neighbors: 15
+      n_components: 10
+      seed: 42
+
+    interpret:
+      model: anthropic/claude-sonnet-5
+      n_shown: 100
+      workers: 8
+
+    min_group_records: 12
+    arm_key: arm
+
+    # The PAIR, not either field alone. Both axes carry a base-rate difference: the arms
+    # violate at 7.8% and 16.3%, and within each arm incentivized violates more than
+    # mandated (grok 10.2% vs 5.7%). Pooling either lets a property concentrated in the
+    # safer half look protective for free.
+    group_by: [arm, condition]
+
+    outcomes:
+      # `violation` is ODCV's headline (severity >= 3). `any_misalignment` is severity > 0,
+      # kept because the arms separate further there: grok is perfectly clean on 84.5% of
+      # scenarios against da716's 61.8%, a wider gap than at the violation threshold.
+      fields: [violation, any_misalignment]
+      fdr: 0.10
+      min_stratum_records: 20
+
+    contrast:
+      focus: grok_responder_703
+      reference: da716_sonnet
+      strata: condition
+      # Same scenario, same condition, different model — removes the cell-mix difference
+      # outright at the cost of thinner strata. See the source note above.
+      robustness_strata: cell
+      fdr: 0.10
+
+    # Taken TOGETHER, do these properties account for what separates the models, and how
+    # few suffice? Logistic regression on a ~400 x N binary matrix; the permutation null is
+    # what makes the AUC readable.
+    probe:
+      targets: [arm, violation, any_misalignment]
+      seed: 0
+      folds: 5
+      permutations: 50
+
+    audit:
+      stability: true
+      neighbours: [10, 15, 30]
+      seeds: [0, 1, 2]
+      concentration_keys: [scenario, condition, arm]
+      concentration_threshold: 0.5
+
+    # Cluster membership, not detector-measured — see the sibling config for the A/B that
+    # settled this (a judge shown ~50 rubrics at once says yes 7-9 points less often).
+    measure_with_detector: false
+
+  clusters_response:
+    # What the model DID rather than what it thought: the assistant's visible text and its
+    # tool CALLS only. This is the channel where the deliberation-ceiling question becomes
+    # behavioural — grok never reasons past ~1,411 chars, and whether that shows up as a
+    # different distribution of ACTIONS is what a separate fit can answer.
+    <<: *channel_defaults
+    channel: response
+    grouping:
+      reduce: umap
+      cluster: hdbscan
+      # The sibling's response channel BIFURCATED above 25 (seed decided between ~40 groups
+      # and everything-is-one-group), so this channel starts coarser than its reasoning
+      # twin rather than matching it for symmetry.
+      min_cluster_size: 25
+      n_neighbors: 15
+      n_components: 10
+      seed: 42
+
+check_collisions: true
+
+constitution: constitutions/claude_distilled_12_principles_mid/constitution.md
+
+smoke:
+  source:
+    limit: 8
+    min_reasoning_chars: 0
+    require_outcomes: false
+  producers:
+    clusters_reasoning:
+      min_group_records: 2
+      grouping: {reduce: none, cluster: kmeans, k: 2}
+      audit: {stability: false}
+      outcomes: {min_stratum_records: 1}
+      contrast: {strata: condition, robustness_strata: null}
+      probe: {targets: [arm], permutations: 3, folds: 2}
+      measure_with_detector: false
+    clusters_response:
+      min_group_records: 2
+      grouping: {reduce: none, cluster: kmeans, k: 2}
+      audit: {stability: false}
+      outcomes: {min_stratum_records: 1}
+      contrast: {strata: condition, robustness_strata: null}
+      probe: {targets: [arm], permutations: 3, folds: 2}
+      measure_with_detector: false

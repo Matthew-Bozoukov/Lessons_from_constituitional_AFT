@@ -12,9 +12,9 @@ from pathlib import Path
 import yaml
 
 CONFIGS = {
-    "DA": "configs/data/synth/2026-08-01_difficult_advice.yaml",
-    "PAR": "configs/data/synth/2026-08-13_post_action_retrospection.yaml",
-    "PC": "configs/data/synth/2026-08-13_peer_critique.yaml",
+    "DA": "configs/data/synth/da.yaml",
+    "PAR": "configs/data/synth/par.yaml",
+    "PC": "configs/data/synth/pc.yaml",
 }
 
 # The stages difficult advice owns and the derived recipes are supposed to inherit verbatim.

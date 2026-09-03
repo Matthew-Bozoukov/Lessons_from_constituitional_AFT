@@ -21,7 +21,7 @@ sys.path.insert(0, "src/eval/audits/petri")
 
 from funnel_stats import clopper_pearson as cp  # noqa: E402
 from src.utils import timestamp  # noqa: E402
-from src.utils import figure_path
+from src.naming import figure_path
 
 ROOT = Path(__file__).resolve().parents[1]
 JUDGED = {

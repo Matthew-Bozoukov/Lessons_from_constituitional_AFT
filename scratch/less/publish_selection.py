@@ -41,7 +41,7 @@ import sys  # noqa: E402
 
 sys.path.insert(0, str(ROOT))
 
-from src.huggingface import card_front_matter, card_markdown, hf_api  # noqa: E402
+from src.infra.huggingface import card_front_matter, card_markdown, hf_api  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 
 META = ROOT / "data" / "less" / "selection_meta.json"
@@ -99,7 +99,7 @@ def ids_payload(meta: dict, side: str) -> dict:
 
 
 def _scores() -> list[dict]:
-    from src.huggingface import hf_download
+    from src.infra.huggingface import hf_download
     from scratch.less.select_topk import SCORES_FILE, SCORES_REPO
     meta = json.loads(META.read_text(encoding="utf-8"))
     local = hf_download(SCORES_REPO, SCORES_FILE, repo_type="dataset",

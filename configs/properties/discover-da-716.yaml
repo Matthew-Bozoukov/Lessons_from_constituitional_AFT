@@ -1,0 +1,95 @@
+# ABOUTME: Property discovery over the 716 difficult-advice rows of the Table-2 mixture:
+# ABOUTME: extract free-text features per trace, cluster the vocabulary, name each cluster.
+# Run: uv run python scripts/properties/discover.py --config configs/properties/discover-da-716.yaml [--smoke]
+
+tag: da716
+
+# Where the merged List of Properties lives. Every ablation config resolves its
+# `property_id` against this file, so it is the one path that must not drift.
+registry: output/properties/properties.jsonl
+
+# The corpus a prevalence is a share OF. Pinned by revision on purpose: an unpinned repo
+# makes prevalence a moving number, and a property row would then claim a share of
+# something nobody can reconstruct.
+source:
+  name: mixture_rows
+  repo: LASR-Callum/2026-08-06-table2-9284-synthdoc-716-train
+  file: mixture_think.jsonl
+  revision: 5b5d66dbd050a15493f38b500fe10f570b0b8f2b
+  # The mixture is 9,284 rows of Table-2 replay plus 716 difficult-advice rows. A property
+  # of the difficult-advice share is not a property of Tulu3, so the replay is excluded
+  # rather than diluting every prevalence by 13x.
+  only_source: synthdoc_da
+  # REQUIRED for this artifact: it predates the 2026-08-07 interchange switch, so its rows
+  # are PRE-RENDERED — one string carrying the family's chat syntax. Without a model there
+  # are no markers to split it on and the reasoning channel reads empty, which would make
+  # every prevalence measured here 0% for a reason that has nothing to do with the corpus.
+  model: Qwen/Qwen3.6-27B
+
+producers:
+
+  clusters:
+    # An autorater reads each trace ALONE and writes 10-20 free-text descriptions of what
+    # it does; those descriptions are deduped, embedded and clustered. Descriptions have
+    # already thrown the subject matter away, so a group is a recurring MOVE rather than a
+    # recurring topic — and a trace gets several properties, which is what traces are like.
+    evidence: features
+    channel: reasoning
+    extract:
+      model: anthropic/claude-sonnet-5
+      n_min: 10
+      n: 20
+      workers: 16
+    embed:
+      backend: openrouter          # 716 traces; a pod is not worth renting for this
+      model: qwen/qwen3-embedding-8b
+      workers: 8
+    grouping:
+      reduce: umap
+      cluster: hdbscan
+      # NOTE this is a floor on FEATURE STRINGS, not traces: 716 traces produce ~10k
+      # features, so the number is an order of magnitude larger than it would be under
+      # `evidence: traces`. A RESOLUTION SETTING; the group count that comes out is a
+      # finding only in the sense that HDBSCAN chose it at this resolution.
+      min_cluster_size: 220
+      n_neighbors: 15
+      n_components: 5
+      seed: 42
+    min_group_records: 10
+    interpret:
+      model: anthropic/claude-sonnet-5
+      # The post's number, and what the published feature-discovery runs used. Leave it
+      # unset to get 100 under `evidence: features` and 30 under `evidence: traces`.
+      n_shown: 100
+      workers: 8
+    # Every record carries `source` from the mixture; with more than one scenario format
+    # in the corpus this splits each property's prevalence per arm, which is what a
+    # DA-vs-courtroom comparison needs.
+    group_by: source_label
+    # Replace cluster-membership prevalence with the number the detector measures, so
+    # these rows are comparable with every other producer's.
+    measure_with_detector: true
+    detector:
+      model: anthropic/claude-sonnet-5
+      workers: 16
+      sample: 200
+
+# Two producers describing the same behaviour in different words is corroboration, and
+# the strongest reason to spend a pod on a property — but ablating both is a wasted run.
+# Only matters once a second producer is implemented; `clusters` is the only one so far.
+check_collisions: true
+
+constitution: constitutions/claude_distilled_12_principles_mid/constitution.md
+
+# Tiny slice, full wiring.
+smoke:
+  source:
+    limit: 12
+  producers:
+    clusters:
+      min_group_records: 2
+      grouping:
+        min_cluster_size: 3
+      measure_with_detector: false
+      detector:
+        sample: 6

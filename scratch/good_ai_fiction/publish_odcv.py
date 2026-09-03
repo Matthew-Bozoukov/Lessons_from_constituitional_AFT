@@ -51,7 +51,7 @@ def main(run: str = RUN, repo: str = REPO, stage: str = "output/odcv_fiction716/
     load_dotenv()
     from src.eval.layout import assert_layout
     from src.eval.misalignment.odcv.passes import package_run
-    from src.huggingface import push_run_dir
+    from src.infra.huggingface import push_run_dir
     from src.utils import git_sha
 
     run_dir = Path(run).resolve()

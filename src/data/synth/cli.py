@@ -57,6 +57,9 @@ def run(config: str, smoke: bool = False, resume: str | None = None,
         loaded = OmegaConf.merge(loaded, OmegaConf.from_dotlist(_csv(overrides)))
         print(f">>> overrides: {overrides}")
     cfg = OmegaConf.to_container(loaded, resolve=True)
+    # The stem is the style-type and the style-type names the corpus (src/naming.py), so
+    # the stem is what `pipeline` holds — not a label beside it that can drift from it.
+    cfg["pipeline"] = Path(config).stem
     if batch:
         cfg["batch"] = True
     if ablate:
@@ -133,6 +136,15 @@ def topup(config: str, resume: str, traits, n: int = 25,
         after[r["trait_id"]] = after.get(r["trait_id"], 0) + 1
     print(f">>> per-trait counts now: {dict(sorted(after.items()))}")
     print(f">>> top-up spend ${usage.usd:.2f}")
+    # A top-up changes what the run dir holds without being the run that made it, so it
+    # writes itself into the manifest: what was asked for, and what the counts became.
+    manifest_path = run_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
+    manifest.setdefault("topups", []).append({
+        "command": " ".join(sys.argv), "traits": list(traits), "n": n,
+        "draft_stage": draft_stage, "revise_stage": revise_stage,
+        "counts_after": dict(sorted(after.items())), "usd": round(usage.usd, 4)})
+    manifest_path.write_text(json.dumps(manifest, indent=2))
 
 
 def checks(tier: str | None = None) -> None:

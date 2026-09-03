@@ -1,6 +1,287 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-03 — Metadata that reruns a run: launch args, commands, and revision pins
+
+**Question.** Is the config stored in an artifact's metadata enough to reproduce it, or
+is it a copy of the file that misses `seed=` and `synthetic_pct=`?
+
+**Answer, checked.** Train, eval and synth all store the MERGED config — dotlist overrides
+are applied before the metadata is built — so launch arguments were never lost. What was
+missing: `mix` took no overrides at all (`main(config, smoke)`), so `synthetic_pct=40` on
+the command line, documented in `da.yaml` and claimed in conversation, did not work;
+train's card `provenance` was built from the config path and omitted the overrides; and
+nothing pinned the base model (train), the target adapter (eval) or streamed replay
+sources (mix) — each was read at whatever the repo's head was that day.
+
+**Method.**
+* `mix` takes `*overrides` like `train`; one `da.yaml` is the whole ladder.
+* Every stage records the exact command (`sys.argv`); train's provenance IS the command;
+  the synth manifest records `resume` and every `topup` (traits, n, counts after, spend).
+* Revision pins, resolved at launch and recorded: `base_model_revision` in
+  `training_meta` (and passed to `from_pretrained`); `TargetSpec.revision` in eval,
+  fetched at that sha and served with `--revision` for a full-model target, written to
+  `run_meta.target_revision`; streamed `repo:` sources in mix pinned with `revision=` and
+  recorded per source in `mixture_stats.sources`.
+
+**Irreducible.** API models drift under a fixed id; GPU kernels are nondeterministic.
+
+## 2026-09-03 — A mixture's styles are its synthetic source keys, sorted
+
+**Problem.** `par-da-gemini` and `da-gemini-par` were two names for one mixture, and a
+stem could name a corpus its `sources:` did not contain. The stem's styles part was
+free text validated for shape only.
+
+**Method.** `styles_from_sources()`: the synthetic source keys, sorted, hyphen-joined.
+Plain string order, so a synth variant sorts with its style (`da-gemini` before `par`).
+Enforced twice with one helper — in the lint over every `base:` mixture config, and in
+`build_mixture` before anything loads — so an ad-hoc config cannot build a mixture named
+for corpora it does not contain. The name check now runs first after parsing; a bad stem
+fails on its name, not on whatever the loader trips over next.
+
+**Found on the way.** `blend()` marks synthetic sources `synthetic: true`, and the build
+then demanded a `filter:` block on seeing the flag — so a filterless `base:` mixture died
+with advice the user could not follow ("drop the flags"; blend set them). The requirement
+now applies only to flags a human set: under `base:`, "after the filter" with no filter
+means after the base rows, which is a legitimate single-pass shape.
+
+**Result.** Suite green (1,211).
+
+## 2026-09-03 — The tulu-only control path retired
+
+**Problem.** Before the base blend, the 0%-synthetic control was "a 1.5M-token sample of
+Tulu 3 alone": a standalone sampler (`sources/tulu3.py::main`, config `tulu-control.yaml`)
+wrote a local jsonl that `qwen36-tulu-100.yaml` trained on. That is why Tulu alone had a
+config when no other replay source did. The arm could no longer run anyway — its
+`data_repo` had read `???` since the local-file days.
+
+**Method.** Deleted the sampler config, the train config and the sampler's `main`. Tulu
+is now what every other replay source is: one adapter (`tulu3`, kept) sampled by
+`build_mixture` to the budget the mixture declares, and the 0% control is `0.yaml`. The
+internalization pod script never invoked the sampler — its `tulu` hits are a pod name and
+an adapter id — so nothing there to repoint.
+
+**Result.** `configs/data/mixture/` is `0.yaml`, `da.yaml` and `archive/`. Suite green.
+
+## 2026-09-03 — A row count is never part of a style
+
+**Problem.** `da-gemini-716` named a corpus for how many rows one run of it produced. That
+is a fact about the RUN, recorded in the artifact, not about the document type — and it
+broke the mix-subject parser, which had to guess which numeric token was the percentage
+(`da-716-20-reason-only`) and grew a try-each-pivot loop to cope.
+
+**Method.** `check_style` refuses a bare numeric token. A mix subject then carries exactly
+ONE number — the synthetic percentage — so `split_mix_subject` finds it by being the
+numeric token and needs no disambiguation. Five synth configs dropped their `-716`
+(`da-gemini`, `da-gptresp`, `da-grok`, `da-grokresp`, `da-sonnetconcise`). Two escapes,
+both for things that are not styles: a pre-law train stem (`table2-9284-da-716`) names a
+mixture that was never named under the law, and a probe config names the arm it probes;
+`numbers_ok=True` there, and nowhere a style is minted.
+
+Three pre-law replay-only mixtures (`qwen36-100k-three-source`, `qwen36-500k-*`) moved to
+`configs/data/mixture/archive/`: token-budgeted alternatives to the base blend, which is
+what `0.yaml` now is. Whether they survive is a research call; the lint skips `archive/`.
+
+**Result.** Suite green (1,209).
+
+## 2026-09-03 — Variants: `<style>-<variant>` for synth, `<styles>-<pct>-<variant>` for mix
+
+**Problem.** A style says WHAT the synthetic documents are; it does not say how they were
+made or how they were trained on. Generating the same document type with Gemini instead of
+Sonnet, or supervising only a synthetic row's reasoning and not its response, are changes
+to the synth or the mix — not new styles — and the names carried neither.
+
+**Method.** Both stages take a variant. Synth is the easy half: nothing is spliced into a
+synth name, so the config's stem IS its subject and the variant is simply part of it
+(`da-gemini.yaml` -> `<date>-da-gemini-synth`).
+
+A mixture is not, because the synthetic percentage lands BETWEEN the styles and the
+variant (`da` + `reason-only` at 7% -> `<date>-da-7-reason-only-mix`). A stem alone cannot
+say where the styles end, so the config declares `variant: reason-only` and the lint
+requires the stem to end in it. Reading a subject back is the mirror image: the percentage
+is the pivot, found by BEING the numeric token rather than by position, since a style may
+itself end in a row count — `da-716-20-reason-only` splits to (`da-716`, 20,
+`reason-only`), and the split chosen is the one that leaves a lawful subject on both sides.
+
+Variants are named by whoever makes them. The law only enforces that a config's name
+follows the template and that the name reaches the Hub repo unchanged.
+
+**Result.** Suite green (1,209).
+
+## 2026-09-03 — A fixed non-synthetic base blend, so an arm ladder is a dose-response curve
+
+**Problem.** Earlier arms built `da-10` and `da-40` by replacing the replay portion with a
+single source (`da` + `tulu3`, nothing else). The replay COMPOSITION therefore differed
+between arms as well as the synthetic share, so no arm was a clean control for the next
+and the ladder was nine unrelated mixtures rather than one curve.
+
+**Method.** `configs/data/mixture/0.yaml` is THE base mixture: the MSM paper's Table 2
+blend at its exact per-source counts (summing to 10,000), no synthetic share. It does two
+jobs — it is the 0% control arm's training file, and it DEFINES the fixed proportions of
+non-synthetic data. Every other mixture names it as `base:` and declares
+`synthetic_pct:`; `blend()` scales the base's proportions to `(100 - pct)%` and splits the
+synthetic budget between the styles by their declared ratio. A source that is 27.79% of
+the base is 27.79% x 90% = 25.0% of a `da-10` mixture, verified in the tests.
+
+Percentages are ROWS, not tokens — the unit the Table-2 blend is already budgeted in.
+`mixture_stats.json` records both, because the same split reads very differently in each
+(synthetic docs run ~3.4x longer than replay rows, so 10% of rows is far more than 10% of
+the loss, and the name understates the synthetic weight on the gradient).
+
+**Naming.** A mixture with no synthetic rows has no styles, so the base publishes as
+`<date>-0-mix` and its control arm as `<date>-qwen36-<seed>-0`. Styles and a synthetic
+share now imply each other and `mix_subject` refuses either alone. The train-config lint
+checks the stem's mixture half against the config's own `data_repo` — exact where there is
+a lawful mixture to check against, and silent where there is not, because an arm trained
+on a pre-law dataset has no share on record and requiring one would ask the config to
+invent a number.
+
+**Result.** Suite green (1,202). Two real bugs found and fixed on the way: `mix_subject_from`
+was defined AFTER naming.py's `__main__` guard, so `python -m src.naming` — the pre-push
+hook's own command — raised NameError while the same code worked on import; and a docstring
+in arena_hard's pool.py still carried damage from an over-broad config rename.
+
+**Config consolidation.** The synthetic-source question resolved itself once the dead arms
+went: `mem_self`, `mem_other`, `self_reflection`, `less_top10` and `random220` are retired,
+so `da` is the only synthetic source in the tree and there is nothing left to classify.
+Removed the 11 configs that used those sources (5 mixture, 6 train) plus 4 archived eval
+configs for the same arms.
+
+`configs/data/mixture/da.yaml` then replaces SEVEN ratio configs
+(`qwen36-{10-90,20-80,40-60,synthdoc-0-100,-10-90,-15-85,-20-80}`) and `qwen36-msm-table2`,
+because they differed only in the synthetic percentage and in which single replay source
+stood in for the base blend. `synthetic_pct` is a launch argument now, the way `seed` is
+for training: `uv run mix --config configs/data/mixture/da.yaml synthetic_pct=40` produces
+`<date>-da-40-mix` from the same arm. `configs/data/mixture/` is down from 17 files to 6.
+
+**Next steps.** The three replay-only experiments (`qwen36-500k-*`, `qwen36-100k-three-source`)
+were left alone: they have no synthetic share and are not part of this ladder, so whether
+they survive is a research call, not a naming one.
+
+## 2026-09-02 — Arena-Hard: an arm's answers are an artifact, and the comparison is `vs-<baseline>`
+
+**Problem.** Arena-Hard regenerated everything, every time. Its only reuse was local —
+`arena_hard_gen` skips uids already in the vendor tree's `model_answer/<arm>.jsonl`, so an
+interrupted run resumes — and that file lives on whichever box ran it. A fresh pod meant a
+full regeneration for a model whose answers were already on the Hub. The baseline avoided
+this only because it was hand-supplied as an artifact (`--reference repo::path`), which
+made "reference" a different kind of thing from "target" for no reason.
+
+**Method.** Arena-Hard IS the comparison, so a single arm can never have a result: a win
+rate is a fact about (arm, baseline, exam), never about a model alone. The two artifacts
+are split accordingly.
+
+* **An arm** — `<date>-ah-<model>` — publishes `rollouts/answers.jsonl` and `metadata/`
+  (its own provenance and generation health) and **no `results/` at all**. That is what
+  makes it reusable: the same model is a target this week and the baseline next, and its
+  repo carries no verdict about an unrelated old comparison.
+* **The comparison** — `<date>-ah-vs-<baseline>` — does all the judging and owns every
+  result: `rollouts/` (the judge's own verdict records), `results/` (per-arm judgments +
+  the ranked leaderboard) and `metadata/sources.json`, which POINTS at each arm's HF repo
+  rather than copying it.
+
+`--target` and `--reference` each take either a MODEL (generate) or a PRIOR ARM (fetch its
+answers), resolved by probing `metadata/run_meta.json` in a dataset repo — never by the
+repo's name, which a style-type could imitate. `TargetSpec.answers` marks the second form;
+nothing serves it, and `ServedTarget.base_url` refuses rather than booting vLLM for a model
+that is not the point. The reference is an ordinary arm (`arm_kwargs`), run first, and
+marks itself in its own metadata, which is how the pool later knows the baseline.
+
+Judging in the pool has a second benefit: answers publish as they are produced, so a crash
+during judging costs only the judging — re-pooling reads answers already on the Hub.
+
+Framework change: a run whose `run()` wrote nothing under `results/` publishes
+`rollouts/ + metadata/` only, its summary filed as `metadata/run_summary.json`. Inferred
+from what the eval actually wrote rather than declared, so the two cannot drift.
+
+**Naming the comparison.** ODCV's pooled rule does not generalise: it names the shared
+prefix of seed replicates, and Arena-Hard's arms share no subject at all
+(`difficult_advice_0`, `courtroom_716_0`, `tulu_100_0` have no common prefix). But
+Arena-Hard is a STAR — every arm judged against one baseline — so the one thing they share
+is that baseline, and the pool is named for it: `<date>-ah-vs-<baseline>`. Accordingly the
+`pooled=` seed-strip left `eval_name`: each `pool()` decides its own subject, because no
+rule here generalises across evals. What the name cannot carry is the question subset, so
+two ladders against one baseline on one day over different subsets collide —
+`check_distinct` catches it before either publishes, and the subset is in `metadata/`.
+
+**Result.** Also fixes a live bug found on the way: a dynamic CLI arm carried none of the
+per-arm prompt counts, so judging any `--target` died with `Missing key n_hard_prompt`.
+`arm_defaults` in the config supplies them. Suite green (1,197).
+
+**Next steps.** Untested against the Hub — the arm forms, the pool and the refusals are
+covered offline, but no real ah run has been made under this yet. `answer_cache.py` and
+its tests are now genuinely unused: this design replaced the need for them rather than
+migrating onto them, so they should probably go.
+
+## 2026-09-02 — lmsys removed: Arena-Hard is the model-vs-model capabilities eval
+
+Two evals asked the same question — does this arm still write answers a judge prefers —
+and only one of them needs to exist. Arena-Hard is the standard, so lmsys goes:
+`src/eval/capabilities/lmsys/` (445 lines), its registry entry, `configs/eval/lmsys.yaml`
+and `tests/test_lmsys.py`.
+
+Kept deliberately, both now with no registered consumer: `src/eval/answer_cache.py` and
+`EvalSpec.arm_kwargs` + its run_eval prepend. lmsys was the only user of each, but
+arena_hard is the documented next one — its `--reference` is still an answers ARTIFACT
+and is meant to become an arm — so removing the machinery that migration targets would
+undo the migration before it happens. Both are marked as currently unused where they are
+defined. If arena_hard's migration is dropped, they go with it.
+
+Kept for a different reason: the dashboard's lmsys display metadata
+(`dashboard/lib/entries.ts`, `evalRuns.ts`). The dashboard reads published HF data, and
+the lmsys runs already on the Hub do not stop existing because the pipeline no longer
+produces new ones.
+
+## 2026-09-02 — One name shape per pipeline stage; names are built, not typed
+
+**Problem.** The old law (`src/utils.py`) asked a human to spell every artifact's name and
+then spent ~450 lines checking the spelling: `CANONICAL_TOKENS` expanding ambiguous
+abbreviations, `squash` collapsing spelling variants, `suggest` repairing bad names,
+`LEGACY_HUB_REPOS` grandfathering 37 that predated it. It caught spellings but not the
+thing that actually drifts — a config's date is when the arm was WRITTEN, an artifact's is
+when it was PRODUCED, and they diverge: `2026-08-18_..._courtroom_716_dynbatch` pushed to a
+repo dated `2026-08-16`, and the three post-action-retrospection seed configs dated
+`2026-08-27` pushed to repos dated `-26`, `-27` and `-28`. Worse, `canonical_key` kept the
+target's date inside an eval run's name, so an eval repo carried two dates and the longest
+arms could not be published at all: `agentic_misalignment` on
+`table2_9284_post_action_retrospection_716_coherence_dynbatch` came to 110 characters
+against the Hub's 96, and `check_hub_repo` refused it before the run started.
+
+**Method.** Replace the law with one shape per stage, built by code (`src/naming.py`):
+
+```
+synth   <date>-<style>-synth     model   <date>-<model>-<style>-<seed>
+mix     <date>-<style>-mix       eval    <date>-<eval>-<model name, undated>
+```
+
+The only human input is the style-type — the stem of the synth or mixture config that
+produced the data. The date comes from the clock at launch, the model from `MODEL_KEYS`
+(`src/model_profile.py`, beside that model's other facts),
+the eval from a new required `EvalSpec.key`, the seed from the training config. Configs
+lost their dates and their seeds (`configs/train/<model>_<style>.yaml`), so a config names
+an arm and a run names an artifact, and neither can drift from the other. Training now
+pushes the RESOLVED config with the adapter (`train_config.yaml` +
+`training_meta.train_config`), because an undated config edited in place makes a stored
+path meaningless — that was the prerequisite for undating them at all.
+
+Removed: `CANONICAL_TOKENS`, `VAGUE_TOKENS`/`JUNK_TOKENS`, `squash`, `suggest`,
+`split_tokens`, `canonical_key`, `LEGACY_HUB_REPOS` and `scripts/hf/rename_repos.py`. Reads
+are no longer validated — pointing at a repo from before the law does not create another
+badly named one — which is what makes the legacy list unnecessary rather than merely
+shorter. The lint kept exactly two checks, both on things a human writes: config stems and
+literal figure filenames. It never parses a name into fields, so an artifact outside the
+taxonomy (`artifact_name()` — answer caches, probe sweeps) needs no exemption list.
+
+**Result.** 169 configs renamed, 2 seed-replicate configs collapsed into their arm
+(`configs/train/` 68 -> 66), 71 superseded per-arm eval configs archived, `src/utils.py`
+down 584 lines. The eval-name blocker is gone: the same worst-case run is now 86
+characters. Suite green (1,206 passed); `uv run --quiet python -m src.naming` green.
+
+**Next steps.** Nothing has been re-run under the new law yet — the first synth/mix/train
+of an arm will mint the first names in the new shape, and the adapters already on the Hub
+keep their old ones (reads are unvalidated, so they stay servable). `configs/train/
+qwen306b_smoke.yaml` still declares `data_path:` rather than `data_repo:`, so it predates
+the HF-only data contract and cannot run; it wants either a toy HF repo or archiving.
 ## 2026-09-01 — MoralBench as a declarative values probe, and an audit of what upstream actually released
 
 **Hypothesis.** Every misalignment eval here is behavioural and returns a scalar (ODCV

@@ -439,7 +439,7 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
     rendered prompt variable:
 
         library:
-          file: configs/data/synth/good_ai_fiction/archetypes.yaml
+          file: configs/data/synth/good-ai-fiction/archetypes.yaml
           key: archetypes        # the top-level list
           id: id                 # the field naming an entry
           match: traits          # entry field listing the units it fits (optional)
@@ -2004,7 +2004,7 @@ def op_load_source_run(sc: dict, cfg: dict) -> Stage:
         repo = spec["hf_repo"]
         from huggingface_hub.utils import EntryNotFoundError
 
-        from src.huggingface import hf_download
+        from src.infra.huggingface import hf_download
 
         # New-layout repos keep snapshots under stages/ (dataset.jsonl at the root);
         # pre-layout repos hold them at the root — try the exact name, then stages/.
@@ -2419,9 +2419,9 @@ OPERATORS = {
 # exported -- which is precisely what a config's `stages:` list is supposed to express
 # instead. They stay registered because the archived configs are written against them,
 # and an archived config that cannot run is not a reproducible record of a published
-# corpus. Nothing live uses them (2026-08-13_peer_critique.yaml, the last holdout, was rebuilt on
+# corpus. Nothing live uses them (peer_critique.yaml, the last holdout, was rebuilt on
 # the generic kinds on 2026-08-14); build a document type out of the generic kinds
-# above, as `2026-08-13_post_action_retrospection.yaml` does.
+# above, as `par.yaml` does.
 OPERATORS.update(
     {
         "plan_cells": op_plan_cells,

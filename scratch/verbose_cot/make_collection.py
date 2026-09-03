@@ -16,7 +16,7 @@ from __future__ import annotations
 import sys
 
 import src.endpoints.openrouter  # noqa: F401  -- its import calls load_dotenv()
-from src.huggingface import hf_api
+from src.infra.huggingface import hf_api
 
 NAMESPACE = "LASR-Callum"
 TITLE = "Verbose CoT — 3x deliberation"
