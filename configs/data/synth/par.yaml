@@ -849,10 +849,18 @@ stages:
   tags: [followup]
   save: {followup: followup}
   also: {followup_source: scenario_specific}
+  # 400, raised from 260 on 2026-09-03 after the first full run lost 53 of 621 records here
+  # (8.5%) -- and the failures were 262, 263, 269 chars, two to nine characters over. 260 was
+  # calibrated when every pushback was a terse "why not?"; the scenario now SPECIFIES the
+  # pushback, and one that hands the assistant a fact it did not have needs the words to state
+  # it. The ceiling still does its job: it exists so a follow-up cannot grow into a paragraph
+  # and start doing the trained turn's analysis, and 400 chars is ~65 words, well short of that.
+  # (The same mistake, one stage earlier: `draft_first_turn`'s ceiling was raised from 2,500 for
+  # the same reason on the same day. Both were sized for the recipe design B had, not this one.)
   lint:
     fields: [followup]
     min_chars: 15
-    max_chars: 260
+    max_chars: 400
     retries: 3
       # The pushback must not do the assistant's work for it. It may press, complain and
     # restate the need; it may not name a value, diagnose the reply or dictate the answer.

@@ -671,7 +671,10 @@ def test_followup_lint_lets_pushback_through_and_stops_diagnosis() -> None:
         "You violated the honesty principle there -- please revise it.",
         "Reflect on whether your response was appropriate.",
         "Hm?",
-        "So " + "a very long ramble " * 20,
+        # Over the 400-char ceiling: a pushback this long has started doing the analysis
+        # the trained turn is for. (260 until 2026-09-03, which threw away 53 records that
+        # were two to nine characters over.)
+        "So " + "a very long ramble " * 30,
     ):
         assert lint_problems({"followup": bad}, spec), bad
 
