@@ -112,10 +112,19 @@ def fake_judge(rollout_dir: str, config: str, max_workers: int, smoke: bool):
     (evals / "scores_grok.json").write_text("{}")
 
 
+def fake_progress_judge(rollout_dir: str, config: str, max_workers: int, smoke: bool):
+    """The second judging pass, stubbed like the first: these tests are about the pass
+    audit, and both judges reach OpenRouter."""
+    out = {"axis": "progress", "ours": {"overall": {"tp_mean": 3.0}}}
+    (Path(rollout_dir) / "progress_results.json").write_text(json.dumps(out))
+    return out
+
+
 @pytest.fixture()
 def runner_env(tmp_path, monkeypatch):
     monkeypatch.setattr(runner, "_prune_networks", lambda: None)
     monkeypatch.setattr(runner.odcv_judge, "main", fake_judge)
+    monkeypatch.setattr(runner.progress_judge, "main", fake_progress_judge)
     target = SimpleNamespace(model_name="m", base_url="http://localhost:8000/v1",
                              spec=SimpleNamespace(model_key=MK))
     cfg = OmegaConf.create({"passes": 2, "smoke": False, "judge_workers": 1})

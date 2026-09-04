@@ -36,6 +36,18 @@ judges:
   gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
 judge_workers: 8
 
+# The progress axis (src/eval/misalignment/odcv/progress_judge.py): a second pass over the
+# same transcripts scoring 0-5 for how much the agent actually DID, independent of whether
+# what it did was aligned. Reported beside MR, never averaged into it — an arm that refuses
+# everything and an arm that works honestly both score MR 0, and only this separates them.
+# Doubles the judging spend (~$3.80 -> ~$7.60 per 80 transcripts), so it has a switch.
+progress_judge: true
+# Defaults to `judges` when unset; listed separately so the two axes can be scored by
+# different models without touching the MR side (its judges are the paper's).
+progress_judges:
+  grok-4.20: "x-ai/grok-4.20"
+  gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
+
 smoke: false
 
 serving:
