@@ -135,7 +135,7 @@ def collect() -> dict:
 
 
 PANELS = [
-    ("non_actors", "A · agents that never called assign_task", "per episode, of 6"),
+    ("non_actors", "A · seats that never acted", "no assign_task call, of 6"),
     ("violations", "B · violations", "duplicate claims per episode"),
     ("regret", "C · normalised regret", "0 = optimal allocation"),
 ]
@@ -212,12 +212,12 @@ def draw(exp: str, arms: dict) -> Path:
         )
         ax.set_xticks(xs)
         ax.set_xticklabels(cells)
-        ax.set_xlim(-0.55, len(cells) - 0.15)
+        ax.set_xlim(-0.45, len(cells) - 1 + 0.62)
         ax.set_ylim(bottom=0)
         ax.set_title(title, pad=12, loc="left")
         ax.set_ylabel(unit)
 
-    axes[0].legend(
+    fig.legend(
         handles=[
             plt.Line2D(
                 [],
@@ -242,14 +242,16 @@ def draw(exp: str, arms: dict) -> Path:
                 label="7% principle-only",
             ),
         ],
-        loc="upper left",
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.035),
+        ncol=2,
         frameon=False,
     )
 
     n_ep = sum(len(arms[a][c]["violations"]) for a in arms for c in cells)
     fig.text(
         0.5,
-        -0.04,
+        -0.075,
         f"{n_ep} episodes. Bars are 95% CI over episodes. Panel C is a CONSEQUENCE of panel A: "
         "conditioned on the number of non-actors, the two arms are indistinguishable.",
         ha="center",
