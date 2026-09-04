@@ -496,3 +496,40 @@ failed. Rerunning both arms to recover one is the expensive way out.
 that in-invocation pooling does not happen, so the contrast is assembled afterwards from
 the two run directories (`scratch/colosseum_pool_split_arms.py`) — the same computation
 over the same inputs.
+
+## Two concurrent run_eval invocations need their own PORT and their own WORK DIR (2026-09-03)
+
+`run_eval` defaults every vLLM server to port 8000 and every server work directory to
+`output/<eval>/server`. Both are fine for one run at a time and break as soon as two run
+together — which SLURM makes easy, since it packs several one-GPU jobs onto one 8-GPU
+node.
+
+**Port.** Only the first server binds. The loser sits with the weights loaded and its GPU
+at **0% and 123W**, which looks exactly like a slow job: no error, no crash, and the log
+still ticking over from tqdm. Three of six GPUs were idle for 45 minutes before anyone
+noticed. There is a correctness edge too — the loser's driver can reach the WINNER's
+server on `localhost:8000`, and the only thing between that and an arm being served by
+the other job's checkpoint is Colosseum's own served-model-name check.
+
+**Work dir.** Not just logs: the thinking-mode chat template is written there and handed
+to vLLM to read at startup. Concurrent runs rewrite it under each other, and a server
+booting at the wrong moment reads a half-written file and dies. The driver then reports
+only `vLLM server ... is not reachable at 127.0.0.1:<port>` — nothing in that message
+suggests a different process caused it.
+
+Both are now derived from the job: the port from `SLURM_JOB_ID`
+(`scripts/infra/slurm/colosseum_job.sh`), the work dir from the port
+(`src/eval/run_eval.py`).
+
+**Diagnosing this needs `nvidia-smi` INSIDE the allocation.** `ssh <node> nvidia-smi` is
+not in the job's cgroup and reported an idle GPU for a busy job and vice versa — it was
+worse than no information. Use:
+
+```bash
+srun --jobid=<id> --overlap -n1 nvidia-smi \
+    --query-gpu=utilization.gpu,memory.used,power.draw --format=csv,noheader
+```
+
+Sample it several times: a single reading can catch a genuine gap between decode steps.
+Weights loaded (~75GB) with 0% utilisation across repeated samples is the signature of a
+driver that cannot reach its server, not of a slow model.
