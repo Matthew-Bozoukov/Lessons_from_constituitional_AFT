@@ -66,12 +66,35 @@ $43.04 (refine $14.91, rewrite $23.95, drafts $4.18; plus ~$1 from the first lau
 Kunwar's decision on scope: the corpus is NOT required to vary kinds of wrong, so the
 concealment-heavy mix seen in the smokes is accepted as the arm.
 
-**Next steps.** (1) Rebase onto main's naming law: config becomes `da-no-const.yaml`,
-Hub repo moves to `2026-09-03-da-no-const-synth`. (2) Draw 702 by seed into a table-2
-mixture (one unit, so no `balance_by: trait_id`), train with the baseline's train config,
-ODCV × 3 seeds against principle-scoped 702. (3) The free corpus checks can be re-run on
-the published run with `uv run synth check --config <cfg> --run_dir <dir> --stage corpus
---tier surface`.
+**Result (trained and evaluated, 2026-09-03/04, one seed).** Mixture
+`LASR-Callum/2026-09-03-da-no-const-7-mix`: the principle-scoped baseline's 9,284 Table2
+rows byte for byte + 702 no-constitution rows drawn by seed 0 (7.03%, one unit so no trait
+balancing). Trained with the baseline's config unchanged but for the data pointer
+(`configs/train/qwen36-da-no-const-7.yaml`, LoRA r64, 1 epoch, 2×H200, 625 steps, ~1h50) →
+adapter `LASR-Callum/2026-09-03-qwen36-0-da-no-const-7`. The trainer completed and saved
+but died at the push: main's `model_name` mints a bare name and the push gate wants
+`org/name` (fixed here, with a second lint bug that refused every lawful
+`<model>-<mix>-<pct>` train stem). ODCV from the laptop against vLLM on an H100:
+
+| arm | overall MR | mandated | incentivized | cells / passes |
+|---|---|---|---|---|
+| base model (published) | 43.8% [30.5, 58.0] | 45.0% | 42.5% | 80 / 1 |
+| **no constitution ("Be good.")** | **26.2% [15.7, 40.5]** | 17.5% [8.3, 33.2] | 35.0% [21.4, 51.5] | 80 / 1 (pass 1 dropped: 2 cells missing after retry) |
+| principle-scoped 702 (baseline) | 11.5% [6.2, 19.6] | 5.7% | 18.3% | 65 / 2 |
+
+Run `LASR-Callum/2026-09-04-odcv-qwen36-0-da-no-const-7`; figure
+`output/difficult_advice_no_constitution/2026-09-04_odcv_da_no_const_vs_baseline.png`.
+Read: difficult-advice SFT with no constitution still removes a good part of the base
+model's misalignment (44% → 26%), and the principle-anchored recipe removes more (→ 11.5%).
+Intervals touch; one seed, one judged pass; the two runs sit on different cell universes
+(80 vs 65), so the standing shared-cell rule has not been applied yet. Consistent with the
+corpus read: the no-constitution replies argue the request down rather than commit to a
+firm refusal, which the four-MO rollout work found to be the ODCV lever.
+
+**Next steps.** (1) Shared-cell paired comparison against the baseline
+(`src/eval/misalignment/odcv/odcv_compare.py`) and a second judged pass. (2) Seeds 42 and
+69 on the same config (`seed=N`), then the three-seed plot. (3) The free corpus checks on
+the published corpus (`uv run synth check … --stage corpus --tier surface`).
 
 ## 2026-09-03 — The legacy name table: every pre-law Hub repo, and what its products are called
 
