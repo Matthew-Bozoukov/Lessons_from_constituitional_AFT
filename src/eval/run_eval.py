@@ -240,7 +240,14 @@ def main(argv: list[str] | None = None) -> None:
     # writable from here. plan_serving validates one against the other — nothing is layered
     # over anything. `or {}` not `.get(..., {})`: a bare `serving:` key parses as None.
     server = VllmServer(
-        work_dir=Path("output") / args.name / "server",
+        # Keyed by PORT, because two concurrent invocations of the same eval on one
+        # filesystem otherwise share this directory — and it is not just a log directory.
+        # The thinking-mode chat template is written here and handed to vLLM to read at
+        # startup, so a second run rewriting it while the first server is booting kills
+        # that server. The driver then reports only "vLLM server ... is not reachable",
+        # with nothing to say a different process caused it. Observed 2026-09-03 with ten
+        # jobs starting together on a shared /project.
+        work_dir=Path("output") / args.name / f"server_{args.port}",
         port=args.port,
         executor=executor,
         serve_requirements=OmegaConf.to_container(
