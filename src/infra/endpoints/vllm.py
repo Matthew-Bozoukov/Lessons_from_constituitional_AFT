@@ -914,6 +914,14 @@ class VllmServer:
                 "--enable-lora",
                 "--max-lora-rank",
                 str(max(spec.lora_rank or 32, 32)),
+                # Two adapter SLOTS, not one: vLLM's default schedules one LoRA per
+                # batch, so an eval that seats two adapters at once (the Colosseum
+                # mixed teams, via ServedTarget.sibling) had every request for the
+                # second adapter deferred until the first's drained — observed
+                # 2026-09-04 as 2 running / 13 deferred at 13% KV use and 75 tok/s.
+                # A second slot costs one rank-64 adapter's weights and nothing else.
+                "--max-loras",
+                "2",
                 "--lora-modules",
                 f"{spec.model_key}={adapter_dir}",
             ]
