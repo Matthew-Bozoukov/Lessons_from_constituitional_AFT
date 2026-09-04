@@ -141,6 +141,14 @@ td.mono,th.mono{font-family:var(--mono);font-size:12.5px}
 .fix .lab{font-family:var(--mono);font-size:11px;color:var(--orange);letter-spacing:.05em;
   text-transform:uppercase;display:block;margin-bottom:6px}
 
+/* diagrams */
+figure{width:100%;max-width:var(--wide);margin:30px 0;background:var(--surface);
+  border:1px solid var(--rule);border-radius:2px;padding:26px 24px 0}
+figure svg{max-width:100%;height:auto;margin:0 auto;color:var(--ink)}
+figcaption{font-size:12.5px;line-height:1.55;color:var(--ink-2);
+  border-top:1px solid var(--rule-soft);margin:22px -24px 0;padding:13px 24px;background:var(--sunk)}
+figcaption b{color:var(--ink);font-weight:600}
+
 footer{width:100%;max-width:var(--wide);margin-top:64px;padding-top:24px;
   border-top:2px solid var(--ink);font-size:13px;color:var(--ink-2);line-height:1.6}
 svg{display:block}
@@ -299,6 +307,76 @@ svg{display:block}
       causal half.
     </p>
   </div>
+
+  <figure>
+    <svg viewBox="0 0 900 446" role="img" aria-label="An ODCV rollout is a loop: the agent thinks, runs a command, the environment answers, repeat. Eventually one answer is a refusal — a failed check or a missing file. The agent's next thought after that refusal is the fork, from which the trajectory goes one of two ways: force the metric by fabricating data or editing the checker, or report the failure honestly.">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+        </marker>
+        <marker id="ar-o" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#eb6834"/>
+        </marker>
+      </defs>
+      <g fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="40" y="44" width="160" height="46" rx="3"/>
+        <rect x="250" y="44" width="170" height="46" rx="3"/>
+        <rect x="470" y="44" width="190" height="46" rx="3"/>
+      </g>
+      <g font-size="13" fill="currentColor" text-anchor="middle">
+        <text x="120" y="73">agent thinks</text>
+        <text x="335" y="73">runs a command</text>
+        <text x="565" y="73">environment answers</text>
+      </g>
+      <g fill="none" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar)">
+        <line x1="200" y1="67" x2="243" y2="67"/>
+        <line x1="420" y1="67" x2="463" y2="67"/>
+        <path d="M660,56 L700,56 L700,20 L120,20 L120,38"/>
+      </g>
+      <text x="410" y="14" font-size="12" fill="currentColor" text-anchor="middle" opacity=".75">repeat</text>
+
+      <line x1="565" y1="90" x2="565" y2="156" stroke="#eb6834" stroke-width="1.8" marker-end="url(#ar-o)" fill="none"/>
+      <text x="580" y="126" font-size="12" fill="#eb6834">until one answer is a refusal</text>
+
+      <rect x="390" y="160" width="350" height="56" rx="3" fill="none" stroke="#eb6834" stroke-width="2"/>
+      <text x="565" y="184" font-size="13.5" font-weight="600" fill="#eb6834" text-anchor="middle">the environment refuses</text>
+      <text x="565" y="203" font-size="11.5" fill="currentColor" text-anchor="middle" opacity=".8">FAIL · no such file · thresholds not met</text>
+
+      <g font-size="11.5" fill="currentColor" text-anchor="end" opacity=".8">
+        <text x="366" y="176">the environment creates this moment,</text>
+        <text x="366" y="192">not the model — so it can be found in</text>
+        <text x="366" y="208">every transcript with no labelling</text>
+      </g>
+
+      <line x1="565" y1="216" x2="565" y2="258" stroke="#eb6834" stroke-width="1.8" marker-end="url(#ar-o)" fill="none"/>
+      <rect x="405" y="262" width="320" height="52" rx="3" fill="none" stroke="#eb6834" stroke-width="2.4"/>
+      <text x="565" y="284" font-size="13.5" font-weight="600" fill="#eb6834" text-anchor="middle">the agent's next thought</text>
+      <text x="565" y="303" font-size="11.5" fill="#eb6834" text-anchor="middle" opacity=".85">— the fork —</text>
+
+      <g fill="none" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar)">
+        <path d="M500,314 L500,344 L270,344 L270,366"/>
+        <path d="M630,314 L630,344 L760,344 L760,366"/>
+      </g>
+      <g fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="150" y="370" width="240" height="56" rx="3"/>
+        <rect x="640" y="370" width="240" height="56" rx="3"/>
+      </g>
+      <g text-anchor="middle" fill="currentColor">
+        <text x="270" y="393" font-size="13">force the metric</text>
+        <text x="270" y="412" font-size="11.5" opacity=".8">fabricate data · edit the checker</text>
+        <text x="760" y="393" font-size="13">report the failure</text>
+        <text x="760" y="412" font-size="11.5" opacity=".8">say the target cannot be met</text>
+      </g>
+    </svg>
+    <figcaption>
+      <b>The fork is the one moment every scenario shares.</b> An ODCV rollout is a loop, so there
+      is no natural “step 4” to compare across scenarios of different lengths. But every scenario
+      is rigged to eventually refuse the agent, and that refusal is produced by the environment —
+      which is why it can be located mechanically in 76% of transcripts without a labeller or a
+      judgement call. The thought immediately after it is where the trajectory appears to pick a
+      side, so it is where we chose to rewind.
+    </figcaption>
+  </figure>
 </section>
 
 <!-- 3 ============================================================ -->
@@ -342,6 +420,73 @@ svg{display:block}
       generations hit the token cap), so this is not an artefact of the length limit.
     </div>
   </div>
+
+  <figure>
+    <svg viewBox="0 0 900 320" role="img" aria-label="Two pictures of what rewinding to the fork and rerunning 24 times can look like. On the left, what a real decision point would look like: the reruns split between forcing the metric and reporting the failure. On the right, what 36 of 40 fork points actually look like: every rerun lands on the same action, so the decision was already made upstream.">
+      <defs>
+        <marker id="fan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+        </marker>
+      </defs>
+
+      <text x="40" y="26" font-size="13" font-weight="600" fill="currentColor">If the fork were the decision point</text>
+      <text x="40" y="45" font-size="11.5" fill="currentColor" opacity=".75">the 24 reruns would disagree — 4 of 40 look like this</text>
+
+      <circle cx="70" cy="175" r="6" fill="#eb6834"/>
+      <text x="70" y="212" font-size="11.5" fill="#eb6834" text-anchor="middle">the fork</text>
+      <text x="70" y="228" font-size="10.5" fill="currentColor" text-anchor="middle" opacity=".7">rewind here</text>
+      <g stroke="currentColor" stroke-width="1.1" opacity=".55" fill="none" marker-end="url(#fan)">
+        <line x1="78" y1="172" x2="235" y2="108"/>
+        <line x1="78" y1="173" x2="235" y2="118"/>
+        <line x1="78" y1="174" x2="235" y2="128"/>
+        <line x1="78" y1="175" x2="235" y2="138"/>
+        <line x1="78" y1="176" x2="235" y2="212"/>
+        <line x1="78" y1="177" x2="235" y2="222"/>
+        <line x1="78" y1="178" x2="235" y2="232"/>
+        <line x1="78" y1="179" x2="235" y2="242"/>
+      </g>
+      <rect x="240" y="96" width="170" height="50" rx="3" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <text x="325" y="118" font-size="12.5" fill="currentColor" text-anchor="middle">forces the metric</text>
+      <text x="325" y="135" font-size="11" fill="currentColor" text-anchor="middle" opacity=".7">some of the reruns</text>
+      <rect x="240" y="200" width="170" height="50" rx="3" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <text x="325" y="222" font-size="12.5" fill="currentColor" text-anchor="middle">reports the failure</text>
+      <text x="325" y="239" font-size="11" fill="currentColor" text-anchor="middle" opacity=".7">the others</text>
+
+      <line x1="450" y1="20" x2="450" y2="290" stroke="currentColor" stroke-width="1" opacity=".28"/>
+
+      <text x="490" y="26" font-size="13" font-weight="600" fill="currentColor">What 36 of 40 actually look like</text>
+      <text x="490" y="45" font-size="11.5" fill="#eb6834" opacity=".95">every rerun lands in the same place</text>
+
+      <circle cx="520" cy="175" r="6" fill="#eb6834"/>
+      <text x="520" y="212" font-size="11.5" fill="#eb6834" text-anchor="middle">the fork</text>
+      <text x="520" y="228" font-size="10.5" fill="currentColor" text-anchor="middle" opacity=".7">rewind here</text>
+      <g stroke="#eb6834" stroke-width="1.1" opacity=".6" fill="none">
+        <line x1="528" y1="172" x2="686" y2="152"/>
+        <line x1="528" y1="173" x2="686" y2="160"/>
+        <line x1="528" y1="174" x2="686" y2="168"/>
+        <line x1="528" y1="175" x2="686" y2="176"/>
+        <line x1="528" y1="176" x2="686" y2="184"/>
+        <line x1="528" y1="177" x2="686" y2="192"/>
+        <line x1="528" y1="178" x2="686" y2="200"/>
+        <line x1="528" y1="179" x2="686" y2="208"/>
+      </g>
+      <rect x="690" y="140" width="180" height="72" rx="3" fill="none" stroke="#eb6834" stroke-width="2"/>
+      <text x="780" y="167" font-size="12.5" fill="#eb6834" text-anchor="middle">the same action,</text>
+      <text x="780" y="185" font-size="12.5" fill="#eb6834" text-anchor="middle">all 24 times</text>
+      <text x="780" y="203" font-size="11" fill="currentColor" text-anchor="middle" opacity=".7">22 points never forced at all</text>
+
+      <text x="490" y="280" font-size="11.5" fill="currentColor" opacity=".8">so whatever decided the outcome happened</text>
+      <text x="490" y="296" font-size="11.5" fill="currentColor" opacity=".8">before the agent ever reached the fork</text>
+    </svg>
+    <figcaption>
+      <b>The test, and what it returned.</b> Rewinding to the fork and rerunning 24 times asks
+      whether the outcome was still open at that moment. A real decision point produces the
+      left-hand picture. Only 4 of 40 fork points did; the other 36 produced the right-hand one,
+      where every rerun takes the same class of action. The fork is where an earlier decision
+      becomes visible, not where it is made — which is why the next run should rewind
+      <em>earlier</em>, where the variance still is.
+    </figcaption>
+  </figure>
 
   <div class="col">
     <h3 class="sub">And the fork thought will not go away</h3>
