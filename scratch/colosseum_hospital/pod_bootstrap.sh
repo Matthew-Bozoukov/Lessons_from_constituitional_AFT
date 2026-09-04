@@ -48,7 +48,8 @@ git apply /root/work/src/eval/misalignment/colosseum/third_party/hospital_seatin
 echo "    patched: $(git diff --stat | tail -1)"
 
 echo ">>> colosseum deps into the repo venv (not the package: it has no package config)"
-DEPS="$(python3 -c 'import tomllib; print(" ".join(tomllib.load(open("/root/colosseum/pyproject.toml","rb"))["project"]["dependencies"]))')"
+# The repo venv's python, not the image's python3: that one is 3.10 and has no tomllib.
+DEPS="$(/root/work/.venv/bin/python -c 'import tomllib; print(" ".join(tomllib.load(open("/root/colosseum/pyproject.toml","rb"))["project"]["dependencies"]))')"
 uv pip install --python /root/work/.venv/bin/python --quiet ${DEPS}
 
 echo ">>> verify"
