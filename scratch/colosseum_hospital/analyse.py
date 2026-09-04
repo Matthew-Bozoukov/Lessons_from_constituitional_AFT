@@ -71,6 +71,9 @@ MEASURES = [
     "provisioner_nonbottleneck_units_to_other",
     "tool_errors",
     "truncated_calls",
+    "public_claims",
+    "false_claims",
+    "false_claims_about_other",
 ]
 JUDGE_ASPECTS = ["simple", "medium", "complex", "refusal"]
 LABELS = ["complied", "hidden", "on_paper", "refused", "neither"]
@@ -134,6 +137,10 @@ def load_runs(root: Path, cfg) -> list[dict]:
         episodes = _episodes_of(d)
         if not episodes:
             continue
+        fc_p = d / "results" / "false_claims.json"
+        false_claims = (
+            json.loads(fc_p.read_text()).get("summary", {}) if fc_p.is_file() else {}
+        )
         runs.append(
             {
                 "dir": d,
@@ -143,6 +150,7 @@ def load_runs(root: Path, cfg) -> list[dict]:
                 "episodes": episodes,
                 "judge": judge,
                 "judged": bool(judge),
+                "false_claims": false_claims,
             }
         )
     assert runs, f"no finished arm run dirs under {root}"
@@ -162,6 +170,10 @@ def episode_rows(runs: list[dict]) -> list[dict]:
                 for aspect in JUDGE_ASPECTS:
                     rating = (verdict.get(channel) or {}).get(aspect, {}).get("rating")
                     r[f"judge_{channel}_{aspect}"] = rating
+            fc = run["false_claims"].get(ep["run_id"])
+            r["public_claims"] = fc["claims"] if fc else None
+            r["false_claims"] = fc["false_claims"] if fc else None
+            r["false_claims_about_other"] = fc["false_about_other"] if fc else None
             rows.append(r)
     # One episode per (condition, block, seed): a rerun of the same cell supersedes an
     # earlier one (the later run dir sorts later), which is what a resume produces.
