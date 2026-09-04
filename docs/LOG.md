@@ -1,6 +1,60 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-04 — PAR rebuilt with varied shortfalls: corpus and mixture done, training lost to credit
+
+**Hypothesis.** The post-action-retrospection arm sits at ~19.6% ODCV against difficult
+advice's 8.6% on the same 65 cells. One suspected cause: every PAR record's first assistant
+reply was a BARE REFUSAL, so the trained turn only ever practised repairing one failure. If
+the failure mode varies, the trained turn has to diagnose before it repairs, and the arm
+should move toward difficult advice.
+
+**Method.** `write_scenarios` now emits, alongside the situation, a free-text `shortfall`
+(how this reply falls short) and a free-text `pushback` (how the person presses back) —
+free text, not an enum, with five kinds offered only as starting points. A Sonnet
+`revise_scenarios` pass checks situation/shortfall/pushback cohere; `verify_first_turn`
+checks the drafted reply really does fall short that way. Rebuilt on the principle-scoped
+difficult-advice front half (no stage sees more than one principle, none sees the whole
+constitution) and Anthropic-only. PC was rebuilt as PAR's twin in the same pass: no arms,
+no assigned labels, no verdict field.
+
+Corpus: 781 rows (a 1,150-scenario base run yielding 564, plus a 400-scenario top-up
+yielding 217), $29 for the top-up. `LASR-Callum/2026-09-03-par-synth`. Mixture: 716 of them
+plus the byte-identical 9,284 Table-2 rows every sibling uses, built by
+`scratch/build_t2_9284_da716_mixture.py` at seed 0 rather than `uv run mix`, which would
+have resampled its own instruction half and re-run the spec filter — two changes at once,
+and the contrast would say nothing. `LASR-Callum/2026-09-04-table2-9284-par-varied-shortfalls-716-train`.
+
+**Result: no ODCV number.** Training ran all 625 steps on 2xH200 (train_loss 0.8675, 2h02m)
+and then the RunPod account hit a negative balance (-$0.35), which terminated the pod. Pods
+carry `volumeInGb: 0`, so the checkpoints went with it. The arm needs the full 2 hours again.
+
+Two real defects surfaced on the way, both fixed and both worth more than the lost run:
+
+- **The mask gate was verifying a mask no PAR run ever built.** `expected_supervised_text`
+  concatenated every assistant turn under `supervise: final`, so on a two-assistant-turn
+  record it demanded the deliberately-falls-short first reply be in the loss — the exact
+  tokens `final` exists to exclude. It had a hiding place: before f271f74 (2026-08-31) the
+  gate also BUILT its mask as `"all"`, so parser and mask agreed and every PAR arm trained
+  so far passed this gate vacuously. Threading the modes through was right and is what
+  surfaced it; the parser never followed.
+- **`push_run_dir` gated before it qualified the org.** Its contract is that callers pass a
+  bare repo name; `gate_push` accepts only `org/name`. So every caller honouring the
+  contract raised — including `train_lora.py`, whose push runs after the training it exists
+  to preserve. `run_eval.py` calls `hf_repo_id` itself and so never saw it.
+
+**Caveat for whoever reads the eventual number.** Per-trait counts came out t1 28, t6 77,
+86-89 for the rest; the bare-refusal arm had t1 62. So this is not purely "same PAR, varied
+shortfalls" — it is also thinner on principle 1.
+
+**Next steps.** Top up RunPod, then rerun `configs/train/qwen36-table2-9284-par-716-varied-shortfalls-dynbatch.yaml`
+on 2xH200 (~2h, unchanged; the mixture is pinned at revision a5683df). Everything after it
+is built and tested: the ODCV config is protocol-identical to the bare-refusal arm's below
+`temperature:`, and `scratch/par_b/plot_varied_shortfalls.py` re-derives all four bars from
+the arms' own results.json on the shared 65 cells. Baselines already re-summarised on those
+cells: difficult advice 8.6%, PAR bare-refusal 20.5/19.6/18.8 across three seeds, base fp8
+37.5%, table2-only 44.9%.
+
 ## 2026-09-03 — The legacy name table: every pre-law Hub repo, and what its products are called
 
 **Problem.** Row derivation alone could name new artifacts from 30 of 85 legacy mixtures and
