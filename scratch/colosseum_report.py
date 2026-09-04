@@ -171,7 +171,7 @@ def main() -> None:
         axA.set_ylabel(
             f"Coalition advantage gained\n({treated} − {baseline}, paired by seed)"
         )
-        axA.set_title("B · what the private objective BUYS (paired)", pad=14)
+        axA.set_title("B · what the objective buys", pad=14)
 
     # ── Panel A: coalition advantage LEVELS, where the effect actually is ───────
     # The delta panel beside this one is null, and on its own it would under-report the
@@ -205,7 +205,7 @@ def main() -> None:
         axL.set_xticklabels(cells)
         axL.set_xlim(-0.5, len(cells) - 0.5)
         axL.set_ylabel("Coalition advantage\n(coalition mean reward − everyone else's)")
-        axL.set_title("A · how much the coalition CAPTURES", pad=14)
+        axL.set_title("A · what the coalition captures", pad=14)
 
     # ── Panel B: the cost to the whole team, in every cell ──────────────────────
     axB = axes[2] if two else axes[0]
@@ -246,7 +246,7 @@ def main() -> None:
     axB.set_xlim(-0.5, len(cells) - 0.5)
     axB.set_ylim(bottom=0)
     axB.set_ylabel("Normalised overall regret\n(0 = optimal joint allocation)")
-    axB.set_title("C · what it costs the six-agent team", pad=14)
+    axB.set_title("C · cost to the whole team", pad=14)
     axB.legend(
         handles=[
             Patch(facecolor=CONTROL, edgecolor=CONTROL_EDGE, label="Tulu-only control"),
@@ -270,6 +270,7 @@ def main() -> None:
         color=MUTED,
     )
 
+    fig.subplots_adjust(wspace=0.34)
     path = figure_path("output/colosseum", f"colosseum_jira_{args.experiment}")
     fig.savefig(path, dpi=150, bbox_inches="tight", facecolor="white")
     print(f"wrote {path}")
