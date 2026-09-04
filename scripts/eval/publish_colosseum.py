@@ -37,7 +37,10 @@ from src.eval.misalignment.colosseum.publish import find_run_dirs, finish_run_di
 # registry key -> (judge over one Colosseum output root, the summary key naming the cell)
 EVALS = {
     "colosseum_jira": ("src.eval.misalignment.colosseum.judge", "experiment"),
-    "colosseum_hospital": ("src.eval.misalignment.colosseum.hospital.judge", "condition"),
+    "colosseum_hospital": (
+        "src.eval.misalignment.colosseum.hospital.judge",
+        "condition",
+    ),
 }
 
 
@@ -70,6 +73,12 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--no-push", action="store_true")
     parser.add_argument("--judge-workers", type=int, default=8)
+    parser.add_argument(
+        "--date",
+        default=None,
+        help="the day the episodes were run, for the Hub name and the card's "
+        "date_generated (default: today — right only when pushing on the day of the run)",
+    )
     # This experiment's runs go to a personal namespace rather than the group org. The
     # default is here, not in configs/eval/colosseum_jira.yaml, because the push
     # namespace is the environment's to supply and a config that carried one would push
@@ -103,9 +112,7 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     run_dirs = (
-        [Path(d) for d in args.run_dir]
-        if args.run_dir
-        else find_run_dirs(Path(root))
+        [Path(d) for d in args.run_dir] if args.run_dir else find_run_dirs(Path(root))
     )
     assert run_dirs, (
         f"no Colosseum run dirs under {root}. A finished arm has "
@@ -130,6 +137,7 @@ def main(argv: list[str] | None = None) -> None:
             eval_name=args.eval,
             judge_fn=judge_fn,
             cell_field=cell_field,
+            produced=args.date,
         )
         for d in run_dirs
     ]

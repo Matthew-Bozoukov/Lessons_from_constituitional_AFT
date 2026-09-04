@@ -552,3 +552,38 @@ run on the pod outside a venv that reaches for a 3.11+ module (tomllib, `array.a
 annotations) fails there even though every venv on the box is 3.12. Use the venv's
 interpreter explicitly (`/root/work/.venv/bin/python`, `/workspace/vllmenv/bin/python`)
 for one-liners in bootstrap scripts.
+
+## vLLM serves one LoRA per batch by default (2026-09-04)
+
+With two adapters on one server (`ServedTarget.sibling`, the Hospital seating), vLLM's default
+`--max-loras 1` runs only requests for ONE adapter per step: a mixed job showed 2 running / 13
+deferred requests and ~75 tok/s total. `VllmServer._start` now passes `--max-loras 2`
+(commit c53976d). If you serve more adapters than that, raise it to the number co-served.
+
+## Colosseum sabotage boards thrash the KV cache (2026-09-04)
+
+Self-sacrificial and covert Hospital episodes grow 30-60k-token boards; at 30 concurrent
+episodes on one H100 the cache sat at ~83% with half the requests queued, and a cell of 30
+seeds took ~2.5 h instead of ~1 h. Budget for it, or cap `max_concurrent_runs` near 15 for
+those conditions; `serving.context_window` must stay 65536 (32768 dropped up to 40% of
+treatment episodes with a vLLM 400 on prompt length).
+
+## Colosseum ignores `logging.root_dir` (2026-09-04)
+
+The Hospital environment writes its per-iteration inventory snapshots
+(`data_iteration_*.json`) under `/root/colosseum/logs/HospitalEnvironment/...` on the pod, not
+under the run dir, so `pull_runs.sh` never sees them. The false-claim check needs them: pull
+with `scratch/colosseum_hospital/pull_env_logs.sh <host> <label>` before tearing the pod down.
+
+## Laptop memory guard kills background watchers (2026-09-04)
+
+Long `until ... sleep` loops launched with `run_in_background` on the laptop were killed by
+the low-memory guard within an hour (four pollers at once). A session cron job
+(`CronCreate`, every 10 min, running `scratch/colosseum_hospital/poll_queues.sh`) survived;
+prefer that for multi-hour waits.
+
+## Timestamps: pods log UTC, the laptop shows BST (2026-09-04)
+
+Queue logs and run-dir stamps on pods are UTC (`date -u`); `rlog`/`dump` headings and the local
+clock are BST (UTC+1). Mixed notes drifted by an hour once. Quote pod times as written, and
+label a local time as local.

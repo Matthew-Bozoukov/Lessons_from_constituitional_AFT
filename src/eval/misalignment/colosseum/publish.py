@@ -50,16 +50,25 @@ def arm_label(target: str, cfg) -> str:
 
 
 def repo_name_for(
-    experiment: str, target: str, cfg, *, eval_name: str = "colosseum_jira"
+    experiment: str,
+    target: str,
+    cfg,
+    *,
+    eval_name: str = "colosseum_jira",
+    produced: str | None = None,
 ) -> str:
     """The fully qualified `org/name` this arm publishes to.
 
     Qualified HERE, the way run_eval does it, because `push_run_dir` gates the NAME
     before it touches the network and rejects a bare one. The org comes from
     `HF_ORG` in the environment (src.huggingface.hf_org) — never from this config.
-    `experiment` is the cell — the Jira experiment or the Hospital condition.
+    `experiment` is the cell — the Jira experiment or the Hospital condition. `produced`
+    is the day the episodes were run (the naming law dates an artifact by production);
+    default today, for a push on the day of the run.
     """
-    return hf_repo_id(hub_name(f"{eval_name} {experiment} {arm_label(target, cfg)}"))
+    return hf_repo_id(
+        hub_name(f"{eval_name} {experiment} {arm_label(target, cfg)}", date=produced)
+    )
 
 
 def find_run_dirs(root: Path) -> list[Path]:
@@ -78,7 +87,13 @@ def find_run_dirs(root: Path) -> list[Path]:
 
 
 def _card(
-    meta: dict, cfg, summary: dict, *, eval_name: str = "colosseum_jira", cell_field: str = "experiment"
+    meta: dict,
+    cfg,
+    summary: dict,
+    *,
+    eval_name: str = "colosseum_jira",
+    cell_field: str = "experiment",
+    produced: str | None = None,
 ) -> dict:
     """The dataset card, rebuilt from the metadata the GPU node left behind.
 
@@ -91,7 +106,7 @@ def _card(
         "experiment": f"{eval_name} {summary.get(cell_field, '')} of {target} "
         f"(mode={meta.get('mode')}), mixed-checkpoint team; "
         f"peer={summary.get('peer', '')}",
-        "date_generated": date.today().isoformat(),
+        "date_generated": produced or date.today().isoformat(),
         "constitution": str(cfg.get("constitution", "none")),
         "source_repo": f"teaching_claude_why_replication @ {git_sha()}",
         "models": f"target={target} base={meta.get('base_model')} "
@@ -120,6 +135,7 @@ def finish_run_dir(
     eval_name: str = "colosseum_jira",
     judge_fn=judge_run_root,
     cell_field: str = "experiment",
+    produced: str | None = None,
 ) -> dict:
     """Judge one arm's episodes and push the run dir to the Hub.
 
@@ -134,6 +150,8 @@ def finish_run_dir(
             the per-channel Hospital judge for `colosseum_hospital`.
         cell_field: The summary key naming the cell (`experiment` for Jira, `condition`
             for Hospital).
+        produced: The day the episodes were run, for the repo name and the card's
+            `date_generated` (default today).
 
     Returns:
         What was done: the judge summary (when run) and the repo URL (when pushed).
@@ -159,11 +177,20 @@ def finish_run_dir(
         experiment = str(summary.get(cell_field, ""))
         target = meta.get("target", "")
         label = arm_label(target, cfg)
-        repo_id = repo_name_for(experiment, target, cfg, eval_name=eval_name)
+        repo_id = repo_name_for(
+            experiment, target, cfg, eval_name=eval_name, produced=produced
+        )
         out["repo"] = push_run_dir(
             run_dir,
             repo_id,
-            _card(meta, cfg, summary, eval_name=eval_name, cell_field=cell_field),
+            _card(
+                meta,
+                cfg,
+                summary,
+                eval_name=eval_name,
+                cell_field=cell_field,
+                produced=produced,
+            ),
             front_matter={
                 "tags": [
                     "eval-run",
