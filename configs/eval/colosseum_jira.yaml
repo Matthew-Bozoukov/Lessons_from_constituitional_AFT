@@ -131,8 +131,20 @@ colosseum_root: /project/aip-s2ganapa/kunwar/colosseum
 # against these (src/infra/endpoints/vllm.py::plan_serving).
 serving:
   # A six-agent complete graph consolidates to one shared board, so every agent's context
-  # carries the whole conversation plus four planning rounds plus its own reasoning.
-  context_window: 16384
+  # carries the whole conversation, four planning rounds of it, plus its own reasoning.
+  #
+  # 16384 was too tight and failed BADLY: a late-round prompt reached 12,289 input tokens,
+  # which with max_tokens 4096 is 16,385 — over by one — and vLLM's 400 propagates out of
+  # the Colosseum driver and kills the WHOLE SHARD, losing every episode it had run
+  # (94 minutes, 2026-09-03). It is a long-tail failure: most episodes are far shorter, so
+  # it does not show up until an unlucky conversation appears.
+  #
+  # 32768 leaves 28,672 for input against an observed worst case of 12,289. It costs
+  # nothing in memory: vLLM sizes its KV pool from gpu_memory_utilization, and
+  # max_model_len only bounds how long any single request may be — a longer window means
+  # fewer simultaneous long sequences, not a bigger allocation. Qwen3.6-27B publishes no
+  # max_position_embeddings (native_context_window returns None), so nothing else caps it.
+  context_window: 32768
   concurrency: 30
   # Non-negotiable: the execution phase is a single `assign_task` tool call. Without a
   # working tool-call parser the agents emit prose, zero calls are executed, and every arm
