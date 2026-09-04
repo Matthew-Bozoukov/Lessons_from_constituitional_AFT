@@ -10,7 +10,7 @@
 # the reference for all fine-tunes of it.
 published_key: "qwen3.6-27b"
 
-temperature: 0.0
+temperature: 0.7
 
 # Independent rollout passes per cell. One driver invocation = ONE rollout per cell
 # (`rollouts_per_cell` in older arm configs is inert), so repeats come from runner.py
