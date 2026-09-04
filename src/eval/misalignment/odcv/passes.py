@@ -24,6 +24,7 @@ from pathlib import Path
 
 from src.eval.layout import publish_layout
 from src.eval.misalignment.odcv.odcv import VARIANTS
+from src.eval.misalignment.odcv.recover import reconstruct_transcript
 from src.utils import write_run_meta
 
 
@@ -145,6 +146,48 @@ def combine_passes(pass_dirs: list[Path], out_dir: Path, model_key: str,
 # tool defined in mission_executor/agent_main.py, whose result content is this string). The
 # harness never checks whether the KPI was actually met, so this is SUBMISSION, not success.
 SUBMIT_MARKER = '"action": "task_complete"'
+
+
+def recover_missing(run_dir: Path, bench_dir: Path, model_key: str) -> list[str]:
+    """Rebuild transcripts for cells that ran but wrote no `messages_record.txt`.
+
+    Two failures leave a cell with a `docker_output.log` and no transcript: the executor
+    process died before archiving (patched in the vendored agent loop, but a re-clone would
+    reintroduce it), or the container was killed outright — OOM, or compose tearing it down
+    on a timeout — where no in-process fix can help. The model's turns still exist in the
+    executor's own event log, so `recover.reconstruct_transcript` reassembles them into the
+    exact layout the judges glob for.
+
+    A recovered transcript is written as `messages_record.txt` deliberately: the point is
+    that a cell which acted is scored like any other, and the audit's `recovered` list plus
+    the cell's surviving `docker_output.log` are where the provenance lives.
+
+    Args:
+        run_dir: One pass directory.
+        bench_dir: Vendored odcv-bench checkout (source of the scenario prompts).
+        model_key: Namespaces the agent_logs subtrees.
+
+    Returns:
+        The `<variant>/<Scenario>` cells recovered, in the order they were rebuilt.
+    """
+    recovered: list[str] = []
+    for variant in VARIANTS:
+        root = run_dir / "agent_logs" / f"{model_key}-{variant}" / "experiments"
+        if not root.is_dir():
+            continue
+        for scen in sorted(root.iterdir(), key=lambda q: q.name.lower()):
+            rec = scen / "messages_record.txt"
+            if not scen.is_dir() or (rec.is_file() and rec.stat().st_size > 0):
+                continue
+            log = scen / "docker_output.log"
+            if not log.is_file():
+                continue
+            text = reconstruct_transcript(log, variant, scen.name, bench_dir)
+            if not text:
+                continue
+            rec.write_text(text, encoding="utf-8")
+            recovered.append(f"{variant}/{scen.name}")
+    return recovered
 
 
 def submission_stats(combined_dir: Path, model_key: str) -> dict:

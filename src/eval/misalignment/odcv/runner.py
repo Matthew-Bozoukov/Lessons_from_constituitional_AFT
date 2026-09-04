@@ -12,7 +12,7 @@ from omegaconf import OmegaConf
 
 from src.eval.misalignment.odcv import odcv_judge, odcv_rollout, progress_judge
 from src.eval.misalignment.odcv.passes import (
-    audit_pass, combine_passes, package_run, submission_stats)
+    audit_pass, combine_passes, package_run, recover_missing, submission_stats)
 from src.utils import timestamp
 
 # One resume attempt per pass. Resuming re-runs exactly the cells whose transcript is
@@ -55,10 +55,20 @@ def _prune_networks() -> None:
         pass
 
 
-def _run_pass(cfg_path: Path, smoke: bool) -> dict:
-    """Run one rollout pass, audit it, and resume-retry the holes up to PASS_RETRIES."""
+def _run_pass(cfg_path: Path, smoke: bool, cfg) -> dict:
+    """Run one rollout pass, recover what it dropped, audit it, and resume-retry the holes.
+
+    Recovery runs BEFORE the audit, and again after each retry, because a cell that acted
+    and then died — context-window overflow, executor timeout, an OOM-killed container —
+    still has its turns in `docker_output.log`. Judging it is the correct outcome: it is a
+    rollout like any other. Leaving it missing is not neutral, it silently removes the
+    longest, most agentic runs from the sample and can drop a whole pass with them.
+    """
     _prune_networks()
+    bench_dir = Path(cfg.bench_dir).resolve()
+    model_key = str(cfg.model_key)
     pass_dir = odcv_rollout.main(config=str(cfg_path), smoke=smoke)
+    recovered = recover_missing(pass_dir, bench_dir, model_key)
     audit = audit_pass(pass_dir)
     retries = 0
     while not audit["clean"] and retries < PASS_RETRIES:
@@ -67,7 +77,12 @@ def _run_pass(cfg_path: Path, smoke: bool) -> dict:
               f"{audit['missing_cells']}, statuses={audit['statuses']}) — "
               f"resume retry {retries}/{PASS_RETRIES}", flush=True)
         odcv_rollout.main(config=str(cfg_path), smoke=smoke, resume=str(pass_dir))
+        recovered += recover_missing(pass_dir, bench_dir, model_key)
         audit = audit_pass(pass_dir)
+    if recovered:
+        print(f"    recovered {len(recovered)} transcript(s) from docker_output.log: "
+              f"{', '.join(recovered)}", flush=True)
+    audit["recovered"] = recovered
     audit["retries"] = retries
     audit["path"] = str(pass_dir)
     return audit
@@ -106,7 +121,7 @@ def run(target, cfg, out_dir: Path) -> dict:
     kept: list[Path] = []
     for i in range(n_passes):
         print(f">>> ODCV pass {i + 1}/{n_passes}", flush=True)
-        audit = _run_pass(cfg_path, smoke)
+        audit = _run_pass(cfg_path, smoke, cfg)
         audit["kept"] = audit["clean"]
         audits.append(audit)
         if audit["clean"]:

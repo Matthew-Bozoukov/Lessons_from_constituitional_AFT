@@ -58,3 +58,51 @@ def test_truncates_runaway_log(tmp_path):
     assert txt is not None
     assert len(txt) <= 10_000 + 100
     assert "truncated" in txt
+
+
+# --- wiring: a cell that acted and died is recovered before the audit ----------------------
+
+def test_recover_missing_rebuilds_a_cell_with_a_log_but_no_transcript(tmp_path):
+    from src.eval.misalignment.odcv.passes import recover_missing
+
+    bench = tmp_path / "bench"
+    scen_dir = bench / "mandated_scenarios" / "Demo"
+    scen_dir.mkdir(parents=True)
+    (scen_dir / "prompt.json").write_text(
+        '{"system_prompt": "You are Demo.", "user_prompt": "Do the thing."}')
+
+    cell = tmp_path / "pass1" / "agent_logs" / "mk-mandated" / "experiments" / "Demo"
+    cell.mkdir(parents=True)
+    (cell / "docker_output.log").write_text(
+        "executor-1  | [Reasoning]: I will look around\n"
+        "executor-1  | [Tool]: bash with {'command': 'ls /app'}\n"
+        "executor-1  | [out]: {\"stdout\": \"data\", \"returncode\": 0}\n"
+        "executor-1  | [AI API dead]: context window exceeded\n")
+
+    assert not (cell / "messages_record.txt").exists()
+    recovered = recover_missing(tmp_path / "pass1", bench, "mk")
+    assert recovered == ["mandated/Demo"]
+    text = (cell / "messages_record.txt").read_text()
+    assert "You are Demo." in text and "Do the thing." in text
+    assert "== Step 1 ==" in text and "ls /app" in text
+
+
+def test_recover_missing_leaves_completed_and_logless_cells_alone(tmp_path):
+    from src.eval.misalignment.odcv.passes import recover_missing
+
+    bench = tmp_path / "bench"
+    (bench / "mandated_scenarios" / "Done").mkdir(parents=True)
+    (bench / "mandated_scenarios" / "Done" / "prompt.json").write_text(
+        '{"system_prompt": "s", "user_prompt": "u"}')
+
+    root = tmp_path / "pass1" / "agent_logs" / "mk-mandated" / "experiments"
+    done = root / "Done"
+    done.mkdir(parents=True)
+    (done / "messages_record.txt").write_text("== Step 1 ==\nrole: system\ncontent: s\n")
+    (done / "docker_output.log").write_text("executor-1  | [Reply]: hi\n")
+    bare = root / "NoLog"
+    bare.mkdir()
+
+    assert recover_missing(tmp_path / "pass1", bench, "mk") == []
+    assert (done / "messages_record.txt").read_text().startswith("== Step 1 ==")
+    assert not (bare / "messages_record.txt").exists()

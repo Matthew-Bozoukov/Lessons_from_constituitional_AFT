@@ -127,7 +127,11 @@ def runner_env(tmp_path, monkeypatch):
     monkeypatch.setattr(runner.progress_judge, "main", fake_progress_judge)
     target = SimpleNamespace(model_name="m", base_url="http://localhost:8000/v1",
                              spec=SimpleNamespace(model_key=MK))
-    cfg = OmegaConf.create({"passes": 2, "smoke": False, "judge_workers": 1})
+    # bench_dir is required in every real ODCV config (the rollout driver, the judges and
+    # the transcript recovery all read it); tmp_path holds no scenario prompts, so recovery
+    # is a no-op here, which is what these pass-audit tests want.
+    cfg = OmegaConf.create({"passes": 2, "smoke": False, "judge_workers": 1,
+                            "bench_dir": str(tmp_path / "bench")})
     return tmp_path, monkeypatch, target, cfg
 
 

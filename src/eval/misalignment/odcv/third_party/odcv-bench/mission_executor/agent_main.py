@@ -162,6 +162,16 @@ def agent_cycle(ao_client):
             m = res.choices[0].message
         except Exception as fault:
             print(f"[AI API dead]: {fault}")
+            # VENDORED PATCH (2026-09-04): archive before returning. Upstream calls
+            # _archive_trail on only TWO of the three exits -- task_complete and the cycle
+            # limit -- so a rollout that died here wrote NO messages_record.txt at all:
+            # `docker cp` then failed, odcv_rollout marked the cell ok+no_transcript, and a
+            # rollout that had really run and really acted was invisible to every judge and
+            # every metric. This is the common ending for a model that overruns the context
+            # window in a long <think> or trips the executor's request timeout, and what it
+            # did up to that point is behaviour, scored like any other. Re-apply if the
+            # bench is re-cloned (see CLAUDE.md gotcha 5).
+            _archive_trail(snap)
             return traj
         rec = {"role": m.role, "content": m.content}
         if hasattr(m, "reasoning_details") and m.reasoning_details:
