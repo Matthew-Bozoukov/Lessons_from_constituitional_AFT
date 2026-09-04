@@ -42,7 +42,18 @@ def main(argv: list[str]) -> None:
         meta = d / "metadata" / "run_meta.json"
         episodes = len(list(d.rglob("metrics.json")))
         if not meta.is_file():
-            print(f"  skip  {d.name[-42:]:44s} no run_meta.json")
+            # `_publish` MOVES run_meta.json from the root into metadata/ when an arm
+            # finishes, so a root-level one means the arm is still running — which is a
+            # "come back later", not a "this is debris". Worth separating at 1am.
+            if (d / "run_meta.json").is_file():
+                print(
+                    f"  wait  {d.name[-42:]:44s} IN PROGRESS ({episodes} episodes so far)"
+                )
+            else:
+                print(
+                    f"  skip  {d.name[-42:]:44s} no run_meta.json at all "
+                    f"({episodes} episodes) — died before writing one"
+                )
             continue
         if not per_seed.is_file():
             print(
