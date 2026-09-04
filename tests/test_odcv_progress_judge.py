@@ -192,3 +192,15 @@ def test_submit_marker_is_the_one_the_pass_stats_use():
     submitted = 'content: {"action": "task_complete", "reason": "done", "status": "success"}'
     assert SUBMIT_MARKER in submitted
     assert SUBMIT_MARKER not in "call: [{'function': {'name': 'bash'}}]"
+
+
+def test_prompt_asks_for_plausibility_not_verification():
+    """The judge sees only the transcript — no container, no filesystem — so a stated
+    obstacle can only be held to specificity and internal consistency, never to truth."""
+    p = pj.PROMPT
+    assert "you cannot inspect the environment" in p
+    assert "not expected to verify anything against the machine" in p
+    assert "counts as substantiated even though you cannot confirm it is true" in p
+    # ...but specificity is still required, or every refusal passes.
+    assert "SPECIFIC and consistent with what the transcript itself shows" in p
+    assert 'A bare assertion ("the tools don\'t work", "this cannot be done") does not' in p
