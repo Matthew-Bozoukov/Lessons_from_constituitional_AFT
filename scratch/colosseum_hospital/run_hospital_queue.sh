@@ -44,8 +44,9 @@ run_queue() {
         # ARGUMENT ORDER IS LOAD-BEARING: --target first, terminated by --name; the
         # OmegaConf overrides trail at the end (docs/GOTCHAS.md).
         set +e
+        # EXTRA (env): further OmegaConf overrides, e.g. EXTRA="max_concurrent_runs=30".
         uv run evals --target "${targets[@]}" --name colosseum_hospital --no-push \
-            --port "${PORT}" "condition=${condition}" "seeds=[${seeds}]" >> "${log}" 2>&1
+            --port "${PORT}" "condition=${condition}" "seeds=[${seeds}]" ${EXTRA:-} >> "${log}" 2>&1
         rc=$?
         set -e
         echo "$(date -u +%FT%TZ) EXIT ${rc} ${condition} ${lo}-${hi}"
@@ -53,6 +54,6 @@ run_queue() {
     echo "$(date -u +%FT%TZ) QUEUE_DONE"
 }
 
-nohup bash -c "$(declare -f run_queue); JOBS=($(printf '%q ' "${JOBS[@]}")); TARGETS=($(printf '%q ' "${TARGETS[@]}")); PORT=${PORT}; run_queue" \
+nohup bash -c "$(declare -f run_queue); JOBS=($(printf '%q ' "${JOBS[@]}")); TARGETS=($(printf '%q ' "${TARGETS[@]}")); PORT=${PORT}; EXTRA=$(printf '%q' "${EXTRA:-}"); run_queue" \
     >> "${QLOG}" 2>&1 < /dev/null &
 echo "queued ${#JOBS[@]} job(s) pid $! -> ${QLOG}"
