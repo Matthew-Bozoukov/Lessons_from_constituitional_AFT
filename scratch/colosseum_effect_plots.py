@@ -117,11 +117,20 @@ def collect() -> dict:
             continue
         target = json.loads(meta.read_text())["target"]
         arm = "treatment" if "difficult" in target else "control"
-        for rec in episode_stats(d):
-            for exp, cells in CELLS.items():
-                if rec["cell"] in cells:
-                    for k in ("non_actors", "violations", "regret"):
-                        data[exp][arm][rec["cell"]][k].append(rec[k])
+        recs = episode_stats(d)
+        if not recs:
+            continue
+        # The experiment is a property of the RUN DIRECTORY, not of the cell name: both
+        # `collusion` and `single` contain a cell called `baseline`, so matching per
+        # episode put collusion's baseline episodes into single's baseline as well and
+        # silently merged two experiments.
+        present = {r["cell"] for r in recs}
+        exp = next((e for e, cells in CELLS.items() if present <= set(cells)), None)
+        if exp is None:
+            continue
+        for rec in recs:
+            for k in ("non_actors", "violations", "regret"):
+                data[exp][arm][rec["cell"]][k].append(rec[k])
     return data
 
 
