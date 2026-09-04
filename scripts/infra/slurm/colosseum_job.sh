@@ -102,7 +102,19 @@ case "${ARMS:-both}" in
 esac
 echo "arms       : ${ARMS:-both} (${#TARGETS[@]} target(s))"
 
-COMMON=(--target "${TARGETS[@]}" --name colosseum_jira --no-push)
+# A PORT OF ITS OWN. run_eval defaults every server to 8000, and Slurm will happily put
+# two of these jobs on one node (8 GPUs per node, one GPU each) — where only the first
+# vLLM binds. The loser then sits with 75GB of weights loaded and its GPU at 0%, which
+# looks exactly like a slow job rather than a broken one: observed 2026-09-03 with three
+# of six jobs idle for 45 minutes. Worse, the loser's driver can reach the WINNER's
+# server on localhost:8000, and only Colosseum's served-model-name check stands between
+# that and an arm being silently served by the other job's checkpoint.
+#
+# The job id is unique, so the port derived from it is unique per node in practice.
+PORT=$((8000 + ${SLURM_JOB_ID:-0} % 1000))
+echo "port       : ${PORT}"
+
+COMMON=(--target "${TARGETS[@]}" --name colosseum_jira --no-push --port "${PORT}")
 
 # Seeds per experiment. The two multi-agent experiments carry the design's 40; the
 # cooperation control carries 20, because it is a sanity check on a single cell rather
