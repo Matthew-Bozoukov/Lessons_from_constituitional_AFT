@@ -124,9 +124,16 @@ def load_runs(root: Path, cfg) -> list[dict]:
     runs = []
     for d in sorted(root.glob("*/")):
         meta_p, res_p = d / "metadata" / "run_meta.json", d / "results" / "results.json"
-        if not (meta_p.is_file() and res_p.is_file()):
+        if not meta_p.is_file():
+            # run_eval writes run_meta.json at the run dir root and moves it under
+            # metadata/ only when the arm is published, so a running arm has it there.
+            meta_p = d / "run_meta.json"
+        if not meta_p.is_file():
             continue
-        meta, res = json.loads(meta_p.read_text()), json.loads(res_p.read_text())
+        meta = json.loads(meta_p.read_text())
+        # An arm still running has run_meta.json and a raw tree but no results.json yet;
+        # its finished episodes count, and the cell is the sweep name they sit under.
+        res = json.loads(res_p.read_text()) if res_p.is_file() else {}
         target = meta.get("target") or res.get("target")
         judge_p = d / "results" / "judge.json"
         judge = (
@@ -144,7 +151,7 @@ def load_runs(root: Path, cfg) -> list[dict]:
         runs.append(
             {
                 "dir": d,
-                "condition": res["condition"],
+                "condition": res.get("condition") or episodes[0]["cell"],
                 "block": "control" if target == peer else "treatment",
                 "target": target,
                 "episodes": episodes,
