@@ -69,8 +69,13 @@ def main(argv: list[str]) -> int:
                 _fail(results, "1 per-seed measures", f"{d.name}: no per_seed.json")
                 continue
             meas = json.loads(p.read_text())
-            for cell, seeds in meas.get("coalition_advantage", {}).items():
-                cells[cell] |= {int(s) for s in seeds}
+            # Union over MEASURES, not one hardcoded measure. `cooperation` has zero
+            # colluders, so there is no coalition and coalition_advantage_mean is null —
+            # harvest omits it, and keying cells off it made this check report a run with
+            # perfectly good data as having no cells at all.
+            for cells_of_measure in meas.values():
+                for cell, seeds in cells_of_measure.items():
+                    cells[cell] |= {int(s) for s in seeds}
         per_target_seeds[target] = cells
         if set(cells) != expected_cells:
             _fail(
