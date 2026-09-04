@@ -94,10 +94,14 @@ colosseum_root: /root/colosseum
 
 # ── what this eval needs from vLLM ────────────────────────────────────────────
 serving:
-  # Nine agents on one consolidated public board, three iterations, action traces
-  # logged to the board: a late-episode prompt is long. Same window as the Jira eval,
-  # which lost a whole shard to a 16384 window by one token.
-  context_window: 32768
+  # Nine agents on one consolidated public board, three iterations, every action logged
+  # to the board as an event the prompt formatter prints in full: a late-episode prompt
+  # is LONG. At 32768 the pilot lost an episode to a 28,673-token prompt plus the 4,096
+  # output budget (vLLM 400, the episode aborted with no partial data) — and the drop is
+  # not random, it censors the most active episodes. Qwen3.6-27B's text config allows
+  # 262,144 positions and only every fourth layer is full attention, so a 65536 window
+  # costs little KV. Jobs that started under 32768 re-run their dropped seeds under this.
+  context_window: 65536
   concurrency: 30
   # Non-negotiable: every action is a tool call. Qwen3.6 emits XML — the parser is a
   # ModelProfile fact, not a choice made here.

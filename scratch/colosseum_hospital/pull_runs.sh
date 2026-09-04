@@ -7,7 +7,7 @@ set -euo pipefail
 HOST="$1"
 PORT="${HOST##*:}"; ADDR="${HOST%:*}"
 mkdir -p output/colosseum_hospital
-rsync -az --info=progress2 \
+rsync -az \
   --exclude 'server_*' --exclude 'pooled' \
   -e "ssh -p ${PORT} -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null" \
   "${ADDR}:/root/work/output/colosseum_hospital/" output/colosseum_hospital/
