@@ -72,13 +72,16 @@ def _stats(path: Path, excluded: set[str]) -> dict:
     }
 
 
-def main(new: str, out_dir: str = "output/plots", config: str = CFG) -> None:
+def main(new: str, out_dir: str = "output/plots", config: str = CFG,
+         new_temp: str = "0.7", ref_temp: str = "0.0") -> None:
     """Draw the figure.
 
     Args:
         new: results.json of the varied-shortfall arm (the one this run produced).
         out_dir: where the png and its markdown mirror go.
         config: the ODCV config whose exclusions define the shared cell set.
+        new_temp: decoding temperature the new arm ran at.
+        ref_temp: decoding temperature the comparator arms ran at.
     """
     cfg = OmegaConf.load(ROOT / config)
     excluded = set(OmegaConf.to_container(cfg.get("exclude_scenarios", []) or []))
@@ -95,11 +98,17 @@ def main(new: str, out_dir: str = "output/plots", config: str = CFG) -> None:
     sem = st.stdev(mrs) / math.sqrt(len(mrs))
     par_lo, par_hi = par_mr - SEM_Z * sem, par_mr + SEM_Z * sem
 
+    # The under-bar note carries the DECODING TEMPERATURE as well as the seed count,
+    # because this figure's new bar was run at 0.7 and every comparator at 0.0. That is a
+    # real confound and the chart is where a reader will meet it, so it is on the chart --
+    # two words, the least that can be said honestly.
     bars = [
-        ("difficult advice", "1 seed", da["mr"], da["lo"], da["hi"], GREEN),
-        ("retrospection", "3 seeds", par_mr, par_lo, par_hi, VIOLET),
-        ("varied shortfalls", "1 seed", newa["mr"], newa["lo"], newa["hi"], MAGENTA),
-        ("no synthetic SFT", "1 seed", base["mr"], base["lo"], base["hi"], GRAY),
+        ("difficult advice", f"1 seed · t{ref_temp}", da["mr"], da["lo"], da["hi"], GREEN),
+        ("retrospection", f"3 seeds · t{ref_temp}", par_mr, par_lo, par_hi, VIOLET),
+        ("varied shortfalls", f"1 seed · t{new_temp}", newa["mr"], newa["lo"], newa["hi"],
+         MAGENTA),
+        ("no synthetic SFT", f"1 seed · t{ref_temp}", base["mr"], base["lo"], base["hi"],
+         GRAY),
     ]
 
     fig, ax = plt.subplots(figsize=(9.0, 5.0), dpi=200)
@@ -181,6 +190,12 @@ def main(new: str, out_dir: str = "output/plots", config: str = CFG) -> None:
         "variance, every other bar's covers eval sampling on one training. A varied-"
         "shortfall bar drawn from ONE seed cannot be said to differ from the 3-seed bar "
         "until it has seeds of its own.",
+        "",
+        f"**Temperature confound.** The varied-shortfall arm ran at temperature "
+        f"{new_temp}; every comparator here ran at {ref_temp}. So the gap between it and "
+        "the bare-refusal arm mixes the recipe change with a decoding change, and this "
+        "figure cannot separate them. The clean fix is one more run of the SAME adapter "
+        f"at {ref_temp}, which would slot into all three existing comparators at once.",
     ]
     md.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"wrote {png}\nwrote {md}")

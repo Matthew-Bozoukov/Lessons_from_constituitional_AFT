@@ -1,7 +1,7 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
-## 2026-09-04 — PAR rebuilt with varied shortfalls: corpus and mixture done, training lost to credit
+## 2026-09-04 — PAR rebuilt with varied shortfalls: ODCV 9.8%, half the bare-refusal arm
 
 **Hypothesis.** The post-action-retrospection arm sits at ~19.6% ODCV against difficult
 advice's 8.6% on the same 65 cells. One suspected cause: every PAR record's first assistant
@@ -25,11 +25,24 @@ plus the byte-identical 9,284 Table-2 rows every sibling uses, built by
 have resampled its own instruction half and re-run the spec filter — two changes at once,
 and the contrast would say nothing. `LASR-Callum/2026-09-04-table2-9284-par-varied-shortfalls-716-train`.
 
-**Result: no ODCV number.** Training ran all 625 steps on 2xH200 (train_loss 0.8675, 2h02m)
-and then the RunPod account hit a negative balance (-$0.35), which terminated the pod. Pods
-carry `volumeInGb: 0`, so the checkpoints went with it. The arm needs the full 2 hours again.
+**Result: 9.8% on the shared 65 cells**, against the bare-refusal PAR arm's 19.6% (three
+seeds: 20.5 / 19.6 / 18.8), difficult advice's 8.6% and no-synthetic-SFT's 37.5%. Mean
+severity 0.53 vs the bare-refusal arm's ~0.92. As reported over its own full 80 cells the
+run is 10.6% (mandated 10.0, incentivized 11.2), 160 rollouts, judging $5.70.
+`LASR-Callum/2026-09-04-odcv-qwen36-0-par-varied-shortfalls-7`; adapter
+`LASR-Callum/2026-09-04-qwen36-0-par-varied-shortfalls-7`.
 
-Two real defects surfaced on the way, both fixed and both worth more than the lost run:
+**Read it with two caveats, either of which could account for the gap.** (1) TEMPERATURE:
+this run was made at 0.7 on request; every comparator above ran at 0.0, so the contrast
+mixes the recipe change with a decoding change and cannot separate them. (2) SPREAD: the
+arm's own scenario-bootstrap interval is [3.8, 22.9], which covers the bare-refusal arm's
+mean. One seed, one temperature. The direction is what the rebuild predicted; the size is
+not yet established.
+
+The first attempt was lost: training ran all 625 steps and then the RunPod account hit a
+negative balance (-$0.35), terminating the pod. Pods carry `volumeInGb: 0`, so the
+checkpoints went with it and the 2 hours were spent again. Two real defects surfaced on the
+way, both fixed and both worth more than the lost run:
 
 - **The mask gate was verifying a mask no PAR run ever built.** `expected_supervised_text`
   concatenated every assistant turn under `supervise: final`, so on a two-assistant-turn
@@ -47,13 +60,12 @@ Two real defects surfaced on the way, both fixed and both worth more than the lo
 86-89 for the rest; the bare-refusal arm had t1 62. So this is not purely "same PAR, varied
 shortfalls" — it is also thinner on principle 1.
 
-**Next steps.** Top up RunPod, then rerun `configs/train/qwen36-table2-9284-par-716-varied-shortfalls-dynbatch.yaml`
-on 2xH200 (~2h, unchanged; the mixture is pinned at revision a5683df). Everything after it
-is built and tested: the ODCV config is protocol-identical to the bare-refusal arm's below
-`temperature:`, and `scratch/par_b/plot_varied_shortfalls.py` re-derives all four bars from
-the arms' own results.json on the shared 65 cells. Baselines already re-summarised on those
-cells: difficult advice 8.6%, PAR bare-refusal 20.5/19.6/18.8 across three seeds, base fp8
-37.5%, table2-only 44.9%.
+**Next steps.** ONE run settles the temperature confound and is the obvious next spend: the
+same adapter at temperature 0.0, which slots straight into all three existing comparators
+rather than needing new ones (~2h on a single card, ~$6 of judging). After that, seed
+replicates, since a one-seed bar cannot be compared to a three-seed bar whatever the
+temperature. Figure and mirror:
+`output/plots/2026-09-04_odcv_par_varied_shortfalls_65_cells.png`.
 
 ## 2026-09-03 — The legacy name table: every pre-law Hub repo, and what its products are called
 
