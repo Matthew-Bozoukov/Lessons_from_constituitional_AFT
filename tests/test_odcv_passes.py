@@ -160,21 +160,23 @@ def test_runner_retries_dirty_pass_once_and_keeps_it_when_healed(runner_env):
     assert not (tmp_path / MK).exists()  # raw/combined working tree consumed
 
 
-def test_runner_drops_pass_still_dirty_after_one_retry(runner_env):
+def test_runner_keeps_a_pass_whose_holes_cannot_be_reconstructed(runner_env):
+    """A pass is no longer dropped for holes (main @ 24248fc): the cells it did produce
+    are judged, and a cell with no transcript and no docker log is simply absent."""
     tmp_path, monkeypatch, target, cfg = runner_env
     fake = FakeRollout(dirty_passes={0}, heal_on_resume=False)
     monkeypatch.setattr(runner.odcv_rollout, "main", fake)
 
     results = runner.run(target, cfg, tmp_path)
     assert fake.resumed == ["pass0"]  # exactly one retry, never two
-    assert results["passes"]["kept"] == 1 and results["passes"]["dropped"] == 1
+    assert results["passes"]["kept"] == 2 and results["passes"]["dropped"] == 0
     summary = json.loads((tmp_path / "metadata" / "pass_summary.json").read_text())
-    assert [a["kept"] for a in summary["audits"]] == [False, True]
-    # The dropped pass (execution pass1) is preserved in rollouts/ but marked unjudged:
-    # its produced transcript carries judged=False, its missing cell has meta only.
+    assert [a["kept"] for a in summary["audits"]] == [True, True]
+    # The still-dirty pass is judged for what it has: its transcript carries judged=True,
+    # and the cell that produced nothing has meta only -- the gap shrinks n for that cell.
     s1 = tmp_path / "rollouts" / "mandated" / "S1" / "pass1"
     assert (s1 / "messages_record.txt").is_file()
-    assert json.loads((s1 / "cell_meta.json").read_text())["judged"] is False
+    assert json.loads((s1 / "cell_meta.json").read_text())["judged"] is True
     s2 = tmp_path / "rollouts" / "incentivized" / "S2" / "pass1"
     assert not (s2 / "messages_record.txt").exists()
     assert json.loads((s2 / "cell_meta.json").read_text())["transcript_bytes"] == 0
@@ -183,13 +185,16 @@ def test_runner_drops_pass_still_dirty_after_one_retry(runner_env):
     assert not (tmp_path / MK).exists()
 
 
-def test_runner_fails_fast_when_every_pass_drops(runner_env):
+def test_runner_keeps_going_when_every_pass_has_holes(runner_env):
+    """Every pass dirty is no longer fatal; the run publishes what exists and the audit
+    records the shortfall, so an empty result is visible rather than silent."""
     tmp_path, monkeypatch, target, cfg = runner_env
     fake = FakeRollout(dirty_passes={0, 1}, heal_on_resume=False)
     monkeypatch.setattr(runner.odcv_rollout, "main", fake)
 
-    with pytest.raises(RuntimeError, match="failed their audit"):
-        runner.run(target, cfg, tmp_path)
-    # No packaging on total failure: the forensics stay in place at the root.
-    assert (tmp_path / "pass_summary.json").is_file()
-    assert not (tmp_path / "rollouts").exists()
+    results = runner.run(target, cfg, tmp_path)
+    assert results["passes"]["kept"] == 2 and results["passes"]["dropped"] == 0
+    summary = json.loads((tmp_path / "metadata" / "pass_summary.json").read_text())
+    assert all(a["kept"] and not a["clean"] for a in summary["audits"])
+    assert all(a["missing_cells"] == 1 for a in summary["audits"])
+    assert (tmp_path / "rollouts").is_dir()

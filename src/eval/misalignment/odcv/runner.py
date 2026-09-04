@@ -11,16 +11,20 @@ from pathlib import Path
 from omegaconf import OmegaConf
 
 from src.eval.misalignment.odcv import odcv_judge, odcv_rollout, progress_judge
+from src.eval.misalignment.odcv.odcv import VARIANTS
 from src.eval.misalignment.odcv.passes import (
-    audit_pass, combine_passes, package_run, recover_missing, submission_stats)
+    audit_pass, combine_passes, package_run, submission_stats)
+from src.eval.misalignment.odcv.recover import reconstruct_transcript
 from src.utils import timestamp
 
 # One resume attempt per pass. Resuming re-runs exactly the cells whose transcript is
 # missing or empty (the rollout driver's cache check requires a non-empty
-# messages_record.txt), so a retry is cheap. A pass still dirty after its retry is
-# excluded from judging rather than retried forever: transient causes (executor timeout,
-# dropped tunnel) clear on one retry, and anything that survives it is structural —
-# docs/GOTCHAS.md "ok+no_transcript" — and needs a human, not more spend.
+# messages_record.txt), so a retry is cheap. A cell still dirty after its retry is a
+# structural ok+no_transcript failure (docs/GOTCHAS.md): the executor was killed before it
+# wrote messages_record.txt, but its actions survive in docker_output.log, so we
+# reconstruct the transcript from that log (recover.py) rather than dropping the pass. A
+# cell with no docker log at all cannot be recovered and is simply absent from that pass —
+# combine_passes tolerates the gap (it shrinks n for that cell, not the whole pass).
 PASS_RETRIES = 1
 
 
@@ -55,20 +59,37 @@ def _prune_networks() -> None:
         pass
 
 
-def _run_pass(cfg_path: Path, smoke: bool, cfg) -> dict:
-    """Run one rollout pass, recover what it dropped, audit it, and resume-retry the holes.
+def _reconstruct_missing(pass_dir: Path, cfg_path: Path) -> int:
+    """Fill a pass's ok+no_transcript holes by reconstructing them from docker_output.log.
 
-    Recovery runs BEFORE the audit, and again after each retry, because a cell that acted
-    and then died — context-window overflow, executor timeout, an OOM-killed container —
-    still has its turns in `docker_output.log`. Judging it is the correct outcome: it is a
-    rollout like any other. Leaving it missing is not neutral, it silently removes the
-    longest, most agentic runs from the sample and can drop a whole pass with them.
+    A cell whose executor was killed before writing messages_record.txt still has its
+    actions logged in docker_output.log; `reconstruct_transcript` rebuilds the transcript
+    the judge expects from that log. Writes each recovered transcript in place and returns
+    how many were recovered (a cell with no docker log is left absent).
     """
-    _prune_networks()
-    bench_dir = Path(cfg.bench_dir).resolve()
+    cfg = OmegaConf.load(cfg_path)
+    bench_dir = Path(cfg.bench_dir)
     model_key = str(cfg.model_key)
+    recovered = 0
+    for variant in VARIANTS:
+        experiments = pass_dir / "agent_logs" / f"{model_key}-{variant}" / "experiments"
+        if not experiments.is_dir():
+            continue
+        for cell in sorted(experiments.glob("*")):
+            record = cell / "messages_record.txt"
+            docker_log = cell / "docker_output.log"
+            if (not record.is_file() or record.stat().st_size == 0) and docker_log.is_file():
+                text = reconstruct_transcript(docker_log, variant, cell.name, bench_dir)
+                if text:
+                    record.write_text(text)
+                    recovered += 1
+    return recovered
+
+
+def _run_pass(cfg_path: Path, smoke: bool) -> dict:
+    """Run one rollout pass, audit it, resume-retry the holes, then reconstruct any that remain."""
+    _prune_networks()
     pass_dir = odcv_rollout.main(config=str(cfg_path), smoke=smoke)
-    recovered = recover_missing(pass_dir, bench_dir, model_key)
     audit = audit_pass(pass_dir)
     retries = 0
     while not audit["clean"] and retries < PASS_RETRIES:
@@ -77,13 +98,13 @@ def _run_pass(cfg_path: Path, smoke: bool, cfg) -> dict:
               f"{audit['missing_cells']}, statuses={audit['statuses']}) — "
               f"resume retry {retries}/{PASS_RETRIES}", flush=True)
         odcv_rollout.main(config=str(cfg_path), smoke=smoke, resume=str(pass_dir))
-        recovered += recover_missing(pass_dir, bench_dir, model_key)
         audit = audit_pass(pass_dir)
-    if recovered:
-        print(f"    recovered {len(recovered)} transcript(s) from docker_output.log: "
-              f"{', '.join(recovered)}", flush=True)
-    audit["recovered"] = recovered
+    reconstructed = 0
+    if not audit["clean"]:
+        reconstructed = _reconstruct_missing(pass_dir, cfg_path)
+        audit = audit_pass(pass_dir)  # re-audit: recovered cells now count as non-empty
     audit["retries"] = retries
+    audit["reconstructed"] = reconstructed
     audit["path"] = str(pass_dir)
     return audit
 
@@ -121,21 +142,26 @@ def run(target, cfg, out_dir: Path) -> dict:
     kept: list[Path] = []
     for i in range(n_passes):
         print(f">>> ODCV pass {i + 1}/{n_passes}", flush=True)
-        audit = _run_pass(cfg_path, smoke, cfg)
-        audit["kept"] = audit["clean"]
+        audit = _run_pass(cfg_path, smoke)
+        # Passes are never dropped: ok+no_transcript holes are reconstructed from their
+        # docker logs (_run_pass), and any cell that still has no transcript (no docker log
+        # to recover from) is simply absent from this pass — combine_passes tolerates the
+        # gap. So every pass that ran contributes its transcripts.
+        audit["kept"] = True
         audits.append(audit)
-        if audit["clean"]:
-            kept.append(Path(audit["path"]))
-        else:
-            print(f"!!! DROPPING pass {audit['pass_dir']}: still missing "
-                  f"{audit['missing_cells']} cell(s) after {audit['retries']} "
-                  "resume retry — kept on disk, excluded from judging", flush=True)
+        kept.append(Path(audit["path"]))
+        if not audit["clean"]:
+            print(f"!!! pass {audit['pass_dir']}: reconstructed {audit['reconstructed']} "
+                  f"ok+no_transcript cell(s) from docker logs; "
+                  f"{audit['missing_cells']} cell(s) still have no transcript (no docker "
+                  "log to recover) and are absent from this pass — keeping the pass anyway",
+                  flush=True)
     (out_dir / "pass_summary.json").write_text(json.dumps(
         {"requested_passes": n_passes, "kept_passes": len(kept), "audits": audits},
         indent=2))
     if not kept:
         raise RuntimeError(
-            f"all {n_passes} ODCV pass(es) failed their audit — nothing to judge. "
+            f"no ODCV pass produced any transcripts — nothing to judge. "
             f"See {out_dir / 'pass_summary.json'} and docs/GOTCHAS.md "
             "(ok+no_transcript) for the known causes.")
 
