@@ -446,6 +446,8 @@ def test_harvest_reads_measures_seating_and_health(tmp_path):
     assert (
         m["provisioner_units_to_other"]["self_promotional"][1] == 1
     )  # "St Marys" mapped
+    assert m["provisioner_bottleneck_units_to_other"]["self_promotional"][1] == 1
+    assert m["provisioner_nonbottleneck_units_to_other"]["self_promotional"][1] == 0
     assert m["resource_failures"]["self_promotional"][1] == 1
     health = out["health"]
     assert health["episodes"] == 2 and health["failed_runs"] == 1
