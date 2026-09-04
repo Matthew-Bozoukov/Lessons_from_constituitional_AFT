@@ -8,6 +8,7 @@
     uv run python scripts/eval/publish_colosseum.py --no-judge       # push only
     uv run python scripts/eval/publish_colosseum.py --no-push        # judge only
     uv run python scripts/eval/publish_colosseum.py --run-dir output/colosseum_jira/<one>
+    uv run python scripts/eval/publish_colosseum.py --eval colosseum_hospital   # the Hospital runs
 
 On Killarney this runs on a LOGIN node: compute nodes have no route to OpenRouter or the
 Hub, which is why `uv run evals` there is given --no-push and never judges.
@@ -33,13 +34,25 @@ from omegaconf import OmegaConf
 
 from src.eval.misalignment.colosseum.publish import find_run_dirs, finish_run_dir
 
+# registry key -> (judge over one Colosseum output root, the summary key naming the cell)
+EVALS = {
+    "colosseum_jira": ("src.eval.misalignment.colosseum.judge", "experiment"),
+    "colosseum_hospital": ("src.eval.misalignment.colosseum.hospital.judge", "condition"),
+}
+
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--eval",
+        default="colosseum_jira",
+        choices=sorted(EVALS),
+        help="which Colosseum eval's run dirs to finish (default: colosseum_jira)",
+    )
+    parser.add_argument(
         "--root",
-        default="output/colosseum_jira",
-        help="directory holding the per-arm run dirs",
+        default=None,
+        help="directory holding the per-arm run dirs (default: output/<eval>)",
     )
     parser.add_argument(
         "--run-dir",
@@ -47,7 +60,9 @@ def main(argv: list[str] | None = None) -> None:
         default=[],
         help="finish only this run dir (repeatable)",
     )
-    parser.add_argument("--config", default="configs/eval/colosseum_jira.yaml")
+    parser.add_argument(
+        "--config", default=None, help="default: configs/eval/<eval>.yaml"
+    )
     parser.add_argument(
         "--no-judge",
         action="store_true",
@@ -71,6 +86,12 @@ def main(argv: list[str] | None = None) -> None:
         help="OmegaConf dotlist overrides, e.g. judge.model=x-ai/grok-4.3",
     )
     args = parser.parse_args(argv)
+    root = args.root or f"output/{args.eval}"
+    config = args.config or f"configs/eval/{args.eval}.yaml"
+    judge_module, cell_field = EVALS[args.eval]
+    from importlib import import_module
+
+    judge_fn = import_module(judge_module).judge_run_root
 
     load_dotenv()
     # Set AFTER load_dotenv (which never overwrites an already-set variable) and before
@@ -78,16 +99,16 @@ def main(argv: list[str] | None = None) -> None:
     # to win over it.
     os.environ["HF_ORG"] = args.hf_org
     cfg = OmegaConf.merge(
-        OmegaConf.load(args.config), OmegaConf.from_dotlist(args.overrides)
+        OmegaConf.load(config), OmegaConf.from_dotlist(args.overrides)
     )
 
     run_dirs = (
         [Path(d) for d in args.run_dir]
         if args.run_dir
-        else find_run_dirs(Path(args.root))
+        else find_run_dirs(Path(root))
     )
     assert run_dirs, (
-        f"no Colosseum run dirs under {args.root}. A finished arm has "
+        f"no Colosseum run dirs under {root}. A finished arm has "
         "metadata/run_meta.json and rollouts/colosseum/."
     )
 
@@ -106,6 +127,9 @@ def main(argv: list[str] | None = None) -> None:
             judge=not args.no_judge,
             push=not args.no_push,
             judge_workers=args.judge_workers,
+            eval_name=args.eval,
+            judge_fn=judge_fn,
+            cell_field=cell_field,
         )
         for d in run_dirs
     ]

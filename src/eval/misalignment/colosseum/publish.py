@@ -49,14 +49,17 @@ def arm_label(target: str, cfg) -> str:
     return str(label)
 
 
-def repo_name_for(experiment: str, target: str, cfg) -> str:
+def repo_name_for(
+    experiment: str, target: str, cfg, *, eval_name: str = "colosseum_jira"
+) -> str:
     """The fully qualified `org/name` this arm publishes to.
 
     Qualified HERE, the way run_eval does it, because `push_run_dir` gates the NAME
     before it touches the network and rejects a bare one. The org comes from
     `HF_ORG` in the environment (src.huggingface.hf_org) — never from this config.
+    `experiment` is the cell — the Jira experiment or the Hospital condition.
     """
-    return hf_repo_id(hub_name(f"colosseum_jira {experiment} {arm_label(target, cfg)}"))
+    return hf_repo_id(hub_name(f"{eval_name} {experiment} {arm_label(target, cfg)}"))
 
 
 def find_run_dirs(root: Path) -> list[Path]:
@@ -74,7 +77,9 @@ def find_run_dirs(root: Path) -> list[Path]:
     )
 
 
-def _card(meta: dict, cfg, summary: dict) -> dict:
+def _card(
+    meta: dict, cfg, summary: dict, *, eval_name: str = "colosseum_jira", cell_field: str = "experiment"
+) -> dict:
     """The dataset card, rebuilt from the metadata the GPU node left behind.
 
     Rebuilt rather than re-derived: the values that matter — the target, the mode, the
@@ -83,8 +88,8 @@ def _card(meta: dict, cfg, summary: dict) -> dict:
     """
     target = meta.get("target", "")
     return {
-        "experiment": f"colosseum_jira {summary.get('experiment', '')} of {target} "
-        f"(mode={meta.get('mode')}), six-agent Jira team; "
+        "experiment": f"{eval_name} {summary.get(cell_field, '')} of {target} "
+        f"(mode={meta.get('mode')}), mixed-checkpoint team; "
         f"peer={summary.get('peer', '')}",
         "date_generated": date.today().isoformat(),
         "constitution": str(cfg.get("constitution", "none")),
@@ -106,16 +111,29 @@ def _card(meta: dict, cfg, summary: dict) -> dict:
 
 
 def finish_run_dir(
-    run_dir: Path, cfg, *, judge: bool = True, push: bool = True, judge_workers: int = 8
+    run_dir: Path,
+    cfg,
+    *,
+    judge: bool = True,
+    push: bool = True,
+    judge_workers: int = 8,
+    eval_name: str = "colosseum_jira",
+    judge_fn=judge_run_root,
+    cell_field: str = "experiment",
 ) -> dict:
     """Judge one arm's episodes and push the run dir to the Hub.
 
     Args:
-        run_dir: A per-arm directory under `output/colosseum_jira/`.
+        run_dir: A per-arm directory under `output/<eval_name>/`.
         cfg: The eval config (for the `judge:` block and the card).
         judge: Run the judge pass. Off for a re-push that only needs the upload.
         push: Upload to HF. Off for a judge-only pass.
         judge_workers: Concurrent judge calls.
+        eval_name: The registry key the run dirs belong to; names the repo and the tag.
+        judge_fn: `(root, cfg, *, max_workers) -> verdicts` — the Jira judge by default,
+            the per-channel Hospital judge for `colosseum_hospital`.
+        cell_field: The summary key naming the cell (`experiment` for Jira, `condition`
+            for Hospital).
 
     Returns:
         What was done: the judge summary (when run) and the repo URL (when pushed).
@@ -129,7 +147,7 @@ def finish_run_dir(
         # tree stays findable after the directory is moved or copied off the cluster.
         root = run_dir / summary["colosseum_run_root"]
         assert root.is_dir(), f"{root} is missing; nothing to judge"
-        verdicts = judge_run_root(root, cfg, max_workers=judge_workers)
+        verdicts = judge_fn(root, cfg, max_workers=judge_workers)
         (run_dir / "results" / "judge.json").write_text(json.dumps(verdicts, indent=2))
         # The canonical summary gains the secondary measure, so results.json stays the
         # one file that describes the run.
@@ -138,21 +156,21 @@ def finish_run_dir(
         out["judge"] = summary["judge"]
 
     if push:
-        experiment = str(summary.get("experiment", ""))
+        experiment = str(summary.get(cell_field, ""))
         target = meta.get("target", "")
         label = arm_label(target, cfg)
-        repo_id = repo_name_for(experiment, target, cfg)
+        repo_id = repo_name_for(experiment, target, cfg, eval_name=eval_name)
         out["repo"] = push_run_dir(
             run_dir,
             repo_id,
-            _card(meta, cfg, summary),
+            _card(meta, cfg, summary, eval_name=eval_name, cell_field=cell_field),
             front_matter={
                 "tags": [
                     "eval-run",
-                    "eval:colosseum_jira",
+                    f"eval:{eval_name}",
                     f"model:{label}",
                     f"mode:{meta.get('mode')}",
-                    f"experiment:{summary.get('experiment', '')}",
+                    f"experiment:{experiment}",
                 ]
             },
         )

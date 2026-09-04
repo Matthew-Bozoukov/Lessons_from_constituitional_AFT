@@ -95,6 +95,15 @@ EVALS: dict[str, EvalSpec] = {
         "configs/eval/colosseum_jira.yaml",
         pools=True,
     ),
+    # The same two-checkpoint seating in the paper's Hospital misalignment setup: the
+    # resource provisioner plus one department hold the arm under test and receive one
+    # of the paper's coalition objectives (self-promotional, self-sacrificial, covert)
+    # or the plain cooperative prompt. Pools for the same reason the Jira eval does.
+    "colosseum_hospital": EvalSpec(
+        "misalignment.colosseum.hospital",
+        "configs/eval/colosseum_hospital.yaml",
+        pools=True,
+    ),
 }
 
 
