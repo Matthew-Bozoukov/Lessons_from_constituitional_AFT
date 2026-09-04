@@ -105,6 +105,12 @@ def main() -> None:
     ap.add_argument("--runs", type=Path, default=Path("output/colosseum_hospital"))
     ap.add_argument("--model", default="dlab-spp/vanilla-3b-instruct")
     ap.add_argument("--out", type=Path, default=None)
+    ap.add_argument(
+        "--plot",
+        type=Path,
+        default=None,
+        help="also write an ECDF of prompt lengths against the window (png)",
+    )
     args = ap.parse_args()
 
     runs = read_runs(args.runs)
@@ -154,6 +160,88 @@ def main() -> None:
     )
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(text)
+    print(f"-> {out}")
+    if args.plot:
+        plot_ecdf(
+            calls,
+            first,
+            window,
+            args.model,
+            args.plot,
+            hospital_window=65536,
+            episodes=runs["episodes"],
+        )
+
+
+def plot_ecdf(
+    calls: list[int],
+    first: list[int],
+    window: int,
+    model: str,
+    out: Path,
+    hospital_window: int,
+    episodes: int,
+) -> None:
+    """One figure: what share of the Hospital's prompts fit inside the candidate's window."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    fig, ax = plt.subplots(figsize=(8, 4.2), dpi=160)
+    for xs, label, color in (
+        (calls, "every model call", "#2a78d6"),
+        (first, "first call of each seat", "#eb6834"),
+    ):
+        xs = np.sort(np.asarray(xs))
+        ax.step(
+            xs,
+            np.arange(1, len(xs) + 1) / len(xs),
+            where="post",
+            lw=2,
+            color=color,
+            label=label,
+        )
+        share = float(np.mean(xs > window))
+        ax.annotate(
+            f"{share:.0%} above the window",
+            xy=(window, 1 - share),
+            xytext=(window * 1.15, 1 - share),
+            color=color,
+            fontsize=9,
+            va="center",
+        )
+    for x, label in (
+        (window, f"{model.split('/')[-1]} window ({window:,})"),
+        (hospital_window, f"Hospital serving window ({hospital_window:,})"),
+    ):
+        ax.axvline(x, color="#6b6a63", lw=1, ls="--")
+        ax.text(
+            x,
+            1.0,
+            f" {label}",
+            rotation=90,
+            va="top",
+            ha="left",
+            fontsize=8,
+            color="#6b6a63",
+        )
+    ax.set_xscale("log")
+    ax.set_xlim(1000, 80000)
+    ax.set_ylim(0, 1.02)
+    ax.set_xlabel("prompt tokens (served model's tokenizer, Qwen3.6)")
+    ax.set_ylabel("share of prompts at or below")
+    ax.set_title(
+        f"Hospital prompt lengths, {episodes} finished episodes, vs the candidate's window"
+    )
+    ax.grid(True, color="#e6e5df", lw=0.6)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    ax.legend(frameon=False, loc="lower right")
+    fig.tight_layout()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out)
     print(f"-> {out}")
 
 

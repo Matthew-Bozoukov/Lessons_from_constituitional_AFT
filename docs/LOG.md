@@ -16,16 +16,17 @@ peers under the paper's self-promotional instruction, so the two contrasts sit s
 (`dlab-spp/{vanilla,filtered,t0,mt,t0-mt}-3b-instruct`, plus 1.7B siblings; Llama-3.2-3B
 shape trained from scratch on 500B tokens) were read off the Hub — `config.json`,
 `chat_template.jinja`, tokenizer — and set against what the environment actually
-demands, measured from the 149 finished 7%-DA episodes' `agent_turns.json`
-(`scratch/colosseum_hospital/spp_feasibility.py`). Colosseum reaches the model through
-terrarium's OpenAI-style `tools=` request and vLLM's tool-call parser, so every Hospital
-action is a structured tool call.
+demands, measured from the 185 finished 7%-DA episodes' `agent_turns.json`
+(`scratch/colosseum_hospital/spp_feasibility.py`, which also draws the ECDF of prompt
+lengths against the window). Colosseum reaches the model through terrarium's
+OpenAI-style `tools=` request and vLLM's tool-call parser, so every Hospital action is a
+structured tool call.
 
 **Result: not runnable, on three independent counts.**
 
-| | SPP checkpoints | what the Hospital needs (Qwen3.6 tokens, 8,561 calls) |
+| | SPP checkpoints | what the Hospital needs (Qwen3.6 tokens, 10,632 calls) |
 |---|---|---|
-| context window | 2,048 (pretraining AND SFT sequence length; RoPE theta 10000, no scaling) | first call of a seat: median 3,325, 82.8% above 2,048; all calls: median 9,972, 93.6% above; smallest per-episode maximum 7,612, largest 28,435 |
+| context window | 2,048 (pretraining AND SFT sequence length; RoPE theta 10000, no scaling) | first call of a seat: median 3,281, 83.5% above 2,048; all calls: median 9,993, 93.9% above; smallest per-episode maximum 7,235, largest 37,618 |
 | tokenizer | SmolLM2, 49k vocab | the public board alone is 378 / 12,824 / 27,754 SPP tokens (min / median / max) — denser than Qwen's, so every count above is an underestimate |
 | tool calls | template renders no `tools`, no system-prompt convention; SFT = 300k single-turn WildChat answers | every action is an OpenAI-style tool call the server must parse |
 
