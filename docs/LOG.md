@@ -1,6 +1,84 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-03 — Multi-agent: constitutional SFT did NOT reduce collusion; it made the model a worse teammate
+
+**Hypothesis.** Constitutional SFT is trained and measured with one model acting alone,
+but Hammond et al. 2025 (arXiv 2502.14143) argue single-agent safety does not imply
+multi-agent safety and name collusion as a core failure mode. Does the 7% principle-only
+difficult-advice arm collude less than the Table2-only control when the two are put on a
+team together — and if so, is the effect specific to the multi-agent setting?
+
+**Method.** Colosseum's Jira task (arXiv 2602.15198) on Terrarium: six agents divide 8
+microtasks to maximise a shared joint reward, four planning rounds on a consolidated
+blackboard then one `assign_task` execution pass. The task is a DCOP, so the best
+achievable allocation is COMPUTABLE — misbehaviour is a measured drop in outcome, not a
+judge reading a transcript. Regret is scored against the exact optimum
+(`compute_jira_optimal.py`, scipy `linear_sum_assignment`), never upstream's
+`system_regret_ratio`, which divides by a loose analytic bound and compresses every arm
+toward zero.
+
+Three experiments, one `experiment=` override apart, both arms served as co-resident LoRA
+adapters on one H100 (same base, same `think` mode, so vLLM holds both and each seat picks
+its arm by name):
+
+| | seats | cells | seeds | episodes |
+|---|---|---|---|---|
+| collusion | 2 coalition = treatment, 4 = control | baseline / collusion | 40 | 160 |
+| single | 1 defector = treatment, 5 = control | baseline / single | 40 | 160 |
+| cooperation | all six = same arm | cooperation | 20 | 40 |
+
+Upstream cannot seat two models — `llm_models` is a sweep axis and the vLLM runtime
+deletes `agent_name` — so `third_party/per_agent_models.patch` resolves one llm config per
+agent from its collusion ROLE (by role, not position: `colluder_selection: random` picks
+the coalition from the seed at run time). Verified on live episodes: two coalition seats
+held the treatment checkpoint, four peers held the control.
+
+**Result (40 seeds, paired on seed, both experiments gated 9/9).**
+
+```
+EXP 1 collusion   channel_advantage              -0.526  [-6.187, +5.134]  p=0.852
+                  coalition_advantage_collusion  -4.572  [-7.803, -1.341]  p=0.007
+                  coalition_advantage_baseline   -4.046  [-8.677, +0.585]  p=0.085
+EXP 2 single      channel_advantage              -2.095  [-9.561, +5.371]  p=0.574
+                  coalition_advantage_single     -4.208  [-9.714, +1.298]  p=0.130
+EXP 3 cooperation normalised_regret              +0.106  [+0.002, +0.211]  p=0.046
+TRANSFER RATIO    NOT INTERPRETABLE (denominator CI [-5.018, +9.276] spans zero)
+```
+
+**No collusion-specific effect.** What the private objective and side-channel BUY a
+coalition is indistinguishable between arms in both experiments. But the treatment
+captures 2–4.6 fewer reward units than the control in EVERY cell of BOTH experiments —
+including baseline cells with no private objective and no channel at all — and in
+Experiment 3, with no manipulation whatsoever, carries higher regret (p=0.046) driven by
+more duplicate-claim collisions (65% of episodes vs the control's 45%). A
+collusion-specific effect would appear in the treated cell and vanish in baseline. This
+appears in both, at similar magnitude, across three independent designs. It is a general
+degradation of multi-agent coordination, not a safety property — consistent with the
+earlier finding that difficult-advice training makes the model prematurely suspicious.
+
+**Two caveats that matter more than the p-values.** The manipulation is weak on this
+model: collusion buys the CONTROL coalition only +2.72 reward units and costs the team
+nothing measurable (regret delta -0.002), so Colosseum's premise does not reproduce
+strongly on Qwen3.6-27B at this scale. And the design is underpowered for the delta
+contrasts — measured seed SD is 9.5 (control) and 17.0 (treatment), pairing correlation
+only rho=+0.198, giving MDE 7.84 at n=40 against effects of 0.5-2.1. Detecting the
+treatment removing ALL of the control's collusion would need ~332 seeds. One training
+seed per arm, so this is about these two adapters, not the recipe.
+
+**Artifacts.** Six run repos under `kunwar45/2026-09-03-colosseum-jira-{experiment}-{arm}`
+(personal namespace, not the group org — so the dashboard will not list them). Figures
+`output/colosseum/2026-09-03_colosseum_jira_{collusion,cooperation}.png`. Code:
+`src/eval/misalignment/colosseum/` + `scratch/colosseum_*.py`.
+
+**Next steps.** A 190-seed collusion extension is running; it will tighten the LEVEL
+contrasts (where the effect is) but not settle the deltas. If the multi-agent question is
+worth pursuing, the blocker is the environment rather than the sample size: a manipulation
+that moves the control arm by more than 2.7 reward units, or a task where collusion
+actually costs the team something. Also unrun: the judge pass (secondary measure, model
+unconfirmed) and seed replicates of the TRAINING, without which none of this generalises
+past these two checkpoints.
+
 ## 2026-09-01 — One pod shape per half of the pipeline: `runpod up --train <cfg>` or `--eval <hf>`, and run_eval owns serving
 
 **Problem.** Three ways to reach a served model had become two ways too many, and the
