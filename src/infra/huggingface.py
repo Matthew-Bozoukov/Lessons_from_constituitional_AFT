@@ -18,8 +18,16 @@ from src.naming import check_hub_repo, name_date
 # `generation_config` (training hyperparams) matter as much as a dataset's; cards are
 # always DERIVED from real run metadata, never filler.
 # `constitution` is deliberately included: write "none" explicitly, never omit it.
-REQUIRED_FIELDS = ("experiment", "date_generated", "constitution", "source_repo",
-                   "models", "generation_config", "schema", "provenance")
+REQUIRED_FIELDS = (
+    "experiment",
+    "date_generated",
+    "constitution",
+    "source_repo",
+    "models",
+    "generation_config",
+    "schema",
+    "provenance",
+)
 
 # Hub-indexed card tags are HF's discovery mechanism: `/api/datasets?filter=<tag>` finds a
 # repo by them, token-less, with no registry to keep in sync. Eval repos carry `eval-run`
@@ -69,9 +77,11 @@ def hf_org() -> str:
 
     load_dotenv()
     org = (os.environ.get("HF_ORG") or "").strip()
-    assert org, ("HF_ORG is not set: every push resolves its namespace from the "
-                 "repo-root .env (copy .env.example and fill it in). "
-                 "Set HF_ORG=<org> there — never in a config.")
+    assert org, (
+        "HF_ORG is not set: every push resolves its namespace from the "
+        "repo-root .env (copy .env.example and fill it in). "
+        "Set HF_ORG=<org> there — never in a config."
+    )
     return org
 
 
@@ -92,7 +102,8 @@ def hf_repo_id(name: str) -> str:
     owner, _, rest = name.partition("/")
     assert owner == org and "/" not in rest, (
         f"{name!r} names org {owner!r}, but pushes go to HF_ORG={org!r} — write the "
-        "repo name alone and let .env supply the org (src.infra.huggingface.hf_org)")
+        "repo name alone and let .env supply the org (src.infra.huggingface.hf_org)"
+    )
     return name
 
 
@@ -100,8 +111,9 @@ def hf_download(repo_id: str, filename: str, repo_type: str = "model", **kwargs)
     """hf_hub_download with the shared token resolution (see hf_token)."""
     from huggingface_hub import hf_hub_download
 
-    return hf_hub_download(repo_id, filename, repo_type=repo_type, token=hf_token(),
-                           **kwargs)
+    return hf_hub_download(
+        repo_id, filename, repo_type=repo_type, token=hf_token(), **kwargs
+    )
 
 
 def hf_snapshot(repo_id: str, **kwargs) -> str:
@@ -126,13 +138,21 @@ def constitution_slug(value: str | None) -> str:
     """
     # Hand-written cards wrap the name in backticks or a markdown link, or name the
     # file (`claude_approved_constitution.md`) rather than the folder.
-    text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", str(value or "")).replace("`", "").strip()
+    text = (
+        re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", str(value or ""))
+        .replace("`", "")
+        .strip()
+    )
     if not text or text.lower().startswith("none"):
         return "none"
-    m = (re.search(r"constitutions/([A-Za-z0-9._-]+?)(?:/|\s|$)", text)
-         or re.search(r"\b(claude_distilled_[A-Za-z0-9_]+)", text)
-         or re.search(r"([A-Za-z0-9._-]+)/constitution\.md\b", text)   # <dir>/constitution.md
-         or re.search(r"\b([A-Za-z0-9_-]+)\.md\b", text))
+    m = (
+        re.search(r"constitutions/([A-Za-z0-9._-]+?)(?:/|\s|$)", text)
+        or re.search(r"\b(claude_distilled_[A-Za-z0-9_]+)", text)
+        or re.search(
+            r"([A-Za-z0-9._-]+)/constitution\.md\b", text
+        )  # <dir>/constitution.md
+        or re.search(r"\b([A-Za-z0-9_-]+)\.md\b", text)
+    )
     if m:
         return m.group(1)
     # Free text: the name up to the first dash-clause, parenthesis or colon. Hyphens
@@ -140,8 +160,14 @@ def constitution_slug(value: str | None) -> str:
     return tag_safe(re.split(r"\s*(?:—|\(|:)\s*|\s-\s", text, maxsplit=1)[0])[:40]
 
 
-def training_data_tags(kind: str, pipeline: str, constitution: str | None, *,
-                       smoke: bool = False, extra: tuple[str, ...] | list[str] = ()) -> list[str]:
+def training_data_tags(
+    kind: str,
+    pipeline: str,
+    constitution: str | None,
+    *,
+    smoke: bool = False,
+    extra: tuple[str, ...] | list[str] = (),
+) -> list[str]:
     """The card tags every training corpus carries (pure; unit-tested offline).
 
     Args:
@@ -155,15 +181,23 @@ def training_data_tags(kind: str, pipeline: str, constitution: str | None, *,
     Returns:
         `[training-data, kind:<kind>, pipeline:<pipeline>, constitution:<slug>, ...]`.
     """
-    assert kind in TRAINING_DATA_KINDS, f"kind must be one of {TRAINING_DATA_KINDS}: {kind!r}"
-    tags = [TRAINING_DATA_TAG, f"kind:{kind}", f"pipeline:{tag_safe(pipeline)}",
-            f"constitution:{constitution_slug(constitution)}"]
+    assert kind in TRAINING_DATA_KINDS, (
+        f"kind must be one of {TRAINING_DATA_KINDS}: {kind!r}"
+    )
+    tags = [
+        TRAINING_DATA_TAG,
+        f"kind:{kind}",
+        f"pipeline:{tag_safe(pipeline)}",
+        f"constitution:{constitution_slug(constitution)}",
+    ]
     if smoke:
         tags.append("smoke")
     return tags + [str(t) for t in extra]
 
 
-def gate_push(repo_id: str, fields: dict | None = None, *, what: str = "artifact") -> str:
+def gate_push(
+    repo_id: str, fields: dict | None = None, *, what: str = "artifact"
+) -> str:
     """THE gate: nothing reaches the Hub under a name the law did not mint.
 
     Two checks, both from src/naming.py's law:
@@ -186,7 +220,8 @@ def gate_push(repo_id: str, fields: dict | None = None, *, what: str = "artifact
         raise NamingError(
             f"{what}: {repo_id} is dated {dated} but its card says it was "
             f"generated {stamped}. The date in the name is the date the data was "
-            f"PRODUCED, not uploaded. Push to <org>/{stamped}-<subject> instead.")
+            f"PRODUCED, not uploaded. Push to <org>/{stamped}-<subject> instead."
+        )
     return repo_id
 
 
@@ -195,7 +230,9 @@ def _front_matter_block(front_matter: dict) -> str:
     return "---\n" + yaml.safe_dump(front_matter, sort_keys=False).strip() + "\n---\n"
 
 
-def card_front_matter(configs: list[dict], tags: tuple[str, ...] | list[str] = ()) -> str:
+def card_front_matter(
+    configs: list[dict], tags: tuple[str, ...] | list[str] = ()
+) -> str:
     """Render the README YAML front-matter declaring a repo's `configs:` and `tags:` (pure).
 
     Each config: {"config_name": str, "data_files": str, "default": bool?}. Declared
@@ -226,10 +263,17 @@ def card_markdown(fields: dict, front_matter: dict | None = None) -> str:
     /datasets explorer on `training_data_tags` plus a `configs:` default data file.
     """
     missing = [f for f in REQUIRED_FIELDS if not str(fields.get(f, "")).strip()]
-    assert not missing, (f"dataset card is missing required fields {missing} — "
-                         "write `constitution: none` explicitly if it connects to none")
+    assert not missing, (
+        f"dataset card is missing required fields {missing} — "
+        "write `constitution: none` explicitly if it connects to none"
+    )
     lines = [_front_matter_block(front_matter).rstrip("\n")] if front_matter else []
-    lines += ["# " + fields.get("title", fields["experiment"]), "", "| field | value |", "| --- | --- |"]
+    lines += [
+        "# " + fields.get("title", fields["experiment"]),
+        "",
+        "| field | value |",
+        "| --- | --- |",
+    ]
     extras = [k for k in fields if k not in REQUIRED_FIELDS and k != "title"]
     for key in (*REQUIRED_FIELDS, *extras):
         value = str(fields[key]).replace("\n", " ")
@@ -252,17 +296,20 @@ def pick_data_file(files: list[str], filename: str | None = None) -> str:
     """
     if filename:
         assert filename in files, (
-            f"data_file {filename!r} is not in the dataset repo (files: {sorted(files)})")
+            f"data_file {filename!r} is not in the dataset repo (files: {sorted(files)})"
+        )
         return filename
     candidates = [f for f in files if f.endswith(".jsonl")]
     assert len(candidates) == 1, (
         f"expected exactly one .jsonl in the dataset repo, found {sorted(candidates)} — "
-        "declare data_file: <name> to pick one")
+        "declare data_file: <name> to pick one"
+    )
     return candidates[0]
 
 
-def resolve_dataset(repo_id: str, filename: str | None = None,
-                    revision: str | None = None) -> tuple[str, dict]:
+def resolve_dataset(
+    repo_id: str, filename: str | None = None, revision: str | None = None
+) -> tuple[str, dict]:
     """Pin an HF dataset repo to an exact revision and fetch its data file.
 
     The one way training data reaches a trainer: never a local path — the repo id is
@@ -278,18 +325,23 @@ def resolve_dataset(repo_id: str, filename: str | None = None,
         (local_path, {"repo", "file", "revision"}) with `revision` the resolved
         commit sha, ready for training_meta.json.
     """
-    assert _HF_REPO_ID.match(repo_id) and not repo_id.endswith((".json", ".jsonl")) \
-        and not Path(repo_id).exists(), (
+    assert (
+        _HF_REPO_ID.match(repo_id)
+        and not repo_id.endswith((".json", ".jsonl"))
+        and not Path(repo_id).exists()
+    ), (
         f"{repo_id!r} is not an HF dataset repo id (org/name): training data loads from "
-        "Hugging Face, never from a local file (CLAUDE.md: artifacts live on HF)")
+        "Hugging Face, never from a local file (CLAUDE.md: artifacts live on HF)"
+    )
     info = hf_api().repo_info(repo_id, repo_type="dataset", revision=revision)
     chosen = pick_data_file([s.rfilename for s in info.siblings], filename)
     local = hf_download(repo_id, chosen, repo_type="dataset", revision=info.sha)
     return local, {"repo": repo_id, "file": chosen, "revision": info.sha}
 
 
-def resolve_run_dir(repo_id: str, revision: str | None = None,
-                    local_dir: str | Path | None = None) -> tuple[str, dict]:
+def resolve_run_dir(
+    repo_id: str, revision: str | None = None, local_dir: str | Path | None = None
+) -> tuple[str, dict]:
     """Pin a whole dataset repo to an exact revision and fetch it as a directory.
 
     `resolve_dataset` is the one-jsonl flavour and is what a training mixture needs. A run
@@ -308,15 +360,26 @@ def resolve_run_dir(repo_id: str, revision: str | None = None,
         (local directory, {"repo", "revision"}) with `revision` the resolved commit sha.
     """
     assert _HF_REPO_ID.match(repo_id) and not Path(repo_id).exists(), (
-        f"{repo_id!r} is not an HF dataset repo id (org/name)")
+        f"{repo_id!r} is not an HF dataset repo id (org/name)"
+    )
     info = hf_api().repo_info(repo_id, repo_type="dataset", revision=revision)
-    path = hf_snapshot(repo_id, repo_type="dataset", revision=info.sha,
-                       **({"local_dir": str(local_dir)} if local_dir else {}))
+    path = hf_snapshot(
+        repo_id,
+        repo_type="dataset",
+        revision=info.sha,
+        **({"local_dir": str(local_dir)} if local_dir else {}),
+    )
     return path, {"repo": repo_id, "revision": info.sha}
 
 
-def push_run_dir(out_dir: Path, repo_id: str, fields: dict, private: bool = False,
-                 repo_type: str = "dataset", front_matter: dict | None = None) -> str:
+def push_run_dir(
+    out_dir: Path,
+    repo_id: str,
+    fields: dict,
+    private: bool = False,
+    repo_type: str = "dataset",
+    front_matter: dict | None = None,
+) -> str:
     """Upload a run directory (with its card) to an HF repo.
 
     Args:
@@ -331,9 +394,13 @@ def push_run_dir(out_dir: Path, repo_id: str, fields: dict, private: bool = Fals
     Returns:
         The repo URL.
     """
+    # Qualify BEFORE gating. This function's contract is that callers pass the repo NAME
+    # and the org comes from the environment, but `gate_push` only accepts a full `org/name`
+    # — so gating first rejected every caller that honoured the contract. train_lora.py did
+    # honour it, which is why an adapter push died AFTER the training run that earned it.
+    repo_id = hf_repo_id(repo_id)
     gate_push(repo_id, fields, what=f"{repo_type} push")  # name first: no repo, no debt
     card = card_markdown(fields, front_matter)  # validate before any network call
-    repo_id = hf_repo_id(repo_id)
     api = hf_api()
     api.create_repo(repo_id, repo_type=repo_type, private=private, exist_ok=True)
     # Explicit utf-8: cards are full of em-dashes, and upload_folder reads this file back
@@ -347,8 +414,13 @@ def push_run_dir(out_dir: Path, repo_id: str, fields: dict, private: bool = Fals
     return f"https://huggingface.co/{prefix}{repo_id}"
 
 
-def push_files(paths: list[Path], repo_id: str, fields: dict, private: bool = True,
-               front_matter: dict | None = None) -> str:
+def push_files(
+    paths: list[Path],
+    repo_id: str,
+    fields: dict,
+    private: bool = True,
+    front_matter: dict | None = None,
+) -> str:
     """Upload named files (with their card) to an HF dataset repo, keeping basenames.
 
     The checkpoint-push flavour: a staged pipeline pushes exactly the files each stage
@@ -373,9 +445,17 @@ def push_files(paths: list[Path], repo_id: str, fields: dict, private: bool = Tr
     repo_id = hf_repo_id(repo_id)
     api = hf_api()
     api.create_repo(repo_id, repo_type="dataset", private=private, exist_ok=True)
-    api.upload_file(path_or_fileobj=card.encode(), path_in_repo="README.md",
-                    repo_id=repo_id, repo_type="dataset")
+    api.upload_file(
+        path_or_fileobj=card.encode(),
+        path_in_repo="README.md",
+        repo_id=repo_id,
+        repo_type="dataset",
+    )
     for p in paths:
-        api.upload_file(path_or_fileobj=str(p), path_in_repo=Path(p).name,
-                        repo_id=repo_id, repo_type="dataset")
+        api.upload_file(
+            path_or_fileobj=str(p),
+            path_in_repo=Path(p).name,
+            repo_id=repo_id,
+            repo_type="dataset",
+        )
     return f"https://huggingface.co/datasets/{repo_id}"
