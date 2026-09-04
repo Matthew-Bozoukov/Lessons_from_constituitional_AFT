@@ -88,7 +88,14 @@ def _fork_branches(trajs, n: int, seed: int):
     return out
 
 
-def _serve(target: str, server: str, work: Path):
+# Port 8000 is what every eval driver in this repo forwards to by default, so on a shared
+# machine it is routinely already taken — and a taken local port does NOT make ssh fail
+# loudly, it just leaves the forward unestablished while localhost:8000 keeps answering
+# from whoever bound it first. This driver therefore takes its own.
+LOCAL_PORT = 8021
+
+
+def _serve(target: str, server: str, work: Path, port: int = LOCAL_PORT):
     """Start vLLM for `target` on a pod and tunnel it back, the way run_eval does.
 
     Going through `VllmServer` rather than an ssh one-liner is not ceremony: it is what
@@ -115,11 +122,92 @@ def _serve(target: str, server: str, work: Path):
     spec = resolve_target(target)
     srv = VllmServer(
         work,
-        port=8000,
-        executor=SshExec(server, port=8000),
+        port=port,
+        executor=SshExec(server, port=port),
         serve_requirements={"needs_tool_calls": True, "context_window": 16384},
     )
     return srv, srv.ensure(spec)
+
+
+def _norm(s: str) -> str:
+    """Lowercase alphanumerics only — for comparing an HF path to a served model name."""
+    return "".join(c for c in s.lower() if c.isalnum())
+
+
+def _resolve_served_name(
+    base_url: str, api_key: str, want: str, target: str = "", timeout_s: int = 180
+) -> str:
+    """The name vLLM registered our adapter under — verified, not guessed.
+
+    Three failure modes, in increasing order of how badly they end.
+
+    The predicted name need not match the one in `--lora-modules`; that returns a 404 per
+    request and reads like a network problem. The adapter can also register slightly after
+    the base model answers, so a check at the wrong moment sees only "base".
+
+    The third is the one that matters and it happened: **the tunnel can be pointing at
+    someone else's pod.** A local port already forwarded by another session does not fail
+    loudly — the forward is simply not established, and `localhost:8000` keeps answering
+    from whoever got there first. An earlier version of this function accepted "the single
+    non-base model" and would have cheerfully run a whole experiment against a colleague's
+    adapter, on their GPU, and written the numbers out under our arm's name. Nothing in the
+    output would have looked wrong.
+
+    So the served name must be *derived from the target we asked for*, compared on
+    alphanumerics alone since vLLM rewrites punctuation. Anything else is refused.
+
+    Args:
+        base_url: The served endpoint.
+        api_key: Key for it.
+        want: The name the spec predicted.
+        target: The HF path we asked to serve; the identity the name must match.
+        timeout_s: How long to wait for the adapter to appear.
+
+    Returns:
+        The registered name of OUR adapter.
+
+    Raises:
+        RuntimeError: If our adapter never appears — including when some other adapter does,
+            which means the endpoint is not ours.
+    """
+    import time
+
+    import httpx
+
+    deadline = time.time() + timeout_s
+    seen: list[str] = []
+    while time.time() < deadline:
+        try:
+            r = httpx.get(
+                f"{base_url.rstrip('/')}/models",
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=20,
+            )
+            seen = [m["id"] for m in r.json().get("data", [])]
+        except Exception:  # noqa: BLE001
+            seen = []
+        stem = _norm(target.split("/")[-1]) if target else ""
+        if want in seen:
+            return want
+        # Only a name that IS our adapter counts; "some non-base model" is how you end up
+        # measuring another pod.
+        ours = [m for m in seen if m != "base" and stem and _norm(m) == stem]
+        if ours:
+            print(f"  note: serving as {ours[0]!r}, not the predicted {want!r}", flush=True)
+            return ours[0]
+        time.sleep(5)
+    others = [m for m in seen if m != "base"]
+    raise RuntimeError(
+        f"our adapter never registered at {base_url}. The endpoint offers {seen}.\n"
+        + (
+            f"It is serving {others} — that is NOT {target!r}, so this endpoint belongs to "
+            "another pod (most likely a local port already forwarded by another session). "
+            "Refusing: running here would spend someone else's GPU and label the result as ours."
+            if others
+            else "Only the base model is present, and running against it would measure the "
+            "untrained weights."
+        )
+    )
 
 
 def run(
@@ -466,7 +554,8 @@ def resilience_sweep(
             served.model_name,
             served.api_key or "EMPTY",
         )
-        print(f"serving {target}\n  as {model}\n  at {base_url}")
+        model = _resolve_served_name(base_url, api_key, model, target=target)
+        print(f"serving {target}\n  as {model}\n  at {base_url}", flush=True)
     assert model and base_url, "give --model and --base_url, or --target and --server"
 
     try:
@@ -599,7 +688,8 @@ def effect_curve(
             served.model_name,
             served.api_key or "EMPTY",
         )
-        print(f"serving {target}\n  as {model}\n  at {base_url}")
+        model = _resolve_served_name(base_url, api_key, model, target=target)
+        print(f"serving {target}\n  as {model}\n  at {base_url}", flush=True)
     assert model and base_url, "give --model and --base_url, or --target and --server"
 
     try:

@@ -395,3 +395,27 @@ transplant-style CoT interventions, prefill experiments.
   matched paraphrase arm or its effect size has no scale. `scratch/thought_branches/metrics.py`
   implements one (`controlled_importance`) that costs nothing extra — it splits a single resample
   set at the median similarity and uses the re-sayings as the control.
+
+## A local port already forwarded by another session silently redirects your eval (2026-09-04)
+
+Cost an hour of GPU on someone else's pod and nearly produced a whole experiment's worth of
+numbers attributed to the wrong arm.
+
+- **A taken local port does not make the tunnel fail loudly.** Without `ExitOnForwardFailure=yes`
+  the forward is simply not established and the command keeps running, so `localhost:8000` goes on
+  answering — from whoever bound it first. Two sessions on one laptop both driving `--server` pods
+  is the normal case here, not an exotic one, and `run_eval` / `VllmServer` default to port 8000
+  for everybody.
+- **The symptom looks like nothing.** Requests succeed. The driver generates. The only tell is
+  that YOUR pod sits at 0% GPU while the run appears to progress — check
+  `nvidia-smi --query-gpu=utilization.gpu` on the pod you rented before believing a run is yours.
+- **"The single non-base model" is not a safe way to resolve the adapter name.** It will happily
+  return a colleague's adapter. Compare the served name against the target you asked to serve
+  (alphanumerics only — vLLM rewrites `.` and `-` to `_`) and refuse anything else;
+  `scratch/thought_branches/run_branches.py::_resolve_served_name` does this and names the other
+  pod's adapter in the error.
+- **Give each driver its own local port.** That module now uses 8021 rather than 8000. A collision
+  then fails at bind time instead of quietly succeeding against the wrong endpoint.
+- Corollary for cleanup: a broad `pkill` on the forwarding process will kill the OTHER session's
+  tunnel too. Kill by the PID you started, and list existing forwards before assuming a port is
+  free.
