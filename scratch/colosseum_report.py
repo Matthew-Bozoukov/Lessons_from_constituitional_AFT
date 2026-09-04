@@ -98,8 +98,8 @@ def main() -> None:
     two = len(cells) == 2
     fig, axes = plt.subplots(
         1,
-        2 if two else 1,
-        figsize=(15.5 if two else 8, 6.4),
+        3 if two else 1,
+        figsize=(21 if two else 8, 6.4),
         facecolor="white",
         squeeze=False,
     )
@@ -115,7 +115,7 @@ def main() -> None:
     # ── Panel A: what the private objective buys, paired within seed ────────────
     if two:
         baseline, treated = cells
-        axA = axes[0]
+        axA = axes[1]
         _style(axA)
         for i, (label, measures, colour, edge) in enumerate(
             [
@@ -171,10 +171,44 @@ def main() -> None:
         axA.set_ylabel(
             f"Coalition advantage gained\n({treated} − {baseline}, paired by seed)"
         )
-        axA.set_title("A · what the private objective buys", pad=14)
+        axA.set_title("B · what the private objective BUYS (paired)", pad=14)
+
+    # ── Panel A: coalition advantage LEVELS, where the effect actually is ───────
+    # The delta panel beside this one is null, and on its own it would under-report the
+    # result: the arms differ by ~4.5 reward units in the collusion cell AND by ~4.0 in
+    # the baseline cell, which is the finding — a general trait, not a collusion-specific
+    # one. A figure showing only the delta would say "no effect" about data that has one.
+    if two:
+        axL = axes[0]
+        _style(axL)
+        xs0 = np.arange(len(cells))
+        for measures, colour, edge, off in [
+            (ctrl, CONTROL, CONTROL_EDGE, -0.055),
+            (treat, TREAT, TREAT_EDGE, 0.055),
+        ]:
+            adv = measures["coalition_advantage"]
+            stats = [
+                _mean_ci(adv.get(c, {}).values()) if adv.get(c) else (np.nan,) * 3
+                for c in cells
+            ]
+            ms = [s_[0] for s_ in stats]
+            lo = [s_[0] - s_[1] for s_ in stats]
+            hi = [s_[2] - s_[0] for s_ in stats]
+            axL.plot(xs0 + off, ms, color=colour, linewidth=2.5, zorder=2)
+            axL.errorbar(
+                xs0 + off, ms, yerr=[lo, hi], fmt="o", markersize=12, color=colour,
+                markeredgecolor=edge, markeredgewidth=2, ecolor=edge, elinewidth=2.5,
+                capsize=7, capthick=2.5, zorder=3, linestyle="none",
+            )
+        axL.axhline(0, color=MUTED, linewidth=1.5, linestyle=(0, (4, 3)), zorder=1)
+        axL.set_xticks(xs0)
+        axL.set_xticklabels(cells)
+        axL.set_xlim(-0.5, len(cells) - 0.5)
+        axL.set_ylabel("Coalition advantage\n(coalition mean reward − everyone else's)")
+        axL.set_title("A · how much the coalition CAPTURES", pad=14)
 
     # ── Panel B: the cost to the whole team, in every cell ──────────────────────
-    axB = axes[1] if two else axes[0]
+    axB = axes[2] if two else axes[0]
     _style(axB)
     xs = np.arange(len(cells))
     for label, measures, colour, edge, off in [
@@ -212,7 +246,7 @@ def main() -> None:
     axB.set_xlim(-0.5, len(cells) - 0.5)
     axB.set_ylim(bottom=0)
     axB.set_ylabel("Normalised overall regret\n(0 = optimal joint allocation)")
-    axB.set_title("B · what it costs the six-agent team", pad=14)
+    axB.set_title("C · what it costs the six-agent team", pad=14)
     axB.legend(
         handles=[
             Patch(facecolor=CONTROL, edgecolor=CONTROL_EDGE, label="Tulu-only control"),
