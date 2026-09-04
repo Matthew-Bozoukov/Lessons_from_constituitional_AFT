@@ -3,18 +3,20 @@
 # ABOUTME: server at a time fits one H100), detached, each with its own log.
 #
 #   ssh <pod> 'cd /root/work && bash scratch/colosseum_hospital/run_hospital_queue.sh \
-#       <port> <target> [<target>...] -- <condition>:<lo>-<hi> [<condition>:<lo>-<hi> ...]'
+#       <port> <target> [<target>...] -- <condition>:<lo>-<hi>[:<target>[,<target>]] ...'
 #
-# Every job runs `uv run evals --no-push` for one condition over the given targets (arms
-# run sequentially inside, LoRA-swapping on the one server). The queue itself is detached
-# under nohup and returns at once; output/logs/queue_<port>.log records each job's start
-# and exit code, and output/logs/hospital_<condition>_<port>.log is each job's own log.
+# Every job runs `uv run evals --no-push` for one condition over the job's targets — the
+# comma-separated third field, or the global list before `--` when a job names none. Arms
+# run sequentially inside an invocation, LoRA-swapping on the one server. The queue is
+# detached under nohup and returns at once; output/logs/queue_<port>.log records each
+# job's start and exit code, output/logs/hospital_<condition>_<port>.log is each job's
+# own log (appended: a rerun of the same condition continues the same file).
 set -euo pipefail
 
 PORT="$1"; shift
 TARGETS=()
 while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do TARGETS+=("$1"); shift; done
-[ "${1:-}" = "--" ] || { echo "usage: $0 <port> <target>... -- <condition>:<lo>-<hi>..." >&2; exit 2; }
+[ "${1:-}" = "--" ] || { echo "usage: $0 <port> <target>... -- <condition>:<lo>-<hi>[:<targets>]..." >&2; exit 2; }
 shift
 JOBS=("$@")
 [ "${#TARGETS[@]}" -ge 1 ] && [ "${#JOBS[@]}" -ge 1 ] || { echo "need targets and jobs" >&2; exit 2; }
@@ -29,15 +31,20 @@ QLOG="output/logs/queue_${PORT}.log"
 
 run_queue() {
     for job in "${JOBS[@]}"; do
-        condition="${job%%:*}"; range="${job#*:}"
+        IFS=: read -r condition range job_targets <<< "${job}"
         lo="${range%-*}"; hi="${range#*-}"
         seeds="$(python3 -c "print(','.join(str(s) for s in range(int('${lo}'), int('${hi}') + 1)))")"
+        if [ -n "${job_targets:-}" ]; then
+            IFS=, read -r -a targets <<< "${job_targets}"
+        else
+            targets=("${TARGETS[@]}")
+        fi
         log="output/logs/hospital_${condition}_${PORT}.log"
-        echo "$(date -u +%FT%TZ) START ${condition} ${lo}-${hi} -> ${log}"
+        echo "$(date -u +%FT%TZ) START ${condition} ${lo}-${hi} targets=${targets[*]} -> ${log}"
         # ARGUMENT ORDER IS LOAD-BEARING: --target first, terminated by --name; the
         # OmegaConf overrides trail at the end (docs/GOTCHAS.md).
         set +e
-        uv run evals --target "${TARGETS[@]}" --name colosseum_hospital --no-push \
+        uv run evals --target "${targets[@]}" --name colosseum_hospital --no-push \
             --port "${PORT}" "condition=${condition}" "seeds=[${seeds}]" >> "${log}" 2>&1
         rc=$?
         set -e

@@ -533,3 +533,22 @@ srun --jobid=<id> --overlap -n1 nvidia-smi \
 Sample it several times: a single reading can catch a genuine gap between decode steps.
 Weights loaded (~75GB) with 0% utilisation across repeated samples is the signature of a
 driver that cannot reach its server, not of a slow model.
+
+## `runpod up --eval a,b` is ONE repo id to Fire (2026-09-04)
+
+`up()` accepts a list of targets, but Fire hands a comma-joined argument over as a single
+string and `up` only splits a real list, so `--eval a,b` dies in `resolve_target` with
+`HFValidationError: Repo id must be in the form 'repo_name' or 'namespace/repo_name'` —
+before anything is rented, at least. Pass a Python list literal, which Fire parses:
+
+```
+uv run runpod up --name x --eval "['LASR-Callum/a','LASR-Callum/b']"
+```
+
+## The pod image's `python3` is 3.10: no `tomllib` (2026-09-04)
+
+`runpod/pytorch:0.7.0-dev-cu1281-torch271-ubuntu2204` ships python3.10 as `python3`. Anything
+run on the pod outside a venv that reaches for a 3.11+ module (tomllib, `array.array[int]`
+annotations) fails there even though every venv on the box is 3.12. Use the venv's
+interpreter explicitly (`/root/work/.venv/bin/python`, `/workspace/vllmenv/bin/python`)
+for one-liners in bootstrap scripts.
