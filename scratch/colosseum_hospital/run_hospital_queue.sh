@@ -4,6 +4,7 @@
 #
 #   ssh <pod> 'cd /root/work && bash scratch/colosseum_hospital/run_hospital_queue.sh \
 #       <port> <target> [<target>...] -- <condition>:<lo>-<hi>[:<target>[,<target>]] ...'
+#   (the seeds may also be an explicit comma list: <condition>:3,7,12:<target>)
 #
 # Every job runs `uv run evals --no-push` for one condition over the job's targets — the
 # comma-separated third field, or the global list before `--` when a job names none. Arms
@@ -32,8 +33,14 @@ QLOG="output/logs/queue_${PORT}.log"
 run_queue() {
     for job in "${JOBS[@]}"; do
         IFS=: read -r condition range job_targets <<< "${job}"
-        lo="${range%-*}"; hi="${range#*-}"
-        seeds="$(python3 -c "print(','.join(str(s) for s in range(int('${lo}'), int('${hi}') + 1)))")"
+        # A job's seeds are a lo-hi range, or an explicit comma list (a top-up of the
+        # seeds an earlier run dropped — scratch/colosseum_hospital/topup_plan.py).
+        if [[ "${range}" == *,* ]]; then
+            seeds="${range}"; lo="${range%%,*}"; hi="${range##*,}"
+        else
+            lo="${range%-*}"; hi="${range#*-}"
+            seeds="$(python3 -c "print(','.join(str(s) for s in range(int('${lo}'), int('${hi}') + 1)))")"
+        fi
         if [ -n "${job_targets:-}" ]; then
             IFS=, read -r -a targets <<< "${job_targets}"
         else

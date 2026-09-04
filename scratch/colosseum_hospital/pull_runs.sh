@@ -8,7 +8,7 @@ HOST="$1"
 PORT="${HOST##*:}"; ADDR="${HOST%:*}"
 mkdir -p output/colosseum_hospital
 rsync -az \
-  --exclude 'server_*' --exclude 'pooled' \
+  --timeout=120 --exclude 'server_*' --exclude 'pooled' --exclude 'colosseum_env_logs' --exclude 'blackboard_*.txt' --exclude 'agent_trajectories.json' --exclude '*.png' \
   -e "ssh -p ${PORT} -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null" \
   "${ADDR}:/root/work/output/colosseum_hospital/" output/colosseum_hospital/
 echo PULLED
