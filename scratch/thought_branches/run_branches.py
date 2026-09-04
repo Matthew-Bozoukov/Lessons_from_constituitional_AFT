@@ -536,5 +536,163 @@ def resilience_sweep(
             print("vLLM stopped (the POD is still billing)")
 
 
+def effect_curve(
+    model: str = "",
+    base_url: str = "",
+    target: str = "",
+    server: str = "",
+    api_key: str = "EMPTY",
+    arm: str = ARM,
+    n_trajectories: int = 20,
+    points_per_traj: int = 7,
+    n_samples: int = 16,
+    temperature: float = 0.7,
+    workers: int = 12,
+    seed: int = 0,
+    subject: str = "odcv_effect_curve",
+    data: str = str(DATA),
+) -> None:
+    """Where along a trajectory does the model's next move stop being open?
+
+    The fork run answered "is the outcome still open when the environment refuses?" with
+    no — 36 of 40 fork points produced the same action every rerun. That says the decision
+    happens earlier, but it does not say WHERE, because only one cut was measured. Guessing
+    "upstream" from a single absence is an inference, not a result.
+
+    So: cut the same trajectory at several evenly spaced points instead of one, resample at
+    each, and measure how CONCENTRATED the resulting action distribution is. A point where
+    the reruns disagree is a point where behaviour is still in play; a point where they all
+    agree is downstream of whatever settled it. The position where concentration rises is
+    the place worth generating training data about, and the place to spend the live sampler.
+
+    The measured quantity is deliberately dispersion, not an outcome. The frozen sampler has
+    no environment after the branch, so it cannot produce an ODCV severity — but "how much
+    does the model's next move vary here" needs no outcome at all, and it is exactly the
+    question that localises the decision.
+
+    Args:
+        model: Served model name (or use target+server).
+        base_url: Endpoint (or use target+server).
+        target: Adapter to serve.
+        server: `root@ip:port` of the pod.
+        api_key: Endpoint key.
+        arm: Published run whose rollouts get branched; must match the served adapter.
+        n_trajectories: Trajectories to sweep.
+        points_per_traj: Branch points per trajectory, evenly spaced over its thought steps
+            with the first step and the fork always included.
+        n_samples: Resamples per branch point.
+        temperature: Sampling temperature.
+        workers: Concurrent requests.
+        seed: Selection and sampling seed.
+        subject: Naming-law subject.
+        data: Downloaded ODCV run directories.
+    """
+    out = run_dir(OUT_BASE, subject)
+    out.mkdir(parents=True, exist_ok=True)
+
+    srv = None
+    if server:
+        assert target, "--server needs --target"
+        srv, served = _serve(target, server, out / "serve")
+        base_url, model, api_key = (
+            served.base_url,
+            served.model_name,
+            served.api_key or "EMPTY",
+        )
+        print(f"serving {target}\n  as {model}\n  at {base_url}")
+    assert model and base_url, "give --model and --base_url, or --target and --server"
+
+    try:
+        import math
+
+        from scratch.thought_branches.report_branches import group_of
+
+        trajs = [t for t in load_corpus(Path(data)) if t.arm == arm]
+        picked = _fork_branches(trajs, n_trajectories, seed)
+        sampler = FrozenEnvSampler()
+        cfg = SampleConfig(
+            model=model,
+            base_url=base_url,
+            api_key=api_key,
+            temperature=temperature,
+            top_p=0.95,
+            n_samples=n_samples,
+            workers=workers,
+            seed=seed,
+            max_tokens=1400,
+        )
+        rows: list[dict] = []
+        for i, (t, f, _) in enumerate(picked):
+            steps = [s.index for s in t.thoughts]
+            if len(steps) < 2:
+                continue
+            # Evenly spaced over the trajectory's own thought steps, with the first step and
+            # the fork forced in so every trajectory is anchored at both ends of the question.
+            k = min(points_per_traj, len(steps))
+            idx = sorted(
+                {steps[round(j * (len(steps) - 1) / (k - 1))] for j in range(k)}
+                | {steps[0], f.thought_step}
+            )
+            for si in idx:
+                bp = BranchPoint(t.key, si, 0, "step", 0)
+                branches = sampler.resample(t, bp, cfg)
+                kinds = Counter(
+                    group_of(classify_branch(b.meta, f.obstacle_text).kind)
+                    for b in branches
+                )
+                n = sum(kinds.values()) or 1
+                shares = [v / n for v in kinds.values()]
+                ent = -sum(p * math.log(p) for p in shares if p > 0) / math.log(3)
+                rows.append(
+                    {
+                        "key": t.key,
+                        "scenario": t.scenario,
+                        "variant": t.variant,
+                        "violation": t.is_violation,
+                        "step_index": si,
+                        "step_ordinal": steps.index(si),
+                        "n_steps": len(steps),
+                        "rel_pos": steps.index(si) / (len(steps) - 1),
+                        "is_fork": si == f.thought_step,
+                        "at_or_after_fork": si >= f.thought_step,
+                        "n": n,
+                        "kinds": dict(kinds),
+                        "modal_share": max(shares),
+                        "entropy": ent,
+                        "p_forcing": kinds.get("forcing", 0) / n,
+                    }
+                )
+            done = [r for r in rows if r["key"] == t.key]
+            print(
+                f"  {i + 1}/{len(picked)} {t.scenario[:24]:26s} {len(done)} points  "
+                + " ".join(f"{r['modal_share']:.2f}" for r in done)
+            )
+        (out / f"{subject}_points.jsonl").write_text(
+            "\n".join(json.dumps(r) for r in rows), encoding="utf-8"
+        )
+        write_run_meta(
+            out,
+            {
+                "model": model,
+                "arm": arm,
+                "n_trajectories": n_trajectories,
+                "points_per_traj": points_per_traj,
+                "n_samples": n_samples,
+                "temperature": temperature,
+                "seed": seed,
+            },
+            extra={"n_points": len(rows), "generations": len(rows) * n_samples},
+        )
+        print(
+            f"\n{len(rows)} branch points, {len(rows) * n_samples} generations\nwrote {out}"
+        )
+    finally:
+        if srv is not None:
+            srv.stop()
+            print("vLLM stopped (the POD is still billing)")
+
+
 if __name__ == "__main__":
-    fire.Fire({"run": run, "resilience_sweep": resilience_sweep})
+    fire.Fire(
+        {"run": run, "resilience_sweep": resilience_sweep, "effect_curve": effect_curve}
+    )

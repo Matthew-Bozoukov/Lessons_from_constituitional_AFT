@@ -415,6 +415,200 @@ def build_sweep(run_directory: str, subject: str = "odcv_fork_resilience") -> No
     print(f"wrote {md}\n  {p}")
 
 
+def fig_curve(rows: Sequence[dict], out_dir: Path, subject: str) -> Path:
+    """Where along a trajectory the model's next move stops being open.
+
+    The y axis is how CONCENTRATED the action distribution is at each cut — the share of
+    reruns landing on the modal action. 1.0 means every rerun did the same thing, so the
+    behaviour there is already settled; lower means the model is genuinely undecided and a
+    training example at that point would be teaching something still in play.
+    """
+    rel = np.array([r["rel_pos"] for r in rows], dtype=float)
+    modal = np.array([r["modal_share"] for r in rows], dtype=float)
+    forcing = np.array([r["p_forcing"] for r in rows], dtype=float)
+    viol = np.array([bool(r["violation"]) for r in rows])
+    is_fork = np.array([bool(r["is_fork"]) for r in rows])
+
+    fig, (ax, ax2) = plt.subplots(1, 2, figsize=(13.4, 5.6), facecolor=SURFACE)
+
+    # Left: concentration against position, binned, with the raw points behind.
+    ax.scatter(
+        rel[~is_fork],
+        modal[~is_fork],
+        s=26,
+        color=MUTED,
+        alpha=0.28,
+        linewidths=0,
+        label="branch point",
+    )
+    ax.scatter(
+        rel[is_fork],
+        modal[is_fork],
+        s=52,
+        color=FORCING,
+        alpha=0.85,
+        edgecolors=SURFACE,
+        linewidths=1.1,
+        label="the fork",
+        zorder=4,
+    )
+    bins = np.linspace(0, 1, 6)
+    mids, means, los, his = [], [], [], []
+    for lo, hi in zip(bins[:-1], bins[1:]):
+        m = (rel >= lo) & (rel <= hi if hi == 1.0 else rel < hi)
+        if m.sum() >= 3:
+            v = modal[m]
+            mids.append((lo + hi) / 2)
+            means.append(v.mean())
+            los.append(v.mean() - v.std() / np.sqrt(v.size))
+            his.append(v.mean() + v.std() / np.sqrt(v.size))
+    if mids:
+        ax.plot(
+            mids,
+            means,
+            color=REPORTING,
+            lw=2.6,
+            marker="o",
+            ms=6,
+            zorder=5,
+            label="mean ± s.e.",
+        )
+        ax.fill_between(mids, los, his, color=REPORTING, alpha=0.16, zorder=1)
+    ax.set_ylim(0.25, 1.04)
+    ax.set_xlim(-0.04, 1.04)
+    ax.set_xlabel(
+        "position in the trajectory (0 = first step, 1 = last)",
+        fontsize=10,
+        color=MUTED,
+    )
+    ax.set_ylabel("share of reruns taking the modal action", fontsize=10, color=MUTED)
+    ax.set_title(
+        "How settled the next move is, by position",
+        fontsize=11.5,
+        color=INK,
+        loc="left",
+    )
+    leg = ax.legend(frameon=False, fontsize=9, loc="lower right")
+    for t in leg.get_texts():
+        t.set_color(INK)
+    _style(ax)
+    ax.grid(True, axis="y", color=GRID, linewidth=0.6, alpha=0.7)
+
+    # Right: does WHAT it does shift with position, and does it differ by outcome?
+    for flag, colour, name in (
+        (True, FORCING, "violating originals"),
+        (False, REPORTING, "clean originals"),
+    ):
+        m = viol == flag
+        if m.sum() < 3:
+            continue
+        mids2, mean2 = [], []
+        for lo, hi in zip(bins[:-1], bins[1:]):
+            b = m & (rel >= lo) & (rel <= hi if hi == 1.0 else rel < hi)
+            if b.sum() >= 2:
+                mids2.append((lo + hi) / 2)
+                mean2.append(forcing[b].mean())
+        if mids2:
+            ax2.plot(
+                mids2,
+                mean2,
+                color=colour,
+                lw=2.4,
+                marker="o",
+                ms=6,
+                label=f"{name} (n={int(m.sum())} points)",
+            )
+    ax2.set_ylim(-0.02, max(0.35, float(forcing.max()) * 1.15))
+    ax2.set_xlim(-0.04, 1.04)
+    ax2.set_xlabel("position in the trajectory", fontsize=10, color=MUTED)
+    ax2.set_ylabel("share of reruns that force the metric", fontsize=10, color=MUTED)
+    ax2.set_title(
+        "What it does, by position and by how the original ended",
+        fontsize=11.5,
+        color=INK,
+        loc="left",
+    )
+    leg2 = ax2.legend(frameon=False, fontsize=9, loc="upper left")
+    for t in leg2.get_texts():
+        t.set_color(INK)
+    _style(ax2)
+    ax2.grid(True, axis="y", color=GRID, linewidth=0.6, alpha=0.7)
+
+    fig.suptitle(
+        "Where the decision is still open",
+        fontsize=14,
+        color=INK,
+        x=0.008,
+        ha="left",
+        y=0.985,
+    )
+    fig.text(
+        0.008,
+        0.935,
+        _wrap(
+            "Each point is one cut through one trajectory, resampled 16 times. A concentration "
+            "of 1.0 means every rerun took the same action, so nothing there is still in play. "
+            "The fork run measured a single cut; this measures the whole trace.",
+            152,
+        ),
+        fontsize=8.8,
+        color=MUTED,
+        ha="left",
+        va="top",
+    )
+    fig.tight_layout(rect=(0, 0, 1, 0.90))
+    p = figure_path(out_dir, f"{subject}_curve")
+    fig.savefig(p, dpi=170, facecolor=SURFACE)
+    plt.close(fig)
+    return p
+
+
+def build_curve(run_directory: str, subject: str = "odcv_effect_curve") -> None:
+    """Figure and table for an `effect_curve` run directory."""
+    out = Path(run_directory)
+    rows = [
+        json.loads(l)
+        for l in (out / f"{subject}_points.jsonl").read_text().splitlines()
+        if l.strip()
+    ]
+    p = fig_curve(rows, out, subject)
+    rel = np.array([r["rel_pos"] for r in rows])
+    modal = np.array([r["modal_share"] for r in rows])
+    lines = [
+        f"# Where the decision is still open — {subject}",
+        "",
+        f"{len(rows)} branch points across {len({r['key'] for r in rows})} trajectories, "
+        f"{rows[0]['n']} reruns each.",
+        "",
+        "`modal share` is the fraction of reruns taking the most common action: 1.0 means "
+        "the next move is fully settled, lower means the model is genuinely undecided there.",
+        "",
+        "| position | points | mean modal share | fully settled (=1.0) | mean forcing |",
+        "|---|---:|---:|---:|---:|",
+    ]
+    for lo, hi in zip(np.linspace(0, 1, 6)[:-1], np.linspace(0, 1, 6)[1:]):
+        m = (rel >= lo) & (rel <= hi if hi == 1.0 else rel < hi)
+        if m.sum() == 0:
+            continue
+        sub = [r for r, k in zip(rows, m) if k]
+        lines.append(
+            f"| {lo:.1f}–{hi:.1f} | {int(m.sum())} | {modal[m].mean():.2f} | "
+            f"{sum(1 for r in sub if r['modal_share'] >= 0.999)} | "
+            f"{np.mean([r['p_forcing'] for r in sub]):.2f} |"
+        )
+    fk = [r for r in rows if r["is_fork"]]
+    if fk:
+        lines += [
+            "",
+            f"At the fork specifically: mean modal share "
+            f"{np.mean([r['modal_share'] for r in fk]):.2f} over {len(fk)} points.",
+        ]
+    lines += ["", f"- `{p.name}`", ""]
+    md = out / f"{subject}_results.md"
+    md.write_text("\n".join(lines), encoding="utf-8")
+    print(f"wrote {md}\n  {p}")
+
+
 def write_report(
     out_dir: Path,
     subject: str,
@@ -508,4 +702,4 @@ def build(run_directory: str, subject: str = "odcv_fork_resampling") -> None:
 if __name__ == "__main__":
     import fire
 
-    fire.Fire({"build": build, "build_sweep": build_sweep})
+    fire.Fire({"build": build, "build_sweep": build_sweep, "build_curve": build_curve})
