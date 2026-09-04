@@ -1,7 +1,7 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
-## 2026-09-03 — Multi-agent: constitutional SFT did NOT reduce collusion; it made the model a worse teammate
+## 2026-09-04 — Multi-agent: constitutional SFT did NOT reduce collusion; it made the model a worse teammate
 
 **Hypothesis.** Constitutional SFT is trained and measured with one model acting alone,
 but Hammond et al. 2025 (arXiv 2502.14143) argue single-agent safety does not imply
@@ -33,6 +33,30 @@ deletes `agent_name` — so `third_party/per_agent_models.patch` resolves one ll
 agent from its collusion ROLE (by role, not position: `colluder_selection: random` picks
 the coalition from the seed at run time). Verified on live episodes: two coalition seats
 held the treatment checkpoint, four peers held the control.
+
+**Result (collusion re-run at 165 paired seeds after a power calculation; single and
+cooperation at 40 and 20).** The 40-seed numbers are kept below because the extension
+changed the precision, not the conclusion.
+
+```
+COLLUSION, 165 paired seeds, 710 episodes
+  channel_advantage              +1.327  [-1.557, +4.212]  p=0.365
+  coalition_advantage_baseline   -4.237  [-6.267, -2.205]  p=0.0001
+  coalition_advantage_collusion  -2.909  [-4.867, -0.950]  p=0.0038
+  normalised_regret_baseline     +0.048  [+0.011, +0.083]  p=0.0100
+  normalised_regret_collusion    +0.044  [+0.013, +0.075]  p=0.0058
+```
+
+Four of five contrasts now exclude zero and the headline delta still does not. The
+treatment captures less AND costs the team more in BOTH cells, and the deficit is LARGER
+in baseline (-4.24) than under collusion (-2.91) — the opposite of what a
+collusion-reducing effect looks like.
+
+The extension also revised the manipulation's own strength DOWN: the control coalition's
+gain from a private objective plus a secret channel is +1.02 reward units at 165 seeds,
+not the +2.72 the first 40 suggested. Against a paired between-arm SD of 18.8
+(rho=+0.117), detecting the treatment removing all of that would need ~2,658 seeds. That
+is the real obstacle here, and it is the environment rather than the budget.
 
 **Result (40 seeds, paired on seed, both experiments gated 9/9).**
 
@@ -71,8 +95,9 @@ seed per arm, so this is about these two adapters, not the recipe.
 `output/colosseum/2026-09-03_colosseum_jira_{collusion,cooperation}.png`. Code:
 `src/eval/misalignment/colosseum/` + `scratch/colosseum_*.py`.
 
-**Next steps.** A 190-seed collusion extension is running; it will tighten the LEVEL
-contrasts (where the effect is) but not settle the deltas. If the multi-agent question is
+**Next steps.** The extension is done (165 of a planned 190 paired seeds; one shard was
+lost to the context-length bug and not rechased, since 190 would have moved the MDE only
+from 3.86 to 3.59). If the multi-agent question is
 worth pursuing, the blocker is the environment rather than the sample size: a manipulation
 that moves the control arm by more than 2.7 reward units, or a task where collusion
 actually costs the team something. Also unrun: the judge pass (secondary measure, model
