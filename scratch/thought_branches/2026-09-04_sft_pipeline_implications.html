@@ -1,0 +1,261 @@
+<title>Rebuilding the SFT Pipeline Around Forks</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300..700;1,8..60,400&family=Source+Sans+3:wght@400;500;600;700&display=swap">
+
+<style>
+:root{
+  --ground:#f6f5f2; --surface:#fffefc; --sunk:#eeece6;
+  --ink:#1b1a17; --ink-2:#57544d; --ink-3:#87837a;
+  --rule:#e0ddd5; --rule-soft:#eae7e0;
+  --accent:#1d5a8a;
+  --blue:#2a78d6; --orange:#eb6834; --green:#1baf7a;
+  --stop:rgba(235,104,52,.12); --go:rgba(27,175,122,.13);
+  --serif:"Source Serif 4",Georgia,serif;
+  --sans:"Source Sans 3",system-ui,-apple-system,sans-serif;
+  --col:70ch; --wide:min(1120px,94vw);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#15161a; --surface:#1d1f24; --sunk:#24262c;
+  --ink:#eceef2; --ink-2:#a5a8b0; --ink-3:#7d8089;
+  --rule:#2e3138; --rule-soft:#262930;
+  --accent:#7db6e0; --blue:#3987e5; --orange:#d95926; --green:#199e70;
+  --stop:rgba(217,89,38,.17); --go:rgba(25,158,112,.17);
+}}
+:root[data-theme="dark"]{
+  --ground:#15161a; --surface:#1d1f24; --sunk:#24262c;
+  --ink:#eceef2; --ink-2:#a5a8b0; --ink-3:#7d8089;
+  --rule:#2e3138; --rule-soft:#262930;
+  --accent:#7db6e0; --blue:#3987e5; --orange:#d95926; --green:#199e70;
+  --stop:rgba(217,89,38,.17); --go:rgba(25,158,112,.17);
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font-family:var(--serif);
+  font-size:17.5px;line-height:1.64;-webkit-font-smoothing:antialiased}
+.wrap{display:flex;flex-direction:column;align-items:center;padding:0 20px 88px}
+.col{width:100%;max-width:var(--col)}
+header{width:100%;max-width:var(--wide);padding:50px 0 24px;
+  border-bottom:1px solid var(--rule);margin-bottom:38px}
+.kick{font-family:var(--sans);font-size:11.5px;font-weight:600;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--accent);margin-bottom:16px}
+h1{font-family:var(--serif);font-weight:600;font-size:clamp(30px,4.6vw,50px);
+  line-height:1.08;letter-spacing:-.02em;margin:0 0 16px;text-wrap:balance}
+.stand{font-size:clamp(17px,2vw,20px);line-height:1.55;color:var(--ink-2);
+  max-width:64ch;margin:0;text-wrap:pretty}
+h2{font-family:var(--serif);font-weight:600;font-size:clamp(22px,2.9vw,29px);
+  line-height:1.2;letter-spacing:-.014em;margin:0;text-wrap:balance}
+.sec{width:100%;max-width:var(--col);margin:52px 0 6px;display:flex;gap:14px;align-items:baseline}
+.sec .n{font-family:var(--sans);font-weight:700;font-size:12px;color:var(--accent);flex:none;padding-top:5px}
+p{margin:0 0 16px;text-wrap:pretty}
+.col p:last-child{margin-bottom:0}
+code{font-family:ui-monospace,Menlo,monospace;font-size:.82em;background:var(--sunk);
+  padding:.1em .35em;border-radius:2px}
+strong{font-weight:600}
+a{color:var(--accent);text-underline-offset:3px}
+ul{margin:0 0 16px;padding-left:20px} li{margin-bottom:7px} li::marker{color:var(--ink-3)}
+.lede{font-size:19.5px;line-height:1.55;color:var(--ink-2)}
+.rec{width:100%;max-width:var(--wide);background:var(--surface);border:1px solid var(--rule);
+  border-radius:3px;margin:24px 0;overflow:hidden}
+.rec-h{padding:20px 24px 0;display:flex;gap:14px;align-items:baseline;flex-wrap:wrap}
+.rec-h .rank{font-family:var(--sans);font-weight:700;font-size:12px;color:var(--accent);letter-spacing:.06em}
+.rec-h h3{font-family:var(--serif);font-size:21px;font-weight:600;margin:0;line-height:1.25;flex:1 1 320px}
+.rec-b{padding:12px 24px 20px;font-size:16.5px}
+.rec-b p{margin:0 0 13px}
+.rec-f{padding:13px 24px;background:var(--sunk);border-top:1px solid var(--rule-soft);
+  font-family:var(--sans);font-size:13px;color:var(--ink-2);line-height:1.5}
+.rec-f b{color:var(--ink)}
+.stopbox{width:100%;max-width:var(--wide);background:var(--surface);border:1px solid var(--rule);
+  border-left:3px solid var(--orange);border-radius:3px;padding:20px 24px;margin:18px 0}
+.stopbox h3{font-family:var(--sans);font-size:14px;font-weight:700;margin:0 0 8px;color:var(--orange)}
+.stopbox p{margin:0 0 11px;font-size:16px} .stopbox p:last-child{margin:0}
+table{border-collapse:collapse;width:100%;font-family:var(--sans);font-size:13.5px}
+th{text-align:left;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-3);padding:0 14px 8px 0;border-bottom:1px solid var(--rule)}
+td{padding:9px 14px 9px 0;border-bottom:1px solid var(--rule-soft);vertical-align:top}
+tr:last-child td{border-bottom:0}
+.pill{font-family:var(--sans);font-size:10.5px;font-weight:700;letter-spacing:.05em;
+  text-transform:uppercase;padding:2px 7px;border-radius:2px;white-space:nowrap}
+.p-run{background:var(--go);color:var(--green)} .p-no{background:var(--stop);color:var(--orange)}
+footer{width:100%;max-width:var(--wide);margin-top:56px;padding-top:22px;border-top:1px solid var(--rule);
+  font-family:var(--sans);font-size:13px;color:var(--ink-2);line-height:1.6}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="kick">Proposal · 4 September 2026 · from the ODCV resampling results</div>
+  <h1>Generate the data where the model is still undecided</h1>
+  <p class="stand">
+    Resampling ODCV rollouts says the agent's behaviour is already fixed by the time it
+    reaches the dramatic moment our corpora are built around. Three changes to the SFT
+    pipeline follow, and two things to stop doing.
+  </p>
+</header>
+
+<section>
+  <div class="col">
+    <p class="lede">
+      The finding in one line: rerun the model 24 times from the exact moment the environment
+      refuses it, and <strong>36 of 40 times it does the same thing</strong>. Its thought at
+      that moment comes back almost word-for-word every resample.
+    </p>
+    <p>
+      Our difficult-advice corpora are built almost entirely around that moment — a hard
+      situation, and a good response to it. If the outcome is settled before the agent
+      arrives there, then data teaching “when confronted, refuse well” is teaching at a point
+      in the trajectory where nothing is left to change.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="sec"><div class="n">01</div><h2>What to change</h2></div>
+
+  <div class="rec">
+    <div class="rec-h"><span class="rank">BET 1</span>
+      <h3>Harvest training rows from where the model is measurably uncertain</h3></div>
+    <div class="rec-b">
+      <p>
+        Of 40 fork points, <strong>4 were genuinely split</strong> — the model went both ways
+        across reruns. Those four are worth more than the other 36 combined, because they are
+        the only places its behaviour is actually in play. A training example anywhere else is
+        teaching something already decided.
+      </p>
+      <p>
+        The recipe: sweep branch points across a trajectory, resample ~20× at each, keep the
+        points where the action distribution is genuinely mixed, and train on the model's own
+        good continuations from exactly those points. The uncertainty signal is
+        <em>measured</em>, not guessed at by a prompt.
+      </p>
+      <p>
+        This is Critical Step Optimization (<code>arXiv:2602.03412</code>), the only published
+        loop that runs attribution → targeted data → measured improvement. It supervises ~16%
+        of steps and reports +26–37% on agentic benchmarks — for capability, not safety.
+        Adapting it is the contribution.
+      </p>
+    </div>
+    <div class="rec-f"><b>Pipeline change:</b> a new synth source that reads rollouts instead of
+      writing scenarios. Most of the machinery exists — the sampler already resamples from
+      arbitrary points, and greedy resampling reproduces the recorded action 85% of the time,
+      so the harvest is reliable.</div>
+  </div>
+
+  <div class="rec">
+    <div class="rec-h"><span class="rank">BET 2</span>
+      <h3>Generate the reasoning from Qwen3.6, not from a teacher</h3></div>
+    <div class="rec-b">
+      <p>
+        Every corpus we have is written by Sonnet, grok or GPT. In the paper's terms that is
+        <strong>off-policy text</strong>, and its central methodological result is that
+        off-policy insertions produce small unstable effects while on-policy resampling
+        produces large directional ones.
+      </p>
+      <p>Our own ledger is the predicted symptom, three times over:</p>
+      <ul>
+        <li>The channel swap: neither grok's trace nor grok's reply carried the effect alone.</li>
+        <li>The PAR coherence rewrite: moved every corpus statistic to grok-like values, moved
+          the model not at all.</li>
+        <li>Nine content ablations, all inside one 8.7–17.6% band.</li>
+      </ul>
+      <p>
+        All three share a shape — transplanted text that reproduces the corpus numbers without
+        the effect. On-policy generation is the one lever not yet pulled.
+      </p>
+    </div>
+    <div class="rec-f"><b>Pipeline change:</b> the generator for the reasoning channel becomes
+      the model under training, with a teacher used only to <em>select</em> among its samples.</div>
+  </div>
+
+  <div class="rec">
+    <div class="rec-h"><span class="rank">BET 3</span>
+      <h3>Target the shape, not the vocabulary</h3></div>
+    <div class="rec-b">
+      <p>
+        The one protective response that survived correcting for scenario was
+        <strong>enumerating the environment's verdict item by item</strong> (−0.21 across 25
+        scenarios). Not a phrase — a procedural habit.
+      </p>
+      <p>
+        That matters because both failed grafts targeted vocabulary, and constitutional
+        midtraining (<code>arXiv:2607.26654</code>) independently found <strong>content presence
+        beats structure</strong>. So generate rows where the assistant <em>does</em> the
+        itemising, rather than rows containing integrity language.
+      </p>
+    </div>
+    <div class="rec-f"><b>Pipeline change:</b> a corpus check on the assistant's procedure, not
+      its wording — does the row enumerate each result and its verdict?</div>
+  </div>
+</section>
+
+<section>
+  <div class="sec"><div class="n">02</div><h2>What to stop</h2></div>
+  <div class="stopbox">
+    <h3>Stop writing better justifications</h3>
+    <p>
+      <code>principal_appeal</code> — “a PASS is required”, “my function is to hit the target” —
+      is a null in both directions in our data: 0.64 in violating rollouts against 0.57 in clean
+      ones pooled, and +0.20 [−0.01, +0.41] stratified. It is the same shape as the paper's
+      self-preservation finding. Data that improves the model's <em>stated reason</em> is
+      targeting text with no causal load.
+    </p>
+  </div>
+  <div class="stopbox">
+    <h3>Stop assuming filtered actions make a corpus safe</h3>
+    <p>
+      <code>arXiv:2607.10750</code> found that finetuning on adversarial synthetic agentic
+      trajectories raised leaking from 4.6% to 24.9% — and <strong>the rise survived removing
+      every adversarial action</strong>. This bites Bet 1 specifically, which starts from failed
+      trajectories. It needs a generic-training control arm (the same recipe on random or
+      position-matched steps) or an improvement cannot be attributed to the targeting at all.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="sec"><div class="n">03</div><h2>The gap, stated honestly</h2></div>
+  <div class="col">
+    <p>
+      We measured that the decision <strong>is not made at the fork</strong>. We have
+      <em>not</em> measured where it is made. “Upstream” is an inference from an absence, and
+      every recommendation above leans on it.
+    </p>
+    <p>
+      The experiment that closes it is the effect curve: cut each trajectory at several points
+      instead of one, resample at each, and watch where the model's next move stops varying.
+      That position is what Bet 1 needs in order to know where to harvest.
+    </p>
+    <p>
+      <strong>It has not run.</strong> It was attempted and lost to infrastructure — a port
+      collision, an OOM kill, a stuck GPU, an API rate limit. The code is written and committed;
+      what it needs is a clean pod and an uninterrupted hour.
+    </p>
+  </div>
+  <div class="rec">
+    <div class="rec-b" style="padding-top:20px">
+      <table>
+        <thead><tr><th>Evidence behind each bet</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Fork is determined (36/40), fork thought maximally resilient</td><td><span class="pill p-run">measured</span></td></tr>
+          <tr><td>Markers collapse under within-scenario stratification (15 of 21)</td><td><span class="pill p-run">measured</span></td></tr>
+          <tr><td>“Enumerate every result” is protective (−0.21, 25 scenarios)</td><td><span class="pill p-run">measured</span></td></tr>
+          <tr><td>Principal appeal is a null</td><td><span class="pill p-run">measured</span></td></tr>
+          <tr><td>Where the decision <em>is</em> made — the effect curve</td><td><span class="pill p-no">not run</span></td></tr>
+          <tr><td>On-policy beats off-policy <em>in our setting</em></td><td><span class="pill p-no">not run</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="rec-f">Run the effect curve before committing generation budget to any of the three
+      bets. It is ~$6–10 and converts “somewhere earlier” into a specific step.</div>
+  </div>
+</section>
+
+<footer>
+  <p>
+    Evidence from 859 judged ODCV rollouts re-read offline, plus 2,400 on-policy resampled
+    generations against the numina-control adapter. The resampler measures the model's next
+    action, not an ODCV outcome, so nothing here is a misalignment rate. Literature citations
+    were surfaced by an automated sweep and have not been read in full — confirm before citing.
+    Code and full record: <code>scratch/thought_branches/</code>.
+  </p>
+</footer>
+</div>
