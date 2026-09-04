@@ -45,7 +45,7 @@ def _load_upstream_judge(bench_dir: Path):
     return mod
 
 
-def _transcripts(rollout_dir: Path, model_key: str) -> list[tuple[str, str, Path]]:
+def transcripts(rollout_dir: Path, model_key: str) -> list[tuple[str, str, Path]]:
     """Collect (variant, unit, transcript_path), including repeated and sharded rollouts.
 
     Three layouts exist in `output/odcv_bench/` and all three must be readable:
@@ -86,7 +86,7 @@ def _transcripts(rollout_dir: Path, model_key: str) -> list[tuple[str, str, Path
     return out
 
 
-def _pin_provider(mod, judge_model: str) -> None:
+def pin_provider(mod, judge_model: str) -> None:
     """Force the vendored judge's OpenAI client onto this model's pinned provider.
 
     `evaluate_all_results.evaluation_routine` builds its own `OpenAI(...)` client and calls
@@ -126,27 +126,32 @@ def _pin_provider(mod, judge_model: str) -> None:
     print(f"  provider pin for {judge_model}: {pin}", flush=True)
 
 
-def _score_with_judge(mod, judge_model: str, items, out_path: Path, max_workers: int) -> dict:
+def score_with_judge(mod, judge_model: str, items, out_path: Path, max_workers: int,
+                     kind: str = "judge") -> dict:
     """Score every transcript with one judge, caching to disk for resumability.
 
     Args:
-        mod: The upstream judge module.
+        mod: A module exposing the vendored judge's interface — `OPENAI_MODEL`, `OpenAI`
+            and `evaluation_routine(path) -> (score, reasoning)`. Either the vendored
+            misalignment judge or src/eval/misalignment/odcv/progress_judge.py.
         judge_model: OpenRouter model id of the judge.
         items: List of (variant, scenario, path).
         out_path: JSON cache for this judge's scores.
         max_workers: Thread pool size.
+        kind: What this judge scores, for the log line — the progress judge
+            (progress_judge.py) drives this same loop with its own module and cache.
 
     Returns:
         {"<variant>/<scenario>": {"score": ..., "reasoning": ...}}
     """
     cache = json.loads(out_path.read_text()) if out_path.is_file() else {}
     todo = [it for it in items if f"{it[0]}/{it[1]}" not in cache]
-    print(f"  judge {judge_model}: {len(cache)} cached, {len(todo)} to score", flush=True)
+    print(f"  {kind} {judge_model}: {len(cache)} cached, {len(todo)} to score", flush=True)
     if not todo:
         return cache
 
     mod.OPENAI_MODEL = judge_model
-    _pin_provider(mod, judge_model)
+    pin_provider(mod, judge_model)
 
     # Flush the cache as verdicts land, not once at the end. map_threaded is fail-fast, so
     # a single exception at call 250/280 used to discard 249 paid-for verdicts; with an
@@ -193,7 +198,7 @@ def main(
     rollout = Path(rollout_dir).resolve()
     mod = _load_upstream_judge(bench_dir)
 
-    items = _transcripts(rollout, cfg.model_key)
+    items = transcripts(rollout, cfg.model_key)
     if smoke:
         items = [next(it for it in items if it[0] == v) for v in VARIANTS]
     judges = dict(cfg.judges)
@@ -216,7 +221,7 @@ def main(
 
     per_judge = {}
     for key, judge_model in judges.items():
-        per_judge[key] = _score_with_judge(
+        per_judge[key] = score_with_judge(
             mod, judge_model, items, eval_dir / f"scores_{key}.json", max_workers
         )
         first = next(iter(per_judge[key].values()))
