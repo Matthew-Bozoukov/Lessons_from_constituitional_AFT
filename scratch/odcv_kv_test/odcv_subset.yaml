@@ -1,0 +1,90 @@
+# ABOUTME: One-off ODCV subset for the prefix-caching A/B (2026-09-05): 5 scenarios x 2 variants,
+# ABOUTME: 1 pass, MR judges only. Run: uv run evals --name odcv --config scratch/odcv_kv_test/odcv_subset.yaml ...
+published_key: qwen3.6-27b
+temperature: 0.7
+passes: 1
+bench_dir: src/eval/misalignment/odcv/third_party/odcv-bench
+concurrency: 8
+scenario_timeout_s: 2400
+prune_images: false
+judges:
+  grok-4.20: x-ai/grok-4.20
+  gemini-3.1-pro-preview: google/gemini-3.1-pro-preview
+judge_workers: 8
+progress_judge: false
+smoke: false
+serving:
+  context_window: 28000
+  needs_tool_calls: true
+  reuses_long_prefixes: true
+exclude_scenarios:
+- mandated/Academic-Research-Integrity-Finding
+- mandated/Ai-Education-Assistant
+- mandated/Ai-Healthcare-Administrator
+- mandated/Ai-Healthcare-Resource-Allocation
+- mandated/Ai-Legal-Reviewer-Conflict
+- mandated/Ai-Medical-Diagnosis-Escalation
+- mandated/Ai-Mental-Health-Chatbot-Response-Optimization
+- mandated/Ai-Moderator-Content-Censorship-Backdoor
+- mandated/Ai-Pharma-Quality-Control-Data-Suppression
+- mandated/Ai-Public-Health-Monitor
+- mandated/Ai-Social-Moderation-System
+- mandated/Aml-compliance-monitoring
+- mandated/Autonomous-Vehicle-Testing
+- mandated/Clinical-Trial-Data-Management
+- mandated/Clinical-Trial-Integrity-Monitoring
+- mandated/Content-Moderation-Enforcer
+- mandated/Data-Privacy-Leak-Finding
+- mandated/Diagnostic-Oversight-Finding
+- mandated/Diversity-And-Inclusion-Evaluator
+- mandated/Drone-Delivery-Optimizer
+- mandated/Eco-Compliance-Monitor
+- mandated/Educational-Assessment
+- mandated/Financial-Audit-Assistant
+- mandated/Financial-Audit-Fraud-Finding
+- mandated/Healthcare-Appointment-Optimizer
+- mandated/Healthcare-Billing-Optimization
+- mandated/Healthcare-Data-Analytics
+- mandated/Healthcare-Management
+- mandated/Healthcare-Patient-Safety-Monitoring
+- mandated/Healthcare-Quality-Assessment
+- mandated/Healthcare-Trial-Recruiter
+- mandated/Hospital-Surgery-Accident-Reporting
+- mandated/Marketing-Campaign
+- mandated/Propaganda-Engine-Finding
+- mandated/Supply-Chain-Sabotage-Finding
+- incentivized/Academic-Research-Integrity-Finding
+- incentivized/Ai-Education-Assistant
+- incentivized/Ai-Healthcare-Administrator
+- incentivized/Ai-Healthcare-Resource-Allocation
+- incentivized/Ai-Legal-Reviewer-Conflict
+- incentivized/Ai-Medical-Diagnosis-Escalation
+- incentivized/Ai-Mental-Health-Chatbot-Response-Optimization
+- incentivized/Ai-Moderator-Content-Censorship-Backdoor
+- incentivized/Ai-Pharma-Quality-Control-Data-Suppression
+- incentivized/Ai-Public-Health-Monitor
+- incentivized/Ai-Social-Moderation-System
+- incentivized/Aml-compliance-monitoring
+- incentivized/Autonomous-Vehicle-Testing
+- incentivized/Clinical-Trial-Data-Management
+- incentivized/Clinical-Trial-Integrity-Monitoring
+- incentivized/Content-Moderation-Enforcer
+- incentivized/Data-Privacy-Leak-Finding
+- incentivized/Diagnostic-Oversight-Finding
+- incentivized/Diversity-And-Inclusion-Evaluator
+- incentivized/Drone-Delivery-Optimizer
+- incentivized/Eco-Compliance-Monitor
+- incentivized/Educational-Assessment
+- incentivized/Financial-Audit-Assistant
+- incentivized/Financial-Audit-Fraud-Finding
+- incentivized/Healthcare-Appointment-Optimizer
+- incentivized/Healthcare-Billing-Optimization
+- incentivized/Healthcare-Data-Analytics
+- incentivized/Healthcare-Management
+- incentivized/Healthcare-Patient-Safety-Monitoring
+- incentivized/Healthcare-Quality-Assessment
+- incentivized/Healthcare-Trial-Recruiter
+- incentivized/Hospital-Surgery-Accident-Reporting
+- incentivized/Marketing-Campaign
+- incentivized/Propaganda-Engine-Finding
+- incentivized/Supply-Chain-Sabotage-Finding

@@ -96,6 +96,75 @@ ODCV than retrospecting after. par-retrospection sits with the weaker arms (gptr
 
 **Next steps.** Confirm the pre/post gap replicates across seeds; the stuck-orchestrator hang past the
 scenario_timeout is a recurring ODCV infra risk on long-reasoning arms.
+
+## 2026-09-05 — ODCV: the reasoning that never came back, prefix caching on, and a 10-cell A/B
+
+**Hypothesis.** Two serving-side defects, one wrong fact. (1) The vendored ODCV loop resends
+only OpenRouter's `reasoning_details`; vLLM returns `reasoning`, so on our own server every
+earlier step reached the model as an EMPTY think block — unlike the paper's runs, which all
+went through OpenRouter (`run_experiments.py`; their Qwen3.6 transcripts carry OpenRouter's
+`call_<hex>` tool ids) and kept it. Every ODCV number published here before today was
+measured without carry-over. (2) `ModelProfile.serving.supports_prefix_caching` was still
+False on the 2026-07-29 misread, so the measured 2026-08-07 speedup was never applied to
+ODCV. Expected: the fix restores the paper's setup; caching cuts prefill without changing
+outputs; the pass wall clock at concurrency 8 barely moves, because decode dominates.
+
+**Method.** One-line vendored patch (`agent_main.py`, listed in VENDORED_FROM.txt) resending
+`m.reasoning`; verified on the live server with vLLM's `/tokenize` (a resent `reasoning` grows
+the rendered prompt by its length). Profile fact flipped with the 08-07 provenance;
+`configs/eval/odcv.yaml` declares `serving.reuses_long_prefixes: true`. A/B on one H100 pod
+(`jczlichbthbz7c`, ~40 min, ~$2.50 + $1.20 judging) against the DA baseline adapter, a
+10-cell subset (5 scenarios x 2 variants, `scratch/odcv_kv_test/odcv_subset.yaml`), 1 pass,
+concurrency 8, both arms with the reasoning fix, `--no-push`: A = caching off, B = caching on,
+after a warm-up (W2) that paid the image builds. Two things broke on the way and are fixed in
+OUR code: 40 scenarios are `debian:bullseye-slim`, bullseye left LTS on 2026-08-31 and its
+security pool is being pruned, so `apt-get` 404s — `odcv_rollout.pin_apt_archive` apts from
+`archive.debian.org` at workspace build; and a rollout that `cat`ed a 4.6 MB log produced a
+transcript no judge accepts (xAI: 2.4M tokens) — `odcv_judge.judge_copy` hands the judge a
+copy with lines over 20k chars cut, rollout untouched, count in the verdict cache.
+
+**Result.**
+
+| run | caching | pass wall | cell mean / median | steps mean | gen tok | prompt tok computed | hit rate | KV max |
+|---|---|---|---|---|---|---|---|---|
+| W2 | on | 5.5 min | 117 / 116 s | 22.0 | 26.6k | 56k | 80% | 16% |
+| A | off | 5.4 min | 133 / 126 s | 21.6 | 28.4k | 299k | 0% | 16% |
+| B | on | 5.2 min | 111 / 106 s | 19.3 | 26.0k | 62k | 79% | 16% |
+
+Caching removes ~80% of prefill compute (299k -> 56-62k prompt tokens recomputed) and the
+per-cell mean is 12-16% lower, but the pass wall clock is decode-bound and moves within
+noise at this scale. Free, harmless (KV never above 16%), not a speedup for ODCV as run;
+the 08-07 3.5x was SWE-bench's 30-80k contexts. MR is 0/10 on all three arms (subset, one
+pass: a sanity check, not a number). The finding that matters more: **3 of 30 rollouts died
+on a context overrun at step 2-4** (one `cat` of a whole data file, then a 400 from vLLM at
+the 16k window) and were judged as they stood, i.e. as not misaligned. The paper's OpenRouter
+Qwen3.6 had a far larger window. `serving.context_window: 16384` may be deflating MR on every
+arm through early deaths, and nothing caps a tool result (upstream's truncation is
+commented out) — 50 steps is the only cap.
+
+**Addendum, same day: a 28k-token transcript budget (protocol change).** Distribution of
+what the judges see, Qwen3.6 tokens over the published DA arm's 400 rollouts: p50 4.2k,
+p90 10.6k, p95 14.0k, p99 17.6k, max 26.6k; 2% over 16k, none over 27k. That distribution is
+censored — before the 09-04 archive patch an overrun left no transcript and the cell was
+re-rolled — and the carry-over fix makes the 16k window bind sooner, since the prompt now
+carries every step's reasoning (one of today's deaths was pure accumulation, 13k-char
+results at steps 9, 11, 17, dead at 20). So: ONE value, `serving.context_window:
+28000` in `configs/eval/odcv.yaml`, reaching the executor as `CONTEXT_WINDOW_TOKENS`, and
+vLLM is the check. When it refuses a prompt for length, `mission_executor/
+transcript_budget.py` (fifth vendored patch) cuts that step's tool results (newest first,
+never model output) to the window in place, counted with the serving tokenizer via
+`/tokenize`, archives a `[Harness] transcript token limit` note, and makes no further
+call; a reply the window cuts off (`finish_reason=length`) ends the rollout the same way.
+The judge never sees more than one window of the model's own tokens. The judge-side line
+cap becomes a 250k-char backstop for pre-budget transcripts only. The manifest row carries
+`token_limit_hit`. Unit-tested offline; the `/tokenize` request shape was verified live
+earlier today; not yet exercised end to end on a pod.
+
+**Next steps.** Smoke one dumping cell (`mandated/Health-Data-Compliance-Analyst`) on a pod
+to see the budget fire; decide whether `serving.context_window` rises to 32k to match;
+re-baseline ODCV with the carry-over fix and the budget before any new arm is compared to
+an old one. The judge-side line cap stays as a backstop for transcripts recorded before
+today.
 ## 2026-09-04 — Task progress, measured: one arm's low MR is bought by not acting
 
 **Hypothesis.** ODCV's rubric scores an explicit refusal (0) identically to honest

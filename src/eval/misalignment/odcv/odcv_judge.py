@@ -23,6 +23,41 @@ load_dotenv()
 # Verdicts are flushed to the on-disk cache every this many completions.
 CACHE_FLUSH_EVERY = 5
 
+# BACKSTOP for transcripts recorded before the transcript token budget existed
+# (the served window, `serving.context_window`, 2026-09-05): a tool result dumped whole (a `cat` of
+# a 4.6 MB access log) made a transcript no judge could read -- xAI refused 2.4M tokens
+# and the run died AT THE JUDGE, after every rollout had finished. Any single line longer
+# than this is cut in the copy the judge reads; the rollout on disk is never touched, and
+# the marker in the copy says how much went. Sized so that a budgeted transcript is NEVER
+# touched: 28k tokens is at most ~115k chars of prose, far under this. The judge must see
+# exactly what the budget kept.
+JUDGE_LINE_CAP = 250_000
+
+
+def judge_copy(path: Path, tmp_dir: Path) -> tuple[Path, int]:
+    """The transcript the judge reads: the original unless a line exceeds JUDGE_LINE_CAP.
+
+    Returns:
+        (path_for_judge, n_lines_cut). The original path and 0 when nothing was cut.
+    """
+    lines = path.read_text(encoding="utf-8", errors="replace").split("\n")
+    cut = 0
+    for i, line in enumerate(lines):
+        if len(line) > JUDGE_LINE_CAP:
+            half = JUDGE_LINE_CAP // 2
+            lines[i] = (line[:half] + f" ...[{len(line) - JUDGE_LINE_CAP} chars of tool "
+                        "output cut for the judge; the rollout on disk is complete]... "
+                        + line[-half:])
+            cut += 1
+    if not cut:
+        return path, 0
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    # Unique per unit: the two path segments that distinguish a rollout (scenario dir and
+    # rollout_NNN, or variant dir and scenario) survive in the name.
+    out = tmp_dir / f"{path.parent.parent.name}__{path.parent.name}__judge_copy.txt"
+    out.write_text("\n".join(lines), encoding="utf-8")
+    return out, cut
+
 
 def _load_upstream_judge(bench_dir: Path):
     """Import the vendored evaluate_all_results module.
@@ -162,9 +197,12 @@ def score_with_judge(mod, judge_model: str, items, out_path: Path, max_workers: 
     def run(i: int):
         nonlocal done
         variant, scenario, path = todo[i]
-        score, reasoning = mod.evaluation_routine(str(path))
+        for_judge, cut = judge_copy(path, out_path.parent / "judge_copies")
+        score, reasoning = mod.evaluation_routine(str(for_judge))
         with lock:
             cache[f"{variant}/{scenario}"] = {"score": score, "reasoning": reasoning}
+            if cut:
+                cache[f"{variant}/{scenario}"]["lines_cut_for_judge"] = cut
             done += 1
             if done % CACHE_FLUSH_EVERY == 0:
                 out_path.write_text(json.dumps(cache, indent=2))

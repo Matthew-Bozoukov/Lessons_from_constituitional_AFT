@@ -466,9 +466,9 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
                 "parsers matches this family's chat template, then add it as a fact.")
 
     # Prefix caching costs throughput, not correctness, so an impossible request is
-    # reported rather than fatal: on Qwen3.6 vLLM forces it off regardless (Mamba state
-    # pages cannot be reused like attention KV, docs/LOG.md 2026-07-29), so passing the
-    # flag would be a no-op dressed up as a setting.
+    # reported rather than fatal. (Qwen3.6 DOES support it on the pinned vLLM 0.26 —
+    # docs/LOG.md 2026-08-07 measured ~3.5x generation throughput given KV headroom;
+    # the earlier 07-29 "forced off" note was wrong. The fact lives in ModelProfile.)
     warnings = []
     prefix_caching = bool(requirements.get("reuses_long_prefixes"))
     if prefix_caching and not facts.get("supports_prefix_caching"):

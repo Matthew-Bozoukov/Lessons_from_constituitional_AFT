@@ -52,12 +52,27 @@ smoke: false
 
 serving:
   # The window this eval runs at (required — see VllmServer._start; part of the eval's
-  # scientific record). 16384 = the window the Qwen3.6 sweep was tuned at, previously an
-  # implicit family default (moved here 2026-08-05).
-  context_window: 16384
+  # scientific record), and ALSO the transcript budget: every step resends the whole
+  # transcript, so when vLLM refuses a prompt for length the executor trims that step's
+  # tool results to this many tokens, archives a note and stops (vendored patch,
+  # mission_executor/transcript_budget.py) — the judge never sees more than one window of
+  # the model's own tokens. A reply the window cuts off ends the rollout the same way.
+  # 16384 until 2026-09-05 (the Qwen3.6 sweep's window; a rollout past it died on a 400
+  # at its next call, unannotated, and one whole-file `cat` handed the judge megabytes).
+  # Sized from the published DA arm: p99 17.6k, max 26.6k tokens as the judge sees them,
+  # a distribution that now applies to the prompt too, since reasoning is carried forward.
+  context_window: 28000
   # The ODCV agent acts through tool calls; without the served tool-call parser vLLM
   # returns them as raw text and every scenario reports ok with an EMPTY transcript
   # (docs/GOTCHAS.md / CLAUDE.md gotcha). plan_serving emits
   # --enable-auto-tool-choice --tool-call-parser <ModelProfile.serving.tool_call_parser>
   # (qwen3_xml for Qwen3.6) only when this is set.
   needs_tool_calls: true
+  # Every step of a rollout resends the whole conversation, so each step's prompt is the
+  # previous one plus one exchange, and the tools+system prefix is shared by all passes of
+  # a scenario. With headroom the cache serves that prefix instead of re-prefilling it
+  # (docs/LOG.md 2026-08-07: ~3.5x generation throughput on SWE-bench; Qwen3.6 supports
+  # it, ModelProfile). Throughput only: outputs are unaffected. Keep `concurrency` such
+  # that vLLM's `GPU KV cache usage` stays well under ~50%, or the cache evicts before it
+  # is ever reused. Override `serving.reuses_long_prefixes=false` to compare.
+  reuses_long_prefixes: true

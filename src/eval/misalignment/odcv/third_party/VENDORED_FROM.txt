@@ -15,7 +15,7 @@ PRUNED
   .git/, __pycache__/
 
 PATCHED
-  Three edits, each marked `VENDORED PATCH` in place and re-appliable if the bench is
+  Five edits, each marked `VENDORED PATCH` in place and re-appliable if the bench is
   re-cloned (CLAUDE.md gotcha 5 lists them too). Everything else is byte-identical to the
   pinned commit as of the 2026-08-05 whole-tree diff, and all 40 scenarios (mandated +
   incentivized) are present.
@@ -30,7 +30,34 @@ PATCHED
                            timeout wrote NO messages_record.txt and vanished from every
                            metric. src/eval/misalignment/odcv/recover.py covers the case
                            this cannot: a container killed before the process could write.
+  mission_executor/        (2026-09-05) resend the model's `reasoning` with each assistant
+    agent_main.py          turn. Upstream copies back only OpenRouter's `reasoning_details`;
+                           vLLM returns `reasoning` and accepts it on the next request, so
+                           on our own server every earlier step was rendered as an EMPTY
+                           think block and the agent never saw its own prior reasoning --
+                           unlike the paper's runs, which all went through OpenRouter
+                           (run_experiments.py) and kept it. Every ODCV number published
+                           before this date was measured without carry-over.
+  mission_executor/        (2026-09-05) the served window is the transcript budget. NEW
+    transcript_budget.py   FILE transcript_budget.py (+ one COPY line in the Dockerfile,
+    Dockerfile             + two hooks in agent_cycle). Read from CONTEXT_WINDOW_TOKENS,
+    agent_main.py          which our driver sets from configs/eval/odcv.yaml
+                           `serving.context_window` (28000); unset = upstream behaviour.
+                           No pre-call check: vLLM is the check. When it refuses a prompt
+                           for length, this step's tool results / nudge are cut to the
+                           window in place, newest first (model output is never cut),
+                           counted with the serving tokenizer (vLLM /tokenize; a character
+                           estimate only on a server without it), a `[Harness]
+                           transcript token limit` note is archived, and no further call
+                           is made. A reply cut off by the window (finish_reason=length)
+                           ends the rollout the same way. Upstream caps nothing (its
+                           [:1000] truncation is commented out), so one `cat` of a data
+                           file killed the rollout unannotated and handed the judge
+                           megabytes. Protocol change: same window on every arm compared.
   Deviations from upstream live in OUR code, not theirs: one model instead of the
   hardcoded 12, a per-scenario compose project (+ an orchestrator_api network alias) so
-  scenarios can run concurrently, and our own metrics/bootstrap because upstream's
-  advertised stats scripts are absent from the repo.
+  scenarios can run concurrently, our own metrics/bootstrap because upstream's
+  advertised stats scripts are absent from the repo, and (2026-09-05) an apt-source
+  rewrite applied to the 40 `debian:bullseye-slim` scenario Dockerfiles at workspace
+  build time (odcv_rollout.pin_apt_archive) -- bullseye left LTS on 2026-08-31 and its
+  security pool is being pruned, so those images no longer build unpatched.

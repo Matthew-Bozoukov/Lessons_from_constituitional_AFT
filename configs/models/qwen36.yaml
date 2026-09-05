@@ -26,14 +26,18 @@ gpu:
 #   Hermes JSON, so `hermes` would parse none and score a clean 0% (docs/LOG.md 2026-07-29).
 #   Confirmed live on the swebench pilot 2026-08-05: no_tool_call_rate 0.0 over 115 turns.
 # max_num_seqs: architectural. The hybrid Mamba arch fails at startup above a low cap.
-# supports_prefix_caching: FALSE on main as of 2026-09-05, and not a tuning choice (vLLM
-#   forces enable_prefix_caching=False on this arch, docs/LOG.md 2026-07-29). A branch is
-#   re-measuring this; if it lands as TRUE, flip it HERE, the Python literal is gone.
+# supports_prefix_caching: TRUE, measured. The 2026-07-29 note ("vLLM forces it off on this
+#   hybrid Mamba arch") was a misread of a 0.6% hit rate taken at 96% KV usage; the
+#   2026-08-07 A/B on the pinned vLLM 0.26 (docs/LOG.md) shows 77-78% hits and ~3.5x
+#   generation throughput once the cache has room. vLLM keeps it opt-in for hybrid models
+#   ("mamba cache mode 'align' ... experimental"), and the operating rule is KV headroom:
+#   size concurrency so usage stays well under ~50%, and read `Prefix cache hit rate` in the
+#   server log rather than assuming. Throughput only.
 serving:
   max_num_seqs: 32
   reasoning_parser: qwen3
   tool_call_parser: qwen3_xml
-  supports_prefix_caching: false
+  supports_prefix_caching: true
 
 # The chat template's literals, VERIFIED against the live tokenizer
 # (tests/test_masking_tokenizer.py). A profile WITHOUT this block is an unverified family:
