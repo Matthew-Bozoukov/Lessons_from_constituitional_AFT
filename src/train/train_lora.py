@@ -724,12 +724,8 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     # carries, in the form you hand back to `uv run train --config` — complete.
     (adapter_dir / "train_config.yaml").write_text(OmegaConf.to_yaml(cfg, resolve=True))
 
-    if push:
-        # The card is built from the stamp (src/train/launch.py adapter_card_fields), so
-        # the same call publishes a run whose push died (scratch/push_saved_adapter.py).
-        url = push_adapter(adapter_dir, training_meta)
-        print(f">>> pushed adapter (with training_meta.json + card) to {url}")
-
+    # The local record FIRST, so a push that fails (a name the gate refuses, a dead
+    # network) cannot lose the loss history the way the 2026-09-05 nosynth run did.
     meta = {
         "git_sha": _git_sha(),
         "recipe": recipe,
@@ -747,6 +743,12 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         "log_history": trainer.state.log_history,
     }
     (out_dir / "run_meta.json").write_text(json.dumps(meta, indent=2))
+    if push:
+        # The card is built from the stamp (src/train/launch.py adapter_card_fields), so
+        # the same call publishes a run whose push died (scratch/push_saved_adapter.py).
+        url = push_adapter(adapter_dir, training_meta)
+        print(f">>> pushed adapter (with training_meta.json + card) to {url}")
+
     for row in trainer.state.log_history:
         if "loss" in row:
             print(f">>> step {row.get('step')}  loss {row['loss']:.4f}")

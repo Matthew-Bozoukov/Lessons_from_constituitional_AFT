@@ -104,7 +104,6 @@ before a full run; then the
 mixture at DA's supervised-token dose, three seeds, ODCV in-distribution and MASK/psychosis
 out of distribution, with a `cot` ablation from the same rows.
 
-<<<<<<< HEAD
 ## 2026-09-05 — ODCV on da-ablated-702-seed0: MR 12.5% (5 passes)
 
 **Method.** `uv run evals --name odcv`, 5 passes, temp 0.7, 32 parallel, 16384 ctx, gemini-3-flash-preview
@@ -209,8 +208,6 @@ re-baseline ODCV with the carry-over fix and the budget before any new arm is co
 an old one. The judge-side line cap stays as a backstop for transcripts recorded before
 today.
 
-
-=======
 ## 2026-09-05 — Tool use becomes DATA: synth export → mixture → one render site, and a gate bug
 
 **Hypothesis.** The flipped experiment (train on agentic deliberation, evaluate on
@@ -253,8 +250,6 @@ written twice) and the template's own tools block (~330, fixed per row).
 ODCV's two framings, one exploration exchange, a supervised decision turn), with tool
 output capped so a row lands near 2k tokens and the arm budgeted by TOKENS in its mixture
 so the dose matches DA. Then the MASK eval as a registry entry.
-
->>>>>>> origin/main
 ## 2026-09-04 — Task progress, measured: one arm's low MR is bought by not acting
 
 **Hypothesis.** ODCV's rubric scores an explicit refusal (0) identically to honest
