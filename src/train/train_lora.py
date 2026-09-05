@@ -13,6 +13,7 @@ from pathlib import Path
 
 import torch
 from datasets import load_dataset
+from dotenv import load_dotenv
 from omegaconf import OmegaConf
 from peft import LoraConfig
 from transformers import (
@@ -259,6 +260,10 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     if torch.cuda.is_initialized():
         print(">>> WARNING: CUDA already initialized before allocator config was set "
               "— PYTORCH_CUDA_ALLOC_CONF may not apply to this process")
+    # The repo-root .env (HF token, W&B key) FIRST: the W&B preflight below reads the
+    # environment before any Hub call would have loaded it as a side effect, and a key
+    # that sits in the file but not in os.environ is a run refused for nothing.
+    load_dotenv()
     cfg = OmegaConf.load(config)
     if overrides:
         cfg.merge_with_dotlist([str(o) for o in overrides])
