@@ -1,6 +1,67 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-05 — One recipe, model profiles in YAML, `nosynth`: the train config stops naming the arm
+
+**Problem.** Planning the first 0%-synthetic control on the new base blend turned up four
+things in the way. (1) Its name: the base blend was the numeric sentinel `0`, so the organism
+would have been `<date>-qwen36-0-0` and the train config `qwen36-0.yaml`, both reading as a
+seed. (2) The trainer refused it under BOTH declarations: `thinking: true` because
+`check_thinking_declaration` demanded at least one reasoning trace (a 2026-08-03 guard from
+before the unconditional whole-marker mask of 2026-08-04), and `thinking: false` because the
+gate refuses rendered data carrying think blocks, which a train-time render always does.
+NuminaMath's derivations are in the visible answer, not `reasoning_content`, so the blend has
+zero think-channel traces by construction. (3) Sixty train configs that, with data pointers and
+output dirs stripped, hashed identically — one recipe copied per arm. (4) `dynamic_batching: {}`
+as a boolean spelled as a dict, and W&B dying at trainer init after the 55GB model had loaded.
+
+**Method.** *Naming:* the base blend is `nosynth` (`configs/data/mixture/nosynth.yaml` →
+`<date>-nosynth-mix`, organism `<date>-qwen36-<seed>-nosynth`); `split_mix_subject` reads a
+subject with no numeric token as the base blend, `nosynth` is reserved, and no lint exemption
+for bare numbers was needed. *One train config:* `configs/train.yaml` (rank 64, 1 epoch, global batch 16, cosine 1e-4,
+8192-token rows). Of the 59 per-arm configs it replaces, the 38 dynamic-batching arms carried
+exactly these values; the 21 older ones differed only in rank 32/alpha 64, lr 4e-5, warmup
+0.03, rows of 1536–3072, epochs 2/4 and legacy batching — every one a command-line override
+now, recorded in the artifact; model, data and the
+thinking declaration are launch arguments (`uv run train --config configs/train.yaml
+model=qwen36 data_repo=<org>/<mix> thinking=true [seed=N]`), the lint now refuses a train stem
+that starts with a model key or a file that declares `model`/`data_repo`/`thinking`, and the
+59 per-arm configs moved to `configs/train/archive/` with a README. *Model profiles in YAML:*
+`configs/models/<key>.yaml` (stem = the naming key; `match` = the squeezed substring that
+identifies the model in any id or path) carries the verified `template:` literals, `serving`,
+`gpu`, and the model half of a run (`model_class`, `lora_target_modules`, `load_in_4bit`,
+`attn_implementation`, measured `memory`); `src/model_profile.py` reads them, `model_key` /
+`model_profile` / `serving_params` / `gpu_for` keep their signatures so evals and chat resolve
+the profile from the artifact's base model unchanged; stubs (`qwen3`, `qwen306b`, `gptoss*`)
+are named and served, never trained. *Reproducibility:* the trainer writes back what it
+resolved — the HF id `model=` stood for and its revision, the data file and revision, the token
+budget, and the profile as a `profile:` block — so the `train_config.yaml` pushed with the
+adapter re-runs the arm with no other argument (`src/train/launch.py`, importable without
+torch/trl, holds the contract: retired keys refused with the fix, required launch args, model
+resolution, W&B preflight). *Data file:* `mixture.jsonl` is the default; `data_file=` stays
+for legacy repos. *Dynamic batching always on*, `packing`/`loss_type`/`assistant_only_loss`/
+`mask_empty_think` gone as knobs; `train.token_budget` is the one override. *W&B:* off by default and a launch decision (`wandb=true`, a boolean — the only reporter
+this repo uses — with `train.report_to` retired; a stamped
+train_config.yaml that ran with it reports again); the run is named after the adapter,
+`WANDB_PROJECT` defaults to `lasr`, a missing key is refused before anything downloads, `.env.example` gains the trio and `runpod up --push_env` carries them when
+set; `runpod up --train <recipe> --model <key>` picks the GPU. *Thinking check:* the
+"at least one trace" assertion is deleted; `thinking: false` over real traces is still refused.
+
+**Result.** Suite 1368 pass (was 1357), naming lint clean, live-tokenizer tests pass. Verified
+on the way: `blend()` at 7% reproduces the nosynth proportions to within 0.007 pp, but the
+spec filter is NOT proportion-preserving (2026-08-04 report: smol_summarize 32% rejected,
+tulu3_if 7%, no_robots 5%, numina 2.5%, longalign 1%), so the 9,284-row base every existing
+arm used has smol_summarize at 7.2% where nosynth has 9.8%. A control that is not filtered
+the way its arms are differs from them in more than the synthetic share.
+
+**Next steps.** Decide whether the nosynth control is spec-filtered like `da.yaml` (add the
+same `filter:` block) or the filter is dropped from both; then `uv run mix --config
+configs/data/mixture/nosynth.yaml`, and `uv run train --config configs/train.yaml
+model=qwen36 data_repo=LASR-Callum/<date>-nosynth-mix thinking=true` on one H200. Carry the
+in-flight `supports_prefix_caching` re-measurement into `configs/models/qwen36.yaml` (the
+Python literal is gone). CLAUDE.md still describes `configs/train/<model>-<mix>-<pct>`,
+`dynamic_batching`, and `--push_env` as HF-only; human edit needed.
+
 ## 2026-09-04 — Task progress, measured: one arm's low MR is bought by not acting
 
 **Hypothesis.** ODCV's rubric scores an explicit refusal (0) identically to honest

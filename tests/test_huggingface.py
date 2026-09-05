@@ -44,6 +44,15 @@ def test_pick_data_file_explicit_choice_wins():
     assert pick_data_file(files, "sft_dataset_thinking.jsonl") == "sft_dataset_thinking.jsonl"
 
 
+def test_pick_data_file_prefers_the_contract_file_over_stage_checkpoints():
+    """A filtered mixture repo holds mixture_unfiltered/filtered.jsonl beside mixture.jsonl;
+    the training file is mixture.jsonl and needs no data_file (the recipe carries none)."""
+    files = ["README.md", "mixture_unfiltered.jsonl", "mixture_filtered.jsonl",
+             "mixture.jsonl", "mixture_stats.json"]
+    assert pick_data_file(files) == "mixture.jsonl"
+    assert pick_data_file(files, "mixture_filtered.jsonl") == "mixture_filtered.jsonl"
+
+
 def test_pick_data_file_ambiguous_is_a_hard_error():
     with pytest.raises(AssertionError, match="data_file"):
         pick_data_file(["a.jsonl", "b.jsonl"])

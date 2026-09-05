@@ -1,0 +1,5 @@
+# ABOUTME: ModelProfile stub for gpt-oss-20b: a naming KEY, nothing verified.
+# ABOUTME: Add `template:` and `train:` blocks, verified against the live tokenizer, before training.
+model: "openai/gpt-oss-20b"
+match: gptoss20b
+family: "gpt-oss"

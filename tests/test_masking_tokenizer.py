@@ -15,7 +15,8 @@ from __future__ import annotations
 
 import pytest
 
-from src.model_profile import QWEN36_PROFILE
+from src.model_profile import model_profile
+QWEN36_PROFILE = model_profile("qwen36")
 from src.train.masking import build_labels
 
 THINK_PREFILL = QWEN36_PROFILE.prefill

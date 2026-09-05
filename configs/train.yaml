@@ -1,0 +1,69 @@
+# ABOUTME: THE training recipe, the only train config: rank-64 LoRA, 1 epoch, global batch 16,
+# ABOUTME: cosine 1e-4, 8192-token rows, dynamic batching. Everything arm-specific is a launch argument.
+# Run: uv run train --config configs/train.yaml model=<key> data_repo=<org>/<mix> thinking=<true|false> [seed=N]
+#   e.g. uv run train --config configs/train.yaml model=qwen36 \
+#            data_repo=LASR-Callum/2026-09-05-nosynth-mix thinking=true
+#   N GPUs on one host: uv run torchrun --nproc_per_node=N scripts/train/train_lora.py --config configs/train.yaml model=... data_repo=... thinking=...
+#
+# A recipe names NO model and NO data: those are launch arguments, so this one file trains
+# every arm and an arm's identity comes from what it was launched on. It is the ONLY train
+# config: of the 59 per-arm configs it replaced (configs/train/archive/), the 38 dynamic-
+# batching arms carried exactly these values, and the older ones differed only in rank 32,
+# lr 4e-5, warmup 0.03, shorter rows or more epochs — every one a `lora.r=32`-style override
+# now, recorded in the artifact. The MODEL half of a
+# run (checkpoint class, LoRA target regex, quantisation, measured memory ceilings) lives in
+# configs/models/<key>.yaml; the DATA half is a mixture repo on the Hub, pinned to the
+# revision the run resolves. What a run actually used — the HF id and revision `model=`
+# stood for, the data file and revision, the token budget, the profile it rendered and
+# masked with — is written back into the `train_config.yaml` it pushes with the adapter,
+# and THAT file re-runs the arm with no other argument:
+#   uv run train --config <downloaded train_config.yaml>
+#
+# Launch arguments (no defaults here, deliberately — each is the arm's identity):
+#   model=<key|hf id|path>   configs/models/<key>.yaml by stem, or anything its `match` identifies
+#   data_repo=<org>/<name>   a mixture repo; its `mixture.jsonl` unless data_file= names another (legacy repos)
+#   thinking=<true|false>    the mode this arm is served and evaluated in, validated against the data
+#   seed=N                   defaults to 0 below; the seed is part of the organism's name
+# Optional: wandb=true  data_revision=<sha>  base_model_revision=<sha>  train.token_budget=N  hf_repo=<name>  push=false
+
+seed: 0
+# Weights & Biases is a launch decision: `wandb=true` on the command line turns it on for
+# that run (the only reporter this repo uses, so a boolean, not transformers' report_to
+# list), and the train_config.yaml an adapter carries keeps whatever its run used, so
+# re-running one that reported reports again. The run is named after the adapter it
+# produces; it needs WANDB_API_KEY in the env (.env; `runpod up --push_env` carries it)
+# and the trainer refuses to start without it, so a missing key costs no GPU time.
+wandb: false
+# cwd-relative on the GPU host (/root/work/output/train/<organism>); the container disk.
+output_dir: "output/train"
+
+lora:
+  r: 64
+  alpha: 128
+  dropout: 0.05
+
+train:
+  epochs: 1
+  # global batch = batch_size x grad_accum = 16, the scientific unit. Dynamic batching is
+  # always on: the trainer receives the whole 16-example step and groups it into
+  # token-budgeted micro-batches (src/train/dynamic_batching.py), gradient-equivalent to
+  # 16 passes of batch 1; under DDP route_step splits the step across ranks. The budget
+  # resolves from the profile's measured ceiling for the live GPU (H200: 8,000 padded
+  # tokens), else the dataset's longest row. `token_budget:` here overrides both and must
+  # cite a scratch/probe_batch_memory.py run in its comment.
+  batch_size: 1
+  grad_accum: 16
+  lr: 1.0e-4
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  logging_steps: 5
+  # A truncation ceiling, NOT the batching budget: 8192 truncates nothing in the Table-2
+  # mixtures (longest row 8,191 tokens; LongAlign is capped to it at build time).
+  max_seq_len: 8192
+  # Durable checkpoints in the run directory (named for the organism, so a relaunch of the
+  # same arm on the same day resumes from them).
+  save_strategy: "steps"
+  save_steps: 100
+  save_total_limit: 2
+  auto_resume: true

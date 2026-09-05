@@ -11,11 +11,13 @@ from src.train.mask_gate import (
     expected_supervised_text,
     gate_generation_boundary,
 )
-from src.model_profile import QWEN36_PROFILE
+from src.model_profile import model_profile
+QWEN36_PROFILE = model_profile("qwen36")
 
 THINK_PREFILL = QWEN36_PROFILE.prefill
 EMPTY_THINK = QWEN36_PROFILE.empty_think
-from src.model_profile import QWEN36_PROFILE, think_census
+from src.model_profile import model_profile, think_census
+QWEN36_PROFILE = model_profile("qwen36")
 
 
 class _Tok:

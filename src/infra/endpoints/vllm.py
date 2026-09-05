@@ -33,6 +33,10 @@ from huggingface_hub.errors import EntryNotFoundError
 
 from src.model_profile import serving_params
 
+# The Weights & Biases variables a training pod may carry (src/train/launch.py reads them);
+# pushed by `push_hf_env` only when set locally, never invented.
+WANDB_ENV = ("WANDB_API_KEY", "WANDB_PROJECT", "WANDB_ENTITY")
+
 # Serving parameters come from two places with different epistemic status (merged in
 # _start): the FAMILY's verified facts (ModelProfile.serving, src/model_profile.py — reasoning
 # parser, max_num_seqs constraint, verified_context_window ceiling; unprofiled families
@@ -633,18 +637,19 @@ class SshExec:
         return self._ssh(f"[ -f {self.workdir}/.env ] && echo yes || echo no").strip() == "yes"
 
     def push_hf_env(self, local_env: Path) -> None:
-        """OPT-IN provisioning (--push-env): write ONLY HF_TOKEN and HF_ORG to the host's .env.
+        """OPT-IN provisioning (--push-env): write HF_TOKEN, HF_ORG and the W&B trio to the host's .env.
 
         The server needs exactly one credential — HF_TOKEN, for gated/private weight
-        pulls — and that stays the only SECRET that ever leaves this machine. HF_ORG
-        rides along because it is not one: a TRAINING pod pushes its own adapter and
-        resolves the namespace from the host's own environment, and without it the upload
-        fail-fasts at the end of the run with nothing to fall back on
-        (src.infra.huggingface.hf_org). An eval pod never pushes anything — the results are
-        published by the driver — so there it is inert, and HF_TOKEN is the whole point.
-        The rest of the .env (OpenRouter, provider API keys) stays local: a rented GPU
-        host is the least-trusted machine in the loop, and CLAUDE.md's secrets policy
-        says leaked values must be bounded. Never overwrites an existing remote .env.
+        pulls. HF_ORG rides along because it is not one: a TRAINING pod pushes its own
+        adapter and resolves the namespace from the host's own environment, and without
+        it the upload fail-fasts at the end of the run with nothing to fall back on
+        (src.infra.huggingface.hf_org). The W&B variables (`WANDB_API_KEY`,
+        `WANDB_PROJECT`, `WANDB_ENTITY`) cross ONLY when set locally: a training run
+        whose recipe reports to wandb refuses to start without the key, so a pod that
+        will train needs it, and an eval pod ignores it. The rest of the .env
+        (OpenRouter, provider API keys) stays local: a rented GPU host is the
+        least-trusted machine in the loop, and CLAUDE.md's secrets policy says leaked
+        values must be bounded. Never overwrites an existing remote .env.
         """
         # Skip, don't abort. The host having a .env already is the NORMAL case on any
         # relaunch against the same box (a crashed run, a config tweak), and failing the
@@ -656,11 +661,16 @@ class SshExec:
             return
         from src.infra.huggingface import hf_org
 
-        token = next((line.split("=", 1)[1].strip()
-                      for line in local_env.read_text().splitlines()
-                      if line.startswith("HF_TOKEN=")), "")
+        local = {}
+        for line in local_env.read_text().splitlines():
+            if "=" in line and not line.lstrip().startswith("#"):
+                k, v = line.split("=", 1)
+                local[k.strip()] = v.strip()
+        token = local.get("HF_TOKEN", "")
         assert token, f"no HF_TOKEN in {local_env}; nothing to push"
-        lines = " ".join(shlex.quote(v) for v in (f"HF_TOKEN={token}", f"HF_ORG={hf_org()}"))
+        pairs = [f"HF_TOKEN={token}", f"HF_ORG={hf_org()}"]
+        pairs += [f"{k}={local[k]}" for k in WANDB_ENV if local.get(k)]
+        lines = " ".join(shlex.quote(v) for v in pairs)
         self._ssh(f"umask 077 && mkdir -p {self.workdir} && "
                   rf"printf '%s\n' {lines} > {self.workdir}/.env")
         print(f">>> pushed HF_TOKEN + HF_ORG (and nothing else) to "

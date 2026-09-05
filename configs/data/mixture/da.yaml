@@ -1,4 +1,4 @@
-# ABOUTME: The difficult-advice arm: the base blend (configs/data/mixture/0.yaml) scaled
+# ABOUTME: The difficult-advice arm: the base blend (configs/data/mixture/nosynth.yaml) scaled
 # ABOUTME: around a synthetic `da` share. Publishes as `<date>-da-<pct>-mix`.
 # Run: uv run mix --config configs/data/mixture/da.yaml [synthetic_pct=20]
 #
@@ -9,7 +9,7 @@
 # only in that number and in which single replay source they used.
 #
 # The non-synthetic portion comes from `base:` and keeps ITS proportions at every share —
-# see 0.yaml. That is the difference from the older arms: they swapped the replay portion
+# see nosynth.yaml. That is the difference from the older arms: they swapped the replay portion
 # for `tulu3` alone, so replay composition moved with the synthetic share and no arm was a
 # clean control for the next.
 
@@ -19,7 +19,7 @@ max_seq_len: 8192
 
 # THE fixed non-synthetic blend. Its proportions are held; only its total shrinks as the
 # synthetic share grows.
-base: "configs/data/mixture/0.yaml"
+base: "configs/data/mixture/nosynth.yaml"
 
 # Percentage of the mixture's ROWS that are synthetic — the number in its name, and the
 # only thing that varies across this ladder.

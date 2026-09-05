@@ -240,24 +240,35 @@ def card_markdown(fields: dict, front_matter: dict | None = None) -> str:
 _HF_REPO_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._-]+$")
 
 
+# THE training file of a mixture repo built under the contract (src/data/mixture/
+# build_mixture.py writes it beside its stage checkpoints `mixture_unfiltered.jsonl` and
+# `mixture_filtered.jsonl`). Every new mixture publishes it under this name, so a train run
+# needs no `data_file`; the argument stays for legacy repos that named the file otherwise.
+DEFAULT_DATA_FILE = "mixture.jsonl"
+
+
 def pick_data_file(files: list[str], filename: str | None = None) -> str:
     """Choose the one data file from a dataset repo's file list (pure; unit-tested offline).
 
     Args:
         files: Every file in the repo (rfilenames).
-        filename: Explicit choice; required when the repo holds more than one .jsonl.
+        filename: Explicit choice (`data_file=`), for a legacy repo. Must exist.
 
     Returns:
-        The chosen filename, never a guess: an ambiguous repo is a hard error.
+        `filename` if given; else `mixture.jsonl` when the repo has one (the contract's
+        final artifact — the stage checkpoints beside it are not training files); else the
+        repo's single .jsonl. Never a guess: any other shape is a hard error.
     """
     if filename:
         assert filename in files, (
             f"data_file {filename!r} is not in the dataset repo (files: {sorted(files)})")
         return filename
     candidates = [f for f in files if f.endswith(".jsonl")]
+    if DEFAULT_DATA_FILE in candidates:
+        return DEFAULT_DATA_FILE
     assert len(candidates) == 1, (
-        f"expected exactly one .jsonl in the dataset repo, found {sorted(candidates)} — "
-        "declare data_file: <name> to pick one")
+        f"expected {DEFAULT_DATA_FILE} or exactly one .jsonl in the dataset repo, found "
+        f"{sorted(candidates)} — pass data_file=<name> to pick one (a legacy repo)")
     return candidates[0]
 
 

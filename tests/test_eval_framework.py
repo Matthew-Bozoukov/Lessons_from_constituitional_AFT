@@ -9,7 +9,8 @@ from huggingface_hub.errors import EntryNotFoundError
 from src.infra.endpoints.vllm import TargetSpec, _spec_from_files, pin_template
 from src.eval import EVALS, EvalSpec
 from src.infra.huggingface import REQUIRED_FIELDS, card_markdown
-from src.model_profile import QWEN36_PROFILE
+from src.model_profile import model_profile
+QWEN36_PROFILE = model_profile("qwen36")
 
 ADAPTER_CONFIG = {"base_model_name_or_path": "Qwen/Qwen3-32B", "r": 16}
 
@@ -287,7 +288,8 @@ def test_sshexec_push_hf_env_is_optin_minimal_and_never_overwrites(monkeypatch, 
     from src.infra.endpoints.vllm import SshExec
 
     local = tmp_path / ".env"
-    local.write_text("OPENROUTER_API_KEY=secret-or\nHF_TOKEN=hf_abc\nVAST_API_KEY=v\n")
+    local.write_text("OPENROUTER_API_KEY=secret-or\nHF_TOKEN=hf_abc\nVAST_API_KEY=v\n"
+                     "# WANDB_API_KEY=commented-out\nWANDB_PROJECT=lasr\nWANDB_ENTITY=\n")
     ex = SshExec("host", port=8000)
     sent = []
 
@@ -304,8 +306,9 @@ def test_sshexec_push_hf_env_is_optin_minimal_and_never_overwrites(monkeypatch, 
     ex.push_hf_env(local)
     assert not any("hf_abc" in c for c in seen), "must not rewrite an existing remote .env"
 
-    # Remote has none: exactly HF_TOKEN and HF_ORG cross, nothing else from the .env.
-    # HF_ORG is not a credential, and work run ON the host cannot push without it.
+    # Remote has none: HF_TOKEN, HF_ORG and whichever W&B variables are SET cross —
+    # nothing else from the .env. HF_ORG is not a credential, and work run ON the host
+    # cannot push without it; a commented-out or empty W&B line is not set.
     def fake_ssh(cmd, **kw):
         sent.append(cmd)
         return "no\n"
@@ -314,8 +317,14 @@ def test_sshexec_push_hf_env_is_optin_minimal_and_never_overwrites(monkeypatch, 
     ex.push_hf_env(local)
     written = sent[-1]
     assert "hf_abc" in written and "HF_ORG=test-org" in written
+    assert "WANDB_PROJECT=lasr" in written
+    assert "WANDB_API_KEY" not in written and "WANDB_ENTITY" not in written
     assert "secret-or" not in written and "VAST" not in written
     assert "umask 077" in written
+
+    local.write_text("HF_TOKEN=hf_abc\nWANDB_API_KEY=wb_key\n")
+    ex.push_hf_env(local)
+    assert "WANDB_API_KEY=wb_key" in sent[-1]
 
 
 def test_sshexec_check_ready_errors_name_the_remedy(monkeypatch):

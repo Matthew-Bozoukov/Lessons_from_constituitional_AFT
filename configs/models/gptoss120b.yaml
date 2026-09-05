@@ -1,0 +1,5 @@
+# ABOUTME: ModelProfile stub for gpt-oss-120b: a naming KEY for the Tinker-trained arm, nothing
+# ABOUTME: verified. Its harmony template is not this repo's mask rule; add `template:` before training here.
+model: "openai/gpt-oss-120b"
+match: gptoss120b
+family: "gpt-oss"
