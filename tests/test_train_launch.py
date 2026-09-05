@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,8 @@ from omegaconf import OmegaConf
 
 from src.train.launch import (
     LAUNCH_ARGS,
+    adapter_card_fields,
+    push_adapter,
     check_retired_keys,
     require_launch_args,
     resolve_model,
@@ -119,3 +122,44 @@ def test_the_saved_config_is_a_complete_rerun():
     assert (again.base_model_revision, again.data_file, again.data_revision,
             again.train.token_budget, again.thinking) == ("abc123", "mixture.jsonl", "def456",
                                                           8000, True)
+
+
+def _meta(tmp_path):
+    return {
+        "organism": "2026-09-05-qwen36-0-nosynth", "thinking": True, "recipe": "train",
+        "mix_subject": "nosynth", "base_model": "Qwen/Qwen3.6-27B",
+        "base_model_revision": "abc123", "model_profile": {"key": "qwen36"},
+        "dataset": {"repo": "o/2026-09-05-nosynth-mix", "file": "mixture.jsonl",
+                    "revision": "def456"},
+        "command": "uv run train --config configs/train.yaml model=qwen36 ...",
+        "git_sha": "4afbc134", "timestamp": "20260905_202126",
+        "train_config": {"seed": 0, "lora": {"r": 64, "alpha": 128, "dropout": 0.05},
+                         "train": {"epochs": 1, "lr": 1e-4, "batch_size": 1, "grad_accum": 16,
+                                   "max_seq_len": 8192, "token_budget": 8000}},
+    }
+
+
+def test_the_adapter_card_comes_from_the_stamp_alone(tmp_path):
+    from src.infra.huggingface import REQUIRED_FIELDS
+
+    fields = adapter_card_fields(_meta(tmp_path))
+    assert set(REQUIRED_FIELDS) <= set(fields) and all(fields[k] for k in REQUIRED_FIELDS)
+    assert fields["date_generated"] == "20260905"       # the run's date, so the gate agrees
+    assert "nosynth" in fields["experiment"] and "8000" in fields["generation_config"]
+
+
+def test_push_adapter_publishes_under_the_stamped_name_qualified_with_the_org(tmp_path, monkeypatch):
+    """The 2026-09-05 nosynth run lost its push to this: a bare name reached a gate that
+    wanted org/name. The name is stamped, qualified here, and a re-push needs nothing else."""
+    import src.train.launch as launch
+    from src.infra.huggingface import hf_org
+
+    seen = {}
+    monkeypatch.setattr(launch, "push_run_dir",
+                        lambda d, repo, fields, **kw: seen.update(repo=repo, kw=kw) or "url")
+    (tmp_path / "training_meta.json").write_text(json.dumps(_meta(tmp_path)))
+    assert push_adapter(tmp_path) == "url"
+    assert seen["repo"] == f"{hf_org()}/2026-09-05-qwen36-0-nosynth"
+    assert seen["kw"] == {"private": True, "repo_type": "model"}
+    with pytest.raises(AssertionError, match="no `organism`"):
+        push_adapter(tmp_path, {**_meta(tmp_path), "organism": ""})

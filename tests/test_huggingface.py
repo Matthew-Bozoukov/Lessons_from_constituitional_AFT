@@ -152,3 +152,25 @@ def test_card_markdown_front_matter_parses_back_to_the_same_dict():
     assert text.startswith("---\n")
     assert yaml.safe_load(text.split("---")[1]) == fm
     assert "| `constitution` |" in text  # the card table still follows the block
+
+
+def test_push_run_dir_qualifies_a_bare_name_before_the_gate(tmp_path, monkeypatch):
+    """A publisher may pass the name the law minted OR the qualified id; both reach the Hub
+    under HF_ORG. The gate used to run first and refuse the bare form (2026-09-05)."""
+    import src.infra.huggingface as hf
+
+    calls = []
+
+    class _Api:
+        def create_repo(self, repo_id, **kw): calls.append(("create", repo_id))
+        def upload_folder(self, *, folder_path, repo_id, repo_type): calls.append(("upload", repo_id))
+
+    monkeypatch.setattr(hf, "hf_api", lambda: _Api())
+    fields = {"experiment": "x", "date_generated": "20260905", "constitution": "none",
+              "source_repo": "r", "models": "m", "generation_config": "{}", "schema": "s",
+              "provenance": "p"}
+    org = hf.hf_org()
+    for name in ("2026-09-05-qwen36-0-nosynth", f"{org}/2026-09-05-qwen36-0-nosynth"):
+        url = hf.push_run_dir(tmp_path, name, fields, private=True, repo_type="model")
+        assert url == f"https://huggingface.co/{org}/2026-09-05-qwen36-0-nosynth"
+    assert {r for _, r in calls} == {f"{org}/2026-09-05-qwen36-0-nosynth"}

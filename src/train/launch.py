@@ -21,12 +21,15 @@ which is why the contract lives here rather than in train_lora.py.
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
 from omegaconf import OmegaConf
 
+from src.infra.huggingface import hf_repo_id, push_run_dir
 from src.model_profile import ModelProfile, model_key, model_profile
+from src.utils import origin_url
 
 # The project W&B runs land in unless the environment says otherwise (transformers'
 # own default is the anonymous "huggingface" project).
@@ -166,3 +169,65 @@ def write_back_pins(cfg, *, model_id: str, base_revision: str | None,
 def recipe_name(config_path: str) -> str:
     """The recipe a run used, by the config's stem — recorded, never part of a name."""
     return Path(config_path).stem
+
+
+def adapter_card_fields(meta: dict) -> dict:
+    """The card an adapter ships with, built from its training_meta.json alone.
+
+    Same card contract as every other artifact (CLAUDE.md: every upload carries a card),
+    derived from the run's real metadata — the human-readable half beside the
+    machine-readable stamp the eval framework consumes. Pure: everything it needs is in
+    the stamp, which is what lets `push_adapter` publish a run whose own push died.
+    """
+    cfg, ds = meta["train_config"], meta["dataset"]
+    return {
+        "experiment": f"LoRA SFT adapter — recipe `{meta['recipe']}` on mixture "
+                      f"`{meta['mix_subject']}` ({meta['model_profile']['key']}, "
+                      f"seed {int(cfg['seed'])})",
+        "date_generated": str(meta["timestamp"])[:8],
+        "constitution": str(cfg.get("constitution") or
+                            f"inherited from the training data ({ds['repo']}); "
+                            "not declared at launch"),
+        "source_repo": f"{origin_url()} @ {meta['git_sha']}",
+        "models": f"base: {meta['base_model']}@"
+                  f"{meta.get('base_model_revision') or 'unpinned local path'}",
+        "generation_config": json.dumps({
+            "recipe": meta["recipe"],
+            "seed": int(cfg["seed"]), "thinking": bool(meta["thinking"]),
+            "epochs": float(cfg["train"]["epochs"]), "lr": float(cfg["train"]["lr"]),
+            "batch_size": int(cfg["train"]["batch_size"]),
+            "grad_accum": int(cfg["train"]["grad_accum"]),
+            "max_seq_len": int(cfg["train"]["max_seq_len"]),
+            "lora": {"r": int(cfg["lora"]["r"]), "alpha": int(cfg["lora"]["alpha"]),
+                     "dropout": float(cfg["lora"]["dropout"])},
+            "dynamic_batching": {"token_budget": int(cfg["train"]["token_budget"]),
+                                 "loss_agg": "seq-mean-token-mean"},
+        }),
+        "schema": "PEFT LoRA adapter (safetensors) + tokenizer + train_config.yaml "
+                  "(the resolved config that ran, every launch argument and pin "
+                  "written back: `uv run train --config train_config.yaml` re-runs "
+                  "it) + training_meta.json {organism, thinking, recipe, mix_subject, "
+                  "train_config, base_model, base_model_revision, model_profile, "
+                  "dataset{repo,file,revision}, git_sha, timestamp}",
+        "provenance": str(meta["command"]),
+        "dataset": f"hf.co/datasets/{ds['repo']}@{ds['revision']} ({ds['file']})",
+    }
+
+
+def push_adapter(adapter_dir: Path, meta: dict | None = None) -> str:
+    """Publish a saved adapter directory under the organism name its stamp records.
+
+    `train_lora.main` calls this at the end of a run; `scratch/push_saved_adapter.py`
+    calls it for a run whose push failed after the adapter was written. Either way the
+    card comes from `training_meta.json` and the destination from
+    `hf_repo_id(meta["organism"])` — the name the law minted at launch, qualified with
+    the environment's org.
+    """
+    adapter_dir = Path(adapter_dir)
+    if meta is None:
+        meta = json.loads((adapter_dir / "training_meta.json").read_text())
+    assert meta.get("organism"), (
+        f"{adapter_dir}/training_meta.json has no `organism`; stamps from before "
+        "2026-09-06 carry none — pass the name explicitly (scratch/push_saved_adapter.py)")
+    return push_run_dir(adapter_dir, hf_repo_id(str(meta["organism"])),
+                        adapter_card_fields(meta), private=True, repo_type="model")

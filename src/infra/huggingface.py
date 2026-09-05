@@ -332,9 +332,11 @@ def push_run_dir(out_dir: Path, repo_id: str, fields: dict, private: bool = Fals
 
     Args:
         out_dir: The directory to upload (eval run dir, adapter dir, ...).
-        repo_id: Repo NAME per the naming rule, e.g. 2026-08-03-mmlu-<model_key>
-            (adapter repos keep their model-key naming). The org comes from
-            `hf_org()` — the environment, never the caller.
+        repo_id: The repo NAME the law minted (`2026-09-05-qwen36-0-nosynth`), or that
+            name already qualified with `hf_org()` — `hf_repo_id` is idempotent, and it
+            runs BEFORE the gate, so both spellings reach the Hub under the one org the
+            environment names. (Until 2026-09-06 the gate ran first and refused a bare
+            name; the trainer passed one, and a 2.5-hour run lost its push at the end.)
         fields: Card fields; all REQUIRED_FIELDS must be present and non-empty.
         private: PUBLIC by default (2026-08-24: the dashboard reads eval repos token-less); pass private=True deliberately for anything sensitive.
         repo_type: "dataset" (default) or "model" (adapters).
@@ -342,9 +344,9 @@ def push_run_dir(out_dir: Path, repo_id: str, fields: dict, private: bool = Fals
     Returns:
         The repo URL.
     """
+    repo_id = hf_repo_id(repo_id)  # qualify, THEN gate: the gate reads `org/name`
     gate_push(repo_id, fields, what=f"{repo_type} push")  # name first: no repo, no debt
     card = card_markdown(fields, front_matter)  # validate before any network call
-    repo_id = hf_repo_id(repo_id)
     api = hf_api()
     api.create_repo(repo_id, repo_type=repo_type, private=private, exist_ok=True)
     # Explicit utf-8: cards are full of em-dashes, and upload_folder reads this file back

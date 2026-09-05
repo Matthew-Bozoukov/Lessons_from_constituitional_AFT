@@ -30,6 +30,7 @@ from src.train.dynamic_batching import (  # noqa: E402
 )
 from src.train.launch import (  # noqa: E402
     check_retired_keys,
+    push_adapter,
     recipe_name,
     require_launch_args,
     resolve_model,
@@ -666,6 +667,8 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     # argument and pin. The eval framework infers serve-time thinking mode from it
     # (CLAUDE.md, "The eval framework").
     training_meta = {
+        # The name the law minted for this run: what a re-push publishes under.
+        "organism": hf_repo,
         "thinking": thinking,
         # The recipe locates the hyperparameters in this repo; `train_config` is what
         # actually ran, resolved (overrides merged, pins written back). Both travel with
@@ -722,44 +725,9 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     (adapter_dir / "train_config.yaml").write_text(OmegaConf.to_yaml(cfg, resolve=True))
 
     if push:
-        from src.infra.huggingface import push_run_dir
-        from src.utils import origin_url
-
-        # Same card contract as every other artifact (CLAUDE.md: every upload carries a
-        # card), derived from the run's real metadata — the human-readable half beside
-        # the machine-readable training_meta.json the eval framework consumes.
-        url = push_run_dir(adapter_dir, hf_repo, {
-            "experiment": f"LoRA SFT adapter — recipe `{recipe}` on mixture `{mix}` "
-                          f"({profile.key}, seed {int(cfg.seed)})",
-            "date_generated": ts[:8],
-            "constitution": str(cfg.get("constitution") or
-                                f"inherited from the training data "
-                                f"({dataset_ref['repo']}); "
-                                "not declared at launch"),
-            "source_repo": f"{origin_url()} @ {_git_sha()}",
-            "models": f"base: {model_id}@{base_revision or 'unpinned local path'}",
-            "generation_config": json.dumps({
-                "recipe": recipe,
-                "seed": int(cfg.seed), "thinking": thinking,
-                "epochs": float(cfg.train.epochs), "lr": float(cfg.train.lr),
-                "batch_size": int(cfg.train.batch_size),
-                "grad_accum": int(cfg.train.grad_accum),
-                "max_seq_len": max_len,
-                "lora": {"r": int(cfg.lora.r), "alpha": int(cfg.lora.alpha),
-                         "dropout": float(cfg.lora.dropout)},
-                "dynamic_batching": {"token_budget": dyn_budget,
-                                     "loss_agg": "seq-mean-token-mean"},
-            }),
-            "schema": "PEFT LoRA adapter (safetensors) + tokenizer + train_config.yaml "
-                      "(the resolved config that ran, every launch argument and pin "
-                      "written back: `uv run train --config train_config.yaml` re-runs "
-                      "it) + training_meta.json {thinking, recipe, mix_subject, "
-                      "train_config, base_model, base_model_revision, model_profile, "
-                      "dataset{repo,file,revision}, git_sha, timestamp}",
-            "provenance": " ".join(sys.argv),
-            "dataset": f"hf.co/datasets/{dataset_ref['repo']}@{dataset_ref['revision']} "
-                       f"({dataset_ref['file']})",
-        }, private=True, repo_type="model")
+        # The card is built from the stamp (src/train/launch.py adapter_card_fields), so
+        # the same call publishes a run whose push died (scratch/push_saved_adapter.py).
+        url = push_adapter(adapter_dir, training_meta)
         print(f">>> pushed adapter (with training_meta.json + card) to {url}")
 
     meta = {
