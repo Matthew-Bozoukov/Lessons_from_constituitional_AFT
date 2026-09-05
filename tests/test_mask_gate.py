@@ -66,6 +66,19 @@ def test_expected_supervised_text_strips_each_turns_forced_head():
         "answer<|im_end|>"
 
 
+def test_expected_supervised_text_final_keeps_only_the_last_turn():
+    # A par row (un-repaired first reply as context) or an agentic row (exploration
+    # turns as context) under `supervise: final`: the mask trains the last turn only,
+    # and the independent expectation must say the same or the gate refuses every such
+    # row -- which it did until 2026-09-05.
+    assert expected_supervised_text(THINK_ROW, THINK_PREFILL, EMPTY_THINK,
+                                    supervise="final") == "a2<|im_end|>"
+    census = gate_generation_boundary([THINK_ROW], _Tok(), max_length=10_000,
+                                      profile=QWEN36_PROFILE, thinking=True,
+                                      supervise=["final"])
+    assert census["turns"] == 2, "the census still polices every turn of the row"
+
+
 def test_think_census_classifies_turns():
     assert think_census([THINK_ROW]) == {"turns": 2, "real": 1, "empty": 1, "absent": 0}
     assert think_census([NOTHINK_ROW]) == {"turns": 1, "real": 0, "empty": 0, "absent": 1}

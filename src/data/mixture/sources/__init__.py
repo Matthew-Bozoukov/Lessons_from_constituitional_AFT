@@ -10,12 +10,18 @@ the ecosystem has settled on for reasoning models and tool use:
                    "content": str,
                    "reasoning_content": str,      # optional, assistant turns only
                    "tool_calls": [ {"type": "function",
-                                    "function": {"name": ..., "arguments": ...}} ]  # optional
-                  }, ...]}
+                                    "function": {"name": str, "arguments": mapping}} ]  # optional
+                  }, ...],
+     "tools": [ <OpenAI-style function schema>, ... ]}   # optional; REQUIRED once any turn calls one
+
+`arguments` is a mapping, never the wire form's JSON string (`clean_tool_calls` parses
+one). `tools` is what an eval harness passes to the server as `tools=`: the template
+renders it into the prompt the way that family expects, so a tool-calling row without it
+would train calls to functions the model was never shown, and build_mixture refuses it.
 
 No chat template is ever applied here — stored data carries semantics (who said what,
 what was reasoned, what was called), never a model family's syntax. Rendering happens at
-train time via `ModelProfile.render_kwargs` (src/model_profile.py), where the masking rules live.
+train time via `render_chat` (src/model_profile.py), where the masking rules live.
 
 An adapter declares where its rows come from (`repo`/`hf_config`/`split`, or local-only)
 and how one raw row becomes messages (`to_messages`, returning None for unusable rows).
@@ -28,6 +34,7 @@ from __future__ import annotations
 from src.data.mixture.sources.base import (  # noqa: F401  (re-exported contract)
     SourceAdapter,
     clean_messages,
+    clean_tool_calls,
     messages_passthrough,
 )
 from src.data.mixture.sources import (

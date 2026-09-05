@@ -126,7 +126,7 @@ def _render(records: list[Record], model_id: str) -> tuple[dict[str, str], objec
     """
     from transformers import AutoTokenizer
 
-    from src.model_profile import model_profile
+    from src.model_profile import model_profile, render_chat
 
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     profile = model_profile(model_id)
@@ -137,11 +137,9 @@ def _render(records: list[Record], model_id: str) -> tuple[dict[str, str], objec
             continue
         if "messages" not in record.raw:
             raise ValueError(f"{record.record_id}: no `messages` or `text` to render")
-        messages = [{k: v for k, v in m.items() if v is not None}
-                    for m in record.raw["messages"]]
-        rendered[record.record_id] = tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=False,
-            **profile.render_kwargs)
+        rendered[record.record_id] = render_chat(
+            tokenizer, record.raw["messages"], record.raw.get("tools"),
+            render_kwargs=profile.render_kwargs)
     return rendered, tokenizer, profile
 
 

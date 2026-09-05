@@ -25,6 +25,7 @@ Three callers, one resolver:
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -63,7 +64,13 @@ class ModelProfile:
         think_close: The literal that closes a reasoning block. Supervised, and the cut
             point for `supervise: "cot"`.
         render_kwargs: Extra chat-template kwargs for rendering TRAINING data so every
-            assistant turn keeps its reasoning.
+            assistant turn keeps its reasoning. Rendering itself goes through
+            `render_chat` below — the ONE place stored messages become a family's
+            syntax — which also hands the template a row's `tools` and its `tool_calls`.
+            A new family therefore needs its template verified for tool data too
+            (tests/test_masking_tokenizer.py does it for Qwen3.6): it accepts `tools=`,
+            renders `tool_calls` whose `arguments` are mappings, and renders `role: tool`
+            turns OUTSIDE the assistant span, so tool output is context, never a target.
         model_class: `causal_lm` or `image_text_to_text` (multimodal checkpoints expose a
             conditional-generation class).
         lora_target_modules: peft target spec — a string is a regex over module paths, a
@@ -253,6 +260,58 @@ def model_profile(model_name: str) -> ModelProfile:
             "thinking mode — masking its opener would under-train tokens that model must "
             "emit.")
     return p
+
+
+def _strip_none(value):
+    """Drop None-valued keys at every depth (lists and dicts), copying as it goes."""
+    if isinstance(value, dict):
+        return {k: _strip_none(v) for k, v in value.items() if v is not None}
+    if isinstance(value, list):
+        return [_strip_none(v) for v in value]
+    return value
+
+
+def render_chat(tokenizer, messages: list[dict], tools: list[dict] | None = None, *,
+                render_kwargs: dict, tokenize: bool = False,
+                add_generation_prompt: bool = False, **extra):
+    """Render one interchange conversation in a family's syntax — THE render site.
+
+    Every place that turns stored messages into model text (train-time rendering, the
+    mixture builder's token counts, the property ablations) comes through here, so tool
+    use is handled once and the same way an eval serves it:
+
+    - `tools` — the row's OpenAI-style function schemas — go to the template as
+      `tools=`, exactly what an eval harness passes to the server (ODCV: `tools=` +
+      `tool_choice="auto"`), so the template puts them where THIS family expects them.
+      Qwen3.6 writes a `<tools>` block into the system turn; a row that carries tool
+      calls but no `tools` is refused upstream (build_mixture), because a call to a
+      function the model was never shown is not the behaviour being taught.
+    - every `tool_calls[].function.arguments` reaches the template as a MAPPING: HF
+      templates iterate argument pairs (Qwen3.6 raises on a string), while the OpenAI
+      wire form is a JSON string, so a string is parsed here rather than at each site.
+    - None-valued keys are dropped at every depth: HF's json loader pads dicts to a
+      shared schema, and a padded `reasoning_content: None` or `arguments: None`
+      must not reach the template.
+
+    Args:
+        tokenizer: The family's tokenizer (its chat template does the rendering).
+        messages: Interchange messages (src/data/mixture/sources/).
+        tools: The row's tool schemas, or None for a conversation without tools.
+        render_kwargs: The profile's `render_kwargs` (preserve-thinking etc.).
+        tokenize / add_generation_prompt / extra: Passed through to the template.
+    """
+    msgs = [_strip_none(m) for m in messages]
+    for m in msgs:
+        for call in m.get("tool_calls") or []:
+            fn = call.get("function") or {}
+            if isinstance(fn.get("arguments"), str):
+                fn["arguments"] = json.loads(fn["arguments"])
+    kwargs = dict(render_kwargs)
+    if tools:
+        kwargs["tools"] = [_strip_none(t) for t in tools]
+    return tokenizer.apply_chat_template(
+        msgs, tokenize=tokenize, add_generation_prompt=add_generation_prompt,
+        **kwargs, **extra)
 
 
 # Serving stays permissive where training refuses: an unverified family (Qwen3-32B, a stub
