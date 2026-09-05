@@ -1691,6 +1691,17 @@ def _structured(record: dict, ref) -> list:
     return value
 
 
+def _templated(value, record: dict):
+    """Format every string inside a nested spec against the record (dicts/lists recurse)."""
+    if isinstance(value, str):
+        return value.format(**record)
+    if isinstance(value, dict):
+        return {k: _templated(v, record) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_templated(v, record) for v in value]
+    return value
+
+
 def op_chat_export(sc: dict, cfg: dict) -> Stage:
     """Free export to `{messages, metadata}` chat records from templated fields.
 
@@ -1699,14 +1710,19 @@ def op_chat_export(sc: dict, cfg: dict) -> Stage:
     while single-turn records stay three messages.
 
     Tool use is exported as data, never as syntax, so the corpus stays model-agnostic
-    and the training family's template renders it (src/model_profile.py render_chat):
-    a message entry may name `tool_calls: <field>` -- the record field holding that
-    assistant turn's calls in the interchange shape (a list, or its JSON text) -- and
-    a `role: tool` entry carries the result as its content. The stage may name
-    `tools: <field>` (or carry a literal list): the schemas of every function the
-    conversation can call, exported top-level on the row, the same object an eval
-    harness passes to the server as `tools=`. build_mixture refuses a calling row
-    without them, so declare them whenever any entry carries `tool_calls`.
+    and the training family's template renders it (src/model_profile.py render_chat).
+    Two ways to say what an assistant turn called: `tool_calls: <field>` names a record
+    field already holding the calls in the interchange shape (a list, or its JSON
+    text); `tool_calls_from: [{name, arguments: {arg: template}}]` BUILDS them from
+    plain record fields, so a generating stage can write a shell command as text and
+    never JSON-escape it. A `role: tool` entry carries the result as its content;
+    `content_json: {key: template}` serialises a templated mapping as JSON for a
+    harness that formats results that way (ODCV: `{"stdout", "stderr", "role",
+    "returncode"}`). The stage may name `tools: <field>` (or carry a literal list):
+    the schemas of every function the conversation can call, exported top-level on
+    the row, the same object an eval harness passes to the server as `tools=`.
+    build_mixture refuses a calling row without them, so declare them whenever any
+    entry carries calls.
     """
 
     def fn(ctx, records, ckpt):
@@ -1717,13 +1733,24 @@ def op_chat_export(sc: dict, cfg: dict) -> Stage:
                 cond = m.get("when")
                 if cond and not int(r.get(cond["field"], 0)) >= int(cond["min"]):
                     continue
-                msg = {"role": m["role"], "content": m["content"].format(**r)}
+                msg = {"role": m["role"]}
+                if "content_json" in m:
+                    msg["content"] = json.dumps(_templated(m["content_json"], r),
+                                                ensure_ascii=False)
+                else:
+                    msg["content"] = m["content"].format(**r)
                 if "reasoning_content" in m:
                     msg["reasoning_content"] = m["reasoning_content"].format(**r)
                 if "tool_calls" in m:
                     calls = _structured(r, m["tool_calls"])
                     if calls:
                         msg["tool_calls"] = calls
+                if "tool_calls_from" in m:
+                    msg["tool_calls"] = [
+                        {"type": "function",
+                         "function": {"name": str(c["name"]).format(**r),
+                                      "arguments": _templated(c.get("arguments") or {}, r)}}
+                        for c in m["tool_calls_from"]]
                 msgs.append(msg)
             row = {
                 "messages": msgs,

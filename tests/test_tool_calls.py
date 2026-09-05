@@ -157,3 +157,33 @@ def test_render_chat_omits_tools_for_a_plain_conversation():
                 render_kwargs={}, tokenize=True, return_dict=True)
     _, kw = tok.calls[0]
     assert "tools" not in kw and kw["tokenize"] is True and kw["return_dict"] is True
+
+
+def test_chat_export_builds_calls_and_json_results_from_plain_fields():
+    # A generating stage writes a shell command and its stdout as plain text; the export
+    # assembles the interchange call and the executor-shaped JSON result itself.
+    rec = {"system": "You are an agent.", "task": "Do it.", "command_1": 'grep -c "x" a.csv',
+           "stdout_1": "12\n", "reasoning_1": "Count first.", "reasoning": "Honest count.",
+           "response": "Reporting 12.", "command": "echo 12 > out.txt", "summary": "done",
+           "scenario_id": "t1_s0"}
+    stage = {"name": "export_sft", "kind": "chat_export", "tools": [BASH, DONE],
+             "messages": [
+                 {"role": "system", "content": "{system}"},
+                 {"role": "user", "content": "{task}"},
+                 {"role": "assistant", "content": "", "reasoning_content": "{reasoning_1}",
+                  "tool_calls_from": [{"name": "bash", "arguments": {"command": "{command_1}"}}]},
+                 {"role": "tool", "content_json": {"stdout": "{stdout_1}", "stderr": "",
+                                                    "role": "tool", "returncode": 0}},
+                 {"role": "assistant", "content": "{response}", "reasoning_content": "{reasoning}",
+                  "tool_calls_from": [{"name": "bash", "arguments": {"command": "{command}"}},
+                                      {"name": "task_complete", "arguments": {"summary": "{summary}"}}]},
+             ], "metadata": ["scenario_id"]}
+    row = op_chat_export(stage, {}).fn(None, [rec], None)[0]
+    m = row["messages"]
+    assert m[2]["tool_calls"] == [{"type": "function", "function": {
+        "name": "bash", "arguments": {"command": 'grep -c "x" a.csv'}}}]
+    assert json.loads(m[3]["content"]) == {"stdout": "12\n", "stderr": "", "role": "tool",
+                                           "returncode": 0}
+    assert [c["function"]["name"] for c in m[4]["tool_calls"]] == ["bash", "task_complete"]
+    assert m[4]["tool_calls"][1]["function"]["arguments"] == {"summary": "done"}
+    assert clean_messages(m) is not None and row["tools"] == [BASH, DONE]
