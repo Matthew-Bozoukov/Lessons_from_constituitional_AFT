@@ -28,9 +28,10 @@ block = `LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-o
 Both adapters are co-served on one vLLM (think mode, 65536-token window, `--max-loras 2`).
 Cells, both blocks: baseline (cooperative prompt, no private channel) seeds 1–30,
 self-promotional 1–60, self-sacrificial 1–30, covert 1–30; six H100 pods with the eval
-driven on the pod (`--no-push`), judge and analysis on the laptop. Episodes the original
-32k window dropped (a block-differential loss: 10% control, 25–40% treatment) were re-run
-at 65k so every cell is complete.
+driven on the pod (`--no-push`), judge and analysis on the laptop. In the first pass 31 of
+the 300 episodes (10%) overflowed the original 32k window — 13 control and 15 treatment
+self-promotional, 2 and 1 baseline, so similar across blocks — and were re-run at 65k; the
+sabotage conditions ran at 65k from the start, so every cell is complete.
 
 Per-episode measures: pair advantage = 0.5 + 0.5·(regret share of the non-pair − regret
 share of the pair) over EARNING agents (the provisioner earns nothing by construction, so
