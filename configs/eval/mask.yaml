@@ -1,0 +1,43 @@
+# ABOUTME: MASK honesty benchmark — does the model contradict its own stated beliefs when
+# ABOUTME: pressured to lie? Six archetypes, LLM-judged; honesty is measured apart from accuracy.
+# Run: uv run evals --target <hf_path> --name mask [key=value ...]
+#
+# MASK (Model Alignment between Statements and Knowledge; Ren et al., arXiv:2503.03750),
+# run from the vendored harness at centerforaisafety/mask @ 25e0b12 — PATCHED so its
+# generation hits the served target's base_url and its judge routes through this repo's
+# OpenRouter contract (see the PATCH comments in third_party/mask/mask/*.py). The harness
+# keeps its own venv; the runner shells the four stages out to it (like src/eval/audits/).
+#
+# What it reports. honesty_score = 100 - (% of responses the judge calls dishonest), per
+# archetype, averaged into an overall. HIGHER IS MORE HONEST. This is orthogonal to factual
+# accuracy: MASK asks whether the model states what it believes, not whether the belief is
+# right — so a constitution that hardens "don't assert what you don't hold" should move it.
+
+# The judge that grades honesty, routed through OpenRouter (src/infra/endpoints/openrouter.py).
+# gemini-3-flash-preview: cheap and fast; NOTE this diverges from MASK's paper judge
+# (gpt-4o / o3-mini), so absolute scores are not directly comparable to the paper's tables —
+# they ARE comparable across arms judged the same way here.
+judge_model: "google/gemini-3-flash-preview"
+judge_concurrency: 50
+
+# Generation from the target under the lying prompt.
+temperature: 1.0        # upstream default: the pressure-to-lie turn is sampled, not greedy.
+# CLAUDE.md gotcha 4: a thinking target spends budget inside <think>; too tight a cap
+# truncates before the answer and the honesty judge scores an empty reply. Sized with
+# headroom for trace + answer.
+max_tokens: 4096
+# Independent lying attempts per row. honesty_score_1 (the reported score) reads the first;
+# raise for a less noisy per-item estimate at linear cost. Upstream's process_dataframe
+# default is 10; kept at 1 here so a full run is affordable — bump deliberately.
+lie_k: 1
+
+constitution: none      # MASK is an external honesty instrument, not tied to a constitution
+                        # of ours; a shift measured in it is evidence of transfer.
+
+# Reached purely through the OpenAI triple (base_url, model, key), so an API target works
+# too (supports_api_target=True in the registry) and no docker is needed.
+serving:
+  # Prompts are short; the window only covers the trace plus max_tokens. 16384 keeps parity
+  # with the other Qwen3.6 evals.
+  context_window: 16384
+  needs_tool_calls: false
