@@ -431,6 +431,9 @@ SOURCE_STYLES: dict[str, str | None] = {
     "difficult_advice_t10_curiosity": "da-t10-curiosity",
     "swap_gtrace_sreply703": "da-gtrace-sreply", "swap_strace_greply703": "da-strace-greply",
     "good_ai_fiction": "good-ai-fiction", "nonmoral_deliberation": "nonmoral-deliberation",
+    # The asker wants to cheat for their own advancement rather than facing someone else's
+    # ethical dilemma — half the difficult-advice rows replaced, the other half retained.
+    "difficult_advice_rewardhack": "da-rewardhack",
     # replay — the non-synthetic blend, however it was assembled at the time
     "tulu3": None, "tulu3_if": None, "numinamath_cot": None, "no_robots": None,
     "table2": None, "smol_summarize": None, "smol_constraints": None,

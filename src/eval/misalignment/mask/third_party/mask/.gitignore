@@ -1,0 +1,5 @@
+# ABOUTME: keep the MASK harness venv and caches out of git; sources + data + results are tracked.
+.venv/
+__pycache__/
+*.pyc
+*.env
