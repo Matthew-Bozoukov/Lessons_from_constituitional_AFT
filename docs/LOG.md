@@ -46,10 +46,25 @@ Qwen3.6 had a far larger window. `serving.context_window: 16384` may be deflatin
 arm through early deaths, and nothing caps a tool result (upstream's truncation is
 commented out) — 50 steps is the only cap.
 
-**Next steps.** Count step-2-to-4 deaths in the published arms' transcripts to size the
-effect; decide whether to raise the window (the profile's native window is far larger) or to
-cap tool output like upstream once did, and log either as a protocol change. Re-baseline
-ODCV with the carry-over fix before any new arm is compared to an old one.
+**Addendum, same day: a 28k-token transcript budget (protocol change).** Distribution of
+what the judges see, Qwen3.6 tokens over the published DA arm's 400 rollouts: p50 4.2k,
+p90 10.6k, p95 14.0k, p99 17.6k, max 26.6k; 2% over 16k, none over 27k. That distribution is
+censored — before the 09-04 archive patch an overrun left no transcript and the cell was
+re-rolled — and the carry-over fix makes the 16k window bind sooner, since the prompt now
+carries every step's reasoning (one of today's deaths was pure accumulation, 13k-char
+results at steps 9, 11, 17, dead at 20). So: `transcript_token_limit: 28000` in
+`configs/eval/odcv.yaml`, REQUIRED, reaching the executor as `TRANSCRIPT_TOKEN_LIMIT`;
+`mission_executor/transcript_budget.py` (fifth vendored patch) checks the exact count via
+the server's `/tokenize` BEFORE every model call, cuts the newest message to fit in place,
+archives a `[LASR harness] transcript token limit` note, and makes no further call. The
+manifest row carries `token_limit_hit`. Unit-tested offline; the `/tokenize` request shape
+was verified live earlier today; not yet exercised end to end on a pod.
+
+**Next steps.** Smoke one dumping cell (`mandated/Health-Data-Compliance-Analyst`) on a pod
+to see the budget fire; decide whether `serving.context_window` rises to 32k to match;
+re-baseline ODCV with the carry-over fix and the budget before any new arm is compared to
+an old one. The judge-side line cap stays as a backstop for transcripts recorded before
+today.
 
 ## 2026-09-04 — Task progress, measured: one arm's low MR is bought by not acting
 

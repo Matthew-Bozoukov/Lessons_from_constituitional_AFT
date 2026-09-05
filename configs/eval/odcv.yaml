@@ -27,6 +27,14 @@ bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
 concurrency: 8
 
 scenario_timeout_s: 2400
+# Token budget on a rollout's transcript, enforced by the executor BEFORE every model call
+# with the serving tokenizer (vLLM /tokenize) -- see mission_executor/transcript_budget.py
+# (vendored patch, 2026-09-05). Over budget: the newest message is cut to fit, a note is
+# archived, and the rollout ends. Sized from the published DA arm (400 rollouts: p99 17.6k,
+# max 26.6k tokens as the judge sees them), so it binds only on whole-file dumps -- which
+# used to kill the rollout at the serving window (16k) and hand the judge megabytes. Part
+# of the protocol: REQUIRED, and the same value on every arm of a comparison.
+transcript_token_limit: 28000
 prune_images: false
 
 # Two cheap judges (~$3.80 for 80 transcripts); the other two can be added later for

@@ -19,6 +19,26 @@ try:
     OPENAI_TEMPERATURE = float(os.environ.get("OPENAI_TEMPERATURE", "0.0"))
 except Exception:
     OPENAI_TEMPERATURE = 0.0
+# VENDORED PATCH (2026-09-05): transcript token budget, set by the LASR driver from
+# configs/eval/odcv.yaml `transcript_token_limit` (0 / unset = upstream behaviour). See
+# transcript_budget.py beside this file and VENDORED_FROM.txt.
+import transcript_budget
+TRANSCRIPT_TOKEN_LIMIT = int(os.environ.get("TRANSCRIPT_TOKEN_LIMIT", "0") or 0)
+
+
+def _count_tokens(tools):
+    """messages -> tokens, exact via the server's /tokenize; a character estimate if it has none."""
+    state = {"fallback": False}
+
+    def count(msgs):
+        if not state["fallback"]:
+            try:
+                return transcript_budget.tokenize_count(OPENAI_BASE_URL, OPENAI_API_KEY, OPENAI_MODEL, msgs, tools)
+            except Exception as e:
+                print(f"[budget] /tokenize unavailable ({e}); estimating from characters")
+                state["fallback"] = True
+        return transcript_budget.estimate_count(msgs)
+    return count
 
 def _pull_prompts():
     with open('/app/prompt.json', 'r') as src:
@@ -147,8 +167,24 @@ def agent_cycle(ao_client):
     traj.append({"role": "user", "content": user_s})
     snap.append({"role": "user", "content": user_s})
     iter = 0
+    count_tokens = _count_tokens(tools)
     while iter < max_steps:
         iter += 1
+        # VENDORED PATCH (2026-09-05): the transcript budget is checked BEFORE every model
+        # call. Over budget: the newest message (normally the tool result that overflowed)
+        # is cut to fit -- in place, so the archived record shows exactly what was cut --
+        # a note is archived, and the loop ends without another call.
+        if TRANSCRIPT_TOKEN_LIMIT:
+            n_tok, cut = transcript_budget.fit_to_limit(traj, TRANSCRIPT_TOKEN_LIMIT, count_tokens)
+            if cut or n_tok > TRANSCRIPT_TOKEN_LIMIT:
+                note = {"role": "system", "content": (
+                    f"{transcript_budget.NOTE_PREFIX} {TRANSCRIPT_TOKEN_LIMIT} reached "
+                    f"({n_tok} tokens before cycle {iter}); the last message was truncated to fit "
+                    "and no further model calls were made.")}
+                print(f"[budget] {note['content']}")
+                snap.append(note)
+                _archive_trail(snap)
+                return traj
         print(f"\n=== CYCLE {iter} / {max_steps} ===")
         try:
             res = ao_client.chat.completions.create(

@@ -6,6 +6,7 @@ passes: 1
 bench_dir: src/eval/misalignment/odcv/third_party/odcv-bench
 concurrency: 8
 scenario_timeout_s: 2400
+transcript_token_limit: 28000
 prune_images: false
 judges:
   grok-4.20: x-ai/grok-4.20

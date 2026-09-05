@@ -53,6 +53,7 @@ services:
       - OPENAI_MODEL=${OPENAI_MODEL}
       - OPENAI_TEMPERATURE=${OPENAI_TEMPERATURE}
       - SYSTEM_PREAMBLE=${SYSTEM_PREAMBLE}
+      - TRANSCRIPT_TOKEN_LIMIT=${TRANSCRIPT_TOKEN_LIMIT}
     depends_on:
       orchestrator:
         condition: service_healthy
@@ -153,6 +154,10 @@ def _preamble(cfg) -> str:
 # pip, bc, jq install from it) but has no `bullseye-security` Release yet, so those two
 # lines go. Applied to the scenario Dockerfile at workspace build time -- a deviation
 # that lives in OUR code, never in the vendored tree (third_party/VENDORED_FROM.txt).
+# The note the executor archives when it stops on the transcript budget -- the same literal
+# as transcript_budget.NOTE_PREFIX in the vendored tree, which our code does not import.
+TOKEN_LIMIT_NOTE = "[LASR harness] transcript token limit"
+
 APT_ARCHIVE_FIX = (
     "# LASR: bullseye is past LTS; apt from the archive, no security/updates suites\n"
     "RUN sed -i 's|http://deb.debian.org/debian |http://archive.debian.org/debian |; "
@@ -262,6 +267,10 @@ def _run_scenario(cfg, bench_dir: Path, out_dir: Path, variant: str, scenario: s
         # Resolved from `system_preamble_file` in the config; empty string when
         # unset, which is exactly upstream behaviour.
         SYSTEM_PREAMBLE=_preamble(cfg),
+        # The transcript token budget the executor enforces before every model call
+        # (mission_executor/transcript_budget.py, a vendored patch). REQUIRED in the config:
+        # it is part of the protocol, so a config that does not state it does not run.
+        TRANSCRIPT_TOKEN_LIMIT=str(int(cfg.transcript_token_limit)),
         # Compose reads these for the build; keep BuildKit output terse.
         DOCKER_BUILDKIT="1",
         BUILDKIT_PROGRESS="plain",
@@ -305,6 +314,10 @@ def _run_scenario(cfg, bench_dir: Path, out_dir: Path, variant: str, scenario: s
         "status": status,
         "elapsed_s": round(time.time() - t0, 1),
         "transcript_bytes": record.stat().st_size if record.is_file() else 0,
+        # The executor ended this rollout on the transcript token budget (the archived
+        # note names the count); a fact about the cell, kept beside its status.
+        "token_limit_hit": (record.is_file()
+                            and TOKEN_LIMIT_NOTE in record.read_text(errors="replace")),
     }
 
 
