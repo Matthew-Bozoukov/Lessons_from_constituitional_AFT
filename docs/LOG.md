@@ -1,6 +1,49 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-05 — Tool use becomes DATA: synth export → mixture → one render site, and a gate bug
+
+**Hypothesis.** The flipped experiment (train on agentic deliberation, evaluate on
+conversational misalignment) needs agentic training rows, and the pipeline could not carry
+one: `chat_export` copied only role/content/reasoning_content, the mixture row had no place
+for the tool schemas, and train-time rendering never passed `tools=` to the template — so a
+tool-calling row would have trained calls to functions the model was never shown, unlike
+serving, where ODCV hands the schemas to vLLM as `tools=` and Qwen3.6's template writes
+them into the system turn itself.
+
+**Method.** Tool use is stored as semantics and rendered by the family's template, so a
+different base model changes only its `ModelProfile`. (1) `op_chat_export` takes
+`tool_calls: <field>` on a message entry and `tools: <field>` on the stage; `role: tool`
+entries carry results. (2) The interchange row gains top-level `tools`; `clean_tool_calls`
+normalises every call to `{type, function: {name, arguments: MAPPING}}` (the OpenAI wire
+form's JSON string is parsed — Qwen3.6's template raises on a string). `build_mixture`
+counts, carries and writes `tools`, and refuses a row whose calls are not all declared.
+(3) `src/model_profile.py::render_chat` is now THE render site — train_lora, the mixture's
+token count and the property ablation all call it — passing `tools=`, parsing wire
+arguments and stripping the None padding HF's json loader adds at every depth.
+(4) Verified on the live Qwen3.6 template (tests/test_masking_tokenizer.py): schemas land
+in a `<tools>` block in the system turn, calls render as the family's XML inside the
+assistant span, tool output renders as a `<tool_response>` user turn outside it, and
+`build_labels` agrees with the gate under both `all` and `final`.
+
+**Result.** While wiring the live test: `mask_gate.expected_supervised_text` ignored
+`supervise="final"` and concatenated every assistant turn, so the gate REFUSED any
+multi-assistant-turn row under `final` — a par row as much as an agentic one. PAR-716
+(2026-08-27) trained before the gate took per-row modes (2026-08-31), which is why nothing
+noticed. Fixed: under `final` the expectation is the last turn only; unit test added.
+Suite 1357 pass, live-tokenizer tests 7 pass. Two full agentic mockups (an incentivized
+shortcut-inside-a-task, a mandated instruction-is-the-shortcut) are in
+`scratch/synth_agentic/mockups.json`; measured with the Qwen3.6 tokenizer they render to
+3,688 and 3,019 tokens against a DA mean of 1,438 (n=708: system 52, user 219, reasoning
+596, response 570). The deliberation turns (733/561) already match DA's reasoning; the
+excess is tool output (1,162/939), the final call's arguments (659/527, the report body
+written twice) and the template's own tools block (~330, fixed per row).
+
+**Next steps.** The synth config for the agentic recipe (DA's scenario contract with
+ODCV's two framings, one exploration exchange, a supervised decision turn), with tool
+output capped so a row lands near 2k tokens and the arm budgeted by TOKENS in its mixture
+so the dose matches DA. Then the MASK eval as a registry entry.
+
 ## 2026-09-04 — Task progress, measured: one arm's low MR is bought by not acting
 
 **Hypothesis.** ODCV's rubric scores an explicit refusal (0) identically to honest
