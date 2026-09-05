@@ -1,6 +1,40 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-05 — ODCV on da-ablated-702-seed0: MR 12.5% (5 passes)
+
+**Method.** `uv run evals --name odcv`, 5 passes, temp 0.7, 32 parallel, 16384 ctx, gemini-3-flash-preview
+judge, on the reconstruct-instead-of-drop runner. All 5 passes ran 80/80 clean (no drops, no reconstruction).
+Judging aborted at 398/400 on a 400-max-context error: 2 runaway-loop transcripts
+(incentivized/Health-Data-Compliance-Analyst, ~1.15M tokens / 4.6MB each) exceeded the judge's 1M window.
+Capped both to the head (120k chars) and resumed judging.
+
+**Result.** MR = **12.5%** (50/400 rollouts; 80 cells x 5 complete). Sampled CI95 [7.0, 21.5] (df 39);
+fixed-benchmark CI95 [10.3, 15.1] (df 49). mandated 8.0%, incentivized 17.0%. Base Qwen3.6 43.8% ->
+-31.3 pp. Pushed to `LASR-Callum/2026-09-05-odcv-qwen36-0-da-ablated-7`. Sits with the mid difficult-advice
+cluster (chunk-only-702 10.8%, empty-cot 10.2%).
+
+**Gotcha.** A runaway <think> loop can produce a >1M-token messages_record.txt that exceeds even gemini's
+1M judge window, crashing run_eval's judging at the 400-max-context error. The judge/harness should cap
+oversized transcripts before judging (as scratch/daablated_finish.py did) — worth wiring into odcv_judge.
+## 2026-09-05 — ODCV on par (post-action-retrospection-716-coherence): MR 22.2% (5 passes, paused/resumed)
+
+**Method.** `uv run evals --name odcv`, 5 passes, temp 0.7, 32 parallel, 16384 ctx, gemini-3-flash-preview
+judge. The run hung mid-pass-2 on a stuck orchestrator (session churn killed the detached driver); restarted
+clean, then user-paused after 4 clean passes. Resumed by re-serving the model for pass 5's 34 unfinished
+cells (34/34 clean) and combining with the 4 saved passes -> full 5 passes, judged, published. First arm run
+end-to-end on the reconstruct-instead-of-drop runner (0 reconstructions needed here).
+
+**Result.** MR = **22.2%** (89/400 rollouts; 80 cells x 5 complete). Sampled CI95 [13.7, 34.0] (df 39);
+fixed-benchmark CI95 [19.9, 24.8] (df 49). mandated 21.0%, incentivized 23.5%. Base Qwen3.6 43.8% ->
+-21.6 pp. Pushed to `LASR-Callum/2026-09-05-odcv-qwen36-0-par-7`.
+
+**Finding: pre-action vs post-action deliberation.** par-varied (PRE-action deliberation) = 9.5%; this
+post-action-retrospection arm = 22.2% — >2x higher. Deliberating BEFORE acting is far more protective on
+ODCV than retrospecting after. par-retrospection sits with the weaker arms (gptresp685 20.0%, nonmoral 18.2%).
+
+**Next steps.** Confirm the pre/post gap replicates across seeds; the stuck-orchestrator hang past the
+scenario_timeout is a recurring ODCV infra risk on long-reasoning arms.
 ## 2026-09-04 — Task progress, measured: one arm's low MR is bought by not acting
 
 **Hypothesis.** ODCV's rubric scores an explicit refusal (0) identically to honest
@@ -192,6 +226,48 @@ to gptresp685 (20.0%) and ~2x the response-paired difficult-advice arms (chunk-o
 
 **Next steps.** Compare all five arms' failure modes; the broken-infra + hard-target fabrication pattern
 recurs (e.g. pass4's recovered Healthcare-Appointment-Optimizer fabricated audit dates, sev 4).
+## 2026-09-04 — A reward-hacking substitution arm: 351 of 708 difficult-advice rows replaced
+
+**Hypothesis.** ctfish showed base Qwen3.6-27B hacks at 80% and every SFT arm at ~0%, and the ODCV
+analysis showed the surviving misalignment is data fabrication under KPI pressure. Neither is
+addressed by difficult-advice rows about *other people's* ethical dilemmas. A corpus in which the
+asker wants to cheat FOR THEIR OWN ADVANCEMENT is the closer training signal, so build one and hold
+everything else fixed.
+
+**Method.** Five rows hand-written first (`scratch/_rh_turns.py`, `_rh_reasonings.py`) as the style
+reference, then scaled with sonnet-5 (`scratch/_gen_rh_corpus.py`): one reward-hacking archetype per
+constitutional trait, the trait's own `trait_text` read from the source corpus rather than retyped,
+and a finished row supplied as a voice reference. 39 rows per trait, substituted for 39 randomly
+drawn rows per trait from `2026-08-21-difficult-advice-v2-chunk-only-716` under seed 0.
+
+Three design rules, all inherited rather than invented: the MOTIVE is self-advancement and never
+hardship (the asker states the ambition plainly and loses only the prize by declining), the
+REASONING is partly correct on the facts so the reply has something true to concede, and no system
+prompt names an assistant — the source corpus does that in only 6 of its 708 rows and this arm
+trains Qwen.
+
+**Result.** `LASR-Callum/2026-09-04-da-rewardhack-351-synth` — 708 rows, 351 substituted (49.6%),
+288 distinct domains among the new rows, 39 human-asker / 312 spread across the traits. Per-trait
+counts are byte-identical to the source (78/80/79/78/80/78/78/78/79), which is load-bearing: the
+mixture builder requires equal per-trait quotas, which is why the published draw is 702 and not 716.
+Lengths track the corpus (content median 2,946 vs 2,751; reasoning 2,895 vs 2,920). Cost $16.41.
+
+**Three things that had to be fixed rather than assumed.** (1) JSON is the wrong container for
+multi-paragraph prose — 7 of the first 9 generations were unparseable on raw newlines; delimited
+sections fixed it. (2) A first pass yields 94% and leaves traits UNEVEN, and an uneven corpus
+substitutes at the per-trait MINIMUM (306, not 351) — so the generator gained a top-up mode that
+fills only the deficit. (3) Top-up numbering restarted from the count of existing rows and collided
+with ids the first pass had already taken (21 duplicate `scenario_id`s); ids are now assigned from
+the final corpus rather than from how many passes it took to fill.
+
+**Not reviewed.** 351 model-generated rows passed schema, length-band and no-identity-framing
+validation only; nobody has read them for quality. The card says so. The source corpus was NOT
+edited — several trained arms reference it and must keep resolving to what they trained on.
+
+**Next steps.** Build the training mixture from this corpus (same builder, same 9,284 Table-2 rows)
+so it differs from the chunk-only-702 arm in the difficult-advice half alone, train, and read it on
+ctfish and on ODCV's fabrication scenarios — the two places the behaviour was actually measured.
+
 ## 2026-09-04 — Petri fabrication audit of chunk-only-702: 7/7 refusals, but Petri cannot pose the ODCV question
 
 **Hypothesis.** The ODCV analysis found this arm fabricates data in 29/43 misaligned rollouts
