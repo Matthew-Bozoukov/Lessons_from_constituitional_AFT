@@ -55,7 +55,11 @@ data_repo: "LASR-Callum/2026-09-05-table2-9284-da-rewardhack-702-train"
 data_file: "t2_9284_da_rewardhack_702.jsonl"
 data_revision: "4e7dd02a582ee01e26b5a39e7429a285cb50ea22"
 output_dir: "/workspace/out/train_t2_9284_da_rewardhack_702"
-hf_repo: "qwen3.6-27b-lora-t2-9284-da-rewritten-702-r64-dynbatch-seed0"
+# No `hf_repo` override on purpose. The sibling config carried one, and it named the
+# REWRITTEN arm — copying it here would have published this arm under that name. Names are
+# built, not typed (src/naming.py): with no override the trainer mints
+# `<date>-qwen36-<mix subject>-<seed>` from the mixture itself, which derives as
+# `da-rewardhack-7` now that the source is registered in SOURCE_STYLES.
 
 lora:
   r: 64
