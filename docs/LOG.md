@@ -1,6 +1,40 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-06 — The nosynth control is trained: `2026-09-05-qwen36-0-nosynth`, one H200, 2h37m
+
+**Hypothesis.** The 0%-synthetic control on the paper's blend can be trained under the one
+recipe with the model, data and thinking declaration as launch arguments, in thinking mode
+with no reasoning traces, on a single GPU with dynamic batching.
+
+**Method.** `uv run train --config configs/train.yaml model=qwen36
+data_repo=LASR-Callum/2026-09-05-nosynth-mix data_revision=a517e99b thinking=true wandb=true`
+on one H200 (pod 5630rawue0ygx7, code at 4afbc13). Mask gate census on the full file: 0 real
+/ 10,468 empty / 0 absent think blocks, every one masked whole; 2,208,155 of 5,463,643 tokens
+supervised (40.4%); token budget 8,000 (the measured H200 ceiling); ~1,486 forward passes
+for 625 steps of 16 rows, i.e. 6.7x fewer than batch-1.
+
+**Result.** 625 steps, 2h37m, train loss 0.8255 (W&B `jamiestephenson/lasr`, run named
+after the adapter). Adapter `LASR-Callum/2026-09-05-qwen36-0-nosynth` (private), stamped
+`organism`, `thinking: true`, `recipe: train`, `mix_subject: nosynth`, dataset pinned to
+a517e99b, base revision pinned; its `train_config.yaml` re-runs the arm alone. Three things
+broke on the way and are fixed on the branch: (1) the first pod's driver was CUDA 12.8
+against a cu130 torch, a clean-looking boot that trains on CPU — `runpod up --train` now
+requires a CUDA 13 host (docs/GOTCHAS.md); (2) the W&B preflight ran before `.env` was
+loaded, and the key's default entity (the Edinburgh org) is not writable — `.env` loads
+first, `WANDB_ENTITY=jamiestephenson`; (3) the adapter push handed a bare name to a gate
+that wanted `org/name` (every other publisher qualified first), so a finished run lost its
+push — `push_run_dir` qualifies then gates, the card is built from the stamp
+(`launch.push_adapter`), `run_meta.json` is written before the push, and
+`scratch/push_saved_adapter.py` published this adapter from the pod. Cost: two pods,
+~$18 including the 20 wasted minutes on the CUDA-12.8 host.
+
+**Next steps.** ODCV on the nosynth adapter (`uv run evals --name odcv --target
+LASR-Callum/2026-09-05-qwen36-0-nosynth --server <pod>`), against the numina control and
+the da arms — remembering this control is unfiltered while every existing arm's replay
+was spec-filtered (smol_summarize 9.8% here vs 7.2% there). Seeds 1 and 2 are the same
+command with `seed=1` / `seed=2`.
+
 ## 2026-09-05 — One recipe, model profiles in YAML, `nosynth`: the train config stops naming the arm
 
 **Problem.** Planning the first 0%-synthetic control on the new base blend turned up four
