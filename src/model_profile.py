@@ -98,12 +98,15 @@ QWEN36_PROFILE = ModelProfile(
     # Confirmed live on the swebench pilot 2026-08-05: no_tool_call_rate 0.0 across 115
     # assistant turns.
     #
-    # supports_prefix_caching: FALSE, and not a tuning choice — vLLM forces
-    # enable_prefix_caching=False on this arch because Mamba state pages cannot be
-    # reused the way attention KV can (docs/LOG.md 2026-07-29). Passing the flag is a
-    # no-op, so plan_serving reports the unmet request rather than pretending.
+    # supports_prefix_caching: TRUE, measured. The 2026-07-29 note ("vLLM forces it
+    # off on this hybrid Mamba arch") was a misread of a 0.6% hit rate taken at 96% KV
+    # usage; the 2026-08-07 A/B on the pinned vLLM 0.26 (docs/LOG.md) shows 77-78% hits
+    # and ~3.5x generation throughput once the cache has room. vLLM keeps it opt-in for
+    # hybrid models ("mamba cache mode 'align' ... experimental"), and the operating rule
+    # is KV headroom: size concurrency so usage stays well under ~50%, and read
+    # `Prefix cache hit rate` in the server log rather than assuming. Throughput only.
     serving={"max_num_seqs": 32, "reasoning_parser": "qwen3",
-             "tool_call_parser": "qwen3_xml", "supports_prefix_caching": False},
+             "tool_call_parser": "qwen3_xml", "supports_prefix_caching": True},
     train_memory={
         # H200 141GB: Matthew's probe on the 4xH200 training pod — batch 1 at 8,000
         # tokens fits, batch 2 (16,000 padded) OOMs, so 8,000 is the demonstrated

@@ -176,6 +176,14 @@ def agent_cycle(ao_client):
         rec = {"role": m.role, "content": m.content}
         if hasattr(m, "reasoning_details") and m.reasoning_details:
             rec["reasoning_details"] = m.reasoning_details
+        # VENDORED PATCH (2026-09-05): carry reasoning forward on an OpenAI-compatible
+        # server. Upstream resends only OpenRouter's `reasoning_details`; vLLM returns
+        # `reasoning` and accepts it back on an assistant message (mapping it onto the
+        # template's reasoning_content), so without this every earlier step reached the
+        # model as an EMPTY think block -- unlike the paper's OpenRouter runs, which kept
+        # it. Re-apply if the bench is re-cloned (VENDORED_FROM.txt, CLAUDE.md gotcha 5).
+        if getattr(m, "reasoning", None):
+            rec["reasoning"] = m.reasoning
         calls = getattr(m, "tool_calls", None)
         if calls:
             rec["tool_calls"] = [

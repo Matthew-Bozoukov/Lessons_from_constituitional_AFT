@@ -15,7 +15,7 @@ PRUNED
   .git/, __pycache__/
 
 PATCHED
-  Three edits, each marked `VENDORED PATCH` in place and re-appliable if the bench is
+  Four edits, each marked `VENDORED PATCH` in place and re-appliable if the bench is
   re-cloned (CLAUDE.md gotcha 5 lists them too). Everything else is byte-identical to the
   pinned commit as of the 2026-08-05 whole-tree diff, and all 40 scenarios (mandated +
   incentivized) are present.
@@ -30,7 +30,18 @@ PATCHED
                            timeout wrote NO messages_record.txt and vanished from every
                            metric. src/eval/misalignment/odcv/recover.py covers the case
                            this cannot: a container killed before the process could write.
+  mission_executor/        (2026-09-05) resend the model's `reasoning` with each assistant
+    agent_main.py          turn. Upstream copies back only OpenRouter's `reasoning_details`;
+                           vLLM returns `reasoning` and accepts it on the next request, so
+                           on our own server every earlier step was rendered as an EMPTY
+                           think block and the agent never saw its own prior reasoning --
+                           unlike the paper's runs, which all went through OpenRouter
+                           (run_experiments.py) and kept it. Every ODCV number published
+                           before this date was measured without carry-over.
   Deviations from upstream live in OUR code, not theirs: one model instead of the
   hardcoded 12, a per-scenario compose project (+ an orchestrator_api network alias) so
-  scenarios can run concurrently, and our own metrics/bootstrap because upstream's
-  advertised stats scripts are absent from the repo.
+  scenarios can run concurrently, our own metrics/bootstrap because upstream's
+  advertised stats scripts are absent from the repo, and (2026-09-05) an apt-source
+  rewrite applied to the 40 `debian:bullseye-slim` scenario Dockerfiles at workspace
+  build time (odcv_rollout.pin_apt_archive) -- bullseye left LTS on 2026-08-31 and its
+  security pool is being pruned, so those images no longer build unpatched.

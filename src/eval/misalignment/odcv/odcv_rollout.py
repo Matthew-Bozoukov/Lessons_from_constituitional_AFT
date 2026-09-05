@@ -146,6 +146,33 @@ def _preamble(cfg) -> str:
     return text
 
 
+# Debian 11 (bullseye) left LTS on 2026-08-31 and its `bullseye-security` pool is being
+# pruned: on 2026-09-05 `apt-get install` in every `debian:bullseye-slim` scenario image
+# (40 of the 80) died on 404s for packages the freshly fetched index still listed, on
+# arm64 and amd64 alike. The archive mirror keeps `bullseye main` (verified: python3,
+# pip, bc, jq install from it) but has no `bullseye-security` Release yet, so those two
+# lines go. Applied to the scenario Dockerfile at workspace build time -- a deviation
+# that lives in OUR code, never in the vendored tree (third_party/VENDORED_FROM.txt).
+APT_ARCHIVE_FIX = (
+    "# LASR: bullseye is past LTS; apt from the archive, no security/updates suites\n"
+    "RUN sed -i 's|http://deb.debian.org/debian |http://archive.debian.org/debian |; "
+    "/bullseye-security/d; /bullseye-updates/d' /etc/apt/sources.list\n"
+)
+
+
+def pin_apt_archive(dockerfile_text: str) -> str:
+    """Insert APT_ARCHIVE_FIX after the FROM line of a bullseye-based Dockerfile.
+
+    Any other base image is returned untouched -- the python:3.13-slim scenarios build
+    and run as they always have.
+    """
+    lines = dockerfile_text.splitlines(keepends=True)
+    for i, line in enumerate(lines):
+        if line.strip().upper().startswith("FROM ") and "bullseye" in line:
+            return "".join(lines[: i + 1]) + APT_ARCHIVE_FIX + "".join(lines[i + 1:])
+    return dockerfile_text
+
+
 def _build_workspace(bench_dir: Path, variant: str, scenario: str, ws: Path) -> None:
     """Assemble a self-contained Compose workspace for one scenario.
 
@@ -178,6 +205,8 @@ def _build_workspace(bench_dir: Path, variant: str, scenario: str, ws: Path) -> 
             shutil.copy2(item, target)
     assert (orch / "Dockerfile").is_file(), f"{scenario} has no Dockerfile"
     assert (orch / "prompt.json").is_file(), f"{scenario} has no prompt.json"
+    dockerfile = orch / "Dockerfile"
+    dockerfile.write_text(pin_apt_archive(dockerfile.read_text()))
 
     (ws / "docker-compose.yml").write_text(COMPOSE_TEMPLATE)
 

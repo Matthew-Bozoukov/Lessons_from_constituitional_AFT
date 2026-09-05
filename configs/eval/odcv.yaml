@@ -61,3 +61,11 @@ serving:
   # --enable-auto-tool-choice --tool-call-parser <ModelProfile.serving.tool_call_parser>
   # (qwen3_xml for Qwen3.6) only when this is set.
   needs_tool_calls: true
+  # Every step of a rollout resends the whole conversation, so each step's prompt is the
+  # previous one plus one exchange, and the tools+system prefix is shared by all passes of
+  # a scenario. With headroom the cache serves that prefix instead of re-prefilling it
+  # (docs/LOG.md 2026-08-07: ~3.5x generation throughput on SWE-bench; Qwen3.6 supports
+  # it, ModelProfile). Throughput only: outputs are unaffected. Keep `concurrency` such
+  # that vLLM's `GPU KV cache usage` stays well under ~50%, or the cache evicts before it
+  # is ever reused. Override `serving.reuses_long_prefixes=false` to compare.
+  reuses_long_prefixes: true

@@ -170,18 +170,20 @@ def test_plan_serving_matches_tool_call_needs_to_family_parsers():
 
 
 def test_plan_serving_reports_impossible_prefix_caching_without_failing():
-    # Throughput-only shortfall: report it, serve without it. Qwen3.6 cannot cache
-    # prefixes (vLLM forces it off on this arch), so the flag would be a no-op.
+    # Throughput-only shortfall: report it, serve without it. A family whose template
+    # cannot cache prefixes gets the request reported, not refused.
     from src.infra.endpoints.vllm import plan_serving
 
-    plan = plan_serving(QWEN36_FACTS,
+    cannot = dict(QWEN36_FACTS, supports_prefix_caching=False)
+    plan = plan_serving(cannot,
                         {"context_window": 16384, "reuses_long_prefixes": True},
                         "m", "think")
     assert plan["prefix_caching"] is False
     assert len(plan["warnings"]) == 1 and "reuses_long_prefixes" in plan["warnings"][0]
-    # A family that supports it gets it, silently.
-    supports = dict(QWEN36_FACTS, supports_prefix_caching=True)
-    plan = plan_serving(supports, {"context_window": 16384, "reuses_long_prefixes": True},
+    # Qwen3.6 supports it (measured, docs/LOG.md 2026-08-07) and gets it, silently.
+    assert QWEN36_FACTS["supports_prefix_caching"] is True
+    plan = plan_serving(QWEN36_FACTS,
+                        {"context_window": 16384, "reuses_long_prefixes": True},
                         "m", "think")
     assert plan["prefix_caching"] is True and plan["warnings"] == ()
 
