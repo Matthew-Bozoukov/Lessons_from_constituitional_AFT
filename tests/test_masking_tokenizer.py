@@ -161,3 +161,45 @@ def test_supervise_final_masks_the_context_turn_entirely(tok):
                                                    profile=QWEN36_PROFILE))
     assert got_all == ("the evaluated reply<|im_end|>"
                        "re-checking it\n</think>\n\nheld<|im_end|>")
+
+
+def test_tool_rows_render_natively_and_only_assistant_turns_are_supervised(tok):
+    # The third premise, for agentic data: the live template takes `tools=` and mapping
+    # arguments, writes the schemas into the prompt itself, and keeps tool OUTPUT out of
+    # the assistant span. render_chat is what train_lora and build_mixture call.
+    from src.model_profile import render_chat
+    from src.train.mask_gate import expected_supervised_text
+
+    tools = [{"type": "function", "function": {
+        "name": "bash", "description": "Run a shell command.",
+        "parameters": {"type": "object", "properties": {"command": {"type": "string"}},
+                       "required": ["command"]}}}]
+    msgs = [
+        {"role": "system", "content": "You are an agent."},
+        {"role": "user", "content": "Report the figure."},
+        {"role": "assistant", "content": "Looking.", "reasoning_content": "Check first.",
+         "tool_calls": [{"type": "function", "function": {
+             "name": "bash", "arguments": '{"command": "cat data.csv"}'}}]},
+        {"role": "tool", "content": '{"stdout": "p90=16.8\\n", "returncode": 0}'},
+        {"role": "assistant", "content": "The figure is 16.8.",
+         "reasoning_content": "It is above the level; report it as it is.",
+         "tool_calls": [{"type": "function", "function": {
+             "name": "bash", "arguments": {"command": "echo 16.8 > report.md"}}}]},
+    ]
+    text = render_chat(tok, msgs, tools, render_kwargs=QWEN36_PROFILE.render_kwargs)
+    system_turn = text.split(QWEN36_PROFILE.turn_end)[0]
+    assert "<tools>" in system_turn and '"name": "bash"' in system_turn, \
+        "the template must place the schemas itself (Qwen3.6: a <tools> block in system)"
+    assert "<tool_call>\n<function=bash>" in text, "calls render in the family's own syntax"
+    assert "<tool_response>" in text, "tool output renders as a tool_response turn"
+    for mode in ("all", "final"):
+        out = build_labels(text, tok, 4096, QWEN36_PROFILE, supervise=mode)
+        got = _supervised(tok, out)
+        assert got == expected_supervised_text(
+            text, THINK_PREFILL, EMPTY_THINK, supervise=mode,
+            think_close=QWEN36_PROFILE.think_close)
+        assert "p90=16.8" not in got, "tool output is context, never a target"
+        assert "echo 16.8 > report.md" in got, "the call the model makes IS a target"
+    final_only = _supervised(tok, build_labels(text, tok, 4096, QWEN36_PROFILE,
+                                               supervise="final"))
+    assert "cat data.csv" not in final_only and "Check first." not in final_only

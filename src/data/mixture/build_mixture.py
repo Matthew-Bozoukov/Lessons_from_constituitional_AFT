@@ -46,7 +46,7 @@ from transformers import AutoTokenizer
 load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
 from src.data.mixture.sources import SOURCES, clean_messages  # noqa: E402
-from src.model_profile import model_profile  # noqa: E402
+from src.model_profile import model_profile, render_chat  # noqa: E402
 from src.naming import check_style, mix_name, styles_from_sources  # noqa: E402
 from src.utils import git_sha, origin_url, timestamp, write_run_meta  # noqa: E402
 
@@ -253,14 +253,22 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
         msgs = to_messages(raw)
         if msgs is None:
             return None
+        # `tools` rides top-level on a row (a synth chat_export with `tools:`), the
+        # schemas of what the conversation may call; counted AND trained with them,
+        # since the template renders them into the prompt (src/model_profile.py
+        # render_chat). A tool-calling row without them is refused in
+        # _validate_interchange, not repaired here.
+        tools = raw.get("tools") or (raw.get("metadata") or {}).get("tools")
         # return_dict + explicit ["input_ids"]: with tokenize=True this transformers
         # version hands back a BatchEncoding either way, and len() of THAT is its key
         # count (2), not the token count — caught live 2026-08-06 (2 "tokens" per row).
-        n = len(tok.apply_chat_template(msgs, tokenize=True, add_generation_prompt=False,
-                                        return_dict=True, **render_kwargs)["input_ids"])
+        n = len(render_chat(tok, msgs, tools, render_kwargs=render_kwargs, tokenize=True,
+                            return_dict=True)["input_ids"])
         if n > int(cfg.max_seq_len):
             return None
         out = {"messages": msgs, "source": name, "n_tokens": n}
+        if tools:
+            out["tools"] = tools
         # supervise rides top-level or under metadata (synth stage-5 exports put it
         # there); losing it would silently train non-target turns (supervise: final).
         supervise = raw.get("supervise") or (raw.get("metadata") or {}).get("supervise")
@@ -334,7 +342,25 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
 
 
 def _validate_interchange(name: str, kind: str, rows: list[dict]) -> None:
-    """Enforce a source's `reasoning:` declaration on its sampled messages rows."""
+    """Enforce a source's `reasoning:` declaration on its sampled messages rows.
+
+    Also refuses a tool-calling row whose calls are not all declared in its `tools`:
+    the template renders the declared schemas into the prompt, so an undeclared call
+    would train the model to call a function it was never shown — a different
+    behaviour from the one the corpus means to teach, and one no eval can elicit.
+    """
+    for r in rows:
+        called = {c["function"]["name"] for m in r["messages"]
+                  for c in (m.get("tool_calls") or [])}
+        if not called:
+            continue
+        declared = {t["function"]["name"] for t in (r.get("tools") or [])}
+        assert called <= declared, (
+            f"{name}: a row calls {sorted(called - declared)} but its `tools` declare "
+            f"{sorted(declared) or 'nothing'} — export the schemas with the row "
+            "(synth chat_export `tools:`) rather than training on calls to functions "
+            "the model is never shown")
+
     def real_traces(r):
         return sum(1 for m in r["messages"]
                    if str(m.get("reasoning_content") or "").strip())
@@ -462,6 +488,8 @@ def _write_rows(path: Path, rows: list[dict]) -> None:
     with path.open("w", encoding="utf-8") as f:
         for r in rows:
             rec = {"messages": r["messages"], "source": r["source"]}
+            if r.get("tools"):
+                rec["tools"] = r["tools"]
             if r.get("supervise"):
                 rec["supervise"] = r["supervise"]
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
@@ -476,8 +504,9 @@ def _card_fields(cfg, config_path: str, stage_desc: str, files_desc: str,
                     if filter_cfg is not None else str(cfg.hf.get("constitution", "none")))
     schema = (
         "jsonl rows {messages: [{role, content, reasoning_content?, tool_calls?}], "
-        "source, supervise?} — model-agnostic interchange; rendered with the training "
-        "family's chat template at train time (src/model_profile.py ModelProfile)")
+        "tools?, source, supervise?} — model-agnostic interchange; rendered with the "
+        "training family's chat template at train time (src/model_profile.py "
+        "render_chat), tools included")
     gen = {"seed": int(cfg.seed), "max_seq_len": int(cfg.max_seq_len),
            "budget_tokenizer": str(cfg.tokenizer)}
     if filter_cfg is not None:
