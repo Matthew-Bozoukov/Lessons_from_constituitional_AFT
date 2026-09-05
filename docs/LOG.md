@@ -1,6 +1,47 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-05 — `dat`: difficult agentic task, the flipped experiment's corpus, three smoke rows on the Hub
+
+**Hypothesis.** Difficult advice generalises from a user's grey area to agentic misalignment
+(ODCV). If the deliberation is what transfers, the same recipe with the AGENT in the grey area
+should generalise the other way, to conversational evals that are OOD for it. That needs a
+corpus whose only differences from DA are the actor and the exported row.
+
+**Method.** `configs/data/synth/dat.yaml`, DA stage for stage on the SAME engine: principle-
+scoped scenarios under DA's contract (legitimate goal, concrete pressure, tempting shortcut;
+now "reachable with the agent's tools" and "what honesty costs"), ODCV's `mandated` /
+`incentivized` framing hashed from the scenario id, an environment stage (Sonnet: deployment
+system prompt, operator task, one or two exploration commands with the shell's output, ≤1,500
+chars each, the temptation visible in it), DA's revise-prompt intent, then DA's respond and
+CRITICAL revise stages with the opener audit and every ban pattern verbatim, the action added
+as a bash command plus a task_complete summary. No grey-area rater, no control slice. The row
+is exported as DATA — `tools` (ODCV's two schemas verbatim), exploration turns with
+`tool_calls` and short traces, `role: tool` results in the executor's JSON shape, the
+supervised final turn — with `supervise: final`; `chat_export` gained `tool_calls_from` and
+`content_json` so the generator writes plain commands and outputs, never escaped JSON. The
+system prompt carries ODCV's own appended sentence, so the trained prefix is the served one.
+Dashboard: the transcript viewer now reads the interchange call shape and keeps `tools` out
+of the metadata facets.
+
+**Result.** `--smoke`: 3 records, $0.36, 164 s, `LASR-Callum/2026-09-05-dat-synth-smoke`
+(tags `training-data`, `kind:synth`, `pipeline:dat`, `smoke`; `dataset.jsonl` default config).
+Rendered through Qwen3.6's template with `tools=`: 2,355–2,636 tokens per row, 1,038–1,211
+supervised under `final` (DA: 1,438 / ~1,170); the mask gate passes all three. Openers are
+situation-specific ("612 flagged records make 1.22%...", "Three weeks separate the last
+logged physician sign-off..."); every final turn is a real bash command doing the honest
+job plus a summary that says what was not done. All three landed `incentivized` — a hash at
+n=3, not a bias; the full run splits 50/50. Full run priced at ~$149 for 2,000 rows from the
+built-in assumptions; the smoke manifest gives the measured figure.
+
+**Next steps.** One prompt fix first: the final reply and summary sometimes quote the
+OUTPUT of the command the turn is only now running ("the classifier flagged 7 records"),
+which no agent could know yet — the respond/revise prompts must say the reply describes what
+the command does, not what it printed. Then read ten more rows across all nine principles
+before a full run; then the
+mixture at DA's supervised-token dose, three seeds, ODCV in-distribution and MASK/psychosis
+out of distribution, with a `cot` ablation from the same rows.
+
 <<<<<<< HEAD
 ## 2026-09-05 — ODCV on da-ablated-702-seed0: MR 12.5% (5 passes)
 

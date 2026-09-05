@@ -8,6 +8,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { DialogueMessage } from "@/lib/content";
+import { toolCallView } from "@/lib/records";
 
 const roleConfig: Record<
   string,
@@ -41,7 +42,7 @@ export function DialogueTranscript({
             ? message.reasoning_content.trim()
             : "";
         const toolCalls = Array.isArray(message.tool_calls)
-          ? (message.tool_calls as { name: string; arguments: string }[])
+          ? (message.tool_calls as unknown[]).map(toolCallView)
           : [];
         return (
           <article className={`dialogue-turn ${config.className}`} key={`${message.role}-${index}`}>

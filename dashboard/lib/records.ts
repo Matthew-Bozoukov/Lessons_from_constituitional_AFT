@@ -139,6 +139,9 @@ function categoryOf(record: DialogueRecord, metadata: Record<string, unknown>) {
  */
 const NOT_METADATA = new Set([
   "messages",
+  // The tool schemas a row's calls are declared against (interchange rows with tool use):
+  // part of the conversation, not a facet to filter on.
+  "tools",
   "conversation",
   "turns",
   "dialogue",
@@ -191,5 +194,22 @@ export function normalizeRecord(raw: unknown, index: number): NormalizedRecord {
     has_reasoning: hasReasoning,
     empty_think: emptyThink,
     raw: record,
+  };
+}
+
+/**
+ * One tool call as the viewer shows it. The interchange rows the research repo publishes
+ * (src/data/mixture/sources/) carry the OpenAI shape, `{type, function: {name, arguments}}`
+ * with `arguments` a mapping; older exports carried a flat `{name, arguments}` with a
+ * string. Both render as the function name over its arguments, pretty-printed when they
+ * are structured.
+ */
+export function toolCallView(call: unknown): { name: string; arguments: string } {
+  const raw = (call && typeof call === "object" ? call : {}) as Record<string, unknown>;
+  const fn = (raw.function && typeof raw.function === "object" ? raw.function : raw) as Record<string, unknown>;
+  const args = fn.arguments;
+  return {
+    name: typeof fn.name === "string" ? fn.name : "tool",
+    arguments: typeof args === "string" ? args : args === undefined ? "" : JSON.stringify(args, null, 2),
   };
 }
