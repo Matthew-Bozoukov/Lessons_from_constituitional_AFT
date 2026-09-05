@@ -20,7 +20,7 @@ import json
 import urllib.request
 
 MARKER = "[transcript token limit reached: output truncated by the harness]"
-NOTE_PREFIX = "[LASR harness] transcript token limit"
+NOTE_PREFIX = "[Harness] transcript token limit"
 
 
 def is_context_length_error(exc: BaseException) -> bool:

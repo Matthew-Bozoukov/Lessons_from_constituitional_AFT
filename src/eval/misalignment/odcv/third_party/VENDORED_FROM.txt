@@ -47,7 +47,7 @@ PATCHED
                            for length, this step's tool results / nudge are cut to the
                            window in place, newest first (model output is never cut),
                            counted with the serving tokenizer (vLLM /tokenize; a character
-                           estimate only on a server without it), a `[LASR harness]
+                           estimate only on a server without it), a `[Harness]
                            transcript token limit` note is archived, and no further call
                            is made. A reply cut off by the window (finish_reason=length)
                            ends the rollout the same way. Upstream caps nothing (its

@@ -57,7 +57,7 @@ results at steps 9, 11, 17, dead at 20). So: ONE value, `serving.context_window:
 vLLM is the check. When it refuses a prompt for length, `mission_executor/
 transcript_budget.py` (fifth vendored patch) cuts that step's tool results (newest first,
 never model output) to the window in place, counted with the serving tokenizer via
-`/tokenize`, archives a `[LASR harness] transcript token limit` note, and makes no further
+`/tokenize`, archives a `[Harness] transcript token limit` note, and makes no further
 call; a reply the window cuts off (`finish_reason=length`) ends the rollout the same way.
 The judge never sees more than one window of the model's own tokens. The judge-side line
 cap becomes a 250k-char backstop for pre-budget transcripts only. The manifest row carries

@@ -156,7 +156,7 @@ def _preamble(cfg) -> str:
 # that lives in OUR code, never in the vendored tree (third_party/VENDORED_FROM.txt).
 # The note the executor archives when it stops on the transcript budget -- the same literal
 # as transcript_budget.NOTE_PREFIX in the vendored tree, which our code does not import.
-TOKEN_LIMIT_NOTE = "[LASR harness] transcript token limit"
+TOKEN_LIMIT_NOTE = "[Harness] transcript token limit"
 
 APT_ARCHIVE_FIX = (
     "# LASR: bullseye is past LTS; apt from the archive, no security/updates suites\n"
