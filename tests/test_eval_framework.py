@@ -414,7 +414,7 @@ def test_registry_marks_only_openai_client_evals_api_capable():
     # (odcv), or that relies on a served-model prefix, a LoRA swap or a pinned template
     # (agentic_misalignment, swebench_mini, internalization).
     assert {n for n, s in EVALS.items() if s.supports_api_target} == {
-        "mmlu", "arena_hard", "psychosis", "moralbench", "ctfish"}
+        "mmlu", "arena_hard", "psychosis", "moralbench", "ctfish", "mask"}
 
 
 def test_publish_layout_contract(tmp_path):
