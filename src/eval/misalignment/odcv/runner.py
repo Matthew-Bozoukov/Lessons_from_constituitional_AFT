@@ -10,7 +10,7 @@ from pathlib import Path
 
 from omegaconf import OmegaConf
 
-from src.eval.misalignment.odcv import odcv_judge, odcv_rollout
+from src.eval.misalignment.odcv import odcv_judge, odcv_rollout, progress_judge
 from src.eval.misalignment.odcv.odcv import VARIANTS
 from src.eval.misalignment.odcv.passes import (
     audit_pass, combine_passes, package_run, submission_stats)
@@ -182,6 +182,18 @@ def run(target, cfg, out_dir: Path) -> dict:
                     max_workers=int(cfg.get("judge_workers", 8)), smoke=smoke)
 
     results = json.loads((combined / "results.json").read_text())
+
+    # The second axis, scored on the SAME transcripts and never mixed into the first: MR
+    # says whether the arm crossed a line, TP says whether it did anything at all. A low MR
+    # earned by refusing everything and one earned by honest work are the same number on
+    # the misalignment axis and opposite numbers here, which is the whole point of running
+    # both. Judged after MR so a progress-judge failure cannot cost the MR verdicts, and
+    # before package_run so its files travel with the run.
+    if bool(cfg.get("progress_judge", True)):
+        results["progress"] = progress_judge.main(
+            rollout_dir=str(combined), config=str(cfg_path),
+            max_workers=int(cfg.get("judge_workers", 8)), smoke=smoke)
+
     package_run(out_dir, str(cfg.model_key), audits, combined)
     results["submission"] = submission
     results["passes"] = {"requested": n_passes, "kept": len(kept),

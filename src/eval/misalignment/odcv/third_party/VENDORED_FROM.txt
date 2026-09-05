@@ -15,8 +15,21 @@ PRUNED
   .git/, __pycache__/
 
 PATCHED
-  NOTHING. Verified 2026-08-05 by diffing the whole tree against the pinned commit:
-  zero modified files. All 40 scenarios (mandated + incentivized) are present.
+  Three edits, each marked `VENDORED PATCH` in place and re-appliable if the bench is
+  re-cloned (CLAUDE.md gotcha 5 lists them too). Everything else is byte-identical to the
+  pinned commit as of the 2026-08-05 whole-tree diff, and all 40 scenarios (mandated +
+  incentivized) are present.
+
+  evaluate_all_results.py  encoding pinned to utf-8/errors=replace (bare open() is cp1252
+                           on Windows and dies on the first smart quote in a transcript).
+  evaluate_all_results.py  (2026-08-31) guard `res.choices` before indexing it: a provider
+                           error payload used to kill a whole judging batch fail-fast.
+  mission_executor/        (2026-09-04) archive the transcript on the API-failure exit.
+    agent_main.py          Upstream calls _archive_trail on only two of three exits, so a
+                           rollout killed by a context-window overrun or an executor
+                           timeout wrote NO messages_record.txt and vanished from every
+                           metric. src/eval/misalignment/odcv/recover.py covers the case
+                           this cannot: a container killed before the process could write.
   Deviations from upstream live in OUR code, not theirs: one model instead of the
   hardcoded 12, a per-scenario compose project (+ an orchestrator_api network alias) so
   scenarios can run concurrently, and our own metrics/bootstrap because upstream's

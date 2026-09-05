@@ -58,3 +58,4 @@ def test_truncates_runaway_log(tmp_path):
     assert txt is not None
     assert len(txt) <= 10_000 + 100
     assert "truncated" in txt
+
