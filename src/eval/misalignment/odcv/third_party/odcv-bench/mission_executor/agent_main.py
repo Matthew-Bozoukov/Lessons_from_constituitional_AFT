@@ -19,11 +19,11 @@ try:
     OPENAI_TEMPERATURE = float(os.environ.get("OPENAI_TEMPERATURE", "0.0"))
 except Exception:
     OPENAI_TEMPERATURE = 0.0
-# VENDORED PATCH (2026-09-05): transcript token budget, set by the LASR driver from
-# configs/eval/odcv.yaml `transcript_token_limit` (0 / unset = upstream behaviour). See
-# transcript_budget.py beside this file and VENDORED_FROM.txt.
+# VENDORED PATCH (2026-09-05): the served context window, set by the LASR driver from
+# configs/eval/odcv.yaml `serving.context_window` (0 / unset = upstream behaviour). It is
+# the transcript budget: see transcript_budget.py beside this file and VENDORED_FROM.txt.
 import transcript_budget
-TRANSCRIPT_TOKEN_LIMIT = int(os.environ.get("TRANSCRIPT_TOKEN_LIMIT", "0") or 0)
+CONTEXT_WINDOW_TOKENS = int(os.environ.get("CONTEXT_WINDOW_TOKENS", "0") or 0)
 
 
 def _count_tokens(tools):
@@ -167,24 +167,9 @@ def agent_cycle(ao_client):
     traj.append({"role": "user", "content": user_s})
     snap.append({"role": "user", "content": user_s})
     iter = 0
-    count_tokens = _count_tokens(tools)
+    count_tokens = _count_tokens(tools)   # used only to trim, after the server has refused
     while iter < max_steps:
         iter += 1
-        # VENDORED PATCH (2026-09-05): the transcript budget is checked BEFORE every model
-        # call. Over budget: the newest message (normally the tool result that overflowed)
-        # is cut to fit -- in place, so the archived record shows exactly what was cut --
-        # a note is archived, and the loop ends without another call.
-        if TRANSCRIPT_TOKEN_LIMIT:
-            n_tok, cut = transcript_budget.fit_to_limit(traj, TRANSCRIPT_TOKEN_LIMIT, count_tokens)
-            if cut or n_tok > TRANSCRIPT_TOKEN_LIMIT:
-                note = {"role": "system", "content": (
-                    f"{transcript_budget.NOTE_PREFIX} {TRANSCRIPT_TOKEN_LIMIT} reached "
-                    f"({n_tok} tokens before cycle {iter}); the last message was truncated to fit "
-                    "and no further model calls were made.")}
-                print(f"[budget] {note['content']}")
-                snap.append(note)
-                _archive_trail(snap)
-                return traj
         print(f"\n=== CYCLE {iter} / {max_steps} ===")
         try:
             res = ao_client.chat.completions.create(
@@ -197,6 +182,16 @@ def agent_cycle(ao_client):
             )
             m = res.choices[0].message
         except Exception as fault:
+            # VENDORED PATCH (2026-09-05): the served window IS the transcript budget and
+            # the server is the check. When it refuses the prompt for length, this step's
+            # tool results are cut to the window (in place: the record shows the cut), a
+            # note is archived, and the rollout ends here instead of dying unannotated
+            # with megabytes in the transcript. See transcript_budget.py.
+            if CONTEXT_WINDOW_TOKENS and transcript_budget.is_context_length_error(fault):
+                note = transcript_budget.trim_after_rejection(traj, snap, CONTEXT_WINDOW_TOKENS, count_tokens, iter)
+                print(f"[budget] {note['content']}")
+                _archive_trail(snap)
+                return traj
             print(f"[AI API dead]: {fault}")
             # VENDORED PATCH (2026-09-04): archive before returning. Upstream calls
             # _archive_trail on only TWO of the three exits -- task_complete and the cycle
@@ -232,6 +227,14 @@ def agent_cycle(ao_client):
         print(f"[Reasoning]: {reason}\n[Reply]: {m.content}")
         buff["reasoning"] = reason
         snap.append(buff)
+        # VENDORED PATCH (2026-09-05): a reply the window cut off is the budget being hit
+        # from the output side; the rollout ends here, with what was generated on record.
+        if CONTEXT_WINDOW_TOKENS and getattr(res.choices[0], "finish_reason", None) == "length":
+            note = transcript_budget.length_stop_note(CONTEXT_WINDOW_TOKENS, iter)
+            print(f"[budget] {note['content']}")
+            snap.append(note)
+            _archive_trail(snap)
+            return traj
         if calls:
             results = []
             for tcall in calls:

@@ -38,20 +38,22 @@ PATCHED
                            unlike the paper's runs, which all went through OpenRouter
                            (run_experiments.py) and kept it. Every ODCV number published
                            before this date was measured without carry-over.
-  mission_executor/        (2026-09-05) a token budget on the transcript. NEW FILE
-    transcript_budget.py   transcript_budget.py (+ one COPY line in the Dockerfile, + the
-    Dockerfile             check at the top of agent_cycle's loop). Read from
-    agent_main.py          TRANSCRIPT_TOKEN_LIMIT, which our driver sets from
-                           configs/eval/odcv.yaml `transcript_token_limit` (28000); unset
-                           = upstream behaviour. Checked BEFORE every model call with the
-                           serving tokenizer (vLLM /tokenize, exact; a character estimate
-                           only on a server without it). Over budget: the newest message is
-                           cut to fit in place, a `[LASR harness] transcript token limit`
-                           note is archived, no further call is made. Upstream caps
-                           nothing (its [:1000] truncation is commented out), so one `cat`
-                           of a data file killed the rollout at the serving window and
-                           handed the judge megabytes. Protocol change: same value on
-                           every arm of a comparison.
+  mission_executor/        (2026-09-05) the served window is the transcript budget. NEW
+    transcript_budget.py   FILE transcript_budget.py (+ one COPY line in the Dockerfile,
+    Dockerfile             + two hooks in agent_cycle). Read from CONTEXT_WINDOW_TOKENS,
+    agent_main.py          which our driver sets from configs/eval/odcv.yaml
+                           `serving.context_window` (28000); unset = upstream behaviour.
+                           No pre-call check: vLLM is the check. When it refuses a prompt
+                           for length, this step's tool results / nudge are cut to the
+                           window in place, newest first (model output is never cut),
+                           counted with the serving tokenizer (vLLM /tokenize; a character
+                           estimate only on a server without it), a `[LASR harness]
+                           transcript token limit` note is archived, and no further call
+                           is made. A reply cut off by the window (finish_reason=length)
+                           ends the rollout the same way. Upstream caps nothing (its
+                           [:1000] truncation is commented out), so one `cat` of a data
+                           file killed the rollout unannotated and handed the judge
+                           megabytes. Protocol change: same window on every arm compared.
   Deviations from upstream live in OUR code, not theirs: one model instead of the
   hardcoded 12, a per-scenario compose project (+ an orchestrator_api network alias) so
   scenarios can run concurrently, our own metrics/bootstrap because upstream's

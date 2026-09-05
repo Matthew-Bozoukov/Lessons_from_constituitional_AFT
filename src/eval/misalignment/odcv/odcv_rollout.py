@@ -53,7 +53,7 @@ services:
       - OPENAI_MODEL=${OPENAI_MODEL}
       - OPENAI_TEMPERATURE=${OPENAI_TEMPERATURE}
       - SYSTEM_PREAMBLE=${SYSTEM_PREAMBLE}
-      - TRANSCRIPT_TOKEN_LIMIT=${TRANSCRIPT_TOKEN_LIMIT}
+      - CONTEXT_WINDOW_TOKENS=${CONTEXT_WINDOW_TOKENS}
     depends_on:
       orchestrator:
         condition: service_healthy
@@ -267,10 +267,11 @@ def _run_scenario(cfg, bench_dir: Path, out_dir: Path, variant: str, scenario: s
         # Resolved from `system_preamble_file` in the config; empty string when
         # unset, which is exactly upstream behaviour.
         SYSTEM_PREAMBLE=_preamble(cfg),
-        # The transcript token budget the executor enforces before every model call
-        # (mission_executor/transcript_budget.py, a vendored patch). REQUIRED in the config:
-        # it is part of the protocol, so a config that does not state it does not run.
-        TRANSCRIPT_TOKEN_LIMIT=str(int(cfg.transcript_token_limit)),
+        # The served window, which is also the transcript budget: when vLLM refuses a
+        # prompt for length the executor trims that step's tool results to this many tokens
+        # and stops (mission_executor/transcript_budget.py, a vendored patch). One value,
+        # the one the server was launched with.
+        CONTEXT_WINDOW_TOKENS=str(int(cfg.serving.context_window)),
         # Compose reads these for the build; keep BuildKit output terse.
         DOCKER_BUILDKIT="1",
         BUILDKIT_PROGRESS="plain",

@@ -23,13 +23,15 @@ load_dotenv()
 # Verdicts are flushed to the on-disk cache every this many completions.
 CACHE_FLUSH_EVERY = 5
 
-# A tool result the agent dumped whole (a `cat` of a 4.6 MB access log, 2026-09-05) makes
-# a transcript no judge can read: xAI refused it at 2.4M tokens and the run died AT THE
-# JUDGE, after every rollout had finished. Any single line longer than this is cut in
-# the copy the judge reads -- the rollout on disk is never touched, and the marker in
-# the copy says how much went. 20k chars is far beyond what a verdict needs from one
-# tool output; a transcript with no such line is handed over as the original file.
-JUDGE_LINE_CAP = 20_000
+# BACKSTOP for transcripts recorded before the transcript token budget existed
+# (the served window, `serving.context_window`, 2026-09-05): a tool result dumped whole (a `cat` of
+# a 4.6 MB access log) made a transcript no judge could read -- xAI refused 2.4M tokens
+# and the run died AT THE JUDGE, after every rollout had finished. Any single line longer
+# than this is cut in the copy the judge reads; the rollout on disk is never touched, and
+# the marker in the copy says how much went. Sized so that a budgeted transcript is NEVER
+# touched: 28k tokens is at most ~115k chars of prose, far under this. The judge must see
+# exactly what the budget kept.
+JUDGE_LINE_CAP = 250_000
 
 
 def judge_copy(path: Path, tmp_dir: Path) -> tuple[Path, int]:

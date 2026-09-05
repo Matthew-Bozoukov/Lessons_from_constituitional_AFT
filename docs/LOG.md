@@ -52,13 +52,17 @@ p90 10.6k, p95 14.0k, p99 17.6k, max 26.6k; 2% over 16k, none over 27k. That dis
 censored — before the 09-04 archive patch an overrun left no transcript and the cell was
 re-rolled — and the carry-over fix makes the 16k window bind sooner, since the prompt now
 carries every step's reasoning (one of today's deaths was pure accumulation, 13k-char
-results at steps 9, 11, 17, dead at 20). So: `transcript_token_limit: 28000` in
-`configs/eval/odcv.yaml`, REQUIRED, reaching the executor as `TRANSCRIPT_TOKEN_LIMIT`;
-`mission_executor/transcript_budget.py` (fifth vendored patch) checks the exact count via
-the server's `/tokenize` BEFORE every model call, cuts the newest message to fit in place,
-archives a `[LASR harness] transcript token limit` note, and makes no further call. The
-manifest row carries `token_limit_hit`. Unit-tested offline; the `/tokenize` request shape
-was verified live earlier today; not yet exercised end to end on a pod.
+results at steps 9, 11, 17, dead at 20). So: ONE value, `serving.context_window:
+28000` in `configs/eval/odcv.yaml`, reaching the executor as `CONTEXT_WINDOW_TOKENS`, and
+vLLM is the check. When it refuses a prompt for length, `mission_executor/
+transcript_budget.py` (fifth vendored patch) cuts that step's tool results (newest first,
+never model output) to the window in place, counted with the serving tokenizer via
+`/tokenize`, archives a `[LASR harness] transcript token limit` note, and makes no further
+call; a reply the window cuts off (`finish_reason=length`) ends the rollout the same way.
+The judge never sees more than one window of the model's own tokens. The judge-side line
+cap becomes a 250k-char backstop for pre-budget transcripts only. The manifest row carries
+`token_limit_hit`. Unit-tested offline; the `/tokenize` request shape was verified live
+earlier today; not yet exercised end to end on a pod.
 
 **Next steps.** Smoke one dumping cell (`mandated/Health-Data-Compliance-Analyst`) on a pod
 to see the budget fire; decide whether `serving.context_window` rises to 32k to match;

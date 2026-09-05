@@ -1,16 +1,18 @@
 # VENDORED PATCH (2026-09-05, LASR): a NEW file beside upstream's agent_main.py, listed in
-# ../../VENDORED_FROM.txt. A token budget on the agent's transcript, read by agent_main.py
-# from TRANSCRIPT_TOKEN_LIMIT -- which the driver (src/eval/misalignment/odcv/odcv_rollout.py)
-# sets from configs/eval/odcv.yaml `transcript_token_limit`. Unset or 0 = upstream behaviour.
+# ../../VENDORED_FROM.txt. The served context window is the transcript budget. agent_main.py
+# reads it from CONTEXT_WINDOW_TOKENS, which the driver (src/eval/misalignment/odcv/
+# odcv_rollout.py) sets from configs/eval/odcv.yaml `serving.context_window`. Unset or 0 =
+# upstream behaviour.
 """Why this exists.
 
 Upstream never caps a tool result (its `[:1000]` truncation is commented out), so one `cat`
 of a scenario's data file puts megabytes into the trajectory. The next request then dies on
 the serving window, the rollout ends at that step, and the judge is handed a transcript it
-cannot read. The budget is checked BEFORE every model call, with the SERVING tokenizer:
-vLLM's `/tokenize` renders exactly the prompt the model would receive (template, tools and
-resent reasoning included), so the count is the one that matters. When the budget is
-exceeded, the last message is cut to fit, a note is archived, and no further call is made.
+cannot read. There is ONE limit, the served window, and vLLM itself is the check: when it
+rejects a prompt for length, the executor trims that step's tool results to the window --
+counted with the SERVING tokenizer via `/tokenize`, so the judge sees at most one window
+of the model's own tokens -- archives a note, and makes no further call. A reply the
+window cut off (`finish_reason == "length"`) ends the rollout the same way.
 """
 from __future__ import annotations
 
@@ -19,6 +21,41 @@ import urllib.request
 
 MARKER = "[transcript token limit reached: output truncated by the harness]"
 NOTE_PREFIX = "[LASR harness] transcript token limit"
+
+
+def is_context_length_error(exc: BaseException) -> bool:
+    """Whether an API failure is the server refusing the prompt for length.
+
+    vLLM: "This model's maximum context length is N tokens. However, you requested ...";
+    OpenAI-compatible providers: error code `context_length_exceeded`.
+    """
+    text = str(exc).lower()
+    return ("maximum context length" in text or "context_length_exceeded" in text
+            or "maximum prompt length" in text)
+
+
+def trim_after_rejection(traj: list, snap: list, window: int, count, cycle: int) -> dict:
+    """The server refused the prompt: cut this step's tool results / nudge to the window.
+
+    Mutates the shared message dicts in place, so the archived record (`snap`) shows exactly
+    what was cut, appends the note to `snap`, and returns it. The caller archives and stops.
+    """
+    n, cut = fit_to_limit(traj, window, count)
+    note = {"role": "system", "content": (
+        f"{NOTE_PREFIX} ({window}-token served window) reached at cycle {cycle}: the server "
+        f"rejected the next prompt for length; this step's tool output was "
+        f"{'truncated to fit' if cut else 'not cut (the overflow is model output)'} "
+        f"({n} tokens) and no further model calls were made.")}
+    snap.append(note)
+    return note
+
+
+def length_stop_note(window: int, cycle: int) -> dict:
+    """The window cut the model's own reply off: the rollout ends there, annotated."""
+    return {"role": "system", "content": (
+        f"{NOTE_PREFIX} ({window}-token served window) reached at cycle {cycle}: the reply "
+        "was cut off by the window (finish_reason=length) and no further model calls were "
+        "made.")}
 
 
 def tokenize_count(base_url: str, api_key: str, model: str, messages: list, tools: list,
@@ -57,28 +94,14 @@ def _cut_content(content: str, keep_chars: int) -> str:
     return content[:max(0, keep_chars)] + MARKER
 
 
-def fit_to_limit(messages: list, limit: int, count) -> tuple[int, bool]:
-    """Cut the LAST message's content (in place) until count(messages) <= limit.
-
-    Args:
-        messages: The trajectory about to be sent. The last entry is the newest message,
-            normally the tool result that overflowed.
-        limit: The transcript token budget.
-        count: messages -> exact token count (tokenize_count bound to the server).
-
-    Returns:
-        (tokens_now, truncated). When the last message is too small to absorb the whole
-        overshoot (the overflow came from the model's own reply), its content becomes the
-        marker alone and tokens_now may still exceed the limit; the caller stops either way.
-    """
+def _shrink(messages: list, i: int, limit: int, count) -> int:
+    """Cut message i's content (in place) until the whole trajectory fits, or it is gone."""
+    msg = messages[i]
+    n_without = count(messages[:i] + messages[i + 1:])
+    target = limit - n_without           # tokens this message may keep
     n = count(messages)
-    if n <= limit:
-        return n, False
-    last = messages[-1]
-    n_without = count(messages[:-1])
-    target = limit - n_without          # tokens the newest message may keep
     for _ in range(6):
-        content = last.get("content") or ""
+        content = msg.get("content") or ""
         if not content or target <= 0:
             break
         # Keep the share of this message's characters that its share of tokens allows,
@@ -86,11 +109,42 @@ def fit_to_limit(messages: list, limit: int, count) -> tuple[int, bool]:
         # denser text (CSV) converges on the next iteration from the new count.
         share = target / max(1, n - n_without)
         keep = int(len(content) * min(1.0, share) * 0.95) - len(MARKER)
-        last["content"] = _cut_content(content, max(0, keep))
+        msg["content"] = _cut_content(content, max(0, keep))
         n = count(messages)
-        if n <= limit:
-            return n, True
-        if keep <= 0:
+        if n <= limit or keep <= 0:
+            return n
+    msg["content"] = MARKER
+    return count(messages)
+
+
+def fit_to_limit(messages: list, limit: int, count) -> tuple[int, bool]:
+    """Cut this step's tool results / nudge (in place, newest first) until the trajectory fits.
+
+    Only what the environment or the harness appended since the model last spoke is ever
+    cut -- tool results and the stall nudge. Model output is the behaviour under
+    measurement and is never touched, so an overflow caused by the reply itself leaves
+    the trajectory a little over the limit; the caller stops either way.
+
+    Args:
+        messages: The trajectory about to be sent.
+        limit: The transcript token budget.
+        count: messages -> exact token count (tokenize_count bound to the server).
+
+    Returns:
+        (tokens_now, truncated).
+    """
+    n = count(messages)
+    if n <= limit:
+        return n, False
+    truncated = False
+    for i in range(len(messages) - 1, -1, -1):
+        role = messages[i].get("role")
+        if role in ("assistant", "system"):
             break
-    last["content"] = MARKER
-    return count(messages), True
+        if not (messages[i].get("content") or ""):
+            continue
+        n = _shrink(messages, i, limit, count)
+        truncated = True
+        if n <= limit:
+            break
+    return n, truncated
