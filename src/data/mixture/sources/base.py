@@ -3,11 +3,45 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Callable
 
 _ROLES = ("system", "user", "assistant", "tool")
 _CARRIED = ("role", "content", "reasoning_content", "tool_calls")
+
+
+def clean_tool_calls(calls) -> list[dict] | None:
+    """Normalise an assistant turn's tool calls to the one interchange shape, or None.
+
+    The shape is `{"type": "function", "function": {"name": str, "arguments": mapping}}`
+    — the OpenAI form with ONE change: arguments are stored as a mapping, never as the
+    wire form's JSON string, because that is what chat templates consume and what makes
+    the stored row model-agnostic. A JSON-string argument (what an API client hands
+    back, and what a rollout record holds) is parsed here; anything else malformed
+    makes the row unusable, the same policy as `clean_messages`. Only the call itself
+    is kept — a wire `id` is transport, not semantics.
+    """
+    if not isinstance(calls, list) or not calls:
+        return None
+    out = []
+    for c in calls:
+        fn = c.get("function") if isinstance(c, dict) else None
+        if not isinstance(fn, dict) or not isinstance(fn.get("name"), str):
+            return None
+        args = fn.get("arguments")
+        if isinstance(args, str):
+            try:
+                args = json.loads(args)
+            except ValueError:
+                return None
+        if args is None:
+            args = {}
+        if not isinstance(args, dict):
+            return None
+        out.append({"type": "function",
+                    "function": {"name": fn["name"], "arguments": args}})
+    return out
 
 
 def clean_messages(messages) -> list[dict] | None:
@@ -16,7 +50,8 @@ def clean_messages(messages) -> list[dict] | None:
     Unusable rows are dropped rather than repaired: a silently mangled example is worse
     than a slightly smaller sample. A conversation must end with an assistant turn and
     contain at least one user turn; every turn needs a known role and string content
-    (empty content is allowed only on assistant turns that carry tool_calls).
+    (empty content is allowed only on assistant turns that carry tool_calls, and those
+    are normalised by `clean_tool_calls` — a malformed call makes the row unusable).
     """
     if not isinstance(messages, list) or len(messages) < 2:
         return None
@@ -29,6 +64,11 @@ def clean_messages(messages) -> list[dict] | None:
             return None
         if not content.strip() and not (role == "assistant" and m.get("tool_calls")):
             return None
+        if m.get("tool_calls"):
+            calls = clean_tool_calls(m["tool_calls"])
+            if calls is None or role != "assistant":
+                return None
+            m = {**m, "tool_calls": calls}
         out.append({k: m[k] for k in _CARRIED if m.get(k)})
     if out[-1]["role"] != "assistant" or not any(m["role"] == "user" for m in out):
         return None

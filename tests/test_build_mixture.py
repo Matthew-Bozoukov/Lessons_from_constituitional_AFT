@@ -227,6 +227,56 @@ def test_write_rows_messages_roundtrip_keeps_supervise(tmp_path):
     assert all("n_tokens" not in w for w in written), "counters must not leak into artifacts"
 
 
+_BASH_TOOL = {"type": "function", "function": {
+    "name": "bash", "parameters": {"type": "object",
+                                   "properties": {"command": {"type": "string"}}}}}
+_CALL = {"type": "function", "function": {"name": "bash", "arguments": {"command": "ls"}}}
+
+
+def test_tools_ride_the_row_from_source_to_mixture(tmp_path):
+    # A synth export row: messages + top-level tools. Both must reach the written mixture,
+    # and the token count must be taken WITH the tools (the template renders them).
+    path = tmp_path / "agentic.jsonl"
+    with path.open("w") as f:
+        f.write(json.dumps({"messages": [
+            {"role": "user", "content": "go"},
+            {"role": "assistant", "content": "", "tool_calls": [_CALL]},
+            {"role": "tool", "content": "out"},
+            {"role": "assistant", "content": "done", "reasoning_content": "why"}],
+            "tools": [_BASH_TOOL], "supervise": "final"}) + "\n")
+
+    seen = []
+
+    class _TokSeesTools(_StubTok):
+        def apply_chat_template(self, messages, tokenize, add_generation_prompt,
+                                return_dict=False, **kw):
+            seen.append(kw.get("tools"))
+            return super().apply_chat_template(messages, tokenize, add_generation_prompt,
+                                               return_dict, **kw)
+
+    rows, _ = _take_interchange(
+        _TokSeesTools(), _icfg(tmp_path), "agentic",
+        {"path": str(path), "reasoning": "native"}, ("examples", 1), seed=0,
+        render_kwargs={})
+    assert rows[0]["tools"] == [_BASH_TOOL] and rows[0]["supervise"] == "final"
+    assert seen == [[_BASH_TOOL]]
+    out = tmp_path / "m.jsonl"
+    _write_rows(out, rows)
+    assert json.loads(out.read_text())["tools"] == [_BASH_TOOL]
+
+
+def test_validate_interchange_refuses_calls_to_undeclared_tools():
+    from src.data.mixture.build_mixture import _validate_interchange
+
+    row = {"messages": [{"role": "user", "content": "go"},
+                        {"role": "assistant", "content": "", "tool_calls": [_CALL]},
+                        {"role": "tool", "content": "out"},
+                        {"role": "assistant", "content": "done"}]}
+    with pytest.raises(AssertionError, match="calls \\['bash'\\]"):
+        _validate_interchange("agentic", "none", [row])
+    _validate_interchange("agentic", "none", [{**row, "tools": [_BASH_TOOL]}])
+
+
 def test_stratified_subset_holds_proportions_and_is_deterministic():
     rows = ([{"source": "a", "n_tokens": 1}] * 60
             + [{"source": "b", "n_tokens": 1}] * 30

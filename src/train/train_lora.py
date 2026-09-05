@@ -28,7 +28,7 @@ from src.train.dynamic_batching import (  # noqa: E402
     seq_mean_token_mean_loss,
 )
 from src.train.mask_gate import gate_generation_boundary  # noqa: E402
-from src.model_profile import train_memory_entry  # noqa: E402
+from src.model_profile import render_chat, train_memory_entry  # noqa: E402
 from src.naming import (  # noqa: E402
     check_hub_name, derive_artifact_name_from_legacy, legacy_subject, mix_subject_from,
     model_name)
@@ -437,15 +437,15 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     # the exact rendered strings, handing the trainer a ready-made batch.
     if "text" not in ds.column_names and "messages" in ds.column_names:
         # Model-agnostic interchange rows (see src/data/mixture/sources/): the stored
-        # data carries semantics only; the model family's syntax -- think blocks
-        # included -- is applied now, by the verified profile, where the mask gate
-        # can see it. HF's json loader pads message dicts to a shared schema with
-        # None for absent keys; those must not reach the template.
+        # data carries semantics only; the model family's syntax -- think blocks and
+        # tool calls included -- is applied now, by the verified profile, where the
+        # mask gate can see it. `render_chat` is the one render site: it hands the
+        # template the row's `tools` (as an eval hands them to the server), parses
+        # wire-form tool arguments, and drops the None padding HF's json loader adds.
         profile = model_profile(str(cfg.model))
         ds = ds.map(
-            lambda r: {"text": tokenizer.apply_chat_template(
-                [{k: v for k, v in m.items() if v is not None} for m in r["messages"]],
-                tokenize=False, add_generation_prompt=False, **profile.render_kwargs)},
+            lambda r: {"text": render_chat(tokenizer, r["messages"], r.get("tools"),
+                                           render_kwargs=profile.render_kwargs)},
             desc="rendering chat template (train-time, ModelProfile render_kwargs)",
         )
         print(f">>> interchange dataset rendered at train time with "
