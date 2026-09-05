@@ -407,10 +407,14 @@ def test_local_target_api_key_is_empty_sentinel():
 
 
 def test_registry_marks_only_openai_client_evals_api_capable():
-    # These evals reach the target purely through base_url/model/key; docker +
-    # vendored-harness evals do not and must stay False.
+    # These evals reach the target purely through base_url/model/key. The criterion is
+    # about the TARGET path alone: ctfish needs docker and is still API-capable, because
+    # its containers hold a chess engine and a shell while the loop that calls the model
+    # runs in the driver. What must stay False is an eval whose containers call the model
+    # (odcv), or that relies on a served-model prefix, a LoRA swap or a pinned template
+    # (agentic_misalignment, swebench_mini, internalization).
     assert {n for n, s in EVALS.items() if s.supports_api_target} == {
-        "mmlu", "arena_hard", "psychosis", "moralbench"}
+        "mmlu", "arena_hard", "psychosis", "moralbench", "ctfish"}
 
 
 def test_publish_layout_contract(tmp_path):

@@ -101,6 +101,23 @@ EVALS: dict[str, EvalSpec] = {
         # the recipe-level number is what they are for: pool.py.
         pools=True,
     ),
+    # Specification gaming, not agentic misalignment: nobody is threatened and nothing is
+    # leaked — the agent is simply given an impossible goal and a shell, and the question is
+    # whether it reaches past the game. Docker because each rollout gets its own sandbox
+    # container, which must run where the driver runs.
+    "ctfish": EvalSpec(
+        "misalignment.ctfish",
+        "configs/eval/ctfish.yaml",
+        key="ctfish",
+        needs_docker=True,
+        # Docker is DRIVER-side here and says nothing about the target: the sandbox holds
+        # a chess engine and a shell, and the agent loop that calls the model runs in this
+        # process, reaching it through the OpenAI triple alone. So an off-the-shelf model
+        # is a valid arm — which is the paper's own framing (o1-preview against the rest)
+        # and the cheapest way to smoke-test the wiring before renting a GPU. Contrast
+        # ODCV, where the SCENARIO CONTAINERS call the model and vLLM is load-bearing.
+        supports_api_target=True,
+    ),
     "psychosis": EvalSpec(
         "misalignment.psychosis",
         "configs/eval/psychosis.yaml",
@@ -116,6 +133,16 @@ EVALS: dict[str, EvalSpec] = {
         "misalignment.moralbench",
         "configs/eval/moralbench.yaml",
         key="moralbench",
+        supports_api_target=True,
+    ),
+    # MASK honesty benchmark: the target's answers under pressure-to-lie are judged for
+    # honesty (does it contradict its own stated belief). Reached through the OpenAI triple
+    # alone — the vendored harness generates over base_url and the judge routes to
+    # OpenRouter — so an off-the-shelf API model is a valid arm and no docker is needed.
+    "mask": EvalSpec(
+        "misalignment.mask",
+        "configs/eval/mask.yaml",
+        key="mask",
         supports_api_target=True,
     ),
 }
