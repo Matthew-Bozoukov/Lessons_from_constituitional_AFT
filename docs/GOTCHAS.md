@@ -394,3 +394,14 @@ Fix: capture each trainer's `$!` and `wait $PID_0 $PID_1 ...` on those PIDs only
 - **Prefix caching on Qwen3.6 works and is now on for ODCV** (`serving.reuses_long_prefixes`),
   but at concurrency 8 on 2-7k contexts it removes ~80% of prefill compute without moving
   the pass wall clock: decode dominates. It is free (KV peaked at 16%), not a speedup here.
+
+## Training pods need a CUDA 13 driver too (2026-09-05)
+
+The repo's lock pins `torch 2.11.0+cu130`. On a RunPod host whose driver predates 580
+(pod n41qb3lmav2cjz: driver 570.124.06, CUDA 12.8) the boot looks clean, `uv sync`
+succeeds, and then `torch.cuda.is_available()` is False with a one-line UserWarning
+("The NVIDIA driver on your system is too old (found version 12080)"); the trainer carries
+on and loads the 55GB model onto CPU. `uv run runpod up --train` used to request no CUDA
+version on purpose (the comment said only vLLM needed 13); it now requests `13.0` for both
+shapes. If you provision any other way, check `nvidia-smi` says CUDA 13.x before launching,
+and treat that warning as fatal.

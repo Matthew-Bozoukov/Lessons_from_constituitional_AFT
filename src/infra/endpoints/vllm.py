@@ -673,8 +673,8 @@ class SshExec:
         lines = " ".join(shlex.quote(v) for v in pairs)
         self._ssh(f"umask 077 && mkdir -p {self.workdir} && "
                   rf"printf '%s\n' {lines} > {self.workdir}/.env")
-        print(f">>> pushed HF_TOKEN + HF_ORG (and nothing else) to "
-              f"{self.host}:{self.workdir}/.env")
+        print(f">>> pushed {' + '.join(p.split('=', 1)[0] for p in pairs)} (and nothing "
+              f"else) to {self.host}:{self.workdir}/.env")
 
     def _with_env(self, cmd: str) -> str:
         """Prefix a remote command with uv's PATH and the host's own .env (never the driver's).

@@ -117,7 +117,7 @@ class ProvisionSpec:
     count: int = 1
     cloud: str = "SECURE"
     disk_gb: int = 200
-    cuda: str = "13.0"          # "" = no constraint; only the vLLM image needs CUDA 13
+    cuda: str = "13.0"          # "" = no constraint; every stack here needs CUDA 13 (see up)
     countries: str = ""         # comma-separated placement codes; "" = anywhere
     image: str = IMAGE
     max_hours: float = 6.0
@@ -1117,12 +1117,13 @@ def up(name: str, train: str | None = None, eval: str | None = None,
     script = _bootstrap(clone, weights)
     _check_bash(script)
     pod_id = provision_runpod(
-        # A pod that installs vLLM gets a torch built for CUDA 13, which dies at
-        # `_cuda_init` on an older host driver; a training pod runs the repo's own pinned
-        # stack, and a CUDA constraint it does not need only makes it harder to schedule.
-        # Same reasoning as `serve_vllm`'s `cuda` argument.
+        # BOTH shapes need a CUDA 13 host. The vLLM venv brings a torch built for CUDA 13,
+        # and since 2026-09 so does the repo's own lock (torch 2.11.0+cu130): on a driver
+        # older than 580 `torch.cuda.is_available()` is False and a training run grinds on
+        # CPU after a clean-looking boot (pod n41qb3lmav2cjz, driver 570 / CUDA 12.8,
+        # 2026-09-05 — docs/GOTCHAS.md). Until then training pods ran unconstrained.
         ProvisionSpec(gpu=gpu, count=count, disk_gb=disk_gb, cloud=cloud, image=image,
-                      cuda="" if train else "13.0", countries=countries),
+                      cuda="13.0", countries=countries),
         name=name,
         start_script=script,
         ports=("8080/http", "22/tcp"),
