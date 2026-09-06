@@ -1,5 +1,5 @@
-# ABOUTME: A minimal, near-square schematic of the Colosseum Hospital setup for a half-slide: the
-# ABOUTME: provisioner, two hospitals with their departments, and the coalition pair's private channel.
+# ABOUTME: A minimal schematic of the Colosseum Hospital setup for a half-slide: provisioner on the
+# ABOUTME: left, the two hospitals stacked on the right, and the coalition pair's private channel.
 
 """Draw the environment for the left half of a slide.
 
@@ -30,9 +30,9 @@ CONTROL = "#2E6FBF"
 PAIR = "#C95B2F"
 PAIR_SOFT = "#FBEDE6"
 
-BW, BH, GAP = 0.52, 0.48, 0.08  # department box width/height and gap
-HW = 4 * BW + 3 * GAP + 0.24  # hospital width
-HH = 1.5
+BW, BH, GAP = 0.78, 0.6, 0.12  # department box width/height and gap
+HW = 4 * BW + 3 * GAP + 0.3  # hospital width
+HH = 1.75  # hospital height
 
 
 def box(ax, x, y, w, h, text="", *, fc="white", ec=RULE, lw=1.3, fs=10, bold=False):
@@ -68,7 +68,7 @@ def arrow(ax, p, q, *, color=MUTED, lw=1.4, style="-|>", ls="-"):
             p,
             q,
             arrowstyle=style,
-            mutation_scale=10,
+            mutation_scale=11,
             color=color,
             lw=lw,
             ls=ls,
@@ -82,20 +82,20 @@ def arrow(ax, p, q, *, color=MUTED, lw=1.4, style="-|>", ls="-"):
 def hospital(ax, x0, y0, name, *, pair_dept=None):
     box(ax, x0, y0, HW, HH, fc=PANEL, ec=RULE)
     ax.text(
-        x0 + HW / 2,
-        y0 + HH - 0.2,
+        x0 + 0.2,
+        y0 + HH - 0.24,
         name,
-        ha="center",
+        ha="left",
         va="center",
-        fontsize=10,
+        fontsize=11,
         color=INK,
         fontweight="bold",
         zorder=3,
     )
-    bx = x0 + 0.12
+    bx = x0 + 0.15
     by = y0 + 0.3
     centers = []
-    for i, d in enumerate(["Triage", "Radiol.", "Surgery", "Ward"]):
+    for i, d in enumerate(["Triage", "Radiology", "Surgery", "Ward"]):
         x = bx + i * (BW + GAP)
         is_pair = d == pair_dept
         box(
@@ -108,13 +108,13 @@ def hospital(ax, x0, y0, name, *, pair_dept=None):
             fc=PAIR_SOFT if is_pair else "white",
             ec=PAIR if is_pair else CONTROL,
             lw=2.0 if is_pair else 1.3,
-            fs=7.2,
+            fs=8.5,
             bold=is_pair,
         )
         centers.append((x + BW / 2, by + BH / 2))
         if i < 3:
-            arrow(ax, (x + BW, by + BH / 2), (x + BW + GAP, by + BH / 2), lw=0.9)
-    return centers, (x0 + HW / 2, y0 + HH)
+            arrow(ax, (x + BW, by + BH / 2), (x + BW + GAP, by + BH / 2), lw=1.0)
+    return centers
 
 
 def main() -> None:
@@ -122,22 +122,29 @@ def main() -> None:
     ap.add_argument("--open", action="store_true")
     args = ap.parse_args()
 
-    width = 0.15 + HW + 0.3 + HW + 0.15
-    height = 4.9
+    pw, ph = 1.9, 0.7
+    gap_x, gap_y = 0.75, 0.35
+    width = 0.15 + pw + gap_x + HW + 0.15
+    height = 0.2 + HH + gap_y + HH + 0.2
     fig, ax = plt.subplots(figsize=(width, height))
     ax.set_xlim(0, width)
     ax.set_ylim(0, height)
     ax.axis("off")
 
-    pw, ph = 2.2, 0.6
-    px, py = (width - pw) / 2, height - 0.3 - ph
+    hx = 0.15 + pw + gap_x
+    y_sm = 0.2
+    y_gh = y_sm + HH + gap_y
+    gh = hospital(ax, hx, y_gh, "General Hospital", pair_dept="Triage")
+    hospital(ax, hx, y_sm, "St Mary's Center")
+
+    px, py = 0.15, height / 2 - ph / 2
     box(
         ax,
         px,
         py,
         pw,
         ph,
-        "Resource Provisioner",
+        "Resource\nProvisioner",
         fc=PAIR_SOFT,
         ec=PAIR,
         lw=2.0,
@@ -145,25 +152,24 @@ def main() -> None:
         bold=True,
     )
 
-    gh, gh_top = hospital(ax, 0.15, 0.25, "General Hospital", pair_dept="Triage")
-    sm, sm_top = hospital(ax, 0.15 + HW + 0.3, 0.25, "St Mary's Center")
+    # supplies to each hospital
+    arrow(ax, (px + pw, py + ph - 0.12), (hx, y_gh + 0.55), lw=1.5)
+    arrow(ax, (px + pw, py + 0.12), (hx, y_sm + HH - 0.55), lw=1.5)
 
-    arrow(ax, (px + 0.3, py), (gh_top[0] + 0.5, gh_top[1]), lw=1.5)
-    arrow(ax, (px + pw - 0.3, py), (sm_top[0] - 0.5, sm_top[1]), lw=1.5)
-
+    # private channel to General Hospital Triage
     tx, ty = gh[0]
     arrow(
         ax,
-        (px + 0.05, py + 0.1),
-        (tx - 0.02, ty + 0.28),
+        (px + pw - 0.5, py + ph),
+        (tx - 0.1, ty - 0.02),
         color=PAIR,
         lw=1.8,
         style="<|-|>",
         ls=(0, (4, 2.5)),
     )
     ax.text(
-        0.5,
-        py - 0.55,
+        px + 0.55,
+        py + ph + 0.55,
         "private\nchannel",
         ha="center",
         va="center",
