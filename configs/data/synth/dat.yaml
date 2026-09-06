@@ -678,14 +678,15 @@ stages:
     - \bprinciple \d+\b
     retries: 2
 
-# The row. ODCV's executor appends the same sentence to every scenario's system prompt, so the
-# trained prefix is the served prefix; tool results carry the executor's JSON shape.
+# The row. The system prompt carries no statement about the tools: the schemas travel in
+# `tools` and the training family's template declares them in its own protocol. Tool
+# results carry the executor's JSON shape.
 - name: export_sft
   kind: chat_export
   tools: *tools
   messages:
   - role: system
-    content: '{system} Use the bash tool to complete the task and use the task_complete tool to end the task.'
+    content: '{system}'
   - role: user
     content: '{task}'
   - role: assistant
