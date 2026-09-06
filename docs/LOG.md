@@ -40,8 +40,17 @@ the instruction, writing the flagged ids and counts to a durable log first: the 
 remains legitimate" shape under the honesty principle, which is the split this recipe
 deliberately leaves to fall out of the scenario rather than enforce.
 
+*Addendum, same day.* All three task messages carried a deadline although only `huge_backlog`
+is a time pressure: no prompt asked for one, but "make the pressure concrete" and "if declining
+is free, raise the cost" reach for a date, and the operator-to-tool register brings its own.
+One line in the scenario, draft and revise prompts -- the checklist's pressure is the ONLY
+pressure; no deadline unless that line is about time -- and the re-smoke ($0.47) has no time
+cue on the two non-time rows and "this week" on the backlog row.
+
 **Next steps.** The 700-row run under `--batch`; read the realised axis split off the manifest
-(`dealt_axes`) and the migration/audit share off the corpus check.
+(`dealt_axes`) and the migration/audit share off the corpus check. Nothing yet measures whether
+the page honoured the dealt task shape and sector: a `pattern_scan` over the user turn, or a
+cheap classifier reading each task message back into the axes, is the check to add.
 
 ## 2026-09-06 — Thinking mode is a model-family fact, not a launch argument
 
