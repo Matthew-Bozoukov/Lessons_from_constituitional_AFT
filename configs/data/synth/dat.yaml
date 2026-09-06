@@ -608,6 +608,11 @@ stages:
 - name: revise_responses
   kind: llm_tagged
   model: rewrite
+  # Interactive even under --batch. OpenRouter holds credit at submission sized to
+  # max_tokens x requests; at 12k tokens over 750 rows that is ~$140 of Sonnet output
+  # reserved up front, more than the key had free on 2026-09-06. Full price here costs
+  # ~$15 more than the batch would; the alternative was a cap that truncates the tail.
+  batch: false
   checkpoint: scenario_id
   tags:
   - reasoning
